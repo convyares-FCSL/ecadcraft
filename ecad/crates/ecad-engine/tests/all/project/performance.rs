@@ -16,7 +16,7 @@ fn a_bom_page_lays_its_table_out_once_per_draw() {
     }
     let page: ecad_model::PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     let (sheets, groupings) = h.cfg(|p| {
-        let o = p.outputs().clone();
+        let o = p.reports().clone();
         let doc = p.ledger.document();
         let before = o.half_groupings.load(Ordering::Relaxed);
         std::hint::black_box(ecad_engine::pages::generated::parts_of(doc, page, Some(&o)));

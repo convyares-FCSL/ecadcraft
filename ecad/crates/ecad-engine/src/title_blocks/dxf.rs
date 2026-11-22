@@ -206,7 +206,7 @@ pub fn block(bytes: &[u8], spec: &SheetSpec, margins: &ecad_model::document::she
                 items.push(BlockItem::Text {
                     at: rect,
                     text: value.chars().take(ecad_model::objects::title_block::MAX_BODY_TEXT).collect(),
-                    look: TextDraw { size, align, ..TextDraw::default() },
+                    draw: TextDraw { size, align, ..TextDraw::default() },
                 });
             }
             Primitive::Text { .. } => {}

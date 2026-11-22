@@ -111,7 +111,7 @@ fn bad_value(entry: &Entry) -> CmdError {
     })
 }
 
-/// A tag prefix entry (`symbol.<key>.prefix`, `terminal.<key>.prefix`).
+/// A tag prefix entry (`symbol.<key>.prefix`, `terminal_block.<key>.prefix`).
 fn is_prefix(entry: &Entry) -> bool {
     starter_key(entry).is_some()
 }
@@ -119,7 +119,7 @@ fn is_prefix(entry: &Entry) -> bool {
 /// The starter symbol key of a prefix entry.
 fn starter_key(entry: &Entry) -> Option<&'static str> {
     // Brief 045: its new starters' prefixes are in the `plc` area.
-    let rest = entry.key.strip_prefix("symbol.").or_else(|| entry.key.strip_prefix("terminal.")).or_else(|| entry.key.strip_prefix("plc."))?;
+    let rest = entry.key.strip_prefix("symbol.").or_else(|| entry.key.strip_prefix("terminal_block.")).or_else(|| entry.key.strip_prefix("plc."))?;
     let key = rest.strip_suffix(".prefix")?;
     let starter: crate::symbols::StarterKey = ecad_model::Word::parse(key)?;
     defaults::symbols::prefix_entry(starter).filter(|e| e.key == entry.key).map(|_| key)

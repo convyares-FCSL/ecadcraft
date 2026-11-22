@@ -211,8 +211,8 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         Effect::Prop { object: ObjectRef::Wire(c), .. } => extend(out, crate::wires::wire_pages(doc, *c)),
         // Brief 028: a connection point relabelled (removed and added) is drawn by its device's
         // symbols only. A new one is drawn through its device.
-        Effect::Terminal { id, before: None, after: Some(_) } if !doc.terminals.contains_key(id) => {}
-        Effect::Terminal { before, after, .. } => {
+        Effect::ConnectionPoint { id, before: None, after: Some(_) } if !doc.connection_points.contains_key(id) => {}
+        Effect::ConnectionPoint { before, after, .. } => {
             for t in before.iter().chain(after.iter()) {
                 extend(out, subject_pages(doc, t.owner.subject()));
             }
@@ -327,7 +327,7 @@ fn extension(doc: &Document, effect: &Effect<'_>, out: &mut PageSet) {
         | Effect::Item { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
-        | Effect::Terminal { .. }
+        | Effect::ConnectionPoint { .. }
         | Effect::Rep { .. }
         | Effect::Route { .. }
         | Effect::Cable { .. }

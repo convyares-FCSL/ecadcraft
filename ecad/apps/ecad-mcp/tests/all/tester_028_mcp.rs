@@ -22,13 +22,13 @@ fn by_agent(c: &mut Client) -> (String, Vec<Op>) {
 
 fn reads(c: &mut Client, cable: &str) -> Value {
     // `change_count` is the session's edit counter (026), not part of the plan.
-    let mut preview = c.exec("renumber", json!({"kind": "terminals", "preview": true, "start": 3}));
+    let mut preview = c.exec("renumber", json!({"kind": "terminal_blocks", "preview": true, "start": 3}));
     preview.as_object_mut().map(|o| o.remove("change_count"));
     json!({
         "stripplan": c.exec("stripplan", json!({})),
         "cablecores": c.exec("cablecores", json!({"cable": cable})),
         "cablelist": c.exec("cablelist", json!({})),
-        "checks": c.exec("checks", json!({"kinds": ["too-many-terminals", "terminal-twice", "too-many-cores", "core-twice", "no-core-count"]})),
+        "checks": c.exec("checks", json!({"kinds": ["too-many-terminal-blocks", "terminal-block-twice", "too-many-cores", "core-twice", "no-core-count"]})),
         "preview": preview,
     })
 }
@@ -43,10 +43,10 @@ fn strip_writes_by_the_agent_then_refused_with_writes_off_on_the_saved_project()
             c.wire_pp(json!({"points": [[x, 200], [x, 100]]}));
         }
         let cable = hex(&c.exec("cableslash", json!({"from": [90, 120], "to": [170, 120], "tag": "-W01"})), "cable");
-        let f = c.exec("terminals", json!({"from": [90, 170], "to": [170, 170]}));
+        let f = c.exec("terminalblocks", json!({"from": [90, 170], "to": [170, 170]}));
         assert_eq!(by_agent(&mut c).0, "Place terminals");
         let strip = hex(&f, "strip");
-        let terms: Vec<String> = f["terminals"].as_array().unwrap().iter().map(|x| hex(x, "terminal")).collect();
+        let terms: Vec<String> = f["connection_points"].as_array().unwrap().iter().map(|x| hex(x, "connection_point")).collect();
         assert_eq!(terms.len(), 4, "{f}");
         c.exec("bridge", json!({"from": terms[2], "to": terms[3]}));
         assert!(by_agent(&mut c).0.starts_with("Bridge -X01:3"));
@@ -59,7 +59,7 @@ fn strip_writes_by_the_agent_then_refused_with_writes_off_on_the_saved_project()
                 "{k}: {ops:?}"
             );
         }
-        c.exec("setprop", json!({"component": strip, "key": "terminals", "value": "6+1PE"}));
+        c.exec("setprop", json!({"component": strip, "key": "terminal_blocks", "value": "6+1PE"}));
         by_agent(&mut c);
         c.exec("setprop", json!({"cable": cable, "key": "cores", "value": "3G"}));
         by_agent(&mut c);
@@ -83,18 +83,18 @@ fn strip_writes_by_the_agent_then_refused_with_writes_off_on_the_saved_project()
     assert!(!c.s.writes());
     let log = c.log();
     for (cmd, params) in [
-        ("place", json!({"symbol": "terminal", "at": [100, 150]})),
-        ("place", json!({"symbol": "terminalpe", "at": [300, 150], "device": strip})),
-        ("terminals", json!({"strip": strip, "from": [90, 150], "to": [170, 150]})),
+        ("place", json!({"symbol": "terminalblock", "at": [100, 150]})),
+        ("place", json!({"symbol": "terminalblockpe", "at": [300, 150], "device": strip})),
+        ("terminalblocks", json!({"strip": strip, "from": [90, 150], "to": [170, 150]})),
         ("bridge", json!({"from": terms[0], "to": terms[1]})),
-        ("renumber", json!({"kind": "terminals", "start": 9})),
-        ("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [strip]})),
-        ("setprop", json!({"component": strip, "key": "terminals", "value": "12"})),
+        ("renumber", json!({"kind": "terminal_blocks", "start": 9})),
+        ("renumber", json!({"kind": "terminal_blocks", "scope": "selection", "strips": [strip]})),
+        ("setprop", json!({"component": strip, "key": "terminal_blocks", "value": "12"})),
         ("setprop", json!({"component": strip, "key": "part_number.pe", "value": "X"})),
         ("setprop", json!({"component": strip, "key": "maker.pe", "value": "X"})),
         ("setprop", json!({"cable": cable, "key": "cores", "value": "7G"})),
         ("cablecore", json!({"cable": cable, "cores": ["1", "2", "3", "GNYE"]})),
-        ("newpage", json!({"generated": "terminals", "strip": strip})),
+        ("newpage", json!({"generated": "terminal_blocks", "strip": strip})),
         ("newpage", json!({"generated": "cables"})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));

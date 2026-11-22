@@ -80,7 +80,7 @@ fn o_the_generated_page_heads_each_card_and_marks_typed_addresses() {
     let page: PageId = id(&h.run("newpage", json!({"generated": "iolist"})).unwrap(), "page");
     let d = h.doc();
     let (sheets, lines) = h.cfg(|p| {
-        p.outputs();
+        p.reports();
         let o = p.kept_reports().unwrap();
         (ecad_electrical::pages::generated::sheets_of(&d, page, Some(o)), ecad_electrical::plc::iolist::page_lines(&d, &o.plc))
     });
@@ -102,14 +102,14 @@ fn p_the_release_csv_and_its_missing_reason() {
     let slot = ecad_electrical::releases::release::LISTS.iter().find(|s| s.id == "io-list").expect("an io-list slot");
     assert_eq!(slot.suffix, " IO list.csv");
     let d = h.doc();
-    let t = h.cfg(|p| (slot.build)(&d, p.outputs())).expect("a table");
+    let t = h.cfg(|p| (slot.build)(&d, p.reports())).expect("a table");
     assert_eq!(t.headers.first(), Some(&"Rack"));
     assert_eq!(t.rows.len(), 36);
     let csv = ecad_electrical::reports::csv(&t, true);
     assert!(csv.contains("-A02"));
     let mut empty = H::new(4544);
     let d = empty.doc();
-    assert!(empty.cfg(|p| (slot.build)(&d, p.outputs())).is_none());
+    assert!(empty.cfg(|p| (slot.build)(&d, p.reports())).is_none());
     assert_eq!(slot.missing_why, "No PLC cards with channels.");
 }
 
@@ -117,15 +117,15 @@ fn p_the_release_csv_and_its_missing_reason() {
 fn q_renaming_a_target_patches_only_its_cards_rows() {
     let F { mut h, di, lamps } = fixture(4545);
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
     h.run("setprop", json!({"component": lamps[0].hex(), "key": "tag", "value": "-P99"})).unwrap();
-    let changed = h.cfg(|p| p.outputs().plc.rows_changed.clone());
+    let changed = h.cfg(|p| p.reports().plc.rows_changed.clone());
     assert_eq!(changed.into_iter().collect::<Vec<_>>(), [di], "only the DI card's rows");
     let r = rows(&mut h, json!({"card": "-A02"}));
     assert!(r[0]["targets"].as_array().unwrap().iter().any(|t| t["device"] == "-P99"), "{}", r[0]);
     // A commit touching no PLC data leaves the list alone.
     placed(&mut h, "coil", 400.0, 100.0);
-    assert!(h.cfg(|p| p.outputs().plc.rows_changed.is_empty()));
+    assert!(h.cfg(|p| p.reports().plc.rows_changed.is_empty()));
     assert!(prop(&mut h, di, "plc.rack").is_some());
 }

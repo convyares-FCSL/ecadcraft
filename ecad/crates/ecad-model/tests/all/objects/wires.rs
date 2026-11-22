@@ -160,8 +160,8 @@ fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageI
         vec![
             Op::AddPage { id: p, page: Page::titled("1").unwrap(), index: 0 },
             Op::CreateDevice { id: d, device: Device::default() },
-            Op::AddConnectionPoint { id: a, terminal: t("1") },
-            Op::AddConnectionPoint { id: b, terminal: t("2") },
+            Op::AddConnectionPoint { id: a, connection_point: t("1") },
+            Op::AddConnectionPoint { id: b, connection_point: t("2") },
         ],
     )
     .unwrap();
@@ -223,8 +223,8 @@ fn a_route_is_well_formed_and_lands_on_what_exists() {
     assert!(serde_json::from_value::<Route>(v).is_err(), "an unknown field is a read error");
     // Removing the connection point a route lands on is refused while the route lands there.
     l.commit(Author::User, "draw", vec![Op::AddRoute { id: r, route: ok }]).unwrap();
-    let term = l.document().terminals.get(&a).cloned().unwrap();
-    let e = l.commit(Author::User, "rm", vec![Op::RemoveConnectionPoint { id: a, terminal: term }]).unwrap_err();
+    let term = l.document().connection_points.get(&a).cloned().unwrap();
+    let e = l.commit(Author::User, "rm", vec![Op::RemoveConnectionPoint { id: a, connection_point: term }]).unwrap_err();
     assert!(e.to_string().contains("route"), "{e}");
 }
 
@@ -476,7 +476,7 @@ fn a_point_drawn_into_a_wires_line_splits_the_wire_and_a_new_net_starts_where_it
     // A terminal T placed on the line: B–T and T–A, in the wire's place; no B–A left.
     let bt = route(p, &[(10.0, 0.0), (5.0, 0.0)], RouteEnd::Point(b), RouteEnd::Point(t));
     let ta = route(p, &[(5.0, 0.0), (0.0, 0.0)], RouteEnd::Point(t), RouteEnd::Point(a));
-    l.commit(Author::User, "terminal", vec![Op::ModifyRoute { id: r1, before: ba, after: bt }, Op::AddRoute { id: r2, route: ta }]).unwrap();
+    l.commit(Author::User, "connection_point", vec![Op::ModifyRoute { id: r1, before: ba, after: bt }, Op::AddRoute { id: r2, route: ta }]).unwrap();
     assert_eq!(wires(&l), want(vec![(w.net, 1, [b, t]), (w.net, 2, [t, a])]));
 }
 
@@ -576,8 +576,8 @@ fn page_with_bar(l: &mut Ledger, ids: &mut IdAllocator, n: u64) -> (ecad_model::
         vec![
             Op::AddPage { id: p, page: Page::titled("1").unwrap(), index: 0 },
             Op::CreateDevice { id: d, device: Device::default() },
-            Op::AddConnectionPoint { id: a, terminal: t("PE", Accepts::new(n).unwrap()) },
-            Op::AddConnectionPoint { id: b, terminal: t("2", Accepts::TWO) },
+            Op::AddConnectionPoint { id: a, connection_point: t("PE", Accepts::new(n).unwrap()) },
+            Op::AddConnectionPoint { id: b, connection_point: t("2", Accepts::TWO) },
         ],
     )
     .unwrap();

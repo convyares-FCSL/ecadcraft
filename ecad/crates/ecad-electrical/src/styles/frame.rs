@@ -112,9 +112,9 @@ fn weight(mm: f64) -> u16 {
 /// page type, project, standard, built-in), with zones off when its page type turns them off.
 pub fn frame_draw(doc: &Document, page: PageId) -> FrameDraw {
     let id = ecad_model::document::sheet::frame_style(doc, page);
-    let mut look = draw_of(doc, &id);
-    look.zones = ecad_model::document::sheet::page_type_zones(doc, page).unwrap_or(true);
-    look
+    let mut draw = draw_of(doc, &id);
+    draw.zones = ecad_model::document::sheet::page_type_zones(doc, page).unwrap_or(true);
+    draw
 }
 
 /// The look of frame style `id`.

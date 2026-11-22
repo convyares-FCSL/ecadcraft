@@ -93,7 +93,7 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
         &mut h,
         r#"projectprops {"title":"Pump station PS-04","drawing_number":"PS04-E-001","customer":"Northfield Water","props":{"site":"Northfield treatment works, pump house 2","cover.notes":"All control wires are tri-rated unless stated.\nLine colours on the drawing are not the wire colours.\nA line through terminals means they are linked.\nCable core colours do not follow the wire colours."}}"#,
     );
-    for (i, s) in ["coil", "no", "nc", "lamp", "motor3", "fuse", "terminal"].iter().enumerate() {
+    for (i, s) in ["coil", "no", "nc", "lamp", "motor3", "fuse", "connection_point"].iter().enumerate() {
         ok(&mut h, &format!(r#"place {{"symbol":"{s}","at":[{},150]}}"#, 60 + 40 * i));
     }
     let mut wires = Vec::new();

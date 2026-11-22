@@ -129,7 +129,7 @@ impl Command for PlcimportParams {
         let read = read_tags(&bytes, format).map_err(err)?;
         let counts = json!({"not_io": read.not_io, "bad_address": read.bad, "bad_name": read.bad_name, "twice": read.twice});
         let plan = |p: &mut crate::project::Project| -> Result<Fill, CmdError> {
-            p.outputs();
+            p.reports();
             let o = p.kept_reports().ok_or(CmdError::refused("The PLC model is not available."))?;
             plan_fill(p.ledger.document(), &o.plc, &read.rows, tags, texts)
         };
@@ -187,7 +187,7 @@ impl Command for PlcexportParams {
         let f = format_named(self.format.as_deref()).map_err(|e| err(e.to_string()))?;
         let path = self.path;
         let v = on_any_page(s, |p, _| {
-            p.outputs();
+            p.reports();
             let o = p.kept_reports().ok_or(CmdError::refused("The PLC model is not available."))?;
             let doc = p.ledger.document();
             let rack = self.rack.as_deref().map(|r| ecad_electrical::plc::rack::rack_named(doc, r)).transpose()?;

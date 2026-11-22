@@ -23,11 +23,11 @@ fn fixture(seed: u64) -> F {
         let x = 50.0 + 40.0 * f64::from(i);
         h.wire_pp(&[(x, 220.0), (x, 100.0)]).unwrap();
     }
-    let v = h.run("terminals", json!({"from": [30, 160], "to": [280, 160]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [30, 160], "to": [280, 160]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
-    let terms: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let terms: Vec<ConnectionPointId> = v["connection_points"].as_array().unwrap().iter().map(|x| id(x, "connection_point")).collect();
     assert_eq!(terms.len(), 6, "{v}");
-    h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "12+2PE"})).unwrap();
+    h.run("setprop", json!({"component": strip.hex(), "key": "terminal_blocks", "value": "12+2PE"})).unwrap();
     h.run(
         "projectprops",
         json!({"props": {
@@ -72,10 +72,10 @@ impl F {
 
     fn same_as_built(&mut self) {
         let (kept, built) =
-            self.h.cfg(|p| (p.outputs().clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics)));
+            self.h.cfg(|p| (p.reports().clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics)));
         assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
         assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
-        assert_eq!(kept.terminal_table(None), built.terminal_table(None));
+        assert_eq!(kept.terminal_block_table(None), built.terminal_block_table(None));
     }
 
     fn same_net(&mut self, a: usize, b: usize) -> bool {
@@ -161,27 +161,27 @@ fn placed_accessories_in_the_plan_and_on_the_bom() {
 /// E (FP4, FP7): renumbering moves `acc.after.*`, `acc.on.*` and rewrites links, in the same
 /// transaction; the preview lists them; `u` restores all.
 #[test]
-fn renumbering_moves_accessory_keys_and_links() {
+fn renumbering_moves_accessory_keys_and_jumper_bars() {
     let mut f = fixture(0x30_02);
     f.acc(json!({"at": "4", "add": ["partition"]}));
     f.acc(json!({"at": "2", "on": true, "items": ["marker"]}));
     f.jumper(json!({"strip": f.strip.hex(), "positions": "1-4"}));
-    let pv = f.h.run("renumber", json!({"kind": "terminals", "scope": "all", "start": 3, "preview": true})).unwrap();
+    let pv = f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all", "start": 3, "preview": true})).unwrap();
     let lines = pv["accessories"].to_string();
     assert!(lines.contains("partition after 4 \u{2192} after 6"), "{pv}");
     assert!(lines.contains("link 1-4 \u{2192} 3-6"), "{pv}");
     let head = f.h.head();
-    f.h.run("renumber", json!({"kind": "terminals", "scope": "all", "start": 3})).unwrap();
+    f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all", "start": 3})).unwrap();
     assert_eq!(f.h.head(), head + 1, "one transaction");
     assert_eq!(f.prop("acc.after.6").as_deref(), Some("partition"));
     assert_eq!(f.prop("acc.after.4"), None);
     assert_eq!(f.prop("acc.on.4").as_deref(), Some("marker"));
-    assert_eq!(f.prop("link.1").as_deref(), Some("3-6"));
+    assert_eq!(f.prop("jumper_bar.1").as_deref(), Some("3-6"));
     assert!(f.same_net(0, 3) && !f.same_net(0, 4), "the link joins the same terminals");
     f.same_as_built();
     f.h.cmdline("u");
     assert_eq!(f.prop("acc.after.4").as_deref(), Some("partition"));
-    assert_eq!(f.prop("link.1").as_deref(), Some("1-4"));
+    assert_eq!(f.prop("jumper_bar.1").as_deref(), Some("1-4"));
 }
 
 /// F, P: orphans and link checks have working fixes.
@@ -189,11 +189,11 @@ fn renumbering_moves_accessory_keys_and_links() {
 fn checks_rows_have_working_fixes() {
     let mut f = fixture(0x30_03);
     f.acc(json!({"at": "11", "add": ["partition"]}));
-    f.h.run("setprop", json!({"component": f.strip.hex(), "key": "terminals", "value": "8"})).unwrap();
+    f.h.run("setprop", json!({"component": f.strip.hex(), "key": "terminal_blocks", "value": "8"})).unwrap();
     let v = f.h.run("checks", json!({"kinds": ["accessory-orphan"]})).unwrap();
     assert!(v.to_string().contains("-X01: partition after 11, but -X01 has no position 11"), "{v}");
     let fixes = f.h.cfg(|p| {
-        let o = p.outputs().clone();
+        let o = p.reports().clone();
         let fix = o.checks().into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::AccessoryOrphan).and_then(|c| c.fix).unwrap();
         ecad_electrical::reports::accessory_fix_commands(&o, fix)
     });
@@ -207,74 +207,74 @@ fn checks_rows_have_working_fixes() {
     // P: a link across a partition; split it there.
     f.acc(json!({"at": "4", "add": ["partition"]}));
     f.jumper(json!({"strip": f.strip.hex(), "positions": "3-5"}));
-    let v = f.h.run("checks", json!({"kinds": ["link-across-partition"]})).unwrap();
+    let v = f.h.run("checks", json!({"kinds": ["jumper-bar-across-partition"]})).unwrap();
     assert!(v.to_string().contains("-X01: link 3-5 crosses the partition after 4"), "{v}");
     let fixes = f.h.cfg(|p| {
-        let o = p.outputs().clone();
+        let o = p.reports().clone();
         let fix = o.checks().into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::JumperBarAcrossPartition).and_then(|c| c.fix).unwrap();
         ecad_electrical::reports::accessory_fix_commands(&o, fix)
     });
     assert_eq!(fixes[0].0, "Split link at 4");
-    f.jumper(json!({"link": {"strip": f.strip.hex(), "n": 1}, "positions": "3-6"}));
+    f.jumper(json!({"jumper_bar": {"strip": f.strip.hex(), "n": 1}, "positions": "3-6"}));
     let head = f.h.head();
     f.h.run(fixes[0].1, fixes[0].2.clone()).unwrap();
     assert_eq!(f.h.head(), head + 1, "Split is one transaction");
-    assert_eq!(f.prop("link.1").as_deref(), Some("3-4"));
-    assert_eq!(f.prop("link.2").as_deref(), Some("5-6"));
+    assert_eq!(f.prop("jumper_bar.1").as_deref(), Some("3-4"));
+    assert_eq!(f.prop("jumper_bar.2").as_deref(), Some("5-6"));
     // A link naming missing positions: drop them.
-    f.h.run("setprop", json!({"component": f.strip.hex(), "key": "link.3", "value": "7-15"})).unwrap();
-    let v = f.h.run("checks", json!({"kinds": ["link-orphan"]})).unwrap();
+    f.h.run("setprop", json!({"component": f.strip.hex(), "key": "jumper_bar.3", "value": "7-15"})).unwrap();
+    let v = f.h.run("checks", json!({"kinds": ["jumper-bar-orphan"]})).unwrap();
     assert!(v.to_string().contains("names 15, which -X01 does not have"), "{v}");
-    f.jumper(json!({"link": {"strip": f.strip.hex(), "n": 3}, "drop_missing": true}));
-    assert_eq!(f.prop("link.3").as_deref(), Some("7-8"));
+    f.jumper(json!({"jumper_bar": {"strip": f.strip.hex(), "n": 3}, "drop_missing": true}));
+    assert_eq!(f.prop("jumper_bar.3").as_deref(), Some("7-8"));
     f.same_as_built();
 }
 
 /// L, N, O: links join nets with one wire number in one transaction; extend, shorten, split and
 /// delete are one transaction each; bars per link.
 #[test]
-fn links_make_one_net_and_count_bars() {
+fn jumper_bars_make_one_net_and_count_bars() {
     let mut f = fixture(0x30_04);
     let head = f.h.head();
-    let v = f.jumper(json!({"terminals": [f.terms[0].hex(), f.terms[3].hex()]}));
+    let v = f.jumper(json!({"connection_points": [f.terms[0].hex(), f.terms[3].hex()]}));
     assert_eq!(f.h.head(), head + 1, "one transaction");
     assert_eq!(v["positions"], "1-4", "{v}");
-    assert_eq!(f.prop("link.1").as_deref(), Some("1-4"));
+    assert_eq!(f.prop("jumper_bar.1").as_deref(), Some("1-4"));
     assert!(f.same_net(0, 3) && f.same_net(1, 2) && !f.same_net(0, 4));
     assert_eq!(f.number(0), f.number(3), "one wire number");
     let tx = f.h.p(|p| p.ledger.log().last().map(|t| t.ops.len()).unwrap_or(0));
     assert!(tx > 1, "the numbering pass's ops are in the link's transaction");
     let skip = f.jumper(json!({"strip": f.strip.hex(), "positions": "7, 9, 11", "skip": true}));
-    assert_eq!(skip["link"], 2);
+    assert_eq!(skip["jumper_bar"], 2);
     let plan = f.plan();
-    let links = plan["links"].as_array().unwrap();
-    assert_eq!(links.len(), 2);
+    let jumper_bars = plan["jumper_bars"].as_array().unwrap();
+    assert_eq!(jumper_bars.len(), 2);
     // N: extend, shorten (an inner position makes a skip), split, delete.
     let n1 = json!({"strip": f.strip.hex(), "n": 1});
     for (params, want) in [
-        (json!({"link": n1, "add": "5-8"}), Some("1-8")),
-        (json!({"link": n1, "remove": "5"}), Some("1-4, 6-8")),
-        (json!({"link": n1, "split_at": "2"}), Some("1-2")),
+        (json!({"jumper_bar": n1, "add": "5-8"}), Some("1-8")),
+        (json!({"jumper_bar": n1, "remove": "5"}), Some("1-4, 6-8")),
+        (json!({"jumper_bar": n1, "split_at": "2"}), Some("1-2")),
     ] {
         let head = f.h.head();
         f.jumper(params);
         assert_eq!(f.h.head(), head + 1);
-        assert_eq!(f.prop("link.1").as_deref(), want);
+        assert_eq!(f.prop("jumper_bar.1").as_deref(), want);
     }
-    assert_eq!(f.prop("link.3").as_deref(), Some("3-4, 6-8"), "the split's second part");
+    assert_eq!(f.prop("jumper_bar.3").as_deref(), Some("3-4, 6-8"), "the split's second part");
     f.h.cmdline("u");
-    assert_eq!(f.prop("link.1").as_deref(), Some("1-4, 6-8"));
-    assert_eq!(f.prop("link.3"), None);
+    assert_eq!(f.prop("jumper_bar.1").as_deref(), Some("1-4, 6-8"));
+    assert_eq!(f.prop("jumper_bar.3"), None);
     // O: bars. Link 1-12 is 12 positions: 2 bars of 10; jumper.bar 4 → 3.
-    f.h.run("setprop", json!({"component": f.strip.hex(), "key": "link.1", "value": "1-12"})).unwrap();
-    let bars = |f: &mut F| f.plan()["links"].as_array().unwrap().iter().find(|l| l["link"] == 1).unwrap()["bars"].clone();
+    f.h.run("setprop", json!({"component": f.strip.hex(), "key": "jumper_bar.1", "value": "1-12"})).unwrap();
+    let bars = |f: &mut F| f.plan()["jumper_bars"].as_array().unwrap().iter().find(|l| l["jumper_bar"] == 1).unwrap()["bars"].clone();
     assert_eq!(bars(&mut f), 2);
     f.h.run("setprop", json!({"component": f.strip.hex(), "key": "jumper.bar", "value": "4"})).unwrap();
     assert_eq!(bars(&mut f), 3);
-    f.h.run("setprop", json!({"component": f.strip.hex(), "key": "link.2.part_number", "value": "JB-10-BU"})).unwrap();
+    f.h.run("setprop", json!({"component": f.strip.hex(), "key": "jumper_bar.2.part_number", "value": "JB-10-BU"})).unwrap();
     let rows: Vec<Value> = f.bom().into_iter().filter(|r| r["accessory"] == "jumper").collect();
     assert_eq!(rows.len(), 2, "a link's own part gives its own row: {rows:?}");
-    let delete = f.jumper(json!({"link": n1, "delete": true}));
+    let delete = f.jumper(json!({"jumper_bar": n1, "delete": true}));
     assert_eq!(delete["message"], "Deleted link -X01 1-12.");
     assert!(!f.same_net(0, 3));
     f.same_as_built();
@@ -292,15 +292,15 @@ fn accessory_edits_recompute_only_what_they_touch() {
         f.h.wire_pp(&[(x, 220.0), (x, 100.0)]).unwrap();
         xs.push(x);
     }
-    let v = f.h.run("terminals", json!({"from": [330, 160], "to": [420, 160]})).unwrap();
+    let v = f.h.run("terminalblocks", json!({"from": [330, 160], "to": [420, 160]})).unwrap();
     let x2: DeviceId = id(&v, "strip");
     f.h.run("setprop", json!({"component": x2.hex(), "key": "end_stop.part_number", "value": "OWN"})).unwrap();
     f.h.run("accessory", json!({"strip": x2.hex(), "at": "start", "items": ["end_stop"]})).unwrap();
     f.acc(json!({"at": "start", "items": ["end_stop"]}));
     f.h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
-    let work = |f: &mut F| f.h.cfg(|p| p.outputs().strips.last_work);
+    let work = |f: &mut F| f.h.cfg(|p| p.reports().strips.last_work);
     f.h.run("setprop", json!({"component": f.strip.hex(), "key": "acc.after.2", "value": "partition"})).unwrap();
     assert_eq!(work(&mut f), 1, "one strip");
     f.h.run("projectprops", json!({"props": {"strip_end_stop_part_number": "ES-2"}})).unwrap();
@@ -315,7 +315,7 @@ fn accessory_edits_recompute_only_what_they_touch() {
 
 /// K: hostile values are refused in words or listed by Checks, never a panic.
 #[test]
-fn hostile_accessory_and_link_values_are_refused_in_words() {
+fn hostile_accessory_and_jumper_bar_values_are_refused_in_words() {
     let mut f = fixture(0x30_06);
     let s = f.strip.hex();
     let refused = |f: &mut F, cmd: &str, p: Value| {
@@ -331,20 +331,20 @@ fn hostile_accessory_and_link_values_are_refused_in_words() {
     let at: Vec<String> = (0..5000).map(|n| n.to_string()).collect();
     refused(&mut f, "accessory", json!({"strip": s, "at": at, "on": true, "items": ["marker"]}));
     refused(&mut f, "accessory", json!({"strip": s, "at": "15", "add": ["partition"]}));
-    refused(&mut f, "setprop", json!({"component": s, "key": "link.0", "value": "1-4"}));
-    refused(&mut f, "setprop", json!({"component": s, "key": "link.1000", "value": "1-4"}));
-    refused(&mut f, "setprop", json!({"component": s, "key": "link.1", "value": "4"}));
+    refused(&mut f, "setprop", json!({"component": s, "key": "jumper_bar.0", "value": "1-4"}));
+    refused(&mut f, "setprop", json!({"component": s, "key": "jumper_bar.1000", "value": "1-4"}));
+    refused(&mut f, "setprop", json!({"component": s, "key": "jumper_bar.1", "value": "4"}));
     refused(&mut f, "jumper", json!({"strip": s, "positions": "4"}));
     // A link past the strip is kept and listed by Checks.
-    f.h.run("setprop", json!({"component": s, "key": "link.1", "value": "1-99999"})).unwrap();
-    let v = f.h.run("checks", json!({"kinds": ["link-orphan"]})).unwrap();
+    f.h.run("setprop", json!({"component": s, "key": "jumper_bar.1", "value": "1-99999"})).unwrap();
+    let v = f.h.run("checks", json!({"kinds": ["jumper-bar-orphan"]})).unwrap();
     assert!(v.to_string().contains("99999"), "{v}");
     // Keys on a device that is not a strip.
     // Design 072: terminal 1 splits its line's wire in two; the device at the far end of either.
     let doc = f.h.doc();
     let far = doc.ends_at(f.terms[0]).into_iter().find_map(|(w, _)| {
         doc.wires[&w].ends.iter().find_map(|t| {
-            let c = doc.terminals[t].device().unwrap();
+            let c = doc.connection_points[t].device().unwrap();
             (c != f.strip).then_some(c)
         })
     });
@@ -356,7 +356,7 @@ fn hostile_accessory_and_link_values_are_refused_in_words() {
     }
     let coil = f.h.run("place", json!({"symbol": "coil", "at": [500, 200]})).unwrap();
     let k1: DeviceId = id(&coil, "component");
-    refused(&mut f, "setprop", json!({"component": k1.hex(), "key": "link.1", "value": "1-2"}));
+    refused(&mut f, "setprop", json!({"component": k1.hex(), "key": "jumper_bar.1", "value": "1-2"}));
     refused(&mut f, "accessory", json!({"strip": k1.hex(), "at": "start", "items": ["end_stop"]}));
     f.same_as_built();
 }
@@ -364,7 +364,7 @@ fn hostile_accessory_and_link_values_are_refused_in_words() {
 /// M: the link line is drawn from the link on the page: through the terminals shown, with a
 /// stub where the link goes on to positions not shown here; a link edit redraws it.
 #[test]
-fn link_lines_are_drawn_from_the_link() {
+fn jumper_bar_lines_are_drawn_from_the_jumper_bar() {
     let mut f = fixture(0x30_07);
     let page = f.h.first_page();
     f.jumper(json!({"strip": f.strip.hex(), "positions": "1-4"}));
@@ -393,16 +393,16 @@ fn link_lines_are_drawn_from_the_link() {
 /// Review of PR #57, 1: drawn 1, 2 and 5, offer 6, `link.1 = 2-3`; renumbering 5 to 3 must not
 /// let the moved terminal join link 1 silently, and colliding places merge.
 #[test]
-fn renumbering_onto_a_spare_position_in_a_link() {
+fn renumbering_onto_a_spare_position_in_a_jumper_bar() {
     let mut h = H::new(0x30_08);
     h.first_page();
     for x in [50.0, 90.0, 130.0] {
         h.run("wire", json!({"points": pts(&[(x, 220.0), (x, 100.0)])})).unwrap();
     }
-    let v = h.run("terminals", json!({"from": [30, 160], "to": [150, 160]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [30, 160], "to": [150, 160]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
-    let terms: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
-    let before = h.doc().terminals[&terms[2]].clone();
+    let terms: Vec<ConnectionPointId> = v["connection_points"].as_array().unwrap().iter().map(|x| id(x, "connection_point")).collect();
+    let before = h.doc().connection_points[&terms[2]].clone();
     let mut after = before.clone();
     after.label = Some("5".into());
     h.cfg(|p| {
@@ -410,26 +410,26 @@ fn renumbering_onto_a_spare_position_in_a_link() {
             ecad_model::Author::User,
             "label 5",
             vec![
-                ecad_model::Op::RemoveConnectionPoint { id: terms[2], terminal: before },
-                ecad_model::Op::AddConnectionPoint { id: terms[2], terminal: after },
+                ecad_model::Op::RemoveConnectionPoint { id: terms[2], connection_point: before },
+                ecad_model::Op::AddConnectionPoint { id: terms[2], connection_point: after },
             ],
         )
     })
     .unwrap();
     let mut f = F { h, strip, terms };
-    f.h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "6"})).unwrap();
-    f.h.run("setprop", json!({"component": strip.hex(), "key": "link.1", "value": "2-3"})).unwrap();
+    f.h.run("setprop", json!({"component": strip.hex(), "key": "terminal_blocks", "value": "6"})).unwrap();
+    f.h.run("setprop", json!({"component": strip.hex(), "key": "jumper_bar.1", "value": "2-3"})).unwrap();
     f.acc(json!({"at": "3", "items": ["end_plate"]}));
     f.acc(json!({"at": "5", "items": ["partition"]}));
-    let pv = f.h.run("renumber", json!({"kind": "terminals", "scope": "all", "preview": true})).unwrap();
+    let pv = f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all", "preview": true})).unwrap();
     let lines = pv["accessories"].to_string();
     assert!(lines.contains("link 2-3 removed (3 now drawn by a renumbered terminal)"), "{pv}");
     assert!(lines.contains("joined into end_plate,partition"), "{pv}");
     let head = f.h.head();
-    f.h.run("renumber", json!({"kind": "terminals", "scope": "all"})).unwrap();
+    f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all"})).unwrap();
     assert_eq!(f.h.head(), head + 1, "one transaction");
-    assert_eq!(f.h.doc().terminals[&f.terms[2]].label.as_deref(), Some("3"));
-    assert_eq!(f.prop("link.1"), None, "the link is not silently extended to the moved terminal");
+    assert_eq!(f.h.doc().connection_points[&f.terms[2]].label.as_deref(), Some("3"));
+    assert_eq!(f.prop("jumper_bar.1"), None, "the link is not silently extended to the moved terminal");
     assert!(!f.same_net(1, 2));
     assert_eq!(f.prop("acc.after.3").as_deref(), Some("end_plate,partition"), "merged, nothing lost");
     f.same_as_built();
@@ -442,14 +442,14 @@ fn split_keeps_the_part_and_never_drops_a_side() {
     let mut f = fixture(0x30_09);
     let s = f.strip.hex();
     f.jumper(json!({"strip": s, "positions": "1-4"}));
-    f.h.run("setprop", json!({"component": s, "key": "link.1.part_number", "value": "JB-RD"})).unwrap();
+    f.h.run("setprop", json!({"component": s, "key": "jumper_bar.1.part_number", "value": "JB-RD"})).unwrap();
     let head = f.h.head();
-    let e = f.h.run("jumper", json!({"link": {"strip": s, "n": 1}, "split_at": "3"})).unwrap_err();
+    let e = f.h.run("jumper", json!({"jumper_bar": {"strip": s, "n": 1}, "split_at": "3"})).unwrap_err();
     assert!(e.contains("would leave 4 alone") && e.contains("Shorten"), "{e}");
     assert_eq!(f.h.head(), head);
-    f.jumper(json!({"link": {"strip": s, "n": 1}, "split_at": "2"}));
-    assert_eq!(f.prop("link.1").as_deref(), Some("1-2"));
-    assert_eq!(f.prop("link.2").as_deref(), Some("3-4"));
-    assert_eq!(f.prop("link.2.part_number").as_deref(), Some("JB-RD"));
+    f.jumper(json!({"jumper_bar": {"strip": s, "n": 1}, "split_at": "2"}));
+    assert_eq!(f.prop("jumper_bar.1").as_deref(), Some("1-2"));
+    assert_eq!(f.prop("jumper_bar.2").as_deref(), Some("3-4"));
+    assert_eq!(f.prop("jumper_bar.2.part_number").as_deref(), Some("JB-RD"));
     f.same_as_built();
 }

@@ -22,7 +22,7 @@ fn place(h: &mut H, symbol: &str, at: [f64; 2], device: Option<DeviceId>) -> Val
 fn strip_row(h: &mut H, x0: f64, y: f64, n: usize, step: f64, strip: Option<DeviceId>) -> (DeviceId, Vec<RepresentationId>) {
     let mut c = strip;
     for i in 0..n {
-        let v = place(h, "terminal", [x0 + step * i as f64, y], c);
+        let v = place(h, "connection_point", [x0 + step * i as f64, y], c);
         c = Some(id(&v, "component"));
     }
     let c = c.unwrap();
@@ -58,7 +58,7 @@ fn shown_tags(h: &mut H, page: PageId, c: DeviceId) -> Vec<RepresentationId> {
 }
 
 #[test]
-fn a_strip_of_ten_adjacent_terminals_shows_its_tag_once() {
+fn a_strip_of_ten_adjacent_terminal_blocks_shows_its_tag_once() {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let (x1, reps) = strip_row(&mut h, 60.0, 150.0, 10, 10.0, None);
@@ -97,7 +97,7 @@ fn two_groups_on_a_line_and_another_device_between_split_runs() {
     assert_eq!(shown.len(), 2, "one run, plus the symbol set on: {shown:?}");
     // A -X02 terminal between two -X01 terminals of another line splits that line's run.
     let (_, c) = strip_row(&mut h, 60.0, 70.0, 1, 10.0, Some(x1));
-    let other = place(&mut h, "terminal", [70.0, 70.0], None);
+    let other = place(&mut h, "terminalblock", [70.0, 70.0], None);
     assert_ne!(id::<DeviceId>(&other, "component"), x1);
     let (_, d) = strip_row(&mut h, 80.0, 70.0, 1, 10.0, Some(x1));
     let shown = shown_tags(&mut h, page, x1);

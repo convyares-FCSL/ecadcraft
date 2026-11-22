@@ -261,7 +261,7 @@ impl App {
             out.push(format!(
                 "Counts: {} components, {} connection points, {} conductors, {} items, {} representations, {} definitions.",
                 doc.devices.len(),
-                doc.terminals.len(),
+                doc.connection_points.len(),
                 doc.wires.len(),
                 doc.items.len(),
                 doc.representations.len(),
@@ -431,11 +431,11 @@ impl App {
                     .ok()
                 });
                 if let Some(v) = value {
-                    let _ = self.run_line(&format!("setprop {}", json!({"component": c.hex(), "key": "terminals", "value": v})));
+                    let _ = self.run_line(&format!("setprop {}", json!({"component": c.hex(), "key": "terminal_blocks", "value": v})));
                 }
             }
             A::RenumberStrip(c) => {
-                let _ = self.run_line(&format!("renumber {}", json!({"kind": "terminals", "scope": "selection", "strips": [c.hex()]})));
+                let _ = self.run_line(&format!("renumber {}", json!({"kind": "terminal_blocks", "scope": "selection", "strips": [c.hex()]})));
             }
             A::SetCores(k) => self.focus_cable_cores(k),
             A::NextFreeCore(w) => {
@@ -471,7 +471,7 @@ impl App {
             A::AccessoryFix(fix, i) => {
                 let cmd: Option<String> = self.project.clone().and_then(|p| {
                     p.configure(&mut self.cad.session, |p| {
-                        let o = p.outputs();
+                        let o = p.reports();
                         ecad_electrical::reports::accessory_fix_commands(o, fix).into_iter().nth(i).map(|(_, c, v)| format!("{c} {v}"))
                     })
                     .ok()
@@ -520,7 +520,7 @@ impl App {
             }
             // Brief 046: New page ▸ Terminal strips.
             A::NewStripPage => {
-                let mut v = json!({"generated": "terminals", "style": "graphic"});
+                let mut v = json!({"generated": "terminal_blocks", "style": "graphic"});
                 if let Some(f) = self.panel.target_folder() {
                     v["folder"] = json!(f.hex());
                 }

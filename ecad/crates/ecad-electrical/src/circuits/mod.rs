@@ -325,7 +325,7 @@ impl Touch {
         use ecad_model::document::effect::Effect;
         let conn = doc.connectivity();
         let net_of_connection_point = |t: ecad_model::ConnectionPointId, s: &mut Touch| {
-            if let Some(n) = conn.net_of(&ecad_model::Node::Terminal(t)) {
+            if let Some(n) = conn.net_of(&ecad_model::Node::ConnectionPoint(t)) {
                 s.nets.insert(n);
             }
         };
@@ -361,7 +361,7 @@ impl Touch {
                 let key = key.raw;
                 if crate::symbols::is_rating_key(key) || key == ecad_model::naming::tag::TAG_KEY {
                     self.devices.insert(*c);
-                } else if key.starts_with("link.") {
+                } else if key.starts_with("jumper_bar.") {
                     for (t, _) in doc.connection_points_of(*c) {
                         net_of_connection_point(t, self);
                     }
@@ -401,7 +401,7 @@ impl Touch {
                     self.all_results = true;
                 }
             }
-            Effect::Terminal { id, .. } => net_of_connection_point(*id, self),
+            Effect::ConnectionPoint { id, .. } => net_of_connection_point(*id, self),
             // A location box made or deleted.
             Effect::Aid { id, before: None, after: Some(aid) } | Effect::Aid { id, before: Some(aid), after: None } => {
                 if let Some(b) = aid.as_box() {
@@ -995,7 +995,7 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
 /// Whether a subject's category or cable type has a rated current (the **Use Datasheet** fix).
 fn has_datasheet(doc: &Document, s: RatedSubject) -> bool {
     match s {
-        RatedSubject::Wire(c) => sheet(doc, ecad_model::StyleCatalogue::Wire, wire::WireLooks::new(doc).category(doc, c).0.as_ref()).rated.is_some(),
+        RatedSubject::Wire(c) => sheet(doc, ecad_model::StyleCatalogue::Wire, wire::WireDraws::new(doc).category(doc, c).0.as_ref()).rated.is_some(),
         RatedSubject::Cable(k) => sheet(doc, ecad_model::StyleCatalogue::Cable, cable::of(doc, k).as_ref()).rated.is_some(),
     }
 }

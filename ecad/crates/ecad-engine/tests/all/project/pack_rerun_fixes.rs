@@ -260,7 +260,7 @@ fn bug_5_a_card_drawn_in_several_calls_has_one_frame() {
 fn addresses(h: &mut H, page: PageId) -> Vec<String> {
     let d = h.doc();
     h.cfg(|p| {
-        let plc = p.outputs().plc.clone();
+        let plc = p.reports().plc.clone();
         ecad_engine::devices::draw::all_texts_on_page_with(&d, page, Some(&plc))
             .into_iter()
             .filter(|t| t.text.value.starts_with("IW"))

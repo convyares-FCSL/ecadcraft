@@ -46,7 +46,7 @@ pub enum Kind {
     /// a normally-open contact.
     Contact { make: bool },
     /// A single terminal: numbered 1, 2, 3…
-    Terminal,
+    TerminalBlock,
     /// A PLC channel of a card of this type (brief 045, FP7): it joins a card as its next free
     /// channel, its points labelled with pins and keyed `.<i>.<role>` ([`crate::plc::channels`]).
     Channel(crate::plc::rack::CardType),
@@ -147,8 +147,8 @@ ecad_model::word_enum! {
         Motor3,
         Motor1,
         Trafo,
-        Terminal,
-        Terminalpe,
+        TerminalBlock,
+        TerminalBlockPe,
         Di,
         Do,
         Continuation,
@@ -288,8 +288,8 @@ impl StarterKey {
             K::Motor1 | K::Motor3 => DeviceGroup::Motor,
             K::Heater | K::Valve | K::Valve2 => DeviceGroup::Load,
             K::Lamp => DeviceGroup::Indicator,
-            K::Terminal
-            | K::Terminalpe
+            K::TerminalBlock
+            | K::TerminalBlockPe
             | K::Term2L1
             | K::Term2L2
             | K::Term2
@@ -385,8 +385,8 @@ impl StarterKey {
             | K::Motor3
             | K::Motor1
             | K::Trafo
-            | K::Terminal
-            | K::Terminalpe
+            | K::TerminalBlock
+            | K::TerminalBlockPe
             | K::Di
             | K::Do
             | K::Continuation
@@ -568,7 +568,7 @@ impl Starter {
         // Brief 044 (FP2): a connector half's bridge joins the side keys written at placement.
         let bridges = match self.kind {
             Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY, PLUG_KEY]],
-            Kind::Contact { .. } | Kind::Terminal | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => {
+            Kind::Contact { .. } | Kind::TerminalBlock | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => {
                 crate::terminal_strips::terminal_blocks::bridges(self.key)
             }
         };
@@ -577,7 +577,7 @@ impl Starter {
             name: self.name.into(),
             origin: None,
             graphics: graphics(self.key),
-            terminals: terminals(self.key),
+            connection_points: connection_points(self.key),
             device_type: self.device_type(),
             part_role: self.part_role(),
             ..Default::default()
@@ -597,7 +597,7 @@ impl Starter {
             k @ (Kind::ConnectorHalf { .. }
             | Kind::Fixed { .. }
             | Kind::Contact { .. }
-            | Kind::Terminal
+            | Kind::TerminalBlock
             | Kind::Channel(_)
             | Kind::ChangeOver
             | Kind::Tagless) => part_of_kind(k),
@@ -688,7 +688,7 @@ impl Starter {
         match self.kind {
             Kind::ConnectorHalf { side: Side::Socket | Side::Plug } if !matches!(self.key, K::Pins | K::Pinp) => 2,
             Kind::Contact { .. }
-            | Kind::Terminal
+            | Kind::TerminalBlock
             | Kind::Channel(_)
             | Kind::ChangeOver
             | Kind::Fixed { .. }
@@ -701,7 +701,7 @@ impl Starter {
     pub fn side(&self) -> Option<Side> {
         match self.kind {
             Kind::ConnectorHalf { side } => Some(side),
-            Kind::Contact { .. } | Kind::Terminal | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => None,
+            Kind::Contact { .. } | Kind::TerminalBlock | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => None,
         }
     }
 
@@ -719,7 +719,7 @@ impl Starter {
 
     /// The labels of its terminals as the definition gives them.
     pub fn labels(&self) -> Vec<String> {
-        terminals(self.key).into_iter().map(|t| t.key.to_string()).collect()
+        connection_points(self.key).into_iter().map(|t| t.key.to_string()).collect()
     }
 
     /// Its box (width, height) in millimetres.
@@ -823,9 +823,9 @@ pub const STARTERS: &[Starter] = &[
     st(K::Motor3, "Motor, 3-phase", &["motor"], HEAD, def_id(13)),
     st(K::Motor1, "Motor, single-phase", &["motor"], HEAD, def_id(14)),
     st(K::Trafo, "Transformer", &["control transformer"], HEAD, def_id(15)),
-    st(K::Terminal, "Terminal", &["terminal", "clamp"], Kind::Terminal, def_id(16)),
-    // Brief 028 (design 028 §2): a protective-earth terminal; it joins a strip like `terminal`.
-    st(K::Terminalpe, "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
+    st(K::TerminalBlock, "Terminal", &["terminal", "clamp"], Kind::TerminalBlock, def_id(16)),
+    // Brief 028 (design 028 §2): a protective-earth terminal; it joins a strip like `connection_point`.
+    st(K::TerminalBlockPe, "PE terminal", &["pe terminal", "earth terminal"], Kind::TerminalBlock, def_id(21)),
     st(K::Di, "PLC digital input", &["plc", "input", "di"], Kind::Channel(crate::plc::rack::CardType::Di), def_id(17)),
     st(K::Do, "PLC digital output", &["plc", "output", "do"], Kind::Channel(crate::plc::rack::CardType::Dq), def_id(18)),
     st(K::Continuation, "Continuation", &["continuation", "arrow", "potential", "link"], Kind::Tagless, def_id(20)),
@@ -902,7 +902,7 @@ pub const STARTERS: &[Starter] = &[
     card(K::Plcrtd, "PLC RTD card", &["plc", "rtd", "temperature", "card"], pc(7)).quiet_at(Quiet::All),
     card(K::Plciol, "PLC IO-Link master", &["plc", "io-link", "iol", "card"], pc(8)).quiet_at(Quiet::All),
     // ---- Brief 036: multi-level terminals (design 036 §3.1). Geometry, points and bridges come from
-    // `terminal_types`; `termfuse` shares `fuseterm`'s drawing.
+    // `terminal_block_types`; `termfuse` shares `fuseterm`'s drawing.
     lvl(K::Term2L1, "Two-level terminal, level 1", TWO, mt(1)),
     lvl(K::Term2L2, "Two-level terminal, level 2", TWO, mt(2)),
     lvl(K::Term2, "Two-level terminal", TWO, mt(3)),
@@ -969,8 +969,8 @@ pub fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)
         | K::Motor3
         | K::Motor1
         | K::Trafo
-        | K::Terminal
-        | K::Terminalpe
+        | K::TerminalBlock
+        | K::TerminalBlockPe
         | K::Di
         | K::Do
         | K::Continuation
@@ -1122,8 +1122,8 @@ fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
         | K::Motor3
         | K::Motor1
         | K::Trafo
-        | K::Terminal
-        | K::Terminalpe
+        | K::TerminalBlock
+        | K::TerminalBlockPe
         | K::Di
         | K::Do
         | K::Continuation
@@ -1230,7 +1230,7 @@ const fn mt(n: u128) -> DefinitionId {
 
 /// A multi-level terminal starter (brief 036): joins a strip as a level.
 const fn lvl(key: StarterKey, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
-    st(key, name, aliases, Kind::Terminal, id)
+    st(key, name, aliases, Kind::TerminalBlock, id)
 }
 
 /// The starter symbol with key `key`.
@@ -1296,7 +1296,7 @@ pub fn kind_of_definition(d: &Definition) -> Option<Kind> {
     Some(match s.kind {
         Kind::ConnectorHalf { .. } if !is_mating(d) => HEAD,
         k @ (Kind::Contact { .. }
-        | Kind::Terminal
+        | Kind::TerminalBlock
         | Kind::Channel(_)
         | Kind::ChangeOver
         | Kind::Fixed { .. }
@@ -1328,7 +1328,7 @@ fn part_of_kind(k: Kind) -> PartRole {
         Kind::Fixed { exclusive: true } => PartRole::Head,
         Kind::Contact { .. } | Kind::ChangeOver => PartRole::Contact,
         Kind::Fixed { exclusive: false } => PartRole::Pole,
-        Kind::Terminal => PartRole::Terminal,
+        Kind::TerminalBlock => PartRole::ConnectionPoint,
         Kind::Channel(_) => PartRole::Channel,
         Kind::ConnectorHalf { .. } => PartRole::Half,
         Kind::Tagless => PartRole::Other,
@@ -1489,7 +1489,7 @@ pub fn is_mating(d: &Definition) -> bool {
 /// FP2): one of the definition's own terminal keys, a side key on a connector half, or a level
 /// key of its multi-level terminal type.
 pub fn bridge_key_ok(d: &Definition, k: &PointKey) -> bool {
-    if d.terminals.iter().any(|t| t.key == *k) {
+    if d.connection_points.iter().any(|t| t.key == *k) {
         return true;
     }
     match of_definition(d) {
@@ -1782,8 +1782,8 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::Motor3
         | K::Motor1
         | K::Trafo
-        | K::Terminal
-        | K::Terminalpe
+        | K::TerminalBlock
+        | K::TerminalBlockPe
         | K::Di
         | K::Do
         | K::Continuation
@@ -1831,7 +1831,7 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::Termfuse => vec![tag, description, rating],
     };
     if is_fuse_bank(s) {
-        for (t, key) in d.terminals.iter().filter_map(|t| Some((t, t.key.as_def().filter(|k| ecad_model::naming::words::is_digits(k))?))) {
+        for (t, key) in d.connection_points.iter().filter_map(|t| Some((t, t.key.as_def().filter(|k| ecad_model::naming::words::is_digits(k))?))) {
             out.push(Anchor {
                 role: TextRole::RatingOf(key.to_string()),
                 at: p(t.at.x + 3.0, -8.0),
@@ -2027,8 +2027,8 @@ impl Connector {
             | K::Motor3
             | K::Motor1
             | K::Trafo
-            | K::Terminal
-            | K::Terminalpe
+            | K::TerminalBlock
+            | K::TerminalBlockPe
             | K::Di
             | K::Do
             | K::Continuation
@@ -2154,7 +2154,7 @@ impl Connector {
         g
     }
 
-    fn terminals(self, t: &dyn Fn(&str, f64, f64) -> ConnectionPointDef) -> Vec<ConnectionPointDef> {
+    fn connection_points(self, t: &dyn Fn(&str, f64, f64) -> ConnectionPointDef) -> Vec<ConnectionPointDef> {
         let n = self.pins();
         let y = match self {
             Connector::Bulkhead(_) => 0.0,
@@ -2226,13 +2226,13 @@ fn sized_graphics(key: StarterKey) -> Vec<Primitive> {
 }
 
 /// Terminals of the sized keys.
-fn sized_terminals(key: StarterKey, t: &dyn Fn(&str, f64, f64) -> ConnectionPointDef) -> Vec<ConnectionPointDef> {
+fn sized_connection_points(key: StarterKey, t: &dyn Fn(&str, f64, f64) -> ConnectionPointDef) -> Vec<ConnectionPointDef> {
     if let Some(n) = key.fuse_bank_ways() {
         let mut v = vec![t("L+", -10.0, 20.0), t("M", -10.0, -15.0)];
         v.extend((1..=n).map(|i| t(&i.to_string(), pin_x(i, 10.0), -15.0)));
         return v;
     }
-    Connector::of(key).map(|c| c.terminals(t)).unwrap_or_default()
+    Connector::of(key).map(|c| c.connection_points(t)).unwrap_or_default()
 }
 
 /// A socket pin (brief 044): its lead from (0, 5) and 034's cup, open downwards, centre (0, 0).
@@ -2347,9 +2347,9 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
                 line((5.0, -15.0), (5.0, -y)),
             ]
         }
-        K::Terminal => vec![circle((0.0, 0.0), 1.5)],
+        K::TerminalBlock => vec![circle((0.0, 0.0), 1.5)],
         // Our own earth mark to the right of the ring (design 028 §2).
-        K::Terminalpe => {
+        K::TerminalBlockPe => {
             vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))]
         }
         // An arrow pointing away from its wire (design 022 §3.2).
@@ -2535,7 +2535,7 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
     }
 }
 
-fn terminals(key: StarterKey) -> Vec<ConnectionPointDef> {
+fn connection_points(key: StarterKey) -> Vec<ConnectionPointDef> {
     let t = |k: &str, x: f64, y: f64| ConnectionPointDef { key: PointKey::def(k), label: Some(k.into()), at: p(x, y), accepts: Default::default() };
     let side = |k: PointKey, x: f64, y: f64| ConnectionPointDef { label: Some(k.to_string()), key: k, at: p(x, y), accepts: Default::default() };
     match key {
@@ -2552,7 +2552,7 @@ fn terminals(key: StarterKey) -> Vec<ConnectionPointDef> {
         K::Motor3 => vec![t("U1", -10.0, 15.0), t("V1", 0.0, 15.0), t("W1", 10.0, 15.0), t("PE", 20.0, 15.0)],
         K::Motor1 => vec![t("U1", -5.0, 15.0), t("U2", 5.0, 15.0), t("PE", 20.0, 15.0)],
         K::Trafo => vec![t("1U1", -5.0, 15.0), t("1U2", 5.0, 15.0), t("2U1", -5.0, -15.0), t("2U2", 5.0, -15.0)],
-        K::Terminal | K::Terminalpe => vec![t("1", 0.0, 0.0)],
+        K::TerminalBlock | K::TerminalBlockPe => vec![t("1", 0.0, 0.0)],
         // No label: a continuation shows no connection point name.
         K::Continuation => vec![ConnectionPointDef { key: PointKey::def("1"), label: None, at: p(0.0, 0.0), accepts: Default::default() }],
         // Design 072 §3: a channel symbol's point is keyed by its role; the label is what it shows.
@@ -2676,7 +2676,7 @@ fn terminals(key: StarterKey) -> Vec<ConnectionPointDef> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_strips::terminal_blocks::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
+        | K::Termfuse => crate::terminal_strips::terminal_blocks::connection_points(key).unwrap_or_else(|| sized_connection_points(key, &t)),
     }
 }
 
@@ -2709,7 +2709,7 @@ pub fn bounds(d: &Definition) -> (Pt, Pt) {
             Primitive::Point { at } => add(*at),
         }
     }
-    for t in &d.terminals {
+    for t in &d.connection_points {
         add(t.at);
     }
     if !(lo.is_finite() && hi.is_finite()) {
@@ -2763,8 +2763,8 @@ mod tests {
         for s in STARTERS {
             assert!(keys.insert(s.key) && ids.insert(s.id), "{} repeated", s.key);
             let d = s.definition().unwrap();
-            assert!(!d.graphics.is_empty() && !d.terminals.is_empty(), "{}", s.key);
-            for t in &d.terminals {
+            assert!(!d.graphics.is_empty() && !d.connection_points.is_empty(), "{}", s.key);
+            for t in &d.connection_points {
                 let on = |v: f64| (v / SYMBOL_GRID_MM - (v / SYMBOL_GRID_MM).round()).abs() < 1e-9;
                 assert!(on(t.at.x) && on(t.at.y), "{} terminal {} off the grid", s.key, t.key);
             }
@@ -2910,8 +2910,8 @@ mod tests {
             ("motor3", "8b9285a9c54393f2662969fd682b740aa9e3bfe23d025d7472ad4f35140f74b3"),
             ("motor1", "155bd8445ceaf3a663703fc3ef3deeeffcca4387a9aa7aca4f83e04362066778"),
             ("trafo", "be61de549fbf9fcffc34049d185831e4d7759a93f46e1fb2ffd10012db9c6090"),
-            ("terminal", "065f33dc2121ecf3399489981a3b83e0b670295a2c65ea762a4c416c4a83a84f"),
-            ("terminalpe", "e49dfa23a7aec81f0327f1ec5e7143b9bc60216a4ca47c76508d3ea87d939df5"),
+            ("terminalblock", "065f33dc2121ecf3399489981a3b83e0b670295a2c65ea762a4c416c4a83a84f"),
+            ("terminalblockpe", "e49dfa23a7aec81f0327f1ec5e7143b9bc60216a4ca47c76508d3ea87d939df5"),
             ("di", "11ac9ed468c7b43d9c6243e847655c0bdb4182c7f02680657539edef57f04827"),
             ("do", "3eb4db530b04231c3df246d6da2847f48d86d2dc89ad4b8a037cd0a246d6e2fe"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),

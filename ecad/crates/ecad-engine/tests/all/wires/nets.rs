@@ -30,9 +30,9 @@ fn same(a: &[Pt], b: &[(f64, f64)]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(p, (x, y))| p.near(Pt::new(*x, *y), 1e-9))
 }
 
-fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::ConnectionPointId {
-    let r = h.run("place", json!({"symbol": "terminal", "at": [at.0, at.1], "tag": tag})).unwrap();
-    id(&r["terminals"][0], "terminal")
+fn connection_point(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::ConnectionPointId {
+    let r = h.run("place", json!({"symbol": "terminalblock", "at": [at.0, at.1], "tag": tag})).unwrap();
+    id(&r["connection_points"][0], "connection_point")
 }
 
 /// §12 item 1, the regression: a line drawn from another line's free end joins it: one route
@@ -73,7 +73,7 @@ fn a_straight_join_drops_the_middle_vertex() {
 #[test]
 fn both_ends_fold_two_wires_into_one() {
     let mut h = H::new(0x32_03);
-    let x = terminal(&mut h, (100.0, 0.0), "X1");
+    let x = connection_point(&mut h, (100.0, 0.0), "X1");
     let a: RouteId = id(&wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({})), "route");
     let c: RouteId = id(&wire(&mut h, &[(60.0, 10.0), (100.0, 0.0)], json!({})), "route");
     assert_eq!(h.doc().routes[&c].ends[1], RouteEnd::Point(x));
@@ -130,18 +130,18 @@ fn join_false_leaves_the_ends_open() {
     {
         let key = "join";
         let mut h = H::new(0x32_09);
-        terminal(&mut h, (0.0, 0.0), "X1");
-        terminal(&mut h, (50.0, -20.0), "X1");
+        connection_point(&mut h, (0.0, 0.0), "X1");
+        connection_point(&mut h, (50.0, -20.0), "X1");
         wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
         wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({key: false}));
         let doc = h.doc();
         assert_eq!(doc.routes.len(), 2, "{key}");
         let all = ecad_engine::checks::all(&doc, 1e-6);
-        let looks: Vec<_> = all.iter().filter(|c| c.kind == Kind::LooksConnected).collect();
-        assert_eq!(looks.len(), 1, "{all:?}");
-        assert_eq!(looks[0].kind.name(), "looks-connected");
-        assert_eq!(looks[0].kind.words(), "Looks connected");
-        assert!(matches!(looks[0].fix, Some(Fix::Join(_))), "{looks:?}");
+        let draws: Vec<_> = all.iter().filter(|c| c.kind == Kind::LooksConnected).collect();
+        assert_eq!(draws.len(), 1, "{all:?}");
+        assert_eq!(draws[0].kind.name(), "looks-connected");
+        assert_eq!(draws[0].kind.words(), "Looks connected");
+        assert!(matches!(draws[0].fix, Some(Fix::Join(_))), "{draws:?}");
         assert_eq!(all.iter().filter(|c| c.kind == Kind::OpenEnd).count(), 2, "{all:?}");
     }
     let mut h = H::new(0x32_19);
@@ -247,7 +247,7 @@ fn pack() -> Pack {
     let mut h = H::new(0x32_20);
     let p100 = h.first_page();
     for (i, y) in [0.0, 10.0, 20.0].into_iter().enumerate() {
-        terminal(&mut h, (0.0, y), "X01");
+        connection_point(&mut h, (0.0, y), "X01");
         h.run("place", json!({"symbol": "continuation", "at": [100, y], "name": format!("A{}", i + 1)})).unwrap();
         let r = wire(&mut h, &[(0.0, y), (100.0, y)], json!({}));
         assert!(r["conductor"].is_null(), "no partner yet: no wire, {r}");
@@ -259,7 +259,7 @@ fn pack() -> Pack {
     let mut wires: Vec<WireId> = Vec::new();
     for (i, y) in [0.0, 10.0, 20.0].into_iter().enumerate() {
         h.run("place", json!({"symbol": "continuation", "at": [0, y], "name": format!("A{}", i + 1)})).unwrap();
-        terminal(&mut h, (100.0, y), "X05");
+        connection_point(&mut h, (100.0, y), "X05");
         wires.push(id(&wire(&mut h, &[(0.0, y), (100.0, y)], json!({})), "conductor"));
     }
     for (i, w) in wires.iter().enumerate() {
@@ -372,7 +372,7 @@ fn bus() -> (H, PageId) {
     h.points_at(&[(0.0, 0.0), (100.0, 0.0)]);
     wire(&mut h, &[(0.0, 0.0), (100.0, 0.0)], json!({"potential": "24V"}));
     for x in [20.0, 40.0, 60.0, 80.0] {
-        terminal(&mut h, (x, -5.0), "X01");
+        connection_point(&mut h, (x, -5.0), "X01");
         wire(&mut h, &[(x, 0.0), (x, -5.0)], json!({}));
     }
     (h, page)
@@ -497,8 +497,8 @@ fn wire_labels_take_the_wire_label_text_style() {
     });
     let l = &bold[0];
     assert!((l.width - width.unwrap()).abs() < 1e-9, "the box is the font's width");
-    let look = h.p(|p| ecad_engine::styles::draw::Look::new(p.ledger.document()));
-    let e = ecad_engine::wires::draw::label_entity(&look, l, cadcraft_engine::doc::Handle(1));
+    let draw = h.p(|p| ecad_engine::styles::draw::DrawStyles::new(p.ledger.document()));
+    let e = ecad_engine::wires::draw::label_entity(&draw, l, cadcraft_engine::doc::Handle(1));
     let cadcraft_engine::doc::EntityKind::Text(t) = &e.kind else { panic!("{e:?}") };
     assert_eq!(t.style, ecad_electrical::styles::text_style::STYLE_BOLD);
 }
@@ -512,7 +512,7 @@ fn quiet_ends_come_from_the_document() {
     let mut h = H::new(0x32_17);
     let page = h.first_page();
     for y in [0.0, 5.0, 10.0] {
-        terminal(&mut h, (0.0, y), "X01");
+        connection_point(&mut h, (0.0, y), "X01");
         wire(&mut h, &[(0.0, y), (60.0, y)], json!({}));
     }
     let k: ecad_model::CableId = id(&h.run("cableslash", json!({"from": [30, -3], "to": [30, 13]})).unwrap(), "cable");
@@ -523,8 +523,8 @@ fn quiet_ends_come_from_the_document() {
     h.activate(other);
     let v = h.run("cablecontinue", json!({"cable": k.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
     for (s, y) in v["routes"].as_array().cloned().unwrap_or_default().iter().zip([0.0, 5.0, 10.0]) {
-        let t = terminal(&mut h, (40.0, y), "X02");
-        h.run("connect", json!({"route": s["route"], "end": s["free_end"], "terminal": t.hex()})).unwrap();
+        let t = connection_point(&mut h, (40.0, y), "X02");
+        h.run("connect", json!({"route": s["route"], "end": s["free_end"], "connection_point": t.hex()})).unwrap();
     }
     h.activate(page);
     let doc = h.doc();
@@ -566,7 +566,7 @@ fn kept_equals_rebuild(h: &mut H, what: &str) {
         let kept_checks = p.kept_checks().map(|c| c.sorted(doc)).unwrap_or_default();
         let fresh = ecad_engine::project::engine_views().checks(doc, p.tolerance).sorted(doc);
         assert_eq!(kept_checks, fresh, "{what}: Checks differ from a rebuild");
-        p.outputs();
+        p.reports();
         let doc = p.ledger.document();
         let kept = p.kept_reports().map(|o| o.cables().into_iter().cloned().collect::<Vec<_>>()).unwrap_or_default();
         let rebuilt = ecad_electrical::reports::kept::ReportModels::build_with(doc, &ecad_engine::styles::draw::EngineMetrics);
@@ -603,7 +603,7 @@ fn label_and_mark_updates_reach_only_the_pages_they_name() {
 /// name) and after an unrelated op, the kept Checks and cable rows equal a rebuild; the unrelated
 /// op changes no cable row.
 #[test]
-fn chain_updates_in_checks_and_outputs_match_a_rebuild() {
+fn chain_updates_in_checks_and_reports_match_a_rebuild() {
     let mut f = pack();
     kept_equals_rebuild(&mut f.h, "start");
     f.h.run("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"})).unwrap();
@@ -629,7 +629,7 @@ fn chain_updates_in_checks_and_outputs_match_a_rebuild() {
 /// Review of #65, finding 1, at the update map itself (§8.4): the rename op alone (no numbering
 /// pass, which would also bring the cable in) re-counts the cable's cores.
 #[test]
-fn the_outputs_map_takes_a_continuation_rename_to_its_cables() {
+fn the_reports_map_takes_a_continuation_rename_to_its_cables() {
     let mut f = pack();
     f.h.run("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"})).unwrap();
     let doc = f.h.doc();
@@ -640,7 +640,7 @@ fn the_outputs_map_takes_a_continuation_rename_to_its_cables() {
         .unwrap();
     let cable = f.cable;
     let (kept, fresh) = f.h.cfg(|p| {
-        p.outputs();
+        p.reports();
         let before = p.ledger.document().clone();
         let before_aid = p.ledger.document().aids.get(&a1).cloned().unwrap();
         let after_aid = ecad_electrical::wires::continuation_aid("Z1", None).unwrap();
@@ -654,7 +654,7 @@ fn the_outputs_map_takes_a_continuation_rename_to_its_cables() {
         let doc = p.ledger.document().clone();
         p.views_mut().finish(&doc, &all, pending);
         let kept = p.kept_reports().unwrap().cable_row(cable).cloned();
-        let fresh = p.derived().detached(&doc).outputs().cable_row(cable).cloned();
+        let fresh = p.derived().detached(&doc).reports().cable_row(cable).cloned();
         (kept, fresh)
     });
     assert_eq!(kept.as_ref().map(|r| r.cores), Some(2), "F5: two cores are wires, the third is on its lines: {kept:?}");

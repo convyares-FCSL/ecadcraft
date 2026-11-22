@@ -38,7 +38,7 @@ pub fn coil(graphics_scale: f64) -> Definition {
             Primitive::Polyline { vertices: vec![Pt::new(-5.0, -10.0), Pt::new(5.0, -10.0), Pt::new(5.0, 10.0), Pt::new(-5.0, 10.0)], closed: true },
             Primitive::Circle { center: Pt::new(0.0, 0.0), radius: graphics_scale },
         ],
-        terminals: vec![
+        connection_points: vec![
             ConnectionPointDef { key: "A1".parse().unwrap(), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
             ConnectionPointDef { key: "A2".parse().unwrap(), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
@@ -67,7 +67,7 @@ impl Fixture {
             Op::CreateDevice { id: c, device: Device { definition: Some(def), ..Device::default() } },
             Op::AddConnectionPoint {
                 id: t1,
-                terminal: ConnectionPoint {
+                connection_point: ConnectionPoint {
                     owner: c.into(),
                     label: Some("A1".into()),
                     key: Some("A1".parse().unwrap()),
@@ -76,7 +76,7 @@ impl Fixture {
             },
             Op::AddConnectionPoint {
                 id: t2,
-                terminal: ConnectionPoint {
+                connection_point: ConnectionPoint {
                     owner: c.into(),
                     label: Some("A2".into()),
                     key: Some("A2".parse().unwrap()),

@@ -46,7 +46,7 @@ fn component(h: &mut H, page: PageId, line: &str, x: f64) {
     let lines: Vec<Handle> = h.lines_on(page).into_iter().filter(|l| !before.contains(l)).collect();
     h.run("convertcomponent", json!({"handles": lines.iter().map(|l| l.hex()).collect::<Vec<_>>()})).unwrap();
     for y in [0.0, 5.0, 10.0, 15.0] {
-        h.run("addterminal", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap();
+        h.run("addconnectionpoint", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap();
     }
 }
 

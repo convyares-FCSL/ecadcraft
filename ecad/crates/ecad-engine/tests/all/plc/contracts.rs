@@ -36,7 +36,7 @@ pub(crate) fn tag(h: &mut H, c: DeviceId) -> String {
 /// The kept PLC model equals a rebuild (verify-mode equality, design 045 §11.2).
 pub(crate) fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
-        let kept = p.outputs().plc.clone();
+        let kept = p.reports().plc.clone();
         (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics).plc.clone())
     });
     assert!(kept == built, "the kept PLC model differs from a rebuild");

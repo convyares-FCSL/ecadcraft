@@ -12,7 +12,7 @@
 //! Which strips' drawing changed (for the redraw) is still worked out from what the effects name
 //! ([`Named`]): the strips the strips' update changed, every strip when the layout changed, the
 //! strips of a cable changed in place (`by_cable`, box texts) and of a far device changed
-//! (`by_far`). The project's `terminal.plan.style` sets `style_changed`.
+//! (`by_far`). The project's `terminal_block.plan.style` sets `style_changed`.
 //!
 //! A page's own style (`SetProperty(Page P, terminal.plan.style)`) is P's own property, which
 //! [`crate::pages::frames::touches`] already redraws; its sheet count reads the kept counts.
@@ -37,14 +37,14 @@ pub const TITLE: &str = "Terminal strips";
 /// The words of an empty page (028's).
 pub const NO_STRIPS: &str = "No terminal strips yet.";
 
-/// A `terminals` page's style.
+/// A `connection_points` page's style.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Style {
     Table,
     Graphic,
 }
 
-/// The style of `page` (registry `terminal.plan.style`: page, project, built-in `table`).
+/// The style of `page` (registry `terminal_block.plan.style`: page, project, built-in `table`).
 pub fn style_of(doc: &Document, page: PageId) -> Style {
     match crate::defaults::resolve(doc, &entries::STYLE, crate::defaults::Scope::page(page)).word() {
         entries::GRAPHIC => Style::Graphic,
@@ -52,9 +52,9 @@ pub fn style_of(doc: &Document, page: PageId) -> Style {
     }
 }
 
-/// Whether `page` is a `terminals` page drawn in the graphic style.
+/// Whether `page` is a `connection_points` page drawn in the graphic style.
 pub fn is_graphic(doc: &Document, page: PageId) -> bool {
-    crate::pages::generated::kind_of(doc, page) == Some(ecad_model::GenKind::Terminals) && style_of(doc, page) == Style::Graphic
+    crate::pages::generated::kind_of(doc, page) == Some(ecad_model::GenKind::TerminalBlocks) && style_of(doc, page) == Style::Graphic
 }
 
 /// The strip layout lengths (design 046 §7.2), paper millimetres.
@@ -228,7 +228,7 @@ impl Kept {
 pub struct Named {
     /// A layout setting (`strippage.*`) or the project's sheet changed.
     pub layout: bool,
-    /// The project's `terminal.plan.style` changed.
+    /// The project's `terminal_block.plan.style` changed.
     pub style: bool,
     /// Cables changed in place (their strips' box texts).
     pub cables: BTreeSet<CableId>,
@@ -267,7 +267,7 @@ impl Named {
             | Effect::Layer { .. }
             | Effect::Item { .. }
             | Effect::DeviceDefinition { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Rep { .. }
             | Effect::Wire { .. }
             | Effect::Route { .. }
@@ -299,7 +299,7 @@ pub struct StripPages {
     pub last_changed: BTreeSet<DeviceId>,
     /// The last update changed the layout settings (every graphic page redraws).
     pub layout_changed: bool,
-    /// The last update changed the project's `terminal.plan.style`.
+    /// The last update changed the project's `terminal_block.plan.style`.
     pub style_changed: bool,
 }
 
@@ -387,7 +387,7 @@ pub fn page_avail(doc: &Document, page: PageId, o: &ReportModels) -> f64 {
     o.strip_pages.geometry.available(&ecad_model::document::sheet::sheet_of(doc, page))
 }
 
-/// How many sheets a graphic `terminals` page needs: each strip from a new sheet, its kept
+/// How many sheets a graphic `connection_points` page needs: each strip from a new sheet, its kept
 /// count (O(strips) with no row walk at the project's sheet).
 pub fn sheets(doc: &Document, page: PageId, o: &ReportModels) -> usize {
     let sp = &o.strip_pages;

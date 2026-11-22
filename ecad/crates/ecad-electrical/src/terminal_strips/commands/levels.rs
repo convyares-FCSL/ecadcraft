@@ -29,18 +29,18 @@ fn position_ok(l: &str) -> Result<(), CmdError> {
     Ok(())
 }
 
-/// The ops relabelling `terminals` to `to`: `RemoveConnectionPoint` + `AddConnectionPoint` of each ID.
-fn relabel_ops(doc: &Document, terminals: &[ConnectionPointId], to: &str) -> Vec<Op> {
+/// The ops relabelling `connection_points` to `to`: `RemoveConnectionPoint` + `AddConnectionPoint` of each ID.
+fn relabel_ops(doc: &Document, connection_points: &[ConnectionPointId], to: &str) -> Vec<Op> {
     let mut ops = Vec::new();
-    for t in terminals {
-        let Some(x) = doc.terminals.get(t) else { continue };
+    for t in connection_points {
+        let Some(x) = doc.connection_points.get(t) else { continue };
         if x.label.as_deref() == Some(to) {
             continue;
         }
         let mut after = x.clone();
         after.label = Some(to.to_string());
-        ops.push(Op::RemoveConnectionPoint { id: *t, terminal: x.clone() });
-        ops.push(Op::AddConnectionPoint { id: *t, terminal: after });
+        ops.push(Op::RemoveConnectionPoint { id: *t, connection_point: x.clone() });
+        ops.push(Op::AddConnectionPoint { id: *t, connection_point: after });
     }
     ops
 }
@@ -58,7 +58,7 @@ pub enum MoveTo {
 #[derive(Debug, Clone, Default)]
 pub struct TermlabelInput {
     /// A terminal of the position (and its level).
-    pub terminal: Option<ConnectionPointId>,
+    pub connection_point: Option<ConnectionPointId>,
     /// With `at` (or `position`): the strip.
     pub strip: Option<DeviceId>,
     /// The position's current label.
@@ -90,25 +90,27 @@ pub struct Termlabel {
 /// # Errors
 /// No such terminal, not a strip, a position or level the strip lacks, a label that does not read.
 pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel, CmdError> {
-    let TermlabelInput { terminal, strip, at, level, position, text, move_to } = input;
+    let TermlabelInput { connection_point, strip, at, level, position, text, move_to } = input;
     // Which strip and position: a terminal, or a strip and a position (`at`, else `position`
     // when only `text` is given).
-    let (c, pos, n) = match (terminal, strip) {
+    let (c, pos, n) = match (connection_point, strip) {
         (Some(t), _) => {
-            let x = doc.terminals.get(&t).ok_or(CmdError::NotFound(Noun::TerminalDevice))?;
+            let x = doc.connection_points.get(&t).ok_or(CmdError::NotFound(Noun::TerminalBlock))?;
             let pos = x.label.clone().ok_or(CmdError::refused("That terminal has no position label."))?;
-            (x.device().ok_or(CmdError::NotFound(Noun::TerminalDevice))?, pos, tt::level_of(doc, t).0)
+            (x.device().ok_or(CmdError::NotFound(Noun::TerminalBlock))?, pos, tt::level_of(doc, t).0)
         }
         (None, Some(c)) => {
             let pos = match (&at, &text) {
                 (Some(a), _) => a.clone(),
                 (None, Some(_)) => position.clone().ok_or(CmdError::input("Name the position with `at`."))?,
-                (None, None) => return Err(CmdError::input("Name the position to relabel with `at` (its current label), or give `terminal`.")),
+                (None, None) => {
+                    return Err(CmdError::input("Name the position to relabel with `at` (its current label), or give `connection_point`."));
+                }
             };
             let n = level.map_or(1, |l| u32::try_from(l).unwrap_or(u32::MAX));
             (c, pos, n)
         }
-        (None, None) => return Err(CmdError::input("`terminal` or `strip` (hex id) is required")),
+        (None, None) => return Err(CmdError::input("`connection_point` or `strip` (hex id) is required")),
     };
     if crate::terminal_strips::strip_of(doc, c).is_none() {
         return Err(CmdError::refused("That device is not a terminal strip."));
@@ -124,7 +126,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
     let mut message = String::new();
     // Move one level (or another type's levels) to another position (Checks fixes, §8).
     if let Some(m) = move_to {
-        let who: Vec<ConnectionPointId> = match (m, terminal) {
+        let who: Vec<ConnectionPointId> = match (m, connection_point) {
             (MoveTo::Next, Some(t)) => {
                 // The drawing of `t`: itself, and its out point for a two-point level.
                 let mut v = vec![t];
@@ -137,9 +139,9 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
             }
             (MoveTo::New, Some(t)) => {
                 let ty = tt::type_of_connection_point(doc, t);
-                here.terminals().filter(|x| tt::type_of_connection_point(doc, *x) == ty).collect()
+                here.connection_points().filter(|x| tt::type_of_connection_point(doc, *x) == ty).collect()
             }
-            _ => return Err(CmdError::input("`move_to` is \"next\" or \"new\", with `terminal`.")),
+            _ => return Err(CmdError::input("`move_to` is \"next\" or \"new\", with `connection_point`.")),
         };
         let ty = who.first().map(|t| tt::type_of_connection_point(doc, *t)).ok_or(CmdError::refused("Nothing to move."))?;
         let mut chooser = tt::Chooser::new(doc, Some(c));
@@ -156,7 +158,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         if positions.iter().any(|x| &x.label == q) {
             return Err(CmdError::refused(format!("{tag} already has a position {q}. Pick another label, or swap them with Renumber.")));
         }
-        let ts: Vec<ConnectionPointId> = here.terminals().collect();
+        let ts: Vec<ConnectionPointId> = here.connection_points().collect();
         let rel = relabel_ops(doc, &ts, q);
         let (follow, fl) = crate::terminal_strips::accessories::renumber_ops(doc, &rel);
         ops.extend(rel);
@@ -299,7 +301,7 @@ pub fn plan_toposition(
     let (tin, tout): (ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh());
     ops.push(Op::AddConnectionPoint {
         id: tin,
-        terminal: ConnectionPoint {
+        connection_point: ConnectionPoint {
             owner: strip.into(),
             label: Some(pos.clone()),
             key: Some(PointKey::Level { level: 1, io: Some(LevelIo::In) }),
@@ -308,7 +310,7 @@ pub fn plan_toposition(
     });
     ops.push(Op::AddConnectionPoint {
         id: tout,
-        terminal: ConnectionPoint {
+        connection_point: ConnectionPoint {
             owner: strip.into(),
             label: Some(pos.clone()),
             key: Some(PointKey::Level { level: 1, io: Some(LevelIo::Out) }),
@@ -336,7 +338,7 @@ pub fn plan_toposition(
     ops.push(Op::ModifyItem { id: item, before: item_before, after: item_after });
     let d = starter.definition()?;
     let mut cps = BTreeMap::new();
-    for td in &d.terminals {
+    for td in &d.connection_points {
         cps.insert(if matches!(td.key.level(), Some((_, Some(LevelIo::In)))) { tin } else { tout }, td.at);
     }
     let new_rep: RepresentationId = ids.fresh();
@@ -352,7 +354,7 @@ pub fn plan_toposition(
         },
     });
     for (t, x) in &old {
-        ops.push(Op::RemoveConnectionPoint { id: *t, terminal: x.clone() });
+        ops.push(Op::RemoveConnectionPoint { id: *t, connection_point: x.clone() });
     }
     let props = comp.properties.clone();
     let keep: [&str; 0] = [];
@@ -417,7 +419,7 @@ enum MoveToParam {
 pub struct TermlabelParams {
     /// A terminal of the position (and its level).
     #[serde(default)]
-    terminal: Option<ConnectionPointId>,
+    connection_point: Option<ConnectionPointId>,
     /// The strip (with `at`).
     #[serde(default)]
     strip: Option<DeviceId>,
@@ -433,7 +435,7 @@ pub struct TermlabelParams {
     /// A level's own label; null clears it.
     #[serde(default, deserialize_with = "nullable")]
     text: Option<Option<String>>,
-    /// "next" or "new", with `terminal`: move the level to another position.
+    /// "next" or "new", with `connection_point`: move the level to another position.
     #[serde(default)]
     move_to: Option<MoveToParam>,
 }
@@ -441,11 +443,11 @@ pub struct TermlabelParams {
 impl Generic for TermlabelParams {
     const ID: &'static str = "termlabel";
     const TITLE: &'static str = "Terminal Label";
-    const HELP: &'static str = "{terminal?: id | strip?: id + at?: position, level?: n, position?: new position label (relabels every level), text?: a level's own label (null clears it), move_to?: \"next\" | \"new\" (a level drawn twice, or another type's levels)} (design 036 §4.2; one transaction)";
+    const HELP: &'static str = "{connection_point?: id | strip?: id + at?: position, level?: n, position?: new position label (relabels every level), text?: a level's own label (null clears it), move_to?: \"next\" | \"new\" (a level drawn twice, or another type's levels)} (design 036 §4.2; one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let input = TermlabelInput {
-            terminal: self.terminal,
+            connection_point: self.connection_point,
             strip: self.strip,
             at: self.at,
             level: self.level,

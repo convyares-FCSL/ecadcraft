@@ -55,7 +55,7 @@ impl Command for PlcpageParams {
         let after = self.after.map(|t| t.text());
         on_any_page(s, |p, pg| {
             if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
-                p.outputs();
+                p.reports();
             }
             let doc = p.ledger.document();
             let pc = rules::page_card(doc, &self.card)?;

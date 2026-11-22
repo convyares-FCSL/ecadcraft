@@ -366,7 +366,7 @@ fn a_strip_fuse_position_rating_is_typed() {
         let x = 10.0 * f64::from(i);
         h.run("wire", json!({"points": [[x, 0.0], [x, 40.0]]})).unwrap();
     }
-    let f = h.run("terminals", json!({"type": "FUSE", "level": "1", "from": [0, 20], "to": [40, 20]})).unwrap();
+    let f = h.run("terminalblocks", json!({"type": "FUSE", "level": "1", "from": [0, 20], "to": [40, 20]})).unwrap();
     let x1: DeviceId = id(&f, "strip");
     let no_fuse_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-fuse-rating");
     assert!(no_fuse_rating(&mut h));
@@ -575,7 +575,7 @@ fn a_connector_s_mating_is_stored_by_its_starter() {
     }
     // The field, not the symbol: with `mating` cleared, a mating half's pins have no side.
     let (_, c) = placed[0];
-    let pin = doc.terminals.iter().find(|(_, t)| t.device() == Some(c)).map(|(t, _)| *t).unwrap();
+    let pin = doc.connection_points.iter().find(|(_, t)| t.device() == Some(c)).map(|(t, _)| *t).unwrap();
     assert!(connectors::side_of(&doc, pin).is_some(), "a socket pin has its side");
     let mut d = doc.devices[&c].clone();
     if let DeviceType::Connector(x) = &mut d.device_type {

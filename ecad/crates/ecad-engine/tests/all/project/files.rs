@@ -188,9 +188,9 @@ fn strip_project(d: &TempDir, name: &str, seed: u64) -> (H, String, String) {
     for x in [50.0, 90.0, 130.0, 170.0] {
         h.run("wire", json!({"points": pts(&[(x, 220.0), (x, 100.0)])})).unwrap();
     }
-    let v = h.run("terminals", json!({"from": [30, 160], "to": [190, 160]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [30, 160], "to": [190, 160]})).unwrap();
     let strip = v["strip"].as_str().unwrap().to_string();
-    h.run("setprop", json!({"component": strip, "key": "terminals", "value": "8+1PE"})).unwrap();
+    h.run("setprop", json!({"component": strip, "key": "terminal_blocks", "value": "8+1PE"})).unwrap();
     h.run("saveas", json!({"path": d.path(name)})).unwrap();
     (h, d.path(&format!("{name}.ecad")), strip)
 }
@@ -215,7 +215,7 @@ fn accessories_and_links_survive_save_and_reopen() {
     h.run("accessory", json!({"strip": strip, "at": "all", "on": true, "items": ["marker"]})).unwrap();
     h.run("jumper", json!({"strip": strip, "positions": "1-2"})).unwrap();
     h.run("jumper", json!({"strip": strip, "positions": "3, 5, 7", "skip": true})).unwrap();
-    h.run("setprop", json!({"component": strip, "key": "link.2.part_number", "value": "JB-BU"})).unwrap();
+    h.run("setprop", json!({"component": strip, "key": "jumper_bar.2.part_number", "value": "JB-BU"})).unwrap();
     h.run("qsave", Value::Null).unwrap();
     let (doc, log) = (h.doc(), h.p(|p| p.ledger.full_log().unwrap()));
     let plan = h.run("stripplan", json!({})).unwrap();
@@ -243,7 +243,7 @@ fn a_028_project_opens_unchanged_with_no_accessories() {
     assert!(!h2.p(|p| p.unsaved()));
     let plan = h2.run("stripplan", json!({})).unwrap();
     let s0 = &plan["strips"][0];
-    assert!(s0["rows"].as_array().unwrap().iter().all(|r| r["kind"] == "terminal"), "{plan}");
+    assert!(s0["rows"].as_array().unwrap().iter().all(|r| r["kind"] == "connection_point"), "{plan}");
     assert_eq!(s0["links"], json!([]));
     let bom = h2.run("bom", json!({})).unwrap();
     assert!(bom["rows"].as_array().unwrap().iter().all(|r| r.get("accessory").is_none()), "{bom}");

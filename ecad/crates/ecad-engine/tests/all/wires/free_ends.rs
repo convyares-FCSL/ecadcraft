@@ -149,7 +149,7 @@ fn cablecontinue_across_two_pages_gives_one_wire_and_one_net() {
     let mut c = continued(SEED + 3);
     let b = point(&mut c.h, (100.0, 0.0));
     let stub = c.v["routes"][0].clone();
-    c.h.run("connect", json!({"route": stub["route"], "end": stub["free_end"], "terminal": b.hex()})).unwrap();
+    c.h.run("connect", json!({"route": stub["route"], "end": stub["free_end"], "connection_point": b.hex()})).unwrap();
     let doc = c.h.doc();
     assert_eq!(doc.wires.len(), 1, "one wire across the pages");
     let (&w, wire) = doc.wires.iter().next().unwrap();
@@ -189,7 +189,7 @@ fn a_point_with_more_wires_than_it_accepts_is_an_error() {
     assert_eq!(h.doc().ends_at(pts[0]).len(), 3);
     let rows = over(&mut h);
     assert_eq!(rows.len(), 1, "{rows:?}");
-    assert_eq!(rows[0]["object"], json!({"terminal": pts[0].hex()}));
+    assert_eq!(rows[0]["object"], json!({"connection_point": pts[0].hex()}));
     assert_eq!(rows[0]["severity"], json!("error"), "{:?}", rows[0]);
     assert!(rows[0].to_string().contains("takes 2 conductors; 3 are connected"), "{:?}", rows[0]);
     h.cmdline("u");

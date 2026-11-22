@@ -442,7 +442,7 @@ fn contact_cross_references_follow_the_reference_style() {
 
 /// The cable look is laid out from the `CableText` style: editing it moves the layout height.
 #[test]
-fn the_cable_look_follows_the_cable_text_style() {
+fn the_cable_draw_follows_the_cable_text_style() {
     let mut h = H::new(0x66_d2);
     let before = ecad_engine::cables::draw::label_height(&h.doc());
     assert!((before - 1.6).abs() < 1e-9, "{before}");

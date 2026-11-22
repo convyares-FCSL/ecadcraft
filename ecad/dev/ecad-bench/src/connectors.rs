@@ -120,7 +120,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredConne
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;
         // The report models built first, as on first show (untimed).
         project.configure(&mut s, |p| {
-            p.outputs();
+            p.reports();
         })?;
         let mut place = Vec::new();
         for _ in 0..runs {

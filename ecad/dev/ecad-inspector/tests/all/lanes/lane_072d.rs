@@ -32,8 +32,8 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
         "wire",
         vec![
             Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K7")) },
-            Op::AddConnectionPoint { id: a, terminal: point("A1") },
-            Op::AddConnectionPoint { id: b, terminal: point("A2") },
+            Op::AddConnectionPoint { id: a, connection_point: point("A1") },
+            Op::AddConnectionPoint { id: b, connection_point: point("A2") },
             Op::CreateWire { id: w, wire: before.clone() },
         ],
     )
@@ -158,7 +158,12 @@ fn core_positions_are_shown_raw_and_readable() {
             Op::CreateDevice { id: d, device: Device::default() },
             Op::AddConnectionPoint {
                 id: t,
-                terminal: ConnectionPoint { owner: d.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() },
+                connection_point: ConnectionPoint {
+                    owner: d.into(),
+                    label: Some("1".into()),
+                    key: Some("1".parse().unwrap()),
+                    accepts: Default::default(),
+                },
             },
             Op::AddRoute { id: r, route: loose },
             Op::CreateCable { id: k, cable: Cable { cores: vec![on_line, spare], ..Cable::default() } },
@@ -219,8 +224,12 @@ fn accepts_is_shown_raw_readable_and_on_the_device_row() {
         key: Some("PE".parse().unwrap()),
         accepts: ecad_model::Accepts::new(12).unwrap(),
     };
-    l.commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddConnectionPoint { id: t, terminal: bar }])
-        .unwrap();
+    l.commit(
+        Author::User,
+        "bar",
+        vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddConnectionPoint { id: t, connection_point: bar }],
+    )
+    .unwrap();
     let path = written(&dir, &l);
     let f = FileSource::from_path(&path);
     assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
@@ -230,7 +239,7 @@ fn accepts_is_shown_raw_readable_and_on_the_device_row() {
     let key = rows.last().and_then(|r| r["key"].as_str()).unwrap().to_string();
     let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
     let text = readable["ok"]["decoded"].to_string();
-    assert!(text.contains("AddTerminal") && text.contains("accepts") && text.contains("12"), "{text}");
+    assert!(text.contains("AddConnectionPoint") && text.contains("accepts") && text.contains("12"), "{text}");
     let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
     assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()));
     let devices = ask(s, serde_json::json!({"op": "devices", "detail": true, "count": 1000}));
@@ -381,10 +390,10 @@ fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
             Op::CreateDevice { id: x05, device: Device::default() },
             Op::CreateAid { id: a1, aid: arrow() },
             Op::CreateAid { id: a2, aid: arrow() },
-            Op::AddConnectionPoint { id: t01, terminal: point(x01.into(), "1") },
-            Op::AddConnectionPoint { id: t05, terminal: point(x05.into(), "1") },
-            Op::AddConnectionPoint { id: ta1, terminal: point(a1.into(), "1") },
-            Op::AddConnectionPoint { id: ta2, terminal: point(a2.into(), "1") },
+            Op::AddConnectionPoint { id: t01, connection_point: point(x01.into(), "1") },
+            Op::AddConnectionPoint { id: t05, connection_point: point(x05.into(), "1") },
+            Op::AddConnectionPoint { id: ta1, connection_point: point(a1.into(), "1") },
+            Op::AddConnectionPoint { id: ta2, connection_point: point(a2.into(), "1") },
             Op::CreateWire { id: w, wire: Wire::new(net, conductor, t01, t05) },
             Op::CreateCable { id: k, cable: Cable { cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new("1").ok())], ..Cable::default() } },
             slash(i1, p1),

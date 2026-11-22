@@ -492,14 +492,14 @@ impl Pending {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Users {
     /// (object, property) pairs: `location`, `function` or `location.<type>`.
-    pub refs: BTreeSet<(ObjectRef, String)>,
+    pub references: BTreeSet<(ObjectRef, String)>,
     /// The location boxes carrying it.
     pub boxes: BTreeSet<AidId>,
 }
 
 impl Users {
     fn is_empty(&self) -> bool {
-        self.refs.is_empty() && self.boxes.is_empty()
+        self.references.is_empty() && self.boxes.is_empty()
     }
 }
 
@@ -684,9 +684,9 @@ impl Uses {
     fn note(&mut self, a: Aspect, key: &str, o: ObjectRef, prop: &str, add: bool) {
         let slot = (a, key.to_string());
         if add {
-            self.by_key.entry(slot).or_default().refs.insert((o, prop.to_string()));
+            self.by_key.entry(slot).or_default().references.insert((o, prop.to_string()));
         } else if let Some(u) = self.by_key.get_mut(&slot) {
-            u.refs.remove(&(o, prop.to_string()));
+            u.references.remove(&(o, prop.to_string()));
             if u.is_empty() {
                 self.by_key.remove(&slot);
             }
@@ -709,7 +709,7 @@ impl Uses {
         let Some(u) = self.users(a, key) else { return c };
         let mut devices = BTreeSet::new();
         let mut overrides = BTreeSet::new();
-        for (o, prop) in &u.refs {
+        for (o, prop) in &u.references {
             match o {
                 ObjectRef::Device(x) if prop == a.property() => {
                     devices.insert(*x);

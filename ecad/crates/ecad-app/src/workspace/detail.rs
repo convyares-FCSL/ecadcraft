@@ -21,7 +21,7 @@ use crate::shell::ListsView;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selected {
     Device(DeviceId),
-    Terminal(crate::terminal_strips::plan::TermKey),
+    ConnectionPoint(crate::terminal_strips::plan::TermKey),
     Card(usize),
     /// Brief 056 (design 056 §5): a channel row of Project ▸ PLC.
     Channel(crate::plc::list::IoKey),
@@ -51,7 +51,7 @@ pub fn selected_key(t: &App) -> Option<Selected> {
     let r = t.reports.as_ref();
     match t.shell.lists {
         ListsView::Devices => t.panel.devices.selected.map(Selected::Device),
-        ListsView::Terminals => r.and_then(|r| first(&r.terminals.table)).map(Selected::Terminal),
+        ListsView::TerminalBlocks => r.and_then(|r| first(&r.connection_points.table)).map(Selected::ConnectionPoint),
         ListsView::Plc => r.and_then(|r| {
             // A channel row selected shows the channel; else the selected tile's card.
             let row = first(&r.io.table).filter(|k| r.io.source.row(*k).is_some());
@@ -256,9 +256,9 @@ fn side_text(cells: &[ecad_electrical::terminal_strips::SideCell]) -> String {
     if v.is_empty() { "not wired".into() } else { v.join(", ") }
 }
 
-fn terminal(t: &App, k: crate::terminal_strips::plan::TermKey) -> Option<Detail> {
+fn connection_point(t: &App, k: crate::terminal_strips::plan::TermKey) -> Option<Detail> {
     let r = t.reports.as_ref()?;
-    let row = r.terminals.source.row(k)?;
+    let row = r.connection_points.source.row(k)?;
     let crate::terminal_strips::plan::PlanRow::Term { tag, row, place, .. } = row else {
         return None;
     };
@@ -547,7 +547,7 @@ fn report(t: &App, k: usize) -> Option<Detail> {
 fn detail(t: &App) -> Option<Detail> {
     match selected_key(t)? {
         Selected::Device(c) => device(t, c),
-        Selected::Terminal(k) => terminal(t, k),
+        Selected::ConnectionPoint(k) => connection_point(t, k),
         // A card is edited by `card_editor` (see `show`).
         Selected::Card(_) => None,
         Selected::Channel(k) => channel(t, k),

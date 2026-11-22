@@ -233,7 +233,7 @@ impl RackPlaces {
             | Effect::Layer { .. }
             | Effect::Device { .. }
             | Effect::DeviceDefinition { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Rep { .. }
             | Effect::Wire { .. }
             | Effect::Route { .. }

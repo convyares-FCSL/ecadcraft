@@ -91,14 +91,14 @@ fn s(v: &str) -> Option<String> {
 
 fn keep_models(h: &mut H) {
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
 }
 
 /// The oracle: the kept models equal a rebuild; every device's kept location equals `resolve`.
 fn verify(h: &mut H, what: &str) {
     let (kept, built, doc) = h.cfg(|p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         let doc = p.ledger.document().clone();
         (kept, ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics), doc)
     });
@@ -211,8 +211,8 @@ fn fixture(seed: u64) -> Fx {
     for (x, y) in [(40.0, 100.0), (90.0, 120.0), (150.0, 180.0), (220.0, 90.0)] {
         place(&mut h, "coil", (x, y));
     }
-    let a = place(&mut h, "terminal", (60.0, 220.0));
-    let b = place(&mut h, "terminal", (160.0, 220.0));
+    let a = place(&mut h, "terminalblock", (60.0, 220.0));
+    let b = place(&mut h, "terminalblock", (160.0, 220.0));
     h.run("wire", json!({"points": pts(&[(60.0, 220.0), (160.0, 220.0)])})).unwrap();
     h.run("cableslash", json!({"from": [110, 230], "to": [110, 210]})).unwrap();
     h.run("setprop", json!({"component": a.hex(), "key": "part_number", "value": "UT 2.5"})).unwrap();
@@ -813,7 +813,7 @@ fn bom_page_overflow_counts_sheets_and_loses_no_row() {
     }
     let n = |h: &mut H| {
         let doc = h.doc();
-        let o = h.cfg(|p| p.outputs().clone());
+        let o = h.cfg(|p| p.reports().clone());
         (ecad_electrical::pages::generated::sheets_of(&doc, bom, Some(&o)), ecad_electrical::pages::generated::book_sheets_of(&doc, Some(&o)))
     };
     assert_eq!(n(&mut h), (1, 2));

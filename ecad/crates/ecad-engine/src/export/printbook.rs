@@ -67,12 +67,12 @@ pub fn resolve(doc: &Document, scope: &Scope) -> Result<Resolved, String> {
     resolve_with(doc, scope, None)
 }
 
-/// [`resolve`] knowing the generated pages' sheets (`outputs`): a continuation sheet's number
+/// [`resolve`] knowing the generated pages' sheets (`reports`): a continuation sheet's number
 /// (`401`, sheet 2 of page `400`) chooses its whole page, with a note (design 033 §5.2).
 ///
 /// # Errors
 /// An unknown folder.
-pub fn resolve_with(doc: &Document, scope: &Scope, outputs: Option<&ReportModels>) -> Result<Resolved, String> {
+pub fn resolve_with(doc: &Document, scope: &Scope, reports: Option<&ReportModels>) -> Result<Resolved, String> {
     let b = Book::of(doc);
     match scope {
         Scope::All => Ok(Resolved { pages: b.order.clone(), ..Resolved::default() }),
@@ -95,7 +95,7 @@ pub fn resolve_with(doc: &Document, scope: &Scope, outputs: Option<&ReportModels
                     keep.insert(i);
                     continue;
                 }
-                if let Some((owner, i)) = ecad_electrical::pages::generated::continuation_of(doc, &b, token, outputs)
+                if let Some((owner, i)) = ecad_electrical::pages::generated::continuation_of(doc, &b, token, reports)
                     && let Some(at) = b.position(owner).and_then(|n| n.checked_sub(1))
                 {
                     keep.insert(at);
@@ -149,9 +149,9 @@ pub struct Sheet {
 /// # Errors
 /// A page that cannot be projected.
 pub fn build(
-    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>,
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, reports: Option<&ReportModels>,
 ) -> Result<(Drawing, Vec<Sheet>), String> {
-    build_pending(doc, pages, fan, tol, outputs, false)
+    build_pending(doc, pages, fan, tol, reports, false)
 }
 
 /// [`build`] with the project's pending flag (design 033 §6): the title blocks and the cover
@@ -160,9 +160,9 @@ pub fn build(
 /// # Errors
 /// A page that cannot be projected.
 pub fn build_pending(
-    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>, pending: bool,
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, reports: Option<&ReportModels>, pending: bool,
 ) -> Result<(Drawing, Vec<Sheet>), String> {
-    build_in(doc, pages, fan, tol, outputs, pending, false)
+    build_in(doc, pages, fan, tol, reports, pending, false)
 }
 
 /// [`build_pending`] for a print in `colour` (owner answer 1, `print.colour`): wires print in
@@ -174,7 +174,7 @@ pub fn build_pending(
 /// # Errors
 /// A page that cannot be projected.
 pub fn build_in(
-    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>, pending: bool, colour: bool,
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, reports: Option<&ReportModels>, pending: bool, colour: bool,
 ) -> Result<(Drawing, Vec<Sheet>), String> {
     let mut scratch = base_drawing();
     // Overseer ruling 7: the scratch drawing carries ECAD's text styles (Standard, ECAD-BOLD).
@@ -184,7 +184,7 @@ pub fn build_in(
     let mut sheets = Vec::new();
     let mut x = 0.0;
     for page in pages {
-        let parts = crate::pages::generated::parts_of_pending(doc, *page, outputs, pending);
+        let parts = crate::pages::generated::parts_of_pending(doc, *page, reports, pending);
         // Brief 040: a print is on white paper: wire colours for the paper sheet.
         let (d, map) = crate::cables::draw::with_paper(|| project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts))?;
         for l in &d.layers {
@@ -231,7 +231,7 @@ pub fn build_in(
             e.handle = scratch.new_handle();
             store.push(e);
         }
-        let windows = ecad_electrical::pages::generated::sheet_windows_of(doc, *page, outputs);
+        let windows = ecad_electrical::pages::generated::sheet_windows_of(doc, *page, reports);
         let mut right = x;
         for (lo, hi) in windows {
             let (paper, exact, landscape) = paper_for(hi.x - lo.x, hi.y - lo.y);
@@ -346,7 +346,7 @@ pub struct Printed {
 /// # Errors
 /// A projection, plot or write failure; nothing is written then.
 pub fn print(
-    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>, o: Options, path: Option<&str>,
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, reports: Option<&ReportModels>, o: Options, path: Option<&str>,
     progress: &mut dyn FnMut(usize, usize) -> bool,
 ) -> Result<Printed, String> {
     if pages.is_empty() {
@@ -354,13 +354,13 @@ pub fn print(
     }
     // Brief 040: a headless print draws in the sheet font too (a no-op once installed).
     crate::styles::draw::register_sheet_font();
-    let (scratch, sheets) = build_in(doc, pages, fan, tol, outputs, o.pending, !o.mono)?;
+    let (scratch, sheets) = build_in(doc, pages, fan, tol, reports, o.pending, !o.mono)?;
     let mut done = Printed { sheets: sheets.len(), ..Printed::default() };
     // Design 033 §6.2: nobody prints a pending book by mistake.
     done.notes.extend(ecad_electrical::releases::revisions::pending_note(doc, o.pending));
     let generated: BTreeSet<PageId> = pages.iter().copied().filter(|p| ecad_electrical::pages::generated::kind_of(doc, *p).is_some()).collect();
     done.generated = sheets.iter().filter(|s| generated.contains(&s.page)).count();
-    done.flagged = ecad_electrical::pages::generated::flagged(doc, &generated, outputs);
+    done.flagged = ecad_electrical::pages::generated::flagged(doc, &generated, reports);
     let mut noted = BTreeSet::new();
     for s in sheets.iter().filter(|s| !s.exact) {
         if noted.insert(s.page) {
@@ -400,7 +400,7 @@ pub fn write_file(path: &str, bytes: &[u8]) -> Result<(), String> {
 /// chooses its whole page, and the pending-revision note. Reads only.
 pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
     if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
-        p.outputs();
+        p.reports();
     }
     p.refresh_pending();
     let doc = p.ledger.document();
@@ -413,7 +413,7 @@ pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
 /// match no page, `?` values on generated pages. Reads pages only (and the kept report models).
 pub fn count(p: &mut crate::Project, scope: &Scope) -> (usize, Vec<String>, usize) {
     if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
-        p.outputs();
+        p.reports();
     }
     let doc = p.ledger.document();
     let Ok(r) = resolve_with(doc, scope, p.kept_reports()) else { return (0, Vec::new(), 0) };

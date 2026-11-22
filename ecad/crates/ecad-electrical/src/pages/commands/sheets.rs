@@ -271,7 +271,7 @@ pub const NUMBER_WORDS: &str = "A page number is 1 to 12 letters, digits or _ (n
 ///
 /// # Errors
 /// In words.
-pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &str, outputs: Option<&ReportModels>) -> Result<(), CmdError> {
+pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &str, reports: Option<&ReportModels>) -> Result<(), CmdError> {
     let n = number.chars().count();
     if !(1..=MAX_NUMBER_CHARS).contains(&n) || !number.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return Err(CmdError::refused(NUMBER_WORDS));
@@ -282,7 +282,7 @@ pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &
             return Err(CmdError::refused(format!("Page {number} already exists (\"{title}\").")));
         }
     }
-    if let Some((owner, i)) = crate::pages::generated::continuation_of(doc, book, number, outputs)
+    if let Some((owner, i)) = crate::pages::generated::continuation_of(doc, book, number, reports)
         && Some(owner) != page
     {
         return Err(CmdError::refused(crate::pages::generated::continuation_taken(doc, number, owner, i)));
@@ -348,7 +348,7 @@ pub fn new_page_kind(generated: Option<&str>, style: Option<&str>, strip: Option
         None => None,
     };
     // Brief 046 (design 046 §8.1): a terminal plan page's style, stored as its page-level
-    // `terminal.plan.style` in the AddPage, so the page is one transaction.
+    // `terminal_block.plan.style` in the AddPage, so the page is one transaction.
     let style = match style {
         Some(t) => Some(
             strip_pages::STYLE
@@ -358,11 +358,11 @@ pub fn new_page_kind(generated: Option<&str>, style: Option<&str>, strip: Option
         ),
         None => None,
     };
-    if style.is_some() && generated != Some(GenKind::Terminals) {
+    if style.is_some() && generated != Some(GenKind::TerminalBlocks) {
         return Err(CmdError::input("`style` is for a terminal plan page (`generated: \"terminals\"`)"));
     }
     // Brief 028 (FP3): a terminal plan page may show one strip.
-    if strip.is_some() && generated != Some(GenKind::Terminals) {
+    if strip.is_some() && generated != Some(GenKind::TerminalBlocks) {
         return Err(CmdError::input("`strip` is for a terminal plan page (`generated: \"terminals\"`)"));
     }
     Ok(NewPageKind { generated, style, strip })
@@ -509,7 +509,7 @@ fn code_with(doc: &Document, pending: &Pending, a: Aspect, key: &str) -> String 
 /// # Errors
 /// No such page, a page number in use, a bad function, location or sheet.
 pub fn page_props(
-    doc: &Document, ids: &mut IdAllocator, page: PageId, change: &PageChange, outputs: Option<&ReportModels>,
+    doc: &Document, ids: &mut IdAllocator, page: PageId, change: &PageChange, reports: Option<&ReportModels>,
 ) -> Result<PropsPlan, CmdError> {
     let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
     let book = Book::of(doc);
@@ -520,7 +520,7 @@ pub fn page_props(
         let n = n.as_ref().map(|t| t.trim()).filter(|t| !t.is_empty());
         now.number = match n {
             Some(t) => {
-                check_number(doc, &book, Some(page), t, outputs)?;
+                check_number(doc, &book, Some(page), t, reports)?;
                 Some(PageNo::parse(t).ok_or(CmdError::refused(NUMBER_WORDS))?)
             }
             None => None,
@@ -600,7 +600,7 @@ pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
         return Err(CmdError::refused(format!("\"{key}\" is reserved (Project settings → Numbering).")));
     }
     // Brief 036: the registry's terminal defaults are project properties of their entry's key.
-    if key.starts_with("terminal.") && crate::defaults::find(key).is_some() {
+    if key.starts_with("terminal_block.") && crate::defaults::find(key).is_some() {
         return Ok(());
     }
     // Brief 054 (FP4, design 054 §8.1a): the cover's notes and its table editor rows.
@@ -634,7 +634,7 @@ fn free_value(doc: &Document, key: &str, v: Option<&str>) -> Result<Option<Strin
     Ok(match crate::terminal_strips::accessories::project_rule(doc, key, Some(t)) {
         Some(r) => r?,
         // Brief 036: the registry's terminal defaults (`""` on the separator is none).
-        None => match crate::defaults::terminals::setprop_value(key, Some(t)) {
+        None => match crate::defaults::terminal_blocks::setprop_value(key, Some(t)) {
             Some(r) => r?,
             None => value(doc, key, Some(t))?,
         },
@@ -1064,19 +1064,19 @@ pub fn undone_issue(undo: &[Op]) -> Result<String, CmdError> {
 /// The number a new page gets after the page shown as `before` (design 019 §6.1): its leading
 /// digits plus the project's step, skipping numbers in use; with no digits or no page before, its
 /// book position `position`.
-pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&ReportModels>) -> String {
-    default_number_from(doc, book, before, position, outputs, None)
+pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, position: usize, reports: Option<&ReportModels>) -> String {
+    default_number_from(doc, book, before, position, reports, None)
 }
 
 /// [`default_number`], or for the first page of a folder with a start number (brief 054, design
 /// 054 §4.3) that start when it is free, else the next free after it. Leading zeros keep their
 /// width (`01` gives `01`, `02`), from the start or from the page before.
 pub fn default_number_from(
-    doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&ReportModels>, start: Option<&str>,
+    doc: &Document, book: &Book, before: Option<PageId>, position: usize, reports: Option<&ReportModels>, start: Option<&str>,
 ) -> String {
     // Brief 033: every sheet's number, continuation sheets included, is in use.
     let used: BTreeSet<String> =
-        book.order.iter().flat_map(|p| crate::pages::generated::sheet_numbers(doc, book, *p, outputs)).map(|n| n.to_ascii_lowercase()).collect();
+        book.order.iter().flat_map(|p| crate::pages::generated::sheet_numbers(doc, book, *p, reports)).map(|n| n.to_ascii_lowercase()).collect();
     let step = u64::from(doc.settings.page_number_step().max(1));
     let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
     let from_start = start.and_then(|t| t.parse::<u64>().ok().map(|n| (n, t.len())));
@@ -1138,15 +1138,15 @@ pub fn new_page_at(
 
 /// The number a new page placed by [`new_page_at`] gets (design 054 §4.3): the first page of a
 /// folder with a start number takes it; every other page the next after the page before it.
-pub fn next_number(doc: &Document, book: &Book, folder: Option<FolderId>, place: (Option<PageId>, usize), outputs: Option<&ReportModels>) -> String {
+pub fn next_number(doc: &Document, book: &Book, folder: Option<FolderId>, place: (Option<PageId>, usize), reports: Option<&ReportModels>) -> String {
     let (before, position) = place;
     let first = before.is_none_or(|b| book::folder_of(doc, b).filter(|f| doc.folders.contains_key(f)) != folder);
     let start = folder.filter(|_| first).and_then(|f| crate::pages::page_types::start_of(doc, f));
-    default_number_from(doc, book, before, position, outputs, start.as_deref())
+    default_number_from(doc, book, before, position, reports, start.as_deref())
 }
 
 /// The page's properties as `pageprops` reports them.
-pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&ReportModels>) -> Value {
+pub fn page_json(doc: &Document, book: &Book, page: PageId, reports: Option<&ReportModels>) -> Value {
     let pg = doc.pages.get(&page);
     use crate::locations::designations::{Aspect, default_key, page_key};
     let prop = |k: &str| Aspect::of_property(k).and_then(|a| pg.and_then(|x| page_key(x, a)));
@@ -1172,8 +1172,8 @@ pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&Rep
         "generated": pg.and_then(|x| x.kind.generated_kind()).map(ecad_model::Word::word),
         // Brief 054: the page's type, resolved (design 054 §2.3).
         "type": crate::styles::page::type_of(doc, page).text(),
-        "sheets": crate::pages::generated::sheets_of(doc, page, outputs),
-        "sheet_numbers": crate::pages::generated::sheet_numbers(doc, book, page, outputs),
+        "sheets": crate::pages::generated::sheets_of(doc, page, reports),
+        "sheet_numbers": crate::pages::generated::sheet_numbers(doc, book, page, reports),
     })
 }
 

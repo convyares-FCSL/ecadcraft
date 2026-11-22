@@ -71,7 +71,7 @@ pub struct DeviceDetails {
     pub connections: Vec<ConnRow>,
     pub placed: Option<Placed>,
     /// The device's connection points (its own checks are about these or the device).
-    pub terminals: BTreeSet<ConnectionPointId>,
+    pub connection_points: BTreeSet<ConnectionPointId>,
     /// The size each text slot takes (`2.5 B`), by kind.
     pub sizes: Vec<(TextKind, String)>,
 }
@@ -82,7 +82,7 @@ fn pins(labels: &[String]) -> String {
 }
 
 fn label(doc: &Document, t: ConnectionPointId) -> String {
-    doc.terminals.get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| "?".into())
+    doc.connection_points.get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| "?".into())
 }
 
 /// The labels a symbol shows: its connection points, in its definition's order.
@@ -175,7 +175,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
         doc.connection_points_of(c).take(MAX_ROWS).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "?".into()))).collect();
     points.sort_by_key(|p| ecad_electrical::references::devices::natural_key(&p.1));
     for (t, pin) in points {
-        d.terminals.insert(t);
+        d.connection_points.insert(t);
         let net = conn.net_of_connection_point(t).and_then(|n| conn.net(n));
         let Some(net) = net else {
             d.connections.push(ConnRow { pin, wire: "not connected".into(), others: String::new() });
@@ -189,8 +189,8 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
         };
         let mut others = Vec::new();
         let mut more = 0usize;
-        for o in net.terminals.iter().filter(|o| **o != t) {
-            let Some(ot) = doc.terminals.get(o) else { continue };
+        for o in net.connection_points.iter().filter(|o| **o != t) {
+            let Some(ot) = doc.connection_points.get(o) else { continue };
             let Some(oc) = ot.device() else { continue };
             deps.insert(ObjectRef::Device(oc));
             // Junctions and other untagged helpers are not named.

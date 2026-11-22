@@ -224,23 +224,23 @@ pub fn field_text(
     }
 }
 
-/// Paint the text `value` in box `r` (screen) with `look`; returns whether it was cut.
-fn paint_text(p: &egui::Painter, v: View, r: &BRect, top_gap: f64, value: &str, look: &TextDraw, ink: Color32) -> bool {
+/// Paint the text `value` in box `r` (screen) with `draw`; returns whether it was cut.
+fn paint_text(p: &egui::Painter, v: View, r: &BRect, top_gap: f64, value: &str, draw: &TextDraw, ink: Color32) -> bool {
     if value.is_empty() {
         return false;
     }
     let room = r.w - 2.0;
-    let (shown, wf) = ecad_engine::pages::frame::fit(value, look.size, Some(room));
+    let (shown, wf) = ecad_engine::pages::frame::fit(value, draw.size, Some(room));
     let cut = shown.ends_with('…') && !value.ends_with('…');
-    let px = (look.size as f32 * v.k / 0.72).max(4.0);
+    let px = (draw.size as f32 * v.k / 0.72).max(4.0);
     let y = r.y + (r.h - top_gap).max(0.0) / 2.0;
-    let (x, align) = match look.align {
+    let (x, align) = match draw.align {
         Align::Left => (r.x + 1.0, Align2::LEFT_CENTER),
         Align::Centre => (r.x + r.w / 2.0, Align2::CENTER_CENTER),
         Align::Right => (r.right() - 1.0, Align2::RIGHT_CENTER),
     };
     // Bold in the UI's emphasis face, at the drawing's size (fonts come through ecad-ui).
-    let font = if look.bold {
+    let font = if draw.bold {
         let mut f = ecad_widgets::fonts::font(p.ctx(), ui_type::BODY_EMPHASIS);
         f.size = px * wf as f32;
         f
@@ -269,17 +269,17 @@ fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sampl
     let thick = Stroke::new(2.0, ink);
     let outside = d.outside();
     for (i, item) in d.now.layout.items.iter().enumerate() {
-        let colour = |look: &TextDraw| if look.colour == Ink::Red { red } else { ink };
+        let colour = |draw: &TextDraw| if draw.colour == Ink::Red { red } else { ink };
         match item {
             BlockItem::Line { a, b, weight } => {
                 p.line_segment([v.at(a.0, a.1), v.at(b.0, b.1)], if *weight == LineWeight::Thick { thick } else { thin });
             }
-            BlockItem::Text { at, text, look } => {
-                if paint_text(p, v, at, 0.0, text, look, colour(look)) && marks {
+            BlockItem::Text { at, text, draw } => {
+                if paint_text(p, v, at, 0.0, text, draw, colour(draw)) && marks {
                     cut_mark(p, v.rect(at), sheet);
                 }
             }
-            BlockItem::Field { at, bind: b, label, look, if_empty } => {
+            BlockItem::Field { at, bind: b, label, draw, if_empty } => {
                 let r = v.rect(at);
                 let mut gap = 0.0;
                 if let Some(l) = label.as_deref().filter(|l| !l.is_empty()) {
@@ -288,8 +288,8 @@ fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sampl
                     gap = 1.8 + 1.5;
                 }
                 let (value, name) = field_text(sample, sample_on, b, if_empty);
-                let c = if name { ink2 } else { colour(look) };
-                if paint_text(p, v, at, gap, &value, look, c) && marks && !name {
+                let c = if name { ink2 } else { colour(draw) };
+                if paint_text(p, v, at, gap, &value, draw, c) && marks && !name {
                     cut_mark(p, r, sheet);
                 }
                 if marks {
@@ -605,7 +605,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
                         _ => None,
                     })
                     .unwrap_or_else(|| bind::name(&bind));
-                d.add(BlockItem::Field { at: r, bind, label: Some(label), look: TextDraw::default(), if_empty: Default::default() });
+                d.add(BlockItem::Field { at: r, bind, label: Some(label), draw: TextDraw::default(), if_empty: Default::default() });
                 acts.push(Act::Resample);
             }
         }
@@ -869,7 +869,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
             },
             Tool::Text if inside(sq) => {
                 let i =
-                    d.add(BlockItem::Text { at: BRect::new(sq.0, (sq.1 - 6.0).max(0.0), 30.0, 6.0), text: "Text".into(), look: TextDraw::default() });
+                    d.add(BlockItem::Text { at: BRect::new(sq.0, (sq.1 - 6.0).max(0.0), 30.0, 6.0), text: "Text".into(), draw: TextDraw::default() });
                 ed.canvas.edit_text = Some(i);
                 ed.tool = Tool::Select;
             }

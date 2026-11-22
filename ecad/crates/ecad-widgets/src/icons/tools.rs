@@ -185,7 +185,7 @@ pub fn arc(p: &mut Pen) {
 }
 
 /// Terminal: a block with a screw ring between two leads.
-pub fn terminal(p: &mut Pen) {
+pub fn terminal_block(p: &mut Pen) {
     p.rect(5.0, 2.0, 11.0, 14.0);
     p.circle(8.0, 8.0, 1.75);
     p.line((1.5, 8.0), (5.0, 8.0));

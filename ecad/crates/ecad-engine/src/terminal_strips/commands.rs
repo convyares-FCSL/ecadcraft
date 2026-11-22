@@ -1,5 +1,5 @@
 //! The commands of brief 028 (design 028 §3, §4, §10): a terminal placed on a wire splits it
-//! (through `place`), `terminals` (Place Terminals: one per wire a fence line crosses), `bridge`
+//! (through `place`), `connection_points` (Place Terminals: one per wire a fence line crosses), `bridge`
 //! (Draw Bridge), and the reads `stripplan` and `cablecores`.
 //!
 //! Every write is one transaction, committed through [`Project::apply_edit`]; the reads record
@@ -32,7 +32,7 @@ use {ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::OnRoute};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
-    Typed::of::<TerminalBlocksParams>("terminals"),
+    Typed::of::<TerminalBlocksParams>("terminalblocks"),
     Typed::of::<BridgeParams>("bridge"),
     Typed::of::<StripplanParams>("stripplan"),
     Typed::of::<CablecoresParams>("cablecores"),
@@ -41,13 +41,13 @@ pub const TYPED: &[Typed] = &[
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("terminals", "Place Terminals", crate::commands::input::typed::<TerminalBlocksParams>)
+        CommandSpec::new("terminalblocks", "Place Terminals", crate::commands::input::typed::<TerminalBlocksParams>)
             .params(
                 "{strip?: id (null or absent: a new strip), pe?: bool, type?: Feedthrough|PE|x2|x2B|x3|LNPE|SEN|DIS|FUSE, level?: name, number \
 or All, position?: label, from: [x,y], to: [x,y]} (one terminal, or one level, on each wire the line crosses; a level fills the next \
 position of its type that lacks it; at most 200)",
             )
-            .interactive(crate::interact::terminals)
+            .interactive(crate::interact::terminal_blocks)
             .noundo(),
         CommandSpec::new("bridge", "Draw Bridge", crate::commands::input::typed::<BridgeParams>)
             .params("{from: terminal id, to: terminal id} (a wire between two terminals; of one strip it is a bridge)")
@@ -164,11 +164,11 @@ impl Command for TerminalBlocksParams {
                     ecad_electrical::wires::wire_of_route(doc, *r).and_then(|w| doc.wires.get(&w)).and_then(|w| w.number.clone())
                 })
                 .collect();
-            p.apply_edit(pg, "terminals", done.label, f.ops.clone())?;
+            p.apply_edit(pg, "terminalblocks", done.label, f.ops.clone())?;
             p.last_placed = Some((ty.starter_key(done.level).to_string(), f.strip));
             let doc = p.ledger.document();
             let dropped = dropped_numbers(doc, &f.placed, &before);
-            let (shown, message) = rules::terminals_message(doc, ty, done.level, &f);
+            let (shown, message) = rules::connection_points_message(doc, ty, done.level, &f);
             let message = if dropped.is_empty() {
                 message
             } else {
@@ -183,7 +183,7 @@ impl Command for TerminalBlocksParams {
                 "strip": f.strip.hex(),
                 "tag": f.tag,
                 "type": ty.code,
-                "terminals": f.placed.iter().zip(&shown).map(|((t, l, r, n), sl)| json!({"terminal": t.hex(), "position": l, "label": sl, "route": r.hex(), "new": n.hex()})).collect::<Vec<_>>(),
+                "connection_points": f.placed.iter().zip(&shown).map(|((t, l, r, n), sl)| json!({"connection_point": t.hex(), "position": l, "label": sl, "route": r.hex(), "new": n.hex()})).collect::<Vec<_>>(),
                 "skipped": f.skipped,
                 "dropped_wire_numbers": dropped.iter().map(|(w, n)| json!({"conductor": w.hex(), "number": n.text.as_str(), "fixed": n.fixed})).collect::<Vec<_>>(),
                 "message": message,
@@ -310,7 +310,7 @@ pub(crate) fn place_level(
             "tag": tag_text,
             "position": position,
             "joined": strip.is_some(),
-            "terminals": shown.iter().map(|(k, t, _)| json!({"key": k, "label": ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(doc, *t), "terminal": t.hex()})).collect::<Vec<_>>(),
+            "connection_points": shown.iter().map(|(k, t, _)| json!({"key": k, "label": ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(doc, *t), "connection_point": t.hex()})).collect::<Vec<_>>(),
             "message": message,
         });
         if let Some(l) = &land {
@@ -393,7 +393,7 @@ impl Command for StripplanParams {
         let strip = self.strip;
         on_any_page(s, |p, _| {
             let style = p.ledger.document().settings.reference_style();
-            let o = p.outputs();
+            let o = p.reports();
             let shown: Vec<&StripData> = match strip {
                 Some(c) => vec![o.strips.get(c).ok_or(CmdError::NotFound(Noun::TerminalStrip))?],
                 None => o.sorted_strips(),
@@ -426,7 +426,7 @@ impl Command for CablecoresParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let k = self.cable;
         on_any_page(s, |p, _| {
-            p.outputs();
+            p.reports();
             let o = p.kept_reports().ok_or(CmdError::refused("The reports could not be built."))?;
             let row = o.cable_row(k).cloned().ok_or(CmdError::refused("no such cable"))?;
             let wire = |w: WireId| o.wire(w).cloned();

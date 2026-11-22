@@ -73,7 +73,7 @@ fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: 
     let v = h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();
     let c = v["component"].as_str().unwrap().to_string();
     set_tag(h, "component", &c, name);
-    at.map(|(x, y)| id(&h.run("addterminal", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap(), "terminal"))
+    at.map(|(x, y)| id(&h.run("addconnectionpoint", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap(), "connection_point"))
 }
 
 /// Fixture R up to (not including) `cableref`. `attached`: wires start on K1's terminals (end A
@@ -133,7 +133,7 @@ fn continued(seed: u64) -> R {
 fn connected(seed: u64) -> R {
     let mut r = continued(seed);
     for ((s, end), t) in r.stubs.clone().into_iter().zip(r.k2) {
-        r.h.run("connect", json!({"route": s.hex(), "end": end, "terminal": t.hex()})).unwrap();
+        r.h.run("connect", json!({"route": s.hex(), "end": end, "connection_point": t.hex()})).unwrap();
     }
     // Now each core is a wire, from K1 to K2 across the pages: name them W0, W5, W10.
     let doc = r.h.doc();
@@ -172,9 +172,9 @@ fn drawn_text(h: &mut H, page: PageId) -> Option<String> {
     text
 }
 
-/// The derived text of `page`'s reference, from `cablerefs` (the agent's view).
+/// The derived text of `page`'s reference, from `cablereferences` (the agent's view).
 fn listed_text(h: &mut H, page: PageId) -> String {
-    let v = h.run("cablerefs", json!({})).unwrap();
+    let v = h.run("cablereferences", json!({})).unwrap();
     v["references"]
         .as_array()
         .unwrap()
@@ -336,7 +336,7 @@ fn ac1_two_page_cable_has_the_nets_of_the_one_page_circuit() {
     let mut r = connected(SEED + 2);
     let two = nets(&r.h.doc());
     let shape = |n: &[ecad_model::connectivity::derive::Net]| {
-        let mut v: Vec<(usize, usize)> = n.iter().filter(|x| !x.wires.is_empty()).map(|x| (x.wires.len(), x.terminals.len())).collect();
+        let mut v: Vec<(usize, usize)> = n.iter().filter(|x| !x.wires.is_empty()).map(|x| (x.wires.len(), x.connection_points.len())).collect();
         v.sort();
         v
     };
@@ -362,7 +362,7 @@ fn ac1_two_page_cable_has_the_nets_of_the_one_page_circuit() {
 // ---------------------------------------------------------------- AC2
 
 /// AC2: page moves and renames, by JSON and typed at the command line, are one transaction each;
-/// both drawn texts, the derivation and `cablerefs` follow with no transaction of their own; undo
+/// both drawn texts, the derivation and `cablereferences` follow with no transaction of their own; undo
 /// of a move puts the texts back.
 #[test]
 fn ac2_page_moves_and_renames_update_drawn_texts_with_no_transaction_of_their_own() {
@@ -373,7 +373,7 @@ fn ac2_page_moves_and_renames_update_drawn_texts_with_no_transaction_of_their_ow
     // (step, how: JSON command | typed line, expected Supply text, expected Field text). Page
     // numbers are stored (brief 019), so moving or renaming pages changes no text.
     let rows: Vec<(&str, Result<(&str, Value), String>, &str, &str)> = vec![
-        ("start", Ok(("cablerefs", json!({}))), "2/F1", "1/F2"),
+        ("start", Ok(("cablereferences", json!({}))), "2/F1", "1/F2"),
         ("Spare first", Ok(("movepage", json!({"page": x, "index": 1}))), "2/F1", "1/F2"),
         ("Field first", Ok(("movepage", json!({"page": f, "index": 1}))), "2/F1", "1/F2"),
         ("rename Supply (unicode)", Ok(("renamepage", json!({"page": s, "title": "Fält ⚡ 電源"}))), "2/F1", "1/F2"),
@@ -388,7 +388,7 @@ fn ac2_page_moves_and_renames_update_drawn_texts_with_no_transaction_of_their_ow
         let reads = match &how {
             Ok((cmd, params)) => {
                 r.h.run(cmd, params.clone()).unwrap();
-                *cmd == "cablerefs"
+                *cmd == "cablereferences"
             }
             Err(line) => {
                 r.h.cmdline(line);
@@ -399,7 +399,7 @@ fn ac2_page_moves_and_renames_update_drawn_texts_with_no_transaction_of_their_ow
         assert_eq!(r.h.head(), head + u64::from(!reads), "{step}: exactly one transaction (none for a read)");
         let head = r.h.head();
         for (page, want) in [(r.supply, want_s), (r.field, want_f)] {
-            assert_eq!(listed_text(&mut r.h, page), want, "{step}: cablerefs");
+            assert_eq!(listed_text(&mut r.h, page), want, "{step}: cablereferences");
             assert_eq!(drawn_text(&mut r.h, page).as_deref(), Some(want), "{step}: the drawing shows it");
             let doc = r.h.doc();
             assert_eq!(markers_on_page(&doc, page)[0].text, want, "{step}: derived");
@@ -531,14 +531,14 @@ fn ac3_erase_and_delete_of_cable_drawings_follow_the_section_9_table() {
     assert!(!doc.wires.contains_key(&r.w[1]), "the wire is gone");
     assert!(ecad_electrical::references::cables::route_pages(&doc, r.w[1]).is_empty());
     assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("2/F1"));
-    let v = r.h.run("cablerefs", json!({})).unwrap();
+    let v = r.h.run("cablereferences", json!({})).unwrap();
     assert!(v["references"].as_array().unwrap().iter().all(|x| x["wires_here"] == 2), "{v}");
 }
 
 // ---------------------------------------------------------------- AC4
 
 /// AC4: save to disk (a folder with a space and non-ASCII letters), close, reopen: the same
-/// document, the same `cablerefs`, the same drawn texts on both pages; replay equals live; the
+/// document, the same `cablereferences`, the same drawn texts on both pages; replay equals live; the
 /// snapshot at every earlier sequence number replays without error.
 #[test]
 fn ac4_save_close_reopen_and_replay_give_the_same_cable_drawings_and_references() {
@@ -550,7 +550,7 @@ fn ac4_save_close_reopen_and_replay_give_the_same_cable_drawings_and_references(
     let path = dir.path("two pages.ecad");
     r.h.run("saveas", json!({"path": path})).unwrap();
     let doc = r.h.doc();
-    let refs = r.h.run("cablerefs", json!({})).unwrap();
+    let references = r.h.run("cablereferences", json!({})).unwrap();
     let texts = [drawn_text(&mut r.h, r.supply), drawn_text(&mut r.h, r.field)];
     assert_eq!(texts, [Some("2/F1".to_string()), Some("1/F2".to_string())]);
     let head = r.h.head();
@@ -566,7 +566,7 @@ fn ac4_save_close_reopen_and_replay_give_the_same_cable_drawings_and_references(
     let mut h = H { s, project, trail: Vec::new() };
     assert_eq!(h.doc(), doc, "same document");
     assert!(h.p(|p| p.ledger.replay_matches().unwrap()), "replay equals live");
-    assert_eq!(h.run("cablerefs", json!({})).unwrap(), refs, "same references");
+    assert_eq!(h.run("cablereferences", json!({})).unwrap(), references, "same references");
     for page in doc.page_order.clone() {
         if h.p(|p| p.pages.get(&page).and_then(|v| v.uid)).is_none() {
             h.run("openpage", json!({"page": page.hex()})).unwrap();
@@ -615,18 +615,18 @@ fn ac5_cablegoto_opens_a_closed_page_and_works_read_only() {
     assert!(summary.contains("read-only"), "{summary}");
     let mut h = H { s, project, trail: Vec::new() };
     let doc = h.doc();
-    let refs = cable_references(&doc);
-    let (s_ref, f_ref) = (refs[0].reference, refs[1].reference);
+    let references = cable_references(&doc);
+    let (s_ref, f_ref) = (references[0].reference, references[1].reference);
     let head = h.head();
     let v = h.run("cablegoto", json!({"reference": s_ref.hex()})).unwrap();
     assert_eq!(v["reference"], json!(f_ref.hex()));
     assert_eq!(h.head(), head);
-    assert!(h.run("cablerefs", json!({})).is_ok());
+    assert!(h.run("cablereferences", json!({})).is_ok());
     // Editing commands follow `wire` on a read-only project (as brief 004's slash): refused, or
     // edits in memory only; never a crash, and never the file.
     let file = std::fs::read(&path).unwrap();
     let w = h.run("wire", json!({"points": [[0, 40], [60, 40]]})).is_ok();
-    let cr = h.run("cableref", json!({"cable": refs[0].cable.hex(), "at": [80, 5]}));
+    let cr = h.run("cableref", json!({"cable": references[0].cable.hex(), "at": [80, 5]}));
     if !w {
         assert!(cr.is_err(), "cableref refused like wire on a read-only project: {cr:?}");
     }
@@ -672,10 +672,10 @@ fn per_page_edits_touch_only_the_page_they_are_made_on() {
     let (stub, end) = r.stubs[0].clone();
     r.h.run("disconnect", json!({"route": stub.hex(), "end": end})).unwrap();
     assert_eq!(r.h.doc().routes[&line], supply_route, "Supply's route untouched");
-    r.h.run("connect", json!({"route": stub.hex(), "end": end, "terminal": r.k2[0].hex()})).unwrap();
+    r.h.run("connect", json!({"route": stub.hex(), "end": end, "connection_point": r.k2[0].hex()})).unwrap();
     // Move K2 (its outline lines) down 20: Field's stub ends follow, Supply's routes do not.
     let doc = r.h.doc();
-    let k2 = doc.terminals[&r.k2[0]].device().unwrap();
+    let k2 = doc.connection_points[&r.k2[0]].device().unwrap();
     let handles = r.h.rep_handles(r.field, k2);
     r.h.run("move", json!({"handles": handles, "delta": [0, -20]})).unwrap();
     assert_eq!(r.h.doc().routes[&line], supply_route, "Supply's route untouched by the drag");
@@ -773,7 +773,7 @@ fn ac6_hostile_json_values_in_every_parameter_never_panic_or_prompt() {
         ("cableref", json!({"cable": c1, "at": [80, 5]})),
         ("cablecontinue", json!({"cable": c1, "at": [20, 50], "toward": [40, 50], "members": [r.w[0].hex()]})),
         ("cablegoto", json!({"reference": sref})),
-        ("cablerefs", json!({"cable": c1})),
+        ("cablereferences", json!({"cable": c1})),
         ("renamepage", json!({"page": page, "title": "T"})),
         ("movepage", json!({"page": page, "index": 2})),
     ];
@@ -934,7 +934,7 @@ fn ac6_hostile_documents_never_panic() {
         mutate(&mut doc);
         let started = Instant::now();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let refs = cable_references(&doc);
+            let references = cable_references(&doc);
             let pages: Vec<PageId> = doc.pages.keys().copied().collect();
             for p in &pages {
                 let _ = markers_on_page(&doc, *p);
@@ -951,12 +951,12 @@ fn ac6_hostile_documents_never_panic() {
                 let _ = ecad_electrical::references::cables::check_reference(&doc, *p, cable);
             }
             let _ = diagnostics(&doc);
-            for r in refs.iter().take(50) {
+            for r in references.iter().take(50) {
                 let _ = ecad_electrical::references::cables::hover_lines(&doc, r.reference);
             }
-            let _ = ecad_electrical::references::cables::references_json(&doc, &refs);
-            let _ = ecad_electrical::references::cables::over_referenced(&refs);
-            refs.len()
+            let _ = ecad_electrical::references::cables::references_json(&doc, &references);
+            let _ = ecad_electrical::references::cables::over_referenced(&references);
+            references.len()
         }));
         assert!(result.is_ok(), "{row}: panicked");
         assert!(started.elapsed() < Duration::from_secs(60), "{row}: took {:?}", started.elapsed());
@@ -1021,9 +1021,9 @@ fn copying_reference_drawings_never_makes_a_third_reference() {
             no_internal_error(e, row);
         }
         let doc = r.h.doc();
-        let refs = cable_references(&doc);
-        assert_eq!(refs.len(), before, "{row}: COPY {res:?} changed the number of references: {refs:#?}");
-        assert!(ecad_electrical::references::cables::over_referenced(&refs).is_empty(), "{row}: over-referenced after COPY");
+        let references = cable_references(&doc);
+        assert_eq!(references.len(), before, "{row}: COPY {res:?} changed the number of references: {references:#?}");
+        assert!(ecad_electrical::references::cables::over_referenced(&references).is_empty(), "{row}: over-referenced after COPY");
     }
     // The text: refused as derived.
     let mut r = connected(SEED + 17);
@@ -1094,12 +1094,12 @@ fn many_references_of_one_cable_derive_in_bounded_time() {
             add_ref(&mut doc, 1_000_000 + i, Pt::new(i as f64, 0.0), page, Subject::Cable(cable));
         }
         let started = Instant::now();
-        let refs = cable_references(&doc);
+        let references = cable_references(&doc);
         let took = started.elapsed();
-        let partners: usize = refs.iter().map(|r| r.partners.len()).sum();
+        let partners: usize = references.iter().map(|r| r.partners.len()).sum();
         eprintln!("{n} references: {took:?}, {partners} partner entries");
         assert!(took < Duration::from_secs(secs), "{n} references: one derivation took {took:?} ({partners} partner entries)");
-        assert!(partners <= 3 * refs.len(), "{partners} partner entries for {} references", refs.len());
+        assert!(partners <= 3 * references.len(), "{partners} partner entries for {} references", references.len());
         let started = Instant::now();
         let lines = diagnostics(&doc);
         assert!(started.elapsed() < Duration::from_secs(secs), "diagnostics took {:?}", started.elapsed());

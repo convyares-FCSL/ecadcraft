@@ -73,8 +73,8 @@ fn clicked_names_match_the_prompt_across_components_in_one_run() {
     let a = rect(&mut h, 0.0);
     let b = rect(&mut h, 100.0);
     let a_right = edge(&h, 40.0);
-    h.run("addterminal", json!({"handle": a_right.hex(), "at": [40, 10], "label": "1"})).unwrap();
-    h.s.start("addterminal").unwrap();
+    h.run("addconnectionpoint", json!({"handle": a_right.hex(), "at": [40, 10], "label": "1"})).unwrap();
+    h.s.start("addconnectionpoint").unwrap();
     let px = h.s.pixel_size();
     let mut mismatches = Vec::new();
     for (who, at) in [
@@ -109,8 +109,8 @@ fn typed_names_match_the_prompt_with_the_cursor_in_empty_space() {
     let mut h = new_h();
     let a = rect(&mut h, 0.0);
     let b = rect(&mut h, 100.0);
-    h.run("addterminal", json!({"handle": edge(&h, 40.0).hex(), "at": [40, 10], "label": "1"})).unwrap();
-    h.s.start("addterminal").unwrap();
+    h.run("addconnectionpoint", json!({"handle": edge(&h, 40.0).hex(), "at": [40, 10], "label": "1"})).unwrap();
+    h.s.start("addconnectionpoint").unwrap();
     let away = Vec2::new(500.0, 500.0);
     let mut mismatches = Vec::new();
     for (who, typed, c) in [("A", "0,10", a), ("B", "100,10", b), ("A again", "0,5", a)] {
@@ -133,7 +133,7 @@ fn typed_names_match_the_prompt_with_the_cursor_in_empty_space() {
 fn after_undo_the_prompt_offers_the_freed_name() {
     let mut h = new_h();
     let a = rect(&mut h, 0.0);
-    h.s.start("addterminal").unwrap();
+    h.s.start("addconnectionpoint").unwrap();
     let px = h.s.pixel_size();
     // On the outline, away from the terminals already there.
     let on_a = Vec2::new(40.0 + px, 2.0);
@@ -146,7 +146,7 @@ fn after_undo_the_prompt_offers_the_freed_name() {
     assert_eq!(labels(&mut h, a), ["1", "2"]);
     h.cmdline("u");
     assert_eq!(labels(&mut h, a), ["1"]);
-    h.s.start("addterminal").unwrap();
+    h.s.start("addconnectionpoint").unwrap();
     assert_eq!(shown(&mut h, on_a), "2");
     let at = Vec2::new(40.0 + px, 15.0);
     h.s.cursor = at;
@@ -154,7 +154,7 @@ fn after_undo_the_prompt_offers_the_freed_name() {
     h.s.input(Input::Enter).unwrap();
     assert_eq!(labels(&mut h, a), ["1", "2"]);
     // Undo inside a run (U is not a keyword there): the prompt stays and nothing breaks.
-    h.s.start("addterminal").unwrap();
+    h.s.start("addconnectionpoint").unwrap();
     let _ = h.s.cmdline("u");
     let _ = h.s.cmdline("undo");
     h.s.cancel();
@@ -167,7 +167,7 @@ fn after_undo_the_prompt_offers_the_freed_name() {
 fn the_prompt_survives_hostile_cursors() {
     let mut h = new_h();
     rect(&mut h, 0.0);
-    h.s.start("addterminal").unwrap();
+    h.s.start("addconnectionpoint").unwrap();
     for c in [Vec2::new(f64::NAN, 0.0), Vec2::new(f64::INFINITY, f64::NEG_INFINITY), Vec2::new(f64::MAX, f64::MAX), Vec2::new(1e13, 0.0)] {
         assert_eq!(shown(&mut h, c), "1");
     }
@@ -181,16 +181,16 @@ fn the_prompt_survives_hostile_cursors() {
 fn numbered_and_number_free_prompts_follow_the_cursor() {
     let mut h = new_h();
     rect(&mut h, 0.0);
-    h.s.start("addterminal").unwrap();
+    h.s.start("addconnectionpoint").unwrap();
     let px = h.s.pixel_size();
     let empty = Vec2::new(500.0, 500.0);
     let over_a = Vec2::new(20.0, -px);
-    assert_eq!(shown(&mut h, empty), "1", "one component, no terminals: 1 is known");
+    assert_eq!(shown(&mut h, empty), "1", "one component, no connection_points: 1 is known");
     assert_eq!(shown(&mut h, over_a), "1");
     h.s.cancel();
     rect(&mut h, 100.0);
-    h.run("addterminal", json!({"handle": edge(&h, 40.0).hex(), "at": [40, 10], "label": "1"})).unwrap();
-    h.s.start("addterminal").unwrap();
+    h.run("addconnectionpoint", json!({"handle": edge(&h, 40.0).hex(), "at": [40, 10], "label": "1"})).unwrap();
+    h.s.start("addconnectionpoint").unwrap();
     let over_b = Vec2::new(120.0, -px);
     let cases = [("empty", empty, NUMBER_FREE), ("over A", over_a, "2"), ("over B", over_b, "1"), ("empty again", empty, NUMBER_FREE)];
     for (who, at, want) in cases {
@@ -209,7 +209,7 @@ fn numbered_and_number_free_prompts_follow_the_cursor() {
     assert_eq!(shown(&mut h, over_b), "K7");
     // Enter at a number-free Name prompt, then a typed point: the default of the component hit.
     h.s.cancel();
-    h.s.start("addterminal").unwrap();
+    h.s.start("addconnectionpoint").unwrap();
     h.s.cursor = empty;
     h.s.cmdline("N").unwrap();
     h.s.input(Input::Enter).unwrap();

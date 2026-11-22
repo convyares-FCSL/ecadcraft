@@ -790,7 +790,8 @@ pub fn undo_question(p: &Project) -> Option<String> {
     let top = p.ledger.undo_top()?;
     // Counted as the preview counts: devices, wires, cables, pages, folders and the project (a
     // symbol and its drawing are shown through what they depict).
-    let n = ecad_model::document::diff::objects(&top.ops).keys().filter(|(k, _)| !matches!(*k, "item" | "representation" | "terminal")).count();
+    let n =
+        ecad_model::document::diff::objects(&top.ops).keys().filter(|(k, _)| !matches!(*k, "item" | "representation" | "connection_point")).count();
     let changes = format!("{n} change{}", if n == 1 { "" } else { "s" });
     let label = top.label.clone();
     if let Some(rest) = label.strip_prefix("Update from ") {

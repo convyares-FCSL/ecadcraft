@@ -602,7 +602,7 @@ impl Scope {
                     self.all_wires = true;
                 }
                 // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
-                if key.starts_with("strip_") || key.starts_with("terminal.") {
+                if key.starts_with("strip_") || key.starts_with("terminal_block.") {
                     self.strip_keys.insert(key.to_string());
                 }
                 // Brief 044: the registry's `connector.*` defaults reach connectors.
@@ -641,7 +641,7 @@ impl Scope {
             }
             // Other style records and the standard header change no report row.
             Effect::Style { .. } | Effect::Standard { .. } => {}
-            Effect::Terminal { id, before, after } => {
+            Effect::ConnectionPoint { id, before, after } => {
                 self.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
                 // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
                 self.wires.extend(doc.ends_at(*id).into_iter().map(|(w, _)| w));
@@ -714,7 +714,7 @@ impl Scope {
         let Effect::Prop { object: ObjectRef::Device(c), key, .. } = effect else { return };
         let key = key.raw;
         let position = key.strip_prefix(crate::terminal_strips::terminal_blocks::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
-        if (position.is_some() || crate::defaults::terminals::is_label_key(key)) && crate::terminal_strips::strip_of(doc, *c).is_some() {
+        if (position.is_some() || crate::defaults::terminal_blocks::is_label_key(key)) && crate::terminal_strips::strip_of(doc, *c).is_some() {
             for (t, x) in doc.connection_points_of(*c) {
                 if position.is_none_or(|p| x.label.as_deref() == Some(p)) {
                     self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
@@ -977,7 +977,8 @@ pub fn gap_pe(s: &crate::terminal_strips::StripData, gap: &str) -> bool {
 pub fn accessory_checks(s: &crate::terminal_strips::StripData) -> Vec<Check> {
     let mut out = Vec::new();
     let last = s.highest().and_then(|r| r.go);
-    let obj = |r: Option<&crate::terminal_strips::TermRow>| r.and_then(|r| r.terminal).map_or(Object::Device(s.component), Object::Terminal);
+    let obj =
+        |r: Option<&crate::terminal_strips::TermRow>| r.and_then(|r| r.connection_point).map_or(Object::Device(s.component), Object::ConnectionPoint);
     for (i, (key, items)) in s.acc.orphans.iter().enumerate() {
         let spot = crate::terminal_strips::accessories::spot_of(key);
         let label = spot.as_ref().and_then(|x| x.label()).unwrap_or("?");
@@ -992,7 +993,7 @@ pub fn accessory_checks(s: &crate::terminal_strips::StripData) -> Vec<Check> {
             fix: Some(Fix::AccessoryOrphan(s.component, u16::try_from(i).unwrap_or(u16::MAX))),
         });
     }
-    for l in &s.acc.links {
+    for l in &s.acc.jumper_bars {
         let first = l.labels.iter().find_map(|x| s.rows.iter().find(|r| r.label == *x && !r.spare()));
         let go = first.and_then(|r| r.go).or(last);
         let n = u16::try_from(l.n).unwrap_or(u16::MAX);
@@ -1040,34 +1041,35 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
         Fix::JumperBarAcrossPartition(c, n, i) => {
             let Some(label) = o.strips.get(c).and_then(|s| s.rows.get(usize::from(i))).map(|r| r.label.clone()) else { return Vec::new() };
             vec![
-                (format!("Split link at {label}"), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "split_at": label})),
+                (format!("Split link at {label}"), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "split_at": label})),
                 ("Remove partition".to_string(), "accessory", json!({"strip": c.hex(), "at": label, "remove": ["partition"]})),
             ]
         }
         Fix::JumperBarOnNonStrip(c) => o
-            .link_keys_off_strip(c)
+            .jumper_bar_keys_off_strip(c)
             .into_iter()
             .take(1)
             .map(|k| (format!("Remove {k}"), "setprop", json!({"component": c.hex(), "key": k, "value": null})))
             .collect(),
         Fix::JumperBarOrphan(c, n) => vec![
-            ("Drop missing positions".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "drop_missing": true})),
-            ("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})),
+            ("Drop missing positions".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "drop_missing": true})),
+            ("Delete link".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "delete": true})),
         ],
         // Brief 036 (design 036 §8).
-        Fix::MoveToNextFree(t) => vec![("Move to next free".to_string(), "termlabel", json!({"terminal": t.hex(), "move_to": "next"}))],
-        Fix::MoveToNewPosition(t) => vec![("Move to new position".to_string(), "termlabel", json!({"terminal": t.hex(), "move_to": "new"}))],
+        Fix::MoveToNextFree(t) => vec![("Move to next free".to_string(), "termlabel", json!({"connection_point": t.hex(), "move_to": "next"}))],
+        Fix::MoveToNewPosition(t) => vec![("Move to new position".to_string(), "termlabel", json!({"connection_point": t.hex(), "move_to": "new"}))],
         Fix::LevelMissing(c, n) => {
             let Some(s) = o.strips.get(c) else { return Vec::new() };
             let key = ecad_model::connectivity::jumper_bars::key(u32::from(n));
             let kept = s.level_missing.iter().find(|(m, _)| *m == u32::from(n)).map(|(_, items)| items.clone()).unwrap_or_default();
-            let after = s.acc.links.iter().find(|l| l.n == u32::from(n)).map(|l| crate::terminal_strips::accessories::drop_items(&l.text, &kept));
+            let after =
+                s.acc.jumper_bars.iter().find(|l| l.n == u32::from(n)).map(|l| crate::terminal_strips::accessories::drop_items(&l.text, &kept));
             let mut out = Vec::new();
             if let Some(v) = after {
                 let v = if v.is_empty() { serde_json::Value::Null } else { json!(v) };
                 out.push(("Drop missing levels".to_string(), "setprop", json!({"component": c.hex(), "key": key, "value": v})));
             }
-            out.push(("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})));
+            out.push(("Delete link".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "delete": true})));
             out
         }
         // Brief 045 (design 045 §9).
@@ -1097,7 +1099,7 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
             })
             .collect(),
         // Brief 044 (design 044 §6.3).
-        Fix::ConnectorNextPin(t) => vec![("Move to next free".to_string(), "pinlabel", json!({"terminal": t.hex(), "to": "next"}))],
+        Fix::ConnectorNextPin(t) => vec![("Move to next free".to_string(), "pinlabel", json!({"connection_point": t.hex(), "to": "next"}))],
         Fix::SetPins(c, n) => {
             vec![(format!("Set pins to {n}"), "setprop", json!({"component": c.hex(), "key": crate::connectors::PINS_KEY, "value": n.to_string()}))]
         }

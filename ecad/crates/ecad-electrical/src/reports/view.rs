@@ -2,17 +2,17 @@
 //! PLC model, strip pages), built on first show and then kept from each commit's effects.
 //!
 //! # Update map
-//! Before the commit, on the state before: the rows each effect names (`outputs::Scope::note`),
-//! then their net mates and the users of renamed entries (`outputs::Scope::close`).
+//! Before the commit, on the state before: the rows each effect names (`reports::Scope::note`),
+//! then their net mates and the users of renamed entries (`reports::Scope::close`).
 //! After the commit, on the state after, reading the models as they were: the rows each effect
-//! names again, the wires only the state after names (`outputs::Scope::note_after`), the PLC
+//! names again, the wires only the state after names (`reports::Scope::note_after`), the PLC
 //! model's touch (`plc::kept::Plc::note`), the strip pages' names (`strips::pages::Named`), a page
 //! number or sheet count that can move, the pages added, removed or moved, the book positions,
 //! and what can move a place on a rack sheet (`plc::sheets::RackPlaces`).
 //! The update recomputes what was noted ([`ReportModels::update`]). Its outcome:
 //! - `pages`: the generated pages drawn from the models whose content changed, by kind: a BOM
 //!   page when the models' revision moved, a terminal plan when a strip it shows changed
-//!   (`generated::terminals_rewritten`), a cable schedule when a cable row changed, an I/O list
+//!   (`generated::connection_points_rewritten`), a cable schedule when a cable row changed, an I/O list
 //!   when a card's rows changed, a rack sheet when a card or rack changed or a place on it moved.
 //! - `frame_stale`: the generated pages' sheet count changed, the kept frame's page is one of
 //!   those rewritten, or a page number moved.
@@ -96,7 +96,7 @@ impl ReportsView {
 
 impl<'i> DerivedView<Inputs<'i>> for ReportsView {
     type Scope = ReportsScope;
-    const NAME: &'static str = "outputs";
+    const NAME: &'static str = "reports";
     const AREAS: AreaSet = AreaSet::ALL;
 
     fn note(&self, cx: &NoteCx<'_>, effect: &Effect<'_>, scope: &mut ReportsScope) {
@@ -134,7 +134,7 @@ impl<'i> DerivedView<Inputs<'i>> for ReportsView {
         let rewritten = |p: PageId| match generated::kind_of(doc, p) {
             Some(GenKind::BomLocation) => o.revision != revision,
             // Brief 046 (design 046 §9): either style, by its own kept change set.
-            Some(GenKind::Terminals) => generated::terminals_rewritten(doc, p, o),
+            Some(GenKind::TerminalBlocks) => generated::connection_points_rewritten(doc, p, o),
             Some(GenKind::Cables) => o.last_cables_changed,
             // Brief 045c: the I/O list when a card's rows changed.
             Some(GenKind::IoList) => !o.plc.rows_changed.is_empty(),

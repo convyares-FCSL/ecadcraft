@@ -1422,15 +1422,15 @@ mod tests {
                 Op::CreateDevice { id: c, device: Device::default() },
                 Op::AddConnectionPoint {
                     id: ConnectionPointId(4),
-                    terminal: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() },
+                    connection_point: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() },
                 },
                 Op::AddConnectionPoint {
                     id: ConnectionPointId(5),
-                    terminal: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() },
+                    connection_point: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() },
                 },
                 Op::AddConnectionPoint {
                     id: ConnectionPointId(10),
-                    terminal: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() },
+                    connection_point: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() },
                 },
                 Op::CreateWire { id: w, wire: Wire::new(NetId(14), ConductorId(15), ConnectionPointId(4), ConnectionPointId(10)) },
                 Op::CreateCable { id: CableId(7), cable: Cable { cores: vec![Core::on_wire(w, None)], ..Cable::default() } },
@@ -1533,7 +1533,7 @@ mod tests {
             Op::AddLayer { id: LayerId(50), layer: Layer { name: "x".into() } },
             Op::RemoveConnectionPoint {
                 id: ConnectionPointId(5),
-                terminal: ConnectionPoint { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() },
             },
         ];
         log.push(bad);
@@ -1659,7 +1659,7 @@ mod tests {
         // not, and the scoped check of `three_ops` never looks at it. Only verify mode notices.
         let mut l = ledger();
         l.doc
-            .terminals
+            .connection_points
             .insert(ConnectionPointId(50), ConnectionPoint { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() });
         let doc = json(l.document());
         let r = catch_unwind(AssertUnwindSafe(|| l.with_applied(&three_ops(), |_| ())));

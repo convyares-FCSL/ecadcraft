@@ -147,7 +147,7 @@ is not counted as a change until the project has a file."
     let focus = t.debugger.focus().to_vec();
     assert!(matches!(focus[0], ObjectId::Item(_)));
     assert!(focus.iter().any(|i| matches!(i, ObjectId::Device(_))));
-    assert_eq!(focus.iter().filter(|i| matches!(i, ObjectId::Terminal(_))).count(), 2, "the coil's terminals");
+    assert_eq!(focus.iter().filter(|i| matches!(i, ObjectId::ConnectionPoint(_))).count(), 2, "the coil's terminals");
     assert_eq!(t.debugger.touching(), vec![2]);
     t.debugger.select_tx(Some(2));
     frame(&mut t, &ctx);

@@ -14,8 +14,8 @@
 //!   device it was (design 044 §3.1).
 //!
 //! Everything here reads the document; the planners return ops and change nothing. Excludes: the
-//! commands themselves (`ecad_engine::connectors::commands`), BOM rows (`outputs.rs` reads [`half_rows`]),
-//! and reference texts (`xref.rs` reads [`ref_classes`]).
+//! commands themselves (`ecad_engine::connectors::commands`), BOM rows (`reports.rs` reads [`half_rows`]),
+//! and reference texts (`references.rs` reads [`ref_classes`]).
 
 pub mod commands;
 pub(crate) mod view;
@@ -174,14 +174,14 @@ pub fn size_of(s: &Starter) -> Option<usize> {
     if is_pin_starter(s) || !matches!(s.kind, Kind::ConnectorHalf { .. }) {
         return None;
     }
-    s.definition().ok().map(|d| d.terminals.len())
+    s.definition().ok().map(|d| d.connection_points.len())
 }
 
 // ---------------------------------------------------------------- what is a connector
 
 /// The side of terminal `t` when it is a connector pin.
 pub fn side_of(doc: &Document, t: ConnectionPointId) -> Option<Side> {
-    let term = doc.terminals.get(&t)?;
+    let term = doc.connection_points.get(&t)?;
     let side = Side::of_key(term.key.as_ref()?)?;
     connector_of(doc, term.device()?).is_some_and(|x| x.mating).then_some(side)
 }
@@ -231,14 +231,14 @@ pub fn half_tag(doc: &Document, c: DeviceId, side: Side) -> String {
 /// The half tag a connector pin belongs to (`-X10.S`); `None` for any other terminal.
 pub fn half_tag_of(doc: &Document, t: ConnectionPointId) -> Option<String> {
     let side = side_of(doc, t)?;
-    let c = doc.terminals.get(&t)?.device()?;
+    let c = doc.connection_points.get(&t)?.device()?;
     Some(half_tag(doc, c, side))
 }
 
 /// A connector pin's full name, `-X10.S:3`; `None` for any other terminal.
 pub fn pin_name(doc: &Document, t: ConnectionPointId) -> Option<String> {
     let half = half_tag_of(doc, t)?;
-    let label = doc.terminals.get(&t)?.label.clone()?;
+    let label = doc.connection_points.get(&t)?.label.clone()?;
     Some(format!("{half}:{label}"))
 }
 
@@ -251,7 +251,7 @@ pub fn rep_tag(doc: &Document, c: DeviceId, r: &Representation) -> Option<String
 /// Whether a pin pair's plug-side label is hidden (design 044 §5.2: a pin pair shows its pin name
 /// once, beside the socket point).
 pub fn hides_label(doc: &Document, r: &Representation, t: ConnectionPointId) -> bool {
-    rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.terminals.get(&t).and_then(|x| x.key.as_ref()) == Some(&PLUG_KEY)
+    rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.connection_points.get(&t).and_then(|x| x.key.as_ref()) == Some(&PLUG_KEY)
 }
 
 /// The run class of a connector symbol for the "once per run" tag rule (design 044 §5.2): one
@@ -620,7 +620,7 @@ pub fn half_family(doc: &Document, c: DeviceId, side: Side) -> ConnectorFamily {
 pub struct Shown {
     pub side: Side,
     pub name: String,
-    pub terminal: ConnectionPointId,
+    pub connection_point: ConnectionPointId,
     /// Its point in the definition's frame.
     pub local: Pt,
 }
@@ -642,7 +642,7 @@ pub fn symbol_ops(
     let mut cps = BTreeMap::new();
     let mut shown = Vec::new();
     let pin = is_pin_starter(starter);
-    for (i, td) in d.terminals.iter().enumerate() {
+    for (i, td) in d.connection_points.iter().enumerate() {
         let side = match starter.side() {
             Some(Side::Both) | None => Side::of_key(&td.key).ok_or(CmdError::refused("A connector symbol's point has no side."))?,
             Some(s) => s,
@@ -652,10 +652,10 @@ pub fn symbol_ops(
         let key = side.key().ok_or(CmdError::refused("A connector symbol's point has no side."))?;
         ops.push(Op::AddConnectionPoint {
             id: t,
-            terminal: ConnectionPoint { owner: c.into(), label: Some(name.clone()), key: Some(key), accepts: td.accepts },
+            connection_point: ConnectionPoint { owner: c.into(), label: Some(name.clone()), key: Some(key), accepts: td.accepts },
         });
         cps.insert(t, td.at);
-        shown.push(Shown { side, name: name.clone(), terminal: t, local: td.at });
+        shown.push(Shown { side, name: name.clone(), connection_point: t, local: td.at });
     }
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
     ops.push(Op::LinkRepresentation {
@@ -777,7 +777,8 @@ pub fn land_pin(
         (Some(s), Some(p)) if shown.len() == 2 => {
             let (ps, pp) = (placement.apply(s.local), placement.apply(p.local));
             let keep_s = before.is_none_or(|b| b.dist(ps) <= b.dist(pp));
-            let (keep_t, keep_p, rest_t, rest_p) = if keep_s { (s.terminal, ps, p.terminal, pp) } else { (p.terminal, pp, s.terminal, ps) };
+            let (keep_t, keep_p, rest_t, rest_p) =
+                if keep_s { (s.connection_point, ps, p.connection_point, pp) } else { (p.connection_point, pp, s.connection_point, ps) };
             ((RouteEnd::Point(keep_t), keep_p), (RouteEnd::Point(rest_t), rest_p))
         }
         _ => {
@@ -785,9 +786,9 @@ pub fn land_pin(
             let away = Pt::new(2.0 * placement.origin.x - pt.x, 2.0 * placement.origin.y - pt.y);
             let keep_attached = before.is_none_or(|b| b.dist(pt) <= b.dist(away));
             if keep_attached {
-                ((RouteEnd::Point(first.terminal), pt), (RouteEnd::Free, on.at))
+                ((RouteEnd::Point(first.connection_point), pt), (RouteEnd::Free, on.at))
             } else {
-                ((RouteEnd::Free, on.at), (RouteEnd::Point(first.terminal), pt))
+                ((RouteEnd::Free, on.at), (RouteEnd::Point(first.connection_point), pt))
             }
         }
     };
@@ -1018,7 +1019,7 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
                     kind: CheckKind::ConnectorPinTwice,
                     page,
                     at,
-                    object: Object::Terminal(second),
+                    object: Object::ConnectionPoint(second),
                     which: format!("{}:{name} is drawn twice", half_tag(doc, c, side)),
                     fix: Some(Fix::ConnectorNextPin(second)),
                 });
@@ -1160,7 +1161,7 @@ pub fn ref_edges(
         let mut mates: BTreeSet<RepresentationId> = BTreeSet::new();
         let mut here = false;
         for t in r.connection_points.keys() {
-            let Some(x) = doc.terminals.get(t) else { continue };
+            let Some(x) = doc.connection_points.get(t) else { continue };
             let other = side.other().key();
             for (m, mx) in doc.connection_points_of(c) {
                 if mx.label != x.label || mx.key != other {

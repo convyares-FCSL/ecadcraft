@@ -787,7 +787,7 @@ fn r8_a_cable_edit_touches_only_that_cables_views() {
     let other: CableId = id(&slash_across(&mut h, (x - 5.0, y), (x + 5.0, y), None).unwrap(), "cable");
     let k = new_cable(&mut h, json!({"cores": "4G"}));
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
         p.checks();
     });
     let before = h.doc();
@@ -807,7 +807,7 @@ fn r8_a_cable_edit_touches_only_that_cables_views() {
         let tol = p.tolerance;
         let kept = p.checks().sorted(&doc);
         let built = ecad_engine::project::engine_views().checks(&doc, tol).sorted(&doc);
-        let row = p.outputs().cable_row(k).cloned();
+        let row = p.reports().cable_row(k).cloned();
         let fresh = ecad_electrical::reports::kept::ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics).cable_row(k).cloned();
         (kept, built, row, fresh)
     });
@@ -832,7 +832,7 @@ fn r8_kept_rows_follow_new_remove_assign_and_undo() {
         let tol = p.tolerance;
         let kept = p.checks().sorted(&doc);
         let built = ecad_engine::project::engine_views().checks(&doc, tol).sorted(&doc);
-        let o = p.outputs();
+        let o = p.reports();
         let rows = (o.cable_row(k).cloned(), o.cable_row(k2).cloned(), o.cable_count());
         let f = ecad_electrical::reports::kept::ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
         let fresh = (f.cable_row(k).cloned(), f.cable_row(k2).cloned(), f.cable_count());
@@ -1029,14 +1029,14 @@ fn f4_glands_default_from_the_cable_type_and_are_overridden_per_end() {
     let doc = h.doc();
     assert_eq!(cables::gland(&doc, k, Side::From), Some(("M20".into(), Source::Type)));
     assert_eq!(cables::gland(&doc, k, Side::To), Some(("M25".into(), Source::Here)));
-    let row = h.cfg(|p| p.outputs().cable_row(k).map(|r| r.glands.clone()));
+    let row = h.cfg(|p| p.reports().cable_row(k).map(|r| r.glands.clone()));
     assert_eq!(row, Some([Some("M20".to_string()), Some("M25".to_string())]));
     // The type's gland changes: the from end follows, the overridden end does not.
     h.run("setstyle", json!({"catalogue": "cable", "id": ty, "fields": {"gland": "M16"}})).unwrap();
     let doc = h.doc();
     assert_eq!(cables::gland(&doc, k, Side::From).map(|g| g.0).as_deref(), Some("M16"));
     assert_eq!(cables::gland(&doc, k, Side::To).map(|g| g.0).as_deref(), Some("M25"));
-    let row = h.cfg(|p| p.outputs().cable_row(k).map(|r| r.glands.clone()));
+    let row = h.cfg(|p| p.reports().cable_row(k).map(|r| r.glands.clone()));
     assert_eq!(row, Some([Some("M16".to_string()), Some("M25".to_string())]), "the list row follows the type");
     // null clears the override: back to the type's.
     h.run("cableedit", json!({"cable": k.hex(), "set": {"to": {"gland": null}}})).unwrap();

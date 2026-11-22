@@ -203,11 +203,11 @@ const OLD: [(&str, u128, &str); 20] = [
     ("motor3", 13, "M"),
     ("motor1", 14, "M"),
     ("trafo", 15, "T"),
-    ("terminal", 16, "X"),
+    ("connection_point", 16, "X"),
     ("di", 17, "A"),
     ("do", 18, "A"),
     ("continuation", 20, ""),
-    ("terminalpe", 21, "X"),
+    ("terminalblockpe", 21, "X"),
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -223,18 +223,19 @@ fn join(h: &mut H, key: &str, at: (f64, f64), device: DeviceId) -> Result<Value,
 
 /// The labels of a `place` result, in order.
 fn labels(v: &Value) -> Vec<String> {
-    v["terminals"].as_array().map(|a| a.iter().map(|t| t["label"].as_str().unwrap_or("?").to_string()).collect()).unwrap_or_default()
+    v["connection_points"].as_array().map(|a| a.iter().map(|t| t["label"].as_str().unwrap_or("?").to_string()).collect()).unwrap_or_default()
 }
 
 /// A terminal of a `place` result by label.
 fn term(v: &Value, label: &str) -> ConnectionPointId {
-    let t = v["terminals"].as_array().and_then(|a| a.iter().find(|t| t["label"] == label)).unwrap_or_else(|| panic!("no point {label} in {v}"));
-    id(t, "terminal")
+    let t =
+        v["connection_points"].as_array().and_then(|a| a.iter().find(|t| t["label"] == label)).unwrap_or_else(|| panic!("no point {label} in {v}"));
+    id(t, "connection_point")
 }
 
 /// Every label of a device's points, sorted.
 fn device_labels(d: &Document, c: DeviceId) -> BTreeSet<String> {
-    d.terminals.values().filter(|t| t.device() == Some(c)).filter_map(|t| t.label.clone()).collect()
+    d.connection_points.values().filter(|t| t.device() == Some(c)).filter_map(|t| t.label.clone()).collect()
 }
 
 fn set(v: &[&str]) -> BTreeSet<String> {
@@ -280,7 +281,7 @@ fn unconnected(d: &Document) -> BTreeSet<ConnectionPointId> {
         .into_iter()
         .filter(|c| c.kind.name() == "unconnected")
         .filter_map(|c| match c.object {
-            Object::Terminal(t) => Some(t),
+            Object::ConnectionPoint(t) => Some(t),
             _ => None,
         })
         .collect()
@@ -300,7 +301,7 @@ fn setprop(h: &mut H, c: DeviceId, key: &str, value: Value) -> Result<Value, Str
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.definitions)
+    (&d.devices, &d.connection_points, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.definitions)
 }
 
 /// Grid position of the i-th placement, far enough apart that no two symbols touch.
@@ -334,7 +335,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         assert!(s.name.to_lowercase().contains(e.word), "{}: name {:?} should contain {:?}", e.key, s.name, e.word);
         let d = s.definition().unwrap_or_else(|err| panic!("{}: {err}", e.key));
         // Points: keys in definition order at the design's positions, on the grid.
-        let got: Vec<(String, f64, f64)> = d.terminals.iter().map(|t| (t.key.to_string(), t.at.x, t.at.y)).collect();
+        let got: Vec<(String, f64, f64)> = d.connection_points.iter().map(|t| (t.key.to_string(), t.at.x, t.at.y)).collect();
         assert_eq!(got.len(), e.points.len(), "{}: points {got:?}", e.key);
         for ((gk, gx, gy), (wk, wx, wy)) in got.iter().zip(&e.points) {
             assert_eq!(gk, wk, "{}: point order {got:?}", e.key);
@@ -362,7 +363,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         let r = symbol_row(&mut h, &e.key).unwrap_or_else(|| panic!("symbols does not list {}", e.key));
         assert_eq!(r["prefix"], json!(format!("-{}", e.prefix)), "{}: {r}", e.key);
         let want: Vec<&str> = e.points.iter().map(|p| p.0.as_str()).collect();
-        assert_eq!(r["terminals"], json!(want), "{}: labels", e.key);
+        assert_eq!(r["connection_points"], json!(want), "{}: labels", e.key);
     }
     // IDs unique across the whole catalogue; the count is the old 21 plus the new ones.
     let ids: BTreeSet<u128> = STARTERS.iter().map(|s| s.id.0).collect();
@@ -639,7 +640,7 @@ fn f_fuse_bank_breaks_the_net_per_fuse() {
 
 /// §3 notes, question 1: a fuse terminal is two points, so the nets on either side differ.
 #[test]
-fn g_fuse_terminal_breaks_the_net() {
+fn g_fuse_terminal_block_breaks_the_net() {
     let mut h = H::new(0x7034_000a);
     let v = place(&mut h, "fuseterm", (100.0, 150.0));
     assert_eq!(v["tag"], json!("-F01"));
@@ -980,8 +981,8 @@ fn p_old_starters_keep_their_content_hash() {
         ("motor3", "8b9285a9c54393f2662969fd682b740aa9e3bfe23d025d7472ad4f35140f74b3"),
         ("motor1", "155bd8445ceaf3a663703fc3ef3deeeffcca4387a9aa7aca4f83e04362066778"),
         ("trafo", "be61de549fbf9fcffc34049d185831e4d7759a93f46e1fb2ffd10012db9c6090"),
-        ("terminal", "065f33dc2121ecf3399489981a3b83e0b670295a2c65ea762a4c416c4a83a84f"),
-        ("terminalpe", "e49dfa23a7aec81f0327f1ec5e7143b9bc60216a4ca47c76508d3ea87d939df5"),
+        ("connection_point", "065f33dc2121ecf3399489981a3b83e0b670295a2c65ea762a4c416c4a83a84f"),
+        ("terminalblockpe", "e49dfa23a7aec81f0327f1ec5e7143b9bc60216a4ca47c76508d3ea87d939df5"),
         ("di", "11ac9ed468c7b43d9c6243e847655c0bdb4182c7f02680657539edef57f04827"),
         ("do", "3eb4db530b04231c3df246d6da2847f48d86d2dc89ad4b8a037cd0a246d6e2fe"),
         ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),

@@ -24,7 +24,7 @@ const NO_ROUTE: &str = "no such wire";
 /// No such route or connection point; the point is not shown on the route's page.
 pub fn connect(doc: &Document, r: RouteId, end: End, t: ConnectionPointId) -> Result<Vec<Op>, CmdError> {
     let page: PageId = doc.routes.get(&r).ok_or(CmdError::refused(NO_ROUTE))?.page;
-    if !doc.terminals.contains_key(&t) {
+    if !doc.connection_points.contains_key(&t) {
         return Err(CmdError::refused("no such connection point"));
     }
     let at = ecad_model::connectivity::derive::connection_point_position(doc, page, t)
@@ -93,16 +93,16 @@ pub struct ConnectParams {
     /// Which end of it.
     end: EndParam,
     /// The connection point, shown on the active page.
-    terminal: ConnectionPointId,
+    connection_point: ConnectionPointId,
 }
 
 impl Generic for ConnectParams {
     const ID: &'static str = "connect";
     const TITLE: &'static str = "Connect";
-    const HELP: &'static str = "{route: id, end: \"A\"|\"B\", terminal: id}";
+    const HELP: &'static str = "{route: id, end: \"A\"|\"B\", connection_point: id}";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let ops = connect(cx.doc, self.route, self.end.into(), self.terminal)?;
+        let ops = connect(cx.doc, self.route, self.end.into(), self.connection_point)?;
         Ok(Outcome::edit("Connect", ops, json!({"connected": true})))
     }
 }

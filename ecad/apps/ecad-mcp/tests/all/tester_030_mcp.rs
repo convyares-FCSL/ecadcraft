@@ -20,13 +20,13 @@ fn sets_key(ops: &[Op], key: &str) -> bool {
 }
 
 fn reads(c: &mut Client) -> Value {
-    let mut preview = c.exec("renumber", json!({"kind": "terminals", "preview": true, "start": 5}));
+    let mut preview = c.exec("renumber", json!({"kind": "terminal_blocks", "preview": true, "start": 5}));
     preview.as_object_mut().map(|o| o.remove("change_count"));
     json!({
         "stripplan": c.exec("stripplan", json!({})),
         "bom": c.exec("bom", json!({})),
         "bom_part": c.exec("bom", json!({"group": "part"})),
-        "checks": c.exec("checks", json!({"kinds": ["accessory-orphan", "no-accessory-part", "link-across-partition", "link-orphan"]})),
+        "checks": c.exec("checks", json!({"kinds": ["accessory-orphan", "no-accessory-part", "jumper-bar-across-partition", "jumper-bar-orphan"]})),
         "preview": preview,
     })
 }
@@ -40,9 +40,9 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
         for x in [100, 110, 120, 130, 140, 150, 160, 170] {
             c.exec("wire", json!({"points": [[x, 200], [x, 100]]}));
         }
-        let f = c.exec("terminals", json!({"from": [90, 170], "to": [180, 170]}));
+        let f = c.exec("terminalblocks", json!({"from": [90, 170], "to": [180, 170]}));
         let strip = hex(&f, "strip");
-        let terms: Vec<String> = f["terminals"].as_array().unwrap().iter().map(|x| hex(x, "terminal")).collect();
+        let terms: Vec<String> = f["connection_points"].as_array().unwrap().iter().map(|x| hex(x, "connection_point")).collect();
         assert_eq!(terms.len(), 8, "{f}");
 
         // Every write of AC 6, each one transaction by the agent.
@@ -57,18 +57,18 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
             ("setprop", json!({"component": strip, "key": "acc.after.4", "value": "partition"}), &["acc.after.4"]),
             ("setprop", json!({"component": strip, "key": "acc.on.4", "value": "marker"}), &["acc.on.4"]),
             ("setprop", json!({"component": strip, "key": "partition.part_number", "value": "TP-1"}), &["partition.part_number"]),
-            ("jumper", json!({"terminals": [terms[0], terms[1]]}), &["link.1"]),
-            ("jumper", json!({"strip": strip, "positions": "3-4"}), &["link.2"]),
-            ("jumper", json!({"terminals": [terms[0], terms[2]], "skip": true}), &["link.3"]),
-            ("jumper", json!({"link": {"strip": strip, "n": 2}, "add": ["5", "6", "7", "8"]}), &["link.2"]),
-            ("jumper", json!({"link": {"strip": strip, "n": 2}, "remove": ["8"]}), &["link.2"]),
-            ("jumper", json!({"link": {"strip": strip, "n": 2}, "split_at": "4"}), &["link.2"]),
-            ("jumper", json!({"link": {"strip": strip, "n": 3}, "delete": true}), &["link.3"]),
-            ("setprop", json!({"component": strip, "key": "link.1", "value": "1-3"}), &["link.1"]),
+            ("jumper", json!({"connection_points": [terms[0], terms[1]]}), &["jumper_bar.1"]),
+            ("jumper", json!({"strip": strip, "positions": "3-4"}), &["jumper_bar.2"]),
+            ("jumper", json!({"connection_points": [terms[0], terms[2]], "skip": true}), &["jumper_bar.3"]),
+            ("jumper", json!({"link": {"strip": strip, "n": 2}, "add": ["5", "6", "7", "8"]}), &["jumper_bar.2"]),
+            ("jumper", json!({"link": {"strip": strip, "n": 2}, "remove": ["8"]}), &["jumper_bar.2"]),
+            ("jumper", json!({"link": {"strip": strip, "n": 2}, "split_at": "4"}), &["jumper_bar.2"]),
+            ("jumper", json!({"link": {"strip": strip, "n": 3}, "delete": true}), &["jumper_bar.3"]),
+            ("setprop", json!({"component": strip, "key": "jumper_bar.1", "value": "1-3"}), &["jumper_bar.1"]),
             ("setprop", json!({"component": strip, "key": "jumper.bar", "value": "4"}), &["jumper.bar"]),
-            ("setprop", json!({"component": strip, "key": "link.1.part_number", "value": "JB-RD"}), &["link.1.part_number"]),
+            ("setprop", json!({"component": strip, "key": "jumper_bar.1.part_number", "value": "JB-RD"}), &["jumper_bar.1.part_number"]),
             // Renumber with accessory keys and links: labels 1…8 become 5…12.
-            ("renumber", json!({"kind": "terminals", "start": 5}), &["acc.after.8", "acc.on.8", "link.1", "link.2"]),
+            ("renumber", json!({"kind": "terminal_blocks", "start": 5}), &["acc.after.8", "acc.on.8", "jumper_bar.1", "jumper_bar.2"]),
         ];
         for (cmd, params, keys) in writes {
             let n = c.log().len();
@@ -79,7 +79,7 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
             }
             assert!(
                 ops.iter()
-                    .filter(|o| matches!(o, Op::SetProperty { key, .. } if key.starts_with("link.") || key.starts_with("acc.")))
+                    .filter(|o| matches!(o, Op::SetProperty { key, .. } if key.starts_with("jumper_bar.") || key.starts_with("acc.")))
                     .all(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), .. })),
                 "accessory and link keys are strip properties: {ops:?}"
             );
@@ -90,15 +90,15 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
         let links: Vec<String> = d.devices[&sp]
             .properties
             .iter()
-            .filter(|(k, _)| k.starts_with("link.") && k[5..].chars().all(|c| c.is_ascii_digit()))
+            .filter(|(k, _)| k.starts_with("jumper_bar.") && k[5..].chars().all(|c| c.is_ascii_digit()))
             .map(|(_, v)| v.replace(' ', ""))
             .collect();
         assert!(links.contains(&"5-7".to_string()), "link 1-3 → 5-7: {links:?}");
         // A link that joins two nets records the numbering pass's ops in the same transaction.
         let n = c.log().len();
-        c.exec("jumper", json!({"terminals": [terms[3], terms[2]]}));
+        c.exec("jumper", json!({"connection_points": [terms[3], terms[2]]}));
         let Transaction { label: _, ops, .. } = assert_one_by_agent(&mut c, n, "jumper 4-3");
-        assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { key, .. } if key.starts_with("link."))), "{ops:?}");
+        assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { key, .. } if key.starts_with("jumper_bar."))), "{ops:?}");
         // `u` through MCP undoes it.
         c.exec("u", Value::Null);
         assert_eq!(c.log().len(), n + 2);
@@ -119,18 +119,18 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
     for (cmd, params) in [
         ("accessory", json!({"strip": strip, "at": "start", "items": ["end_plate"]})),
         ("accessory", json!({"strip": strip, "at": ["5", "6"], "on": true, "items": ["marker"]})),
-        ("accessory", json!({"terminal": terms[0], "items": ["partition"]})),
+        ("accessory", json!({"connection_point": terms[0], "items": ["partition"]})),
         ("setprop", json!({"component": strip, "key": "acc.after.5", "value": "partition"})),
         ("setprop", json!({"component": strip, "key": "acc.on.5", "value": "marker"})),
         ("setprop", json!({"component": strip, "key": "end_stop.part_number", "value": "X"})),
         ("setprop", json!({"component": strip, "key": "marker.per_card", "value": "5"})),
-        ("setprop", json!({"component": strip, "key": "link.1", "value": "5-8"})),
-        ("setprop", json!({"component": strip, "key": "link.1.maker", "value": "X"})),
+        ("setprop", json!({"component": strip, "key": "jumper_bar.1", "value": "5-8"})),
+        ("setprop", json!({"component": strip, "key": "jumper_bar.1.maker", "value": "X"})),
         ("setprop", json!({"component": strip, "key": "jumper.bar", "value": "10"})),
         ("projectprops", json!({"props": {"strip_end_plate_part_number": "EP-1"}})),
         ("projectprops", json!({"props": {"strip_jumper_bar": "8"}})),
-        ("renumber", json!({"kind": "terminals", "start": 1})),
-        ("jumper", json!({"terminals": [terms[0], terms[3]]})),
+        ("renumber", json!({"kind": "terminal_blocks", "start": 1})),
+        ("jumper", json!({"connection_points": [terms[0], terms[3]]})),
         ("jumper", json!({"strip": strip, "positions": "11-12"})),
         ("jumper", json!({"link": {"strip": strip, "n": 1}, "add": ["9"]})),
         ("jumper", json!({"link": {"strip": strip, "n": 1}, "remove": ["6"]})),

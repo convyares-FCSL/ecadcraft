@@ -21,7 +21,7 @@ fn cable_on_a_wire() -> (Ledger, CableId, WireId, WireId) {
     for id in &t {
         ops.push(Op::AddConnectionPoint {
             id: *id,
-            terminal: ConnectionPoint { owner: d.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: d.into(), label: None, key: None, accepts: Default::default() },
         });
     }
     ops.push(Op::CreateWire { id: w1, wire: Wire::new(NetId(901), ConductorId(902), t[0], t[1]) });

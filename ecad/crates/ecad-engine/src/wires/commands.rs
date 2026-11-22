@@ -59,7 +59,7 @@ pub(crate) struct NetsParams {
     conductor: Option<WireId>,
     /// The net of this connection point.
     #[serde(default)]
-    terminal: Option<ConnectionPointId>,
+    connection_point: Option<ConnectionPointId>,
     /// Also nets without a wire.
     #[serde(default)]
     all: Option<bool>,
@@ -75,7 +75,7 @@ impl Command for NetsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let q = rules::NetsQuery {
             page: self.page,
-            choice: NetChoice { conductor: self.conductor, terminal: self.terminal, number: self.number },
+            choice: NetChoice { conductor: self.conductor, connection_point: self.connection_point, number: self.number },
             all: self.all.unwrap_or(false),
             limit: self.limit.unwrap_or(rules::DEFAULT_LIMIT).clamp(1, rules::MAX_LIMIT),
             after: self.after,
@@ -100,7 +100,7 @@ pub(crate) struct NetParams {
     conductor: Option<WireId>,
     /// The net of this connection point.
     #[serde(default)]
-    terminal: Option<ConnectionPointId>,
+    connection_point: Option<ConnectionPointId>,
     /// The (first) net with this wire number.
     #[serde(default)]
     number: Option<String>,
@@ -108,7 +108,7 @@ pub(crate) struct NetParams {
 
 impl Command for NetParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let choice = NetChoice { conductor: self.conductor, terminal: self.terminal, number: self.number };
+        let choice = NetChoice { conductor: self.conductor, connection_point: self.connection_point, number: self.number };
         on_any_page(s, |p, _| Ok(rules::net_json(&rules::net(p.ledger.document(), &choice)?)))
     }
 }
@@ -137,7 +137,7 @@ pub(crate) struct WirenumberParams {
     conductor: Option<WireId>,
     /// A connection point of the net.
     #[serde(default)]
-    terminal: Option<ConnectionPointId>,
+    connection_point: Option<ConnectionPointId>,
     /// The net's current number.
     #[serde(default)]
     number: Option<String>,
@@ -154,7 +154,7 @@ pub(crate) struct WirenumberParams {
 
 impl Command for WirenumberParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let choice = NetChoice { conductor: self.conductor, terminal: self.terminal, number: self.number };
+        let choice = NetChoice { conductor: self.conductor, connection_point: self.connection_point, number: self.number };
         // `fixed` alone (the Properties panel's Fixed box): fix the net's current number, or
         // release it.
         let value = match (self.value, self.fixed) {
@@ -469,10 +469,10 @@ impl Command for ChecksParams {
         let after = self.after.unwrap_or(0);
         on_any_page(s, |p, _| {
             // The project's kept report models (built on first use, then kept from each change).
-            p.outputs();
+            p.reports();
             let doc = p.ledger.document();
-            let outputs = p.kept_reports().ok_or(CmdError::refused("the report models could not be built"))?;
-            let rows: Vec<_> = crate::checks::all_with(doc, p.tolerance, outputs)
+            let reports = p.kept_reports().ok_or(CmdError::refused("the report models could not be built"))?;
+            let rows: Vec<_> = crate::checks::all_with(doc, p.tolerance, reports)
                 .into_iter()
                 .filter(|c| kinds.as_ref().is_none_or(|k| k.contains(&c.kind)))
                 .collect();
@@ -533,7 +533,7 @@ impl Command for WireParams {
             let doc = p.ledger.document();
             let wire = plan.wire.filter(|w| doc.wires.contains_key(w)).or_else(|| ecad_electrical::wires::wire_of_route(doc, plan.route));
             let number = wire.and_then(|w| rules::number_of(doc, w));
-            let attached: Vec<Value> = plan.attached.iter().map(|(e, t)| json!({"end": format!("{e:?}"), "terminal": t.hex()})).collect();
+            let attached: Vec<Value> = plan.attached.iter().map(|(e, t)| json!({"end": format!("{e:?}"), "connection_point": t.hex()})).collect();
             let mut r = json!({
                 "route": plan.route.hex(),
                 "conductor": wire.map(|w| w.hex()),
@@ -601,7 +601,7 @@ pub(crate) fn place_tagless(
             "item": t.item.hex(),
             "definition": t.definition.hex(),
             "symbol": starter.key,
-            "terminal": t.terminal.hex(),
+            "connection_point": t.connection_point.hex(),
             "name": name,
             "caption": caption,
             "attached": t.attached.iter().map(|(r, e)| json!({"route": r.hex(), "end": format!("{e:?}")})).collect::<Vec<_>>(),

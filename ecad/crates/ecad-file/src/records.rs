@@ -421,7 +421,7 @@ pub struct Definition {
     pub name: String,
     pub origin: Option<Origin>,
     pub graphics: Vec<Primitive>,
-    pub terminals: Vec<ConnectionPointDef>,
+    pub connection_points: Vec<ConnectionPointDef>,
     /// Groups of terminal keys joined inside the device (brief 022, FP5). Left out when empty, so
     /// a definition without bridges is written, and hashed, exactly as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -820,11 +820,11 @@ pub enum Op {
     },
     AddConnectionPoint {
         id: ConnectionPointId,
-        terminal: ConnectionPoint,
+        connection_point: ConnectionPoint,
     },
     RemoveConnectionPoint {
         id: ConnectionPointId,
-        terminal: ConnectionPoint,
+        connection_point: ConnectionPoint,
     },
     LinkRepresentation {
         id: RepresentationId,
@@ -1196,8 +1196,8 @@ impl From<&m::Definition> for Definition {
             name: d.name.clone(),
             origin: d.origin.as_ref().map(origin),
             graphics: d.graphics.iter().map(Into::into).collect(),
-            terminals: d
-                .terminals
+            connection_points: d
+                .connection_points
                 .iter()
                 .map(|t| ConnectionPointDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at), accepts: t.accepts })
                 .collect(),
@@ -1312,8 +1312,8 @@ impl From<&m::Op> for Op {
             m::Op::DeleteDevice { id, device } => Op::DeleteDevice { id: *id, device: device.into() },
             m::Op::ModifyDevice { id, before, after } => Op::ModifyDevice { id: *id, before: before.into(), after: after.into() },
             m::Op::SetDeviceDefinition { id, before, after } => Op::SetDeviceDefinition { id: *id, before: *before, after: *after },
-            m::Op::AddConnectionPoint { id, terminal } => Op::AddConnectionPoint { id: *id, terminal: terminal.into() },
-            m::Op::RemoveConnectionPoint { id, terminal } => Op::RemoveConnectionPoint { id: *id, terminal: terminal.into() },
+            m::Op::AddConnectionPoint { id, connection_point } => Op::AddConnectionPoint { id: *id, connection_point: connection_point.into() },
+            m::Op::RemoveConnectionPoint { id, connection_point } => Op::RemoveConnectionPoint { id: *id, connection_point: connection_point.into() },
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
             m::Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id: *id, before: before.into(), after: after.into() },
             m::Op::UnlinkRepresentation { id, rep } => Op::UnlinkRepresentation { id: *id, rep: rep.into() },
@@ -1562,8 +1562,8 @@ impl From<Definition> for m::Definition {
             name: d.name,
             origin: d.origin.map(morigin),
             graphics: d.graphics.into_iter().map(Into::into).collect(),
-            terminals: d
-                .terminals
+            connection_points: d
+                .connection_points
                 .into_iter()
                 .map(|t| m::ConnectionPointDef { key: t.key, label: t.label, at: mpt(t.at), accepts: t.accepts })
                 .collect(),
@@ -1632,8 +1632,8 @@ impl TryFrom<Op> for m::Op {
             Op::DeleteDevice { id, device } => m::Op::DeleteDevice { id, device: a_device(device.into())? },
             Op::ModifyDevice { id, before, after } => m::Op::ModifyDevice { id, before: a_device(before.into())?, after: a_device(after.into())? },
             Op::SetDeviceDefinition { id, before, after } => m::Op::SetDeviceDefinition { id, before, after },
-            Op::AddConnectionPoint { id, terminal } => m::Op::AddConnectionPoint { id, terminal: terminal.into() },
-            Op::RemoveConnectionPoint { id, terminal } => m::Op::RemoveConnectionPoint { id, terminal: terminal.into() },
+            Op::AddConnectionPoint { id, connection_point } => m::Op::AddConnectionPoint { id, connection_point: connection_point.into() },
+            Op::RemoveConnectionPoint { id, connection_point } => m::Op::RemoveConnectionPoint { id, connection_point: connection_point.into() },
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },
             Op::ModifyRepresentation { id, before, after } => m::Op::ModifyRepresentation { id, before: before.into(), after: after.into() },
             Op::UnlinkRepresentation { id, rep } => m::Op::UnlinkRepresentation { id, rep: rep.into() },

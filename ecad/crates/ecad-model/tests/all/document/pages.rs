@@ -76,7 +76,7 @@ fn the_pages_old_keys_are_reserved() {
 #[test]
 fn page_kinds_and_their_words_round_trip() {
     let words: Vec<&str> = GenKind::ALL.iter().map(|k| k.word()).collect();
-    assert_eq!(words, ["cover", "contents", "revisions", "bom-location", "terminals", "cables", "plcrack", "iolist"]);
+    assert_eq!(words, ["cover", "contents", "revisions", "bom-location", "terminal_blocks", "cables", "plcrack", "iolist"]);
     for k in GenKind::ALL {
         assert_eq!(GenKind::parse(k.word()), Some(*k));
     }

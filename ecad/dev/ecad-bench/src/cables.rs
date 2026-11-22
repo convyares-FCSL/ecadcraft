@@ -66,7 +66,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredCable
     }
     out.cables = project.configure(&mut s, |p| {
         p.checks();
-        p.outputs();
+        p.reports();
         p.ledger.document().cables.len()
     })?;
     let (mut n, mut e, mut a, mut sl) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());

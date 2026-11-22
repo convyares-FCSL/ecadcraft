@@ -65,7 +65,7 @@ impl Command for IolistParams {
             .clamp(1, ecad_electrical::reports::MAX_LIMIT);
         let after = self.after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
         on_any_page(s, |p, _| {
-            p.outputs();
+            p.reports();
             let o = p.kept_reports().ok_or(CmdError::refused("The PLC model is not available."))?;
             let doc = p.ledger.document();
             let only_rack = self.rack.as_deref().map(|t| rack_named(doc, t)).transpose()?;

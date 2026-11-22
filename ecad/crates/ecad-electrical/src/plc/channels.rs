@@ -2,7 +2,7 @@
 //! and the rest) and `plcchannel`.
 //!
 //! # Semantics
-//! - A channel point is a `Terminal` of the card: its **label is the pin** (what is printed and
+//! - A channel point is a `ConnectionPoint` of the card: its **label is the pin** (what is printed and
 //!   typed after the tag, `-A02:4`), its **key is `.<i>.<role>`** (the 0-based channel index and
 //!   the role, FP2). The channel number shown is `i + plc.channel.first`, so changing the first
 //!   number never rewrites a terminal.
@@ -50,7 +50,7 @@ pub fn key(i: u32, role: ChannelRole) -> Option<PointKey> {
 
 /// The channel and role of terminal `t` of a card; `None` for a point that is not a channel's.
 pub fn point_of(doc: &Document, t: ConnectionPointId) -> Option<(u32, ChannelRole)> {
-    let (i, role) = doc.terminals.get(&t)?.key.as_ref()?.channel()?;
+    let (i, role) = doc.connection_points.get(&t)?.key.as_ref()?.channel()?;
     Some((u32::from(i), role))
 }
 
@@ -80,7 +80,7 @@ pub fn cell_type(s: &Starter) -> Option<CardType> {
 pub fn roles_of(s: &Starter) -> Vec<ChannelRole> {
     let Some(t) = cell_type(s) else { return Vec::new() };
     let Ok(def) = s.definition() else { return Vec::new() };
-    def.terminals.iter().filter_map(|td| td.key.role()).filter(|r| t.roles().contains(r)).collect()
+    def.connection_points.iter().filter_map(|td| td.key.role()).filter(|r| t.roles().contains(r)).collect()
 }
 
 /// `chdi`, `di` for a DI card: the symbols that draw its channels.
@@ -214,7 +214,7 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
 #[derive(Debug, Clone)]
 pub struct Cell {
     pub index: u32,
-    pub terminals: Vec<(ChannelRole, ConnectionPointId, String, Pt)>,
+    pub connection_points: Vec<(ChannelRole, ConnectionPointId, String, Pt)>,
     pub representation: RepresentationId,
     pub item: ItemId,
 }
@@ -228,11 +228,11 @@ pub fn plan_cell(
     ops: &mut Vec<Op>,
 ) -> Result<Cell, CmdError> {
     let def = s.definition()?;
-    let mut terminals = Vec::new();
+    let mut connection_points = Vec::new();
     let mut cps = BTreeMap::new();
     for (role, pin) in &j.pins {
         let at = def
-            .terminals
+            .connection_points
             .iter()
             .find(|td| td.key.role() == Some(*role))
             .map(|td| td.at)
@@ -240,7 +240,7 @@ pub fn plan_cell(
         let t: ConnectionPointId = ids.fresh();
         ops.push(Op::AddConnectionPoint {
             id: t,
-            terminal: ConnectionPoint {
+            connection_point: ConnectionPoint {
                 owner: card.into(),
                 label: Some(pin.clone()),
                 key: Some(key(j.index, *role).ok_or(CmdError::refused("That channel has no such point."))?),
@@ -248,7 +248,7 @@ pub fn plan_cell(
             },
         });
         cps.insert(t, at);
-        terminals.push((*role, t, pin.clone(), at));
+        connection_points.push((*role, t, pin.clone(), at));
     }
     let (item, representation): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def_id, placement }) } });
@@ -263,7 +263,7 @@ pub fn plan_cell(
             connection_points: cps,
         },
     });
-    Ok(Cell { index: j.index, terminals, representation, item })
+    Ok(Cell { index: j.index, connection_points, representation, item })
 }
 
 /// A new card device for channel symbols of type `t` (design 045 §4.4 rule 2): prefix `A`, the
@@ -316,7 +316,7 @@ pub const SNAP_TO_LINE: f64 = 2.0 * crate::symbols::CELL_TOP;
 /// The world point of a cell's first point at `pl`.
 pub fn first_point(s: &Starter, pl: &Placement) -> Option<Pt> {
     let def = s.definition().ok()?;
-    def.terminals.first().map(|td| pl.apply(td.at))
+    def.connection_points.first().map(|td| pl.apply(td.at))
 }
 
 /// One cell the fence lands: its rotation (radians) and which of its points lands on which crossed
@@ -375,7 +375,7 @@ const POINT_MATCH: f64 = 0.5;
 /// 180° when its first wire runs down (`runs_down`).
 pub fn landings(doc: &Document, s: &Starter, members: &[crate::cables::slash::Crossing], role: Option<ChannelRole>) -> Vec<Landing> {
     let roles = roles_of(s);
-    let terms = s.definition().map(|d| d.terminals.clone()).unwrap_or_default();
+    let terms = s.definition().map(|d| d.connection_points.clone()).unwrap_or_default();
     let rotation = |m: &crate::cables::slash::Crossing| if runs_down(doc, m) { Radians(std::f64::consts::PI) } else { Radians(0.0) };
     let n = roles.len();
     if role.is_none() && n > 1 && members.len().is_multiple_of(n) {

@@ -44,15 +44,15 @@ fn page_commands_through_mcp_record_modify_page_by_the_agent() {
     let cover = page_of(&c.exec("newpage", json!({"generated": "cover"})));
     assert_eq!(c.doc().pages[&cover].kind, PageKind::Generated(GenKind::Cover));
     // A terminal plan of every strip has no strip; a plan of one strip is its own kind.
-    let all = page_of(&c.exec("newpage", json!({"generated": "terminals"})));
-    assert_eq!(c.doc().pages[&all].kind, PageKind::Generated(GenKind::Terminals));
+    let all = page_of(&c.exec("newpage", json!({"generated": "terminal_blocks"})));
+    assert_eq!(c.doc().pages[&all].kind, PageKind::Generated(GenKind::TerminalBlocks));
     c.exec("openpage", json!({"page": page.hex()}));
     for x in [100, 120] {
         c.exec("wire", json!({"points": [[x, 200], [x, 100]]}));
     }
-    let f = c.exec("terminals", json!({"from": [90, 150], "to": [130, 150]}));
+    let f = c.exec("terminalblocks", json!({"from": [90, 150], "to": [130, 150]}));
     let strip = f["strip"].as_str().unwrap().to_string();
-    let one = page_of(&c.exec("newpage", json!({"generated": "terminals", "strip": strip})));
+    let one = page_of(&c.exec("newpage", json!({"generated": "terminal_blocks", "strip": strip})));
     let want = ecad_model::DeviceId::parse(&strip).unwrap();
     assert_eq!(c.doc().pages[&one].kind, PageKind::TerminalStrip { strip: want });
 

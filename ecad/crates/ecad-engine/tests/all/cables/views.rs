@@ -66,7 +66,7 @@ fn component(h: &mut H, page: PageId, line: &str, x: f64) {
     let lines = rectangle(h, page, line);
     h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();
     for y in [0.0, 5.0, 10.0] {
-        h.run("addterminal", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap();
+        h.run("addconnectionpoint", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap();
     }
 }
 
@@ -308,7 +308,7 @@ fn edits_on_the_fan_are_refused_and_json_forms_still_work() {
     // Convert to Device and Add Connection Point on a fan line.
     let e = g.h.run("convertcomponent", json!({"handles": [fans[3].hex()]})).unwrap_err();
     assert!(e.contains(FAN_REFUSED), "{e}");
-    let e = g.h.run("addterminal", json!({"handle": fans[3].hex(), "at": [1, 1]})).unwrap_err();
+    let e = g.h.run("addconnectionpoint", json!({"handle": fans[3].hex(), "at": [1, 1]})).unwrap_err();
     assert!(e.contains(FAN_REFUSED), "{e}");
     // New geometry on the reserved layer.
     let e = ecad_engine::convert::item_from(
@@ -349,7 +349,7 @@ fn moving_equipment_beside_a_fan_moves_the_hidden_routes() {
         .find(|c| {
             ecad_model::connectivity::derive::connection_point_positions(&doc, g.page)
                 .iter()
-                .any(|(t, _, at)| doc.terminals[t].device().unwrap() == *c && at.x > 30.0)
+                .any(|(t, _, at)| doc.connection_points[t].device().unwrap() == *c && at.x > 30.0)
         })
         .unwrap();
     let handles = g.h.rep_handles(g.page, right);

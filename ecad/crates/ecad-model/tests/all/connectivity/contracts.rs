@@ -50,7 +50,7 @@ impl P {
             let t: ConnectionPointId = self.ids.fresh();
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                terminal: ConnectionPoint {
+                connection_point: ConnectionPoint {
                     owner: c.into(),
                     label: Some(k.to_string()),
                     key: Some(k.to_string().parse().unwrap()),
@@ -68,8 +68,8 @@ impl P {
         let a: AidId = self.ids.fresh();
         let t: ConnectionPointId = self.ids.fresh();
         let aid = Aid::Continuation { name: Some(ContinuationName::new(name).unwrap()), caption: None };
-        let terminal = ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default() };
-        self.commit(vec![Op::CreateAid { id: a, aid }, Op::AddConnectionPoint { id: t, terminal }]);
+        let connection_point = ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default() };
+        self.commit(vec![Op::CreateAid { id: a, aid }, Op::AddConnectionPoint { id: t, connection_point }]);
         (a, t)
     }
 
@@ -186,7 +186,7 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
         name: "bridged".into(),
         origin: None,
         graphics: vec![],
-        terminals: ["1", "2", "3"]
+        connection_points: ["1", "2", "3"]
             .iter()
             .map(|k| ConnectionPointDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
             .collect(),
@@ -407,11 +407,11 @@ fn random_ops(seed: u64, steps: usize) {
     let names = ["24V", "0V", "L1"];
     for step in 0..steps {
         let doc = p.doc();
-        let terminals: Vec<ConnectionPointId> = doc.terminals.keys().copied().collect();
+        let connection_points: Vec<ConnectionPointId> = doc.connection_points.keys().copied().collect();
         let conductors: Vec<WireId> = doc.wires.keys().copied().collect();
         let comps: Vec<DeviceId> = doc.devices.keys().copied().collect();
         let aids: Vec<AidId> = doc.aids.keys().copied().collect();
-        let pick_t = |i: usize| terminals.get(i % terminals.len().max(1)).copied();
+        let pick_t = |i: usize| connection_points.get(i % connection_points.len().max(1)).copied();
         match next(10) {
             0 | 1 => {
                 let n = 1 + next(3);
@@ -464,7 +464,7 @@ fn random_ops(seed: u64, steps: usize) {
                 let doc = p.doc();
                 let ts: Vec<(ConnectionPointId, ConnectionPoint)> = doc.connection_points_of(c).map(|(t, x)| (t, x.clone())).collect();
                 if ts.iter().all(|(t, _)| doc.ends_at(*t).is_empty()) {
-                    let mut ops: Vec<Op> = ts.into_iter().map(|(id, terminal)| Op::RemoveConnectionPoint { id, terminal }).collect();
+                    let mut ops: Vec<Op> = ts.into_iter().map(|(id, connection_point)| Op::RemoveConnectionPoint { id, connection_point }).collect();
                     ops.push(Op::DeleteDevice { id: c, device: doc.devices.get(&c).unwrap().clone() });
                     p.commit(ops);
                 }
@@ -509,11 +509,11 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
     assert_eq!(p.doc().connectivity().differs_from(&before), None);
 }
 
-/// Brief 030 (design 030 §5.2, FP7): a strip's `link.<n>` joins the nets of the terminals it
+/// Brief 030 (design 030 §5.2, FP7): a strip's `jumper_bar.<n>` joins the nets of the terminals it
 /// names, in the same transaction as the numbering pass; changing or clearing it splits them;
 /// relabelling a terminal keeps the link on its label; the kept nets match a rebuild.
 #[test]
-fn links_join_terminals_by_label_and_number_in_the_same_transaction() {
+fn links_join_connection_points_by_label_and_number_in_the_same_transaction() {
     let mut p = P::new();
     let (strip, t) = p.device(6);
     let w: Vec<WireId> = t.iter().map(|x| p.loose(*x)).collect();
@@ -522,7 +522,7 @@ fn links_join_terminals_by_label_and_number_in_the_same_transaction() {
         let before = p.doc().devices.get(&strip).unwrap().properties.get(key).cloned();
         p.commit(vec![Op::SetProperty { object: ObjectRef::Device(strip), key: key.into(), before, after: value.map(Into::into) }]);
     };
-    set(&mut p, "link.1", Some("1-4"));
+    set(&mut p, "jumper_bar.1", Some("1-4"));
     assert!(p.same_net(w[0], w[3]) && p.same_net(w[1], w[2]));
     assert!(!p.same_net(w[0], w[4]));
     assert_eq!(p.number(w[0]), p.number(w[3]), "one wire number for the linked net");
@@ -530,27 +530,27 @@ fn links_join_terminals_by_label_and_number_in_the_same_transaction() {
     assert!(ops.len() > 1, "the numbering pass's ops are in the link's transaction");
     p.check();
     // A skip link beside it, then shortening link 1 splits 3-4 off.
-    set(&mut p, "link.2", Some("5, 6"));
+    set(&mut p, "jumper_bar.2", Some("5, 6"));
     assert!(p.same_net(w[4], w[5]) && !p.same_net(w[3], w[4]));
-    set(&mut p, "link.1", Some("1-2"));
+    set(&mut p, "jumper_bar.1", Some("1-2"));
     assert!(p.same_net(w[0], w[1]) && !p.same_net(w[0], w[2]) && !p.same_net(w[2], w[3]));
     assert_ne!(p.number(w[0]), p.number(w[2]));
     p.check();
     // Relabelling 1 as 9 (Remove + Add of the same ID, as the planner does) takes it out of 1-2.
-    let old = p.doc().terminals.get(&t[0]).unwrap().clone();
+    let old = p.doc().connection_points.get(&t[0]).unwrap().clone();
     let mut new = old.clone();
     new.label = Some("9".into());
-    p.commit(vec![Op::RemoveConnectionPoint { id: t[0], terminal: old }, Op::AddConnectionPoint { id: t[0], terminal: new }]);
+    p.commit(vec![Op::RemoveConnectionPoint { id: t[0], connection_point: old }, Op::AddConnectionPoint { id: t[0], connection_point: new }]);
     assert!(!p.same_net(w[0], w[1]));
     p.check();
     // Undo of the link edit restores the joined net; clearing the key splits everything.
-    set(&mut p, "link.2", None);
+    set(&mut p, "jumper_bar.2", None);
     assert!(!p.same_net(w[4], w[5]));
     p.check();
     // Unreadable or non-link keys join nothing.
-    set(&mut p, "link.0", Some("1-6"));
-    set(&mut p, "link.3", Some("1-x-6"));
-    set(&mut p, "link.4.part_number", Some("2-6"));
+    set(&mut p, "jumper_bar.0", Some("1-6"));
+    set(&mut p, "jumper_bar.3", Some("1-x-6"));
+    set(&mut p, "jumper_bar.4.part_number", Some("2-6"));
     assert!(!p.same_net(w[4], w[5]));
     p.check();
 }
@@ -567,15 +567,15 @@ fn a_999_terminal_strip_with_long_links_builds_quickly() {
         let before = p.doc().devices.get(&strip).unwrap().properties.get(key).cloned();
         p.commit(vec![Op::SetProperty { object: ObjectRef::Device(strip), key: key.into(), before, after: Some(value.into()) }]);
     };
-    set(&mut p, "link.1", &skip.join(", "));
-    set(&mut p, "link.2", "2-998");
+    set(&mut p, "jumper_bar.1", &skip.join(", "));
+    set(&mut p, "jumper_bar.2", "2-998");
     let start = std::time::Instant::now();
     let built = Connectivity::build(p.doc());
     let took = start.elapsed();
     assert!(took.as_secs_f64() < 5.0, "build took {took:?}");
     let c = p.doc().connectivity();
-    assert_eq!(c.net_of(&ecad_model::Node::Terminal(t[0])), c.net_of(&ecad_model::Node::Terminal(t[998])));
-    assert_eq!(c.net_of(&ecad_model::Node::Terminal(t[0])), c.net_of(&ecad_model::Node::Terminal(t[1])), "joined through 3");
+    assert_eq!(c.net_of(&ecad_model::Node::ConnectionPoint(t[0])), c.net_of(&ecad_model::Node::ConnectionPoint(t[998])));
+    assert_eq!(c.net_of(&ecad_model::Node::ConnectionPoint(t[0])), c.net_of(&ecad_model::Node::ConnectionPoint(t[1])), "joined through 3");
     eprintln!("999-terminal build: {took:?}");
     assert_eq!(p.doc().connectivity().differs_from(&built), None);
 }

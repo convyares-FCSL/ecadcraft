@@ -126,7 +126,7 @@ fn scene(h: &mut H, by_prompts: bool) {
     let left = line_at(h, 0.0, 20.0, 0.0, 0.0);
     // Add Connection Point: a click 2 pixels off the right edge lands on it; a typed point is literal.
     if by_prompts {
-        start(h, "addterminal");
+        start(h, "addconnectionpoint");
         assert_eq!(prompt(h), "Specify point for connection point 1 on a component or [Name]:");
         let p = px(h);
         click(h, Vec2::new(40.0 + 2.0 * p, 10.0));
@@ -140,9 +140,9 @@ fn scene(h: &mut H, by_prompts: bool) {
         typed(h, "");
         assert!(h.s.running.is_none());
     } else {
-        h.run("addterminal", json!({"handle": right.hex(), "at": [40.0, 10.0], "label": "1"})).unwrap();
-        h.run("addterminal", json!({"handle": left.hex(), "at": [0.0, 10.0], "label": "2"})).unwrap();
-        h.run("addterminal", json!({"handle": left.hex(), "at": [0.0, 5.0], "label": "X1"})).unwrap();
+        h.run("addconnectionpoint", json!({"handle": right.hex(), "at": [40.0, 10.0], "label": "1"})).unwrap();
+        h.run("addconnectionpoint", json!({"handle": left.hex(), "at": [0.0, 10.0], "label": "2"})).unwrap();
+        h.run("addconnectionpoint", json!({"handle": left.hex(), "at": [0.0, 5.0], "label": "X1"})).unwrap();
     }
     // Place Symbol: rotated once, then a mirrored one.
     if by_prompts {
@@ -209,7 +209,7 @@ fn scene(h: &mut H, by_prompts: bool) {
         click(h, Vec2::new(2.0, 12.0));
         typed(h, "");
     } else {
-        h.run("connect", json!({"route": loose.hex(), "end": "A", "terminal": t2.hex()})).unwrap();
+        h.run("connect", json!({"route": loose.hex(), "end": "A", "connection_point": t2.hex()})).unwrap();
         h.run("disconnect", json!({"route": loose.hex(), "end": "A"})).unwrap();
     }
 }
@@ -249,7 +249,7 @@ fn json_forms_never_prompt() {
     let lines = rectangle(&mut h);
     let calls: Vec<(&str, Value)> = vec![
         ("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})),
-        ("addterminal", json!({"handle": lines[1].hex(), "at": [40, 10]})),
+        ("addconnectionpoint", json!({"handle": lines[1].hex(), "at": [40, 10]})),
         ("place", json!({"at": [100, 0], "rotation": 90})),
         ("wire", json!({"points": [[40, 10], [90, 0]]})),
     ];
@@ -261,7 +261,7 @@ fn json_forms_never_prompt() {
     h.run("disconnect", json!({"route": w.hex(), "end": "A"})).unwrap();
     assert!(h.s.running.is_none());
     let t = connection_point_at(&h.doc(), page(&mut h), 40.0, 10.0);
-    h.run("connect", json!({"route": w.hex(), "end": "A", "terminal": t.hex()})).unwrap();
+    h.run("connect", json!({"route": w.hex(), "end": "A", "connection_point": t.hex()})).unwrap();
     assert!(h.s.running.is_none());
     // `name {json}` at the command line runs the JSON form too.
     h.cmdline(r#"wire {"points":[[0,40],[10,40]]}"#);
@@ -277,7 +277,7 @@ fn every_tool_names_its_first_prompt_and_refuses_off_an_ecad_page() {
     let firsts = [
         ("convertcomponent", "Select objects to convert to a component:"),
         // No component on the page yet: the prompt promises no number (fix round 2, N3).
-        ("addterminal", "Specify point for a connection point on a component or [Name]:"),
+        ("addconnectionpoint", "Specify point for a connection point on a component or [Name]:"),
         ("place", "Enter symbol or [List/Rotate/Mirror] <coil>:"),
         ("wire", "Specify first point of wire or [Potential/Category/Join] <auto>:"),
         ("connect", "Select wire near the end to connect:"),
@@ -321,7 +321,7 @@ fn esc_at_every_prompt_drops_only_the_pending_input_and_undo_takes_one_object() 
             h.s.input(Input::Pick(all)).unwrap();
         }),
         ("terminal name pending", |h, _| {
-            start(h, "addterminal");
+            start(h, "addconnectionpoint");
             typed(h, "N");
             h.s.cmdline("Q9").unwrap();
         }),
@@ -352,7 +352,7 @@ fn esc_at_every_prompt_drops_only_the_pending_input_and_undo_takes_one_object() 
         h.check();
     }
     // Committed objects stay through Esc; one undo removes the last one only.
-    start(&mut h, "addterminal");
+    start(&mut h, "addconnectionpoint");
     typed(&mut h, "40,5");
     typed(&mut h, "40,15");
     let two = state(&mut h);
@@ -383,7 +383,7 @@ fn quick(h: &mut H) {
     let hs: Vec<String> = lines.iter().map(|x| x.hex()).collect();
     h.run("convertcomponent", json!({ "handles": hs })).unwrap();
     let right = line_at(h, 40.0, 0.0, 40.0, 20.0);
-    h.run("addterminal", json!({"handle": right.hex(), "at": [40, 10], "label": "1"})).unwrap();
+    h.run("addconnectionpoint", json!({"handle": right.hex(), "at": [40, 10], "label": "1"})).unwrap();
     h.run("place", json!({"at": [100, 0], "rotation": 90})).unwrap();
 }
 
@@ -463,10 +463,10 @@ fn errors_are_shown_and_the_prompt_repeats() {
     h.cmdline("zoom w -20,-20 220,120");
     let head = h.head();
     let cases: &[(&str, Vec2, &str)] = &[
-        ("addterminal", Vec2::new(200.0, 200.0), "No component outline there. Click on a component's outline."),
-        ("addterminal", Vec2::new(15.0, 60.0), "That object is not part of a component. Convert it to a component first."),
-        ("addterminal", Vec2::new(105.0, 5.0), "connection points of placed symbols come from their definition"),
-        ("addterminal", Vec2::new(15.0, 80.0), "That is not a component outline."),
+        ("addconnectionpoint", Vec2::new(200.0, 200.0), "No component outline there. Click on a component's outline."),
+        ("addconnectionpoint", Vec2::new(15.0, 60.0), "That object is not part of a component. Convert it to a component first."),
+        ("addconnectionpoint", Vec2::new(105.0, 5.0), "connection points of placed symbols come from their definition"),
+        ("addconnectionpoint", Vec2::new(15.0, 80.0), "That is not a component outline."),
         ("connect", Vec2::new(15.0, 60.0), "That is not a wire."),
         ("disconnect", Vec2::new(200.0, 200.0), "That is not a wire."),
     ];
@@ -512,7 +512,7 @@ fn hostile_input_is_refused_without_a_commit() {
     let mut h = new_h();
     quick(&mut h);
     let head = h.head();
-    for cmd in ["addterminal", "place", "wire", "connect", "disconnect"] {
+    for cmd in ["addconnectionpoint", "place", "wire", "connect", "disconnect"] {
         start(&mut h, cmd);
         for text in ["nan,0", "1e309,0", "@1e300<0", "2e12,0"] {
             h.s.cmdline(text).unwrap();
@@ -528,7 +528,7 @@ fn hostile_input_is_refused_without_a_commit() {
         h.s.cancel();
     }
     // A name of 10 000 characters, or with a control character.
-    start(&mut h, "addterminal");
+    start(&mut h, "addconnectionpoint");
     typed(&mut h, "N");
     h.s.input(Input::Text("x".repeat(10_000))).unwrap();
     assert_eq!(h.s.log.last().unwrap(), interact::BAD_NAME);
@@ -549,7 +549,7 @@ fn hostile_input_is_refused_without_a_commit() {
 }
 
 #[test]
-fn the_overlay_marks_terminals_and_wire_ends_and_hover_names_them() {
+fn the_overlay_marks_connection_points_and_wire_ends_and_hover_names_them() {
     let mut h = new_h();
     quick(&mut h);
     h.run("wire", json!({"points": [[40, 10], [70, 10], [70, 0], [90, 0]]})).unwrap();
@@ -599,17 +599,17 @@ fn the_overlay_marks_terminals_and_wire_ends_and_hover_names_them() {
 }
 
 #[test]
-fn default_terminal_names_are_the_smallest_unused_number() {
+fn default_connection_point_names_are_the_smallest_unused_number() {
     let mut h = new_h();
     let lines = rectangle(&mut h);
     let hs: Vec<String> = lines.iter().map(|x| x.hex()).collect();
     let c: DeviceId = id(&h.run("convertcomponent", json!({ "handles": hs })).unwrap(), "component");
     let right = line_at(&mut h, 40.0, 0.0, 40.0, 20.0);
     for (at, label) in [([40, 2], "2"), ([40, 4], "A")] {
-        h.run("addterminal", json!({"handle": right.hex(), "at": at, "label": label})).unwrap();
+        h.run("addconnectionpoint", json!({"handle": right.hex(), "at": at, "label": label})).unwrap();
     }
     assert_eq!(h.p(|p| interact::next_connection_point_name(p.ledger.document(), c)), "1");
-    h.run("addterminal", json!({"handle": right.hex(), "at": [40, 6], "label": "1"})).unwrap();
+    h.run("addconnectionpoint", json!({"handle": right.hex(), "at": [40, 6], "label": "1"})).unwrap();
     assert_eq!(h.p(|p| interact::next_connection_point_name(p.ledger.document(), c)), "3");
 }
 
@@ -642,7 +642,7 @@ fn a_click_lands_on_the_outline_nearest_the_cursor() {
 fn a_panic_in_a_prompt_or_preview_keeps_what_the_run_committed() {
     let mut h = new_h();
     quick(&mut h);
-    start(&mut h, "addterminal");
+    start(&mut h, "addconnectionpoint");
     typed(&mut h, "0,10");
     let one = h.head();
     h.cfg(|p| p.faults.panic_in_form_preview = true);

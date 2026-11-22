@@ -317,7 +317,7 @@ mod tests {
     fn the_rules() {
         let none = json!({});
         assert!(check("ecadinspect", &none, false, None).is_ok());
-        for id in ["cablerefs", "cablegoto", "openpage"] {
+        for id in ["cablereferences", "cablegoto", "openpage"] {
             assert!(check(id, &json!({"reference": "1"}), false, None).is_ok(), "{id} reads");
             assert!(check(id, &json!({}), false, Some("locked")).is_ok(), "{id} reads a read-only project");
         }

@@ -53,10 +53,10 @@ pub enum Noun {
     Representation,
     Strip,
     Symbol,
-    /// A device's landing point for a conductor (`Terminal` in code).
-    Terminal,
+    /// A device's landing point for a conductor (`ConnectionPoint` in code).
+    ConnectionPoint,
     /// The DIN-rail terminal device.
-    TerminalDevice,
+    TerminalBlock,
     TerminalStrip,
     Wire,
 }
@@ -77,8 +77,8 @@ impl Noun {
             Noun::Representation => "representation",
             Noun::Strip => "strip",
             Noun::Symbol => "symbol",
-            Noun::Terminal => "connection point",
-            Noun::TerminalDevice => "terminal",
+            Noun::ConnectionPoint => "connection point",
+            Noun::TerminalBlock => "connection_point",
             Noun::TerminalStrip => "terminal strip",
             Noun::Wire => "wire",
         }
@@ -95,7 +95,7 @@ impl std::fmt::Display for Noun {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Parsed {
     /// [`crate::connectivity::jumper_bars::parse`].
-    Link,
+    JumperBar,
     /// [`crate::naming::numbering::plan`].
     Numbering,
     /// [`crate::SheetSpec::parse`] and [`crate::SheetSpec::check`].

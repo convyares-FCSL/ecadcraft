@@ -11,7 +11,7 @@ use crate::convert::kind_for_primitive;
 use crate::pages::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextDraw};
 use ecad_electrical::pages::generated::*;
 use ecad_electrical::reports::kept::ReportModels;
-use {crate::styles::draw::Look, ecad_electrical::styles::text_style::TextKind};
+use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextKind};
 
 /// Draws in paper millimetres, sheet origin at `x0`.
 pub struct Draw {
@@ -47,11 +47,11 @@ impl Draw {
         let kind = kind_for_primitive(&Primitive::Polyline { vertices: v, closed: true });
         self.out.push(Part { kind, weight: Some(weight), aci, layer: LAYER });
     }
-    pub fn text(&mut self, at: (f64, f64), look: TextDraw, value: &str, h: HAlign, aci: Option<u8>, room: Option<f64>) {
+    pub fn text(&mut self, at: (f64, f64), draw: TextDraw, value: &str, h: HAlign, aci: Option<u8>, room: Option<f64>) {
         if value.is_empty() {
             return;
         }
-        let height = look.mm;
+        let height = draw.mm;
         let (shown, wf) = crate::pages::frame::fit(value, height, room);
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
@@ -63,19 +63,19 @@ impl Draw {
             rotation: 0.0,
             width_factor: wf,
             oblique: 0.0,
-            style: look.style.into(),
+            style: draw.style.into(),
             halign: h,
             valign: VAlign::Middle,
         });
-        self.out.push(Part { kind, weight: look.weight, aci, layer: LAYER });
+        self.out.push(Part { kind, weight: draw.weight, aci, layer: LAYER });
     }
 }
 
 /// The missing-data mark (design 033 §3.1, `ecad.missing-box`): `?` in a thin box inset by the
 /// registry's `print.missing_box_inset` into the cell from `lo` to `hi` (model coordinates, `k`
-/// drawing units per millimetre), the text in `look`. Both parts are [`FLAGGED_ACI`] on
+/// drawing units per millimetre), the text in `draw`. Both parts are [`FLAGGED_ACI`] on
 /// [`LAYER`]: yellow on screen; Print Book prints them in [`FLAGGED_PRINT_ACI`].
-pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, look: TextDraw) -> Vec<Part> {
+pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, draw: TextDraw) -> Vec<Part> {
     if !(k.is_finite() && k > 0.0) || !lo.is_finite() || !hi.is_finite() {
         return Vec::new();
     }
@@ -86,7 +86,7 @@ pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, look: TextDraw) -> V
     let (x0, y0, x1, y1) = (lo.x.min(hi.x) / k, lo.y.min(hi.y) / k, lo.x.max(hi.x) / k, lo.y.max(hi.y) / k);
     let inset = inset_mm.max(0.0).min((x1 - x0) / 4.0).min((y1 - y0) / 4.0);
     d.rect((x0 + inset, y0 + inset), (x1 - inset, y1 - inset), crate::cables::draw::WIRE_WEIGHT, Some(FLAGGED_ACI));
-    d.text((x0 + inset + 1.0, (y0 + y1) / 2.0), look, MISSING, HAlign::Left, Some(FLAGGED_ACI), Some(x1 - x0 - 2.0 * inset - 1.0));
+    d.text((x0 + inset + 1.0, (y0 + y1) / 2.0), draw, MISSING, HAlign::Left, Some(FLAGGED_ACI), Some(x1 - x0 - 2.0 * inset - 1.0));
     d.out
 }
 
@@ -94,37 +94,37 @@ pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, look: TextDraw) -> V
 /// millimetres, sheet origin at x = `x0`).
 #[allow(clippy::too_many_arguments)]
 fn content(
-    doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: usize, x0: f64, outputs: Option<&ReportModels>, _total: usize,
+    doc: &Document, page: PageId, kind: GenKind, input: &FrameInput, i: usize, x0: f64, reports: Option<&ReportModels>, _total: usize,
     laid: &mut Option<Laid>,
 ) -> Vec<Part> {
     let (l, b, r, t) = area(input);
     let mut d = Draw { k: unit_scale(input.unit), x0, out: Vec::new() };
-    let looks = Look::new(doc);
-    let look = |kind| TextDraw::of(&looks, kind, input.unit);
-    let (header, cell_draw, heading) = (look(TextKind::TableHeader), look(TextKind::Table), look(TextKind::TableHeading));
+    let draws = DrawStyles::new(doc);
+    let draw = |kind| TextDraw::of(&draws, kind, input.unit);
+    let (header, cell_draw, heading) = (draw(TextKind::TableHeader), draw(TextKind::Table), draw(TextKind::TableHeading));
     // Brief 054b (design 054 §6): the cover's blocks.
     if kind == GenKind::Cover {
         return crate::pages::front::cover(doc, input, x0).0;
     }
     // Brief 046: a graphic terminal plan draws its strip sheet.
-    if kind == GenKind::Terminals
+    if kind == GenKind::TerminalBlocks
         && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic
     {
-        return outputs.map_or_else(Vec::new, |o| crate::terminal_strips::draw::content(doc, page, input, i, x0, o));
+        return reports.map_or_else(Vec::new, |o| crate::terminal_strips::draw::content(doc, page, input, i, x0, o));
     }
     // Brief 051 (design 051 §4): the I/O list as ruled tables per card, the rack overview as tiles.
     if matches!(kind, GenKind::IoList | GenKind::PlcRack) {
         let a = ecad_electrical::plc::sheets::Area { l, b, r, t, scale: (r - l) / A3_AREA };
-        let plc = outputs.map(|o| &o.plc);
+        let plc = reports.map(|o| &o.plc);
         if kind == GenKind::IoList {
-            crate::plc::draw::sheets::io_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
+            crate::plc::draw::sheets::io_sheet(doc, plc, &mut d, &draws, input.unit, a, i);
         } else {
-            crate::plc::draw::sheets::rack_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
+            crate::plc::draw::sheets::rack_sheet(doc, plc, &mut d, &draws, input.unit, a, i);
         }
         return d.out;
     }
     // The table and its sheets are laid out once per page, not once per sheet (brief 053).
-    let Laid { cols, rows, sheets } = laid.get_or_insert_with(|| Laid::of(doc, page, kind, outputs));
+    let Laid { cols, rows, sheets } = laid.get_or_insert_with(|| Laid::of(doc, page, kind, reports));
     let scale = (r - l) / A3_AREA;
     let widths: Vec<f64> = cols.iter().map(|(_, w)| w * scale).collect();
     let mut y = t;
@@ -172,9 +172,9 @@ fn content(
             let mid = y - row_mm() / 2.0;
             for (c, (cell, w)) in row.cells.iter().zip(&widths).enumerate() {
                 let aci = (cell == MISSING).then_some(FLAGGED_ACI);
-                if cell == MISSING && row.marks.terminal_box != Some(c) {
+                if cell == MISSING && row.marks.terminal_block_box != Some(c) {
                     d.out.extend(missing_mark(doc, d.p(x, y - row_mm()), d.p(x + w, y), d.k, cell_draw));
-                } else if row.marks.terminal_box == Some(c) {
+                } else if row.marks.terminal_block_box == Some(c) {
                     let cx = x + w / 2.0;
                     d.line((cx - 3.0, mid - 2.0), (cx + 3.0, mid - 2.0));
                     d.line((cx + 3.0, mid - 2.0), (cx + 3.0, mid + 2.0));
@@ -209,7 +209,7 @@ fn content(
             break;
         }
         if bom && row.heading {
-            d.rule((l, y), (r, y), input.look.border);
+            d.rule((l, y), (r, y), input.draw.border);
         } else {
             d.line((l, y), (r, y));
         }
@@ -220,14 +220,14 @@ fn content(
 /// Every frame and content part of `page`: one sheet for an ordinary page, every sheet of a
 /// generated one side by side. `input` is the page's frame input with Total already counting
 /// sheets.
-pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Option<&ReportModels>, total: usize) -> Vec<Part> {
+pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, reports: Option<&ReportModels>, total: usize) -> Vec<Part> {
     let Some(kind) = kind_of(doc, page) else { return crate::pages::frame::parts(input) };
-    let n = sheets_of(doc, page, outputs);
+    let n = sheets_of(doc, page, reports);
     let width = f64::from(input.sheet.width) + SHEET_GAP;
     // Brief 046 (design 046 §6.3): a graphic page titles each sheet by its strip.
-    let graphic = (kind == GenKind::Terminals
+    let graphic = (kind == GenKind::TerminalBlocks
         && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic)
-        .then_some(outputs)
+        .then_some(reports)
         .flatten();
     let mut out = Vec::new();
     let mut laid = None;
@@ -256,31 +256,31 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
             }
         }
         out.extend(frame);
-        out.extend(content(doc, page, kind, &inp, i, x0, outputs, total, &mut laid));
+        out.extend(content(doc, page, kind, &inp, i, x0, reports, total, &mut laid));
     }
     out
 }
 
 /// The frame input of `page` with Total counting sheets, and that total.
-pub fn input_of(doc: &Document, page: PageId, outputs: Option<&ReportModels>) -> (FrameInput, usize) {
+pub fn input_of(doc: &Document, page: PageId, reports: Option<&ReportModels>) -> (FrameInput, usize) {
     let mut input = FrameInput::of(doc, page, &Book::of(doc));
-    let total = book_sheets_of(doc, outputs);
+    let total = book_sheets_of(doc, reports);
     input.total = total.to_string();
     (input, total)
 }
 
 /// Every frame and content part of `page`, the pages drawn from the report models with
-/// `outputs` (the project's kept models, or [`ecad_electrical::views::Views::report_models`] for a state
+/// `reports` (the project's kept models, or [`ecad_electrical::views::Views::report_models`] for a state
 /// it does not keep).
 /// Without them those pages are drawn empty, one sheet each.
-pub fn parts_of(doc: &Document, page: PageId, outputs: Option<&ReportModels>) -> Vec<Part> {
-    parts_of_pending(doc, page, outputs, false)
+pub fn parts_of(doc: &Document, page: PageId, reports: Option<&ReportModels>) -> Vec<Part> {
+    parts_of_pending(doc, page, reports, false)
 }
 
 /// [`parts_of`] with the project's pending flag (design 033 §6): the Rev box and the cover say
 /// when the drawing has changed since the newest issue.
-pub fn parts_of_pending(doc: &Document, page: PageId, outputs: Option<&ReportModels>, pending: bool) -> Vec<Part> {
-    let (input, total) = input_of(doc, page, outputs);
+pub fn parts_of_pending(doc: &Document, page: PageId, reports: Option<&ReportModels>, pending: bool) -> Vec<Part> {
+    let (input, total) = input_of(doc, page, reports);
     let input = input.with_pending(doc, pending);
-    page_parts(doc, page, &input, outputs, total)
+    page_parts(doc, page, &input, reports, total)
 }

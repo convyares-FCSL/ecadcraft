@@ -12,7 +12,7 @@ use ecad_model::{
 fn def(name: &str) -> Definition {
     Definition {
         name: name.into(),
-        terminals: vec![ConnectionPointDef {
+        connection_points: vec![ConnectionPointDef {
             key: "1".parse().unwrap(),
             label: Some("1".into()),
             at: Pt::new(0.0, 0.0),

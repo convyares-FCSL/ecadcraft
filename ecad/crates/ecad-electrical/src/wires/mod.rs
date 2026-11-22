@@ -287,16 +287,16 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
     let mut texts: Vec<(usize, ecad_model::connectivity::wiring::Label)> = Vec::new();
     // Brief 050b (design 050 §5.5): each wire's category gives its label's cross-section and
     // colour and its label rule.
-    let looks = crate::styles::wire::WireLooks::new(doc);
+    let draws = crate::styles::wire::WireDraws::new(doc);
     let mut rules: Vec<String> = Vec::new();
     for (i, (rid, c, v)) in routes.iter().enumerate() {
         let Some((a, b)) = longest_segment(v) else { continue };
-        let look = looks.look(doc, *c);
-        if look.label_rule == "none" {
+        let draw = draws.draw(doc, *c);
+        if draw.label_rule == "none" {
             continue;
         }
         let Some(label) =
-            ecad_model::connectivity::wiring::label_with(doc, *c, look.cross_section.map(|x| x.0), look.colour.map(|x| x.0.to_string()))
+            ecad_model::connectivity::wiring::label_with(doc, *c, draw.cross_section.map(|x| x.0), draw.colour.map(|x| x.0.to_string()))
         else {
             continue;
         };
@@ -307,7 +307,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         }
         routes_in.push(LabelCandidate { rep: *rid, conductor: *c, net: conn.net_of_conductor(*c), text: label.text.clone(), longest: a.dist(b) });
         texts.push((i, label));
-        rules.push(look.label_rule);
+        rules.push(draw.label_rule);
     }
     // One pass per rule over the candidates that follow it (the project's rule for most).
     let mut chosen_ix: Vec<usize> = Vec::new();
@@ -729,7 +729,7 @@ pub fn wire_pages(doc: &Document, w: WireId) -> BTreeSet<PageId> {
 pub struct Tagless {
     pub ops: Vec<Op>,
     pub aid: AidId,
-    pub terminal: ConnectionPointId,
+    pub connection_point: ConnectionPointId,
     pub item: ItemId,
     pub representation: RepresentationId,
     pub definition: DefinitionId,
@@ -754,12 +754,12 @@ pub fn plan_tagless(
             d
         }
     };
-    let (id, terminal, item, representation): (AidId, ConnectionPointId, ItemId, RepresentationId) =
+    let (id, connection_point, item, representation): (AidId, ConnectionPointId, ItemId, RepresentationId) =
         (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     ops.push(Op::CreateAid { id, aid });
     ops.push(Op::AddConnectionPoint {
-        id: terminal,
-        terminal: ConnectionPoint { owner: id.into(), label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
+        id: connection_point,
+        connection_point: ConnectionPoint { owner: id.into(), label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
     });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {
@@ -776,10 +776,10 @@ pub fn plan_tagless(
     let attached = loose_ends_at(doc, page, placement.origin, ON_WIRE);
     let mut edits = RouteEdits::new(doc);
     for (r, end) in &attached {
-        edits.set_end(*r, *end, RouteEnd::Point(terminal));
+        edits.set_end(*r, *end, RouteEnd::Point(connection_point));
     }
     ops.extend(edits.ops());
-    Ok(Tagless { ops, aid: id, terminal, item, representation, definition, attached })
+    Ok(Tagless { ops, aid: id, connection_point, item, representation, definition, attached })
 }
 
 /// The nearest point to `p` on segment `a`-`b`, and its distance.
@@ -912,7 +912,7 @@ pub const MAX_POINTS_SHOWN: usize = 6;
 
 /// A connection point in words: `-K01:A1`; a continuation `→24V`.
 pub fn point_words(doc: &Document, t: ConnectionPointId) -> String {
-    let Some(term) = doc.terminals.get(&t) else { return "?".into() };
+    let Some(term) = doc.connection_points.get(&t) else { return "?".into() };
     if let Some(a) = term.owner.aid() {
         return format!("\u{2192}{}", crate::continuations::display_name(doc, a));
     }
@@ -926,8 +926,12 @@ pub fn point_words(doc: &Document, t: ConnectionPointId) -> String {
 
 /// The device connection points of a net (not continuations), in words, sorted.
 pub fn net_points(doc: &Document, net: &ecad_model::NetData) -> Vec<String> {
-    let mut v: Vec<String> =
-        net.terminals.iter().filter(|t| doc.terminals.get(t).is_none_or(|x| x.owner.aid().is_none())).map(|t| point_words(doc, *t)).collect();
+    let mut v: Vec<String> = net
+        .connection_points
+        .iter()
+        .filter(|t| doc.connection_points.get(t).is_none_or(|x| x.owner.aid().is_none()))
+        .map(|t| point_words(doc, *t))
+        .collect();
     v.sort();
     v
 }
@@ -972,9 +976,9 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
         lines.push(format!("Potential {p}{from}"));
     }
     // Brief 050b: the wire's own values, else its category's (named).
-    let look = crate::styles::wire::wire_draw(doc, w);
+    let draw = crate::styles::wire::wire_draw(doc, w);
     let w = &doc.settings.wiring;
-    let cat = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
+    let cat = draw.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let shown = |key: &str, v: &Option<(String, crate::defaults::Source)>| {
         let text = |v: &str| if key == ecad_model::connectivity::wiring::COLOUR { w.colour(v) } else { v.to_string() };
         match (v, &cat) {
@@ -985,10 +989,10 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
         }
     };
     let mut values = Vec::new();
-    if let Some(v) = shown(ecad_model::connectivity::wiring::CROSS_SECTION, &look.cross_section) {
+    if let Some(v) = shown(ecad_model::connectivity::wiring::CROSS_SECTION, &draw.cross_section) {
         values.push(format!("Cross-section {v}"));
     }
-    if let Some(v) = shown(ecad_model::connectivity::wiring::COLOUR, &look.colour_text()) {
+    if let Some(v) = shown(ecad_model::connectivity::wiring::COLOUR, &draw.colour_text()) {
         values.push(format!("Colour {v}"));
     }
     if !values.is_empty() {

@@ -74,13 +74,13 @@ fn terminal_strips_in_the_app() {
     h.run_steps(4);
     let sections = h.state().props.lock().unwrap().view.sections.clone();
     let rows: Vec<_> = sections.iter().flat_map(|s| s.rows.iter()).collect();
-    assert!(rows.iter().any(|r| r.key == "terminals" && r.value == "8+1PE"), "{rows:?}");
-    assert!(rows.iter().any(|r| r.key == "terminalcounts" && r.value == "4 drawn, 5 spare"), "{rows:?}");
+    assert!(rows.iter().any(|r| r.key == "terminal_blocks" && r.value == "8+1PE"), "{rows:?}");
+    assert!(rows.iter().any(|r| r.key == "terminal_block_counts" && r.value == "4 drawn, 5 spare"), "{rows:?}");
     // Reports ▸ Terminals and ▸ Cables.
     h.state_mut().show_plan(Some(x1));
     h.run_steps(4);
     let r = h.state().reports.as_ref().unwrap();
-    assert_eq!(r.tab, panel::Tab::Terminals);
+    assert_eq!(r.tab, panel::Tab::TerminalBlocks);
     let t = r.table().clone();
     assert_eq!(t.rows.len(), 9, "four drawn, five spare (8+1PE is 9 positions)");
     assert_eq!(t.rows[0][1].text, "-K01:A2");
@@ -144,5 +144,5 @@ fn terminal_strips_in_the_app() {
     save(&h, &deltas, "028-checks.png");
     h.state_mut().panel_action(project_panel::Action::OfferDrawn(x1));
     h.run_steps(3);
-    assert_eq!(doc(&mut h).devices[&x1].properties["terminals"], "4");
+    assert_eq!(doc(&mut h).devices[&x1].properties["terminal_blocks"], "4");
 }

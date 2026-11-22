@@ -1,5 +1,5 @@
 //! Tester 036 through MCP (brief 011 rule; brief 036 AC 9; design 036 §13 M): on a project saved
-//! at a path with spaces and non-ASCII letters, every new or changed write (`terminals` with type
+//! at a path with spaces and non-ASCII letters, every new or changed write (`connection_points` with type
 //! and level, `place` of a level starter, `termlabel`, `toposition`, `jumper` with levels,
 //! `setprop` of `term_label.*`, `rating.*`, `part_number.<code>`, offers with codes, `link.*`
 //! with levels, `projectprops strip_<code>_part_number` and the registry keys) records one
@@ -33,7 +33,7 @@ fn reads(c: &mut Client) -> Value {
         "stripplan": c.exec("stripplan", json!({"limit": 5000})),
         "bom": c.exec("bom", json!({"limit": 5000})),
         "bom_part": c.exec("bom", json!({"group": "part"})),
-        "checks": c.exec("checks", json!({"kinds": ["level-twice", "position-mixed", "level-missing", "fuse-device", "no-fuse-rating", "too-many-terminals"]})),
+        "checks": c.exec("checks", json!({"kinds": ["level-twice", "position-mixed", "level-missing", "fuse-device", "no-fuse-rating", "too-many-terminal-blocks"]})),
         "defaults": c.exec("defaults", json!({"group": "Terminals"})),
     })
 }
@@ -41,7 +41,7 @@ fn reads(c: &mut Client) -> Value {
 /// The strip's terminal IDs by (position label, level key).
 fn level(c: &mut Client, strip: &str, pos: &str, key: &str) -> String {
     let d = c.doc();
-    d.terminals
+    d.connection_points
         .iter()
         .find(|(_, t)| {
             t.owner.subject_hex() == strip && t.label.as_deref() == Some(pos) && t.key.as_ref().map(ToString::to_string).as_deref() == Some(key)
@@ -67,29 +67,29 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
 
         // The L fence makes the strip; each write after it one transaction by the agent.
         let n = c.log().len();
-        let v = c.exec("terminals", json!({"strip": null, "type": "LNPE", "level": "L", "from": [90, 200], "to": [130, 200]}));
+        let v = c.exec("terminalblocks", json!({"strip": null, "type": "LNPE", "level": "L", "from": [90, 200], "to": [130, 200]}));
         assert_one_by_agent(&mut c, n, &format!("terminals LNPE L → {v}"));
         let x1 = hex(&v, "strip");
         let n = c.log().len();
-        let v = c.exec("terminals", json!({"strip": null, "type": "SEN", "level": "S", "from": [495, 200], "to": [515, 200]}));
+        let v = c.exec("terminalblocks", json!({"strip": null, "type": "SEN", "level": "S", "from": [495, 200], "to": [515, 200]}));
         assert_one_by_agent(&mut c, n, &format!("terminals SEN S → {v}"));
         let x2 = hex(&v, "strip");
         let writes: Vec<(&str, Value, &[&str])> = vec![
-            ("terminals", json!({"strip": x1, "type": "LNPE", "level": "N", "from": [190, 200], "to": [230, 200]}), &[]),
+            ("terminalblocks", json!({"strip": x1, "type": "LNPE", "level": "N", "from": [190, 200], "to": [230, 200]}), &[]),
             ("place", json!({"symbol": "termlnpe.3", "at": [300, 200], "device": x1}), &[]),
-            ("terminals", json!({"strip": x1, "type": "LNPE", "level": "PE", "position": "2", "from": [305, 200], "to": [315, 200]}), &[]),
+            ("terminalblocks", json!({"strip": x1, "type": "LNPE", "level": "PE", "position": "2", "from": [305, 200], "to": [315, 200]}), &[]),
             ("setprop", json!({"component": x1, "key": "term_label.1.1", "value": "L1"}), &["term_label.1.1"]),
             ("setprop", json!({"component": x1, "key": "part_number.lnpe", "value": "LNPE-1"}), &["part_number.lnpe"]),
-            ("setprop", json!({"component": x1, "key": "terminals", "value": "3LNPE+2x3"}), &["terminals"]),
-            ("setprop", json!({"component": x1, "key": "link.1", "value": "1.2-3.2"}), &["link.1"]),
-            ("setprop", json!({"component": x1, "key": "terminal.level.separator", "value": "-"}), &["terminal.level.separator"]),
+            ("setprop", json!({"component": x1, "key": "terminal_blocks", "value": "3LNPE+2x3"}), &["terminals"]),
+            ("setprop", json!({"component": x1, "key": "jumper_bar.1", "value": "1.2-3.2"}), &["jumper_bar.1"]),
+            ("setprop", json!({"component": x1, "key": "terminal_block.level.separator", "value": "-"}), &["terminal_block.level.separator"]),
             ("projectprops", json!({"props": {"strip_lnpe_part_number": "LNPE-P"}}), &["strip_lnpe_part_number"]),
-            ("projectprops", json!({"props": {"terminal.sen.levels": "S,P,M"}}), &["terminal.sen.levels"]),
-            ("jumper", json!({"strip": x2, "positions": "1.1-2.1"}), &["link.1"]),
-            ("terminals", json!({"strip": x2, "type": "FUSE", "level": "All", "from": [395, 200], "to": [405, 200]}), &[]),
+            ("projectprops", json!({"props": {"terminal_block.sen.levels": "S,P,M"}}), &["terminal_block.sen.levels"]),
+            ("jumper", json!({"strip": x2, "positions": "1.1-2.1"}), &["jumper_bar.1"]),
+            ("terminalblocks", json!({"strip": x2, "type": "FUSE", "level": "All", "from": [395, 200], "to": [405, 200]}), &[]),
             ("setprop", json!({"component": x2, "key": "rating.3", "value": "2A"}), &["rating.3"]),
             ("toposition", json!({"device": fuse, "strip": x2}), &["rating.4"]),
-            ("renumber", json!({"kind": "terminals", "start": 1}), &[]),
+            ("renumber", json!({"kind": "terminal_blocks", "start": 1}), &[]),
         ];
         for (cmd, params, keys) in writes {
             let n = c.log().len();
@@ -101,7 +101,11 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
         }
         // termlabel: position and text, each one transaction.
         let t = level(&mut c, &x1, "2", ".1");
-        for params in [json!({"terminal": t, "position": "7"}), json!({"terminal": t, "text": "2.1S"}), json!({"terminal": t, "text": null})] {
+        for params in [
+            json!({"connection_point": t, "position": "7"}),
+            json!({"connection_point": t, "text": "2.1S"}),
+            json!({"connection_point": t, "text": null}),
+        ] {
             let n = c.log().len();
             let v = c.exec("termlabel", params.clone());
             assert_one_by_agent(&mut c, n, &format!("termlabel {params} → {v}"));
@@ -109,23 +113,23 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
         // Jumper on two picked levels of one position: a cross-level link.
         let (a, b) = (level(&mut c, &x1, "1", ".1"), level(&mut c, &x1, "1", ".3"));
         let n = c.log().len();
-        c.exec("jumper", json!({"terminals": [a, b]}));
+        c.exec("jumper", json!({"connection_points": [a, b]}));
         let ops = assert_one_by_agent(&mut c, n, "jumper 1.1 → 1.3").ops;
         assert!(
             ops.iter()
-                .any(|o| matches!(o, Op::SetProperty { key, after: Some(v), .. } if key.starts_with("link.") && ["1.1-1.3", "1-1.3"].contains(&v.replace(' ', "").as_str()))),
+                .any(|o| matches!(o, Op::SetProperty { key, after: Some(v), .. } if key.starts_with("jumper_bar.") && ["1.1-1.3", "1-1.3"].contains(&v.replace(' ', "").as_str()))),
             "{ops:?}"
         );
         // Hostile input: refused through MCP, nothing recorded.
         let n = c.log().len();
         for (cmd, params) in [
-            ("setprop", json!({"component": x1, "key": "terminals", "value": "1000x2"})),
-            ("setprop", json!({"component": x1, "key": "terminals", "value": "6Q3"})),
-            ("setprop", json!({"component": x1, "key": "link.2", "value": "1.1-4.2"})),
-            ("termlabel", json!({"terminal": t, "position": "x".repeat(10_000)})),
-            ("termlabel", json!({"terminal": t, "position": "1"})),
+            ("setprop", json!({"component": x1, "key": "terminal_blocks", "value": "1000x2"})),
+            ("setprop", json!({"component": x1, "key": "terminal_blocks", "value": "6Q3"})),
+            ("setprop", json!({"component": x1, "key": "jumper_bar.2", "value": "1.1-4.2"})),
+            ("termlabel", json!({"connection_point": t, "position": "x".repeat(10_000)})),
+            ("termlabel", json!({"connection_point": t, "position": "1"})),
             ("toposition", json!({"device": x1, "strip": x2})),
-            ("terminals", json!({"strip": x1, "type": "Q", "level": "L", "from": [90, 200], "to": [130, 200]})),
+            ("terminalblocks", json!({"strip": x1, "type": "Q", "level": "L", "from": [90, 200], "to": [130, 200]})),
         ] {
             let m = c.refused("execute", json!({"command": cmd, "params": params}));
             assert!(!m.is_empty(), "{cmd} {params}");
@@ -145,7 +149,7 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
             .as_array()
             .map(|a| a.iter().map(|r| r["key"].as_str().unwrap_or("").to_string()).collect())
             .unwrap_or_default();
-        assert!(keys.iter().any(|k| k == "terminal.level.separator"), "{keys:?}");
+        assert!(keys.iter().any(|k| k == "terminal_block.level.separator"), "{keys:?}");
         assert_eq!(c.ok("save", json!({}))["saved"], json!(true));
         (x1, x2, fuse, before)
     };
@@ -155,21 +159,21 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
     let log = c.log();
     let t = level(&mut c, &x1, "1", ".1");
     for (cmd, params) in [
-        ("terminals", json!({"strip": x1, "type": "LNPE", "level": "L", "from": [90, 200], "to": [130, 200]})),
-        ("terminals", json!({"strip": null, "type": "x3", "level": "All", "from": [495, 200], "to": [515, 200]})),
+        ("terminalblocks", json!({"strip": x1, "type": "LNPE", "level": "L", "from": [90, 200], "to": [130, 200]})),
+        ("terminalblocks", json!({"strip": null, "type": "x3", "level": "All", "from": [495, 200], "to": [515, 200]})),
         ("place", json!({"symbol": "termlnpe.2", "at": [500, 200], "device": x1})),
-        ("termlabel", json!({"terminal": t, "position": "9"})),
-        ("termlabel", json!({"terminal": t, "text": "X"})),
+        ("termlabel", json!({"connection_point": t, "position": "9"})),
+        ("termlabel", json!({"connection_point": t, "text": "X"})),
         ("toposition", json!({"device": fuse, "strip": x2})),
         ("jumper", json!({"strip": x1, "positions": "1.3-2.3"})),
         ("setprop", json!({"component": x1, "key": "term_label.1.2", "value": "N"})),
         ("setprop", json!({"component": x2, "key": "rating.3", "value": "6A"})),
         ("setprop", json!({"component": x1, "key": "part_number.lnpe", "value": "X"})),
-        ("setprop", json!({"component": x1, "key": "terminals", "value": "4LNPE"})),
-        ("setprop", json!({"component": x1, "key": "link.1", "value": "1.1-2.1"})),
+        ("setprop", json!({"component": x1, "key": "terminal_blocks", "value": "4LNPE"})),
+        ("setprop", json!({"component": x1, "key": "jumper_bar.1", "value": "1.1-2.1"})),
         ("projectprops", json!({"props": {"strip_lnpe_part_number": "X"}})),
-        ("projectprops", json!({"props": {"terminal.level.separator": ""}})),
-        ("renumber", json!({"kind": "terminals", "start": 5})),
+        ("projectprops", json!({"props": {"terminal_block.level.separator": ""}})),
+        ("renumber", json!({"kind": "terminal_blocks", "start": 5})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd} {params}");

@@ -1,5 +1,5 @@
 //! The rules of the cross-reference commands (brief 025, design 025 §4.4, §5.3, §5.4): where
-//! `refgoto` goes, and the `mirror` value `mirrormove` writes. The listings (`xrefs`,
+//! `refgoto` goes, and the `mirror` value `mirrormove` writes. The listings (`references`,
 //! `contacts`) are [`crate::references::devices`]'s own; the engine crate's shims open pages and answer in JSON.
 
 use ecad_model::{CableId, DeviceId, Document, ItemId, Op, PageId, Pt, RepresentationId, Subject};
@@ -158,12 +158,12 @@ pub fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: O
 // The commands (generic: crate::commands::run). `refgoto` opens a page, zooms and selects, and stays
 // the engine's.
 
-/// Rows one `xrefs` answers by default.
+/// Rows one `references` answers by default.
 pub const DEFAULT_LIMIT: usize = 200;
-/// Most rows one `xrefs` answers.
+/// Most rows one `references` answers.
 pub const MAX_LIMIT: usize = 2000;
 
-/// `xrefs {component?, cable?, page?, limit?, after?}` (read only): cable and device references,
+/// `references {component?, cable?, page?, limit?, after?}` (read only): cable and device references,
 /// a page at a time.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -211,7 +211,7 @@ pub struct MirrormoveParams {
 }
 
 impl Generic for DeviceReferencesParams {
-    const ID: &'static str = "xrefs";
+    const ID: &'static str = "references";
     const TITLE: &'static str = "List References";
     const HELP: &'static str = "{component?: id, aid?: id, cable?: id, page?: id, limit?: n (200, max 2000), after?: n} (cable, device and continuation references; read only)";
     const PAGES: Pages = Pages::Any;
@@ -225,7 +225,7 @@ impl Generic for DeviceReferencesParams {
         let limit = self.limit.map_or(DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(MAX_LIMIT).clamp(1, MAX_LIMIT));
         let after = self.after.map_or(Ok(0), |n| usize::try_from(n).map_err(|_| CmdError::refused("`after` must be a number")))?;
         let doc = cx.doc;
-        let v = devices::device_references_json(doc, cx.derived.refs(), self.component, self.aid, self.cable, self.page, limit, after)?;
+        let v = devices::device_references_json(doc, cx.derived.references(), self.component, self.aid, self.cable, self.page, limit, after)?;
         Ok(Outcome::answer(v))
     }
 }

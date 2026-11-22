@@ -296,10 +296,10 @@ pub fn wire_rows(doc: &Document) -> Vec<(WireLine, EditedRow)> {
 /// The wire-colour legend as generated (design 054 §6.2): one line per wire category in use, in
 /// category table order, categories with equal colour and cross-section sharing a line.
 fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
-    let looks = crate::styles::wire::WireLooks::new(doc);
+    let draws = crate::styles::wire::WireDraws::new(doc);
     let mut used: BTreeSet<StyleRef> = BTreeSet::new();
     for c in doc.wires.keys() {
-        if let (Some(id), _) = looks.category(doc, *c) {
+        if let (Some(id), _) = draws.category(doc, *c) {
             used.insert(id);
         }
     }
@@ -499,7 +499,7 @@ impl CoverNote {
             Effect::Page { .. }
             | Effect::Layer { .. }
             | Effect::Device { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Rep { .. }
             | Effect::Wire { .. }
             | Effect::Route { .. }
@@ -582,7 +582,7 @@ impl UsesNote {
             | Effect::Item { .. }
             | Effect::Device { .. }
             | Effect::DeviceDefinition { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Rep { .. }
             | Effect::Route { .. }
             | Effect::Cable { .. }
@@ -604,10 +604,10 @@ impl UsesNote {
 impl Uses {
     /// Every conductor's category in `doc`.
     pub fn build(doc: &Document) -> Uses {
-        let looks = crate::styles::wire::WireLooks::new(doc);
+        let draws = crate::styles::wire::WireDraws::new(doc);
         let mut u = Uses::default();
         for c in doc.wires.keys() {
-            let k = looks.category(doc, *c).0;
+            let k = draws.category(doc, *c).0;
             u.add(*c, k);
         }
         u
@@ -673,10 +673,10 @@ impl Uses {
         for c in gone.iter().chain(all.iter()) {
             self.drop_one(*c);
         }
-        let looks = crate::styles::wire::WireLooks::new(doc);
+        let draws = crate::styles::wire::WireDraws::new(doc);
         for c in all {
             if doc.wires.contains_key(&c) {
-                let k = looks.category(doc, c).0;
+                let k = draws.category(doc, c).0;
                 self.add(c, k);
             }
         }

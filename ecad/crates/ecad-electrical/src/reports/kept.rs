@@ -94,9 +94,9 @@ pub struct ReportModels {
     half_loc_rows: BTreeMap<LocKey, usize>,
     /// How many times the half rows were grouped (tests: an unrelated edit groups none).
     pub half_groupings: std::sync::Arc<std::sync::atomic::AtomicU64>,
-    /// Brief 030 (review of PR #57, 4): devices that are not strips but carry `link.<n>` keys.
-    links_off_strip: BTreeSet<DeviceId>,
-    link_keys: BTreeMap<DeviceId, Vec<String>>,
+    /// Brief 030 (review of PR #57, 4): devices that are not strips but carry `jumper_bar.<n>` keys.
+    jumper_bars_off_strip: BTreeSet<DeviceId>,
+    jumper_bar_keys: BTreeMap<DeviceId, Vec<String>>,
     /// Brief 033 (review of #64, 2): the `continuation-clash` rows, kept. Worked out again only
     /// when a page is added, removed or renumbered, an issue changes the revision list, or a kept
     /// generated page's sheet count moves.
@@ -215,7 +215,7 @@ impl ReportModels {
             | Effect::Item { .. }
             | Effect::Device { .. }
             | Effect::DeviceDefinition { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Rep { .. }
             | Effect::Wire { .. }
             | Effect::Route { .. }
@@ -242,7 +242,7 @@ impl ReportModels {
             | Effect::Item { .. }
             | Effect::Device { .. }
             | Effect::DeviceDefinition { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Rep { .. }
             | Effect::Wire { .. }
             | Effect::Route { .. }
@@ -397,7 +397,7 @@ impl ReportModels {
                 }
             }
         }
-        for k in scope.strip_keys.iter().filter(|k| crate::defaults::terminals::is_label_key(k)) {
+        for k in scope.strip_keys.iter().filter(|k| crate::defaults::terminal_blocks::is_label_key(k)) {
             for c in self.strips.inheriting(k) {
                 for (t, _) in doc.connection_points_of(c) {
                     scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
@@ -735,10 +735,10 @@ impl ReportModels {
                 .get(&c)
                 .map(|x| x.properties.keys().filter(|k| ecad_model::connectivity::jumper_bars::jumper_bar_number(k).is_some()).cloned().collect())
                 .unwrap_or_default();
-            self.link_keys.insert(c, keys);
-            self.links_off_strip.insert(c);
-        } else if self.links_off_strip.remove(&c) {
-            self.link_keys.remove(&c);
+            self.jumper_bar_keys.insert(c, keys);
+            self.jumper_bars_off_strip.insert(c);
+        } else if self.jumper_bars_off_strip.remove(&c) {
+            self.jumper_bar_keys.remove(&c);
             self.checks_changed += 1;
         }
         if misplaced {
@@ -800,7 +800,7 @@ impl ReportModels {
             (pos, place.as_ref().map_or(0, |x| x.column), place.as_ref().map_or(0, |x| x.row))
         });
         let Some(t) = t else { return EndCell { order, ..EndCell::default() } };
-        let Some(term) = doc.terminals.get(&t) else { return EndCell { order, ..EndCell::default() } };
+        let Some(term) = doc.connection_points.get(&t) else { return EndCell { order, ..EndCell::default() } };
         if let Some(a) = term.owner.aid() {
             let name = crate::continuations::display_name(doc, a);
             return EndCell { name: Some(format!("{name} >")), order, continuation: true, ..EndCell::default() };
@@ -854,16 +854,16 @@ impl ReportModels {
         let net = conn.net_of_conductor(w).and_then(|id| conn.net(id));
         let pot = net.map(|n| ecad_model::connectivity::wiring::net_potential(doc, n));
         // Brief 050b: the wire's category gives what the wire has none of its own.
-        let look = crate::styles::wire::wire_draw(doc, w);
-        let cross_section = look.cross_section.as_ref().map(|v| v.0.clone());
-        let colour = look.colour.as_ref().map(|v| v.0.to_string());
-        let colour_own = look.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
-        let cross_section_own = look.cross_section.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
-        let category = look.category.clone().map(|id| {
+        let draw = crate::styles::wire::wire_draw(doc, w);
+        let cross_section = draw.cross_section.as_ref().map(|v| v.0.clone());
+        let colour = draw.colour.as_ref().map(|v| v.0.to_string());
+        let colour_own = draw.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
+        let cross_section_own = draw.cross_section.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
+        let category = draw.category.clone().map(|id| {
             let n = crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, &id);
             (id, n)
         });
-        let part = look.category.as_ref().and_then(|id| {
+        let part = draw.category.as_ref().and_then(|id| {
             let f =
                 |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, k, None).and_then(|r| crate::styles::wire::filled(&r));
             let pn = f("part_number")?;
@@ -949,7 +949,7 @@ impl ReportModels {
         for m in &cab.cores {
             let Some(cond) = m.wire().and_then(|w| doc.wires.get(&w)) else { continue };
             for t in &cond.ends {
-                let Some(c) = doc.terminals.get(t).and_then(|x| x.device()) else { continue };
+                let Some(c) = doc.connection_points.get(t).and_then(|x| x.device()) else { continue };
                 let (loc, tag) = match self.devices.get(&c) {
                     Some(d) => (d.location.value.clone(), d.tag.clone()),
                     None => (locations::resolve(doc, c).value, crate::devices::tag_of(doc, c).unwrap_or("?").to_string()),
@@ -1128,7 +1128,7 @@ impl ReportModels {
                     kind: Kind::TooManyTerminalBlocks,
                     page: hi.and_then(|r| r.go).map(|(p, _)| p),
                     at: hi.and_then(|r| r.go).map(|(_, a)| a),
-                    object: hi.and_then(|r| r.terminal).map_or(Object::Device(s.component), Object::Terminal),
+                    object: hi.and_then(|r| r.connection_point).map_or(Object::Device(s.component), Object::ConnectionPoint),
                     which,
                     fix: Some(Fix::OfferDrawn(s.component)),
                 });
@@ -1142,7 +1142,7 @@ impl ReportModels {
                     kind: if multi { Kind::LevelTwice } else { Kind::TerminalBlockTwice },
                     page: go.map(|(p, _)| p),
                     at: go.map(|(_, a)| a),
-                    object: Object::Terminal(*t),
+                    object: Object::ConnectionPoint(*t),
                     which: format!("{}:{label} is drawn twice", s.tag),
                     fix: Some(if multi { Fix::MoveToNextFree(*t) } else { Fix::RenumberStrip(s.component) }),
                 });
@@ -1156,7 +1156,7 @@ impl ReportModels {
                     kind: Kind::PositionMixed,
                     page: go.map(|(p, _)| p),
                     at: go.map(|(_, a)| a),
-                    object: Object::Terminal(*t),
+                    object: Object::ConnectionPoint(*t),
                     which: format!("{}:{pos} mixes {first} and {other} symbols", s.tag),
                     fix: Some(Fix::MoveToNewPosition(*t)),
                 });
@@ -1199,7 +1199,7 @@ impl ReportModels {
             let which = if unrated == 1 { "1 fuse position has no rating".to_string() } else { format!("{unrated} fuse positions have no rating") };
             out.push(Check { kind: Kind::NoFuseRating, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
-        for c in &self.links_off_strip {
+        for c in &self.jumper_bars_off_strip {
             let tag = self.devices.get(c).map_or_else(|| "?".to_string(), |d| d.tag.clone());
             out.push(Check {
                 kind: Kind::JumperBarOnNonStrip,
@@ -1356,7 +1356,7 @@ impl ReportModels {
             + self.strips.check_warnings
             + self.cable_checks[0]
             + self.cable_checks[1]
-            + self.links_off_strip.len()
+            + self.jumper_bars_off_strip.len()
             + self.article_conflicts.len()
             + self.for_missing.len();
         (self.strips.check_errors, warnings, info)
@@ -1410,12 +1410,12 @@ impl ReportModels {
         sheets
     }
 
-    /// The `link.<n>` keys a device that is not a strip carries (kept per device, read on demand).
-    pub fn link_keys_off_strip(&self, c: DeviceId) -> Vec<String> {
-        if !self.links_off_strip.contains(&c) {
+    /// The `jumper_bar.<n>` keys a device that is not a strip carries (kept per device, read on demand).
+    pub fn jumper_bar_keys_off_strip(&self, c: DeviceId) -> Vec<String> {
+        if !self.jumper_bars_off_strip.contains(&c) {
             return Vec::new();
         }
-        self.link_keys.get(&c).cloned().unwrap_or_default()
+        self.jumper_bar_keys.get(&c).cloned().unwrap_or_default()
     }
 
     /// One device's row.
@@ -1947,13 +1947,13 @@ impl ReportModels {
 impl ReportModels {
     /// The terminal plan as a table (Reports ▸ Terminals, CSV): every strip, or `strip` only;
     /// one line per position and conductor (design 028 §5.1), with where each line goes.
-    pub fn terminal_table(&self, strip: Option<DeviceId>) -> (Table, Vec<Option<(PageId, Pt)>>) {
-        self.terminal_table_with(strip, true)
+    pub fn terminal_block_table(&self, strip: Option<DeviceId>) -> (Table, Vec<Option<(PageId, Pt)>>) {
+        self.terminal_block_table_with(strip, true)
     }
 
-    /// [`ReportModels::terminal_table`], with or without the accessory gap rows (brief 030: the
+    /// [`ReportModels::terminal_block_table`], with or without the accessory gap rows (brief 030: the
     /// Terminals tab's Accessories check box; view only).
-    pub fn terminal_table_with(&self, strip: Option<DeviceId>, accessories: bool) -> (Table, Vec<Option<(PageId, Pt)>>) {
+    pub fn terminal_block_table_with(&self, strip: Option<DeviceId>, accessories: bool) -> (Table, Vec<Option<(PageId, Pt)>>) {
         let style = self.style;
         let mut t = Table {
             headers: vec!["Strip", "Inside target", "Inside wire", "Terminal", "Bridge", "Outside wire", "Cable", "Core", "Outside target", "Place"],
@@ -1986,7 +1986,7 @@ impl ReportModels {
                 let marker = if s.acc.markers.contains(&r.label) { " \u{25ad}" } else { "" };
                 // Brief 036: a PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
                 let pe_mark = r.pe && !r.ty.multi();
-                if r.terminal.is_none() {
+                if r.connection_point.is_none() {
                     let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok(r.state()), Cell::default()];
                     row.push(Cell::ok(if pe_mark { format!("{} PE{marker}", r.shown) } else { format!("{}{marker}", r.shown) }));
                     row.push(Cell::ok(s.bridge_cell(ri)));
@@ -2028,10 +2028,10 @@ impl ReportModels {
         (t, go)
     }
 
-    /// The terminal plan as the release writes it (027's `terminal-plan` slot): one line per
+    /// The terminal plan as the release writes it (027's `terminal-block-plan` slot): one line per
     /// position and conductor of every strip in tag order, columns named by `stripplan`'s keys
     /// (design 028 §10); an absent value is an empty cell.
-    pub fn terminal_plan_csv(&self) -> Table {
+    pub fn terminal_block_plan_csv(&self) -> Table {
         let style = self.style;
         let mut t = Table {
             headers: vec![
@@ -2054,7 +2054,7 @@ impl ReportModels {
                 "accessory",
                 "gap",
                 "marker",
-                "links",
+                "jumper_bars",
             ],
             rows: Vec::new(),
         };
@@ -2075,7 +2075,7 @@ impl ReportModels {
                     }
                 };
                 let marker = if s.acc.markers.contains(&r.label) { "yes" } else { "" };
-                let links: Vec<&str> = s.acc.links.iter().filter(|l| l.labels.contains(&r.label)).map(|l| l.text.as_str()).collect();
+                let jumper_bars: Vec<&str> = s.acc.jumper_bars.iter().filter(|l| l.labels.contains(&r.label)).map(|l| l.text.as_str()).collect();
                 let lines = r.inside.len().max(r.outside.len()).max(1);
                 for i in 0..lines {
                     let (inside, outside) = (r.inside.get(i), r.outside.get(i));
@@ -2099,11 +2099,11 @@ impl ReportModels {
                         opt(outside.and_then(|c| c.core.as_ref())),
                         opt(outside.and_then(|c| c.target.as_ref())),
                         Cell::ok(if i == 0 { r.place.as_ref().map(|p| p.text(style)).unwrap_or_default() } else { String::new() }),
-                        Cell::ok("terminal"),
+                        Cell::ok("terminal_block"),
                         Cell::default(),
                         Cell::default(),
                         Cell::ok(marker),
-                        Cell::ok(links.join("; ")),
+                        Cell::ok(jumper_bars.join("; ")),
                     ]);
                 }
             }

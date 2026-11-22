@@ -1,7 +1,7 @@
 //! Tester 044 (connector devices): acceptance checks from outside, written from brief 044 and
 //! design 044 (§12's table, rows 1–10 and 12–14, and the overseer's FP1–FP6 conditions) only,
 //! before the implementation existed. The checks drive JSON commands (`connector`, `pinlabel`,
-//! `place`, `setprop`, `setdefault`, `bom`, `wirelist`, `xrefs`, `refgoto`, `checks`, `stripplan`)
+//! `place`, `setprop`, `setdefault`, `bom`, `wirelist`, `references`, `refgoto`, `checks`, `stripplan`)
 //! and read the document, so they depend on as little of the new code's Rust API as possible.
 //!
 //! Fixture C (design §12), simplified: page 100 with three vertical wires (the sensor's 24 V, 0 V
@@ -77,7 +77,7 @@ fn net(h: &mut H, t: ConnectionPointId) -> Option<ecad_model::NetKey> {
 }
 
 fn wire_number(h: &mut H, t: ConnectionPointId) -> String {
-    s(&h.run("net", json!({"terminal": t.hex()})).unwrap()["number"])
+    s(&h.run("net", json!({"connection_point": t.hex()})).unwrap()["number"])
 }
 
 fn newpage(h: &mut H, number: &str, title: &str) -> PageId {
@@ -105,7 +105,7 @@ fn wire_out(h: &mut H, page: PageId, c: DeviceId, t: ConnectionPointId) -> WireI
     h.activate(page);
     let d = h.doc();
     let at = shown_at(&d, page, t).unwrap_or_else(|| panic!("{} not on that page", name(h, t)));
-    let term = &d.terminals[&t];
+    let term = &d.connection_points[&t];
     let side = term.key.as_ref().map(ToString::to_string).unwrap_or_default();
     let other = if side == ".s" { ".p" } else { ".s" };
     let mate = pins(&d, c).get(&(other.to_string(), term.label.clone().unwrap_or_default())).and_then(|m| shown_at(&d, page, *m));
@@ -161,7 +161,7 @@ fn rows_have(h: &mut H, kind: &str, fix: bool) {
 
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "kept BOM differs from a rebuild");
@@ -171,7 +171,7 @@ fn same_as_built(h: &mut H) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.definitions)
+    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.definitions)
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -221,14 +221,14 @@ fn read_everything(h: &mut H) {
     h.run("bom", json!({"group": "part"})).unwrap();
     h.run("wirelist", json!({"limit": 5000})).unwrap();
     h.run("stripplan", json!({"limit": 5000})).unwrap();
-    h.run("xrefs", json!({"limit": 2000})).unwrap();
+    h.run("references", json!({"limit": 2000})).unwrap();
     h.run("checks", json!({})).unwrap();
     h.run("devices", json!({})).unwrap();
-    h.run("renumber", json!({"kind": "terminals", "preview": true})).unwrap();
+    h.run("renumber", json!({"kind": "terminal_blocks", "preview": true})).unwrap();
     let d = h.doc();
     let _ = d.connectivity();
     let _ = ecad_engine::checks::all(&d, 1e-6);
-    for t in d.terminals.keys() {
+    for t in d.connection_points.keys() {
         let _ = ecad_engine::interact::connection_point_name(&d, *t);
         let _ = ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, *t);
     }
@@ -242,7 +242,7 @@ fn reps_on(d: &Document, c: DeviceId, page: PageId) -> Vec<RepresentationId> {
 
 /// The representation showing `t`.
 fn rep_of(d: &Document, t: ConnectionPointId) -> RepresentationId {
-    let c = d.terminals[&t].device().unwrap();
+    let c = d.connection_points[&t].device().unwrap();
     d.representations_of(Subject::Device(c)).find(|(_, r)| r.connection_points.contains_key(&t)).map(|(rid, _)| rid).expect("shown")
 }
 
@@ -325,7 +325,7 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
     assert_eq!(xs, [x], "one device for both halves");
     for t in pins(&d, x).values() {
         let n = name(&mut c.h, *t);
-        let term = &d.terminals[t];
+        let term = &d.connection_points[t];
         let side = if term.key.as_ref().map(ToString::to_string).as_deref() == Some(".s") { "S" } else { "P" };
         assert_eq!(n, format!("-X01.{side}:{}", term.label.clone().unwrap_or_default()), "pin name (§5.1)");
     }
@@ -353,8 +353,8 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
     let adds: Vec<(Option<String>, Option<String>)> = ops
         .iter()
         .filter_map(|o| {
-            if let Op::AddConnectionPoint { terminal, .. } = o {
-                Some((terminal.key.as_ref().map(ToString::to_string), terminal.label.clone()))
+            if let Op::AddConnectionPoint { connection_point, .. } = o {
+                Some((connection_point.key.as_ref().map(ToString::to_string), connection_point.label.clone()))
             } else {
                 None
             }
@@ -459,7 +459,7 @@ fn r02_mating_joins_nets_across_pages() {
     let hnd = c.h.handle_of(c.p102, item);
     c.h.activate(c.p102);
     c.h.run("erase", json!({"handles": [hnd.hex()]})).unwrap();
-    let still = c.h.doc().terminals.contains_key(&p2);
+    let still = c.h.doc().connection_points.contains_key(&p2);
     if still {
         assert_ne!(net(&mut c.h, s2), net(&mut c.h, p2), "an undrawn plug pin joins nothing");
     }
@@ -652,7 +652,7 @@ fn r04_argument_refusals() {
     refused(&mut c.h, "connector", json!({"pins": 2, "names": ["P E", "N"], "layout": "row", "at": at}), &["cannot contain spaces", "\"P E\""]);
     for bad in ["A,B", "A:B", "TOOLONGNM", ""] {
         survives(&mut c.h, "connector", json!({"pins": 2, "names": [bad, "Z"], "layout": "pins", "line": [[90, 200], [130, 200]]}));
-        assert!(c.h.doc().terminals.values().all(|t| t.label.as_deref() != Some(bad)), "{bad:?} is not a pin name");
+        assert!(c.h.doc().connection_points.values().all(|t| t.label.as_deref() != Some(bad)), "{bad:?} is not a pin name");
     }
     refused(&mut c.h, "connector", json!({"pins": 2, "names": ["A", "A"], "layout": "row", "at": at}), &[]);
     refused(&mut c.h, "connector", json!({"pins": 27, "names": "letters", "layout": "pins", "line": [[90, 200], [130, 200]]}), &[]);
@@ -767,14 +767,14 @@ fn r05_pin_twice_in_a_hand_made_file() {
     let x = with_x01(&mut c);
     let d = c.h.doc();
     let t = pin(&d, x, ".s", "4");
-    let before = d.terminals[&t].clone();
+    let before = d.connection_points[&t].clone();
     let mut after = before.clone();
     after.label = Some("3".into());
     c.h.cfg(|p| {
         p.ledger.commit(
             Author::User,
             "hand-made",
-            vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }],
+            vec![Op::RemoveConnectionPoint { id: t, connection_point: before }, Op::AddConnectionPoint { id: t, connection_point: after }],
         )
     })
     .unwrap();
@@ -820,7 +820,7 @@ fn r06_pin_names_in_hover_wire_list_and_targets() {
     assert!(d.wires[&ws].ends.contains(&s3));
     let at = shown_at(&d, c.p101, s3).unwrap();
     c.h.activate(c.p101);
-    let v = c.h.run("terminals", json!({"strip": null, "from": [at.x - 5.0, at.y + 10.0], "to": [at.x + 5.0, at.y + 10.0]})).unwrap();
+    let v = c.h.run("terminalblocks", json!({"strip": null, "from": [at.x - 5.0, at.y + 10.0], "to": [at.x + 5.0, at.y + 10.0]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
     let plan = c.h.run("stripplan", json!({"strip": strip.hex(), "limit": 5000})).unwrap();
     if !plan.to_string().contains("-X01.S:3") {
@@ -900,12 +900,12 @@ fn fp6_a_connector_pin_never_shows_a_strip_level_label() {
     let plan = c.h.run("stripplan", json!({"limit": 5000})).unwrap();
     let strips = plan["strips"].as_array().cloned().unwrap_or_default();
     assert!(strips.is_empty(), "no strip plan for connectors: {plan}");
-    for k in ["level-missing", "level-twice", "position-mixed", "terminal-twice", "too-many-terminals"] {
+    for k in ["level-missing", "level-twice", "position-mixed", "terminal-block-twice", "too-many-terminal-blocks"] {
         let rows = checks_of(&mut c.h, k);
         assert!(rows.is_empty(), "{k} on a connector: {rows:?}");
     }
     let before = c.h.doc();
-    let pv = c.h.run("renumber", json!({"kind": "terminals", "preview": true})).unwrap();
+    let pv = c.h.run("renumber", json!({"kind": "terminal_blocks", "preview": true})).unwrap();
     assert!(!pv.to_string().contains(&x1.hex()), "renumber terminals leaves connectors alone: {pv}");
     assert_eq!(model_parts(&c.h.doc()), model_parts(&before), "a preview writes nothing");
     // The page texts show pin labels and half tags, never `3.1`-style level labels.
@@ -1114,15 +1114,15 @@ fn r09_cross_references_between_the_halves() {
     let (n101, n102) = (page_no(&d, c.p101), page_no(&d, c.p102));
     let srep = reps_on(&d, x, c.p101)[0];
     let prep = reps_on(&d, x, c.p102)[0];
-    let v = c.h.run("xrefs", json!({"component": x.hex()})).unwrap();
-    let refs = v["references"].as_array().cloned().unwrap_or_default();
-    let from_s = refs.iter().find(|r| s(&r["source"]) == srep.hex()).unwrap_or_else(|| panic!("socket half reference: {v}"));
+    let v = c.h.run("references", json!({"component": x.hex()})).unwrap();
+    let references = v["references"].as_array().cloned().unwrap_or_default();
+    let from_s = references.iter().find(|r| s(&r["source"]) == srep.hex()).unwrap_or_else(|| panic!("socket half reference: {v}"));
     assert_eq!(s(&from_s["target_page"]), n102, "{from_s}");
     // 025's style, as the project writes it (design 044 §7: `/102.C4`, or `102-C-4` per project).
     let want = ecad_electrical::references::devices::Places::new(&d)
         .text(c.p102, ecad_electrical::references::devices::anchor(&d, &d.representations[&prep]));
     assert_eq!(s(&from_s["text"]), want, "025's style: {from_s}");
-    let from_p = refs.iter().find(|r| s(&r["source"]) == prep.hex()).unwrap_or_else(|| panic!("plug half reference: {v}"));
+    let from_p = references.iter().find(|r| s(&r["source"]) == prep.hex()).unwrap_or_else(|| panic!("plug half reference: {v}"));
     assert_eq!(s(&from_p["target_page"]), n101, "{from_p}");
     // Go to Reference reaches the other half.
     let g = c.h.run("refgoto", json!({"source": srep.hex()})).unwrap();
@@ -1137,7 +1137,7 @@ fn r09_cross_references_between_the_halves() {
     let hnd = c.h.handle_of(c.p102, pitem);
     c.h.run("erase", json!({"handles": [hnd.hex()]})).unwrap();
     // Lone socket now: no references, hover says it has no plug half.
-    let v = c.h.run("xrefs", json!({"component": x.hex()})).unwrap();
+    let v = c.h.run("references", json!({"component": x.hex()})).unwrap();
     assert!(v["references"].as_array().is_none_or(Vec::is_empty), "a lone half has no references: {v}");
     let d = c.h.doc();
     let lines = ecad_engine::devices::draw::hover_lines(&d, x, srep).join("\n");
@@ -1145,11 +1145,11 @@ fn r09_cross_references_between_the_halves() {
     c.h.activate(c.p100);
     c.h.run("connector", json!({"device": x.hex(), "halves": "plug", "layout": "row", "at": [250, 100], "page": c.p100.hex()})).unwrap();
     let n100 = page_no(&c.h.doc(), c.p100);
-    let v = c.h.run("xrefs", json!({"component": x.hex()})).unwrap();
-    let refs = v["references"].as_array().cloned().unwrap_or_default();
-    assert!(refs.iter().any(|r| s(&r["source"]) == srep.hex() && s(&r["target_page"]) == n100), "{v}");
+    let v = c.h.run("references", json!({"component": x.hex()})).unwrap();
+    let references = v["references"].as_array().cloned().unwrap_or_default();
+    assert!(references.iter().any(|r| s(&r["source"]) == srep.hex() && s(&r["target_page"]) == n100), "{v}");
     // The kept index equals a rebuild (verify mode does this on every commit too).
-    let (kept, built) = c.h.cfg(|p| (p.xref().clone(), ecad_electrical::references::devices::RefIndex::build(p.ledger.document())));
+    let (kept, built) = c.h.cfg(|p| (p.reference().clone(), ecad_electrical::references::devices::RefIndex::build(p.ledger.document())));
     assert!(kept == built, "kept reference index differs from a rebuild");
 }
 
@@ -1160,10 +1160,10 @@ fn r09_pin_references() {
     let mut c = fixture_c(0x7044_0081);
     let (x2, _) = with_x02(&mut c);
     let d = c.h.doc();
-    let v = c.h.run("xrefs", json!({"component": x2.hex()})).unwrap();
-    let refs = v["references"].as_array().cloned().unwrap_or_default();
-    assert!(refs.iter().all(|r| r["source_page"] != r["target_page"] || r["source"] == r["target"]), "nothing extra on one page: {v}");
-    assert!(refs.iter().all(|r| s(&r["target_page"]) != page_no(&d, c.p100)), "pin pairs on one page: {v}");
+    let v = c.h.run("references", json!({"component": x2.hex()})).unwrap();
+    let references = v["references"].as_array().cloned().unwrap_or_default();
+    assert!(references.iter().all(|r| r["source_page"] != r["target_page"] || r["source"] == r["target"]), "nothing extra on one page: {v}");
+    assert!(references.iter().all(|r| s(&r["target_page"]) != page_no(&d, c.p100)), "pin pairs on one page: {v}");
     // Socket pins on 100 (pin form), plug pins on 102: each pin shows its mate's page.
     let x = conn_of(
         &c.h.run("connector", json!({"halves": "socket", "pins": 3, "layout": "pins", "line": [[90, 220], [130, 220]], "page": c.p100.hex()}))
@@ -1175,11 +1175,11 @@ fn r09_pin_references() {
         .unwrap();
     let d = c.h.doc();
     let n102 = page_no(&d, c.p102);
-    let v = c.h.run("xrefs", json!({"component": x.hex()})).unwrap();
-    let refs = v["references"].as_array().cloned().unwrap_or_default();
+    let v = c.h.run("references", json!({"component": x.hex()})).unwrap();
+    let references = v["references"].as_array().cloned().unwrap_or_default();
     for rep in reps_on(&d, x, c.p100) {
         assert!(
-            refs.iter().any(|r| s(&r["source"]) == rep.hex() && s(&r["target_page"]) == n102),
+            references.iter().any(|r| s(&r["source"]) == rep.hex() && s(&r["target_page"]) == n102),
             "socket pin {rep:?} shows its mate on {n102}: {v}"
         );
     }
@@ -1202,11 +1202,14 @@ fn r10_pinlabel_renames_on_both_halves() {
     let v = step(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": "3", "to": "PE"}));
     let d = c.h.doc();
     assert_eq!(
-        (d.terminals[&s3].label.as_deref(), d.terminals[&s3].key.as_ref().map(ToString::to_string).as_deref()),
+        (d.connection_points[&s3].label.as_deref(), d.connection_points[&s3].key.as_ref().map(ToString::to_string).as_deref()),
         (Some("PE"), Some(".s")),
         "{v}"
     );
-    assert_eq!((d.terminals[&p3].label.as_deref(), d.terminals[&p3].key.as_ref().map(ToString::to_string).as_deref()), (Some("PE"), Some(".p")));
+    assert_eq!(
+        (d.connection_points[&p3].label.as_deref(), d.connection_points[&p3].key.as_ref().map(ToString::to_string).as_deref()),
+        (Some("PE"), Some(".p"))
+    );
     assert_eq!(d.wires, conductors, "wires unchanged");
     assert_eq!(net(&mut c.h, s3), net(&mut c.h, p3), "still mated");
     assert_eq!(wire_number(&mut c.h, s3), number);
@@ -1215,8 +1218,8 @@ fn r10_pinlabel_renames_on_both_halves() {
     let echo = c.h.s.log.iter().rev().take(3).cloned().collect::<Vec<_>>().join("\n");
     assert!(echo.contains("-X01:3 is now -X01:PE (both halves)."), "{echo}");
     // By terminal, from the plug side.
-    step(&mut c.h, "pinlabel", json!({"terminal": p3.hex(), "to": "GND"}));
-    assert_eq!(c.h.doc().terminals[&s3].label.as_deref(), Some("GND"), "renames the socket side too");
+    step(&mut c.h, "pinlabel", json!({"connection_point": p3.hex(), "to": "GND"}));
+    assert_eq!(c.h.doc().connection_points[&s3].label.as_deref(), Some("GND"), "renames the socket side too");
     refused(
         &mut c.h,
         "pinlabel",
@@ -1227,8 +1230,8 @@ fn r10_pinlabel_renames_on_both_halves() {
     refused(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": "99", "to": "Z"}), &[]);
     c.h.cmdline("u");
     c.h.cmdline("u");
-    assert_eq!(c.h.doc().terminals[&s3].label.as_deref(), Some("3"), "u restores 3");
-    assert_eq!(c.h.doc().terminals[&s4].label.as_deref(), Some("4"));
+    assert_eq!(c.h.doc().connection_points[&s3].label.as_deref(), Some("3"), "u restores 3");
+    assert_eq!(c.h.doc().connection_points[&s4].label.as_deref(), Some("4"));
     // A lone half's pin: renamed on the one side it has.
     let y = conn_of(&c.h.run("connector", json!({"halves": "plug", "pins": 2, "layout": "row", "at": [250, 100]})).unwrap());
     step(&mut c.h, "pinlabel", json!({"device": y.hex(), "pin": "1", "to": "A"}));
@@ -1304,7 +1307,7 @@ fn fp3_starter_definitions_are_versioned() {
         assert_eq!(o.content_hash, ecad_file::definition_hash(&ecad_model::Definition { origin: None, ..d.clone() }).unwrap(), "{k}: hash of v2");
         assert!(ids.insert(o.definition), "{k}: IDs unchanged and unique");
         // Definition keys stay 1…n (I7).
-        let keys: Vec<String> = d.terminals.iter().map(|t| t.key.to_string()).collect();
+        let keys: Vec<String> = d.connection_points.iter().map(|t| t.key.to_string()).collect();
         let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
         let n = keys.len();
         let want: Vec<String> = (1..=n).map(|i| i.to_string()).collect();
@@ -1314,10 +1317,10 @@ fn fp3_starter_definitions_are_versioned() {
         let st = ecad_electrical::symbols::by_key(k).unwrap_or_else(|| panic!("{k} starter"));
         assert_eq!(st.prefix(), "X", "{k}");
         let d = st.definition().unwrap();
-        let got: Vec<String> = d.terminals.iter().map(|t| t.key.to_string()).collect();
+        let got: Vec<String> = d.connection_points.iter().map(|t| t.key.to_string()).collect();
         assert_eq!(got, keys, "{k}");
         assert_eq!(d.bridges, vec![vec![".s".parse::<ecad_model::PointKey>().unwrap(), ".p".parse::<ecad_model::PointKey>().unwrap()]], "{k}");
-        for t in &d.terminals {
+        for t in &d.connection_points {
             assert!((t.at.x / 5.0).fract().abs() < 1e-9 && (t.at.y / 5.0).fract().abs() < 1e-9, "{k}: point on the 5 mm grid");
         }
         assert!(ids.insert(d.origin.as_ref().unwrap().definition), "{k}: unique ID");
@@ -1381,7 +1384,7 @@ fn r12_hostile_input_never_panics() {
     let long = "x".repeat(10_000);
     for bad in ["A\u{7}", "\u{0}", "B\r\n", "\u{202e}X", long.as_str()] {
         survives(&mut c.h, "connector", json!({"pins": 2, "names": [bad, "Z"], "layout": "pins", "line": line}));
-        assert!(c.h.doc().terminals.values().all(|t| t.label.as_deref() != Some(bad)), "{bad:?} is never a pin name");
+        assert!(c.h.doc().connection_points.values().all(|t| t.label.as_deref() != Some(bad)), "{bad:?} is never a pin name");
         survives(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": "1", "to": bad}));
         survives(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": bad, "to": "Q"}));
     }
@@ -1421,7 +1424,7 @@ fn r12_hostile_input_never_panics() {
         survives(&mut c.h, "connector", json!({"device": dev, "halves": "plug", "layout": "row", "at": [100, 100]}));
         survives(&mut c.h, "pinlabel", json!({"device": dev, "pin": "1", "to": "A"}));
     }
-    survives(&mut c.h, "pinlabel", json!({"terminal": "00", "to": "A"}));
+    survives(&mut c.h, "pinlabel", json!({"connection_point": "00", "to": "A"}));
     survives(&mut c.h, "pinlabel", json!({}));
     survives(&mut c.h, "connector", json!(null));
     survives(&mut c.h, "place", json!({"symbol": "pinpair", "device": x.hex(), "pin": "x".repeat(10_000), "at": [100, 100]}));
@@ -1441,7 +1444,7 @@ fn r12_hand_made_connectors_never_panic() {
     {
         ops.push(Op::AddConnectionPoint {
             id: ConnectionPointId::from(0x7044_00c1_u128 << 64 | i as u128),
-            terminal: ecad_model::ConnectionPoint {
+            connection_point: ecad_model::ConnectionPoint {
                 owner: x.into(),
                 label: label.map(str::to_string),
                 key: key.and_then(|k| k.parse().ok()),
@@ -1452,7 +1455,7 @@ fn r12_hand_made_connectors_never_panic() {
     for i in 0..2_000u128 {
         ops.push(Op::AddConnectionPoint {
             id: ConnectionPointId::from(0x7044_00c2_u128 << 64 | i),
-            terminal: ecad_model::ConnectionPoint {
+            connection_point: ecad_model::ConnectionPoint {
                 owner: x.into(),
                 label: Some(format!("{}", 100 + i)),
                 key: Some(".p".parse().unwrap()),
@@ -1474,7 +1477,7 @@ fn r12_hand_made_connectors_never_panic() {
         x,
         reps_on(&d, x, d.page_order[1]).first().copied().unwrap_or_else(|| d.representations.keys().next().copied().unwrap()),
     );
-    h.run("xrefs", json!({"component": x.hex()})).unwrap();
+    h.run("references", json!({"component": x.hex()})).unwrap();
     survives(&mut h, "pinlabel", json!({"device": x.hex(), "pin": "1", "to": "Z"}));
     survives(&mut h, "connector", json!({"device": x.hex(), "halves": "plug", "layout": "pins", "line": [[90, 200], [130, 200]]}));
 }
@@ -1496,15 +1499,15 @@ fn r13_save_and_reopen_keep_everything() {
     c.h.run("pinlabel", json!({"device": x2.hex(), "pin": "2", "to": "BN"})).unwrap();
     c.h.run("setdefault", json!({"key": "connector.side.plug", "level": "project", "value": "M"})).unwrap();
     let before = c.h.doc();
-    let reads = |h: &mut H| (bom(h), wirelist(h), h.run("xrefs", json!({"limit": 2000})).unwrap(), h.run("checks", json!({})).unwrap());
+    let reads = |h: &mut H| (bom(h), wirelist(h), h.run("references", json!({"limit": 2000})).unwrap(), h.run("checks", json!({})).unwrap());
     let r_before = reads(&mut c.h);
-    let names_before: Vec<String> = before.terminals.keys().map(|t| ecad_engine::interact::connection_point_name(&before, *t)).collect();
+    let names_before: Vec<String> = before.connection_points.keys().map(|t| ecad_engine::interact::connection_point_name(&before, *t)).collect();
     let (mut h, _) = reload(c.h, "reopen", 0x7044_00d1);
     let head = h.head();
     let after = h.doc();
     assert_eq!(model_parts(&after), model_parts(&before), "model after reopen");
     assert_eq!(reads(&mut h), r_before, "reports after reopen");
-    let names_after: Vec<String> = after.terminals.keys().map(|t| ecad_engine::interact::connection_point_name(&after, *t)).collect();
+    let names_after: Vec<String> = after.connection_points.keys().map(|t| ecad_engine::interact::connection_point_name(&after, *t)).collect();
     assert_eq!(names_after, names_before);
     assert_eq!(h.doc().connectivity().net_of_connection_point(s3), h.doc().connectivity().net_of_connection_point(p3), "mated after reopen");
     assert_eq!(h.head(), head, "open writes nothing");

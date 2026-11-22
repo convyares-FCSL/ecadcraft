@@ -95,7 +95,7 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     assert_eq!(r.item, Some(item));
     let line = ecad_electrical::wires::route_of_wire_on(&snap.doc, w, first).unwrap();
     assert_eq!(r.subject, Some(Subject::Route(line)));
-    assert_eq!(r.terminals.len(), 2, "both attached terminals");
+    assert_eq!(r.connection_points.len(), 2, "both attached terminals");
     let conductor = debug::object_json(&snap.doc, ObjectId::Wire(w)).unwrap();
     assert_eq!(conductor["ends"].as_array().unwrap().len(), 2);
 
@@ -326,7 +326,7 @@ fn record_bytes_are_shown_as_text_with_control_bytes_escaped() {
 }
 
 #[test]
-fn relations_lead_from_a_definition_to_its_instances_and_from_a_terminal_to_its_wires() {
+fn relations_lead_from_a_definition_to_its_instances_and_from_a_connection_point_to_its_wires() {
     let (mut h, c1, c2, w) = small_project(48);
     let doc = h.doc();
     let def = doc.devices[&c2].definition.unwrap();
@@ -335,8 +335,8 @@ fn relations_lead_from_a_definition_to_its_instances_and_from_a_terminal_to_its_
     assert!(users.iter().any(|u| matches!(u, ObjectId::Item(_))), "the symbol instance");
     let t = doc.wires[&w].ends[0];
     let r = h.route_of(doc.page_order[0], w);
-    assert_eq!(debug::used_by(&doc, ObjectId::Terminal(t)), vec![ObjectId::Wire(w), ObjectId::Route(r)]);
+    assert_eq!(debug::used_by(&doc, ObjectId::ConnectionPoint(t)), vec![ObjectId::Wire(w), ObjectId::Route(r)]);
     let of_c1 = debug::used_by(&doc, ObjectId::Device(c1));
-    assert!(of_c1.iter().any(|u| matches!(u, ObjectId::Terminal(_))));
+    assert!(of_c1.iter().any(|u| matches!(u, ObjectId::ConnectionPoint(_))));
     assert!(of_c1.iter().any(|u| matches!(u, ObjectId::Representation(_))));
 }

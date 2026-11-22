@@ -275,15 +275,16 @@ fn a_line_end_attached_differently_on_both_sides_offers_main_or_branch() {
     let path = dir.file("end.ecad");
     let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
     let placed = c.exec("place", json!({"symbol": "coil", "at": [0, 0]}));
-    let t: Vec<String> = placed["terminals"].as_array().unwrap().iter().map(|t| t["terminal"].as_str().unwrap().to_string()).collect();
+    let t: Vec<String> =
+        placed["connection_points"].as_array().unwrap().iter().map(|t| t["connection_point"].as_str().unwrap().to_string()).collect();
     assert!(t.len() >= 2, "{placed}");
     // Design 072: a line with a free end (a route, no wire yet); `connect` lands its end B.
     let w = c.exec("wire", json!({"points": [[100, 40], [160, 40]]}))["route"].as_str().unwrap().to_string();
     c.ok("save", json!({}));
     c.exec("branch", json!({"name": "Option W"}));
-    c.exec("connect", json!({"route": w, "terminal": t[1], "end": "B"}));
+    c.exec("connect", json!({"route": w, "connection_point": t[1], "end": "B"}));
     c.exec("switchbranch", json!({"branch": "main", "save": true}));
-    c.exec("connect", json!({"route": w, "terminal": t[0], "end": "B"}));
+    c.exec("connect", json!({"route": w, "connection_point": t[0], "end": "B"}));
     let pv = c.exec("merge", json!({"from": "Option W", "preview": true}));
     let k = pv["conflicts"]
         .as_array()
@@ -330,11 +331,11 @@ fn a_branch_wire_attached_to_a_point_main_removed_offers_bring_back_or_leave_loo
     let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
     let placed = c.exec("place", json!({"symbol": "coil", "at": [0, 0]}));
     let coil = placed["component"].as_str().unwrap().to_string();
-    let t0 = placed["terminals"][0]["terminal"].as_str().unwrap().to_string();
+    let t0 = placed["connection_points"][0]["connection_point"].as_str().unwrap().to_string();
     let w = c.exec("wire", json!({"points": [[100, 40], [160, 40]]}))["route"].as_str().unwrap().to_string();
     c.ok("save", json!({}));
     c.exec("branch", json!({"name": "Option X"}));
-    c.exec("connect", json!({"route": w, "terminal": t0, "end": "B"}));
+    c.exec("connect", json!({"route": w, "connection_point": t0, "end": "B"}));
     c.exec("switchbranch", json!({"branch": "main", "save": true}));
     c.exec("devicedelete", json!({"component": coil}));
     let pv = c.exec("merge", json!({"from": "Option X", "preview": true}));

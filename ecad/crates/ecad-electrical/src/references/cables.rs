@@ -11,7 +11,7 @@
 //! - [`markers_on_page`] is **the one function** that says what a reference end shows on a page:
 //!   its point, its derived text (`/<page>.<column>` of the other end, `/?` for an orphan), its
 //!   colour state and where the text sits. The projection draws its minimal marker from it, the
-//!   overlay rings it, the hover and `cablerefs` read the same derivation; brief 009's styled
+//!   overlay rings it, the hover and `cablereferences` read the same derivation; brief 009's styled
 //!   marker calls it too, so both briefs always show the same text.
 //! - [`plan_continue`] decides what `cablecontinue` draws (design 010 §5): its JSON form and its
 //!   interactive preview both use it, so what is previewed is what is committed.
@@ -137,16 +137,17 @@ pub struct Marker {
 /// What every locatable reference end on `page` shows. **The** function both the minimal marker of
 /// this brief and brief 009's styled marker take their text from: one derivation, always live.
 /// Ends that cannot be located (a missing or non-finite point, only from a hostile file) are left
-/// out; `cablerefs` and the hover still list them with `/?`.
+/// out; `cablereferences` and the hover still list them with `/?`.
 pub fn markers_on_page(doc: &Document, page: PageId) -> Vec<Marker> {
     markers_from(doc, page_cable_references(doc, page), page)
 }
 
-/// [`markers_on_page`] from references already derived (`refs`, as [`all`] returns them), so one
+/// [`markers_on_page`] from references already derived (`references`, as [`all`] returns them), so one
 /// draw derives them once.
-pub fn markers_from(doc: &Document, refs: Vec<CableReference>, page: PageId) -> Vec<Marker> {
+pub fn markers_from(doc: &Document, references: Vec<CableReference>, page: PageId) -> Vec<Marker> {
     let z = sizes(doc);
-    refs.into_iter()
+    references
+        .into_iter()
         .filter(|r| r.page == page)
         .filter_map(|r| {
             let at = r.at?;
@@ -184,10 +185,10 @@ pub fn marker_text_dir(doc: &Document, reference: RepresentationId) -> Option<(S
     cable_references_of(doc, &BTreeSet::from([cable])).into_iter().find(|r| r.reference == reference).map(|r| (r.text, r.orphan, r.text_dir))
 }
 
-// The marker of a reference end (flag and text) is drawn by brief 009's `look.rs` only, with the
+// The marker of a reference end (flag and text) is drawn by brief 009's `draw.rs` only, with the
 // text from [`marker_text`]; its text is mapped `Mapped::RefText`, so hover, Go to Reference and
 // erasing it act on the reference. The ends of member routes that leave for another page (design
-// 010 §6.4) show no loose-end square: `look.rs` folds that rule into its `quiet` ends.
+// 010 §6.4) show no loose-end square: `draw.rs` folds that rule into its `quiet` ends.
 
 /// The reference end on `page` under `p`: the nearest reference point within `radius`, else a
 /// reference whose drawn text (its box, grown by `radius`) holds `p`. Used before the generic pick
@@ -290,11 +291,11 @@ pub const TOWARD_EQUAL: &str = "`toward` must differ from `at`";
 /// `no such cable`, or the refusal's words.
 pub fn check_reference(doc: &Document, page: PageId, cable: CableId) -> Result<(), CmdError> {
     let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
-    let refs = references_of(doc, cable);
-    if refs.iter().any(|(_, r)| r.page == page) {
+    let references = references_of(doc, cable);
+    if references.iter().any(|(_, r)| r.page == page) {
         return Err(CmdError::refused(already_here(doc, cable)));
     }
-    if refs.len() >= MAX_REFERENCES_PER_CABLE {
+    if references.len() >= MAX_REFERENCES_PER_CABLE {
         return Err(CmdError::refused(already_continues(doc, cable)));
     }
     if !c.cores.iter().any(|m| crate::cables::member_pages(doc, m).contains(&page)) {
@@ -373,9 +374,9 @@ pub fn plan_continue(
         return Err(CmdError::refused(TOWARD_EQUAL));
     }
     let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
-    let refs = references_of(doc, cable);
-    let Some((source, s)) = refs.first().map(|(id, r)| (*id, *r)) else { return Err(CmdError::refused(no_reference(doc, cable))) };
-    if refs.len() >= MAX_REFERENCES_PER_CABLE {
+    let references = references_of(doc, cable);
+    let Some((source, s)) = references.first().map(|(id, r)| (*id, *r)) else { return Err(CmdError::refused(no_reference(doc, cable))) };
+    if references.len() >= MAX_REFERENCES_PER_CABLE {
         return Err(CmdError::refused(already_continues(doc, cable)));
     }
     if s.page == page {
@@ -473,9 +474,9 @@ pub fn plan_continue(
 
 /// The lines echoed after `cablecontinue` (design 010 §4.3).
 pub fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: RepresentationId) -> Vec<String> {
-    let refs = cable_references(doc);
-    let here = refs.iter().find(|r| r.reference == this);
-    let there = refs.iter().find(|r| r.reference == plan.source);
+    let references = cable_references(doc);
+    let here = references.iter().find(|r| r.reference == this);
+    let there = references.iter().find(|r| r.reference == plan.source);
     let cable = here.map(|r| r.cable).or(there.map(|r| r.cable));
     let title = cable.map(|k| crate::cables::cable_title(doc, k)).unwrap_or_default();
     let mut out = vec![format!(
@@ -636,9 +637,9 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         // model's invariants I8 and I10); removing those is its own effect, so the record itself
         // reaches no reference.
         Effect::Device { after: None, .. } => {}
-        Effect::Terminal { id, before: None, .. } if !doc.terminals.contains_key(id) => {}
+        Effect::ConnectionPoint { id, before: None, .. } if !doc.connection_points.contains_key(id) => {}
         // Brief 028: a relabelled terminal reaches only the cables of the wires on it.
-        Effect::Terminal { id, .. } => out.extend(doc.ends_at(*id).into_iter().flat_map(|(w, _)| doc.cables_of(w))),
+        Effect::ConnectionPoint { id, .. } => out.extend(doc.ends_at(*id).into_iter().flat_map(|(w, _)| doc.cables_of(w))),
         Effect::Definition { id, before: None, .. } if !doc.definitions.contains_key(id) => {}
         // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
         // in a cable's drawing or reference texts.
@@ -721,7 +722,7 @@ pub struct Snapshot {
     /// The cables covered; `None` for every cable.
     scope: Option<BTreeSet<CableId>>,
     /// Their references, as [`cable_references`] derives them.
-    refs: Vec<CableReference>,
+    references: Vec<CableReference>,
     /// Per covered cable with a reference, its members' state (what brief 009's drawing at a
     /// reference end reads from other pages). Empty for a whole-document snapshot.
     members: BTreeMap<CableId, MemberState>,
@@ -730,14 +731,14 @@ pub struct Snapshot {
 impl Snapshot {
     /// The references of `scope` (every cable for `None`) in `doc`.
     pub fn take(doc: &Document, scope: Option<&BTreeSet<CableId>>) -> Snapshot {
-        let refs = match scope {
+        let references = match scope {
             Some(k) => cable_references_of(doc, k),
             None => cable_references(doc),
         };
         let mut members = BTreeMap::new();
         if scope.is_some() {
-            let with_refs: BTreeSet<CableId> = refs.iter().map(|r| r.cable).collect();
-            for k in with_refs {
+            let with_references: BTreeSet<CableId> = references.iter().map(|r| r.cable).collect();
+            for k in with_references {
                 let list = doc.cables.get(&k).map(|c| c.cores.as_slice()).unwrap_or_default();
                 let state: MemberState = list
                     .iter()
@@ -749,12 +750,12 @@ impl Snapshot {
                 members.insert(k, state);
             }
         }
-        Snapshot { scope: scope.cloned(), refs, members }
+        Snapshot { scope: scope.cloned(), references, members }
     }
 
     /// The covered references that are linked (have another end), as [`linked`] lists them.
     pub fn linked(&self) -> BTreeSet<RepresentationId> {
-        self.refs.iter().filter(|r| !r.orphan).map(|r| r.reference).collect()
+        self.references.iter().filter(|r| !r.orphan).map(|r| r.reference).collect()
     }
 
     /// The line of design 010 §4.3 for references linked in `self` (before a transaction) that
@@ -765,7 +766,7 @@ impl Snapshot {
         if before.is_empty() {
             return None;
         }
-        orphaned_line_in(doc, &after.refs, &before)
+        orphaned_line_in(doc, &after.references, &before)
     }
 
     /// The pages whose reference ends may be drawn differently in `after` than in `self`. `None`
@@ -774,7 +775,7 @@ impl Snapshot {
     /// or member state changed.
     pub fn pages_changed(&self, after: &Snapshot) -> Option<BTreeSet<PageId>> {
         let Some(scope) = &self.scope else {
-            if self.refs.is_empty() && after.refs.is_empty() {
+            if self.references.is_empty() && after.references.is_empty() {
                 return Some(BTreeSet::new());
             }
             return None;
@@ -782,7 +783,7 @@ impl Snapshot {
         let mut pages = BTreeSet::new();
         for k in scope {
             fn of(s: &Snapshot, k: CableId) -> Vec<&CableReference> {
-                s.refs.iter().filter(|r| r.cable == k).collect()
+                s.references.iter().filter(|r| r.cable == k).collect()
             }
             let (old, new) = (of(self, *k), of(after, *k));
             if self.members.get(k) != after.members.get(k) {
@@ -808,8 +809,8 @@ impl Snapshot {
 
 /// Hover lines for a reference end (design 010 §8).
 pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<String>> {
-    let refs = cable_references(doc);
-    let r = refs.iter().find(|r| r.reference == reference)?;
+    let references = cable_references(doc);
+    let r = references.iter().find(|r| r.reference == reference)?;
     let title = crate::cables::cable_title(doc, r.cable);
     let place = |x: &CableReference| match (&x.column_label, &x.row_label) {
         (Some(c), Some(row)) => {
@@ -819,7 +820,7 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
     };
     let mut lines =
         vec![format!("Cable reference  {}", r.text), format!("Cable {title}   id {}", reference.hex()), format!("This end: {}", place(r))];
-    match r.partner().and_then(|p| refs.iter().find(|x| x.reference == p)) {
+    match r.partner().and_then(|p| references.iter().find(|x| x.reference == p)) {
         None => lines.push("Other end: none (orphan): continue the cable on another page with Continue Cable".to_string()),
         Some(o) => {
             lines.push(format!("Other end: {}", place(o)));
@@ -832,8 +833,8 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
                 if lines.len() > crate::cables::words::MAX_HOVER_LINES {
                     break;
                 }
-                let terminal = m.wire().and_then(|w| doc.wires.get(&w)).and_then(|c| terminal_on(doc, &shown, c));
-                let to = terminal.unwrap_or_else(|| "(not connected)".into());
+                let connection_point = m.wire().and_then(|w| doc.wires.get(&w)).and_then(|c| connection_point_on(doc, &shown, c));
+                let to = connection_point.unwrap_or_else(|| "(not connected)".into());
                 lines.push(format!("  {} -> {to}", crate::cables::slash::position_name(doc, m.position)));
             }
         }
@@ -842,13 +843,13 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
 }
 
 /// `K2:1`: the terminal among `shown` (those on the other end's page) a conductor attaches to.
-fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::ConnectionPointId>, c: &ecad_model::Wire) -> Option<String> {
+fn connection_point_on(doc: &Document, shown: &BTreeSet<ecad_model::ConnectionPointId>, c: &ecad_model::Wire) -> Option<String> {
     let t = End::BOTH.into_iter().map(|e| c.end(e)).find(|t| shown.contains(t))?;
     // Brief 044: a connector pin is named by its half (`-X10.S:3`).
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return Some(name);
     }
-    let term = doc.terminals.get(&t)?;
+    let term = doc.connection_points.get(&t)?;
     let c = term.device()?;
     let comp = doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_else(|| format!("{}…", c.hex().get(..8).unwrap_or_default()));
     Some(format!("{comp}:{}", crate::terminal_strips::terminal_blocks::connection_point_name(doc, t)))
@@ -857,8 +858,8 @@ fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::ConnectionPointId>, 
 /// The debugger's `Cable references` diagnostics (design 010 §8): one line per orphan, one per
 /// cable with more references than supported, or `No orphan references.`. Derived, never saved.
 pub fn diagnostics(doc: &Document) -> Vec<String> {
-    let refs = cable_references(doc);
-    let mut out: Vec<String> = refs
+    let references = cable_references(doc);
+    let mut out: Vec<String> = references
         .iter()
         .filter(|r| r.orphan)
         .map(|r| format!("Orphan: cable {} on {} ({})", crate::cables::cable_title(doc, r.cable), page_number_words(doc, r.page), r.text))
@@ -868,7 +869,7 @@ pub fn diagnostics(doc: &Document) -> Vec<String> {
     }
     // Counted once for every cable (a hostile file may hold many references of many cables).
     let mut counts: BTreeMap<CableId, usize> = BTreeMap::new();
-    for r in &refs {
+    for r in &references {
         *counts.entry(r.cable).or_default() += 1;
     }
     for (k, n) in counts.into_iter().filter(|(_, n)| *n > MAX_REFERENCES_PER_CABLE) {
@@ -1025,19 +1026,20 @@ fn reference_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
 
 /// Cables with more than [`MAX_REFERENCES_PER_CABLE`] references (possible only from a file), in
 /// ID order.
-pub fn over_referenced(refs: &[CableReference]) -> Vec<ecad_model::CableId> {
+pub fn over_referenced(references: &[CableReference]) -> Vec<ecad_model::CableId> {
     let mut n: std::collections::BTreeMap<ecad_model::CableId, usize> = std::collections::BTreeMap::new();
-    for r in refs {
+    for r in references {
         *n.entry(r.cable).or_default() += 1;
     }
     n.into_iter().filter(|(_, c)| *c > MAX_REFERENCES_PER_CABLE).map(|(k, _)| k).collect()
 }
 
-/// The cable references of `doc` as `cablerefs` and the snapshot's `checks.cable_references` list
+/// The cable references of `doc` as `cablereferences` and the snapshot's `checks.cable_references` list
 /// them (design 010 §7.4): one object per reference, in page order, then column, then ID.
-pub fn references_json(doc: &Document, refs: &[CableReference]) -> Value {
+pub fn references_json(doc: &Document, references: &[CableReference]) -> Value {
     Value::Array(
-        refs.iter()
+        references
+            .iter()
             .map(|r| {
                 json!({
                     "reference": r.reference.hex(),

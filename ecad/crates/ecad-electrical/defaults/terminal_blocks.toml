@@ -1,0 +1,42 @@
+# Brief 036: terminals.
+# Built-in defaults (brief 066, design 066 §3). Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"terminal_block.level.separator" = "."
+"terminal_block.x2.levels" = "1,2"
+"terminal_block.x2b.levels" = "1,2"
+"terminal_block.x3.levels" = "1,2,3"
+"terminal_block.lnpe.levels" = "L,N,PE"
+"terminal_block.sen.levels" = "S,+,-"
+"terminal_block.ft.description" = "Feed-through terminal"
+"terminal_block.pe.description" = "PE terminal"
+"terminal_block.x2.description" = "Two-level terminal"
+"terminal_block.x2b.description" = "Two-level terminal, bridged"
+"terminal_block.x3.description" = "Three-level terminal"
+"terminal_block.lnpe.description" = "L/N/PE terminal"
+"terminal_block.sen.description" = "Sensor terminal"
+"terminal_block.dis.description" = "Disconnect terminal"
+"terminal_block.fuse.description" = "Fuse terminal"
+"terminal_block.term2.1.prefix" = "X"
+"terminal_block.term2.2.prefix" = "X"
+"terminal_block.term2.prefix" = "X"
+"terminal_block.term2b.1.prefix" = "X"
+"terminal_block.term2b.2.prefix" = "X"
+"terminal_block.term2b.prefix" = "X"
+"terminal_block.term3.1.prefix" = "X"
+"terminal_block.term3.2.prefix" = "X"
+"terminal_block.term3.3.prefix" = "X"
+"terminal_block.term3.prefix" = "X"
+"terminal_block.termlnpe.1.prefix" = "X"
+"terminal_block.termlnpe.2.prefix" = "X"
+"terminal_block.termlnpe.3.prefix" = "X"
+"terminal_block.termlnpe.prefix" = "X"
+"terminal_block.termsensor.1.prefix" = "X"
+"terminal_block.termsensor.2.prefix" = "X"
+"terminal_block.termsensor.3.prefix" = "X"
+"terminal_block.termsensor.prefix" = "X"
+"terminal_block.termdisc.prefix" = "X"
+"terminal_block.termfuse.prefix" = "X"

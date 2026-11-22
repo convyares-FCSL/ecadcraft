@@ -225,7 +225,7 @@ impl MoveText {
                         return Err(SHOW_FIRST.into());
                     }
                     let what = match of {
-                        TextOf::Terminal(_) => "Label".to_string(),
+                        TextOf::ConnectionPoint(_) => "Label".to_string(),
                         _ => match r.subject {
                             Subject::Device(c) => format!("Tag {}", ecad_electrical::devices::tag_words(doc, c)),
                             _ => "Tag".to_string(),
@@ -243,7 +243,7 @@ impl MoveText {
 
     fn params(rep: RepresentationId, of: TextOf) -> serde_json::Value {
         match of {
-            TextOf::Terminal(t) => json!({"representation": rep.hex(), "kind": "point_label", "terminal": t.hex()}),
+            TextOf::ConnectionPoint(t) => json!({"representation": rep.hex(), "kind": "point_label", "connection_point": t.hex()}),
             _ => json!({"representation": rep.hex(), "kind": "tag"}),
         }
     }

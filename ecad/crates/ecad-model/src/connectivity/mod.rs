@@ -7,7 +7,7 @@
 //!    every other continuation with the same name key ([`name_key`]): the name group is a node;
 //! 3. a definition's bridges ([`crate::Definition::bridges`]) join a component's terminals whose
 //!    keys are in one group;
-//! 4. a component's links (`link.<n>` properties, [`crate::connectivity::jumper_bars`], brief 030) join its terminals
+//! 4. a component's links (`jumper_bar.<n>` properties, [`crate::connectivity::jumper_bars`], brief 030) join its terminals
 //!    whose labels the link names;
 //! 5. a route (design 072 F31) joins the connection points its ends land on and the routes it
 //!    lands on (a T): the route is a node.
@@ -80,7 +80,7 @@ pub fn split_number(number: &str) -> Option<(&str, u64)> {
 /// A node of the connectivity graph.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Node {
-    Terminal(ConnectionPointId),
+    ConnectionPoint(ConnectionPointId),
     Wire(WireId),
     /// A continuation name group, by [`name_key`].
     Name(String),
@@ -110,7 +110,7 @@ impl Contribution {
 /// One net: its members and the counted values its conductors carry.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NetData {
-    pub terminals: BTreeSet<ConnectionPointId>,
+    pub connection_points: BTreeSet<ConnectionPointId>,
     pub wires: BTreeSet<WireId>,
     /// Continuation name keys joined into it.
     pub names: BTreeSet<String>,
@@ -126,12 +126,12 @@ pub struct NetData {
 
 impl NetData {
     fn len(&self) -> usize {
-        self.terminals.len() + self.wires.len() + self.names.len() + self.routes.len()
+        self.connection_points.len() + self.wires.len() + self.names.len() + self.routes.len()
     }
 
     fn nodes(&self) -> Vec<Node> {
         let mut out: Vec<Node> = Vec::with_capacity(self.len());
-        out.extend(self.terminals.iter().map(|t| Node::Terminal(*t)));
+        out.extend(self.connection_points.iter().map(|t| Node::ConnectionPoint(*t)));
         out.extend(self.wires.iter().map(|c| Node::Wire(*c)));
         out.extend(self.names.iter().map(|n| Node::Name(n.clone())));
         out.extend(self.routes.iter().map(|r| Node::Route(*r)));
@@ -141,7 +141,7 @@ impl NetData {
     /// The members, sorted, as a comparable value.
     fn members(&self) -> (Vec<ConnectionPointId>, Vec<WireId>, Vec<String>, Vec<RouteId>) {
         (
-            self.terminals.iter().copied().collect(),
+            self.connection_points.iter().copied().collect(),
             self.wires.iter().copied().collect(),
             self.names.iter().cloned().collect(),
             self.routes.iter().copied().collect(),
@@ -199,7 +199,7 @@ impl std::fmt::Debug for Connectivity {
 /// Whether `node` exists in `doc`.
 fn present(doc: &Document, node: &Node) -> bool {
     match node {
-        Node::Terminal(t) => doc.terminals.contains_key(t),
+        Node::ConnectionPoint(t) => doc.connection_points.contains_key(t),
         Node::Wire(c) => doc.wires.contains_key(c),
         Node::Name(k) => doc.index.continuations.contains_key(k),
         Node::Route(r) => doc.routes.contains_key(r),
@@ -208,7 +208,7 @@ fn present(doc: &Document, node: &Node) -> bool {
 
 /// The name group a point's owner joins it to, if it is a named continuation.
 fn name_of_connection_point(doc: &Document, t: ConnectionPointId) -> Option<String> {
-    let a = doc.terminals.get(&t)?.owner.aid()?;
+    let a = doc.connection_points.get(&t)?.owner.aid()?;
     continuation_key(doc.aids.get(&a)?)
 }
 
@@ -223,7 +223,7 @@ fn name_of_connection_point(doc: &Document, t: ConnectionPointId) -> Option<Stri
 /// bridges `.s` with `.p`, so pin `n` of the socket half joins pin `n` of the plug half, and only
 /// that.
 fn bridged(doc: &Document, t: ConnectionPointId) -> Vec<ConnectionPointId> {
-    let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
+    let Some(term) = doc.connection_points.get(&t) else { return Vec::new() };
     let Some(key) = term.key.as_ref() else { return Vec::new() };
     if key.as_def().is_none() {
         let mut keys: BTreeSet<&PointKey> = BTreeSet::new();
@@ -257,7 +257,7 @@ fn bridged(doc: &Document, t: ConnectionPointId) -> Vec<ConnectionPointId> {
 /// About how many edges `node` has, read from the indexes without listing them.
 fn degree(doc: &Document, node: &Node) -> usize {
     match node {
-        Node::Terminal(t) => {
+        Node::ConnectionPoint(t) => {
             let ends = doc.index.connection_point_ends.get(t).map_or(0, BTreeMap::len);
             ends.saturating_add(doc.index.connection_point_routes.get(t).map_or(0, BTreeMap::len)).saturating_add(2)
         }
@@ -270,8 +270,8 @@ fn degree(doc: &Document, node: &Node) -> usize {
 /// The present nodes joined to `node` by one edge.
 fn neighbors(doc: &Document, node: &Node) -> Vec<Node> {
     let mut out = neighbors_base(doc, node);
-    if let Node::Terminal(t) = node {
-        out.extend(crate::connectivity::jumper_bars::linked(doc, *t).into_iter().map(Node::Terminal));
+    if let Node::ConnectionPoint(t) = node {
+        out.extend(crate::connectivity::jumper_bars::linked(doc, *t).into_iter().map(Node::ConnectionPoint));
     }
     out
 }
@@ -281,7 +281,7 @@ fn neighbors(doc: &Document, node: &Node) -> Vec<Node> {
 fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
     let mut out = Vec::new();
     match node {
-        Node::Terminal(t) => {
+        Node::ConnectionPoint(t) => {
             for (c, _) in doc.ends_at(*t) {
                 if doc.wires.contains_key(&c) {
                     out.push(Node::Wire(c));
@@ -291,27 +291,27 @@ fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
                 out.push(Node::Name(k));
             }
             out.extend(crate::document::index::referrers(&doc.index.connection_point_routes, t).map(Node::Route));
-            out.extend(bridged(doc, *t).into_iter().map(Node::Terminal));
+            out.extend(bridged(doc, *t).into_iter().map(Node::ConnectionPoint));
         }
         Node::Wire(c) => {
             if let Some(cond) = doc.wires.get(c) {
                 for t in &cond.ends {
-                    if doc.terminals.contains_key(t) {
-                        out.push(Node::Terminal(*t));
+                    if doc.connection_points.contains_key(t) {
+                        out.push(Node::ConnectionPoint(*t));
                     }
                 }
             }
         }
         Node::Name(k) => {
             for aid in doc.continuations_named(k) {
-                out.extend(doc.connection_points_of(aid).map(|(t, _)| Node::Terminal(t)));
+                out.extend(doc.connection_points_of(aid).map(|(t, _)| Node::ConnectionPoint(t)));
             }
         }
         Node::Route(r) => {
             if let Some(route) = doc.routes.get(r) {
                 for e in route.ends {
                     match e {
-                        crate::objects::route::RouteEnd::Point(t) if doc.terminals.contains_key(&t) => out.push(Node::Terminal(t)),
+                        crate::objects::route::RouteEnd::Point(t) if doc.connection_points.contains_key(&t) => out.push(Node::ConnectionPoint(t)),
                         crate::objects::route::RouteEnd::On { route: o, .. } if doc.routes.contains_key(&o) => out.push(Node::Route(o)),
                         crate::objects::route::RouteEnd::Point(_)
                         | crate::objects::route::RouteEnd::On { .. }
@@ -330,9 +330,9 @@ impl Connectivity {
     pub fn build(doc: &Document) -> Self {
         let mut c = Connectivity::default();
         let all = doc
-            .terminals
+            .connection_points
             .keys()
-            .map(|t| Node::Terminal(*t))
+            .map(|t| Node::ConnectionPoint(*t))
             .chain(doc.wires.keys().map(|k| Node::Wire(*k)))
             .chain(doc.index.continuations.keys().map(|k| Node::Name(k.clone())))
             .chain(doc.routes.keys().map(|r| Node::Route(*r)));
@@ -363,8 +363,8 @@ impl Connectivity {
                     continue;
                 }
                 let mut next = neighbors_base(doc, &n);
-                if let Node::Terminal(t) = &n {
-                    next.extend(link_edges.get(t).into_iter().flatten().map(|x| Node::Terminal(*x)));
+                if let Node::ConnectionPoint(t) = &n {
+                    next.extend(link_edges.get(t).into_iter().flatten().map(|x| Node::ConnectionPoint(*x)));
                 }
                 stack.extend(next.into_iter().filter(|m| !c.node_net.contains_key(m)));
                 c.attach(doc, n, id);
@@ -386,8 +386,8 @@ impl Connectivity {
         };
         if let Some(net) = self.nets.get_mut(&id) {
             match &node {
-                Node::Terminal(t) => {
-                    net.terminals.insert(*t);
+                Node::ConnectionPoint(t) => {
+                    net.connection_points.insert(*t);
                 }
                 Node::Wire(c) => {
                     net.wires.insert(*c);
@@ -461,8 +461,8 @@ impl Connectivity {
         }
         if let Some(net) = self.nets.get_mut(&from) {
             match node {
-                Node::Terminal(t) => {
-                    net.terminals.remove(t);
+                Node::ConnectionPoint(t) => {
+                    net.connection_points.remove(t);
                 }
                 Node::Wire(c) => {
                     net.wires.remove(c);
@@ -484,8 +484,8 @@ impl Connectivity {
         }
         if let Some(net) = self.nets.get_mut(&to) {
             match node {
-                Node::Terminal(t) => {
-                    net.terminals.insert(*t);
+                Node::ConnectionPoint(t) => {
+                    net.connection_points.insert(*t);
                 }
                 Node::Wire(c) => {
                     net.wires.insert(*c);
@@ -564,8 +564,8 @@ impl Connectivity {
         let empty = match self.nets.get_mut(&id) {
             Some(net) => {
                 match node {
-                    Node::Terminal(t) => {
-                        net.terminals.remove(t);
+                    Node::ConnectionPoint(t) => {
+                        net.connection_points.remove(t);
                     }
                     Node::Wire(c) => {
                         net.wires.remove(c);
@@ -601,14 +601,14 @@ impl Connectivity {
         }
         r.connection_points
             .keys()
-            .filter(|t| doc.terminals.get(t).and_then(|x| x.key.as_ref()).is_some_and(|k| k.as_def().is_none()))
+            .filter(|t| doc.connection_points.get(t).and_then(|x| x.key.as_ref()).is_some_and(|k| k.as_def().is_none()))
             .copied()
             .collect()
     }
 
     /// The terminals of `component` (present ones).
     fn connection_points_of(doc: &Document, owner: impl Into<crate::document::doc::ConnectionPointOwner>) -> Vec<Node> {
-        doc.connection_points_of(owner).map(|(t, _)| Node::Terminal(t)).collect()
+        doc.connection_points_of(owner).map(|(t, _)| Node::ConnectionPoint(t)).collect()
     }
 
     /// Before `op` is applied to `doc`: what it is about to cut.
@@ -625,7 +625,7 @@ impl Connectivity {
     /// | `SetProperty` conductor `wire_number`, `wire_number_fixed`, `potential` | the net's counts and the number index |
     /// | `EmbedDefinition` / `RemoveDefinition` with bridges | its components' bridged terminals joined / cut |
     /// | `SetDeviceDefinition` (brief 048) | its terminals cut, then joined under the new definition |
-    /// | `SetProperty` component `link.<n>` (brief 030) | the terminals of the old value cut, of the new joined |
+    /// | `SetProperty` component `jumper_bar.<n>` (brief 030) | the terminals of the old value cut, of the new joined |
     /// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyItem` / `AddItem` / `RemoveItem` of a symbol whose definition has bridges (brief 036, FP8a; items: brief 044) | the level terminals it shows, and their position mates, joined / cut |
     /// | every other op | nothing |
     pub(crate) fn before_op(&mut self, doc: &Document, op: &Op) {
@@ -634,7 +634,7 @@ impl Connectivity {
                 let wire = doc.wires.get(id).cloned();
                 self.remove(doc, wire.as_ref(), &Node::Wire(*id));
             }
-            Op::RemoveConnectionPoint { id, .. } => self.remove(doc, None, &Node::Terminal(*id)),
+            Op::RemoveConnectionPoint { id, .. } => self.remove(doc, None, &Node::ConnectionPoint(*id)),
             // Design 072 F31: a route removed, or redrawn so that its ends land elsewhere.
             Op::RemoveRoute { id, .. } => self.remove(doc, None, &Node::Route(*id)),
             Op::ModifyRoute { id, before, after } if before.ends != after.ends => {
@@ -678,7 +678,7 @@ impl Connectivity {
             Op::UnlinkRepresentation { id, .. } => {
                 if let Some(r) = doc.representations.get(id) {
                     for t in Self::bridged_shown(doc, r) {
-                        self.cut_around(doc, &Node::Terminal(t));
+                        self.cut_around(doc, &Node::ConnectionPoint(t));
                     }
                 }
             }
@@ -687,7 +687,7 @@ impl Connectivity {
             Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 if let Some((_, r)) = doc.representation_of_item(*id) {
                     for t in Self::bridged_shown(doc, r) {
-                        self.cut_around(doc, &Node::Terminal(t));
+                        self.cut_around(doc, &Node::ConnectionPoint(t));
                     }
                 }
             }
@@ -695,8 +695,8 @@ impl Connectivity {
             Op::SetProperty { object: ObjectRef::Device(id), key, before, .. }
                 if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() =>
             {
-                for t in crate::connectivity::jumper_bars::terminals_named(doc, *id, before.as_deref()) {
-                    self.cut(&Node::Terminal(t));
+                for t in crate::connectivity::jumper_bars::connection_points_named(doc, *id, before.as_deref()) {
+                    self.cut(&Node::ConnectionPoint(t));
                 }
             }
             _ => {}
@@ -717,7 +717,7 @@ impl Connectivity {
     pub(crate) fn after_op(&mut self, doc: &Document, op: &Op) {
         match op {
             Op::CreateWire { id, .. } => self.ensure(doc, Node::Wire(*id)),
-            Op::AddConnectionPoint { id, .. } => self.ensure(doc, Node::Terminal(*id)),
+            Op::AddConnectionPoint { id, .. } => self.ensure(doc, Node::ConnectionPoint(*id)),
             Op::AddRoute { id, .. } | Op::ModifyRoute { id, .. } => self.ensure(doc, Node::Route(*id)),
             Op::CreateDevice { id, .. } => {
                 for t in Self::connection_points_of(doc, *id) {
@@ -762,21 +762,21 @@ impl Connectivity {
             Op::SetProperty { object: ObjectRef::Device(id), key, after, .. }
                 if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() =>
             {
-                for t in crate::connectivity::jumper_bars::terminals_named(doc, *id, after.as_deref()) {
-                    self.ensure(doc, Node::Terminal(t));
+                for t in crate::connectivity::jumper_bars::connection_points_named(doc, *id, after.as_deref()) {
+                    self.ensure(doc, Node::ConnectionPoint(t));
                 }
             }
             // Brief 036: a bridged level symbol joins its position's levels.
             Op::LinkRepresentation { rep, .. } => {
                 for t in Self::bridged_shown(doc, rep) {
-                    self.ensure(doc, Node::Terminal(t));
+                    self.ensure(doc, Node::ConnectionPoint(t));
                 }
             }
             // Brief 044 (tester D1): an item added after its representation was linked joins too.
             Op::ModifyItem { id, .. } | Op::AddItem { id, .. } => {
                 if let Some((_, r)) = doc.representation_of_item(*id) {
                     for t in Self::bridged_shown(doc, r) {
-                        self.ensure(doc, Node::Terminal(t));
+                        self.ensure(doc, Node::ConnectionPoint(t));
                     }
                 }
             }
@@ -981,7 +981,7 @@ impl Connectivity {
     pub(crate) fn repair(&mut self, doc: &Document, op: &Op) {
         match op {
             Op::DeleteWire { id, .. } => self.ensure(doc, Node::Wire(*id)),
-            Op::RemoveConnectionPoint { id, .. } => self.ensure(doc, Node::Terminal(*id)),
+            Op::RemoveConnectionPoint { id, .. } => self.ensure(doc, Node::ConnectionPoint(*id)),
             _ => self.after_op(doc, op),
         }
     }
@@ -1003,7 +1003,7 @@ impl Connectivity {
 
     /// The net of terminal `t`.
     pub fn net_of_connection_point(&self, t: ConnectionPointId) -> Option<NetKey> {
-        self.net_of(&Node::Terminal(t))
+        self.net_of(&Node::ConnectionPoint(t))
     }
 
     /// Net `id`'s members and counts.
@@ -1084,7 +1084,7 @@ impl Connectivity {
         }
         for (node, id) in &self.node_net {
             let listed = self.nets.get(id).is_some_and(|n| match node {
-                Node::Terminal(t) => n.terminals.contains(t),
+                Node::ConnectionPoint(t) => n.connection_points.contains(t),
                 Node::Wire(c) => n.wires.contains(c),
                 Node::Name(k) => n.names.contains(k),
                 Node::Route(r) => n.routes.contains(r),

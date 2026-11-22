@@ -72,7 +72,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
         // Its routes go with their drawings, and the wires to its points with their cable cores.
         for (r, route) in doc.routes.iter() {
             let gone = ops.iter().any(|o| matches!(o, Op::RemoveRoute { id, .. } if id == r));
-            if !gone && route.ends.iter().any(|e| e.point().is_some_and(|t| doc.terminals[&t].device() == Some(c))) {
+            if !gone && route.ends.iter().any(|e| e.point().is_some_and(|t| doc.connection_points[&t].device() == Some(c))) {
                 for (rid, rep) in doc.representations_of(Subject::Route(*r)) {
                     ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
                     for i in &rep.items {
@@ -83,7 +83,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
             }
         }
         for (w, wire) in doc.wires.iter() {
-            if wire.ends.iter().any(|t| doc.terminals[t].device() == Some(c))
+            if wire.ends.iter().any(|t| doc.connection_points[t].device() == Some(c))
                 && !ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id == w))
             {
                 for (cable, cv) in doc.cables.iter() {
@@ -99,7 +99,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
         ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
         ops.push(Op::RemoveItem { id: rep.items[0], item: doc.items[&rep.items[0]].clone() });
         for (t, term) in doc.connection_points_of(c) {
-            ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
+            ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
         }
         ops.push(Op::DeleteDevice { id: c, device: doc.devices[&c].clone() });
     }
@@ -166,7 +166,7 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
         name: "t".parse().unwrap(),
         origin: None,
         graphics: vec![],
-        terminals: vec![],
+        connection_points: vec![],
         bridges: vec![],
         ..Default::default()
     };
@@ -180,7 +180,8 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
             accepts: Default::default(),
         })
         .collect();
-    let bridged = ecad_model::Definition { terminals: points, bridges: vec![vec!["1".parse().unwrap(), "2".parse().unwrap()]], ..bare.clone() };
+    let bridged =
+        ecad_model::Definition { connection_points: points, bridges: vec![vec!["1".parse().unwrap(), "2".parse().unwrap()]], ..bare.clone() };
     let bare_line = serde_json::to_string(&ecad_file::records::Definition::from(&bare)).unwrap();
     assert!(!bare_line.contains("bridges"), "{bare_line}");
     assert_ne!(ecad_file::definition_hash(&bare).unwrap(), ecad_file::definition_hash(&bridged).unwrap());

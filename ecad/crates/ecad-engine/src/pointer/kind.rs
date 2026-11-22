@@ -34,7 +34,7 @@ pub struct Target {
     pub route: Option<RouteId>,
     pub end: Option<End>,
     pub cable: Option<CableId>,
-    pub terminal: Option<ConnectionPointId>,
+    pub connection_point: Option<ConnectionPointId>,
     pub representation: Option<RepresentationId>,
     /// The object's drawn handles on the page (what a selection-based action selects).
     pub handles: Vec<Handle>,
@@ -63,7 +63,7 @@ impl Target {
             route: None,
             end: None,
             cable: None,
-            terminal: None,
+            connection_point: None,
             representation: None,
             handles: Vec::new(),
             free_text: false,
@@ -143,9 +143,9 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     // A terminal strip's terminal within the aperture.
     if ok_aperture
         && let Some(cap) = capture(p, page, cursor, aperture)
-        && let Some(strip) = ecad_electrical::terminal_strips::strip_of_connection_point(doc, cap.terminal)
+        && let Some(strip) = ecad_electrical::terminal_strips::strip_of_connection_point(doc, cap.connection_point)
     {
-        return terminal(p, page, t, strip, Some(cap.terminal));
+        return connection_point(p, page, t, strip, Some(cap.connection_point));
     }
     let Some(h) = picked else { return t };
     // Brief 051 (review of #89, 2): a card frame's part stands for the card, through its symbol.
@@ -192,9 +192,9 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.name = format!("label of {}", wire_words(doc, w));
             t.handles = vec![h];
         }
-        Some(Mapped::Link(strip, _)) => return terminal(p, page, t, strip, None),
+        Some(Mapped::JumperBar(strip, _)) => return connection_point(p, page, t, strip, None),
         Some(Mapped::Marker(rep, term)) => match ecad_electrical::terminal_strips::strip_of_connection_point(doc, term) {
-            Some(strip) => return terminal(p, page, t, strip, Some(term)),
+            Some(strip) => return connection_point(p, page, t, strip, Some(term)),
             None => {
                 if let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) {
                     return device(p, page, t, c, Some(rep));
@@ -204,7 +204,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         Some(Mapped::Item(i)) => match doc.representation_of_item(i) {
             Some((rid, r)) if ecad_electrical::references::cables::is_reference(r) => return reference(doc, map, page, t, rid),
             Some((rid, r)) => match r.subject {
-                Subject::Device(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => return terminal(p, page, t, c, None),
+                Subject::Device(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => return connection_point(p, page, t, c, None),
                 Subject::Device(c) => return device(p, page, t, c, Some(rid)),
                 Subject::Wire(w) => {
                     t.kind = ObjectKind::Wire;
@@ -257,11 +257,11 @@ fn device(p: &Project, page: PageId, mut t: Target, c: DeviceId, rep: Option<Rep
     t
 }
 
-fn terminal(p: &Project, page: PageId, mut t: Target, strip: DeviceId, term: Option<ConnectionPointId>) -> Target {
+fn connection_point(p: &Project, page: PageId, mut t: Target, strip: DeviceId, term: Option<ConnectionPointId>) -> Target {
     let doc = p.ledger.document();
-    t.kind = ObjectKind::Terminal;
+    t.kind = ObjectKind::TerminalBlock;
     t.component = Some(strip);
-    t.terminal = term;
+    t.connection_point = term;
     let tag = ecad_electrical::devices::tag_words(doc, strip);
     t.name = match term {
         // Brief 044: a connector pin is named by its half (`-X10.S:3`).

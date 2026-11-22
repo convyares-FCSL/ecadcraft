@@ -47,7 +47,7 @@ fn fixture() -> (Ledger, Vec<PageId>) {
     let mut l = Ledger::new(54);
     let pages: Vec<PageId> = (0..7).map(|_| ids.fresh()).collect();
     let mut made: Vec<Page> = (0..7).map(|i| Page::titled(format!("{i}")).unwrap()).collect();
-    for (i, g) in [(1, "cover"), (2, "revisions"), (3, "contents"), (4, "bom-location"), (5, "terminals")] {
+    for (i, g) in [(1, "cover"), (2, "revisions"), (3, "contents"), (4, "bom-location"), (5, "terminal_blocks")] {
         made[i] = with(made[i].clone(), "generated", g);
     }
     made[6] = with(made[6].clone(), "sheet", "A1");

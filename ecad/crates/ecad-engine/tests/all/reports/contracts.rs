@@ -34,7 +34,7 @@ fn s(v: &str) -> Option<String> {
 /// The kept models equal a fresh build (the update map left nothing behind).
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
@@ -97,7 +97,7 @@ fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
     h.run("pageprops", json!({"location": "+FIELD"})).unwrap();
     // Keep the models from here on, so every edit goes through the update map.
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
     // Placed keeping no location (the page would propose +FIELD), so the box has unset devices.
     let m: DeviceId = id(&h.run("place", json!({"symbol": "coil", "at": [100, 100], "location": "keep"})).unwrap(), "component");
@@ -219,11 +219,11 @@ fn wire(h: &mut H, points: &[(f64, f64)]) -> WireId {
 fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
     let mut h = H::new(0x24_05);
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
-    let a = h.run("place", json!({"symbol": "terminal", "at": [0, 0], "tag": "X1"})).unwrap();
-    let b = h.run("place", json!({"symbol": "terminal", "at": [60, 0], "tag": "X2"})).unwrap();
+    let a = h.run("place", json!({"symbol": "terminalblock", "at": [0, 0], "tag": "X1"})).unwrap();
+    let b = h.run("place", json!({"symbol": "terminalblock", "at": [60, 0], "tag": "X2"})).unwrap();
     let (a, b): (DeviceId, DeviceId) = (id(&a, "component"), id(&b, "component"));
     // Brief 052: the project's location proposes; the devices store theirs.
     h.run("setlocation", json!({"devices": [a.hex(), b.hex()], "value": "+CP1"})).unwrap();
@@ -351,9 +351,9 @@ fn cover_contents_and_revision_list_show_the_project() {
     let r = h.run("newpage", json!({"generated": "revisions"})).unwrap();
     let revs: PageId = id(&r, "page");
     let doc = h.doc();
-    let outputs = ecad_engine::project::engine_views().report_models(&doc);
+    let reports = ecad_engine::project::engine_views().report_models(&doc);
     let text = |p: PageId| -> Vec<String> {
-        ecad_engine::pages::generated::parts_of(&doc, p, outputs.as_ref())
+        ecad_engine::pages::generated::parts_of(&doc, p, reports.as_ref())
             .into_iter()
             .filter_map(|p| match p.kind {
                 cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
@@ -402,12 +402,12 @@ fn opening_a_box_outline_is_refused_with_the_way_out() {
 fn settings_changes_update_only_the_rows_they_reach() {
     let mut h = H::new(0x24_09);
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
     for i in 0..4 {
         let y = 40.0 + f64::from(i) * 20.0;
-        h.run("place", json!({"symbol": "terminal", "at": [0, y]})).unwrap();
-        h.run("place", json!({"symbol": "terminal", "at": [60, y]})).unwrap();
+        h.run("place", json!({"symbol": "terminalblock", "at": [0, y]})).unwrap();
+        h.run("place", json!({"symbol": "terminalblock", "at": [60, y]})).unwrap();
         let potential = if i == 0 { "24V" } else { "0V" };
         h.run("wire", json!({"points": pts(&[(0.0, y), (60.0, y)]), "potential": potential})).unwrap();
     }
@@ -417,13 +417,13 @@ fn settings_changes_update_only_the_rows_they_reach() {
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD"}})).unwrap();
     assert_eq!(work(&mut h), 1, "only the one 24V wire");
     same_as_built(&mut h);
-    let table = h.cfg(|p| p.outputs().wire_table());
+    let table = h.cfg(|p| p.reports().wire_table());
     assert!(table.rows.iter().any(|r| r[6].text == "RD"), "{table:?}");
     // Styles: nothing recomputed, the tables follow.
     h.run("wiresettings", json!({"colour_style": "code3"})).unwrap();
     h.run("projectprops", json!({"reference_style": "page-column"})).unwrap();
     same_as_built(&mut h);
-    let table = h.cfg(|p| p.outputs().wire_table());
+    let table = h.cfg(|p| p.reports().wire_table());
     assert!(table.rows.iter().any(|r| r[6].text == "RED"), "{table:?}");
     assert!(table.rows.iter().all(|r| r[10].text.starts_with('/')), "{table:?}");
     // The sheet: the wires of pages that use it.

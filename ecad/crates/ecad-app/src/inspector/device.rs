@@ -27,7 +27,7 @@ const PLACED: [&str; 15] = [
     "location",
     "location.socket",
     "location.plug",
-    "location.terminal",
+    "location.terminal_block",
     "rep_type",
     "description",
     "maker",
@@ -52,7 +52,7 @@ pub fn own_checks<'r>(cx: &Cx<'r>) -> Vec<&'r crate::checks::panel::Row> {
         .iter()
         .filter(|r| match r.check.object {
             Object::Device(x) => x == c,
-            Object::Terminal(t) => d.terminals.contains(&t),
+            Object::ConnectionPoint(t) => d.connection_points.contains(&t),
             _ => false,
         })
         .collect()

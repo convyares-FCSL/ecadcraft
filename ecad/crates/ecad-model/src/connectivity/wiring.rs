@@ -364,7 +364,7 @@ pub fn units<'a>(doc: &Document, net: &'a NetData) -> Vec<Cow<'a, NetData>> {
 /// Wire `id` alone as a numbering group of `net`.
 fn unit_of(net: &NetData, id: WireId, w: &crate::objects::wire::Wire) -> NetData {
     let mut u = NetData {
-        terminals: w.ends.iter().copied().collect(),
+        connection_points: w.ends.iter().copied().collect(),
         wires: [id].into_iter().collect(),
         names: net.names.clone(),
         potentials: net.potentials.clone(),
@@ -498,7 +498,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             Op::CreateWire { id, .. } => add(Node::Wire(*id), &mut nets),
             Op::DeleteWire { wire, .. } => {
                 for t in &wire.ends {
-                    add(Node::Terminal(*t), &mut nets);
+                    add(Node::ConnectionPoint(*t), &mut nets);
                 }
             }
             Op::ModifyWire { id, before, after } => {
@@ -512,26 +512,26 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             // Brief 048: another definition may bridge other points.
             Op::SetDeviceDefinition { id, .. } => {
                 for (t, _) in doc.connection_points_of(*id) {
-                    add(Node::Terminal(t), &mut nets);
+                    add(Node::ConnectionPoint(t), &mut nets);
                 }
             }
-            Op::AddConnectionPoint { id, terminal } | Op::RemoveConnectionPoint { id, terminal } => {
-                add(Node::Terminal(*id), &mut nets);
-                for (t, _) in doc.connection_points_of(terminal.owner) {
-                    add(Node::Terminal(t), &mut nets);
+            Op::AddConnectionPoint { id, connection_point } | Op::RemoveConnectionPoint { id, connection_point } => {
+                add(Node::ConnectionPoint(*id), &mut nets);
+                for (t, _) in doc.connection_points_of(connection_point.owner) {
+                    add(Node::ConnectionPoint(t), &mut nets);
                 }
             }
             Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
                 for (t, _) in doc.connection_points_of(*id) {
-                    add(Node::Terminal(t), &mut nets);
+                    add(Node::ConnectionPoint(t), &mut nets);
                 }
             }
             // A continuation (design 072 §6.2) added, removed or renamed: its points and its name
             // groups carry its potential.
             Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => {
                 for (t, _) in doc.connection_points_of(*id) {
-                    add(Node::Terminal(t), &mut nets);
-                    add(Node::Terminal(t), &mut potential);
+                    add(Node::ConnectionPoint(t), &mut nets);
+                    add(Node::ConnectionPoint(t), &mut potential);
                 }
                 if let Some(k) = connectivity::continuation_key(aid) {
                     add(Node::Name(k.clone()), &mut nets);
@@ -540,8 +540,8 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             }
             Op::ModifyAid { id, before, after } if connectivity::continuation_key(before) != connectivity::continuation_key(after) => {
                 for (t, _) in doc.connection_points_of(*id) {
-                    add(Node::Terminal(t), &mut nets);
-                    add(Node::Terminal(t), &mut potential);
+                    add(Node::ConnectionPoint(t), &mut nets);
+                    add(Node::ConnectionPoint(t), &mut potential);
                 }
                 for k in [before, after].into_iter().filter_map(connectivity::continuation_key) {
                     add(Node::Name(k.clone()), &mut nets);
@@ -554,8 +554,8 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
                 if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() =>
             {
                 for v in [before, after] {
-                    for t in crate::connectivity::jumper_bars::terminals_named(doc, *c, v.as_deref()) {
-                        add(Node::Terminal(t), &mut nets);
+                    for t in crate::connectivity::jumper_bars::connection_points_named(doc, *c, v.as_deref()) {
+                        add(Node::ConnectionPoint(t), &mut nets);
                     }
                 }
             }
@@ -566,13 +566,13 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             // Brief 036 (FP8a): a bridged level symbol joins or parts its position's levels.
             Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
                 for t in crate::connectivity::Connectivity::bridged_shown(doc, rep) {
-                    add(Node::Terminal(t), &mut nets);
+                    add(Node::ConnectionPoint(t), &mut nets);
                 }
             }
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                 for comp in doc.components_using(*id) {
                     for (t, _) in doc.connection_points_of(comp) {
-                        add(Node::Terminal(t), &mut nets);
+                        add(Node::ConnectionPoint(t), &mut nets);
                     }
                 }
             }

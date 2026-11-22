@@ -80,7 +80,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelea
         // The kept lists, as on the dialog's first show.
         project.configure(&mut s, |p| {
             p.checks();
-            p.outputs();
+            p.reports();
         })?;
         let mut pre = Vec::new();
         for _ in 0..runs {

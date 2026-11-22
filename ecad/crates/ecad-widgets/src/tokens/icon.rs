@@ -95,7 +95,7 @@ pub enum Icon {
     /// Arc.
     Arc,
     /// Terminal: a terminal block with a screw ring.
-    Terminal,
+    TerminalBlock,
     /// Junction: a dot where lines meet.
     Junction,
     /// Revision cloud: a scalloped outline.
@@ -148,7 +148,7 @@ pub enum Icon {
     /// Device tools: a body on a lead (UI rev 3: the Device group).
     Pin,
     /// Terminal tools: a lead through a ring with a slash (UI rev 3: the Terminal group).
-    TerminalPin,
+    TerminalBlockPin,
     /// Wire tools: a wire bending up from one end ring to another (UI rev 3: the Wire group).
     WireBend,
     /// Cable tools: three leads tied by two strokes (UI rev 3: the Cable group).
@@ -207,7 +207,7 @@ impl Icon {
         Icon::Rectangle,
         Icon::Circle,
         Icon::Arc,
-        Icon::Terminal,
+        Icon::TerminalBlock,
         Icon::Junction,
         Icon::Cloud,
         Icon::Eye,
@@ -235,7 +235,7 @@ impl Icon {
         Icon::Plus,
         Icon::Pencil,
         Icon::Pin,
-        Icon::TerminalPin,
+        Icon::TerminalBlockPin,
         Icon::WireBend,
         Icon::CableBundle,
         Icon::LocationBox,
@@ -289,7 +289,7 @@ impl Icon {
             Icon::Rectangle => "Rectangle",
             Icon::Circle => "Circle",
             Icon::Arc => "Arc",
-            Icon::Terminal => "Terminal",
+            Icon::TerminalBlock => "Terminal",
             Icon::Junction => "Junction",
             Icon::Cloud => "Revision cloud",
             Icon::Eye => "Show or hide",
@@ -317,7 +317,7 @@ impl Icon {
             Icon::Plus => "Zoom in",
             Icon::Pencil => "Draw tools",
             Icon::Pin => "Device tools",
-            Icon::TerminalPin => "Terminal tools",
+            Icon::TerminalBlockPin => "Terminal tools",
             Icon::WireBend => "Wire tools",
             Icon::CableBundle => "Cable tools",
             Icon::LocationBox => "Location tools",

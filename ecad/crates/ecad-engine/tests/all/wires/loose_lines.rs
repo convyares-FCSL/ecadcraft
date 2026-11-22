@@ -26,7 +26,7 @@ fn wire_ends(h: &mut H) -> BTreeSet<BTreeSet<ConnectionPointId>> {
 }
 
 #[test]
-fn place_terminals_on_a_loose_line_then_draw_on_to_a_second_device() {
+fn place_terminal_blocks_on_a_loose_line_then_draw_on_to_a_second_device() {
     let mut h = H::new(SEED);
     // Two devices, each with one connection point (separate devices: one `points_at` each).
     let a = h.points_at(&[(0.0, 0.0)])[0];
@@ -42,20 +42,20 @@ fn place_terminals_on_a_loose_line_then_draw_on_to_a_second_device() {
 
     // 2. Place Terminals across the loose line: one transaction, one terminal on the route.
     let head = h.head();
-    let v = h.run("terminals", json!({"from": [30, 10], "to": [30, -10]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [30, 10], "to": [30, -10]})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction: {v}");
     let strip: DeviceId = id(&v, "strip");
-    let terms = v["terminals"].as_array().cloned().unwrap_or_default();
-    assert_eq!(terms.len(), 1, "one terminal: {v}");
-    let t: ConnectionPointId = id(&terms[0], "terminal");
+    let terms = v["connection_points"].as_array().cloned().unwrap_or_default();
+    assert_eq!(terms.len(), 1, "one connection_point: {v}");
+    let t: ConnectionPointId = id(&terms[0], "connection_point");
     let doc = h.doc();
-    assert_eq!(doc.terminals[&t].device().unwrap(), strip);
+    assert_eq!(doc.connection_points[&t].device().unwrap(), strip);
     // The route is split at the terminal: one piece from -A's point to the terminal, one from the
     // terminal to the free end.
     let pieces: Vec<(RouteId, [RouteEnd; 2])> = doc.routes.iter().map(|(r, x)| (*r, x.ends)).collect();
     assert_eq!(pieces.len(), 2, "split in two: {pieces:?}");
     let landed = pieces.iter().find(|(_, e)| e.contains(&RouteEnd::Point(a)) && e.contains(&RouteEnd::Point(t)));
-    assert!(landed.is_some(), "a piece from -A to the terminal: {pieces:?}");
+    assert!(landed.is_some(), "a piece from -A to the connection_point: {pieces:?}");
     let (beyond, _) =
         *pieces.iter().find(|(_, e)| e.contains(&RouteEnd::Point(t)) && e.contains(&RouteEnd::Free)).unwrap_or_else(|| panic!("{pieces:?}"));
     assert!(pieces.iter().any(|(r, _)| *r == line), "the line keeps its id on one piece: {pieces:?}");

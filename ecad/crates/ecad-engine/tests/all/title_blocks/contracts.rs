@@ -136,7 +136,7 @@ fn a_bound_project_key_redraws_and_an_unread_one_does_not() {
     let id = new_frame(&mut h, "A3");
     let mut body = body_of(&mut h, &id);
     body["items"].as_array_mut().unwrap().push(json!({
-        "kind": "field", "at": {"x": 2, "y": 2, "w": 40, "h": 8}, "bind": "project:job_no", "label": "Job", "look": {"size": 2.5}
+        "kind": "field", "at": {"x": 2, "y": 2, "w": 40, "h": 8}, "bind": "project:job_no", "label": "Job", "draw": {"size": 2.5}
     }));
     h.run("titleblock", json!({"id": id, "body": body})).unwrap();
     h.run("setdefault", json!({"key": "print.frame.style", "level": "project", "value": id})).unwrap();
@@ -227,7 +227,7 @@ fn hostile_bodies_draw_and_are_refused_by_commands() {
         at: Rect::new(x, 1.0, 10.0, 5.0),
         bind: Binding::Print(ecad_model::objects::title_block::PrintField::Sheet),
         label: Some("é".repeat(10_000)),
-        look: TextDraw::default(),
+        draw: TextDraw::default(),
         if_empty: IfEmpty::Text("t".repeat(100)),
     };
     let mut items: Vec<BlockItem> = (0..10_000).map(|i| field(f64::from(i))).collect();
@@ -358,7 +358,7 @@ fn drawn_texts(h: &mut H, page: PageId) -> Vec<String> {
 }
 
 /// The texts a fresh derivation puts on `page` (contact references and tables, brief 025).
-fn fresh_xref_texts(h: &mut H, page: PageId) -> Vec<String> {
+fn fresh_reference_texts(h: &mut H, page: PageId) -> Vec<String> {
     let doc = h.doc();
     ecad_engine::references::draw::devices::parts_on_page(&doc, page)
         .into_iter()
@@ -380,11 +380,11 @@ fn references_follow_the_frames_sheet() {
     let contacts: PageId = crate::common::id(&h.run("newpage", json!({"title": "Contacts"})).unwrap(), "page");
     h.activate(contacts);
     h.run("place", json!({"symbol": "no", "at": [100, 150], "tag": "K1"})).unwrap();
-    let before = fresh_xref_texts(&mut h, contacts);
+    let before = fresh_reference_texts(&mut h, contacts);
     assert!(!before.is_empty(), "the contact names its coil's place");
     let check = |h: &mut H, what: &str| {
         for p in [coils, contacts] {
-            let want = fresh_xref_texts(h, p);
+            let want = fresh_reference_texts(h, p);
             let shown = drawn_texts(h, p);
             for t in &want {
                 assert!(shown.contains(t), "{what}, page {p:?}: {t} not drawn; drawn: {shown:?}");
@@ -394,7 +394,7 @@ fn references_follow_the_frames_sheet() {
     let id = new_frame(&mut h, "A2");
     h.activate(contacts);
     h.run("setdefault", json!({"key": "print.frame.style", "level": "project", "value": id})).unwrap();
-    assert_ne!(fresh_xref_texts(&mut h, contacts), before, "the A2 zones differ from the A3 ones");
+    assert_ne!(fresh_reference_texts(&mut h, contacts), before, "the A2 zones differ from the A3 ones");
     check(&mut h, "A2 frame");
     // A frame's own sheet changed in place reaches its pages too.
     h.activate(contacts);

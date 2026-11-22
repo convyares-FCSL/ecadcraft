@@ -382,8 +382,8 @@ impl Interactive for PlaceConnector {
             Stage::Type => with("Type", TYPE_WORDS, self.family.keyword().to_string()),
             Stage::Pins => {
                 let sizes: Vec<String> = self.family.sizes().iter().map(ToString::to_string).collect();
-                let refs: Vec<&str> = sizes.iter().map(String::as_str).collect();
-                with("Pins", &refs, self.pins.to_string())
+                let references: Vec<&str> = sizes.iter().map(String::as_str).collect();
+                with("Pins", &references, self.pins.to_string())
             }
             Stage::Names => with("Pin names", NAME_WORDS, {
                 let mut w = self.names.clone();

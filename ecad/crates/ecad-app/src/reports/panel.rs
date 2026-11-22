@@ -23,7 +23,7 @@ pub enum Tab {
     Wires,
     Cables,
     /// Brief 028: the terminal plan.
-    Terminals,
+    TerminalBlocks,
 }
 
 impl Tab {
@@ -32,7 +32,7 @@ impl Tab {
             Tab::Bom => "bom",
             Tab::Wires => "wires",
             Tab::Cables => "cables",
-            Tab::Terminals => "terminals",
+            Tab::TerminalBlocks => "terminal_blocks",
         }
     }
     fn label(self) -> &'static str {
@@ -40,7 +40,7 @@ impl Tab {
             Tab::Bom => "BOM",
             Tab::Wires => "Wires",
             Tab::Cables => "Cables",
-            Tab::Terminals => "Terminals",
+            Tab::TerminalBlocks => "Terminals",
         }
     }
     fn empty(self) -> &'static str {
@@ -48,7 +48,7 @@ impl Tab {
             Tab::Bom => "No devices yet.",
             Tab::Wires => "No wires yet.",
             Tab::Cables => "No cables yet.",
-            Tab::Terminals => "No terminal strips yet.",
+            Tab::TerminalBlocks => "No terminal strips yet.",
         }
     }
     fn file(self) -> &'static str {
@@ -56,13 +56,13 @@ impl Tab {
             Tab::Bom => "bom",
             Tab::Wires => "wires",
             Tab::Cables => "cables",
-            Tab::Terminals => "terminals",
+            Tab::TerminalBlocks => "terminal_blocks",
         }
     }
 }
 
 /// The tabs in order.
-const TABS: [Tab; 4] = [Tab::Bom, Tab::Wires, Tab::Cables, Tab::Terminals];
+const TABS: [Tab; 4] = [Tab::Bom, Tab::Wires, Tab::Cables, Tab::TerminalBlocks];
 
 /// Row height (design 024 §6.2).
 const ROW: f32 = 20.0;
@@ -131,7 +131,7 @@ pub struct Reports {
     /// The project folder and name, for the export path's default.
     pub stem: String,
     /// Brief 039: the Terminals tab as the one table's terminal manager.
-    pub terminals: crate::terminal_strips::plan::TerminalStripPlanView,
+    pub connection_points: crate::terminal_strips::plan::TerminalStripPlanView,
     /// Brief 045c and 051: Lists ▸ PLC, kept in step while it is shown.
     pub io: crate::plc::list::IoView,
     pub io_shown: bool,
@@ -176,7 +176,7 @@ impl Reports {
     pub fn sync(&mut self, serial: u64, p: &mut ecad_engine::Project) {
         // Brief 045c: Lists ▸ I/O follows the PLC model's own update map while it is shown.
         if self.io_shown {
-            p.outputs();
+            p.reports();
             if let Some(o) = p.kept_reports() {
                 self.io.sync(serial, p.ledger.document(), o, self.writable);
             }
@@ -200,7 +200,7 @@ impl Reports {
         }
         let reference_style = p.ledger.document().settings.reference_style();
         let style = reference_style as u64;
-        let o = p.outputs();
+        let o = p.reports();
         if self.wires_shown {
             self.wires.sync(serial, o);
         }
@@ -210,21 +210,21 @@ impl Reports {
         // The counts on the tabs, from kept counts (no rows made).
         if self.counted != Some((serial, o.build_id ^ o.revision, self.group)) {
             self.counts = [o.bom_count(self.group), o.wire_count(), o.cable_count(), o.strips.len()];
-            let terminals = o.strips.sorted().iter().map(|s| s.rows.len()).sum();
+            let connection_points = o.strips.sorted().iter().map(|s| s.rows.len()).sum();
             let cards: Vec<_> = o.plc.cards.values().collect();
             let channels = usize::try_from(ecad_electrical::plc::overview::totals(&cards).0).unwrap_or(usize::MAX);
-            self.tab_counts = [terminals, channels, o.wire_count(), o.cable_count()];
+            self.tab_counts = [connection_points, channels, o.wire_count(), o.cable_count()];
             self.counted = Some((serial, o.build_id ^ o.revision, self.group));
         }
         // The Terminals tab follows only the strips it shows (review of PR #55, finding 2; design
         // 028 §11.1): an edit that changes none leaves its copy; the others follow the models.
         let revision = match self.tab {
-            Tab::Terminals => o.build_id.wrapping_mul(1 << 40).wrapping_add(o.strips.changed_at(self.strip).wrapping_mul(8)).wrapping_add(style),
+            Tab::TerminalBlocks => o.build_id.wrapping_mul(1 << 40).wrapping_add(o.strips.changed_at(self.strip).wrapping_mul(8)).wrapping_add(style),
             _ => o.revision,
         };
         let revision = revision.wrapping_add(u64::from(self.hide_accessories)).wrapping_add(u64::from(self.hide_not_drawn) << 1);
-        if self.tab == Tab::Terminals {
-            self.terminals.sync(serial, o, self.strip, !self.hide_accessories, reference_style);
+        if self.tab == Tab::TerminalBlocks {
+            self.connection_points.sync(serial, o, self.strip, !self.hide_accessories, reference_style);
         }
         let key = (serial, revision, self.tab, self.group, self.strip, self.cores_of);
         if self.seen == Some(key) {
@@ -245,8 +245,8 @@ impl Reports {
             (Tab::Wires, _) => o.wire_table(),
             (Tab::Cables, Some(k)) => o.core_table(k),
             (Tab::Cables, None) => o.cable_table_with(!self.hide_not_drawn),
-            (Tab::Terminals, _) => {
-                let (t, gos) = o.terminal_table_with(self.strip, !self.hide_accessories);
+            (Tab::TerminalBlocks, _) => {
+                let (t, gos) = o.terminal_block_table_with(self.strip, !self.hide_accessories);
                 self.gos = gos;
                 t
             }
@@ -266,7 +266,7 @@ impl Reports {
         self.seen = None;
         self.counted = None;
         self.strips_seen = None;
-        self.terminals.invalidate();
+        self.connection_points.invalidate();
         self.wires.invalidate();
         self.cables.invalidate();
     }
@@ -275,7 +275,7 @@ impl Reports {
     pub fn ran(&mut self, refusal: Option<String>) {
         // Only the view whose edit is running holds it.
         self.io.ran(refusal.clone());
-        self.terminals.ran(refusal);
+        self.connection_points.ran(refusal);
     }
 
     fn filter(&mut self) {
@@ -370,7 +370,7 @@ impl Reports {
                 });
                 ui.horizontal(|ui| {
                     // Brief 028: which strip, or all.
-                    if self.tab == Tab::Terminals {
+                    if self.tab == Tab::TerminalBlocks {
                         let strips = self.strips.clone();
                         let names: Vec<&str> = std::iter::once("All").chain(strips.iter().map(|(_, t)| t.as_str())).collect();
                         let mut k = self.strip.and_then(|c| strips.iter().position(|(x, _)| *x == c)).map_or(0, |i| i + 1);
@@ -385,7 +385,7 @@ impl Reports {
                         };
                         let one = self.strip.or(only);
                         let mut acc = !self.hide_accessories;
-                        if Checkbox::new(&mut acc, "Accessories").show(ui).accessible_name("ecad.reports.terminals.acc").changed() {
+                        if Checkbox::new(&mut acc, "Accessories").show(ui).accessible_name("ecad.reports.terminal_blocks.acc").changed() {
                             self.hide_accessories = !acc;
                         }
                         ui.add_enabled_ui(one.is_some(), |ui| {
@@ -400,7 +400,7 @@ impl Reports {
                             })
                             .response
                             .on_disabled_hover_text("Pick one strip (or place terminals) first.")
-                            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.terminals.accessory"));
+                            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.terminal_blocks.accessory"));
                         });
                     }
                     // Brief 059 (Q3): Include not-drawn cables, for this run.
@@ -463,15 +463,15 @@ impl Reports {
                 }
                 ui.separator();
                 // Brief 039: the terminal manager is the one table, mirrored (design 036 §9).
-                if self.tab == Tab::Terminals {
-                    for a in self.terminals.show(ui, true) {
+                if self.tab == Tab::TerminalBlocks {
+                    for a in self.connection_points.show(ui, true) {
                         out = Some(match a {
                             crate::workspace::ListAction::Run(line) => Out::Run(line),
                             crate::workspace::ListAction::GoTo(pg, at) => Out::GotoAt(pg, at),
                             _ => continue,
                         });
                     }
-                    self.rows_drawn = self.terminals.table.rows_drawn;
+                    self.rows_drawn = self.connection_points.table.rows_drawn;
                     return;
                 }
                 if self.table.rows.is_empty() {
@@ -592,7 +592,7 @@ impl Reports {
                 v.extend(std::iter::repeat_n(1.0, self.table.headers.len().saturating_sub(9)));
                 v
             }
-            Tab::Terminals => vec![0.7, 1.6, 0.9, 0.6, 0.5, 0.9, 0.7, 0.6, 1.6, 0.9],
+            Tab::TerminalBlocks => vec![0.7, 1.6, 0.9, 0.6, 0.5, 0.9, 0.7, 0.6, 1.6, 0.9],
         };
         let sum: f32 = weights.iter().sum();
         weights.iter().map(|w| total * w / sum).collect()

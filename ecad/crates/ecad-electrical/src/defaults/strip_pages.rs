@@ -27,10 +27,10 @@ const GROUP: &str = "Terminal strip pages";
 pub const TABLE: &str = "table";
 pub const GRAPHIC: &str = "graphic";
 
-/// `terminal.plan.style`: how a `terminals` page draws, the table (028) or the strip graphic
+/// `terminal_block.plan.style`: how a `connection_points` page draws, the table (028) or the strip graphic
 /// (design 046 §2). Page, then project, then `table`.
 pub static STYLE: Entry = Entry {
-    key: "terminal.plan.style",
+    key: "terminal_block.plan.style",
     label: "Terminal plan style",
     group: GROUP,
     brief: "046",

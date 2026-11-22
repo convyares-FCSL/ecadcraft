@@ -121,7 +121,7 @@ pub fn frame_reach_of(doc: &Document, effect: &ecad_model::document::effect::Eff
         | Effect::Item { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
-        | Effect::Terminal { .. }
+        | Effect::ConnectionPoint { .. }
         | Effect::Rep { .. }
         | Effect::Wire { .. }
         | Effect::Route { .. }

@@ -30,7 +30,7 @@ use ecad_electrical::reports::kept::ReportModels;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Verification {
     pub items: usize,
-    pub terminals: usize,
+    pub connection_points: usize,
     pub groups: usize,
     pub attached_ends: usize,
     /// Every disagreement, in words. Empty when the page shows the document.
@@ -44,8 +44,10 @@ impl Verification {
 
     /// One line for the event log.
     pub fn summary(&self) -> String {
-        let counts =
-            format!("{} items, {} connection points, {} groups, {} attached ends", self.items, self.terminals, self.groups, self.attached_ends);
+        let counts = format!(
+            "{} items, {} connection points, {} groups, {} attached ends",
+            self.items, self.connection_points, self.groups, self.attached_ends
+        );
         match self.problems.first() {
             None => format!("rebuilt page agrees with the document: {counts}"),
             Some(p) => format!("{} problems ({counts}); first: {p}", self.problems.len()),
@@ -61,7 +63,7 @@ fn near(a: Pt, b: Pt) -> bool {
 
 /// Terminal positions of an insert of an ECAD block, read from the drawing: the block's marker
 /// points mapped by the insert's own scale, rotation and position.
-fn block_terminals(d: &Drawing, e: &Entity) -> Vec<Pt> {
+fn block_connection_points(d: &Drawing, e: &Entity) -> Vec<Pt> {
     let EntityKind::Insert(i) = &e.kind else { return Vec::new() };
     let Some(b) = d.blocks.get(&i.block) else { return Vec::new() };
     let (s, c) = i.rotation.sin_cos();
@@ -87,19 +89,19 @@ fn same_points(a: Vec<Pt>, b: Vec<Pt>) -> bool {
 }
 
 /// Check that `drawing` (with `map`) shows `page` of `doc`, without relying on handle numbers.
-/// Pages drawn from the report models are expected with `outputs`
+/// Pages drawn from the report models are expected with `reports`
 /// ([`crate::pages::generated::parts_of`]).
-pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, outputs: Option<&ReportModels>) -> Verification {
-    verify_page_with(doc, page, drawing, map, &BTreeSet::new(), 0.0, outputs)
+pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, reports: Option<&ReportModels>) -> Verification {
+    verify_page_with(doc, page, drawing, map, &BTreeSet::new(), 0.0, reports)
 }
 
 /// [`verify_page`] for a page projected with cable views (brief 005): the cables in `fan` whose
 /// fan can be drawn on the page must show exactly their fan ([`crate::cables::views::fan_on_page`] with
 /// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
 pub fn verify_page_with(
-    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>,
+    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, reports: Option<&ReportModels>,
 ) -> Verification {
-    verify_page_shown(doc, page, drawing, map, fan, tol, false, outputs)
+    verify_page_shown(doc, page, drawing, map, fan, tol, false, reports)
 }
 
 /// [`verify_page_with`] for a page drawn with Show Hidden Text on or off (brief 031, design §5.7):
@@ -107,9 +109,9 @@ pub fn verify_page_with(
 #[allow(clippy::too_many_arguments)]
 pub fn verify_page_shown(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
-    outputs: Option<&ReportModels>,
+    reports: Option<&ReportModels>,
 ) -> Verification {
-    verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false, outputs)
+    verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false, reports)
 }
 
 /// [`verify_page_shown`] for a project whose title block marks a pending revision (brief 033,
@@ -117,7 +119,7 @@ pub fn verify_page_shown(
 #[allow(clippy::too_many_arguments)]
 pub fn verify_page_pending(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
-    outputs: Option<&ReportModels>,
+    reports: Option<&ReportModels>,
 ) -> Verification {
     let mut v = Verification::default();
     let fans = crate::cables::views::drawings_on_page(doc, page, fan, tol);
@@ -125,10 +127,10 @@ pub fn verify_page_pending(
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
     let mut tees_shown: Vec<(ecad_model::RouteId, Pt)> = Vec::new();
-    let look = crate::styles::draw::Look::new(doc);
+    let draw = crate::styles::draw::DrawStyles::new(doc);
     for f in fans.values() {
         for part in &f.parts {
-            let e = part_entity(&look, part, Handle(0));
+            let e = part_entity(&draw, part, Handle(0));
             *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }
@@ -137,7 +139,7 @@ pub fn verify_page_pending(
         if !t.shown && !hidden_text {
             continue;
         }
-        let mut e = crate::devices::draw::text_entity(&look, &t.text, Handle(0));
+        let mut e = crate::devices::draw::text_entity(&draw, &t.text, Handle(0));
         if !t.shown {
             crate::styles::draw::dim_hidden(&mut e);
         }
@@ -145,31 +147,31 @@ pub fn verify_page_pending(
     }
     // Device cross-references (brief 025), derived the same way.
     for part in crate::references::draw::devices::parts_on_page(doc, page) {
-        let mut e = crate::project::device_reference_entity(&look, &part, Handle(0));
+        let mut e = crate::project::device_reference_entity(&draw, &part, Handle(0));
         // Brief 049: a continuation's other-end text in Ink 2, as the page draws it.
         crate::continuations::draw::colour(doc, &part, &mut e);
         *fan_expected.entry(computed_key(&e)).or_default() += 1;
     }
     // PLC card frames (brief 051), derived the same way.
     for part in crate::plc::draw::card::parts_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::project::device_reference_entity(&look, &part, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::project::device_reference_entity(&draw, &part, Handle(0)))).or_default() += 1;
     }
     // Link lines (brief 030), derived the same way.
     for part in ecad_electrical::terminal_strips::jumper_bars::parts_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::project::link_entity(&part, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::project::jumper_bar_entity(&part, Handle(0)))).or_default() += 1;
     }
     // Location box labels (brief 024), derived the same way.
     for (rep, value, at) in ecad_electrical::locations::labels_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::locations::draw::styled_label_entity(doc, &look, rep, &value, at, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::locations::draw::styled_label_entity(doc, &draw, rep, &value, at, Handle(0)))).or_default() += 1;
     }
     // Wire labels (brief 022), derived the same way.
     for l in crate::wires::draw::labels_on_page_with(doc, page, &hidden) {
-        *fan_expected.entry(computed_key(&crate::wires::draw::label_entity(&look, &l, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::wires::draw::label_entity(&draw, &l, Handle(0)))).or_default() += 1;
     }
     // The sheet frame (brief 019), derived like the cable parts.
     // Generated pages and Total in sheets (brief 024) come from the same function.
     let frame_rgb = crate::pages::frame::line_colour(doc, page);
-    for part in crate::pages::generated::parts_of_pending(doc, page, outputs, pending) {
+    for part in crate::pages::generated::parts_of_pending(doc, page, reports, pending) {
         *fan_expected.entry(computed_key(&crate::pages::frame::styled_entity(&part, Handle(0), frame_rgb))).or_default() += 1;
     }
     let mut problems: Vec<String> = Vec::new();
@@ -248,7 +250,7 @@ pub fn verify_page_pending(
             }
             continue;
         }
-        if let Some(Mapped::Frame(_) | Mapped::Link(..)) = map.get(e.handle) {
+        if let Some(Mapped::Frame(_) | Mapped::JumperBar(..)) = map.get(e.handle) {
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
@@ -318,7 +320,7 @@ pub fn verify_page_pending(
             Form::Drawn => {
                 for (t, at) in &r.connection_points {
                     expected_markers.push(*at);
-                    v.terminals += 1;
+                    v.connection_points += 1;
                     match map.marker(*rid, *t).and_then(|h| entities.get(&h)).and_then(|e| marker_position(e)) {
                         Some(p) if near(p, *at) => {}
                         _ => problems.push(format!("connection point {t} of representation {rid} is not marked at its position")),
@@ -338,8 +340,8 @@ pub fn verify_page_pending(
                     .filter(|(_, rep, _)| rep == rid)
                     .map(|(_, _, p)| p)
                     .collect();
-                let got = block_terminals(drawing, e);
-                v.terminals += want.len();
+                let got = block_connection_points(drawing, e);
+                v.connection_points += want.len();
                 // The block shows every terminal of the definition; the component may use a subset.
                 if !want.iter().all(|w| got.iter().any(|g| near(*g, *w))) {
                     problems.push(format!("symbol of representation {rid} does not show its connection points where the document puts them"));
@@ -363,7 +365,7 @@ pub fn verify_page_pending(
             problems.push(format!("block {name} does not show its definition's graphics"));
         }
         let terms: Vec<Pt> = b.entities.iter().filter_map(|e| marker_position(e)).collect();
-        if !same_points(terms, def.terminals.iter().map(|t| t.at).collect()) {
+        if !same_points(terms, def.connection_points.iter().map(|t| t.at).collect()) {
             problems.push(format!("block {name} does not mark its definition's connection points"));
         }
     }
@@ -401,7 +403,7 @@ pub fn verify_page_pending(
     // 6. Relationships shown on the page: a route end on a connection point drawn here ends on a
     //    terminal position read from the drawing (markers and symbol blocks), not from the document.
     let mut drawn_connection_points: Vec<Pt> = entities.values().filter_map(|e| marker_position(e)).collect();
-    drawn_connection_points.extend(entities.values().flat_map(|e| block_terminals(drawing, e)));
+    drawn_connection_points.extend(entities.values().flat_map(|e| block_connection_points(drawing, e)));
     let shown = ecad_model::connectivity::derive::connection_point_positions(doc, page);
     for rid in doc.routes_on(page) {
         let Some(c) = doc.routes.get(&rid) else { continue };

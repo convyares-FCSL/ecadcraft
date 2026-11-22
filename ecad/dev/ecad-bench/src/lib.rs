@@ -22,12 +22,12 @@ pub mod container;
 pub mod generate;
 pub mod history;
 pub mod measure;
-pub mod outputs;
 pub mod pages;
 pub mod plc;
 pub mod ratings;
 pub mod release;
 pub mod report;
+pub mod reports;
 pub mod strips;
 pub mod styles;
 pub mod symbols;
@@ -152,7 +152,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         let hist = history::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
         eprintln!("{} {}: measuring locations, reports and printing…", tier.name, variant.name());
-        let outs = outputs::measure(&v2_path, runs, scratch);
+        let outs = reports::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
         eprintln!("{} {}: measuring terminal strips and cable cores…", tier.name, variant.name());
         let strips = strips::measure(&v2_path, runs, scratch);
@@ -175,7 +175,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
             v2: Some(v2m?),
             compression: Some(compression),
             history: Some(hist?),
-            outputs: Some(outs?),
+            reports: Some(outs?),
             strips: Some(strips?),
             release: Some(rel?),
             text: Some(text?),
@@ -186,7 +186,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
     Ok(rows)
 }
 
-/// Measure one group of rows (`measure`, `outputs`, `strips`, `text`, `wires` or `plc`) on the
+/// Measure one group of rows (`measure`, `reports`, `strips`, `text`, `wires` or `plc`) on the
 /// written project at `path`, and return them as text.
 ///
 /// # Errors
@@ -196,7 +196,7 @@ pub fn measure_part(part: &str, path: &Path) -> Result<String, String> {
     let runs = measure::RUNS;
     let r = match part {
         "measure" => measure::measure(path, runs, &scratch).map(|(m, _)| format!("{m:#?}")),
-        "outputs" => outputs::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
+        "reports" => reports::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
         "strips" => strips::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
         "text" => text::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
         "wires" => wires_nets::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),

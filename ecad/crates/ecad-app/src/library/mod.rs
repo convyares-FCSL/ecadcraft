@@ -200,7 +200,7 @@ impl App {
                     .iter()
                     .enumerate()
                     .filter_map(|(n, (term, at))| {
-                        let tm = doc.terminals.get(term)?;
+                        let tm = doc.connection_points.get(term)?;
                         Some(ecad_model::ConnectionPointDef {
                             key: tm
                                 .key

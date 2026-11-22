@@ -94,10 +94,10 @@ fn run_name(doc: &Document, run: Option<FolderId>) -> String {
 /// One run's pages in book order, with their sheet counts.
 type Runs = BTreeMap<Option<FolderId>, Vec<(PageId, usize)>>;
 
-fn runs(doc: &Document, book: &Book, outputs: Option<&ReportModels>) -> Runs {
+fn runs(doc: &Document, book: &Book, reports: Option<&ReportModels>) -> Runs {
     let mut out: Runs = BTreeMap::new();
     for p in &book.order {
-        out.entry(run_of(doc, *p)).or_default().push((*p, generated::sheets_of(doc, *p, outputs).max(1)));
+        out.entry(run_of(doc, *p)).or_default().push((*p, generated::sheets_of(doc, *p, reports).max(1)));
     }
     out
 }
@@ -123,9 +123,9 @@ fn spans(doc: &Document, runs: &Runs) -> BTreeMap<Option<FolderId>, BTreeSet<u64
 
 /// Where two runs' spans meet: the run that reaches into the other, the other, and the first
 /// number they share. Each pair once, the earlier start first.
-pub fn overlaps(doc: &Document, outputs: Option<&ReportModels>) -> Vec<(Option<FolderId>, Option<FolderId>, u64)> {
+pub fn overlaps(doc: &Document, reports: Option<&ReportModels>) -> Vec<(Option<FolderId>, Option<FolderId>, u64)> {
     let book = Book::of(doc);
-    let rs = runs(doc, &book, outputs);
+    let rs = runs(doc, &book, reports);
     let sp = spans(doc, &rs);
     let mut out = Vec::new();
     let keys: Vec<Option<FolderId>> = sp.keys().copied().collect();
@@ -153,10 +153,10 @@ pub fn overlap_words(doc: &Document, from: Option<FolderId>, into: Option<Folder
 }
 
 /// What [`renumber`] would write: each page whose number changes, with its new number.
-pub fn renumber(doc: &Document, outputs: Option<&ReportModels>, scope: Option<FolderId>) -> Vec<(PageId, String)> {
+pub fn renumber(doc: &Document, reports: Option<&ReportModels>, scope: Option<FolderId>) -> Vec<(PageId, String)> {
     let book = Book::of(doc);
     let step = u64::from(doc.settings.page_number_step().max(1));
-    let rs = runs(doc, &book, outputs);
+    let rs = runs(doc, &book, reports);
     let sp = spans(doc, &rs);
     let in_scope = |p: PageId| scope.is_none_or(|f| within(doc, p, f));
     // Numbers in use that stay: every sheet of the pages outside the scope.
@@ -164,7 +164,7 @@ pub fn renumber(doc: &Document, outputs: Option<&ReportModels>, scope: Option<Fo
         .order
         .iter()
         .filter(|p| !in_scope(**p))
-        .flat_map(|p| generated::sheet_numbers(doc, &book, *p, outputs))
+        .flat_map(|p| generated::sheet_numbers(doc, &book, *p, reports))
         .map(|n| n.to_ascii_lowercase())
         .collect();
     let mut out = Vec::new();
@@ -286,7 +286,7 @@ pub fn checks_changed(doc: &Document, effect: &ecad_model::document::effect::Eff
         | Effect::Item { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
-        | Effect::Terminal { .. }
+        | Effect::ConnectionPoint { .. }
         | Effect::Rep { .. }
         | Effect::Wire { .. }
         | Effect::Route { .. }
@@ -320,7 +320,7 @@ pub fn touches_checks(effect: &ecad_model::document::effect::Effect<'_>) -> bool
         | Effect::Item { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
-        | Effect::Terminal { .. }
+        | Effect::ConnectionPoint { .. }
         | Effect::Rep { .. }
         | Effect::Wire { .. }
         | Effect::Route { .. }

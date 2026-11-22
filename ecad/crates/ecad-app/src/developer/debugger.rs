@@ -429,7 +429,7 @@ impl Debugger {
                 }
                 None => self.checks.push(Ran { check: failed("file", "the project has no file yet".into()), time: now() }),
             },
-            CheckKind::Index => match project.read(s, |p, _| (p.ledger.document().clone(), p.xref().clone(), p.ledger.head())) {
+            CheckKind::Index => match project.read(s, |p, _| (p.ledger.document().clone(), p.reference().clone(), p.ledger.head())) {
                 Ok((doc, idx, head)) => self.jobs.spawn(At { head, ..at }, move || debug::verify_index(&doc, &idx, head)),
                 Err(e) => self.checks.push(Ran { check: failed("reference index", e), time: now() }),
             },
@@ -842,7 +842,7 @@ impl Debugger {
             if ui
                 .add(Button::new("Check index").small())
                 .on_hover_text("Rebuild the reference index from a copy and compare it with the kept one")
-                .accessible_name("ecad.debug.xrefcheck")
+                .accessible_name("ecad.debug.referencecheck")
                 .clicked()
             {
                 run = Some(CheckKind::Index);
@@ -1043,8 +1043,8 @@ fn describe(doc: &Document, r: &Resolved) -> String {
     if let Some(i) = r.item {
         chunks.push(format!("item {}", i.short()));
     }
-    if let Some(t) = r.terminal {
-        chunks.push(format!("connection point {} {}", t.short(), debug::object_label(doc, ObjectId::Terminal(t))));
+    if let Some(t) = r.connection_point {
+        chunks.push(format!("connection point {} {}", t.short(), debug::object_label(doc, ObjectId::ConnectionPoint(t))));
     }
     if let Some(rep) = r.representation {
         chunks.push(format!("{} {}", rep.short(), debug::object_label(doc, ObjectId::Representation(rep))));

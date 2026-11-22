@@ -6,24 +6,26 @@ use ecad_model::{Document, ItemId, PageId, Pt, RepresentationId, Subject};
 use crate::styles::draw::DrawApply as _;
 use {ecad_electrical::locations::LAYER, ecad_electrical::locations::LINETYPE, ecad_electrical::locations::boxes_on};
 
-/// A box label as an entity on [`LAYER`], top-left aligned, in the location label style of `look`
+/// A box label as an entity on [`LAYER`], top-left aligned, in the location label style of `draw`
 /// (design 031 §3.2).
-pub fn label_entity(look: &crate::styles::draw::Look, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle) -> cadcraft_engine::doc::Entity {
+pub fn label_entity(
+    draw: &crate::styles::draw::DrawStyles, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
+) -> cadcraft_engine::doc::Entity {
     use cadcraft_engine::doc::{HAlign, VAlign};
     use ecad_electrical::styles::text_style::TextKind;
-    let h = look.style(TextKind::LocationLabel).height;
+    let h = draw.style(TextKind::LocationLabel).height;
     let mut e = crate::devices::draw::text_entity_with(value, at, h, HAlign::Left, VAlign::Top, handle, LAYER);
-    look.apply(&mut e, TextKind::LocationLabel);
+    draw.apply(&mut e, TextKind::LocationLabel);
     e
 }
 
 /// Brief 050a (design 050 §4.2): a box label in its box's label style when that is not the
 /// location text kind's own style: the style's height, weight and colour.
 pub fn styled_label_entity(
-    doc: &Document, look: &crate::styles::draw::Look, rep: RepresentationId, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
+    doc: &Document, draw: &crate::styles::draw::DrawStyles, rep: RepresentationId, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
 ) -> cadcraft_engine::doc::Entity {
     use ecad_electrical::styles::text_style::TextKind;
-    let mut e = label_entity(look, value, at, handle);
+    let mut e = label_entity(draw, value, at, handle);
     let Some(c) = doc.representations.get(&rep).and_then(|r| match r.subject {
         Subject::Aid(a) => Some(a),
         _ => None,
@@ -40,7 +42,7 @@ pub fn styled_label_entity(
     if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
         t.height = own.style.height;
     }
-    look.apply_own(&mut e, TextKind::LocationLabel, &own);
+    draw.apply_own(&mut e, TextKind::LocationLabel, &own);
     e
 }
 
@@ -67,11 +69,11 @@ pub fn style_boxes(
     }
     let index: std::collections::HashMap<cadcraft_engine::doc::Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     for b in boxes {
-        let look = ecad_electrical::styles::location::box_draw(doc, b.aid);
+        let draw = ecad_electrical::styles::location::box_draw(doc, b.aid);
         let Some(e) = item_handle(b.item).and_then(|h| index.get(&h)).and_then(|i| ents.get_mut(*i)) else { continue };
-        e.common.linetype = look.linetype.into();
-        e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(u16::try_from(look.lineweight).unwrap_or(25));
-        if let Some(rgb) = crate::cables::draw::colour_rgb(&look.colour, crate::cables::draw::projection_sheet()) {
+        e.common.linetype = draw.linetype.into();
+        e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(u16::try_from(draw.lineweight).unwrap_or(25));
+        if let Some(rgb) = crate::cables::draw::colour_rgb(&draw.colour, crate::cables::draw::projection_sheet()) {
             e.common.color = cadcraft_engine::doc::color::Color::True(rgb);
         }
     }

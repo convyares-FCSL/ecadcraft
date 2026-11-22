@@ -342,7 +342,7 @@ impl crate::App {
                 self.set_workspace(Workspace::Lists);
                 self.shell.lists = match app {
                     App::DeviceRow => ListsView::Devices,
-                    App::TerminalStripRow => ListsView::Terminals,
+                    App::TerminalStripRow => ListsView::TerminalBlocks,
                     App::PlcRacks => ListsView::Plc,
                     _ => ListsView::Reports,
                 };
@@ -378,7 +378,7 @@ impl crate::App {
                 let k = t.cable.ok_or("no cable")?;
                 let p = self.project.clone().ok_or("no ECAD project is open")?;
                 let here = t.page;
-                let refs = p.read(&mut self.cad.session, |p, _| {
+                let references = p.read(&mut self.cad.session, |p, _| {
                     p.ledger
                         .document()
                         .representations_of(Subject::Cable(k))
@@ -386,12 +386,12 @@ impl crate::App {
                         .map(|(id, r)| (id, r.page))
                         .collect::<Vec<_>>()
                 })?;
-                match refs.iter().find(|(_, pg)| Some(*pg) == here) {
+                match references.iter().find(|(_, pg)| Some(*pg) == here) {
                     Some((r, _)) => {
                         self.cad.run("cablegoto", json!({"reference": r.hex()}))?;
                     }
                     None => {
-                        let (_, pg) = refs.first().ok_or_else(|| format!("{} has no reference to another page.", t.name))?;
+                        let (_, pg) = references.first().ok_or_else(|| format!("{} has no reference to another page.", t.name))?;
                         self.show_page(*pg)?;
                     }
                 }
@@ -515,13 +515,13 @@ fn template(a: &Action, target: Option<&Target>, picked: &crate::commands::tools
     }
     // Brief 044: a connector pin's new name.
     if a.command == "pinlabel" {
-        return match target.and_then(|t| t.terminal) {
-            Some(term) => format!(r#"pinlabel {{"terminal":"{}","to":"<new pin name>"}}"#, term.hex()),
+        return match target.and_then(|t| t.connection_point) {
+            Some(term) => format!(r#"pinlabel {{"connection_point":"{}","to":"<new pin name>"}}"#, term.hex()),
             None => r#"pinlabel {"device":"<connector tag>","pin":"<pin name>","to":"<new pin name>"}"#.to_string(),
         };
     }
-    match target.and_then(|t| t.terminal) {
-        Some(term) => format!(r#"{} {{"terminal":"{}","position":"<new label>"}}"#, a.command, term.hex()),
-        None => format!(r#"{} {{"terminal":"<terminal id>","position":"<new label>"}}"#, a.command),
+    match target.and_then(|t| t.connection_point) {
+        Some(term) => format!(r#"{} {{"connection_point":"{}","position":"<new label>"}}"#, a.command, term.hex()),
+        None => format!(r#"{} {{"connection_point":"<terminal id>","position":"<new label>"}}"#, a.command),
     }
 }

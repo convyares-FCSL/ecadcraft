@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::common::H;
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
+    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
 }
 
 /// Two pages, two tagged coils, a wire between their first connection points and a cable that is

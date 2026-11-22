@@ -443,11 +443,11 @@ fn hostile_text_comes_back_as_plain_json_strings() {
             Op::CreateDevice { id: k, device: Device { properties: props(&[("note", X)]), ..Device::default() }.with_tag(Some(X)) },
             Op::AddConnectionPoint {
                 id: a,
-                terminal: ConnectionPoint { owner: k.into(), label: Some(X.into()), key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: k.into(), label: Some(X.into()), key: None, accepts: Default::default() },
             },
             Op::AddConnectionPoint {
                 id: b,
-                terminal: ConnectionPoint { owner: k.into(), label: Some("2".into()), key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: k.into(), label: Some("2".into()), key: None, accepts: Default::default() },
             },
             Op::CreateWire { id: w, wire: Wire::new(ids.fresh(), ids.fresh(), a, b) },
             Op::CreateCable {

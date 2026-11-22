@@ -165,7 +165,7 @@ pub fn coloured_routes(
     doc: &Document, page: PageId, map: Option<&crate::project::HandleMap>, sheet: &ecad_drawing_style::Sheet,
 ) -> Vec<ColouredRoute> {
     let mut out = Vec::new();
-    let looks = ecad_electrical::styles::wire::WireLooks::new(doc);
+    let draws = ecad_electrical::styles::wire::WireDraws::new(doc);
     for (rep, r) in doc.representations_on(page) {
         let Subject::Route(x) = r.subject else { continue };
         if r.form != ecad_model::Form::Drawn {
@@ -183,7 +183,7 @@ pub fn coloured_routes(
         if points.len() < 2 || !points.iter().all(|q| q.x.is_finite() && q.y.is_finite()) {
             continue;
         }
-        let Some(colours) = conductor_colour_in(doc, &looks, c).and_then(|code| wire_colours(&code, sheet)) else { continue };
+        let Some(colours) = conductor_colour_in(doc, &draws, c).and_then(|code| wire_colours(&code, sheet)) else { continue };
         if colours.solid == sheet.ink && colours.dashes.is_none() {
             continue;
         }

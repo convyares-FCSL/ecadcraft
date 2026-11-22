@@ -13,8 +13,8 @@ pub fn all(doc: &Document, tol: f64) -> Vec<Check> {
 }
 
 /// [`all`] with the report models already kept (brief 024: the project's, reused by `checks`).
-pub fn all_with(doc: &Document, tol: f64, outputs: &ecad_electrical::reports::kept::ReportModels) -> Vec<Check> {
-    ecad_electrical::checks::all_measured(doc, tol, outputs, &EngineMetrics)
+pub fn all_with(doc: &Document, tol: f64, reports: &ecad_electrical::reports::kept::ReportModels) -> Vec<Check> {
+    ecad_electrical::checks::all_measured(doc, tol, reports, &EngineMetrics)
 }
 
 /// The drawn handles of `object` on `page` (for a go-to's selection): a wire's lines, a route's line, a
@@ -46,7 +46,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
                 .unwrap_or_default();
         }
         Object::Cable(k) => Subject::Cable(k),
-        Object::Terminal(t) => match doc.terminals.get(&t) {
+        Object::ConnectionPoint(t) => match doc.connection_points.get(&t) {
             Some(x) => x.owner.subject(),
             None => return Vec::new(),
         },

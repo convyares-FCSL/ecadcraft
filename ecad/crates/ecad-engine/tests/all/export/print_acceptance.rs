@@ -350,10 +350,10 @@ fn long_plan(h: &mut H, number: &str) -> (PageId, usize) {
     for x in [100.0, 110.0] {
         h.run("wire", json!({"points": pts(&[(x, 200.0), (x, 100.0)])})).unwrap();
     }
-    let v = h.run("terminals", json!({"from": [90, 150], "to": [120, 150]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [90, 150], "to": [120, 150]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
-    h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "120"})).unwrap();
-    let page: PageId = id(&h.run("newpage", json!({"generated": "terminals", "number": number})).unwrap(), "page");
+    h.run("setprop", json!({"component": strip.hex(), "key": "terminal_blocks", "value": "120"})).unwrap();
+    let page: PageId = id(&h.run("newpage", json!({"generated": "terminal_blocks", "number": number})).unwrap(), "page");
     let doc = h.doc();
     let n =
         ecad_electrical::pages::generated::sheets_of(&doc, page, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
@@ -427,8 +427,8 @@ fn ac8_continuation_numbers_are_taken_and_a_clash_is_a_warning() {
     // A page right after the last sheet, then the plan grows onto it.
     let next = (400 + n).to_string();
     h.run("pageprops", json!({"page": other.hex(), "number": next})).unwrap();
-    let strip = h.doc().devices.iter().find(|(_, c)| c.properties.contains_key("terminals")).map(|(k, _)| *k).unwrap();
-    h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "200"})).unwrap();
+    let strip = h.doc().devices.iter().find(|(_, c)| c.properties.contains_key("terminal_blocks")).map(|(k, _)| *k).unwrap();
+    h.run("setprop", json!({"component": strip.hex(), "key": "terminal_blocks", "value": "200"})).unwrap();
     let checks = h.run("checks", json!({})).unwrap().to_string();
     let doc = h.doc();
     let last = 400

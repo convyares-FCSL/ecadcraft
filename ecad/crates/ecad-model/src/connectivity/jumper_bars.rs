@@ -1,9 +1,9 @@
 //! Links (brief 030, design 030 §5, FP5): positions of one component joined electrically by a
-//! component property `link.<n>`, never a conductor.
+//! component property `jumper_bar.<n>`, never a conductor.
 //!
 //! # Semantics
-//! - A **link key** is `link.<n>` with `n` a whole number 1…[`MAX_JUMPER_BAR`] written without leading
-//!   zeros. `link.<n>.part_number` and the like are not link keys.
+//! - A **link key** is `jumper_bar.<n>` with `n` a whole number 1…[`MAX_JUMPER_BAR`] written without leading
+//!   zeros. `jumper_bar.<n>.part_number` and the like are not link keys.
 //! - Its value names **positions** by terminal label: ranges `a-b` (every label from `a` to `b` in
 //!   natural order, [`natural_key`]) and single labels, comma-separated (`1-4`, `7, 9, 11`).
 //! - [`crate::connectivity`] joins the terminals of the component whose labels a link names
@@ -27,7 +27,7 @@ use crate::geometry::point::{LevelIo, PointKey};
 use crate::naming::id::{ConnectionPointId, DeviceId};
 
 /// What every link key starts with.
-pub const PREFIX: &str = "link.";
+pub const PREFIX: &str = "jumper_bar.";
 /// The highest link number.
 pub const MAX_JUMPER_BAR: u32 = 999;
 /// Most positions (items) one link names.
@@ -113,7 +113,7 @@ fn cmp_labels(a: &str, b: &str) -> Ordering {
     natural_key(a).cmp(&natural_key(b))
 }
 
-/// The link number of `key` when it is a link key (`link.3` → 3).
+/// The link number of `key` when it is a link key (`jumper_bar.3` → 3).
 pub fn jumper_bar_number(key: &str) -> Option<u32> {
     let n = key.strip_prefix(PREFIX)?;
     crate::naming::words::uint_canonical(n, MAX_JUMPER_BAR).filter(|n| *n >= 1)
@@ -139,11 +139,11 @@ pub struct Positions(pub Vec<Item>);
 fn refusal(text: &str) -> ParseError {
     let shown: String = text.chars().take(24).collect();
     let more = if text.chars().count() > 24 { "\u{2026}" } else { "" };
-    link(format!("\"{shown}{more}\" is not a link. Write positions like 1-4 or 7, 9, 11."))
+    jumper_bar(format!("\"{shown}{more}\" is not a link. Write positions like 1-4 or 7, 9, 11."))
 }
 
-fn link(why: impl Into<std::borrow::Cow<'static, str>>) -> ParseError {
-    ParseError::invalid(Parsed::Link, why)
+fn jumper_bar(why: impl Into<std::borrow::Cow<'static, str>>) -> ParseError {
+    ParseError::invalid(Parsed::JumperBar, why)
 }
 
 fn label(s: &str, text: &str) -> Result<String, ParseError> {
@@ -152,13 +152,13 @@ fn label(s: &str, text: &str) -> Result<String, ParseError> {
         return Err(refusal(text));
     }
     if l.chars().count() > MAX_LABEL_CHARS {
-        return Err(link(format!("A position label has at most {MAX_LABEL_CHARS} characters.")));
+        return Err(jumper_bar(format!("A position label has at most {MAX_LABEL_CHARS} characters.")));
     }
     Ok(l.to_string())
 }
 
 fn level_refusal(end: &str) -> ParseError {
-    link(format!("\"{end}\" names no level. Levels are 1 to {MAX_LEVEL}: write 4.2 for position 4, level 2."))
+    jumper_bar(format!("\"{end}\" names no level. Levels are 1 to {MAX_LEVEL}: write 4.2 for position 4, level 2."))
 }
 
 /// Read a link's positions (spaces ignored).
@@ -168,12 +168,12 @@ fn level_refusal(end: &str) -> ParseError {
 /// [`MAX_ITEMS`] items, in words with the way forward.
 pub fn parse(text: &str) -> Result<Positions, ParseError> {
     if text.chars().count() > MAX_TEXT_CHARS {
-        return Err(link(format!("A link names at most {MAX_ITEMS} positions.")));
+        return Err(jumper_bar(format!("A link names at most {MAX_ITEMS} positions.")));
     }
     let mut items = Vec::new();
     for part in text.split(',') {
         if items.len() >= MAX_ITEMS {
-            return Err(link(format!("A link names at most {MAX_ITEMS} positions.")));
+            return Err(jumper_bar(format!("A link names at most {MAX_ITEMS} positions.")));
         }
         let part = part.trim();
         match part.split_once('-') {
@@ -185,7 +185,7 @@ pub fn parse(text: &str) -> Result<Positions, ParseError> {
                 let (pa, la) = split_level(&a).map_err(|_| level_refusal(&a))?;
                 let (pb, lb) = split_level(&b).map_err(|_| level_refusal(&b))?;
                 if pa != pb && la.unwrap_or((1, None)).0 != lb.unwrap_or((1, None)).0 {
-                    return Err(link(format!(
+                    return Err(jumper_bar(format!(
                         "\"{a}-{b}\" joins different levels at different positions. Write {pa}.1-{pb}.1, or {pa}.1-{pa}.2 for levels of one position."
                     )));
                 }
@@ -448,7 +448,7 @@ pub fn plan_order(labels: impl IntoIterator<Item = String>) -> Vec<String> {
 /// (brief 036). One pass over the
 /// component's terminals per link that names `t`.
 pub fn linked(doc: &Document, t: ConnectionPointId) -> Vec<ConnectionPointId> {
-    let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
+    let Some(term) = doc.connection_points.get(&t) else { return Vec::new() };
     let Some(comp) = term.device().and_then(|d| doc.devices.get(&d)) else { return Vec::new() };
     let mut out = std::collections::BTreeSet::new();
     for (_, p) in of(&comp.properties) {
@@ -466,7 +466,7 @@ pub fn linked(doc: &Document, t: ConnectionPointId) -> Vec<ConnectionPointId> {
 }
 
 /// The terminals of `component` a link value names (unreadable: none).
-pub fn terminals_named(doc: &Document, component: DeviceId, value: Option<&str>) -> Vec<ConnectionPointId> {
+pub fn connection_points_named(doc: &Document, component: DeviceId, value: Option<&str>) -> Vec<ConnectionPointId> {
     let Some(p) = value.and_then(|v| parse(v).ok()) else { return Vec::new() };
     let m = Matcher::of(&p);
     doc.connection_points_of(component).filter(|(_, x)| m.matches_connection_point(x)).map(|(id, _)| id).collect()
@@ -478,12 +478,12 @@ mod tests {
 
     #[test]
     fn keys_and_values() {
-        assert_eq!(jumper_bar_number("link.1"), Some(1));
-        assert_eq!(jumper_bar_number("link.999"), Some(999));
-        assert_eq!(jumper_bar_number("link.0"), None);
-        assert_eq!(jumper_bar_number("link.1000"), None);
-        assert_eq!(jumper_bar_number("link.01"), None);
-        assert_eq!(jumper_bar_number("link.1.part_number"), None);
+        assert_eq!(jumper_bar_number("jumper_bar.1"), Some(1));
+        assert_eq!(jumper_bar_number("jumper_bar.999"), Some(999));
+        assert_eq!(jumper_bar_number("jumper_bar.0"), None);
+        assert_eq!(jumper_bar_number("jumper_bar.1000"), None);
+        assert_eq!(jumper_bar_number("jumper_bar.01"), None);
+        assert_eq!(jumper_bar_number("jumper_bar.1.part_number"), None);
         let p = parse(" 1 - 4 ,7").unwrap_or_default();
         assert_eq!(p.text(), "1-4, 7");
         assert!(p.contains("3") && p.contains("7") && !p.contains("5") && !p.contains("10"));

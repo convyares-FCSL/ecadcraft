@@ -37,7 +37,7 @@ crate::word_enum! {
         #[strum(serialize = "bom-location")]
         BomLocation,
         /// The terminal plan of every strip (one strip's is [`PageKind::TerminalStrip`]).
-        Terminals,
+        TerminalBlocks,
         /// The cable schedule.
         Cables,
         /// The rack overview, before the I/O list.
@@ -53,7 +53,7 @@ impl GenKind {
     /// Whether its content comes from the report models (built for it on first show).
     pub fn needs_reports(self) -> bool {
         match self {
-            GenKind::BomLocation | GenKind::Terminals | GenKind::Cables | GenKind::PlcRack | GenKind::IoList => true,
+            GenKind::BomLocation | GenKind::TerminalBlocks | GenKind::Cables | GenKind::PlcRack | GenKind::IoList => true,
             GenKind::Cover | GenKind::Contents | GenKind::Revisions => false,
         }
     }
@@ -63,7 +63,7 @@ impl GenKind {
     pub fn is_front(self) -> bool {
         match self {
             GenKind::Cover | GenKind::Contents | GenKind::Revisions => true,
-            GenKind::BomLocation | GenKind::Terminals | GenKind::Cables | GenKind::PlcRack | GenKind::IoList => false,
+            GenKind::BomLocation | GenKind::TerminalBlocks | GenKind::Cables | GenKind::PlcRack | GenKind::IoList => false,
         }
     }
 
@@ -75,7 +75,7 @@ impl GenKind {
             // Brief 054 (design 054 §7): a new revisions page is the Revision history.
             GenKind::Revisions => "Revision history",
             GenKind::BomLocation => "BOM by location",
-            GenKind::Terminals => "Terminal plan",
+            GenKind::TerminalBlocks => "Terminal plan",
             GenKind::Cables => "Cable schedule",
             GenKind::PlcRack => "PLC racks",
             GenKind::IoList => "I/O list",
@@ -95,7 +95,7 @@ pub enum PageKind {
     /// project, one after another (brief 028); a plan of one strip is [`PageKind::TerminalStrip`].
     Generated(GenKind),
     /// The terminal plan of one terminal strip (brief 028, FP3): a generated
-    /// [`GenKind::Terminals`] page that shows only `strip`.
+    /// [`GenKind::TerminalBlocks`] page that shows only `strip`.
     TerminalStrip { strip: DeviceId },
 }
 
@@ -106,11 +106,11 @@ impl PageKind {
     }
 
     /// What it generates, if it is generated: a one-strip terminal plan is a
-    /// [`GenKind::Terminals`] page.
+    /// [`GenKind::TerminalBlocks`] page.
     pub fn generated_kind(self) -> Option<GenKind> {
         match self {
             PageKind::Generated(what) => Some(what),
-            PageKind::TerminalStrip { .. } => Some(GenKind::Terminals),
+            PageKind::TerminalStrip { .. } => Some(GenKind::TerminalBlocks),
             PageKind::Schematic => None,
         }
     }

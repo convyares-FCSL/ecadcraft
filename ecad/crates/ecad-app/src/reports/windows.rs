@@ -111,7 +111,7 @@ impl App {
     fn show_cores_of_row(&mut self, i: usize) {
         let Some(k) = self.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
         let Some(p) = self.project.clone() else { return };
-        let cable = p.configure(&mut self.cad.session, |p| p.outputs().cables().get(k).map(|c| c.cable)).ok().flatten();
+        let cable = p.configure(&mut self.cad.session, |p| p.reports().cables().get(k).map(|c| c.cable)).ok().flatten();
         if let (Some(r), Some(c)) = (&mut self.reports, cable) {
             r.cores_of = Some(c);
         }
@@ -121,7 +121,7 @@ impl App {
     pub fn show_plan(&mut self, strip: Option<ecad_model::DeviceId>) {
         self.reports_view();
         if let Some(r) = &mut self.reports {
-            r.tab = crate::reports::panel::Tab::Terminals;
+            r.tab = crate::reports::panel::Tab::TerminalBlocks;
             r.strip = strip;
             r.cores_of = None;
             r.invalidate();
@@ -148,11 +148,11 @@ impl App {
         let Some(k) = self.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
         let Some(p) = self.project.clone() else { return };
         let group = self.reports.as_ref().map(|r| r.group).unwrap_or_default();
-        let terminal = self.reports.as_ref().and_then(|r| r.gos.get(k).copied().flatten());
+        let connection_point = self.reports.as_ref().and_then(|r| r.gos.get(k).copied().flatten());
         let cores = self.reports.as_ref().is_some_and(|r| r.cores_of.is_some());
         let to = p
             .configure(&mut self.cad.session, |p| {
-                let o = p.outputs();
+                let o = p.reports();
                 match tab {
                     crate::reports::panel::Tab::Bom => {
                         let row = o.bom(group).into_iter().nth(k)?;
@@ -162,7 +162,7 @@ impl App {
                     crate::reports::panel::Tab::Wires => o.wires().get(k).and_then(|w| w.go).map(|(pg, at)| To::Place(pg, at)),
                     crate::reports::panel::Tab::Cables if cores => None,
                     crate::reports::panel::Tab::Cables => o.cables().get(k).and_then(|c| c.go).map(|(pg, at)| To::Place(pg, at)),
-                    crate::reports::panel::Tab::Terminals => terminal.map(|(pg, at)| To::Place(pg, at)),
+                    crate::reports::panel::Tab::TerminalBlocks => connection_point.map(|(pg, at)| To::Place(pg, at)),
                 }
             })
             .ok()

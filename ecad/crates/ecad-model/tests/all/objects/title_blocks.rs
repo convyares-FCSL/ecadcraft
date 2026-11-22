@@ -17,7 +17,7 @@ fn field(x: f64) -> BlockItem {
         at: Rect::new(x, 1.0, 10.0, 5.0),
         bind: Binding::Page(ecad_model::objects::title_block::PageField::Number),
         label: None,
-        look: TextDraw::default(),
+        draw: TextDraw::default(),
         if_empty: Default::default(),
     }
 }
@@ -42,14 +42,14 @@ fn every_bound_refuses_in_words_and_is_skipped_when_drawing() {
         (
             TitleBlockLayout {
                 size: (180.0, 40.0),
-                items: vec![BlockItem::Text { at: Rect::new(0.0, 0.0, 0.1, 5.0), text: "x".into(), look: TextDraw::default() }],
+                items: vec![BlockItem::Text { at: Rect::new(0.0, 0.0, 0.1, 5.0), text: "x".into(), draw: TextDraw::default() }],
             },
             "sides of at least",
         ),
         (
             TitleBlockLayout {
                 size: (180.0, 40.0),
-                items: vec![BlockItem::Text { at: Rect::new(0.0, 0.0, 9.0, 5.0), text: "x".repeat(257), look: TextDraw::default() }],
+                items: vec![BlockItem::Text { at: Rect::new(0.0, 0.0, 9.0, 5.0), text: "x".repeat(257), draw: TextDraw::default() }],
             },
             "longer than 256",
         ),
@@ -59,7 +59,7 @@ fn every_bound_refuses_in_words_and_is_skipped_when_drawing() {
                 items: vec![BlockItem::Text {
                     at: Rect::new(0.0, 0.0, 9.0, 5.0),
                     text: "x".into(),
-                    look: TextDraw { size: f64::INFINITY, ..TextDraw::default() },
+                    draw: TextDraw { size: f64::INFINITY, ..TextDraw::default() },
                 }],
             },
             "text size must be",

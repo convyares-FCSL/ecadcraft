@@ -62,7 +62,7 @@ fn areas_classify_by_first_word() {
         ("text.tag.height", Area::Text),
         ("strippage.columns", Area::StripPage),
         ("print.frame.style", Area::Print),
-        ("link.3", Area::Link),
+        ("jumper_bar.3", Area::JumperBar),
         ("numbering.high.-K", Area::Numbering),
         ("text", Area::Free),
         ("my_own_field", Area::Free),

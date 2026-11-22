@@ -81,11 +81,11 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Start("convertcomponent"),
     },
     Tool {
-        id: "ecad.addterminal",
+        id: "ecad.addconnectionpoint",
         group: "Components",
         label: "Add Connection Point",
         tooltip: "Click on a component's outline to add connection points; Enter to finish",
-        kind: Kind::Start("addterminal"),
+        kind: Kind::Start("addconnectionpoint"),
     },
     Tool {
         id: "ecad.place",
@@ -96,11 +96,11 @@ pub const TOOLS: &[Tool] = &[
     },
     // Brief 028 (design 028 §3.2, §4): beside Place Symbol.
     Tool {
-        id: "ecad.terminals",
+        id: "ecad.terminal_blocks",
         group: "Components",
         label: "Place Terminals",
         tooltip: "Enter for the last strip (or New, PE, a strip's tag), then draw a line across the wires: one terminal on each, numbered in order",
-        kind: Kind::Start("terminals"),
+        kind: Kind::Start("terminalblocks"),
     },
     Tool {
         id: "ecad.bridge",
@@ -406,7 +406,7 @@ pub struct Picked {
     /// Cables whose slashes or fan lines are selected.
     pub cables: Vec<CableId>,
     /// Terminals whose markers are selected.
-    pub terminals: Vec<ConnectionPointId>,
+    pub connection_points: Vec<ConnectionPointId>,
     /// The selection had more than [`MAX_PICKED`] handles; only the first were followed.
     pub truncated: bool,
     /// The page shown in the active drawing, when it is an ECAD page (brief 010: the page
@@ -421,7 +421,7 @@ impl Picked {
     /// the first item is met, so the cost is bounded by the project, not by the selection.
     pub fn from_selection(p: &Project, uid: u64, handles: Vec<Handle>) -> Self {
         let mut subjects = BTreeSet::new();
-        let mut terminals = BTreeSet::new();
+        let mut connection_points = BTreeSet::new();
         let doc = p.ledger.document();
         let map = p.page_of(uid).and_then(|page| p.pages.get(&page)).map(|v| &v.map);
         let mut index: Option<HashMap<ItemId, Subject>> = None;
@@ -448,14 +448,14 @@ impl Picked {
                     if let Some(r) = doc.representations.get(&rep) {
                         subjects.insert(r.subject);
                     }
-                    terminals.insert(t);
+                    connection_points.insert(t);
                 }
                 // A line of a cable's fan view names its cable (brief 005).
                 Some(Mapped::Fan(k)) => {
                     subjects.insert(Subject::Cable(k));
                 }
                 // A link line names its strip (brief 030).
-                Some(Mapped::Link(c, _)) => {
+                Some(Mapped::JumperBar(c, _)) => {
                     subjects.insert(Subject::Device(c));
                 }
                 // A cable reference's text names its cable (brief 010); a device's tag text or
@@ -486,7 +486,7 @@ impl Picked {
             devices: subjects.iter().filter_map(|s| if let Subject::Device(c) = s { Some(*c) } else { None }).collect(),
             wires: subjects.iter().filter_map(|s| if let Subject::Wire(c) = s { Some(*c) } else { None }).collect(),
             cables: subjects.iter().filter_map(|s| if let Subject::Cable(c) = s { Some(*c) } else { None }).collect(),
-            terminals: terminals.into_iter().collect(),
+            connection_points: connection_points.into_iter().collect(),
         }
     }
 }

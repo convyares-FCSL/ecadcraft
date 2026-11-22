@@ -34,7 +34,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
     match command {
         "wire" => match point {
             Some(c) => {
-                let mut s = format!("joins {}", point_words(doc, c.terminal));
+                let mut s = format!("joins {}", point_words(doc, c.connection_point));
                 if let Some(w) = wire_ending_at(doc, page, c.at, aperture) {
                     s.push_str(&format!(" to {}", crate::pointer::kind::wire_words(doc, w)));
                 }
@@ -53,7 +53,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
                 }
             }
         },
-        "connect" => point.map(|c| format!("connects to {}", point_words(doc, c.terminal))),
+        "connect" => point.map(|c| format!("connects to {}", point_words(doc, c.connection_point))),
         _ => None,
     }
 }
@@ -65,7 +65,7 @@ fn point_words(doc: &Document, t: ConnectionPointId) -> String {
     if let Some(n) = ecad_electrical::connectors::pin_name(doc, t) {
         return n;
     }
-    match doc.terminals.get(&t).and_then(|x| x.device()) {
+    match doc.connection_points.get(&t).and_then(|x| x.device()) {
         Some(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => format!("{}:{name}", ecad_electrical::devices::tag_words(doc, c)),
         Some(c) => match ecad_electrical::devices::tag_of(doc, c) {
             Some(tag) => format!("{name} of {tag}"),

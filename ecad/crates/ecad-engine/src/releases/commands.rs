@@ -76,7 +76,7 @@ pub(crate) struct ReleaseParams {
     folder: Option<String>,
     /// The lists to write, by slot name (default all).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    outputs: Option<Vec<String>>,
+    reports: Option<Vec<String>>,
     /// "errors": release although the check found errors.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     accept: Option<String>,

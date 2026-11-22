@@ -147,7 +147,7 @@ fn prerelease_groups_the_check_and_records_nothing() {
     assert!(group("errors").is_null());
     assert_eq!(v["writes"][0]["file"], "D-1001 Rev B.pdf");
     assert!(v["writes"].as_array().unwrap().iter().any(|w| w["file"] == "D-1001 Rev B checks.csv"));
-    assert_eq!(v["not_included"][0], json!({"slot": "terminal-plan", "why": ecad_electrical::releases::release::NO_STRIPS}));
+    assert_eq!(v["not_included"][0], json!({"slot": "terminal-block-plan", "why": ecad_electrical::releases::release::NO_STRIPS}));
     assert_eq!(v["folder"], json!(folder(&f, "B").to_string_lossy()));
     assert_eq!(v["exists"], false);
     // Each refusal is said up front: never saved, a needed field empty, read-only.
@@ -557,7 +557,7 @@ fn the_badge_counts_are_kept_and_an_unrelated_edit_recounts_nothing() {
     let counted = |h: &mut H| {
         h.cfg(|p| {
             p.checks();
-            p.outputs();
+            p.reports();
             let tally = |rows: &[ecad_electrical::checks::Check]| {
                 let n = |s| rows.iter().filter(|c| c.severity() == s).count();
                 use ecad_electrical::checks::Severity::*;
@@ -603,9 +603,9 @@ fn the_badge_counts_are_kept_and_an_unrelated_edit_recounts_nothing() {
 /// terminal plan and the cable schedule, their columns named by 028's JSON keys (design 028 §10);
 /// a spare core has no `from`.
 #[test]
-fn a_release_writes_the_terminal_plan_and_cable_schedule() {
+fn a_release_writes_the_terminal_block_plan_and_cable_schedule() {
     let mut f = fixture("strips");
-    f.h.run("terminals", json!({"from": [70, -2], "to": [70, 12]})).unwrap();
+    f.h.run("terminalblocks", json!({"from": [70, -2], "to": [70, 12]})).unwrap();
     f.h.run("setprop", json!({"cable": f.c1.hex(), "key": "cores", "value": "4G"})).unwrap();
     // Brief 057: the spare core is a spare by tick (owner rule).
     not_used(&mut f.h, f.c1, &["GNYE"]);

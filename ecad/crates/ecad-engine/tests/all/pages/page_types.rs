@@ -36,11 +36,11 @@ fn the_six_built_in_types_are_listed_with_their_fields() {
     let ids: Vec<String> = s["styles"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap_or_default().to_string()).collect();
     assert_eq!(ids, ["front", "schematic", "network", "singleline", "panel", "report", "plain"]);
     let d = h.doc();
-    let look = |w: &str| ptype::draw_of(&d, &StyleRef::Builtin(w.into()));
-    assert_eq!(look("front").holds, ptype::Holds::Front);
-    assert!(!look("front").zones && look("schematic").zones && !look("panel").zones && !look("report").zones);
-    assert_eq!(look("report").holds, ptype::Holds::Report);
-    assert_eq!((look("schematic").sheet, look("schematic").frame.clone(), look("schematic").title_block), (None, None, None));
+    let draw = |w: &str| ptype::draw_of(&d, &StyleRef::Builtin(w.into()));
+    assert_eq!(draw("front").holds, ptype::Holds::Front);
+    assert!(!draw("front").zones && draw("schematic").zones && !draw("panel").zones && !draw("report").zones);
+    assert_eq!(draw("report").holds, ptype::Holds::Report);
+    assert_eq!((draw("schematic").sheet, draw("schematic").frame.clone(), draw("schematic").title_block), (None, None, None));
     let names: Vec<String> = ptype::ordered(&d).into_iter().map(|r| r.name).collect();
     assert_eq!(names, ["Cover sheet", "Schematic", "Network", "Single-line", "Panel layout", "Report", "Plain"]);
 }
@@ -264,8 +264,8 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     let hostile = json!({"name": "", "body": {"page": {"holds": "x", "sheet": "A0 999x999", "zones": "maybe"}}});
     assert!(serde_json::from_value::<ecad_model::StyleRecord>(hostile).is_err());
     let d = h.doc();
-    let look = ptype::draw_of(&d, &StyleRef::Builtin("schematic".into()));
-    assert_eq!((look.holds, look.zones, look.sheet), (ptype::Holds::None, true, None));
+    let draw = ptype::draw_of(&d, &StyleRef::Builtin("schematic".into()));
+    assert_eq!((draw.holds, draw.zones, draw.sheet), (ptype::Holds::None, true, None));
     assert_eq!(sheet_of(&d, p1), d.settings.sheet());
     let rows = kinds(&mut h);
     // A hostile folder start: lane_054_tester's AC15 (a start naming no folder cannot be stored).

@@ -61,7 +61,7 @@ pub enum Effect<'a> {
         after: Option<DefinitionId>,
     },
     /// A connection point added, removed, or both (brief 028's relabel).
-    Terminal {
+    ConnectionPoint {
         id: ConnectionPointId,
         before: Option<&'a ConnectionPoint>,
         after: Option<&'a ConnectionPoint>,
@@ -164,7 +164,7 @@ pub enum EffectKind {
     Item,
     Device,
     DeviceDefinition,
-    Terminal,
+    ConnectionPoint,
     Rep,
     Wire,
     Route,
@@ -190,7 +190,7 @@ impl EffectKind {
         EffectKind::Item,
         EffectKind::Device,
         EffectKind::DeviceDefinition,
-        EffectKind::Terminal,
+        EffectKind::ConnectionPoint,
         EffectKind::Rep,
         EffectKind::Wire,
         EffectKind::Route,
@@ -270,7 +270,7 @@ impl Effect<'_> {
             Effect::Item { .. } => EffectKind::Item,
             Effect::Device { .. } => EffectKind::Device,
             Effect::DeviceDefinition { .. } => EffectKind::DeviceDefinition,
-            Effect::Terminal { .. } => EffectKind::Terminal,
+            Effect::ConnectionPoint { .. } => EffectKind::ConnectionPoint,
             Effect::Rep { .. } => EffectKind::Rep,
             Effect::Wire { .. } => EffectKind::Wire,
             Effect::Route { .. } => EffectKind::Route,
@@ -316,7 +316,7 @@ pub struct Effects<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Open {
     Page(PageId),
-    Terminal(ConnectionPointId),
+    ConnectionPoint(ConnectionPointId),
     Folder(FolderId),
 }
 
@@ -400,8 +400,8 @@ fn classify(op: &Op) -> Effect<'_> {
         Op::DeleteDevice { id, device } => Effect::Device { id: *id, before: Some(device), after: None },
         Op::ModifyDevice { id, before, after } => Effect::Device { id: *id, before: Some(before), after: Some(after) },
         Op::SetDeviceDefinition { id, before, after } => Effect::DeviceDefinition { id: *id, before: *before, after: *after },
-        Op::AddConnectionPoint { id, terminal } => Effect::Terminal { id: *id, before: None, after: Some(terminal) },
-        Op::RemoveConnectionPoint { id, terminal } => Effect::Terminal { id: *id, before: Some(terminal), after: None },
+        Op::AddConnectionPoint { id, connection_point } => Effect::ConnectionPoint { id: *id, before: None, after: Some(connection_point) },
+        Op::RemoveConnectionPoint { id, connection_point } => Effect::ConnectionPoint { id: *id, before: Some(connection_point), after: None },
         Op::LinkRepresentation { id, rep } => Effect::Rep { id: *id, before: None, after: Some(rep) },
         Op::ModifyRepresentation { id, before, after } => Effect::Rep { id: *id, before: Some(before), after: Some(after) },
         Op::UnlinkRepresentation { id, rep } => Effect::Rep { id: *id, before: Some(rep), after: None },
@@ -452,8 +452,8 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
     match e {
         Effect::Page { id, before: Some(_), after: None, .. } if remove => Some(Open::Page(*id)),
         Effect::Page { id, before: None, after: Some(_), .. } if !remove => Some(Open::Page(*id)),
-        Effect::Terminal { id, before: Some(_), after: None } if remove => Some(Open::Terminal(*id)),
-        Effect::Terminal { id, before: None, after: Some(_) } if !remove => Some(Open::Terminal(*id)),
+        Effect::ConnectionPoint { id, before: Some(_), after: None } if remove => Some(Open::ConnectionPoint(*id)),
+        Effect::ConnectionPoint { id, before: None, after: Some(_) } if !remove => Some(Open::ConnectionPoint(*id)),
         Effect::Folder { id, before: Some(_), after: None, .. } if remove => Some(Open::Folder(*id)),
         Effect::Folder { id, before: None, after: Some(_), .. } if !remove => Some(Open::Folder(*id)),
         Effect::Page { .. }
@@ -461,7 +461,7 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         | Effect::Item { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
-        | Effect::Terminal { .. }
+        | Effect::ConnectionPoint { .. }
         | Effect::Rep { .. }
         | Effect::Wire { .. }
         | Effect::Route { .. }
@@ -485,7 +485,7 @@ fn names(e: &Effect<'_>, o: Open) -> bool {
     match (e, o) {
         (Effect::Page { id, .. }, Open::Page(p)) => *id == p,
         (Effect::Prop { object: ObjectRef::Page(id), .. }, Open::Page(p)) => *id == p,
-        (Effect::Terminal { id, .. }, Open::Terminal(t)) => *id == t,
+        (Effect::ConnectionPoint { id, .. }, Open::ConnectionPoint(t)) => *id == t,
         (Effect::Folder { id, .. }, Open::Folder(f)) => *id == f,
         _ => false,
     }
@@ -498,7 +498,7 @@ fn fill_after<'a>(slot: &mut Effect<'a>, add: Effect<'a>) {
             *after = a;
             *index_after = i;
         }
-        (Effect::Terminal { after, .. }, Effect::Terminal { after: a, .. }) => *after = a,
+        (Effect::ConnectionPoint { after, .. }, Effect::ConnectionPoint { after: a, .. }) => *after = a,
         (Effect::Folder { after, index_after, .. }, Effect::Folder { after: a, index_after: i, .. }) => {
             *after = a;
             *index_after = i;

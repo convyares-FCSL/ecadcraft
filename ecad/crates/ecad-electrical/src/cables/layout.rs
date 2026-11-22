@@ -14,7 +14,7 @@
 //! - Hostile values never panic: any value that is not finite makes the fan fall back to the
 //!   traditional drawing on that page, and text is shortened before it is measured.
 //!
-//! This module excludes measuring text with fonts and drawing: the engine's `look` turns
+//! This module excludes measuring text with fonts and drawing: the engine's `draw` turns
 //! [`Part`]s into entities (brief 074 moved the computation here).
 
 use std::collections::{BTreeMap, BTreeSet};

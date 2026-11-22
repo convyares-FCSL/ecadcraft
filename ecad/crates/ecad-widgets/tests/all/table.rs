@@ -254,8 +254,9 @@ fn big(n: u32) -> Demo {
             )
         })
         .collect();
-    let refs: Vec<(u32, &str, &str, &str, &str)> = rows.iter().map(|(k, a, b, c, d)| (*k, a.as_str(), b.as_str(), c.as_str(), d.as_str())).collect();
-    Demo::new(&refs)
+    let references: Vec<(u32, &str, &str, &str, &str)> =
+        rows.iter().map(|(k, a, b, c, d)| (*k, a.as_str(), b.as_str(), c.as_str(), d.as_str())).collect();
+    Demo::new(&references)
 }
 
 /// Criterion 6, fast part: 10 000 rows build, sort, group and filter within 10× the targets

@@ -14,7 +14,7 @@ use crate::mcp_contracts::reader;
 const WRITER_SEED: u64 = 34;
 
 fn labels(v: &Value) -> Vec<String> {
-    v["terminals"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
+    v["connection_points"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
 }
 
 fn embeds(ops: &[Op]) -> Vec<&ecad_model::Definition> {

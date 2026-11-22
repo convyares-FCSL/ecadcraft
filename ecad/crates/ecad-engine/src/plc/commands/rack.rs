@@ -87,7 +87,7 @@ impl Command for PlcracksParams {
                 Some(t) => Some(rack_named(p.ledger.document(), t)?),
                 None => None,
             };
-            p.outputs();
+            p.reports();
             let o = p.kept_reports().ok_or(CmdError::refused("The PLC model is not available."))?;
             let doc = p.ledger.document();
             let plc = &o.plc;

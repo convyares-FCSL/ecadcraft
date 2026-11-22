@@ -116,11 +116,11 @@ pub enum Op {
     },
     AddConnectionPoint {
         id: ConnectionPointId,
-        terminal: ConnectionPoint,
+        connection_point: ConnectionPoint,
     },
     RemoveConnectionPoint {
         id: ConnectionPointId,
-        terminal: ConnectionPoint,
+        connection_point: ConnectionPoint,
     },
     LinkRepresentation {
         id: RepresentationId,
@@ -373,8 +373,8 @@ impl Op {
             Op::DeleteDevice { id, device } => Op::CreateDevice { id, device },
             Op::ModifyDevice { id, before, after } => Op::ModifyDevice { id, before: after, after: before },
             Op::SetDeviceDefinition { id, before, after } => Op::SetDeviceDefinition { id, before: after, after: before },
-            Op::AddConnectionPoint { id, terminal } => Op::RemoveConnectionPoint { id, terminal },
-            Op::RemoveConnectionPoint { id, terminal } => Op::AddConnectionPoint { id, terminal },
+            Op::AddConnectionPoint { id, connection_point } => Op::RemoveConnectionPoint { id, connection_point },
+            Op::RemoveConnectionPoint { id, connection_point } => Op::AddConnectionPoint { id, connection_point },
             Op::LinkRepresentation { id, rep } => Op::UnlinkRepresentation { id, rep },
             Op::UnlinkRepresentation { id, rep } => Op::LinkRepresentation { id, rep },
             Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id, before: after, after: before },
@@ -553,15 +553,15 @@ impl Op {
                     doc.devices.insert(*id, new);
                 }
             }
-            Op::AddConnectionPoint { id, terminal } => {
-                absent(&doc.terminals, *id, "terminal")?;
-                doc.index.terminal(*id, terminal, Delta::Add);
-                doc.terminals.insert(*id, terminal.clone());
+            Op::AddConnectionPoint { id, connection_point } => {
+                absent(&doc.connection_points, *id, "connection_point")?;
+                doc.index.connection_point(*id, connection_point, Delta::Add);
+                doc.connection_points.insert(*id, connection_point.clone());
             }
-            Op::RemoveConnectionPoint { id, terminal } => {
-                holds(&doc.terminals, *id, terminal, "terminal", checked)?;
-                if let Some(old) = doc.terminals.remove(id) {
-                    doc.index.terminal(*id, &old, Delta::Remove);
+            Op::RemoveConnectionPoint { id, connection_point } => {
+                holds(&doc.connection_points, *id, connection_point, "connection_point", checked)?;
+                if let Some(old) = doc.connection_points.remove(id) {
+                    doc.index.connection_point(*id, &old, Delta::Remove);
                 }
             }
             Op::LinkRepresentation { id, rep } => {
@@ -855,8 +855,8 @@ impl Op {
             Op::DeleteDevice { .. } => "DeleteDevice",
             Op::ModifyDevice { .. } => "ModifyDevice",
             Op::SetDeviceDefinition { .. } => "SetDeviceDefinition",
-            Op::AddConnectionPoint { .. } => "AddTerminal",
-            Op::RemoveConnectionPoint { .. } => "RemoveTerminal",
+            Op::AddConnectionPoint { .. } => "AddConnectionPoint",
+            Op::RemoveConnectionPoint { .. } => "RemoveConnectionPoint",
             Op::LinkRepresentation { .. } => "LinkRepresentation",
             Op::ModifyRepresentation { .. } => "ModifyRepresentation",
             Op::UnlinkRepresentation { .. } => "UnlinkRepresentation",

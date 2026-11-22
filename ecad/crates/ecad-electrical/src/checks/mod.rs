@@ -188,9 +188,9 @@ check_kinds! {
     /// set (a rating note does not count).
     NoRating = "no-rating", Warning, "Device with no rating";
     /// Brief 028 (design 028 §8): a strip with more terminals drawn than it offers.
-    TooManyTerminalBlocks = "too-many-terminals", Warning, "More terminals than the strip offers";
+    TooManyTerminalBlocks = "too-many-terminal-blocks", Warning, "More terminals than the strip offers";
     /// Two terminals of one strip with one label.
-    TerminalBlockTwice = "terminal-twice", Error, "Terminal drawn twice";
+    TerminalBlockTwice = "terminal-block-twice", Error, "Terminal drawn twice";
     /// A cable with more members than cores offered.
     TooManyCores = "too-many-cores", Warning, "More cores used than the cable offers";
     /// Two members of one cable with one core label.
@@ -204,11 +204,11 @@ check_kinds! {
     /// Placed strip accessories without a part number (one count row).
     NoAccessoryPart = "no-accessory-part", Info, "Strip accessories without a part number", count;
     /// A link spanning a partition.
-    JumperBarAcrossPartition = "link-across-partition", Warning, "Link crosses a partition";
+    JumperBarAcrossPartition = "jumper-bar-across-partition", Warning, "Link crosses a partition";
     /// A link naming positions the strip does not have.
-    JumperBarOrphan = "link-orphan", Warning, "Link names positions the strip lacks";
-    /// A `link.<n>` key on a device that is not a terminal strip (review of PR #57, 4).
-    JumperBarOnNonStrip = "link-on-non-strip", Warning, "Link on a device that is not a strip";
+    JumperBarOrphan = "jumper-bar-orphan", Warning, "Link names positions the strip lacks";
+    /// A `jumper_bar.<n>` key on a device that is not a terminal strip (review of PR #57, 4).
+    JumperBarOnNonStrip = "jumper-bar-on-non-strip", Warning, "Link on a device that is not a strip";
     /// Brief 033: a contact table the user placed overlaps the title block.
     TableOverTitle = "table-over-title", Warning, "Contact table over the title block";
     /// Brief 033 (design 033 §5.3): a generated page grew onto another page's number.
@@ -376,7 +376,7 @@ pub enum Object {
     Wire(WireId),
     /// A drawn route (design 072 §4.3).
     Route(RouteId),
-    Terminal(ConnectionPointId),
+    ConnectionPoint(ConnectionPointId),
     Device(DeviceId),
     /// A drawing aid: a location box (design 072 §6.2).
     Aid(ecad_model::AidId),
@@ -575,7 +575,7 @@ impl Check {
         let object = match self.object {
             Object::Wire(c) => json!({"conductor": c.hex()}),
             Object::Route(r) => json!({"route": r.hex()}),
-            Object::Terminal(t) => json!({"terminal": t.hex()}),
+            Object::ConnectionPoint(t) => json!({"connection_point": t.hex()}),
             Object::Device(c) => json!({"component": c.hex()}),
             Object::Aid(a) => json!({"aid": a.hex()}),
             Object::Reference(r) => json!({"reference": r.hex()}),
@@ -613,7 +613,7 @@ pub enum Key {
     Wire(WireId),
     /// A drawn route's rows (open end, loose, looks connected, drawn away).
     Route(RouteId),
-    Terminal(ConnectionPointId),
+    ConnectionPoint(ConnectionPointId),
     Device(DeviceId),
     /// A continuation's rows (design 072 §6.2: no partner).
     Aid(ecad_model::AidId),
@@ -866,9 +866,9 @@ fn route_words(doc: &Document, r: RouteId) -> String {
 }
 
 /// Where a connection point is shown first (book order).
-fn terminal_place(doc: &Document, t: ConnectionPointId) -> (Option<PageId>, Option<Pt>) {
+fn connection_point_place(doc: &Document, t: ConnectionPointId) -> (Option<PageId>, Option<Pt>) {
     // A device's point or a drawing aid's (a continuation's, design 072 §6.2).
-    let Some(owner) = doc.terminals.get(&t).map(|x| x.owner.subject()) else { return (None, None) };
+    let Some(owner) = doc.connection_points.get(&t).map(|x| x.owner.subject()) else { return (None, None) };
     for page in &doc.page_order {
         let shown = doc.representations_of(owner).any(|(_, r)| r.page == *page);
         if shown && let Some(at) = ecad_model::connectivity::derive::connection_point_position(doc, *page, t) {
@@ -902,11 +902,11 @@ pub fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check> {
     let joined = wiring::joined_potentials(doc, net);
     if !joined.is_empty() {
         // Point at a continuation in it, when it has one.
-        let cont = net.terminals.iter().find(|t| doc.terminals.get(t).is_some_and(|x| x.owner.aid().is_some()));
+        let cont = net.connection_points.iter().find(|t| doc.connection_points.get(t).is_some_and(|x| x.owner.aid().is_some()));
         let (page, at, object) = match cont {
             Some(t) => {
-                let (p, a) = terminal_place(doc, *t);
-                (p, a, Object::Terminal(*t))
+                let (p, a) = connection_point_place(doc, *t);
+                (p, a, Object::ConnectionPoint(*t))
             }
             None => (page, at, object),
         };
@@ -921,12 +921,19 @@ pub fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check> {
         out.push(Check { kind: Kind::SharedNumber, page, at, object, which: number, fix: None });
     }
     // A net with conductors, one connection point and no continuation.
-    if !net.wires.is_empty() && net.terminals.len() == 1 && net.names.is_empty() {
-        let t = net.terminals.first().copied();
-        let on_aid = t.and_then(|t| doc.terminals.get(&t)).is_some_and(|x| x.owner.aid().is_some());
+    if !net.wires.is_empty() && net.connection_points.len() == 1 && net.names.is_empty() {
+        let t = net.connection_points.first().copied();
+        let on_aid = t.and_then(|t| doc.connection_points.get(&t)).is_some_and(|x| x.owner.aid().is_some());
         if !on_aid && let Some(t) = t {
-            let (p, a) = terminal_place(doc, t);
-            out.push(Check { kind: Kind::SinglePoint, page: p, at: a, object: Object::Terminal(t), which: wires::point_words(doc, t), fix: None });
+            let (p, a) = connection_point_place(doc, t);
+            out.push(Check {
+                kind: Kind::SinglePoint,
+                page: p,
+                at: a,
+                object: Object::ConnectionPoint(t),
+                which: wires::point_words(doc, t),
+                fix: None,
+            });
         }
     }
     if net.potentials.len() > 1 {
@@ -950,14 +957,14 @@ pub fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check> {
         if doc.settings.wiring.potential(key).is_some() || numbered {
             continue;
         }
-        let cont = net.terminals.iter().find_map(|t| {
-            let a = doc.terminals.get(t)?.owner.aid()?;
+        let cont = net.connection_points.iter().find_map(|t| {
+            let a = doc.connection_points.get(t)?.owner.aid()?;
             (crate::continuations::name_of(doc, a).as_ref() == Some(key)).then_some((*t, a))
         });
         let (p, a, o, which) = match cont {
             Some((t, c)) => {
-                let (p, a) = terminal_place(doc, t);
-                (p, a, Object::Terminal(t), crate::continuations::display_name(doc, c))
+                let (p, a) = connection_point_place(doc, t);
+                (p, a, Object::ConnectionPoint(t), crate::continuations::display_name(doc, c))
             }
             None => (page, at, object, key.clone()),
         };
@@ -1064,14 +1071,14 @@ pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
 /// spare connector pin, fuse output or card supply point may stay unwired without an
 /// `Unconnected` check. Every other check on it still runs.
 fn is_quiet_point(doc: &Document, t: ConnectionPointId) -> bool {
-    let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return false };
+    let Some(c) = doc.connection_points.get(&t).and_then(|x| x.device()) else { return false };
     doc.representations_of(Subject::Device(c)).any(|(_, r)| {
         let Some(s) = crate::devices::rep_starter(doc, r) else { return false };
         let Some((def, _)) = crate::devices::rep_definition(doc, r) else { return false };
         crate::devices::shown_connection_points(doc, c, r)
             .iter()
             .filter(|(x, _)| *x == t)
-            .filter_map(|(_, at)| def.terminals.iter().find(|td| td.at.near(*at, 1e-9)))
+            .filter_map(|(_, at)| def.connection_points.iter().find(|td| td.at.near(*at, 1e-9)))
             .any(|td| crate::symbols::is_quiet(s, &td.key.to_string()))
     })
 }
@@ -1079,13 +1086,13 @@ fn is_quiet_point(doc: &Document, t: ConnectionPointId) -> bool {
 /// The checks of connection point `t`: more wires than it accepts (design 072 §4.4: `-X1:3 takes
 /// 2 conductors; 3 are connected`); a device point with nothing attached.
 pub fn connection_point_checks(doc: &Document, t: ConnectionPointId) -> Vec<Check> {
-    let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
+    let Some(term) = doc.connection_points.get(&t) else { return Vec::new() };
     let mut out = Vec::new();
     let (wired, takes) = (doc.ends_at(t).len(), ecad_model::connectivity::wire_order::accepts(doc, t));
     if wired > takes {
-        let (page, at) = terminal_place(doc, t);
+        let (page, at) = connection_point_place(doc, t);
         let which = format!("{} takes {takes} conductors; {wired} are connected", wires::point_words(doc, t));
-        out.push(Check { kind: Kind::OverCount, page, at, object: Object::Terminal(t), which, fix: None });
+        out.push(Check { kind: Kind::OverCount, page, at, object: Object::ConnectionPoint(t), which, fix: None });
     }
     if term.owner.aid().is_some() || doc.has_ends(t) || doc.routes_at(t).next().is_some() {
         return out;
@@ -1098,8 +1105,8 @@ pub fn connection_point_checks(doc: &Document, t: ConnectionPointId) -> Vec<Chec
     if is_quiet_point(doc, t) {
         return out;
     }
-    let (page, at) = terminal_place(doc, t);
-    out.push(Check { kind: Kind::Unconnected, page, at, object: Object::Terminal(t), which: wires::point_words(doc, t), fix: None });
+    let (page, at) = connection_point_place(doc, t);
+    out.push(Check { kind: Kind::Unconnected, page, at, object: Object::ConnectionPoint(t), which: wires::point_words(doc, t), fix: None });
     out
 }
 
@@ -1116,8 +1123,8 @@ pub fn aid_checks(doc: &Document, a: ecad_model::AidId) -> Vec<Check> {
         return Vec::new();
     }
     let t = doc.connection_points_of(a).next().map(|(t, _)| t);
-    let (page, at) = t.map_or((None, None), |t| terminal_place(doc, t));
-    let object = t.map_or(Object::None, Object::Terminal);
+    let (page, at) = t.map_or((None, None), |t| connection_point_place(doc, t));
+    let object = t.map_or(Object::None, Object::ConnectionPoint);
     vec![Check { kind: Kind::LonelyContinuation, page, at, object, which: crate::continuations::display_name(doc, a), fix: None }]
 }
 
@@ -1320,8 +1327,8 @@ pub fn designation_rows(doc: &Document) -> Vec<Check> {
 /// The checks of cable `k`'s reference ends (brief 027, design 027 §4.2): a cable with exactly one
 /// reference end has an orphan (`/?`). Reads that cable's representations only.
 pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
-    let refs = crate::references::cables::references_of(doc, k);
-    let [(rid, r)] = refs.as_slice() else { return Vec::new() };
+    let references = crate::references::cables::references_of(doc, k);
+    let [(rid, r)] = references.as_slice() else { return Vec::new() };
     let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
         _ => None,
@@ -1458,7 +1465,7 @@ pub struct Scope {
     numbers: BTreeSet<String>,
     wires: BTreeSet<WireId>,
     routes: BTreeSet<RouteId>,
-    terminals: BTreeSet<ConnectionPointId>,
+    connection_points: BTreeSet<ConnectionPointId>,
     devices: BTreeSet<DeviceId>,
     /// Aids to re-check (design 072 §6.2): continuations made, removed or renamed, and their
     /// partners by name; boxes made, removed or changed.
@@ -1516,22 +1523,22 @@ impl Scope {
                 self.wires.insert(*id);
                 node(self, Node::Wire(*id));
                 for t in before.iter().chain(after.iter()).flat_map(|w| w.ends.iter()) {
-                    self.terminals.insert(*t);
-                    node(self, Node::Terminal(*t));
+                    self.connection_points.insert(*t);
+                    node(self, Node::ConnectionPoint(*t));
                     self.component_of(doc, *t);
                 }
             }
             // Added, removed, or both (brief 028's relabel).
-            Effect::Terminal { id, before, after } => {
-                self.terminals.insert(*id);
+            Effect::ConnectionPoint { id, before, after } => {
+                self.connection_points.insert(*id);
                 self.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
-                node(self, Node::Terminal(*id));
+                node(self, Node::ConnectionPoint(*id));
             }
             // Brief 048: another definition may bridge other points.
             Effect::DeviceDefinition { id, .. } => {
                 self.devices.insert(*id);
                 for (t, _) in doc.connection_points_of(*id) {
-                    node(self, Node::Terminal(t));
+                    node(self, Node::ConnectionPoint(t));
                 }
             }
             Effect::Device { id, before, after } => {
@@ -1540,7 +1547,7 @@ impl Scope {
                 }
                 self.component(doc, *id);
                 for (t, _) in doc.connection_points_of(*id) {
-                    node(self, Node::Terminal(t));
+                    node(self, Node::ConnectionPoint(t));
                 }
                 // Design 072 §6.3: a device's location and function are fields, where the cables
                 // at its points are drawn (as the property arm below).
@@ -1570,7 +1577,7 @@ impl Scope {
                 }
                 self.component(doc, *c);
                 for (t, _) in doc.connection_points_of(*c) {
-                    node(self, Node::Terminal(t));
+                    node(self, Node::ConnectionPoint(t));
                 }
             }
             // A cable is written whole (`ModifyCable`); a property on one is refused.
@@ -1609,16 +1616,16 @@ impl Scope {
                 // The cables with a core on it: their core rows (owner rule, 2026-11-18).
                 self.cables.extend(doc.cables_on_route(*id));
                 for t in before.iter().chain(after.iter()).flat_map(|r| route_points(doc, r)) {
-                    self.terminals.insert(t);
-                    node(self, Node::Terminal(t));
+                    self.connection_points.insert(t);
+                    node(self, Node::ConnectionPoint(t));
                 }
             }
             Effect::Definition { id, .. } => {
                 for c in doc.components_using(*id) {
                     self.devices.insert(c);
                     for (t, _) in doc.connection_points_of(c) {
-                        self.terminals.insert(t);
-                        node(self, Node::Terminal(t));
+                        self.connection_points.insert(t);
+                        node(self, Node::ConnectionPoint(t));
                     }
                 }
             }
@@ -1686,8 +1693,8 @@ impl Scope {
                 // Made or deleted: its points.
                 if before.is_none() || after.is_none() {
                     for (t, _) in doc.connection_points_of(*id) {
-                        self.terminals.insert(t);
-                        node(self, Node::Terminal(t));
+                        self.connection_points.insert(t);
+                        node(self, Node::ConnectionPoint(t));
                     }
                 }
             }
@@ -1769,7 +1776,7 @@ impl Scope {
     }
 
     fn component_of(&mut self, doc: &Document, t: ConnectionPointId) {
-        if let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) {
+        if let Some(c) = doc.connection_points.get(&t).and_then(|x| x.device()) {
             self.devices.insert(c);
         }
     }
@@ -1778,7 +1785,7 @@ impl Scope {
     fn component(&mut self, doc: &Document, c: DeviceId) {
         self.devices.insert(c);
         for (t, _) in doc.connection_points_of(c) {
-            self.terminals.insert(t);
+            self.connection_points.insert(t);
         }
     }
 
@@ -1831,9 +1838,9 @@ pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
 
 /// Every check of the project with the report models already kept, measuring text with `m`
 /// (ecad-engine's `crate::checks::all` and `crate::checks::all_with` pass CADCraft's fonts).
-pub fn all_measured(doc: &Document, tol: f64, outputs: &crate::reports::kept::ReportModels, m: &dyn TextMetrics) -> Vec<Check> {
+pub fn all_measured(doc: &Document, tol: f64, reports: &crate::reports::kept::ReportModels, m: &dyn TextMetrics) -> Vec<Check> {
     let mut rows: Vec<Check> = kept::Checks::build_with(doc, tol, m).rows().cloned().collect();
-    rows.extend(outputs.checks());
+    rows.extend(reports.checks());
     sort(doc, rows)
 }
 

@@ -70,7 +70,7 @@ fn wired_through_a_strip(seed: u64) -> (H, DeviceId, DeviceId, PageId) {
     let di = placed(&mut h, "plcdi", 100.0, 400.0);
     placed(&mut h, "lamp", 100.0, 260.0);
     h.wire_pp(&[(100.0, 250.0), (100.0, 150.0)]).unwrap();
-    let v = h.run("terminals", json!({"from": [95.0, 230.0], "to": [105.0, 230.0]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [95.0, 230.0], "to": [105.0, 230.0]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
     h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [115.0, 200.0]})).unwrap();
     let page: PageId = id(&h.run("newpage", json!({"generated": "iolist"})).unwrap(), "page");
@@ -94,10 +94,10 @@ fn review_2_renumbering_a_strip_patches_the_cards_io_rows() {
     let stag = crate::plc::contracts::tag(&mut h, strip);
     assert!(targets(&mut h).contains(&format!("{stag}:1")), "{:?}", targets(&mut h));
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
-    h.run("renumber", json!({"kind": "terminals", "scope": "all", "start": 5})).unwrap();
-    let changed = h.cfg(|p| p.outputs().plc.rows_changed.clone());
+    h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all", "start": 5})).unwrap();
+    let changed = h.cfg(|p| p.reports().plc.rows_changed.clone());
     assert!(changed.contains(&di), "the card's rows are patched");
     assert!(targets(&mut h).contains(&format!("{stag}:5")), "{:?}", targets(&mut h));
 }
@@ -118,10 +118,10 @@ fn review_2_renaming_a_continuation_patches_the_cards_io_rows() {
     h.run("newpage", json!({"generated": "iolist"})).unwrap();
     assert!(!targets(&mut h).iter().any(|t| t.ends_with(":X1")), "{:?}", targets(&mut h));
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
     h.run("setprop", json!({"aids": [b.hex()], "key": "name", "value": "A"})).unwrap();
-    let changed = h.cfg(|p| p.outputs().plc.rows_changed.clone());
+    let changed = h.cfg(|p| p.reports().plc.rows_changed.clone());
     assert!(changed.contains(&di), "the card's rows are patched");
     assert!(targets(&mut h).iter().any(|t| t.ends_with(":X1")), "the lamp is a target now: {:?}", targets(&mut h));
 }
@@ -138,7 +138,7 @@ fn review_3_kept_model_paths_walk_no_project() {
     }
     h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [175.0, 200.0]})).unwrap();
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
     // A channel's text (its page with cells redrawn) and a card's channel count (its rack's pages).
     // Run straight on the session: the harness's own check projects pages without the kept model.
@@ -171,7 +171,7 @@ fn review_3_the_io_sheet_count_comes_from_kept_row_counts() {
     for n in ["16", "64", "120"] {
         h.run("setprop", json!({"component": di.hex(), "key": "plc.channels", "value": n})).unwrap();
         let (kept, laid) = h.cfg(|p| {
-            p.outputs();
+            p.reports();
             let o = p.kept_reports().unwrap();
             // Brief 051 (design 051 §4.1): the packing of the rows as made.
             let d = p.ledger.document();

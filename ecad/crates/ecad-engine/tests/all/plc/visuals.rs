@@ -39,7 +39,7 @@ fn fixture(seed: u64) -> F {
 fn texts(h: &mut H, page: PageId) -> Vec<String> {
     let d = h.doc();
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
         let o = p.kept_reports().unwrap();
         ecad_engine::pages::generated::parts_of(&d, page, Some(o))
             .into_iter()
@@ -54,7 +54,7 @@ fn texts(h: &mut H, page: PageId) -> Vec<String> {
 fn sheets_of(h: &mut H, page: PageId) -> usize {
     let d = h.doc();
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
         ecad_electrical::pages::generated::sheets_of(&d, page, p.kept_reports())
     })
 }
@@ -128,7 +128,7 @@ fn j_tiles_of_a_rack_slots_squares_and_totals() {
     h.run("plcchannel", json!({"card": ai.hex(), "channel": 1, "text": "Tank level"})).unwrap();
     let d = h.doc();
     let (tiles, totals, chips) = h.cfg(|p| {
-        let plc = &p.outputs().plc;
+        let plc = &p.reports().plc;
         let rack = plc.racks.get(&cpu).unwrap().clone();
         (overview::rack_tiles(&d, plc, &rack), overview::totals(&plc.cards_of(cpu)), overview::chips(plc))
     });
@@ -159,7 +159,7 @@ fn j_a_channel_with_a_check_is_red_and_counted() {
     h.run("plcchannel", json!({"card": di.hex(), "channel": 3, "address": "I0.0"})).unwrap();
     let d = h.doc();
     let tile = h.cfg(|p| {
-        let plc = &p.outputs().plc;
+        let plc = &p.reports().plc;
         let rack = plc.racks.get(&cpu).unwrap().clone();
         overview::rack_tiles(&d, plc, &rack).into_iter().find(|t| t.kind == TileKind::Card(di)).unwrap()
     });
@@ -205,7 +205,7 @@ fn l_make_its_page_draws_every_channel_and_undo_removes_it() {
     assert!(e.starts_with("All 4 channels of -A03 are drawn ("), "{e}");
     h.cmdline("u");
     assert_eq!(h.doc().page_order.len(), pages);
-    let tile_pages = h.cfg(|p| p.outputs().plc.cards.get(&ai).map(|c| c.chans.len()));
+    let tile_pages = h.cfg(|p| p.reports().plc.cards.get(&ai).map(|c| c.chans.len()));
     assert_eq!(tile_pages, Some(0), "the channels went with the page");
 }
 
@@ -447,7 +447,7 @@ fn review_2_the_frame_stands_for_the_card() {
         .into_iter()
         .find(|p| matches!(&p.shape, ecad_electrical::references::devices::Shape::Text { value, .. } if value == "-A02"))
         .expect("the name block's tag");
-    let handle = h.p(|p| p.pages.get(&page).and_then(|v| v.map.xref(part.rep, part.index))).expect("mapped");
+    let handle = h.p(|p| p.pages.get(&page).and_then(|v| v.map.reference(part.rep, part.index))).expect("mapped");
     let u = h.s.state().unwrap().uid;
     let t = h.p(|p| ecad_engine::pointer::kind::classify(p, u, cadcraft_engine::geom::Vec2::new(0.0, 0.0), 0.5, Some(handle), &[], false));
     assert_eq!(t.kind, ecad_electrical::devices::kinds::ObjectKind::Device, "{t:?}");
@@ -463,7 +463,7 @@ fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
     let sheet: PageId = id(&h.run("newpage", json!({"generated": "plcrack"})).unwrap(), "page");
     let first = h.first_page();
     let d = h.doc();
-    let plc = h.cfg(|p| p.outputs().plc.clone());
+    let plc = h.cfg(|p| p.reports().plc.clone());
     let renumbered = |p: PageId, n: &str| {
         let before = d.pages[&p].clone();
         ecad_model::Op::ModifyPage { id: p, before: before.clone(), after: ecad_model::Page { number: ecad_model::PageNo::parse(n), ..before } }
@@ -527,12 +527,12 @@ fn o_the_release_lists_the_racks_or_says_why_not() {
     assert_eq!((slot.suffix, slot.missing_why), (" PLC racks.csv", "No PLC racks."));
     let F { mut h, .. } = fixture(5150);
     let d = h.doc();
-    let t = h.cfg(|p| (slot.build)(&d, p.outputs())).expect("a table");
+    let t = h.cfg(|p| (slot.build)(&d, p.reports())).expect("a table");
     assert_eq!(t.headers.first(), Some(&"Rack"));
     assert_eq!(t.rows.len(), 5, "the rack, three cards, the next free slot");
     let mut empty = H::new(5151);
     let d = empty.doc();
-    assert!(empty.cfg(|p| (slot.build)(&d, p.outputs())).is_none());
+    assert!(empty.cfg(|p| (slot.build)(&d, p.reports())).is_none());
     let pre = empty.run("prerelease", json!({})).unwrap();
     let missing = pre["not_included"].as_array().cloned().unwrap_or_default();
     assert!(missing.iter().any(|x| x["slot"] == "plc-racks"), "{pre}");

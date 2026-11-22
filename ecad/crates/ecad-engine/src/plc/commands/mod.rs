@@ -54,7 +54,7 @@ as cells in a row, no wires)",
         CommandSpec::new("plcchannel", "Channel", typed::<channels::PlcchannelParams>)
             .params(
                 "{card: id or tag, channel: number as shown, text?: description (null clears), address?: typed address (null clears), \
-pins?: {role: pin}, move_to?: channel number (with terminal?: id; a drawn copy takes that channel)}",
+pins?: {role: pin}, move_to?: channel number (with connection_point?: id; a drawn copy takes that channel)}",
             )
             .noundo(),
         CommandSpec::new("iolist", "I/O List", typed::<iolist::IolistParams>)

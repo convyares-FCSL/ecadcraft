@@ -5,7 +5,7 @@
 //! - [`checks`]: Checks (read-mostly): severity, message, object, page (a go-to) and fixes.
 //! - [`devices`]: Devices: tag and description set here, function, location, symbol, pages, part
 //!   and state read.
-//! - [`terminals`]: the terminal manager, mirrored (inside | strip | outside) on 036's row model.
+//! - [`connection_points`]: the terminal manager, mirrored (inside | strip | outside) on 036's row model.
 //! - [`plc`]: Lists ▸ PLC (brief 051; 045c's I/O list): rack chips, tiles, the channel table.
 //! - [`wires`], [`cables`]: UI rev 3's Project ▸ Wires and Cables over the report models
 //!   ([`report`]); [`reports`]: Project ▸ Reports' list round today's Reports window.
@@ -29,7 +29,7 @@ use crate::pages::project_panel::Action;
 pub enum Tab {
     Checks,
     Devices,
-    Terminals,
+    TerminalBlocks,
     /// Brief 051: Lists ▸ PLC (045c's Lists ▸ I/O).
     Plc,
 }
@@ -70,7 +70,7 @@ pub enum ListAction {
 pub struct Lists<'a> {
     pub checks: &'a mut crate::checks::panel::ChecksPanel,
     pub devices: &'a mut crate::devices::panel::DevicesPanel,
-    pub terminals: &'a mut crate::terminal_strips::plan::TerminalStripPlanView,
+    pub connection_points: &'a mut crate::terminal_strips::plan::TerminalStripPlanView,
     pub io: &'a mut crate::plc::list::IoView,
 }
 
@@ -80,7 +80,7 @@ pub fn show(ui: &mut eframe::egui::Ui, tab: Tab, lists: Lists<'_>, writable: boo
     match tab {
         Tab::Checks => lists.checks.show(ui, writable).into_iter().map(ListAction::Panel).collect(),
         Tab::Devices => lists.devices.show(ui, writable).into_iter().map(ListAction::Panel).collect(),
-        Tab::Terminals => lists.terminals.show(ui, writable),
+        Tab::TerminalBlocks => lists.connection_points.show(ui, writable),
         Tab::Plc => lists.io.show(ui).into_iter().filter_map(|a| lists.io.handle(a)).collect(),
     }
 }

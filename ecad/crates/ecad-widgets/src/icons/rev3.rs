@@ -118,7 +118,7 @@ pub fn pin(p: &mut Pen) {
 }
 
 /// Terminal tools: a lead through a ring with a slash.
-pub fn terminal_pin(p: &mut Pen) {
+pub fn terminal_block_pin(p: &mut Pen) {
     p.line((8.0, 1.0), (8.0, 5.0));
     p.circle(8.0, 8.0, 3.0);
     p.line((6.25, 9.75), (9.75, 6.25));

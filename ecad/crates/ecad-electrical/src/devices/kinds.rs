@@ -14,7 +14,7 @@ pub enum ObjectKind {
     /// A wire's end (attached or loose).
     WireEnd,
     /// A terminal of a terminal strip (the DIN-rail device), or the strip's link line.
-    Terminal,
+    TerminalBlock,
     /// A cable's slash or fan.
     Cable,
     /// A text: a device's tag, a wire's label, or free text.
@@ -35,7 +35,7 @@ impl ObjectKind {
         ObjectKind::Aid,
         ObjectKind::Wire,
         ObjectKind::WireEnd,
-        ObjectKind::Terminal,
+        ObjectKind::TerminalBlock,
         ObjectKind::Cable,
         ObjectKind::Text,
         ObjectKind::Reference,
@@ -51,7 +51,7 @@ impl ObjectKind {
             ObjectKind::Aid => "drawing aid",
             ObjectKind::Wire => "wire",
             ObjectKind::WireEnd => "wire end",
-            ObjectKind::Terminal => "terminal",
+            ObjectKind::TerminalBlock => "terminal_block",
             ObjectKind::Cable => "cable",
             ObjectKind::Text => "text",
             ObjectKind::Reference => "reference",

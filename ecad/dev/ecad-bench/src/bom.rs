@@ -1,4 +1,4 @@
-//! Brief 047 timings (design 047 §10), run inside [`crate::outputs::measure`] with the report
+//! Brief 047 timings (design 047 §10), run inside [`crate::reports::measure`] with the report
 //! models kept and a BOM-by-location page in the book, so every edit goes through the BOM's
 //! update map.
 //!
@@ -96,9 +96,9 @@ pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[DeviceId], b
     out.bomcols_ms = median(&mut v);
     // Verify mode: the kept model against a rebuild, every layout.
     let same = project.configure(s, |p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         let detached = p.derived().detached(p.ledger.document());
-        let built = detached.outputs();
+        let built = detached.reports();
         [false, true].iter().all(|a| {
             [false, true].iter().all(|n| {
                 let v = BomView { article: *a, nested: *n };

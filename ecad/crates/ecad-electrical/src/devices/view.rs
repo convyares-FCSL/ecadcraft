@@ -150,7 +150,7 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
             Effect::Item { .. }
             | Effect::Prop { .. }
             | Effect::Layer { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Wire { .. }
             | Effect::Route { .. }
             | Effect::Cable { .. }

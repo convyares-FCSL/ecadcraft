@@ -216,7 +216,7 @@ pub fn unique_tag(base: &str, taken: &BTreeSet<String>) -> String {
 /// Whether device `c` passes a conductor through (a terminal or a connector half): it is not what a
 /// channel drives.
 pub fn is_pass_through(doc: &Document, c: DeviceId) -> bool {
-    let kind_of = |s: &crate::symbols::Starter| matches!(s.kind, crate::symbols::Kind::Terminal | crate::symbols::Kind::ConnectorHalf { .. });
+    let kind_of = |s: &crate::symbols::Starter| matches!(s.kind, crate::symbols::Kind::TerminalBlock | crate::symbols::Kind::ConnectorHalf { .. });
     if let Some(s) = doc.devices.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).and_then(crate::symbols::of_definition) {
         return kind_of(s);
     }

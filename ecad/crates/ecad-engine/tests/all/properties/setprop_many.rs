@@ -17,7 +17,7 @@ fn fixture(h: &mut H) -> (Vec<DeviceId>, DeviceId) {
         let x = 200.0 + 10.0 * f64::from(i);
         h.wire_pp(&[(x, 200.0), (x, 240.0)]).unwrap();
     }
-    let v = h.run("terminals", json!({"from": [190, 220], "to": [240, 220]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [190, 220], "to": [240, 220]})).unwrap();
     (conns, id(&v, "strip"))
 }
 
@@ -37,7 +37,7 @@ fn setprop_on_several_components_walks_the_single_component_rules() {
     let cases: Vec<(Vec<DeviceId>, &str, &str, &str, &str)> = vec![
         (conns.clone(), "pins", "abc", " 6 ", "6"),
         (cards, "plc.addr.start", "x1", "12", "12"),
-        (vec![strip], "terminal.level.separator", "too-long", ":", ":"),
+        (vec![strip], "terminal_block.level.separator", "too-long", ":", ":"),
         (vec![strip], label_key, &long_label, "Top", "Top"),
     ];
     for (cs, key, bad, good, stored) in cases {
@@ -100,17 +100,17 @@ const KINDS_AT_060: &[(&str, &str, Severity)] = &[
     ("no-part-number", "Devices without a part number", Severity::Info),
     ("no-location", "Devices without a location", Severity::Info),
     ("too-many-contacts", "More contacts than the part offers", Severity::Warning),
-    ("too-many-terminals", "More terminals than the strip offers", Severity::Warning),
-    ("terminal-twice", "Terminal drawn twice", Severity::Error),
+    ("too-many-terminal-blocks", "More terminals than the strip offers", Severity::Warning),
+    ("terminal-block-twice", "Terminal drawn twice", Severity::Error),
     ("too-many-cores", "More cores used than the cable offers", Severity::Warning),
     ("core-twice", "Core used by two wires", Severity::Warning),
     ("no-core-count", "Cables without a core count", Severity::Info),
     ("orphan-reference", "Cable reference with no other end", Severity::Warning),
     ("accessory-orphan", "Accessory at a position the strip lacks", Severity::Warning),
     ("no-accessory-part", "Strip accessories without a part number", Severity::Info),
-    ("link-across-partition", "Link crosses a partition", Severity::Warning),
-    ("link-orphan", "Link names positions the strip lacks", Severity::Warning),
-    ("link-on-non-strip", "Link on a device that is not a strip", Severity::Warning),
+    ("jumper-bar-across-partition", "Link crosses a partition", Severity::Warning),
+    ("jumper-bar-orphan", "Link names positions the strip lacks", Severity::Warning),
+    ("jumper-bar-on-non-strip", "Link on a device that is not a strip", Severity::Warning),
     ("table-over-title", "Contact table over the title block", Severity::Warning),
     ("continuation-clash", "Continuation sheet has another page's number", Severity::Warning),
     ("level-twice", "Terminal level drawn twice", Severity::Error),

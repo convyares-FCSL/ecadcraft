@@ -416,11 +416,11 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
         }
         // 050b: conductors whose resolved category is `id` and that have none of their own.
         ecad_model::StyleCatalogue::Wire => {
-            let looks = wire::WireLooks::new(doc);
+            let draws = wire::WireDraws::new(doc);
             doc.wires
                 .iter()
                 .filter(|(_, x)| !x.wire_type.as_ref().is_some_and(|t| exists(doc, ecad_model::StyleCatalogue::Wire, t)))
-                .filter(|(c, _)| looks.category(doc, **c).0.as_ref() == Some(id))
+                .filter(|(c, _)| draws.category(doc, **c).0.as_ref() == Some(id))
                 .count()
         }
         ecad_model::StyleCatalogue::Text if project == *id => match text::noun(entry.key) {
@@ -502,8 +502,8 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
                     Op::SetStyle { before, after, .. } => (before, after),
                     _ => return None,
                 };
-                let looks = wire::WireLooks::new(doc);
-                let default = looks.by_potential_ids().any(|x| x == id);
+                let draws = wire::WireDraws::new(doc);
+                let default = draws.by_potential_ids().any(|x| x == id);
                 if default || names_potential(before) || names_potential(after) {
                     return None;
                 }
@@ -537,7 +537,7 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
     }
     // 050b (design 050 §5.4): one category per potential.
     if let Some(p) = r.body.wire().and_then(|w| w.potential.as_ref()).map(|p| p.as_str())
-        && let Some(other) = wire::WireLooks::new(doc).for_potential(p).filter(|o| *o != id)
+        && let Some(other) = wire::WireDraws::new(doc).for_potential(p).filter(|o| *o != id)
     {
         return Err(CmdError::refused(format!(
             "{} is already the default for {p}; clear it there first.",

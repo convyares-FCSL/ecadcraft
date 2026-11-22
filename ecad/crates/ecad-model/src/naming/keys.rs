@@ -6,7 +6,7 @@
 //! - [`KEYS`]: a fixed key (`tag`, `number`), with its [`Area`], the objects that may hold it and the
 //!   shape of its value. While lanes B–F move keys into struct fields, it also holds each key not yet
 //!   moved; each lane takes its keys out and adds them to [`RESERVED`].
-//! - [`FAMILIES`]: keys built from a pattern (`text.<kind>.style`, `link.<n>`), one
+//! - [`FAMILIES`]: keys built from a pattern (`text.<kind>.style`, `jumper_bar.<n>`), one
 //!   [`Family::build`] / [`Family::parse`] pair for all of them.
 //! - [`RESERVED`]: keys that became struct fields. A bag holding one is a read error (§9.4).
 //!
@@ -57,7 +57,7 @@ crate::word_enum! {
         Revisions,
         Print,
         Symbol,
-        Terminal,
+        ConnectionPoint,
         Connector,
         #[strum(serialize = "strippage")]
         StripPage,
@@ -74,8 +74,8 @@ crate::word_enum! {
         Numbering,
         /// The `=` function and `+` location codes stored on a page or the project.
         Designation,
-        /// A terminal strip's jumpers (`link.<n>`).
-        Link,
+        /// A terminal strip's jumpers (`jumper_bar.<n>`).
+        JumperBar,
         /// Anything else: a person's own property.
         Free,
     }
@@ -91,7 +91,7 @@ impl Area {
         Area::Revisions,
         Area::Print,
         Area::Symbol,
-        Area::Terminal,
+        Area::ConnectionPoint,
         Area::Connector,
         Area::StripPage,
         Area::Bom,
@@ -252,7 +252,7 @@ pub const KEYS: &[KeySpec] = &[
 pub const FAMILIES: &[Family] = &[
     Family { pattern: "text.{}.{}.style", area: Area::Text, holders: &[Holder::Project, Holder::Page, Holder::Device, Holder::Representation], value: ValueSpec::Ruled },
     Family { pattern: "text.{}.{}.show", area: Area::Text, holders: &[Holder::Project, Holder::Page, Holder::Device, Holder::Representation], value: ValueSpec::Ruled },
-    Family { pattern: "link.{}", area: Area::Link, holders: &[Holder::Device], value: ValueSpec::Ruled },
+    Family { pattern: "jumper_bar.{}", area: Area::JumperBar, holders: &[Holder::Device], value: ValueSpec::Ruled },
     Family { pattern: "numbering.high.{}", area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Ruled },
 ];
 

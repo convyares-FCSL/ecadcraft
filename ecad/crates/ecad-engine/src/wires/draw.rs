@@ -61,7 +61,7 @@ pub(crate) fn colour_routes(
 /// weight where these differ from the built-in (continuous, 0.25 mm), on screen and in print (a
 /// mono print keeps them: they are not colour). `item_handle` finds a route item's entity.
 pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], item_handle: impl Fn(ItemId) -> Option<Handle>) {
-    let looks = ecad_electrical::styles::wire::WireLooks::new(doc);
+    let draws = ecad_electrical::styles::wire::WireDraws::new(doc);
     let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     for (_, r) in doc.representations_on(page) {
         let Subject::Route(x) = r.subject else { continue };
@@ -70,14 +70,14 @@ pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], it
         }
         // A line looks as the wire it stands for (design 072 §4.3).
         let Some(c) = ecad_electrical::wires::wire_of_route(doc, x) else { continue };
-        let look = looks.look(doc, c);
-        let weight = (look.line_weight * 100.0).round().clamp(0.0, 211.0) as u16;
-        if look.line_type == "continuous" && weight == crate::cables::draw::WIRE_WEIGHT {
+        let draw = draws.draw(doc, c);
+        let weight = (draw.line_weight * 100.0).round().clamp(0.0, 211.0) as u16;
+        if draw.line_type == "continuous" && weight == crate::cables::draw::WIRE_WEIGHT {
             continue;
         }
         let Some(e) = r.items.first().and_then(|i| item_handle(*i)).and_then(|h| index.get(&h)).and_then(|i| ents.get_mut(*i)) else { continue };
-        if look.line_type != "continuous" {
-            e.common.linetype = ecad_electrical::styles::wire::linetype(look.line_type).into();
+        if draw.line_type != "continuous" {
+            e.common.linetype = ecad_electrical::styles::wire::linetype(draw.line_type).into();
         }
         e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(weight);
     }
@@ -109,8 +109,8 @@ pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<WireLabel> {
 /// A label as an entity on [`LABEL_LAYER`].
 ///
 /// Its style (the wire-label kind's font, weight, and bold lineweight in the stroke font) comes
-/// from lane T's resolved `look` of the page ([`crate::styles::draw::Look::apply`]).
-pub fn label_entity(look: &crate::styles::draw::Look, l: &WireLabel, handle: Handle) -> Entity {
+/// from lane T's resolved `draw` of the page ([`crate::styles::draw::DrawStyles::apply`]).
+pub fn label_entity(draw: &crate::styles::draw::DrawStyles, l: &WireLabel, handle: Handle) -> Entity {
     let p = Vec3::new(l.at.x, l.at.y, 0.0);
     let color = if l.error {
         cadcraft_engine::doc::color::Color::Index(ecad_electrical::references::cables::ORPHAN_ACI)
@@ -136,8 +136,8 @@ pub fn label_entity(look: &crate::styles::draw::Look, l: &WireLabel, handle: Han
         }),
     };
     match &l.own {
-        Some(o) => look.apply_own(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel, o),
-        None => look.apply(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel),
+        Some(o) => draw.apply_own(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel, o),
+        None => draw.apply(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel),
     }
     // Brief 050a: an error or provisional label keeps its own colour over the style's.
     if l.error || l.provisional {

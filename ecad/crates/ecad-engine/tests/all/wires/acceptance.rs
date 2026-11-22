@@ -80,9 +80,9 @@ fn fix_names(h: &mut H, kind: Kind) -> Vec<String> {
     ecad_engine::checks::all(&doc, 1e-6).into_iter().filter(|c| c.kind == kind).map(|c| format!("{:?}", c.fix)).collect()
 }
 
-fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> (DeviceId, ConnectionPointId, Pt) {
-    let r = h.run("place", json!({"symbol": "terminal", "at": [at.0, at.1], "tag": tag})).unwrap();
-    let t: ConnectionPointId = id(&r["terminals"][0], "terminal");
+fn connection_point(h: &mut H, at: (f64, f64), tag: &str) -> (DeviceId, ConnectionPointId, Pt) {
+    let r = h.run("place", json!({"symbol": "terminalblock", "at": [at.0, at.1], "tag": tag})).unwrap();
+    let t: ConnectionPointId = id(&r["connection_points"][0], "connection_point");
     let page = h.p(|p| p.active_page()).expect("an active page");
     let at = h.connection_point_pos(page, t);
     (id(&r, "component"), t, at)
@@ -107,8 +107,8 @@ fn undo_is_one_step(h: &mut H, before: &Document) {
 fn t01_end_to_end_is_one_conductor_one_net() {
     let mut h = H::new(0x7032_0001);
     let page = h.first_page();
-    let (_, t1, p1) = terminal(&mut h, (0.0, 0.0), "X1");
-    let (_, t2, p2) = terminal(&mut h, (50.0, -20.0), "X2");
+    let (_, t1, p1) = connection_point(&mut h, (0.0, 0.0), "X1");
+    let (_, t2, p2) = connection_point(&mut h, (50.0, -20.0), "X2");
     let a = wire(&mut h, &[(p1.x, p1.y), (50.0, 0.0)], json!({}));
     let first = rid(&a);
     assert_eq!(a["created"], json!(true), "{a}");
@@ -152,7 +152,7 @@ fn t02_collinear_join_drops_the_middle_vertex() {
 #[test]
 fn t02b_ending_on_a_start_merges_and_keeps_end_letters() {
     let mut h = H::new(0x7032_0021);
-    let (_, t, tp) = terminal(&mut h, (0.0, 0.0), "X1");
+    let (_, t, tp) = connection_point(&mut h, (0.0, 0.0), "X1");
     // C runs from the terminal (end A on it) to a free end B at (50, 0).
     let c = rid(&wire(&mut h, &[(tp.x, tp.y), (50.0, 0.0)], json!({})));
     assert_eq!(h.doc().routes[&c].ends[0], RouteEnd::Point(t));
@@ -163,7 +163,7 @@ fn t02b_ending_on_a_start_merges_and_keeps_end_letters() {
     assert_eq!(doc.routes.len(), 1);
     assert_eq!(doc.routes[&c].ends[0], RouteEnd::Point(t), "C keeps its end A on the terminal");
     let v = vertices(&doc, c);
-    assert!(v.first().is_some_and(|p| p.near(tp, 1e-6)), "end A stays at the terminal: {v:?}");
+    assert!(v.first().is_some_and(|p| p.near(tp, 1e-6)), "end A stays at the connection_point: {v:?}");
     assert!(v.last().is_some_and(|p| p.near(Pt::new(50.0, -30.0), 1e-6)), "end B moved to W's far end: {v:?}");
 }
 
@@ -172,8 +172,8 @@ fn t02b_ending_on_a_start_merges_and_keeps_end_letters() {
 #[test]
 fn t03_both_ends_fold_into_one_wire() {
     let mut h = H::new(0x7032_0003);
-    let (_, t1, p1) = terminal(&mut h, (0.0, 0.0), "X1");
-    let (_, t2, p2) = terminal(&mut h, (150.0, 0.0), "X2");
+    let (_, t1, p1) = connection_point(&mut h, (0.0, 0.0), "X1");
+    let (_, t2, p2) = connection_point(&mut h, (150.0, 0.0), "X2");
     let a = rid(&wire(&mut h, &[(p1.x, p1.y), (50.0, 0.0)], json!({})));
     let c = rid(&wire(&mut h, &[(100.0, 0.0), (p2.x, p2.y)], json!({})));
     let before = h.doc();
@@ -196,10 +196,10 @@ fn t03_both_ends_fold_into_one_wire() {
 /// second line from another point lands on its middle), with fixed numbers `24V-03` and `24V-07`.
 fn fixed_pair(h: &mut H, y: f64) -> (WireId, WireId) {
     let n = (y as i64).unsigned_abs();
-    let (_, _, p1) = terminal(h, (0.0, y), &format!("X{}1", n));
-    let (_, _, p2) = terminal(h, (25.0, y + 40.0), &format!("X{}2", n));
-    let (_, _, p3) = terminal(h, (150.0, y), &format!("X{}3", n));
-    let (_, _, p4) = terminal(h, (125.0, y + 40.0), &format!("X{}4", n));
+    let (_, _, p1) = connection_point(h, (0.0, y), &format!("X{}1", n));
+    let (_, _, p2) = connection_point(h, (25.0, y + 40.0), &format!("X{}2", n));
+    let (_, _, p3) = connection_point(h, (150.0, y), &format!("X{}3", n));
+    let (_, _, p4) = connection_point(h, (125.0, y + 40.0), &format!("X{}4", n));
     wire(h, &[(p1.x, p1.y), (50.0, y)], json!({}));
     let x = cid(&wire(h, &[(p2.x, p2.y), (25.0, y)], json!({})));
     wire(h, &[(p3.x, p3.y), (100.0, y)], json!({}));
@@ -298,8 +298,8 @@ fn t09_join_false_and_junction_false_and_their_disagreement() {
     {
         let key = "join";
         let mut h = H::new(0x7032_0009);
-        let (_, _, p1) = terminal(&mut h, (0.0, 0.0), "X1");
-        let (_, _, p2) = terminal(&mut h, (50.0, -40.0), "X2");
+        let (_, _, p1) = connection_point(&mut h, (0.0, 0.0), "X1");
+        let (_, _, p2) = connection_point(&mut h, (50.0, -40.0), "X2");
         let a = rid(&wire(&mut h, &[(p1.x, p1.y), (50.0, 0.0)], json!({})));
         let b = wire(&mut h, &[(50.0, 0.0), (p2.x, p2.y)], json!({key: false}));
         assert_eq!(b["created"], json!(true), "{key}: {b}");
@@ -307,10 +307,10 @@ fn t09_join_false_and_junction_false_and_their_disagreement() {
         assert_eq!(doc.routes.len(), 2, "{key}");
         assert_ne!(a, rid(&b), "{key}");
         assert!(doc.wires.is_empty(), "{key}: two lines each from one point carry no wire");
-        let looks = checks(&mut h, &["looks-connected"]);
-        assert_eq!(looks.len(), 1, "{key}: {looks:?}");
-        assert_eq!(looks[0]["at"], json!([50.0, 0.0]), "{key}");
-        assert_eq!(looks[0]["text"], "Looks connected", "renamed (design §2.7): {looks:?}");
+        let draws = checks(&mut h, &["looks-connected"]);
+        assert_eq!(draws.len(), 1, "{key}: {draws:?}");
+        assert_eq!(draws[0]["at"], json!([50.0, 0.0]), "{key}");
+        assert_eq!(draws[0]["text"], "Looks connected", "renamed (design §2.7): {draws:?}");
         let fixes = fix_names(&mut h, Kind::LooksConnected);
         assert!(fixes.iter().all(|f| f.starts_with("Some(Join(")), "{key}: {fixes:?}");
     }
@@ -388,8 +388,8 @@ fn t11b_a_file_with_ends_that_meet_opens_unchanged() {
 #[test]
 fn t12_redo_of_a_fold_gives_the_same_document() {
     let mut h = H::new(0x7032_0014);
-    let (_, _, p1) = terminal(&mut h, (0.0, 0.0), "X1");
-    let (_, _, p2) = terminal(&mut h, (150.0, 0.0), "X2");
+    let (_, _, p1) = connection_point(&mut h, (0.0, 0.0), "X1");
+    let (_, _, p2) = connection_point(&mut h, (150.0, 0.0), "X2");
     wire(&mut h, &[(p1.x, p1.y), (50.0, 0.0)], json!({}));
     wire(&mut h, &[(100.0, 0.0), (p2.x, p2.y)], json!({}));
     wire(&mut h, &[(50.0, 0.0), (100.0, 0.0)], json!({}));
@@ -419,7 +419,7 @@ fn w04(seed: u64) -> W04 {
     let p1 = h.first_page();
     for i in 0..3 {
         let x = 100.0 + 20.0 * i as f64;
-        let (_, _, tp) = terminal(&mut h, (x, 100.0), &format!("X{}", i + 1));
+        let (_, _, tp) = connection_point(&mut h, (x, 100.0), &format!("X{}", i + 1));
         continuation(&mut h, (tp.x, 40.0), &format!("A{}", i + 1), 0.0);
         let r = wire(&mut h, &[(tp.x, tp.y), (tp.x, 40.0)], json!({}));
         assert!(r["conductor"].is_null(), "fixture: no partner yet, no wire: {r}");
@@ -431,7 +431,7 @@ fn w04(seed: u64) -> W04 {
     let mut w = Vec::new();
     for i in 0..3 {
         let x = 100.0 + 20.0 * i as f64;
-        let (_, _, tp) = terminal(&mut h, (x, 100.0), &format!("X5{}", i + 1));
+        let (_, _, tp) = connection_point(&mut h, (x, 100.0), &format!("X5{}", i + 1));
         continuation(&mut h, (tp.x, 40.0), &format!("A{}", i + 1), 180.0);
         w.push(cid(&wire(&mut h, &[(tp.x, 40.0), (tp.x, tp.y)], json!({}))));
     }
@@ -444,9 +444,9 @@ fn slash_reps(doc: &Document, k: CableId) -> Vec<(ecad_model::RepresentationId, 
     doc.representations_of(Subject::Cable(k)).filter(|(_, r)| r.role == ecad_model::Role::Slash).map(|(id, r)| (id, r.page)).collect()
 }
 
-fn same_outputs_as_built(h: &mut H) {
+fn same_reports_as_built(h: &mut H) {
     let (kept, built, kept_checks, built_checks) = h.cfg(|p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         let doc = p.ledger.document();
         let built = ReportModels::build_with(doc, &ecad_engine::styles::draw::EngineMetrics);
         let kc: Vec<String> = ecad_engine::checks::all_with(doc, p.tolerance, &kept).iter().map(|c| c.to_json(doc).to_string()).collect();
@@ -543,7 +543,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     let locs = format!("{} {}", row["from_location"], row["to_location"]);
     assert!(locs.contains("+CP1") && locs.contains("+FIELD"), "-X01 → -X51 locations: {row}");
     assert!(checks(&mut f.h, &["core-twice", "too-many-cores"]).is_empty(), "{:?}", checks(&mut f.h, &["core-twice", "too-many-cores"]));
-    same_outputs_as_built(&mut f.h);
+    same_reports_as_built(&mut f.h);
     undo_is_one_step(&mut f.h, &before);
 
     // Erasing the page-2 slash removes that representation; the members stay (they run on page 1).
@@ -558,7 +558,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     let members: Vec<_> = doc.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members, f.w, "the three members stay");
     assert_eq!(slash_reps(&doc, f.cable).len(), 1);
-    same_outputs_as_built(&mut f.h);
+    same_reports_as_built(&mut f.h);
     // Erasing the last slash keeps the cable, as today (009 AC6; design §3.5's table says
     // "deletes the cable", which is not what `6729c8f1` does).
     f.h.activate(f.p1);
@@ -609,11 +609,9 @@ fn t13c_continue_refusals() {
     // A wire on from a core's terminal is not the core.
     let mut f = w04(0x7032_0134);
     let doc = f.h.doc();
-    let x51 = doc.wires[&f.w[0]]
-        .ends
-        .iter()
-        .copied()
-        .find(|t| ecad_electrical::devices::tag_of(&doc, doc.terminals[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5")));
+    let x51 = doc.wires[&f.w[0]].ends.iter().copied().find(|t| {
+        ecad_electrical::devices::tag_of(&doc, doc.connection_points[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5"))
+    });
     let tp = x51.map(|t| f.h.connection_point_pos(f.p2, t)).expect("X51's point");
     f.h.points_at(&[(tp.x, tp.y + 40.0)]);
     wire(&mut f.h, &[(tp.x, tp.y), (tp.x, tp.y + 40.0)], json!({}));
@@ -664,7 +662,7 @@ fn t13d_chain_cycles_and_three_member_groups_end() {
     let _ = h.run("cablecores", json!({"cable": k.hex()})).unwrap();
     let _ = h.run("cablelist", json!({})).unwrap();
     let _ = h.run("checks", json!({})).unwrap();
-    same_outputs_as_built(&mut h);
+    same_reports_as_built(&mut h);
     let _ = p1;
 }
 
@@ -677,7 +675,7 @@ fn bus(seed: u64) -> (H, PageId, Vec<WireId>) {
     let mut drops = Vec::new();
     let mut tps = Vec::new();
     for i in 0..4 {
-        let (_, _, tp) = terminal(&mut h, (20.0 + 20.0 * i as f64, -5.0), &format!("X{}", i + 1));
+        let (_, _, tp) = connection_point(&mut h, (20.0 + 20.0 * i as f64, -5.0), &format!("X{}", i + 1));
         tps.push(tp);
     }
     h.points_at(&[(0.0, 0.0), (100.0, 0.0)]);
@@ -821,7 +819,7 @@ fn t17_update_map_nets_joined_on_another_page_reproject_labels() {
 fn t17b_update_map_follows_continuation_names() {
     let mut f = w04(0x7032_0171);
     f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})).unwrap();
-    same_outputs_as_built(&mut f.h);
+    same_reports_as_built(&mut f.h);
     let doc = f.h.doc();
     // Rename page 2's A2 to Z9: core 2's wire goes; the core stays on its lines.
     let a2 = doc
@@ -833,14 +831,14 @@ fn t17b_update_map_follows_continuation_names() {
         .map(|(a, _)| *a)
         .unwrap();
     f.h.run("setprop", json!({"aids": [a2.hex()], "key": "name", "value": "Z9"})).unwrap();
-    same_outputs_as_built(&mut f.h);
+    same_reports_as_built(&mut f.h);
     let doc = f.h.doc();
     assert!(!doc.wires.contains_key(&f.w[1]));
     assert!(matches!(doc.cables[&f.cable].cores[1].position, ecad_model::CorePosition::Route { .. }), "{:?}", doc.cables[&f.cable].cores);
     let cc = f.h.run("cablecores", json!({"cable": f.cable.hex()})).unwrap();
     assert_eq!(cc["used"], 3, "the core on its lines is used: {cc}");
     f.h.cmdline("u");
-    same_outputs_as_built(&mut f.h);
+    same_reports_as_built(&mut f.h);
     assert_eq!(f.h.doc().cables[&f.cable].cores[1].wire(), Some(f.w[1]));
     let cc = f.h.run("cablecores", json!({"cable": f.cable.hex()})).unwrap();
     assert_eq!(cc["used"], 3, "{cc}");

@@ -180,7 +180,7 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
     let counts = uses.counts(a, &from.key);
     let mut ops = Vec::new();
     let mut project = doc.project.clone();
-    for (o, prop) in uses.users(a, &from.key).map(|u| u.refs.clone()).unwrap_or_default() {
+    for (o, prop) in uses.users(a, &from.key).map(|u| u.references.clone()).unwrap_or_default() {
         match o {
             ObjectRef::Page(pg) => {
                 if let Some(page) = doc.pages.get(&pg).filter(|p| designations::page_key(p, a).as_deref() == Some(from.key.as_str())) {

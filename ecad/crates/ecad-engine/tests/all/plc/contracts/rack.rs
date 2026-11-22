@@ -47,7 +47,7 @@ fn built_rows(h: &mut H, kind: Kind) -> Vec<ecad_electrical::checks::Check> {
 /// Run fix button `i` of `fix` as the Checks drawer does.
 fn run_fix(h: &mut H, fix: Fix, i: usize) -> Value {
     let (cmd, params) = h
-        .cfg(|p| accessory_fix_commands(p.outputs(), fix).into_iter().nth(i).map(|(_, c, v)| (c.to_string(), v)))
+        .cfg(|p| accessory_fix_commands(p.reports(), fix).into_iter().nth(i).map(|(_, c, v)| (c.to_string(), v)))
         .unwrap_or_else(|| panic!("no button {i} for {fix:?}"));
     h.run(&cmd, params).unwrap_or_else(|e| panic!("{cmd}: {e}"))
 }
@@ -326,15 +326,15 @@ fn a6_deleting_a_rack_takes_its_cards_out_in_the_same_transaction() {
 fn a8_an_unrelated_op_changes_nothing_in_the_plc_model() {
     let Rack { mut h, cards, .. } = rack(4509);
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
     // A wire, a coil: nothing PLC reads differently (the model is rebuilt, design 064 bar).
     h.run("wire", json!({"points": [[0.0, 0.0], [0.0, 50.0]]})).unwrap();
     placed(&mut h, "coil", 300.0, 300.0);
-    assert!(h.cfg(|p| p.outputs().plc.last_changed.is_empty()), "no PLC change for unrelated edits");
+    assert!(h.cfg(|p| p.reports().plc.last_changed.is_empty()), "no PLC change for unrelated edits");
     // A slot move changes the card.
     h.run("plcslot", json!({"card": cards[1].hex(), "slot": 20})).unwrap();
-    assert!(h.cfg(|p| p.outputs().plc.last_changed.contains(&cards[1])), "the moved card changed");
+    assert!(h.cfg(|p| p.reports().plc.last_changed.contains(&cards[1])), "the moved card changed");
     same_as_built(&mut h);
 }
 

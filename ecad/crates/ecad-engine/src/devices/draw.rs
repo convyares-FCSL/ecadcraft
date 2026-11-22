@@ -42,8 +42,8 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
     all_texts_on_page_with(doc, page, None)
 }
 
-/// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `look` (design 031 §3).
-pub fn text_entity(look: &crate::styles::draw::Look, t: &DerivedText, handle: Handle) -> Entity {
+/// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `draw` (design 031 §3).
+pub fn text_entity(draw: &crate::styles::draw::DrawStyles, t: &DerivedText, handle: Handle) -> Entity {
     let mut e = text_entity_with(
         &t.value,
         t.at,
@@ -55,8 +55,8 @@ pub fn text_entity(look: &crate::styles::draw::Look, t: &DerivedText, handle: Ha
     );
     match &t.own {
         // Brief 050a: the device's own text style (its height is already the text's).
-        Some(s) => look.apply_own(&mut e, kind_of(t.of), s),
-        None => look.apply(&mut e, kind_of(t.of)),
+        Some(s) => draw.apply_own(&mut e, kind_of(t.of), s),
+        None => draw.apply(&mut e, kind_of(t.of)),
     }
     // Brief 045 (design 045 §7.1): a channel description reads upwards under its cell.
     if let (TextOf::ChannelText { rotated: true }, EntityKind::Text(x)) = (t.of, &mut e.kind) {

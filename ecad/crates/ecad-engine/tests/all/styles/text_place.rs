@@ -221,7 +221,7 @@ fn apply_styles_an_entity_like_the_page_does() {
     let EntityKind::Text(t) = &e.kind else { unreachable!() };
     assert_eq!((t.height, t.style.as_str()), (3.0, "ECAD-GRID"));
     // text_width measures one kind, the same as from a held Look.
-    let look = ecad_engine::styles::draw::Look::new(&doc);
-    let w = ecad_engine::styles::draw::width_in(look.fonts_for(TextKind::Grid), look.style(TextKind::Grid), "ABC");
+    let draw = ecad_engine::styles::draw::DrawStyles::new(&doc);
+    let w = ecad_engine::styles::draw::width_in(draw.fonts_for(TextKind::Grid), draw.style(TextKind::Grid), "ABC");
     assert_eq!(ecad_engine::styles::draw::text_width(&doc, TextKind::Grid, "ABC"), w);
 }

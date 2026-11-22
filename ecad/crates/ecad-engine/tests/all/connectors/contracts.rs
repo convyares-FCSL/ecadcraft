@@ -131,7 +131,7 @@ fn pin_pairs_across_wires_split_them_and_keep_one_net() {
     assert_ne!(net(&d, pin(&d, c, ".s", "1")), net(&d, pin(&d, c, ".s", "2")));
     // A plug pin placed alone takes the next pin drawn on neither side… here 4 (1–3 are pairs).
     let v = h.run("place", json!({"symbol": "pinp", "device": c.hex(), "at": [200, 50]})).unwrap();
-    assert_eq!(v["terminals"][0]["pin"], "4");
+    assert_eq!(v["connection_points"][0]["pin"], "4");
     // A socket pin named 2 is drawn already: refused.
     let e = h.run("place", json!({"symbol": "pins", "device": c.hex(), "pin": "2", "at": [220, 50]})).unwrap_err();
     assert!(e.contains(".S:2 is drawn on"), "{e}");
@@ -149,7 +149,7 @@ fn pins_fill_mates_first() {
     // Plug pins pair up 1–3 with the socket pins.
     let names: Vec<String> = (0..3)
         .map(|i| {
-            h.run("place", json!({"symbol": "pinp", "device": c.hex(), "at": [10 + 10 * i, 40]})).unwrap()["terminals"][0]["pin"]
+            h.run("place", json!({"symbol": "pinp", "device": c.hex(), "at": [10 + 10 * i, 40]})).unwrap()["connection_points"][0]["pin"]
                 .as_str()
                 .unwrap()
                 .to_string()
@@ -158,7 +158,7 @@ fn pins_fill_mates_first() {
     assert_eq!(names, ["1", "2", "3"]);
     // A fourth socket pin is a new pin past `pins`, with a Checks row.
     let v = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [60, 10]})).unwrap();
-    assert_eq!(v["terminals"][0]["pin"], "4");
+    assert_eq!(v["connection_points"][0]["pin"], "4");
     let rows = ecad_engine::checks::all(&h.doc(), 1e-6);
     assert!(rows.iter().any(|r| r.kind.name() == "connector-over"));
     assert!(rows.iter().any(|r| r.kind.name() == "connector-lone-pin"));
@@ -278,13 +278,13 @@ fn pinlabel_renames_a_pin_on_both_halves() {
     h.run("pinlabel", json!({"device": c.hex(), "pin": "3", "to": "PE"})).unwrap();
     assert_eq!(h.head(), before + 1);
     let d = h.doc();
-    assert_eq!(d.terminals[&s3].label.as_deref(), Some("PE"));
-    assert_eq!(d.terminals[&p3].label.as_deref(), Some("PE"));
+    assert_eq!(d.connection_points[&s3].label.as_deref(), Some("PE"));
+    assert_eq!(d.connection_points[&p3].label.as_deref(), Some("PE"));
     assert_eq!(net(&d, s3), net(&d, p3), "still mated");
     let e = h.run("pinlabel", json!({"device": c.hex(), "pin": "PE", "to": "4"})).unwrap_err();
     assert!(e.contains("already has a pin 4"), "{e}");
     h.cmdline("u");
-    assert_eq!(h.doc().terminals[&s3].label.as_deref(), Some("3"));
+    assert_eq!(h.doc().connection_points[&s3].label.as_deref(), Some("3"));
 }
 
 #[test]
@@ -408,12 +408,12 @@ fn a_half_location_is_its_override_else_the_connector_not_its_page() {
 fn half_row_groups_are_kept_not_regrouped() {
     let mut h = H::new(4421);
     row(&mut h, json!({}));
-    let count = |h: &mut H| h.cfg(|p| p.outputs().bom_count(ecad_electrical::reports::Group::Location));
+    let count = |h: &mut H| h.cfg(|p| p.reports().bom_count(ecad_electrical::reports::Group::Location));
     let n = count(&mut h);
-    let g0 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
+    let g0 = h.cfg(|p| p.reports().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
     h.wire_pp(&[(300.0, 300.0), (350.0, 300.0)]).unwrap();
     assert_eq!(count(&mut h), n);
-    let g1 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
+    let g1 = h.cfg(|p| p.reports().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
     assert_eq!(g0, g1, "an unrelated edit and the counts group no half rows");
     let rebuilt = h.p(|p| {
         ecad_electrical::reports::kept::ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics)
@@ -459,7 +459,7 @@ fn a_typed_pin_list_is_kept_in_order() {
     let c: DeviceId = id(&v, "component");
     assert_eq!(h.doc().devices[&c].value("pin_names").as_deref(), Some("L,N,PE,SH"));
     let v = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [200, 50]})).unwrap();
-    assert_eq!(v["terminals"][0]["pin"], "PE", "the next listed name, never lost");
+    assert_eq!(v["connection_points"][0]["pin"], "PE", "the next listed name, never lost");
     h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [220, 50]})).unwrap();
     let e = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [240, 50]})).unwrap_err();
     assert!(e.contains("(L, N, PE, SH)"), "names in pin order: {e}");

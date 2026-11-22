@@ -3,7 +3,7 @@
 //! geometry of the level starters.
 //!
 //! # Semantics
-//! - A **position** is the strip terminals that share one position label (`Terminal.label`); each
+//! - A **position** is the strip terminals that share one position label (`ConnectionPoint.label`); each
 //!   is one **level**, read from its key: `.n` (one point), `.ni`/`.no` (two-point levels: in and
 //!   out). A key that does not start with `.` is level 1 of a one-level position, exactly as before
 //!   this brief ([`ecad_model::connectivity::jumper_bars::level_of_key`]).
@@ -11,7 +11,7 @@
 //!   level (lowest terminal ID) decides when they differ (`position-mixed`).
 //! - The **shown label** of level n of position p is the strip property `term_label.<p>.<n>`, else
 //!   `p` for a one-level type, else `p` + separator + level name (`1.L`). Separator and level names
-//!   are registry entries ([`crate::defaults::terminals`]), resolved strip → project → built-in.
+//!   are registry entries ([`crate::defaults::connection_points`]), resolved strip → project → built-in.
 //! - Types, codes, level counts, bridges and geometry are what a part *is*: catalogue code here,
 //!   never defaults.
 //!
@@ -33,7 +33,7 @@ pub const LABEL_PREFIX: &str = "term_label.";
 pub const RATING_PREFIX: &str = ecad_model::objects::devices::RATING_OF_PREFIX;
 /// Every strip property keyed by a position label (review M1): what renumbering and `termlabel`
 /// move with a position, in one list, so a prefix added later is never left behind. `acc.after.`
-/// and `acc.on.` are brief 030's placements, `term_label.` this brief's; `link.` values name
+/// and `acc.on.` are brief 030's placements, `term_label.` this brief's; `jumper_bar.` values name
 /// positions inside and are rewritten, not moved ([`crate::terminal_strips::accessories::renumber_ops`]). A fuse
 /// position's rating is the strip's field and moves with [`moved_fuses`].
 pub const POSITION_KEYED: &[&str] =
@@ -53,7 +53,7 @@ pub struct TermType {
     pub key: StarterKey,
     /// The starter of each level, level 1 first (`termlnpe.1`…); empty for a one-level type.
     pub level_starters: &'static [StarterKey],
-    /// The registry code, lower case (`lnpe`): `terminal.<code>.levels`, `part_number.<code>`.
+    /// The registry code, lower case (`lnpe`): `terminal_block.<code>.levels`, `part_number.<code>`.
     pub code: &'static str,
     /// The offer code as written (`LNPE`); empty for feed-through.
     pub offer: &'static str,
@@ -105,7 +105,7 @@ impl TermType {
 
     /// Whether it is 028's feed-through or PE terminal (one level, old keys).
     pub fn legacy(&self) -> bool {
-        self.key == StarterKey::Terminal || self.key == crate::terminal_strips::PE_KEY
+        self.key == StarterKey::TerminalBlock || self.key == crate::terminal_strips::PE_KEY
     }
 }
 
@@ -119,7 +119,7 @@ const fn level(n: u8) -> PointKey {
 /// The catalogue, in offer order (design 036 §2.2). Adding a type is a row here and its starters.
 pub static TYPES: &[TermType] = &[
     TermType {
-        key: StarterKey::Terminal,
+        key: StarterKey::TerminalBlock,
         level_starters: &[],
         code: "ft",
         offer: "",
@@ -131,7 +131,7 @@ pub static TYPES: &[TermType] = &[
         pe_level: None,
     },
     TermType {
-        key: StarterKey::Terminalpe,
+        key: StarterKey::TerminalBlockPe,
         level_starters: &[],
         code: "pe",
         offer: "PE",
@@ -262,7 +262,7 @@ pub fn index_of(t: &TermType) -> usize {
 }
 
 /// The type and level a starter draws: `termlnpe.2` → (L/N/PE, level 2); `termlnpe` → (L/N/PE,
-/// `None`: the whole terminal); `terminal`, `terminalpe`, `termdisc`, `termfuse` → level 1.
+/// `None`: the whole terminal); `connection_point`, `terminalblockpe`, `termdisc`, `termfuse` → level 1.
 pub fn of_starter(key: StarterKey) -> Option<(&'static TermType, Option<u32>)> {
     TYPES.iter().find_map(|t| {
         if t.key == key {
@@ -298,7 +298,7 @@ pub fn starter_keys() -> Vec<StarterKey> {
 pub fn type_of_connection_point(doc: &Document, t: ConnectionPointId) -> &'static TermType {
     let from_reps = doc.representations_showing(t).find_map(|(_, r)| crate::devices::rep_starter(doc, r));
     let starter = from_reps.or_else(|| {
-        let c = doc.terminals.get(&t)?.device()?;
+        let c = doc.connection_points.get(&t)?.device()?;
         let d = doc.devices.get(&c)?.definition?;
         crate::symbols::of_definition(doc.definitions.get(&d)?)
     });
@@ -307,19 +307,19 @@ pub fn type_of_connection_point(doc: &Document, t: ConnectionPointId) -> &'stati
 
 /// A terminal's level and point (`.1i` → (1, `i`)); a hostile key is level 1.
 pub fn level_of(doc: &Document, t: ConnectionPointId) -> (u32, Option<char>) {
-    level_of_key(doc.terminals.get(&t).and_then(|x| x.key.as_ref())).unwrap_or((1, None))
+    level_of_key(doc.connection_points.get(&t).and_then(|x| x.key.as_ref())).unwrap_or((1, None))
 }
 
-/// The registry value of `terminal.level.separator` for strip `c`: strip → project → built-in;
+/// The registry value of `terminal_block.level.separator` for strip `c`: strip → project → built-in;
 /// the word `none` is no separator.
 pub fn separator(doc: &Document, c: DeviceId) -> String {
-    let v = crate::defaults::resolve(doc, &crate::defaults::terminals::SEPARATOR, crate::defaults::Scope::component(c)).text();
-    if v.eq_ignore_ascii_case(crate::defaults::terminals::NO_SEPARATOR) { String::new() } else { v }
+    let v = crate::defaults::resolve(doc, &crate::defaults::terminal_blocks::SEPARATOR, crate::defaults::Scope::component(c)).text();
+    if v.eq_ignore_ascii_case(crate::defaults::terminal_blocks::NO_SEPARATOR) { String::new() } else { v }
 }
 
-/// The level names of type `t` on strip `c` (registry `terminal.<code>.levels`, else built-in).
+/// The level names of type `t` on strip `c` (registry `terminal_block.<code>.levels`, else built-in).
 pub fn level_names(doc: &Document, c: DeviceId, t: &TermType) -> Vec<String> {
-    if let Some(e) = crate::defaults::terminals::levels_entry(t.code) {
+    if let Some(e) = crate::defaults::terminal_blocks::levels_entry(t.code) {
         let v = crate::defaults::resolve(doc, e, crate::defaults::Scope::component(c)).text();
         let names: Vec<String> = v.split(',').map(|x| x.trim().to_string()).collect();
         if names.len() == t.levels.len() {
@@ -391,7 +391,7 @@ pub fn derived_label(doc: &Document, c: DeviceId, t: &TermType, p: &str, n: u32)
 
 /// The shown label of a strip terminal (design 036 §4.1); `None` for a terminal with no label.
 pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
-    let term = doc.terminals.get(&t)?;
+    let term = doc.connection_points.get(&t)?;
     let p = term.label.clone()?;
     let (n, _) = level_of(doc, t);
     let c = term.device()?;
@@ -433,7 +433,7 @@ pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[ConnectionPointI
     };
     let mut gone_positions: BTreeSet<String> = BTreeSet::new();
     for t in dropped {
-        let Some(p) = doc.terminals.get(t).and_then(|x| x.label.clone()) else { continue };
+        let Some(p) = doc.connection_points.get(t).and_then(|x| x.label.clone()) else { continue };
         let n = level_of(doc, *t).0;
         if !left.iter().any(|(l, m)| *l == p && *m == n) {
             remove(label_key(&p, n), &mut ops, &mut notes);
@@ -479,7 +479,7 @@ impl Position {
     }
 
     /// Every terminal of the position.
-    pub fn terminals(&self) -> impl Iterator<Item = ConnectionPointId> + '_ {
+    pub fn connection_points(&self) -> impl Iterator<Item = ConnectionPointId> + '_ {
         self.levels.values().flatten().copied()
     }
 }
@@ -895,7 +895,7 @@ pub fn graphics(key: StarterKey) -> Option<Vec<Primitive>> {
 }
 
 /// The connection points of a new starter (`None` for any other key).
-pub fn terminals(key: StarterKey) -> Option<Vec<ConnectionPointDef>> {
+pub fn connection_points(key: StarterKey) -> Option<Vec<ConnectionPointDef>> {
     let (t, n) = of_starter(key).filter(|(t, _)| !t.legacy())?;
     let d = |k: PointKey, x: f64, y: f64| ConnectionPointDef { key: k, label: None, at: p(x, y), accepts: Default::default() };
     let level = |n: u32, io: Option<LevelIo>| PointKey::Level { level: u8::try_from(n).unwrap_or(u8::MAX), io };
@@ -934,7 +934,7 @@ pub fn connection_point_name(doc: &Document, t: ConnectionPointId) -> String {
 /// The stored label of a terminal: a strip terminal's **position** (brief 036), what links,
 /// accessories and renumbering name. [`connection_point_name`] is what a person sees.
 pub fn position_label(doc: &Document, t: ConnectionPointId) -> String {
-    match doc.terminals.get(&t).and_then(|x| x.label.clone()) {
+    match doc.connection_points.get(&t).and_then(|x| x.label.clone()) {
         Some(l) => l,
         None => format!("connection point {}", short(&t.hex())),
     }
@@ -957,9 +957,9 @@ mod tests {
             }
         }
         assert_eq!(starter_keys().len(), 20);
-        assert!(is_level_starter(crate::symbols::StarterKey::Term2bL1) && !is_level_starter(crate::symbols::StarterKey::Terminal));
+        assert!(is_level_starter(crate::symbols::StarterKey::Term2bL1) && !is_level_starter(crate::symbols::StarterKey::TerminalBlock));
         assert_eq!(by_word("x2b").map(|t| t.key), Some(StarterKey::Term2b));
-        assert_eq!(by_word("Feedthrough").map(|t| t.key), Some(StarterKey::Terminal));
+        assert_eq!(by_word("Feedthrough").map(|t| t.key), Some(StarterKey::TerminalBlock));
     }
 
     #[test]
@@ -978,7 +978,7 @@ mod tests {
     }
 
     #[test]
-    fn link_ends() {
+    fn jumper_bar_ends() {
         assert_eq!(jumper_bar_end("4", 1, None), "4");
         assert_eq!(jumper_bar_end("4", 2, None), "4.2");
         assert_eq!(jumper_bar_end("2.1", 1, None), "2.1.1");

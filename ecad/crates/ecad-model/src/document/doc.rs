@@ -1359,7 +1359,7 @@ pub struct Definition {
     pub name: String,
     pub origin: Option<Origin>,
     pub graphics: Vec<Primitive>,
-    pub terminals: Vec<ConnectionPointDef>,
+    pub connection_points: Vec<ConnectionPointDef>,
     /// Groups of terminal keys joined inside the device (brief 022, FP5): every terminal of one
     /// group is on one net. Empty for almost every definition, and then left out of the file so
     /// existing content hashes do not change. A bridge may name a key the placement writes rather
@@ -1417,7 +1417,7 @@ pub struct Document {
     pub layers: BTreeMap<LayerId, Layer>,
     pub items: BTreeMap<ItemId, Item>,
     pub devices: BTreeMap<DeviceId, Device>,
-    pub terminals: BTreeMap<ConnectionPointId, ConnectionPoint>,
+    pub connection_points: BTreeMap<ConnectionPointId, ConnectionPoint>,
     pub representations: BTreeMap<RepresentationId, Representation>,
     pub wires: BTreeMap<WireId, Wire>,
     pub cables: BTreeMap<CableId, Cable>,
@@ -1471,7 +1471,7 @@ struct DocumentData {
     layers: BTreeMap<LayerId, Layer>,
     items: BTreeMap<ItemId, Item>,
     devices: BTreeMap<DeviceId, Device>,
-    terminals: BTreeMap<ConnectionPointId, ConnectionPoint>,
+    connection_points: BTreeMap<ConnectionPointId, ConnectionPoint>,
     representations: BTreeMap<RepresentationId, Representation>,
     wires: BTreeMap<WireId, Wire>,
     cables: BTreeMap<CableId, Cable>,
@@ -1508,7 +1508,7 @@ impl From<DocumentData> for Document {
             layers,
             items,
             devices,
-            terminals,
+            connection_points,
             representations,
             wires,
             cables,
@@ -1532,7 +1532,7 @@ impl From<DocumentData> for Document {
             layers,
             items,
             devices,
-            terminals,
+            connection_points,
             representations,
             wires,
             cables,
@@ -1566,7 +1566,7 @@ impl PartialEq for Document {
             layers,
             items,
             devices,
-            terminals,
+            connection_points,
             representations,
             wires,
             cables,
@@ -1591,7 +1591,7 @@ impl PartialEq for Document {
             && *layers == other.layers
             && *items == other.items
             && *devices == other.devices
-            && *terminals == other.terminals
+            && *connection_points == other.connection_points
             && *representations == other.representations
             && *wires == other.wires
             && *cables == other.cables
@@ -1692,10 +1692,10 @@ impl Document {
         referrers(&self.index.page_items, &page).filter_map(|id| self.items.get(&id).map(|i| (id, i)))
     }
 
-    /// Representations that show `terminal` through an explicit connection point, in ID order
+    /// Representations that show `connection_point` through an explicit connection point, in ID order
     /// (brief 036: a level terminal is always shown that way).
-    pub fn representations_showing(&self, terminal: ConnectionPointId) -> impl Iterator<Item = (RepresentationId, &Representation)> {
-        referrers(&self.index.connection_point_reps, &terminal).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
+    pub fn representations_showing(&self, connection_point: ConnectionPointId) -> impl Iterator<Item = (RepresentationId, &Representation)> {
+        referrers(&self.index.connection_point_reps, &connection_point).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
     }
 
     /// The definition a symbol representation places (its one symbol instance), if any.
@@ -1708,17 +1708,17 @@ impl Document {
 
     /// Connection points of `owner` (a device or a drawing aid), in ID order.
     pub fn connection_points_of(&self, owner: impl Into<ConnectionPointOwner>) -> impl Iterator<Item = (ConnectionPointId, &ConnectionPoint)> {
-        referrers(&self.index.component_connection_points, &owner.into()).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
+        referrers(&self.index.component_connection_points, &owner.into()).filter_map(|id| self.connection_points.get(&id).map(|t| (id, t)))
     }
 
-    /// Whether any conductor end is attached to `terminal`, through the index, without listing them.
-    pub fn has_ends(&self, terminal: ConnectionPointId) -> bool {
-        self.index.connection_point_ends.get(&terminal).is_some_and(|m| !m.is_empty())
+    /// Whether any conductor end is attached to `connection_point`, through the index, without listing them.
+    pub fn has_ends(&self, connection_point: ConnectionPointId) -> bool {
+        self.index.connection_point_ends.get(&connection_point).is_some_and(|m| !m.is_empty())
     }
 
-    /// Wire ends attached to `terminal`, in conductor ID order, end A before end B.
-    pub fn ends_at(&self, terminal: ConnectionPointId) -> Vec<(WireId, End)> {
-        referrers(&self.index.connection_point_ends, &terminal).collect()
+    /// Wire ends attached to `connection_point`, in conductor ID order, end A before end B.
+    pub fn ends_at(&self, connection_point: ConnectionPointId) -> Vec<(WireId, End)> {
+        referrers(&self.index.connection_point_ends, &connection_point).collect()
     }
 
     /// The wires of net `net`, in ID order, through the index.
@@ -1833,7 +1833,7 @@ impl Document {
 
     /// Whether `t` is a connection point: a component's terminal or a cable reference's point.
     pub fn has_point(&self, t: ConnectionPointId) -> bool {
-        self.terminals.contains_key(&t) || self.cable_point(t).is_some()
+        self.connection_points.contains_key(&t) || self.cable_point(t).is_some()
     }
 
     /// The named points joined to `t` (`t` included), when `t` is one (design 072 §4.4, F4, F5): a
@@ -1845,7 +1845,7 @@ impl Document {
         if let Some((cable, i)) = self.cable_point(t) {
             return self.cables.get(&cable)?.cores.get(i).map(|c| c.through.clone());
         }
-        let aid = self.terminals.get(&t)?.owner.aid()?;
+        let aid = self.connection_points.get(&t)?.owner.aid()?;
         Some(self.continuation_points(aid, self.aids.get(&aid)?))
     }
 

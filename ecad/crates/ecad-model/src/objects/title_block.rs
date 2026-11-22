@@ -365,7 +365,7 @@ pub enum BlockItem {
         at: Rect,
         text: String,
         #[serde(default)]
-        look: TextDraw,
+        draw: TextDraw,
     },
     Field {
         at: Rect,
@@ -373,7 +373,7 @@ pub enum BlockItem {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         label: Option<String>,
         #[serde(default)]
-        look: TextDraw,
+        draw: TextDraw,
         #[serde(default, skip_serializing_if = "is_default")]
         if_empty: IfEmpty,
     },
@@ -428,23 +428,23 @@ impl BlockItem {
             BlockItem::Line { a, b, .. } => {
                 (![a.0, a.1, b.0, b.1].into_iter().all(coord)).then(|| format!("A line's ends must be 0 to {MAX_COORD_MM} mm."))
             }
-            BlockItem::Text { at, text, look } => {
+            BlockItem::Text { at, text, draw } => {
                 if !at.sane() {
                     Some(box_words())
                 } else if long(text) {
                     Some(format!("A text is longer than {MAX_BODY_TEXT} characters."))
-                } else if !draw_ok(look) {
+                } else if !draw_ok(draw) {
                     Some(size_words())
                 } else {
                     None
                 }
             }
-            BlockItem::Field { at, bind, label, look, if_empty } => {
+            BlockItem::Field { at, bind, label, draw, if_empty } => {
                 if !at.sane() {
                     Some(box_words())
                 } else if long(bind.key()) || bind.key().is_empty() || label.as_deref().is_some_and(long) {
                     Some(format!("A field's key must be 1 to {MAX_BODY_TEXT} characters, and its label at most {MAX_BODY_TEXT}."))
-                } else if !draw_ok(look) {
+                } else if !draw_ok(draw) {
                     Some(size_words())
                 } else if matches!(if_empty, IfEmpty::Text(t) if t.chars().count() > MAX_IF_EMPTY_TEXT) {
                     Some(format!("An \"if empty\" text is at most {MAX_IF_EMPTY_TEXT} characters."))

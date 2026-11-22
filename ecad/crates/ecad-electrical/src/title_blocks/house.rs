@@ -30,14 +30,14 @@ pub const ROW_MM: f64 = 12.5;
 /// Narrowest revision table the house block keeps (mm).
 pub const MIN_TABLE_MM: f64 = 60.0;
 
-fn look(size: f64, bold: bool, align: Align) -> TextDraw {
+fn draw(size: f64, bold: bool, align: Align) -> TextDraw {
     // The text styles keep their own bounds; a block keeps its own (design 055 §1.3).
     let size = if size.is_finite() { size.clamp(MIN_TEXT_MM, MAX_TEXT_MM) } else { MIN_TEXT_MM };
     TextDraw { size: (size * 100.0).round() / 100.0, bold, align, colour: Ink::Ink }
 }
 
-fn field(at: Rect, bind: Binding, label: &str, look: TextDraw) -> BlockItem {
-    BlockItem::Field { at, bind, label: Some(label.to_string()), look, if_empty: IfEmpty::Blank }
+fn field(at: Rect, bind: Binding, label: &str, draw: TextDraw) -> BlockItem {
+    BlockItem::Field { at, bind, label: Some(label.to_string()), draw, if_empty: IfEmpty::Blank }
 }
 
 fn page(f: PageField) -> Binding {
@@ -82,30 +82,30 @@ pub fn house(width: f64, text: &FrameText) -> TitleBlockLayout {
         // The revision table: header and rows, newest at the top.
         BlockItem::RevTable { at: Rect::new(0.0, 0.0, xp, h), rows: TABLE_ROWS as u8, header: true, newest: Newest::Top },
         // Counters.
-        field(Rect::new(xc, y1, COUNTERS_MM, TOP_ROW_MM), page(PageField::Number), "Page", look(text.page.mm, text.page.bold(), Align::Centre)),
-        field(Rect::new(xc, y2, COUNTERS_MM, ROW_MM), page(PageField::Next), "Next", look(value, text.value.bold(), Align::Centre)),
-        field(Rect::new(xc, 0.0, COUNTERS_MM, ROW_MM), page(PageField::Total), "Of", look(value, text.value.bold(), Align::Centre)),
+        field(Rect::new(xc, y1, COUNTERS_MM, TOP_ROW_MM), page(PageField::Number), "Page", draw(text.page.mm, text.page.bold(), Align::Centre)),
+        field(Rect::new(xc, y2, COUNTERS_MM, ROW_MM), page(PageField::Next), "Next", draw(value, text.value.bold(), Align::Centre)),
+        field(Rect::new(xc, 0.0, COUNTERS_MM, ROW_MM), page(PageField::Total), "Of", draw(value, text.value.bold(), Align::Centre)),
         // Drawing.
-        field(Rect::new(xd, y1, DRAWING_MM, TOP_ROW_MM), page(PageField::Title), "Title", look(main, text.main.bold(), Align::Left)),
+        field(Rect::new(xd, y1, DRAWING_MM, TOP_ROW_MM), page(PageField::Title), "Title", draw(main, text.main.bold(), Align::Left)),
         field(
             Rect::new(xd, y2, DRAWING_MM - REV_MM, ROW_MM),
             info(InfoField::DrawingNumber),
             "Drawing no.",
-            look(main, text.main.bold(), Align::Left),
+            draw(main, text.main.bold(), Align::Left),
         ),
         field(
             Rect::new(r - COUNTERS_MM - REV_MM, y2, REV_MM, ROW_MM),
             Binding::Revision(RevisionColumn::Field(RevField::Rev)),
             "Rev",
-            look(text.rev.mm, text.rev.bold(), Align::Centre),
+            draw(text.rev.mm, text.rev.bold(), Align::Centre),
         ),
-        field(Rect::new(xd, 0.0, 32.5, ROW_MM), page(PageField::Function), "Function", look(value, text.value.bold(), Align::Left)),
-        field(Rect::new(xd + 32.5, 0.0, 32.5, ROW_MM), page(PageField::Location), "Location", look(value, text.value.bold(), Align::Left)),
+        field(Rect::new(xd, 0.0, 32.5, ROW_MM), page(PageField::Function), "Function", draw(value, text.value.bold(), Align::Left)),
+        field(Rect::new(xd + 32.5, 0.0, 32.5, ROW_MM), page(PageField::Location), "Location", draw(value, text.value.bold(), Align::Left)),
         field(
             Rect::new(r - COUNTERS_MM - REV_MM, 0.0, REV_MM, ROW_MM),
             Binding::Print(PrintField::Sheet),
             "Size",
-            look(value, text.value.bold(), Align::Centre),
+            draw(value, text.value.bold(), Align::Centre),
         ),
         // Project: a logo box and the owner line, the project, the customer and the status.
         BlockItem::Logo { at: Rect::new(xp + 2.0, y1 + 4.0, PROJECT_MM - 4.0, TOP_ROW_MM - 5.0), name: String::new(), prims: Vec::new() },
@@ -114,13 +114,13 @@ pub fn house(width: f64, text: &FrameText) -> TitleBlockLayout {
             at: Rect::new(xp + 2.0, y1 + 0.5, PROJECT_MM - 4.0, 3.0),
             bind: ProjectKey::new("company").map_or_else(|| info(InfoField::Customer), Binding::Project),
             label: None,
-            look: look(text.caption.mm, text.caption.bold(), Align::Centre),
+            draw: draw(text.caption.mm, text.caption.bold(), Align::Centre),
             if_empty: IfEmpty::Blank,
         },
-        field(Rect::new(xp, y2, PROJECT_MM, ROW_MM), info(InfoField::Title), "Project", look(main, text.main.bold(), Align::Left)),
-        field(Rect::new(xp, 0.0, 45.0, ROW_MM), info(InfoField::Customer), "Customer", look(value, text.value.bold(), Align::Left)),
+        field(Rect::new(xp, y2, PROJECT_MM, ROW_MM), info(InfoField::Title), "Project", draw(main, text.main.bold(), Align::Left)),
+        field(Rect::new(xp, 0.0, 45.0, ROW_MM), info(InfoField::Customer), "Customer", draw(value, text.value.bold(), Align::Left)),
     ];
-    let mut status = look(value, text.value.bold(), Align::Left);
+    let mut status = draw(value, text.value.bold(), Align::Left);
     status.colour = Ink::Red;
     items.push(field(Rect::new(xp + 45.0, 0.0, 35.0, ROW_MM), info(InfoField::Status), "Status", status));
     TitleBlockLayout { size: (w, h), items }

@@ -266,7 +266,7 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
         let doc = p.ledger.document();
         // 2. replay equals the document.
         assert!(p.ledger.replay_matches().unwrap(), "replay differs from the live document");
-        let outputs = ecad_engine::project::engine_views().report_models(doc);
+        let reports = ecad_engine::project::engine_views().report_models(doc);
         for (page, view) in &p.pages {
             let Some(uid) = view.uid else { continue };
             let Some(st) = pg.doc(uid) else { panic!("open page without a document") };
@@ -283,7 +283,7 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
                 p.tolerance,
                 p.show_hidden_text,
                 p.pending,
-                outputs.as_ref(),
+                reports.as_ref(),
             )
             .unwrap();
             assert!(d.model == st.doc.model, "page {page}: drawing differs from the projection");
@@ -354,7 +354,12 @@ impl H {
                 let t: ConnectionPointId = p.ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: t,
-                    terminal: ConnectionPoint { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                    connection_point: ConnectionPoint {
+                        owner: device.into(),
+                        label: Some((i + 1).to_string()),
+                        key: None,
+                        accepts: Default::default(),
+                    },
                 });
                 cps.insert(t, Pt::new(*x, *y));
                 out.push(t);
@@ -450,7 +455,7 @@ pub fn small_project(seed: u64) -> (H, DeviceId, DeviceId, WireId) {
     let first = h.first_page();
     let lines = h.lines_on(first);
     let c1: DeviceId = id(&h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(), "component");
-    h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
+    h.run("addconnectionpoint", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
     let c2: DeviceId = id(&h.run("place", json!({"at": [100, 0], "rotation": 90})).unwrap(), "component");
     // Wire to the rotated symbol's first terminal, wherever the placement puts it.
     let doc = h.doc();
@@ -480,7 +485,7 @@ pub fn wired_lines(
         for (t, at, k) in [(ta, a, 2 * i), (tb, b, 2 * i + 1)] {
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                terminal: ConnectionPoint { owner: device.into(), label: Some(k.to_string()), key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: device.into(), label: Some(k.to_string()), key: None, accepts: Default::default() },
             });
             cps.insert(t, at);
         }

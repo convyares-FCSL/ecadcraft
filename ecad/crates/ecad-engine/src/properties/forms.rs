@@ -134,8 +134,8 @@ fn end_name(e: End) -> &'static str {
 
 // ---------------------------------------------------------------- Add Terminal (§5)
 
-/// `addterminal`: click on a component's outline to add a terminal there; repeat until Enter.
-pub(crate) fn addterminal(s: &Session) -> R<Box<dyn Interactive>> {
+/// `addconnectionpoint`: click on a component's outline to add a terminal there; repeat until Enter.
+pub(crate) fn addconnectionpoint(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     Ok(Box::new(Safe(AddConnectionPoint::default())))
 }
@@ -229,7 +229,7 @@ impl AddConnectionPoint {
                     Some(n) => n.clone(),
                     None => read(s, |proj, _| Ok(next_connection_point_name(proj.ledger.document(), c))).map_err(other)?,
                 };
-                commit(s, "addterminal", &json!({"handle": h.hex(), "at": [at.x, at.y], "label": label}))?;
+                commit(s, "addconnectionpoint", &json!({"handle": h.hex(), "at": [at.x, at.y], "label": label}))?;
                 self.name = None;
                 s.echo(format!("Connection point {label} added to component {}.", c.hex()));
                 Ok(Step::Continue)
@@ -243,7 +243,7 @@ impl AddConnectionPoint {
 
 impl Interactive for AddConnectionPoint {
     fn name(&self) -> &'static str {
-        "ADDTERMINAL"
+        "ADDCONNECTIONPOINT"
     }
     fn prompt(&self, s: &Session) -> Prompt {
         let shown = self.shown_name(s);
@@ -264,7 +264,7 @@ impl Interactive for AddConnectionPoint {
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
         paper_guard(s, &i)?;
-        safely(s, "addterminal", |s| self.step(s, i))
+        safely(s, "addconnectionpoint", |s| self.step(s, i))
     }
     /// The terminal ring where a click would put the terminal.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
@@ -347,7 +347,7 @@ impl Wire {
             }
         };
         let attached: Vec<(String, String)> =
-            r.get("attached").and_then(Value::as_array).into_iter().flatten().map(|a| (hex_of(a, "end"), hex_of(a, "terminal"))).collect();
+            r.get("attached").and_then(Value::as_array).into_iter().flatten().map(|a| (hex_of(a, "end"), hex_of(a, "connection_point"))).collect();
         let names = read(s, |p, _| {
             let doc = p.ledger.document();
             Ok(attached
@@ -651,7 +651,7 @@ impl Link {
             }
             (Input::Point(p), Some((w, end, _))) => {
                 let (t, _, name) = connection_point_for(s, p).ok_or_else(|| other(NO_CONNECTION_POINT))?;
-                commit(s, "connect", &json!({"route": w.hex(), "end": end_name(end), "terminal": t.hex()}))?;
+                commit(s, "connect", &json!({"route": w.hex(), "end": end_name(end), "connection_point": t.hex()}))?;
                 s.echo(format!("End {} of wire {} connected to {name}.", end_name(end), w.hex()));
                 self.end = None;
                 Ok(Step::Continue)
@@ -887,7 +887,7 @@ impl CableSlash {
 
     /// The preview for `from → to`, from the same crossing function the JSON form uses. `None`
     /// when the project cannot be read now (busy) or the slash has no length.
-    fn look(s: &Session, from: Pt, to: Pt, cable: Option<CableId>) -> Option<SlashPreview> {
+    fn draw(s: &Session, from: Pt, to: Pt, cable: Option<CableId>) -> Option<SlashPreview> {
         read(s, |p, page| {
             if from.near(to, p.tolerance) {
                 return Ok(None);
@@ -1092,12 +1092,12 @@ impl Interactive for CableSlash {
         if !in_range(cursor) {
             return Vec::new();
         }
-        let Some(look) = Self::look(s, a, pt(cursor), self.cable) else { return Vec::new() };
+        let Some(draw) = Self::draw(s, a, pt(cursor), self.cable) else { return Vec::new() };
         let ring = |at: &Pt, aci: u8| [RING_PX - 1.0, RING_PX, RING_PX + 1.0].map(|d| preview_entity(s, ring_kind(*at, d, px), aci));
-        let mut out: Vec<Entity> = look.join.iter().flat_map(|at| ring(at, ATTACHED_ACI)).collect();
-        out.extend(look.block.iter().flat_map(|at| ring(at, REFUSE_ACI)));
+        let mut out: Vec<Entity> = draw.join.iter().flat_map(|at| ring(at, ATTACHED_ACI)).collect();
+        out.extend(draw.block.iter().flat_map(|at| ring(at, REFUSE_ACI)));
         let at = Pt::new(cursor.x + 10.0 * px, cursor.y + 10.0 * px);
-        out.push(preview_text(s, at, px, look.text, if look.refused { REFUSE_ACI } else { ATTACHED_ACI }));
+        out.push(preview_text(s, at, px, draw.text, if draw.refused { REFUSE_ACI } else { ATTACHED_ACI }));
         out
     }
 }
@@ -1149,7 +1149,7 @@ pub(crate) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<Cable
             let w = cabled_wire(doc, r).ok_or(WIRE_NOT_IN_CABLE)?;
             doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE)
         }
-        Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Frame(_) | Mapped::DeviceReference(_) | Mapped::Link(..) => Err(NOT_A_CABLE),
+        Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Frame(_) | Mapped::DeviceReference(_) | Mapped::JumperBar(..) => Err(NOT_A_CABLE),
     }
 }
 

@@ -46,7 +46,7 @@ fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: 
     let r = h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();
     let c = r["component"].as_str().unwrap().to_string();
     h.run("setprop", json!({"component": c, "key": "tag", "value": name})).unwrap();
-    at.map(|(x, y)| id(&h.run("addterminal", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap(), "terminal"))
+    at.map(|(x, y)| id(&h.run("addconnectionpoint", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap(), "connection_point"))
 }
 
 struct R {
@@ -82,7 +82,7 @@ fn connected(seed: u64) -> R {
     let v = h.run("cablecontinue", json!({"cable": c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
     // Each stub's free end onto K2 (design 072 §4.3: the stubs are routes).
     for (s, t) in v["routes"].as_array().cloned().unwrap_or_default().iter().zip(k2) {
-        h.run("connect", json!({"route": s["route"], "end": s["free_end"], "terminal": t.hex()})).unwrap();
+        h.run("connect", json!({"route": s["route"], "end": s["free_end"], "connection_point": t.hex()})).unwrap();
     }
     R { h, supply, field, c1, w: [w[0], w[1], w[2]], k1, k2 }
 }
@@ -98,7 +98,7 @@ fn route(h: &mut H, page: PageId, c: WireId) -> Option<(Handle, Vec<Pt>)> {
     Some((h.p(|p| p.pages[&page].map.item(item))?, pts))
 }
 
-fn terminals_on(h: &mut H, page: PageId) -> Vec<Pt> {
+fn connection_points_on(h: &mut H, page: PageId) -> Vec<Pt> {
     connection_point_positions(&h.doc(), page).into_iter().map(|(_, _, p)| p).collect()
 }
 
@@ -154,7 +154,7 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
                 // Move the page's component (K1 or K2) by its handles.
                 let doc = r.h.doc();
                 let terms = if page == r.supply { r.k1 } else { r.k2 };
-                let Some(comp) = doc.terminals.get(&terms[0]).and_then(|t| t.device()) else { continue };
+                let Some(comp) = doc.connection_points.get(&terms[0]).and_then(|t| t.device()) else { continue };
                 let hs = r.h.rep_handles(page, comp);
                 let _ = r.h.run("move", json!({"handles": hs, "delta": delta}));
                 "move component"
@@ -170,7 +170,7 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
                 let Some((h, pts)) = route(&mut r.h, page, r.w[wi]) else { continue };
                 let last = pts.len() - 1;
                 let index = if rng.below(2) == 0 { 0 } else { 2 * last };
-                let terms = terminals_on(&mut r.h, page);
+                let terms = connection_points_on(&mut r.h, page);
                 let to = if !terms.is_empty() && rng.below(2) == 0 {
                     let t = terms[rng.below(terms.len())];
                     [t.x, t.y]
@@ -183,7 +183,7 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
             4 => {
                 // Move the route so its first end lands exactly on a terminal of this page.
                 let Some((h, pts)) = route(&mut r.h, page, r.w[wi]) else { continue };
-                let terms = terminals_on(&mut r.h, page);
+                let terms = connection_points_on(&mut r.h, page);
                 if terms.is_empty() {
                     continue;
                 }
@@ -206,7 +206,7 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
                 // The component with every route on the page, as a crossing window would select it.
                 let doc = r.h.doc();
                 let terms = if page == r.supply { r.k1 } else { r.k2 };
-                let Some(comp) = doc.terminals.get(&terms[0]).and_then(|t| t.device()) else { continue };
+                let Some(comp) = doc.connection_points.get(&terms[0]).and_then(|t| t.device()) else { continue };
                 let mut hs = r.h.rep_handles(page, comp);
                 for c in r.w {
                     if let Some((h, _)) = route(&mut r.h, page, c) {

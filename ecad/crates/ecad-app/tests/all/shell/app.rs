@@ -413,7 +413,7 @@ fn the_quick_start_runs_headless() {
         .find(|e| matches!(&e.kind, EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0))
         .map(|e| e.handle)
         .unwrap();
-    ok(&mut t, &format!("addterminal {{\"handle\":\"{}\",\"at\":[40,10]}}", right.hex()));
+    ok(&mut t, &format!("addconnectionpoint {{\"handle\":\"{}\",\"at\":[40,10]}}", right.hex()));
     // 2. Place a second component (a coil symbol), rotated: its terminals land at 90,0 and 110,0.
     ok(&mut t, r#"place {"at":[100,0],"rotation":90}"#);
     // 3. Connect the two terminals with a wire.

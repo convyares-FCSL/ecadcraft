@@ -471,12 +471,14 @@ pub struct MoveTarget {
     pub page: PageId,
 }
 
-/// The text of symbol `rep` that `kind` (and `terminal`, for a label) names.
+/// The text of symbol `rep` that `kind` (and `connection_point`, for a label) names.
 ///
 /// # Errors
 /// No such representation, not a symbol, no such connection point on it, or a kind that does
 /// not move.
-pub fn move_target(doc: &Document, rep: RepresentationId, kind: TextKind, terminal: Option<ConnectionPointId>) -> Result<MoveTarget, CmdError> {
+pub fn move_target(
+    doc: &Document, rep: RepresentationId, kind: TextKind, connection_point: Option<ConnectionPointId>,
+) -> Result<MoveTarget, CmdError> {
     let r = doc.representations.get(&rep).ok_or_else(|| CmdError::refused(format!("No representation {}.", rep.hex())))?;
     let c = match r.subject {
         Subject::Device(c) if r.form == Form::Symbol => c,
@@ -485,11 +487,11 @@ pub fn move_target(doc: &Document, rep: RepresentationId, kind: TextKind, termin
     let (key, of) = match kind {
         TextKind::Tag => (format!("{}tag.at", text_style::symbol_prefix(rep)), TextOf::Tag),
         TextKind::PointLabel => {
-            let t = terminal.ok_or(CmdError::refused(NEEDS_CONNECTION_POINT))?;
-            if doc.terminals.get(&t).is_none_or(|x| x.device() != Some(c)) {
+            let t = connection_point.ok_or(CmdError::refused(NEEDS_CONNECTION_POINT))?;
+            if doc.connection_points.get(&t).is_none_or(|x| x.device() != Some(c)) {
                 return Err(CmdError::refused(format!("No connection point {} on that symbol.", t.hex())));
             }
-            (devices::point_label_key(doc, rep, t), TextOf::Terminal(t))
+            (devices::point_label_key(doc, rep, t), TextOf::ConnectionPoint(t))
         }
         _ => return Err(CmdError::refused("Only a tag or a connection point label can be moved.")),
     };

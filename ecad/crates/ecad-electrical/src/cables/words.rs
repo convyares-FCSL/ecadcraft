@@ -1,7 +1,7 @@
 //! The words and codes of cables and wires (design 065 §3, cut 3): core-label and colour-code
 //! limits, IEC 60757 colour codes and the colours they draw in, shortened text, and which
 //! two-colour wires on a page get their dashes. Pure rules over the document; the cable fan
-//! drawing that uses them stays in `look`.
+//! drawing that uses them stays in `draw`.
 
 use ecad_model::geometry::colour::ConductorColour;
 use ecad_model::objects::wire::Colours;
@@ -100,9 +100,9 @@ pub fn conductor_colour(doc: &Document, c: WireId) -> Option<Colours> {
     crate::styles::wire::wire_draw(doc, c).route_code()
 }
 
-/// [`conductor_colour`] with the project's categories read once (`looks`).
-pub fn conductor_colour_in(doc: &Document, looks: &crate::styles::wire::WireLooks, c: WireId) -> Option<Colours> {
-    looks.look(doc, c).route_code()
+/// [`conductor_colour`] with the project's categories read once (`draws`).
+pub fn conductor_colour_in(doc: &Document, draws: &crate::styles::wire::WireDraws, c: WireId) -> Option<Colours> {
+    draws.draw(doc, c).route_code()
 }
 
 /// Most dashes [`dash_segments`] makes for one route.
@@ -183,7 +183,7 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
     let (on, off) = (f64::from(ecad_drawing_style::wire::DASH_ON_MM), f64::from(ecad_drawing_style::wire::DASH_OFF_MM));
     let mut out = DashBudget::default();
     let mut total: usize = 0;
-    let looks = crate::styles::wire::WireLooks::new(doc);
+    let draws = crate::styles::wire::WireDraws::new(doc);
     // Each route on the page (the page index), in the colour of the wire it stands for.
     for route in doc.routes_on(page) {
         let (Some(points), Some((rep, _, _)), Some(c)) =
@@ -192,7 +192,7 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
             continue;
         };
         // Only two-colour codes have dashes.
-        let Some(code) = conductor_colour_in(doc, &looks, c) else { continue };
+        let Some(code) = conductor_colour_in(doc, &draws, c) else { continue };
         if code.list().len() != 2 {
             continue;
         }
@@ -295,14 +295,14 @@ pub const OUT_OF_RANGE: &str = "Point out of range.";
 pub const MAX_HOVER_LINES: usize = 12;
 
 /// The width of `text` in the stroke font at height `h` ([`label_height`]), as the cable look
-/// measures it (`look::font_width` with CADCraft's fonts); 0 when not finite.
+/// measures it (`draw::font_width` with CADCraft's fonts); 0 when not finite.
 pub fn stroke_label_width(text: &str, h: f64, m: &dyn crate::styles::text_style::fonts::TextMetrics) -> f64 {
     let w = m.width(m.stroke_font(), text, h);
     if w.is_finite() && w >= 0.0 { w } else { 0.0 }
 }
 
 /// The box a reference end's flag `w` wide covers at `at` on `side`, its point included: what a
-/// pick of the marker hits (brief 010's pick-first rule; `look::marker_box`).
+/// pick of the marker hits (brief 010's pick-first rule; `draw::marker_box`).
 pub fn flag_box(at: Pt, w: f64, side: FlagSide, h: f64) -> (Pt, Pt) {
     let f = flag_shape(at, w, side, h);
     let lo = f.outline.iter().fold(f.lo, |a, p| Pt::new(a.x.min(p.x), a.y.min(p.y)));

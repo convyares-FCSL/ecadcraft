@@ -335,8 +335,8 @@ pub static ROTATION: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-pub static XREF_TABLE: Entry = Entry {
-    key: "plc.xref.table",
+pub static REFERENCE_TABLE: Entry = Entry {
+    key: "plc.references.table",
     label: "Channel table under a card body",
     group: GROUP,
     brief: "045",
@@ -440,7 +440,7 @@ pub static ENTRIES: &[&Entry] = &[
     &CHANNEL_SHOW,
     &ADDRESS_SHOW,
     &ROTATION,
-    &XREF_TABLE,
+    &REFERENCE_TABLE,
     &CHDI,
     &CHDQ,
     &CHAI,

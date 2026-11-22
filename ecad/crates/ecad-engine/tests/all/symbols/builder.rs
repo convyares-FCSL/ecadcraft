@@ -240,19 +240,19 @@ fn row_7_relabels_follow_unless_set_by_hand() {
     let d = h.doc();
     let t = term(&d, copies[2].0, "1");
     // Relabel copy 3's point 1 by hand (036's pattern).
-    let term3 = d.terminals[&t].clone();
+    let term3 = d.connection_points[&t].clone();
     h.cfg(|p| {
         let ops = vec![
-            Op::RemoveConnectionPoint { id: t, terminal: term3.clone() },
-            Op::AddConnectionPoint { id: t, terminal: ecad_model::ConnectionPoint { label: Some("X".into()), ..term3.clone() } },
+            Op::RemoveConnectionPoint { id: t, connection_point: term3.clone() },
+            Op::AddConnectionPoint { id: t, connection_point: ecad_model::ConnectionPoint { label: Some("X".into()), ..term3.clone() } },
         ];
         p.ledger.commit(ecad_model::Author::User, "relabel", ops).unwrap();
     });
     let relabelled = json!([{"key": "1", "label": "1", "at": [0, 5]}, {"key": "2", "label": "BU", "at": [0, -5]}]);
     h.run("symboledit", float(json!({"definition": def.hex(), "points": relabelled, "update": "all"}))).unwrap();
     let d = h.doc();
-    assert_eq!(d.terminals[&term(&d, copies[0].0, "1")].label.as_deref(), Some("1"));
-    assert_eq!(d.terminals[&t].label.as_deref(), Some("X"), "set by hand, kept");
+    assert_eq!(d.connection_points[&term(&d, copies[0].0, "1")].label.as_deref(), Some("1"));
+    assert_eq!(d.connection_points[&t].label.as_deref(), Some("X"), "set by hand, kept");
 }
 
 #[test]
@@ -269,7 +269,7 @@ fn row_8_editing_a_built_in_makes_a_project_copy() {
         .unwrap();
     let mut p = json!({"definition": def_id.hex(), "name": "Coil, mine", "key": "mycoil", "update": "all",
         "defaults": {"prefix": "K"}, "slots": [{"text": "tag", "at": [-10, 0]}]});
-    let pts: Vec<Value> = coil_def.terminals.iter().map(|t| json!({"key": t.key, "label": t.label, "at": [t.at.x, t.at.y]})).collect();
+    let pts: Vec<Value> = coil_def.connection_points.iter().map(|t| json!({"key": t.key, "label": t.label, "at": [t.at.x, t.at.y]})).collect();
     p["points"] = json!(pts);
     let gr: Vec<Value> = coil_def.graphics.iter().map(|g| serde_json::to_value(ecad_file::records::Primitive::from(g)).unwrap()).collect();
     p["graphics"] = json!(gr);
@@ -341,7 +341,7 @@ fn row_12_promotion_keeps_ids_and_wires() {
     let c: DeviceId = id(&v, "component");
     let first = h.rep_handles(page, c)[0].clone();
     for (at, label) in [([100, 100], "A1"), ([110, 110], "A2")] {
-        h.run("addterminal", json!({"handle": first, "at": at, "label": label})).unwrap();
+        h.run("addconnectionpoint", json!({"handle": first, "at": at, "label": label})).unwrap();
     }
     let d = h.doc();
     let terms: Vec<ConnectionPointId> = d.connection_points_of(c).map(|(t, _)| t).collect();

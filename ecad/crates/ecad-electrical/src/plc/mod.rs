@@ -398,7 +398,7 @@ pub fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, ChannelData> {
         let Some((i, role)) = channels::point_of(doc, t) else { continue };
         let ch = out.entry(i).or_default();
         ch.points.push((role, t, term.label.clone().unwrap_or_default()));
-        let used = conn.net_of_connection_point(t).and_then(|n| conn.net(n)).is_some_and(|n| n.terminals.len() > 1);
+        let used = conn.net_of_connection_point(t).and_then(|n| conn.net(n)).is_some_and(|n| n.connection_points.len() > 1);
         ch.used |= used;
         for (rid, r) in doc.representations_showing(t) {
             if !ch.cells.iter().any(|(x, _, _)| *x == rid) {
@@ -448,7 +448,7 @@ pub fn channel_texts(
     let used = doc
         .connection_points_of(c)
         .filter(|(t, _)| channels::point_of(doc, *t).is_some_and(|x| x.0 == i))
-        .any(|(t, _)| conn.net_of_connection_point(t).and_then(|n| conn.net(n)).is_some_and(|n| n.terminals.len() > 1));
+        .any(|(t, _)| conn.net_of_connection_point(t).and_then(|n| conn.net(n)).is_some_and(|n| n.connection_points.len() > 1));
     let description = match (&text, used) {
         (Some(t), _) => Some(t.clone()),
         (None, false) => Some(crate::defaults::resolve(doc, &crate::defaults::plc::SPARE_TEXT, crate::defaults::Scope::project()).text()),
@@ -566,7 +566,7 @@ pub fn channel_rows(
     let inherited = typed.is_none();
     rows.push(row(channels::ch_key(i, "address"), "Address", typed.unwrap_or(auto), true, inherited));
     for (t, _) in &shown {
-        if let (Some((_, role)), Some(term)) = (channels::point_of(doc, *t), doc.terminals.get(t)) {
+        if let (Some((_, role)), Some(term)) = (channels::point_of(doc, *t), doc.connection_points.get(t)) {
             rows.push(row(
                 format!("plc.pin#{i}#{}", ecad_model::Word::word(role)),
                 &format!("Pin {}", ecad_model::Word::word(role)),

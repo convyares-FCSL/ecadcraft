@@ -15,7 +15,7 @@
 //!   table goes (none: the project's default); neither is part of the rating.
 //!
 //! This module excludes reading a typed rating text (`ecad-electrical`'s rating reader) and
-//! numbering the contacts a device offers (`ecad-electrical`'s `xref`).
+//! numbering the contacts a device offers (`ecad-electrical`'s `reference`).
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use std::fmt;

@@ -85,7 +85,7 @@ fn component(h: &mut H, page: PageId, line: &str, x: f64) {
     assert_eq!(lines.len(), 4);
     h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();
     for y in [0.0, 5.0, 10.0] {
-        h.run("addterminal", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap();
+        h.run("addconnectionpoint", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap();
     }
 }
 
@@ -1190,7 +1190,7 @@ fn the_fan_follows_route_edits_made_in_traditional_view() {
     g.h.run("disconnect", json!({"route": line.hex(), "end": "B"})).unwrap();
     let res = g.h.run("grip.stretch", json!({"handle": r.hex(), "index": 1, "to": [60, 6]}));
     eprintln!("stretch end: {res:?} ({set_:?})");
-    let joined = g.h.run("connect", json!({"route": line.hex(), "end": "B", "terminal": to.hex()}));
+    let joined = g.h.run("connect", json!({"route": line.hex(), "end": "B", "connection_point": to.hex()}));
     eprintln!("connect: {joined:?}");
     let doc = g.h.doc();
     assert_eq!(doc.routes[&line].ends[1], ecad_model::RouteEnd::Point(to), "the moved end is on the point");

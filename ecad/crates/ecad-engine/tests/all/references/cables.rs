@@ -4,7 +4,7 @@
 //! (0,10), wires W0, W5, W10 from there to x = 60, and cable -C01 slashed across them; page 2
 //! `Field` holds K2 with connection points at (100,0), (100,5), (100,10).
 //!
-//! Every new or changed command (`cableref`, `cablecontinue`, `cablegoto`, `cablerefs`,
+//! Every new or changed command (`cableref`, `cablecontinue`, `cablegoto`, `cablereferences`,
 //! `renamepage`, `movepage`) is driven through its **JSON form** (`Session::execute`) in a table,
 //! checking the result and the transaction, or the absence of one, so the rows can move to the MCP
 //! harness of brief 011 unchanged.
@@ -62,7 +62,7 @@ fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: 
     let r = h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();
     let c = r["component"].as_str().unwrap().to_string();
     tag(h, "component", &c, name);
-    at.map(|(x, y)| id(&h.run("addterminal", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap(), "terminal"))
+    at.map(|(x, y)| id(&h.run("addconnectionpoint", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap(), "connection_point"))
 }
 
 /// Fixture R up to (not including) `cableref`.
@@ -114,7 +114,7 @@ fn connected() -> R {
     let (mut r, v) = continued();
     // Each stub's free end onto K2 (design 072 §4.3: the stubs are routes).
     for (s, t) in v["routes"].as_array().cloned().unwrap_or_default().iter().zip(r.k2) {
-        r.h.run("connect", json!({"route": s["route"], "end": s["free_end"], "terminal": t.hex()})).unwrap();
+        r.h.run("connect", json!({"route": s["route"], "end": s["free_end"], "connection_point": t.hex()})).unwrap();
     }
     // Now each core is a wire, from K1 to K2 across the pages: name them W0, W5, W10.
     let doc = r.h.doc();
@@ -254,7 +254,7 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
 }
 
 /// Check B: after connecting, each net is {K1 terminal i, Wi, K2 terminal i}: the same structure
-/// as the circuit drawn on one page; `cablerefs` lists two partners with three wires each.
+/// as the circuit drawn on one page; `cablereferences` lists two partners with three wires each.
 #[test]
 fn a_cable_on_two_pages_gives_the_nets_of_one_page() {
     let mut r = connected();
@@ -263,10 +263,10 @@ fn a_cable_on_two_pages_gives_the_nets_of_one_page() {
     let wired: Vec<_> = n.iter().filter(|x| !x.wires.is_empty()).collect();
     assert_eq!(wired.len(), 3);
     for net in wired {
-        assert_eq!((net.wires.len(), net.terminals.len()), (1, 2), "one wire between two terminals");
-        assert!(net.terminals.iter().any(|t| r.k2.contains(t)), "each net reaches K2");
+        assert_eq!((net.wires.len(), net.connection_points.len()), (1, 2), "one wire between two terminals");
+        assert!(net.connection_points.iter().any(|t| r.k2.contains(t)), "each net reaches K2");
     }
-    let v = r.h.run("cablerefs", json!({})).unwrap();
+    let v = r.h.run("cablereferences", json!({})).unwrap();
     let list = v["references"].as_array().unwrap();
     assert_eq!(list.len(), 2);
     assert_eq!(list[0]["partner"], list[1]["reference"]);
@@ -426,14 +426,14 @@ fn save_reopen_and_replay_keep_cable_drawings_and_references() {
     let mut r = connected();
     r.h.run("qsave", Value::Null).unwrap();
     let doc = r.h.doc();
-    let refs = r.h.run("cablerefs", json!({})).unwrap();
+    let references = r.h.run("cablereferences", json!({})).unwrap();
     let medium = r.h.p(|p| p.store.bytes());
     let mut s = Session::empty();
     let project = ProjectHandle::open_from(&mut s, "R", medium, SEED).unwrap();
     let mut h = H { s, project, trail: Vec::new() };
     assert_eq!(h.doc(), doc);
     assert!(h.p(|p| p.ledger.replay_matches().unwrap()));
-    assert_eq!(h.run("cablerefs", json!({})).unwrap(), refs);
+    assert_eq!(h.run("cablereferences", json!({})).unwrap(), references);
     h.check();
 }
 
@@ -563,19 +563,19 @@ fn json_forms_of_the_reference_and_page_commands() {
     // (page, command, params, Ok: substring of the result | Err: substring of the refusal, transactions added)
     type Row<'a> = (PageId, &'a str, Value, Result<&'a str, &'a str>, u64);
     let rows: Vec<Row<'_>> = vec![
-        (r.supply, "cablerefs", json!({}), Ok(r#"{"references":[]}"#), 0),
+        (r.supply, "cablereferences", json!({}), Ok(r#"{"references":[]}"#), 0),
         (r.supply, "cableref", json!({"cable": c1, "at": [65, 5]}), Ok(r#""orphan":true"#), 1),
-        (r.supply, "cablerefs", json!({"cable": c1}), Ok(r#""text":"?""#), 0),
+        (r.supply, "cablereferences", json!({"cable": c1}), Ok(r#""text":"?""#), 0),
         (r.supply, "cablegoto", json!({"reference": "<Supply's reference>"}), Err("this reference has no other end"), 0),
         (r.field, "cablecontinue", json!({"cable": c1, "at": [20, 5], "toward": [40, 5]}), Ok(r#""text":"1/F2""#), 1),
-        (r.field, "cablerefs", json!({}), Ok(r#""text":"2/F1""#), 0),
+        (r.field, "cablereferences", json!({}), Ok(r#""text":"2/F1""#), 0),
         (r.field, "cablegoto", json!({"reference": "0"}), Err("no such reference"), 0),
         (r.field, "renamepage", json!({"page": supply, "title": "  Supply  "}), Ok(r#""changed":false"#), 0),
         (r.field, "renamepage", json!({"page": supply, "title": "Source"}), Ok(r#""changed":true"#), 1),
         (r.field, "movepage", json!({"page": field, "index": 2}), Ok(r#""changed":false"#), 0),
         (r.field, "movepage", json!({"page": field, "index": 1}), Ok(r#""index":1"#), 1),
         // Page numbers are stored (brief 019): the move changes no text.
-        (r.field, "cablerefs", json!({"cable": c1}), Ok(r#""text":"2/F1""#), 0),
+        (r.field, "cablereferences", json!({"cable": c1}), Ok(r#""text":"2/F1""#), 0),
     ];
     for (page, cmd, mut params, want, added) in rows {
         // IDs made by an earlier row are filled in when the row runs.
@@ -626,8 +626,8 @@ fn hostile_input_is_refused_in_words() {
         ("cablecontinue", json!({"cable": c1, "at": [0, 0], "toward": [1, 0], "members": many}), "`members` lists more than 10000 wires"),
         ("cablegoto", json!({}), "`reference` (hex id) is required"),
         ("cablegoto", json!({"reference": w0}), "no such reference"),
-        ("cablerefs", json!({"cable": "nope"}), "`cable` must be a hex id, or null"),
-        ("cablerefs", json!({"cable": "1"}), "no such cable"),
+        ("cablereferences", json!({"cable": "nope"}), "`cable` must be a hex id, or null"),
+        ("cablereferences", json!({"cable": "1"}), "no such cable"),
         ("renamepage", json!({"page": page, "title": ""}), "`title` must be a non-empty string of at most 200 characters"),
         ("renamepage", json!({"page": page, "title": "   "}), "`title` must be a non-empty string"),
         ("renamepage", json!({"page": page, "title": "x".repeat(10_000)}), "`title` must be a non-empty string"),
@@ -693,16 +693,16 @@ fn hostile_documents_derive_without_panicking() {
     // As a file's document on open: the maps were set directly, so the index is built (brief
     // 053: a page's markers read the page index).
     doc.rebuild_index();
-    let refs = cable_references(&doc);
-    assert_eq!(refs.len(), 5);
-    assert_eq!(refs[0].text, "1/F1 1/F2 1/F3 +1");
-    let lost = refs.iter().find(|r| r.at.is_none()).unwrap();
+    let references = cable_references(&doc);
+    assert_eq!(references.len(), 5);
+    assert_eq!(references[0].text, "1/F1 1/F2 1/F3 +1");
+    let lost = references.iter().find(|r| r.at.is_none()).unwrap();
     assert_eq!(lost.locator(), "?");
     assert!(markers_on_page(&doc, page).len() == 4, "an end that cannot be located is not drawn");
     let lines = ecad_electrical::references::cables::diagnostics(&doc);
     assert!(lines.iter().any(|l| l.contains("has 5 references; only two are supported.")), "{lines:?}");
-    let snap_refs = ecad_electrical::references::cables::over_referenced(&refs);
-    assert_eq!(snap_refs, vec![cable]);
+    let snap_references = ecad_electrical::references::cables::over_referenced(&references);
+    assert_eq!(snap_references, vec![cable]);
 
     // A reference on a page that is in no page order (only from a hostile file): it and its
     // partners read `?` for it, and nothing panics.
@@ -729,10 +729,10 @@ fn hostile_documents_derive_without_panicking() {
         );
     }
     two.rebuild_index();
-    let refs = cable_references(&two);
-    let on_lost = refs.iter().find(|r| r.page == lost_page).unwrap();
+    let references = cable_references(&two);
+    let on_lost = references.iter().find(|r| r.page == lost_page).unwrap();
     assert_eq!((on_lost.position, on_lost.locator()), (None, "?".to_string()));
-    let on_page = refs.iter().find(|r| r.page == page).unwrap();
+    let on_page = references.iter().find(|r| r.page == page).unwrap();
     assert_eq!(on_page.text, "?", "a partner that cannot be located reads ?");
     assert!(!on_page.orphan, "it still has another end");
     assert_eq!(markers_on_page(&two, lost_page).len(), 1);
@@ -770,13 +770,13 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
         );
     }
     let started = std::time::Instant::now();
-    let refs = cable_references(&doc);
+    let references = cable_references(&doc);
     let took = started.elapsed();
-    assert_eq!(refs.len(), n);
-    let kept: usize = refs.iter().map(|r| r.partners.len()).sum();
+    assert_eq!(references.len(), n);
+    let kept: usize = references.iter().map(|r| r.partners.len()).sum();
     assert!(kept <= 3 * n, "{kept} partner IDs kept for {n} references");
-    assert!(refs.iter().all(|r| r.partner_count == n - 1 && r.partners.len() == 3));
-    assert!(refs[0].text.ends_with(&format!("+{}", n - 1 - 3)), "{}", refs[0].text);
+    assert!(references.iter().all(|r| r.partner_count == n - 1 && r.partners.len() == 3));
+    assert!(references[0].text.ends_with(&format!("+{}", n - 1 - 3)), "{}", references[0].text);
     assert!(took < std::time::Duration::from_secs(10), "one derivation took {took:?}");
     let _ = ecad_electrical::references::cables::diagnostics(&doc);
     // Combined trial of 009 and 010: 010's leaving ends are folded into 009's drawing (`quiet`).
@@ -1059,7 +1059,7 @@ fn only_the_active_page_is_drawn_and_another_page_shows_the_new_text_when_made_a
 
     // A commit that moves the cable's wires on Field (K2 moves, its wires follow) but does not
     // change what Supply shows: the change log leaves Supply out.
-    let k2 = r.h.p(|p| p.ledger.document().clone()).terminals[&r.k2[0]].device().unwrap();
+    let k2 = r.h.p(|p| p.ledger.document().clone()).connection_points[&r.k2[0]].device().unwrap();
     r.h.activate(r.field);
     let handles = r.h.rep_handles(r.field, k2);
     let n = r.h.p(|p| p.change_count());

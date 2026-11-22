@@ -51,10 +51,10 @@ fn a_shown_generated_page_redraws_when_its_content_changes() {
     for x in [320.0, 330.0] {
         h.run("wire", json!({"points": pts(&[(x, 270.0), (x, 160.0)])})).unwrap();
     }
-    let v = h.run("terminals", json!({"from": [310, 200], "to": [340, 200]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [310, 200], "to": [340, 200]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
     let far = place(&mut h, "coil", [100.0, 260.0]);
-    let plan: PageId = id(&h.run("newpage", json!({"generated": "terminals"})).unwrap(), "page");
+    let plan: PageId = id(&h.run("newpage", json!({"generated": "terminal_blocks"})).unwrap(), "page");
     h.activate(plan);
 
     let (n, named) = counted(&mut h, "setprop", json!({"component": far.hex(), "key": "part_number", "value": "K-99"}));
@@ -62,7 +62,7 @@ fn a_shown_generated_page_redraws_when_its_content_changes() {
     assert_eq!(n, 0, "an edit no strip shows re-projected the plan page {n} time(s)");
     h.check();
 
-    let (n, named) = counted(&mut h, "setprop", json!({"component": strip.hex(), "key": "terminals", "value": "10"}));
+    let (n, named) = counted(&mut h, "setprop", json!({"component": strip.hex(), "key": "terminal_blocks", "value": "10"}));
     let named = named.expect("pages known");
     assert!(named.contains(&plan), "the plan page is named when its strip changes: {named:?}");
     assert_eq!(n, 1, "the plan page re-projects once for its strip");

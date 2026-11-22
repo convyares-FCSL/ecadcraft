@@ -101,7 +101,7 @@ impl Client {
                         let t: ConnectionPointId = p.ids.fresh();
                         ops.push(Op::AddConnectionPoint {
                             id: t,
-                            terminal: ConnectionPoint {
+                            connection_point: ConnectionPoint {
                                 owner: device.into(),
                                 label: Some((i + 1).to_string()),
                                 key: None,
@@ -365,8 +365,8 @@ fn with_writes_off_every_write_is_refused_and_the_head_is_unchanged() {
         ("cableadd", json!({"conductors": []})),
         ("place", json!({"at": [100, 0]})),
         ("convertcomponent", json!({"handles": []})),
-        ("addterminal", json!({"handle": "1", "at": [0, 0]})),
-        ("connect", json!({"conductor": "1", "end": "A", "terminal": "2"})),
+        ("addconnectionpoint", json!({"handle": "1", "at": [0, 0]})),
+        ("connect", json!({"conductor": "1", "end": "A", "connection_point": "2"})),
         ("disconnect", json!({"conductor": "1", "end": "A"})),
         ("setprop", json!({"component": "1", "key": "tag", "value": "K1"})),
         ("ecaddelete", json!({"cable": "1"})),
@@ -1020,7 +1020,7 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
 
     // Design 072: a wire runs between two connection points; terminals give the lines their ends.
     for at in [[0, 0], [60, 0], [45, 30], [100, 40], [200, 40]] {
-        c.exec("place", json!({"symbol": "terminal", "at": at}));
+        c.exec("place", json!({"symbol": "terminalblock", "at": at}));
     }
 
     // `wire` with a potential: the route, the wire and its number in the same transaction.

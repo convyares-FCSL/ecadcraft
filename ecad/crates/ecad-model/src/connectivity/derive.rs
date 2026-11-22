@@ -25,23 +25,23 @@ pub fn connection_point_positions(doc: &Document, page: PageId) -> Vec<(Connecti
     out
 }
 
-/// Where `terminal` is shown on `page`: the first entry for it in [`connection_point_positions`], found
+/// Where `connection_point` is shown on `page`: the first entry for it in [`connection_point_positions`], found
 /// through its component's representations only, so the cost does not grow with the page or
 /// the project.
 ///
 /// # Semantics
-/// The same answer as `connection_point_positions(doc, page)`'s first entry for `terminal` on any valid
+/// The same answer as `connection_point_positions(doc, page)`'s first entry for `connection_point` on any valid
 /// document, where a representation shows only its own component's terminals (a drawn
 /// representation's connection points are its component's terminals). Both read a
 /// representation through the same helper, so they cannot drift apart.
-pub fn connection_point_position(doc: &Document, page: PageId, terminal: ConnectionPointId) -> Option<Pt> {
-    let subject = match doc.terminals.get(&terminal) {
+pub fn connection_point_position(doc: &Document, page: PageId, connection_point: ConnectionPointId) -> Option<Pt> {
+    let subject = match doc.connection_points.get(&connection_point) {
         Some(t) => t.owner.subject(),
-        None => Subject::Cable(doc.cable_point(terminal)?.0),
+        None => Subject::Cable(doc.cable_point(connection_point)?.0),
     };
     doc.representations_of(subject)
         .filter(|(_, r)| r.page == page)
-        .find_map(|(_, r)| shown_by(doc, r).into_iter().find(|(t, _)| *t == terminal).map(|(_, p)| p))
+        .find_map(|(_, r)| shown_by(doc, r).into_iter().find(|(t, _)| *t == connection_point).map(|(_, p)| p))
 }
 
 /// The terminals a component representation shows, with their positions, in the order
@@ -70,7 +70,7 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(ConnectionPointId, Pt)> 
             let Some(def) = doc.definitions.get(&inst.definition) else { return Vec::new() };
             doc.connection_points_of(owner)
                 .filter_map(|(tid, t)| {
-                    let td = t.key.as_ref().and_then(|k| def.terminals.iter().find(|d| &d.key == k))?;
+                    let td = t.key.as_ref().and_then(|k| def.connection_points.iter().find(|d| &d.key == k))?;
                     Some((tid, inst.placement.apply(td.at)))
                 })
                 .collect()
@@ -127,7 +127,7 @@ pub struct Mismatch {
     pub route: RouteId,
     /// End A is the route's first point, end B its last.
     pub end: End,
-    pub terminal: ConnectionPointId,
+    pub connection_point: ConnectionPointId,
     pub page: PageId,
     pub route_end: Pt,
     pub connection_point_at: Pt,
@@ -151,7 +151,7 @@ pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
             let shown: Vec<Pt> = positions.get(&r.page).into_iter().flatten().filter(|(pt, _, _)| *pt == t).map(|(_, _, p)| *p).collect();
             if !shown.is_empty() && !shown.iter().any(|p| p.near(at, tol)) {
                 let connection_point_at = shown.first().copied().unwrap_or_default();
-                out.push(Mismatch { route: *rid, end, terminal: t, page: r.page, route_end: at, connection_point_at });
+                out.push(Mismatch { route: *rid, end, connection_point: t, page: r.page, route_end: at, connection_point_at });
             }
         }
     }
@@ -161,7 +161,7 @@ pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
 /// A connected set of terminals and conductors (derived net; identity not stable, §15).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Net {
-    pub terminals: Vec<ConnectionPointId>,
+    pub connection_points: Vec<ConnectionPointId>,
     pub wires: Vec<WireId>,
 }
 
@@ -192,7 +192,7 @@ pub fn nets(doc: &Document) -> Vec<Net> {
     for (cid, c) in &doc.wires {
         let ci = id_of(Node::Wire(*cid), &mut nodes, &mut parent);
         for t in &c.ends {
-            let ti = id_of(Node::Terminal(*t), &mut nodes, &mut parent);
+            let ti = id_of(Node::ConnectionPoint(*t), &mut nodes, &mut parent);
             let (a, b) = (find(&mut parent, ci), find(&mut parent, ti));
             if let Some(slot) = parent.get_mut(a) {
                 *slot = b;
@@ -202,15 +202,15 @@ pub fn nets(doc: &Document) -> Vec<Net> {
     let mut groups: BTreeMap<usize, Net> = BTreeMap::new();
     for (i, n) in nodes.iter().enumerate() {
         let root = find(&mut parent, i);
-        let net = groups.entry(root).or_insert_with(|| Net { terminals: Vec::new(), wires: Vec::new() });
+        let net = groups.entry(root).or_insert_with(|| Net { connection_points: Vec::new(), wires: Vec::new() });
         match n {
-            Node::Terminal(t) => net.terminals.push(*t),
+            Node::ConnectionPoint(t) => net.connection_points.push(*t),
             Node::Wire(c) => net.wires.push(*c),
         }
     }
     let mut out: Vec<Net> = groups.into_values().collect();
     for n in &mut out {
-        n.terminals.sort();
+        n.connection_points.sort();
         n.wires.sort();
     }
     out.sort_by(|a, b| a.wires.cmp(&b.wires));
@@ -219,7 +219,7 @@ pub fn nets(doc: &Document) -> Vec<Net> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Node {
-    Terminal(ConnectionPointId),
+    ConnectionPoint(ConnectionPointId),
     Wire(WireId),
 }
 
@@ -390,13 +390,13 @@ pub fn route_ends_on(doc: &Document, conductor: WireId, page: PageId) -> Option<
 /// routes are found through the subject index, brief 014); never panics on hostile values (they
 /// read `/?`).
 pub fn cable_references(doc: &Document) -> Vec<CableReference> {
-    let refs: Vec<(RepresentationId, &Representation)> = doc
+    let references: Vec<(RepresentationId, &Representation)> = doc
         .representations
         .iter()
         .filter(|(_, r)| r.role == crate::Role::Reference && matches!(r.subject, Subject::Cable(_)))
         .map(|(id, r)| (*id, r))
         .collect();
-    references_from(doc, refs)
+    references_from(doc, references)
 }
 
 /// The references of `cables` only, exactly as [`cable_references`] derives them (same values,
@@ -404,17 +404,17 @@ pub fn cable_references(doc: &Document) -> Vec<CableReference> {
 /// its members' routes) and on the page order and length unit. Cost is in proportion to those
 /// cables' references and members, not to the document (brief 014).
 pub fn cable_references_of(doc: &Document, cables: &BTreeSet<CableId>) -> Vec<CableReference> {
-    let refs: Vec<(RepresentationId, &Representation)> = cables
+    let references: Vec<(RepresentationId, &Representation)> = cables
         .iter()
         .flat_map(|k| doc.representations_of(Subject::Cable(*k)))
         .filter(|(_, r)| r.role == crate::Role::Reference && matches!(r.subject, Subject::Cable(_)))
         .collect();
-    references_from(doc, refs)
+    references_from(doc, references)
 }
 
-/// [`cable_references`] of the reference representations `refs` (each listed once).
-fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)>) -> Vec<CableReference> {
-    if refs.is_empty() {
+/// [`cable_references`] of the reference representations `references` (each listed once).
+fn references_from(doc: &Document, references: Vec<(RepresentationId, &Representation)>) -> Vec<CableReference> {
+    if references.is_empty() {
         return Vec::new();
     }
     let style = doc.settings.reference_style();
@@ -425,7 +425,7 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
     let mut routes: BTreeMap<(WireId, PageId), Option<(Pt, Pt)>> = BTreeMap::new();
     // The member routes of each (cable, page) with a reference, built once per pair.
     let mut here: BTreeMap<(CableId, PageId), Vec<(Pt, Pt)>> = BTreeMap::new();
-    for (_, r) in &refs {
+    for (_, r) in &references {
         let Subject::Cable(cable) = r.subject else { continue };
         if here.contains_key(&(cable, r.page)) {
             continue;
@@ -447,8 +447,8 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
             .collect();
         here.insert((cable, r.page), ends);
     }
-    let mut out: Vec<CableReference> = Vec::with_capacity(refs.len());
-    for (rid, r) in &refs {
+    let mut out: Vec<CableReference> = Vec::with_capacity(references.len());
+    for (rid, r) in &references {
         let Subject::Cable(cable) = r.subject else { continue };
         let item = r.items.first().copied();
         let at = item.and_then(|i| doc.items.get(&i)).and_then(|i| match &i.kind {

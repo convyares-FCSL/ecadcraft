@@ -1,4 +1,4 @@
-//! The references view (design 064 §4.1, `RefsView`): the kept reference index
+//! The references view (design 064 §4.1, `ReferencesView`): the kept reference index
 //! ([`crate::references::devices::RefIndex`]), and per commit the pages whose references changed (cable
 //! references, contact texts and mirror tables, connector halves and pins, continuation arrows)
 //! and the line about references left without another end.
@@ -30,8 +30,8 @@
 //! What the last commit derived for its devices is kept and is the next commit's "before" (brief
 //! 025): every change of the document goes through the pipeline or a rebuild, so it is never
 //! stale; verify mode checks each reuse against a fresh derivation, and the index against a
-//! build ([`RefsView::check`]). Open, reload and branch switch build it whole
-//! ([`RefsView::build`]).
+//! build ([`ReferencesView::check`]). Open, reload and branch switch build it whole
+//! ([`ReferencesView::build`]).
 
 use ecad_model::document::effect::{AreaSet, Effect};
 use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
@@ -43,7 +43,7 @@ use crate::views::Inputs;
 
 /// The references view: the kept index and what the last commit derived.
 #[derive(Debug, Default)]
-pub struct RefsView {
+pub struct ReferencesView {
     index: RefIndex,
     /// The texts and tables the last commit derived after it, for the next commit's "before".
     shown: Shown,
@@ -51,11 +51,11 @@ pub struct RefsView {
 
 /// The references view's scope: the [`Watch`] noted and taken before the commit.
 #[derive(Debug, Default)]
-pub struct RefsScope {
+pub struct ReferencesScope {
     watch: Watch,
 }
 
-impl ViewScope for RefsScope {
+impl ViewScope for ReferencesScope {
     fn is_empty(&self) -> bool {
         false
     }
@@ -66,10 +66,10 @@ impl ViewScope for RefsScope {
     }
 }
 
-impl RefsView {
+impl ReferencesView {
     /// The whole index of `doc`; nothing kept to reuse.
     pub fn build(doc: &Document) -> Self {
-        RefsView { index: RefIndex::build(doc), shown: Shown::new() }
+        ReferencesView { index: RefIndex::build(doc), shown: Shown::new() }
     }
 
     /// The kept reference index.
@@ -79,7 +79,7 @@ impl RefsView {
 
     /// The end of the Before phase: derive what the noted devices, names and cables show on
     /// `before`. Changes nothing kept.
-    pub fn take(&self, before: &Document, scope: &mut RefsScope, m: &dyn TextMetrics) {
+    pub fn take(&self, before: &Document, scope: &mut ReferencesScope, m: &dyn TextMetrics) {
         scope.watch.take(before, &self.index, &self.shown, m);
     }
 
@@ -95,7 +95,7 @@ impl RefsView {
     /// that have no pipeline): the same notes and update as the pipeline's.
     pub fn commit(&mut self, before: &Document, after: &Document, ops: &[Op], inputs: &Inputs<'_>) -> Outcome {
         let effects = ecad_model::document::effect::Effects::of(ops);
-        let mut scope = RefsScope::default();
+        let mut scope = ReferencesScope::default();
         crate::views::note_view::<_, Inputs<'_>>(self, &NoteCx { doc: before, phase: Phase::Before, effects: &effects }, &mut scope);
         self.take(before, &mut scope, &*inputs.engine.metrics);
         crate::views::note_view::<_, Inputs<'_>>(self, &NoteCx { doc: after, phase: Phase::After, effects: &effects }, &mut scope);
@@ -103,16 +103,16 @@ impl RefsView {
     }
 }
 
-impl<'i> DerivedView<Inputs<'i>> for RefsView {
-    type Scope = RefsScope;
-    const NAME: &'static str = "refs";
+impl<'i> DerivedView<Inputs<'i>> for ReferencesView {
+    type Scope = ReferencesScope;
+    const NAME: &'static str = "references";
     const AREAS: AreaSet = AreaSet::ALL;
 
-    fn note(&self, cx: &NoteCx<'_>, effect: &Effect<'_>, scope: &mut RefsScope) {
+    fn note(&self, cx: &NoteCx<'_>, effect: &Effect<'_>, scope: &mut ReferencesScope) {
         scope.watch.note(cx.doc, cx.phase == Phase::Before, effect);
     }
 
-    fn update(&mut self, doc: &Document, scope: RefsScope, cx: &Inputs<'i>) -> Outcome {
+    fn update(&mut self, doc: &Document, scope: ReferencesScope, cx: &Inputs<'i>) -> Outcome {
         if scope.is_all() {
             self.index = RefIndex::build(doc);
         } else {

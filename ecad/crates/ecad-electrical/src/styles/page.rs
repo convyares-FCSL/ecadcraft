@@ -182,7 +182,7 @@ pub fn subtitle(id: &StyleRef) -> &'static str {
 pub fn kinds(holds: Holds) -> &'static [GenKind] {
     match holds {
         Holds::Front => &[GenKind::Cover, GenKind::Revisions, GenKind::Contents],
-        Holds::Report => &[GenKind::BomLocation, GenKind::Terminals, GenKind::Cables, GenKind::PlcRack, GenKind::IoList],
+        Holds::Report => &[GenKind::BomLocation, GenKind::TerminalBlocks, GenKind::Cables, GenKind::PlcRack, GenKind::IoList],
         Holds::None => &[],
     }
 }

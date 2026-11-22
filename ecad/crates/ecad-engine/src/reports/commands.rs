@@ -238,7 +238,7 @@ impl Command for BomParams {
         let lines = self.lines.map(|l| l == Lines::Nested);
         let pg = Paging::of(self.limit, self.after, self.excel_safe, self.path);
         on_any_page(s, |p, _| {
-            let o = p.outputs();
+            let o = p.reports();
             let view = ecad_electrical::reports::BomView { article: columns.unwrap_or(o.view.article), nested: lines.unwrap_or(o.view.nested) };
             let nested = view.nested && group == Group::Location;
             let t = o.bom_table_with(group, view, true);
@@ -271,7 +271,7 @@ impl Command for WirelistParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let pg = Paging::of(self.limit, self.after, self.excel_safe, self.path);
         on_any_page(s, |p, _| {
-            let o = p.outputs();
+            let o = p.reports();
             let t = o.wire_table();
             report_result(&t, rules::WIRE_KEYS, &rules::wire_ids_json(o), &pg, "wire")
         })
@@ -306,7 +306,7 @@ impl Command for CablelistParams {
         // Brief 059 (design 059 §4.5, Q3): the cables not drawn are listed unless this run says not.
         let include = self.include_not_drawn.unwrap_or(true);
         on_any_page(s, |p, _| {
-            let o = p.outputs();
+            let o = p.reports();
             let t = o.cable_table_with(include);
             let ids = rules::cable_ids_json(o, include);
             let keys = rules::cable_keys(&t);
@@ -352,7 +352,7 @@ pub fn print_project(
     p: &mut Project, scope: &Scope, o: Options, path: Option<&str>, progress: &mut dyn FnMut(usize, usize) -> bool,
 ) -> Result<Value, CmdError> {
     if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
-        p.outputs();
+        p.reports();
     }
     // Brief 033: the book shows the pending marker as the screen does.
     p.refresh_pending();

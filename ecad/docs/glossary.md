@@ -28,13 +28,15 @@ strip*: "a group of terminals with one tag, side by side on a rail". The paragra
 code's `Terminal` names, and the **link** row under Terminal accessories, are superseded the same
 way. They stay as written until the structure moves rename the code.
 
-**In code and files (superseded for `Terminal`, see above)** the connection point is still `Terminal` / `TerminalId`, the op is
-`AddTerminal`, the command `addterminal`, and JSON parameters say `terminal`. A device is `Device` /
-`DeviceId`, with the ops `CreateDevice`, `DeleteDevice`, `SetDeviceDefinition` and `ModifyDevice`
-(design 072, F13, F14; it was `Component` before 0.2.3); what it is lives in its `DeviceType`. A
-conductor is a `Wire` / `WireId` in code (design 072, F20), its ops `CreateWire`, `DeleteWire` and
-`ModifyWire`, its record kind `wire`; command parameters still say `conductor`. MCP command names
-stay as they are.
+**In code and files** (0.2.3) the connection point is `ConnectionPoint` / `ConnectionPointId`, its
+ops `AddConnectionPoint` and `RemoveConnectionPoint`, its file chunk `connection_point`, the command
+`addconnectionpoint`, and JSON parameters and answers say `connection_point(s)`; a strip's jumper
+bars are the keys `jumper_bar.<n>` and the parameter `jumper_bar`; cross-references are
+`references` (command `references`, `cablereferences`). A device is `Device` / `DeviceId`, with the
+ops `CreateDevice`, `DeleteDevice`, `SetDeviceDefinition` and `ModifyDevice` (design 072, F13, F14);
+what it is lives in its `DeviceType`. A conductor is a `Wire` / `WireId` in code (design 072, F20),
+its ops `CreateWire`, `DeleteWire` and `ModifyWire`, its record kind `wire`; command parameters
+still say `conductor`.
 
 ## Devices and what draws them
 

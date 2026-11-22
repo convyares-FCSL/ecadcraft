@@ -39,8 +39,8 @@ fn main() -> Result<(), String> {
         .collect();
     let c = run(&mut s, "convertcomponent", json!({"handles": lines}));
     run(&mut s, "setprop", json!({"component": c["component"], "key": "tag", "value": "-K1"}));
-    let t1 = run(&mut s, "addterminal", json!({"handle": lines[1], "at": [40, 15], "label": "13"}));
-    run(&mut s, "addterminal", json!({"handle": lines[1], "at": [40, 5], "label": "14"}));
+    let t1 = run(&mut s, "addconnectionpoint", json!({"handle": lines[1], "at": [40, 15], "label": "13"}));
+    run(&mut s, "addconnectionpoint", json!({"handle": lines[1], "at": [40, 5], "label": "14"}));
     let sym = run(&mut s, "place", json!({"at": [100, 10], "rotation": 90}));
     run(&mut s, "setprop", json!({"component": sym["component"], "key": "tag", "value": "-K2"}));
     let w1 = run(&mut s, "wire", json!({"points": [[40, 15], [65, 15], [65, 10], [90, 10]]}));

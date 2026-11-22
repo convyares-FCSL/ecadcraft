@@ -52,7 +52,7 @@ fn continuation_arrows_draw_their_other_ends_and_captions() {
     let first = doc(&mut h).page_order[0];
     // Two more pages with the other ends of three supply arrows.
     let p2 = page_of(&exec(&mut h, "newpage", json!({"title": "Control"})));
-    let p3 = page_of(&exec(&mut h, "newpage", json!({"title": "Outputs"})));
+    let p3 = page_of(&exec(&mut h, "newpage", json!({"title": "Reports"})));
     for (page, x) in [(p2, 120.0), (p3, 200.0)] {
         exec(&mut h, "openpage", json!({"page": page.hex()}));
         for (i, name) in ["24V", "0V", "L1"].into_iter().enumerate() {

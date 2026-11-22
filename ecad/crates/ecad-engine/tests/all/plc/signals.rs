@@ -78,7 +78,7 @@ fn rows(h: &mut H, card: &str) -> Vec<Value> {
 
 fn same_as_built(h: &mut H) {
     let (kept, built) =
-        h.cfg(|p| (p.outputs().plc.clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics).plc.clone()));
+        h.cfg(|p| (p.reports().plc.clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics).plc.clone()));
     assert!(kept == built, "the kept PLC model differs from a rebuild");
 }
 
@@ -168,7 +168,7 @@ fn d_safe_states_default_and_follow_setdefault() {
 // ---------------------------------------------------------------- E: Drives
 
 #[test]
-fn e_drives_reaches_the_end_device_through_a_terminal() {
+fn e_drives_reaches_the_end_device_through_a_connection_point() {
     let F { mut h, .. } = p56(5604);
     let r = rows(&mut h, "-A03");
     let d = r[2]["drives"].as_array().unwrap();

@@ -8,7 +8,7 @@ fn def(bridges: &[&[&str]]) -> Definition {
         name: "test".into(),
         origin: None,
         graphics: Vec::new(),
-        terminals: vec![ConnectionPointDef {
+        connection_points: vec![ConnectionPointDef {
             key: "1".parse().unwrap(),
             label: Some("1".into()),
             at: Pt::new(0.0, 0.0),

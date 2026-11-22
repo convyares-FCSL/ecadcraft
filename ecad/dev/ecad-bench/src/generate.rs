@@ -99,7 +99,7 @@ impl Variant {
 /// `ecad_model::connectivity::derive::nets` reports them).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntendedNet {
-    pub terminals: Vec<ConnectionPointId>,
+    pub connection_points: Vec<ConnectionPointId>,
     pub wires: Vec<WireId>,
 }
 
@@ -153,7 +153,7 @@ fn coil() -> Definition {
         name: "Coil (bench)".into(),
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
-        terminals: vec![
+        connection_points: vec![
             ConnectionPointDef {
                 key: ecad_model::PointKey::def("A1"),
                 label: Some("A1".into()),
@@ -376,7 +376,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         pages.push(page);
 
         // Components (`place`): terminals A1 and A2 of each, in placement order.
-        let mut terminals: Vec<(ConnectionPointId, ConnectionPointId, Pt)> = Vec::with_capacity(n);
+        let mut connection_points: Vec<(ConnectionPointId, ConnectionPointId, Pt)> = Vec::with_capacity(n);
         let mut comp_ids: Vec<DeviceId> = Vec::with_capacity(n);
         for i in 0..n {
             comp_no += 1;
@@ -388,11 +388,11 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let component = Device { definition: Some(definition), ..Device::default() }.with_tag(Some(&format!("-K{comp_no}")));
             ops.push(Op::CreateDevice { id: c, device: component });
             let mut keyed = Vec::new();
-            for td in &def.terminals {
+            for td in &def.connection_points {
                 let t: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: t,
-                    terminal: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    connection_point: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
                 keyed.push(t);
             }
@@ -415,7 +415,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let (Some(a1), Some(a2)) = (keyed.first().copied(), keyed.get(1).copied()) else {
                 return Err("generator: the coil has two terminals".into());
             };
-            terminals.push((a1, a2, origin));
+            connection_points.push((a1, a2, origin));
             comp_ids.push(c);
         }
 
@@ -427,7 +427,9 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             wire_no += 1;
             let pair = j % n;
             let lane = (j / n) as f64;
-            let (Some((_, from_t, from_at)), Some((to_t, _, to_at))) = (terminals.get(pair).copied(), terminals.get((pair + 1) % n).copied()) else {
+            let (Some((_, from_t, from_at)), Some((to_t, _, to_at))) =
+                (connection_points.get(pair).copied(), connection_points.get((pair + 1) % n).copied())
+            else {
                 return Err("generator: a wire's component is missing".into());
             };
             let a = Pt::new(from_at.x, from_at.y - 10.0);
@@ -453,14 +455,14 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             if wires.is_empty() {
                 continue;
             }
-            let (Some((_, from_t, _)), Some((to_t, _, _))) = (terminals.get(pair), terminals.get((pair + 1) % n)) else {
+            let (Some((_, from_t, _)), Some((to_t, _, _))) = (connection_points.get(pair), connection_points.get((pair + 1) % n)) else {
                 return Err("generator: a net's component is missing".into());
             };
             let mut ts = vec![*from_t, *to_t];
             ts.sort();
             let mut cs = wires.clone();
             cs.sort();
-            nets.push(IntendedNet { terminals: ts, wires: cs });
+            nets.push(IntendedNet { connection_points: ts, wires: cs });
         }
 
         // Cables (`cableslash`): cable `c` takes every wire of pair `c`, cores `1, 2, …`.
@@ -468,7 +470,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         for c in 0..k {
             cable_no += 1;
             let members = pair_wires.get(c).cloned().unwrap_or_default();
-            let x = terminals.get(c).map_or(0.0, |t| t.2.x) + PITCH / 4.0;
+            let x = connection_points.get(c).map_or(0.0, |t| t.2.x) + PITCH / 4.0;
             let lowest = pair_lows.get(c).copied().unwrap_or(ROW_Y);
             let (from, to) = (Pt::new(x - 2.0, ROW_Y - 17.0), Pt::new(x + 2.0, lowest - 3.0));
             let (cable, item, rep): (CableId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());

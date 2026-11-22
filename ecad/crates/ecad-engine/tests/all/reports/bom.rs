@@ -39,7 +39,7 @@ fn fixture(seed: u64) -> F {
     }
     let f01 = place(&mut h, json!({"symbol": "fusebank8", "at": [100, 60], "tag": "F01"}));
     let x05 = place(&mut h, json!({"symbol": "termfuse", "at": [250, 200], "tag": "X05"}));
-    for (i, sym) in ["terminal", "terminal", "terminal", "termfuse", "termfuse"].iter().enumerate() {
+    for (i, sym) in ["terminalblock", "terminalblock", "terminalblock", "termfuse", "termfuse"].iter().enumerate() {
         place(&mut h, json!({"symbol": sym, "at": [270.0 + 20.0 * i as f64, 200], "device": x05.hex()}));
     }
     // Brief 052: the project's location only proposes; the devices store +CP1.
@@ -64,7 +64,7 @@ fn checks(h: &mut H, kind: &str) -> Vec<Value> {
 /// The kept model equals a fresh build in every layout (the update map left nothing behind).
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     for article in [false, true] {
@@ -123,7 +123,7 @@ fn items_add_up_in_metres_and_undo() {
     assert_eq!(r["entries"].as_array().unwrap().len(), 2);
     assert!(r["entries"][0]["item"].is_string(), "an item is named by its loose part's id: {r}");
     // The window shows metres in Qty; items after the tagged rows of their location.
-    let t = f.h.cfg(|p| p.outputs().bom_table(Group::Location));
+    let t = f.h.cfg(|p| p.reports().bom_table(Group::Location));
     let last = t.rows.iter().position(|c| c[5].text == "TR-5075").unwrap();
     assert_eq!(t.rows[last][1].text, "5.6 m");
     assert!(t.rows.iter().position(|c| c[2].text.contains("-K03")).unwrap() < last);
@@ -271,10 +271,10 @@ fn renumbering_a_strip_keeps_its_part_lines_for() {
     f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "FU-6T", "description": "Fuse 6A T 5x20", "for": "1, 5-6"}}))
         .unwrap();
     let for_of = |h: &mut H| h.doc().devices[&f.x05].properties.get("part.1.for").cloned();
-    let pv = f.h.run("renumber", json!({"kind": "terminals", "scope": "all", "start": 3, "preview": true})).unwrap();
+    let pv = f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all", "start": 3, "preview": true})).unwrap();
     assert!(pv["accessories"].to_string().contains("-X05: part line 1 for 1, 5-6 \u{2192} 3, 7-8"), "{pv}");
     let head = f.h.head();
-    f.h.run("renumber", json!({"kind": "terminals", "scope": "all", "start": 3})).unwrap();
+    f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all", "start": 3})).unwrap();
     assert_eq!(f.h.head(), head + 1, "one transaction");
     assert_eq!(for_of(&mut f.h).as_deref(), Some("3, 7-8"));
     assert_eq!(row(&bom(&mut f.h, json!({})), "FU-6T")["tags"], "-X05:3, -X05:7, -X05:8");
@@ -297,8 +297,8 @@ fn strip_parts_take_article_numbers_from_their_own_level() {
     set(&mut f.h, f.x05, "part_number", "TB-4");
     set(&mut f.h, f.x05, "article_number", "A-0200");
     set(&mut f.h, f.x05, "acc.end", "end_plate");
-    let x06 = place(&mut f.h, json!({"symbol": "terminal", "at": [250, 260], "tag": "X06"}));
-    place(&mut f.h, json!({"symbol": "terminal", "at": [270, 260], "device": x06.hex()}));
+    let x06 = place(&mut f.h, json!({"symbol": "terminalblock", "at": [250, 260], "tag": "X06"}));
+    place(&mut f.h, json!({"symbol": "terminalblock", "at": [270, 260], "device": x06.hex()}));
     set(&mut f.h, x06, "acc.end", "end_plate");
     set(&mut f.h, x06, "end_plate.part_number", "EP-2");
     f.h.run(
@@ -315,13 +315,13 @@ fn strip_parts_take_article_numbers_from_their_own_level() {
     same_as_built(&mut f.h);
     // The strip's own article key, a link's own part.
     set(&mut f.h, x06, "end_plate.article_number", "A-0202");
-    set(&mut f.h, f.x05, "link.1", "2-3");
-    set(&mut f.h, f.x05, "link.1.part_number", "JB-1");
-    set(&mut f.h, f.x05, "link.1.article_number", "A-0300");
+    set(&mut f.h, f.x05, "jumper_bar.1", "2-3");
+    set(&mut f.h, f.x05, "jumper_bar.1.part_number", "JB-1");
+    set(&mut f.h, f.x05, "jumper_bar.1.article_number", "A-0300");
     let rows = bom(&mut f.h, json!({}));
     assert_eq!(row(&rows, "EP-2")["article_number"], "A-0202");
     assert_eq!(row(&rows, "JB-1")["article_number"], "A-0300");
-    let e = f.h.run("setprop", json!({"component": f.x05.hex(), "key": "link.1.article_number", "value": "x".repeat(65)})).unwrap_err();
+    let e = f.h.run("setprop", json!({"component": f.x05.hex(), "key": "jumper_bar.1.article_number", "value": "x".repeat(65)})).unwrap_err();
     assert!(e.contains("at most 64 characters"), "{e}");
     // A terminal type's article number is checked as every other, at both levels (review of PR #87).
     let head = f.h.head();
@@ -341,7 +341,7 @@ fn strip_parts_take_article_numbers_from_their_own_level() {
     assert_eq!(v["message"], "Set A-0210 on 1 part (1 strip part).", "{v}");
     assert_eq!(f.h.doc().display.get("strip_end_plate_article_number").map(String::as_str), Some("A-0210"));
     f.h.run("article", json!({"part_number": "jb-1", "article_number": "A-0310"})).unwrap();
-    assert_eq!(f.h.doc().devices[&f.x05].properties.get("link.1.article_number").map(String::as_str), Some("A-0310"));
+    assert_eq!(f.h.doc().devices[&f.x05].properties.get("jumper_bar.1.article_number").map(String::as_str), Some("A-0310"));
     let rows = bom(&mut f.h, json!({}));
     assert_eq!(row(&rows, "EP-1")["article_number"], "A-0210");
     assert_eq!(row(&rows, "JB-1")["article_number"], "A-0310");
@@ -367,7 +367,7 @@ fn article_numbers_column_command_and_conflict() {
     assert_eq!(f.h.head(), head + 1);
     assert_eq!(v["message"], "Set A-0110 on 4 parts (4 lines).");
     assert_eq!(row(&bom(&mut f.h, json!({})), "AB-1NO")["article_number"], "A-0110");
-    let t = f.h.cfg(|p| p.outputs().bom_table(Group::Location));
+    let t = f.h.cfg(|p| p.reports().bom_table(Group::Location));
     assert_eq!(t.headers.last(), Some(&"Article number"));
     same_as_built(&mut f.h);
     // A second value on one entry: flagged, checked, fixed.
@@ -375,7 +375,7 @@ fn article_numbers_column_command_and_conflict() {
     let r = row(&bom(&mut f.h, json!({})), "AB-1NO").clone();
     assert_eq!(r["article_number"], Value::Null, "flagged cells read null: {r}");
     assert!(r["flags"].as_array().unwrap().contains(&json!("article_number")));
-    let t = f.h.cfg(|p| p.outputs().bom_table(Group::Location));
+    let t = f.h.cfg(|p| p.reports().bom_table(Group::Location));
     let cell = t.rows.iter().find(|c| c[5].text == "AB-1NO").unwrap()[6].clone();
     assert_eq!(cell.text, "A-0110");
     assert_eq!(cell.flag.as_deref(), Some("-K03 and -K05 have different article numbers (A-0110, A-0111)."));
@@ -385,7 +385,7 @@ fn article_numbers_column_command_and_conflict() {
     assert_eq!(c[0]["severity"], "warning");
     same_as_built(&mut f.h);
     let fixes = f.h.cfg(|p| {
-        let o = p.outputs();
+        let o = p.reports();
         let fix = o.checks().into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::ArticleConflict).and_then(|c| c.fix).unwrap();
         ecad_electrical::reports::accessory_fix_commands(o, fix)
     });
@@ -445,7 +445,7 @@ fn kits_and_the_nested_layout() {
     same_as_built(&mut f.h);
     let flat_rows = bom(&mut f.h, json!({})).len();
     f.h.run("setdefault", json!({"key": "bom.lines", "level": "project", "value": "nested"})).unwrap();
-    let t = f.h.cfg(|p| p.outputs().bom_table(Group::Location));
+    let t = f.h.cfg(|p| p.reports().bom_table(Group::Location));
     let texts: Vec<String> = t.rows.iter().map(|c| format!("{}|{}|{}", c[1].text, c[2].text, c[3].text)).collect();
     let k03 = texts.iter().position(|t| t.contains("|-K03|")).unwrap_or_else(|| panic!("{texts:#?}"));
     assert_eq!(texts[k03 + 1], "1||  \u{21b3} Suppressor (kit: Starter set)", "{texts:#?}");
@@ -455,7 +455,7 @@ fn kits_and_the_nested_layout() {
     assert!(rows.iter().any(|r| r["line"] == "2" && r["kit"] == "Starter set"), "{rows:#?}");
     // By part stays flat.
     assert_eq!(row(&bom(&mut f.h, json!({"group": "part"})), "SUP-1")["qty"], 4);
-    let count = f.h.cfg(|p| p.outputs().bom_count(Group::Location));
+    let count = f.h.cfg(|p| p.reports().bom_count(Group::Location));
     assert_eq!(count, t.rows.len());
     same_as_built(&mut f.h);
 }
@@ -493,7 +493,7 @@ fn missing_for_names_and_bad_keys_are_checked() {
     let c = checks(&mut f.h, "bad-part-key");
     assert_eq!(c[0]["which"], "-F01 has part.100.maker, which ECAD does not read");
     let fixes = f.h.cfg(|p| {
-        let o = p.outputs();
+        let o = p.reports();
         let fix = o.checks().into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::PartForMissing).and_then(|c| c.fix).unwrap();
         ecad_electrical::reports::accessory_fix_commands(o, fix)
     });
@@ -509,14 +509,14 @@ fn missing_for_names_and_bad_keys_are_checked() {
 fn a_part_line_edit_recomputes_one_device() {
     let mut f = fixture(0x47_0b);
     f.h.run("partline", json!({"devices": hexes(&f.k), "add": {"part_number": "AB-1NO"}})).unwrap();
-    let _ = f.h.cfg(|p| p.outputs().bom_count(Group::Location));
+    let _ = f.h.cfg(|p| p.reports().bom_count(Group::Location));
     f.h.run("partline", json!({"component": f.k[1].hex(), "line": 1, "set": {"part_number": "AB-1NC"}})).unwrap();
-    let work = f.h.cfg(|p| p.outputs().last_work);
+    let work = f.h.cfg(|p| p.reports().last_work);
     assert_eq!(work, 1, "only -K04");
     same_as_built(&mut f.h);
-    let revision = f.h.cfg(|p| p.outputs().revision);
+    let revision = f.h.cfg(|p| p.reports().revision);
     f.h.run("setdefault", json!({"key": "bom.item.unit", "level": "project", "value": "m"})).unwrap();
-    let (work, rev) = f.h.cfg(|p| (p.outputs().last_work, p.outputs().revision));
+    let (work, rev) = f.h.cfg(|p| (p.reports().last_work, p.reports().revision));
     assert_eq!(work, 0, "a report setting recomputes no row");
     assert!(rev > revision);
     // The new item takes the registry's unit.
@@ -625,7 +625,7 @@ fn the_bom_page_shows_units_articles_and_nested_lines() {
         .unwrap();
     let texts = |h: &mut H| -> Vec<String> {
         h.cfg(|p| {
-            let o = p.outputs().clone();
+            let o = p.reports().clone();
             ecad_engine::pages::generated::parts_of(p.ledger.document(), page, Some(&o))
                 .into_iter()
                 .filter_map(|p| match p.kind {

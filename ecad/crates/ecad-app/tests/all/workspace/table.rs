@@ -2,7 +2,7 @@
 //! (acceptance criteria 3, 4 and 5).
 
 use ecad_app::devices::list as devices;
-use ecad_app::terminal_strips::plan as terminals;
+use ecad_app::terminal_strips::plan as connection_points;
 use ecad_widgets::table::{Align, Changed, TableSource};
 use eframe::egui::{Event, Key, Modifiers};
 use egui_kittest::Harness;
@@ -169,7 +169,7 @@ fn checks_table_shows_the_checks_rows() {
 /// inputs; inside columns right-aligned, outside left-aligned; a label edit is one `termlabel`
 /// transaction, and patches only that strip's rows.
 #[test]
-fn terminals_table_edits_a_label_in_one_transaction() {
+fn terminal_blocks_table_edits_a_label_in_one_transaction() {
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = build(new_app(), Some(deltas.clone()));
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
@@ -184,40 +184,40 @@ fn terminals_table_edits_a_label_in_one_transaction() {
     h.state_mut().show_plan(Some(x1));
     h.run_steps(4);
     let r = h.state().reports.as_ref().unwrap();
-    assert_eq!(r.tab, panel::Tab::Terminals);
-    let v = &r.terminals;
+    assert_eq!(r.tab, panel::Tab::TerminalBlocks);
+    let v = &r.connection_points;
     let keys = v.table.view.visible_keys();
     assert_eq!(keys.len(), 2, "two drawn terminals, one row each");
-    for c in terminals::columns() {
+    for c in connection_points::columns() {
         let want = match c.id {
-            terminals::IN_TARGET | terminals::IN_WIRE => Some(Align::Right),
-            terminals::OUT_WIRE | terminals::OUT_TARGET | terminals::CABLE | terminals::CORE => Some(Align::Left),
+            connection_points::IN_TARGET | connection_points::IN_WIRE => Some(Align::Right),
+            connection_points::OUT_WIRE | connection_points::OUT_TARGET | connection_points::CABLE | connection_points::CORE => Some(Align::Left),
             _ => None,
         };
         if let Some(a) = want {
             assert_eq!(c.align, a, "{}", c.title);
         }
-        let set = matches!(c.id, terminals::POSITION | terminals::LABEL | terminals::RATING);
+        let set = matches!(c.id, connection_points::POSITION | connection_points::LABEL | connection_points::RATING);
         assert_eq!(c.is_set(), set, "only 036's editable fields are inputs: {}", c.title);
     }
     let first = keys[0];
-    let target = v.source.cell(first, terminals::IN_TARGET).text().into_owned();
+    let target = v.source.cell(first, connection_points::IN_TARGET).text().into_owned();
     assert!(target.starts_with("-K0"), "the inside target is read from the wire: {target}");
-    let label = format!("Terminal -X01:{}", v.source.cell(first, terminals::LABEL).text());
+    let label = format!("Terminal -X01:{}", v.source.cell(first, connection_points::LABEL).text());
     let rebuilds = v.rebuilds;
 
     // Edit the first terminal's label: one transaction.
     h.get_by_label(&label).click();
     h.run_steps(2);
-    h.state_mut().reports.as_mut().unwrap().terminals.table.cursor_col = Some(terminals::LABEL);
+    h.state_mut().reports.as_mut().unwrap().connection_points.table.cursor_col = Some(connection_points::LABEL);
     let before = head(&mut h);
     edit(&mut h, "Edit Label", "L1");
-    assert_eq!(head(&mut h), before + 1, "one transaction: {:?}", h.state().reports.as_ref().unwrap().terminals.table.refusal);
+    assert_eq!(head(&mut h), before + 1, "one transaction: {:?}", h.state().reports.as_ref().unwrap().connection_points.table.refusal);
     let (label, _) = crate::pages::project_panel::last_ops(&mut h);
     assert_eq!(label, "Terminal label", "termlabel's transaction");
     h.run_steps(3);
-    let v = &h.state().reports.as_ref().unwrap().terminals;
+    let v = &h.state().reports.as_ref().unwrap().connection_points;
     assert_eq!(v.rebuilds, rebuilds, "patched, not rebuilt");
-    assert!(v.table.view.visible_keys().iter().any(|k| v.source.cell(*k, terminals::LABEL).text() == "L1"), "the row follows");
+    assert!(v.table.view.visible_keys().iter().any(|k| v.source.cell(*k, connection_points::LABEL).text() == "L1"), "the row follows");
     take(&h, &deltas, "039-terminals.png");
 }

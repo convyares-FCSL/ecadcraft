@@ -225,8 +225,8 @@ fn cables(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table>
     Some(o.cable_table())
 }
 /// Brief 028's terminal plan, when the project has strips.
-fn terminal_plan(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
-    (!o.strips.is_empty()).then(|| o.terminal_plan_csv())
+fn terminal_block_plan(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
+    (!o.strips.is_empty()).then(|| o.terminal_block_plan_csv())
 }
 /// Brief 028's cable schedule, when the project has cables.
 fn cable_schedule(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
@@ -238,7 +238,7 @@ pub const LISTS: [Slot; 7] = [
     Slot { id: "bom", suffix: " BOM.csv", build: bom, missing_why: "" },
     Slot { id: "wires", suffix: " wires.csv", build: wires, missing_why: "" },
     Slot { id: "cables", suffix: " cables.csv", build: cables, missing_why: "" },
-    Slot { id: "terminal-plan", suffix: " terminal plan.csv", build: terminal_plan, missing_why: NO_STRIPS },
+    Slot { id: "terminal-block-plan", suffix: " terminal plan.csv", build: terminal_block_plan, missing_why: NO_STRIPS },
     Slot { id: "cable-schedule", suffix: " cable schedule.csv", build: cable_schedule, missing_why: NO_CABLES },
     // Brief 045c (design 045 §8.3): ` IO list.csv` (a `/` cannot be in a file name).
     // Brief 051 (design 051 §4.2): the rack overview, before the I/O list in the book.
@@ -260,7 +260,7 @@ fn io_list(doc: &Document, o: &crate::reports::kept::ReportModels) -> Option<Tab
 /// brief 028's lists only when the project has strips or cables.
 pub fn slot_gives(slot: &Slot, doc: &Document) -> bool {
     match slot.id {
-        "terminal-plan" => doc.devices.keys().any(|c| crate::terminal_strips::strip_of(doc, *c).is_some()),
+        "terminal-block-plan" => doc.devices.keys().any(|c| crate::terminal_strips::strip_of(doc, *c).is_some()),
         "cable-schedule" => !doc.cables.is_empty(),
         "io-list" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some_and(|t| t.has_channels())),
         "plc-racks" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some()),

@@ -63,7 +63,7 @@ pub const GROUPS: [Group; 9] = [
     group(ToolGroup::Draw, Some(('D', Key::D)), "Draw (D)"),
     group(ToolGroup::Text, Some(('T', Key::T)), "Text (T)"),
     group(ToolGroup::Device, None, "Device group"),
-    group(ToolGroup::Terminal, None, "Terminal group"),
+    group(ToolGroup::TerminalBlock, None, "Terminal group"),
     group(ToolGroup::Plc, None, "PLC group"),
     group(ToolGroup::Wire, Some(('W', Key::W)), "Wire (W)"),
     group(ToolGroup::Cable, Some(('C', Key::C)), "Cable (C)"),

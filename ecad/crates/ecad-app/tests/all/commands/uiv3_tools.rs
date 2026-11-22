@@ -86,10 +86,10 @@ fn every_group_has_a_flyout_with_the_boards_items_and_placeholders_stay_greyed()
     use ecad_app::commands::actions::{Enabled, ToolGroup};
     let labels = |g: ToolGroup| g.tools().iter().map(|a| a.label).collect::<Vec<_>>();
     assert_eq!(
-        labels(ToolGroup::Terminal),
+        labels(ToolGroup::TerminalBlock),
         ["Terminal", "Terminals across wires", "Draw a link (bridge)", "Swap top and bottom", "Reorder the strip…", "Renumber…"]
     );
-    assert_eq!(ToolGroup::Terminal.link().map(|a| a.label), Some("Terminal manager"));
+    assert_eq!(ToolGroup::TerminalBlock.link().map(|a| a.label), Some("Terminal manager"));
     assert_eq!(labels(ToolGroup::Plc), ["Rack overview", "Detail page…", "Card…", "Channel…"]);
     assert_eq!(labels(ToolGroup::Location), ["Location box", "Function box", "Function and location box", "Device or PLC outline"]);
     assert_eq!(labels(ToolGroup::Wire), ["Wire", "Bridge", "Continuation"]);
@@ -97,7 +97,7 @@ fn every_group_has_a_flyout_with_the_boards_items_and_placeholders_stay_greyed()
     let greyed: Vec<&str> =
         ToolGroup::ALL.iter().flat_map(|g| g.tools()).filter(|a| matches!((a.enabled)(&cx), Enabled::Greyed { .. })).map(|a| a.id).collect();
     // Brief 052d: Function box is a tool now.
-    assert_eq!(greyed, ["terminal.swap", "terminal.reorder", "box.both", "box.outline"]);
+    assert_eq!(greyed, ["terminal_block.swap", "terminal_block.reorder", "box.both", "box.outline"]);
 
     let dir = temp("flyouts");
     let mut h = window(None);
@@ -371,9 +371,9 @@ fn one_group_lights_for_a_tool_in_two_groups() {
     let dir = temp("lit");
     let mut h = window(None);
     demo(&mut h, &dir);
-    h.state_mut().start_tool(ecad_app::commands::actions::find("terminal.link").unwrap());
+    h.state_mut().start_tool(ecad_app::commands::actions::find("terminal_block.jumper_bar").unwrap());
     h.run_steps(2);
-    assert_eq!(h.state().lit_group(), gi(ToolGroup::Terminal));
+    assert_eq!(h.state().lit_group(), gi(ToolGroup::TerminalBlock));
     h.state_mut().cad.session.cancel();
     h.run_steps(2);
     // Chosen from Wire's flyout, Bridge becomes Wire's last-used tool: Wire lights, not Terminal.

@@ -13,7 +13,7 @@ fn expected(op: &Op) -> EffectKind {
         "AddItem" | "ModifyItem" | "RemoveItem" => EffectKind::Item,
         "CreateDevice" | "DeleteDevice" | "ModifyDevice" => EffectKind::Device,
         "SetDeviceDefinition" => EffectKind::DeviceDefinition,
-        "AddTerminal" | "RemoveTerminal" => EffectKind::Terminal,
+        "AddConnectionPoint" | "RemoveConnectionPoint" => EffectKind::ConnectionPoint,
         "LinkRepresentation" | "ModifyRepresentation" | "UnlinkRepresentation" => EffectKind::Rep,
         "CreateWire" | "DeleteWire" | "ModifyWire" => EffectKind::Wire,
         "AddRoute" | "RemoveRoute" | "ModifyRoute" => EffectKind::Route,
@@ -63,8 +63,10 @@ fn pairs_fold() {
     let set = |page| Op::SetProperty { object: ObjectRef::Page(page), key: "number".parse().unwrap(), before: None, after: Some("9".into()) };
     let page_pair =
         vec![Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 }, Op::AddPage { id: b.page, page: renamed.clone(), index: 1 }];
-    let term_pair =
-        vec![Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() }, Op::AddConnectionPoint { id: b.term, terminal: b.term_v.clone() }];
+    let term_pair = vec![
+        Op::RemoveConnectionPoint { id: b.term, connection_point: b.term_v.clone() },
+        Op::AddConnectionPoint { id: b.term, connection_point: b.term_v.clone() },
+    ];
     let folder_pair = vec![
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
         Op::AddFolder { id: b.folder, folder: b.folder_v.clone(), index: 2 },

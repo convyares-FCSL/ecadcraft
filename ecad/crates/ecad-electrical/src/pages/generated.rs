@@ -83,12 +83,12 @@ pub fn has_bom_page(doc: &Document) -> bool {
     doc.pages.values().any(|p| p.kind.generated_kind().is_some_and(GenKind::needs_reports))
 }
 
-/// The strip a `terminals` page shows, if it names one.
+/// The strip a `connection_points` page shows, if it names one.
 pub fn strip_of(doc: &Document, page: PageId) -> Option<ecad_model::DeviceId> {
     doc.pages.get(&page)?.kind.strip()
 }
 
-/// The strips a `terminals` page shows, in tag order.
+/// The strips a `connection_points` page shows, in tag order.
 fn strips_shown<'o>(doc: &Document, page: PageId, o: &'o ReportModels) -> Vec<&'o crate::terminal_strips::StripData> {
     match strip_of(doc, page) {
         Some(c) => o.strips.get(c).into_iter().collect(),
@@ -98,7 +98,7 @@ fn strips_shown<'o>(doc: &Document, page: PageId, o: &'o ReportModels) -> Vec<&'
 
 /// How many sheets a terminal plan needs: each strip starts a sheet, its heading repeated on
 /// each sheet it runs onto (O(strips)).
-fn terminal_sheets(doc: &Document, page: PageId, o: &ReportModels) -> usize {
+fn terminal_block_sheets(doc: &Document, page: PageId, o: &ReportModels) -> usize {
     // Kept per strip and in total (review of PR #55, finding 1): no walk of the rows.
     match strip_of(doc, page) {
         Some(c) => o.strips.get(c).map_or(1, |s| s.sheets),
@@ -180,22 +180,22 @@ mod tests {
 }
 
 /// How many sheets `page` prints on.
-pub fn sheets_of(doc: &Document, page: PageId, outputs: Option<&ReportModels>) -> usize {
+pub fn sheets_of(doc: &Document, page: PageId, reports: Option<&ReportModels>) -> usize {
     let rows = match kind_of(doc, page) {
         None | Some(GenKind::Cover) => return 1,
         Some(GenKind::Contents) => doc.page_order.len(),
         Some(GenKind::Revisions) => crate::releases::revisions::issued(doc).len(),
-        Some(GenKind::BomLocation) => return outputs.map_or(1, bom_sheets),
+        Some(GenKind::BomLocation) => return reports.map_or(1, bom_sheets),
         // Brief 046: a graphic page counts its strips' kept graphic sheets.
-        Some(GenKind::Terminals) if crate::terminal_strips::pages::style_of(doc, page) == crate::terminal_strips::pages::Style::Graphic => {
-            return outputs.map_or(1, |o| crate::terminal_strips::pages::sheets(doc, page, o));
+        Some(GenKind::TerminalBlocks) if crate::terminal_strips::pages::style_of(doc, page) == crate::terminal_strips::pages::Style::Graphic => {
+            return reports.map_or(1, |o| crate::terminal_strips::pages::sheets(doc, page, o));
         }
-        Some(GenKind::Terminals) => return outputs.map_or(1, |o| terminal_sheets(doc, page, o)),
-        Some(GenKind::Cables) => outputs.map_or(0, ReportModels::cable_count),
+        Some(GenKind::TerminalBlocks) => return reports.map_or(1, |o| terminal_block_sheets(doc, page, o)),
+        Some(GenKind::Cables) => reports.map_or(0, ReportModels::cable_count),
         // Brief 051 (design 051 §4.1): cards packed on sheets, from the kept row counts.
-        Some(GenKind::IoList) => return outputs.map_or(1, |o| o.plc.iolist_sheets(rows_per_sheet())),
+        Some(GenKind::IoList) => return reports.map_or(1, |o| o.plc.iolist_sheets(rows_per_sheet())),
         // Brief 051 (design 051 §4.2): racks packed on sheets, from the kept slot counts.
-        Some(GenKind::PlcRack) => return outputs.map_or(1, |o| crate::plc::sheets::rack_sheets(doc, page, &o.plc)),
+        Some(GenKind::PlcRack) => return reports.map_or(1, |o| crate::plc::sheets::rack_sheets(doc, page, &o.plc)),
     };
     rows.div_ceil(rows_per_sheet()).max(1)
 }
@@ -220,16 +220,16 @@ pub fn sheet_number(number: &str, i: usize) -> String {
 }
 
 /// The numbers of every sheet of `page` (one for an ordinary page), its shown number first.
-pub fn sheet_numbers(doc: &Document, book: &Book, page: PageId, outputs: Option<&ReportModels>) -> Vec<String> {
+pub fn sheet_numbers(doc: &Document, book: &Book, page: PageId, reports: Option<&ReportModels>) -> Vec<String> {
     let n = book.number(doc, page);
-    (0..sheets_of(doc, page, outputs)).map(|i| sheet_number(&n, i)).collect()
+    (0..sheets_of(doc, page, reports)).map(|i| sheet_number(&n, i)).collect()
 }
 
 /// The number column of `page` where pages are listed (contents): `400`, or `400–402` for a
 /// generated page of several sheets.
-pub fn number_range(doc: &Document, book: &Book, page: PageId, outputs: Option<&ReportModels>) -> String {
+pub fn number_range(doc: &Document, book: &Book, page: PageId, reports: Option<&ReportModels>) -> String {
     let n = book.number(doc, page);
-    match sheets_of(doc, page, outputs) {
+    match sheets_of(doc, page, reports) {
         0 | 1 => n,
         k => format!("{n}\u{2013}{}", sheet_number(&n, k - 1)),
     }
@@ -237,10 +237,10 @@ pub fn number_range(doc: &Document, book: &Book, page: PageId, outputs: Option<&
 
 /// The page whose continuation sheet (2nd or later) is numbered `number`, and that sheet's index:
 /// continuation numbers count as taken (design 033 §5.3). O(generated pages × their sheets).
-pub fn continuation_of(doc: &Document, book: &Book, number: &str, outputs: Option<&ReportModels>) -> Option<(PageId, usize)> {
+pub fn continuation_of(doc: &Document, book: &Book, number: &str, reports: Option<&ReportModels>) -> Option<(PageId, usize)> {
     book.order.iter().filter(|p| kind_of(doc, **p).is_some()).find_map(|p| {
         let n = book.number(doc, *p);
-        (1..sheets_of(doc, *p, outputs)).find(|i| sheet_number(&n, *i).eq_ignore_ascii_case(number.trim())).map(|i| (*p, i))
+        (1..sheets_of(doc, *p, reports)).find(|i| sheet_number(&n, *i).eq_ignore_ascii_case(number.trim())).map(|i| (*p, i))
     })
 }
 
@@ -254,7 +254,7 @@ pub fn continuation_taken(doc: &Document, number: &str, page: PageId, i: usize) 
 /// The Checks rows of continuation sheets that took another page's number (design 033 §5.3): a
 /// table grew, so the book still prints and the two sheets share the number until the user
 /// renumbers. Each row is on the other page. O(pages + generated pages × their sheets).
-pub fn continuation_checks(doc: &Document, outputs: Option<&ReportModels>) -> Vec<crate::checks::Check> {
+pub fn continuation_checks(doc: &Document, reports: Option<&ReportModels>) -> Vec<crate::checks::Check> {
     use crate::checks::{Check, Fix, Kind, Object};
     let book = Book::of(doc);
     let mut by_number: std::collections::HashMap<String, PageId> = std::collections::HashMap::new();
@@ -263,7 +263,7 @@ pub fn continuation_checks(doc: &Document, outputs: Option<&ReportModels>) -> Ve
     }
     let mut out = Vec::new();
     for p in book.order.iter().filter(|p| kind_of(doc, **p).is_some()) {
-        let n = sheets_of(doc, *p, outputs);
+        let n = sheets_of(doc, *p, reports);
         if n < 2 {
             continue;
         }
@@ -288,8 +288,8 @@ pub fn continuation_checks(doc: &Document, outputs: Option<&ReportModels>) -> Ve
 }
 
 /// How many sheets the whole book has (Total).
-pub fn book_sheets_of(doc: &Document, outputs: Option<&ReportModels>) -> usize {
-    let extra: usize = doc.pages.iter().filter(|(_, p)| !p.kind.is_schematic()).map(|(id, _)| sheets_of(doc, *id, outputs).saturating_sub(1)).sum();
+pub fn book_sheets_of(doc: &Document, reports: Option<&ReportModels>) -> usize {
+    let extra: usize = doc.pages.iter().filter(|(_, p)| !p.kind.is_schematic()).map(|(id, _)| sheets_of(doc, *id, reports).saturating_sub(1)).sum();
     doc.page_order.len() + extra
 }
 
@@ -317,11 +317,11 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, kind: GenKi
     }
 }
 
-/// Whether the content of `terminals` page `page` changed in the last update of `o` (design 046
+/// Whether the content of `connection_points` page `page` changed in the last update of `o` (design 046
 /// §9): the table style when a strip it shows changed (028); the graphic style when a strip it
 /// shows was drawn again, or the layout settings changed. Either style redraws when the project's
 /// style changed and the page has no style of its own. O(strips shown).
-pub fn terminals_rewritten(doc: &Document, page: PageId, o: &ReportModels) -> bool {
+pub fn connection_points_rewritten(doc: &Document, page: PageId, o: &ReportModels) -> bool {
     let sp = &o.strip_pages;
     let style = &crate::defaults::strip_pages::STYLE;
     let own_style = doc.pages.get(&page).and_then(|p| p.display.get(style.key)).is_some_and(|v| style.parse(v).is_some());
@@ -361,7 +361,7 @@ pub fn refusal_words(doc: &Document, page: PageId, kind: GenKind) -> String {
 pub fn area(input: &crate::pages::frames::FrameInput) -> (f64, f64, f64, f64) {
     let (w, h) = (f64::from(input.sheet.width), f64::from(input.sheet.height));
     // Brief 055 (FP4): the frame's margins and its block's height.
-    let m = input.look.margins;
+    let m = input.draw.margins;
     (m.left + 5.0, m.bottom + input.keep_out() + 5.0, w - m.right - 5.0, h - m.top - 5.0)
 }
 
@@ -378,7 +378,7 @@ pub struct TRow {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Marks {
     /// Column of the terminal box (its label centred in a 6 × 4 mm box).
-    pub terminal_box: Option<usize>,
+    pub terminal_block_box: Option<usize>,
     /// The bridge group whose dot this row carries, in the bridge column.
     pub bridge: Option<(usize, usize)>,
     /// The cable column and whether this row starts or continues a cable's bracket.
@@ -386,11 +386,11 @@ pub struct Marks {
 }
 
 /// What a generated page shows: (columns with A3 widths, rows).
-fn table(doc: &Document, kind: GenKind, outputs: Option<&ReportModels>) -> (Vec<(String, f64)>, Vec<TRow>) {
+fn table(doc: &Document, kind: GenKind, reports: Option<&ReportModels>) -> (Vec<(String, f64)>, Vec<TRow>) {
     if kind == GenKind::Revisions {
         return revision_list(doc);
     }
-    let (cols, rows) = table_static(doc, kind, outputs);
+    let (cols, rows) = table_static(doc, kind, reports);
     (cols.into_iter().map(|(n, w)| (n.to_string(), w)).collect(), rows)
 }
 
@@ -425,7 +425,7 @@ fn revision_list(doc: &Document) -> (Vec<(String, f64)>, Vec<TRow>) {
     (cols, rows)
 }
 
-fn table_static(doc: &Document, kind: GenKind, outputs: Option<&ReportModels>) -> (Vec<(&'static str, f64)>, Vec<TRow>) {
+fn table_static(doc: &Document, kind: GenKind, reports: Option<&ReportModels>) -> (Vec<(&'static str, f64)>, Vec<TRow>) {
     let row = |cells: Vec<String>| TRow { cells, ..TRow::default() };
     match kind {
         GenKind::Cover => (Vec::new(), Vec::new()),
@@ -437,7 +437,7 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&ReportModels>) -
                 .map(|p| {
                     let folder = book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
                     let title = doc.pages.get(p).map(|x| x.title.to_string()).unwrap_or_default();
-                    row(vec![number_range(doc, &b, *p, outputs), title, crate::releases::revisions::folder_path(doc, folder)])
+                    row(vec![number_range(doc, &b, *p, reports), title, crate::releases::revisions::folder_path(doc, folder)])
                 })
                 .collect();
             (vec![("Page", 25.0), ("Title", 220.0), ("Folder", 145.0)], rows)
@@ -470,7 +470,7 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&ReportModels>) -
         GenKind::BomLocation => {
             // Brief 047 (design 047 §6.3): an Article column when `bom.column.article` is on (the
             // others narrower, still 390 mm), Qty with its unit, nested lines indented.
-            let article = outputs.is_some_and(|o| o.view.article);
+            let article = reports.is_some_and(|o| o.view.article);
             // UI rev 3 (board 1.15): the tag first, then the description, its quantity (right
             // aligned, [`BOM_QTY_COLUMN`]), maker and part number.
             let cols = if article {
@@ -478,7 +478,7 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&ReportModels>) -
             } else {
                 vec![("Tags", 70.0), ("Description", 140.0), ("Qty", 15.0), ("Maker", 70.0), ("Part number", 95.0)]
             };
-            let Some(o) = outputs else { return (cols, Vec::new()) };
+            let Some(o) = reports else { return (cols, Vec::new()) };
             let mut rows = Vec::new();
             let mut last: Option<Option<String>> = None;
             let q = |v: &Option<String>| v.clone().unwrap_or_else(|| "?".into());
@@ -498,13 +498,13 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&ReportModels>) -
             }
             (cols, rows)
         }
-        // Brief 028 (design 028 §5.3), drawn by `terminal_rows`.
-        GenKind::Terminals => (TERMINAL_BLOCK_COLUMNS.to_vec(), Vec::new()),
+        // Brief 028 (design 028 §5.3), drawn by `terminal_block_rows`.
+        GenKind::TerminalBlocks => (TERMINAL_BLOCK_COLUMNS.to_vec(), Vec::new()),
         // Brief 051: drawn by `crate::plc::sheets`.
         GenKind::PlcRack => (Vec::new(), Vec::new()),
         // Brief 045c (design 045 §8.2).
         GenKind::IoList => {
-            let Some(o) = outputs else { return (crate::plc::iolist::PAGE_COLUMNS.to_vec(), Vec::new()) };
+            let Some(o) = reports else { return (crate::plc::iolist::PAGE_COLUMNS.to_vec(), Vec::new()) };
             let mut rows: Vec<TRow> =
                 crate::plc::iolist::page_lines(doc, &o.plc).into_iter().map(|(heading, cells)| TRow { cells, heading, ..TRow::default() }).collect();
             if rows.is_empty() {
@@ -524,7 +524,7 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&ReportModels>) -
                 ("Length", 20.0),
                 ("Designation", 60.0),
             ];
-            let Some(o) = outputs else { return (cols, Vec::new()) };
+            let Some(o) = reports else { return (cols, Vec::new()) };
             let q = |v: &Option<String>| v.clone().unwrap_or_else(|| "?".into());
             let ends = |l: &Option<String>, d: &[String]| {
                 let mut v: Vec<String> = l.iter().cloned().collect();
@@ -574,7 +574,7 @@ const TERMINAL_BLOCK_COLUMNS: [(&str, f64); 9] = [
 
 /// The terminal plan's rows of `page`: per strip a heading, then one line per position and
 /// conductor (a second conductor on one side on its own sub-row, labelled `3′`).
-fn terminal_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TRow> {
+fn terminal_block_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TRow> {
     let style = doc.settings.reference_style();
     let mut rows = Vec::new();
     for s in strips_shown(doc, page, o) {
@@ -632,7 +632,7 @@ fn terminal_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TRow> {
             };
             // Brief 036: a PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
             let pe_mark = r.pe && !r.ty.multi();
-            if r.terminal.is_none() {
+            if r.connection_point.is_none() {
                 let mut cells = vec![String::new(); TERMINAL_BLOCK_COLUMNS.len()];
                 if let Some(c) = cells.get_mut(0) {
                     *c = r.state().into();
@@ -643,7 +643,7 @@ fn terminal_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TRow> {
                 if let Some(c) = cells.get_mut(3) {
                     *c = links.clone();
                 }
-                rows.push(TRow { cells, heading: false, marks: Marks { terminal_box: Some(2), ..Marks::default() } });
+                rows.push(TRow { cells, heading: false, marks: Marks { terminal_block_box: Some(2), ..Marks::default() } });
                 last_cable = None;
                 continue;
             }
@@ -675,7 +675,7 @@ fn terminal_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TRow> {
                     if i == 0 { r.place.as_ref().map(|p| p.text(style)).unwrap_or_default() } else { String::new() },
                 ];
                 let marks = Marks {
-                    terminal_box: (i == 0).then_some(2),
+                    terminal_block_box: (i == 0).then_some(2),
                     bridge: r.bridge_group.filter(|_| i == 0).map(|g| (3, g)),
                     cable: cable.map(|_| (5, starts)),
                 };
@@ -698,25 +698,25 @@ pub struct Laid {
 }
 
 impl Laid {
-    pub fn of(doc: &Document, page: PageId, kind: GenKind, outputs: Option<&ReportModels>) -> Laid {
-        let (cols, mut rows) = table(doc, kind, outputs);
-        if kind == GenKind::Terminals
-            && let Some(o) = outputs
+    pub fn of(doc: &Document, page: PageId, kind: GenKind, reports: Option<&ReportModels>) -> Laid {
+        let (cols, mut rows) = table(doc, kind, reports);
+        if kind == GenKind::TerminalBlocks
+            && let Some(o) = reports
         {
-            rows = terminal_rows(doc, page, o);
+            rows = terminal_block_rows(doc, page, o);
         }
         let heads: Vec<Option<String>> = rows.iter().map(|r| r.heading.then(|| r.cells.first().cloned().unwrap_or_default())).collect();
-        let sheets = paginate_with(&heads, kind == GenKind::Terminals);
+        let sheets = paginate_with(&heads, kind == GenKind::TerminalBlocks);
         Laid { cols, rows, sheets }
     }
 }
 
 /// The sheet windows of `page` in model coordinates: (bottom-left, top-right) per sheet.
-pub fn sheet_windows_of(doc: &Document, page: PageId, outputs: Option<&ReportModels>) -> Vec<(Pt, Pt)> {
+pub fn sheet_windows_of(doc: &Document, page: PageId, reports: Option<&ReportModels>) -> Vec<(Pt, Pt)> {
     let spec = ecad_model::document::sheet::sheet_of(doc, page);
     let k = unit_scale(doc.settings.length_unit);
     let (w, h) = (f64::from(spec.width), f64::from(spec.height));
-    (0..sheets_of(doc, page, outputs))
+    (0..sheets_of(doc, page, reports))
         .map(|i| {
             let x0 = (w + SHEET_GAP) * i as f64;
             (Pt::new(x0 * k, 0.0), Pt::new((x0 + w) * k, h * k))
@@ -725,12 +725,12 @@ pub fn sheet_windows_of(doc: &Document, page: PageId, outputs: Option<&ReportMod
 }
 
 /// How many generated values in `pages` are `?` (Print Book's warning line).
-pub fn flagged(doc: &Document, pages: &BTreeSet<PageId>, outputs: Option<&ReportModels>) -> usize {
+pub fn flagged(doc: &Document, pages: &BTreeSet<PageId>, reports: Option<&ReportModels>) -> usize {
     pages
         .iter()
         .map(|p| match kind_of(doc, *p) {
-            Some(GenKind::BomLocation) => outputs.map_or(0, |o| o.bom_table(Group::Location).flagged()),
-            Some(GenKind::Cables) => outputs.map_or(0, |o| o.cable_table().flagged()),
+            Some(GenKind::BomLocation) => reports.map_or(0, |o| o.bom_table(Group::Location).flagged()),
+            Some(GenKind::Cables) => reports.map_or(0, |o| o.cable_table().flagged()),
             _ => 0,
         })
         .sum()

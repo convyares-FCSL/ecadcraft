@@ -476,7 +476,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn style_refs_parse_and_print() {
+    fn style_references_parse_and_print() {
         assert_eq!(StyleRef::parse("tag"), Some(StyleRef::Builtin("tag".into())));
         assert_eq!(StyleRef::parse(" dc24 "), Some(StyleRef::Builtin("dc24".into())));
         let own = StyleRef::Own(0xab);

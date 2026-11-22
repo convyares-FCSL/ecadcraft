@@ -184,10 +184,10 @@ impl Jumper {
                     prev = Some(l);
                 }
                 add.extend(self.typed.iter().cloned());
-                commit(s, "jumper", &json!({"link": {"strip": c.hex(), "n": n}, "add": add.join(",")}))
+                commit(s, "jumper", &json!({"jumper_bar": {"strip": c.hex(), "n": n}, "add": add.join(",")}))
             }
             None => {
-                let mut params = json!({"strip": c.hex(), "terminals": picks, "skip": self.skip});
+                let mut params = json!({"strip": c.hex(), "connection_points": picks, "skip": self.skip});
                 if !self.typed.is_empty() {
                     params["positions"] = json!(self.typed.join(","));
                 }

@@ -40,7 +40,7 @@ pub struct KindRow {
 }
 
 impl KindRow {
-    /// Its accessible name's last word: `cover`, `terminals-graphic`.
+    /// Its accessible name's last word: `cover`, `terminal_blocks-graphic`.
     pub fn word(&self) -> String {
         match self.style {
             Some(s) => format!("{}-{s}", ecad_model::Word::word(self.kind)),
@@ -86,7 +86,7 @@ fn kind_rows(holds: Holds, doc: &ecad_model::Document, book: &Book) -> Vec<KindR
                 .iter()
                 .filter(|p| ecad_electrical::pages::generated::kind_of(doc, **p) == Some(*k))
                 .filter(|p| {
-                    *k != GenKind::Terminals
+                    *k != GenKind::TerminalBlocks
                         || (ecad_engine::terminal_strips::draw::style_of(doc, **p) == ecad_engine::terminal_strips::draw::Style::Graphic)
                             == style.is_some()
                 })
@@ -94,7 +94,7 @@ fn kind_rows(holds: Holds, doc: &ecad_model::Document, book: &Book) -> Vec<KindR
                 .collect()
         };
         out.push(KindRow { label: k.title(), kind: *k, style: None, in_book: in_book(None) });
-        if *k == GenKind::Terminals {
+        if *k == GenKind::TerminalBlocks {
             let g = ecad_electrical::defaults::strip_pages::GRAPHIC;
             out.push(KindRow { label: ecad_engine::terminal_strips::draw::TITLE, kind: *k, style: Some(g), in_book: in_book(Some(g)) });
         }

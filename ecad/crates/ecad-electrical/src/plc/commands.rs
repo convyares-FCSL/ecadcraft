@@ -452,7 +452,7 @@ pub fn plan_channels(
     };
     let mut placed: Vec<u32> = Vec::new();
     let mut all_pins: Vec<String> = Vec::new();
-    let def_terms = &starter.definition()?.terminals;
+    let def_terms = &starter.definition()?.connection_points;
     const NO_ROLE: &str = "The channel symbol has no point for that role.";
     const NO_POINT: &str = "The channel symbol has no point.";
     for l in &landings {
@@ -473,7 +473,7 @@ pub fn plan_channels(
         for (role, m) in &l.points {
             let at = role_at(def_terms, *role).map(|q| pl.apply(q)).ok_or(CmdError::refused(NO_ROLE))?;
             let on = crate::wires::on_route_of(doc, m.route, at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
-            let tid = cell.terminals.iter().find(|x| x.0 == *role).map(|x| x.1).ok_or(CmdError::refused(NO_POINT))?;
+            let tid = cell.connection_points.iter().find(|x| x.0 == *role).map(|x| x.1).ok_or(CmdError::refused(NO_POINT))?;
             let land = land_cell(doc, ids, on, tid)
                 .map_err(|e| CmdError::refused(format!("{e} (wire {})", crate::cables::slash::position_name(doc, m.position))))?;
             ops.extend(land);
@@ -551,7 +551,7 @@ pub struct ChannelInput {
     /// The channel number a drawn copy moves to, as text; `Some(None)`: given as null.
     pub move_to: Option<Option<String>>,
     /// The drawn copy to move (absent: the last drawn).
-    pub terminal: Option<ConnectionPointId>,
+    pub connection_point: Option<ConnectionPointId>,
 }
 
 /// What `plcchannel` changes.
@@ -569,7 +569,7 @@ pub struct ChannelPlan {
 
 /// `plcchannel {card, channel, text?, address?, tag?, safe?, pins?, move_to?, terminal?}` (design
 /// 045 §4.6): one channel's data. `move_to` (a Checks fix) gives the points of one drawn copy of
-/// the channel (`terminal`, or the last-drawn copy) the channel numbered `move_to`.
+/// the channel (`connection_point`, or the last-drawn copy) the channel numbered `move_to`.
 ///
 /// # Errors
 /// No such card or channel, a value that does not read, a duplicate tag or pin, or a channel drawn
@@ -633,10 +633,10 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
             }
             labels.remove(old);
             labels.insert(pin.to_string());
-            let term = doc.terminals.get(tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
+            let term = doc.connection_points.get(tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
             let after = ConnectionPoint { label: Some(pin.to_string()), ..term.clone() };
-            ops.push(Op::RemoveConnectionPoint { id: *tid, terminal: term });
-            ops.push(Op::AddConnectionPoint { id: *tid, terminal: after });
+            ops.push(Op::RemoveConnectionPoint { id: *tid, connection_point: term });
+            ops.push(Op::AddConnectionPoint { id: *tid, connection_point: after });
             said.push(format!("{role} pin {old} → {pin}"));
         }
     }
@@ -650,18 +650,18 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
             return Err(CmdError::refused(format!("Channel {to} of {who} is drawn already.")));
         }
         let copies = crate::plc::copies(doc, c, i);
-        let copy = match input.terminal {
+        let copy = match input.connection_point {
             Some(t) => copies.iter().find(|v| v.contains(&t)).cloned(),
             None => copies.last().cloned(),
         }
         .ok_or(CmdError::refused("That channel has no drawn copy to move."))?;
         for tid in copy {
-            let term = doc.terminals.get(&tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
+            let term = doc.connection_points.get(&tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
             let role = point_of(doc, tid).map(|x| x.1).ok_or(CmdError::refused("Not a channel point."))?;
             let key = crate::plc::channels::key(j, role).ok_or(CmdError::refused("Not a channel point."))?;
             let after = ConnectionPoint { key: Some(key), ..term.clone() };
-            ops.push(Op::RemoveConnectionPoint { id: tid, terminal: term });
-            ops.push(Op::AddConnectionPoint { id: tid, terminal: after });
+            ops.push(Op::RemoveConnectionPoint { id: tid, connection_point: term });
+            ops.push(Op::AddConnectionPoint { id: tid, connection_point: after });
         }
         said.push(format!("moved to channel {to}"));
     }
@@ -809,7 +809,7 @@ pub fn plan_page_contents(
         let per_row = (((r - l - LEFT_MM) / w).floor() as usize).max(1);
         let roles = roles_of(starter);
         let mut used = crate::devices::labels_of(doc, card);
-        let local = starter.definition()?.terminals.first().map(|td| td.at).unwrap_or(Pt::new(0.0, 0.0));
+        let local = starter.definition()?.connection_points.first().map(|td| td.at).unwrap_or(Pt::new(0.0, 0.0));
         for (j, i) in pc.missing.iter().enumerate() {
             let col = j % per_row;
             if j > 0 && col == 0 {
@@ -829,7 +829,7 @@ pub fn plan_page_contents(
         let def = starter.definition()?;
         let (bw, _) = starter.size();
         // Its points on the line of the cells' points (it is the run's power end).
-        let local = def.terminals.first().map(|td| td.at).unwrap_or(Pt::new(0.0, 0.0));
+        let local = def.connection_points.first().map(|td| td.at).unwrap_or(Pt::new(0.0, 0.0));
         let rot = Radians::from(Degrees(degrees));
         let x = x_next + bw / 2.0;
         let origin = match cell_point {

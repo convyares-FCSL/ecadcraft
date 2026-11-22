@@ -152,14 +152,14 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         }
     }
     // Terminals: removed and added when they differ.
-    for id in ids(&from.terminals, &to.terminals, scope.map(|s| &s.terminals)) {
-        let (a, b) = (from.terminals.get(&id), to.terminals.get(&id));
+    for id in ids(&from.connection_points, &to.connection_points, scope.map(|s| &s.connection_points)) {
+        let (a, b) = (from.connection_points.get(&id), to.connection_points.get(&id));
         if a != b {
             if let Some(a) = a {
-                removes.push(Op::RemoveConnectionPoint { id, terminal: a.clone() });
+                removes.push(Op::RemoveConnectionPoint { id, connection_point: a.clone() });
             }
             if let Some(b) = b {
-                adds.push(Op::AddConnectionPoint { id, terminal: b.clone() });
+                adds.push(Op::AddConnectionPoint { id, connection_point: b.clone() });
             }
         }
     }
@@ -374,7 +374,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                 ("device", id.0)
             }
-            Op::AddConnectionPoint { id, .. } | Op::RemoveConnectionPoint { id, .. } => ("terminal", id.0),
+            Op::AddConnectionPoint { id, .. } | Op::RemoveConnectionPoint { id, .. } => ("connection_point", id.0),
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
             Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => ("wire", id.0),
             Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => ("route", id.0),

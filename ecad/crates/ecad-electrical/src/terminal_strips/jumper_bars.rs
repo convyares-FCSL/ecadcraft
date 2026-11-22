@@ -12,7 +12,7 @@
 //!
 //! # Update map
 //! The lines of a page are part of its projection, which is redrawn when an op touches the page
-//! (`crate::project::pages_touched`): a strip property (`link.<n>`) touches the strip's pages,
+//! (`crate::project::pages_touched`): a strip property (`jumper_bar.<n>`) touches the strip's pages,
 //! a terminal symbol's move its page; nothing else draws them.
 
 use std::collections::BTreeMap;
@@ -20,14 +20,14 @@ use std::collections::BTreeMap;
 use ecad_model::connectivity::jumper_bars;
 use ecad_model::{DeviceId, Document, PageId, Pt, Subject};
 
-/// Lane spacing and stub length, in millimetres (`ecad.link`, `ecad.link-stub`).
+/// Lane spacing and stub length, in millimetres (`ecad.jumper_bar`, `ecad.link-stub`).
 pub const LANE_MM: f64 = 1.5;
 pub const STUB_MM: f64 = 4.0;
 /// The layer the lines are drawn on.
-pub const LAYER: &str = "ecad.link";
+pub const LAYER: &str = "ecad.jumper_bar";
 /// Said when a link line is moved or stretched.
-pub const LINK_DERIVED: &str =
-    "A link line is drawn from its link: select it and use Extend, Shorten, Split or Delete (Jumper), or erase it to delete the link.";
+pub const JUMPER_BAR_DERIVED: &str =
+    "A link line is drawn from its jumper_bar: select it and use Extend, Shorten, Split or Delete (Jumper), or erase it to delete the link.";
 
 /// One segment of a link line.
 #[derive(Debug, Clone, PartialEq)]
@@ -160,7 +160,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
 /// The hover line of a link (§5.3): `-X01 link 1-4 (4 positions, 1 bar JB-10)`.
 pub fn hover(doc: &Document, data: Option<&crate::terminal_strips::StripData>, c: DeviceId, n: u32) -> String {
     let tag = crate::devices::tag_words(doc, c);
-    let Some(l) = data.and_then(|d| d.acc.links.iter().find(|l| l.n == n)) else { return format!("{tag} link {n}") };
+    let Some(l) = data.and_then(|d| d.acc.jumper_bars.iter().find(|l| l.n == n)) else { return format!("{tag} link {n}") };
     let bars = if l.bars == 1 { "1 bar".to_string() } else { format!("{} bars", l.bars) };
     let part = l.part_number.clone().map_or_else(String::new, |p| format!(" {p}"));
     // Brief 036: the level a link runs on (`level N`) when its strip has levels.

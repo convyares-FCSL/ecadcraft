@@ -39,7 +39,7 @@ pub(crate) fn device_source(p: &Project, map: &crate::project::HandleMap, h: Han
         Mapped::Item(i) => doc.representation_of_item(i)?.0,
         _ => return None,
     };
-    let (_, class) = p.xref().member(rep)?;
+    let (_, class) = p.reference().member(rep)?;
     let target = match (m, class) {
         (Mapped::DeviceReference(_), ecad_electrical::references::devices::Class::Head) => {
             let (_, i) = map.device_reference_part(h)?;

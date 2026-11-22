@@ -62,7 +62,7 @@ fn worked_example_replays_and_undoes() {
         .iter()
         .map(|t| Op::AddConnectionPoint {
             id: *t,
-            terminal: ConnectionPoint { owner: c1.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: c1.into(), label: None, key: None, accepts: Default::default() },
         })
         .collect();
     ops.push(Op::ModifyRepresentation { id: r1, before: rep1.clone(), after: rep1b.clone() });
@@ -74,7 +74,7 @@ fn worked_example_replays_and_undoes() {
     let mut ops = vec![Op::AddItem { id: edge, item: line((95.0, 0.0), (95.0, 20.0)) }, Op::CreateDevice { id: c2, device: Device::default() }];
     ops.extend(us.iter().map(|u| Op::AddConnectionPoint {
         id: *u,
-        terminal: ConnectionPoint { owner: c2.into(), label: None, key: None, accepts: Default::default() },
+        connection_point: ConnectionPoint { owner: c2.into(), label: None, key: None, accepts: Default::default() },
     }));
     ops.push(Op::LinkRepresentation {
         id: r2,

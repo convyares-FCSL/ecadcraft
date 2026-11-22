@@ -122,7 +122,7 @@ fn prim(p: &Primitive) -> String {
 /// wires by route and the labels their ends attach to.
 fn canon(d: &Document) -> Vec<String> {
     let mut out = Vec::new();
-    let label = |t| d.terminals.get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| "-".into());
+    let label = |t| d.connection_points.get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| "-".into());
     for r in d.representations.values() {
         let mut items: Vec<String> = r
             .items
@@ -206,11 +206,11 @@ fn coil_and_wire_by_clicks(h: &mut Harness<'static, App>) {
 /// AC3 / design check E with connection points placed by clicks: the result has the structure of the same
 /// example built by JSON lines (IDs aside; bends to screen precision are snapped to the grid below).
 #[test]
-fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
+fn ac3_quick_start_with_clicked_connection_points_matches_the_json_example() {
     let mut h = harness();
     component_by_clicks(&mut h);
     let d = doc(&mut h);
-    let mut terms: Vec<String> = d.terminals.values().map(|t| t.label.clone().unwrap_or_default()).collect();
+    let mut terms: Vec<String> = d.connection_points.values().map(|t| t.label.clone().unwrap_or_default()).collect();
     terms.sort();
     assert_eq!(terms, ["1", "2"], "default names 1 and 2");
     coil_and_wire_by_clicks(&mut h);
@@ -243,8 +243,8 @@ fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
             .unwrap()
     };
     let (right, left) = (edge(&j, 40.0), edge(&j, 0.0));
-    ok(&mut j, &format!("addterminal {}", json!({"handle": right, "at": [40, 10], "label": "1"})));
-    ok(&mut j, &format!("addterminal {}", json!({"handle": left, "at": [0, 10], "label": "2"})));
+    ok(&mut j, &format!("addconnectionpoint {}", json!({"handle": right, "at": [40, 10], "label": "1"})));
+    ok(&mut j, &format!("addconnectionpoint {}", json!({"handle": left, "at": [0, 10], "label": "2"})));
     // Place Symbol by clicks places the starter coil, a device (brief 018).
     ok(&mut j, r#"place {"symbol":"coil","at":[100,0],"rotation":90}"#);
     ok(&mut j, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
@@ -273,7 +273,7 @@ fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
 /// Owner answer Q4 in the real UI: a value typed at the prompt near (not on) a terminal is taken
 /// literally, even while the pointer rests on the drawing.
 #[test]
-fn q4_a_typed_point_near_a_terminal_does_not_attach_in_the_ui() {
+fn q4_a_typed_point_near_a_connection_point_does_not_attach_in_the_ui() {
     let mut h = harness();
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
     view(&mut h);
@@ -336,7 +336,7 @@ fn ctrl_z_during_wire_removes_the_last_point_and_space_is_enter() {
 /// AC5: hovering the terminal ring names the terminal; hovering writes nothing (head, selection,
 /// unsaved state of the project and of the page tab); the tooltip goes when a command starts.
 #[test]
-fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
+fn ac5_hovering_a_connection_point_names_it_and_writes_nothing() {
     let dir = std::env::temp_dir().join(format!("ecad-tester-008-hover-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let mut h = harness();
@@ -366,7 +366,7 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
         .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0))
         .map(|e| e.handle.hex())
         .unwrap();
-    ok(&mut h, &format!("addterminal {}", json!({"handle": right, "at": [40, 10], "label": "1"})));
+    ok(&mut h, &format!("addconnectionpoint {}", json!({"handle": right, "at": [40, 10], "label": "1"})));
     let left = h
         .state()
         .cad
@@ -379,7 +379,7 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
         .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 0.0 && l.b.x == 0.0))
         .map(|e| e.handle.hex())
         .unwrap();
-    ok(&mut h, &format!("addterminal {}", json!({"handle": left, "at": [0, 10], "label": "2"})));
+    ok(&mut h, &format!("addconnectionpoint {}", json!({"handle": left, "at": [0, 10], "label": "2"})));
     ok(&mut h, r#"place {"at":[100,0],"rotation":90}"#);
     ok(&mut h, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
     h.state_mut().save_as(&dir.join("hover.ecad").display().to_string()).unwrap();
@@ -698,7 +698,7 @@ fn bare_names_start_the_forms_in_both_fields_and_json_lines_do_not_prompt() {
     let mut h = harness();
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
     view(&mut h);
-    for name in ["convertcomponent", "addterminal", "place", "wire", "connect", "disconnect"] {
+    for name in ["convertcomponent", "addconnectionpoint", "place", "wire", "connect", "disconnect"] {
         let e = h.state_mut().submit_command(name);
         h.run_steps(2);
         assert!(e.is_none(), "banner {name}: {e:?}");

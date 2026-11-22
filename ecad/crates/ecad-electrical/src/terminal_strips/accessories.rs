@@ -9,11 +9,11 @@
 //!   stored canonical (`end_plate,end_stop`), at most [`MAX_ITEMS`]. Nothing is placed by a rule.
 //! - Part data (FP2, FP3, FP6): the strip's `<item>.<field>` first, then the project's
 //!   `strip_<item>_<field>` ([`project_key`]), then unknown.
-//! - Links (FP5): `link.<n>` ([`ecad_model::connectivity::jumper_bars`]); bars per link `ceil(span / bar)`, bar from
+//! - Links (FP5): `jumper_bar.<n>` ([`ecad_model::connectivity::jumper_bars`]); bars per link `ceil(span / bar)`, bar from
 //!   `jumper.bar`, else `strip_jumper_bar`, else [`DEFAULT_BAR`].
 //! - Nothing here refuses because of a check; orphans and crossings are Checks rows (§8).
 //!
-//! This module excludes drawing (`link_lines`) and commands (`ecad_engine::terminal_strips::commands`).
+//! This module excludes drawing (`jumper_bar_lines`) and commands (`ecad_engine::terminal_strips::commands`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -255,12 +255,12 @@ pub fn is_part_key(key: &str) -> bool {
 }
 
 /// Whether a strip part key is an article number (`end_stop.article_number`,
-/// `link.3.article_number`): checked as 047's article numbers are.
+/// `jumper_bar.3.article_number`): checked as 047's article numbers are.
 fn is_article_key(key: &str) -> bool {
     key.rsplit_once('.').is_some_and(|(_, f)| f == crate::reports::bom::ARTICLE_KEY)
 }
 
-/// `link.<n>.<field>`: the link and the field.
+/// `jumper_bar.<n>.<field>`: the link and the field.
 pub fn jumper_bar_part_key(key: &str) -> Option<(u32, &str)> {
     let rest = key.strip_prefix(jumper_bars::PREFIX)?;
     let (n, f) = rest.split_once('.')?;
@@ -452,9 +452,9 @@ pub struct JumperBarInfo {
     pub description: Option<String>,
     /// Brief 047 (design 047 §5): from the level its part number came from.
     pub article_number: Option<String>,
-    /// Labels it names that the strip does not have (`link-orphan`).
+    /// Labels it names that the strip does not have (`jumper-bar-orphan`).
     pub missing: Vec<String>,
-    /// Partitions inside its span, by the label they follow (`link-across-partition`).
+    /// Partitions inside its span, by the label they follow (`jumper-bar-across-partition`).
     pub crosses: Vec<String>,
     /// Brief 036: the level it runs on (`None` for a cross-level link).
     pub level: Option<u32>,
@@ -503,7 +503,7 @@ pub struct StripAcc {
     pub markers: BTreeSet<String>,
     /// Keys whose label names no position: (key, items).
     pub orphans: Vec<(String, Vec<Acc>)>,
-    pub links: Vec<JumperBarInfo>,
+    pub jumper_bars: Vec<JumperBarInfo>,
     pub bom: Vec<AccBom>,
     /// Placed items with no part number (`no-accessory-part`).
     pub no_part: usize,
@@ -549,12 +549,12 @@ impl StripAcc {
 
     /// Its Checks warning rows: orphans, link orphans, crossings.
     pub fn warnings(&self) -> usize {
-        self.orphans.len() + self.links.iter().map(|l| usize::from(!l.missing.is_empty()) + l.crosses.len()).sum::<usize>()
+        self.orphans.len() + self.jumper_bars.iter().map(|l| usize::from(!l.missing.is_empty()) + l.crosses.len()).sum::<usize>()
     }
 
     /// The bars of every link.
     pub fn bars(&self) -> usize {
-        self.links.iter().map(|l| l.bars).sum()
+        self.jumper_bars.iter().map(|l| l.bars).sum()
     }
 
     /// `2 end stops, 1 end plate, 1 partition, 12 markers, 2 links (3 bars)`; empty with nothing.
@@ -566,8 +566,8 @@ impl StripAcc {
                 parts.push(format!("{n} {}{}", a.words(), if n == 1 { "" } else { "s" }));
             }
         }
-        if !self.links.is_empty() {
-            let n = self.links.len();
+        if !self.jumper_bars.is_empty() {
+            let n = self.jumper_bars.len();
             let b = self.bars();
             parts.push(format!("{n} link{} ({b} bar{})", if n == 1 { "" } else { "s" }, if b == 1 { "" } else { "s" }));
         }
@@ -760,7 +760,7 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
             }
         }
     }
-    a.links = infos;
+    a.jumper_bars = infos;
     // BOM rows: per accessory part, only what is placed (§7.4).
     let pe_at = |label: Option<&str>| label.and_then(|l| last_row.get(l)).is_some_and(|r| r.pe);
     let mut plates: [usize; 2] = [0, 0];
@@ -832,7 +832,7 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
     }
     // Jumper bars, summed per part (§5.6).
     let mut jumpers: Vec<AccBom> = Vec::new();
-    for l in &a.links {
+    for l in &a.jumper_bars {
         if l.bars == 0 {
             continue;
         }
@@ -886,15 +886,15 @@ pub fn relabels(ops: &[Op]) -> BTreeMap<DeviceId, BTreeMap<String, String>> {
     let mut maps: BTreeMap<DeviceId, BTreeMap<String, String>> = BTreeMap::new();
     for op in ops {
         match op {
-            Op::RemoveConnectionPoint { id, terminal } => {
-                if let Some(c) = terminal.device() {
-                    removed.insert(*id, (c, terminal.label.clone()));
+            Op::RemoveConnectionPoint { id, connection_point } => {
+                if let Some(c) = connection_point.device() {
+                    removed.insert(*id, (c, connection_point.label.clone()));
                 }
             }
-            Op::AddConnectionPoint { id, terminal } => {
+            Op::AddConnectionPoint { id, connection_point } => {
                 if let Some((c, Some(old))) = removed.get(id)
-                    && Some(*c) == terminal.device()
-                    && let Some(new) = &terminal.label
+                    && Some(*c) == connection_point.device()
+                    && let Some(new) = &connection_point.label
                     && old != new
                 {
                     maps.entry(*c).or_default().insert(old.clone(), new.clone());
@@ -1026,10 +1026,10 @@ fn renumber_strip(
                         let one = jumper_bars::Positions(vec![item.clone()]);
                         let mut sel: Vec<String> = one.select(&old_order).into_iter().map(|l| moved(l)).collect();
                         sel.extend(one.missing(&old_order));
-                        let mut refs: Vec<&String> = sel.iter().collect();
-                        refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), jumper_bars::natural_key(l)));
-                        refs.dedup();
-                        parts.push(crate::terminal_strips::terminal_blocks::jumper_bar_text(&refs, &new_order, level, point));
+                        let mut references: Vec<&String> = sel.iter().collect();
+                        references.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), jumper_bars::natural_key(l)));
+                        references.dedup();
+                        parts.push(crate::terminal_strips::terminal_blocks::jumper_bar_text(&references, &new_order, level, point));
                     }
                 }
             }
@@ -1058,10 +1058,10 @@ fn renumber_strip(
             }
             lines.push(format!("{tag}: link {before} leaves {why}"));
         }
-        let mut refs: Vec<&String> = labels.iter().collect();
-        refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), jumper_bars::natural_key(l)));
-        refs.dedup();
-        let after = crate::terminal_strips::terminal_blocks::jumper_bar_text(&refs, &new_order, level, point);
+        let mut references: Vec<&String> = labels.iter().collect();
+        references.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), jumper_bars::natural_key(l)));
+        references.dedup();
+        let after = crate::terminal_strips::terminal_blocks::jumper_bar_text(&references, &new_order, level, point);
         if after != before {
             lines.push(format!("{tag}: link {before} \u{2192} {after}"));
             out.push(Op::SetProperty { object: ObjectRef::Device(c), key, before: Some(before), after: Some(after) });
@@ -1089,9 +1089,9 @@ mod tests {
         assert_eq!(strip_key_of_project("strip_jumper_bar").as_deref(), Some("jumper.bar"));
         assert_eq!(strip_key_of_project("strip_marker_per_card").as_deref(), Some("marker.per_card"));
         assert!(part_keys().iter().all(|k| project_key(k).len() <= 40));
-        assert_eq!(jumper_bar_part_key("link.2.part_number"), Some((2, "part_number")));
-        assert_eq!(jumper_bar_part_key("link.02.part_number"), None);
-        assert_eq!(jumper_bar_part_key("link.2.colour"), None);
+        assert_eq!(jumper_bar_part_key("jumper_bar.2.part_number"), Some((2, "part_number")));
+        assert_eq!(jumper_bar_part_key("jumper_bar.02.part_number"), None);
+        assert_eq!(jumper_bar_part_key("jumper_bar.2.colour"), None);
         assert!(check_label(&"x".repeat(17)).is_err());
     }
 }

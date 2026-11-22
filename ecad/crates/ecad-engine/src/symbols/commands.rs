@@ -559,11 +559,11 @@ pub(crate) fn place_project_key(
         plan.ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, plan.ops)?;
         let doc = p.ledger.document();
-        let terminals: Vec<Value> =
+        let connection_points: Vec<Value> =
             doc.connection_points_of(plan.component).map(|(t, x)| json!({"id": t.hex(), "key": x.key, "label": x.label})).collect();
         let mut v = json!({
             "component": plan.component.hex(), "representation": plan.representation.hex(), "definition": id.hex(),
-            "tag": plan.tag, "joined": device.is_some(), "terminals": terminals,
+            "tag": plan.tag, "joined": device.is_some(), "connection_points": connection_points,
         });
         crate::symbols::draw::finish_place(p, pg, plan.component, device.is_some(), &proposed, &mut v);
         Ok(Some(v))

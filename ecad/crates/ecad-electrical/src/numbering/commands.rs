@@ -29,7 +29,7 @@ pub fn kinds(word: Option<&str>) -> Result<BTreeSet<Kind>, CmdError> {
         "cables" | "cable" | "cbl" => [Kind::Cables].into(),
         "wires" | "wire" => [Kind::Wires].into(),
         // Brief 028: terminal labels per strip ("all" keeps its 026 meaning: tags and wires).
-        "terminals" | "terminal" | "trm" => [Kind::Terminals].into(),
+        "terminal_blocks" | "terminal_block" | "trm" => [Kind::TerminalBlocks].into(),
         "all" => [Kind::Devices, Kind::Cables, Kind::Wires].into(),
         other => {
             return Err(CmdError::refused(format!("`kind` must be \"devices\", \"cables\", \"wires\", \"terminals\" or \"all\", not {other:?}")));
@@ -160,7 +160,7 @@ pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSe
             let mut out: BTreeSet<DeviceId> = devices.iter().copied().filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some()).collect();
             for t in named {
                 let n = hex(t, "strips")?;
-                let c = match doc.terminals.get(&ConnectionPointId(n)) {
+                let c = match doc.connection_points.get(&ConnectionPointId(n)) {
                     Some(t) => t.device(),
                     None => Some(DeviceId(n)),
                 };
@@ -187,7 +187,7 @@ pub fn request(doc: &Document, input: &RenumberInput, max_named: usize) -> Resul
         None => None,
         Some(d) => Some(u8::try_from(d).map_err(|_| CmdError::refused(numbering::BAD_DIGITS))?),
     };
-    let strips = if kinds.contains(&Kind::Terminals) {
+    let strips = if kinds.contains(&Kind::TerminalBlocks) {
         let named: Vec<String> = input.strips.iter().flatten().flatten().take(max_named).cloned().collect();
         strips(doc, &named, &scope)?
     } else {
@@ -220,7 +220,7 @@ pub fn kind_label(kinds: &BTreeSet<Kind>) -> &'static str {
         [Kind::Devices] => "Renumber devices",
         [Kind::Cables] => "Renumber cables",
         [Kind::Wires] => "Renumber wires",
-        [Kind::Terminals] => "Renumber terminals",
+        [Kind::TerminalBlocks] => "Renumber terminals",
         _ => "Renumber",
     }
 }
@@ -236,7 +236,7 @@ pub fn applied_words(plan: &Plan, finalise: bool) -> String {
         (Kind::Devices, "device", "devices"),
         (Kind::Cables, "cable", "cables"),
         (Kind::Wires, "net", "nets"),
-        (Kind::Terminals, "terminal", "terminals"),
+        (Kind::TerminalBlocks, "terminal_block", "terminal_blocks"),
     ] {
         let n = plan.changes_of(k);
         if n > 0 {
@@ -258,7 +258,7 @@ pub fn row_json(doc: &Document, r: &numbering::Row) -> Value {
         "object": numbering::object_id(r.object).to_string(),
         "id": format!("{:032x}", numbering::object_id(r.object)),
         "kind": r.kind.word(),
-        "terminal": r.terminal.map(|t| t.hex()),
+        "connection_point": r.connection_point.map(|t| t.hex()),
         "old": r.old,
         "new": r.new,
         "at": r.at,
@@ -632,7 +632,7 @@ fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Re
         "devices": plan.changes_of(Kind::Devices),
         "cables": plan.changes_of(Kind::Cables),
         "wires": plan.changes_of(Kind::Wires),
-        "terminals": plan.changes_of(Kind::Terminals),
+        "connection_points": plan.changes_of(Kind::TerminalBlocks),
         "fixed_kept": plan.fixed(),
         "message": line,
     });
@@ -642,7 +642,7 @@ fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Re
 impl Generic for RenumberParams {
     const ID: &'static str = "renumber";
     const TITLE: &'static str = "Renumber";
-    const HELP: &'static str = "{kind?: \"devices\"|\"cables\"|\"wires\"|\"terminals\"|\"all\", strips?: [id] (terminals, with scope \"selection\"), scope?: \"all\"|\"selection\"|\"provisional\"|{prefix}|{folder: id}|{pages: [id]}, objects?: [id] (selection), start?: n, digits?: 1..6, digits_for_new?: bool, preview?: bool, based_on?: change count} (drawing order; fixed tags kept; one transaction)";
+    const HELP: &'static str = "{kind?: \"devices\"|\"cables\"|\"wires\"|\"terminal_blocks\"|\"all\", strips?: [id] (terminals, with scope \"selection\"), scope?: \"all\"|\"selection\"|\"provisional\"|{prefix}|{folder: id}|{pages: [id]}, objects?: [id] (selection), start?: n, digits?: 1..6, digits_for_new?: bool, preview?: bool, based_on?: change count} (drawing order; fixed tags kept; one transaction)";
     const PAGES: Pages = Pages::ReadAnywhere;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {

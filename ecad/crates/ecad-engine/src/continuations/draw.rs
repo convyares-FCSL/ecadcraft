@@ -42,7 +42,7 @@ mod tests {
     /// FP3 (overseer ruling, 2026-11-13): an unrotated reference part draws byte-identically to
     /// the entity drawn before `rotation` existed.
     #[test]
-    fn an_unrotated_part_draws_as_before() {
+    fn an_unrotated_part_looks_as_before() {
         let part = Part {
             rep: RepresentationId(7),
             index: 0,
@@ -60,7 +60,7 @@ mod tests {
             bar: false,
         };
         let h = cadcraft_engine::doc::Handle(0x42);
-        let look = crate::styles::draw::Look::new(&ecad_model::Document::default());
+        let draw = crate::styles::draw::DrawStyles::new(&ecad_model::Document::default());
         let mut before = crate::devices::draw::text_entity_with(
             "100-B-3",
             Pt::new(1.0, 2.0),
@@ -71,7 +71,7 @@ mod tests {
             ecad_electrical::devices::TAG_LAYER,
         );
         // Brief 066d: and in the Reference text style, as every reference text.
-        crate::styles::draw::DrawApply::apply(&look.0, &mut before, ecad_electrical::styles::text_style::TextKind::Reference);
-        assert_eq!(format!("{:?}", crate::project::device_reference_entity(&look, &part, h)), format!("{before:?}"));
+        crate::styles::draw::DrawApply::apply(&draw.0, &mut before, ecad_electrical::styles::text_style::TextKind::Reference);
+        assert_eq!(format!("{:?}", crate::project::device_reference_entity(&draw, &part, h)), format!("{before:?}"));
     }
 }

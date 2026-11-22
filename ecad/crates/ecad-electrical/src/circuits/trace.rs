@@ -128,7 +128,7 @@ enum Step {
 }
 
 fn step(doc: &Document, t: ConnectionPointId) -> Step {
-    let Some(term) = doc.terminals.get(&t) else { return Step::Stop };
+    let Some(term) = doc.connection_points.get(&t) else { return Step::Stop };
     let Some(c) = term.device() else { return Step::Stop };
     let label = term.label.clone().unwrap_or_default();
     // A strip: the other terminals of this position and level; a fuse position protects.
@@ -186,7 +186,7 @@ pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetKey>) -> Fo
         let mut here: Vec<(DeviceId, Option<String>)> = Vec::new();
         for n in &level {
             let Some(net) = conn.net(*n) else { continue };
-            for t in &net.terminals {
+            for t in &net.connection_points {
                 match step(doc, *t) {
                     Step::Found(c, fuse) => {
                         if !here.contains(&(c, fuse.clone())) {
@@ -195,7 +195,7 @@ pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetKey>) -> Fo
                     }
                     Step::Cross(ts) => {
                         for x in ts {
-                            if let Some(m) = conn.net_of(&Node::Terminal(x))
+                            if let Some(m) = conn.net_of(&Node::ConnectionPoint(x))
                                 && !found.path.contains(&m)
                             {
                                 if found.path.len() >= MAX_TRACE_NETS {

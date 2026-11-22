@@ -94,12 +94,12 @@ impl PaletteRow {
                     let x = at.0 + (FIELD_SIZE.0 + 2.0) * i as f64;
                     let bind = Binding::parse(b).ok()?;
                     let red = matches!(&bind, Binding::Project(k) if k.as_str() == "status");
-                    let look = TextDraw { size: 2.5, bold: red, align: Align::Left, colour: if red { Ink::Red } else { Ink::Ink } };
+                    let draw = TextDraw { size: 2.5, bold: red, align: Align::Left, colour: if red { Ink::Red } else { Ink::Ink } };
                     Some(BlockItem::Field {
                         at: BRect::new(x, at.1 - FIELD_SIZE.1, FIELD_SIZE.0, FIELD_SIZE.1),
                         bind,
                         label: Some((*label).to_string()),
-                        look,
+                        draw,
                         if_empty: IfEmpty::Blank,
                     })
                 })
@@ -340,7 +340,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
                         at: BRect::new(at.0, at.1 - FIELD_SIZE.1, FIELD_SIZE.0, FIELD_SIZE.1),
                         bind: Binding::Project(pk),
                         label: Some(k.replace('_', " ")),
-                        look: TextDraw::default(),
+                        draw: TextDraw::default(),
                         if_empty: IfEmpty::Blank,
                     });
                     acts.push(Act::Resample);

@@ -75,7 +75,7 @@ pub const CONTACTS_KEY: &str = "contacts";
 pub const MIRROR_KEY: &str = "mirror";
 pub use ecad_model::objects::devices::PoleKind;
 pub use ecad_model::objects::devices::contacts::{MAX_LABEL_CHARS, MAX_OFFSET_MM, MAX_POLES};
-/// `ecad.xref`: ACI 7 (ByLayer on `ECAD-TAGS`). Its text is reference text: the `Reference` text
+/// `ecad.references`: ACI 7 (ByLayer on `ECAD-TAGS`). Its text is reference text: the `Reference` text
 /// style (brief 066d), never a size of its own.
 /// `ecad.xref-spare`: ACI 8.
 pub const SPARE_ACI: u8 = 8;
@@ -769,7 +769,7 @@ pub fn over_line(doc: &Document, c: DeviceId, labels: &[String], make: bool) -> 
 // ---------------------------------------------------------------- drawing (design 025 §4)
 
 /// Where a reference text sits across its point (the drawing maps it to CADCraft's alignment,
-/// `draw::xref`).
+/// `draw::reference`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HAlign {
     #[default]
@@ -1547,7 +1547,7 @@ impl RefIndex {
             | Effect::Layer { .. }
             | Effect::Device { .. }
             | Effect::DeviceLink { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Wire { .. }
             | Effect::Route { .. }
             | Effect::Prop { .. }
@@ -1696,7 +1696,7 @@ impl Scope {
         let ends = |s: &mut Scope, w: ecad_model::WireId| {
             if let Some(c) = doc.wires.get(&w) {
                 for t in &c.ends {
-                    if let Some(x) = doc.terminals.get(t) {
+                    if let Some(x) = doc.connection_points.get(t) {
                         s.devices.extend(x.device());
                     }
                 }
@@ -1722,12 +1722,12 @@ impl Scope {
             }
             Effect::Wire { before: None, after: Some(wire), .. } | Effect::Wire { before: Some(wire), after: None, .. } => {
                 for t in &wire.ends {
-                    if let Some(x) = doc.terminals.get(t) {
+                    if let Some(x) = doc.connection_points.get(t) {
                         self.devices.extend(x.device());
                     }
                 }
             }
-            Effect::Terminal { before, after, .. } => {
+            Effect::ConnectionPoint { before, after, .. } => {
                 self.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
             }
             Effect::Device { id, before: None, .. } | Effect::Device { id, after: None, .. } | Effect::DeviceDefinition { id, .. } => {
@@ -1818,7 +1818,7 @@ impl Scope {
             | Effect::Item { .. }
             | Effect::Device { .. }
             | Effect::DeviceDefinition { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Rep { .. }
             | Effect::Wire { .. }
             | Effect::Route { .. }
@@ -2028,7 +2028,7 @@ impl Watch {
 
 // ---------------------------------------------------------------- reading (design 025 §5)
 
-/// One reference as `xrefs` lists it.
+/// One reference as `references` lists it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reference {
     pub source: RepresentationId,
@@ -2075,7 +2075,7 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
                     // mate pin's (labelled with the pin name).
                     (Group::Device(_), Some(Class::Half(_))) => out.push(r("half", None, places.text(tr.page, anchor(doc, tr)))),
                     (Group::Device(_), Some(Class::Pin(_))) => {
-                        let name = sr.connection_points.keys().find_map(|t| doc.terminals.get(t).and_then(|x| x.label.clone()));
+                        let name = sr.connection_points.keys().find_map(|t| doc.connection_points.get(t).and_then(|x| x.label.clone()));
                         out.push(r("pin", name, places.text(tr.page, anchor(doc, tr))));
                     }
                     (Group::Device(_), Some(Class::Head)) => {
@@ -2093,7 +2093,7 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
     out
 }
 
-/// `xrefs {component?, cable?, page?, limit?, after?}`'s result (design 025 §5.4).
+/// `references {component?, cable?, page?, limit?, after?}`'s result (design 025 §5.4).
 ///
 /// Continuation rows (brief 049) come after the others, one per (arrow, other end), made only for
 /// the window asked for: with `component`, that arrow's; with `page`, those of the arrows on the
@@ -2250,14 +2250,14 @@ fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn Tex
 pub fn goto_target(doc: &Document, idx: &RefIndex, source: RepresentationId, target: Option<RepresentationId>) -> Option<RepresentationId> {
     match idx.member(source) {
         Some((Group::Cable(_), _)) => {
-            let refs = ecad_model::connectivity::derive::cable_references_of(
+            let references = ecad_model::connectivity::derive::cable_references_of(
                 doc,
                 &BTreeSet::from([match doc.representations.get(&source)?.subject {
                     Subject::Cable(k) => k,
                     _ => return None,
                 }]),
             );
-            refs.into_iter().find(|r| r.reference == source).and_then(|r| r.partner())
+            references.into_iter().find(|r| r.reference == source).and_then(|r| r.partner())
         }
         Some(_) => match target {
             Some(t) => idx.targets(source).find(|x| *x == t),

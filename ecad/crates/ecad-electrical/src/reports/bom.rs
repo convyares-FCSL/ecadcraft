@@ -372,7 +372,7 @@ fn check_for(doc: &Document, c: DeviceId, text: &str) -> Result<Option<String>, 
 }
 
 /// The ops that keep strips' `part.<n>.for` lists on their positions when a renumber plan `ops`
-/// relabels their terminals (design 047 §2.3, as 030 FP4 keeps `link.<n>`), and the preview lines
+/// relabels their terminals (design 047 §2.3, as 030 FP4 keeps `jumper_bar.<n>`), and the preview lines
 /// (`-X05: part line 1 for 1, 5-6 → 1-2, 6`). A list naming no relabelled position is left as
 /// typed; names no terminal had stay.
 pub fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {

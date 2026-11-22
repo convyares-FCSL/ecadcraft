@@ -16,7 +16,7 @@ fn fixture() -> (H, DeviceId, DeviceId, WireId) {
     let first = h.first_page();
     let lines = h.lines_on(first);
     let c1: DeviceId = id(&h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(), "component");
-    h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
+    h.run("addconnectionpoint", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
     let c2: DeviceId = id(&h.run("place", json!({"at": [100, 0]})).unwrap(), "component");
     let w: WireId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (100.0, 10.0)])})).unwrap(), "conductor");
     (h, c1, c2, w)
@@ -113,14 +113,14 @@ fn replacing_or_unsupported_edits_are_refused() {
 }
 
 #[test]
-fn connecting_to_a_deleted_terminal_fails_cleanly() {
+fn connecting_to_a_deleted_connection_point_fails_cleanly() {
     let (mut h, c1, _c2, w) = fixture();
     let t = h.doc().connection_points_of(c1).next().map(|(t, _)| t).unwrap();
     let page = h.first_page();
     let route = h.route_of(page, w);
     h.run("ecaddelete", json!({"component": c1.hex()})).unwrap();
     let b = before(&mut h);
-    let r = h.run("connect", json!({"route": route.hex(), "end": "A", "terminal": t.hex()}));
+    let r = h.run("connect", json!({"route": route.hex(), "end": "A", "connection_point": t.hex()}));
     assert!(r.is_err());
     unchanged(&mut h, &b, "connect to a deleted terminal");
     assert_eq!(h.doc().routes[&route].ends[0], ecad_model::RouteEnd::Free, "deleting the component let the line's end go explicitly");

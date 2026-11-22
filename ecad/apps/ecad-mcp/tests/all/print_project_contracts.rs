@@ -172,7 +172,7 @@ fn the_title_block_row_follows_a_sheet_change() {
 fn continuation_rows_are_kept_and_an_unrelated_edit_leaves_them_alone() {
     let mut c = writer(WRITER_SEED);
     c.exec("newpage", json!({"generated": "contents", "number": "C10"}));
-    let builds = |c: &mut Client| c.s.with_session(|s, h| h.configure(s, |p| p.outputs().continuation_builds).unwrap()).unwrap();
+    let builds = |c: &mut Client| c.s.with_session(|s, h| h.configure(s, |p| p.reports().continuation_builds).unwrap()).unwrap();
     let start = builds(&mut c);
     // A wire on a drawing page changes no page number or sheet count.
     let first = c.doc().page_order[0].hex();

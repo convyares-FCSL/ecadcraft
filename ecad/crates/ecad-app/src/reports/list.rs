@@ -27,7 +27,7 @@ pub struct Report {
 /// The reports there are today.
 pub const REPORTS: [Report; 5] = [
     Report { name: "Parts list", reads: "Devices, part sets", grouped: "Location or part", exports: "CSV", tab: Some(Tab::Bom) },
-    Report { name: "Terminal plans", reads: "Terminals, cables", grouped: "Strip, then position", exports: "CSV", tab: Some(Tab::Terminals) },
+    Report { name: "Terminal plans", reads: "Terminals, cables", grouped: "Strip, then position", exports: "CSV", tab: Some(Tab::TerminalBlocks) },
     Report { name: "Cable list", reads: "Cables, cores", grouped: "Cable tag", exports: "CSV", tab: Some(Tab::Cables) },
     Report { name: "PLC rack overview", reads: "PLC cards, channels", grouped: "Rack, then slot", exports: crate::reports::report::DASH, tab: None },
     Report { name: "Wire list", reads: "Wires", grouped: "Wire number", exports: "CSV", tab: Some(Tab::Wires) },

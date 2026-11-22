@@ -64,9 +64,9 @@ fn a_points_owner_is_shown_raw_and_readable() {
         "points",
         vec![
             Op::CreateAid { id: a, aid: arrow },
-            Op::AddConnectionPoint { id: ta, terminal: point(a.into()) },
+            Op::AddConnectionPoint { id: ta, connection_point: point(a.into()) },
             Op::CreateDevice { id: d, device: Device::default() },
-            Op::AddConnectionPoint { id: td, terminal: point(d.into()) },
+            Op::AddConnectionPoint { id: td, connection_point: point(d.into()) },
         ],
     )
     .unwrap();
@@ -80,7 +80,7 @@ fn a_points_owner_is_shown_raw_and_readable() {
     let key = rows.last().and_then(|r| r["key"].as_str()).map(str::to_string).expect("the last transaction");
     let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
     let text = readable["ok"]["decoded"].to_string();
-    for want in ["AddTerminal", "owner", "aid", "device", &a.hex(), &d.hex()] {
+    for want in ["AddConnectionPoint", "owner", "aid", "device", &a.hex(), &d.hex()] {
         assert!(text.contains(want), "{want} in the readable record: {text}");
     }
     let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
@@ -109,7 +109,10 @@ fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
         "arrow",
         vec![
             Op::CreateAid { id: a, aid: named("24V") },
-            Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint {
+                id: t,
+                connection_point: ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default() },
+            },
             Op::AddItem { id: i, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 10.0) }) } },
             Op::LinkRepresentation {
                 id: r,

@@ -89,7 +89,7 @@ fn changed(kind: GenKind, k: Kinds) -> bool {
         GenKind::Contents => k.contents,
         GenKind::Revisions => k.revisions,
         // Their models' pages come from `ReportsView`'s outcome.
-        GenKind::BomLocation | GenKind::Terminals | GenKind::Cables | GenKind::PlcRack | GenKind::IoList => false,
+        GenKind::BomLocation | GenKind::TerminalBlocks | GenKind::Cables | GenKind::PlcRack | GenKind::IoList => false,
     }
 }
 

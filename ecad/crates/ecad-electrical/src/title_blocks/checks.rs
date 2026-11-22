@@ -43,7 +43,7 @@ pub fn touches(effect: &Effect<'_>) -> bool {
         | Effect::Item { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
-        | Effect::Terminal { .. }
+        | Effect::ConnectionPoint { .. }
         | Effect::Rep { .. }
         | Effect::Wire { .. }
         | Effect::Route { .. }
@@ -179,9 +179,9 @@ pub fn cut_fields(inp: &FrameInput) -> Vec<usize> {
     usable
         .into_iter()
         .filter(|i| match l.items.get(*i) {
-            Some(BlockItem::Field { at, bind, look, if_empty, .. }) => {
+            Some(BlockItem::Field { at, bind, draw, if_empty, .. }) => {
                 let v = crate::title_blocks::bind::shown(crate::title_blocks::bind::value(inp, bind), if_empty);
-                let (shown, _) = crate::pages::frames::fit(&v, look.size, Some(at.w - 2.0 * crate::title_blocks::INSET_MM));
+                let (shown, _) = crate::pages::frames::fit(&v, draw.size, Some(at.w - 2.0 * crate::title_blocks::INSET_MM));
                 !v.is_empty() && shown.ends_with('…') && !v.ends_with('…')
             }
             _ => false,

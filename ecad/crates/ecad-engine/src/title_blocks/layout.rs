@@ -57,11 +57,11 @@ impl Pen {
     }
 
     /// Text at `at`, aligned, fitted into `room` mm when given. Returns whether it was cut.
-    pub fn text(&mut self, at: (f64, f64), look: TextDraw, value: &str, align: (HAlign, VAlign), aci: Option<u8>, room: Option<f64>) -> bool {
-        if value.is_empty() || !(look.mm.is_finite() && look.mm > 0.0) {
+    pub fn text(&mut self, at: (f64, f64), draw: TextDraw, value: &str, align: (HAlign, VAlign), aci: Option<u8>, room: Option<f64>) -> bool {
+        if value.is_empty() || !(draw.mm.is_finite() && draw.mm > 0.0) {
             return false;
         }
-        let (shown, wf) = ecad_electrical::pages::frames::fit(value, look.mm, room);
+        let (shown, wf) = ecad_electrical::pages::frames::fit(value, draw.mm, room);
         let cut = shown.ends_with('…') && !value.ends_with('…');
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
@@ -69,16 +69,16 @@ impl Pen {
         let kind = EntityKind::Text(Text {
             insert: pt,
             align_pt: if left_base { None } else { Some(pt) },
-            height: look.mm * self.k,
+            height: draw.mm * self.k,
             value: shown,
             rotation: 0.0,
             width_factor: wf,
             oblique: 0.0,
-            style: look.style.into(),
+            style: draw.style.into(),
             halign: align.0,
             valign: align.1,
         });
-        self.out.push(Part { kind, weight: look.weight, aci, layer: LAYER });
+        self.out.push(Part { kind, weight: draw.weight, aci, layer: LAYER });
         cut
     }
 
@@ -104,24 +104,24 @@ pub struct Drawn {
 /// labelled on all four sides, centre marks.
 pub fn border(pen: &mut Pen, input: &FrameInput) {
     let s = input.sheet;
-    let m = input.look.margins;
+    let m = input.draw.margins;
     let grid = Grid::with_layout(s, LengthUnit::Millimetre, m, ecad_model::document::sheet::Corner::TopLeft);
     let (w, h) = (f64::from(s.width), f64::from(s.height));
     let (l, r, b, t) = (m.left, w - m.right, m.bottom, h - m.top);
-    let (border, inner) = (input.look.border, input.look.inner);
+    let (border, inner) = (input.draw.border, input.draw.inner);
     let ml = (HAlign::Middle, VAlign::Middle);
     pen.rect((0.0, 0.0), (w, h), inner, Some(LABEL_ACI));
     pen.rect((l, b), (r, t), border, None);
     let (cw, rh) = (grid.column_width(), grid.row_height());
     // A page type with zones off: no ticks and no labels, whatever the frame says.
-    let (columns, rows) = if input.look.zones { (s.columns, s.rows) } else { (0, 0) };
+    let (columns, rows) = if input.draw.zones { (s.columns, s.rows) } else { (0, 0) };
     for ci in 0..columns {
         let x0 = l + f64::from(ci) * cw;
         if ci > 0 {
             pen.line((x0, t), (x0, t + TICK_MM.min(m.top)), inner, None);
             pen.line((x0, b), (x0, b - TICK_MM.min(m.bottom)), inner, None);
         }
-        if input.look.grid_labels {
+        if input.draw.grid_labels {
             let label = grid.column_label(grid.column_number(ci));
             pen.text((x0 + cw / 2.0, t + m.top / 2.0), input.text.grid, &label, ml, None, None);
             pen.text((x0 + cw / 2.0, b - m.bottom / 2.0), input.text.grid, &label, ml, None, None);
@@ -133,13 +133,13 @@ pub fn border(pen: &mut Pen, input: &FrameInput) {
             pen.line((l, y1), (l - TICK_MM.min(m.left), y1), inner, None);
             pen.line((r, y1), (r + TICK_MM.min(m.right), y1), inner, None);
         }
-        if input.look.grid_labels {
+        if input.draw.grid_labels {
             let label = grid.row_label(grid.row_number(ri));
             pen.text((l - m.left / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
             pen.text((r + m.right / 2.0, y1 - rh / 2.0), input.text.grid, &label, ml, None, None);
         }
     }
-    if input.look.centre_marks {
+    if input.draw.centre_marks {
         // From the frame to just short of the paper edge, at the middle of each side.
         let (cx, cy) = ((l + r) / 2.0, (b + t) / 2.0);
         let reach = |margin: f64| (margin - 1.0).max(0.0);
@@ -153,7 +153,7 @@ pub fn border(pen: &mut Pen, input: &FrameInput) {
 /// Where a block's bottom-left corner sits on the paper (mm): the frame's bottom-left for a
 /// built-in stretched across the frame, else against the frame's bottom-right corner.
 pub fn block_origin(input: &FrameInput, layout: &TitleBlockLayout) -> (f64, f64) {
-    let m: Margins = input.look.margins;
+    let m: Margins = input.draw.margins;
     let right = f64::from(input.sheet.width) - m.right;
     let w = if layout.size.0.is_finite() { layout.size.0 } else { 0.0 };
     (right - w, m.bottom)
@@ -161,9 +161,9 @@ pub fn block_origin(input: &FrameInput, layout: &TitleBlockLayout) -> (f64, f64)
 
 /// The look a block item's text is drawn with: the frame's main style for bold, its value style
 /// otherwise, at the item's size.
-pub fn text_draw(input: &FrameInput, look: &ItemDraw) -> TextDraw {
-    let base = if look.bold { input.text.main } else { input.text.value };
-    TextDraw { mm: look.size, style: base.style, weight: if look.bold { base.weight.or(input.text.bold_weight) } else { None } }
+pub fn text_draw(input: &FrameInput, draw: &ItemDraw) -> TextDraw {
+    let base = if draw.bold { input.text.main } else { input.text.value };
+    TextDraw { mm: draw.size, style: base.style, weight: if draw.bold { base.weight.or(input.text.bold_weight) } else { None } }
 }
 
 fn aci_of(ink: Ink) -> Option<u8> {
@@ -185,25 +185,25 @@ pub fn block(pen: &mut Pen, input: &FrameInput, layout: &TitleBlockLayout, origi
         match item {
             BlockItem::Line { a, b, weight } => {
                 let w = match weight {
-                    LineWeight::Thin => input.look.inner,
-                    LineWeight::Thick => input.look.border,
+                    LineWeight::Thin => input.draw.inner,
+                    LineWeight::Thick => input.draw.border,
                 };
                 pen.line(at(a.0, a.1), at(b.0, b.1), w, None);
             }
-            BlockItem::Text { at: r, text, look } => {
-                let cut = value_text(pen, input, *r, origin, text, look, 0.0);
+            BlockItem::Text { at: r, text, draw } => {
+                let cut = value_text(pen, input, *r, origin, text, draw, 0.0);
                 if cut {
                     drawn.cut.push(i);
                 }
             }
-            BlockItem::Field { at: r, bind, label, look, if_empty } => {
+            BlockItem::Field { at: r, bind, label, draw, if_empty } => {
                 let mut top_gap = 0.0;
                 if let Some(l) = label.as_deref().filter(|l| !l.is_empty()) {
                     pen.text(at(r.x + INSET_MM, r.top() - INSET_MM), input.text.caption, l, tl, Some(LABEL_ACI), Some(r.w - 2.0 * INSET_MM));
                     top_gap = input.text.caption.mm + CAPTION_GAP_MM;
                 }
                 let v = ecad_electrical::title_blocks::bind::shown(ecad_electrical::title_blocks::bind::value(input, bind), if_empty);
-                if value_text(pen, input, *r, origin, &v, look, top_gap) {
+                if value_text(pen, input, *r, origin, &v, draw, top_gap) {
                     drawn.cut.push(i);
                 }
             }
@@ -215,23 +215,23 @@ pub fn block(pen: &mut Pen, input: &FrameInput, layout: &TitleBlockLayout, origi
 }
 
 /// A value or static text in its box below `top_gap` mm, aligned; returns whether it was cut.
-fn value_text(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), value: &str, look: &ItemDraw, top_gap: f64) -> bool {
-    let tl = text_draw(input, look);
+fn value_text(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), value: &str, draw: &ItemDraw, top_gap: f64) -> bool {
+    let tl = text_draw(input, draw);
     let room = r.w - 2.0 * INSET_MM;
     let y = origin.1 + r.y + (r.h - top_gap).max(0.0) / 2.0;
-    let (x, h) = match look.align {
+    let (x, h) = match draw.align {
         Align::Left => (r.x + INSET_MM, HAlign::Left),
         Align::Centre => (r.x + r.w / 2.0, HAlign::Center),
         Align::Right => (r.right() - INSET_MM, HAlign::Right),
     };
-    pen.text((origin.0 + x, y), tl, value, (h, VAlign::Middle), aci_of(look.colour), Some(room))
+    pen.text((origin.0 + x, y), tl, value, (h, VAlign::Middle), aci_of(draw.colour), Some(room))
 }
 
 /// A revision table (design 055 §3): columns from the project's revision columns, a header row,
 /// `rows` rows of the newest issued revisions.
 fn rev_table(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), rows: u8, header: bool, newest: Newest) {
     let (ox, oy) = (origin.0 + r.x, origin.1 + r.y);
-    let thin = input.look.inner;
+    let thin = input.draw.inner;
     let n = usize::from(rows) + usize::from(header);
     if n == 0 {
         return;
@@ -259,8 +259,8 @@ fn rev_table(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), row
             pen.text((ox + x + INSET_MM, oy + r.h - INSET_MM), input.text.caption, &c.header, tl, Some(LABEL_ACI), Some(w - 2.0 * INSET_MM));
         }
     }
-    let mut look = input.text.value;
-    look.mm = look.mm.min(rh * ROW_FILL);
+    let mut draw = input.text.value;
+    draw.mm = draw.mm.min(rh * ROW_FILL);
     let shown = input.revisions.len().min(usize::from(rows));
     for (k, rev) in input.revisions.iter().take(shown).enumerate() {
         // Row index from the top among the data rows.
@@ -271,7 +271,7 @@ fn rev_table(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), row
         let y = oy + r.h - rh * (row + usize::from(header)) as f64 - rh / 2.0;
         for (i, value) in rev.iter().enumerate() {
             let (x0, x1) = (xs.get(i).copied().unwrap_or_default(), xs.get(i + 1).copied().unwrap_or_default());
-            pen.text((ox + x0 + INSET_MM, y), look, value, (HAlign::Left, VAlign::Middle), None, Some(x1 - x0 - 2.0 * INSET_MM));
+            pen.text((ox + x0 + INSET_MM, y), draw, value, (HAlign::Left, VAlign::Middle), None, Some(x1 - x0 - 2.0 * INSET_MM));
         }
     }
 }
@@ -292,6 +292,6 @@ fn logo(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), prims: &
     let to = Pt::new(origin.0 + pen.dx + r.x + (r.w - w * s) / 2.0, origin.1 + r.y + (r.h - h * s) / 2.0);
     for p in prims {
         let q = ecad_model::geometry::geom::place(p, lo, s, to, pen.k);
-        pen.prim(&q, input.look.inner);
+        pen.prim(&q, input.draw.inner);
     }
 }

@@ -45,7 +45,7 @@ pub static FILES: &[(&str, &str)] = &[
     ("wires.toml", include_str!("../../defaults/wires.toml")),
     ("print.toml", include_str!("../../defaults/print.toml")),
     ("symbols.toml", include_str!("../../defaults/symbols.toml")),
-    ("terminals.toml", include_str!("../../defaults/terminals.toml")),
+    ("terminal_blocks.toml", include_str!("../../defaults/terminal_blocks.toml")),
     ("connectors.toml", include_str!("../../defaults/connectors.toml")),
     ("strip_pages.toml", include_str!("../../defaults/strip_pages.toml")),
     ("bom.toml", include_str!("../../defaults/bom.toml")),

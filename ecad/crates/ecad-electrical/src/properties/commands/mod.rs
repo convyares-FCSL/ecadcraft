@@ -108,8 +108,8 @@ pub static PROP_RULES: &[PropRule] = &[
     },
     PropRule {
         what: "strip terminal defaults (brief 036)",
-        claims: |doc, o, k| k.starts_with("terminal.") && strip(doc, o).is_some(),
-        build: Build::Value(terminal_default_value),
+        claims: |doc, o, k| k.starts_with("terminal_block.") && strip(doc, o).is_some(),
+        build: Build::Value(connection_point_default_value),
     },
     PropRule {
         what: "level label (brief 036)",
@@ -201,8 +201,8 @@ fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
     }
 }
 
-fn terminal_default_value(_: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    match crate::defaults::terminals::setprop_value(key, value) {
+fn connection_point_default_value(_: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+    match crate::defaults::terminal_blocks::setprop_value(key, value) {
         Some(r) => r,
         None => Ok(value.map(str::to_string)),
     }
@@ -260,7 +260,7 @@ pub fn reserved(key: &str) -> Result<(), CmdError> {
 }
 
 /// The key `setprop` writes on component `c` for a typed `key`: on a PLC card with channels,
-/// `channels` is its channel count (`plc.channels`, pack re-run bug 7), as `terminals` is a strip's
+/// `channels` is its channel count (`plc.channels`, pack re-run bug 7), as `connection_points` is a strip's
 /// offer; on anything else the key as typed.
 pub fn component_key(doc: &Document, c: DeviceId, key: &str) -> String {
     if key.trim() == "channels" && crate::plc::card_type_of(doc, c).is_some_and(|t| t.has_channels()) {

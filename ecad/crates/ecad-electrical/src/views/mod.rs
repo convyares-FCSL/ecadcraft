@@ -33,7 +33,7 @@ pub use crate::pages::generated_view::{GeneratedScope, GeneratedView};
 pub use crate::pages::tree_view::{TreeFeed, TreeScope};
 pub use crate::pages::view::{PagesScope, PagesView, points_pages};
 pub use crate::properties::view::{PropsFeed, PropsScope};
-pub use crate::references::view::{RefsScope, RefsView};
+pub use crate::references::view::{ReferencesScope, ReferencesView};
 pub use crate::reports::view::{ReportsScope, ReportsView};
 pub use changes::Changes;
 
@@ -98,12 +98,12 @@ impl<V> Lazy<V> {
 /// Each kept view's scope, noted on the document before the ops ([`Views::begin`]).
 #[derive(Debug, Default)]
 pub struct Pending {
-    refs: RefsScope,
+    references: ReferencesScope,
     connectors: ConnectorsScope,
     pages: PagesScope,
     frame: FrameScope,
     generated: GeneratedScope,
-    outputs: ReportsScope,
+    reports: ReportsScope,
     checks: ChecksScope,
     tree: TreeScope,
     devices: DevicesScope,
@@ -115,19 +115,19 @@ pub struct Pending {
 #[derive(Debug)]
 pub struct Detached {
     inputs: EngineInputs,
-    outputs: ReportsView,
+    reports: ReportsView,
 }
 
 impl Detached {
     /// The report models of that state.
-    pub fn outputs(&self) -> &crate::reports::kept::ReportModels {
-        self.outputs.model()
+    pub fn reports(&self) -> &crate::reports::kept::ReportModels {
+        self.reports.model()
     }
 
     /// Every check of that state `doc`, worked out from scratch with tolerance `tol`, the report
     /// models' rows included, in book order.
     pub fn checks(&self, doc: &Document, tol: f64) -> Vec<crate::checks::Check> {
-        crate::checks::all_measured(doc, tol, self.outputs(), &*self.inputs.metrics)
+        crate::checks::all_measured(doc, tol, self.reports(), &*self.inputs.metrics)
     }
 }
 
@@ -136,10 +136,10 @@ impl Detached {
 pub struct Views {
     inputs: EngineInputs,
     // Stage 1: indexes that depend only on the document.
-    refs: RefsView,
+    references: ReferencesView,
     connectors: ConnectorsView,
     // Stage 2: the report models, built on first show.
-    outputs: Lazy<ReportsView>,
+    reports: Lazy<ReportsView>,
     // Stage 3: pages.
     pages: PagesView,
     frame: FrameView,
@@ -157,9 +157,9 @@ impl Views {
     pub fn new(inputs: EngineInputs) -> Self {
         Views {
             inputs,
-            refs: RefsView::default(),
+            references: ReferencesView::default(),
             connectors: ConnectorsView::default(),
-            outputs: Lazy::default(),
+            reports: Lazy::default(),
             pages: PagesView::default(),
             frame: FrameView::default(),
             generated: GeneratedView::default(),
@@ -186,13 +186,13 @@ impl Views {
     }
 
     /// The kept reference index (design 025 §3.3).
-    pub fn refs(&self) -> &crate::references::devices::RefIndex {
-        self.refs.index()
+    pub fn references(&self) -> &crate::references::devices::RefIndex {
+        self.references.index()
     }
 
     /// The references view, to put it out of step on purpose (tests of verify mode only).
-    pub fn references_view_mut(&mut self) -> &mut RefsView {
-        &mut self.refs
+    pub fn references_view_mut(&mut self) -> &mut ReferencesView {
+        &mut self.references
     }
 
     /// The kept connector index (design 044 §11.1).
@@ -201,25 +201,25 @@ impl Views {
     }
 
     /// The report models, built on their first show (design 024 §8.1) and kept after that.
-    pub fn outputs(&mut self, doc: &Document) -> &crate::reports::kept::ReportModels {
+    pub fn reports(&mut self, doc: &Document) -> &crate::reports::kept::ReportModels {
         let metrics = &*self.inputs.metrics;
-        self.outputs.get_or_build(|| ReportsView::build(doc, metrics)).model()
+        self.reports.get_or_build(|| ReportsView::build(doc, metrics)).model()
     }
 
     /// The report models, if shown once.
     pub fn kept_reports(&self) -> Option<&crate::reports::kept::ReportModels> {
-        self.outputs.get().map(ReportsView::model)
+        self.reports.get().map(ReportsView::model)
     }
 
     /// The report models' view, if shown once, to put it out of step on purpose (tests of verify
     /// mode only).
     pub fn reports_view_mut(&mut self) -> Option<&mut ReportsView> {
-        self.outputs.get_mut()
+        self.reports.get_mut()
     }
 
     /// Forget the report models: they are built again on their next show.
     pub fn forget_reports(&mut self) {
-        self.outputs.reset();
+        self.reports.reset();
     }
 
     /// The Checks list, built on its first show with tolerance `tol` (design 022 §8) and kept
@@ -249,14 +249,14 @@ impl Views {
         let effects = Effects::of(ops);
         let cx = NoteCx { doc: before, phase: Phase::Before, effects: &effects };
         let mut pending = Pending::default();
-        note_view::<_, Inputs<'_>>(&self.refs, &cx, &mut pending.refs);
+        note_view::<_, Inputs<'_>>(&self.references, &cx, &mut pending.references);
         // The end of the references' Before phase: what they show before the ops.
-        self.refs.take(before, &mut pending.refs, &*self.inputs.metrics);
+        self.references.take(before, &mut pending.references, &*self.inputs.metrics);
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut pending.connectors);
-        if let Some(outputs) = self.outputs.get() {
-            note_view::<_, Inputs<'_>>(outputs, &cx, &mut pending.outputs);
+        if let Some(reports) = self.reports.get() {
+            note_view::<_, Inputs<'_>>(reports, &cx, &mut pending.reports);
             // The end of the report models' Before phase.
-            outputs.close_before(before, &mut pending.outputs);
+            reports.close_before(before, &mut pending.reports);
         }
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pending.pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut pending.frame);
@@ -274,14 +274,24 @@ impl Views {
     /// After phase on the committed transaction's ops, then update every kept view, stage by
     /// stage, and merge their outcomes.
     pub fn finish(&mut self, after: &Document, tx_ops: &[Op], pending: Pending) -> Changes {
-        let Pending { mut refs, mut connectors, mut outputs, mut pages, mut frame, mut generated, mut checks, mut tree, mut devices, mut props } =
-            pending;
+        let Pending {
+            mut references,
+            mut connectors,
+            mut reports,
+            mut pages,
+            mut frame,
+            mut generated,
+            mut checks,
+            mut tree,
+            mut devices,
+            mut props,
+        } = pending;
         let effects = Effects::of(tx_ops);
         let cx = NoteCx { doc: after, phase: Phase::After, effects: &effects };
-        note_view::<_, Inputs<'_>>(&self.refs, &cx, &mut refs);
+        note_view::<_, Inputs<'_>>(&self.references, &cx, &mut references);
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut connectors);
-        if let Some(view) = self.outputs.get() {
-            note_view::<_, Inputs<'_>>(view, &cx, &mut outputs);
+        if let Some(view) = self.reports.get() {
+            note_view::<_, Inputs<'_>>(view, &cx, &mut reports);
         }
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut frame);
@@ -295,11 +305,11 @@ impl Views {
         let inputs = Inputs { engine: &self.inputs, frame_page: self.frame.shown().map(|(p, _)| p) };
         let mut changes = Changes::default();
         // Stage 1: the indexes.
-        merge(&mut changes, self.refs.update(after, refs, &inputs));
+        merge(&mut changes, self.references.update(after, references, &inputs));
         merge(&mut changes, self.connectors.update(after, connectors, &inputs));
         // Stage 2: the report models.
-        if let Some(view) = self.outputs.get_mut() {
-            merge(&mut changes, view.update(after, outputs, &inputs));
+        if let Some(view) = self.reports.get_mut() {
+            merge(&mut changes, view.update(after, reports, &inputs));
         }
         // Stage 3: pages.
         merge(&mut changes, self.pages.update(after, pages, &inputs));
@@ -335,14 +345,14 @@ impl Views {
         if generated.is_some() {
             self.generated.forget();
         }
-        self.refs.check(doc).into_iter().chain(generated).collect()
+        self.references.check(doc).into_iter().chain(generated).collect()
     }
 
     /// Open, reload, branch switch: rebuild every kept view from `doc`.
     pub fn rebuild(&mut self, doc: &Document) {
-        self.refs = RefsView::build(doc);
+        self.references = ReferencesView::build(doc);
         self.connectors = ConnectorsView::build(doc);
-        self.outputs.reset();
+        self.reports.reset();
         self.checks.reset();
         self.frame.forget();
         self.generated.forget();
@@ -351,7 +361,7 @@ impl Views {
     /// The views of another document state (an issued or finalised revision), built with the
     /// same engine inputs.
     pub fn detached(&self, doc: &Document) -> Detached {
-        Detached { inputs: self.inputs.clone(), outputs: ReportsView::build(doc, &*self.inputs.metrics) }
+        Detached { inputs: self.inputs.clone(), reports: ReportsView::build(doc, &*self.inputs.metrics) }
     }
 
     /// The report models of another state `doc`, worked out from scratch, when it has a page drawn

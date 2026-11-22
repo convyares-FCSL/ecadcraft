@@ -75,7 +75,7 @@ impl Content {
             name: self.name.clone(),
             origin: None,
             graphics: self.graphics.clone(),
-            terminals: self.points.clone(),
+            connection_points: self.points.clone(),
             bridges: self.bridges.clone(),
             texts: self.slots.clone(),
             defaults: self.defaults.clone(),
@@ -91,7 +91,7 @@ impl Content {
         Content {
             name: d.name.clone(),
             graphics: d.graphics.clone(),
-            points: d.terminals.clone(),
+            points: d.connection_points.clone(),
             slots: d.texts.clone(),
             defaults: d.defaults.clone(),
             bridges: d.bridges.clone(),
@@ -387,7 +387,7 @@ fn shown_connection_point(doc: &Document, c: DeviceId, r: &Representation, old: 
     if r.connection_points.is_empty() {
         return doc.connection_points_of(c).find(|(_, t)| t.key.as_ref() == Some(key)).map(|(t, _)| t);
     }
-    let at = old.terminals.iter().find(|td| td.key == *key)?.at;
+    let at = old.connection_points.iter().find(|td| td.key == *key)?.at;
     r.connection_points.iter().find(|(_, p)| p.near(at, 1e-9)).map(|(t, _)| *t)
 }
 
@@ -420,8 +420,8 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
     };
     let mut changes = Vec::new();
     let mut clash = None;
-    let new_keys: BTreeMap<&PointKey, &ConnectionPointDef> = new.terminals.iter().map(|t| (&t.key, t)).collect();
-    let old_keys: BTreeMap<&PointKey, &ConnectionPointDef> = old.terminals.iter().map(|t| (&t.key, t)).collect();
+    let new_keys: BTreeMap<&PointKey, &ConnectionPointDef> = new.connection_points.iter().map(|t| (&t.key, t)).collect();
+    let old_keys: BTreeMap<&PointKey, &ConnectionPointDef> = old.connection_points.iter().map(|t| (&t.key, t)).collect();
     let mut labels_after: BTreeMap<String, usize> = BTreeMap::new();
     for (_, t) in doc.connection_points_of(c) {
         if let Some(l) = &t.label {
@@ -465,7 +465,7 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
                     let (a, b) = (td.label.clone().unwrap_or_else(|| td.key.to_string()), nd.label.clone().unwrap_or_else(|| nd.key.to_string()));
                     changes.push(format!("label {a} → {b}"));
                     // Rule 3: a relabel that makes two of the device's points share a label.
-                    let term = t.and_then(|t| doc.terminals.get(&t));
+                    let term = t.and_then(|t| doc.connection_points.get(&t));
                     if term.is_some_and(|x| x.label == td.label)
                         && let Some(nl) = &nd.label
                     {
@@ -542,21 +542,21 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
             ops.push(Op::SetDeviceDefinition { id: c, before: comp.definition, after: Some(new_id) });
             ops.extend(crate::devices::retype(c, comp, new_id, &new.device_type));
         }
-        let new_keys: BTreeMap<&PointKey, &ConnectionPointDef> = new.terminals.iter().map(|t| (&t.key, t)).collect();
+        let new_keys: BTreeMap<&PointKey, &ConnectionPointDef> = new.connection_points.iter().map(|t| (&t.key, t)).collect();
         let mut cps = r.connection_points.clone();
-        for td in &old.terminals {
+        for td in &old.connection_points {
             let Some(t) = shown_connection_point(doc, c, r, old, &td.key) else { continue };
-            let term = doc.terminals.get(&t).ok_or(CmdError::refused("A connection point is gone."))?;
+            let term = doc.connection_points.get(&t).ok_or(CmdError::refused("A connection point is gone."))?;
             match new_keys.get(&td.key) {
                 None => {
                     // Rows with a wired removal clash, so this one is unwired.
-                    ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
+                    ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
                     cps.remove(&t);
                 }
                 Some(nd) => {
                     if nd.label != td.label && term.label == td.label && r.connection_points.is_empty() {
-                        ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
-                        ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { label: nd.label.clone(), ..term.clone() } });
+                        ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
+                        ops.push(Op::AddConnectionPoint { id: t, connection_point: ConnectionPoint { label: nd.label.clone(), ..term.clone() } });
                     }
                     if !nd.at.near(td.at, TOL) {
                         if cps.contains_key(&t) {
@@ -568,12 +568,12 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
                 }
             }
         }
-        for nd in new.terminals.iter().filter(|nd| !old.terminals.iter().any(|td| td.key == nd.key)) {
+        for nd in new.connection_points.iter().filter(|nd| !old.connection_points.iter().any(|td| td.key == nd.key)) {
             let t: ConnectionPointId = ids.fresh();
             let key = if r.connection_points.is_empty() { nd.key.clone() } else { nd.label.clone().map_or_else(|| nd.key.clone(), PointKey::Def) };
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                terminal: ConnectionPoint { owner: c.into(), label: nd.label.clone(), key: Some(key), accepts: nd.accepts },
+                connection_point: ConnectionPoint { owner: c.into(), label: nd.label.clone(), key: Some(key), accepts: nd.accepts },
             });
             if !r.connection_points.is_empty() {
                 cps.insert(t, nd.at);
@@ -1039,7 +1039,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     let mut rekey: Vec<(ConnectionPointId, PointKey)> = Vec::new();
     let mut used = BTreeSet::new();
     for (n, (t, at)) in rep.connection_points.iter().enumerate() {
-        let term = doc.terminals.get(t).ok_or(CmdError::refused("A connection point is gone."))?;
+        let term = doc.connection_points.get(t).ok_or(CmdError::refused("A connection point is gone."))?;
         let mut key = term.key.clone().or_else(|| term.label.clone().map(PointKey::Def)).unwrap_or_else(|| PointKey::Def((n + 1).to_string()));
         if !used.insert(key.clone()) {
             key = PointKey::Def(format!("{}", n + 1));
@@ -1096,9 +1096,9 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     });
     ops.push(Op::SetDeviceDefinition { id: c, before: comp.definition, after: Some(id) });
     for (t, key) in rekey {
-        if let Some(term) = doc.terminals.get(&t) {
-            ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
-            ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { key: Some(key), ..term.clone() } });
+        if let Some(term) = doc.connection_points.get(&t) {
+            ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
+            ops.push(Op::AddConnectionPoint { id: t, connection_point: ConnectionPoint { key: Some(key), ..term.clone() } });
         }
     }
     Ok(Promoted { plan: SymbolPlan { ops, label: format!("Make symbol {}", content.name), id, updated: 0, left: 0 }, representation: new_rep })
@@ -1140,7 +1140,7 @@ pub fn plan_place(
             // Unlabelled points count by their key.
             let have: BTreeSet<String> = doc.connection_points_of(c).map(|(t, _)| crate::devices::label_of(doc, t)).collect();
             let mut cps = BTreeMap::new();
-            for td in &def.terminals {
+            for td in &def.connection_points {
                 let label = td.label.clone().unwrap_or_else(|| td.key.to_string());
                 if have.contains(&label) {
                     return Err(CmdError::refused(format!("{} already has a connection point {label}.", crate::devices::tag_words(doc, c))));
@@ -1149,7 +1149,7 @@ pub fn plan_place(
                 // A point drawn without a label stays unlabelled: it prints no label (bug 1).
                 ops.push(Op::AddConnectionPoint {
                     id: t,
-                    terminal: ConnectionPoint {
+                    connection_point: ConnectionPoint {
                         owner: c.into(),
                         label: td.label.clone(),
                         key: Some(td.label.clone().map_or_else(|| td.key.clone(), PointKey::Def)),
@@ -1198,11 +1198,11 @@ pub fn plan_place(
                     ..Device::default()
                 },
             });
-            for td in &def.terminals {
+            for td in &def.connection_points {
                 let t: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: t,
-                    terminal: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    connection_point: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
             }
             ops.push(Op::AddItem { id: item, item: instance });

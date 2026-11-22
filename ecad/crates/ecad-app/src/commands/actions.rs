@@ -63,7 +63,7 @@ pub enum ToolGroup {
     Text,
     /// Place a symbol or a connector.
     Device,
-    Terminal,
+    TerminalBlock,
     Plc,
     /// Wire, bridge and continuation.
     Wire,
@@ -78,7 +78,7 @@ impl ToolGroup {
         ToolGroup::Draw,
         ToolGroup::Text,
         ToolGroup::Device,
-        ToolGroup::Terminal,
+        ToolGroup::TerminalBlock,
         ToolGroup::Plc,
         ToolGroup::Wire,
         ToolGroup::Cable,
@@ -95,7 +95,7 @@ impl ToolGroup {
             ToolGroup::Text => Some('T'),
             ToolGroup::Wire => Some('W'),
             ToolGroup::Cable => Some('C'),
-            ToolGroup::Device | ToolGroup::Terminal | ToolGroup::Plc | ToolGroup::Location => None,
+            ToolGroup::Device | ToolGroup::TerminalBlock | ToolGroup::Plc | ToolGroup::Location => None,
         }
     }
 
@@ -106,7 +106,7 @@ impl ToolGroup {
             ToolGroup::Draw => "Draw",
             ToolGroup::Text => "Text",
             ToolGroup::Device => "Device",
-            ToolGroup::Terminal => "Terminal",
+            ToolGroup::TerminalBlock => "Terminal",
             ToolGroup::Plc => "PLC",
             ToolGroup::Wire => "Wire",
             ToolGroup::Cable => "Cable",
@@ -121,7 +121,7 @@ impl ToolGroup {
             ToolGroup::Draw => Icon::Pencil,
             ToolGroup::Text => Icon::Text,
             ToolGroup::Device => Icon::Pin,
-            ToolGroup::Terminal => Icon::TerminalPin,
+            ToolGroup::TerminalBlock => Icon::TerminalBlockPin,
             ToolGroup::Plc => Icon::Plc,
             ToolGroup::Wire => Icon::WireBend,
             ToolGroup::Cable => Icon::CableBundle,
@@ -137,7 +137,7 @@ impl ToolGroup {
     /// The note at the foot of its flyout (UI rev 3, boards 1.09 and 1.10), if it has one.
     pub const fn note(self) -> Option<&'static str> {
         match self {
-            ToolGroup::Terminal => Some("Full strip view, levels and parts"),
+            ToolGroup::TerminalBlock => Some("Full strip view, levels and parts"),
             ToolGroup::Location => Some("A box gives everything inside it its location or function. Properties then reads \"from box\"."),
             ToolGroup::Plc => Some("Racks, cards and their channels"),
             ToolGroup::Select | ToolGroup::Draw | ToolGroup::Text | ToolGroup::Device | ToolGroup::Wire | ToolGroup::Cable => None,
@@ -148,7 +148,7 @@ impl ToolGroup {
     /// not one of [`ToolGroup::tools`].
     pub fn link(self) -> Option<&'static Action> {
         match self {
-            ToolGroup::Terminal => find("terminal.manager"),
+            ToolGroup::TerminalBlock => find("terminal_block.manager"),
             _ => None,
         }
     }
@@ -515,23 +515,32 @@ pub const ACTIONS: &[Action] = &[
     },
     tool("wire.tool", "wire", "Wire", Icon::Wire, ToolGroup::Wire, 0, &["draw wire", "conductor"]),
     tool("place.symbol", "place", "Symbol", Icon::Place, ToolGroup::Device, 0, &["place symbol", "device", "coil", "contact"]),
-    tool("place.terminal", "terminals", "Terminal", Icon::TerminalPin, ToolGroup::Terminal, 0, &["place terminals", "strip"]),
+    tool("place.terminal_block", "terminalblocks", "Terminal", Icon::TerminalBlockPin, ToolGroup::TerminalBlock, 0, &["place terminals", "strip"]),
     // The same tool: a line across wires puts one terminal on each wire it crosses.
     tool(
-        "place.terminals",
-        "terminals",
+        "place.terminal_blocks",
+        "terminalblocks",
         "Terminals across wires",
-        Icon::Terminal,
-        ToolGroup::Terminal,
+        Icon::TerminalBlock,
+        ToolGroup::TerminalBlock,
         1,
         &["terminals", "across", "row of terminals"],
     ),
-    tool("terminal.link", "bridge", "Draw a link (bridge)", Icon::Connect, ToolGroup::Terminal, 2, &["bridge", "link", "terminal"]),
-    coming_tool("terminal.swap", "Swap top and bottom", Icon::Mirror, ToolGroup::Terminal, 3),
-    coming_tool("terminal.reorder", "Reorder the strip…", Icon::Move, ToolGroup::Terminal, 4),
-    group_app("terminal.renumber", "renumber", App::Renumber, "Renumber…", Icon::Number, Some((ToolGroup::Terminal, 5)), &["renumber terminals"], ok),
+    tool("terminal_block.jumper_bar", "bridge", "Draw a link (bridge)", Icon::Connect, ToolGroup::TerminalBlock, 2, &["bridge", "link", "terminal"]),
+    coming_tool("terminal_block.swap", "Swap top and bottom", Icon::Mirror, ToolGroup::TerminalBlock, 3),
+    coming_tool("terminal_block.reorder", "Reorder the strip…", Icon::Move, ToolGroup::TerminalBlock, 4),
+    group_app(
+        "terminal_block.renumber",
+        "renumber",
+        App::Renumber,
+        "Renumber…",
+        Icon::Number,
+        Some((ToolGroup::TerminalBlock, 5)),
+        &["renumber terminals"],
+        ok,
+    ),
     // The Terminal flyout's foot (not one of its tools): the Terminal manager, Project ▸ Terminals.
-    group_app("terminal.manager", "", App::TerminalStripRow, "Terminal manager", Icon::ShowRow, None, &["terminal plan", "strips"], ok),
+    group_app("terminal_block.manager", "", App::TerminalStripRow, "Terminal manager", Icon::ShowRow, None, &["terminal plan", "strips"], ok),
     // ---- PLC: the rack overview, then the card commands through their templates, as Ctrl+K
     // ran them before (brief 045).
     group_app("plc.racks", "", App::PlcRacks, "Rack overview", Icon::Plc, Some((ToolGroup::Plc, 0)), &["plc", "rack", "racks"], ok),
@@ -661,7 +670,7 @@ pub const ACTIONS: &[Action] = &[
         label: "Delete",
         icon: Icon::Delete,
         group: None,
-        wheel: &[(K::Mixed, S::Bottom), (K::Text, S::Bottom), (K::Terminal, S::Bottom), (K::Aid, S::Bottom)],
+        wheel: &[(K::Mixed, S::Bottom), (K::Text, S::Bottom), (K::TerminalBlock, S::Bottom), (K::Aid, S::Bottom)],
         key: Some(Key::Delete),
         search: &["erase", "remove"],
         searchable: true,
@@ -738,11 +747,11 @@ pub const ACTIONS: &[Action] = &[
     slot("wireend.connect", "connect", Params::StartAt, "Connect", Icon::Connect, &[(K::WireEnd, S::Top)], write),
     slot("wireend.disconnect", "disconnect", Params::Id(IdOf::End), "Disconnect", Icon::Disconnect, &[(K::WireEnd, S::TopRight)], write),
     // ---- Terminal.
-    slot("terminal.label", "termlabel", Params::App(App::Template), "Edit label", Icon::Edit, &[(K::Terminal, S::Top)], write),
-    slot("terminal.jumper", "jumper", Params::StartAt, "Jumper", Icon::Connect, &[(K::Terminal, S::TopRight)], write),
-    slot("terminal.plan", "stripplan", Params::App(App::TerminalStripRow), "Go to strip plan", Icon::GoTo, &[(K::Terminal, S::Right)], ok),
-    slot("terminal.row", "", Params::App(App::TerminalStripRow), "Show row", Icon::ShowRow, &[(K::Terminal, S::BottomRight)], ok),
-    slot("terminal.accessory", "accessory", Params::StartAt, "Accessory", Icon::Terminal, &[(K::Terminal, S::BottomLeft)], write),
+    slot("terminal_block.label", "termlabel", Params::App(App::Template), "Edit label", Icon::Edit, &[(K::TerminalBlock, S::Top)], write),
+    slot("terminal_block.jumper", "jumper", Params::StartAt, "Jumper", Icon::Connect, &[(K::TerminalBlock, S::TopRight)], write),
+    slot("terminal_block.plan", "stripplan", Params::App(App::TerminalStripRow), "Go to strip plan", Icon::GoTo, &[(K::TerminalBlock, S::Right)], ok),
+    slot("terminal_block.row", "", Params::App(App::TerminalStripRow), "Show row", Icon::ShowRow, &[(K::TerminalBlock, S::BottomRight)], ok),
+    slot("terminal_block.accessory", "accessory", Params::StartAt, "Accessory", Icon::TerminalBlock, &[(K::TerminalBlock, S::BottomLeft)], write),
     // ---- Cable.
     slot("cable.view", "cableview", Params::Id(IdOf::Cable), "Cable view", Icon::Eye, &[(K::Cable, S::Top)], ok),
     slot("cable.continuehere", "cablecontinue", Params::Start, "Continue", Icon::GoTo, &[(K::Cable, S::TopRight)], write),
@@ -846,7 +855,7 @@ pub const ACTIONS: &[Action] = &[
         enabled: ok,
     },
     search_only("component.convert", "convertcomponent", Params::Selected, "Make component", Icon::Devices, &["convert to component"]),
-    search_only("component.addpoint", "addterminal", Params::Start, "Add connection point", Icon::Connect, &["terminal", "pin"]),
+    search_only("component.addpoint", "addconnectionpoint", Params::Start, "Add connection point", Icon::Connect, &["terminal", "pin"]),
     search_only("device.mirrortable", "mirrormove", Params::Start, "Move contact table", Icon::Move, &["mirror table", "cross reference"]),
     search_only("device.deleteany", "ecaddelete", Params::App(App::Template), "Delete electrical object", Icon::Delete, &["remove"]),
     search_only("object.setprop", "setprop", Params::App(App::Template), "Set property", Icon::Properties, &["tag", "description"]),
@@ -857,9 +866,16 @@ pub const ACTIONS: &[Action] = &[
     // Brief 044 (design 044 §9.3): the terminal wheel holds strip terminals only (its jumper, plan
     // and accessory slots do not apply to a connector pin), so Rename pin is a Ctrl+K action.
     search_only("connector.renamepin", "pinlabel", Params::App(App::Template), "Rename pin", Icon::Edit, &["pinlabel", "connector pin", "pin name"]),
-    search_only("terminal.jumpertool", "jumper", Params::Start, "Jumper", Icon::Connect, &["terminal", "link"]),
-    search_only("terminal.accessorytool", "accessory", Params::Start, "Strip accessory", Icon::Terminal, &["endplate", "partition", "marker"]),
-    search_only("terminal.toposition", "toposition", Params::Start, "Make strip position", Icon::Terminal, &["fuse terminal"]),
+    search_only("terminal_block.jumpertool", "jumper", Params::Start, "Jumper", Icon::Connect, &["terminal", "link"]),
+    search_only(
+        "terminal_block.accessorytool",
+        "accessory",
+        Params::Start,
+        "Strip accessory",
+        Icon::TerminalBlock,
+        &["endplate", "partition", "marker"],
+    ),
+    search_only("terminal_block.toposition", "toposition", Params::Start, "Make strip position", Icon::TerminalBlock, &["fuse terminal"]),
     search_only("cable.viewtool", "cableview", Params::Start, "Cable view", Icon::Eye, &["fan", "traditional"]),
     search_only("cable.corestool", "cablecore", Params::Start, "Core label", Icon::Number, &["core", "colour"]),
     search_only("cable.jointool", "cablefan", Params::Start, "Cable join", Icon::Junction, &["fan", "trunk"]),
@@ -945,7 +961,7 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("category", "the wire inspector's Category row (brief 050b)"),
     ("canvassheet", "the person's paper or dark sheet choice (U4a), display only"),
     ("agentaccess", "Settings ▸ Agent access (U4d)"),
-    ("cablerefs", "a read for agents and tests; the cable wheel's go-to uses the references"),
+    ("cablereferences", "a read for agents and tests; the cable wheel's go-to uses the references"),
     ("devices", "a read; the Devices tab and Lists show it"),
     ("tagsettings", "Project settings"),
     ("nets", "a read for agents"),
@@ -988,7 +1004,7 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("textstyle", "Settings ▸ Standards (U4c)"),
     ("pagetexts", "a read for agents"),
     ("defaults", "Settings ▸ Standards (U4c)"),
-    ("xrefs", "a read for agents"),
+    ("references", "a read for agents"),
     ("plcracks", "a read; Lists ▸ PLC draws its tiles"),
     ("iolist", "a read; Lists ▸ PLC shows it"),
     // Brief 056 (design 056 §4, §6): Project ▸ PLC's card header, Compare and Import tags.

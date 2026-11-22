@@ -312,9 +312,9 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
         row("location.socket", "Location (socket)");
         row("location.plug", "Location (plug)");
     } else if crate::terminal_strips::strip_of(doc, c).is_none()
-        && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Terminal)
+        && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::ConnectionPoint)
     {
-        row("location.terminal", "Terminals in");
+        row("location.terminal_block", "Terminals in");
     }
 }
 
@@ -437,7 +437,7 @@ fn strip_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>, buttons: &mut Ve
         }
         None => format!("{drawn} drawn"),
     };
-    rows.push(Row::ro("terminalcounts", "Terminals", value));
+    rows.push(Row::ro("terminal_block_counts", "Terminals", value));
     rows.push(Row::rw(terminal_strips::PE_PART_KEY, "PE part number", get(terminal_strips::PE_PART_KEY)));
     rows.push(Row::rw(terminal_strips::PE_MAKER_KEY, "PE maker", get(terminal_strips::PE_MAKER_KEY)));
     // Brief 030 (design 030 §2.5): what is placed, and the parts (the project's value shown
@@ -532,11 +532,11 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     }
     top.push(potential);
     // Brief 050b: what the wire has none of its own comes from its category.
-    let look = crate::styles::wire::wire_draw(doc, w);
+    let draw = crate::styles::wire::wire_draw(doc, w);
     let cat_value =
         |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
-    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
-    let (cs_default, colour_default) = (cat_value(&look.cross_section), cat_value(&look.colour_text()));
+    let cat_name = draw.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
+    let (cs_default, colour_default) = (cat_value(&draw.cross_section), cat_value(&draw.colour_text()));
     let wire = doc.wires.get(&w);
     let own_size = wire.and_then(|x| x.size).map(|s| s.to_string());
     let own_colours = wire.and_then(|x| x.colours.as_ref()).map(|c| c.shown(doc.settings.wiring.colour_style()));
@@ -578,8 +578,8 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
         pages.join(" ")
     );
     let mut names: BTreeMap<String, usize> = BTreeMap::new();
-    for t in &net.terminals {
-        if let Some(a) = doc.terminals.get(t).and_then(|x| x.owner.aid())
+    for t in &net.connection_points {
+        if let Some(a) = doc.connection_points.get(t).and_then(|x| x.owner.aid())
             && crate::continuations::continuation(doc, a).is_some()
         {
             *names.entry(crate::continuations::display_name(doc, a)).or_default() += 1;
@@ -677,9 +677,9 @@ pub fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Sec
             buttons: Vec::new(),
         };
     };
-    let refs = ecad_model::connectivity::derive::cable_references_of(doc, &BTreeSet::from([k]));
-    let this = refs.iter().find(|x| x.reference == r);
-    let others: Vec<String> = refs.iter().filter(|x| x.reference != r).map(|x| x.locator()).collect();
+    let references = ecad_model::connectivity::derive::cable_references_of(doc, &BTreeSet::from([k]));
+    let this = references.iter().find(|x| x.reference == r);
+    let others: Vec<String> = references.iter().filter(|x| x.reference != r).map(|x| x.locator()).collect();
     let rows = vec![
         Row::ro("cable", "Cable", crate::cables::cable_title(doc, k)),
         Row::ro("this", "This end", this.map_or_else(|| "?".into(), |x| x.locator())),
@@ -846,7 +846,7 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
 /// Properties ▸ Link (design 030 §5.5): positions, part, bars.
 /// A link line's section (brief 030): its positions, part and the bars it needs (`bars`, from the
 /// strips' report model, when kept).
-pub fn link_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usize>) -> Section {
+pub fn jumper_bar_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usize>) -> Section {
     let key = ecad_model::connectivity::jumper_bars::key(n);
     let props = doc.devices.get(&c).map(|x| &x.properties);
     let get = |k: &str| props.and_then(|p| p.get(k)).cloned().unwrap_or_default();
@@ -854,14 +854,14 @@ pub fn link_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usize>) ->
         Row::rw(&key, "Positions", get(&key)),
         Row::rw(&format!("{key}.part_number"), "Part number", get(&format!("{key}.part_number"))),
         Row::rw(&format!("{key}.maker"), "Maker", get(&format!("{key}.maker"))),
-        Row::ro("link.bars", "Bars", bars.map_or_else(String::new, |b| b.to_string())),
+        Row::ro("jumper_bar.bars", "Bars", bars.map_or_else(String::new, |b| b.to_string())),
     ];
     Section {
         title: format!("ECAD \u{b7} LINK {} {}", crate::devices::tag_words(doc, c), get(&key)),
-        kind: "link",
+        kind: "jumper_bar",
         target: Some(Target::Devices(vec![c])),
         rows,
         note: None,
-        buttons: vec![format!("link:{}:{n}", c.hex())],
+        buttons: vec![format!("jumper_bar:{}:{n}", c.hex())],
     }
 }

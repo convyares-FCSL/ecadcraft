@@ -27,16 +27,16 @@ fn the_demo_command_list_builds_the_control_panel() {
     // Cable -W01 leaves page 2 at its reference and continues on page 3 (design 072 §4.4, F4/F5):
     // two linked references, and each -X02 point has the motor's wire and the cable core's wire.
     assert_eq!(doc.cables.len(), 1);
-    let refs = ecad_electrical::references::cables::all(&doc);
-    assert_eq!(refs.len(), 2, "{refs:?}");
-    assert!(refs.iter().all(|r| !r.orphan), "{refs:?}");
+    let references = ecad_electrical::references::cables::all(&doc);
+    assert_eq!(references.len(), 2, "{references:?}");
+    assert!(references.iter().all(|r| !r.orphan), "{references:?}");
     let x2 = doc.components_tagged("-X02")[0];
-    let x2_terminals: Vec<_> = doc.connection_points_of(x2).map(|(t, _)| t).collect();
-    assert_eq!(x2_terminals.len(), 3);
+    let x2_connection_points: Vec<_> = doc.connection_points_of(x2).map(|(t, _)| t).collect();
+    assert_eq!(x2_connection_points.len(), 3);
     let w01 = doc.cables_tagged("-W01")[0];
     let cores: Vec<_> = doc.cables[&w01].cores.iter().filter_map(|c| c.wire()).collect();
     assert_eq!(cores.len(), 3, "each continued core is one wire");
-    for t in x2_terminals {
+    for t in x2_connection_points {
         let ends = doc.ends_at(t);
         assert_eq!(ends.len(), 2, "the motor's wire and the core's");
         assert!(ends.iter().any(|(w, _)| cores.contains(w)), "a core of -W01 lands on each -X02 point");
@@ -204,10 +204,10 @@ fn the_demo_locations_reports_and_generated_pages() {
     let o = ecad_electrical::reports::kept::ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
     let bom = o.bom(ecad_electrical::reports::Group::Location);
     // Brief 028 (Q13): a strip counts its terminals, so -X01 and -X02 add their other terminals.
-    let terminals: usize = o.strips.strips.values().map(|s| s.drawn).sum();
+    let connection_points: usize = o.strips.strips.values().map(|s| s.drawn).sum();
     assert_eq!(
         bom.iter().map(|r| usize::try_from(r.qty.0 / 1000).unwrap()).sum::<usize>(),
-        11 - o.strips.len() + terminals,
+        11 - o.strips.len() + connection_points,
         "the devices and terminals, nothing else"
     );
     let cables = o.cable_table();

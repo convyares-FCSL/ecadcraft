@@ -74,7 +74,7 @@ fn table() -> Vec<(String, &'static str, Vec<String>)> {
 }
 
 fn labels(v: &Value) -> Vec<String> {
-    v["terminals"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
+    v["connection_points"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
 }
 
 fn cid(v: &Value) -> DeviceId {

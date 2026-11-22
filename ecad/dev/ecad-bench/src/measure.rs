@@ -43,7 +43,7 @@ pub struct Measured {
     /// Nets on the opened document (`ecad_model::connectivity::derive::nets`).
     pub derive_ms: f64,
     /// Cable references on the opened document (`ecad_model::connectivity::derive::cable_references`, brief 010).
-    pub xref_ms: Option<f64>,
+    pub reference_ms: Option<f64>,
     /// Open the file in a headless CADCraft session and project page 1 (`ecad-engine`).
     pub first_page_ms: f64,
     /// Commit one add-wire transaction to the loaded project (`Ledger::commit`).
@@ -109,7 +109,7 @@ pub struct Measured {
     pub gridchange_ms: f64,
     /// Open an issued revision read-only (`openrevision`): the project rebuilt as at Rev A.
     pub revopen_ms: f64,
-    /// Brief 025 (design 025 §7), on a copy with [`XREF_COILS`] coils added: the reference index
+    /// Brief 025 (design 025 §7), on a copy with [`REFERENCE_COILS`] coils added: the reference index
     /// built from scratch, as on open.
     pub xbuild_ms: f64,
     /// Move such a coil (its contacts on other pages): commit, reference update and redraw.
@@ -168,9 +168,9 @@ fn open(path: &Path) -> Result<ecad_file::disk::OpenedDisk, String> {
 /// `Option` keeps the report's `—` for a revision without the derivation.
 pub fn cable_references_ms(doc: &Document) -> Option<f64> {
     let start = Instant::now();
-    let refs = ecad_model::connectivity::derive::cable_references(doc);
+    let references = ecad_model::connectivity::derive::cable_references(doc);
     let took = ms(start);
-    std::hint::black_box(refs);
+    std::hint::black_box(references);
     Some(took)
 }
 
@@ -201,14 +201,14 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
     drop(ledger);
 
     let mut derive_ms = Vec::with_capacity(runs);
-    let mut xref_ms = Vec::with_capacity(runs);
+    let mut reference_ms = Vec::with_capacity(runs);
     for _ in 0..runs {
         let t = Instant::now();
         let nets = ecad_model::connectivity::derive::nets(&doc);
         derive_ms.push(ms(t));
         std::hint::black_box(nets);
         if let Some(x) = cable_references_ms(&doc) {
-            xref_ms.push(x);
+            reference_ms.push(x);
         }
     }
 
@@ -235,14 +235,14 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
     let mut rail_ms = rail_cut(runs, if cfg!(debug_assertions) { 200 } else { RAIL_WIRES })?;
     let mut sheet = sheet_edits(app, &scratch.join("sheets.ecad"), runs)?;
     let numbering = numbering_edits(app, &scratch.join("numbering.ecad"), runs)?;
-    let mut xr = device_reference_edits(path, &scratch.join("xref.ecad"), runs)?;
+    let mut xr = device_reference_edits(path, &scratch.join("references.ecad"), runs)?;
 
     let m = Measured {
         bytes,
         transactions,
         open_ms: median(&mut open_ms),
         derive_ms: median(&mut derive_ms),
-        xref_ms: (!xref_ms.is_empty()).then(|| median(&mut xref_ms)),
+        reference_ms: (!reference_ms.is_empty()).then(|| median(&mut reference_ms)),
         first_page_ms: median(&mut first_page_ms),
         edit_ms: median(&mut edit_ms),
         save_ms: median(&mut save_ms),
@@ -381,7 +381,10 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let mut ops = vec![
         Op::AddPage { id: page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddConnectionPoint { id: hub, terminal: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint {
+            id: hub,
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+        },
     ];
     let mut leaves = Vec::with_capacity(wires);
     let net: NetId = ids.fresh();
@@ -389,7 +392,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
         let (t, c, k): (ConnectionPointId, WireId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
         ops.push(Op::AddConnectionPoint {
             id: t,
-            terminal: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
         });
         let order = u16::try_from(i + 1).unwrap_or(u16::MAX);
         let wire = Wire { potential: ecad_model::naming::text::Text::new("0V").ok(), net_order: order, ..Wire::new(net, k, hub, t) };
@@ -537,7 +540,7 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
                 }
             }
             let shown = ecad_model::connectivity::derive::connection_point_positions(doc, page);
-            let mut others = shown.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.device() != Some(component)));
+            let mut others = shown.iter().filter(|(t, _, _)| doc.connection_points.get(t).is_some_and(|x| x.device() != Some(component)));
             let (_, _, from) = *others.next().ok_or("page 1 has no connection point of another component")?;
             let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6)).ok_or("page 1 has no second connection point of another component")?;
             Ok(DrawTarget { head: p.ledger.head(), symbol, with_wires, from, to })
@@ -738,7 +741,7 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
 }
 
 /// Coils the cross-reference timings add to their copy of the project (design 025 §7).
-pub const XREF_COILS: usize = 1_000;
+pub const REFERENCE_COILS: usize = 1_000;
 
 /// Brief 025's timings, one sample per run each.
 #[derive(Debug, Default)]
@@ -749,7 +752,7 @@ struct DeviceReferenceTimes {
     mirror: Vec<f64>,
 }
 
-/// Brief 025 (design 025 §7) on a copy: [`XREF_COILS`] coils are
+/// Brief 025 (design 025 §7) on a copy: [`REFERENCE_COILS`] coils are
 /// added and saved (not timed; then opened once in a headless session), each with a `power3` on its own page and a NO and an NC
 /// on the next page, half of them with an offer (`3P+1NO+1NC`); the first 20 coils' contacts are
 /// all on page 2 (40 targets) and coils 20 to 29 on page 3 (10 tables). Then per run:
@@ -782,7 +785,7 @@ fn device_reference_edits(path: &Path, copy: &Path, runs: usize) -> Result<Devic
         for _ in 0..runs {
             let t = project.read(&mut s, |p, _| {
                 let t = Instant::now();
-                let idx = ecad_electrical::views::RefsView::build(p.ledger.document());
+                let idx = ecad_electrical::views::ReferencesView::build(p.ledger.document());
                 let took = ms(t);
                 std::hint::black_box(idx);
                 took
@@ -845,7 +848,7 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
     }
     let layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
     // A debug build (the tests) adds fewer coils: the release benchmark adds them all.
-    let wanted = if cfg!(debug_assertions) { 40 } else { XREF_COILS };
+    let wanted = if cfg!(debug_assertions) { 40 } else { REFERENCE_COILS };
     let at = |k: usize| order[k % n];
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x025);

@@ -119,8 +119,8 @@ mod hover_and_marks {
                 .map(|e| e.handle.hex())
                 .unwrap()
         };
-        ok(h, &format!("addterminal {}", json!({"handle": edge(40.0), "at": [40, 10], "label": "1"})));
-        ok(h, &format!("addterminal {}", json!({"handle": edge(0.0), "at": [0, 10], "label": "2"})));
+        ok(h, &format!("addconnectionpoint {}", json!({"handle": edge(40.0), "at": [40, 10], "label": "1"})));
+        ok(h, &format!("addconnectionpoint {}", json!({"handle": edge(0.0), "at": [0, 10], "label": "2"})));
         ok(h, r#"place {"at":[100,0],"rotation":90}"#);
         ok(h, r#"place {"at":[100,60],"mirror":true}"#);
         ok(h, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
@@ -128,7 +128,7 @@ mod hover_and_marks {
         let page = d.page_order[0];
         ecad_model::connectivity::derive::connection_point_positions(&d, page)
             .into_iter()
-            .map(|(t, _, p)| (d.terminals[&t].label.clone().unwrap_or_default(), p.x, p.y))
+            .map(|(t, _, p)| (d.connection_points[&t].label.clone().unwrap_or_default(), p.x, p.y))
             .collect()
     }
 
@@ -136,7 +136,7 @@ mod hover_and_marks {
     /// drawn and symbol terminals, wired and free, on the rotated and the mirrored coil, at three
     /// zooms; the wire and the component still show away from the terminals.
     #[test]
-    fn a_terminal_wins_the_hover_at_every_zoom_on_rotated_and_mirrored_coils() {
+    fn a_connection_point_wins_the_hover_at_every_zoom_on_rotated_and_mirrored_coils() {
         let mut h = harness();
         let terms = scene(&mut h);
         assert_eq!(terms.len(), 6, "{terms:?}");
@@ -187,7 +187,7 @@ mod hover_and_marks {
     /// In a paper-space layout: no marks, and no terminal tooltip at the screen spot where a model
     /// terminal's coordinates fall on the sheet.
     #[test]
-    fn paper_space_shows_no_marks_and_no_terminal_tooltip() {
+    fn paper_space_shows_no_marks_and_no_connection_point_tooltip() {
         let mut h = harness();
         let terms = scene(&mut h);
         // Round 3: the overseer says the default view leaves the terminals off screen (and the overlay
@@ -418,7 +418,7 @@ mod layout_refusals {
             })
             .map(|e| e.handle.hex())
             .unwrap();
-        ok(h, &format!("addterminal {}", json!({"handle": right, "at": [40, 10], "label": "1"})));
+        ok(h, &format!("addconnectionpoint {}", json!({"handle": right, "at": [40, 10], "label": "1"})));
         ok(h, r#"place {"at":[100,0],"rotation":90}"#);
         ok(h, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
         ok(h, r#"wire {"points":[[0,30],[20,30]]}"#);
@@ -429,7 +429,7 @@ mod layout_refusals {
 
     const TOOLS: [(&str, &str); 6] = [
         ("Convert to Device", "convertcomponent"),
-        ("Add Connection Point", "addterminal"),
+        ("Add Connection Point", "addconnectionpoint"),
         ("Place Symbol", "place"),
         ("Wire", "wire"),
         ("Connect", "connect"),

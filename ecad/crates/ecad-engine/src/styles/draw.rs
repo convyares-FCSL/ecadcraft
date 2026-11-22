@@ -19,7 +19,7 @@ pub fn install_family(d: &mut cadcraft_engine::doc::Drawing, doc: &Document, fam
 /// design 031 §3.3): its height, its style name (the project font, or the kind's own font), and
 /// for bold drawn in the stroke-font fallback the bold lineweight. The drawing must hold the
 /// styles: [`install`] (or [`install_draw`]) writes them. A caller styling many entities holds a
-/// [`Look`] and calls [`DrawApply::apply`] instead (one resolution per page, not per entity).
+/// [`DrawStyles`] and calls [`DrawApply::apply`] instead (one resolution per page, not per entity).
 pub fn apply(doc: &Document, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
     let s = text_style(doc, kind);
     if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
@@ -116,13 +116,13 @@ impl Fonts {
 /// (`ECAD-TAG`, `ECAD-TAG-BOLD`…). Any drawing ECAD builds calls it; a drawing that already has
 /// the same styles is unchanged.
 pub fn install(d: &mut cadcraft_engine::doc::Drawing, doc: &Document) {
-    install_draw(d, &Look::new(doc));
+    install_draw(d, &DrawStyles::new(doc));
 }
 
 /// [`install`] with the look already resolved.
-pub fn install_draw(d: &mut cadcraft_engine::doc::Drawing, look: &fonts::Look) {
-    install_fonts(d, &look.fonts);
-    for (kind, fonts) in TextKind::ALL.iter().zip(look.kind_fonts.iter()) {
+pub fn install_draw(d: &mut cadcraft_engine::doc::Drawing, draw: &fonts::DrawStyles) {
+    install_fonts(d, &draw.fonts);
+    for (kind, fonts) in TextKind::ALL.iter().zip(draw.kind_fonts.iter()) {
         if let Some(f) = fonts {
             put_style(d, kind_style_name(*kind, Weight::Regular), &f.regular);
             put_style(d, kind_style_name(*kind, Weight::Bold), &f.bold);
@@ -151,23 +151,23 @@ fn put_style(d: &mut cadcraft_engine::doc::Drawing, name: &str, font: &String) {
     }
 }
 
-/// [`fonts::Look`] resolved on this machine with CADCraft's fonts ([`EngineMetrics`]), and how a
+/// [`fonts::DrawStyles`] resolved on this machine with CADCraft's fonts ([`EngineMetrics`]), and how a
 /// derived text entity takes it; it reads as the rules' type ([`std::ops::Deref`]).
 #[derive(Debug, Clone, PartialEq)]
-pub struct Look(pub fonts::Look);
+pub struct DrawStyles(pub fonts::DrawStyles);
 
-impl std::ops::Deref for Look {
-    type Target = fonts::Look;
+impl std::ops::Deref for DrawStyles {
+    type Target = fonts::DrawStyles;
 
-    fn deref(&self) -> &fonts::Look {
+    fn deref(&self) -> &fonts::DrawStyles {
         &self.0
     }
 }
 
-impl Look {
+impl DrawStyles {
     /// Resolve every kind's style and the fonts of `doc`.
-    pub fn new(doc: &Document) -> Look {
-        Look(fonts::Look::with(doc, &EngineMetrics))
+    pub fn new(doc: &Document) -> DrawStyles {
+        DrawStyles(fonts::DrawStyles::with(doc, &EngineMetrics))
     }
 }
 
@@ -183,7 +183,7 @@ pub trait DrawApply {
     fn apply_own(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind, own: &OwnStyle);
 }
 
-impl DrawApply for fonts::Look {
+impl DrawApply for fonts::DrawStyles {
     fn apply(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
         style_entity(e, self.style(kind), self.fonts_for(kind).bold_lineweight);
     }
@@ -202,7 +202,7 @@ pub fn text_width(doc: &Document, kind: TextKind, value: &str) -> f64 {
     fonts::text_width(doc, kind, value, &EngineMetrics)
 }
 
-/// [`text_width`] with the style and fonts already resolved (from a [`Look`] the caller holds).
+/// [`text_width`] with the style and fonts already resolved (from a [`DrawStyles`] the caller holds).
 pub fn width_in(f: &fonts::Fonts, s: TextStyle, value: &str) -> f64 {
     fonts::width_in(f, s, value, &EngineMetrics)
 }

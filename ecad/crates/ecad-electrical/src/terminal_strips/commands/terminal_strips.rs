@@ -1,5 +1,5 @@
 //! The rules of brief 028's commands (design 028 §3, §4, §10) and brief 036's levels: Place
-//! Terminals (`terminals`, one terminal or level on each wire a line crosses), Draw Bridge
+//! Terminals (`connection_points`, one terminal or level on each wire a line crosses), Draw Bridge
 //! (`bridge`), and the paging of the terminal plan (`stripplan`). Each function reads the document
 //! and returns the ops to commit and what to report; the engine crate's shims read the parameters,
 //! build the reports, commit and answer in JSON.
@@ -50,7 +50,7 @@ pub fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols:
 /// point keyed by its label, as 018's joins are). `first`: a new strip's first symbol, which shows
 /// the definition's own point. Every symbol's role is its starter's part (design 072 §4.4).
 #[allow(clippy::too_many_arguments)]
-fn terminal_symbol(
+fn terminal_block_symbol(
     ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: DeviceId, label: &str, at: Pt, first: bool, role: ecad_model::Role,
     ops: &mut Vec<Op>,
 ) -> ConnectionPointId {
@@ -58,7 +58,7 @@ fn terminal_symbol(
     let key = PointKey::Def(if first { "1".to_string() } else { label.to_string() });
     ops.push(Op::AddConnectionPoint {
         id: t,
-        terminal: ConnectionPoint { owner: strip.into(), label: Some(label.to_string()), key: Some(key), accepts: Default::default() },
+        connection_point: ConnectionPoint { owner: strip.into(), label: Some(label.to_string()), key: Some(key), accepts: Default::default() },
     });
     let placement = Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
@@ -135,7 +135,7 @@ pub fn plan_fence_typed(
     let mut skipped = 0;
     for m in &found.members {
         if let Some(x) = strip_connection_point_at(doc, page, m.at)
-            && strip.is_some_and(|c| doc.terminals.get(&x).is_some_and(|t| t.device() == Some(c)))
+            && strip.is_some_and(|c| doc.connection_points.get(&x).is_some_and(|t| t.device() == Some(c)))
         {
             skipped += 1;
             continue;
@@ -177,7 +177,7 @@ pub fn plan_fence_typed(
         let on = crate::wires::on_route_of(doc, m.route, m.at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
         if legacy {
             let label = next.to_string();
-            let t = terminal_symbol(
+            let t = terminal_block_symbol(
                 ids,
                 page,
                 style.clone(),
@@ -222,11 +222,16 @@ pub fn level_symbol(
     let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     let mut cps = BTreeMap::new();
     let mut out = Vec::new();
-    for td in &d.terminals {
+    for td in &d.connection_points {
         let t: ConnectionPointId = ids.fresh();
         ops.push(Op::AddConnectionPoint {
             id: t,
-            terminal: ConnectionPoint { owner: strip.into(), label: Some(position.to_string()), key: Some(td.key.clone()), accepts: td.accepts },
+            connection_point: ConnectionPoint {
+                owner: strip.into(),
+                label: Some(position.to_string()),
+                key: Some(td.key.clone()),
+                accepts: td.accepts,
+            },
         });
         cps.insert(t, td.at);
         out.push((td.key.clone(), t, td.at));
@@ -296,9 +301,9 @@ pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::TermType, word: &
     Err(CmdError::refused(format!("A {} has levels {}. Type one of them, or All for the whole terminal.", t.name.to_lowercase(), names.join(", "))))
 }
 
-// ---------------------------------------------------------------- `terminals`
+// ---------------------------------------------------------------- `connection_points`
 
-/// The terminal type a `terminals` call names: `type` (Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS,
+/// The terminal type a `connection_points` call names: `type` (Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS,
 /// FUSE), else PE with `pe`, else feed-through.
 ///
 /// # Errors
@@ -316,7 +321,7 @@ pub fn term_type(word: Option<&str>, pe: bool) -> Result<&'static tt::TermType, 
     }
 }
 
-/// A `terminals` call, as given.
+/// A `connection_points` call, as given.
 #[derive(Debug, Clone)]
 pub struct TerminalBlocksInput {
     /// The strip joined (`None`: a new strip).
@@ -330,23 +335,23 @@ pub struct TerminalBlocksInput {
     pub to: Pt,
 }
 
-/// What `terminals` records: the fence and the level it placed.
+/// What `connection_points` records: the fence and the level it placed.
 #[derive(Debug, Clone)]
-pub struct Terminals {
+pub struct TerminalBlocks {
     pub fence: Fence,
     pub level: Option<u32>,
     /// The transaction's label.
     pub label: &'static str,
 }
 
-/// `terminals` (design 028 §3.2, brief 036 §3.2): one terminal, or one level, on each wire the line
+/// `connection_points` (design 028 §3.2, brief 036 §3.2): one terminal, or one level, on each wire the line
 /// `from`–`to` crosses on `page`.
 ///
 /// # Errors
 /// `from` and `to` the same point, a level word that names no level, or [`plan_fence_typed`]'s.
 pub fn plan_terminal_blocks(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, input: TerminalBlocksInput, tol: f64,
-) -> Result<Terminals, CmdError> {
+) -> Result<TerminalBlocks, CmdError> {
     if input.from.near(input.to, tol) {
         return Err(CmdError::input("`from` and `to` must differ"));
     }
@@ -357,13 +362,13 @@ pub fn plan_terminal_blocks(
     let kind = FenceKind { ty: input.ty, level, position: input.position };
     let fence = plan_fence_typed(ledger, ids, high, page, style, input.strip, kind, input.from, input.to, tol)?;
     let label = if input.ty.legacy() { "Place terminals" } else { "Place terminal level" };
-    Ok(Terminals { fence, level, label })
+    Ok(TerminalBlocks { fence, level, label })
 }
 
 /// The shown labels of `f`'s terminals once committed, and the echo of the line (design 028 §3.2,
 /// brief 036 §3.2): the range placed, the wires, positions and level, and any stored wire number
 /// an out half did not keep (review M1: said, never dropped silently).
-pub fn terminals_message(doc: &Document, ty: &tt::TermType, level: Option<u32>, f: &Fence) -> (Vec<String>, String) {
+pub fn connection_points_message(doc: &Document, ty: &tt::TermType, level: Option<u32>, f: &Fence) -> (Vec<String>, String) {
     let shown: Vec<String> = f.placed.iter().map(|(t, _, _, _)| tt::connection_point_name(doc, *t)).collect();
     let range = match shown.as_slice() {
         [one] => one.clone(),
@@ -419,11 +424,11 @@ pub enum Bridge {
 pub fn plan_bridge(
     doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, a: ConnectionPointId, b: ConnectionPointId,
 ) -> Result<Bridge, CmdError> {
-    if !doc.terminals.contains_key(&a) || !doc.terminals.contains_key(&b) {
-        return Err(CmdError::NotFound(Noun::TerminalDevice));
+    if !doc.connection_points.contains_key(&a) || !doc.connection_points.contains_key(&b) {
+        return Err(CmdError::NotFound(Noun::TerminalBlock));
     }
     if a == b {
-        return Err(CmdError::refused("Pick two different terminals: a bridge links one terminal to another."));
+        return Err(CmdError::refused("Pick two different connection_points: a bridge links one terminal to another."));
     }
     let (wa, wb) = (connection_point_words(doc, a), connection_point_words(doc, b));
     let (sa, sb) = (terminal_strips::strip_of_connection_point(doc, a), terminal_strips::strip_of_connection_point(doc, b));
@@ -432,7 +437,7 @@ pub fn plan_bridge(
         return Ok(Bridge::Already { conductor: w, same, message: format!("{wa} and {wb} are already bridged.") });
     }
     let pos = |t: ConnectionPointId| {
-        doc.representations_of(doc.terminals.get(&t)?.owner.subject())
+        doc.representations_of(doc.connection_points.get(&t)?.owner.subject())
             .find_map(|(_, r)| (r.page == page).then(|| ecad_model::connectivity::derive::connection_point_position(doc, page, t)).flatten())
     };
     let (Some(pa), Some(pb)) = (pos(a), pos(b)) else {
@@ -522,7 +527,7 @@ pub fn plan_fields_json() -> Value {
 /// `pe` and is the type code otherwise.
 pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
     let mut o = serde_json::Map::new();
-    put(&mut o, "terminal", r.terminal.map(|t| t.hex()));
+    put(&mut o, "connection_point", r.connection_point.map(|t| t.hex()));
     put(&mut o, "out", r.out.map(|t| t.hex()));
     o.insert("label".into(), json!(r.shown));
     o.insert("position".into(), json!(r.label));
@@ -544,7 +549,7 @@ pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
     o.insert("outside".into(), Value::Array(r.outside.iter().map(|c| side_json(c, true)).collect()));
     put(&mut o, "bridge_group", r.bridge_group);
     put(&mut o, "place", r.place.as_ref().map(|p| p.text(style)));
-    let mut editable = vec!["position", "label", "links", "marker"];
+    let mut editable = vec!["position", "label", "jumper_bars", "marker"];
     if r.breaks() {
         editable.push("rating");
     }
@@ -561,14 +566,14 @@ pub fn gap_json(s: &StripData, gap: &str, a: crate::terminal_strips::accessories
     o.insert("gap".into(), json!(gap));
     put(&mut o, "part_number", s.acc.gap_part(a, crate::reports::gap_pe(s, gap)));
     put(&mut o, "maker", s.acc.makers.get(a.key()));
-    o.insert("terminal".into(), Value::Null);
+    o.insert("connection_point".into(), Value::Null);
     o.insert("label".into(), Value::Null);
     Value::Object(o)
 }
 
 /// One strip as JSON with plan rows `first..end` of it (`first_row` when it does not start at
 /// 0). With `accessories` (brief 030) every row has `kind`, gap rows are in, terminal rows carry
-/// `marker` and `links`, and the strip carries `accessories` and `links`; without, 028's rows.
+/// `marker` and `jumper_bars`, and the strip carries `accessories` and `jumper_bars`; without, 028's rows.
 pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize, end: usize, accessories: bool) -> Value {
     let mut o = serde_json::Map::new();
     o.insert("strip".into(), json!(s.component.hex()));
@@ -603,15 +608,15 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
             terminal_strips::PlanItem::Term(i, r) => {
                 let mut v = row_json(r, style);
                 if accessories {
-                    v["kind"] = json!("terminal");
+                    v["kind"] = json!("terminal_block");
                     v["marker"] = json!(s.acc.markers.contains(&r.label));
-                    let links: Vec<Value> = s
+                    let jumper_bars: Vec<Value> = s
                         .jumper_bars_at(*i)
                         .iter()
                         .filter(|(_, on)| *on)
-                        .map(|(l, _)| json!({"link": l.n, "lane": l.lane, "level": l.level}))
+                        .map(|(l, _)| json!({"jumper_bar": l.n, "lane": l.lane, "level": l.level}))
                         .collect();
-                    v["links"] = Value::Array(links);
+                    v["jumper_bars"] = Value::Array(jumper_bars);
                 }
                 v
             }
@@ -622,12 +627,12 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
         let counts: serde_json::Map<String, Value> =
             crate::terminal_strips::accessories::Acc::ALL.iter().map(|a| (a.key().to_string(), json!(s.acc.count(*a)))).collect();
         o.insert("accessories".into(), Value::Object(counts));
-        let links: Vec<Value> = s
+        let jumper_bars: Vec<Value> = s
             .acc
-            .links
+            .jumper_bars
             .iter()
             .map(|l| {
-                let mut v = json!({"link": l.n, "positions": l.text, "span": l.span, "lane": l.lane, "bars": l.bars, "level": l.level});
+                let mut v = json!({"jumper_bar": l.n, "positions": l.text, "span": l.span, "lane": l.lane, "bars": l.bars, "level": l.level});
                 if let Some((lo, hi)) = l.cross {
                     v["levels"] = json!([lo, hi]);
                 }
@@ -640,7 +645,7 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
                 v
             })
             .collect();
-        o.insert("links".into(), Value::Array(links));
+        o.insert("jumper_bars".into(), Value::Array(jumper_bars));
     }
     Value::Object(o)
 }
@@ -667,7 +672,7 @@ pub const PLAN_FIELDS: &[(&str, &str, bool, Option<&str>)] = &[
     ("strip", "type_name", false, None),
     ("strip", "state", false, None),
     ("strip", "rating", true, Some("setprop rating.<position>")),
-    ("strip", "links", true, Some("jumper")),
+    ("strip", "jumper_bars", true, Some("jumper")),
     ("strip", "internal_bridge", false, None),
     ("strip", "breaks", false, None),
     ("strip", "bridge_group", false, None),
@@ -678,5 +683,5 @@ pub const PLAN_FIELDS: &[(&str, &str, bool, Option<&str>)] = &[
     ("outside", "outside[].core", false, None),
     ("outside", "outside[].conductor", false, None),
     ("either", "place", false, None),
-    ("either", "terminal", false, None),
+    ("either", "connection_point", false, None),
 ];

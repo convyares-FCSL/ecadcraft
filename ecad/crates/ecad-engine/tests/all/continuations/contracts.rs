@@ -34,7 +34,7 @@ fn fixture(seed: u64) -> F {
     let p102: PageId = id(&h.run("newpage", json!({"title": "Control", "number": "102"})).unwrap(), "page");
     h.activate(p102);
     let b = arrow(&mut h, (100.0, 200.0), "24V");
-    let p103: PageId = id(&h.run("newpage", json!({"title": "Outputs", "number": "103"})).unwrap(), "page");
+    let p103: PageId = id(&h.run("newpage", json!({"title": "Reports", "number": "103"})).unwrap(), "page");
     h.activate(p103);
     let c = arrow(&mut h, (60.0, 120.0), "24V");
     F { h, pages: [p101, p102, p103], arrows: [a, b, c] }
@@ -83,7 +83,7 @@ fn drawn(h: &mut H, page: PageId) -> Vec<String> {
 }
 
 fn index_matches(h: &mut H) {
-    h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
+    h.p(|p| p.reference().verify(p.ledger.document())).unwrap();
 }
 
 fn item_handle(h: &mut H, page: PageId, a: AidId) -> String {
@@ -108,7 +108,7 @@ fn three_arrows_show_each_other_in_book_order() {
     assert!((rotation - std::f64::consts::FRAC_PI_2).abs() < 1e-12 && halign == HAlign::Right, "{rotation} {halign:?}");
     assert!(at.near(Pt::new(300.0, 144.0), 1e-9), "{at:?}");
     // On the index: one continuation group, keyed by the lowest arrow; each shows the others.
-    let (g, targets) = f.h.p(|p| (p.xref().member(a), p.xref().targets(a).collect::<BTreeSet<_>>()));
+    let (g, targets) = f.h.p(|p| (p.reference().member(a), p.reference().targets(a).collect::<BTreeSet<_>>()));
     assert!(matches!(g, Some((Group::Continuation(_), ecad_electrical::references::devices::Class::Arrow))), "{g:?}");
     assert_eq!(targets, BTreeSet::from([b, c]));
     index_matches(&mut f.h);
@@ -131,7 +131,7 @@ fn a_fifth_arrow_shows_plus_one_and_hover_lists_all() {
     f.h.activate(f.pages[0]);
     let (uid, hd) = f.h.pv(|p, _| {
         let v = &p.pages[&f.pages[0]];
-        (v.uid.unwrap(), v.map.xref(a, 0).unwrap())
+        (v.uid.unwrap(), v.map.reference(a, 0).unwrap())
     });
     let lines = f.h.p(|p| ecad_engine::interact::hover_lines(p, uid, hd)).unwrap();
     assert_eq!(lines[0], "Continuation 24V: 4 other ends", "{lines:?}");
@@ -319,9 +319,9 @@ fn caption_rules_and_wrapping() {
     assert!(f.h.run("contcaption", json!({"continuations": [], "caption": "X"})).is_err());
 }
 
-/// Check 9 and 10: `refgoto` cycles the other ends in order; `xrefs` lists `continuation` rows.
+/// Check 9 and 10: `refgoto` cycles the other ends in order; `references` lists `continuation` rows.
 #[test]
-fn go_to_cycles_and_xrefs_lists() {
+fn go_to_cycles_and_references_lists() {
     let mut f = fixture(0x49_09);
     let [(a_c, a), (_, b), (_, c)] = f.arrows;
     f.h.activate(f.pages[0]);
@@ -331,11 +331,11 @@ fn go_to_cycles_and_xrefs_lists() {
     assert_eq!(go(&mut f.h), b.hex(), "wraps");
     let v = f.h.run("refgoto", json!({"source": a.hex(), "target": c.hex()})).unwrap();
     assert!(v["message"].as_str().unwrap().contains("continuation 24V"), "{v}");
-    let v = f.h.run("xrefs", json!({"page": f.pages[0].hex()})).unwrap();
+    let v = f.h.run("references", json!({"page": f.pages[0].hex()})).unwrap();
     let rows: Vec<&Value> =
         v["references"].as_array().unwrap().iter().filter(|r| r["kind"] == "continuation" && r["source"] == json!(a.hex())).collect();
     assert_eq!(rows.len(), 2, "{v}");
-    let v = f.h.run("xrefs", json!({"aid": a_c.hex()})).unwrap();
+    let v = f.h.run("references", json!({"aid": a_c.hex()})).unwrap();
     assert_eq!(v["references"].as_array().unwrap().len(), 2, "{v}");
     // A lonely arrow says so.
     let (_, lone) = arrow(&mut f.h, (200.0, 200.0), "SPARE");
@@ -349,7 +349,7 @@ fn the_text_is_derived_and_properties_list_the_other_ends() {
     let mut f = fixture(0x49_11);
     let (a_c, a) = f.arrows[0];
     f.h.activate(f.pages[0]);
-    let hd = f.h.p(|p| p.pages[&f.pages[0]].map.xref(a, 0).unwrap());
+    let hd = f.h.p(|p| p.pages[&f.pages[0]].map.reference(a, 0).unwrap());
     assert_eq!(f.h.mapped(f.pages[0], hd), Some(Mapped::DeviceReference(a)));
     let e = f.h.run("move", json!({"handles": [hd.hex()], "delta": [5, 0]})).unwrap_err();
     assert!(e.contains(TEXT_DERIVED), "{e}");
@@ -427,21 +427,21 @@ fn the_kept_index_equals_a_rebuild_through_the_update_map() {
     }
 }
 
-/// Review of #85, 2: `xrefs {component}` and `xrefs {page}` on a name of 2,000 arrows make only
+/// Review of #85, 2: `references {component}` and `references {page}` on a name of 2,000 arrows make only
 /// the rows they return (O(m)), never all m(m−1); paging still says what comes next.
 #[test]
 #[ignore = "slow: commits 2,000 arrows, about 4 s in a debug build (the 400-arrow case runs every time)"]
-fn xrefs_on_a_large_name_stays_linear() {
-    xrefs_on_a_name_of(2000);
+fn references_on_a_large_name_stays_linear() {
+    references_on_a_name_of(2000);
 }
 
-/// [`xrefs_on_a_large_name_stays_linear`] on 400 arrows: 159,600 rows would be made before the fix.
+/// [`references_on_a_large_name_stays_linear`] on 400 arrows: 159,600 rows would be made before the fix.
 #[test]
-fn xrefs_on_a_name_of_400_returns_only_the_window() {
-    xrefs_on_a_name_of(400);
+fn references_on_a_name_of_400_returns_only_the_window() {
+    references_on_a_name_of(400);
 }
 
-fn xrefs_on_a_name_of(m: usize) {
+fn references_on_a_name_of(m: usize) {
     use ecad_model::{Color, IdAllocator, LayerId, Op, Placement, Style};
     let mut ledger = ecad_model::Ledger::new(0x49_15);
     let pages: Vec<PageId> = (0..100u128).map(|i| PageId(0x100 + i)).collect();
@@ -458,10 +458,10 @@ fn xrefs_on_a_name_of(m: usize) {
     let t = ecad_electrical::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, aid).unwrap();
     ledger.commit(ecad_model::Author::User, "first", t.ops.clone()).unwrap();
     // The other arrows: the first one's ops with fresh IDs, place and page, in one transaction
-    // (planning and settling each one in a debug build takes seconds; the subject is `xrefs`).
+    // (planning and settling each one in a debug build takes seconds; the subject is `references`).
     let template: Vec<String> =
         t.ops.iter().filter(|o| !matches!(o, Op::EmbedDefinition { .. })).map(|o| serde_json::to_string(o).unwrap()).collect();
-    let old = [t.aid.hex(), t.terminal.hex(), t.item.hex(), t.representation.hex(), pages[0].hex()];
+    let old = [t.aid.hex(), t.connection_point.hex(), t.item.hex(), t.representation.hex(), pages[0].hex()];
     let mut ops = Vec::new();
     for i in 1..m {
         let fresh = [i as u128 * 4 + 0x7000_0000, i as u128 * 4 + 0x7000_0001, i as u128 * 4 + 0x7000_0002, i as u128 * 4 + 0x7000_0003];
@@ -506,7 +506,7 @@ fn the_reference_text_is_ink_2_and_the_caption_ink() {
     let colour_of = |h: &mut H, index: u32| {
         h.pv(|p, pg| {
             let d = pg.drawing_of(p, f.pages[0]).unwrap();
-            let hd = p.pages[&f.pages[0]].map.xref(a, index).unwrap();
+            let hd = p.pages[&f.pages[0]].map.reference(a, index).unwrap();
             d.model.iter().find(|e| e.handle == hd).map(|e| e.common.color).unwrap()
         })
     };

@@ -86,7 +86,7 @@ pub(crate) fn place_channel(
         }
         let cell = plan_cell(&mut p.ids, page, style, def, starter, card, &j, pl, &mut ops)?;
         let mut wire = None;
-        if let (Some((_, on)), Some((_, t0, _, _))) = (landing, cell.terminals.first()) {
+        if let (Some((_, on)), Some((_, t0, _, _))) = (landing, cell.connection_points.first()) {
             let land = ecad_electrical::connectors::plan_land(doc, &mut p.ids, on, *t0)?;
             wire = Some(land.route);
             ops.extend(land.ops);
@@ -98,7 +98,7 @@ pub(crate) fn place_channel(
         p.last_placed = Some((starter.key.to_string(), card));
         let doc = p.ledger.document();
         let first = first_number(doc, card);
-        let pins: Vec<String> = cell.terminals.iter().map(|(_, _, pin, _)| pin.clone()).collect();
+        let pins: Vec<String> = cell.connection_points.iter().map(|(_, _, pin, _)| pin.clone()).collect();
         let on = wire
             .and_then(|r| ecad_electrical::wires::wire_of_route(doc, r))
             .map(|w| format!(" on wire {}", ecad_electrical::cables::slash::wire_name(doc, w)))
@@ -113,7 +113,7 @@ pub(crate) fn place_channel(
             "representation": cell.representation.hex(),
             "item": cell.item.hex(),
             "symbol": starter.key,
-            "terminals": cell.terminals.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, *r), "terminal": t.hex()})).collect::<Vec<_>>(),
+            "connection_points": cell.connection_points.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, *r), "connection_point": t.hex()})).collect::<Vec<_>>(),
             "message": message,
         });
         crate::symbols::draw::finish_place(p, pg, card, !new, &proposed, &mut v);
@@ -217,7 +217,7 @@ impl Command for PlcchannelsParams {
 
 /// `plcchannel {card, channel, text?, address?, tag?, safe?, pins?, move_to?, terminal?}` (design
 /// 045 §4.6): one channel's data in one transaction. `move_to` (a Checks fix) gives the points of
-/// one drawn copy of the channel (`terminal`, or the last-drawn copy) the channel numbered
+/// one drawn copy of the channel (`connection_point`, or the last-drawn copy) the channel numbered
 /// `move_to`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -250,7 +250,7 @@ pub(crate) struct PlcchannelParams {
     move_to: Option<Option<TextOrNumber>>,
     /// With `move_to`: a connection point of the copy to move (absent: the last drawn).
     #[serde(default)]
-    terminal: Option<ConnectionPointId>,
+    connection_point: Option<ConnectionPointId>,
 }
 
 impl Command for PlcchannelParams {
@@ -277,7 +277,7 @@ impl Command for PlcchannelParams {
             values,
             pins: self.pins,
             move_to: self.move_to.map(|m| m.map(|t| t.text())),
-            terminal: self.terminal,
+            connection_point: self.connection_point,
         };
         let v = on_project(s, |p, pg, _| {
             let plan = rules::plan_channel(p.ledger.document(), &self.card, &input)?;

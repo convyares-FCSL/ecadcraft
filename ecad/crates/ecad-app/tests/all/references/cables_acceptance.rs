@@ -70,7 +70,7 @@ fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
     assert_eq!(lines.len(), 4);
     t.cad.run("convertcomponent", json!({ "handles": lines })).unwrap();
     for y in [0, 5, 10] {
-        t.cad.run("addterminal", json!({"handle": lines[0], "at": [x, y as f64]})).unwrap();
+        t.cad.run("addconnectionpoint", json!({"handle": lines[0], "at": [x, y as f64]})).unwrap();
     }
     h.run_steps(1);
 }
@@ -364,7 +364,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     // K2's points (the reference's named points are shown on Field too).
     let k2: Vec<_> = ecad_model::connectivity::derive::connection_point_positions(&d, field)
         .into_iter()
-        .filter(|(t, _, _)| d.terminals.contains_key(t))
+        .filter(|(t, _, _)| d.connection_points.contains_key(t))
         .map(|(t, _, p)| (t, p))
         .collect();
     let stubs: Vec<_> = d
@@ -376,7 +376,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     assert_eq!(stubs.len(), 3, "a stub per core");
     for (route, end) in &stubs {
         let t = k2.iter().find(|(_, p)| (p.y - end.y).abs() < 1e-9).unwrap().0;
-        ok(&mut h, &format!(r#"connect {{"route":"{}","end":"B","terminal":"{}"}}"#, route.hex(), t.hex()));
+        ok(&mut h, &format!(r#"connect {{"route":"{}","end":"B","connection_point":"{}"}}"#, route.hex(), t.hex()));
     }
     let d = doc(&mut h);
     let cable = *d.cables.keys().next().unwrap();

@@ -182,7 +182,7 @@ impl ChecksPanel {
     pub fn sync(&mut self, serial: u64, p: &mut ecad_engine::Project) {
         let hidden = self.hidden.clone();
         // Brief 024: the location rows come from the report models, kept the same way.
-        let revision = p.checks().revision.wrapping_mul(1_000_003).wrapping_add(p.outputs().revision);
+        let revision = p.checks().revision.wrapping_mul(1_000_003).wrapping_add(p.reports().revision);
         if self.seen.as_ref().is_some_and(|(s, r, h)| *s == serial && *r == revision && *h == hidden) {
             return;
         }

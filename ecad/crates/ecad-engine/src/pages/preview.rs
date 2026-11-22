@@ -80,10 +80,10 @@ pub fn other_end(p: &Project, reference: RepresentationId) -> Result<(PageId, Pt
         },
         _ => return Err(NOT_A_REFERENCE.into()),
     };
-    let refs = ecad_model::connectivity::derive::cable_references_of(doc, &BTreeSet::from([cable]));
-    let here = refs.iter().find(|r| r.reference == reference).ok_or(NOT_A_REFERENCE)?;
+    let references = ecad_model::connectivity::derive::cable_references_of(doc, &BTreeSet::from([cable]));
+    let here = references.iter().find(|r| r.reference == reference).ok_or(NOT_A_REFERENCE)?;
     let other = here.partners.first().copied().ok_or(ORPHAN)?;
-    let there = refs.iter().find(|r| r.reference == other).ok_or(ORPHAN)?;
+    let there = references.iter().find(|r| r.reference == other).ok_or(ORPHAN)?;
     let at = there.at.filter(|a| a.is_finite()).ok_or("The other end of this reference cannot be located.")?;
     Ok((there.page, at))
 }
@@ -124,8 +124,8 @@ pub fn preview_drawing_of(doc: &ecad_model::Document, page: PageId, tol: f64) ->
     if !doc.pages.contains_key(&page) {
         return Err("That page is not in this revision.".into());
     }
-    let outputs = crate::project::engine_views().report_models(doc);
-    project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &std::collections::BTreeSet::new(), tol, outputs.as_ref()).map(|(d, _)| d)
+    let reports = crate::project::engine_views().report_models(doc);
+    project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &std::collections::BTreeSet::new(), tol, reports.as_ref()).map(|(d, _)| d)
 }
 
 /// Rasterise `drawing` at `view` into an image of `width` × `height` pixels on `background`, with

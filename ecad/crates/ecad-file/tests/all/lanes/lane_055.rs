@@ -36,12 +36,12 @@ fn layout() -> TitleBlockLayout {
         size: (180.0, 40.0),
         items: vec![
             BlockItem::Line { a: (0.0, 20.0), b: (180.0, 20.0), weight: Default::default() },
-            BlockItem::Text { at: Rect::new(1.0, 1.0, 40.0, 5.0), text: "IF IN DOUBT, ASK".into(), look: TextDraw::default() },
+            BlockItem::Text { at: Rect::new(1.0, 1.0, 40.0, 5.0), text: "IF IN DOUBT, ASK".into(), draw: TextDraw::default() },
             BlockItem::Field {
                 at: Rect::new(60.0, 21.0, 60.0, 12.5),
                 bind: Binding::Project(ecad_model::objects::title_block::ProjectKey::new("status").unwrap()),
                 label: Some("Status".into()),
-                look: red,
+                draw: red,
                 if_empty: IfEmpty::Text("n/a".into()),
             },
             BlockItem::RevTable { at: Rect::new(0.0, 0.0, 60.0, 20.0), rows: 4, header: true, newest: Newest::Bottom },

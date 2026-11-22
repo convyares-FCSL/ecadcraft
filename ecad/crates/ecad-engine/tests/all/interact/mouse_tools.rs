@@ -92,7 +92,7 @@ fn base(h: &mut H) -> DeviceId {
     let r = h.run("convertcomponent", json!({ "handles": lines })).unwrap();
     let c: DeviceId = common::id(&r, "component");
     let right = line_handle(h, 40.0, 0.0, 40.0, 20.0);
-    h.run("addterminal", json!({"handle": right.hex(), "at": [40, 10], "label": "1"})).unwrap();
+    h.run("addconnectionpoint", json!({"handle": right.hex(), "at": [40, 10], "label": "1"})).unwrap();
     h.run("place", json!({"at": [100, 0], "rotation": 90})).unwrap();
     h.run("wire", json!({"points": [[0, 30], [20, 30]]})).unwrap();
     h.run("wire", json!({"points": [[40, 10], [70, 10], [70, 0], [90, 0]]})).unwrap();
@@ -107,12 +107,12 @@ type Step = fn(&mut H);
 fn ac1_each_interactive_case_records_the_json_forms_transaction() {
     let cases: Vec<(&str, Step, Step)> = vec![
         (
-            "addterminal: a click 3 px off a polyline outline lands on it",
+            "addconnectionpoint: a click 3 px off a polyline outline lands on it",
             |h| {
                 h.cmdline("pline 0,40 30,40 30,60 0,60 c");
                 let pl = h.s.doc().unwrap().model.iter().last().unwrap().handle;
                 h.run("convertcomponent", json!({"handles": [pl.hex()]})).unwrap();
-                start(h, "addterminal");
+                start(h, "addconnectionpoint");
                 let px = h.s.pixel_size();
                 click(h, Vec2::new(10.0, 40.0 - 3.0 * px));
                 typed(h, "");
@@ -121,13 +121,13 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
                 h.cmdline("pline 0,40 30,40 30,60 0,60 c");
                 let pl = h.s.doc().unwrap().model.iter().last().unwrap().handle;
                 h.run("convertcomponent", json!({"handles": [pl.hex()]})).unwrap();
-                h.run("addterminal", json!({"handle": pl.hex(), "at": [10, 40], "label": "1"})).unwrap();
+                h.run("addconnectionpoint", json!({"handle": pl.hex(), "at": [10, 40], "label": "1"})).unwrap();
             },
         ),
         (
-            "addterminal: Name option, trimmed, then the default resumes",
+            "addconnectionpoint: Name option, trimmed, then the default resumes",
             |h| {
-                start(h, "addterminal");
+                start(h, "addconnectionpoint");
                 typed(h, "N");
                 h.s.input(Input::Text("  K1  ".into())).unwrap();
                 typed(h, "40,15");
@@ -136,8 +136,8 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
             },
             |h| {
                 let right = line_handle(h, 40.0, 0.0, 40.0, 20.0);
-                h.run("addterminal", json!({"handle": right.hex(), "at": [40, 15], "label": "K1"})).unwrap();
-                h.run("addterminal", json!({"handle": right.hex(), "at": [40, 5], "label": "2"})).unwrap();
+                h.run("addconnectionpoint", json!({"handle": right.hex(), "at": [40, 15], "label": "K1"})).unwrap();
+                h.run("addconnectionpoint", json!({"handle": right.hex(), "at": [40, 5], "label": "2"})).unwrap();
             },
         ),
         (
@@ -221,7 +221,7 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
                 let d = h.doc();
                 let w = route_from(&d, pg, 0.0, 30.0);
                 let t = connection_point_at(&d, pg, 40.0, 10.0);
-                h.run("connect", json!({"route": w.hex(), "end": "B", "terminal": t.hex()})).unwrap();
+                h.run("connect", json!({"route": w.hex(), "end": "B", "connection_point": t.hex()})).unwrap();
             },
         ),
         (
@@ -296,7 +296,7 @@ fn ac2_esc_at_every_first_prompt_changes_nothing_with_or_without_a_selection() {
     base(&mut h);
     let some: Vec<Handle> = h.s.doc().unwrap().model.iter().take(2).map(|e| e.handle).collect();
     for selection in [Vec::new(), some] {
-        for tool in ["convertcomponent", "addterminal", "place", "wire", "connect", "disconnect"] {
+        for tool in ["convertcomponent", "addconnectionpoint", "place", "wire", "connect", "disconnect"] {
             if tool == "convertcomponent" && !selection.is_empty() {
                 continue;
             }
@@ -322,8 +322,8 @@ fn ac2_esc_at_every_first_prompt_changes_nothing_with_or_without_a_selection() {
 #[test]
 fn ac2_undo_after_each_finished_form_is_one_step_and_redo_restores_it() {
     let cases: Vec<(&str, Step)> = vec![
-        ("addterminal", |h| {
-            start(h, "addterminal");
+        ("addconnectionpoint", |h| {
+            start(h, "addconnectionpoint");
             typed(h, "0,10");
             typed(h, "");
         }),
@@ -459,7 +459,7 @@ fn ac7_hostile_text_at_every_prompt_never_panics_or_commits() {
         "(command \"erase\" \"all\" \"\")".into(),
         "'zoom".into(),
     ];
-    let tools = ["convertcomponent", "addterminal", "place", "wire", "connect", "disconnect"];
+    let tools = ["convertcomponent", "addconnectionpoint", "place", "wire", "connect", "disconnect"];
     for tool in tools {
         let mut h = new_h();
         base(&mut h);
@@ -468,7 +468,7 @@ fn ac7_hostile_text_at_every_prompt_never_panics_or_commits() {
             start(&mut h, tool);
             if second {
                 match tool {
-                    "addterminal" => typed(&mut h, "N"),
+                    "addconnectionpoint" => typed(&mut h, "N"),
                     "wire" => typed(&mut h, "0,200"),
                     "connect" => click(&mut h, Vec2::new(19.0, 30.0)),
                     "place" => typed(&mut h, "R"),
@@ -530,7 +530,7 @@ fn a_busy_project_refuses_to_start_any_tool_and_previews_nothing() {
     base(&mut h);
     let uid = h.s.state().unwrap().uid;
     let owner = h.s.ext.owner_of(uid).expect("an ECAD page has an owner");
-    for tool in ["convertcomponent", "addterminal", "place", "wire", "connect", "disconnect"] {
+    for tool in ["convertcomponent", "addconnectionpoint", "place", "wire", "connect", "disconnect"] {
         let guard = owner.lock().unwrap();
         let r = h.s.start(tool);
         drop(guard);
@@ -556,7 +556,7 @@ fn an_unavailable_page_refuses_every_tool() {
     base(&mut h);
     let pg = h.first_page();
     h.cfg(|p| p.pages.get_mut(&pg).unwrap().unavailable = true);
-    for tool in ["convertcomponent", "addterminal", "place", "wire", "connect", "disconnect"] {
+    for tool in ["convertcomponent", "addconnectionpoint", "place", "wire", "connect", "disconnect"] {
         let e = h.s.start(tool).expect_err("refused").to_string();
         assert!(e.contains("unavailable"), "{tool}: {e}");
         assert!(h.s.running.is_none());
@@ -567,16 +567,16 @@ fn an_unavailable_page_refuses_every_tool() {
 /// Design §5 step 1 and owner answer Q2: the prompt shows the default name the next terminal will
 /// get. With terminal "1" already on the component, the first prompt must not promise "1".
 #[test]
-fn the_prompt_names_the_default_terminal_name_that_is_used() {
+fn the_prompt_names_the_default_connection_point_name_that_is_used() {
     let mut h = new_h();
     base(&mut h);
-    start(&mut h, "addterminal");
+    start(&mut h, "addconnectionpoint");
     let shown = prompt(&h);
     typed(&mut h, "0,10");
     let pg = h.first_page();
     let d = h.doc();
     let t = connection_point_at(&d, pg, 0.0, 10.0);
-    let label = d.terminals[&t].label.clone().unwrap_or_default();
+    let label = d.connection_points[&t].label.clone().unwrap_or_default();
     assert_eq!(label, "2", "smallest unused number on that component");
     assert_eq!(
         shown,
@@ -621,7 +621,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     let mut h = new_h();
     h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
     base(&mut h);
-    start(&mut h, "addterminal");
+    start(&mut h, "addconnectionpoint");
     typed(&mut h, "0,10");
     typed(&mut h, "");
     start(&mut h, "wire");
@@ -674,7 +674,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
 fn block_editor_and_lisp_stay_refused_at_ecad_prompts() {
     let mut h = new_h();
     base(&mut h);
-    for tool in ["addterminal", "place", "wire", "connect", "disconnect", "convertcomponent"] {
+    for tool in ["addconnectionpoint", "place", "wire", "connect", "disconnect", "convertcomponent"] {
         let before = (h.head(), h.doc(), h.s.doc().unwrap().model.len());
         start(&mut h, tool);
         for line in ["(command \"erase\" \"all\" \"\")", "(entdel (entlast))", "'bedit", "bedit", "lisp", "appload"] {
@@ -703,7 +703,7 @@ fn json_calls_during_a_running_form_do_not_prompt_or_corrupt_it() {
     for (cmd, params) in [
         ("wire", json!({"points": [[0, 400], [10, 400]]})),
         ("place", json!({"at": [300, 300]})),
-        ("addterminal", json!({"handle": "1", "at": [0, 0]})),
+        ("addconnectionpoint", json!({"handle": "1", "at": [0, 0]})),
     ] {
         let _ = h.s.execute(cmd, &params);
     }
@@ -726,7 +726,7 @@ fn json_calls_during_a_running_form_do_not_prompt_or_corrupt_it() {
 fn a_panic_while_an_interactive_form_commits_is_contained() {
     let mut h = new_h();
     base(&mut h);
-    start(&mut h, "addterminal");
+    start(&mut h, "addconnectionpoint");
     typed(&mut h, "0,10");
     let one = (h.head(), h.doc());
     h.cfg(|p| p.faults.panic_in_command = true);
@@ -734,7 +734,7 @@ fn a_panic_while_an_interactive_form_commits_is_contained() {
     assert_eq!(h.head(), one.0, "nothing appended by the panicking commit");
     assert!(h.doc() == one.1, "the terminal added before the panic stays, nothing else changed");
     if h.s.running.is_none() {
-        start(&mut h, "addterminal");
+        start(&mut h, "addconnectionpoint");
     }
     typed(&mut h, "0,5");
     typed(&mut h, "");

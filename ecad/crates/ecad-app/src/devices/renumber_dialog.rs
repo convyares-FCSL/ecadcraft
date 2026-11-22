@@ -27,7 +27,7 @@ pub enum What {
     Cables,
     Wires,
     /// Brief 028: terminal labels per strip.
-    Terminals,
+    TerminalBlocks,
     All,
 }
 
@@ -37,7 +37,7 @@ impl What {
             What::Devices => "devices",
             What::Cables => "cables",
             What::Wires => "wires",
-            What::Terminals => "terminals",
+            What::TerminalBlocks => "terminal_blocks",
             What::All => "all",
         }
     }
@@ -214,7 +214,7 @@ impl RenumberDialog {
         let fixed = self.finalise;
         ui.add_enabled_ui(!fixed, |ui| {
             prim::property_row(ui, "What", |ui| {
-                const WHAT: [What; 5] = [What::Devices, What::Cables, What::Wires, What::Terminals, What::All];
+                const WHAT: [What; 5] = [What::Devices, What::Cables, What::Wires, What::TerminalBlocks, What::All];
                 let mut k = WHAT.iter().position(|w| *w == self.what).unwrap_or(0);
                 if Segmented::new(&mut k, &["Devices", "Cables", "Wires", "Terminals", "All"]).name("ecad.renumber.kind").show(ui).clicked.is_some() {
                     let w = WHAT.get(k).copied().unwrap_or(What::Devices);
@@ -331,7 +331,7 @@ impl RenumberDialog {
                     let kind = match r["kind"].as_str() {
                         Some("devices") => "Dev  ",
                         Some("cables") => "Cbl  ",
-                        Some("terminals") => "Trm  ",
+                        Some("terminal_blocks") => "Trm  ",
                         _ => "Wire ",
                     };
                     let text = format!("{}{old:<8} {mark:<3}{new:<8} {at:<10} {why}", if all { kind } else { "" });

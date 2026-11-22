@@ -99,7 +99,7 @@ impl ViewScope for PropsScope {
 
 /// The devices of the connection points `ends`, in `doc`.
 fn devices_at<'a>(doc: &'a Document, ends: impl Iterator<Item = ConnectionPointId> + 'a) -> impl Iterator<Item = ObjectRef> + 'a {
-    ends.filter_map(|t| doc.terminals.get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device)
+    ends.filter_map(|t| doc.connection_points.get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device)
 }
 
 /// The object a subject's properties are kept on (a route has none, design 072 F31; nor has an
@@ -129,7 +129,7 @@ fn before(doc: &Document, effect: &Effect<'_>, objects: &mut Option<BTreeSet<Obj
         Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => {
             out.insert(ObjectRef::Device(*id));
         }
-        Effect::Terminal { before, after, .. } => {
+        Effect::ConnectionPoint { before, after, .. } => {
             out.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()).map(ObjectRef::Device));
         }
         Effect::Wire { id, before: Some(_), after: Some(_) } => {
@@ -225,7 +225,7 @@ fn extension(doc: &Document, effect: &Effect<'_>, out: &mut BTreeSet<ObjectRef>)
         | Effect::Item { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
-        | Effect::Terminal { .. }
+        | Effect::ConnectionPoint { .. }
         | Effect::Rep { .. }
         | Effect::Route { .. }
         | Effect::Cable { .. }

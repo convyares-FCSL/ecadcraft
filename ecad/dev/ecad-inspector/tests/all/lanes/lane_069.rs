@@ -82,7 +82,7 @@ fn every_op_ledger() -> Ledger {
     let def_v = Definition {
         name: "K".into(),
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
-        terminals: vec![ConnectionPointDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
+        connection_points: vec![ConnectionPointDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
         ..Default::default()
     };
     let comp: ecad_model::DeviceId = ids.fresh();
@@ -142,10 +142,10 @@ fn every_op_ledger() -> Ledger {
                 Op::AddLayer { id: layer, layer: layer_v.clone() },
                 Op::EmbedDefinition { id: def, definition: def_v.clone() },
                 Op::CreateDevice { id: comp, device: comp_v.clone() },
-                Op::AddConnectionPoint { id: term, terminal: term_v.clone() },
-                Op::AddConnectionPoint { id: term2, terminal: point("2") },
-                Op::AddConnectionPoint { id: term3, terminal: point("3") },
-                Op::AddConnectionPoint { id: term4, terminal: point("4") },
+                Op::AddConnectionPoint { id: term, connection_point: term_v.clone() },
+                Op::AddConnectionPoint { id: term2, connection_point: point("2") },
+                Op::AddConnectionPoint { id: term3, connection_point: point("3") },
+                Op::AddConnectionPoint { id: term4, connection_point: point("4") },
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
                 Op::LinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
@@ -211,9 +211,9 @@ fn every_op_ledger() -> Ledger {
         },
         Op::AddConnectionPoint {
             id: ids.fresh(),
-            terminal: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
         },
-        Op::RemoveConnectionPoint { id: term, terminal: term_v.clone() },
+        Op::RemoveConnectionPoint { id: term, connection_point: term_v.clone() },
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },
         Op::ModifyRepresentation { id: rep_wire, before: rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },

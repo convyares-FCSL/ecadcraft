@@ -14,7 +14,7 @@
 //! potential). Its colours and size are its own when it has them (022 FP3, "overridden"), else the
 //! type's. A cable core takes no type colour: its core is its colour.
 //!
-//! This module draws nothing; `wires`, `look` and `outputs` read [`WireLooks`].
+//! This module draws nothing; `wires`, `draw` and `reports` read [`WireDraws`].
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
@@ -315,14 +315,14 @@ pub fn filled(r: &Resolved<'_>) -> Option<String> {
 
 /// The categories of a project read once, for many conductors (a page, a report).
 #[derive(Debug, Clone, Default)]
-pub struct WireLooks {
+pub struct WireDraws {
     /// Potential (lower case) → the category that is its default, the first by ID.
     by_potential: BTreeMap<String, StyleRef>,
     /// Potentials named by two or more categories, with all of them (Checks).
     pub twice: BTreeMap<String, Vec<StyleRef>>,
 }
 
-impl WireLooks {
+impl WireDraws {
     /// Read the categories of `doc`.
     pub fn new(doc: &Document) -> Self {
         let mut all: BTreeMap<String, Vec<StyleRef>> = BTreeMap::new();
@@ -343,7 +343,7 @@ impl WireLooks {
                 twice.insert(p, ids);
             }
         }
-        WireLooks { by_potential, twice }
+        WireDraws { by_potential, twice }
     }
 
     /// Every category that is a potential's default.
@@ -385,7 +385,7 @@ impl WireLooks {
     }
 
     /// The look of conductor `c` (design 050 §5.3).
-    pub fn look(&self, doc: &Document, c: WireId) -> WireDraw {
+    pub fn draw(&self, doc: &Document, c: WireId) -> WireDraw {
         let (category, from) = self.category(doc, c);
         let wire = doc.wires.get(&c);
         let core = !doc.cables_of(c).is_empty();
@@ -412,14 +412,14 @@ impl WireLooks {
     }
 }
 
-/// [`WireLooks::look`] for one conductor (reads the categories once).
+/// [`WireDraws::draw`] for one conductor (reads the categories once).
 pub fn wire_draw(doc: &Document, c: WireId) -> WireDraw {
-    WireLooks::new(doc).look(doc, c)
+    WireDraws::new(doc).draw(doc, c)
 }
 
 /// The category name of conductor `c` for reports (empty for none).
-pub fn category_name(doc: &Document, look: &WireDraw) -> String {
-    look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id)).unwrap_or_default()
+pub fn category_name(doc: &Document, draw: &WireDraw) -> String {
+    draw.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id)).unwrap_or_default()
 }
 
 /// The CADCraft linetype of a `line_type` word.

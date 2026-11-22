@@ -2,15 +2,15 @@
 //! names of each multi-level type and each type's BOM description. Owned by lane D.
 //!
 //! # Semantics
-//! - `terminal.level.separator`: what goes between a position and a level name in a shown label
+//! - `terminal_block.level.separator`: what goes between a position and a level name in a shown label
 //!   (`1.L`). Strip → project → built-in `.`; the word `none` is no separator (`1L`), which is how
 //!   `setprop … ""` on a strip or the project stores it.
-//! - `terminal.<code>.levels`: the level names of a multi-level type, comma-separated, exactly the
+//! - `terminal_block.<code>.levels`: the level names of a multi-level type, comma-separated, exactly the
 //!   type's level count, each 1–6 characters. A value with the wrong count is absent.
-//! - `terminal.<code>.description`: a type's BOM description, project → built-in (its name).
+//! - `terminal_block.<code>.description`: a type's BOM description, project → built-in (its name).
 //!
-//! - `terminal.<key>.prefix`: the tag prefix of each of this brief's starters (overseer ruling,
-//!   2026-11-13: the `terminal` area, following the pattern of 034's `symbol.<key>.prefix`, not its
+//! - `terminal_block.<key>.prefix`: the tag prefix of each of this brief's starters (overseer ruling,
+//!   2026-11-13: the `connection_point` area, following the pattern of 034's `symbol.<key>.prefix`, not its
 //!   area). The project level is the project's `tag_prefixes` setting, keyed by starter key, as for
 //!   034's entries. A strip's tag comes from the starter that made it; later levels join it and
 //!   take no prefix of their own.
@@ -64,7 +64,7 @@ fn names3_ok(t: &str) -> bool {
 }
 
 pub static SEPARATOR: Entry = Entry {
-    key: "terminal.level.separator",
+    key: "terminal_block.level.separator",
     label: "Level separator in terminal labels",
     group: GROUP,
     brief: BRIEF,
@@ -83,7 +83,7 @@ macro_rules! prefixes {
     ($($name:ident = $var:ident $key:literal, $symbol:literal;)*) => {
         $(
             pub static $name: Entry = Entry {
-                key: concat!("terminal.", $key, ".prefix"),
+                key: concat!("terminal_block.", $key, ".prefix"),
                 label: concat!("Tag prefix: ", $symbol),
                 group: "Tag prefixes",
                 brief: BRIEF,
@@ -139,7 +139,7 @@ macro_rules! levels {
     ($($name:ident = $code:literal, $parse:ident, $label:literal;)*) => {
         $(
             pub static $name: Entry = Entry {
-                key: concat!("terminal.", $code, ".levels"),
+                key: concat!("terminal_block.", $code, ".levels"),
                 label: $label,
                 group: GROUP,
                 brief: BRIEF,
@@ -172,7 +172,7 @@ macro_rules! descriptions {
     ($($name:ident = $code:literal, $builtin:literal;)*) => {
         $(
             pub static $name: Entry = Entry {
-                key: concat!("terminal.", $code, ".description"),
+                key: concat!("terminal_block.", $code, ".description"),
                 label: concat!("BOM description: ", $builtin),
                 group: GROUP,
                 brief: BRIEF,
@@ -216,7 +216,7 @@ descriptions! {
 /// Whether `key` is one of this file's keys a strip may hold (the separator, level names): what
 /// [`crate::terminal_strips`]'s update map watches on a strip and on the project.
 pub fn is_label_key(key: &str) -> bool {
-    key == SEPARATOR.key || (key.starts_with("terminal.") && key.ends_with(".levels"))
+    key == SEPARATOR.key || (key.starts_with("terminal_block.") && key.ends_with(".levels"))
 }
 
 /// The value `setprop` stores for `key` (`""` on the separator is `none`), or `None` when the key
@@ -225,7 +225,7 @@ pub fn is_label_key(key: &str) -> bool {
 /// # Errors
 /// A value the entry does not accept, in words.
 pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
-    let e = crate::defaults::find(key).filter(|e| e.key.starts_with("terminal."))?;
+    let e = crate::defaults::find(key).filter(|e| e.key.starts_with("terminal_block."))?;
     Some(match value {
         None => Ok(None),
         Some(v) if v.trim().is_empty() && e.key == SEPARATOR.key => Ok(Some(NO_SEPARATOR.into())),
@@ -258,14 +258,14 @@ mod tests {
                 assert_eq!(e.builtin(), Value::Text(Box::leak(t.levels.join(",").into_boxed_str())));
             }
         }
-        assert_eq!(setprop_value("terminal.level.separator", Some("")), Some(Ok(Some("none".into()))));
-        assert!(setprop_value("terminal.lnpe.levels", Some("L,N")).is_some_and(|r| r.is_err()));
-        assert!(setprop_value("terminal.lnpe.levels", Some(&"x".repeat(10_000))).is_some_and(|r| r.is_err()));
+        assert_eq!(setprop_value("terminal_block.level.separator", Some("")), Some(Ok(Some("none".into()))));
+        assert!(setprop_value("terminal_block.lnpe.levels", Some("L,N")).is_some_and(|r| r.is_err()));
+        assert!(setprop_value("terminal_block.lnpe.levels", Some(&"x".repeat(10_000))).is_some_and(|r| r.is_err()));
         assert_eq!(setprop_value("text.tag.height", Some("3")), None);
         // Names a link could misread are refused (overseer ruling, M1 review).
         for bad in ["2,1,3", "L,N,L", "L.1,N,PE", "L N,N,PE", "1,X,1"] {
-            assert!(setprop_value("terminal.lnpe.levels", Some(bad)).is_some_and(|r| r.is_err()), "{bad}");
+            assert!(setprop_value("terminal_block.lnpe.levels", Some(bad)).is_some_and(|r| r.is_err()), "{bad}");
         }
-        assert_eq!(setprop_value("terminal.lnpe.levels", Some("1,N,3")), Some(Ok(Some("1,N,3".into()))));
+        assert_eq!(setprop_value("terminal_block.lnpe.levels", Some("1,N,3")), Some(Ok(Some("1,N,3".into()))));
     }
 }

@@ -54,7 +54,7 @@ pub enum Obj {
     Layer(LayerId),
     Definition(DefinitionId),
     Device(DeviceId),
-    Terminal(ConnectionPointId),
+    ConnectionPoint(ConnectionPointId),
     Representation(RepresentationId),
     Item(ItemId),
     Wire(WireId),
@@ -77,7 +77,7 @@ impl Obj {
             Obj::Layer(i) => i.hex(),
             Obj::Definition(i) => i.hex(),
             Obj::Device(i) => i.hex(),
-            Obj::Terminal(i) => i.hex(),
+            Obj::ConnectionPoint(i) => i.hex(),
             Obj::Representation(i) => i.hex(),
             Obj::Item(i) => i.hex(),
             Obj::Wire(i) => i.hex(),
@@ -97,7 +97,7 @@ impl Obj {
             Obj::Layer(_) => "layer",
             Obj::Definition(_) => "symbol definition",
             Obj::Device(_) => "device",
-            Obj::Terminal(_) => "connection point",
+            Obj::ConnectionPoint(_) => "connection point",
             Obj::Representation(_) => "symbol",
             Obj::Item(_) => "drawing item",
             Obj::Wire(_) => "wire",
@@ -146,7 +146,7 @@ impl Scope {
             + t.layers.len()
             + t.items.len()
             + t.devices.len()
-            + t.terminals.len()
+            + t.connection_points.len()
             + t.representations.len()
             + t.wires.len()
             + t.cables.len()
@@ -566,7 +566,7 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
     };
     match obj {
         Obj::Device(c) => tag_of(c),
-        Obj::Terminal(t) => match docs.iter().find_map(|d| d.terminals.get(&t)) {
+        Obj::ConnectionPoint(t) => match docs.iter().find_map(|d| d.connection_points.get(&t)) {
             Some(term) => format!(
                 "{}:{}",
                 match term.owner {
@@ -637,7 +637,7 @@ fn page_in(doc: &Document, obj: Obj) -> Option<PageId> {
         Obj::Cable(c) => doc.representations_of(Subject::Cable(c)).map(|(_, r)| r.page).next(),
         Obj::Route(r) => doc.routes.get(&r).map(|r| r.page),
         Obj::Aid(x) => doc.representations_of(Subject::Aid(x)).map(|(_, r)| r.page).next(),
-        Obj::Terminal(t) => doc.terminals.get(&t).and_then(|t| page_in(doc, owner_obj(t.owner))),
+        Obj::ConnectionPoint(t) => doc.connection_points.get(&t).and_then(|t| page_in(doc, owner_obj(t.owner))),
         _ => None,
     }
 }
@@ -652,7 +652,7 @@ fn scope_objects(scope: &Scope) -> Vec<Obj> {
     out.extend(t.layers.iter().map(|x| Obj::Layer(*x)));
     out.extend(t.definitions.iter().map(|x| Obj::Definition(*x)));
     out.extend(t.devices.iter().map(|x| Obj::Device(*x)));
-    out.extend(t.terminals.iter().map(|x| Obj::Terminal(*x)));
+    out.extend(t.connection_points.iter().map(|x| Obj::ConnectionPoint(*x)));
     out.extend(t.representations.iter().map(|x| Obj::Representation(*x)));
     out.extend(t.items.iter().map(|x| Obj::Item(*x)));
     out.extend(t.wires.iter().map(|x| Obj::Wire(*x)));
@@ -674,7 +674,7 @@ fn differs(a: &Document, b: &Document, obj: Obj) -> bool {
         Obj::Layer(i) => a.layers.get(&i) != b.layers.get(&i),
         Obj::Definition(i) => a.definitions.get(&i) != b.definitions.get(&i),
         Obj::Device(i) => a.devices.get(&i) != b.devices.get(&i),
-        Obj::Terminal(i) => a.terminals.get(&i) != b.terminals.get(&i),
+        Obj::ConnectionPoint(i) => a.connection_points.get(&i) != b.connection_points.get(&i),
         Obj::Representation(i) => a.representations.get(&i) != b.representations.get(&i),
         Obj::Item(i) => a.items.get(&i) != b.items.get(&i),
         Obj::Wire(i) => a.wires.get(&i) != b.wires.get(&i),
@@ -696,7 +696,7 @@ fn holds(doc: &Document, obj: Obj) -> bool {
         Obj::Layer(i) => doc.layers.contains_key(&i),
         Obj::Definition(i) => doc.definitions.contains_key(&i),
         Obj::Device(i) => doc.devices.contains_key(&i),
-        Obj::Terminal(i) => doc.terminals.contains_key(&i),
+        Obj::ConnectionPoint(i) => doc.connection_points.contains_key(&i),
         Obj::Representation(i) => doc.representations.contains_key(&i),
         Obj::Item(i) => doc.items.contains_key(&i),
         Obj::Wire(i) => doc.wires.contains_key(&i),
@@ -722,7 +722,7 @@ fn copy(to: &mut Document, from: &Document, obj: Obj) {
         Obj::Layer(i) => put(&mut to.layers, &from.layers, i),
         Obj::Definition(i) => put(&mut to.definitions, &from.definitions, i),
         Obj::Device(i) => put(&mut to.devices, &from.devices, i),
-        Obj::Terminal(i) => put(&mut to.terminals, &from.terminals, i),
+        Obj::ConnectionPoint(i) => put(&mut to.connection_points, &from.connection_points, i),
         Obj::Representation(i) => put(&mut to.representations, &from.representations, i),
         Obj::Item(i) => put(&mut to.items, &from.items, i),
         Obj::Wire(i) => put(&mut to.wires, &from.wires, i),
@@ -845,7 +845,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                             &|x| x.to_string(),
                         ),
                         ends: field(ctx, obj, "ends", format!("{what} · connection points"), &a.ends, &t.ends, &s.ends, &|e| {
-                            format!("{} – {}", name_of(&docs, Obj::Terminal(e[0])), name_of(&docs, Obj::Terminal(e[1])))
+                            format!("{} – {}", name_of(&docs, Obj::ConnectionPoint(e[0])), name_of(&docs, Obj::ConnectionPoint(e[1])))
                         }),
                         order_fixed: field(
                             ctx,
@@ -998,14 +998,22 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                 });
                 set(&mut m.items, id, v);
             }
-            Obj::Terminal(id) => {
-                let v = object(ctx, obj, &what, a.terminals.get(&id), t.terminals.get(&id), s.terminals.get(&id), |ctx, a, t, s| {
-                    let show = |x: &ConnectionPoint| {
-                        x.label.clone().or_else(|| x.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "(no label)".into())
-                    };
-                    field(ctx, obj, "record", format!("{what} · changed on both"), a, t, s, &show)
-                });
-                set(&mut m.terminals, id, v);
+            Obj::ConnectionPoint(id) => {
+                let v = object(
+                    ctx,
+                    obj,
+                    &what,
+                    a.connection_points.get(&id),
+                    t.connection_points.get(&id),
+                    s.connection_points.get(&id),
+                    |ctx, a, t, s| {
+                        let show = |x: &ConnectionPoint| {
+                            x.label.clone().or_else(|| x.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "(no label)".into())
+                        };
+                        field(ctx, obj, "record", format!("{what} · changed on both"), a, t, s, &show)
+                    },
+                );
+                set(&mut m.connection_points, id, v);
             }
             Obj::Layer(id) => {
                 let v = object(ctx, obj, &what, a.layers.get(&id), t.layers.get(&id), s.layers.get(&id), |ctx, a, t, s| {
@@ -1214,7 +1222,7 @@ fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
         use crate::naming::id::*;
         [
             Obj::Device(DeviceId(id)),
-            Obj::Terminal(ConnectionPointId(id)),
+            Obj::ConnectionPoint(ConnectionPointId(id)),
             Obj::Wire(WireId(id)),
             Obj::Cable(CableId(id)),
             Obj::Page(PageId(id)),
@@ -1233,8 +1241,12 @@ fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
 /// branch's values and whatever it needs"): its connection points and its symbols (with their
 /// drawing items) that the source has and the result lacks.
 fn device_needs(m: &Document, s: &Document, c: DeviceId) -> Vec<Obj> {
-    let mut out: Vec<Obj> =
-        s.terminals.iter().filter(|(k, t)| t.device() == Some(c) && !m.terminals.contains_key(k)).map(|(k, _)| Obj::Terminal(*k)).collect();
+    let mut out: Vec<Obj> = s
+        .connection_points
+        .iter()
+        .filter(|(k, t)| t.device() == Some(c) && !m.connection_points.contains_key(k))
+        .map(|(k, _)| Obj::ConnectionPoint(*k))
+        .collect();
     for (r, rep) in s.representations.iter().filter(|(_, r)| r.subject == Subject::Device(c)) {
         if !m.representations.contains_key(r) {
             out.push(Obj::Representation(*r));
@@ -1264,13 +1276,13 @@ fn keep_devices(ctx: &mut Ctx<'_, '_>, m: &mut Document) -> BTreeSet<Obj> {
     for (i, c) in removed {
         // What keeping it brings back, listed in the row whatever the answer.
         let needs = device_needs(t, s, c);
-        let terminals = needs.iter().filter(|o| matches!(o, Obj::Terminal(_))).count();
+        let connection_points = needs.iter().filter(|o| matches!(o, Obj::ConnectionPoint(_))).count();
         let symbols = needs.iter().filter(|o| matches!(o, Obj::Representation(_))).count();
         if let Some(k) = ctx.conflicts.get_mut(i) {
             let mut parts = Vec::new();
-            if terminals > 0 {
-                let names: Vec<String> = needs.iter().filter(|o| matches!(o, Obj::Terminal(_))).take(4).map(|o| name_of(&docs, *o)).collect();
-                parts.push(format!("connection point{} {}", if terminals == 1 { "" } else { "s" }, names.join(", ")));
+            if connection_points > 0 {
+                let names: Vec<String> = needs.iter().filter(|o| matches!(o, Obj::ConnectionPoint(_))).take(4).map(|o| name_of(&docs, *o)).collect();
+                parts.push(format!("connection point{} {}", if connection_points == 1 { "" } else { "s" }, names.join(", ")));
             }
             if symbols > 0 {
                 parts.push(format!("{symbols} symbol{}", if symbols == 1 { "" } else { "s" }));
@@ -1390,7 +1402,7 @@ fn merge_order<T: Copy + Ord>(ctx: &mut Ctx<'_, '_>, id: &str, what: &str, a: &[
 }
 
 /// What `obj` in `m` refers to, and how.
-fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
+fn references(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
     let mut out = Vec::new();
     match obj {
         Obj::Item(i) => {
@@ -1407,8 +1419,8 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
                 out.push((Obj::Definition(d), Use::DeviceDefinition));
             }
         }
-        Obj::Terminal(t) => {
-            if let Some(t) = m.terminals.get(&t) {
+        Obj::ConnectionPoint(t) => {
+            if let Some(t) = m.connection_points.get(&t) {
                 out.push((owner_obj(t.owner), Use::Whole));
             }
         }
@@ -1426,13 +1438,13 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
                 ));
                 out.push((Obj::Page(r.page), Use::Whole));
                 out.extend(r.items.iter().map(|i| (Obj::Item(*i), Use::RepItem)));
-                out.extend(r.connection_points.keys().map(|t| (Obj::Terminal(*t), Use::ConnectionPoint)));
+                out.extend(r.connection_points.keys().map(|t| (Obj::ConnectionPoint(*t), Use::ConnectionPoint)));
             }
         }
         Obj::Wire(c) => {
             if let Some(c) = m.wires.get(&c) {
                 for e in End::BOTH {
-                    out.push((Obj::Terminal(c.end(e)), Use::End(e)));
+                    out.push((Obj::ConnectionPoint(c.end(e)), Use::End(e)));
                 }
             }
         }
@@ -1460,7 +1472,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
                 out.push((Obj::Page(r.page), Use::Whole));
                 for (i, e) in r.ends.iter().enumerate() {
                     match e {
-                        RouteEnd::Point(t) => out.push((Obj::Terminal(*t), Use::RouteEnd(i))),
+                        RouteEnd::Point(t) => out.push((Obj::ConnectionPoint(*t), Use::RouteEnd(i))),
                         RouteEnd::On { route, .. } => out.push((Obj::Route(*route), Use::RouteEnd(i))),
                         RouteEnd::Free => {}
                     }
@@ -1477,7 +1489,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
 fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
     let mut all: Vec<Obj> = Vec::new();
     match y {
-        Obj::Terminal(t) => {
+        Obj::ConnectionPoint(t) => {
             all.extend(m.wires.iter().filter(|(_, c)| c.ends.contains(&t)).map(|(k, _)| Obj::Wire(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.connection_points.contains_key(&t)).map(|(k, _)| Obj::Representation(*k)));
             all.extend(m.routes.iter().filter(|(_, r)| r.ends.contains(&RouteEnd::Point(t))).map(|(k, _)| Obj::Route(*k)));
@@ -1491,7 +1503,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Route(x)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Device(c) => {
-            all.extend(m.terminals.iter().filter(|(_, t)| t.device() == Some(c)).map(|(k, _)| Obj::Terminal(*k)));
+            all.extend(m.connection_points.iter().filter(|(_, t)| t.device() == Some(c)).map(|(k, _)| Obj::ConnectionPoint(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Device(c)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Wire(c) => {
@@ -1534,7 +1546,7 @@ fn drop_use(m: &mut Document, x: Obj, y: Obj, how: Use, check: &mut BTreeSet<Obj
             }
         }
         (Obj::Representation(r), Use::ConnectionPoint) => {
-            if let (Some(r), Obj::Terminal(t)) = (m.representations.get_mut(&r), y) {
+            if let (Some(r), Obj::ConnectionPoint(t)) = (m.representations.get_mut(&r), y) {
                 r.connection_points.remove(&t);
             }
         }
@@ -1592,7 +1604,7 @@ fn resolve_needed(ctx: &mut Ctx<'_, '_>, m: &mut Document, mut check: BTreeSet<O
             if !holds(m, *x) {
                 continue;
             }
-            for (y, how) in refs(m, *x) {
+            for (y, how) in references(m, *x) {
                 if !holds(m, y) && !stuck.contains(&y) {
                     missing.entry(y).or_default().push((*x, how));
                 }
@@ -1722,9 +1734,9 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
             Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                 out.insert(Obj::Device(*id));
             }
-            Op::AddConnectionPoint { id, terminal } | Op::RemoveConnectionPoint { id, terminal } => {
-                out.insert(Obj::Terminal(*id));
-                out.insert(owner_obj(terminal.owner));
+            Op::AddConnectionPoint { id, connection_point } | Op::RemoveConnectionPoint { id, connection_point } => {
+                out.insert(Obj::ConnectionPoint(*id));
+                out.insert(owner_obj(connection_point.owner));
             }
             Op::LinkRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
                 out.insert(Obj::Representation(*id));
@@ -2136,7 +2148,7 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
         let docs = [s, a];
         for (e, word) in [(End::A, "end A"), (End::B, "end B")] {
             if x.end(e) != y.end(e) {
-                let show = |t: ConnectionPointId| name_of(&docs, Obj::Terminal(t));
+                let show = |t: ConnectionPointId| name_of(&docs, Obj::ConnectionPoint(t));
                 return format!("· {word} {} → {}", show(x.end(e)), show(y.end(e)));
             }
         }
@@ -2277,7 +2289,7 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
             if !holds(&m, *x) {
                 continue;
             }
-            for (y, _) in refs(&m, *x) {
+            for (y, _) in references(&m, *x) {
                 if !holds(&m, y) {
                     ctx.problems.push(format!(
                         "{} would refer to {}, which the merge leaves out: choose differently for one of them first.",
@@ -2320,8 +2332,8 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
                 Obj::Device(i) => {
                     scope.devices.insert(i);
                 }
-                Obj::Terminal(i) => {
-                    scope.terminals.insert(i);
+                Obj::ConnectionPoint(i) => {
+                    scope.connection_points.insert(i);
                 }
                 Obj::Representation(i) => {
                     scope.representations.insert(i);
@@ -2378,7 +2390,7 @@ pub fn objects_of(ops: &[Op]) -> BTreeSet<Obj> {
     out.extend(t.cables.iter().map(|x| Obj::Cable(*x)));
     out.extend(t.representations.iter().map(|x| Obj::Representation(*x)));
     out.extend(t.items.iter().map(|x| Obj::Item(*x)));
-    out.extend(t.terminals.iter().map(|x| Obj::Terminal(*x)));
+    out.extend(t.connection_points.iter().map(|x| Obj::ConnectionPoint(*x)));
     out.extend(t.folders.iter().map(|x| Obj::Folder(*x)));
     if s.project {
         out.insert(Obj::Project);
@@ -2590,10 +2602,10 @@ mod tests {
         BTreeMap::from([(id.to_string(), c)])
     }
 
-    fn device(d: &mut Document, c: u128, tag_text: &str, terminals: &[u128]) {
+    fn device(d: &mut Document, c: u128, tag_text: &str, connection_points: &[u128]) {
         d.devices.insert(DeviceId(c), Device::default().with_tag(Some(tag_text)));
-        for t in terminals {
-            d.terminals.insert(
+        for t in connection_points {
+            d.connection_points.insert(
                 ConnectionPointId(*t),
                 ConnectionPoint { owner: DeviceId(c).into(), label: Some(format!("A{t}")), key: None, accepts: Default::default() },
             );
@@ -2609,7 +2621,7 @@ mod tests {
         for o in ids {
             match *o {
                 Obj::Device(c) => s.touched.devices.insert(c),
-                Obj::Terminal(t) => s.touched.terminals.insert(t),
+                Obj::ConnectionPoint(t) => s.touched.connection_points.insert(t),
                 Obj::Wire(c) => s.touched.wires.insert(c),
                 Obj::Page(p) => s.touched.pages.insert(p),
                 _ => false,
@@ -2641,18 +2653,18 @@ mod tests {
         let t = Document::default();
         let mut s = a.clone();
         s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::objects::devices::Description::new("Pump").ok();
-        let scope = scope_all(&[Obj::Device(DeviceId(1)), Obj::Terminal(ConnectionPointId(11)), Obj::Terminal(ConnectionPointId(12))]);
+        let scope = scope_all(&[Obj::Device(DeviceId(1)), Obj::ConnectionPoint(ConnectionPointId(11)), Obj::ConnectionPoint(ConnectionPointId(12))]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         let k = p.conflicts.iter().find(|c| c.kind == ConflictKind::Removed).unwrap();
         assert!(k.source.contains("connection points"), "{}", k.source);
         let id = k.id.clone();
         // Keep removed: nothing comes back.
         let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, Choice::Target)));
-        assert!(doc.devices.is_empty() && doc.terminals.is_empty());
+        assert!(doc.devices.is_empty() && doc.connection_points.is_empty());
         // Keep the device: its connection points come back with it.
         let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, Choice::Source)));
         assert!(doc.devices.contains_key(&DeviceId(1)));
-        assert_eq!(doc.terminals.len(), 2);
+        assert_eq!(doc.connection_points.len(), 2);
     }
 
     #[test]
@@ -2683,19 +2695,19 @@ mod tests {
         let mut s = a.clone();
         wire(&mut s, 5, 21, 11);
         let mut t = a.clone();
-        t.terminals.remove(&ConnectionPointId(11));
+        t.connection_points.remove(&ConnectionPointId(11));
         t.devices.remove(&DeviceId(1));
-        let scope = scope_all(&[Obj::Wire(WireId(5)), Obj::Terminal(ConnectionPointId(11)), Obj::Device(DeviceId(1))]);
+        let scope = scope_all(&[Obj::Wire(WireId(5)), Obj::ConnectionPoint(ConnectionPointId(11)), Obj::Device(DeviceId(1))]);
         let tid = format!("{}/needed", ConnectionPointId(11).hex());
         let cid = format!("{}/needed", DeviceId(1).hex());
         // Not brought back: a wire runs between two points, so without one it goes.
         let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&tid, Choice::Drop)));
         assert!(!doc.wires.contains_key(&WireId(5)));
-        assert!(!doc.terminals.contains_key(&ConnectionPointId(11)));
+        assert!(!doc.connection_points.contains_key(&ConnectionPointId(11)));
         // Bring back the point and its device.
         let both = BTreeMap::from([(tid.clone(), Choice::BringBack), (cid.clone(), Choice::BringBack)]);
         let doc = applied(&t, &run(&a, &t, &s, &scope, &both));
-        assert!(doc.terminals.contains_key(&ConnectionPointId(11)) && doc.devices.contains_key(&DeviceId(1)));
+        assert!(doc.connection_points.contains_key(&ConnectionPointId(11)) && doc.devices.contains_key(&DeviceId(1)));
         // Bring back the point but not what it needs: a problem with the way through, no ops.
         let contradiction = BTreeMap::from([(tid, Choice::BringBack), (cid, Choice::Drop)]);
         let p = run(&a, &t, &s, &scope, &contradiction);

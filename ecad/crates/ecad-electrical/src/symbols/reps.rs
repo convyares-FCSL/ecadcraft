@@ -182,7 +182,11 @@ pub fn siblings(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> 
 
 /// The (pin name, side key) pairs a pin representation shows.
 fn pin_names(doc: &Document, r: &Representation) -> Vec<(String, String)> {
-    r.connection_points.keys().filter_map(|t| doc.terminals.get(t)).filter_map(|t| Some((t.label.clone()?, t.key.as_ref()?.to_string()))).collect()
+    r.connection_points
+        .keys()
+        .filter_map(|t| doc.connection_points.get(t))
+        .filter_map(|t| Some((t.label.clone()?, t.key.as_ref()?.to_string())))
+        .collect()
 }
 
 /// The representations of `rid`'s device of the same type in other views (design 052 §3.3): the

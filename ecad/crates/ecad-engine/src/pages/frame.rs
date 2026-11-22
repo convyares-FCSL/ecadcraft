@@ -125,8 +125,8 @@ pub fn drawn(input: &frames::FrameInput) -> (Vec<Part>, crate::title_blocks::lay
     let mut pen = layout::Pen::new(unit_scale(input.unit));
     layout::border(&mut pen, input);
     let l = &input.block.layout;
-    let origin = match input.look.block {
-        ecad_electrical::styles::frame::BlockAt::BottomFull => (input.look.margins.left, input.look.margins.bottom),
+    let origin = match input.draw.block {
+        ecad_electrical::styles::frame::BlockAt::BottomFull => (input.draw.margins.left, input.draw.margins.bottom),
         ecad_electrical::styles::frame::BlockAt::BottomRight => layout::block_origin(input, l),
     };
     let d = layout::block(&mut pen, input, l, origin);

@@ -41,11 +41,11 @@ fn families() {
         "motor3",
         "motor1",
         "trafo",
-        "terminal",
+        "connection_point",
         "di",
         "do",
         "continuation",
-        "terminalpe",
+        "terminalblockpe",
     ];
     for k in old {
         assert!(matches!(s(k).family, Family::Basic), "{k}");
@@ -108,7 +108,8 @@ fn quiet_lists() {
             continue;
         }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
-        let mut got: Vec<String> = d.terminals.iter().filter(|t| symbols::is_quiet(st, &t.key.to_string())).map(|t| t.key.to_string()).collect();
+        let mut got: Vec<String> =
+            d.connection_points.iter().filter(|t| symbols::is_quiet(st, &t.key.to_string())).map(|t| t.key.to_string()).collect();
         got.sort();
         let mut want: Vec<String> = cat.iter().find(|e| e.key == st.key.word()).map(|e| e.quiet.clone()).unwrap_or_default();
         want.sort();

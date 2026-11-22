@@ -20,7 +20,7 @@ fn fixture() -> H {
     let first = h.first_page();
     let lines = h.lines_on(first);
     h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();
-    h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
+    h.run("addconnectionpoint", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
     h.run("place", json!({"at": [100, 0]})).unwrap();
     h.run("wire", json!({"points": pts(&[(40.0, 10.0), (100.0, 10.0)])})).unwrap();
     h.cmdline("line 0,40 10,40 ");

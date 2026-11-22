@@ -73,10 +73,10 @@ fn index(doc: &Document) -> Vec<Value> {
     for id in doc.devices.keys() {
         push("device", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Device(*id)));
     }
-    for (id, t) in &doc.terminals {
+    for (id, t) in &doc.connection_points {
         let owner = label_of(doc, t.owner.subject());
         let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| id.short());
-        push("terminal", format!("{:032x}", id.0), id.short(), format!("{owner}:{name}"));
+        push("connection_point", format!("{:032x}", id.0), id.short(), format!("{owner}:{name}"));
     }
     for id in doc.wires.keys() {
         push("wire", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Wire(*id)));
@@ -151,7 +151,7 @@ pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog,
         None => Some(ledger.replay_matches()?),
         Some(_) => None,
     };
-    let refs = cable_references(doc);
+    let references = cable_references(doc);
     let pages: Vec<Value> = doc
         .page_order
         .iter()
@@ -190,13 +190,13 @@ pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog,
             "invariants_hold": doc.check().is_ok(),
             "mismatches": mismatches(doc, 1e-6),
             "nets": nets(doc),
-            "cable_references": references_json(doc, &refs),
-            "orphan_references": refs.iter().filter(|r| r.orphan).map(|r| json!({
+            "cable_references": references_json(doc, &references),
+            "orphan_references": references.iter().filter(|r| r.orphan).map(|r| json!({
                 "reference": r.reference.hex(),
                 "cable": r.cable.hex(),
                 "page": r.page.hex(),
             })).collect::<Vec<_>>(),
-            "over_referenced_cables": over_referenced(&refs).iter().map(|k| k.hex()).collect::<Vec<_>>(),
+            "over_referenced_cables": over_referenced(&references).iter().map(|k| k.hex()).collect::<Vec<_>>(),
         },
     }))
 }
@@ -219,9 +219,9 @@ mod tests {
         let number = |n: &str| ecad_model::naming::text::Text::new(n).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: true });
         let ops = vec![
             Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K1")) },
-            Op::AddConnectionPoint { id: a, terminal: point("1") },
-            Op::AddConnectionPoint { id: b, terminal: point("2") },
-            Op::AddConnectionPoint { id: c, terminal: point("3") },
+            Op::AddConnectionPoint { id: a, connection_point: point("1") },
+            Op::AddConnectionPoint { id: b, connection_point: point("2") },
+            Op::AddConnectionPoint { id: c, connection_point: point("3") },
             Op::CreateWire { id: w1, wire: Wire { net_order: 2, number: number("102"), ..Wire::new(net, c1, b, c) } },
             Op::CreateWire { id: w2, wire: Wire { net_order: 1, number: number("101"), ..Wire::new(net, c2, a, b) } },
         ];

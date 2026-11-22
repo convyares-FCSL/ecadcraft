@@ -177,10 +177,10 @@ pub struct OtherEnd {
 pub fn other_end(doc: &Document, reference: RepresentationId) -> Result<OtherEnd, CmdError> {
     const NO_OTHER: &str = "this reference has no other end";
     const NOT_LOCATED: &str = "the other end cannot be located";
-    let refs = cables::all(doc);
-    let here = refs.iter().find(|r| r.reference == reference).ok_or(CmdError::refused("no such reference"))?;
+    let references = cables::all(doc);
+    let here = references.iter().find(|r| r.reference == reference).ok_or(CmdError::refused("no such reference"))?;
     let other = here.partner().ok_or(CmdError::refused(NO_OTHER))?;
-    let there = refs.iter().find(|r| r.reference == other).ok_or(CmdError::refused(NO_OTHER))?;
+    let there = references.iter().find(|r| r.reference == other).ok_or(CmdError::refused(NO_OTHER))?;
     let item = there.item.ok_or(CmdError::refused(NOT_LOCATED))?;
     let at = there.at.ok_or(CmdError::refused(NOT_LOCATED))?;
     let message = format!(
@@ -237,11 +237,11 @@ pub struct CablecontinueParams {
     members: Option<Vec<WireId>>,
 }
 
-/// `cablerefs {cable?}` (design 010 §7.4): every cable reference (or `cable`'s), derived; read
+/// `cablereferences {cable?}` (design 010 §7.4): every cable reference (or `cable`'s), derived; read
 /// only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct CablerefsParams {
+pub struct CablereferencesParams {
     /// Only this cable's references.
     #[serde(default)]
     cable: Option<CableId>,
@@ -325,8 +325,8 @@ impl Generic for CablecontinueParams {
     }
 }
 
-impl Generic for CablerefsParams {
-    const ID: &'static str = "cablerefs";
+impl Generic for CablereferencesParams {
+    const ID: &'static str = "cablereferences";
     const TITLE: &'static str = "List Cable References";
     const HELP: &'static str = "{cable?: id} (read only)";
     const PAGES: Pages = Pages::Any;
@@ -339,7 +339,7 @@ impl Generic for CablerefsParams {
         {
             return Err(CmdError::refused("no such cable"));
         }
-        let refs: Vec<_> = cables::all(doc).into_iter().filter(|r| self.cable.is_none_or(|k| r.cable == k)).collect();
-        Ok(Outcome::answer(json!({ "references": crate::references::cables::references_json(doc, &refs) })))
+        let references: Vec<_> = cables::all(doc).into_iter().filter(|r| self.cable.is_none_or(|k| r.cable == k)).collect();
+        Ok(Outcome::answer(json!({ "references": crate::references::cables::references_json(doc, &references) })))
     }
 }

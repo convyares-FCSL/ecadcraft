@@ -20,7 +20,7 @@ pub struct Row {
     /// History and branches on that file (brief 020a).
     pub history: Option<crate::history::MeasuredHistory>,
     /// Locations, reports and printing on that file (brief 024).
-    pub outputs: Option<crate::outputs::MeasuredOutputs>,
+    pub reports: Option<crate::reports::MeasuredReports>,
     /// Terminal strips and cable cores on that file (brief 028).
     pub strips: Option<crate::strips::MeasuredStrips>,
     /// The pre-release check and the release on that file (brief 027).
@@ -37,7 +37,7 @@ pub struct Row {
 const COLUMNS: [(&str, &str); 41] = [
     ("open_ms", "open ms"),
     ("derive_ms", "derive ms"),
-    ("xref_ms", "xref ms"),
+    ("reference_ms", "xref ms"),
     ("first_page_ms", "1st page ms"),
     ("edit_ms", "edit ms"),
     ("save_ms", "save ms"),
@@ -84,7 +84,7 @@ fn values(r: &Row) -> [Option<f64>; 41] {
     [
         Some(m.open_ms),
         Some(m.derive_ms),
-        m.xref_ms,
+        m.reference_ms,
         Some(m.first_page_ms),
         Some(m.edit_ms),
         Some(m.save_ms),
@@ -186,7 +186,7 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
             m.transactions,
             cell(Some(m.open_ms), 10, 1),
             cell(Some(m.derive_ms), 10, 2),
-            cell(m.xref_ms, 9, 2),
+            cell(m.reference_ms, 9, 2),
             cell(Some(m.first_page_ms), 12, 1),
             cell(Some(m.edit_ms), 9, 2),
             cell(Some(m.save_ms), 9, 2),
@@ -313,7 +313,7 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
         ));
     }
     for r in rows {
-        let Some(o) = &r.outputs else { continue };
+        let Some(o) = &r.reports else { continue };
         out.push_str(&format!(
             "\nOutputs on {} {} ({} devices; box holds {}): reportfirst {:.1} ms, locset {:.2} ms, boxmove {:.2} ms \
              (plain move {:.2} ms), symin {:.2} ms, projloc {:.2} ms, bomupd {:.2} ms, wireupd {:.2} ms; most rows one edit \
@@ -370,7 +370,7 @@ Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {
             r.tier,
             r.variant,
             t.strips,
-            t.terminals,
+            t.connection_points,
             t.cables,
             t.stripbuild_ms,
             t.tplace_ms,
@@ -390,7 +390,7 @@ Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {
         ));
         // Brief 036 (design 036 §11.3).
         out.push_str(&format!(
-            "Multi-level terminals: lvlfence {:.2} ms (< 16), lvlplace {:.2} ms (< 16), lvlsep {:.2} ms (< 16; {} strips recomputed), \
+            "Multi-level connection_points: lvlfence {:.2} ms (< 16), lvlplace {:.2} ms (< 16), lvlsep {:.2} ms (< 16; {} strips recomputed), \
              toposition {:.2} ms (< 16), lvltrenum {:.2} ms (< 16)\n",
             t.lvlfence_ms, t.lvlplace_ms, t.lvlsep_ms, t.lvlsep_work, t.toposition_ms, t.lvltrenum_ms
         ));
@@ -539,7 +539,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                 "transactions": m.transactions,
                 "open_ms": m.open_ms,
                 "derive_ms": m.derive_ms,
-                "xref_ms": m.xref_ms,
+                "reference_ms": m.reference_ms,
                 "first_page_ms": m.first_page_ms,
                 "edit_ms": m.edit_ms,
                 "save_ms": m.save_ms,
@@ -597,7 +597,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                 "verify_chain_ms": r.v2.as_ref().map(|v| v.verify_chain_ms),
                 "verify_ms": r.v2.as_ref().map(|v| v.verify_ms),
                 "verify_full_checks": r.v2.as_ref().map(|v| v.verify_full_checks),
-                "outputs": r.outputs.as_ref().map(|o| json!({
+                "reports": r.reports.as_ref().map(|o| json!({
                     "reportfirst_ms": o.reportfirst_ms, "locset_ms": o.locset_ms, "boxmove_ms": o.boxmove_ms,
                     "plainmove_ms": o.plainmove_ms, "symin_ms": o.symin_ms, "projloc_ms": o.projloc_ms,
                     "bomupd_ms": o.bomupd_ms, "wireupd_ms": o.wireupd_ms,
@@ -611,7 +611,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                 "strips": r.strips.as_ref().map(|t| json!({
                     "stripbuild_ms": t.stripbuild_ms, "tplace_ms": t.tplace_ms, "tfence_ms": t.tfence_ms,
                     "stripupd_ms": t.stripupd_ms, "attach_ms": t.attach_ms, "relocate_ms": t.relocate_ms, "tplan_ms": t.tplan_ms,
-                    "trenum_ms": t.trenum_ms, "strips": t.strips, "terminals": t.terminals, "cables": t.cables,
+                    "trenum_ms": t.trenum_ms, "strips": t.strips, "connection_points": t.connection_points, "cables": t.cables,
                     "work": t.work,
                     // Brief 030.
                     "acc": acc_json(t),
@@ -653,7 +653,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     "plcexport_ms": t.plcexport_ms, "drives_ms": t.drives_ms})
             });
             // Brief 047 (design 047 §10), set apart for the macro's recursion limit.
-            row["bom"] = r.outputs.as_ref().map_or(Value::Null, |o| {
+            row["bom"] = r.reports.as_ref().map_or(Value::Null, |o| {
                 let b = &o.bom;
                 json!({
                     "bomline_ms": b.bomline_ms, "bomkit_ms": b.bomkit_ms, "bomitem_ms": b.bomitem_ms,

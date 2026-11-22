@@ -230,7 +230,7 @@ fn fp2_di_and_do_are_channels_and_an_old_key_is_refused() {
     assert!(pts.contains_key(".0.in") && pts.contains_key(".1.in"), "{:?}", pts.keys().collect::<Vec<_>>());
     let d = p.h.doc();
     let t = pts[".1.in"].1;
-    let before = d.terminals[&t].clone();
+    let before = d.connection_points[&t].clone();
     let mut after = before.clone();
     after.key = Some("I1.3".parse().unwrap());
     let head = p.h.head();
@@ -238,13 +238,13 @@ fn fp2_di_and_do_are_channels_and_an_old_key_is_refused() {
         x.ledger.commit(
             Author::User,
             "hand-made",
-            vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }],
+            vec![Op::RemoveConnectionPoint { id: t, connection_point: before }, Op::AddConnectionPoint { id: t, connection_point: after }],
         )
     });
     assert!(e.is_err_and(|e| e.to_string().contains("keyed I1.3")), "the old key is refused");
     assert_eq!(p.h.head(), head);
     let old_do = p.h.run("place", json!({"symbol": "do", "at": [180, 200], "device": c["-A07"].hex()})).unwrap();
-    assert!(old_do["terminals"].to_string().contains(".0.out"), "{old_do}");
+    assert!(old_do["connection_points"].to_string().contains(".0.out"), "{old_do}");
     p.h.check();
 }
 
@@ -414,7 +414,7 @@ fn l_registry_switches_change_only_inheriting_cards() {
 
 /// L: `plc.channel.first 1` on a card shifts the shown channel number, never a terminal key.
 #[test]
-fn l_channel_first_changes_no_terminal() {
+fn l_channel_first_changes_no_connection_point() {
     let (mut p, c) = with_cards(0x7045_6e002);
     fence_inputs(&mut p, c["-A03"]);
     let before = channel_points(&p.h.doc(), c["-A03"]);

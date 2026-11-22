@@ -406,7 +406,7 @@ fn invariants(d: &Document) -> Value {
     let shown: Vec<Value> = mismatches
         .iter()
         .take(200)
-        .map(|m| json!({"route": format!("({})", m.route.short()), "end": format!("{:?}", m.end), "point": point_name(d, m.terminal), "page": page_number(d, m.page)}))
+        .map(|m| json!({"route": format!("({})", m.route.short()), "end": format!("{:?}", m.end), "point": point_name(d, m.connection_point), "page": page_number(d, m.page)}))
         .collect();
     json!({
         "ok": check.is_ok() && index.is_ok() && mismatches.is_empty(),
@@ -443,7 +443,7 @@ fn device_name(d: &Document, c: DeviceId) -> String {
 }
 
 fn point_name(d: &Document, t: ConnectionPointId) -> String {
-    match d.terminals.get(&t) {
+    match d.connection_points.get(&t) {
         Some(term) => {
             let own = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
             format!("{}:{own}", owner_name(d, term.owner))
@@ -499,7 +499,7 @@ fn project(d: &Document) -> Value {
             "pages": d.pages.len(),
             "folders": d.folders.len(),
             "devices": d.devices.len(),
-            "connection_points": d.terminals.len(),
+            "connection_points": d.connection_points.len(),
             "wires": d.wires.len(),
             "cables": d.cables.len(),
             "nets": d.connectivity().len(),
@@ -635,7 +635,7 @@ fn nets(d: &Document) -> Vec<Value> {
             let number = ecad_model::connectivity::wiring::net_number(d, n);
             let pot = ecad_model::connectivity::wiring::net_potential(d, n);
             let (page, column) = ecad_model::connectivity::wiring::net_place(d, n);
-            let points: Vec<String> = n.terminals.iter().map(|t| point_name(d, *t)).collect();
+            let points: Vec<String> = n.connection_points.iter().map(|t| point_name(d, *t)).collect();
             let row = json!({
                 "number": number,
                 "fixed": ecad_model::connectivity::wiring::net_fixed(n),
@@ -730,7 +730,7 @@ fn cables(d: &Document) -> Vec<Value> {
             for m in &k.cores {
                 if let Some(w) = m.wire().and_then(|w| d.wires.get(&w)) {
                     for (side, t) in ends.iter_mut().zip(w.ends.iter()) {
-                        if let Some(term) = d.terminals.get(t) {
+                        if let Some(term) = d.connection_points.get(t) {
                             side.insert(owner_name(d, term.owner));
                         }
                     }

@@ -23,7 +23,7 @@ fn def(name: &str, keys: [&str; 2]) -> Definition {
         name: name.into(),
         origin: None,
         graphics: vec![Primitive::Line { a: Pt::new(0.0, 10.0), b: Pt::new(0.0, -10.0) }],
-        terminals: vec![
+        connection_points: vec![
             ConnectionPointDef { key: keys[0].parse().unwrap(), label: Some(keys[0].into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
             ConnectionPointDef { key: keys[1].parse().unwrap(), label: Some(keys[1].into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
@@ -74,8 +74,8 @@ fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2],
     let k1 = fx.k1;
     let term = |l: &str| ConnectionPoint { owner: k1.into(), label: Some(l.into()), key: Some(l.parse().unwrap()), accepts: Default::default() };
     let ops = vec![
-        Op::AddConnectionPoint { id: t1, terminal: term(labels[0]) },
-        Op::AddConnectionPoint { id: t2, terminal: term(labels[1]) },
+        Op::AddConnectionPoint { id: t1, connection_point: term(labels[0]) },
+        Op::AddConnectionPoint { id: t2, connection_point: term(labels[1]) },
         Op::AddItem { id: item, item: symbol(fx, definition, at) },
         Op::LinkRepresentation {
             id: rep,
@@ -131,7 +131,7 @@ fn connection_points_of_a_symbol_follow_its_placement() {
 }
 
 #[test]
-fn connection_points_must_name_the_components_own_terminals() {
+fn connection_points_must_name_the_components_own_connection_points() {
     let mut fx = fixture();
     let other: DeviceId = fx.ids.fresh();
     let foreign: ConnectionPointId = fx.ids.fresh();
@@ -142,7 +142,7 @@ fn connection_points_must_name_the_components_own_terminals() {
             Op::CreateDevice { id: other, device: Device::default() },
             Op::AddConnectionPoint {
                 id: foreign,
-                terminal: ConnectionPoint { owner: other.into(), label: None, key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: other.into(), label: None, key: None, accepts: Default::default() },
             },
         ],
     )

@@ -1,4 +1,4 @@
-//! Graphical terminal-strip pages (brief 046, design 046): the `graphic` style of a `terminals`
+//! Graphical terminal-strip pages (brief 046, design 046): the `graphic` style of a `connection_points`
 //! generated page. Each strip is drawn as it is wired on the rail: one column per plan row of
 //! [`ecad_electrical::terminal_strips::StripData::plan`], inside conductors up to their targets, outside conductors
 //! down, cable bars and boxes under them, links, bridges, levels and accessories in the band.
@@ -23,7 +23,7 @@ use crate::pages::frame::{FrameInput, Part, THIN_WEIGHT, TextDraw};
 use ecad_electrical::reports::kept::ReportModels;
 use ecad_electrical::terminal_strips::accessories::Acc;
 use ecad_electrical::terminal_strips::{SideCell, StripData};
-use {crate::styles::draw::Look, ecad_electrical::styles::text_style::TextKind};
+use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextKind};
 use {ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
 
 /// Guard (design 046 §4.1): at most this many cable bar lanes; further cables share the last.
@@ -71,7 +71,7 @@ impl Pen {
     fn line(&mut self, a: (f64, f64), b: (f64, f64)) {
         self.line_w(a, b, THIN_WEIGHT);
     }
-    /// A dashed line (`ecad.link`): 1.5 mm dashes, 1 mm gaps.
+    /// A dashed line (`ecad.jumper_bar`): 1.5 mm dashes, 1 mm gaps.
     fn dashed(&mut self, a: (f64, f64), b: (f64, f64)) {
         let len = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
         if !(len.is_finite() && len > 0.0) {
@@ -130,47 +130,47 @@ impl Pen {
         }
     }
     /// Text at `at`, rotated 90° (reading upwards) when `up`, fitted to `room` along its line.
-    fn text(&mut self, at: (f64, f64), look: TextDraw, value: &str, h: HAlign, up: bool, room: Option<f64>) {
+    fn text(&mut self, at: (f64, f64), draw: TextDraw, value: &str, h: HAlign, up: bool, room: Option<f64>) {
         if value.is_empty() {
             return;
         }
-        let (shown, wf) = crate::pages::frame::fit(value, look.mm, room);
+        let (shown, wf) = crate::pages::frame::fit(value, draw.mm, room);
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
         let kind = EntityKind::Text(Text {
             insert: pt,
             align_pt: Some(pt),
-            height: look.mm * self.k,
+            height: draw.mm * self.k,
             value: shown,
             rotation: if up { FRAC_PI_2 } else { 0.0 },
             width_factor: wf,
             oblique: 0.0,
-            style: look.style.into(),
+            style: draw.style.into(),
             halign: h,
             valign: VAlign::Middle,
         });
-        self.out.push(Part { kind, weight: look.weight, aci: None, layer: LAYER });
+        self.out.push(Part { kind, weight: draw.weight, aci: None, layer: LAYER });
     }
     /// A value, or 024's `?` box (design 033 §3.1) about `at` when it is missing.
-    fn value(&mut self, doc: &Document, at: (f64, f64), look: TextDraw, value: Option<&str>, h: HAlign, room: Option<f64>) {
+    fn value(&mut self, doc: &Document, at: (f64, f64), draw: TextDraw, value: Option<&str>, h: HAlign, room: Option<f64>) {
         match value.map(str::trim).filter(|v| !v.is_empty()) {
-            Some(v) => self.text(at, look, v, h, true, room),
+            Some(v) => self.text(at, draw, v, h, true, room),
             None => {
-                let s = (look.mm + 1.4).max(2.4);
+                let s = (draw.mm + 1.4).max(2.4);
                 let y = match h {
                     HAlign::Right => at.1 - s,
                     HAlign::Center => at.1 - s / 2.0,
                     _ => at.1,
                 };
                 let (lo, hi) = (self.p(at.0 - s / 2.0, y), self.p(at.0 + s / 2.0, y + s));
-                self.out.extend(crate::pages::generated::missing_mark(doc, lo, hi, self.k, look));
+                self.out.extend(crate::pages::generated::missing_mark(doc, lo, hi, self.k, draw));
             }
         }
     }
 }
 
 /// The text looks a strip page draws with (design 046 §7.1).
-struct Looks {
+struct Draws {
     tag: TextDraw,
     table: TextDraw,
     /// A terminal's number or label (brief 066d: its own kind, `PointLabel`).
@@ -183,24 +183,24 @@ struct Looks {
     description: TextDraw,
 }
 
-/// The content of sheet `i` of graphic `terminals` page `page` (paper millimetres, sheet origin at
+/// The content of sheet `i` of graphic `connection_points` page `page` (paper millimetres, sheet origin at
 /// `x0`): its strip's columns that fall on this sheet. O(rows of that strip + what it draws).
 pub fn content(doc: &Document, page: PageId, input: &FrameInput, i: usize, x0: f64, o: &ReportModels) -> Vec<Part> {
     let (l, b, r, t) = ecad_electrical::pages::generated::area(input);
     let mut pen = Pen { k: unit_scale(input.unit), x0, out: Vec::new() };
-    let looks = Look::new(doc);
-    let look = |kind| TextDraw::of(&looks, kind, input.unit);
+    let draws = DrawStyles::new(doc);
+    let draw = |kind| TextDraw::of(&draws, kind, input.unit);
     let g = o.strip_pages.geometry;
-    let heading = look(TextKind::TableHeading);
-    let lk = Looks {
+    let heading = draw(TextKind::TableHeading);
+    let lk = Draws {
         tag: TextDraw { mm: heading.mm * g.tag_scale, ..heading },
-        table: look(TextKind::Table),
-        point: look(TextKind::PointLabel),
-        location: look(TextKind::LocationLabel),
-        reference: look(TextKind::Reference),
-        wire: look(TextKind::WireLabel),
-        cable: look(TextKind::CableText),
-        description: look(TextKind::Description),
+        table: draw(TextKind::Table),
+        point: draw(TextKind::PointLabel),
+        location: draw(TextKind::LocationLabel),
+        reference: draw(TextKind::Reference),
+        wire: draw(TextKind::WireLabel),
+        cable: draw(TextKind::CableText),
+        description: draw(TextKind::Description),
     };
     // §6.2: a short area scales the band and the leads (texts keep their heights).
     let f = if t - b < SCALE_BELOW_MM { ((t - b) / FULL_AREA_MM).clamp(0.5, 1.0) } else { 1.0 };
@@ -259,7 +259,7 @@ fn lead_x(cx: f64, k: usize, n: usize) -> f64 {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64, g: &Geometry, fr: &Frame, lk: &Looks, o: &ReportModels) {
+fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64, g: &Geometry, fr: &Frame, lk: &Draws, o: &ReportModels) {
     let (cols, blocks) = columns(s, g);
     let widths: Vec<f64> = blocks.iter().map(|(_, _, w)| *w).collect();
     let sheets = paginate(&widths, avail);
@@ -323,7 +323,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
                     pen.text((cx, top + 2.0), lk.table, "\u{2014}", HAlign::Center, false, None);
                     pen.text((cx, bot - 2.0), lk.table, "\u{2014}", HAlign::Center, false, None);
                 }
-                if r.terminal.is_none() {
+                if r.connection_point.is_none() {
                     continue;
                 }
                 side(doc, pen, &r.inside, cx, top, fr.yc + half + fr.lead, true, fr, lk);
@@ -338,13 +338,13 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
         }
     }
     level_boxes(pen, &placed, g, yc);
-    links(pen, &placed, s, yc);
+    jumper_bars(pen, &placed, s, yc);
     bridges(pen, &placed, g, yc, lk);
     cables(doc, pen, &cols, c0, &out_leads, g, fr, lk, o);
 }
 
 /// §3.2: the tag box left of the first column.
-fn tag_box(pen: &mut Pen, s: &StripData, g: &Geometry, fr: &Frame, lk: &Looks) {
+fn tag_box(pen: &mut Pen, s: &StripData, g: &Geometry, fr: &Frame, lk: &Draws) {
     let (x0, x1) = (fr.l, fr.l + g.tagbox);
     let (y0, y1) = (fr.yc - g.body / 2.0 - 4.0, fr.yc + g.body / 2.0 + 4.0);
     pen.rect((x0, y0), (x1, y1));
@@ -354,7 +354,7 @@ fn tag_box(pen: &mut Pen, s: &StripData, g: &Geometry, fr: &Frame, lk: &Looks) {
     pen.text((x0 + g.tagbox * 0.62, fr.yc), lk.location, &loc, HAlign::Center, true, room);
     pen.text((x0 + g.tagbox * 0.85, fr.yc), lk.description, &s.counts_text(), HAlign::Center, true, room);
     // The lanes the band uses: links in its upper half, wire bridges in its lower half.
-    if !s.acc.links.is_empty() {
+    if !s.acc.jumper_bars.is_empty() {
         pen.text((x0, y1 + 2.0), lk.description, "links \u{25b8}", HAlign::Left, false, Some(g.tagbox));
     }
     if s.rows.iter().any(|r| r.bridge_group.is_some()) {
@@ -363,7 +363,7 @@ fn tag_box(pen: &mut Pen, s: &StripData, g: &Geometry, fr: &Frame, lk: &Looks) {
 }
 
 /// §5.3: a gap accessory's column.
-fn gap(pen: &mut Pen, acc: Acc, p: &Placed<'_>, g: &Geometry, yc: f64, s: &StripData, lk: &Looks) {
+fn gap(pen: &mut Pen, acc: Acc, p: &Placed<'_>, g: &Geometry, yc: f64, s: &StripData, lk: &Draws) {
     let half = g.body / 2.0;
     match acc {
         Acc::EndStop => {
@@ -382,7 +382,7 @@ fn gap(pen: &mut Pen, acc: Acc, p: &Placed<'_>, g: &Geometry, yc: f64, s: &Strip
 
 /// One side's leads of a column: lead, dot, wire number, core label (outside), target.
 #[allow(clippy::too_many_arguments)]
-fn side(doc: &Document, pen: &mut Pen, cells: &[SideCell], cx: f64, from: f64, to: f64, inside: bool, fr: &Frame, lk: &Looks) {
+fn side(doc: &Document, pen: &mut Pen, cells: &[SideCell], cx: f64, from: f64, to: f64, inside: bool, fr: &Frame, lk: &Draws) {
     let n = cells.len().min(MAX_LEADS_PER_SIDE);
     let lead = (to - from).abs();
     for (k, c) in cells.iter().take(MAX_LEADS_PER_SIDE).enumerate() {
@@ -458,10 +458,10 @@ fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
 }
 
 /// §5.1: links in lanes in the band's upper half, with continuation stubs at the sheet's edges.
-fn links(pen: &mut Pen, placed: &[Placed<'_>], s: &StripData, yc: f64) {
+fn jumper_bars(pen: &mut Pen, placed: &[Placed<'_>], s: &StripData, yc: f64) {
     let positions: Vec<usize> = placed.iter().filter_map(|p| if let Col::Term(i, _) = p.col { Some(s.position_index(i)) } else { None }).collect();
     let (Some(lo), Some(hi)) = (positions.iter().min().copied(), positions.iter().max().copied()) else { return };
-    for l in s.acc.links.iter().filter(|l| l.span > 0 && l.last >= lo && l.first <= hi) {
+    for l in s.acc.jumper_bars.iter().filter(|l| l.span > 0 && l.last >= lo && l.first <= hi) {
         let y = yc + 3.0 + l.lane.min(4) as f64 * JUMPER_BAR_LANE_MM;
         let pts: Vec<(f64, bool)> = placed
             .iter()
@@ -498,7 +498,7 @@ fn links(pen: &mut Pen, placed: &[Placed<'_>], s: &StripData, yc: f64) {
 }
 
 /// §5.1: wire bridges (028's groups) in the band's lower half, with the group number.
-fn bridges(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64, lk: &Looks) {
+fn bridges(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64, lk: &Draws) {
     let mut groups: BTreeMap<usize, Vec<f64>> = BTreeMap::new();
     for p in placed {
         if let Col::Term(_, r) = p.col
@@ -524,7 +524,7 @@ fn bridges(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64, lk: &Loo
 /// maker, and an arrow to the far devices.
 #[allow(clippy::too_many_arguments)]
 fn cables(
-    doc: &Document, pen: &mut Pen, cols: &[(Col<'_>, f64)], c0: usize, leads: &[(f64, &SideCell)], g: &Geometry, fr: &Frame, lk: &Looks,
+    doc: &Document, pen: &mut Pen, cols: &[(Col<'_>, f64)], c0: usize, leads: &[(f64, &SideCell)], g: &Geometry, fr: &Frame, lk: &Draws,
     o: &ReportModels,
 ) {
     // Per cable on this sheet: first and last lead x, its far devices.

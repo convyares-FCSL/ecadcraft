@@ -28,7 +28,8 @@ pub const FOOT: f32 = 32.0;
 pub const TAB_H: f32 = 30.0;
 
 /// The tabs, in the tool strip's order; a divider after PLC and after Cables (board 2.01).
-pub const TABS: [ListsView; 6] = [ListsView::Devices, ListsView::Terminals, ListsView::Plc, ListsView::Wires, ListsView::Cables, ListsView::Reports];
+pub const TABS: [ListsView; 6] =
+    [ListsView::Devices, ListsView::TerminalBlocks, ListsView::Plc, ListsView::Wires, ListsView::Cables, ListsView::Reports];
 
 /// The head's buttons.
 pub const IMPORT: &str = "Import";
@@ -200,7 +201,7 @@ impl App {
         let t = self.reports.as_ref().map(|r| r.tab_counts);
         vec![
             (ListsView::Devices, devices),
-            (ListsView::Terminals, t.map(|c| c[0])),
+            (ListsView::TerminalBlocks, t.map(|c| c[0])),
             (ListsView::Plc, t.map(|c| c[1])),
             (ListsView::Wires, t.map(|c| c[2])),
             (ListsView::Cables, t.map(|c| c[3])),
@@ -225,8 +226,8 @@ impl App {
             r.io_shown = tab == ListsView::Plc;
             r.wires_shown = tab == ListsView::Wires;
             r.cables_shown = tab == ListsView::Cables;
-            if tab == ListsView::Terminals && (r.tab != crate::reports::panel::Tab::Terminals || r.strip.is_some()) {
-                r.tab = crate::reports::panel::Tab::Terminals;
+            if tab == ListsView::TerminalBlocks && (r.tab != crate::reports::panel::Tab::TerminalBlocks || r.strip.is_some()) {
+                r.tab = crate::reports::panel::Tab::TerminalBlocks;
                 r.strip = None;
                 r.invalidate();
             }
@@ -267,10 +268,10 @@ impl App {
                     self.panel_action(a);
                 }
             }
-            ListsView::Terminals => {
+            ListsView::TerminalBlocks => {
                 let Some(r) = self.reports.as_mut() else { return };
-                r.terminals.table.toolbar = false;
-                let acts = in_rect(ui, body_in, "ecad.project.terminals", |ui| r.terminals.show(ui, writable));
+                r.connection_points.table.toolbar = false;
+                let acts = in_rect(ui, body_in, "ecad.project.terminal_blocks", |ui| r.connection_points.show(ui, writable));
                 self.list_actions(acts);
             }
             ListsView::Plc => {
@@ -352,7 +353,7 @@ impl App {
         // The filter, bound to the tab's table.
         let (placeholder_text, w) = match tab {
             ListsView::Devices => ("Filter devices", 200.0),
-            ListsView::Terminals => ("Filter terminals", 220.0),
+            ListsView::TerminalBlocks => ("Filter terminals", 220.0),
             ListsView::Plc => ("Filter channels", 200.0),
             ListsView::Wires => ("Filter wires", 200.0),
             ListsView::Cables => ("Filter cables", 220.0),
@@ -375,8 +376,8 @@ impl App {
                 let writable = self.project_writable();
                 if let Some(r) = self.reports.as_mut() {
                     match tab {
-                        ListsView::Terminals => {
-                            r.terminals.table.filter_field(ui, placeholder_text, w);
+                        ListsView::TerminalBlocks => {
+                            r.connection_points.table.filter_field(ui, placeholder_text, w);
                         }
                         ListsView::Plc => {
                             r.io.table.filter_field(ui, placeholder_text, w);
@@ -443,7 +444,7 @@ impl App {
                 d.table.csv(&d.source)
             }
             ListsView::Checks => return None,
-            ListsView::Terminals => r.map(|r| r.terminals.table.csv(&r.terminals.source))?,
+            ListsView::TerminalBlocks => r.map(|r| r.connection_points.table.csv(&r.connection_points.source))?,
             ListsView::Plc => r.map(|r| r.io.table.csv(&r.io.source))?,
             ListsView::Wires => r.map(|r| r.wires.table.csv(&r.wires.source))?,
             ListsView::Cables => r.map(|r| r.cables.table.csv(&r.cables.source))?,
@@ -543,7 +544,7 @@ impl App {
                 }
                 (true, "comes from the part set, the symbol or the page", v)
             }
-            ListsView::Terminals => {
+            ListsView::TerminalBlocks => {
                 let n = r.map_or(0, |r| r.tab_counts[0]);
                 let strips = r.map_or(0, |r| r.strips.len());
                 (true, LEGEND_READ, vec![(format!("{} on {}", plural(n, "terminal", "terminals"), plural(strips, "strip", "strips")), Tone::Neutral)])

@@ -347,7 +347,7 @@ There is no panel for either yet; they are commands (and MCP `execute`):
   as the field's kind, so `twelve` is refused, and so is `Up` for the choice field. An empty value
   clears it.
 - `linkdevices {"kind": "mechanical_interlock", "devices": [<id>, <id>]}` answers the link id;
-  the same link twice or a device linked to itself is refused. `unlinkdevices {"link": <id>}`
+  the same link twice or a device linked to itself is refused. `unlinkdevices {"jumper_bar": <id>}`
   removes it.
 
 The inspector's Raw and Readable views show `ModifyProject` with the field list, a device's

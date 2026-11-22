@@ -60,7 +60,7 @@ fn points(h: &mut H, c: DeviceId) -> Vec<(String, String)> {
 
 fn addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
         let o = p.kept_reports().unwrap();
         o.plc.address_of(p.ledger.document(), c, i).0
     })
@@ -68,7 +68,7 @@ fn addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
 
 fn out_addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
     h.cfg(|p| {
-        p.outputs();
+        p.reports();
         let o = p.kept_reports().unwrap();
         o.plc.automatic(p.ledger.document(), c, i, true)
     })
@@ -76,7 +76,7 @@ fn out_addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
 
 fn run_fix(h: &mut H, fix: Fix, i: usize) -> Value {
     let (cmd, params) = h
-        .cfg(|p| accessory_fix_commands(p.outputs(), fix).into_iter().nth(i).map(|(_, c, v)| (c.to_string(), v)))
+        .cfg(|p| accessory_fix_commands(p.reports(), fix).into_iter().nth(i).map(|(_, c, v)| (c.to_string(), v)))
         .unwrap_or_else(|| panic!("no button {i} for {fix:?}"));
     h.run(&cmd, params).unwrap_or_else(|e| panic!("{cmd}: {e}"))
 }
@@ -200,12 +200,15 @@ fn h_a_wrong_type_is_refused_and_a_compact_di_joins_as_the_next_channel() {
     let e = place(&mut h, "chdi", 300.0, 300.0, json!({"device": cpu.hex()})).unwrap_err();
     assert!(e.starts_with("-A01 is a CPU; channels go on its cards."), "{e}");
     let v = place(&mut h, "di", 300.0, 300.0, json!({"device": di.hex()})).unwrap();
-    assert_eq!((v["channel"].clone(), v["terminals"][0]["label"].clone(), v["terminals"][0]["key"].clone()), (json!(8), json!("9"), json!(".8.in")));
+    assert_eq!(
+        (v["channel"].clone(), v["connection_points"][0]["label"].clone(), v["connection_points"][0]["key"].clone()),
+        (json!(8), json!("9"), json!(".8.in"))
+    );
     // A cell on its own makes a new card of its type, in no rack.
     let v = place(&mut h, "chrtd", 300.0, 100.0, json!({})).unwrap();
     let c: DeviceId = id(&v, "component");
     assert_eq!(ecad_electrical::plc::card_type_of(&h.doc(), c), Some(ecad_electrical::plc::rack::CardType::Rtd));
-    assert_eq!(v["terminals"].as_array().map(Vec::len), Some(4));
+    assert_eq!(v["connection_points"].as_array().map(Vec::len), Some(4));
 }
 
 #[test]
@@ -297,7 +300,7 @@ fn l_registry_switches_change_the_texts() {
     assert!(texts(&mut h, di, |o| o == TextOf::ChannelText { rotated: false }).contains(&("Pump 1 running".into(), true)));
     // An object value changes its card only.
     h.run("setdefault", json!({"key": "plc.channel.first", "level": "object", "component": di.hex(), "value": "1"})).unwrap();
-    let changed = h.cfg(|p| p.outputs().plc.last_changed.clone());
+    let changed = h.cfg(|p| p.reports().plc.last_changed.clone());
     assert!(changed.contains(&di) && changed.len() <= 2, "an object value changes its card only ({changed:?})");
     let nums = texts(&mut h, di, |o| o == TextOf::ChannelNo);
     assert!(nums.iter().any(|(v, _)| v == "1") && !nums.iter().any(|(v, _)| v == "0"), "{nums:?}");
@@ -333,14 +336,14 @@ fn m_channel_and_address_rows_have_working_fixes() {
     // channel-twice: a hand-made second copy of channel 0's key.
     let d = h.doc();
     let (t1, _) = d.connection_points_of(di).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".1.in")).unwrap();
-    let term = d.terminals.get(&t1).cloned().unwrap();
+    let term = d.connection_points.get(&t1).cloned().unwrap();
     let after = ConnectionPoint { key: Some(".0.in".parse().unwrap()), ..term.clone() };
     h.cfg(|p| {
         p.ledger
             .commit(
                 Author::User,
                 "hand-made",
-                vec![Op::RemoveConnectionPoint { id: t1, terminal: term }, Op::AddConnectionPoint { id: t1, terminal: after }],
+                vec![Op::RemoveConnectionPoint { id: t1, connection_point: term }, Op::AddConnectionPoint { id: t1, connection_point: after }],
             )
             .map(|_| ())
             .unwrap()
@@ -373,8 +376,8 @@ fn t_hostile_keys_counts_and_values_never_panic() {
         .collect();
     let mut ops = Vec::new();
     for ((t, term), k) in ts.into_iter().zip([".999.in", ".-1.in", ".3.nope", ".3"]) {
-        ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
-        ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { key: k.parse().ok(), ..term } });
+        ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
+        ops.push(Op::AddConnectionPoint { id: t, connection_point: ConnectionPoint { key: k.parse().ok(), ..term } });
     }
     // The longest values the module's fields hold.
     let mut d2 = d.clone();

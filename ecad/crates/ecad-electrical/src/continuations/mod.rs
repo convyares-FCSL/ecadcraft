@@ -287,21 +287,21 @@ struct Cache<'m> {
     settings: Settings,
     ends: BTreeMap<String, Vec<End>>,
     /// The text styles and fonts, resolved on the first measurement (only caption runs measure).
-    look: Option<crate::styles::text_style::fonts::Look>,
+    draw: Option<crate::styles::text_style::fonts::DrawStyles>,
     /// What measures the texts.
     m: &'m dyn TextMetrics,
 }
 
 impl<'m> Cache<'m> {
     fn new(doc: &Document, m: &'m dyn TextMetrics) -> Cache<'m> {
-        Cache { settings: Settings::of(doc), ends: BTreeMap::new(), look: None, m }
+        Cache { settings: Settings::of(doc), ends: BTreeMap::new(), draw: None, m }
     }
 
     /// The width of `value` in `kind`'s style, with the fonts resolved once per derivation.
     fn width(&mut self, doc: &Document, kind: TextKind, value: &str) -> f64 {
         let m = self.m;
-        let look = self.look.get_or_insert_with(|| crate::styles::text_style::fonts::Look::with(doc, m));
-        crate::styles::text_style::fonts::width_in(look.fonts_for(kind), look.style(kind), value, m)
+        let draw = self.draw.get_or_insert_with(|| crate::styles::text_style::fonts::DrawStyles::with(doc, m));
+        crate::styles::text_style::fonts::width_in(draw.fonts_for(kind), draw.style(kind), value, m)
     }
 
     fn ends(&mut self, doc: &Document, places: &mut Places<'_>, key: &str) -> &[End] {
@@ -557,7 +557,7 @@ pub fn names_named_by(doc: &Document, effect: &ecad_model::document::effect::Eff
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
         | Effect::DeviceLink { .. }
-        | Effect::Terminal { .. }
+        | Effect::ConnectionPoint { .. }
         | Effect::Wire { .. }
         | Effect::Route { .. }
         | Effect::Cable { .. }

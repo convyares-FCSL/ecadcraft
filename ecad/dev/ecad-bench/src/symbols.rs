@@ -89,7 +89,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredSymbo
         let page1 = *pages.first().ok_or("the project has no pages")?;
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;
         project.configure(&mut s, |p| {
-            p.outputs();
+            p.reports();
         })?;
         out.wiredraw_base_ms = wiredraw(&mut s, runs)?;
         // The measured lineage, placed 500 times: at most 10 per page.
@@ -113,7 +113,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredSymbo
         }
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;
         project.configure(&mut s, |p| {
-            p.outputs();
+            p.reports();
         })?;
         let mut v = Vec::new();
         for _ in 0..runs {

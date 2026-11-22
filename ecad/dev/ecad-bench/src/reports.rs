@@ -36,7 +36,7 @@ const OPEN_SEED: u64 = 0x0024_0000;
 
 /// What brief 024 measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct MeasuredOutputs {
+pub struct MeasuredReports {
     pub reportfirst_ms: f64,
     pub locset_ms: f64,
     pub boxmove_ms: f64,
@@ -93,8 +93,8 @@ fn work(p: &ProjectHandle, s: &mut Session) -> usize {
 ///
 /// # Errors
 /// Opening, a refused command, or a missing page or device.
-pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutputs, String> {
-    let copy = scratch.join("outputs.ecad");
+pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredReports, String> {
+    let copy = scratch.join("reports.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
@@ -102,14 +102,14 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
         ecad_engine::export::printbook::install_io();
         let mut s = Session::empty();
         let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
-        let mut out = MeasuredOutputs::default();
+        let mut out = MeasuredReports::default();
         // First show of the reports (built whole, every table made).
         let mut first = Vec::new();
         for _ in 0..runs {
             first.push(project.configure(&mut s, |p| {
                 p.forget_reports();
                 let t = Instant::now();
-                let o = p.outputs();
+                let o = p.reports();
                 std::hint::black_box((o.bom_table(ecad_electrical::reports::Group::Location), o.wire_table(), o.cable_table()));
                 ms(t)
             })?);

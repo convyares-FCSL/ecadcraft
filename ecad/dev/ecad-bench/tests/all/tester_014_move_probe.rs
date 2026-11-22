@@ -80,7 +80,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
                 if r.items.first() != Some(&item) {
                     continue;
                 }
-                let terms: Vec<_> = pos.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.device() == Some(c))).collect();
+                let terms: Vec<_> = pos.iter().filter(|(t, _, _)| doc.connection_points.get(t).is_some_and(|x| x.device() == Some(c))).collect();
                 let wired: usize = terms.iter().map(|(t, _, _)| doc.ends_at(*t).len()).sum();
                 if wired == 0 {
                     continue;
@@ -165,7 +165,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
             let doc = p.ledger.document();
             connection_point_positions(doc, page)
                 .into_iter()
-                .filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.device() == Some(first)))
+                .filter(|(t, _, _)| doc.connection_points.get(t).is_some_and(|x| x.device() == Some(first)))
                 .map(|(_, _, p)| [p.x, p.y])
                 .collect()
         })
@@ -218,7 +218,8 @@ fn move_components_with_wires_on_the_kept_small_project() {
                 let Some((_, r)) = doc.representation_of_item(item) else { continue };
                 let Subject::Route(c) = r.subject else { continue };
                 let Some(route) = doc.routes.get(&c) else { continue };
-                let attached = route.ends.iter().filter_map(|e| e.point()).any(|t| doc.terminals.get(&t).is_some_and(|x| x.device() == Some(first)));
+                let attached =
+                    route.ends.iter().filter_map(|e| e.point()).any(|t| doc.connection_points.get(&t).is_some_and(|x| x.device() == Some(first)));
                 if !attached {
                     continue;
                 }

@@ -1,6 +1,6 @@
 //! Brief 025, MCP contract (the ECAD rule of brief 011): `setprop` with `contacts` and `mirror`,
 //! `mirrormove` and a `place` join through `execute` record the agent's transaction and are
-//! refused with writes off; `xrefs`, `contacts` and `refgoto` work with writes off and record
+//! refused with writes off; `references`, `contacts` and `refgoto` work with writes off and record
 //! nothing.
 
 use ecad_mcp::policy;
@@ -34,7 +34,11 @@ fn cross_reference_commands_through_execute() {
     // A join takes the offered labels.
     let no = c.exec("place", json!({"symbol": "no", "at": [100, 100], "device": k1}));
     assert_eq!(no["offer_slot"], json!(true));
-    assert!(last_by_agent(&mut c).iter().any(|o| matches!(o, Op::AddConnectionPoint { terminal, .. } if terminal.label.as_deref() == Some("13"))));
+    assert!(
+        last_by_agent(&mut c)
+            .iter()
+            .any(|o| matches!(o, Op::AddConnectionPoint { connection_point, .. } if connection_point.label.as_deref() == Some("13")))
+    );
     // The table's placement, by `setprop` and by Move Mirror Table.
     c.exec("setprop", json!({"component": k1, "key": "mirror", "value": "below"}));
     assert!(
@@ -47,7 +51,7 @@ fn cross_reference_commands_through_execute() {
     assert_eq!(last.author, Author::Agent(AGENT.into()));
     // The reads record nothing.
     let n = c.log().len();
-    let x = c.exec("xrefs", json!({"component": k1}));
+    let x = c.exec("references", json!({"component": k1}));
     assert_eq!(x["references"].as_array().unwrap().len(), 8, "{x}");
     let t = c.exec("contacts", json!({"component": k1}));
     assert_eq!(t["offer"], json!("3P+1NO+1NC"));
@@ -70,7 +74,7 @@ fn with_writes_off_the_writes_are_refused_and_the_reads_work() {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd}");
     }
-    let x = c.exec("xrefs", json!({}));
+    let x = c.exec("references", json!({}));
     assert_eq!(x["references"], json!([]));
     let m = c.refused("execute", json!({"command": "contacts", "params": {"component": "1"}}));
     assert!(m.contains("no such component"), "{m}");

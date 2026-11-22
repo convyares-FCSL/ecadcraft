@@ -177,7 +177,7 @@ fn comp_props(h: &mut H, c: DeviceId, prefix: &str) -> BTreeMap<String, String> 
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.settings)
+    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.settings)
 }
 
 fn textstyle_kind(v: &Value, kind: &str) -> Value {
@@ -196,8 +196,8 @@ fn strip_at(h: &mut H, xs: &[f64], y: f64, strip: Option<DeviceId>) -> (DeviceId
     if let Some(s) = strip {
         p["strip"] = json!(s.hex());
     }
-    let v = h.run("terminals", p).unwrap();
-    let t: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let v = h.run("terminalblocks", p).unwrap();
+    let t: Vec<ConnectionPointId> = v["connection_points"].as_array().unwrap().iter().map(|x| id(x, "connection_point")).collect();
     assert_eq!(t.len(), xs.len(), "{v}");
     (id(&v, "strip"), t)
 }
@@ -1053,11 +1053,11 @@ fn t10_movetext_label_undo_redo_and_refusals() {
     let mut f = fixture_c(0x7031_1003);
     let rep = f.r1[0];
     let before = f.h.doc();
-    // `terminal` is the connection point as `pagetexts` reports it; the stored key uses its label.
+    // `connection_point` is the connection point as `pagetexts` reports it; the stored key uses its label.
     let a1 =
         texts(&mut f.h, f.page).into_iter().find(|r| r["kind"] == "point_label" && r["representation"] == rep.hex() && r["value"] == "A1").unwrap();
-    let a1 = a1["terminal"].as_str().unwrap().to_string();
-    one_tx(&mut f.h, "movetext", json!({"representation": rep.hex(), "kind": "point_label", "terminal": a1, "to": [90, 215]}));
+    let a1 = a1["connection_point"].as_str().unwrap().to_string();
+    one_tx(&mut f.h, "movetext", json!({"representation": rep.hex(), "kind": "point_label", "connection_point": a1, "to": [90, 215]}));
     let after = f.h.doc();
     let key = format!("text.{}.point_label.A1.at", rep.hex());
     assert!(comp_props(&mut f.h, f.k1, "text.").contains_key(&key), "{:?}", comp_props(&mut f.h, f.k1, "text."));

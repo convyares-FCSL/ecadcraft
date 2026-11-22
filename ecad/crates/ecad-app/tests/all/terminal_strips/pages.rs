@@ -1,5 +1,5 @@
 //! Brief 046 in the app (design 046 §8.1, §11): Pages ▸ New page ▸ **Terminal strips** makes a
-//! graphic `terminals` page and opens it. Screenshots of fixture G's strip page (paper and dark)
+//! graphic `connection_points` page and opens it. Screenshots of fixture G's strip page (paper and dark)
 //! and of a long strip's second sheet are written when `ECAD_TESTER_SHOTS` names a folder and a
 //! wgpu adapter exists; they are for the owner's approval, never committed.
 
@@ -60,18 +60,18 @@ fn fixture_g(h: &mut H) -> DeviceId {
     let v = exec(h, "cableslash", json!({"from": [90, 120], "to": [260, 120], "tag": "-W01"}));
     let cable = v["cable"].as_str().unwrap().to_string();
     exec(h, "setprop", json!({"cable": cable, "key": "type", "value": "YSLY-JZ 7G1.5"}));
-    let v = exec(h, "terminals", json!({"from": [90, 170], "to": [260, 170]}));
+    let v = exec(h, "terminalblocks", json!({"from": [90, 170], "to": [260, 170]}));
     let x1: DeviceId = hex_id(&v, "strip");
-    let terms: Vec<String> = v["terminals"].as_array().unwrap().iter().map(|t| t["terminal"].as_str().unwrap().to_string()).collect();
+    let terms: Vec<String> = v["connection_points"].as_array().unwrap().iter().map(|t| t["connection_point"].as_str().unwrap().to_string()).collect();
     for x in [300, 340] {
         exec(h, "wire", json!({"points": [[x, 260], [x, 160]]}));
     }
     let s = x1.hex();
-    exec(h, "terminals", json!({"strip": s, "type": "PE", "level": "All", "from": [290, 200], "to": [310, 200]}));
-    let f = exec(h, "terminals", json!({"strip": s, "type": "FUSE", "level": "All", "from": [330, 200], "to": [350, 200]}));
-    let fuse = f["terminals"][0]["label"].as_str().unwrap_or("6").to_string();
-    exec(h, "setprop", json!({"component": s, "key": "terminals", "value": "12+2PE+3LNPE+2FUSE"}));
-    exec(h, "setprop", json!({"component": s, "key": "link.1", "value": "1-4"}));
+    exec(h, "terminalblocks", json!({"strip": s, "type": "PE", "level": "All", "from": [290, 200], "to": [310, 200]}));
+    let f = exec(h, "terminalblocks", json!({"strip": s, "type": "FUSE", "level": "All", "from": [330, 200], "to": [350, 200]}));
+    let fuse = f["connection_points"][0]["label"].as_str().unwrap_or("6").to_string();
+    exec(h, "setprop", json!({"component": s, "key": "terminal_blocks", "value": "12+2PE+3LNPE+2FUSE"}));
+    exec(h, "setprop", json!({"component": s, "key": "jumper_bar.1", "value": "1-4"}));
     exec(h, "setprop", json!({"component": s, "key": format!("rating.{fuse}"), "value": "2A"}));
     exec(h, "bridge", json!({"from": terms[2], "to": terms[3]}));
     exec(h, "accessory", json!({"strip": s, "at": "start", "items": ["end_stop"]}));
@@ -114,8 +114,8 @@ fn new_page_terminal_strips_makes_and_opens_a_graphic_page() {
     view(&mut h, 20.0, 60.0, 150.0, 200.0);
     let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("046-strip-detail.png"));
     // A 45-position strip's second sheet, with a link over the break.
-    exec(&mut h, "setprop", json!({"component": x1.hex(), "key": "terminals", "value": "45"}));
-    exec(&mut h, "setprop", json!({"component": x1.hex(), "key": "link.2", "value": "30-45"}));
+    exec(&mut h, "setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "45"}));
+    exec(&mut h, "setprop", json!({"component": x1.hex(), "key": "jumper_bar.2", "value": "30-45"}));
     view(&mut h, 470.0, 0.0, 890.0, 297.0);
     let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("046-strip-sheet2.png"));
     view(&mut h, 0.0, 0.0, 420.0, 297.0);

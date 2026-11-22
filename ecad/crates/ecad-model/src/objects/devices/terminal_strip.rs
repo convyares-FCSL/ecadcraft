@@ -1,7 +1,7 @@
 //! A terminal strip's typed data (design 072 §2.5): the rating of each of its fuse positions.
 //!
 //! # Semantics
-//! `fuses` holds a fuse's typed rating by position label (`Terminal.label`); a position not listed
+//! `fuses` holds a fuse's typed rating by position label (`ConnectionPoint.label`); a position not listed
 //! has no rating. Nothing stores the shown text: [`TerminalStrip::fuse_rating`] builds it from the
 //! fields (`6.3 A, T`). A stored fuse with no field set, or a value out of range, is not well formed
 //! ([`TerminalStrip::problem`]).

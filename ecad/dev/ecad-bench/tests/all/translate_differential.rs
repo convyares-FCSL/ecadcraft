@@ -66,7 +66,7 @@ struct Page {
     /// Polyline routes: handle and the grip index of their last vertex (vertex i is grip 2i).
     polylines: Vec<(Handle, usize)>,
     /// Terminal positions.
-    terminals: Vec<Pt>,
+    connection_points: Vec<Pt>,
 }
 
 fn page_state(project: &ProjectHandle, s: &mut Session, page: PageId) -> Page {
@@ -99,8 +99,8 @@ fn page_state(project: &ProjectHandle, s: &mut Session, page: PageId) -> Page {
                     _ => {}
                 }
             }
-            let terminals = connection_point_positions(doc, page).into_iter().map(|(_, _, p)| p).collect();
-            Page { entities, symbols, routes, polylines, terminals }
+            let connection_points = connection_point_positions(doc, page).into_iter().map(|(_, _, p)| p).collect();
+            Page { entities, symbols, routes, polylines, connection_points }
         })
         .unwrap()
 }
@@ -138,7 +138,7 @@ fn edit(rng: &mut Rng, st: &Page, s: &Session) -> Option<(&'static str, &'static
         // Move a route so that one end lands on a terminal (reconnection, M3), or anywhere.
         28..=35 => {
             let (h, a, b) = rng.pick(&st.routes)?;
-            let to = rng.pick(&st.terminals)?;
+            let to = rng.pick(&st.connection_points)?;
             let from = if rng.chance(50) { a } else { b };
             let delta = if rng.chance(75) { [to.x - from.x, to.y - from.y] } else { rng.delta() };
             ("move route", "move", json!({"handles": [h.hex()], "delta": delta}))
@@ -147,7 +147,7 @@ fn edit(rng: &mut Rng, st: &Page, s: &Session) -> Option<(&'static str, &'static
         36..=45 => {
             let (h, last) = rng.pick(&st.polylines)?;
             let index = if rng.chance(50) { 0 } else { last };
-            let to = match rng.pick(&st.terminals) {
+            let to = match rng.pick(&st.connection_points) {
                 Some(t) if rng.chance(70) => [t.x, t.y],
                 _ => {
                     let d = rng.delta();
@@ -161,7 +161,7 @@ fn edit(rng: &mut Rng, st: &Page, s: &Session) -> Option<(&'static str, &'static
         // Rotate or mirror a component.
         46..=51 => {
             let h = rng.pick(&st.symbols)?;
-            let at = rng.pick(&st.terminals)?;
+            let at = rng.pick(&st.connection_points)?;
             if rng.chance(50) {
                 let angle = [90.0, 180.0, 270.0][rng.below(3)];
                 ("rotate", "rotate", json!({"handles": [h.hex()], "base": [at.x, at.y], "angle": angle}))
@@ -195,13 +195,13 @@ fn edit(rng: &mut Rng, st: &Page, s: &Session) -> Option<(&'static str, &'static
         78..=81 => ("pasteclip", "pasteclip", json!({"at": [s.clipboard_base.x + 20.0, s.clipboard_base.y - 80.0]})),
         // Draw a plain line, sometimes from a terminal.
         82..=86 => {
-            let a = rng.pick(&st.terminals).unwrap_or(Pt::new(0.0, 0.0));
+            let a = rng.pick(&st.connection_points).unwrap_or(Pt::new(0.0, 0.0));
             let d = rng.delta();
             ("line", "line", json!({"points": [[a.x, a.y], [a.x + d[0] + 1.0, a.y + d[1]]]}))
         }
         // Draw a wire between two terminals (the wire command; no translation, changes the state).
         87..=92 => {
-            let (a, b) = (rng.pick(&st.terminals)?, rng.pick(&st.terminals)?);
+            let (a, b) = (rng.pick(&st.connection_points)?, rng.pick(&st.connection_points)?);
             ("wire", "wire", json!({"points": [[a.x, a.y], [a.x, b.y], [b.x, b.y]]}))
         }
         // Undo (keeps the page from wearing away; no translation).

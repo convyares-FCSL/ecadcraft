@@ -2,10 +2,10 @@
 //! and the core count per cable, derived from the drawing and never stored.
 //!
 //! # Semantics
-//! - A **strip** is a device whose definition is a terminal starter (`terminal`, `terminalpe`);
+//! - A **strip** is a device whose definition is a terminal starter (`connection_point`, `terminalblockpe`);
 //!   each terminal is one symbol with one connection point (018's model, owner answer Q1). Its
-//!   **type** is its symbol's: `terminalpe` is PE, anything else feed-through.
-//! - The strip's **offer** is its `terminals` property, `12` or `12+2PE`: feed-through positions,
+//!   **type** is its symbol's: `terminalblockpe` is PE, anything else feed-through.
+//! - The strip's **offer** is its `connection_points` property, `12` or `12+2PE`: feed-through positions,
 //!   then PE positions (design 028 §3.3, owner decision 2026-11-12: `12+2PE` is 14 positions; a
 //!   BOM of 12 feed-through and 2 PE). Positions with no drawn terminal are **spare**.
 //! - A conductor whose two ends are on two terminals of one strip is a **bridge** (Q5). Every other
@@ -33,8 +33,8 @@
 //! | a cable (create, delete, members, properties) | the strips its members were on (kept) and are on now |
 //! | a page whose number or position changed (`SetProperty` number, book order, the sheet) | the strips with terminals on it (their Place) |
 //! | brief 036: a strip's `term_label.*`, `terminal.*`, `part_number.<code>` (its own properties), and its fuse position ratings (its `ModifyDevice`, design 072 §2.5): a device in scope | that strip |
-//! | brief 036: project `terminal.level.separator` or `terminal.<code>.levels` | the strips inheriting it (`inherits`, recorded only by strips with a multi-level position): rebuilt |
-//! | brief 036: project `strip_<code>_*` or `terminal.<code>.description` | the strips inheriting it: their type part data and accessories only ([`Strips::recompute_acc`]) |
+//! | brief 036: project `terminal_block.level.separator` or `terminal_block.<code>.levels` | the strips inheriting it (`inherits`, recorded only by strips with a multi-level position): rebuilt |
+//! | brief 036: project `strip_<code>_*` or `terminal_block.<code>.description` | the strips inheriting it: their type part data and accessories only ([`Strips::recompute_acc`]) |
 //! | brief 036: a fuse terminal device created, changed or deleted | the `fuse-device` set ([`Strips::note_devices`]) |
 //! | anything else | nothing |
 //!
@@ -56,7 +56,7 @@ use crate::reports::PageCx;
 use crate::reports::kept::ReportModels;
 
 /// The strip property that offers positions (FP1).
-pub const OFFER_KEY: &str = "terminals";
+pub const OFFER_KEY: &str = "terminal_blocks";
 /// The cable property that offers cores (FP2).
 pub const CORES_KEY: &str = "cores";
 /// The strip properties of its PE terminals' BOM row (FP4).
@@ -69,7 +69,7 @@ pub const MAX_CORES: usize = 100;
 /// The green-yellow core of an IEC `G` cable.
 pub const GNYE: &str = "GNYE";
 /// The PE starter's key.
-pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::Terminalpe;
+pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::TerminalBlockPe;
 
 // ---------------------------------------------------------------- strips and terminals
 
@@ -127,7 +127,7 @@ pub fn drawn_points(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, Repr
 
 /// The terminal of a strip a conductor end is on: (strip, terminal).
 pub fn strip_of_connection_point(doc: &Document, t: ConnectionPointId) -> Option<DeviceId> {
-    let c = doc.terminals.get(&t)?.device()?;
+    let c = doc.connection_points.get(&t)?.device()?;
     strip_of(doc, c).map(|_| c)
 }
 
@@ -177,7 +177,7 @@ pub fn parse_offer(text: &str) -> Result<Offer, CmdError> {
     Ok(Offer { positions, pe: counts.get(1).copied().unwrap_or(0), counts })
 }
 
-/// The `terminals` value as stored (canonical `12+2PE`); empty clears it.
+/// The `connection_points` value as stored (canonical `12+2PE`); empty clears it.
 ///
 /// # Errors
 /// [`parse_offer`]'s.
@@ -623,7 +623,7 @@ pub struct SideCell {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermRow {
     /// The level's terminal (the in point of a two-point level); `None` for a free or spare row.
-    pub terminal: Option<ConnectionPointId>,
+    pub connection_point: Option<ConnectionPointId>,
     /// The out point of a two-point level (its outside cells come from it, Q6).
     pub out: Option<ConnectionPointId>,
     /// The **position** label (what links, accessories and renumbering name).
@@ -654,14 +654,14 @@ pub struct TermRow {
 impl TermRow {
     /// A position the offer adds, with no level drawn.
     pub fn spare(&self) -> bool {
-        self.terminal.is_none() && !self.free
+        self.connection_point.is_none() && !self.free
     }
 
     /// `drawn`, `free` or `spare`.
     pub fn state(&self) -> &'static str {
         if self.free {
             "free"
-        } else if self.terminal.is_none() {
+        } else if self.connection_point.is_none() {
             "spare"
         } else {
             "drawn"
@@ -675,7 +675,7 @@ impl TermRow {
 
     fn blank(label: String, ty: &'static crate::terminal_strips::terminal_blocks::TermType, level: u32, level_name: String) -> TermRow {
         TermRow {
-            terminal: None,
+            connection_point: None,
             out: None,
             shown: label.clone(),
             label,
@@ -723,7 +723,7 @@ pub struct StripData {
     pub tag: String,
     pub location: Option<String>,
     pub offer: Option<Offer>,
-    /// The `terminals` text when it could not be read (shown, not used).
+    /// The `connection_points` text when it could not be read (shown, not used).
     pub drawn: usize,
     pub drawn_pe: usize,
     pub spare: usize,
@@ -791,7 +791,7 @@ impl StripData {
         self.types.iter().filter(|t| t.drawn > o.of(t.ty) as usize).map(|t| (t, o.of(t.ty))).collect()
     }
 
-    /// Its Checks rows: (`terminal-twice` errors, `too-many-terminals` and `position-mixed`
+    /// Its Checks rows: (`terminal-block-twice` errors, `too-many-terminal-blocks` and `position-mixed`
     /// warnings).
     pub fn check_rows(&self) -> (usize, usize) {
         (self.twice.len(), self.over_offer().len() + self.mixed.len() + self.level_missing.len() + self.acc.warnings())
@@ -799,12 +799,12 @@ impl StripData {
 
     /// The highest drawn terminal (by label), for the too-many-terminals go-to.
     pub fn highest(&self) -> Option<&TermRow> {
-        self.rows.iter().rev().find(|r| r.terminal.is_some())
+        self.rows.iter().rev().find(|r| r.connection_point.is_some())
     }
 
     /// The highest drawn row of type `t`.
     pub fn highest_of(&self, t: &crate::terminal_strips::terminal_blocks::TermType) -> Option<&TermRow> {
-        self.rows.iter().rev().find(|r| r.terminal.is_some() && r.ty == t)
+        self.rows.iter().rev().find(|r| r.connection_point.is_some() && r.ty == t)
     }
 
     /// The plan index of row `i`'s position (rows of one position share it).
@@ -824,7 +824,7 @@ impl StripData {
 
     /// A drawn row by terminal.
     pub fn row_of(&self, t: ConnectionPointId) -> Option<&TermRow> {
-        self.rows.iter().find(|r| r.terminal == Some(t))
+        self.rows.iter().find(|r| r.connection_point == Some(t))
     }
 
     /// The plan in physical order (design 030 §7.1): `acc.start`'s items, each position followed
@@ -855,7 +855,7 @@ impl StripData {
         let Some(r) = self.rows.get(i) else { return Vec::new() };
         let pi = self.position_index(i);
         self.acc
-            .links
+            .jumper_bars
             .iter()
             .filter(|l| l.span > 0 && l.first <= pi && pi <= l.last && l.runs_on(r.level))
             .map(|l| (l, l.labels.contains(&r.label) && l.names_level(r.level)))
@@ -913,8 +913,8 @@ pub struct Strips {
     /// location.
     pub sheets_total: usize,
     pub bom_rows: BTreeMap<Option<String>, usize>,
-    /// Kept Checks rows of the strips (brief 027's badge): `terminal-twice` errors and
-    /// `too-many-terminals` warnings.
+    /// Kept Checks rows of the strips (brief 027's badge): `terminal-block-twice` errors and
+    /// `too-many-terminal-blocks` warnings.
     pub check_errors: usize,
     pub check_warnings: usize,
     /// Bumped by an update that changed a strip, and the value at each strip's last change: what
@@ -1009,7 +1009,7 @@ impl Strips {
             out.extend(self.by_page.get(p).into_iter().flatten().copied());
         }
         // Brief 036: a project level separator or level names relabel the strips inheriting them.
-        for k in scope.project_keys.iter().filter(|k| crate::defaults::terminals::is_label_key(k)) {
+        for k in scope.project_keys.iter().filter(|k| crate::defaults::terminal_blocks::is_label_key(k)) {
             out.extend(self.inherits.get(k).into_iter().flatten().copied());
         }
         out
@@ -1033,7 +1033,7 @@ impl Strips {
             let mut d = old.clone();
             acc.inherits.extend(d.refresh_types(doc, strip));
             // The level label keys a strip inherits are not this pass's (they rebuild the strip).
-            acc.inherits.extend(old.acc.inherits.iter().filter(|k| crate::defaults::terminals::is_label_key(k)).cloned());
+            acc.inherits.extend(old.acc.inherits.iter().filter(|k| crate::defaults::terminal_blocks::is_label_key(k)).cloned());
             if acc == old.acc && d.types == old.types {
                 continue;
             }
@@ -1192,7 +1192,7 @@ fn geometric_inside(doc: &Document, w: WireId, end: End, page: PageId) -> Option
 fn far_cell(doc: &Document, o: &ReportModels, w: WireId, far: End, cx: &PageCx) -> (Option<String>, Option<DeviceId>) {
     let Some(cond) = doc.wires.get(&w) else { return (None, None) };
     let t = cond.end(far);
-    let comp = doc.terminals.get(&t).and_then(|x| x.device());
+    let comp = doc.connection_points.get(&t).and_then(|x| x.device());
     let cell = o.end_cell_of(doc, Some(t), None, cx);
     (cell.text(doc.settings.reference_style()), comp)
 }
@@ -1340,10 +1340,10 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         }
         let names = names_of.entry(ty.key).or_insert_with(|| tt::level_names(doc, c, ty)).clone();
         if ty.multi() {
-            if !own(crate::defaults::terminals::SEPARATOR.key) {
-                inherits.insert(crate::defaults::terminals::SEPARATOR.key.to_string());
+            if !own(crate::defaults::terminal_blocks::SEPARATOR.key) {
+                inherits.insert(crate::defaults::terminal_blocks::SEPARATOR.key.to_string());
             }
-            if let Some(e) = crate::defaults::terminals::levels_entry(ty.code)
+            if let Some(e) = crate::defaults::terminal_blocks::levels_entry(ty.code)
                 && !own(e.key)
             {
                 inherits.insert(e.key.to_string());
@@ -1394,7 +1394,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
                     d.pages.insert(p);
                 }
                 let mut row = TermRow::blank(pos.label.clone(), ty, n, level_name.clone());
-                row.terminal = Some(t);
+                row.connection_point = Some(t);
                 row.out = out;
                 row.pe = pe || ty.pe_level == Some(n);
                 row.label_overridden = over.is_some();
@@ -1428,7 +1428,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
     // Bridge groups, numbered in plan order.
     let mut groups: BTreeMap<ConnectionPointId, usize> = BTreeMap::new();
     for r in &mut rows {
-        let Some(t) = r.terminal else { continue };
+        let Some(t) = r.connection_point else { continue };
         let t = if bridged.contains(&t) {
             t
         } else {
@@ -1482,10 +1482,10 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
             let Some(ty) = tt::TYPES.get(i) else { continue };
             // Review 036, 3: spare multi-level positions read the separator and level names too.
             if want > 0 && ty.multi() {
-                if !own(crate::defaults::terminals::SEPARATOR.key) {
-                    inherits.insert(crate::defaults::terminals::SEPARATOR.key.to_string());
+                if !own(crate::defaults::terminal_blocks::SEPARATOR.key) {
+                    inherits.insert(crate::defaults::terminal_blocks::SEPARATOR.key.to_string());
                 }
-                if let Some(e) = crate::defaults::terminals::levels_entry(ty.code)
+                if let Some(e) = crate::defaults::terminal_blocks::levels_entry(ty.code)
                     && !own(e.key)
                 {
                     inherits.insert(e.key.to_string());
@@ -1507,7 +1507,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         }
         d.spare = spare_by_type.iter().sum();
         d.spare_pe = spare_by_type.get(1).copied().unwrap_or(0);
-        rows.sort_by_cached_key(|r| (crate::references::devices::natural_key(&r.label), r.level, r.terminal));
+        rows.sort_by_cached_key(|r| (crate::references::devices::natural_key(&r.label), r.level, r.connection_point));
     }
     // Part data per type (§7.2): strip, then project, then the registry's description.
     for (i, ty) in tt::TYPES.iter().enumerate() {
@@ -1589,7 +1589,7 @@ fn type_parts(
     };
     let own_description = get("description").or_else(|| if ty.code == "ft" { clean(strip.description.as_ref()) } else { None });
     let description = own_description.unwrap_or_else(|| {
-        let e = crate::defaults::terminals::description_entry(ty.code);
+        let e = crate::defaults::terminal_blocks::description_entry(ty.code);
         if let Some(e) = e {
             inherits.insert(e.key.to_string());
         }
@@ -1624,10 +1624,10 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
         End::B => End::A,
     };
     let Some(t) = doc.wires.get(&w).map(|c| c.end(far)) else { return ("loose".into(), None) };
-    if let Some(a) = doc.terminals.get(&t).and_then(|x| x.owner.aid()) {
+    if let Some(a) = doc.connection_points.get(&t).and_then(|x| x.owner.aid()) {
         return (format!("{} >", crate::continuations::display_name(doc, a)), None);
     }
-    let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return ("loose".into(), None) };
+    let Some(c) = doc.connection_points.get(&t).and_then(|x| x.device()) else { return ("loose".into(), None) };
     (crate::terminal_strips::connection_point_words(doc, t), Some(c))
 }
 
@@ -1721,7 +1721,7 @@ pub fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
     Some(format!("{}  {named}: {} used, {spare}{over}", crate::cables::slash::cable_name(doc, k), count.used()))
 }
 
-/// The rows a generated `terminals` sheet needs for `strip` (`None`: every strip): one heading per
+/// The rows a generated `connection_points` sheet needs for `strip` (`None`: every strip): one heading per
 /// strip and one per position's conductor line (at least one).
 pub fn plan_lines(s: &StripData) -> usize {
     1 + s.rows.iter().map(|r| r.inside.len().max(r.outside.len()).max(1)).sum::<usize>() + s.acc.gap_rows()
@@ -1744,7 +1744,7 @@ pub fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
 
 /// `-X01:3`.
 pub fn connection_point_words(doc: &Document, t: ConnectionPointId) -> String {
-    let c = doc.terminals.get(&t).and_then(|x| x.device());
+    let c = doc.connection_points.get(&t).and_then(|x| x.device());
     // Brief 044: a connector pin is named by its half (`-X10.S:3`).
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return name;

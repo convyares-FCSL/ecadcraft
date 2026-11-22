@@ -53,7 +53,7 @@ show?: \"on\"|\"off\"|\"first\"|null} (no fields: read only; all given fields ar
             .noundo(),
         CommandSpec::new("movetext", "Move Text", crate::commands::input::typed::<MovetextParams>)
             .params(
-                "{representation: id, kind?: \"tag\"|\"point_label\", terminal?: id, to: [x,y], justify?: \"RT\"…} or {representation, kind?, terminal?, reset: true} \
+                "{representation: id, kind?: \"tag\"|\"point_label\", connection_point?: id, to: [x,y], justify?: \"RT\"…} or {representation, kind?, terminal?, reset: true} \
 (to is a page point; stored in the symbol's frame)",
             )
             .interactive(crate::styles::interact::movetext)
@@ -314,7 +314,7 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
         crate::styles::draw::width_in, ecad_electrical::styles::text_style::TextStyle, ecad_electrical::styles::text_style::Weight,
         ecad_electrical::styles::text_style::justify_code, ecad_electrical::styles::text_style::text_box,
     };
-    let look = crate::styles::draw::Look::new(doc);
+    let draw = crate::styles::draw::DrawStyles::new(doc);
     let all = crate::devices::draw::all_texts_on_page(doc, page);
     let more = all.len().saturating_sub(MAX_TEXT_ROWS);
     let rows: Vec<Value> = all
@@ -323,8 +323,8 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
         .map(|t| {
             let d = &t.text;
             let kind = ecad_electrical::devices::kind_of(d.of);
-            let style = look.style(kind);
-            let w = width_in(look.fonts_for(kind), TextStyle { height: d.height, ..style }, &d.value);
+            let style = draw.style(kind);
+            let w = width_in(draw.fonts_for(kind), TextStyle { height: d.height, ..style }, &d.value);
             let (lo, hi) = text_box(w, d.height, d.at, d.halign, d.valign);
             let component = doc.representations.get(&d.rep).and_then(|r| match r.subject {
                 ecad_model::Subject::Device(c) => Some(c.hex()),
@@ -348,8 +348,8 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
                 "overlaps": t.overlaps,
                 "box": [[lo.x, lo.y], [hi.x, hi.y]],
             });
-            if let ecad_electrical::devices::TextOf::Terminal(id) = d.of {
-                row["terminal"] = json!(id.hex());
+            if let ecad_electrical::devices::TextOf::ConnectionPoint(id) = d.of {
+                row["connection_point"] = json!(id.hex());
             }
             row
         })
@@ -375,7 +375,7 @@ pub(crate) struct MovetextParams {
     kind: Option<String>,
     /// The connection point whose label moves (point_label).
     #[serde(default)]
-    terminal: Option<ConnectionPointId>,
+    connection_point: Option<ConnectionPointId>,
     /// The page point the text moves to.
     #[serde(default)]
     to: Option<Point>,
@@ -391,7 +391,7 @@ impl Command for MovetextParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let rep = self.representation;
         let kind = rules::opt_kind(self.kind.as_deref()).map_err(|e| err(e.to_string()))?.unwrap_or(TextKind::Tag);
-        let terminal = self.terminal;
+        let connection_point = self.connection_point;
         let to = match self.to {
             _ if self.reset == Some(true) => None,
             Some(p) => Some(p.0),
@@ -400,7 +400,7 @@ impl Command for MovetextParams {
         let justify = rules::justify(self.justify.as_deref()).map_err(|e| err(e.to_string()))?;
         on_project(s, |p, pg, _| {
             let doc = p.ledger.document();
-            let t = rules::move_target(doc, rep, kind, terminal)?;
+            let t = rules::move_target(doc, rep, kind, connection_point)?;
             let current = current_text(doc, rep, &t).map(|x| (x.text.halign, x.text.valign));
             let plan = rules::plan_move(doc, rep, kind, &t, to, justify, current)?;
             let changed = plan.op.is_some();
@@ -408,7 +408,7 @@ impl Command for MovetextParams {
                 p.apply_edit(pg, "movetext", &plan.label, vec![op])?;
             }
             let doc = p.ledger.document();
-            let now = rules::move_target(doc, rep, kind, terminal).ok().and_then(|t| current_text(doc, rep, &t));
+            let now = rules::move_target(doc, rep, kind, connection_point).ok().and_then(|t| current_text(doc, rep, &t));
             Ok(json!({
                 "representation": rep.hex(),
                 "kind": kind.word(),

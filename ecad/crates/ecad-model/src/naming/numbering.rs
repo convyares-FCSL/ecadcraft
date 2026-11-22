@@ -46,7 +46,7 @@ pub enum Kind {
     Cables,
     Wires,
     /// Brief 028: terminal labels per strip.
-    Terminals,
+    TerminalBlocks,
 }
 
 impl Kind {
@@ -56,7 +56,7 @@ impl Kind {
             Kind::Devices => "Dev",
             Kind::Cables => "Cbl",
             Kind::Wires => "Wire",
-            Kind::Terminals => "Trm",
+            Kind::TerminalBlocks => "Trm",
         }
     }
 
@@ -66,7 +66,7 @@ impl Kind {
             Kind::Devices => "devices",
             Kind::Cables => "cables",
             Kind::Wires => "wires",
-            Kind::Terminals => "terminals",
+            Kind::TerminalBlocks => "terminal_blocks",
         }
     }
 }
@@ -98,7 +98,7 @@ pub struct Request {
     pub start: Option<u64>,
     /// Digits for this run (default: the project's tag padding, or the wire digits).
     pub digits: Option<u8>,
-    /// Brief 028: the strips whose terminals [`Kind::Terminals`] numbers, chosen by the caller.
+    /// Brief 028: the strips whose terminals [`Kind::TerminalBlocks`] numbers, chosen by the caller.
     pub strips: BTreeSet<DeviceId>,
     /// Brief 036 (FP8c): per strip, the caller's position groups (the terminals of one position).
     /// The planner numbers groups, each anchored at its earliest symbol in drawing order, and gives
@@ -173,8 +173,8 @@ pub struct Row {
     /// The anchor point, for going to it.
     pub point: Option<Pt>,
     pub mark: Mark,
-    /// Brief 028: the terminal a [`Kind::Terminals`] row relabels.
-    pub terminal: Option<ConnectionPointId>,
+    /// Brief 028: the terminal a [`Kind::TerminalBlocks`] row relabels.
+    pub connection_point: Option<ConnectionPointId>,
     order: Order,
 }
 
@@ -504,7 +504,7 @@ pub fn plan_ranked(doc: &Document, req: &Request, high: &HighWater, rank: Rank<'
     if req.kinds.contains(&Kind::Wires) {
         plan_wires(doc, req, &mut places, pages.as_ref(), &mut rows, &mut ops);
     }
-    if req.kinds.contains(&Kind::Terminals) {
+    if req.kinds.contains(&Kind::TerminalBlocks) {
         plan_terminal_blocks(doc, req, &mut places, pages.as_ref(), &mut rows, &mut ops);
     }
     // Brief 054 (design 054 §3.4): what is anchored on a page with checks and references off is
@@ -752,7 +752,7 @@ fn plan_terminal_blocks(
                 let keys: BTreeSet<&crate::geometry::point::PointKey> =
                     match doc.items.get(r.items.first().unwrap_or(&crate::naming::id::ItemId(0))).map(|i| &i.kind) {
                         Some(ItemKind::Symbol(s)) => {
-                            doc.definitions.get(&s.definition).map(|d| d.terminals.iter().map(|t| &t.key).collect()).unwrap_or_default()
+                            doc.definitions.get(&s.definition).map(|d| d.connection_points.iter().map(|t| &t.key).collect()).unwrap_or_default()
                         }
                         _ => BTreeSet::new(),
                     };
@@ -795,35 +795,35 @@ fn plan_terminal_blocks(
             None => true,
         });
         for (n, (t, page, at, order)) in (start..).zip(anchors.collect::<Vec<_>>()) {
-            let Some(term) = doc.terminals.get(&t) else { continue };
+            let Some(term) = doc.connection_points.get(&t) else { continue };
             let old_label = term.label.clone().unwrap_or_default();
             let new_label = n.to_string();
             let members: Vec<ConnectionPointId> = match group_of.get(&t).and_then(|g| groups.get(*g)) {
                 Some(g) => g.clone(),
                 None => vec![t],
             };
-            let changes = members.iter().any(|m| doc.terminals.get(m).is_some_and(|x| x.label.as_deref() != Some(new_label.as_str())));
+            let changes = members.iter().any(|m| doc.connection_points.get(m).is_some_and(|x| x.label.as_deref() != Some(new_label.as_str())));
             let mark = if changes { Mark::Change } else { Mark::Same };
             for m in &members {
-                let Some(x) = doc.terminals.get(m) else { continue };
+                let Some(x) = doc.connection_points.get(m) else { continue };
                 if x.label.as_deref() == Some(new_label.as_str()) {
                     continue;
                 }
                 let mut after = x.clone();
                 after.label = Some(new_label.clone());
-                ops.push(Op::RemoveConnectionPoint { id: *m, terminal: x.clone() });
-                ops.push(Op::AddConnectionPoint { id: *m, terminal: after });
+                ops.push(Op::RemoveConnectionPoint { id: *m, connection_point: x.clone() });
+                ops.push(Op::AddConnectionPoint { id: *m, connection_point: after });
             }
             rows.push(Row {
                 object: ObjectRef::Device(*strip),
-                kind: Kind::Terminals,
+                kind: Kind::TerminalBlocks,
                 old: format!("{tag}:{old_label}"),
                 new: format!("{tag}:{new_label}"),
                 at: places.text(page, at),
                 page: Some(page),
                 point: Some(at),
                 mark,
-                terminal: Some(t),
+                connection_point: Some(t),
                 order,
             });
         }
@@ -839,7 +839,7 @@ fn row_of(places: &mut Places<'_>, it: &Tagged, old: String, new: String, mark: 
         (Some(pg), Some(p)) => places.text(pg, p),
         _ => String::new(),
     };
-    Row { object: it.object, kind: it.kind, old, new, at, page, point, mark, terminal: None, order }
+    Row { object: it.object, kind: it.kind, old, new, at, page, point, mark, connection_point: None, order }
 }
 
 fn plan_wires(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>) {
@@ -904,7 +904,7 @@ fn plan_wires(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Opt
             _ => String::new(),
         };
         let object = ObjectRef::Wire(wiring::first_wire(doc, net).unwrap_or(WireId(0)));
-        Row { object, kind: Kind::Wires, old, new, at, page, point, mark, terminal: None, order }
+        Row { object, kind: Kind::Wires, old, new, at, page, point, mark, connection_point: None, order }
     };
     for (_, net, anchor) in fixed_rows {
         let n = wiring::net_number(doc, &net).unwrap_or_else(|| "?".into());

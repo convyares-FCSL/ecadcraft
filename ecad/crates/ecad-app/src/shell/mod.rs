@@ -93,7 +93,7 @@ pub struct Visit {
 pub enum ListsView {
     #[default]
     Devices,
-    Terminals,
+    TerminalBlocks,
     /// Brief 051: Project ▸ PLC (045c's Lists ▸ I/O).
     Plc,
     /// UI rev 3 (board 2.04).
@@ -112,7 +112,7 @@ impl ListsView {
     pub fn label(self) -> &'static str {
         match self {
             ListsView::Devices => LISTS_DEVICES,
-            ListsView::Terminals => LISTS_TERMINAL_STRIPS,
+            ListsView::TerminalBlocks => LISTS_TERMINAL_STRIPS,
             ListsView::Plc => LISTS_PLC,
             ListsView::Wires => LISTS_WIRES,
             ListsView::Cables => LISTS_CABLES,

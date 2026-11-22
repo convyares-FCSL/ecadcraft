@@ -131,7 +131,7 @@ fn a_selected_row_opens_the_right_panel_on_it() {
 }
 
 #[test]
-fn wires_group_by_potential_and_the_terminal_plan_by_strip() {
+fn wires_group_by_potential_and_the_terminal_block_plan_by_strip() {
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas);
     let dir = std::env::temp_dir().join(format!("ecad-uiv3e-group-{}", std::process::id()));
@@ -141,8 +141,8 @@ fn wires_group_by_potential_and_the_terminal_plan_by_strip() {
     let w = &h.state().reports.as_ref().unwrap().wires;
     assert_eq!(w.table.view.group_by(), Some(ecad_app::wires::list::POTENTIAL));
     assert!(w.table.view.rows().iter().any(|r| matches!(r, ecad_widgets::table::Row::Group { .. })), "potential groups");
-    show(&mut h, ListsView::Terminals);
-    let t = &h.state().reports.as_ref().unwrap().terminals;
+    show(&mut h, ListsView::TerminalBlocks);
+    let t = &h.state().reports.as_ref().unwrap().connection_points;
     assert_eq!(t.table.view.group_by(), Some(ecad_app::terminal_strips::plan::STRIP));
     assert_eq!(t.table.bands.len(), 3, "inside | the strip | outside");
     assert!(!ecad_app::terminal_strips::plan::columns().iter().any(|c| c.id == ecad_app::terminal_strips::plan::STRIP), "the strip is a group");
@@ -193,10 +193,10 @@ fn screenshots_of_boards_2_01_to_2_06() {
     h.run_steps(8);
     shot(&h, "uiv3-E-2.01-ours.png");
     // 2.02: a terminal.
-    show(&mut h, ListsView::Terminals);
-    let k = h.state().reports.as_ref().and_then(|r| r.terminals.table.view.visible_keys().get(1).copied());
+    show(&mut h, ListsView::TerminalBlocks);
+    let k = h.state().reports.as_ref().and_then(|r| r.connection_points.table.view.visible_keys().get(1).copied());
     if let Some(k) = k {
-        h.state_mut().reports.as_mut().unwrap().terminals.table.selection.set([k]);
+        h.state_mut().reports.as_mut().unwrap().connection_points.table.selection.set([k]);
     }
     h.run_steps(8);
     shot(&h, "uiv3-E-2.02-ours.png");

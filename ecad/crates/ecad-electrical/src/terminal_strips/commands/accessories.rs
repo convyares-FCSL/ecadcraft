@@ -49,15 +49,15 @@ fn strip_words(doc: &Document, c: DeviceId) -> String {
     crate::devices::tag_words(doc, c)
 }
 
-/// The strip a call names (`strip`, or `terminal`'s), and the terminal's label.
-fn strip_of(doc: &Document, strip: Option<DeviceId>, terminal: Option<ConnectionPointId>) -> Result<(DeviceId, Option<String>), CmdError> {
-    let (c, label) = match (strip, terminal) {
+/// The strip a call names (`strip`, or `connection_point`'s), and the terminal's label.
+fn strip_of(doc: &Document, strip: Option<DeviceId>, connection_point: Option<ConnectionPointId>) -> Result<(DeviceId, Option<String>), CmdError> {
+    let (c, label) = match (strip, connection_point) {
         (Some(c), _) => (c, None),
         (None, Some(t)) => {
-            let term = doc.terminals.get(&t).ok_or(CmdError::NotFound(Noun::TerminalDevice))?;
-            (term.device().ok_or(CmdError::NotFound(Noun::TerminalDevice))?, Some(crate::terminal_strips::terminal_blocks::position_label(doc, t)))
+            let term = doc.connection_points.get(&t).ok_or(CmdError::NotFound(Noun::TerminalBlock))?;
+            (term.device().ok_or(CmdError::NotFound(Noun::TerminalBlock))?, Some(crate::terminal_strips::terminal_blocks::position_label(doc, t)))
         }
-        (None, None) => return Err(CmdError::input("`strip` or `terminal` (hex id) is required")),
+        (None, None) => return Err(CmdError::input("`strip` or `connection_point` (hex id) is required")),
     };
     if !doc.devices.contains_key(&c) {
         return Err(CmdError::NotFound(Noun::Strip));
@@ -112,8 +112,8 @@ fn plural(a: Acc, n: usize) -> String {
 #[derive(Debug, Clone, Default)]
 pub struct AccessoryInput {
     pub strip: Option<DeviceId>,
-    pub terminal: Option<ConnectionPointId>,
-    /// `start`, `end`, `all`, a position label, or a list of them (absent: `terminal`'s position).
+    pub connection_point: Option<ConnectionPointId>,
+    /// `start`, `end`, `all`, a position label, or a list of them (absent: `connection_point`'s position).
     pub at: Option<Words>,
     /// Markers on positions.
     pub on: bool,
@@ -145,7 +145,7 @@ pub struct Accessory {
 /// No such strip or terminal, a place or item that does not read, too many items at a place.
 pub fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Accessory, CmdError> {
     let on = input.on;
-    let (c, label) = strip_of(doc, input.strip, input.terminal)?;
+    let (c, label) = strip_of(doc, input.strip, input.connection_point)?;
     let at: Vec<String> = match input.at {
         Some(Words::Text(t)) => vec![t.trim().to_string()],
         Some(Words::List(a)) => {
@@ -335,15 +335,15 @@ pub struct JumperBarRef {
     pub n: Option<u64>,
 }
 
-/// What `jumper` is asked to do (design 030 §10): make a link (`link` absent), or edit one.
+/// What `jumper` is asked to do (design 030 §10): make a link (`jumper_bar` absent), or edit one.
 #[derive(Debug, Clone, Default)]
 pub struct JumperInput {
     /// The link to edit.
-    pub link: Option<JumperBarRef>,
+    pub jumper_bar: Option<JumperBarRef>,
     /// Make: the strip.
     pub strip: Option<DeviceId>,
     /// Make: the picked terminals.
-    pub terminals: Vec<ConnectionPointId>,
+    pub connection_points: Vec<ConnectionPointId>,
     /// Make: no ranges between consecutive picks.
     pub skip: bool,
     /// The positions as text (`1-4, 7`).
@@ -383,7 +383,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
     let mut level: u32 = 1;
     let mut point: Option<char> = None;
     let mut cross: Option<String> = None;
-    let (c, n, before_text, labels, label, extra) = if let Some(l) = &input.link {
+    let (c, n, before_text, labels, label, extra) = if let Some(l) = &input.jumper_bar {
         let c = l.strip.ok_or(CmdError::input("`strip` (hex id) is required"))?;
         let (c, _) = strip_of(doc, Some(c), None)?;
         let n = l.n.and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=jumper_bars::MAX_JUMPER_BAR).contains(n));
@@ -464,11 +464,11 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
         (c, n, Some(cur_text), next, format!("{verb} link {tag}"), extra)
     } else {
         // Make a new link.
-        let picks = &input.terminals;
+        let picks = &input.connection_points;
         let c = match (input.strip, picks.first()) {
             (Some(c), _) => c,
-            (None, Some(t)) => doc.terminals.get(t).and_then(|x| x.device()).ok_or(CmdError::NotFound(Noun::TerminalDevice))?,
-            (None, None) => return Err(CmdError::input("`strip` with `positions`, or `terminals`, is required")),
+            (None, Some(t)) => doc.connection_points.get(t).and_then(|x| x.device()).ok_or(CmdError::NotFound(Noun::TerminalBlock))?,
+            (None, None) => return Err(CmdError::input("`strip` with `positions`, or `connection_points`, is required")),
         };
         let (c, _) = strip_of(doc, Some(c), None)?;
         let order = acc::positions(doc, c);
@@ -503,7 +503,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
             if !cross_levels.is_empty() {
                 return Err(CmdError::refused("A link between levels of one position ends there; Enter to finish."));
             }
-            let term = doc.terminals.get(t).ok_or(CmdError::NotFound(Noun::TerminalDevice))?;
+            let term = doc.connection_points.get(t).ok_or(CmdError::NotFound(Noun::TerminalBlock))?;
             if term.device() != Some(c) {
                 return Err(CmdError::refused(format!(
                     "{} is on another strip; a link stays on one strip. Pick a terminal of {}.",
@@ -620,7 +620,7 @@ pub struct AccessoryParams {
     strip: Option<DeviceId>,
     /// A terminal of the strip (its position is the place when `at` is absent).
     #[serde(default)]
-    terminal: Option<ConnectionPointId>,
+    connection_point: Option<ConnectionPointId>,
     /// "start", "end", "all", a position label, or a list of them (at most 999).
     #[serde(default)]
     at: Option<WordsParam>,
@@ -645,7 +645,7 @@ pub struct AccessoryParams {
 /// The link a `jumper` edit names.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct LinkParam {
+pub struct JumperBarParam {
     /// The strip.
     #[serde(default)]
     strip: Option<DeviceId>,
@@ -655,19 +655,19 @@ pub struct LinkParam {
 }
 
 /// `jumper` (design 030 §10): make a link (`{strip | terminals, positions?, skip?}`), or edit one
-/// (`{link: {strip, n}, add?, remove?, positions?, split_at?, drop_missing?, delete?}`).
+/// (`{jumper_bar: {strip, n}, add?, remove?, positions?, split_at?, drop_missing?, delete?}`).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JumperParams {
     /// Edit: the link.
     #[serde(default)]
-    link: Option<LinkParam>,
+    jumper_bar: Option<JumperBarParam>,
     /// Make: the strip.
     #[serde(default)]
     strip: Option<DeviceId>,
     /// Make: the picked terminals (at most 999).
     #[serde(default)]
-    terminals: Option<Bounded<ConnectionPointId, 0, MAX_PICKS>>,
+    connection_points: Option<Bounded<ConnectionPointId, 0, MAX_PICKS>>,
     /// Make: no ranges between consecutive picks.
     #[serde(default)]
     skip: Option<bool>,
@@ -703,14 +703,14 @@ impl WordsParam {
 impl Generic for AccessoryParams {
     const ID: &'static str = "accessory";
     const TITLE: &'static str = "Strip Accessory";
-    const HELP: &'static str = "{strip?: id, terminal?: id, at: \"start\"|\"end\"|\"all\"|label|[label…] (at most 999), on?: bool (markers on positions), \
+    const HELP: &'static str = "{strip?: id, connection_point?: id, at: \"start\"|\"end\"|\"all\"|label|[label…] (at most 999), on?: bool (markers on positions), \
 items?: [item…]|null (replace), add?: [item…], remove?: [item…], clear?: [acc.… key]} items: end_stop, end_plate, partition, strip_label; on: marker";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let words = |w: Option<Option<WordsParam>>| w.map(|w| w.map(WordsParam::words));
         let input = AccessoryInput {
             strip: self.strip,
-            terminal: self.terminal,
+            connection_point: self.connection_point,
             at: self.at.map(WordsParam::words),
             on: self.on.unwrap_or(false),
             items: words(self.items),
@@ -730,15 +730,15 @@ items?: [item…]|null (replace), add?: [item…], remove?: [item…], clear?: [
 impl Generic for JumperParams {
     const ID: &'static str = "jumper";
     const TITLE: &'static str = "Jumper";
-    const HELP: &'static str = "make: {strip?: id, terminals?: [id…], positions?: \"1-4, 7\", skip?: bool} (ranges between consecutive picks unless skip); \
-edit: {link: {strip: id, n}, add?: \"5,6\", remove?: \"5\", positions?: text, split_at?: label, drop_missing?: true, delete?: true}";
+    const HELP: &'static str = "make: {strip?: id, connection_points?: [id…], positions?: \"1-4, 7\", skip?: bool} (ranges between consecutive picks unless skip); \
+edit: {jumper_bar: {strip: id, n}, add?: \"5,6\", remove?: \"5\", positions?: text, split_at?: label, drop_missing?: true, delete?: true}";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let text = |w: Option<WordsParam>| w.map(|w| w.words().text());
         let input = JumperInput {
-            link: self.link.map(|l| JumperBarRef { strip: l.strip, n: l.n }),
+            jumper_bar: self.jumper_bar.map(|l| JumperBarRef { strip: l.strip, n: l.n }),
             strip: self.strip,
-            terminals: self.terminals.map(|t| t.0).unwrap_or_default(),
+            connection_points: self.connection_points.map(|t| t.0).unwrap_or_default(),
             skip: self.skip.unwrap_or(false),
             positions: text(self.positions),
             add: text(self.add),
@@ -753,10 +753,10 @@ edit: {link: {strip: id, n}, add?: \"5,6\", remove?: \"5\", positions?: text, sp
         let (message, split) = (done.message, done.split);
         let answer = move |doc: &Document, views: &mut Views| {
             let positions = doc.devices.get(&c).and_then(|x| x.properties.get(&jumper_bars::key(n))).cloned();
-            let bars = views.outputs(doc).strips.get(c).and_then(|d| d.acc.links.iter().find(|l| l.n == n)).map_or(0, |l| l.bars);
-            let mut v = json!({"strip": c.hex(), "link": n, "positions": positions, "bars": bars, "changed": changed, "message": message});
+            let bars = views.reports(doc).strips.get(c).and_then(|d| d.acc.jumper_bars.iter().find(|l| l.n == n)).map_or(0, |l| l.bars);
+            let mut v = json!({"strip": c.hex(), "jumper_bar": n, "positions": positions, "bars": bars, "changed": changed, "message": message});
             if let Some((m, t)) = split {
-                v["split"] = json!({"link": m, "positions": t});
+                v["split"] = json!({"jumper_bar": m, "positions": t});
             }
             v
         };

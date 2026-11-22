@@ -104,10 +104,10 @@ pub struct Renumbered {
 }
 
 /// `renumberpages {folder?}`: each folder from its start number, the rest from 1; with `scope`,
-/// that folder and its sub-folders only. `outputs` are the generated pages kept.
-pub fn plan_renumber(doc: &Document, outputs: Option<&ReportModels>, scope: Option<FolderId>) -> Renumbered {
-    let pages = renumber(doc, outputs, scope);
-    let overlaps = overlaps(doc, outputs).into_iter().map(|(a, b, n)| overlap_words(doc, a, b, n)).collect();
+/// that folder and its sub-folders only. `reports` are the generated pages kept.
+pub fn plan_renumber(doc: &Document, reports: Option<&ReportModels>, scope: Option<FolderId>) -> Renumbered {
+    let pages = renumber(doc, reports, scope);
+    let overlaps = overlaps(doc, reports).into_iter().map(|(a, b, n)| overlap_words(doc, a, b, n)).collect();
     let ops = pages
         .iter()
         .filter_map(|(page, n)| {
@@ -247,7 +247,7 @@ impl Generic for RenumberpagesParams {
         let doc = cx.doc;
         let scope = folder_scope(doc, self.folder)?;
         if crate::pages::generated::has_bom_page(doc) {
-            cx.derived.outputs(doc);
+            cx.derived.reports(doc);
         }
         let plan = plan_renumber(doc, cx.derived.kept_reports(), scope);
         if plan.ops.is_empty() {

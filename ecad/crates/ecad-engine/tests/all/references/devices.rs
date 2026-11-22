@@ -91,11 +91,11 @@ fn rows(h: &mut H, c: DeviceId) -> Vec<(String, String, String, String)> {
 }
 
 fn index_matches(h: &mut H) {
-    h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
+    h.p(|p| p.reference().verify(p.ledger.document())).unwrap();
 }
 
 /// Check A: each contact shows the coil's place; the coil's table lists its five poles with their
-/// places, under the rail; `xrefs` lists ten edges.
+/// places, under the rail; `references` lists ten edges.
 #[test]
 fn a_contacts_show_the_coil_and_the_coil_shows_its_contacts() {
     let mut x = fixture();
@@ -113,14 +113,14 @@ fn a_contacts_show_the_coil_and_the_coil_shows_its_contacts() {
         ecad_electrical::references::devices::table_top(doc, x.k1, x.coil, ecad_electrical::references::devices::Placement::Auto).unwrap()
     });
     assert!((top.x - 75.0).abs() < 1e-9 && (top.y - 146.0).abs() < 1e-9, "{top:?}");
-    let v = x.h.run("xrefs", json!({"component": x.k1.hex()})).unwrap();
-    let refs = v["references"].as_array().unwrap();
-    assert_eq!(refs.len(), 10, "five poles to the coil and back: {v}");
-    assert!(refs.iter().any(|r| r["kind"] == "contact" && r["text"] == "100/C2"));
-    assert!(refs.iter().any(|r| r["kind"] == "mirror"));
+    let v = x.h.run("references", json!({"component": x.k1.hex()})).unwrap();
+    let references = v["references"].as_array().unwrap();
+    assert_eq!(references.len(), 10, "five poles to the coil and back: {v}");
+    assert!(references.iter().any(|r| r["kind"] == "contact" && r["text"] == "100/C2"));
+    assert!(references.iter().any(|r| r["kind"] == "mirror"));
     // The index from the open matches a rebuild.
     index_matches(&mut x.h);
-    let sizes = x.h.p(|p| p.xref().sizes());
+    let sizes = x.h.p(|p| p.reference().sizes());
     assert_eq!(sizes.1, 2, "two device groups");
     // The table is drawn on page 100 only.
     assert!(drawn(&mut x.h, x.p100).iter().any(|(r, _, v)| *r == x.coil && v == "13/14" || *r == x.coil && v == "13"));
@@ -166,13 +166,13 @@ fn c_the_offer_spares_join_labels_and_too_many() {
     x.h.activate(x.p105);
     let j = x.h.run("place", json!({"symbol": "no", "at": [150, 150], "device": x.k1.hex()})).unwrap();
     assert_eq!(j["offer_slot"], json!(true));
-    let labels: Vec<&str> = j["terminals"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap()).collect();
+    let labels: Vec<&str> = j["connection_points"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap()).collect();
     assert_eq!(labels, ["23", "24"]);
     assert!(rows(&mut x.h, x.k1).iter().all(|r| r.2 == "drawn"));
     // Another: 33/34, over the offer, and a Checks row with a place to go to.
     let j = x.h.run("place", json!({"symbol": "no", "at": [200, 150], "device": x.k1.hex()})).unwrap();
     assert_eq!(j["offer_slot"], json!(false));
-    let labels: Vec<&str> = j["terminals"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap()).collect();
+    let labels: Vec<&str> = j["connection_points"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap()).collect();
     assert_eq!(labels, ["33", "34"]);
     let r = rows(&mut x.h, x.k1);
     assert!(r.contains(&("33/34".into(), "NO".into(), "over".into(), r.iter().find(|r| r.0 == "33/34").unwrap().3.clone())), "{r:?}");
@@ -265,7 +265,7 @@ fn g_hover_properties_and_go_to() {
     // Hover the NO's text: the device's lens with its coil.
     let (uid, text_handle) = x.h.pv(|p, _| {
         let v = &p.pages[&x.p105];
-        (v.uid.unwrap(), v.map.xref(x.no, 0).unwrap())
+        (v.uid.unwrap(), v.map.reference(x.no, 0).unwrap())
     });
     let lines = x.h.p(|p| ecad_engine::interact::hover_lines(p, uid, text_handle)).unwrap();
     assert!(lines.iter().any(|l| l.starts_with("Coil: 100/C2") && l.contains("page 100 \"Supply\"")), "{lines:?}");
@@ -277,7 +277,7 @@ fn g_hover_properties_and_go_to() {
     // Hover the coil's table: its contacts.
     let (uid, bar) = x.h.pv(|p, _| {
         let v = &p.pages[&x.p100];
-        (v.uid.unwrap(), v.map.xref(x.coil, 0).unwrap())
+        (v.uid.unwrap(), v.map.reference(x.coil, 0).unwrap())
     });
     let lines = x.h.p(|p| ecad_engine::interact::hover_lines(p, uid, bar)).unwrap();
     assert!(lines[0].starts_with("Contacts: 5 drawn"), "{lines:?}");
@@ -303,7 +303,7 @@ fn g_hover_properties_and_go_to() {
     }
     assert!(s.buttons.iter().any(|b| b.starts_with(&format!("refgoto:{}:{}:", x.coil.hex(), x.no.hex()))), "{:?}", s.buttons);
     assert!(view.deps.contains(&ObjectRef::Page(x.p105)), "renumbering 105 refreshes the rows");
-    let e = x.h.run("xrefs", json!({"component": "1"})).unwrap_err();
+    let e = x.h.run("references", json!({"component": "1"})).unwrap_err();
     assert_eq!(e, "no such component");
 }
 
@@ -313,12 +313,12 @@ fn g_hover_properties_and_go_to() {
 fn drawn_references_cannot_be_edited_alone() {
     let mut x = fixture();
     x.h.activate(x.p105);
-    let h_text = x.h.p(|p| p.pages[&x.p105].map.xref(x.no, 0).unwrap());
+    let h_text = x.h.p(|p| p.pages[&x.p105].map.reference(x.no, 0).unwrap());
     assert_eq!(x.h.mapped(x.p105, h_text), Some(Mapped::DeviceReference(x.no)));
     let e = x.h.run("move", json!({"handles": [h_text.hex()], "delta": [5, 0]})).unwrap_err();
     assert!(e.contains(ecad_electrical::references::devices::TEXT_DERIVED), "{e}");
     x.h.activate(x.p100);
-    let bar = x.h.p(|p| p.pages[&x.p100].map.xref(x.coil, 0).unwrap());
+    let bar = x.h.p(|p| p.pages[&x.p100].map.reference(x.coil, 0).unwrap());
     let e = x.h.run("erase", json!({"handles": [bar.hex()]})).unwrap_err();
     assert!(e.contains(ecad_electrical::references::devices::TABLE_DERIVED), "{e}");
 }
@@ -342,13 +342,13 @@ fn j_save_and_reopen_keep_contacts_and_mirror() {
     x.h.cfg(|p| p.persistence = Persistence::File);
     x.h.run("saveas", json!({"path": path})).unwrap();
     let live = x.h.doc();
-    let idx = x.h.p(|p| p.xref().clone());
+    let idx = x.h.p(|p| p.reference().clone());
     close_all(&mut x.h.s);
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file(&mut s, &path, 99).unwrap();
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.doc(), live);
-    assert_eq!(h2.p(|p| p.xref().clone()), idx, "the index rebuilt on open is the kept one");
+    assert_eq!(h2.p(|p| p.reference().clone()), idx, "the index rebuilt on open is the kept one");
     let d = h2.doc();
     assert_eq!(ecad_electrical::references::devices::offer_of(&d, x.k1).map(|(t, _)| t).as_deref(), Some("3P+1NO+1NC"));
     assert_eq!(ecad_electrical::references::devices::placement_of(&d, x.k1), (ecad_electrical::references::devices::Placement::Right, true));
@@ -379,12 +379,12 @@ fn k_hostile_values() {
     assert!(x.h.project.apply_ops(&mut x.h.s, "hostile", vec![Op::ModifyDevice { id: x.k1, before, after: far }]).is_err());
     assert_eq!(rows(&mut x.h, x.k1).len(), 5);
     // A second head is refused by Place (a file may still hold one; the index takes the lower
-    // ID as the head, see `xref::device`).
+    // ID as the head, see `reference::device`).
     x.h.activate(x.p105);
     let e = x.h.run("place", json!({"symbol": "coil", "at": [10, 10], "device": x.k1.hex()})).unwrap_err();
     assert!(e.contains("already has a coil"), "{e}");
     index_matches(&mut x.h);
-    let groups: BTreeSet<Group> = x.h.p(|p| p.xref().groups().collect());
+    let groups: BTreeSet<Group> = x.h.p(|p| p.reference().groups().collect());
     assert!(groups.contains(&Group::Device(x.k1)) && groups.contains(&Group::Device(x.q1)));
 }
 
@@ -404,17 +404,17 @@ fn e_cable_groups_are_kept_on_the_index() {
     // continuation needs wires leaving the page through the reference (lane F step F4).
     h.reference_end(k, p2, (10.0, 50.0));
     let _ = (p1, p2);
-    let members: Vec<RepresentationId> = h.p(|p| p.xref().members(Group::Cable(k)).collect());
+    let members: Vec<RepresentationId> = h.p(|p| p.reference().members(Group::Cable(k)).collect());
     assert_eq!(members.len(), 2);
-    h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
+    h.p(|p| p.reference().verify(p.ledger.document())).unwrap();
     let doc = h.doc();
     let scope = ecad_electrical::references::cables::cables_touched(&doc, &[Op::DeleteCable { id: k, cable: doc.cables[&k].clone() }]);
     assert_eq!(scope, Some(BTreeSet::from([k])), "a cable op touches its cable only");
-    let v = h.run("xrefs", json!({"cable": k.hex()})).unwrap();
+    let v = h.run("references", json!({"cable": k.hex()})).unwrap();
     assert_eq!(v["references"].as_array().unwrap().len(), 2);
     assert!(v["references"].as_array().unwrap().iter().all(|r| r["kind"] == "cable"));
     h.run("u", json!({})).unwrap();
-    h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
+    h.p(|p| p.reference().verify(p.ledger.document())).unwrap();
     assert_eq!(h.p(|p| RefIndex::build(p.ledger.document()).members(Group::Cable(k)).count()), 1);
 }
 
@@ -425,7 +425,7 @@ fn e_cable_groups_are_kept_on_the_index() {
 fn a_stale_index_is_reported_and_rebuilt() {
     use ecad_engine::history::event_log::EventKind;
     let mut x = fixture();
-    x.h.cfg(|p| *p.views_mut().references_view_mut() = ecad_electrical::views::RefsView::default());
+    x.h.cfg(|p| *p.views_mut().references_view_mut() = ecad_electrical::views::ReferencesView::default());
     let head = x.h.head();
     x.h.run("setprop", json!({"component": x.k1.hex(), "key": "contacts", "value": "3P+2NO+2NC"})).unwrap();
     assert_eq!(x.h.head(), head + 1);

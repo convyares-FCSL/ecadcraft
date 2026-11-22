@@ -116,7 +116,7 @@ pub(crate) fn connection_point_at(doc: &Document, page: PageId, at: Pt, tol: f64
 /// A route can get a movement change (§10) only if one of its ends lands on a connection point
 /// whose shown position changed (M2), one of its ends moved (M3) or is fresh, or it lands on a
 /// route the ops changed (a T whose route moved away). So:
-/// - `terminals`: every connection point whose position on the page the ops could change: those
+/// - `connection_points`: every connection point whose position on the page the ops could change: those
 ///   of every component whose representation on the page the ops link, unlink or change (as
 ///   recorded in the ops, before and after), or whose page item they change or remove. Points the
 ///   ops create have no earlier position, so never count as moved.
@@ -130,7 +130,7 @@ pub(crate) fn connection_point_at(doc: &Document, page: PageId, at: Pt, tol: f64
 /// `EmbedDefinition` of an ID the document already has.
 #[derive(Debug, Default)]
 struct Scope {
-    terminals: BTreeSet<ConnectionPointId>,
+    connection_points: BTreeSet<ConnectionPointId>,
     routes: BTreeSet<RouteId>,
 }
 
@@ -145,15 +145,15 @@ impl Scope {
             match r.subject {
                 Subject::Device(c) => {
                     devices.insert(c);
-                    s.terminals.extend(r.connection_points.keys().copied());
+                    s.connection_points.extend(r.connection_points.keys().copied());
                 }
                 Subject::Route(x) => {
                     s.routes.insert(x);
                 }
                 // A continuation's point moves with its arrow (design 072 §6.2).
-                Subject::Aid(_) => s.terminals.extend(r.connection_points.keys().copied()),
+                Subject::Aid(_) => s.connection_points.extend(r.connection_points.keys().copied()),
                 // A cable reference places its cores' named points (F4).
-                Subject::Cable(_) => s.terminals.extend(r.connection_points.keys().copied()),
+                Subject::Cable(_) => s.connection_points.extend(r.connection_points.keys().copied()),
                 Subject::Wire(_) => {}
             }
         };
@@ -176,19 +176,19 @@ impl Scope {
                 }
                 // New objects; a definition the document lacks cannot be shown by anything in it.
                 Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
-                Op::AddConnectionPoint { id, .. } if !doc.terminals.contains_key(id) => {}
+                Op::AddConnectionPoint { id, .. } if !doc.connection_points.contains_key(id) => {}
                 Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
                 _ => return Scope::everything(doc),
             }
         }
         for c in devices {
-            s.terminals.extend(doc.connection_points_of(c).map(|(t, _)| t));
+            s.connection_points.extend(doc.connection_points_of(c).map(|(t, _)| t));
         }
         s
     }
 
     fn everything(doc: &Document) -> Scope {
-        Scope { terminals: doc.terminals.keys().copied().collect(), routes: doc.routes.keys().copied().collect() }
+        Scope { connection_points: doc.connection_points.keys().copied().collect(), routes: doc.routes.keys().copied().collect() }
     }
 }
 
@@ -334,8 +334,8 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         .filter(|h| drawn(cx.map, *h))
         .chain(changed_handles.iter().copied().filter(|h| tag_text(cx.map, *h)))
         // Brief 030: a link line moved or copied with other objects is drawn again from its link.
-        .chain(changed_handles.iter().copied().filter(|h| matches!(cx.map.get(*h), Some(Mapped::Link(..)))))
-        .chain(added_handles.iter().copied().filter(|h| copied_source(h, &|m, x| matches!(m.get(x), Some(Mapped::Link(..))))))
+        .chain(changed_handles.iter().copied().filter(|h| matches!(cx.map.get(*h), Some(Mapped::JumperBar(..)))))
+        .chain(added_handles.iter().copied().filter(|h| copied_source(h, &|m, x| matches!(m.get(x), Some(Mapped::JumperBar(..))))))
         .chain(added_handles.iter().copied().filter(|h| copied_drawn(h)))
         .collect();
     // The sheet frame (brief 019) is left out of an edit of other objects too, and drawn again;
@@ -357,11 +357,11 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         let tags_only = skipped.iter().all(|h| tag_text(cx.map, *h) || copied_source(h, &tag_text));
         let label = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Label(_)));
         let labels_only = skipped.iter().all(|h| label(cx.map, *h) || copied_source(h, &label));
-        let xref = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::DeviceReference(_)));
-        let xrefs_only = skipped.iter().all(|h| xref(cx.map, *h) || copied_source(h, &xref));
-        let link = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Link(..)));
-        if skipped.iter().all(|h| link(cx.map, *h) || copied_source(h, &link)) {
-            return Err(ecad_electrical::terminal_strips::jumper_bars::LINK_DERIVED.into());
+        let reference = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::DeviceReference(_)));
+        let references_only = skipped.iter().all(|h| reference(cx.map, *h) || copied_source(h, &reference));
+        let jumper_bar = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::JumperBar(..)));
+        if skipped.iter().all(|h| jumper_bar(cx.map, *h) || copied_source(h, &jumper_bar)) {
+            return Err(ecad_electrical::terminal_strips::jumper_bars::JUMPER_BAR_DERIVED.into());
         }
         // Lane 072 D: a T's dot alone.
         let tee = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Tee(_)));
@@ -372,7 +372,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             ecad_electrical::devices::TAG_DERIVED
         } else if labels_only {
             ecad_electrical::wires::LABEL_DERIVED
-        } else if xrefs_only {
+        } else if references_only {
             {
                 // A copy's handle is not mapped: its source says whether it is a table (brief 025).
                 let source = |h: &Handle| match prov.get(h).map(|(s, _)| s) {
@@ -388,8 +388,8 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         .into());
     }
     // Reference texts erased (brief 010): each erases its reference, after the loop.
-    let mut erased_refs: Vec<RepresentationId> = Vec::new();
-    let mut erased_links: BTreeSet<(ecad_model::DeviceId, u32)> = BTreeSet::new();
+    let mut erased_references: Vec<RepresentationId> = Vec::new();
+    let mut erased_jumper_bars: BTreeSet<(ecad_model::DeviceId, u32)> = BTreeSet::new();
     for (h, _) in &removed {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
@@ -411,14 +411,14 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             Some(m @ Mapped::DeviceReference(_)) => return Err(crate::references::draw::devices::refusal(cx.ledger.document(), Some(m)).into()),
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(cx.map, k).into()),
-            Some(Mapped::RefText(rid)) => erased_refs.push(rid),
+            Some(Mapped::RefText(rid)) => erased_references.push(rid),
             // Brief 030: erasing a link line deletes its link (and its own part keys).
-            Some(Mapped::Link(c, n)) => {
-                erased_links.insert((c, n));
+            Some(Mapped::JumperBar(c, n)) => {
+                erased_jumper_bars.insert((c, n));
             }
             Some(Mapped::Frame(_)) => {}
             // Erasing a device's tag text or terminal label erases that symbol (design 018 §2.4).
-            Some(Mapped::Tag(rid)) => erased_refs.push(rid),
+            Some(Mapped::Tag(rid)) => erased_references.push(rid),
             Some(Mapped::Marker(rid, term)) => {
                 linked_removed = true;
                 rep(&mut reps, rid, cx.ledger.document())?;
@@ -431,7 +431,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     }
     // Erasing a reference's text erases the reference (design 010 §9): its point goes too, unless
     // it was erased with it, and the emptied representation is removed below.
-    for (c, n) in erased_links {
+    for (c, n) in erased_jumper_bars {
         let props = cx.ledger.document().devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
         let key = ecad_model::connectivity::jumper_bars::key(n);
         if let Some(v) = props.get(&key) {
@@ -443,7 +443,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             }
         }
     }
-    for rid in erased_refs {
+    for rid in erased_references {
         linked_removed = true;
         rep(&mut reps, rid, cx.ledger.document())?;
         let items: Vec<ItemId> = reps.get(&rid).map(|r| r.items.clone()).unwrap_or_default();
@@ -496,8 +496,8 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(ecad_electrical::references::cables::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => {}
-            Some(Mapped::Link(..)) if skipped.contains(h) => {}
-            Some(Mapped::Link(..)) => return Err(ecad_electrical::terminal_strips::jumper_bars::LINK_DERIVED.into()),
+            Some(Mapped::JumperBar(..)) if skipped.contains(h) => {}
+            Some(Mapped::JumperBar(..)) => return Err(ecad_electrical::terminal_strips::jumper_bars::JUMPER_BAR_DERIVED.into()),
             Some(Mapped::Tag(_)) if skipped.contains(h) => {}
             Some(Mapped::Tag(_)) => return Err(ecad_electrical::devices::TAG_DERIVED.into()),
             Some(Mapped::Marker(rid, term)) => {
@@ -720,7 +720,7 @@ fn copy_batch(
         for (src_t, term) in sdoc.connection_points_of(src_comp) {
             let nt: ConnectionPointId = cx.ids.fresh();
             term_map.insert(src_t, nt);
-            t.ops.push(Op::AddConnectionPoint { id: nt, terminal: ConnectionPoint { owner: new_comp.into(), ..term.clone() } });
+            t.ops.push(Op::AddConnectionPoint { id: nt, connection_point: ConnectionPoint { owner: new_comp.into(), ..term.clone() } });
         }
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();
@@ -857,7 +857,7 @@ fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(RouteId, End)]
     let doc = cx.ledger.document();
     let scope = Scope::of(doc, page, &t.ops);
     let earlier = Earlier {
-        positions: scope.terminals.iter().map(|term| (*term, connection_point_position(doc, page, *term))).collect(),
+        positions: scope.connection_points.iter().map(|term| (*term, connection_point_position(doc, page, *term))).collect(),
         routes: scope.routes.iter().map(|r| (*r, doc.routes.get(r).and_then(Route::end_points))).collect(),
     };
     // After the ops, on the live document, rolled back afterwards.
@@ -905,7 +905,7 @@ pub(crate) type Moves = (BTreeMap<ItemId, (Item, Item)>, BTreeMap<RouteId, (Rout
 fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &Earlier, fresh_ends: &[(RouteId, End)]) -> Moves {
     let mut candidates: BTreeSet<RouteId> = scope.routes.clone();
     candidates.extend(fresh_ends.iter().map(|(r, _)| *r));
-    for term in &scope.terminals {
+    for term in &scope.connection_points {
         candidates.extend(proposed.routes_at(*term));
     }
     for r in &scope.routes {

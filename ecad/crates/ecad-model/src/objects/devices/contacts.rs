@@ -11,7 +11,7 @@
 //!   project's default.
 //!
 //! This module excludes reading the typed offer text and numbering the poles it offers
-//! (`ecad-electrical`'s `xref`), and drawing the table.
+//! (`ecad-electrical`'s `reference`), and drawing the table.
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use std::fmt;

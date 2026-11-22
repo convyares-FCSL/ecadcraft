@@ -214,7 +214,7 @@ fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
     assert_eq!(lines.len(), 4);
     t.cad.run("convertcomponent", json!({ "handles": lines })).unwrap();
     for y in [0, 5, 10, 15] {
-        t.cad.run("addterminal", json!({"handle": lines[0], "at": [x, y as f64]})).unwrap();
+        t.cad.run("addconnectionpoint", json!({"handle": lines[0], "at": [x, y as f64]})).unwrap();
     }
     h.run_steps(1);
 }

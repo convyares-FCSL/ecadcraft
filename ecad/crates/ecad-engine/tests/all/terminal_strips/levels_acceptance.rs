@@ -22,7 +22,7 @@ use crate::common::{reopen, tmp_dir};
 // ------------------------------------------------------------------------------- helpers
 
 fn ids(v: &Value) -> Vec<ConnectionPointId> {
-    v["terminals"].as_array().map(|a| a.iter().map(|x| id(x, "terminal")).collect()).unwrap_or_default()
+    v["connection_points"].as_array().map(|a| a.iter().map(|x| id(x, "connection_point")).collect()).unwrap_or_default()
 }
 
 /// Vertical wires at `xs`, from y 250 to y 150.
@@ -41,21 +41,21 @@ fn fence(h: &mut H, strip: Option<DeviceId>, ty: &str, level: &str, x0: f64, x1:
 
 fn fence_v(h: &mut H, strip: Option<DeviceId>, ty: &str, level: &str, x0: f64, x1: f64) -> Result<Value, String> {
     let s = strip.map(|c| Value::String(c.hex())).unwrap_or(Value::Null);
-    h.run("terminals", json!({"strip": s, "type": ty, "level": level, "from": [x0, 200.0], "to": [x1, 200.0]}))
+    h.run("terminalblocks", json!({"strip": s, "type": ty, "level": level, "from": [x0, 200.0], "to": [x1, 200.0]}))
 }
 
 fn label(d: &Document, t: ConnectionPointId) -> String {
-    d.terminals.get(&t).and_then(|x| x.label.clone()).unwrap_or_default()
+    d.connection_points.get(&t).and_then(|x| x.label.clone()).unwrap_or_default()
 }
 
 fn key(d: &Document, t: ConnectionPointId) -> String {
-    d.terminals.get(&t).and_then(|x| x.key.as_ref()).map(ToString::to_string).unwrap_or_default()
+    d.connection_points.get(&t).and_then(|x| x.key.as_ref()).map(ToString::to_string).unwrap_or_default()
 }
 
 /// A strip's terminals by position label, then level key.
 fn positions(d: &Document, strip: DeviceId) -> BTreeMap<String, BTreeMap<String, ConnectionPointId>> {
     let mut out: BTreeMap<String, BTreeMap<String, ConnectionPointId>> = BTreeMap::new();
-    for (tid, t) in &d.terminals {
+    for (tid, t) in &d.connection_points {
         if t.device() == Some(strip) {
             out.entry(t.label.clone().unwrap_or_default()).or_default().insert(t.key.as_ref().map(ToString::to_string).unwrap_or_default(), *tid);
         }
@@ -118,7 +118,7 @@ fn net(h: &mut H, t: ConnectionPointId) -> Option<ecad_model::NetKey> {
 }
 
 fn wire_number(h: &mut H, t: ConnectionPointId) -> String {
-    s(&h.run("net", json!({"terminal": t.hex()})).unwrap()["number"])
+    s(&h.run("net", json!({"connection_point": t.hex()})).unwrap()["number"])
 }
 
 fn same_as_built(h: &mut H) {
@@ -129,7 +129,7 @@ fn same_as_built(h: &mut H) {
 /// `o_…`, so hostile and registry tests still check what they are for).
 fn same_as_built_with(h: &mut H, wires: bool) {
     let (kept, built) = h.cfg(|p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ from a rebuild");
@@ -141,7 +141,7 @@ fn same_as_built_with(h: &mut H, wires: bool) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
+    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -194,7 +194,7 @@ fn read_everything(h: &mut H) {
     h.run("bom", json!({"limit": 5000})).unwrap();
     h.run("bom", json!({"group": "part"})).unwrap();
     h.run("checks", json!({})).unwrap();
-    h.run("renumber", json!({"kind": "terminals", "preview": true})).unwrap();
+    h.run("renumber", json!({"kind": "terminal_blocks", "preview": true})).unwrap();
     let d = h.doc();
     let _ = d.connectivity();
     let _ = ecad_engine::checks::all(&d, 1e-6);
@@ -203,7 +203,7 @@ fn read_everything(h: &mut H) {
 
 /// The representation (symbol) that shows terminal `t`, and its item.
 fn symbol_of(d: &Document, t: ConnectionPointId) -> Option<(ecad_model::RepresentationId, ecad_model::ItemId, PageId)> {
-    let comp = d.terminals.get(&t)?.device()?;
+    let comp = d.connection_points.get(&t)?.device()?;
     d.representations_of(Subject::Device(comp))
         .find(|(_, r)| r.connection_points.contains_key(&t))
         .and_then(|(rid, r)| Some((rid, *r.items.first()?, r.page)))
@@ -288,11 +288,11 @@ fn with_sensor(m: &mut M) -> DeviceId {
 #[test]
 fn a_lnpe_fences_fill_positions_one_transaction_each() {
     let mut m = fixture_m(0x7036_0001);
-    let v = step(&mut m.h, "terminals", json!({"strip": null, "type": "LNPE", "level": "L", "from": [90, 200], "to": [130, 200]}));
+    let v = step(&mut m.h, "terminalblocks", json!({"strip": null, "type": "LNPE", "level": "L", "from": [90, 200], "to": [130, 200]}));
     let x1: DeviceId = id(&v, "strip");
     assert_eq!(ids(&v).len(), 3, "{v}");
-    step(&mut m.h, "terminals", json!({"strip": x1.hex(), "type": "LNPE", "level": "N", "from": [190, 200], "to": [230, 200]}));
-    let v = step(&mut m.h, "terminals", json!({"strip": x1.hex(), "type": "lnpe", "level": "PE", "from": [290, 200], "to": [330, 200]}));
+    step(&mut m.h, "terminalblocks", json!({"strip": x1.hex(), "type": "LNPE", "level": "N", "from": [190, 200], "to": [230, 200]}));
+    let v = step(&mut m.h, "terminalblocks", json!({"strip": x1.hex(), "type": "lnpe", "level": "PE", "from": [290, 200], "to": [330, 200]}));
     assert_eq!(ids(&v).len(), 3, "type codes are case-insensitive: {v}");
     let d = m.h.doc();
     let pos = positions(&d, x1);
@@ -376,7 +376,7 @@ fn b_level_on_another_page_joins_its_position() {
     // A named position of another type is refused too (fence form).
     refused(
         &mut m.h,
-        "terminals",
+        "terminal_blocks",
         json!({"strip": x1.hex(), "type": "x3", "level": "1", "position": "1", "from": [530, 200], "to": [550, 200]}),
         "-X01:1",
     );
@@ -393,7 +393,7 @@ fn b_level_on_another_page_joins_its_position() {
 
 /// B (whole-terminal symbol): `termlnpe` always makes a new position with all three levels.
 #[test]
-fn b_whole_terminal_symbol_makes_a_new_position() {
+fn b_whole_terminal_block_symbol_makes_a_new_position() {
     let mut m = fixture_m(0x7036_0004);
     let (x1, _) = fence(&mut m.h, None, "LNPE", "L", 90.0, 110.0); // positions 1, 2 (L only)
     m.h.activate(m.p2);
@@ -408,7 +408,7 @@ fn b_whole_terminal_symbol_makes_a_new_position() {
 /// C: a link on the `+` level made with the Jumper tool's JSON form is stored `1.2-4.2`; `+` and
 /// `−` levels are one net each; the S levels stay four nets.
 #[test]
-fn c_sensor_links_per_level() {
+fn c_sensor_jumper_bars_per_level() {
     let mut m = fixture_m(0x7036_0005);
     let x2 = with_sensor(&mut m);
     let d = m.h.doc();
@@ -418,10 +418,10 @@ fn c_sensor_links_per_level() {
     let plan0 = plan(&mut m.h, x2);
     let labels: Vec<String> = level_rows(&plan0).iter().map(|r| s(&r["label"])).collect();
     assert_eq!(&labels[..3], ["1.S", "1.+", "1.-"], "{labels:?}");
-    step(&mut m.h, "jumper", json!({"terminals": [lvl("1", ".2").hex(), lvl("4", ".2").hex()]}));
-    assert_eq!(squash(prop(&mut m.h, x2, "link.1")).as_deref(), Some("1.2-4.2"));
-    step(&mut m.h, "setprop", json!({"component": x2.hex(), "key": "link.2", "value": "1.3-4.3"}));
-    assert_eq!(squash(prop(&mut m.h, x2, "link.2")).as_deref(), Some("1.3-4.3"));
+    step(&mut m.h, "jumper", json!({"connection_points": [lvl("1", ".2").hex(), lvl("4", ".2").hex()]}));
+    assert_eq!(squash(prop(&mut m.h, x2, "jumper_bar.1")).as_deref(), Some("1.2-4.2"));
+    step(&mut m.h, "setprop", json!({"component": x2.hex(), "key": "jumper_bar.2", "value": "1.3-4.3"}));
+    assert_eq!(squash(prop(&mut m.h, x2, "jumper_bar.2")).as_deref(), Some("1.3-4.3"));
     let plus: Vec<_> = ["1", "2", "3", "4"].iter().map(|p| net(&mut m.h, lvl(p, ".2"))).collect();
     let minus: Vec<_> = ["1", "2", "3", "4"].iter().map(|p| net(&mut m.h, lvl(p, ".3"))).collect();
     let ss: Vec<_> = ["1", "2", "3", "4"].iter().map(|p| net(&mut m.h, lvl(p, ".1"))).collect();
@@ -431,15 +431,15 @@ fn c_sensor_links_per_level() {
     let distinct: std::collections::BTreeSet<_> = ss.iter().collect();
     assert_eq!(distinct.len(), 4, "S levels four nets: {ss:?}");
     // Level names typed are stored as numbers (§5.1).
-    step(&mut m.h, "setprop", json!({"component": x2.hex(), "key": "link.3", "value": "1.S-2.S"}));
-    assert_eq!(squash(prop(&mut m.h, x2, "link.3")).as_deref(), Some("1-2"), "level 1 canonical: no level written");
+    step(&mut m.h, "setprop", json!({"component": x2.hex(), "key": "jumper_bar.3", "value": "1.S-2.S"}));
+    assert_eq!(squash(prop(&mut m.h, x2, "jumper_bar.3")).as_deref(), Some("1-2"), "level 1 canonical: no level written");
     // A pick on another level of another position is not added (§5.3).
     let head = m.h.head();
-    let r = m.h.run("jumper", json!({"terminals": [lvl("1", ".2").hex(), lvl("3", ".1").hex()]}));
-    assert!(r.is_err() || m.h.head() == head || squash(prop(&mut m.h, x2, "link.4")).is_some_and(|v| !v.contains("3.1")), "{r:?}");
+    let r = m.h.run("jumper", json!({"connection_points": [lvl("1", ".2").hex(), lvl("3", ".1").hex()]}));
+    assert!(r.is_err() || m.h.head() == head || squash(prop(&mut m.h, x2, "jumper_bar.4")).is_some_and(|v| !v.contains("3.1")), "{r:?}");
     // stripplan links carry their level.
     let p = plan(&mut m.h, x2);
-    assert!(level_rows(&p).iter().any(|r| r["links"].as_array().is_some_and(|l| l.iter().any(|x| x["level"].as_u64() == Some(2)))), "{p}");
+    assert!(level_rows(&p).iter().any(|r| r["jumper_bars"].as_array().is_some_and(|l| l.iter().any(|x| x["level"].as_u64() == Some(2)))), "{p}");
     m.h.check();
 }
 
@@ -449,11 +449,11 @@ fn c_sensor_links_per_level() {
 fn d_old_one_level_strip_reads_the_same() {
     let mut h = H::new(0x7036_0006);
     drops(&mut h, &[100.0, 110.0, 120.0, 130.0]);
-    let v = h.run("terminals", json!({"from": [90, 200], "to": [140, 200]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [90, 200], "to": [140, 200]})).unwrap();
     let x1: DeviceId = id(&v, "strip");
     let t = ids(&v);
     h.run("setprop", json!({"component": x1.hex(), "key": "part_number", "value": "FT-1"})).unwrap();
-    h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1-4"})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1-4"})).unwrap();
     let d = h.doc();
     assert!(t.iter().all(|x| !key(&d, *x).starts_with('.')), "one-level terminals keep old keys");
     let nets: Vec<_> = t.iter().map(|x| net(&mut h, *x)).collect();
@@ -468,31 +468,31 @@ fn d_old_one_level_strip_reads_the_same() {
     }
     assert_eq!(bom_qty(&mut h, "FT-1"), 4);
     // Positions without a level mean level 1 (030's at-least-2-positions rule kept).
-    h.run("setprop", json!({"component": x1.hex(), "key": "link.2", "value": "1, 3"})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.2", "value": "1, 3"})).unwrap();
     h.check();
 }
 
 /// E: a cross-level link `1.1-1.3` joins L, N and PE of position 1 only.
 #[test]
-fn e_cross_level_link_joins_one_positions_levels() {
+fn e_cross_level_jumper_bar_joins_one_positions_levels() {
     let (mut m, x1) = with_lnpe(0x7036_0007);
     let pos = positions(&m.h.doc(), x1);
     let before2: Vec<_> = [".1", ".2", ".3"].iter().map(|k| net(&mut m.h, pos["2"][*k])).collect();
-    step(&mut m.h, "setprop", json!({"component": x1.hex(), "key": "link.2", "value": "1.1-1.3"}));
+    step(&mut m.h, "setprop", json!({"component": x1.hex(), "key": "jumper_bar.2", "value": "1.1-1.3"}));
     let n1: Vec<_> = [".1", ".2", ".3"].iter().map(|k| net(&mut m.h, pos["1"][*k])).collect();
     assert!(n1.iter().all(|n| n.is_some() && *n == n1[0]), "position 1 one net: {n1:?}");
     let after2: Vec<_> = [".1", ".2", ".3"].iter().map(|k| net(&mut m.h, pos["2"][*k])).collect();
     assert_eq!(after2.iter().collect::<std::collections::BTreeSet<_>>().len(), 3, "position 2 untouched: {after2:?}");
     assert_eq!(before2.len(), after2.len());
     // `link.1 = 1-3` on the same strip joins level L only.
-    m.h.run("setprop", json!({"component": x1.hex(), "key": "link.2", "value": null})).unwrap();
-    m.h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1-3"})).unwrap();
+    m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.2", "value": null})).unwrap();
+    m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1-3"})).unwrap();
     let ls: Vec<_> = ["1", "2", "3"].iter().map(|p| net(&mut m.h, pos[*p][".1"])).collect();
     let ns: Vec<_> = ["1", "2", "3"].iter().map(|p| net(&mut m.h, pos[*p][".2"])).collect();
     assert!(ls.iter().all(|n| *n == ls[0]), "L joined: {ls:?}");
     assert_eq!(ns.iter().collect::<std::collections::BTreeSet<_>>().len(), 3, "N not joined: {ns:?}");
     // `1.2-3.2` joins N.
-    m.h.run("setprop", json!({"component": x1.hex(), "key": "link.3", "value": "1.2-3.2"})).unwrap();
+    m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.3", "value": "1.2-3.2"})).unwrap();
     let ns: Vec<_> = ["1", "2", "3"].iter().map(|p| net(&mut m.h, pos[*p][".2"])).collect();
     assert!(ns.iter().all(|n| *n == ns[0]), "N joined: {ns:?}");
     m.h.check();
@@ -530,7 +530,7 @@ fn f_internal_bridge_per_position() {
 fn g_fuse_and_disconnect_positions_break_the_net() {
     let mut m = fixture_m(0x7036_0009);
     let x2 = with_sensor(&mut m);
-    let v = step(&mut m.h, "terminals", json!({"strip": x2.hex(), "type": "FUSE", "level": "All", "from": [490, 200], "to": [510, 200]}));
+    let v = step(&mut m.h, "terminalblocks", json!({"strip": x2.hex(), "type": "FUSE", "level": "All", "from": [490, 200], "to": [510, 200]}));
     let d = m.h.doc();
     let pos = positions(&d, x2);
     let (p, fuse) = pos.iter().find(|(_, l)| l.contains_key(".1i")).map(|(p, l)| (p.clone(), l.clone())).unwrap_or_else(|| panic!("{pos:?} {v}"));
@@ -546,7 +546,7 @@ fn g_fuse_and_disconnect_positions_break_the_net() {
     assert_eq!(p5[0]["breaks"], true);
     assert!(s(&p5[0]["type"]).eq_ignore_ascii_case("FUSE"));
     // A link never crosses in → out: `5.1i-5.1o` is refused or joins nothing.
-    let r = m.h.run("setprop", json!({"component": x2.hex(), "key": "link.9", "value": "5.1i-5.1o"}));
+    let r = m.h.run("setprop", json!({"component": x2.hex(), "key": "jumper_bar.9", "value": "5.1i-5.1o"}));
     if r.is_ok() {
         assert_ne!(net(&mut m.h, i), net(&mut m.h, o), "link across a fuse joined in and out");
     }
@@ -570,7 +570,7 @@ fn h_toposition_converts_a_fuse_device() {
     let mut m = fixture_m(0x7036_000A);
     let x2 = with_sensor(&mut m);
     let d0 = m.h.doc();
-    let ft: Vec<ConnectionPointId> = d0.terminals.iter().filter(|(_, t)| t.device() == Some(m.fuse_dev)).map(|(i, _)| *i).collect();
+    let ft: Vec<ConnectionPointId> = d0.connection_points.iter().filter(|(_, t)| t.device() == Some(m.fuse_dev)).map(|(i, _)| *i).collect();
     assert_eq!(ft.len(), 2);
     let conductors_of = |d: &Document, t: ConnectionPointId| -> Vec<ecad_model::WireId> {
         let c = d.connectivity();
@@ -648,12 +648,12 @@ fn h_toposition_refusals() {
 fn i_offer_type_codes_spares_and_bom() {
     let mut m = fixture_m(0x7036_000D);
     // `-X03`: one feed-through drawn.
-    let v = m.h.run("terminals", json!({"from": [95, 200], "to": [105, 200]})).unwrap();
+    let v = m.h.run("terminalblocks", json!({"from": [95, 200], "to": [105, 200]})).unwrap();
     let x3: DeviceId = id(&v, "strip");
     for (k, part) in [("part_number", "FT-1"), ("part_number.pe", "PE-1"), ("part_number.x3", "X3-1")] {
         m.h.run("setprop", json!({"component": x3.hex(), "key": k, "value": part})).unwrap();
     }
-    step(&mut m.h, "setprop", json!({"component": x3.hex(), "key": "terminals", "value": "12+2PE+4x3"}));
+    step(&mut m.h, "setprop", json!({"component": x3.hex(), "key": "terminal_blocks", "value": "12+2PE+4x3"}));
     let p = plan(&mut m.h, x3);
     let rows = level_rows(&p);
     let positions_seen: std::collections::BTreeSet<String> = rows.iter().map(|r| s(&r["position"])).collect();
@@ -672,21 +672,22 @@ fn i_offer_type_codes_spares_and_bom() {
     let header = p.to_string();
     assert!(header.contains("18"), "{header}");
     // 028's offers unchanged; case-insensitive codes; a project part per type.
-    m.h.run("setprop", json!({"component": x3.hex(), "key": "terminals", "value": "12+2pe+4X3"})).unwrap();
+    m.h.run("setprop", json!({"component": x3.hex(), "key": "terminal_blocks", "value": "12+2pe+4X3"})).unwrap();
     assert_eq!(bom_qty(&mut m.h, "X3-1"), 4);
     m.h.run("setprop", json!({"component": x3.hex(), "key": "part_number.x3", "value": null})).unwrap();
     step(&mut m.h, "projectprops", json!({"props": {"strip_x3_part_number": "X3-P"}}));
     assert_eq!(bom_qty(&mut m.h, "X3-P"), 4, "project part per type (FP6)");
-    m.h.run("setprop", json!({"component": x3.hex(), "key": "terminals", "value": "12+2PE"})).unwrap();
+    m.h.run("setprop", json!({"component": x3.hex(), "key": "terminal_blocks", "value": "12+2PE"})).unwrap();
     assert_eq!((bom_qty(&mut m.h, "FT-1"), bom_qty(&mut m.h, "PE-1")), (12, 2));
-    let e = refused(&mut m.h, "setprop", json!({"component": x3.hex(), "key": "terminals", "value": "6Q3"}), "\"6Q3\" is not a terminal count.");
+    let e =
+        refused(&mut m.h, "setprop", json!({"component": x3.hex(), "key": "terminal_blocks", "value": "6Q3"}), "\"6Q3\" is not a terminal count.");
     assert!(e.contains("LNPE") && e.contains("FUSE"), "{e}");
     // More drawn of a type than offered: too-many-terminals per type with Offer n.
     let (xl, _) = fence(&mut m.h, None, "LNPE", "L", 190.0, 230.0);
-    m.h.run("setprop", json!({"component": xl.hex(), "key": "terminals", "value": "2LNPE"})).unwrap();
-    let rows = checks_of(&mut m.h, "too-many-terminals");
+    m.h.run("setprop", json!({"component": xl.hex(), "key": "terminal_blocks", "value": "2LNPE"})).unwrap();
+    let rows = checks_of(&mut m.h, "too-many-terminal-blocks");
     assert!(rows.iter().any(|r| s(&r["which"]).contains("3 L/N/PE terminals drawn, strip offers 2")), "{rows:?}");
-    rows_have_a_way_out(&mut m.h, "too-many-terminals");
+    rows_have_a_way_out(&mut m.h, "too-many-terminal-blocks");
     m.h.check();
 }
 
@@ -701,11 +702,11 @@ fn j_termlabel_position_and_level_text() {
     let x2 = with_sensor(&mut m);
     let pos = positions(&m.h.doc(), x2);
     let t2s = pos["2"][".1"];
-    m.h.run("setprop", json!({"component": x2.hex(), "key": "link.1", "value": "1.2-4.2"})).unwrap();
+    m.h.run("setprop", json!({"component": x2.hex(), "key": "jumper_bar.1", "value": "1.2-4.2"})).unwrap();
     m.h.run("accessory", json!({"strip": x2.hex(), "at": "2", "items": ["partition"]})).unwrap();
     m.h.run("setprop", json!({"component": x2.hex(), "key": "term_label.2.3", "value": "MINUS2"})).unwrap();
     let plus_net = net(&mut m.h, pos["1"][".2"]);
-    let v = step_with(&mut m.h, "termlabel", json!({"terminal": t2s.hex(), "position": "2.1"}), true);
+    let v = step_with(&mut m.h, "termlabel", json!({"connection_point": t2s.hex(), "position": "2.1"}), true);
     let d = m.h.doc();
     for k in [".1", ".2", ".3"] {
         assert_eq!(label(&d, pos["2"][k]), "2.1", "every level relabelled ({k}): {v}");
@@ -715,10 +716,10 @@ fn j_termlabel_position_and_level_text() {
     assert_eq!(prop(&mut m.h, x2, "acc.after.2"), None);
     assert_eq!(prop(&mut m.h, x2, "term_label.2.1.3").as_deref(), Some("MINUS2"), "term_label moved");
     assert_eq!(prop(&mut m.h, x2, "term_label.2.3"), None);
-    let link = squash(prop(&mut m.h, x2, "link.1")).unwrap_or_default();
-    assert!(!link.is_empty(), "link kept");
+    let jumper_bar = squash(prop(&mut m.h, x2, "jumper_bar.1")).unwrap_or_default();
+    assert!(!jumper_bar.is_empty(), "link kept");
     let pos_now = positions(&m.h.doc(), x2);
-    assert!(["1", "2.1", "3", "4"].iter().all(|p| net(&mut m.h, pos_now[*p][".2"]) == plus_net), "link joins the same + levels: {link}");
+    assert!(["1", "2.1", "3", "4"].iter().all(|p| net(&mut m.h, pos_now[*p][".2"]) == plus_net), "link joins the same + levels: {jumper_bar}");
     let echo = m.h.s.log.iter().rev().take(8).cloned().collect::<Vec<_>>().join(
         "
 ",
@@ -728,33 +729,33 @@ fn j_termlabel_position_and_level_text() {
     let labels: Vec<String> = rows.iter().filter(|r| s(&r["position"]) == "2.1").map(|r| s(&r["label"])).collect();
     assert_eq!(labels[0], "2.1.S", "{labels:?}");
     // One level's text.
-    step_with(&mut m.h, "termlabel", json!({"terminal": t2s.hex(), "text": "2.1S"}), true);
+    step_with(&mut m.h, "termlabel", json!({"connection_point": t2s.hex(), "text": "2.1S"}), true);
     assert_eq!(prop(&mut m.h, x2, "term_label.2.1.1").as_deref(), Some("2.1S"));
     let r = level_rows(&plan(&mut m.h, x2)).into_iter().find(|r| s(&r["position"]) == "2.1" && r["level"].as_u64() == Some(1)).unwrap();
     assert_eq!(s(&r["label"]), "2.1S");
     assert_eq!(r["label_overridden"], true);
-    step_with(&mut m.h, "termlabel", json!({"terminal": t2s.hex(), "text": null}), true);
+    step_with(&mut m.h, "termlabel", json!({"connection_point": t2s.hex(), "text": null}), true);
     assert_eq!(prop(&mut m.h, x2, "term_label.2.1.1"), None);
     // A single one-level terminal reads `1.L` by an override.
     let (xf, tf) = {
-        let v = m.h.run("terminals", json!({"from": [495, 200], "to": [505, 200]})).unwrap();
+        let v = m.h.run("terminalblocks", json!({"from": [495, 200], "to": [505, 200]})).unwrap();
         (id::<DeviceId>(&v, "strip"), ids(&v))
     };
-    step_with(&mut m.h, "termlabel", json!({"terminal": tf[0].hex(), "text": "1.L"}), true);
+    step_with(&mut m.h, "termlabel", json!({"connection_point": tf[0].hex(), "text": "1.L"}), true);
     assert_eq!(s(&level_rows(&plan(&mut m.h, xf))[0]["label"]), "1.L");
     // Refusals.
     survives(&mut m.h, "termlabel", json!({"strip": x2.hex(), "position": "3", "to": "4"}));
     refused(
         &mut m.h,
         "termlabel",
-        json!({"terminal": pos["3"][".1"].hex(), "position": "4"}),
+        json!({"connection_point": pos["3"][".1"].hex(), "position": "4"}),
         "-X01 already has a position 4. Pick another label, or swap them with Renumber.",
     );
-    survives(&mut m.h, "termlabel", json!({"terminal": pos["3"][".1"].hex(), "position": "a b"}));
-    survives(&mut m.h, "termlabel", json!({"terminal": pos["3"][".1"].hex(), "position": ""}));
-    survives(&mut m.h, "termlabel", json!({"terminal": pos["3"][".1"].hex(), "position": "x".repeat(17)}));
-    survives(&mut m.h, "termlabel", json!({"terminal": pos["3"][".1"].hex(), "text": "x".repeat(25)}));
-    survives(&mut m.h, "termlabel", json!({"terminal": pos["3"][".1"].hex(), "text": "a\u{1b}b"}));
+    survives(&mut m.h, "termlabel", json!({"connection_point": pos["3"][".1"].hex(), "position": "a b"}));
+    survives(&mut m.h, "termlabel", json!({"connection_point": pos["3"][".1"].hex(), "position": ""}));
+    survives(&mut m.h, "termlabel", json!({"connection_point": pos["3"][".1"].hex(), "position": "x".repeat(17)}));
+    survives(&mut m.h, "termlabel", json!({"connection_point": pos["3"][".1"].hex(), "text": "x".repeat(25)}));
+    survives(&mut m.h, "termlabel", json!({"connection_point": pos["3"][".1"].hex(), "text": "a\u{1b}b"}));
     m.h.check();
 }
 
@@ -769,16 +770,16 @@ fn k_renumber_moves_positions_and_their_keys() {
     let p3: Vec<ConnectionPointId> = pos["3"].values().copied().collect();
     m.h.run("setprop", json!({"component": x1.hex(), "key": "term_label.3.2", "value": "N3"})).unwrap();
     m.h.run("accessory", json!({"strip": x1.hex(), "at": "3", "on": true, "items": ["marker"]})).unwrap();
-    m.h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "2.2-3.2"})).unwrap();
+    m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "2.2-3.2"})).unwrap();
     let (_, item, page) = symbol_of(&d, pos["3"][".1"]).expect("L symbol of 3");
     let hnd = m.h.handle_of(page, item);
     m.h.run("move", json!({"handles": [hnd.hex()], "delta": [-40, 0]})).unwrap();
     let head = m.h.head();
-    let pv = m.h.run("renumber", json!({"kind": "terminals", "preview": true})).unwrap();
+    let pv = m.h.run("renumber", json!({"kind": "terminal_blocks", "preview": true})).unwrap();
     assert_eq!(m.h.head(), head, "preview writes nothing");
     let text = pv.to_string();
     assert!(text.contains("term_label") || text.contains("N3") || text.contains("label"), "preview lists the label move: {text}");
-    step(&mut m.h, "renumber", json!({"kind": "terminals"}));
+    step(&mut m.h, "renumber", json!({"kind": "terminal_blocks"}));
     let d = m.h.doc();
     let labels: std::collections::BTreeSet<String> = p3.iter().map(|t| label(&d, *t)).collect();
     assert_eq!(labels.len(), 1, "levels move together: {labels:?}");
@@ -788,8 +789,8 @@ fn k_renumber_moves_positions_and_their_keys() {
     // Old 2 → 3, old 3 → 1: `2.2-3.2` covered the N levels of old 2 and 3, now 3 and 1.
     let n_old2 = net(&mut m.h, pos["2"][".2"]);
     assert_eq!(net(&mut m.h, pos["3"][".2"]), n_old2, "link still joins the same terminals");
-    let link = squash(prop(&mut m.h, x1, "link.1")).unwrap_or_default();
-    assert!(link.contains(".2"), "canonical link keeps its level: {link}");
+    let jumper_bar = squash(prop(&mut m.h, x1, "jumper_bar.1")).unwrap_or_default();
+    assert!(jumper_bar.contains(".2"), "canonical link keeps its level: {jumper_bar}");
     m.h.check();
 }
 
@@ -799,7 +800,7 @@ fn k_renumber_moves_positions_and_their_keys() {
 fn k_deleting_a_level_loses_nothing_silently() {
     let (mut m, x1) = with_lnpe(0x7036_0010);
     let pos = positions(&m.h.doc(), x1);
-    for (k, v) in [("term_label.2.1", "L2"), ("term_label.2.2", "N2"), ("link.1", "1.1-3.1"), ("link.2", "2.1-2.3")] {
+    for (k, v) in [("term_label.2.1", "L2"), ("term_label.2.2", "N2"), ("jumper_bar.1", "1.1-3.1"), ("jumper_bar.2", "2.1-2.3")] {
         m.h.run("setprop", json!({"component": x1.hex(), "key": k, "value": v})).unwrap();
     }
     m.h.run("accessory", json!({"strip": x1.hex(), "at": "2", "items": ["partition"]})).unwrap();
@@ -812,7 +813,7 @@ fn k_deleting_a_level_loses_nothing_silently() {
     let d = m.h.doc();
     assert_eq!(label(&d, pos["2"][".1"]), "2", "position keeps its label");
     let props_after: BTreeMap<String, String> = d.devices[&x1].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    for k in ["term_label.2.1", "link.1", "acc.after.2"] {
+    for k in ["term_label.2.1", "jumper_bar.1", "acc.after.2"] {
         assert_eq!(props_after.get(k), props_before.get(k), "{k} kept");
     }
     // `term_label.2.2` may stay (free level) but must not silently vanish without a row.
@@ -838,7 +839,7 @@ fn k_deleting_a_level_loses_nothing_silently() {
 /// Relabel a terminal by hand (a hostile file or a merge): Remove + Add with a new label.
 fn relabel_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>, new_key: Option<&str>) {
     let d = h.doc();
-    let before = d.terminals[&t].clone();
+    let before = d.connection_points[&t].clone();
     let mut after = before.clone();
     if let Some(l) = new_label {
         after.label = Some(l.to_string());
@@ -851,7 +852,7 @@ fn relabel_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>, new_key
         p.ledger.commit(
             Author::User,
             "hand-made",
-            vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }],
+            vec![Op::RemoveConnectionPoint { id: t, connection_point: before }, Op::AddConnectionPoint { id: t, connection_point: after }],
         )
     })
     .unwrap();
@@ -863,13 +864,13 @@ fn l_checks_rows_and_their_fixes() {
     let (mut m, x1) = with_lnpe(0x7036_0011);
     let pos = positions(&m.h.doc(), x1);
     // level-missing: link names 3.4 on a 3-level strip.
-    m.h.run("setprop", json!({"component": x1.hex(), "key": "link.2", "value": "1.4-3.4"})).unwrap();
+    m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.2", "value": "1.4-3.4"})).unwrap();
     let rows = checks_of(&mut m.h, "level-missing");
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert!(s(&rows[0]["which"]).contains("-X01: link 2 names"), "{}", rows[0]);
     assert_eq!(rows[0]["severity"], "warning");
     rows_have_a_way_out(&mut m.h, "level-missing");
-    step(&mut m.h, "jumper", json!({"link": {"strip": x1.hex(), "n": 2}, "delete": true}));
+    step(&mut m.h, "jumper", json!({"jumper_bar": {"strip": x1.hex(), "n": 2}, "delete": true}));
     assert!(checks_of(&mut m.h, "level-missing").is_empty());
     // fuse-device: an Info count row; the fix is toposition.
     let rows = checks_of(&mut m.h, "fuse-device");
@@ -878,7 +879,7 @@ fn l_checks_rows_and_their_fixes() {
     rows_have_a_way_out(&mut m.h, "fuse-device");
     // no-fuse-rating: a fuse position without a rating.
     m.h.activate(m.p2);
-    m.h.run("terminals", json!({"strip": x1.hex(), "type": "FUSE", "level": "All", "from": [490, 200], "to": [510, 200]})).unwrap();
+    m.h.run("terminalblocks", json!({"strip": x1.hex(), "type": "FUSE", "level": "All", "from": [490, 200], "to": [510, 200]})).unwrap();
     let rows = checks_of(&mut m.h, "no-fuse-rating");
     assert_eq!(rows.len(), 1, "{rows:?}");
     rows_have_a_way_out(&mut m.h, "no-fuse-rating");
@@ -892,7 +893,7 @@ fn l_checks_rows_and_their_fixes() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert!(s(&rows[0]["which"]).contains("-X01:1.N is drawn twice"), "{}", rows[0]);
     assert_eq!(rows[0]["severity"], "error");
-    assert!(checks_of(&mut m.h, "terminal-twice").is_empty(), "level-twice replaces terminal-twice");
+    assert!(checks_of(&mut m.h, "terminal-block-twice").is_empty(), "level-twice replaces terminal-twice");
     rows_have_a_way_out(&mut m.h, "level-twice");
     read_everything(&mut m.h);
     m.h.check();
@@ -922,22 +923,22 @@ fn l_position_mixed_row() {
 fn n_registry_defaults_recompute_inheriting_strips() {
     let (mut m, x1) = with_lnpe(0x7036_0013);
     let x2 = with_sensor(&mut m);
-    m.h.run("setprop", json!({"component": x2.hex(), "key": "terminal.level.separator", "value": "/"})).unwrap();
+    m.h.run("setprop", json!({"component": x2.hex(), "key": "terminal_block.level.separator", "value": "/"})).unwrap();
     assert_eq!(s(&level_rows(&plan(&mut m.h, x2))[0]["label"]), "1/S");
-    m.h.run("projectprops", json!({"props": {"terminal.level.separator": "none"}})).unwrap();
+    m.h.run("projectprops", json!({"props": {"terminal_block.level.separator": "none"}})).unwrap();
     same_as_built(&mut m.h);
     assert_eq!(s(&level_rows(&plan(&mut m.h, x1))[0]["label"]), "1L", "§13 N (worker: the word `none`): no separator gives 1L");
     assert_eq!(s(&level_rows(&plan(&mut m.h, x2))[0]["label"]), "1/S", "own value kept");
-    m.h.run("projectprops", json!({"props": {"terminal.level.separator": "-"}})).unwrap();
+    m.h.run("projectprops", json!({"props": {"terminal_block.level.separator": "-"}})).unwrap();
     same_as_built(&mut m.h);
     assert_eq!(s(&level_rows(&plan(&mut m.h, x1))[0]["label"]), "1-L");
     // Level names.
-    m.h.run("projectprops", json!({"props": {"terminal.lnpe.levels": "L1,N,PE"}})).unwrap();
+    m.h.run("projectprops", json!({"props": {"terminal_block.lnpe.levels": "L1,N,PE"}})).unwrap();
     same_as_built(&mut m.h);
     assert_eq!(s(&level_rows(&plan(&mut m.h, x1))[0]["label"]), "1-L1");
     // A wrong count or a too-long value is absent: the built-in names.
     for bad in ["L,N".to_string(), "x".repeat(10_000), "L,,PE".into(), "LLLLLLL,N,PE".into()] {
-        survives(&mut m.h, "projectprops", json!({"props": {"terminal.lnpe.levels": bad}}));
+        survives(&mut m.h, "projectprops", json!({"props": {"terminal_block.lnpe.levels": bad}}));
         let l = s(&level_rows(&plan(&mut m.h, x1))[0]["label"]);
         assert!(l == "1-L" || l == "1-L1", "bad level names never reach a label: {l}");
         same_as_built(&mut m.h);
@@ -946,18 +947,18 @@ fn n_registry_defaults_recompute_inheriting_strips() {
     let d = m.h.run("defaults", json!({"group": "Terminals"})).unwrap();
     let keys: Vec<String> = d["defaults"].as_array().map(|a| a.iter().map(|r| s(&r["key"])).collect()).unwrap_or_default();
     for k in [
-        "terminal.level.separator",
-        "terminal.lnpe.levels",
-        "terminal.sen.levels",
-        "terminal.x3.levels",
-        "terminal.lnpe.description",
-        "terminal.ft.description",
-        "terminal.pe.description",
+        "terminal_block.level.separator",
+        "terminal_block.lnpe.levels",
+        "terminal_block.sen.levels",
+        "terminal_block.x3.levels",
+        "terminal_block.lnpe.description",
+        "terminal_block.ft.description",
+        "terminal_block.pe.description",
     ] {
         assert!(keys.contains(&k.to_string()), "{k} registered: {keys:?}");
     }
     // Clearing the project value returns the built-in `.`.
-    m.h.run("projectprops", json!({"props": {"terminal.level.separator": null, "terminal.lnpe.levels": null}})).unwrap();
+    m.h.run("projectprops", json!({"props": {"terminal_block.level.separator": null, "terminal_block.lnpe.levels": null}})).unwrap();
     assert_eq!(s(&level_rows(&plan(&mut m.h, x1))[0]["label"]), "1.L");
     m.h.check();
 }
@@ -971,10 +972,10 @@ fn p_save_and_reopen_keep_everything() {
     let (mut m, x1) = with_lnpe(0x7036_0014);
     let x2 = with_sensor(&mut m);
     m.h.run("jumper", json!({"strip": x2.hex(), "positions": "1.2-4.2"})).unwrap();
-    m.h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1.1-1.3"})).unwrap();
+    m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1.1-1.3"})).unwrap();
     m.h.run("setprop", json!({"component": x1.hex(), "key": "term_label.2.1", "value": "L-zwei"})).unwrap();
-    m.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "3LNPE+2x3"})).unwrap();
-    m.h.run("terminals", json!({"strip": x2.hex(), "type": "FUSE", "level": "All", "from": [490, 200], "to": [510, 200]})).unwrap();
+    m.h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "3LNPE+2x3"})).unwrap();
+    m.h.run("terminalblocks", json!({"strip": x2.hex(), "type": "FUSE", "level": "All", "from": [490, 200], "to": [510, 200]})).unwrap();
     m.h.run("setprop", json!({"component": x2.hex(), "key": "rating.5", "value": "2A"})).unwrap();
     m.h.run("toposition", json!({"device": m.fuse_dev.hex(), "strip": x2.hex()})).unwrap();
     let before_doc = m.h.doc();
@@ -1003,12 +1004,12 @@ fn q_hostile_input_never_panics() {
     let (mut m, x1) = with_lnpe(0x7036_0016);
     let s1 = x1.hex();
     // Offers.
-    survives(&mut m.h, "setprop", json!({"component": s1, "key": "terminals", "value": "999x3"}));
-    refused(&mut m.h, "setprop", json!({"component": s1, "key": "terminals", "value": "1000x2"}), "");
+    survives(&mut m.h, "setprop", json!({"component": s1, "key": "terminal_blocks", "value": "999x3"}));
+    refused(&mut m.h, "setprop", json!({"component": s1, "key": "terminal_blocks", "value": "1000x2"}), "");
     for v in ["0x3", "x3", "+", "3+", "12+2PE+", "99999999999999999999x3", "3xx3", "3LNPE+3LNPE+999x2", "-1x3", "3\u{0}PE"] {
-        survives(&mut m.h, "setprop", json!({"component": s1, "key": "terminals", "value": v}));
+        survives(&mut m.h, "setprop", json!({"component": s1, "key": "terminal_blocks", "value": v}));
     }
-    m.h.run("setprop", json!({"component": s1, "key": "terminals", "value": null})).unwrap();
+    m.h.run("setprop", json!({"component": s1, "key": "terminal_blocks", "value": null})).unwrap();
     read_everything(&mut m.h);
     // Per-level keys for levels and positions that do not exist.
     for k in [
@@ -1029,12 +1030,17 @@ fn q_hostile_input_never_panics() {
     survives(&mut m.h, "setprop", json!({"component": s1, "key": "term_label.1.1", "value": "x".repeat(10_000)}));
     read_everything(&mut m.h);
     // Link values.
-    refused(&mut m.h, "setprop", json!({"component": s1, "key": "link.1", "value": "1.1-4.2"}), "joins different levels at different positions");
+    refused(
+        &mut m.h,
+        "setprop",
+        json!({"component": s1, "key": "jumper_bar.1", "value": "1.1-4.2"}),
+        "joins different levels at different positions",
+    );
     for v in ["1.0", "1.99999999999999999999", "1.1i-1.2o", "1.-1", "..", "1.", ".1", "1.1-", "-1.1", "1.L-3.Q", "1.".repeat(5000).as_str()] {
-        survives(&mut m.h, "setprop", json!({"component": s1, "key": "link.1", "value": v}));
+        survives(&mut m.h, "setprop", json!({"component": s1, "key": "jumper_bar.1", "value": v}));
         read_everything(&mut m.h);
     }
-    m.h.run("setprop", json!({"component": s1, "key": "link.1", "value": null})).ok();
+    m.h.run("setprop", json!({"component": s1, "key": "jumper_bar.1", "value": null})).ok();
     // Hand-made level keys.
     let pos = positions(&m.h.doc(), x1);
     relabel_raw(&mut m.h, pos["1"][".1"], None, Some(".0"));
@@ -1043,26 +1049,26 @@ fn q_hostile_input_never_panics() {
     relabel_raw(&mut m.h, pos["2"][".1"], None, Some("."));
     relabel_raw(&mut m.h, pos["2"][".2"], None, Some(".1x"));
     m.h = reload(m.h, "keys", 0x7036_0033);
-    m.h.run("setprop", json!({"component": s1, "key": "link.1", "value": "1.1-2.3"})).ok();
+    m.h.run("setprop", json!({"component": s1, "key": "jumper_bar.1", "value": "1.1-2.3"})).ok();
     read_everything(&mut m.h);
     // termlabel.
     let t = pos["3"][".1"];
-    survives(&mut m.h, "termlabel", json!({"terminal": t.hex(), "position": "x".repeat(10_000)}));
-    survives(&mut m.h, "termlabel", json!({"terminal": t.hex(), "position": 3}));
-    survives(&mut m.h, "termlabel", json!({"terminal": t.hex()}));
+    survives(&mut m.h, "termlabel", json!({"connection_point": t.hex(), "position": "x".repeat(10_000)}));
+    survives(&mut m.h, "termlabel", json!({"connection_point": t.hex(), "position": 3}));
+    survives(&mut m.h, "termlabel", json!({"connection_point": t.hex()}));
     survives(&mut m.h, "termlabel", json!({"strip": s1}));
     survives(&mut m.h, "termlabel", json!({"strip": s1, "position": "3", "text": "x"}));
-    survives(&mut m.h, "termlabel", json!({"terminal": "zz", "text": "x"}));
+    survives(&mut m.h, "termlabel", json!({"connection_point": "zz", "text": "x"}));
     // Registry values.
     for v in ["L,N".to_string(), "x".repeat(10_000), ",,".into(), "L,N,P\u{1b}E".into()] {
-        survives(&mut m.h, "projectprops", json!({"props": {"terminal.lnpe.levels": v.clone()}}));
-        survives(&mut m.h, "setprop", json!({"component": s1, "key": "terminal.lnpe.levels", "value": v}));
+        survives(&mut m.h, "projectprops", json!({"props": {"terminal_block.lnpe.levels": v.clone()}}));
+        survives(&mut m.h, "setprop", json!({"component": s1, "key": "terminal_block.lnpe.levels", "value": v}));
     }
-    survives(&mut m.h, "projectprops", json!({"props": {"terminal.level.separator": "x".repeat(10_000)}}));
+    survives(&mut m.h, "projectprops", json!({"props": {"terminal_block.level.separator": "x".repeat(10_000)}}));
     read_everything(&mut m.h);
     // Fences: unknown type or level, a level the type lacks.
     for (ty, lvl) in [("Q", "L"), ("LNPE", "Q"), ("x2", "3"), ("LNPE", ""), ("", ""), ("FUSE", "N")] {
-        survives(&mut m.h, "terminals", json!({"strip": s1, "type": ty, "level": lvl, "from": [90, 200], "to": [130, 200]}));
+        survives(&mut m.h, "terminalblocks", json!({"strip": s1, "type": ty, "level": lvl, "from": [90, 200], "to": [130, 200]}));
     }
     survives(&mut m.h, "place", json!({"symbol": "termlnpe.9", "at": [600, 200], "device": s1}));
     survives(&mut m.h, "place", json!({"symbol": "termlnpe.2", "at": [600, 200], "device": s1, "position": "x".repeat(10_000)}));
@@ -1079,16 +1085,16 @@ fn o_kept_strips_equal_a_rebuild_through_level_edits() {
     let (mut m, x1) = with_lnpe(0x7036_0017);
     let x2 = with_sensor(&mut m);
     m.h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
     let edits: Vec<(&str, Value)> = vec![
         ("setprop", json!({"component": x1.hex(), "key": "term_label.1.1", "value": "A"})),
-        ("setprop", json!({"component": x2.hex(), "key": "link.1", "value": "1.2-4.2"})),
-        ("setprop", json!({"component": x2.hex(), "key": "terminals", "value": "4SEN+2x2B"})),
+        ("setprop", json!({"component": x2.hex(), "key": "jumper_bar.1", "value": "1.2-4.2"})),
+        ("setprop", json!({"component": x2.hex(), "key": "terminal_blocks", "value": "4SEN+2x2B"})),
         ("setprop", json!({"component": x1.hex(), "key": "part_number.lnpe", "value": "LN-1"})),
         ("projectprops", json!({"props": {"strip_sen_part_number": "SEN-1"}})),
-        ("projectprops", json!({"props": {"terminal.level.separator": ":"}})),
-        ("projectprops", json!({"props": {"terminal.sen.description": "Sensorklemme"}})),
+        ("projectprops", json!({"props": {"terminal_block.level.separator": ":"}})),
+        ("projectprops", json!({"props": {"terminal_block.sen.description": "Sensorklemme"}})),
     ];
     for (cmd, p) in edits {
         step(&mut m.h, cmd, p);
@@ -1105,7 +1111,7 @@ fn c_jumper_typed_positions_keep_their_level() {
     let mut m = fixture_m(0x7036_0018);
     let x2 = with_sensor(&mut m);
     m.h.run("jumper", json!({"strip": x2.hex(), "positions": "1.3-4.3"})).unwrap();
-    assert_eq!(squash(prop(&mut m.h, x2, "link.1")).as_deref(), Some("1.3-4.3"), "the level is kept");
+    assert_eq!(squash(prop(&mut m.h, x2, "jumper_bar.1")).as_deref(), Some("1.3-4.3"), "the level is kept");
     let pos = positions(&m.h.doc(), x2);
     let ss: Vec<_> = ["1", "2", "3", "4"].iter().map(|p| net(&mut m.h, pos[*p][".1"])).collect();
     assert_eq!(ss.iter().collect::<std::collections::BTreeSet<_>>().len(), 4, "S levels stay apart: {ss:?}");
@@ -1119,8 +1125,8 @@ fn j_wire_report_follows_label_changes() {
     let x2 = with_sensor(&mut m);
     let t = positions(&m.h.doc(), x2)["2"][".1"];
     m.h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
-    step(&mut m.h, "termlabel", json!({"terminal": t.hex(), "text": "2S"}));
-    step(&mut m.h, "projectprops", json!({"props": {"terminal.level.separator": "none"}}));
+    step(&mut m.h, "termlabel", json!({"connection_point": t.hex(), "text": "2S"}));
+    step(&mut m.h, "projectprops", json!({"props": {"terminal_block.level.separator": "none"}}));
 }

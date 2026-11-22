@@ -159,7 +159,7 @@ impl Order {
 /// How many conductors connection point `t` accepts (design 072 §4.4, F38): its stored
 /// [`crate::Accepts`]; two for a point that does not exist.
 pub fn accepts(doc: &Document, t: ConnectionPointId) -> usize {
-    doc.terminals.get(&t).map_or(2, |x| x.accepts.get())
+    doc.connection_points.get(&t).map_or(2, |x| x.accepts.get())
 }
 
 /// The rewrite pass (design 072 §4.4): the ops that bring the wires of every net whose points
@@ -483,7 +483,7 @@ impl<'a> Rewrite<'a> {
                                 todo.extend(doc.routes_at(g).map(Start::Route));
                             }
                         }
-                    } else if doc.terminals.contains_key(&t) && c.points.insert(t) {
+                    } else if doc.connection_points.contains_key(&t) && c.points.insert(t) {
                         todo.extend(doc.routes_at(t).map(Start::Route));
                     }
                 }

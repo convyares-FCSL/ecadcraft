@@ -18,7 +18,7 @@
 //! - **An existing folder** is never overwritten silently: add missing files, replace (the old
 //!   one is moved to `release/replaced/`), or keep both (`Rev B (2)`). Nothing is ever deleted
 //!   but this module's own staging folder.
-//! - **Slots** (`ecad_electrical::releases::release::LISTS`): the generated lists as a table; brief 028 fills `terminal-plan` and
+//! - **Slots** (`ecad_electrical::releases::release::LISTS`): the generated lists as a table; brief 028 fills `terminal-block-plan` and
 //!   `cable-schedule` (its terminal plan and cable schedule, columns named by its JSON keys).
 //!
 //! # Update map (design 027 §11.1)
@@ -72,7 +72,7 @@ const MAX_KEEP_BOTH: u32 = 1000;
 /// report models' rows, in book order. The pending revision's field writes change no check, so
 /// these are the live project's.
 pub fn check_rows(p: &mut Project) -> Vec<Check> {
-    p.outputs();
+    p.reports();
     p.checks();
     let doc = p.ledger.document();
     let mut rows: Vec<Check> = p.kept_checks().map(|c| c.rows().cloned().collect()).unwrap_or_default();
@@ -165,7 +165,7 @@ pub mod numbering_seam {
 
 // ---------------------------------------------------------------- slots (design 027 §7.2)
 
-/// Every slot id `outputs` may name.
+/// Every slot id `reports` may name.
 pub fn slot_ids() -> Vec<&'static str> {
     let mut v = vec!["book"];
     v.extend(LISTS.iter().map(|s| s.id));
@@ -173,26 +173,26 @@ pub fn slot_ids() -> Vec<&'static str> {
     v
 }
 
-/// The lists chosen by `outputs` (default all).
+/// The lists chosen by `reports` (default all).
 ///
 /// # Errors
 /// An unknown slot id.
 fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
-    match params.get("outputs") {
+    match params.get("reports") {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Array(a)) => {
             let ids = slot_ids();
             let mut out = BTreeSet::new();
             for v in a.iter().take(64) {
-                let t = v.as_str().map(str::trim).ok_or("`outputs` is a list of slot names")?;
+                let t = v.as_str().map(str::trim).ok_or("`reports` is a list of slot names")?;
                 if !ids.contains(&t) {
-                    return Err(format!("`outputs` names {t:?}; the slots are {}.", ids.join(", ")));
+                    return Err(format!("`reports` names {t:?}; the slots are {}.", ids.join(", ")));
                 }
                 out.insert(t.to_string());
             }
             Ok(Some(out))
         }
-        Some(_) => Err("`outputs` is a list of slot names".into()),
+        Some(_) => Err("`reports` is a list of slot names".into()),
     }
 }
 
@@ -412,7 +412,7 @@ pub struct Staged {
 /// The inputs of a build: the state as issued, its report models, its check rows.
 pub struct Build<'a> {
     pub doc: &'a Document,
-    pub outputs: &'a ReportModels,
+    pub reports: &'a ReportModels,
     pub rows: &'a [Check],
     pub fan: &'a BTreeSet<ecad_model::CableId>,
     pub tol: f64,
@@ -443,7 +443,7 @@ pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -
     let base = format!("{} Rev {}", b.stem, b.rev);
     // The book: every page, generated ones included (Print Book, design 024 §4).
     let pages = printbook::resolve(b.doc, &printbook::Scope::All)?.pages;
-    let done = printbook::print(b.doc, &pages, b.fan, b.tol, Some(b.outputs), b.options, None, progress)?;
+    let done = printbook::print(b.doc, &pages, b.fan, b.tol, Some(b.reports), b.options, None, progress)?;
     st.sheets = done.sheets;
     for (i, (_, sheets, _, data)) in done.files.iter().enumerate() {
         let name = if i == 0 { format!("{base}.pdf") } else { format!("{base}-{}.pdf", i + 1) };
@@ -457,7 +457,7 @@ pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -
             st.not_included.push((slot.id.into(), "Not chosen.".into()));
             continue;
         }
-        match (slot.build)(b.doc, b.outputs) {
+        match (slot.build)(b.doc, b.reports) {
             Some(t) => {
                 put(dir, slot.id, format!("{base}{}", slot.suffix), ecad_electrical::reports::csv(&t, true).as_bytes(), &mut st.files)?;
                 if let Some(w) = st.files.last_mut() {
@@ -845,7 +845,7 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
         Some(row) => {
             let (_, _, then) = crate::history::issued_state(p, row.rev())?;
             let detached = p.derived().detached(&then);
-            let rows = crate::checks::all_with(&then, p.tolerance, detached.outputs());
+            let rows = crate::checks::all_with(&then, p.tolerance, detached.reports());
             to_rows(&then, &rows, &mut v);
             v.rev = row.rev().to_string();
             v.issued = Some(v.rev.clone());
@@ -941,10 +941,10 @@ pub fn prerelease(p: &mut Project, params: &Value) -> Result<Value, String> {
 pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
     use std::hash::{Hash, Hasher};
     let checks = p.kept_checks()?;
-    let outputs = p.kept_reports()?;
+    let reports = p.kept_reports()?;
     let doc = p.ledger.document();
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (checks.changed, outputs.checks_key(), accept).hash(&mut h);
+    (checks.changed, reports.checks_key(), accept).hash(&mut h);
     revisions::pending(doc).map(|r| r.fields).hash(&mut h);
     revisions::issued(doc).len().hash(&mut h);
     (&p.path, read_only(p), crate::pages::commands::sheets::release_line_refusal(p, true), nothing_changed(p)).hash(&mut h);
@@ -1063,7 +1063,7 @@ pub(crate) fn release_pending(
     // copy, as for a re-release); otherwise the kept ones (the issue changes no list or check).
     let finalised = finalise.as_ref().map(|_| {
         let detached = p.derived().detached(&issued_doc);
-        let r = crate::checks::all_with(&issued_doc, p.tolerance, detached.outputs());
+        let r = crate::checks::all_with(&issued_doc, p.tolerance, detached.reports());
         (detached, r)
     });
     let rows = finalised.as_ref().map_or(rows, |(_, r)| r.clone());
@@ -1077,11 +1077,11 @@ pub(crate) fn release_pending(
     let stem = stem(p);
     let staged = {
         let fail = injected(p, Step::Partial);
-        p.outputs();
+        p.reports();
         let kept = p.kept_reports().ok_or("the report models could not be built")?;
-        let outputs = finalised.as_ref().map_or(kept, |(o, _)| o.outputs());
+        let reports = finalised.as_ref().map_or(kept, |(o, _)| o.reports());
         let b =
-            Build { doc: &issued_doc, outputs, rows: &rows, fan: &p.views, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen };
+            Build { doc: &issued_doc, reports, rows: &rows, fan: &p.views, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen };
         let built = fail.and_then(|()| stage(&b, &staging, progress));
         match built.and_then(|st| landing(&target, &st, existing).map(|l| (st, l))) {
             Ok(x) => (x, b.stem.clone(), b.options),
@@ -1134,10 +1134,10 @@ pub(crate) fn release_pending(
     let iss = Issued { branch: crate::history::current_name(p), transaction: tx, point: plan.head, chain };
     let doc = p.ledger.document().clone();
     let row = revisions::list(&doc).into_iter().find(|r| r.n == plan.n).unwrap_or_default();
-    let outputs = p.kept_reports().cloned().unwrap_or_default();
+    let reports = p.kept_reports().cloned().unwrap_or_default();
     let fan = p.views.clone();
     let b =
-        Build { doc: &doc, outputs: &outputs, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen: None };
+        Build { doc: &doc, reports: &reports, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen: None };
     let m = manifest(&doc, &row, &iss, &b, &st, &rows, &fan_tags(&doc, &fan));
     let finished = injected(p, Step::Manifest)
         .and_then(|()| write_manifest(&staging, &m))
@@ -1202,12 +1202,12 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
     let target = folder_param(p, params, default)?;
     let (named, seq, then) = crate::history::issued_state(p, &rev)?;
     let detached = p.derived().detached(&then);
-    let outputs = detached.outputs();
-    let rows = crate::checks::all_with(&then, p.tolerance, outputs);
+    let reports = detached.reports();
+    let rows = crate::checks::all_with(&then, p.tolerance, reports);
     let staging = partial_of(&target);
     let fan = p.views.clone();
     let b =
-        Build { doc: &then, outputs, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem: stem(p), rev: rev.clone(), accepted: false, chosen };
+        Build { doc: &then, reports, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem: stem(p), rev: rev.clone(), accepted: false, chosen };
     let built =
         injected(p, Step::Partial).and_then(|()| stage(&b, &staging, progress)).and_then(|st| landing(&target, &st, existing).map(|l| (st, l)));
     let (st, l) = match built {

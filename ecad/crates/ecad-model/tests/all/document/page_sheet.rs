@@ -53,7 +53,7 @@ fn a_pages_type_comes_from_its_property_its_kind_or_schematic() {
     for k in ["cover", "revisions", "contents"] {
         assert_eq!(derived_page_type(PageKind::generated(GenKind::parse(k).unwrap())), "front", "{k}");
     }
-    for k in ["bom-location", "terminals", "cables", "plcrack", "iolist"] {
+    for k in ["bom-location", "terminal_blocks", "cables", "plcrack", "iolist"] {
         assert_eq!(derived_page_type(PageKind::generated(GenKind::parse(k).unwrap())), "report", "{k}");
     }
     let ledger = Ledger::new(1);

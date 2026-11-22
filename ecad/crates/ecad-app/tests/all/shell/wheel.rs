@@ -99,7 +99,7 @@ fn fixture_with(deltas: Option<crate::canvas::mouse_acceptance::Deltas>) -> F {
     };
     let (a1, a2) = (pos("A1"), pos("A2"));
     // A wire runs between two connection points (design 072): a terminal at its far end.
-    h.state_mut().cad.run("place", json!({"symbol": "terminal", "at": [a1.x + 60.0, a1.y]})).unwrap();
+    h.state_mut().cad.run("place", json!({"symbol": "terminalblock", "at": [a1.x + 60.0, a1.y]})).unwrap();
     let w = h.state_mut().cad.run("wire", json!({"points": [[a1.x, a1.y], [a1.x + 60.0, a1.y]]})).unwrap();
     let wire = WireId(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
     let p2 = h.state_mut().cad.run("newpage", json!({"title": "Field"})).unwrap();

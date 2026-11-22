@@ -46,7 +46,7 @@ pub struct TextStyle {
 
 /// A text style's colour (brief 050a), before the sheet is known: a colour of its own, or a colour
 /// code whose colour depends on the sheet (design 065 §3, cut 4: the engine turns it into a
-/// CADCraft colour when it draws, `look::text_colour_rgb`).
+/// CADCraft colour when it draws, `draw::text_colour_rgb`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextColour {
     /// `#RRGGBB`.
@@ -415,7 +415,7 @@ pub enum RunRule {
     /// Any other symbol.
     #[default]
     None,
-    /// A strip terminal (starter kind `Terminal`).
+    /// A strip terminal (starter kind `ConnectionPoint`).
     Strip,
     /// A PLC channel (starter kind `Plc`).
     Plc,

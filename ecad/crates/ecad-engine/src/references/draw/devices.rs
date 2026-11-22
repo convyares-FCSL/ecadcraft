@@ -1,4 +1,4 @@
-//! The engine half of [`crate::xref`]: reference texts aligned as CADCraft aligns text, the
+//! The engine half of [`crate::reference`]: reference texts aligned as CADCraft aligns text, the
 //! tables laid out with CADCraft's fonts, and the refusal of an edit of a drawn mapping.
 
 use ecad_model::{DeviceId, Document, PageId};

@@ -141,8 +141,8 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
             if wire.is_none() {
                 wire = ecad_model::connectivity::wiring::net_number(doc, net);
             }
-            for o in &net.terminals {
-                let Some(term) = doc.terminals.get(o) else { continue };
+            for o in &net.connection_points {
+                let Some(term) = doc.connection_points.get(o) else { continue };
                 if term.device() == Some(card.id) || targets.len() >= 2 * MAX_TARGETS {
                     continue;
                 }
@@ -405,8 +405,8 @@ pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Optio
     let mut out = Vec::new();
     for n in nets {
         let Some(net) = conn.net(n) else { continue };
-        for t in &net.terminals {
-            if let Some(x) = doc.terminals.get(t)
+        for t in &net.connection_points {
+            if let Some(x) = doc.connection_points.get(t)
                 && let Some(c) = x.device()
                 && plc.cards.contains_key(&c)
                 && channels::point_of(doc, *t).is_some()
@@ -421,13 +421,13 @@ pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Optio
 }
 
 /// The cards with a channel point on the nets of terminals `ts`.
-pub fn cards_on_nets_of_terminals(doc: &Document, plc: &Plc, ts: &[ecad_model::ConnectionPointId]) -> Vec<DeviceId> {
+pub fn cards_on_nets_of_connection_points(doc: &Document, plc: &Plc, ts: &[ecad_model::ConnectionPointId]) -> Vec<DeviceId> {
     let conn = doc.connectivity();
     let mut out = Vec::new();
     for n in ts.iter().filter_map(|t| conn.net_of_connection_point(*t)) {
         let Some(net) = conn.net(n) else { continue };
-        for t in &net.terminals {
-            if let Some(x) = doc.terminals.get(t)
+        for t in &net.connection_points {
+            if let Some(x) = doc.connection_points.get(t)
                 && let Some(c) = x.device()
                 && plc.cards.contains_key(&c)
                 && channels::point_of(doc, *t).is_some()

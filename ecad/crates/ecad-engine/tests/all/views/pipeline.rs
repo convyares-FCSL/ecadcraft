@@ -29,7 +29,7 @@ fn areas_cover_the_keys() {
         "revisions",
         "print",
         "symbol",
-        "terminal",
+        "connection_point",
         "connector",
         "strippage",
         "bom",
@@ -359,13 +359,13 @@ fn a_view_out_of_step_is_reported_and_rebuilt() {
     assert!(ecad_model::document::ledger::verify_mode(), "tests run in verify mode");
     h.cfg(|p| p.views_mut().rebuild(&Document::default()));
     assert!(h.p(|p| p.connectors().is_empty()), "the kept index is out of step");
-    assert!(h.p(|p| p.xref().verify(p.ledger.document()).is_err()), "the kept reference index is out of step");
+    assert!(h.p(|p| p.reference().verify(p.ledger.document()).is_err()), "the kept reference index is out of step");
     h.run("wire", json!({"points": crate::common::pts(&[(300.0, 300.0), (350.0, 300.0)])})).unwrap();
     let events: Vec<_> = h.p(|p| p.events.events().filter(|e| e.kind == EventKind::IndexRebuilt).cloned().collect());
     assert_eq!(events.len(), 1, "{events:?}");
     assert!(events[0].message.contains("reference index was out of step"), "{events:?}");
     assert_eq!(h.p(|p| p.connectors().clone()), h.p(|p| connectors::Index::build(p.ledger.document())));
-    h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
+    h.p(|p| p.reference().verify(p.ledger.document())).unwrap();
     h.run("wire", json!({"points": crate::common::pts(&[(300.0, 320.0), (350.0, 320.0)])})).unwrap();
     assert_eq!(h.p(|p| p.events.count(EventKind::IndexRebuilt)), 1, "nothing more to repair");
 }

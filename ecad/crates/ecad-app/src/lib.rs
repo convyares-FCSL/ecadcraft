@@ -129,7 +129,7 @@ New, Open, Save and Save As.",
 Disconnect work by clicking (follow the prompts at the command line; Enter finishes, Esc cancels).",
     "JSON forms go in the ECAD command field (PROJECT panel > Developer, at the top; the command line below takes \
 a space as Enter), for example:  wire {\"points\":[[0,0],[40,0]]}",
-    "ECAD commands: convertcomponent, addterminal, wire, connect, disconnect, ecaddelete, setprop, cableadd, place, \
+    "ECAD commands: convertcomponent, addconnectionpoint, wire, connect, disconnect, ecaddelete, setprop, cableadd, place, \
 newpage, openpage, ecadinspect. CADCraft drawing commands work as usual.",
 ];
 
@@ -351,7 +351,7 @@ pub struct App {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Hovered {
     /// A terminal within the capture aperture (drawn or symbol, free or connected).
-    Terminal(ecad_model::ConnectionPointId),
+    ConnectionPoint(ecad_model::ConnectionPointId),
     /// A cable reference end (its point or its text) within the pick box (brief 010).
     Reference(ecad_model::RepresentationId),
     /// The object CADCraft's rollover highlights.

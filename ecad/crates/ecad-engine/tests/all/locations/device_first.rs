@@ -83,7 +83,7 @@ fn types_follow_the_definition() {
     }
     assert_eq!(PartRole::Head.numbering_rank(), 0);
     assert_eq!(PartRole::Contact.numbering_rank(), 1);
-    assert_eq!(PartRole::Terminal.numbering_rank(), 1);
+    assert_eq!(PartRole::ConnectionPoint.numbering_rank(), 1);
     assert_eq!(PartRole::Other.numbering_rank(), 1);
 }
 

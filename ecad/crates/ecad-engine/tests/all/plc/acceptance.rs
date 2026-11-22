@@ -54,7 +54,7 @@ pub(crate) fn by_tag(d: &Document, t: &str) -> DeviceId {
 
 /// A card's channel points: key (`.3.in`) to (label, terminal).
 pub(crate) fn channel_points(d: &Document, card: DeviceId) -> BTreeMap<String, (String, ConnectionPointId)> {
-    d.terminals
+    d.connection_points
         .iter()
         .filter(|(_, t)| t.device() == Some(card) && t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
         .map(|(id, t)| (t.key.as_ref().map(ToString::to_string).unwrap_or_default(), (t.label.clone().unwrap_or_default(), *id)))
@@ -89,7 +89,7 @@ pub(crate) fn rows_have_a_way_out(h: &mut H, kind: &str) {
 }
 
 pub(crate) fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
+    (&d.devices, &d.connection_points, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it, `redo` the one after.
@@ -216,7 +216,7 @@ pub(crate) fn raw_setprop(h: &mut H, c: DeviceId, key: &str, value: Option<&str>
 /// Relabel or rekey a terminal by hand: Remove + Add.
 pub(crate) fn rekey_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>, new_key: Option<&str>) {
     let d = h.doc();
-    let before = d.terminals[&t].clone();
+    let before = d.connection_points[&t].clone();
     let mut after = before.clone();
     if let Some(l) = new_label {
         after.label = Some(l.to_string());
@@ -225,7 +225,7 @@ pub(crate) fn rekey_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>
         // A text that is no key cannot be stored: the point is left without one.
         after.key = k.parse().ok();
     }
-    raw(h, vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }]);
+    raw(h, vec![Op::RemoveConnectionPoint { id: t, connection_point: before }, Op::AddConnectionPoint { id: t, connection_point: after }]);
 }
 
 /// Save to a file, close, reopen as a user would (also the hand-made-file path after raw commits).
@@ -275,12 +275,12 @@ pub(crate) fn fixture_p(seed: u64) -> P {
     let inputs: PageId = id(&h.run("newpage", json!({"title": "Inputs"})).unwrap(), "page");
     h.activate(inputs);
     drops(&mut h, &IN_XS);
-    h.run("terminals", json!({"strip": null, "from": [90, 160], "to": [260, 160]})).unwrap();
+    h.run("terminalblocks", json!({"strip": null, "from": [90, 160], "to": [260, 160]})).unwrap();
     let analogue: PageId = id(&h.run("newpage", json!({"title": "Analogue"})).unwrap(), "page");
     let outputs: PageId = id(&h.run("newpage", json!({"title": "Outputs"})).unwrap(), "page");
     h.activate(outputs);
     drops(&mut h, &OUT_XS);
-    h.run("terminals", json!({"strip": null, "from": [90, 160], "to": [210, 160]})).unwrap();
+    h.run("terminalblocks", json!({"strip": null, "from": [90, 160], "to": [210, 160]})).unwrap();
     let iolink: PageId = id(&h.run("newpage", json!({"title": "IO-Link"})).unwrap(), "page");
     h.activate(cpu_page);
     P { h, cpu_page, inputs, analogue, outputs, iolink, rack }

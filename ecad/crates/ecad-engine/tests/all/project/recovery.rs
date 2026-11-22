@@ -57,7 +57,7 @@ fn a_rebuilt_page_is_verified_by_content_not_handles() {
     let (doc, d, map) = page_state(&mut h, page);
     let v = verify_page(&doc, page, &d, &map, ecad_engine::project::engine_views().report_models(&doc).as_ref());
     assert!(v.ok(), "{:?}", v.problems);
-    assert!(v.items > 0 && v.terminals >= 3 && v.attached_ends == 2, "{v:?}");
+    assert!(v.items > 0 && v.connection_points >= 3 && v.attached_ends == 2, "{v:?}");
     // Independent comparison: a projection with completely different handle numbers shows the
     // same content per stable ID.
     let mut far = Drawing::new_metric();

@@ -75,7 +75,7 @@ pub struct Touched {
     pub layers: BTreeSet<LayerId>,
     pub items: BTreeSet<ItemId>,
     pub devices: BTreeSet<DeviceId>,
-    pub terminals: BTreeSet<ConnectionPointId>,
+    pub connection_points: BTreeSet<ConnectionPointId>,
     pub representations: BTreeSet<RepresentationId>,
     pub wires: BTreeSet<WireId>,
     pub cables: BTreeSet<CableId>,
@@ -131,15 +131,15 @@ impl Touched {
             Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => {
                 self.devices.insert(*id);
             }
-            Effect::Terminal { id, .. } => {
-                self.terminals.insert(*id);
+            Effect::ConnectionPoint { id, .. } => {
+                self.connection_points.insert(*id);
             }
             Effect::Rep { id, before, after } => {
                 self.representations.insert(*id);
                 // A cable reference places named points (design 072 §4.4, F4): the routes landing
                 // on the points it placed or places are re-checked (I23).
                 for r in [before, after].into_iter().flatten().filter(|r| matches!(r.subject, Subject::Cable(_))) {
-                    self.terminals.extend(r.connection_points.keys().copied());
+                    self.connection_points.extend(r.connection_points.keys().copied());
                 }
             }
             Effect::Wire { id, .. } => {
@@ -149,7 +149,7 @@ impl Touched {
                 self.cables.insert(*id);
                 // Its cores' named points (F4): the routes landing on them are re-checked (I23).
                 for c in [before, after].into_iter().flatten() {
-                    self.terminals.extend(c.cores.iter().flat_map(|m| m.through.iter().copied()));
+                    self.connection_points.extend(c.cores.iter().flat_map(|m| m.through.iter().copied()));
                 }
             }
             Effect::Route { id, .. } => {
@@ -214,7 +214,7 @@ impl Document {
         for (id, d) in &self.definitions {
             check_definition(*id, d)?;
         }
-        for (id, t) in &self.terminals {
+        for (id, t) in &self.connection_points {
             self.check_connection_point(*id, t)?;
         }
         for (id, c) in &self.devices {
@@ -367,12 +367,12 @@ impl Document {
             }
         }
 
-        let mut terminals = touched.terminals.clone();
+        let mut connection_points = touched.connection_points.clone();
         for c in &touched.devices {
-            terminals.extend(referrers(&ix.component_connection_points, &crate::document::doc::ConnectionPointOwner::Device(*c)));
+            connection_points.extend(referrers(&ix.component_connection_points, &crate::document::doc::ConnectionPointOwner::Device(*c)));
         }
-        for id in &terminals {
-            if let Some(t) = self.terminals.get(id) {
+        for id in &connection_points {
+            if let Some(t) = self.connection_points.get(id) {
                 self.check_connection_point(*id, t)?;
             }
         }
@@ -402,7 +402,7 @@ impl Document {
         for i in &touched.items {
             reps.extend(referrers(&ix.item_reps, i));
         }
-        for t in &touched.terminals {
+        for t in &touched.connection_points {
             reps.extend(referrers(&ix.connection_point_reps, t));
         }
         for id in &reps {
@@ -419,7 +419,7 @@ impl Document {
         }
 
         let mut conductors = touched.wires.clone();
-        for t in &touched.terminals {
+        for t in &touched.connection_points {
             conductors.extend(referrers(&ix.connection_point_ends, t).map(|(c, _)| c));
         }
         for id in &conductors {
@@ -445,7 +445,7 @@ impl Document {
         for p in &touched.pages {
             routes.extend(referrers(&ix.page_routes, p));
         }
-        for t in &touched.terminals {
+        for t in &touched.connection_points {
             routes.extend(referrers(&ix.connection_point_routes, t));
         }
         for r in &touched.routes {
@@ -578,7 +578,7 @@ impl Document {
         // out of its text.
         if let crate::objects::devices::DeviceType::PlcModule(_) = &c.device_type
             && let Some(crate::PointKey::Def(k)) = &t.key
-            && !c.definition.and_then(|d| self.definitions.get(&d)).is_some_and(|d| d.terminals.iter().any(|td| td.key.as_def() == Some(k)))
+            && !c.definition.and_then(|d| self.definitions.get(&d)).is_some_and(|d| d.connection_points.iter().any(|td| td.key.as_def() == Some(k)))
         {
             return bad(format!("terminal {id} of PLC module {} is keyed {k}: neither a channel point nor a point of its symbol", device));
         }
@@ -704,7 +704,7 @@ impl Document {
             if !matches!(r.subject, Subject::Device(_) | Subject::Aid(_)) {
                 return bad(format!("representation {id} of a non-component has connection points"));
             }
-            if self.terminals.get(t).map(|t| t.owner.subject()) != Some(r.subject) {
+            if self.connection_points.get(t).map(|t| t.owner.subject()) != Some(r.subject) {
                 return bad(format!("representation {id} places terminal {t} of another component"));
             }
             if !p.is_finite() {
@@ -717,7 +717,7 @@ impl Document {
     /// I17.
     fn check_conductor(&self, id: WireId, c: &Wire) -> Result<()> {
         for t in &c.ends {
-            if !self.terminals.contains_key(t) {
+            if !self.connection_points.contains_key(t) {
                 return bad(format!("wire {id} is attached to missing terminal {t}"));
             }
         }
@@ -741,7 +741,7 @@ impl Document {
         for m in &c.cores {
             // Design 072 §4.4 (F4): each named point is one core's, placed by one reference of the cable.
             for t in &m.through {
-                if !points.insert(*t) || self.terminals.contains_key(t) {
+                if !points.insert(*t) || self.connection_points.contains_key(t) {
                     return bad(format!("cable {id} lists point {t} twice, or a component's terminal as a named point"));
                 }
                 let placed =
@@ -773,11 +773,11 @@ impl Document {
 
 /// I7.
 fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
-    if !d.graphics.iter().all(Primitive::is_finite) || !d.terminals.iter().all(|t| t.at.is_finite()) {
+    if !d.graphics.iter().all(Primitive::is_finite) || !d.connection_points.iter().all(|t| t.at.is_finite()) {
         return bad(format!("definition {id} has non-finite geometry"));
     }
-    let keys: BTreeSet<&PointKey> = d.terminals.iter().map(|t| &t.key).collect();
-    if keys.len() != d.terminals.len() {
+    let keys: BTreeSet<&PointKey> = d.connection_points.iter().map(|t| &t.key).collect();
+    if keys.len() != d.connection_points.len() {
         return bad(format!("definition {id} repeats a terminal key"));
     }
     // Brief 044 (overseer condition on FP2): a bridge names keys a placement can write.

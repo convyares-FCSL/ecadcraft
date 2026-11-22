@@ -28,7 +28,7 @@ fn join(h: &mut H, symbol: &str, device: DeviceId, at: [f64; 2]) -> Value {
 }
 
 fn labels(v: &Value) -> Vec<String> {
-    v["terminals"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
+    v["connection_points"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
 }
 
 fn tag(h: &mut H, c: DeviceId) -> String {
@@ -105,8 +105,8 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
         ("motor3", "-M01"),
         ("motor1", "-M02"),
         ("trafo", "-T01"),
-        ("terminal", "-X01"),
-        ("terminalpe", "-X02"),
+        ("connection_point", "-X01"),
+        ("terminalblockpe", "-X02"),
         ("di", "-A01"),
         ("do", "-A02"),
     ];
@@ -241,7 +241,7 @@ fn d_placing_with_an_existing_tag_adds_the_symbol_to_that_device() {
 }
 
 #[test]
-fn d_merging_a_renamed_device_moves_its_symbols_terminals_and_wires() {
+fn d_merging_a_renamed_device_moves_its_symbols_connection_points_and_wires() {
     let mut f = k1();
     // A NO contact placed as its own device (-K02) on page 2, wired at its 13.
     let k2v = place(&mut f.h, "no", [100.0, 0.0]);
@@ -256,8 +256,8 @@ fn d_merging_a_renamed_device_moves_its_symbols_terminals_and_wires() {
     let reps = doc.representations_of(Subject::Device(f.k1)).count();
     assert_eq!(reps, 4);
     let t = doc.routes[&w].ends[0].point().unwrap();
-    assert_eq!(doc.terminals[&t].device().unwrap(), f.k1, "the wire stays attached, now to -K01");
-    assert_eq!(doc.terminals[&t].label.as_deref(), Some("33"), "renumbered as when joining");
+    assert_eq!(doc.connection_points[&t].device().unwrap(), f.k1, "the wire stays attached, now to -K01");
+    assert_eq!(doc.connection_points[&t].label.as_deref(), Some("33"), "renumbered as when joining");
     assert!(f.h.p(|p| p.ledger.log().last().unwrap().label.clone()).starts_with("Merge into -K01"));
     f.h.check();
     // One undo brings -K02 back.
@@ -346,7 +346,7 @@ fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly
     doc.representations.get_mut(&rid).unwrap().connection_points.clear();
     let ts: Vec<ConnectionPointId> = doc.connection_points_of(k2).map(|(t, _)| t).collect();
     for t in ts {
-        doc.terminals.get_mut(&t).unwrap().key = Some(ecad_model::PointKey::Def(format!("old-{}", t.short())));
+        doc.connection_points.get_mut(&t).unwrap().key = Some(ecad_model::PointKey::Def(format!("old-{}", t.short())));
     }
     let mut ids = ecad_model::IdAllocator::seeded(5);
     let e = ecad_electrical::devices::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err().to_string();
@@ -547,16 +547,16 @@ fn i_delete_device_asks_first() {
 }
 
 #[test]
-fn i_moving_a_contact_moves_its_terminals_and_copying_a_device_gives_the_next_tag() {
+fn i_moving_a_contact_moves_its_connection_points_and_copying_a_device_gives_the_next_tag() {
     let mut f = k1();
     let w: ecad_model::RouteId = id(&f.h.run("wire", json!({"points": [[0, 10], [0, 40]]})).unwrap(), "route");
-    let t13: ConnectionPointId = id(&f.no["terminals"][0], "terminal");
+    let t13: ConnectionPointId = id(&f.no["connection_points"][0], "connection_point");
     assert_eq!(f.h.doc().routes[&w].ends[0], ecad_model::RouteEnd::Point(t13));
     let item: ItemId = id(&f.no, "item");
     let h = f.h.handle_of(f.p2, item);
     f.h.run("move", json!({"handles": [h.hex()], "delta": [5, 0]})).unwrap();
     let a = f.h.doc().routes[&w].points[0];
-    assert!(a.near(ecad_model::Pt::new(5.0, 10.0), 1e-9), "the wire end followed its terminal: {a:?}");
+    assert!(a.near(ecad_model::Pt::new(5.0, 10.0), 1e-9), "the wire end followed its connection_point: {a:?}");
     f.h.activate(f.p1);
     let coil = f.h.symbol_item(f.k1);
     let ch = f.h.handle_of(f.p1, coil);

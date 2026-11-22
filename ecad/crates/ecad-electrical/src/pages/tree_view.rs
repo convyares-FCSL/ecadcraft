@@ -53,7 +53,7 @@ impl<'i> DerivedView<Inputs<'i>> for TreeFeed {
             | Effect::Item { .. }
             | Effect::Device { .. }
             | Effect::DeviceDefinition { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Rep { .. }
             | Effect::Wire { .. }
             | Effect::Route { .. }

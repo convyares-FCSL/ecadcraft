@@ -553,7 +553,7 @@ pub struct PinlabelInput {
     /// With `device`: the pin's current name.
     pub pin: Option<String>,
     /// One drawn pin.
-    pub terminal: Option<ConnectionPointId>,
+    pub connection_point: Option<ConnectionPointId>,
     /// The new name, or `next`.
     pub to: String,
 }
@@ -574,15 +574,15 @@ pub enum Pinlabel {
 /// # Errors
 /// No such device or connection point, not a connector, a name that does not read or is taken.
 pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, CmdError> {
-    let PinlabelInput { device: dev, pin, terminal, to } = input;
+    let PinlabelInput { device: dev, pin, connection_point, to } = input;
     let to = to.trim().to_string();
-    let (c, old) = match (terminal, device(doc, dev.as_deref())?) {
+    let (c, old) = match (connection_point, device(doc, dev.as_deref())?) {
         (Some(t), _) => {
-            let x = doc.terminals.get(&t).ok_or(CmdError::NotFound(Noun::Terminal))?;
-            (x.device().ok_or(CmdError::NotFound(Noun::Terminal))?, x.label.clone().ok_or(CmdError::refused("That pin has no name."))?)
+            let x = doc.connection_points.get(&t).ok_or(CmdError::NotFound(Noun::ConnectionPoint))?;
+            (x.device().ok_or(CmdError::NotFound(Noun::ConnectionPoint))?, x.label.clone().ok_or(CmdError::refused("That pin has no name."))?)
         }
         (None, Some(c)) => (c, pin.map(|p| p.trim().to_string()).ok_or(CmdError::input("`pin` (the pin's current name) is required with `device`"))?),
-        (None, None) => return Err(CmdError::input("`device` and `pin`, or `terminal`, is required")),
+        (None, None) => return Err(CmdError::input("`device` and `pin`, or `connection_point`, is required")),
     };
     if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
         return Err(CmdError::refused(format!(
@@ -593,13 +593,13 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
     let tag = crate::devices::tag_words(doc, c);
     // `to: "next"`: one drawn pin moves to its half's next free pin (the pin-twice fix).
     if to.eq_ignore_ascii_case("next") {
-        let t = terminal.ok_or(CmdError::input("`to: \"next\"` moves one drawn pin: give its `terminal`"))?;
+        let t = connection_point.ok_or(CmdError::input("`to: \"next\"` moves one drawn pin: give its `connection_point`"))?;
         let side = cn::side_of(doc, t).ok_or(CmdError::refused("That is not a connector pin."))?;
-        let x = doc.terminals.get(&t).ok_or(CmdError::NotFound(Noun::Terminal))?.clone();
+        let x = doc.connection_points.get(&t).ok_or(CmdError::NotFound(Noun::ConnectionPoint))?.clone();
         // The pin itself is not free for itself: drawn once more on this side.
         let next = cn::next_pin(doc, c, side, &BTreeSet::new())?;
         let after = ConnectionPoint { label: Some(next.clone()), ..x.clone() };
-        let ops = vec![Op::RemoveConnectionPoint { id: t, terminal: x }, Op::AddConnectionPoint { id: t, terminal: after }];
+        let ops = vec![Op::RemoveConnectionPoint { id: t, connection_point: x }, Op::AddConnectionPoint { id: t, connection_point: after }];
         let half = cn::half_tag(doc, c, side);
         let message = format!("{half}:{old} is now {half}:{next}.");
         return Ok(Pinlabel::Moved { component: c, label: format!("Move pin {half}:{old}"), from: old, to: next, ops, message });
@@ -618,10 +618,10 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
     }
     let mut ops = Vec::new();
     for (t, x) in &targets {
-        ops.push(Op::RemoveConnectionPoint { id: *t, terminal: x.clone() });
+        ops.push(Op::RemoveConnectionPoint { id: *t, connection_point: x.clone() });
     }
     for (t, x) in targets {
-        ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { label: Some(to.clone()), ..x } });
+        ops.push(Op::AddConnectionPoint { id: t, connection_point: ConnectionPoint { label: Some(to.clone()), ..x } });
     }
     // A typed list keeps the pin's place under its new name.
     if let Some(list) = cn::pin_names(doc, c)
@@ -651,13 +651,13 @@ pub fn result_json(doc: &Document, m: &Made, message: &str) -> Value {
         "component": m.component.hex(),
         "tag": m.tag,
         "new": m.new,
-        "terminals": m.shown.iter().map(|x| json!({
-            "terminal": x.terminal.hex(),
+        "connection_points": m.shown.iter().map(|x| json!({
+            "connection_point": x.connection_point.hex(),
             "side": x.side.word(),
             "key": x.side.key(),
             "label": x.name,
             "pin": x.name,
-            "name": cn::pin_name(doc, x.terminal).unwrap_or_else(|| format!("{}:{}", m.tag, x.name)),
+            "name": cn::pin_name(doc, x.connection_point).unwrap_or_else(|| format!("{}:{}", m.tag, x.name)),
         })).collect::<Vec<_>>(),
         "split": m.splits.iter().map(|(r, n)| json!({"route": r.hex(), "new": n.hex()})).collect::<Vec<_>>(),
         "echo": message,

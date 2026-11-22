@@ -56,7 +56,7 @@ pub enum ObjectId {
     Layer(LayerId),
     Item(ItemId),
     Device(DeviceId),
-    Terminal(ConnectionPointId),
+    ConnectionPoint(ConnectionPointId),
     Representation(RepresentationId),
     Wire(WireId),
     Cable(CableId),
@@ -79,7 +79,7 @@ impl ObjectId {
             ObjectId::Layer(_) => "layer",
             ObjectId::Item(_) => "item",
             ObjectId::Device(_) => "component",
-            ObjectId::Terminal(_) => "terminal",
+            ObjectId::ConnectionPoint(_) => "connection_point",
             ObjectId::Representation(_) => "representation",
             ObjectId::Wire(_) => "conductor",
             ObjectId::Cable(_) => "cable",
@@ -98,7 +98,7 @@ impl ObjectId {
             ObjectId::Layer(i) => i.short(),
             ObjectId::Item(i) => i.short(),
             ObjectId::Device(i) => i.short(),
-            ObjectId::Terminal(i) => i.short(),
+            ObjectId::ConnectionPoint(i) => i.short(),
             ObjectId::Representation(i) => i.short(),
             ObjectId::Wire(i) => i.short(),
             ObjectId::Cable(i) => i.short(),
@@ -117,7 +117,7 @@ impl ObjectId {
             ObjectId::Layer(i) => i.hex(),
             ObjectId::Item(i) => i.hex(),
             ObjectId::Device(i) => i.hex(),
-            ObjectId::Terminal(i) => i.hex(),
+            ObjectId::ConnectionPoint(i) => i.hex(),
             ObjectId::Representation(i) => i.hex(),
             ObjectId::Wire(i) => i.hex(),
             ObjectId::Cable(i) => i.hex(),
@@ -790,7 +790,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
         lines.push("no page is open".into());
     }
     // The report models of this copy, worked out once for every page.
-    let outputs = crate::project::engine_views().report_models(&inputs.doc);
+    let reports = crate::project::engine_views().report_models(&inputs.doc);
     for p in &inputs.pages {
         let title = inputs.doc.pages.get(&p.id).map_or_else(|| p.id.short(), |x| x.title.to_string());
         let same = crate::project::project_page_pending(
@@ -802,7 +802,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
             inputs.tolerance,
             inputs.hidden_text,
             inputs.pending,
-            outputs.as_ref(),
+            reports.as_ref(),
         )
         .map(|(d, m)| d.model == p.drawing.model && m == p.map && p.map.is_consistent());
         match same {
@@ -825,7 +825,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
             inputs.tolerance,
             inputs.hidden_text,
             inputs.pending,
-            outputs.as_ref(),
+            reports.as_ref(),
         );
         ok &= v.ok();
         lines.push(format!("page {title}: {}", v.summary()));
@@ -909,8 +909,8 @@ pub fn op_view(op: &Op) -> OpView {
         Op::DeleteDevice { device, .. } => (val(device), None),
         Op::ModifyDevice { before, after, .. } => (val(before), val(after)),
         Op::SetDeviceDefinition { before, after, .. } => (val(before), val(after)),
-        Op::AddConnectionPoint { terminal, .. } => (None, val(terminal)),
-        Op::RemoveConnectionPoint { terminal, .. } => (val(terminal), None),
+        Op::AddConnectionPoint { connection_point, .. } => (None, val(connection_point)),
+        Op::RemoveConnectionPoint { connection_point, .. } => (val(connection_point), None),
         Op::LinkRepresentation { rep, .. } => (None, val(rep)),
         Op::ModifyRepresentation { before, after, .. } => (val(before), val(after)),
         Op::UnlinkRepresentation { rep, .. } => (val(rep), None),
@@ -950,7 +950,7 @@ pub fn op_view(op: &Op) -> OpView {
     OpView { name: op.name(), targets: op_targets(op), before, after }
 }
 
-fn item_refs(item: &ecad_model::Item, out: &mut Vec<ObjectId>) {
+fn item_references(item: &ecad_model::Item, out: &mut Vec<ObjectId>) {
     out.push(ObjectId::Page(item.page));
     out.push(ObjectId::Layer(item.style.layer));
     if let ItemKind::Symbol(s) = &item.kind {
@@ -958,11 +958,11 @@ fn item_refs(item: &ecad_model::Item, out: &mut Vec<ObjectId>) {
     }
 }
 
-fn rep_refs(rep: &ecad_model::Representation, out: &mut Vec<ObjectId>) {
+fn rep_references(rep: &ecad_model::Representation, out: &mut Vec<ObjectId>) {
     out.push(rep.subject.into());
     out.push(ObjectId::Page(rep.page));
     out.extend(rep.items.iter().map(|i| ObjectId::Item(*i)));
-    out.extend(rep.connection_points.keys().map(|t| ObjectId::Terminal(*t)));
+    out.extend(rep.connection_points.keys().map(|t| ObjectId::ConnectionPoint(*t)));
 }
 
 /// Every object an op names: its target first.
@@ -980,12 +980,12 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
         Op::AddLayer { id, .. } | Op::RemoveLayer { id, .. } => out.push(ObjectId::Layer(*id)),
         Op::AddItem { id, item } | Op::RemoveItem { id, item } => {
             out.push(ObjectId::Item(*id));
-            item_refs(item, &mut out);
+            item_references(item, &mut out);
         }
         Op::ModifyItem { id, before, after } => {
             out.push(ObjectId::Item(*id));
-            item_refs(before, &mut out);
-            item_refs(after, &mut out);
+            item_references(before, &mut out);
+            item_references(after, &mut out);
         }
         Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } => {
             out.push(ObjectId::Device(*id));
@@ -999,35 +999,35 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             out.push(ObjectId::Device(*id));
             out.extend(before.iter().chain(after).copied().map(ObjectId::Definition));
         }
-        Op::AddConnectionPoint { id, terminal } | Op::RemoveConnectionPoint { id, terminal } => {
-            out.push(ObjectId::Terminal(*id));
-            out.push(match terminal.owner {
+        Op::AddConnectionPoint { id, connection_point } | Op::RemoveConnectionPoint { id, connection_point } => {
+            out.push(ObjectId::ConnectionPoint(*id));
+            out.push(match connection_point.owner {
                 ecad_model::ConnectionPointOwner::Device(c) => ObjectId::Device(c),
                 ecad_model::ConnectionPointOwner::Aid(a) => ObjectId::Aid(a),
             });
         }
         Op::LinkRepresentation { id, rep } | Op::UnlinkRepresentation { id, rep } => {
             out.push(ObjectId::Representation(*id));
-            rep_refs(rep, &mut out);
+            rep_references(rep, &mut out);
         }
         Op::ModifyRepresentation { id, before, after } => {
             out.push(ObjectId::Representation(*id));
-            rep_refs(before, &mut out);
-            rep_refs(after, &mut out);
+            rep_references(before, &mut out);
+            rep_references(after, &mut out);
         }
         Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
             out.push(ObjectId::Wire(*id));
-            out.extend(wire.ends.iter().map(|t| ObjectId::Terminal(*t)));
+            out.extend(wire.ends.iter().map(|t| ObjectId::ConnectionPoint(*t)));
         }
         Op::ModifyWire { id, .. } => out.push(ObjectId::Wire(*id)),
         Op::AddRoute { id, route } | Op::RemoveRoute { id, route } => {
             out.push(ObjectId::Route(*id));
             out.push(ObjectId::Page(route.page));
-            out.extend(route.points_landed().map(ObjectId::Terminal));
+            out.extend(route.points_landed().map(ObjectId::ConnectionPoint));
         }
         Op::ModifyRoute { id, before, after } => {
             out.push(ObjectId::Route(*id));
-            out.extend(before.points_landed().chain(after.points_landed()).map(ObjectId::Terminal));
+            out.extend(before.points_landed().chain(after.points_landed()).map(ObjectId::ConnectionPoint));
         }
         Op::CreateAid { id, .. } | Op::DeleteAid { id, .. } | Op::ModifyAid { id, .. } => out.push(ObjectId::Aid(*id)),
         Op::CreateLoosePart { id, .. } | Op::DeleteLoosePart { id, .. } | Op::ModifyLoosePart { id, .. } => out.push(ObjectId::LoosePart(*id)),
@@ -1081,9 +1081,9 @@ pub struct Resolved {
     pub representation: Option<RepresentationId>,
     pub subject: Option<Subject>,
     /// A terminal marker's terminal.
-    pub terminal: Option<ConnectionPointId>,
+    pub connection_point: Option<ConnectionPointId>,
     /// The subject's terminals (a component) or attached terminals (a conductor).
-    pub terminals: Vec<ConnectionPointId>,
+    pub connection_points: Vec<ConnectionPointId>,
     /// The objects whose history the trail follows: item, representation, subject, terminals.
     pub ids: Vec<ObjectId>,
 }
@@ -1098,7 +1098,7 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         }
         Mapped::Marker(rep, t) => {
             r.representation = Some(rep);
-            r.terminal = Some(t);
+            r.connection_point = Some(t);
         }
         // A fan view line (brief 005) stands for its cable; it is no item.
         Mapped::Fan(_) => {}
@@ -1113,19 +1113,19 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         // A device cross-reference (brief 025) stands for its contact or head representation.
         Mapped::DeviceReference(rep) => r.representation = Some(rep),
         // A link line (brief 030) stands for its strip.
-        Mapped::Link(..) => {}
+        Mapped::JumperBar(..) => {}
         // A T's dot (lane 072 D) stands for the route that ends there.
         Mapped::Tee(_) => {}
     }
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),
         Mapped::Label(c) => Some(Subject::Wire(c)),
-        Mapped::Link(c, _) => Some(Subject::Device(c)),
+        Mapped::JumperBar(c, _) => Some(Subject::Device(c)),
         Mapped::Tee(r) => Some(Subject::Route(r)),
         _ => r.representation.and_then(|id| doc.representations.get(&id)).map(|rep| rep.subject),
     };
-    r.terminals = match r.subject {
-        Some(Subject::Device(c)) => doc.terminals.iter().filter(|(_, t)| t.device() == Some(c)).map(|(id, _)| *id).collect(),
+    r.connection_points = match r.subject {
+        Some(Subject::Device(c)) => doc.connection_points.iter().filter(|(_, t)| t.device() == Some(c)).map(|(id, _)| *id).collect(),
         Some(Subject::Wire(c)) => doc.wires.get(&c).map(|x| x.ends.to_vec()).unwrap_or_default(),
         Some(Subject::Route(x)) => doc.routes.get(&x).map(|r| r.points_landed().collect()).unwrap_or_default(),
         _ => Vec::new(),
@@ -1137,10 +1137,10 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
     if let Some(Subject::Route(x)) = r.subject {
         r.ids.extend(ecad_electrical::wires::wire_of_route(doc, x).map(ObjectId::Wire));
     }
-    r.ids.extend(r.terminal.map(ObjectId::Terminal));
-    for t in &r.terminals {
-        if r.terminal != Some(*t) {
-            r.ids.push(ObjectId::Terminal(*t));
+    r.ids.extend(r.connection_point.map(ObjectId::ConnectionPoint));
+    for t in &r.connection_points {
+        if r.connection_point != Some(*t) {
+            r.ids.push(ObjectId::ConnectionPoint(*t));
         }
     }
     r
@@ -1153,7 +1153,7 @@ pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
         ObjectId::Layer(i) => doc.layers.get(&i).and_then(val),
         ObjectId::Item(i) => doc.items.get(&i).and_then(val),
         ObjectId::Device(i) => doc.devices.get(&i).and_then(val),
-        ObjectId::Terminal(i) => doc.terminals.get(&i).and_then(val),
+        ObjectId::ConnectionPoint(i) => doc.connection_points.get(&i).and_then(val),
         ObjectId::Representation(i) => doc.representations.get(&i).and_then(val),
         ObjectId::Wire(i) => doc.wires.get(&i).and_then(val),
         ObjectId::Cable(i) => doc.cables.get(&i).and_then(val),
@@ -1192,13 +1192,13 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .chain(doc.items.iter().filter(|(_, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == d)).map(|(i, _)| ObjectId::Item(*i)))
             .collect(),
         ObjectId::Device(c) => doc
-            .terminals
+            .connection_points
             .iter()
             .filter(|(_, t)| t.device() == Some(c))
-            .map(|(i, _)| ObjectId::Terminal(*i))
+            .map(|(i, _)| ObjectId::ConnectionPoint(*i))
             .chain(reps_of(Subject::Device(c)))
             .collect(),
-        ObjectId::Terminal(t) => doc
+        ObjectId::ConnectionPoint(t) => doc
             .wires
             .iter()
             .filter(|(_, c)| c.ends.contains(&t))
@@ -1293,7 +1293,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         ObjectId::Route(r) => subject_label(doc, Subject::Route(r)),
         ObjectId::Aid(a) => subject_label(doc, Subject::Aid(a)),
         ObjectId::LoosePart(i) => doc.loose_parts.get(&i).map_or_else(String::new, |p| format!("loose part {}", p.description)),
-        ObjectId::Terminal(i) => doc.terminals.get(&i).map_or_else(String::new, |t| {
+        ObjectId::ConnectionPoint(i) => doc.connection_points.get(&i).map_or_else(String::new, |t| {
             let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| i.short());
             format!("{}:{name}", subject_label(doc, t.owner.subject()))
         }),
@@ -1316,7 +1316,7 @@ pub fn objects(doc: &Document) -> Vec<ObjectId> {
     out.extend(doc.page_order.iter().map(|i| ObjectId::Page(*i)));
     out.extend(doc.layers.keys().map(|i| ObjectId::Layer(*i)));
     out.extend(doc.devices.keys().map(|i| ObjectId::Device(*i)));
-    out.extend(doc.terminals.keys().map(|i| ObjectId::Terminal(*i)));
+    out.extend(doc.connection_points.keys().map(|i| ObjectId::ConnectionPoint(*i)));
     out.extend(doc.wires.keys().map(|i| ObjectId::Wire(*i)));
     out.extend(doc.cables.keys().map(|i| ObjectId::Cable(*i)));
     out.extend(doc.routes.keys().map(|i| ObjectId::Route(*i)));

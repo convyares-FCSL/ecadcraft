@@ -22,7 +22,7 @@ fn check_shape(g: &Generated, doc: &Document) {
     assert_eq!(doc.page_order, g.pages);
     assert_eq!(doc.pages.len(), t.pages);
     assert_eq!(doc.devices.len(), t.devices);
-    assert_eq!(doc.terminals.len(), 2 * t.devices);
+    assert_eq!(doc.connection_points.len(), 2 * t.devices);
     assert_eq!(doc.wires.len(), t.wires);
     assert_eq!(doc.cables.len(), t.cables);
     assert!(
@@ -37,7 +37,7 @@ fn check_shape(g: &Generated, doc: &Document) {
     assert_eq!(nets.len(), g.nets.len());
     assert_eq!(nets.len(), t.devices, "one net per pair of neighbouring components");
     for (got, want) in nets.iter().zip(&g.nets) {
-        assert_eq!(got.terminals, want.terminals);
+        assert_eq!(got.connection_points, want.connection_points);
         assert_eq!(got.wires, want.wires);
     }
 

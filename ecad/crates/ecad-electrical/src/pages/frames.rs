@@ -8,7 +8,7 @@ use ecad_model::document::book::Book;
 use ecad_model::document::sheet::{SheetSpec, unit_scale};
 use ecad_model::{Document, LengthUnit, ObjectRef, Op, PageId};
 
-use crate::styles::text_style::fonts::{Look, TextMetrics};
+use crate::styles::text_style::fonts::{DrawStyles, TextMetrics};
 use crate::styles::text_style::{TextKind, Weight};
 
 /// The reserved layer of the frame (`ecad.frame`), locked so CADCraft's own commands leave it.
@@ -89,7 +89,7 @@ pub struct FrameInput {
     /// The frame's text looks, from lane T's getter (design 033 §1.2).
     pub text: FrameText,
     /// Brief 050a: the page's frame style (line weights, colour, grid labels).
-    pub look: crate::styles::frame::FrameDraw,
+    pub draw: crate::styles::frame::FrameDraw,
     /// Brief 055: the block the frame draws (its own, or the house block for this sheet).
     pub block: crate::title_blocks::Block,
     /// Brief 055: the project properties the block's fields read, by key (empty when unset): the
@@ -130,14 +130,14 @@ impl TextDraw {
         self.style.ends_with("BOLD")
     }
 
-    /// `kind`'s look in a project of length unit `unit`, from its resolved `look`.
-    pub fn of(look: &Look, kind: TextKind, unit: LengthUnit) -> TextDraw {
-        let s = look.style(kind);
+    /// `kind`'s look in a project of length unit `unit`, from its resolved `draw`.
+    pub fn of(draw: &DrawStyles, kind: TextKind, unit: LengthUnit) -> TextDraw {
+        let s = draw.style(kind);
         let mm = height_mm(s.height, unit);
         // Lane T's per-kind fonts decide whether bold is drawn as a heavier stroke (design 031
         // §2.2), as the engine's `DrawApply::apply` does.
         let weight = match s.weight {
-            Weight::Bold => look.fonts_for(kind).bold_lineweight,
+            Weight::Bold => draw.fonts_for(kind).bold_lineweight,
             Weight::Regular => None,
         };
         TextDraw { mm, style: s.style_name, weight }
@@ -153,9 +153,9 @@ pub fn height_mm(height: f64, unit: LengthUnit) -> f64 {
 impl FrameText {
     /// The looks of `doc`'s frame, with the fonts `m` finds.
     pub fn with(doc: &Document, m: &dyn TextMetrics) -> FrameText {
-        let look = Look::with(doc, m);
+        let draw = DrawStyles::with(doc, m);
         let u = doc.settings.length_unit;
-        let t = |k| TextDraw::of(&look, k, u);
+        let t = |k| TextDraw::of(&draw, k, u);
         FrameText {
             grid: t(TextKind::Grid),
             caption: t(TextKind::TitleCaption),
@@ -163,7 +163,7 @@ impl FrameText {
             main: t(TextKind::TitleMain),
             page: t(TextKind::TitlePage),
             rev: t(TextKind::TitleRev),
-            bold_weight: look.fonts_for(TextKind::TitleMain).bold_lineweight,
+            bold_weight: draw.fonts_for(TextKind::TitleMain).bold_lineweight,
         }
     }
 
@@ -212,10 +212,10 @@ impl FrameInput {
         // Checked there, so the frame and the references always use the same sheet (brief 055:
         // the frame's own sheet first).
         let sheet = ecad_model::document::sheet::sheet_of(doc, page);
-        let look = crate::styles::frame::frame_draw(doc, page);
+        let draw = crate::styles::frame::frame_draw(doc, page);
         // The block may be borrowed from another frame (overseer ruling: page, page type, frame).
         let id = ecad_model::document::sheet::title_block_style(doc, page);
-        let block = crate::title_blocks::block_of(doc, &id, &sheet, &look.margins, &text);
+        let block = crate::title_blocks::block_of(doc, &id, &sheet, &draw.margins, &text);
         let (project, newest) = crate::title_blocks::bind::read(doc, &block.layout);
         // The rows the block's tables can show.
         let rows = block
@@ -257,7 +257,7 @@ impl FrameInput {
             rev_columns,
             pending: false,
             text,
-            look,
+            draw,
             block,
             project,
             newest,
@@ -279,7 +279,7 @@ impl FrameInput {
     /// `ecad_model::document::sheet::keep_out`.
     pub fn keep_out(&self) -> f64 {
         let h = self.block.layout.height().unwrap_or(ecad_model::document::sheet::TITLE_BLOCK_MM);
-        let m = self.look.margins;
+        let m = self.draw.margins;
         h.min((f64::from(self.sheet.height) - m.bottom - m.top).max(0.0))
     }
 }
@@ -352,7 +352,7 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, page: PageI
         | Effect::Item { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
-        | Effect::Terminal { .. }
+        | Effect::ConnectionPoint { .. }
         | Effect::Rep { .. }
         | Effect::Wire { .. }
         | Effect::Route { .. }

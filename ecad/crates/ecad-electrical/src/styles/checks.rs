@@ -53,7 +53,7 @@ fn touches_own(effect: &Effect<'_>) -> bool {
         | Effect::Item { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
-        | Effect::Terminal { .. }
+        | Effect::ConnectionPoint { .. }
         | Effect::Rep { .. }
         | Effect::Wire { .. }
         | Effect::Route { .. }
@@ -131,7 +131,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         });
     }
     // 050b: two categories default for one potential.
-    for (pot, ids) in &crate::styles::wire::WireLooks::new(doc).twice {
+    for (pot, ids) in &crate::styles::wire::WireDraws::new(doc).twice {
         let names: Vec<String> = ids.iter().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id)).collect();
         let shown = doc.settings.wiring.potential(pot).map_or_else(|| pot.clone(), |p| p.name.clone());
         out.push(Check {

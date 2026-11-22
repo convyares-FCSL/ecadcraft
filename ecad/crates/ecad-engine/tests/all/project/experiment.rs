@@ -29,8 +29,8 @@ fn scenario_s1_to_s16() {
     let c1: DeviceId = id(&r, "component");
     let mut t = Vec::new();
     for y in [15.0, 10.0, 5.0] {
-        let r = h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, y]})).unwrap();
-        t.push(id::<ConnectionPointId>(&r, "terminal"));
+        let r = h.run("addconnectionpoint", json!({"handle": lines[1].hex(), "at": [40, y]})).unwrap();
+        t.push(id::<ConnectionPointId>(&r, "connection_point"));
     }
     let (t1, t2, t3) = (t[0], t[1], t[2]);
     assert_eq!(h.doc().connection_points_of(c1).count(), 3);
@@ -39,7 +39,7 @@ fn scenario_s1_to_s16() {
     let r = h.run("place", json!({"at": [100, 10], "rotation": 90})).unwrap();
     let c2: DeviceId = id(&r, "component");
     let keys: Vec<(String, ConnectionPointId)> =
-        r["terminals"].as_array().unwrap().iter().map(|x| (x["key"].as_str().unwrap().to_string(), id(x, "terminal"))).collect();
+        r["connection_points"].as_array().unwrap().iter().map(|x| (x["key"].as_str().unwrap().to_string(), id(x, "connection_point"))).collect();
     let (s1, s2) = (keys[0].1, keys[1].1);
     assert!(h.connection_point_pos(p1, s1).near(Pt::new(90.0, 10.0), 1e-9), "A1 at (90,10): placement applied");
     assert!(h.connection_point_pos(p1, s2).near(Pt::new(110.0, 10.0), 1e-9));
@@ -111,10 +111,10 @@ fn scenario_s1_to_s16() {
     let c1b = *after.devices.keys().find(|c| !before.devices.contains_key(c)).unwrap();
     let new_terms: Vec<ConnectionPointId> = after.connection_points_of(c1b).map(|(t, _)| t).collect();
     assert_eq!(new_terms.len(), 3);
-    assert!(new_terms.iter().all(|t| !before.terminals.contains_key(t)), "new terminal IDs");
+    assert!(new_terms.iter().all(|t| !before.connection_points.contains_key(t)), "new terminal IDs");
     let r2b = *after.routes.keys().find(|r| !before.routes.contains_key(r)).unwrap();
     let t2b = after.routes[&r2b].ends[0].point().expect("the copied line is attached");
-    assert_eq!(after.terminals[&t2b].device().unwrap(), c1b, "attached to the copied component, not the original");
+    assert_eq!(after.connection_points[&t2b].device().unwrap(), c1b, "attached to the copied component, not the original");
     assert!(h.connection_point_pos(p1, t2b).near(Pt::new(40.0, -55.0), 1e-9));
     assert_eq!(after.routes[&r2b].ends[1], RouteEnd::Free);
     for k in before.devices.keys() {
@@ -157,7 +157,7 @@ fn scenario_s1_to_s16() {
     h.activate(p2);
     h.run("line", json!({"points": [[0, 0], [10, 10]]})).unwrap();
     let r = h.run("place", json!({"at": [100, 10], "rotation": 90})).unwrap();
-    let ends4: Vec<ConnectionPointId> = r["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let ends4: Vec<ConnectionPointId> = r["connection_points"].as_array().unwrap().iter().map(|x| id(x, "connection_point")).collect();
     let (a4, b4) = (h.connection_point_pos(p2, ends4[0]), h.connection_point_pos(p2, ends4[1]));
     let w4: WireId =
         id(&h.run("wire", json!({"points": pts(&[(a4.x, a4.y), (a4.x, a4.y + 20.0), (b4.x, b4.y + 20.0), (b4.x, b4.y)])})).unwrap(), "conductor");

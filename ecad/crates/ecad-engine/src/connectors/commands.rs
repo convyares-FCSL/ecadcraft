@@ -45,8 +45,8 @@ connector.maker.* answers; one transaction)",
             .noundo(),
         CommandSpec::new("pinlabel", "Rename Pin", crate::commands::input::typed::<PinlabelParams>)
             .params(
-                "{device?: id | tag, pin?: name, terminal?: id, to: new name | \"next\"} (renames a connector pin on both halves in one \
-transaction; with terminal and to \"next\", moves that one drawn pin to its half's next free pin)",
+                "{device?: id | tag, pin?: name, connection_point?: id, to: new name | \"next\"} (renames a connector pin on both halves in one \
+transaction; with connection_point and to \"next\", moves that one drawn pin to its half's next free pin)",
             )
             .noundo(),
     ]
@@ -241,7 +241,7 @@ pub(crate) fn place_half(
             splits: land.iter().map(|l| (l.route, l.new)).collect(),
             ops: Vec::new(),
         };
-        let names: Vec<String> = shown.iter().filter_map(|x| cn::pin_name(doc, x.terminal)).collect();
+        let names: Vec<String> = shown.iter().filter_map(|x| cn::pin_name(doc, x.connection_point)).collect();
         let message = format!(
             "Placed {}.",
             if names.len() > 2 {
@@ -267,7 +267,7 @@ pub(crate) fn place_half(
 // ---------------------------------------------------------------- pinlabel (§5.3)
 
 /// `pinlabel {device | terminal, pin?, to}` (design 044 §5.3): renames a connector pin on both
-/// halves, or with `terminal` and `to: "next"` moves that one drawn pin to its half's next free pin.
+/// halves, or with `connection_point` and `to: "next"` moves that one drawn pin to its half's next free pin.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PinlabelParams {
@@ -279,14 +279,14 @@ pub(crate) struct PinlabelParams {
     pin: Option<String>,
     /// One drawn pin.
     #[serde(default)]
-    terminal: Option<ConnectionPointId>,
+    connection_point: Option<ConnectionPointId>,
     /// The new pin name, or "next".
     to: String,
 }
 
 impl Command for PinlabelParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let input = PinlabelInput { device: self.device, pin: self.pin, terminal: self.terminal, to: self.to };
+        let input = PinlabelInput { device: self.device, pin: self.pin, connection_point: self.connection_point, to: self.to };
         let v = on_project(s, |p, pg, _| {
             Ok(match rules::plan_pinlabel(p.ledger.document(), input)? {
                 Pinlabel::Unchanged { component, to } => json!({"changed": false, "component": component.hex(), "to": to}),

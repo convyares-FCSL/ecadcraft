@@ -107,8 +107,8 @@ fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Rep
         }
         let def = s.definition().ok()?;
         // Its points' edge: the top one, else (a communication module) the bottom one.
-        let side = if def.terminals.iter().any(|t| t.at.y > 0.0) { 1.0 } else { -1.0 };
-        let top: Vec<f64> = def.terminals.iter().filter(|t| t.at.y * side > 0.0).map(|t| t.at.x).collect();
+        let side = if def.connection_points.iter().any(|t| t.at.y > 0.0) { 1.0 } else { -1.0 };
+        let top: Vec<f64> = def.connection_points.iter().filter(|t| t.at.y * side > 0.0).map(|t| t.at.x).collect();
         let lo = top.iter().copied().fold(f64::INFINITY, f64::min);
         let hi = top.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         if !(lo.is_finite() && hi.is_finite()) {
@@ -116,7 +116,7 @@ fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Rep
         }
         // As the body's graphics: its points' span plus 10, at least 20.
         let pad = ((20.0 - (hi - lo)) / 2.0).max(5.0);
-        let y = def.terminals.iter().find(|t| t.at.y * side > 0.0).map_or(25.0 * side, |t| t.at.y);
+        let y = def.connection_points.iter().find(|t| t.at.y * side > 0.0).map_or(25.0 * side, |t| t.at.y);
         (lo - pad, hi + pad, y, None)
     };
     // A body with its points on its bottom edge frames upwards, as a card at 180° does.
@@ -441,11 +441,15 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                     .find(|x| **x != t)
                     .map(|x| {
                         let name = crate::terminal_strips::terminal_blocks::connection_point_name(doc, *x);
-                        match doc.terminals.get(x).and_then(|t| t.device()).and_then(|c| crate::devices::tag_of(doc, c)) {
+                        match doc.connection_points.get(x).and_then(|t| t.device()).and_then(|c| crate::devices::tag_of(doc, c)) {
                             Some(_) if !name.contains(':') => {
                                 format!(
                                     "{}:{name}",
-                                    doc.terminals.get(x).and_then(|t| t.device()).map(|c| crate::devices::tag_words(doc, c)).unwrap_or_default()
+                                    doc.connection_points
+                                        .get(x)
+                                        .and_then(|t| t.device())
+                                        .map(|c| crate::devices::tag_words(doc, c))
+                                        .unwrap_or_default()
                                 )
                             }
                             _ => name,

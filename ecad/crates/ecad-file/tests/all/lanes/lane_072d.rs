@@ -100,7 +100,7 @@ fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
         .commit(
             Author::User,
             "bar",
-            vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddConnectionPoint { id: t, terminal: bar.clone() }],
+            vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddConnectionPoint { id: t, connection_point: bar.clone() }],
         )
         .unwrap();
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
@@ -108,7 +108,7 @@ fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
         let p = dir.path(name);
         Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
         let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
-        assert_eq!(opened.ledger.document().terminals.get(&t), Some(&bar), "{name}");
+        assert_eq!(opened.ledger.document().connection_points.get(&t), Some(&bar), "{name}");
     }
     let mut v = serde_json::to_value(Rec::from(&bar)).unwrap();
     assert_eq!(v["accepts"], 12);

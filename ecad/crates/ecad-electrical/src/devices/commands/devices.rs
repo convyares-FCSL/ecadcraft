@@ -1,6 +1,6 @@
 //! The rules of the device commands (design 018 §6–§8; experiments 004 and 008): tag settings
 //! (`tagsettings`), deleting a wire, device or cable (`ecaddelete`, `devicedelete`), and the ops of
-//! `convertcomponent` and `addterminal`. Typed input in, ops and a plain result (or a
+//! `convertcomponent` and `addconnectionpoint`. Typed input in, ops and a plain result (or a
 //! [`CmdError`]) out.
 //!
 //! Excludes: what a handle on the page is (the engine crate's page map), committing and the JSON
@@ -176,7 +176,7 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
             ops.extend(crate::wires::free_points_ops(doc, doc.connection_points_of(c).map(|(t, _)| t)));
             ops.extend(remove_representations(doc, Subject::Device(c)));
             for (t, term) in doc.connection_points_of(c) {
-                ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
+                ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
             }
             // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
             let (released_ops, released) =
@@ -204,7 +204,7 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
     }
 }
 
-// ---------------------------------------------------------------- convertcomponent, addterminal
+// ---------------------------------------------------------------- convertcomponent, addconnectionpoint
 
 /// A component made of drawn geometry ([`plan_convert`]).
 #[derive(Debug, Clone, PartialEq)]
@@ -238,12 +238,12 @@ pub fn plan_convert(ids: &mut IdAllocator, page: PageId, items: Vec<ItemId>) -> 
 /// The refusal of an item that belongs to no component.
 pub const NOT_A_COMPONENTS_ITEM: &str = "that item is not part of a component";
 
-/// `addterminal` (experiment 008): a connection point labelled `label` at `at` on the drawn
+/// `addconnectionpoint` (experiment 008): a connection point labelled `label` at `at` on the drawn
 /// component that `item` is part of.
 ///
 /// # Errors
 /// An item of no component; a placed symbol (its connection points come from its definition).
-pub fn plan_addterminal(
+pub fn plan_addconnectionpoint(
     doc: &Document, ids: &mut IdAllocator, item: ItemId, at: Pt, label: Option<String>,
 ) -> Result<(ConnectionPointId, Vec<Op>), CmdError> {
     let (rid, r) = doc.representation_of_item(item).ok_or(CmdError::refused(NOT_A_COMPONENTS_ITEM))?;
@@ -255,7 +255,7 @@ pub fn plan_addterminal(
     let mut after = r.clone();
     after.connection_points.insert(t, at);
     let ops = vec![
-        Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { owner: c.into(), label, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: t, connection_point: ConnectionPoint { owner: c.into(), label, key: None, accepts: Default::default() } },
         Op::ModifyRepresentation { id: rid, before: r.clone(), after },
     ];
     Ok((t, ops))

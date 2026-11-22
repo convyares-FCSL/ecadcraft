@@ -1,7 +1,7 @@
 //! The interactive forms of brief 028 (design 028 §3.2, §4): Place Terminals and Draw Bridge.
 //! Brief 036 (design 036 §3.2) adds Place Terminals' type, level and position prompts.
 //! Like every ECAD form they only collect and resolve values; each commit runs the command's JSON
-//! form (`terminals`, `bridge`).
+//! form (`connection_points`, `bridge`).
 
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
@@ -20,9 +20,9 @@ use ecad_electrical::terminal_strips::terminal_blocks as tt;
 
 // ---------------------------------------------------------------- Place Terminals (§3.2)
 
-/// `terminals`: which strip (Enter: the last one used, or a new one), the terminal type and level
+/// `connection_points`: which strip (Enter: the last one used, or a new one), the terminal type and level
 /// (brief 036), then a line across the wires.
-pub(crate) fn terminals(s: &Session) -> R<Box<dyn Interactive>> {
+pub(crate) fn terminal_blocks(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let (last, last_type) = read(s, |p, _| {
         let doc = p.ledger.document();
@@ -138,7 +138,7 @@ impl PlaceTerminalBlocks {
     }
 
     /// The crossings of `from → to` the JSON form would land on, and a line of text.
-    fn look(&self, s: &Session, from: Pt, to: Pt) -> Option<(Vec<(Pt, String)>, String, bool)> {
+    fn draw(&self, s: &Session, from: Pt, to: Pt) -> Option<(Vec<(Pt, String)>, String, bool)> {
         read(s, |p, page| {
             if from.near(to, p.tolerance) {
                 return Ok(None);
@@ -195,7 +195,7 @@ impl PlaceTerminalBlocks {
                 params["position"] = json!(p);
             }
         }
-        commit(s, "terminals", &params)?;
+        commit(s, "terminalblocks", &params)?;
         Ok(Step::Done)
     }
 
@@ -254,7 +254,7 @@ impl PlaceTerminalBlocks {
 
 impl Interactive for PlaceTerminalBlocks {
     fn name(&self) -> &'static str {
-        "TERMINALS"
+        "TERMINAL_BLOCKS"
     }
     fn prompt(&self, s: &Session) -> Prompt {
         let text = Accept { point: false, number: false, text: true, select: false, enter: true };
@@ -267,8 +267,8 @@ impl Interactive for PlaceTerminalBlocks {
             (Stage::Level, _) => {
                 let mut words = self.level_names(s);
                 words.push("All".into());
-                let refs: Vec<&str> = words.iter().map(String::as_str).collect();
-                let mut p = Prompt::new("Level", text).kw(&refs);
+                let references: Vec<&str> = words.iter().map(String::as_str).collect();
+                let mut p = Prompt::new("Level", text).kw(&references);
                 p.default = words.first().cloned();
                 p
             }
@@ -289,7 +289,7 @@ impl Interactive for PlaceTerminalBlocks {
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
         paper_guard(s, &i)?;
-        safely(s, "terminals", |s| self.step(s, i))
+        safely(s, "terminalblocks", |s| self.step(s, i))
     }
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         match self.first {
@@ -303,7 +303,7 @@ impl Interactive for PlaceTerminalBlocks {
         if !in_range(cursor) {
             return Vec::new();
         }
-        let Some((rings, text, refused)) = self.look(s, a, pt(cursor)) else { return Vec::new() };
+        let Some((rings, text, refused)) = self.draw(s, a, pt(cursor)) else { return Vec::new() };
         let mut out = Vec::new();
         for (at, label) in rings {
             out.push(preview_entity(s, ring_kind(at, RING_PX, px), ATTACHED_ACI));

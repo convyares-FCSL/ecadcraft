@@ -279,7 +279,7 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
             let doc = s.h.doc();
             ecad_model::connectivity::derive::connection_point_positions(&doc, s.supply)
                 .into_iter()
-                .find(|(t, _, _)| doc.terminals[t].device().unwrap() == coil)
+                .find(|(t, _, _)| doc.connection_points[t].device().unwrap() == coil)
                 .unwrap()
                 .2
         })
@@ -400,7 +400,7 @@ fn wire_and_reference_properties_follow_the_objects_they_name() {
     let doc = s.h.doc();
     let (_, _, at) = ecad_model::connectivity::derive::connection_point_positions(&doc, s.supply)
         .into_iter()
-        .find(|(t, _, _)| doc.terminals[t].device().unwrap() == coil)
+        .find(|(t, _, _)| doc.connection_points[t].device().unwrap() == coil)
         .unwrap();
     let w: WireId = id(&s.h.wire_pp(&[(at.x, at.y), (at.x + 40.0, at.y)]).unwrap(), "conductor");
     let route = s.h.route_handle(s.supply, w);

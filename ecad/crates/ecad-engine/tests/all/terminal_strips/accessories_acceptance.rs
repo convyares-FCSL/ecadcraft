@@ -54,13 +54,13 @@ fn fixture(seed: u64, parts: bool) -> A {
     let v = h.run("cableslash", json!({"from": [90, 120], "to": [260, 120], "tag": "-W01"})).unwrap();
     let cable: ecad_model::CableId = id(&v, "cable");
     h.run("setprop", json!({"cable": cable.hex(), "key": "type", "value": "YSLY-JZ 7G1.5"})).unwrap();
-    let v = h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     let x1: DeviceId = id(&v, "strip");
-    let t: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let t: Vec<ConnectionPointId> = v["connection_points"].as_array().unwrap().iter().map(|x| id(x, "connection_point")).collect();
     assert_eq!(t.len(), 4, "{v}");
     h.run("bridge", json!({"from": t[2].hex(), "to": t[3].hex()})).unwrap();
-    h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "12+2PE"})).unwrap();
-    h.run("place", json!({"symbol": "terminalpe", "at": [360, 250], "device": x1.hex()})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "12+2PE"})).unwrap();
+    h.run("place", json!({"symbol": "terminalblockpe", "at": [360, 250], "device": x1.hex()})).unwrap();
     if parts {
         h.run(
             "projectprops",
@@ -83,13 +83,13 @@ fn second_strip(h: &mut H) -> (DeviceId, Vec<ConnectionPointId>) {
     for x in [320.0, 330.0] {
         h.run("wire", json!({"points": pts(&[(x, 270.0), (x, 160.0)])})).unwrap();
     }
-    let v = h.run("terminals", json!({"from": [310, 200], "to": [340, 200]})).unwrap();
-    (id(&v, "strip"), v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect())
+    let v = h.run("terminalblocks", json!({"from": [310, 200], "to": [340, 200]})).unwrap();
+    (id(&v, "strip"), v["connection_points"].as_array().unwrap().iter().map(|x| id(x, "connection_point")).collect())
 }
 
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ from a rebuild");
@@ -99,7 +99,7 @@ fn same_as_built(h: &mut H) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
+    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -194,7 +194,7 @@ fn rows_have_a_way_out(h: &mut H, kind: &str) {
 }
 
 fn net_number(h: &mut H, t: ConnectionPointId) -> Value {
-    h.run("net", json!({"terminal": t.hex()})).unwrap()["number"].clone()
+    h.run("net", json!({"connection_point": t.hex()})).unwrap()["number"].clone()
 }
 
 fn click(h: &mut H, at: ecad_model::Pt) -> cadcraft_engine::Result<()> {
@@ -221,7 +221,7 @@ struct Drawn {
 }
 
 /// The link lines on `page` (the page must be open).
-fn link_lines(h: &mut H, page: PageId) -> Vec<Drawn> {
+fn jumper_bar_lines(h: &mut H, page: PageId) -> Vec<Drawn> {
     h.activate(page);
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
     let mut out = Vec::new();
@@ -250,8 +250,8 @@ fn near(a: f64, b: f64) -> bool {
     (a - b).abs() < 0.05
 }
 
-fn has_acc_or_link_key(d: &Document) -> bool {
-    d.devices.values().any(|c| c.properties.keys().any(|k| k.starts_with("acc.") || k.starts_with("link.") || k.starts_with("jumper.")))
+fn has_acc_or_jumper_bar_key(d: &Document) -> bool {
+    d.devices.values().any(|c| c.properties.keys().any(|k| k.starts_with("acc.") || k.starts_with("jumper_bar.") || k.starts_with("jumper.")))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -266,7 +266,7 @@ fn a_fixture_a_shows_no_accessories() {
     for part in ["ES-1", "EP-1", "TP-1", "MK-1"] {
         assert!(bom_rows(&mut a.h, part).is_empty(), "{part} on the BOM with nothing placed");
     }
-    assert!(!has_acc_or_link_key(&a.h.doc()));
+    assert!(!has_acc_or_jumper_bar_key(&a.h.doc()));
     same_as_built(&mut a.h);
     a.h.check();
 }
@@ -278,7 +278,7 @@ fn a_fixture_a_shows_no_accessories() {
 fn b_to_d_placing_accessories_plan_bom_undo_redo() {
     let mut a = fixture(0x7030_0002, true);
     a.h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
     let s = a.x1.hex();
     // B
@@ -331,7 +331,7 @@ fn b_to_d_placing_accessories_plan_bom_undo_redo() {
     step(&mut a.h, "accessory", json!({"strip": s, "at": "end", "remove": ["end_stop"]}));
     assert_eq!(squash(prop(&mut a.h, a.x1, "acc.end")).as_deref(), Some("end_plate"));
     // `{terminal}` names the strip and the label: an end plate after 2.
-    step(&mut a.h, "accessory", json!({"terminal": a.t[1].hex(), "items": ["end_plate"]}));
+    step(&mut a.h, "accessory", json!({"connection_point": a.t[1].hex(), "items": ["end_plate"]}));
     assert_eq!(prop(&mut a.h, a.x1, "acc.after.2").as_deref(), Some("end_plate"));
     // Typed through setprop: spaces and case ignored, stored canonical.
     step(&mut a.h, "setprop", json!({"component": s, "key": "acc.start", "value": " End_Stop , STRIP_LABEL "}));
@@ -362,17 +362,17 @@ fn marker_cards_follow_per_card_strip_then_project() {
 }
 
 /// Design E (AC 2, AC 10): swapping 1 and 2 in drawing order, `renumber {kind: "terminals"}`
-/// moves `acc.after.*` and `acc.on.*` with their terminals and rewrites `link.<n>` in the same
+/// moves `acc.after.*` and `acc.on.*` with their terminals and rewrites `jumper_bar.<n>` in the same
 /// transaction; the preview lists the moves and writes nothing; `u` restores all.
 #[test]
-fn e_renumber_moves_acc_and_link_keys_in_one_transaction() {
+fn e_renumber_moves_acc_and_jumper_bar_keys_in_one_transaction() {
     let mut a = fixture(0x7030_0004, true);
     let s = a.x1.hex();
     a.h.run("accessory", json!({"strip": s, "at": "1", "items": ["partition"]})).unwrap();
     a.h.run("accessory", json!({"strip": s, "at": "2", "items": ["end_plate"]})).unwrap();
     a.h.run("accessory", json!({"strip": s, "at": "1", "on": true, "items": ["marker"]})).unwrap();
     a.h.run("jumper", json!({"strip": s, "positions": "1, 3", "skip": true})).unwrap();
-    assert_eq!(squash(prop(&mut a.h, a.x1, "link.1")).as_deref(), Some("1,3"));
+    assert_eq!(squash(prop(&mut a.h, a.x1, "jumper_bar.1")).as_deref(), Some("1,3"));
     // Swap 1 and 2 by moving (wires follow).
     let doc = a.h.doc();
     // The strip's first symbol is of its own definition: its terminal is matched by key and its
@@ -389,22 +389,22 @@ fn e_renumber_moves_acc_and_link_keys_in_one_transaction() {
     a.h.run("move", json!({"handles": [h2.hex()], "delta": [-60, 0]})).unwrap();
     // Preview: lists the moves, writes nothing.
     let head = a.h.head();
-    let pv = a.h.run("renumber", json!({"kind": "terminals", "preview": true})).unwrap();
+    let pv = a.h.run("renumber", json!({"kind": "terminal_blocks", "preview": true})).unwrap();
     assert_eq!(a.h.head(), head, "the preview writes nothing");
     let text = pv.to_string();
     assert!(text.contains("partition after 1"), "preview lists the partition move: {pv}");
-    assert!(text.contains("link"), "preview lists the link rewrite: {pv}");
+    assert!(text.contains("jumper_bar"), "preview lists the link rewrite: {pv}");
     let before = a.h.doc();
-    a.h.run("renumber", json!({"kind": "terminals"})).unwrap();
+    a.h.run("renumber", json!({"kind": "terminal_blocks"})).unwrap();
     assert_eq!(a.h.head(), head + 1, "one transaction");
     let d = a.h.doc();
-    assert_eq!(d.terminals[&a.t[0]].label.as_deref(), Some("2"));
-    assert_eq!(d.terminals[&a.t[1]].label.as_deref(), Some("1"));
+    assert_eq!(d.connection_points[&a.t[0]].label.as_deref(), Some("2"));
+    assert_eq!(d.connection_points[&a.t[1]].label.as_deref(), Some("1"));
     assert_eq!(prop(&mut a.h, a.x1, "acc.after.2").as_deref(), Some("partition"), "partition follows old 1");
     assert_eq!(prop(&mut a.h, a.x1, "acc.after.1").as_deref(), Some("end_plate"), "end plate follows old 2");
     assert_eq!(prop(&mut a.h, a.x1, "acc.on.2").as_deref(), Some("marker"));
     assert_eq!(prop(&mut a.h, a.x1, "acc.on.1"), None);
-    assert_eq!(squash(prop(&mut a.h, a.x1, "link.1")).as_deref(), Some("2-3"), "the link keeps its terminals, re-collapsed");
+    assert_eq!(squash(prop(&mut a.h, a.x1, "jumper_bar.1")).as_deref(), Some("2-3"), "the link keeps its terminals, re-collapsed");
     same_as_built(&mut a.h);
     a.h.cmdline("u");
     assert_eq!(model_parts(&a.h.doc()), model_parts(&before), "one u restores labels and keys");
@@ -423,30 +423,30 @@ fn f_orphans_and_their_fixes() {
     a.h.run("jumper", json!({"strip": s, "positions": "3-6"})).unwrap();
     assert!(checks_of(&mut a.h, "accessory-orphan").is_empty());
     // Lower the offer: 10, 5 and 6 are gone; nothing is refused.
-    a.h.run("setprop", json!({"component": s, "key": "terminals", "value": "4+1PE"})).unwrap();
+    a.h.run("setprop", json!({"component": s, "key": "terminal_blocks", "value": "4+1PE"})).unwrap();
     assert_eq!(prop(&mut a.h, a.x1, "acc.after.10").as_deref(), Some("partition"), "the key is kept");
     let rows = checks_of(&mut a.h, "accessory-orphan");
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0]["which"], "-X01: partition after 10, but -X01 has no position 10", "{}", rows[0]);
     rows_have_a_way_out(&mut a.h, "accessory-orphan");
-    let rows = checks_of(&mut a.h, "link-orphan");
+    let rows = checks_of(&mut a.h, "jumper-bar-orphan");
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert!(rows[0]["which"].as_str().unwrap_or("").contains("link 3-6"), "{}", rows[0]);
-    rows_have_a_way_out(&mut a.h, "link-orphan");
+    rows_have_a_way_out(&mut a.h, "jumper-bar-orphan");
     // Remove: the key cleared.
     step(&mut a.h, "setprop", json!({"component": s, "key": "acc.after.10", "value": null}));
     assert!(checks_of(&mut a.h, "accessory-orphan").is_empty());
     // Drop missing positions.
     let head = a.h.head();
-    a.h.run("jumper", json!({"link": {"strip": s, "n": 1}, "positions": "3-4"})).unwrap();
+    a.h.run("jumper", json!({"jumper_bar": {"strip": s, "n": 1}, "positions": "3-4"})).unwrap();
     assert_eq!(a.h.head(), head + 1);
-    assert!(checks_of(&mut a.h, "link-orphan").is_empty());
+    assert!(checks_of(&mut a.h, "jumper-bar-orphan").is_empty());
     a.h.cmdline("u");
-    assert_eq!(checks_of(&mut a.h, "link-orphan").len(), 1);
+    assert_eq!(checks_of(&mut a.h, "jumper-bar-orphan").len(), 1);
     // Delete link.
-    step(&mut a.h, "jumper", json!({"link": {"strip": s, "n": 1}, "delete": true}));
-    assert_eq!(prop(&mut a.h, a.x1, "link.1"), None);
-    assert!(checks_of(&mut a.h, "link-orphan").is_empty());
+    step(&mut a.h, "jumper", json!({"jumper_bar": {"strip": s, "n": 1}, "delete": true}));
+    assert_eq!(prop(&mut a.h, a.x1, "jumper_bar.1"), None);
+    assert!(checks_of(&mut a.h, "jumper-bar-orphan").is_empty());
     // An accessory with no part number is counted (Info) with Show.
     a.h.run("accessory", json!({"strip": s, "at": "start", "items": ["strip_label"]})).unwrap();
     let rows = checks_of(&mut a.h, "no-accessory-part");
@@ -459,32 +459,32 @@ fn f_orphans_and_their_fixes() {
 /// Design P (AC 4, brief: a link across a partition is a warning, never a refusal): Split link at
 /// 4 and Remove partition each clear the row in one transaction.
 #[test]
-fn p_link_across_partition_is_a_warning_with_fixes() {
+fn p_jumper_bar_across_partition_is_a_warning_with_fixes() {
     let mut a = fixture(0x7030_0006, true);
     let s = a.x1.hex();
     a.h.run("accessory", json!({"strip": s, "at": "4", "items": ["partition"]})).unwrap();
     let v = a.h.run("jumper", json!({"strip": s, "positions": "3-6"}));
     assert!(v.is_ok(), "a link across a partition is never refused: {v:?}");
-    let rows = checks_of(&mut a.h, "link-across-partition");
+    let rows = checks_of(&mut a.h, "jumper-bar-across-partition");
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0]["which"], "-X01: link 3-6 crosses the partition after 4", "{}", rows[0]);
     assert_eq!(rows[0]["severity"], "warning", "{}", rows[0]);
-    rows_have_a_way_out(&mut a.h, "link-across-partition");
+    rows_have_a_way_out(&mut a.h, "jumper-bar-across-partition");
     // Split link at 4: two links, one transaction.
-    step(&mut a.h, "jumper", json!({"link": {"strip": s, "n": 1}, "split_at": "4"}));
-    let links: Vec<String> = props(&mut a.h, a.x1)
+    step(&mut a.h, "jumper", json!({"jumper_bar": {"strip": s, "n": 1}, "split_at": "4"}));
+    let jumper_bars: Vec<String> = props(&mut a.h, a.x1)
         .into_iter()
-        .filter(|(k, _)| k.starts_with("link.") && k[5..].chars().all(|c| c.is_ascii_digit()))
+        .filter(|(k, _)| k.starts_with("jumper_bar.") && k[5..].chars().all(|c| c.is_ascii_digit()))
         .map(|(_, v)| v.replace(' ', ""))
         .collect();
-    assert_eq!(links.len(), 2, "{links:?}");
-    assert!(links.contains(&"3-4".to_string()) && links.contains(&"5-6".to_string()), "{links:?}");
-    assert!(checks_of(&mut a.h, "link-across-partition").is_empty());
+    assert_eq!(jumper_bars.len(), 2, "{jumper_bars:?}");
+    assert!(jumper_bars.contains(&"3-4".to_string()) && jumper_bars.contains(&"5-6".to_string()), "{jumper_bars:?}");
+    assert!(checks_of(&mut a.h, "jumper-bar-across-partition").is_empty());
     a.h.cmdline("u");
-    assert_eq!(checks_of(&mut a.h, "link-across-partition").len(), 1);
+    assert_eq!(checks_of(&mut a.h, "jumper-bar-across-partition").len(), 1);
     // Remove partition.
     step(&mut a.h, "accessory", json!({"strip": s, "at": "4", "remove": ["partition"]}));
-    assert!(checks_of(&mut a.h, "link-across-partition").is_empty());
+    assert!(checks_of(&mut a.h, "jumper-bar-across-partition").is_empty());
     same_as_built(&mut a.h);
     a.h.check();
 }
@@ -499,7 +499,7 @@ fn g_update_maps_recompute_only_what_changed() {
     a.h.run("accessory", json!({"strip": x2.hex(), "at": "start", "items": ["end_stop"]})).unwrap();
     a.h.run("setprop", json!({"component": x2.hex(), "key": "end_stop.part_number", "value": "ES-OWN"})).unwrap();
     a.h.cfg(|p| {
-        p.outputs();
+        p.reports();
     });
     let work = |h: &mut H| h.p(|p| p.kept_reports().unwrap().strips.last_work);
     let x2_before = plan(&mut a.h, x2);
@@ -541,7 +541,7 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
     let json_tx = {
         let mut b = fixture(0x7030_0008, true);
         second_strip(&mut b.h);
-        b.h.run("jumper", json!({"terminals": [b.t[0].hex(), b.t[3].hex()]})).unwrap();
+        b.h.run("jumper", json!({"connection_points": [b.t[0].hex(), b.t[3].hex()]})).unwrap();
         b.h.p(|p| p.ledger.log().last().cloned()).unwrap()
     };
     let mut a = fixture(0x7030_0008, true);
@@ -569,10 +569,10 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
     click(&mut a.h, at[2]).unwrap();
     a.h.s.input(Input::Enter).unwrap();
     assert_eq!(a.h.head(), head + 1);
-    assert_eq!(squash(prop(&mut a.h, a.x1, "link.1")).as_deref(), Some("1,3"));
+    assert_eq!(squash(prop(&mut a.h, a.x1, "jumper_bar.1")).as_deref(), Some("1,3"));
     a.h.cmdline("u");
     assert_eq!(a.h.head(), head + 2);
-    assert_eq!(prop(&mut a.h, a.x1, "link.1"), None);
+    assert_eq!(prop(&mut a.h, a.x1, "jumper_bar.1"), None);
     // Range: 1, (another strip: refused, carries on), 4, Enter.
     let head = a.h.head();
     a.h.s.start("jumper").unwrap();
@@ -587,7 +587,7 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
     click(&mut a.h, at[3]).unwrap();
     a.h.s.input(Input::Enter).unwrap();
     assert_eq!(a.h.head(), head + 1, "one transaction");
-    assert_eq!(squash(prop(&mut a.h, a.x1, "link.1")).as_deref(), Some("1-4"));
+    assert_eq!(squash(prop(&mut a.h, a.x1, "jumper_bar.1")).as_deref(), Some("1-4"));
     let tx = a.h.p(|p| p.ledger.log().last().cloned()).unwrap();
     assert_eq!(tx.ops, json_tx.ops, "the tool records what the JSON form records");
     assert_eq!(tx.label, json_tx.label);
@@ -600,19 +600,20 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
     assert_ne!(net_number(&mut a.h, a.t[0]), net_number(&mut a.h, a.t[3]), "u splits the numbers again");
     a.h.run("redo", Value::Null).unwrap();
     // The line: dashed, through 1-4 on y 170, no stub (5…12 are not in the link).
-    let lines = link_lines(&mut a.h, a.page);
+    let lines = jumper_bar_lines(&mut a.h, a.page);
     assert!(!lines.is_empty(), "the page draws the link line");
     assert!(lines.iter().any(|d| d.linetype.to_lowercase().contains("dash")), "dashed: {:?}", lines.iter().map(|d| &d.linetype).collect::<Vec<_>>());
     let (x0, y0, x1, y1) = extent(&lines);
     assert!(near(x0, at[0].x) && near(x1, at[3].x), "through 1..4, no stub: {x0}..{x1}");
     assert!(near(y0, at[0].y) && near(y1, at[0].y), "lane 0 through the centres: {y0}..{y1}");
     // A skip link 1, 3 overlaps: lane 1, 1.5 mm off the row, never crossing.
-    a.h.run("jumper", json!({"terminals": [a.t[0].hex(), a.t[2].hex()], "skip": true})).unwrap();
-    assert_eq!(squash(prop(&mut a.h, a.x1, "link.2")).as_deref(), Some("1,3"));
+    a.h.run("jumper", json!({"connection_points": [a.t[0].hex(), a.t[2].hex()], "skip": true})).unwrap();
+    assert_eq!(squash(prop(&mut a.h, a.x1, "jumper_bar.2")).as_deref(), Some("1,3"));
     let p = plan(&mut a.h, a.x1);
-    let lanes: Vec<(u64, u64)> = p["links"].as_array().unwrap().iter().map(|l| (l["link"].as_u64().unwrap(), l["lane"].as_u64().unwrap())).collect();
+    let lanes: Vec<(u64, u64)> =
+        p["jumper_bars"].as_array().unwrap().iter().map(|l| (l["jumper_bar"].as_u64().unwrap(), l["lane"].as_u64().unwrap())).collect();
     assert_eq!(lanes, [(1, 0), (2, 1)], "{p}");
-    let lines = link_lines(&mut a.h, a.page);
+    let lines = jumper_bar_lines(&mut a.h, a.page);
     let ys: std::collections::BTreeSet<i64> =
         lines.iter().flat_map(|d| d.pts.windows(2).filter(|w| near(w[0].1, w[1].1)).map(|w| (w[0].1 * 100.0).round() as i64)).collect();
     let base = (at[0].y * 100.0).round() as i64;
@@ -624,20 +625,20 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
 /// line with a 4 mm stub past its last shown terminal; the other page draws only the stub; a
 /// change of the link updates both pages.
 #[test]
-fn m_link_line_on_every_page_with_stub() {
+fn m_jumper_bar_line_on_every_page_with_stub() {
     let mut a = fixture(0x7030_0009, true);
     let p2: PageId = id(&a.h.run("newpage", json!({"title": "Two"})).unwrap(), "page");
     a.h.activate(p2);
     a.h.run("wire", json!({"points": pts(&[(100.0, 200.0), (100.0, 100.0)])})).unwrap();
-    let v = a.h.run("place", json!({"symbol": "terminal", "at": [100, 150], "device": a.x1.hex()})).unwrap();
+    let v = a.h.run("place", json!({"symbol": "terminalblock", "at": [100, 150], "device": a.x1.hex()})).unwrap();
     let doc = a.h.doc();
     // The terminal drawn on page 2 (PE terminals have numeric labels too, so pick by page).
     let far: ConnectionPointId = ecad_model::connectivity::derive::connection_point_positions(&doc, p2)
         .into_iter()
         .map(|(x, _, _)| x)
-        .find(|x| doc.terminals.get(x).is_some_and(|t| t.device() == Some(a.x1)))
+        .find(|x| doc.connection_points.get(x).is_some_and(|t| t.device() == Some(a.x1)))
         .unwrap_or_else(|| panic!("{v}"));
-    let far_label = doc.terminals[&far].label.clone().unwrap();
+    let far_label = doc.connection_points[&far].label.clone().unwrap();
     a.h.run("jumper", json!({"strip": a.x1.hex(), "positions": format!("3-{far_label}")})).unwrap();
     let at3 = a.h.connection_point_pos(a.page, a.t[2]);
     let at4 = a.h.connection_point_pos(a.page, a.t[3]);
@@ -646,10 +647,10 @@ fn m_link_line_on_every_page_with_stub() {
     // stub past 5").
     let last = ecad_model::connectivity::derive::connection_point_positions(&a.h.doc(), a.page)
         .into_iter()
-        .find(|(x, _, _)| !a.t.contains(x) && doc.terminals.get(x).is_some_and(|t| t.device() == Some(a.x1)))
+        .find(|(x, _, _)| !a.t.contains(x) && doc.connection_points.get(x).is_some_and(|t| t.device() == Some(a.x1)))
         .map(|(_, _, p)| p)
         .expect("the PE terminal on page 1");
-    let lines = link_lines(&mut a.h, a.page);
+    let lines = jumper_bar_lines(&mut a.h, a.page);
     let (x0, _, _, _) = extent(&lines);
     assert!(near(x0, at3.x), "starts at 3 (3 is the link's first position): {x0}");
     let pts: Vec<(f64, f64)> = lines.iter().flat_map(|d| d.pts.clone()).collect();
@@ -658,14 +659,14 @@ fn m_link_line_on_every_page_with_stub() {
     assert!(pts.iter().any(|p| near(dist(p), 4.0)), "a 4 mm stub past 5: {pts:?}");
     assert!(pts.iter().all(|p| dist(p) <= 4.05 || p.0 <= last.x), "nothing beyond the stub: {pts:?}");
     let atf = a.h.connection_point_pos(p2, far);
-    let lines = link_lines(&mut a.h, p2);
+    let lines = jumper_bar_lines(&mut a.h, p2);
     assert!(!lines.is_empty(), "page 2 draws the stub");
     let (x0, y0, x1, y1) = extent(&lines);
     assert!(near(x0, atf.x) && near(x1, atf.x + 4.0) && near(y0, atf.y) && near(y1, atf.y), "only a stub to the right: {x0},{y0}..{x1},{y1}");
     // Shorten to 3-4: page 2 has no line, page 1 no stub.
-    a.h.run("jumper", json!({"link": {"strip": a.x1.hex(), "n": 1}, "positions": "3-4"})).unwrap();
-    assert!(link_lines(&mut a.h, p2).is_empty(), "page 2 updated when the link changed");
-    let (_, _, x1, _) = extent(&link_lines(&mut a.h, a.page));
+    a.h.run("jumper", json!({"jumper_bar": {"strip": a.x1.hex(), "n": 1}, "positions": "3-4"})).unwrap();
+    assert!(jumper_bar_lines(&mut a.h, p2).is_empty(), "page 2 updated when the link changed");
+    let (_, _, x1, _) = extent(&jumper_bar_lines(&mut a.h, a.page));
     assert!(near(x1, at4.x), "no stub now: {x1}");
     a.h.check();
 }
@@ -678,37 +679,37 @@ fn n_extend_shorten_split_delete_each_one_transaction() {
     let s = a.x1.hex();
     a.h.run("jumper", json!({"strip": s, "positions": "3-6"})).unwrap();
     let l1 = json!({"strip": s, "n": 1});
-    let v = step(&mut a.h, "jumper", json!({"link": l1, "add": ["7", "8"]}));
-    assert_eq!(squash(prop(&mut a.h, a.x1, "link.1")).as_deref(), Some("3-8"), "{v}");
-    step(&mut a.h, "jumper", json!({"link": l1, "remove": ["5"]}));
-    assert_eq!(squash(prop(&mut a.h, a.x1, "link.1")).as_deref(), Some("3-4,6-8"));
-    a.h.run("setprop", json!({"component": s, "key": "link.1.part_number", "value": "JB-RD"})).unwrap();
-    step(&mut a.h, "jumper", json!({"link": l1, "split_at": "4"}));
-    let links: BTreeMap<String, String> =
-        props(&mut a.h, a.x1).into_iter().filter(|(k, _)| k.starts_with("link.") && k[5..].chars().all(|c| c.is_ascii_digit())).collect();
-    assert_eq!(links.len(), 2, "{links:?}");
-    assert_eq!(squash(links.get("link.1").cloned()).as_deref(), Some("3-4"));
-    let (k2, v2) = links.iter().find(|(k, _)| *k != "link.1").unwrap();
+    let v = step(&mut a.h, "jumper", json!({"jumper_bar": l1, "add": ["7", "8"]}));
+    assert_eq!(squash(prop(&mut a.h, a.x1, "jumper_bar.1")).as_deref(), Some("3-8"), "{v}");
+    step(&mut a.h, "jumper", json!({"jumper_bar": l1, "remove": ["5"]}));
+    assert_eq!(squash(prop(&mut a.h, a.x1, "jumper_bar.1")).as_deref(), Some("3-4,6-8"));
+    a.h.run("setprop", json!({"component": s, "key": "jumper_bar.1.part_number", "value": "JB-RD"})).unwrap();
+    step(&mut a.h, "jumper", json!({"jumper_bar": l1, "split_at": "4"}));
+    let jumper_bars: BTreeMap<String, String> =
+        props(&mut a.h, a.x1).into_iter().filter(|(k, _)| k.starts_with("jumper_bar.") && k[5..].chars().all(|c| c.is_ascii_digit())).collect();
+    assert_eq!(jumper_bars.len(), 2, "{jumper_bars:?}");
+    assert_eq!(squash(jumper_bars.get("jumper_bar.1").cloned()).as_deref(), Some("3-4"));
+    let (k2, v2) = jumper_bars.iter().find(|(k, _)| *k != "jumper_bar.1").unwrap();
     assert_eq!(squash(Some(v2.clone())).as_deref(), Some("6-8"));
     let n2: u64 = k2[5..].parse().unwrap();
     assert!(n2 >= 2, "a new number, never reused: {k2}");
     // Delete link 1 clears its part keys too.
-    step(&mut a.h, "jumper", json!({"link": l1, "delete": true}));
-    let left: Vec<String> = props(&mut a.h, a.x1).into_keys().filter(|k| k.starts_with("link.1")).collect();
-    assert!(left.iter().all(|k| !(k == "link.1" || k.starts_with("link.1."))), "{left:?}");
+    step(&mut a.h, "jumper", json!({"jumper_bar": l1, "delete": true}));
+    let left: Vec<String> = props(&mut a.h, a.x1).into_keys().filter(|k| k.starts_with("jumper_bar.1")).collect();
+    assert!(left.iter().all(|k| !(k == "jumper_bar.1" || k.starts_with("jumper_bar.1."))), "{left:?}");
     // Erase on the line of the remaining link (3-4 drawn on page 1 is gone; 6-8 are spares, so
     // make a drawn one first).
     a.h.run("jumper", json!({"strip": s, "positions": "1-2"})).unwrap();
-    let lines = link_lines(&mut a.h, a.page);
+    let lines = jumper_bar_lines(&mut a.h, a.page);
     assert!(!lines.is_empty());
     let head = a.h.head();
     let v = a.h.run("erase", json!({"handles": [lines[0].handle.hex()]})).unwrap();
     assert_eq!(a.h.head(), head + 1, "one transaction");
-    let _ = v; // the message is probed by `n_erase_on_a_link_line_says_deleted_link` (defect)
+    let _ = v; // the message is probed by `n_erase_on_a_jumper_bar_line_says_deleted_jumper_bar` (defect)
     assert!(props(&mut a.h, a.x1).values().all(|v| v.replace(' ', "") != "1-2"));
     // `move` on the line is refused (never geometry).
     a.h.cmdline("u");
-    let lines = link_lines(&mut a.h, a.page);
+    let lines = jumper_bar_lines(&mut a.h, a.page);
     let r = a.h.run("move", json!({"handles": [lines[0].handle.hex()], "delta": [0, 10]}));
     assert!(r.is_err() || a.h.head() == head + 2, "the line is never moved as geometry: {r:?}");
     same_as_built(&mut a.h);
@@ -734,11 +735,11 @@ fn o_jumper_bars_on_the_bom() {
     // A skip link's span counts every position between its ends (spares too).
     a.h.run("jumper", json!({"strip": s, "positions": "1, 3, 5", "skip": true})).unwrap();
     assert_eq!(bom_qty(&mut a.h, "JB-10"), 2);
-    step(&mut a.h, "setprop", json!({"component": s, "key": "link.2.part_number", "value": "JB-10-BU"}));
+    step(&mut a.h, "setprop", json!({"component": s, "key": "jumper_bar.2.part_number", "value": "JB-10-BU"}));
     assert_eq!(bom_qty(&mut a.h, "JB-10-BU"), 1, "its own row");
     assert_eq!(bom_qty(&mut a.h, "JB-10"), 1);
     let p = plan(&mut a.h, a.x1);
-    let bars: Vec<u64> = p["links"].as_array().unwrap().iter().map(|l| l["bars"].as_u64().unwrap()).collect();
+    let bars: Vec<u64> = p["jumper_bars"].as_array().unwrap().iter().map(|l| l["bars"].as_u64().unwrap()).collect();
     assert_eq!(bars, [1, 1], "{p}");
     let by_part = a.h.run("bom", json!({"group": "part"})).unwrap();
     assert!(by_part.to_string().contains("JB-10-BU"));
@@ -777,7 +778,7 @@ fn j_save_reopen_keeps_everything() {
     a.h.run("setprop", json!({"component": s, "key": "marker.per_card", "value": "4"})).unwrap();
     a.h.run("jumper", json!({"strip": s, "positions": "1-2"})).unwrap();
     a.h.run("jumper", json!({"strip": s, "positions": "3, 7", "skip": true})).unwrap();
-    a.h.run("setprop", json!({"component": s, "key": "link.2.part_number", "value": "JB-BU"})).unwrap();
+    a.h.run("setprop", json!({"component": s, "key": "jumper_bar.2.part_number", "value": "JB-BU"})).unwrap();
     a.h.run("setprop", json!({"component": s, "key": "jumper.bar", "value": "8"})).unwrap();
     a.h.run("projectprops", json!({"props": {"strip_jumper_part_number": "JB-10", "strip_jumper_bar": "10"}})).unwrap();
     a.h.check();
@@ -807,7 +808,7 @@ fn j_save_reopen_keeps_everything() {
 fn j_a_028_file_opens_unchanged_and_shows_no_accessories() {
     let dir = tmp_dir("old");
     let mut a = fixture(0x7030_000e, false);
-    assert!(!has_acc_or_link_key(&a.h.doc()));
+    assert!(!has_acc_or_jumper_bar_key(&a.h.doc()));
     a.h.cfg(|p| p.persistence = Persistence::File);
     let path = dir.join("old 028.ecad").display().to_string();
     a.h.run("saveas", json!({"path": path})).unwrap();
@@ -820,7 +821,7 @@ fn j_a_028_file_opens_unchanged_and_shows_no_accessories() {
     let p = h2.run("stripplan", json!({})).unwrap();
     assert!(p["strips"].as_array().unwrap().iter().all(|s| gap_rows(s).is_empty()), "{p}");
     assert_eq!(reads(&mut h2), before, "the same reads as before the save");
-    assert!(!has_acc_or_link_key(&h2.doc()));
+    assert!(!has_acc_or_jumper_bar_key(&h2.doc()));
     assert_eq!(h2.head(), head, "reads record nothing");
     h2.check();
     h2.close_all();
@@ -862,17 +863,17 @@ fn k_hostile_input_refused_without_panic() {
         ("setprop", json!({"component": s, "key": "jumper.bar", "value": "1"})),
         ("setprop", json!({"component": s, "key": "jumper.bar", "value": "51"})),
         ("setprop", json!({"component": s, "key": "jumper.bar", "value": "-3"})),
-        ("setprop", json!({"component": s, "key": "link.1", "value": "1\u{2013}x"})),
+        ("setprop", json!({"component": s, "key": "jumper_bar.1", "value": "1\u{2013}x"})),
         ("projectprops", json!({"props": {"strip_jumper_bar": "0"}})),
         ("projectprops", json!({"props": {"strip_marker_per_card": "1000"}})),
         ("jumper", json!({"positions": "1-4"})),
         ("jumper", json!({"strip": s, "positions": "1\u{2013}x"})),
         ("jumper", json!({"strip": s, "positions": ""})),
         ("jumper", json!({"strip": coil, "positions": "1-2"})),
-        ("jumper", json!({"terminals": [a.t[0].hex()]})),
-        ("jumper", json!({"terminals": [a.t[0].hex(), "ffffffffffffffffffffffffffffffff"]})),
-        ("jumper", json!({"link": {"strip": s, "n": 1}, "delete": true})),
-        ("jumper", json!({"link": {"strip": s, "n": u64::MAX}, "add": ["1"]})),
+        ("jumper", json!({"connection_points": [a.t[0].hex()]})),
+        ("jumper", json!({"connection_points": [a.t[0].hex(), "ffffffffffffffffffffffffffffffff"]})),
+        ("jumper", json!({"jumper_bar": {"strip": s, "n": 1}, "delete": true})),
+        ("jumper", json!({"jumper_bar": {"strip": s, "n": u64::MAX}, "add": ["1"]})),
     ];
     for (cmd, params) in refused {
         let shown = {
@@ -895,13 +896,13 @@ fn k_hostile_input_refused_without_panic() {
     let lenient: Vec<(&str, Value)> = vec![
         ("setprop", json!({"component": s, "key": format!("acc.after.{}", "9".repeat(10_000)), "value": "partition"})),
         ("setprop", json!({"component": coil, "key": "acc.after.1", "value": "partition"})),
-        ("setprop", json!({"component": coil, "key": "link.1", "value": "1-2"})),
-        ("setprop", json!({"component": s, "key": "link.1", "value": "1-99999"})),
-        ("setprop", json!({"component": s, "key": "link.0", "value": "1-4"})),
-        ("setprop", json!({"component": s, "key": "link.1000", "value": "1-4"})),
-        ("setprop", json!({"component": s, "key": "link.2", "value": "3"})),
-        ("setprop", json!({"component": s, "key": "link.3", "value": ",".repeat(5000)})),
-        ("setprop", json!({"component": s, "key": "link.4", "value": "1-".repeat(3000)})),
+        ("setprop", json!({"component": coil, "key": "jumper_bar.1", "value": "1-2"})),
+        ("setprop", json!({"component": s, "key": "jumper_bar.1", "value": "1-99999"})),
+        ("setprop", json!({"component": s, "key": "jumper_bar.0", "value": "1-4"})),
+        ("setprop", json!({"component": s, "key": "jumper_bar.1000", "value": "1-4"})),
+        ("setprop", json!({"component": s, "key": "jumper_bar.2", "value": "3"})),
+        ("setprop", json!({"component": s, "key": "jumper_bar.3", "value": ",".repeat(5000)})),
+        ("setprop", json!({"component": s, "key": "jumper_bar.4", "value": "1-".repeat(3000)})),
         ("jumper", json!({"strip": s, "positions": "1-99999"})),
         ("jumper", json!({"strip": s, "positions": "4-1"})),
         ("setprop", json!({"component": s, "key": "acc.on.4", "value": "marker,".repeat(8)})),
@@ -931,13 +932,13 @@ fn k_hostile_input_refused_without_panic() {
 /// Design §7.4: "Erase on a selected link deletes the link, saying so (`Deleted link -X01 1-4.`)".
 /// Defect: the erase deletes the link's keys (translate.rs) but echoes no note.
 #[test]
-fn n_erase_on_a_link_line_says_deleted_link() {
+fn n_erase_on_a_jumper_bar_line_says_deleted_jumper_bar() {
     let mut a = fixture(0x7030_000b, true);
     a.h.run("jumper", json!({"strip": a.x1.hex(), "positions": "1-2"})).unwrap();
-    let lines = link_lines(&mut a.h, a.page);
+    let lines = jumper_bar_lines(&mut a.h, a.page);
     assert!(!lines.is_empty());
     let v = a.h.run("erase", json!({"handles": [lines[0].handle.hex()]})).unwrap();
-    assert_eq!(prop(&mut a.h, a.x1, "link.1"), None, "the link is deleted");
+    assert_eq!(prop(&mut a.h, a.x1, "jumper_bar.1"), None, "the link is deleted");
     let said = format!("{v} {}", last_echo(&a.h));
     assert!(said.contains("Deleted link -X01 1-2"), "{said}");
 }

@@ -49,9 +49,9 @@ fn line(h: &mut H, points: &[(f64, f64)], extra: Value) -> ecad_model::RouteId {
     id(&h.run("wire", params).unwrap(), "route")
 }
 
-fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::ConnectionPointId {
-    let r = h.run("place", json!({"symbol": "terminal", "at": [at.0, at.1], "tag": tag})).unwrap();
-    id(&r["terminals"][0], "terminal")
+fn connection_point(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::ConnectionPointId {
+    let r = h.run("place", json!({"symbol": "terminalblock", "at": [at.0, at.1], "tag": tag})).unwrap();
+    id(&r["connection_points"][0], "connection_point")
 }
 
 fn rows(doc: &Document, ch: &Checks) -> Vec<String> {
@@ -64,9 +64,9 @@ fn rows(doc: &Document, ch: &Checks) -> Vec<String> {
 #[test]
 fn a_tee_needs_a_junction_and_a_crossing_never_connects() {
     let mut h = H::new(0x22_01);
-    terminal(&mut h, (0.0, 0.0), "X1");
-    terminal(&mut h, (60.0, 0.0), "X1");
-    terminal(&mut h, (30.0, 30.0), "X2");
+    connection_point(&mut h, (0.0, 0.0), "X1");
+    connection_point(&mut h, (60.0, 0.0), "X1");
+    connection_point(&mut h, (30.0, 30.0), "X2");
     let main = wire(&mut h, &[(0.0, 0.0), (60.0, 0.0)], json!({}));
     let page = h.first_page();
     let main_line = h.route_of(page, main);
@@ -75,9 +75,9 @@ fn a_tee_needs_a_junction_and_a_crossing_never_connects() {
     assert_eq!(doc.wires.len(), 1, "a T without a landing is not connected");
     assert_eq!(doc.routes[&tee].ends[1], ecad_model::RouteEnd::Free);
     let all = ecad_engine::checks::all(&doc, 1e-6);
-    let looks: Vec<_> = all.iter().filter(|c| c.kind == Kind::LooksConnected).collect();
-    assert_eq!(looks.len(), 1, "{all:?}");
-    let Some(Fix::Join(at)) = looks[0].fix else { panic!("no fix: {looks:?}") };
+    let draws: Vec<_> = all.iter().filter(|c| c.kind == Kind::LooksConnected).collect();
+    assert_eq!(draws.len(), 1, "{all:?}");
+    let Some(Fix::Join(at)) = draws[0].fix else { panic!("no fix: {draws:?}") };
     assert!(at.near(ecad_model::Pt::new(30.0, 0.0), 1e-9));
     // Join (the row's fix), then the T is one net with one number.
     let head = h.head();
@@ -147,7 +147,7 @@ fn every_wire_shows_its_number_cross_section_and_colour_never_upside_down() {
 #[test]
 fn adding_a_wire_never_renumbers_and_a_fixed_number_survives() {
     let mut h = H::new(0x22_03);
-    let t: Vec<_> = (0..6).map(|i| terminal(&mut h, (20.0 * i as f64, 0.0), "X1")).collect();
+    let t: Vec<_> = (0..6).map(|i| connection_point(&mut h, (20.0 * i as f64, 0.0), "X1")).collect();
     let _ = &t;
     let a = wire(&mut h, &[(0.0, 0.0), (20.0, 0.0)], json!({}));
     let b = wire(&mut h, &[(40.0, 0.0), (60.0, 0.0)], json!({}));
@@ -199,26 +199,26 @@ fn each_seeded_fault_appears_once_where_it_is() {
     let mut h = H::new(0x22_04);
     let page = h.first_page();
     // Open end, and its net's single connection point.
-    let x = terminal(&mut h, (0.0, 0.0), "X1");
+    let x = connection_point(&mut h, (0.0, 0.0), "X1");
     let open = line(&mut h, &[(0.0, 0.0), (0.0, 30.0)], json!({}));
     // Loose wire, and a T onto it with no junction (looks connected).
     let loose = line(&mut h, &[(50.0, 0.0), (50.0, 30.0)], json!({}));
-    terminal(&mut h, (70.0, 15.0), "X4");
+    connection_point(&mut h, (70.0, 15.0), "X4");
     let tee = line(&mut h, &[(70.0, 15.0), (50.0, 15.0)], json!({"join": false}));
     // Unconnected device points.
     h.run("place", json!({"symbol": "lamp", "at": [200, 100], "tag": "H9"})).unwrap();
     // Two points an old wire joins (below).
-    let o1 = terminal(&mut h, (600.0, 0.0), "X5");
-    let o2 = terminal(&mut h, (640.0, 0.0), "X5");
+    let o1 = connection_point(&mut h, (600.0, 0.0), "X5");
+    let o2 = connection_point(&mut h, (640.0, 0.0), "X5");
     // Mixed potentials in one net.
     for i in 0..3 {
-        terminal(&mut h, (400.0 + 20.0 * i as f64, 0.0), "X2");
+        connection_point(&mut h, (400.0 + 20.0 * i as f64, 0.0), "X2");
     }
     wire(&mut h, &[(400.0, 0.0), (420.0, 0.0)], json!({"potential": "24V"}));
     wire(&mut h, &[(420.0, 0.0), (440.0, 0.0)], json!({"potential": "N"}));
     // Two nets sharing a fixed number (a fixed net split).
     for i in 0..4 {
-        terminal(&mut h, (500.0, 20.0 * i as f64), "X3");
+        connection_point(&mut h, (500.0, 20.0 * i as f64), "X3");
     }
     let s1 = wire(&mut h, &[(500.0, 0.0), (500.0, 20.0)], json!({}));
     let mid = wire(&mut h, &[(500.0, 20.0), (500.0, 40.0)], json!({}));
@@ -231,14 +231,14 @@ fn each_seeded_fault_appears_once_where_it_is() {
     h.run("place", json!({"symbol": "continuation", "at": [300, 0], "name": "24V"})).unwrap();
     // F5: a continuation is a named point, so a wire runs between device points: each
     // continuation's line lands on a point of -X7, and a wire joins the two.
-    terminal(&mut h, (720.0, 0.0), "X7");
-    terminal(&mut h, (720.0, 40.0), "X7");
+    connection_point(&mut h, (720.0, 0.0), "X7");
+    connection_point(&mut h, (720.0, 40.0), "X7");
     line(&mut h, &[(700.0, 0.0), (720.0, 0.0)], json!({}));
     line(&mut h, &[(700.0, 40.0), (720.0, 40.0)], json!({}));
     wire(&mut h, &[(720.0, 0.0), (720.0, 40.0)], json!({}));
     // One net, two fixed numbers.
     for (x, y) in [(800.0, 0.0), (800.0, 30.0), (840.0, 0.0), (840.0, 30.0)] {
-        terminal(&mut h, (x, y), "X6");
+        connection_point(&mut h, (x, y), "X6");
     }
     let fa = wire(&mut h, &[(800.0, 0.0), (800.0, 30.0)], json!({}));
     let fb = wire(&mut h, &[(840.0, 0.0), (840.0, 30.0)], json!({}));
@@ -331,27 +331,27 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
             ecad_engine::checks::all(&doc, p.tolerance).into_iter().filter(|c| c.kind == Kind::UnknownName).collect::<Vec<_>>()
         })
     };
-    terminal(&mut h, (0.0, 0.0), "X1");
+    connection_point(&mut h, (0.0, 0.0), "X1");
     let r = h.run("place", json!({"symbol": "continuation", "at": [0, 30], "name": "Motor-run"})).unwrap();
     // F5: a continuation is a named point, an aid: a line to a lonely one carries no wire.
     line(&mut h, &[(0.0, 0.0), (0.0, 30.0)], json!({}));
     assert!(kept(&mut h).iter().any(|c| c.which == "Motor-run"), "the name is not in the table");
     let row = kept(&mut h).into_iter().find(|c| c.which == "Motor-run").unwrap();
     assert_eq!(row.severity(), ecad_electrical::checks::Severity::Warning);
-    assert!(matches!(row.object, ecad_electrical::checks::Object::Terminal(_)), "the arrow's point: {r}");
+    assert!(matches!(row.object, ecad_electrical::checks::Object::ConnectionPoint(_)), "the arrow's point: {r}");
     assert!(row.page.is_some() && row.at.is_some());
     // Names in the table are not rows: the net takes the potential.
-    terminal(&mut h, (100.0, 0.0), "X2");
+    connection_point(&mut h, (100.0, 0.0), "X2");
     h.run("place", json!({"symbol": "continuation", "at": [100, 30], "name": "24V"})).unwrap();
     line(&mut h, &[(100.0, 0.0), (100.0, 30.0)], json!({}));
     assert_eq!(kept(&mut h).len(), 1);
     // A continuation named for its net's own number (as Merge the nets places) is not a row.
-    terminal(&mut h, (200.0, 0.0), "X3");
+    connection_point(&mut h, (200.0, 0.0), "X3");
     // Design 072: the continuations first, so the lines land on their points; F5: the wire runs
     // through the pair, from -X3 to -X4.
     h.run("place", json!({"symbol": "continuation", "at": [200, 30], "name": "W-7"})).unwrap();
     line(&mut h, &[(200.0, 0.0), (200.0, 30.0)], json!({}));
-    terminal(&mut h, (300.0, 0.0), "X4");
+    connection_point(&mut h, (300.0, 0.0), "X4");
     h.run("place", json!({"symbol": "continuation", "at": [300, 30], "name": "W-7"})).unwrap();
     let w3 = wire(&mut h, &[(300.0, 0.0), (300.0, 30.0)], json!({}));
     h.run("wirenumber", json!({"conductor": w3.hex(), "value": "W-7"})).unwrap();
@@ -383,8 +383,8 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
         assert_eq!(kept, fresh, "after {step}");
     };
     let steps: Vec<(&str, Value)> = vec![
-        ("place", json!({"symbol": "terminal", "at": [0, 0], "tag": "X1"})),
-        ("place", json!({"symbol": "terminal", "at": [40, 0], "tag": "X1"})),
+        ("place", json!({"symbol": "terminalblock", "at": [0, 0], "tag": "X1"})),
+        ("place", json!({"symbol": "terminalblock", "at": [40, 0], "tag": "X1"})),
         ("wire", json!({"points": [[0, 0], [40, 0]]})),
         ("wire", json!({"points": [[20, 30], [20, 0]], "join": false})),
         ("joinwires", json!({"at": [20, 0]})),
@@ -447,10 +447,10 @@ fn a_wires_properties_show_and_edit_its_net() {
     let mut h = H::new(0x22_07);
     let page = h.first_page();
     h.run("place", json!({"symbol": "continuation", "at": [0, 0], "name": "24V"})).unwrap();
-    terminal(&mut h, (60.0, 0.0), "X1");
+    connection_point(&mut h, (60.0, 0.0), "X1");
     // F5: a continuation is a named point, so wire a runs through a pair of them, from -X0.
     h.run("place", json!({"symbol": "continuation", "at": [0, 100], "name": "24V"})).unwrap();
-    terminal(&mut h, (30.0, 100.0), "X0");
+    connection_point(&mut h, (30.0, 100.0), "X0");
     line(&mut h, &[(0.0, 100.0), (30.0, 100.0)], json!({}));
     let a = wire(&mut h, &[(0.0, 0.0), (30.0, 0.0)], json!({}));
     // Design 072: two wires apart, joined later by a third between their points.

@@ -127,17 +127,17 @@ impl Fonts {
 
 /// Every style of a page, resolved once per draw, and the fonts: what a derived text entity needs.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Look {
+pub struct DrawStyles {
     styles: [TextStyle; TextKind::ALL.len()],
     pub fonts: Fonts,
     /// The fonts of kinds with a font of their own, in the order of [`TextKind::ALL`].
     pub kind_fonts: [Option<Fonts>; TextKind::ALL.len()],
 }
 
-impl Look {
+impl DrawStyles {
     /// Resolve every kind's style and the fonts of `doc` with `m`.
-    pub fn with(doc: &Document, m: &dyn TextMetrics) -> Look {
-        Look {
+    pub fn with(doc: &Document, m: &dyn TextMetrics) -> DrawStyles {
+        DrawStyles {
             styles: TextKind::ALL.map(|k| text_style(doc, k)),
             fonts: Fonts::resolve_with(doc, m),
             kind_fonts: TextKind::ALL.map(|k| kind_font(doc, k).map(|f| Fonts::for_family_with(doc, f.to_string(), m))),
@@ -168,7 +168,7 @@ impl Look {
 }
 
 /// The width of `value` at `kind`'s height in the font it is drawn with (§2.4). Resolves only
-/// `kind`'s style and font; a caller measuring many texts holds a [`Look`] and calls
+/// `kind`'s style and font; a caller measuring many texts holds a [`DrawStyles`] and calls
 /// [`width_in`] instead.
 pub fn text_width(doc: &Document, kind: TextKind, value: &str, m: &dyn TextMetrics) -> f64 {
     width_in(&Fonts::of_kind_with(doc, kind, m), text_style(doc, kind), value, m)

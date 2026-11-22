@@ -46,7 +46,7 @@ pub const PAGE_NUMBER: SheetText = SheetText { cap_mm: 4.2, weight: 600 };
 pub const ALL: [(&str, SheetText); 7] = [
     ("sheet_type.tag", TAG),
     ("sheet_type.label", LABEL),
-    ("sheet_type.terminal_label", CONNECTION_POINT_LABEL),
+    ("sheet_type.connection_point_label", CONNECTION_POINT_LABEL),
     ("sheet_type.title_block_label", TITLE_BLOCK_LABEL),
     ("sheet_type.zone_label", ZONE_LABEL),
     ("sheet_type.page_title", PAGE_TITLE),

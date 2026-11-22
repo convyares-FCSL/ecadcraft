@@ -315,8 +315,13 @@ impl Place {
         let r = commit(s, "place", &params)?;
         let card_placed = r.get("rack").is_some();
         let tag = r.get("tag").and_then(Value::as_str).unwrap_or_default().to_string();
-        let labels: Vec<&str> =
-            r.get("terminals").and_then(Value::as_array).into_iter().flatten().filter_map(|t| t.get("label").and_then(Value::as_str)).collect();
+        let labels: Vec<&str> = r
+            .get("connection_points")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|t| t.get("label").and_then(Value::as_str))
+            .collect();
         let component = r.get("component").and_then(Value::as_str).and_then(|h| u128::from_str_radix(h, 16).ok()).map(DeviceId::from);
         // Brief 028: a terminal landed on a wire; the JSON form has said so.
         let landed = r.get("split").is_some();
@@ -668,10 +673,14 @@ impl Interactive for Place {
         let Some(px) = pixel(s).filter(|_| in_range(cursor)) else { return Vec::new() };
         let pl = self.placement(cursor);
         let Some(def) = self.definition() else { return Vec::new() };
-        let mut out: Vec<Entity> =
-            def.terminals.iter().map(|t| preview_entity(s, ring_kind(pl.apply(t.at), CONNECTION_POINT_RING_PX, px), CONNECTION_POINT_ACI)).collect();
+        let mut out: Vec<Entity> = def
+            .connection_points
+            .iter()
+            .map(|t| preview_entity(s, ring_kind(pl.apply(t.at), CONNECTION_POINT_RING_PX, px), CONNECTION_POINT_ACI))
+            .collect();
         if let Some((_, tag, labels)) = self.outcome(s) {
-            let at: Vec<(TextOf, String, ecad_model::Pt)> = def.terminals.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
+            let at: Vec<(TextOf, String, ecad_model::Pt)> =
+                def.connection_points.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
             // The project's sizes (design 031 §3.2), as the page will draw them.
             let Ok(sizes) = read(s, |p, _| Ok(ecad_electrical::devices::TagSizes::of(p.ledger.document()))) else { return out };
             for (_, value, p, h, ha, va) in ecad_electrical::devices::texts_for(def, &pl, Some(&tag), &at, sizes) {

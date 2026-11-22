@@ -56,9 +56,9 @@ macro_rules! prefixes {
         pub fn prefix_entry(key: crate::symbols::StarterKey) -> Option<&'static Entry> {
             match key {
                 $(crate::symbols::StarterKey::$var => Some(&$name),)*
-                // Brief 036: the multi-level terminal starters register theirs as `terminal.<key>.prefix`.
+                // Brief 036: the multi-level terminal starters register theirs as `terminal_block.<key>.prefix`.
                 // Brief 045: its new starters register theirs as `plc.<key>.prefix`.
-                _ => crate::defaults::terminals::prefix_entry(key).or_else(|| crate::defaults::plc::prefix_entry(key)),
+                _ => crate::defaults::terminal_blocks::prefix_entry(key).or_else(|| crate::defaults::plc::prefix_entry(key)),
             }
         }
     };
@@ -80,8 +80,8 @@ prefixes! {
     MOTOR3 = Motor3 "motor3", "Motor, 3-phase";
     MOTOR1 = Motor1 "motor1", "Motor, single-phase";
     TRAFO = Trafo "trafo", "Transformer";
-    TERMINAL = Terminal "terminal", "Terminal";
-    TERMINALPE = Terminalpe "terminalpe", "PE terminal";
+    TERMINAL_BLOCK = TerminalBlock "terminal_block", "Terminal";
+    TERMINAL_BLOCK_PE = TerminalBlockPe "terminalblockpe", "PE terminal";
     DI = Di "di", "PLC digital input";
     DO = Do "do", "PLC digital output";
     CO = Co "co", "Change-over contact";
@@ -376,11 +376,11 @@ mod tests {
         for s in STARTERS {
             let e = prefix_entry(s.key);
             assert_eq!(e.is_some(), s.kind != SymbolKind::Tagless, "{}", s.key);
-            // Brief 036 (overseer ruling): its starters' prefixes are in the `terminal` area.
+            // Brief 036 (overseer ruling): its starters' prefixes are in the `connection_point` area.
             // Brief 045: its new starters' prefixes are in the `plc` area.
             let plc = crate::defaults::plc::prefix_entry(s.key).is_some();
             let area = if crate::terminal_strips::terminal_blocks::is_level_starter(s.key) {
-                "terminal"
+                "terminal_block"
             } else if plc {
                 "plc"
             } else {
@@ -389,7 +389,7 @@ mod tests {
             if let Some(e) = e {
                 assert_eq!(e.key, format!("{area}.{}.prefix", s.key));
                 let list = match area {
-                    "terminal" => crate::defaults::terminals::ENTRIES,
+                    "terminal_block" => crate::defaults::terminal_blocks::ENTRIES,
                     "plc" => crate::defaults::plc::ENTRIES,
                     _ => ENTRIES,
                 };

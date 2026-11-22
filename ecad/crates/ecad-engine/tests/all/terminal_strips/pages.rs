@@ -52,19 +52,19 @@ fn fixture(seed: u64) -> G {
     let v = h.run("cableslash", json!({"from": [90, 120], "to": [260, 120], "tag": "-W01"})).unwrap();
     let cable: CableId = id(&v, "cable");
     h.run("setprop", json!({"cable": cable.hex(), "key": "type", "value": "YSLY-JZ 7G1.5"})).unwrap();
-    let v = h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     let x1: DeviceId = id(&v, "strip");
     h.run("setlocation", json!({"component": x1.hex(), "value": "+CP1"})).unwrap();
-    let terms: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let terms: Vec<ConnectionPointId> = v["connection_points"].as_array().unwrap().iter().map(|x| id(x, "connection_point")).collect();
     // A PE and a fuse position on wires of their own.
     for x in [300.0, 340.0] {
         h.wire_pp(&[(x, 260.0), (x, 160.0)]).unwrap();
     }
-    h.run("terminals", json!({"strip": x1.hex(), "type": "PE", "level": "All", "from": [290, 200], "to": [310, 200]})).unwrap();
-    let f = h.run("terminals", json!({"strip": x1.hex(), "type": "FUSE", "level": "All", "from": [330, 200], "to": [350, 200]})).unwrap();
-    let fuse_label = f["terminals"][0]["label"].as_str().unwrap_or("6").to_string();
+    h.run("terminalblocks", json!({"strip": x1.hex(), "type": "PE", "level": "All", "from": [290, 200], "to": [310, 200]})).unwrap();
+    let f = h.run("terminalblocks", json!({"strip": x1.hex(), "type": "FUSE", "level": "All", "from": [330, 200], "to": [350, 200]})).unwrap();
+    let fuse_label = f["connection_points"][0]["label"].as_str().unwrap_or("6").to_string();
     let s = x1.hex();
-    for (k, v) in [("terminals", "12+2PE+3LNPE+2FUSE"), ("link.1", "1-4")] {
+    for (k, v) in [("terminal_blocks", "12+2PE+3LNPE+2FUSE"), ("jumper_bar.1", "1-4")] {
         h.run("setprop", json!({"component": s, "key": k, "value": v})).unwrap();
     }
     h.run("setprop", json!({"component": s, "key": format!("rating.{fuse_label}"), "value": "2A"})).unwrap();
@@ -77,13 +77,13 @@ fn fixture(seed: u64) -> G {
 }
 
 /// The kept models, built on first show.
-fn outputs(h: &mut H) -> ReportModels {
-    h.cfg(|p| p.outputs().clone())
+fn reports(h: &mut H) -> ReportModels {
+    h.cfg(|p| p.reports().clone())
 }
 
 /// The page's parts as Print Book and the window draw them.
 fn parts(h: &mut H, page: PageId) -> Vec<Part> {
-    let o = outputs(h);
+    let o = reports(h);
     let doc = h.doc();
     ecad_engine::pages::generated::parts_of(&doc, page, Some(&o))
 }
@@ -105,7 +105,7 @@ fn has(parts: &[Part], s: &str) -> bool {
 /// The kept graphic layout equals a rebuild from the kept strips (design 046 §9, verify mode).
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
-        let o = p.outputs().clone();
+        let o = p.reports().clone();
         let built = StripPages::build(p.ledger.document(), &o.strips);
         (o.strip_pages.clone(), built)
     });
@@ -124,7 +124,7 @@ fn counted(h: &mut H, cmd: &str, params: Value) -> (u64, Option<BTreeSet<PageId>
 
 fn strip_page(g: &mut G) -> PageId {
     let head = g.h.head();
-    let v = g.h.run("newpage", json!({"generated": "terminals", "style": "graphic", "strip": g.x1.hex()})).unwrap();
+    let v = g.h.run("newpage", json!({"generated": "terminal_blocks", "style": "graphic", "strip": g.x1.hex()})).unwrap();
     assert_eq!(g.h.head(), head + 1, "one transaction");
     id(&v, "page")
 }
@@ -139,7 +139,7 @@ fn a_graphic_page_draws_the_strip_as_wired() {
     assert_eq!(doc.pages[&page].title, draw::TITLE);
     assert_eq!(draw::style_of(&doc, page), draw::Style::Graphic);
     let p = parts(&mut g.h, page);
-    let o = outputs(&mut g.h);
+    let o = reports(&mut g.h);
     let s = o.strips.get(g.x1).unwrap();
     // Every plan row's shown label is drawn (spares too).
     for r in &s.rows {
@@ -185,10 +185,10 @@ fn one_cable_bar_and_one_box_per_cable() {
 fn a_long_strip_runs_onto_a_second_sheet() {
     let mut g = fixture(0x46_03);
     let s = g.x1.hex();
-    g.h.run("setprop", json!({"component": s, "key": "terminals", "value": "45"})).unwrap();
-    g.h.run("setprop", json!({"component": s, "key": "link.2", "value": "30-45"})).unwrap();
+    g.h.run("setprop", json!({"component": s, "key": "terminal_blocks", "value": "45"})).unwrap();
+    g.h.run("setprop", json!({"component": s, "key": "jumper_bar.2", "value": "30-45"})).unwrap();
     let page = strip_page(&mut g);
-    let o = outputs(&mut g.h);
+    let o = reports(&mut g.h);
     let doc = g.h.doc();
     assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, page, Some(&o)), 2);
     let before = ecad_electrical::pages::generated::book_sheets_of(&doc, Some(&o));
@@ -247,7 +247,7 @@ fn the_shown_strip_page_redraws_only_for_its_strip() {
     let (n, named) = counted(&mut g.h, "setprop", json!({"component": m2.hex(), "key": "maker", "value": "Acme"}));
     assert_eq!(n, 0, "an edit no strip shows projected the strip page {n} time(s)");
     assert!(!named.expect("pages known").contains(&page));
-    assert!(outputs(&mut g.h).strip_pages.last_changed.is_empty());
+    assert!(reports(&mut g.h).strip_pages.last_changed.is_empty());
     // A strip change: -X01:3's wire gets a number.
     let doc = g.h.doc();
     let w3 = doc.ends_at(g.terms[2]).into_iter().next().map(|(w, _)| w).unwrap();
@@ -258,7 +258,7 @@ fn the_shown_strip_page_redraws_only_for_its_strip() {
     // The cable's type: only -X01 is marked, the box shows the new type.
     let (n, _) = counted(&mut g.h, "setprop", json!({"cable": g.cable.hex(), "key": "type", "value": "5G1.5"}));
     assert_eq!(n, 1, "the strip page redraws for its cable's type");
-    let o = outputs(&mut g.h);
+    let o = reports(&mut g.h);
     assert_eq!(o.strip_pages.last_changed, BTreeSet::from([g.x1]));
     assert!(has(&parts(&mut g.h, page), "5G1.5"));
     // The far device's description.
@@ -274,7 +274,7 @@ fn switching_the_style_is_one_transaction() {
     let mut g = fixture(0x46_06);
     let page = strip_page(&mut g);
     let head = g.h.head();
-    g.h.run("setdefault", json!({"key": "terminal.plan.style", "level": "page", "page": page.hex(), "value": "table"})).unwrap();
+    g.h.run("setdefault", json!({"key": "terminal_block.plan.style", "level": "page", "page": page.hex(), "value": "table"})).unwrap();
     assert_eq!(g.h.head(), head + 1);
     let p = parts(&mut g.h, page);
     assert!(has(&p, "Inside target"), "the table");
@@ -282,21 +282,21 @@ fn switching_the_style_is_one_transaction() {
     let p = parts(&mut g.h, page);
     assert!(!has(&p, "Inside target") && has(&p, "-W01"), "the graphic again");
     // The project default reaches a page with no style of its own.
-    let plain: PageId = id(&g.h.run("newpage", json!({"generated": "terminals"})).unwrap(), "page");
+    let plain: PageId = id(&g.h.run("newpage", json!({"generated": "terminal_blocks"})).unwrap(), "page");
     assert!(has(&parts(&mut g.h, plain), "Inside target"));
-    g.h.run("setdefault", json!({"key": "terminal.plan.style", "level": "project", "value": "graphic"})).unwrap();
+    g.h.run("setdefault", json!({"key": "terminal_block.plan.style", "level": "project", "value": "graphic"})).unwrap();
     assert!(!has(&parts(&mut g.h, plain), "Inside target"));
     same_as_built(&mut g.h);
 }
 
 /// §11 #11: `style` on another kind is refused with §8.1's words; nothing recorded.
 #[test]
-fn style_is_only_for_a_terminal_plan_page() {
+fn style_is_only_for_a_terminal_block_plan_page() {
     let mut g = fixture(0x46_07);
     let head = g.h.head();
     let e = g.h.run("newpage", json!({"generated": "cover", "style": "graphic"})).unwrap_err();
     assert!(e.contains("`style` is for a terminal plan page (`generated: \"terminals\"`)"), "{e}");
-    let e = g.h.run("newpage", json!({"generated": "terminals", "style": "wavy"})).unwrap_err();
+    let e = g.h.run("newpage", json!({"generated": "terminal_blocks", "style": "wavy"})).unwrap_err();
     assert!(e.contains("`style` is \"table\" or \"graphic\""), "{e}");
     assert_eq!(g.h.head(), head, "nothing recorded");
 }
@@ -318,9 +318,9 @@ fn print_book_prints_what_the_page_shows() {
 
 /// §11 #13: a terminals page with no style (a 036 project) still draws the table.
 #[test]
-fn an_old_terminals_page_still_draws_the_table() {
+fn an_old_terminal_blocks_page_still_draws_the_table() {
     let mut g = fixture(0x46_09);
-    let page: PageId = id(&g.h.run("newpage", json!({"generated": "terminals"})).unwrap(), "page");
+    let page: PageId = id(&g.h.run("newpage", json!({"generated": "terminal_blocks"})).unwrap(), "page");
     let doc = g.h.doc();
     assert_eq!(draw::style_of(&doc, page), draw::Style::Table);
     assert!(has(&parts(&mut g.h, page), "Inside target"));
@@ -330,12 +330,12 @@ fn an_old_terminals_page_still_draws_the_table() {
 #[test]
 fn empty_and_hostile_states_draw_without_crashing() {
     let mut h = H::new(0x46_0a);
-    let page: PageId = id(&h.run("newpage", json!({"generated": "terminals", "style": "graphic"})).unwrap(), "page");
+    let page: PageId = id(&h.run("newpage", json!({"generated": "terminal_blocks", "style": "graphic"})).unwrap(), "page");
     assert!(has(&parts(&mut h, page), draw::NO_STRIPS));
     let mut g = fixture(0x46_0b);
-    g.h.run("setprop", json!({"component": g.x1.hex(), "key": "terminals", "value": "999"})).unwrap();
+    g.h.run("setprop", json!({"component": g.x1.hex(), "key": "terminal_blocks", "value": "999"})).unwrap();
     let page = strip_page(&mut g);
-    let o = outputs(&mut g.h);
+    let o = reports(&mut g.h);
     let n = ecad_electrical::pages::generated::sheets_of(&g.h.doc(), page, Some(&o));
     assert!((20..=40).contains(&n), "999 positions at about 40 a sheet: {n}");
     let _ = parts(&mut g.h, page);
@@ -360,21 +360,21 @@ fn paginate_keeps_blocks_whole() {
 #[test]
 fn a_style_switch_moves_the_total_on_the_shown_page() {
     let mut g = fixture(0x46_0c);
-    g.h.run("setprop", json!({"component": g.x1.hex(), "key": "terminals", "value": "45"})).unwrap();
+    g.h.run("setprop", json!({"component": g.x1.hex(), "key": "terminal_blocks", "value": "45"})).unwrap();
     // 20 mm columns: 18 a sheet, so the graphic page has more sheets than the table's two.
     g.h.run("setdefault", json!({"key": "strippage.pitch", "level": "project", "value": "20"})).unwrap();
-    let plain: PageId = id(&g.h.run("newpage", json!({"generated": "terminals"})).unwrap(), "page");
+    let plain: PageId = id(&g.h.run("newpage", json!({"generated": "terminal_blocks"})).unwrap(), "page");
     g.h.activate(g.schematic);
     let total = |h: &mut H| {
-        let o = outputs(h);
+        let o = reports(h);
         ecad_electrical::pages::generated::book_sheets_of(&h.doc(), Some(&o))
     };
     let before = total(&mut g.h);
-    let (n, _) = counted(&mut g.h, "setdefault", json!({"key": "terminal.plan.style", "level": "project", "value": "graphic"}));
+    let (n, _) = counted(&mut g.h, "setdefault", json!({"key": "terminal_block.plan.style", "level": "project", "value": "graphic"}));
     let after = total(&mut g.h);
     assert_ne!(before, after, "the strip page has another sheet count than the table");
     assert_eq!(n, 1, "the shown page's frame (Total) is redrawn");
-    assert!(outputs(&mut g.h).numbers_moved);
+    assert!(reports(&mut g.h).numbers_moved);
     g.h.check();
     let _ = plain;
 }

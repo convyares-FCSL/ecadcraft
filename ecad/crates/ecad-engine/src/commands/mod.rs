@@ -2,13 +2,13 @@
 //! coordinates) and commit them through [`Project::apply_edit`].
 //!
 //! They reach the command line, scripts, the control channel and MCP through the engine's
-//! extension command registry. `convertcomponent`, `addterminal`, `place`, `wire`, `connect`,
+//! extension command registry. `convertcomponent`, `addconnectionpoint`, `place`, `wire`, `connect`,
 //! `disconnect`, `cableslash`, `cableview` and `cablecore` also have click-based interactive forms
 //! ([`crate::interact`], briefs 008, 004, 005 and 009), started by a bare command name, a menu or a
 //! tool button; they commit through these JSON forms. `cableview` records nothing: a cable's
 //! view is presentation only ([`crate::cables::views`]).
 //! Brief 010 adds `cableref`, `cablecontinue` and `cablegoto` (with interactive forms),
-//! `cablerefs` (read only), `renamepage` and `movepage` ([`crate::references`]).
+//! `cablereferences` (read only), `renamepage` and `movepage` ([`crate::references`]).
 //! Programmatic calls (`Session::execute`, `name {json}`) always run the JSON form and never
 //! prompt.
 //!
@@ -110,7 +110,7 @@ fn generic_specs() -> Vec<CommandSpec> {
         crate::generic::spec::<ecad_electrical::references::commands::devices::MirrormoveParams>().interactive(interact::mirrormove),
         crate::generic::spec::<ecad_electrical::references::commands::cables::CablerefParams>().interactive(interact::cableref),
         crate::generic::spec::<ecad_electrical::references::commands::cables::CablecontinueParams>().interactive(interact::cablecontinue),
-        crate::generic::spec::<ecad_electrical::references::commands::cables::CablerefsParams>(),
+        crate::generic::spec::<ecad_electrical::references::commands::cables::CablereferencesParams>(),
     ]
 }
 
@@ -162,7 +162,7 @@ const GENERIC_TYPED: &[input::Typed] = &[
     crate::generic::typed::<ecad_electrical::references::commands::devices::MirrormoveParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::cables::CablerefParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::cables::CablecontinueParams>(),
-    crate::generic::typed::<ecad_electrical::references::commands::cables::CablerefsParams>(),
+    crate::generic::typed::<ecad_electrical::references::commands::cables::CablereferencesParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
@@ -175,9 +175,9 @@ fn base_specs() -> Vec<CommandSpec> {
             .params("{handles?: [hex]} (default: selection)")
             .interactive(interact::convert)
             .noundo(),
-        CommandSpec::new("addterminal", "Add Connection Point", crate::commands::input::typed::<crate::devices::commands::AddConnectionPointParams>)
+        CommandSpec::new("addconnectionpoint", "Add Connection Point", crate::commands::input::typed::<crate::devices::commands::AddConnectionPointParams>)
             .params("{handle: hex (an item of the component), at: [x,y], label?}")
-            .interactive(interact::addterminal)
+            .interactive(interact::addconnectionpoint)
             .noundo(),
         CommandSpec::new("wire", "Wire", crate::commands::input::typed::<crate::wires::commands::WireParams>)
             .params(
@@ -244,10 +244,10 @@ end's spine; null: the middle)",
             .interactive(interact::devicedelete)
             .noundo(),
         CommandSpec::new("nets", "List Nets", crate::commands::input::typed::<crate::wires::commands::NetsParams>)
-            .params("{page?: id, number?, conductor?: id, terminal?: id, all?: bool, limit?: n (200, max 2000), after?: cursor} (read only)")
+            .params("{page?: id, number?, conductor?: id, connection_point?: id, all?: bool, limit?: n (200, max 2000), after?: cursor} (read only)")
             .noundo(),
         CommandSpec::new("net", "Show Net", crate::commands::input::typed::<crate::wires::commands::NetParams>)
-            .params("{conductor: id} | {terminal: id} | {number} (read only)")
+            .params("{conductor: id} | {connection_point: id} | {number} (read only)")
             .noundo(),
         CommandSpec::new("wirenumber", "Fix Wire Number", crate::commands::input::typed::<crate::wires::commands::WirenumberParams>)
             .params(
@@ -397,7 +397,7 @@ pub fn builtin_coil() -> Definition {
         name: "Coil (experiment)".into(),
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
-        terminals: vec![
+        connection_points: vec![
             ConnectionPointDef {
                 key: ecad_model::PointKey::def("A1"),
                 label: Some("A1".into()),

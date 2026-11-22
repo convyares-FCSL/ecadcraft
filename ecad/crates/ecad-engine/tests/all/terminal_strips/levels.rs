@@ -12,7 +12,7 @@ use crate::common::{H, id};
 /// The kept models equal a fresh build (the update map left nothing behind).
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
@@ -35,11 +35,11 @@ fn fence(h: &mut H, strip: Option<DeviceId>, ty: &str, level: &str, y: f64) -> V
     if let Some(c) = strip {
         p["strip"] = json!(c.hex());
     }
-    h.run("terminals", p).unwrap()
+    h.run("terminalblocks", p).unwrap()
 }
 
-fn terminals(v: &Value) -> Vec<ConnectionPointId> {
-    v["terminals"].as_array().unwrap().iter().map(|t| id(t, "terminal")).collect()
+fn connection_points(v: &Value) -> Vec<ConnectionPointId> {
+    v["connection_points"].as_array().unwrap().iter().map(|t| id(t, "connection_point")).collect()
 }
 
 fn net(h: &mut H, t: ConnectionPointId) -> Option<ecad_model::NetKey> {
@@ -63,7 +63,8 @@ fn lnpe_fences_fill_positions_and_label_each_level() {
     assert_eq!(l["message"], "Placed -X01:1.L\u{2026}3.L on 3 wires (positions 1\u{2013}3, level L).", "{l}");
     let n = fence(&mut h, Some(x1), "LNPE", "N", 120.0);
     let pe = fence(&mut h, Some(x1), "LNPE", "PE", 220.0);
-    let positions = |v: &Value| v["terminals"].as_array().unwrap().iter().map(|t| t["position"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    let positions =
+        |v: &Value| v["connection_points"].as_array().unwrap().iter().map(|t| t["position"].as_str().unwrap().to_string()).collect::<Vec<_>>();
     assert_eq!(positions(&n), ["1", "2", "3"], "the N row fills positions 1-3");
     assert_eq!(positions(&pe), ["1", "2", "3"]);
     let s = plan(&mut h, x1);
@@ -78,7 +79,7 @@ fn lnpe_fences_fill_positions_and_label_each_level() {
     assert_eq!(x_rows.len(), 1, "{bom}");
     assert_eq!((x_rows[0]["qty"].as_u64(), x_rows[0]["description"].as_str()), (Some(3), Some("L/N/PE terminal")));
     // Hover and words show the shown label.
-    let t = terminals(&n)[1];
+    let t = connection_points(&n)[1];
     assert_eq!(h.p(|p| ecad_electrical::terminal_strips::connection_point_words(p.ledger.document(), t)), "-X01:2.N");
     same_as_built(&mut h);
     // `u` undoes the last fence only.
@@ -88,7 +89,7 @@ fn lnpe_fences_fill_positions_and_label_each_level() {
 }
 
 #[test]
-fn links_join_one_level_and_cross_level_links_join_one_position() {
+fn jumper_bars_join_one_level_and_cross_level_jumper_bars_join_one_position() {
     let mut h = H::new(0x0360_0002);
     wires(&mut h, 0.0);
     wires(&mut h, 100.0);
@@ -97,22 +98,22 @@ fn links_join_one_level_and_cross_level_links_join_one_position() {
     let x1: DeviceId = id(&l, "strip");
     let n = fence(&mut h, Some(x1), "LNPE", "N", 120.0);
     let pe = fence(&mut h, Some(x1), "LNPE", "PE", 220.0);
-    let (lt, nt, pt) = (terminals(&l), terminals(&n), terminals(&pe));
+    let (lt, nt, pt) = (connection_points(&l), connection_points(&n), connection_points(&pe));
     assert_ne!(net(&mut h, lt[0]), net(&mut h, lt[2]));
-    h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1-3"})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1-3"})).unwrap();
     assert_eq!(net(&mut h, lt[0]), net(&mut h, lt[2]), "level L joined");
     assert_ne!(net(&mut h, nt[0]), net(&mut h, nt[2]), "level N not");
-    h.run("setprop", json!({"component": x1.hex(), "key": "link.2", "value": "1.2-3.2"})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.2", "value": "1.2-3.2"})).unwrap();
     assert_eq!(net(&mut h, nt[0]), net(&mut h, nt[2]), "level N joined");
     assert_ne!(net(&mut h, nt[0]), net(&mut h, lt[0]));
-    h.run("setprop", json!({"component": x1.hex(), "key": "link.3", "value": "1.1-1.3"})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.3", "value": "1.1-1.3"})).unwrap();
     assert_eq!(net(&mut h, lt[0]), net(&mut h, pt[0]), "cross-level link");
     assert_eq!(net(&mut h, lt[0]), net(&mut h, nt[0]));
-    let e = h.run("setprop", json!({"component": x1.hex(), "key": "link.4", "value": "1.1-3.2"})).unwrap_err();
+    let e = h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.4", "value": "1.1-3.2"})).unwrap_err();
     assert!(e.contains("joins different levels at different positions"), "{e}");
     let s = plan(&mut h, x1);
-    let links = s["links"].as_array().unwrap();
-    assert_eq!(links.iter().map(|l| l["level"].clone()).collect::<Vec<_>>(), [json!(1), json!(2), Value::Null]);
+    let jumper_bars = s["jumper_bars"].as_array().unwrap();
+    assert_eq!(jumper_bars.iter().map(|l| l["level"].clone()).collect::<Vec<_>>(), [json!(1), json!(2), Value::Null]);
     same_as_built(&mut h);
     h.check();
 }
@@ -125,21 +126,21 @@ fn bridged_two_level_positions_and_fuse_positions_break_the_net() {
     let a = fence(&mut h, None, "x2B", "1", 20.0);
     let x1: DeviceId = id(&a, "strip");
     let b = fence(&mut h, Some(x1), "x2B", "2", 120.0);
-    let (at, bt) = (terminals(&a), terminals(&b));
+    let (at, bt) = (connection_points(&a), connection_points(&b));
     assert_eq!(net(&mut h, at[0]), net(&mut h, bt[0]), "a bridged position's levels are one net");
     assert_ne!(net(&mut h, at[0]), net(&mut h, at[1]), "two positions stay two nets");
     same_as_built(&mut h);
     // A fuse position on a wire: in and out on two nets.
     let mut h = H::new(0x0360_0004);
     h.wire_pp(&[(10.0, 0.0), (10.0, 80.0)]).unwrap();
-    let f = h.run("terminals", json!({"type": "FUSE", "from": [0, 40], "to": [20, 40]})).unwrap();
+    let f = h.run("terminalblocks", json!({"type": "FUSE", "from": [0, 40], "to": [20, 40]})).unwrap();
     let x1: DeviceId = id(&f, "strip");
-    let t_in: ConnectionPointId = id(&f["terminals"][0], "terminal");
+    let t_in: ConnectionPointId = id(&f["connection_points"][0], "connection_point");
     let doc = h.doc();
     // The two parts of the line (design 072 §4.3: routes), each carrying its own wire.
     let (kept, new) = (
-        ecad_electrical::wires::wire_of_route(&doc, id(&f["terminals"][0], "route")),
-        ecad_electrical::wires::wire_of_route(&doc, id(&f["terminals"][0], "new")),
+        ecad_electrical::wires::wire_of_route(&doc, id(&f["connection_points"][0], "route")),
+        ecad_electrical::wires::wire_of_route(&doc, id(&f["connection_points"][0], "new")),
     );
     assert!(kept.is_some() && new.is_some(), "{f}");
     let conn = doc.connectivity();
@@ -162,37 +163,37 @@ fn termlabel_relabels_a_position_and_sets_a_level_label() {
     let s1 = fence(&mut h, None, "SEN", "S", 20.0);
     let x1: DeviceId = id(&s1, "strip");
     fence(&mut h, Some(x1), "SEN", "+", 120.0);
-    h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1.2-3.2"})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1.2-3.2"})).unwrap();
     h.run("setprop", json!({"component": x1.hex(), "key": "acc.on.2", "value": "marker"})).unwrap();
-    let t2 = terminals(&s1)[1];
-    let v = h.run("termlabel", json!({"terminal": t2.hex(), "position": "2.1"})).unwrap();
+    let t2 = connection_points(&s1)[1];
+    let v = h.run("termlabel", json!({"connection_point": t2.hex(), "position": "2.1"})).unwrap();
     assert_eq!(v["message"], "-X01:2 is now -X01:2.1 (2 levels).", "{v}");
     let doc = h.doc();
     let props = &doc.devices[&x1].properties;
     assert_eq!(props.get("acc.on.2.1").map(String::as_str), Some("marker"), "accessories follow");
-    assert_eq!(props.get("link.1").map(String::as_str), Some("1.2-3.2"), "the link names the same positions in plan order");
-    let e = h.run("termlabel", json!({"terminal": t2.hex(), "position": "3"})).unwrap_err();
+    assert_eq!(props.get("jumper_bar.1").map(String::as_str), Some("1.2-3.2"), "the link names the same positions in plan order");
+    let e = h.run("termlabel", json!({"connection_point": t2.hex(), "position": "3"})).unwrap_err();
     assert!(e.contains("already has a position 3"), "{e}");
-    h.run("termlabel", json!({"terminal": t2.hex(), "text": "2.1S"})).unwrap();
+    h.run("termlabel", json!({"connection_point": t2.hex(), "text": "2.1S"})).unwrap();
     assert_eq!(h.p(|p| ecad_engine::interact::connection_point_name(p.ledger.document(), t2)), "2.1S");
     let s = plan(&mut h, x1);
-    let row = s["rows"].as_array().unwrap().iter().find(|r| r["terminal"] == json!(t2.hex())).cloned().unwrap();
+    let row = s["rows"].as_array().unwrap().iter().find(|r| r["connection_point"] == json!(t2.hex())).cloned().unwrap();
     assert_eq!((row["label"].as_str(), row["label_overridden"].as_bool(), row["position"].as_str()), (Some("2.1S"), Some(true), Some("2.1")));
     // The separator default reaches the strip (design 036 §13 N): `""` on the project is none.
-    let t1 = terminals(&s1)[0];
-    h.run("projectprops", json!({"props": {"terminal.level.separator": ""}})).unwrap();
-    assert_eq!(h.doc().display.get("terminal.level.separator").map(String::as_str), Some("none"));
+    let t1 = connection_points(&s1)[0];
+    h.run("projectprops", json!({"props": {"terminal_block.level.separator": ""}})).unwrap();
+    assert_eq!(h.doc().display.get("terminal_block.level.separator").map(String::as_str), Some("none"));
     assert_eq!(h.p(|p| ecad_engine::interact::connection_point_name(p.ledger.document(), t1)), "1S");
     same_as_built(&mut h);
     // The strip's own value wins.
-    h.run("setprop", json!({"component": x1.hex(), "key": "terminal.level.separator", "value": "/"})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "terminal_block.level.separator", "value": "/"})).unwrap();
     assert_eq!(h.p(|p| ecad_engine::interact::connection_point_name(p.ledger.document(), t1)), "1/S");
     same_as_built(&mut h);
     h.check();
 }
 
 #[test]
-fn toposition_turns_a_fuse_terminal_device_into_a_fuse_position() {
+fn toposition_turns_a_fuse_terminal_block_into_a_fuse_position() {
     let mut h = H::new(0x0360_0006);
     wires(&mut h, 0.0);
     let ft = fence(&mut h, None, "Feedthrough", "1", 20.0);
@@ -237,7 +238,7 @@ fn offers_by_type_give_spare_positions_and_bom_rows() {
     wires(&mut h, 0.0);
     let v = fence(&mut h, None, "Feedthrough", "1", 20.0);
     let x1: DeviceId = id(&v, "strip");
-    h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "12+2PE+4x3"})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "12+2PE+4x3"})).unwrap();
     let s = plan(&mut h, x1);
     assert_eq!(s["offered"], "12+2PE+4x3");
     let rows = s["rows"].as_array().unwrap();
@@ -259,30 +260,30 @@ fn renumber_keeps_028_strips_and_numbers_colliding_keys_by_their_own_symbol() {
         h.wire_pp(&[(x, 0.0), (x, 40.0)]).unwrap();
     }
     // Right to left: the first (main) symbol is at x = 30, the joined ones at 20 and 10.
-    let v = h.run("terminals", json!({"from": [40, 20], "to": [0, 20]})).unwrap();
+    let v = h.run("terminalblocks", json!({"from": [40, 20], "to": [0, 20]})).unwrap();
     let x1: DeviceId = id(&v, "strip");
-    let ts = terminals(&v);
-    let labels = |h: &mut H| ts.iter().map(|t| h.doc().terminals[t].label.clone().unwrap_or_default()).collect::<Vec<_>>();
+    let ts = connection_points(&v);
+    let labels = |h: &mut H| ts.iter().map(|t| h.doc().connection_points[t].label.clone().unwrap_or_default()).collect::<Vec<_>>();
     assert_eq!(labels(&mut h), ["1", "2", "3"]);
     // No collision: renumbering numbers in drawing order (left to right), as 028 did.
-    h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [x1.hex()]})).unwrap();
+    h.run("renumber", json!({"kind": "terminal_blocks", "scope": "selection", "strips": [x1.hex()]})).unwrap();
     assert_eq!(labels(&mut h), ["3", "2", "1"]);
     h.run("undo", json!({})).unwrap();
     // A collision: the joined terminal at x = 20 keyed `1`, as the first symbol's.
     h.cfg(|p| {
         let doc = p.ledger.document();
-        let before = doc.terminals[&ts[1]].clone();
+        let before = doc.connection_points[&ts[1]].clone();
         let mut after = before.clone();
         after.key = Some("1".parse().unwrap());
         let ops = vec![
-            ecad_model::Op::RemoveConnectionPoint { id: ts[1], terminal: before },
-            ecad_model::Op::AddConnectionPoint { id: ts[1], terminal: after },
+            ecad_model::Op::RemoveConnectionPoint { id: ts[1], connection_point: before },
+            ecad_model::Op::AddConnectionPoint { id: ts[1], connection_point: after },
         ];
         p.ledger.commit(ecad_model::Author::User, "collide", ops).unwrap();
     });
     // The page is not reprojected after that direct commit, so the session runs the command
     // without the harness's page check (as release_contracts does).
-    h.s.execute("renumber", &json!({"kind": "terminals", "scope": "selection", "strips": [x1.hex()]})).unwrap();
+    h.s.execute("renumber", &json!({"kind": "terminal_blocks", "scope": "selection", "strips": [x1.hex()]})).unwrap();
     assert_eq!(labels(&mut h), ["3", "2", "1"], "each terminal numbered at its own symbol");
 }
 
@@ -296,8 +297,8 @@ fn nothing_is_lost_silently() {
     wires(&mut h, 0.0);
     let s1 = fence(&mut h, None, "SEN", "S", 20.0);
     let x1: DeviceId = id(&s1, "strip");
-    let t2 = terminals(&s1)[1];
-    h.run("termlabel", json!({"terminal": t2.hex(), "text": "2S"})).unwrap();
+    let t2 = connection_points(&s1)[1];
+    h.run("termlabel", json!({"connection_point": t2.hex(), "text": "2S"})).unwrap();
     // Erase position 2's S symbol: its label key goes with it.
     let rep = h.doc().representations_showing(t2).next().map(|(r, _)| r).unwrap();
     let item = h.doc().representations[&rep].items[0];
@@ -310,7 +311,7 @@ fn nothing_is_lost_silently() {
     // A fixed wire number on a wire a fuse position splits: the out half's loss is reported.
     let w: WireId = id(&h.wire_pp(&[(100.0, 0.0), (100.0, 80.0)]).unwrap(), "conductor");
     h.run("wirenumber", json!({"conductor": w.hex(), "value": "24V-07"})).unwrap();
-    let f = h.run("terminals", json!({"type": "FUSE", "from": [90, 40], "to": [110, 40]})).unwrap();
+    let f = h.run("terminalblocks", json!({"type": "FUSE", "from": [90, 40], "to": [110, 40]})).unwrap();
     assert_eq!(f["dropped_wire_numbers"][0]["number"], "24V-07", "{f}");
     assert!(f["message"].as_str().unwrap().contains("no longer carry wire number 24V-07"), "{f}");
     // toposition lists what goes with the device.
@@ -330,7 +331,7 @@ fn relabel_moves_every_position_keyed_property() {
     wires(&mut h, 0.0);
     let f = fence(&mut h, None, "FUSE", "1", 20.0);
     let x1: DeviceId = id(&f, "strip");
-    let t2 = terminals(&f)[1];
+    let t2 = connection_points(&f)[1];
     let suffix = |prefix: &str, p: &str| {
         if prefix == ecad_electrical::terminal_strips::terminal_blocks::LABEL_PREFIX { format!("{p}.1") } else { p.to_string() }
     };
@@ -348,16 +349,16 @@ fn relabel_moves_every_position_keyed_property() {
     }
     // Design 072 §2.5: a fuse position's rating is the strip's field and moves too.
     h.run("setprop", json!({"component": x1.hex(), "key": "rating.2", "value": "2A"})).unwrap();
-    h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1-2"})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1-2"})).unwrap();
     let head = h.head();
-    h.run("termlabel", json!({"terminal": t2.hex(), "position": "7"})).unwrap();
+    h.run("termlabel", json!({"connection_point": t2.hex(), "position": "7"})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
     let props = h.doc().devices[&x1].properties.clone();
     for prefix in ecad_electrical::terminal_strips::terminal_blocks::POSITION_KEYED {
         assert_eq!(props.get(&format!("{prefix}{}", suffix(prefix, "2"))), None, "{prefix} left on 2");
         assert_eq!(props.get(&format!("{prefix}{}", suffix(prefix, "7"))).map(String::as_str), Some(value(prefix)), "{prefix} moved to 7");
     }
-    assert_eq!(props.get("link.1").map(String::as_str), Some("1, 7"));
+    assert_eq!(props.get("jumper_bar.1").map(String::as_str), Some("1, 7"));
     let strip = &h.doc().devices[&x1];
     assert_eq!((strip.value("rating.2"), strip.value("rating.7").as_deref()), (None, Some("2 A")), "the fuse rating moved to 7");
     same_as_built(&mut h);
@@ -373,13 +374,13 @@ fn update_map_counters() {
     let a = fence(&mut h, None, "LNPE", "L", 20.0);
     let _plain = fence(&mut h, None, "Feedthrough", "1", 120.0);
     let x1: DeviceId = id(&a, "strip");
-    let work = |h: &mut H| h.cfg(|p| p.outputs().strips.last_work);
+    let work = |h: &mut H| h.cfg(|p| p.reports().strips.last_work);
     h.wire_pp(&[(300.0, 0.0), (300.0, 40.0)]).unwrap();
     assert_eq!(work(&mut h), 0, "a wire elsewhere recomputes no strip");
-    h.run("projectprops", json!({"props": {"terminal.level.separator": "/"}})).unwrap();
+    h.run("projectprops", json!({"props": {"terminal_block.level.separator": "/"}})).unwrap();
     assert_eq!(work(&mut h), 1, "only the L/N/PE strip inherits the separator");
-    h.run("setprop", json!({"component": x1.hex(), "key": "terminal.level.separator", "value": "-"})).unwrap();
-    h.run("projectprops", json!({"props": {"terminal.level.separator": ":"}})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "terminal_block.level.separator", "value": "-"})).unwrap();
+    h.run("projectprops", json!({"props": {"terminal_block.level.separator": ":"}})).unwrap();
     assert_eq!(work(&mut h), 0, "a strip with its own separator no longer inherits it");
     same_as_built(&mut h);
 }
@@ -387,7 +388,7 @@ fn update_map_counters() {
 /// Review 036, 1: a link on several levels, and a cross-level link holding a position range, keep
 /// every span's level, point and both range ends through `termlabel` and through `renumber`.
 #[test]
-fn relabel_and_renumber_keep_mixed_and_cross_level_links() {
+fn relabel_and_renumber_keep_mixed_and_cross_level_jumper_bars() {
     for via_renumber in [false, true] {
         let mut h = H::new(0x0360_000c);
         wires(&mut h, 0.0);
@@ -396,19 +397,19 @@ fn relabel_and_renumber_keep_mixed_and_cross_level_links() {
         let a = fence(&mut h, None, "x2", "1", 20.0);
         let x1: DeviceId = id(&a, "strip");
         fence(&mut h, Some(x1), "x2", "2", 120.0);
-        h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1.2, 3.1"})).unwrap();
-        h.run("setprop", json!({"component": x1.hex(), "key": "link.2", "value": "1.1-1.2, 2-3"})).unwrap();
+        h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1.2, 3.1"})).unwrap();
+        h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.2", "value": "1.1-1.2, 2-3"})).unwrap();
         let (l1, l2) = if via_renumber {
             // Renumber from 7: positions 1, 2, 3 become 7, 8, 9.
-            h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [x1.hex()], "start": 7})).unwrap();
+            h.run("renumber", json!({"kind": "terminal_blocks", "scope": "selection", "strips": [x1.hex()], "start": 7})).unwrap();
             ("7.2, 9", "7.1-7.2, 8-9")
         } else {
             h.run("termlabel", json!({"strip": x1.hex(), "at": "1", "position": "9"})).unwrap();
             ("9.2, 3", "9.1-9.2, 2-3")
         };
         let props = h.doc().devices[&x1].properties.clone();
-        assert_eq!(props.get("link.1").map(String::as_str), Some(l1), "renumber {via_renumber}: levels kept per span");
-        assert_eq!(props.get("link.2").map(String::as_str), Some(l2), "renumber {via_renumber}: the range keeps both ends");
+        assert_eq!(props.get("jumper_bar.1").map(String::as_str), Some(l1), "renumber {via_renumber}: levels kept per span");
+        assert_eq!(props.get("jumper_bar.2").map(String::as_str), Some(l2), "renumber {via_renumber}: the range keeps both ends");
         same_as_built(&mut h);
     }
 }
@@ -416,15 +417,15 @@ fn relabel_and_renumber_keep_mixed_and_cross_level_links() {
 /// Review 036, 2: a link on the out points stays on the out points; the out cells share one wire
 /// number and the in cells keep theirs.
 #[test]
-fn a_link_on_out_points_keeps_its_point() {
+fn a_jumper_bar_on_out_points_keeps_its_point() {
     let mut h = H::new(0x0360_000d);
     for x in [10.0, 20.0, 30.0] {
         h.wire_pp(&[(x, 0.0), (x, 80.0)]).unwrap();
     }
-    let f = h.run("terminals", json!({"type": "FUSE", "from": [0, 40], "to": [40, 40]})).unwrap();
+    let f = h.run("terminalblocks", json!({"type": "FUSE", "from": [0, 40], "to": [40, 40]})).unwrap();
     let x1: DeviceId = id(&f, "strip");
-    h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1.1o-3.1o"})).unwrap();
-    assert_eq!(h.doc().devices[&x1].properties.get("link.1").map(String::as_str), Some("1.1o-3.1o"));
+    h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1.1o-3.1o"})).unwrap();
+    assert_eq!(h.doc().devices[&x1].properties.get("jumper_bar.1").map(String::as_str), Some("1.1o-3.1o"));
     let s = plan(&mut h, x1);
     let rows = s["rows"].as_array().unwrap();
     let wire = |r: &Value, side: &str| r[side][0]["wire"].as_str().map(str::to_string);
@@ -443,11 +444,11 @@ fn spare_only_multi_level_strips_inherit_the_separator() {
     wires(&mut h, 0.0);
     let v = fence(&mut h, None, "Feedthrough", "1", 20.0);
     let x1: DeviceId = id(&v, "strip");
-    h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "3+2x3"})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "3+2x3"})).unwrap();
     let labels = |h: &mut H| plan(h, x1)["rows"].as_array().unwrap().iter().map(|r| r["label"].as_str().unwrap().to_string()).collect::<Vec<_>>();
     assert!(labels(&mut h).contains(&"4.1".to_string()));
-    h.run("projectprops", json!({"props": {"terminal.level.separator": "-"}})).unwrap();
-    assert_eq!(h.cfg(|p| p.outputs().strips.last_work), 1, "the spare-only strip recomputed");
+    h.run("projectprops", json!({"props": {"terminal_block.level.separator": "-"}})).unwrap();
+    assert_eq!(h.cfg(|p| p.reports().strips.last_work), 1, "the spare-only strip recomputed");
     assert!(labels(&mut h).contains(&"4-1".to_string()), "{:?}", labels(&mut h));
     same_as_built(&mut h);
 }
@@ -460,10 +461,10 @@ fn a_typed_dotted_end_says_which_position_it_is() {
     wires(&mut h, 0.0);
     let v = fence(&mut h, None, "Feedthrough", "1", 20.0);
     let x1: DeviceId = id(&v, "strip");
-    let t3 = terminals(&v)[2];
-    h.run("termlabel", json!({"terminal": t3.hex(), "position": "2.1"})).unwrap();
-    let r = h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1, 2.1"})).unwrap();
+    let t3 = connection_points(&v)[2];
+    h.run("termlabel", json!({"connection_point": t3.hex(), "position": "2.1"})).unwrap();
+    let r = h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1, 2.1"})).unwrap();
     assert_eq!(r["message"], "Link -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.", "{r}");
-    let r = h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1, 2"})).unwrap();
+    let r = h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1, 2"})).unwrap();
     assert!(r.get("message").is_none(), "{r}");
 }

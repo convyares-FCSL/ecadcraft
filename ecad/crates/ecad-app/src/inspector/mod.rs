@@ -528,7 +528,7 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
     let Some(r) = doc.representations.get(&rep) else { return out };
     if cn::rep_half(doc, r).is_some_and(cn::is_pin_starter) {
         let t = r.connection_points.keys().next().copied();
-        let name = t.and_then(|t| doc.terminals.get(&t)).and_then(|x| x.label.clone()).unwrap_or_default();
+        let name = t.and_then(|t| doc.connection_points.get(&t)).and_then(|x| x.label.clone()).unwrap_or_default();
         out.push(ConnectorRow {
             key: "pin".into(),
             heading: None,
@@ -636,8 +636,8 @@ fn style_row(
     if e.key == ecad_model::connectivity::wiring::WIRE_CATEGORY
         && let Some(c) = scope.conductor
     {
-        let looks = styles::wire::WireLooks::new(doc);
-        let (id, from) = looks.category(doc, c);
+        let draws = styles::wire::WireDraws::new(doc);
+        let (id, from) = draws.category(doc, c);
         let list = styles::rows(doc, styles::catalogue(cat)).into_iter().map(|r| (r.id.text(), r.name)).collect();
         let name = id.as_ref().map(|i| styles::name(doc, cat, i));
         let value = match (name, from) {

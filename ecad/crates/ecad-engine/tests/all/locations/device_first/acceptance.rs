@@ -76,7 +76,7 @@ fn change_n(h: &mut H) -> u64 {
 /// The kept report models equal a fresh build (the update maps left nothing behind).
 fn same_as_built(h: &mut H, what: &str) {
     let (kept, built) = h.cfg(|p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "{what}: BOM by location");
@@ -252,7 +252,7 @@ fn a_merge_moves_every_user_and_undo_redo_are_exact() {
     let dangling = after.devices.values().flat_map(|c| c.properties.values()).chain(after.pages.values().flat_map(|p| p.display.values()));
     assert!(dangling.chain(after.display.values()).all(|v| *v != old), "a value still names +CP01's key");
     same_as_built(h, "after merge");
-    let locs: Vec<Option<String>> = h.cfg(|p| p.outputs().bom(Group::Location).into_iter().map(|r| r.location).collect());
+    let locs: Vec<Option<String>> = h.cfg(|p| p.reports().bom(Group::Location).into_iter().map(|r| r.location).collect());
     assert!(!locs.contains(&Some("+CP01".into())), "{locs:?}");
     let v = designations_now(h);
     let rows = v["locations"]["entries"].as_array().unwrap();
@@ -334,7 +334,7 @@ fn a_rename_redraws_its_users_pages_and_no_other() {
     assert!(!pages.contains(&other), "page 120 has no user: {pages:?}");
     same_as_built(h, "rename");
     let texts: Vec<String> = h.cfg(|p| {
-        let o = p.outputs().clone();
+        let o = p.reports().clone();
         ecad_engine::pages::generated::parts_of(p.ledger.document(), bom, Some(&o))
             .into_iter()
             .filter_map(|x| match x.kind {
@@ -409,13 +409,13 @@ fn device_box_and_page_values_name_only_their_pages() {
 fn refusals_write_nothing_and_add_no_entry() {
     let mut h = H::new(0x52_7301);
     let k = place(&mut h, "coil", (75.0, 180.0));
-    let strip = place(&mut h, "terminal", (150.0, 150.0));
+    let strip = place(&mut h, "terminalblock", (150.0, 150.0));
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
     h.run("setfunction", json!({"component": k.hex(), "value": "=F1"})).unwrap();
     let long = format!("+{}", "A".repeat(ecad_electrical::devices::MAX_PROPERTY_CHARS + 1));
     let cases: Vec<(&str, Value)> = vec![
         ("setlocation", json!({"devices": [k.hex(), "fffffffffffffffffffffff"], "value": "+NEW1"})),
-        ("setlocation", json!({"devices": [k.hex(), strip.hex()], "type": "terminal", "value": "+NEW2"})),
+        ("setlocation", json!({"devices": [k.hex(), strip.hex()], "type": "connection_point", "value": "+NEW2"})),
         ("setlocation", json!({"component": k.hex(), "value": long})),
         ("setlocation", json!({"component": k.hex(), "value": "+CP\u{7}9"})),
         ("setlocation", json!({"component": k.hex(), "value": 12})),
@@ -423,7 +423,7 @@ fn refusals_write_nothing_and_add_no_entry() {
         ("setlocation", json!({"component": k.hex(), "aspect": "colour", "value": "+X"})),
         ("setlocation", json!({"component": k.hex(), "type": "head", "value": "+NEW3"})),
         ("setlocation", json!({"component": k.hex(), "type": "bogus", "value": "+NEW4"})),
-        ("setfunction", json!({"component": k.hex(), "type": "terminal", "value": "=NEW5"})),
+        ("setfunction", json!({"component": k.hex(), "type": "connection_point", "value": "=NEW5"})),
         ("designationadd", json!({"aspect": "location", "code": "+cp1"})),
         ("designationadd", json!({"aspect": "location", "code": long})),
         ("designationadd", json!({"aspect": "location", "code": ""})),

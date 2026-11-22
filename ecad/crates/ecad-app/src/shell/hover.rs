@@ -54,21 +54,21 @@ impl App {
         let pointer = pointer.filter(|at| self.over_shown_page(ctx, *at));
         let idle = self.cad.session.running.is_none() && !pressed;
         // A terminal under the pointer wins over the wire ending on it or the symbol around it.
-        let terminal = match pointer.filter(|_| idle) {
+        let connection_point = match pointer.filter(|_| idle) {
             Some(at) => self.connection_point_under(at),
             None => None,
         };
         // Then a cable reference end, which wins over the wire starting on its point (brief 010).
-        let reference = match (pointer.filter(|_| idle), &terminal) {
+        let reference = match (pointer.filter(|_| idle), &connection_point) {
             (Some(at), None) => self.reference_under(at),
             _ => None,
         };
-        let target = match (terminal, reference) {
-            (Some((t, lines)), _) => Some((Hovered::Terminal(t), Some(lines))),
+        let target = match (connection_point, reference) {
+            (Some((t, lines)), _) => Some((Hovered::ConnectionPoint(t), Some(lines))),
             (None, Some((r, lines))) => Some((Hovered::Reference(r), Some(lines))),
             (None, None) => self.cad.canvas.hover.filter(|_| idle).map(|h| (Hovered::Object(h), None)),
         };
-        let (Some((h, terminal_lines)), Some(pointer)) = (target, pointer) else {
+        let (Some((h, connection_point_lines)), Some(pointer)) = (target, pointer) else {
             self.hovered = None;
             self.hover = None;
             return;
@@ -90,7 +90,7 @@ impl App {
         }
         if self.hover.is_none() {
             self.hover = match h {
-                Hovered::Terminal(_) | Hovered::Reference(_) => terminal_lines,
+                Hovered::ConnectionPoint(_) | Hovered::Reference(_) => connection_point_lines,
                 Hovered::Object(h) => {
                     let uid = self.cad.session.state().map(|st| st.uid).ok();
                     match (self.project.as_ref(), uid) {

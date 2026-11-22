@@ -368,8 +368,8 @@ fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
     assert_eq!(ecad_engine::cables::draw::conductor_colour(&doc, a).map(|c| c.to_string()).as_deref(), Some("RD"));
     assert_eq!(ecad_engine::cables::draw::conductor_colour(&doc, b).map(|c| c.to_string()).as_deref(), Some("WH"), "its own colour stays");
     assert!(label_of(&mut h, page, a).unwrap().ends_with(" RD"));
-    let look = styles::wire::wire_draw(&doc, b);
-    assert_eq!(look.colour.map(|c| c.1), Some(Source::Object), "overridden");
+    let draw = styles::wire::wire_draw(&doc, b);
+    assert_eq!(draw.colour.map(|c| c.1), Some(Source::Object), "overridden");
     // Reset: it follows the category again.
     h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": null})).unwrap();
     assert_eq!(ecad_engine::cables::draw::conductor_colour(&h.doc(), b).map(|c| c.to_string()).as_deref(), Some("RD"));
@@ -429,7 +429,7 @@ fn a_category_with_a_part_number_puts_wire_on_the_bom() {
     let rows = ecad_engine::checks::all(&h.doc(), 0.01);
     assert!(rows.iter().any(|c| c.kind == ecad_electrical::checks::Kind::WireAllowance), "no allowance: the BOM check");
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": 1.5}})).unwrap();
-    let bom = h.cfg(|p| p.outputs().wire_bom());
+    let bom = h.cfg(|p| p.reports().wire_bom());
     assert_eq!(bom.len(), 1);
     assert_eq!(bom[0].part_number.as_deref(), Some("W-05-BU"));
     assert_eq!(bom[0].qty_text(), "4.5 m", "3 wires × 1.5 m");

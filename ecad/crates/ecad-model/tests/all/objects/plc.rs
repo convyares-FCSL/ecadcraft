@@ -128,11 +128,15 @@ fn an_old_channel_key_on_a_module_is_a_read_error() {
         ..Device::default()
     };
     let point = |k: &str| ConnectionPoint { owner: c.into(), label: Some("1".into()), key: Some(k.parse().unwrap()), accepts: Default::default() };
-    l.commit(Author::User, "card", vec![Op::CreateDevice { id: c, device: module }, Op::AddConnectionPoint { id: good, terminal: point(".0.in") }])
-        .unwrap();
+    l.commit(
+        Author::User,
+        "card",
+        vec![Op::CreateDevice { id: c, device: module }, Op::AddConnectionPoint { id: good, connection_point: point(".0.in") }],
+    )
+    .unwrap();
     for old in ["I1.3", "Q0.0", "L+"] {
         let t: ConnectionPointId = ConnectionPointId::from(0x072c_0100u128);
-        let e = l.commit(Author::User, "old key", vec![Op::AddConnectionPoint { id: t, terminal: point(old) }]).unwrap_err().to_string();
+        let e = l.commit(Author::User, "old key", vec![Op::AddConnectionPoint { id: t, connection_point: point(old) }]).unwrap_err().to_string();
         assert!(e.contains(&format!("keyed {old}")), "{old}: {e}");
     }
     assert_eq!(l.head(), 1, "nothing was committed");
@@ -145,7 +149,7 @@ fn an_old_channel_key_on_a_module_is_a_read_error() {
         label: "old key".into(),
         kind: TxKind::Edit,
         time_ms: None,
-        ops: vec![Op::AddConnectionPoint { id: ConnectionPointId::from(0x072c_0200u128), terminal: point("I1.3") }],
+        ops: vec![Op::AddConnectionPoint { id: ConnectionPointId::from(0x072c_0200u128), connection_point: point("I1.3") }],
     };
     log.push(bad);
     let (read, failure) = Ledger::replay_prefix(log, 0x0007_2cf2);

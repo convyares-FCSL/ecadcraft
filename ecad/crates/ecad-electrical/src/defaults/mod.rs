@@ -43,7 +43,7 @@ pub mod settings;
 pub mod strip_pages;
 pub mod styles;
 pub mod symbols;
-pub mod terminals;
+pub mod terminal_blocks;
 pub mod text;
 pub mod wires;
 
@@ -463,7 +463,7 @@ pub fn all() -> impl Iterator<Item = &'static Entry> {
         wires::ENTRIES,
         print::ENTRIES,
         symbols::ENTRIES,
-        terminals::ENTRIES,
+        terminal_blocks::ENTRIES,
         connectors::ENTRIES,
         strip_pages::ENTRIES,
         bom::ENTRIES,
@@ -590,12 +590,12 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
 /// What [`users`] counts for `entry`: `"devices"`, `"wires"` or `"pages"`.
 pub fn users_noun(entry: &Entry) -> &'static str {
     let area = entry.key.split('.').next().unwrap_or_default();
-    // Brief 046: a page style is counted by page, though its key is in the `terminal` area.
+    // Brief 046: a page style is counted by page, though its key is in the `connection_point` area.
     if entry.key == strip_pages::STYLE.key {
         return "pages";
     }
     match area {
-        "text" | "symbol" | "terminal" | "tags" if entry.key != text::WIRE_LABEL_HEIGHT.key => "devices",
+        "text" | "symbol" | "terminal_block" | "tags" if entry.key != text::WIRE_LABEL_HEIGHT.key => "devices",
         "wire" | "wiring" | "text" => "wires",
         _ => "pages",
     }
@@ -772,7 +772,7 @@ mod kind_tests {
             (crate::releases::revisions::PENDING_KEY, &["star", "draft", "off"]),
             ("print.colour", &["mono", "colour"]),
             ("rating.system", &["ac1", "ac3", "dc"]),
-            ("terminal.plan.style", &["table", "graphic"]),
+            ("terminal_block.plan.style", &["table", "graphic"]),
             ("bom.lines", &["flat", "nested"]),
         ];
         for (key, want) in table {

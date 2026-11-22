@@ -28,14 +28,14 @@ pub const MAX_POTENTIALS: usize = 200;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NetChoice {
     pub conductor: Option<WireId>,
-    pub terminal: Option<ConnectionPointId>,
+    pub connection_point: Option<ConnectionPointId>,
     pub number: Option<String>,
 }
 
 impl NetChoice {
     /// Whether any of the three is given.
     pub fn is_given(&self) -> bool {
-        self.conductor.is_some() || self.terminal.is_some() || self.number.is_some()
+        self.conductor.is_some() || self.connection_point.is_some() || self.number.is_some()
     }
 }
 
@@ -82,22 +82,22 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
         }
     }
     let points = net
-        .terminals
+        .connection_points
         .iter()
-        .filter(|t| doc.terminals.get(t).is_none_or(|x| x.owner.aid().is_none()))
+        .filter(|t| doc.connection_points.get(t).is_none_or(|x| x.owner.aid().is_none()))
         .map(|t| (*t, wires::point_words(doc, *t)))
         .collect();
     let continuations = net
-        .terminals
+        .connection_points
         .iter()
-        .filter_map(|t| doc.terminals.get(t))
+        .filter_map(|t| doc.connection_points.get(t))
         .filter_map(|x| x.owner.aid())
         .filter_map(|a| crate::continuations::continuation(doc, a).map(|(n, _)| n.unwrap_or_default().to_string()))
         .collect();
-    let looks = crate::styles::wire::WireLooks::new(doc);
-    let cats: BTreeSet<StyleRef> = net.wires.iter().filter_map(|c| looks.category(doc, *c).0).collect();
+    let draws = crate::styles::wire::WireDraws::new(doc);
+    let cats: BTreeSet<StyleRef> = net.wires.iter().filter_map(|c| draws.category(doc, *c).0).collect();
     let named = |id: &StyleRef| CategoryName { id: id.text(), name: crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id) };
-    let uncategorised = net.wires.iter().any(|c| looks.category(doc, *c).0.is_none());
+    let uncategorised = net.wires.iter().any(|c| draws.category(doc, *c).0.is_none());
     let (category, categories) = match (cats.len(), uncategorised) {
         (1, false) => (cats.first().map(named), None),
         (0, _) => (None, None),
@@ -120,7 +120,7 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
 fn sort_key(net: &NetData) -> (u8, u128) {
     match net.first_conductor() {
         Some(c) => (0, c.0),
-        None => (1, net.terminals.first().map_or(0, |t| t.0)),
+        None => (1, net.connection_points.first().map_or(0, |t| t.0)),
     }
 }
 
@@ -133,8 +133,8 @@ pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetKey, CmdError
     if let Some(c) = choice.conductor {
         return conn.net_of_conductor(c).ok_or(CmdError::NotFound(Noun::Wire));
     }
-    if let Some(t) = choice.terminal {
-        return conn.net_of_connection_point(t).ok_or(CmdError::NotFound(Noun::Terminal));
+    if let Some(t) = choice.connection_point {
+        return conn.net_of_connection_point(t).ok_or(CmdError::NotFound(Noun::ConnectionPoint));
     }
     if let Some(n) = &choice.number {
         let n = n.trim();
@@ -142,7 +142,7 @@ pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetKey, CmdError
         nets.sort_by_key(|id| conn.net(*id).map(sort_key));
         return nets.first().copied().ok_or_else(|| CmdError::refused(format!("no net has number {n}")));
     }
-    Err(CmdError::input("one of `conductor`, `terminal` or `number` is required"))
+    Err(CmdError::input("one of `conductor`, `connection_point` or `number` is required"))
 }
 
 /// The net `choice` names, as shown (`net`).
@@ -745,7 +745,7 @@ pub fn net_json(n: &NetView) -> Value {
         "potential": n.potential,
         "category": n.category.as_ref().map(cat),
         "conductors": n.wires.iter().map(|c| c.hex()).collect::<Vec<_>>(),
-        "points": n.points.iter().map(|(t, label)| json!({"terminal": t.hex(), "label": label})).collect::<Vec<_>>(),
+        "points": n.points.iter().map(|(t, label)| json!({"connection_point": t.hex(), "label": label})).collect::<Vec<_>>(),
         "continuations": n.continuations,
         "pages": n.pages.iter().map(|(p, c)| json!({"page": p, "column": c})).collect::<Vec<_>>(),
     });

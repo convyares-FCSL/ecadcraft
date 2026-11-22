@@ -9,7 +9,7 @@ use crate::convert::kind_for_primitive;
 use crate::pages::frame::{FrameInput, LABEL_ACI, Part, TextDraw};
 use ecad_electrical::pages::front::*;
 use {crate::pages::generated::Draw, ecad_electrical::pages::generated::LAYER};
-use {crate::styles::draw::Look, ecad_electrical::styles::text_style::TextKind};
+use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextKind};
 
 /// The layer the screen-only outlines are drawn on (not printed).
 const OVERLAY: &str = crate::convert::MARKER_LAYER;
@@ -27,7 +27,7 @@ const TYPED_ACI: u8 = 30;
 type R = (f64, f64, f64, f64);
 
 /// Dashed outline of `r` on the overlay layer, and its caption at the top right.
-fn outline(d: &mut Draw, r: R, aci: u8, caption: &str, look: TextDraw) {
+fn outline(d: &mut Draw, r: R, aci: u8, caption: &str, draw: TextDraw) {
     let (l, b, rr, t) = r;
     let dash = 3.0;
     let gap = 2.0;
@@ -51,7 +51,7 @@ fn outline(d: &mut Draw, r: R, aci: u8, caption: &str, look: TextDraw) {
     seg((l, b), (l, t));
     if !caption.is_empty() {
         let before = d.out.len();
-        d.text((rr - 2.0, t - 2.0), look, caption, HAlign::Right, Some(aci), Some(rr - l - 4.0));
+        d.text((rr - 2.0, t - 2.0), draw, caption, HAlign::Right, Some(aci), Some(rr - l - 4.0));
         for p in d.out.iter_mut().skip(before) {
             p.layer = OVERLAY;
         }
@@ -59,10 +59,10 @@ fn outline(d: &mut Draw, r: R, aci: u8, caption: &str, look: TextDraw) {
 }
 
 /// A block's title and the thin rule under it; returns the y the block's content starts at.
-fn title(d: &mut Draw, r: R, text: &str, look: TextDraw, s: f64) -> f64 {
+fn title(d: &mut Draw, r: R, text: &str, draw: TextDraw, s: f64) -> f64 {
     let (l, _, rr, t) = r;
     let y = t - 6.5 * s;
-    d.text((l + 4.0 * s, y), look, text, HAlign::Left, None, Some(rr - l - 8.0 * s));
+    d.text((l + 4.0 * s, y), draw, text, HAlign::Left, None, Some(rr - l - 8.0 * s));
     let rule = y - 4.5 * s;
     d.line((l + 4.0 * s, rule), (rr - 4.0 * s, rule));
     rule - 5.5 * s
@@ -171,9 +171,9 @@ fn mark(d: &mut Draw, cell: &Cell, r: R) {
 pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendFit) {
     let k = ecad_model::document::sheet::unit_scale(input.unit);
     let mut d = Draw { k, x0, out: Vec::new() };
-    let looks = Look::new(doc);
-    let look = |kind| TextDraw::of(&looks, kind, input.unit);
-    let cover_draw = look(TextKind::Cover);
+    let draws = DrawStyles::new(doc);
+    let draw = |kind| TextDraw::of(&draws, kind, input.unit);
+    let cover_draw = draw(TextKind::Cover);
     let Layout {
         area: (l, _, r, _),
         s,
@@ -199,7 +199,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         take,
         fit,
     } = layout(doc, input, cover_draw.mm);
-    let cover = look(TextKind::Cover);
+    let cover = draw(TextKind::Cover);
     let sized = |key: &str| TextDraw { mm: cover.mm * cover_factor(key) * s, ..cover };
     let heading_draw = sized("front.cover.block_title");
     let small = sized("front.cover.body");

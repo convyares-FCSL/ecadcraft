@@ -28,12 +28,12 @@ fn join(h: &mut H, symbol: &str, device: DeviceId, at: [f64; 2]) -> Result<Value
 }
 
 fn labels(v: &Value) -> Vec<String> {
-    v["terminals"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
+    v["connection_points"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
 }
 
-fn terminal(v: &Value, label: &str) -> ConnectionPointId {
-    let t = v["terminals"].as_array().unwrap().iter().find(|t| t["label"] == label).unwrap();
-    id(t, "terminal")
+fn connection_point(v: &Value, label: &str) -> ConnectionPointId {
+    let t = v["connection_points"].as_array().unwrap().iter().find(|t| t["label"] == label).unwrap();
+    id(t, "connection_point")
 }
 
 fn setprop(h: &mut H, c: DeviceId, key: &str, value: Value) -> Result<Value, String> {
@@ -131,7 +131,13 @@ fn a_fuse_bank_breaks_the_net_and_its_spare_points_are_quiet() {
     let mut h = new_h();
     let page = h.first_page();
     let bank = place(&mut h, "fusebank8", [0.0, 0.0]);
-    let (lp, m, f1, f2, f3) = (terminal(&bank, "L+"), terminal(&bank, "M"), terminal(&bank, "1"), terminal(&bank, "2"), terminal(&bank, "3"));
+    let (lp, m, f1, f2, f3) = (
+        connection_point(&bank, "L+"),
+        connection_point(&bank, "M"),
+        connection_point(&bank, "1"),
+        connection_point(&bank, "2"),
+        connection_point(&bank, "3"),
+    );
     for t in [lp, f1, f2] {
         let at = h.connection_point_pos(page, t);
         let dy = if t == lp { 30.0 } else { -30.0 };
@@ -151,12 +157,12 @@ fn a_fuse_bank_breaks_the_net_and_its_spare_points_are_quiet() {
     let mut h2 = new_h();
     let bank2 = place(&mut h2, "fusebank4", [0.0, 0.0]);
     let doc2 = h2.doc();
-    assert!(ecad_electrical::checks::connection_point_checks(&doc2, terminal(&bank2, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
-    assert!(ecad_electrical::checks::connection_point_checks(&doc2, terminal(&bank2, "M")).is_empty());
+    assert!(ecad_electrical::checks::connection_point_checks(&doc2, connection_point(&bank2, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
+    assert!(ecad_electrical::checks::connection_point_checks(&doc2, connection_point(&bank2, "M")).is_empty());
     // A non-quiet symbol still raises it (a coil).
     let coil = place(&mut h2, "coil", [100.0, 0.0]);
     let doc2 = h2.doc();
-    assert!(ecad_electrical::checks::connection_point_checks(&doc2, terminal(&coil, "A1")).iter().any(|c| c.kind == CheckKind::Unconnected));
+    assert!(ecad_electrical::checks::connection_point_checks(&doc2, connection_point(&coil, "A1")).iter().any(|c| c.kind == CheckKind::Unconnected));
 }
 
 #[test]
@@ -248,7 +254,7 @@ fn a_bulkhead_pin_is_one_net_from_both_sides_and_spare_pins_are_quiet() {
     let page = h.first_page();
     let rj = place(&mut h, "rj45", [0.0, 0.0]);
     assert_eq!(rj["tag"], "-X01");
-    let (p1, p2, sh) = (terminal(&rj, "1"), terminal(&rj, "2"), terminal(&rj, "SH"));
+    let (p1, p2, sh) = (connection_point(&rj, "1"), connection_point(&rj, "2"), connection_point(&rj, "SH"));
     let at = h.connection_point_pos(page, p1);
     let up: ecad_model::WireId = id(&h.wire_pp(&[(at.x, at.y), (at.x, at.y + 30.0)]).unwrap(), "conductor");
     let down: ecad_model::WireId = id(&h.wire_pp(&[(at.x, at.y), (at.x, at.y - 30.0)]).unwrap(), "conductor");
@@ -276,10 +282,10 @@ fn a_card_body_takes_its_channels_as_one_device() {
     let all: std::collections::BTreeSet<String> = ecad_electrical::devices::labels_of(&doc, a);
     assert_eq!(all.into_iter().collect::<Vec<_>>(), ["1", "2", "L+", "M"]);
     // A card's supply points are quiet; a CPU's are not.
-    assert!(ecad_electrical::checks::connection_point_checks(&doc, terminal(&card, "L+")).is_empty());
+    assert!(ecad_electrical::checks::connection_point_checks(&doc, connection_point(&card, "L+")).is_empty());
     let cpu = place(&mut h, "plccpu", [100.0, 0.0]);
     let doc = h.doc();
-    assert!(ecad_electrical::checks::connection_point_checks(&doc, terminal(&cpu, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
+    assert!(ecad_electrical::checks::connection_point_checks(&doc, connection_point(&cpu, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
 }
 
 /// Brief 034 criterion 11: a symbol's prefix is a registered default (`symbol.<key>.prefix`),

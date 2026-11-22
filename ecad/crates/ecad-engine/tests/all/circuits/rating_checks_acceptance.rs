@@ -186,7 +186,7 @@ fn fixture(seed: u64) -> R {
     h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "4A C"})).unwrap();
     let lamp = placed(&mut h, "lamp", 100.0, 200.0);
     h.run("wire", json!({"points": pts(&[(100.0, 290.0), (100.0, 210.0)])})).unwrap();
-    let x = h.run("place", json!({"symbol": "terminal", "at": [100, 250], "tag": "-X01"})).unwrap();
+    let x = h.run("place", json!({"symbol": "terminalblock", "at": [100, 250], "tag": "-X01"})).unwrap();
     assert!(x["split"].is_object() || x["joined"] == true, "-X01 lands on the wire: {x}");
     let wire = conductor_at(&mut h, lamp, "X1");
     let category = own_id(

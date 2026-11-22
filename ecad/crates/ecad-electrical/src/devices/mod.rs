@@ -509,7 +509,7 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
             // Brief 034: the digit rule lives in the catalogue (a fuse bank's outputs are not contacts).
             symbols::sequence_labels(&used, &symbols::bank_outputs(doc, c), if make { &['3', '4'] } else { &['1', '2'] }, &who)
         }
-        Kind::Terminal => {
+        Kind::TerminalBlock => {
             let highest = used.iter().filter_map(|l| l.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0);
             Ok(vec![(highest + 1).to_string()])
         }
@@ -561,7 +561,7 @@ pub struct Placed {
     pub tag: String,
     pub joined: bool,
     /// (definition key, label, terminal), in definition order.
-    pub terminals: Vec<(PointKey, String, ConnectionPointId)>,
+    pub connection_points: Vec<(PointKey, String, ConnectionPointId)>,
 }
 
 /// Plan placing starter symbol `s` at `placement` on `page` (design 018 §10).
@@ -597,7 +597,7 @@ pub fn plan_place(
     };
     let (item, representation): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     let instance = Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) };
-    let mut terminals = Vec::new();
+    let mut connection_points = Vec::new();
     match target {
         Target::New(t) => {
             let t = match t {
@@ -620,13 +620,13 @@ pub fn plan_place(
                     ..Device::default()
                 },
             });
-            for td in &def.terminals {
+            for td in &def.connection_points {
                 let tid: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: tid,
-                    terminal: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    connection_point: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
-                terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.to_string()), tid));
+                connection_points.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.to_string()), tid));
             }
             ops.push(Op::AddItem { id: item, item: instance });
             ops.push(Op::LinkRepresentation {
@@ -640,7 +640,7 @@ pub fn plan_place(
                     connection_points: BTreeMap::new(),
                 },
             });
-            Ok(Placed { ops, label: "Place symbol".into(), component: c, representation, item, definition, tag: t, joined: false, terminals })
+            Ok(Placed { ops, label: "Place symbol".into(), component: c, representation, item, definition, tag: t, joined: false, connection_points })
         }
         Target::Join(c) => {
             if !doc.devices.contains_key(&c) {
@@ -648,11 +648,11 @@ pub fn plan_place(
             }
             let labels = join_labels(doc, c, s, &BTreeSet::new())?;
             let mut cps = BTreeMap::new();
-            for (td, label) in def.terminals.iter().zip(&labels) {
+            for (td, label) in def.connection_points.iter().zip(&labels) {
                 let tid: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: tid,
-                    terminal: ConnectionPoint {
+                    connection_point: ConnectionPoint {
                         owner: c.into(),
                         label: Some(label.clone()),
                         key: Some(PointKey::Def(label.clone())),
@@ -660,7 +660,7 @@ pub fn plan_place(
                     },
                 });
                 cps.insert(tid, td.at);
-                terminals.push((td.key.clone(), label.clone(), tid));
+                connection_points.push((td.key.clone(), label.clone(), tid));
             }
             ops.push(Op::AddItem { id: item, item: instance });
             ops.push(Op::LinkRepresentation {
@@ -684,7 +684,17 @@ pub fn plan_place(
                 ops.push(Op::SetDeviceDefinition { id: c, before: d.definition, after: Some(definition) });
             }
             let t = tag_words(doc, c);
-            Ok(Placed { ops, label: format!("Add symbol to {t}"), component: c, representation, item, definition, tag: t, joined: true, terminals })
+            Ok(Placed {
+                ops,
+                label: format!("Add symbol to {t}"),
+                component: c,
+                representation,
+                item,
+                definition,
+                tag: t,
+                joined: true,
+                connection_points,
+            })
         }
     }
 }
@@ -701,7 +711,7 @@ pub(crate) fn shown_connection_points(doc: &Document, c: DeviceId, r: &Represent
             if r.connection_points.is_empty() {
                 // A terminal no other symbol shows first (a joined terminal's key can equal the
                 // definition key, review M1 2.1), else the first with the key.
-                def.terminals
+                def.connection_points
                     .iter()
                     .filter_map(|td| {
                         let with_key: Vec<ConnectionPointId> =
@@ -712,7 +722,7 @@ pub(crate) fn shown_connection_points(doc: &Document, c: DeviceId, r: &Represent
                     .collect()
             } else {
                 let mut v: Vec<(ConnectionPointId, Pt)> = r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
-                let order = |p: &Pt| def.terminals.iter().position(|td| td.at.near(*p, 1e-9)).unwrap_or(usize::MAX);
+                let order = |p: &Pt| def.connection_points.iter().position(|td| td.at.near(*p, 1e-9)).unwrap_or(usize::MAX);
                 v.sort_by_key(|(t, p)| (order(p), *t));
                 v
             }
@@ -749,7 +759,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     // whose label is taken is refused.
     let name_for = |old: ConnectionPointId, label: String, assigned: &BTreeSet<String>| -> Result<(String, Option<String>), CmdError> {
         let taken = |n: &str| into_labels.contains(n) || assigned.contains(n);
-        let unlabelled = doc.terminals.get(&old).is_some_and(|x| x.label.is_none()) && label == label_of(doc, old);
+        let unlabelled = doc.connection_points.get(&old).is_some_and(|x| x.label.is_none()) && label == label_of(doc, old);
         if !taken(&label) {
             let shown = (!unlabelled).then(|| label.clone());
             return Ok((label, shown));
@@ -768,7 +778,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         let nt: ConnectionPointId = ids.fresh();
         ops.push(Op::AddConnectionPoint {
             id: nt,
-            terminal: ConnectionPoint { owner: into.into(), label, key: Some(PointKey::Def(name)), accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: into.into(), label, key: Some(PointKey::Def(name)), accepts: Default::default() },
         });
         map.insert(old, nt);
         nt
@@ -782,7 +792,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         // A symbol whose device's connection points do not match its definition (an old or
         // hand-edited file) would move without any, which the model refuses (I14) with words
         // nobody can act on: say what is wrong instead.
-        if r.form == Form::Symbol && shown.is_empty() && rep_definition(doc, r).is_some_and(|(def, _)| !def.terminals.is_empty()) {
+        if r.form == Form::Symbol && shown.is_empty() && rep_definition(doc, r).is_some_and(|(def, _)| !def.connection_points.is_empty()) {
             let page = doc.pages.get(&r.page).map_or_else(|| r.page.short(), |p| p.title.to_string());
             return Err(CmdError::refused(format!(
                 "Cannot merge {from_words}: its symbol on page \"{page}\" is not linked to any of its connection points. Delete that symbol and place it again, then merge."
@@ -842,7 +852,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     ops.extend(links);
     ops.extend(crate::wires::repoint_ops(doc, &new_connection_point.iter().map(|(old, nt)| (*old, *nt)).collect()));
     for (t, term) in doc.connection_points_of(from) {
-        ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
+        ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
     }
     let into_props = doc.devices.get(&into).map(|c| &c.properties);
     for (old, new) in renamed {
@@ -870,7 +880,7 @@ const MAX_RENAMED: u32 = 999;
 /// point drawn with an empty label (a project symbol's earth point) is named by its key, never by
 /// its 32-digit ID (pack re-run, bug 1).
 pub fn label_of(doc: &Document, t: ConnectionPointId) -> String {
-    let term = doc.terminals.get(&t);
+    let term = doc.connection_points.get(&t);
     term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.as_ref()).map(ToString::to_string)).unwrap_or_else(|| t.hex())
 }
 
@@ -924,8 +934,8 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
         };
         ops.extend(crate::wires::free_points_ops(doc, drop.iter().copied()));
         for t in &drop {
-            if let Some(term) = doc.terminals.get(t) {
-                ops.push(Op::RemoveConnectionPoint { id: *t, terminal: term.clone() });
+            if let Some(term) = doc.connection_points.get(t) {
+                ops.push(Op::RemoveConnectionPoint { id: *t, connection_point: term.clone() });
             }
         }
         if remaining.is_empty() {
@@ -987,7 +997,7 @@ pub fn copy_tag(doc: &Document, high: &mut TagHigh, c: &Device) -> Option<String
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TextOf {
     Tag,
-    Terminal(ConnectionPointId),
+    ConnectionPoint(ConnectionPointId),
     /// A continuation's name (brief 022).
     Name,
     /// A continuation's other places (brief 022).
@@ -1070,7 +1080,7 @@ pub fn kind_of(of: TextOf) -> crate::styles::text_style::TextKind {
     use crate::styles::text_style::TextKind;
     match of {
         TextOf::Tag => TextKind::Tag,
-        TextOf::Terminal(_) => TextKind::PointLabel,
+        TextOf::ConnectionPoint(_) => TextKind::PointLabel,
         TextOf::Name => TextKind::ContinuationName,
         TextOf::Places => TextKind::Reference,
         TextOf::Description => TextKind::Description,
@@ -1157,7 +1167,7 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::styles::text_style
         return RunRule::Strip;
     }
     match rep_starter(doc, r).map(|s| s.kind) {
-        Some(Kind::Terminal) => RunRule::Strip,
+        Some(Kind::TerminalBlock) => RunRule::Strip,
         Some(Kind::Channel(_)) => RunRule::Plc,
         _ => RunRule::None,
     }
@@ -1184,19 +1194,19 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         // Brief 044: a connector pin's label on the page is its pin name (`3`), beside its half's
         // tag; elsewhere it is named `-X10.S:3`.
         if crate::connectors::side_of(doc, t).is_some() {
-            if let Some(label) = doc.terminals.get(&t).and_then(|x| x.label.clone()) {
-                by_rep.entry(rid).or_default().push((TextOf::Terminal(t), label, at));
+            if let Some(label) = doc.connection_points.get(&t).and_then(|x| x.label.clone()) {
+                by_rep.entry(rid).or_default().push((TextOf::ConnectionPoint(t), label, at));
             }
             continue;
         }
         // Brief 036: a strip level shows its shown label (`1.L`), not its position.
         if let Some(label) = crate::terminal_strips::terminal_blocks::shown_label(doc, t) {
-            by_rep.entry(rid).or_default().push((TextOf::Terminal(t), label, at));
+            by_rep.entry(rid).or_default().push((TextOf::ConnectionPoint(t), label, at));
         }
     }
     let mut out = Vec::new();
     let sizes = TagSizes::of(doc);
-    let look = crate::styles::text_style::fonts::Look::with(doc, m);
+    let draw = crate::styles::text_style::fonts::DrawStyles::with(doc, m);
     let pitch = crate::defaults::resolve(doc, &crate::defaults::text::LINE_PITCH, crate::defaults::Scope::project()).number();
     let firsts = crate::styles::text_style::run_firsts(doc, page);
     // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
@@ -1256,7 +1266,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         for (of, value, at, height, halign, valign) in texts_for(def, &pl, None, &labels, sizes) {
             let height = height_of(c, kind_of(of), height);
             let (mut at, mut halign, mut valign, mut moved) = (at, halign, valign, false);
-            if let TextOf::Terminal(t) = of
+            if let TextOf::ConnectionPoint(t) = of
                 && let Some((p, h, v)) = props
                     .and_then(|p| p.get(&point_label_key(doc, rid, t)))
                     .and_then(|s| crate::styles::text_style::parse_at(s))
@@ -1266,7 +1276,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
                 (at, halign, valign, moved) = (p, h, v, true);
             }
             if labels_shown {
-                let w = width_in(look.fonts_for(TextKind::PointLabel), crate::styles::text_style::TextStyle { height, ..label_style }, &value, m);
+                let w = width_in(draw.fonts_for(TextKind::PointLabel), crate::styles::text_style::TextStyle { height, ..label_style }, &value, m);
                 fixed.push(crate::styles::text_style::text_box(w, height, at, halign, valign));
             }
             out.push(PageText {
@@ -1291,7 +1301,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         // Brief 048 (design 048 §2.3): a symbol with text slots places each device text at its
         // slot instead of in a tag block.
         if !def.texts.is_empty() {
-            out.extend(slot_texts(doc, c, rid, r, def, &pl, sizes, &shown, &mut boxes, &look, m, &mut fixed));
+            out.extend(slot_texts(doc, c, rid, r, def, &pl, sizes, &shown, &mut boxes, &draw, m, &mut fixed));
             continue;
         }
         // The tag block (design 031 §6.1): the tag, then the description and part number.
@@ -1331,7 +1341,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         let w = sized
             .iter()
             .map(|l| {
-                width_in(look.fonts_for(kind_of(l.0)), crate::styles::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1, m)
+                width_in(draw.fonts_for(kind_of(l.0)), crate::styles::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1, m)
             })
             .fold(0.0, f64::max);
         // Line tops are `text.line_pitch` × each line's height apart.
@@ -1383,7 +1393,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
 fn slot_texts(
     doc: &Document, c: DeviceId, rid: RepresentationId, r: &Representation, def: &Definition, pl: &Placement, sizes: TagSizes,
     shown: &dyn Fn(crate::styles::text_style::TextKind) -> bool, boxes: &mut crate::locations::BoxCache,
-    look: &crate::styles::text_style::fonts::Look, m: &dyn TextMetrics, fixed: &mut Vec<(Pt, Pt)>,
+    draw: &crate::styles::text_style::fonts::DrawStyles, m: &dyn TextMetrics, fixed: &mut Vec<(Pt, Pt)>,
 ) -> Vec<PageText> {
     use crate::styles::text_style::fonts::width_in;
     use crate::styles::text_style::{TextKind, text_style};
@@ -1425,7 +1435,7 @@ fn slot_texts(
         }
         let (ha, va) = (h(slot.h), v(slot.v));
         if on {
-            let w = width_in(look.fonts_for(kind), crate::styles::text_style::TextStyle { height, ..style }, &value, m);
+            let w = width_in(draw.fonts_for(kind), crate::styles::text_style::TextStyle { height, ..style }, &value, m);
             fixed.push(crate::styles::text_style::text_box(w, height, at, ha, va));
         }
         out.push(PageText {
@@ -1442,7 +1452,7 @@ fn slot_texts(
 /// `text.<rep>.point_label.<terminal key>.at`, the terminal key being its definition key, else its
 /// label.
 pub fn point_label_key(doc: &Document, rep: RepresentationId, t: ConnectionPointId) -> String {
-    let term = doc.terminals.get(&t);
+    let term = doc.connection_points.get(&t);
     let key = term.and_then(|x| x.key.as_ref()).map(ToString::to_string).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
     format!("{}point_label.{key}.at", crate::styles::text_style::symbol_prefix(rep))
 }
@@ -1498,7 +1508,7 @@ pub fn symbols_json(doc: &Document, query: Option<&str>) -> Value {
             let (w, h) = s.size();
             json!({
                 "key": s.key, "name": s.name, "aliases": s.aliases, "prefix": format!("-{}", prefix_for(doc, s)),
-                "terminals": s.labels(), "box": [w, h], "joinable": s.joinable(),
+                "connection_points": s.labels(), "box": [w, h], "joinable": s.joinable(),
             })
         })
         .collect();
@@ -1548,7 +1558,7 @@ pub fn device_json(doc: &Document, c: DeviceId) -> Value {
                 rid,
                 json!({
                     "representation": rid.hex(), "page": r.page.hex(), "page_number": order.get(&r.page),
-                    "role": r.role, "symbol": rep_starter(doc, r).map(|s| s.key), "terminals": labels,
+                    "role": r.role, "symbol": rep_starter(doc, r).map(|s| s.key), "connection_points": labels,
                 }),
             )
         })

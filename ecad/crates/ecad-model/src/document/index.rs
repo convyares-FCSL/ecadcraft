@@ -175,8 +175,8 @@ impl Index {
         for (id, c) in &doc.devices {
             rest.device(*id, c, Delta::Add);
         }
-        for (id, t) in &doc.terminals {
-            rest.terminal(*id, t, Delta::Add);
+        for (id, t) in &doc.connection_points {
+            rest.connection_point(*id, t, Delta::Add);
         }
         for (id, a) in &doc.aids {
             rest.aid(*id, a, Delta::Add);
@@ -274,7 +274,7 @@ impl Index {
         bump(&mut self.tags, crate::naming::tag::key(tag), id, delta);
     }
 
-    pub(crate) fn terminal(&mut self, id: ConnectionPointId, t: &ConnectionPoint, delta: Delta) {
+    pub(crate) fn connection_point(&mut self, id: ConnectionPointId, t: &ConnectionPoint, delta: Delta) {
         bump(&mut self.component_connection_points, t.owner, id, delta);
     }
 

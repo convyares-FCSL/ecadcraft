@@ -146,7 +146,7 @@ impl Rating {
 
 /// What every evaluation shares, read once per build or update.
 pub struct Context {
-    pub looks: wire::WireLooks,
+    pub draws: wire::WireDraws,
     /// Location entry key → its panel temperature (location boxes with a panel temperature;
     /// brief 052: a stored location is an entry key, shown as its code).
     temps: BTreeMap<String, f64>,
@@ -192,7 +192,7 @@ impl Context {
                 }
             }
         }
-        Context { looks: wire::WireLooks::new(doc), temps, boxes: crate::locations::BoxCache::default(), table: None, loads: TypedLoads }
+        Context { draws: wire::WireDraws::new(doc), temps, boxes: crate::locations::BoxCache::default(), table: None, loads: TypedLoads }
     }
 }
 
@@ -284,7 +284,7 @@ pub fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
     if !x.rating.is_empty() || x.load.is_some() || x.protected_by().is_some() {
         return true;
     }
-    let (cat, _) = ctx.looks.category(doc, c);
+    let (cat, _) = ctx.draws.category(doc, c);
     sheet(doc, ecad_model::StyleCatalogue::Wire, cat.as_ref()).rated.is_some()
 }
 
@@ -310,7 +310,7 @@ pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId)
     let mut locations: Vec<String> = Vec::new();
     if let Some(x) = doc.wires.get(&c) {
         for t in &x.ends {
-            let Some(comp) = doc.terminals.get(t).and_then(|t| t.device()) else { continue };
+            let Some(comp) = doc.connection_points.get(t).and_then(|t| t.device()) else { continue };
             // Brief 052: the device's stored location is an entry key; boxes match by key, and the
             // row shows the entry's code.
             let Some(loc) = crate::locations::resolve_with(doc, comp, &mut ctx.boxes).key.map(|l| l.trim().to_string()) else { continue };
@@ -351,9 +351,9 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     // Datasheet values, size.
     let (sh, size, assumed) = match s {
         RatedSubject::Wire(c) => {
-            let look = ctx.looks.look(doc, c);
-            let sh = sheet(doc, ecad_model::StyleCatalogue::Wire, look.category.as_ref());
-            (sh, look.cross_section.as_ref().and_then(|(t, _)| crate::devices::ratings::parse::cross_section(t)), false)
+            let draw = ctx.draws.draw(doc, c);
+            let sh = sheet(doc, ecad_model::StyleCatalogue::Wire, draw.category.as_ref());
+            (sh, draw.cross_section.as_ref().and_then(|(t, _)| crate::devices::ratings::parse::cross_section(t)), false)
         }
         RatedSubject::Cable(k) => {
             let ty = cable::of(doc, k);
@@ -453,7 +453,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
         Basis::Datasheet => match sh.rated {
             None => {
                 let why = match s {
-                    RatedSubject::Wire(c) => match ctx.looks.category(doc, c).0 {
+                    RatedSubject::Wire(c) => match ctx.draws.category(doc, c).0 {
                         Some(id) => format!("category {} has no rated current", styles::name(doc, ecad_model::StyleCatalogue::Wire, &id)),
                         None => "no wire category".into(),
                     },

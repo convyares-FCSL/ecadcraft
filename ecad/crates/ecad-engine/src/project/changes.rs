@@ -32,9 +32,9 @@ impl Project {
     }
 
     /// The general reference index (brief 025, design 025 §3.3), kept by the views' pipeline
-    /// (`ecad_electrical::views::RefsView`).
-    pub fn xref(&self) -> &ecad_electrical::references::devices::RefIndex {
-        self.derived.refs()
+    /// (`ecad_electrical::views::ReferencesView`).
+    pub fn reference(&self) -> &ecad_electrical::references::devices::RefIndex {
+        self.derived.references()
     }
 
     /// The kept connector index (brief 044, design 044 §11.1), kept by the views' pipeline
@@ -153,7 +153,7 @@ impl Project {
     pub(crate) fn refresh_page(
         &mut self, pg: &mut Pages<'_>, page: PageId, command: Option<&str>, committed: Option<(&Arc<Drawing>, &BTreeSet<Handle>)>, recovery: bool,
     ) {
-        // One sheet for the projection, any rebuild and the check (see `look::pin_sheet`).
+        // One sheet for the projection, any rebuild and the check (see `draw::pin_sheet`).
         let _sheet = crate::cables::draw::pin_sheet();
         let Some(view) = self.pages.get(&page) else { return };
         let Some(uid) = view.uid else { return };
@@ -187,7 +187,7 @@ impl Project {
         let result = match result {
             Ok((d, map)) if recovery || !normal => {
                 // Worked out from scratch, so the check does not trust the kept models.
-                let outputs = self.derived.report_models(self.ledger.document());
+                let reports = self.derived.report_models(self.ledger.document());
                 let v = crate::dev::verify::verify_page_pending(
                     self.ledger.document(),
                     page,
@@ -197,7 +197,7 @@ impl Project {
                     self.tolerance,
                     self.show_hidden_text,
                     self.pending,
-                    outputs.as_ref(),
+                    reports.as_ref(),
                 );
                 if v.ok() {
                     self.events.record(EventKind::RecoveryVerified, command, head, Some(page), v.summary());

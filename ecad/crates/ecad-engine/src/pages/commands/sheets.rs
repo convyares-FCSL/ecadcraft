@@ -234,19 +234,19 @@ pub(crate) fn new_page_ops_at(
     p: &mut Project, title: String, number: Option<String>, folder: Option<FolderId>, after: Option<PageId>,
 ) -> Result<(PageId, String, Vec<Op>), CmdError> {
     if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
-        p.outputs();
+        p.reports();
     }
     let doc = p.ledger.document();
-    let outputs = p.kept_reports();
+    let reports = p.kept_reports();
     rules::check_folder(doc, folder)?;
     let book = Book::of(doc);
     let (folder, index, place) = rules::new_page_at(doc, &book, folder, after)?;
     let number = match number.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
         Some(n) => {
-            rules::check_number(doc, &book, None, &n, outputs)?;
+            rules::check_number(doc, &book, None, &n, reports)?;
             n
         }
-        None => rules::next_number(doc, &book, folder, place, outputs),
+        None => rules::next_number(doc, &book, folder, place, reports),
     };
     let mut page = Page::new(rules::page_title(&title)?);
     page.number = Some(ecad_model::PageNo::parse(&number).ok_or(CmdError::refused(rules::NUMBER_WORDS))?);
@@ -323,7 +323,7 @@ impl Command for PagepropsParams {
         if !change.writes() {
             return on_any_page(s, |p, _| {
                 if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
-                    p.outputs();
+                    p.reports();
                 }
                 let doc = p.ledger.document();
                 let page = page.or(p.active_page()).ok_or(CmdError::input("`page` (hex id) is required: no page is shown"))?;
@@ -337,7 +337,7 @@ impl Command for PagepropsParams {
         on_project(s, |p, pg, active| {
             let page = page.unwrap_or(active);
             if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
-                p.outputs();
+                p.reports();
             }
             if !p.ledger.document().pages.contains_key(&page) {
                 return Err(CmdError::refused(ecad_electrical::msg::NO_SUCH_PAGE));

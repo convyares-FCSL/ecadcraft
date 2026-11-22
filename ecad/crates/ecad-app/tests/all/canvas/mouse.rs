@@ -123,12 +123,12 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
             _ => None,
         })
         .unwrap();
-    let mut terminals: Vec<(String, Pt)> =
-        drawn.1.connection_points.iter().map(|(t, p)| (d.terminals[t].label.clone().unwrap_or_default(), *p)).collect();
-    terminals.sort_by(|a, b| a.0.cmp(&b.0));
-    assert_eq!(terminals, vec![("1".into(), Pt::new(40.0, 10.0)), ("2".into(), Pt::new(0.0, 10.0))]);
+    let mut connection_points: Vec<(String, Pt)> =
+        drawn.1.connection_points.iter().map(|(t, p)| (d.connection_points[t].label.clone().unwrap_or_default(), *p)).collect();
+    connection_points.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(connection_points, vec![("1".into(), Pt::new(40.0, 10.0)), ("2".into(), Pt::new(0.0, 10.0))]);
     let c = d.wires.values().next().unwrap();
-    let ends: Vec<String> = End::BOTH.iter().map(|e| d.terminals[&c.end(*e)].label.clone().unwrap_or_default()).collect();
+    let ends: Vec<String> = End::BOTH.iter().map(|e| d.connection_points[&c.end(*e)].label.clone().unwrap_or_default()).collect();
     assert_eq!(ends, ["1", "A1"], "both ends attached: to terminal 1 and to the coil's A1");
     let vertices = d.routes.values().find(|r| r.page == page).unwrap().points.clone();
     let expected = [(40.0, 10.0), (70.0, 10.0), (70.0, 0.0), (90.0, 0.0)];
@@ -147,7 +147,7 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
 }
 
 #[test]
-fn esc_drops_a_wire_being_drawn_and_u_undoes_the_last_terminal() {
+fn esc_drops_a_wire_being_drawn_and_u_undoes_the_last_connection_point() {
     let mut h = harness();
     component_and_coil(&mut h);
     let before = (head(&mut h), doc(&mut h));
@@ -164,7 +164,7 @@ fn esc_drops_a_wire_being_drawn_and_u_undoes_the_last_terminal() {
     type_enter(&mut h, "u");
     let d = doc(&mut h);
     assert_eq!(d.devices.len(), 1, "the coil is undone");
-    assert_eq!(d.terminals.len(), 2, "the terminals stay");
+    assert_eq!(d.connection_points.len(), 2, "the terminals stay");
 }
 
 #[test]

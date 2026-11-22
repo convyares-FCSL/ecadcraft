@@ -15,13 +15,13 @@ use crate::title_blocks::{Act, Editor};
 /// Element names (design 055 §5).
 pub const SOURCE: &str = "library.tb.inspector.value.source";
 pub const IFEMPTY: &str = "library.tb.inspector.value.ifempty";
-pub const LABEL: &str = "library.tb.inspector.look.label";
-pub const LABEL_TEXT: &str = "library.tb.inspector.look.label_text";
-pub const SIZE: &str = "library.tb.inspector.look.size";
-pub const BOLD: &str = "library.tb.inspector.look.bold";
-pub const ALIGN: &str = "library.tb.inspector.look.align";
-pub const COLOUR: &str = "library.tb.inspector.look.colour";
-pub const TEXT: &str = "library.tb.inspector.look.text";
+pub const LABEL: &str = "library.tb.inspector.draw.label";
+pub const LABEL_TEXT: &str = "library.tb.inspector.draw.label_text";
+pub const SIZE: &str = "library.tb.inspector.draw.size";
+pub const BOLD: &str = "library.tb.inspector.draw.bold";
+pub const ALIGN: &str = "library.tb.inspector.draw.align";
+pub const COLOUR: &str = "library.tb.inspector.draw.colour";
+pub const TEXT: &str = "library.tb.inspector.draw.text";
 /// The "If empty" text (Text…).
 pub const IFEMPTY_TEXT: &str = "library.tb.inspector.value.ifempty_text";
 pub const BOX: [&str; 4] = ["library.tb.inspector.box.x", "library.tb.inspector.box.y", "library.tb.inspector.box.w", "library.tb.inspector.box.h"];
@@ -225,12 +225,12 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
             });
         }
         // Look (fields and texts).
-        let look = match &item {
-            BlockItem::Field { look, .. } | BlockItem::Text { look, .. } => Some(*look),
+        let draw = match &item {
+            BlockItem::Field { draw, .. } | BlockItem::Text { draw, .. } => Some(*draw),
             _ => None,
         };
-        if let Some(look) = look {
-            section(ui, "Look", &format!("{} mm{}", look.size, if look.bold { ", bold" } else { "" }), |ui| {
+        if let Some(draw) = draw {
+            section(ui, "Look", &format!("{} mm{}", draw.size, if draw.bold { ", bold" } else { "" }), |ui| {
                 if let BlockItem::Text { text, .. } = &item {
                     ui.label(RichText::new("Text").small().color(c32(s.text_2)));
                     let mut t = text.clone();
@@ -272,16 +272,16 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Size").small().color(c32(s.text_2)));
                     let labels: Vec<String> = SIZES.iter().map(|v| format!("{v}")).collect();
-                    let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-                    let mut i = SIZES.iter().position(|v| (v - look.size).abs() < 1e-9).unwrap_or(usize::MAX);
-                    let r = ecad_widgets::prim::segmented(ui, &mut i, &refs);
+                    let references: Vec<&str> = labels.iter().map(String::as_str).collect();
+                    let mut i = SIZES.iter().position(|v| (v - draw.size).abs() < 1e-9).unwrap_or(usize::MAX);
+                    let r = ecad_widgets::prim::segmented(ui, &mut i, &references);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, SIZE));
-                    if let Some(v) = SIZES.get(i).filter(|v| (**v - look.size).abs() > 1e-9) {
+                    if let Some(v) = SIZES.get(i).filter(|v| (**v - draw.size).abs() > 1e-9) {
                         set_draw(d, &sel, |l| l.size = *v);
                     }
                 });
                 ui.horizontal(|ui| {
-                    let mut b = look.bold;
+                    let mut b = draw.bold;
                     let r = ui.checkbox(&mut b, "Bold");
                     r.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, b, BOLD));
                     if r.changed() {
@@ -290,7 +290,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                 });
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Align").small().color(c32(s.text_2)));
-                    let mut i = match look.align {
+                    let mut i = match draw.align {
                         Align::Left => 0,
                         Align::Centre => 1,
                         Align::Right => 2,
@@ -298,17 +298,17 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     let r = ecad_widgets::prim::segmented(ui, &mut i, &["Left", "Centre", "Right"]);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, ALIGN));
                     let a = [Align::Left, Align::Centre, Align::Right].get(i).copied().unwrap_or_default();
-                    if a != look.align {
+                    if a != draw.align {
                         set_draw(d, &sel, |l| l.align = a);
                     }
                 });
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Colour").small().color(c32(s.text_2)));
-                    let mut i = usize::from(look.colour == Ink::Red);
+                    let mut i = usize::from(draw.colour == Ink::Red);
                     let r = ecad_widgets::prim::segmented(ui, &mut i, &["Ink", "Red"]);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, COLOUR));
                     let c = if i == 1 { Ink::Red } else { Ink::Ink };
-                    if c != look.colour {
+                    if c != draw.colour {
                         set_draw(d, &sel, |l| l.colour = c);
                     }
                 });
@@ -459,8 +459,8 @@ fn set_fields(d: &mut Draft, sel: &[usize], f: impl Fn(&mut BlockItem)) {
 /// Apply `f` to the look of every selected field and text (one undo step).
 fn set_draw(d: &mut Draft, sel: &[usize], f: impl Fn(&mut TextDraw)) {
     set_fields(d, sel, |it| {
-        if let BlockItem::Field { look, .. } | BlockItem::Text { look, .. } = it {
-            f(look);
+        if let BlockItem::Field { draw, .. } | BlockItem::Text { draw, .. } = it {
+            f(draw);
         }
     });
 }
@@ -468,7 +468,7 @@ fn set_draw(d: &mut Draft, sel: &[usize], f: impl Fn(&mut TextDraw)) {
 /// Make field (design 055 §4.6): a text becomes a field that keeps its box and look; its text
 /// becomes the label and the binding a project field named after it.
 pub fn make_field(d: &mut Draft, i: usize) {
-    let Some(BlockItem::Text { at, text, look }) = d.now.layout.items.get(i).cloned() else { return };
+    let Some(BlockItem::Text { at, text, draw }) = d.now.layout.items.get(i).cloned() else { return };
     d.step();
     let key: String = text
         .trim()
@@ -483,7 +483,7 @@ pub fn make_field(d: &mut Draft, i: usize) {
     let key = if key.is_empty() { "field".to_string() } else { key };
     let Some(key) = ecad_model::objects::title_block::ProjectKey::new(&key) else { return };
     if let Some(x) = d.now.layout.items.get_mut(i) {
-        *x = BlockItem::Field { at, bind: Binding::Project(key), label: Some(text), look, if_empty: IfEmpty::Blank };
+        *x = BlockItem::Field { at, bind: Binding::Project(key), label: Some(text), draw, if_empty: IfEmpty::Blank };
     }
 }
 

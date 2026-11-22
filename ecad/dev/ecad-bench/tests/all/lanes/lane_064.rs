@@ -1,4 +1,4 @@
-//! Lane 064 (design 064 §10, step 5 on a recorded corpus): the references view (`RefsView`, its
+//! Lane 064 (design 064 §10, step 5 on a recorded corpus): the references view (`ReferencesView`, its
 //! update map over effects) against the whole document on every transaction of a generated
 //! project's churned history: every page whose reference texts, tables, connector parts,
 //! continuation arrows or cable reference texts differ is among its pages; its orphaned-reference
@@ -37,8 +37,8 @@ fn every_reference(doc: &Document, m: &dyn ecad_electrical::styles::text_style::
 
 /// The references view on every transaction of `tier`'s churned history with five undos and five
 /// redos at its end, against the whole document. Returns how many transactions were compared.
-fn refs_view_agrees(tier: Tier) -> usize {
-    use views::{Inputs, RefsView};
+fn references_view_agrees(tier: Tier) -> usize {
+    use views::{Inputs, ReferencesView};
     let mut g = generate(tier, Variant::Churned).unwrap();
     for undo in [true, true, true, true, true, false, false, false, false, false] {
         let r = if undo { g.ledger.undo_at(Author::User, None) } else { g.ledger.redo_at(Author::User, None) };
@@ -48,7 +48,7 @@ fn refs_view_agrees(tier: Tier) -> usize {
     let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FixedWidth);
     let engine = EngineInputs { metrics: metrics.clone() };
     let inputs = Inputs { engine: &engine, frame_page: None };
-    let mut view = RefsView::build(&Document::default());
+    let mut view = ReferencesView::build(&Document::default());
     let mut doc = Document::default();
     let mut checked = 0;
     for tx in g.ledger.log() {
@@ -75,17 +75,17 @@ fn refs_view_agrees(tier: Tier) -> usize {
     checked
 }
 
-/// Step 5: `RefsView` on the small tier's recorded history.
+/// Step 5: `ReferencesView` on the small tier's recorded history.
 #[test]
-fn the_refs_view_follows_the_whole_document_on_the_small_corpus() {
-    let n = refs_view_agrees(tier("small").unwrap());
+fn the_references_view_follows_the_whole_document_on_the_small_corpus() {
+    let n = references_view_agrees(tier("small").unwrap());
     assert!(n > 10, "{n} transactions");
 }
 
-/// Step 5: `RefsView` on the medium tier's recorded history (design 064 §10).
+/// Step 5: `ReferencesView` on the medium tier's recorded history (design 064 §10).
 #[test]
 #[ignore = "slow: generates the medium bench project"]
-fn the_refs_view_follows_the_whole_document_on_the_medium_corpus() {
-    let n = refs_view_agrees(tier("medium").unwrap());
+fn the_references_view_follows_the_whole_document_on_the_medium_corpus() {
+    let n = references_view_agrees(tier("medium").unwrap());
     assert!(n > 10, "{n} transactions");
 }

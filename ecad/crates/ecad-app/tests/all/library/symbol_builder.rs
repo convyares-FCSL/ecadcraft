@@ -296,7 +296,7 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
     let v = run(&mut h, "convertcomponent", json!({"handles": hs}));
     let c = DeviceId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap());
     for (at, label) in [([100, 100], "A1"), ([110, 110], "A2")] {
-        run(&mut h, "addterminal", json!({"handle": hs[0], "at": at, "label": label}));
+        run(&mut h, "addconnectionpoint", json!({"handle": hs[0], "at": at, "label": label}));
     }
     let w = crate::common::wire_pp(h.state_mut(), &[(100.0, 100.0), (100.0, 80.0)]);
     h.run_steps(2);

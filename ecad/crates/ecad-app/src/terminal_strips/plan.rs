@@ -204,7 +204,7 @@ impl TableSource for TerminalStripPlanSource {
             }
             PlanRow::Term { tag, row, first, marker, lanes, place } => (tag, row, *first, *marker, lanes, place),
         };
-        let drawn = row.terminal.is_some();
+        let drawn = row.connection_point.is_some();
         let cable = |c: &SideCell| c.cable.as_ref().map(|(_, t)| t.clone().unwrap_or_else(|| "?".into()));
         match col {
             STRIP => Cell::read(tag.clone()),
@@ -276,7 +276,7 @@ pub struct TerminalStripPlanView {
 
 impl Default for TerminalStripPlanView {
     fn default() -> Self {
-        let mut table = Table::new("ecad.terminals", "Terminals");
+        let mut table = Table::new("ecad.terminal_blocks", "Terminals");
         table.empty = "No terminal strips yet.";
         // UI rev 3: the plan's bands, a group of rows per strip.
         table.bands = bands();

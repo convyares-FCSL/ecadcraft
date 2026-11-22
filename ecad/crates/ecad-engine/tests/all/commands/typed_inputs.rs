@@ -88,9 +88,9 @@ fn the_wire_commands_keep_their_rule_words() {
             "`junction` is not a parameter of this command; it takes `category`, `join`, `points`, `potential`",
         ),
         ("nets", json!({"after": "zz"}), "`after` must be a cursor from `next`"),
-        ("net", json!({}), "one of `conductor`, `terminal` or `number` is required"),
+        ("net", json!({}), "one of `conductor`, `connection_point` or `number` is required"),
         ("net", json!({"conductor": "1"}), "No such wire."),
-        ("net", json!({"terminal": "1"}), "No such connection point."),
+        ("net", json!({"connection_point": "1"}), "No such connection point."),
         ("net", json!({"number": "999"}), "no net has number 999"),
         ("wirenumber", json!({"conductor": "1", "value": "a b"}), "A wire number has no spaces or control characters."),
         ("potential", json!({"conductor": "1", "value": "24V"}), "No such wire."),
@@ -578,11 +578,11 @@ fn the_typed_symbol_commands_still_work() {
 
 /// Input refusals of the cross-reference commands: one wording.
 #[test]
-fn the_xref_commands_refuse_input_uniformly() {
+fn the_reference_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
-        ("xrefs", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
-        ("xrefs", json!({"after": -1}), "`after` must be a whole number, or null"),
-        ("xrefs", json!({"cable": "zz"}), "`cable` must be a hex id, or null"),
+        ("references", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
+        ("references", json!({"after": -1}), "`after` must be a whole number, or null"),
+        ("references", json!({"cable": "zz"}), "`cable` must be a hex id, or null"),
         ("contacts", json!({}), "`component` (hex id) is required"),
         ("refgoto", json!({"target": "1"}), "`source` (hex id) is required"),
         ("mirrormove", json!({"component": "1", "at": [1]}), "`at` must be a point [x, y], or null"),
@@ -601,7 +601,7 @@ fn the_xref_commands_refuse_input_uniformly() {
 
 /// Rule refusals of the cross-reference commands keep their words.
 #[test]
-fn the_xref_commands_keep_their_rule_words() {
+fn the_reference_commands_keep_their_rule_words() {
     let mut h = H::new(7024);
     let k = h.run("place", json!({"symbol": "coil", "at": [50, 50]})).unwrap_or(Value::Null);
     let c = k["component"].as_str().unwrap_or_default().to_string();
@@ -619,11 +619,11 @@ fn the_xref_commands_keep_their_rule_words() {
 
 /// The typed cross-reference commands still work, and answer as before.
 #[test]
-fn the_typed_xref_commands_still_work() {
+fn the_typed_reference_commands_still_work() {
     let mut h = H::new(7025);
     let k = h.run("place", json!({"symbol": "coil", "at": [50, 50]})).unwrap_or(Value::Null);
     let c = k["component"].as_str().unwrap_or_default().to_string();
-    let list = h.run("xrefs", json!({"component": c, "limit": 5, "after": 0})).unwrap_or(Value::Null);
+    let list = h.run("references", json!({"component": c, "limit": 5, "after": 0})).unwrap_or(Value::Null);
     assert!(list.is_object(), "{list}");
     let t = h.run("contacts", json!({"component": c})).unwrap_or(Value::Null);
     assert!(t.is_object(), "{t}");
@@ -635,13 +635,13 @@ fn the_typed_xref_commands_still_work() {
 
 /// Input refusals of the terminal commands: one wording.
 #[test]
-fn the_terminal_commands_refuse_input_uniformly() {
+fn the_terminal_block_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
-        ("terminals", json!({"to": [0, 0]}), "`from` (point [x, y]) is required"),
-        ("terminals", json!({"from": [0, 0], "to": "x"}), "`to` must be a point [x, y]"),
-        ("terminals", json!({"from": [0, 0], "to": [9, 9], "pe": "yes"}), "`pe` must be true or false, or null"),
-        ("terminals", json!({"from": [0, 0], "to": [9, 9], "type": 2}), "`type` must be text, or null"),
-        ("terminals", json!({"from": [0, 0], "to": [9, 9], "strip": "zz"}), "`strip` must be a hex id, or null"),
+        ("terminalblocks", json!({"to": [0, 0]}), "`from` (point [x, y]) is required"),
+        ("terminalblocks", json!({"from": [0, 0], "to": "x"}), "`to` must be a point [x, y]"),
+        ("terminalblocks", json!({"from": [0, 0], "to": [9, 9], "pe": "yes"}), "`pe` must be true or false, or null"),
+        ("terminalblocks", json!({"from": [0, 0], "to": [9, 9], "type": 2}), "`type` must be text, or null"),
+        ("terminalblocks", json!({"from": [0, 0], "to": [9, 9], "strip": "zz"}), "`strip` must be a hex id, or null"),
         ("bridge", json!({"from": "1"}), "`to` (hex id) is required"),
         ("stripplan", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
         ("stripplan", json!({"accessories": 1}), "`accessories` must be true or false, or null"),
@@ -656,17 +656,17 @@ fn the_terminal_commands_refuse_input_uniformly() {
 
 /// Rule refusals of the terminal commands keep their words.
 #[test]
-fn the_terminal_commands_keep_their_rule_words() {
+fn the_terminal_block_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         (
-            "terminals",
+            "terminal_blocks",
             json!({"from": [0, 0], "to": [9, 9], "type": "nope"}),
             "No terminal type \"nope\". Types: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE.",
         ),
-        ("terminals", json!({"from": [0, 0], "to": [0, 0]}), "`from` and `to` must differ"),
-        ("terminals", json!({"from": [0, 0], "to": [9, 9]}), "The line crosses no wire. Draw it across the wires to land."),
+        ("terminalblocks", json!({"from": [0, 0], "to": [0, 0]}), "`from` and `to` must differ"),
+        ("terminalblocks", json!({"from": [0, 0], "to": [9, 9]}), "The line crosses no wire. Draw it across the wires to land."),
         (
-            "terminals",
+            "terminal_blocks",
             json!({"from": [0, 0], "to": [9, 9], "type": "x2", "level": "Q"}),
             "A two-level terminal has levels 1, 2. Type one of them, or All for the whole terminal.",
         ),
@@ -683,15 +683,15 @@ fn the_terminal_commands_keep_their_rule_words() {
 
 /// The typed terminal commands still work, and answer as before.
 #[test]
-fn the_typed_terminal_commands_still_work() {
+fn the_typed_terminal_block_commands_still_work() {
     let mut h = H::new(7028);
     assert!(h.run("wire", json!({"points": [[0, 0], [0, 100]]})).is_ok());
     assert!(h.run("wire", json!({"points": [[20, 0], [20, 100]]})).is_ok());
-    let f = h.run("terminals", json!({"from": [-10, 50], "to": [30, 50]})).unwrap_or(Value::Null);
-    let placed = f["terminals"].as_array().cloned().unwrap_or_default();
+    let f = h.run("terminalblocks", json!({"from": [-10, 50], "to": [30, 50]})).unwrap_or(Value::Null);
+    let placed = f["connection_points"].as_array().cloned().unwrap_or_default();
     assert_eq!(placed.len(), 2, "{f}");
     assert!(f["message"].as_str().is_some_and(|m| m.starts_with("Placed ")), "{f}");
-    let (a, b) = (placed[0]["terminal"].clone(), placed[1]["terminal"].clone());
+    let (a, b) = (placed[0]["connection_point"].clone(), placed[1]["connection_point"].clone());
     let br = h.run("bridge", json!({"from": a, "to": b})).unwrap_or(Value::Null);
     assert_eq!((&br["bridge"], &br["changed"]), (&json!(true), &json!(true)), "{br}");
     let again = h.run("bridge", json!({"from": a, "to": b})).unwrap_or(Value::Null);
@@ -840,7 +840,7 @@ fn the_numbering_commands_keep_their_rule_words() {
         ("renumber", json!({"start": 0}), "Start is a whole number from 1."),
         (
             "renumber",
-            json!({"kind": "terminals", "scope": "selection", "strips": ["ab"]}),
+            json!({"kind": "terminal_blocks", "scope": "selection", "strips": ["ab"]}),
             "ab in `strips` is not a terminal strip or one of its terminals.",
         ),
         ("finalise", json!({"based_on": 999}), "The project changed since the preview; check the new list and Apply again."),
@@ -1290,8 +1290,8 @@ fn the_connector_commands_keep_their_rule_words() {
         ("connector", json!({"at": [0, 0], "layout": "x"}), "`layout` is row or pins"),
         ("connector", json!({"layout": "row", "family": "plain"}), "connector needs at for a row, or line or wire for pins."),
         ("connector", json!({"at": [0, 0], "page": "ab"}), "No such page."),
-        ("pinlabel", json!({"to": "2"}), "`device` and `pin`, or `terminal`, is required"),
-        ("pinlabel", json!({"terminal": "1", "to": "2"}), "No such connection point."),
+        ("pinlabel", json!({"to": "2"}), "`device` and `pin`, or `connection_point`, is required"),
+        ("pinlabel", json!({"connection_point": "1", "to": "2"}), "No such connection point."),
     ];
     let mut h = H::new(7055);
     for (cmd, params, says) in rows {
@@ -1306,7 +1306,7 @@ fn the_typed_connector_commands_still_work() {
     let mut h = H::new(7056);
     let row = json!({"halves": "both", "family": "plain", "pins": 4, "names": "numbers", "layout": "row", "at": [100, 100]});
     let v = h.run("connector", row).unwrap_or_else(|e| json!(e));
-    assert_eq!((v["new"].clone(), v["terminals"].as_array().map(Vec::len)), (json!(true), Some(8)), "{v}");
+    assert_eq!((v["new"].clone(), v["connection_points"].as_array().map(Vec::len)), (json!(true), Some(8)), "{v}");
     assert!(v["message"].as_str().is_some_and(|m| m.starts_with("Placed ")), "{v}");
     let c = v["component"].clone();
     let r = h.run("pinlabel", json!({"device": c, "pin": "1", "to": "L"})).unwrap_or_else(|e| json!(e));
@@ -1314,7 +1314,7 @@ fn the_typed_connector_commands_still_work() {
     let same = h.run("pinlabel", json!({"device": c, "pin": "L", "to": "L"})).unwrap_or_else(|e| json!(e));
     assert_eq!(same["changed"], json!(false), "{same}");
     let list = h.run("connector", json!({"names": ["L", "N", "PE"], "layout": "row", "family": "plain", "at": [200, 100]}));
-    assert!(list.is_ok_and(|v| v["terminals"].as_array().is_some_and(|t| !t.is_empty())));
+    assert!(list.is_ok_and(|v| v["connection_points"].as_array().is_some_and(|t| !t.is_empty())));
 }
 
 /// Input refusals of the accessory commands: one wording.
@@ -1324,7 +1324,7 @@ fn the_accessory_commands_refuse_input_uniformly() {
         ("accessory", json!({"strip": "zz"}), "`strip` must be a hex id, or null"),
         ("accessory", json!({"strip": "1", "on": "yes"}), "`on` must be true or false, or null"),
         ("accessory", json!({"strip": "1", "clear": "acc.start"}), "`clear` must be a list of texts, or null"),
-        ("jumper", json!({"terminals": "1"}), "`terminals` must be a list of hex ids, or null"),
+        ("jumper", json!({"connection_points": "1"}), "`connection_points` must be a list of hex ids, or null"),
         ("jumper", json!({"strip": "1", "skip": 1}), "`skip` must be true or false, or null"),
         ("jumper", json!({"link": 5}), "`link` must be an object, or null"),
     ];
@@ -1338,10 +1338,10 @@ fn the_accessory_commands_refuse_input_uniformly() {
 #[test]
 fn the_accessory_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("accessory", json!({"at": "start"}), "`strip` or `terminal` (hex id) is required"),
+        ("accessory", json!({"at": "start"}), "`strip` or `connection_point` (hex id) is required"),
         ("accessory", json!({"strip": "1", "at": "start", "add": ["end_stop"]}), "No such strip."),
-        ("accessory", json!({"terminal": "1", "at": "start", "add": ["end_stop"]}), "No such terminal."),
-        ("jumper", json!({}), "`strip` with `positions`, or `terminals`, is required"),
+        ("accessory", json!({"connection_point": "1", "at": "start", "add": ["end_stop"]}), "No such terminal."),
+        ("jumper", json!({}), "`strip` with `positions`, or `connection_points`, is required"),
         ("jumper", json!({"link": {"n": 1}}), "`strip` (hex id) is required"),
         ("jumper", json!({"strip": "1", "positions": "1-2"}), "No such strip."),
     ];
@@ -1359,7 +1359,7 @@ fn the_typed_accessory_commands_still_work() {
     for x in [0, 20, 40] {
         assert!(h.run("wire", json!({"points": [[x, 0], [x, 100]]})).is_ok());
     }
-    let f = h.run("terminals", json!({"from": [-10, 50], "to": [50, 50]})).unwrap_or(Value::Null);
+    let f = h.run("terminalblocks", json!({"from": [-10, 50], "to": [50, 50]})).unwrap_or(Value::Null);
     let strip = f["strip"].clone();
     let a = h.run("accessory", json!({"strip": strip, "at": "start", "add": ["end_stop"]})).unwrap_or_else(|e| json!(e));
     assert_eq!((a["changed"].clone(), a["keys"][0]["items"].clone()), (json!(true), json!(["end_stop"])), "{a}");
@@ -1382,13 +1382,13 @@ fn the_release_commands_refuse_input_uniformly() {
         ("prerelease", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
         ("prerelease", json!({"rev": 1}), "`rev` must be text, or null"),
         ("release", json!({"rev": 1}), "`rev` must be text, or null"),
-        ("release", json!({"outputs": "bom"}), "`outputs` must be a list of texts, or null"),
+        ("release", json!({"reports": "bom"}), "`reports` must be a list of texts, or null"),
         ("release", json!({"lineweights": "x"}), "`lineweights` must be true or false, or null"),
         ("release", json!({"colour": true}), "`colour` must be text, or null"),
         (
             "release",
             json!({"x": 1}),
-            "`x` is not a parameter of this command; it takes `accept`, `colour`, `existing`, `folder`, `lineweights`, `outputs`, `provisional`, `rev`",
+            "`x` is not a parameter of this command; it takes `accept`, `colour`, `existing`, `folder`, `lineweights`, `reports`, `provisional`, `rev`",
         ),
     ];
     let mut h = H::new(7060);
@@ -1401,7 +1401,7 @@ fn the_release_commands_refuse_input_uniformly() {
 #[test]
 fn the_release_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("release", json!({"outputs": ["nope"]}), "`outputs` names \"nope\"; the slots are "),
+        ("release", json!({"reports": ["nope"]}), "`reports` names \"nope\"; the slots are "),
         ("release", json!({"existing": "x"}), "`existing` is \"add-missing\", \"replace\" or \"keep-both\", not \"x\""),
         ("release", json!({"colour": "x"}), "`colour` is \"mono\""),
     ];
@@ -1428,7 +1428,7 @@ fn the_level_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
         ("termlabel", json!({"strip": "1", "level": "x"}), "`level` must be a whole number, or null"),
         ("termlabel", json!({"strip": "1", "text": 5}), "`text` must be text, or null"),
-        ("termlabel", json!({"terminal": "1", "move_to": "far"}), "`move_to` must be one of \"next\", \"new\", or null"),
+        ("termlabel", json!({"connection_point": "1", "move_to": "far"}), "`move_to` must be one of \"next\", \"new\", or null"),
         ("toposition", json!({}), "`device` (hex id) is required"),
         ("toposition", json!({"device": "1", "position": 3}), "`position` must be text, or null"),
     ];
@@ -1442,9 +1442,9 @@ fn the_level_commands_refuse_input_uniformly() {
 #[test]
 fn the_level_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("termlabel", json!({}), "`terminal` or `strip` (hex id) is required"),
-        ("termlabel", json!({"terminal": "1"}), "No such terminal."),
-        ("termlabel", json!({"strip": "1"}), "Name the position to relabel with `at` (its current label), or give `terminal`."),
+        ("termlabel", json!({}), "`connection_point` or `strip` (hex id) is required"),
+        ("termlabel", json!({"connection_point": "1"}), "No such terminal."),
+        ("termlabel", json!({"strip": "1"}), "Name the position to relabel with `at` (its current label), or give `connection_point`."),
         ("termlabel", json!({"strip": "1", "at": "1"}), "That device is not a terminal strip."),
         ("toposition", json!({"device": "1"}), "No such device."),
     ];
@@ -1462,7 +1462,7 @@ fn the_typed_level_commands_still_work() {
     for x in [0, 20] {
         assert!(h.run("wire", json!({"points": [[x, 0], [x, 100]]})).is_ok());
     }
-    let f = h.run("terminals", json!({"from": [-10, 50], "to": [30, 50]})).unwrap_or(Value::Null);
+    let f = h.run("terminalblocks", json!({"from": [-10, 50], "to": [30, 50]})).unwrap_or(Value::Null);
     let strip = f["strip"].clone();
     let r = h.run("termlabel", json!({"strip": strip, "at": "2", "position": " 7 "})).unwrap_or_else(|e| json!(e));
     assert_eq!(r["changed"], json!(true), "{r}");
@@ -1639,8 +1639,8 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
     let mut h = H::new(7074);
     let coil = crate::common::place(&mut h, "coil", (100.0, 100.0))["component"].clone();
     let coil2 = crate::common::place(&mut h, "coil", (200.0, 100.0))["component"].clone();
-    let strip = crate::common::place(&mut h, "terminal", (100.0, 200.0))["component"].clone();
-    let strip2 = crate::common::place(&mut h, "terminal", (100.0, 300.0))["component"].clone();
+    let strip = crate::common::place(&mut h, "terminalblock", (100.0, 200.0))["component"].clone();
+    let strip2 = crate::common::place(&mut h, "terminalblock", (100.0, 300.0))["component"].clone();
     let socket = crate::common::place(&mut h, "socket4", (300.0, 200.0))["component"].clone();
     let socket2 = crate::common::place(&mut h, "socket4", (300.0, 300.0))["component"].clone();
     let card = crate::common::place(&mut h, "plcdi", (400.0, 200.0))["component"].clone();
@@ -1653,15 +1653,15 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
         ("wire, junction or continuation (briefs 022, 049)", [&coil, &coil2], "caption", "Up"),
         ("contacts (brief 025, 072 B)", [&coil, &coil2], "contacts", "??"),
         ("contact table (brief 025, 072 B)", [&coil, &coil2], "mirror", "maybe"),
-        ("strip offer (brief 028)", [&strip, &strip2], "terminals", "lots"),
+        ("strip offer (brief 028)", [&strip, &strip2], "terminal_blocks", "lots"),
         ("PE row part (brief 028)", [&coil, &coil2], "part_number.pe", &long),
         ("connector fields (072 B)", [&socket, &socket2], "pins", "99"),
-        ("strip terminal defaults (brief 036)", [&strip, &strip2], "terminal.level.separator", "abcd"),
+        ("strip terminal defaults (brief 036)", [&strip, &strip2], "terminal_block.level.separator", "abcd"),
         ("level label (brief 036)", [&strip, &strip2], "term_label.1", &long),
         ("PLC module fields (072 C)", [&card, &card2], "plc.addr.start", "x"),
         ("rating (brief 034)", [&coil, &coil2], "rating.1", "10A"),
         ("parts and items (brief 047)", [&coil, &coil2], "part.1.qty", "lots"),
-        ("strip accessories, or free text (brief 030)", [&strip, &strip2], "link.1", "zz"),
+        ("strip accessories, or free text (brief 030)", [&strip, &strip2], "jumper_bar.1", "zz"),
     ];
     let doc = h.doc();
     for (what, [one, two], key, value) in rows {
@@ -1740,10 +1740,10 @@ fn the_typed_place_still_works() {
     assert_eq!(j["joined"], json!(true), "{j}");
     let c = h.run("place", json!({"symbol": "continuation", "at": [300, 100], "name": "24V", "caption": "to page 2"})).unwrap_or_else(|e| json!(e));
     assert_eq!((c["name"].clone(), c["caption"].clone()), (json!("24V"), json!("to page 2")), "{c}");
-    let t = h.run("place", json!({"symbol": "terminal", "at": [100, 300]})).unwrap_or_else(|e| json!(e));
+    let t = h.run("place", json!({"symbol": "terminalblock", "at": [100, 300]})).unwrap_or_else(|e| json!(e));
     assert!(t["tag"].as_str().is_some_and(|x| x.starts_with("-X")), "{t}");
     let x = h.run("place", json!({"at": [400, 100]})).unwrap_or_else(|e| json!(e));
-    assert_eq!(x["terminals"].as_array().map(Vec::len), Some(2), "{x}");
+    assert_eq!(x["connection_points"].as_array().map(Vec::len), Some(2), "{x}");
     let k = h.run("place", json!({"symbol": "socket4", "at": [400, 300]})).unwrap_or_else(|e| json!(e));
     assert_eq!(k["joined"], json!(false), "{k}");
     let ch = h.run("place", json!({"symbol": "di", "at": [500, 300], "channel": 3})).unwrap_or_else(|e| json!(e));
@@ -1763,8 +1763,8 @@ fn the_device_commands_refuse_input_uniformly() {
         ("tagsettings", json!({"padding": "x"}), "`padding` must be a whole number, or null"),
         ("tagsettings", json!({"prefixes": {"coil": 5}}), "`prefixes` must be an object, or null"),
         ("convertcomponent", json!({"handles": "x"}), "`handles` must be a list of texts, or null"),
-        ("addterminal", json!({"at": [0, 0]}), "`handle` (text) is required"),
-        ("addterminal", json!({"handle": "1"}), "`at` (point [x, y]) is required"),
+        ("addconnectionpoint", json!({"at": [0, 0]}), "`handle` (text) is required"),
+        ("addconnectionpoint", json!({"handle": "1"}), "`at` (point [x, y]) is required"),
     ];
     let mut h = H::new(7078);
     for (cmd, params, says) in rows {
@@ -1787,7 +1787,7 @@ fn the_device_commands_keep_their_rule_words() {
         ("convertcomponent", json!({"handles": ["zz"]}), "`\"zz\"` is not a valid handle"),
         ("convertcomponent", json!({"handles": []}), "select the geometry to convert"),
         ("convertcomponent", json!({"handles": ["ffff"]}), "the selection holds an object this page does not know"),
-        ("addterminal", json!({"handle": "ffff", "at": [0, 0]}), "pick an item of a component"),
+        ("addconnectionpoint", json!({"handle": "ffff", "at": [0, 0]}), "pick an item of a component"),
     ];
     let mut h = H::new(7079);
     for (cmd, params, says) in rows {

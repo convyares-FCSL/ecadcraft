@@ -1,6 +1,6 @@
 //! The JSON forms of brief 018's commands (design 018 §8): `place` (every form), `symbols` and
 //! `devices` (read only), `deviceprops`, `devicedelete`, `ecaddelete` and `tagsettings`; and the
-//! experiments' `convertcomponent` and `addterminal`.
+//! experiments' `convertcomponent` and `addconnectionpoint`.
 //!
 //! The interactive forms ([`crate::interact`]) commit through exactly these. `place` is a thin shim
 //! (brief 070): [`PlaceParams`] reads the JSON, the rules in [`ecad_electrical::devices::commands::place`] say
@@ -48,7 +48,7 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<DevicedeleteParams>("devicedelete"),
     Typed::of::<TagsettingsParams>("tagsettings"),
     Typed::of::<ConvertcomponentParams>("convertcomponent"),
-    Typed::of::<AddConnectionPointParams>("addterminal"),
+    Typed::of::<AddConnectionPointParams>("addconnectionpoint"),
 ];
 
 /// `place {at, rotation?, mirror?, symbol?, definition?, device?, tag?, …}` (design 018 §8): a
@@ -181,7 +181,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         let doc = p.ledger.document();
         let target = rules::device_target(doc, device, tag.as_deref())?;
         // Brief 028 (design 028 §3.1): a terminal clicked on a wire lands on it, splitting it.
-        let landing = (starter.kind == ecad_electrical::symbols::Kind::Terminal)
+        let landing = (starter.kind == ecad_electrical::symbols::Kind::TerminalBlock)
             .then(|| crate::terminal_strips::commands::landing_point(doc, page, at))
             .flatten();
         let origin = landing.map_or(at, |on| on.at);
@@ -195,7 +195,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             _ => false,
         };
         let mut plan = ecad_electrical::devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
-        let land = match (landing, plan.terminals.first()) {
+        let land = match (landing, plan.connection_points.first()) {
             (Some(on), Some((_, _, t))) => {
                 let land = ecad_electrical::connectors::plan_land(p.ledger.document(), &mut p.ids, on, *t)?;
                 plan.ops.extend(land.ops.clone());
@@ -225,7 +225,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         let doc = p.ledger.document();
         let landed = land.map(|(t, l)| crate::terminal_strips::commands::land_result(doc, t, &l));
         if let (true, ecad_electrical::symbols::Kind::Contact { make }) = (plan.joined, starter.kind) {
-            let labels: Vec<String> = plan.terminals.iter().map(|(_, l, _)| l.clone()).collect();
+            let labels: Vec<String> = plan.connection_points.iter().map(|(_, l, _)| l.clone()).collect();
             if let Some(line) = ecad_electrical::references::devices::over_line(doc, plan.component, &labels, make) {
                 pg.echo(line);
             }
@@ -240,7 +240,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             "joined": plan.joined,
             "offer_slot": offer_slot,
             "pages": ecad_electrical::devices::page_numbers(doc, plan.component),
-            "terminals": plan.terminals.iter().map(|(k, l, t)| json!({"key": k, "label": l, "terminal": t.hex()})).collect::<Vec<_>>(),
+            "connection_points": plan.connection_points.iter().map(|(k, l, t)| json!({"key": k, "label": l, "connection_point": t.hex()})).collect::<Vec<_>>(),
         });
         crate::symbols::draw::finish_place(p, pg, plan.component, plan.joined, &proposed, &mut v);
         let doc = p.ledger.document();
@@ -286,14 +286,14 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
         };
         let (c, item, r): (DeviceId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
         ops.push(Op::CreateDevice { id: c, device: Device { definition: Some(def_id), ..Device::default() } });
-        let mut terminals = Vec::new();
-        for td in &def.terminals {
+        let mut connection_points = Vec::new();
+        for td in &def.connection_points {
             let t: ConnectionPointId = p.ids.fresh();
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                terminal: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                connection_point: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
             });
-            terminals.push(json!({"key": td.key, "terminal": t.hex()}));
+            connection_points.push(json!({"key": td.key, "connection_point": t.hex()}));
         }
         let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         ops.push(Op::AddItem {
@@ -312,7 +312,7 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
             },
         });
         p.apply_edit(pg, "place", "Place symbol", ops)?;
-        Ok(json!({"component": c.hex(), "item": item.hex(), "definition": def_id.hex(), "terminals": terminals}))
+        Ok(json!({"component": c.hex(), "item": item.hex(), "definition": def_id.hex(), "connection_points": connection_points}))
     })
 }
 
@@ -511,7 +511,7 @@ impl Command for ConvertcomponentParams {
     }
 }
 
-/// `addterminal {handle, at, label?}` (experiment 008): a connection point on a drawn component.
+/// `addconnectionpoint {handle, at, label?}` (experiment 008): a connection point on a drawn component.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AddConnectionPointParams {
@@ -535,9 +535,9 @@ impl Command for AddConnectionPointParams {
                 Some(Mapped::Fan(k)) => return Err(CmdError::refused(views::refusal(map, k))),
                 _ => return Err(CmdError::refused("pick an item of a component")),
             };
-            let (t, ops) = device_rules::plan_addterminal(p.ledger.document(), &mut p.ids, item, at, label)?;
-            p.apply_edit(pg, "addterminal", "Add connection point", ops)?;
-            Ok(json!({"terminal": t.hex()}))
+            let (t, ops) = device_rules::plan_addconnectionpoint(p.ledger.document(), &mut p.ids, item, at, label)?;
+            p.apply_edit(pg, "addconnectionpoint", "Add connection point", ops)?;
+            Ok(json!({"connection_point": t.hex()}))
         })
     }
 }

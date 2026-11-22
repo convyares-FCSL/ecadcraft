@@ -477,5 +477,5 @@ fn lists_shows_the_device_list_at_the_main_views_width() {
     assert!(h.state().reports.as_ref().is_some_and(|r| r.hidden), "Reports is not drawn over it");
     h.get_by_label(ecad_app::shell::LISTS_TERMINAL_STRIPS).click();
     h.run_steps(3);
-    assert_eq!(h.state().reports.as_ref().map(|r| r.tab), Some(ecad_app::reports::panel::Tab::Terminals));
+    assert_eq!(h.state().reports.as_ref().map(|r| r.tab), Some(ecad_app::reports::panel::Tab::TerminalBlocks));
 }
