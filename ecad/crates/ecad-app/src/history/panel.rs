@@ -264,8 +264,8 @@ impl HistoryPanel {
         self.dirty = false;
         self.seen = Some(key);
         self.defaults = (
-            history::default_version_name(p),
-            history::default_branch_name(p),
+            history::versions::default_version_name(p),
+            history::versions::default_branch_name(p),
             p.unsaved_transactions(),
             history::current_name(p),
             p.file.project().is_some(),
@@ -321,12 +321,12 @@ impl HistoryPanel {
         if self.details.as_ref().is_some_and(|(s, _)| *s == sel) {
             return;
         }
-        let v = history::point(p, &sel.params()).and_then(|mut pt| {
+        let v = history::points::point(p, &sel.params()).and_then(|mut pt| {
             pt.kind = sel.kind;
             if let Some(n) = &sel.name {
                 pt.title = if sel.kind == NodeKind::Version { format!("Version \"{n}\"") } else { n.clone() };
             }
-            history::point_info(p, &pt)
+            history::points::point_info(p, &pt)
         });
         self.details = Some((sel, v.unwrap_or_else(|e| json!({"error": e}))));
     }

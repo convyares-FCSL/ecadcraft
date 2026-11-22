@@ -26,7 +26,7 @@ use ecad_model::{Document, Op, PageId};
 use crate::project::HandleMap;
 
 /// Commands that replace the engine's OOPS stash when they remove objects.
-pub const STASH_COMMANDS: &[&str] = &["erase", "erase.selection", "block", "-block", "wblock", "-wblock"];
+pub(crate) const STASH_COMMANDS: &[&str] = &["erase", "erase.selection", "block", "-block", "wblock", "-wblock"];
 
 /// Why OOPS is refused on an ECAD page.
 pub const REFUSED: &str = "OOPS on ECAD pages brings back only plain drawing removed by the last erase on this page; use UNDO to bring back \

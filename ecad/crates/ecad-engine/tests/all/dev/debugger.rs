@@ -11,10 +11,9 @@ use std::path::{Path, PathBuf};
 
 use cadcraft_engine::Session;
 use common::{H, small_project};
-use ecad_engine::dev::debug::{
-    self, DebugSnapshot, ObjectId, RecordState, StateCounts, TxCursor, op_view, read_branches, read_row, read_storage, resolve, state_at, touches,
-    verify_projection, verify_replay, verify_store,
-};
+use ecad_engine::dev::checks::{read_branches, read_row, read_storage, state_at, verify_projection, verify_replay, verify_store};
+use ecad_engine::dev::debug::{DebugSnapshot, ObjectId, RecordState, StateCounts, TxCursor};
+use ecad_engine::dev::objects::{self, op_view, resolve, touches};
 use ecad_engine::{BUSY, Mapped, Persistence};
 use ecad_model::{Subject, Transaction};
 use serde_json::{Value, json};
@@ -96,7 +95,7 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     let line = ecad_electrical::wires::routes::route_of_wire_on(&snap.doc, w, first).unwrap();
     assert_eq!(r.subject, Some(Subject::Route(line)));
     assert_eq!(r.connection_points.len(), 2, "both attached terminals");
-    let conductor = debug::object_json(&snap.doc, ObjectId::Wire(w)).unwrap();
+    let conductor = objects::object_json(&snap.doc, ObjectId::Wire(w)).unwrap();
     assert_eq!(conductor["ends"].as_array().unwrap().len(), 2);
 
     // → the transactions that touched them, with before/after values.
@@ -320,9 +319,9 @@ fn exported_snapshots_carry_the_persistence_facts() {
 
 #[test]
 fn record_bytes_are_shown_as_text_with_control_bytes_escaped() {
-    assert_eq!(debug::printable(b"{\"crc\":\"00\"}\n"), "{\"crc\":\"00\"}\\n");
-    assert_eq!(debug::printable("é\t".as_bytes()), "é\\t");
-    assert_eq!(debug::printable(b"a\xffb"), "a\\xffb");
+    assert_eq!(objects::printable(b"{\"crc\":\"00\"}\n"), "{\"crc\":\"00\"}\\n");
+    assert_eq!(objects::printable("é\t".as_bytes()), "é\\t");
+    assert_eq!(objects::printable(b"a\xffb"), "a\\xffb");
 }
 
 #[test]
@@ -330,13 +329,13 @@ fn relations_lead_from_a_definition_to_its_instances_and_from_a_connection_point
     let (mut h, c1, c2, w) = small_project(48);
     let doc = h.doc();
     let def = doc.devices[&c2].definition.unwrap();
-    let users = debug::used_by(&doc, ObjectId::Definition(def));
+    let users = objects::used_by(&doc, ObjectId::Definition(def));
     assert!(users.contains(&ObjectId::Device(c2)));
     assert!(users.iter().any(|u| matches!(u, ObjectId::Item(_))), "the symbol instance");
     let t = doc.wires[&w].ends[0];
     let r = h.route_of(doc.page_order[0], w);
-    assert_eq!(debug::used_by(&doc, ObjectId::ConnectionPoint(t)), vec![ObjectId::Wire(w), ObjectId::Route(r)]);
-    let of_c1 = debug::used_by(&doc, ObjectId::Device(c1));
+    assert_eq!(objects::used_by(&doc, ObjectId::ConnectionPoint(t)), vec![ObjectId::Wire(w), ObjectId::Route(r)]);
+    let of_c1 = objects::used_by(&doc, ObjectId::Device(c1));
     assert!(of_c1.iter().any(|u| matches!(u, ObjectId::ConnectionPoint(_))));
     assert!(of_c1.iter().any(|u| matches!(u, ObjectId::Representation(_))));
 }

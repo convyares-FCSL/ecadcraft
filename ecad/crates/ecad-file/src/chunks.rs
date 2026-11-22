@@ -51,6 +51,68 @@ pub const MAX_BUCKETS: u32 = 1 << 20;
 /// The model kinds split into chunks, by their key name.
 pub const KINDS: [&str; 8] = ["layer", "device", "connection_point", "wire", "cable", "definition", "aid", "loose_part"];
 
+/// A model kind that is split into chunks (the entries of [`KINDS`], as a type).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ModelKind {
+    Layer,
+    Device,
+    ConnectionPoint,
+    Wire,
+    Cable,
+    Definition,
+    Aid,
+    LoosePart,
+}
+
+impl ModelKind {
+    /// The kind named `name` in a chunk key (one of [`KINDS`]).
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "layer" => Self::Layer,
+            "device" => Self::Device,
+            "connection_point" => Self::ConnectionPoint,
+            "wire" => Self::Wire,
+            "cable" => Self::Cable,
+            "definition" => Self::Definition,
+            "aid" => Self::Aid,
+            "loose_part" => Self::LoosePart,
+            _ => return None,
+        })
+    }
+}
+
+/// A chunk key read as what it names. The file stores keys as text; this is how a reader tells
+/// the kinds apart without looking at the spelling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ChunkKey {
+    /// `model:meta`: state derived from the history.
+    Meta,
+    /// `model:project`: project-wide state.
+    Project,
+    /// One page's chunk.
+    Page(PageId),
+    /// One bucket of a model kind.
+    Model { kind: ModelKind, bucket: u32 },
+}
+
+impl ChunkKey {
+    /// The key text `key` names, or `None` when it is not a valid chunk key.
+    pub fn parse(key: &str) -> Option<Self> {
+        if key == META_KEY {
+            return Some(Self::Meta);
+        }
+        if key == PROJECT_KEY {
+            return Some(Self::Project);
+        }
+        if let Some(hex) = key.strip_prefix("page:") {
+            return PageId::parse(hex).map(Self::Page);
+        }
+        let (kind, b) = key.strip_prefix("model:")?.split_once(':')?;
+        let bucket: u32 = b.parse().ok()?;
+        Some(Self::Model { kind: ModelKind::from_name(kind)?, bucket })
+    }
+}
+
 /// The key of page `id`'s chunk.
 pub fn page_key(id: PageId) -> String {
     format!("page:{}", id.hex())

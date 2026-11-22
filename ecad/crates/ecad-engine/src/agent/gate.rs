@@ -39,7 +39,7 @@ pub struct OwnedSteps {
 
 /// Most steps remembered per bridge session; older ones are forgotten (the agent cannot undo
 /// them any more, which only narrows what it may do).
-pub const MAX_OWNED_STEPS: usize = 100_000;
+pub(crate) const MAX_OWNED_STEPS: usize = 100_000;
 
 impl OwnedSteps {
     /// Remember `id` as the session's.
@@ -107,7 +107,7 @@ pub fn read_only(s: &mut Session, p: &ProjectHandle) -> Result<Option<String>, S
 ///
 /// # Errors
 /// The refusal in words.
-pub fn may_write(s: &mut Session, p: &ProjectHandle, call: &Call<'_>) -> Result<(), String> {
+pub(crate) fn may_write(s: &mut Session, p: &ProjectHandle, call: &Call<'_>) -> Result<(), String> {
     if !call.write {
         return Err(call.writes_off());
     }
@@ -188,7 +188,7 @@ pub fn not_own_step(seq: u64, label: &str) -> String {
 }
 
 /// Said when an agent on the bridge would restore a point of another branch.
-pub const RESTORE_OTHER_BRANCH: &str =
+pub(crate) const RESTORE_OTHER_BRANCH: &str =
     "Refused: restoring a point of another branch would take back steps that are not this agent's; an agent undoes only its own steps.";
 
 /// The agent-undo rule for `restore` (review of PR #69, 2): the step it records takes back every
@@ -199,7 +199,7 @@ fn check_restore(s: &mut Session, p: &ProjectHandle, params: &Value, owned: &Own
         return Ok(());
     }
     p.read(s, |p, _| {
-        let Ok(pt) = crate::history::point(p, params) else { return Ok(()) };
+        let Ok(pt) = crate::history::points::point(p, params) else { return Ok(()) };
         if pt.branch != crate::history::current(p) {
             return Err(RESTORE_OTHER_BRANCH.to_string());
         }
@@ -244,7 +244,7 @@ fn check_own_step(s: &mut Session, p: &ProjectHandle, id: &str, params: &Value, 
 }
 
 /// A transaction as the tools report it.
-pub fn tx_summary(t: &Transaction) -> Value {
+pub(crate) fn tx_summary(t: &Transaction) -> Value {
     json!({
         "seq": t.seq,
         "id": t.id.hex(),
@@ -361,7 +361,7 @@ pub fn restore_user(s: &mut Session, p: &ProjectHandle) -> bool {
 }
 
 /// How many times [`restore_user_retrying`] tries.
-pub const RESTORE_ATTEMPTS: usize = 3;
+pub(crate) const RESTORE_ATTEMPTS: usize = 3;
 
 /// [`restore_user`], tried up to [`RESTORE_ATTEMPTS`] times: the project lock can be held for a
 /// moment (the read-only debugger copies under `try_lock`), and a busy lock must not leave the

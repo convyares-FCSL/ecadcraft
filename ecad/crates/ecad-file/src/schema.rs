@@ -245,6 +245,11 @@ pub struct BranchRecord {
 }
 
 impl BranchRecord {
+    /// Whether this is the original branch: the only one with no parent.
+    pub fn is_main(&self) -> bool {
+        self.parent.is_none()
+    }
+
     /// The original branch's row at `head`.
     pub fn main(head: Point) -> Self {
         Self {

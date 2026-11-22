@@ -591,7 +591,7 @@ fn k_hover_and_trail_show_cores() {
     let lines = f.h.p(|p| hover_lines(p, uid, tail)).unwrap();
     assert_eq!(lines.get(1).map(String::as_str), Some("Core: 3 (W3)"), "{lines:?}");
     let doc = f.h.doc();
-    assert_eq!(ecad_engine::dev::debug::object_label(&doc, ecad_engine::dev::debug::ObjectId::Wire(f.wires[2])), "W3 · core 3");
+    assert_eq!(ecad_engine::dev::objects::object_label(&doc, ecad_engine::dev::debug::ObjectId::Wire(f.wires[2])), "W3 · core 3");
     let snap = f.h.run("ecadinspect", json!({})).unwrap();
     assert!(snap.to_string().contains("\"label\":\"3\""), "ecadinspect shows the core");
 }

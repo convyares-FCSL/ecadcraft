@@ -1,5 +1,4 @@
-//! Tester probe for brief 014 re-test round 3: brief 014's scoped movement merged with briefs 009
-//! and 010.
+//! Scoped movement: a randomised probe of moves, grip drags and window moves across two pages.
 //!
 //! The probe builds a two-page fixture: cable C1 runs from K1 on `Supply` to K2 on `Field` through
 //! a reference on each page. It then makes 400 seeded random drawing edits on both pages:
