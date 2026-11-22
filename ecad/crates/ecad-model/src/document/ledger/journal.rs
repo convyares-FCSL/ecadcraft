@@ -336,9 +336,9 @@ impl Document {
     /// use ecad_model::{Document, Op, Page, PageId};
     /// let mut doc = Document::default();
     /// let add = vec![Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 }];
-    /// let pages = doc.with_applied(&add, |d| d.pages.len()).unwrap();
+    /// let pages = doc.with_applied(&add, |d| d.pages().len()).unwrap();
     /// assert_eq!(pages, 1);
-    /// assert!(doc.pages.is_empty()); // reverted
+    /// assert!(doc.pages().is_empty()); // reverted
     /// ```
     pub fn with_applied<R>(&mut self, ops: &[Op], read: impl FnOnce(&Document) -> R) -> Result<R> {
         let (result, failure) = applied_then_reverted(self, ops, false, None, &mut Health::default(), read);

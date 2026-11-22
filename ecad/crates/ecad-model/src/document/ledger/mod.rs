@@ -55,7 +55,7 @@ use types::*;
 /// ledger.commit(Author::User, "New page", vec![Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 }]).unwrap();
 /// assert!(ledger.is_unsaved());
 /// ledger.undo(Author::User).unwrap();
-/// assert!(ledger.document().pages.is_empty());
+/// assert!(ledger.document().pages().is_empty());
 /// assert_eq!(ledger.head(), 2); // the undo was appended
 /// ```
 #[derive(Debug, Clone)]
