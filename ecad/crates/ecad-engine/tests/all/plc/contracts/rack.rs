@@ -235,7 +235,7 @@ fn a4_save_and_reopen_keep_racks_slots_and_the_rack_reference() {
     let captions: Vec<String> = ecad_engine::plc::draw::card::parts_on_page(&d, page)
         .into_iter()
         .filter_map(|p| match p.shape {
-            ecad_electrical::references::devices::Shape::Text { value, .. } if value.contains(" slot ") => Some(value),
+            ecad_electrical::references::devices::table::Shape::Text { value, .. } if value.contains(" slot ") => Some(value),
             _ => None,
         })
         .collect();
@@ -257,7 +257,7 @@ fn a4_the_caption_pattern_and_show_rule_come_from_the_registry() {
             .into_iter()
             .filter(|p| Some(p.rep) == rep)
             .filter_map(|p| match p.shape {
-                ecad_electrical::references::devices::Shape::Text { value, .. } if value.contains("lot") => Some((value, true)),
+                ecad_electrical::references::devices::table::Shape::Text { value, .. } if value.contains("lot") => Some((value, true)),
                 _ => None,
             })
             .next()

@@ -77,8 +77,8 @@ fn next_text(doc: &Document, cable: CableId) -> (String, bool) {
 
 // ---------------------------------------------------------------- Cable Reference (§4.1)
 
-/// `cableref`: pick a cable (or take the selected one), then click where it leaves this page.
-pub(crate) fn cableref(s: &Session) -> R<Box<dyn Interactive>> {
+/// `cablereference`: pick a cable (or take the selected one), then click where it leaves this page.
+pub(crate) fn cablereference(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     Ok(Box::new(Safe(CableRef::default())))
 }
@@ -96,7 +96,7 @@ impl CableRef {
     }
 
     fn place(&mut self, s: &mut Session, k: CableId, at: Pt) -> R<Step> {
-        let r = commit(s, "cableref", &json!({"cable": k.hex(), "at": [at.x, at.y]}))?;
+        let r = commit(s, "cablereference", &json!({"cable": k.hex(), "at": [at.x, at.y]}))?;
         let orphan = r.get("orphan").and_then(Value::as_bool).unwrap_or(true);
         let line = read(s, |p, page| {
             let doc = p.ledger.document();
@@ -146,7 +146,7 @@ impl Interactive for CableRef {
     }
     /// Step 0: one selected cable goes straight to the reference point.
     fn begin(&mut self, s: &mut Session) -> R<Step> {
-        safely(s, "cableref", |s| {
+        safely(s, "cablereference", |s| {
             self.asked = true;
             match selected_cables(s).as_slice() {
                 [] => {}
@@ -171,7 +171,7 @@ impl Interactive for CableRef {
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
         paper_guard(s, &i)?;
-        safely(s, "cableref", |s| self.step(s, i))
+        safely(s, "cablereference", |s| self.step(s, i))
     }
     /// Step 2: the ring at the cursor and the text the reference will show.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {

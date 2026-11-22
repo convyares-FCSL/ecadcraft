@@ -543,7 +543,7 @@ pub struct Check {
 
 /// Rebuild the reference index (brief 025) from a copy of the document and compare it with a copy
 /// of the kept one (the debugger's **Check index**, design 025 §3.3).
-pub fn verify_index(doc: &Document, kept: &ecad_electrical::references::devices::RefIndex, head: u64) -> Check {
+pub fn verify_index(doc: &Document, kept: &ecad_electrical::references::devices::index::RefIndex, head: u64) -> Check {
     let (members, groups, edges) = kept.sizes();
     match kept.verify(doc) {
         Ok(()) => Check {

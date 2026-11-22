@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 use ecad_model::{Color, Document, IdAllocator, ItemKind, Op, PageId, Placement, Pt, Style};
-use {ecad_electrical::references::devices::Places, ecad_electrical::references::devices::RefIndex};
+use {ecad_electrical::references::devices::index::RefIndex, ecad_electrical::references::devices::places::Places};
 
 /// Pages, names of 20 arrows, and the size of the big name.
 fn counts() -> (usize, usize, usize) {

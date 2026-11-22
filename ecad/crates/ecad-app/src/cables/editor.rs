@@ -25,11 +25,11 @@ use crate::cables::manager::ASSIGN_IN_DRAWING;
 /// The shield segments, in [`Shield::ALL`] order.
 pub const SHIELDS: [&str; 4] = ["None", "Overall", "Pairs", "Both"];
 /// The pane's footer buttons (board 2.06).
-pub const CHANGE_TYPE: &str = "Change cable type\u{2026}";
-pub const ADD_CORE: &str = "Add a core";
+pub(crate) const CHANGE_TYPE: &str = "Change cable type\u{2026}";
+pub(crate) const ADD_CORE: &str = "Add a core";
 pub const REMOVE: &str = "Remove";
 /// Where it is drawn, when it is not.
-pub const NOT_DRAWN_YET: &str = "Not drawn yet";
+pub(crate) const NOT_DRAWN_YET: &str = "Not drawn yet";
 /// The read-only footer's reason (029).
 pub const READ_ONLY: &str = "This project cannot be changed here (a release, or writes off).";
 
@@ -139,7 +139,7 @@ pub struct Editor {
 
 impl Editor {
     /// Take a new copy: the boxes show its values again; a refusal about another cable is dropped.
-    pub fn set_copy(&mut self, c: Copy) {
+    pub(crate) fn set_copy(&mut self, c: Copy) {
         if c.cable != self.copy.cable {
             self.error = None;
             self.refused = None;
@@ -167,7 +167,7 @@ pub enum Ask {
 }
 
 /// The JSON `set` of one field's new text (empty clears).
-pub fn set_of(field: CableField, text: &str) -> serde_json::Value {
+pub(crate) fn set_of(field: CableField, text: &str) -> serde_json::Value {
     let v = if text.trim().is_empty() { serde_json::Value::Null } else { json!(text.trim()) };
     match field {
         CableField::EndLocation(s) => json!({s.word(): {"location": v}}),

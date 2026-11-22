@@ -279,10 +279,10 @@ pub(crate) fn part_entity(draw: &crate::styles::draw::DrawStyles, part: &ecad_el
 /// Brief 066d: a text part is drawn in its kind's text style (font, weight, colour), as every
 /// other derived text is.
 pub(crate) fn device_reference_entity(
-    draw: &crate::styles::draw::DrawStyles, part: &ecad_electrical::references::devices::Part, handle: Handle,
+    draw: &crate::styles::draw::DrawStyles, part: &ecad_electrical::references::devices::table::Part, handle: Handle,
 ) -> Entity {
     let mut e = match &part.shape {
-        ecad_electrical::references::devices::Shape::Text { kind, at, value, height, halign, valign, rotation } => {
+        ecad_electrical::references::devices::table::Shape::Text { kind, at, value, height, halign, valign, rotation } => {
             let mut e = crate::devices::draw::text_entity_with(
                 value,
                 *at,
@@ -300,7 +300,7 @@ pub(crate) fn device_reference_entity(
             draw.apply(&mut e, *kind);
             e
         }
-        ecad_electrical::references::devices::Shape::Line(a, b) => Entity {
+        ecad_electrical::references::devices::table::Shape::Line(a, b) => Entity {
             handle,
             common: Common { layer: ecad_electrical::devices::TAG_LAYER.into(), ..Common::default() },
             kind: kind_for_primitive(&ecad_model::Primitive::Line { a: *a, b: *b }),

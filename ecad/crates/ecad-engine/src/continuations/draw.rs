@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::{Document, PageId};
 
 use crate::styles::draw::EngineMetrics;
-use {ecad_electrical::references::devices::Part, ecad_electrical::references::devices::Places};
+use {ecad_electrical::references::devices::places::Places, ecad_electrical::references::devices::table::Part};
 
 /// The parts drawn on `page`: each arrow's reference text and each caption run, laid out with
 /// CADCraft's fonts ([`ecad_electrical::continuations::parts_on_page_measured`]).
@@ -35,8 +35,8 @@ mod tests {
     use ecad_model::{Pt, RepresentationId};
 
     use {
-        ecad_electrical::references::devices::HAlign, ecad_electrical::references::devices::Part, ecad_electrical::references::devices::Shape,
-        ecad_electrical::references::devices::VAlign,
+        ecad_electrical::references::devices::table::HAlign, ecad_electrical::references::devices::table::Part,
+        ecad_electrical::references::devices::table::Shape, ecad_electrical::references::devices::table::VAlign,
     };
 
     /// FP3 (overseer ruling, 2026-11-13): an unrotated reference part draws byte-identically to

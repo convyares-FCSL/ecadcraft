@@ -10,7 +10,7 @@
 //! - Band depths: header and mark bands are geometry ([`crate::symbols::HEADER_BAND`],
 //!   [`crate::symbols::MARK_BAND`]); the name band is at least [`crate::symbols::NAME_BAND`] and
 //!   grows with the name block's text styles, rounded up to 2.5 mm.
-//! - The parts are 025's cross-reference parts ([`crate::references::devices::Part`]) of the run's first
+//! - The parts are 025's cross-reference parts ([`crate::references::devices::table::Part`]) of the run's first
 //!   representation, indexed from [`INDEX_BASE`]: derived, left out of an edit with other objects,
 //!   an edit of one alone refused.
 //!
@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId, Subject};
 
 use crate::plc::rack::{self, CardType};
-use crate::references::devices::{HAlign, Part, Shape, VAlign};
+use crate::references::devices::table::{HAlign, Part, Shape, VAlign};
 use crate::styles::text_style::fonts::{self, TextMetrics};
 use crate::styles::text_style::{TextKind, text_style};
 use crate::symbols::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};

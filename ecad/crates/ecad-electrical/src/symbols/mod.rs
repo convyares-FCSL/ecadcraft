@@ -593,7 +593,7 @@ impl Starter {
     pub fn part_role(&self) -> PartRole {
         match self.kind {
             Kind::ConnectorHalf { .. } if crate::connectors::is_pin_starter(self) => PartRole::Pin,
-            Kind::Fixed { exclusive: false } if !crate::references::devices::poles_of(self).is_empty() => PartRole::Contact,
+            Kind::Fixed { exclusive: false } if !crate::references::devices::classify::poles_of(self).is_empty() => PartRole::Contact,
             k @ (Kind::ConnectorHalf { .. }
             | Kind::Fixed { .. }
             | Kind::Contact { .. }

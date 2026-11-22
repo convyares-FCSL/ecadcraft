@@ -323,50 +323,50 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
 /// (`refgoto:<source>:<target>:<label>` buttons).
 fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
     use crate::references::devices;
-    let offered = devices::contacts_of(doc, c).map(|s| s.to_string()).unwrap_or_default();
-    rows.push(Row::rw(devices::CONTACTS_KEY, "Contacts offered", offered));
-    let dev = devices::device(doc, c);
+    let offered = devices::parse::contacts_of(doc, c).map(|s| s.to_string()).unwrap_or_default();
+    rows.push(Row::rw(devices::parse::CONTACTS_KEY, "Contacts offered", offered));
+    let dev = devices::classify::device(doc, c);
     if dev.head.is_some() {
         let project = doc.settings.contact_mirror.word();
         let default = format!("Project default ({project})");
-        let value = match devices::placement_of(doc, c) {
+        let value = match devices::parse::placement_of(doc, c) {
             (_, false) => default.clone(),
-            (devices::Placement::At(_), true) => "Moved".into(),
+            (devices::parse::Placement::At(_), true) => "Moved".into(),
             (p, true) => {
                 let w = p.word();
                 let mut ch = w.chars();
                 ch.next().map(|f| f.to_uppercase().chain(ch).collect()).unwrap_or_default()
             }
         };
-        let mut r = Row::rw(devices::MIRROR_KEY, "Contact table", value);
+        let mut r = Row::rw(devices::parse::MIRROR_KEY, "Contact table", value);
         r.choices = vec![default, "Auto".into(), "Below".into(), "Right".into(), "Off".into()];
         rows.push(r);
     }
     let Some(sym) = symbol else { return };
-    let mut places = devices::Places::new(doc);
+    let mut places = devices::places::Places::new(doc);
     if dev.head == Some(sym) {
-        let offer = devices::offer_of(doc, c);
-        let list = devices::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
+        let offer = devices::parse::offer_of(doc, c);
+        let list = devices::table::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
         let text: Vec<String> = list
             .iter()
             .map(|r| {
                 let state = match r.state {
-                    devices::State::Drawn => "",
-                    devices::State::Spare => " (spare)",
-                    devices::State::Over => " (beyond the part)",
+                    devices::table::State::Drawn => "",
+                    devices::table::State::Spare => " (spare)",
+                    devices::table::State::Over => " (beyond the part)",
                 };
                 format!("{} {} {}{state}", r.label_pair(), r.kind.upper(), r.place)
             })
             .collect();
         rows.push(Row::ro("contactrows", "Contacts", if text.is_empty() { "none drawn".into() } else { text.join("; ") }));
-        for r in list.iter().filter(|r| r.state != devices::State::Spare) {
+        for r in list.iter().filter(|r| r.state != devices::table::State::Spare) {
             if let Some(t) = r.rep {
                 buttons.push(format!("refgoto:{}:{}:Go to {}", sym.hex(), t.hex(), r.label_pair()));
             }
         }
     } else if dev.children.contains(&sym) {
         let value = match dev.head.and_then(|h| doc.representations.get(&h)) {
-            Some(h) => places.text(h.page, devices::anchor(doc, h)),
+            Some(h) => places.text(h.page, devices::classify::anchor(doc, h)),
             None => "not drawn".into(),
         };
         rows.push(Row::ro("coil", "Coil", value));

@@ -26,7 +26,7 @@ use serde_json::{Map, Value, json};
 /// The reserved layer the fan is drawn on (colour `ecad.cable`, plots).
 pub const LAYER: &str = "ECAD-CABLES";
 /// `ecad.cable`: ACI 6, magenta.
-pub const CABLE_ACI: u8 = 6;
+pub(crate) const CABLE_ACI: u8 = 6;
 /// Refusal of an edit or a pick on a fan drawing (design §6.1).
 pub const FAN_REFUSED: &str = "This cable is shown in fan view; switch to traditional view to edit.";
 /// Refusal of new geometry drawn on [`LAYER`].
@@ -165,7 +165,7 @@ static PROCESS_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 /// the user's own folder. The first call wins. Automated tests use it (through
 /// [`isolate_for_tests`]) so that no test reads or writes the user's real `cable-views.json`:
 /// setting the environment variable from inside a test process would need `unsafe`.
-pub fn use_process_settings_dir(dir: impl Into<PathBuf>) {
+pub(crate) fn use_process_settings_dir(dir: impl Into<PathBuf>) {
     let _ = PROCESS_DIR.set(dir.into());
 }
 

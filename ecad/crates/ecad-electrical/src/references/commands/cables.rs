@@ -1,4 +1,4 @@
-//! The rules of brief 010's cable reference commands (design 010 §2, §7): `cableref` (a reference
+//! The rules of brief 010's cable reference commands (design 010 §2, §7): `cablereference` (a reference
 //! end), `cablecontinue` (the cable's second drawing) and `cablegoto` (the other end). Each reads
 //! the document and returns the ops to commit and what to report; the derivations themselves are
 //! [`crate::references::cables`].
@@ -49,7 +49,7 @@ fn reference_ops(ids: &mut IdAllocator, page: PageId, style: Style, cable: Cable
     Referenced { item, rep, ops }
 }
 
-/// `cableref` (design 010 §2.1, §7.1): the ops of a reference end of `cable` on `page` at `at`.
+/// `cablereference` (design 010 §2.1, §7.1): the ops of a reference end of `cable` on `page` at `at`.
 ///
 /// # Errors
 /// No such cable; the cable already has a reference here, already has two, or has no wire drawn
@@ -97,7 +97,7 @@ pub struct Continued {
 /// # Errors
 /// `members` longer than a cable holds (R9); the refusals of design 010 §4.4 and §7.2.
 #[allow(clippy::too_many_arguments)]
-pub fn continue_cable(
+pub(crate) fn continue_cable(
     doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, cable: CableId, members: Option<&[WireId]>, at: Pt, toward: Pt, tol: f64,
 ) -> Result<Continued, CmdError> {
     if members.is_some_and(|m| m.len() > crate::cables::slash::MAX_CABLE_MEMBERS) {
@@ -204,12 +204,12 @@ fn reference_fields(doc: &Document, reference: RepresentationId) -> (Value, bool
     }
 }
 
-/// `cableref {cable, at}` (design 010 §2.1, §7.1): a reference end of `cable` on the active page,
+/// `cablereference {cable, at}` (design 010 §2.1, §7.1): a reference end of `cable` on the active page,
 /// at `at`. One transaction: the Point item and its `reference` representation. Refused (R1 to
 /// R3) when the cable already has a reference here, already has two, or has no wire drawn here.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct CablerefParams {
+pub struct CableReferenceParams {
     /// The cable.
     cable: CableId,
     /// Where the reference end goes.
@@ -247,8 +247,8 @@ pub struct CablereferencesParams {
     cable: Option<CableId>,
 }
 
-impl Generic for CablerefParams {
-    const ID: &'static str = "cableref";
+impl Generic for CableReferenceParams {
+    const ID: &'static str = "cablereference";
     const TITLE: &'static str = "Cable Reference";
     const HELP: &'static str = "{cable: id, at: [x,y]} (a reference end of the cable on this page)";
 

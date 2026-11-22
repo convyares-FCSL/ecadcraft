@@ -503,7 +503,7 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
     match s.kind {
         Kind::Contact { make } => {
             // Brief 025 (owner answer Q4): the part's next free offered contact of this kind.
-            if let Some(labels) = crate::references::devices::offer_labels(doc, c, make, &used) {
+            if let Some(labels) = crate::references::devices::table::offer_labels(doc, c, make, &used) {
                 return Ok(labels);
             }
             // Brief 034: the digit rule lives in the catalogue (a fuse bank's outputs are not contacts).

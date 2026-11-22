@@ -17,13 +17,13 @@ fn every_reference(doc: &Document, m: &dyn ecad_electrical::styles::text_style::
     use {ecad_electrical::continuations, ecad_electrical::references::devices};
     let mut out: std::collections::BTreeMap<PageId, String> = std::collections::BTreeMap::new();
     for p in &doc.page_order {
-        let parts = devices::parts_on_page_measured(doc, *p, m);
+        let parts = devices::table::parts_on_page_measured(doc, *p, m);
         if !parts.is_empty() {
             out.insert(*p, format!("{parts:?}"));
         }
     }
     let names: BTreeSet<String> = doc.aids.keys().filter_map(|a| continuations::name_of(doc, *a)).collect();
-    let mut places = devices::Places::new(doc);
+    let mut places = devices::places::Places::new(doc);
     for (p, parts) in continuations::shown_measured(doc, &mut places, &names, m) {
         if !parts.is_empty() {
             out.entry(p).or_default().push_str(&format!("{parts:?}"));
@@ -69,7 +69,7 @@ fn references_view_agrees(tier: Tier) -> usize {
         let whole = ecad_electrical::references::cables::Snapshot::take(&before, None);
         let orphaned = whole.orphaned_line(&doc, &ecad_electrical::references::cables::Snapshot::take(&doc, None));
         assert_eq!(out.echo, orphaned.into_iter().collect::<Vec<_>>(), "{what}: orphaned line");
-        assert_eq!(view.index(), &ecad_electrical::references::devices::RefIndex::build(&doc), "{what}: index");
+        assert_eq!(view.index(), &ecad_electrical::references::devices::index::RefIndex::build(&doc), "{what}: index");
         checked += 1;
     }
     checked

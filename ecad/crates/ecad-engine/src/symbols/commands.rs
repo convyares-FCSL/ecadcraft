@@ -315,7 +315,7 @@ impl Command for ImpactParams {
             let i = rules::plan_impact(doc, &p.ids, self.definition, &content, builtins)?;
             let pages: BTreeSet<PageId> = i.rows.iter().map(|r| r.page).collect();
             let book = ecad_model::document::book::Book::of(doc);
-            let mut places = ecad_electrical::references::devices::Places::new(doc);
+            let mut places = ecad_electrical::references::devices::places::Places::new(doc);
             let rows_json: Vec<Value> = i.rows.iter().map(|r| rules::row_json(r, doc, &book, &mut places)).collect();
             Ok(json!({
                 "name": content.name, "version": i.version, "builtin": i.builtin,

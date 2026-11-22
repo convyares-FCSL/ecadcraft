@@ -1,7 +1,7 @@
 //! Independent tester's contract tests for brief 009 (cable look and cores), written from the
 //! brief, design 009 and the overseer's decision that reference ends use brief 010's model (a
 //! `reference` representation of the cable holding one Point item, built directly here; there is
-//! no `cableref` command in 009).
+//! no `cablereference` command in 009).
 //!
 //! - AC2: one-sided fans at either end (fixture H1 and its mirror H1′), both ends at references, a
 //!   third reference that stops nothing.
@@ -186,9 +186,9 @@ fn style(h: &mut H) -> Style {
 /// representation), one transaction.
 fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (ItemId, RepresentationId) {
     // Combined trial of 009 and 010: the first reference end of a cable on a page is placed with
-    // 010's `cableref`; a second one there (010 refuses it; only a hand-edited file has one) is still
+    // 010's `cablereference`; a second one there (010 refuses it; only a hand-edited file has one) is still
     // built with the ops.
-    if let Ok(r) = h.run("cableref", json!({"cable": cable.hex(), "at": [at.x, at.y]})) {
+    if let Ok(r) = h.run("cablereference", json!({"cable": cable.hex(), "at": [at.x, at.y]})) {
         h.check();
         return (id(&r, "item"), id(&r, "reference"));
     }

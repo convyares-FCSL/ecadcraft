@@ -454,7 +454,7 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     let d = h.doc();
     let coil = d.devices.keys().copied().find(|c| d.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == plain));
     if let Some(c) = coil {
-        assert!(ecad_electrical::references::devices::device(&d, c).head.is_none(), "no references from a Plain page");
+        assert!(ecad_electrical::references::devices::classify::device(&d, c).head.is_none(), "no references from a Plain page");
     }
     // The switch on: checks come back, in one step.
     let head = h.head();

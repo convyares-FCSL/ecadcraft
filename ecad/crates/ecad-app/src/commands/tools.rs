@@ -241,11 +241,11 @@ pub const TOOLS: &[Tool] = &[
         kind: Kind::Start("cablefan"),
     },
     Tool {
-        id: "ecad.cableref",
+        id: "ecad.cablereference",
         group: "Wiring",
         label: "Cable Reference",
         tooltip: "Click a cable, then where it leaves this page: places a reference to its other end",
-        kind: Kind::Start("cableref"),
+        kind: Kind::Start("cablereference"),
     },
     Tool {
         id: "ecad.cablecontinue",

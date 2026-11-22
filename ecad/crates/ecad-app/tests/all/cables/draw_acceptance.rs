@@ -251,9 +251,9 @@ fn fixture(h: &mut Harness<'static, App>, right: bool) -> (String, Vec<String>) 
 fn reference_end(h: &mut Harness<'static, App>, cable: &str, at: (f64, f64)) {
     use ecad_model::{CableId, Color, Form, Item, ItemId, ItemKind, Op, Primitive, Pt, Representation, RepresentationId, Style, Subject};
     // Combined trial of 009 and 010: the first reference end of a cable on a page is placed with
-    // 010's `cableref`; a second one there (010 refuses it; only a hand-edited file has one) is still
+    // 010's `cablereference`; a second one there (010 refuses it; only a hand-edited file has one) is still
     // built with the ops.
-    if h.state_mut().cad.run("cableref", json!({"cable": cable, "at": [at.0, at.1]})).is_ok() {
+    if h.state_mut().cad.run("cablereference", json!({"cable": cable, "at": [at.0, at.1]})).is_ok() {
         h.run_steps(2);
         return;
     }

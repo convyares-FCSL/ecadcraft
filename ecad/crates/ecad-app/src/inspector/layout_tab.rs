@@ -133,7 +133,9 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
         });
     });
     // The contact table under a coil.
-    if let Some((s, row)) = section.and_then(|s| s.rows.iter().find(|r| r.key == ecad_electrical::references::devices::MIRROR_KEY).map(|r| (s, r))) {
+    if let Some((s, row)) =
+        section.and_then(|s| s.rows.iter().find(|r| r.key == ecad_electrical::references::devices::parse::MIRROR_KEY).map(|r| (s, r)))
+    {
         let v = row.value.to_lowercase();
         let selected = if v.starts_with("below") {
             Some(0)

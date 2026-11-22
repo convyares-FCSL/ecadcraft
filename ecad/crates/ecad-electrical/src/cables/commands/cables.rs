@@ -32,7 +32,7 @@ use ecad_model::objects::styles::cable::Shield;
 
 /// Why a value is refused.
 #[derive(Debug, Clone, PartialEq)]
-pub enum BadReason {
+pub(crate) enum BadReason {
     Empty,
     TooLong(usize),
     NotANumber,
@@ -74,7 +74,7 @@ fn clip_quoted(m: &str) -> String {
 }
 
 /// The refusal of `value` for `field` (design 059 §9).
-pub fn bad_value(field: CableField, value: &str, reason: &BadReason) -> CmdError {
+pub(crate) fn bad_value(field: CableField, value: &str, reason: &BadReason) -> CmdError {
     let shown = clip(value);
     said(match (field, reason) {
         (CableField::Length, _) => format!("Length must be a number of metres from {MIN_LENGTH} to {MAX_LENGTH}."),
@@ -336,7 +336,7 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
 ///
 /// # Errors
 /// A bad value, a taken tag, or cores in use.
-pub fn edit_ops(
+pub(crate) fn edit_ops(
     doc: &Document, ids: &mut IdAllocator, tag_high: &mut TagHigh, k: CableId, set: &CableInput,
 ) -> Result<(Vec<Op>, Vec<CableField>, Option<String>), CmdError> {
     let cab = doc.cables.get(&k).ok_or_else(|| no_cable(&k.hex()))?;
@@ -427,7 +427,7 @@ pub fn drawn(doc: &Document, k: CableId) -> Option<Drawn> {
 ///
 /// # Errors
 /// No such cable, or it is drawn ([`Drawn::words`]; [`drawn`] gives its pages).
-pub fn check_remove(doc: &Document, k: CableId) -> Result<(), CmdError> {
+pub(crate) fn check_remove(doc: &Document, k: CableId) -> Result<(), CmdError> {
     if !doc.cables.contains_key(&k) {
         return Err(no_cable(&k.hex()));
     }
@@ -463,7 +463,7 @@ pub fn assign_cores(doc: &Document, k: CableId, n: usize) -> Result<Vec<Option<S
 }
 
 /// The refusal of a slash whose wires are in a cable already (`words`), cut at [`MAX_WORDS`].
-pub fn already_in_cable(words: String) -> CmdError {
+pub(crate) fn already_in_cable(words: String) -> CmdError {
     said(words)
 }
 
@@ -543,7 +543,7 @@ pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
 /// An end's plan and gland.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct EndParams {
+pub(crate) struct EndParams {
     /// The planned location (+CAB1); null clears it.
     #[serde(default, deserialize_with = "nullable")]
     location: Option<Option<TextOrNumber>>,

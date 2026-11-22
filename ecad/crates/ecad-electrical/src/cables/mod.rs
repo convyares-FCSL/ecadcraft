@@ -159,10 +159,10 @@ impl Source {
 }
 
 /// Most characters of a value a refusal echoes (tester 059a, rule 7): longer text ends with `…`.
-pub const MAX_ECHO: usize = 40;
+pub(crate) const MAX_ECHO: usize = 40;
 
 /// Most characters of a whole refusal.
-pub const MAX_WORDS: usize = 400;
+pub(crate) const MAX_WORDS: usize = 400;
 
 /// `t` cut to [`MAX_ECHO`] characters, with `…` when cut, and no hidden characters.
 pub fn clip(t: &str) -> String {
@@ -170,15 +170,15 @@ pub fn clip(t: &str) -> String {
 }
 
 /// Shortest and longest cable length stored, in metres.
-pub const MIN_LENGTH: f64 = 0.1;
+pub(crate) const MIN_LENGTH: f64 = 0.1;
 
-pub const MAX_LENGTH: f64 = 10_000.0;
+pub(crate) const MAX_LENGTH: f64 = 10_000.0;
 
 /// Longest free text stored (`type`, maker, part number, description).
 pub const MAX_TEXT: usize = 64;
 
 /// A length read from text: metres, within bounds.
-pub fn length_of(text: &str) -> Option<f64> {
+pub(crate) fn length_of(text: &str) -> Option<f64> {
     let t = text.trim();
     let t = t.strip_suffix('m').map_or(t, str::trim_end);
     t.parse::<f64>().ok().filter(|v| v.is_finite() && (MIN_LENGTH..=MAX_LENGTH).contains(v))
@@ -218,7 +218,7 @@ fn valid(doc: &Document, field: CableField, v: &str) -> bool {
 }
 
 /// The fields of §2.1 a file holds out of bounds (a file made elsewhere): `cable-bad-value`.
-pub fn bad_values(doc: &Document, k: CableId) -> Vec<(CableField, String)> {
+pub(crate) fn bad_values(doc: &Document, k: CableId) -> Vec<(CableField, String)> {
     let Some(c) = doc.cables.get(&k) else { return Vec::new() };
     let checked = [
         CableField::Length,
@@ -389,7 +389,7 @@ impl DrawnEnd {
 
 /// Cable `k`'s two ends as drawn, cabinet then field (see [`DrawnEnd`]). Bounded by the cable's
 /// member bound.
-pub fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
+pub(crate) fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
     let mut out = [DrawnEnd::default(), DrawnEnd::default()];
     // Each core is one wire, through any named points (design 072 §4.4, F5).
     let wires: Vec<ecad_model::WireId> = doc.cables.get(&k).map(|c| c.cores.iter().filter_map(|m| m.wire()).collect()).unwrap_or_default();
@@ -444,7 +444,7 @@ pub fn off_plan(doc: &Document, k: CableId) -> Vec<OffPlan> {
 
 /// The value rows of cable `k` (design 059 §6): `cable-bad-value` always; `cable-end-off-plan` and
 /// `no-gland` (059d) once drawn.
-pub fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
+pub(crate) fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
     let mut out = Vec::new();
     if !doc.cables.contains_key(&k) {
         return out;
@@ -499,7 +499,7 @@ pub fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
 
 /// The notation a cable type gives `type` (`H07RN-F 4G1.5`): its name when it carries a core
 /// notation, else its cores and cross-section (`4G1.5`).
-pub fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
+pub(crate) fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
     let name = styles::name(doc, ecad_model::StyleCatalogue::Cable, id);
     if crate::terminal_strips::offer_from_type(&name).is_some() {
         return Some(name);

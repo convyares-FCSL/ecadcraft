@@ -87,7 +87,7 @@ fn label(doc: &Document, t: ConnectionPointId) -> String {
 
 /// The labels a symbol shows: its connection points, in its definition's order.
 fn rep_labels(doc: &Document, c: DeviceId, r: &ecad_model::Representation) -> Vec<String> {
-    let points = ecad_electrical::references::devices::connection_point_points(doc, c, r);
+    let points = ecad_electrical::references::devices::classify::connection_point_points(doc, c, r);
     if points.is_empty() {
         return r.connection_points.keys().take(8).map(|t| label(doc, *t)).collect();
     }
@@ -107,10 +107,10 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
     d.tag = ecad_electrical::devices::tag_words(doc, c);
     d.description = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|t| t.to_string()).unwrap_or_default();
     d.standard = doc.standard.as_ref().map_or_else(|| "IEC".to_string(), |s| s.header.name.to_string());
-    let dev = ecad_electrical::references::devices::device(doc, c);
-    let mut places = ecad_electrical::references::devices::Places::new(doc);
-    let place_of = |places: &mut ecad_electrical::references::devices::Places<'_>, r: &ecad_model::Representation| {
-        places.text(r.page, ecad_electrical::references::devices::anchor(doc, r))
+    let dev = ecad_electrical::references::devices::classify::device(doc, c);
+    let mut places = ecad_electrical::references::devices::places::Places::new(doc);
+    let place_of = |places: &mut ecad_electrical::references::devices::places::Places<'_>, r: &ecad_model::Representation| {
+        places.text(r.page, ecad_electrical::references::devices::classify::anchor(doc, r))
     };
     if let Some(r) = doc.representations.get(&rep) {
         deps.insert(ObjectRef::Page(r.page));
@@ -155,14 +155,15 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
         d.drawn.push(DrawnRow { pins: first, what, place: place_of(&mut places, r), rep: Some(id), this: id == rep });
     }
     if dev.head.is_some() {
-        let offer = ecad_electrical::references::devices::offer_of(doc, c);
-        for row in ecad_electrical::references::devices::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice())).into_iter().take(MAX_ROWS)
+        let offer = ecad_electrical::references::devices::parse::offer_of(doc, c);
+        for row in
+            ecad_electrical::references::devices::table::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice())).into_iter().take(MAX_ROWS)
         {
             let kind = if row.power { format!("main, {}", row.kind.upper()) } else { row.kind.upper().to_string() };
             let (what, place) = match row.state {
-                ecad_electrical::references::devices::State::Drawn => (kind, row.place.clone()),
-                ecad_electrical::references::devices::State::Spare => (format!("{kind}, not used yet"), String::new()),
-                ecad_electrical::references::devices::State::Over => (format!("{kind}, beyond the part"), row.place.clone()),
+                ecad_electrical::references::devices::table::State::Drawn => (kind, row.place.clone()),
+                ecad_electrical::references::devices::table::State::Spare => (format!("{kind}, not used yet"), String::new()),
+                ecad_electrical::references::devices::table::State::Over => (format!("{kind}, beyond the part"), row.place.clone()),
             };
             d.drawn.push(DrawnRow { pins: pins(&row.labels), what, place, rep: row.rep, this: row.rep == Some(rep) });
         }
@@ -173,7 +174,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
     let conn = doc.connectivity();
     let mut points: Vec<(ConnectionPointId, String)> =
         doc.connection_points_of(c).take(MAX_ROWS).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "?".into()))).collect();
-    points.sort_by_key(|p| ecad_electrical::references::devices::natural_key(&p.1));
+    points.sort_by_key(|p| ecad_electrical::references::devices::table::natural_key(&p.1));
     for (t, pin) in points {
         d.connection_points.insert(t);
         let net = conn.net_of_connection_point(t).and_then(|n| conn.net(n));

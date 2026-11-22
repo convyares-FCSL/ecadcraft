@@ -148,7 +148,10 @@ fn the_layout_tab_reads_the_placement_and_sets_the_texts_and_contact_table() {
     h.get_by_label(&format!("{}.right", ecad_app::inspector::CONTACT_TABLE)).click();
     h.run_steps(4);
     let k1 = h.state().settings.inspector.device.as_ref().and_then(|d| d.component).unwrap();
-    assert_eq!(ecad_electrical::references::devices::placement_of(&doc(&mut h), k1), (ecad_electrical::references::devices::Placement::Right, true));
+    assert_eq!(
+        ecad_electrical::references::devices::parse::placement_of(&doc(&mut h), k1),
+        (ecad_electrical::references::devices::parse::Placement::Right, true)
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

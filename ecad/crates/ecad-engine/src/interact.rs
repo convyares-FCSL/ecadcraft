@@ -46,7 +46,7 @@ pub(crate) use crate::continuations::interact::contcaption;
 pub(crate) use crate::devices::interact::{devicedelete, deviceprops, place};
 pub(crate) use crate::locations::interact::{functionbox, locationbox};
 pub(crate) use crate::properties::forms::{addconnectionpoint, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
-pub(crate) use crate::references::interact::cables::{cablecontinue, cablegoto, cableref};
+pub(crate) use crate::references::interact::cables::{cablecontinue, cablegoto, cablereference};
 pub(crate) use crate::references::interact::devices::mirrormove;
 pub(crate) use crate::reports::interact::bomitem;
 pub(crate) use crate::terminal_strips::interact::accessories::{accessory, jumper};
@@ -388,15 +388,15 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             }
             let Subject::Device(c) = doc.representations.get(&r)?.subject else { return None };
             let row = view.map.device_reference_part(h).and_then(|(_, i)| {
-                let dev = ecad_electrical::references::devices::device(doc, c);
-                let mut places = ecad_electrical::references::devices::Places::new(doc);
+                let dev = ecad_electrical::references::devices::classify::device(doc, c);
+                let mut places = ecad_electrical::references::devices::places::Places::new(doc);
                 let t = crate::references::draw::devices::table(doc, &mut places, &dev)?;
                 t.parts.get(usize::try_from(i).ok()?)?.row
             });
             match row {
-                Some(i) => ecad_electrical::references::devices::row_lines(doc, c, i, &crate::styles::draw::EngineMetrics)?,
-                None if ecad_electrical::references::devices::device(doc, c).head == Some(r) => {
-                    ecad_electrical::references::devices::head_lines(doc, c, r)
+                Some(i) => ecad_electrical::references::devices::read::row_lines(doc, c, i, &crate::styles::draw::EngineMetrics)?,
+                None if ecad_electrical::references::devices::classify::device(doc, c).head == Some(r) => {
+                    ecad_electrical::references::devices::read::head_lines(doc, c, r)
                 }
                 None => with_device_references(doc, c, r, crate::devices::draw::hover_lines(doc, c, r)),
             }
@@ -711,8 +711,8 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
 /// A device's lens (design 018 §6.4) with its cross-reference lines (design 025 §5.1): the coil's
 /// place on a contact, the table's contacts on a coil, before the lens's last (`id`) line.
 fn with_device_references(doc: &ecad_model::Document, c: DeviceId, rep: ecad_model::RepresentationId, mut lines: Vec<String>) -> Vec<String> {
-    let mut extra = ecad_electrical::references::devices::contact_lines(doc, c, rep);
-    extra.extend(ecad_electrical::references::devices::head_lines(doc, c, rep));
+    let mut extra = ecad_electrical::references::devices::read::contact_lines(doc, c, rep);
+    extra.extend(ecad_electrical::references::devices::read::head_lines(doc, c, rep));
     let at = lines.len().saturating_sub(1);
     for (i, l) in extra.into_iter().enumerate() {
         lines.insert(at + i, l);

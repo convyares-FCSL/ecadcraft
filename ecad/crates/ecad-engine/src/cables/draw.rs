@@ -52,13 +52,13 @@ thread_local! {
 }
 
 /// The sheet a page is projected for: [`sheet`], or paper while [`with_paper`] runs.
-pub fn projection_sheet() -> &'static ecad_drawing_style::Sheet {
+pub(crate) fn projection_sheet() -> &'static ecad_drawing_style::Sheet {
     PROJECTION_SHEET.with(std::cell::Cell::get).unwrap_or_else(sheet)
 }
 
 /// Keeps the sheet [`pin_sheet`] read for this thread until it is dropped.
 #[derive(Debug)]
-pub struct SheetPin(Option<&'static ecad_drawing_style::Sheet>);
+pub(crate) struct SheetPin(Option<&'static ecad_drawing_style::Sheet>);
 
 impl Drop for SheetPin {
     fn drop(&mut self) {
@@ -70,14 +70,14 @@ impl Drop for SheetPin {
 /// its check then agree on every colour. Without it, a sheet switch on another thread
 /// (`canvassheet`, which is process-wide) between the projection and the check made a rebuilt
 /// page fail its check and become unavailable (CI on PR 88, `history_ui`).
-pub fn pin_sheet() -> SheetPin {
+pub(crate) fn pin_sheet() -> SheetPin {
     let s = projection_sheet();
     SheetPin(PROJECTION_SHEET.with(|c| c.replace(Some(s))))
 }
 
 /// Run `f` with pages projected for the paper sheet (a print is on white paper, whatever sheet
 /// the screen shows).
-pub fn with_paper<R>(f: impl FnOnce() -> R) -> R {
+pub(crate) fn with_paper<R>(f: impl FnOnce() -> R) -> R {
     let before = PROJECTION_SHEET.with(|c| c.replace(Some(&ecad_drawing_style::sheet::PAPER)));
     let r = f();
     PROJECTION_SHEET.with(|c| c.set(before));
@@ -155,7 +155,7 @@ pub struct ColouredRoute {
 }
 
 /// Most routes [`coloured_routes`] returns for one page.
-pub const MAX_COLOURED_ROUTES: usize = 20_000;
+pub(crate) const MAX_COLOURED_ROUTES: usize = 20_000;
 
 /// The wire routes of `page` whose colour code is known, with their colours on `sheet`. Routes
 /// not drawn (a cable in fan view hides its members) and plain black wires (ink already) are left
@@ -245,7 +245,7 @@ pub fn text_colour_rgb(
 }
 
 /// A colour field's value as drawn on `sheet`: `None` for `none` (ink) and anything unknown.
-pub fn colour_rgb(value: &str, sheet: &ecad_drawing_style::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
+pub(crate) fn colour_rgb(value: &str, sheet: &ecad_drawing_style::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
     let t = value.trim();
     if t.eq_ignore_ascii_case("none") {
         return None;

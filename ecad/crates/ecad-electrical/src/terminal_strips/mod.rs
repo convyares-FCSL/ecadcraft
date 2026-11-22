@@ -1507,7 +1507,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         }
         d.spare = spare_by_type.iter().sum();
         d.spare_pe = spare_by_type.get(1).copied().unwrap_or(0);
-        rows.sort_by_cached_key(|r| (crate::references::devices::natural_key(&r.label), r.level, r.connection_point));
+        rows.sort_by_cached_key(|r| (crate::references::devices::table::natural_key(&r.label), r.level, r.connection_point));
     }
     // Part data per type (§7.2): strip, then project, then the registry's description.
     for (i, ty) in tt::TYPES.iter().enumerate() {

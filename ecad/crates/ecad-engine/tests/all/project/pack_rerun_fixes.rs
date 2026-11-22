@@ -134,7 +134,7 @@ fn bug_3_a_located_tag_keeps_a_separator_with_the_tag_dash_off() {
 
 /// Each contact table's box on `page` (its lines and text anchors), by head.
 fn table_boxes(h: &mut H, page: PageId) -> Vec<(ecad_model::Pt, ecad_model::Pt)> {
-    use ecad_electrical::references::devices::Shape;
+    use ecad_electrical::references::devices::table::Shape;
     use std::collections::BTreeMap;
     let parts = h.p(|p| ecad_engine::references::draw::devices::parts_on_page(p.ledger.document(), page));
     let mut boxes: BTreeMap<_, (ecad_model::Pt, ecad_model::Pt)> = BTreeMap::new();
@@ -195,7 +195,7 @@ fn bug_4_tables_of_coils_drawn_close_together_do_not_overlap() {
 
 #[test]
 fn bug_11_four_pole_power_contacts_show_their_coil_like_no_and_nc() {
-    use ecad_electrical::references::devices::Shape;
+    use ecad_electrical::references::devices::table::Shape;
     let mut h = H::new(9111);
     let p1 = h.first_page();
     let p2: PageId = id(&h.run("newpage", json!({"title": "Coils"})).unwrap(), "page");

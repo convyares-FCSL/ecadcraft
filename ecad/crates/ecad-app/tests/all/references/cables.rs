@@ -51,8 +51,8 @@ fn the_reference_buttons_sit_in_wiring_and_start_their_prompts() {
     let at = |id: &str| ids.iter().position(|x| *x == id).unwrap_or_else(|| panic!("{id} in {ids:?}"));
     // Combined trial of briefs 009 and 010 (overseer decision): 009's Core Label and Cable Join come
     // first, after Cable View.
-    assert_eq!(at("ecad.cableref"), at("ecad.cablefan") + 1);
-    assert_eq!(at("ecad.cablecontinue"), at("ecad.cableref") + 1);
+    assert_eq!(at("ecad.cablereference"), at("ecad.cablefan") + 1);
+    assert_eq!(at("ecad.cablecontinue"), at("ecad.cablereference") + 1);
     assert_eq!(at("ecad.cablegoto"), at("ecad.cablecontinue") + 1);
     assert!(tab.groups.iter().all(|g| g.name != "Pages"), "the Project panel has the page actions");
 
@@ -60,7 +60,7 @@ fn the_reference_buttons_sit_in_wiring_and_start_their_prompts() {
     h.get_by_label(tools::TAB).click();
     h.run_steps(3);
     let firsts = [
-        ("Cable Reference", "cableref", "Select a cable to reference:"),
+        ("Cable Reference", "cablereference", "Select a cable to reference:"),
         // No reference waits for its other end: no default is offered.
         ("Continue Cable", "cablecontinue", "Enter cable to continue or [List]:"),
         ("Go to Reference", "cablegoto", "Select a cable reference:"),
@@ -218,7 +218,7 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     }
     assert!(t.submit_command(r#"cableslash {"from":[28,-3],"to":[32,18],"tag":"C1"}"#).is_none());
     let cable = doc(t).cables.keys().next().copied().unwrap();
-    assert!(t.submit_command(&format!(r#"cableref {{"cable":"{}","at":[65,5]}}"#, cable.hex())).is_none());
+    assert!(t.submit_command(&format!(r#"cablereference {{"cable":"{}","at":[65,5]}}"#, cable.hex())).is_none());
     assert!(t.submit_command(r#"newpage {"title":"Field"}"#).is_none());
     assert!(t.submit_command(&format!(r#"cablecontinue {{"cable":"{}","at":[20,5],"toward":[40,5]}}"#, cable.hex())).is_none());
     let (page1, page2) = (doc(t).page_order[0], doc(t).page_order[1]);

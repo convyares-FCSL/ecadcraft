@@ -43,7 +43,7 @@ fn fixture(name: &str) -> F {
     // Brief 057 (owner rule): the fixture's cores run over loose wires on purpose; ticked Not
     // used, they are no open-core errors, and the release gate reads only this fixture's own.
     not_used(&mut h, c1, &["1", "2", "3"]);
-    h.run("cableref", json!({"cable": c1.hex(), "at": [120, 5]})).unwrap();
+    h.run("cablereference", json!({"cable": c1.hex(), "at": [120, 5]})).unwrap();
     h.run("projectprops", json!({"title": "Pump panel", "drawing_number": "D-1001"})).unwrap();
     h.run("revision", json!({"description": "First issue", "drawn": "CVA"})).unwrap();
     h.run("issuerevision", json!({"date": "2026-11-01"})).unwrap();
@@ -103,7 +103,7 @@ fn an_orphan_reference_is_a_check_kept_by_its_update_map() {
     let c1: CableId = id(&h.run("cableslash", json!({"from": [88, -3], "to": [92, 12], "tag": "C1"})).unwrap(), "cable");
     // Kept from here on.
     assert!(orphans(&mut h).is_empty());
-    h.run("cableref", json!({"cable": c1.hex(), "at": [120, 5]})).unwrap();
+    h.run("cablereference", json!({"cable": c1.hex(), "at": [120, 5]})).unwrap();
     assert_eq!(orphans(&mut h), ["-C01 /?"]);
     kept_is_built(&mut h);
     let row = h.cfg(|p| p.checks().rows().find(|c| c.kind == Kind::OrphanReference).cloned()).unwrap();

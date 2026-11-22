@@ -186,7 +186,7 @@ impl Views {
     }
 
     /// The kept reference index (design 025 §3.3).
-    pub fn references(&self) -> &crate::references::devices::RefIndex {
+    pub fn references(&self) -> &crate::references::devices::index::RefIndex {
         self.references.index()
     }
 

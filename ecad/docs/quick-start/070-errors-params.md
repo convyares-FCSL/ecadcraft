@@ -21,7 +21,7 @@ reads stay the same. What changes is underneath, plus one thing an agent or a sc
   `tagsettings`, `convertcomponent` and `addconnectionpoint` are typed too. A switch given as something
   other than true or false (`mirror: 1`, `builtins: "x"`) is now refused instead of ignored.
 - **Every command is typed now**, with a schema: also `connect`, `disconnect`, the drawn cable
-  commands (`cableslash`, `cableadd`, `cablecore`, `cablefan`, `cableview`, `cableref`,
+  commands (`cableslash`, `cableadd`, `cablecore`, `cablefan`, `cableview`, `cablereference`,
   `cablecontinue`, `cablegoto`, `cablereferences`), the page commands (`newpage`, `openpage`,
   `renamepage`, `movepage`, `ecadinspect`), history and branches (`history`, `steps`,
   `pointinfo`, `version`, `showpoint`, `closepoint`, `restore`, `branches`, `branch`,

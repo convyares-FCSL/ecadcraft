@@ -10,13 +10,13 @@ use serde_json::json;
 use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Object};
 
 /// **Assign in the drawing…** (the `cable-not-drawn` fix's first button).
-pub const ASSIGN_IN_DRAWING: &str = "Assign in the drawing\u{2026}";
+pub(crate) const ASSIGN_IN_DRAWING: &str = "Assign in the drawing\u{2026}";
 /// **Use the drawing** (the `cable-end-off-plan` fix's first button).
-pub const USE_THE_DRAWING: &str = "Use the drawing";
+pub(crate) const USE_THE_DRAWING: &str = "Use the drawing";
 /// **Go to** that end.
-pub const GO_TO_END: &str = "Go to";
+pub(crate) const GO_TO_END: &str = "Go to";
 /// **Set gland** (the `no-gland` fix).
-pub const SET_GLAND: &str = "Set gland";
+pub(crate) const SET_GLAND: &str = "Set gland";
 
 /// The two buttons of a 059 fix, when it has two.
 pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
