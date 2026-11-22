@@ -12,4 +12,5 @@ pub(crate) mod lane_072d_cable;
 pub(crate) mod lane_072e;
 pub(crate) mod lane_072f;
 pub(crate) mod lane_073;
+pub(crate) mod lane_d2_format;
 pub(crate) mod lane_strict_meta;

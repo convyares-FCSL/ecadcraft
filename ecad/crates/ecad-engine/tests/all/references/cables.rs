@@ -1161,3 +1161,142 @@ fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
 fn hh() -> f64 {
     ecad_engine::cables::draw::label_height(&ecad_model::Document::default())
 }
+
+// ---------------------------------------------------------------- D2: which cables an effect reaches
+
+/// The cables whose derived references differ between two states of the document.
+fn cables_changed(before: &Document, after: &Document) -> std::collections::BTreeSet<CableId> {
+    use std::collections::BTreeMap;
+    let group = |d: &Document| {
+        let mut m: BTreeMap<CableId, Vec<ecad_model::connectivity::derive::CableReference>> = BTreeMap::new();
+        for r in cable_references(d) {
+            m.entry(r.cable).or_default().push(r);
+        }
+        m
+    };
+    let (b, a) = (group(before), group(after));
+    b.keys().chain(a.keys()).copied().filter(|k| b.get(k) != a.get(k)).collect()
+}
+
+/// D2 (issue 63): what `cables_touched_by` names is never narrower than a full recompute shows. Each row
+/// does one thing, then compares the cables whose references really changed (every reference
+/// derived again, before and after) with the cables the transaction's effects name. A device,
+/// strip or connector rename changes no cable reference (a reference says the other end's page
+/// and column or row, never a name): those rows expect no change and no cable, and will fail the
+/// day a derivation starts reading names.
+#[test]
+fn the_cables_an_effect_names_cover_every_cable_whose_references_change() {
+    use std::collections::BTreeSet;
+    type Act = Box<dyn Fn(&mut R, &Ids)>;
+    struct Ids {
+        k1: ecad_model::DeviceId,
+        strip: ecad_model::DeviceId,
+        connector: ecad_model::DeviceId,
+    }
+    // (row, what it does, whether a reference must change, whether the effects must name no cable)
+    let rows: Vec<(&str, Act, bool, bool)> = vec![
+        (
+            "a device tag rename",
+            Box::new(|r, i| {
+                tag(&mut r.h, "component", &i.k1.hex(), "K9");
+            }),
+            false,
+            true,
+        ),
+        (
+            "a terminal strip rename",
+            Box::new(|r, i| {
+                tag(&mut r.h, "component", &i.strip.hex(), "X9");
+            }),
+            false,
+            true,
+        ),
+        (
+            "a connector rename",
+            Box::new(|r, i| {
+                tag(&mut r.h, "component", &i.connector.hex(), "X8");
+            }),
+            false,
+            true,
+        ),
+        (
+            "a page renumber",
+            Box::new(|r, _| {
+                r.h.run("pageprops", json!({"page": r.field.hex(), "number": "7"})).unwrap();
+            }),
+            true,
+            false,
+        ),
+        (
+            "moving the other end's symbol",
+            Box::new(|r, _| {
+                r.h.activate(r.field);
+                let fid = reference_on(&mut r.h, r.field);
+                let fpoint = r.h.doc().representations[&fid].items[0];
+                let fh = r.h.handle_of(r.field, fpoint);
+                r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
+            }),
+            true,
+            false,
+        ),
+        (
+            "moving a page in the book",
+            Box::new(|r, _| {
+                r.h.run("movepage", json!({"page": r.field.hex(), "index": 1})).unwrap();
+            }),
+            true,
+            false,
+        ),
+        (
+            "renaming a page",
+            Box::new(|r, _| {
+                r.h.run("renamepage", json!({"page": r.field.hex(), "title": "Field 2"})).unwrap();
+            }),
+            false,
+            false,
+        ),
+    ];
+    for (what, act, must_change, none_named) in rows {
+        let mut r = paired();
+        r.h.activate(r.supply);
+        let k1 = r.h.doc().devices.iter().find(|(_, d)| d.tag().is_some_and(|t| t.ends_with("K01"))).map(|(id, _)| *id);
+        let k1 = k1.unwrap_or_else(|| panic!("K1 in {:?}", r.h.doc().devices.values().map(|d| d.tag().map(str::to_string)).collect::<Vec<_>>()));
+        r.h.activate(r.supply);
+        let strip = id::<ecad_model::DeviceId>(
+            &{
+                for x in [200.0, 210.0] {
+                    r.h.run("wire", json!({"points": [[x, 40.0], [x, -40.0]]})).unwrap();
+                }
+                r.h.run("terminalblocks", json!({"from": [196.0, 0.0], "to": [214.0, 0.0]})).unwrap()
+            },
+            "strip",
+        );
+        let connector = id::<ecad_model::DeviceId>(
+            &r.h.run("connector", json!({"halves": "both", "family": "plain", "pins": 2, "layout": "row", "at": [300, 100], "page": r.supply.hex()}))
+                .unwrap(),
+            "component",
+        );
+        let ids = Ids { k1, strip, connector };
+        let (before, head) = (r.h.doc(), r.h.head());
+        act(&mut r, &ids);
+        let after = r.h.doc();
+        let ops: Vec<Op> = r.h.p(|p| p.ledger.log().iter().filter(|t| t.seq > head).flat_map(|t| t.ops.clone()).collect());
+        assert!(!ops.is_empty(), "{what}: the row changed nothing");
+        let changed = cables_changed(&before, &after);
+        assert_eq!(!changed.is_empty(), must_change, "{what}: references changed: {changed:?}");
+        if what.starts_with("moving a page") {
+            // The pages whose book position changed are the references view's own, after the commit
+            // (`Watch::note`, After phase); the effects alone do not name them.
+            continue;
+        }
+        match common::cables_touched(&before, &ops) {
+            None => assert!(!none_named, "{what}: named every cable"),
+            Some(named) => {
+                assert!(changed.is_subset(&named) || changed.is_empty(), "{what}: changed {changed:?} but the effects name {named:?}");
+                if none_named {
+                    assert_eq!(named, BTreeSet::new(), "{what}: named a cable");
+                }
+            }
+        }
+    }
+}

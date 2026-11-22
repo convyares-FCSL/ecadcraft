@@ -83,6 +83,14 @@ pub fn all(doc: &Document) -> Vec<CableReference> {
     cable_references(doc)
 }
 
+/// The reference `reference` as derived, from its own cable's references only (all a reference's
+/// text depends on): the cost is that cable's, not the document's. `None` when it is no cable
+/// reference.
+pub fn reference_of(doc: &Document, reference: RepresentationId) -> Option<CableReference> {
+    let Some(Subject::Cable(cable)) = doc.representations.get(&reference).map(|r| r.subject) else { return None };
+    cable_references_of(doc, &BTreeSet::from([cable])).into_iter().find(|r| r.reference == reference)
+}
+
 /// The reference ends on `page`, derived.
 pub fn references_on_page(doc: &Document, page: PageId) -> Vec<CableReference> {
     page_cable_references(doc, page).into_iter().filter(|r| r.page == page).collect()
@@ -474,9 +482,10 @@ pub fn plan_continue(
 
 /// The lines echoed after `cablecontinue` (design 010 §4.3).
 pub(crate) fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: RepresentationId) -> Vec<String> {
-    let references = cable_references(doc);
-    let here = references.iter().find(|r| r.reference == this);
-    let there = references.iter().find(|r| r.reference == plan.source);
+    // Both ends are of one cable, and a reference says only what its own cable's references give,
+    // so that cable's are derived, not the document's (lane D2: 32 ms on the large project).
+    let (here, there) = (reference_of(doc, this), reference_of(doc, plan.source));
+    let (here, there) = (here.as_ref(), there.as_ref());
     let cable = here.map(|r| r.cable).or(there.map(|r| r.cable));
     let title = cable.map(|k| crate::cables::cable_title(doc, k)).unwrap_or_default();
     let mut out = vec![format!(
@@ -537,10 +546,21 @@ pub fn linked(doc: &Document) -> BTreeSet<RepresentationId> {
 const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
     &[ecad_model::StyleCatalogue::Text, ecad_model::StyleCatalogue::Wire, ecad_model::StyleCatalogue::Location];
 
+/// What one effect reaches among the cables' references ([`cables_touched_by`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Touch {
+    /// The cables it reaches (possibly none) were added to the set it was given.
+    Cables,
+    /// Every cable, and why: only an effect that can change what every reference reads (the page
+    /// grid, the reference style or length unit, a standard's sheets). Each such arm needs its
+    /// reason and is counted by `cargo xtask layers` (views guard).
+    All(&'static str),
+}
+
 /// Adds to `out` the cables whose references, or whose drawing at a reference end on any page, one
-/// effect could change, looked up in `doc` before the transaction; `false` when it could reach any
-/// cable (op kinds a drawing edit does not produce, such as layer, standard, frame style or
-/// settings ops).
+/// effect could change, looked up in `doc` before the transaction; [`Touch::All`] when it could
+/// reach any cable. The match over [`Effect`] has no wildcard: a new kind of effect does not
+/// compile until it says here which cables it reaches.
 ///
 /// # Semantics
 /// What a reference says, and how a cable is drawn at its reference ends, depends only on: the
@@ -554,7 +574,7 @@ const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
 /// The cables of the pages
 /// whose book position changes are not added here: `crate::references::devices::watch::Watch` adds them after the
 /// commit, comparing the book before with the book after.
-pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>, out: &mut BTreeSet<CableId>) -> bool {
+pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>, out: &mut BTreeSet<CableId>) -> Touch {
     use ecad_model::ObjectRef;
     use ecad_model::document::effect::Effect;
     let note = |r: &Representation, out: &mut BTreeSet<CableId>| match r.subject {
@@ -568,14 +588,14 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
     // or a frame's sheet, margins or block height reaches the cables on those pages.
     match crate::title_blocks::frame_reach_of(doc, effect) {
         crate::title_blocks::Reach::NotFrame => {}
-        crate::title_blocks::Reach::Unchanged => return true,
+        crate::title_blocks::Reach::Unchanged => return Touch::Cables,
         crate::title_blocks::Reach::Pages(ps) => {
             for p in ps {
                 out.extend(cables_on(doc, p));
             }
-            return true;
+            return Touch::Cables;
         }
-        crate::title_blocks::Reach::Wide => return false,
+        crate::title_blocks::Reach::Wide => return Touch::All("a frame or standard change moves every page's grid"), // all
     }
     match effect {
         // A new item is not shown yet; a changed or removed one, through its representation.
@@ -599,19 +619,21 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         }
         Effect::Wire { id, before: None, .. } if !doc.wires.contains_key(id) => {}
         // A wire made again in one transaction: any cable, as before.
-        Effect::Wire { before: None, .. } => return false,
+        Effect::Wire { before: None, .. } => return Touch::All("a wire made again in one transaction may have been a core of any cable"), // all
         // Brief 032 (a fold deletes the folded wire; numbering writes wire numbers): a
         // conductor's cables only, never every cable.
         Effect::Wire { id, .. } | Effect::Prop { object: ObjectRef::Wire(id), .. } => out.extend(doc.cables_of(*id)),
-        Effect::Device { id, before: None, .. } if !doc.devices.contains_key(id) => {}
-        // Brief 053: a deleted component has no connection points and no representations left (the
-        // model's invariants I8 and I10); removing those is its own effect, so the record itself
-        // reaches no reference.
-        Effect::Device { after: None, .. } => {}
+        // A device record (made, removed or changed: its tag, location, function, definition)
+        // reaches no cable reference: a reference says only its own cable's other ends' page and
+        // column or row (`derive::references_from`), never a device, strip or connector name. A
+        // removed component's connection points and representations go as effects of their own.
+        Effect::Device { .. } => {}
         Effect::ConnectionPoint { id, before: None, .. } if !doc.connection_points.contains_key(id) => {}
         // Brief 028: a relabelled connection point reaches only the cables of the wires on it.
         Effect::ConnectionPoint { id, .. } => out.extend(doc.ends_at(*id).into_iter().flat_map(|(w, _)| doc.cables_of(w))),
-        Effect::Definition { id, before: None, .. } if !doc.definitions.contains_key(id) => {}
+        // A symbol definition, a device's definition or link and a layer are read by no reference
+        // (a reference reads items' points, routes, pages and the settings below).
+        Effect::Definition { .. } | Effect::DeviceDefinition { .. } | Effect::DeviceLink { .. } | Effect::Layer { .. } => {}
         // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
         // in a cable's drawing or reference texts.
         Effect::Prop { object: ObjectRef::Device(_), .. } => {}
@@ -649,22 +671,22 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         // reference reads them. Any other catalogue (the frame, one added later) and a standard,
         // which may come to carry sheets, still reach every cable.
         Effect::Style { catalogue, .. } if NO_REFERENCE_STYLES.contains(catalogue) => {}
+        // A page type's sheet that is not its own pages' (handled above) or any other catalogue
+        // (the frame, one added later) and a standard, which may come to carry sheets.
+        Effect::Style { .. } => return Touch::All("a style catalogue a reference may read (frame, one added later)"), // all
+        Effect::Standard { .. } => return Touch::All("a standard may carry sheets and grids"),                        // all
+        // The sheet, length unit or reference style (the guard above passed the other fields).
+        Effect::Settings { .. } => return Touch::All("the sheet, length unit or reference style is read by every reference"), // all
+        Effect::Prop { object: ObjectRef::Cable(k), .. } => {
+            out.insert(*k);
+        }
+        Effect::Prop { object: ObjectRef::Standard, .. } => return Touch::All("a standard's registry value may be a sheet or grid"), // all
+        Effect::Project { .. } => return Touch::All("the project record may carry the reference style or sheet"),                    // all
+        Effect::Aid { .. } => return Touch::All("a drawing aid may stand where a reference does (design 072 §6.2)"),                 // all
         // A loose part is drawn on no page and no reference reads it (design 072 §6.4).
         Effect::LoosePart { .. } => {}
-        // A drawing aid (design 072 §6.2) still reaches every cable, as its op did.
-        Effect::Aid { .. }
-        | Effect::Layer { .. }
-        | Effect::Device { .. }
-        | Effect::DeviceDefinition { .. }
-        | Effect::DeviceLink { .. }
-        | Effect::Definition { .. }
-        | Effect::Prop { .. }
-        | Effect::Settings { .. }
-        | Effect::Style { .. }
-        | Effect::Standard { .. }
-        | Effect::Project { .. } => return false,
     }
-    true
+    Touch::Cables
 }
 
 /// The cables line `id` (as `route`) reaches, through the indexes: those with a core on it or on

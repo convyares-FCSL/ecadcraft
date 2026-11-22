@@ -129,6 +129,8 @@ pub struct Report {
     /// redb repaired the file while opening it (it was not closed cleanly).
     pub repaired: bool,
     pub damage: Option<Damage>,
+    /// The file's `schema_version` (see [`format_note`]).
+    pub schema_version: u64,
 }
 
 impl Report {
@@ -138,7 +140,9 @@ impl Report {
         if self.repaired {
             s.push_str(" The file was not closed cleanly last time and was recovered to its last save.");
         }
-        if let Some(d) = &self.damage {
+        if let Some(n) = format_note(self.schema_version) {
+            s.push_str(&format!(" Opened read-only: {n}; it is kept exactly as it is. Use Save As to keep a copy."));
+        } else if let Some(d) = &self.damage {
             s.push_str(&format!(
                 " Opened read-only: {}{}. {} of {} transactions verified; use Save As to keep them.",
                 d.seq.map_or(String::new(), |q| format!("at transaction {q}, ")),
@@ -824,6 +828,20 @@ struct Facts {
     active: Option<BranchId>,
     /// The `meta` names this build does not read.
     unknown: Vec<ecad_model::document::strict::UnknownWord>,
+    /// The file's `schema_version`; not [`SCHEMA_VERSION`] means it opens read-only
+    /// ([`format_note`]).
+    schema_version: u64,
+}
+
+/// `older format version (file 1, this build 2)` / `newer ...`, when `file` is not the build's
+/// [`SCHEMA_VERSION`]. Such a file is opened read-only whatever replay found, and never called
+/// damaged: its records may mean something else here.
+pub fn format_note(file: u64) -> Option<String> {
+    match file.cmp(&SCHEMA_VERSION) {
+        std::cmp::Ordering::Equal => None,
+        std::cmp::Ordering::Less => Some(format!("older format version (file {file}, this build {SCHEMA_VERSION})")),
+        std::cmp::Ordering::Greater => Some(format!("newer format version (file {file}, this build {SCHEMA_VERSION})")),
+    }
 }
 
 fn read_facts(r: &Reader) -> Result<Facts, OpenError> {
@@ -845,8 +863,8 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenError> {
         return Err(OpenError::Unsupported(format!("container version {cv:?} is not supported (this build reads {CONTAINER_VERSION})")));
     }
     let sv = meta_json(r, "schema_version")?.and_then(|v| v.as_u64()).unwrap_or(0);
-    if sv == 0 || sv > SCHEMA_VERSION {
-        return Err(OpenError::Unsupported(format!("schema version {sv} is not supported (this build reads 1 to {SCHEMA_VERSION})")));
+    if sv == 0 {
+        return Err(OpenError::Unsupported("the file has no schema version".into()));
     }
     let codec = meta_json(r, "codec")?;
     if codec.as_ref().and_then(Value::as_str) != Some(CODEC) {
@@ -863,7 +881,7 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenError> {
     let created_ms = meta_json(r, "created_ms")?.and_then(|v| v.as_u64());
     // An unreadable `active` is not damage: the project opens on `main`.
     let active = meta_json(r, "active").ok().flatten().and_then(|v| v.as_str().and_then(BranchId::parse));
-    Ok(Facts { project, cache, created_ms, active, unknown })
+    Ok(Facts { project, cache, created_ms, active, unknown, schema_version: sv })
 }
 
 /// [`main_branch`], for Verify: the check that opening applies.
@@ -1018,7 +1036,15 @@ fn load_branch(store: &Arc<Store>, project: ProjectId, cache: &Cache, branch: Br
         store.reader()?.tx(branch, verified)?.map(|(_, c, _)| c).unwrap_or(snap_chain)
     };
     let damage_text = damage.as_ref().map(|d| format!("the file is damaged ({})", d.detail));
-    let report = Report { head, verified_seq: verified, snapshot_seq: snap_seq, tail: verified - snap_seq, repaired: store.repaired(), damage };
+    let report = Report {
+        head,
+        verified_seq: verified,
+        snapshot_seq: snap_seq,
+        tail: verified - snap_seq,
+        repaired: store.repaired(),
+        damage,
+        schema_version: 0,
+    };
     Ok(Loaded {
         ledger,
         report,
@@ -1053,13 +1079,25 @@ impl Project {
             None => (main, main_rec),
         };
         drop(r);
-        let l = load_branch(&store, facts.project, &facts.cache, branch, &rec, seed)?;
+        let note = format_note(facts.schema_version);
+        let mut l = match load_branch(&store, facts.project, &facts.cache, branch, &rec, seed) {
+            Ok(l) => l,
+            // A file of another format that cannot be read at all is refused in the same words.
+            Err(e) => match &note {
+                Some(n) => return Err(OpenError::Unsupported(format!("{n}: {e}"))),
+                None => return Err(e),
+            },
+        };
+        l.report.schema_version = facts.schema_version;
         // Unknown `meta` names keep the file exactly as it is: nothing writes to it, not even a
         // branch switch's `meta.active`.
         let unknown_words = facts.unknown;
         let unknown_read_only = (!unknown_words.is_empty()).then(|| crate::disk::ReadOnly::UnknownWords(unknown_words.clone()).to_string());
         let file_read_only = (!store.writable()).then(|| "it is open in another session".to_string()).or(unknown_read_only);
-        let read_only = l.damage.clone().or_else(|| file_read_only.clone());
+        // Another format version is read-only whatever replay found: the version comes first, and
+        // nothing writes to the file, not even a branch switch's `meta.active`.
+        let file_read_only = note.clone().or(file_read_only);
+        let read_only = note.or_else(|| l.damage.clone()).or_else(|| file_read_only.clone());
         let project = Project {
             store,
             project: facts.project,

@@ -50,20 +50,33 @@ impl App {
         });
     }
 
+    /// Bring the Reports window's copy up to date with the project's kept models. Until the report
+    /// models and the Checks list are built (on the background pool, first show) the window says
+    /// "Running…" and nothing is read.
+    pub(crate) fn refresh_reports(&mut self) {
+        let serial = self.project_serial;
+        let writable = !self.header().read_only;
+        if let (Some(r), Some(p)) = (&mut self.reports, self.project.clone()) {
+            r.writable = writable;
+            let warm = &mut self.warm;
+            let _ = p.configure(&mut self.cad.session, |p| {
+                r.building = !warm.pump(p);
+                if !r.building {
+                    r.sync(serial, p);
+                }
+            });
+        }
+    }
+
     /// The Reports window and the Print Book dialog.
     pub(crate) fn report_windows(&mut self, ctx: &egui::Context) {
-        let serial = self.project_serial;
         if let Some(p) = self.project.clone()
             && p.is_attached(&self.cad.session)
             && p.configure(&mut self.cad.session, |p| std::mem::take(&mut p.open_reports)).unwrap_or(false)
         {
             self.reports_view();
         }
-        let writable = !self.header().read_only;
-        if let (Some(r), Some(p)) = (&mut self.reports, self.project.clone()) {
-            r.writable = writable;
-            let _ = p.configure(&mut self.cad.session, |p| r.sync(serial, p));
-        }
+        self.refresh_reports();
         let out = self.reports.as_mut().filter(|r| !r.hidden).and_then(|r| r.show(ctx));
         match out {
             Some(crate::reports::panel::Out::Close) => self.reports = None,
@@ -197,7 +210,13 @@ impl App {
         let Some(p) = self.project.clone() else { return };
         let Some(d) = &self.release else { return };
         let (rev, accept, key) = (d.rev.clone(), d.accept, d.key);
+        let warm = &mut self.warm;
         let r = p.configure(&mut self.cad.session, |p| {
+            // The kept Checks and report models the pending view reads are built on the
+            // background pool; the dialog says "Running…" until they are (issue 48).
+            if rev.is_none() && !warm.pump(p) {
+                return Ok(None);
+            }
             // An issued revision's view is built once (its state never changes); the pending one
             // again only when what it shows can differ (`release::dialog_key`).
             if key.is_some() && (rev.is_some() || key == ecad_engine::releases::release::dialog_key(p, accept)) {

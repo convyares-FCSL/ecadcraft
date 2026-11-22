@@ -36,7 +36,7 @@ pub fn cables_touched(doc: &Document, ops: &[ecad_model::Op]) -> Option<std::col
     let effects = ecad_model::document::effect::Effects::of(ops);
     let mut out = std::collections::BTreeSet::new();
     for e in &effects {
-        if !ecad_electrical::references::cables::cables_touched_by(doc, e, &mut out) {
+        if let ecad_electrical::references::cables::Touch::All(_) = ecad_electrical::references::cables::cables_touched_by(doc, e, &mut out) {
             return None;
         }
     }

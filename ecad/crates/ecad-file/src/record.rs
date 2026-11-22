@@ -12,8 +12,15 @@ use crate::canonical::MAX_SAFE_INTEGER;
 use crate::chain::{self, Hash};
 use crate::records;
 
-/// Meaning of record contents this build reads and writes.
-pub const SCHEMA_VERSION: u64 = 1;
+/// Meaning of record contents this build reads and writes, written to the file's `schema_version`
+/// meta. **Every change of the file format bumps it** (a record's fields or meaning, an op, a
+/// canonical form); a file of another number opens read-only, named by its version and never as
+/// damaged. The golden test pins this number with the hash of the golden project's last
+/// transaction, so a changed format with the old number fails there.
+///
+/// - 1: the first format.
+/// - 2: S4 (typed revisions, point names), 2026-11.
+pub const SCHEMA_VERSION: u64 = 2;
 
 /// Longest string in a record (1 MiB).
 pub const MAX_STRING: usize = 1 << 20;

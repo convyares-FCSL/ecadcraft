@@ -243,7 +243,12 @@ impl Watch {
     /// state before the commit (the ops given to it) or after it (the transaction as recorded).
     pub fn note(&mut self, doc: &Document, before: bool, effect: &Effect<'_>) {
         if before {
-            if !self.all_cables && !crate::references::cables::cables_touched_by(doc, effect, &mut self.cable_scope) {
+            if !self.all_cables
+                && matches!(
+                    crate::references::cables::cables_touched_by(doc, effect, &mut self.cable_scope),
+                    crate::references::cables::Touch::All(_)
+                )
+            {
                 self.all_cables = true;
             }
             self.positions.note_before(doc, effect);

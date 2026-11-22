@@ -137,3 +137,31 @@ fn record_and_definition_hashes_are_pinned() {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");
     }
 }
+
+/// Every format number with the head hash the golden fixture's history has under it. **A format
+/// change bumps `ecad_file::SCHEMA_VERSION`** (a record's fields or meaning, an op, the canonical
+/// form): the head hash of this fixture then changes, and this table gets a new row with the new
+/// number. A changed head under an unchanged number is the forgotten bump.
+// Version 2 covers S4 and S6 (nothing was released between them).
+const SCHEMA_PINS: &[(u64, &str)] = &[(2, "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274")];
+
+#[test]
+fn the_schema_version_is_bumped_with_every_format_change() {
+    use crate::common::*;
+    use ecad_file::chain::{self, ChainKind};
+    let f = fixture();
+    let mut prev = chain::seed(ChainKind::Project, PROJECT.0);
+    for tx in f.ledger.log() {
+        let v = ecad_file::record::tx_value(tx, &prev).unwrap();
+        prev = chain::tx_hash(&canonical(&v).unwrap());
+    }
+    let head = chain::hex(&prev);
+    let pinned = SCHEMA_PINS.iter().find(|(v, _)| *v == ecad_file::SCHEMA_VERSION);
+    assert_eq!(
+        pinned.map(|(_, h)| *h),
+        Some(head.as_str()),
+        "the golden fixture's head hash is {head} under SCHEMA_VERSION {}: the file format changed, so bump          `ecad_file::SCHEMA_VERSION` (files of the old number then open read-only as an older format) and add          ({}, \"{head}\") to SCHEMA_PINS; if only the number is new, add its row",
+        ecad_file::SCHEMA_VERSION,
+        ecad_file::SCHEMA_VERSION + 1,
+    );
+}

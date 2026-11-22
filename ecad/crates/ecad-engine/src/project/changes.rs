@@ -67,6 +67,11 @@ impl Project {
         self.change_count
     }
 
+    /// The state a background job copied from this project would be for.
+    pub fn at(&self) -> crate::background::At {
+        crate::background::At { project: self.id, head: self.ledger.head() }
+    }
+
     /// The pages whose drawing the changes after change `n` could have changed: `Some(empty)`
     /// when none, `None` when any page could have changed or the changes are too old to tell.
     pub fn changes_since(&self, n: u64) -> Option<BTreeSet<PageId>> {
