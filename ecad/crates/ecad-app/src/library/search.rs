@@ -169,7 +169,12 @@ pub fn choices(p: &ecad_engine::Project, pick: &Pick) -> Vec<Choice> {
             out
         }
         Pick::Device(tag) => {
-            let Some(c) = ecad_electrical::devices::tags::holder_of(doc, tag, None) else { return Vec::new() };
+            let Some(c) = ecad_model::naming::tag::enter_given(tag, ecad_electrical::defaults::print::tag_style(doc))
+                .ok()
+                .and_then(|g| ecad_electrical::devices::tags::holder_of(doc, &g.key(), None))
+            else {
+                return Vec::new();
+            };
             let own = ecad_model::naming::tag::parse(tag).map(|(px, _)| px).unwrap_or_default();
             let mut found: Vec<(u8, Choice)> = symbols::catalogue::STARTERS
                 .iter()

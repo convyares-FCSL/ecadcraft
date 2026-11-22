@@ -822,7 +822,7 @@ fn connection_point_on(doc: &Document, shown: &BTreeSet<ecad_model::ConnectionPo
     }
     let term = doc.connection_points.get(&t)?;
     let c = term.device()?;
-    let comp = doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_else(|| format!("{}…", c.hex().get(..8).unwrap_or_default()));
+    let comp = doc.devices.get(&c).and_then(|x| x.tag_shown()).unwrap_or_else(|| format!("{}…", c.hex().get(..8).unwrap_or_default()));
     Some(format!("{comp}:{}", crate::terminal_strips::terminal_blocks::connection_point_name(doc, t)))
 }
 
@@ -853,8 +853,8 @@ pub fn diagnostics(doc: &Document) -> Vec<String> {
 
 /// The cable whose tag is `typed` (normalised as tags are), if any.
 pub(crate) fn cable_tagged(doc: &Document, typed: &str) -> Option<CableId> {
-    let t = ecad_model::naming::tag::normalise(typed, crate::devices::padding(doc)).ok()?;
-    doc.cables_tagged(&t).into_iter().next()
+    let ecad_model::naming::tag::Entry::Tag(given) = ecad_model::naming::tag::enter(typed, crate::devices::padding(doc)).ok()? else { return None };
+    doc.cables_with(&given.key()).into_iter().next()
 }
 
 /// `-W04` in messages: the cable's title.
@@ -1015,7 +1015,7 @@ pub fn references_json(doc: &Document, references: &[CableReference]) -> Value {
                 json!({
                     "reference": r.reference.hex(),
                     "cable": r.cable.hex(),
-                    "cable_tag": doc.cables.get(&r.cable).and_then(|c| c.tag()),
+                    "cable_tag": doc.cables.get(&r.cable).and_then(|c| c.tag_shown()),
                     "page": r.page.hex(),
                     "page_number": r.page_number,
                     "page_title": doc.pages.get(&r.page).map(|p| p.title.to_string()).unwrap_or_default(),

@@ -127,21 +127,20 @@ pub(crate) fn place_level(
             Some(c) => (c, ecad_electrical::devices::tags::tag_words(doc, c)),
             None => {
                 let c: DeviceId = p.ids.fresh();
-                let t = match new_tag {
-                    Some(t) => t,
-                    None => p.tag_high.next_auto(&p.ledger, &ecad_electrical::devices::prefix_for(doc, starter))?,
-                };
+                let t = p.tag_high.given(&p.ledger, new_tag, &ecad_electrical::devices::prefix_for(doc, starter))?;
                 ops.push(Op::CreateDevice {
                     id: c,
-                    device: ecad_model::Device {
-                        tag: Some(ecad_electrical::devices::stored_tag(&t)?),
-                        description: ecad_electrical::devices::description_of("Terminal"),
-                        definition: Some(def),
-                        device_type: starter.device_type(),
-                        ..ecad_model::Device::default()
-                    },
+                    device: ecad_electrical::devices::with_given(
+                        ecad_model::Device {
+                            description: ecad_electrical::devices::description_of("Terminal"),
+                            definition: Some(def),
+                            device_type: starter.device_type(),
+                            ..ecad_model::Device::default()
+                        },
+                        &t,
+                    )?,
                 });
-                (c, t)
+                (c, t.shown())
             }
         };
         let landing = landing_point(doc, page, at);

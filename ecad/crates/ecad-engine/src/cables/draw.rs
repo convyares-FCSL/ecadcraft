@@ -225,7 +225,7 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
         .filter(|h| {
             let Some((rep, ecad_electrical::devices::texts::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
             let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
-            ecad_electrical::devices::tags::tag_of(doc, c).is_some_and(ecad_model::naming::tag::is_provisional)
+            doc.devices.get(&c).is_some_and(ecad_model::Device::is_provisional)
         })
         .collect()
 }

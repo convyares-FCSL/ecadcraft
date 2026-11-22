@@ -179,7 +179,7 @@ fn device(t: &App, c: DeviceId) -> Option<Detail> {
     let r = t.panel.devices.source.row(c)?;
     let e = &r.entry;
     let prop = |i: usize| e.properties.get(i).cloned().flatten().unwrap_or_default();
-    let tag = e.tag.clone().unwrap_or_default();
+    let tag = e.shown().unwrap_or_default();
     let place = e.symbols.first().map(|s| s.place.clone());
     let symbol = e.symbols.first().map(|s| s.name.clone()).unwrap_or_else(|| crate::reports::report::DASH.into());
     let subtitle = match &place {
@@ -188,7 +188,7 @@ fn device(t: &App, c: DeviceId) -> Option<Detail> {
     };
     let go = (!e.symbols.is_empty()).then(|| ("Page".to_string(), Go::Symbols(e.symbols.iter().map(|s| s.rep).collect())));
     let mut checks = Vec::new();
-    if e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional) {
+    if e.tag_state.is_provisional() {
         checks.push(("The tag is provisional.".to_string(), Tone::Provisional));
     }
     if e.symbols.is_empty() {
@@ -215,7 +215,7 @@ fn device(t: &App, c: DeviceId) -> Option<Detail> {
     };
     Some(Detail {
         title: tag,
-        provisional: e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional),
+        provisional: e.tag_state.is_provisional(),
         subtitle,
         go,
         checks,

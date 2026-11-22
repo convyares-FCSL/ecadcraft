@@ -39,7 +39,8 @@ pub struct SymbolEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceEntry {
     pub id: DeviceId,
-    /// Its tag; `None` for a component without one (converted outlines, older coils).
+    /// Its tag as stored (bare: see [`DeviceEntry::shown`]); `None` for a component without one
+    /// (converted outlines, older coils).
     pub tag: Option<String>,
     /// The group it is listed under: `-K`, `-Q`… (its tag's prefix), or [`NO_TAG`].
     pub group: String,
@@ -48,8 +49,15 @@ pub struct DeviceEntry {
     pub properties: Vec<Option<String>>,
     /// Its symbols, in page order, then column.
     pub symbols: Vec<SymbolEntry>,
-    /// Its tag is fixed (brief 026): `F` after the tag.
-    pub fixed: bool,
+    /// What its tag is (brief 026, S6 #3): `F` after a fixed one, provisional in `ecad.provisional`.
+    pub tag_state: ecad_model::naming::tag::TagState,
+}
+
+impl DeviceEntry {
+    /// Its tag as drawn: a provisional one with its `?`.
+    pub fn shown(&self) -> Option<String> {
+        self.tag.as_deref().map(|t| ecad_model::naming::tag::shown(t, self.tag_state))
+    }
 }
 
 /// What a change could change in the Devices list (owner, 2026-11-08: act only on the ops that
@@ -82,7 +90,7 @@ impl DeviceTouch {
 pub fn device_entry(doc: &Document, c: DeviceId) -> Option<DeviceEntry> {
     let comp = doc.devices.get(&c)?;
     let prefix = match comp.tag() {
-        Some(t) => Some(group_and_number(t).0),
+        Some(t) => Some(group_and_number(t, comp.tag_state).0),
         None if doc.representations_of(Subject::Device(c)).next().is_none() => return None,
         None => None,
     };
@@ -93,7 +101,7 @@ pub fn device_entry(doc: &Document, c: DeviceId) -> Option<DeviceEntry> {
 pub(crate) fn sort_key(e: &DeviceEntry) -> (bool, String, u64, String, DeviceId) {
     match e.tag.as_deref() {
         Some(t) => {
-            let (p, n) = group_and_number(t);
+            let (p, n) = group_and_number(t, e.tag_state);
             (false, p, n, t.to_string(), e.id)
         }
         None => (true, String::new(), 0, String::new(), e.id),
@@ -163,8 +171,9 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
     let mut tagged: Vec<((String, u64, String), DeviceId)> = doc
         .tagged()
         .filter_map(|(_, c)| {
-            let t = devices::tags::tag_of(doc, c)?;
-            let (p, n) = group_and_number(t);
+            let d = doc.devices.get(&c)?;
+            let t = d.tag()?;
+            let (p, n) = group_and_number(t, d.tag_state);
             Some(((p, n, t.to_string()), c))
         })
         .collect();
@@ -186,11 +195,11 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
 
 /// A tag's group (its prefix, or the whole tag when it has none) and its place in the group: its
 /// number; a provisional tag after every numbered one of its prefix (brief 026, design §9).
-pub(crate) fn group_and_number(t: &str) -> (String, u64) {
-    match (ecad_model::naming::tag::parse(t), ecad_model::naming::tag::provisional(t)) {
-        (Some((p, n)), _) => (p, n),
-        (None, Some((p, n))) => (p, ecad_model::naming::tag::MAX_TAG_NUMBER.saturating_add(n)),
-        _ => (ecad_model::naming::tag::key(t), 0),
+pub(crate) fn group_and_number(t: &str, state: ecad_model::naming::tag::TagState) -> (String, u64) {
+    match ecad_model::naming::tag::parse(t) {
+        Some((p, n)) if state.is_provisional() => (p, ecad_model::naming::tag::MAX_TAG_NUMBER.saturating_add(n)),
+        Some((p, n)) => (p, n),
+        None => (ecad_model::naming::tag::key(t), 0),
     }
 }
 
@@ -212,7 +221,7 @@ fn entry(doc: &Document, c: DeviceId, prefix: Option<String>, book: &Book) -> De
         description: devices::tags::description(doc, c),
         properties: PROPERTIES.iter().map(|(k, _)| device.and_then(|d| d.value(k))).collect(),
         symbols: symbols.into_iter().map(|(_, _, s)| s).collect(),
-        fixed: device.is_some_and(ecad_model::Device::is_fixed),
+        tag_state: device.map(|d| d.tag_state).unwrap_or_default(),
     }
 }
 

@@ -21,7 +21,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
-use ecad_model::document::book::{FUNCTION_KEY, LOCATION_KEY};
+use ecad_model::document::book::{FUNCTION_KEY, LOCATION_KEY, PlaceState};
 use ecad_model::{
     Aid, AidId, Device, Document, FunctionId, IdAllocator, Ledger, ListCode, ListDescription, ListEntry, LocationBox, LocationId, ObjectRef, Op,
     Page, Project,
@@ -215,28 +215,37 @@ pub fn device_key(d: &Device, a: Aspect) -> Option<String> {
     }
 }
 
-/// Whether device `d`'s value of aspect `a` was set by hand (design 072 §6.3).
-pub(crate) fn device_fixed(d: &Device, a: Aspect) -> bool {
+/// How device `d`'s value of aspect `a` came to be (design 072 §6.3).
+pub(crate) fn device_state(d: &Device, a: Aspect) -> PlaceState {
     match a {
-        Aspect::Function => d.function_fixed,
-        Aspect::Location => d.location_fixed,
+        Aspect::Function => d.function_state,
+        Aspect::Location => d.location_state,
     }
 }
 
+/// Whether device `d`'s value of aspect `a` was set by hand.
+pub(crate) fn device_fixed(d: &Device, a: Aspect) -> bool {
+    device_state(d, a) == PlaceState::ByHand
+}
+
 /// `d` with its value of aspect `a` set to `key` (`None`, or text that is not a key, clears it)
-/// and its `fixed` flag set to `fixed` (cleared with the value).
-pub(crate) fn with_device_key(d: &Device, a: Aspect, key: Option<&str>, fixed: bool) -> Device {
+/// and its state: by hand when `by_hand`, else proposed; unset with the value.
+pub(crate) fn with_device_key(d: &Device, a: Aspect, key: Option<&str>, by_hand: bool) -> Device {
     let mut x = d.clone();
     let id = key.and_then(raw);
-    let fixed = fixed && id.is_some();
+    let state = match (id.is_some(), by_hand) {
+        (false, _) => PlaceState::Unset,
+        (true, true) => PlaceState::ByHand,
+        (true, false) => PlaceState::Proposed,
+    };
     match a {
         Aspect::Function => {
             x.function = id.map(FunctionId);
-            x.function_fixed = fixed;
+            x.function_state = state;
         }
         Aspect::Location => {
             x.location = id.map(LocationId);
-            x.location_fixed = fixed;
+            x.location_state = state;
         }
     }
     x

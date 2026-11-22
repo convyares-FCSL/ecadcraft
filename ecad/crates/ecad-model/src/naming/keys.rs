@@ -219,8 +219,8 @@ pub const ARTICLE_NUMBER: PropKey = PropKey(crate::objects::devices::ARTICLE_KEY
 pub const TYPE_TEXT: PropKey = PropKey(crate::objects::devices::TYPE_KEY);
 /// A device's or cable's tag.
 pub const TAG: PropKey = PropKey(crate::naming::tag::TAG_KEY);
-/// Whether a device's or cable's tag is fixed (yes/no).
-pub(crate) const TAG_FIXED: PropKey = PropKey(crate::naming::tag::FIXED_KEY);
+/// What a device's or cable's tag is: automatic, fixed or provisional ([`crate::naming::tag::TagState`]).
+pub(crate) const TAG_STATE: PropKey = PropKey(crate::naming::tag::STATE_KEY);
 /// Whether the project gives provisional tags (yes/no).
 pub(crate) const NUMBERING_PROVISIONAL: PropKey = PropKey(crate::naming::tag::PROVISIONAL_SETTING);
 /// A wire's number.
@@ -231,17 +231,17 @@ pub const WIRE_NUMBER_FIXED: PropKey = PropKey(crate::connectivity::WIRE_NUMBER_
 pub const FUNCTION: PropKey = PropKey(crate::document::book::FUNCTION_KEY);
 /// The `+` location code of a page or the project.
 pub const LOCATION: PropKey = PropKey(crate::document::book::LOCATION_KEY);
-/// Whether a device's location was set by hand (yes/no).
-pub const LOCATION_FIXED: PropKey = PropKey(crate::document::book::LOCATION_FIXED_KEY);
-/// Whether a device's function was set by hand (yes/no).
-pub const FUNCTION_FIXED: PropKey = PropKey(crate::document::book::FUNCTION_FIXED_KEY);
+/// How a device's location came to be: unset, by hand or proposed.
+pub const LOCATION_STATE: PropKey = PropKey(crate::document::book::LOCATION_STATE_KEY);
+/// How a device's function came to be: unset, by hand or proposed.
+pub const FUNCTION_STATE: PropKey = PropKey(crate::document::book::FUNCTION_STATE_KEY);
 
 /// The fixed keys the program stores outside the defaults registry. One key per line; lanes add or
 /// remove lines.
 #[rustfmt::skip]
 pub const KEYS: &[KeySpec] = &[
     KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Cable], value: ValueSpec::Ruled },
-    KeySpec { key: TAG_FIXED, area: Area::Identity, holders: &[Holder::Cable], value: ValueSpec::Flag },
+    KeySpec { key: TAG_STATE, area: Area::Identity, holders: &[Holder::Cable], value: ValueSpec::Ruled },
     KeySpec { key: NUMBERING_PROVISIONAL, area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
     KeySpec { key: FUNCTION, area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
     KeySpec { key: LOCATION, area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
@@ -310,10 +310,10 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
     (Holder::Cable, PropKey("shield")),
     // Lane 072 D: a cable's design current is its field (design 072 §4.5).
     (Holder::Cable, PropKey("load")),
-    // S1 (#2): a cable's tag, its fixed flag and its description are `Cable.tag`, `Cable.tag_fixed`
+    // S1 (#2): a cable's tag, its state and its description are `Cable.tag`, `Cable.tag_state`
     // and `Cable.description`, as a device's are.
     (Holder::Cable, TAG),
-    (Holder::Cable, TAG_FIXED),
+    (Holder::Cable, TAG_STATE),
     (Holder::Cable, PropKey(crate::objects::devices::DESCRIPTION_KEY)),
 ];
 
@@ -372,16 +372,16 @@ pub const RATING: PropKey = PropKey(crate::objects::devices::RATING_KEY);
 /// and `SetProperty` refuses them on a device.
 pub const DEVICE_FIELDS: &[PropKey] = &[
     TAG,
-    TAG_FIXED,
+    TAG_STATE,
     DESCRIPTION,
     PART_NUMBER,
     MAKER,
     ARTICLE_NUMBER,
     TYPE_TEXT,
     LOCATION,
-    LOCATION_FIXED,
+    LOCATION_STATE,
     FUNCTION,
-    FUNCTION_FIXED,
+    FUNCTION_STATE,
     PINS,
     PIN_NAMES,
     RATING,

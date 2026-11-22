@@ -319,8 +319,9 @@ pub struct Item {
 pub struct Device {
     /// Its tag (`-K01`), if it has one (design 026; the identity of the device).
     pub tag: Option<crate::naming::tag::Tag>,
-    /// Whether the tag was typed and is kept by renumbering (design 026 FP1).
-    pub tag_fixed: bool,
+    /// What the tag is (S6, #3): automatic, fixed (typed, kept by renumbering, design 026 FP1) or
+    /// provisional. Always stored, beside the bare tag text.
+    pub tag_state: crate::naming::tag::TagState,
     /// What it is for, in words (`setprop` key `description`).
     pub description: Option<crate::objects::devices::Description>,
     /// Its main part's number (`part_number`).
@@ -333,13 +334,13 @@ pub struct Device {
     pub type_text: Option<crate::objects::devices::PartText>,
     /// Its location (an entry of the project's list, design 072 §6.3); `None` has none.
     pub location: Option<crate::naming::id::LocationId>,
-    /// Whether the location was set by hand (typed, or a box drawn around it) and is kept when a
-    /// box around it changes; `false` when it came from its page or a box (design 072 §6.3).
-    pub location_fixed: bool,
+    /// How the location came to be (design 072 §6.3): by hand (typed, or a box drawn around it:
+    /// kept when a box around it changes), proposed (from its page or a box), or unset. Always stored.
+    pub location_state: crate::document::book::PlaceState,
     /// Its function (an entry of the project's list); `None` has none.
     pub function: Option<crate::naming::id::FunctionId>,
-    /// Whether the function was set by hand, as [`Device::location_fixed`].
-    pub function_fixed: bool,
+    /// How the function came to be, as [`Device::location_state`].
+    pub function_state: crate::document::book::PlaceState,
     /// Its rating note: text that did not read as its group's typed rating (design 072 §2.2).
     pub rating_note: Option<crate::objects::devices::RatingNote>,
     pub properties: Properties,
@@ -358,10 +359,24 @@ impl Device {
         Device { properties, definition: Some(id), device_type: definition.device_type.clone(), ..Device::default() }
     }
 
-    /// Whether its tag is fixed (FP1): flagged, and not provisional (a provisional tag never
-    /// counts as fixed, overseer ruling, tester 026 bug 2).
+    /// Whether its tag is fixed (FP1).
     pub fn is_fixed(&self) -> bool {
-        self.tag_fixed && !self.tag().is_some_and(crate::naming::tag::is_provisional)
+        self.tag_state == crate::naming::tag::TagState::Fixed
+    }
+
+    /// Whether its tag is provisional.
+    pub fn is_provisional(&self) -> bool {
+        self.tag_state.is_provisional()
+    }
+
+    /// Its tag as drawn: a provisional tag with its `?` ([`crate::naming::tag::shown`]).
+    pub fn tag_shown(&self) -> Option<String> {
+        self.tag().map(|t| crate::naming::tag::shown(t, self.tag_state))
+    }
+
+    /// Its tag's identity in the tag index.
+    pub fn tag_key(&self) -> Option<crate::naming::tag::Key> {
+        self.tag().map(|t| crate::naming::tag::Key::of(t, self.tag_state))
     }
 
     /// Whether `other` differs in a typed field (anything but the property bag and the
@@ -390,7 +405,13 @@ impl Device {
     /// Whether `other` differs from this device in its location and function (and their `fixed`
     /// flags) only: what a view that reads neither can skip.
     pub fn only_place_differs(&self, other: &Device) -> bool {
-        let bare = |d: &Device| Device { location: None, location_fixed: false, function: None, function_fixed: false, ..d.clone() };
+        let bare = |d: &Device| Device {
+            location: None,
+            location_state: Default::default(),
+            function: None,
+            function_state: Default::default(),
+            ..d.clone()
+        };
         bare(self) == bare(other)
     }
 
@@ -398,11 +419,11 @@ impl Device {
     /// string and routes to the field): a typed field as its stored text, else the property.
     pub fn value(&self, key: &str) -> Option<String> {
         match key {
-            crate::naming::tag::FIXED_KEY => self.tag_fixed.then(|| crate::naming::words::flag_word(true).to_string()),
+            crate::naming::tag::STATE_KEY => Some(crate::naming::words::Word::word(self.tag_state).to_string()),
             crate::document::book::LOCATION_KEY => self.location.map(crate::naming::id::LocationId::hex),
             crate::document::book::FUNCTION_KEY => self.function.map(crate::naming::id::FunctionId::hex),
-            crate::document::book::LOCATION_FIXED_KEY => self.location_fixed.then(|| crate::naming::words::flag_word(true).to_string()),
-            crate::document::book::FUNCTION_FIXED_KEY => self.function_fixed.then(|| crate::naming::words::flag_word(true).to_string()),
+            crate::document::book::LOCATION_STATE_KEY => Some(crate::naming::words::Word::word(self.location_state).to_string()),
+            crate::document::book::FUNCTION_STATE_KEY => Some(crate::naming::words::Word::word(self.function_state).to_string()),
             _ if crate::objects::devices::Connector::is_key(key) => match &self.device_type {
                 DeviceType::Connector(x) => x.value(key),
                 _ => None,
@@ -497,12 +518,14 @@ impl Device {
         match key {
             crate::document::book::LOCATION_KEY => {
                 self.location = id().map(crate::naming::id::LocationId);
-                self.location_fixed = self.location.is_some();
+                self.location_state =
+                    if self.location.is_some() { crate::document::book::PlaceState::ByHand } else { crate::document::book::PlaceState::Unset };
                 return Ok(());
             }
             crate::document::book::FUNCTION_KEY => {
                 self.function = id().map(crate::naming::id::FunctionId);
-                self.function_fixed = self.function.is_some();
+                self.function_state =
+                    if self.function.is_some() { crate::document::book::PlaceState::ByHand } else { crate::document::book::PlaceState::Unset };
                 return Ok(());
             }
             _ => {}
@@ -524,10 +547,13 @@ impl Device {
         self.tag.as_ref().map(|t| t.as_str())
     }
 
-    /// This device with tag `tag` (`None` clears it; text that is not a valid tag clears it too,
-    /// which callers rule out with [`crate::naming::tag::Tag::new`] first).
-    pub fn with_tag(&self, tag: Option<&str>) -> Device {
-        Device { tag: tag.and_then(|t| crate::naming::tag::Tag::new(t).ok()), ..self.clone() }
+    /// This device with bare tag text `tag` in `state` (`None` clears it, and the state is
+    /// automatic; text that is not a valid tag clears it too, which callers rule out with
+    /// [`crate::naming::tag::Tag::new`] first).
+    pub fn with_tag(&self, tag: Option<&str>, state: crate::naming::tag::TagState) -> Device {
+        let tag = tag.and_then(|t| crate::naming::tag::Tag::new(t).ok());
+        let state = if tag.is_some() { state } else { crate::naming::tag::TagState::Automatic };
+        Device { tag, tag_state: state, ..self.clone() }
     }
 }
 
@@ -824,8 +850,9 @@ pub const CABLE_TYPE_KEY: &str = "cable_type";
 pub struct Cable {
     /// Its tag (`-W01`), if it has one (design 026; the identity of the cable).
     pub tag: Option<crate::naming::tag::Tag>,
-    /// Whether the tag was typed and is kept by renumbering (design 026 FP1).
-    pub tag_fixed: bool,
+    /// What the tag is (S6, #3): automatic, fixed (typed, kept by renumbering, design 026 FP1) or
+    /// provisional. Always stored, beside the bare tag text.
+    pub tag_state: crate::naming::tag::TagState,
     /// What it is for, in words (`setprop` key `description`).
     pub description: Option<crate::objects::devices::Description>,
     pub properties: Properties,
@@ -860,9 +887,24 @@ impl Cable {
         self.description.as_ref().map(|t| t.as_str())
     }
 
-    /// Whether its tag is fixed (FP1): flagged, and not provisional.
+    /// Whether its tag is fixed (FP1).
     pub fn is_fixed(&self) -> bool {
-        self.tag_fixed && !self.tag().is_some_and(crate::naming::tag::is_provisional)
+        self.tag_state == crate::naming::tag::TagState::Fixed
+    }
+
+    /// Whether its tag is provisional.
+    pub fn is_provisional(&self) -> bool {
+        self.tag_state.is_provisional()
+    }
+
+    /// Its tag as drawn: a provisional tag with its `?` ([`crate::naming::tag::shown`]).
+    pub fn tag_shown(&self) -> Option<String> {
+        self.tag().map(|t| crate::naming::tag::shown(t, self.tag_state))
+    }
+
+    /// Its tag's identity in the tag index.
+    pub fn tag_key(&self) -> Option<crate::naming::tag::Key> {
+        self.tag().map(|t| crate::naming::tag::Key::of(t, self.tag_state))
     }
 
     /// The text `setprop`'s key `key` names on this cable: its tag, its description, else the
@@ -878,7 +920,7 @@ impl Cable {
     /// The value key `key` names as stored text: [`Cable::get`], and the fixed flag.
     pub fn value(&self, key: &str) -> Option<String> {
         match key {
-            crate::naming::tag::FIXED_KEY => self.tag_fixed.then(|| crate::naming::words::flag_word(true).to_string()),
+            crate::naming::tag::STATE_KEY => Some(crate::naming::words::Word::word(self.tag_state).to_string()),
             _ => self.get(key).map(str::to_string),
         }
     }
@@ -893,7 +935,9 @@ impl Cable {
         let trimmed = value.map(str::trim).filter(|v| !v.is_empty());
         match key {
             crate::naming::tag::TAG_KEY => self.tag = trimmed.map(crate::naming::tag::Tag::new).transpose()?,
-            crate::naming::tag::FIXED_KEY => self.tag_fixed = value.and_then(crate::naming::words::flag) == Some(true),
+            crate::naming::tag::STATE_KEY => {
+                self.tag_state = trimmed.and_then(<crate::naming::tag::TagState as crate::naming::words::Word>::parse).unwrap_or_default();
+            }
             crate::objects::devices::DESCRIPTION_KEY => {
                 self.description = trimmed.map(crate::objects::devices::Description::new).transpose()?;
             }
@@ -1808,42 +1852,67 @@ impl Document {
         referrers(&self.index.page_routes, &page)
     }
 
-    /// Components whose tag is the same tag as `tag` (equal [`crate::naming::tag::key`]), in ID order,
-    /// through the tag index: the cost does not grow with the project.
+    /// Devices whose real (not provisional) tag is the same tag as `tag` (equal
+    /// [`crate::naming::tag::key`]), in ID order, through the tag index: the cost does not grow with
+    /// the project.
     pub fn components_tagged(&self, tag: &str) -> Vec<DeviceId> {
-        referrers(&self.index.tags, &crate::naming::tag::key(tag)).collect()
+        self.components_with(&crate::naming::tag::Key::real(tag))
     }
 
-    /// Every tagged component through the tag index (brief 018), by tag key ([`crate::naming::tag::key`]),
-    /// then ID: no scan of the components.
-    pub fn tagged(&self) -> impl Iterator<Item = (&str, DeviceId)> {
-        self.index.tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
+    /// Devices holding tag identity `key` (text and state), in ID order, through the tag index.
+    pub fn components_with(&self, key: &crate::naming::tag::Key) -> Vec<DeviceId> {
+        referrers(&self.index.tags, key).collect()
     }
 
-    /// Cables whose tag is the same tag as `tag` (brief 026), in ID order, through the tag index.
+    /// Every tagged device through the tag index (brief 018), by tag key, then ID: no scan of the
+    /// devices.
+    pub fn tagged(&self) -> impl Iterator<Item = (&crate::naming::tag::Key, DeviceId)> {
+        self.index.tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k, *c)))
+    }
+
+    /// Cables whose real tag is the same tag as `tag` (brief 026), in ID order, through the tag index.
     pub fn cables_tagged(&self, tag: &str) -> Vec<CableId> {
-        referrers(&self.index.cable_tags, &crate::naming::tag::key(tag)).collect()
+        self.cables_with(&crate::naming::tag::Key::real(tag))
+    }
+
+    /// Cables holding tag identity `key`, in ID order.
+    pub fn cables_with(&self, key: &crate::naming::tag::Key) -> Vec<CableId> {
+        referrers(&self.index.cable_tags, key).collect()
     }
 
     /// Every tagged cable through the tag index (brief 026), by tag key, then ID.
-    pub fn tagged_cables(&self) -> impl Iterator<Item = (&str, CableId)> {
-        self.index.cable_tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
+    pub fn tagged_cables(&self) -> impl Iterator<Item = (&crate::naming::tag::Key, CableId)> {
+        self.index.cable_tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k, *c)))
     }
 
-    /// Tag keys starting with `start` held by devices or cables (brief 026), through a range of
-    /// the tag indexes: the cost follows the keys with that start, not the project.
+    /// Real tag keys starting with `start` held by devices or cables (brief 026), through a range of
+    /// the tag indexes: the cost follows the keys with that start, not the project. Provisional tags
+    /// are not among them (S6, #3).
     pub fn tag_keys_starting(&self, start: &str) -> impl Iterator<Item = &str> {
-        let from = start.to_string();
-        let a = self.index.tags.range(from.clone()..).map(|(k, _)| k.as_str());
-        let b = self.index.cable_tags.range(from..).map(|(k, _)| k.as_str());
-        let s1 = start.to_string();
-        let s2 = start.to_string();
-        a.take_while(move |k| k.starts_with(s1.as_str())).chain(b.take_while(move |k| k.starts_with(s2.as_str())))
+        let from = crate::naming::tag::Key { provisional: false, text: start.to_string() };
+        let a = self.index.tags.range(from.clone()..).map(|(k, _)| k);
+        let b = self.index.cable_tags.range(from..).map(|(k, _)| k);
+        let (s1, s2) = (start.to_string(), start.to_string());
+        a.take_while(move |k| !k.provisional && k.text.starts_with(s1.as_str()))
+            .chain(b.take_while(move |k| !k.provisional && k.text.starts_with(s2.as_str())))
+            .map(|k| k.text.as_str())
     }
 
-    /// Whether a device or a cable holds `tag` (brief 026: one namespace).
+    /// The provisional tag keys of `prefix` (upper case, without `-`) held by devices or cables:
+    /// the numbers a new provisional tag must skip.
+    pub fn provisional_keys(&self, prefix: &str) -> impl Iterator<Item = &str> {
+        let from = crate::naming::tag::Key { provisional: true, text: prefix.to_string() };
+        let a = self.index.tags.range(from.clone()..).map(|(k, _)| k);
+        let b = self.index.cable_tags.range(from..).map(|(k, _)| k);
+        let (s1, s2) = (prefix.to_string(), prefix.to_string());
+        a.take_while(move |k| k.provisional && k.text.starts_with(s1.as_str()))
+            .chain(b.take_while(move |k| k.provisional && k.text.starts_with(s2.as_str())))
+            .map(|k| k.text.as_str())
+    }
+
+    /// Whether a device or a cable holds the real tag `tag` (brief 026: one namespace).
     pub fn tag_taken(&self, tag: &str) -> bool {
-        let k = crate::naming::tag::key(tag);
+        let k = crate::naming::tag::Key::real(tag);
         self.index.tags.get(&k).is_some_and(|m| !m.is_empty()) || self.index.cable_tags.get(&k).is_some_and(|m| !m.is_empty())
     }
 

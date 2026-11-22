@@ -340,7 +340,7 @@ pub struct Choices {
 pub fn choices(doc: &Document) -> Choices {
     let mut prefixes: BTreeSet<String> = BTreeSet::new();
     for k in doc.tagged().map(|(k, _)| k).chain(doc.tagged_cables().map(|(k, _)| k)) {
-        if let Some(p) = tag::prefix_of(k) {
+        if let Some(p) = tag::prefix_of(&k.text) {
             prefixes.insert(p);
         }
     }
@@ -413,15 +413,21 @@ impl Provisional {
 /// The provisional items of `doc` (read when a revision is issued: a walk over the tag index and
 /// the nets).
 pub fn provisional_items(doc: &Document) -> Provisional {
-    let mut tags: Vec<String> = doc
+    // The provisional keys are their own part of the index: no scan of the real tags.
+    let mut held: Vec<(Option<(String, u64)>, String)> = doc
         .tagged()
-        .filter_map(|(_, c)| crate::devices::tags::tag_of(doc, c).filter(|t| tag::is_provisional(t)).map(str::to_string))
+        .filter(|(k, _)| k.provisional)
+        .filter_map(|(_, c)| doc.devices.get(&c))
+        .map(|d| (d.tag().and_then(tag::parse), d.tag_shown().unwrap_or_default()))
         .chain(
             doc.tagged_cables()
-                .filter_map(|(_, k)| crate::devices::tags::cable_tag_of(doc, k).filter(|t| tag::is_provisional(t)).map(str::to_string)),
+                .filter(|(k, _)| k.provisional)
+                .filter_map(|(_, k)| doc.cables.get(&k))
+                .map(|c| (c.tag().and_then(tag::parse), c.tag_shown().unwrap_or_default())),
         )
         .collect();
-    tags.sort_by_key(|t| tag::provisional(t));
+    held.sort();
+    let tags: Vec<String> = held.into_iter().map(|(_, shown)| shown).collect();
     let mut by: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     let mut nets = 0;
     // Unnumbered nets are provisional only with provisional tags on; otherwise they are 022's

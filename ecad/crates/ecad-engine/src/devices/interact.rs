@@ -239,7 +239,14 @@ impl Place {
         if t.contains(',') || t.contains('<') {
             return Err(crate::properties::forms::not_a_point(t));
         }
-        let device = read(s, |p, _| Ok(ecad_electrical::devices::tags::holder_of(p.ledger.document(), t, None))).ok().flatten();
+        let device = read(s, |p, _| {
+            let doc = p.ledger.document();
+            Ok(ecad_model::naming::tag::enter_given(t, ecad_electrical::defaults::print::tag_style(doc))
+                .ok()
+                .and_then(|g| ecad_electrical::devices::tags::holder_of(doc, &g.key(), None)))
+        })
+        .ok()
+        .flatten();
         if t.starts_with('-')
             && let Some(c) = device
         {
@@ -469,8 +476,9 @@ impl Place {
                     let sym = self.symbol();
                     let (holder, normal) = read(s, |p, _| {
                         let doc = p.ledger.document();
-                        let normal = ecad_model::naming::tag::normalise(&t, ecad_electrical::defaults::print::tag_style(doc))?;
-                        let holder = ecad_electrical::devices::tags::holder_of(doc, &normal, None);
+                        let given = ecad_model::naming::tag::enter_given(&t, ecad_electrical::defaults::print::tag_style(doc))?;
+                        let holder = ecad_electrical::devices::tags::holder_of(doc, &given.key(), None);
+                        let normal = given.shown();
                         if let Some(c) = holder {
                             ecad_electrical::devices::placing::join_labels(doc, c, sym, &Default::default())?;
                         }
@@ -496,8 +504,8 @@ impl Place {
                 Input::Text(t) => {
                     let (holder, normal) = read(s, |p, _| {
                         let doc = p.ledger.document();
-                        let normal = ecad_model::naming::tag::normalise(&t, ecad_electrical::defaults::print::tag_style(doc))?;
-                        Ok((ecad_electrical::devices::tags::holder_of(doc, &normal, None), normal))
+                        let given = ecad_model::naming::tag::enter_given(&t, ecad_electrical::defaults::print::tag_style(doc))?;
+                        Ok((ecad_electrical::devices::tags::holder_of(doc, &given.key(), None), given.shown()))
                     })
                     .map_err(other)?;
                     match holder {
@@ -858,8 +866,8 @@ impl Props {
                     if key == "tag" {
                         let holder = read(s, |p, _| {
                             let doc = p.ledger.document();
-                            let normal = ecad_model::naming::tag::normalise(&t, ecad_electrical::defaults::print::tag_style(doc))?;
-                            Ok(ecad_electrical::devices::tags::holder_of(doc, &normal, Some(c)).map(|h| (h, normal)))
+                            let given = ecad_model::naming::tag::enter_given(&t, ecad_electrical::defaults::print::tag_style(doc))?;
+                            Ok(ecad_electrical::devices::tags::holder_of(doc, &given.key(), Some(c)).map(|h| (h, given.shown())))
                         })
                         .map_err(other)?;
                         if let Some(found) = holder {

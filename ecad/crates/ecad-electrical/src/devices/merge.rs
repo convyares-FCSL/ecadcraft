@@ -286,8 +286,7 @@ fn shown_pages_words(doc: &Document, reps: &[&Representation]) -> String {
 
 /// The tag a copy of device `c` gets (design 018 §3.3): the next automatic number of its prefix;
 /// `None` when its tag is not of the usual form (the copy then has no tag).
-pub fn copy_tag(doc: &Document, high: &mut TagHigh, c: &Device) -> Option<String> {
-    let t = c.tag()?;
-    let (prefix, _) = tag::parse(t).or_else(|| tag::provisional(t))?;
+pub fn copy_tag(doc: &Document, high: &mut TagHigh, c: &Device) -> Option<tag::Given> {
+    let (prefix, _) = tag::parse(c.tag()?)?;
     high.next_auto_in(doc, &prefix).ok()
 }

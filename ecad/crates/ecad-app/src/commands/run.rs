@@ -632,7 +632,7 @@ impl App {
             A::RevisionPage(page) => self.preview_revision_page(page),
             A::History(d) => self.history_action(d),
             A::SetDeviceProperty { component, key, value, conflict } => {
-                let value = if key == "tag_fixed" && value.is_empty() { serde_json::Value::Null } else { json!(value) };
+                let value = json!(value);
                 let line = format!("setprop {}", json!({"component": component.hex(), "key": key, "value": value, "conflict": conflict}));
                 let value = value.as_str().unwrap_or_default().to_string();
                 if let Some(e) = self.run_line(&line) {

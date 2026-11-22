@@ -395,8 +395,8 @@ pub fn position_name(doc: &Document, p: CorePosition) -> String {
 
 /// A cable's name: its `tag` property, else `cable <first 8 hex>…`.
 pub(crate) fn cable_name(doc: &Document, k: CableId) -> String {
-    match doc.cables.get(&k).and_then(|x| x.tag()) {
-        Some(t) => t.to_string(),
+    match doc.cables.get(&k).and_then(|x| x.tag_shown()) {
+        Some(t) => t,
         None => format!("cable {}…", short(&k.hex())),
     }
 }
@@ -464,7 +464,7 @@ pub(crate) fn already_in_cable(doc: &Document, blocked: &[(CorePosition, CableId
 
 /// `cable C1` for a tagged cable, else `cable 8a3f19c0…`.
 fn cable_label(doc: &Document, k: CableId) -> String {
-    match doc.cables.get(&k).and_then(|x| x.tag()) {
+    match doc.cables.get(&k).and_then(|x| x.tag_shown()) {
         Some(t) => format!("cable {t}"),
         None => cable_name(doc, k),
     }

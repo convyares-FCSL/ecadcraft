@@ -715,7 +715,10 @@ fn copy_batch(
         let mut comp = comp;
         if comp.tag.is_some() {
             let tag = ecad_electrical::devices::merge::copy_tag(cx.ledger.document(), cx.tags, &comp);
-            comp = comp.with_tag(tag.as_deref());
+            comp = match tag {
+                Some(g) => comp.with_tag(Some(&g.text), g.state),
+                None => comp.with_tag(None, ecad_model::naming::tag::TagState::Automatic),
+            };
         }
         t.ops.push(Op::CreateDevice { id: new_comp, device: Device { ..comp } });
         for (src_t, term) in sdoc.connection_points_of(src_comp) {

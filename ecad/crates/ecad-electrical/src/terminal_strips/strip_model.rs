@@ -619,7 +619,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
     };
     let mut d = StripData {
         component: c,
-        tag: doc.devices.get(&c).and_then(|d| d.tag()).unwrap_or("?").to_string(),
+        tag: doc.devices.get(&c).and_then(|d| d.tag_shown()).unwrap_or_else(|| "?".into()),
         location: location.clone(),
         offer: props.get(OFFER_KEY).and_then(|v| parse_offer(v).ok()),
         part_number: clean(strip.part_number.as_ref()),
@@ -698,7 +698,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
             }
             let cable = doc.cables_of(w).into_iter().next().map(|k| {
                 d.cables.insert(k);
-                let tag = doc.cables.get(&k).and_then(|x| clean(x.tag()));
+                let tag = doc.cables.get(&k).and_then(|x| clean(x.tag_shown().as_deref()));
                 (k, tag)
             });
             let core =

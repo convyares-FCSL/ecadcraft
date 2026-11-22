@@ -510,8 +510,8 @@ pub(crate) fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
 
 /// A cable after the word "Cable" in messages: its tag, else `8a3f19c0…`.
 pub fn cable_title(doc: &Document, cable: CableId) -> String {
-    match doc.cables.get(&cable).and_then(|c| c.tag()) {
-        Some(t) => t.to_string(),
+    match doc.cables.get(&cable).and_then(|c| c.tag_shown()) {
+        Some(t) => t,
         None => format!("{}…", cable.hex().get(..8).unwrap_or_default()),
     }
 }

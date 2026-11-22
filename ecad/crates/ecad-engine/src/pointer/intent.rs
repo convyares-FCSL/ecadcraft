@@ -69,7 +69,7 @@ fn point_words(doc: &Document, t: ConnectionPointId) -> String {
         Some(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => {
             format!("{}:{name}", ecad_electrical::devices::tags::tag_words(doc, c))
         }
-        Some(c) => match ecad_electrical::devices::tags::tag_of(doc, c) {
+        Some(c) => match ecad_electrical::devices::tags::tag_shown_of(doc, c) {
             Some(tag) => format!("{name} of {tag}"),
             None => name,
         },

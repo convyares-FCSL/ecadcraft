@@ -255,7 +255,7 @@ pub fn connection_point_words(doc: &Document, t: ConnectionPointId) -> String {
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return name;
     }
-    let tag = c.and_then(|c| crate::devices::tags::tag_of(doc, c)).unwrap_or("?");
+    let tag = c.and_then(|c| crate::devices::tags::tag_shown_of(doc, c)).unwrap_or_else(|| "?".into());
     format!("{tag}:{}", crate::terminal_strips::terminal_blocks::connection_point_name(doc, t))
 }
 

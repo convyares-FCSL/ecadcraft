@@ -26,9 +26,9 @@ pub(crate) const MAX_ALSO: usize = 4;
 pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId, m: &dyn TextMetrics) -> Vec<String> {
     let device = doc.devices.get(&c).cloned().unwrap_or_default();
     let get = |k: &str| device.value(k).unwrap_or_else(|| "?".into());
-    let head = match device.tag() {
+    let head = match device.tag_shown() {
         // Brief 026 (design §9): `(fixed)` or `(provisional)` after the tag.
-        Some(t) if tag::is_provisional(t) => format!("Device {t} (provisional)   {}", description(doc, c)),
+        Some(t) if device.is_provisional() => format!("Device {t} (provisional)   {}", description(doc, c)),
         Some(t) if device.is_fixed() => format!("Device {t} (fixed)   {}", description(doc, c)),
         Some(t) => format!("Device {t}   {}", description(doc, c)),
         None => format!("Device (no tag)   {}", description(doc, c)),

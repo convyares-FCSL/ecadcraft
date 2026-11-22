@@ -423,8 +423,9 @@ fn page_number(d: &Document, p: ecad_model::PageId) -> String {
     ecad_model::document::book::page_number(d, p)
 }
 
-fn tag_of(d: &ecad_model::Device) -> Option<&str> {
-    d.tag()
+/// A device's tag as drawn: a provisional one with its `?`, so it is not the real tag of the same text.
+fn tag_of(d: &ecad_model::Device) -> Option<String> {
+    d.tag_shown()
 }
 
 /// The name of what owns a connection point: a device's tag, or a drawing aid's name.
@@ -439,7 +440,7 @@ fn owner_name(d: &Document, owner: ecad_model::ConnectionPointOwner) -> String {
 }
 
 fn device_name(d: &Document, c: DeviceId) -> String {
-    d.devices.get(&c).and_then(tag_of).map(str::to_string).unwrap_or_else(|| format!("({})", c.short()))
+    d.devices.get(&c).and_then(tag_of).unwrap_or_else(|| format!("({})", c.short()))
 }
 
 fn point_name(d: &Document, t: ConnectionPointId) -> String {
@@ -564,7 +565,7 @@ fn pages(d: &Document) -> Vec<Value> {
 }
 
 fn devices(d: &Document, detail: bool) -> Vec<Value> {
-    let mut tags: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut tags: BTreeMap<String, usize> = BTreeMap::new();
     for c in d.devices.values() {
         if let Some(t) = tag_of(c) {
             *tags.entry(t).or_default() += 1;
@@ -604,11 +605,12 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
             let mut row = json!({
                 "id": id.to_string(),
                 "tag": tag,
+                "tag_state": ecad_model::naming::words::Word::word(c.tag_state),
                 "duplicate": tag.as_ref().is_some_and(|t| tags.get(t).copied().unwrap_or(0) > 1),
                 "function": c.function.map(|f| function_code(d, f)),
-                "function_fixed": c.function_fixed,
+                "function_state": ecad_model::naming::words::Word::word(c.function_state),
                 "location": c.location.map(|l| location_code(d, l)),
-                "location_fixed": c.location_fixed,
+                "location_state": ecad_model::naming::words::Word::word(c.location_state),
                 "definition": c.definition.and_then(|def| d.definitions.get(&def)).map(|def| def.name.clone()),
                 "pages": pages,
                 "points": points,
@@ -654,7 +656,7 @@ fn nets(d: &Document) -> Vec<Value> {
 fn wires(d: &Document) -> Vec<Value> {
     let mut in_cable: BTreeMap<WireId, (String, Option<String>)> = BTreeMap::new();
     for (id, k) in &d.cables {
-        let tag = k.tag().map(str::to_string).unwrap_or_else(|| format!("({})", id.short()));
+        let tag = k.tag_shown().unwrap_or_else(|| format!("({})", id.short()));
         for w in k.cores.iter().filter_map(|m| m.wire()) {
             in_cable.insert(w, (tag.clone(), k.cores.iter().find(|m| m.wire() == Some(w)).and_then(|m| m.label_str().map(str::to_string))));
         }
@@ -738,8 +740,8 @@ fn cables(d: &Document) -> Vec<Value> {
             }
             json!({
                 "id": id.to_string(),
-                "tag": k.tag(),
-                "tag_fixed": k.tag_fixed,
+                "tag": k.tag_shown(),
+                "tag_state": ecad_model::naming::words::Word::word(k.tag_state),
                 "description": k.description(),
                 "cable_type": k.cable_type.as_ref().map(ecad_model::StyleRef::text),
                 "shield": k.shield.map(ecad_model::naming::words::Word::word),

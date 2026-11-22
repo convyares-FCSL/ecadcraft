@@ -192,7 +192,7 @@ pub struct Item {
 pub struct Device {
     /// Design 072 §2.1: validated on read (1 to 40 characters, no hidden character).
     pub tag: Option<m::naming::tag::Tag>,
-    pub tag_fixed: bool,
+    pub tag_state: m::naming::tag::TagState,
     /// Design 072 §2.1: the text fields, validated on read.
     pub description: Option<m::objects::devices::Description>,
     pub part_number: Option<m::objects::devices::PartText>,
@@ -201,9 +201,9 @@ pub struct Device {
     pub type_text: Option<m::objects::devices::PartText>,
     /// Design 072 §6.3: ids of the project's lists, and whether each was set by hand.
     pub location: Option<m::LocationId>,
-    pub location_fixed: bool,
+    pub location_state: m::document::book::PlaceState,
     pub function: Option<m::FunctionId>,
-    pub function_fixed: bool,
+    pub function_state: m::document::book::PlaceState,
     /// Design 072 §2.2: text that did not read as the group's typed rating.
     pub rating_note: Option<m::objects::devices::RatingNote>,
     pub properties: BTreeMap<String, String>,
@@ -382,7 +382,7 @@ impl From<CorePosition> for m::CorePosition {
 pub struct Cable {
     /// Design 026: validated on read; a cable's tag, as a device's.
     pub tag: Option<m::naming::tag::Tag>,
-    pub tag_fixed: bool,
+    pub tag_state: m::naming::tag::TagState,
     pub description: Option<m::objects::devices::Description>,
     pub properties: BTreeMap<String, String>,
     pub cores: Vec<Core>,
@@ -1078,16 +1078,16 @@ impl From<&m::Device> for Device {
     fn from(c: &m::Device) -> Self {
         Device {
             tag: c.tag.clone(),
-            tag_fixed: c.tag_fixed,
+            tag_state: c.tag_state,
             description: c.description.clone(),
             part_number: c.part_number.clone(),
             manufacturer: c.manufacturer.clone(),
             article_number: c.article_number.clone(),
             type_text: c.type_text.clone(),
             location: c.location,
-            location_fixed: c.location_fixed,
+            location_state: c.location_state,
             function: c.function,
-            function_fixed: c.function_fixed,
+            function_state: c.function_state,
             rating_note: c.rating_note.clone(),
             properties: c.properties.clone(),
             definition: c.definition,
@@ -1184,7 +1184,7 @@ impl From<&m::Cable> for Cable {
     fn from(c: &m::Cable) -> Self {
         Cable {
             tag: c.tag.clone(),
-            tag_fixed: c.tag_fixed,
+            tag_state: c.tag_state,
             description: c.description.clone(),
             properties: c.properties.clone(),
             cores: c.cores.iter().map(Into::into).collect(),
@@ -1475,16 +1475,16 @@ impl From<Device> for m::Device {
     fn from(c: Device) -> Self {
         m::Device {
             tag: c.tag,
-            tag_fixed: c.tag_fixed,
+            tag_state: c.tag_state,
             description: c.description,
             part_number: c.part_number,
             manufacturer: c.manufacturer,
             article_number: c.article_number,
             type_text: c.type_text,
             location: c.location,
-            location_fixed: c.location_fixed,
+            location_state: c.location_state,
             function: c.function,
-            function_fixed: c.function_fixed,
+            function_state: c.function_state,
             rating_note: c.rating_note,
             properties: c.properties,
             definition: c.definition,
@@ -1553,7 +1553,7 @@ impl From<Cable> for m::Cable {
     fn from(c: Cable) -> Self {
         m::Cable {
             tag: c.tag,
-            tag_fixed: c.tag_fixed,
+            tag_state: c.tag_state,
             description: c.description,
             properties: c.properties,
             cores: c.cores.into_iter().map(Into::into).collect(),

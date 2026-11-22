@@ -28,10 +28,25 @@ pub const NUMBER_KEY: &str = "number";
 pub const FUNCTION_KEY: &str = "function";
 /// Page and project property: the `+` location.
 pub const LOCATION_KEY: &str = "location";
-/// `setprop` key of a device's [`crate::Device::location_fixed`] (yes/no).
-pub const LOCATION_FIXED_KEY: &str = "location_fixed";
-/// `setprop` key of a device's [`crate::Device::function_fixed`] (yes/no).
-pub const FUNCTION_FIXED_KEY: &str = "function_fixed";
+/// `setprop` key of a device's [`crate::Device::location_state`] (`unset`, `by_hand`, `proposed`).
+pub const LOCATION_STATE_KEY: &str = "location_state";
+/// `setprop` key of a device's [`crate::Device::function_state`] (`unset`, `by_hand`, `proposed`).
+pub const FUNCTION_STATE_KEY: &str = "function_state";
+
+crate::word_enum! {
+    /// How a device's location or function came to be (S6, #3). Stored beside the value, never
+    /// read off it: `Unset` exactly when the device has none.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    pub enum PlaceState {
+        /// The device has none.
+        #[default]
+        Unset,
+        /// Set by hand (typed, or a box drawn around it): kept when a box around it changes.
+        ByHand,
+        /// Proposed by its page or a location box: a box may change it; stays proposed until set by hand.
+        Proposed,
+    }
+}
 
 /// Folders nest at most this deep (a top-level folder is depth 1).
 pub const MAX_FOLDER_DEPTH: usize = 8;

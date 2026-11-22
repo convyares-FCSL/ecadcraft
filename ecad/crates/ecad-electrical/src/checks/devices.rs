@@ -23,15 +23,16 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
     let mut out = Vec::new();
     designation_checks(places, c, &mut out);
     // Brief 026: a provisional tag, and a tag a cable holds too.
-    if let Some(t) = crate::devices::tags::tag_of(doc, c)
-        && (ecad_model::naming::tag::is_provisional(t) || !doc.cables_tagged(t).is_empty())
+    if let Some(device) = doc.devices.get(&c)
+        && let (Some(key), Some(t)) = (device.tag_key(), device.tag_shown())
+        && (device.is_provisional() || !doc.cables_with(&key).is_empty())
     {
         // Located only when there is a row to show (a build visits every device).
         let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
-        if ecad_model::naming::tag::is_provisional(t) {
-            out.push(Check { kind: Kind::ProvisionalTag, page, at, object: Object::Device(c), which: t.to_string(), fix: Some(Fix::Finalise) });
+        if device.is_provisional() {
+            out.push(Check { kind: Kind::ProvisionalTag, page, at, object: Object::Device(c), which: t.clone(), fix: Some(Fix::Finalise) });
         }
-        if !doc.cables_tagged(t).is_empty() {
+        if !doc.cables_with(&key).is_empty() {
             out.push(Check {
                 kind: Kind::DuplicateTag,
                 page,

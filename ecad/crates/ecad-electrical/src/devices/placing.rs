@@ -62,8 +62,8 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
 /// What a placement makes: a new device, or another symbol of an existing one.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Target {
-    /// A new device, with this tag (already normalised) or the next automatic one.
-    New(Option<String>),
+    /// A new device, with this tag (read once, [`tag::enter`]) or the next automatic one.
+    New(Option<tag::Entry>),
     /// Another symbol of this device.
     Join(DeviceId),
 }
@@ -105,13 +105,13 @@ pub fn plan_place(
     let def = s.definition()?;
     // A typed tag a device already holds is that device (a tag is an identity).
     let target = match target {
-        Target::New(Some(t)) => match holder_of(doc, &t, None) {
+        Target::New(Some(tag::Entry::Tag(g))) => match holder_of(doc, &g.key(), None) {
             Some(c) => Target::Join(c),
             // Devices and cables share one namespace (brief 026).
-            None if !doc.cables_tagged(&t).is_empty() => {
-                return Err(CmdError::refused(format!("Tag {t} is a cable's; choose another tag for a device.")));
+            None if !doc.cables_with(&g.key()).is_empty() => {
+                return Err(CmdError::refused(format!("Tag {} is a cable's; choose another tag for a device.", g.shown())));
             }
-            None => Target::New(Some(t)),
+            None => Target::New(Some(tag::Entry::Tag(g))),
         },
         other => other,
     };
@@ -120,25 +120,20 @@ pub fn plan_place(
     let mut connection_points = Vec::new();
     match target {
         Target::New(t) => {
-            let t = match t {
-                // `-K?` typed: the next provisional number (brief 026).
-                Some(t) if tag::provisional(&t).is_some_and(|(_, n)| n == 0) => {
-                    high.catch_up(ledger);
-                    high.next_provisional_in(doc, &tag::provisional(&t).map(|x| x.0).unwrap_or_default())
-                }
-                Some(t) => t,
-                None => high.next_auto(ledger, &prefix_for(doc, s))?,
-            };
+            // `-K?` typed: the next provisional number (brief 026).
+            let t = high.given(ledger, t, &prefix_for(doc, s))?;
             let c: DeviceId = ids.fresh();
             ops.push(Op::CreateDevice {
                 id: c,
-                device: Device {
-                    tag: Some(crate::devices::stored_tag(&t)?),
-                    description: description_of(s.name),
-                    definition: Some(definition),
-                    device_type: crate::plc::types::new_type(doc, &s.device_type()),
-                    ..Device::default()
-                },
+                device: crate::devices::with_given(
+                    Device {
+                        description: description_of(s.name),
+                        definition: Some(definition),
+                        device_type: crate::plc::types::new_type(doc, &s.device_type()),
+                        ..Device::default()
+                    },
+                    &t,
+                )?,
             });
             for td in &def.connection_points {
                 let tid: ConnectionPointId = ids.fresh();
@@ -160,7 +155,17 @@ pub fn plan_place(
                     connection_points: BTreeMap::new(),
                 },
             });
-            Ok(Placed { ops, label: "Place symbol".into(), component: c, representation, item, definition, tag: t, joined: false, connection_points })
+            Ok(Placed {
+                ops,
+                label: "Place symbol".into(),
+                component: c,
+                representation,
+                item,
+                definition,
+                tag: t.shown(),
+                joined: false,
+                connection_points,
+            })
         }
         Target::Join(c) => {
             if !doc.devices.contains_key(&c) {

@@ -13,7 +13,7 @@ pub fn point_words(doc: &Document, t: ConnectionPointId) -> String {
     }
     let Some(c) = term.device() else { return "?".into() };
     let label = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "?".into());
-    match crate::devices::tags::tag_of(doc, c) {
+    match crate::devices::tags::tag_shown_of(doc, c) {
         Some(tag) => format!("{tag}:{label}"),
         None => format!("{}\u{2026}:{label}", c.hex().get(..8).unwrap_or_default()),
     }

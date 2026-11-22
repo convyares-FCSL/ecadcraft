@@ -165,9 +165,9 @@ impl TableSource for DevicesSource {
         let e = &r.entry;
         let prop = |i: usize| e.properties.get(i).cloned().flatten().unwrap_or_default();
         match col {
-            TAG => match e.tag.as_deref() {
-                Some(t) if ecad_model::naming::tag::is_provisional(t) => Cell::Provisional(t.to_string()),
-                Some(t) => Cell::Input(t.to_string()),
+            TAG => match e.shown() {
+                Some(t) if e.tag_state.is_provisional() => Cell::Provisional(t),
+                Some(t) => Cell::Input(t),
                 None => Cell::Input(String::new()),
             },
             DESCRIPTION => Cell::Input(prop(1)),
@@ -195,11 +195,11 @@ impl TableSource for DevicesSource {
             }
             PARTS => Cell::Number(r.parts as f64, ""),
             STATE => {
-                if e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional) {
+                if e.tag_state.is_provisional() {
                     Cell::Badge(PROVISIONAL.into(), Tone::Provisional)
                 } else if e.symbols.is_empty() {
                     Cell::Badge(NOT_PLACED.into(), Tone::Warning)
-                } else if e.fixed {
+                } else if e.tag_state == ecad_model::naming::tag::TagState::Fixed {
                     Cell::Badge("Fixed".into(), Tone::Neutral)
                 } else {
                     Cell::Empty
@@ -220,7 +220,7 @@ impl TableSource for DevicesSource {
     fn chip(&self, key: DeviceId, chip: usize) -> bool {
         let Some(e) = self.rows.get(&key).map(|r| &r.entry) else { return false };
         match chip {
-            0 => e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional),
+            0 => e.tag_state.is_provisional(),
             1 => e.symbols.is_empty(),
             _ => true,
         }

@@ -270,26 +270,25 @@ pub fn plan_cell(
 /// body's name as its description, no rack.
 pub fn new_card_ops(
     ledger: &ecad_model::Ledger, ids: &mut IdAllocator, high: &mut crate::devices::tags::TagHigh, s: &Starter, def: DefinitionId, t: CardType,
-    tag: Option<String>, ops: &mut Vec<Op>,
+    tag: Option<ecad_model::naming::tag::Entry>, ops: &mut Vec<Op>,
 ) -> Result<(DeviceId, String), CmdError> {
     let doc = ledger.document();
-    let tag = match tag {
-        Some(t) => t,
-        None => high.next_auto(ledger, &crate::devices::prefix_for(doc, s))?,
-    };
+    let tag = high.given(ledger, tag, &crate::devices::prefix_for(doc, s))?;
     let c: DeviceId = ids.fresh();
     let name = t.body().map(crate::symbols::catalogue::starter).map_or("PLC card", |b| b.name);
     ops.push(Op::CreateDevice {
         id: c,
-        device: ecad_model::Device {
-            tag: Some(crate::devices::stored_tag(&tag)?),
-            description: crate::devices::description_of(name),
-            definition: Some(def),
-            device_type: crate::plc::types::new_type(doc, &s.device_type()),
-            ..ecad_model::Device::default()
-        },
+        device: crate::devices::with_given(
+            ecad_model::Device {
+                description: crate::devices::description_of(name),
+                definition: Some(def),
+                device_type: crate::plc::types::new_type(doc, &s.device_type()),
+                ..ecad_model::Device::default()
+            },
+            &tag,
+        )?,
     });
-    Ok((c, tag))
+    Ok((c, tag.shown()))
 }
 
 /// `channel 3` / `channels 0–7`, as shown.

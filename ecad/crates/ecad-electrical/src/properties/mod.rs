@@ -178,7 +178,9 @@ pub fn device_section(
     let one = devices.len() == 1;
     let mut rows = Vec::new();
     for (key, label) in crate::devices::PROPERTIES {
-        let values: BTreeSet<Option<String>> = devices.iter().map(|c| doc.devices.get(c).and_then(|x| x.value(key))).collect();
+        // A tag is shown as drawn, with the `?` of a provisional one.
+        let read = |x: &ecad_model::Device| if key == "tag" { x.tag_shown() } else { x.value(key) };
+        let values: BTreeSet<Option<String>> = devices.iter().map(|c| doc.devices.get(c).and_then(read)).collect();
         let varies = values.len() > 1;
         let value = if varies {
             "*varies*".into()
@@ -205,15 +207,15 @@ pub fn device_section(
         {
             override_rows(doc, c, &mut rows);
         }
-        // Brief 026 (design §4, §9): Fixed beside Tag; greyed for a provisional tag.
+        // Brief 026 (design §4, §9): the tag's state beside Tag; read-only for a provisional tag.
         if key == "tag" && one {
             let d = devices.iter().next().and_then(|c| doc.devices.get(c));
-            rows.push(fixed_row(d.and_then(|d| d.tag()), d.is_some_and(ecad_model::Device::is_fixed)));
+            rows.push(state_row(d.and_then(|d| d.tag().map(|_| d.tag_state))));
         }
     }
     let title = if one {
         let c = devices.iter().next().copied();
-        let tag = c.and_then(|c| crate::devices::tags::tag_of(doc, c)).unwrap_or("(no tag)").to_string();
+        let tag = c.and_then(|c| crate::devices::tags::tag_shown_of(doc, c)).unwrap_or_else(|| "(no tag)".into());
         if let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) {
             let name = crate::devices::tags::rep_definition(doc, r).map_or_else(|| "drawn".to_string(), |(d, _)| d.name.to_string());
             // The terminals this symbol shows: its connection points, else the device's own.
@@ -611,9 +613,9 @@ pub fn wire_section(doc: &Document, w: WireId) -> Section {
 pub fn cable_section(doc: &Document, k: CableId) -> Section {
     let cable = doc.cables.get(&k);
     let props = cable.map(|c| &c.properties);
-    let mut rows = vec![Row::rw("tag", "Tag", cable.and_then(|c| c.tag()).unwrap_or_default().to_string())];
-    // Brief 026: Fixed beside Tag.
-    rows.push(fixed_row(cable.and_then(|c| c.tag()), cable.is_some_and(ecad_model::Cable::is_fixed)));
+    let mut rows = vec![Row::rw("tag", "Tag", cable.and_then(|c| c.tag_shown()).unwrap_or_default())];
+    // Brief 026: the tag's state beside Tag.
+    rows.push(state_row(cable.and_then(|c| c.tag().map(|_| c.tag_state))));
     rows.push(Row::rw(
         ecad_model::objects::devices::DESCRIPTION_KEY,
         "Description",
@@ -648,16 +650,18 @@ pub fn cable_section(doc: &Document, k: CableId) -> Section {
     }
 }
 
-/// The Fixed row of a device or cable (brief 026): `yes` or `no`, read-only for a provisional tag
-/// or none.
-fn fixed_row(t: Option<&str>, fixed: bool) -> Row {
-    let value = if fixed { "yes" } else { "no" }.to_string();
-    let mut r = if t.is_some_and(|t| !ecad_model::naming::tag::is_provisional(t)) {
-        Row::rw(ecad_model::naming::tag::FIXED_KEY, "Fixed", value)
+/// The tag-state row of a device or cable (brief 026, S6 #3): the state's word, read-only for a
+/// provisional tag or none (the state of a provisional tag is set by Finalise).
+fn state_row(state: Option<ecad_model::naming::tag::TagState>) -> Row {
+    use ecad_model::naming::tag::TagState;
+    use ecad_model::naming::words::Word;
+    let value = state.map(|s| s.word().to_string()).unwrap_or_default();
+    let mut r = if matches!(state, Some(TagState::Automatic | TagState::Fixed)) {
+        Row::rw(ecad_model::naming::tag::STATE_KEY, "Tag state", value)
     } else {
-        Row::ro(ecad_model::naming::tag::FIXED_KEY, "Fixed", value)
+        Row::ro(ecad_model::naming::tag::STATE_KEY, "Tag state", value)
     };
-    r.choices = vec!["yes".into(), "no".into()];
+    r.choices = vec![TagState::Automatic.word().into(), TagState::Fixed.word().into()];
     r
 }
 
@@ -796,11 +800,6 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         j["conflict"] = way.into();
         return format!("setprop {j}");
     }
-    let v = if key == ecad_model::naming::tag::FIXED_KEY && value.and_then(ecad_model::naming::words::flag) == Some(false) {
-        serde_json::Value::Null
-    } else {
-        v
-    };
     let j = match target {
         Target::Page(p) => {
             let mut m = serde_json::Map::new();
