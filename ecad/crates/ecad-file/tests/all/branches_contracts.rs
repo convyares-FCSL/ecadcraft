@@ -7,17 +7,17 @@ use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::project::BranchError;
 use ecad_file::schema::{BranchId, BranchStatus, VersionKind};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
 use redb::ReadableTable;
 
-fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> ProjectV2 {
+fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> Project {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
+    Project::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
 }
 
-fn open(path: &std::path::Path) -> ecad_file::OpenedV2 {
-    ProjectV2::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
+fn open(path: &std::path::Path) -> ecad_file::Opened {
+    Project::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
 }
 
 /// One line on the fixture's page.
@@ -178,7 +178,7 @@ fn branch_names_and_states_follow_the_rules() {
 fn unknown_fields_in_branch_and_version_rows_are_refused() {
     use ecad_file::schema::{BRANCHES, META, VERSIONS};
     let f = fixture();
-    let opens = |p: &std::path::Path| match ProjectV2::open(Store::open(p, true).unwrap(), SEED ^ 1, WRITER) {
+    let opens = |p: &std::path::Path| match Project::open(Store::open(p, true).unwrap(), SEED ^ 1, WRITER) {
         Ok(o) => o.report.damage.is_none(),
         Err(_) => false,
     };

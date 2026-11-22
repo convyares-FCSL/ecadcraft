@@ -30,7 +30,7 @@ fn the_small_tier_lean_and_churned_files_replay_to_the_same_document() {
     let mut heads = Vec::new();
     for variant in Variant::BOTH {
         let bytes = generate(t, variant).unwrap().file_bytes().unwrap();
-        let o = ecad_file::ProjectV2::open(ecad_file::Store::from_bytes(bytes).unwrap(), 7, "test").unwrap();
+        let o = ecad_file::Project::open(ecad_file::Store::from_bytes(bytes).unwrap(), 7, "test").unwrap();
         assert!(o.report.damage.is_none(), "{variant:?}: {}", o.report.describe());
         heads.push(o.ledger.head());
         docs.push(o.ledger.document().clone());

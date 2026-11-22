@@ -45,7 +45,7 @@ pub struct MemoryStore {
     /// The database's bytes (tests read them, or make the next write fail).
     pub(super) backend: MemoryBackend,
     /// The project in the database, once written.
-    pub(super) project: Option<Box<ecad_file::ProjectV2>>,
+    pub(super) project: Option<Box<ecad_file::Project>>,
 }
 
 impl MemoryStore {
@@ -67,7 +67,7 @@ impl MemoryStore {
     }
 
     /// The project in the database, once written.
-    pub fn project(&self) -> Option<&ecad_file::ProjectV2> {
+    pub fn project(&self) -> Option<&ecad_file::Project> {
         self.project.as_deref()
     }
 
@@ -79,7 +79,7 @@ impl MemoryStore {
             Some(p) => p.save(ledger).map_err(|e| e.to_string()).map(|_| ledger.persisted()),
             None => {
                 let created = ecad_file::Store::with_backend(self.backend.clone()).map_err(|e| e.to_string()).and_then(|store| {
-                    ecad_file::ProjectV2::create(store, project, ledger, now_ms(), writer, ecad_file::schema::DEFAULT_SNAPSHOT_EVERY)
+                    ecad_file::Project::create(store, project, ledger, now_ms(), writer, ecad_file::schema::DEFAULT_SNAPSHOT_EVERY)
                         .map_err(|e| e.to_string())
                 });
                 match created {

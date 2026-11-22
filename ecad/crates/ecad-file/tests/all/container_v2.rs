@@ -8,7 +8,7 @@ use crate::common;
 
 use common::*;
 use ecad_file::schema::{self, BranchId, VersionKind};
-use ecad_file::{ProjectV2, Store, StoreError};
+use ecad_file::{Project, Store, StoreError};
 use ecad_model::*;
 
 /// A fresh folder under the system temp folder, removed when dropped.
@@ -32,13 +32,13 @@ impl Drop for TempDir {
 }
 
 /// Write `ledger` to a new file at `path` with snapshots every `every` transactions.
-fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> ProjectV2 {
+fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> Project {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
+    Project::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
 }
 
-fn open(path: &std::path::Path) -> ecad_file::OpenedV2 {
-    ProjectV2::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
+fn open(path: &std::path::Path) -> ecad_file::Opened {
+    Project::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
 }
 
 /// A page with `n` lines, one transaction each, and some undo and redo.
@@ -73,7 +73,7 @@ fn a_written_project_reopens_identically_and_undoes_like_the_replayed_one() {
     let p = dir.path("p.ecad");
     let (_, saved) = {
         let store = Store::create(&p).unwrap();
-        ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap()
+        Project::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap()
     };
     assert_eq!(saved.last_seq, f.ledger.head());
     let mut o = open(&p);
@@ -275,7 +275,7 @@ fn a_file_opens_from_its_bytes_in_memory() {
     proj.save(&mut f.ledger).unwrap();
     drop(proj);
     let bytes = std::fs::read(&p).unwrap();
-    let o = ProjectV2::open(Store::from_bytes(bytes).unwrap(), 1, WRITER).unwrap();
+    let o = Project::open(Store::from_bytes(bytes).unwrap(), 1, WRITER).unwrap();
     assert!(o.report.damage.is_none(), "{:?}", o.report);
     assert_eq!(o.ledger.document(), f.ledger.document());
     assert_eq!(o.ledger.head(), f.ledger.head());
@@ -474,8 +474,7 @@ fn crafted_stack_records_open_read_only_from_the_root() {
         let dir = TempDir::new("crafted-stack");
         let (p, reference) = deep(&dir, 20);
         craft_head_record(&p, reference.head(), craft);
-        let o =
-            ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap_or_else(|e| panic!("{what}: refused the whole project: {e}"));
+        let o = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap_or_else(|e| panic!("{what}: refused the whole project: {e}"));
         assert!(o.report.damage.is_some(), "{what}: no damage reported");
         assert!(o.project.read_only().is_some(), "{what}: not read-only");
         assert_eq!(o.ledger.document(), reference.document(), "{what}");

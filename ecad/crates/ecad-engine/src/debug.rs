@@ -396,7 +396,7 @@ impl Project {
     pub fn file_facts(&self) -> FileFacts {
         let mut f = FileFacts {
             persistence: Some(self.persistence),
-            open_report: self.open_report.as_ref().map(ecad_file::ReportV2::describe),
+            open_report: self.open_report.as_ref().map(ecad_file::Report::describe),
             ..FileFacts::default()
         };
         match self.persistence {

@@ -122,7 +122,7 @@ impl Project {
     pub(crate) fn open_from(s: &mut Session, name: &str, bytes: Vec<u8>, seed: u64) -> Result<ProjectHandle, String> {
         let backend = MemoryBackend::from_bytes(bytes);
         let store = ecad_file::Store::with_backend(backend.clone()).map_err(|e| e.to_string())?;
-        let opened = ecad_file::ProjectV2::open(store, seed, &writer()).map_err(|e| e.to_string())?;
+        let opened = ecad_file::Project::open(store, seed, &writer()).map_err(|e| e.to_string())?;
         let (file, ledger, report) = (opened.project, opened.ledger, opened.report);
         let id = file.project_id();
         let tag_high = file.base_tag_high().clone();

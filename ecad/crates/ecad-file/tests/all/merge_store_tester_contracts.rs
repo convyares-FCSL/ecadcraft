@@ -5,7 +5,7 @@
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::schema::VERSIONS;
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
 use redb::ReadableDatabase;
 
@@ -30,7 +30,7 @@ fn an_unknown_version_kind_row_is_kept() {
     let mut f = fixture();
     let p = dir.path("p.ecad");
     let store = Store::create(&p).unwrap();
-    let mut proj = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap().0;
+    let mut proj = Project::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap().0;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let main = proj.branch();
     let fork = f.ledger.head();
@@ -66,7 +66,7 @@ fn an_unknown_version_kind_row_is_kept() {
         w.commit().unwrap();
     }
     // This build opens it undamaged, edits and saves.
-    let o = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 4, WRITER).unwrap();
+    let o = Project::open(Store::open(&p, true).unwrap(), SEED ^ 4, WRITER).unwrap();
     assert!(o.report.damage.is_none(), "{:?}", o.report);
     assert_eq!(o.ledger.document(), &doc);
     let mut proj = o.project;

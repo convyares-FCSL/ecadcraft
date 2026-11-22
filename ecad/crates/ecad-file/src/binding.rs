@@ -1,10 +1,10 @@
 //! A project's file on disk (persistence stage 2a; container version 2 since brief 021): the
 //! binding between a project (ecad-engine's `Project`) and its `.ecad` file, through
-//! [`crate::disk::DiskProjectV2`], and the checks on a path typed for one.
+//! [`crate::disk::DiskProject`], and the checks on a path typed for one.
 //!
 //! It reads no environment: the home folder is passed in ([`normalize_with`]).
 
-use crate::ReportV2;
+use crate::Report;
 use ecad_model::{Ledger, ProjectId};
 
 /// What Save says when a project has never been saved and no file was chosen.
@@ -71,7 +71,7 @@ pub enum BindingError {
     NoFileYet,
     /// Opening or saving on disk failed.
     #[error(transparent)]
-    Disk(#[from] crate::disk::DiskErrorV2),
+    Disk(#[from] crate::disk::DiskError),
 }
 
 /// Where a project's file stands, for status displays.
@@ -99,7 +99,7 @@ pub enum Written {
 pub struct Opened {
     pub binding: Binding,
     pub ledger: Ledger,
-    pub report: ReportV2,
+    pub report: Report,
     pub project: ProjectId,
     /// A lock file left by a session that ended without releasing it, reclaimed: its record.
     pub reclaimed_lock: Option<String>,
@@ -110,7 +110,7 @@ pub struct Opened {
 /// The file a project is bound to, holding its writer lock while bound.
 #[derive(Debug, Default)]
 pub struct Binding {
-    disk: Option<Box<crate::disk::DiskProjectV2>>,
+    disk: Option<Box<crate::disk::DiskProject>>,
 }
 
 /// What the debugger's Storage view shows of a version 2 file (copies; no file access).
@@ -125,13 +125,13 @@ pub struct StorageFacts {
     /// Transactions between automatic snapshots.
     pub snapshot_every: u64,
     /// What the last save wrote: first and last `seq`, bytes, chunks and snapshots written.
-    pub last_save: Option<crate::SavedV2>,
+    pub last_save: Option<crate::Saved>,
     pub writable: bool,
 }
 
 impl StorageFacts {
     /// The facts of the project in a file (copies; no file access).
-    pub fn of(p: &crate::ProjectV2) -> Self {
+    pub fn of(p: &crate::Project) -> Self {
         StorageFacts {
             branch: format!("{} ({})", p.branch_record().name, p.branch().hex()),
             head: p.head().0,
@@ -237,7 +237,7 @@ impl Binding {
     /// The file cannot be read or is not a project file this build supports.
     pub fn open(path: &str, seed: u64, writer: &str) -> Result<Opened, BindingError> {
         not_a_project(path)?;
-        let o = crate::disk::DiskProjectV2::open(std::path::Path::new(path), seed, writer)?;
+        let o = crate::disk::DiskProject::open(std::path::Path::new(path), seed, writer)?;
         let project = o.project.project().project_id();
         let tag_high = o.project.project().base_tag_high().clone();
         Ok(Opened {
@@ -256,7 +256,7 @@ impl Binding {
     /// As [`Binding::open`].
     pub fn open_read_only(path: &str, seed: u64, writer: &str) -> Result<Opened, BindingError> {
         not_a_project(path)?;
-        let o = crate::disk::DiskProjectV2::open_read_only(std::path::Path::new(path), seed, writer)?;
+        let o = crate::disk::DiskProject::open_read_only(std::path::Path::new(path), seed, writer)?;
         let project = o.project.project().project_id();
         let tag_high = o.project.project().base_tag_high().clone();
         Ok(Opened {
@@ -275,7 +275,7 @@ impl Binding {
     }
 
     /// Make the opened project read-only for the unknown words found on open
-    /// ([`crate::disk::DiskProjectV2::refuse_unknown_words`]).
+    /// ([`crate::disk::DiskProject::refuse_unknown_words`]).
     pub fn refuse_unknown_words(&mut self, words: Vec<ecad_model::strict::UnknownWord>) {
         if let Some(d) = self.disk.as_mut() {
             d.refuse_unknown_words(words);
@@ -307,14 +307,14 @@ impl Binding {
         let p = std::path::Path::new(path);
         let r = match &mut self.disk {
             Some(d) => d.save_as(p, ledger, created_ms, writer),
-            None => crate::disk::DiskProjectV2::create(p, project, ledger, None, created_ms, writer).map(|(d, unconfirmed)| {
+            None => crate::disk::DiskProject::create(p, project, ledger, None, created_ms, writer).map(|(d, unconfirmed)| {
                 self.disk = Some(Box::new(d));
                 unconfirmed
             }),
         };
         match r {
             Ok(None) => Ok(Written::Confirmed),
-            Ok(Some(e)) => Ok(Written::Unconfirmed(crate::disk::DiskErrorV2::Unconfirmed(e).to_string())),
+            Ok(Some(e)) => Ok(Written::Unconfirmed(crate::disk::DiskError::Unconfirmed(e).to_string())),
             Err(e) => Err(BindingError::Disk(e)),
         }
     }
@@ -341,12 +341,12 @@ impl Binding {
     }
 
     /// The project in the bound file (brief 020: its branches and history).
-    pub fn v2(&self) -> Option<&crate::ProjectV2> {
+    pub fn project(&self) -> Option<&crate::Project> {
         self.disk.as_deref().map(|d| d.project())
     }
 
     /// The project in the bound file, for branch actions (brief 020).
-    pub fn v2_mut(&mut self) -> Option<&mut crate::ProjectV2> {
+    pub fn project_mut(&mut self) -> Option<&mut crate::Project> {
         self.disk.as_deref_mut().map(|d| d.project_mut())
     }
 }

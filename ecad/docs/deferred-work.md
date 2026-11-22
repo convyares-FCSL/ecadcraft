@@ -101,7 +101,7 @@ started.
 - As a separate CI task (house rule 11), remove the stale `targets: wasm32-unknown-unknown` line
   and the wasm step name in `.github/workflows/ci.yml`. ECAD's own wasm code, `ruzstd` and the
   toolchain's wasm target were removed in 0.2.3 (review findings 15, 21, 45, 61).
-- Pass the branch seed explicitly when the R9/types lanes touch `ProjectV2::create_branch`. The
+- Pass the branch seed explicitly when the R9/types lanes touch `Project::create_branch`. The
   crate split (067 step 1c) left its signature alone: `BranchId::from_seed` takes the entropy
   from `ecad_store::random_u128` inside it (overseer, 2026-11-15).
 

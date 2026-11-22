@@ -2,7 +2,7 @@
 //! stored (brief 070).
 //!
 //! Each variant's `Display` is the sentence the crate wrote as text before, word for word. The
-//! errors of whole operations ([`crate::OpenErrorV2`], [`crate::SaveErrorV2`],
+//! errors of whole operations ([`crate::OpenError`], [`crate::SaveError`],
 //! [`crate::BranchError`], [`crate::StoreError`], [`crate::binding::BindingError`]) carry it where
 //! the problem lies in the file.
 
@@ -41,7 +41,7 @@ pub enum FileError {
     Model(#[from] ModelError),
     /// A save's own error, where a read shares the save's code (the merge index).
     #[error(transparent)]
-    Save(Box<crate::SaveErrorV2>),
+    Save(Box<crate::SaveError>),
     /// A position that does not fit this platform's integers.
     #[error(transparent)]
     Int(#[from] std::num::TryFromIntError),

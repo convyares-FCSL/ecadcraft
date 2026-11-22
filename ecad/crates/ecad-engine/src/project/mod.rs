@@ -58,7 +58,7 @@ pub struct Project {
     pub file: crate::file::Binding,
     /// What opening reported, when the project was opened from a file on disk or from the test
     /// store.
-    pub open_report: Option<ecad_file::ReportV2>,
+    pub open_report: Option<ecad_file::Report>,
     pub pages: BTreeMap<PageId, PageView>,
     pub events: EventLog,
     pub clips: BTreeMap<u64, ClipSnapshot>,

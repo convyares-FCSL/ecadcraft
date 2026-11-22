@@ -14,9 +14,9 @@ pub struct Row {
     pub variant: String,
     pub measured: Measured,
     /// The same project in container version 2 (brief 021).
-    pub v2: Option<crate::v2::MeasuredV2>,
+    pub v2: Option<crate::container::Measured>,
     /// Zstandard codecs compared on that file (brief 021).
-    pub compression: Option<crate::v2::Compression>,
+    pub compression: Option<crate::container::Compression>,
     /// History and branches on that file (brief 020a).
     pub history: Option<crate::history::MeasuredHistory>,
     /// Locations, reports and printing on that file (brief 024).
@@ -272,7 +272,7 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
         ));
     }
     out.push_str(
-        "v2 open: the latest snapshot and its tail (DiskProjectV2::open). v2 save: one add-wire transaction \
+        "v2 open: the latest snapshot and its tail (DiskProject::open). v2 save: one add-wire transaction \
          saved, durable. crash open: after a child saved and exited without closing the file (redb quick \
          repair). open x10: after the history grew tenfold.\n",
     );

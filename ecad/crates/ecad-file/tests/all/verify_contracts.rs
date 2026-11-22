@@ -11,7 +11,7 @@ use crate::container_v2::TempDir;
 use ecad_file::chain::{self, Hash};
 use ecad_file::schema::{self, BranchId, VersionKind, VersionRecord};
 use ecad_file::verify::{VerifyReport, verify, verify_chain};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
 use redb::ReadableTable;
 
@@ -48,7 +48,7 @@ fn build(name: &str) -> Fixture2 {
     let path = dir.path("p.ecad");
     let mut proj = {
         let store = Store::create(&path).unwrap();
-        ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0
+        Project::create(store, PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0
     };
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     for i in 0..20 {
@@ -296,7 +296,7 @@ fn rewrite_rows(
 
 /// `branch`'s whole log, decoded.
 fn log_of(p: &Path, branch: BranchId) -> Vec<Transaction> {
-    let o = ProjectV2::open(store(p), 1, WRITER).unwrap();
+    let o = Project::open(store(p), 1, WRITER).unwrap();
     let last = o.project.store().reader().unwrap().last_seq(branch).unwrap().unwrap();
     o.project.tx_display(branch, 1, last).unwrap()
 }

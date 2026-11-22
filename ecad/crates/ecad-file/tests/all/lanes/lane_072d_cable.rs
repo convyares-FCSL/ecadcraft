@@ -3,7 +3,7 @@
 
 use crate::common::*;
 use crate::container_v2::TempDir;
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::style::cable::Shield;
 use ecad_model::*;
 
@@ -21,8 +21,8 @@ fn a_cables_shield_and_its_modify_op_come_back_from_the_snapshot_and_the_log() {
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
     for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
         let p = dir.path(name);
-        ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
-        let mut opened = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
+        let mut opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
         assert_eq!(opened.ledger.document().cables.get(&k), Some(&after), "{name}");
         // The log holds the op whole: undoing it gives the cable as made.
         opened.ledger.undo(Author::User).unwrap();

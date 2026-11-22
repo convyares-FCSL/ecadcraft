@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use crate::common::{PROJECT, fixture};
 use ecad_file::schema::VersionKind;
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
 use ecad_store::power::{CrashMode, PowerLoss, Rng};
 
@@ -62,7 +62,7 @@ fn power_round(seed: u64, mode: CrashMode, span: Option<u64>) -> std::result::Re
     let disk = PowerLoss::default();
     let mut f = fixture();
     let store = Store::with_backend(disk.clone()).map_err(|e| e.to_string())?;
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, "crash", 16).map_err(|e| e.to_string())?;
+    let (mut proj, _) = Project::create(store, PROJECT, &f.ledger, None, "crash", 16).map_err(|e| e.to_string())?;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let mut ledger = f.ledger;
     let mut acked = (ledger.head(), ledger.document().clone());
@@ -90,7 +90,7 @@ fn power_round(seed: u64, mode: CrashMode, span: Option<u64>) -> std::result::Re
     drop(proj);
     let image = disk.crash(&mut rng, mode);
     let store = Store::with_backend(PowerLoss::from_image(image)).map_err(|e| format!("reopen: {e}"))?;
-    let o = ProjectV2::open(store, 1, "crash").map_err(|e| format!("open: {e}"))?;
+    let o = Project::open(store, 1, "crash").map_err(|e| format!("open: {e}"))?;
     if let Some(d) = &o.report.damage {
         return Err(format!("damage after the cut: {d:?}"));
     }
@@ -167,12 +167,12 @@ fn child_v2_writer() {
     let Some(file) = std::env::var_os("ECAD_TEST_CHILD").and(std::env::var_os(CHILD_FILE)) else { return };
     let file = PathBuf::from(file);
     let (mut disk, mut ledger) = if file.exists() {
-        let o = ecad_file::disk::DiskProjectV2::open(&file, std::process::id().into(), "crash child").unwrap();
+        let o = ecad_file::disk::DiskProject::open(&file, std::process::id().into(), "crash child").unwrap();
         assert!(o.report.damage.is_none(), "{:?}", o.report);
         (o.project, o.ledger)
     } else {
         let mut f = fixture();
-        let (d, _) = ecad_file::disk::DiskProjectV2::create(&file, PROJECT, &mut f.ledger, None, None, "crash child").unwrap();
+        let (d, _) = ecad_file::disk::DiskProject::create(&file, PROJECT, &mut f.ledger, None, None, "crash child").unwrap();
         (d, f.ledger)
     };
     let mut acks = std::fs::OpenOptions::new().create(true).append(true).open(acks_path(&file)).unwrap();
@@ -306,7 +306,7 @@ fn killed_mid_save_reopens_at_the_last_acknowledged_save() {
             .collect();
         let last_save = saves.keys().next_back().copied().unwrap_or(0);
         let t = Instant::now();
-        let opened = ecad_file::disk::DiskProjectV2::open(&file, 1, "crash parent");
+        let opened = ecad_file::disk::DiskProject::open(&file, 1, "crash parent");
         reopen_ms.push(t.elapsed().as_secs_f64() * 1000.0);
         let o = match opened {
             Ok(o) => o,
@@ -391,7 +391,7 @@ fn child_v2_save_as_writer() {
     let mut rng = Rng::new(u64::from(std::process::id()) ^ 0x5A5A);
     let mut f = fixture();
     let first = dir.join("p0.ecad");
-    let (mut disk, _) = ecad_file::disk::DiskProjectV2::create(&first, PROJECT, &mut f.ledger, None, None, "crash child").unwrap();
+    let (mut disk, _) = ecad_file::disk::DiskProject::create(&first, PROJECT, &mut f.ledger, None, None, "crash child").unwrap();
     let mut ledger = f.ledger;
     ack(&mut acks, &format!("f {} {} {}", first.display(), ledger.head(), digest(ledger.document())));
     for i in 1..u32::MAX {
@@ -409,7 +409,7 @@ fn child_v2_save_as_writer() {
             let n = 1 + rng.below(50);
             edit(&mut g.ledger, &mut rng, n, false);
             let target = dir.join(format!("n{i}.ecad"));
-            let (d, _) = ecad_file::disk::DiskProjectV2::create(&target, PROJECT, &mut g.ledger, None, None, "crash child").unwrap();
+            let (d, _) = ecad_file::disk::DiskProject::create(&target, PROJECT, &mut g.ledger, None, None, "crash child").unwrap();
             drop(d);
             ack(&mut acks, &format!("f {} {} {}", target.display(), g.ledger.head(), digest(g.ledger.document())));
         }
@@ -466,7 +466,7 @@ fn killed_during_save_as_or_a_first_save_leaves_only_whole_files() {
             }
             files_checked += 1;
             let key = path.display().to_string();
-            match ecad_file::disk::DiskProjectV2::open(&path, 1, "crash parent") {
+            match ecad_file::disk::DiskProject::open(&path, 1, "crash parent") {
                 Ok(o) => {
                     if let Some(d) = &o.report.damage {
                         failures.push(format!("round {round}: {key} is damaged: {d:?}"));

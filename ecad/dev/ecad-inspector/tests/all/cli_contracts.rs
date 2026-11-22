@@ -46,14 +46,14 @@ fn ecadinspect_shows_every_table() {
 /// branch by name and `versions` lists a branch's own version.
 #[test]
 fn ecadinspect_verifies_and_shows_a_file_with_branches() {
-    use ecad_file::{ProjectV2, Store};
+    use ecad_file::{Project, Store};
     let dir = TempDir::new("inspect-branches");
     let mut l = history();
     let out = written(&dir, &l);
     let o = out.to_str().unwrap();
     let ten = l.document().versions["Ten"];
     {
-        let opened = ProjectV2::open(Store::open(&out, true).unwrap(), 3, "tester").unwrap();
+        let opened = Project::open(Store::open(&out, true).unwrap(), 3, "tester").unwrap();
         let mut proj = opened.project;
         l = opened.ledger;
         let main = proj.branch();
@@ -100,7 +100,7 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
     // A second branch named "Gone" (the first is archived, so the name is free): a name is no
     // longer enough, an ID is.
     let ids: Vec<(String, String)> = {
-        let opened = ProjectV2::open(Store::open(&out, true).unwrap(), 6, "tester").unwrap();
+        let opened = Project::open(Store::open(&out, true).unwrap(), 6, "tester").unwrap();
         let mut proj = opened.project;
         let main = BranchIdOf::main(&proj);
         proj.create_branch("Gone", main, 2, None, None).unwrap();
@@ -120,7 +120,7 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
 /// `main`'s ID of a project.
 struct BranchIdOf;
 impl BranchIdOf {
-    fn main(p: &ecad_file::ProjectV2) -> ecad_file::schema::BranchId {
+    fn main(p: &ecad_file::Project) -> ecad_file::schema::BranchId {
         ecad_file::schema::BranchId::main_of(p.project_id().0)
     }
 }

@@ -145,7 +145,7 @@ pub struct Prepared {
 /// target from the source records the source's head (`A1`), a merge into the source from the
 /// target records the target's head (`A2`); the newer of them, else the fork.
 fn ancestor(p: &Project, s: &Sides) -> Result<(BranchId, u64), String> {
-    let v = p.file.v2().ok_or("Branches live in the project file. Save it first.")?;
+    let v = p.file.project().ok_or("Branches live in the project file. Save it first.")?;
     let rows = |b: BranchId| if b == history::current(p) { v.merge_index(&p.ledger) } else { v.merge_rows(b) }.map_err(|e| e.to_string());
     // A1: into the target from the source, at target step m, of source head s1.
     let a1 = rows(s.target)?.into_iter().filter(|m| m.source == s.source).max_by_key(|m| m.seq);
@@ -212,7 +212,7 @@ pub fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
     // state plus those steps, so every difference lies there).
     let (child, parent) = (sides.child(), sides.parent());
     let mut scope = Scope::default();
-    let mut high = p.file.v2().map(|v| v.base_tag_high().clone()).unwrap_or_default();
+    let mut high = p.file.project().map(|v| v.base_tag_high().clone()).unwrap_or_default();
     let mut target_last: BTreeMap<Obj, u64> = BTreeMap::new();
     for (b, from, to) in [(child, 1, head_of(p, child)?), (parent, sides.fork + 1, head_of(p, parent)?)] {
         let mut at = from;
@@ -291,7 +291,7 @@ pub fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
 /// The target-side position of the newest merge into the target from the source (where its
 /// ancestor lands on the target's line).
 fn last_merge_pos(p: &Project, s: &Sides) -> Option<u64> {
-    let v = p.file.v2()?;
+    let v = p.file.project()?;
     let rows = if s.target == history::current(p) { v.merge_index(&p.ledger).ok()? } else { v.merge_rows(s.target).ok()? };
     rows.into_iter().filter(|m| m.source == s.source).map(|m| m.seq).max()
 }
@@ -642,7 +642,7 @@ impl Command for MergeParams {
         let given = self.choices.unwrap_or_default();
         if self.preview == Some(true) {
             return on_any_page(s, |p, _| {
-                if p.file.v2().is_none() {
+                if p.file.project().is_none() {
                     return Err(CmdError::refused("Branches live in the project file. Save it first."));
                 }
                 let sides = sides(p, &self.from, self.into.as_deref()).map_err(CmdError::refused)?;
@@ -695,7 +695,7 @@ fn merge(
             line = format!("{said}This branch already has {}'s changes.", sides.source_name);
         } else if close && asked_close == Some(true) {
             let head = p.ledger.head();
-            let v = p.file.v2_mut().ok_or(CmdError::refused(NO_FILE))?;
+            let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
             v.mark_merged(sides.source, sides.target, head).map_err(|e| CmdError::refused(e.to_string()))?;
             p.note_branch_change();
             line.push_str(&format!(" Branch \"{}\" closed.", sides.source_name));
@@ -703,7 +703,7 @@ fn merge(
         pg.echo(line.clone());
         return Ok(json!({"merged": false, "message": line}));
     }
-    let v = p.file.v2().ok_or(CmdError::refused(NO_FILE))?;
+    let v = p.file.project().ok_or(CmdError::refused(NO_FILE))?;
     let source_head = prep.key.0;
     let chain = |b, seq| v.chain_of(b, seq).map_err(CmdError::from);
     let kind = TxKind::Merge {
@@ -714,7 +714,7 @@ fn merge(
     let changes = plan.changes.len();
     let resolved = plan.conflicts.len();
     let tx = p.apply_merge(pg, &label(&prep), kind, plan.ops.clone()).map_err(CmdError::refused)?;
-    if close && let Some(v) = p.file.v2_mut() {
+    if close && let Some(v) = p.file.project_mut() {
         v.close_on_save(tx, sides.source);
     }
     p.merge_cache = None;
@@ -755,7 +755,7 @@ fn top_is_merge(p: &Project) -> bool {
     match top.kind {
         TxKind::Merge { .. } => true,
         TxKind::Redo { .. } if merge_label(&top.label) => {
-            p.file.v2().and_then(|v| v.merge_index(&p.ledger).ok()).is_some_and(|m| m.iter().any(|x| x.seq == top.seq))
+            p.file.project().and_then(|v| v.merge_index(&p.ledger).ok()).is_some_and(|m| m.iter().any(|x| x.seq == top.seq))
         }
         _ => false,
     }
@@ -765,7 +765,7 @@ fn top_is_merge(p: &Project) -> bool {
 /// only that branch is reopened by undoing it (tester 020b, defect 1).
 fn closed_by_top(p: &Project) -> Option<BranchId> {
     let top = p.ledger.undo_top()?;
-    let v = p.file.v2()?;
+    let v = p.file.project()?;
     let cur = history::current(p).hex();
     let source = match top.kind {
         TxKind::Merge { source, .. } => BranchId(source),

@@ -38,7 +38,7 @@ pub const HOLDER: &str = "ecad-bench";
 pub struct Measured {
     pub bytes: u64,
     pub transactions: u64,
-    /// Open the version 2 file to its document (`DiskProjectV2::open`, no CADCraft).
+    /// Open the version 2 file to its document (`DiskProject::open`, no CADCraft).
     pub open_ms: f64,
     /// Nets on the opened document (`ecad_model::derive::nets`).
     pub derive_ms: f64,
@@ -48,7 +48,7 @@ pub struct Measured {
     pub first_page_ms: f64,
     /// Commit one add-wire transaction to the loaded project (`Ledger::commit`).
     pub edit_ms: f64,
-    /// Write that transaction to the file, durable before it returns (`DiskProjectV2::save`).
+    /// Write that transaction to the file, durable before it returns (`DiskProject::save`).
     pub save_ms: f64,
     /// Move a component with wires attached on page 1, in a headless CADCraft session (brief 014).
     pub draw_move_ms: f64,
@@ -159,8 +159,8 @@ pub(crate) fn path_text(path: &Path) -> Result<&str, String> {
 }
 
 /// Open `path` as the app's file layer does; refuse a damaged or read-only open.
-fn open(path: &Path) -> Result<ecad_file::disk::OpenedDiskV2, String> {
-    crate::v2::open(path)
+fn open(path: &Path) -> Result<ecad_file::disk::OpenedDisk, String> {
+    crate::container::open(path)
 }
 
 /// The time to derive the cable references of `doc` (brief 010's

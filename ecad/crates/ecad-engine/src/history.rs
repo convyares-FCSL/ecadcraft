@@ -53,12 +53,12 @@ pub fn main_of(p: &Project) -> BranchId {
 
 /// The branch shown.
 pub fn current(p: &Project) -> BranchId {
-    p.file.v2().map_or_else(|| main_of(p), ecad_file::ProjectV2::branch)
+    p.file.project().map_or_else(|| main_of(p), ecad_file::Project::branch)
 }
 
 /// The branch shown's name.
 pub fn current_name(p: &Project) -> String {
-    p.file.v2().map_or_else(|| "main".to_string(), |v| v.branch_record().name.clone())
+    p.file.project().map_or_else(|| "main".to_string(), |v| v.branch_record().name.clone())
 }
 
 /// Every branch row of the file (`main` first); a project without a version 2 file has only
@@ -67,7 +67,7 @@ pub fn current_name(p: &Project) -> String {
 /// # Errors
 /// The file could not be read.
 pub fn branch_rows(p: &Project) -> Result<Vec<(BranchId, BranchRecord)>, String> {
-    match p.file.v2() {
+    match p.file.project() {
         Some(v) => v.branches().map_err(|e| e.to_string()),
         None => {
             let head = ecad_file::schema::Point { seq: p.ledger.head(), chain: String::new() };
@@ -78,13 +78,13 @@ pub fn branch_rows(p: &Project) -> Result<Vec<(BranchId, BranchRecord)>, String>
 
 /// How many branches the project has (open or not); 1 without a file.
 pub fn branch_count(p: &Project) -> usize {
-    p.file.v2().and_then(|v| v.branches().ok()).map_or(1, |b| b.len())
+    p.file.project().and_then(|v| v.branches().ok()).map_or(1, |b| b.len())
 }
 
 /// The lineage of `branch`: itself, then its parents up to `main`, each with the parent's step it
 /// forks after.
 fn lineage_of(p: &Project, branch: BranchId) -> Result<Vec<(BranchId, Option<u64>)>, String> {
-    let Some(v) = p.file.v2() else {
+    let Some(v) = p.file.project() else {
         return Ok(vec![(main_of(p), None)]);
     };
     let line = if branch == v.branch() {
@@ -98,7 +98,7 @@ fn lineage_of(p: &Project, branch: BranchId) -> Result<Vec<(BranchId, Option<u64
 
 /// The version rows (user and revision) of `branch` in the file.
 fn rows(p: &Project, branch: BranchId, kinds: &[VersionKind]) -> Result<Vec<ecad_file::schema::VersionRecord>, String> {
-    let Some(v) = p.file.v2() else { return Ok(Vec::new()) };
+    let Some(v) = p.file.project() else { return Ok(Vec::new()) };
     let r = v.store().reader().map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for k in kinds {
@@ -173,7 +173,7 @@ fn tx_at(p: &Project, branch: BranchId, seq: u64) -> Option<Transaction> {
     {
         return Some(t.clone());
     }
-    p.file.v2()?.tx_display(branch, seq, seq).ok()?.into_iter().next()
+    p.file.project()?.tx_display(branch, seq, seq).ok()?.into_iter().next()
 }
 
 /// Steps `from..=to` of `branch`, oldest first.
@@ -186,7 +186,7 @@ pub(crate) fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<V
         let mut out = Vec::new();
         if from <= base {
             let hi = to.min(base);
-            match (p.file.v2(), p.ledger.history()) {
+            match (p.file.project(), p.ledger.history()) {
                 (Some(v), _) => out.extend(v.tx_display(branch, from, hi).map_err(|e| e.to_string())?),
                 (None, Some(h)) => out.extend(h.transactions(from, hi).map_err(|e| e.to_string())?),
                 (None, None) => {}
@@ -199,7 +199,7 @@ pub(crate) fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<V
         }
         return Ok(out);
     }
-    p.file.v2().ok_or("this branch is not in a file")?.tx_display(branch, from, to).map_err(|e| e.to_string())
+    p.file.project().ok_or("this branch is not in a file")?.tx_display(branch, from, to).map_err(|e| e.to_string())
 }
 
 /// The local zone's offset from UTC at `ms`, in seconds (overseer, 2026-11-10: the graph and the
@@ -317,7 +317,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
             }
         }
         // Merges into this branch (the merge index, FQ2), its unsaved ones included.
-        if let Some(v) = p.file.v2() {
+        if let Some(v) = p.file.project() {
             let merges = if is_cur { v.merge_index(&p.ledger) } else { v.merge_rows(*id) }.map_err(|e| e.to_string())?;
             for m in merges {
                 let src = names.get(&m.source).cloned().unwrap_or_else(|| "a branch".into());
@@ -341,7 +341,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
         }
         if *id == main {
             let label = "Project created".to_string();
-            let created = p.file.v2().and_then(ecad_file::ProjectV2::created_ms);
+            let created = p.file.project().and_then(ecad_file::Project::created_ms);
             nodes.push(Node {
                 branch: main,
                 seq: 0,
@@ -505,7 +505,7 @@ pub fn point_at(p: &Project, q: &PointQuery) -> Result<Point, CmdError> {
 /// The file could not be read or replayed.
 pub fn state_at(p: &Project, pt: &Point) -> Result<Document, String> {
     match reads_saved(p, pt) {
-        true => p.file.v2().ok_or("this branch is not in a file")?.point_state(pt.branch, pt.seq).map_err(|e| e.to_string()),
+        true => p.file.project().ok_or("this branch is not in a file")?.point_state(pt.branch, pt.seq).map_err(|e| e.to_string()),
         false => p.ledger.state_at(pt.seq).map_err(|e| e.to_string()),
     }
 }
@@ -554,7 +554,7 @@ pub fn issued_state(p: &Project, rev: &str) -> Result<(Named, u64, Document), St
 /// branch. Only an unsaved point of the branch shown comes from the ledger, undoing at most the
 /// unsaved steps, so the cost never grows with the session's length.
 pub fn reads_saved(p: &Project, pt: &Point) -> bool {
-    p.file.v2().is_some_and(|v| pt.branch != v.branch() || pt.seq <= v.head().0)
+    p.file.project().is_some_and(|v| pt.branch != v.branch() || pt.seq <= v.head().0)
 }
 
 /// Whether `pt` lies on the branch shown's line: its own steps, or its ancestry's at or before
@@ -739,7 +739,7 @@ fn title_name(pt: &Point) -> Option<String> {
 /// Pages changed, added and removed between two saved snapshots, from their chunk hashes
 /// (design 020 §2.4): no document is built.
 fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
-    let Some(v) = p.file.v2() else { return Vec::new() };
+    let Some(v) = p.file.project() else { return Vec::new() };
     let Ok(r) = v.store().reader() else { return Vec::new() };
     let find = |b: BranchId, name: &str| [VersionKind::User, VersionKind::Revision].iter().find_map(|k| r.version(b, *k, name).ok().flatten());
     let (Some(name), Some(a)) = (title_name(pt), find(prev.branch, &prev.name)) else { return Vec::new() };
@@ -1174,7 +1174,7 @@ const NO_FILE: &str = "no file";
 
 /// Why branch actions cannot run: no version 2 file yet (design 020 §2.6), or read-only.
 pub(crate) fn branch_file(p: &Project) -> Result<(), String> {
-    match p.file.v2() {
+    match p.file.project() {
         None => Err("Branches live in the project file. Save it first.".into()),
         Some(v) => match v.read_only() {
             Some(r) => Err(format!("The project is read-only ({r}); branches cannot be changed.")),
@@ -1257,7 +1257,7 @@ impl Command for BranchParams {
             // Saved first (owner answer 3): the fork point and the branch row are in the file.
             p.save_pending(pg).map_err(CmdError::refused)?;
             let by = Some(author_text(&p.author));
-            let v = p.file.v2_mut().ok_or(CmdError::refused(SAVE_FIRST))?;
+            let v = p.file.project_mut().ok_or(CmdError::refused(SAVE_FIRST))?;
             let (id, rec) =
                 v.create_branch(&name, from.branch, from.seq, crate::project::now_ms(), by).map_err(|e| CmdError::refused(e.to_string()))?;
             p.note_branch_change();
@@ -1278,7 +1278,7 @@ impl Command for BranchParams {
 pub(crate) fn switch_to(p: &mut Project, pg: &mut Pages<'_>, id: BranchId) -> Result<(), String> {
     let seed = crate::project::session_seed();
     let ledger = p.ledger.clone();
-    let v = p.file.v2_mut().ok_or("Branches live in the project file. Save it first.")?;
+    let v = p.file.project_mut().ok_or("Branches live in the project file. Save it first.")?;
     let (l, report) = v.switch_to(&ledger, id, seed).map_err(|e| e.to_string())?;
     let high = v.base_tag_high().clone();
     p.adopt_branch(pg, l, high)?;
@@ -1303,7 +1303,7 @@ impl Command for RenamebranchParams {
         on_any_page(s, |p, pg| {
             branch_file(p).map_err(CmdError::refused)?;
             let (id, old) = find_branch(p, &self.branch).map_err(CmdError::refused)?;
-            let v = p.file.v2_mut().ok_or(CmdError::refused(NO_FILE))?;
+            let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
             let rec = v.rename_branch(id, &self.name).map_err(|e| CmdError::refused(e.to_string()))?;
             p.note_branch_change();
             let line = format!("Branch \"{}\" renamed \"{}\".", old.name, rec.name);
@@ -1351,14 +1351,14 @@ impl Command for SwitchbranchParams {
 
 /// `switchbranch`'s work.
 fn switch_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, save: bool) -> Result<Value, CmdError> {
-    if p.file.v2().is_none() {
+    if p.file.project().is_none() {
         return Err(CmdError::refused(SAVE_FIRST));
     }
     let (id, rec) = find_branch(p, which).map_err(CmdError::refused)?;
     if id == current(p) {
         return Ok(json!({"branch": id.hex(), "name": rec.name, "switched": false, "message": format!("Already on branch \"{}\".", rec.name)}));
     }
-    let read_only = p.file.v2().and_then(|v| v.read_only()).is_some();
+    let read_only = p.file.project().and_then(|v| v.read_only()).is_some();
     if p.unsaved() && read_only {
         // Never a silent loss (design 020 §3.3): the edits can only be kept by Save As.
         return Err(CmdError::refused(read_only_refusal(p)));
@@ -1423,7 +1423,7 @@ fn archive_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str) -> Result<Va
         switch_to(p, pg, to).map_err(CmdError::refused)?;
         line.push_str(&format!("{why}Now on branch \"{}\". ", current_name(p)));
     }
-    let v = p.file.v2_mut().ok_or(CmdError::refused(NO_FILE))?;
+    let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
     v.set_branch_open(id, false).map_err(|e| CmdError::refused(e.to_string()))?;
     p.note_branch_change();
     line.push_str(&format!("Branch \"{}\" archived; reopen it from \"Show merged and archived\".", rec.name));
@@ -1473,7 +1473,7 @@ fn reopen_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, name: Option<
         return Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}));
     }
     let free = free_branch_name(p, &rec.name, Some(id));
-    let v = p.file.v2_mut().ok_or(CmdError::refused(NO_FILE))?;
+    let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
     let reopened = match name {
         Some(n) => v.reopen_as(id, n),
         None => v.set_branch_open(id, true),

@@ -17,7 +17,7 @@ use std::time::Instant;
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::schema::{BranchId, BranchStatus};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
 use ecad_store::power::{CrashMode, PowerLoss, Rng};
 use redb::ReadableDatabase;
@@ -49,7 +49,7 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
     let disk = PowerLoss::default();
     let mut f = fixture();
     let store = Store::with_backend(disk.clone()).map_err(|e| e.to_string())?;
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, "crash", 16).map_err(|e| e.to_string())?;
+    let (mut proj, _) = Project::create(store, PROJECT, &f.ledger, None, "crash", 16).map_err(|e| e.to_string())?;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     if let Some(c) = cut {
         disk.cut_after(c);
@@ -173,7 +173,7 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
     }
     let image = disk.crash(&mut rng, mode);
     let store = Store::with_backend(PowerLoss::from_image(image)).map_err(|e| format!("reopen: {e}"))?;
-    let o = ProjectV2::open(store, 1, "crash").map_err(|e| format!("open: {e}"))?;
+    let o = Project::open(store, 1, "crash").map_err(|e| format!("open: {e}"))?;
     if let Some(d) = &o.report.damage {
         return Err(format!("damage after the cut: {d:?}"));
     }
@@ -202,7 +202,7 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
     ))
 }
 
-fn observe(o: &ecad_file::OpenedV2) -> Result<Expect, String> {
+fn observe(o: &ecad_file::Opened) -> Result<Expect, String> {
     let mut branches = BTreeMap::new();
     for (id, rec) in o.project.branches().map_err(|e| e.to_string())? {
         let doc = o.project.point_state(id, rec.head.seq).map_err(|e| e.to_string())?;
@@ -285,7 +285,7 @@ fn a_save_on_main_by_a_build_that_only_knows_main_leaves_the_branch_consistent()
         let mut f = fixture();
         let p = dir.path("p.ecad");
         let store = Store::create(&p).unwrap();
-        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 16).unwrap();
+        let (mut proj, _) = Project::create(store, PROJECT, &f.ledger, Some(1), WRITER, 16).unwrap();
         f.ledger.mark_persisted(f.ledger.head()).unwrap();
         let mut rng = Rng::new(5);
         let main = proj.branch();
@@ -308,7 +308,7 @@ fn a_save_on_main_by_a_build_that_only_knows_main_leaves_the_branch_consistent()
         // writes back the cache as it knows it.
         let active = meta_get(&p, "active").expect("switching wrote meta.active");
         meta_put(&p, "active", None);
-        let o = ProjectV2::open(Store::open(&p, true).unwrap(), 9, "older build").unwrap();
+        let o = Project::open(Store::open(&p, true).unwrap(), 9, "older build").unwrap();
         assert_eq!(o.project.branch(), main);
         let (mut old, mut ml) = (o.project, o.ledger);
         for _ in 0..20 {
@@ -325,7 +325,7 @@ fn a_save_on_main_by_a_build_that_only_knows_main_leaves_the_branch_consistent()
             meta_put(&p, "cache", Some(&serde_json::to_vec(&v).unwrap()));
         }
         // This build: reopens on the branch, both lines intact.
-        let o = ProjectV2::open(Store::open(&p, true).unwrap(), 11, WRITER).unwrap();
+        let o = Project::open(Store::open(&p, true).unwrap(), 11, WRITER).unwrap();
         assert!(o.report.damage.is_none(), "drop cache {drop_branch_cache}: {:?}", o.report);
         assert_eq!(o.project.branch(), b, "reopens on the last-used branch");
         assert_eq!(o.ledger.document(), &b_doc);
@@ -356,7 +356,7 @@ fn a_stale_or_odd_meta_active_opens_on_main() {
     let f = fixture();
     let p = dir.path("p.ecad");
     let store = Store::create(&p).unwrap();
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap();
+    let (mut proj, _) = Project::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap();
     let main = proj.branch();
     let (b, _) = proj.create_branch("Gone", main, f.ledger.head(), None, None).unwrap();
     proj.set_branch_open(b, false).unwrap();
@@ -369,7 +369,7 @@ fn a_stale_or_odd_meta_active_opens_on_main() {
         serde_json::json!({"branch": b.hex()}),
     ] {
         meta_put(&p, "active", Some(&serde_json::to_vec(&value).unwrap()));
-        let o = ProjectV2::open(Store::open(&p, true).unwrap(), 1, WRITER).unwrap_or_else(|e| panic!("{value}: {e}"));
+        let o = Project::open(Store::open(&p, true).unwrap(), 1, WRITER).unwrap_or_else(|e| panic!("{value}: {e}"));
         assert_eq!(o.project.branch(), main, "{value}");
         assert!(o.report.damage.is_none(), "{value}: {:?}", o.report);
         assert_eq!(o.ledger.document(), f.ledger.document());
@@ -384,10 +384,10 @@ fn a_reader_opened_earlier_reads_a_branch_written_later() {
     let mut f = fixture();
     let p = dir.path("p.ecad");
     let store = Store::create(&p).unwrap();
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 16).unwrap();
+    let (mut proj, _) = Project::create(store, PROJECT, &f.ledger, Some(1), WRITER, 16).unwrap();
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let main = proj.branch();
-    let reader = ProjectV2::open(Store::open(&p, false).unwrap(), 2, "reader").unwrap();
+    let reader = Project::open(Store::open(&p, false).unwrap(), 2, "reader").unwrap();
     let mut rng = Rng::new(8);
     let (b, _) = proj.create_branch("Late", main, f.ledger.head(), None, None).unwrap();
     let (mut bl, _) = proj.switch_to(&f.ledger, b, 3).unwrap();

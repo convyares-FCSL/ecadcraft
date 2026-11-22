@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use crate::common::{PROJECT, SEED, WRITER};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::Store;
 use ecad_model::text::Text;
 use ecad_model::{
     Author, Device, DeviceId, DeviceLink, IdAllocator, Ledger, LinkId, LinkKind, Op, Project, UserFieldDef, UserFieldId, UserFieldKind, UserValue,
@@ -55,9 +55,9 @@ fn links_and_user_values_round_trip_through_a_project_file_and_its_snapshots() {
     for (name, every) in [("snap.ecad", 16), ("log.ecad", 1_000_000)] {
         let p = dir.path(name);
         let store = Store::create(&p).unwrap();
-        let proj = ProjectV2::create(store, PROJECT, &ledger, Some(1), WRITER, every).unwrap().0;
+        let proj = ecad_file::Project::create(store, PROJECT, &ledger, Some(1), WRITER, every).unwrap().0;
         drop(proj);
-        let o = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        let o = ecad_file::Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
         assert_eq!(o.ledger.document(), ledger.document(), "{name}");
         assert_eq!(o.ledger.full_log().unwrap(), ledger.full_log().unwrap(), "{name}: the log reads back the same ops");
         let v = ecad_file::verify::verify(o.project.store());

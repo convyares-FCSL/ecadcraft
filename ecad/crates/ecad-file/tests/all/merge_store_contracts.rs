@@ -6,16 +6,16 @@
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::schema::{BranchStatus, VersionKind};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
 
-fn create(path: &std::path::Path, ledger: &Ledger) -> ProjectV2 {
+fn create(path: &std::path::Path, ledger: &Ledger) -> Project {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, 2_000).unwrap().0
+    Project::create(store, PROJECT, ledger, Some(1), WRITER, 2_000).unwrap().0
 }
 
-fn open(path: &std::path::Path) -> ecad_file::OpenedV2 {
-    ProjectV2::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
+fn open(path: &std::path::Path) -> ecad_file::Opened {
+    Project::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
 }
 
 fn line(l: &mut Ledger, ids: &mut IdAllocator, page: PageId, layer: LayerId, x: f64) -> Op {
@@ -140,7 +140,7 @@ fn verify_refuses_a_main_row_that_open_refuses() {
     drop(proj);
     let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(!v.ok && v.lines.iter().any(|l| l.contains("main")), "{:#?}", v.lines);
-    assert!(ProjectV2::open(Store::open(&p, true).unwrap(), 1, WRITER).is_err());
+    assert!(Project::open(Store::open(&p, true).unwrap(), 1, WRITER).is_err());
 }
 
 #[test]

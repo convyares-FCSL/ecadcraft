@@ -18,6 +18,7 @@
 pub mod bom;
 pub mod cables;
 pub mod connectors;
+pub mod container;
 pub mod generate;
 pub mod history;
 pub mod measure;
@@ -32,7 +33,6 @@ pub mod styles;
 pub mod symbols;
 pub mod text;
 pub mod title_blocks;
-pub mod v2;
 pub mod wires_nets;
 
 use std::path::{Path, PathBuf};
@@ -132,7 +132,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
             let path = folder.join(format!("{}-{}.ecad", tier.name, g.variant.name()));
             measure::claim(&path)?;
             eprintln!("{} {}: writing {}…", tier.name, g.variant.name(), path.display());
-            v2::write(g, &path)?;
+            container::write(g, &path)?;
             paths.push((g.variant, path));
         }
     }
@@ -145,9 +145,9 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         let (measured, _) = measured?;
         eprintln!("{} {}: measuring version 2…", tier.name, variant.name());
         let v2_path = path;
-        let v2m = v2::measure(&v2_path, runs, scratch);
+        let v2m = container::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
-        let compression = v2::compression(&v2_path)?;
+        let compression = container::compression(&v2_path)?;
         eprintln!("{} {}: measuring history and branches…", tier.name, variant.name());
         let hist = history::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
@@ -217,7 +217,7 @@ pub fn measure_print(folder: &Path, scratch: &Path, runs: usize) -> Result<relea
     let g = generate(PRINT_TIER, Variant::Lean)?;
     let v2_path = folder.join(format!("{}-{}.ecad", PRINT_TIER.name, Variant::Lean.name()));
     measure::claim(&v2_path)?;
-    v2::write(&g, &v2_path)?;
+    container::write(&g, &v2_path)?;
     eprintln!("{}: measuring Print Book and release ({runs} runs)…", PRINT_TIER.name);
     let m = release::measure_print(&v2_path, runs, scratch);
     measure::release_lock_file(&v2_path);
