@@ -242,7 +242,7 @@ fn device(t: &App, c: DeviceId) -> Option<Detail> {
     })
 }
 
-fn side_text(cells: &[ecad_electrical::terminal_strips::SideCell]) -> String {
+fn side_text(cells: &[ecad_electrical::terminal_strips::strip_model::SideCell]) -> String {
     let v: Vec<String> = cells
         .iter()
         .map(|c| {

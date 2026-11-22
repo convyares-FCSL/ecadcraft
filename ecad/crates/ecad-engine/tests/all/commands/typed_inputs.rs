@@ -1426,9 +1426,9 @@ fn the_typed_release_commands_still_work() {
 #[test]
 fn the_level_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
-        ("termlabel", json!({"strip": "1", "level": "x"}), "`level` must be a whole number, or null"),
-        ("termlabel", json!({"strip": "1", "text": 5}), "`text` must be text, or null"),
-        ("termlabel", json!({"connection_point": "1", "move_to": "far"}), "`move_to` must be one of \"next\", \"new\", or null"),
+        ("terminalblocklabel", json!({"strip": "1", "level": "x"}), "`level` must be a whole number, or null"),
+        ("terminalblocklabel", json!({"strip": "1", "text": 5}), "`text` must be text, or null"),
+        ("terminalblocklabel", json!({"connection_point": "1", "move_to": "far"}), "`move_to` must be one of \"next\", \"new\", or null"),
         ("toposition", json!({}), "`device` (hex id) is required"),
         ("toposition", json!({"device": "1", "position": 3}), "`position` must be text, or null"),
     ];
@@ -1442,10 +1442,10 @@ fn the_level_commands_refuse_input_uniformly() {
 #[test]
 fn the_level_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("termlabel", json!({}), "`connection_point` or `strip` (hex id) is required"),
-        ("termlabel", json!({"connection_point": "1"}), "No such terminal block."),
-        ("termlabel", json!({"strip": "1"}), "Name the position to relabel with `at` (its current label), or give `connection_point`."),
-        ("termlabel", json!({"strip": "1", "at": "1"}), "That device is not a terminal strip."),
+        ("terminalblocklabel", json!({}), "`connection_point` or `strip` (hex id) is required"),
+        ("terminalblocklabel", json!({"connection_point": "1"}), "No such terminal block."),
+        ("terminalblocklabel", json!({"strip": "1"}), "Name the position to relabel with `at` (its current label), or give `connection_point`."),
+        ("terminalblocklabel", json!({"strip": "1", "at": "1"}), "That device is not a terminal strip."),
         ("toposition", json!({"device": "1"}), "No such device."),
     ];
     let mut h = H::new(7064);
@@ -1464,14 +1464,14 @@ fn the_typed_level_commands_still_work() {
     }
     let f = h.run("terminalblocks", json!({"from": [-10, 50], "to": [30, 50]})).unwrap_or(Value::Null);
     let strip = f["strip"].clone();
-    let r = h.run("termlabel", json!({"strip": strip, "at": "2", "position": " 7 "})).unwrap_or_else(|e| json!(e));
+    let r = h.run("terminalblocklabel", json!({"strip": strip, "at": "2", "position": " 7 "})).unwrap_or_else(|e| json!(e));
     assert_eq!(r["changed"], json!(true), "{r}");
     assert!(r["message"].as_str().is_some_and(|m| m.ends_with(":7 (1 level).")), "{r}");
-    let t = h.run("termlabel", json!({"strip": strip, "at": "7", "text": "L1"})).unwrap_or_else(|e| json!(e));
+    let t = h.run("terminalblocklabel", json!({"strip": strip, "at": "7", "text": "L1"})).unwrap_or_else(|e| json!(e));
     assert_eq!(t["changed"], json!(true), "{t}");
-    let clear = h.run("termlabel", json!({"strip": strip, "at": "7", "text": null})).unwrap_or_else(|e| json!(e));
+    let clear = h.run("terminalblocklabel", json!({"strip": strip, "at": "7", "text": null})).unwrap_or_else(|e| json!(e));
     assert_eq!(clear["changed"], json!(true), "{clear}");
-    let none = h.run("termlabel", json!({"strip": strip, "at": "7", "text": null})).unwrap_or_else(|e| json!(e));
+    let none = h.run("terminalblocklabel", json!({"strip": strip, "at": "7", "text": null})).unwrap_or_else(|e| json!(e));
     assert_eq!(none, json!({"changed": false, "message": "Nothing to change."}));
 }
 

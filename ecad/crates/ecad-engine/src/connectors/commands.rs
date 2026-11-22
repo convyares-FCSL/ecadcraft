@@ -151,7 +151,7 @@ impl Command for ConnectorParams {
             let done = rules::plan_connector(&p.ledger, &mut p.ids, &mut p.tag_high, active, style, input, tol)?;
             // One transaction.
             p.apply_edit(pg, "connector", &done.label, done.made.ops.clone())?;
-            p.last_placed = Some(("connector".to_string(), done.made.component));
+            p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: None, device: done.made.component });
             let doc = p.ledger.document();
             let message = rules::echo(doc, &done);
             Ok(rules::result_json(doc, &done.made, &message))
@@ -231,7 +231,7 @@ pub(crate) fn place_half(
         let proposed = crate::symbols::draw::plan_place(p, &ops, modes, c, page, origin, starter.side()).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, ops)?;
-        p.last_placed = Some((starter.key.to_string(), c));
+        p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: c });
         let doc = p.ledger.document();
         let made = Made {
             component: c,

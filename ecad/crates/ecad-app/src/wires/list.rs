@@ -28,7 +28,7 @@ pub struct RatingCopy {
 
 impl RatingCopy {
     /// Bring the copy up to date. Returns the subjects copied again, or `None` for a full copy.
-    pub fn sync(&mut self, serial: u64, kept: &ecad_electrical::circuits::Kept) -> Option<Vec<ecad_electrical::circuits::RatedSubject>> {
+    pub fn sync(&mut self, serial: u64, kept: &ecad_electrical::circuits::kept::Kept) -> Option<Vec<ecad_electrical::circuits::RatedSubject>> {
         if self.methods != kept.methods {
             self.methods = kept.methods.clone();
         }
@@ -227,7 +227,7 @@ impl WiresView {
 
     /// Brief 057: bring the rating copy up to date and patch the Status cells of the re-checked
     /// wires only.
-    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::Kept) {
+    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::kept::Kept) {
         match self.source.rating.sync(serial, kept) {
             None => self.table.update(&self.source, Changed::All),
             Some(v) if v.is_empty() => {}

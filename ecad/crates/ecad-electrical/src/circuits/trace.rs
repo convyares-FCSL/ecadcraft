@@ -23,7 +23,7 @@ use crate::circuits::RatedSubject;
 use ecad_model::objects::devices::ProtectionKind;
 
 /// Most nets one subject's trace visits (design 057 §4.2).
-pub const MAX_TRACE_NETS: usize = 64;
+pub(crate) const MAX_TRACE_NETS: usize = 64;
 
 /// How a device was found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,7 +53,7 @@ pub struct Found {
 /// The load-side pins of an overcurrent protective device (design 057 §4.2), by its stored kind
 /// (design 072 §2.2) and the pin label: the even-numbered pins of a fuse, a fuse terminal, an MCB
 /// and an RCBO (and an RCBO's `N2`); a fuse bank's numbered outputs. An RCD has none: it is crossed.
-pub fn load_side(kind: ProtectionKind, label: &str) -> bool {
+pub(crate) fn load_side(kind: ProtectionKind, label: &str) -> bool {
     let n = label.parse::<u32>().ok();
     let even = n.is_some_and(|n| n % 2 == 0 && n > 0);
     match kind {
@@ -172,7 +172,7 @@ fn step(doc: &Document, t: ConnectionPointId) -> Step {
 }
 
 /// Trace from `start` nets (design 057 §4.2).
-pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetKey>) -> Found {
+pub(crate) fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetKey>) -> Found {
     let conn = doc.connectivity();
     let mut found = Found::default();
     let mut level: Vec<NetKey> = Vec::new();
@@ -226,7 +226,7 @@ pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetKey>) -> Fo
 
 /// Trace a subject: a wire from its net; a cable from each core's net, the union of what each
 /// core finds.
-pub fn trace_subject(doc: &Document, s: RatedSubject) -> Found {
+pub(crate) fn trace_subject(doc: &Document, s: RatedSubject) -> Found {
     let conn = doc.connectivity();
     match s {
         RatedSubject::Wire(c) => trace_nets(doc, conn.net_of_conductor(c)),
@@ -285,14 +285,14 @@ pub fn protected_by(doc: &Document, text: &str) -> Option<ecad_model::objects::w
 }
 
 /// How many wires and cables name device `c` as their protection: the ones deleting it clears.
-pub fn protected_count(doc: &Document, c: DeviceId) -> (usize, usize) {
+pub(crate) fn protected_count(doc: &Document, c: DeviceId) -> (usize, usize) {
     let names = |p: Option<ecad_model::objects::wire::ProtectedBy>| p.is_some_and(|p| p.device == c);
     (doc.wires.values().filter(|w| names(w.protected_by)).count(), doc.cables.values().filter(|k| names(k.protected_by)).count())
 }
 
 /// What deleting device `c` says of the `protected_by`s it clears (`protected_by cleared on 2
 /// wires and 1 cable`); `None` when none name it.
-pub fn cleared_words(doc: &Document, c: DeviceId) -> Option<String> {
+pub(crate) fn cleared_words(doc: &Document, c: DeviceId) -> Option<String> {
     let (w, k) = protected_count(doc, c);
     let n = |n: usize, one: &str| format!("{n} {one}{}", if n == 1 { "" } else { "s" });
     let parts: Vec<String> = [(w, "wire"), (k, "cable")].into_iter().filter(|(c, _)| *c > 0).map(|(c, one)| n(c, one)).collect();
@@ -301,7 +301,7 @@ pub fn cleared_words(doc: &Document, c: DeviceId) -> Option<String> {
 
 /// The rating of a device (or its fuse) as shown: its typed rating, else its note (design 072
 /// §2.2); a strip's fuse position: its typed fuse rating.
-pub fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
+pub(crate) fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
     let key = fuse
         .map_or_else(|| ecad_model::objects::devices::RATING_KEY.to_string(), |f| format!("{}{f}", ecad_model::objects::devices::RATING_OF_PREFIX));
     doc.devices.get(&c).and_then(|d| d.value(&key)).map(|v| v.chars().take(64).collect()).unwrap_or_default()
@@ -309,7 +309,7 @@ pub fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
 
 /// In of a device (or its fuse): a protective device's or a strip's fuse position's typed rated
 /// current (design 072 §2.2 and §2.5: checks read only the typed fields).
-pub fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
+pub(crate) fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
     let d = doc.devices.get(&c)?;
     match &d.device_type {
         ecad_model::DeviceType::Protection(p) => {
@@ -325,7 +325,7 @@ pub fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
 }
 
 /// A device in words: `-Q01`, `-F01:3`.
-pub fn device_words(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
+pub(crate) fn device_words(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
     let tag = crate::devices::tags::tag_words(doc, c);
     match fuse {
         Some(f) => format!("{tag}:{f}"),

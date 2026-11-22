@@ -20,7 +20,7 @@ use crate::symbols::{Side, Starter};
 use ecad_model::objects::devices::ConnectorFamily;
 
 /// The refusal of a `connector` call with nowhere to place.
-pub const NEEDS_AT: &str = "connector needs at for a row, or line or wire for pins.";
+pub(crate) const NEEDS_AT: &str = "connector needs at for a row, or line or wire for pins.";
 
 /// The connector `device` names: a hex ID or a tag (`None`: none named).
 ///

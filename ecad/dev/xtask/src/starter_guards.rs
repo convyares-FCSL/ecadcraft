@@ -26,15 +26,14 @@ const NAMES: &[&str] = &["of_definition", "rep_starter"];
 #[rustfmt::skip]
 const ALLOWED: &[(&str, usize, &str)] = &[
     ("crates/ecad-app/src/inspector/mod.rs", 1, "the placed symbol's prefix entry in the defaults scope (the symbol's, not the device's)"),
-    ("crates/ecad-electrical/src/checks/mod.rs", 1, "a symbol marks some of its own connection points quiet (a drawing property)"),
+    ("crates/ecad-electrical/src/checks/nets.rs", 1, "a symbol marks some of its own connection points quiet (a drawing property)"),
     ("crates/ecad-electrical/src/connectors/mod.rs", 1, "the side a connector half or pin representation draws (gap: a stored side on the representation)"),
     ("crates/ecad-electrical/src/devices/hover.rs", 1, "the symbol's short name in a hover line (drawing question)"),
     ("crates/ecad-electrical/src/devices/json.rs", 1, "the symbol key a representation draws in the device JSON (drawing question)"),
     ("crates/ecad-electrical/src/devices/merge.rs", 3, "which symbol a representation is: erase and merge notes (drawing questions)"),
     ("crates/ecad-electrical/src/devices/tags.rs", 2, "the head noun and symbol names in tag words (drawing questions)"),
     ("crates/ecad-electrical/src/devices/texts.rs", 1, "the run rule of the symbol a representation draws (drawing question)"),
-    ("crates/ecad-electrical/src/plc/channels.rs", 1, "whether a definition is a channel symbol (a symbol of a card, not a device)"),
-    ("crates/ecad-electrical/src/plc/commands.rs", 3, "which representations of a card are its body or cells (drawn pieces)"),
+    ("crates/ecad-electrical/src/plc/commands/mod.rs", 3, "which representations of a card are its body or cells (drawn pieces)"),
     ("crates/ecad-electrical/src/plc/draw.rs", 3, "the cell or body piece a representation draws"),
     ("crates/ecad-electrical/src/plc/mod.rs", 5, "which representation is a channel cell or card caption (drawn pieces)"),
     ("crates/ecad-electrical/src/references/devices/classify.rs", 2, "the poles a drawn contact symbol shows (gap: a `poles` table on the definition)"),

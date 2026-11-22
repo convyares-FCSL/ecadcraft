@@ -442,7 +442,7 @@ impl App {
                 let label = self.project.clone().and_then(|p| {
                     p.read(&mut self.cad.session, |p, _| {
                         let doc = p.ledger.document();
-                        doc.cables_of(w).first().and_then(|k| ecad_electrical::terminal_strips::next_free_label(doc, *k))
+                        doc.cables_of(w).first().and_then(|k| ecad_electrical::terminal_strips::cores::next_free_label(doc, *k))
                     })
                     .ok()
                     .flatten()

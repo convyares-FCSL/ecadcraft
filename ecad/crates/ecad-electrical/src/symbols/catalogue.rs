@@ -111,7 +111,7 @@ pub const STARTERS: &[Starter] = &[
     st(K::Rcd4, "RCD, 4-pole", &["rcd", "rccb", "residual current", "protection"], HEAD, cp(6)).of(Family::Protection),
     st(K::Ssrin, "SSR input", &["ssr", "solid state relay", "relay"], HEAD, cp(7)).of(Family::Contacts),
     st(K::Ssrout, "SSR output", &["ssr", "solid state relay", "contact"], PART, cp(8)).of(Family::Contacts),
-    st(K::Fuseterm, "Fuse terminal", &["fuse", "terminal", "fuse holder", "protection"], HEAD, cp(9)).of(Family::Protection),
+    st(K::Fuseterminalblock, "Fuse terminal", &["fuse", "terminal", "fuse holder", "protection"], HEAD, cp(9)).of(Family::Protection),
     st(K::Fusebank4, "Fuse bank, 4-way", FUSE_BANK, HEAD, cp(10)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
     st(K::Fusebank6, "Fuse bank, 6-way", FUSE_BANK, HEAD, cp(11)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
     st(K::Fusebank8, "Fuse bank, 8-way", FUSE_BANK, HEAD, cp(12)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
@@ -175,7 +175,7 @@ pub const STARTERS: &[Starter] = &[
     card(K::Plcrtd, "PLC RTD card", &["plc", "rtd", "temperature", "card"], pc(7)).quiet_at(Quiet::All),
     card(K::Plciol, "PLC IO-Link master", &["plc", "io-link", "iol", "card"], pc(8)).quiet_at(Quiet::All),
     // ---- Brief 036: multi-level terminals (design 036 §3.1). Geometry, points and bridges come from
-    // `terminal_block_types`; `termfuse` shares `fuseterm`'s drawing.
+    // `terminal_block_types`; `terminalblockfuse` shares `fuseterminalblock`'s drawing.
     lvl(K::Term2L1, "Two-level terminal, level 1", TWO, mt(1)),
     lvl(K::Term2L2, "Two-level terminal, level 2", TWO, mt(2)),
     lvl(K::Term2, "Two-level terminal", TWO, mt(3)),
@@ -195,7 +195,7 @@ pub const STARTERS: &[Starter] = &[
     lvl(K::TermsensorL3, "Sensor terminal, level -", SENSOR, mt(17)),
     lvl(K::Termsensor, "Sensor terminal", SENSOR, mt(18)),
     lvl(K::Termdisc, "Disconnect terminal", &["disconnect", "knife", "isolating", "terminal"], mt(19)),
-    lvl(K::Termfuse, "Fuse terminal (strip position)", &["fuse terminal", "fuse", "terminal"], mt(20)),
+    lvl(K::Terminalblockfuse, "Fuse terminal (strip position)", &["fuse terminal", "fuse", "terminal"], mt(20)),
     // ---- Brief 045 (design 045 §3.1): a head module (a rack of its own), a power module and a
     // communication module, as 034's card bodies.
     card(K::Plcim, "PLC head module", &["plc", "im", "interface", "head", "remote", "station", "card"], pc(9)),

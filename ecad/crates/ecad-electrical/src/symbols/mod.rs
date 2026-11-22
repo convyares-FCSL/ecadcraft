@@ -168,7 +168,7 @@ ecad_model::word_enum! {
         Rcd4,
         Ssrin,
         Ssrout,
-        Fuseterm,
+        Fuseterminalblock,
         Fusebank4,
         Fusebank6,
         Fusebank8,
@@ -255,7 +255,7 @@ ecad_model::word_enum! {
         TermsensorL3,
         Termsensor,
         Termdisc,
-        Termfuse,
+        Terminalblockfuse,
         Plcim,
         Plcpm,
         Plccm,
@@ -283,7 +283,7 @@ impl StarterKey {
             | K::Rcbo2
             | K::Rcd2
             | K::Rcd4
-            | K::Fuseterm
+            | K::Fuseterminalblock
             | K::Fusebank4
             | K::Fusebank6
             | K::Fusebank8
@@ -317,7 +317,7 @@ impl StarterKey {
             | K::TermsensorL3
             | K::Termsensor
             | K::Termdisc
-            | K::Termfuse => DeviceGroup::TerminalStrip,
+            | K::Terminalblockfuse => DeviceGroup::TerminalStrip,
             K::Socket2
             | K::Socket3
             | K::Socket4
@@ -406,7 +406,7 @@ impl StarterKey {
             | K::Rcd4
             | K::Ssrin
             | K::Ssrout
-            | K::Fuseterm
+            | K::Fuseterminalblock
             | K::Prox3
             | K::Floatno
             | K::Floatnc
@@ -475,7 +475,7 @@ impl StarterKey {
             | K::TermsensorL3
             | K::Termsensor
             | K::Termdisc
-            | K::Termfuse
+            | K::Terminalblockfuse
             | K::Plcim
             | K::Plcpm
             | K::Plccm
@@ -626,7 +626,7 @@ impl Starter {
                 P::Rcbo
             } else if matches!(self.key, K::Rcd2 | K::Rcd4) {
                 P::Rcd
-            } else if self.key == K::Fuseterm {
+            } else if self.key == K::Fuseterminalblock {
                 P::FuseTerminalBlock
             } else {
                 P::Fuse

@@ -25,7 +25,6 @@ use serde_json::{Value, json};
 
 use crate::defaults::plc::SafeState;
 use crate::defaults::{self, Scope};
-use crate::plc::channels::first_number;
 use crate::plc::iolist::Target;
 use crate::plc::rack::{self, CardType, RackRef};
 
@@ -33,22 +32,22 @@ use crate::plc::rack::{self, CardType, RackRef};
 pub const TAG: &str = "tag";
 pub const SAFE: &str = "safe";
 /// Longest tag (design 056 §4.3).
-pub const MAX_TAG: usize = 128;
+pub(crate) const MAX_TAG: usize = 128;
 /// Longest safe value (design 056 §4.4).
-pub const MAX_SAFE: usize = 16;
+pub(crate) const MAX_SAFE: usize = 16;
 /// The safe words of a digital output.
-pub const DQ_SAFE: &[&str] = <SafeState as ecad_model::Word>::WORDS;
+pub(crate) const DQ_SAFE: &[&str] = <SafeState as ecad_model::Word>::WORDS;
 /// The safe words of an analogue output (besides a value).
-pub const AO_SAFE: [&str; 3] = ["hold", "min", "max"];
+pub(crate) const AO_SAFE: [&str; 3] = ["hold", "min", "max"];
 /// Most channels **Make tags** fills in one call (bounded by the cards' channel counts anyway).
-pub const MAX_MADE: usize = 20_000;
+pub(crate) const MAX_MADE: usize = 20_000;
 
 /// The value check of a tag (design 056 §4.3): trimmed, 1 to [`MAX_TAG`] characters, no control
 /// character. Empty clears.
 ///
 /// # Errors
 /// Too long, or a control character.
-pub fn tag_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub(crate) fn tag_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if v.chars().count() > MAX_TAG || v.chars().any(char::is_control) {
         return Err(CmdError::refused(format!("A PLC tag is 1 to {MAX_TAG} characters, with no control characters.")));
@@ -57,12 +56,12 @@ pub fn tag_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
 }
 
 /// Whether a card of type `t` has a safe state (outputs: DQ, AO, IO-Link).
-pub fn has_safe(t: CardType) -> bool {
+pub(crate) fn has_safe(t: CardType) -> bool {
     matches!(t, CardType::Dq | CardType::Ao | CardType::Iol)
 }
 
 /// The registry entry of a card type's safe state.
-pub fn safe_entry(t: CardType) -> Option<&'static defaults::Entry> {
+pub(crate) fn safe_entry(t: CardType) -> Option<&'static defaults::Entry> {
     match t {
         CardType::Dq => Some(&defaults::plc::SAFE_DQ),
         CardType::Ao | CardType::Iol => Some(&defaults::plc::SAFE_AO),
@@ -132,7 +131,7 @@ pub fn safe_words(v: &str) -> String {
 }
 
 /// The PLC a card belongs to: its rack, or `None` for the cards in no rack (one PLC together).
-pub fn plc_of(doc: &Document, c: DeviceId) -> Option<DeviceId> {
+pub(crate) fn plc_of(doc: &Document, c: DeviceId) -> Option<DeviceId> {
     match rack::rack_ref(doc, c) {
         RackRef::Rack(r) => Some(r),
         _ => None,
@@ -146,7 +145,7 @@ pub fn name_key(tag: &str) -> String {
 
 /// The tags of every channel in the PLC `plc` (a rack, or `None`: the cards in no rack), as (card,
 /// index, tag). One walk over the project's devices.
-pub fn tags_of_plc(doc: &Document, plc: Option<DeviceId>) -> Vec<(DeviceId, u32, String)> {
+pub(crate) fn tags_of_plc(doc: &Document, plc: Option<DeviceId>) -> Vec<(DeviceId, u32, String)> {
     let mut out = Vec::new();
     for (id, x) in &doc.devices {
         let ecad_model::DeviceType::PlcModule(m) = &x.device_type else { continue };
@@ -161,13 +160,13 @@ pub fn tags_of_plc(doc: &Document, plc: Option<DeviceId>) -> Vec<(DeviceId, u32,
 
 /// Another channel of the same PLC as card `c` that holds `tag` (compared without case), other than
 /// channel `i` of `c`.
-pub fn tag_holder(doc: &Document, c: DeviceId, i: u32, tag: &str) -> Option<(DeviceId, u32)> {
+pub(crate) fn tag_holder(doc: &Document, c: DeviceId, i: u32, tag: &str) -> Option<(DeviceId, u32)> {
     let key = name_key(tag);
     tags_of_plc(doc, plc_of(doc, c)).into_iter().find(|(x, j, t)| !(*x == c && *j == i) && name_key(t) == key).map(|(x, j, _)| (x, j))
 }
 
 /// `Tag "Valve_Inlet" is already -A03 channel 2 (%Q2.2).`
-pub fn duplicate_words(doc: &Document, tag: &str, holder: (DeviceId, u32)) -> String {
+pub(crate) fn duplicate_words(doc: &Document, tag: &str, holder: (DeviceId, u32)) -> String {
     let (c, j) = holder;
     let (auto, _) = crate::plc::address::of_channel(doc, c, j, None, &mut std::collections::BTreeMap::new());
     let (addr, _) = crate::plc::address::shown(doc, c, j, auto);
@@ -177,7 +176,7 @@ pub fn duplicate_words(doc: &Document, tag: &str, holder: (DeviceId, u32)) -> St
 
 /// A tag made from a description (design 056 §4.3): spaces and dashes become `_`, other characters
 /// are dropped, a digit first gets `_` before it. `None` when nothing is left.
-pub fn make_tag(description: &str) -> Option<String> {
+pub(crate) fn make_tag(description: &str) -> Option<String> {
     let mut s = String::new();
     for ch in description.trim().chars() {
         if ch.is_ascii_alphanumeric() {
@@ -198,7 +197,7 @@ pub fn make_tag(description: &str) -> Option<String> {
 }
 
 /// `base`, else `base_2`, `base_3`… : the first not in `taken` (keys without case).
-pub fn unique_tag(base: &str, taken: &BTreeSet<String>) -> String {
+pub(crate) fn unique_tag(base: &str, taken: &BTreeSet<String>) -> String {
     if !taken.contains(&name_key(base)) {
         return base.to_string();
     }
@@ -282,7 +281,7 @@ impl TestState {
 
 /// The ops of **Make tags** on `cards`: every used or reserved channel with no tag gets one from its
 /// description, unique in its PLC. Returns the ops and how many tags per card.
-pub fn make_tags_ops(doc: &Document, cards: &[DeviceId]) -> (Vec<Op>, Vec<(DeviceId, usize)>) {
+pub(crate) fn make_tags_ops(doc: &Document, cards: &[DeviceId]) -> (Vec<Op>, Vec<(DeviceId, usize)>) {
     let mut ops = Vec::new();
     let mut made = 0usize;
     let mut counts = Vec::new();
@@ -311,9 +310,4 @@ pub fn make_tags_ops(doc: &Document, cards: &[DeviceId]) -> (Vec<Op>, Vec<(Devic
         counts.push((*c, n));
     }
     (ops, counts)
-}
-
-/// The first channel number of card `c` (re-exported for callers holding only a card).
-pub fn shown_number(doc: &Document, c: DeviceId, i: u32) -> u32 {
-    i.saturating_add(first_number(doc, c))
 }

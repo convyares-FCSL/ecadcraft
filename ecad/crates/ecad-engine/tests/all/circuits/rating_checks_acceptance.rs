@@ -955,7 +955,7 @@ fn u01_a_device_rating_change_rechecks_only_its_subjects() {
     let (kept, built) = h.cfg(|p| {
         let d = p.ledger.document().clone();
         let k = p.checks().rating.results.clone();
-        (k, ecad_electrical::circuits::Kept::build(&d).results)
+        (k, ecad_electrical::circuits::kept::Kept::build(&d).results)
     });
     assert!(kept == built, "the kept results equal a rebuild");
 }

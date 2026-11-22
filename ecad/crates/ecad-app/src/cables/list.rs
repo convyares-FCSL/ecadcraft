@@ -419,7 +419,7 @@ impl CablesView {
 
     /// Brief 057: bring the rating copy up to date and patch the Checks cells of the re-checked
     /// cables only.
-    pub(crate) fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::Kept) {
+    pub(crate) fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::kept::Kept) {
         match self.source.rating.sync(serial, kept) {
             None => self.table.update(&self.source, Changed::All),
             Some(v) if v.is_empty() => {}
@@ -689,7 +689,7 @@ fn cable_size(doc: &ecad_model::Document, k: CableId) -> Option<String> {
         .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, "size", None))
         .and_then(|r| ecad_electrical::devices::ratings::parse::cross_section(&r.text()));
     from_type
-        .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| ecad_electrical::terminal_strips::notation_size(t)))
+        .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| ecad_electrical::terminal_strips::cores::notation_size(t)))
         .map(ecad_electrical::devices::ratings::dataset::fmt_num)
 }
 

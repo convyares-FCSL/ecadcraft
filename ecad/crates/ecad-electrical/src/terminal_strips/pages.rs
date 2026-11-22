@@ -26,7 +26,7 @@ use ecad_model::{CableId, DeviceId, Document, ObjectRef, PageId};
 use crate::defaults::strip_pages as entries;
 use crate::reports::kept::ReportModels;
 use crate::terminal_strips::accessories::Acc;
-use crate::terminal_strips::{PlanItem, StripData, Strips, TermRow};
+use crate::terminal_strips::strip_model::{PlanItem, StripData, Strips, TermRow};
 
 /// Gap between the tag box and the first column.
 pub const TAG_GAP_MM: f64 = 2.0;
@@ -366,7 +366,7 @@ impl StripPages {
 
     /// Take the kept data of `rebuilt` (verify mode put right), keeping what the last update
     /// changed.
-    pub fn adopt(&mut self, rebuilt: StripPages) {
+    pub(crate) fn adopt(&mut self, rebuilt: StripPages) {
         let (last_changed, layout_changed, style_changed) = (std::mem::take(&mut self.last_changed), self.layout_changed, self.style_changed);
         *self = StripPages { last_changed, layout_changed, style_changed, ..rebuilt };
     }

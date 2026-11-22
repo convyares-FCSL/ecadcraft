@@ -44,20 +44,20 @@ pub const MAX_PINS: usize = 64;
 /// Most characters of a pin name.
 pub const MAX_NAME_CHARS: usize = 8;
 /// Most characters of a typed pin-name list that are read.
-pub const MAX_LIST_CHARS: usize = 1_000;
+pub(crate) const MAX_LIST_CHARS: usize = 1_000;
 /// The component property holding the pin count (FP4).
 pub const PINS_KEY: &str = "pins";
 /// The component property holding a typed list of pin names, in pin order (`L,N,PE`; overseer,
 /// fix round 1: names not drawn yet are kept, never lost).
-pub const PIN_NAMES_KEY: &str = "pin_names";
+pub(crate) const PIN_NAMES_KEY: &str = "pin_names";
 /// The start of the per-half property keys (FP4).
-pub const HALF_PREFIX: &str = "half.";
+pub(crate) const HALF_PREFIX: &str = "half.";
 /// The per-half fields the BOM reads (FP4). A half's location is the connector's override
 /// `location.socket` / `location.plug` (brief 052, FP4: `half.<s>.location` is retired).
-pub const HALF_FIELDS: [&str; 3] = ["description", "maker", "part_number"];
+pub(crate) const HALF_FIELDS: [&str; 3] = ["description", "maker", "part_number"];
 /// The start of a connector's ignored-warning keys (`ignore.connector-family`; overseer, fix round
 /// 1: the Checks rows' Ignore button).
-pub const IGNORE_PREFIX: &str = "ignore.";
+pub(crate) const IGNORE_PREFIX: &str = "ignore.";
 
 /// Connector `c`'s own data (its type's), when it is a connector.
 pub fn connector_of(doc: &Document, c: DeviceId) -> Option<&Connector> {
@@ -65,7 +65,7 @@ pub fn connector_of(doc: &Document, c: DeviceId) -> Option<&Connector> {
 }
 
 /// The ignorable Checks row of `kind`, if it is one.
-pub fn ignorable(kind: CheckKind) -> Option<ConnectorCheck> {
+pub(crate) fn ignorable(kind: CheckKind) -> Option<ConnectorCheck> {
     match kind {
         CheckKind::ConnectorFamily => Some(ConnectorCheck::Family),
         CheckKind::ConnectorSize => Some(ConnectorCheck::Size),
@@ -79,7 +79,7 @@ pub fn ignores(doc: &Document, c: DeviceId, kind: CheckKind) -> bool {
 }
 
 /// The keys of the pin starters.
-pub const PIN_KEYS: [StarterKey; 3] = [StarterKey::Pinpair, StarterKey::Pins, StarterKey::Pinp];
+pub(crate) const PIN_KEYS: [StarterKey; 3] = [StarterKey::Pinpair, StarterKey::Pins, StarterKey::Pinp];
 
 // ---------------------------------------------------------------- families (design 044 §1)
 
@@ -198,7 +198,7 @@ pub fn rep_half(doc: &Document, r: &Representation) -> Option<&'static Starter> 
 }
 
 /// The side a representation draws (`Both` for a pin pair).
-pub fn rep_side(doc: &Document, r: &Representation) -> Option<Side> {
+pub(crate) fn rep_side(doc: &Document, r: &Representation) -> Option<Side> {
     rep_half(doc, r).and_then(Starter::side)
 }
 
@@ -206,7 +206,7 @@ pub fn rep_side(doc: &Document, r: &Representation) -> Option<Side> {
 
 /// The separator and the socket and plug side names connector `c` (or the project) uses; two
 /// equal side names count as absent (the built-ins).
-pub fn side_names(doc: &Document, c: Option<DeviceId>) -> (String, String, String) {
+pub(crate) fn side_names(doc: &Document, c: Option<DeviceId>) -> (String, String, String) {
     use crate::defaults::connectors as dc;
     let scope = c.map_or_else(Scope::project, Scope::component);
     let sep = defaults::resolve(doc, &dc::SEPARATOR, scope).text();
@@ -231,7 +231,7 @@ pub fn half_tag(doc: &Document, c: DeviceId, side: Side) -> String {
 }
 
 /// The half tag a connector pin belongs to (`-X10.S`); `None` for any other terminal.
-pub fn half_tag_of(doc: &Document, t: ConnectionPointId) -> Option<String> {
+pub(crate) fn half_tag_of(doc: &Document, t: ConnectionPointId) -> Option<String> {
     let side = side_of(doc, t)?;
     let c = doc.connection_points.get(&t)?.device()?;
     Some(half_tag(doc, c, side))
@@ -244,21 +244,15 @@ pub fn pin_name(doc: &Document, t: ConnectionPointId) -> Option<String> {
     Some(format!("{half}:{label}"))
 }
 
-/// The tag a connector symbol shows in its tag block: its half's tag (a pin pair: the connector's).
-pub fn rep_tag(doc: &Document, c: DeviceId, r: &Representation) -> Option<String> {
-    let side = rep_side(doc, r)?;
-    Some(half_tag(doc, c, side))
-}
-
 /// Whether a pin pair's plug-side label is hidden (design 044 §5.2: a pin pair shows its pin name
 /// once, beside the socket point).
-pub fn hides_label(doc: &Document, r: &Representation, t: ConnectionPointId) -> bool {
+pub(crate) fn hides_label(doc: &Document, r: &Representation, t: ConnectionPointId) -> bool {
     rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.connection_points.get(&t).and_then(|x| x.key.as_ref()) == Some(&PLUG_KEY)
 }
 
 /// The run class of a connector symbol for the "once per run" tag rule (design 044 §5.2): one
 /// class per half, so `-X10.S` and `-X10.P` each show once per run.
-pub fn run_class(doc: &Document, r: &Representation) -> Option<u64> {
+pub(crate) fn run_class(doc: &Document, r: &Representation) -> Option<u64> {
     rep_side(doc, r).map(|s| match s {
         Side::Socket => u64::MAX - 1,
         Side::Plug => u64::MAX - 2,
@@ -389,7 +383,7 @@ pub fn pins_prop(doc: &Document, c: DeviceId) -> Option<usize> {
 }
 
 /// The whole-half symbols of connector `c`: (representation, side, starter), in ID order.
-pub fn whole_halves(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, Side, &'static Starter)> {
+pub(crate) fn whole_halves(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, Side, &'static Starter)> {
     doc.representations_of(Subject::Device(c))
         .filter_map(|(rid, r)| {
             let s = rep_half(doc, r).filter(|s| !is_pin_starter(s))?;
@@ -447,7 +441,7 @@ pub fn parse_list(text: &str) -> Result<Vec<String>, CmdError> {
 ///
 /// # Errors
 /// As [`parse_list`].
-pub fn check_list(names: &[String]) -> Result<(), CmdError> {
+pub(crate) fn check_list(names: &[String]) -> Result<(), CmdError> {
     if names.len() > MAX_PINS {
         return Err(CmdError::refused(format!("A connector has at most {MAX_PINS} pins; got {}.", names.len())));
     }
@@ -584,19 +578,6 @@ pub fn where_words(doc: &Document, rid: RepresentationId) -> String {
         Some(p) => format!("{page} {}", ecad_model::connectivity::derive::zone_text(&p.column_label, &p.row_label)),
         None => page,
     }
-}
-
-/// The representations drawing side `side` of connector `c` (a pin pair draws both), in book
-/// order (page, then ID).
-pub fn side_symbols(doc: &Document, c: DeviceId, side: Side) -> Vec<RepresentationId> {
-    let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
-    let mut v: Vec<(usize, RepresentationId)> = doc
-        .representations_of(Subject::Device(c))
-        .filter(|(_, r)| rep_side(doc, r).is_some_and(|s| s == side || s == Side::Both))
-        .map(|(rid, r)| (order.get(&r.page).copied().unwrap_or(usize::MAX), rid))
-        .collect();
-    v.sort();
-    v.into_iter().map(|(_, r)| r).collect()
 }
 
 /// Where go-to lands for half `side` ([`crate::symbols::reps::goto`], design 052 §4): its whole-half
@@ -805,7 +786,7 @@ pub fn land_pin(
 ///
 /// # Errors
 /// A pin count out of range, an unknown side letter, a value the rules refuse.
-pub fn setprop_value(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
+pub(crate) fn setprop_value(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     if crate::defaults::connectors::is_naming_key(key) {
         if !connector_of(doc, c).is_some_and(|x| x.mating) {
             return None;
@@ -813,11 +794,6 @@ pub fn setprop_value(doc: &Document, c: DeviceId, key: &str, value: Option<&str>
         return crate::defaults::connectors::setprop_value(key, value);
     }
     None
-}
-
-/// The key of a half's field (`half.s.maker`).
-pub fn half_key(side: Side, field: &str) -> Option<String> {
-    Some(format!("{HALF_PREFIX}{}.{field}", side.letter()?))
 }
 
 /// A half's own value of `field` (one of [`HALF_FIELDS`]).
@@ -831,7 +807,7 @@ pub fn half_prop(doc: &Document, c: DeviceId, side: Side, field: &str) -> Option
 }
 
 /// The value of `field` (`description`, `maker`, `part_number`) of half part `h`.
-pub fn half_field<'a>(h: &'a HalfPart, field: &str) -> Option<&'a str> {
+pub(crate) fn half_field<'a>(h: &'a HalfPart, field: &str) -> Option<&'a str> {
     match field {
         "description" => h.description.as_ref().map(|t| t.as_str()),
         "maker" => h.manufacturer.as_ref().map(|t| t.as_str()),
@@ -844,7 +820,7 @@ pub fn half_field<'a>(h: &'a HalfPart, field: &str) -> Option<&'a str> {
 ///
 /// # Errors
 /// As [`check_list`].
-pub fn typed_names(names: &[String]) -> Result<Vec<ecad_model::objects::devices::PinName>, CmdError> {
+pub(crate) fn typed_names(names: &[String]) -> Result<Vec<ecad_model::objects::devices::PinName>, CmdError> {
     check_list(names)?;
     names.iter().map(|n| ecad_model::objects::devices::PinName::new(n).map_err(|e| CmdError::refused(format!("Pin name {n}: {e}")))).collect()
 }
@@ -852,7 +828,7 @@ pub fn typed_names(names: &[String]) -> Result<Vec<ecad_model::objects::devices:
 /// Whether `key` is one of a connector's own fields' `setprop` keys: `pins`, `pin_names`,
 /// `half.<s|p>.<field>`, `ignore.<row>`. (The retired `half.<s|p>.location` is the location
 /// override `location.socket` / `location.plug`: [`crate::locations::commands::locations::aspect_property`].)
-pub fn is_field_key(key: &str) -> bool {
+pub(crate) fn is_field_key(key: &str) -> bool {
     key == PINS_KEY || key == PIN_NAMES_KEY || (key.starts_with(HALF_PREFIX) && !key.ends_with(".location")) || key.starts_with(IGNORE_PREFIX)
 }
 
@@ -941,12 +917,12 @@ pub struct HalfRow {
 }
 
 /// The pin count of half `side`: its whole-half size, else the connector's pin count.
-pub fn half_size(doc: &Document, c: DeviceId, side: Side, d: &Drawn) -> usize {
+pub(crate) fn half_size(doc: &Document, c: DeviceId, side: Side, d: &Drawn) -> usize {
     whole_halves(doc, c).into_iter().find(|(_, s, _)| *s == side).and_then(|(_, _, s)| size_of(s)).unwrap_or_else(|| pin_count(doc, c, d))
 }
 
 /// The BOM description a half gets from the registry (`D-sub socket, 9-way`).
-pub fn default_description(doc: &Document, family: ConnectorFamily, side: Side, n: usize) -> String {
+pub(crate) fn default_description(doc: &Document, family: ConnectorFamily, side: Side, n: usize) -> String {
     let fam = match family {
         ConnectorFamily::Dsub | ConnectorFamily::M12 => family,
         _ => ConnectorFamily::Plain,
@@ -1294,42 +1270,6 @@ impl Index {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn families_name_their_halves() {
-        assert_eq!(ConnectorFamily::Dsub.half_key(Side::Plug, 9).as_deref(), Some("dsub9p"));
-        assert_eq!(ConnectorFamily::M12.half_key(Side::Socket, 5).as_deref(), Some("m12s5"));
-        assert_eq!(ConnectorFamily::Plain.half_key(Side::Socket, 5), None);
-        assert_eq!(ConnectorFamily::of_typed("D-sub"), Some(ConnectorFamily::Dsub));
-        assert_eq!(ConnectorFamily::Dsub.size_refusal(), "A D-sub has 9, 15 or 25 pins. Pick one, or draw pin by pin with Pins.");
-        for f in ConnectorFamily::ALL.iter().copied() {
-            for n in f.sizes() {
-                for side in [Side::Socket, Side::Plug] {
-                    let key = f.half_key(side, *n).unwrap_or_default();
-                    let s = symbols::catalogue::by_key(&key).unwrap_or_else(|| panic!("{key}"));
-                    assert_eq!((family_of(s), size_of(s), s.side()), (Some(f), Some(*n), Some(side)), "{key}");
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn names_are_checked() {
-        assert_eq!(names_for(&Names::Letters, 3), Ok(vec!["A".into(), "B".into(), "C".into()]));
-        assert!(names_for(&Names::Letters, 27).is_err());
-        assert_eq!(parse_list("L, N ,PE"), Ok(vec!["L".into(), "N".into(), "PE".into()]));
-        assert!(parse_list("P E").is_err_and(|e| e.to_string().contains("spaces")));
-        assert!(parse_list("L,L").is_err());
-        assert!(parse_list(&"x,".repeat(5_000)).is_err());
-        assert!(check_name("a\u{1}").is_err());
-        assert!(check_name("123456789").is_err());
-        assert!(names_for(&Names::List(vec!["L".into()]), 3).is_err_and(|e| e.to_string() == "Give 3 pin names; got 1."));
-    }
-}
-
 /// A route split at a terminal.
 #[derive(Debug, Clone)]
 pub struct Land {
@@ -1355,7 +1295,9 @@ pub fn plan_land(doc: &Document, ids: &mut IdAllocator, on: OnRoute, t: Connecti
 ///
 /// # Errors
 /// The point at a route end, or a strip terminal already there; each says what to do instead.
-pub fn plan_land_ends(doc: &Document, ids: &mut IdAllocator, on: OnRoute, first: (RouteEnd, Pt), second: (RouteEnd, Pt)) -> Result<Land, CmdError> {
+pub(crate) fn plan_land_ends(
+    doc: &Document, ids: &mut IdAllocator, on: OnRoute, first: (RouteEnd, Pt), second: (RouteEnd, Pt),
+) -> Result<Land, CmdError> {
     let route = doc.routes.get(&on.route).ok_or(CmdError::NotFound(Noun::Wire))?;
     if let Some(x) = strip_connection_point_at(doc, route.page, on.at) {
         return Err(CmdError::refused(format!("{} is already there. Click elsewhere on the wire.", connection_point_words(doc, x))));

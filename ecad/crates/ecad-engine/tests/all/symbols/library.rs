@@ -152,18 +152,27 @@ fn a_fuse_bank_breaks_the_net_and_its_spare_points_are_quiet() {
     assert_ne!(net(lp), net(f2));
     // Spare fuse outputs and M raise no `Unconnected`; a wired point none either.
     for t in [m, f3] {
-        assert!(!ecad_electrical::checks::connection_point_checks(&doc, t).iter().any(|c| c.kind == CheckKind::Unconnected), "quiet point flagged");
+        assert!(
+            !ecad_electrical::checks::nets::connection_point_checks(&doc, t).iter().any(|c| c.kind == CheckKind::Unconnected),
+            "quiet point flagged"
+        );
     }
     // L+ is not quiet: unwired, it is flagged.
     let mut h2 = new_h();
     let bank2 = place(&mut h2, "fusebank4", [0.0, 0.0]);
     let doc2 = h2.doc();
-    assert!(ecad_electrical::checks::connection_point_checks(&doc2, connection_point(&bank2, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
-    assert!(ecad_electrical::checks::connection_point_checks(&doc2, connection_point(&bank2, "M")).is_empty());
+    assert!(
+        ecad_electrical::checks::nets::connection_point_checks(&doc2, connection_point(&bank2, "L+"))
+            .iter()
+            .any(|c| c.kind == CheckKind::Unconnected)
+    );
+    assert!(ecad_electrical::checks::nets::connection_point_checks(&doc2, connection_point(&bank2, "M")).is_empty());
     // A non-quiet symbol still raises it (a coil).
     let coil = place(&mut h2, "coil", [100.0, 0.0]);
     let doc2 = h2.doc();
-    assert!(ecad_electrical::checks::connection_point_checks(&doc2, connection_point(&coil, "A1")).iter().any(|c| c.kind == CheckKind::Unconnected));
+    assert!(
+        ecad_electrical::checks::nets::connection_point_checks(&doc2, connection_point(&coil, "A1")).iter().any(|c| c.kind == CheckKind::Unconnected)
+    );
 }
 
 #[test]
@@ -221,7 +230,7 @@ fn bom_has_one_row_per_device_and_contacts_add_none() {
     join(&mut h, "ssrout", s, [20.0, -60.0]).unwrap();
     place(&mut h, "rcbo2", [0.0, -120.0]);
     place(&mut h, "fusebank6", [60.0, -120.0]);
-    place(&mut h, "fuseterm", [200.0, -120.0]);
+    place(&mut h, "fuseterminalblock", [200.0, -120.0]);
     let v = h.run("bom", json!({})).unwrap();
     let rows: Vec<&Value> = v["rows"].as_array().unwrap().iter().filter(|r| r.get("accessory").is_none()).collect();
     let tags: Vec<String> = rows.iter().map(|r| r["tags"].as_str().unwrap_or_default().to_string()).collect();
@@ -263,7 +272,7 @@ fn a_bulkhead_pin_is_one_net_from_both_sides_and_spare_pins_are_quiet() {
     let conn = doc.connectivity();
     assert_eq!(conn.net_of_conductor(up), conn.net_of_conductor(down), "a feed-through is one net");
     for t in [p2, sh] {
-        assert!(ecad_electrical::checks::connection_point_checks(&doc, t).is_empty(), "spare pin flagged");
+        assert!(ecad_electrical::checks::nets::connection_point_checks(&doc, t).is_empty(), "spare pin flagged");
     }
     // Plugs and sockets are separate devices with their own tags in v0.15.
     assert_eq!(place(&mut h, "socket4", [0.0, -60.0])["tag"], "-X02");
@@ -283,10 +292,12 @@ fn a_card_body_takes_its_channels_as_one_device() {
     let all: std::collections::BTreeSet<String> = ecad_electrical::devices::placing::labels_of(&doc, a);
     assert_eq!(all.into_iter().collect::<Vec<_>>(), ["1", "2", "L+", "M"]);
     // A card's supply points are quiet; a CPU's are not.
-    assert!(ecad_electrical::checks::connection_point_checks(&doc, connection_point(&card, "L+")).is_empty());
+    assert!(ecad_electrical::checks::nets::connection_point_checks(&doc, connection_point(&card, "L+")).is_empty());
     let cpu = place(&mut h, "plccpu", [100.0, 0.0]);
     let doc = h.doc();
-    assert!(ecad_electrical::checks::connection_point_checks(&doc, connection_point(&cpu, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
+    assert!(
+        ecad_electrical::checks::nets::connection_point_checks(&doc, connection_point(&cpu, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected)
+    );
 }
 
 /// Brief 034 criterion 11: a symbol's prefix is a registered default (`symbol.<key>.prefix`),
@@ -304,7 +315,7 @@ fn a_changed_registered_prefix_is_followed_by_the_next_device() {
     assert_eq!((e["value"].as_str(), e["from"].as_str()), (Some("FB"), Some("project")), "{e}");
     assert_eq!(place(&mut h, "fusebank8", [0.0, -60.0])["tag"], "-FB01");
     // Other symbols keep their built-in.
-    assert_eq!(place(&mut h, "fuseterm", [100.0, 0.0])["tag"], "-F02");
+    assert_eq!(place(&mut h, "fuseterminalblock", [100.0, 0.0])["tag"], "-F02");
     // Back to the built-in.
     h.run("tagsettings", json!({"prefixes": {"fusebank8": null}})).unwrap();
     assert_eq!(entry(&mut h)["from"], "builtin");

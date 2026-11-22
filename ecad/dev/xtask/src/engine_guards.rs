@@ -91,7 +91,6 @@ const ADAPTERS: &[(&str, &str, &str)] = &[
     ("crates/ecad-engine/src/references/draw/devices.rs", "table", "lays the contact table out with CADCraft's fonts (EngineMetrics)"),
     ("crates/ecad-engine/src/history/mod.rs", "group_text", "reads the local time zone"),
     ("crates/ecad-engine/src/project/mod.rs", "views_for", "builds the engine's own views"),
-    ("crates/ecad-engine/src/reports/commands.rs", "report_result", "writes the report's CSV file"),
     ("crates/ecad-engine/src/title_blocks/dxf.rs", "block", "reads the DXF with CADCraft's reader"),
     ("crates/ecad-engine/src/translate/mod.rs", "preview", "applies ops to the live ledger and rolls them back"),
 ];

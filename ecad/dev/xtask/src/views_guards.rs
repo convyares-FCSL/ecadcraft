@@ -33,7 +33,7 @@ const OWN_MODULES: &[&str] = &[
     "crates/ecad-electrical/src/properties/view.rs",
     "crates/ecad-electrical/src/references/view.rs",
     "crates/ecad-electrical/src/reports/view.rs",
-    "crates/ecad-electrical/src/reports/kept.rs",
+    "crates/ecad-electrical/src/reports/kept/",
     "crates/ecad-electrical/src/reports/mod.rs",
     "crates/ecad-electrical/src/terminal_strips/pages.rs",
     "crates/ecad-electrical/src/terminal_strips/mod.rs",
@@ -71,11 +71,8 @@ const FRESH_BUILDS: &[(&str, usize, &str)] = &[
 /// exact, so a new build needs a reason here.
 const OWN_BUILDS: &[(&str, usize, &str)] = &[
     ("crates/ecad-electrical/src/pages/front.rs", 1, "Uses rebuilds itself on a project-wide change (wire style, potentials)"),
-    (
-        "crates/ecad-electrical/src/reports/kept.rs",
-        4,
-        "Outputs builds its strips and strip pages on first show; its verify pass compares the strips with a rebuild and the strip pages follow",
-    ),
+    ("crates/ecad-electrical/src/reports/kept/mod.rs", 2, "The report models build their strips and strip pages on first show"),
+    ("crates/ecad-electrical/src/reports/kept/update.rs", 2, "The verify pass compares the strips with a rebuild and the strip pages follow"),
     (
         "crates/ecad-electrical/src/terminal_strips/pages.rs",
         1,
@@ -115,7 +112,7 @@ const KEY_PREFIXES: &[(&str, usize, &str)] = &[
     ("crates/ecad-electrical/src/pages/view.rs", 1, "project connector keys reach the connector pages; no key table"),
     ("crates/ecad-electrical/src/pages/front.rs", 1, "the cover's `front.cover.*` settings; no key table"),
     ("crates/ecad-electrical/src/reports/mod.rs", 3, "strip, terminal, connector and BOM settings pick the lists to redo; no key table"),
-    ("crates/ecad-electrical/src/circuits/mod.rs", 2, "`link.*`, `rating.*` and `wire.*` keys; no key table"),
+    ("crates/ecad-electrical/src/circuits/kept.rs", 2, "`link.*`, `rating.*` and `wire.*` keys; no key table"),
 ];
 
 /// Whether `rel` is a view's own module, or `Views`.
@@ -426,7 +423,7 @@ mod tests {
     #[test]
     fn a_views_own_module_may_build_it() {
         let rows: &[(&str, bool)] = &[
-            ("crates/ecad-electrical/src/reports/kept.rs", true),
+            ("crates/ecad-electrical/src/reports/kept/mod.rs", true),
             ("crates/ecad-electrical/src/references/devices/index.rs", true),
             ("crates/ecad-electrical/src/views/mod.rs", true),
             ("crates/ecad-electrical/src/pages/generated.rs", false),

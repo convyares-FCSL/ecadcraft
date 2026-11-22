@@ -25,7 +25,7 @@ use crate::plc::tagtable::{self, Caps, Read, TagFormat, TagRow};
 use crate::plc::{CardData, iolist, kept::Plc, signals};
 
 /// The transaction label of an import.
-pub const IMPORT_LABEL: &str = "Import an I/O list";
+pub(crate) const IMPORT_LABEL: &str = "Import an I/O list";
 /// Longest `name` given with `text` (the review of #112, 1).
 pub const MAX_NAME: usize = 255;
 
@@ -54,7 +54,7 @@ fn card_addresses(doc: &Document, plc: &Plc, card: &CardData, idx: &[u32]) -> Ve
 }
 
 /// The data type of a card type's channels on export (Q4): `Bool`, `Int`, `Word`.
-pub fn data_type(t: crate::plc::rack::CardType) -> &'static str {
+pub(crate) fn data_type(t: crate::plc::rack::CardType) -> &'static str {
     use crate::plc::rack::CardType;
     match t {
         CardType::Di | CardType::Dq => "Bool",
@@ -74,7 +74,7 @@ pub struct Export {
 
 impl Export {
     /// `left out 3 without a tag` (and the other counts), or empty.
-    pub fn left_out_words(&self) -> String {
+    pub(crate) fn left_out_words(&self) -> String {
         let mut parts = Vec::new();
         if self.no_tag > 0 {
             parts.push(format!("{} without a tag", self.no_tag));
@@ -92,7 +92,7 @@ impl Export {
 /// The export rows of rack `rack` (all racks and unracked cards when `None`), design 056 §6.6:
 /// used and reserved channels with a tag and an address, one row each (IO-Link: one per
 /// direction).
-pub fn export_rows(doc: &Document, plc: &Plc, rack: Option<DeviceId>, f: &dyn TagFormat) -> Export {
+pub(crate) fn export_rows(doc: &Document, plc: &Plc, rack: Option<DeviceId>, f: &dyn TagFormat) -> Export {
     let mut out = Export::default();
     for card in iolist::cards_in_order(plc) {
         if rack.is_some_and(|r| card.rack != crate::plc::rack::RackRef::Rack(r)) {
@@ -145,7 +145,7 @@ pub fn export_rows(doc: &Document, plc: &Plc, rack: Option<DeviceId>, f: &dyn Ta
 ///
 /// # Errors
 /// No format reads it, or the format's own refusal; in words.
-pub fn read_tags(bytes: &[u8], format: Option<&'static dyn TagFormat>) -> Result<Read, CmdError> {
+pub(crate) fn read_tags(bytes: &[u8], format: Option<&'static dyn TagFormat>) -> Result<Read, CmdError> {
     let f = match format {
         Some(f) => f,
         None => tagtable::sniff(bytes).ok_or(CmdError::refused(tagtable::UNKNOWN))?,
@@ -201,7 +201,7 @@ impl Fill {
 ///
 /// # Errors
 /// Two channels of one PLC would share a tag; in words, naming both.
-pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: bool) -> Result<Fill, CmdError> {
+pub(crate) fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: bool) -> Result<Fill, CmdError> {
     // Every channel by its normalised address, per card in list order.
     let mut at: BTreeMap<String, (DeviceId, u32)> = BTreeMap::new();
     for card in iolist::cards_in_order(plc) {

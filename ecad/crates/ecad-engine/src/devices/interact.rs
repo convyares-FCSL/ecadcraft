@@ -51,9 +51,9 @@ fn yes(i: &Input) -> Option<bool> {
 /// page as a new device or as another symbol of one; repeat until Enter.
 pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    let default = read(s, |p, _| Ok(p.last_placed.as_ref().map(|(k, _)| k.clone()))).ok().flatten();
+    let default = read(s, |p, _| Ok(p.last_placed.and_then(|l| l.starter))).ok().flatten();
     let default = default
-        .and_then(|k| symbols::catalogue::by_key(&k))
+        .map(symbols::catalogue::starter)
         .or_else(|| symbols::catalogue::STARTERS.first())
         .ok_or_else(|| other("no starter symbols are built in"))?;
     Ok(Box::new(Safe(Place {
@@ -189,7 +189,7 @@ impl Place {
     fn default_rack(&self, s: &Session) -> Option<DeviceId> {
         read(s, |p, _| {
             let doc = p.ledger.document();
-            let last = self.last.or_else(|| p.last_placed.as_ref().map(|(_, c)| *c));
+            let last = self.last.or_else(|| p.last_placed.map(|l| l.device));
             let of_last = last.and_then(|c| match ecad_electrical::plc::rack::rack_ref(doc, c) {
                 ecad_electrical::plc::rack::RackRef::Rack(r) => Some(r),
                 _ => None,
@@ -358,7 +358,7 @@ impl Place {
         let prefix = self.symbol().prefix();
         read(s, |p, _| {
             let doc = p.ledger.document();
-            Ok(p.last_placed.as_ref().map(|(_, c)| *c).filter(|c| {
+            Ok(p.last_placed.map(|l| l.device).filter(|c| {
                 ecad_electrical::devices::tags::tag_of(doc, *c).and_then(ecad_model::naming::tag::parse).is_some_and(|(px, _)| px == prefix)
             }))
         })

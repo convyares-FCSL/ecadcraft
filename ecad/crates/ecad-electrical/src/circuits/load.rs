@@ -31,7 +31,7 @@ pub trait LoadSource {
 
 /// The subject's own `load` property (A, design 057 §6.1).
 #[derive(Debug, Clone, Copy, Default)]
-pub struct TypedLoads;
+pub(crate) struct TypedLoads;
 
 impl LoadSource for TypedLoads {
     fn load(&self, doc: &Document, s: RatedSubject) -> Option<Load> {

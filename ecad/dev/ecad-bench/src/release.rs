@@ -6,7 +6,7 @@
 //!   kept lists warm. Target ≤ 100 ms on large.
 //! - **orphanupd**: one cable reference end erased (its partner becomes an orphan), committed with
 //!   the Checks kept, then undone; **orphanwork**: of that, the orphan rows re-derived for the
-//!   cable (`checks::reference_checks`), the only work 027 adds to the edit (target: under 1 ms
+//!   cable (`checks::cables::reference_checks`), the only work 027 adds to the edit (target: under 1 ms
 //!   over the same edit without it).
 //!
 //! On the 25-page project only ([`measure_print`], owner 2026-11-12):
@@ -109,7 +109,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelea
             upd.push(ms(t));
             work.push(project.read(&mut s, |p, _| {
                 let t = Instant::now();
-                std::hint::black_box(ecad_electrical::checks::reference_checks(p.ledger.document(), cable));
+                std::hint::black_box(ecad_electrical::checks::cables::reference_checks(p.ledger.document(), cable));
                 ms(t)
             })?);
             run(&mut s, "undo", json!({}))?;

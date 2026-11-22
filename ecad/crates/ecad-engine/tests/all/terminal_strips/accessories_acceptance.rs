@@ -1,9 +1,9 @@
-//! Tester 030 (terminal strip accessories and jumper links): acceptance checks from outside,
+//! Tester 030 (terminal strip accessories and jumper jumper bars): acceptance checks from outside,
 //! written from brief 030 and design 030 §12 only, before the implementation existed, then run
 //! against the build. They drive only JSON commands, the Jumper tool's inputs and APIs that 028
 //! already had. Defects found are kept as `#[ignore = "tester 030: defect, …"]` probes.
 //!
-//! Link lines are derived drawing (design §5.3). They are found as page entities mapped to a
+//! Jumper bar lines are derived drawing (design §5.3). They are found as page entities mapped to a
 //! `Mapped` variant that 028 did not have (by its Debug name), so the test does not depend on what
 //! the variant is called.
 
@@ -128,7 +128,7 @@ fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
     h.doc().devices[&c].value(key)
 }
 
-/// A link or accessory value without spaces, for comparing canonical forms.
+/// A jumper bar or accessory value without spaces, for comparing canonical forms.
 fn squash(v: Option<String>) -> Option<String> {
     v.map(|s| s.chars().filter(|c| !c.is_whitespace()).collect())
 }
@@ -220,7 +220,7 @@ struct Drawn {
     pts: Vec<(f64, f64)>,
 }
 
-/// The link lines on `page` (the page must be open).
+/// The jumper bar lines on `page` (the page must be open).
 fn jumper_bar_lines(h: &mut H, page: PageId) -> Vec<Drawn> {
     h.activate(page);
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
@@ -257,7 +257,7 @@ fn has_acc_or_jumper_bar_key(d: &Document) -> bool {
 // ---------------------------------------------------------------------------------------------
 
 /// Design A (AC 1, AC 8): fixture A as loaded shows no accessories: no gap rows in the plan, no
-/// accessory rows on the BOM, no accessory or link keys stored.
+/// accessory rows on the BOM, no accessory or jumper bar keys stored.
 #[test]
 fn a_fixture_a_shows_no_accessories() {
     let mut a = fixture(0x7030_0001, true);
@@ -393,7 +393,7 @@ fn e_renumber_moves_acc_and_jumper_bar_keys_in_one_transaction() {
     assert_eq!(a.h.head(), head, "the preview writes nothing");
     let text = pv.to_string();
     assert!(text.contains("partition after 1"), "preview lists the partition move: {pv}");
-    assert!(text.contains("link"), "preview lists the link rewrite: {pv}");
+    assert!(text.contains("jumper bar"), "preview lists the jumper bar rewrite: {pv}");
     let before = a.h.doc();
     a.h.run("renumber", json!({"kind": "terminal_blocks"})).unwrap();
     assert_eq!(a.h.head(), head + 1, "one transaction");
@@ -404,7 +404,7 @@ fn e_renumber_moves_acc_and_jumper_bar_keys_in_one_transaction() {
     assert_eq!(prop(&mut a.h, a.x1, "acc.after.1").as_deref(), Some("end_plate"), "end plate follows old 2");
     assert_eq!(prop(&mut a.h, a.x1, "acc.on.2").as_deref(), Some("marker"));
     assert_eq!(prop(&mut a.h, a.x1, "acc.on.1"), None);
-    assert_eq!(squash(prop(&mut a.h, a.x1, "jumper_bar.1")).as_deref(), Some("2-3"), "the link keeps its terminals, re-collapsed");
+    assert_eq!(squash(prop(&mut a.h, a.x1, "jumper_bar.1")).as_deref(), Some("2-3"), "the jumper bar keeps its terminals, re-collapsed");
     same_as_built(&mut a.h);
     a.h.cmdline("u");
     assert_eq!(model_parts(&a.h.doc()), model_parts(&before), "one u restores labels and keys");
@@ -413,7 +413,7 @@ fn e_renumber_moves_acc_and_jumper_bar_keys_in_one_transaction() {
     a.h.check();
 }
 
-/// Design F and P, link-orphan (AC 4): every Checks row has a way out, and the fixes' effects
+/// Design F and P, jumper bar-orphan (AC 4): every Checks row has a way out, and the fixes' effects
 /// clear the row.
 #[test]
 fn f_orphans_and_their_fixes() {
@@ -443,7 +443,7 @@ fn f_orphans_and_their_fixes() {
     assert!(checks_of(&mut a.h, "jumper-bar-orphan").is_empty());
     a.h.cmdline("u");
     assert_eq!(checks_of(&mut a.h, "jumper-bar-orphan").len(), 1);
-    // Delete link.
+    // Delete jumper bar.
     step(&mut a.h, "jumper", json!({"jumper_bar": {"strip": s, "n": 1}, "delete": true}));
     assert_eq!(prop(&mut a.h, a.x1, "jumper_bar.1"), None);
     assert!(checks_of(&mut a.h, "jumper-bar-orphan").is_empty());
@@ -456,7 +456,7 @@ fn f_orphans_and_their_fixes() {
     a.h.check();
 }
 
-/// Design P (AC 4, brief: a link across a partition is a warning, never a refusal): Split link at
+/// Design P (AC 4, brief: a jumper bar across a partition is a warning, never a refusal): Split jumper bar at
 /// 4 and Remove partition each clear the row in one transaction.
 #[test]
 fn p_jumper_bar_across_partition_is_a_warning_with_fixes() {
@@ -464,13 +464,13 @@ fn p_jumper_bar_across_partition_is_a_warning_with_fixes() {
     let s = a.x1.hex();
     a.h.run("accessory", json!({"strip": s, "at": "4", "items": ["partition"]})).unwrap();
     let v = a.h.run("jumper", json!({"strip": s, "positions": "3-6"}));
-    assert!(v.is_ok(), "a link across a partition is never refused: {v:?}");
+    assert!(v.is_ok(), "a jumper bar across a partition is never refused: {v:?}");
     let rows = checks_of(&mut a.h, "jumper-bar-across-partition");
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0]["which"], "-X01: link 3-6 crosses the partition after 4", "{}", rows[0]);
     assert_eq!(rows[0]["severity"], "warning", "{}", rows[0]);
     rows_have_a_way_out(&mut a.h, "jumper-bar-across-partition");
-    // Split link at 4: two links, one transaction.
+    // Split jumper bar at 4: two jumper bars, one transaction.
     step(&mut a.h, "jumper", json!({"jumper_bar": {"strip": s, "n": 1}, "split_at": "4"}));
     let jumper_bars: Vec<String> = props(&mut a.h, a.x1)
         .into_iter()
@@ -531,10 +531,10 @@ fn g_update_maps_recompute_only_what_changed() {
     a.h.check();
 }
 
-/// Design L (AC 10): the Jumper tool picks 1, then 4, Enter: `link.1 = 1-4` in one transaction,
-/// the same as the JSON form; 1–4 share one wire number; Skip makes a skip link; Esc writes
+/// Design L (AC 10): the Jumper tool picks 1, then 4, Enter: `jumper_bar.1 = 1-4` in one transaction,
+/// the same as the JSON form; 1–4 share one wire number; Skip makes a skip jumper bar; Esc writes
 /// nothing; a terminal of another strip is refused and the tool carries on. The line is dashed,
-/// through 1–4, with no stub; a skip link runs in its own lane.
+/// through 1–4, with no stub; a skip jumper bar runs in its own lane.
 #[test]
 fn l_jumper_tool_range_skip_and_wire_numbers() {
     // The JSON form on an identical fixture, for comparing the transaction.
@@ -550,7 +550,7 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
     let at: Vec<_> = a.t.iter().map(|t| a.h.connection_point_pos(a.page, *t)).collect();
     let y_at = a.h.connection_point_pos(a.page, y[0]);
     let (n1, n4) = (net_number(&mut a.h, a.t[0]), net_number(&mut a.h, a.t[3]));
-    assert_ne!(n1, n4, "1 and 4 are different nets before the link");
+    assert_ne!(n1, n4, "1 and 4 are different nets before the jumper bar");
     // Esc writes nothing.
     let head = a.h.head();
     a.h.s.start("jumper").unwrap();
@@ -591,7 +591,7 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
     let tx = a.h.p(|p| p.ledger.log().last().cloned()).unwrap();
     assert_eq!(tx.ops, json_tx.ops, "the tool records what the JSON form records");
     assert_eq!(tx.label, json_tx.label);
-    assert!(tx.label.contains("Link -X01 1-4"), "{}", tx.label);
+    assert!(tx.label.contains("Jumper bar -X01 1-4"), "{}", tx.label);
     // One wire number on 1–4; undo splits them again.
     let n: Vec<Value> = a.t.iter().map(|t| net_number(&mut a.h, *t)).collect::<Vec<_>>();
     assert!(n.iter().all(|x| *x == n[0]) && !n[0].is_null(), "one wire number on 1-4: {n:?}");
@@ -599,14 +599,14 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
     a.h.cmdline("u");
     assert_ne!(net_number(&mut a.h, a.t[0]), net_number(&mut a.h, a.t[3]), "u splits the numbers again");
     a.h.run("redo", Value::Null).unwrap();
-    // The line: dashed, through 1-4 on y 170, no stub (5…12 are not in the link).
+    // The line: dashed, through 1-4 on y 170, no stub (5…12 are not in the jumper bar).
     let lines = jumper_bar_lines(&mut a.h, a.page);
-    assert!(!lines.is_empty(), "the page draws the link line");
+    assert!(!lines.is_empty(), "the page draws the jumper bar line");
     assert!(lines.iter().any(|d| d.linetype.to_lowercase().contains("dash")), "dashed: {:?}", lines.iter().map(|d| &d.linetype).collect::<Vec<_>>());
     let (x0, y0, x1, y1) = extent(&lines);
     assert!(near(x0, at[0].x) && near(x1, at[3].x), "through 1..4, no stub: {x0}..{x1}");
     assert!(near(y0, at[0].y) && near(y1, at[0].y), "lane 0 through the centres: {y0}..{y1}");
-    // A skip link 1, 3 overlaps: lane 1, 1.5 mm off the row, never crossing.
+    // A skip jumper bar 1, 3 overlaps: lane 1, 1.5 mm off the row, never crossing.
     a.h.run("jumper", json!({"connection_points": [a.t[0].hex(), a.t[2].hex()], "skip": true})).unwrap();
     assert_eq!(squash(prop(&mut a.h, a.x1, "jumper_bar.2")).as_deref(), Some("1,3"));
     let p = plan(&mut a.h, a.x1);
@@ -621,9 +621,9 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
     a.h.check();
 }
 
-/// Design M (AC 10): a link whose last terminal is drawn on another page: the first page draws the
+/// Design M (AC 10): a jumper bar whose last terminal is drawn on another page: the first page draws the
 /// line with a 4 mm stub past its last shown terminal; the other page draws only the stub; a
-/// change of the link updates both pages.
+/// change of the jumper bar updates both pages.
 #[test]
 fn m_jumper_bar_line_on_every_page_with_stub() {
     let mut a = fixture(0x7030_0009, true);
@@ -652,7 +652,7 @@ fn m_jumper_bar_line_on_every_page_with_stub() {
         .expect("the PE terminal on page 1");
     let lines = jumper_bar_lines(&mut a.h, a.page);
     let (x0, _, _, _) = extent(&lines);
-    assert!(near(x0, at3.x), "starts at 3 (3 is the link's first position): {x0}");
+    assert!(near(x0, at3.x), "starts at 3 (3 is the jumper bar's first position): {x0}");
     let pts: Vec<(f64, f64)> = lines.iter().flat_map(|d| d.pts.clone()).collect();
     let dist = |p: &(f64, f64)| ((p.0 - last.x).powi(2) + (p.1 - last.y).powi(2)).sqrt();
     assert!(pts.iter().any(|p| near(dist(p), 0.0)), "the line reaches 5: {pts:?}");
@@ -665,14 +665,14 @@ fn m_jumper_bar_line_on_every_page_with_stub() {
     assert!(near(x0, atf.x) && near(x1, atf.x + 4.0) && near(y0, atf.y) && near(y1, atf.y), "only a stub to the right: {x0},{y0}..{x1},{y1}");
     // Shorten to 3-4: page 2 has no line, page 1 no stub.
     a.h.run("jumper", json!({"jumper_bar": {"strip": a.x1.hex(), "n": 1}, "positions": "3-4"})).unwrap();
-    assert!(jumper_bar_lines(&mut a.h, p2).is_empty(), "page 2 updated when the link changed");
+    assert!(jumper_bar_lines(&mut a.h, p2).is_empty(), "page 2 updated when the jumper bar changed");
     let (_, _, x1, _) = extent(&jumper_bar_lines(&mut a.h, a.page));
     assert!(near(x1, at4.x), "no stub now: {x1}");
     a.h.check();
 }
 
 /// Design N (AC 10): Extend, Shorten (inner position → a skip), Split, Delete are one transaction
-/// and one `u` each; Erase on the selected line deletes the link and says so.
+/// and one `u` each; Erase on the selected line deletes the jumper bar and says so.
 #[test]
 fn n_extend_shorten_split_delete_each_one_transaction() {
     let mut a = fixture(0x7030_000a, true);
@@ -693,11 +693,11 @@ fn n_extend_shorten_split_delete_each_one_transaction() {
     assert_eq!(squash(Some(v2.clone())).as_deref(), Some("6-8"));
     let n2: u64 = k2[11..].parse().unwrap();
     assert!(n2 >= 2, "a new number, never reused: {k2}");
-    // Delete link 1 clears its part keys too.
+    // Delete jumper bar 1 clears its part keys too.
     step(&mut a.h, "jumper", json!({"jumper_bar": l1, "delete": true}));
     let left: Vec<String> = props(&mut a.h, a.x1).into_keys().filter(|k| k.starts_with("jumper_bar.1")).collect();
     assert!(left.iter().all(|k| !(k == "jumper_bar.1" || k.starts_with("jumper_bar.1."))), "{left:?}");
-    // Erase on the line of the remaining link (3-4 drawn on page 1 is gone; 6-8 are spares, so
+    // Erase on the line of the remaining jumper bar (3-4 drawn on page 1 is gone; 6-8 are spares, so
     // make a drawn one first).
     a.h.run("jumper", json!({"strip": s, "positions": "1-2"})).unwrap();
     let lines = jumper_bar_lines(&mut a.h, a.page);
@@ -716,8 +716,8 @@ fn n_extend_shorten_split_delete_each_one_transaction() {
     a.h.check();
 }
 
-/// Design O (AC 11): bars per link = ceil(span / bar size); bar size from the strip, else the
-/// project, else 10; a link's own part number gives its own row.
+/// Design O (AC 11): bars per jumper bar = ceil(span / bar size); bar size from the strip, else the
+/// project, else 10; a jumper bar's own part number gives its own row.
 #[test]
 fn o_jumper_bars_on_the_bom() {
     let mut a = fixture(0x7030_000b, true);
@@ -732,7 +732,7 @@ fn o_jumper_bars_on_the_bom() {
     assert_eq!(bom_qty(&mut a.h, "JB-10"), 3, "project bar 5");
     a.h.run("setprop", json!({"component": s, "key": "jumper.bar", "value": "12"})).unwrap();
     assert_eq!(bom_qty(&mut a.h, "JB-10"), 1, "the strip's value wins over the project's");
-    // A skip link's span counts every position between its ends (spares too).
+    // A skip jumper bar's span counts every position between its ends (spares too).
     a.h.run("jumper", json!({"strip": s, "positions": "1, 3, 5", "skip": true})).unwrap();
     assert_eq!(bom_qty(&mut a.h, "JB-10"), 2);
     step(&mut a.h, "setprop", json!({"component": s, "key": "jumper_bar.2.part_number", "value": "JB-10-BU"}));
@@ -762,7 +762,7 @@ fn reads(h: &mut H) -> Value {
     })
 }
 
-/// Design J (AC 8): every accessory, part and link key, the plan, the BOM and the checks are the
+/// Design J (AC 8): every accessory, part and jumper bar key, the plan, the BOM and the checks are the
 /// same after save, close and reopen at a Windows-style path; open adds no transaction.
 #[test]
 fn j_save_reopen_keeps_everything() {
@@ -803,7 +803,7 @@ fn j_save_reopen_keeps_everything() {
 }
 
 /// Design J, second half (AC 8): a 028 file (strip, offer, PE, bridge, no 030 key) reopens with no
-/// transaction, shows no accessories or links, and its log is unchanged by open, read and close.
+/// transaction, shows no accessories or jumper bars, and its log is unchanged by open, read and close.
 #[test]
 fn j_a_028_file_opens_unchanged_and_shows_no_accessories() {
     let dir = tmp_dir("old");
@@ -929,8 +929,8 @@ fn k_hostile_input_refused_without_panic() {
     a.h.check();
 }
 
-/// Design §7.4: "Erase on a selected link deletes the link, saying so (`Deleted link -X01 1-4.`)".
-/// Defect: the erase deletes the link's keys (translate.rs) but echoes no note.
+/// Design §7.4: "Erase on a selected jumper bar deletes the jumper bar, saying so (`Deleted jumper bar -X01 1-4.`)".
+/// Defect: the erase deletes the jumper bar's keys (translate.rs) but echoes no note.
 #[test]
 fn n_erase_on_a_jumper_bar_line_says_deleted_jumper_bar() {
     let mut a = fixture(0x7030_000b, true);
@@ -938,7 +938,7 @@ fn n_erase_on_a_jumper_bar_line_says_deleted_jumper_bar() {
     let lines = jumper_bar_lines(&mut a.h, a.page);
     assert!(!lines.is_empty());
     let v = a.h.run("erase", json!({"handles": [lines[0].handle.hex()]})).unwrap();
-    assert_eq!(prop(&mut a.h, a.x1, "jumper_bar.1"), None, "the link is deleted");
+    assert_eq!(prop(&mut a.h, a.x1, "jumper_bar.1"), None, "the jumper bar is deleted");
     let said = format!("{v} {}", last_echo(&a.h));
     assert!(said.contains("Deleted link -X01 1-2"), "{said}");
 }

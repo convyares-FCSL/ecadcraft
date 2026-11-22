@@ -202,7 +202,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         // Brief 045 (design 045 §2.4): a new card goes in a rack's slot when the project has a rack.
         let card_slot = match ecad_electrical::plc::rack::CardType::of_symbol(starter) {
             Some(t) if !t.is_rack() && !plan.joined => {
-                let last = p.last_placed.as_ref().map(|(_, c)| *c);
+                let last = p.last_placed.map(|l| l.device);
                 let at = ecad_electrical::plc::rack::place_target(p.ledger.document(), rack.as_ref().map(Option::as_deref), slot.as_deref(), last)?;
                 if let Some((r, s)) = at {
                     ecad_electrical::plc::rack::put_new_card(p.ledger.document(), &mut plan.ops, plan.component, r, s);
@@ -215,9 +215,9 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         // unset device takes it in this transaction, a device with another value is asked about.
         let proposed = crate::symbols::draw::plan_place(p, &plan.ops, modes, plan.component, page, origin, None).map_err(CmdError::refused)?;
         plan.ops.extend(proposed.ops.iter().cloned());
-        let label = if land.is_some() { "Place terminal".to_string() } else { plan.label.clone() };
+        let label = if land.is_some() { "Place terminal block".to_string() } else { plan.label.clone() };
         p.apply_edit(pg, "place", &label, plan.ops.clone())?;
-        p.last_placed = Some((starter.key.to_string(), plan.component));
+        p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: plan.component });
         let doc = p.ledger.document();
         let landed = land.map(|(t, l)| crate::terminal_strips::commands::land_result(doc, t, &l));
         if let (true, ecad_electrical::symbols::Kind::Contact { make }) = (plan.joined, starter.kind) {

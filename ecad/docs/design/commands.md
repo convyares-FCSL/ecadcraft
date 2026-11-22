@@ -11,8 +11,8 @@ texts do not change.
 engine file), **G/S** mixed (the generic commands move, the file keeps the session ones).
 
 Status (2026-11-22): every **G** file has moved and its engine file is gone; of the mixed files,
-page_type, reference, title_block and xref keep only their session commands. Still to move: the
-generic halves of device, output, page, sheet, symbol, terminal, text, wire and plc/.
+page_type, reference, reports (printbook, reports), title_block and xref keep only their session commands.
+Still to move: the generic halves of device, page, sheet, symbol, terminal, text, wire and plc/.
 
 | File | | Commands | Reason |
 | --- | --- | --- | --- |
@@ -27,10 +27,10 @@ generic halves of device, output, page, sheet, symbol, terminal, text, wire and 
 | designation.rs | G | designations, designationadd/edit/merge/remove | Plan on the document and the designation-use index. |
 | device.rs | G/S | G: symbols, devices, deviceprops, ecaddelete, devicedelete, tagsettings. S: place, convertcomponent, addconnectionpoint | Placing and converting work on CADCraft entities, the selection and snapping. |
 | device_link.rs | G | linkdevices, unlinkdevices, userfield | Plan and commit. |
-| level.rs | G | termlabel, toposition | Plan and commit. |
+| level.rs | G | terminalblocklabel, toposition | Plan and commit. |
 | location.rs | G | conflicts, setlocation, setfunction | Plan and commit; keeps the waiting conflicts (project state). |
 | numbering.rs | G | renumber, finalise, numbering | Plan on the document in drawing order (the order is in the model). |
-| output.rs | G/S | G: locationbox, functionbox, bom, wirelist, cablelist. S: printbook, reports | Print Book renders pages; `reports` opens report pages. |
+| reports.rs | S | printbook, reports (locationbox, functionbox, bom, wirelist and cablelist are generic: `reports/commands/{boxes,lists}.rs`) | Print Book renders pages; `reports` opens report pages. |
 | page.rs | G/S | G: renamepage, movepage. S: newpage, openpage, ecadinspect | Opening and creating page views, and the live drawing facts of the inspector. |
 | page_type.rs | G/S | G: folderprops, renumberpages. S: deletepage | Deleting closes the page's view. |
 | prop.rs | G | setprop | Many routes, all plan and commit on the document and the tag high-water mark. |
@@ -58,7 +58,8 @@ pub trait Generic: DeserializeOwned + JsonSchema {
     const ACCESS: Access = Access::Edits;        // or Reads: the agent gate lets it run with writes off
     const IO: Io = Io::NONE;                     // Io { reads: &[(param, Read)], writes: &[param] }
                                                  // Read::Bytes(max) | Read::Standard (another .ecad's)
-    const STATE: State = State::None;            // LastCaption | Conflicts: state kept beyond the document
+    const STATE: State = State::None;            // LastCaption | Conflicts | LastPlaced: state kept beyond the document
+                                                 // (LastPlaced: `LastPlaced { starter: Option<StarterKey>, device }`, the click tools' defaults)
     fn check(&self) -> Result<(), CmdError> { Ok(()) }   // before the project is taken
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError>;
 }

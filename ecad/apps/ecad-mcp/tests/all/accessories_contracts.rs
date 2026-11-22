@@ -1,7 +1,7 @@
 //! Brief 030, MCP contract (the ECAD rule of brief 011, design 030 §10): `accessory`, `jumper`
 //! (make, extend, shorten, split, delete), `setprop` of `acc.*`, `jumper_bar.<n>`, `jumper.bar` and
 //! accessory part keys, `projectprops` with `strip_*` and `renumber {kind: "terminals"}` with
-//! accessory keys and links, through `execute`, record the agent's transaction and are refused
+//! accessory keys and jumper bars, through `execute`, record the agent's transaction and are refused
 //! with writes off; `stripplan`, `bom`, `checks` and the renumber preview work with writes off and
 //! record nothing.
 
@@ -58,7 +58,7 @@ fn accessory_and_jumper_commands_through_execute() {
     let (_, ops) = last_by_agent(&mut c);
     assert!(
         ops.iter().any(|o| matches!(o, Op::ModifyWire { before, after, .. } if before.number != after.number)),
-        "wire numbers in the link's transaction"
+        "wire numbers in the jumper bar's transaction"
     );
     one(&mut c, "jumper", json!({"strip": strip, "positions": "2, 4", "skip": true}), "jumper_bar.2");
     let l1 = json!({"strip": strip, "n": 1});
@@ -69,10 +69,10 @@ fn accessory_and_jumper_commands_through_execute() {
     one(&mut c, "jumper", json!({"jumper_bar": {"strip": strip, "n": 3}, "delete": true}), "jumper_bar.3");
     one(&mut c, "setprop", json!({"component": strip, "key": "jumper_bar.1", "value": "1-4"}), "jumper_bar.1");
     one(&mut c, "setprop", json!({"component": strip, "key": "jumper.bar", "value": "2"}), "jumper.bar");
-    // Renumber moves the keys and rewrites the links, in its one transaction.
+    // Renumber moves the keys and rewrites the jumper bars, in its one transaction.
     let n = c.log().len();
     let pv = c.exec("renumber", json!({"kind": "terminal_blocks", "start": 3, "preview": true}));
-    assert!(pv["accessories"].to_string().contains("link 1-4 \u{2192} 3-6"), "{pv}");
+    assert!(pv["accessories"].to_string().contains("jumper bar 1-4 \u{2192} 3-6"), "{pv}");
     assert_eq!(c.log().len(), n, "a preview records nothing");
     c.exec("renumber", json!({"kind": "terminal_blocks", "start": 3}));
     assert_eq!(c.log().len(), n + 1);

@@ -166,7 +166,7 @@ fn checks_table_shows_the_checks_rows() {
 }
 
 /// Criterion 5: Reports ▸ Terminals shows the strip's plan rows; only 036's editable fields are
-/// inputs; inside columns right-aligned, outside left-aligned; a label edit is one `termlabel`
+/// inputs; inside columns right-aligned, outside left-aligned; a label edit is one `terminalblocklabel`
 /// transaction, and patches only that strip's rows.
 #[test]
 fn terminal_blocks_table_edits_a_label_in_one_transaction() {
@@ -214,7 +214,7 @@ fn terminal_blocks_table_edits_a_label_in_one_transaction() {
     edit(&mut h, "Edit Label", "L1");
     assert_eq!(head(&mut h), before + 1, "one transaction: {:?}", h.state().reports.as_ref().unwrap().connection_points.table.refusal);
     let (label, _) = crate::pages::project_panel::last_ops(&mut h);
-    assert_eq!(label, "Terminal label", "termlabel's transaction");
+    assert_eq!(label, "Terminal label", "terminalblocklabel's transaction");
     h.run_steps(3);
     let v = &h.state().reports.as_ref().unwrap().connection_points;
     assert_eq!(v.rebuilds, rebuilds, "patched, not rebuilt");

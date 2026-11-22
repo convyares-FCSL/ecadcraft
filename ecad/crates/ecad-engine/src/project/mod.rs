@@ -116,9 +116,9 @@ pub struct Project {
     page_list_version: u64,
     /// What OOPS may bring back on each page document (brief 023, [`crate::translate::oops`]).
     oops: crate::translate::oops::Records,
-    /// What the last placement in this session placed (symbol key, device), for the prompts'
+    /// What the last placement in this session placed (starter, device), for the prompts'
     /// defaults (design 018 §5.3).
-    pub(crate) last_placed: Option<(String, DeviceId)>,
+    pub(crate) last_placed: Option<ecad_electrical::commands::run::LastPlaced>,
     /// The last continuation name placed in this session, the prompt's default (design 022 §3.2).
     pub(crate) last_continuation: Option<String>,
     /// Brief 049: the last caption given in this session, Caption Continuations' default.

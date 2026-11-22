@@ -1,8 +1,8 @@
 //! The terminal manager as a column set (brief 039 step 4): design 036 §9's row model laid out
 //! as a terminal plan, mirrored: inside columns right-aligned towards the strip, the strip in the
 //! middle, outside columns left-aligned away from it. Only 036's editable fields are inputs:
-//! Position and Label (`termlabel`), Rating on a fuse position (`setprop rating.<position>`); the
-//! links are lanes beside the terminals. Everything else is read.
+//! Position and Label (`terminalblocklabel`), Rating on a fuse position (`setprop rating.<position>`); the
+//! jumper bars are lanes beside the terminals. Everything else is read.
 //!
 //! **Update map.** The rows are the kept report models' strip rows (`ReportModels::strips`, kept from
 //! each change's ops, design 036 §11). Per strip, the revision it last changed at
@@ -14,7 +14,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_electrical::reports::kept::ReportModels;
-use ecad_electrical::terminal_strips::{PlanItem, SideCell, StripData, TermRow};
+use ecad_electrical::terminal_strips::strip_model::{PlanItem, SideCell, StripData, TermRow};
 use ecad_model::DeviceId;
 use ecad_widgets::table::{Align, Cell, Changed, Column, ColumnId, Lane, LaneCell, Table, TableEvent, TableSource, Width};
 use serde_json::json;
@@ -22,7 +22,7 @@ use serde_json::json;
 use crate::workspace::ListAction;
 
 /// A row: its strip and its place in the strip's plan.
-pub type TermKey = (DeviceId, u32);
+pub(crate) type TermKey = (DeviceId, u32);
 
 pub const STRIP: ColumnId = ColumnId(0);
 pub const IN_TARGET: ColumnId = ColumnId(1);
@@ -30,9 +30,9 @@ pub const IN_WIRE: ColumnId = ColumnId(2);
 pub const POSITION: ColumnId = ColumnId(3);
 pub const LABEL: ColumnId = ColumnId(4);
 pub const LEVEL: ColumnId = ColumnId(5);
-pub const TYPE: ColumnId = ColumnId(6);
+pub(crate) const TYPE: ColumnId = ColumnId(6);
 pub const RATING: ColumnId = ColumnId(7);
-pub const JUMPER_BARS: ColumnId = ColumnId(8);
+pub(crate) const JUMPER_BARS: ColumnId = ColumnId(8);
 pub const OUT_WIRE: ColumnId = ColumnId(9);
 pub const CABLE: ColumnId = ColumnId(10);
 pub const CORE: ColumnId = ColumnId(11);
@@ -47,7 +47,7 @@ pub fn columns() -> Vec<Column> {
         Column::read(PLACE.0, "Page", Width::Initial(90.0)),
         Column::read(IN_TARGET.0, "From", Width::Initial(150.0)).align(Align::Right),
         Column::read(IN_WIRE.0, "Wire", Width::Initial(100.0)).align(Align::Right),
-        Column::read(JUMPER_BARS.0, "Link", Width::Initial(64.0)).unsorted(),
+        Column::read(JUMPER_BARS.0, "Jumper bar", Width::Initial(64.0)).unsorted(),
         Column::set(POSITION.0, "Terminal", Width::Initial(80.0)).align(Align::Center),
         Column::set(LABEL.0, "Label", Width::Initial(72.0)).align(Align::Center),
         Column::read(LEVEL.0, "Level", Width::Initial(56.0)).align(Align::Center),
@@ -245,10 +245,10 @@ pub fn edit_line(c: DeviceId, row: &TermRow, col: ColumnId, value: &str) -> Opti
     let v = value.trim();
     let strip = c.hex();
     match col {
-        POSITION => Some(format!("termlabel {}", json!({"strip": strip, "at": row.label, "position": v}))),
+        POSITION => Some(format!("terminalblocklabel {}", json!({"strip": strip, "at": row.label, "position": v}))),
         LABEL => {
             let text = if v.is_empty() { serde_json::Value::Null } else { json!(v) };
-            Some(format!("termlabel {}", json!({"strip": strip, "at": row.label, "level": row.level, "text": text})))
+            Some(format!("terminalblocklabel {}", json!({"strip": strip, "at": row.label, "level": row.level, "text": text})))
         }
         RATING => {
             let value = if v.is_empty() { serde_json::Value::Null } else { json!(v) };

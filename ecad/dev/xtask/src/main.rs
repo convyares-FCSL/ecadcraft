@@ -614,7 +614,7 @@ const DRAWN_TEXT_EXEMPT: &[&str] = &[
     "ecad-electrical/src/locations/commands/",
     "ecad-electrical/src/numbering/commands.rs",
     "ecad-electrical/src/pages/commands/",
-    "ecad-electrical/src/plc/commands.rs",
+    "ecad-electrical/src/plc/commands/",
     "ecad-electrical/src/properties/commands/",
     "ecad-electrical/src/references/commands/",
     "ecad-electrical/src/reports/commands/",

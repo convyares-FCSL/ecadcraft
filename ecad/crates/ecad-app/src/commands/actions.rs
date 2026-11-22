@@ -747,7 +747,7 @@ pub const ACTIONS: &[Action] = &[
     slot("wireend.connect", "connect", Params::StartAt, "Connect", Icon::Connect, &[(K::WireEnd, S::Top)], write),
     slot("wireend.disconnect", "disconnect", Params::Id(IdOf::End), "Disconnect", Icon::Disconnect, &[(K::WireEnd, S::TopRight)], write),
     // ---- Terminal.
-    slot("terminal_block.label", "termlabel", Params::App(App::Template), "Edit label", Icon::Edit, &[(K::TerminalBlock, S::Top)], write),
+    slot("terminal_block.label", "terminalblocklabel", Params::App(App::Template), "Edit label", Icon::Edit, &[(K::TerminalBlock, S::Top)], write),
     slot("terminal_block.jumper", "jumper", Params::StartAt, "Jumper", Icon::Connect, &[(K::TerminalBlock, S::TopRight)], write),
     slot("terminal_block.plan", "stripplan", Params::App(App::TerminalStripRow), "Go to strip plan", Icon::GoTo, &[(K::TerminalBlock, S::Right)], ok),
     slot("terminal_block.row", "", Params::App(App::TerminalStripRow), "Show row", Icon::ShowRow, &[(K::TerminalBlock, S::BottomRight)], ok),

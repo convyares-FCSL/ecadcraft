@@ -69,7 +69,7 @@ const NEW: &[(&str, f64, f64, &str)] = &[
     ("rcd4", 43.0, 20.0, "1/2/3/4/5/6/N1/N2"),
     ("ssrin", 12.0, 20.0, "A1/A2"),
     ("ssrout", 9.0, 20.0, "1/2"),
-    ("fuseterm", 7.0, 20.0, "1/2"),
+    ("fuseterminalblock", 7.0, 20.0, "1/2"),
     ("fusebank4", 50.0, 35.0, "L+/M/1/2/3/4"),
     ("fusebank6", 70.0, 35.0, "L+/M/1/2/3/4/5/6"),
     ("fusebank8", 90.0, 35.0, "L+/M/1/2/3/4/5/6/7/8"),
@@ -272,8 +272,8 @@ fn search_table() {
         ]
     );
     assert_eq!(keys("contact"), ["coil", "no", "nc", "power3", "co", "swco", "power4", "ssrin", "ssrout"]);
-    assert_eq!(keys("fuse"), ["fuse", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12", "termfuse"]);
-    assert_eq!(keys("protection"), ["rcbo2", "rcd2", "rcd4", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
+    assert_eq!(keys("fuse"), ["fuse", "fuseterminalblock", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12", "terminalblockfuse"]);
+    assert_eq!(keys("protection"), ["rcbo2", "rcd2", "rcd4", "fuseterminalblock", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
     assert!(keys("xyz").is_empty());
     assert!(keys("basic").is_empty());
     assert_eq!(keys("").len(), STARTERS.len());

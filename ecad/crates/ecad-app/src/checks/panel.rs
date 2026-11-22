@@ -18,61 +18,61 @@ use crate::pages::project_panel::Action;
 /// Accessible label of the tab.
 pub const CHECKS_TAB: &str = "Checks";
 /// What an empty list says.
-pub const NO_PROBLEMS: &str = "No problems found.";
+pub(crate) const NO_PROBLEMS: &str = "No problems found.";
 /// The fix buttons.
 /// Brief 032: the Looks connected row's fix (`joinwires {at}`).
 pub const JOIN: &str = "Join";
-pub const NUMBER_THEM: &str = "Number them";
+pub(crate) const NUMBER_THEM: &str = "Number them";
 /// Brief 026: opens Finalise numbering (the Renumber dialog), never a direct write.
 pub const FINALISE: &str = "Finalise";
 /// Brief 052's fix buttons (design 052 §6).
-pub const USE_CONTEXT: &str = "Use it";
-pub const SET_LOCATION: &str = "Set location";
-pub const SET_FUNCTION: &str = "Set function";
-pub const SHOW_IN_SETTINGS: &str = "Show in Settings";
+pub(crate) const USE_CONTEXT: &str = "Use it";
+pub(crate) const SET_LOCATION: &str = "Set location";
+pub(crate) const SET_FUNCTION: &str = "Set function";
+pub(crate) const SHOW_IN_SETTINGS: &str = "Show in Settings";
 pub const SHOW: &str = "Show";
 /// Brief 050a: a style row's fix opens Settings ▸ Standards.
-pub const GO_TO_STANDARDS: &str = "Go to Standards";
+pub(crate) const GO_TO_STANDARDS: &str = "Go to Standards";
 /// Brief 055: a title block row's fixes.
-pub const EDIT_BLOCK: &str = "Edit block";
-pub const CLEAR_PAGE_SHEET: &str = "Clear the page's sheet";
+pub(crate) const EDIT_BLOCK: &str = "Edit block";
+pub(crate) const CLEAR_PAGE_SHEET: &str = "Clear the page's sheet";
 /// Brief 028's fix buttons.
-pub const OFFER: &str = "Offer drawn";
-pub const RENUMBER_STRIP: &str = "Renumber strip";
-pub const SET_CORES: &str = "Set cores\u{2026}";
+pub(crate) const OFFER: &str = "Offer drawn";
+pub(crate) const RENUMBER_STRIP: &str = "Renumber strip";
+pub(crate) const SET_CORES: &str = "Set cores\u{2026}";
 /// Brief 044: `connector-over`'s fix.
-pub const SET_PINS: &str = "Set pins";
+pub(crate) const SET_PINS: &str = "Set pins";
 /// Brief 044: `connector-lone-pin`'s fix.
-pub const PLACE_MATES: &str = "Place mates";
+pub(crate) const PLACE_MATES: &str = "Place mates";
 /// Brief 044: `connector-family` / `connector-size`'s fix.
-pub const IGNORE: &str = "Ignore";
-pub const NEXT_FREE_CORE: &str = "Next free core";
+pub(crate) const IGNORE: &str = "Ignore";
+pub(crate) const NEXT_FREE_CORE: &str = "Next free core";
 /// Brief 030's fix buttons, two per row (design 030 §8).
-pub const MOVE_TO_END: &str = "Move to end";
+pub(crate) const MOVE_TO_END: &str = "Move to end";
 /// Brief 057 (owner): an open core's two fixes.
-pub const TICK_NOT_USED: &str = "Tick Not used";
+pub(crate) const TICK_NOT_USED: &str = "Tick Not used";
 pub const GO_TO_OPEN_END: &str = "Go to the open end";
 pub const REMOVE: &str = "Remove";
 /// Brief 033: start Move Mirror Table for a table over the title block.
-pub const MOVE_TABLE: &str = "Move table…";
+pub(crate) const MOVE_TABLE: &str = "Move table…";
 /// Brief 033: open a page's number field (a continuation sheet took its number).
-pub const RENUMBER_PAGE: &str = "Renumber…";
-pub const SPLIT_LINK: &str = "Split link";
-pub const REMOVE_PARTITION: &str = "Remove partition";
-pub const DROP_MISSING: &str = "Drop missing";
-pub const DELETE_LINK: &str = "Delete link";
+pub(crate) const RENUMBER_PAGE: &str = "Renumber…";
+pub(crate) const SPLIT_LINK: &str = "Split link";
+pub(crate) const REMOVE_PARTITION: &str = "Remove partition";
+pub(crate) const DROP_MISSING: &str = "Drop missing";
+pub(crate) const DELETE_LINK: &str = "Delete link";
 /// Brief 036's fix buttons (design 036 §8).
-pub const MOVE_NEXT_FREE: &str = "Move to next free";
-pub const MOVE_NEW_POSITION: &str = "Move to new position";
-pub const DROP_MISSING_LEVELS: &str = "Drop missing levels";
+pub(crate) const MOVE_NEXT_FREE: &str = "Move to next free";
+pub(crate) const MOVE_NEW_POSITION: &str = "Move to new position";
+pub(crate) const DROP_MISSING_LEVELS: &str = "Drop missing levels";
 /// Brief 047's fix button for two article numbers of one part (design 047 §9).
-pub const USE_FOR_ALL: &str = "Use for all";
-pub const MAKE_STRIP_POSITION: &str = "Make strip position";
+pub(crate) const USE_FOR_ALL: &str = "Use for all";
+pub(crate) const MAKE_STRIP_POSITION: &str = "Make strip position";
 /// Brief 045 (design 045 §9): the PLC rows' buttons.
-pub const MOVE_TO_FREE_SLOT: &str = "Move to free slot";
-pub const PUT_IN_RACK: &str = "Put in rack…";
-pub const TAKE_OUT_OF_RACK: &str = "Take out of rack";
-pub const RAISE_SLOTS: &str = "Raise slots";
+pub(crate) const MOVE_TO_FREE_SLOT: &str = "Move to free slot";
+pub(crate) const PUT_IN_RACK: &str = "Put in rack…";
+pub(crate) const TAKE_OUT_OF_RACK: &str = "Take out of rack";
+pub(crate) const RAISE_SLOTS: &str = "Raise slots";
 
 /// The two buttons of a brief 030 fix.
 pub fn pair(f: Fix) -> Option<[&'static str; 2]> {

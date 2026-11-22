@@ -32,41 +32,38 @@ use serde_json::json;
 use crate::workspace::ListAction;
 
 /// A row: its card and channel index.
-pub type IoKey = (DeviceId, u32);
+pub(crate) type IoKey = (DeviceId, u32);
 
 pub const CARD: ColumnId = ColumnId(0);
-pub const RACK: ColumnId = ColumnId(1);
-pub const SLOT: ColumnId = ColumnId(2);
-pub const TYPE: ColumnId = ColumnId(3);
+pub(crate) const RACK: ColumnId = ColumnId(1);
+pub(crate) const SLOT: ColumnId = ColumnId(2);
+pub(crate) const TYPE: ColumnId = ColumnId(3);
 pub const CHANNEL: ColumnId = ColumnId(4);
 pub const ADDRESS: ColumnId = ColumnId(5);
 pub const PINS: ColumnId = ColumnId(6);
 pub const TEXT: ColumnId = ColumnId(7);
 pub const STATE: ColumnId = ColumnId(8);
-pub const TARGETS: ColumnId = ColumnId(9);
+pub(crate) const TARGETS: ColumnId = ColumnId(9);
 pub const WIRE: ColumnId = ColumnId(10);
 pub const PLACE: ColumnId = ColumnId(11);
 /// Brief 056 (design 056 §4.2).
 pub const TAG: ColumnId = ColumnId(12);
 pub const SAFE: ColumnId = ColumnId(13);
-pub const DRIVES: ColumnId = ColumnId(14);
+pub(crate) const DRIVES: ColumnId = ColumnId(14);
 pub const PAGE: ColumnId = ColumnId(15);
-pub const TEST: ColumnId = ColumnId(17);
+pub(crate) const TEST: ColumnId = ColumnId(17);
 
 /// Element names (design 056 §3.1, §4.1).
-pub const CARD_HEAD: &str = "ecad.plc.cardhead";
-pub const EXPORT_TAGS: &str = "ecad.plc.exporttags";
-pub const GO_PAGE: &str = "ecad.plc.gopage";
-pub const MORE_FREE: &str = "ecad.plc.morefree";
-pub const ADD_RACK: &str = "ecad.plc.addrack";
-pub const MAKE_TAGS: &str = "ecad.plc.maketags";
+pub(crate) const CARD_HEAD: &str = "ecad.plc.cardhead";
+pub(crate) const EXPORT_TAGS: &str = "ecad.plc.exporttags";
+pub(crate) const GO_PAGE: &str = "ecad.plc.gopage";
+pub(crate) const MORE_FREE: &str = "ecad.plc.morefree";
+pub(crate) const ADD_RACK: &str = "ecad.plc.addrack";
+pub(crate) const MAKE_TAGS: &str = "ecad.plc.maketags";
 /// A table row's height, px (039's table: a 30 px row; the header is one row too).
 const TABLE_ROW_PX: f32 = 30.0;
 /// The free channel's Tag placeholder.
 pub const FREE: &str = "free";
-/// The Drives header's words for inputs (design 056 §4.5) and the Test column's (§4.6).
-pub const DRIVES_TIP: &str = "For outputs, what the channel switches. For inputs, what feeds it.";
-pub const TESTS_COME: &str = "Tests come with the Tests tab.";
 
 /// Element names (design 051 §3.8).
 pub const STRIP: &str = "ecad.plc.strip";
@@ -76,8 +73,8 @@ pub const NO_CARDS: &str = "No PLC cards yet. Place a card body (Place \u{25b8} 
 /// The tooltip of a greyed write link.
 pub const WRITES_OFF: &str = "Writes are off.";
 /// The scope switch's words.
-pub const THIS_CARD: &str = "This card";
-pub const ALL_CARDS: &str = "All cards";
+pub(crate) const THIS_CARD: &str = "This card";
+pub(crate) const ALL_CARDS: &str = "All cards";
 
 /// The columns (design 056 §4.2, without the PLC column since the owner's change of 2026-11-14):
 /// one card's signal columns `Ch, Address, Tag, Description, Type, Safe, Drives, Page, Test`;
@@ -338,7 +335,7 @@ fn mark_of(s: Square) -> Mark {
 }
 
 /// The legend under the strip (design 051 §3.4).
-pub const LEGEND: [(Mark, &str); 4] = [(Mark::On, "in use"), (Mark::Off, "free"), (Mark::Soft, "reserved"), (Mark::Alert, "has a check")];
+pub(crate) const LEGEND: [(Mark, &str); 4] = [(Mark::On, "in use"), (Mark::Off, "free"), (Mark::Soft, "reserved"), (Mark::Alert, "has a check")];
 
 /// `pages 106, 107`; more than three: `pages 106–112 (5)`.
 fn pages_words(numbers: &[String]) -> Vec<String> {
@@ -367,7 +364,7 @@ fn pages_words(numbers: &[String]) -> Vec<String> {
 
 /// What a tile's link part does.
 #[derive(Debug, Clone, PartialEq)]
-pub enum TileLink {
+pub(crate) enum TileLink {
     Page(PageId),
     MakePage(DeviceId),
     Checks(DeviceId),
@@ -619,7 +616,7 @@ impl IoView {
     }
 
     /// The selected card, if the selected tile is one.
-    pub fn selected_card(&self) -> Option<DeviceId> {
+    pub(crate) fn selected_card(&self) -> Option<DeviceId> {
         self.selected.and_then(|i| self.tiles.get(i)).and_then(Tile::card)
     }
 
@@ -874,7 +871,7 @@ impl IoView {
     }
 
     /// Show rack chip `i`.
-    pub fn choose_chip(&mut self, i: usize) {
+    pub(crate) fn choose_chip(&mut self, i: usize) {
         if i != self.chip && i < self.chips.len() {
             self.chip = i;
             self.selected = None;
