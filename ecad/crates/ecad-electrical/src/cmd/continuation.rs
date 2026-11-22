@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::cmd::input::{Bounded, nullable};
-use crate::cmd::run::{Cx, Echo, Generic, Outcome, Slot, State};
+use crate::cmd::run::{Cx, Generic, Outcome, Slot, State};
 use crate::error::CmdError;
 
 /// Most arrows one `contcaption` names.
@@ -181,7 +181,6 @@ impl Generic for ContcaptionParams {
     const TITLE: &'static str = "Caption Continuations";
     const HELP: &'static str =
         "{continuations: [id…] (1-2000), caption: \"TO CONTROL SUPPLY\" | null} (sets or removes the arrows' caption, one transaction)";
-    const ECHO: Echo = Echo::Message;
     const STATE: State = State::LastCaption;
 
     fn check(&self) -> Result<(), CmdError> {
@@ -198,6 +197,6 @@ impl Generic for ContcaptionParams {
         if let (Some(t), Slot::LastCaption(last)) = (plan.caption, &mut cx.state) {
             **last = Some(t);
         }
-        Ok(Outcome::edit_if_any(plan.label, plan.ops, answer))
+        Ok(Outcome::edit_if_any(plan.label, plan.ops, answer).echo(Some(plan.message)))
     }
 }

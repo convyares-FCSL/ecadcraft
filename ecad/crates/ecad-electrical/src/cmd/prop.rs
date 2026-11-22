@@ -3,15 +3,24 @@
 //! change. `setprop` on one object and on several devices (`devices`) both walk it
 //! ([`rule_for`]), so the two paths cannot drift apart.
 //!
-//! Excludes: reading the JSON, locking the project, committing and answering (the engine crate's
-//! `setprop` shim), and the function and location codes themselves ([`super::location`]).
+//! `setprop` itself is a generic command ([`crate::cmd::run`]); a function or location goes
+//! through [`super::location`]'s set, as `setlocation` does.
+//!
+//! Excludes: the function and location codes themselves ([`super::location`]).
 
 use ecad_model::tag::{self, FIXED_KEY, TAG_KEY};
-use ecad_model::{CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties, Subject};
+use ecad_model::{AidId, CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties, Subject, WireId};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::location::{self, MAX_DEVICES};
+use crate::cmd::input::{Bounded, OrNull, nullable};
+use crate::cmd::run::{Cx, Generic, Outcome, State};
+use crate::designations::Aspect;
 use crate::devices::{self, Holder, TagHigh};
 use crate::error::CmdError;
+use crate::words::MAX_HANDLES;
 
 /// The refusal of `tag` on several devices at once.
 pub const ONE_TAG_PER_DEVICE: &str = "Tags are one per device.";
@@ -662,4 +671,263 @@ pub fn object_json(o: ObjectRef) -> Value {
         ObjectRef::Cable(k) => json!({"cable": k.hex()}),
         _ => Value::Null,
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The command (generic: crate::cmd::run)
+
+/// `setprop {component|conductor|cable, key, value, conflict?, merge?}` or `{components, key,
+/// value}`: a property of one object, or of several devices in one transaction (not `tag`). A
+/// device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device
+/// or cable holds needs `conflict`. Key `tag_fixed`: "yes" or null.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetpropParams {
+    /// A device (or any component).
+    #[serde(default)]
+    component: Option<DeviceId>,
+    /// Several devices, in one transaction.
+    #[serde(default)]
+    devices: Option<Bounded<DeviceId, 0, MAX_HANDLES>>,
+    /// Drawing aids (design 072 §6.2), in one transaction: continuations' `name` or `caption`,
+    /// location boxes' `function`, `location` or `panel_temperature`.
+    #[serde(default)]
+    aids: Option<Bounded<AidId, 0, MAX_HANDLES>>,
+    /// A wire.
+    #[serde(default)]
+    conductor: Option<WireId>,
+    /// A cable.
+    #[serde(default)]
+    cable: Option<CableId>,
+    /// The property's key.
+    key: String,
+    /// The value, or null to clear the property.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(required, with = "OrNull<String>")]
+    value: Option<Option<String>>,
+    /// A tag another device or cable holds: swap, merge or next.
+    #[serde(default)]
+    conflict: Option<String>,
+    /// A device tag another device holds: make this the same device (as conflict merge).
+    #[serde(default)]
+    merge: Option<bool>,
+    /// With a null value: clear an older build's text setting on the project.
+    #[serde(default)]
+    project: Option<bool>,
+}
+
+/// The devices a function or location `setprop` names (brief 052, design 052 §5.9).
+fn location_objects(component: Option<DeviceId>, devices: Option<&[DeviceId]>) -> Result<Vec<DeviceId>, CmdError> {
+    match devices {
+        Some(cs) if cs.len() > MAX_DEVICES => Err(CmdError::refused(format!("at most {MAX_DEVICES} entries in `devices` per call"))),
+        Some(cs) => location::objects(None, Some(cs.to_vec())),
+        None => location::objects(component, None),
+    }
+}
+
+/// The one object a `setprop` names.
+fn one_object(p: &SetpropParams) -> Result<ObjectRef, CmdError> {
+    if let Some(c) = p.component {
+        Ok(ObjectRef::Device(c))
+    } else if let Some(c) = p.conductor {
+        Ok(ObjectRef::Wire(c))
+    } else if let Some(c) = p.cable {
+        Ok(ObjectRef::Cable(c))
+    } else {
+        Err(CmdError::refused("`component`, `conductor` or `cable` (hex id) is required"))
+    }
+}
+
+impl SetpropParams {
+    /// Whether this clears an older build's text setting on the project (brief 050a).
+    fn clears_old_key(&self) -> bool {
+        self.project == Some(true) && matches!(self.value, None | Some(None)) && crate::styles::checks::is_old_key(&self.key)
+    }
+
+    /// Whether this sets a function or location on devices (brief 052).
+    fn sets_location(&self) -> bool {
+        (self.component.is_some() || self.devices.is_some()) && location::aspect_property(&self.key).is_some()
+    }
+}
+
+impl Generic for SetpropParams {
+    const ID: &'static str = "setprop";
+    const TITLE: &'static str = "Set Property";
+    const HELP: &'static str = "{component|conductor|cable: id, key, value: string|null, conflict?: \"swap\"|\"merge\"|\"next\", merge?: bool} | {devices: [id], key, value} (several devices in one transaction; not `tag`) (a device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device or cable holds needs `conflict`; key `tag_fixed`: \"yes\" or null)";
+    const STATE: State = State::Conflicts;
+
+    fn check(&self) -> Result<(), CmdError> {
+        if self.clears_old_key() {
+            return Ok(());
+        }
+        reserved(&self.key)?;
+        if self.sets_location() {
+            return location_objects(self.component, self.devices.as_ref().map(|c| c.0.as_slice())).map(|_| ());
+        }
+        if self.aids.is_some() || self.devices.is_some() {
+            return Ok(());
+        }
+        one_object(self).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        // Brief 050a (design 050 §3.4): an older build's text size, weight or font on the project is
+        // cleared here (its Checks row goes); it is never written.
+        if self.clears_old_key() {
+            return Ok(match clear_old_key(cx.doc, &self.key) {
+                None => Outcome::answer(json!({"changed": false})),
+                Some(op) => Outcome::edit("Clear an older build's text setting", vec![op], json!({"changed": true})),
+            });
+        }
+        reserved(&self.key)?;
+        let object = one_object(&self);
+        let key = self.key;
+        let typed = self.value.flatten();
+        // Brief 052 (design 052 §5.9): a function or location (PROP_RULES' first row, which claims by
+        // key alone) is stored as an entry key of the project's list, for all the devices at once.
+        if (self.component.is_some() || self.devices.is_some())
+            && let Some(prop) = location::aspect_property(&key)
+        {
+            let objects = location_objects(self.component, self.devices.as_ref().map(|c| c.0.as_slice()))?;
+            let a = location::aspect_of(&prop)?;
+            let plan = location::plan_set(cx.doc, cx.ids, &objects, &prop, typed.as_deref())?;
+            return Ok(location::set_outcome(cx.doc, a, plan, "devices", &mut cx.state));
+        }
+        // Drawing aids (design 072 §6.2), one transaction: a continuation's name or caption; a
+        // location box's function or location (with its proposals, as `setlocation`) or panel
+        // temperature.
+        if let Some(aids) = self.aids {
+            if let Some(a) = Aspect::of_property(&key)
+                && aids.0.iter().all(|x| crate::locations::box_values(cx.doc, *x).is_some())
+            {
+                let plan = location::plan_box_set(cx.doc, cx.ids, &aids.0, a, typed.as_deref())?;
+                return Ok(location::set_outcome(cx.doc, a, plan, "aids", &mut cx.state));
+            }
+            let ops = crate::cmd::continuation::plan_aid_prop(cx.doc, cx.ids, &aids.0, &key, typed.as_deref())?;
+            let n = ops.len();
+            return Ok(match n {
+                0 => Outcome::answer(json!({"changed": false})),
+                _ => Outcome::edit("Set property", ops, json!({"changed": true, "aids": n})),
+            });
+        }
+        // Several devices at once (brief 019, the Properties panel): one transaction for all.
+        if let Some(cs) = self.devices {
+            let ops = plan_many(cx.doc, &cs.0, &key, typed.as_deref())?;
+            let n = ops.len();
+            return Ok(match n {
+                0 => Outcome::answer(json!({"changed": false})),
+                _ => Outcome::edit("Set property", ops, json!({"changed": true, "devices": n})),
+            });
+        }
+        let object = object?;
+        let (word, merge) = (self.conflict, self.merge.unwrap_or(false));
+        let doc = cx.doc;
+        // Pack re-run, bug 7: on a PLC card with channels, `channels` is its channel count.
+        let key = match object {
+            ObjectRef::Device(c) => component_key(doc, c, &key),
+            _ => key,
+        };
+        match rule_for(doc, object, &key).build {
+            Build::Tag => {
+                let conflict = conflict(word.as_deref(), merge)?;
+                match (conflict, object) {
+                    // Merging two devices keeps 018's path (labels, contacts, connection points).
+                    (Some(Conflict::Merge), ObjectRef::Device(c)) => set_device(cx, c, TAG_KEY, typed.as_deref(), true),
+                    _ => set_tag(cx, object, typed.as_deref(), conflict),
+                }
+            }
+            Build::Fixed => {
+                let done = plan_fixed(doc, object, typed.as_deref())?;
+                Ok(match done.op {
+                    None => Outcome::answer(json!({"changed": false, "fixed": done.on})),
+                    Some(op) => Outcome::edit(if done.on { "Fix tag" } else { "Release tag" }, vec![op], json!({"changed": true, "fixed": done.on})),
+                })
+            }
+            Build::Device(_) => match object {
+                ObjectRef::Device(c) => set_device(cx, c, &key, typed.as_deref(), merge),
+                _ => set_value(doc, object, &key, typed.as_deref()),
+            },
+            Build::Value(_) | Build::Aspect => set_value(doc, object, &key, typed.as_deref()),
+            Build::Record(_) => {
+                let op = plan_record(doc, object, &key, typed.as_deref())?;
+                let changed = op.is_some();
+                // Design 072 §2.2: every way in shows what a rating read as.
+                let answer = move |doc: &Document| {
+                    let mut answer = record_answer(doc, object, &key, changed);
+                    if let ObjectRef::Device(c) = object
+                        && let Some(m) = doc.devices.get(&c).and_then(|d| crate::rating::reader::echo(d, &key))
+                    {
+                        answer["message"] = json!(m);
+                    }
+                    answer
+                };
+                let out = Outcome::edit_then("Set property", op.into_iter().collect(), answer);
+                Ok(if changed { out.echo_message() } else { out })
+            }
+        }
+    }
+}
+
+/// A `Record` row's answer: on a device, the value now stored (and the device, when it changed),
+/// as a device property's answer gives them.
+fn record_answer(doc: &Document, object: ObjectRef, key: &str, changed: bool) -> Value {
+    match object {
+        ObjectRef::Device(c) => {
+            let value = doc.devices.get(&c).and_then(|d| d.value(key));
+            if changed { json!({"changed": true, "value": value, "component": c.hex()}) } else { json!({"changed": false, "value": value}) }
+        }
+        _ => json!({"changed": changed}),
+    }
+}
+
+/// A `Value` row's change on one object.
+fn set_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<Outcome, CmdError> {
+    let done = plan_value(doc, object, key, typed)?;
+    let Some(op) = done.op else { return Ok(Outcome::answer(json!({"changed": false}))) };
+    Ok(match done.note {
+        Some(m) => Outcome::edit("Set property", vec![op], json!({"changed": true, "message": m})).echo(Some(m)),
+        None => Outcome::edit("Set property", vec![op], json!({"changed": true})),
+    })
+}
+
+/// A device property (design 018 §6), merging with `merge`.
+fn set_device(cx: &mut Cx<'_>, c: DeviceId, key: &str, typed: Option<&str>, merge: bool) -> Result<Outcome, CmdError> {
+    Ok(match plan_device(cx.doc, cx.ids, cx.tag_high, c, key, typed, merge)? {
+        DeviceSet::Unchanged(value) => Outcome::answer(json!({"changed": false, "value": value})),
+        DeviceSet::Set { op, label, value } => Outcome::edit(label, vec![*op], json!({"changed": true, "value": value, "component": c.hex()})),
+        DeviceSet::Merged { ops, holder, into, before } => Outcome::edit_then(format!("Merge into {into}"), ops, move |doc| {
+            let message = merged_device_words(doc, before.as_deref(), holder, &into);
+            json!({"changed": true, "merged": true, "component": holder.hex(), "tag": into, "message": message})
+        }),
+    })
+}
+
+/// The tag of a device or cable (design 026 §4, §7).
+fn set_tag(cx: &mut Cx<'_>, o: ObjectRef, typed: Option<&str>, conflict: Option<Conflict>) -> Result<Outcome, CmdError> {
+    cx.tag_high.catch_up(cx.ledger);
+    Ok(match plan_tag(cx.doc, cx.tag_high, o, typed, conflict)? {
+        TagSet::Unchanged(value) => Outcome::answer(json!({"changed": false, "value": value})),
+        TagSet::Set { ops, value, fixed } => Outcome::edit(
+            "Set tag",
+            ops,
+            match fixed {
+                Some(f) => json!({"changed": true, "value": value, "fixed": f}),
+                None => json!({"changed": true, "value": value}),
+            },
+        ),
+        TagSet::Swapped { ops, value, other, other_value, line } => Outcome::edit(
+            "Swap tags",
+            ops,
+            json!({"changed": true, "swapped": true, "value": value, "other": object_json(other), "other_value": other_value, "message": line}),
+        )
+        .echo(Some(line)),
+        TagSet::MergedCable { ops, into, tag, before } => Outcome::edit_then(format!("Merge into {tag}"), ops, move |doc| {
+            let line = merged_cable_words(doc, before.as_deref(), &tag, into);
+            json!({"changed": true, "merged": true, "cable": into.hex(), "tag": tag, "message": line})
+        })
+        .echo_message(),
+        TagSet::Next { ops, value, fixed, line } => {
+            Outcome::edit("Set tag", ops, json!({"changed": true, "value": value, "fixed": fixed, "message": line})).echo(Some(line))
+        }
+    })
 }

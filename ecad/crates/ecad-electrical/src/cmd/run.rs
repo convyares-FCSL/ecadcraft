@@ -20,10 +20,12 @@ use crate::CmdError;
 use crate::derived::Views;
 use crate::designations::Uses;
 use crate::devices::TagHigh;
+use crate::proposals::Conflict;
 
 /// What every generic command may read and change: the document, new ids and the state several
-/// commands share. The document changes only through the [`Edit`] it returns. State only one
-/// command uses is declared by that command ([`Generic::STATE`]) and given in [`Cx::state`].
+/// commands share. The document changes only through the [`Edit`] it returns. State a few commands
+/// keep beyond the document is declared by each of them ([`Generic::STATE`]) and given in
+/// [`Cx::state`].
 pub struct Cx<'a> {
     /// The project's document, as committed.
     pub doc: &'a Document,
@@ -59,22 +61,28 @@ impl Cx<'_> {
 #[error("{0}")]
 pub struct Unread(pub String);
 
-/// Project state only one command uses, as it declares it ([`Generic::STATE`]).
+/// Project state a command keeps beyond the document, as it declares it ([`Generic::STATE`]).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum State {
     /// None.
     None,
     /// The last continuation caption typed (offered next time; `contcaption`).
     LastCaption,
+    /// The location and function conflicts waiting for an answer (design 052 §5.5; `setlocation`,
+    /// `setfunction`, `setprop`, `conflicts`). Any committed edit leaves them.
+    Conflicts,
 }
 
-/// The declared state, given to the command: it may change it; the engine puts it back if the
-/// edit is not committed.
+/// The declared state, given to the command. What it changes is kept only when its edit is
+/// committed (or it has none).
 pub enum Slot<'a> {
     /// None declared.
     None,
-    /// [`State::LastCaption`].
+    /// [`State::LastCaption`]: the caption, which the command may change.
     LastCaption(&'a mut Option<String>),
+    /// [`State::Conflicts`]: those waiting, and the ones to wait once the edit is committed (none
+    /// set: a committed edit leaves them, no edit keeps them).
+    Conflicts { waiting: &'a [Conflict], set: &'a mut Option<Vec<Conflict>> },
 }
 
 /// One transaction: its label and its ops.
@@ -94,11 +102,38 @@ pub struct Outcome {
     /// Files to write once the edit is committed: a write parameter of [`Generic::IO`] (its value
     /// is the path) and the bytes. The engine writes them.
     pub writes: Vec<(&'static str, Vec<u8>)>,
+    /// What to echo on the command line, once the edit is committed.
+    pub echo: Echo,
+}
+
+/// What a command echoes on the command line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Echo {
+    /// Nothing.
+    Nothing,
+    /// This line.
+    Line(String),
+    /// The answer's `message`, read once the edit is committed.
+    Message,
 }
 
 impl Outcome {
     fn new(edit: Option<Edit>, answer: Answer) -> Outcome {
-        Outcome { edit, answer, writes: Vec::new() }
+        Outcome { edit, answer, writes: Vec::new(), echo: Echo::Nothing }
+    }
+
+    /// This outcome, echoing `line` (none: nothing).
+    #[must_use]
+    pub fn echo(mut self, line: Option<impl Into<String>>) -> Outcome {
+        self.echo = line.map_or(Echo::Nothing, |l| Echo::Line(l.into()));
+        self
+    }
+
+    /// This outcome, echoing the answer's `message` (read once the edit is committed).
+    #[must_use]
+    pub fn echo_message(mut self) -> Outcome {
+        self.echo = Echo::Message;
+        self
     }
 
     /// An answer that writes nothing.
@@ -139,6 +174,8 @@ pub enum Pages {
     Available,
     /// Any page of the project, also an unavailable one.
     Any,
+    /// Any page to read; an edit only on a page whose drawing could be rebuilt.
+    ReadAnywhere,
 }
 
 /// Whether a command changes the project (the agent gate lets a read run with writes off).
@@ -170,15 +207,6 @@ impl Io {
     }
 }
 
-/// What the engine echoes on the command line.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Echo {
-    /// Nothing.
-    Nothing,
-    /// The answer's `message`, when it has one.
-    Message,
-}
-
 /// A generic command: its params struct, read from the JSON, and its run.
 pub trait Generic: DeserializeOwned + schemars::JsonSchema {
     /// The command's id (`execute`'s name, the command line's word).
@@ -193,10 +221,8 @@ pub trait Generic: DeserializeOwned + schemars::JsonSchema {
     const ACCESS: Access = Access::Edits;
     /// The files it declares.
     const IO: Io = Io::NONE;
-    /// The state only it uses.
+    /// The state it keeps beyond the document.
     const STATE: State = State::None;
-    /// What it echoes.
-    const ECHO: Echo = Echo::Nothing;
 
     /// Refuse parameters that read but do not fit together, before the project is taken.
     ///

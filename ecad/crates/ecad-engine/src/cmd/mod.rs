@@ -23,13 +23,11 @@ pub mod connector;
 pub(crate) mod device;
 pub(crate) mod generic;
 pub mod input;
-pub mod location;
 pub mod numbering;
 pub mod output;
 pub(crate) mod page;
 pub mod page_type;
 pub mod plc;
-pub(crate) mod prop;
 pub mod rating;
 pub(crate) mod reference;
 pub mod release;
@@ -51,7 +49,7 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
 pub use crate::strips::core_label;
-use ecad_electrical::cmd::{connect, continuation, default, designation, device_link, level};
+use ecad_electrical::cmd::{connect, continuation, default, designation, device_link, level, location, prop};
 
 /// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
 /// their lines move here at the phase-end tidy-up.
@@ -100,6 +98,10 @@ fn generic_specs() -> Vec<CommandSpec> {
         drawing_undo(generic::spec::<device_link::LinkParams>()),
         drawing_undo(generic::spec::<device_link::UnlinkParams>()),
         drawing_undo(generic::spec::<device_link::UserFieldParams>()),
+        generic::spec::<location::SetlocationParams>(),
+        generic::spec::<location::SetfunctionParams>(),
+        generic::spec::<location::ConflictsParams>(),
+        generic::spec::<prop::SetpropParams>(),
     ]
 }
 
@@ -119,6 +121,10 @@ const GENERIC_TYPED: &[input::Typed] = &[
     generic::typed::<device_link::LinkParams>(),
     generic::typed::<device_link::UnlinkParams>(),
     generic::typed::<device_link::UserFieldParams>(),
+    generic::typed::<location::SetlocationParams>(),
+    generic::typed::<location::SetfunctionParams>(),
+    generic::typed::<location::ConflictsParams>(),
+    generic::typed::<prop::SetpropParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
@@ -177,11 +183,6 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("ecaddelete", "Delete Electrical Object", crate::cmd::input::typed::<crate::cmd::device::EcaddeleteParams>)
             .params("{conductor: id} | {component: id} | {cable: id}")
-            .noundo(),
-        CommandSpec::new("setprop", "Set Property", crate::cmd::input::typed::<crate::cmd::prop::SetpropParams>)
-            .params(
-                "{component|conductor|cable: id, key, value: string|null, conflict?: \"swap\"|\"merge\"|\"next\", merge?: bool} | {devices: [id], key, value} (several devices in one transaction; not `tag`) (a device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device or cable holds needs `conflict`; key `tag_fixed`: \"yes\" or null)",
-            )
             .noundo(),
         CommandSpec::new("cableadd", "Add to Cable", crate::cmd::input::typed::<crate::cmd::cable_draw::CableaddParams>)
             .params("{cable?: id, conductors: [id], tag?}")
@@ -304,14 +305,12 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::numbering::TYPED,
         crate::cmd::rating::TYPED,
         crate::cmd::bom::TYPED,
-        crate::cmd::location::TYPED,
         crate::cmd::title_block::TYPED,
         crate::cmd::page_type::TYPED,
         crate::cmd::cable::TYPED,
         crate::cmd::connector::TYPED,
         crate::cmd::accessory::TYPED,
         crate::cmd::release::TYPED,
-        crate::cmd::prop::TYPED,
         crate::cmd::device::TYPED,
         crate::cmd::cable_draw::TYPED,
         crate::cmd::reference::TYPED,

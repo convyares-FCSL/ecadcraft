@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::cmd::input::nullable;
-use crate::cmd::run::{Cx, Echo, Generic, Outcome};
+use crate::cmd::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 use crate::terminal_types as tt;
 
@@ -444,7 +444,6 @@ impl Generic for TermlabelParams {
     const ID: &'static str = "termlabel";
     const TITLE: &'static str = "Terminal Label";
     const HELP: &'static str = "{terminal?: id | strip?: id + at?: position, level?: n, position?: new position label (relabels every level), text?: a level's own label (null clears it), move_to?: \"next\" | \"new\" (a level drawn twice, or another type's levels)} (design 036 §4.2; one transaction)";
-    const ECHO: Echo = Echo::Message;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let input = TermlabelInput {
@@ -461,10 +460,10 @@ impl Generic for TermlabelParams {
         };
         let plan = plan_termlabel(cx.doc, input)?;
         if plan.ops.is_empty() {
-            return Ok(Outcome::answer(json!({"changed": false, "message": "Nothing to change."})));
+            return Ok(Outcome::answer(json!({"changed": false, "message": "Nothing to change."})).echo(Some("Nothing to change.")));
         }
         let answer = json!({"changed": true, "message": plan.message, "lines": plan.lines});
-        Ok(Outcome::edit(plan.label, plan.ops, answer))
+        Ok(Outcome::edit(plan.label, plan.ops, answer).echo(Some(plan.message)))
     }
 }
 
@@ -489,13 +488,12 @@ impl Generic for TopositionParams {
     const ID: &'static str = "toposition";
     const TITLE: &'static str = "Make Strip Position";
     const HELP: &'static str = "{device: id (a fuse terminal device), strip?: id (default: the nearest strip on its page), position?: label} (the device becomes a fuse position of the strip, wires and rating kept; one transaction)";
-    const ECHO: Echo = Echo::Message;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let plan = plan_toposition(cx.doc, cx.ids, self.device, self.strip, self.position.as_deref())?;
         let message = plan.message();
         let answer =
             json!({"changed": true, "strip": plan.strip.hex(), "position": plan.position, "lost": plan.lost, "note": plan.note, "message": message});
-        Ok(Outcome::edit(plan.label, plan.ops, answer))
+        Ok(Outcome::edit(plan.label, plan.ops, answer).echo(Some(message)))
     }
 }

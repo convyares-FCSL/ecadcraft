@@ -16,12 +16,13 @@ use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::input::{parse, schema};
 use ecad_electrical::cmd::run::{Answer, Cx, Echo, Generic, Outcome, Pages as Runs, Slot, State, Unread};
+use ecad_electrical::proposals::Conflict;
 use ecad_model::PageId;
 use serde_json::Value;
 
 use crate::access::Pages;
 use crate::cmd::input::Typed;
-use crate::cmd::{err, on_any_page, on_project};
+use crate::cmd::{UNAVAILABLE, err, on_any_page, on_project};
 use crate::project::Project;
 
 /// The registration of generic command `P`.
@@ -40,6 +41,13 @@ type Read = BTreeMap<&'static str, Result<Vec<u8>, Unread>>;
 /// The files a command returns to write: a write parameter and the bytes.
 type Writes = Vec<(&'static str, Vec<u8>)>;
 
+/// The state a command declares, as given to it: kept once its edit is committed.
+enum Held {
+    None,
+    LastCaption(Option<String>),
+    Conflicts(Option<Vec<Conflict>>),
+}
+
 /// Run generic command `P` with `params`.
 ///
 /// # Errors
@@ -49,19 +57,28 @@ pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engin
     let p = parse::<P>(params).map_err(|e| err(e.to_string()))?;
     p.check().map_err(|e| err(e.to_string()))?;
     let read: Read = P::IO.reads.iter().filter_map(|(k, max)| Some((*k, read_file(path(params, k)?, *max)))).collect();
-    let (v, writes) = match P::PAGES {
-        Runs::Available => on_project(s, |proj, pg, page| commit::<P>(proj, pg, Some(page), &read, p))?,
-        Runs::Any => on_any_page(s, |proj, pg| commit::<P>(proj, pg, None, &read, p))?,
+    let (v, writes, echo) = match P::PAGES {
+        Runs::Available => on_project(s, |proj, pg, page| commit::<P>(proj, pg, Some(page), &read, p, None))?,
+        Runs::Any => on_any_page(s, |proj, pg| commit::<P>(proj, pg, None, &read, p, None))?,
+        Runs::ReadAnywhere => {
+            let uid = s.state()?.uid;
+            on_any_page(s, |proj, pg| {
+                let page = proj.page_of(uid);
+                let no_edit = match page {
+                    None => Some("page view not found"),
+                    Some(page) => proj.pages.get(&page).is_some_and(|v| v.unavailable).then_some(UNAVAILABLE),
+                };
+                commit::<P>(proj, pg, page, &read, p, no_edit)
+            })?
+        }
     };
     for (key, bytes) in writes {
         let target = P::IO.writes.contains(&key).then(|| path(params, key)).flatten();
         let target = target.ok_or_else(|| err(format!("`{key}` is not a file this command writes")))?;
         std::fs::write(target, bytes).map_err(|e| err(format!("{target} could not be written: {e}.")))?;
     }
-    if P::ECHO == Echo::Message
-        && let Some(m) = v.get("message").and_then(Value::as_str)
-    {
-        s.echo(m.to_string());
+    if let Some(line) = echo {
+        s.echo(line);
     }
     Ok(v)
 }
@@ -80,14 +97,22 @@ fn read_file(path: &str, max: usize) -> Result<Vec<u8>, Unread> {
     Ok(buf)
 }
 
-/// Run `p` on the project, commit its edit, and answer with the files to write. The declared
-/// state changes only with a committed edit (it is put back otherwise).
-fn commit<P: Generic>(proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, read: &Read, p: P) -> Result<(Value, Writes), CmdError> {
-    let caption_before = proj.last_caption.clone();
-    let ran = {
-        let state = match P::STATE {
-            State::None => Slot::None,
-            State::LastCaption => Slot::LastCaption(&mut proj.last_caption),
+/// Run `p` on the project, commit its edit, and answer with the files to write and the line to
+/// echo. The declared state is given as a copy, kept only once the edit is committed. An edit is
+/// refused with `no_edit` when given (the page is not one an edit runs on).
+fn commit<P: Generic>(
+    proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, read: &Read, p: P, no_edit: Option<&'static str>,
+) -> Result<(Value, Writes, Option<String>), CmdError> {
+    let mut held = match P::STATE {
+        State::None => Held::None,
+        State::LastCaption => Held::LastCaption(proj.last_caption.clone()),
+        State::Conflicts => Held::Conflicts(None),
+    };
+    let Outcome { edit, answer, writes, echo } = {
+        let state = match &mut held {
+            Held::None => Slot::None,
+            Held::LastCaption(c) => Slot::LastCaption(c),
+            Held::Conflicts(set) => Slot::Conflicts { waiting: &proj.conflicts, set },
         };
         let mut cx = Cx {
             doc: proj.ledger.document(),
@@ -100,18 +125,28 @@ fn commit<P: Generic>(proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageI
             read,
             state,
         };
-        p.run(&mut cx)
+        p.run(&mut cx)?
     };
-    let committed = ran.and_then(|Outcome { edit, answer, writes }| {
-        if let Some(e) = edit {
-            proj.apply_edit(pg, P::ID, &e.label, e.ops)?;
+    if let Some(e) = edit {
+        if let Some(why) = no_edit {
+            return Err(CmdError::refused(why));
         }
-        Ok((answer, writes))
-    });
-    let (answer, writes) = committed.inspect_err(|_| proj.last_caption = caption_before)?;
+        proj.apply_edit(pg, P::ID, &e.label, e.ops)?;
+    }
+    match held {
+        Held::None => {}
+        Held::LastCaption(c) => proj.last_caption = c,
+        Held::Conflicts(None) => {}
+        Held::Conflicts(Some(c)) => proj.conflicts = c,
+    }
     let v = match answer {
         Answer::Now(v) => v,
         Answer::Committed(f) => f(proj.ledger.document()),
     };
-    Ok((v, writes))
+    let echo = match echo {
+        Echo::Nothing => None,
+        Echo::Line(l) => Some(l),
+        Echo::Message => v.get("message").and_then(Value::as_str).map(str::to_string),
+    };
+    Ok((v, writes, echo))
 }
