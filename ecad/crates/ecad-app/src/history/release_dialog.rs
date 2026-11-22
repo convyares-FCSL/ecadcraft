@@ -150,7 +150,19 @@ impl ReleaseDialog {
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
         let mut out = None;
         let mut open = true;
-        let v = self.view.clone()?;
+        let Some(v) = self.view.clone() else {
+            // The pre-release check's kept lists are still being built (issue 48).
+            if self.error.is_some() {
+                return None;
+            }
+            let window = egui::Window::new("PRE-RELEASE CHECK")
+                .id(egui::Id::unique(RELEASE_ID))
+                .collapsible(false)
+                .default_width(size::DIALOG_M)
+                .open(&mut open);
+            crate::shell::hosted(window, self.host).show(ctx, |ui| prim::note(ui, crate::checks::panel::RUNNING, Tone::Neutral));
+            return (!open).then_some(Out::Close);
+        };
         let title = match &self.rev {
             Some(r) => format!("WRITE REV {}'S FOLDER", r.to_uppercase()),
             None => format!("RELEASE REV {}", v.rev.to_uppercase()),

@@ -145,6 +145,11 @@ fn elsewhere_line(ui: &mut egui::Ui, r: &Row) -> bool {
 /// The tab: the scope switch and counts, the cards, Elsewhere, and the footer.
 pub fn show(ui: &mut egui::Ui, panel: &mut ChecksPanel, project_scope: &mut bool, page: Option<PageId>, writable: bool, body: Rect) -> Vec<Action> {
     let mut out = Vec::new();
+    if panel.building {
+        ui.add_space(space::M);
+        ecad_widgets::prim::note(ui, crate::checks::panel::RUNNING, ecad_widgets::prim::Tone::Neutral);
+        return out;
+    }
     let full = egui::Rangef::new(body.left() - space::L, body.right() + space::M);
     let footer_h = 88.0;
     let list = Rect::from_min_max(body.min, pos2(body.right(), body.bottom() - footer_h));

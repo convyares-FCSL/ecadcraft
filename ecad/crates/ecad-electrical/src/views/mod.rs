@@ -89,6 +89,11 @@ impl<V> Lazy<V> {
         self.0.get_or_insert_with(build)
     }
 
+    /// Keep `view` as the built view.
+    pub fn set(&mut self, view: V) {
+        self.0 = Some(view);
+    }
+
     /// Forget the view: it is built again on its next show.
     pub fn reset(&mut self) {
         self.0 = None;
@@ -150,6 +155,9 @@ pub struct Views {
     tree: TreeFeed,
     devices: DevicesFeed,
     props: PropsFeed,
+    /// Counts every [`Views::rebuild`]: a view built off the thread for an earlier count is not
+    /// installed ([`Views::install_reports`]).
+    epoch: u64,
 }
 
 impl Views {
@@ -167,7 +175,39 @@ impl Views {
             tree: TreeFeed,
             devices: DevicesFeed::default(),
             props: PropsFeed::default(),
+            epoch: 0,
         }
+    }
+
+    /// How many times the views were rebuilt whole (open, reload, branch switch).
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
+    /// Put in the report models built elsewhere (off the UI thread) for the state `epoch` and the
+    /// document the caller checked is the current one. Refused (`false`) when they are already kept
+    /// or the views were rebuilt since.
+    pub fn install_reports(&mut self, epoch: u64, view: ReportsView) -> bool {
+        if epoch != self.epoch || self.reports.get().is_some() {
+            return false;
+        }
+        self.reports.set(view);
+        true
+    }
+
+    /// As [`Views::install_reports`], for the Checks list.
+    pub fn install_checks(&mut self, epoch: u64, view: ChecksView) -> bool {
+        if epoch != self.epoch || self.checks.get().is_some() {
+            return false;
+        }
+        self.checks.set(view);
+        true
+    }
+
+    /// The text metrics and tolerance-free inputs the views are built with, to build one off the
+    /// thread ([`ReportsView::build`], [`ChecksView::build`]).
+    pub fn metrics(&self) -> Arc<dyn TextMetrics + Send + Sync> {
+        self.inputs.metrics.clone()
     }
 
     /// The engine's inputs the views are built with.
@@ -350,6 +390,7 @@ impl Views {
 
     /// Open, reload, branch switch: rebuild every kept view from `doc`.
     pub fn rebuild(&mut self, doc: &Document) {
+        self.epoch += 1;
         self.references = ReferencesView::build(doc);
         self.connectors = ConnectorsView::build(doc);
         self.reports.reset();

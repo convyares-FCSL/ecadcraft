@@ -62,6 +62,7 @@ pub mod symbols;
 pub mod terminal_strips;
 pub mod title_blocks;
 mod translate;
+pub mod warm;
 pub mod wires;
 // The commands' paths before step 11 of lane 067, used outside the crate.
 
