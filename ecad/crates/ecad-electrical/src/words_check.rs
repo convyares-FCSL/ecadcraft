@@ -118,7 +118,7 @@ fn reserved(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
         WordPlace::Device(_) => Some(keys::Holder::Device),
         WordPlace::Wire(_) => Some(keys::Holder::Wire),
         WordPlace::Cable(_) => Some(keys::Holder::Cable),
-        WordPlace::Settings | WordPlace::Standard => None,
+        WordPlace::Settings | WordPlace::Standard | WordPlace::File => None,
     };
     let reserved = |k: &str| holder.map_or_else(|| keys::is_reserved(k), |h| keys::is_reserved_on(h, k));
     out.extend(props.keys().filter(|k| reserved(k)).map(|k| UnknownWord::ReservedKey { place, key: k.clone() }));

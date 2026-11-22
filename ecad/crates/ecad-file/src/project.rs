@@ -802,6 +802,10 @@ pub struct Opened {
     pub project: Project,
     pub ledger: Ledger,
     pub report: Report,
+    /// Words this build does not read in the file's container facts: each `meta` name not in
+    /// [`META_NAMES`](crate::schema::META_NAMES). When there are any the project opens read-only
+    /// (pre-v1 strict reading) and the file is kept as it is.
+    pub unknown_words: Vec<ecad_model::strict::UnknownWord>,
 }
 
 fn meta_json(r: &Reader, name: &'static str) -> Result<Option<Value>, OpenError> {
@@ -818,11 +822,20 @@ struct Facts {
     created_ms: Option<u64>,
     /// `meta.active`: the branch the project was last shown on (FQ4).
     active: Option<BranchId>,
+    /// The `meta` names this build does not read.
+    unknown: Vec<ecad_model::strict::UnknownWord>,
 }
 
 fn read_facts(r: &Reader) -> Result<Facts, OpenError> {
-    // Unknown `meta` names are ignored (brief 020, forward compatibility): every name this build
+    // Pre-v1 there is no forward compatibility (owner, 0.2.3): a `meta` name this build does not
+    // read is an unknown word, so the project opens read-only and names it. Every name this build
     // needs is checked below.
+    let unknown = r
+        .meta_all()?
+        .into_iter()
+        .filter(|(name, _)| !crate::schema::META_NAMES.contains(&name.as_str()))
+        .map(|(name, _)| ecad_model::strict::UnknownWord::MetaName { name })
+        .collect();
     let format = meta_json(r, "format")?;
     if format.as_ref().and_then(Value::as_str) != Some(FORMAT_PROJECT) {
         return Err(OpenError::Unsupported(format!("not an ECAD project file (format {format:?})")));
@@ -850,7 +863,7 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenError> {
     let created_ms = meta_json(r, "created_ms")?.and_then(|v| v.as_u64());
     // An unreadable `active` is not damage: the project opens on `main`.
     let active = meta_json(r, "active").ok().flatten().and_then(|v| v.as_str().and_then(BranchId::parse));
-    Ok(Facts { project, cache, created_ms, active })
+    Ok(Facts { project, cache, created_ms, active, unknown })
 }
 
 /// [`main_branch`], for Verify: the check that opening applies.
@@ -1041,7 +1054,11 @@ impl Project {
         };
         drop(r);
         let l = load_branch(&store, facts.project, &facts.cache, branch, &rec, seed)?;
-        let file_read_only = (!store.writable()).then(|| "it is open in another session".to_string());
+        // Unknown `meta` names keep the file exactly as it is: nothing writes to it, not even a
+        // branch switch's `meta.active`.
+        let unknown_words = facts.unknown;
+        let unknown_read_only = (!unknown_words.is_empty()).then(|| crate::disk::ReadOnly::UnknownWords(unknown_words.clone()).to_string());
+        let file_read_only = (!store.writable()).then(|| "it is open in another session".to_string()).or(unknown_read_only);
         let read_only = l.damage.clone().or_else(|| file_read_only.clone());
         let project = Project {
             store,
@@ -1065,7 +1082,7 @@ impl Project {
             closing: BTreeMap::new(),
             reopened: BTreeMap::new(),
         };
-        Ok(Opened { project, ledger: l.ledger, report: l.report })
+        Ok(Opened { project, ledger: l.ledger, report: l.report, unknown_words })
     }
 
     /// Write `ledger`'s whole history into the empty database `store` as a new project file:

@@ -38,7 +38,8 @@ pub enum ReadOnly {
     /// change).
     NotWritable(String),
     /// The file holds words this build does not know in values that stay text (design 072 §9.5,
-    /// F11): each names the word, the setting and where it is. The file is kept as it is.
+    /// F11), or `meta` names it does not read: each names the word, the setting or name, and where
+    /// it is. The file is kept as it is.
     UnknownWords(Vec<ecad_model::strict::UnknownWord>),
 }
 
@@ -208,9 +209,12 @@ impl DiskProject {
                 None
             }
         };
-        let Opened { mut project, ledger, report } = Project::open(store, seed, writer).map_err(|e| open_err(e.to_string()))?;
+        let Opened { mut project, ledger, report, unknown_words } = Project::open(store, seed, writer).map_err(|e| open_err(e.to_string()))?;
         if report.damage.is_some() {
             read_only = read_only.or(Some(ReadOnly::Damaged));
+        }
+        if !unknown_words.is_empty() {
+            read_only = read_only.or(Some(ReadOnly::UnknownWords(unknown_words)));
         }
         if let Some(r) = &read_only {
             project.set_read_only(r.to_string());
@@ -367,10 +371,22 @@ impl DiskProject {
     }
 
     /// Open the project read-only for the unknown words the words check found on open (design 072
-    /// §9.5), unless it is already read-only for another reason. Nothing when `words` is empty.
-    pub fn refuse_unknown_words(&mut self, words: Vec<ecad_model::strict::UnknownWord>) {
-        if words.is_empty() || self.read_only.is_some() {
+    /// §9.5), unless it is already read-only for another reason; when it is read-only for unknown
+    /// `meta` names already, these words are added to them. Nothing when `words` is empty.
+    pub fn refuse_unknown_words(&mut self, mut words: Vec<ecad_model::strict::UnknownWord>) {
+        if words.is_empty() {
             return;
+        }
+        match self.read_only.take() {
+            None => {}
+            Some(ReadOnly::UnknownWords(mut found)) => {
+                found.append(&mut words);
+                words = found;
+            }
+            Some(other) => {
+                self.read_only = Some(other);
+                return;
+            }
         }
         let r = ReadOnly::UnknownWords(words);
         self.project.set_read_only(r.to_string());
