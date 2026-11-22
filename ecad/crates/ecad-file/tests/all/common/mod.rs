@@ -217,7 +217,7 @@ pub fn fixture() -> Fixture {
         f.commit("Set property", vec![Op::SetProperty { object: ObjectRef::Device(c1), key: key.into(), before: None, after: Some(value.into()) }]);
     }
     let at = f.ledger.head();
-    f.commit("Name version", vec![Op::NameVersion { name: "review-1".into(), at, description: None }]);
+    f.commit("Name version", vec![Op::NameVersion { name: ecad_model::PointName::version("review-1").unwrap(), at, description: None }]);
     f.time += 1000;
     f.ledger.undo_at(Author::User, Some(f.time)).unwrap();
     f.time += 1000;

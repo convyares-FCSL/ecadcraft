@@ -213,7 +213,9 @@ pub(crate) fn base() -> Base {
             ],
         )
         .unwrap();
-    ledger.commit(Author::User, "bookmark", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }]).unwrap();
+    ledger
+        .commit(Author::User, "bookmark", vec![Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None }])
+        .unwrap();
     Base {
         ledger,
         ids,
@@ -327,8 +329,8 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
             before: ProjectSettings::default(),
             after: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
         },
-        Op::NameVersion { name: "w".into(), at: 2, description: None },
-        Op::UnnameVersion { name: "v".into(), at: 1, description: None },
+        Op::NameVersion { name: ecad_model::PointName::version("w").unwrap(), at: 2, description: None },
+        Op::UnnameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None },
         Op::SetDeviceDefinition { id: b.comp, before: Some(b.def), after: None },
         Op::AddFolder { id: b.ids.fresh(), folder: Folder { name: "G".into(), parent: Some(b.folder), start: None }, index: 1 },
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
@@ -421,8 +423,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
             before: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
             after: ProjectSettings::default(),
         },
-        Op::NameVersion { name: "v".into(), at: 1, description: None },
-        Op::UnnameVersion { name: "v".into(), at: 2, description: None },
+        Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None },
+        Op::UnnameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 2, description: None },
         Op::SetDeviceDefinition { id: b.comp, before: None, after: Some(b.def) },
         Op::SetDeviceDefinition { id: missing_comp, before: None, after: None },
         Op::AddFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
@@ -1067,15 +1069,15 @@ impl Gen {
                     // Sometimes names a transaction that does not precede this one.
                     let at = self.rng.below(head as usize + 1 + usize::from(spoil) * 2) as u64;
                     let name = if spoil && !doc.versions.is_empty() {
-                        doc.versions.keys().next().cloned().unwrap_or_default()
+                        doc.versions.keys().next().cloned().unwrap_or(ecad_model::PointName::Revision(ecad_model::Rev::Initial))
                     } else {
-                        format!("v{}", self.rng.next() % 1000)
+                        ecad_model::PointName::version(&format!("v{}", self.rng.next() % 1000)).unwrap()
                     };
                     Op::NameVersion { name, at, description: None }
                 }
                 _ => match doc.versions.iter().next() {
                     Some((name, at)) => Op::UnnameVersion { name: name.clone(), at: *at + u64::from(spoil), description: None },
-                    None => Op::NameVersion { name: "v".into(), at: 0, description: None },
+                    None => Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 0, description: None },
                 },
             },
         }

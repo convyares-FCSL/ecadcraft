@@ -135,6 +135,11 @@ pub struct ProjectpropsParams {
     /// How the pending revision shows: "star", "draft" or "off".
     #[serde(default, deserialize_with = "nullable")]
     revision_pending: Option<Option<String>>,
+    /// The revision scheme: `{kind: "letters"}` (A, B … the default), `{kind: "letters_dash"}` (–, A, B …) or
+    /// `{kind: "numbered", prefix?: "P", width?: 2, start?: 1}` (P01, P02 …). Refused once a
+    /// revision is issued.
+    #[serde(default)]
+    rev_scheme: Option<RevSchemeParam>,
     /// Provisional tags until Finalise.
     #[serde(default, deserialize_with = "nullable")]
     provisional: Option<Option<bool>>,
@@ -145,6 +150,57 @@ pub struct ProjectpropsParams {
     /// "keep".
     #[serde(default, deserialize_with = "nullable")]
     proposal: Option<Option<String>>,
+}
+
+/// A revision scheme as `projectprops` takes it.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RevSchemeParam {
+    kind: RevSchemeKind,
+    /// Numbered: the text before the number (0 to 4 characters; default none).
+    #[serde(default)]
+    prefix: Option<String>,
+    /// Numbered: the digits, at least (default 2).
+    #[serde(default)]
+    width: Option<u64>,
+    /// Numbered: the first number (default 1).
+    #[serde(default)]
+    start: Option<u64>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum RevSchemeKind {
+    /// `A`, `B` …
+    Letters,
+    /// `–`, `A`, `B` …
+    LettersDash,
+    /// `P01`, `P02` …
+    Numbered,
+}
+
+impl RevSchemeParam {
+    fn scheme(self) -> Result<ecad_model::RevScheme, CmdError> {
+        match self.kind {
+            RevSchemeKind::Letters => Ok(ecad_model::RevScheme::Letters { dash_first: false }),
+            RevSchemeKind::LettersDash => Ok(ecad_model::RevScheme::Letters { dash_first: true }),
+            RevSchemeKind::Numbered => {
+                let prefix = self
+                    .prefix
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .map(|p| ecad_model::RevPrefix::new(p).map_err(|e| CmdError::refused(format!("The prefix is refused: {e}."))))
+                    .transpose()?;
+                let width = u8::try_from(self.width.unwrap_or(2)).ok().filter(|w| (1..=8).contains(w));
+                let start = u32::try_from(self.start.unwrap_or(1)).ok();
+                match (width, start) {
+                    (Some(width), Some(start)) => Ok(ecad_model::RevScheme::Numbered { prefix, width, start }),
+                    _ => Err(CmdError::refused("A numbered scheme has a width from 1 to 8 and a first number that is a whole number.")),
+                }
+            }
+        }
+    }
 }
 
 /// `revision {rev?, date?, description?, drawn?, checked?, approved?, fields?, n?}`: the pending
@@ -195,6 +251,7 @@ impl ProjectpropsParams {
             && self.tag_case.is_none()
             && self.revision_columns.is_none()
             && self.revision_pending.is_none()
+            && self.rev_scheme.is_none()
             && self.provisional.is_none()
             && self.props.is_none()
             && self.proposal.is_none()
@@ -313,6 +370,7 @@ revision_pending?: \"star\"|\"draft\"|\"off\", props?: {key: value|null}} (one t
             label_height: self.label_height.flatten(),
             revision_columns: self.revision_columns,
             revision_pending: self.revision_pending.flatten(),
+            rev_scheme: self.rev_scheme.map(RevSchemeParam::scheme).transpose()?,
             tag_dash: self.tag_dash.flatten(),
             tag_case: None,
             mode: Default::default(),

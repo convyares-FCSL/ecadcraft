@@ -6,7 +6,7 @@
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::project::BranchError;
-use ecad_file::schema::{BranchId, BranchStatus, VersionKind};
+use ecad_file::schema::{BranchId, BranchStatus, RowKind};
 use ecad_file::{Project, Store};
 use ecad_model::*;
 use redb::ReadableTable;
@@ -102,15 +102,20 @@ fn a_branch_from_an_older_point_snapshots_and_reads_its_ancestry() {
     proj.save(&mut bl).unwrap();
     // A version on the branch, with a description (FQ5).
     let vat = bl.head();
-    bl.commit(Author::User, "Create version", vec![Op::NameVersion { name: "Branch v1".into(), at: vat, description: Some("why".into()) }]).unwrap();
+    bl.commit(
+        Author::User,
+        "Create version",
+        vec![Op::NameVersion { name: ecad_model::PointName::version("Branch v1").unwrap(), at: vat, description: Some("why".into()) }],
+    )
+    .unwrap();
     proj.save(&mut bl).unwrap();
     let r = proj.store().reader().unwrap();
-    let autos = r.versions(b, VersionKind::Auto).unwrap();
+    let autos = r.versions(b, RowKind::Auto).unwrap();
     assert!(!autos.is_empty(), "automatic snapshots on the branch");
-    let user = r.versions(b, VersionKind::User).unwrap();
+    let user = r.versions(b, RowKind::VERSION).unwrap();
     assert_eq!(user.len(), 1);
     assert_eq!(user[0].description.as_deref(), Some("why"));
-    assert!(r.versions(main, VersionKind::User).unwrap().iter().all(|v| v.name != "Branch v1"), "versions are branch-local");
+    assert!(r.versions(main, RowKind::VERSION).unwrap().iter().all(|v| v.name != "Branch v1"), "versions are branch-local");
     drop(r);
     let full: Vec<Document> = (0..=bl.head()).map(|s| bl.state_at(s).unwrap()).collect();
     drop(proj);

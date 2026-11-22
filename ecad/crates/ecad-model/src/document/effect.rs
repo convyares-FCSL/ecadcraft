@@ -104,7 +104,7 @@ pub enum Effect<'a> {
     },
     /// A version named (`named`) or unnamed at log position `at`.
     Version {
-        name: &'a str,
+        name: &'a crate::PointName,
         at: u64,
         named: bool,
     },

@@ -49,7 +49,8 @@ pub fn history() -> Ledger {
         l.commit(Author::User, "LINE", vec![Op::AddItem { id, item: Item { page, style, kind } }]).unwrap();
         if i == 10 {
             let at = l.head();
-            l.commit(Author::User, "Name", vec![Op::NameVersion { name: "Ten".into(), at, description: None }]).unwrap();
+            l.commit(Author::User, "Name", vec![Op::NameVersion { name: ecad_model::PointName::version("Ten").unwrap(), at, description: None }])
+                .unwrap();
         }
     }
     l.undo(Author::User).unwrap();
@@ -151,17 +152,18 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
                 before: ecad_model::Project::default(),
                 after: ecad_model::Project {
                     revisions: vec![ecad_model::Revision {
-                        rev: ecad_model::Rev::new("A").ok(),
+                        rev: Some(ecad_model::Rev::Letter(1)),
                         description: ecad_model::RevValue::new("First issue").ok(),
                         drawn: ecad_model::RevValue::new("CV").ok(),
-                        issued: ecad_model::RevValue::new("Rev A").ok(),
+                        date: ecad_model::document::project::parse_date("2026-11-22").ok(),
+                        issued: true,
                         ..ecad_model::Revision::default()
                     }],
                     ..ecad_model::Project::default()
                 },
             },
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key: "note".into(), before: None, after: Some("issued".into()) },
-            Op::NameVersion { name: "Rev A".into(), at, description: None },
+            Op::NameVersion { name: ecad_model::PointName::Revision(ecad_model::Rev::Letter(1)), at, description: None },
         ],
     )
     .unwrap();

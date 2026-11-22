@@ -14,15 +14,15 @@ use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::Document;
 use serde_json::{Value, json};
 
-struct TempDir(PathBuf);
+pub(super) struct TempDir(PathBuf);
 
 impl TempDir {
-    fn new(name: &str) -> Self {
+    pub(super) fn new(name: &str) -> Self {
         let p = std::env::temp_dir().join(format!("ecad-t020a-{name}-{}", ecad_store::disk::unique()));
         std::fs::create_dir_all(&p).unwrap();
         TempDir(p)
     }
-    fn path(&self, name: &str) -> String {
+    pub(super) fn path(&self, name: &str) -> String {
         self.0.join(name).display().to_string()
     }
 }
@@ -34,7 +34,7 @@ impl Drop for TempDir {
 }
 
 /// A saved file project (small fixture) at `path`.
-fn saved(d: &TempDir, seed: u64) -> (H, String) {
+pub(super) fn saved(d: &TempDir, seed: u64) -> (H, String) {
     let (mut h, ..) = small_project(seed);
     h.cfg(|p| p.persistence = Persistence::File);
     let path = d.path("p.ecad");
@@ -44,11 +44,11 @@ fn saved(d: &TempDir, seed: u64) -> (H, String) {
 
 /// A branch action: the harness's one-transaction check does not apply (the head is the other
 /// branch's afterwards).
-fn raw(h: &mut H, cmd: &str, params: Value) -> Result<Value, String> {
+pub(super) fn raw(h: &mut H, cmd: &str, params: Value) -> Result<Value, String> {
     h.s.execute(cmd, &params).map_err(|e| e.to_string())
 }
 
-fn wire(h: &mut H, y: f64) {
+pub(super) fn wire(h: &mut H, y: f64) {
     h.run("wire", json!({"points": pts(&[(200.0, y), (260.0, y)])})).unwrap();
 }
 
@@ -56,7 +56,7 @@ fn current(h: &mut H) -> String {
     h.p(|p| p.file.project().unwrap().branch_record().name.clone())
 }
 
-fn verify(path: &str) {
+pub(super) fn verify(path: &str) {
     let v = ecad_file::verify::verify(&ecad_file::Store::open(std::path::Path::new(path), false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }

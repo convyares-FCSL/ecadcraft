@@ -150,8 +150,8 @@ pub fn release_line_refusal(p: &Project, issuing: bool) -> Option<String> {
 /// # Errors
 /// Off a release line, nothing done yet, Rev, Description or Drawn empty, or a rev used before:
 /// in words, each with its way forward.
-fn plan_issue_of(p: &Project, f: &RevisionFields) -> Result<IssuePlan, CmdError> {
-    rules::plan_issue(&p.ledger, release_line_refusal(p, true), f, today)
+fn plan_issue_of(p: &Project, before: &[Op], f: &RevisionFields) -> Result<IssuePlan, CmdError> {
+    rules::plan_issue(&p.ledger, release_line_refusal(p, true), before, f, today)
 }
 
 /// Plan issuing the pending revision with no field writes (Release, brief 027).
@@ -159,7 +159,7 @@ fn plan_issue_of(p: &Project, f: &RevisionFields) -> Result<IssuePlan, CmdError>
 /// # Errors
 /// As `issuerevision`, in words.
 pub fn plan_issue(p: &Project) -> Result<IssuePlan, CmdError> {
-    plan_issue_of(p, &revision_fields([None, None, None, None, None, None], None, None))
+    plan_issue_of(p, &[], &revision_fields([None, None, None, None, None, None], None, None))
 }
 
 /// `issuerevision {rev?, date?, description?, drawn?, checked?, approved?, provisional?}`: issues
@@ -195,14 +195,15 @@ impl Command for IssuerevisionParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let f = revision_fields([self.rev, self.date, self.description, self.drawn, self.checked, self.approved], None, None);
         on_project(s, |p, pg, _| {
-            // Checked before anything is written.
-            plan_issue_of(p, &f)?;
-            // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first (their
-            // own transaction), or issued as they are, as asked; without an answer the ways forward
-            // are named.
-            let note = crate::releases::release::numbering_seam::before_issue(p, pg, self.provisional.as_deref())?;
-            let IssuePlan { ops, rev, date, head, .. } = plan_issue_of(p, &f)?;
-            p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
+            // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first, or
+            // issued as they are, as asked; without an answer the ways forward are named. S4: the
+            // Finalise and the issue are planned together, on the state Finalise leaves, and
+            // recorded as ONE transaction: one history entry, one undo, nothing to take back.
+            let (finalise, note) = crate::releases::release::numbering_seam::plan_before_issue_of(p, self.provisional.as_deref())?;
+            let IssuePlan { ops, rev, date, head, .. } = plan_issue_of(p, &finalise, &f)?;
+            let label = format!("Issue Rev {rev}");
+            let all: Vec<Op> = finalise.into_iter().chain(ops).collect();
+            p.apply_edit(pg, "issuerevision", &label, all)?;
             let tx = p.ledger.head();
             let line = match &note {
                 Some(n) => format!("Rev {rev} issued (transaction {tx}) {n}. Save to keep it."),
@@ -229,7 +230,8 @@ impl Command for OpenrevisionParams {
             let row = rules::issued(p.ledger.document(), &rev)?;
             // The project as issued (brief 027 §16): the state after the issue transaction, so the
             // title block, the revision table and the generated Revision list read this revision.
-            let (named, _, then) = crate::history::issued_state(p, row.rev()).map_err(CmdError::refused)?;
+            let rev = row.rev_value.ok_or_else(|| CmdError::refused("That row has no rev."))?;
+            let (named, _, then) = crate::history::issued_state(p, rev).map_err(CmdError::refused)?;
             let at = named.seq;
             let book = Book::of(&then);
             let pages: Vec<Value> = book
@@ -277,6 +279,7 @@ impl Command for UndoissueParams {
             let r = p.undo_step(pg);
             p.confirm_issue_undo = false;
             r.map_err(CmdError::refused)?;
+            let rev = p.ledger.document().project.rev_scheme.show(rev);
             if p.revision_view.as_ref().is_some_and(|v| v.rev == rev) {
                 p.revision_view = None;
             }

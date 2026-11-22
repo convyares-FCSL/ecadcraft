@@ -123,8 +123,8 @@ pub fn name(b: &Binding) -> String {
             RevField::Drawn => "Drawn",
             RevField::Checked => "Checked",
             RevField::Approved => "Approved",
+            RevField::Ecr => "ECR",
         },
-        Binding::Revision(RevisionColumn::Custom(c)) if c.as_str() == "ecr" => "ECR",
         Binding::Revision(RevisionColumn::Custom(_)) => return b.text(),
         Binding::Print(PrintField::Sheet) => "Sheet size",
     };

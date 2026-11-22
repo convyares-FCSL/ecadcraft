@@ -584,7 +584,7 @@ pub(crate) fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> 
     }
     if let Some(rest) = key.strip_prefix(revisions::PREFIX) {
         let n = rest.split('.').next().and_then(|n| n.parse::<u32>().ok());
-        if let Some(r) = n.and_then(|n| revisions::list(doc).into_iter().find(|r| r.n == n)).filter(|r| r.issued.is_some()) {
+        if let Some(r) = n.and_then(|n| revisions::list(doc).into_iter().find(|r| r.n == n)).filter(|r| r.issued) {
             return Err(issued_row(&r));
         }
         return Err(CmdError::refused("Revision fields are changed with `revision` (Revisions…)."));
@@ -660,10 +660,40 @@ pub struct ProjectChange {
     pub label_height: Option<f64>,
     pub revision_columns: Option<Option<String>>,
     pub revision_pending: Option<String>,
+    /// The revision scheme (refused once anything is issued).
+    pub rev_scheme: Option<ecad_model::RevScheme>,
     pub tag_dash: Option<bool>,
     pub tag_case: Option<Case>,
     /// What a new function or location proposes for the device symbols.
     pub mode: Mode,
+}
+
+/// Change the project's revision scheme to `scheme`: into the project change already in `ops`, or
+/// as one of its own. Nothing when it is the scheme already.
+///
+/// # Errors
+/// Once a revision is issued the scheme cannot change; nor while the pending row's rev is not a
+/// rev of the new scheme (clear it first).
+fn rev_scheme_op(doc: &Document, ops: &mut [Op], scheme: &ecad_model::RevScheme) -> Result<Option<Op>, CmdError> {
+    if *scheme == doc.project.rev_scheme {
+        return Ok(None);
+    }
+    if doc.project.revisions.iter().any(|r| r.issued) || doc.versions.keys().any(|k| k.kind() == ecad_model::PointKind::Revision) {
+        return Err(CmdError::refused(ecad_model::RevError::SchemeLocked.to_string()));
+    }
+    if let Some(rev) = doc.project.revisions.iter().find_map(|r| r.rev).filter(|r| !scheme.admits(*r)) {
+        return Err(CmdError::refused(format!(
+            "The pending revision's rev {} is not a rev of the new scheme ({}). Clear it first.",
+            doc.project.rev_scheme.show(rev),
+            scheme.example()
+        )));
+    }
+    if let Some(Op::ModifyProject { after, .. }) = ops.iter_mut().rev().find(|o| matches!(o, Op::ModifyProject { .. })) {
+        after.rev_scheme = scheme.clone();
+        return Ok(None);
+    }
+    let after = ecad_model::Project { rev_scheme: scheme.clone(), ..doc.project.clone() };
+    Ok(Some(Op::ModifyProject { before: doc.project.clone(), after }))
 }
 
 /// Tag padding and prefixes (`projectprops`' `tag_padding` and `tag_prefixes`, named here by
@@ -899,6 +929,10 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         let w = w.ok_or(CmdError::refused("`revision_pending` must be \"star\", \"draft\" or \"off\""))?;
         ops.extend(set(ObjectRef::Project, Some(&doc.display), revisions::PENDING_KEY, Some(w.to_string())));
     }
+    if let Some(scheme) = &change.rev_scheme {
+        let op = rev_scheme_op(doc, &mut ops, scheme)?;
+        ops.extend(op);
+    }
     // Brief 033 (design 033 §8.4): the tag style, and its rewrite of the stored tags.
     let (tag_ops, message) = tag_style_ops(doc, change.tag_dash, change.tag_case)?;
     ops.extend(tag_ops);
@@ -951,7 +985,7 @@ pub(crate) fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>
         let m = u32::try_from(m).map_err(|_| CmdError::refused("`n` must be a revision row number"))?;
         if m != n {
             return Err(match revisions::list(doc).into_iter().find(|r| r.n == m) {
-                Some(r) if r.issued.is_some() => issued_row(&r),
+                Some(r) if r.issued => issued_row(&r),
                 _ => CmdError::refused(format!("There is no pending revision row {m}.")),
             });
         }
@@ -1005,28 +1039,33 @@ pub fn release_line_refusal(off_line: Option<&str>, issuing: bool) -> Option<Str
     })
 }
 
-/// What issuing the pending revision records (design 019 §7.2): the remaining field writes,
-/// `rev.<n>.issued` and `NameVersion { "Rev <rev>", head }`, worked out before anything is written.
+/// What issuing the pending revision records (design 019 §7.2): the remaining field writes, the
+/// row marked issued and `NameVersion { Revision(rev), head }`, worked out before anything is
+/// written. With `before` (Finalise's ops) they are one transaction, one history entry, one undo.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IssuePlan {
+    /// The ops of the issue, to be recorded after `before`'s, in the same transaction.
     pub ops: Vec<Op>,
+    /// The rev as the project's scheme writes it.
     pub rev: String,
+    /// The rev, typed: the issue's [`ecad_model::PointName::Revision`].
+    pub point: ecad_model::Rev,
     /// The pending row's number.
     pub n: u32,
     pub date: String,
-    /// The transaction the version names: the one before the issue.
+    /// The transaction the version names: the head before the whole transaction.
     pub head: u64,
 }
 
-/// Plan issuing the pending revision of `ledger` with the field writes `f` (as `issuerevision`).
-/// `refusal` is the release line's ([`IssuePlan`] is made on a release line only); `today` gives
-/// the date when the row has none.
+/// Plan issuing the pending revision of `ledger` with the field writes `f` (as `issuerevision`),
+/// on the state `before` (Finalise's ops, or none) leaves. `refusal` is the release line's
+/// ([`IssuePlan`] is made on a release line only); `today` gives the date when the row has none.
 ///
 /// # Errors
 /// Off a release line, nothing done yet, Rev, Description or Drawn empty, or a rev used before:
 /// in words, each with its way forward.
 pub fn plan_issue(
-    ledger: &Ledger, refusal: Option<String>, f: &RevisionFields, today: impl FnOnce() -> Option<String>,
+    ledger: &Ledger, refusal: Option<String>, before: &[Op], f: &RevisionFields, today: impl FnOnce() -> Option<String>,
 ) -> Result<IssuePlan, CmdError> {
     if let Some(r) = refusal {
         return Err(CmdError::refused(r));
@@ -1035,17 +1074,19 @@ pub fn plan_issue(
     if head == 0 {
         return Err(CmdError::refused("Nothing to issue yet."));
     }
-    let mut ops = revision_ops(ledger.document(), f)?;
+    let base = ledger.preview(before)?;
+    let mut ops = revision_ops(&base, f)?;
     // The pending row as it will be after those writes.
-    let doc = ledger.preview(&ops)?;
+    let all: Vec<Op> = before.iter().chain(&ops).cloned().collect();
+    let doc = ledger.preview(&all)?;
     let n = revisions::pending_n(&doc);
     let row = revisions::pending(&doc).unwrap_or_default();
     if revisions::NEEDED.iter().any(|f| row.get(f).trim().is_empty()) {
         return Err(CmdError::refused(revisions::FILL_FIRST));
     }
     let rev = row.rev().to_string();
-    let name = revisions::version_name(&rev);
-    if doc.versions.contains_key(&name) {
+    let point = row.rev_value.ok_or_else(|| CmdError::refused(revisions::FILL_FIRST))?;
+    if doc.versions.contains_key(&ecad_model::PointName::Revision(point)) {
         return Err(CmdError::refused(format!("Rev {rev} was issued before; choose another.")));
     }
     let mut date = row.get("date").to_string();
@@ -1056,28 +1097,26 @@ pub fn plan_issue(
             project = revisions::with_field(&project, n, "date", Some(&date))?;
         }
     }
-    project = revisions::with_field(&project, n, revisions::ISSUED, Some(&name))?;
+    project = revisions::with_issued(&project, n)?;
     ops.extend(revisions::modify(&doc.project, project));
-    ops.push(Op::NameVersion { name, at: head, description: None });
-    Ok(IssuePlan { ops, rev, n, date, head })
+    ops.push(Op::NameVersion { name: ecad_model::PointName::Revision(point), at: head, description: None });
+    Ok(IssuePlan { ops, rev, point, n, date, head })
 }
 
-/// The issued revision `rev` (any case), as `openrevision` opens it.
+/// The issued revision `rev` as the project's scheme writes it, as `openrevision` opens it.
 ///
 /// # Errors
-/// Not issued.
+/// Not a rev of the scheme, or not issued.
 pub fn issued(doc: &Document, rev: &str) -> Result<Revision, CmdError> {
-    revisions::issued(doc)
-        .into_iter()
-        .find(|r| r.rev().eq_ignore_ascii_case(rev))
-        .ok_or_else(|| CmdError::refused(format!("Rev {rev} has not been issued.")))
+    let want = doc.project.rev_scheme.parse(rev).map_err(|e| CmdError::refused(e.to_string()))?;
+    revisions::issued(doc).into_iter().find(|r| r.rev_value == Some(want)).ok_or_else(|| CmdError::refused(format!("Rev {rev} has not been issued.")))
 }
 
 /// The rev whose issue the ops `undo` would undo (`undoissue`).
 ///
 /// # Errors
 /// The last step did not issue a revision.
-pub fn undone_issue(undo: &[Op]) -> Result<String, CmdError> {
+pub fn undone_issue(undo: &[Op]) -> Result<ecad_model::Rev, CmdError> {
     revisions::issue_in(&revisions::inverse(undo)).map(|(rev, _)| rev).ok_or(CmdError::refused("The last step did not issue a revision; use Undo."))
 }
 
@@ -1249,7 +1288,7 @@ pub(crate) fn project_json(doc: &Document) -> Value {
             for (f, v) in &r.extra {
                 m.insert(f.clone(), Value::String(v.clone()));
             }
-            m.insert("issued".into(), r.issued.clone().map_or(Value::Null, Value::String));
+            m.insert("issued".into(), Value::Bool(r.issued));
             // Brief 027 (FP1): where it was released, when it was.
             if let Some(f) = &r.released {
                 m.insert("released".into(), Value::String(f.clone()));
@@ -1278,6 +1317,7 @@ pub(crate) fn project_json(doc: &Document) -> Value {
         revisions::PendingStyle::Draft => "draft",
         revisions::PendingStyle::Off => "off",
     });
+    v["rev_scheme"] = json!(doc.project.rev_scheme);
     v["tag_prefixes"] = Value::Object(crate::devices::commands::devices::prefixes_json(doc));
     // Brief 022: the wiring settings the Project settings popout edits.
     v["colour_style"] = json!(ecad_model::naming::words::Word::word(doc.settings.wiring.colour_style()));

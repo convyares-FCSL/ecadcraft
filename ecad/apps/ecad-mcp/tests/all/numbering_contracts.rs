@@ -178,8 +178,8 @@ fn numbering_finalise_and_issue_with_provisional() {
     let n = c.log().len();
     c.exec("issuerevision", json!({"provisional": "finalise"}));
     let log = c.log();
-    assert_eq!(log.len(), n + 2, "Finalise, then the issue");
-    assert_eq!(log[n].label, "Finalise numbering");
+    assert_eq!(log.len(), n + 1, "Finalise and the issue are one transaction (S4)");
+    assert_eq!(log[n].label, "Issue Rev A");
     assert_eq!(log[n].author, Author::Agent(AGENT.into()));
     assert_eq!((tag_of(&mut c, &b).as_deref(), tag_of(&mut c, &a).as_deref()), (Some("-K01"), Some("-K02")));
     // Issue anyway: one transaction.

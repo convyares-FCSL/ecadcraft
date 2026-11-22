@@ -382,12 +382,17 @@ fn revision_list(doc: &Document) -> (Vec<(String, f64)>, Vec<TRow>) {
             .iter()
             .map(|r| {
                 let mut c: Vec<String> = columns.iter().map(|col| r.get(&col.field).to_string()).collect();
-                c.push(r.issued.clone().unwrap_or_default());
+                c.push(issued_cell(r));
                 row(c)
             })
             .collect()
     };
     (cols, rows)
+}
+
+/// The Issued cell of a revision row: `Rev A` once issued.
+fn issued_cell(r: &crate::releases::revisions::Revision) -> String {
+    if r.issued { format!("Rev {}", r.rev()) } else { String::new() }
 }
 
 fn table_static(doc: &Document, kind: GenKind, reports: Option<&ReportModels>) -> (Vec<(&'static str, f64)>, Vec<TRow>) {
@@ -415,8 +420,8 @@ fn table_static(doc: &Document, kind: GenKind, reports: Option<&ReportModels>) -
                 issued
                     .iter()
                     .map(|r| {
-                        let mut c: Vec<String> = r.fields.to_vec();
-                        c.push(r.issued.clone().unwrap_or_default());
+                        let mut c: Vec<String> = r.fields.iter().take(6).cloned().collect();
+                        c.push(issued_cell(r));
                         row(c)
                     })
                     .collect()

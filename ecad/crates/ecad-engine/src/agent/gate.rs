@@ -295,8 +295,8 @@ pub fn execute(s: &mut Session, p: &ProjectHandle, call: &mut Call<'_>, req: &Va
     let name = id.to_ascii_uppercase();
     let new = log_since(s, p, &before).map_err(|e| format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history."))?;
     let used = *call.line_transactions;
-    // Brief 026 (design §5.5): `issuerevision {provisional: "finalise"}` records Finalise, then
-    // the issue: two transactions by design (the revision point holds the finalised tags).
+    // Brief 027 (design §4.4): `release {provisional: "finalise"}` records Finalise, then the
+    // issue: two transactions by design (`issuerevision` records both in one, S4).
     // Only when this call is the line's first write and it really recorded Finalise, then the
     // issue (reviewer 026, 3); anything else keeps the cap of one.
     let allowed = if used == 0 && finalised_then_issued(&new) { policy::transactions_allowed(&id, &params) } else { MAX_TRANSACTIONS_PER_CALL };

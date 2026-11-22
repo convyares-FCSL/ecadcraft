@@ -120,11 +120,11 @@ pub fn reads_only(id: &str, params: &Value) -> bool {
 }
 
 /// How many transactions one call of `id` with `params` may record: one
-/// ([`crate::agent::MAX_TRANSACTIONS_PER_CALL`]), except `issuerevision {provisional: "finalise"}` and
-/// `release {provisional: "finalise"}` of the pending revision (no `rev`), which record Finalise
-/// numbering and then the issue (brief 026, design §5.5; brief 027, design §4.4): two.
+/// ([`crate::agent::MAX_TRANSACTIONS_PER_CALL`]), except `release {provisional: "finalise"}` of the
+/// pending revision (no `rev`), which records Finalise numbering and then the issue (brief 027,
+/// design §4.4): two. `issuerevision {provisional: "finalise"}` records both in one (S4, #37).
 pub fn transactions_allowed(id: &str, params: &Value) -> usize {
-    let issuing = id == "issuerevision" || (id == "release" && params.get("rev").is_none_or(Value::is_null));
+    let issuing = id == "release" && params.get("rev").is_none_or(Value::is_null);
     let finalise = issuing
         && params
             .get("provisional")

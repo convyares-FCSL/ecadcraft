@@ -10,6 +10,7 @@ pub mod ledger;
 pub mod op;
 pub mod page;
 pub mod project;
+pub mod rev;
 pub mod sheet;
 pub mod strict;
 pub mod view;

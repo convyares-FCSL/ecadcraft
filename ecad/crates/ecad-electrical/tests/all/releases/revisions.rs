@@ -4,10 +4,46 @@ use ecad_electrical::releases::revisions::*;
 use ecad_model::Document;
 
 #[test]
-fn next_revs() {
-    for (last, next) in [(None, "A"), (Some("A"), "B"), (Some("Z"), "AA"), (Some("AZ"), "BA"), (Some("0"), "1"), (Some("P3"), "P4")] {
-        assert_eq!(next_rev(last), next, "{last:?}");
+fn the_pending_rev_follows_the_projects_scheme() {
+    use ecad_model::{Rev, RevPrefix, RevScheme, Revision};
+    let issued = |rev| Revision { rev: Some(rev), issued: true, ..Revision::default() };
+    let mut doc = Document::default();
+    // Letters (the default): A, B ... AA.
+    assert_eq!(pending_rev(&doc), "A");
+    doc.project.revisions = vec![issued(Rev::Letter(25)), issued(Rev::Letter(26))];
+    assert_eq!(pending_rev(&doc), "AA");
+    // With a dash first issue: dash, A, B ...
+    doc.project.rev_scheme = RevScheme::Letters { dash_first: true };
+    doc.project.revisions.clear();
+    assert_eq!(pending_rev(&doc), ecad_model::document::rev::DASH);
+    doc.project.revisions = vec![issued(Rev::Initial)];
+    assert_eq!(pending_rev(&doc), "A");
+    // Numbered: P01, P02 ...
+    doc.project.rev_scheme = RevScheme::Numbered { prefix: RevPrefix::new("P").ok(), width: 2, start: 1 };
+    doc.project.revisions.clear();
+    assert_eq!(pending_rev(&doc), "P01");
+    doc.project.revisions = vec![issued(Rev::Number(9))];
+    assert_eq!(pending_rev(&doc), "P10");
+}
+
+#[test]
+fn a_rev_typed_for_the_pending_row_is_read_in_the_scheme_and_refused_naming_the_problem() {
+    use ecad_model::{Project, RevScheme};
+    let mut project = Project::default();
+    let ok = with_field(&project, 1, "rev", Some("B")).unwrap();
+    assert_eq!(ok.revisions[0].rev, Some(ecad_model::Rev::Letter(2)));
+    for (text, words) in [("b", "not a rev of this project"), ("P01", "not a rev of this project")] {
+        let e = with_field(&project, 1, "rev", Some(text)).unwrap_err().to_string();
+        assert!(e.contains(words), "{text}: {e}");
     }
+    project.rev_scheme = RevScheme::Letters { dash_first: false };
+    let e = with_field(&project, 1, "rev", Some("-")).unwrap_err().to_string();
+    assert!(e.contains("start at A"), "{e}");
+    // A date is a date: free text is refused by name.
+    let e = with_field(&project, 1, "date", Some("next week")).unwrap_err().to_string();
+    assert!(e.contains("not a date") && e.contains("YYYY-MM-DD"), "{e}");
+    let row = with_field(&project, 1, "date", Some("2026-11-22")).unwrap();
+    assert_eq!(row.revisions[0].date.map(|d| d.to_string()).as_deref(), Some("2026-11-22"));
 }
 
 #[test]

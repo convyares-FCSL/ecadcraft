@@ -22,6 +22,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::Word;
+use crate::document::rev::{Rev, RevScheme};
 use crate::naming::id::{FunctionId, LocationId};
 use crate::naming::text::Text;
 
@@ -92,6 +93,9 @@ pub struct Project {
     /// The project-defined user fields (design 072 §2.8), in the order they were made.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub user_fields: Vec<crate::objects::user::UserFieldDef>,
+    /// Which revs the project has and what follows each (S4, #37). Fixed once anything is issued.
+    #[serde(default, skip_serializing_if = "RevScheme::is_default")]
+    pub rev_scheme: RevScheme,
 }
 
 /// The project-property key a `keep_project_key` filter (Restore, merge) is asked about for the
@@ -119,7 +123,7 @@ impl Project {
     pub fn problem(&self) -> Option<String> {
         list_problem(&self.locations, '+', "location")
             .or_else(|| list_problem(&self.functions, '=', "function"))
-            .or_else(|| revisions_problem(&self.revisions))
+            .or_else(|| revisions_problem(&self.revisions, &self.rev_scheme))
             .or_else(|| crate::objects::user::fields_problem(&self.user_fields))
     }
 
@@ -129,12 +133,26 @@ impl Project {
     }
 }
 
-fn revisions_problem(rows: &[Revision]) -> Option<String> {
+fn revisions_problem(rows: &[Revision], scheme: &RevScheme) -> Option<String> {
     if rows.len() > MAX_REVISIONS {
         return Some(format!("more than {MAX_REVISIONS} revisions"));
     }
+    let mut seen = std::collections::BTreeSet::new();
+    for (i, r) in rows.iter().enumerate() {
+        if r.issued && r.rev.is_none() {
+            return Some(format!("revision {} is issued without a rev", i + 1));
+        }
+        if let Some(rev) = r.rev {
+            if !scheme.admits(rev) {
+                return Some(format!("revision {} has rev {}, which the scheme does not have", i + 1, scheme.show(rev)));
+            }
+            if !seen.insert(rev) {
+                return Some(format!("rev {} is on two rows", scheme.show(rev)));
+            }
+        }
+    }
     let last = rows.len().saturating_sub(1);
-    rows.iter().take(last).position(|r| r.issued.is_none()).map(|i| format!("revision {} is not issued but a later one exists", i + 1))
+    rows.iter().take(last).position(|r| !r.issued).map(|i| format!("revision {} is not issued but a later one exists", i + 1))
 }
 
 fn list_problem<I: Copy + Ord + std::fmt::Display>(list: &[ListEntry<I>], sign: char, what: &str) -> Option<String> {
@@ -159,8 +177,6 @@ fn list_problem<I: Copy + Ord + std::fmt::Display>(list: &[ListEntry<I>], sign: 
 
 // ---------------------------------------------------------------- revisions (design 072 §5.3)
 
-/// Most characters of a rev (`A`, `P3`).
-pub const MAX_REV: usize = 8;
 /// Most characters of a revision field's value.
 pub const MAX_REV_VALUE: usize = 200;
 /// Most characters of a custom revision field's name.
@@ -170,8 +186,6 @@ pub const MAX_RELEASED: usize = 1000;
 /// Most revisions a project holds (a bound on hostile files).
 pub const MAX_REVISIONS: usize = 10_000;
 
-/// A rev: 1 to 8 letters or digits.
-pub type Rev = Text<MAX_REV>;
 /// One revision field's value.
 pub type RevValue = Text<MAX_REV_VALUE>;
 
@@ -185,6 +199,7 @@ crate::word_enum! {
         Drawn,
         Checked,
         Approved,
+        Ecr,
     }
 }
 
@@ -218,15 +233,17 @@ impl<'de> Deserialize<'de> for CustomField {
     }
 }
 
-/// One revision row (design 019 §7.2, 033 §7.2). Rows are numbered by their place in
+/// One revision row (design 019 §7.2, 033 §7.2; typed in S4). Rows are numbered by their place in
 /// [`Project::revisions`], from 1; the last row is the pending one while it is not issued.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Revision {
+    /// Its rev in the project's scheme.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rev: Option<Rev>,
+    /// The date, written `YYYY-MM-DD` in records.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub date: Option<RevValue>,
+    pub date: Option<chrono::NaiveDate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<RevValue>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -235,41 +252,62 @@ pub struct Revision {
     pub checked: Option<RevValue>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approved: Option<RevValue>,
-    /// Custom fields (brief 033), by name.
+    /// The engineering change request it answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ecr: Option<RevValue>,
+    /// The project's own extra columns (brief 033), by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub custom: BTreeMap<CustomField, RevValue>,
-    /// The version name it was issued as (`Rev A`); `None` while pending.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub issued: Option<RevValue>,
+    /// Whether it was issued; the issue is the revision point `Revision(rev)` in the document's versions.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub issued: bool,
     /// The release folder, when a release issued it (brief 027), relative to the project file's
     /// folder.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub released: Option<Text<MAX_RELEASED>>,
 }
 
+/// Text that is not a date: only `YYYY-MM-DD` is one.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("\"{0}\" is not a date. Write it as YYYY-MM-DD, such as 2026-11-22.")]
+pub struct NotADate(pub String);
+
+/// The date `text` spells.
+///
+/// # Errors
+/// [`NotADate`] says what is wrong with it: only `YYYY-MM-DD` is a date.
+pub fn parse_date(text: &str) -> Result<chrono::NaiveDate, NotADate> {
+    let t = text.trim();
+    chrono::NaiveDate::parse_from_str(t, "%Y-%m-%d").ok().filter(|d| d.format("%Y-%m-%d").to_string() == t).ok_or_else(|| NotADate(t.to_string()))
+}
+
 impl Revision {
-    /// The value of built-in field `f`.
-    pub fn field(&self, f: RevField) -> Option<&str> {
+    /// The text of built-in field `f` (the rev as `scheme` writes it, the date as `YYYY-MM-DD`).
+    pub fn text(&self, f: RevField, scheme: &RevScheme) -> Option<String> {
+        let t = |v: &Option<RevValue>| v.as_ref().map(|t| t.as_str().to_string());
         match f {
-            RevField::Rev => self.rev.as_ref().map(Text::as_str),
-            RevField::Date => self.date.as_ref().map(Text::as_str),
-            RevField::Description => self.description.as_ref().map(Text::as_str),
-            RevField::Drawn => self.drawn.as_ref().map(Text::as_str),
-            RevField::Checked => self.checked.as_ref().map(Text::as_str),
-            RevField::Approved => self.approved.as_ref().map(Text::as_str),
+            RevField::Rev => self.rev.map(|r| scheme.show(r)),
+            RevField::Date => self.date.map(|d| d.format("%Y-%m-%d").to_string()),
+            RevField::Description => t(&self.description),
+            RevField::Drawn => t(&self.drawn),
+            RevField::Checked => t(&self.checked),
+            RevField::Approved => t(&self.approved),
+            RevField::Ecr => t(&self.ecr),
         }
     }
 
-    /// Set built-in field `f` other than `rev` (`None` clears it).
-    pub fn set_field(&mut self, f: RevField, v: Option<RevValue>) {
+    /// Set a text field (`None` clears it). `false` for `rev` and `date`, which are typed values
+    /// set through their own fields.
+    pub fn set_text(&mut self, f: RevField, v: Option<RevValue>) -> bool {
         match f {
-            RevField::Rev => self.rev = v.and_then(|t| Rev::new(t.as_str()).ok()),
-            RevField::Date => self.date = v,
+            RevField::Rev | RevField::Date => return false,
             RevField::Description => self.description = v,
             RevField::Drawn => self.drawn = v,
             RevField::Checked => self.checked = v,
             RevField::Approved => self.approved = v,
+            RevField::Ecr => self.ecr = v,
         }
+        true
     }
 
     /// Whether nothing is set.

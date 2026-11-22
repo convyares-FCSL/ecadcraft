@@ -118,6 +118,18 @@ pub mod numbering_seam {
         plan_before_issue(p, params).map_err(String::from)
     }
 
+    /// 026's provisional step for `issuerevision`: Finalise's ops (none when there is nothing to
+    /// number) to record in the issue's own transaction, or the note to issue with.
+    ///
+    /// # Errors
+    /// 026's refusal, or a bad `way`.
+    pub(crate) fn plan_before_issue_of(p: &mut Project, way: Option<&str>) -> Result<(Vec<ecad_model::Op>, Option<String>), CmdError> {
+        match plan_before(p, way)? {
+            BeforeIssue::Go(note) => Ok((Vec::new(), note)),
+            BeforeIssue::Finalise(plan) => Ok((plan.ops, None)),
+        }
+    }
+
     /// Record a planned Finalise numbering.
     ///
     /// # Errors
@@ -148,18 +160,6 @@ pub mod numbering_seam {
         p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone())?;
         pg.echo(applied_words(plan, true));
         Ok(())
-    }
-
-    /// Before an issue: Finalise numbering as its own transaction when `way` says so (none: the
-    /// note to issue with).
-    ///
-    /// # Errors
-    /// 026's refusal, or the commit's.
-    pub(crate) fn before_issue(p: &mut Project, pg: &mut Pages<'_>, way: Option<&str>) -> Result<Option<String>, CmdError> {
-        match plan_before(p, way)? {
-            BeforeIssue::Go(note) => Ok(note),
-            BeforeIssue::Finalise(plan) => commit(p, pg, &plan).map(|()| None),
-        }
     }
 }
 
@@ -785,6 +785,13 @@ fn read_only(p: &Project) -> Option<String> {
 
 /// `Nothing has changed since Rev A.` when every step since the last issue only edited revision
 /// fields (design 027 §6, Q11): a warning, never a refusal ([`ecad_electrical::releases::release::nothing_changed`]).
+pub fn unchanged_since(p: &Project) -> Option<String> {
+    let doc = p.ledger.document();
+    let rev = ecad_electrical::releases::release::unchanged_since(doc, p.ledger.head(), |seq| p.ledger.transaction(seq))?;
+    Some(doc.project.rev_scheme.show(rev))
+}
+
+/// [`unchanged_since`] in words.
 pub fn nothing_changed(p: &Project) -> Option<String> {
     ecad_electrical::releases::release::nothing_changed(p.ledger.document(), p.ledger.head(), |seq| p.ledger.transaction(seq))
 }
@@ -815,6 +822,8 @@ pub struct View {
     /// What `release` would refuse (with `accept` as given).
     pub refusal: Option<String>,
     pub warning: Option<String>,
+    /// The rev nothing has changed since, as shown (the warning's subject).
+    pub since: Option<String>,
     /// The pending revision's fields (`revisions::FIELDS` order).
     pub fields: [String; 6],
     /// The rows as JSON (`checks`' form), for `prerelease`.
@@ -843,13 +852,13 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
     };
     match &issued_rev {
         Some(row) => {
-            let (_, _, then) = crate::history::issued_state(p, row.rev())?;
+            let (_, _, then) = crate::history::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?;
             let detached = p.derived().detached(&then);
             let rows = crate::checks::all_with(&then, p.tolerance, detached.reports());
             to_rows(&then, &rows, &mut v);
             v.rev = row.rev().to_string();
             v.issued = Some(v.rev.clone());
-            v.fields = row.fields.clone();
+            v.fields = row.six();
             v.folder = row.released.as_deref().and_then(|x| from_recorded(p, x)).or_else(|| default_folder(p, &v.rev));
         }
         None => {
@@ -857,10 +866,11 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
             let params = if accept { json!({"accept": "errors"}) } else { json!({}) };
             v.refusal = pending_refusal(p, &rows, &params);
             v.warning = nothing_changed(p);
+            v.since = unchanged_since(p);
             let doc = p.ledger.document();
             to_rows(doc, &rows, &mut v);
             v.rev = revisions::pending_rev(doc);
-            v.fields = revisions::pending(doc).map(|r| r.fields).unwrap_or_default();
+            v.fields = revisions::pending(doc).map(|r| r.six()).unwrap_or_default();
             if v.fields[0].is_empty() {
                 v.fields[0] = v.rev.clone();
             }
@@ -956,15 +966,16 @@ pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
 /// # Errors
 /// It is the pending revision, or was never issued: with the way on.
 fn issued_row(p: &Project, rev: &str) -> Result<revisions::Revision, String> {
-    let rev = rev.trim().trim_start_matches("Rev ").trim();
+    let want = crate::history::read_rev(p, rev).map_err(|e| e.to_string())?;
     let doc = p.ledger.document();
-    if let Some(r) = revisions::issued(doc).into_iter().find(|r| r.rev().eq_ignore_ascii_case(rev)) {
+    let shown = doc.project.rev_scheme.show(want);
+    if let Some(r) = revisions::issued(doc).into_iter().find(|r| r.rev_value == Some(want)) {
         return Ok(r);
     }
-    if revisions::pending_rev(doc).eq_ignore_ascii_case(rev) {
-        return Err(format!("Rev {rev} is not issued yet; release without `rev` to issue it and write its folder."));
+    if revisions::pending(doc).is_some_and(|r| r.rev_value == Some(want)) {
+        return Err(format!("Rev {shown} is not issued yet; release without `rev` to issue it and write its folder."));
     }
-    Err(format!("Rev {rev} has not been issued."))
+    Err(format!("Rev {shown} has not been issued."))
 }
 
 // ---------------------------------------------------------------- release
@@ -1200,7 +1211,7 @@ pub(crate) fn release_issued(p: &mut Project, params: &Value, rev: &str, progres
     let rev = row.rev().to_string();
     let default = row.released.as_deref().and_then(|v| from_recorded(p, v)).or_else(|| default_folder(p, &rev));
     let target = folder_param(p, params, default)?;
-    let (named, seq, then) = crate::history::issued_state(p, &rev)?;
+    let (named, seq, then) = crate::history::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?;
     let detached = p.derived().detached(&then);
     let reports = detached.reports();
     let rows = crate::checks::all_with(&then, p.tolerance, reports);

@@ -494,11 +494,11 @@ fn issue_with_unnumbered_nets_and_the_setting_off_does_not_stop() {
 }
 
 /// `issuerevision {provisional: "finalise"}` from the command layer: refused before anything is
-/// written when the issue cannot go ahead (fields missing, a rev issued before); else two
-/// transactions, the revision point holds the finalised tag, and two undos give the provisional
-/// tag back.
+/// written when the issue cannot go ahead (fields missing, a rev issued before); else ONE
+/// transaction (S4: Finalise and the issue together), the project as issued holds the finalised tag,
+/// and one undo gives the provisional tag back.
 #[test]
-fn issue_with_finalise_writes_nothing_when_the_issue_is_refused_and_undoes_in_two_steps() {
+fn issue_with_finalise_writes_nothing_when_the_issue_is_refused_and_undoes_in_one_step() {
     let mut h = H::new(0x0260_0009);
     let page = h.first_page();
     h.run("numbering", json!({"provisional": true})).unwrap();
@@ -514,13 +514,24 @@ fn issue_with_finalise_writes_nothing_when_the_issue_is_refused_and_undoes_in_tw
     }
     let head = h.head();
     h.s.execute("issuerevision", &json!({"provisional": "finalise"})).unwrap();
-    assert_eq!(h.head(), head + 2, "Finalise, then the issue");
+    assert_eq!(h.head(), head + 1, "Finalise and the issue are one transaction");
+    assert_eq!(h.p(|p| p.ledger.log().last().map(|t| t.label.clone())).as_deref(), Some("Issue Rev A"), "one history entry");
+    let ops = h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
+    assert!(
+        ops.iter().any(|o| matches!(o, ecad_model::Op::NameVersion { name, at, .. }
+            if *name == ecad_model::PointName::Revision(ecad_model::Rev::Letter(1)) && *at == head)),
+        "the point names the head before the one transaction: {ops:?}"
+    );
+    assert!(ops.iter().any(|o| matches!(o, ecad_model::Op::ModifyProject { .. })), "the issue is in it");
+    assert!(ops.len() > 2, "and the Finalise numbering with it: {ops:?}");
     assert_eq!(tag_of(&mut h, k).as_deref(), Some("-K01"));
     let rev_doc = h.p(|p| {
         let at = p.ledger.document().versions.values().copied().max().unwrap_or(0);
-        p.ledger.state_at(at).unwrap()
+        // The point names the head before the transaction; the issue transaction itself follows it.
+        assert_eq!(at, head);
+        p.ledger.state_at(at + 1).unwrap()
     });
-    assert_eq!(rev_doc.devices[&k].tag(), Some("-K01"), "the revision point holds the finalised tag");
+    assert_eq!(rev_doc.devices[&k].tag(), Some("-K01"), "the project as issued holds the finalised tag");
     // A rev issued before: refused before Finalise writes.
     let at = cell(&mut h, page, 3, 1);
     let k2 = coil(&mut h, at, None).unwrap();
@@ -529,12 +540,11 @@ fn issue_with_finalise_writes_nothing_when_the_issue_is_refused_and_undoes_in_tw
     assert!(e.is_err(), "rev A again");
     assert_eq!(h.head(), head, "a refused issue leaves no Finalise behind: {e:?}");
     assert_eq!(tag_of(&mut h, k2).as_deref(), Some("-K?1"));
-    // Two undos from the issue: the issue, then Finalise.
+    // One undo from the issue takes Finalise back with it.
     h.run("u", Value::Null).unwrap(); // the coil k2
     h.s.execute("undoissue", &json!({})).unwrap();
-    assert_eq!(tag_of(&mut h, k).as_deref(), Some("-K01"), "undoing the issue keeps Finalise");
-    h.s.execute("u", &Value::Null).unwrap();
-    assert_eq!(tag_of(&mut h, k).as_deref(), Some("-K?1"));
+    assert_eq!(tag_of(&mut h, k).as_deref(), Some("-K?1"), "undoing the issue takes Finalise with it: one step");
+    assert!(h.p(|p| p.ledger.document().versions.is_empty()), "and the revision point");
     h.check();
 }
 

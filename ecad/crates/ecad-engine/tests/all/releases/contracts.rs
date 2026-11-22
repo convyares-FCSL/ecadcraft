@@ -223,7 +223,7 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     assert!(checks.contains("warning,Orphans,Cable reference with no other end,"), "{checks}");
     assert!(checks.contains("-C01 /?"), "{checks}");
     // What was printed is the state as issued: its title block and revision list read Rev B.
-    let issued = f.h.p(|p| ecad_engine::history::issued_state(p, "B").unwrap().2);
+    let issued = f.h.p(|p| ecad_engine::history::issued_state(p, ecad_model::Rev::Letter(2)).unwrap().2);
     assert_eq!(ecad_electrical::releases::revisions::issued(&issued).first().map(|r| r.rev().to_string()).as_deref(), Some("B"));
     // The Revisions table knows where it went.
     let row = f.h.p(|p| ecad_electrical::releases::revisions::issued(p.ledger.document()).into_iter().next().unwrap());

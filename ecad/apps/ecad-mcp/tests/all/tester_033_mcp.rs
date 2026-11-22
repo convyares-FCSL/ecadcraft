@@ -19,6 +19,14 @@ fn sets(ops: &[Op], key: &str) -> bool {
     // Design 072 §5.3: a revision row's field (`rev.<n>.<field>`) is set through `ModifyProject`.
     if let Some((n, field)) = key.strip_prefix("rev.").and_then(|r| r.split_once('.')) {
         let n: u32 = n.parse().unwrap_or(0);
+        if field == "issued" {
+            // S4: issuing marks the row issued (a flag, not a name).
+            let at = usize::try_from(n).ok().and_then(|n| n.checked_sub(1)).unwrap_or(usize::MAX);
+            return ops.iter().any(|o| {
+                matches!(o, Op::ModifyProject { before, after }
+                    if after.revisions.get(at).is_some_and(|r| r.issued) && !before.revisions.get(at).is_some_and(|r| r.issued))
+            });
+        }
         return ops.iter().any(|o| {
             matches!(o, Op::ModifyProject { before, after }
                 if ecad_electrical::releases::revisions::field_of(after, n, field).is_some()
@@ -82,6 +90,15 @@ fn print_and_project_writes_by_the_agent_then_refused_with_writes_off() {
             m,
             "Tables can't be placed on ECAD pages yet. Draw it with lines and text, or add a generated page for lists (New Page \u{25b8} Generated)."
         );
+        // S4: the revision scheme is the project's; the agent changes it in one transaction.
+        let n = c.log().len();
+        let v = c.exec("projectprops", json!({"rev_scheme": {"kind": "letters_dash"}}));
+        let ops = assert_one_by_agent(&mut c, n, &format!("rev_scheme → {v}")).ops;
+        assert!(
+            ops.iter()
+                .any(|o| matches!(o, Op::ModifyProject { after, .. } if after.rev_scheme == ecad_model::RevScheme::Letters { dash_first: true })),
+            "{ops:?}"
+        );
         // Every new write: one transaction by the agent, with its keys.
         c.exec("revision", json!({"description": "First issue", "drawn": "T"}));
         let writes: Vec<(&str, Value, &[&str])> = vec![
@@ -128,6 +145,7 @@ fn print_and_project_writes_by_the_agent_then_refused_with_writes_off() {
         ("projectprops", json!({"tag_case": "typed"})),
         ("projectprops", json!({"revision_columns": "rev, description"})),
         ("projectprops", json!({"revision_pending": "off"})),
+        ("projectprops", json!({"rev_scheme": {"kind": "numbered"}})),
         ("revision", json!({"fields": {"ecr": "ECR-2"}})),
         ("newpage", json!({"title": "X", "number": "401"})),
         ("pageprops", json!({"page": bom, "number": "500"})),

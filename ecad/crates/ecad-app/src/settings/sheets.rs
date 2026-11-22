@@ -685,7 +685,7 @@ impl Revisions {
             .into_iter()
             .flatten()
             .filter_map(|c| Some((c["field"].as_str()?.to_string(), c["header"].as_str()?.to_string())))
-            .filter(|(f, _)| !ecad_electrical::releases::revisions::FIELDS.contains(&f.as_str()))
+            .filter(|(f, _)| !ecad_electrical::releases::revisions::SIX.contains(&f.as_str()))
             .collect();
         let rows: Vec<RevRow> = v
             .get("revisions")
@@ -693,9 +693,9 @@ impl Revisions {
             .into_iter()
             .flatten()
             .map(|r| RevRow {
-                fields: ecad_electrical::releases::revisions::FIELDS.map(|f| r[f].as_str().unwrap_or_default().to_string()),
+                fields: ecad_electrical::releases::revisions::SIX.map(|f| r[f].as_str().unwrap_or_default().to_string()),
                 extra: custom.iter().map(|(f, _)| r[f.as_str()].as_str().unwrap_or_default().to_string()).collect(),
-                issued: !r["issued"].is_null(),
+                issued: r["issued"].as_bool() == Some(true),
                 released: r.get("released").and_then(Value::as_str).map(str::to_string),
                 folder: None,
                 folder_exists: false,
@@ -778,7 +778,7 @@ impl Revisions {
                     ui.label("");
                     ui.end_row();
                     if !self.read_only {
-                        for (i, f) in ecad_electrical::releases::revisions::FIELDS.iter().enumerate() {
+                        for (i, f) in ecad_electrical::releases::revisions::SIX.iter().enumerate() {
                             let Some(v) = self.pending.get_mut(i) else { continue };
                             let w = match *f {
                                 "description" => FIELD_W * 0.8,
@@ -868,7 +868,7 @@ impl Revisions {
                             self.confirming = false;
                             // Fields still being typed go with the issue (one transaction).
                             let mut m = Map::new();
-                            for (i, f) in ecad_electrical::releases::revisions::FIELDS.iter().enumerate() {
+                            for (i, f) in ecad_electrical::releases::revisions::SIX.iter().enumerate() {
                                 if let (Some(v), Some(o)) = (self.pending.get(i), self.orig.get(i))
                                     && v != o
                                     && !v.trim().is_empty()

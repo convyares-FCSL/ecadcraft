@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_file::Store;
-use ecad_file::schema::VersionKind;
+use ecad_file::schema::RowKind;
 use ecad_file::store::TABLES as TABLES_ORDER;
 use ecad_file::verify::VerifyReport;
 use ecad_model::{ConnectionPointId, DeviceId, Document, Subject, WireId};
@@ -494,7 +494,7 @@ fn project(d: &Document) -> Value {
         "reference_style": format!("{:?}", d.settings.reference_style()),
         // Design 072 F40 (A15): what one wire number counts.
         "number_by": ecad_model::Word::word(d.settings.wiring.number_by),
-        "versions": d.versions,
+        "versions": d.versions.iter().map(|(p, at)| json!({"kind": match p.kind() { ecad_model::PointKind::Version => "Version", ecad_model::PointKind::Revision => "Revision" }, "name": p.key(), "shown": point_text(d, p), "at": at})).collect::<Vec<_>>(),
         "counts": {
             "pages": d.pages.len(),
             "folders": d.folders.len(),
@@ -814,21 +814,29 @@ fn log(st: &Store, s: &dyn Source, req: &Request) -> Result<Value, Problem> {
     Ok(json!({"branch": name, "total": head, "from": from.min(head), "rows": rows}))
 }
 
+/// A named point in words: a version's text, or `Rev B` as the project's scheme writes it.
+fn point_text(d: &Document, p: &ecad_model::PointName) -> String {
+    match p {
+        ecad_model::PointName::Version(v) => v.to_string(),
+        ecad_model::PointName::Revision(r) => format!("Rev {}", d.project.rev_scheme.show(*r)),
+    }
+}
+
 fn versions(st: &Store) -> Result<Vec<Value>, Problem> {
     let r = st.reader().map_err(engine)?;
     let mut out = Vec::new();
     for (id, b) in r.branches().map_err(engine)? {
-        for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto, VersionKind::Merge] {
+        for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto, RowKind::Merge] {
             for v in r.versions(id, kind).map_err(engine)? {
                 out.push(json!({
                     "branch": b.name,
-                    "kind": format!("{kind:?}"),
+                    "kind": kind.name(),
                     "name": v.name,
                     "seq": v.point.seq,
                     "chunks": v.chunks.len(),
                     "undo": v.undo.len() as u64 + v.undo_hidden,
                     "redo": v.redo.len() as u64 + v.redo_hidden,
-                    "release": v.release.as_ref().map(|rel| json!(rel.fields)),
+                    "release": v.release.as_ref().map(|rel| json!(rel.revision)),
                     "description": v.description,
                     "merge": v.merge.as_ref().map(|m| json!({"source": m.source, "source_head": m.source_head.seq})),
                 }));
@@ -872,10 +880,10 @@ fn key_text(table: &str, key: &[u8]) -> String {
 }
 
 fn kind_name(byte: u8) -> String {
-    [VersionKind::User, VersionKind::Revision, VersionKind::Auto, VersionKind::Merge]
+    [RowKind::VERSION, RowKind::REVISION, RowKind::Auto, RowKind::Merge]
         .into_iter()
         .find(|k| k.byte() == byte)
-        .map_or_else(|| format!("kind {byte}"), |k| format!("{k:?}"))
+        .map_or_else(|| format!("kind {byte}"), |k| k.name().to_string())
 }
 
 fn table_of(req: &Request) -> Result<&'static str, Problem> {

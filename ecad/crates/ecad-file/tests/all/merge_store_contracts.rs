@@ -5,7 +5,7 @@
 
 use crate::common::*;
 use crate::container_v2::TempDir;
-use ecad_file::schema::{BranchStatus, VersionKind};
+use ecad_file::schema::{BranchStatus, RowKind};
 use ecad_file::{Project, Store};
 use ecad_model::*;
 
@@ -42,7 +42,7 @@ fn the_merge_index_and_the_merged_status_follow_merge_undo_and_redo() {
     line(&mut bl, &mut ids, f.page, f.layer, 51.0);
     proj.save(&mut bl).unwrap();
     // The branch's first save wrote its first snapshot.
-    let autos = proj.store().reader().unwrap().versions(b, VersionKind::Auto).unwrap();
+    let autos = proj.store().reader().unwrap().versions(b, RowKind::Auto).unwrap();
     assert_eq!(autos.iter().map(|v| v.point.seq).collect::<Vec<_>>(), vec![2], "a snapshot at the branch's first save");
     let source_head = proj.head();
     // On main: one merge transaction.
@@ -154,7 +154,7 @@ fn verify_refuses_a_merge_row_with_no_live_merge_behind_it() {
     let at = f.ledger.head();
     // A kind 4 row at an ordinary edit (a stale or damaged index row).
     let rec = ecad_file::schema::VersionRecord {
-        kind: VersionKind::Merge,
+        kind: RowKind::Merge,
         name: ecad_file::schema::auto_name(at),
         point: ecad_file::schema::Point::new(at, &proj.chain_of(main, at).unwrap()),
         chunks: Default::default(),

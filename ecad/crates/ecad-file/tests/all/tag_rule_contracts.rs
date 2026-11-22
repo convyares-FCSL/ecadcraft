@@ -11,7 +11,7 @@ use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
-use ecad_file::schema::{self, BranchId, VersionKind};
+use ecad_file::schema::{self, BranchId, RowKind};
 use ecad_file::{Project, Store, StoreError};
 use ecad_model::naming::tag::{HighWater, TAG_RULE, note_ops};
 use ecad_model::*;
@@ -61,7 +61,7 @@ fn make_rule_1(path: &Path, ledger: &Ledger) {
     let main = BranchId::main_of(PROJECT.0);
     let rows: Vec<schema::VersionRecord> = {
         let r = store.reader().unwrap();
-        [VersionKind::User, VersionKind::Revision, VersionKind::Auto].into_iter().flat_map(|k| r.versions(main, k).unwrap()).collect()
+        [RowKind::VERSION, RowKind::REVISION, RowKind::Auto].into_iter().flat_map(|k| r.versions(main, k).unwrap()).collect()
     };
     assert!(!rows.is_empty());
     let mut w = store.writer().unwrap();
@@ -86,7 +86,7 @@ fn snapshots(path: &Path) -> Vec<(schema::VersionRecord, ModelMeta)> {
     let r = s.reader().unwrap();
     let main = BranchId::main_of(PROJECT.0);
     let mut out = Vec::new();
-    for k in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
+    for k in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto] {
         for v in r.versions(main, k).unwrap() {
             let h = chain::parse_hex(&v.chunks[META_KEY]).unwrap();
             let meta: ModelMeta = serde_json::from_slice(&r.chunk_body(&h).unwrap()).unwrap();
@@ -156,7 +156,7 @@ fn verify_reports_rule_1_marks_as_recomputed_not_as_a_failure() {
     {
         let store = Store::open(&p, true).unwrap();
         let main = BranchId::main_of(PROJECT.0);
-        let mut rows = store.reader().unwrap().versions(main, VersionKind::Auto).unwrap();
+        let mut rows = store.reader().unwrap().versions(main, RowKind::Auto).unwrap();
         let mut w = store.writer().unwrap();
         for rec in &mut rows {
             rec.tag_rule = Some(TAG_RULE);
@@ -178,7 +178,9 @@ fn a_resave_writes_the_current_rule_and_verifies() {
     make_rule_1(&p, &l);
     let mut o = Project::open(Store::open(&p, true).unwrap(), 1, WRITER).unwrap();
     let at = o.ledger.head();
-    o.ledger.commit(Author::User, "Version", vec![Op::NameVersion { name: "Again".into(), at, description: None }]).unwrap();
+    o.ledger
+        .commit(Author::User, "Version", vec![Op::NameVersion { name: ecad_model::PointName::version("Again").unwrap(), at, description: None }])
+        .unwrap();
     o.project.save(&mut o.ledger).unwrap();
     drop(o);
     let again = snapshots(&p).into_iter().find(|(v, _)| v.name == "Again").unwrap();
@@ -194,7 +196,7 @@ fn a_resave_writes_the_current_rule_and_verifies() {
 #[derive(serde::Deserialize)]
 #[allow(dead_code)]
 struct OldVersionRecord {
-    kind: VersionKind,
+    kind: RowKind,
     name: String,
     point: schema::Point,
     chunks: BTreeMap<String, String>,
@@ -222,7 +224,7 @@ fn a_build_before_029_reads_the_rows_and_meta_029_writes() {
     r.raw_rows(|table, _, value| {
         if table == "versions" {
             let old: OldVersionRecord = serde_json::from_slice(value).map_err(|e| StoreError::Damaged(e.to_string()))?;
-            if old.kind != VersionKind::Merge {
+            if old.kind != RowKind::Merge {
                 assert_eq!(old.extra.get("tag_rule"), Some(&serde_json::json!(TAG_RULE)), "kept as an unknown field");
                 let h = chain::parse_hex(&old.chunks[META_KEY]).ok_or(StoreError::Damaged("hash".into()))?;
                 let body = r.chunk_body(&h)?;

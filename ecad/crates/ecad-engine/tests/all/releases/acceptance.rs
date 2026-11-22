@@ -328,7 +328,7 @@ fn fp1_follows_undo_redo_and_survives_save_and_reopen() {
     assert_eq!(released(&mut h).as_deref(), Some("release/Rev B"));
     h.run("undoissue", json!({})).unwrap();
     assert!(released(&mut h).is_none());
-    assert!(!h.doc().versions.contains_key("Rev B"));
+    assert!(!h.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2))));
     assert!(out.join("release.json").exists(), "undo never deletes files");
     // Released again while the folder is there: asked first, nothing recorded.
     let head = h.head();

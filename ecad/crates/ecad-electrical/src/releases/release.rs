@@ -119,7 +119,7 @@ pub fn clean_stem(raw: &str) -> String {
 
 /// `Rev B`.
 pub fn folder_name(rev: &str) -> String {
-    crate::releases::revisions::version_name(rev)
+    format!("Rev {rev}")
 }
 
 /// `checks.csv` (design 027 §7.2): `Severity, Group, Kind, Where, What, Accepted`.
@@ -180,10 +180,9 @@ pub fn provisional_count(rows: &[Check]) -> usize {
 /// `Nothing has changed since Rev A.` when every step after the last issue up to `head` only
 /// edited revision fields (design 027 §6, Q11): a warning, never a refusal. `tx` reads a step of
 /// the ledger; it stops at the first other step.
-pub fn nothing_changed<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option<&'a Transaction>) -> Option<String> {
+pub fn unchanged_since<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option<&'a Transaction>) -> Option<ecad_model::Rev> {
     let last = crate::releases::revisions::issued(doc).into_iter().next()?;
-    let name = last.issued.clone()?;
-    let at = *doc.versions.get(&name)?;
+    let at = *doc.versions.get(&ecad_model::PointName::Revision(last.rev_value?))?;
     let only_revisions = |t: &Transaction| {
         t.ops.iter().all(|o| match o {
             Op::ModifyProject { before, after } => {
@@ -200,7 +199,13 @@ pub fn nothing_changed<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option
         }
         seq += 1;
     }
-    Some(format!("Nothing has changed since {name}."))
+    last.rev_value
+}
+
+/// [`unchanged_since`] in words: `Nothing has changed since Rev A.`
+pub fn nothing_changed<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option<&'a Transaction>) -> Option<String> {
+    let rev = unchanged_since(doc, head, tx)?;
+    Some(format!("Nothing has changed since Rev {}.", doc.project.rev_scheme.show(rev)))
 }
 
 // ---------------------------------------------------------------- slots (design 027 §7.2)

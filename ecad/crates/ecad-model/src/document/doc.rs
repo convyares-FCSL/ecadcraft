@@ -1500,7 +1500,8 @@ pub struct Document {
     pub definitions: BTreeMap<DefinitionId, Definition>,
     pub settings: ProjectSettings,
     /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
-    pub versions: BTreeMap<String, u64>,
+    #[serde(with = "crate::document::rev::as_points")]
+    pub versions: BTreeMap<crate::PointName, u64>,
     /// The project's own display bag (brief 019, decision FP1): title, drawing number, customer,
     /// status, default function and location, revisions (`rev.<n>.<field>`) and free ones.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -1550,7 +1551,8 @@ struct DocumentData {
     device_links: BTreeMap<crate::naming::id::LinkId, crate::objects::user::DeviceLink>,
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
-    versions: BTreeMap<String, u64>,
+    #[serde(with = "crate::document::rev::as_points")]
+    versions: BTreeMap<crate::PointName, u64>,
     #[serde(default)]
     display: Properties,
     #[serde(default)]

@@ -158,7 +158,9 @@ fn every_op_ledger() -> Ledger {
             ],
         )
         .unwrap();
-    ledger.commit(Author::User, "bookmark", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }]).unwrap();
+    ledger
+        .commit(Author::User, "bookmark", vec![Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None }])
+        .unwrap();
     // Lane 072 B step 5 (A15): two devices and a link between them.
     let pair: [ecad_model::DeviceId; 2] = [ids.fresh(), ids.fresh()];
     let link = ids.fresh();
@@ -245,8 +247,8 @@ fn every_op_ledger() -> Ledger {
             before: ProjectSettings::default(),
             after: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
         },
-        Op::NameVersion { name: "w".into(), at: 2, description: None },
-        Op::UnnameVersion { name: "v".into(), at: 1, description: None },
+        Op::NameVersion { name: ecad_model::PointName::version("w").unwrap(), at: 2, description: None },
+        Op::UnnameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None },
         Op::SetDeviceDefinition { id: comp, before: Some(def), after: None },
         Op::AddFolder { id: ids.fresh(), folder: Folder { name: "G".into(), parent: Some(folder), start: None }, index: 1 },
         Op::RemoveFolder { id: folder, folder: folder_v.clone(), index: 0 },
