@@ -278,9 +278,6 @@ pub fn is_level_starter(key: crate::symbols::StarterKey) -> bool {
     of_starter(key).is_some_and(|(t, _)| !t.legacy())
 }
 
-/// Every new starter key, in catalogue order: per multi-level type its levels then its whole
-/// symbol; then disconnect and fuse.
-
 // ---------------------------------------------------------------- terminals and positions
 
 /// The type a terminal is drawn as: the starter of the first symbol that shows it, else (an old
@@ -707,9 +704,9 @@ pub fn counts_text(c: &Counts) -> String {
     parts.join("+")
 }
 
-// ---------------------------------------------------------------- links (§5.1)
+// ---------------------------------------------------------------- jumper bars (§5.1)
 
-/// The text of a link item for position `p`, level `n` as every ECAD writer writes it: `p` for
+/// The text of a jumper bar item for position `p`, level `n` as every ECAD writer writes it: `p` for
 /// level 1 of an undotted position, else `p.n` (a dotted position is always written with its
 /// level, roadmap question 5).
 pub fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
@@ -720,7 +717,7 @@ pub fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
     }
 }
 
-/// Canonical link text on level `n` and point `point` for `labels` (plan order) out of `order`:
+/// Canonical jumper bar text on level `n` and point `point` for `labels` (plan order) out of `order`:
 /// runs become ranges, each end written with [`jumper_bar_end`] (review 036, 2: the point is kept).
 pub fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Option<char>) -> String {
     let base = ecad_model::connectivity::jumper_bars::canonical(labels, order);
@@ -757,9 +754,9 @@ pub fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Opti
     out.join(", ")
 }
 
-/// A typed link value with level names (`1.N-3.N`) written with level numbers (`1.2-3.2`), by
+/// A typed jumper bar value with level names (`1.N-3.N`) written with level numbers (`1.2-3.2`), by
 /// the names of each position's type on strip `c` (§5.1: names are accepted when typed and stored
-/// as numbers, so renaming a level never breaks a link). An end that already reads as a level, or
+/// as numbers, so renaming a level never breaks a jumper bar). An end that already reads as a level, or
 /// whose name no type of its position has, is left as typed. A name containing `-` (the sensor
 /// terminal's `-`) is written by its number.
 pub(crate) fn jumper_bar_names_to_numbers(doc: &Document, c: DeviceId, text: &str) -> String {
@@ -788,8 +785,8 @@ pub(crate) fn jumper_bar_names_to_numbers(doc: &Document, c: DeviceId, text: &st
         .join(", ")
 }
 
-/// When link value `text` on strip `c` names an end like `2.1` while a position labelled `2.1`
-/// exists (§5.1, Q5): `Link -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.`
+/// When jumper bar value `text` on strip `c` names an end like `2.1` while a position labelled `2.1`
+/// exists (§5.1, Q5): `Jumper bar -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.`
 pub(crate) fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> Option<String> {
     let p = ecad_model::connectivity::jumper_bars::parse(text).ok()?;
     let labels: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
@@ -806,7 +803,7 @@ pub(crate) fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> 
             }
         }
     }
-    (!words.is_empty()).then(|| format!("Link {} {}.", crate::devices::tag_words(doc, c), words.join("; ")))
+    (!words.is_empty()).then(|| format!("Jumper bar {} {}.", crate::devices::tag_words(doc, c), words.join("; ")))
 }
 
 // ---------------------------------------------------------------- geometry (§3.1)
@@ -921,7 +918,7 @@ pub fn connection_point_name(doc: &Document, t: ConnectionPointId) -> String {
     }
 }
 
-/// The stored label of a terminal: a strip terminal's **position** (brief 036), what links,
+/// The stored label of a terminal: a strip terminal's **position** (brief 036), what jumper bars,
 /// accessories and renumbering name. [`connection_point_name`] is what a person sees.
 pub fn position_label(doc: &Document, t: ConnectionPointId) -> String {
     match doc.connection_points.get(&t).and_then(|x| x.label.clone()) {

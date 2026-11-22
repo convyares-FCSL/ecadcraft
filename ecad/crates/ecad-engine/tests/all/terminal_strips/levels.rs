@@ -1,5 +1,5 @@
 //! Brief 036 (design 036 §13): multi-level terminals placed by fence and on wires, labels per
-//! level, links per level, internal bridges, fuse positions breaking the net, `terminalblocklabel`,
+//! level, jumper bars per level, internal bridges, fuse positions breaking the net, `terminalblocklabel`,
 //! `toposition`, the plan, the BOM per type and the update maps. Driven through the commands'
 //! JSON forms on a small fixture of loose vertical wires.
 
@@ -107,7 +107,7 @@ fn jumper_bars_join_one_level_and_cross_level_jumper_bars_join_one_position() {
     assert_eq!(net(&mut h, nt[0]), net(&mut h, nt[2]), "level N joined");
     assert_ne!(net(&mut h, nt[0]), net(&mut h, lt[0]));
     h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.3", "value": "1.1-1.3"})).unwrap();
-    assert_eq!(net(&mut h, lt[0]), net(&mut h, pt[0]), "cross-level link");
+    assert_eq!(net(&mut h, lt[0]), net(&mut h, pt[0]), "cross-level jumper bar");
     assert_eq!(net(&mut h, lt[0]), net(&mut h, nt[0]));
     let e = h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.4", "value": "1.1-3.2"})).unwrap_err();
     assert!(e.contains("joins different levels at different positions"), "{e}");
@@ -171,7 +171,7 @@ fn terminalblocklabel_relabels_a_position_and_sets_a_level_label() {
     let doc = h.doc();
     let props = &doc.devices[&x1].properties;
     assert_eq!(props.get("acc.on.2.1").map(String::as_str), Some("marker"), "accessories follow");
-    assert_eq!(props.get("jumper_bar.1").map(String::as_str), Some("1.2-3.2"), "the link names the same positions in plan order");
+    assert_eq!(props.get("jumper_bar.1").map(String::as_str), Some("1.2-3.2"), "the jumper bar names the same positions in plan order");
     let e = h.run("terminalblocklabel", json!({"connection_point": t2.hex(), "position": "3"})).unwrap_err();
     assert!(e.contains("already has a position 3"), "{e}");
     h.run("terminalblocklabel", json!({"connection_point": t2.hex(), "text": "2.1S"})).unwrap();
@@ -324,7 +324,7 @@ fn nothing_is_lost_silently() {
 }
 
 /// Review M1: relabelling a position moves every position-keyed property (one shared list) and
-/// rewrites the links naming it, in one transaction.
+/// rewrites the jumper bars naming it, in one transaction.
 #[test]
 fn relabel_moves_every_position_keyed_property() {
     let mut h = H::new(0x0360_000a);
@@ -385,7 +385,7 @@ fn update_map_counters() {
     same_as_built(&mut h);
 }
 
-/// Review 036, 1: a link on several levels, and a cross-level link holding a position range, keep
+/// Review 036, 1: a jumper bar on several levels, and a cross-level jumper bar holding a position range, keep
 /// every span's level, point and both range ends through `terminalblocklabel` and through `renumber`.
 #[test]
 fn relabel_and_renumber_keep_mixed_and_cross_level_jumper_bars() {
@@ -414,7 +414,7 @@ fn relabel_and_renumber_keep_mixed_and_cross_level_jumper_bars() {
     }
 }
 
-/// Review 036, 2: a link on the out points stays on the out points; the out cells share one wire
+/// Review 036, 2: a jumper bar on the out points stays on the out points; the out cells share one wire
 /// number and the in cells keep theirs.
 #[test]
 fn a_jumper_bar_on_out_points_keeps_its_point() {
@@ -464,7 +464,7 @@ fn a_typed_dotted_end_says_which_position_it_is() {
     let t3 = connection_points(&v)[2];
     h.run("terminalblocklabel", json!({"connection_point": t3.hex(), "position": "2.1"})).unwrap();
     let r = h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1, 2.1"})).unwrap();
-    assert_eq!(r["message"], "Link -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.", "{r}");
+    assert_eq!(r["message"], "Jumper bar -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.", "{r}");
     let r = h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1, 2"})).unwrap();
     assert!(r.get("message").is_none(), "{r}");
 }

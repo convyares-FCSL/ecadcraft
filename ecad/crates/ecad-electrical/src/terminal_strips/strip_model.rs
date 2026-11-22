@@ -32,7 +32,7 @@ pub struct TermRow {
     pub connection_point: Option<ConnectionPointId>,
     /// The out point of a two-point level (its outside cells come from it, Q6).
     pub out: Option<ConnectionPointId>,
-    /// The **position** label (what links, accessories and renumbering name).
+    /// The **position** label (what jumper bars, accessories and renumbering name).
     pub label: String,
     /// The shown label (§4.1): `1.L`, or the level's own label.
     pub shown: String,
@@ -148,7 +148,7 @@ pub struct StripData {
     pub types: Vec<TypeCount>,
     /// Positions whose levels are drawn by symbols of another type: (position, a terminal).
     pub mixed: Vec<(String, ConnectionPointId)>,
-    /// Links naming levels their positions lack: (link number, the items as written).
+    /// Jumper bars naming levels their positions lack: (jumper bar number, the items as written).
     pub level_missing: Vec<(u32, Vec<String>)>,
     /// Fuse positions with no rating.
     pub no_rating: usize,
@@ -160,7 +160,7 @@ pub struct StripData {
     /// kept with the strip, so sheet counts never walk the rows.
     pub sheets: usize,
     pub bom_rows: usize,
-    /// Brief 030: the accessories placed and the links (design 030 §7, §11.1).
+    /// Brief 030: the accessories placed and the jumper bars (design 030 §7, §11.1).
     pub acc: crate::terminal_strips::accessories::StripAcc,
     /// What this strip's rows read, for the update map.
     wires: BTreeSet<WireId>,
@@ -254,8 +254,8 @@ impl StripData {
         out
     }
 
-    /// The links through plan row `i`: (link, whether its level of its position is one the link
-    /// names). Brief 036: a link runs on its own level; a cross-level link only through the
+    /// The jumper bars through plan row `i`: (jumper bar, whether its level of its position is one the jumper bar
+    /// names). Brief 036: a jumper bar runs on its own level; a cross-level jumper bar only through the
     /// levels of its position.
     pub fn jumper_bars_at(&self, i: usize) -> Vec<(&crate::terminal_strips::accessories::JumperBarInfo, bool)> {
         let Some(r) = self.rows.get(i) else { return Vec::new() };
@@ -268,7 +268,7 @@ impl StripData {
             .collect()
     }
 
-    /// The Bridge cell of a terminal row (design 030 §7.1): 028's `● n`, then one mark per link
+    /// The Bridge cell of a terminal row (design 030 §7.1): 028's `● n`, then one mark per jumper bar
     /// lane: `●` on a linked position, `┆` past a skipped one.
     pub fn bridge_cell(&self, i: usize) -> String {
         let mut text = self.rows.get(i).and_then(|r| r.bridge_group).map_or_else(String::new, |g| format!("\u{25cf} {g}"));
@@ -931,7 +931,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         }
         d.pos_of_row.push(n);
     }
-    // Links naming levels their positions lack (`level-missing`, §8).
+    // Jumper bars naming levels their positions lack (`level-missing`, §8).
     let count_of: BTreeMap<&str, u32> = positions.iter().map(|p| (p.label.as_str(), p.ty.count())).collect();
     let order: Vec<String> = positions.iter().map(|p| p.label.clone()).collect();
     for (n, p) in ecad_model::connectivity::jumper_bars::of(props) {

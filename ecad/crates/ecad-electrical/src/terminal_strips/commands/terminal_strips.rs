@@ -428,7 +428,7 @@ pub fn plan_bridge(
         return Err(CmdError::NotFound(Noun::TerminalBlock));
     }
     if a == b {
-        return Err(CmdError::refused("Pick two different terminals: a bridge links one terminal to another."));
+        return Err(CmdError::refused("Pick two different terminals: a bridge jumper bars one terminal to another."));
     }
     let (wa, wb) = (connection_point_words(doc, a), connection_point_words(doc, b));
     let (sa, sb) = (terminal_strips::strip_of_connection_point(doc, a), terminal_strips::strip_of_connection_point(doc, b));

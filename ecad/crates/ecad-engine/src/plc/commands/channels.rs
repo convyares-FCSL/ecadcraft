@@ -95,7 +95,7 @@ pub(crate) fn place_channel(
         let proposed = crate::symbols::draw::plan_place(p, &ops, modes, card, page, pl.origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place channel", ops)?;
-        p.last_placed = Some((starter.key.to_string(), card));
+        p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: card });
         let doc = p.ledger.document();
         let first = first_number(doc, card);
         let pins: Vec<String> = cell.connection_points.iter().map(|(_, _, pin, _)| pin.clone()).collect();
@@ -196,7 +196,7 @@ impl Command for PlcchannelsParams {
                 return Ok(json!({"card": c.hex(), "tag": tag, "channels": channels, "message": message}));
             }
             p.apply_edit(pg, "plcchannels", "Place channels", plan.ops)?;
-            p.last_placed = Some((plan.starter.to_string(), c));
+            p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(plan.starter), device: c });
             let k = plan.placed.len();
             let wires = if k == 1 { "1 wire".to_string() } else { format!("{k} wires") };
             let mut first_pins: Vec<String> = plan.pins.clone();

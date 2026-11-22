@@ -122,7 +122,7 @@ fn drawn_at(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, Representati
     out
 }
 
-/// A strip's drawn terminals with the page and point each is drawn at (brief 030: link lines).
+/// A strip's drawn terminals with the page and point each is drawn at (brief 030: jumper bar lines).
 pub(crate) fn drawn_points(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, RepresentationId, PageId, Pt)> {
     drawn_at(doc, c).into_iter().filter_map(|(t, rid, _, at)| Some((t, rid, doc.representations.get(&rid)?.page, at?))).collect()
 }

@@ -1,5 +1,5 @@
 //! The rules of brief 030's commands (design 030 §2.2, §5.4, §5.5, §10): `accessory` (end stops,
-//! end plates, partitions, strip labels and markers at places of a strip) and `jumper` (make a link,
+//! end plates, partitions, strip labels and markers at places of a strip) and `jumper` (make a jumper bar,
 //! or edit one). Both write ordinary strip properties. Each function reads the document and returns
 //! the ops to commit and what to report; the engine crate's shims read the parameters, commit and
 //! answer in JSON.
@@ -23,8 +23,8 @@ use crate::views::Views;
 pub(crate) const MAX_AT: usize = 999;
 /// Most terminals one `jumper` call picks.
 pub(crate) const MAX_PICKS: usize = 999;
-/// The refusal when a strip has no free link number.
-const JUMPER_BARS_FULL: &str = "This strip has 999 links; delete one first.";
+/// The refusal when a strip has no free jumper bar number.
+const JUMPER_BARS_FULL: &str = "This strip has 999 jumper bars; delete one first.";
 
 /// Words given as one text or as a list.
 #[derive(Debug, Clone, PartialEq)]
@@ -265,7 +265,7 @@ pub(crate) fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Ac
 
 // ---------------------------------------------------------------- jumper (§5.4, §5.5)
 
-/// The positions a link names in plan order, with the labels it names that the strip lacks.
+/// The positions a jumper bar names in plan order, with the labels it names that the strip lacks.
 fn jumper_bar_labels(p: &Positions, order: &[String]) -> Vec<String> {
     let mut v: Vec<String> = p.select(order).into_iter().cloned().collect();
     for m in p.missing(order) {
@@ -276,7 +276,7 @@ fn jumper_bar_labels(p: &Positions, order: &[String]) -> Vec<String> {
     v
 }
 
-/// Canonical link text on `level` (brief 036: `1.2-8.2`; level 1 as 030 wrote it).
+/// Canonical jumper bar text on `level` (brief 036: `1.2-8.2`; level 1 as 030 wrote it).
 fn canonical_of(labels: &[String], order: &[String], level: u32, point: Option<char>) -> String {
     let mut sorted: Vec<&String> = labels.iter().collect();
     sorted.sort_by_key(|l| (order.iter().position(|o| o == *l).unwrap_or(usize::MAX), jumper_bars::natural_key(l)));
@@ -289,7 +289,7 @@ fn labels_of(text: &str, order: &[String]) -> Result<Vec<String>, CmdError> {
     Ok(jumper_bar_labels(&jumper_bars::parse(text)?, order))
 }
 
-/// The next free link number on a strip.
+/// The next free jumper bar number on a strip.
 fn next_jumper_bar(doc: &Document, c: DeviceId) -> Option<u32> {
     let props = &doc.devices.get(&c)?.properties;
     let high = props
@@ -310,7 +310,7 @@ fn set_op(doc: &Document, c: DeviceId, key: String, after: Option<String>) -> Op
     (before != after).then_some(Op::SetProperty { object: ObjectRef::Device(c), key, before, after })
 }
 
-/// The ops clearing a link and its own part keys.
+/// The ops clearing a jumper bar and its own part keys.
 fn delete_ops(doc: &Document, c: DeviceId, n: u32) -> Vec<Op> {
     let mut ops: Vec<Op> = set_op(doc, c, jumper_bars::key(n), None).into_iter().collect();
     for f in acc::FIELDS {
@@ -328,17 +328,17 @@ fn range_between(order: &[String], a: &str, b: &str) -> Vec<String> {
     }
 }
 
-/// The link a `jumper` edit names.
+/// The jumper bar a `jumper` edit names.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct JumperBarRef {
     pub strip: Option<DeviceId>,
     pub n: Option<u64>,
 }
 
-/// What `jumper` is asked to do (design 030 §10): make a link (`jumper_bar` absent), or edit one.
+/// What `jumper` is asked to do (design 030 §10): make a jumper bar (`jumper_bar` absent), or edit one.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct JumperInput {
-    /// The link to edit.
+    /// The jumper bar to edit.
     pub jumper_bar: Option<JumperBarRef>,
     /// Make: the strip.
     pub strip: Option<DeviceId>,
@@ -352,11 +352,11 @@ pub(crate) struct JumperInput {
     pub add: Option<String>,
     /// Edit: positions to remove, as text.
     pub remove: Option<String>,
-    /// Edit: split the link after this position.
+    /// Edit: split the jumper bar after this position.
     pub split_at: Option<String>,
     /// Edit: drop the positions the strip lacks.
     pub drop_missing: bool,
-    /// Edit: delete the link.
+    /// Edit: delete the jumper bar.
     pub delete: bool,
 }
 
@@ -364,22 +364,22 @@ pub(crate) struct JumperInput {
 #[derive(Debug, Clone)]
 pub struct Jumper {
     pub strip: DeviceId,
-    /// The link's number.
+    /// The jumper bar's number.
     pub n: u32,
     pub ops: Vec<Op>,
     /// The transaction's label.
     pub label: String,
     pub message: String,
-    /// A split's new link: its number and positions.
+    /// A split's new jumper bar: its number and positions.
     pub split: Option<(u32, String)>,
 }
 
-/// Plan `jumper` (design 030 §10): make a link, or edit one.
+/// Plan `jumper` (design 030 §10): make a jumper bar, or edit one.
 ///
 /// # Errors
-/// No such strip or terminal, positions that do not read, a link the rules refuse.
+/// No such strip or terminal, positions that do not read, a jumper bar the rules refuse.
 pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdError> {
-    // Brief 036 (design 036 §5.3): the level the link runs on, or a cross-level link's text.
+    // Brief 036 (design 036 §5.3): the level the jumper bar runs on, or a cross-level jumper bar's text.
     let mut level: u32 = 1;
     let mut point: Option<char> = None;
     let mut cross: Option<String> = None;
@@ -387,10 +387,10 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
         let c = l.strip.ok_or(CmdError::input("`strip` (hex id) is required"))?;
         let (c, _) = strip_of(doc, Some(c), None)?;
         let n = l.n.and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=jumper_bars::MAX_JUMPER_BAR).contains(n));
-        let n = n.ok_or(CmdError::input("`link.n` must be a whole number from 1 to 999"))?;
+        let n = n.ok_or(CmdError::input("`jumper_bar.n` must be a whole number from 1 to 999"))?;
         let key = jumper_bars::key(n);
         let cur_text = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
-        let cur_text = cur_text.ok_or_else(|| CmdError::refused(format!("{} has no link {n}.", strip_words(doc, c))))?;
+        let cur_text = cur_text.ok_or_else(|| CmdError::refused(format!("{} has no jumper bar {n}.", strip_words(doc, c))))?;
         let order = acc::positions(doc, c);
         let parsed = jumper_bars::parse(&cur_text).unwrap_or_default();
         level = parsed.level().unwrap_or(1);
@@ -399,7 +399,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
         let tag = strip_words(doc, c);
         if parsed.crosses_levels() && !input.delete {
             return Err(CmdError::refused(format!(
-                "Link {tag} {cur_text} joins levels of one position; delete it and draw it again, or set link.{n}."
+                "Jumper bar {tag} {cur_text} joins levels of one position; delete it and draw it again, or set jumper_bar.{n}."
             )));
         }
         if input.delete {
@@ -408,8 +408,8 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
                 strip: c,
                 n,
                 ops,
-                label: format!("Delete link {tag} {cur_text}"),
-                message: format!("Deleted link {tag} {cur_text}."),
+                label: format!("Delete jumper bar {tag} {cur_text}"),
+                message: format!("Deleted jumper bar {tag} {cur_text}."),
                 split: None,
             });
         }
@@ -437,13 +437,13 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
             let (first, rest): (Vec<String>, Vec<String>) =
                 next.iter().cloned().partition(|l| order.iter().position(|o| o == l).is_some_and(|j| j <= i));
             if first.is_empty() || rest.is_empty() {
-                return Err(CmdError::refused(format!("Link {cur_text} has no positions on both sides of {at}; pick a position inside it.")));
+                return Err(CmdError::refused(format!("Jumper bar {cur_text} has no positions on both sides of {at}; pick a position inside it.")));
             }
-            // Review of PR #57, 3: a side of one position would be no link; never dropped.
+            // Review of PR #57, 3: a side of one position would be no jumper bar; never dropped.
             if first.len() < 2 || rest.len() < 2 {
                 let one = if first.len() < 2 { &first } else { &rest };
                 return Err(CmdError::refused(format!(
-                    "Splitting link {cur_text} after {at} would leave {} alone. Shorten the link instead (remove {}), or split it at another position.",
+                    "Splitting jumper bar {cur_text} after {at} would leave {} alone. Shorten the jumper bar instead (remove {}), or split it at another position.",
                     one.join(", "),
                     one.join(", ")
                 )));
@@ -461,9 +461,9 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
         } else {
             "Change"
         };
-        (c, n, Some(cur_text), next, format!("{verb} link {tag}"), extra)
+        (c, n, Some(cur_text), next, format!("{verb} jumper bar {tag}"), extra)
     } else {
-        // Make a new link.
+        // Make a new jumper bar.
         let picks = &input.connection_points;
         let c = match (input.strip, picks.first()) {
             (Some(c), _) => c,
@@ -475,7 +475,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
         let mut labels: Vec<String> = Vec::new();
         let mut prev: Option<String> = None;
         // The first pick fixes the level; another level of the same position makes a
-        // cross-level link; another level elsewhere is refused.
+        // cross-level jumper bar; another level elsewhere is refused.
         if let Some(t) = picks.first() {
             level = crate::terminal_strips::terminal_blocks::level_of(doc, *t).0;
         }
@@ -493,7 +493,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
                 }
                 let ty = crate::terminal_strips::terminal_blocks::type_of_connection_point(doc, *t);
                 return Err(CmdError::refused(format!(
-                    "{} is on level {}; this link is on level {}. Pick level {} terminals, or Enter to finish.",
+                    "{} is on level {}; this jumper bar is on level {}. Pick level {} terminals, or Enter to finish.",
                     crate::terminal_strips::connection_point_words(doc, *t),
                     crate::terminal_strips::terminal_blocks::level_name(doc, c, ty, lv),
                     crate::terminal_strips::terminal_blocks::level_name(doc, c, ty, level),
@@ -501,12 +501,12 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
                 )));
             }
             if !cross_levels.is_empty() {
-                return Err(CmdError::refused("A link between levels of one position ends there; Enter to finish."));
+                return Err(CmdError::refused("A jumper bar between levels of one position ends there; Enter to finish."));
             }
             let term = doc.connection_points.get(t).ok_or(CmdError::NotFound(Noun::TerminalBlock))?;
             if term.device() != Some(c) {
                 return Err(CmdError::refused(format!(
-                    "{} is on another strip; a link stays on one strip. Pick a terminal of {}.",
+                    "{} is on another strip; a jumper bar stays on one strip. Pick a terminal of {}.",
                     crate::terminal_strips::connection_point_words(doc, *t),
                     strip_words(doc, c)
                 )));
@@ -525,7 +525,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
         }
         if let Some(v) = &input.positions {
             // Tester 036 (c): typed positions keep their level and point (`1.3-4.3`); a typed
-            // cross-level link is kept as written.
+            // cross-level jumper bar is kept as written.
             let typed = jumper_bars::parse(v)?;
             if picks.is_empty() {
                 if typed.crosses_levels() {
@@ -545,11 +545,11 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
             }
         }
         if let (Some(lo), Some(hi), Some(pos)) = (cross_levels.iter().min(), cross_levels.iter().max(), labels.first()) {
-            // A cross-level link names both levels (`1.1-1.3`).
+            // A cross-level jumper bar names both levels (`1.1-1.3`).
             cross = Some(format!("{pos}.{lo}-{pos}.{hi}"));
         }
         let n = next_jumper_bar(doc, c).ok_or(CmdError::refused(JUMPER_BARS_FULL))?;
-        (c, n, None, labels, format!("Link {}", strip_words(doc, c)), None)
+        (c, n, None, labels, format!("Jumper bar {}", strip_words(doc, c)), None)
     };
     let order = acc::positions(doc, c);
     let tag = strip_words(doc, c);
@@ -559,7 +559,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
         Some(t)
     } else if labels.len() < 2 {
         if before_text.is_none() {
-            return Err(CmdError::refused("A link joins at least 2 positions. Pick another terminal, or type positions like 1-4."));
+            return Err(CmdError::refused("A jumper bar joins at least 2 positions. Pick another terminal, or type positions like 1-4."));
         }
         ops.extend(delete_ops(doc, c, n));
         None
@@ -574,7 +574,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
     {
         let t = canonical_of(rest, &order, level, point);
         ops.extend(set_op(doc, c, jumper_bars::key(*m), Some(t.clone())));
-        // Both halves keep the link's own part (review of PR #57, 3).
+        // Both halves keep the jumper bar's own part (review of PR #57, 3).
         for f in acc::FIELDS {
             let own = doc.devices.get(&c).and_then(|x| x.properties.get(&format!("{}.{f}", jumper_bars::key(n)))).cloned();
             if own.is_some() {
@@ -590,7 +590,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
         (None, _) => format!("{label} {shown}"),
     };
     let message = match (&before_text, &text) {
-        (Some(b), None) => format!("Removed link {tag} {b} (fewer than 2 positions)."),
+        (Some(b), None) => format!("Removed jumper bar {tag} {b} (fewer than 2 positions)."),
         (Some(_), Some(_)) => format!("{tx_label}."),
         (None, _) => format!("Linked {tag} {shown}."),
     };
@@ -642,24 +642,24 @@ pub struct AccessoryParams {
     clear: Option<Vec<String>>,
 }
 
-/// The link a `jumper` edit names.
+/// The jumper bar a `jumper` edit names.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct JumperBarParam {
     /// The strip.
     #[serde(default)]
     strip: Option<DeviceId>,
-    /// The link's number, 1 to 999.
+    /// The jumper bar's number, 1 to 999.
     #[serde(default)]
     n: Option<u64>,
 }
 
-/// `jumper` (design 030 §10): make a link (`{strip | terminals, positions?, skip?}`), or edit one
+/// `jumper` (design 030 §10): make a jumper bar (`{strip | terminals, positions?, skip?}`), or edit one
 /// (`{jumper_bar: {strip, n}, add?, remove?, positions?, split_at?, drop_missing?, delete?}`).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JumperParams {
-    /// Edit: the link.
+    /// Edit: the jumper bar.
     #[serde(default)]
     jumper_bar: Option<JumperBarParam>,
     /// Make: the strip.
@@ -680,13 +680,13 @@ pub struct JumperParams {
     /// Edit: positions to remove ("5" or a list).
     #[serde(default)]
     remove: Option<WordsParam>,
-    /// Edit: split the link after this position.
+    /// Edit: split the jumper bar after this position.
     #[serde(default)]
     split_at: Option<String>,
     /// Edit: drop the positions the strip lacks.
     #[serde(default)]
     drop_missing: Option<bool>,
-    /// Edit: delete the link.
+    /// Edit: delete the jumper bar.
     #[serde(default)]
     delete: Option<bool>,
 }

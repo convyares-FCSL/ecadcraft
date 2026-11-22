@@ -12,7 +12,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{Document, IdAllocator, Ledger, Op, PageId, Standard, Style};
+use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Op, PageId, Standard, Style};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -20,6 +20,7 @@ use crate::CmdError;
 use crate::devices::TagHigh;
 use crate::locations::designations::Uses;
 use crate::styles::text_style::fonts::TextMetrics;
+use crate::symbols::StarterKey;
 use crate::symbols::proposals::Conflict;
 use crate::views::Views;
 
@@ -81,6 +82,8 @@ pub enum State {
     /// The location and function conflicts waiting for an answer (design 052 §5.5; `setlocation`,
     /// `setfunction`, `setprop`, `conflicts`). Any committed edit leaves them.
     Conflicts,
+    /// What the last placement in this session placed (the click tools' defaults; `terminalblocks`).
+    LastPlaced,
 }
 
 /// The declared state, given to the command. What it changes is kept only when its edit is
@@ -93,6 +96,17 @@ pub enum Slot<'a> {
     /// [`State::Conflicts`]: those waiting, and the ones to wait once the edit is committed (none
     /// set: a committed edit leaves them, no edit keeps them).
     Conflicts { waiting: &'a [Conflict], set: &'a mut Option<Vec<Conflict>> },
+    /// [`State::LastPlaced`]: the last placement, which the command may change.
+    LastPlaced(&'a mut Option<LastPlaced>),
+}
+
+/// What the last placement in this session placed, for the prompts' defaults (design 018 §5.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LastPlaced {
+    /// The starter symbol placed (none for a connector, which has no starter of its own).
+    pub starter: Option<StarterKey>,
+    /// The device it was placed on or as.
+    pub device: DeviceId,
 }
 
 /// One transaction: its label and its ops.

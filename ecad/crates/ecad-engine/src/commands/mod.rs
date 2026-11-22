@@ -95,6 +95,8 @@ fn generic_specs() -> Vec<CommandSpec> {
         crate::generic::spec::<bom::PartlineParams>(),
         crate::generic::spec::<bom::BomitemParams>().interactive(interact::bomitem),
         crate::generic::spec::<bom::ArticleParams>(),
+        crate::generic::spec::<ecad_electrical::terminal_strips::commands::place_blocks::TerminalBlocksParams>()
+            .interactive(interact::terminal_blocks),
         crate::generic::spec::<ecad_electrical::terminal_strips::commands::reads::StripplanParams>(),
         crate::generic::spec::<ecad_electrical::terminal_strips::commands::reads::CablecoresParams>(),
         crate::generic::spec::<ecad_electrical::plc::commands::racks::PlcslotParams>(),
@@ -158,6 +160,7 @@ const GENERIC_TYPED: &[input::Typed] = &[
     crate::generic::typed::<bom::PartlineParams>(),
     crate::generic::typed::<bom::BomitemParams>(),
     crate::generic::typed::<bom::ArticleParams>(),
+    crate::generic::typed::<ecad_electrical::terminal_strips::commands::place_blocks::TerminalBlocksParams>(),
     crate::generic::typed::<ecad_electrical::terminal_strips::commands::reads::StripplanParams>(),
     crate::generic::typed::<ecad_electrical::terminal_strips::commands::reads::CablecoresParams>(),
     crate::generic::typed::<ecad_electrical::plc::commands::racks::PlcslotParams>(),

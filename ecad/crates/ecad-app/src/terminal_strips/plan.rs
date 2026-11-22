@@ -2,7 +2,7 @@
 //! as a terminal plan, mirrored: inside columns right-aligned towards the strip, the strip in the
 //! middle, outside columns left-aligned away from it. Only 036's editable fields are inputs:
 //! Position and Label (`terminalblocklabel`), Rating on a fuse position (`setprop rating.<position>`); the
-//! links are lanes beside the terminals. Everything else is read.
+//! jumper bars are lanes beside the terminals. Everything else is read.
 //!
 //! **Update map.** The rows are the kept report models' strip rows (`ReportModels::strips`, kept from
 //! each change's ops, design 036 §11). Per strip, the revision it last changed at
@@ -47,7 +47,7 @@ pub fn columns() -> Vec<Column> {
         Column::read(PLACE.0, "Page", Width::Initial(90.0)),
         Column::read(IN_TARGET.0, "From", Width::Initial(150.0)).align(Align::Right),
         Column::read(IN_WIRE.0, "Wire", Width::Initial(100.0)).align(Align::Right),
-        Column::read(JUMPER_BARS.0, "Link", Width::Initial(64.0)).unsorted(),
+        Column::read(JUMPER_BARS.0, "Jumper bar", Width::Initial(64.0)).unsorted(),
         Column::set(POSITION.0, "Terminal", Width::Initial(80.0)).align(Align::Center),
         Column::set(LABEL.0, "Label", Width::Initial(72.0)).align(Align::Center),
         Column::read(LEVEL.0, "Level", Width::Initial(56.0)).align(Align::Center),

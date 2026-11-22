@@ -1,7 +1,7 @@
-//! Terminal strip accessories and links (brief 030, design 030 §2, §4, §5, §7): end stops, end
-//! plates, partitions, strip labels and markers placed by the user, links (jumpers) owned by the
+//! Terminal strip accessories and jumper bars (brief 030, design 030 §2, §4, §5, §7): end stops, end
+//! plates, partitions, strip labels and markers placed by the user, jumper bars (jumpers) owned by the
 //! strip, and their part data. Everything is an ordinary property (FP1–FP3, FP5, FP6); this
-//! module reads and checks them and derives a strip's places, links, BOM rows and checks.
+//! module reads and checks them and derives a strip's places, jumper bars, BOM rows and checks.
 //!
 //! # Semantics
 //! - Places (FP1): `acc.start`, `acc.end`, `acc.after.<label>` hold gap items (`end_stop`,
@@ -9,7 +9,7 @@
 //!   stored canonical (`end_plate,end_stop`), at most [`MAX_ITEMS`]. Nothing is placed by a rule.
 //! - Part data (FP2, FP3, FP6): the strip's `<item>.<field>` first, then the project's
 //!   `strip_<item>_<field>` ([`project_key`]), then unknown.
-//! - Links (FP5): `jumper_bar.<n>` ([`ecad_model::connectivity::jumper_bars`]); bars per link `ceil(span / bar)`, bar from
+//! - Jumper bars (FP5): `jumper_bar.<n>` ([`ecad_model::connectivity::jumper_bars`]); bars per jumper bar `ceil(span / bar)`, bar from
 //!   `jumper.bar`, else `strip_jumper_bar`, else [`DEFAULT_BAR`].
 //! - Nothing here refuses because of a check; orphans and crossings are Checks rows (§8).
 //!
@@ -260,7 +260,7 @@ fn is_article_key(key: &str) -> bool {
     key.rsplit_once('.').is_some_and(|(_, f)| f == crate::reports::bom::ARTICLE_KEY)
 }
 
-/// `jumper_bar.<n>.<field>`: the link and the field.
+/// `jumper_bar.<n>.<field>`: the jumper bar and the field.
 pub fn jumper_bar_part_key(key: &str) -> Option<(u32, &str)> {
     let rest = key.strip_prefix(jumper_bars::PREFIX)?;
     let (n, f) = rest.split_once('.')?;
@@ -333,7 +333,7 @@ pub fn positions(doc: &Document, c: DeviceId) -> Vec<String> {
     jumper_bars::plan_order(labels)
 }
 
-/// A link value as stored: canonical (`1, 2, 3, 4` → `1-4`) when every label it names is a
+/// A jumper bar value as stored: canonical (`1, 2, 3, 4` → `1-4`) when every label it names is a
 /// position of the strip, else as written; empty clears it.
 ///
 /// # Errors
@@ -350,16 +350,16 @@ pub(crate) fn jumper_bar_value(doc: &Document, c: DeviceId, value: Option<&str>)
 /// # Errors
 /// Fewer than 2 positions.
 pub fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdError> {
-    // Brief 036: a cross-level link joins levels of one position (`1.1-1.3`).
+    // Brief 036: a cross-level jumper bar joins levels of one position (`1.1-1.3`).
     if p.crosses_levels() {
         return Ok(p.text());
     }
     let sel = p.select(order);
     let missing = p.missing(order);
     if sel.len() + missing.len() < 2 {
-        return Err(CmdError::refused("A link joins at least 2 positions. Write positions like 1-4 or 7, 9, 11."));
+        return Err(CmdError::refused("A jumper bar joins at least 2 positions. Write positions like 1-4 or 7, 9, 11."));
     }
-    // Brief 036: a link on one level keeps its level (`1.2-8.2`); a cross-level link, or one
+    // Brief 036: a jumper bar on one level keeps its level (`1.2-8.2`); a cross-level jumper bar, or one
     // whose items name different levels, stays as written.
     Ok(match (missing.is_empty(), p.crosses_levels(), p.level(), p.point()) {
         (true, false, Some(n), Some(pt)) => crate::terminal_strips::terminal_blocks::jumper_bar_text(&sel, order, n, pt),
@@ -367,7 +367,7 @@ pub fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdErr
     })
 }
 
-/// A link value without the items written as `drop` (brief 036: **Drop missing levels**); empty
+/// A jumper bar value without the items written as `drop` (brief 036: **Drop missing levels**); empty
 /// when nothing is left.
 pub(crate) fn drop_items(text: &str, drop: &[String]) -> String {
     let Ok(p) = jumper_bars::parse(text) else { return text.to_string() };
@@ -386,7 +386,7 @@ pub(crate) fn drop_items(text: &str, drop: &[String]) -> String {
 /// them (or a part key on another device, which stays free text), else the value to store.
 ///
 /// # Errors
-/// A placement or link key on a device that is not a strip, and every refusal of the value.
+/// A placement or jumper bar key on a device that is not a strip, and every refusal of the value.
 pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     let strip = crate::terminal_strips::strip_of(doc, c).is_some();
     let not_strip = || CmdError::refused(format!("{} is not a terminal strip. Pick a terminal of the strip.", crate::devices::tag_words(doc, c)));
@@ -415,7 +415,10 @@ pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option
             return Err(not_strip());
         }
         if jumper_bar_part_key(key).is_none() {
-            return Err(CmdError::refused(format!("\"{}\" is not a link key. Write link.<n> (1 to 999) or link.<n>.part_number.", shown(key))));
+            return Err(CmdError::refused(format!(
+                "\"{}\" is not a jumper bar key. Write jumper_bar.<n> (1 to 999) or jumper_bar.<n>.part_number.",
+                shown(key)
+            )));
         }
         if is_article_key(key) {
             return crate::reports::bom::article_value(value).map(Some);
@@ -433,7 +436,7 @@ pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option
 
 // ---------------------------------------------------------------- derived (§7, §11)
 
-/// One link of a strip, resolved against its positions.
+/// One jumper bar of a strip, resolved against its positions.
 #[derive(Debug, Clone, PartialEq)]
 pub struct JumperBarInfo {
     pub n: u32,
@@ -456,14 +459,14 @@ pub struct JumperBarInfo {
     pub missing: Vec<String>,
     /// Partitions inside its span, by the label they follow (`jumper-bar-across-partition`).
     pub crosses: Vec<String>,
-    /// Brief 036: the level it runs on (`None` for a cross-level link).
+    /// Brief 036: the level it runs on (`None` for a cross-level jumper bar).
     pub level: Option<u32>,
-    /// Brief 036: a cross-level link's levels (one position, `1.1-1.3`).
+    /// Brief 036: a cross-level jumper bar's levels (one position, `1.1-1.3`).
     pub cross: Option<(u32, u32)>,
 }
 
 impl JumperBarInfo {
-    /// Whether the link runs through rows of level `n` (its level; a cross-level link through its
+    /// Whether the jumper bar runs through rows of level `n` (its level; a cross-level jumper bar through its
     /// levels).
     pub fn runs_on(&self, n: u32) -> bool {
         match (self.level, self.cross) {
@@ -473,7 +476,7 @@ impl JumperBarInfo {
         }
     }
 
-    /// Whether the link names level `n` of the positions it names.
+    /// Whether the jumper bar names level `n` of the positions it names.
     pub fn names_level(&self, n: u32) -> bool {
         self.runs_on(n)
     }
@@ -492,7 +495,7 @@ pub struct AccBom {
     pub qty: usize,
 }
 
-/// A strip's accessories and links (design 030 §7, §11.1).
+/// A strip's accessories and jumper bars (design 030 §7, §11.1).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct StripAcc {
     pub start: Vec<Acc>,
@@ -547,17 +550,17 @@ impl StripAcc {
         n(&self.start) + n(&self.end) + self.after.values().map(n).sum::<usize>()
     }
 
-    /// Its Checks warning rows: orphans, link orphans, crossings.
+    /// Its Checks warning rows: orphans, jumper bar orphans, crossings.
     pub fn warnings(&self) -> usize {
         self.orphans.len() + self.jumper_bars.iter().map(|l| usize::from(!l.missing.is_empty()) + l.crosses.len()).sum::<usize>()
     }
 
-    /// The bars of every link.
+    /// The bars of every jumper bar.
     pub fn bars(&self) -> usize {
         self.jumper_bars.iter().map(|l| l.bars).sum()
     }
 
-    /// `2 end stops, 1 end plate, 1 partition, 12 markers, 2 links (3 bars)`; empty with nothing.
+    /// `2 end stops, 1 end plate, 1 partition, 12 markers, 2 jumper bars (3 bars)`; empty with nothing.
     pub fn summary(&self) -> String {
         let mut parts = Vec::new();
         for a in Acc::ALL {
@@ -569,7 +572,7 @@ impl StripAcc {
         if !self.jumper_bars.is_empty() {
             let n = self.jumper_bars.len();
             let b = self.bars();
-            parts.push(format!("{n} link{} ({b} bar{})", if n == 1 { "" } else { "s" }, if b == 1 { "" } else { "s" }));
+            parts.push(format!("{n} jumper bar{} ({b} bar{})", if n == 1 { "" } else { "s" }, if b == 1 { "" } else { "s" }));
         }
         parts.join(", ")
     }
@@ -664,7 +667,7 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
             }
         }
     }
-    // Links, lanes and bars.
+    // Jumper bars, lanes and bars.
     a.bar =
         parts.get(BAR_KEY).and_then(|v| v.parse::<usize>().ok()).filter(|n| (MIN_BAR as usize..=MAX_BAR as usize).contains(n)).unwrap_or(DEFAULT_BAR);
     let partitions: Vec<usize> =
@@ -680,8 +683,8 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
     let mut infos: Vec<JumperBarInfo> = Vec::new();
     let keys: Vec<Vec<(u8, u128, String)>> = if found.is_empty() { Vec::new() } else { order.iter().map(|l| jumper_bars::natural_key(l)).collect() };
     for (n, p, text) in found {
-        // Brief 036: a link runs on one level (positions without it are skipped); a cross-level
-        // link joins levels of one position and is one bridge.
+        // Brief 036: a jumper bar runs on one level (positions without it are skipped); a cross-level
+        // jumper bar joins levels of one position and is one bridge.
         let cross = p.spans().into_iter().find_map(|sp| match sp {
             jumper_bars::Span::Levels { lo, hi, .. } => Some((lo, hi)),
             jumper_bars::Span::Positions { .. } => None,
@@ -733,8 +736,8 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
             cross,
         });
     }
-    // Lanes: greedy by first position, then link number (stable); per level (brief 036: links on
-    // different levels run through different symbols), cross-level links in lane 0.
+    // Lanes: greedy by first position, then jumper bar number (stable); per level (brief 036: jumper bars on
+    // different levels run through different symbols), cross-level jumper bars in lane 0.
     let mut by_first: Vec<usize> = (0..infos.len()).collect();
     by_first.sort_by_key(|i| infos.get(*i).map(|l| (l.level, l.first, l.n)));
     let mut lane_level: Option<Option<u32>> = None;
@@ -860,9 +863,9 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
 
 // ---------------------------------------------------------------- renumbering (§6, FP4, FP7)
 
-/// The ops that keep a strip's accessories and links on their terminals when `ops` (a renumber
+/// The ops that keep a strip's accessories and jumper bars on their terminals when `ops` (a renumber
 /// plan: `RemoveConnectionPoint` + `AddConnectionPoint` of one ID) relabel them, and the preview lines
-/// (`-X01: partition after 4 → after 6`, `-X01: link 1-4 → 3-6`). Moves are worked out on the end
+/// (`-X01: partition after 4 → after 6`, `-X01: jumper bar 1-4 → 3-6`). Moves are worked out on the end
 /// state, so `4 ↔ 5` swaps cleanly; keys on labels no terminal had stay.
 pub(crate) fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
     let maps = relabels(ops);
@@ -995,13 +998,13 @@ fn renumber_strip(
             out.push(Op::SetProperty { object: ObjectRef::Device(c), key: k.clone(), before: b, after: a });
         }
     }
-    // Links: labels rewritten, re-collapsed in the new plan order.
+    // Jumper bars: labels rewritten, re-collapsed in the new plan order.
     let old_order = positions(doc, c);
     let mut new_order: Vec<String> = old_order.iter().map(|l| moved(l)).collect();
     new_order.sort_by_key(|l| jumper_bars::natural_key(l));
     new_order.dedup();
-    // Spare positions a relabelled terminal now takes (review of PR #57, 1): a link naming
-    // one would silently join that terminal's net, so the position leaves the link.
+    // Spare positions a relabelled terminal now takes (review of PR #57, 1): a jumper bar naming
+    // one would silently join that terminal's net, so the position leaves the jumper bar.
     let drawn_before: BTreeSet<String> = crate::terminal_strips::drawn_connection_points(doc, c)
         .into_iter()
         .map(|(t, _, _)| crate::terminal_strips::terminal_blocks::position_label(doc, t))
@@ -1010,8 +1013,8 @@ fn renumber_strip(
     for (n, p) in jumper_bars::of(props) {
         let key = jumper_bars::key(n);
         let Some(before) = props.get(&key).cloned() else { continue };
-        // Brief 036 (review 036, 1): a link that is not on one level and one point (a
-        // cross-level link, items on different levels or points) is rewritten span by span,
+        // Brief 036 (review 036, 1): a jumper bar that is not on one level and one point (a
+        // cross-level jumper bar, items on different levels or points) is rewritten span by span,
         // each on its own level and point, both ends of each range kept.
         let (Some(level), Some(point), false) = (p.level(), p.point(), p.crosses_levels()) else {
             let mut parts: Vec<String> = Vec::new();
@@ -1019,7 +1022,7 @@ fn renumber_strip(
                 match sp {
                     jumper_bars::Span::Levels { position, lo, hi } => {
                         let q = moved(&position);
-                        // A cross-level link names both levels (`1.1-1.3`).
+                        // A cross-level jumper bar names both levels (`1.1-1.3`).
                         parts.push(format!("{q}.{lo}-{q}.{hi}"));
                     }
                     jumper_bars::Span::Positions { level, point, .. } => {
@@ -1035,7 +1038,7 @@ fn renumber_strip(
             }
             let after = parts.join(", ");
             if after != before {
-                lines.push(format!("{tag}: link {before} \u{2192} {after}"));
+                lines.push(format!("{tag}: jumper bar {before} \u{2192} {after}"));
                 out.push(Op::SetProperty { object: ObjectRef::Device(c), key, before: Some(before), after: Some(after) });
             }
             continue;
@@ -1048,7 +1051,7 @@ fn renumber_strip(
             let names: Vec<&str> = dropped.iter().map(|l| l.as_str()).collect();
             let why = format!("{} now drawn by a renumbered terminal", names.join(", "));
             if labels.len() < 2 {
-                lines.push(format!("{tag}: link {before} removed ({why})"));
+                lines.push(format!("{tag}: jumper bar {before} removed ({why})"));
                 for k in std::iter::once(key.clone()).chain(FIELDS.iter().map(|f| format!("{key}.{f}"))) {
                     if let Some(b) = props.get(&k).cloned() {
                         out.push(Op::SetProperty { object: ObjectRef::Device(c), key: k, before: Some(b), after: None });
@@ -1056,14 +1059,14 @@ fn renumber_strip(
                 }
                 continue;
             }
-            lines.push(format!("{tag}: link {before} leaves {why}"));
+            lines.push(format!("{tag}: jumper bar {before} leaves {why}"));
         }
         let mut references: Vec<&String> = labels.iter().collect();
         references.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), jumper_bars::natural_key(l)));
         references.dedup();
         let after = crate::terminal_strips::terminal_blocks::jumper_bar_text(&references, &new_order, level, point);
         if after != before {
-            lines.push(format!("{tag}: link {before} \u{2192} {after}"));
+            lines.push(format!("{tag}: jumper bar {before} \u{2192} {after}"));
             out.push(Op::SetProperty { object: ObjectRef::Device(c), key, before: Some(before), after: Some(after) });
         }
     }

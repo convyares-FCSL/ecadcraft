@@ -4,7 +4,7 @@
 //! module compiles before the build; each test that needs the build is ignored until phase 2.
 //!
 //! Fixture M is simplified: plain vertical wires stand in for the drops to loads and the sensor
-//! wiring (design §13 uses loads, `prox3` sensors and a DI card); the levels, labels, links and
+//! wiring (design §13 uses loads, `prox3` sensors and a DI card); the levels, labels, jumper bars and
 //! nets the checks look at are the same.
 //!
 //! Every test name starts with the §13 letter it checks.
@@ -405,7 +405,7 @@ fn b_whole_terminal_block_symbol_makes_a_new_position() {
 
 // ------------------------------------------------------------------------------- C, D, E (AC 3)
 
-/// C: a link on the `+` level made with the Jumper tool's JSON form is stored `1.2-4.2`; `+` and
+/// C: a jumper bar on the `+` level made with the Jumper tool's JSON form is stored `1.2-4.2`; `+` and
 /// `−` levels are one net each; the S levels stay four nets.
 #[test]
 fn c_sensor_jumper_bars_per_level() {
@@ -437,13 +437,13 @@ fn c_sensor_jumper_bars_per_level() {
     let head = m.h.head();
     let r = m.h.run("jumper", json!({"connection_points": [lvl("1", ".2").hex(), lvl("3", ".1").hex()]}));
     assert!(r.is_err() || m.h.head() == head || squash(prop(&mut m.h, x2, "jumper_bar.4")).is_some_and(|v| !v.contains("3.1")), "{r:?}");
-    // stripplan links carry their level.
+    // stripplan jumper bars carry their level.
     let p = plan(&mut m.h, x2);
     assert!(level_rows(&p).iter().any(|r| r["jumper_bars"].as_array().is_some_and(|l| l.iter().any(|x| x["level"].as_u64() == Some(2)))), "{p}");
     m.h.check();
 }
 
-/// D: a 030 one-level strip with `link.1 = 1-4` reads the same: keys unchanged, labels are
+/// D: a 030 one-level strip with `jumper_bar.1 = 1-4` reads the same: keys unchanged, labels are
 /// positions, the four terminals one net, BOM one feed-through row of 4.
 #[test]
 fn d_old_one_level_strip_reads_the_same() {
@@ -472,7 +472,7 @@ fn d_old_one_level_strip_reads_the_same() {
     h.check();
 }
 
-/// E: a cross-level link `1.1-1.3` joins L, N and PE of position 1 only.
+/// E: a cross-level jumper bar `1.1-1.3` joins L, N and PE of position 1 only.
 #[test]
 fn e_cross_level_jumper_bar_joins_one_positions_levels() {
     let (mut m, x1) = with_lnpe(0x7036_0007);
@@ -484,7 +484,7 @@ fn e_cross_level_jumper_bar_joins_one_positions_levels() {
     let after2: Vec<_> = [".1", ".2", ".3"].iter().map(|k| net(&mut m.h, pos["2"][*k])).collect();
     assert_eq!(after2.iter().collect::<std::collections::BTreeSet<_>>().len(), 3, "position 2 untouched: {after2:?}");
     assert_eq!(before2.len(), after2.len());
-    // `link.1 = 1-3` on the same strip joins level L only.
+    // `jumper_bar.1 = 1-3` on the same strip joins level L only.
     m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.2", "value": null})).unwrap();
     m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1-3"})).unwrap();
     let ls: Vec<_> = ["1", "2", "3"].iter().map(|p| net(&mut m.h, pos[*p][".1"])).collect();
@@ -545,10 +545,10 @@ fn g_fuse_and_disconnect_positions_break_the_net() {
     assert_eq!(s(&p5[0]["rating"]), "2 A", "shown from the typed fuse");
     assert_eq!(p5[0]["breaks"], true);
     assert!(s(&p5[0]["type"]).eq_ignore_ascii_case("FUSE"));
-    // A link never crosses in → out: `5.1i-5.1o` is refused or joins nothing.
+    // A jumper bar never crosses in → out: `5.1i-5.1o` is refused or joins nothing.
     let r = m.h.run("setprop", json!({"component": x2.hex(), "key": "jumper_bar.9", "value": "5.1i-5.1o"}));
     if r.is_ok() {
-        assert_ne!(net(&mut m.h, i), net(&mut m.h, o), "link across a fuse joined in and out");
+        assert_ne!(net(&mut m.h, i), net(&mut m.h, o), "jumper bar across a fuse joined in and out");
     }
     // Rating value check is 034's (`rating.<n>` rule).
     survives(&mut m.h, "setprop", json!({"component": x2.hex(), "key": "rating.5", "value": "x".repeat(10_000)}));
@@ -693,7 +693,7 @@ fn i_offer_type_codes_spares_and_bom() {
 
 // ------------------------------------------------------------------------------- J, K (AC 7, 2)
 
-/// J: `terminalblocklabel {position}` renames a position (all levels; keys moved; links keep their nets);
+/// J: `terminalblocklabel {position}` renames a position (all levels; keys moved; jumper bars keep their nets);
 /// `terminalblocklabel {text}` sets one level's label (`*` / `label_overridden` in the plan), `null` clears;
 /// a duplicate position is refused with the way out.
 #[test]
@@ -717,9 +717,9 @@ fn j_terminalblocklabel_position_and_level_text() {
     assert_eq!(prop(&mut m.h, x2, "term_label.2.1.3").as_deref(), Some("MINUS2"), "term_label moved");
     assert_eq!(prop(&mut m.h, x2, "term_label.2.3"), None);
     let jumper_bar = squash(prop(&mut m.h, x2, "jumper_bar.1")).unwrap_or_default();
-    assert!(!jumper_bar.is_empty(), "link kept");
+    assert!(!jumper_bar.is_empty(), "jumper bar kept");
     let pos_now = positions(&m.h.doc(), x2);
-    assert!(["1", "2.1", "3", "4"].iter().all(|p| net(&mut m.h, pos_now[*p][".2"]) == plus_net), "link joins the same + levels: {jumper_bar}");
+    assert!(["1", "2.1", "3", "4"].iter().all(|p| net(&mut m.h, pos_now[*p][".2"]) == plus_net), "jumper bar joins the same + levels: {jumper_bar}");
     let echo = m.h.s.log.iter().rev().take(8).cloned().collect::<Vec<_>>().join(
         "
 ",
@@ -760,7 +760,7 @@ fn j_terminalblocklabel_position_and_level_text() {
 }
 
 /// K: moving position 3's L symbol left of position 1 and renumbering numbers positions by their
-/// earliest symbol; all levels move together; `term_label`, `rating`, `acc.*` and `link.*` follow;
+/// earliest symbol; all levels move together; `term_label`, `rating`, `acc.*` and `jumper_bar.*` follow;
 /// the preview lists them and writes nothing.
 #[test]
 fn k_renumber_moves_positions_and_their_keys() {
@@ -788,14 +788,14 @@ fn k_renumber_moves_positions_and_their_keys() {
     assert_eq!(prop(&mut m.h, x1, "acc.on.1").as_deref(), Some("marker"));
     // Old 2 → 3, old 3 → 1: `2.2-3.2` covered the N levels of old 2 and 3, now 3 and 1.
     let n_old2 = net(&mut m.h, pos["2"][".2"]);
-    assert_eq!(net(&mut m.h, pos["3"][".2"]), n_old2, "link still joins the same terminals");
+    assert_eq!(net(&mut m.h, pos["3"][".2"]), n_old2, "jumper bar still joins the same terminals");
     let jumper_bar = squash(prop(&mut m.h, x1, "jumper_bar.1")).unwrap_or_default();
-    assert!(jumper_bar.contains(".2"), "canonical link keeps its level: {jumper_bar}");
+    assert!(jumper_bar.contains(".2"), "canonical jumper bar keeps its level: {jumper_bar}");
     m.h.check();
 }
 
 /// Silent data loss: deleting one level symbol keeps the position's label, overrides, rating and
-/// links; deleting every level keeps the keys (an orphan row, never a silent drop); `u` restores.
+/// jumper bars; deleting every level keeps the keys (an orphan row, never a silent drop); `u` restores.
 #[test]
 fn k_deleting_a_level_loses_nothing_silently() {
     let (mut m, x1) = with_lnpe(0x7036_0010);
@@ -863,7 +863,7 @@ fn relabel_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>, new_key
 fn l_checks_rows_and_their_fixes() {
     let (mut m, x1) = with_lnpe(0x7036_0011);
     let pos = positions(&m.h.doc(), x1);
-    // level-missing: link names 3.4 on a 3-level strip.
+    // level-missing: jumper bar names 3.4 on a 3-level strip.
     m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.2", "value": "1.4-3.4"})).unwrap();
     let rows = checks_of(&mut m.h, "level-missing");
     assert_eq!(rows.len(), 1, "{rows:?}");
@@ -965,7 +965,7 @@ fn n_registry_defaults_recompute_inheriting_strips() {
 
 // ------------------------------------------------------------------------------- P (AC 11)
 
-/// P: save at a path with spaces and `ä`, close, reopen: levels, labels, overrides, links,
+/// P: save at a path with spaces and `ä`, close, reopen: levels, labels, overrides, jumper bars,
 /// ratings, offers, plan and BOM equal; opening adds no transaction.
 #[test]
 fn p_save_and_reopen_keep_everything() {
@@ -997,7 +997,7 @@ fn p_save_and_reopen_keep_everything() {
 
 // ------------------------------------------------------------------------------- Q (hostile)
 
-/// Q: hostile offers, keys, link values, labels, registry values and toposition targets: a
+/// Q: hostile offers, keys, jumper bar values, labels, registry values and toposition targets: a
 /// refusal in words or a Checks row, never a panic.
 #[test]
 fn q_hostile_input_never_panics() {
@@ -1029,7 +1029,7 @@ fn q_hostile_input_never_panics() {
     }
     survives(&mut m.h, "setprop", json!({"component": s1, "key": "term_label.1.1", "value": "x".repeat(10_000)}));
     read_everything(&mut m.h);
-    // Link values.
+    // Jumper bar values.
     refused(
         &mut m.h,
         "setprop",

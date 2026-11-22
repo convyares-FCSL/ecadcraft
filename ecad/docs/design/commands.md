@@ -58,7 +58,8 @@ pub trait Generic: DeserializeOwned + JsonSchema {
     const ACCESS: Access = Access::Edits;        // or Reads: the agent gate lets it run with writes off
     const IO: Io = Io::NONE;                     // Io { reads: &[(param, Read)], writes: &[param] }
                                                  // Read::Bytes(max) | Read::Standard (another .ecad's)
-    const STATE: State = State::None;            // LastCaption | Conflicts: state kept beyond the document
+    const STATE: State = State::None;            // LastCaption | Conflicts | LastPlaced: state kept beyond the document
+                                                 // (LastPlaced: `LastPlaced { starter: Option<StarterKey>, device }`, the click tools' defaults)
     fn check(&self) -> Result<(), CmdError> { Ok(()) }   // before the project is taken
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError>;
 }
