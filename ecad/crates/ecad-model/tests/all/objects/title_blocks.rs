@@ -8,7 +8,8 @@ use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::objects::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, TextDraw, TitleBlockLayout};
 use std::collections::BTreeMap;
 
-use ecad_model::merge::{self, Inputs, Scope};
+use ecad_model::merge::apply;
+use ecad_model::merge::state::{Inputs, Plan, Scope};
 use ecad_model::naming::tag::HighWater;
 use ecad_model::{Author, Document, Ledger, Op, PageId, Primitive, Pt};
 
@@ -149,7 +150,7 @@ fn the_frame_decides_sheet_margins_and_keep_out() {
     assert_eq!(sheet::margins_text(&Margins::default()), "10,10,10,7");
 }
 
-fn run_merge(a: &Document, t: &Document, s: &Document, scope: &Scope) -> merge::Plan {
+fn run_merge(a: &Document, t: &Document, s: &Document, scope: &Scope) -> Plan {
     let high = HighWater::default();
     let inp = Inputs {
         ancestor: a,
@@ -163,7 +164,7 @@ fn run_merge(a: &Document, t: &Document, s: &Document, scope: &Scope) -> merge::
         edit_rule: &|_, _, v| Ok(v.to_string()),
         join: &|_, _, _| Err("no".into()),
     };
-    merge::plan(&inp, &BTreeMap::new())
+    apply::plan(&inp, &BTreeMap::new())
 }
 
 /// Merge treats a frame record, body included, as one unit (row K): two branches editing one

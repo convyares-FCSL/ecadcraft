@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 use crate::common::*;
-use crate::container_v2::TempDir;
+use crate::container::files::TempDir;
 use ecad_file::schema::{BranchId, BranchStatus};
 use ecad_file::{Project, Store};
 use ecad_model::*;

@@ -20,11 +20,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::document::doc::{Cable, ConnectionPoint, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Wire};
 use crate::document::op::ObjectRef;
 use crate::naming::id::{
     CableId, ConnectionPointId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, WireId,
 };
+use crate::{Cable, ConnectionPoint, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Wire};
 
 /// Whether a reference is being added or removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +74,7 @@ pub(crate) struct Index {
     /// A cable reference's named point → the cable whose core lists it (design 072 §4.4, F4).
     pub(crate) cable_points: Multi<ConnectionPointId, CableId>,
     /// Device → its terminals.
-    pub(crate) component_connection_points: Multi<crate::document::doc::ConnectionPointOwner, ConnectionPointId>,
+    pub(crate) component_connection_points: Multi<crate::ConnectionPointOwner, ConnectionPointId>,
     /// PLC station → the modules naming it (design 072 §3).
     pub(crate) station_modules: Multi<DeviceId, DeviceId>,
     /// Subject → representations depicting it.
@@ -221,7 +221,7 @@ impl Index {
     }
 
     /// Every style choice among `props` (brief 050a).
-    fn style_choices(&mut self, object: ObjectRef, props: &crate::document::doc::Properties, delta: Delta) {
+    fn style_choices(&mut self, object: ObjectRef, props: &crate::Properties, delta: Delta) {
         for (k, v) in props.iter().filter(|(k, _)| crate::objects::styles::is_choice_key(k)) {
             self.style_choice(object, k, v, delta);
         }
@@ -305,7 +305,7 @@ impl Index {
         }
         // Design 072 §4.5: a cable's type is a style user, though no registry level chooses one.
         if let Some(t) = &c.cable_type {
-            bump(&mut self.style_users, (t.text(), crate::document::doc::CABLE_TYPE_KEY.to_string()), ObjectRef::Cable(id), delta);
+            bump(&mut self.style_users, (t.text(), crate::document::doc::cable::CABLE_TYPE_KEY.to_string()), ObjectRef::Cable(id), delta);
         }
         self.style_choices(ObjectRef::Cable(id), &c.properties, delta);
     }

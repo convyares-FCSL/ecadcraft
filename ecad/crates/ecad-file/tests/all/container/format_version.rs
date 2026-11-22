@@ -3,7 +3,7 @@
 //! The version is pinned with the golden head hash, so a changed format keeping its number fails.
 
 use crate::common::*;
-use crate::container_v2::{TempDir, craft_head_record, deep};
+use crate::container::files::{TempDir, craft_head_record, deep};
 use ecad_file::ReadOnly;
 use ecad_file::SCHEMA_VERSION;
 use ecad_file::disk::DiskProject;

@@ -42,10 +42,10 @@ pub mod wire_order;
 pub mod wiring;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
-use crate::document::doc::{Document, Wire};
 use crate::document::op::{ObjectRef, Op};
 use crate::geometry::point::PointKey;
 use crate::naming::id::{ConnectionPointId, RouteId, WireId};
+use crate::{Document, Wire};
 
 /// Wire property: the wire number its net carries (design 022 §5.1).
 pub const WIRE_NUMBER: &str = "wire_number";
@@ -595,7 +595,7 @@ impl Connectivity {
     /// Brief 044 (tester D1): when the definition cannot be read (the symbol's item was removed
     /// earlier in the transaction, before its representation is unlinked), every `.`-key point
     /// counts: a wider cut is only extra search, a missed one leaves mated pins joined.
-    pub(crate) fn bridged_shown(doc: &Document, r: &crate::document::doc::Representation) -> Vec<ConnectionPointId> {
+    pub(crate) fn bridged_shown(doc: &Document, r: &crate::Representation) -> Vec<ConnectionPointId> {
         if doc.rep_definition(r).is_some_and(|d| d.bridges.is_empty()) {
             return Vec::new();
         }
@@ -607,7 +607,7 @@ impl Connectivity {
     }
 
     /// The terminals of `component` (present ones).
-    fn connection_points_of(doc: &Document, owner: impl Into<crate::document::doc::ConnectionPointOwner>) -> Vec<Node> {
+    fn connection_points_of(doc: &Document, owner: impl Into<crate::ConnectionPointOwner>) -> Vec<Node> {
         doc.connection_points_of(owner).map(|(t, _)| Node::ConnectionPoint(t)).collect()
     }
 

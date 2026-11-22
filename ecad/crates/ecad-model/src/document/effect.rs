@@ -12,13 +12,13 @@
 //! document lookups.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::document::doc::{Cable, ConnectionPoint, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Wire};
 use crate::document::op::{ObjectRef, Op};
 use crate::document::project::Project;
 use crate::naming::id::{CableId, ConnectionPointId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, WireId};
 use crate::naming::keys::{Area, area_of};
 use crate::objects::route::Route;
 use crate::objects::styles::{StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
+use crate::{Cable, ConnectionPoint, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Wire};
 
 /// A property key with its area, classified once ([`area_of`], design 064 §3.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

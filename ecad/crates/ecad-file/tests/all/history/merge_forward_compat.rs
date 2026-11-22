@@ -3,7 +3,7 @@
 //! version row of a kind this build does not know (5) is ignored on open and kept on save.
 
 use crate::common::*;
-use crate::container_v2::TempDir;
+use crate::container::files::TempDir;
 use ecad_file::schema::VERSIONS;
 use ecad_file::{Project, Store};
 use ecad_model::*;

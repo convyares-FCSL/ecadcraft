@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::common::*;
-use crate::container_v2::TempDir;
+use crate::container::files::TempDir;
 use ecad_file::chain::{self, Hash};
 use ecad_file::schema::{self, BranchId, RowKind, VersionRecord};
 use ecad_file::verify::{verify, verify_chain};
@@ -596,7 +596,7 @@ fn verify_never_panics_on_truncated_or_byte_flipped_files() {
 
 mod fp1 {
     use super::*;
-    use crate::tag_rule_contracts::rule_1;
+    use crate::format::tag_rules::rule_1;
     use ecad_file::chunks::{META_KEY, ModelMeta};
     use ecad_model::naming::tag::{HighWater, TAG_RULE};
 

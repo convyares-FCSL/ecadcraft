@@ -3,7 +3,7 @@
 //! and the words check's own findings join it.
 
 use crate::common::*;
-use crate::container_v2::TempDir;
+use crate::container::files::TempDir;
 use ecad_file::ReadOnly;
 use ecad_file::disk::DiskProject;
 use ecad_file::schema::META;

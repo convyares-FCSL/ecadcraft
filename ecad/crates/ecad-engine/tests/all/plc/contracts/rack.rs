@@ -360,9 +360,9 @@ fn a9_hostile_slots_channels_and_racks_are_refused_in_words() {
 fn fp1_merge_and_diff_words_show_the_racks_tag_never_its_id() {
     let Rack { mut h, cpu, .. } = rack(4511);
     let d = h.doc();
-    assert_eq!(ecad_model::merge::value_words(&[&d], &cpu.hex()), "-A01");
-    assert_eq!(ecad_model::merge::value_words(&[&d], "plain text"), "plain text");
-    assert_eq!(ecad_model::merge::value_words(&[&d], "0123456789abcdef0123456789abcdef"), "0123456789abcdef0123456789abcdef");
+    assert_eq!(ecad_model::merge::state::value_words(&[&d], &cpu.hex()), "-A01");
+    assert_eq!(ecad_model::merge::state::value_words(&[&d], "plain text"), "plain text");
+    assert_eq!(ecad_model::merge::state::value_words(&[&d], "0123456789abcdef0123456789abcdef"), "0123456789abcdef0123456789abcdef");
     // The inspector's Rack row shows the tag.
     let page = h.first_page();
     let a03 = placed_card(&mut h);

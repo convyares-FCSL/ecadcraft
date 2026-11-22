@@ -5,7 +5,8 @@
 use std::collections::BTreeMap;
 
 use ecad_model::document::diff::ops_between;
-use ecad_model::merge::{self, Choice, Inputs, Scope};
+use ecad_model::merge::apply;
+use ecad_model::merge::state::{Choice, Inputs, Plan, Scope};
 use ecad_model::naming::tag::HighWater;
 use ecad_model::objects::styles::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{Author, Device, DeviceId, Document, Ledger, ObjectRef, Op, StandardId};
@@ -171,7 +172,7 @@ fn the_diff_round_trips_the_standard_and_styles() {
     }
 }
 
-fn run_merge(a: &Document, t: &Document, s: &Document, scope: &Scope, choices: &BTreeMap<String, Choice>) -> merge::Plan {
+fn run_merge(a: &Document, t: &Document, s: &Document, scope: &Scope, choices: &BTreeMap<String, Choice>) -> Plan {
     let high = HighWater::default();
     let inp = Inputs {
         ancestor: a,
@@ -185,7 +186,7 @@ fn run_merge(a: &Document, t: &Document, s: &Document, scope: &Scope, choices: &
         edit_rule: &|_, _, v| Ok(v.to_string()),
         join: &|_, _, _| Err("no".into()),
     };
-    merge::plan(&inp, choices)
+    apply::plan(&inp, choices)
 }
 
 /// A style record is merged whole: both branches changing it differently is one conflict, worded
@@ -259,7 +260,7 @@ fn the_standard_header_merges_as_one_unit() {
     assert!(plan.conflicts.iter().any(|c| c.id == "project/standard"), "{:?}", plan.conflicts);
 }
 
-fn merged(base: &Ledger, t_ops: Vec<Op>, s_ops: Vec<Op>, choices: &BTreeMap<String, Choice>) -> (merge::Plan, Option<Document>) {
+fn merged(base: &Ledger, t_ops: Vec<Op>, s_ops: Vec<Op>, choices: &BTreeMap<String, Choice>) -> (Plan, Option<Document>) {
     let a = base.document().clone();
     let (mut t, mut s) = (base.clone(), base.clone());
     t.commit(Author::User, "t", t_ops.clone()).unwrap();

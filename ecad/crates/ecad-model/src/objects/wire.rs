@@ -18,7 +18,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::document::doc::Properties;
+use crate::Properties;
 use crate::geometry::colour::{ColourWords, ConductorColour};
 use crate::geometry::units::{Amps, Celsius, Mm2, Percent, Volts};
 use crate::naming::id::{ConductorId, ConnectionPointId, DeviceId, NetId};

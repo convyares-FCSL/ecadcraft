@@ -20,9 +20,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::doc::{Document, LengthUnit};
 use crate::naming::id::PageId;
 use crate::objects::styles::{StyleCatalogue, StyleLayer, StyleRef};
+use crate::{Document, LengthUnit};
 
 /// The page property holding a page's own sheet spec (text, [`SheetSpec::parse`]).
 pub const SHEET_KEY: &str = "sheet";

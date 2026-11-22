@@ -5,10 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::document::book::Book;
-use crate::document::doc::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
 use crate::document::sheet::Grid;
 use crate::geometry::geom::Pt;
 use crate::naming::id::{CableId, ConnectionPointId, ItemId, PageId, RepresentationId, RouteId, WireId};
+use crate::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
 
 /// Where each terminal sits on one page, from drawn connection points and symbol placements.
 ///
@@ -51,7 +51,7 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(ConnectionPointId, Pt)> 
     if let Subject::Cable(_) = r.subject {
         return r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
     }
-    let owner: crate::document::doc::ConnectionPointOwner = match r.subject {
+    let owner: crate::ConnectionPointOwner = match r.subject {
         Subject::Device(d) => d.into(),
         Subject::Aid(a) => a.into(),
         _ => return Vec::new(),
@@ -439,9 +439,9 @@ fn references_from(doc: &Document, references: Vec<(RepresentationId, &Represent
                 // route here, else the loose line it sits on.
                 let through = m.through.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|x| doc.routes.get(&x)).find_map(line);
                 through.or_else(|| match m.position {
-                    crate::document::doc::CorePosition::Wire(w) => *routes.entry((w, r.page)).or_insert_with(|| route_ends_on(doc, w, r.page)),
-                    crate::document::doc::CorePosition::Route { route, .. } => doc.routes.get(&route).and_then(line),
-                    crate::document::doc::CorePosition::Unplaced => None,
+                    crate::CorePosition::Wire(w) => *routes.entry((w, r.page)).or_insert_with(|| route_ends_on(doc, w, r.page)),
+                    crate::CorePosition::Route { route, .. } => doc.routes.get(&route).and_then(line),
+                    crate::CorePosition::Unplaced => None,
                 })
             })
             .collect();

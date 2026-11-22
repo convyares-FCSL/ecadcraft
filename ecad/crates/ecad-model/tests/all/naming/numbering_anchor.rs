@@ -3,10 +3,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::document::doc::{Device, Form, Item, ItemKind, Page, Representation, Style, SymbolInstance};
 use ecad_model::naming::id::{DefinitionId, DeviceId, ItemId, LayerId, PageId, RepresentationId};
 use ecad_model::naming::numbering::{self, Kind, Request, Scope};
 use ecad_model::naming::tag::HighWater;
+use ecad_model::{Device, Form, Item, ItemKind, Page, Representation, Style, SymbolInstance};
 use ecad_model::{Document, Placement, Pt, Subject};
 
 /// Two pages. Each symbol: (representation, device, tag, page, x, y, role).
@@ -17,7 +17,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
         d.pages.insert(p, Page::titled(format!("P{i}")).unwrap());
         d.page_order.push(p);
     }
-    let style = Style { layer: LayerId(1), color: ecad_model::document::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+    let style = Style { layer: LayerId(1), color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (rid, c, tag, page, x, y, role) in syms {
         let comp = Device::default().with_tag(Some(tag), ecad_model::naming::tag::TagState::Automatic);
         d.devices.entry(DeviceId(*c)).or_insert(comp);

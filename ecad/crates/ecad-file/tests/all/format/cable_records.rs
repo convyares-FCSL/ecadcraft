@@ -2,7 +2,7 @@
 //! from the snapshot and from the log, and a hostile record is a read error.
 
 use crate::common::*;
-use crate::container_v2::TempDir;
+use crate::container::files::TempDir;
 use ecad_file::{Project, Store};
 use ecad_model::objects::styles::cable::Shield;
 use ecad_model::*;

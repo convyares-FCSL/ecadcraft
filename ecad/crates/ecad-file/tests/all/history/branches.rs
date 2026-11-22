@@ -4,7 +4,7 @@
 //! readers refuse unknown fields in rows (pre-v1, no forward compatibility).
 
 use crate::common::*;
-use crate::container_v2::TempDir;
+use crate::container::files::TempDir;
 use ecad_file::project::BranchError;
 use ecad_file::schema::{BranchId, BranchStatus, RowKind};
 use ecad_file::{Project, Store};

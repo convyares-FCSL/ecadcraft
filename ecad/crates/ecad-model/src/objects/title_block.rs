@@ -22,7 +22,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::document::doc::Primitive;
+use crate::Primitive;
 
 /// Most items in one block. Guard: a hostile file cannot make a block unbounded, and it bounds
 /// the cost of drawing a frame and of the editor's frame.

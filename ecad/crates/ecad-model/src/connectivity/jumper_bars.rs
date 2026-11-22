@@ -21,10 +21,10 @@
 
 use std::cmp::Ordering;
 
-use crate::document::doc::{Document, Properties};
 use crate::error::{ParseError, Parsed};
 use crate::geometry::point::{LevelIo, PointKey};
 use crate::naming::id::{ConnectionPointId, DeviceId};
+use crate::{Document, Properties};
 
 /// What every link key starts with.
 pub const PREFIX: &str = "jumper_bar.";
@@ -428,7 +428,7 @@ impl Matcher {
     }
 
     /// [`Matcher::matches_level`] for a terminal: its label and its key's level.
-    pub fn matches_connection_point(&self, t: &crate::document::doc::ConnectionPoint) -> bool {
+    pub fn matches_connection_point(&self, t: &crate::ConnectionPoint) -> bool {
         let Some(l) = t.label.as_deref() else { return false };
         let Some((n, p)) = level_of_key(t.key.as_ref()) else { return false };
         self.matches_level(l, n, p)

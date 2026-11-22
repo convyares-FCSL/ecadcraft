@@ -25,7 +25,8 @@ use std::sync::Arc;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_file::schema::{BranchId, BranchStatus};
-use ecad_model::merge::{self, Choice, ConflictKind, Inputs, Obj, Plan, Scope};
+use ecad_model::merge::apply;
+use ecad_model::merge::state::{self, Choice, ConflictKind, Inputs, Obj, Plan, Scope};
 use ecad_model::{BranchPoint, Document, StepPoint, TxKind};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -222,7 +223,7 @@ pub(crate) fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
                 scope.add_ops(&tx.ops);
                 ecad_model::naming::tag::note_ops(&mut high, &tx.ops);
                 if b == sides.target {
-                    for o in merge::objects_of(&tx.ops) {
+                    for o in apply::objects_of(&tx.ops) {
                         target_last.insert(o, tx.seq);
                     }
                 }
@@ -349,7 +350,7 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             edit_rule: &rule,
             join: &join,
         };
-        let mut plan = merge::plan(&inp, choices);
+        let mut plan = apply::plan(&inp, choices);
         // Brief 050a (design 050 §3.5): a built-in style's conflict is worded by its name, which
         // only the app knows (`Text style "Tag"`, not the ID `tag`).
         for c in &mut plan.conflicts {
@@ -535,13 +536,13 @@ pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
                 _ => main_text.clone(),
             };
             json!({
-                "id": c.id, "kind": merge::kind_word(c.kind), "text": c.what,
+                "id": c.id, "kind": apply::kind_word(c.kind), "text": c.what,
                 "main": main_text, "branch": branch_text,
                 "choices": c.choices.iter().map(|x| choice_word(s, x)).collect::<Vec<_>>(),
                 "editable": c.choices.iter().any(|x| matches!(x, Choice::Value(_))),
                 "chosen": c.chosen.as_ref().map(|x| choice_word(s, x)),
                 "unavailable": plan.unavailable.get(&c.id).map(|why| json!({"choice": "one", "why": why})),
-                "object": merge::name_of(&docs, c.object),
+                "object": state::name_of(&docs, c.object),
             })
         })
         .collect();

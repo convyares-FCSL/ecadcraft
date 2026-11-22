@@ -4,7 +4,7 @@
 //! snapshot (so switching to it costs about an open).
 
 use crate::common::*;
-use crate::container_v2::TempDir;
+use crate::container::files::TempDir;
 use ecad_file::schema::{BranchStatus, RowKind};
 use ecad_file::{Project, Store};
 use ecad_model::*;

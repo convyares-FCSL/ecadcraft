@@ -3,7 +3,7 @@
 //! from the snapshot and from the log.
 
 use crate::common::*;
-use crate::container_v2::TempDir;
+use crate::container::files::TempDir;
 use ecad_file::{Project, Store};
 use ecad_model::objects::aid::{Caption, ContinuationName};
 use ecad_model::*;

@@ -32,8 +32,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::Document;
 use crate::connectivity::{self, NetData, NetKey, Node, split_number};
-use crate::document::doc::Document;
 use crate::document::op::{ObjectRef, Op};
 use crate::geometry::colour::ColourWords;
 use crate::naming::id::{PageId, WireId};

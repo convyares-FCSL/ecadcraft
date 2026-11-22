@@ -32,12 +32,12 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use crate::connectivity::wiring;
 use crate::connectivity::{NetData, NetKey, split_number};
 use crate::document::book::Book;
-use crate::document::doc::{Document, ItemKind, Primitive, Representation, Subject};
 use crate::document::op::{ObjectRef, Op};
 use crate::document::sheet::Grid;
 use crate::geometry::geom::Pt;
 use crate::naming::id::{CableId, ConnectionPointId, DeviceId, FolderId, PageId, WireId};
 use crate::naming::tag::{self, HighWater};
+use crate::{Document, ItemKind, Primitive, Representation, Subject};
 
 /// The kind of item a row numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -963,9 +963,9 @@ pub fn object_id(o: ObjectRef) -> u128 {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::document::doc::{Device, Form, Item, Page, Style, SymbolInstance};
     use crate::geometry::geom::Placement;
     use crate::naming::id::{DefinitionId, ItemId, LayerId, RepresentationId};
+    use crate::{Device, Form, Item, Page, Style, SymbolInstance};
 
     /// Three pages; each device a symbol at (x, y) on its page.
     fn fixture(devs: &[(u128, &str, usize, f64, f64, bool)]) -> Document {
@@ -975,7 +975,7 @@ mod tests {
             d.pages.insert(p, Page::titled(format!("P{i}")).unwrap());
             d.page_order.push(p);
         }
-        let style = Style { layer: LayerId(1), color: crate::document::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+        let style = Style { layer: LayerId(1), color: crate::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         for (id, t, page, x, y, fixed) in devs {
             // A test tag typed `-K?3` is provisional, stored bare.
             let (text, state) = match t.split_once('?') {

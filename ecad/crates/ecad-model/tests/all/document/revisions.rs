@@ -142,7 +142,8 @@ fn a_revision_record_round_trips_with_an_iso_date_and_typed_rev() {
 mod merging {
     use super::*;
     use ecad_model::Document;
-    use ecad_model::merge::{self, Choice, Inputs, Scope};
+    use ecad_model::merge::apply;
+    use ecad_model::merge::state::{Choice, Inputs, Plan, Scope};
     use ecad_model::naming::tag::HighWater;
 
     /// A document that issued revision `rev` (described as `what`) at log position `at`.
@@ -154,7 +155,7 @@ mod merging {
         d
     }
 
-    fn plan(a: &Document, t: &Document, s: &Document, choices: &BTreeMap<String, Choice>) -> merge::Plan {
+    fn plan(a: &Document, t: &Document, s: &Document, choices: &BTreeMap<String, Choice>) -> Plan {
         let high = HighWater::default();
         let scope = Scope { project: true, ..Scope::default() };
         let inp = Inputs {
@@ -169,7 +170,7 @@ mod merging {
             edit_rule: &|_, _, v| Ok(v.to_string()),
             join: &|_, _, _| Err("no".into()),
         };
-        merge::plan(&inp, choices)
+        apply::plan(&inp, choices)
     }
 
     #[test]

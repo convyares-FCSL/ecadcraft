@@ -1425,7 +1425,7 @@ fn a_scoped_state_diff_equals_the_whole_diff_when_the_scope_covers_every_differe
         let log = ledger.full_log().unwrap();
         for k in 0..head {
             let target = ledger.state_at(k).unwrap();
-            let mut scope = ecad_model::merge::Scope::default();
+            let mut scope = ecad_model::merge::state::Scope::default();
             for t in log.iter().filter(|t| t.seq > k) {
                 scope.add_ops(&t.ops);
             }

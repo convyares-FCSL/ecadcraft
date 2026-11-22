@@ -7,16 +7,16 @@
 //! in through [`set_verify_invariants`]: Core reads no environment, design 065 §3.1), and in
 //! [`Ledger::replay_verified`] (the
 //! debugger's **Verify replay**). App builds, debug or release, take the fast path. The file's
-//! Verify never uses it: it replays with [`crate::document::ledger::Check::Commit`].
+//! Verify never uses it: it replays with [`crate::Check::Commit`].
 //!
 //! This module is the only place in the crate where the `verify-invariants` feature is read
 //! (`cargo xtask layers` enforces it).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::document::doc::Document;
-use crate::document::ledger::{Ledger, Transaction};
+use crate::Document;
 use crate::error::Result;
+use crate::{Ledger, Transaction};
 
 /// The run-time switch, set by the program ([`set_verify_invariants`]).
 static SWITCH: AtomicBool = AtomicBool::new(false);

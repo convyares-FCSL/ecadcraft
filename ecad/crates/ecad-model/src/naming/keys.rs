@@ -19,7 +19,7 @@
 
 use std::fmt;
 
-use crate::document::doc::Properties;
+use crate::Properties;
 use crate::naming::words::{self, Word};
 
 /// A property key the program reads or writes, named once in [`KEYS`] (or built by a
@@ -298,7 +298,7 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
     // Lane 072 D: a wire's own type is `Wire.wire_type` (design 072 §4.6, F36).
     (Holder::Wire, PropKey(crate::connectivity::wiring::WIRE_CATEGORY)),
     // Lane 072 D: a cable's type is `Cable.cable_type` (design 072 §4.5).
-    (Holder::Cable, PropKey(crate::document::doc::CABLE_TYPE_KEY)),
+    (Holder::Cable, PropKey(crate::document::doc::cable::CABLE_TYPE_KEY)),
     // Lane 072 D: a cable's own shield (design 072 §4.5).
     (Holder::Cable, PropKey("shield")),
     // Lane 072 D: a cable's design current is its field (design 072 §4.5).

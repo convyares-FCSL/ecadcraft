@@ -15,7 +15,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::document::doc::Properties;
+use crate::Properties;
 use crate::naming::id::{LibraryId, StandardId};
 
 pub mod cable;

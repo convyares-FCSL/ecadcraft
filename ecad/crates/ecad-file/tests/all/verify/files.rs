@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::common::*;
-use crate::container_v2::TempDir;
+use crate::container::files::TempDir;
 use ecad_file::chain::{self, Hash};
 use ecad_file::schema::{self, BranchId, RowKind, VersionRecord};
 use ecad_file::verify::{VerifyReport, verify, verify_chain};

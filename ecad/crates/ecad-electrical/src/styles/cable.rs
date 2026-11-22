@@ -24,7 +24,7 @@ use crate::styles::{Catalogue, Field};
 
 /// The input word (and style-choice index key) naming a cable's cable type (FP2); stored in
 /// [`ecad_model::Cable::cable_type`], never as a property.
-pub(crate) const CABLE_TYPE: &str = ecad_model::document::doc::CABLE_TYPE_KEY;
+pub(crate) const CABLE_TYPE: &str = ecad_model::document::doc::cable::CABLE_TYPE_KEY;
 
 fn any_text(_: &str) -> bool {
     true

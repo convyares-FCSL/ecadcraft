@@ -3,7 +3,8 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::merge::{self, Inputs, Scope};
+use ecad_model::merge::apply;
+use ecad_model::merge::state::{Inputs, Plan, Scope};
 use ecad_model::{
     Author, ConnectionPointDef, ContentHash, Definition, DefinitionId, Device, DeviceId, Document, Ledger, LibraryId, ObjectRef, Op, Origin, Pt,
     TextSlot,
@@ -98,7 +99,7 @@ fn diff_records_another_definition_as_one_op() {
     assert_eq!(ops, vec![set(Some(A), Some(B))], "no delete and create");
 }
 
-fn merged(ancestor: &Document, target: &Document, source: &Document, source_ops: &[Op]) -> merge::Plan {
+fn merged(ancestor: &Document, target: &Document, source: &Document, source_ops: &[Op]) -> Plan {
     let mut scope = Scope::default();
     scope.add_ops(source_ops);
     let high = BTreeMap::new();
@@ -114,7 +115,7 @@ fn merged(ancestor: &Document, target: &Document, source: &Document, source_ops:
         edit_rule: &|_, _, v| Ok(v.to_string()),
         join: &|_, _, _| Err("no".into()),
     };
-    merge::plan(&inp, &BTreeMap::new())
+    apply::plan(&inp, &BTreeMap::new())
 }
 
 #[test]

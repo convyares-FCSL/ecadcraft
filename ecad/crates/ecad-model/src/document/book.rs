@@ -16,7 +16,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::document::doc::Document;
+use crate::Document;
 use crate::naming::id::{FolderId, PageId};
 use crate::naming::text::Text;
 

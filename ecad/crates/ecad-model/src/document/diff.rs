@@ -19,11 +19,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::document::doc::{Document, Properties, Wire};
 use crate::document::invariant::Touched;
 use crate::document::op::{ObjectRef, Op};
 use crate::naming::id::{FolderId, PageId};
 use crate::objects::styles::{StyleCatalogue, StyleCatalogues, StyleLayer, StyleRef};
+use crate::{Document, Properties, Wire};
 
 /// `SetProperty` ops turning `a` into `b` on `object`, for the keys `keep` accepts.
 fn props(object: ObjectRef, a: &Properties, b: &Properties, keep: &dyn Fn(&str) -> bool, out: &mut Vec<Op>) {

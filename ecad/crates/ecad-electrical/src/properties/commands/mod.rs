@@ -609,7 +609,7 @@ pub(crate) fn plan_tag(
                 )));
             };
             // One join for the merge and for setprop (reviewer 026, 2).
-            let ops = ecad_model::merge::join_cables(doc, from, into)?;
+            let ops = ecad_model::document::doc::cable::join_cables(doc, from, into)?;
             Ok(TagSet::MergedCable { ops, into, tag: t, before: before.map(|g| g.shown()) })
         }
         Some(Conflict::Next) => {

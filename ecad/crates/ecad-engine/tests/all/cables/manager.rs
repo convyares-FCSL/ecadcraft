@@ -300,7 +300,7 @@ fn a_cable_not_drawn_survives_join_and_the_report_lists_it() {
     wires(&mut h, 1);
     let w: CableId = id(&slash(&mut h, None).unwrap(), "cable");
     let doc2 = h.doc();
-    let ops = ecad_model::merge::join_cables(&doc2, k, w).unwrap();
+    let ops = ecad_model::document::doc::cable::join_cables(&doc2, k, w).unwrap();
     assert!(matches!(ops.last(), Some(Op::DeleteCable { id, .. }) if *id == k));
     assert!(doc.cables[&k].cores.is_empty());
 }

@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::common::*;
-use crate::container_v2::TempDir;
+use crate::container::files::TempDir;
 use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
 use ecad_file::schema::{self, BranchId, RowKind};
