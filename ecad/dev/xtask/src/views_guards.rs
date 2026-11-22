@@ -45,8 +45,10 @@ const OWN_MODULES: &[&str] = &[
     "crates/ecad-electrical/src/pages/front.rs",
 ];
 
-/// The count on `refactor/0.2.3` at 3e54b06a; lower it as the view steps land.
-const ALLOWED: usize = 3;
+/// The count on `refactor/0.2.3` at 3e54b06a; lower it as the view steps land. The bench's
+/// `views.rs` adds three: it times each view's full rebuild, which is what a direct build is (D1,
+/// 2026-11-22).
+const ALLOWED: usize = 6;
 
 /// The calls that work out views of a state from scratch, outside `Views` (`.detached(`,
 /// `.report_models(`).

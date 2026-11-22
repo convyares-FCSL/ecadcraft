@@ -28,11 +28,13 @@ pub mod ratings;
 pub mod release;
 pub mod report;
 pub mod reports;
+pub mod rich;
 pub mod strips;
 pub mod styles;
 pub mod symbols;
 pub mod text;
 pub mod title_blocks;
+pub mod views;
 pub mod wires_nets;
 
 use std::path::{Path, PathBuf};

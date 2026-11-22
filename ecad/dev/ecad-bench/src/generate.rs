@@ -82,6 +82,9 @@ pub fn tier(name: &str) -> Option<Tier> {
 pub enum Variant {
     Lean,
     Churned,
+    /// The lean project plus connectors, PLC racks, terminal strips, a cover page, ratings and
+    /// contacts ([`crate::rich`]). Not part of [`Variant::BOTH`]: the tiers' tables stay as they were.
+    Rich,
 }
 
 impl Variant {
@@ -91,6 +94,7 @@ impl Variant {
         match self {
             Variant::Lean => "lean",
             Variant::Churned => "churned",
+            Variant::Rich => "rich",
         }
     }
 }
@@ -244,7 +248,7 @@ fn renamed_wire(w: WireId, wire: &Wire, name: &str) -> Op {
 /// The op renaming cable `k` (value `cable`, tagged `tag`): a cable is written whole.
 fn renamed_cable(k: CableId, cable: &Cable, tag: &str) -> Op {
     let mut after = cable.clone();
-    after.properties.insert("tag".into(), format!("{tag} (old name)"));
+    after.tag = ecad_model::naming::tag::Tag::new(&format!("{tag}X")).ok();
     Op::ModifyCable { id: k, before: cable.clone(), after }
 }
 
@@ -307,6 +311,9 @@ pub fn added_wire(doc: &Document, ids: &mut IdAllocator) -> Result<Vec<Op>, Stri
 /// counts that do not divide by the pages, or more than a million objects of a kind), or an
 /// internal inconsistency (reported, never a panic).
 pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
+    if variant == Variant::Rich {
+        return crate::rich::generate_rich(tier);
+    }
     let p_count = tier.pages;
     let shape_err = || {
         format!(
@@ -475,10 +482,9 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let (from, to) = (Pt::new(x - 2.0, ROW_Y - 17.0), Pt::new(x + 2.0, lowest - 3.0));
             let (cable, item, rep): (CableId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
             let tag = format!("-W{cable_no}");
-            let mut value = Cable::default();
-            value.properties.insert("tag".into(), tag.clone());
-            value.cores =
+            let cores =
                 members.iter().enumerate().map(|(index, w)| Core::on_wire(*w, ecad_model::CoreLabel::new(&(index + 1).to_string()).ok())).collect();
+            let value = Cable { tag: ecad_model::naming::tag::Tag::new(&tag).ok(), cores, ..Cable::default() };
             let rename = renamed_cable(cable, &value, &tag);
             let mut ops = vec![Op::CreateCable { id: cable, cable: value }];
             ops.push(Op::AddItem {
