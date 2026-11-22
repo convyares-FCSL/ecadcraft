@@ -191,7 +191,6 @@ pub struct Item {
 #[serde(deny_unknown_fields)]
 pub struct Device {
     /// Design 072 §2.1: validated on read (1 to 40 characters, no hidden character).
-    #[serde(default, skip_serializing_if = "m::naming::tag::TagSlot::is_none")]
     pub tag: m::naming::tag::TagSlot,
     /// Design 072 §2.1: the text fields, validated on read.
     pub description: Option<m::objects::devices::Description>,
@@ -200,9 +199,7 @@ pub struct Device {
     pub article_number: Option<m::objects::devices::PartText>,
     pub type_text: Option<m::objects::devices::PartText>,
     /// Design 072 §6.3: ids of the project's lists, each with how it came to be.
-    #[serde(default, skip_serializing_if = "m::document::book::Place::is_unset")]
     pub location: m::document::book::Place<m::LocationId>,
-    #[serde(default, skip_serializing_if = "m::document::book::Place::is_unset")]
     pub function: m::document::book::Place<m::FunctionId>,
     /// Design 072 §2.2: text that did not read as the group's typed rating.
     pub rating_note: Option<m::objects::devices::RatingNote>,
@@ -381,7 +378,6 @@ impl From<CorePosition> for m::CorePosition {
 #[serde(deny_unknown_fields)]
 pub struct Cable {
     /// Design 026: validated on read; a cable's tag, as a device's.
-    #[serde(default, skip_serializing_if = "m::naming::tag::TagSlot::is_none")]
     pub tag: m::naming::tag::TagSlot,
     pub description: Option<m::objects::devices::Description>,
     pub properties: BTreeMap<String, String>,

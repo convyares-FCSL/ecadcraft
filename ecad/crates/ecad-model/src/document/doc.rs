@@ -319,7 +319,6 @@ pub struct Item {
 pub struct Device {
     /// Its tag (`-K01`) and what it is (design 026; the identity of the device): automatic, fixed
     /// (typed, kept by renumbering, FP1) or provisional, or none. One field: the state holds the tag (S6, #3).
-    #[serde(default, skip_serializing_if = "crate::naming::tag::TagSlot::is_none")]
     pub tag: crate::naming::tag::TagSlot,
     /// What it is for, in words (`setprop` key `description`).
     pub description: Option<crate::objects::devices::Description>,
@@ -334,10 +333,8 @@ pub struct Device {
     /// Its location (an entry of the project's list, design 072 §6.3) and how it came to be: manual
     /// (typed, or a box drawn around it: kept when a box around it changes), proposed (from its
     /// page or a box), or unset. One field: the state holds the entry (S6, #3).
-    #[serde(default, skip_serializing_if = "crate::document::book::Place::is_unset")]
     pub location: crate::document::book::Place<crate::naming::id::LocationId>,
     /// Its function (an entry of the project's list), as [`Device::location`].
-    #[serde(default, skip_serializing_if = "crate::document::book::Place::is_unset")]
     pub function: crate::document::book::Place<crate::naming::id::FunctionId>,
     /// Its rating note: text that did not read as its group's typed rating (design 072 §2.2).
     pub rating_note: Option<crate::objects::devices::RatingNote>,
@@ -831,7 +828,6 @@ pub const CABLE_TYPE_KEY: &str = "cable_type";
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Cable {
     /// Its tag (`-W01`) and what it is (design 026; the identity of the cable), as [`Device::tag`].
-    #[serde(default, skip_serializing_if = "crate::naming::tag::TagSlot::is_none")]
     pub tag: crate::naming::tag::TagSlot,
     /// What it is for, in words (`setprop` key `description`).
     pub description: Option<crate::objects::devices::Description>,

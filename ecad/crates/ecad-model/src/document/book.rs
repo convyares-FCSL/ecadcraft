@@ -43,8 +43,7 @@ pub const LOCATION_KEY: &str = "location";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(tag = "state", content = "id", rename_all = "snake_case")]
 pub enum Place<I> {
-    /// The device has none: never written (the field is left out), so it has one spelling.
-    #[serde(skip)]
+    /// The device has none: written as `{"state":"unset"}`.
     Unset,
     /// Set by hand (typed, or a box drawn around it): kept when a box around it changes.
     Manual(I),

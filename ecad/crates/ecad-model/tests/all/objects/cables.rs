@@ -124,12 +124,12 @@ fn a_cables_tag_and_description_are_fields_not_properties() {
 
 #[test]
 fn a_cable_reads_strictly() {
-    let good = serde_json::json!({"description": null, "properties": {}, "cores": [], "shield": "overall+pairs"});
+    let good = serde_json::json!({"tag": {"state": "none"}, "description": null, "properties": {}, "cores": [], "shield": "overall+pairs"});
     let c: Cable = serde_json::from_value(good).unwrap();
     assert_eq!(c.shield, Some(Shield::OverallAndPairs));
     assert!(serde_json::to_value(Cable::default()).unwrap().get("shield").is_none(), "no shield is left out");
     for hostile in [serde_json::json!("tartan"), serde_json::json!(3), serde_json::json!(""), serde_json::json!("overall\u{202e}")] {
-        let v = serde_json::json!({"description": null, "properties": {}, "cores": [], "shield": hostile});
+        let v = serde_json::json!({"tag": {"state": "none"}, "description": null, "properties": {}, "cores": [], "shield": hostile});
         assert!(serde_json::from_value::<Cable>(v).is_err(), "{hostile} must not read");
     }
 }

@@ -131,7 +131,7 @@ fn record_and_definition_hashes_are_pinned() {
         // 0.2.3 S1 (#2): a cable's `tag`, `tag_fixed` and `description` are record fields.
         // 0.2.3 S4 (#37): `NameVersion` names a `PointName` (typed rev or version), revision records are typed.
         // 0.2.3 S6 (#3): a tag, location and function each carry their state in one field (`tag`, `location`, `function`).
-        ("head", "4b401c60b8f163e69a302cd3a3dc868fb370fe9436df40e439c349d3caee4828"),
+        ("head", "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");

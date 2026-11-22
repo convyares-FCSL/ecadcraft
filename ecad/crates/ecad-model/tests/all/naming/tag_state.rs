@@ -49,14 +49,19 @@ fn the_state_carries_the_tag_in_one_field() {
     assert!(with.get("tag_state").is_none());
     let back: Device = serde_json::from_value(with).unwrap();
     assert_eq!(back.tag, TagSlot::of_text(Some("-K01"), TagState::Fixed));
+    // Every field is written, as the enum itself; a record missing one is a read error.
     let none = serde_json::to_value(Device::default()).unwrap();
-    assert!(none.get("tag").is_none(), "no tag is a left-out field, one spelling");
-    for bad in [
-        serde_json::json!({"state": "fixed"}),
-        serde_json::json!({"state": "provisional"}),
-        serde_json::json!({"state": "none"}),
-        serde_json::json!({"state": "fixed", "tag": ""}),
-    ] {
+    assert_eq!(none["tag"], serde_json::json!({"state": "none"}));
+    assert_eq!(none["location"], serde_json::json!({"state": "unset"}));
+    assert_eq!(none["function"], serde_json::json!({"state": "unset"}));
+    assert_eq!(serde_json::from_value::<Device>(none.clone()).unwrap(), Device::default());
+    for field in ["tag", "location", "function"] {
+        let mut v = none.clone();
+        v.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<Device>(v).is_err(), "a record without {field} does not read");
+    }
+    for bad in [serde_json::json!({"state": "fixed"}), serde_json::json!({"state": "provisional"}), serde_json::json!({"state": "fixed", "tag": ""})]
+    {
         let mut v = serde_json::to_value(Device::default()).unwrap();
         v["tag"] = bad.clone();
         assert!(serde_json::from_value::<Device>(v).is_err(), "{bad} does not read");

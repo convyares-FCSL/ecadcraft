@@ -861,9 +861,9 @@ pub(crate) fn enter_tag_value(text: &str, style: tag::Style) -> Result<tag::Entr
     Ok(tag::enter_slot(&slot, style)?)
 }
 
-/// A tag slot as the answers give it: `{"state", "tag"}`, or null for none.
+/// A tag slot as the answers give it: `{"state", "tag"}`, `{"state":"none"}` for none.
 fn slot_json(slot: &TagSlot) -> Value {
-    if slot.is_none() { Value::Null } else { json!(slot) }
+    json!(slot)
 }
 
 fn set_tag(cx: &mut Cx<'_>, o: ObjectRef, typed: Option<&str>, conflict: Option<Conflict>) -> Result<Outcome, CmdError> {

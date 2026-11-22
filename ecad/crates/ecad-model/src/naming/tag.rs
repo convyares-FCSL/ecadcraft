@@ -69,9 +69,8 @@ impl TagState {
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "state", content = "tag", rename_all = "snake_case")]
 pub enum TagSlot {
-    /// No tag: never written (the field is left out), so it has one spelling.
+    /// No tag: written as `{"state":"none"}`.
     #[default]
-    #[serde(skip)]
     None,
     /// Given by numbering (or a tag no person typed); Renumber may change it.
     Automatic(Tag),
