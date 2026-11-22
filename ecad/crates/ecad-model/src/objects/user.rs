@@ -19,17 +19,17 @@ use crate::naming::id::{DeviceId, UserFieldId};
 use crate::naming::text::Text;
 
 /// Most characters of a user field's name.
-pub const MAX_FIELD_NAME: usize = 32;
+pub(crate) const MAX_FIELD_NAME: usize = 32;
 /// Most characters of a number field's unit.
-pub const MAX_UNIT: usize = 8;
+pub(crate) const MAX_UNIT: usize = 8;
 /// Most characters of one choice.
-pub const MAX_CHOICE: usize = 32;
+pub(crate) const MAX_CHOICE: usize = 32;
 /// Most choices one field offers.
 pub const MAX_CHOICES: usize = 32;
 /// Most characters of a text value.
-pub const MAX_USER_TEXT: usize = 256;
+pub(crate) const MAX_USER_TEXT: usize = 256;
 /// Most user fields one project defines.
-pub const MAX_USER_FIELDS: usize = 64;
+pub(crate) const MAX_USER_FIELDS: usize = 64;
 
 /// A user field's name (`Panel row`).
 pub type FieldName = Text<MAX_FIELD_NAME>;
@@ -38,7 +38,7 @@ pub type FieldUnit = Text<MAX_UNIT>;
 /// One choice of a choice field.
 pub type Choice = Text<MAX_CHOICE>;
 /// A text value.
-pub type UserText = Text<MAX_USER_TEXT>;
+pub(crate) type UserText = Text<MAX_USER_TEXT>;
 
 /// What a user field holds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

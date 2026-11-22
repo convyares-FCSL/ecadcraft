@@ -32,10 +32,10 @@ pub const VERSIONS: TableDefinition<&[u8], &[u8]> = TableDefinition::new("versio
 /// `chunks`: chunk hash → flag ‖ body.
 pub const CHUNKS: TableDefinition<[u8; 32], &[u8]> = TableDefinition::new("chunks");
 /// `assets`: SHA-256 of the bytes → media type and bytes.
-pub const ASSETS: TableDefinition<[u8; 32], &[u8]> = TableDefinition::new("assets");
+pub(crate) const ASSETS: TableDefinition<[u8; 32], &[u8]> = TableDefinition::new("assets");
 
 /// `meta.format` of a project file.
-pub const FORMAT_PROJECT: &str = "ecad-project";
+pub(crate) const FORMAT_PROJECT: &str = "ecad-project";
 /// `meta.container_version`.
 pub const CONTAINER_VERSION: u64 = 2;
 /// `meta.codec`: rows and chunks are JSON, compressed (overseer, 2026-11-08; `bin/1` later).
@@ -88,7 +88,7 @@ impl BranchId {
     /// The branch ID made from `seed` (overseer FQ7: random 128-bit). The caller passes the
     /// randomness, from `ecad_store::random_u128` (design 065 §3.1: ecad-file reads no OS
     /// randomness or clock itself).
-    pub fn from_seed(seed: u128) -> Self {
+    pub(crate) fn from_seed(seed: u128) -> Self {
         BranchId(seed.to_be_bytes())
     }
 }
@@ -103,7 +103,7 @@ pub fn tx_key(branch: BranchId, seq: u64) -> [u8; 24] {
 }
 
 /// The `seq` of a `transactions` key.
-pub fn key_seq(key: &[u8; 24]) -> u64 {
+pub(crate) fn key_seq(key: &[u8; 24]) -> u64 {
     let mut s = [0u8; 8];
     s.copy_from_slice(key.get(16..).unwrap_or(&[0u8; 8]));
     u64::from_be_bytes(s)
@@ -324,7 +324,7 @@ impl VersionRecord {
 
     /// Whether its cached tag marks can be used as they are: computed with this build's rule (or
     /// a newer one, which counts at least as much).
-    pub fn tag_marks_current(&self) -> bool {
+    pub(crate) fn tag_marks_current(&self) -> bool {
         self.tag_rule() >= ecad_model::naming::tag::TAG_RULE
     }
 }
@@ -363,12 +363,12 @@ impl MergeRow {
     }
 
     /// The source branch's ID.
-    pub fn source_id(&self) -> Option<BranchId> {
+    pub(crate) fn source_id(&self) -> Option<BranchId> {
         BranchId::parse(&self.source)
     }
 
     /// The ancestor's branch ID.
-    pub fn ancestor_id(&self) -> Option<BranchId> {
+    pub(crate) fn ancestor_id(&self) -> Option<BranchId> {
         BranchId::parse(&self.ancestor.branch)
     }
 }
@@ -439,7 +439,7 @@ pub fn split_tx_value(v: &[u8]) -> Result<(u8, Hash, &[u8]), FileError> {
 ///
 /// # Errors
 /// A media type longer than 255 bytes.
-pub fn asset_value(media: &str, bytes: &[u8]) -> Result<Vec<u8>, FileError> {
+pub(crate) fn asset_value(media: &str, bytes: &[u8]) -> Result<Vec<u8>, FileError> {
     let len = u16::try_from(media.len()).ok().filter(|l| *l <= 255).ok_or(FileError::MediaTooLong)?;
     let mut v = Vec::with_capacity(2 + media.len() + bytes.len());
     v.extend_from_slice(&len.to_be_bytes());

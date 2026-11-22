@@ -55,7 +55,7 @@ impl SlotText {
     ];
 
     /// Most characters of a point label in [`SlotText::PointRating`].
-    pub const MAX_LABEL: usize = 64;
+    pub(crate) const MAX_LABEL: usize = 64;
 
     /// Its word, as stored and typed (`part_number`, `rating.A1`).
     pub fn word(&self) -> std::borrow::Cow<'static, str> {
@@ -343,7 +343,7 @@ pub struct Definition {
 
 impl Definition {
     /// The keys bridged to `key` inside the device (not `key` itself), from [`Definition::bridges`].
-    pub fn bridged_with<'a>(&'a self, key: &'a PointKey) -> impl Iterator<Item = &'a PointKey> + 'a {
+    pub(crate) fn bridged_with<'a>(&'a self, key: &'a PointKey) -> impl Iterator<Item = &'a PointKey> + 'a {
         self.bridges.iter().filter(move |g| g.contains(key)).flat_map(|g| g.iter()).filter(move |k| *k != key)
     }
 }

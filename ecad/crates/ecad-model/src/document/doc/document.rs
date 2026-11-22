@@ -394,7 +394,7 @@ impl Document {
     /// Real tag keys starting with `start` held by devices or cables (brief 026), through a range of
     /// the tag indexes: the cost follows the keys with that start, not the project. Provisional tags
     /// are not among them (S6, #3).
-    pub fn tag_keys_starting(&self, start: &str) -> impl Iterator<Item = &str> {
+    pub(crate) fn tag_keys_starting(&self, start: &str) -> impl Iterator<Item = &str> {
         let from = crate::naming::tag::Key { provisional: false, text: start.to_string() };
         let a = self.index.tags.range(from.clone()..).map(|(k, _)| k);
         let b = self.index.cable_tags.range(from..).map(|(k, _)| k);
@@ -474,7 +474,7 @@ impl Document {
     }
 
     /// Whether `t` is a connection point: a component's terminal or a cable reference's point.
-    pub fn has_point(&self, t: ConnectionPointId) -> bool {
+    pub(crate) fn has_point(&self, t: ConnectionPointId) -> bool {
         self.connection_points.contains_key(&t) || self.cable_point(t).is_some()
     }
 
@@ -493,7 +493,7 @@ impl Document {
 
     /// The points of continuation `id` (as `aid`, before or after an edit) and of its partners by
     /// name, in ID order.
-    pub fn continuation_points(&self, id: crate::naming::id::AidId, aid: &crate::objects::aid::Aid) -> Vec<ConnectionPointId> {
+    pub(crate) fn continuation_points(&self, id: crate::naming::id::AidId, aid: &crate::objects::aid::Aid) -> Vec<ConnectionPointId> {
         let aids = match crate::connectivity::continuation_key(aid) {
             Some(k) => self.continuations_named(&k),
             None => Vec::new(),

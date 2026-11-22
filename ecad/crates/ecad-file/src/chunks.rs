@@ -30,7 +30,7 @@ use crate::FileError;
 use crate::chain::{self, Hash};
 
 /// Objects per model chunk, before bucketing (overseer, 2026-11-08).
-pub const CHUNK: usize = 1_024;
+pub(crate) const CHUNK: usize = 1_024;
 /// The chunk holding project-wide state.
 pub const PROJECT_KEY: &str = "model:project";
 /// The chunk holding state derived from the history that a snapshot must carry (overseer answer
@@ -46,7 +46,7 @@ pub struct ModelMeta {
     pub tag_high: ecad_model::naming::tag::HighWater,
 }
 /// Most buckets a kind may have (a bound on hostile files).
-pub const MAX_BUCKETS: u32 = 1 << 20;
+pub(crate) const MAX_BUCKETS: u32 = 1 << 20;
 
 /// The model kinds split into chunks, by their key name.
 pub const KINDS: [&str; 8] = ["layer", "device", "connection_point", "wire", "cable", "definition", "aid", "loose_part"];
@@ -66,7 +66,7 @@ pub enum ModelKind {
 
 impl ModelKind {
     /// The kind named `name` in a chunk key (one of [`KINDS`]).
-    pub fn from_name(name: &str) -> Option<Self> {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
         Some(match name {
             "layer" => Self::Layer,
             "device" => Self::Device,
@@ -124,7 +124,7 @@ pub fn model_key(kind: &str, b: u32) -> String {
 }
 
 /// How many buckets a kind of `n` objects has.
-pub fn bucket_count(n: usize) -> u32 {
+pub(crate) fn bucket_count(n: usize) -> u32 {
     let chunks = n.div_ceil(CHUNK).max(1);
     u32::try_from(chunks.next_power_of_two()).unwrap_or(MAX_BUCKETS).min(MAX_BUCKETS)
 }
@@ -157,7 +157,7 @@ macro_rules! raw_id {
 raw_id!(LayerId, DeviceId, ConnectionPointId, WireId, CableId, DefinitionId, ecad_model::AidId, ecad_model::LoosePartId);
 
 /// A version row's `chunks`: key → hex hash.
-pub type ChunkHashes = BTreeMap<String, String>;
+pub(crate) type ChunkHashes = BTreeMap<String, String>;
 
 /// A snapshot's chunk set: key → hash, and the bucket count of each model kind.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -198,7 +198,7 @@ impl ChunkSet {
     }
 
     /// Key → hex hash, for a version row.
-    pub fn to_record(&self) -> BTreeMap<String, String> {
+    pub(crate) fn to_record(&self) -> BTreeMap<String, String> {
         self.chunks.iter().map(|(k, h)| (k.clone(), chain::hex(h))).collect()
     }
 }
@@ -433,7 +433,7 @@ pub fn build_full(doc: &Document, meta: &ModelMeta) -> Result<(ChunkSet, Vec<New
 ///
 /// # Errors
 /// An object could not be encoded.
-pub fn build_incremental(doc: &Document, prev: &ChunkSet, dirty: &Dirty, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), FileError> {
+pub(crate) fn build_incremental(doc: &Document, prev: &ChunkSet, dirty: &Dirty, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), FileError> {
     build(doc, prev, dirty, false, meta)
 }
 
@@ -526,7 +526,7 @@ fn typed<K: RawId + serde::de::DeserializeOwned, V: serde::de::DeserializeOwned>
 ///
 /// # Errors
 /// Not a component chunk of `set`, or its JSON does not decode.
-pub fn devices_of(set: &ChunkSet, key: &str, body: &[u8]) -> Result<BTreeMap<DeviceId, Device>, FileError> {
+pub(crate) fn devices_of(set: &ChunkSet, key: &str, body: &[u8]) -> Result<BTreeMap<DeviceId, Device>, FileError> {
     match parse_chunk(set, key, body)? {
         Parsed::Device(m) => Ok(m),
         _ => Err(FileError::NotDeviceChunk(key.to_string())),
@@ -584,7 +584,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
 ///
 /// # Errors
 /// As [`assemble`], or a chunk that does not decompress or match its hash.
-pub fn assemble_stored(set: &ChunkSet, stored: Vec<(String, Hash, u8, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), FileError> {
+pub(crate) fn assemble_stored(set: &ChunkSet, stored: Vec<(String, Hash, u8, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), FileError> {
     let parsed = stored
         .into_par_iter()
         .map(|(key, hash, flag, body)| {

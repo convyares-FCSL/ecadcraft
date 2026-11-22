@@ -21,7 +21,7 @@ use crate::naming::id::{FolderId, PageId};
 use crate::naming::text::Text;
 
 /// The old page property naming the page's folder; now [`crate::Page::folder`] (a reserved key).
-pub const FOLDER_KEY: &str = "folder";
+pub(crate) const FOLDER_KEY: &str = "folder";
 /// The old page property of the page number; now [`crate::Page::number`] (a reserved key).
 pub const NUMBER_KEY: &str = "number";
 /// Page and project property: the `=` function (design 019 §6.1, 018 value rules).

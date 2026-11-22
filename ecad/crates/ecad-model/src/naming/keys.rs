@@ -214,9 +214,9 @@ pub const PART_NUMBER: PropKey = PropKey(crate::objects::devices::PART_NUMBER_KE
 /// A device's maker.
 pub const MAKER: PropKey = PropKey(crate::objects::devices::MAKER_KEY);
 /// A device's article number.
-pub const ARTICLE_NUMBER: PropKey = PropKey(crate::objects::devices::ARTICLE_KEY);
+pub(crate) const ARTICLE_NUMBER: PropKey = PropKey(crate::objects::devices::ARTICLE_KEY);
 /// A device's type text (a cable's until lane D).
-pub const TYPE_TEXT: PropKey = PropKey(crate::objects::devices::TYPE_KEY);
+pub(crate) const TYPE_TEXT: PropKey = PropKey(crate::objects::devices::TYPE_KEY);
 /// A device's or cable's tag.
 pub const TAG: PropKey = PropKey(crate::naming::tag::TAG_KEY);
 /// Whether the project gives provisional tags (yes/no).
@@ -355,7 +355,7 @@ pub fn is_reserved(key: &str) -> bool {
 /// A connector's pin count (lane 072 B: a field of its type).
 pub const PINS: PropKey = PropKey("pins");
 /// A connector's typed pin names.
-pub const PIN_NAMES: PropKey = PropKey("pin_names");
+pub(crate) const PIN_NAMES: PropKey = PropKey("pin_names");
 /// A device's rating (lane 072 B: its group's typed fields, or its note; design 072 §2.2).
 pub const RATING: PropKey = PropKey(crate::objects::devices::RATING_KEY);
 

@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::objects::devices::protection::{Fuse, Protection};
 
 /// Most characters of a position label that holds a fuse rating (`terminalblocklabel`'s bound).
-pub const MAX_POSITION: usize = 16;
+pub(crate) const MAX_POSITION: usize = 16;
 
 /// A strip position's label (`1`, `PE1`).
 pub type PositionLabel = crate::naming::text::Text<MAX_POSITION>;

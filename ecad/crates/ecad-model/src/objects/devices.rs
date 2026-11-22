@@ -338,7 +338,7 @@ impl Connector {
 
     /// Whether `key` is one of its `setprop` keys (`pins`, `pin_names`, `half.<s|p>.<field>`,
     /// `ignore.<row>`).
-    pub fn is_key(key: &str) -> bool {
+    pub(crate) fn is_key(key: &str) -> bool {
         key == "pins" || key == "pin_names" || key.starts_with("half.") || key.starts_with("ignore.")
     }
 
@@ -501,13 +501,13 @@ pub type PartText = crate::naming::text::Text<64>;
 /// The `setprop` key of a device's description.
 pub const DESCRIPTION_KEY: &str = "description";
 /// The `setprop` key of a device's part number.
-pub const PART_NUMBER_KEY: &str = "part_number";
+pub(crate) const PART_NUMBER_KEY: &str = "part_number";
 /// The `setprop` key of a device's maker (its `manufacturer` field).
 pub const MAKER_KEY: &str = "maker";
 /// The `setprop` key of a device's article number.
 pub const ARTICLE_KEY: &str = "article_number";
 /// The `setprop` key of a device's type text (a strip's type notation reads it).
-pub const TYPE_KEY: &str = "type";
+pub(crate) const TYPE_KEY: &str = "type";
 
 /// One of a device's text fields ([`crate::Device`]), named by the `setprop` key that routes to it
 /// (design 072 §10).

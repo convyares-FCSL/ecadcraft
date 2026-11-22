@@ -152,7 +152,7 @@ impl Mark {
 }
 
 /// Why an item is left alone.
-pub const NOT_USUAL: &str = "not a letter code and a number";
+pub(crate) const NOT_USUAL: &str = "not a letter code and a number";
 /// Why a device is left alone.
 pub const NO_TAG: &str = "no tag";
 
@@ -419,7 +419,7 @@ pub fn next_provisional(doc: &Document, prefix: &str) -> String {
 }
 
 /// The highest number of `prefix` in use by any device or cable tag in the usual form.
-pub fn highest_in_use(doc: &Document, prefix: &str) -> u64 {
+pub(crate) fn highest_in_use(doc: &Document, prefix: &str) -> u64 {
     let p = prefix.trim_start_matches('-').to_ascii_uppercase();
     doc.tag_keys_starting(&p).filter_map(tag::parse).filter(|(q, _)| *q == p).map(|(_, n)| n).max().unwrap_or(0)
 }

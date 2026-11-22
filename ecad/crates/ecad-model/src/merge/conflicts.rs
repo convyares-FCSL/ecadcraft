@@ -632,7 +632,7 @@ pub(super) fn merge_standard(ctx: &mut Ctx<'_, '_>, m: &mut Document, obj: Obj) 
 }
 
 /// A style record's name in texts: `Text style "Tag large"` (`Wire category "24 V DC"`).
-pub fn style_words(catalogue: crate::objects::styles::StyleCatalogue, id: &StyleRef, record: Option<&StyleRecord>) -> String {
+pub(crate) fn style_words(catalogue: crate::objects::styles::StyleCatalogue, id: &StyleRef, record: Option<&StyleRecord>) -> String {
     use crate::objects::styles::StyleCatalogue as C;
     let kind = match catalogue {
         C::Text => "Text style",

@@ -80,7 +80,7 @@ impl Device {
 
     /// Whether `other` differs in a typed field (anything but the property bag and the
     /// definition, which have ops of their own).
-    pub fn fields_differ(&self, other: &Device) -> bool {
+    pub(crate) fn fields_differ(&self, other: &Device) -> bool {
         let typed = |d: &Device| Device { properties: Properties::new(), definition: None, ..d.clone() };
         typed(self) != typed(other)
     }

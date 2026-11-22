@@ -4,11 +4,11 @@
 //! (pages, layers, items, representations) live here. Derived results do not (see [`crate::connectivity::derive`]).
 
 pub mod cable;
-pub mod definition;
-pub mod device;
-pub mod document;
-pub mod drawing;
-pub mod settings;
+pub(crate) mod definition;
+pub(crate) mod device;
+pub(crate) mod document;
+pub(crate) mod drawing;
+pub(crate) mod settings;
 
 use std::collections::BTreeMap;
 

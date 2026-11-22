@@ -27,7 +27,7 @@ pub const MAX_RESIDUAL_MA: f64 = 3000.0;
 /// The largest breaking capacity, in kiloamperes.
 pub const MAX_BREAKING_KA: f64 = 200.0;
 /// The highest fuse output number of a fuse bank.
-pub const MAX_OUTPUT: u8 = 99;
+pub(crate) const MAX_OUTPUT: u8 = 99;
 
 /// A protective device and its rating, by kind (group 2, design 072 §2.2).
 ///

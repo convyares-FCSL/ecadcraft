@@ -23,7 +23,7 @@ pub(super) struct Stacks {
 
 /// How many stack entries are read from the history at a time, when undo or redo reaches below
 /// what is held (the cap a snapshot records, brief 021).
-pub const STACK_READ: u64 = 1_024;
+pub(super) const STACK_READ: u64 = 1_024;
 
 impl Stacks {
     /// Whether `kind` would pop a stack whose visible part is empty but which has hidden entries.

@@ -54,7 +54,7 @@ struct TxRaw {
 }
 
 /// Names of the ops schema version 1 knows.
-pub const OP_NAMES: &[&str] = &[
+pub(crate) const OP_NAMES: &[&str] = &[
     "AddPage",
     "RemovePage",
     "ModifyPage",
@@ -162,13 +162,13 @@ pub fn tx_value(tx: &m::Transaction, prev: &Hash) -> Result<Value, FileError> {
 }
 
 /// The `type` of a record value.
-pub fn record_type(v: &Value) -> Option<&str> {
+pub(crate) fn record_type(v: &Value) -> Option<&str> {
     v.get("type").and_then(Value::as_str)
 }
 
 /// The `seq` and `prev` of a transaction value, read before full decoding so the chain can be
 /// checked on the stored form.
-pub fn seq_and_prev(v: &Value) -> (Option<u64>, Option<&str>) {
+pub(crate) fn seq_and_prev(v: &Value) -> (Option<u64>, Option<&str>) {
     (v.get("seq").and_then(Value::as_u64), v.get("prev").and_then(Value::as_str))
 }
 
@@ -263,7 +263,7 @@ fn check_integers(op: &records::Op) -> Result<(), FileError> {
 ///
 /// # Errors
 /// A message naming the cap.
-pub fn check_limits(v: &Value) -> Result<(), FileError> {
+pub(crate) fn check_limits(v: &Value) -> Result<(), FileError> {
     fn walk(v: &Value, depth: usize) -> Result<(), FileError> {
         if depth > MAX_DEPTH {
             return Err(FileError::Depth);

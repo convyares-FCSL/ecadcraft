@@ -99,7 +99,7 @@ const PROJECT_TAG: &str = "project:";
 
 impl PrefixOf {
     /// Whether `word` has a starter word's form.
-    pub fn starter_form(word: &str) -> bool {
+    pub(crate) fn starter_form(word: &str) -> bool {
         (1..=MAX_SYMBOL_KEY).contains(&word.len()) && word.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'.'))
     }
 

@@ -20,6 +20,7 @@
 //! - [`wiring`]: wire numbers, potentials and conductor labels (brief 022).
 //! - [`words`], [`units`] and [`keys`]: the shared word readers, the unit types and the property
 //!   key list (design 072 §9); [`text`]: validated text; [`colour`]: conductor colours.
+#![warn(unreachable_pub)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod connectivity;

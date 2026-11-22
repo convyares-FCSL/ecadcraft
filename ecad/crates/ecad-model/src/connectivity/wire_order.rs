@@ -56,7 +56,7 @@ pub struct Order {
 
 impl Order {
     /// An order from stored wires (in `net_order`): the points in the order they first appear.
-    pub fn from_wires(wires: Vec<[ConnectionPointId; 2]>) -> Self {
+    pub(crate) fn from_wires(wires: Vec<[ConnectionPointId; 2]>) -> Self {
         let mut points: Vec<ConnectionPointId> = Vec::new();
         for w in &wires {
             for t in w {
@@ -914,7 +914,7 @@ impl<'a> Rewrite<'a> {
 /// The ops clearing every `protected_by` that names a device `ops` deleted (design 072 §4.5,
 /// overseer ruling 2026-11-18), on `doc` as `ops` left it: the same transaction, so one undo
 /// brings them back. Nothing unless `ops` delete a device.
-pub fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
+pub(crate) fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
     let gone: BTreeSet<crate::naming::id::DeviceId> = ops
         .iter()
         .filter_map(|o| if let Op::DeleteDevice { id, .. } = o { Some(*id) } else { None })

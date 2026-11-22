@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::naming::text::{LongText, Text};
 
 /// The longest source text.
-pub const MAX_SOURCE: usize = 200;
+pub(crate) const MAX_SOURCE: usize = 200;
 /// The longest rows text, in characters (the data set's own bound is in bytes, and no larger).
 pub const MAX_ROWS: usize = 256 * 1024;
 

@@ -236,7 +236,7 @@ pub const MAX_REFERENCES_PER_CABLE: usize = 2;
 
 /// Most member routes on a page whose direction is averaged to place one reference text: enough
 /// for any real cable, and a bound on the work per reference.
-pub const MAX_DIRECTION_SAMPLES: usize = 1_000;
+pub(crate) const MAX_DIRECTION_SAMPLES: usize = 1_000;
 
 /// The text that names a place on a sheet in `style` (owner answer Q1, 2026-11-08; UI round 2
 /// and rev 3): `105/B3`, `105-B-3` or `/105.3`; `?` (`/?`) when the place cannot be located.
@@ -381,7 +381,7 @@ pub fn route_ends_by_page(doc: &Document) -> BTreeMap<(WireId, PageId), (Pt, Pt)
 
 /// The end points of `conductor`'s route on `page` (as [`route_on_page`] and
 /// [`route_ends_by_page`] pick it), found through the wire's points.
-pub fn route_ends_on(doc: &Document, conductor: WireId, page: PageId) -> Option<(Pt, Pt)> {
+pub(crate) fn route_ends_on(doc: &Document, conductor: WireId, page: PageId) -> Option<(Pt, Pt)> {
     route_on_page(doc, conductor, page).and_then(|(_, p)| p.path_ends())
 }
 

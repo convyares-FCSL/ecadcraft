@@ -173,7 +173,7 @@ impl Switching {
 }
 
 /// A motor power as written on a drawing, in kilowatts: `4 kW`, `0.37 kW`.
-pub fn motor_power(w: Watts) -> String {
+pub(crate) fn motor_power(w: Watts) -> String {
     format!("{} kW", w.0 / 1000.0)
 }
 

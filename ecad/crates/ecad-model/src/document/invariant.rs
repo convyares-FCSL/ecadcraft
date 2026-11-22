@@ -116,7 +116,7 @@ impl Touched {
 
     /// Add what `effect` touches (design 064 §3.1: the invariant check and the derived views share
     /// one classifier).
-    pub fn add_effect(&mut self, effect: &Effect<'_>) {
+    pub(crate) fn add_effect(&mut self, effect: &Effect<'_>) {
         match effect {
             Effect::Page { id, .. } => {
                 self.page_order = true;

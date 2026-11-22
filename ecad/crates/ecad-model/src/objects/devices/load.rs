@@ -40,7 +40,7 @@ pub struct Load {
 }
 
 /// A load's or an indicator's power as shown: watts below 1 kW (`5 W`), kilowatts from it (`3 kW`).
-pub fn load_power(w: Watts) -> String {
+pub(crate) fn load_power(w: Watts) -> String {
     if w.0 < 1000.0 { w.to_string() } else { format!("{} kW", w.0 / 1000.0) }
 }
 

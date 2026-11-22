@@ -34,8 +34,8 @@
 //! anything but property values.
 
 pub mod apply;
-pub mod conflicts;
-pub mod rules;
+mod conflicts;
+mod rules;
 pub mod state;
 #[cfg(test)]
 mod tests;

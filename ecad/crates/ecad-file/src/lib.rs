@@ -25,6 +25,7 @@
 //!
 //! Excluded until later stages: library files (stage 3), checkpoints (disabled; their trust
 //! contract is unresolved), and other codecs.
+#![warn(unreachable_pub)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod binding;

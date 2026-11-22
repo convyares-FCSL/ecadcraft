@@ -73,7 +73,7 @@ impl<'de> Deserialize<'de> for StyleColour {
 }
 
 /// The longest font name.
-pub const MAX_FONT: usize = 64;
+pub(crate) const MAX_FONT: usize = 64;
 
 /// The font a text style uses: the project's (`text.font`) or a named one.
 #[derive(Debug, Clone, PartialEq, Eq)]
