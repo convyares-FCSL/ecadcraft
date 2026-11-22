@@ -128,7 +128,8 @@ pub struct Noted {
     numbers: bool,
     /// Pages added, removed or moved ([`Outputs::placed_page`]).
     placed: Vec<PageId>,
-    /// The pages whose book position changes (the strips on them), read on the state after.
+    /// The pages whose book position changes (the strips on them): the book before, compared
+    /// with the state after.
     positions: ecad_model::book::PositionsNoted,
 }
 
@@ -305,6 +306,7 @@ impl Outputs {
     /// [`Outputs::close_before`], [`Outputs::note_after`] and [`Outputs::update`].
     pub fn note_before(&self, before: &Document, effect: &Effect<'_>, n: &mut Noted) {
         n.rows.note(before, effect);
+        n.positions.note_before(before, effect);
     }
 
     /// The end of the Before phase: the noted wires' net mates and the users of renamed entries on
@@ -322,7 +324,6 @@ impl Outputs {
         n.strips.note(effect);
         n.numbers |= Self::moves_page_number(effect);
         n.placed.extend(Self::placed_page(effect));
-        n.positions.note(after, effect);
     }
 
     /// Recompute what `n` names on `doc` (the state after), with text measured in `m`.
@@ -444,7 +445,7 @@ impl Outputs {
         }
         // Brief 028: the strips these rows touch (design 028 §11.1).
         let mut pages = scope.route_pages.clone();
-        pages.extend(positions.changed());
+        pages.extend(positions.changed(doc));
         let mut strips = std::mem::take(&mut self.strips);
         let which = strips.touched(
             doc,
