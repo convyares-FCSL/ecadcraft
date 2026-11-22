@@ -838,7 +838,7 @@ impl IoView {
         self.book_page = doc
             .page_order
             .iter()
-            .find(|p| ecad_engine::generated::kind_of(doc, **p) == Some(ecad_engine::generated::GenKind::PlcRack))
+            .find(|p| ecad_engine::generated::kind_of(doc, **p) == Some(ecad_model::GenKind::PlcRack))
             .map(|p| (*p, ecad_engine::references::page_number(doc, *p)));
     }
 

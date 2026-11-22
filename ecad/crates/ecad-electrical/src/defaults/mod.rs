@@ -783,8 +783,8 @@ mod kind_tests {
         assert_eq!(<crate::text_style::Weight as ecad_model::Word>::WORDS, ["regular", "bold"]);
         assert_eq!(<crate::styles::wire::LineType as ecad_model::Word>::WORDS, ["continuous", "dashed", "dashdot"]);
         assert_eq!(<crate::styles::wire::RouteLabels as ecad_model::Word>::WORDS, ["project", "net", "each", "none"]);
-        assert_eq!(<crate::rating::ConductorClass as ecad_model::Word>::WORDS, ["1", "2", "5", "6"]);
-        assert_eq!(<crate::rating::Material as ecad_model::Word>::WORDS, ["cu"]);
+        assert_eq!(<ecad_model::style::wire::ConductorClass as ecad_model::Word>::WORDS, ["1", "2", "5", "6"]);
+        assert_eq!(<ecad_model::style::wire::Material as ecad_model::Word>::WORDS, ["cu"]);
     }
 
     fn prefix(s: &str) -> bool {

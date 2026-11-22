@@ -18,11 +18,11 @@ use crate::defaults::strip_pages;
 use crate::designations::{self, Aspect, Pending};
 use crate::error::{CmdError, msg};
 use crate::frames::{CUSTOMER, DRAWING_NUMBER, STATUS, TITLE};
-use crate::generated::GenKind;
 use crate::outputs::kept::Outputs;
 use crate::page_types::MAX_NUMBER_CHARS;
 use crate::proposals::{self, Mode, Planned};
 use crate::revisions::{self, FIELDS, Revision};
+use ecad_model::GenKind;
 
 /// Most characters of a folder name.
 pub const MAX_FOLDER_NAME: usize = 100;

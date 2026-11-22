@@ -9,8 +9,8 @@
 //! # Update map (design 054 §10.2)
 //! None while open: it reads the types, the book and the next number once, on opening.
 
-use ecad_engine::generated::GenKind;
 use ecad_engine::styles::page::{self as ptype, Holds};
+use ecad_model::GenKind;
 use ecad_model::book::Book;
 use ecad_model::{FolderId, PageId, StyleRef};
 use ecad_ui::tokens::{space, ui_type};

@@ -303,7 +303,7 @@ fn m_the_first_rack_brings_the_rack_page_into_the_book() {
     let mut h = H::new(5620);
     let racks = |h: &mut H| {
         let d = h.doc();
-        d.page_order.iter().filter(|p| ecad_engine::generated::kind_of(&d, **p) == Some(ecad_engine::generated::GenKind::PlcRack)).count()
+        d.page_order.iter().filter(|p| ecad_engine::generated::kind_of(&d, **p) == Some(ecad_model::GenKind::PlcRack)).count()
     };
     assert_eq!(racks(&mut h), 0);
     let head = h.head();
@@ -314,7 +314,7 @@ fn m_the_first_rack_brings_the_rack_page_into_the_book() {
     // `page.type` written (FP2: only a type that differs from the kind's is stored).
     {
         let d = h.doc();
-        let pg = d.page_order.iter().copied().find(|p| ecad_engine::generated::kind_of(&d, *p) == Some(ecad_engine::generated::GenKind::PlcRack));
+        let pg = d.page_order.iter().copied().find(|p| ecad_engine::generated::kind_of(&d, *p) == Some(ecad_model::GenKind::PlcRack));
         let page = &d.pages[&pg.unwrap()];
         assert!(page.page_type.is_none());
         assert_eq!(ecad_model::sheet::page_type_of(&d, page), ecad_model::StyleRef::Builtin("report".into()));

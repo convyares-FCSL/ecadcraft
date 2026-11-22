@@ -27,10 +27,11 @@ use ecad_model::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, PageId};
 
 use super::Inputs;
-use crate::generated::{self, GenKind};
+use crate::generated;
 use crate::outputs::kept::{Noted, Outputs};
 use crate::plc::sheets::RackPlaces;
 use crate::text_style::fonts::TextMetrics;
+use ecad_model::GenKind;
 
 /// The kept report models.
 #[derive(Debug)]

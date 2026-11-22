@@ -38,8 +38,7 @@ ecad_model::word_enum! {
         Channel,
     }
 }
-/// How PLC addresses are written: a station stores its own (design 072 §3).
-pub use ecad_model::plc::AddressStyle;
+use ecad_model::plc::AddressStyle;
 ecad_model::word_enum! {
     /// How a card is drawn on its page.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

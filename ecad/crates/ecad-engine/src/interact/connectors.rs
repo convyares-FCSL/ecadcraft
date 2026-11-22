@@ -12,9 +12,10 @@ use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use super::{
     ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
 };
-use crate::connectors::{self as cn, Family, FamilyRules};
+use crate::connectors::{self as cn, FamilyRules};
 use crate::defaults::{self, Scope};
 use crate::symbols::Side;
+use ecad_model::device::ConnectorFamily;
 
 /// `connector`: which connector, halves, type, pins, pin names, then how to draw it.
 pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
@@ -27,7 +28,8 @@ pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
             "plug" => Side::Plug,
             _ => Side::Both,
         };
-        let family = Family::of_typed(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word()).unwrap_or(Family::Plain);
+        let family = ConnectorFamily::of_typed(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word())
+            .unwrap_or(ConnectorFamily::Plain);
         let n = defaults::resolve(doc, &defaults::connectors::MAKER_PINS, Scope::project()).number();
         let pins = if n.is_finite() && (1.0..=cn::MAX_PINS as f64).contains(&n) { n as usize } else { 4 };
         let names = defaults::resolve(doc, &defaults::connectors::MAKER_NAMES, Scope::project()).word().to_string();
@@ -79,7 +81,7 @@ struct PlaceConnector {
     /// The tag a new connector gets.
     next: String,
     halves: Side,
-    family: Family,
+    family: ConnectorFamily,
     pins: usize,
     names: String,
     list: Option<Vec<String>>,
@@ -163,7 +165,7 @@ impl PlaceConnector {
     }
 
     fn choose_type(&mut self, text: &str) -> R<Step> {
-        self.family = Family::of_typed(text).ok_or_else(|| other(format!("Type one of {}.", TYPE_WORDS.join(", "))))?;
+        self.family = ConnectorFamily::of_typed(text).ok_or_else(|| other(format!("Type one of {}.", TYPE_WORDS.join(", "))))?;
         if self.bulkhead() {
             self.pins_layout = false;
             self.stage = Stage::Point;

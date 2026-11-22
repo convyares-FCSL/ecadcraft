@@ -133,8 +133,7 @@ impl CableField {
     }
 }
 
-/// A cable's shield (design 059 §2.1): the model's, stored as a field (design 072 §4.5).
-pub use ecad_model::style::cable::Shield;
+use ecad_model::style::cable::Shield;
 
 /// Where a shown value comes from (design 059 §2.2): the hint `set here`, `from type`,
 /// `from notation`.

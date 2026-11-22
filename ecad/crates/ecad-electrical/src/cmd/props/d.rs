@@ -53,7 +53,7 @@ pub static RULES: &[PropRule] = &[
 /// key is stored as typed.
 ///
 /// # Errors
-/// A cable that is not there; a bad offer; a shield that is not a word of [`crate::cables::Shield`];
+/// A cable that is not there; a bad offer; a shield that is not a word of [`ecad_model::style::cable::Shield`];
 /// an `unused.` key naming no core.
 pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let ObjectRef::Cable(k) = o else { return Err(CmdError::refused(super::super::prop::NO_SUCH_OBJECT)) };
@@ -86,7 +86,7 @@ pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
     if key == crate::cables::CableField::Shield.key() {
         after.shield = match value {
             None => None,
-            Some(v) => Some(<crate::cables::Shield as Word>::parse(v).ok_or_else(|| {
+            Some(v) => Some(<ecad_model::style::cable::Shield as Word>::parse(v).ok_or_else(|| {
                 CmdError::refused(format!("{:?} is not a shield: give none, overall, pairs or overall+pairs.", crate::cables::clip(v)))
             })?),
         };

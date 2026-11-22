@@ -43,9 +43,11 @@ pub mod protection;
 pub mod reader;
 pub mod trace;
 
-pub use circuit::*;
-pub use protection::*;
-
+use circuit::{
+    BoxTemp, Context, Rating, Temp, box_temp, box_temps, cable_is_rated, evaluate, fmt_amps, fmt_percent, is_panel_wire, location_code, sheet,
+    subjects, wire_is_rated,
+};
+use protection::{Device, device_of};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::wire::CircuitInputs;
@@ -227,8 +229,7 @@ impl Circuit for ecad_model::Cable {
     }
 }
 
-/// How Iz is found: the model's [`ecad_model::wire::Basis`].
-pub use ecad_model::wire::Basis;
+use ecad_model::wire::Basis;
 
 /// Property keys (FP1, FP2, FP6).
 pub const BASIS: &str = "rating.basis";
@@ -864,7 +865,7 @@ impl Touch {
 
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 
-pub use ecad_model::style::wire::{ConductorClass, Material};
+use ecad_model::style::wire::{ConductorClass, Material};
 
 /// Whether `k` is one of lane 057's kinds.
 pub fn is_rating_kind(k: CheckKind) -> bool {

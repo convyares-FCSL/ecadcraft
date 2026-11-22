@@ -80,9 +80,7 @@ pub const PIN_KEYS: [StarterKey; 3] = [StarterKey::Pinpair, StarterKey::Pins, St
 
 // ---------------------------------------------------------------- families (design 044 §1)
 
-/// A connector family (design 044 §1): the model's word ([`ecad_model::device::ConnectorFamily`]),
-/// with the sizes and starters its halves come in ([`FamilyRules`]).
-pub use ecad_model::device::ConnectorFamily as Family;
+use ecad_model::device::ConnectorFamily;
 
 /// What a family's halves come in (design 044 §1): its sizes, its bulkhead and its whole-half
 /// starters.
@@ -97,23 +95,23 @@ pub trait FamilyRules: Sized {
     fn size_refusal(self) -> String;
 }
 
-impl FamilyRules for Family {
+impl FamilyRules for ConnectorFamily {
     /// The sizes its whole halves come in; empty for a bulkhead.
     fn sizes(self) -> &'static [usize] {
         match self {
-            Family::Plain => &[2, 3, 4, 6, 8, 12],
-            Family::Dsub => &[9, 15, 25],
-            Family::M12 => &[4, 5, 8],
-            Family::Rj45 | Family::Usba | Family::Usbb => &[],
+            ConnectorFamily::Plain => &[2, 3, 4, 6, 8, 12],
+            ConnectorFamily::Dsub => &[9, 15, 25],
+            ConnectorFamily::M12 => &[4, 5, 8],
+            ConnectorFamily::Rj45 | ConnectorFamily::Usba | ConnectorFamily::Usbb => &[],
         }
     }
 
     /// The bulkhead starter of a one-piece family.
     fn bulkhead(self) -> Option<&'static str> {
         match self {
-            Family::Rj45 => Some("rj45"),
-            Family::Usba => Some("usba"),
-            Family::Usbb => Some("usbb"),
+            ConnectorFamily::Rj45 => Some("rj45"),
+            ConnectorFamily::Usba => Some("usba"),
+            ConnectorFamily::Usbb => Some("usbb"),
             _ => None,
         }
     }
@@ -124,12 +122,12 @@ impl FamilyRules for Family {
             return None;
         }
         Some(match (self, side) {
-            (Family::Plain, Side::Socket) => format!("socket{n}"),
-            (Family::Plain, Side::Plug) => format!("plug{n}"),
-            (Family::Dsub, Side::Socket) => format!("dsub{n}s"),
-            (Family::Dsub, Side::Plug) => format!("dsub{n}p"),
-            (Family::M12, Side::Socket) => format!("m12s{n}"),
-            (Family::M12, Side::Plug) => format!("m12p{n}"),
+            (ConnectorFamily::Plain, Side::Socket) => format!("socket{n}"),
+            (ConnectorFamily::Plain, Side::Plug) => format!("plug{n}"),
+            (ConnectorFamily::Dsub, Side::Socket) => format!("dsub{n}s"),
+            (ConnectorFamily::Dsub, Side::Plug) => format!("dsub{n}p"),
+            (ConnectorFamily::M12, Side::Socket) => format!("m12s{n}"),
+            (ConnectorFamily::M12, Side::Plug) => format!("m12p{n}"),
             _ => return None,
         })
     }
@@ -142,25 +140,25 @@ impl FamilyRules for Family {
             [one] => one.clone(),
             [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
         };
-        let article = if self == Family::M12 { "An" } else { "A" };
+        let article = if self == ConnectorFamily::M12 { "An" } else { "A" };
         format!("{article} {} has {list} pins. Pick one, or draw pin by pin with Pins.", self.name())
     }
 }
 
 /// The family of a connector starter (`None` for a pin, which has none, and for other symbols).
-pub fn family_of(s: &Starter) -> Option<Family> {
+pub fn family_of(s: &Starter) -> Option<ConnectorFamily> {
     let k = s.key;
     if PIN_KEYS.contains(&k) || s.family != symbols::Family::Connectors {
         return None;
     }
     use StarterKey as K;
     Some(match k {
-        K::Dsub9s | K::Dsub15s | K::Dsub25s | K::Dsub9p | K::Dsub15p | K::Dsub25p => Family::Dsub,
-        K::M12s4 | K::M12s5 | K::M12s8 | K::M12p4 | K::M12p5 | K::M12p8 => Family::M12,
-        K::Rj45 => Family::Rj45,
-        K::Usba => Family::Usba,
-        K::Usbb => Family::Usbb,
-        _ => Family::Plain,
+        K::Dsub9s | K::Dsub15s | K::Dsub25s | K::Dsub9p | K::Dsub15p | K::Dsub25p => ConnectorFamily::Dsub,
+        K::M12s4 | K::M12s5 | K::M12s8 | K::M12p4 | K::M12p5 | K::M12p8 => ConnectorFamily::M12,
+        K::Rj45 => ConnectorFamily::Rj45,
+        K::Usba => ConnectorFamily::Usba,
+        K::Usbb => ConnectorFamily::Usbb,
+        _ => ConnectorFamily::Plain,
     })
 }
 
@@ -605,11 +603,11 @@ pub fn half_goto(doc: &Document, c: DeviceId, side: Side) -> Option<Representati
 
 /// The family of half `side`: its whole-half symbol's, else the connector's definition's (a
 /// pin's: none, then `Plain`).
-pub fn half_family(doc: &Document, c: DeviceId, side: Side) -> Family {
+pub fn half_family(doc: &Document, c: DeviceId, side: Side) -> ConnectorFamily {
     if let Some(f) = whole_halves(doc, c).into_iter().find(|(_, s, _)| *s == side).and_then(|(_, _, s)| family_of(s)) {
         return f;
     }
-    connector_of(doc, c).map_or(Family::Plain, |x| x.family)
+    connector_of(doc, c).map_or(ConnectorFamily::Plain, |x| x.family)
 }
 
 // ---------------------------------------------------------------- planning (design 044 §4)
@@ -939,10 +937,10 @@ pub fn half_size(doc: &Document, c: DeviceId, side: Side, d: &Drawn) -> usize {
 }
 
 /// The BOM description a half gets from the registry (`D-sub socket, 9-way`).
-pub fn default_description(doc: &Document, family: Family, side: Side, n: usize) -> String {
+pub fn default_description(doc: &Document, family: ConnectorFamily, side: Side, n: usize) -> String {
     let fam = match family {
-        Family::Dsub | Family::M12 => family,
-        _ => Family::Plain,
+        ConnectorFamily::Dsub | ConnectorFamily::M12 => family,
+        _ => ConnectorFamily::Plain,
     };
     let Some(e) = crate::defaults::connectors::description_entry(fam.word(), side.word()) else { return String::new() };
     defaults::resolve(doc, e, Scope::project()).text().replace("{n}", &n.to_string())
@@ -1028,7 +1026,7 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
         let (fs, fp) = (family_of(s), family_of(p));
         let (page, at) = rep_at(doc, Some(*rp));
         if fs != fp && !ignores(doc, c, CheckKind::ConnectorFamily) {
-            let words = |f: Option<Family>, side: Side| format!("{} {}", f.map_or("Plain", Family::name), side.word());
+            let words = |f: Option<ConnectorFamily>, side: Side| format!("{} {}", f.map_or("Plain", ConnectorFamily::name), side.word());
             out.push(Check {
                 kind: CheckKind::ConnectorFamily,
                 page,
@@ -1310,12 +1308,12 @@ mod tests {
 
     #[test]
     fn families_name_their_halves() {
-        assert_eq!(Family::Dsub.half_key(Side::Plug, 9).as_deref(), Some("dsub9p"));
-        assert_eq!(Family::M12.half_key(Side::Socket, 5).as_deref(), Some("m12s5"));
-        assert_eq!(Family::Plain.half_key(Side::Socket, 5), None);
-        assert_eq!(Family::of_typed("D-sub"), Some(Family::Dsub));
-        assert_eq!(Family::Dsub.size_refusal(), "A D-sub has 9, 15 or 25 pins. Pick one, or draw pin by pin with Pins.");
-        for f in Family::ALL.iter().copied() {
+        assert_eq!(ConnectorFamily::Dsub.half_key(Side::Plug, 9).as_deref(), Some("dsub9p"));
+        assert_eq!(ConnectorFamily::M12.half_key(Side::Socket, 5).as_deref(), Some("m12s5"));
+        assert_eq!(ConnectorFamily::Plain.half_key(Side::Socket, 5), None);
+        assert_eq!(ConnectorFamily::of_typed("D-sub"), Some(ConnectorFamily::Dsub));
+        assert_eq!(ConnectorFamily::Dsub.size_refusal(), "A D-sub has 9, 15 or 25 pins. Pick one, or draw pin by pin with Pins.");
+        for f in ConnectorFamily::ALL.iter().copied() {
             for n in f.sizes() {
                 for side in [Side::Socket, Side::Plug] {
                     let key = f.half_key(side, *n).unwrap_or_default();

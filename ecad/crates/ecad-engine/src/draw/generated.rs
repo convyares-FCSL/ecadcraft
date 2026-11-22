@@ -5,7 +5,7 @@ use cadcraft_engine::doc::{EntityKind, HAlign, Text, VAlign};
 use cadcraft_engine::geom::Vec3;
 use ecad_model::book::Book;
 use ecad_model::sheet::unit_scale;
-use ecad_model::{Document, PageId, Primitive, Pt};
+use ecad_model::{Document, GenKind, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
 use crate::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextLook};

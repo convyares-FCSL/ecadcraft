@@ -1030,7 +1030,7 @@ impl Outputs {
                 glands: crate::cables::Side::BOTH.map(|side| crate::cables::gland(doc, k, side).map(|(g, _)| g)),
                 shield: crate::cables::shield(doc, k)
                     .map(|(w, _)| w)
-                    .filter(|w| *w != crate::cables::Shield::None)
+                    .filter(|w| *w != ecad_model::style::cable::Shield::None)
                     .map(|w| ecad_model::words::Word::word(w).to_string()),
             },
         );

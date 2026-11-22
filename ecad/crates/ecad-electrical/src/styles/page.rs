@@ -26,7 +26,7 @@ use ecad_model::{Document, PageId, StyleRef, Word};
 use super::{Builtin, Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Slot, Value};
-use crate::generated::GenKind;
+use ecad_model::GenKind;
 
 fn is_sheet(s: &str) -> bool {
     s.trim().eq_ignore_ascii_case(PROJECT_SHEET) || SheetSpec::parse(s).is_ok()

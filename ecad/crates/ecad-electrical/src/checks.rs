@@ -466,7 +466,7 @@ pub enum Fix {
     /// Brief 057: **Change cable type…** filtered to this size (mm²).
     PickCableType(CableId, f64),
     /// Brief 057: **Use Datasheet** (`rating {basis}`).
-    SetBasis(crate::rating::RatedSubject, crate::rating::Basis),
+    SetBasis(crate::rating::RatedSubject, ecad_model::wire::Basis),
     /// Brief 057: **Clear Protected by**.
     ClearProtectedBy(crate::rating::RatedSubject),
     /// Brief 057: **Choose a table**, **Set project bundling**: Settings ▸ Standards ▸ Defaults at Rating.

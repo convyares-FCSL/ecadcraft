@@ -57,7 +57,7 @@ pub fn style_of(doc: &Document, page: PageId) -> Style {
 
 /// Whether `page` is a `terminals` page drawn in the graphic style.
 pub fn is_graphic(doc: &Document, page: PageId) -> bool {
-    crate::generated::kind_of(doc, page) == Some(crate::generated::GenKind::Terminals) && style_of(doc, page) == Style::Graphic
+    crate::generated::kind_of(doc, page) == Some(ecad_model::GenKind::Terminals) && style_of(doc, page) == Style::Graphic
 }
 
 /// The strip layout lengths (design 046 §7.2), paper millimetres.
