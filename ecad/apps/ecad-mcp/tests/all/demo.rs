@@ -17,12 +17,13 @@ fn the_demo_command_list_builds_the_control_panel() {
     // Every transaction after the project's creation is the demo's, as an agent.
     assert!(log.iter().skip(1).all(|t| t.author == Author::Agent(demo::AUTHOR.into())));
     // The devices, by tag.
-    let tags: Vec<String> = ecad_electrical::devices::devices(&doc, None).into_iter().map(|c| ecad_electrical::devices::tag_words(&doc, c)).collect();
+    let tags: Vec<String> =
+        ecad_electrical::devices::json::devices(&doc, None).into_iter().map(|c| ecad_electrical::devices::tags::tag_words(&doc, c)).collect();
     assert_eq!(tags, ["-G01", "-H01", "-H02", "-K01", "-M01", "-Q01", "-Q02", "-S01", "-S02", "-X01", "-X02"], "{tags:?}");
     // -K01 is one device across pages 2 and 3: coil, hold-in NO, power contacts, NC.
     let k1 = doc.components_tagged("-K01")[0];
     assert_eq!(doc.representations_of(Subject::Device(k1)).count(), 4);
-    assert_eq!(ecad_electrical::devices::page_numbers(&doc, k1), [2, 3]);
+    assert_eq!(ecad_electrical::devices::tags::page_numbers(&doc, k1), [2, 3]);
     assert_eq!(doc.devices[&k1].get("part_number"), Some("CT-9A-24VDC"));
     // Cable -W01 leaves page 2 at its reference and continues on page 3 (design 072 §4.4, F4/F5):
     // two linked references, and each -X02 point has the motor's wire and the cable core's wire.
@@ -101,7 +102,7 @@ fn the_demo_nets_and_wire_numbers() {
         let labels = ecad_engine::wires::draw::labels_on_page(&doc, *page);
         for (i, x) in labels.iter().enumerate() {
             for y in labels.iter().skip(i + 1) {
-                let (p, q) = (ecad_electrical::wires::label_box(x), ecad_electrical::wires::label_box(y));
+                let (p, q) = (ecad_electrical::wires::labels::label_box(x), ecad_electrical::wires::labels::label_box(y));
                 let meet = p.0.x < q.1.x && q.0.x < p.1.x && p.0.y < q.1.y && q.0.y < p.1.y;
                 assert!(!meet, "{} and {} touch", x.text, y.text);
             }
@@ -113,14 +114,14 @@ fn the_demo_nets_and_wire_numbers() {
     let net = |n: &str| conn.nets_numbered(n).map(|(id, _)| id).collect::<Vec<_>>();
     assert_eq!(net("24V-01").len(), 1);
     assert_eq!(net("L1-01").len(), 1);
-    let l1 = ecad_electrical::wires::net_points(&doc, conn.net(net("L1-01")[0]).unwrap());
+    let l1 = ecad_electrical::wires::words::net_points(&doc, conn.net(net("L1-01")[0]).unwrap());
     assert_eq!(l1.len(), 3, "{l1:?}");
     assert!(l1.iter().any(|p| p == "-K01:2") && l1.iter().any(|p| p.starts_with("-X02:")) && l1.iter().any(|p| p.starts_with("-M01:")), "{l1:?}");
     let v24 = conn.net(net("24V-01")[0]).unwrap();
     assert_eq!(v24.names.iter().cloned().collect::<Vec<_>>(), ["24V"]);
     // The coil, both contacts' 14 side and the lamp share 24V-04 (design 022 §15 step 1).
     let k04 = conn.net(net("24V-04")[0]).unwrap();
-    let points = ecad_electrical::wires::net_points(&doc, k04);
+    let points = ecad_electrical::wires::words::net_points(&doc, k04);
     assert_eq!(points, ["-H01:X1", "-K01:14", "-K01:A1", "-S02:14"], "{points:?}");
     // Checks: -M01:PE, and the three L continuations whose partners are not drawn; brief 024's
     // count of devices without a part number (-S01 among them, design 024 §13); brief 057's open

@@ -3,7 +3,9 @@
 //! embedding its definition once; a change-over join and ratings are recorded the same way; every
 //! one is refused with writes off; hostile keys and ratings get an error, never a panic.
 
-use ecad_electrical::symbols::{Family, STARTER_LIBRARY, STARTERS, StarterKey};
+use ecad_electrical::symbols::{Family, STARTER_LIBRARY, StarterKey};
+
+use ecad_electrical::symbols::catalogue::STARTERS;
 use ecad_mcp::policy;
 use ecad_model::Op;
 use serde_json::{Value, json};
