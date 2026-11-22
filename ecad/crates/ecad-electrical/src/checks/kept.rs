@@ -2,6 +2,10 @@
 //! the title block) take the sheet font metrics, [`TextMetrics`]; ecad-engine's
 //! `crate::views::ChecksView` keeps it, measuring with the engine's fonts.
 
+use super::cables::{cable_checks_in, reference_checks};
+use super::devices::component_checks_in;
+use super::grid::{Cell, Grid};
+use super::nets::{aid_checks, conductor_checks, connection_point_checks, net_checks, page_checks, route_checks};
 use std::collections::BTreeSet;
 
 use ecad_model::naming::numbering::Places;
@@ -30,7 +34,7 @@ pub struct Checks {
     /// Brief 054: the pages whose type has checks and references off.
     off: BTreeSet<PageId>,
     /// Brief 057: the kept rating results and their indexes (design 057 §10).
-    pub rating: crate::circuits::Kept,
+    pub rating: crate::circuits::kept::Kept,
 }
 
 impl Checks {
@@ -77,13 +81,13 @@ impl Checks {
             ch.set(s.key(), s.checks(doc));
         }
         // Brief 057.
-        ch.rating = crate::circuits::Kept::build(doc);
+        ch.rating = crate::circuits::kept::Kept::build(doc);
         let rows: Vec<(crate::circuits::RatedSubject, Vec<Check>)> =
-            ch.rating.results.values().map(|r| (r.subject, crate::circuits::rows(doc, r))).collect();
+            ch.rating.results.values().map(|r| (r.subject, crate::circuits::rows::rows(doc, r))).collect();
         for (s, v) in rows {
             ch.set(Key::Rating(s), v);
         }
-        ch.set(Key::RatingSummary, crate::circuits::summary_rows(doc, &ch.rating));
+        ch.set(Key::RatingSummary, crate::circuits::rows::summary_rows(doc, &ch.rating));
         ch.provisional = ecad_model::naming::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
@@ -265,10 +269,10 @@ impl Checks {
         let touched = self.rating.update(doc, &scope.rating);
         if !touched.is_empty() || scope.rating.any() {
             for s in touched {
-                let rows = self.rating.results.get(&s).map(|r| crate::circuits::rows(doc, r)).unwrap_or_default();
+                let rows = self.rating.results.get(&s).map(|r| crate::circuits::rows::rows(doc, r)).unwrap_or_default();
                 self.set(Key::Rating(s), rows);
             }
-            self.set(Key::RatingSummary, crate::circuits::summary_rows(doc, &self.rating));
+            self.set(Key::RatingSummary, crate::circuits::rows::summary_rows(doc, &self.rating));
         }
         for s in PROJECT_SOURCES {
             if s.touched(&scope) {

@@ -68,7 +68,8 @@ fn cablenew_makes_a_cable_that_is_not_drawn_in_one_transaction() {
     assert!(checks_of(&mut h, "core-open").is_empty(), "no core-open for a cable not drawn");
     assert!(checks_of(&mut h, "no-core-count").is_empty());
     // Q2: Warning in the release check.
-    let c = ecad_electrical::checks::cable_checks(&doc, k).into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::CableNotDrawn).unwrap();
+    let c =
+        ecad_electrical::checks::cables::cable_checks(&doc, k).into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::CableNotDrawn).unwrap();
     assert_eq!(c.severity(), Severity::Info);
     assert_eq!(c.release_severity(), Severity::Warning);
     assert_eq!(ecad_electrical::releases::release::counts(&[c]), (0, 1, 0));

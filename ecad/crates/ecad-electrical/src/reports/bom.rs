@@ -28,39 +28,39 @@ use serde_json::{Value, json};
 use crate::defaults::{self, Scope};
 
 /// The prefix of a part line's keys.
-pub const PART_PREFIX: &str = "part.";
+pub(crate) const PART_PREFIX: &str = "part.";
 /// The article number of a device's main part, an item, or (with a prefix) a line or strip part.
 pub const ARTICLE_KEY: &str = ecad_model::objects::devices::ARTICLE_KEY;
 /// An item's quantity and unit (a line's are `part.<n>.qty`, `part.<n>.unit`).
-pub const QTY_KEY: &str = "qty";
-pub const UNIT_KEY: &str = "unit";
+pub(crate) const QTY_KEY: &str = "qty";
+pub(crate) const UNIT_KEY: &str = "unit";
 /// The stored unit of a length; pieces are stored as no unit.
-pub const METRES: &str = "m";
+pub(crate) const METRES: &str = "m";
 
 /// Most part lines per component: line numbers are 1…99 (a guard: a script cannot give a device
 /// thousands of keys, and the key stays two digits).
-pub const MAX_LINES: u8 = 99;
+pub(crate) const MAX_LINES: u8 = 99;
 /// Most lines one `partline` call adds (a kit): a guard against a script filling a device.
-pub const MAX_ADD_LINES: usize = 20;
+pub(crate) const MAX_ADD_LINES: usize = 20;
 /// Most sub-items one `for` names after expanding ranges: a guard against `1-99999`.
-pub const MAX_SUBS: usize = 999;
+pub(crate) const MAX_SUBS: usize = 999;
 /// Most characters of a `for` value read: longer is refused before it is parsed.
-pub const MAX_FOR_CHARS: usize = 2000;
+pub(crate) const MAX_FOR_CHARS: usize = 2000;
 /// Most items in a project (house rule 12: it stops a script from filling the project).
 pub const MAX_ITEMS: usize = 10_000;
 /// The largest quantity, in thousandths (9 999): a guard that keeps sums far from overflow.
 pub const MAX_QTY_MILLI: u64 = 9_999_000;
 /// Most characters of an article number or a kit name.
-pub const MAX_ARTICLE_CHARS: usize = 64;
-pub const MAX_KIT_CHARS: usize = 64;
+pub(crate) const MAX_ARTICLE_CHARS: usize = 64;
+pub(crate) const MAX_KIT_CHARS: usize = 64;
 /// Most characters of one sub-item name in `for` (a strip label or a fuse number).
-pub const MAX_SUB_CHARS: usize = 12;
+pub(crate) const MAX_SUB_CHARS: usize = 12;
 /// Most components `partline {components}` and `article` touch in one call.
-pub const MAX_COMPONENTS: usize = crate::cables::words::MAX_HANDLES;
+pub(crate) const MAX_COMPONENTS: usize = crate::cables::words::MAX_HANDLES;
 
 /// Refusals, in words.
 pub const ITEM_NEEDS_DESCRIPTION: &str = "An item needs a description.";
-pub const PARTLINE_FOR_DEVICES: &str = "partline is for devices and strips.";
+pub(crate) const PARTLINE_FOR_DEVICES: &str = "partline is for devices and strips.";
 
 /// One field of a part line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -102,7 +102,7 @@ impl Field {
 }
 
 /// `part.<n>.<field>`.
-pub fn part_key(n: u8, f: Field) -> String {
+pub(crate) fn part_key(n: u8, f: Field) -> String {
     format!("{PART_PREFIX}{n}.{}", f.word())
 }
 
@@ -122,7 +122,7 @@ pub fn parse_part_key(key: &str) -> Option<Result<(u8, Field), CmdError>> {
     }
 }
 
-pub fn field_words() -> String {
+pub(crate) fn field_words() -> String {
     Field::ALL.iter().map(|f| f.word()).collect::<Vec<_>>().join(", ")
 }
 
@@ -207,7 +207,7 @@ pub fn parse_qty(text: &str, metres: bool) -> Result<Qty, CmdError> {
 ///
 /// # Errors
 /// Any other word.
-pub fn parse_unit(text: &str) -> Result<bool, CmdError> {
+pub(crate) fn parse_unit(text: &str) -> Result<bool, CmdError> {
     match text.trim().to_ascii_lowercase().as_str() {
         "m" | "metre" | "metres" | "meter" | "meters" => Ok(true),
         "pcs" | "pc" | "piece" | "pieces" | "" => Ok(false),
@@ -222,7 +222,7 @@ pub fn parse_unit(text: &str) -> Result<bool, CmdError> {
 ///
 /// # Errors
 /// Longer than [`MAX_ARTICLE_CHARS`], or control characters.
-pub fn article_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub(crate) fn article_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
     plain(ARTICLE_KEY, value, MAX_ARTICLE_CHARS)
 }
 
@@ -238,7 +238,7 @@ pub fn plain(key: &str, value: Option<&str>, max: usize) -> Result<Option<String
 
 /// What a device's `for` may name.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Subs {
+pub(crate) enum Subs {
     /// Nothing: `for` is refused.
     None,
     /// A fuse bank's fuses, `1`…`n`.
@@ -267,7 +267,7 @@ impl Subs {
 }
 
 /// What `for` may name on `c`.
-pub fn sub_items(doc: &Document, c: DeviceId) -> Subs {
+pub(crate) fn sub_items(doc: &Document, c: DeviceId) -> Subs {
     if crate::terminal_strips::strip_of(doc, c).is_some() {
         let ps = crate::terminal_strips::terminal_blocks::positions(doc, c);
         let fuses = ps.iter().filter(|p| p.ty.code == "fuse").map(|p| p.label.clone()).collect();
@@ -366,7 +366,7 @@ fn check_for(doc: &Document, c: DeviceId, text: &str) -> Result<Option<String>, 
 /// relabels their terminals (design 047 §2.3, as 030 FP4 keeps `jumper_bar.<n>`), and the preview lines
 /// (`-X05: part line 1 for 1, 5-6 → 1-2, 6`). A list naming no relabelled position is left as
 /// typed; names no terminal had stay.
-pub fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
+pub(crate) fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
     let mut out = Vec::new();
     let mut lines = Vec::new();
     for (c, map) in crate::terminal_strips::accessories::relabels(ops) {
@@ -482,7 +482,7 @@ pub fn lines(props: &Properties) -> (Vec<Line>, Vec<String>) {
 }
 
 /// The line numbers in use on `props`.
-pub fn used_lines(props: &Properties) -> BTreeSet<u8> {
+pub(crate) fn used_lines(props: &Properties) -> BTreeSet<u8> {
     props
         .range(PART_PREFIX.to_string()..)
         .take_while(|(k, _)| k.starts_with(PART_PREFIX))
@@ -556,12 +556,12 @@ pub fn part_set(doc: &Document, c: DeviceId) -> Vec<PartSetRow> {
 // ---------------------------------------------------------------- setprop (§2.4)
 
 /// Whether `c` takes part lines: a device or strip (a tag and no `kind`).
-pub fn takes_lines(doc: &Document, c: DeviceId) -> bool {
+pub(crate) fn takes_lines(doc: &Document, c: DeviceId) -> bool {
     crate::locations::is_device(doc, c)
 }
 
 /// Whether [`setprop_rule`] has an opinion on `key` of `c`.
-pub fn is_bom_key(key: &str) -> bool {
+pub(crate) fn is_bom_key(key: &str) -> bool {
     key.starts_with(PART_PREFIX)
 }
 
@@ -570,7 +570,7 @@ pub fn is_bom_key(key: &str) -> bool {
 ///
 /// # Errors
 /// Every refusal of §2.1, §2.3 and §3, in words. Clearing a part line key is always allowed.
-pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let props = doc.devices.get(&c).map(|x| &x.properties);
     let clearing = value.map(str::trim).is_none_or(str::is_empty);
     let Some(parsed) = parse_part_key(key) else { return Ok(value.map(str::to_string)) };
@@ -624,12 +624,12 @@ fn field_value(doc: &Document, c: DeviceId, f: Field, value: Option<&str>, metre
 // ---------------------------------------------------------------- defaults (§8)
 
 /// Whether the BOM shows its Article number column (`bom.column.article`).
-pub fn article_column(doc: &Document) -> bool {
+pub(crate) fn article_column(doc: &Document) -> bool {
     ecad_model::naming::words::flag(defaults::resolve(doc, &defaults::bom::COLUMN_ARTICLE, Scope::project()).word()) == Some(true)
 }
 
 /// Whether part lines are listed under their device (`bom.lines = nested`).
-pub fn lines_nested(doc: &Document) -> bool {
+pub(crate) fn lines_nested(doc: &Document) -> bool {
     defaults::resolve(doc, &defaults::bom::LINES, Scope::project()).choice() == Some(defaults::bom::BomLines::Nested)
 }
 
@@ -640,7 +640,7 @@ pub fn item_unit_metres(doc: &Document) -> bool {
 }
 
 /// The ops writing `fields` on line `n` of `c`, every value checked.
-pub fn line_ops(doc: &Document, c: DeviceId, n: u8, fields: &[(Field, Option<String>)]) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn line_ops(doc: &Document, c: DeviceId, n: u8, fields: &[(Field, Option<String>)]) -> Result<Vec<Op>, CmdError> {
     let props = doc.devices.get(&c).map(|x| &x.properties).ok_or(CmdError::refused("no such component"))?;
     let given = |f: Field| fields.iter().find(|(g, _)| *g == f).map(|(_, v)| v.clone());
     let metres = match given(Field::Unit) {
@@ -667,7 +667,7 @@ pub fn line_ops(doc: &Document, c: DeviceId, n: u8, fields: &[(Field, Option<Str
 }
 
 /// `Slotted trunking 50x75, 3.6 m in +CP1` (brief 052: the location's code from the list).
-pub fn item_words(doc: &Document, item: &LoosePart) -> String {
+pub(crate) fn item_words(doc: &Document, item: &LoosePart) -> String {
     let unit = if item.unit == ecad_model::objects::loose_part::ItemUnit::Metres { " m" } else { "" };
     let (d, q) = (item.description.as_str(), item.qty);
     match item.location.map(|l| crate::locations::designations::display(doc, "location", &l.hex())) {
@@ -683,7 +683,7 @@ fn same(v: Option<impl AsRef<str>>, want: &str) -> bool {
 
 /// Where `article` writes one article number.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ArticleTarget {
+pub(crate) enum ArticleTarget {
     /// A key of an object (a device's field or part line, a strip's part, the project's strip
     /// default) and what it is (`device`, `line`, `strip`).
     Key(ObjectRef, String, &'static str),
@@ -704,7 +704,7 @@ impl ArticleTarget {
 /// The article keys `article` writes for part number `pn` (and maker `maker`) on `doc`. A strip's
 /// terminal, accessory and jumper parts are written at the level their part number is stored at
 /// (design 047 §5): the strip's own key, or the project's `strip_<x>_article_number`.
-pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<ArticleTarget> {
+pub(crate) fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<ArticleTarget> {
     let mut out = Vec::new();
     for (id, p) in &doc.loose_parts {
         let maker_ok = maker.is_none_or(|m| same(p.manufacturer.as_ref(), m));
@@ -785,50 +785,4 @@ fn project_strip_slots() -> Vec<(String, String, String)> {
             .map(|i| (pk(&format!("{i}.part_number")), pk(&format!("{i}.maker")), pk(&format!("{i}.{ARTICLE_KEY}")))),
     );
     v
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn quantities_parse_and_print() {
-        assert_eq!(parse_qty("3.6", true), Ok(Qty(3600)));
-        assert_eq!(parse_qty("1.50", true), Ok(Qty(1500)));
-        assert_eq!(parse_qty("4", false), Ok(Qty(4000)));
-        for bad in ["NaN", "-1", "1e308", "0.0001", "0", "10000", "", ".", "1.5.5", "inf"] {
-            assert!(parse_qty(bad, true).is_err(), "{bad}");
-        }
-        assert!(parse_qty("1.5", false).is_err());
-        assert!(parse_qty(&"9".repeat(10_000), true).is_err());
-        assert_eq!(Qty(5600).to_string(), "5.6");
-        assert_eq!(Qty(750).to_string(), "0.75");
-        assert_eq!(Qty(4000).to_string(), "4");
-    }
-
-    #[test]
-    fn part_keys_parse() {
-        assert_eq!(parse_part_key("part.1.maker"), Some(Ok((1, Field::Maker))));
-        assert_eq!(parse_part_key("part.99.for"), Some(Ok((99, Field::For))));
-        for bad in ["part.0.maker", "part.007.maker", "part.100.maker", "part.1.colour", "part.1", "part..maker"] {
-            assert!(matches!(parse_part_key(bad), Some(Err(_))), "{bad}");
-        }
-        assert_eq!(parse_part_key("maker"), None);
-    }
-
-    #[test]
-    fn for_expands_and_is_bounded() {
-        assert_eq!(expand_for("1, 5-6, 1").unwrap(), ["1", "5", "6"]);
-        assert!(expand_for("1-99999").is_err());
-        assert!(expand_for("4-1").is_err());
-        assert_eq!(names_words(&["1".into(), "2".into(), "3".into(), "5".into(), "PE".into()]), "1-3, 5, PE");
-    }
-
-    #[test]
-    fn next_line_fills_after_the_highest() {
-        assert_eq!(next_line(&BTreeSet::new()), Some(1));
-        assert_eq!(next_line(&[1, 3].into_iter().collect()), Some(4));
-        assert_eq!(next_line(&[2, 99].into_iter().collect()), Some(1));
-        assert_eq!(next_line(&(1..=99).collect()), None);
-    }
 }

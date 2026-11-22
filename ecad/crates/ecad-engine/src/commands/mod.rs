@@ -32,9 +32,10 @@ use ecad_electrical::properties::commands as prop;
 pub use ecad_electrical::terminal_strips::core_label;
 use ecad_electrical::{
     cables::commands::cables as cable, devices::commands::device_links as device_link, devices::commands::devices as device,
-    locations::commands::designations as designation, locations::commands::locations as location, reports::commands::bom,
-    styles::commands::defaults as default, styles::commands::styles as style, terminal_strips::commands::accessories as accessory,
-    terminal_strips::commands::levels as level, wires::commands::connect, wires::commands::nets as net,
+    locations::commands::designations as designation, locations::commands::locations as location, reports::commands::bom, reports::commands::boxes,
+    reports::commands::lists, styles::commands::defaults as default, styles::commands::styles as style,
+    terminal_strips::commands::accessories as accessory, terminal_strips::commands::levels as level, wires::commands::connect,
+    wires::commands::nets as net,
 };
 
 /// The commands this crate adds. Lanes in flight register theirs in [`LANES`], not here;
@@ -96,6 +97,11 @@ fn generic_specs() -> Vec<CommandSpec> {
         crate::generic::spec::<bom::PartlineParams>(),
         crate::generic::spec::<bom::BomitemParams>().interactive(interact::bomitem),
         crate::generic::spec::<bom::ArticleParams>(),
+        crate::generic::spec::<boxes::LocationboxParams>().interactive(interact::locationbox),
+        crate::generic::spec::<boxes::FunctionboxParams>().interactive(interact::functionbox),
+        crate::generic::spec::<lists::BomParams>(),
+        crate::generic::spec::<lists::WirelistParams>(),
+        crate::generic::spec::<lists::CablelistParams>(),
         crate::generic::spec::<ecad_electrical::terminal_strips::commands::place_blocks::TerminalBlocksParams>()
             .interactive(interact::terminal_blocks),
         crate::generic::spec::<ecad_electrical::terminal_strips::commands::reads::StripplanParams>(),
@@ -179,6 +185,11 @@ const GENERIC_TYPED: &[input::Typed] = &[
     crate::generic::typed::<bom::PartlineParams>(),
     crate::generic::typed::<bom::BomitemParams>(),
     crate::generic::typed::<bom::ArticleParams>(),
+    crate::generic::typed::<boxes::LocationboxParams>(),
+    crate::generic::typed::<boxes::FunctionboxParams>(),
+    crate::generic::typed::<lists::BomParams>(),
+    crate::generic::typed::<lists::WirelistParams>(),
+    crate::generic::typed::<lists::CablelistParams>(),
     crate::generic::typed::<ecad_electrical::terminal_strips::commands::place_blocks::TerminalBlocksParams>(),
     crate::generic::typed::<ecad_electrical::terminal_strips::commands::reads::StripplanParams>(),
     crate::generic::typed::<ecad_electrical::terminal_strips::commands::reads::CablecoresParams>(),

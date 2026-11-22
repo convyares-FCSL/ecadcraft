@@ -22,16 +22,16 @@ use ecad_model::naming::text::TextError;
 // partline
 
 /// The fields of one part line given (`None` clears a field).
-pub type LineFields = Vec<(Field, Option<String>)>;
+pub(crate) type LineFields = Vec<(Field, Option<String>)>;
 
 /// The refusal for a field a part line does not take there.
-pub fn not_a_line_field(word: &str) -> CmdError {
+pub(crate) fn not_a_line_field(word: &str) -> CmdError {
     CmdError::refused(format!("`{word}` is not a part line field. Use {}.", field_words()))
 }
 
 /// What `partline` does to each device named.
 #[derive(Debug, Clone, PartialEq)]
-pub enum PartlineChange {
+pub(crate) enum PartlineChange {
     /// Add these lines (as a kit, when named).
     Add { lines: Vec<LineFields>, kit: Option<String> },
     /// Set fields of line `line`, or remove it.
@@ -40,7 +40,7 @@ pub enum PartlineChange {
 
 /// What `partline` records and says.
 #[derive(Debug, Clone, PartialEq)]
-pub struct PartlinePlan {
+pub(crate) struct PartlinePlan {
     /// Empty when nothing changes.
     pub ops: Vec<Op>,
     /// Each device and the lines written.
@@ -52,7 +52,7 @@ pub struct PartlinePlan {
 /// The JSON `partline` answers for each device and the lines written (`rows`): with no `message`
 /// nothing changed (`{changed: false, devices}`); else one device's row, or `{devices}` for
 /// several, with `changed` and the message.
-pub fn partline_json(rows: &[(DeviceId, Vec<u8>)], message: Option<&str>) -> Value {
+pub(crate) fn partline_json(rows: &[(DeviceId, Vec<u8>)], message: Option<&str>) -> Value {
     let rows: Vec<Value> = rows.iter().map(|(c, ns)| json!({"component": c.hex(), "lines": ns})).collect();
     let Some(message) = message else { return json!({"changed": false, "devices": rows}) };
     let mut v = match rows.as_slice() {
@@ -69,7 +69,7 @@ pub fn partline_json(rows: &[(DeviceId, Vec<u8>)], message: Option<&str>) -> Val
 ///
 /// # Errors
 /// None named, an empty list, no such component, or one that takes no part lines.
-pub fn partline_targets(doc: &Document, component: Option<DeviceId>, devices: Option<Vec<DeviceId>>) -> Result<Vec<DeviceId>, CmdError> {
+pub(crate) fn partline_targets(doc: &Document, component: Option<DeviceId>, devices: Option<Vec<DeviceId>>) -> Result<Vec<DeviceId>, CmdError> {
     let cs = match (devices, component) {
         (Some(cs), _) => cs,
         (None, Some(c)) => vec![c],
@@ -95,7 +95,7 @@ pub fn partline_targets(doc: &Document, component: Option<DeviceId>, devices: Op
 /// # Errors
 /// [`partline_targets`]'s refusals, a line that does not read, a device with no room or without
 /// that line.
-pub fn plan_partline(doc: &Document, cs: &[DeviceId], change: PartlineChange) -> Result<PartlinePlan, CmdError> {
+pub(crate) fn plan_partline(doc: &Document, cs: &[DeviceId], change: PartlineChange) -> Result<PartlinePlan, CmdError> {
     let mut ops = Vec::new();
     let mut rows = Vec::new();
     let no_component = || CmdError::refused("no such component");
@@ -189,19 +189,19 @@ fn sorted(mut fields: LineFields) -> LineFields {
 // bomitem
 
 /// The item fields `bomitem` takes, in the order they are checked (unit before qty).
-pub const ITEM_FIELDS: [&str; 7] = ["description", "unit", "qty", "location", "part_number", "maker", ARTICLE_KEY];
+pub(crate) const ITEM_FIELDS: [&str; 7] = ["description", "unit", "qty", "location", "part_number", "maker", ARTICLE_KEY];
 
 /// The item fields given (`None` clears a field).
-pub type ItemFields = BTreeMap<&'static str, Option<String>>;
+pub(crate) type ItemFields = BTreeMap<&'static str, Option<String>>;
 
 /// The refusal for a parameter that is not an item field (an add without `item`).
-pub fn not_an_item_field(word: &str) -> CmdError {
+pub(crate) fn not_an_item_field(word: &str) -> CmdError {
     CmdError::refused(format!("`{word}` is not an item field. Use {}.", ITEM_FIELDS.join(", ")))
 }
 
 /// What `bomitem` does.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ItemChange {
+pub(crate) enum ItemChange {
     /// Add an item with these fields.
     Add(ItemFields),
     /// Delete item `item`, or set its fields.
@@ -210,7 +210,7 @@ pub enum ItemChange {
 
 /// What `bomitem` records and says.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ItemPlan {
+pub(crate) struct ItemPlan {
     /// Empty when nothing changes.
     pub ops: Vec<Op>,
     pub item: LoosePartId,
@@ -274,7 +274,7 @@ fn with_fields(doc: &Document, ids: &mut IdAllocator, mut p: LoosePart, fields: 
 ///
 /// # Errors
 /// Not an item, no description, a value that does not read, or a project full of items.
-pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -> Result<ItemPlan, CmdError> {
+pub(crate) fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -> Result<ItemPlan, CmdError> {
     match change {
         ItemChange::Edit { item, delete, set } => {
             let part = doc.loose_parts.get(&item).ok_or_else(|| CmdError::refused(format!("{} is not an item.", item.hex())))?;
@@ -322,7 +322,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
 
 /// What `article` records and says.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ArticlePlan {
+pub(crate) struct ArticlePlan {
     /// Empty when every part already has that number.
     pub ops: Vec<Op>,
     /// The parts with that part number.
@@ -335,7 +335,7 @@ pub struct ArticlePlan {
 ///
 /// # Errors
 /// No part number, an article number that does not read, no such part, or too many.
-pub fn plan_article(doc: &Document, part_number: &str, maker: Option<&str>, article_number: Option<&str>) -> Result<ArticlePlan, CmdError> {
+pub(crate) fn plan_article(doc: &Document, part_number: &str, maker: Option<&str>, article_number: Option<&str>) -> Result<ArticlePlan, CmdError> {
     let pn = Some(part_number.trim()).filter(|t| !t.is_empty()).ok_or(CmdError::input("`part_number` is required"))?;
     let maker = maker.map(str::trim).filter(|m| !m.is_empty());
     let after = plain(ARTICLE_KEY, article_number, MAX_ARTICLE_CHARS)?;
@@ -412,7 +412,7 @@ fn echoed(out: Outcome) -> Outcome {
 /// The fields of one part line (null clears a field).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct LineParams {
+pub(crate) struct LineParams {
     /// The part number.
     #[serde(default, deserialize_with = "nullable")]
     part_number: FieldValue,
@@ -445,7 +445,7 @@ pub struct LineParams {
 /// Several lines to add, or one. (A list is tried first: a struct also reads from a list.)
 #[derive(Deserialize, JsonSchema)]
 #[serde(untagged)]
-pub enum AddParam {
+pub(crate) enum AddParam {
     /// Several lines (at most 20).
     Many(Vec<LineParams>),
     /// One line.
@@ -484,7 +484,7 @@ pub struct PartlineParams {
 /// The fields of an item (null clears a field).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct ItemParams {
+pub(crate) struct ItemParams {
     /// What the item is.
     #[serde(default, deserialize_with = "nullable")]
     description: FieldValue,

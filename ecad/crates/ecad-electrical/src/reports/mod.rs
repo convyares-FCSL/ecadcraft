@@ -146,7 +146,7 @@ impl Owner {
 /// case-insensitively, and the unit (brief 047: pieces and metres never add up); an entry with no
 /// part number is a group of its own.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PartKey(String, String, String, Option<(Owner, u8)>, bool);
+pub(crate) struct PartKey(String, String, String, Option<(Owner, u8)>, bool);
 
 impl PartKey {
     /// The same part, but a row of its own for entry `own` (the nested layout's device rows).
@@ -228,7 +228,7 @@ impl Entry {
 
 /// A location's sort key: natural order, no location (`?`) last.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct LocKey(bool, Vec<(String, u64)>, String);
+pub(crate) struct LocKey(bool, Vec<(String, u64)>, String);
 
 fn loc_key(v: Option<&str>) -> LocKey {
     match v {
@@ -563,7 +563,7 @@ impl Scope {
             }
             // A cable is written whole (`ModifyCable`); `SetProperty` on one is refused.
             Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
-            // No check or output reads a device link yet (design 072 §2.6).
+            // No check or report reads a device link yet (design 072 §2.6).
             Effect::DeviceLink { .. } => {}
             // Design 072 §6.2: a box's values are its pages' context; a continuation renamed
             // joins or breaks its name groups' cable core chains (032, design 032 §8.4).
@@ -929,7 +929,7 @@ pub fn csv(t: &Table, excel_safe: bool) -> String {
 }
 
 /// A table's rows as JSON objects keyed by `keys`, with the flagged keys in `flags`.
-pub fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
+pub(crate) fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
     t.rows
         .iter()
         .enumerate()
@@ -963,7 +963,7 @@ pub fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
 }
 
 /// Whether the position before gap `gap` of strip `s` is PE (the end gap: the last position).
-pub fn gap_pe(s: &crate::terminal_strips::strip_model::StripData, gap: &str) -> bool {
+pub(crate) fn gap_pe(s: &crate::terminal_strips::strip_model::StripData, gap: &str) -> bool {
     match gap {
         "start" => false,
         "end" => s.rows.last().is_some_and(|r| r.pe),
@@ -974,7 +974,7 @@ pub fn gap_pe(s: &crate::terminal_strips::strip_model::StripData, gap: &str) -> 
 /// Brief 030's Checks rows of one strip (design 030 §8): orphan places, links across partitions,
 /// links naming missing positions. The go-to is the strip's last terminal, or the link's first
 /// drawn terminal.
-pub fn accessory_checks(s: &crate::terminal_strips::strip_model::StripData) -> Vec<Check> {
+pub(crate) fn accessory_checks(s: &crate::terminal_strips::strip_model::StripData) -> Vec<Check> {
     let mut out = Vec::new();
     let last = s.highest().and_then(|r| r.go);
     let obj = |r: Option<&crate::terminal_strips::strip_model::TermRow>| {
@@ -1116,24 +1116,5 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
             )]
         }
         _ => Vec::new(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn csv_is_excel_safe_and_quoted() {
-        let t = Table {
-            headers: vec!["Tags", "Description"],
-            rows: vec![vec![Cell::ok("-K01, -K02"), Cell::ok("Say \"hi\"")], vec![Cell::ok("+CP1"), Cell::ok("=SUM(A1)")]],
-        };
-        let s = csv(&t, true);
-        assert!(s.starts_with('\u{feff}'));
-        assert!(s.contains("\"'-K01, -K02\",\"Say \"\"hi\"\"\"\r\n"));
-        assert!(s.contains("'+CP1,'=SUM(A1)\r\n"));
-        let plain = csv(&t, false);
-        assert!(plain.contains("+CP1,=SUM(A1)\r\n"));
     }
 }

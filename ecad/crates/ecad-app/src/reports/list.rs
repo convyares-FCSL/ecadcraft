@@ -25,7 +25,7 @@ pub struct Report {
 }
 
 /// The reports there are today.
-pub const REPORTS: [Report; 5] = [
+pub(crate) const REPORTS: [Report; 5] = [
     Report { name: "Parts list", reads: "Devices, part sets", grouped: "Location or part", exports: "CSV", tab: Some(Tab::Bom) },
     Report { name: "Terminal plans", reads: "Terminals, cables", grouped: "Strip, then position", exports: "CSV", tab: Some(Tab::TerminalBlocks) },
     Report { name: "Cable list", reads: "Cables, cores", grouped: "Cable tag", exports: "CSV", tab: Some(Tab::Cables) },
@@ -34,18 +34,18 @@ pub const REPORTS: [Report; 5] = [
 ];
 
 /// The list's height (its header and rows) and the preview's line under it, px.
-pub const LIST_H: f32 = 6.0 * ecad_widgets::tokens::size::ROW_TABLE + ecad_widgets::tokens::space::XS + PREVIEW_LINE;
-pub const PREVIEW_LINE: f32 = 40.0;
+pub(crate) const LIST_H: f32 = 6.0 * ecad_widgets::tokens::size::ROW_TABLE + ecad_widgets::tokens::space::XS + PREVIEW_LINE;
+pub(crate) const PREVIEW_LINE: f32 = 40.0;
 /// The preview line's words for the PLC overview.
-pub const PLC_PREVIEW: &str = "The rack overview is Project \u{25b8} PLC: open it there.";
+pub(crate) const PLC_PREVIEW: &str = "The rack overview is Project \u{25b8} PLC: open it there.";
 
 pub const REPORT: ColumnId = ColumnId(0);
-pub const READS: ColumnId = ColumnId(1);
+pub(crate) const READS: ColumnId = ColumnId(1);
 pub const GROUPED: ColumnId = ColumnId(2);
 pub const LAYOUT: ColumnId = ColumnId(3);
-pub const IN_BOOK: ColumnId = ColumnId(4);
+pub(crate) const IN_BOOK: ColumnId = ColumnId(4);
 pub const GENERATED: ColumnId = ColumnId(5);
-pub const EXPORTS: ColumnId = ColumnId(6);
+pub(crate) const EXPORTS: ColumnId = ColumnId(6);
 
 /// The list as a table source.
 #[derive(Debug)]
@@ -185,6 +185,6 @@ pub fn show(t: &mut crate::App, ui: &mut egui::Ui) {
 }
 
 /// Whether the preview (the hosted Reports window) shows: a report with a Reports tab.
-pub fn preview_shown(t: &crate::App) -> bool {
+pub(crate) fn preview_shown(t: &crate::App) -> bool {
     t.reports.as_ref().and_then(|r| r.list.selected()).is_some_and(|p| p.tab.is_some())
 }

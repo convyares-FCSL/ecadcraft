@@ -67,21 +67,31 @@ pub(super) fn pieces(text: &str) -> Vec<String> {
     text.split(|c: char| c.is_whitespace() || c == ',' || c == ';').filter(|p| !p.is_empty()).map(str::to_lowercase).collect()
 }
 
+/// Why the powers a text gives are not one power.
+pub(super) enum PowerRefusal {
+    /// It gives two powers.
+    TwoPowers,
+    /// A number has no unit: the question to ask.
+    Ask(String),
+    /// Refused, in words.
+    Refused(String),
+}
+
 /// The one power `toks` give, in watts to the milliwatt: refused when two or out of range, asked
 /// about when a number has no unit. `group` names the device in the answer (`a load`).
-pub(super) fn one_power(toks: &[PowerTok], group: &str, example: &str) -> Result<Option<Watts>, Read<()>> {
+pub(super) fn one_power(toks: &[PowerTok], group: &str, example: &str) -> Result<Option<Watts>, PowerRefusal> {
     let mut watts: Option<f64> = None;
     for t in toks {
         match *t {
             PowerTok::Watts(x) => {
                 if watts.is_some() {
-                    return Err(Read::Refused("it gives two powers".into()));
+                    return Err(PowerRefusal::TwoPowers);
                 }
                 watts = Some(x);
             }
-            PowerTok::Bare(x) => return Err(Read::Ask(format!("a unit for {x}: W or kW?"))),
+            PowerTok::Bare(x) => return Err(PowerRefusal::Ask(format!("a unit for {x}: W or kW?"))),
             PowerTok::Other(what) => {
-                return Err(Read::Refused(format!(
+                return Err(PowerRefusal::Refused(format!(
                     "{group}'s rating has no {what} (its supply is its circuit's); give its power, for example {example}"
                 )));
             }
@@ -92,7 +102,7 @@ pub(super) fn one_power(toks: &[PowerTok], group: &str, example: &str) -> Result
             if w.is_finite() && w > 0.0 && w <= MAX_POWER_WATTS {
                 Ok(Watts((w * 1000.0).round() / 1000.0))
             } else {
-                Err(Read::Refused(format!("a rated power is more than 0 and at most {MAX_POWER_WATTS} W")))
+                Err(PowerRefusal::Refused(format!("a rated power is more than 0 and at most {MAX_POWER_WATTS} W")))
             }
         })
         .transpose()
@@ -126,10 +136,9 @@ pub fn read_load(text: &str) -> Read<Load> {
     }
     match one_power(&toks, "a load", "3 kW") {
         Ok(rated_power) => Read::Rating(Load { rated_power }),
-        Err(Read::Refused(e)) if e.starts_with("it gives") => Read::Refused(format!("'{t}' does not read: {e}")),
-        Err(Read::Ask(q)) => Read::Ask(q),
-        Err(Read::Refused(e)) => Read::Refused(e),
-        Err(Read::Rating(()) | Read::NotARating) => Read::NotARating,
+        Err(PowerRefusal::TwoPowers) => Read::Refused(format!("'{t}' does not read: it gives two powers")),
+        Err(PowerRefusal::Ask(q)) => Read::Ask(q),
+        Err(PowerRefusal::Refused(e)) => Read::Refused(e),
     }
 }
 
