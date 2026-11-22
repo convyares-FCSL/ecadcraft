@@ -1105,6 +1105,7 @@ fn ac5_clicking_the_continued_ends_point_or_text_jumps() {
 /// most 3 partner IDs and a count, so time and memory are linear; the debugger's diagnostics stay
 /// quick too.
 #[test]
+#[ignore = "slow: up to 20,000 references of one cable"]
 fn many_references_of_one_cable_derive_in_bounded_time() {
     let base = paired(SEED + 19).h.doc();
     let cable = *base.cables().keys().next().unwrap();

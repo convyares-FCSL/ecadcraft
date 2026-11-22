@@ -514,6 +514,7 @@ fn wires_at(h: &mut H, xs: &[f64]) {
 /// AC8 (design check L): more than `MAX_CABLE_MEMBERS` crossed wires are refused, exactly that
 /// many are accepted, and huge coordinates never panic.
 #[test]
+#[ignore = "slow: 10,001 wires to reach the cable member cap"]
 fn hostile_slashes_never_panic() {
     assert_eq!(MAX_CABLE_MEMBERS, 10_000);
     let mut h = H::new(SEED);

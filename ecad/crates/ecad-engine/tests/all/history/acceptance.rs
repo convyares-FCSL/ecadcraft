@@ -66,8 +66,6 @@ fn restorable(d: &Document) -> Document {
     let mut d = d.clone();
     d.edit_parts(|parts| {
         parts.versions.clear();
-    });
-    d.edit_parts(|parts| {
         parts.project.revisions.clear();
     });
     d

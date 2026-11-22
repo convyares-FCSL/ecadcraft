@@ -152,8 +152,8 @@ mod merging {
         d.edit_parts(|parts| {
             parts.project.revisions =
                 vec![Revision { rev: Some(rev), description: ecad_model::RevValue::new(what).ok(), issued: true, ..Revision::default() }];
+            parts.versions.insert(PointName::Revision(rev), at);
         });
-        d.edit_parts(|parts| parts.versions.insert(PointName::Revision(rev), at));
         d
     }
 
