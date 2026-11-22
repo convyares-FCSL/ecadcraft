@@ -3,8 +3,9 @@
 //! A typed field with an unknown word fails its record's decode and is reported as damage. A word
 //! inside a value that stays text (a defaults choice, a `tag_prefixes` key) and a property that
 //! became a struct field are found after the project is read, by the electrical rules' words
-//! check; each one found is an [`UnknownWord`]. The project then opens read-only and its file is
-//! never changed.
+//! check; each one found is an [`UnknownWord`]. A `meta` name the file reader does not know is one
+//! too ([`UnknownWord::MetaName`], found by ecad-file on open). The project then opens read-only
+//! and its file is never changed.
 //!
 //! This module holds only the record of what was found. The check itself needs the defaults
 //! registry and the symbol list, so it lives in ecad-electrical (`words_check`).
@@ -27,6 +28,8 @@ pub enum WordPlace {
     Device(DeviceId),
     Wire(WireId),
     Cable(CableId),
+    /// The file's container facts (its `meta` table).
+    File,
 }
 
 impl fmt::Display for WordPlace {
@@ -39,6 +42,7 @@ impl fmt::Display for WordPlace {
             WordPlace::Device(id) => write!(f, "device {}", id.hex()),
             WordPlace::Wire(id) => write!(f, "wire {}", id.hex()),
             WordPlace::Cable(id) => write!(f, "cable {}", id.hex()),
+            WordPlace::File => f.write_str("the file's container facts"),
         }
     }
 }
@@ -58,6 +62,9 @@ pub enum UnknownWord {
     },
     /// A property bag holds `key`, which became a struct field ([`crate::keys::RESERVED`]).
     ReservedKey { place: WordPlace, key: String },
+    /// The file's `meta` table holds a name this build does not read (pre-v1: no forward
+    /// compatibility, so it is not ignored). Its place is [`WordPlace::File`].
+    MetaName { name: String },
 }
 
 impl UnknownWord {
@@ -65,6 +72,7 @@ impl UnknownWord {
     pub fn place(&self) -> WordPlace {
         match self {
             UnknownWord::Value { place, .. } | UnknownWord::ReservedKey { place, .. } => *place,
+            UnknownWord::MetaName { .. } => WordPlace::File,
         }
     }
 }
@@ -81,6 +89,7 @@ impl fmt::Display for UnknownWord {
             UnknownWord::ReservedKey { place, key } => {
                 write!(f, "property `{key}` of {place} is no longer a property; this build stores it as a field")
             }
+            UnknownWord::MetaName { name } => write!(f, "unknown meta name `{name}` in {}", WordPlace::File),
         }
     }
 }

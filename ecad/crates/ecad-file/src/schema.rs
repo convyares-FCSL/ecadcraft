@@ -38,9 +38,9 @@ pub const FORMAT_PROJECT: &str = "ecad-project";
 pub const CONTAINER_VERSION: u64 = 2;
 /// `meta.codec`: rows and chunks are JSON, compressed (overseer, 2026-11-08; `bin/1` later).
 pub const CODEC: &str = "json/1";
-/// The `meta` names this build writes. A reader ignores any other name (brief 020, forward
-/// compatibility: an optional name added by a newer build does not stop an older one opening the
-/// file); a name this build needs and cannot read is still refused.
+/// The `meta` names this build reads and writes. Any other name is an unknown word (pre-v1, no
+/// forward compatibility; owner, 0.2.3): the project opens read-only, names it and keeps the file
+/// as it is. A name this build needs and cannot read is refused.
 pub const META_NAMES: [&str; 9] = ["format", "container_version", "schema_version", "codec", "file_id", "writer", "created_ms", "cache", "active"];
 /// The default number of transactions between automatic snapshots (overseer, 2026-11-08).
 pub const DEFAULT_SNAPSHOT_EVERY: u64 = 2_000;

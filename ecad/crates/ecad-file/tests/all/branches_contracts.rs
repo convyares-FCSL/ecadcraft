@@ -173,7 +173,8 @@ fn branch_names_and_states_follow_the_rules() {
 }
 
 /// Pre-v1 there is no forward compatibility in rows: an unknown field in a `branches` or
-/// `versions` row is refused (the strict reader), while an unknown `meta` name is still ignored.
+/// `versions` row is refused (the strict reader), and an unknown `meta` name opens the project
+/// read-only and names it (lane `strict_meta`).
 #[test]
 fn unknown_fields_in_branch_and_version_rows_are_refused() {
     use ecad_file::schema::{BRANCHES, META, VERSIONS};
@@ -200,7 +201,10 @@ fn unknown_fields_in_branch_and_version_rows_are_refused() {
     edit(&p1, &|w| {
         w.open_table(META).unwrap().insert("future_name", br#"{"anything": 1}"#.as_slice()).unwrap();
     });
-    assert!(opens(&p1), "an unknown meta name is ignored");
+    let o = Project::open(Store::open(&p1, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+    assert_eq!(o.unknown_words, [ecad_model::strict::UnknownWord::MetaName { name: "future_name".into() }]);
+    assert!(o.project.read_only().is_some_and(|r| r.contains("future_name")), "an unknown meta name opens read-only");
+    drop(o);
     let (_d2, p2, main) = fresh("branch-field");
     edit(&p2, &|w| {
         let mut t = w.open_table(BRANCHES).unwrap();

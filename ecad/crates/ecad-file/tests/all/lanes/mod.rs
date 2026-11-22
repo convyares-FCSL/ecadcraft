@@ -12,3 +12,4 @@ mod lane_072d_cable;
 mod lane_072e;
 mod lane_072f;
 mod lane_073;
+mod lane_strict_meta;
