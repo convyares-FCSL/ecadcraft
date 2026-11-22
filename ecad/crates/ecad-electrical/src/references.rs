@@ -548,12 +548,24 @@ const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
 /// definitions and conductors are not shown or not members yet, so they touch nothing.
 pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
     let effects = ecad_model::effect::Effects::of(ops);
-    // The cables of the pages whose book position changes are added after the commit, where the
-    // book after can be read (`crate::xref::Watch`); with the state before alone, any cable.
-    if ecad_model::book::moves_pages_by(&effects) {
-        return None;
-    }
     let mut out = BTreeSet::new();
+    // The cables on the pages whose book position changes: the book before against the book of
+    // the state after (the ops applied to a copy; an op that does not apply reaches any cable).
+    if ecad_model::book::moves_pages_by(&effects) {
+        let mut positions = ecad_model::book::PositionsNoted::default();
+        for e in &effects {
+            positions.note_before(doc, e);
+        }
+        let mut after = doc.clone();
+        for op in ops {
+            if op.apply(&mut after).is_err() {
+                return None;
+            }
+        }
+        for p in positions.changed(&after) {
+            out.extend(cables_on(doc, p).chain(cables_on(&after, p)));
+        }
+    }
     for e in &effects {
         if !cables_touched_by(doc, e, &mut out) {
             return None;
