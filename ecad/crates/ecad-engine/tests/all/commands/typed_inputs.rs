@@ -823,7 +823,7 @@ fn the_numbering_commands_refuse_input_uniformly() {
 #[test]
 fn the_numbering_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("renumber", json!({"kind": "lamps"}), "`kind` must be \"devices\", \"cables\", \"wires\", \"terminals\" or \"all\", not \"lamps\""),
+        ("renumber", json!({"kind": "lamps"}), "`kind` must be \"devices\", \"cables\", \"wires\", \"terminal_blocks\" or \"all\", not \"lamps\""),
         (
             "renumber",
             json!({"scope": "some"}),
@@ -841,7 +841,7 @@ fn the_numbering_commands_keep_their_rule_words() {
         (
             "renumber",
             json!({"kind": "terminal_blocks", "scope": "selection", "strips": ["ab"]}),
-            "ab in `strips` is not a terminal strip or one of its terminals.",
+            "ab in `strips` is not a terminal strip or one of its terminal blocks.",
         ),
         ("finalise", json!({"based_on": 999}), "The project changed since the preview; check the new list and Apply again."),
     ];

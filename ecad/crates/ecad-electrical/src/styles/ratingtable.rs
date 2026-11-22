@@ -25,7 +25,7 @@ pub const ROWS: &str = "rows";
 /// The field holding the source.
 pub const SOURCE: &str = "source";
 /// The longest source text.
-pub const MAX_SOURCE_CHARS: usize = 200;
+pub(crate) const MAX_SOURCE_CHARS: usize = 200;
 
 fn any_text(_: &str) -> bool {
     true
@@ -97,7 +97,7 @@ pub fn read(doc: &Document, id: &StyleRef) -> Table {
 }
 
 /// The project's chosen table, read.
-pub fn chosen_table(doc: &Document) -> Option<Table> {
+pub(crate) fn chosen_table(doc: &Document) -> Option<Table> {
     chosen(doc).map(|id| read(doc, &id))
 }
 

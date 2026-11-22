@@ -107,13 +107,7 @@ const EFFECT_CRATE: &str = "crates/ecad-electrical/src/";
 /// Files whose view notes (all of `derived/`, and every fn taking an `Effect` elsewhere) route a
 /// property key by its prefix (`.starts_with("`), how many, and why (overseer ruling 2026-11-21).
 /// A key's meaning belongs in data (its definition), not its spelling; the count only falls.
-const KEY_PREFIXES: &[(&str, usize, &str)] = &[
-    ("crates/ecad-electrical/src/connectors/view.rs", 1, "connector naming keys: the connector defaults have no key table"),
-    ("crates/ecad-electrical/src/pages/view.rs", 1, "project connector keys reach the connector pages; no key table"),
-    ("crates/ecad-electrical/src/pages/front.rs", 1, "the cover's `front.cover.*` settings; no key table"),
-    ("crates/ecad-electrical/src/reports/mod.rs", 3, "strip, terminal, connector and BOM settings pick the lists to redo; no key table"),
-    ("crates/ecad-electrical/src/circuits/kept.rs", 2, "`link.*`, `rating.*` and `wire.*` keys; no key table"),
-];
+const KEY_PREFIXES: &[(&str, usize, &str)] = &[];
 
 /// Whether `rel` is a view's own module, or `Views`.
 fn is_own_module(rel: &str) -> bool {

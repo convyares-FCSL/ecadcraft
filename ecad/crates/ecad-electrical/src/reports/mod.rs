@@ -596,21 +596,22 @@ impl Scope {
             }
             // Brief 050a: a standard's value of a registry key reaches the same views.
             Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
+                let area = key.area;
                 let key = key.raw;
                 // Brief 050b: the project's or standard's wire category reaches every wire row.
                 if key == ecad_model::connectivity::wiring::WIRE_CATEGORY {
                     self.all_wires = true;
                 }
                 // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
-                if key.starts_with("strip_") || key.starts_with("terminal_block.") {
+                if area == ecad_model::naming::keys::Area::TerminalBlock {
                     self.strip_keys.insert(key.to_string());
                 }
                 // Brief 044: the registry's `connector.*` defaults reach connectors.
-                if key.starts_with("connector.") {
+                if area == ecad_model::naming::keys::Area::Connector {
                     self.connector_keys.insert(key.to_string());
                 }
                 // Brief 047 (design 047 §10): the BOM's report settings.
-                if key.starts_with("bom.") {
+                if area == ecad_model::naming::keys::Area::Bom {
                     self.bom_view = true;
                 }
             }

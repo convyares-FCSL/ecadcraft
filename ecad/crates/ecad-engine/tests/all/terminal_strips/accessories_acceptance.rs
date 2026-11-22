@@ -361,7 +361,7 @@ fn marker_cards_follow_per_card_strip_then_project() {
     a.h.check();
 }
 
-/// Design E (AC 2, AC 10): swapping 1 and 2 in drawing order, `renumber {kind: "terminals"}`
+/// Design E (AC 2, AC 10): swapping 1 and 2 in drawing order, `renumber {kind: "terminal_blocks"}`
 /// moves `acc.after.*` and `acc.on.*` with their terminals and rewrites `jumper_bar.<n>` in the same
 /// transaction; the preview lists the moves and writes nothing; `u` restores all.
 #[test]

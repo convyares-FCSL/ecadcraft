@@ -8,7 +8,7 @@ use crate::error::CmdError;
 use crate::properties::commands::{Build, NO_SUCH_OBJECT, PropRule};
 
 /// This lane's rows, asked before [`crate::properties::commands::PROP_RULES`].
-pub static RULES: &[PropRule] = &[
+pub(crate) static RULES: &[PropRule] = &[
     PropRule {
         what: "user fields (072 B)",
         claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && k.starts_with(crate::devices::commands::device_links::USER_PREFIX),
@@ -55,7 +55,7 @@ pub static RULES: &[PropRule] = &[
 ///
 /// # Errors
 /// The reader's refusals: ambiguous text (what is missing), a value the group does not have.
-pub fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
     let who = crate::devices::tags::tag_words(doc, c);
     let after = match key.strip_prefix(ecad_model::objects::devices::RATING_OF_PREFIX) {
@@ -72,7 +72,7 @@ pub fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>
 ///
 /// # Errors
 /// A device whose group has no contacts; an unreadable offer ([`crate::references::devices::parse::with_contacts`]).
-pub fn contacts_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn contacts_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
     let after = crate::references::devices::parse::with_contacts(d, &crate::devices::tags::tag_words(doc, c), value)?;
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
@@ -94,7 +94,7 @@ pub fn table_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -
 ///
 /// # Errors
 /// [`crate::connectors::with_field`]'s refusals.
-pub fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
     let after = crate::connectors::with_field(d, &crate::devices::tags::tag_words(doc, c), key, value)?;
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
@@ -108,7 +108,7 @@ fn device_of(doc: &Document, o: ObjectRef) -> Result<(DeviceId, &Device), CmdErr
 }
 
 /// The refusal of a text field's value, in words.
-pub fn text_refusal(f: TextField, e: TextError) -> CmdError {
+pub(crate) fn text_refusal(f: TextField, e: TextError) -> CmdError {
     let max = f.max_chars();
     CmdError::refused(match e {
         TextError::TooLong { .. } => format!("`{}` can be at most {max} characters.", f.key()),
@@ -129,7 +129,7 @@ pub fn with_text(d: &Device, f: TextField, value: Option<&str>) -> Result<Device
 ///
 /// # Errors
 /// [`text_refusal`].
-pub fn text_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn text_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
     let f = TextField::of_key(key).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
     let after = with_text(d, f, value)?;

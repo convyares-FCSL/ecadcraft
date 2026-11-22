@@ -84,14 +84,14 @@ impl Touch {
                 let key = key.raw;
                 if crate::symbols::rules::is_rating_key(key) || key == ecad_model::naming::tag::TAG_KEY {
                     self.devices.insert(*c);
-                } else if key.starts_with("jumper_bar.") {
+                } else if ecad_model::naming::keys::area_of(key) == ecad_model::naming::keys::Area::JumperBar {
                     for (t, _) in doc.connection_points_of(*c) {
                         net_of_connection_point(t, self);
                     }
                 }
             }
             Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-                if key.raw.starts_with("rating.") || key.raw.starts_with("wire.") {
+                if matches!(key.area, ecad_model::naming::keys::Area::Rating | ecad_model::naming::keys::Area::Wire) {
                     self.all_results = true;
                     self.table |= key.raw == defaults::rating::TABLE.key;
                 }

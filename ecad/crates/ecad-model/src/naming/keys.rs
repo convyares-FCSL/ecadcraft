@@ -247,13 +247,17 @@ pub const KEYS: &[KeySpec] = &[
     KeySpec { key: LOCATION, area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
 ];
 
+/// A project's tag high-water reset for one prefix (`numbering.high.<P>`).
+pub const NUMBERING_HIGH: Family =
+    Family { pattern: "numbering.high.{}", area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Ruled };
+
 /// The key families. One family per line.
 #[rustfmt::skip]
 pub const FAMILIES: &[Family] = &[
     Family { pattern: "text.{}.{}.style", area: Area::Text, holders: &[Holder::Project, Holder::Page, Holder::Device, Holder::Representation], value: ValueSpec::Ruled },
     Family { pattern: "text.{}.{}.show", area: Area::Text, holders: &[Holder::Project, Holder::Page, Holder::Device, Holder::Representation], value: ValueSpec::Ruled },
     Family { pattern: "jumper_bar.{}", area: Area::JumperBar, holders: &[Holder::Device], value: ValueSpec::Ruled },
-    Family { pattern: "numbering.high.{}", area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Ruled },
+    NUMBERING_HIGH,
 ];
 
 /// Keys that became struct fields: a property bag holding one is a read error (design 072 §9.4).
@@ -400,6 +404,20 @@ pub fn area_of(key: &str) -> Area {
         Some(a) if key.len() > first.len() => *a,
         Some(_) | None => Area::Free,
     }
+}
+
+/// Whether `key` belongs to `area` ([`area_of`]).
+pub fn in_area(key: &str, area: Area) -> bool {
+    area_of(key) == area
+}
+
+/// The text kind a text key names (`reference` of `text.reference.show`): a [`Area::Text`] key's
+/// second segment.
+pub fn text_kind(key: &str) -> Option<&str> {
+    if area_of(key) != Area::Text {
+        return None;
+    }
+    key.split('.').nth(1)
 }
 
 /// Typed readers on a property bag. A value that does not have the shape asked for reads as

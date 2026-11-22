@@ -460,9 +460,9 @@ impl CoverNote {
                 false
             }
             Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-                let key = key.raw;
+                let (area, key) = (key.area, key.raw);
                 matches!(key, WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
-                    || key.starts_with("front.cover.")
+                    || area == ecad_model::naming::keys::Area::Front
                     || key == crate::releases::revisions::COLUMNS_KEY
                     || key == crate::releases::revisions::PENDING_KEY
                     || (codes_on() && crate::locations::designations::Aspect::of_property(key).is_some())

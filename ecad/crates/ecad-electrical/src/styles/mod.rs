@@ -556,7 +556,7 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
 ///
 /// # Errors
 /// A value the typed field does not take, in words.
-pub fn with_fields(
+pub(crate) fn with_fields(
     catalogue: StyleCatalogue, before: Option<&StyleRecord>, name: Option<&str>, fields: &[(String, Option<String>)],
 ) -> Result<StyleRecord, CmdError> {
     let mut r = before.cloned().unwrap_or_else(|| StyleRecord::empty(catalogue));
@@ -579,7 +579,7 @@ pub fn with_fields(
 
 /// Whether `s` is a colour a style field takes (design 050 §4.1): `none`, one IEC 60757 code
 /// (`RD`, `BLU`), or `#rrggbb`.
-pub fn is_colour(s: &str) -> bool {
+pub(crate) fn is_colour(s: &str) -> bool {
     let t = s.trim();
     t.eq_ignore_ascii_case("none") || hex_rgb(t).is_some() || crate::cables::words::colour_code(t).is_some_and(|(_, two)| two.is_none())
 }

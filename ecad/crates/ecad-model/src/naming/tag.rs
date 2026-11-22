@@ -38,12 +38,6 @@ pub const FIXED_KEY: &str = "tag_fixed";
 /// The project property turning provisional tags on (brief 026, FP2): `"yes"`, absent = off.
 pub const PROVISIONAL_SETTING: &str = "numbering.provisional";
 
-/// The project property prefix of a high-water reset (brief 026, FP4): `numbering.high.<P>` =
-/// [`reset_value`]: the highest number of prefix `P` in use after a renumber, the mark it
-/// replaced and a generation. [`note_ops`] reads a reset as "the mark of `P` is now this", so new
-/// tags follow the renumbered set, and the undo of one as "the mark is back to what it replaced".
-pub const HIGH_RESET_PREFIX: &str = "numbering.high.";
-
 /// The stored value of a high-water reset: `"<n>;<was>;<generation>"`, where `n` is the new mark,
 /// `was` the mark it replaced and `generation` one more than the reset it overwrites (tester 026:
 /// the generation tells a reset, which raises it, from its undo, which lowers it, so an undone
@@ -186,8 +180,11 @@ pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
                     note(high, t);
                 }
             }
-            crate::Op::SetProperty { object: crate::ObjectRef::Project, key, before, after } if key.starts_with(HIGH_RESET_PREFIX) => {
-                let prefix = key[HIGH_RESET_PREFIX.len()..].to_ascii_uppercase();
+            crate::Op::SetProperty { object: crate::ObjectRef::Project, key, before, after }
+                if crate::naming::keys::NUMBERING_HIGH.parse(key).is_some() =>
+            {
+                let prefix =
+                    crate::naming::keys::NUMBERING_HIGH.parse(key).and_then(|p| p.first().map(|p| p.to_ascii_uppercase())).unwrap_or_default();
                 if prefix.is_empty() || !prefix.bytes().all(|b| b.is_ascii_alphabetic()) {
                     continue;
                 }

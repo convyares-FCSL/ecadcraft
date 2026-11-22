@@ -216,7 +216,7 @@ descriptions! {
 /// Whether `key` is one of this file's keys a strip may hold (the separator, level names): what
 /// [`crate::terminal_strips`]'s update map watches on a strip and on the project.
 pub fn is_label_key(key: &str) -> bool {
-    key == SEPARATOR.key || (key.starts_with("terminal_block.") && key.ends_with(".levels"))
+    key == SEPARATOR.key || (ecad_model::naming::keys::in_area(key, ecad_model::naming::keys::Area::TerminalBlock) && key.ends_with(".levels"))
 }
 
 /// The value `setprop` stores for `key` (`""` on the separator is `none`), or `None` when the key
@@ -225,7 +225,7 @@ pub fn is_label_key(key: &str) -> bool {
 /// # Errors
 /// A value the entry does not accept, in words.
 pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
-    let e = crate::defaults::find(key).filter(|e| e.key.starts_with("terminal_block."))?;
+    let e = crate::defaults::find(key).filter(|e| ecad_model::naming::keys::in_area(e.key, ecad_model::naming::keys::Area::TerminalBlock))?;
     Some(match value {
         None => Ok(None),
         Some(v) if v.trim().is_empty() && e.key == SEPARATOR.key => Ok(Some(NO_SEPARATOR.into())),

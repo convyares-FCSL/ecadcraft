@@ -411,7 +411,7 @@ pub enum Fix {
     ShowReports,
     /// Brief 028: offer the drawn count (`setprop terminals`, PE kept): Offer 14.
     OfferDrawn(DeviceId),
-    /// Brief 028: renumber the strip's terminals (`renumber {kind: "terminals"}`).
+    /// Brief 028: renumber the strip's terminal blocks (`renumber {kind: "terminal_blocks"}`).
     RenumberStrip(DeviceId),
     /// Brief 028: focus Properties ▸ Cores on the cable.
     SetCores(ecad_model::CableId),

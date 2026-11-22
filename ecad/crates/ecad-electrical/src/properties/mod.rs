@@ -58,7 +58,7 @@ pub struct PropsView {
 }
 
 /// The Sheet combo's choices for a page: the project's sheet, then the presets.
-pub fn sheet_choices(doc: &Document) -> Vec<String> {
+pub(crate) fn sheet_choices(doc: &Document) -> Vec<String> {
     let mut out = vec![format!("Project ({})", doc.settings.sheet().summary())];
     out.extend(ecad_model::document::sheet::PRESETS.iter().map(|p| p.0.to_string()));
     out
@@ -844,8 +844,8 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
     format!("{} {}", j.0, j.1)
 }
 
-/// Properties ▸ Link (design 030 §5.5): positions, part, bars.
-/// A link line's section (brief 030): its positions, part and the bars it needs (`bars`, from the
+/// Properties ▸ Jumper bar (design 030 §5.5): positions, part, bars.
+/// A jumper bar's section (brief 030): its positions, part and the bars it needs (`bars`, from the
 /// strips' report model, when kept).
 pub fn jumper_bar_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usize>) -> Section {
     let key = ecad_model::connectivity::jumper_bars::key(n);
@@ -858,7 +858,7 @@ pub fn jumper_bar_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usiz
         Row::ro("jumper_bar.bars", "Bars", bars.map_or_else(String::new, |b| b.to_string())),
     ];
     Section {
-        title: format!("ECAD \u{b7} LINK {} {}", crate::devices::tags::tag_words(doc, c), get(&key)),
+        title: format!("ECAD \u{b7} JUMPER BAR {} {}", crate::devices::tags::tag_words(doc, c), get(&key)),
         kind: "jumper_bar",
         target: Some(Target::Devices(vec![c])),
         rows,

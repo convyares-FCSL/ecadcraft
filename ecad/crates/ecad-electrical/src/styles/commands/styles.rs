@@ -26,7 +26,7 @@ pub const NOTHING_TO_COPY: &str = "That project uses IEC (built in); nothing to 
 /// The words of IEC (built in), the standard of a project without one.
 pub const IEC: &str = "IEC (built in)";
 /// Most fields one `setstyle` call sets (a guard on hostile input: the record's own bound).
-pub const MAX_FIELDS_PER_CALL: usize = ecad_model::objects::styles::MAX_FIELDS_PER_STYLE;
+pub(crate) const MAX_FIELDS_PER_CALL: usize = ecad_model::objects::styles::MAX_FIELDS_PER_STYLE;
 
 // ---------------------------------------------------------------------------------------------
 // Parameters
@@ -49,7 +49,7 @@ pub fn catalogue(word: &str) -> Result<&'static Catalogue, CmdError> {
 ///
 /// # Errors
 /// None named, or no catalogue has that word.
-pub fn required_catalogue(word: Option<&str>) -> Result<&'static Catalogue, CmdError> {
+pub(crate) fn required_catalogue(word: Option<&str>) -> Result<&'static Catalogue, CmdError> {
     let w = word.ok_or_else(|| CmdError::input(format!("`catalogue` is required: {}.", styles::words())))?;
     catalogue(w)
 }
@@ -77,7 +77,7 @@ pub fn layer(doc: &Document, word: Option<&str>) -> Result<StyleLayer, CmdError>
 }
 
 /// What field `f` takes, in the registry's words (design 050 §6.2).
-pub fn field_rule(f: &styles::Field) -> String {
+pub(crate) fn field_rule(f: &styles::Field) -> String {
     match f.kind {
         Kind::Length { min, max } if f.key == "height" => format!("{} is {min} to {max} mm (cap height)", f.key),
         Kind::Length { min, max } => format!("{} is {min} to {max} mm", f.key),
@@ -94,13 +94,11 @@ pub fn field_rule(f: &styles::Field) -> String {
 
 /// One entry of a call's `fields`, as given.
 #[derive(Debug, Clone, PartialEq)]
-pub enum FieldInput {
+pub(crate) enum FieldInput {
     /// `null`: back to the inherited value.
     Clear,
     /// Text, or a number written as text.
     Value(String),
-    /// A value of another kind (a list, an object, true or false).
-    Wrong,
 }
 
 /// The field `key` of `cat`.
@@ -116,7 +114,6 @@ fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Optio
     let typed = match v {
         FieldInput::Clear => return Ok(None),
         FieldInput::Value(s) => s.trim().to_string(),
-        FieldInput::Wrong => return Err(CmdError::refused(format!("{}.", field_rule(f)))),
     };
     if let Kind::Style(c) = f.kind {
         return styles::find(doc, c, &typed).map(|id| Some(id.text())).map_err(|_| CmdError::refused(format!("{}.", field_rule(f))));
@@ -146,7 +143,7 @@ fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Optio
 /// # Errors
 /// More than [`MAX_FIELDS_PER_CALL`], a field the catalogue does not have, or a value the field
 /// does not take.
-pub fn fields(doc: &Document, cat: &Catalogue, given: Vec<(String, FieldInput)>) -> Result<Vec<(String, Option<String>)>, CmdError> {
+pub(crate) fn fields(doc: &Document, cat: &Catalogue, given: Vec<(String, FieldInput)>) -> Result<Vec<(String, Option<String>)>, CmdError> {
     if given.len() > MAX_FIELDS_PER_CALL {
         return Err(CmdError::refused(format!("At most {MAX_FIELDS_PER_CALL} fields per call.")));
     }
@@ -194,7 +191,7 @@ fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
 }
 
 /// Ops moving every choice of `id` (objects', the project's and the standard's) to `to`.
-pub fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleRef) -> Vec<Op> {
+pub(crate) fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleRef) -> Vec<Op> {
     let mut out = Vec::new();
     let mut put = |o: ObjectRef, key: &str| {
         // Design 072 §4.6: a wire's own type is its field.
@@ -302,7 +299,7 @@ pub fn standard_counts(doc: &Document) -> (usize, usize) {
 
 /// What a `standard` call does.
 #[derive(Debug, Clone, PartialEq)]
-pub enum StandardChange {
+pub(crate) enum StandardChange {
     /// Make a standard with this name, based on IEC.
     New(String),
     /// Rename the standard.
@@ -315,7 +312,7 @@ pub enum StandardChange {
 
 /// What a `standard` call records and says.
 #[derive(Debug, Clone, PartialEq)]
-pub struct StandardPlan {
+pub(crate) struct StandardPlan {
     pub ops: Vec<Op>,
     pub label: String,
     pub message: String,
@@ -352,7 +349,7 @@ fn standard_name(name: &str) -> Result<&str, CmdError> {
 /// # Errors
 /// A name that does not read, a second standard, no standard to rename or remove, or a user of
 /// a standard-only style with no (or no valid) replacement.
-pub fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChange) -> Result<Option<StandardPlan>, CmdError> {
+pub(crate) fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChange) -> Result<Option<StandardPlan>, CmdError> {
     let plan = |ops, label, message| Ok(Some(StandardPlan { ops, label, message }));
     match change {
         StandardChange::New(name) => {
@@ -450,7 +447,7 @@ pub fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChan
 
 /// A `setstyle` call, as given (names trimmed by the rule).
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct StyleEdit {
+pub(crate) struct StyleEdit {
     /// Make a new style called `name`.
     pub new: bool,
     /// The style's ID (a built-in word or `#<32 hex>`).
@@ -469,7 +466,7 @@ pub struct StyleEdit {
 
 /// What a `setstyle` call records.
 #[derive(Debug, Clone, PartialEq)]
-pub struct StylePlan {
+pub(crate) struct StylePlan {
     /// Empty when everything is already so.
     pub ops: Vec<Op>,
     /// The style written.
@@ -483,7 +480,7 @@ pub struct StylePlan {
 /// # Errors
 /// A layer, field or name that does not read, a name another style has, a built-in renamed,
 /// no style named, nothing to change, or a record the catalogue refuses.
-pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: StyleEdit) -> Result<StylePlan, CmdError> {
+pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: StyleEdit) -> Result<StylePlan, CmdError> {
     let trim = |t: &Option<String>| t.as_deref().map(str::trim).map(str::to_string);
     let (name, rename, copy_of) = (trim(&edit.name), trim(&edit.rename), trim(&edit.copy_of));
     let layer = layer(doc, edit.layer.as_deref())?;
@@ -579,7 +576,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
 
 /// What a `deletestyle` call records and says.
 #[derive(Debug, Clone, PartialEq)]
-pub struct DeletePlan {
+pub(crate) struct DeletePlan {
     pub ops: Vec<Op>,
     /// The style deleted.
     pub id: StyleRef,
@@ -593,7 +590,7 @@ pub struct DeletePlan {
 ///
 /// # Errors
 /// A built-in style, or a used style with no (or the same) replacement.
-pub fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace_with: Option<&str>) -> Result<DeletePlan, CmdError> {
+pub(crate) fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace_with: Option<&str>) -> Result<DeletePlan, CmdError> {
     if id.is_builtin() {
         return Err(CmdError::refused(BUILTIN_KEPT));
     }
@@ -631,7 +628,7 @@ pub fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace_with: 
 ///
 /// # Errors
 /// No default has that key.
-pub fn promote_entry(key: &str) -> Result<&'static Entry, CmdError> {
+pub(crate) fn promote_entry(key: &str) -> Result<&'static Entry, CmdError> {
     defaults::find(key).ok_or_else(|| CmdError::refused(format!("No default \"{key}\".")))
 }
 
@@ -639,7 +636,7 @@ pub fn promote_entry(key: &str) -> Result<&'static Entry, CmdError> {
 ///
 /// # Errors
 /// The project uses IEC (built in).
-pub fn needs_standard(doc: &Document) -> Result<&Standard, CmdError> {
+pub(crate) fn needs_standard(doc: &Document) -> Result<&Standard, CmdError> {
     doc.standard.as_ref().ok_or(CmdError::refused(STANDARD_FIRST))
 }
 
@@ -649,7 +646,7 @@ pub fn needs_standard(doc: &Document) -> Result<&Standard, CmdError> {
 ///
 /// # Errors
 /// No standard, no project value of its own, or a standard saying something else.
-pub fn promote_value(doc: &Document, entry: &Entry) -> Result<(Vec<Op>, String), CmdError> {
+pub(crate) fn promote_value(doc: &Document, entry: &Entry) -> Result<(Vec<Op>, String), CmdError> {
     let std = needs_standard(doc)?;
     let key = entry.key;
     let r = defaults::resolve(doc, entry, defaults::Scope::project());
@@ -672,7 +669,7 @@ pub fn promote_value(doc: &Document, entry: &Entry) -> Result<(Vec<Op>, String),
 ///
 /// # Errors
 /// No standard, a built-in style, a style already in the standard, or not a project style.
-pub fn plan_promote_style(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Result<(Vec<Op>, String), CmdError> {
+pub(crate) fn plan_promote_style(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Result<(Vec<Op>, String), CmdError> {
     if id.is_builtin() {
         return Err(CmdError::refused(
             "A built-in style is in every standard; set its fields at standard level instead (setstyle … layer: \"standard\").",
@@ -692,7 +689,7 @@ pub fn plan_promote_style(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Res
 }
 
 /// The standard as `standard {}` returns it (design 050 §6.1).
-pub fn standard_json(doc: &Document) -> Value {
+pub(crate) fn standard_json(doc: &Document) -> Value {
     match &doc.standard {
         None => json!({"name": IEC, "id": null}),
         Some(s) => {
@@ -710,7 +707,7 @@ pub fn standard_json(doc: &Document) -> Value {
 }
 
 /// One style as `styles` returns it.
-pub fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: bool) -> Value {
+pub(crate) fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: bool) -> Value {
     let fields: Map<String, Value> = cat
         .fields
         .iter()
@@ -737,7 +734,7 @@ pub fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: boo
     v
 }
 
-pub fn value_json(r: &defaults::Resolved<'_>) -> Value {
+pub(crate) fn value_json(r: &defaults::Resolved<'_>) -> Value {
     match r.value {
         defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
         defaults::Value::Choice(w) => json!(w),
@@ -862,13 +859,13 @@ pub struct PromoteParams {
 /// A style field's value as typed: text or a number.
 #[derive(Deserialize, JsonSchema)]
 #[serde(untagged)]
-pub enum FieldParam {
+pub(crate) enum FieldParam {
     Text(String),
     Number(Number),
 }
 
 /// The field inputs of `fields` (null clears a field).
-pub fn field_inputs(fields: Option<BTreeMap<String, Option<FieldParam>>>) -> Vec<(String, FieldInput)> {
+pub(crate) fn field_inputs(fields: Option<BTreeMap<String, Option<FieldParam>>>) -> Vec<(String, FieldInput)> {
     let input = |v: Option<FieldParam>| match v {
         None => FieldInput::Clear,
         Some(FieldParam::Text(t)) => FieldInput::Value(t),

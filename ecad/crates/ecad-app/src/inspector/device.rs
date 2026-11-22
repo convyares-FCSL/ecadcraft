@@ -180,7 +180,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
             // The overrides under Location (design 052 §5.2): a connector's halves, a field
             // device's terminals.
             if key == "location" {
-                for o in s.rows.iter().filter(|r| r.key.starts_with("location.")) {
+                for o in s.rows.iter().filter(|r| ecad_model::naming::keys::in_area(&r.key, ecad_model::naming::keys::Area::Location)) {
                     fields::prop(ui, sh, target, "device", o, &o.label, if o.inherited { "device" } else { "" });
                 }
             }

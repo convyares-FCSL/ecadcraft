@@ -148,7 +148,7 @@ fn code_in(project: &Project, a: Aspect, id: u128) -> Option<String> {
 }
 
 /// The code of entry `key` in `project` (a `ModifyProject`'s side), if it has one.
-pub fn code_in_project(project: &Project, a: Aspect, key: &str) -> Option<String> {
+pub(crate) fn code_in_project(project: &Project, a: Aspect, key: &str) -> Option<String> {
     code_in(project, a, raw(key)?)
 }
 
@@ -159,7 +159,7 @@ pub fn description_of(doc: &Document, a: Aspect, key: &str) -> Option<String> {
 
 /// The keys of the entries of aspect `a` whose code differs between `before` and `after` (added,
 /// removed or renamed): what the views that show codes redraw for a `ModifyProject`.
-pub fn changed_codes(before: &Project, after: &Project, a: Aspect) -> Vec<String> {
+pub(crate) fn changed_codes(before: &Project, after: &Project, a: Aspect) -> Vec<String> {
     let ids = |p: &Project| -> BTreeSet<u128> {
         match a {
             Aspect::Function => p.functions.iter().map(|e| e.id.0).collect(),
@@ -171,7 +171,7 @@ pub fn changed_codes(before: &Project, after: &Project, a: Aspect) -> Vec<String
 
 /// Whether a `ModifyProject` from `before` to `after` changed what aspect `a` shows anywhere: a
 /// code, or the project's default.
-pub fn shown_changed(before: &Project, after: &Project, a: Aspect) -> bool {
+pub(crate) fn shown_changed(before: &Project, after: &Project, a: Aspect) -> bool {
     default_key(before, a) != default_key(after, a) || !changed_codes(before, after, a).is_empty()
 }
 
@@ -197,7 +197,7 @@ pub fn page_key(page: &Page, a: Aspect) -> Option<String> {
 }
 
 /// `page` with its value of aspect `a` set to `key` (`None`, or text that is not a key, clears it).
-pub fn with_page_key(page: &Page, a: Aspect, key: Option<&str>) -> Page {
+pub(crate) fn with_page_key(page: &Page, a: Aspect, key: Option<&str>) -> Page {
     let mut p = page.clone();
     let id = key.and_then(raw);
     match a {
@@ -216,7 +216,7 @@ pub fn device_key(d: &Device, a: Aspect) -> Option<String> {
 }
 
 /// Whether device `d`'s value of aspect `a` was set by hand (design 072 §6.3).
-pub fn device_fixed(d: &Device, a: Aspect) -> bool {
+pub(crate) fn device_fixed(d: &Device, a: Aspect) -> bool {
     match a {
         Aspect::Function => d.function_fixed,
         Aspect::Location => d.location_fixed,
@@ -225,7 +225,7 @@ pub fn device_fixed(d: &Device, a: Aspect) -> bool {
 
 /// `d` with its value of aspect `a` set to `key` (`None`, or text that is not a key, clears it)
 /// and its `fixed` flag set to `fixed` (cleared with the value).
-pub fn with_device_key(d: &Device, a: Aspect, key: Option<&str>, fixed: bool) -> Device {
+pub(crate) fn with_device_key(d: &Device, a: Aspect, key: Option<&str>, fixed: bool) -> Device {
     let mut x = d.clone();
     let id = key.and_then(raw);
     let fixed = fixed && id.is_some();
@@ -251,7 +251,7 @@ pub fn box_key(b: &LocationBox, a: Aspect) -> Option<String> {
 }
 
 /// `b` with its value of aspect `a` set to `key` (`None`, or text that is not a key, clears it).
-pub fn with_box_key(b: &LocationBox, a: Aspect, key: Option<&str>) -> LocationBox {
+pub(crate) fn with_box_key(b: &LocationBox, a: Aspect, key: Option<&str>) -> LocationBox {
     let mut x = b.clone();
     let id = key.and_then(raw);
     match a {
@@ -263,14 +263,14 @@ pub fn with_box_key(b: &LocationBox, a: Aspect, key: Option<&str>) -> LocationBo
 
 /// Every key device `d` stores, with the property it is under: its own location and function,
 /// and its location overrides (`location.<type>`, still in its bag).
-pub fn device_keys(d: &Device) -> Vec<(String, String)> {
+pub(crate) fn device_keys(d: &Device) -> Vec<(String, String)> {
     let own = Aspect::ALL.into_iter().filter_map(|a| device_key(d, a).map(|k| (a.property().to_string(), k)));
     let overrides = d.properties.iter().filter(|(k, _)| Aspect::of_property(k).is_some()).map(|(k, v)| (k.clone(), v.clone()));
     own.chain(overrides).collect()
 }
 
 /// `project` with its default of aspect `a` set to `key` (`None` clears it).
-pub fn with_default_key(project: &Project, a: Aspect, key: Option<&str>) -> Project {
+pub(crate) fn with_default_key(project: &Project, a: Aspect, key: Option<&str>) -> Project {
     let mut p = project.clone();
     let id = key.and_then(raw);
     match a {
@@ -284,7 +284,7 @@ pub fn with_default_key(project: &Project, a: Aspect, key: Option<&str>) -> Proj
 ///
 /// # Errors
 /// Longer than [`ecad_model::document::project::MAX_CODE`] or with a hidden character.
-pub fn list_code(code: &str) -> Result<ListCode, CmdError> {
+pub(crate) fn list_code(code: &str) -> Result<ListCode, CmdError> {
     ListCode::new(code).map_err(|e| CmdError::refused(format!("\"{code}\" is not a code: {e}.")))
 }
 
@@ -292,13 +292,13 @@ pub fn list_code(code: &str) -> Result<ListCode, CmdError> {
 ///
 /// # Errors
 /// Too long, several lines or a hidden character.
-pub fn list_description(text: &str) -> Result<ListDescription, CmdError> {
+pub(crate) fn list_description(text: &str) -> Result<ListDescription, CmdError> {
     ListDescription::new(text).map_err(|e| CmdError::refused(format!("That description is refused: {e}.")))
 }
 
 /// `project` with entry `key` of aspect `a` given `code` and `description` (description 1;
 /// `None` removes every description). Nothing changes when it has no such entry.
-pub fn with_entry(project: &Project, a: Aspect, key: &str, code: ListCode, description: Option<ListDescription>) -> Project {
+pub(crate) fn with_entry(project: &Project, a: Aspect, key: &str, code: ListCode, description: Option<ListDescription>) -> Project {
     let mut p = project.clone();
     let Some(id) = raw(key) else { return p };
     let set = |c: &mut ListCode, d: &mut Vec<ListDescription>| {
@@ -329,7 +329,7 @@ pub fn with_entry(project: &Project, a: Aspect, key: &str, code: ListCode, descr
 }
 
 /// `project` with a new entry of aspect `a`.
-pub fn with_new_entry(project: &Project, a: Aspect, id: u128, code: ListCode, description: Option<ListDescription>) -> Project {
+pub(crate) fn with_new_entry(project: &Project, a: Aspect, id: u128, code: ListCode, description: Option<ListDescription>) -> Project {
     let mut p = project.clone();
     let descriptions: Vec<ListDescription> = description.into_iter().collect();
     match a {
@@ -340,7 +340,7 @@ pub fn with_new_entry(project: &Project, a: Aspect, id: u128, code: ListCode, de
 }
 
 /// `project` without entry `key` of aspect `a`.
-pub fn without_entry(project: &Project, a: Aspect, key: &str) -> Project {
+pub(crate) fn without_entry(project: &Project, a: Aspect, key: &str) -> Project {
     let mut p = project.clone();
     let id = raw(key);
     match a {
@@ -379,7 +379,7 @@ pub fn find(doc: &Document, a: Aspect, key_or_code: &str) -> Option<Entry> {
 }
 
 /// The key of the entry with `code` (case-insensitive), if any.
-pub fn key_of_code(doc: &Document, a: Aspect, code: &str) -> Option<String> {
+pub(crate) fn key_of_code(doc: &Document, a: Aspect, code: &str) -> Option<String> {
     entries(doc, a).into_iter().find(|e| e.code.eq_ignore_ascii_case(code.trim())).map(|e| e.key)
 }
 

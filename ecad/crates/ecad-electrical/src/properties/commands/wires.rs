@@ -19,7 +19,7 @@ pub const SIZE: &str = "size";
 pub const COLOURS: &str = "colours";
 
 /// The refusal of a key a wire does not have.
-pub fn no_such_key(key: &str) -> CmdError {
+pub(crate) fn no_such_key(key: &str) -> CmdError {
     let shown = crate::cables::clip(key);
     CmdError::refused(format!(
         "A wire has no property {shown:?}: its values are size, colours and the rating inputs (`rating`); its number and potential belong to its net (`wirenumber`, `potential`)."
@@ -27,7 +27,7 @@ pub fn no_such_key(key: &str) -> CmdError {
 }
 
 /// This lane's rows, asked before [`crate::properties::commands::PROP_RULES`].
-pub static RULES: &[PropRule] = &[
+pub(crate) static RULES: &[PropRule] = &[
     PropRule { what: "wire number and potential (brief 022)", claims: |_, o, k| is_wire(o) && is_net_key(k), build: Build::Value(net_key) },
     PropRule { what: "wire size and colours (072 D)", claims: |_, o, k| is_wire(o) && (k == SIZE || k == COLOURS), build: Build::Record(wire_value) },
     PropRule {
@@ -55,7 +55,7 @@ pub static RULES: &[PropRule] = &[
 /// # Errors
 /// A cable that is not there; a bad offer; a shield that is not a word of [`ecad_model::objects::styles::cable::Shield`];
 /// an `unused.` key naming no core.
-pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let ObjectRef::Cable(k) = o else { return Err(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT)) };
     let cab = doc.cables.get(&k).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
     if key.starts_with(crate::styles::cable::UNUSED_PREFIX) {
@@ -145,7 +145,7 @@ fn modify(c: WireId, before: &Wire, after: Wire) -> Option<Op> {
 ///
 /// # Errors
 /// A value that is not a size (`2.5`, `18 AWG`) or a colour list (`BU`, `GN/YE`).
-pub fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, w) = wire_of(doc, o)?;
     let value = value.map(str::trim).filter(|v| !v.is_empty());
     let mut after = w.clone();
@@ -191,7 +191,7 @@ pub fn wire_type(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> 
 ///
 /// # Errors
 /// The value's range, in words ([`crate::circuits::commands::check_value`]).
-pub fn wire_rating(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn wire_rating(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, w) = wire_of(doc, o)?;
     let key = rating_key(key).ok_or_else(|| no_such_key(key))?;
     let checked = match value.map(str::trim).filter(|v| !v.is_empty()) {
@@ -208,7 +208,7 @@ pub fn wire_rating(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
 ///
 /// # Errors
 /// [`no_such_key`]; a value the entry does not take.
-pub fn wire_display(_: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub(crate) fn wire_display(_: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let entry = defaults::find(key).filter(|e| e.allows(Level::Object)).ok_or_else(|| no_such_key(key))?;
     match value.map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(None),

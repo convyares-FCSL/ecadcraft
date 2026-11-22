@@ -26,7 +26,7 @@ pub fn aspect(word: &str) -> Result<Aspect, CmdError> {
 ///
 /// # Errors
 /// A word that is no aspect.
-pub fn opt_aspect(word: Option<&str>) -> Result<Option<Aspect>, CmdError> {
+pub(crate) fn opt_aspect(word: Option<&str>) -> Result<Option<Aspect>, CmdError> {
     word.map(aspect).transpose()
 }
 
@@ -34,7 +34,7 @@ pub fn opt_aspect(word: Option<&str>) -> Result<Option<Aspect>, CmdError> {
 ///
 /// # Errors
 /// None named, or a word that is no aspect.
-pub fn required_aspect(word: Option<&str>) -> Result<Aspect, CmdError> {
+pub(crate) fn required_aspect(word: Option<&str>) -> Result<Aspect, CmdError> {
     aspect(word.ok_or(CmdError::input("`aspect` is required: \"function\" or \"location\""))?)
 }
 
@@ -48,7 +48,7 @@ fn named(doc: &Document, a: Aspect, text: Option<&str>, field: &str) -> Result<E
 ///
 /// # Errors
 /// Neither given, or no entry has it.
-pub fn named_key_or_code(doc: &Document, a: Aspect, key: Option<&str>, code: Option<&str>) -> Result<Entry, CmdError> {
+pub(crate) fn named_key_or_code(doc: &Document, a: Aspect, key: Option<&str>, code: Option<&str>) -> Result<Entry, CmdError> {
     if key.is_some() { named(doc, a, key, "key") } else { named(doc, a, code, "code") }
 }
 
@@ -69,7 +69,7 @@ fn taken(doc: &Document, a: Aspect, code: &str, except: Option<&str>) -> Option<
 
 /// What a list command records.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ListPlan {
+pub(crate) struct ListPlan {
     /// Empty when nothing changes.
     pub ops: Vec<Op>,
     /// The transaction's label.
@@ -84,7 +84,7 @@ pub struct ListPlan {
 ///
 /// # Errors
 /// A code that does not read or another entry has, or a description that does not read.
-pub fn plan_add(doc: &Document, ids: &mut IdAllocator, a: Aspect, typed: &str, description: Option<&str>) -> Result<ListPlan, CmdError> {
+pub(crate) fn plan_add(doc: &Document, ids: &mut IdAllocator, a: Aspect, typed: &str, description: Option<&str>) -> Result<ListPlan, CmdError> {
     let code = designations::normalise(doc, a, typed)?;
     if taken(doc, a, &code, None).is_some() {
         return Err(CmdError::refused(format!("{code} is already in the list.")));
@@ -99,7 +99,7 @@ pub fn plan_add(doc: &Document, ids: &mut IdAllocator, a: Aspect, typed: &str, d
 
 /// A `designationedit` call, as given.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct EditInput {
+pub(crate) struct EditInput {
     /// The entry's key; with it, `code` is the new code.
     pub key: Option<String>,
     /// The new code (with `key`), or the entry (without).
@@ -118,7 +118,7 @@ pub struct EditInput {
 /// # Errors
 /// No entry named, a code that does not read or another entry has (merge instead), or a
 /// description that does not read.
-pub fn plan_edit(doc: &Document, a: Aspect, edit: EditInput) -> Result<ListPlan, CmdError> {
+pub(crate) fn plan_edit(doc: &Document, a: Aspect, edit: EditInput) -> Result<ListPlan, CmdError> {
     // With `key`, `code` is the new code; without it, `code` names the entry and `to` (or
     // `new_code`) is the new one.
     let (named_code, new_code) = if edit.key.is_some() { (None, edit.code) } else { (edit.code, edit.to.or(edit.new_code)) };
@@ -235,7 +235,7 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
 
 /// `designationremove {aspect?, unused: true}` (design 052 §9.4, **Remove unused**): the ops
 /// removing every entry nothing uses (of `only`, else of both lists), and their codes.
-pub fn plan_remove_unused(doc: &Document, uses: &Uses, only: Option<Aspect>) -> (Vec<Op>, Vec<String>) {
+pub(crate) fn plan_remove_unused(doc: &Document, uses: &Uses, only: Option<Aspect>) -> (Vec<Op>, Vec<String>) {
     let mut project = doc.project.clone();
     let mut codes = Vec::new();
     for a in Aspect::ALL.into_iter().filter(|a| only.is_none_or(|o| o == *a)) {
@@ -253,7 +253,7 @@ pub fn plan_remove_unused(doc: &Document, uses: &Uses, only: Option<Aspect>) -> 
 ///
 /// # Errors
 /// No entry named, or one something uses.
-pub fn plan_remove(doc: &Document, uses: &Uses, a: Aspect, key: Option<&str>, code: Option<&str>) -> Result<(Vec<Op>, String), CmdError> {
+pub(crate) fn plan_remove(doc: &Document, uses: &Uses, a: Aspect, key: Option<&str>, code: Option<&str>) -> Result<(Vec<Op>, String), CmdError> {
     let e = named_key_or_code(doc, a, key, code)?;
     let counts = uses.counts(a, &e.key);
     if !counts.unused() {

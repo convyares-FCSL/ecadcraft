@@ -21,7 +21,7 @@ pub fn label_entity(
 
 /// Brief 050a (design 050 §4.2): a box label in its box's label style when that is not the
 /// location text kind's own style: the style's height, weight and colour.
-pub fn styled_label_entity(
+pub(crate) fn styled_label_entity(
     doc: &Document, draw: &crate::styles::draw::DrawStyles, rep: RepresentationId, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
 ) -> cadcraft_engine::doc::Entity {
     use ecad_electrical::styles::text_style::TextKind;
@@ -48,7 +48,7 @@ pub fn styled_label_entity(
 
 /// The font family a box's label style draws in when it is not the project font (brief 066d), for
 /// the page to install (`install_family`).
-pub fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
+pub(crate) fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
     let c = doc.representations.get(&rep).and_then(|r| match r.subject {
         Subject::Aid(a) => Some(a),
         _ => None,
@@ -60,7 +60,7 @@ pub fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
 /// Brief 050a (design 050 §4.2): draw the outlines of `page`'s boxes in their location style
 /// (line type, weight and colour) instead of the stored item style. `item_handle` finds a box
 /// item's entity among `ents`.
-pub fn style_boxes(
+pub(crate) fn style_boxes(
     doc: &Document, page: PageId, ents: &mut [cadcraft_engine::doc::Entity], item_handle: impl Fn(ItemId) -> Option<cadcraft_engine::doc::Handle>,
 ) {
     let boxes = boxes_on(doc, page);
@@ -81,7 +81,7 @@ pub fn style_boxes(
 
 /// Load [`LINETYPE`] into `d` from CADCraft's standard linetypes when it is missing, so box
 /// outlines draw and plot dashed.
-pub fn add_linetype(d: &mut cadcraft_engine::doc::Drawing) {
+pub(crate) fn add_linetype(d: &mut cadcraft_engine::doc::Drawing) {
     // Brief 050a: a location style may draw continuous or dash-dot as well.
     for name in [LINETYPE, "DASHDOT"] {
         if d.linetype(name).is_some() {

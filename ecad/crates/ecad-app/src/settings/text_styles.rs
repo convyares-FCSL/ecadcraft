@@ -9,7 +9,7 @@ use serde_json::{Map, Value, json};
 use {ecad_electrical::styles::text_style::Shown, ecad_electrical::styles::text_style::TextKind};
 
 /// The section's element name.
-pub const SECTION_ID: &str = "ecad.projectsettings.text";
+pub(crate) const SECTION_ID: &str = "ecad.projectsettings.text";
 /// The height refusal under a field (design 031 §4.1).
 pub const BAD_HEIGHT: &str = ecad_electrical::styles::commands::text::BAD_HEIGHT;
 

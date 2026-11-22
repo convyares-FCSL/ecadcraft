@@ -2194,7 +2194,7 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .filter(|k| pa.get(*k) != ps.get(*k))
-                .filter(|k| !k.starts_with(tag::HIGH_RESET_PREFIX))
+                .filter(|k| crate::naming::keys::NUMBERING_HIGH.parse(k).is_none())
                 .collect();
             // `numbering.high.<P>` is internal (brief 026): never listed (reviewer 026, nit).
             match keys.first() {

@@ -2,10 +2,8 @@
 //! §3.3, §3.5; brief AC 1 and AC 7). Written from the design before the implementation existed.
 
 use ecad_electrical::defaults::{self, Scope};
-use ecad_model::{Author, Document, ObjectRef, Op};
+use ecad_model::{Document, ObjectRef, Op};
 use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::TextStyle, ecad_electrical::styles::text_style::Weight};
-
-use crate::common::H;
 
 const KINDS: &[(TextKind, f64, Weight)] = &[
     (TextKind::Tag, 2.5, Weight::Bold),
@@ -28,7 +26,7 @@ const KINDS: &[(TextKind, f64, Weight)] = &[
 /// A project with these values. Brief 050a: a kind's `text.<kind>.<field>` (height, weight, font)
 /// is a field of the kind's built-in text style, written as the project's record of it.
 fn doc_with(props: &[(&str, &str)]) -> Document {
-    let mut h = H::new(0x7031_a001);
+    let mut doc = Document::default();
     let mut records: std::collections::BTreeMap<String, ecad_model::StyleRecord> = Default::default();
     let mut ops: Vec<Op> = Vec::new();
     for (k, v) in props {
@@ -53,10 +51,10 @@ fn doc_with(props: &[(&str, &str)]) -> Document {
             after: Some(r),
         });
     }
-    if !ops.is_empty() {
-        h.cfg(|p| p.ledger.commit(Author::User, "t", ops)).unwrap();
+    for op in ops {
+        op.apply(&mut doc).unwrap();
     }
-    h.doc()
+    doc
 }
 
 /// T2: every kind's §3.2 default on an empty project, with the style name its weight gives.

@@ -52,8 +52,9 @@ impl ConnectorsView {
 }
 
 /// Whether `key` is a project key whose inheritors' pages redraw (design 044 §11.1).
-fn redraws_inheritors(key: &str) -> bool {
-    key.starts_with("connector.") && (crate::defaults::connectors::is_naming_key(key) || key.ends_with(".description"))
+fn redraws_inheritors(key: ecad_model::document::effect::Key<'_>) -> bool {
+    key.area == ecad_model::naming::keys::Area::Connector
+        && (crate::defaults::connectors::is_naming_key(key.raw) || key.raw.ends_with(".description"))
 }
 
 impl<'i> DerivedView<Inputs<'i>> for ConnectorsView {
@@ -66,7 +67,7 @@ impl<'i> DerivedView<Inputs<'i>> for ConnectorsView {
             return;
         }
         if let Effect::Prop { object: ObjectRef::Project, key, .. } = effect
-            && redraws_inheritors(key.raw)
+            && redraws_inheritors(*key)
         {
             scope.named.insert(key.raw.to_string());
         }

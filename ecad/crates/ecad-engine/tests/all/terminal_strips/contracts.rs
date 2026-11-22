@@ -490,7 +490,7 @@ fn a_fence_across_too_many_wires_is_refused() {
     assert_eq!(h.head(), head);
 }
 
-/// D (design 028 §12): renumber `{kind: "terminals"}` labels each strip's terminals 1…n in
+/// D (design 028 §12): renumber `{kind: "terminal_blocks"}` labels each strip's terminals 1…n in
 /// drawing order; a preview lists the rows; one transaction, one `u`; the wires stay attached.
 #[test]
 fn renumbering_terminal_blocks_follows_drawing_order() {

@@ -197,7 +197,7 @@ fn first_page(doc: &Document, c: DeviceId) -> Option<PageId> {
 /// The extra pages a property change on component `c` redraws (design 045 §11.1): a rack's tag or
 /// slot range shows in its cards' captions.
 pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, key: &str, after: Option<&str>) -> Vec<PageId> {
-    if !(key == ecad_model::naming::tag::TAG_KEY || key.starts_with("plc.")) {
+    if !(key == ecad_model::naming::tag::TAG_KEY || ecad_model::naming::keys::in_area(key, ecad_model::naming::keys::Area::Plc)) {
         return Vec::new();
     }
     // A rack's cards from the kept index (review of #84, 3); a walk only without the models.
@@ -524,7 +524,7 @@ pub(crate) fn channel_texts(
 /// 045 §4.6), called where 034's is. A module's and station's own fields are the `setprop` rows of
 /// `crate::properties::commands::plc`. `None`: not a registry entry of this brief.
 pub(crate) fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
-    let entry = crate::defaults::find(key).filter(|e| e.key.starts_with("plc."))?;
+    let entry = crate::defaults::find(key).filter(|e| ecad_model::naming::keys::in_area(e.key, ecad_model::naming::keys::Area::Plc))?;
     let v = value.map(str::trim).filter(|v| !v.is_empty());
     Some(match v {
         None => Ok(None),

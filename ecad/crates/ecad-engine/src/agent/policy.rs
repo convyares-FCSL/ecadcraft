@@ -59,10 +59,7 @@ pub const READ_COMMANDS: &[&str] = &[
     "reports",
     // Brief 027: the pre-release check reads the project and records nothing.
     "prerelease",
-    // Brief 031: the defaults registry's list and a page's derived texts read the project; Show
-    // Hidden Text is a display state (like a cable view) and records nothing.
-    "defaults",
-    "pagetexts",
+    // Brief 031: Show Hidden Text is a display state (like a cable view) and records nothing.
     "hiddentext",
     // Brief 048: what an edit of a symbol would change on its placed copies reads the project.
     "symbolimpact",

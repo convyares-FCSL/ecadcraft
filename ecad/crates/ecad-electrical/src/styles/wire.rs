@@ -38,7 +38,7 @@ fn any_text(_: &str) -> bool {
 }
 
 /// `wire` (the insulation colour, 040), `ink`, or one colour in any of its forms.
-pub fn is_line_colour(s: &str) -> bool {
+pub(crate) fn is_line_colour(s: &str) -> bool {
     LineColour::parse(s).is_some()
 }
 
@@ -112,9 +112,7 @@ pub static CATALOGUE: Catalogue = Catalogue {
 };
 
 /// The built-in data's text.
-pub const DATA: &str = include_str!("../../defaults/wire_types.toml");
-/// Its name, for messages.
-pub const DATA_FILE: &str = "wire_types.toml";
+pub(crate) const DATA: &str = include_str!("../../defaults/wire_types.toml");
 
 /// The built-in data, read as typed records.
 #[derive(Debug, Default, Deserialize)]
@@ -128,8 +126,11 @@ pub struct Data {
 /// Read the built-in data.
 ///
 /// # Errors
+#[cfg(test)]
+const DATA_FILE: &str = "wire_types.toml";
+
 /// The data's first problem ([`DATA_FILE`]'s field, value or syntax).
-pub fn read_data(text: &str) -> Result<Data, toml::de::Error> {
+pub(crate) fn read_data(text: &str) -> Result<Data, toml::de::Error> {
     toml::from_str(text)
 }
 
@@ -146,7 +147,7 @@ pub fn defaults() -> &'static WireType {
 }
 
 /// Built-in type `id`'s values.
-pub fn builtin_type(id: &str) -> Option<&'static WireType> {
+pub(crate) fn builtin_type(id: &str) -> Option<&'static WireType> {
     data().types.get(id)
 }
 
@@ -415,11 +416,6 @@ impl WireDraws {
 /// [`WireDraws::draw`] for one conductor (reads the categories once).
 pub fn wire_draw(doc: &Document, c: WireId) -> WireDraw {
     WireDraws::new(doc).draw(doc, c)
-}
-
-/// The category name of conductor `c` for reports (empty for none).
-pub fn category_name(doc: &Document, draw: &WireDraw) -> String {
-    draw.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id)).unwrap_or_default()
 }
 
 /// The CADCraft linetype of a `line_type` word.

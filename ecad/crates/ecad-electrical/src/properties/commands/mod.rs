@@ -26,13 +26,13 @@ use crate::locations::commands::locations::{self, MAX_DEVICES};
 use crate::locations::designations::Aspect;
 
 /// The refusal of `tag` on several devices at once.
-pub const ONE_TAG_PER_DEVICE: &str = "Tags are one per device.";
+pub(crate) const ONE_TAG_PER_DEVICE: &str = "Tags are one per device.";
 
 /// The refusal of fixing a provisional tag (design 026 §4).
-pub const PROVISIONAL_FIXED: &str = "A provisional tag can't be fixed; give it a number first.";
+pub(crate) const PROVISIONAL_FIXED: &str = "A provisional tag can't be fixed; give it a number first.";
 
 /// The refusal of an object the input names that the project does not have.
-pub const NO_SUCH_OBJECT: &str = "no such object";
+pub(crate) const NO_SUCH_OBJECT: &str = "no such object";
 
 /// A row's check: the value to store for `key` on `object` (`None` clears it), or the refusal.
 pub type Check = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<String>, CmdError>;
@@ -108,7 +108,7 @@ pub static PROP_RULES: &[PropRule] = &[
     },
     PropRule {
         what: "strip terminal defaults (brief 036)",
-        claims: |doc, o, k| k.starts_with("terminal_block.") && strip(doc, o).is_some(),
+        claims: |doc, o, k| ecad_model::naming::keys::in_area(k, ecad_model::naming::keys::Area::TerminalBlock) && strip(doc, o).is_some(),
         build: Build::Value(connection_point_default_value),
     },
     PropRule {
@@ -144,7 +144,7 @@ pub fn rule_for(doc: &Document, object: ObjectRef, key: &str) -> &'static PropRu
 ///
 /// # Errors
 /// The row's refusal; a row of another kind.
-pub fn plan_record(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn plan_record(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<Option<Op>, CmdError> {
     match rule_for(doc, object, key).build {
         Build::Record(plan) => plan(doc, object, key, typed),
         Build::Aspect | Build::Tag | Build::Fixed | Build::Device(_) | Build::Value(_) => {
@@ -174,7 +174,7 @@ fn tagged(o: ObjectRef) -> bool {
 }
 
 /// Whether `key` on `object` is one of design 018 §6.1's device properties.
-pub fn is_device_property(object: ObjectRef, key: &str) -> bool {
+pub(crate) fn is_device_property(object: ObjectRef, key: &str) -> bool {
     is_component(object) && crate::devices::PROPERTIES.iter().any(|(k, _)| *k == key)
 }
 
@@ -266,7 +266,7 @@ pub fn reserved(key: &str) -> Result<(), CmdError> {
 /// The key `setprop` writes on component `c` for a typed `key`: on a PLC card with channels,
 /// `channels` is its channel count (`plc.channels`, pack re-run bug 7), as `connection_points` is a strip's
 /// offer; on anything else the key as typed.
-pub fn component_key(doc: &Document, c: DeviceId, key: &str) -> String {
+pub(crate) fn component_key(doc: &Document, c: DeviceId, key: &str) -> String {
     if key.trim() == "channels" && crate::plc::card_type_of(doc, c).is_some_and(|t| t.has_channels()) {
         crate::plc::rack::CHANNELS_KEY.to_string()
     } else {
@@ -304,7 +304,7 @@ fn props_of(doc: &Document, o: ObjectRef) -> Option<&Properties> {
 
 /// A `Value` row's change on one object.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ValueSet {
+pub(crate) struct ValueSet {
     /// The op, `None` when the value is already stored.
     pub op: Option<Op>,
     /// What the value meant, when it could be read two ways (brief 036 §5.1: a typed `2.1` is
@@ -316,7 +316,7 @@ pub struct ValueSet {
 ///
 /// # Errors
 /// The rule's refusal; [`NO_SUCH_OBJECT`].
-pub fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<ValueSet, CmdError> {
+pub(crate) fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<ValueSet, CmdError> {
     let after = value(doc, object, key, typed)?;
     let before = match object {
         // A cable's tag and description are fields: read them as `setprop` does.
@@ -341,7 +341,7 @@ pub fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&s
 ///
 /// # Errors
 /// [`ONE_TAG_PER_DEVICE`], [`NO_SUCH_OBJECT`], or the first rule that refuses.
-pub fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Option<&str>) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Option<&str>) -> Result<Vec<Op>, CmdError> {
     if key == TAG_KEY {
         return Err(CmdError::refused(ONE_TAG_PER_DEVICE));
     }
@@ -374,7 +374,7 @@ pub fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Option<&str>
 
 /// A device property's change ([`plan_device`]).
 #[derive(Debug, Clone, PartialEq)]
-pub enum DeviceSet {
+pub(crate) enum DeviceSet {
     /// The value is already stored (as stored).
     Unchanged(Option<String>),
     /// One op, with its undo label.
@@ -389,7 +389,7 @@ pub enum DeviceSet {
 ///
 /// # Errors
 /// [`NO_SUCH_OBJECT`]; the value rule's refusal; a taken tag without `merge`.
-pub fn plan_device(
+pub(crate) fn plan_device(
     doc: &Document, ids: &mut IdAllocator, tag_high: &TagHigh, c: DeviceId, key: &str, typed: Option<&str>, merge: bool,
 ) -> Result<DeviceSet, CmdError> {
     let component = doc.devices.get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
@@ -427,7 +427,7 @@ pub fn plan_device(
 }
 
 /// The echo after a merge (with the merged document): `-K2 is now part of -K1 (3 symbols on 1, 2).`
-pub fn merged_device_words(doc: &Document, before: Option<&str>, holder: DeviceId, into: &str) -> String {
+pub(crate) fn merged_device_words(doc: &Document, before: Option<&str>, holder: DeviceId, into: &str) -> String {
     format!(
         "{} is now part of {into} ({} symbols on {}).",
         before.unwrap_or("The device"),
@@ -536,7 +536,7 @@ fn taken_words(doc: &Document, tag_high: &TagHigh, o: ObjectRef, t: &str, holder
 
 /// A tag's change ([`plan_tag`]).
 #[derive(Debug, Clone, PartialEq)]
-pub enum TagSet {
+pub(crate) enum TagSet {
     /// Nothing to change: the tag it has.
     Unchanged(Option<String>),
     /// The tag cleared (`fixed` is `None`) or set ("Set tag").
@@ -557,7 +557,9 @@ pub enum TagSet {
 /// # Errors
 /// [`NO_SUCH_OBJECT`]; a tag that does not read; a connector's half tag; a taken tag without a
 /// conflict answer, or with one that does not apply.
-pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Option<&str>, conflict: Option<Conflict>) -> Result<TagSet, CmdError> {
+pub(crate) fn plan_tag(
+    doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Option<&str>, conflict: Option<Conflict>,
+) -> Result<TagSet, CmdError> {
     let (before, _) = tag_of(doc, o).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
     let value = match typed.map(str::trim).filter(|v| !v.is_empty()) {
         None => None,
@@ -633,14 +635,14 @@ pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Opt
 
 /// The echo after two cables became one (with the merged document): `-W2 is now part of -W1
 /// (5 wires).`
-pub fn merged_cable_words(doc: &Document, before: Option<&str>, tag: &str, into: CableId) -> String {
+pub(crate) fn merged_cable_words(doc: &Document, before: Option<&str>, tag: &str, into: CableId) -> String {
     let n = doc.cables.get(&into).map_or(0, |c| c.cores.len());
     format!("{} is now part of {tag} ({}).", before.unwrap_or("The cable"), plural(n, "wire", "wires"))
 }
 
 /// The tag's fixed flag ([`plan_fixed`]).
 #[derive(Debug, Clone, PartialEq)]
-pub struct FixedSet {
+pub(crate) struct FixedSet {
     /// Fixed (`true`) or released.
     pub on: bool,
     /// The op, `None` when it already is.
@@ -652,7 +654,7 @@ pub struct FixedSet {
 /// # Errors
 /// A value other than yes or no; [`NO_SUCH_OBJECT`]; fixing no tag, or a provisional one
 /// ([`PROVISIONAL_FIXED`]).
-pub fn plan_fixed(doc: &Document, o: ObjectRef, typed: Option<&str>) -> Result<FixedSet, CmdError> {
+pub(crate) fn plan_fixed(doc: &Document, o: ObjectRef, typed: Option<&str>) -> Result<FixedSet, CmdError> {
     let on = match typed.map(str::trim) {
         None => false,
         Some("") => false,

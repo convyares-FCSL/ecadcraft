@@ -1,11 +1,14 @@
 //! The text commands' rules (brief 031, design 031 §10; brief 050a): the text style table
 //! (`textstyle`), which texts are shown and at which level (`showtext`), a moved tag or connection
 //! point label (`movetext`), and the scope the defaults list is resolved at (`defaults`). Each
-//! function reads the document and returns the ops to commit and what to report; measuring and
-//! listing the texts drawn on a page is the engine crate's.
+//! function reads the document and returns the ops to commit and what to report; the generic
+//! commands (`textstyle`, `pagetexts`, `movetext`) are declared at the end, measured with the text metrics
+//! the runner gives them. `showtext` and `hiddentext` need the session and stay in the engine.
 
 use crate::defaults::{Entry, Level, Resolved, Source};
 use ecad_model::Word;
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,25 +17,28 @@ use ecad_model::{
     TextVAlign, WireId,
 };
 
+use crate::commands::input::{Bounded, Point, nullable};
+use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::defaults::{self, Scope};
 use crate::devices::texts::TextOf;
 use crate::devices::{self};
 use crate::error::CmdError;
+use crate::styles::text_style::fonts::{Fonts, TextMetrics};
 use crate::styles::text_style::{self, Shown, TextKind, kind_words};
 
 /// Refusals (design 031 §10.1).
 pub const BAD_HEIGHT: &str = "A text height is 0.5 to 10 mm.";
-pub const BAD_WEIGHT: &str = "Weight is regular or bold.";
+pub(crate) const BAD_WEIGHT: &str = "Weight is regular or bold.";
 pub const BAD_SHOW: &str = "Shown is yes, no or first (first: tag only).";
 pub const BAD_FONT: &str = "A font name is 1 to 64 characters with no control characters.";
 pub const NEEDS_KIND: &str = "height, weight and show need a kind.";
 pub const BAD_POINT: &str = "A text position must be a finite point.";
 pub const BAD_JUSTIFY: &str = "Justify is two letters: L, C or R, then T, M or B.";
-pub const NEEDS_CONNECTION_POINT: &str = "point_label needs the connection point's key.";
+pub(crate) const NEEDS_CONNECTION_POINT: &str = "point_label needs the connection point's key.";
 const NOT_A_SYMBOL: &str = "That representation is not a symbol.";
 
 /// Most kinds one `textstyle` call changes (the style table has fewer; a guard on hostile input).
-pub const MAX_KINDS: usize = 64;
+pub(crate) const MAX_KINDS: usize = 64;
 
 /// A field of a call: `None` leaves it, `Some(None)` goes back to the default, `Some(Some(v))`
 /// sets it.
@@ -57,7 +63,7 @@ pub fn kind(word: &str) -> Result<TextKind, CmdError> {
 ///
 /// # Errors
 /// A word that is no kind.
-pub fn opt_kind(word: Option<&str>) -> Result<Option<TextKind>, CmdError> {
+pub(crate) fn opt_kind(word: Option<&str>) -> Result<Option<TextKind>, CmdError> {
     word.map(kind).transpose()
 }
 
@@ -80,7 +86,7 @@ pub struct KindRow {
 
 /// A `textstyle` call that writes, as given.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct TextStyleInput {
+pub(crate) struct TextStyleInput {
     /// The project font.
     pub font: Change<String>,
     /// The call's own kind row (`kind`, `height`, `weight`, `show`, and `font` when it names a
@@ -92,7 +98,7 @@ pub struct TextStyleInput {
 
 /// One kind's changes, checked.
 #[derive(Debug, Clone, PartialEq)]
-pub struct KindChange {
+pub(crate) struct KindChange {
     kind: TextKind,
     /// The kind's own font (owner, 2026-11-12); `null` goes back to the project font.
     font: Change<String>,
@@ -103,7 +109,7 @@ pub struct KindChange {
 
 /// The changes of a `textstyle` call, checked: what [`textstyle_ops`] writes.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TextStyleChanges {
+pub(crate) struct TextStyleChanges {
     font: Change<String>,
     kinds: Vec<KindChange>,
 }
@@ -154,7 +160,7 @@ fn kind_change(row: KindRow) -> Result<Option<KindChange>, CmdError> {
 /// # Errors
 /// A font, height, weight or show that does not read, an unknown kind, a row changing something
 /// without a kind, or a kind with no Shown setting given one.
-pub fn textstyle_changes(input: TextStyleInput) -> Result<TextStyleChanges, CmdError> {
+pub(crate) fn textstyle_changes(input: TextStyleInput) -> Result<TextStyleChanges, CmdError> {
     // The project font: `font` with no `kind` (with a kind it is that kind's font).
     let named = input.row.kind.is_some();
     let font = if named { None } else { check(input.font.clone(), |f| Some(f.trim().to_string()), BAD_FONT)? };
@@ -237,7 +243,7 @@ fn style_ops(doc: &Document, style: &StyleFields, ops: &mut Vec<Op>) {
 
 /// The ops of a `textstyle` call (design 031 §10.1): one transaction; empty when everything is
 /// already so. A key given twice (two rows of one kind): the last value wins, in one op.
-pub fn textstyle_ops(doc: &Document, c: &TextStyleChanges) -> Vec<Op> {
+pub(crate) fn textstyle_ops(doc: &Document, c: &TextStyleChanges) -> Vec<Op> {
     let mut ops = Vec::new();
     if let Some(f) = &c.font {
         set_project(doc, defaults::text::FONT.key, f.clone(), &mut ops);
@@ -347,7 +353,7 @@ fn kinds_at(level: ShowLevel) -> &'static [TextKind] {
 }
 
 /// The object and key a visibility at `level` is stored under.
-pub fn show_key(level: ShowLevel, kind: TextKind) -> Option<(ObjectRef, String)> {
+pub(crate) fn show_key(level: ShowLevel, kind: TextKind) -> Option<(ObjectRef, String)> {
     let entry = kind.show_entry()?;
     Some(match level {
         ShowLevel::Symbol(rep, c) => (ObjectRef::Device(c), defaults::symbol_key(entry.key, rep)),
@@ -441,7 +447,7 @@ pub fn show_label(doc: &Document, level: ShowLevel, kind: TextKind, show: Option
 ///
 /// # Errors
 /// Neither given nor shown, or a page the project does not have.
-pub fn text_page(doc: &Document, page: Option<PageId>, shown: Option<PageId>) -> Result<PageId, CmdError> {
+pub(crate) fn text_page(doc: &Document, page: Option<PageId>, shown: Option<PageId>) -> Result<PageId, CmdError> {
     let page = page.or(shown).ok_or(CmdError::input("`page` (hex id) is required: no page is shown"))?;
     if !doc.pages.contains_key(&page) {
         return Err(CmdError::refused(format!("No page {}.", page.hex())));
@@ -461,7 +467,7 @@ pub fn justify(code: Option<&str>) -> Result<Option<(TextHAlign, TextVAlign)>, C
 
 /// A movable derived text: a symbol's tag block, or one of its connection point labels.
 #[derive(Debug, Clone, PartialEq)]
-pub struct MoveTarget {
+pub(crate) struct MoveTarget {
     /// The symbol's device.
     pub component: DeviceId,
     /// The device property its place is stored under.
@@ -477,7 +483,7 @@ pub struct MoveTarget {
 /// # Errors
 /// No such representation, not a symbol, no such connection point on it, or a kind that does
 /// not move.
-pub fn move_target(
+pub(crate) fn move_target(
     doc: &Document, rep: RepresentationId, kind: TextKind, connection_point: Option<ConnectionPointId>,
 ) -> Result<MoveTarget, CmdError> {
     let r = doc.representations.get(&rep).ok_or_else(|| CmdError::refused(format!("No representation {}.", rep.hex())))?;
@@ -501,7 +507,7 @@ pub fn move_target(
 
 /// What a `movetext` call records.
 #[derive(Debug, Clone, PartialEq)]
-pub struct MovePlan {
+pub(crate) struct MovePlan {
     /// The op, or `None` when the place is already so.
     pub op: Option<Op>,
     /// "Move tag -K1", "Reset label".
@@ -515,7 +521,7 @@ pub struct MovePlan {
 ///
 /// # Errors
 /// The symbol cannot be drawn, or `to` has no place in the symbol's frame.
-pub fn plan_move(
+pub(crate) fn plan_move(
     doc: &Document, rep: RepresentationId, kind: TextKind, t: &MoveTarget, to: Option<Pt>, justify: Option<(TextHAlign, TextVAlign)>,
     current: Option<(TextHAlign, TextVAlign)>,
 ) -> Result<MovePlan, CmdError> {
@@ -586,7 +592,7 @@ pub fn textstyle_json(doc: &Document, fonts: &crate::styles::text_style::fonts::
 }
 
 /// The JSON form of a registry value.
-pub fn value_json(r: &Resolved<'_>) -> Value {
+pub(crate) fn value_json(r: &Resolved<'_>) -> Value {
     match r.value {
         defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
         defaults::Value::Choice(w) => json!(w),
@@ -612,7 +618,7 @@ pub fn level_word(l: Level) -> &'static str {
 }
 
 /// One registry entry as `defaults` lists it, resolved at `at`.
-pub fn entry_json(doc: &Document, e: &Entry, at: Scope) -> Value {
+pub(crate) fn entry_json(doc: &Document, e: &Entry, at: Scope) -> Value {
     let r = defaults::resolve(doc, e, at);
     let builtin = Resolved { value: e.builtin(), from: Source::Builtin };
     let mut m = Map::new();
@@ -626,4 +632,229 @@ pub fn entry_json(doc: &Document, e: &Entry, at: Scope) -> Value {
     m.insert("value".into(), value_json(&r));
     m.insert("from".into(), json!(r.from.as_str()));
     Value::Object(m)
+}
+
+// ---------------------------------------------------------------- the commands
+
+/// One kind's row of `kinds`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct KindRowParams {
+    /// The kind: tag, point_label, …
+    #[serde(default)]
+    kind: Option<String>,
+    /// The kind's own font, or null for the project font.
+    #[serde(default, deserialize_with = "nullable")]
+    font: Change<String>,
+    /// The cap height, mm (0.5 to 10), or null for the default.
+    #[serde(default, deserialize_with = "nullable")]
+    height: Change<f64>,
+    /// "regular" or "bold", or null for the default.
+    #[serde(default, deserialize_with = "nullable")]
+    weight: Change<String>,
+    /// "on", "off" or "first", or null for the default.
+    #[serde(default, deserialize_with = "nullable")]
+    show: Change<String>,
+}
+
+impl From<KindRowParams> for KindRow {
+    fn from(r: KindRowParams) -> KindRow {
+        KindRow { kind: r.kind, font: r.font, height: r.height, weight: r.weight, show: r.show }
+    }
+}
+
+/// `textstyle {font?, kind?, height?, weight?, show?, kinds?: [{kind, height?, weight?, show?}]}`
+/// (design 031 §10.1; `kinds` lets the Text section write several kinds as one transaction). No
+/// field reads the table.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TextstyleParams {
+    /// The project font (with `kind`: that kind's own font), or null for the default.
+    #[serde(default, deserialize_with = "nullable")]
+    font: Change<String>,
+    /// The kind `height`, `weight` and `show` change: tag, point_label, …
+    #[serde(default, deserialize_with = "nullable")]
+    kind: Change<String>,
+    /// The kind's cap height, mm (0.5 to 10), or null for the default.
+    #[serde(default, deserialize_with = "nullable")]
+    height: Change<f64>,
+    /// "regular" or "bold", or null for the default.
+    #[serde(default, deserialize_with = "nullable")]
+    weight: Change<String>,
+    /// "on", "off" or "first" (tag only), or null for the default.
+    #[serde(default, deserialize_with = "nullable")]
+    show: Change<String>,
+    /// More kinds' rows, in the same transaction.
+    #[serde(default, deserialize_with = "nullable")]
+    kinds: Option<Option<Bounded<KindRowParams, 0, { MAX_KINDS }>>>,
+}
+
+impl Generic for TextstyleParams {
+    const ID: &'static str = "textstyle";
+    const TITLE: &'static str = "Text Styles";
+    const HELP: &'static str = "{font?: string|null, kind?: word, height?: number|null (cap height, mm, 0.5-10), weight?: \"regular\"|\"bold\"|null, \
+show?: \"on\"|\"off\"|\"first\"|null} (no fields: read only; all given fields are one transaction; null: back to the default)";
+    const PAGES: Pages = Pages::ReadAnywhere;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let given =
+            [self.font.is_some(), self.kind.is_some(), self.height.is_some(), self.weight.is_some(), self.show.is_some(), self.kinds.is_some()];
+        let metrics = cx.metrics;
+        if !given.contains(&true) {
+            let doc = cx.doc;
+            return Ok(Outcome::answer(textstyle_json(doc, &Fonts::resolve_with(doc, metrics), false)));
+        }
+        let input = TextStyleInput {
+            font: self.font,
+            row: KindRow { kind: self.kind.flatten(), font: None, height: self.height, weight: self.weight, show: self.show },
+            kinds: self.kinds.flatten().map(|b| b.0).unwrap_or_default().into_iter().map(KindRow::from).collect(),
+        };
+        let changes = textstyle_changes(input)?;
+        let ops = textstyle_ops(cx.doc, &changes);
+        let changed = !ops.is_empty();
+        Ok(Outcome::edit_then("Text styles", ops, move |doc| textstyle_json(doc, &Fonts::resolve_with(doc, metrics), changed)))
+    }
+}
+
+/// Most rows `pagetexts` returns.
+pub(crate) const MAX_TEXT_ROWS: usize = 5_000;
+
+/// `pagetexts {page?}` (design 031 §10.4; named so because `texts` is CADCraft's): every derived
+/// text on a page, hidden ones too.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PagetextsParams {
+    /// The page (default: the page shown).
+    #[serde(default)]
+    page: Option<PageId>,
+}
+
+impl Generic for PagetextsParams {
+    const ID: &'static str = "pagetexts";
+    const TITLE: &'static str = "Page Texts";
+    const HELP: &'static str = "{page?: id} (every derived text on the page, hidden ones too; read only)";
+    const PAGES: Pages = Pages::ReadAnywhere;
+    const ACCESS: Access = Access::Reads;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let page = text_page(cx.doc, self.page, cx.page)?;
+        Ok(Outcome::answer(pagetexts_json(cx.doc, page, cx.metrics)))
+    }
+}
+
+/// The rows of `pagetexts` for `page`, measured with `metrics`.
+pub(crate) fn pagetexts_json(doc: &Document, page: PageId, metrics: &dyn TextMetrics) -> Value {
+    use crate::styles::text_style::fonts::{DrawStyles, width_in};
+    use crate::styles::text_style::{TextStyle, Weight, justify_code, text_box};
+    let draw = DrawStyles::with(doc, metrics);
+    let all = crate::devices::texts::all_texts_measured(doc, page, None, metrics);
+    let more = all.len().saturating_sub(MAX_TEXT_ROWS);
+    let rows: Vec<Value> = all
+        .iter()
+        .take(MAX_TEXT_ROWS)
+        .map(|t| {
+            let d = &t.text;
+            let kind = crate::devices::texts::kind_of(d.of);
+            let style = draw.style(kind);
+            let w = width_in(draw.fonts_for(kind), TextStyle { height: d.height, ..style }, &d.value, metrics);
+            let (lo, hi) = text_box(w, d.height, d.at, d.halign, d.valign);
+            let component = doc.representations.get(&d.rep).and_then(|r| match r.subject {
+                Subject::Device(c) => Some(c.hex()),
+                _ => None,
+            });
+            let weight = match style.weight {
+                Weight::Bold => "bold",
+                Weight::Regular => "regular",
+            };
+            let mut row = json!({
+                "representation": d.rep.hex(),
+                "component": component,
+                "kind": kind.word(),
+                "value": d.value,
+                "at": [d.at.x, d.at.y],
+                "justify": justify_code(d.halign, d.valign),
+                "height": d.height,
+                "weight": weight,
+                "shown": t.shown,
+                "moved": t.moved,
+                "overlaps": t.overlaps,
+                "box": [[lo.x, lo.y], [hi.x, hi.y]],
+            });
+            if let TextOf::ConnectionPoint(id) = d.of {
+                row["connection_point"] = json!(id.hex());
+            }
+            row
+        })
+        .collect();
+    let mut v = json!({ "texts": rows });
+    if more > 0 {
+        v["more"] = json!(more);
+    }
+    v
+}
+
+/// `movetext {representation, kind?, connection_point?, to, justify?}` or `{…, reset: true}`
+/// (§10.3): a symbol's tag or connection point label moved to a page point, or back to its
+/// computed place.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MovetextParams {
+    /// The symbol.
+    representation: RepresentationId,
+    /// "tag" (default) or "point_label".
+    #[serde(default)]
+    kind: Option<String>,
+    /// The connection point whose label moves (point_label).
+    #[serde(default)]
+    connection_point: Option<ConnectionPointId>,
+    /// The page point the text moves to.
+    #[serde(default)]
+    to: Option<Point>,
+    /// The text's justification: "RT", "LB", … (default: as it is).
+    #[serde(default)]
+    justify: Option<String>,
+    /// Back to the computed place (`to` is not read).
+    #[serde(default)]
+    reset: Option<bool>,
+}
+
+impl Generic for MovetextParams {
+    const ID: &'static str = "movetext";
+    const TITLE: &'static str = "Move Text";
+    const HELP: &'static str = "{representation: id, kind?: \"tag\"|\"point_label\", connection_point?: id, to: [x,y], justify?: \"RT\"…} or {representation, kind?, connection_point?, reset: true} \
+(to is a page point; stored in the symbol's frame)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let rep = self.representation;
+        let kind = opt_kind(self.kind.as_deref())?.unwrap_or(TextKind::Tag);
+        let connection_point = self.connection_point;
+        let to = match self.to {
+            _ if self.reset == Some(true) => None,
+            Some(p) => Some(p.0),
+            None => return Err(CmdError::refused(BAD_POINT)),
+        };
+        let justify = justify(self.justify.as_deref())?;
+        let metrics = cx.metrics;
+        let doc = cx.doc;
+        let t = move_target(doc, rep, kind, connection_point)?;
+        let current = current_text(doc, rep, &t, metrics).map(|x| (x.text.halign, x.text.valign));
+        let plan = plan_move(doc, rep, kind, &t, to, justify, current)?;
+        let changed = plan.op.is_some();
+        let placed = plan.after.is_some();
+        Ok(Outcome::edit_then(plan.label, plan.op.into_iter().collect(), move |doc| {
+            let now = move_target(doc, rep, kind, connection_point).ok().and_then(|t| current_text(doc, rep, &t, metrics));
+            json!({
+                "representation": rep.hex(),
+                "kind": kind.word(),
+                "at": if placed { now.as_ref().map(|t| json!([t.text.at.x, t.text.at.y])) } else { None },
+                "justify": now.as_ref().map(|t| crate::styles::text_style::justify_code(t.text.halign, t.text.valign)),
+                "changed": changed,
+            })
+        }))
+    }
+}
+
+/// The text `t` names as drawn now.
+fn current_text(doc: &Document, rep: RepresentationId, t: &MoveTarget, metrics: &dyn TextMetrics) -> Option<crate::devices::texts::PageText> {
+    crate::devices::texts::all_texts_measured(doc, t.page, None, metrics).into_iter().find(|x| x.text.rep == rep && x.text.of == t.of)
 }

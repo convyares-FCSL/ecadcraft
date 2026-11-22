@@ -129,7 +129,7 @@ impl ShowText {
 
 /// The echo after a change (design 031 §5.5): `Tag -X01 hidden on this symbol.`…
 fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show: &str, component: Option<DeviceId>) -> String {
-    let what = crate::styles::commands::kind_words(kind);
+    let what = ecad_electrical::styles::text_style::kind_words(kind);
     let mut what = what.to_string();
     if let Some(first) = what.get(..1) {
         what = format!("{}{}", first.to_ascii_uppercase(), what.get(1..).unwrap_or_default());
@@ -278,7 +278,7 @@ impl MoveText {
                 let w = k.trim().to_ascii_lowercase();
                 if self.asking_justify {
                     if ecad_electrical::styles::text_style::parse_justify(&w).is_none() {
-                        return Err(other(crate::styles::commands::BAD_JUSTIFY));
+                        return Err(other(ecad_electrical::styles::commands::text::BAD_JUSTIFY));
                     }
                     self.justify = Some(w.to_ascii_uppercase());
                     self.asking_justify = false;

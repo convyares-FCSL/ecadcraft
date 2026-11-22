@@ -44,7 +44,7 @@ fn is_title_block(s: &str) -> bool {
     s.trim().eq_ignore_ascii_case(OWN_BLOCK) || StyleRef::parse(s).is_some()
 }
 /// What generated kinds a type holds: none (drawn pages), the front kinds, the report kinds.
-pub const HOLDS: &[&str] = &["none", "front", "report"];
+pub(crate) const HOLDS: &[&str] = &["none", "front", "report"];
 
 static FIELDS: [Field; 6] = [
     Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 64, parse: is_sheet }, slot: Slot::new(), over: None },
@@ -84,7 +84,7 @@ pub static CATALOGUE: Catalogue = Catalogue {
 };
 
 /// The built-in Cover sheet type (ID `front`, kept: old files store it).
-pub const FRONT: &str = "front";
+pub(crate) const FRONT: &str = "front";
 /// The built-in Schematic type, a page's type when nothing else says.
 pub const SCHEMATIC: &str = "schematic";
 /// The built-in Panel layout type (+ Page offers it disabled, design 054 Q3).
@@ -170,7 +170,7 @@ pub fn subtitle(id: &StyleRef) -> &'static str {
             "network" => "From ports and cables",
             "singleline" => "From the load tree",
             "panel" => "Scale 1:4",
-            "report" => "Parts, cables, terminals, PLC",
+            "report" => "Parts, cables, terminal blocks, PLC",
             "plain" => "Imported drawings and notes",
             _ => "",
         },
@@ -189,7 +189,7 @@ pub fn kinds(holds: Holds) -> &'static [GenKind] {
 
 /// Whether type `id` holds generated pages only (the built-in Front sheet and Report, design 054
 /// §4.2): `newpage {type}` with no `generated` is refused for them.
-pub fn generated_only(id: &StyleRef) -> bool {
+pub(crate) fn generated_only(id: &StyleRef) -> bool {
     matches!(id, StyleRef::Builtin(w) if w == FRONT || w == REPORT)
 }
 
@@ -225,7 +225,7 @@ pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, b
 
 /// [`touched_by`] for a style effect: the pages a record of catalogue `page` set from `before` to
 /// `after` reaches, and whether their sheet changes. `None` for any other catalogue.
-pub fn touched_by_effect(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) -> Option<(Vec<PageId>, bool)> {
+pub(crate) fn touched_by_effect(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) -> Option<(Vec<PageId>, bool)> {
     let ecad_model::document::effect::Effect::Style { catalogue, id, before, after, .. } = effect else { return None };
     reach(doc, *catalogue, id, *before, *after)
 }
@@ -251,7 +251,7 @@ fn reach(
 }
 
 /// The refusal for a generated `kind` given a type of the wrong position (design 054 §2.3).
-pub fn kind_refusal(kind: GenKind) -> String {
+pub(crate) fn kind_refusal(kind: GenKind) -> String {
     let (one, ty) = match holds_of_kind(kind) {
         Holds::Front => ("Cover sheet", "Cover sheet"),
         _ => ("Report", "Report"),
@@ -260,7 +260,7 @@ pub fn kind_refusal(kind: GenKind) -> String {
 }
 
 /// The refusal for a generated-only type with no `generated` (design 054 §4.2).
-pub fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
+pub(crate) fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
     let pos = draw_of(doc, id).holds;
     let list: Vec<String> = kinds(pos).iter().map(|k| format!("\"{}\"", ecad_model::Word::word(*k))).collect();
     let words = match list.as_slice() {

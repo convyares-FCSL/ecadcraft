@@ -596,11 +596,11 @@ pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
         return Err(CmdError::refused(format!("\"{key}\" is reserved.")));
     }
     // Brief 026: the numbering keys are written by `numbering`, Renumber and Finalise.
-    if key.starts_with("numbering.") {
+    if ecad_model::naming::keys::in_area(key, ecad_model::naming::keys::Area::Numbering) {
         return Err(CmdError::refused(format!("\"{key}\" is reserved (Project settings → Numbering).")));
     }
     // Brief 036: the registry's terminal defaults are project properties of their entry's key.
-    if key.starts_with("terminal_block.") && crate::defaults::find(key).is_some() {
+    if ecad_model::naming::keys::in_area(key, ecad_model::naming::keys::Area::TerminalBlock) && crate::defaults::find(key).is_some() {
         return Ok(());
     }
     // Brief 054 (FP4, design 054 §8.1a): the cover's notes and its table editor rows.
@@ -1209,9 +1209,9 @@ pub fn project_json(doc: &Document) -> Value {
         .filter(|(k, _)| {
             !PROJECT_KEYS.contains(&k.as_str())
                 && !k.starts_with(revisions::PREFIX)
-                && !k.starts_with("numbering.")
-                && !k.starts_with("tags.")
-                && !k.starts_with("revisions.")
+                && !ecad_model::naming::keys::in_area(k, ecad_model::naming::keys::Area::Numbering)
+                && !ecad_model::naming::keys::in_area(k, ecad_model::naming::keys::Area::Tags)
+                && !ecad_model::naming::keys::in_area(k, ecad_model::naming::keys::Area::Revisions)
         })
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
         .chain(info)

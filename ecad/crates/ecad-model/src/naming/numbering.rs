@@ -37,7 +37,7 @@ use crate::document::op::{ObjectRef, Op};
 use crate::document::sheet::Grid;
 use crate::geometry::geom::Pt;
 use crate::naming::id::{CableId, ConnectionPointId, DeviceId, FolderId, PageId, WireId};
-use crate::naming::tag::{self, FIXED_KEY, HIGH_RESET_PREFIX, HighWater, TAG_KEY};
+use crate::naming::tag::{self, FIXED_KEY, HighWater, TAG_KEY};
 
 /// The kind of item a row numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -712,7 +712,9 @@ fn plan_tags(
     // FP4: the mark of each prefix whose tags changed is the highest number now in use.
     for p in changed_prefixes {
         let n = in_use_after.get(&p).copied().unwrap_or(0);
-        let key = format!("{HIGH_RESET_PREFIX}{p}");
+        let Some(key) = crate::naming::keys::NUMBERING_HIGH.build(&[p.as_str()]) else {
+            continue;
+        };
         let before = doc.display.get(&key).cloned();
         // Always written, also when the number is the stored one (tester 026, 6): the reset
         // carries the mark it replaces and a newer generation (`tag::reset_value`).

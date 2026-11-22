@@ -20,7 +20,7 @@ use crate::defaults::{Kind, Slot, Value};
 use crate::styles::{Builtin, Catalogue, Field};
 
 /// The `sheet` field's word for "the page's own sheet".
-pub const PAGE_SHEET: &str = "page";
+pub(crate) const PAGE_SHEET: &str = "page";
 
 fn sheet_ok(s: &str) -> bool {
     s == PAGE_SHEET || parse_frame_sheet(s).is_some()
@@ -118,7 +118,7 @@ pub fn frame_draw(doc: &Document, page: PageId) -> FrameDraw {
 }
 
 /// The look of frame style `id`.
-pub fn draw_of(doc: &Document, id: &StyleRef) -> FrameDraw {
+pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> FrameDraw {
     let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Frame, id, k, None);
     FrameDraw {
         border: weight(f("border_weight").map_or(0.5, |r| r.number())),
