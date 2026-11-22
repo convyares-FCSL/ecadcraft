@@ -88,7 +88,7 @@ impl Ledger {
     /// [`ModelError::CorruptLog`] when the base's stacks are inconsistent (an entry at 0 or after
     /// the base, or out of order) or their tops cannot be read from the history.
     pub fn from_base(base: Base, tail: Vec<Transaction>, seed: u64) -> Result<(Self, Option<(usize, ModelError)>)> {
-        let Base { seq, mut doc, undo, redo, undo_hidden, redo_hidden, indexed, stack_cap, history } = base;
+        let Base { seq, doc, undo, redo, undo_hidden, redo_hidden, stack_cap, history } = base;
         // Each transaction up to the base is on at most one stack: more entries than that (a
         // crafted file) is damage, never an allocation or a loop.
         let depth = [undo.len() as u64, undo_hidden, redo.len() as u64, redo_hidden].into_iter().try_fold(0u64, u64::checked_add);
@@ -104,9 +104,6 @@ impl Ledger {
             if bad_entry || unordered {
                 return Err(ModelError::CorruptLog(format!("the undo or redo stack recorded at {seq} is inconsistent")));
             }
-        }
-        if !indexed {
-            doc.rebuild_index();
         }
         let mut me = Self {
             doc,
@@ -275,8 +272,6 @@ impl Ledger {
         let verify = matches!(level, Level::Build(true));
         let mut doc = doc;
         let mut health = Health::default();
-        // The checkpoint may have been built without ops; make its index match its objects.
-        doc.rebuild_index();
         for (i, tx) in log.iter().enumerate() {
             if tx.seq != i as u64 + 1 {
                 return Err(ModelError::CorruptLog(format!("transaction {} has sequence {} at position {}", tx.id, tx.seq, i + 1)));

@@ -25,7 +25,6 @@ fn invalid_checkpoint() -> Document {
             },
         )
     });
-    doc.rebuild_index();
     doc
 }
 

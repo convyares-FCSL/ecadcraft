@@ -211,7 +211,6 @@ fn missing_and_duplicate_entries_are_listed() {
             parts.project.functions.push(ecad_model::Function::new(ecad_model::FunctionId(id), ecad_model::ListCode::new(code).unwrap()));
         });
     }
-    d.rebuild_index();
     assert_eq!(code(&d, k), None, "a v0.2.0 code shows ?");
     assert!(ecad_electrical::locations::resolve(&d, k).missing());
     let rows = ecad_engine::checks::all(&d, 1e-6);
@@ -232,7 +231,6 @@ fn two_heads_are_listed() {
             r.subject = ecad_model::Subject::Device(k);
         }
     });
-    d.rebuild_index();
     let rows = ecad_engine::checks::all(&d, 1e-6);
     let two: Vec<_> = rows.iter().filter(|r| r.kind == Kind::TwoHeads).collect();
     assert_eq!(two.len(), 1, "{rows:?}");

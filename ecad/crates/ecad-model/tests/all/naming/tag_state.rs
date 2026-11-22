@@ -12,7 +12,6 @@ fn doc_with(devices: &[(u128, &str, TagState)]) -> Document {
             parts.devices.insert(DeviceId(*id), Device::default().with_tag(Some(t), *state));
         }
     });
-    d.rebuild_index();
     d
 }
 

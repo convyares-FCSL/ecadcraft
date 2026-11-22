@@ -544,9 +544,7 @@ fn snapshot_doc(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<chunk
     for (k, h) in &set.chunks {
         bodies.push((k.clone(), r.chunk_body(h)?));
     }
-    let (mut d, meta) = chunks::assemble(&set, bodies)?;
-    d.rebuild_index();
-    Ok((d, meta))
+    chunks::assemble(&set, bodies)
 }
 
 /// The live merges after `log` (a branch's whole log), by the step that made each live: a merge,

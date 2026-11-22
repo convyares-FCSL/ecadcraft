@@ -40,7 +40,6 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
             parts.representations.insert(RepresentationId(*rid), rep);
         }
     });
-    d.rebuild_index();
     d
 }
 

@@ -159,7 +159,6 @@ fn of_two_heads_the_first_in_book_order_is_the_head() {
             r.subject = Subject::Device(k);
         }
     });
-    d.rebuild_index();
     assert_eq!(reps::heads(&d, k), vec![a, b]);
     assert_eq!(reps::head(&d, k), Some(a));
     assert_eq!(ecad_electrical::references::devices::classify::device(&d, k).head, Some(a));
@@ -227,7 +226,6 @@ fn go_to_and_numbering_share_one_drawing_order() {
             r.subject = Subject::Device(q);
         }
     });
-    d.rebuild_index();
     assert_eq!(reps::head(&d, q), Some(rep(&c2)));
     assert_eq!(ecad_electrical::references::devices::classify::device(&d, q).head, Some(rep(&c2)));
 }

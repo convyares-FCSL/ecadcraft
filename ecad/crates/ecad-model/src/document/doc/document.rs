@@ -272,8 +272,9 @@ impl Document {
     /// Build a document from its stored objects and recompute its indexes.
     ///
     /// # Semantics
-    /// Runs [`Document::rebuild_index`] only, not [`Document::check`], so a file with a broken
-    /// state can still be loaded and reported.
+    /// Builds the indexes only, not [`Document::check`], so a file with a broken state can still be
+    /// loaded and reported. The document it returns has current indexes, as every document outside
+    /// this crate does: nothing else needs to rebuild them.
     #[must_use]
     pub fn from_parts(parts: DocumentParts) -> Document {
         let DocumentParts {
@@ -530,12 +531,14 @@ impl Document {
         &self.styles
     }
 
-    /// Recompute the reverse indexes from the stored objects.
+    /// Recompute the reverse indexes and the nets from the stored objects.
     ///
     /// # Semantics
-    /// Needed only after changing the stored objects without [`Document::edit_parts`]; [`crate::Op::apply`] keeps the index
-    /// current on its own.
-    pub fn rebuild_index(&mut self) {
+    /// Needed only where this crate changes the stored maps directly: building a document
+    /// ([`Document::from_parts`], [`Document::edit_parts`], reading one) and a merge's working
+    /// copy. [`crate::Op::apply`] keeps the indexes current on its own, so a document outside this
+    /// crate is always indexed.
+    pub(crate) fn rebuild_index(&mut self) {
         self.index = Index::build(self);
         self.conn = crate::connectivity::Connectivity::build(self);
     }

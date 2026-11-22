@@ -151,7 +151,6 @@ impl H {
             for op in ops.iter().rev() {
                 op.inverse().apply(&mut mid).unwrap();
             }
-            mid.rebuild_index();
             self.trail.push(mid);
         }
         if head > before {

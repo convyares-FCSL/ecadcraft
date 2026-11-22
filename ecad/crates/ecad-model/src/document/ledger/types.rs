@@ -140,8 +140,6 @@ pub struct Base {
     /// How many entries lie below `undo` and `redo` (0 when they are whole).
     pub undo_hidden: u64,
     pub redo_hidden: u64,
-    /// `doc`'s derived index is already built (it is built here otherwise).
-    pub indexed: bool,
     /// The cap the snapshot recorded its stacks with: entries below them are read from the
     /// history this many at a time (0: the stacks are whole; [`STACK_READ`] is then used).
     pub stack_cap: u64,

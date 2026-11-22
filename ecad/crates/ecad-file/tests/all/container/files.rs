@@ -194,8 +194,7 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
         let v = reader.version(o.project.branch(), kind, &name).unwrap().unwrap();
         let set = ecad_file::chunks::ChunkSet::from_record(&v.chunks).unwrap();
         let bodies = set.chunks.iter().map(|(k, h)| (k.clone(), reader.chunk_body(h).unwrap())).collect::<Vec<_>>();
-        let (mut doc, _) = ecad_file::chunks::assemble(&set, bodies).unwrap();
-        doc.rebuild_index();
+        let (doc, _) = ecad_file::chunks::assemble(&set, bodies).unwrap();
         assert_eq!(doc, f.ledger.state_at(seq).unwrap(), "{name}");
     }
 }

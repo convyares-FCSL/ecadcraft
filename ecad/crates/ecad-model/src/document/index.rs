@@ -13,8 +13,9 @@
 //! - Entries count references, so a cable that lists a conductor twice (refused at the end of a
 //!   transaction, but reachable in between) stays indexed until both entries are gone. Empty
 //!   entries are removed, so an incrementally kept index equals a rebuilt one.
-//! - Code that changes a document's maps directly, not through ops, must rebuild the index
-//!   ([`crate::Document::rebuild_index`]); the full check in verify mode reports a stale one.
+//! - The maps can be changed directly only inside this crate, and the code that does so (building a
+//!   document from its parts, a merge's working copy) rebuilds the index; the full check in verify
+//!   mode reports a stale one. A document outside this crate is always indexed.
 //!
 //! This module holds no invariant logic and no I/O.
 

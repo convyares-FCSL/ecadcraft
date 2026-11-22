@@ -356,8 +356,7 @@ pub fn line_state(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<(D
     let line = lineage.get(i).ok_or(FileError::LineageIndex)?;
     let (mut doc, mut high, from, prev) = match nearest_snapshot(r, line.branch, seq)? {
         Some(v) => {
-            let (mut doc, meta) = load_snapshot(r, &v)?;
-            doc.rebuild_index();
+            let (doc, meta) = load_snapshot(r, &v)?;
             // Cached marks of an older rule are recomputed from the history (brief 029, FP1).
             let high = match meta {
                 Some(m) if v.tag_marks_current() => m.tag_high,
@@ -939,12 +938,11 @@ fn load_branch(store: &Arc<Store>, project: ProjectId, cache: &Cache, branch: Br
     if let Some(s) = latest {
         match r.version(branch, s.kind, &s.name)? {
             Some(v) if v.point.seq == s.seq => match load_snapshot(&r, &v) {
-                Ok((mut doc, meta)) => {
+                Ok((doc, meta)) => {
                     // Every invariant of the snapshot is checked in debug builds and after a
-                    // crash repair (overseer, 2026-11-09: about 38 ms on the large project, so
-                    // not on every normal release open). Its chunks were checked against their
-                    // hashes in any case, and Verify checks everything on request.
-                    doc.rebuild_index();
+                    // crash repair (about 38 ms on the large project, so not on every normal
+                    // release open). Its chunks were checked against their hashes in any case,
+                    // and Verify checks everything on request.
                     let checked = if cfg!(debug_assertions) || store.repaired() { doc.check() } else { Ok(()) };
                     match checked {
                         Ok(()) => {
@@ -990,8 +988,7 @@ fn load_branch(store: &Arc<Store>, project: ProjectId, cache: &Cache, branch: Br
                 None => match own.fork {
                     // A branch without a snapshot of its own: its parent's state at the fork.
                     Some((pi, fseq)) => {
-                        let (mut doc, high) = line_state(&r, &lineage, pi, fseq)?;
-                        doc.rebuild_index();
+                        let (doc, high) = line_state(&r, &lineage, pi, fseq)?;
                         (0, seed_chain, doc, StackState::default(), None, high)
                     }
                     None => (0, seed_chain, Document::default(), StackState::default(), Some(ChunkSet::default()), HighWater::new()),
@@ -1007,7 +1004,6 @@ fn load_branch(store: &Arc<Store>, project: ProjectId, cache: &Cache, branch: Br
                 redo: stacks.redo.clone(),
                 undo_hidden: stacks.undo_hidden,
                 redo_hidden: stacks.redo_hidden,
-                indexed: true,
                 stack_cap: stacks.cap,
                 history,
             };

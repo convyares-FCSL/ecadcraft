@@ -10,7 +10,6 @@ fn page_doc() -> (Document, PageId, Style) {
     for op in [Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }, Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 }] {
         op.apply(&mut doc).expect("setup");
     }
-    doc.rebuild_index();
     (doc, page, Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 })
 }
 
@@ -29,7 +28,6 @@ fn draw(doc: &mut Document, ids: &mut IdAllocator, page: PageId, style: &Style, 
     for op in &plan.ops {
         op.apply(doc).expect("apply");
     }
-    doc.rebuild_index();
     plan
 }
 
@@ -112,14 +110,12 @@ fn joining_two_free_ends_merges_and_tees_follow_the_survivor() {
     for op in &b.ops {
         op.apply(&mut doc).expect("apply");
     }
-    doc.rebuild_index();
     let tee = draw(&mut doc, &mut ids, page, &style, &[(15.0, 10.0), (15.0, 0.0)]);
     let ends = [(a.route, End::B), (b.route, End::A)];
     let j = plan_end_join(&doc, ends[0], ends[1], 100).expect("join").expect("merge");
     for op in &j.ops {
         op.apply(&mut doc).expect("apply");
     }
-    doc.rebuild_index();
     assert_eq!(doc.routes().len(), 2);
     let survivor = j.survivor;
     assert_eq!(doc.routes().get(&tee.route).and_then(|r| r.ends[1].route()), Some(survivor));

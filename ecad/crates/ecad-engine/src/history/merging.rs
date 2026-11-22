@@ -198,9 +198,7 @@ pub(crate) fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
     let source_head = head_of(p, sides.source)?;
     let target_head = head_of(p, sides.target)?;
     let doc_of = |b: BranchId, seq: u64| -> Result<Arc<Document>, String> {
-        let mut d = history::points::state_at(p, &Point { branch: b, seq, title: String::new(), kind: NodeKind::Fork })?;
-        d.rebuild_index();
-        Ok(Arc::new(d))
+        history::points::state_at(p, &Point { branch: b, seq, title: String::new(), kind: NodeKind::Fork }).map(Arc::new)
     };
     let ancestor_doc = doc_of(anc_branch, anc_seq)?;
     let source_doc = if sides.source == cur { Arc::new(p.ledger.document().clone()) } else { doc_of(sides.source, source_head)? };

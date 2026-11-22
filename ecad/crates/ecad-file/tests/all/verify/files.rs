@@ -197,8 +197,7 @@ fn reference(p: &Path) -> Vec<String> {
                 out.push(format!("{name}: version {:?}: {e}", v.name));
                 continue;
             }
-            let (mut d, _) = ecad_file::chunks::assemble(&set, bodies).unwrap();
-            d.rebuild_index();
+            let (d, _) = ecad_file::chunks::assemble(&set, bodies).unwrap();
             if d != doc {
                 out.push(format!("{name}: snapshot {:?} at {} DIFFERS from the replay", v.name, v.point.seq));
             }

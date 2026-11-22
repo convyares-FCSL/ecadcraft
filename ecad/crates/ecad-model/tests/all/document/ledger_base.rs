@@ -66,7 +66,6 @@ fn based_capped(l: &Ledger, at: u64, cap: usize) -> (Ledger, Arc<Store>) {
         redo,
         undo_hidden,
         redo_hidden,
-        indexed: false,
         // Read back 1 024 at a time, as written by this build (the record keeps `cap` of them).
         stack_cap: 1_024,
         history: store.clone(),
@@ -138,8 +137,7 @@ fn inconsistent_snapshot_stacks_are_refused() {
     let reference = full();
     let store = Arc::new(Store { log: reference.log().to_vec(), reads: AtomicUsize::new(0), fail: Mutex::new(false) });
     let (undo, _) = reference.stacks();
-    let bad =
-        Base { seq: 3, doc: Document::default(), undo, redo: vec![], undo_hidden: 0, redo_hidden: 0, indexed: false, stack_cap: 0, history: store };
+    let bad = Base { seq: 3, doc: Document::default(), undo, redo: vec![], undo_hidden: 0, redo_hidden: 0, stack_cap: 0, history: store };
     assert!(matches!(Ledger::from_base(bad, vec![], 1), Err(ModelError::CorruptLog(_))));
 }
 
@@ -158,7 +156,6 @@ fn snapshot_stacks_deeper_than_the_history_are_refused() {
         redo: redo.clone(),
         undo_hidden,
         redo_hidden,
-        indexed: false,
         stack_cap,
         history: store.clone(),
     };
