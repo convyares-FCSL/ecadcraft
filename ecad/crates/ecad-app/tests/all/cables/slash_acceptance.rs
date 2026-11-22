@@ -257,8 +257,24 @@ fn the_cable_slash_entry_sits_in_wiring_between_disconnect_and_add_to_cable() {
 /// AC9 and design checks A, D, G, N: the ECAD tab entry clicked by label, two clicks on the canvas,
 /// one cable; crossing dots painted; a blocked second slash is refused; the reference screenshots.
 #[test]
-fn ac9_cable_slash_by_label_and_reference_screenshots() {
-    let out = std::env::var_os("ECAD_TESTER_SHOTS").map(std::path::PathBuf::from);
+fn ac9_cable_slash_by_label() {
+    ac9_cable_slash(None);
+}
+
+/// AC9's reference screenshots (#55): the same steps as [`ac9_cable_slash_by_label`] with the frames
+/// rendered and compared. Runs only when `ECAD_TESTER_SHOTS` names a folder (and a wgpu adapter
+/// exists), so the behaviour test above stays deterministic.
+#[test]
+fn ac9_cable_slash_reference_screenshots() {
+    let Some(out) = std::env::var_os("ECAD_TESTER_SHOTS").map(std::path::PathBuf::from) else {
+        eprintln!("ECAD_TESTER_SHOTS not set: screenshots skipped");
+        return;
+    };
+    ac9_cable_slash(Some(out));
+}
+
+/// The AC9 steps; with `out`, also the frames written there and their pixels checked.
+fn ac9_cable_slash(out: Option<std::path::PathBuf>) {
     let deltas: Deltas = Arc::default();
     let mut h = harness_with(Some(deltas.clone()));
     // The slash is clicked between grid points: 5 mm snap (brief 018) off, as F9 does.

@@ -7,6 +7,7 @@
 mod lanes;
 
 mod continuation_bench;
+mod corpus;
 mod generator_contracts;
 mod tester_014_move_probe;
 mod tester_014_r3_commit_cost;
