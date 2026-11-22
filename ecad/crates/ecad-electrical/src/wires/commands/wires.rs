@@ -72,7 +72,7 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
     let mut pages: BTreeMap<usize, (String, Option<String>)> = BTreeMap::new();
     for c in &net.wires {
-        for r in wires::routes_of_wire(doc, *c).into_iter().filter_map(|r| doc.routes.get(&r)) {
+        for r in wires::routes::routes_of_wire(doc, *c).into_iter().filter_map(|r| doc.routes.get(&r)) {
             let Some(n) = order.get(&r.page) else { continue };
             let col = r.points.first().and_then(|a| wiring::place(doc, r.page, *a)).map(|p| p.column_label);
             let slot = pages.entry(*n).or_insert_with(|| (ecad_model::document::book::page_number(doc, r.page), None));
@@ -85,7 +85,7 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
         .connection_points
         .iter()
         .filter(|t| doc.connection_points.get(t).is_none_or(|x| x.owner.aid().is_none()))
-        .map(|t| (*t, wires::point_words(doc, *t)))
+        .map(|t| (*t, wires::words::point_words(doc, *t)))
         .collect();
     let continuations = net
         .connection_points
@@ -192,7 +192,7 @@ pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
         }
         let mut set = BTreeSet::new();
         for r in doc.routes_on(pg) {
-            if let Some(id) = wires::wire_of_route(doc, r).and_then(|c| conn.net_of_conductor(c)) {
+            if let Some(id) = wires::routes::wire_of_route(doc, r).and_then(|c| conn.net_of_conductor(c)) {
                 set.insert(id);
             }
         }
@@ -216,9 +216,9 @@ pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
 
 /// A net in words for refusals: its first device point and page (`-K01:A1, /2.1`).
 fn where_words(doc: &Document, net: &NetData) -> String {
-    let point = wires::net_points(doc, net).into_iter().next();
+    let point = wires::words::net_points(doc, net).into_iter().next();
     let place = net.first_conductor().and_then(|c| {
-        wires::routes_of_wire(doc, c).into_iter().filter_map(|r| doc.routes.get(&r)).find_map(|r| {
+        wires::routes::routes_of_wire(doc, c).into_iter().filter_map(|r| doc.routes.get(&r)).find_map(|r| {
             let a = *r.points.first()?;
             Some(wiring::place(doc, r.page, a)?.text(doc.settings.reference_style()))
         })
@@ -278,7 +278,7 @@ fn merge_sense(doc: &Document, a: &NetData, b: &NetData) -> Result<(), Unmergeab
 /// The free route end of a net to continue from: (route, end, page, point, direction away).
 fn open_end(doc: &Document, net: &NetData) -> Option<(RouteId, End, PageId, Pt, Pt)> {
     for c in &net.wires {
-        for r in wires::routes_of_wire(doc, *c) {
+        for r in wires::routes::routes_of_wire(doc, *c) {
             let Some(route) = doc.routes.get(&r) else { continue };
             let v = &route.points;
             for (end, e) in End::BOTH.into_iter().zip(route.ends) {
@@ -423,7 +423,7 @@ pub fn wirenumber(
                 let aid = wires::continuation_aid(&name, None)?;
                 let placement = Placement { origin: at, rotation: arrow_rotation(d), mirror: false, scale: 1.0 };
                 // The plan lands the free route end at the point.
-                let t = wires::plan_tagless(doc, ids, page, style.clone(), starter, placement, aid)?;
+                let t = wires::placing::plan_tagless(doc, ids, page, style.clone(), starter, placement, aid)?;
                 continuations.push(t.aid);
                 ops.extend(t.ops);
             }
@@ -668,27 +668,29 @@ pub enum Joined {
 /// # Errors
 /// Nothing to join there; a join that is too long or not sensible (§2.2).
 pub fn join_wires(doc: &Document, page: PageId, at: Pt, quiet: &[Pt], max_points: usize) -> Result<Joined, CmdError> {
-    let loose = wires::joinable_ends_at(doc, page, at, quiet);
-    let through = wires::interior_route_at(doc, page, at);
+    let loose = wires::joining::joinable_ends_at(doc, page, at, quiet);
+    let through = wires::joining::interior_route_at(doc, page, at);
     if let ([a, b], None) = (loose.as_slice(), through)
-        && let Some(j) = wires::plan_end_join(doc, *a, *b, max_points)?
+        && let Some(j) = wires::joining::plan_end_join(doc, *a, *b, max_points)?
     {
-        let snapped = [a, b].into_iter().find(|(r, _)| *r == j.survivor).and_then(|(r, e)| wires::end_point(doc, *r, *e)).unwrap_or(at);
+        let snapped = [a, b].into_iter().find(|(r, _)| *r == j.survivor).and_then(|(r, e)| wires::joining::end_point(doc, *r, *e)).unwrap_or(at);
         return Ok(Joined::Merged { ops: j.ops, survivor: j.survivor, removed: j.removed, at: snapped });
     }
     // The route the ends land on: the one under the point, else the first free end's.
     let (route, place, landing): (RouteId, Pt, Vec<(RouteId, End)>) = match (through, loose.split_first()) {
         (Some(on), Some(_)) => (on.route, on.at, loose.iter().copied().filter(|(r, _)| *r != on.route).collect()),
-        (None, Some(((r, e), rest))) => (*r, wires::end_point(doc, *r, *e).unwrap_or(at), rest.iter().copied().filter(|(x, _)| x != r).collect()),
+        (None, Some(((r, e), rest))) => {
+            (*r, wires::joining::end_point(doc, *r, *e).unwrap_or(at), rest.iter().copied().filter(|(x, _)| x != r).collect())
+        }
         (_, None) => return Err(CmdError::refused(msg::NO_ENDS_TO_JOIN)),
     };
     if landing.is_empty() {
         return Err(CmdError::refused(msg::NO_ENDS_TO_JOIN));
     }
     for (r, _) in &landing {
-        wires::join_sense(doc, route, *r)?;
+        wires::joining::join_sense(doc, route, *r)?;
     }
-    let mut edits = wires::RouteEdits::new(doc);
+    let mut edits = wires::routes::RouteEdits::new(doc);
     for (r, e) in &landing {
         edits.set_end(*r, *e, RouteEnd::On { route, at: place });
     }
@@ -705,16 +707,18 @@ pub fn join_wires(doc: &Document, page: PageId, at: Pt, quiet: &[Pt], max_points
 ///
 /// # Errors
 /// The route does not work (too many points…); no such category; the model refused the preview.
-pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>, category: Option<&str>) -> Result<wires::WirePlan, CmdError> {
+pub fn wire(
+    ledger: &Ledger, ids: &mut IdAllocator, input: wires::joining::WireInput<'_>, category: Option<&str>,
+) -> Result<wires::joining::WirePlan, CmdError> {
     let doc = ledger.document();
-    let mut plan = wires::plan_wire(doc, ids, input)?;
+    let mut plan = wires::joining::plan_wire(doc, ids, input)?;
     if let Some(c) = category {
         let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, c)?;
         let drawn = ledger.preview(&plan.ops)?;
         let rewritten = ecad_model::connectivity::wire_order::rewrite(&drawn, &plan.ops);
         let after = if rewritten.is_empty() { drawn } else { ledger.preview(&[plan.ops.clone(), rewritten.clone()].concat())? };
         plan.ops.extend(rewritten);
-        let carried = wires::wires_of_route(&after, plan.route);
+        let carried = wires::routes::wires_of_route(&after, plan.route);
         let (more, _) = category_ops(&after, &carried, Some(&id))?;
         plan.ops.extend(more);
     }
@@ -762,8 +766,8 @@ pub fn settings_json(doc: &Document) -> Value {
         "scheme": w.scheme.name(),
         "colour_style": ecad_model::naming::words::Word::word(w.colour_style()),
         "label_height": crate::pages::commands::sheets::wire_label_height(doc),
-        "label_rule": wires::label_rule_word(doc),
-        "label_min_length": wires::label_min_length(doc),
+        "label_rule": wires::label_rule::label_rule_word(doc),
+        "label_min_length": wires::label_rule::label_min_length(doc),
         "digits": w.digits(),
         "number_by": ecad_model::Word::word(w.number_by),
         "unclassified_prefix": w.unclassified_prefix,

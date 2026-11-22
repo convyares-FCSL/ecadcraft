@@ -396,7 +396,7 @@ pub fn json(doc: &Document, p: &Planned) -> Value {
             .filter(|x| x.aspect == a)
             .map(|x| {
                 json!({
-                    "component": x.component.hex(), "tag": crate::devices::tag_words(doc, x.component), "aspect": a.word(),
+                    "component": x.component.hex(), "tag": crate::devices::tags::tag_words(doc, x.component), "aspect": a.word(),
                     a.word(): x.from, "proposed": x.to, "all_symbols": x.all_symbols,
                 })
             })
@@ -424,7 +424,7 @@ pub fn conflict_words(doc: &Document, conflicts: &[Conflict]) -> Vec<String> {
     let mut out = vec![head];
     for c in conflicts {
         let note = if c.all_symbols { format!("    (all its symbols are now in {})", c.to) } else { String::new() };
-        out.push(format!("  {}  {} → {}{note}", crate::devices::tag_words(doc, c.component), c.from, c.to));
+        out.push(format!("  {}  {} → {}{note}", crate::devices::tags::tag_words(doc, c.component), c.from, c.to));
     }
     out
 }
@@ -432,7 +432,7 @@ pub fn conflict_words(doc: &Document, conflicts: &[Conflict]) -> Vec<String> {
 /// The echo of a placement's proposal (design 052 §5.3): `Placed -K01 in +CP1.`, `Placed -K01 (no
 /// location).`, `-K01 is now in +CP1.`, and the conflict rows with what stayed.
 pub fn place_words(doc: &Document, c: DeviceId, joined: bool, p: &Planned) -> Vec<String> {
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let values: Vec<String> =
         Aspect::ALL.into_iter().filter_map(|a| p.set.iter().find(|(x, y, _)| *x == c && *y == a).map(|(_, _, code)| code.clone())).collect();
     let mut out = Vec::new();
@@ -468,7 +468,7 @@ pub fn left_words(doc: &Document, conflicts: &[Conflict]) -> String {
     conflicts
         .iter()
         .map(|c| {
-            let tag = crate::devices::tag_words(doc, c.component);
+            let tag = crate::devices::tags::tag_words(doc, c.component);
             format!("{tag} stays {} (shown {}{tag} here).", c.from, c.from)
         })
         .collect::<Vec<_>>()

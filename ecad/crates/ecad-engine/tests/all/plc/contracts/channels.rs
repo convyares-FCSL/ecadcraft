@@ -1,7 +1,7 @@
 //! Brief 045b (design 045 §4–§7, §9 b-rows, §13 F–M, T): channels, pins, addressing and texts.
 
 use ecad_electrical::checks::Fix;
-use ecad_electrical::devices::TextOf;
+use ecad_electrical::devices::texts::TextOf;
 use ecad_electrical::plc::PlcFix;
 use ecad_electrical::reports::accessory_fix_commands;
 use ecad_model::{Author, ConnectionPoint, ConnectionPointId, DeviceId, Op, Subject};
@@ -157,8 +157,8 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     assert_eq!(ends, [1, 1, 2], "{cells:?}");
     for (_, t) in cells.iter().take(2) {
         let (c, _) = d.ends_at(*t)[0];
-        let r = ecad_electrical::wires::route_of_wire_on(&d, c, page).unwrap();
-        let (_, _, route) = ecad_electrical::wires::route_vertices(&d, r).unwrap();
+        let r = ecad_electrical::wires::routes::route_of_wire_on(&d, c, page).unwrap();
+        let (_, _, route) = ecad_electrical::wires::routes::route_vertices(&d, r).unwrap();
         assert!(route.iter().all(|q| q.y >= 200.0 - 1e-9), "nothing past the point, into the cell: {route:?}");
     }
     same_as_built(&mut h);

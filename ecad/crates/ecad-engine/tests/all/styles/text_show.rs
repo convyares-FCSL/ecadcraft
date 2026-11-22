@@ -4,7 +4,7 @@
 use crate::common::{H, id};
 
 use cadcraft_engine::doc::EntityKind;
-use ecad_electrical::devices::TextOf;
+use ecad_electrical::devices::texts::TextOf;
 use ecad_model::{DeviceId, PageId, RepresentationId, Subject};
 use serde_json::{Value, json};
 
@@ -65,7 +65,7 @@ fn a_strip_of_ten_adjacent_terminal_blocks_shows_its_tag_once() {
     assert_eq!(reps.len(), 10);
     assert_eq!(shown_tags(&mut h, page, x1), vec![reps[0]], "only the leftmost");
     // The page draws one tag text for the strip.
-    let tag = h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), x1));
+    let tag = h.p(|p| ecad_electrical::devices::tags::tag_words(p.ledger.document(), x1));
     let drawn = h.pv(|p, pg| pg.entities_of(p, page)).iter().filter(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == tag)).count();
     assert_eq!(drawn, 1);
     // `pagetexts` lists all ten, nine hidden.
@@ -145,7 +145,7 @@ fn hidden_texts_are_still_data_and_show_hidden_text_draws_them_dimmed() {
     let page = h.first_page();
     let k = place(&mut h, "coil", [100.0, 150.0], None);
     let c: DeviceId = id(&k, "component");
-    let tag = h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c));
+    let tag = h.p(|p| ecad_electrical::devices::tags::tag_words(p.ledger.document(), c));
     h.run("showtext", json!({"kind": "tag", "show": "off"})).unwrap();
     // Still found by `devices`.
     let found = h.run("devices", json!({"tag": tag.trim_start_matches('-')})).unwrap();
@@ -207,7 +207,7 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     let no_rep: RepresentationId = h
         .doc()
         .representations_of(Subject::Device(c))
-        .find(|(_, r)| ecad_electrical::devices::rep_starter(&h.doc(), r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::No))
+        .find(|(_, r)| ecad_electrical::devices::tags::rep_starter(&h.doc(), r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::No))
         .map(|(r, _)| r)
         .unwrap();
     let _ = n;
@@ -230,7 +230,7 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     let c2: DeviceId = id(&k2, "component");
     let r2: RepresentationId = h.doc().representations_of(Subject::Device(c2)).map(|(r, _)| r).next().unwrap();
     h.run("showtext", json!({"kind": "tag", "show": "on", "representation": r2.hex()})).unwrap();
-    let tag = h.p(|p| ecad_electrical::devices::tag_of(p.ledger.document(), c).map(str::to_string)).unwrap();
+    let tag = h.p(|p| ecad_electrical::devices::tags::tag_of(p.ledger.document(), c).map(str::to_string)).unwrap();
     h.run("setprop", json!({"component": c2.hex(), "key": "tag", "value": tag, "merge": true})).unwrap();
     let doc = h.doc();
     assert!(!doc.devices.contains_key(&c2));
@@ -251,7 +251,7 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
         .iter()
         .copied()
         .find(|r| {
-            ecad_electrical::devices::rep_starter(&h.doc(), &h.doc().representations[r])
+            ecad_electrical::devices::tags::rep_starter(&h.doc(), &h.doc().representations[r])
                 .is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil)
         })
         .unwrap();
@@ -303,10 +303,10 @@ fn text_views_are_worked_out_again_only_where_a_change_shows() {
     h.project.open_page(&mut h.s, p1).unwrap();
     // Run `cmd`; the passes it caused per page, and the pages it names.
     let counted = |h: &mut H, cmd: &str, params: Value| -> ([u64; 3], Option<std::collections::BTreeSet<PageId>>) {
-        let before = [p1, p2, p3].map(ecad_electrical::devices::text_passes);
+        let before = [p1, p2, p3].map(ecad_electrical::devices::texts::text_passes);
         let n = h.p(|p| p.change_count());
         h.s.execute(cmd, &params).unwrap();
-        let after = [p1, p2, p3].map(ecad_electrical::devices::text_passes);
+        let after = [p1, p2, p3].map(ecad_electrical::devices::texts::text_passes);
         ([after[0] - before[0], after[1] - before[1], after[2] - before[2]], h.p(|p| p.changes_since(n)))
     };
     // -K01's tag (on pages 1 and 2), page 1 on screen: page 1 now, page 2 named, page 3 neither.

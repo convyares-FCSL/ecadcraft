@@ -57,12 +57,12 @@ pub static RULES: &[PropRule] = &[
 /// The reader's refusals: ambiguous text (what is missing), a value the group does not have.
 pub fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
-    let who = crate::devices::tag_words(doc, c);
+    let who = crate::devices::tags::tag_words(doc, c);
     let after = match key.strip_prefix(ecad_model::objects::devices::RATING_OF_PREFIX) {
         Some(p) if matches!(d.device_type, ecad_model::DeviceType::TerminalStrip(_)) => {
             crate::devices::ratings::with_position_rating(d, &who, &crate::terminal_strips::terminal_blocks::fuse_positions(doc, c), p, value)
         }
-        Some(n) => crate::devices::ratings::with_output_rating(d, &who, &crate::symbols::bank_outputs(doc, c), n, value),
+        Some(n) => crate::devices::ratings::with_output_rating(d, &who, &crate::symbols::rules::bank_outputs(doc, c), n, value),
         None => crate::devices::ratings::with_rating(d, &who, value),
     }?;
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
@@ -74,7 +74,7 @@ pub fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>
 /// A device whose group has no contacts; an unreadable offer ([`crate::references::devices::with_contacts`]).
 pub fn contacts_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
-    let after = crate::references::devices::with_contacts(d, &crate::devices::tag_words(doc, c), value)?;
+    let after = crate::references::devices::with_contacts(d, &crate::devices::tags::tag_words(doc, c), value)?;
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
 }
 
@@ -86,7 +86,7 @@ pub fn contacts_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>
 pub fn table_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
     let table = crate::references::devices::table_of_typed(value)?;
-    let after = crate::references::devices::with_table(d, &crate::devices::tag_words(doc, c), table)?;
+    let after = crate::references::devices::with_table(d, &crate::devices::tags::tag_words(doc, c), table)?;
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
 }
 
@@ -96,7 +96,7 @@ pub fn table_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -
 /// [`crate::connectors::with_field`]'s refusals.
 pub fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
-    let after = crate::connectors::with_field(d, &crate::devices::tag_words(doc, c), key, value)?;
+    let after = crate::connectors::with_field(d, &crate::devices::tags::tag_words(doc, c), key, value)?;
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
 }
 

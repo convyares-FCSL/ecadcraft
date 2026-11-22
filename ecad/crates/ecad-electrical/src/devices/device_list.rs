@@ -133,7 +133,7 @@ fn symbol_entry(doc: &Document, book: &Book, rid: RepresentationId, r: &ecad_mod
             row: place.as_ref().map(|p| p.row),
             place: place.map_or_else(|| ecad_model::connectivity::derive::unlocated(style).to_string(), |p| p.text(style)),
             name,
-            update: crate::symbols::update_available(doc, rid).is_some(),
+            update: crate::symbols::graphics::update_available(doc, rid).is_some(),
         },
     )
 }
@@ -148,7 +148,7 @@ pub fn matches(e: &DeviceEntry, q: &str) -> bool {
     if q.is_empty() {
         return true;
     }
-    if e.tag.as_deref().is_some_and(|t| devices::tag_matches(t, q)) {
+    if e.tag.as_deref().is_some_and(|t| devices::json::tag_matches(t, q)) {
         return true;
     }
     let low = q.to_lowercase();
@@ -163,7 +163,7 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
     let mut tagged: Vec<((String, u64, String), DeviceId)> = doc
         .tagged()
         .filter_map(|(_, c)| {
-            let t = devices::tag_of(doc, c)?;
+            let t = devices::tags::tag_of(doc, c)?;
             let (p, n) = group_and_number(t);
             Some(((p, n, t.to_string()), c))
         })
@@ -199,16 +199,7 @@ fn entry(doc: &Document, c: DeviceId, prefix: Option<String>, book: &Book) -> De
     let mut symbols: Vec<(usize, Option<u32>, SymbolEntry)> = doc
         .representations_of(Subject::Device(c))
         .map(|(rid, r)| {
-            let name = devices::rep_starter(doc, r).map(|s| s.name.to_string()).unwrap_or_else(|| {
-                r.items
-                    .first()
-                    .and_then(|i| doc.items.get(i))
-                    .and_then(|i| match &i.kind {
-                        ItemKind::Symbol(s) => doc.definitions.get(&s.definition).map(|d| d.name.clone()),
-                        ItemKind::Primitive(_) => None,
-                    })
-                    .unwrap_or_else(|| "drawn".into())
-            });
+            let name = devices::tags::rep_definition(doc, r).map_or_else(|| "drawn".to_string(), |(d, _)| d.name.clone());
             let (n, entry) = symbol_entry(doc, book, rid, r, name);
             (n, entry.column, entry)
         })
@@ -216,9 +207,9 @@ fn entry(doc: &Document, c: DeviceId, prefix: Option<String>, book: &Book) -> De
     symbols.sort_by_key(|(n, col, s)| (*n, *col, s.rep));
     DeviceEntry {
         id: c,
-        tag: devices::tag_of(doc, c).map(str::to_string),
+        tag: devices::tags::tag_of(doc, c).map(str::to_string),
         group: prefix.map_or_else(|| NO_TAG.to_string(), |p| format!("-{p}")),
-        description: devices::description(doc, c),
+        description: devices::tags::description(doc, c),
         properties: PROPERTIES.iter().map(|(k, _)| device.and_then(|d| d.value(k))).collect(),
         symbols: symbols.into_iter().map(|(_, _, s)| s).collect(),
         fixed: device.is_some_and(ecad_model::Device::is_fixed),

@@ -86,7 +86,7 @@ impl PageCx {
 /// on its connection point.
 pub fn end_points(doc: &Document, w: WireId, cx: &PageCx) -> [Option<(PageId, Pt)>; 2] {
     let Some(wire) = doc.wires.get(&w) else { return [None, None] };
-    wire.ends.map(|t| crate::wires::drawn_ends_at(doc, t).into_iter().min_by_key(|(p, _)| cx.pos(*p)))
+    wire.ends.map(|t| crate::wires::routes::drawn_ends_at(doc, t).into_iter().min_by_key(|(p, _)| cx.pos(*p)))
 }
 
 /// One device as the reports see it.

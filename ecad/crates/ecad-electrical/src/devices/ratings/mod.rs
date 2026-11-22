@@ -493,7 +493,7 @@ pub fn with_position_rating(
     d: &Device, who: &str, fuse_positions: &std::collections::BTreeSet<String>, p: &str, text: Option<&str>,
 ) -> Result<Device, CmdError> {
     // Capped before any lookup: only the first 12 characters are ever shown.
-    let max = crate::symbols::MAX_FUSE_LABEL;
+    let max = crate::symbols::rules::MAX_FUSE_LABEL;
     let shown: String = p.chars().take(max).collect();
     let more = if p.chars().nth(max).is_some() { "…" } else { "" };
     let DeviceType::TerminalStrip(strip) = &d.device_type else {

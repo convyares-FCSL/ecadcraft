@@ -207,8 +207,8 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         Effect::Device { id, before: None, after: Some(_) } if !doc.devices.contains_key(id) => {}
         Effect::Wire { id, before: None, after: Some(_) } if !doc.wires.contains_key(id) => {}
         Effect::Wire { before: Some(w), after: None, .. } => extend(out, points_pages(doc, &w.ends)),
-        Effect::Wire { id, before: Some(_), after: Some(_) } => extend(out, crate::wires::wire_pages(doc, *id)),
-        Effect::Prop { object: ObjectRef::Wire(c), .. } => extend(out, crate::wires::wire_pages(doc, *c)),
+        Effect::Wire { id, before: Some(_), after: Some(_) } => extend(out, crate::wires::routes::wire_pages(doc, *id)),
+        Effect::Prop { object: ObjectRef::Wire(c), .. } => extend(out, crate::wires::routes::wire_pages(doc, *c)),
         // Brief 028: a connection point relabelled (removed and added) is drawn by its device's
         // symbols only. A new one is drawn through its device.
         Effect::ConnectionPoint { id, before: None, after: Some(_) } if !doc.connection_points.contains_key(id) => {}
@@ -314,7 +314,7 @@ fn extension(doc: &Document, effect: &Effect<'_>, out: &mut PageSet) {
     match effect {
         Effect::DeviceLink { .. } => {}
         Effect::Prop { object: ObjectRef::Wire(c), .. } | Effect::Wire { id: c, before: Some(_), after: Some(_) } => {
-            extend(out, crate::wires::wire_pages(doc, *c));
+            extend(out, crate::wires::routes::wire_pages(doc, *c));
         }
         // The rewrite's wires (design 072 §4.4): labelled on the routes at their ends.
         Effect::Wire { before: Some(w), after: None, .. } | Effect::Wire { before: None, after: Some(w), .. } => {

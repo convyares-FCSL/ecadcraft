@@ -37,7 +37,7 @@ pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
             defaults::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).choice() == Some(defaults::connectors::MakerLayout::Pins);
         let next = p
             .tag_high
-            .peek_auto(doc, &ecad_electrical::devices::prefix_for(doc, ecad_electrical::devices::starter("socket4")?))
+            .peek_auto(doc, &ecad_electrical::devices::prefix_for(doc, ecad_electrical::devices::json::starter("socket4")?))
             .unwrap_or_else(|_| "-X?".into());
         Ok((halves, family, pins, names, pins_layout, next))
     })
@@ -133,13 +133,13 @@ impl PlaceConnector {
         let found = read(s, |p, _| {
             let doc = p.ledger.document();
             let tag = ecad_model::naming::tag::normalise(t, ecad_electrical::defaults::print::tag_style(doc))?;
-            let c = ecad_electrical::devices::holder_of(doc, &tag, None)
+            let c = ecad_electrical::devices::tags::holder_of(doc, &tag, None)
                 .ok_or_else(|| format!("No device {tag}. Type a connector's tag, or Enter for a new one."))?;
             if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
                 return Err(cn::not_a_connector(doc, c));
             }
             let d = cn::drawn(doc, c);
-            Ok((c, ecad_electrical::devices::tag_words(doc, c), cn::half_family(doc, c, Side::Socket), cn::pin_count(doc, c, &d), d))
+            Ok((c, ecad_electrical::devices::tags::tag_words(doc, c), cn::half_family(doc, c, Side::Socket), cn::pin_count(doc, c, &d), d))
         })
         .map_err(other)?;
         let (c, tag, family, pins, d) = found;
@@ -247,8 +247,8 @@ impl PlaceConnector {
         if a.near(b, 1e-9) {
             let w = read(s, |p, page| {
                 let doc = p.ledger.document();
-                Ok(ecad_electrical::wires::route_at(doc, page, a, ecad_electrical::wires::ON_WIRE, None)
-                    .and_then(|o| ecad_electrical::wires::wire_of_route(doc, o.route)))
+                Ok(ecad_electrical::wires::placing::route_at(doc, page, a, ecad_electrical::wires::ON_WIRE, None)
+                    .and_then(|o| ecad_electrical::wires::routes::wire_of_route(doc, o.route)))
             })
             .map_err(other)?
             .ok_or_else(|| other("Click on a wire, or draw a line across the wires."))?;
@@ -316,7 +316,7 @@ impl PlaceConnector {
                 Ok(Step::Continue)
             }
             (Stage::Device, Input::Keyword(k) | Input::Text(k)) => self.choose_device(s, &k),
-            (Stage::Halves, Input::Enter) => self.choose_halves(ecad_electrical::symbols::side_word(self.halves)),
+            (Stage::Halves, Input::Enter) => self.choose_halves(ecad_electrical::symbols::graphics::side_word(self.halves)),
             (Stage::Halves, Input::Keyword(k) | Input::Text(k)) => self.choose_halves(&k),
             (Stage::Type, Input::Enter) => self.choose_type(self.family.word()),
             (Stage::Type, Input::Keyword(k) | Input::Text(k)) => self.choose_type(&k),
@@ -378,7 +378,7 @@ impl Interactive for PlaceConnector {
         };
         match self.stage {
             Stage::Device => with("Connector", &["New"], self.next.clone()),
-            Stage::Halves => with("Halves", HALF_WORDS, ecad_electrical::symbols::side_word(self.halves).to_string()),
+            Stage::Halves => with("Halves", HALF_WORDS, ecad_electrical::symbols::graphics::side_word(self.halves).to_string()),
             Stage::Type => with("Type", TYPE_WORDS, self.family.keyword().to_string()),
             Stage::Pins => {
                 let sizes: Vec<String> = self.family.sizes().iter().map(ToString::to_string).collect();

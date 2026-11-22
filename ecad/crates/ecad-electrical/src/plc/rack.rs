@@ -255,7 +255,7 @@ pub fn channel_count(doc: &Document, c: DeviceId) -> u32 {
 /// for prompts and commands, not per frame.
 pub fn racks(doc: &Document) -> Vec<DeviceId> {
     let mut v: Vec<(String, DeviceId)> =
-        doc.tagged().map(|(_, c)| c).filter(|c| edit::station_of(doc, *c).is_some()).map(|c| (crate::devices::tag_words(doc, c), c)).collect();
+        doc.tagged().map(|(_, c)| c).filter(|c| edit::station_of(doc, *c).is_some()).map(|c| (crate::devices::tags::tag_words(doc, c), c)).collect();
     v.sort();
     v.dedup_by_key(|x| x.1);
     v.into_iter().map(|(_, c)| c).collect()
@@ -265,7 +265,7 @@ pub fn racks(doc: &Document) -> Vec<DeviceId> {
 /// the index's station → modules map (design 072 §3, `PlcRack::modules`).
 pub fn cards_naming(doc: &Document, rack: DeviceId) -> Vec<(DeviceId, Option<u32>)> {
     let mut v: Vec<(DeviceId, Option<u32>)> = doc.plc_modules(rack).map(|c| (c, slot_of(doc, c))).collect();
-    v.sort_by_key(|(c, s)| (*s, crate::devices::tag_words(doc, *c)));
+    v.sort_by_key(|(c, s)| (*s, crate::devices::tags::tag_words(doc, *c)));
     v
 }
 
@@ -296,8 +296,8 @@ pub fn taken_words(doc: &Document, rack: DeviceId, slot: u32, holder: DeviceId) 
     let next = next_free_slot(doc, rack, None).map_or_else(|| "none is free".to_string(), |s| s.to_string());
     format!(
         "Slot {slot} of {} holds {} ({}). Pick another slot, or Enter for the next free one ({next}).",
-        crate::devices::tag_words(doc, rack),
-        crate::devices::tag_words(doc, holder),
+        crate::devices::tags::tag_words(doc, rack),
+        crate::devices::tags::tag_words(doc, holder),
         type_words(doc, holder)
     )
 }
@@ -353,7 +353,7 @@ fn device_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
 pub fn rack_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
     let c = device_named(doc, t)?;
     if !edit::station_of(doc, c).is_some() {
-        return Err(CmdError::refused(format!("{} is not a rack; a rack is a CPU or a head module.", crate::devices::tag_words(doc, c))));
+        return Err(CmdError::refused(format!("{} is not a rack; a rack is a CPU or a head module.", crate::devices::tags::tag_words(doc, c))));
     }
     Ok(c)
 }
@@ -366,10 +366,10 @@ pub fn card_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
     let c = device_named(doc, t)?;
     match crate::plc::card_type_of(doc, c) {
         Some(t) if t.is_rack() => {
-            Err(CmdError::refused(format!("{} is a {}: it is a rack, not a card in a slot.", crate::devices::tag_words(doc, c), t.noun())))
+            Err(CmdError::refused(format!("{} is a {}: it is a rack, not a card in a slot.", crate::devices::tags::tag_words(doc, c), t.noun())))
         }
         Some(_) => Ok(c),
-        None => Err(CmdError::refused(format!("{} is not a PLC card.", crate::devices::tag_words(doc, c)))),
+        None => Err(CmdError::refused(format!("{} is not a PLC card.", crate::devices::tags::tag_words(doc, c)))),
     }
 }
 
@@ -386,7 +386,7 @@ pub fn default_rack(doc: &Document, card: Option<DeviceId>) -> Result<DeviceId, 
         [] => Err(CmdError::refused("The project has no rack: place a CPU (plccpu) or a head module (plcim) first.")),
         [only] => Ok(*only),
         many => {
-            let tags: Vec<String> = many.iter().take(8).map(|c| crate::devices::tag_words(doc, *c)).collect();
+            let tags: Vec<String> = many.iter().take(8).map(|c| crate::devices::tags::tag_words(doc, *c)).collect();
             let more = if many.len() > 8 { ", …" } else { "" };
             Err(CmdError::refused(format!("Name a rack: the project has {} ({}{more}).", many.len(), tags.join(", "))))
         }
@@ -412,7 +412,7 @@ pub fn plan_slot(doc: &Document, card: DeviceId, rack: Option<DeviceId>, slot: O
     };
     let (first, n) = slot_range(doc, rack);
     let last = first.saturating_add(n).saturating_sub(1);
-    let rack_words = crate::devices::tag_words(doc, rack);
+    let rack_words = crate::devices::tags::tag_words(doc, rack);
     let slot = match slot {
         Some(s) => s,
         // Design 045 §2.5 (tester 045a): `slot` absent is the next free slot; the card's own slot
@@ -445,8 +445,8 @@ pub fn plan_slot(doc: &Document, card: DeviceId, rack: Option<DeviceId>, slot: O
 /// `-A01 slot 5`, or `no rack`.
 pub fn place_words(doc: &Document, card: DeviceId) -> String {
     match (rack_ref(doc, card), slot_of(doc, card)) {
-        (RackRef::Rack(r), Some(s)) => format!("{} slot {s}", crate::devices::tag_words(doc, r)),
-        (RackRef::Rack(r), None) => format!("{} (no slot)", crate::devices::tag_words(doc, r)),
+        (RackRef::Rack(r), Some(s)) => format!("{} slot {s}", crate::devices::tags::tag_words(doc, r)),
+        (RackRef::Rack(r), None) => format!("{} (no slot)", crate::devices::tags::tag_words(doc, r)),
         _ => "no rack".into(),
     }
 }
@@ -480,13 +480,16 @@ pub fn place_target(
         None => next_free_slot(doc, rack, None).ok_or_else(|| {
             CmdError::refused(format!(
                 "{}'s {n} slots are all taken. Raise its slot count (plc.slots), or place the card in no rack (rack: null).",
-                crate::devices::tag_words(doc, rack)
+                crate::devices::tags::tag_words(doc, rack)
             ))
         })?,
         Some(t) => slot_number(t)?,
     };
     if !(first..=last).contains(&slot) {
-        return Err(CmdError::refused(format!("{} has slots {first}–{last}. Pick a slot in that range.", crate::devices::tag_words(doc, rack))));
+        return Err(CmdError::refused(format!(
+            "{} has slots {first}–{last}. Pick a slot in that range.",
+            crate::devices::tags::tag_words(doc, rack)
+        )));
     }
     if let Some(other) = holder_of_slot(doc, rack, slot, None) {
         return Err(CmdError::refused(taken_words(doc, rack, slot, other)));

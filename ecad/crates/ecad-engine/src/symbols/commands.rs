@@ -29,8 +29,8 @@ use crate::commands::{MAX_HANDLES, err, on_project, plain_style};
 use crate::project::Mapped;
 use ecad_electrical::commands::input::{Bounded, Point};
 use ecad_electrical::symbols;
-pub use ecad_electrical::symbols::POINT_GRID_MM;
-pub use ecad_electrical::symbols::update_available;
+pub use ecad_electrical::symbols::graphics::POINT_GRID_MM;
+pub use ecad_electrical::symbols::graphics::update_available;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<MakeParams>("makesymbol")];
@@ -177,7 +177,7 @@ pub(crate) fn place_project_key(
     let key = key.to_string();
     on_project(s, |p, pg, page| {
         let doc = p.ledger.document();
-        let Some(v) = symbols::project_by_key(doc, &key) else { return Ok(None) };
+        let Some(v) = symbols::project::project_by_key(doc, &key) else { return Ok(None) };
         let (id, def) = (v.id, v.def.clone());
         // A typed tag a device already holds is that device (a tag is an identity), as `place`
         // does for built-in symbols; devices and cables share one namespace (brief 026).

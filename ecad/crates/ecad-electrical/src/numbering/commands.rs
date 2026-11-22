@@ -15,7 +15,8 @@ use serde_json::{Value, json};
 
 use crate::commands::input::nullable;
 use crate::commands::run::{Cx, Generic, Outcome, Pages};
-use crate::devices::{self, TagHigh};
+use crate::devices::tags::TagHigh;
+use crate::devices::{self};
 use crate::error::CmdError;
 
 /// The kinds `kind` names (absent: devices); `all` is devices, cables and wires.
@@ -154,7 +155,7 @@ pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSe
         Scope::All | Scope::Folder(_) | Scope::Pages(_) => all().collect(),
         Scope::Prefix(p) => {
             let p = p.trim_start_matches('-').to_ascii_uppercase();
-            all().filter(|c| crate::devices::tag_of(doc, *c).and_then(ecad_model::naming::tag::parse).is_some_and(|(q, _)| q == p)).collect()
+            all().filter(|c| crate::devices::tags::tag_of(doc, *c).and_then(ecad_model::naming::tag::parse).is_some_and(|(q, _)| q == p)).collect()
         }
         Scope::Selection { devices, .. } => {
             let mut out: BTreeSet<DeviceId> = devices.iter().copied().filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some()).collect();
@@ -272,7 +273,7 @@ pub fn row_json(doc: &Document, r: &numbering::Row) -> Value {
 /// A row's Desc: the device's description, `Cable, 3 wires`, or the net's potential.
 pub fn desc(doc: &Document, o: ObjectRef) -> String {
     match o {
-        ObjectRef::Device(c) => crate::devices::description(doc, c),
+        ObjectRef::Device(c) => crate::devices::tags::description(doc, c),
         ObjectRef::Cable(k) => {
             let n = doc.cables.get(&k).map_or(0, |c| c.cores.len());
             format!("Cable, {}", plural(n, "wire", "wires"))
@@ -412,8 +413,11 @@ impl Provisional {
 pub fn provisional_items(doc: &Document) -> Provisional {
     let mut tags: Vec<String> = doc
         .tagged()
-        .filter_map(|(_, c)| crate::devices::tag_of(doc, c).filter(|t| tag::is_provisional(t)).map(str::to_string))
-        .chain(doc.tagged_cables().filter_map(|(_, k)| crate::devices::cable_tag_of(doc, k).filter(|t| tag::is_provisional(t)).map(str::to_string)))
+        .filter_map(|(_, c)| crate::devices::tags::tag_of(doc, c).filter(|t| tag::is_provisional(t)).map(str::to_string))
+        .chain(
+            doc.tagged_cables()
+                .filter_map(|(_, k)| crate::devices::tags::cable_tag_of(doc, k).filter(|t| tag::is_provisional(t)).map(str::to_string)),
+        )
         .collect();
     tags.sort_by_key(|t| tag::provisional(t));
     let mut by: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
@@ -676,7 +680,7 @@ impl Generic for NumberingParams {
     const PAGES: Pages = Pages::ReadAnywhere;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let read = |doc: &Document| json!({"provisional": numbering::provisional_on(doc), "padding": devices::padding(doc), "cable_prefix": format!("-{}", devices::cable_prefix(doc))});
+        let read = |doc: &Document| json!({"provisional": numbering::provisional_on(doc), "padding": devices::padding(doc), "cable_prefix": format!("-{}", devices::tags::cable_prefix(doc))});
         let Some(on) = self.provisional else { return Ok(Outcome::answer(read(cx.doc))) };
         let before = cx.doc.display.get(PROVISIONAL_SETTING).cloned();
         let after = on.then(|| ecad_model::naming::words::flag_word(true).to_string());

@@ -65,8 +65,8 @@ pub fn goto(
     let place = places.text(tr.page, Some(at));
     let what = match tr.subject {
         Subject::Device(c) => match devices::device(doc, c).head {
-            Some(h) if h == t => format!("{}'s coil", crate::devices::tag_words(doc, c)),
-            _ => format!("{}'s contact", crate::devices::tag_words(doc, c)),
+            Some(h) if h == t => format!("{}'s coil", crate::devices::tags::tag_words(doc, c)),
+            _ => format!("{}'s contact", crate::devices::tags::tag_words(doc, c)),
         },
         Subject::Cable(k) => format!("the other end of cable {}", crate::cables::cable_title(doc, k)),
         Subject::Wire(_) | Subject::Route(_) => "the reference".into(),
@@ -147,8 +147,8 @@ pub fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: O
         Some(w) if w.starts_with("at ") => "is moved".to_string(),
         Some(w) => format!("is placed {w}"),
     };
-    let message = format!("{}'s contact table {words}.", crate::devices::tag_words(doc, c));
-    let who = crate::devices::tag_words(doc, c);
+    let message = format!("{}'s contact table {words}.", crate::devices::tags::tag_words(doc, c));
+    let who = crate::devices::tags::tag_words(doc, c);
     let table = devices::table_of_typed(after.as_deref())?;
     let ops = vec![Op::ModifyDevice { id: c, before: comp.clone(), after: devices::with_table(comp, &who, table)? }];
     Ok(Mirrored { ops, mirror: after, message })

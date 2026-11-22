@@ -45,8 +45,8 @@ pub fn plan_link(doc: &Document, ids: &mut IdAllocator, kind: LinkKind, a: Devic
     if doc.device_links.values().any(|l| l.same_as(&link)) {
         return Err(CmdError::refused(format!(
             "{} and {} already have a {} link.",
-            crate::devices::tag_words(doc, a),
-            crate::devices::tag_words(doc, b),
+            crate::devices::tags::tag_words(doc, a),
+            crate::devices::tags::tag_words(doc, b),
             kind.word()
         )));
     }

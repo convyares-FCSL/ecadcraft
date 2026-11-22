@@ -14,7 +14,7 @@ use ecad_model::{
 
 use crate::connectors::{self as cn, FamilyRules, Names, Shown};
 use crate::defaults::{self, Scope};
-use crate::devices::TagHigh;
+use crate::devices::tags::TagHigh;
 use crate::error::CmdError;
 use crate::symbols::{Side, Starter};
 use ecad_model::objects::devices::ConnectorFamily;
@@ -35,7 +35,7 @@ pub fn device(doc: &Document, device: Option<&str>) -> Result<Option<DeviceId>, 
         return Ok(Some(DeviceId::from(n)));
     }
     let tag = ecad_model::naming::tag::normalise(t, crate::defaults::print::tag_style(doc))?;
-    crate::devices::holder_of(doc, &tag, None).map(Some).ok_or_else(|| CmdError::refused(format!("No device {tag}.")))
+    crate::devices::tags::holder_of(doc, &tag, None).map(Some).ok_or_else(|| CmdError::refused(format!("No device {tag}.")))
 }
 
 /// The page `page` names, else `active`.
@@ -243,14 +243,14 @@ pub fn plan_connector(
         let (from, to) = match (input.line, input.wire) {
             (Some(l), _) => l,
             (None, Some(w)) => {
-                let mid = crate::wires::route_of_wire_on(doc, w, page)
+                let mid = crate::wires::routes::route_of_wire_on(doc, w, page)
                     .and_then(|r| route_point(doc, r))
                     .ok_or(CmdError::refused("That wire is not drawn on this page."))?;
                 (mid, mid)
             }
             (None, None) => return Err(CmdError::refused(NEEDS_AT)),
         };
-        let route = input.wire.and_then(|w| crate::wires::route_of_wire_on(doc, w, page));
+        let route = input.wire.and_then(|w| crate::wires::routes::route_of_wire_on(doc, w, page));
         let pins = Pins { device, halves, pins: pins_given, names: &names, pin: input.pin.as_deref(), from, to, route };
         let made = place_pins(ledger, ids, high, page, style, pins, tol)?;
         let names: Vec<String> = made.shown.iter().filter(|x| x.side != Side::Plug || halves == Side::Plug).map(|x| x.name.clone()).collect();
@@ -317,9 +317,9 @@ fn route_point(doc: &Document, r: RouteId) -> Option<Pt> {
 fn place_bulkhead(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, key: &str, at: Pt, degrees: Degrees,
 ) -> Result<Made, CmdError> {
-    let starter = crate::devices::starter(key)?;
+    let starter = crate::devices::json::starter(key)?;
     let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror: false, scale: 1.0 };
-    let plan = crate::devices::plan_place(ledger, ids, high, page, style, starter, placement, crate::devices::Target::New(None))?;
+    let plan = crate::devices::placing::plan_place(ledger, ids, high, page, style, starter, placement, crate::devices::placing::Target::New(None))?;
     Ok(Made { component: plan.component, tag: plan.tag, new: true, shown: Vec::new(), splits: Vec::new(), ops: plan.ops })
 }
 
@@ -386,10 +386,10 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
     let up = if swap { -5.0 } else { 5.0 };
     let mut ops = Vec::new();
     let mut shown = Vec::new();
-    let mut made: Option<(DeviceId, String, bool)> = device.map(|c| (c, crate::devices::tag_words(doc, c), false));
+    let mut made: Option<(DeviceId, String, bool)> = device.map(|c| (c, crate::devices::tags::tag_words(doc, c), false));
     for side in sides {
         let key = family.half_key(side, n).ok_or_else(|| CmdError::refused(family.size_refusal()))?;
-        let starter = crate::devices::starter(&key)?;
+        let starter = crate::devices::json::starter(&key)?;
         let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
         let origin = if side == Side::Socket && halves == Side::Both { Pt::new(at.x - sin * up, at.y + cos * up) } else { at };
         let placement = if swap {
@@ -414,7 +414,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
 }
 
 /// The rotation of a pin symbol on a route segment: its points along the route.
-pub fn along_wire(doc: &Document, on: &crate::wires::OnRoute) -> Radians {
+pub fn along_wire(doc: &Document, on: &crate::wires::placing::OnRoute) -> Radians {
     let Some(v) = doc.routes.get(&on.route).map(|r| &r.points) else { return Radians(0.0) };
     match (v.get(on.segment), v.get(on.segment + 1)) {
         (Some(a), Some(b)) if (b.x - a.x).abs() > (b.y - a.y).abs() => Radians(std::f64::consts::FRAC_PI_2),
@@ -440,12 +440,12 @@ fn place_pins(
 ) -> Result<Made, CmdError> {
     let doc = ledger.document();
     let (device, halves, names, from, to) = (a.device, a.halves, a.names, a.from, a.to);
-    let crossings: Vec<crate::wires::OnRoute> = if from.near(to, 1e-9) {
+    let crossings: Vec<crate::wires::placing::OnRoute> = if from.near(to, 1e-9) {
         let r = a
             .route
-            .or_else(|| crate::wires::route_at(doc, page, from, crate::wires::ON_WIRE, None).map(|o| o.route))
+            .or_else(|| crate::wires::placing::route_at(doc, page, from, crate::wires::ON_WIRE, None).map(|o| o.route))
             .ok_or(CmdError::refused("Click on a wire, or draw a line across the wires."))?;
-        vec![crate::wires::on_route_of(doc, r, from).ok_or(CmdError::refused("That wire is not drawn here."))?]
+        vec![crate::wires::placing::on_route_of(doc, r, from).ok_or(CmdError::refused("That wire is not drawn here."))?]
     } else {
         let found = crate::cables::slash::crossings(doc, page, from, to, tol);
         if found.members.len() > cn::MAX_PINS {
@@ -455,7 +455,7 @@ fn place_pins(
                 cn::MAX_PINS
             )));
         }
-        found.members.iter().filter_map(|m| crate::wires::on_route_of(doc, m.route, m.at)).collect()
+        found.members.iter().filter_map(|m| crate::wires::placing::on_route_of(doc, m.route, m.at)).collect()
     };
     if crossings.is_empty() {
         return Err(CmdError::refused("The line crosses no wire. Draw it across the wires."));
@@ -465,12 +465,12 @@ fn place_pins(
         Side::Socket => "pins",
         Side::Plug => "pinp",
     };
-    let starter: &Starter = crate::devices::starter(key)?;
+    let starter: &Starter = crate::devices::json::starter(key)?;
     let mut ops = Vec::new();
     let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
     // A new connector: its names first, then numbers past them (Numbers only).
     let (component, tag, new, mut fresh) = match device {
-        Some(c) => (c, crate::devices::tag_words(doc, c), false, Vec::new()),
+        Some(c) => (c, crate::devices::tags::tag_words(doc, c), false, Vec::new()),
         None => {
             let n = match (a.pins, names) {
                 (Some(n), _) => n,
@@ -532,7 +532,7 @@ fn place_pins(
         let rotation = along_wire(doc, &on);
         let placement = Placement { origin: on.at, rotation, mirror: false, scale: 1.0 };
         let (_, _, shown) = cn::symbol_ops(ids, page, style.clone(), def, starter, component, std::slice::from_ref(&name), placement, &mut ops)?;
-        let land = cn::land_pin(doc, ids, on, &shown, placement).map_err(|e| match crate::wires::wire_of_route(doc, on.route) {
+        let land = cn::land_pin(doc, ids, on, &shown, placement).map_err(|e| match crate::wires::routes::wire_of_route(doc, on.route) {
             Some(w) => CmdError::refused(format!("{e} (wire {})", crate::cables::slash::wire_name(doc, w))),
             None => e,
         })?;
@@ -587,10 +587,10 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
     if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
         return Err(CmdError::refused(format!(
             "{} is not a connector; rename its connection points in Properties.",
-            crate::devices::tag_words(doc, c)
+            crate::devices::tags::tag_words(doc, c)
         )));
     }
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     // `to: "next"`: one drawn pin moves to its half's next free pin (the pin-twice fix).
     if to.eq_ignore_ascii_case("next") {
         let t = connection_point.ok_or(CmdError::input("`to: \"next\"` moves one drawn pin: give its `connection_point`"))?;

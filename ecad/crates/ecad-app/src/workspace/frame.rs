@@ -497,7 +497,7 @@ impl App {
                 let tag = self
                     .project
                     .clone()
-                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_electrical::devices::tag_words(p.ledger.document(), c)).ok());
+                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_electrical::devices::tags::tag_words(p.ledger.document(), c)).ok());
                 if let Some(t) = tag {
                     self.panel.checks.table.query = t;
                 }

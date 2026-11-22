@@ -82,7 +82,7 @@ pub fn of(t: &App) -> Option<Placing> {
         return None;
     }
     let prompt = t.cad.session.current_prompt().map(|p| p.message.clone()).unwrap_or_default();
-    let symbol = t.shell.tools.placing.symbol.map(symbols::starter);
+    let symbol = t.shell.tools.placing.symbol.map(symbols::catalogue::starter);
     Some(Placing { tag: tag_in(&prompt), joins: prompt.contains("joins "), symbol })
 }
 
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn a_new_coil_says_what_the_click_adds_and_leaves() {
-        let p = Placing { tag: Some("-K02".into()), joins: false, symbol: Some(symbols::starter(symbols::StarterKey::Coil)) };
+        let p = Placing { tag: Some("-K02".into()), joins: false, symbol: Some(symbols::catalogue::starter(symbols::StarterKey::Coil)) };
         let (title, sub) = p.head();
         assert_eq!(title, "-K02");
         assert!(sub.ends_with(NOT_PLACED), "{sub}");
@@ -213,7 +213,7 @@ mod tests {
 
     #[test]
     fn a_symbol_joining_a_device_adds_no_device() {
-        let p = Placing { tag: Some("-K01".into()), joins: true, symbol: Some(symbols::starter(symbols::StarterKey::No)) };
+        let p = Placing { tag: Some("-K01".into()), joins: true, symbol: Some(symbols::catalogue::starter(symbols::StarterKey::No)) };
         let c = p.changes();
         assert!(c[0].1.contains("to -K01"), "{c:?}");
         assert!(c.iter().all(|(m, _)| *m != "warning"), "{c:?}");
@@ -223,7 +223,7 @@ mod tests {
     /// Review of #91, 2: a continuation makes no device and takes no tag.
     #[test]
     fn a_tagless_symbol_announces_no_device() {
-        let p = Placing { tag: None, joins: false, symbol: symbols::by_key("continuation") };
+        let p = Placing { tag: None, joins: false, symbol: symbols::catalogue::by_key("continuation") };
         assert!(!p.makes_device());
         let c = p.changes();
         assert!(c.iter().all(|(m, w)| *m != "warning" && !w.contains("device")), "{c:?}");

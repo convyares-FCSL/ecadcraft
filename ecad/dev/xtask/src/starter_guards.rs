@@ -25,24 +25,19 @@ const NAMES: &[&str] = &["of_definition", "rep_starter"];
 /// question. The count only falls.
 #[rustfmt::skip]
 const ALLOWED: &[(&str, usize, &str)] = &[
-    ("crates/ecad-app/src/inspector/details.rs", 2, "names the symbol a representation draws in the inspector (a display name)"),
     ("crates/ecad-app/src/inspector/mod.rs", 1, "the placed symbol's prefix entry in the defaults scope (the symbol's, not the device's)"),
-    ("crates/ecad-app/src/library/search.rs", 1, "whether the device's head symbol is the exclusive one drawn (symbol search ordering)"),
     ("crates/ecad-electrical/src/checks/mod.rs", 1, "a symbol marks some of its own connection points quiet (a drawing property)"),
-    ("crates/ecad-electrical/src/connectors/mod.rs", 1, "whether a representation draws a connector half or pin (a symbol, not the device)"),
-    ("crates/ecad-electrical/src/devices/device_list.rs", 1, "the name of the symbol a list row shows"),
+    ("crates/ecad-electrical/src/connectors/mod.rs", 1, "the side a connector half or pin representation draws (gap: a stored side on the representation)"),
     ("crates/ecad-electrical/src/devices/mod.rs", 8, "which symbol a representation is: join labels, head noun, erase and merge notes, run rule, symbol names (drawing questions)"),
     ("crates/ecad-electrical/src/plc/channels.rs", 1, "whether a definition is a channel symbol (a symbol of a card, not a device)"),
     ("crates/ecad-electrical/src/plc/commands.rs", 3, "which representations of a card are its body or cells (drawn pieces)"),
     ("crates/ecad-electrical/src/plc/draw.rs", 3, "the cell or body piece a representation draws"),
     ("crates/ecad-electrical/src/plc/mod.rs", 5, "which representation is a channel cell or card caption (drawn pieces)"),
-    ("crates/ecad-electrical/src/properties/mod.rs", 1, "the symbol's name in the Properties title"),
-    ("crates/ecad-electrical/src/references/devices.rs", 2, "the poles a drawn contact symbol shows (a symbol's own contacts)"),
-    ("crates/ecad-electrical/src/reports/bom.rs", 1, "the device's head symbol (its exclusive drawn symbol) for `for` text"),
+    ("crates/ecad-electrical/src/references/devices.rs", 2, "the poles a drawn contact symbol shows (gap: a `poles` table on the definition)"),
     ("crates/ecad-electrical/src/styles/text_style.rs", 1, "like symbols run together in a text style (a symbol key)"),
-    ("crates/ecad-electrical/src/symbols/mod.rs", 5, "the symbols catalogue itself: registry key, mating half, bridge keys, fuse bank outputs"),
+    ("crates/ecad-electrical/src/symbols/mod.rs", 5, "the symbols catalogue itself: registry key, mating half, bridge keys, fuse bank ways (gap: `FuseBank.ways`)"),
     ("crates/ecad-electrical/src/terminal_strips/commands/terminal_strips.rs", 1, "an embedded definition made from a given starter"),
-    ("crates/ecad-electrical/src/terminal_strips/mod.rs", 1, "whether a representation draws a PE terminal block symbol"),
+    ("crates/ecad-electrical/src/terminal_strips/mod.rs", 1, "whether a representation draws a PE terminal block (gap: a terminal-block type on the representation)"),
     ("crates/ecad-electrical/src/terminal_strips/terminal_blocks.rs", 3, "the terminal block symbol (type and levels) a representation draws"),
     ("crates/ecad-engine/src/plc/commands/page.rs", 1, "whether the definition about to be placed is a rack card (the device does not exist yet)"),
 ];
@@ -125,6 +120,6 @@ use a::of_definition;"
             )
             .is_empty()
         );
-        assert_eq!(places(".and_then(ecad_electrical::symbols::of_definition)"), vec![1]);
+        assert_eq!(places(".and_then(ecad_electrical::symbols::catalogue::of_definition)"), vec![1]);
     }
 }

@@ -50,7 +50,7 @@ impl View {
 /// The starter kind a representation shows: its definition's kind (a project symbol's by its
 /// own rule, design 048 §5.2). A drawn form has none.
 pub fn kind_of(doc: &Document, r: &Representation) -> Option<Kind> {
-    crate::devices::rep_definition(doc, r).and_then(|(d, _)| crate::symbols::kind_of_definition(d))
+    crate::devices::tags::rep_definition(doc, r).and_then(|(d, _)| crate::symbols::catalogue::kind_of_definition(d))
 }
 
 /// The part representation `r` plays in its device (design 052 §3.1): its stored role's part,

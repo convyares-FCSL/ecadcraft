@@ -46,7 +46,7 @@ fn the_data_holds_the_values_the_code_held() {
         (&text::RUN_GAP, Value::Length(15.0)),
         (&wires::WIRING_LABEL_RULE, Value::Choice("net")),
         (&wires::WIRING_LABEL_MIN_LENGTH, Value::Length(0.0)),
-        (&symbols::POINT_GRID, Value::Length(ecad_electrical::symbols::POINT_GRID_MM)),
+        (&symbols::POINT_GRID, Value::Length(ecad_electrical::symbols::graphics::POINT_GRID_MM)),
         (&strip_pages::PITCH, Value::Length(9.0)),
         (&plc::CHANNELS_DI, Value::Number(16.0)),
         (&connectors::SEPARATOR, Value::Text(".")),

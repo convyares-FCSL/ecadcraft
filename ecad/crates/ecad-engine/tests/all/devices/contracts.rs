@@ -6,8 +6,9 @@ use crate::common;
 use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
-use ecad_electrical::devices::TextOf;
-use ecad_electrical::symbols::{self, STARTERS};
+use ecad_electrical::devices::texts::TextOf;
+use ecad_electrical::symbols::catalogue::STARTERS;
+use ecad_electrical::symbols::{self};
 use ecad_model::{ConnectionPointId, DeviceId, ItemId, Op, PageId, Subject};
 use serde_json::{Value, json};
 
@@ -32,7 +33,7 @@ fn labels(v: &Value) -> Vec<String> {
 }
 
 fn tag(h: &mut H, c: DeviceId) -> String {
-    h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c))
+    h.p(|p| ecad_electrical::devices::tags::tag_words(p.ledger.document(), c))
 }
 
 /// The derived tag texts drawn on `page` (as the projection draws them).
@@ -128,7 +129,7 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
         let r = place(&mut h, key, [x, y]);
         assert_eq!(r["tag"], json!(t), "{key}");
         assert_eq!(r["joined"], json!(false));
-        let s = symbols::by_key(key).unwrap();
+        let s = symbols::catalogue::by_key(key).unwrap();
         // Brief 045 (FP7): a channel's labels are pins (1…), not its definition's names.
         if ecad_electrical::plc::channels::cell_type(s).is_some() {
             assert_eq!(labels(&r), ["1"], "{key}: its first pin");
@@ -150,7 +151,7 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
         .collect();
     assert_eq!(doc.definitions.len(), devices.len());
     for s in devices.iter().copied() {
-        let d = symbols::embedded(&doc, s).unwrap();
+        let d = symbols::catalogue::embedded(&doc, s).unwrap();
         let o = doc.definitions[&d].origin.clone().unwrap();
         assert_eq!((o.library, o.definition, o.library_seq), (symbols::STARTER_LIBRARY, s.id, 1));
     }
@@ -314,7 +315,7 @@ fn e_a_reopened_project_previews_the_next_tag_from_its_history() {
     place(&mut h, "coil", [0.0, 0.0]);
     let k2: DeviceId = id(&place(&mut h, "coil", [50.0, 0.0]), "component");
     h.run("ecaddelete", json!({"component": k2.hex()})).unwrap();
-    let coil = symbols::by_key("coil").unwrap();
+    let coil = symbols::catalogue::by_key("coil").unwrap();
     assert_eq!(h.p(|p| ecad_engine::devices::draw::next_tag_preview(p, coil)).as_deref(), Some("-K03"));
     h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
     let dir = std::env::temp_dir().join(format!("ecad-018-s2-{}", ecad_store::disk::unique()));
@@ -349,7 +350,7 @@ fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly
         doc.connection_points.get_mut(&t).unwrap().key = Some(ecad_model::PointKey::Def(format!("old-{}", t.short())));
     }
     let mut ids = ecad_model::IdAllocator::seeded(5);
-    let e = ecad_electrical::devices::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err().to_string();
+    let e = ecad_electrical::devices::merge::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err().to_string();
     assert!(e.starts_with("Cannot merge -K02: its symbol on page"), "{e}");
     assert!(e.contains("not linked to any of its connection points"), "{e}");
 }
@@ -644,7 +645,7 @@ fn a_tag_deleted_before_the_snapshot_is_not_given_again_after_reopening() {
     let (project, _) = ecad_engine::ProjectHandle::open_file(&mut s, &path, 78).unwrap();
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.p(|p| (p.ledger.base(), p.ledger.log().len())), (head, 0), "opened from the snapshot");
-    let coil = symbols::by_key("coil").unwrap();
+    let coil = symbols::catalogue::by_key("coil").unwrap();
     assert_eq!(h2.p(|p| ecad_engine::devices::draw::next_tag_preview(p, coil)).as_deref(), Some("-K06"));
     let placed = place(&mut h2, "coil", [400.0, 0.0]);
     let c: DeviceId = id(&placed, "component");

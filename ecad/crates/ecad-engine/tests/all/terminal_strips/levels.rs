@@ -139,8 +139,8 @@ fn bridged_two_level_positions_and_fuse_positions_break_the_net() {
     let doc = h.doc();
     // The two parts of the line (design 072 §4.3: routes), each carrying its own wire.
     let (kept, new) = (
-        ecad_electrical::wires::wire_of_route(&doc, id(&f["connection_points"][0], "route")),
-        ecad_electrical::wires::wire_of_route(&doc, id(&f["connection_points"][0], "new")),
+        ecad_electrical::wires::routes::wire_of_route(&doc, id(&f["connection_points"][0], "route")),
+        ecad_electrical::wires::routes::wire_of_route(&doc, id(&f["connection_points"][0], "new")),
     );
     assert!(kept.is_some() && new.is_some(), "{f}");
     let conn = doc.connectivity();

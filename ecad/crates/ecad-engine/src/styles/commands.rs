@@ -322,7 +322,7 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
         .take(MAX_TEXT_ROWS)
         .map(|t| {
             let d = &t.text;
-            let kind = ecad_electrical::devices::kind_of(d.of);
+            let kind = ecad_electrical::devices::texts::kind_of(d.of);
             let style = draw.style(kind);
             let w = width_in(draw.fonts_for(kind), TextStyle { height: d.height, ..style }, &d.value);
             let (lo, hi) = text_box(w, d.height, d.at, d.halign, d.valign);
@@ -348,7 +348,7 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
                 "overlaps": t.overlaps,
                 "box": [[lo.x, lo.y], [hi.x, hi.y]],
             });
-            if let ecad_electrical::devices::TextOf::ConnectionPoint(id) = d.of {
+            if let ecad_electrical::devices::texts::TextOf::ConnectionPoint(id) = d.of {
                 row["connection_point"] = json!(id.hex());
             }
             row
@@ -421,6 +421,6 @@ impl Command for MovetextParams {
 }
 
 /// The text `t` names as drawn now.
-fn current_text(doc: &Document, rep: RepresentationId, t: &rules::MoveTarget) -> Option<ecad_electrical::devices::PageText> {
+fn current_text(doc: &Document, rep: RepresentationId, t: &rules::MoveTarget) -> Option<ecad_electrical::devices::texts::PageText> {
     crate::devices::draw::all_texts_on_page(doc, t.page).into_iter().find(|x| x.text.rep == rep && x.text.of == t.of)
 }

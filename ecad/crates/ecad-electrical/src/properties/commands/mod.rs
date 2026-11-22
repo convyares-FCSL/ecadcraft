@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 use crate::cables::words::MAX_HANDLES;
 use crate::commands::input::{Bounded, OrNull, nullable};
 use crate::commands::run::{Cx, Generic, Outcome, State};
-use crate::devices::{Holder, TagHigh};
+use crate::devices::tags::{Holder, TagHigh};
 use crate::error::CmdError;
 use crate::locations::commands::locations::{self, MAX_DEVICES};
 use crate::locations::designations::Aspect;
@@ -121,7 +121,11 @@ pub static PROP_RULES: &[PropRule] = &[
         claims: |doc, o, k| component(o).is_some_and(|c| crate::plc::setprop_rule(doc, c, k, None).is_some()),
         build: Build::Value(plc_value),
     },
-    PropRule { what: "rating (brief 034)", claims: |_, o, k| is_component(o) && crate::symbols::is_rating_key(k), build: Build::Value(rating_value) },
+    PropRule {
+        what: "rating (brief 034)",
+        claims: |_, o, k| is_component(o) && crate::symbols::rules::is_rating_key(k),
+        build: Build::Value(rating_value),
+    },
     PropRule {
         what: "parts and items (brief 047)",
         claims: |_, o, k| component(o).is_some() && crate::reports::bom::is_bom_key(k),
@@ -179,7 +183,7 @@ fn free_text(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result
 }
 
 fn device_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::devices::property_value(doc, key, value)
+    crate::devices::json::property_value(doc, key, value)
 }
 
 fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -191,7 +195,7 @@ fn offer_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Resu
 }
 
 fn pe_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::devices::property_value(doc, key, value)
+    crate::devices::json::property_value(doc, key, value)
 }
 
 fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -227,7 +231,7 @@ fn plc_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Re
 }
 
 fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::symbols::setprop_rule(doc, o, key, value)
+    crate::symbols::rules::setprop_rule(doc, o, key, value)
 }
 
 fn bom_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -389,10 +393,10 @@ pub fn plan_device(
     let before = component.value(key);
     if key == TAG_KEY
         && let Some(t) = &value
-        && let Some(holder) = crate::devices::holder_of(doc, t, Some(c))
+        && let Some(holder) = crate::devices::tags::holder_of(doc, t, Some(c))
     {
         if !merge {
-            let next = crate::devices::tag_of(doc, c)
+            let next = crate::devices::tags::tag_of(doc, c)
                 .and_then(tag::parse)
                 .or_else(|| tag::parse(t))
                 .and_then(|(prefix, _)| tag_high.peek(doc, &prefix).ok());
@@ -400,10 +404,10 @@ pub fn plan_device(
                 Some(n) => format!("Set `merge` to true to make this the same device, or choose another tag (the next free one is {n})."),
                 None => "Set `merge` to true to make this the same device, or choose another tag.".into(),
             };
-            return Err(CmdError::refused(crate::devices::duplicate_words(doc, t, holder, &way)));
+            return Err(CmdError::refused(crate::devices::tags::duplicate_words(doc, t, holder, &way)));
         }
-        let ops = crate::devices::plan_merge(doc, ids, c, holder)?;
-        return Ok(DeviceSet::Merged { ops, holder, into: crate::devices::tag_words(doc, holder), before });
+        let ops = crate::devices::merge::plan_merge(doc, ids, c, holder)?;
+        return Ok(DeviceSet::Merged { ops, holder, into: crate::devices::tags::tag_words(doc, holder), before });
     }
     if before == value {
         return Ok(DeviceSet::Unchanged(value));
@@ -424,7 +428,7 @@ pub fn merged_device_words(doc: &Document, before: Option<&str>, holder: DeviceI
         "{} is now part of {into} ({} symbols on {}).",
         before.unwrap_or("The device"),
         doc.representations_of(Subject::Device(holder)).count(),
-        crate::devices::pages_words(doc, holder)
+        crate::devices::tags::pages_words(doc, holder)
     )
 }
 
@@ -521,7 +525,7 @@ fn taken_words(doc: &Document, tag_high: &TagHigh, o: ObjectRef, t: &str, holder
     } else {
         format!("It is a {}, so only conflict: \"next\" (use {next}) works.", noun(holder.object()))
     };
-    format!("{t} is used by {}. {ways}", crate::devices::holder_words_of(doc, holder))
+    format!("{t} is used by {}. {ways}", crate::devices::tags::holder_words_of(doc, holder))
 }
 
 /// A tag's change ([`plan_tag`]).
@@ -571,9 +575,9 @@ pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Opt
     if let Some(Ok((c, Some(side), None))) = crate::connectors::resolve(doc, &t)
         && ObjectRef::Device(c) != o
     {
-        return Err(CmdError::refused(format!("{t} is the {} half of {}. Pick another tag.", side.word(), crate::devices::tag_words(doc, c))));
+        return Err(CmdError::refused(format!("{t} is the {} half of {}. Pick another tag.", side.word(), crate::devices::tags::tag_words(doc, c))));
     }
-    let Some(holder) = crate::devices::tag_holder(doc, &t, Some(o)) else {
+    let Some(holder) = crate::devices::tags::tag_holder(doc, &t, Some(o)) else {
         let ops = tag_ops(doc, o, Some(t.clone()), typed_fixed);
         if ops.is_empty() {
             return Ok(TagSet::Unchanged(Some(t)));

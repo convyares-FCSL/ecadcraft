@@ -79,7 +79,7 @@ fn is_field_key(k: &str) -> bool {
 fn not_plc(doc: &Document, o: ObjectRef, key: &str, _: Option<&str>) -> Result<Option<String>, CmdError> {
     let (who, is) = match o {
         ObjectRef::Device(c) => (
-            crate::devices::tag_words(doc, c),
+            crate::devices::tags::tag_words(doc, c),
             match crate::plc::card_type_of(doc, c) {
                 Some(t) if t.is_rack() => "a station",
                 Some(_) => "a module",
@@ -145,7 +145,7 @@ fn single_group<'a>(m: &'a mut PlcModule, who: &str) -> Result<&'a mut ecad_mode
 /// A value that does not read, or a key the module's function has no field for.
 fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let c = module(doc, o).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
-    let who = crate::devices::tag_words(doc, c);
+    let who = crate::devices::tags::tag_words(doc, c);
     let v = value.map(str::trim).filter(|v| !v.is_empty());
     let mut ops = Vec::new();
     if let Some((i, what)) = channels::parse_ch_key(key) {
@@ -223,7 +223,7 @@ fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> 
 /// A value that does not read, or a key its head has no field for.
 fn plan_station(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let c = station(doc, o).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
-    let who = crate::devices::tag_words(doc, c);
+    let who = crate::devices::tags::tag_words(doc, c);
     let v = value.map(str::trim).filter(|v| !v.is_empty());
     let mut s: PlcRack = edit::station_of(doc, c).cloned().ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
     match key {

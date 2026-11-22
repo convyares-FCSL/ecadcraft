@@ -49,7 +49,7 @@ pub fn tag_settings(padding: Option<u64>, prefixes: impl IntoIterator<Item = (St
     };
     let mut changes = Vec::new();
     for (k, v) in prefixes {
-        let symbol = devices::starter(&k)?;
+        let symbol = devices::json::starter(&k)?;
         let prefix = match v {
             None => None,
             Some(t) => Some(
@@ -122,7 +122,7 @@ fn kept_words(n: usize) -> String {
 
 /// The ops removing routes `routes` with their drawings; routes landing on them end free.
 fn remove_routes(doc: &Document, routes: &[RouteId]) -> Vec<Op> {
-    let mut edits = crate::wires::RouteEdits::new(doc);
+    let mut edits = crate::wires::routes::RouteEdits::new(doc);
     for r in routes {
         edits.free_tees(*r);
     }
@@ -131,7 +131,7 @@ fn remove_routes(doc: &Document, routes: &[RouteId]) -> Vec<Op> {
     }
     let mut ops = edits.ops();
     for r in routes {
-        ops.extend(crate::wires::remove_route_ops(doc, *r));
+        ops.extend(crate::wires::routes::remove_route_ops(doc, *r));
     }
     ops
 }
@@ -176,7 +176,7 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
         }
         Doomed::Device(c) => {
             let component = doc.devices.get(&c).ok_or(CmdError::refused("no such component"))?;
-            ops.extend(crate::wires::free_points_ops(doc, doc.connection_points_of(c).map(|(t, _)| t)));
+            ops.extend(crate::wires::routes::free_points_ops(doc, doc.connection_points_of(c).map(|(t, _)| t)));
             ops.extend(remove_representations(doc, Subject::Device(c)));
             for (t, term) in doc.connection_points_of(c) {
                 ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
@@ -188,16 +188,16 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
             ops.extend(crate::devices::commands::device_links::unlink_ops(doc, c));
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             let mut message =
-                (released > 0).then(|| format!("Deleted {}; {}", devices::tag_words(doc, c), crate::plc::rack::released_words(released)));
+                (released > 0).then(|| format!("Deleted {}; {}", devices::tags::tag_words(doc, c), crate::plc::rack::released_words(released)));
             if let Some(cleared) = crate::circuits::trace::cleared_words(doc, c) {
-                message = Some(format!("{}; {cleared}", message.unwrap_or_else(|| format!("Deleted {}", devices::tag_words(doc, c)))));
+                message = Some(format!("{}; {cleared}", message.unwrap_or_else(|| format!("Deleted {}", devices::tags::tag_words(doc, c)))));
             }
             Ok(Deleted { ops, released, kept: None, message })
         }
         Doomed::Cable(k) => {
             let cable = doc.cables.get(&k).ok_or(CmdError::refused("no such cable"))?;
             // Its named points go with it (design 072 §4.4, F4): the lines on them end free.
-            ops.extend(crate::wires::free_points_ops(doc, cable.cores.iter().flat_map(|c| c.through.iter().copied())));
+            ops.extend(crate::wires::routes::free_points_ops(doc, cable.cores.iter().flat_map(|c| c.through.iter().copied())));
             ops.extend(remove_representations(doc, Subject::Cable(k)));
             ops.push(Op::DeleteCable { id: k, cable: cable.clone() });
             let kept = cable.cores.iter().filter(|m| m.position != ecad_model::CorePosition::Unplaced).count();
@@ -266,7 +266,7 @@ pub fn plan_addconnectionpoint(
 
 /// Every starter symbol's prefix as this project uses it (`-K`).
 pub fn prefixes_json(doc: &ecad_model::Document) -> serde_json::Map<String, Value> {
-    crate::symbols::STARTERS
+    crate::symbols::catalogue::STARTERS
         .iter()
         // Junctions and continuations have no tag (brief 022).
         .filter(|s| s.kind != crate::symbols::Kind::Tagless)
@@ -293,7 +293,7 @@ impl Generic for SymbolsParams {
     const ACCESS: Access = Access::Reads;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        Ok(Outcome::answer(devices::symbols_json(cx.doc, self.query.as_deref())))
+        Ok(Outcome::answer(devices::json::symbols_json(cx.doc, self.query.as_deref())))
     }
 }
 
@@ -314,7 +314,7 @@ impl Generic for DevicesParams {
     const ACCESS: Access = Access::Reads;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        Ok(Outcome::answer(devices::devices_json(cx.doc, self.tag.as_deref())))
+        Ok(Outcome::answer(devices::json::devices_json(cx.doc, self.tag.as_deref())))
     }
 }
 
@@ -338,7 +338,7 @@ impl Generic for DevicepropsParams {
         if !cx.doc.devices.contains_key(&self.component) {
             return Err(CmdError::NotFound(Noun::Device));
         }
-        Ok(Outcome::answer(devices::device_json(cx.doc, self.component)))
+        Ok(Outcome::answer(devices::json::device_json(cx.doc, self.component)))
     }
 }
 
@@ -401,7 +401,7 @@ impl Generic for DevicedeleteParams {
     const HELP: &'static str = "{component: id} (deletes the device with every symbol, as `ecaddelete`)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let tag = devices::tag_words(cx.doc, self.component);
+        let tag = devices::tags::tag_words(cx.doc, self.component);
         delete(
             cx.doc,
             Doomed::Device(self.component),

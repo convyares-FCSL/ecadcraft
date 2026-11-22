@@ -87,9 +87,9 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
             return Err("the project has no pages".into());
         }
         let style = ecad_model::Style { layer: p.default_layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-        let cpu = ecad_electrical::symbols::by_key("plccpu").ok_or("no plccpu")?;
+        let cpu = ecad_electrical::symbols::catalogue::by_key("plccpu").ok_or("no plccpu")?;
         // Tags from the project's history (the project's own counter is private to it).
-        let mut high = ecad_electrical::devices::TagHigh::default();
+        let mut high = ecad_electrical::devices::tags::TagHigh::default();
         for r in 0..RACKS {
             let page = pages[(r * 3) % pages.len()];
             let mut ops = Vec::new();
@@ -99,7 +99,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 mirror: false,
                 scale: 1.0,
             };
-            let plan = ecad_electrical::devices::plan_place(
+            let plan = ecad_electrical::devices::placing::plan_place(
                 &p.ledger,
                 &mut p.ids,
                 &mut high,
@@ -107,15 +107,15 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 style.clone(),
                 cpu,
                 at(0),
-                ecad_electrical::devices::Target::New(None),
+                ecad_electrical::devices::placing::Target::New(None),
             )?;
             let rack: DeviceId = plan.component;
             ops.extend(plan.ops);
             p.ledger.commit(Author::User, "bench rack", std::mem::take(&mut ops)).map_err(|e| e.to_string())?;
             for i in 0..CARDS {
                 let page = pages[(r * 3 + i / 4) % pages.len()];
-                let body = ecad_electrical::symbols::by_key(BODIES[i % BODIES.len()]).ok_or("no card body")?;
-                let plan = ecad_electrical::devices::plan_place(
+                let body = ecad_electrical::symbols::catalogue::by_key(BODIES[i % BODIES.len()]).ok_or("no card body")?;
+                let plan = ecad_electrical::devices::placing::plan_place(
                     &p.ledger,
                     &mut p.ids,
                     &mut high,
@@ -123,7 +123,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                     style.clone(),
                     body,
                     at(i + 1),
-                    ecad_electrical::devices::Target::New(None),
+                    ecad_electrical::devices::placing::Target::New(None),
                 )?;
                 let card = plan.component;
                 ops.extend(plan.ops);

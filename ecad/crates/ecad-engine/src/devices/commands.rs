@@ -139,7 +139,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
     }
     let key = params.symbol.clone().ok_or_else(|| err("`symbol` (a starter symbol key, see `symbols`) is required with `device` or `tag`"))?;
     // Brief 048: a project symbol's key places its newest version.
-    let starter = match ecad_electrical::devices::starter(&key) {
+    let starter = match ecad_electrical::devices::json::starter(&key) {
         Ok(st) => st,
         Err(e) => return crate::symbols::commands::place_project_key(s, &params, &key)?.ok_or_else(|| err(e)),
     };
@@ -183,12 +183,13 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         let style = style(p);
         // Brief 025 (design 025 §4.3): a joined contact takes its part's next free offered labels.
         let offer_slot = match (&target, starter.kind) {
-            (ecad_electrical::devices::Target::Join(c), ecad_electrical::symbols::Kind::Contact { make }) => {
-                ecad_electrical::references::devices::offer_labels(doc, *c, make, &ecad_electrical::devices::labels_of(doc, *c)).is_some()
+            (ecad_electrical::devices::placing::Target::Join(c), ecad_electrical::symbols::Kind::Contact { make }) => {
+                ecad_electrical::references::devices::offer_labels(doc, *c, make, &ecad_electrical::devices::placing::labels_of(doc, *c)).is_some()
             }
             _ => false,
         };
-        let mut plan = ecad_electrical::devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
+        let mut plan =
+            ecad_electrical::devices::placing::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
         let land = match (landing, plan.connection_points.first()) {
             (Some(on), Some((_, _, t))) => {
                 let land = ecad_electrical::connectors::plan_land(p.ledger.document(), &mut p.ids, on, *t)?;
@@ -233,13 +234,13 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             "tag": plan.tag,
             "joined": plan.joined,
             "offer_slot": offer_slot,
-            "pages": ecad_electrical::devices::page_numbers(doc, plan.component),
+            "pages": ecad_electrical::devices::tags::page_numbers(doc, plan.component),
             "connection_points": plan.connection_points.iter().map(|(k, l, t)| json!({"key": k, "label": l, "connection_point": t.hex()})).collect::<Vec<_>>(),
         });
         crate::symbols::draw::finish_place(p, pg, plan.component, plan.joined, &proposed, &mut v);
         let doc = p.ledger.document();
         if let Some((t, (r, slot))) = card_slot {
-            let message = format!("Placed {} ({}) in {} slot {slot}.", plan.tag, t.noun(), ecad_electrical::devices::tag_words(doc, r));
+            let message = format!("Placed {} ({}) in {} slot {slot}.", plan.tag, t.noun(), ecad_electrical::devices::tags::tag_words(doc, r));
             v["rack"] = json!(r.hex());
             v["slot"] = json!(slot);
             v["message"] = json!(message);

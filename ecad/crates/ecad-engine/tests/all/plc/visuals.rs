@@ -338,7 +338,7 @@ fn a_d_e_one_frame_per_run_with_break_edges_where_the_card_goes_on() {
     let d = h.doc();
     let body = d
         .representations_of(ecad_model::Subject::Device(di))
-        .find(|(_, r)| ecad_electrical::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Plcdi))
+        .find(|(_, r)| ecad_electrical::devices::tags::rep_starter(&d, r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Plcdi))
         .map(|(_, r)| r.items[0])
         .unwrap();
     // Cells' points are at y 200; the body's at its origin + 25; cell 15 ends at x 100 + 15·20 + 10.
@@ -430,7 +430,7 @@ fn review_1_a_body_with_no_frame_keeps_its_tag() {
     assert!(ecad_electrical::plc::draw::runs_on_page(&d, page).iter().all(|r| r.card != di), "no run at 90°");
     let tags: Vec<String> = ecad_engine::devices::draw::all_texts_on_page(&d, page)
         .into_iter()
-        .filter(|t| t.text.of == ecad_electrical::devices::TextOf::Tag)
+        .filter(|t| t.text.of == ecad_electrical::devices::texts::TextOf::Tag)
         .map(|t| t.text.value)
         .collect();
     assert!(tags.iter().any(|t| t == "-A02"), "{tags:?}");

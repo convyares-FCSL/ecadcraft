@@ -92,7 +92,7 @@ impl Command for WireParams {
             let style = plain_style(p);
             let quiet = quiet_ends(p, page);
             let join = join.unwrap_or_else(|| rules::join_by_default(p.ledger.document()));
-            let input = ecad_electrical::wires::WireInput {
+            let input = ecad_electrical::wires::joining::WireInput {
                 page,
                 style,
                 points,
@@ -105,7 +105,7 @@ impl Command for WireParams {
             let mut plan = rules::wire(&p.ledger, &mut p.ids, input, category.as_deref())?;
             p.apply_edit(pg, "wire", "Wire", std::mem::take(&mut plan.ops))?;
             let doc = p.ledger.document();
-            let wire = plan.wire.filter(|w| doc.wires.contains_key(w)).or_else(|| ecad_electrical::wires::wire_of_route(doc, plan.route));
+            let wire = plan.wire.filter(|w| doc.wires.contains_key(w)).or_else(|| ecad_electrical::wires::routes::wire_of_route(doc, plan.route));
             let number = wire.and_then(|w| rules::number_of(doc, w));
             let attached: Vec<Value> = plan.attached.iter().map(|(e, t)| json!({"end": format!("{e:?}"), "connection_point": t.hex()})).collect();
             let mut r = json!({
@@ -164,7 +164,7 @@ pub(crate) fn place_tagless(
         let doc = p.ledger.document();
         let aid = ecad_electrical::wires::continuation_aid(name.as_deref().unwrap_or_default(), caption.as_deref())?;
         let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
-        let t = ecad_electrical::wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, aid)?;
+        let t = ecad_electrical::wires::placing::plan_tagless(doc, &mut p.ids, page, style, starter, placement, aid)?;
         p.apply_edit(pg, "place", starter.name, t.ops.clone())?;
         if let Some(n) = &name {
             p.last_continuation = Some(n.clone());

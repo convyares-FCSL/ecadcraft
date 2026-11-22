@@ -56,7 +56,7 @@ fn vertices(doc: &Document, r: RouteId) -> Vec<Pt> {
 
 /// The points of wire `c`'s line on `page`.
 fn wire_vertices(doc: &Document, c: WireId, page: PageId) -> Vec<Pt> {
-    ecad_electrical::wires::route_of_wire_on(doc, c, page).map(|r| vertices(doc, r)).unwrap_or_default()
+    ecad_electrical::wires::routes::route_of_wire_on(doc, c, page).map(|r| vertices(doc, r)).unwrap_or_default()
 }
 
 fn same_pts(got: &[Pt], want: &[(f64, f64)]) -> bool {
@@ -186,7 +186,7 @@ fn t03_both_ends_fold_into_one_wire() {
     assert!(!doc.routes.contains_key(&c), "the folded route no longer exists");
     let ends = doc.routes[&a].ends;
     assert!(ends.contains(&RouteEnd::Point(t1)) && ends.contains(&RouteEnd::Point(t2)), "{ends:?}");
-    assert!(ecad_electrical::wires::wire_between(&doc, t1, t2).is_some(), "the wire t1-t2");
+    assert!(ecad_electrical::wires::routes::wire_between(&doc, t1, t2).is_some(), "the wire t1-t2");
     assert_eq!(doc.representations_of(Subject::Route(c)).count(), 0, "its drawing is gone");
     assert!(before.routes.contains_key(&c));
     undo_is_one_step(&mut h, &before);
@@ -487,7 +487,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     let tagged = |pre: &str| -> Vec<String> {
         doc.devices
             .keys()
-            .filter(|c| ecad_electrical::devices::tag_of(&doc, **c).is_some_and(|t| t.to_string().starts_with(pre)))
+            .filter(|c| ecad_electrical::devices::tags::tag_of(&doc, **c).is_some_and(|t| t.to_string().starts_with(pre)))
             .map(|c| c.hex())
             .collect()
     };
@@ -610,7 +610,7 @@ fn t13c_continue_refusals() {
     let mut f = w04(0x7032_0134);
     let doc = f.h.doc();
     let x51 = doc.wires[&f.w[0]].ends.iter().copied().find(|t| {
-        ecad_electrical::devices::tag_of(&doc, doc.connection_points[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5"))
+        ecad_electrical::devices::tags::tag_of(&doc, doc.connection_points[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5"))
     });
     let tp = x51.map(|t| f.h.connection_point_pos(f.p2, t)).expect("X51's point");
     f.h.points_at(&[(tp.x, tp.y + 40.0)]);
@@ -872,8 +872,8 @@ fn t16_label_settings_round_trip_and_default_when_absent() {
     assert_eq!((back.label_rule.as_deref(), back.label_min_length), (None, None));
     let mut doc = ecad_model::Document::default();
     doc.settings.wiring = back;
-    assert_eq!(ecad_electrical::wires::label_rule_word(&doc), "net");
-    assert_eq!(ecad_electrical::wires::label_min_length(&doc), 0.0);
+    assert_eq!(ecad_electrical::wires::label_rule::label_rule_word(&doc), "net");
+    assert_eq!(ecad_electrical::wires::label_rule::label_min_length(&doc), 0.0);
 }
 
 /// `wiresettings` refuses bad values in words and writes nothing.

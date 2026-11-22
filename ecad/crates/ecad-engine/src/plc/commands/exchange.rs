@@ -193,7 +193,7 @@ impl Command for PlcexportParams {
             let rack = self.rack.as_deref().map(|r| ecad_electrical::plc::rack::rack_named(doc, r)).transpose()?;
             let ex = export_rows(doc, &o.plc, rack, f);
             let bytes = f.write(&ex.rows)?;
-            let scope = rack.map_or_else(|| "every rack".to_string(), |r| format!("rack {}", ecad_electrical::devices::tag_words(doc, r)));
+            let scope = rack.map_or_else(|| "every rack".to_string(), |r| format!("rack {}", ecad_electrical::devices::tags::tag_words(doc, r)));
             let n = ex.rows.len();
             let left = ex.left_out_words();
             let left_out = json!({"no_tag": ex.no_tag, "no_address": ex.no_address, "refused": ex.refused});

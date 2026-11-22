@@ -455,7 +455,7 @@ fn references_on_a_name_of(m: usize) {
     let starter = ecad_electrical::wires::continuation_starter();
     let aid = ecad_electrical::wires::continuation_aid("BIG", None).unwrap();
     let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 };
-    let t = ecad_electrical::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, aid).unwrap();
+    let t = ecad_electrical::wires::placing::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, aid).unwrap();
     ledger.commit(ecad_model::Author::User, "first", t.ops.clone()).unwrap();
     // The other arrows: the first one's ops with fresh IDs, place and page, in one transaction
     // (planning and settling each one in a debug build takes seconds; the subject is `references`).

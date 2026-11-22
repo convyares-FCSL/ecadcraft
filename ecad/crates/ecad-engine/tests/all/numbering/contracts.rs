@@ -11,7 +11,7 @@ use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::document::sheet::Grid;
 use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
-use {ecad_electrical::devices::PROVISIONAL_ACI, ecad_electrical::devices::TextOf};
+use {ecad_electrical::devices::PROVISIONAL_ACI, ecad_electrical::devices::texts::TextOf};
 
 const SEED: u64 = 26;
 
@@ -32,7 +32,7 @@ fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> DeviceId {
 }
 
 fn tag(h: &mut H, c: DeviceId) -> String {
-    h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c))
+    h.p(|p| ecad_electrical::devices::tags::tag_words(p.ledger.document(), c))
 }
 
 /// Fixture N (design §14): page 1 has `-K07` at column A and `-K01` at column C; page 2, in folder

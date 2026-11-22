@@ -120,9 +120,9 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
             // Brief 048: a project symbol's new or removed version changes "update available" on
             // the devices showing its lineage.
             Effect::Definition { before, after, .. } => {
-                let origin = after.or(*before).and_then(|d| d.origin.as_ref()).filter(|o| o.library == crate::symbols::PROJECT_SYMBOLS);
+                let origin = after.or(*before).and_then(|d| d.origin.as_ref()).filter(|o| o.library == crate::symbols::project::PROJECT_SYMBOLS);
                 if let Some(o) = origin {
-                    for v in crate::symbols::versions_of(doc, o.definition) {
+                    for v in crate::symbols::project::versions_of(doc, o.definition) {
                         for item in doc.items_using(v.id) {
                             if let Some((_, r)) = doc.representation_of_item(item) {
                                 subject(&r.subject);

@@ -24,7 +24,7 @@ use serde_json::json;
 
 use crate::commands::input::{TextOrNumber, nullable};
 use crate::commands::run::{Cx, Generic, Outcome};
-use crate::devices::TagHigh;
+use crate::devices::tags::TagHigh;
 use crate::error::CmdError;
 use crate::locations::designations::{self, Aspect};
 use crate::styles::{self, cable};
@@ -260,11 +260,11 @@ fn refuse_taken(doc: &Document, typed: &str, except: Option<CableId>) -> Result<
     if ecad_model::naming::tag::provisional(&t).is_some() {
         return Ok(());
     }
-    match crate::devices::tag_holder(doc, &t, except.map(ObjectRef::Cable)) {
+    match crate::devices::tags::tag_holder(doc, &t, except.map(ObjectRef::Cable)) {
         Some(h) => {
             let by = match h {
-                crate::devices::Holder::Device(c) => format!("{} (device)", crate::devices::tag_of(doc, c).unwrap_or("?")),
-                crate::devices::Holder::Cable(k) => format!("{} (cable)", crate::cables::cable_title(doc, k)),
+                crate::devices::tags::Holder::Device(c) => format!("{} (device)", crate::devices::tags::tag_of(doc, c).unwrap_or("?")),
+                crate::devices::tags::Holder::Cable(k) => format!("{} (cable)", crate::cables::cable_title(doc, k)),
             };
             Err(said(format!("{} is already the tag of {}. Choose another tag.", clip(&t), clip(&by))))
         }
@@ -322,7 +322,7 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
     if let Some(t) = typed_tag.as_deref() {
         refuse_taken(doc, t, None)?;
     }
-    let tag = crate::devices::new_cable_tag(ledger, high, typed_tag.as_deref())?;
+    let tag = crate::devices::tags::new_cable_tag(ledger, high, typed_tag.as_deref())?;
     props.insert(CableField::Tag.key().to_string(), tag.clone());
     let id: CableId = ids.fresh();
     let mut cable = take_fields(ecad_model::Cable { properties: props, ..ecad_model::Cable::default() });

@@ -25,9 +25,11 @@ use ecad_model::{
 };
 
 use crate::defaults::symbols::Field;
-use crate::devices::TagHigh;
+use crate::devices::tags::TagHigh;
 use crate::error::CmdError;
-use crate::symbols::{self, Join, POINT_GRID_MM, PROJECT_SYMBOLS, Version};
+use crate::symbols::graphics::POINT_GRID_MM;
+use crate::symbols::project::{PROJECT_SYMBOLS, Version};
+use crate::symbols::{self, Join};
 
 /// Most shapes a symbol holds (design 048 §3.5).
 pub const MAX_SHAPES: usize = 4000;
@@ -213,12 +215,12 @@ pub fn problems(c: &Content, rules: &Rules<'_>) -> Vec<String> {
     }
     match c.key() {
         None => out.push("A symbol needs a key.".to_string()),
-        Some(k) if !symbols::valid_key(k) => {
-            out.push(format!("The key {k} is not a key: up to {} letters, digits, - and _.", symbols::MAX_KEY));
+        Some(k) if !symbols::project::valid_key(k) => {
+            out.push(format!("The key {k} is not a key: up to {} letters, digits, - and _.", symbols::project::MAX_KEY));
         }
-        Some(k) if symbols::by_key(k).is_some() => out.push(format!("The key {k} is a built-in symbol's; choose another.")),
+        Some(k) if symbols::catalogue::by_key(k).is_some() => out.push(format!("The key {k} is a built-in symbol's; choose another.")),
         Some(k) => {
-            if let Some(v) = symbols::project_by_key(rules.doc, k).filter(|v| Some(v.lineage) != rules.lineage) {
+            if let Some(v) = symbols::project::project_by_key(rules.doc, k).filter(|v| Some(v.lineage) != rules.lineage) {
                 out.push(format!("The key {k} is used by {}; choose another.", v.def.name));
             }
         }
@@ -339,7 +341,7 @@ fn refuse_problems(c: &Content, rules: &Rules<'_>) -> Result<(), CmdError> {
 pub fn version_definition(c: &Content, lineage: DefinitionId, seq: u64, derived_from: Option<Origin>) -> Result<Definition, CmdError> {
     let mut d = c.definition();
     d.derived_from = derived_from;
-    d.part_role = crate::symbols::project_part_role(&d);
+    d.part_role = crate::symbols::project::project_part_role(&d);
     let content_hash = ecad_file::definition_hash(&d).map_err(|e| CmdError::refused(format!("The symbol could not be prepared ({e}).")))?;
     d.origin = Some(Origin { library: PROJECT_SYMBOLS, definition: lineage, library_seq: seq, content_hash });
     Ok(d)
@@ -453,7 +455,7 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
                                     .map(|(t, _, p)| (t, p))
                                     .collect()
                             });
-                            let ends = crate::wires::loose_ends_at(doc, r.page, to, TOL);
+                            let ends = crate::wires::routes::loose_ends_at(doc, r.page, to, TOL);
                             if spots.iter().any(|(o, p)| *o != t && p.near(to, TOL)) || !ends.is_empty() {
                                 clash.get_or_insert_with(|| format!("Point {k} would move onto another connection on this page."));
                             }
@@ -498,8 +500,8 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
     if old.texts != new.texts {
         changes.push("text slots move".into());
     }
-    let builtin = !symbols::is_project_symbol(old);
-    Some(Row { rep: rid, item, page: r.page, component: c, tag: crate::devices::tag_words(doc, c), from: old_id, changes, clash, builtin })
+    let builtin = !symbols::project::is_project_symbol(old);
+    Some(Row { rep: rid, item, page: r.page, component: c, tag: crate::devices::tags::tag_words(doc, c), from: old_id, changes, clash, builtin })
 }
 
 /// Every placed copy of `defs` and what moving it to `new` would do.
@@ -520,7 +522,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
     const GONE: &str = "A copy is gone.";
     let mut ops = Vec::new();
     let mut set_def: BTreeSet<DeviceId> = BTreeSet::new();
-    let mut moved_routes = crate::wires::RouteEdits::new(doc);
+    let mut moved_routes = crate::wires::routes::RouteEdits::new(doc);
     for row in rows {
         if let Some(clash) = &row.clash {
             return Err(CmdError::refused(format!(
@@ -595,7 +597,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
 
 /// Move the ends of the routes on `page` landing on connection point `t` at `from` to `to` (the
 /// routes' other points stay), gathering several moves of one route in `edits`.
-fn follow(doc: &Document, t: ConnectionPointId, page: PageId, from: Pt, to: Pt, edits: &mut crate::wires::RouteEdits<'_>) {
+fn follow(doc: &Document, t: ConnectionPointId, page: PageId, from: Pt, to: Pt, edits: &mut crate::wires::routes::RouteEdits<'_>) {
     for r in doc.routes_at(t).filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page)).collect::<Vec<_>>() {
         let Some(route) = edits.get(r) else { continue };
         let n = route.points.len();
@@ -626,7 +628,7 @@ fn superseded(doc: &Document, lineage: DefinitionId, keep: DefinitionId, ops: &[
             _ => {}
         }
     }
-    symbols::versions_of(doc, lineage)
+    symbols::project::versions_of(doc, lineage)
         .into_iter()
         .filter(|v| v.id != keep)
         .filter(|v| doc.items_using(v.id).len() <= leaving.get(&v.id).copied().unwrap_or(0))
@@ -663,7 +665,7 @@ pub fn plan_new(doc: &Document, ids: &mut IdAllocator, content: &Content, from: 
         Some(f) => match doc.definitions.get(&f) {
             Some(d) => d.origin.clone().filter(|o| o.library != PROJECT_SYMBOLS),
             None => {
-                let s = symbols::STARTERS.iter().find(|s| s.id == f).ok_or(CmdError::refused("No such definition to copy from."))?;
+                let s = symbols::catalogue::STARTERS.iter().find(|s| s.id == f).ok_or(CmdError::refused("No such definition to copy from."))?;
                 s.definition()?.origin.clone()
             }
         },
@@ -687,8 +689,8 @@ fn edit_of(doc: &Document, ids: &mut IdAllocator, edited: DefinitionId, new_line
     let d = doc.definitions.get(&edited).ok_or(CmdError::NotFound(Noun::Symbol))?;
     match Version::of(edited, d) {
         Some(v) if !new_lineage => {
-            let newest = symbols::newest(doc, v.lineage).ok_or(CmdError::NotFound(Noun::Symbol))?;
-            let defs = symbols::versions_of(doc, v.lineage).iter().map(|x| x.id).collect();
+            let newest = symbols::project::newest(doc, v.lineage).ok_or(CmdError::NotFound(Noun::Symbol))?;
+            let defs = symbols::project::versions_of(doc, v.lineage).iter().map(|x| x.id).collect();
             Ok(Edit { lineage: v.lineage, seq: newest.seq.saturating_add(1), derived_from: newest.def.derived_from.clone(), defs, builtin: false })
         }
         Some(v) => Ok(Edit { lineage: ids.fresh(), seq: 1, derived_from: v.def.derived_from.clone(), defs: Vec::new(), builtin: false }),
@@ -773,7 +775,7 @@ pub fn plan_edit(
     let def = version_definition(content, e.lineage, e.seq, e.derived_from.clone())?;
     if !e.builtin
         && !new_lineage
-        && let Some(n) = symbols::newest(doc, e.lineage)
+        && let Some(n) = symbols::project::newest(doc, e.lineage)
         && n.def.origin.as_ref().map(|o| o.content_hash) == def.origin.as_ref().map(|o| o.content_hash)
     {
         return Err(CmdError::refused("Nothing changed."));
@@ -813,7 +815,7 @@ pub fn plan_edit(
         let gone = superseded(doc, e.lineage, id, &ops);
         ops.extend(gone);
     }
-    ops.extend(symbols::prefix_follow(doc, &ops));
+    ops.extend(symbols::project::prefix_follow(doc, &ops));
     let (updated, left) = (chosen.len(), rows.len().saturating_sub(chosen.len()));
     Ok(SymbolPlan { ops, label: format!("Edit symbol {}", content.name), id, updated, left })
 }
@@ -832,7 +834,7 @@ pub fn plan_update(
         (Some(l), _) => l,
         (None, Some(c)) => {
             let r = c.first().and_then(|r| doc.representations.get(r)).ok_or(CmdError::refused("Name a placed copy or a lineage."))?;
-            let (d, _) = crate::devices::rep_definition(doc, r).ok_or(CmdError::refused("That is not a placed symbol."))?;
+            let (d, _) = crate::devices::tags::rep_definition(doc, r).ok_or(CmdError::refused("That is not a placed symbol."))?;
             d.origin
                 .as_ref()
                 .filter(|o| o.library == PROJECT_SYMBOLS)
@@ -841,7 +843,7 @@ pub fn plan_update(
         }
         (None, None) => return Err(CmdError::refused("Name the `copies` or the `lineage` to update.")),
     };
-    let versions = symbols::versions_of(doc, lin);
+    let versions = symbols::project::versions_of(doc, lin);
     let target = match to {
         Some(t) => *versions.iter().find(|v| v.id == t).ok_or(CmdError::refused("`to` is not a version of that symbol."))?,
         None => *versions.last().ok_or(CmdError::NotFound(Noun::Symbol))?,
@@ -864,7 +866,7 @@ pub fn plan_update(
     let mut ops = update_ops(doc, ids, &chosen, target.id, target.def)?;
     let gone = superseded(doc, lin, versions.last().map_or(target.id, |v| v.id), &ops);
     ops.extend(gone.into_iter().filter(|o| !matches!(o, Op::RemoveDefinition { id, .. } if *id == target.id)));
-    ops.extend(symbols::prefix_follow(doc, &ops));
+    ops.extend(symbols::project::prefix_follow(doc, &ops));
     Ok(SymbolPlan { ops, label: format!("Update symbol {}", target.def.name), id: target.id, updated: chosen.len(), left: 0 })
 }
 
@@ -913,10 +915,10 @@ pub fn shifted(p: &Primitive, o: Pt) -> Primitive {
 pub fn not_plain(doc: &Document, i: ItemId) -> String {
     let what = match doc.representation_of_item(i).map(|(_, r)| r.subject) {
         Some(Subject::Wire(c)) => format!("Wire {}", wire_number(doc, c)),
-        Some(Subject::Device(c)) => crate::devices::tag_words(doc, c),
+        Some(Subject::Device(c)) => crate::devices::tags::tag_words(doc, c),
         Some(Subject::Cable(k)) => crate::references::cables::cable_words(doc, k),
         // Design 072: a line names the wire it carries; a loose line carries none.
-        Some(Subject::Route(r)) => match crate::wires::wire_of_route(doc, r) {
+        Some(Subject::Route(r)) => match crate::wires::routes::wire_of_route(doc, r) {
             Some(c) => format!("Wire {}", wire_number(doc, c)),
             None => "A line".to_string(),
         },
@@ -1131,19 +1133,19 @@ pub fn plan_place(
     let instance = Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def_id, placement: pl }) };
     let mut ops = Vec::new();
     let doc = ledger.document();
-    match (symbols::join_of(def), join) {
+    match (symbols::project::join_of(def), join) {
         (Join::Part, None) => Err(CmdError::refused(format!("{} is part of a device: name the `device` it joins.", def.name))),
         (_, Some(c)) => {
             if !doc.devices.contains_key(&c) {
                 return Err(CmdError::NotFound(Noun::Device));
             }
             // Unlabelled points count by their key.
-            let have: BTreeSet<String> = doc.connection_points_of(c).map(|(t, _)| crate::devices::label_of(doc, t)).collect();
+            let have: BTreeSet<String> = doc.connection_points_of(c).map(|(t, _)| crate::devices::merge::label_of(doc, t)).collect();
             let mut cps = BTreeMap::new();
             for td in &def.connection_points {
                 let label = td.label.clone().unwrap_or_else(|| td.key.to_string());
                 if have.contains(&label) {
-                    return Err(CmdError::refused(format!("{} already has a connection point {label}.", crate::devices::tag_words(doc, c))));
+                    return Err(CmdError::refused(format!("{} already has a connection point {label}.", crate::devices::tags::tag_words(doc, c))));
                 }
                 let t: ConnectionPointId = ids.fresh();
                 // A point drawn without a label stays unlabelled: it prints no label (bug 1).
@@ -1170,7 +1172,7 @@ pub fn plan_place(
                     connection_points: cps,
                 },
             });
-            Ok(PlacedProject { ops, component: c, representation, tag: crate::devices::tag_words(doc, c) })
+            Ok(PlacedProject { ops, component: c, representation, tag: crate::devices::tags::tag_words(doc, c) })
         }
         (Join::Device, None) => {
             let tag = match tag {

@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ecad_model::objects::loose_part::LoosePart;
-use ecad_model::{DeviceId, Document, LoosePartId, ObjectRef, Op, Properties, Subject};
+use ecad_model::{DeviceId, Document, LoosePartId, ObjectRef, Op, Properties};
 use serde_json::{Value, json};
 
 use crate::defaults::{self, Scope};
@@ -266,13 +266,6 @@ impl Subs {
     }
 }
 
-/// The head symbol of `c` (its one exclusive symbol), when it is a starter.
-fn head(doc: &Document, c: DeviceId) -> Option<&'static crate::symbols::Starter> {
-    doc.representations_of(Subject::Device(c))
-        .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
-        .find(|s| s.kind == crate::symbols::Kind::Fixed { exclusive: true })
-}
-
 /// What `for` may name on `c`.
 pub fn sub_items(doc: &Document, c: DeviceId) -> Subs {
     if crate::terminal_strips::strip_of(doc, c).is_some() {
@@ -280,10 +273,8 @@ pub fn sub_items(doc: &Document, c: DeviceId) -> Subs {
         let fuses = ps.iter().filter(|p| p.ty.code == "fuse").map(|p| p.label.clone()).collect();
         return Subs::Positions { all: ps.into_iter().map(|p| p.label).collect(), fuses };
     }
-    match head(doc, c).filter(|s| crate::symbols::is_fuse_bank(s)) {
-        Some(bank) => Subs::Fuses(bank.labels().into_iter().filter(|l| ecad_model::naming::words::is_digits(l)).collect()),
-        None => Subs::None,
-    }
+    let fuses = crate::symbols::rules::bank_labels(doc, c);
+    if fuses.is_empty() { Subs::None } else { Subs::Fuses(fuses) }
 }
 
 /// The names a `for` value lists, ranges of whole numbers expanded (`1-4, 7`), in order, each
@@ -354,7 +345,7 @@ fn check_for(doc: &Document, c: DeviceId, text: &str) -> Result<Option<String>, 
     if t.is_empty() {
         return Ok(None);
     }
-    let who = crate::devices::tag_words(doc, c);
+    let who = crate::devices::tags::tag_words(doc, c);
     let subs = sub_items(doc, c);
     if subs == Subs::None {
         return Err(CmdError::refused(format!("{who} has nothing to name with for: leave it empty and set qty.")));
@@ -383,7 +374,7 @@ pub fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
             continue;
         }
         let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { continue };
-        let tag = crate::devices::tag_words(doc, c);
+        let tag = crate::devices::tags::tag_words(doc, c);
         for n in used_lines(props) {
             let key = part_key(n, Field::For);
             let Some(before) = props.get(&key) else { continue };
@@ -608,7 +599,7 @@ fn unit_value(qty: Option<&str>, value: Option<&str>) -> Result<Option<String>, 
 fn field_value(doc: &Document, c: DeviceId, f: Field, value: Option<&str>, metres: bool, qty: Option<&str>) -> Result<Option<String>, CmdError> {
     let key = f.word();
     match f {
-        Field::PartNumber | Field::Maker | Field::Description => crate::devices::property_value(doc, key, value),
+        Field::PartNumber | Field::Maker | Field::Description => crate::devices::json::property_value(doc, key, value),
         Field::ArticleNumber => plain(key, value, MAX_ARTICLE_CHARS),
         Field::Kit => plain(key, value, MAX_KIT_CHARS),
         Field::Qty => match value.map(str::trim).filter(|v| !v.is_empty()) {
@@ -620,9 +611,10 @@ fn field_value(doc: &Document, c: DeviceId, f: Field, value: Option<&str>, metre
         // Brief 044 (design 044 §8.3): only on a connector, `s` or `p`.
         Field::Half => match value.map(str::trim).filter(|v| !v.is_empty()) {
             None => Ok(None),
-            Some(_) if !crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) => {
-                Err(CmdError::refused(format!("`half` is for a connector's part lines; {} is not a connector.", crate::devices::tag_words(doc, c))))
-            }
+            Some(_) if !crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) => Err(CmdError::refused(format!(
+                "`half` is for a connector's part lines; {} is not a connector.",
+                crate::devices::tags::tag_words(doc, c)
+            ))),
             Some(v) if v.eq_ignore_ascii_case("s") || v.eq_ignore_ascii_case("p") => Ok(Some(v.to_ascii_lowercase())),
             Some(_) => Err(CmdError::refused("`half` is s (the socket half) or p (the plug half).")),
         },
