@@ -79,7 +79,7 @@ fn rows(h: &mut H, card: &str) -> Vec<Value> {
 fn same_as_built(h: &mut H) {
     let (kept, built) =
         h.cfg(|p| (p.outputs().plc.clone(), Outputs::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics).plc.clone()));
-    assert!(kept.same_as(&built), "the kept PLC model differs from a rebuild");
+    assert!(kept == built, "the kept PLC model differs from a rebuild");
 }
 
 fn import(h: &mut H, text: &str, extra: Value) -> Result<Value, String> {

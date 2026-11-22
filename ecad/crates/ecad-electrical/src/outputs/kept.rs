@@ -344,7 +344,7 @@ impl Outputs {
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
-        // Brief 045: the PLC model follows its own update map (design 045 §11.1).
+        // Brief 045: the PLC model is built again after every commit (no update map since 0.2.3).
         if self.plc.update_touched(doc, plc, m) {
             self.checks_changed += 1;
             self.revision += 1;
@@ -484,37 +484,19 @@ impl Outputs {
 
     /// Verify mode (brief 028, design 028 §11.4): the kept strips against a rebuild on `doc`; a
     /// difference is put right and described (a bug, for the event log).
-    pub fn verify_strips_with(&mut self, doc: &Document, m: &dyn TextMetrics) -> Option<String> {
-        // Brief 045 (design 045 §11.2): the kept PLC model too.
-        let plc = crate::plc::kept::Plc::build_with(doc, m);
-        let plc_line = (!self.plc.same_as(&plc)).then(|| {
-            let (work, n) = (self.plc.last_work, self.plc.recomputed);
-            self.plc = plc;
-            self.plc.last_work = work;
-            self.plc.recomputed = n;
-            "the PLC model was out of step; rebuilt".to_string()
-        });
+    pub fn verify_strips_with(&mut self, doc: &Document) -> Option<String> {
         let built = crate::strips::Strips::build(doc, self, &PageCx::of(doc));
-        // Brief 046: the graphic pages' kept data against a rebuild from the kept strips.
-        let pages = crate::strips::pages::StripPages::build(doc, &self.strips);
-        let pages_ok = self.strip_pages.same_as(&pages);
-        if !pages_ok {
-            self.strip_pages.adopt(pages);
-        }
+        // Brief 046: the graphic pages' kept data is built from the kept strips after every
+        // commit (no update map), so it follows them.
         if self.strips.same_as(&built) {
-            let pages_line = (!pages_ok).then(|| "the terminal strip page layout was out of step; rebuilt".to_string());
-            return match (plc_line, pages_line) {
-                (Some(a), Some(b)) => Some(format!("{a}; {b}")),
-                (a, b) => a.or(b),
-            };
+            return None;
         }
         let work = self.strips.last_work;
         self.strips = built;
         self.strips.last_work = work;
         // The page layout follows the rebuilt strips (review of 046, finding 2).
         self.strip_pages.adopt(crate::strips::pages::StripPages::build(doc, &self.strips));
-        let line = "the terminal strip model was out of step; rebuilt".to_string();
-        Some(plc_line.map_or_else(|| line.clone(), |l| format!("{line}; {l}")))
+        Some("the terminal strip model was out of step; rebuilt".to_string())
     }
 
     fn remove_device(&mut self, c: DeviceId) {
