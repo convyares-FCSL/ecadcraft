@@ -297,10 +297,15 @@ fn a_write_waits_while_the_person_is_in_the_middle_of_wire_then_is_refused_unrun
     h.run_steps(1);
     assert!(h.state().cad.session.running.is_some());
     let before = log_len(&mut h);
-    // Reads are answered at once.
+    // Reads are answered at once: not held. A read held like a write would take the whole hold, so
+    // the hold is made long for this step and the read must come back inside it (no wall-time
+    // guess that a loaded machine overruns).
+    let hold = h.state().agent.hold;
+    h.state_mut().agent.hold = Duration::from_secs(120);
     let start = Instant::now();
     a.ok(&mut h, "ecad_project", json!({}));
-    assert!(start.elapsed() < Duration::from_millis(350), "{:?}", start.elapsed());
+    assert!(start.elapsed() < h.state().agent.hold, "the read was held: {:?}", start.elapsed());
+    h.state_mut().agent.hold = hold;
     let start = Instant::now();
     let e = a.exec_refused(&mut h, "wire", wire(0.0));
     assert!(start.elapsed() >= h.state().agent.hold, "held first");

@@ -838,7 +838,7 @@ fn device_reference_edits(path: &Path, copy: &Path, runs: usize) -> Result<Devic
 
 /// The coils of [`device_reference_edits`], committed to `ledger` one placement at a time: their head
 /// representations and the page order.
-fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::RepresentationId>, Vec<ecad_model::PageId>), String> {
+pub(crate) fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::RepresentationId>, Vec<ecad_model::PageId>), String> {
     use ecad_model::{Color, Op, Placement, Pt, Style};
     use {ecad_electrical::devices::placing::Target, ecad_electrical::devices::placing::plan_place, ecad_electrical::devices::tags::TagHigh};
     let order = ledger.document().page_order.clone();

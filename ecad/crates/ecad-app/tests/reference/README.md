@@ -37,7 +37,7 @@ Rendered at 1280×800, dark theme, by `ac6_reference_screenshots` in `../mouse_t
 Regenerate with `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-app mouse_tester::ac6`
 (needs a wgpu adapter; in CI the test only checks pixels and writes nothing).
 
-The 004 images are rendered by `ac9_cable_slash_by_label_and_reference_screenshots` in
+The 004 images are rendered by `ac9_cable_slash_reference_screenshots` in
 `../cable_slash_tester.rs`; regenerate with
 `ECAD_TESTER_SHOTS=<folder> cargo test -p ecad-app cable_slash_tester::ac9`.
 

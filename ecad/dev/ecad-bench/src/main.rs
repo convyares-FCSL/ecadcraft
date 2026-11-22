@@ -42,6 +42,7 @@ fn main() -> ExitCode {
             let v = match variant.as_str() {
                 "lean" => ecad_bench::Variant::Lean,
                 "churned" => ecad_bench::Variant::Churned,
+                "rich" => return ecad_bench::rich::write_rich(t, std::path::Path::new(file)).map_err(|e| e.to_string()),
                 other => return Err(format!("unknown variant {other}")),
             };
             ecad_bench::container::write(&ecad_bench::generate(t, v)?, std::path::Path::new(file))
@@ -62,6 +63,23 @@ fn main() -> ExitCode {
         return match ecad_bench::measure_part(part, std::path::Path::new(file)) {
             Ok(text) => {
                 println!("{text}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // `--views <file>`: the full rebuild of each kept view on a written project.
+    if let [flag, file] = args.as_slice()
+        && flag == "--views"
+    {
+        return match ecad_bench::views::measure(std::path::Path::new(file), ecad_bench::measure::RUNS) {
+            Ok(rows) => {
+                for r in rows {
+                    println!("{:<32} {:>9.2} ms", r.view, r.ms);
+                }
                 ExitCode::SUCCESS
             }
             Err(e) => {
