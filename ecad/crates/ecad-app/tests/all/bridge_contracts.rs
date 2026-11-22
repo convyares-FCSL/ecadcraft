@@ -270,7 +270,7 @@ fn a_batch_of_two_executes_on_one_line_records_at_most_one() {
 #[test]
 fn read_only_access_or_a_server_without_write_refuses_every_change_and_save() {
     let (mut h, port) = live_app();
-    h.state_mut().agent.pref.mode = ecad_engine::agent_access::Mode::Read;
+    h.state_mut().agent.pref.mode = ecad_engine::agent::access::Mode::Read;
     let mut a = server(port, true, "tester");
     let before = log_len(&mut h);
     assert_eq!(a.exec_refused(&mut h, "wire", wire(0.0)), agent::READ_ONLY);
@@ -278,7 +278,7 @@ fn read_only_access_or_a_server_without_write_refuses_every_change_and_save() {
     assert!(a.ok(&mut h, "ecad_project", json!({}))["pages"]["count"].as_u64().unwrap() >= 1);
     assert_eq!(log_len(&mut h), before);
 
-    h.state_mut().agent.pref.mode = ecad_engine::agent_access::Mode::Write;
+    h.state_mut().agent.pref.mode = ecad_engine::agent::access::Mode::Write;
     let mut b = server(port, false, "reader");
     assert_eq!(b.exec_refused(&mut h, "wire", wire(0.0)), ecad_mcp::policy::WRITES_OFF);
     assert!(b.refused(&mut h, "save", json!({})).contains("read-only"));
@@ -367,7 +367,7 @@ fn raw_methods_are_refused_and_change_nothing_and_a_request_without_the_token_is
         assert!(r["error"].as_str().unwrap().starts_with("not offered over ECAD's port"), "{r}");
     }
     assert_eq!(log_len(&mut h), before);
-    assert_eq!(h.state().agent.pref.mode, ecad_engine::agent_access::Mode::Write);
+    assert_eq!(h.state().agent.pref.mode, ecad_engine::agent::access::Mode::Write);
     let r = raw(&mut h, port, vec![json!({"id": 1, "method": "ping"})]);
     assert!(r[0]["error"].as_str().unwrap().starts_with("unauthorized"), "{r:?}");
 }

@@ -11,7 +11,7 @@ use ecad_engine::text_style::{Shown, TextKind};
 /// The section's element name.
 pub const SECTION_ID: &str = "ecad.projectsettings.text";
 /// The height refusal under a field (design 031 §4.1).
-pub const BAD_HEIGHT: &str = ecad_engine::text_cmds::BAD_HEIGHT;
+pub const BAD_HEIGHT: &str = ecad_electrical::cmd::text::BAD_HEIGHT;
 
 /// One row: a kind's fields as shown and as they were.
 #[derive(Debug, Clone, PartialEq)]
@@ -148,10 +148,10 @@ impl TextSection {
             return Some(BAD_HEIGHT);
         }
         if self.rows.iter().any(|r| !r.font.trim().is_empty() && ecad_engine::defaults::text::FONT.parse(&r.font).is_none()) {
-            return Some(ecad_engine::text_cmds::BAD_FONT);
+            return Some(ecad_electrical::cmd::text::BAD_FONT);
         }
         if ecad_engine::defaults::text::FONT.parse(&self.font).is_none() {
-            return Some(ecad_engine::text_cmds::BAD_FONT);
+            return Some(ecad_electrical::cmd::text::BAD_FONT);
         }
         None
     }

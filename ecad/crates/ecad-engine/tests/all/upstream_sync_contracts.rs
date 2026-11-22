@@ -489,7 +489,7 @@ fn every_command_started_interactively_and_answered_with_enter_leaves_the_projec
     // engine undo step left on an ECAD page.
     const SKIP: &[&str] = &["close", "closeall", "new", "qnew", "open", "quit", "exit", "newsheetset", "recover", "recoverall", "delay"];
     ecad_engine::install();
-    let ours: Vec<&str> = ecad_engine::commands::specs().iter().map(|c| c.id).collect();
+    let ours: Vec<&str> = ecad_engine::cmd::specs().iter().map(|c| c.id).collect();
     let mut broken = Vec::new();
     for spec in cadcraft_engine::command_specs().iter().filter(|c| !SKIP.contains(&c.id) && !ours.contains(&c.id)) {
         let mut h = fixture();

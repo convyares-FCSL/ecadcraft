@@ -52,7 +52,7 @@ fn rectangle(t: &mut App) -> Vec<Handle> {
 fn the_group_lists_only_implemented_commands_with_namespaced_ids() {
     // Run alone (as nextest runs every test), nothing else has installed ECAD's commands.
     ecad_engine::install();
-    let specs = ecad_engine::commands::specs();
+    let specs = ecad_engine::cmd::specs();
     let ids: Vec<&str> = specs.iter().map(|s| s.id).collect();
     let mut seen = std::collections::BTreeSet::new();
     for t in TOOLS {

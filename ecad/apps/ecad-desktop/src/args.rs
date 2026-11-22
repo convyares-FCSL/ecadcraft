@@ -46,7 +46,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation
                 Some(d) => snapshots = Some(PathBuf::from(d)),
                 None => return Err("--snapshots needs a folder".into()),
             },
-            Some("--control") => match args.next().and_then(|p| p.to_str().and_then(ecad_engine::agent_access::parse_port)) {
+            Some("--control") => match args.next().and_then(|p| p.to_str().and_then(ecad_engine::agent::access::parse_port)) {
                 Some(p) => control = Some(p),
                 None => return Err("--control needs a port from 1024 to 65535".into()),
             },

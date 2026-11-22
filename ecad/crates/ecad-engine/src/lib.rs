@@ -159,18 +159,11 @@ pub mod xref {
 }
 
 // The commands' paths before step 11 of lane 067, used outside the crate.
-pub use cmd as commands;
-pub use cmd::sheet as sheet_cmds;
-pub use cmd::symbol as symbol_cmds;
-pub use cmd::terminal as terminal_cmds;
-pub use cmd::text as text_cmds;
-pub use cmd::title_block as title_block_cmds;
 
 // Brief 035: a per-user settings file and a window's port; nothing of it on the web build. Its
 // path before cut 12.
 pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
 #[cfg(not(target_arch = "wasm32"))]
-pub use agent::access as agent_access;
 pub use file::{FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path};
 pub use project::{
     Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View, project_page, project_page_framed,

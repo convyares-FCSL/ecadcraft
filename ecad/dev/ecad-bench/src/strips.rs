@@ -152,7 +152,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         let mut serial = 0usize;
         let mut made: Vec<DeviceId> = Vec::new();
         for page in &pages {
-            let f = ecad_engine::terminal_cmds::plan_fence_in(
+            let f = ecad_engine::cmd::terminal::plan_fence_in(
                 p,
                 *page,
                 style.clone(),
@@ -168,7 +168,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 let (Some(a), Some(b)) = (pair.first(), pair.get(1)) else { continue };
                 let ia = f.placed.iter().position(|x| x.0 == a.0).unwrap_or(0) as f64;
                 let (xa, xb) = (X0 + PITCH * ia, X0 + PITCH * (ia + 1.0));
-                let route = ecad_engine::terminal_cmds::staple(Pt::new(xa, 100.0), Pt::new(xb, 100.0));
+                let route = ecad_electrical::cmd::terminal::staple(Pt::new(xa, 100.0), Pt::new(xb, 100.0));
                 // A route from terminal to terminal: the commit's rewrite makes its wire.
                 let (_, _, add) =
                     ecad_engine::wires::add_route(&mut p.ids, *page, style.clone(), route, [RouteEnd::Point(a.0), RouteEnd::Point(b.0)]);

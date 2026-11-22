@@ -129,10 +129,10 @@ pub struct Project {
     /// Brief 035: `agentaccess` asked for this agent access preference (the desktop app applies it and
     /// clears this).
     #[cfg(not(target_arch = "wasm32"))]
-    pub agent_access_request: Option<crate::agent_access::Preference>,
+    pub agent_access_request: Option<crate::agent::access::Preference>,
     /// Brief 035: the desktop app's agent access state as `agentaccess` reports it (set by the desktop app).
     #[cfg(not(target_arch = "wasm32"))]
-    pub agent_access_status: Option<crate::agent_access::Status>,
+    pub agent_access_status: Option<crate::agent::access::Status>,
     /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
     /// next change. Display only, never recorded.
     pub goto_ring: Option<(PageId, Pt, crate::checks::Severity)>,

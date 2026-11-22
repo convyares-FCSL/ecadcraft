@@ -171,7 +171,7 @@ const ECAD_COMMANDS: &[&str] = &[
 ];
 
 fn ecad_ids() -> BTreeSet<String> {
-    ecad_engine::commands::specs().iter().map(|s| s.id.to_string()).collect()
+    ecad_engine::cmd::specs().iter().map(|s| s.id.to_string()).collect()
 }
 
 #[test]

@@ -64,7 +64,7 @@ pub struct Tool {
     pub kind: Kind,
 }
 
-/// The buttons, in panel order. Only commands that exist (`ecad_engine::commands::specs`).
+/// The buttons, in panel order. Only commands that exist (`ecad_engine::cmd::specs`).
 pub const TOOLS: &[Tool] = &[
     Tool {
         id: "ecad.findsymbol",

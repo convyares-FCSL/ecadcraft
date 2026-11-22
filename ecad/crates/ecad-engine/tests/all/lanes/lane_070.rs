@@ -306,19 +306,19 @@ fn the_text_commands_refuse_input_uniformly() {
 #[test]
 fn the_text_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("textstyle", json!({"kind": "tag", "height": 11}), ecad_engine::text_cmds::BAD_HEIGHT),
-        ("textstyle", json!({"height": 3}), ecad_engine::text_cmds::NEEDS_KIND),
-        ("textstyle", json!({"kinds": [{"height": 3}]}), ecad_engine::text_cmds::NEEDS_KIND),
-        ("textstyle", json!({"font": ""}), ecad_engine::text_cmds::BAD_FONT),
-        ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_engine::text_cmds::BAD_SHOW),
+        ("textstyle", json!({"kind": "tag", "height": 11}), ecad_electrical::cmd::text::BAD_HEIGHT),
+        ("textstyle", json!({"height": 3}), ecad_electrical::cmd::text::NEEDS_KIND),
+        ("textstyle", json!({"kinds": [{"height": 3}]}), ecad_electrical::cmd::text::NEEDS_KIND),
+        ("textstyle", json!({"font": ""}), ecad_electrical::cmd::text::BAD_FONT),
+        ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_electrical::cmd::text::BAD_SHOW),
         (
             "showtext",
             json!({"kind": "tag", "show": "on", "page": "1", "component": "2"}),
             "Name at most one of representation, component, conductor and page.",
         ),
         ("showtext", json!({"kind": "tag", "show": "on", "page": "1"}), "No page 00000000000000000000000000000001."),
-        ("movetext", json!({"representation": "1"}), ecad_engine::text_cmds::BAD_POINT),
-        ("movetext", json!({"representation": "1", "to": [1, 2], "justify": "XX"}), ecad_engine::text_cmds::BAD_JUSTIFY),
+        ("movetext", json!({"representation": "1"}), ecad_electrical::cmd::text::BAD_POINT),
+        ("movetext", json!({"representation": "1", "to": [1, 2], "justify": "XX"}), ecad_electrical::cmd::text::BAD_JUSTIFY),
         ("movetext", json!({"representation": "1", "to": [1, 2]}), "No representation 00000000000000000000000000000001."),
         ("pagetexts", json!({"page": "1"}), "No page 00000000000000000000000000000001."),
         ("defaults", json!({"key": "no.such"}), "No default \"no.such\"."),
