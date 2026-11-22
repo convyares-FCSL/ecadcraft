@@ -36,6 +36,8 @@ pub struct Cx<'a> {
     pub ids: &'a mut IdAllocator,
     /// The active page (none for a command that runs on any page, [`Pages::Any`]).
     pub page: Option<PageId>,
+    /// The project's change count since it opened (a preview's `based_on`).
+    pub change_count: u64,
     /// The highest tag numbers in use.
     pub tag_high: &'a mut TagHigh,
     /// Where each designation is used, caught up by [`Cx::uses`].

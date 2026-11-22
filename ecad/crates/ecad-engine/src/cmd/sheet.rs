@@ -674,7 +674,7 @@ impl Command for IssuerevisionParams {
             // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first (their
             // own transaction), or issued as they are, as asked; without an answer the ways forward
             // are named.
-            let note = crate::cmd::numbering::before_issue(p, pg, self.provisional.as_deref())?;
+            let note = crate::release::numbering_seam::before_issue(p, pg, self.provisional.as_deref())?;
             let IssuePlan { ops, rev, date, head, .. } = plan_issue_of(p, &f)?;
             p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
             let tx = p.ledger.head();

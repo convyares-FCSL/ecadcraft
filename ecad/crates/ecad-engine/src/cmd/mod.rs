@@ -20,7 +20,6 @@ pub mod connector;
 pub(crate) mod device;
 pub(crate) mod generic;
 pub mod input;
-pub mod numbering;
 pub mod output;
 pub(crate) mod page;
 pub mod page_type;
@@ -44,7 +43,9 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
 pub use crate::strips::core_label;
-use ecad_electrical::cmd::{accessory, bom, cable, connect, continuation, default, designation, device_link, level, location, prop, rating, style};
+use ecad_electrical::cmd::{
+    accessory, bom, cable, connect, continuation, default, designation, device_link, level, location, numbering, prop, rating, style,
+};
 
 /// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
 /// their lines move here at the phase-end tidy-up.
@@ -54,7 +55,6 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::cmd::sheet::specs());
     v.extend(crate::history::specs());
     v.extend(crate::merging::specs());
-    v.extend(crate::cmd::numbering::specs());
     v.extend(crate::cmd::xref::specs());
     v.extend(crate::cmd::output::specs());
     v.extend(crate::cmd::terminal::specs());
@@ -112,6 +112,9 @@ fn generic_specs() -> Vec<CommandSpec> {
         generic::spec::<rating::RatingParams>(),
         generic::spec::<rating::RatingtableParams>(),
         generic::spec::<rating::RatingsParams>(),
+        generic::spec::<numbering::RenumberParams>(),
+        generic::spec::<numbering::FinaliseParams>(),
+        generic::spec::<numbering::NumberingParams>(),
     ]
 }
 
@@ -153,6 +156,9 @@ const GENERIC_TYPED: &[input::Typed] = &[
     generic::typed::<rating::RatingParams>(),
     generic::typed::<rating::RatingtableParams>(),
     generic::typed::<rating::RatingsParams>(),
+    generic::typed::<numbering::RenumberParams>(),
+    generic::typed::<numbering::FinaliseParams>(),
+    generic::typed::<numbering::NumberingParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
@@ -333,7 +339,6 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::xref::TYPED,
         crate::cmd::terminal::TYPED,
         crate::cmd::plc::TYPED,
-        crate::cmd::numbering::TYPED,
         crate::cmd::title_block::TYPED,
         crate::cmd::page_type::TYPED,
         crate::cmd::connector::TYPED,

@@ -84,13 +84,17 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
 // ---------------------------------------------------------------- 026 seam
 
 /// The one place 027 calls brief 026's numbering (design 027 §4.4): the provisional items, the
-/// refusal without a choice, and `cmd::numbering::before_issue` (Finalise numbering as its own
+/// refusal without a choice, and [`numbering_seam::before_issue`] (Finalise numbering as its own
 /// transaction before the issue, or issue them as they are).
 pub mod numbering_seam {
+    use ecad_electrical::CmdError;
+    use ecad_electrical::cmd::numbering::{BeforeIssue, applied_words, finalise_request, plan_for, way_before_issue};
+    use ecad_model::numbering::Plan;
     use serde_json::Value;
 
     use crate::access::Pages;
     use crate::checks::Check;
+    use crate::cmd::opt_typed;
     use crate::project::Project;
 
     /// What `release` would refuse for provisional items without a choice (026's words), if any.
@@ -112,7 +116,7 @@ pub mod numbering_seam {
     /// # Errors
     /// 026's refusal or a bad `provisional`.
     pub fn plan(p: &mut Project, params: &Value) -> Result<ecad_electrical::cmd::numbering::BeforeIssue, String> {
-        crate::cmd::numbering::plan_before_issue(p, params).map_err(String::from)
+        plan_before_issue(p, params).map_err(String::from)
     }
 
     /// Record a planned Finalise numbering.
@@ -120,7 +124,43 @@ pub mod numbering_seam {
     /// # Errors
     /// The commit was refused.
     pub(crate) fn commit_finalise(p: &mut Project, pg: &mut Pages<'_>, plan: &ecad_model::numbering::Plan) -> Result<(), String> {
-        crate::cmd::numbering::commit_finalise(p, pg, plan).map_err(String::from)
+        commit(p, pg, plan).map_err(String::from)
+    }
+
+    /// 026's provisional step as `provisional` names it, planned without writing.
+    fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue, CmdError> {
+        let way = opt_typed(params, "provisional", "\"finalise\" or \"issue\"", Value::as_str)?;
+        plan_before(p, way)
+    }
+
+    /// 026's provisional step, `way` chosen: go on (with a note), or Finalise first.
+    fn plan_before(p: &mut Project, way: Option<&str>) -> Result<BeforeIssue, CmdError> {
+        match way_before_issue(p.ledger.document(), way)? {
+            Some(note) => Ok(BeforeIssue::Go(note)),
+            None => {
+                let plan = plan_for(&p.ledger, &mut p.tag_high, &finalise_request())?;
+                Ok(if plan.ops.is_empty() { BeforeIssue::Go(None) } else { BeforeIssue::Finalise(plan) })
+            }
+        }
+    }
+
+    /// Record a planned Finalise numbering as its own transaction, and echo its words.
+    fn commit(p: &mut Project, pg: &mut Pages<'_>, plan: &Plan) -> Result<(), CmdError> {
+        p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone())?;
+        pg.echo(applied_words(plan, true));
+        Ok(())
+    }
+
+    /// Before an issue: Finalise numbering as its own transaction when `way` says so (none: the
+    /// note to issue with).
+    ///
+    /// # Errors
+    /// 026's refusal, or the commit's.
+    pub(crate) fn before_issue(p: &mut Project, pg: &mut Pages<'_>, way: Option<&str>) -> Result<Option<String>, CmdError> {
+        match plan_before(p, way)? {
+            BeforeIssue::Go(note) => Ok(note),
+            BeforeIssue::Finalise(plan) => commit(p, pg, &plan).map(|()| None),
+        }
     }
 }
 

@@ -113,6 +113,7 @@ fn commit<P: Generic>(
         State::LastCaption => Held::LastCaption(proj.last_caption.clone()),
         State::Conflicts => Held::Conflicts(None),
     };
+    let change_count = proj.change_count();
     let Outcome { edit, answer, writes, echo } = {
         let state = match &mut held {
             Held::None => Slot::None,
@@ -124,6 +125,7 @@ fn commit<P: Generic>(
             ledger: &proj.ledger,
             ids: &mut proj.ids,
             page,
+            change_count,
             tag_high: &mut proj.tag_high,
             designation_uses: &mut proj.designation_uses,
             derived: &mut proj.derived,
