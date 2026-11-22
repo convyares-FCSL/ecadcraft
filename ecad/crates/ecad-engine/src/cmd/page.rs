@@ -68,7 +68,7 @@ impl Command for NewpageParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let kind = rules::new_page_kind(self.generated.as_deref(), self.style.as_deref(), self.strip).map_err(|e| err(e.to_string()))?;
         let default_title = match (kind.generated, kind.style.as_deref()) {
-            (Some(crate::generated::GenKind::Terminals), Some(crate::defaults::strip_pages::GRAPHIC)) => crate::strip_page::TITLE,
+            (Some(ecad_model::GenKind::Terminals), Some(crate::defaults::strip_pages::GRAPHIC)) => crate::strip_page::TITLE,
             (g, _) => g.map_or("new", |g| g.title()),
         };
         let (page, number) = on_project(s, |p, pg, _| {

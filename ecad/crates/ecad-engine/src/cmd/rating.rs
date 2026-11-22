@@ -233,7 +233,8 @@ impl Command for RatingParams {
                 p.apply_edit(pg, "rating", &planned.label, planned.ops)?;
             }
             let doc = p.ledger.document();
-            let results: Vec<Value> = planned.subjects.iter().take(PAGE).map(|s| rules::rating_json(doc, &rating::rating_of(doc, *s))).collect();
+            let results: Vec<Value> =
+                planned.subjects.iter().take(PAGE).map(|s| rules::rating_json(doc, &rating::circuit::rating_of(doc, *s))).collect();
             Ok(json!({"changed": changed, "ratings": results}))
         })
     }
@@ -363,18 +364,18 @@ impl Command for RatingsParams {
             let subjects: Vec<RatedSubject> = if self.wire.is_some() || self.cable.is_some() {
                 rules::subjects_of(doc, self.wire.as_deref(), self.cable.as_deref())?
             } else {
-                let ctx = rating::Context::new(doc);
-                rating::subjects(doc, &ctx)
+                let ctx = rating::circuit::Context::new(doc);
+                rating::circuit::subjects(doc, &ctx)
             };
             let total = subjects.len();
-            let mut ctx = rating::Context::new(doc);
+            let mut ctx = rating::circuit::Context::new(doc);
             let out: Vec<Value> = subjects
                 .iter()
                 .skip(from)
                 .take(PAGE)
                 .map(|s| {
                     let found = rating::trace::trace_subject(doc, *s);
-                    rules::rating_json(doc, &rating::evaluate(doc, &mut ctx, *s, &found))
+                    rules::rating_json(doc, &rating::circuit::evaluate(doc, &mut ctx, *s, &found))
                 })
                 .collect();
             let next = (from.saturating_add(PAGE) < total).then_some(from.saturating_add(PAGE));
