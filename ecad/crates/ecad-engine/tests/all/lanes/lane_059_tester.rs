@@ -16,7 +16,7 @@
 //!   line; MCP in `ecad-mcp`'s `lane_059_tester`).
 //! - r8: atomic, exact undo and redo, replay; update maps touch only that cable.
 
-use ecad_engine::cable_cmds::{self, CableField, Side, Source};
+use ecad_electrical::cables::{self, CableField, Side, Source};
 use ecad_engine::checks::{self, Severity};
 use ecad_engine::designations::Aspect;
 use ecad_model::{CableId, DeviceId, Document, Op, WireId};
@@ -138,8 +138,8 @@ fn r1_cablenew_takes_the_next_free_w_after_a_drawn_cable_and_the_tag_is_editable
     let r = h.run("cablenew", json!({})).unwrap();
     let k: CableId = id(&r, "cable");
     assert_eq!(r["tag"], json!("-W02"), "{r}");
-    assert!(!cable_cmds::is_drawn(&h.doc(), k));
-    assert!(cable_cmds::not_drawn(&h.doc()).contains(&k));
+    assert!(!cables::is_drawn(&h.doc(), k));
+    assert!(cables::not_drawn(&h.doc()).contains(&k));
     // Editable: a typed tag is stored and fixed.
     h.run("cableedit", json!({"cable": "-W02", "set": {"tag": "-W07"}})).unwrap();
     let doc = h.doc();
@@ -167,12 +167,12 @@ fn r1_type_cores_length_maker_and_part_come_from_the_type_and_are_overridden_per
     let doc = h.doc();
     let props = &doc.cables[&k].properties;
     assert!(props.get("type").is_some(), "the type's notation fills `type`: {props:?}");
-    assert_eq!(cable_cmds::cores_shown(&doc, k).map(|c| (c.0, c.1)), Some(("4G".to_string(), Source::Type)));
-    assert_eq!(cable_cmds::part_value(&doc, k, CableField::Maker), Some(("Synthmaker".into(), Source::Type)));
-    assert_eq!(cable_cmds::part_value(&doc, k, CableField::PartNumber), Some(("SYN-0004".into(), Source::Type)));
-    assert_eq!(cable_cmds::part_value(&doc, k, CableField::Description).map(|v| v.1), Some(Source::Type));
-    assert_eq!(cable_cmds::shield(&doc, k), Some((cable_cmds::Shield::Overall, Source::Type)));
-    assert_eq!(cable_cmds::read(&doc, k, CableField::Length).as_deref(), Some("12.5"));
+    assert_eq!(cables::cores_shown(&doc, k).map(|c| (c.0, c.1)), Some(("4G".to_string(), Source::Type)));
+    assert_eq!(cables::part_value(&doc, k, CableField::Maker), Some(("Synthmaker".into(), Source::Type)));
+    assert_eq!(cables::part_value(&doc, k, CableField::PartNumber), Some(("SYN-0004".into(), Source::Type)));
+    assert_eq!(cables::part_value(&doc, k, CableField::Description).map(|v| v.1), Some(Source::Type));
+    assert_eq!(cables::shield(&doc, k), Some((cables::Shield::Overall, Source::Type)));
+    assert_eq!(cables::read(&doc, k, CableField::Length).as_deref(), Some("12.5"));
     // Overridden per cable, in one transaction.
     h.run(
         "cableedit",
@@ -182,16 +182,16 @@ fn r1_type_cores_length_maker_and_part_come_from_the_type_and_are_overridden_per
     let (label, _) = last_tx(&mut h);
     assert_eq!(label, "Edit cable");
     let doc = h.doc();
-    assert_eq!(cable_cmds::cores_shown(&doc, k).map(|c| (c.0, c.1)), Some(("7G".to_string(), Source::Here)));
-    assert_eq!(cable_cmds::part_value(&doc, k, CableField::Maker), Some(("Othermaker".into(), Source::Here)));
-    assert_eq!(cable_cmds::part_value(&doc, k, CableField::PartNumber), Some(("OTH-7".into(), Source::Here)));
-    assert_eq!(cable_cmds::shield(&doc, k).map(|s| s.1), Some(Source::Here));
+    assert_eq!(cables::cores_shown(&doc, k).map(|c| (c.0, c.1)), Some(("7G".to_string(), Source::Here)));
+    assert_eq!(cables::part_value(&doc, k, CableField::Maker), Some(("Othermaker".into(), Source::Here)));
+    assert_eq!(cables::part_value(&doc, k, CableField::PartNumber), Some(("OTH-7".into(), Source::Here)));
+    assert_eq!(cables::shield(&doc, k).map(|s| s.1), Some(Source::Here));
     assert_eq!(doc.cables[&k].properties.get("type").map(String::as_str), Some("Hand 7G1.5"));
     // null clears back to the type's value.
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cores": null, "maker": null}})).unwrap();
     let doc = h.doc();
-    assert_eq!(cable_cmds::cores_shown(&doc, k).map(|c| c.1), Some(Source::Type));
-    assert_eq!(cable_cmds::part_value(&doc, k, CableField::Maker), Some(("Synthmaker".into(), Source::Type)));
+    assert_eq!(cables::cores_shown(&doc, k).map(|c| c.1), Some(Source::Type));
+    assert_eq!(cables::part_value(&doc, k, CableField::Maker), Some(("Synthmaker".into(), Source::Type)));
     // Everything at once in cablenew, ends included.
     let k2 = new_cable(
         &mut h,
@@ -200,10 +200,10 @@ fn r1_type_cores_length_maker_and_part_come_from_the_type_and_are_overridden_per
     );
     let doc = h.doc();
     assert_eq!(tag_of(&doc, k2).as_deref(), Some("-W20"));
-    assert_eq!(cable_cmds::plan_words(&doc, k2, Side::From).as_deref(), Some("=PUMP +CAB1"));
-    assert_eq!(cable_cmds::plan_words(&doc, k2, Side::To).as_deref(), Some("=PUMP +FIELD"));
-    assert_eq!(cable_cmds::gland(&doc, k2, Side::To).map(|g| g.0).as_deref(), Some("M25"));
-    assert!(cable_cmds::read(&doc, k2, CableField::Length).is_some(), "`8 m` is a length");
+    assert_eq!(cables::plan_words(&doc, k2, Side::From).as_deref(), Some("=PUMP +CAB1"));
+    assert_eq!(cables::plan_words(&doc, k2, Side::To).as_deref(), Some("=PUMP +FIELD"));
+    assert_eq!(cables::gland(&doc, k2, Side::To).map(|g| g.0).as_deref(), Some("M25"));
+    assert!(cables::read(&doc, k2, CableField::Length).is_some(), "`8 m` is a length");
 }
 
 #[test]
@@ -232,8 +232,8 @@ fn r2_removing_a_drawn_cable_is_refused_with_its_pages_and_an_undrawn_one_is_rem
         assert!(e.contains("-W01 is drawn on") && e.contains("Delete it on its page."), "{e}");
         bounded(&e, "Drawn");
     }
-    match cable_cmds::drawn(&h.doc(), w) {
-        Some(cable_cmds::Drawn { tag, pages }) => {
+    match ecad_electrical::cmd::cable::drawn(&h.doc(), w) {
+        Some(ecad_electrical::cmd::cable::Drawn { tag, pages }) => {
             assert_eq!(tag, "-W01");
             assert_eq!(pages.len(), 1, "{pages:?}");
             assert_eq!(pages[0].0, page, "the Go to's page");
@@ -286,8 +286,8 @@ fn r2_a_cable_drawn_on_two_pages_names_both() {
     }
     let e = refused(&mut h, "cableremove", json!({"cable": w.hex()}));
     assert!(e.contains(" and "), "both pages: {e}");
-    match cable_cmds::drawn(&h.doc(), w) {
-        Some(cable_cmds::Drawn { pages, .. }) => assert_eq!(pages.len(), 2, "{pages:?}"),
+    match ecad_electrical::cmd::cable::drawn(&h.doc(), w) {
+        Some(ecad_electrical::cmd::cable::Drawn { pages, .. }) => assert_eq!(pages.len(), 2, "{pages:?}"),
         other => panic!("{other:?}"),
     }
 }
@@ -660,17 +660,17 @@ fn r7_a_file_with_hostile_cable_values_reads_as_absent_without_a_panic() {
     assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "tartan"})).is_err());
     assert!(!h.doc().cables[&k].properties.contains_key("shield"));
     let doc = h.doc();
-    assert!(cable_cmds::read(&doc, k, CableField::Length).is_none());
-    assert!(cable_cmds::part_value(&doc, k, CableField::Maker).is_none());
-    assert!(cable_cmds::plan_words(&doc, k, Side::To).is_none());
+    assert!(cables::read(&doc, k, CableField::Length).is_none());
+    assert!(cables::part_value(&doc, k, CableField::Maker).is_none());
+    assert!(cables::plan_words(&doc, k, Side::To).is_none());
     let rows = checks_of(&mut h, "cable-bad-value");
     assert!(!rows.is_empty());
     for r in &rows {
         bounded(&text(r), "cable-bad-value row");
     }
     // The report and pickers read it without a panic.
-    let _ = cable_cmds::not_drawn(&doc);
-    let _ = cable_cmds::cores_shown(&doc, k);
+    let _ = cables::not_drawn(&doc);
+    let _ = cables::cores_shown(&doc, k);
     let _ = h.run("report", json!({"kind": "cables"}));
     // Assign onto it: a bad offer is refused or numbered, never a panic.
     wires(&mut h, 2);
@@ -868,8 +868,8 @@ fn f1_removing_a_cable_drawn_on_two_pages_names_both_with_a_go_to_each() {
     let e = refused(&mut h, "cableremove", json!({"cable": w.hex()}));
     assert!(e.contains("is drawn on") && e.contains(" and ") && e.contains("Delete it on its page."), "{e}");
     bounded(&e, "Drawn, two pages");
-    match cable_cmds::drawn(&h.doc(), w) {
-        Some(cable_cmds::Drawn { pages, .. }) => {
+    match ecad_electrical::cmd::cable::drawn(&h.doc(), w) {
+        Some(ecad_electrical::cmd::cable::Drawn { pages, .. }) => {
             let ids: Vec<ecad_model::PageId> = pages.iter().map(|p| p.0).collect();
             assert_eq!(ids, vec![p1, p2], "one Go to per page, in book order: {pages:?}");
             assert!(pages.iter().all(|p| !p.1.is_empty()));
@@ -949,7 +949,7 @@ fn f3_the_slash_tool_assigns_a_picked_cable_not_drawn_in_crossing_order() {
         doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[2], Some("BN".into())), (ws[1], Some("BK".into())), (ws[0], Some("GY".into()))]);
     h.run("u", json!({})).unwrap();
-    assert!(!cable_cmds::is_drawn(&h.doc(), k), "one undo: not drawn again");
+    assert!(!cables::is_drawn(&h.doc(), k), "one undo: not drawn again");
 }
 
 #[test]
@@ -971,7 +971,7 @@ fn f3_the_slash_tool_makes_a_new_cable_with_the_next_free_w_by_default_and_by_ne
     assert_eq!(made.len(), 1);
     assert_eq!(tag_of(&doc, made[0]).as_deref(), Some("-W04"));
     // The not-drawn -W01 and -W02 stay not drawn.
-    assert_eq!(cable_cmds::not_drawn(&doc).len(), 2);
+    assert_eq!(cables::not_drawn(&doc).len(), 2);
 }
 
 #[test]
@@ -1020,27 +1020,27 @@ fn f4_glands_default_from_the_cable_type_and_are_overridden_per_end() {
     let k = new_cable(&mut h, json!({"cable_type": ty}));
     let doc = h.doc();
     for s in Side::BOTH {
-        assert_eq!(cable_cmds::gland(&doc, k, s), Some(("M20".into(), Source::Type)), "{s:?}");
+        assert_eq!(cables::gland(&doc, k, s), Some(("M20".into(), Source::Type)), "{s:?}");
     }
     h.run("cableedit", json!({"cable": k.hex(), "set": {"to": {"gland": "M25"}}})).unwrap();
     let (label, ops) = last_tx(&mut h);
     assert_eq!(label, "Edit cable");
     assert_eq!(ops.len(), 1, "one SetProperty: {ops:?}");
     let doc = h.doc();
-    assert_eq!(cable_cmds::gland(&doc, k, Side::From), Some(("M20".into(), Source::Type)));
-    assert_eq!(cable_cmds::gland(&doc, k, Side::To), Some(("M25".into(), Source::Here)));
+    assert_eq!(cables::gland(&doc, k, Side::From), Some(("M20".into(), Source::Type)));
+    assert_eq!(cables::gland(&doc, k, Side::To), Some(("M25".into(), Source::Here)));
     let row = h.cfg(|p| p.outputs().cable_row(k).map(|r| r.glands.clone()));
     assert_eq!(row, Some([Some("M20".to_string()), Some("M25".to_string())]));
     // The type's gland changes: the from end follows, the overridden end does not.
     h.run("setstyle", json!({"catalogue": "cable", "id": ty, "fields": {"gland": "M16"}})).unwrap();
     let doc = h.doc();
-    assert_eq!(cable_cmds::gland(&doc, k, Side::From).map(|g| g.0).as_deref(), Some("M16"));
-    assert_eq!(cable_cmds::gland(&doc, k, Side::To).map(|g| g.0).as_deref(), Some("M25"));
+    assert_eq!(cables::gland(&doc, k, Side::From).map(|g| g.0).as_deref(), Some("M16"));
+    assert_eq!(cables::gland(&doc, k, Side::To).map(|g| g.0).as_deref(), Some("M25"));
     let row = h.cfg(|p| p.outputs().cable_row(k).map(|r| r.glands.clone()));
     assert_eq!(row, Some([Some("M16".to_string()), Some("M25".to_string())]), "the list row follows the type");
     // null clears the override: back to the type's.
     h.run("cableedit", json!({"cable": k.hex(), "set": {"to": {"gland": null}}})).unwrap();
-    assert_eq!(cable_cmds::gland(&h.doc(), k, Side::To), Some(("M16".into(), Source::Type)));
+    assert_eq!(cables::gland(&h.doc(), k, Side::To), Some(("M16".into(), Source::Type)));
 }
 
 #[test]
@@ -1070,7 +1070,7 @@ fn f4_gland_input_is_bounded_on_the_cable_and_on_the_cable_type() {
         match h.run("setstyle", json!({"catalogue": "cable", "id": ty, "fields": {"gland": g.clone()}})) {
             Ok(_) => {
                 let k2 = new_cable(&mut h, json!({"cable_type": ty}));
-                let shown = cable_cmds::gland(&h.doc(), k2, Side::From);
+                let shown = cables::gland(&h.doc(), k2, Side::From);
                 if shown.is_some() {
                     problems.push(format!("type gland {:?} accepted and shown: {shown:?}", g.chars().take(30).collect::<String>()));
                 }

@@ -17,7 +17,6 @@
 
 pub mod accessory;
 pub mod bom;
-pub mod cable;
 pub(crate) mod cable_draw;
 pub mod connector;
 pub(crate) mod device;
@@ -49,7 +48,7 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
 pub use crate::strips::core_label;
-use ecad_electrical::cmd::{connect, continuation, default, designation, device_link, level, location, prop};
+use ecad_electrical::cmd::{cable, connect, continuation, default, designation, device_link, level, location, prop};
 
 /// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
 /// their lines move here at the phase-end tidy-up.
@@ -102,6 +101,9 @@ fn generic_specs() -> Vec<CommandSpec> {
         generic::spec::<location::SetfunctionParams>(),
         generic::spec::<location::ConflictsParams>(),
         generic::spec::<prop::SetpropParams>(),
+        generic::spec::<cable::CablenewParams>(),
+        generic::spec::<cable::CableeditParams>(),
+        generic::spec::<cable::CableremoveParams>(),
     ]
 }
 
@@ -125,6 +127,9 @@ const GENERIC_TYPED: &[input::Typed] = &[
     generic::typed::<location::SetfunctionParams>(),
     generic::typed::<location::ConflictsParams>(),
     generic::typed::<prop::SetpropParams>(),
+    generic::typed::<cable::CablenewParams>(),
+    generic::typed::<cable::CableeditParams>(),
+    generic::typed::<cable::CableremoveParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
@@ -307,7 +312,6 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::bom::TYPED,
         crate::cmd::title_block::TYPED,
         crate::cmd::page_type::TYPED,
-        crate::cmd::cable::TYPED,
         crate::cmd::connector::TYPED,
         crate::cmd::accessory::TYPED,
         crate::cmd::release::TYPED,

@@ -62,7 +62,7 @@ impl Command for CableslashParams {
             let doc = p.ledger.document();
             let found = rules::crossed(doc, page, from, to, p.tolerance)?;
             match rules::slash_target(doc, self.cable, self.tag.as_deref())? {
-                SlashTarget::Assign(k) => crate::cmd::cable::run_slash_assign(p, pg, page, k, from, to, &found),
+                SlashTarget::Assign(k) => run_slash_assign(p, pg, page, k, from, to, &found),
                 SlashTarget::Continue(k) => {
                     Ok(crate::draw::references::run_slash_continue(p, pg, page, k, from, to, &found).map_err(CmdError::refused)?)
                 }
@@ -375,4 +375,32 @@ impl Command for CableviewParams {
             Ok(r)
         })
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The assign rule (design 059 §4.3, FD5)
+
+/// `cableslash` onto cable `k` that is not drawn (FD5): commits
+/// [`ecad_electrical::cmd::cable_draw::plan_slash_assign`]'s ops as one transaction, `Cable slash`.
+///
+/// # Errors
+/// A wire already in a cable, more wires than free cores, too many members; nothing is written.
+pub(crate) fn run_slash_assign(
+    p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, page: ecad_model::PageId, k: CableId, from: ecad_model::Pt,
+    to: ecad_model::Pt, found: &crate::slash::Crossings,
+) -> Result<Value, CmdError> {
+    let style = crate::cmd::plain_style(p);
+    let plan = ecad_electrical::cmd::cable_draw::plan_slash_assign(p.ledger.document(), &mut p.ids, page, style, k, from, to, found)?;
+    p.apply_edit(pg, "cableslash", "Cable slash", plan.ops)?;
+    Ok(json!({
+        "cable": k.hex(),
+        "item": plan.item.hex(),
+        "representation": plan.rep.hex(),
+        "assigned": true,
+        "conductors": ecad_electrical::cmd::cable_draw::crossing_wires(&found.members),
+        "lines": ecad_electrical::cmd::cable_draw::crossing_lines(&found.members),
+        "cores": plan.cores,
+        "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
+        "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
+    }))
 }

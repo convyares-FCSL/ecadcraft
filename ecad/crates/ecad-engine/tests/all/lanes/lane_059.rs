@@ -2,7 +2,7 @@
 //!
 //! Cable types here are synthetic (made-up names and values).
 
-use ecad_engine::cable_cmds::{self, Side};
+use ecad_electrical::cables::{self, Side};
 use ecad_engine::checks::{self, Severity};
 use ecad_model::{CableId, Op, WireId};
 use serde_json::{Value, json};
@@ -60,7 +60,7 @@ fn cablenew_makes_a_cable_that_is_not_drawn_in_one_transaction() {
         "{ops:?}"
     );
     let doc = h.doc();
-    assert!(!cable_cmds::is_drawn(&doc, k));
+    assert!(!cables::is_drawn(&doc, k));
     let rows = checks_of(&mut h, "cable-not-drawn");
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0]["severity"], json!("info"));
@@ -103,9 +103,9 @@ fn cableedit_sets_fields_in_one_transaction_and_refuses_bad_values() {
     assert_eq!(on_cable, 1, "{ops:?}");
     assert!(!ops.iter().any(|o| matches!(o, Op::SetProperty { object: ecad_model::ObjectRef::Cable(_), .. })), "{ops:?}");
     let doc = h.doc();
-    assert_eq!(cable_cmds::planned(&doc, k, Side::To, ecad_engine::designations::Aspect::Location).as_deref(), Some("+FIELD"));
-    assert_eq!(cable_cmds::gland(&doc, k, Side::To).map(|g| g.0).as_deref(), Some("M20"));
-    assert_eq!(cable_cmds::shield(&doc, k).map(|s| s.0), Some(cable_cmds::Shield::Overall));
+    assert_eq!(cables::planned(&doc, k, Side::To, ecad_engine::designations::Aspect::Location).as_deref(), Some("+FIELD"));
+    assert_eq!(cables::gland(&doc, k, Side::To).map(|g| g.0).as_deref(), Some("M20"));
+    assert_eq!(cables::shield(&doc, k).map(|s| s.0), Some(cables::Shield::Overall));
     let head = h.head();
     for (set, words) in [
         (json!({"length": "x"}), "Length must be a number of metres"),
@@ -156,7 +156,7 @@ fn a_cable_type_fills_type_only_when_empty_or_its_own() {
     assert_eq!(h.doc().cables[&k].properties.get("type").map(String::as_str), Some("Hand typed"), "a hand-typed type stays");
     // The cable type's cores are the offer (design 059 §2.2).
     let doc = h.doc();
-    assert_eq!(cable_cmds::cores_shown(&doc, k).map(|c| c.0).as_deref(), Some("4G"));
+    assert_eq!(cables::cores_shown(&doc, k).map(|c| c.0).as_deref(), Some("4G"));
 }
 
 #[test]
@@ -177,8 +177,8 @@ fn cableremove_deletes_a_cable_not_drawn_and_refuses_a_drawn_one() {
     assert_eq!(h.head(), head);
     let doc = h.doc();
     let page = h.first_page();
-    match cable_cmds::drawn(&doc, w) {
-        Some(cable_cmds::Drawn { pages, .. }) => assert_eq!(pages.first().map(|p| p.0), Some(page)),
+    match ecad_electrical::cmd::cable::drawn(&doc, w) {
+        Some(ecad_electrical::cmd::cable::Drawn { pages, .. }) => assert_eq!(pages.first().map(|p| p.0), Some(page)),
         other => panic!("{other:?}"),
     }
     let e = h.run("cableremove", json!({"cable": w.hex(), "drawn": "unassign"})).unwrap_err();
@@ -202,7 +202,7 @@ fn slashing_onto_a_cable_not_drawn_assigns_its_cores_in_order() {
     let open = checks_of(&mut h, "core-open");
     assert!(open.iter().any(|c| c["text"].as_str().unwrap_or_default().contains("core GNYE is not assigned")), "{open:?}");
     h.run("u", json!({})).unwrap();
-    assert!(!cable_cmds::is_drawn(&h.doc(), k), "undo: not drawn again");
+    assert!(!cables::is_drawn(&h.doc(), k), "undo: not drawn again");
     assert_eq!(checks_of(&mut h, "cable-not-drawn").len(), 1);
 }
 
@@ -275,10 +275,10 @@ fn hostile_cable_values_are_ignored_and_reported() {
     // Design 072 §4.5: the shield is a typed field; no property can hold a word it does not read.
     assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "lead"})).is_err());
     let doc = h.doc();
-    assert!(cable_cmds::read(&doc, k, cable_cmds::CableField::Length).is_none());
-    assert!(cable_cmds::gland(&doc, k, Side::To).is_none());
-    assert!(cable_cmds::shield(&doc, k).is_none());
-    assert!(cable_cmds::plan_words(&doc, k, Side::From).is_none());
+    assert!(cables::read(&doc, k, cables::CableField::Length).is_none());
+    assert!(cables::gland(&doc, k, Side::To).is_none());
+    assert!(cables::shield(&doc, k).is_none());
+    assert!(cables::plan_words(&doc, k, Side::From).is_none());
     let rows = checks_of(&mut h, "cable-bad-value");
     assert_eq!(rows.len(), 3, "{rows:?}");
     assert!(rows.iter().any(|r| r["text"].as_str().unwrap_or_default().contains("length \"abc\" is not a number of metres")), "{rows:?}");
@@ -400,8 +400,8 @@ fn glands_default_from_the_cable_type_and_a_drawn_end_without_one_is_noted() {
         h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth glanded", "fields": {"gland": "M20", "size": "1.5"}})).unwrap();
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": ty["id"], "to": {"gland": "M25"}}})).unwrap();
     let doc = h.doc();
-    assert_eq!(cable_cmds::gland(&doc, k, Side::From), Some(("M20".to_string(), cable_cmds::Source::Type)));
-    assert_eq!(cable_cmds::gland(&doc, k, Side::To), Some(("M25".to_string(), cable_cmds::Source::Here)));
+    assert_eq!(cables::gland(&doc, k, Side::From), Some(("M20".to_string(), cables::Source::Type)));
+    assert_eq!(cables::gland(&doc, k, Side::To), Some(("M25".to_string(), cables::Source::Here)));
     assert!(checks_of(&mut h, "no-gland").is_empty());
     // A cable type's gland changed reaches its users (update map).
     h.run("cableedit", json!({"cable": k.hex(), "set": {"to": {"gland": null}}})).unwrap();

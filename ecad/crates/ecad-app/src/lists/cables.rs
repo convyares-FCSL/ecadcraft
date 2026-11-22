@@ -452,7 +452,7 @@ impl CablesView {
             .ids
             .iter()
             .map(|k| {
-                if ecad_engine::cable_cmds::is_drawn(doc, *k) {
+                if ecad_electrical::cables::is_drawn(doc, *k) {
                     cable::open_cores(doc, *k).into_iter().map(|o| o.label).collect()
                 } else {
                     Vec::new()
@@ -469,7 +469,7 @@ impl CablesView {
             None => self.edit.set_copy(super::cable_editor::Copy::default()),
         }
         let c = &mut self.cores;
-        c.drawn = selected.is_none_or(|k| ecad_engine::cable_cmds::is_drawn(doc, k));
+        c.drawn = selected.is_none_or(|k| ecad_electrical::cables::is_drawn(doc, k));
         c.size = selected.and_then(|k| cable_size(doc, k)).unwrap_or_default();
         c.unused = selected
             .and_then(|k| doc.cables.get(&k))

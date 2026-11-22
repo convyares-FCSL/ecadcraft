@@ -1,7 +1,7 @@
 //! The rules of brief 059's cable manager (design 059 §4): `cablenew` and `cableedit` (every value
 //! checked first; any refusal writes nothing), `cableremove` (refused for a drawn cable), and the
-//! assign rule a slash onto a cable not drawn follows. The engine crate's shims read the
-//! parameters, commit and answer in JSON.
+//! assign rule a slash onto a cable not drawn follows. The three commands are generic
+//! ([`crate::cmd::run`]).
 //!
 //! # Semantics
 //! - Every refusal is a [`CmdError`] whose words are design 059 §9's, every echoed value clipped
@@ -19,6 +19,12 @@ use crate::cables::{
     CableField, MAX_LENGTH, MAX_TEXT, MAX_WORDS, MIN_LENGTH, Shield, Side, clip, drawn_pages, is_drawn, length_of, plan_words, planned, read,
     type_notation,
 };
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::json;
+
+use crate::cmd::input::{TextOrNumber, nullable};
+use crate::cmd::run::{Cx, Generic, Outcome};
 use crate::designations::{self, Aspect};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
@@ -529,4 +535,164 @@ pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
     }
     out.sort_by(|a, b| (a.drawn, !a.matches).cmp(&(b.drawn, !b.matches)).then_with(|| crate::locations::natural_cmp(&a.tag, &b.tag)));
     out
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run; design 059 §4.1, §4.2)
+
+/// An end's plan and gland.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EndParams {
+    /// The planned location (+CAB1); null clears it.
+    #[serde(default, deserialize_with = "nullable")]
+    location: Option<Option<TextOrNumber>>,
+    /// The planned function (=PUMP); null clears it.
+    #[serde(default, deserialize_with = "nullable")]
+    function: Option<Option<TextOrNumber>>,
+    /// The gland (M20); null clears it.
+    #[serde(default, deserialize_with = "nullable")]
+    gland: Option<Option<TextOrNumber>>,
+}
+
+/// `cablenew {tag?, cable_type?, type?, cores?, length?, shield?, maker?, part_number?,
+/// description?, from?, to?}`: a cable not drawn yet, the next free -W unless `tag`; one
+/// transaction. The same fields are `cableedit`'s `set`, where null clears one.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CablenewParams {
+    /// The tag (-W05).
+    #[serde(default, deserialize_with = "nullable")]
+    tag: Option<Option<TextOrNumber>>,
+    /// The cable type: a style ID or name from the project's standards.
+    #[serde(default, deserialize_with = "nullable")]
+    cable_type: Option<Option<TextOrNumber>>,
+    /// The type notation (H07RN-F 4G1.5).
+    #[serde(default, deserialize_with = "nullable", rename = "type")]
+    kind: Option<Option<TextOrNumber>>,
+    /// The cores offered (4G, 7X, or a list).
+    #[serde(default, deserialize_with = "nullable")]
+    cores: Option<Option<TextOrNumber>>,
+    /// The length in metres.
+    #[serde(default, deserialize_with = "nullable")]
+    length: Option<Option<TextOrNumber>>,
+    /// The shield: none, overall, pairs or overall+pairs.
+    #[serde(default, deserialize_with = "nullable")]
+    shield: Option<Option<TextOrNumber>>,
+    /// The maker.
+    #[serde(default, deserialize_with = "nullable")]
+    maker: Option<Option<TextOrNumber>>,
+    /// The part number.
+    #[serde(default, deserialize_with = "nullable")]
+    part_number: Option<Option<TextOrNumber>>,
+    /// The description.
+    #[serde(default, deserialize_with = "nullable")]
+    description: Option<Option<TextOrNumber>>,
+    /// The from end's plan and gland.
+    #[serde(default)]
+    from: Option<EndParams>,
+    /// The to end's plan and gland.
+    #[serde(default)]
+    to: Option<EndParams>,
+}
+
+/// `cableedit {cable, set}`: change a cable's fields in one transaction (null clears a field;
+/// reducing cores below those in use is refused).
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CableeditParams {
+    /// The cable: an ID or a tag.
+    cable: String,
+    /// The fields to change, as `cablenew` takes them; null clears one.
+    set: CablenewParams,
+}
+
+/// `cableremove {cable}`: delete a cable that is not drawn; a drawn cable is refused with the
+/// pages it is drawn on.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CableremoveParams {
+    /// The cable: an ID or a tag.
+    cable: String,
+}
+
+impl From<EndParams> for EndInput {
+    fn from(e: EndParams) -> Self {
+        EndInput {
+            location: TextOrNumber::nullable_text(e.location),
+            function: TextOrNumber::nullable_text(e.function),
+            gland: TextOrNumber::nullable_text(e.gland),
+        }
+    }
+}
+
+impl From<CablenewParams> for CableInput {
+    fn from(p: CablenewParams) -> Self {
+        CableInput {
+            tag: TextOrNumber::nullable_text(p.tag),
+            cable_type: TextOrNumber::nullable_text(p.cable_type),
+            kind: TextOrNumber::nullable_text(p.kind),
+            cores: TextOrNumber::nullable_text(p.cores),
+            length: TextOrNumber::nullable_text(p.length),
+            shield: TextOrNumber::nullable_text(p.shield),
+            maker: TextOrNumber::nullable_text(p.maker),
+            part_number: TextOrNumber::nullable_text(p.part_number),
+            description: TextOrNumber::nullable_text(p.description),
+            from: p.from.map(EndInput::from),
+            to: p.to.map(EndInput::from),
+        }
+    }
+}
+
+impl Generic for CablenewParams {
+    const ID: &'static str = "cablenew";
+    const TITLE: &'static str = "New Cable";
+    const HELP: &'static str = "{tag?, cable_type?: id or name, type?, cores?, length?: m, shield?: \"none\"|\"overall\"|\"pairs\"|\"overall+pairs\", maker?, \
+part_number?, description?, from?: {location?, function?, gland?}, to?: {…}} (a cable not drawn yet, the next free -W unless `tag`; one transaction)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let fields = CableInput::from(self);
+        let plan = plan_new(cx.ledger, cx.ids, cx.tag_high, &fields)?;
+        let tag = plan.tag;
+        let mut message = format!("Created {tag} (not drawn). Fill it in on the right, then assign it in the drawing.");
+        if let Some(w) = plan.added {
+            message = format!("{message} {w}");
+        }
+        Ok(Outcome::edit("Create cable", plan.ops, json!({"cable": plan.id.hex(), "tag": tag, "message": message})).echo_message())
+    }
+}
+
+impl Generic for CableeditParams {
+    const ID: &'static str = "cableedit";
+    const TITLE: &'static str = "Edit Cable";
+    const HELP: &'static str = "{cable: id or tag, set: {tag?, cable_type?, type?, cores?, length?, shield?, maker?, part_number?, description?, \
+from?: {location?, function?, gland?}, to?: {…}}} (null clears a field; one transaction; reducing cores below those in use is refused)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let set = CableInput::from(self.set);
+        cx.tag_high.catch_up(cx.ledger);
+        let k = cable_named(cx.doc, &self.cable)?;
+        let (ops, changed, words) = edit_ops(cx.doc, cx.ids, cx.tag_high, k, &set)?;
+        let names: Vec<&str> = changed.iter().map(|f| f.key()).collect();
+        if ops.is_empty() {
+            return Ok(Outcome::answer(json!({"cable": k.hex(), "changed": names, "written": false})));
+        }
+        Ok(Outcome::edit("Edit cable", ops, json!({"cable": k.hex(), "changed": names, "written": true, "message": words})).echo_message())
+    }
+}
+
+impl Generic for CableremoveParams {
+    const ID: &'static str = "cableremove";
+    const TITLE: &'static str = "Remove Cable";
+    const HELP: &'static str = "{cable: id or tag} (deletes a cable that is not drawn; a drawn cable is refused with the pages it is drawn on)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let doc = cx.doc;
+        let k = cable_named(doc, &self.cable)?;
+        check_remove(doc, k)?;
+        let cable = doc.cables.get(&k).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
+        let tag = crate::cables::cable_title(doc, k);
+        let answer = json!({"cable": k.hex(), "removed": true, "message": format!("Removed {tag}. Undo with Ctrl Z.")});
+        Ok(Outcome::edit("Remove cable", vec![Op::DeleteCable { id: k, cable }], answer).echo_message())
+    }
 }

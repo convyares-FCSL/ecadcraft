@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_engine::cable_cmds::{self, CableField, Shield, Side, Source};
+use ecad_electrical::cables::{self, CableField, Shield, Side, Source};
 use ecad_model::words::Word;
 use ecad_model::{CableId, Document, PageId};
 use ecad_ui::control::{self, Select, TextEntry};
@@ -65,24 +65,24 @@ pub struct Copy {
 /// Read cable `k`'s editor copy.
 pub fn copy(doc: &Document, k: CableId) -> Copy {
     use ecad_engine::designations::{self, Aspect};
-    let mut c = Copy { cable: Some(k), tag: ecad_engine::views::cable_title(doc, k), drawn: cable_cmds::is_drawn(doc, k), ..Copy::default() };
+    let mut c = Copy { cable: Some(k), tag: ecad_engine::views::cable_title(doc, k), drawn: cables::is_drawn(doc, k), ..Copy::default() };
     c.values.insert(CableField::Tag, (c.tag.clone(), ""));
-    if let Some(v) = cable_cmds::read(doc, k, CableField::Type) {
+    if let Some(v) = cables::read(doc, k, CableField::Type) {
         c.values.insert(CableField::Type, (v, Source::Here.hint()));
     }
-    if let Some((v, s)) = cable_cmds::cores_shown(doc, k) {
+    if let Some((v, s)) = cables::cores_shown(doc, k) {
         c.values.insert(CableField::Cores, (v, s.hint()));
     }
     for f in [CableField::Maker, CableField::PartNumber, CableField::Description] {
-        if let Some((v, s)) = cable_cmds::part_value(doc, k, f) {
+        if let Some((v, s)) = cables::part_value(doc, k, f) {
             c.values.insert(f, (v, s.hint()));
         }
     }
-    if let Some(v) = cable_cmds::read(doc, k, CableField::Length) {
+    if let Some(v) = cables::read(doc, k, CableField::Length) {
         c.values.insert(CableField::Length, (v.trim().trim_end_matches('m').trim().to_string(), ""));
     }
     for side in Side::BOTH {
-        if let Some((g, s)) = cable_cmds::gland(doc, k, side) {
+        if let Some((g, s)) = cables::gland(doc, k, side) {
             c.values.insert(CableField::Gland(side), (g, s.hint()));
         }
     }
@@ -95,13 +95,13 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
     for side in Side::BOTH {
         for (aspect, field) in [(Aspect::Location, CableField::EndLocation(side)), (Aspect::Function, CableField::EndFunction(side))] {
             let list = if aspect == Aspect::Location { &c.locations } else { &c.functions };
-            let at = cable_cmds::planned(doc, k, side, aspect).and_then(|code| list.iter().position(|x| *x == code)).map_or(0, |i| i + 1);
+            let at = cables::planned(doc, k, side, aspect).and_then(|code| list.iter().position(|x| *x == code)).map_or(0, |i| i + 1);
             c.plans.insert(field, at);
         }
     }
-    let (sh, src) = cable_cmds::shield(doc, k).unwrap_or((Shield::None, Source::Here));
+    let (sh, src) = cables::shield(doc, k).unwrap_or((Shield::None, Source::Here));
     c.shield = Shield::ALL.iter().position(|s| *s == sh).unwrap_or(0);
-    c.shield_hint = match (cable_cmds::read(doc, k, CableField::Shield).is_some(), src) {
+    c.shield_hint = match (cables::read(doc, k, CableField::Shield).is_some(), src) {
         (true, _) => Source::Here.hint(),
         (false, Source::Type) => Source::Type.hint(),
         _ => "",
@@ -112,13 +112,13 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
         None => format!("{members} assigned"),
     };
     c.next_offer = ecad_electrical::cmd::cable::next_offer(doc, k);
-    c.pages = cable_cmds::drawn_pages(doc, k);
-    for o in cable_cmds::off_plan(doc, k) {
+    c.pages = cables::drawn_pages(doc, k);
+    for o in cables::off_plan(doc, k) {
         if let Some(slot) = c.off_plan.get_mut(usize::from(o.side == Side::To)) {
-            *slot = cable_cmds::plan_words(doc, k, o.side).map(|p| format!("planned {p}"));
+            *slot = cables::plan_words(doc, k, o.side).map(|p| format!("planned {p}"));
         }
     }
-    let plan = |s: Side| cable_cmds::plan_words(doc, k, s).unwrap_or_else(|| super::report::DASH.to_string());
+    let plan = |s: Side| cables::plan_words(doc, k, s).unwrap_or_else(|| super::report::DASH.to_string());
     c.runs = format!("{} \u{2192} {}", plan(Side::From), plan(Side::To));
     c
 }
@@ -381,7 +381,7 @@ impl crate::App {
                     r.cables.edit.refused = None;
                 }
                 let Some(p) = self.project.clone() else { return };
-                let check = p.read(&mut self.cad.session, |p, _| cable_cmds::drawn(p.ledger.document(), k));
+                let check = p.read(&mut self.cad.session, |p, _| ecad_electrical::cmd::cable::drawn(p.ledger.document(), k));
                 match check {
                     Ok(Some(d)) => {
                         if let Some(r) = self.reports.as_mut() {

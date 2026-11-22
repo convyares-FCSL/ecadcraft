@@ -27,7 +27,7 @@ fn the_offered_cores_are_stored_by_the_command_that_sets_the_offer() {
     let k: CableId = id(&h.run("cablenew", json!({"cores": "3"})).unwrap(), "cable");
     assert!(matches!(last_ops(&mut h).as_slice(), [Op::CreateCable { cable, .. }] if cable.cores.len() == 3));
     assert_eq!(labels(&mut h, k), unplaced(&["1", "2", "3"]));
-    assert!(!ecad_engine::cable_cmds::is_drawn(&h.doc(), k), "stored unplaced cores do not draw a cable");
+    assert!(!ecad_electrical::cables::is_drawn(&h.doc(), k), "stored unplaced cores do not draw a cable");
     h.check();
 
     // A smaller offer takes away the unplaced core it no longer names: one ModifyCable.

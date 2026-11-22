@@ -4,7 +4,7 @@
 //! The app is thin: every write is a command (`cableedit`, `cableremove`); this module only picks
 //! the command and its parameters, and moves the view.
 
-use ecad_engine::cable_cmds::{self, Side};
+use ecad_electrical::cables::{self, Side};
 use ecad_engine::checks::{Check, Fix, Kind, Object};
 use ecad_engine::designations::Aspect;
 use serde_json::json;
@@ -30,7 +30,7 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
 /// The button name of a 059 fix with one button.
 pub fn single(f: Fix) -> &'static str {
     match f {
-        Fix::ShowCableField(_, cable_cmds::CableField::Gland(_)) => SET_GLAND,
+        Fix::ShowCableField(_, cables::CableField::Gland(_)) => SET_GLAND,
         _ => crate::checks_panel::SHOW,
     }
 }
@@ -48,7 +48,7 @@ impl crate::App {
                 // That end's plan becomes its drawn location and function (one `cableedit`).
                 let drawn = p.read(&mut self.cad.session, |p, _| {
                     let doc = p.ledger.document();
-                    cable_cmds::off_plan(doc, cable).into_iter().find(|o| o.side == side).map(|o| o.drawn)
+                    cables::off_plan(doc, cable).into_iter().find(|o| o.side == side).map(|o| o.drawn)
                 });
                 let Ok(Some(end)) = drawn else { return };
                 let mut set = serde_json::Map::new();
@@ -80,7 +80,7 @@ impl crate::App {
         let Some(p) = self.project.clone() else { return };
         let page = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let plan = cable_cmds::planned(doc, cable, Side::From, Aspect::Location)?;
+            let plan = cables::planned(doc, cable, Side::From, Aspect::Location)?;
             doc.page_order.iter().copied().find(|pg| {
                 let key = doc.pages.get(pg).and_then(|x| ecad_engine::designations::page_key(x, Aspect::Location));
                 ecad_engine::designations::shown(doc, Aspect::Location, key.as_deref()).is_some_and(|c| c.eq_ignore_ascii_case(&plan))

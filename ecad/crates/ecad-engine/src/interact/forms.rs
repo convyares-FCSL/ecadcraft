@@ -911,7 +911,7 @@ impl CableSlash {
             let (text, refused) = match cable {
                 Some(k) if !refused && doc.cables.contains_key(&k) && !crate::cables::is_drawn(doc, k) => {
                     let tag = crate::cables::cable_title(doc, k);
-                    match crate::cmd::cable::assign_cores(doc, k, n) {
+                    match ecad_electrical::cmd::cable::assign_cores(doc, k, n) {
                         Ok(cores) => {
                             let labels: Vec<String> = cores.into_iter().flatten().collect();
                             (format!("{text} onto {tag} ({})", labels.join(", ")), false)
@@ -974,7 +974,7 @@ impl CableSlash {
     fn pick(s: &Session, text: &str) -> R<CableId> {
         read(s, |p, page| {
             let doc = p.ledger.document();
-            let k = crate::cmd::cable::cable_named(doc, text).map_err(|e| e.to_string())?;
+            let k = ecad_electrical::cmd::cable::cable_named(doc, text).map_err(|e| e.to_string())?;
             if doc.representations_of(Subject::Cable(k)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
                 return Err(format!("{} already has a slash on this page.", crate::cables::cable_title(doc, k)));
             }
