@@ -753,7 +753,7 @@ impl PrintBook {
 }
 
 /// The Accessory menu's items (design 030 §2.4): (words, `accessory` params) for strip `c`.
-pub fn accessory_menu(c: ecad_model::DeviceId) -> Vec<(&'static str, serde_json::Value)> {
+pub(crate) fn accessory_menu(c: ecad_model::DeviceId) -> Vec<(&'static str, serde_json::Value)> {
     use serde_json::json;
     let s = c.hex();
     vec![

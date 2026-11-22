@@ -75,7 +75,8 @@ pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engin
     for (key, bytes) in writes {
         let target = P::IO.writes.contains(&key).then(|| given(params, key)).flatten();
         let target = target.ok_or_else(|| err(format!("`{key}` is not a file this command writes")))?;
-        std::fs::write(target, bytes).map_err(|e| err(format!("Could not write {target}: {e}")))?;
+        cadcraft_engine::atomic_write::write_atomic_making_folders(std::path::Path::new(target), &bytes)
+            .map_err(|e| err(format!("Could not write {target}: {e}")))?;
     }
     for line in lines {
         s.echo(line);

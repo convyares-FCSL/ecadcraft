@@ -20,7 +20,7 @@ use crate::styles::{self, cable, ratingtable};
 use ecad_model::objects::wire::Basis;
 
 /// Most subjects one `rating {many}` call sets.
-pub const MAX_MANY: usize = 500;
+pub(crate) const MAX_MANY: usize = 500;
 /// Most results one `ratings {}` call returns.
 pub const PAGE: usize = 200;
 
@@ -66,7 +66,7 @@ pub fn cable_named(doc: &Document, text: &str) -> Result<CableId, CmdError> {
 ///
 /// # Errors
 /// Both, neither, or one that names nothing.
-pub fn subjects_of(doc: &Document, wire: Option<&str>, cable: Option<&str>) -> Result<Vec<RatedSubject>, CmdError> {
+pub(crate) fn subjects_of(doc: &Document, wire: Option<&str>, cable: Option<&str>) -> Result<Vec<RatedSubject>, CmdError> {
     match (wire, cable) {
         (Some(w), None) => Ok(wires(doc, w)?.into_iter().map(RatedSubject::Wire).collect()),
         (None, Some(c)) => Ok(vec![RatedSubject::Cable(cable_named(doc, c)?)]),
@@ -95,7 +95,7 @@ pub const KEYS: &[(&str, &str, bool, bool)] = &[
 ];
 
 /// The refusal for a key `rating` does not take here.
-pub fn not_a_key(key: &str) -> CmdError {
+pub(crate) fn not_a_key(key: &str) -> CmdError {
     CmdError::refused(format!("{key} is not a rating key; the keys are {}.", KEYS.iter().map(|k| k.0).collect::<Vec<_>>().join(", ")))
 }
 
@@ -103,7 +103,7 @@ pub fn not_a_key(key: &str) -> CmdError {
 ///
 /// # Errors
 /// The key and its range, in words.
-pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, CmdError> {
+pub(crate) fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, CmdError> {
     let v = value.trim();
     let shown: String = v.chars().take(32).collect();
     let no = |why: &'static str| CmdError::refused(why);
@@ -144,7 +144,7 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
 
 /// One subject of `rating`: a wire or a cable, and the keys set (JSON key, value; `None` clears).
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct RatingItem {
+pub(crate) struct RatingItem {
     pub wire: Option<String>,
     pub cable: Option<String>,
     /// In [`KEYS`] order.
@@ -155,7 +155,7 @@ pub struct RatingItem {
 ///
 /// # Errors
 /// The subject does not read, a key is not for that kind of subject, or a value breaks its range.
-pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<RatedSubject>), CmdError> {
+pub(crate) fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<RatedSubject>), CmdError> {
     let subjects = subjects_of(doc, item.wire.as_deref(), item.cable.as_deref())?;
     let cable = matches!(subjects.first(), Some(RatedSubject::Cable(_)));
     let mut sets: Vec<(&'static str, &'static str, Option<String>)> = Vec::new();
@@ -198,7 +198,7 @@ pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<Rated
 
 /// Set a wire's input `key` (a JSON key of [`KEYS`] for wires) to `value`, already checked by
 /// [`check_value`] (`None` clears it).
-pub fn set_wire(doc: &Document, w: &mut Wire, key: &str, value: Option<&str>) {
+pub(crate) fn set_wire(doc: &Document, w: &mut Wire, key: &str, value: Option<&str>) {
     match key {
         "basis" => w.rating.basis = value.and_then(Basis::parse),
         "manual" => w.rating.manual = value.and_then(crate::devices::ratings::parse::current).map(Amps),
@@ -211,7 +211,7 @@ pub fn set_wire(doc: &Document, w: &mut Wire, key: &str, value: Option<&str>) {
 
 /// Set a cable's input `key` (a JSON key of [`KEYS`] for cables) to `value`, already checked by
 /// [`check_value`] (`None` clears it): a field (the cable type is [`ecad_model::Cable::cable_type`]).
-pub fn set_cable(doc: &Document, c: &mut ecad_model::Cable, key: &str, value: Option<&str>) {
+pub(crate) fn set_cable(doc: &Document, c: &mut ecad_model::Cable, key: &str, value: Option<&str>) {
     let r = &mut c.rating;
     match key {
         "basis" => r.basis = value.and_then(Basis::parse),
@@ -241,7 +241,7 @@ pub struct Rated {
 ///
 /// # Errors
 /// The first item's refusal ([`item_ops`]); nothing is written.
-pub fn plan_rating(doc: &Document, items: &[RatingItem]) -> Result<Rated, CmdError> {
+pub(crate) fn plan_rating(doc: &Document, items: &[RatingItem]) -> Result<Rated, CmdError> {
     let mut ops = Vec::new();
     let mut all = Vec::new();
     for item in items {
@@ -256,7 +256,7 @@ pub fn plan_rating(doc: &Document, items: &[RatingItem]) -> Result<Rated, CmdErr
 
 /// What `rating {location, temperature}` records.
 #[derive(Debug, Clone, PartialEq)]
-pub struct PanelTemperature {
+pub(crate) struct PanelTemperature {
     /// Empty when every box already has that value.
     pub ops: Vec<Op>,
     /// The location's code.
@@ -280,7 +280,7 @@ pub fn panel_temperature(text: &str) -> Result<ecad_model::geometry::units::Cels
 ///
 /// # Errors
 /// Outside −40 to 90 °C.
-pub fn check_temperature(text: &str) -> Result<String, CmdError> {
+pub(crate) fn check_temperature(text: &str) -> Result<String, CmdError> {
     let t = text.trim();
     match crate::devices::ratings::parse::ambient(t) {
         Some(_) => Ok(t.to_string()),
@@ -294,7 +294,7 @@ pub fn check_temperature(text: &str) -> Result<String, CmdError> {
 ///
 /// # Errors
 /// No location box of that location.
-pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Result<PanelTemperature, CmdError> {
+pub(crate) fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Result<PanelTemperature, CmdError> {
     // Brief 052: `location` is a code (or an entry key); boxes store the entry's key.
     let entry = crate::locations::designations::find(doc, crate::locations::designations::Aspect::Location, typed);
     let loc = entry.as_ref().map_or_else(|| typed.to_string(), |e| e.code.clone());
@@ -332,7 +332,7 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
 ///
 /// # Errors
 /// No such table, or none chosen and no name.
-pub fn export_table(doc: &Document, name: Option<&str>) -> Result<ratingtable::Table, CmdError> {
+pub(crate) fn export_table(doc: &Document, name: Option<&str>) -> Result<ratingtable::Table, CmdError> {
     let id = match name {
         Some(n) => styles::find(doc, ecad_model::StyleCatalogue::RatingTable, n)?,
         None => ratingtable::chosen(doc).ok_or(CmdError::refused("No rating table chosen; give `name`."))?,
@@ -341,7 +341,7 @@ pub fn export_table(doc: &Document, name: Option<&str>) -> Result<ratingtable::T
 }
 
 /// The refusal for a CSV file over [`crate::devices::ratings::dataset::MAX_BYTES`].
-pub fn too_big() -> CmdError {
+pub(crate) fn too_big() -> CmdError {
     CmdError::refused(format!("The table is over {} KiB. Nothing was written.", crate::devices::ratings::dataset::MAX_BYTES / 1024))
 }
 
@@ -349,7 +349,7 @@ pub fn too_big() -> CmdError {
 ///
 /// # Errors
 /// Another word.
-pub fn table_layer(word: Option<&str>) -> Result<StyleLayer, CmdError> {
+pub(crate) fn table_layer(word: Option<&str>) -> Result<StyleLayer, CmdError> {
     match word.map(str::trim) {
         None | Some("project") => Ok(StyleLayer::Project),
         Some("standard") => Ok(StyleLayer::Standard),
@@ -359,7 +359,7 @@ pub fn table_layer(word: Option<&str>) -> Result<StyleLayer, CmdError> {
 
 /// A `ratingtable` write: the rows (CSV), the table's name and source, and its layer.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TableWrite {
+pub(crate) struct TableWrite {
     pub csv: String,
     pub name: String,
     pub source: Option<String>,
@@ -368,7 +368,7 @@ pub struct TableWrite {
 
 /// What `ratingtable` records.
 #[derive(Debug, Clone, PartialEq)]
-pub struct TablePlan {
+pub(crate) struct TablePlan {
     /// Empty when the table is already so.
     pub ops: Vec<Op>,
     pub id: StyleRef,
@@ -399,7 +399,7 @@ pub(crate) fn check_table(w: &TableWrite) -> Result<crate::devices::ratings::dat
 /// # Errors
 /// [`check_table`]'s refusals, a standard layer without a standard, or a record the catalogue
 /// refuses.
-pub fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Result<TablePlan, CmdError> {
+pub(crate) fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Result<TablePlan, CmdError> {
     let data = check_table(w)?;
     if w.layer == StyleLayer::Standard && doc.standard.is_none() {
         return Err(CmdError::refused(crate::styles::commands::styles::STANDARD_FIRST));
@@ -429,7 +429,7 @@ pub fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Resu
 }
 
 /// One result as `ratings` returns it (design 057 §8.2): the object the panel shows.
-pub fn rating_json(doc: &Document, r: &Rating) -> Value {
+pub(crate) fn rating_json(doc: &Document, r: &Rating) -> Value {
     let subject = match r.subject {
         RatedSubject::Wire(c) => json!({"wire": r.subject.words(doc), "conductor": c.hex()}),
         RatedSubject::Cable(k) => json!({"cable": r.subject.words(doc), "id": k.hex()}),
@@ -440,7 +440,7 @@ pub fn rating_json(doc: &Document, r: &Rating) -> Value {
     let vd = r.voltdrop.as_ref().map(|v| {
         json!({"volts": v.volts, "percent": v.percent, "shown": format!("{} %", circuits::circuit::fmt_percent(v.percent)), "amps": v.amps, "why": v.why, "limit": v.limit})
     });
-    let kinds: Vec<&str> = circuits::rows(doc, r).iter().map(|c| c.kind.name()).collect();
+    let kinds: Vec<&str> = circuits::rows::rows(doc, r).iter().map(|c| c.kind.name()).collect();
     json!({
         "subject": subject,
         "basis": r.basis.word(),
@@ -493,7 +493,7 @@ macro_rules! keys_of {
 /// One subject of `rating {many}`: a wire or a cable, and the keys to set (null clears a key).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct RatingItemParams {
+pub(crate) struct RatingItemParams {
     /// A panel wire: its conductor id or wire number.
     #[serde(default)]
     wire: Option<String>,

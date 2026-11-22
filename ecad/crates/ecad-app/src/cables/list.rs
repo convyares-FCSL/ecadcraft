@@ -419,7 +419,7 @@ impl CablesView {
 
     /// Brief 057: bring the rating copy up to date and patch the Checks cells of the re-checked
     /// cables only.
-    pub(crate) fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::Kept) {
+    pub(crate) fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::kept::Kept) {
         match self.source.rating.sync(serial, kept) {
             None => self.table.update(&self.source, Changed::All),
             Some(v) if v.is_empty() => {}

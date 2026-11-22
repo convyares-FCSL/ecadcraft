@@ -2,6 +2,9 @@
 //! drawing tests stay in `ecad-engine`.
 
 mod cables;
+mod checks;
+mod circuits;
 mod references;
+mod reports;
 mod symbols;
 mod wires;

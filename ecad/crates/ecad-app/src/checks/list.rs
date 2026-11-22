@@ -17,10 +17,10 @@ use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrica
 use crate::checks::panel::{self as cp, Row};
 
 /// A row's identity: a hash of what the check says, and which of identical rows it is.
-pub type CheckKey = (u64, u32);
+pub(crate) type CheckKey = (u64, u32);
 
-pub const SEVERITY: ColumnId = ColumnId(0);
-pub const MESSAGE: ColumnId = ColumnId(1);
+pub(crate) const SEVERITY: ColumnId = ColumnId(0);
+pub(crate) const MESSAGE: ColumnId = ColumnId(1);
 pub const OBJECT: ColumnId = ColumnId(2);
 pub const PAGE: ColumnId = ColumnId(3);
 pub const FIX: ColumnId = ColumnId(4);
@@ -38,7 +38,7 @@ pub fn columns() -> Vec<Column> {
 
 /// Whether a check's row shows a count rather than a place (`12 wires`): the kind's `count` flag in
 /// `checks::check_kinds!` (brief 060).
-pub fn count_row(k: Kind) -> bool {
+pub(crate) fn count_row(k: Kind) -> bool {
     k.is_count()
 }
 

@@ -100,16 +100,19 @@ ecad-electrical/src/
   terminal_strips/ terminal strips (strips.rs split), strip pages, terminal blocks and levels
                    (terminal_types), accessories, jumper bars (today link_lines.rs)
   plc/             unchanged shape; look.rs becomes draw.rs
-  circuits/        wire and cable sizing and circuit maths (today rating/ minus the readers): trace, sizing,
-                   volt_drop, protection, load, tables. Results are Checks rows. Future power budget,
+  circuits/        wire and cable sizing and circuit maths: circuit (sizing and volt drop), trace, protection,
+                   load, kept (results and update map), rows (Checks rows), commands; the rating tables' dataset
+                   stays in devices/ratings. Results are Checks rows. Future power budget,
                    short circuit and selectivity go here, nothing else
   locations/       locations, functions, location boxes, designations
   numbering/       renumber, fixed and provisional tags
   pages/           page types, folders, frames, generated pages, the cover, their views
   title_blocks/    today title_block/
   releases/        revisions, issue, release, the pre-release check
-  reports/         report models and the BOM (outputs.rs, outputs/kept.rs split, bom.rs) and their view
-  checks/          checks (split by family), checks/kept, words_check, the checks view
+  reports/         report models and the BOM and their view: mod (rows and tables' types), kept/ (mod, update,
+                   checks, rows, tables), bom, view; commands/ (bom, boxes, lists)
+  checks/          checks split by family: mod (kinds, rows, scope), nets, places, grid, devices, cables; kept,
+                   words_check, the checks view
   styles/          style catalogues, text styles, project defaults (setdefault)
   properties/      the Properties palette's ECAD section and setprop (props.rs, cmd/prop, cmd/props/* as one
                    file per object kind, not per lane)

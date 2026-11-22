@@ -26,7 +26,7 @@ const NAMES: &[&str] = &["of_definition", "rep_starter"];
 #[rustfmt::skip]
 const ALLOWED: &[(&str, usize, &str)] = &[
     ("crates/ecad-app/src/inspector/mod.rs", 1, "the placed symbol's prefix entry in the defaults scope (the symbol's, not the device's)"),
-    ("crates/ecad-electrical/src/checks/mod.rs", 1, "a symbol marks some of its own connection points quiet (a drawing property)"),
+    ("crates/ecad-electrical/src/checks/nets.rs", 1, "a symbol marks some of its own connection points quiet (a drawing property)"),
     ("crates/ecad-electrical/src/connectors/mod.rs", 1, "the side a connector half or pin representation draws (gap: a stored side on the representation)"),
     ("crates/ecad-electrical/src/devices/hover.rs", 1, "the symbol's short name in a hover line (drawing question)"),
     ("crates/ecad-electrical/src/devices/json.rs", 1, "the symbol key a representation draws in the device JSON (drawing question)"),

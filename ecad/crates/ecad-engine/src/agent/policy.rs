@@ -55,9 +55,6 @@ pub const READ_COMMANDS: &[&str] = &[
     // Brief 024: the reports and the printed book read the project and record nothing (a `path`
     // is refused in every mode, as for `plot` and `export`: `printbook` then returns the PDF as
     // base64 data); `reports` only asks the desktop app to open its window.
-    "bom",
-    "wirelist",
-    "cablelist",
     "printbook",
     "reports",
     // Brief 028: the terminal plan and a cable's cores read the project and record nothing.

@@ -4,13 +4,13 @@
 
 use crate::circuits::*;
 /// Round half up to `dp` decimals.
-pub fn half_up(x: f64, dp: i32) -> f64 {
+pub(crate) fn half_up(x: f64, dp: i32) -> f64 {
     let m = 10f64.powi(dp);
     ((x * m) + 0.5 + 1e-9).floor() / m
 }
 
 /// A factor rounded to 2 dp (design 057 §3.6).
-pub fn round2(x: f64) -> f64 {
+pub(crate) fn round2(x: f64) -> f64 {
     half_up(x, 2)
 }
 
@@ -230,7 +230,7 @@ pub fn location_code(doc: &Document, key: &str) -> String {
 }
 
 /// Every location box that sets a temperature (open, reload, first show).
-pub fn box_temps(doc: &Document) -> BTreeMap<ecad_model::AidId, BoxTemp> {
+pub(crate) fn box_temps(doc: &Document) -> BTreeMap<ecad_model::AidId, BoxTemp> {
     doc.aids.keys().filter_map(|a| box_temp(doc, *a).map(|b| (*a, b))).collect()
 }
 
@@ -252,7 +252,7 @@ pub(super) fn default_from(doc: &Document, e: &defaults::Entry) -> &'static str 
 }
 
 /// Whether conductor `c` is a panel wire (not a cable core).
-pub fn is_panel_wire(doc: &Document, c: WireId) -> bool {
+pub(crate) fn is_panel_wire(doc: &Document, c: WireId) -> bool {
     doc.cables_of(c).is_empty()
 }
 
@@ -276,7 +276,7 @@ pub(super) fn sheet(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: O
 }
 
 /// Whether conductor `c` is a rated subject (design 057 §7).
-pub fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
+pub(crate) fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
     if !is_panel_wire(doc, c) {
         return false;
     }
@@ -289,7 +289,7 @@ pub fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
 }
 
 /// Whether cable `k` is a rated subject (design 057 §7).
-pub fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool {
+pub(crate) fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool {
     let Some(x) = doc.cables.get(&k) else { return false };
     if !x.rating.is_empty() || x.load.is_some() || x.protected_by().is_some() || cable::of(doc, k).is_some() {
         return true;
@@ -337,7 +337,7 @@ pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId)
 }
 
 /// Evaluate subject `s` with its trace result `found`.
-pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Found) -> Rating {
+pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Found) -> Rating {
     let circuit = s.circuit(doc);
     let mut issues = Vec::new();
     let mut factors = Vec::new();
@@ -493,7 +493,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
         },
         Basis::Table => match ctx.table.as_ref() {
             None => {
-                issues.push(Issue::NoTable("No rating table chosen".into()));
+                issues.push(Issue::NoTableChosen);
                 None
             }
             Some(t) => {
