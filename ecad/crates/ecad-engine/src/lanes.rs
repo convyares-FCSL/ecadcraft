@@ -17,5 +17,4 @@ pub(crate) const LANES: &[(&str, fn() -> Vec<CommandSpec>)] = &[
     ("054", crate::cmd::page_type::specs),
     ("055", crate::cmd::title_block::specs),
     ("056", crate::cmd::plc::exchange::specs),
-    ("057", crate::cmd::rating::specs),
 ];

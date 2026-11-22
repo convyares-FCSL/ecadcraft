@@ -25,7 +25,6 @@ pub mod output;
 pub(crate) mod page;
 pub mod page_type;
 pub mod plc;
-pub mod rating;
 pub(crate) mod reference;
 pub mod release;
 pub mod sheet;
@@ -45,7 +44,7 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
 pub use crate::strips::core_label;
-use ecad_electrical::cmd::{accessory, bom, cable, connect, continuation, default, designation, device_link, level, location, prop, style};
+use ecad_electrical::cmd::{accessory, bom, cable, connect, continuation, default, designation, device_link, level, location, prop, rating, style};
 
 /// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
 /// their lines move here at the phase-end tidy-up.
@@ -110,6 +109,9 @@ fn generic_specs() -> Vec<CommandSpec> {
         generic::spec::<bom::ArticleParams>(),
         generic::spec::<accessory::AccessoryParams>().interactive(interact::accessory),
         generic::spec::<accessory::JumperParams>().interactive(interact::jumper),
+        generic::spec::<rating::RatingParams>(),
+        generic::spec::<rating::RatingtableParams>(),
+        generic::spec::<rating::RatingsParams>(),
     ]
 }
 
@@ -148,6 +150,9 @@ const GENERIC_TYPED: &[input::Typed] = &[
     generic::typed::<bom::ArticleParams>(),
     generic::typed::<accessory::AccessoryParams>(),
     generic::typed::<accessory::JumperParams>(),
+    generic::typed::<rating::RatingParams>(),
+    generic::typed::<rating::RatingtableParams>(),
+    generic::typed::<rating::RatingsParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
@@ -329,7 +334,6 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::terminal::TYPED,
         crate::cmd::plc::TYPED,
         crate::cmd::numbering::TYPED,
-        crate::cmd::rating::TYPED,
         crate::cmd::title_block::TYPED,
         crate::cmd::page_type::TYPED,
         crate::cmd::connector::TYPED,

@@ -73,19 +73,14 @@ pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engin
         }
     };
     for (key, bytes) in writes {
-        let target = P::IO.writes.contains(&key).then(|| path(params, key)).flatten();
+        let target = P::IO.writes.contains(&key).then(|| given(params, key)).flatten();
         let target = target.ok_or_else(|| err(format!("`{key}` is not a file this command writes")))?;
-        std::fs::write(target, bytes).map_err(|e| err(format!("{target} could not be written: {e}.")))?;
+        std::fs::write(target, bytes).map_err(|e| err(format!("Could not write {target}: {e}")))?;
     }
     if let Some(line) = echo {
         s.echo(line);
     }
     Ok(v)
-}
-
-/// The path parameter `key` gives, when it gives one.
-fn path<'a>(params: &'a Value, key: &str) -> Option<&'a str> {
-    given(params, key).filter(|t| !t.is_empty())
 }
 
 /// The text parameter `key` gives, trimmed (also when blank).

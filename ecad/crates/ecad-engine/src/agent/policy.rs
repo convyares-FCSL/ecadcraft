@@ -78,8 +78,6 @@ pub const READ_COMMANDS: &[&str] = &[
     // Brief 045: the racks with their slots, and the I/O list, read the project.
     "plcracks",
     "iolist",
-    // Brief 057: the rating results read the project.
-    "ratings",
     // Brief 056: the tag table as text (no `path` from an agent); export changes nothing.
     "plcexport",
 ];
@@ -99,10 +97,6 @@ const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[
     // Brief 052d: `conflicts {}` lists the waiting conflicts.
     ("conflicts", &[]),
 ];
-
-/// Parameters that name a file for one session command only (a generic command declares its own:
-/// [`crate::cmd::declared_file_keys`]).
-const COMMAND_FILE_KEYS: &[(&str, &str)] = &[("ratingtable", "import"), ("ratingtable", "export")];
 
 /// Commands whose form with `preview: true` only reads (brief 020b: the merge preview; brief 026:
 /// the Renumber and Finalise previews).
@@ -291,9 +285,6 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
         && !PATH_IS_NOT_A_FILE.contains(&id)
         && let Some(k) = FILE_KEYS.iter().find(|k| o.get(**k).is_some_and(|v| !v.is_null()))
     {
-        return Err(file_key(id, k));
-    }
-    if let Some((_, k)) = COMMAND_FILE_KEYS.iter().find(|(c, k)| *c == id && params.get(*k).is_some_and(|v| !v.is_null())) {
         return Err(file_key(id, k));
     }
     if let Some(k) = crate::cmd::declared_file_keys(id).find(|k| params.get(*k).is_some_and(|v| !v.is_null())) {

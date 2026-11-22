@@ -8,8 +8,12 @@ use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
 use ecad_model::units::{Amps, Celsius, Percent, Volts};
 use ecad_model::wire::{InstallMethod, SupplySystem};
 use ecad_model::{CableId, Document, IdAllocator, Op, Wire, WireId, Word};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::cmd::input::{Bounded, TextOrNumber, nullable};
+use crate::cmd::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
 use crate::error::CmdError;
 use crate::rating::{self, Basis, RatedSubject, dataset, parse};
 use crate::styles::{self, cable, ratingtable};
@@ -448,4 +452,365 @@ pub fn rating_json(doc: &Document, r: &Rating) -> Value {
         "size": r.size,
         "checks": kinds,
     })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// A rating key as typed: absent (unchanged), null (cleared) or a value.
+type KeyValue = Option<Option<TextOrNumber>>;
+
+/// The keys given, each with its value as text (`None`: cleared).
+fn sets_of(given: [(&'static str, &KeyValue); 12]) -> Vec<(&'static str, Option<String>)> {
+    given.into_iter().filter_map(|(k, v)| v.as_ref().map(|v| (k, v.as_ref().map(|t| t.text().trim().to_string())))).collect()
+}
+
+/// The twelve rating keys of a params struct, with their values.
+macro_rules! keys_of {
+    ($p:expr) => {
+        [
+            ("basis", &$p.basis),
+            ("manual", &$p.manual),
+            ("bundling", &$p.bundling),
+            ("load", &$p.load),
+            ("protected_by", &$p.protected_by),
+            ("method", &$p.method),
+            ("ambient", &$p.ambient),
+            ("grouped", &$p.grouped),
+            ("voltage", &$p.voltage),
+            ("system", &$p.system),
+            ("vd_limit", &$p.vd_limit),
+            ("cable_type", &$p.cable_type),
+        ]
+    };
+}
+
+/// One subject of `rating {many}`: a wire or a cable, and the keys to set (null clears a key).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RatingItemParams {
+    /// A panel wire: its conductor id or wire number.
+    #[serde(default)]
+    wire: Option<String>,
+    /// A cable: its tag or id.
+    #[serde(default)]
+    cable: Option<String>,
+    /// How the rating is found: datasheet, table or manual.
+    #[serde(default, deserialize_with = "nullable")]
+    basis: KeyValue,
+    /// The rated current (A) when the basis is manual.
+    #[serde(default, deserialize_with = "nullable")]
+    manual: KeyValue,
+    /// Panel wires: a factor 0.30 to 1.00, or a circuit count ("3 bunched").
+    #[serde(default, deserialize_with = "nullable")]
+    bundling: KeyValue,
+    /// The load current (A).
+    #[serde(default, deserialize_with = "nullable")]
+    load: KeyValue,
+    /// The protecting device: a tag such as -Q01, or -F01:3 for a fuse of a bank.
+    #[serde(default, deserialize_with = "nullable")]
+    protected_by: KeyValue,
+    /// Cables: the IEC 60364-5-52 installation method.
+    #[serde(default, deserialize_with = "nullable")]
+    method: KeyValue,
+    /// Cables: the ambient temperature (°C).
+    #[serde(default, deserialize_with = "nullable")]
+    ambient: KeyValue,
+    /// Cables: the circuits grouped, 1 to 20.
+    #[serde(default, deserialize_with = "nullable")]
+    grouped: KeyValue,
+    /// Cables: the voltage (V), for the voltage drop.
+    #[serde(default, deserialize_with = "nullable")]
+    voltage: KeyValue,
+    /// Cables: ac1, ac3 or dc.
+    #[serde(default, deserialize_with = "nullable")]
+    system: KeyValue,
+    /// Cables: the voltage drop limit (%).
+    #[serde(default, deserialize_with = "nullable")]
+    vd_limit: KeyValue,
+    /// Cables: the cable type, an id or a name.
+    #[serde(default, deserialize_with = "nullable")]
+    cable_type: KeyValue,
+}
+
+/// `rating {wire | cable | many, …}` sets a subject's rating properties in one transaction (null
+/// clears a key, an absent key is untouched); `{location, temperature}` sets a location's panel
+/// temperature on its location boxes.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RatingParams {
+    /// A panel wire: its conductor id or wire number.
+    #[serde(default)]
+    wire: Option<String>,
+    /// A cable: its tag or id.
+    #[serde(default)]
+    cable: Option<String>,
+    /// Several subjects at once (at most 500), each `{wire | cable, …}`.
+    #[serde(default)]
+    many: Option<Bounded<RatingItemParams, 0, MAX_MANY>>,
+    /// How the rating is found: datasheet, table or manual.
+    #[serde(default, deserialize_with = "nullable")]
+    basis: KeyValue,
+    /// The rated current (A) when the basis is manual.
+    #[serde(default, deserialize_with = "nullable")]
+    manual: KeyValue,
+    /// Panel wires: a factor 0.30 to 1.00, or a circuit count ("3 bunched").
+    #[serde(default, deserialize_with = "nullable")]
+    bundling: KeyValue,
+    /// The load current (A).
+    #[serde(default, deserialize_with = "nullable")]
+    load: KeyValue,
+    /// The protecting device: a tag such as -Q01, or -F01:3 for a fuse of a bank.
+    #[serde(default, deserialize_with = "nullable")]
+    protected_by: KeyValue,
+    /// Cables: the IEC 60364-5-52 installation method.
+    #[serde(default, deserialize_with = "nullable")]
+    method: KeyValue,
+    /// Cables: the ambient temperature (°C).
+    #[serde(default, deserialize_with = "nullable")]
+    ambient: KeyValue,
+    /// Cables: the circuits grouped, 1 to 20.
+    #[serde(default, deserialize_with = "nullable")]
+    grouped: KeyValue,
+    /// Cables: the voltage (V), for the voltage drop.
+    #[serde(default, deserialize_with = "nullable")]
+    voltage: KeyValue,
+    /// Cables: ac1, ac3 or dc.
+    #[serde(default, deserialize_with = "nullable")]
+    system: KeyValue,
+    /// Cables: the voltage drop limit (%).
+    #[serde(default, deserialize_with = "nullable")]
+    vd_limit: KeyValue,
+    /// Cables: the cable type, an id or a name.
+    #[serde(default, deserialize_with = "nullable")]
+    cable_type: KeyValue,
+    /// A location (such as +CAB1) whose panel temperature is set, with `temperature`.
+    #[serde(default)]
+    location: Option<String>,
+    /// With `location`: the panel temperature (°C), or null to clear it.
+    #[serde(default, deserialize_with = "nullable")]
+    temperature: KeyValue,
+}
+
+/// `ratingtable {name, source?, csv, layer?}` creates or replaces a rating table (one
+/// `SetStyle`); `{import: path, name?, source?}` reads a CSV file, `{export: path, name?}` writes
+/// one.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RatingtableParams {
+    /// The table's name (default: the imported file's name, or "Rating table"); with `export`, the
+    /// table to write (default: the one chosen).
+    #[serde(default)]
+    name: Option<String>,
+    /// Where the values come from (at most 200 characters).
+    #[serde(default)]
+    source: Option<String>,
+    /// The rows, as CSV.
+    #[serde(default)]
+    csv: Option<String>,
+    /// project (the default) or standard.
+    #[serde(default)]
+    layer: Option<String>,
+    /// Read the rows from this CSV file.
+    #[serde(default)]
+    import: Option<String>,
+    /// Write the table to this CSV file.
+    #[serde(default)]
+    export: Option<String>,
+}
+
+/// `ratings {wire? | cable?, from?}` (read only): the results the panel shows, a page at a time.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RatingsParams {
+    /// Only this panel wire: its conductor id or wire number.
+    #[serde(default)]
+    wire: Option<String>,
+    /// Only this cable: its tag or id.
+    #[serde(default)]
+    cable: Option<String>,
+    /// Skip this many (the `next` of the last call).
+    #[serde(default)]
+    from: Option<u64>,
+}
+
+impl RatingItemParams {
+    fn item(&self) -> RatingItem {
+        RatingItem { wire: self.wire.clone(), cable: self.cable.clone(), sets: sets_of(keys_of!(self)) }
+    }
+}
+
+impl RatingParams {
+    fn single(&self) -> RatingItem {
+        RatingItem { wire: self.wire.clone(), cable: self.cable.clone(), sets: sets_of(keys_of!(self)) }
+    }
+
+    /// The parameters given besides `location` and `temperature`, in name order.
+    fn others(&self) -> Vec<&'static str> {
+        let mut given: Vec<&'static str> = [("cable", self.cable.is_some()), ("many", self.many.is_some()), ("wire", self.wire.is_some())]
+            .into_iter()
+            .filter(|g| g.1)
+            .map(|g| g.0)
+            .collect();
+        given.extend(self.single().sets.iter().map(|(k, _)| *k));
+        given.sort_unstable();
+        given
+    }
+}
+
+impl RatingParams {
+    /// A location's panel temperature as given: the location and the value (`None`: cleared).
+    fn location_temperature(&self, loc: &str) -> Result<(String, Option<String>), CmdError> {
+        let typed = loc.trim().to_string();
+        if typed.is_empty() {
+            return Err(CmdError::refused("`location` names a location, such as +CAB1."));
+        }
+        if let Some(k) = self.others().first() {
+            return Err(CmdError::refused(format!("{k} is not a location rating key; give `temperature`.")));
+        }
+        let after = match &self.temperature {
+            Some(None) => None,
+            Some(Some(t)) => Some(check_temperature(&t.text())?),
+            None => return Err(CmdError::refused("Give `temperature` (\u{b0}C), or null to clear it.")),
+        };
+        Ok((typed, after))
+    }
+}
+
+impl Generic for RatingParams {
+    const ID: &'static str = "rating";
+    const TITLE: &'static str = "Rating";
+    const HELP: &'static str = "{wire: conductor id or wire number | cable: tag or id | many: [{wire|cable, …}], basis?: \"datasheet\"|\"table\"|\"manual\", \
+manual?, bundling?: \"0.8\"|\"3 bunched\", load?, protected_by?: \"-Q01\"|\"-F01:3\", method?, ambient?, grouped?, voltage?, system?: \
+\"ac1\"|\"ac3\"|\"dc\", vd_limit?, cable_type?: id or name} | {location: \"+CAB1\", temperature: °C | null} (a location's panel \
+temperature, on its location boxes; null clears; one transaction)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        match &self.location {
+            Some(loc) => self.location_temperature(loc).map(|_| ()),
+            None if self.temperature.is_some() => Err(not_a_key("temperature")),
+            None => Ok(()),
+        }
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        self.check()?;
+        if let Some(loc) = &self.location {
+            let (typed, after) = self.location_temperature(loc)?;
+            let planned = plan_temperature(cx.doc, &typed, after.as_deref())?;
+            let changed = !planned.ops.is_empty();
+            let answer = json!({"changed": changed, "location": planned.location, "boxes": planned.boxes, "temperature": after});
+            return Ok(Outcome::edit_if_any(planned.label, planned.ops, answer));
+        }
+        let items: Vec<RatingItem> = match &self.many {
+            Some(many) => many.0.iter().map(RatingItemParams::item).collect(),
+            None => vec![self.single()],
+        };
+        let planned = plan_rating(cx.doc, &items)?;
+        let changed = !planned.ops.is_empty();
+        let subjects = planned.subjects;
+        Ok(Outcome::edit_then(planned.label, planned.ops, move |doc| {
+            let results: Vec<Value> = subjects.iter().take(PAGE).map(|s| rating_json(doc, &rating::rating_of(doc, *s))).collect();
+            json!({"changed": changed, "ratings": results})
+        }))
+    }
+}
+
+impl RatingtableParams {
+    /// Refuse a call that gives neither rows nor a file, or both.
+    fn source_given(&self) -> Result<(), CmdError> {
+        if self.export.is_some() {
+            return Ok(());
+        }
+        match (&self.import, &self.csv) {
+            (Some(_), Some(_)) => Err(CmdError::refused("Give `csv` or `import`, not both.")),
+            (None, None) => Err(CmdError::refused("Give `csv` (the rows), `import` (a CSV file) or `export` (a CSV file).")),
+            _ => Ok(()),
+        }
+    }
+}
+
+impl Generic for RatingtableParams {
+    const ID: &'static str = "ratingtable";
+    const TITLE: &'static str = "Rating Table";
+    const HELP: &'static str = "{name, source?, csv, layer?: \"project\"|\"standard\"} (creates or replaces; one transaction) | {import: path, name?, source?} | {export: path, name?}";
+    const PAGES: Pages = Pages::ReadAnywhere;
+    const IO: Io = Io { reads: &[("import", Read::Bytes(dataset::MAX_BYTES))], writes: &["export"] };
+
+    fn check(&self) -> Result<(), CmdError> {
+        self.source_given()
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let trim = |v: &Option<String>| v.as_deref().map(|t| t.trim().to_string());
+        let name = trim(&self.name);
+        if self.export.is_some() {
+            let t = export_table(cx.doc, name.as_deref())?;
+            let mut out = Outcome::answer(json!({"exported": trim(&self.export), "rows": t.data.rows.len()}));
+            out.writes.push(("export", dataset::to_csv(&t.data).into_bytes()));
+            return Ok(out);
+        }
+        self.source_given()?;
+        let (csv, from_file) = match (trim(&self.import), self.csv) {
+            (Some(path), _) => {
+                let bytes = match cx.read.get("import") {
+                    Some(Ok(Got::Bytes(b))) => b,
+                    Some(Err(e)) => return Err(CmdError::refused(format!("Could not read {path}: {e}"))),
+                    Some(Ok(Got::Standard(_))) | None => return Err(CmdError::refused(format!("Could not read {path}"))),
+                };
+                if bytes.len() > dataset::MAX_BYTES {
+                    return Err(too_big());
+                }
+                let text = String::from_utf8(bytes.clone())
+                    .map_err(|_| CmdError::refused(format!("Could not read {path} as text: stream did not contain valid UTF-8")))?;
+                (text, Some(path))
+            }
+            (None, c) => (c.unwrap_or_default(), None),
+        };
+        let default_name = from_file
+            .as_deref()
+            .and_then(|f| std::path::Path::new(f).file_stem().and_then(|s| s.to_str()))
+            .map(str::to_string)
+            .unwrap_or_else(|| "Rating table".to_string());
+        let w = TableWrite { csv, name: name.unwrap_or(default_name), source: trim(&self.source), layer: StyleLayer::Project };
+        // The rows, name and source are checked before the layer (as before).
+        check_table(&w)?;
+        let w = TableWrite { layer: table_layer(self.layer.as_deref())?, ..w };
+        let plan = plan_table(cx.doc, cx.ids, &w)?;
+        let changed = !plan.ops.is_empty();
+        let answer = json!({"id": plan.id.text(), "name": w.name, "rows": plan.rows, "changed": changed, "odd": plan.odd});
+        Ok(Outcome::edit_if_any(plan.label, plan.ops, answer))
+    }
+}
+
+impl Generic for RatingsParams {
+    const ID: &'static str = "ratings";
+    const TITLE: &'static str = "Ratings";
+    const HELP: &'static str = "{wire?: id or number, cable?: tag or id, from?: n} (read only)";
+    const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let from = usize::try_from(self.from.unwrap_or(0)).unwrap_or(usize::MAX);
+        let doc = cx.doc;
+        let subjects: Vec<RatedSubject> = if self.wire.is_some() || self.cable.is_some() {
+            subjects_of(doc, self.wire.as_deref(), self.cable.as_deref())?
+        } else {
+            let ctx = rating::Context::new(doc);
+            rating::subjects(doc, &ctx)
+        };
+        let total = subjects.len();
+        let mut ctx = rating::Context::new(doc);
+        let out: Vec<Value> = subjects
+            .iter()
+            .skip(from)
+            .take(PAGE)
+            .map(|s| {
+                let found = rating::trace::trace_subject(doc, *s);
+                rating_json(doc, &rating::evaluate(doc, &mut ctx, *s, &found))
+            })
+            .collect();
+        let next = (from.saturating_add(PAGE) < total).then_some(from.saturating_add(PAGE));
+        Ok(Outcome::answer(json!({"ratings": out, "total": total, "next": next})))
+    }
 }
