@@ -383,7 +383,7 @@ fn make_symbol_on_a_wire_refuses_naming_it() {
     run(&mut h, "wirenumber", json!({"conductor": w["conductor"], "value": "24V-05"}));
     let d = doc(&mut h);
     let c = ecad_model::WireId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
-    let page = d.page_order[0];
+    let page = d.page_order()[0];
     let route = ecad_model::connectivity::derive::route_on_page(&d, c, page).unwrap().0;
     let handle = {
         let t = h.state_mut();

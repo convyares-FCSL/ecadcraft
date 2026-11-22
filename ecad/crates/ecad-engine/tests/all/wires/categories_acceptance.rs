@@ -272,7 +272,7 @@ fn b13_wire_with_a_category_and_the_prompt_keyword() {
     h.points_at(&[(0.0, 20.0), (60.0, 20.0)]);
     let (v, _) = one_tx(&mut h, "wire", json!({"points": pts(&[(0.0, 20.0), (60.0, 20.0)]), "category": "dc24"}));
     let w: WireId = id(&v, "conductor");
-    assert_eq!(h.doc().wires[&w].wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("dc24"));
+    assert_eq!(h.doc().wires()[&w].wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("dc24"));
     assert_eq!(net_potential(&mut h, w), "24V", "no potential before: the category's is written");
     refused(&mut h, "wire", json!({"points": pts(&[(0.0, 40.0), (60.0, 40.0)]), "category": "nope"}));
     // The typed command: the prompt names the keyword.
@@ -288,7 +288,7 @@ fn b13_wire_with_a_category_and_the_prompt_keyword() {
     h.cmdline("60,80");
     h.cmdline("");
     let d = h.doc();
-    let last = d.wires.iter().find(|(_, c)| c.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref() == Some("signal"));
+    let last = d.wires().iter().find(|(_, c)| c.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref() == Some("signal"));
     assert!(last.is_some(), "the typed wire took the category");
 }
 
@@ -501,7 +501,7 @@ fn b_label_rule_none_draws_no_label() {
 /// §5.7: a `wire.category` naming no category draws without one and Checks says
 /// The op giving wire `w` its own wire type `v` (design 072 §4.6).
 fn typed(h: &mut H, w: WireId, v: &str) -> Op {
-    let before = h.doc().wires[&w].clone();
+    let before = h.doc().wires()[&w].clone();
     let mut after = before.clone();
     after.wire_type = ecad_model::StyleRef::parse(v);
     Op::ModifyWire { id: w, before, after }

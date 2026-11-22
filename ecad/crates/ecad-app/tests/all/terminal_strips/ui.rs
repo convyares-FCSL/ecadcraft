@@ -55,7 +55,7 @@ fn terminal_strips_in_the_app() {
     ok(&mut h, r#"wire {"points":[[200,210],[200,95],[120,95],[120,65]]}"#);
     ok(&mut h, r#"wire {"points":[[250,210],[250,70]]}"#);
     ok(&mut h, r#"cableslash {"from":[90,120],"to":[260,120],"tag":"-W01"}"#);
-    let cable = *doc(&mut h).cables.keys().next().unwrap();
+    let cable = *doc(&mut h).cables().keys().next().unwrap();
     ok(&mut h, &format!(r#"setprop {{"cable":"{}","key":"type","value":"YSLY-JZ 7G1.5"}}"#, cable.hex()));
     // Place Terminals and a bridge.
     ok(&mut h, r#"terminalblocks {"from":[90,170],"to":[260,170]}"#);
@@ -104,11 +104,11 @@ fn terminal_strips_in_the_app() {
     // symbol's context), as a person does from the inspector's Use link.
     let d = doc(&mut h);
     let proposals: Vec<(ecad_model::DeviceId, String)> = d
-        .devices
+        .devices()
         .keys()
         .filter(|c| ecad_electrical::locations::is_device(&d, **c))
         .filter_map(|c| {
-            let r = &d.representations[&ecad_electrical::symbols::reps::goto(&d, *c, None)?];
+            let r = &d.representations()[&ecad_electrical::symbols::reps::goto(&d, *c, None)?];
             ecad_electrical::locations::rep_context(&d, r, &mut ecad_electrical::locations::BoxCache::default()).value.map(|v| (*c, v))
         })
         .collect();
@@ -133,7 +133,7 @@ fn terminal_strips_in_the_app() {
     h.run_steps(3);
     save(&h, &deltas, "028-plan-page.png");
     // Checks: too many terminals, fixed by Offer drawn.
-    let page1 = doc(&mut h).page_order[0];
+    let page1 = doc(&mut h).page_order()[0];
     h.state_mut().show_page(page1).unwrap();
     h.run_steps(2);
     ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"terminal_blocks","value":"2"}}"#, x1.hex()));
@@ -144,5 +144,5 @@ fn terminal_strips_in_the_app() {
     save(&h, &deltas, "028-checks.png");
     h.state_mut().panel_action(project_panel::Action::OfferDrawn(x1));
     h.run_steps(3);
-    assert_eq!(doc(&mut h).devices[&x1].properties["terminal_blocks"], "4");
+    assert_eq!(doc(&mut h).devices()[&x1].properties["terminal_blocks"], "4");
 }

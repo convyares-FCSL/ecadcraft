@@ -386,12 +386,12 @@ fn summary(s: &dyn Source) -> Value {
             });
             let d = &o.doc;
             out["counts"] = json!({
-                "pages": d.pages.len(),
-                "devices": d.devices.len(),
-                "wires": d.wires.len(),
-                "cables": d.cables.len(),
+                "pages": d.pages().len(),
+                "devices": d.devices().len(),
+                "wires": d.wires().len(),
+                "cables": d.cables().len(),
                 "nets": d.connectivity().len(),
-                "items": d.items.len(),
+                "items": d.items().len(),
             });
         }
         Err(p) => out["open"] = json!({"state": "failed", "error": p.json()}),
@@ -432,7 +432,7 @@ fn tag_of(d: &ecad_model::Device) -> Option<String> {
 fn owner_name(d: &Document, owner: ecad_model::ConnectionPointOwner) -> String {
     match owner {
         ecad_model::ConnectionPointOwner::Device(c) => device_name(d, c),
-        ecad_model::ConnectionPointOwner::Aid(a) => match d.aids.get(&a).and_then(|x| x.continuation_name()) {
+        ecad_model::ConnectionPointOwner::Aid(a) => match d.aids().get(&a).and_then(|x| x.continuation_name()) {
             Some(name) => format!("\u{2192}{name}"),
             None => a.short(),
         },
@@ -440,11 +440,11 @@ fn owner_name(d: &Document, owner: ecad_model::ConnectionPointOwner) -> String {
 }
 
 fn device_name(d: &Document, c: DeviceId) -> String {
-    d.devices.get(&c).and_then(tag_of).unwrap_or_else(|| format!("({})", c.short()))
+    d.devices().get(&c).and_then(tag_of).unwrap_or_else(|| format!("({})", c.short()))
 }
 
 fn point_name(d: &Document, t: ConnectionPointId) -> String {
-    match d.connection_points.get(&t) {
+    match d.connection_points().get(&t) {
         Some(term) => {
             let own = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
             format!("{}:{own}", owner_name(d, term.owner))
@@ -454,7 +454,7 @@ fn point_name(d: &Document, t: ConnectionPointId) -> String {
 }
 
 fn wire_number(d: &Document, c: WireId) -> Option<String> {
-    d.wires.get(&c).and_then(|w| w.number_text()).map(str::to_string)
+    d.wires().get(&c).and_then(|w| w.number_text()).map(str::to_string)
 }
 
 fn wire_name(d: &Document, c: WireId) -> String {
@@ -463,11 +463,11 @@ fn wire_name(d: &Document, c: WireId) -> String {
 
 fn project(d: &Document) -> Value {
     let mut props = Map::new();
-    for (k, v) in &d.display {
+    for (k, v) in d.display() {
         props.insert(k.clone(), json!(v));
     }
     // Design 072 §5.3 (A15): the revision rows, numbered from 1.
-    let revisions: BTreeMap<String, Value> = d.project.revisions.iter().zip(1u32..).map(|(r, n)| (n.to_string(), json!(r))).collect();
+    let revisions: BTreeMap<String, Value> = d.project().revisions.iter().zip(1u32..).map(|(r, n)| (n.to_string(), json!(r))).collect();
     // Design 072 §5.3 (A15): the location and function lists and the project's defaults.
     let list = |l: Vec<(String, String, Option<String>, Vec<String>)>| -> Vec<Value> {
         l.into_iter().map(|(id, code, tag, descriptions)| json!({"id": id, "code": code, "tag": tag, "descriptions": descriptions})).collect()
@@ -475,59 +475,59 @@ fn project(d: &Document) -> Value {
     let entry = |id: String, code: &ecad_model::ListCode, tag: &Option<ecad_model::ListCode>, ds: &[ecad_model::ListDescription]| {
         (id, code.to_string(), tag.as_ref().map(ToString::to_string), ds.iter().map(ToString::to_string).collect())
     };
-    let locations = list(d.project.locations.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
-    let functions = list(d.project.functions.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
+    let locations = list(d.project().locations.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
+    let functions = list(d.project().functions.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
     json!({
         "display": props,
-        "info": d.project.info,
+        "info": d.project().info,
         // Design 072 §5.2 (A15): each folder with its place and start number.
-        "folders": d.folder_order.iter().filter_map(|id| d.folders.get(id).map(|f| json!({
+        "folders": d.folder_order().iter().filter_map(|id| d.folders().get(id).map(|f| json!({
             "id": id.to_string(),
             "name": f.name,
-            "parent": f.parent.and_then(|p| d.folders.get(&p)).map(|p| p.name.clone()),
+            "parent": f.parent.and_then(|p| d.folders().get(&p)).map(|p| p.name.clone()),
             "start": f.start,
         }))).collect::<Vec<_>>(),
         "locations": locations,
         "functions": functions,
-        "location": d.project.location.map(|l| location_code(d, l)),
-        "function": d.project.function.map(|f| function_code(d, f)),
+        "location": d.project().location.map(|l| location_code(d, l)),
+        "function": d.project().function.map(|f| function_code(d, f)),
         "revisions": revisions,
-        "reference_style": format!("{:?}", d.settings.reference_style()),
+        "reference_style": format!("{:?}", d.settings().reference_style()),
         // Design 072 F40 (A15): what one wire number counts.
-        "number_by": ecad_model::Word::word(d.settings.wiring.number_by),
-        "versions": d.versions.iter().map(|(p, at)| json!({"kind": match p.kind() { ecad_model::PointKind::Version => "Version", ecad_model::PointKind::Revision => "Revision" }, "name": p.key(), "shown": point_text(d, p), "at": at})).collect::<Vec<_>>(),
+        "number_by": ecad_model::Word::word(d.settings().wiring.number_by),
+        "versions": d.versions().iter().map(|(p, at)| json!({"kind": match p.kind() { ecad_model::PointKind::Version => "Version", ecad_model::PointKind::Revision => "Revision" }, "name": p.key(), "shown": point_text(d, p), "at": at})).collect::<Vec<_>>(),
         "counts": {
-            "pages": d.pages.len(),
-            "folders": d.folders.len(),
-            "devices": d.devices.len(),
-            "connection_points": d.connection_points.len(),
-            "wires": d.wires.len(),
-            "cables": d.cables.len(),
+            "pages": d.pages().len(),
+            "folders": d.folders().len(),
+            "devices": d.devices().len(),
+            "connection_points": d.connection_points().len(),
+            "wires": d.wires().len(),
+            "cables": d.cables().len(),
             "nets": d.connectivity().len(),
-            "definitions": d.definitions.len(),
-            "items": d.items.len(),
+            "definitions": d.definitions().len(),
+            "items": d.items().len(),
         },
     })
 }
 
 /// A location id as its code, or `? (id)` when the list has no such entry.
 fn location_code(d: &Document, id: ecad_model::LocationId) -> String {
-    d.project.location(id).map_or_else(|| format!("? ({id})"), |e| e.code.to_string())
+    d.project().location(id).map_or_else(|| format!("? ({id})"), |e| e.code.to_string())
 }
 
 /// A function id as its code, or `? (id)` when the list has no such entry.
 fn function_code(d: &Document, id: ecad_model::FunctionId) -> String {
-    d.project.function(id).map_or_else(|| format!("? ({id})"), |e| e.code.to_string())
+    d.project().function(id).map_or_else(|| format!("? ({id})"), |e| e.code.to_string())
 }
 
 fn pages(d: &Document) -> Vec<Value> {
     let mut items: BTreeMap<ecad_model::PageId, usize> = BTreeMap::new();
-    for it in d.items.values() {
+    for it in d.items().values() {
         *items.entry(it.page).or_default() += 1;
     }
     let mut devices: BTreeMap<ecad_model::PageId, BTreeSet<DeviceId>> = BTreeMap::new();
     let mut wires: BTreeMap<ecad_model::PageId, BTreeSet<WireId>> = BTreeMap::new();
-    for r in d.representations.values() {
+    for r in d.representations().values() {
         match r.subject {
             Subject::Device(c) => {
                 devices.entry(r.page).or_default().insert(c);
@@ -538,11 +538,11 @@ fn pages(d: &Document) -> Vec<Value> {
             _ => {}
         }
     }
-    d.page_order
+    d.page_order()
         .iter()
-        .filter_map(|id| d.pages.get(id).map(|p| (id, p)))
+        .filter_map(|id| d.pages().get(id).map(|p| (id, p)))
         .map(|(id, p)| {
-            let folder = ecad_model::document::book::folder_of(d, *id).and_then(|f| d.folders.get(&f)).map(|f| f.name.clone());
+            let folder = ecad_model::document::book::folder_of(d, *id).and_then(|f| d.folders().get(&f)).map(|f| f.name.clone());
             json!({
                 "id": id.to_string(),
                 "number": page_number(d, *id),
@@ -566,20 +566,20 @@ fn pages(d: &Document) -> Vec<Value> {
 
 fn devices(d: &Document, detail: bool) -> Vec<Value> {
     let mut tags: BTreeMap<String, usize> = BTreeMap::new();
-    for c in d.devices.values() {
+    for c in d.devices().values() {
         if let Some(t) = tag_of(c) {
             *tags.entry(t).or_default() += 1;
         }
     }
     let mut attached: BTreeMap<ConnectionPointId, Vec<WireId>> = BTreeMap::new();
-    for (id, w) in &d.wires {
+    for (id, w) in d.wires() {
         for t in &w.ends {
             attached.entry(*t).or_default().push(*id);
         }
     }
     let mut on_pages: BTreeMap<DeviceId, BTreeSet<usize>> = BTreeMap::new();
-    let order: BTreeMap<ecad_model::PageId, usize> = d.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
-    for r in d.representations.values() {
+    let order: BTreeMap<ecad_model::PageId, usize> = d.page_order().iter().enumerate().map(|(i, p)| (*p, i)).collect();
+    for r in d.representations().values() {
         if let Subject::Device(c) = r.subject
             && let Some(i) = order.get(&r.page)
         {
@@ -587,7 +587,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
         }
     }
     let mut out: Vec<(String, Value)> = d
-        .devices
+        .devices()
         .iter()
         .map(|(id, c)| {
             let tag = tag_of(c);
@@ -601,7 +601,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
                 })
                 .collect();
             let pages: Vec<String> =
-                on_pages.get(id).into_iter().flatten().filter_map(|i| d.page_order.get(*i)).map(|p| page_number(d, *p)).collect();
+                on_pages.get(id).into_iter().flatten().filter_map(|i| d.page_order().get(*i)).map(|p| page_number(d, *p)).collect();
             let mut row = json!({
                 "id": id.to_string(),
                 "tag": tag,
@@ -611,7 +611,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
                 "function_state": place_word(&c.function),
                 "location": c.location.id().map(|l| location_code(d, l)),
                 "location_state": place_word(&c.location),
-                "definition": c.definition.and_then(|def| d.definitions.get(&def)).map(|def| def.name.clone()),
+                "definition": c.definition.and_then(|def| d.definitions().get(&def)).map(|def| def.name.clone()),
                 "pages": pages,
                 "points": points,
             });
@@ -655,13 +655,13 @@ fn nets(d: &Document) -> Vec<Value> {
 
 fn wires(d: &Document) -> Vec<Value> {
     let mut in_cable: BTreeMap<WireId, (String, Option<String>)> = BTreeMap::new();
-    for (id, k) in &d.cables {
+    for (id, k) in d.cables() {
         let tag = k.tag_shown().unwrap_or_else(|| format!("({})", id.short()));
         for w in k.cores.iter().filter_map(|m| m.wire()) {
             in_cable.insert(w, (tag.clone(), k.cores.iter().find(|m| m.wire() == Some(w)).and_then(|m| m.label_str().map(str::to_string))));
         }
     }
-    d.wires
+    d.wires()
         .iter()
         .map(|(id, w)| {
             let ends: Vec<String> = w.ends.iter().map(|t| point_name(d, *t)).collect();
@@ -690,7 +690,7 @@ fn wires(d: &Document) -> Vec<Value> {
 /// The device a wire or cable names as its protection, in words: `-F01:3`, or the id of a device
 /// that is not there.
 fn protected_name(d: &Document, p: ecad_model::objects::wire::ProtectedBy) -> String {
-    let device = if d.devices.contains_key(&p.device) { device_name(d, p.device) } else { format!("{} (not in the project)", p.device.short()) };
+    let device = if d.devices().contains_key(&p.device) { device_name(d, p.device) } else { format!("{} (not in the project)", p.device.short()) };
     p.position.map_or_else(|| device.clone(), |n| format!("{device}:{n}"))
 }
 
@@ -708,7 +708,7 @@ fn core_place(d: &Document, p: ecad_model::CorePosition) -> String {
 }
 
 fn cables(d: &Document) -> Vec<Value> {
-    d.cables
+    d.cables()
         .iter()
         .map(|(id, k)| {
             let members: Vec<Value> = k
@@ -730,9 +730,9 @@ fn cables(d: &Document) -> Vec<Value> {
                 .collect();
             let mut ends: [BTreeSet<String>; 2] = [BTreeSet::new(), BTreeSet::new()];
             for m in &k.cores {
-                if let Some(w) = m.wire().and_then(|w| d.wires.get(&w)) {
+                if let Some(w) = m.wire().and_then(|w| d.wires().get(&w)) {
                     for (side, t) in ends.iter_mut().zip(w.ends.iter()) {
-                        if let Some(term) = d.connection_points.get(t) {
+                        if let Some(term) = d.connection_points().get(t) {
                             side.insert(owner_name(d, term.owner));
                         }
                     }
@@ -820,7 +820,7 @@ fn log(st: &Store, s: &dyn Source, req: &Request) -> Result<Value, Problem> {
 fn point_text(d: &Document, p: &ecad_model::PointName) -> String {
     match p {
         ecad_model::PointName::Version(v) => v.to_string(),
-        ecad_model::PointName::Revision(r) => format!("Rev {}", d.project.rev_scheme.show(*r)),
+        ecad_model::PointName::Revision(r) => format!("Rev {}", d.project().rev_scheme.show(*r)),
     }
 }
 

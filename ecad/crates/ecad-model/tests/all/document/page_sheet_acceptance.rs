@@ -37,7 +37,7 @@ fn with(mut page: Page, key: &str, value: &str) -> Page {
 
 /// A `ModifyPage` of `page` (as `l` holds it) setting `key`'s field to `after`.
 fn set_page(l: &Ledger, page: PageId, key: &str, after: &str) -> Op {
-    let before = l.document().pages[&page].clone();
+    let before = l.document().pages()[&page].clone();
     Op::ModifyPage { id: page, before: before.clone(), after: with(before, key, after) }
 }
 

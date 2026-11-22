@@ -45,11 +45,11 @@ fn f_rest_draws_the_remaining_channels_as_spare() {
     let (mut p, c) = with_cards(0x7045_f102);
     let a03 = c["-A03"];
     fence_inputs(&mut p, a03);
-    let wires = p.h.doc().wires.len();
+    let wires = p.h.doc().wires().len();
     step(&mut p.h, "plcchannels", json!({"card": a03.hex(), "rest": true}));
     let d = p.h.doc();
     assert_eq!(drawn_channels(&d, a03), (0..16).collect::<Vec<_>>());
-    assert_eq!(d.wires.len(), wires, "rest draws no wires");
+    assert_eq!(d.wires().len(), wires, "rest draws no wires");
     assert_eq!(pin(&d, a03, 15, "in").as_deref(), Some("16"));
     let e = echo(&p.h, 3);
     assert!(e.contains("Drew -A03 channels 8\u{2013}15 (8 spare)."), "{e}");
@@ -230,7 +230,7 @@ fn fp2_di_and_do_are_channels_and_an_old_key_is_refused() {
     assert!(pts.contains_key(".0.in") && pts.contains_key(".1.in"), "{:?}", pts.keys().collect::<Vec<_>>());
     let d = p.h.doc();
     let t = pts[".1.in"].1;
-    let before = d.connection_points[&t].clone();
+    let before = d.connection_points()[&t].clone();
     let mut after = before.clone();
     after.key = Some("I1.3".parse().unwrap());
     let head = p.h.head();
@@ -331,7 +331,7 @@ fn spare_and_reserved_are_derived() {
     assert_eq!((num(&row["used"]), num(&row["spare"])), (Some(0), Some(16)), "{row}");
     // No stored state: no `plc.ch.*.state` or similar key appears.
     let d = p.h.doc();
-    assert!(d.devices[&a03].properties.keys().all(|k| !k.contains("state") && !k.contains("spare")), "{:?}", d.devices[&a03].properties);
+    assert!(d.devices()[&a03].properties.keys().all(|k| !k.contains("state") && !k.contains("spare")), "{:?}", d.devices()[&a03].properties);
     // `plc.spare.text`.
     p.h.run("setdefault", json!({"key": "plc.spare.text", "level": "project", "value": "Reserve"})).unwrap();
     assert_eq!(text_values(&mut p.h, p.inputs).iter().filter(|t| *t == "Reserve").count(), 7);
@@ -466,7 +466,7 @@ fn t_hostile_channel_keys_and_texts() {
 #[test]
 fn t_fence_across_300_wires_is_refused() {
     let mut p = fixture_p(0x7045_ae202);
-    let page = p.h.doc().page_order[0];
+    let page = p.h.doc().page_order()[0];
     let wires: Vec<(f64, f64)> = (0..300).map(|i| (1000.0 + 2.0 * f64::from(i), 0.0)).collect();
     p.h.activate(page);
     for (x, _) in &wires {

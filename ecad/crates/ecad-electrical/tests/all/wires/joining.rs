@@ -44,10 +44,10 @@ fn a_line_is_a_route_drawn_by_one_polyline() {
     let mut ids = IdAllocator::seeded(7);
     let plan = draw(&mut doc, &mut ids, page, &style, &[(0.0, 0.0), (10.0, 0.0)]);
     assert!(plan.created);
-    let route = doc.routes.get(&plan.route).expect("route");
+    let route = doc.routes().get(&plan.route).expect("route");
     assert_eq!(route.ends, [RouteEnd::Free, RouteEnd::Free]);
     assert!(drawn_as_routed(&doc, plan.route));
-    assert!(doc.wires.is_empty(), "no connection points: no wire");
+    assert!(doc.wires().is_empty(), "no connection points: no wire");
 }
 
 #[test]
@@ -58,8 +58,8 @@ fn a_line_from_a_free_end_extends_that_route() {
     let second = draw(&mut doc, &mut ids, page, &style, &[(10.0, 0.0), (20.0, 0.0)]);
     assert!(!second.created);
     assert_eq!(second.route, first.route);
-    assert_eq!(doc.routes.len(), 1);
-    assert_eq!(doc.routes.get(&first.route).map(|r| r.points.clone()), Some(vec![Pt::new(0.0, 0.0), Pt::new(20.0, 0.0)]), "one straight line");
+    assert_eq!(doc.routes().len(), 1);
+    assert_eq!(doc.routes().get(&first.route).map(|r| r.points.clone()), Some(vec![Pt::new(0.0, 0.0), Pt::new(20.0, 0.0)]), "one straight line");
     assert!(drawn_as_routed(&doc, first.route));
 }
 
@@ -72,8 +72,8 @@ fn a_line_between_two_free_ends_makes_one_route_of_three() {
     let c = draw(&mut doc, &mut ids, page, &style, &[(10.0, 0.0), (20.0, 0.0), (20.0, 10.0)]);
     assert_eq!(c.route, a.route);
     assert_eq!(c.removed, vec![b.route]);
-    assert_eq!(doc.routes.len(), 1);
-    assert_eq!(doc.routes.get(&a.route).map(|r| r.points.len()), Some(3));
+    assert_eq!(doc.routes().len(), 1);
+    assert_eq!(doc.routes().get(&a.route).map(|r| r.points.len()), Some(3));
     assert!(drawn_as_routed(&doc, a.route));
     assert!(route_item(&doc, b.route).is_none(), "the merged route's drawing goes with it");
 }
@@ -84,13 +84,13 @@ fn a_line_ending_on_a_route_is_a_tee_and_a_free_end_on_a_new_line_lands_on_it() 
     let mut ids = IdAllocator::seeded(7);
     let main = draw(&mut doc, &mut ids, page, &style, &[(0.0, 0.0), (20.0, 0.0)]);
     let tee = draw(&mut doc, &mut ids, page, &style, &[(5.0, 10.0), (5.0, 0.0)]);
-    assert_eq!(doc.routes.get(&tee.route).map(|r| r.ends[1]), Some(RouteEnd::On { route: main.route, at: Pt::new(5.0, 0.0) }));
-    assert!(doc.devices.is_empty(), "no junction component");
+    assert_eq!(doc.routes().get(&tee.route).map(|r| r.ends[1]), Some(RouteEnd::On { route: main.route, at: Pt::new(5.0, 0.0) }));
+    assert!(doc.devices().is_empty(), "no junction component");
     // Reverse T: a free end lying on a new line's middle lands on it.
     let stub = draw(&mut doc, &mut ids, page, &style, &[(40.0, 10.0), (40.0, 0.0)]);
     let across = draw(&mut doc, &mut ids, page, &style, &[(30.0, 0.0), (50.0, 0.0)]);
     assert_eq!(across.tees, vec![(Pt::new(40.0, 0.0), stub.route)]);
-    assert_eq!(doc.routes.get(&stub.route).map(|r| r.ends[1]), Some(RouteEnd::On { route: across.route, at: Pt::new(40.0, 0.0) }));
+    assert_eq!(doc.routes().get(&stub.route).map(|r| r.ends[1]), Some(RouteEnd::On { route: across.route, at: Pt::new(40.0, 0.0) }));
 }
 
 #[test]
@@ -120,8 +120,8 @@ fn joining_two_free_ends_merges_and_tees_follow_the_survivor() {
         op.apply(&mut doc).expect("apply");
     }
     doc.rebuild_index();
-    assert_eq!(doc.routes.len(), 2);
+    assert_eq!(doc.routes().len(), 2);
     let survivor = j.survivor;
-    assert_eq!(doc.routes.get(&tee.route).and_then(|r| r.ends[1].route()), Some(survivor));
+    assert_eq!(doc.routes().get(&tee.route).and_then(|r| r.ends[1].route()), Some(survivor));
     assert!(drawn_as_routed(&doc, survivor));
 }

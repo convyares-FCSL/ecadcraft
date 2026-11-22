@@ -38,10 +38,10 @@ fn one_by_agent(c: &mut Client, cmd: &str, params: Value, names: &[&str]) -> Val
 #[test]
 fn page_type_commands_record_one_transaction_by_the_agent() {
     let mut c = writer(WRITER_SEED);
-    let first = c.doc().page_order[0].hex();
+    let first = c.doc().page_order()[0].hex();
     let v = one_by_agent(&mut c, "newpage", json!({"type": "network", "after": first}), &["AddPage"]);
     let net = hex(&v, "page");
-    assert_eq!(c.doc().page_order.get(1).map(|p| p.hex()), Some(net.clone()), "right after the first page");
+    assert_eq!(c.doc().page_order().get(1).map(|p| p.hex()), Some(net.clone()), "right after the first page");
     let v = one_by_agent(&mut c, "newpage", json!({"type": "front", "generated": "cover"}), &["AddPage"]);
     let cover = hex(&v, "page");
     one_by_agent(&mut c, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "A2"}}), &["SetStyle"]);
@@ -64,7 +64,7 @@ fn page_type_commands_record_one_transaction_by_the_agent() {
 fn with_writes_off_page_type_writes_are_refused() {
     let mut c = reader();
     let before = c.log();
-    let page = c.doc().page_order[0].hex();
+    let page = c.doc().page_order()[0].hex();
     let writes: &[(&str, Value)] = &[
         ("newpage", json!({"type": "schematic"})),
         ("newpage", json!({"type": "front", "generated": "revisions"})),

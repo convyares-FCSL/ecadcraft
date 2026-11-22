@@ -145,7 +145,7 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
         let elsewhere: Vec<(ecad_model::RouteId, usize, ConnectionPointId)> = doc0
             .routes_on(page)
             .flat_map(|x| (0..2).map(move |i| (x, i)))
-            .filter_map(|(x, i)| doc0.routes[&x].ends[i].point().map(|t| (x, i, t)))
+            .filter_map(|(x, i)| doc0.routes()[&x].ends[i].point().map(|t| (x, i, t)))
             .filter(|(_, _, t)| !here.contains(t))
             .collect();
         let kind: &str = match rng.below(9) {
@@ -153,7 +153,7 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
                 // Move the page's component (K1 or K2) by its handles.
                 let doc = r.h.doc();
                 let terms = if page == r.supply { r.k1 } else { r.k2 };
-                let Some(comp) = doc.connection_points.get(&terms[0]).and_then(|t| t.device()) else { continue };
+                let Some(comp) = doc.connection_points().get(&terms[0]).and_then(|t| t.device()) else { continue };
                 let hs = r.h.rep_handles(page, comp);
                 let _ = r.h.run("move", json!({"handles": hs, "delta": delta}));
                 "move component"
@@ -196,7 +196,7 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
                 let Some(rid) = cable_references(&doc).into_iter().find(|x| x.page == page).map(|x| x.reference) else {
                     continue;
                 };
-                let Some(item) = doc.representations.get(&rid).and_then(|x| x.items.first().copied()) else { continue };
+                let Some(item) = doc.representations().get(&rid).and_then(|x| x.items.first().copied()) else { continue };
                 let hp = r.h.handle_of(page, item);
                 let _ = r.h.run("move", json!({"handles": [hp.hex()], "delta": delta}));
                 "move reference point"
@@ -205,7 +205,7 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
                 // The component with every route on the page, as a crossing window would select it.
                 let doc = r.h.doc();
                 let terms = if page == r.supply { r.k1 } else { r.k2 };
-                let Some(comp) = doc.connection_points.get(&terms[0]).and_then(|t| t.device()) else { continue };
+                let Some(comp) = doc.connection_points().get(&terms[0]).and_then(|t| t.device()) else { continue };
                 let mut hs = r.h.rep_handles(page, comp);
                 for c in r.w {
                     if let Some((h, _)) = route(&mut r.h, page, c) {
@@ -234,7 +234,7 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
         let doc = r.h.doc();
         if kind != "undo" {
             for (c, e, t) in &elsewhere {
-                let Some(now) = doc.routes.get(c).map(|x| x.ends[*e]) else { continue };
+                let Some(now) = doc.routes().get(c).map(|x| x.ends[*e]) else { continue };
                 assert_eq!(now, ecad_model::RouteEnd::Point(*t), "step {step} ({kind}): end {e:?} of {c:?} attached elsewhere changed");
                 *counts.entry("checked ends elsewhere").or_default() += 1;
             }
@@ -255,12 +255,12 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
         }
         // And the per-cable derivation is the whole-document one, cable by cable.
         let all = ecad_model::connectivity::derive::cable_references(&doc);
-        for k in doc.cables.keys() {
+        for k in doc.cables().keys() {
             let one = ecad_model::connectivity::derive::cable_references_of(&doc, &std::collections::BTreeSet::from([*k]));
             let want: Vec<_> = all.iter().filter(|x| x.cable == *k).cloned().collect();
             assert_eq!(one, want, "step {step}: references of cable {k:?}");
         }
-        let every: std::collections::BTreeSet<_> = doc.cables.keys().copied().collect();
+        let every: std::collections::BTreeSet<_> = doc.cables().keys().copied().collect();
         assert_eq!(ecad_model::connectivity::derive::cable_references_of(&doc, &every), all, "step {step}: all cables");
     }
     let _ = r.c1;

@@ -43,7 +43,7 @@ fn project(h: &mut H, dir: &std::path::Path) {
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
     ok(h, r#"newpage {"title":"PLC"}"#);
-    let pages = doc(h).page_order.clone();
+    let pages = doc(h).page_order().to_vec();
     if let Some(p) = pages.last() {
         h.state_mut().show_page(*p).unwrap();
         h.run_steps(2);

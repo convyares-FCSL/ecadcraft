@@ -59,7 +59,7 @@ fn types_match_the_old_predicates() {
     let doc = h.doc();
     let mut spoke = 0;
     for (key, c) in placed {
-        let group = doc.devices[&c].device_type.group();
+        let group = doc.devices()[&c].device_type.group();
         assert_eq!(group, key.device_group(), "{key}: the device has its starter's type");
         if let Some(want) = predicates_say(&doc, c) {
             spoke += 1;
@@ -77,12 +77,12 @@ fn the_symbol_declares_the_type_and_joining_keeps_it() {
     let k = id::<DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [40, 40], "tag": "-K01"})).unwrap(), "component");
     let q = id::<DeviceId>(&h.run("place", json!({"symbol": "mcb1", "at": [80, 40]})).unwrap(), "component");
     let doc = h.doc();
-    assert_eq!(doc.devices[&k].device_type.group(), DeviceGroup::Switching);
-    assert_eq!(doc.devices[&q].device_type.group(), DeviceGroup::Protection);
+    assert_eq!(doc.devices()[&k].device_type.group(), DeviceGroup::Switching);
+    assert_eq!(doc.devices()[&q].device_type.group(), DeviceGroup::Protection);
     // A float switch's contact placed with -K01's tag joins -K01, which stays Switching.
     let joined = id::<DeviceId>(&h.run("place", json!({"symbol": "floatno", "at": [120, 40], "tag": "-K01"})).unwrap(), "component");
     assert_eq!(joined, k);
-    assert_eq!(h.doc().devices[&k].device_type.group(), DeviceGroup::Switching);
+    assert_eq!(h.doc().devices()[&k].device_type.group(), DeviceGroup::Switching);
     // The starter's definition declares it.
     let lamp = STARTERS.iter().find(|s| s.key == StarterKey::Lamp).unwrap();
     assert_eq!(lamp.definition().unwrap().device_type.group(), DeviceGroup::Indicator);
@@ -104,11 +104,11 @@ fn a_project_prefix_follows_a_renamed_symbol_key() {
     };
     let def: ecad_model::DefinitionId = id(&h.run("symbolnew", symbol("float1")).unwrap(), "definition");
     h.run("setdefault", json!({"key": "symbol.float1.prefix", "value": "S"})).unwrap();
-    assert!(h.doc().settings.tag_prefixes.contains_key(&PrefixOf::Project("float1".into())));
+    assert!(h.doc().settings().tag_prefixes.contains_key(&PrefixOf::Project("float1".into())));
     let mut edit = symbol("float2");
     edit["definition"] = json!(def.hex());
     h.run("symboledit", edit).unwrap();
-    let prefixes = h.doc().settings.tag_prefixes;
+    let prefixes = h.doc().settings().tag_prefixes.clone();
     assert!(!prefixes.contains_key(&PrefixOf::Project("float1".into())), "{prefixes:?}");
     assert_eq!(prefixes.get(&PrefixOf::Project("float2".into())).map(|p| p.to_string()), Some("S".into()));
     // Nothing names a project symbol that is not there: the open check finds nothing.
@@ -122,24 +122,24 @@ fn text_fields_are_written_as_modify_device() {
     use ecad_model::{Op, TextField};
     let mut h = H::new(7202);
     let c: DeviceId = id(&crate::common::place(&mut h, "coil", (100.0, 100.0)), "component");
-    let placed = h.doc().devices[&c].clone();
+    let placed = h.doc().devices()[&c].clone();
     assert_eq!(placed.text(TextField::Description), Some("Contactor / relay coil"), "placing writes the symbol's name as the description");
     for f in TextField::ALL {
         h.run("setprop", json!({"component": c.hex(), "key": f.key(), "value": format!("v-{}", f.key())})).unwrap();
         let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
         assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{}: {ops:?}", f.key());
     }
-    let d = h.doc().devices[&c].clone();
+    let d = h.doc().devices()[&c].clone();
     assert!(TextField::ALL.iter().all(|f| d.text(*f).is_some()) && d.properties.is_empty(), "{d:?}");
     // `article` writes the device's article number on every part with that part number.
     h.run("article", json!({"part_number": "v-part_number", "article_number": "A-77"})).unwrap();
-    assert_eq!(h.doc().devices[&c].text(TextField::ArticleNumber), Some("A-77"));
+    assert_eq!(h.doc().devices()[&c].text(TextField::ArticleNumber), Some("A-77"));
     // An item (a loose part, design 072 §6.4) keeps its texts as fields, and its description
     // can't be cleared.
     let item: ecad_model::LoosePartId = id(&h.run("bomitem", json!({"description": "Trunking", "qty": "2"})).unwrap(), "item");
-    assert_eq!(h.doc().loose_parts[&item].description.as_str(), "Trunking");
+    assert_eq!(h.doc().loose_parts()[&item].description.as_str(), "Trunking");
     h.run("bomitem", json!({"item": item.hex(), "set": {"maker": "Lapp"}})).unwrap();
-    assert_eq!(h.doc().loose_parts[&item].manufacturer.as_ref().map(|t| t.as_str()), Some("Lapp"));
+    assert_eq!(h.doc().loose_parts()[&item].manufacturer.as_ref().map(|t| t.as_str()), Some("Lapp"));
     assert!(h.run("bomitem", json!({"item": item.hex(), "set": {"description": null}})).is_err());
     // Too long for the field: refused with its bound.
     let e = h.run("setprop", json!({"component": c.hex(), "key": "part_number", "value": "9".repeat(65)})).unwrap_err();
@@ -159,7 +159,7 @@ fn location_and_function_are_written_as_modify_device() {
         let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
         assert!(matches!(ops.as_slice(), [Op::ModifyProject { .. }, Op::ModifyDevice { .. }]), "{key}: {ops:?}");
     }
-    let d = h.doc().devices[&c].clone();
+    let d = h.doc().devices()[&c].clone();
     assert!(
         matches!(d.location, ecad_model::document::book::Place::Manual(_)) && matches!(d.function, ecad_model::document::book::Place::Manual(_)),
         "{d:?}"
@@ -167,16 +167,16 @@ fn location_and_function_are_written_as_modify_device() {
     assert!(!d.properties.contains_key("location") && !d.properties.contains_key("function"), "{d:?}");
     // Clearing clears the flag too.
     h.run("setprop", json!({"component": c.hex(), "key": "function", "value": null})).unwrap();
-    let d = h.doc().devices[&c].clone();
+    let d = h.doc().devices()[&c].clone();
     assert_eq!(d.function, ecad_model::document::book::Place::Unset);
     // A box drawn around an unset device proposes its value: set, not fixed.
     let other: DeviceId = id(&crate::common::place(&mut h, "lamp", (100.0, 100.0)), "component");
     h.run("locationbox", json!({"location": "+CP2", "corners": [[20, 60], [200, 220]]})).unwrap();
-    let o = h.doc().devices[&other].clone();
+    let o = h.doc().devices()[&other].clone();
     assert!(matches!(o.location, ecad_model::document::book::Place::Proposed(_)), "{o:?}");
     // The device typed +CP1 keeps it (fixed) and is asked about, not moved.
-    assert!(matches!(h.doc().devices[&c].location, ecad_model::document::book::Place::Manual(_)));
-    assert_ne!(h.doc().devices[&c].location, o.location);
+    assert!(matches!(h.doc().devices()[&c].location, ecad_model::document::book::Place::Manual(_)));
+    assert_ne!(h.doc().devices()[&c].location, o.location);
 }
 
 /// Step 3, Connector (design 072 §2.2): placing a connector stores its symbol's family; `setprop`
@@ -188,7 +188,7 @@ fn connector_fields_are_written_as_modify_device() {
     use ecad_model::objects::devices::{ConnectorCheck, ConnectorFamily, DeviceType};
     let mut h = H::new(7204);
     let c: DeviceId = id(&crate::common::place(&mut h, "dsub9s", (100.0, 100.0)), "component");
-    let family = |h: &mut H| match &h.doc().devices[&c].device_type {
+    let family = |h: &mut H| match &h.doc().devices()[&c].device_type {
         DeviceType::Connector(x) => Some(x.family),
         _ => None,
     };
@@ -199,9 +199,9 @@ fn connector_fields_are_written_as_modify_device() {
         h.run("setprop", json!({"component": c.hex(), "key": key, "value": value})).unwrap();
         let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
         assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{key}: {ops:?}");
-        assert_eq!(h.doc().devices[&c].value(key).as_deref(), Some(value), "{key}");
+        assert_eq!(h.doc().devices()[&c].value(key).as_deref(), Some(value), "{key}");
     }
-    let d = h.doc().devices[&c].clone();
+    let d = h.doc().devices()[&c].clone();
     assert!(d.properties.is_empty(), "{d:?}");
     let DeviceType::Connector(x) = &d.device_type else { panic!("{d:?}") };
     assert!(x.ignored.contains(&ConnectorCheck::Size));
@@ -234,9 +234,10 @@ fn a_rating_is_read_into_typed_fields() {
     assert_eq!(r["value"], json!("curve B, 16 A"));
     let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
     assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
-    let DeviceType::Protection(Protection::Mcb(b)) = &h.doc().devices[&q].device_type else { panic!() };
+    let doc = h.doc();
+    let DeviceType::Protection(Protection::Mcb(b)) = &doc.devices()[&q].device_type else { panic!() };
     assert_eq!((b.curve, b.rated_current.map(|a| a.0)), (Some(TripCurve::B), Some(16.0)));
-    assert!(h.doc().devices[&q].properties.is_empty());
+    assert!(h.doc().devices()[&q].properties.is_empty());
     // A bare number on a breaker asks for the curve; a residual current is refused.
     let e = h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "16"})).unwrap_err();
     assert!(e.contains("curve"), "{e}");
@@ -247,7 +248,7 @@ fn a_rating_is_read_into_typed_fields() {
     assert!(!no_rating(&mut h));
     let r = h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "see datasheet"})).unwrap();
     assert!(r["message"].as_str().unwrap().contains("note"), "{r}");
-    assert_eq!(h.doc().devices[&q].rating_note.as_ref().map(|n| n.to_string()).as_deref(), Some("see datasheet"));
+    assert_eq!(h.doc().devices()[&q].rating_note.as_ref().map(|n| n.to_string()).as_deref(), Some("see datasheet"));
     assert!(no_rating(&mut h));
     // A fuse bank's fuse.
     let f: DeviceId = id(&crate::common::place(&mut h, "fusebank4", (200.0, 100.0)), "component");
@@ -267,7 +268,7 @@ fn a_switching_rating_is_read_into_typed_fields() {
     use ecad_model::objects::devices::{DeviceType, OperatorKind};
     let mut h = H::new(7206);
     let k: DeviceId = id(&crate::common::place(&mut h, "coil", (100.0, 100.0)), "component");
-    let kind = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
+    let kind = |h: &mut H, c: DeviceId| match &h.doc().devices()[&c].device_type {
         DeviceType::Switching(s) => Some(s.operator_kind()),
         _ => None,
     };
@@ -280,10 +281,11 @@ fn a_switching_rating_is_read_into_typed_fields() {
     assert_eq!(r["value"], json!("coil 24 V DC, AC-3 9 A"));
     let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
     assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
-    let DeviceType::Switching(s) = &h.doc().devices[&k].device_type else { panic!() };
+    let doc = h.doc();
+    let DeviceType::Switching(s) = &doc.devices()[&k].device_type else { panic!() };
     assert_eq!(s.control().and_then(|c| c.voltage).map(|v| (v.volts.0, v.current)), Some((24.0, Current::Dc)));
     assert_eq!(s.ac3_current.map(|a| a.0), Some(9.0));
-    assert!(h.doc().devices[&k].properties.is_empty());
+    assert!(h.doc().devices()[&k].properties.is_empty());
     assert!(!no_rating(&mut h));
     // Ambiguous text is asked, never guessed.
     let e = h.run("setprop", json!({"component": k.hex(), "key": "rating", "value": "24 V"})).unwrap_err();
@@ -314,7 +316,7 @@ fn a_sensor_rating_is_read_into_typed_fields() {
     use ecad_model::geometry::units::Current;
     use ecad_model::objects::devices::{DeviceType, Output, Sensing};
     let mut h = H::new(7207);
-    let kind = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
+    let kind = |h: &mut H, c: DeviceId| match &h.doc().devices()[&c].device_type {
         DeviceType::Sensor(s) => Some((s.sensing, s.output)),
         _ => None,
     };
@@ -338,7 +340,7 @@ fn a_sensor_rating_is_read_into_typed_fields() {
     assert_eq!(r["value"], json!("250 V AC 5 A"), "{r}");
     let r = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "K"})).unwrap();
     assert_eq!(r["value"], json!("K"), "{r}");
-    assert!(h.doc().devices[&t].rating_note.is_some());
+    assert!(h.doc().devices()[&t].rating_note.is_some());
     // An unrated PNP sensor has the Checks row `no-rating`; a rated one does not.
     let b: DeviceId = id(&crate::common::place(&mut h, "prox3", (100.0, 100.0)), "component");
     assert!(no_rating(&mut h));
@@ -347,9 +349,10 @@ fn a_sensor_rating_is_read_into_typed_fields() {
     assert_eq!(r["value"], json!("24 V DC"));
     let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
     assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
-    let DeviceType::Sensor(s) = &h.doc().devices[&b].device_type else { panic!() };
+    let doc = h.doc();
+    let DeviceType::Sensor(s) = &doc.devices()[&b].device_type else { panic!() };
     assert_eq!(s.supply.map(|v| (v.volts.0, v.current)), Some((24.0, Current::Dc)));
-    assert!(h.doc().devices[&b].properties.is_empty());
+    assert!(h.doc().devices()[&b].properties.is_empty());
     assert!(!no_rating(&mut h));
     // Ambiguous text is asked, never guessed.
     let e = h.run("setprop", json!({"component": b.hex(), "key": "rating", "value": "24 V"})).unwrap_err();
@@ -379,7 +382,7 @@ fn a_strip_fuse_position_rating_is_typed() {
     assert_eq!(r["message"], json!("Read: 6.3 A, T."), "{r}");
     let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
     assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
-    let strip = h.doc().devices[&x1].clone();
+    let strip = h.doc().devices()[&x1].clone();
     let DeviceType::TerminalStrip(s) = &strip.device_type else { panic!("{:?}", strip.device_type) };
     let fuse = s.fuse("2").unwrap();
     assert_eq!((fuse.rated_current.map(|a| a.0), fuse.class), (Some(6.3), Some(FuseClass::T)));
@@ -400,7 +403,7 @@ fn a_strip_fuse_position_rating_is_typed() {
     // Clearing works, also on a label that is no fuse position.
     h.run("setprop", json!({"component": x1.hex(), "key": "rating.3", "value": ""})).unwrap();
     h.run("setprop", json!({"component": x1.hex(), "key": "rating.9", "value": ""})).unwrap();
-    assert_eq!(h.doc().devices[&x1].value("rating.3"), None);
+    assert_eq!(h.doc().devices()[&x1].value("rating.3"), None);
     assert!(no_fuse_rating(&mut h));
 }
 
@@ -413,7 +416,7 @@ fn a_motor_rating_is_read_into_typed_fields() {
     use ecad_model::geometry::units::{Amps, Watts};
     use ecad_model::objects::devices::{DeviceType, Phases, Starting};
     let mut h = H::new(7209);
-    let phases = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
+    let phases = |h: &mut H, c: DeviceId| match &h.doc().devices()[&c].device_type {
         DeviceType::Motor(m) => Some(m.phases),
         _ => None,
     };
@@ -428,9 +431,10 @@ fn a_motor_rating_is_read_into_typed_fields() {
     assert_eq!(r["value"], json!("7.5 kW, 15.2 A, star-delta"));
     let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
     assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
-    let DeviceType::Motor(got) = &h.doc().devices[&m].device_type else { panic!() };
+    let doc = h.doc();
+    let DeviceType::Motor(got) = &doc.devices()[&m].device_type else { panic!() };
     assert_eq!((got.rated_power, got.rated_current, got.starting), (Some(Watts(7500.0)), Some(Amps(15.2)), Some(Starting::StarDelta)));
-    assert!(h.doc().devices[&m].properties.is_empty());
+    assert!(h.doc().devices()[&m].properties.is_empty());
     let r = h.run("setprop", json!({"component": m1.hex(), "key": "rating", "value": "0.37 kW"})).unwrap();
     assert_eq!(r["value"], json!("0.37 kW"), "{r}");
     assert!(!no_rating(&mut h));
@@ -441,7 +445,7 @@ fn a_motor_rating_is_read_into_typed_fields() {
     assert!(e.contains("no voltage"), "{e}");
     let r = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "IE3"})).unwrap();
     assert_eq!(r["value"], json!("IE3"), "{r}");
-    assert!(h.doc().devices[&m].rating_note.is_some());
+    assert!(h.doc().devices()[&m].rating_note.is_some());
     assert!(no_rating(&mut h));
 }
 
@@ -456,7 +460,7 @@ fn a_load_rating_is_read_into_typed_fields() {
     let mut h = H::new(7210);
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let v: DeviceId = id(&crate::common::place(&mut h, "valve", (200.0, 100.0)), "component");
-    assert_eq!(h.doc().devices[&v].device_type, DeviceType::Load(Load::default()));
+    assert_eq!(h.doc().devices()[&v].device_type, DeviceType::Load(Load::default()));
     let e: DeviceId = id(&crate::common::place(&mut h, "heater", (100.0, 100.0)), "component");
     assert!(no_rating(&mut h));
     let r = h.run("setprop", json!({"component": e.hex(), "key": "rating", "value": "3000 W"})).unwrap();
@@ -464,8 +468,8 @@ fn a_load_rating_is_read_into_typed_fields() {
     assert_eq!(r["value"], json!("3 kW"));
     let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
     assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
-    assert_eq!(h.doc().devices[&e].device_type, DeviceType::Load(Load { rated_power: Some(Watts(3000.0)) }));
-    assert!(h.doc().devices[&e].properties.is_empty());
+    assert_eq!(h.doc().devices()[&e].device_type, DeviceType::Load(Load { rated_power: Some(Watts(3000.0)) }));
+    assert!(h.doc().devices()[&e].properties.is_empty());
     let r = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "5W"})).unwrap();
     assert_eq!(r["value"], json!("5 W"), "{r}");
     assert!(!no_rating(&mut h));
@@ -476,7 +480,7 @@ fn a_load_rating_is_read_into_typed_fields() {
     assert!(err.contains("no voltage"), "{err}");
     let r = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "see datasheet"})).unwrap();
     assert_eq!(r["value"], json!("see datasheet"), "{r}");
-    assert!(h.doc().devices[&v].rating_note.is_some());
+    assert!(h.doc().devices()[&v].rating_note.is_some());
     assert!(no_rating(&mut h));
 }
 
@@ -492,7 +496,7 @@ fn an_indicator_rating_is_read_into_typed_fields() {
     let mut h = H::new(7211);
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let p: DeviceId = id(&crate::common::place(&mut h, "lamp", (100.0, 100.0)), "component");
-    assert_eq!(h.doc().devices[&p].device_type, DeviceType::Indicator(Indicator::empty(SignalType::Steady)));
+    assert_eq!(h.doc().devices()[&p].device_type, DeviceType::Indicator(Indicator::empty(SignalType::Steady)));
     assert!(no_rating(&mut h));
     let r = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "RD flashing 24VDC 2W"})).unwrap();
     assert_eq!(r["message"], json!("Read: red, flashing, 24 V DC, 2 W."), "{r}");
@@ -505,8 +509,8 @@ fn an_indicator_rating_is_read_into_typed_fields() {
         power: Some(Watts(2.0)),
         ..Indicator::empty(SignalType::Flashing)
     };
-    assert_eq!(h.doc().devices[&p].device_type, DeviceType::Indicator(want));
-    assert!(h.doc().devices[&p].properties.is_empty());
+    assert_eq!(h.doc().devices()[&p].device_type, DeviceType::Indicator(want));
+    assert!(h.doc().devices()[&p].properties.is_empty());
     assert!(!no_rating(&mut h));
     // Ambiguous text is asked, never guessed; a current is refused; other text is the note.
     let err = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "24 V"})).unwrap_err();
@@ -517,7 +521,7 @@ fn an_indicator_rating_is_read_into_typed_fields() {
     assert!(err.contains("no current"), "{err}");
     let r = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "LED"})).unwrap();
     assert_eq!(r["value"], json!("LED"), "{r}");
-    assert!(h.doc().devices[&p].rating_note.is_some());
+    assert!(h.doc().devices()[&p].rating_note.is_some());
     assert!(no_rating(&mut h));
 }
 
@@ -533,7 +537,7 @@ fn a_power_supply_rating_is_read_into_typed_fields() {
     let mut h = H::new(7212);
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let p: DeviceId = id(&crate::common::place(&mut h, "psu", (100.0, 100.0)), "component");
-    assert_eq!(h.doc().devices[&p].device_type, DeviceType::PowerSupply(PowerSupply::Psu(Psu::default())));
+    assert_eq!(h.doc().devices()[&p].device_type, DeviceType::PowerSupply(PowerSupply::Psu(Psu::default())));
     assert!(no_rating(&mut h));
     let r = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "230VAC/24VDC 5A"})).unwrap();
     assert_eq!(r["message"], json!("Read: 230 V AC / 24 V DC, 5 A."), "{r}");
@@ -541,7 +545,7 @@ fn a_power_supply_rating_is_read_into_typed_fields() {
     assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
     let v = |volts, current| Some(RatedVoltage { volts: Volts(volts), current });
     let want = Psu { input: v(230.0, Current::Ac), output: v(24.0, Current::Dc), output_current: Some(Amps(5.0)), output_power: None };
-    assert_eq!(h.doc().devices[&p].device_type, DeviceType::PowerSupply(PowerSupply::Psu(want)));
+    assert_eq!(h.doc().devices()[&p].device_type, DeviceType::PowerSupply(PowerSupply::Psu(want)));
     assert!(!no_rating(&mut h));
     let err = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "230 V AC"})).unwrap_err();
     assert!(err.contains("input or the output"), "{err}");
@@ -550,11 +554,11 @@ fn a_power_supply_rating_is_read_into_typed_fields() {
     assert!(no_rating(&mut h));
     // A transformer: AC on both sides, VA, never W.
     let t: DeviceId = id(&crate::common::place(&mut h, "trafo", (200.0, 100.0)), "component");
-    assert_eq!(h.doc().devices[&t].device_type, DeviceType::PowerSupply(PowerSupply::Transformer(Transformer::default())));
+    assert_eq!(h.doc().devices()[&t].device_type, DeviceType::PowerSupply(PowerSupply::Transformer(Transformer::default())));
     let r = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "400/24 V 250 VA"})).unwrap();
     assert_eq!(r["message"], json!("Read: 400 V AC / 24 V AC, 250 VA."), "{r}");
     let want = Transformer { input: v(400.0, Current::Ac), output: v(24.0, Current::Ac), rated_power: Some(VoltAmps(250.0)) };
-    assert_eq!(h.doc().devices[&t].device_type, DeviceType::PowerSupply(PowerSupply::Transformer(want)));
+    assert_eq!(h.doc().devices()[&t].device_type, DeviceType::PowerSupply(PowerSupply::Transformer(want)));
     let err = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "250 W"})).unwrap_err();
     assert!(err.contains("VA, not W"), "{err}");
     let err = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "400/24 V DC"})).unwrap_err();
@@ -575,19 +579,21 @@ fn a_connector_s_mating_is_stored_by_its_starter() {
     }
     let doc = h.doc();
     for (sym, c) in &placed {
-        let DeviceType::Connector(x) = &doc.devices[c].device_type else { panic!("{sym} is Connector-typed") };
+        let DeviceType::Connector(x) = &doc.devices()[c].device_type else { panic!("{sym} is Connector-typed") };
         assert_eq!(x.mating, *sym != "rj45", "{sym}");
     }
     // The field, not the symbol: with `mating` cleared, a mating half's pins have no side.
     let (_, c) = placed[0];
-    let pin = doc.connection_points.iter().find(|(_, t)| t.device() == Some(c)).map(|(t, _)| *t).unwrap();
+    let pin = doc.connection_points().iter().find(|(_, t)| t.device() == Some(c)).map(|(t, _)| *t).unwrap();
     assert!(connectors::side_of(&doc, pin).is_some(), "a socket pin has its side");
-    let mut d = doc.devices[&c].clone();
+    let mut d = doc.devices()[&c].clone();
     if let DeviceType::Connector(x) = &mut d.device_type {
         x.mating = false;
     }
     let mut cleared = doc.clone();
-    cleared.devices.insert(c, d);
+    cleared.edit_parts(|parts| {
+        parts.devices.insert(c, d);
+    });
     assert!(connectors::side_of(&cleared, pin).is_none());
 }
 
@@ -606,7 +612,7 @@ fn contacts_and_the_table_are_written_as_modify_device() {
     assert!(matches!(last(&mut h).as_slice(), [Op::ModifyDevice { id, .. }] if *id == k));
     let doc = h.doc();
     assert_eq!(ecad_electrical::references::devices::parse::offer_of(&doc, k).map(|(t, _)| t).as_deref(), Some("3P+1NO+21/22 NC"));
-    assert!(!doc.devices[&k].properties.contains_key("contacts"), "nothing in the bag");
+    assert!(!doc.devices()[&k].properties.contains_key("contacts"), "nothing in the bag");
     h.run("setprop", json!({"component": k.hex(), "key": "mirror", "value": "below"})).unwrap();
     assert_eq!(
         ecad_electrical::references::devices::parse::placement_of(&h.doc(), k),
@@ -645,20 +651,20 @@ fn user_fields_are_added_set_and_removed() {
     h.run("setprop", json!({"component": k.hex(), "key": "user.Row", "value": "12.5 mm"})).unwrap();
     h.run("setprop", json!({"component": k.hex(), "key": "user.side", "value": "right"})).unwrap();
     let doc = h.doc();
-    let field = |name: &str| doc.project.user_fields.iter().find(|f| f.name.as_str() == name).unwrap().id;
+    let field = |name: &str| doc.project().user_fields.iter().find(|f| f.name.as_str() == name).unwrap().id;
     let (row, side) = (field("Row"), field("Side"));
-    assert_eq!(doc.devices[&k].user.get(&row), Some(&UserValue::Number(12.5)));
-    assert!(matches!(doc.devices[&k].user.get(&side), Some(UserValue::Choice(c)) if c.as_str() == "Right"));
+    assert_eq!(doc.devices()[&k].user.get(&row), Some(&UserValue::Number(12.5)));
+    assert!(matches!(doc.devices()[&k].user.get(&side), Some(UserValue::Choice(c)) if c.as_str() == "Right"));
     for (key, value) in [("user.Row", "twelve"), ("user.Side", "Up"), ("user.Nothing", "1")] {
         assert!(h.run("setprop", json!({"component": k.hex(), "key": key, "value": value})).is_err(), "{key} = {value}");
     }
-    assert!(h.doc().devices[&k].properties.keys().all(|p| !p.starts_with("user.")), "never in the bag");
+    assert!(h.doc().devices()[&k].properties.keys().all(|p| !p.starts_with("user.")), "never in the bag");
     let v = h.run("userfield", json!({"name": "Row", "remove": true})).unwrap();
     assert_eq!(v["cleared"], 1, "{v}");
     let doc = h.doc();
-    assert!(!doc.devices[&k].user.contains_key(&row) && doc.devices[&k].user.contains_key(&side));
+    assert!(!doc.devices()[&k].user.contains_key(&row) && doc.devices()[&k].user.contains_key(&side));
     h.run("undo", json!({})).unwrap();
-    assert_eq!(h.doc().devices[&k].user.get(&row), Some(&UserValue::Number(12.5)), "undo brings field and value back");
+    assert_eq!(h.doc().devices()[&k].user.get(&row), Some(&UserValue::Number(12.5)), "undo brings field and value back");
 }
 
 /// Step 5 (design 072 §2.6): `linkdevices` links two devices once; deleting one removes its
@@ -671,15 +677,15 @@ fn devices_are_linked_and_deleting_one_removes_its_links() {
     let b = id::<DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [80, 40]})).unwrap(), "component");
     let v = h.run("linkdevices", json!({"kind": "mechanical_interlock", "devices": [a.hex(), b.hex()]})).unwrap();
     let link = id::<LinkId>(&v, "link");
-    assert_eq!(h.doc().device_links[&link].kind, LinkKind::MechanicalInterlock);
+    assert_eq!(h.doc().device_links()[&link].kind, LinkKind::MechanicalInterlock);
     assert!(h.run("linkdevices", json!({"kind": "mechanical_interlock", "devices": [b.hex(), a.hex()]})).is_err(), "once");
     assert!(h.run("linkdevices", json!({"kind": "auxiliary_block", "devices": [a.hex(), a.hex()]})).is_err(), "not to itself");
     assert!(h.run("linkdevices", json!({"kind": "glued", "devices": [a.hex(), b.hex()]})).is_err(), "an unknown kind");
     h.run("ecaddelete", json!({"component": a.hex()})).unwrap();
-    assert!(h.doc().device_links.is_empty());
+    assert!(h.doc().device_links().is_empty());
     h.run("undo", json!({})).unwrap();
-    assert!(h.doc().device_links.contains_key(&link), "undo restores the link with the device");
+    assert!(h.doc().device_links().contains_key(&link), "undo restores the link with the device");
     h.run("unlinkdevices", json!({"link": link.hex()})).unwrap();
-    assert!(h.doc().device_links.is_empty());
+    assert!(h.doc().device_links().is_empty());
     assert!(h.run("unlinkdevices", json!({"link": link.hex()})).is_err());
 }

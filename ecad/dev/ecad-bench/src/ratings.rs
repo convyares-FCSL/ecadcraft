@@ -52,7 +52,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
     let mut out = MeasuredRatings::default();
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
-    if let Some(p) = project.read(&mut s, |p, _| p.ledger.document().page_order.first().copied())? {
+    if let Some(p) = project.read(&mut s, |p, _| p.ledger.document().page_order().first().copied())? {
         project.open_page(&mut s, p)?;
     }
     // Every power category rated (synthetic), a bundling factor, the Checks list kept.
@@ -67,7 +67,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
         let build = t.elapsed().as_secs_f64() * 1e3;
         let rated = p.checks().rating.results.len();
         let doc = p.ledger.document();
-        let dev = doc.devices.keys().copied().find(|c| ecad_electrical::circuits::trace::is_protective_component(doc, *c));
+        let dev = doc.devices().keys().copied().find(|c| ecad_electrical::circuits::trace::is_protective_component(doc, *c));
         let pin = dev.and_then(|c| {
             doc.connection_points_of(c).find_map(|(t, x)| {
                 let label = x.label.clone().unwrap_or_default();
@@ -87,7 +87,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
         if let Some(dev) = dev {
             // Design 072 §2.2: a breaker's rating needs its curve; a fuse's does not.
             let breaker = project.configure(&mut s, |p| {
-                p.ledger.document().devices.get(&dev).is_some_and(|x| {
+                p.ledger.document().devices().get(&dev).is_some_and(|x| {
                     matches!(
                         x.device_type,
                         ecad_model::DeviceType::Protection(

@@ -184,7 +184,7 @@ fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
     t.answer(Answer::Save);
     assert!(t.dialog().is_none() && !t.project_open());
     t.open_project(&d.path("closing.ecad")).unwrap();
-    assert_eq!(doc(&mut t).routes.len(), 2, "both lines were saved");
+    assert_eq!(doc(&mut t).routes().len(), 2, "both lines were saved");
     // Discard: closed; the file keeps its last saved state.
     edit(&mut t);
     t.close_project();
@@ -192,7 +192,7 @@ fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
     assert!(!t.project_open());
     assert!(t.cad.session.log.iter().any(|l| l.contains("keeps its last saved state")));
     t.open_project(&d.path("closing.ecad")).unwrap();
-    assert_eq!(doc(&mut t).routes.len(), 2);
+    assert_eq!(doc(&mut t).routes().len(), 2);
 }
 
 #[test]
@@ -220,7 +220,7 @@ fn the_page_tab_closes_quietly_and_closing_the_project_asks() {
     assert!(t.cad.session.docs.is_empty() && t.project_open() && !t.page_window_open());
     let s = t.status().unwrap();
     assert_eq!((s.pages, s.unsaved), (2, 2), "the project and both edits are still there");
-    let first = doc(&mut t).page_order[0];
+    let first = doc(&mut t).page_order()[0];
     t.show_page(first).unwrap();
     assert_eq!(t.cad.session.docs.len(), 1, "one click shows the page again");
     t.close_project();
@@ -286,7 +286,7 @@ fn open_reopens_a_saved_project_with_its_history() {
     assert_eq!((s.name.as_str(), s.unsaved, s.pages), ("p", 0, 2), "both pages, one shown");
     // History came back: undo removes page 2, then the wire.
     t.submit_command("u");
-    assert_eq!(doc(&mut t).page_order.len(), 1);
+    assert_eq!(doc(&mut t).page_order().len(), 1);
     // A file that is not a project is refused in the dialog.
     t.close_project();
     t.answer(Answer::Discard);
@@ -421,12 +421,12 @@ fn the_quick_start_runs_headless() {
     // 3. Connect the two terminals with a wire.
     ok(&mut t, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
     let dc = doc(&mut t);
-    let cid = dc.wires.keys().next().unwrap();
+    let cid = dc.wires().keys().next().unwrap();
     let cid = *cid; // a wire: both ends landed on connection points
-    let page = dc.page_order[0];
+    let page = dc.page_order()[0];
     // 4. Connected movement: move the rectangle; the wire end follows.
     let (rid, rep) =
-        dc.representations.iter().find(|(_, r)| r.form == ecad_model::Form::Drawn && matches!(r.subject, ecad_model::Subject::Device(_))).unwrap();
+        dc.representations().iter().find(|(_, r)| r.form == ecad_model::Form::Drawn && matches!(r.subject, ecad_model::Subject::Device(_))).unwrap();
     let rid = *rid;
     let ecad_model::Subject::Device(component) = rep.subject else { panic!("not a component") };
     let mut moved: Vec<String> = Vec::new();
@@ -458,7 +458,7 @@ fn the_quick_start_runs_headless() {
     ok(&mut t, r#"newpage {"title":"2"}"#);
     ok(&mut t, r#"wire {"points":[[0,0],[30,0]]}"#);
     assert_eq!(t.cad.session.docs.len(), 1, "one page window");
-    let p2 = doc(&mut t).page_order[1];
+    let p2 = doc(&mut t).page_order()[1];
     t.show_page(page).unwrap();
     assert_eq!(t.cad.session.docs.len(), 1);
     t.cad.request_close(None);
@@ -505,7 +505,7 @@ fn the_quick_start_runs_headless() {
     ok(&mut t, "u");
     assert_eq!(doc(&mut t), saved, "undo of the property change");
     ok(&mut t, "u");
-    assert_eq!(doc(&mut t).page_order.len(), 2, "undo reaches back into the saved history");
+    assert_eq!(doc(&mut t).page_order().len(), 2, "undo reaches back into the saved history");
     ok(&mut t, "redo");
     assert_eq!(doc(&mut t), saved);
 }

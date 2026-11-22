@@ -60,7 +60,7 @@ fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
     let path = dir.file("Projekt 054 (A).ecad");
     let (before, page, folder, cover) = {
         let mut c = create(&path);
-        let first = c.doc().page_order[0].hex();
+        let first = c.doc().page_order()[0].hex();
         let n = c.log().len();
         let rows = c.exec("styles", json!({"catalogue": "page"}));
         assert!(rows.to_string().contains("schematic"), "{rows}");

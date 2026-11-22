@@ -220,7 +220,7 @@ impl Command for CablefanParams {
         };
         on_project(s, |p, pg, page| {
             let doc = p.ledger.document();
-            if !doc.cables.contains_key(&cable) {
+            if !doc.cables().contains_key(&cable) {
                 return Err(CmdError::refused("no such cable"));
             }
             let title = views::cable_title(doc, cable);
@@ -264,12 +264,12 @@ impl Command for CablefanParams {
                     return Ok(r);
                 }
                 (Some((rid, item, _)), None) => {
-                    let before = doc.items.get(&item).cloned().ok_or_else(missing)?;
-                    let rep = doc.representations.get(&rid).cloned().ok_or(CmdError::refused("anchor missing"))?;
+                    let before = doc.items().get(&item).cloned().ok_or_else(missing)?;
+                    let rep = doc.representations().get(&rid).cloned().ok_or(CmdError::refused("anchor missing"))?;
                     vec![Op::UnlinkRepresentation { id: rid, rep }, Op::RemoveItem { id: item, item: before }]
                 }
                 (Some((_, item, _)), Some(j)) => {
-                    let before = doc.items.get(&item).cloned().ok_or_else(missing)?;
+                    let before = doc.items().get(&item).cloned().ok_or_else(missing)?;
                     let after = Item { kind: ItemKind::Primitive(Primitive::Point { at: j }), ..before.clone() };
                     vec![Op::ModifyItem { id: item, before, after }]
                 }
@@ -337,10 +337,10 @@ impl Command for CableviewParams {
             let doc = p.ledger.document();
             let Some(k) = cable else {
                 let views: serde_json::Map<String, Value> =
-                    doc.cables.keys().map(|k| (k.hex(), Value::String(p.view_of(*k).name().into()))).collect();
+                    doc.cables().keys().map(|k| (k.hex(), Value::String(p.view_of(*k).name().into()))).collect();
                 return Ok(json!({ "views": views }));
             };
-            if !doc.cables.contains_key(&k) {
+            if !doc.cables().contains_key(&k) {
                 return Err(CmdError::refused("no such cable"));
             }
             if p.faults.fail_view_switches > 0 {

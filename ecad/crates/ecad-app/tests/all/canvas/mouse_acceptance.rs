@@ -122,12 +122,12 @@ fn prim(p: &Primitive) -> String {
 /// wires by route and the labels their ends attach to.
 fn canon(d: &Document) -> Vec<String> {
     let mut out = Vec::new();
-    let label = |t| d.connection_points.get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| "-".into());
-    for r in d.representations.values() {
+    let label = |t| d.connection_points().get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| "-".into());
+    for r in d.representations().values() {
         let mut items: Vec<String> = r
             .items
             .iter()
-            .filter_map(|i| d.items.get(i))
+            .filter_map(|i| d.items().get(i))
             .map(|i| match &i.kind {
                 ItemKind::Primitive(p) => prim(p),
                 ItemKind::Symbol(s) => format!(
@@ -148,7 +148,7 @@ fn canon(d: &Document) -> Vec<String> {
         let subject = match r.subject {
             Subject::Device(_) => "component".to_string(),
             Subject::Wire(c) => {
-                let ends: Vec<String> = End::BOTH.iter().map(|e| d.wires.get(&c).map_or("loose".into(), |x| label(x.end(*e)))).collect();
+                let ends: Vec<String> = End::BOTH.iter().map(|e| d.wires().get(&c).map_or("loose".into(), |x| label(x.end(*e)))).collect();
                 format!("wire ends {ends:?}")
             }
             Subject::Cable(_) => "cable".into(),
@@ -172,7 +172,7 @@ fn component_by_clicks(h: &mut Harness<'static, App>) {
     assert_eq!(h.state().cad.session.selection().len(), 4);
     button(h, tools::TAB);
     button(h, "Convert to Device");
-    assert_eq!(doc(h).devices.len(), 1);
+    assert_eq!(doc(h).devices().len(), 1);
     h.state_mut().cad.session.set_selection(Vec::new());
     h.run_steps(2);
     button(h, "Add Connection Point");
@@ -210,7 +210,7 @@ fn ac3_quick_start_with_clicked_connection_points_matches_the_json_example() {
     let mut h = harness();
     component_by_clicks(&mut h);
     let d = doc(&mut h);
-    let mut terms: Vec<String> = d.connection_points.values().map(|t| t.label.clone().unwrap_or_default()).collect();
+    let mut terms: Vec<String> = d.connection_points().values().map(|t| t.label.clone().unwrap_or_default()).collect();
     terms.sort();
     assert_eq!(terms, ["1", "2"], "default names 1 and 2");
     coil_and_wire_by_clicks(&mut h);
@@ -250,21 +250,23 @@ fn ac3_quick_start_with_clicked_connection_points_matches_the_json_example() {
     ok(&mut j, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
     let mut by_clicks = doc(&mut h);
     // Clicked bends land within a pixel of 70,10 and 70,0; put them on the grid to compare.
-    for item in by_clicks.items.values_mut() {
-        if let ItemKind::Primitive(Primitive::Polyline { vertices, .. }) = &mut item.kind {
-            for v in vertices.iter_mut() {
-                let px = 1.0;
-                if (v.x - 70.0).abs() < px {
-                    v.x = 70.0;
-                }
-                for y in [0.0, 10.0] {
-                    if (v.y - y).abs() < px && (v.x - 70.0).abs() < 1e-9 {
-                        v.y = y;
+    by_clicks.edit_parts(|parts| {
+        for item in parts.items.values_mut() {
+            if let ItemKind::Primitive(Primitive::Polyline { vertices, .. }) = &mut item.kind {
+                for v in vertices.iter_mut() {
+                    let px = 1.0;
+                    if (v.x - 70.0).abs() < px {
+                        v.x = 70.0;
+                    }
+                    for y in [0.0, 10.0] {
+                        if (v.y - y).abs() < px && (v.x - 70.0).abs() < 1e-9 {
+                            v.y = y;
+                        }
                     }
                 }
             }
         }
-    }
+    });
     let (a, b) = (canon(&by_clicks), canon(&doc(&mut j)));
     assert_eq!(a, b, "the clicked example differs from the JSON one");
     assert_eq!(head(&mut h), head(&mut j), "the same number of transactions");
@@ -293,9 +295,9 @@ fn q4_a_typed_point_near_a_connection_point_does_not_attach_in_the_ui() {
     }
     let d = doc(&mut h);
     // A line with a free end carries no wire (design 072 §4).
-    let r = d.routes.values().next().expect("a line was drawn");
+    let r = d.routes().values().next().expect("a line was drawn");
     assert!(
-        r.ends[1] == ecad_model::RouteEnd::Free && d.wires.is_empty() && !ended_by_capture,
+        r.ends[1] == ecad_model::RouteEnd::Free && d.wires().is_empty() && !ended_by_capture,
         "typed {near} (3 px from A1) was captured: Q4 says typed points are literal"
     );
 }

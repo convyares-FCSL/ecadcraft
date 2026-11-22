@@ -14,20 +14,22 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
     let mut d = Document::default();
     for i in 0..2u128 {
         let p = PageId(1000 + i);
-        d.pages.insert(p, Page::titled(format!("P{i}")).unwrap());
-        d.page_order.push(p);
+        d.edit_parts(|parts| parts.pages.insert(p, Page::titled(format!("P{i}")).unwrap()));
+        d.edit_parts(|parts| parts.page_order.push(p));
     }
     let style = Style { layer: LayerId(1), color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (rid, c, tag, page, x, y, role) in syms {
         let comp = Device::default().with_tag(Some(tag), ecad_model::naming::tag::TagState::Automatic);
-        d.devices.entry(DeviceId(*c)).or_insert(comp);
+        d.edit_parts(|parts| {
+            parts.devices.entry(DeviceId(*c)).or_insert(comp);
+        });
         let item = ItemId(5000 + rid);
-        let pg = d.page_order[*page];
+        let pg = d.page_order()[*page];
         let kind = ItemKind::Symbol(SymbolInstance {
             definition: DefinitionId(9),
             placement: Placement { origin: Pt::new(*x, *y), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 },
         });
-        d.items.insert(item, Item { page: pg, style: style.clone(), kind });
+        d.edit_parts(|parts| parts.items.insert(item, Item { page: pg, style: style.clone(), kind }));
         let rep = Representation {
             subject: Subject::Device(DeviceId(*c)),
             page: pg,
@@ -36,7 +38,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
             items: vec![item],
             connection_points: BTreeMap::new(),
         };
-        d.representations.insert(RepresentationId(*rid), rep);
+        d.edit_parts(|parts| parts.representations.insert(RepresentationId(*rid), rep));
     }
     d.rebuild_index();
     d
@@ -59,7 +61,7 @@ fn tags(d: &Document, rank: numbering::Rank<'_>) -> BTreeMap<u128, String> {
     for op in &p.ops {
         op.apply(&mut x).unwrap();
     }
-    x.devices.iter().filter_map(|(id, c)| c.tag().map(|t| (id.0, t.to_string()))).collect()
+    x.devices().iter().filter_map(|(id, c)| c.tag().map(|t| (id.0, t.to_string()))).collect()
 }
 
 /// Device 1: a contact at the top-left of page 0 and its coil on page 1. Device 2: a coil on page

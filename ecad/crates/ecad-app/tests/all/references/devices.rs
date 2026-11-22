@@ -61,7 +61,7 @@ fn the_coil_table_the_contact_texts_properties_and_checks() {
     let p100: PageId = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
-        p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order[0]).unwrap()
+        p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order()[0]).unwrap()
     };
     run(&mut h, "pageprops", json!({"page": p100.hex(), "number": "100", "title": "Supply"}));
     let coil = run(&mut h, "place", json!({"symbol": "coil", "at": [75, 180]}));
@@ -107,7 +107,7 @@ fn the_coil_table_the_contact_texts_properties_and_checks() {
         let p = t.project().unwrap().clone();
         let rep: ecad_model::RepresentationId = ecad_model::RepresentationId(u128::from_str_radix(&hex(&coil, "representation"), 16).unwrap());
         p.read(&mut t.cad.session, |p, _| {
-            let item = p.ledger.document().representations[&rep].items[0];
+            let item = p.ledger.document().representations()[&rep].items[0];
             p.pages[&p100].map.item(item).unwrap()
         })
         .unwrap()

@@ -134,7 +134,7 @@ pub fn head(doc: &Document, c: DeviceId) -> Option<RepresentationId> {
 /// The parent of `rid`: its device's head in the same view, when `rid` is a contact, pole or
 /// channel.
 pub fn parent(doc: &Document, rid: RepresentationId) -> Option<RepresentationId> {
-    let r = doc.representations.get(&rid)?;
+    let r = doc.representations().get(&rid)?;
     if !rep_type(doc, r).is_child() {
         return None;
     }
@@ -145,7 +145,7 @@ pub fn parent(doc: &Document, rid: RepresentationId) -> Option<RepresentationId>
 /// The children of head `rid`: its device's contacts, poles and channels in the same view, in book
 /// order. Empty when `rid` is not its device's head.
 pub fn children(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> {
-    let Some(r) = doc.representations.get(&rid) else { return Vec::new() };
+    let Some(r) = doc.representations().get(&rid) else { return Vec::new() };
     let Some(c) = device_of(r) else { return Vec::new() };
     let v = view(doc, r);
     if rep_type(doc, r) != PartRole::Head || of_device(doc, c, v, |x| rep_type(doc, x) == PartRole::Head).first() != Some(&rid) {
@@ -157,7 +157,7 @@ pub fn children(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> 
 /// The siblings of `rid`: its device's other representations of the same type and view, in book
 /// order. For a pin, its mates (the same pin name on the other side) come first.
 pub fn siblings(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> {
-    let Some(r) = doc.representations.get(&rid) else { return Vec::new() };
+    let Some(r) = doc.representations().get(&rid) else { return Vec::new() };
     let Some(c) = device_of(r) else { return Vec::new() };
     let t = rep_type(doc, r);
     let v = view(doc, r);
@@ -166,7 +166,7 @@ pub fn siblings(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> 
     if t == PartRole::Pin {
         let mine = pin_names(doc, r);
         let (mates, rest): (Vec<_>, Vec<_>) = out.into_iter().partition(|x| {
-            doc.representations.get(x).is_some_and(|o| pin_names(doc, o).iter().any(|(n, s)| mine.iter().any(|(m, ms)| m == n && ms != s)))
+            doc.representations().get(x).is_some_and(|o| pin_names(doc, o).iter().any(|(n, s)| mine.iter().any(|(m, ms)| m == n && ms != s)))
         });
         out = mates.into_iter().chain(rest).collect();
     }
@@ -177,7 +177,7 @@ pub fn siblings(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> 
 fn pin_names(doc: &Document, r: &Representation) -> Vec<(String, String)> {
     r.connection_points
         .keys()
-        .filter_map(|t| doc.connection_points.get(t))
+        .filter_map(|t| doc.connection_points().get(t))
         .filter_map(|t| Some((t.label.clone()?, t.key.as_ref()?.to_string())))
         .collect()
 }
@@ -185,7 +185,7 @@ fn pin_names(doc: &Document, r: &Representation) -> Vec<(String, String)> {
 /// The representations of `rid`'s device of the same type in other views (design 052 §3.3): the
 /// click-through schematic ↔ panel ↔ one-line. Empty until a second view exists.
 pub fn views(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> {
-    let Some(r) = doc.representations.get(&rid) else { return Vec::new() };
+    let Some(r) = doc.representations().get(&rid) else { return Vec::new() };
     let Some(c) = device_of(r) else { return Vec::new() };
     let (t, v) = (rep_type(doc, r), view(doc, r));
     View::ALL.into_iter().filter(|w| *w != v).flat_map(|w| of_device(doc, c, w, |x| rep_type(doc, x) == t)).collect()
@@ -227,7 +227,7 @@ pub fn goto_place(doc: &Document, c: DeviceId) -> Option<(ecad_model::PageId, Op
 /// As [`goto_place`], reading the book and grids through `places`, shared across a Checks build.
 pub(crate) fn goto_place_in(places: &mut Places<'_>, c: DeviceId) -> Option<(ecad_model::PageId, Option<Pt>)> {
     let doc = places.doc();
-    let r = doc.representations.get(&goto_in(places, c, None)?)?;
+    let r = doc.representations().get(&goto_in(places, c, None)?)?;
     Some((r.page, crate::references::devices::classify::anchor(doc, r)))
 }
 

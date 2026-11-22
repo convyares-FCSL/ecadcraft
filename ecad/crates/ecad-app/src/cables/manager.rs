@@ -82,8 +82,8 @@ impl crate::shell::app::App {
         let page = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
             let plan = cables::planned(doc, cable, Side::From, Aspect::Location)?;
-            doc.page_order.iter().copied().find(|pg| {
-                let key = doc.pages.get(pg).and_then(|x| ecad_electrical::locations::designations::page_key(x, Aspect::Location));
+            doc.page_order().iter().copied().find(|pg| {
+                let key = doc.pages().get(pg).and_then(|x| ecad_electrical::locations::designations::page_key(x, Aspect::Location));
                 ecad_electrical::locations::designations::shown(doc, Aspect::Location, key.as_deref()).is_some_and(|c| c.eq_ignore_ascii_case(&plan))
             })
         });

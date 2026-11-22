@@ -24,7 +24,7 @@ fn aids_come_back_from_the_snapshot_and_the_log() {
         let p = dir.path(name);
         Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
         let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
-        assert_eq!(opened.ledger.document().aids, f.ledger.document().aids, "{name}");
+        assert_eq!(opened.ledger.document().aids(), f.ledger.document().aids(), "{name}");
     }
 }
 
@@ -106,14 +106,14 @@ fn loose_parts_come_back_from_the_snapshot_and_the_log() {
     f.ledger
         .commit(Author::User, "edit", vec![Op::ModifyLoosePart { id: a, before: rail, after: longer }, Op::DeleteLoosePart { id: gone, part: ties }])
         .unwrap();
-    assert_eq!(f.ledger.document().loose_parts.len(), 2);
+    assert_eq!(f.ledger.document().loose_parts().len(), 2);
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
     for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
         let p = dir.path(name);
         Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
         let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
         assert!(opened.project.read_only().is_none(), "{name}: {:?}", opened.project.read_only());
-        assert_eq!(opened.ledger.document().loose_parts, f.ledger.document().loose_parts, "{name}");
+        assert_eq!(opened.ledger.document().loose_parts(), f.ledger.document().loose_parts(), "{name}");
     }
 }
 

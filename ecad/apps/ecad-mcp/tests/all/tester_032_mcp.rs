@@ -19,7 +19,7 @@ fn place_connection_point(c: &mut Client, at: (f64, f64), tag: &str) -> (f64, f6
     let d = c.doc();
     let tid = ecad_model::ConnectionPointId::from(u128::from_str_radix(&t, 16).unwrap());
     let pos = d
-        .page_order
+        .page_order()
         .iter()
         .find_map(|pg| {
             ecad_model::connectivity::derive::connection_point_positions(&d, *pg).into_iter().find(|(x, _, _)| *x == tid).map(|(_, _, p)| p)
@@ -84,7 +84,7 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         assert_eq!(v["removed"], json!([right]), "{v}");
         assert!(ops.iter().any(|o| matches!(o, Op::RemoveRoute { .. })), "{ops:?}");
         assert!(ops.iter().any(|o| matches!(o, Op::CreateWire { .. })), "the wire X7–X8 forms: {ops:?}");
-        assert!(!c.doc().routes.contains_key(&ecad_model::RouteId::parse(&right).unwrap()), "the folded line is gone");
+        assert!(!c.doc().routes().contains_key(&ecad_model::RouteId::parse(&right).unwrap()), "the folded line is gone");
 
         // A refused join records nothing: a 24V line landing on a 0V wire (a T; a line with a free
         // end carries no wire, so no potential, design 072).
@@ -160,11 +160,11 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
     // Reads still work and record nothing.
     // `wiresettings {}` is not a read-only form in the MCP policy (true since brief 022, not 032),
     // so the stored settings are read from the document.
-    let w = serde_json::to_value(&c.doc().settings.wiring).unwrap();
+    let w = serde_json::to_value(&c.doc().settings().wiring).unwrap();
     assert_eq!(w["label_rule"], "each", "{w}");
     assert_eq!(w["label_min_length"], json!(10.0), "{w}");
     assert_eq!(c.exec("checks", json!({})), reads_before);
-    assert!(c.doc().routes.contains_key(&ecad_model::RouteId::parse(&survivor).unwrap()), "the joined line is saved");
+    assert!(c.doc().routes().contains_key(&ecad_model::RouteId::parse(&survivor).unwrap()), "the joined line is saved");
     let _ = c.exec("cablecores", json!({"cable": cable}));
     let _ = p2;
     assert_eq!(c.log(), log, "nothing recorded with writes off");

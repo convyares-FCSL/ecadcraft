@@ -77,7 +77,7 @@ pub(crate) const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey
 
 /// Strip `c`'s own data (its type's, design 072 §2.2), when it is a terminal strip.
 pub fn strip_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::objects::devices::TerminalStrip> {
-    doc.devices.get(&c)?.device_type.as_strip()
+    doc.devices().get(&c)?.device_type.as_strip()
 }
 
 /// Whether representation `r` draws a PE terminal.
@@ -124,18 +124,18 @@ fn drawn_at(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, Representati
 
 /// A strip's drawn terminals with the page and point each is drawn at (brief 030: jumper bar lines).
 pub(crate) fn drawn_points(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, RepresentationId, PageId, Pt)> {
-    drawn_at(doc, c).into_iter().filter_map(|(t, rid, _, at)| Some((t, rid, doc.representations.get(&rid)?.page, at?))).collect()
+    drawn_at(doc, c).into_iter().filter_map(|(t, rid, _, at)| Some((t, rid, doc.representations().get(&rid)?.page, at?))).collect()
 }
 
 /// The terminal of a strip a conductor end is on: (strip, terminal).
 pub fn strip_of_connection_point(doc: &Document, t: ConnectionPointId) -> Option<DeviceId> {
-    let c = doc.connection_points.get(&t)?.device()?;
+    let c = doc.connection_points().get(&t)?.device()?;
     strip_of(doc, c).map(|_| c)
 }
 
 /// The strip a conductor bridges, when its two ends are on two terminals of one strip.
 pub(crate) fn bridge_of(doc: &Document, w: WireId) -> Option<DeviceId> {
-    let cond = doc.wires.get(&w)?;
+    let cond = doc.wires().get(&w)?;
     let (a, b) = (cond.end(End::A), cond.end(End::B));
     if a == b {
         return None;
@@ -224,7 +224,7 @@ pub fn offer_drawn_value(doc: &Document, c: DeviceId) -> String {
 
 /// A strip's stored offer, if readable.
 pub fn offer_of(doc: &Document, c: DeviceId) -> Option<Offer> {
-    doc.devices.get(&c)?.properties.get(OFFER_KEY).and_then(|v| parse_offer(v).ok())
+    doc.devices().get(&c)?.properties.get(OFFER_KEY).and_then(|v| parse_offer(v).ok())
 }
 
 /// The rows a generated `connection_points` sheet needs for `strip` (`None`: every strip): one heading per
@@ -250,7 +250,7 @@ pub fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
 
 /// `-X01:3`.
 pub fn connection_point_words(doc: &Document, t: ConnectionPointId) -> String {
-    let c = doc.connection_points.get(&t).and_then(|x| x.device());
+    let c = doc.connection_points().get(&t).and_then(|x| x.device());
     // Brief 044: a connector pin is named by its half (`-X10.S:3`).
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return name;
@@ -262,7 +262,7 @@ pub fn connection_point_words(doc: &Document, t: ConnectionPointId) -> String {
 /// Fuse terminal device `c`'s fuse (brief 034's `fuseterminalblock`): its stored
 /// [`ecad_model::objects::devices::Protection::FuseTerminalBlock`] (design 072 §2.2).
 pub fn fuse_terminal_block_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::objects::devices::Fuse> {
-    doc.devices.get(&c)?.device_type.as_protection()?.as_fuse_terminal_block()
+    doc.devices().get(&c)?.device_type.as_protection()?.as_fuse_terminal_block()
 }
 
 /// Level stagger (§3.1): level *n* is raised by (*n* − 1) × this.

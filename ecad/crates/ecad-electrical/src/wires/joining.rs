@@ -107,7 +107,7 @@ fn is_quiet(quiet: &[Pt], at: Pt) -> bool {
 /// The route on `page` whose interior (not an end) passes within [`ON_WIRE`] of `at`, the nearest.
 pub(crate) fn interior_route_at(doc: &Document, page: PageId, at: Pt) -> Option<OnRoute> {
     route_at(doc, page, at, ON_WIRE, None)
-        .filter(|on| doc.routes.get(&on.route).and_then(Route::end_points).is_some_and(|[f, l]| !f.near(on.at, ON_WIRE) && !l.near(on.at, ON_WIRE)))
+        .filter(|on| doc.routes().get(&on.route).and_then(Route::end_points).is_some_and(|[f, l]| !f.near(on.at, ON_WIRE) && !l.near(on.at, ON_WIRE)))
 }
 
 /// The net of the wires route `r` carries.
@@ -161,7 +161,7 @@ pub(crate) fn join_sense(doc: &Document, a: RouteId, b: RouteId) -> Result<(), C
 
 /// The point at end `e` of route `r`.
 pub(crate) fn end_point(doc: &Document, r: RouteId, e: End) -> Option<Pt> {
-    let v = &doc.routes.get(&r)?.points;
+    let v = &doc.routes().get(&r)?.points;
     match e {
         End::A => v.first().copied(),
         End::B => v.last().copied(),
@@ -228,7 +228,7 @@ fn ends_on_path(doc: &Document, page: PageId, v: &[Pt], quiet: &[Pt]) -> Vec<(us
     }
     let mut out: Vec<(usize, f64, Pt, RouteId, End)> = Vec::new();
     for r in doc.routes_on(page) {
-        let Some(route) = doc.routes.get(&r) else { continue };
+        let Some(route) = doc.routes().get(&r) else { continue };
         for (end, e) in End::BOTH.into_iter().zip(route.ends) {
             let Some(q) = end_point(doc, r, end) else { continue };
             if e != RouteEnd::Free || !q.is_finite() || q.near(first, ON_WIRE) || q.near(last, ON_WIRE) || is_quiet(quiet, q) {
@@ -329,7 +329,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
         mb = mb.not_merged();
     }
     if let (Meets::Merge { route: a, .. }, Meets::Merge { route: b, .. }) = (&ma, &mb) {
-        let lands = |x: RouteId, y: RouteId| doc.routes.get(&x).is_some_and(|r| r.ends.iter().any(|e| e.route() == Some(y)));
+        let lands = |x: RouteId, y: RouteId| doc.routes().get(&x).is_some_and(|r| r.ends.iter().any(|e| e.route() == Some(y)));
         if lands(*a, *b) || lands(*b, *a) {
             mb = mb.not_merged();
         }
@@ -360,7 +360,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
     let (holder, item, created) = match (&ma, &mb) {
         (Meets::Merge { route: r1, end: e1 }, Meets::Merge { route: r2, end: e2 }) => {
             // Both ends meet free ends of two routes: one route (§2.2), the one at end A.
-            let o = doc.routes.get(r2).ok_or(CmdError::NotFound(Noun::Wire))?;
+            let o = doc.routes().get(r2).ok_or(CmdError::NotFound(Noun::Wire))?;
             let o_from_end = if *e2 == End::A { o.points.clone() } else { reversed(&o.points) };
             let far = o.ends.get(end_index(e2.other())).copied().unwrap_or(RouteEnd::Free);
             let s = edits.get(*r1).ok_or(CmdError::NotFound(Noun::Wire))?;
@@ -462,13 +462,13 @@ pub fn plan_end_join(doc: &Document, a: (RouteId, End), b: (RouteId, End), max_p
     if a.0 == b.0 {
         return Err(CmdError::refused(format!("Both ends belong to one wire: joining them would close it into a loop. {JOIN_WAY_OUT}")));
     }
-    let lands = |x: RouteId, y: RouteId| doc.routes.get(&x).is_some_and(|r| r.ends.iter().any(|e| e.route() == Some(y)));
+    let lands = |x: RouteId, y: RouteId| doc.routes().get(&x).is_some_and(|r| r.ends.iter().any(|e| e.route() == Some(y)));
     if lands(a.0, b.0) || lands(b.0, a.0) {
         return Ok(None);
     }
     join_sense(doc, a.0, b.0)?;
     let ((s, es), (o, eo)) = if a.0 < b.0 { (a, b) } else { (b, a) };
-    let ro = doc.routes.get(&o).ok_or(CmdError::NotFound(Noun::Wire))?;
+    let ro = doc.routes().get(&o).ok_or(CmdError::NotFound(Noun::Wire))?;
     // The other route's free end lies on the survivor's (within ON_WIRE): it starts there.
     let mut add = if eo == End::A { ro.points.clone() } else { reversed(&ro.points) };
     if let (Some(first), Some(at)) = (add.first_mut(), end_point(doc, s, es)) {
@@ -497,7 +497,7 @@ pub fn plan_end_join(doc: &Document, a: (RouteId, End), b: (RouteId, End), max_p
 pub fn open_end_near(doc: &Document, page: PageId, p: Pt, tol: f64, quiet: &[Pt]) -> Option<Pt> {
     let mut best: Option<(f64, Pt)> = None;
     for r in doc.routes_on(page) {
-        let Some(route) = doc.routes.get(&r) else { continue };
+        let Some(route) = doc.routes().get(&r) else { continue };
         for (end, e) in End::BOTH.into_iter().zip(route.ends) {
             let Some(q) = end_point(doc, r, end) else { continue };
             let d = q.dist(p);
@@ -544,7 +544,7 @@ fn looks_cell(p: Pt) -> Option<(i64, i64)> {
 /// Computed during the page's projection from that page's routes only (the page index), with a
 /// grid of their segments, so the cost follows the page, never the project (update map §8.2).
 pub fn looks_connected_on_page(doc: &Document, page: PageId, quiet: &[Pt]) -> Vec<Pt> {
-    let routes: Vec<&Route> = doc.routes_on(page).filter_map(|r| doc.routes.get(&r)).collect();
+    let routes: Vec<&Route> = doc.routes_on(page).filter_map(|r| doc.routes().get(&r)).collect();
     let mut grid: std::collections::HashMap<(i64, i64), Vec<(usize, usize)>> = std::collections::HashMap::new();
     let mut long: Vec<(usize, usize)> = Vec::new();
     for (r, route) in routes.iter().enumerate() {

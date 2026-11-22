@@ -62,7 +62,7 @@ impl Generic for TerminalBlocksParams {
         let before: Vec<Option<WireNumber>> = f
             .placed
             .iter()
-            .map(|(_, _, r, _)| crate::wires::routes::wire_of_route(cx.doc, *r).and_then(|w| cx.doc.wires.get(&w)).and_then(|w| w.number.clone()))
+            .map(|(_, _, r, _)| crate::wires::routes::wire_of_route(cx.doc, *r).and_then(|w| cx.doc.wires().get(&w)).and_then(|w| w.number.clone()))
             .collect();
         if let Slot::LastPlaced(last) = &mut cx.state {
             **last = Some(LastPlaced { starter: Some(ty.starter_key(done.level)), device: f.strip });
@@ -105,7 +105,7 @@ fn dropped_numbers(
         let Some(was) = was else { continue };
         for half in [*r, *n] {
             let Some(w) = crate::wires::routes::wire_of_route(doc, half) else { continue };
-            if doc.wires.get(&w).and_then(|x| x.number.as_ref()).map(|x| &x.text) != Some(&was.text) {
+            if doc.wires().get(&w).and_then(|x| x.number.as_ref()).map(|x| &x.text) != Some(&was.text) {
                 out.push((w, was.clone()));
             }
         }

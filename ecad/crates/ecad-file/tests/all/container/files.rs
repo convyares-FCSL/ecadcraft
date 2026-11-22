@@ -370,7 +370,7 @@ fn wiring_settings_and_bridges_survive_chunks() {
     let tail = dir.path("tail.ecad");
     create(&tail, &f.ledger, 2_000);
     let mut o = open(&tail);
-    let before = f.ledger.document().settings.clone();
+    let before = f.ledger.document().settings().clone();
     let mut after = before.clone();
     after.wiring.colour_style = Some(ecad_model::geometry::colour::ColourWords::Code3);
     after.wiring.label_height = Some(2.5);
@@ -394,8 +394,8 @@ fn wiring_settings_and_bridges_survive_chunks() {
     let expected = f.ledger.document().clone();
     let check = |doc: &Document, how: &str| {
         assert_eq!(doc, &expected, "{how}");
-        assert_eq!(doc.settings.wiring, after.wiring, "{how}: the wiring settings");
-        assert_eq!(doc.definitions.get(&def).map(|d| &d.bridges), Some(&bridged.bridges), "{how}: the bridges");
+        assert_eq!(doc.settings().wiring, after.wiring, "{how}: the wiring settings");
+        assert_eq!(doc.definitions().get(&def).map(|d| &d.bridges), Some(&bridged.bridges), "{how}: the bridges");
     };
     let o = open(&tail);
     assert!(o.report.damage.is_none() && o.report.tail == 2, "{:?}", o.report);

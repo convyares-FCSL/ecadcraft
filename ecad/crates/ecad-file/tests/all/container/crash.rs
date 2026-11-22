@@ -31,8 +31,8 @@ fn rounds(default: u64) -> u64 {
 /// `n` edits on the first page: lines, sometimes an undo, sometimes a named version.
 fn edit(ledger: &mut Ledger, rng: &mut Rng, n: u64, version: bool) {
     let doc = ledger.document();
-    let page = doc.page_order[0];
-    let layer = *doc.layers.keys().next().unwrap();
+    let page = doc.page_order()[0];
+    let layer = *doc.layers().keys().next().unwrap();
     for i in 0..n {
         let id = ItemId(u128::from(rng.next_u64()) << 64 | u128::from(rng.next_u64()));
         let x = (rng.below(1000) as f64) / 10.0;

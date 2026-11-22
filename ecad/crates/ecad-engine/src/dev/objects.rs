@@ -222,7 +222,7 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
     match mapped {
         Mapped::Item(i) => {
             r.item = Some(i);
-            r.representation = doc.representations.iter().find(|(_, rep)| rep.items.contains(&i)).map(|(id, _)| *id);
+            r.representation = doc.representations().iter().find(|(_, rep)| rep.items.contains(&i)).map(|(id, _)| *id);
         }
         Mapped::Marker(rep, t) => {
             r.representation = Some(rep);
@@ -250,12 +250,12 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         Mapped::Label(c) => Some(Subject::Wire(c)),
         Mapped::JumperBar(c, _) => Some(Subject::Device(c)),
         Mapped::Tee(r) => Some(Subject::Route(r)),
-        _ => r.representation.and_then(|id| doc.representations.get(&id)).map(|rep| rep.subject),
+        _ => r.representation.and_then(|id| doc.representations().get(&id)).map(|rep| rep.subject),
     };
     r.connection_points = match r.subject {
-        Some(Subject::Device(c)) => doc.connection_points.iter().filter(|(_, t)| t.device() == Some(c)).map(|(id, _)| *id).collect(),
-        Some(Subject::Wire(c)) => doc.wires.get(&c).map(|x| x.ends.to_vec()).unwrap_or_default(),
-        Some(Subject::Route(x)) => doc.routes.get(&x).map(|r| r.points_landed().collect()).unwrap_or_default(),
+        Some(Subject::Device(c)) => doc.connection_points().iter().filter(|(_, t)| t.device() == Some(c)).map(|(id, _)| *id).collect(),
+        Some(Subject::Wire(c)) => doc.wires().get(&c).map(|x| x.ends.to_vec()).unwrap_or_default(),
+        Some(Subject::Route(x)) => doc.routes().get(&x).map(|r| r.points_landed().collect()).unwrap_or_default(),
         _ => Vec::new(),
     };
     r.ids.extend(r.item.map(ObjectId::Item));
@@ -277,19 +277,19 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
 /// An object as the model holds it (`None` when it does not exist in `doc`).
 pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
     match id {
-        ObjectId::Page(i) => doc.pages.get(&i).and_then(val),
-        ObjectId::Layer(i) => doc.layers.get(&i).and_then(val),
-        ObjectId::Item(i) => doc.items.get(&i).and_then(val),
-        ObjectId::Device(i) => doc.devices.get(&i).and_then(val),
-        ObjectId::ConnectionPoint(i) => doc.connection_points.get(&i).and_then(val),
-        ObjectId::Representation(i) => doc.representations.get(&i).and_then(val),
-        ObjectId::Wire(i) => doc.wires.get(&i).and_then(val),
-        ObjectId::Cable(i) => doc.cables.get(&i).and_then(val),
-        ObjectId::Route(i) => doc.routes.get(&i).and_then(val),
-        ObjectId::Aid(i) => doc.aids.get(&i).and_then(val),
-        ObjectId::LoosePart(i) => doc.loose_parts.get(&i).and_then(val),
-        ObjectId::Definition(i) => doc.definitions.get(&i).and_then(val),
-        ObjectId::Settings => val(&doc.settings),
+        ObjectId::Page(i) => doc.pages().get(&i).and_then(val),
+        ObjectId::Layer(i) => doc.layers().get(&i).and_then(val),
+        ObjectId::Item(i) => doc.items().get(&i).and_then(val),
+        ObjectId::Device(i) => doc.devices().get(&i).and_then(val),
+        ObjectId::ConnectionPoint(i) => doc.connection_points().get(&i).and_then(val),
+        ObjectId::Representation(i) => doc.representations().get(&i).and_then(val),
+        ObjectId::Wire(i) => doc.wires().get(&i).and_then(val),
+        ObjectId::Cable(i) => doc.cables().get(&i).and_then(val),
+        ObjectId::Route(i) => doc.routes().get(&i).and_then(val),
+        ObjectId::Aid(i) => doc.aids().get(&i).and_then(val),
+        ObjectId::LoosePart(i) => doc.loose_parts().get(&i).and_then(val),
+        ObjectId::Definition(i) => doc.definitions().get(&i).and_then(val),
+        ObjectId::Settings => val(&doc.settings()),
     }
 }
 
@@ -300,10 +300,10 @@ pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
 /// in page order (design 010 §8: a cable drawn on several pages, a conductor's route on each), and
 /// a cable reference's are its cable and its partner reference.
 pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
-    let page_index: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
+    let page_index: BTreeMap<PageId, usize> = doc.page_order().iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let reps_of = |s: Subject| {
         let mut v: Vec<(usize, RepresentationId)> = doc
-            .representations
+            .representations()
             .iter()
             .filter(|(_, r)| r.subject == s)
             .map(|(i, r)| (page_index.get(&r.page).copied().unwrap_or(usize::MAX), *i))
@@ -313,28 +313,28 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
     };
     match id {
         ObjectId::Definition(d) => doc
-            .devices
+            .devices()
             .iter()
             .filter(|(_, c)| c.definition == Some(d))
             .map(|(i, _)| ObjectId::Device(*i))
-            .chain(doc.items.iter().filter(|(_, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == d)).map(|(i, _)| ObjectId::Item(*i)))
+            .chain(doc.items().iter().filter(|(_, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == d)).map(|(i, _)| ObjectId::Item(*i)))
             .collect(),
         ObjectId::Device(c) => doc
-            .connection_points
+            .connection_points()
             .iter()
             .filter(|(_, t)| t.device() == Some(c))
             .map(|(i, _)| ObjectId::ConnectionPoint(*i))
             .chain(reps_of(Subject::Device(c)))
             .collect(),
         ObjectId::ConnectionPoint(t) => doc
-            .wires
+            .wires()
             .iter()
             .filter(|(_, c)| c.ends.contains(&t))
             .map(|(i, _)| ObjectId::Wire(*i))
-            .chain(doc.routes.iter().filter(|(_, r)| r.points_landed().any(|p| p == t)).map(|(i, _)| ObjectId::Route(*i)))
+            .chain(doc.routes().iter().filter(|(_, r)| r.points_landed().any(|p| p == t)).map(|(i, _)| ObjectId::Route(*i)))
             .collect(),
         ObjectId::Wire(c) => doc
-            .cables
+            .cables()
             .iter()
             .filter(|(_, k)| k.cores.iter().any(|m| m.wire() == Some(c)))
             .map(|(i, _)| ObjectId::Cable(*i))
@@ -342,11 +342,11 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .chain(ecad_electrical::wires::routes::routes_of_wire(doc, c).into_iter().map(ObjectId::Route))
             .collect(),
         ObjectId::Cable(c) => {
-            doc.cables.get(&c).into_iter().flat_map(|k| k.cores.iter().filter_map(member_object)).chain(reps_of(Subject::Cable(c))).collect()
+            doc.cables().get(&c).into_iter().flat_map(|k| k.cores.iter().filter_map(member_object)).chain(reps_of(Subject::Cable(c))).collect()
         }
         ObjectId::Aid(a) => reps_of(Subject::Aid(a)).collect(),
         ObjectId::Route(r) => doc
-            .routes
+            .routes()
             .iter()
             .filter(|(_, x)| x.ends.iter().any(|e| e.route() == Some(r)))
             .map(|(i, _)| ObjectId::Route(*i))
@@ -354,13 +354,13 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .chain(ecad_electrical::wires::routes::wire_of_route(doc, r).map(ObjectId::Wire))
             .collect(),
         ObjectId::Page(p) => doc
-            .representations
+            .representations()
             .iter()
             .filter(|(_, r)| r.page == p)
             .map(|(i, _)| ObjectId::Representation(*i))
-            .chain(doc.routes.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Route(*i)))
+            .chain(doc.routes().iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Route(*i)))
             .collect(),
-        ObjectId::Representation(r) => match doc.representations.get(&r) {
+        ObjectId::Representation(r) => match doc.representations().get(&r) {
             Some(rep) if ecad_electrical::references::cables::is_reference(rep) => {
                 let mut out: Vec<ObjectId> = vec![ObjectId::from(rep.subject)];
                 if let Some(x) = ecad_electrical::references::cables::all(doc).into_iter().find(|x| x.reference == r) {
@@ -376,11 +376,11 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
 
 fn subject_label(doc: &Document, s: Subject) -> String {
     let t = match s {
-        Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag_shown()),
-        Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string),
-        Subject::Cable(c) => doc.cables.get(&c).and_then(|x| x.tag_shown()),
-        Subject::Route(r) => doc.routes.get(&r).map(|x| format!("line on {}", x.page.short())),
-        Subject::Aid(a) => doc.aids.get(&a).map(|x| match x {
+        Subject::Device(c) => doc.devices().get(&c).and_then(|x| x.tag_shown()),
+        Subject::Wire(c) => doc.wires().get(&c).and_then(|x| x.number_text()).map(str::to_string),
+        Subject::Cable(c) => doc.cables().get(&c).and_then(|x| x.tag_shown()),
+        Subject::Route(r) => doc.routes().get(&r).map(|x| format!("line on {}", x.page.short())),
+        Subject::Aid(a) => doc.aids().get(&a).map(|x| match x {
             ecad_model::Aid::Continuation { name: Some(n), .. } => format!("continuation {n}"),
             ecad_model::Aid::Continuation { name: None, .. } => "unnamed continuation".into(),
             ecad_model::Aid::Box(_) => "location box".into(),
@@ -392,16 +392,16 @@ fn subject_label(doc: &Document, s: Subject) -> String {
 /// A readable label for an object.
 pub fn object_label(doc: &Document, id: ObjectId) -> String {
     match id {
-        ObjectId::Page(i) => doc.pages.get(&i).map_or_else(String::new, |p| format!("page {}", p.title)),
-        ObjectId::Layer(i) => doc.layers.get(&i).map_or_else(String::new, |l| format!("layer {}", l.name)),
-        ObjectId::Item(i) => doc.items.get(&i).map_or_else(String::new, |it| match &it.kind {
+        ObjectId::Page(i) => doc.pages().get(&i).map_or_else(String::new, |p| format!("page {}", p.title)),
+        ObjectId::Layer(i) => doc.layers().get(&i).map_or_else(String::new, |l| format!("layer {}", l.name)),
+        ObjectId::Item(i) => doc.items().get(&i).map_or_else(String::new, |it| match &it.kind {
             ItemKind::Primitive(p) => format!("{p:?}").split([' ', '{', '(']).next().unwrap_or("item").to_lowercase(),
             ItemKind::Symbol(_) => "symbol".into(),
         }),
         ObjectId::Device(c) => subject_label(doc, Subject::Device(c)),
         // A member of a cable shows its core (design 009 §8): `W3 · core 1`.
         ObjectId::Wire(c) => {
-            let core = doc.cables_of(c).first().and_then(|k| doc.cables.get(k)).and_then(|k| {
+            let core = doc.cables_of(c).first().and_then(|k| doc.cables().get(k)).and_then(|k| {
                 k.cores.iter().find(|m| m.wire() == Some(c)).and_then(|m| {
                     m.label_str()
                         .filter(|x| !x.trim().is_empty())
@@ -416,12 +416,12 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         ObjectId::Cable(c) => subject_label(doc, Subject::Cable(c)),
         ObjectId::Route(r) => subject_label(doc, Subject::Route(r)),
         ObjectId::Aid(a) => subject_label(doc, Subject::Aid(a)),
-        ObjectId::LoosePart(i) => doc.loose_parts.get(&i).map_or_else(String::new, |p| format!("loose part {}", p.description)),
-        ObjectId::ConnectionPoint(i) => doc.connection_points.get(&i).map_or_else(String::new, |t| {
+        ObjectId::LoosePart(i) => doc.loose_parts().get(&i).map_or_else(String::new, |p| format!("loose part {}", p.description)),
+        ObjectId::ConnectionPoint(i) => doc.connection_points().get(&i).map_or_else(String::new, |t| {
             let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| i.short());
             format!("{}:{name}", subject_label(doc, t.owner.subject()))
         }),
-        ObjectId::Representation(i) => doc.representations.get(&i).map_or_else(String::new, |r| {
+        ObjectId::Representation(i) => doc.representations().get(&i).map_or_else(String::new, |r| {
             // A cable's reference end shows the text it draws (design 009 §8).
             if r.role == ecad_model::Role::Reference && matches!(r.subject, Subject::Cable(_)) {
                 format!("{} of {} \"{}\"", r.role, subject_label(doc, r.subject), ecad_electrical::cables::layout::reference_text(doc, i))
@@ -429,26 +429,26 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
                 format!("{} of {}", r.role, subject_label(doc, r.subject))
             }
         }),
-        ObjectId::Definition(i) => doc.definitions.get(&i).map_or_else(String::new, |d| d.name.clone()),
-        ObjectId::Settings => format!("length unit {:?}", doc.settings.length_unit),
+        ObjectId::Definition(i) => doc.definitions().get(&i).map_or_else(String::new, |d| d.name.clone()),
+        ObjectId::Settings => format!("length unit {:?}", doc.settings().length_unit),
     }
 }
 
 /// Every object of `doc`, in kind order.
 pub fn objects(doc: &Document) -> Vec<ObjectId> {
     let mut out: Vec<ObjectId> = Vec::new();
-    out.extend(doc.page_order.iter().map(|i| ObjectId::Page(*i)));
-    out.extend(doc.layers.keys().map(|i| ObjectId::Layer(*i)));
-    out.extend(doc.devices.keys().map(|i| ObjectId::Device(*i)));
-    out.extend(doc.connection_points.keys().map(|i| ObjectId::ConnectionPoint(*i)));
-    out.extend(doc.wires.keys().map(|i| ObjectId::Wire(*i)));
-    out.extend(doc.cables.keys().map(|i| ObjectId::Cable(*i)));
-    out.extend(doc.routes.keys().map(|i| ObjectId::Route(*i)));
-    out.extend(doc.aids.keys().map(|i| ObjectId::Aid(*i)));
-    out.extend(doc.loose_parts.keys().map(|i| ObjectId::LoosePart(*i)));
-    out.extend(doc.representations.keys().map(|i| ObjectId::Representation(*i)));
-    out.extend(doc.items.keys().map(|i| ObjectId::Item(*i)));
-    out.extend(doc.definitions.keys().map(|i| ObjectId::Definition(*i)));
+    out.extend(doc.page_order().iter().map(|i| ObjectId::Page(*i)));
+    out.extend(doc.layers().keys().map(|i| ObjectId::Layer(*i)));
+    out.extend(doc.devices().keys().map(|i| ObjectId::Device(*i)));
+    out.extend(doc.connection_points().keys().map(|i| ObjectId::ConnectionPoint(*i)));
+    out.extend(doc.wires().keys().map(|i| ObjectId::Wire(*i)));
+    out.extend(doc.cables().keys().map(|i| ObjectId::Cable(*i)));
+    out.extend(doc.routes().keys().map(|i| ObjectId::Route(*i)));
+    out.extend(doc.aids().keys().map(|i| ObjectId::Aid(*i)));
+    out.extend(doc.loose_parts().keys().map(|i| ObjectId::LoosePart(*i)));
+    out.extend(doc.representations().keys().map(|i| ObjectId::Representation(*i)));
+    out.extend(doc.items().keys().map(|i| ObjectId::Item(*i)));
+    out.extend(doc.definitions().keys().map(|i| ObjectId::Definition(*i)));
     out.push(ObjectId::Settings);
     out
 }

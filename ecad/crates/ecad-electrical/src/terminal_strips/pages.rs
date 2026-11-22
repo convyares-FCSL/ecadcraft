@@ -126,7 +126,7 @@ impl Geometry {
 
 /// The project's sheet (a page with no sheet of its own).
 fn project_sheet(doc: &Document) -> SheetSpec {
-    doc.settings.sheet()
+    doc.settings().sheet()
 }
 
 /// One column of a strip's layout.

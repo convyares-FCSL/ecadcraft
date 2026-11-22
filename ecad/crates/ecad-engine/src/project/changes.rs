@@ -410,7 +410,7 @@ impl Project {
         let front = match path {
             Path::History { order_before } => {
                 let was_active = self.pages.iter().find(|(_, v)| v.uid.is_some()).map(|(p, _)| *p);
-                let target = front_after_history(order_before, &self.ledger.document().page_order, Some(&named), self.active_page());
+                let target = front_after_history(order_before, self.ledger.document().page_order(), Some(&named), self.active_page());
                 Some((was_active, target))
             }
             Path::Command | Path::Interactive { .. } => None,

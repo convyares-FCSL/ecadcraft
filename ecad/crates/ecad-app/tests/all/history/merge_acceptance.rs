@@ -69,7 +69,7 @@ fn opened(tag: &str) -> (H, PathBuf, ecad_model::DeviceId) {
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
     click(&mut h, panel::HISTORY_TAB);
-    let k1 = doc(&mut h).devices.iter().find(|(_, c)| c.tag().is_some_and(|t| t == "-K01")).map(|(k, _)| *k).unwrap();
+    let k1 = doc(&mut h).devices().iter().find(|(_, c)| c.tag().is_some_and(|t| t == "-K01")).map(|(k, _)| *k).unwrap();
     (h, dir, k1)
 }
 
@@ -147,7 +147,7 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     assert_eq!(branch(&mut h), "Option D");
     assert!(last_label(&mut h).starts_with("Update from main"), "{}", last_label(&mut h));
     assert!(echoed(&h, "Updated \"Option D\" from main"), "{:?}", h.state().cad.session.log.last());
-    let desc = doc(&mut h).devices.get(&k1).and_then(|c| c.get("description").map(str::to_string));
+    let desc = doc(&mut h).devices().get(&k1).and_then(|c| c.get("description").map(str::to_string));
     assert_eq!(desc.as_deref(), Some("Main pump"));
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -252,7 +252,7 @@ fn a_versions_details_name_the_devices_it_added() {
     h.state_mut().save().unwrap();
     let placed = run(&mut h, "place", json!({"symbol": "coil", "at": [60, 150]}));
     let c = ecad_model::DeviceId::parse(placed["component"].as_str().unwrap()).unwrap();
-    let tag = doc(&mut h).devices.get(&c).and_then(|x| x.tag_shown()).unwrap();
+    let tag = doc(&mut h).devices().get(&c).and_then(|x| x.tag_shown()).unwrap();
     ok(&mut h, r#"version {"name":"After"}"#);
     h.state_mut().save().unwrap();
     let info = run(&mut h, "pointinfo", json!({"version": "After"}));

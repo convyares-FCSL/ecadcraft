@@ -32,7 +32,7 @@ fn place_on(h: &mut H, symbol: &str, at: (f64, f64), device: DeviceId) -> Value 
 /// The representation that holds `item`.
 fn rep_of_item(h: &mut H, item: ItemId) -> RepresentationId {
     let doc = h.doc();
-    doc.representations.iter().find(|(_, r)| r.items.contains(&item)).map(|(id, _)| *id).expect("item in a representation")
+    doc.representations().iter().find(|(_, r)| r.items.contains(&item)).map(|(id, _)| *id).expect("item in a representation")
 }
 
 fn rep_of(h: &mut H, placed: &Value) -> RepresentationId {
@@ -169,15 +169,15 @@ fn second_page(h: &mut H) -> PageId {
 }
 
 fn project_prop(h: &mut H, key: &str) -> Option<String> {
-    h.doc().display.get(key).cloned()
+    h.doc().display().get(key).cloned()
 }
 
 fn comp_props(h: &mut H, c: DeviceId, prefix: &str) -> BTreeMap<String, String> {
-    h.doc().devices[&c].properties.iter().filter(|(k, _)| k.starts_with(prefix)).map(|(k, v)| (k.clone(), v.clone())).collect()
+    h.doc().devices()[&c].properties.iter().filter(|(k, _)| k.starts_with(prefix)).map(|(k, v)| (k.clone(), v.clone())).collect()
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.settings)
+    (d.devices(), d.connection_points(), d.wires(), d.cables(), d.pages(), d.page_order(), d.representations(), d.items(), d.display(), d.settings())
 }
 
 fn textstyle_kind(v: &Value, kind: &str) -> Value {
@@ -281,9 +281,9 @@ fn tester_031_fixtures_build_and_store_no_text_keys() {
     let (_, t) = strip_at(&mut f.h, &[100.0, 110.0, 120.0], 100.0, None);
     assert_eq!(t.len(), 3);
     let d = f.h.doc();
-    assert!(d.display.keys().all(|k| !k.starts_with("text.")));
-    assert!(d.devices.values().all(|c| c.properties.keys().all(|k| !k.starts_with("text."))));
-    assert!(d.pages.values().all(|p| p.display.keys().all(|k| !k.starts_with("text."))));
+    assert!(d.display().keys().all(|k| !k.starts_with("text.")));
+    assert!(d.devices().values().all(|c| c.properties.keys().all(|k| !k.starts_with("text."))));
+    assert!(d.pages().values().all(|p| p.display.keys().all(|k| !k.starts_with("text."))));
     f.h.check();
 }
 
@@ -395,7 +395,7 @@ fn t2_textstyle_reads_the_defaults_of_every_kind() {
     // FP6 made it 1.6; brief 066 moved it to data and made it 2.5.
     let builtin = ecad_electrical::defaults::text::WIRE_LABEL_HEIGHT.builtin();
     assert_eq!(builtin, ecad_electrical::defaults::Value::Length(2.5), "066: wire label built-in 2.5");
-    let s = serde_json::to_value(&h.doc().settings).unwrap();
+    let s = serde_json::to_value(h.doc().settings()).unwrap();
     assert!(s.pointer("/wiring/label_height").is_none(), "a new project chooses no height (066, F2): {s}");
 }
 
@@ -483,7 +483,7 @@ fn t3_font_fallback_never_refuses_and_keeps_the_stored_name() {
 /// The project's record of the tag text style's `field` (brief 050a).
 fn tag_field(h: &mut H, field: &str) -> Option<String> {
     let d = h.doc();
-    d.styles
+    d.styles()
         .get(&ecad_model::StyleCatalogue::Text)
         .and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())))
         .and_then(|r| r.body.entry(field))
@@ -540,7 +540,7 @@ fn t4_wire_label_height_is_written_to_the_wiring_settings() {
     let ops = last_ops(&mut h);
     assert!(ops.iter().any(|o| matches!(o, Op::SetProjectSettings { .. })), "{ops:?}");
     assert!(!ops.iter().any(|o| matches!(o, Op::SetProperty { key, .. } if key.starts_with("text.wire_label"))), "{ops:?}");
-    assert_eq!(h.doc().settings.wiring.label_height(), Some(2.0));
+    assert_eq!(h.doc().settings().wiring.label_height(), Some(2.0));
     assert_eq!(project_prop(&mut h, "text.wire_label.height"), None);
     let v = h.run("textstyle", json!({})).unwrap();
     assert_eq!(num(&textstyle_kind(&v, "wire_label")["height"]), 2.0);
@@ -631,11 +631,11 @@ fn t5_levels_symbol_device_page_project_narrowest_wins() {
 
     // Where the keys live (FP1–FP3).
     let d = f.h.doc();
-    assert_eq!(d.display.get("text.tag.show").map(String::as_str), Some("no"));
-    assert_eq!(d.pages[&f.page].display.get("text.tag.show").map(String::as_str), Some("yes"));
-    assert_eq!(d.devices[&f.k1].properties.get("text.tag.show").map(String::as_str), Some("no"));
+    assert_eq!(d.display().get("text.tag.show").map(String::as_str), Some("no"));
+    assert_eq!(d.pages()[&f.page].display.get("text.tag.show").map(String::as_str), Some("yes"));
+    assert_eq!(d.devices()[&f.k1].properties.get("text.tag.show").map(String::as_str), Some("no"));
     let sym = format!("text.{}.tag.show", f.r1[1].hex());
-    assert_eq!(d.devices[&f.k1].properties.get(&sym).map(String::as_str), Some("yes"), "{sym}");
+    assert_eq!(d.devices()[&f.k1].properties.get(&sym).map(String::as_str), Some("yes"), "{sym}");
     // `null` removes the symbol's value: back to the device's off.
     one_tx(&mut f.h, "showtext", json!({"kind": "tag", "show": null, "representation": f.r1[1].hex()}));
     assert!(shown_reps(&mut f.h, f.page, "-K01").is_empty());
@@ -735,8 +735,8 @@ fn t6_runs_once_per_run_symbol_override_and_another_device_splits() {
     let (s1, _) = strip_at(&mut h, &[100.0], 60.0, None);
     let (s2, _) = strip_at(&mut h, &[110.0], 60.0, None);
     strip_at(&mut h, &[120.0], 60.0, Some(s1));
-    let tag1 = h.doc().devices[&s1].tag_shown().unwrap();
-    let tag2 = h.doc().devices[&s2].tag_shown().unwrap();
+    let tag1 = h.doc().devices()[&s1].tag_shown().unwrap();
+    let tag2 = h.doc().devices()[&s2].tag_shown().unwrap();
     let rows = texts(&mut h, page);
     let on_line = |t: &str| rows.iter().filter(|r| r["kind"] == "tag" && r["value"] == t && shown(r) && (at(r).1 - 60.0).abs() < 15.0).count();
     assert_eq!(on_line(&tag1), 2, "{tag1} split by {tag2}: {rows:?}");
@@ -771,7 +771,7 @@ fn t6_plc_channels_in_a_row_show_the_tag_once() {
     let a: DeviceId = id(&first, "component");
     place_on(&mut h, "di", (120.0, 150.0), a);
     place_on(&mut h, "di", (140.0, 150.0), a);
-    let tag = h.doc().devices[&a].tag_shown().unwrap();
+    let tag = h.doc().devices()[&a].tag_shown().unwrap();
     let rows = texts(&mut h, page);
     let s = shown_tags(&rows, &tag);
     assert_eq!(s.len(), 1, "{rows:?}");
@@ -780,7 +780,7 @@ fn t6_plc_channels_in_a_row_show_the_tag_once() {
     let k = place(&mut h, "coil", (100.0, 60.0));
     let k1: DeviceId = id(&k, "component");
     place_on(&mut h, "no", (115.0, 60.0), k1);
-    let kt = h.doc().devices[&k1].tag_shown().unwrap();
+    let kt = h.doc().devices()[&k1].tag_shown().unwrap();
     assert_eq!(shown_tags(&texts(&mut h, page), &kt).len(), 2);
     h.check();
 }
@@ -1030,7 +1030,7 @@ fn t10_a_moved_tag_keeps_its_place_through_move_rotate_renumber_save() {
     let r4 = row_of(&texts(&mut h2, page), rep, "tag").clone();
     assert_eq!(r4["moved"], json!(false));
     assert!(!near(bx(&r4).0, (155.0, 215.0)));
-    assert!(h2.doc().devices.values().all(|c| !c.properties.contains_key(&key)));
+    assert!(h2.doc().devices().values().all(|c| !c.properties.contains_key(&key)));
     h2.check();
     h2.close_all();
     drop(h2);
@@ -1040,7 +1040,7 @@ fn t10_a_moved_tag_keeps_its_place_through_move_rotate_renumber_save() {
 /// Every handle of one symbol representation on `page`.
 fn sym_handles(h: &mut H, page: PageId, rep: RepresentationId) -> Vec<String> {
     let doc = h.doc();
-    let r = doc.representations[&rep].clone();
+    let r = doc.representations()[&rep].clone();
     let map = h.p(|p| p.pages[&page].map.clone());
     let mut out: Vec<String> = r.items.iter().filter_map(|i| map.item(*i)).map(|x| x.hex()).collect();
     out.extend(r.connection_points.keys().filter_map(|t| map.marker(rep, *t)).map(|x| x.hex()));
@@ -1112,13 +1112,13 @@ fn t10_symbol_keys_follow_delete_erase_and_merge() {
     let moved_before = comp_props(&mut f.h, f.k1, "text.").keys().filter(|k| k.ends_with(".tag.at")).count();
     f.h.run("setprop", json!({"component": k3_id.hex(), "key": "tag", "value": "-K01", "conflict": "merge"})).unwrap();
     let doc = f.h.doc();
-    assert!(!doc.devices.contains_key(&k3_id), "merged away");
+    assert!(!doc.devices().contains_key(&k3_id), "merged away");
     // The symbol may get a new representation ID on merge; every `text.<rep>.` key lives on the
     // component that owns <rep>, and -K01 gained the moved tag.
-    for (cid, c) in &doc.devices {
+    for (cid, c) in doc.devices() {
         for k in c.properties.keys().filter(|k| k.starts_with("text.") && k.split('.').count() > 3) {
             let rep_hex = k.split('.').nth(1).unwrap_or_default();
-            let owner = doc.representations.iter().find(|(id, _)| id.hex() == rep_hex).map(|(_, r)| r.subject);
+            let owner = doc.representations().iter().find(|(id, _)| id.hex() == rep_hex).map(|(_, r)| r.subject);
             assert_eq!(owner, Some(Subject::Device(*cid)), "{k} on {}", cid.hex());
         }
     }
@@ -1129,16 +1129,16 @@ fn t10_symbol_keys_follow_delete_erase_and_merge() {
     let Subject::Device(c) = owner else { panic!("a symbol of a component") };
     one_tx(&mut f.h, "devicedelete", json!({"component": c.hex()}));
     let doc = f.h.doc();
-    assert!(!doc.devices.contains_key(&f.k1));
+    assert!(!doc.devices().contains_key(&f.k1));
     // No orphan: every `text.<rep>.` key left names a symbol its component owns (-K02's stays).
-    for (cid, c) in &doc.devices {
+    for (cid, c) in doc.devices() {
         for k in c.properties.keys().filter(|k| k.starts_with("text.") && k.split('.').count() > 3) {
             let rep_hex = k.split('.').nth(1).unwrap_or_default();
-            let owner = doc.representations.iter().find(|(id, _)| id.hex() == rep_hex).map(|(_, r)| r.subject);
+            let owner = doc.representations().iter().find(|(id, _)| id.hex() == rep_hex).map(|(_, r)| r.subject);
             assert_eq!(owner, Some(Subject::Device(*cid)), "{k} on {}", cid.hex());
         }
     }
-    assert!(doc.devices[&f.k2].properties.contains_key(&format!("text.{}.tag.at", f.r2.hex())), "-K02's moved tag stays");
+    assert!(doc.devices()[&f.k2].properties.contains_key(&format!("text.{}.tag.at", f.r2.hex())), "-K02's moved tag stays");
     f.h.check();
 }
 
@@ -1228,7 +1228,7 @@ fn t11_justified_text_is_recorded_and_reopens_centred() {
     };
     check_drawn(&mut h);
     let doc = h.doc();
-    let json_of = |value: &str| doc.items.values().map(|i| serde_json::to_string(i).unwrap()).find(|s| s.contains(value)).unwrap();
+    let json_of = |value: &str| doc.items().values().map(|i| serde_json::to_string(i).unwrap()).find(|s| s.contains(value)).unwrap();
     let mid = json_of("MIDDLE");
     assert!(mid.contains("halign") && mid.contains("valign"), "{mid}");
     let plain = json_of("PLAIN");
@@ -1257,11 +1257,11 @@ fn t11_the_golden_file_opens_and_saves_unchanged() {
     let mut h = reopen(&v2, 0x7031_1103);
     let head = h.head();
     let doc = h.doc();
-    for i in doc.items.values() {
+    for i in doc.items().values() {
         let s = serde_json::to_string(i).unwrap();
         assert!(!s.contains("halign") && !s.contains("valign"), "{s}");
     }
-    assert!(doc.display.keys().all(|k| !k.starts_with("text.")));
+    assert!(doc.display().keys().all(|k| !k.starts_with("text.")));
     let page = h.first_page();
     h.activate(page);
     let _ = texts(&mut h, page);
@@ -1325,7 +1325,7 @@ fn t15_hostile_text_keys_draw_the_automatic_place() {
     let key = format!("text.{rep}.tag.at");
     let long = "7".repeat(10_000);
     for value in ["a,b,ZZ", "1e999,0,LT", "NaN,NaN,LT", "1,2", "1,2,3,4", "", ",,", "1,2,QQ", long.as_str()] {
-        let before = f.h.doc().devices[&f.k1].properties.get(&key).cloned();
+        let before = f.h.doc().devices()[&f.k1].properties.get(&key).cloned();
         inject(
             &mut f.h,
             vec![Op::SetProperty { object: ObjectRef::Device(f.k1), key: key.clone(), before, after: Some(value.to_string()) }],

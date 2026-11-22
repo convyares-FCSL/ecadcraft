@@ -319,7 +319,7 @@ pub(crate) fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Re
             let doc = p.ledger.document();
             let spec = match params.get("sheet").and_then(Value::as_str) {
                 Some(t) => SheetSpec::parse(t)?,
-                None => doc.settings.sheet(),
+                None => doc.settings().sheet(),
             };
             let margins = ecad_model::document::sheet::Margins::default();
             let (layout, skipped) = block(&bytes, &spec, &margins)?;

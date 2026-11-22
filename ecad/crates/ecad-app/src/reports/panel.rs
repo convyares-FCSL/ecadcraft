@@ -201,7 +201,7 @@ impl Reports {
             // Brief 059: the Details pane's Checks tab.
             self.cables.sync_checks(p, count);
         }
-        let reference_style = p.ledger.document().settings.reference_style();
+        let reference_style = p.ledger.document().settings().reference_style();
         let style = reference_style as u64;
         let o = p.reports();
         if self.wires_shown {

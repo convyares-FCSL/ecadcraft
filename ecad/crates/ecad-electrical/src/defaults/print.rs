@@ -135,7 +135,7 @@ pub fn tag_style(doc: &ecad_model::Document) -> ecad_model::naming::tag::Style {
     use ecad_model::naming::words::Word;
     let word = |e: &Entry| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).word();
     Style {
-        padding: doc.settings.tag_padding().min(MAX_PADDING),
+        padding: doc.settings().tag_padding().min(MAX_PADDING),
         dash: ecad_model::naming::words::flag(word(&TAG_DASH)).unwrap_or(true),
         case: Case::parse(word(&TAG_CASE)).unwrap_or_default(),
     }

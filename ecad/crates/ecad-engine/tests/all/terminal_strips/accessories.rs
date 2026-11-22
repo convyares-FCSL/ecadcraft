@@ -67,7 +67,7 @@ impl F {
     }
 
     fn prop(&mut self, key: &str) -> Option<String> {
-        self.h.doc().devices[&self.strip].value(key)
+        self.h.doc().devices()[&self.strip].value(key)
     }
 
     fn same_as_built(&mut self) {
@@ -89,7 +89,7 @@ impl F {
     fn number(&mut self, i: usize) -> Option<String> {
         let doc = self.h.doc();
         let (w, _) = *doc.ends_at(self.terms[i]).first()?;
-        doc.wires[&w].number_text().map(str::to_string)
+        doc.wires()[&w].number_text().map(str::to_string)
     }
 }
 
@@ -343,8 +343,8 @@ fn hostile_accessory_and_jumper_bar_values_are_refused_in_words() {
     // Design 072: terminal 1 splits its line's wire in two; the device at the far end of either.
     let doc = f.h.doc();
     let far = doc.ends_at(f.terms[0]).into_iter().find_map(|(w, _)| {
-        doc.wires[&w].ends.iter().find_map(|t| {
-            let c = doc.connection_points[t].device().unwrap();
+        doc.wires()[&w].ends.iter().find_map(|t| {
+            let c = doc.connection_points()[t].device().unwrap();
             (c != f.strip).then_some(c)
         })
     });
@@ -402,7 +402,7 @@ fn renumbering_onto_a_spare_position_in_a_jumper_bar() {
     let v = h.run("terminalblocks", json!({"from": [30, 160], "to": [150, 160]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
     let terms: Vec<ConnectionPointId> = v["connection_points"].as_array().unwrap().iter().map(|x| id(x, "connection_point")).collect();
-    let before = h.doc().connection_points[&terms[2]].clone();
+    let before = h.doc().connection_points()[&terms[2]].clone();
     let mut after = before.clone();
     after.label = Some("5".into());
     h.cfg(|p| {
@@ -428,7 +428,7 @@ fn renumbering_onto_a_spare_position_in_a_jumper_bar() {
     let head = f.h.head();
     f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all"})).unwrap();
     assert_eq!(f.h.head(), head + 1, "one transaction");
-    assert_eq!(f.h.doc().connection_points[&f.terms[2]].label.as_deref(), Some("3"));
+    assert_eq!(f.h.doc().connection_points()[&f.terms[2]].label.as_deref(), Some("3"));
     assert_eq!(f.prop("jumper_bar.1"), None, "the jumper bar is not silently extended to the moved terminal");
     assert!(!f.same_net(1, 2));
     assert_eq!(f.prop("acc.after.3").as_deref(), Some("end_plate,partition"), "merged, nothing lost");

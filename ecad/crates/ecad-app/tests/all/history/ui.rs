@@ -92,14 +92,14 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     click(&mut h, "Version Before change on main");
     assert!(h.state().panel.history.selected.is_some());
     save(&h, &deltas, "020-details.png");
-    let head = doc(&mut h).versions.len();
+    let head = doc(&mut h).versions().len();
     click(&mut h, "ecad.history.show");
     let bar = h.state().panel.revision.clone().unwrap_or_default();
     assert!(bar.starts_with("Version \"Before change\" · main"), "{bar}");
     save(&h, &deltas, "020-point.png");
     click(&mut h, project_panel::BACK_TO_CURRENT);
     assert!(h.state().panel.revision.is_none());
-    assert_eq!(doc(&mut h).versions.len(), head, "showing recorded nothing");
+    assert_eq!(doc(&mut h).versions().len(), head, "showing recorded nothing");
 
     // B: Branch from here, the bar and the title.
     click(&mut h, "Version Before change on main");
@@ -116,9 +116,9 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
 
     // An edit on the branch; Save and switch back to main: main is unchanged.
     crate::common::points_at(h.state_mut(), &[(0.0, 150.0), (30.0, 150.0)]);
-    let wires = doc(&mut h).wires.len();
+    let wires = doc(&mut h).wires().len();
     ok(&mut h, r#"wire {"points":[[0,150],[30,150]]}"#);
-    assert_eq!(doc(&mut h).wires.len(), wires + 1);
+    assert_eq!(doc(&mut h).wires().len(), wires + 1);
     // M: Revisions on the branch: Issue is disabled with its reason.
     h.state_mut().open_revisions();
     h.run_steps(2);
@@ -131,7 +131,7 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     // Revisions, still open, now allows issuing.
     assert_eq!(h.state().revisions.as_ref().map(|r| r.off_main.clone()), Some(None));
     h.state_mut().revisions = None;
-    assert_eq!(doc(&mut h).wires.len(), wires, "main is as it was");
+    assert_eq!(doc(&mut h).wires().len(), wires, "main is as it was");
     // C: Restore the version after an edit on main: one step, undone by u.
     crate::common::points_at(h.state_mut(), &[(0.0, 160.0), (30.0, 160.0)]);
     ok(&mut h, r#"wire {"points":[[0,160],[30,160]]}"#);
@@ -140,9 +140,9 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     assert!(matches!(&h.state().panel.history.dialog, Some(Dialog::Restore { question, .. }) if question.contains("as it was at")));
     click(&mut h, "ecad.restore.ok");
     assert_eq!(last_label(&mut h), "Restore \"Before change\"");
-    assert_eq!(doc(&mut h).wires.len(), wires);
+    assert_eq!(doc(&mut h).wires().len(), wires);
     ok(&mut h, "u");
-    assert_eq!(doc(&mut h).wires.len(), wires + 1);
+    assert_eq!(doc(&mut h).wires().len(), wires + 1);
     // A typed switch refreshes the title, bar and History as a click does (reviewer finding 1).
     ok(&mut h, r#"switchbranch {"branch":"Option B","save":true}"#);
     h.run_steps(3);

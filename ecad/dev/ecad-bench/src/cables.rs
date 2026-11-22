@@ -61,13 +61,13 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredCable
     let mut out = MeasuredCables::default();
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
-    if let Some(p) = project.read(&mut s, |p, _| p.ledger.document().page_order.first().copied())? {
+    if let Some(p) = project.read(&mut s, |p, _| p.ledger.document().page_order().first().copied())? {
         project.open_page(&mut s, p)?;
     }
     out.cables = project.configure(&mut s, |p| {
         p.checks();
         p.reports();
-        p.ledger.document().cables.len()
+        p.ledger.document().cables().len()
     })?;
     let (mut n, mut e, mut a, mut sl) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for i in 0..runs.max(1) {

@@ -26,8 +26,8 @@ type Result<T, E = String> = std::result::Result<T, E>;
 
 fn line(l: &mut Ledger, rng: &mut Rng) {
     let doc = l.document();
-    let page = doc.page_order[0];
-    let layer = *doc.layers.keys().next().unwrap();
+    let page = doc.page_order()[0];
+    let layer = *doc.layers().keys().next().unwrap();
     let id = ItemId(u128::from(rng.next_u64()) << 64 | u128::from(rng.next_u64()));
     let x = (rng.below(1000) as f64) / 10.0;
     let item = Item { page, style: style(layer), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(x, 0.0), b: Pt::new(x, 7.0) }) };
@@ -147,8 +147,8 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
             source_head: StepPoint { seq: c_rec.head.seq, chain: c_rec.head.hash().map_err(|e| e.to_string())? },
             ancestor: BranchPoint { branch: main.0, seq: 0, chain: proj.chain_of(main, 0).map_err(|e| e.to_string())? },
         };
-        let page = ledger.document().page_order[0];
-        let layer = *ledger.document().layers.keys().next().unwrap();
+        let page = ledger.document().page_order()[0];
+        let layer = *ledger.document().layers().keys().next().unwrap();
         let id = ItemId(u128::from(rng.next_u64()) << 64 | 7);
         let item = Item { page, style: style(layer), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(1.0, 1.0), b: Pt::new(2.0, 8.0) }) };
         let tx = ledger.commit_merge(Author::User, "Merge \"C\"", kind, vec![Op::AddItem { id, item }], None).unwrap();
@@ -198,13 +198,13 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
     }
     Err(format!(
         "reopened as {:?} on {}; acknowledged {} steps, last {:?}; in flight {:?}",
-        found.branches.iter().map(|(k, (s, d))| (k, s, d.items.len())).collect::<Vec<_>>(),
+        found.branches.iter().map(|(k, (s, d))| (k, s, d.items().len())).collect::<Vec<_>>(),
         found.active,
         acked.len(),
-        exp.branches.iter().map(|(k, (s, d))| (k, s, d.items.len())).collect::<Vec<_>>(),
+        exp.branches.iter().map(|(k, (s, d))| (k, s, d.items().len())).collect::<Vec<_>>(),
         in_flight
             .as_ref()
-            .map(|n| (n.active.clone(), n.branches.iter().map(|(k, (s, d))| (k.clone(), s.clone(), d.items.len())).collect::<Vec<_>>())),
+            .map(|n| (n.active.clone(), n.branches.iter().map(|(k, (s, d))| (k.clone(), s.clone(), d.items().len())).collect::<Vec<_>>())),
     ))
 }
 

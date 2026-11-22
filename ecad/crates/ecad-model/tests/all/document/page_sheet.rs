@@ -38,7 +38,8 @@ fn a_page_takes_its_types_sheet_between_its_own_and_the_projects() {
     for bad in ["A0 999x999", "x"] {
         assert!(serde_json::from_value::<ecad_model::objects::styles::PageType>(serde_json::json!({ "sheet": bad })).is_err(), "{bad}");
     }
-    let before = ledger.document().styles.get(&ecad_model::StyleCatalogue::Page).and_then(|c| c.get(&StyleRef::Builtin("schematic".into()))).cloned();
+    let before =
+        ledger.document().styles().get(&ecad_model::StyleCatalogue::Page).and_then(|c| c.get(&StyleRef::Builtin("schematic".into()))).cloned();
     ledger.commit(Author::User, "project", vec![set_style("schematic", Some(record("project")), before)]).unwrap();
     assert_eq!(sheet_of(ledger.document(), pages[0]), a3, "project");
     ledger.undo(Author::User).unwrap();

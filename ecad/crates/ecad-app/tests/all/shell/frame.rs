@@ -135,7 +135,7 @@ fn the_frame_shows_its_buttons_and_they_open_what_they_name() {
 #[test]
 fn a_page_first_opens_with_the_sheet_fitted_24_px_inside_the_canvas() {
     let mut h = harness();
-    let pages = doc(&mut h).page_order.clone();
+    let pages = doc(&mut h).page_order().to_vec();
     let Some(&first) = pages.first() else { return };
     h.state_mut().show_page(first).unwrap();
     h.run_steps(6);
@@ -161,11 +161,11 @@ fn book_in_folders(h: &mut Harness<'static, App>) -> Vec<ecad_model::PageId> {
         h.run_steps(2);
         v
     };
-    while doc(h).page_order.len() < 9 {
-        let n = doc(h).page_order.len() + 1;
+    while doc(h).page_order().len() < 9 {
+        let n = doc(h).page_order().len() + 1;
         run(h, "newpage", serde_json::json!({"title": format!("Terminals {n}")}));
     }
-    let order = doc(h).page_order.clone();
+    let order = doc(h).page_order().to_vec();
     let mut at = 0;
     for (name, count) in [("Power", 3), ("Control", 2), ("Terminals", 4)] {
         let f = run(h, "newfolder", serde_json::json!({"name": name}));

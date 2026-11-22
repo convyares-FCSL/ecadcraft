@@ -135,7 +135,7 @@ pub fn plan_fence_typed(
     let mut skipped = 0;
     for m in &found.members {
         if let Some(x) = strip_connection_point_at(doc, page, m.at)
-            && strip.is_some_and(|c| doc.connection_points.get(&x).is_some_and(|t| t.device() == Some(c)))
+            && strip.is_some_and(|c| doc.connection_points().get(&x).is_some_and(|t| t.device() == Some(c)))
         {
             skipped += 1;
             continue;
@@ -269,7 +269,7 @@ pub fn land_level(
     };
     let (pin, pout) = (placement.apply(tin.2), placement.apply(tout.2));
     // Which part comes from the in point's side: the kept part's vertex before the split.
-    let before = doc.routes.get(&on.route).and_then(|r| r.points.get(on.segment).copied());
+    let before = doc.routes().get(&on.route).and_then(|r| r.points.get(on.segment).copied());
     let keep_in = before.is_none_or(|b| b.dist(pin) <= b.dist(pout));
     let (keep_t, keep_p, rest_t, rest_p) = if keep_in { (tin.1, pin, tout.1, pout) } else { (tout.1, pout, tin.1, pin) };
     plan_land_ends(doc, ids, on, (RouteEnd::Point(keep_t), keep_p), (RouteEnd::Point(rest_t), rest_p))
@@ -426,7 +426,7 @@ pub enum Bridge {
 pub fn plan_bridge(
     doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, a: ConnectionPointId, b: ConnectionPointId,
 ) -> Result<Bridge, CmdError> {
-    if !doc.connection_points.contains_key(&a) || !doc.connection_points.contains_key(&b) {
+    if !doc.connection_points().contains_key(&a) || !doc.connection_points().contains_key(&b) {
         return Err(CmdError::NotFound(Noun::TerminalBlock));
     }
     if a == b {
@@ -439,7 +439,7 @@ pub fn plan_bridge(
         return Ok(Bridge::Already { conductor: w, same, message: format!("{wa} and {wb} are already bridged.") });
     }
     let pos = |t: ConnectionPointId| {
-        doc.representations_of(doc.connection_points.get(&t)?.owner.subject())
+        doc.representations_of(doc.connection_points().get(&t)?.owner.subject())
             .find_map(|(_, r)| (r.page == page).then(|| ecad_model::connectivity::derive::connection_point_position(doc, page, t)).flatten())
     };
     let (Some(pa), Some(pb)) = (pos(a), pos(b)) else {

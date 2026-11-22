@@ -267,7 +267,7 @@ pub fn of_definition(d: &Definition) -> Option<&'static Starter> {
 /// starter embeds the current one beside it for new placements.
 pub fn embedded(doc: &Document, s: &Starter) -> Option<DefinitionId> {
     let hash = s.definition().ok()?.origin.as_ref()?.content_hash;
-    doc.definitions
+    doc.definitions()
         .iter()
         .find(|(_, d)| d.origin.as_ref().is_some_and(|o| o.library == STARTER_LIBRARY && o.definition == s.id && o.content_hash == hash))
         .map(|(id, _)| *id)

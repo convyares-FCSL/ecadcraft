@@ -130,7 +130,7 @@ fn work(p: &ProjectHandle, s: &mut Session) -> usize {
 /// on the ledger: no page is open on those objects yet).
 pub(crate) fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
     project.configure(s, |p| -> Result<(), String> {
-        let pages: Vec<PageId> = p.ledger.document().page_order.iter().take(STRIPS).copied().collect();
+        let pages: Vec<PageId> = p.ledger.document().page_order().iter().take(STRIPS).copied().collect();
         let style = ecad_model::Style { layer: p.default_layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         // The lines: one loose route each (no wire until both ends land on connection points).
         let mut ops = Vec::new();
@@ -198,7 +198,7 @@ pub(crate) fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), S
             ops.push(Op::SetProperty { object, key, before: None, after: Some(value) });
         };
         for item in ecad_electrical::terminal_strips::accessories::PART_ITEMS {
-            if !doc.display.contains_key(&format!("strip_{item}_part_number")) {
+            if !doc.display().contains_key(&format!("strip_{item}_part_number")) {
                 set(&mut ops, ObjectRef::Project, format!("strip_{item}_part_number"), format!("{}-1", item.to_ascii_uppercase()));
             }
         }
@@ -262,7 +262,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 let t2 = Instant::now();
                 std::hint::black_box(ecad_engine::terminal_strips::draw::StripPages::build(doc, &built));
                 sp.push(ms(t2));
-                for k in doc.cables.keys() {
+                for k in doc.cables().keys() {
                     std::hint::black_box(ecad_electrical::terminal_strips::cores::cable_cores(doc, *k));
                 }
                 std::hint::black_box(&built);
@@ -277,7 +277,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             let strips = o.map_or(0, |o| o.strips.len());
             let connection_points = o.map_or(0, |o| o.strips.strips.values().map(|x| x.drawn).sum());
             let first = o.and_then(|o| o.strips.sorted().first().map(|x| x.component));
-            (doc.page_order.first().copied(), first, strips, connection_points, doc.cables.len())
+            (doc.page_order().first().copied(), first, strips, connection_points, doc.cables().len())
         })?;
         (out.strips, out.connection_points, out.cables) = (strips, connection_points, cables);
         let page1: PageId = page1.ok_or("the project has no pages")?;
@@ -431,7 +431,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let top = project
             .read(&mut s, |p, _| {
                 let doc = p.ledger.document();
-                doc.routes.iter().find_map(|(id, r)| {
+                doc.routes().iter().find_map(|(id, r)| {
                     let first = *r.points.first()?;
                     (r.page == page1 && first.near(Pt::new(X0, 200.0), 1e-6) && r.ends[0] == RouteEnd::Free).then_some(*id)
                 })

@@ -76,7 +76,7 @@ impl CableSlash {
             // Brief 059 (design 059 §5.6): onto a cable not drawn, the cores the wires get, in
             // order, so the order is seen before the commit; more wires than free cores is refused.
             let (text, refused) = match cable {
-                Some(k) if !refused && doc.cables.contains_key(&k) && !ecad_electrical::cables::is_drawn(doc, k) => {
+                Some(k) if !refused && doc.cables().contains_key(&k) && !ecad_electrical::cables::is_drawn(doc, k) => {
                     let tag = ecad_electrical::cables::cable_title(doc, k);
                     match ecad_electrical::cables::commands::cables::assign_cores(doc, k, n) {
                         Ok(cores) => {
@@ -86,7 +86,7 @@ impl CableSlash {
                         Err(e) => (format!("-> refused: {e}"), true),
                     }
                 }
-                Some(k) if !refused && doc.cables.contains_key(&k) => {
+                Some(k) if !refused && doc.cables().contains_key(&k) => {
                     (format!("{text}, continuing {}", ecad_electrical::cables::cable_title(doc, k)), false)
                 }
                 _ => (text, refused),

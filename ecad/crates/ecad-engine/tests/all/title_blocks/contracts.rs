@@ -449,7 +449,7 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     assert!(devices_touched(&doc, &applied(&doc, &ops), &ops).pages);
     // A page's frame or borrowed block: that page's cables and devices.
     let borrowed = {
-        let before = doc.pages[&page].clone();
+        let before = doc.pages()[&page].clone();
         let after = ecad_model::Page { title_block: ecad_model::StyleRef::parse(&id), ..before.clone() };
         Op::ModifyPage { id: page, before, after }
     };
@@ -461,7 +461,7 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     }
     // A frame record: its sheet reaches its pages; its weight reaches nothing.
     let own = ecad_model::StyleRef::parse(&id).unwrap();
-    let rec = doc.styles.get(&ecad_model::StyleCatalogue::Frame).and_then(|m| m.get(&own)).cloned().unwrap();
+    let rec = doc.styles().get(&ecad_model::StyleCatalogue::Frame).and_then(|m| m.get(&own)).cloned().unwrap();
     let set = |after: ecad_model::StyleRecord| Op::SetStyle {
         layer: ecad_model::StyleLayer::Project,
         catalogue: ecad_model::StyleCatalogue::Frame,
@@ -475,7 +475,9 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     let mut a1 = rec.clone();
     ecad_electrical::styles::frame::set(frame_of(&mut a1), "sheet", Some("A1")).unwrap();
     let mut used = doc.clone();
-    used.display.insert("print.frame.style".into(), id.clone());
+    used.edit_parts(|parts| {
+        parts.display.insert("print.frame.style".into(), id.clone());
+    });
     assert!(crate::common::cables_touched(&used, &[set(a1)]).is_some_and(|s| s.contains(&c1)), "its pages' cables");
 }
 
@@ -489,7 +491,9 @@ fn an_out_of_bounds_block_size_is_reported() {
         "Huge",
         ecad_model::objects::styles::StyleBody::Frame(ecad_model::objects::styles::FrameStyle { title_block, ..Default::default() }),
     );
-    doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(ecad_model::StyleRef::Own(5), rec);
+    doc.edit_parts(|parts| {
+        parts.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(ecad_model::StyleRef::Own(5), rec);
+    });
     let rows = ecad_electrical::title_blocks::checks::rows(&doc);
     assert!(rows.iter().any(|r| r.which.contains("Huge's title block size is out of bounds")), "{rows:?}");
 }

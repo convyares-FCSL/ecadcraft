@@ -61,7 +61,7 @@ fn number_of(h: &mut H, page: ecad_model::PageId) -> String {
 fn on_page_101() -> (H, ecad_model::PageId) {
     let mut h = shell();
     let d = doc(&mut h);
-    let first = d.page_order[0];
+    let first = d.page_order()[0];
     run(&mut h, "pageprops", json!({"page": first.hex(), "number": "100"}));
     let p101 = run(&mut h, "newpage", json!({"title": "Motors", "number": "101"}));
     let p101: ecad_model::PageId = ecad_model::PageId::from(u128::from_str_radix(p101["page"].as_str().unwrap(), 16).unwrap());
@@ -147,11 +147,11 @@ fn ac13_each_settings_control_writes_one_setstyle() {
     let d = doc(&mut h);
     let last = run(&mut h, "steps", json!({"limit": 1}));
     assert!(
-        last.to_string().contains("SetStyle") || d.styles.get(&ecad_model::StyleCatalogue::Page).is_some_and(|m| !m.is_empty()),
+        last.to_string().contains("SetStyle") || d.styles().get(&ecad_model::StyleCatalogue::Page).is_some_and(|m| !m.is_empty()),
         "a page record: {last}"
     );
     run(&mut h, "u", json!({}));
-    assert_eq!(doc(&mut h).styles.get(&ecad_model::StyleCatalogue::Page).map(|m| m.len()).unwrap_or(0), 0, "one u");
+    assert_eq!(doc(&mut h).styles().get(&ecad_model::StyleCatalogue::Page).map(|m| m.len()).unwrap_or(0), 0, "one u");
     assert!(missing.is_empty(), "§5.2 element names missing: {missing:?}");
 }
 

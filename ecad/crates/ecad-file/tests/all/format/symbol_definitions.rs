@@ -87,14 +87,14 @@ fn a_project_symbol_and_set_component_definition_round_trip() {
     assert!(opened.report.damage.is_none());
     assert_eq!(opened.ledger.full_log().unwrap(), f.ledger.full_log().unwrap());
     assert_eq!(opened.ledger.document(), f.ledger.document());
-    let read = &opened.ledger.document().definitions[&id];
+    let read = &opened.ledger.document().definitions()[&id];
     assert_eq!(read, &sym);
     // A slot turned by -0.0 is one turned by 0.0: same record, same hash (it was written once
     // and failed the content-hash check on read).
     let mut zero = symbol();
     zero.texts[1].rotation = ecad_model::geometry::units::Radians(0.0);
     assert_eq!(ecad_file::definition_hash(&zero).unwrap(), ecad_file::definition_hash(&symbol()).unwrap());
-    assert_eq!(opened.ledger.document().devices[&c].definition, Some(id));
+    assert_eq!(opened.ledger.document().devices()[&c].definition, Some(id));
 }
 
 #[test]

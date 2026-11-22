@@ -32,7 +32,7 @@ fn sides(ops: &[Op]) -> Vec<(String, String)> {
 /// The connector's terminal ID by side key and pin label.
 fn pin(c: &mut Client, x: &str, side: &str, label: &str) -> String {
     let d = c.doc();
-    d.connection_points
+    d.connection_points()
         .iter()
         .find(|(_, t)| {
             t.owner.subject_hex() == x && t.key.as_ref().map(ToString::to_string).as_deref() == Some(side) && t.label.as_deref() == Some(label)
@@ -121,7 +121,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
             assert_one_by_agent(&mut c, n, &format!("{cmd} {params} → {v}"));
         }
         let d = c.doc();
-        let t = d.connection_points.iter().find(|(id, _)| id.hex() == s3).map(|(_, t)| t.clone()).expect("S:3 kept its ID");
+        let t = d.connection_points().iter().find(|(id, _)| id.hex() == s3).map(|(_, t)| t.clone()).expect("S:3 kept its ID");
         assert_eq!(t.label.as_deref(), Some("GND"), "pinlabel keeps the terminal's ID");
 
         // (4) §6.1's refusals and hostile input: nothing recorded.

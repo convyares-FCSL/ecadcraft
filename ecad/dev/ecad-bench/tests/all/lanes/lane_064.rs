@@ -16,13 +16,13 @@ use ecad_model::{Author, Document, PageId};
 fn every_reference(doc: &Document, m: &dyn ecad_electrical::styles::text_style::fonts::TextMetrics) -> std::collections::BTreeMap<PageId, String> {
     use {ecad_electrical::continuations, ecad_electrical::references::devices};
     let mut out: std::collections::BTreeMap<PageId, String> = std::collections::BTreeMap::new();
-    for p in &doc.page_order {
+    for p in doc.page_order() {
         let parts = devices::table::parts_on_page_measured(doc, *p, m);
         if !parts.is_empty() {
             out.insert(*p, format!("{parts:?}"));
         }
     }
-    let names: BTreeSet<String> = doc.aids.keys().filter_map(|a| continuations::name_of(doc, *a)).collect();
+    let names: BTreeSet<String> = doc.aids().keys().filter_map(|a| continuations::name_of(doc, *a)).collect();
     let mut places = devices::places::Places::new(doc);
     for (p, parts) in continuations::shown_measured(doc, &mut places, &names, m) {
         if !parts.is_empty() {

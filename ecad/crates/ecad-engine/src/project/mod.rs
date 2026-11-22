@@ -453,7 +453,7 @@ pub(crate) fn project_page_kept(
     hidden_text: bool, plc: Option<&ecad_electrical::plc::kept::Plc>,
 ) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
-    for l in doc.layers.values() {
+    for l in doc.layers().values() {
         if d.layer(&l.name).is_none() {
             d.layers.push(CLayer::new(&l.name));
         }
@@ -503,7 +503,7 @@ pub(crate) fn project_page_kept(
         if d.blocks.contains_key(&name) {
             continue;
         }
-        let def = doc.definitions.get(def_id).ok_or_else(|| format!("definition {def_id} is missing"))?;
+        let def = doc.definitions().get(def_id).ok_or_else(|| format!("definition {def_id} is missing"))?;
         let mut b = Block::new(&name);
         for g in &def.graphics {
             let h = d.new_handle();
@@ -744,7 +744,7 @@ impl Project {
         }
         // IDs no longer at the head are dropped from what is remembered.
         let doc = self.ledger.document();
-        self.views.retain(|k| doc.cables.contains_key(k));
+        self.views.retain(|k| doc.cables().contains_key(k));
         // A view is drawn on every page showing the cable: the active page is redrawn, every
         // other page when it becomes active.
         self.record_change(None, ecad_electrical::devices::device_list::DeviceTouch::default(), Some(BTreeSet::new()), false);
@@ -810,7 +810,7 @@ impl Project {
     /// The page window's title: `demo - page 2: Field`.
     fn page_title(&self, page: PageId) -> String {
         let doc = self.ledger.document();
-        let t = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
+        let t = doc.pages().get(&page).map(|p| p.title.to_string()).unwrap_or_default();
         format!("{} - page {}: {t}", self.name, ecad_electrical::references::cables::page_number(doc, page))
     }
 
@@ -873,7 +873,7 @@ impl Project {
     /// # Errors
     /// Unknown page or projection failure; the page shown before stays shown.
     pub(crate) fn open_page(&mut self, pg: &mut Pages<'_>, page: PageId) -> Result<u64, String> {
-        if !self.ledger.document().pages.contains_key(&page) {
+        if !self.ledger.document().pages().contains_key(&page) {
             return Err(format!("page {page} does not exist"));
         }
         if let Some(uid) = self.pages.get(&page).and_then(|v| v.uid)
@@ -990,7 +990,7 @@ impl Project {
         // Worked out from scratch, so the check does not trust the kept models.
         let reports = self.derived.report_models(doc);
         let pages = doc
-            .page_order
+            .page_order()
             .iter()
             .map(|p| {
                 let view = self.pages.get(p);
@@ -1015,7 +1015,7 @@ impl Project {
                 };
                 PageInfo {
                     id: *p,
-                    title: doc.pages.get(p).map(|x| x.title.to_string()).unwrap_or_default(),
+                    title: doc.pages().get(p).map(|x| x.title.to_string()).unwrap_or_default(),
                     open: st.is_some(),
                     projection_matches: matches,
                     mapped_handles: view.filter(|_| st.is_some()).map(|v| v.map.len()),
@@ -1039,7 +1039,7 @@ impl Project {
         let doc = self.ledger.document();
         let mut out = Vec::new();
         for r in doc.routes_on(page) {
-            let Some(route) = doc.routes.get(&r) else { continue };
+            let Some(route) = doc.routes().get(&r) else { continue };
             let mut points = route.points.clone();
             let mut any = false;
             for (end, landed) in End::BOTH.into_iter().zip(route.ends) {

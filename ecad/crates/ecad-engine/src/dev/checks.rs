@@ -293,7 +293,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
     // The report models of this copy, worked out once for every page.
     let reports = crate::project::engine_views().report_models(&inputs.doc);
     for p in &inputs.pages {
-        let title = inputs.doc.pages.get(&p.id).map_or_else(|| p.id.short(), |x| x.title.to_string());
+        let title = inputs.doc.pages().get(&p.id).map_or_else(|| p.id.short(), |x| x.title.to_string());
         let same = crate::project::project_page_pending(
             &inputs.doc,
             p.id,

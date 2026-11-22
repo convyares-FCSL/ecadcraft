@@ -167,15 +167,15 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
     // rewrite removes the wire's place in its cable too, in the same transaction.
     let remove_point = vec![Op::RemoveConnectionPoint { id: term, connection_point: t.clone() }];
     f.ledger.commit(Author::User, "remove a point of a cabled wire", remove_point).unwrap();
-    assert!(!f.ledger.document().wires.contains_key(&cond));
-    assert!(f.ledger.document().cables[&cable].cores.is_empty());
+    assert!(!f.ledger.document().wires().contains_key(&cond));
+    assert!(f.ledger.document().cables()[&cable].cores.is_empty());
     f.ledger.undo(Author::User).unwrap();
-    assert!(f.ledger.document().wires.contains_key(&cond));
+    assert!(f.ledger.document().wires().contains_key(&cond));
     let mut with_detach = vec![Op::ModifyCable { id: cable, before: with_member, after: Default::default() }];
     with_detach.extend(delete);
     f.ledger.commit(Author::User, "delete wire", with_detach).unwrap();
-    assert!(!f.ledger.document().wires.contains_key(&cond));
-    assert!(f.ledger.document().cables[&cable].cores.is_empty(), "the cable survives without it");
+    assert!(!f.ledger.document().wires().contains_key(&cond));
+    assert!(f.ledger.document().cables()[&cable].cores.is_empty(), "the cable survives without it");
 }
 
 #[test]
@@ -246,7 +246,7 @@ fn historical_state_is_reconstructed_without_touching_the_live_document() {
     f.ledger.commit(Author::User, "a", vec![Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 0.0)) }]).unwrap();
     let live = f.ledger.document().clone();
     let at1 = f.ledger.state_at(1).unwrap();
-    assert!(at1.items.is_empty());
+    assert!(at1.items().is_empty());
     assert_eq!(f.ledger.document(), &live);
     assert!(f.ledger.replay_matches().unwrap());
     let replayed = Ledger::replay(f.ledger.full_log().unwrap(), 9).unwrap();
@@ -271,7 +271,7 @@ fn ids_serialise_as_exact_hex_strings() {
     assert_eq!(json, format!("\"{:032x}\"", u128::MAX - 5));
     assert_eq!(serde_json::from_str::<ecad_model::DeviceId>(&json).unwrap(), id);
     let mut doc = Document::default();
-    doc.devices.insert(id, Device::default());
+    doc.edit_parts(|parts| parts.devices.insert(id, Device::default()));
     let back: Document = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
     assert_eq!(back, doc);
 }

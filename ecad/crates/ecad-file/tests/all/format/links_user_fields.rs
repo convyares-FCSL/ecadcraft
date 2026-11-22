@@ -51,7 +51,7 @@ fn ledger() -> Ledger {
 fn links_and_user_values_round_trip_through_a_project_file_and_its_snapshots() {
     let dir = TempDir::new("roundtrip");
     let ledger = ledger();
-    assert_eq!(ledger.document().device_links.len(), 1);
+    assert_eq!(ledger.document().device_links().len(), 1);
     for (name, every) in [("snap.ecad", 16), ("log.ecad", 1_000_000)] {
         let p = dir.path(name);
         let store = Store::create(&p).unwrap();

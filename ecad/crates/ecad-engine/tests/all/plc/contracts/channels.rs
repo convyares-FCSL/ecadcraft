@@ -84,7 +84,7 @@ fn run_fix(h: &mut H, fix: Fix, i: usize) -> Value {
 /// The texts of `kind` on page 1 for card `c`, (value, shown).
 fn texts(h: &mut H, c: DeviceId, kind: fn(TextOf) -> bool) -> Vec<(String, bool)> {
     let d = h.doc();
-    let page = d.page_order[0];
+    let page = d.page_order()[0];
     let reps: Vec<_> = d.representations_of(Subject::Device(c)).map(|(r, _)| r).collect();
     ecad_engine::devices::draw::all_texts_on_page(&d, page)
         .into_iter()
@@ -142,14 +142,14 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
     h.run("wire", json!({"points": pts(&[(120.0, 150.0), (120.0, 250.0)])})).unwrap();
     h.run("wire", json!({"points": pts(&[(140.0, 250.0), (140.0, 150.0)])})).unwrap();
-    let wires = h.doc().wires.len();
+    let wires = h.doc().wires().len();
     let v = h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [155.0, 200.0]})).unwrap();
     assert_eq!(v["message"], "Placed -A01 channels 0–2 on 3 wires (pins 1–3).", "{v}");
     let d = h.doc();
     // Design 072: a loose line carries no wire until both its ends land; each cell lands one, so
     // the two loose lines get their wire (lamp to cell) and the lamp-to-lamp wire splits in two.
-    assert_eq!(d.wires.len(), wires + 3, "two loose lines get their wire, the lamp-to-lamp wire splits in two");
-    let page = d.page_order[0];
+    assert_eq!(d.wires().len(), wires + 3, "two loose lines get their wire, the lamp-to-lamp wire splits in two");
+    let page = d.page_order()[0];
     let mut cells: Vec<(String, ConnectionPointId)> =
         d.connection_points_of(di).filter_map(|(t, x)| x.key.as_ref().filter(|k| k.as_def().is_none()).map(|k| (k.to_string(), t))).collect();
     cells.sort();
@@ -163,7 +163,7 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     }
     same_as_built(&mut h);
     h.cmdline("u");
-    assert_eq!(h.doc().wires.len(), wires);
+    assert_eq!(h.doc().wires().len(), wires);
     same_as_built(&mut h);
 }
 
@@ -336,7 +336,7 @@ fn m_channel_and_address_rows_have_working_fixes() {
     // channel-twice: a hand-made second copy of channel 0's key.
     let d = h.doc();
     let (t1, _) = d.connection_points_of(di).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".1.in")).unwrap();
-    let term = d.connection_points.get(&t1).cloned().unwrap();
+    let term = d.connection_points().get(&t1).cloned().unwrap();
     let after = ConnectionPoint { key: Some(".0.in".parse().unwrap()), ..term.clone() };
     h.cfg(|p| {
         p.ledger
@@ -389,7 +389,7 @@ fn t_hostile_keys_counts_and_values_never_panic() {
     h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops).map(|_| ()).unwrap());
     let d = h.doc();
     let _ = ecad_engine::checks::all(&d, 1e-6);
-    let _ = ecad_engine::devices::draw::all_texts_on_page(&d, d.page_order[0]);
+    let _ = ecad_engine::devices::draw::all_texts_on_page(&d, d.page_order()[0]);
 }
 
 #[test]

@@ -38,7 +38,7 @@ impl App {
         let folders = p
             .read(&mut self.cad.session, |p, _| {
                 let doc = p.ledger.document();
-                doc.folders.keys().map(|f| (*f, ecad_electrical::releases::revisions::folder_path(doc, Some(*f)))).collect::<Vec<_>>()
+                doc.folders().keys().map(|f| (*f, ecad_electrical::releases::revisions::folder_path(doc, Some(*f)))).collect::<Vec<_>>()
             })
             .unwrap_or_default();
         let chosen = folder.and_then(|f| folders.iter().position(|(h, _)| *h == f));

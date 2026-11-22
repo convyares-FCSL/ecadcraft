@@ -140,13 +140,13 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
     assert_eq!((v.strip_builds, v.tiles_patched, v.patched), (builds, patched, rows));
 
     // L: Make its page draws the DQ card on a new page, one transaction; the tile then links it.
-    let pages = doc(&mut h).page_order.len();
+    let pages = doc(&mut h).page_order().len();
     let before = head(&mut h);
     h.get_by_label("ecad.plc.tile.2.makepage").click();
     h.run_steps(4);
     show_plc(&mut h);
     assert_eq!(head(&mut h), before + 1);
-    assert_eq!(doc(&mut h).page_order.len(), pages + 1);
+    assert_eq!(doc(&mut h).page_order().len(), pages + 1);
     assert!(h.query_by_label("ecad.plc.tile.2.makepage").is_none());
     assert!(view(&h).strip[2].links.iter().flatten().any(|l| l.name.starts_with("ecad.plc.tile.2.page.")));
 
@@ -247,7 +247,7 @@ fn screenshots_of_the_io_and_rack_sheets() {
         take(&h, &deltas, name);
     }
     // The I/O sheet's first table, readable (the page on screen is the I/O list).
-    let page = doc(&mut h).page_order.last().copied().unwrap();
+    let page = doc(&mut h).page_order().last().copied().unwrap();
     h.state_mut().goto_place(page, ecad_model::Pt::new(130.0, 240.0));
     if let Ok(st) = h.state_mut().cad.session.state_mut() {
         let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(190.0, 205.0), height: 230.0, twist: 0.0 });
@@ -270,7 +270,7 @@ fn screenshots_of_the_cards_on_the_page() {
     ok(&mut h, &format!(r#"setprop {{"component":"{di}","key":"maker","value":"Maker A"}}"#));
     ok(&mut h, r#"plcpage {"card":"-A03"}"#);
     let d = doc(&mut h);
-    let (first, last) = (d.page_order[0], *d.page_order.last().unwrap());
+    let (first, last) = (d.page_order()[0], *d.page_order().last().unwrap());
     let view = |h: &mut H, x: f64, y: f64, height: f64| {
         if let Ok(st) = h.state_mut().cad.session.state_mut() {
             let _ = st.set_view(cadcraft_engine::View { center: cadcraft_engine::geom::Vec2::new(x, y), height, twist: 0.0 });

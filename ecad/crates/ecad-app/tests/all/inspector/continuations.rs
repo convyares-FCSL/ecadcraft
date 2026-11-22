@@ -17,7 +17,7 @@ fn renaming_or_captioning_a_shown_arrow_refreshes_its_section() {
     let mut h = harness_with(None);
     ok(&mut h, r#"place {"symbol":"continuation","at":[20,20],"name":"24V"}"#);
     let d = doc(&mut h);
-    let (aid, _) = d.aids.iter().next().expect("the arrow is an aid");
+    let (aid, _) = d.aids().iter().next().expect("the arrow is an aid");
     let aid = *aid;
     let rep = d.representations_of(Subject::Aid(aid)).map(|(id, _)| id).next().expect("its symbol");
     h.state_mut().goto_symbols(&[rep]).unwrap();
@@ -46,9 +46,9 @@ fn a_new_location_on_a_shown_box_refreshes_its_section() {
     let mut h = harness_with(None);
     ok(&mut h, r#"locationbox {"location":"+CP1","corners":[[10,10],[80,60]]}"#);
     let d = doc(&mut h);
-    let (aid, _) = d.aids.iter().find(|(_, a)| a.as_box().is_some()).expect("the box is an aid");
+    let (aid, _) = d.aids().iter().find(|(_, a)| a.as_box().is_some()).expect("the box is an aid");
     let aid = *aid;
-    assert!(d.devices.is_empty(), "no device");
+    assert!(d.devices().is_empty(), "no device");
     let rep = d.representations_of(Subject::Aid(aid)).map(|(id, _)| id).next().expect("its outline");
     h.state_mut().goto_symbols(&[rep]).unwrap();
     h.run_steps(4);
@@ -66,7 +66,7 @@ fn a_shown_boxs_panel_temperature_and_style_rows_refresh() {
     let mut h = harness_with(None);
     ok(&mut h, r#"locationbox {"location":"+CP1","corners":[[10,10],[80,60]]}"#);
     let d = doc(&mut h);
-    let (aid, _) = d.aids.iter().find(|(_, a)| a.as_box().is_some()).expect("the box is an aid");
+    let (aid, _) = d.aids().iter().find(|(_, a)| a.as_box().is_some()).expect("the box is an aid");
     let aid = *aid;
     let rep = d.representations_of(Subject::Aid(aid)).map(|(id, _)| id).next().expect("its outline");
     h.state_mut().goto_symbols(&[rep]).unwrap();

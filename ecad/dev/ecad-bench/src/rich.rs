@@ -98,7 +98,7 @@ fn enrich(g: &Generated, path: &std::path::Path) -> Result<ecad_model::Ledger, C
     let (project, _) =
         ProjectHandle::open_file_in(&mut s, path_text(path).map_err(CorpusError::Project)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
             .map_err(CorpusError::Project)?;
-    let pages: Vec<PageId> = project.read(&mut s, |p, _| p.ledger.document().page_order.clone()).map_err(CorpusError::Project)?;
+    let pages: Vec<PageId> = project.read(&mut s, |p, _| p.ledger.document().page_order().to_vec()).map_err(CorpusError::Project)?;
     let page1 = *pages.first().ok_or(CorpusError::NoPages)?;
     run(&mut s, "openpage", json!({"page": page1.hex()}))?;
     // Terminal strips (with levels, accessories and jumper bars) and PLC racks go straight on the
@@ -147,7 +147,7 @@ fn ratings(project: &ProjectHandle, s: &mut Session, pages: &[PageId]) -> Result
     let (wires, cables): (Vec<WireId>, Vec<CableId>) = project
         .read(s, |p, _| {
             let doc = p.ledger.document();
-            (doc.wires.keys().copied().collect(), doc.cables.keys().copied().collect())
+            (doc.wires().keys().copied().collect(), doc.cables().keys().copied().collect())
         })
         .map_err(CorpusError::Project)?;
     for chunk in cables.chunks(MANY) {

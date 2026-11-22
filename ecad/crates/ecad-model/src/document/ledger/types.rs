@@ -127,9 +127,6 @@ pub trait History: std::fmt::Debug + Send + Sync {
     }
 }
 
-/// The whole undo and redo stacks after transaction `seq`, from the kinds of every transaction
-/// up to it.
-
 /// A snapshot a ledger starts from instead of the project root (brief 021): the state after
 /// transaction `seq`, the undo and redo stacks there (as `(seq, id)` pairs, oldest first), and
 /// where the history before it is read.

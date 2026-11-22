@@ -33,7 +33,7 @@ fn position_ok(l: &str) -> Result<(), CmdError> {
 fn relabel_ops(doc: &Document, connection_points: &[ConnectionPointId], to: &str) -> Vec<Op> {
     let mut ops = Vec::new();
     for t in connection_points {
-        let Some(x) = doc.connection_points.get(t) else { continue };
+        let Some(x) = doc.connection_points().get(t) else { continue };
         if x.label.as_deref() == Some(to) {
             continue;
         }
@@ -95,7 +95,7 @@ pub(crate) fn plan_terminal_block_label(doc: &Document, input: Terminalblocklabe
     // when only `text` is given).
     let (c, pos, n) = match (connection_point, strip) {
         (Some(t), _) => {
-            let x = doc.connection_points.get(&t).ok_or(CmdError::NotFound(Noun::TerminalBlock))?;
+            let x = doc.connection_points().get(&t).ok_or(CmdError::NotFound(Noun::TerminalBlock))?;
             let pos = x.label.clone().ok_or(CmdError::refused("That terminal has no position label."))?;
             (x.device().ok_or(CmdError::NotFound(Noun::TerminalBlock))?, pos, tt::level_of(doc, t).0)
         }
@@ -176,7 +176,7 @@ pub(crate) fn plan_terminal_block_label(doc: &Document, input: Terminalblocklabe
         {
             return Err(CmdError::refused(format!("A level's label is 1 to {} characters, with no control characters.", tt::MAX_LABEL_CHARS)));
         }
-        let before = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+        let before = doc.devices().get(&c).and_then(|x| x.properties.get(&key)).cloned();
         // A relabel above moved the old key; the new one is empty unless that move wrote it.
         let moved = ops.iter().rev().find_map(|o| match o {
             Op::SetProperty { key: k, after, .. } if *k == key => Some(after.clone()),
@@ -234,7 +234,7 @@ impl ToPosition {
 pub(crate) fn plan_toposition(
     doc: &Document, ids: &mut IdAllocator, device: DeviceId, strip: Option<DeviceId>, position: Option<&str>,
 ) -> Result<ToPosition, CmdError> {
-    let comp = doc.devices.get(&device).ok_or(CmdError::NotFound(Noun::Device))?;
+    let comp = doc.devices().get(&device).ok_or(CmdError::NotFound(Noun::Device))?;
     let tag = crate::devices::tags::tag_words(doc, device);
     if crate::terminal_strips::strip_of(doc, device).is_some() {
         return Err(CmdError::refused(format!("{tag} is a terminal strip, not a fuse terminal device.")));
@@ -257,7 +257,7 @@ pub(crate) fn plan_toposition(
     let page = rep.page;
     let no_item = || CmdError::refused("The device's symbol has no item.");
     let item = *rep.items.first().ok_or_else(no_item)?;
-    let item_before = doc.items.get(&item).cloned().ok_or_else(no_item)?;
+    let item_before = doc.items().get(&item).cloned().ok_or_else(no_item)?;
     let ItemKind::Symbol(inst) = &item_before.kind else { return Err(CmdError::refused("The device is not drawn as a symbol.")) };
     let here = inst.placement.origin;
     // The strip: named, else the nearest strip with a terminal on this page.
@@ -370,7 +370,7 @@ pub(crate) fn plan_toposition(
         _ => None,
     };
     let label = ecad_model::objects::devices::PositionLabel::new(&pos).ok();
-    let sd = doc.devices.get(&strip);
+    let sd = doc.devices().get(&strip);
     if let (Some(f), Some(label), Some(sd)) = (typed, label, sd)
         && let ecad_model::DeviceType::TerminalStrip(s) = &sd.device_type
     {
@@ -388,7 +388,7 @@ pub(crate) fn plan_toposition(
     lost.extend(ecad_model::TextField::ALL.into_iter().filter(|f| comp.text(*f).is_some()).map(|f| f.key().to_string()));
     lost.sort();
     let strip_part =
-        doc.devices.get(&strip).and_then(|x| x.properties.get(&crate::terminal_strips::strip_model::type_key(ty, "part_number"))).cloned();
+        doc.devices().get(&strip).and_then(|x| x.properties.get(&crate::terminal_strips::strip_model::type_key(ty, "part_number"))).cloned();
     let note = match (comp.part_number.as_ref().map(|t| t.to_string()), &strip_part) {
         (Some(a), Some(b)) if a != *b => {
             Some(format!("{tag}'s part {a} differs from {stag}'s fuse terminal part {b}; set {stag}'s part if {a} is right."))

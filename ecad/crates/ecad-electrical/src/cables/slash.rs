@@ -221,7 +221,7 @@ pub fn crossings(doc: &Document, page: PageId, from: Pt, to: Pt, tol: f64) -> Cr
     let routes = routes(doc, page);
     let mut meets: BTreeMap<(RouteId, CorePosition), Meets> = BTreeMap::new();
     let mut ignored: Vec<(f64, ItemId, Pt)> = Vec::new();
-    for (id, item) in doc.items.iter().filter(|(_, i)| i.page == page) {
+    for (id, item) in doc.items().iter().filter(|(_, i)| i.page == page) {
         let ItemKind::Primitive(prim) = &item.kind else { continue };
         match routes.get(id) {
             Some(c) => meet_route(meets.entry(*c).or_default(), prim, from, to, tol),
@@ -282,7 +282,7 @@ pub fn slashes_of(doc: &Document, page: PageId, cable: CableId) -> Vec<(ItemId, 
     doc.representations_of(Subject::Cable(cable))
         .filter(|(_, r)| r.page == page)
         .flat_map(|(_, r)| r.items.iter())
-        .filter_map(|i| match doc.items.get(i).map(|x| &x.kind) {
+        .filter_map(|i| match doc.items().get(i).map(|x| &x.kind) {
             Some(ItemKind::Primitive(Primitive::Line { a, b })) => Some((*i, *a, *b)),
             _ => None,
         })
@@ -298,7 +298,7 @@ pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, show
     let routes = routes(doc, page);
     let by_conductor = prims_by_position(doc, &routes);
     let mut out = Vec::new();
-    for (k, cable) in &doc.cables {
+    for (k, cable) in doc.cables() {
         for (item, from, to) in slashes_of(doc, page, *k) {
             if !shown(item) || !(from.is_finite() && to.is_finite()) || from.near(to, tol) {
                 continue;
@@ -356,7 +356,7 @@ pub(crate) fn member_crossings_with<'p>(
 fn prims_by_position<'d>(doc: &'d Document, routes: &BTreeMap<ItemId, (RouteId, CorePosition)>) -> BTreeMap<CorePosition, Vec<&'d Primitive>> {
     let mut out: BTreeMap<CorePosition, Vec<&Primitive>> = BTreeMap::new();
     for (i, (_, c)) in routes {
-        if let Some(ItemKind::Primitive(prim)) = doc.items.get(i).map(|x| &x.kind) {
+        if let Some(ItemKind::Primitive(prim)) = doc.items().get(i).map(|x| &x.kind) {
             out.entry(*c).or_default().push(prim);
         }
     }
@@ -378,7 +378,7 @@ fn short(hex: &str) -> &str {
 
 /// A wire's name: its number, else `wire <first 8 hex>…`.
 pub fn wire_name(doc: &Document, c: WireId) -> String {
-    match doc.wires.get(&c).and_then(|x| x.number_text()) {
+    match doc.wires().get(&c).and_then(|x| x.number_text()) {
         Some(t) => t.to_string(),
         None => format!("wire {}…", short(&c.hex())),
     }
@@ -395,7 +395,7 @@ pub fn position_name(doc: &Document, p: CorePosition) -> String {
 
 /// A cable's name: its `tag` property, else `cable <first 8 hex>…`.
 pub(crate) fn cable_name(doc: &Document, k: CableId) -> String {
-    match doc.cables.get(&k).and_then(|x| x.tag_shown()) {
+    match doc.cables().get(&k).and_then(|x| x.tag_shown()) {
         Some(t) => t,
         None => format!("cable {}…", short(&k.hex())),
     }
@@ -437,7 +437,7 @@ pub fn too_many() -> String {
 
 /// A wire after the word "Wire": its number, else `8a3f19c0…` (so it never reads "Wire wire …").
 fn bare_wire_name(doc: &Document, c: WireId) -> String {
-    match doc.wires.get(&c).and_then(|x| x.number_text()) {
+    match doc.wires().get(&c).and_then(|x| x.number_text()) {
         Some(t) => t.to_string(),
         None => format!("{}…", short(&c.hex())),
     }
@@ -464,7 +464,7 @@ pub(crate) fn already_in_cable(doc: &Document, blocked: &[(CorePosition, CableId
 
 /// `cable C1` for a tagged cable, else `cable 8a3f19c0…`.
 fn cable_label(doc: &Document, k: CableId) -> String {
-    match doc.cables.get(&k).and_then(|x| x.tag_shown()) {
+    match doc.cables().get(&k).and_then(|x| x.tag_shown()) {
         Some(t) => format!("cable {t}"),
         None => cable_name(doc, k),
     }

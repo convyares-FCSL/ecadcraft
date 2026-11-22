@@ -418,7 +418,7 @@ pub fn rows(project: &Project) -> Vec<Revision> {
 
 /// Every revision row, by `n` ascending.
 pub fn list(doc: &Document) -> Vec<Revision> {
-    rows(&doc.project)
+    rows(doc.project())
 }
 
 /// The issued revisions, newest first.
@@ -445,7 +445,7 @@ pub(crate) fn pending_n(doc: &Document) -> u32 {
 
 /// The rev the pending row shows: its own, else the scheme's next after the newest issued one.
 pub fn pending_rev(doc: &Document) -> String {
-    let scheme = &doc.project.rev_scheme;
+    let scheme = &doc.project().rev_scheme;
     match pending(doc) {
         Some(p) if !p.rev().is_empty() => p.rev().to_string(),
         _ => scheme.show(scheme.next(issued(doc).first().and_then(|r| r.rev_value))),
@@ -468,9 +468,9 @@ pub fn pending_note(doc: &Document, pending: bool) -> Option<String> {
 /// # Errors
 /// In words: what the scheme does not have, or that it was issued before.
 pub(crate) fn check_rev(doc: &Document, text: &str) -> Result<Rev, CmdError> {
-    let scheme = &doc.project.rev_scheme;
+    let scheme = &doc.project().rev_scheme;
     let rev = scheme.parse(text).map_err(|e| CmdError::refused(e.to_string()))?;
-    if doc.versions.contains_key(&PointName::Revision(rev)) || issued(doc).iter().any(|r| r.rev_value == Some(rev)) {
+    if doc.versions().contains_key(&PointName::Revision(rev)) || issued(doc).iter().any(|r| r.rev_value == Some(rev)) {
         return Err(CmdError::refused(format!("Rev {} was issued before; choose another.", scheme.show(rev))));
     }
     Ok(rev)
@@ -505,7 +505,7 @@ pub fn folder_path(doc: &Document, folder: Option<FolderId>) -> String {
     let mut names = Vec::new();
     let mut at = folder;
     while let Some(f) = at {
-        let Some(x) = doc.folders.get(&f) else { break };
+        let Some(x) = doc.folders().get(&f) else { break };
         names.push(x.name.clone());
         if names.len() > MAX_FOLDER_DEPTH {
             break;

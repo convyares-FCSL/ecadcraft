@@ -57,11 +57,11 @@ pub fn tree_rows(doc: &Document, unavailable: impl Fn(PageId) -> bool) -> Vec<Tr
     // Pages per folder, all levels: count each page up its folder chain.
     let mut counts: HashMap<ecad_model::FolderId, usize> = HashMap::new();
     for p in &book.order {
-        let mut at = ecad_model::document::book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
+        let mut at = ecad_model::document::book::folder_of(doc, *p).filter(|f| doc.folders().contains_key(f));
         let mut steps = 0;
         while let Some(f) = at {
             *counts.entry(f).or_default() += 1;
-            at = doc.folders.get(&f).and_then(|x| x.parent);
+            at = doc.folders().get(&f).and_then(|x| x.parent);
             steps += 1;
             if steps > ecad_model::document::book::MAX_FOLDER_DEPTH {
                 break;
@@ -74,10 +74,10 @@ pub fn tree_rows(doc: &Document, unavailable: impl Fn(PageId) -> bool) -> Vec<Tr
         .map(|n| match n {
             Node::Folder { id, depth } => TreeRow::Folder {
                 id: *id,
-                name: doc.folders.get(id).map(|f| f.name.clone()).unwrap_or_default(),
+                name: doc.folders().get(id).map(|f| f.name.clone()).unwrap_or_default(),
                 depth: *depth,
                 pages: counts.get(id).copied().unwrap_or(0),
-                parent: doc.folders.get(id).and_then(|f| f.parent),
+                parent: doc.folders().get(id).and_then(|f| f.parent),
             },
             Node::Page { id, depth, position } => {
                 let num = number.get(id).map(|s| s.to_string()).unwrap_or_else(|| position.to_string());
@@ -85,10 +85,10 @@ pub fn tree_rows(doc: &Document, unavailable: impl Fn(PageId) -> bool) -> Vec<Tr
                     id: *id,
                     duplicate: seen.get(&num.to_ascii_lowercase()).is_some_and(|c| *c > 1),
                     number: num,
-                    title: doc.pages.get(id).map(|p| p.title.to_string()).unwrap_or_default(),
+                    title: doc.pages().get(id).map(|p| p.title.to_string()).unwrap_or_default(),
                     unavailable: unavailable(*id),
                     depth: *depth,
-                    folder: ecad_model::document::book::folder_of(doc, *id).filter(|f| doc.folders.contains_key(f)),
+                    folder: ecad_model::document::book::folder_of(doc, *id).filter(|f| doc.folders().contains_key(f)),
                 })
             }
         })

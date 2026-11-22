@@ -85,7 +85,7 @@ fn fixture() -> G {
     let wires =
         [wire(&mut h, json!([[0, 0], [60, 0]]), "W0"), wire(&mut h, json!([[0, 5], [60, 5]]), "W5"), wire(&mut h, json!([[0, 10], [60, 10]]), "W10")];
     let d = h.doc();
-    assert!(wires.iter().all(|w| d.wires.contains_key(w)), "attached at both ends");
+    assert!(wires.iter().all(|w| d.wires().contains_key(w)), "attached at both ends");
     let r = h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap();
     h.run("zoom", json!({"mode": "window", "p1": [-20, -30], "p2": [80, 50]})).unwrap();
     G { h, page, c1: id(&r, "cable"), slash: id(&r, "item"), wires }
@@ -269,10 +269,10 @@ fn undo_and_redo_skip_the_switch() {
     let head = g.h.head();
     view(&mut g.h, g.c1, "fan");
     g.h.run("u", Value::Null).unwrap();
-    assert!(!g.h.doc().cables.contains_key(&g.c1), "undo took the cable slash");
+    assert!(!g.h.doc().cables().contains_key(&g.c1), "undo took the cable slash");
     assert!(fan_paths(&mut g.h, g.page).is_empty());
     g.h.run("redo", Value::Null).unwrap();
-    assert!(g.h.doc().cables.contains_key(&g.c1));
+    assert!(g.h.doc().cables().contains_key(&g.c1));
     assert_eq!(g.h.head(), head + 2);
     assert_eq!(views_of(&mut g.h)[g.c1.hex()], "fan", "still fan after redo");
     assert!(!fan_paths(&mut g.h, g.page).is_empty(), "drawn as a fan");
@@ -328,7 +328,7 @@ fn edits_on_the_fan_are_refused_and_json_forms_still_work() {
     // JSON forms act on IDs whatever the view.
     let r = g.h.route_of(g.page, g.wires[0]);
     g.h.run("disconnect", json!({"route": r.hex(), "end": "A"})).unwrap();
-    assert!(g.h.doc().routes[&r].ends[0].point().is_none());
+    assert!(g.h.doc().routes()[&r].ends[0].point().is_none());
     assert_eq!(g.h.head(), head + 1);
     g.h.run("u", Value::Null).unwrap();
     assert_eq!(g.h.head(), head + 2);
@@ -343,13 +343,13 @@ fn moving_equipment_beside_a_fan_moves_the_hidden_routes() {
     view(&mut g.h, g.c1, "fan");
     let doc = g.h.doc();
     let right = doc
-        .devices
+        .devices()
         .keys()
         .copied()
         .find(|c| {
             ecad_model::connectivity::derive::connection_point_positions(&doc, g.page)
                 .iter()
-                .any(|(t, _, at)| doc.connection_points[t].device().unwrap() == *c && at.x > 30.0)
+                .any(|(t, _, at)| doc.connection_points()[t].device().unwrap() == *c && at.x > 30.0)
         })
         .unwrap();
     let handles = g.h.rep_handles(g.page, right);
@@ -494,7 +494,7 @@ fn fans_of_many_shapes_draw_sensibly() {
     let rl: WireId = id(&wire_pp(&mut h, json!([[60, 305], [0, 305]])).unwrap(), "conductor");
     wire_pp(&mut h, json!([[0, 310], [30, 310], [30, 320], [60, 320]])).unwrap();
     let odd: CableId = id(&h.run("cableslash", json!({"from": [10, 295], "to": [10, 315]})).unwrap(), "cable");
-    assert_eq!(h.doc().cables[&odd].cores[1].wire(), Some(rl), "the right-to-left wire is the reference");
+    assert_eq!(h.doc().cables()[&odd].cores[1].wire(), Some(rl), "the right-to-left wire is the reference");
     view(&mut h, odd, "fan");
     let doc = h.doc();
     let FanOnPage::Drawn(fan) = views::fan_on_page(&doc, page, odd, 1e-6) else { panic!("drawn") };
@@ -505,7 +505,7 @@ fn fans_of_many_shapes_draw_sensibly() {
         assert!(tails.iter().any(|t| t.last().is_some_and(|q| q.near(e, 1e-9))), "{e:?} in {tails:?}");
     }
     // A cable left with one wire is drawn traditional on the page (design 009 §4.1).
-    let members: Vec<WireId> = h.doc().cables[&two].cores.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<WireId> = h.doc().cables()[&two].cores.iter().filter_map(|m| m.wire()).collect();
     h.run("ecaddelete", json!({"conductor": members[0].hex()})).unwrap();
     let doc = h.doc();
     assert_eq!(views::fan_on_page(&doc, page, two, 1e-6), FanOnPage::TooFew);
@@ -532,7 +532,7 @@ fn hostile_geometry_falls_back_to_traditional() {
     // Two wires of no length, made one cable by their IDs.
     // (Each between two points of its own at one place: `wire` would land both ends on one.)
     let (a, b): (WireId, WireId) = h.cfg(|p| {
-        let page = p.ledger.document().page_order[0];
+        let page = p.ledger.document().page_order()[0];
         let style = ecad_model::Style { layer: p.default_layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         let (ops, made) = crate::common::wired_lines(&mut p.ids, page, style, 2, |i| {
             let q = Pt::new(5.0 + i as f64, 5.0 + i as f64);

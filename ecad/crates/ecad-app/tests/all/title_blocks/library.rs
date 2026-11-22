@@ -36,7 +36,7 @@ fn fixture(deltas: Option<Deltas>) -> H {
         &mut h,
         r#"projectprops {"title":"Pump station PS-04","drawing_number":"PS04-E-002","customer":"Northfield Water","status":"WIP","function":"PUMP","location":"CAB1"}"#,
     );
-    let page = crate::canvas::mouse_acceptance::doc(&mut h).page_order[0].hex();
+    let page = crate::canvas::mouse_acceptance::doc(&mut h).page_order()[0].hex();
     ok(&mut h, &format!(r#"renamepage {{"page":"{page}","title":"Motor control"}}"#));
     h
 }

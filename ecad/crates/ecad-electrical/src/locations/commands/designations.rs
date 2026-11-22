@@ -59,7 +59,7 @@ fn description_value(doc: &Document, t: Option<&str>) -> Result<Option<ListDescr
 
 /// The `ModifyProject` from `doc`'s project to `after`, if they differ.
 fn modify(doc: &Document, after: ecad_model::Project) -> Option<Op> {
-    (doc.project != after).then(|| Op::ModifyProject { before: doc.project.clone(), after })
+    (*doc.project() != after).then(|| Op::ModifyProject { before: doc.project().clone(), after })
 }
 
 /// A code refused because another entry has it.
@@ -92,7 +92,7 @@ pub(crate) fn plan_add(doc: &Document, ids: &mut IdAllocator, a: Aspect, typed: 
     let typed = designations::list_code(&code)?;
     let id: u128 = ids.fresh();
     let key = format!("{id:032x}");
-    let after = designations::with_new_entry(&doc.project, a, id, typed, description_value(doc, description)?);
+    let after = designations::with_new_entry(doc.project(), a, id, typed, description_value(doc, description)?);
     let ops = modify(doc, after).into_iter().collect();
     Ok(ListPlan { ops, label: format!("Add {} {code}", a.word()), key, code })
 }
@@ -138,7 +138,7 @@ pub(crate) fn plan_edit(doc: &Document, a: Aspect, edit: EditInput) -> Result<Li
         Some(d) => description_value(doc, d.as_deref())?,
         None => e.description.as_deref().map(designations::list_description).transpose()?,
     };
-    let after = designations::with_entry(&doc.project, a, &e.key, designations::list_code(&code)?, description);
+    let after = designations::with_entry(doc.project(), a, &e.key, designations::list_code(&code)?, description);
     let ops = modify(doc, after).into_iter().collect();
     Ok(ListPlan { ops, label, key: e.key, code })
 }
@@ -147,7 +147,7 @@ pub(crate) fn plan_edit(doc: &Document, a: Aspect, edit: EditInput) -> Result<Li
 /// project and a device's own value are typed ids).
 fn property_of(doc: &Document, o: ObjectRef, prop: &str) -> Option<String> {
     match o {
-        ObjectRef::Device(c) => doc.devices.get(&c).and_then(|x| x.properties.get(prop)).cloned(),
+        ObjectRef::Device(c) => doc.devices().get(&c).and_then(|x| x.properties.get(prop)).cloned(),
         _ => None,
     }
 }
@@ -179,11 +179,11 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
     }
     let counts = uses.counts(a, &from.key);
     let mut ops = Vec::new();
-    let mut project = doc.project.clone();
+    let mut project = doc.project().clone();
     for (o, prop) in uses.users(a, &from.key).map(|u| u.references.clone()).unwrap_or_default() {
         match o {
             ObjectRef::Page(pg) => {
-                if let Some(page) = doc.pages.get(&pg).filter(|p| designations::page_key(p, a).as_deref() == Some(from.key.as_str())) {
+                if let Some(page) = doc.pages().get(&pg).filter(|p| designations::page_key(p, a).as_deref() == Some(from.key.as_str())) {
                     let after = designations::with_page_key(page, a, Some(&into.key));
                     ops.push(Op::ModifyPage { id: pg, before: page.clone(), after });
                 }
@@ -215,7 +215,7 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
     }
     // A location box's values are its aid's fields (design 072 §6.2).
     for b in uses.users(a, &from.key).map(|u| u.boxes.clone()).unwrap_or_default() {
-        let Some(before @ ecad_model::Aid::Box(x)) = doc.aids.get(&b) else { continue };
+        let Some(before @ ecad_model::Aid::Box(x)) = doc.aids().get(&b) else { continue };
         if designations::box_key(x, a).as_deref() == Some(from.key.as_str()) {
             let after = ecad_model::Aid::Box(designations::with_box_key(x, a, Some(&into.key)));
             ops.push(Op::ModifyAid { id: b, before: before.clone(), after });
@@ -236,7 +236,7 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
 /// `designationremove {aspect?, unused: true}` (design 052 §9.4, **Remove unused**): the ops
 /// removing every entry nothing uses (of `only`, else of both lists), and their codes.
 pub(crate) fn plan_remove_unused(doc: &Document, uses: &Uses, only: Option<Aspect>) -> (Vec<Op>, Vec<String>) {
-    let mut project = doc.project.clone();
+    let mut project = doc.project().clone();
     let mut codes = Vec::new();
     for a in Aspect::ALL.into_iter().filter(|a| only.is_none_or(|o| o == *a)) {
         for e in designations::entries(doc, a) {
@@ -259,7 +259,7 @@ pub(crate) fn plan_remove(doc: &Document, uses: &Uses, a: Aspect, key: Option<&s
     if !counts.unused() {
         return Err(CmdError::refused(format!("{} is used by {}. Give them another {} first.", e.code, counts.words(), a.word())));
     }
-    Ok((modify(doc, designations::without_entry(&doc.project, a, &e.key)).into_iter().collect(), e.code))
+    Ok((modify(doc, designations::without_entry(doc.project(), a, &e.key)).into_iter().collect(), e.code))
 }
 
 /// Whether the transactions after the first `seen` of `ledger`'s log could change the designation
@@ -296,7 +296,7 @@ pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
 pub fn rows(doc: &Document, uses: &Uses, only: Option<Aspect>) -> Value {
     let mut out = serde_json::Map::new();
     for a in Aspect::ALL.into_iter().filter(|a| only.is_none_or(|o| o == *a)) {
-        let default = designations::default_key(&doc.project, a);
+        let default = designations::default_key(doc.project(), a);
         let rows: Vec<Value> = designations::entries(doc, a)
             .into_iter()
             .map(|e| {

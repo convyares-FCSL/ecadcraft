@@ -14,7 +14,7 @@ fn last_ops(h: &mut H) -> Vec<Op> {
 }
 
 fn labels(h: &mut H, k: CableId) -> Vec<(String, CorePosition, Purpose)> {
-    h.doc().cables[&k].cores.iter().map(|m| (m.label_str().unwrap_or_default().to_string(), m.position, m.purpose)).collect()
+    h.doc().cables()[&k].cores.iter().map(|m| (m.label_str().unwrap_or_default().to_string(), m.position, m.purpose)).collect()
 }
 
 fn unplaced(ls: &[&str]) -> Vec<(String, CorePosition, Purpose)> {
@@ -69,7 +69,7 @@ fn a_slash_places_the_stored_core_of_its_label() {
 fn the_shield_is_the_cables_field() {
     let mut h = H::new(0x72_d4);
     let k: CableId = id(&h.run("cablenew", json!({"shield": "overall"})).unwrap(), "cable");
-    let c = h.doc().cables[&k].clone();
+    let c = h.doc().cables()[&k].clone();
     assert_eq!(c.shield, Some(Shield::Overall));
     assert!(!c.properties.contains_key("shield"), "{:?}", c.properties);
     h.run("cableedit", json!({"cable": k.hex(), "set": {"shield": "pairs", "length": 12}})).unwrap();
@@ -82,9 +82,9 @@ fn the_shield_is_the_cables_field() {
     assert!(!ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Cable(_), .. })));
     // Another field leaves the shield as it is; null clears it.
     h.run("cableedit", json!({"cable": k.hex(), "set": {"length": 14}})).unwrap();
-    assert_eq!(h.doc().cables[&k].shield, Some(Shield::Pairs));
+    assert_eq!(h.doc().cables()[&k].shield, Some(Shield::Pairs));
     h.run("cableedit", json!({"cable": k.hex(), "set": {"shield": null}})).unwrap();
-    assert_eq!(h.doc().cables[&k].shield, None);
+    assert_eq!(h.doc().cables()[&k].shield, None);
     // Hostile words are refused and write nothing.
     let head = h.head();
     for bad in [json!("tartan"), json!("overall\u{202e}"), json!("x".repeat(5000))] {
@@ -94,8 +94,8 @@ fn the_shield_is_the_cables_field() {
     }
     // Lane D c3: `setprop shield` writes the field, in one ModifyCable; never a property.
     h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "overall"})).unwrap();
-    assert_eq!(h.doc().cables[&k].shield, Some(Shield::Overall));
-    assert!(!h.doc().cables[&k].properties.contains_key("shield"));
+    assert_eq!(h.doc().cables()[&k].shield, Some(Shield::Overall));
+    assert!(!h.doc().cables()[&k].properties.contains_key("shield"));
     let head = h.head();
     assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "tartan"})).is_err());
     assert_eq!(h.head(), head);
@@ -111,7 +111,7 @@ fn the_cable_type_is_the_cables_field() {
     let ty = h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth four", "fields": {"cores": "4G", "size": "1.5"}})).unwrap();
     let t = ty["id"].as_str().unwrap().to_string();
     let k: CableId = id(&h.run("cablenew", json!({"cable_type": "Synth four"})).unwrap(), "cable");
-    let c = h.doc().cables[&k].clone();
+    let c = h.doc().cables()[&k].clone();
     assert_eq!(c.cable_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some(t.as_str()));
     assert!(!c.properties.contains_key("cable_type"), "{:?}", c.properties);
     assert_eq!(c.cores.len(), 4, "the type's offer is stored");
@@ -131,9 +131,9 @@ fn the_cable_type_is_the_cables_field() {
 
     // Cleared by cableedit; another field leaves it.
     h.run("cableedit", json!({"cable": k.hex(), "set": {"length": 10}})).unwrap();
-    assert!(h.doc().cables[&k].cable_type.is_some());
+    assert!(h.doc().cables()[&k].cable_type.is_some());
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": null}})).unwrap();
-    assert_eq!(h.doc().cables[&k].cable_type, None);
+    assert_eq!(h.doc().cables()[&k].cable_type, None);
 
     // An ID naming no type is kept and shown as a check row on the cable.
     let gone = "#0123456789abcdef0123456789abcdef";

@@ -105,7 +105,7 @@ fn wire_out(h: &mut H, page: PageId, c: DeviceId, t: ConnectionPointId) -> WireI
     h.activate(page);
     let d = h.doc();
     let at = shown_at(&d, page, t).unwrap_or_else(|| panic!("{} not on that page", name(h, t)));
-    let term = &d.connection_points[&t];
+    let term = &d.connection_points()[&t];
     let side = term.key.as_ref().map(ToString::to_string).unwrap_or_default();
     let other = if side == ".s" { ".p" } else { ".s" };
     let mate = pins(&d, c).get(&(other.to_string(), term.label.clone().unwrap_or_default())).and_then(|m| shown_at(&d, page, *m));
@@ -116,7 +116,7 @@ fn wire_out(h: &mut H, page: PageId, c: DeviceId, t: ConnectionPointId) -> WireI
     };
     let v = h.wire_pp(&[(at.x, at.y), (at.x, at.y + 20.0 * dir)]).unwrap();
     let w: WireId = id(&v, "conductor");
-    assert!(h.doc().wires[&w].ends.contains(&t), "the wire lands on {}", name(h, t));
+    assert!(h.doc().wires()[&w].ends.contains(&t), "the wire lands on {}", name(h, t));
     w
 }
 
@@ -171,7 +171,18 @@ fn same_as_built(h: &mut H) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.definitions)
+    (
+        d.devices(),
+        d.connection_points(),
+        d.wires(),
+        d.cables(),
+        d.pages(),
+        d.page_order(),
+        d.representations(),
+        d.items(),
+        d.display(),
+        d.definitions(),
+    )
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -228,7 +239,7 @@ fn read_everything(h: &mut H) {
     let d = h.doc();
     let _ = d.connectivity();
     let _ = ecad_engine::checks::all(&d, 1e-6);
-    for t in d.connection_points.keys() {
+    for t in d.connection_points().keys() {
         let _ = ecad_engine::interact::connection_point_name(&d, *t);
         let _ = ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, *t);
     }
@@ -242,7 +253,7 @@ fn reps_on(d: &Document, c: DeviceId, page: PageId) -> Vec<RepresentationId> {
 
 /// The representation showing `t`.
 fn rep_of(d: &Document, t: ConnectionPointId) -> RepresentationId {
-    let c = d.connection_points[&t].device().unwrap();
+    let c = d.connection_points()[&t].device().unwrap();
     d.representations_of(Subject::Device(c)).find(|(_, r)| r.connection_points.contains_key(&t)).map(|(rid, _)| rid).expect("shown")
 }
 
@@ -311,7 +322,7 @@ fn with_x02(c: &mut C) -> (DeviceId, Value) {
 #[test]
 fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
     let mut c = fixture_c(0x7044_0001);
-    let before_defs = c.h.doc().definitions.len();
+    let before_defs = c.h.doc().definitions().len();
     let v =
         step(&mut c.h, "connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [100, 100], "page": c.p101.hex()}));
     let x = conn_of(&v);
@@ -321,11 +332,11 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
     assert_eq!(side_labels(&d, x, ".p"), ["1", "2", "3", "4"]);
     assert_eq!(d.connection_points_of(x).count(), 8, "one connection point per pin per half");
     // No other X device: one connector, not two half devices.
-    let xs: Vec<DeviceId> = d.devices.keys().copied().filter(|k| tag(&d, *k).starts_with("-X")).collect();
+    let xs: Vec<DeviceId> = d.devices().keys().copied().filter(|k| tag(&d, *k).starts_with("-X")).collect();
     assert_eq!(xs, [x], "one device for both halves");
     for t in pins(&d, x).values() {
         let n = name(&mut c.h, *t);
-        let term = &d.connection_points[t];
+        let term = &d.connection_points()[t];
         let side = if term.key.as_ref().map(ToString::to_string).as_deref() == Some(".s") { "S" } else { "P" };
         assert_eq!(n, format!("-X01.{side}:{}", term.label.clone().unwrap_or_default()), "pin name (§5.1)");
     }
@@ -348,7 +359,7 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
             "{k} embedded at v2"
         );
     }
-    assert_eq!(c.h.doc().definitions.len(), before_defs + 2);
+    assert_eq!(c.h.doc().definitions().len(), before_defs + 2);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateDevice { .. })).count(), 1, "one CreateDevice");
     let adds: Vec<(Option<String>, Option<String>)> = ops
         .iter()
@@ -455,11 +466,11 @@ fn r02_mating_joins_nets_across_pages() {
     // Deleting the plug half's symbol unmates: two nets again (036 FP8a's update rows).
     let d = c.h.doc();
     let rep = rep_of(&d, p2);
-    let item = d.representations[&rep].items[0];
+    let item = d.representations()[&rep].items[0];
     let hnd = c.h.handle_of(c.p102, item);
     c.h.activate(c.p102);
     c.h.run("erase", json!({"handles": [hnd.hex()]})).unwrap();
-    let still = c.h.doc().connection_points.contains_key(&p2);
+    let still = c.h.doc().connection_points().contains_key(&p2);
     if still {
         assert_ne!(net(&mut c.h, s2), net(&mut c.h, p2), "an undrawn plug pin joins nothing");
     }
@@ -505,13 +516,13 @@ fn r03_pin_pairs_across_wires_split_and_keep_the_number() {
     assert_eq!(tag(&d, x), "-X02", "{v}");
     assert_eq!(side_labels(&d, x, ".s"), ["1", "2", "3"], "{v}");
     assert_eq!(side_labels(&d, x, ".p"), ["1", "2", "3"], "{v}");
-    assert_eq!(d.devices[&x].value("pins").as_deref(), Some("4"), "pins = 4 (FP4)");
+    assert_eq!(d.devices()[&x].value("pins").as_deref(), Some("4"), "pins = 4 (FP4)");
     assert_eq!(reps_on(&d, x, c.p100).len(), 3, "one pin pair per wire");
     let mut nets = Vec::new();
     for (i, label) in ["1", "2", "3"].iter().enumerate() {
         let (sp, pp) = (pin(&d, x, ".s", label), pin(&d, x, ".p", label));
-        let on_s: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&sp)).map(|(w, _)| w).collect();
-        let on_p: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&pp)).map(|(w, _)| w).collect();
+        let on_s: Vec<&WireId> = d.wires().iter().filter(|(_, k)| k.ends.contains(&sp)).map(|(w, _)| w).collect();
+        let on_p: Vec<&WireId> = d.wires().iter().filter(|(_, k)| k.ends.contains(&pp)).map(|(w, _)| w).collect();
         assert_eq!((on_s.len(), on_p.len()), (1, 1), "pin {label}: the wire is split onto both points");
         let n = net(&mut c.h, sp);
         assert!(n.is_some() && n == net(&mut c.h, pp), "pin {label}: one net through the mate");
@@ -594,7 +605,7 @@ fn r03_one_side_pin_on_a_wire_leaves_the_far_part_open() {
     let x = conn_of(&v);
     let d = c.h.doc();
     let sp = pin(&d, x, ".s", "1");
-    let on: Vec<&ecad_model::Wire> = d.wires.values().filter(|k| k.ends.contains(&sp)).collect();
+    let on: Vec<&ecad_model::Wire> = d.wires().values().filter(|k| k.ends.contains(&sp)).collect();
     assert_eq!(on.len(), 1, "one point, one wire");
 }
 
@@ -652,7 +663,7 @@ fn r04_argument_refusals() {
     refused(&mut c.h, "connector", json!({"pins": 2, "names": ["P E", "N"], "layout": "row", "at": at}), &["cannot contain spaces", "\"P E\""]);
     for bad in ["A,B", "A:B", "TOOLONGNM", ""] {
         survives(&mut c.h, "connector", json!({"pins": 2, "names": [bad, "Z"], "layout": "pins", "line": [[90, 200], [130, 200]]}));
-        assert!(c.h.doc().connection_points.values().all(|t| t.label.as_deref() != Some(bad)), "{bad:?} is not a pin name");
+        assert!(c.h.doc().connection_points().values().all(|t| t.label.as_deref() != Some(bad)), "{bad:?} is not a pin name");
     }
     refused(&mut c.h, "connector", json!({"pins": 2, "names": ["A", "A"], "layout": "row", "at": at}), &[]);
     refused(&mut c.h, "connector", json!({"pins": 27, "names": "letters", "layout": "pins", "line": [[90, 200], [130, 200]]}), &[]);
@@ -697,14 +708,14 @@ fn r05_family_or_size_mismatch_is_a_warning_not_a_refusal() {
     // The design's literal row: -X02's pin pairs deleted, then a plain plug6 on it.
     let (x2, _) = with_x02(&mut c);
     let d = c.h.doc();
-    let handles: Vec<String> = reps_on(&d, x2, c.p100).iter().map(|r| c.h.handle_of(c.p100, d.representations[r].items[0]).hex()).collect();
+    let handles: Vec<String> = reps_on(&d, x2, c.p100).iter().map(|r| c.h.handle_of(c.p100, d.representations()[r].items[0]).hex()).collect();
     c.h.activate(c.p100);
     c.h.run("erase", json!({"handles": handles})).unwrap();
-    if c.h.doc().devices.contains_key(&x2) {
+    if c.h.doc().devices().contains_key(&x2) {
         c.h.activate(c.p101);
         step(&mut c.h, "place", json!({"symbol": "plug6", "device": x2.hex(), "at": [100, 100]}));
         let rows: Vec<Value> = ["connector-family", "connector-size"].iter().flat_map(|k| checks_of(&mut c.h, k)).collect();
-        assert!(!rows.is_empty() || !c.h.doc().devices[&x2].properties.contains_key("pins"), "an M12 4-pin connector with a plain plug6: {rows:?}");
+        assert!(!rows.is_empty() || !c.h.doc().devices()[&x2].properties.contains_key("pins"), "an M12 4-pin connector with a plain plug6: {rows:?}");
     }
     // Family: a D-sub socket with an M12 plug.
     let x3 = conn_of(
@@ -767,7 +778,7 @@ fn r05_pin_twice_in_a_hand_made_file() {
     let x = with_x01(&mut c);
     let d = c.h.doc();
     let t = pin(&d, x, ".s", "4");
-    let before = d.connection_points[&t].clone();
+    let before = d.connection_points()[&t].clone();
     let mut after = before.clone();
     after.label = Some("3".into());
     c.h.cfg(|p| {
@@ -817,7 +828,7 @@ fn r06_pin_names_in_hover_wire_list_and_targets() {
     }
     // A terminal strip on the socket wire: its plan's target names the half pin (046's targets).
     let d = c.h.doc();
-    assert!(d.wires[&ws].ends.contains(&s3));
+    assert!(d.wires()[&ws].ends.contains(&s3));
     let at = shown_at(&d, c.p101, s3).unwrap();
     c.h.activate(c.p101);
     let v = c.h.run("terminalblocks", json!({"strip": null, "from": [at.x - 5.0, at.y + 10.0], "to": [at.x + 5.0, at.y + 10.0]})).unwrap();
@@ -1023,7 +1034,7 @@ fn r07_registry_area_and_description_defaults() {
     assert_eq!(side_labels(&d, y, ".p").len(), 6, "registry pins and halves");
     assert!(side_labels(&d, y, ".s").is_empty());
     let d = c.h.doc();
-    assert_eq!(d.devices[&y].get("description"), Some("Connector"), "connector.description");
+    assert_eq!(d.devices()[&y].get("description"), Some("Connector"), "connector.description");
 }
 
 // ------------------------------------------------------------------------------- row 8 (AC 6)
@@ -1084,7 +1095,7 @@ fn r08_a_half_location_is_its_override_else_the_connector() {
     let d = c.h.doc();
     let proposed = |side: ecad_electrical::symbols::Side| {
         let r = ecad_electrical::symbols::reps::goto(&d, x, Some(side)).unwrap();
-        ecad_electrical::locations::rep_context(&d, &d.representations[&r], &mut ecad_electrical::locations::BoxCache::default()).value
+        ecad_electrical::locations::rep_context(&d, &d.representations()[&r], &mut ecad_electrical::locations::BoxCache::default()).value
     };
     assert_eq!(proposed(ecad_electrical::symbols::Side::Socket).as_deref(), Some("+FIELD"), "the box on 101 proposes");
     assert_eq!(proposed(ecad_electrical::symbols::Side::Plug).as_deref(), Some("+CP1"), "the box on 102 proposes");
@@ -1120,7 +1131,7 @@ fn r09_cross_references_between_the_halves() {
     assert_eq!(s(&from_s["target_page"]), n102, "{from_s}");
     // 025's style, as the project writes it (design 044 §7: `/102.C4`, or `102-C-4` per project).
     let want = ecad_electrical::references::devices::places::Places::new(&d)
-        .text(c.p102, ecad_electrical::references::devices::classify::anchor(&d, &d.representations[&prep]));
+        .text(c.p102, ecad_electrical::references::devices::classify::anchor(&d, &d.representations()[&prep]));
     assert_eq!(s(&from_s["text"]), want, "025's style: {from_s}");
     let from_p = references.iter().find(|r| s(&r["source"]) == prep.hex()).unwrap_or_else(|| panic!("plug half reference: {v}"));
     assert_eq!(s(&from_p["target_page"]), n101, "{from_p}");
@@ -1133,7 +1144,7 @@ fn r09_cross_references_between_the_halves() {
     let lines = ecad_engine::devices::draw::hover_lines(&d, x, srep).join("\n");
     assert!(lines.contains("-X01.S") && lines.contains("mates with -X01.P") && lines.contains(&n102), "{lines}");
     // The reference updates when the plug moves page (undo-based: delete it, place it on 100).
-    let pitem = d.representations[&prep].items[0];
+    let pitem = d.representations()[&prep].items[0];
     let hnd = c.h.handle_of(c.p102, pitem);
     c.h.run("erase", json!({"handles": [hnd.hex()]})).unwrap();
     // Lone socket now: no references, hover says it has no plug half.
@@ -1198,19 +1209,19 @@ fn r10_pinlabel_renames_on_both_halves() {
     let w1 = wire_out(&mut c.h, c.p101, x, s3);
     let w2 = wire_out(&mut c.h, c.p101, x, p3);
     let number = wire_number(&mut c.h, s3);
-    let conductors = c.h.doc().wires.clone();
+    let conductors = c.h.doc().wires().clone();
     let v = step(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": "3", "to": "PE"}));
     let d = c.h.doc();
     assert_eq!(
-        (d.connection_points[&s3].label.as_deref(), d.connection_points[&s3].key.as_ref().map(ToString::to_string).as_deref()),
+        (d.connection_points()[&s3].label.as_deref(), d.connection_points()[&s3].key.as_ref().map(ToString::to_string).as_deref()),
         (Some("PE"), Some(".s")),
         "{v}"
     );
     assert_eq!(
-        (d.connection_points[&p3].label.as_deref(), d.connection_points[&p3].key.as_ref().map(ToString::to_string).as_deref()),
+        (d.connection_points()[&p3].label.as_deref(), d.connection_points()[&p3].key.as_ref().map(ToString::to_string).as_deref()),
         (Some("PE"), Some(".p"))
     );
-    assert_eq!(d.wires, conductors, "wires unchanged");
+    assert_eq!(*d.wires(), conductors, "wires unchanged");
     assert_eq!(net(&mut c.h, s3), net(&mut c.h, p3), "still mated");
     assert_eq!(wire_number(&mut c.h, s3), number);
     assert_eq!(name(&mut c.h, s3), "-X01.S:PE");
@@ -1219,7 +1230,7 @@ fn r10_pinlabel_renames_on_both_halves() {
     assert!(echo.contains("-X01:3 is now -X01:PE (both halves)."), "{echo}");
     // By terminal, from the plug side.
     step(&mut c.h, "pinlabel", json!({"connection_point": p3.hex(), "to": "GND"}));
-    assert_eq!(c.h.doc().connection_points[&s3].label.as_deref(), Some("GND"), "renames the socket side too");
+    assert_eq!(c.h.doc().connection_points()[&s3].label.as_deref(), Some("GND"), "renames the socket side too");
     refused(
         &mut c.h,
         "pinlabel",
@@ -1230,8 +1241,8 @@ fn r10_pinlabel_renames_on_both_halves() {
     refused(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": "99", "to": "Z"}), &[]);
     c.h.cmdline("u");
     c.h.cmdline("u");
-    assert_eq!(c.h.doc().connection_points[&s3].label.as_deref(), Some("3"), "u restores 3");
-    assert_eq!(c.h.doc().connection_points[&s4].label.as_deref(), Some("4"));
+    assert_eq!(c.h.doc().connection_points()[&s3].label.as_deref(), Some("3"), "u restores 3");
+    assert_eq!(c.h.doc().connection_points()[&s4].label.as_deref(), Some("4"));
     // A lone half's pin: renamed on the one side it has.
     let y = conn_of(&c.h.run("connector", json!({"halves": "plug", "pins": 2, "layout": "row", "at": [250, 100]})).unwrap());
     step(&mut c.h, "pinlabel", json!({"device": y.hex(), "pin": "1", "to": "A"}));
@@ -1384,7 +1395,7 @@ fn r12_hostile_input_never_panics() {
     let long = "x".repeat(10_000);
     for bad in ["A\u{7}", "\u{0}", "B\r\n", "\u{202e}X", long.as_str()] {
         survives(&mut c.h, "connector", json!({"pins": 2, "names": [bad, "Z"], "layout": "pins", "line": line}));
-        assert!(c.h.doc().connection_points.values().all(|t| t.label.as_deref() != Some(bad)), "{bad:?} is never a pin name");
+        assert!(c.h.doc().connection_points().values().all(|t| t.label.as_deref() != Some(bad)), "{bad:?} is never a pin name");
         survives(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": "1", "to": bad}));
         survives(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": bad, "to": "Q"}));
     }
@@ -1396,7 +1407,7 @@ fn r12_hostile_input_never_panics() {
     );
     for k in ["half.x.part_number", "half.S.maker", "half..maker", "half.sp.location", "half.\u{0}.maker"] {
         survives(&mut c.h, "setprop", json!({"component": x.hex(), "key": k, "value": "v"}));
-        assert!(!c.h.doc().devices[&x].properties.contains_key(k), "{k:?} is not written");
+        assert!(!c.h.doc().devices()[&x].properties.contains_key(k), "{k:?} is not written");
     }
     let nines = "9".repeat(10_000);
     for v in ["-1", "0", "65", "99999999999999999999", "NaN", "4.5", "", nines.as_str()] {
@@ -1475,7 +1486,7 @@ fn r12_hand_made_connectors_never_panic() {
     let _ = ecad_engine::devices::draw::hover_lines(
         &d,
         x,
-        reps_on(&d, x, d.page_order[1]).first().copied().unwrap_or_else(|| d.representations.keys().next().copied().unwrap()),
+        reps_on(&d, x, d.page_order()[1]).first().copied().unwrap_or_else(|| d.representations().keys().next().copied().unwrap()),
     );
     h.run("references", json!({"component": x.hex()})).unwrap();
     survives(&mut h, "pinlabel", json!({"device": x.hex(), "pin": "1", "to": "Z"}));
@@ -1501,13 +1512,13 @@ fn r13_save_and_reopen_keep_everything() {
     let before = c.h.doc();
     let reads = |h: &mut H| (bom(h), wirelist(h), h.run("references", json!({"limit": 2000})).unwrap(), h.run("checks", json!({})).unwrap());
     let r_before = reads(&mut c.h);
-    let names_before: Vec<String> = before.connection_points.keys().map(|t| ecad_engine::interact::connection_point_name(&before, *t)).collect();
+    let names_before: Vec<String> = before.connection_points().keys().map(|t| ecad_engine::interact::connection_point_name(&before, *t)).collect();
     let (mut h, _) = reload(c.h, "reopen", 0x7044_00d1);
     let head = h.head();
     let after = h.doc();
     assert_eq!(model_parts(&after), model_parts(&before), "model after reopen");
     assert_eq!(reads(&mut h), r_before, "reports after reopen");
-    let names_after: Vec<String> = after.connection_points.keys().map(|t| ecad_engine::interact::connection_point_name(&after, *t)).collect();
+    let names_after: Vec<String> = after.connection_points().keys().map(|t| ecad_engine::interact::connection_point_name(&after, *t)).collect();
     assert_eq!(names_after, names_before);
     assert_eq!(h.doc().connectivity().net_of_connection_point(s3), h.doc().connectivity().net_of_connection_point(p3), "mated after reopen");
     assert_eq!(h.head(), head, "open writes nothing");
@@ -1539,7 +1550,7 @@ fn r13_old_version_1_halves_stay_separate() {
     }
     h.cfg(|p| p.ledger.commit(Author::User, "034 file", ops)).unwrap();
     let (mut h, _) = reload(h, "v1", 0x7044_00d3);
-    let page = h.doc().page_order[0];
+    let page = h.doc().page_order()[0];
     h.activate(page);
     let old_s: DeviceId = id(&h.run("place", json!({"definition": v1[0].hex(), "at": [60, 100]})).unwrap(), "component");
     let old_p: DeviceId = id(&h.run("place", json!({"definition": v1[1].hex(), "at": [60, 60]})).unwrap(), "component");
@@ -1552,17 +1563,18 @@ fn r13_old_version_1_halves_stay_separate() {
         );
     }
     // A new socket4 embeds version 2 beside version 1.
-    let n = h.doc().definitions.len();
+    let n = h.doc().definitions().len();
     let x: DeviceId = id(&h.run("place", json!({"symbol": "socket4", "at": [200, 100]})).unwrap(), "component");
     let d = h.doc();
-    assert_eq!(d.definitions.len(), n + 1, "version 2 embedded beside version 1");
+    assert_eq!(d.definitions().len(), n + 1, "version 2 embedded beside version 1");
     let sid = ecad_electrical::symbols::catalogue::by_key("socket4").unwrap().definition().unwrap().origin.as_ref().unwrap().definition;
     let seqs: std::collections::BTreeSet<u64> =
-        d.definitions.values().filter_map(|x| x.origin.as_ref()).filter(|o| o.definition == sid).map(|o| o.library_seq).collect();
+        d.definitions().values().filter_map(|x| x.origin.as_ref()).filter(|o| o.definition == sid).map(|o| o.library_seq).collect();
     assert_eq!(seqs, [1, 2].into_iter().collect(), "both versions");
     assert!(d.connection_points_of(x).all(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".s")), "the new half has side keys");
     assert_eq!(
-        ecad_electrical::symbols::catalogue::embedded(&d, ecad_electrical::symbols::catalogue::by_key("socket4").unwrap()).map(|i| d.definitions[&i]
+        ecad_electrical::symbols::catalogue::embedded(&d, ecad_electrical::symbols::catalogue::by_key("socket4").unwrap()).map(|i| d.definitions()
+            [&i]
             .origin
             .as_ref()
             .unwrap()

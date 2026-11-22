@@ -65,7 +65,7 @@ fn point_words(doc: &Document, t: ConnectionPointId) -> String {
     if let Some(n) = ecad_electrical::connectors::pin_name(doc, t) {
         return n;
     }
-    match doc.connection_points.get(&t).and_then(|x| x.device()) {
+    match doc.connection_points().get(&t).and_then(|x| x.device()) {
         Some(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => {
             format!("{}:{name}", ecad_electrical::devices::tags::tag_words(doc, c))
         }

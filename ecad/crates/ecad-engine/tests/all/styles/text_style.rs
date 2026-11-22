@@ -69,7 +69,9 @@ fn without_craft_fonts_bold_is_a_heavier_stroke() {
     }
     // A family nobody has falls back the same way and says so.
     let mut doc = ecad_model::Document::default();
-    doc.display.insert("text.font".into(), "NoSuchFont 031".into());
+    doc.edit_parts(|parts| {
+        parts.display.insert("text.font".into(), "NoSuchFont 031".into());
+    });
     let g = ecad_engine::styles::draw::Fonts::resolve(&doc);
     assert_eq!((g.wanted.as_str(), g.drawn_with.as_str()), ("NoSuchFont 031", f.drawn_with.as_str()));
     assert!(g.status().starts_with("NoSuchFont 031 is not available here; drawn with"), "{}", g.status());
@@ -119,7 +121,7 @@ fn text_with_justify_is_recorded_with_its_alignment() {
     assert_eq!(h.head(), head + 1, "recorded, not refused");
     let doc = h.doc();
     let item = doc
-        .items
+        .items()
         .values()
         .find_map(|i| match &i.kind {
             ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text { value, halign, valign, at, .. }) if value == "X" => {
@@ -148,12 +150,12 @@ fn a_kind_may_have_its_own_font() {
     let doc = h.doc();
     // Brief 050a: the tag text style's own font, in the project's record of it.
     let font = doc
-        .styles
+        .styles()
         .get(&ecad_model::StyleCatalogue::Text)
         .and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())))
         .and_then(|r| r.body.entry("font"));
     assert_eq!(font.as_deref(), Some("Kind Font 031"));
-    assert!(!doc.display.contains_key("text.font"), "the project font is unchanged");
+    assert!(!doc.display().contains_key("text.font"), "the project font is unchanged");
     let s = ecad_electrical::styles::text_style::text_style(&doc, TextKind::Tag);
     assert_eq!(s.style_name, "ECAD-TAG-BOLD");
     assert_eq!(ecad_electrical::styles::text_style::text_style(&doc, TextKind::PointLabel).style_name, STYLE_REGULAR);

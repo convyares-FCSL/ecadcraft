@@ -33,7 +33,7 @@ fn page_commands_through_mcp_record_modify_page_by_the_agent() {
         assert!(matches!(last.ops.as_slice(), [Op::ModifyPage { id, .. }] if *id == page), "{cmd}: {:?}", last.ops);
     }
     let d = c.doc();
-    let p = &d.pages[&page];
+    let p = &d.pages()[&page];
     assert_eq!(p.title, "Main supply");
     assert_eq!(p.number.as_ref().map(ecad_model::PageNo::as_str), Some("105a"));
     assert_eq!(p.sheet.map(|s| s.text()).as_deref(), Some("A2"));
@@ -42,10 +42,10 @@ fn page_commands_through_mcp_record_modify_page_by_the_agent() {
 
     // A generated page's kind is a field, set when it is made.
     let cover = page_of(&c.exec("newpage", json!({"generated": "cover"})));
-    assert_eq!(c.doc().pages[&cover].kind, PageKind::Generated(GenKind::Cover));
+    assert_eq!(c.doc().pages()[&cover].kind, PageKind::Generated(GenKind::Cover));
     // A terminal plan of every strip has no strip; a plan of one strip is its own kind.
     let all = page_of(&c.exec("newpage", json!({"generated": "terminal_blocks"})));
-    assert_eq!(c.doc().pages[&all].kind, PageKind::Generated(GenKind::TerminalBlocks));
+    assert_eq!(c.doc().pages()[&all].kind, PageKind::Generated(GenKind::TerminalBlocks));
     c.exec("openpage", json!({"page": page.hex()}));
     for x in [100, 120] {
         c.exec("wire", json!({"points": [[x, 200], [x, 100]]}));
@@ -54,7 +54,7 @@ fn page_commands_through_mcp_record_modify_page_by_the_agent() {
     let strip = f["strip"].as_str().unwrap().to_string();
     let one = page_of(&c.exec("newpage", json!({"generated": "terminal_blocks", "strip": strip})));
     let want = ecad_model::DeviceId::parse(&strip).unwrap();
-    assert_eq!(c.doc().pages[&one].kind, PageKind::TerminalStrip { strip: want });
+    assert_eq!(c.doc().pages()[&one].kind, PageKind::TerminalStrip { strip: want });
 
     let mut r = reader();
     for (cmd, params) in cases {
@@ -74,13 +74,13 @@ fn list_commands_through_mcp_record_modify_project_by_the_agent() {
     let last = c.log().last().cloned().unwrap();
     assert_eq!(last.author, agent);
     assert!(matches!(last.ops.as_slice(), [Op::ModifyProject { .. }]), "{:?}", last.ops);
-    let entry = c.doc().project.locations[0].clone();
+    let entry = c.doc().project().locations[0].clone();
     assert_eq!(entry.code, "+CP1");
     assert_eq!(entry.description().map(ToString::to_string).as_deref(), Some("Main panel"));
 
     c.exec("designationedit", json!({"aspect": "location", "code": "+CP1", "to": "+CP2"}));
     assert!(matches!(c.log().last().unwrap().ops.as_slice(), [Op::ModifyProject { .. }]));
-    assert_eq!(c.doc().project.locations[0].code, "+CP2");
+    assert_eq!(c.doc().project().locations[0].code, "+CP2");
 
     // A page's location: a new code adds its entry (ModifyProject) and the page names it by id.
     c.exec("pageprops", json!({"page": page.hex(), "location": "+CP7"}));
@@ -88,17 +88,17 @@ fn list_commands_through_mcp_record_modify_project_by_the_agent() {
     assert_eq!(last.author, agent);
     assert!(matches!(last.ops.as_slice(), [Op::ModifyProject { .. }, Op::ModifyPage { .. }]), "{:?}", last.ops);
     let d = c.doc();
-    let cp7 = d.project.locations.iter().find(|e| e.code == "+CP7").map(|e| e.id);
-    assert_eq!(d.pages[&page].location, cp7);
-    assert!(d.pages[&page].display.is_empty());
+    let cp7 = d.project().locations.iter().find(|e| e.code == "+CP7").map(|e| e.id);
+    assert_eq!(d.pages()[&page].location, cp7);
+    assert!(d.pages()[&page].display.is_empty());
 
     // The project's own function: a field of the project.
     c.exec("projectprops", json!({"function": "=F1"}));
     let last = c.log().last().cloned().unwrap();
     assert!(last.ops.iter().all(|o| matches!(o, Op::ModifyProject { .. })), "{:?}", last.ops);
     let d = c.doc();
-    assert_eq!(d.project.function.and_then(|f| d.project.function(f)).map(|e| e.code.to_string()).as_deref(), Some("=F1"));
-    assert!(!d.display.contains_key("function"));
+    assert_eq!(d.project().function.and_then(|f| d.project().function(f)).map(|e| e.code.to_string()).as_deref(), Some("=F1"));
+    assert!(!d.display().contains_key("function"));
 
     // Step 2c: the title and the site are the project's info.
     c.exec("projectprops", json!({"title": "Plant", "props": {"site": "North"}}));
@@ -106,9 +106,9 @@ fn list_commands_through_mcp_record_modify_project_by_the_agent() {
     assert_eq!(last.author, agent);
     assert!(last.ops.iter().all(|o| matches!(o, Op::ModifyProject { .. })), "{:?}", last.ops);
     let d = c.doc();
-    assert_eq!(d.project.info.get(ecad_model::InfoField::Title), Some("Plant"));
-    assert_eq!(d.project.info.get(ecad_model::InfoField::Site), Some("North"));
-    assert!(!d.display.contains_key("title") && !d.display.contains_key("site"));
+    assert_eq!(d.project().info.get(ecad_model::InfoField::Title), Some("Plant"));
+    assert_eq!(d.project().info.get(ecad_model::InfoField::Site), Some("North"));
+    assert!(!d.display().contains_key("title") && !d.display().contains_key("site"));
 
     let mut r = reader();
     for (cmd, params) in [

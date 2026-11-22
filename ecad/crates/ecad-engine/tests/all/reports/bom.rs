@@ -164,11 +164,11 @@ fn items_refuse_tags_and_lines_and_edit_and_delete() {
     assert_eq!((r["qty"].clone(), r["unit"].clone(), r["location"].clone()), (json!(3), json!("pcs"), json!("+CP2")));
     same_as_built(&mut f.h);
     f.h.run("bomitem", json!({"item": item.hex(), "delete": true})).unwrap();
-    assert!(!f.h.doc().loose_parts.contains_key(&item));
+    assert!(!f.h.doc().loose_parts().contains_key(&item));
     assert!(bom(&mut f.h, json!({})).iter().all(|r| r["description"] != "DIN rail 35x7.5"));
     same_as_built(&mut f.h);
     f.h.cmdline("u");
-    assert!(f.h.doc().loose_parts.contains_key(&item));
+    assert!(f.h.doc().loose_parts().contains_key(&item));
     same_as_built(&mut f.h);
 }
 
@@ -200,7 +200,7 @@ fn one_line_on_four_devices_is_one_row() {
     assert_eq!(row(&bom(&mut f.h, json!({})), "AB-1NO")["qty"], 4);
     // Remove takes every key of the line.
     f.h.run("partline", json!({"component": f.k[3].hex(), "line": 1, "remove": true})).unwrap();
-    assert!(f.h.doc().devices[&f.k[3]].properties.keys().all(|k| !k.starts_with("part.")));
+    assert!(f.h.doc().devices()[&f.k[3]].properties.keys().all(|k| !k.starts_with("part.")));
     assert_eq!(row(&bom(&mut f.h, json!({})), "AB-1NO")["tags"], "-K03, -K04, -K05");
     same_as_built(&mut f.h);
     // A device's own part merges with another device's line of that part (Q6).
@@ -259,7 +259,7 @@ fn fuse_inserts_count_per_fuse_and_uncovered_fuses_are_checked() {
     assert!(bom(&mut f.h, json!({})).iter().any(|r| r["part_number"] == "FU-5T" && r["tags"] == "-X05"), "the strip's terminals use it");
     let v = f.h.run("article", json!({"part_number": "FU-5T", "article_number": "A-0400"})).unwrap();
     assert_eq!(v["message"], "Set A-0400 on 2 parts (1 line, 1 strip part).", "{v}");
-    assert_eq!(f.h.doc().devices[&f.x05].get("article_number"), Some("A-0400"));
+    assert_eq!(f.h.doc().devices()[&f.x05].get("article_number"), Some("A-0400"));
     same_as_built(&mut f.h);
 }
 
@@ -270,7 +270,7 @@ fn renumbering_a_strip_keeps_its_part_lines_for() {
     let mut f = fixture(0x47_0a);
     f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "FU-6T", "description": "Fuse 6A T 5x20", "for": "1, 5-6"}}))
         .unwrap();
-    let for_of = |h: &mut H| h.doc().devices[&f.x05].properties.get("part.1.for").cloned();
+    let for_of = |h: &mut H| h.doc().devices()[&f.x05].properties.get("part.1.for").cloned();
     let pv = f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all", "start": 3, "preview": true})).unwrap();
     assert!(pv["accessories"].to_string().contains("-X05: part line 1 for 1, 5-6 \u{2192} 3, 7-8"), "{pv}");
     let head = f.h.head();
@@ -339,9 +339,9 @@ fn strip_parts_take_article_numbers_from_their_own_level() {
     let v = f.h.run("article", json!({"part_number": "EP-1", "article_number": "A-0210"})).unwrap();
     assert_eq!(f.h.head(), head + 1);
     assert_eq!(v["message"], "Set A-0210 on 1 part (1 strip part).", "{v}");
-    assert_eq!(f.h.doc().display.get("strip_end_plate_article_number").map(String::as_str), Some("A-0210"));
+    assert_eq!(f.h.doc().display().get("strip_end_plate_article_number").map(String::as_str), Some("A-0210"));
     f.h.run("article", json!({"part_number": "jb-1", "article_number": "A-0310"})).unwrap();
-    assert_eq!(f.h.doc().devices[&f.x05].properties.get("jumper_bar.1.article_number").map(String::as_str), Some("A-0310"));
+    assert_eq!(f.h.doc().devices()[&f.x05].properties.get("jumper_bar.1.article_number").map(String::as_str), Some("A-0310"));
     let rows = bom(&mut f.h, json!({}));
     assert_eq!(row(&rows, "EP-1")["article_number"], "A-0210");
     assert_eq!(row(&rows, "JB-1")["article_number"], "A-0310");
@@ -436,7 +436,7 @@ fn kits_and_the_nested_layout() {
     assert_eq!(v["lines"], json!([1, 2]));
     let label = f.h.p(|p| p.ledger.log().last().map(|t| t.label.clone())).unwrap();
     assert_eq!(label, "Add kit Starter set");
-    let props = f.h.doc().devices[&f.k[0]].properties.clone();
+    let props = f.h.doc().devices()[&f.k[0]].properties.clone();
     assert_eq!(props.get("part.2.kit").map(String::as_str), Some("Starter set"));
     // The other contactors take the same suppressor line, so flat merges it.
     f.h.run("partline", json!({"devices": hexes(&f.k[1..]), "add": {"part_number": "SUP-1", "maker": "Generic", "description": "Suppressor"}}))
@@ -499,7 +499,7 @@ fn missing_for_names_and_bad_keys_are_checked() {
     });
     assert_eq!(fixes[0].0, "Remove 9");
     f.h.run(fixes[0].1, fixes[0].2.clone()).unwrap();
-    assert_eq!(f.h.doc().devices[&f.f01].properties.get("part.1.for").map(String::as_str), Some("1"));
+    assert_eq!(f.h.doc().devices()[&f.f01].properties.get("part.1.for").map(String::as_str), Some("1"));
     assert!(checks(&mut f.h, "part-for-missing").is_empty());
 }
 
@@ -655,7 +655,7 @@ fn an_item_value_that_does_not_parse_is_checked() {
     let mut f = fixture(0x47_0f);
     let item: ecad_model::LoosePartId = id(&f.h.run("bomitem", json!({"description": "Cable tray", "qty": 2})).unwrap(), "item");
     let refused = f.h.cfg(|p| {
-        let before = p.ledger.document().loose_parts[&item].clone();
+        let before = p.ledger.document().loose_parts()[&item].clone();
         let after = ecad_model::objects::loose_part::LoosePart { qty: ecad_model::objects::loose_part::Qty(3600), ..before.clone() };
         p.ledger.commit(ecad_model::Author::User, "a merge", vec![ecad_model::Op::ModifyLoosePart { id: item, before, after }]).is_err()
     });

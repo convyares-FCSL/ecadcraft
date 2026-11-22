@@ -34,9 +34,9 @@ impl Scope {
     /// The pages whose book position changes are added by [`Watch`] after the commit.
     fn note(&mut self, doc: &Document, effect: &Effect<'_>) {
         let ends = |s: &mut Scope, w: ecad_model::WireId| {
-            if let Some(c) = doc.wires.get(&w) {
+            if let Some(c) = doc.wires().get(&w) {
                 for t in &c.ends {
-                    if let Some(x) = doc.connection_points.get(t) {
+                    if let Some(x) = doc.connection_points().get(t) {
                         s.devices.extend(x.device());
                     }
                 }
@@ -62,7 +62,7 @@ impl Scope {
             }
             Effect::Wire { before: None, after: Some(wire), .. } | Effect::Wire { before: Some(wire), after: None, .. } => {
                 for t in &wire.ends {
-                    if let Some(x) = doc.connection_points.get(t) {
+                    if let Some(x) = doc.connection_points().get(t) {
                         self.devices.extend(x.device());
                     }
                 }

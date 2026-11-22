@@ -53,7 +53,7 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
         };
         for s in idx.members(*g) {
             for t in idx.targets(s) {
-                let (Some(sr), Some(tr)) = (doc.representations.get(&s), doc.representations.get(&t)) else { continue };
+                let (Some(sr), Some(tr)) = (doc.representations().get(&s), doc.representations().get(&t)) else { continue };
                 let r = |kind, labels, text| Reference { source: s, source_page: sr.page, target: t, target_page: tr.page, kind, labels, text };
                 // A device reference is listed once per pole: a table row per pole, and a
                 // contact's text for each of its poles.
@@ -68,7 +68,7 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
                     // mate pin's (labelled with the pin name).
                     (Group::Device(_), Some(Class::Half(_))) => out.push(r("half", None, places.text(tr.page, anchor(doc, tr)))),
                     (Group::Device(_), Some(Class::Pin(_))) => {
-                        let name = sr.connection_points.keys().find_map(|t| doc.connection_points.get(t).and_then(|x| x.label.clone()));
+                        let name = sr.connection_points.keys().find_map(|t| doc.connection_points().get(t).and_then(|x| x.label.clone()));
                         out.push(r("pin", name, places.text(tr.page, anchor(doc, tr))));
                     }
                     (Group::Device(_), Some(Class::Head)) => {
@@ -106,20 +106,20 @@ pub fn device_references_json(
             crate::continuations::name_of(doc, a).and_then(|n| crate::continuations::group_key(doc, &n)).into_iter().collect()
         }
         (Some(c), _) => {
-            if !doc.devices.contains_key(&c) {
+            if !doc.devices().contains_key(&c) {
                 return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT));
             }
             BTreeSet::from([Group::Device(c)])
         }
         (None, Some(k)) => {
-            if !doc.cables.contains_key(&k) {
+            if !doc.cables().contains_key(&k) {
                 return Err(CmdError::refused(crate::msg::NO_SUCH_CABLE));
             }
             BTreeSet::from([Group::Cable(k)])
         }
         (None, None) => match page {
             Some(p) => {
-                if !doc.pages.contains_key(&p) {
+                if !doc.pages().contains_key(&p) {
                     return Err(CmdError::refused(crate::msg::NO_SUCH_PAGE));
                 }
                 doc.representations_on(p).filter_map(|(r, _)| idx.member(r).map(|(g, _)| g)).collect()
@@ -165,7 +165,7 @@ pub fn device_references_json(
         }
         let next = at.saturating_add(*k);
         if next > after
-            && let Some(sr) = doc.representations.get(s)
+            && let Some(sr) = doc.representations().get(s)
             && let Subject::Aid(c) = sr.subject
             && let Some(name) = crate::continuations::name_of(doc, c)
         {
@@ -198,7 +198,7 @@ pub fn device_references_json(
 /// # Errors
 /// Unknown component.
 pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextMetrics) -> Result<Value, CmdError> {
-    if !doc.devices.contains_key(&c) {
+    if !doc.devices().contains_key(&c) {
         return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT));
     }
     let dev = device(doc, c);
@@ -208,11 +208,11 @@ pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextMetrics) 
     let rows = rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
     let over = rows.iter().filter(|r| r.state == State::Over).count();
     let (placement, own) = placement_of(doc, c);
-    let head = dev.head.and_then(|h| doc.representations.get(&h).map(|r| (h, r)));
+    let head = dev.head.and_then(|h| doc.representations().get(&h).map(|r| (h, r)));
     Ok(json!({
         "component": c.hex(),
         "tag": crate::devices::tags::tag_shown_of(doc, c),
-        "tag_state": doc.devices.get(&c).and_then(|d| d.tag.state()).map(ecad_model::naming::words::Word::word),
+        "tag_state": doc.devices().get(&c).and_then(|d| d.tag.state()).map(ecad_model::naming::words::Word::word),
         "offer": stored,
         "head": head.map(|(h, r)| json!({"representation": h.hex(), "page": crate::references::cables::page_number(doc, r.page), "place": places.text(r.page, anchor(doc, r))})),
         "placement": placement.word(),
@@ -246,7 +246,7 @@ pub(crate) fn goto_target(doc: &Document, idx: &RefIndex, source: Representation
         Some((Group::Cable(_), _)) => {
             let references = ecad_model::connectivity::derive::cable_references_of(
                 doc,
-                &BTreeSet::from([match doc.representations.get(&source)?.subject {
+                &BTreeSet::from([match doc.representations().get(&source)?.subject {
                     Subject::Cable(k) => k,
                     _ => return None,
                 }]),
@@ -267,10 +267,10 @@ pub fn contact_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<
     if !dev.children.contains(&rep) {
         return Vec::new();
     }
-    match dev.head.and_then(|h| doc.representations.get(&h)) {
+    match dev.head.and_then(|h| doc.representations().get(&h)) {
         Some(r) => {
             let mut places = Places::new(doc);
-            let noun = doc.devices.get(&c).map_or("Head", |d| head_noun(&d.device_type));
+            let noun = doc.devices().get(&c).map_or("Head", |d| head_noun(&d.device_type));
             vec![format!("{noun}: {}  ({})", places.text(r.page, anchor(doc, r)), crate::references::cables::page_words(doc, r.page))]
         }
         None => vec!["Coil: not drawn".into()],
@@ -397,7 +397,7 @@ pub(super) fn contacts_changed(before: &StoredDevice, after: &StoredDevice) -> b
 /// The devices whose table the user placed (`at dx,dy`): the ones a sheet change can move onto
 /// or off the title block. O(components), on a project sheet change only.
 pub(crate) fn placed_tables(doc: &Document) -> Vec<DeviceId> {
-    doc.devices
+    doc.devices()
         .iter()
         .filter(|(_, c)| matches!(&c.device_type, DeviceType::Switching(s) if matches!(s.contact_table, Some(ContactTable::At { .. }))))
         .map(|(id, _)| *id)

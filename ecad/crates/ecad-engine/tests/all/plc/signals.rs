@@ -235,7 +235,7 @@ fn f_g_import_an_io_list_fills_tags_and_descriptions_one_way() {
     assert_eq!(p.get("plc.ch.2.text").map(String::as_str), Some("Inlet valve"));
     assert_eq!(p.get("plc.ch.12.tag").map(String::as_str), Some("Spare_Out4"));
     assert_eq!(p.get("plc.ch.8.tag").map(String::as_str), Some("Dosing_On"), "a channel not in the list keeps its tag");
-    assert!(!h.doc().display.keys().any(|k| k.starts_with("plc.sync.")), "nothing of the table is kept");
+    assert!(!h.doc().display().keys().any(|k| k.starts_with("plc.sync.")), "nothing of the table is kept");
     same_as_built(&mut h);
     h.cmdline("u");
     let p = crate::common::plc_view(&h.doc(), a03);
@@ -303,7 +303,7 @@ fn m_the_first_rack_brings_the_rack_page_into_the_book() {
     let mut h = H::new(5620);
     let racks = |h: &mut H| {
         let d = h.doc();
-        d.page_order.iter().filter(|p| ecad_electrical::pages::generated::kind_of(&d, **p) == Some(ecad_model::GenKind::PlcRack)).count()
+        d.page_order().iter().filter(|p| ecad_electrical::pages::generated::kind_of(&d, **p) == Some(ecad_model::GenKind::PlcRack)).count()
     };
     assert_eq!(racks(&mut h), 0);
     let head = h.head();
@@ -314,8 +314,8 @@ fn m_the_first_rack_brings_the_rack_page_into_the_book() {
     // `page.type` written (FP2: only a type that differs from the kind's is stored).
     {
         let d = h.doc();
-        let pg = d.page_order.iter().copied().find(|p| ecad_electrical::pages::generated::kind_of(&d, *p) == Some(ecad_model::GenKind::PlcRack));
-        let page = &d.pages[&pg.unwrap()];
+        let pg = d.page_order().iter().copied().find(|p| ecad_electrical::pages::generated::kind_of(&d, *p) == Some(ecad_model::GenKind::PlcRack));
+        let page = &d.pages()[&pg.unwrap()];
         assert!(page.page_type.is_none());
         assert_eq!(ecad_model::document::sheet::page_type_of(&d, page), ecad_model::StyleRef::Builtin("report".into()));
     }

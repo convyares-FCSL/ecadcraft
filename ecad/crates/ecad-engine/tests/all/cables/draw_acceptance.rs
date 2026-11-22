@@ -115,7 +115,7 @@ fn last_tx(h: &mut H) -> Transaction {
 }
 
 fn cores(h: &mut H, k: CableId) -> Vec<Option<String>> {
-    h.doc().cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect()
+    h.doc().cables()[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect()
 }
 
 fn view(h: &mut H, k: CableId, v: &str) {
@@ -219,7 +219,7 @@ fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (I
 /// Store `core` on member `index` of `cable` with one ModifyCable, bypassing `cablecore`'s
 /// validation (a label stored "by another route", design §4.5).
 fn store_core_raw(h: &mut H, cable: CableId, index: usize, core: Option<&str>) {
-    let before = h.doc().cables[&cable].clone();
+    let before = h.doc().cables()[&cable].clone();
     let mut after = before.clone();
     let m = &mut after.cores[index];
     *m = Core { position: m.position, ..Core::unplaced(core.and_then(|c| ecad_model::CoreLabel::new(c).ok())) };
@@ -412,7 +412,7 @@ fn ac3_save_and_reopen_keep_core_labels_and_replay_matches() {
     assert_eq!(labels.len(), 4, "{labels:?}");
     // Undo after the reopen takes back the last real edit (the reference end), then the PE label.
     h.run("u", Value::Null).unwrap();
-    assert!(!h.doc().representations.contains_key(&rep));
+    assert!(!h.doc().representations().contains_key(&rep));
     h.run("u", Value::Null).unwrap();
     assert_eq!(cores(&mut h, f.c1)[3], None);
     h.run("redo", Value::Null).unwrap();
@@ -665,7 +665,7 @@ fn ac2_moving_and_extra_references() {
     let (item, rep) = reference_end(&mut f.h, f.page, f.c1, Pt::new(125.0, 21.25), 1);
     assert_eq!(fan(&mut f.h, f.page, f.c1).markers.get(&rep), Some(&MarkerEnd::B));
     // Move it to the left of the wires.
-    let before = f.h.doc().items[&item].clone();
+    let before = f.h.doc().items()[&item].clone();
     let after = Item { kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(-20.0, 21.25) }), ..before.clone() };
     f.h.project.apply_ops(&mut f.h.s, "Move", vec![Op::ModifyItem { id: item, before, after }]).unwrap();
     f.h.check();
@@ -693,7 +693,7 @@ fn ac2_moving_and_extra_references() {
     f.h.run("erase", json!({"handles": [h3.hex()]})).unwrap();
     let d = fan(&mut f.h, f.page, f.c1);
     assert_eq!((of_role(&d, Role::Spine).len(), of_role(&d, Role::Flag).len()), (0, 2));
-    let r2_item = f.h.doc().representations[&r2].items[0];
+    let r2_item = f.h.doc().representations()[&r2].items[0];
     let h2 = f.h.handle_of(f.page, r2_item);
     f.h.run("erase", json!({"handles": [h2.hex()]})).unwrap();
     let d = fan(&mut f.h, f.page, f.c1);
@@ -754,7 +754,7 @@ fn ac6_long_and_empty_labels_draw_safely_in_both_views() {
     // Hover lines with the long values are capped and never contain control characters.
     let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
     view(&mut f.h, f.c1, "traditional");
-    let slash = f.h.doc().representations.values().find(|r| r.subject == Subject::Cable(f.c1)).unwrap().items[0];
+    let slash = f.h.doc().representations().values().find(|r| r.subject == Subject::Cable(f.c1)).unwrap().items[0];
     let hs = f.h.handle_of(f.page, slash);
     let lines = f.h.p(|p| hover_lines(p, uid, hs)).unwrap();
     // Design §8: the core part of each member line is shortened like the drawing; no control
@@ -798,12 +798,12 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
     // Committing a non-finite route or reference point is refused; nothing written.
     for x in bad {
         let head = f.h.head();
-        let before = base.items[&route].clone();
+        let before = base.items()[&route].clone();
         let after = Item { kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(x, 5.0) }), ..before.clone() };
         assert!(f.h.project.apply_ops(&mut f.h.s, "Bad", vec![Op::ModifyItem { id: route, before, after }]).is_err());
         assert_eq!(f.h.head(), head);
-        let rep_item = base.representations.values().find(|r| r.role == ecad_model::Role::Reference).unwrap().items[0];
-        let before = base.items[&rep_item].clone();
+        let rep_item = base.representations().values().find(|r| r.role == ecad_model::Role::Reference).unwrap().items[0];
+        let before = base.items()[&rep_item].clone();
         let after = Item { kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(x, 0.0) }), ..before.clone() };
         let r = f.h.project.apply_ops(&mut f.h.s, "Bad", vec![Op::ModifyItem { id: rep_item, before, after }]);
         assert!(r.is_err(), "a non-finite reference point is refused");
@@ -828,17 +828,21 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
     ];
     for (name, prim) in route_cases {
         let mut doc = base.clone();
-        doc.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(prim);
+        doc.edit_parts(|parts| {
+            parts.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(prim);
+        });
         for fan_view in [false, true] {
             let d = layout::cable_on_page(&doc, f.page, f.c1, fan_view, 1e-6, &draw::font_width);
             assert!(all_finite(&d), "{name}, fan {fan_view}: every shape finite");
         }
     }
     let point_cases = [Pt::new(f64::NAN, 0.0), Pt::new(0.0, f64::INFINITY), Pt::new(-1e12, 1e12)];
-    let rep_item = base.representations.values().find(|r| r.role == ecad_model::Role::Reference).unwrap().items[0];
+    let rep_item = base.representations().values().find(|r| r.role == ecad_model::Role::Reference).unwrap().items[0];
     for at in point_cases {
         let mut doc = base.clone();
-        doc.items.get_mut(&rep_item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });
+        doc.edit_parts(|parts| {
+            parts.items.get_mut(&rep_item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });
+        });
         for fan_view in [false, true] {
             let d = layout::cable_on_page(&doc, f.page, f.c1, fan_view, 1e-6, &draw::font_width);
             assert!(all_finite(&d), "reference at {at:?}, fan {fan_view}: every shape finite");
@@ -899,7 +903,7 @@ fn ac6_twenty_core_cable_at_a_tight_pitch() {
             ws.push(w);
         }
         let k: CableId = id(&h.run("cableslash", json!({"from": p(40.0, -2.0), "to": p(40.0, 21.0)})).unwrap(), "cable");
-        assert_eq!(h.doc().cables[&k].cores.len(), 20);
+        assert_eq!(h.doc().cables()[&k].cores.len(), 20);
         let head = h.head();
         let labels: Vec<String> = (1..=20).map(|i| i.to_string()).collect();
         h.run("cablecore", json!({"cable": k.hex(), "cores": labels})).unwrap();
@@ -1213,11 +1217,11 @@ fn cablefan_join_follows_wires_and_cable_lifecycle() {
     f.h.run("redo", Value::Null).unwrap();
     f.h.check();
     // Delete the whole cable with a stored join: the document stays valid; undo restores both.
-    let anchors = |h: &mut H| h.doc().representations.values().filter(|r| r.role == ecad_model::Role::FanAnchor).count();
+    let anchors = |h: &mut H| h.doc().representations().values().filter(|r| r.role == ecad_model::Role::FanAnchor).count();
     assert_eq!(anchors(&mut f.h), 1);
     f.h.run("ecaddelete", json!({"cable": f.c1.hex()})).unwrap();
     f.h.check();
-    assert!(!f.h.doc().cables.contains_key(&f.c1));
+    assert!(!f.h.doc().cables().contains_key(&f.c1));
     assert_eq!(anchors(&mut f.h), 0, "the join goes with the cable");
     f.h.run("u", Value::Null).unwrap();
     f.h.check();
@@ -1239,10 +1243,12 @@ fn cablefan_hostile_stored_join_draws_finite() {
     view(&mut f.h, f.c1, "fan");
     f.h.run("cablefan", json!({"cable": f.c1.hex(), "end": "A", "at": 0.5})).unwrap();
     let base = f.h.doc();
-    let item = base.representations.values().find(|r| r.role == ecad_model::Role::FanAnchor).unwrap().items[0];
+    let item = base.representations().values().find(|r| r.role == ecad_model::Role::FanAnchor).unwrap().items[0];
     for at in [Pt::new(1e308, 1e308), Pt::new(-1e308, 1e308), Pt::new(f64::NAN, 0.0), Pt::new(0.0, f64::INFINITY)] {
         let mut doc = base.clone();
-        doc.items.get_mut(&item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });
+        doc.edit_parts(|parts| {
+            parts.items.get_mut(&item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });
+        });
         let d = layout::cable_on_page(&doc, f.page, f.c1, true, 1e-6, &draw::font_width);
         assert!(d.is_fan(), "{at:?}");
         assert!(all_finite(&d), "{at:?}");
@@ -1250,7 +1256,7 @@ fn cablefan_hostile_stored_join_draws_finite() {
         assert!((-1e-9..=15.0 + 1e-9).contains(&j.y), "{at:?}: join on the spine {j:?}");
     }
     // Committed through the model, a finite far point is accepted and still drawn on the spine.
-    let before = base.items[&item].clone();
+    let before = base.items()[&item].clone();
     let after = Item { kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(1e308, -1e308) }), ..before.clone() };
     f.h.project.apply_ops(&mut f.h.s, "Bad", vec![Op::ModifyItem { id: item, before, after }]).unwrap();
     f.h.check();

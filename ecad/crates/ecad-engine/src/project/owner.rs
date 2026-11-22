@@ -228,11 +228,14 @@ impl DocumentOwner for Project {
         let dragged: BTreeSet<Handle> = drag.handles.iter().copied().collect();
         let mut moved: HashMap<ConnectionPointId, Pt> = HashMap::new();
         for (t, rep, at) in ecad_model::connectivity::derive::connection_point_positions(doc, page) {
-            let carried = match doc.representations.get(&rep).map(|r| r.form) {
+            let carried = match doc.representations().get(&rep).map(|r| r.form) {
                 Some(Form::Drawn) => view.map.marker(rep, t).is_some_and(|h| dragged.contains(&h)),
-                Some(Form::Symbol) => {
-                    doc.representations.get(&rep).and_then(|r| r.items.first()).and_then(|i| view.map.item(*i)).is_some_and(|h| dragged.contains(&h))
-                }
+                Some(Form::Symbol) => doc
+                    .representations()
+                    .get(&rep)
+                    .and_then(|r| r.items.first())
+                    .and_then(|i| view.map.item(*i))
+                    .is_some_and(|h| dragged.contains(&h)),
                 None => false,
             };
             if carried {
@@ -304,7 +307,7 @@ impl Project {
         }
         // The ops the undo or redo will apply, scoped as a commit's are (brief 014).
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
-        let order_before = self.ledger.document().page_order.clone();
+        let order_before = self.ledger.document().page_order().to_vec();
         // Undoing an issued revision stops and asks first (owner answer Q7).
         if undo
             && let Some((rev, n)) = ecad_electrical::releases::revisions::issue_in(&ecad_electrical::releases::revisions::inverse(&ops))
@@ -312,7 +315,7 @@ impl Project {
         {
             let row = ecad_electrical::releases::revisions::list(self.ledger.document()).into_iter().find(|r| r.n == n);
             let date = row.as_ref().map(|r| r.get("date").to_string()).filter(|d| !d.is_empty());
-            let rev = self.ledger.document().project.rev_scheme.show(rev);
+            let rev = self.ledger.document().project().rev_scheme.show(rev);
             let mut q = crate::pages::commands::sheets::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
             // Brief 027 (design 027 §5.2, Q10): undo never deletes files.
             if row.as_ref().is_some_and(|r| r.released.is_some()) {

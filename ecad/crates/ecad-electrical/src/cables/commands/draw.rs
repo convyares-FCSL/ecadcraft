@@ -57,7 +57,7 @@ pub enum SlashTarget {
 /// No cable with the ID given.
 pub fn slash_target(doc: &Document, existing: Option<CableId>, tag: Option<&str>) -> Result<SlashTarget, CmdError> {
     let k = match existing {
-        Some(k) if doc.cables.contains_key(&k) => Some(k),
+        Some(k) if doc.cables().contains_key(&k) => Some(k),
         Some(_) => return Err(CmdError::refused(NO_CABLE)),
         None => tag.and_then(|t| crate::references::cables::cable_tagged(doc, t)),
     };
@@ -159,7 +159,7 @@ pub fn plan_slash_assign(
     let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     let mut ops = Vec::new();
     // Design 072 §4.5: each crossed line takes its core, the stored unplaced one of that label.
-    if let Some(before) = doc.cables.get(&k) {
+    if let Some(before) = doc.cables().get(&k) {
         let mut after = before.clone();
         for (m, core) in found.members.iter().zip(cores.iter()) {
             crate::styles::cable::place_core(&mut after, core.as_deref().and_then(|c| ecad_model::CoreLabel::new(c).ok()), m.position);
@@ -205,7 +205,7 @@ pub fn add_to_cable(
         return Err(CmdError::refused(format!("`conductors` lists wire {} twice; nothing was changed", w.hex())));
     }
     let had = match existing {
-        Some(c) => doc.cables.get(&c).ok_or(CmdError::refused(NO_CABLE))?.cores.iter().filter(|m| m.position != CorePosition::Unplaced).count(),
+        Some(c) => doc.cables().get(&c).ok_or(CmdError::refused(NO_CABLE))?.cores.iter().filter(|m| m.position != CorePosition::Unplaced).count(),
         None => 0,
     };
     if had.saturating_add(conductors.len()) > MAX_CABLE_MEMBERS {
@@ -220,7 +220,7 @@ pub fn add_to_cable(
     }
     let mut spare: VecDeque<String> =
         existing.and_then(|k| crate::terminal_strips::cores::cable_cores(doc, k)).map(|c| c.spare.into_iter().collect()).unwrap_or_default();
-    let (cable, before, mut after) = match existing.and_then(|c| doc.cables.get(&c).map(|x| (c, x))) {
+    let (cable, before, mut after) = match existing.and_then(|c| doc.cables().get(&c).map(|x| (c, x))) {
         Some((c, x)) => (c, Some(x), x.clone()),
         None => {
             let c: CableId = ids.fresh();
@@ -285,13 +285,13 @@ pub struct CoreSet {
 /// No such conductor; the wire is not in a cable; a label that does not read.
 pub fn core(doc: &Document, conductor: WireId, core: Option<&str>) -> Result<CoreSet, CmdError> {
     let core = core_label(core)?;
-    if !doc.wires.contains_key(&conductor) {
+    if !doc.wires().contains_key(&conductor) {
         return Err(CmdError::refused(NO_CONDUCTOR));
     }
     let Some(cable) = doc.cables_of(conductor).first().copied() else {
         return Err(CmdError::refused(format!("Wire {} is not in a cable.", slash::wire_name(doc, conductor))));
     };
-    let cab = doc.cables.get(&cable).ok_or(CmdError::refused(NO_CABLE))?;
+    let cab = doc.cables().get(&cable).ok_or(CmdError::refused(NO_CABLE))?;
     let members = cab.cores.as_slice();
     let index = members.iter().position(|m| m.wire() == Some(conductor)).ok_or(CmdError::refused(NO_CONDUCTOR))?;
     let old = members.get(index).and_then(|m| m.label_str().map(str::to_string));
@@ -313,7 +313,7 @@ pub fn core(doc: &Document, conductor: WireId, core: Option<&str>) -> Result<Cor
 /// # Errors
 /// No such cable; not one label per member; a label that does not read (`Core 2: …`).
 pub fn cores(doc: &Document, cable: CableId, given: &[Option<String>]) -> Result<(Vec<Option<String>>, Vec<Op>), CmdError> {
-    let cab = doc.cables.get(&cable).ok_or(CmdError::refused(NO_CABLE))?;
+    let cab = doc.cables().get(&cable).ok_or(CmdError::refused(NO_CABLE))?;
     let members = &cab.cores;
     if given.len() != members.len() {
         return Err(CmdError::refused(format!(

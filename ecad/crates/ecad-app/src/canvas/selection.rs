@@ -37,7 +37,7 @@ pub fn related(p: &Project, page: PageId, selection: &[Handle]) -> Related {
             Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::DeviceReference(r)) => Some(r),
             _ => None,
         };
-        let Some((rid, r)) = rep.and_then(|id| doc.representations.get(&id).map(|r| (id, r))) else { continue };
+        let Some((rid, r)) = rep.and_then(|id| doc.representations().get(&id).map(|r| (id, r))) else { continue };
         if let Subject::Device(c) = r.subject {
             selected.push(rid);
             if !out.devices.contains(&c) {
@@ -61,7 +61,7 @@ pub fn related(p: &Project, page: PageId, selection: &[Handle]) -> Related {
             }
         }
     }
-    let order: Vec<PageId> = doc.pages.keys().copied().collect();
+    let order: Vec<PageId> = doc.pages().keys().copied().collect();
     out.elsewhere.sort_by_key(|(pg, rid)| (order.iter().position(|o| o == pg).unwrap_or(usize::MAX), *rid));
     out
 }

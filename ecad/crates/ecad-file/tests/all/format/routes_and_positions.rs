@@ -20,7 +20,7 @@ fn routes_come_back_from_the_snapshot_and_the_log() {
         let p = dir.path(name);
         Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
         let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
-        assert_eq!(opened.ledger.document().routes, f.ledger.document().routes, "{name}");
+        assert_eq!(opened.ledger.document().routes(), f.ledger.document().routes(), "{name}");
     }
 }
 
@@ -52,7 +52,7 @@ fn core_positions_come_back_from_the_snapshot_and_the_log() {
         let p = dir.path(name);
         Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
         let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
-        assert_eq!(opened.ledger.document().cables, f.ledger.document().cables, "{name}");
+        assert_eq!(opened.ledger.document().cables(), f.ledger.document().cables(), "{name}");
     }
 }
 
@@ -75,7 +75,7 @@ fn number_by_is_stored_as_a_word_and_comes_back_from_the_snapshot_and_the_log() 
 
     let dir = TempDir::new("072d-number-by");
     let mut f = fixture();
-    let before = f.ledger.document().settings.clone();
+    let before = f.ledger.document().settings().clone();
     let mut after = before.clone();
     after.wiring.number_by = NumberBy::Conductor;
     f.ledger.commit(Author::User, "number by", vec![Op::SetProjectSettings { before, after }]).unwrap();
@@ -84,7 +84,7 @@ fn number_by_is_stored_as_a_word_and_comes_back_from_the_snapshot_and_the_log() 
         let p = dir.path(name);
         Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
         let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
-        assert_eq!(opened.ledger.document().settings.wiring.number_by, NumberBy::Conductor, "{name}");
+        assert_eq!(opened.ledger.document().settings().wiring.number_by, NumberBy::Conductor, "{name}");
     }
 }
 
@@ -108,7 +108,7 @@ fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
         let p = dir.path(name);
         Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
         let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
-        assert_eq!(opened.ledger.document().connection_points.get(&t), Some(&bar), "{name}");
+        assert_eq!(opened.ledger.document().connection_points().get(&t), Some(&bar), "{name}");
     }
     let mut v = serde_json::to_value(Rec::from(&bar)).unwrap();
     assert_eq!(v["accepts"], 12);

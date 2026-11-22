@@ -126,7 +126,9 @@ fn hostile_style_records_are_refused_in_words() {
 fn a_potential_row_with_a_colour_is_refused() {
     use ecad_file::chunks::{ModelMeta, PROJECT_KEY, assemble, build_full};
     let mut doc = ecad_model::Document::default();
-    doc.settings.wiring.potentials = ecad_model::connectivity::wiring::default_potentials();
+    doc.edit_parts(|parts| {
+        parts.settings.wiring.potentials = ecad_model::connectivity::wiring::default_potentials();
+    });
     let (set, chunks) = build_full(&doc, &ModelMeta::default()).unwrap();
     let h = set.chunks[PROJECT_KEY];
     let text = String::from_utf8(chunks.iter().find(|c| c.hash == h).unwrap().body.clone()).unwrap();

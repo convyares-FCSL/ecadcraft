@@ -161,7 +161,7 @@ impl Wire {
             };
             on_project(s, |p, _, _| {
                 // A table name is written as the table spells it.
-                let v = value.map(|v| p.ledger.document().settings.wiring.potential(&v).map_or(v, |r| r.name.clone()));
+                let v = value.map(|v| p.ledger.document().settings().wiring.potential(&v).map_or(v, |r| r.name.clone()));
                 p.wire_potential = v;
                 Ok(())
             })?;

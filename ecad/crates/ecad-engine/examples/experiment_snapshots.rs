@@ -48,7 +48,7 @@ fn main() -> Result<(), String> {
     run(&mut s, "cableadd", json!({"conductors": [w1["conductor"], w2["conductor"]], "tag": "-W1"}));
     let handles = project.read(&mut s, |p, _| -> Result<Vec<String>, String> {
         let doc = p.ledger.document();
-        let page = *doc.page_order.first().ok_or("page")?;
+        let page = *doc.page_order().first().ok_or("page")?;
         let map = &p.pages.get(&page).ok_or("page")?.map;
         let comp = ecad_model::DeviceId::parse(c["component"].as_str().unwrap_or_default()).ok_or("id")?;
         let mut out = Vec::new();

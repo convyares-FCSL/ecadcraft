@@ -50,9 +50,9 @@ fn the_text_section_writes_one_textstyle_transaction() {
     assert!(h.state().project_props.is_none(), "OK closes the popout");
     let d = doc(&mut h);
     // Brief 050a: the tag text style's project record.
-    let rec = d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())));
+    let rec = d.styles().get(&ecad_model::StyleCatalogue::Text).and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())));
     assert_eq!(rec.and_then(|r| r.body.entry("height")).as_deref(), Some("3"));
-    let page = d.page_order[0];
+    let page = d.page_order()[0];
     let tags: Vec<f64> = ecad_engine::devices::draw::texts_on_page(&d, page)
         .into_iter()
         .filter(|t| t.of == ecad_electrical::devices::texts::TextOf::Tag)
@@ -60,7 +60,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
         .collect();
     assert_eq!(tags, vec![3.0]);
     ok(&mut h, "u");
-    assert!(!doc(&mut h).display.contains_key("text.tag.height"));
+    assert!(!doc(&mut h).display().contains_key("text.tag.height"));
 
     // An out-of-range height keeps OK disabled: nothing is written.
     crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);

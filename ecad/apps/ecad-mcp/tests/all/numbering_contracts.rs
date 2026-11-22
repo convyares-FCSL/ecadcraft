@@ -17,7 +17,7 @@ const SEED: u64 = 0x0E_CAD0_0026;
 /// The point at the middle of column `col` (0-based) and row `row` of the first page's frame.
 fn cell(c: &mut Client, col: u32, row: u32) -> [f64; 2] {
     let doc = c.doc();
-    let page: PageId = doc.page_order[0];
+    let page: PageId = doc.page_order()[0];
     let g = Grid::of(&doc, page);
     [g.frame_left() + (f64::from(col) + 0.5) * g.column_width(), g.frame_top() - (f64::from(row) + 0.5) * g.row_height()]
 }
@@ -37,7 +37,7 @@ fn coil_at(c: &mut Client, col: u32, row: u32, tag: Option<&str>) -> String {
 
 fn tag_of(c: &mut Client, comp: &str) -> Option<String> {
     let id = DeviceId::parse(comp).unwrap();
-    c.doc().devices.get(&id).and_then(|x| x.tag_shown())
+    c.doc().devices().get(&id).and_then(|x| x.tag_shown())
 }
 
 fn last_is_agents(c: &mut Client) {
@@ -111,7 +111,7 @@ fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
     last_is_agents(&mut c);
     assert_eq!(c.log().last().unwrap().label, "Swap tags");
     assert_eq!((tag_of(&mut c, &k4).as_deref(), tag_of(&mut c, &k2).as_deref()), (Some("-K02"), Some("-K04")));
-    let fixed = |c: &mut Client, k: &str| c.doc().devices[&DeviceId::parse(k).unwrap()].is_fixed().then(|| "yes".to_string());
+    let fixed = |c: &mut Client, k: &str| c.doc().devices()[&DeviceId::parse(k).unwrap()].is_fixed().then(|| "yes".to_string());
     assert_eq!(fixed(&mut c, &k4).as_deref(), Some("yes"));
     // Next: the next free tag, fixed.
     let r = c.exec("setprop", json!({"component": k2, "key": "tag", "value": "-K02", "conflict": "next"}));
@@ -121,7 +121,7 @@ fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
     let r = c.exec("setprop", json!({"component": k2, "key": "tag", "value": "-K02", "conflict": "merge"}));
     assert_eq!(r["merged"], json!(true), "{r}");
     last_is_agents(&mut c);
-    assert!(!c.doc().devices.contains_key(&DeviceId::parse(&k2).unwrap()));
+    assert!(!c.doc().devices().contains_key(&DeviceId::parse(&k2).unwrap()));
     // tag_fixed: released and fixed again, each one transaction.
     let n = c.log().len();
     c.set_tag_state(&json!(k4), "automatic");
@@ -139,7 +139,7 @@ fn cable_tags_share_the_namespace_and_swap() {
     }
     let w1 = c.exec("cableslash", json!({"from": [20, -3], "to": [20, 13]}))["cable"].as_str().unwrap().to_string();
     let w2 = c.exec("cableslash", json!({"from": [40, 17], "to": [40, 33]}))["cable"].as_str().unwrap().to_string();
-    let cable_tag = |c: &mut Client, k: &str| c.doc().cables[&ecad_model::CableId::parse(k).unwrap()].tag_shown();
+    let cable_tag = |c: &mut Client, k: &str| c.doc().cables()[&ecad_model::CableId::parse(k).unwrap()].tag_shown();
     assert_eq!((cable_tag(&mut c, &w1).as_deref(), cable_tag(&mut c, &w2).as_deref()), (Some("-W01"), Some("-W02")));
     // A device may not take a cable's tag, except by the next free one.
     let k = coil_at(&mut c, 3, 3, None);
@@ -239,8 +239,8 @@ fn merge_choice_one_makes_two_devices_one_in_the_merge_transaction() {
     last_is_agents(&mut c);
     let doc = c.doc();
     let main_id = DeviceId::parse(&main_k).unwrap();
-    assert!(doc.devices.contains_key(&main_id));
-    assert!(!doc.devices.contains_key(&DeviceId::parse(&branch_k).unwrap()), "the branch's device joined main's");
+    assert!(doc.devices().contains_key(&main_id));
+    assert!(!doc.devices().contains_key(&DeviceId::parse(&branch_k).unwrap()), "the branch's device joined main's");
     let reps = doc.representations_of(ecad_model::Subject::Device(main_id)).count();
     assert_eq!(reps, 2, "one device with both symbols");
 }

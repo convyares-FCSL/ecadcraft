@@ -429,7 +429,7 @@ impl Picked {
             match map.and_then(|m| m.get(*h)) {
                 Some(Mapped::Item(i)) => {
                     let index =
-                        index.get_or_insert_with(|| doc.representations.values().flat_map(|r| r.items.iter().map(|i| (*i, r.subject))).collect());
+                        index.get_or_insert_with(|| doc.representations().values().flat_map(|r| r.items.iter().map(|i| (*i, r.subject))).collect());
                     match index.get(&i) {
                         // A route's line names the wire it carries (design 072 §4); a loose line
                         // carries none.
@@ -445,7 +445,7 @@ impl Picked {
                     }
                 }
                 Some(Mapped::Marker(rep, t)) => {
-                    if let Some(r) = doc.representations.get(&rep) {
+                    if let Some(r) = doc.representations().get(&rep) {
                         subjects.insert(r.subject);
                     }
                     connection_points.insert(t);
@@ -461,7 +461,7 @@ impl Picked {
                 // A cable reference's text names its cable (brief 010); a device's tag text or
                 // terminal label names its device (brief 018).
                 Some(Mapped::RefText(r) | Mapped::Tag(r) | Mapped::DeviceReference(r)) => {
-                    if let Some(r) = doc.representations.get(&r) {
+                    if let Some(r) = doc.representations().get(&r) {
                         subjects.insert(r.subject);
                     }
                 }

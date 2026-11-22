@@ -107,7 +107,7 @@ fn continuation_sheets_are_numbered_taken_and_printed_whole() {
     let before = c.log().len();
     let m = c.refused("execute", json!({"command": "newpage", "params": {"number": "c11"}}));
     assert!(m.contains("Number c11 is sheet 2 of page C10 (Contents)."), "{m}");
-    let first = c.doc().page_order[0].hex();
+    let first = c.doc().page_order()[0].hex();
     let m = c.refused("execute", json!({"command": "pageprops", "params": {"page": first, "number": "C11"}}));
     assert!(m.contains("Number C11 is sheet 2 of page C10 (Contents)."), "{m}");
     assert_eq!(c.log().len(), before);
@@ -147,7 +147,7 @@ fn kept(c: &mut Client, kind: ecad_electrical::checks::Kind) -> usize {
 #[test]
 fn the_title_block_row_follows_a_sheet_change() {
     let mut c = writer(WRITER_SEED);
-    let page = c.doc().page_order[0].hex();
+    let page = c.doc().page_order()[0].hex();
     c.exec("pageprops", json!({"page": page, "sheet": "A2"}));
     let k = coil_with_contacts(&mut c, [440.0, 100.0]);
     c.exec("mirrormove", json!({"component": k, "at": [450.0, 40.0]}));
@@ -175,7 +175,7 @@ fn continuation_rows_are_kept_and_an_unrelated_edit_leaves_them_alone() {
     let builds = |c: &mut Client| c.s.with_session(|s, h| h.configure(s, |p| p.reports().continuation_builds).unwrap()).unwrap();
     let start = builds(&mut c);
     // A wire on a drawing page changes no page number or sheet count.
-    let first = c.doc().page_order[0].hex();
+    let first = c.doc().page_order()[0].hex();
     c.exec("openpage", json!({"page": first}));
     c.exec("wire", json!({"points": [[20, 100], [80, 100]]}));
     assert_eq!(builds(&mut c), start, "an unrelated edit works nothing out");

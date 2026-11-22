@@ -24,12 +24,12 @@ use serde_json::{Value, json};
 fn content_by_id(doc: &Document, page: PageId, d: &Drawing, map: &HandleMap) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let model = d.space(&Space::Model).unwrap();
-    for id in doc.items.iter().filter(|(_, i)| i.page == page).map(|(id, _)| *id) {
+    for id in doc.items().iter().filter(|(_, i)| i.page == page).map(|(id, _)| *id) {
         let e = model.get(map.item(id).expect("item mapped")).expect("item drawn");
         let item = ecad_engine::convert::item_from(doc, page, e).expect("readable");
         out.insert(format!("item {id}"), serde_json::to_string(&item).unwrap());
     }
-    for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page) {
+    for (rid, r) in doc.representations().iter().filter(|(_, r)| r.page == page) {
         for t in r.connection_points.keys() {
             let e = model.get(map.marker(*rid, *t).expect("marker mapped")).expect("marker drawn");
             let p = ecad_engine::convert::marker_position(e).expect("a marker");
@@ -79,7 +79,7 @@ fn owner_recovery_rebuilds_every_open_page_and_keeps_the_document() {
     let p1 = h.first_page();
     h.run("newpage", json!({"title": "2"})).unwrap();
     h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap();
-    let p2 = h.doc().page_order[1];
+    let p2 = h.doc().page_order()[1];
     h.activate(p1);
     let (doc_before, d1, m1) = page_state(&mut h, p1);
     h.activate(p2);
@@ -186,7 +186,7 @@ fn an_unavailable_page_is_a_labelled_read_only_placeholder() {
     let (mut h, c1, ..) = small_project(34);
     let p1 = h.first_page();
     h.run("newpage", json!({"title": "2"})).unwrap();
-    let p2 = h.doc().page_order[1];
+    let p2 = h.doc().page_order()[1];
     h.activate(p1);
     let handles = h.rep_handles(p1, c1);
     h.cfg(|p| p.faults.fail_projections = 2);

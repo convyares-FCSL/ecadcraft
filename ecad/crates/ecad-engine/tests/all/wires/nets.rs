@@ -23,7 +23,7 @@ fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> Value {
 }
 
 fn route(h: &mut H, r: RouteId) -> Vec<Pt> {
-    h.p(|p| p.ledger.document().routes.get(&r).map(|x| x.points.clone()).unwrap_or_default())
+    h.p(|p| p.ledger.document().routes().get(&r).map(|x| x.points.clone()).unwrap_or_default())
 }
 
 fn same(a: &[Pt], b: &[(f64, f64)]) -> bool {
@@ -44,7 +44,7 @@ fn a_wire_from_an_open_end_joins_it() {
     let r = wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({}));
     let second: RouteId = id(&r, "route");
     let doc = h.doc();
-    assert_eq!(doc.routes.len(), 1, "one route: {r}");
+    assert_eq!(doc.routes().len(), 1, "one route: {r}");
     assert_eq!(second, first, "the drawn line belongs to the existing route: {r}");
     assert_eq!(r["created"], json!(false), "{r}");
     assert_eq!(r["joined"][0]["how"], json!("merged"), "{r}");
@@ -59,13 +59,13 @@ fn a_straight_join_drops_the_middle_vertex() {
     let mut h = H::new(0x32_02);
     let c: RouteId = id(&wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({})), "route");
     wire(&mut h, &[(50.0, 0.0), (80.0, 0.0)], json!({}));
-    assert_eq!(h.doc().routes.len(), 1);
+    assert_eq!(h.doc().routes().len(), 1);
     let v = route(&mut h, c);
     assert!(same(&v, &[(0.0, 0.0), (80.0, 0.0)]), "{v:?}");
     wire(&mut h, &[(-20.0, 0.0), (0.0, 0.0)], json!({}));
     let v = route(&mut h, c);
     assert!(same(&v, &[(-20.0, 0.0), (80.0, 0.0)]), "{v:?}");
-    assert_eq!(h.doc().routes.len(), 1);
+    assert_eq!(h.doc().routes().len(), 1);
 }
 
 /// §12 items 3 and 12: a line between two free ends folds them into one route; the far landing is
@@ -76,21 +76,21 @@ fn both_ends_fold_two_wires_into_one() {
     let x = connection_point(&mut h, (100.0, 0.0), "X1");
     let a: RouteId = id(&wire(&mut h, &[(0.0, 0.0), (40.0, 0.0)], json!({})), "route");
     let c: RouteId = id(&wire(&mut h, &[(60.0, 10.0), (100.0, 0.0)], json!({})), "route");
-    assert_eq!(h.doc().routes[&c].ends[1], RouteEnd::Point(x));
+    assert_eq!(h.doc().routes()[&c].ends[1], RouteEnd::Point(x));
     let before = h.doc();
     let head = h.head();
     let r = wire(&mut h, &[(40.0, 0.0), (60.0, 10.0)], json!({}));
     assert_eq!(h.head(), head + 1);
     let doc = h.doc();
-    assert_eq!(doc.routes.len(), 1, "{r}");
+    assert_eq!(doc.routes().len(), 1, "{r}");
     assert_eq!(r["route"], json!(a.hex()));
     assert_eq!(r["removed"], json!([c.hex()]));
-    assert!(!doc.routes.contains_key(&c));
-    assert_eq!(doc.routes[&a].ends, [RouteEnd::Free, RouteEnd::Point(x)]);
+    assert!(!doc.routes().contains_key(&c));
+    assert_eq!(doc.routes()[&a].ends, [RouteEnd::Free, RouteEnd::Point(x)]);
     let v = route(&mut h, a);
     assert!(same(&v, &[(0.0, 0.0), (40.0, 0.0), (60.0, 10.0), (100.0, 0.0)]), "{v:?}");
     h.cmdline("u");
-    assert_eq!(h.doc().routes, before.routes);
+    assert_eq!(h.doc().routes(), before.routes());
 }
 
 /// §12 item 6 (design 072 §4.3): joining a line's own two ends would close it into a loop:
@@ -114,13 +114,13 @@ fn an_open_end_on_the_new_wire_joins_it() {
     let head = h.head();
     let r = wire(&mut h, &[(0.0, -10.0), (60.0, -10.0)], json!({}));
     let doc = h.doc();
-    assert_eq!(doc.routes.len(), 2, "{r}");
+    assert_eq!(doc.routes().len(), 2, "{r}");
     assert_eq!(r["tees"][0]["at"], json!([30.0, -10.0]), "{r}");
     let w: RouteId = id(&r, "route");
-    assert_eq!(doc.routes[&c].ends[1].route(), Some(w), "{r}");
+    assert_eq!(doc.routes()[&c].ends[1].route(), Some(w), "{r}");
     assert_eq!(h.head(), head + 1);
     h.cmdline("u");
-    assert_eq!(h.doc().routes.len(), 1);
+    assert_eq!(h.doc().routes().len(), 1);
 }
 
 /// §12 item 9: `join: false` leaves both ends free; Checks lists Looks connected with Join and two
@@ -135,7 +135,7 @@ fn join_false_leaves_the_ends_open() {
         wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
         wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({key: false}));
         let doc = h.doc();
-        assert_eq!(doc.routes.len(), 2, "{key}");
+        assert_eq!(doc.routes().len(), 2, "{key}");
         let all = ecad_engine::checks::all(&doc, 1e-6);
         let draws: Vec<_> = all.iter().filter(|c| c.kind == Kind::LooksConnected).collect();
         assert_eq!(draws.len(), 1, "{all:?}");
@@ -160,7 +160,7 @@ fn joinwires_repairs_ends_that_meet() {
     assert_eq!(h.head(), head + 1);
     assert_eq!(r["how"], json!("merged"), "{r}");
     let doc = h.doc();
-    assert_eq!(doc.routes.len(), 1);
+    assert_eq!(doc.routes().len(), 1);
     let survivor: RouteId = id(&r, "route");
     let v = route(&mut h, survivor);
     assert!(same(&v, &[(0.0, 0.0), (50.0, 0.0), (50.0, -20.0)]) || same(&v, &[(50.0, -20.0), (50.0, 0.0), (0.0, 0.0)]), "{v:?}");
@@ -170,7 +170,7 @@ fn joinwires_repairs_ends_that_meet() {
     let m = h.run("joinwires", json!({"at": [500, 500]})).unwrap_err();
     assert!(m.contains("There are no wire ends to join here."), "{m}");
     h.cmdline("u");
-    assert_eq!(h.doc().routes.len(), 2);
+    assert_eq!(h.doc().routes().len(), 2);
 }
 
 /// §12 item 11: `joinwires` on a free end lying on a route's interior lands it there (a T).
@@ -181,7 +181,7 @@ fn joinwires_on_a_tee_places_a_junction() {
     let tee: RouteId = id(&wire(&mut h, &[(30.0, 30.0), (30.0, 0.0)], json!({"join": false})), "route");
     let r = h.run("joinwires", json!({"at": [30, 0]})).unwrap();
     assert_eq!(r["how"], json!("tee"), "{r}");
-    assert_eq!(h.doc().routes[&tee].ends[1].route(), Some(main));
+    assert_eq!(h.doc().routes()[&tee].ends[1].route(), Some(main));
 }
 
 /// §12 item 19: after `join: false` the page shows a yellow ring at the point; after
@@ -221,12 +221,12 @@ fn the_wire_tool_has_a_join_keyword() {
     assert!(prompt.contains("(join off)"), "{prompt}");
     h.s.cmdline("50,-20").unwrap();
     h.cmdline("");
-    assert_eq!(h.doc().routes.len(), 2, "join off: two lines");
+    assert_eq!(h.doc().routes().len(), 2, "join off: two lines");
     h.s.start("wire").unwrap();
     h.s.cmdline("0,0").unwrap();
     h.s.cmdline("-30,0").unwrap();
     h.cmdline("");
-    assert_eq!(h.doc().routes.len(), 2, "joining is on again when the tool starts");
+    assert_eq!(h.doc().routes().len(), 2, "joining is on again when the tool starts");
 }
 
 // ---------------------------------------------------------------- Q8: a cable across pages
@@ -266,7 +266,7 @@ fn pack() -> Pack {
         h.run("cablecore", json!({"conductor": w.hex(), "core": format!("{}", i + 1)})).unwrap();
     }
     let doc = h.doc();
-    let members: Vec<WireId> = doc.cables[&cable].cores.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<WireId> = doc.cables()[&cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members, wires, "each core moved onto its wire");
     Pack { h, p100, p115, cable, wires }
 }
@@ -278,15 +278,15 @@ fn pack() -> Pack {
 #[test]
 fn a_cable_is_shown_on_another_page_by_its_tag() {
     let mut f = pack();
-    let before = f.h.doc().cables.len();
+    let before = f.h.doc().cables().len();
     let head = f.h.head();
     let r = f.h.run("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"})).unwrap();
     assert_eq!(f.h.head(), head + 1);
     assert_eq!(r["continued"], json!(true), "{r}");
     assert_eq!(r["cable"], json!(f.cable.hex()));
     let doc = f.h.doc();
-    assert_eq!(doc.cables.len(), before, "no new cable");
-    let members: Vec<WireId> = doc.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
+    assert_eq!(doc.cables().len(), before, "no new cable");
+    let members: Vec<WireId> = doc.cables()[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members, f.wires, "no new member");
     let cores = r["cores"].as_array().unwrap();
     assert_eq!(cores.len(), 3);
@@ -316,8 +316,8 @@ fn a_cable_is_shown_on_another_page_by_its_tag() {
     let handle = f.h.handle_of(f.p115, item);
     f.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     let doc = f.h.doc();
-    assert!(!doc.representations.contains_key(&rep));
-    let left: Vec<WireId> = doc.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
+    assert!(!doc.representations().contains_key(&rep));
+    let left: Vec<WireId> = doc.cables()[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(left, f.wires);
     let _ = f.p100;
 }
@@ -390,7 +390,7 @@ fn the_label_rule_labels_a_net_once_or_every_wire() {
     assert_eq!(labels(&mut h, page).len(), 1, "net: one label");
     h.run("wiresettings", json!({"label_rule": "each", "label_min_length": 0})).unwrap();
     // Design 072: the bus is one wire and each drop a wire of its own (a T splits nothing).
-    assert_eq!(h.doc().wires.len(), 5);
+    assert_eq!(h.doc().wires().len(), 5);
     assert_eq!(labels(&mut h, page).len(), 5, "each, 0: every wire");
     h.run("wiresettings", json!({"label_min_length": 10})).unwrap();
     let l = labels(&mut h, page);
@@ -401,7 +401,7 @@ fn the_label_rule_labels_a_net_once_or_every_wire() {
     let drop = d
         .routes_on(page)
         .find(|r| {
-            let v = &d.routes[r].points;
+            let v = &d.routes()[r].points;
             v.len() == 2 && v[0].x == 20.0 && v[0].y == 0.0
         })
         .and_then(|r| ecad_electrical::wires::routes::wire_of_route(&d, r));
@@ -435,7 +435,7 @@ fn the_join_default_comes_from_the_registry() {
     let mut h = H::new(0x32_41);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
     h.cfg(|p| {
-        let before = p.ledger.document().display.get("wire.join").cloned();
+        let before = p.ledger.document().display().get("wire.join").cloned();
         p.ledger
             .commit(
                 ecad_model::Author::User,
@@ -450,7 +450,7 @@ fn the_join_default_comes_from_the_registry() {
             .unwrap();
     });
     wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({}));
-    assert_eq!(h.doc().routes.len(), 2, "wire.join off: the ends stay open (two lines)");
+    assert_eq!(h.doc().routes().len(), 2, "wire.join off: the ends stay open (two lines)");
 }
 
 /// Review of #65, finding 1, as design 072 §4.4 (F5) has it: renaming page 115's A1 to Z1 breaks
@@ -470,12 +470,12 @@ fn renaming_a_continuation_leaves_the_core_on_its_lines() {
         .expect("A1 on page 115");
     f.h.run("setprop", json!({"aids": [a1.hex()], "key": "name", "value": "Z1"})).unwrap();
     let doc = f.h.doc();
-    assert_eq!(doc.cables[&f.cable].cores.len(), 3, "still three cores: {:?}", doc.cables[&f.cable].cores);
-    assert!(!doc.wires.contains_key(&f.wires[0]), "the A1 wire went with the pair");
-    assert!(matches!(doc.cables[&f.cable].cores[0].position, ecad_model::CorePosition::Route { .. }), "{:?}", doc.cables[&f.cable].cores[0]);
+    assert_eq!(doc.cables()[&f.cable].cores.len(), 3, "still three cores: {:?}", doc.cables()[&f.cable].cores);
+    assert!(!doc.wires().contains_key(&f.wires[0]), "the A1 wire went with the pair");
+    assert!(matches!(doc.cables()[&f.cable].cores[0].position, ecad_model::CorePosition::Route { .. }), "{:?}", doc.cables()[&f.cable].cores[0]);
     f.h.cmdline("u");
     assert_eq!(cores(&mut f.h, f.cable), 3);
-    assert_eq!(f.h.doc().cables[&f.cable].cores[0].wire(), Some(f.wires[0]), "undo puts the core back on its wire");
+    assert_eq!(f.h.doc().cables()[&f.cable].cores[0].wire(), Some(f.wires[0]), "undo puts the core back on its wire");
 }
 
 /// Review of #65, finding 3: wire labels are drawn in lane T's wire-label style (a bold weight
@@ -528,7 +528,7 @@ fn quiet_ends_come_from_the_document() {
     }
     h.activate(page);
     let doc = h.doc();
-    assert_eq!(doc.wires.len(), 3, "a wire per core across the pages");
+    assert_eq!(doc.wires().len(), 3, "a wire per core across the pages");
     // No project, no page map: the document alone.
     let quiet = ecad_engine::wires::draw::quiet_ends_of(&doc, page, &std::collections::BTreeSet::new(), 1e-6);
     let shown = h.p(|p| p.pages.get(&page).map(|v| v.map.quiet_ends().to_vec()).unwrap_or_default());
@@ -545,7 +545,7 @@ fn quiet_ends_come_from_the_document() {
     let r = wire(&mut h, &[(at.x, at.y), (at.x + 20.0, at.y - 30.0)], json!({}));
     let line: RouteId = id(&r, "route");
     let doc = h.doc();
-    let first = doc.routes[&line].ends[0];
+    let first = doc.routes()[&line].ends[0];
     assert!(first.point().is_some_and(|t| doc.named_points(t).is_some()), "{first:?}");
 }
 
@@ -642,7 +642,7 @@ fn the_reports_map_takes_a_continuation_rename_to_its_cables() {
     let (kept, fresh) = f.h.cfg(|p| {
         p.reports();
         let before = p.ledger.document().clone();
-        let before_aid = p.ledger.document().aids.get(&a1).cloned().unwrap();
+        let before_aid = p.ledger.document().aids().get(&a1).cloned().unwrap();
         let after_aid = ecad_electrical::wires::continuation_aid("Z1", None).unwrap();
         let ops = vec![ecad_model::Op::ModifyAid { id: a1, before: before_aid, after: after_aid }];
         let pending = p.views_mut().begin(&before, &ops);

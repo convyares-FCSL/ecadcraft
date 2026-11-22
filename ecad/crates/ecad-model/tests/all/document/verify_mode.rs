@@ -14,15 +14,17 @@ use ecad_model::*;
 fn invalid_checkpoint() -> Document {
     let mut doc = Document::default();
     let layer = LayerId(1);
-    doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.items.insert(
-        ItemId(2),
-        Item {
-            page: PageId(0xfeed),
-            style: Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 },
-            kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(0.0, 0.0) }),
-        },
-    );
+    doc.edit_parts(|parts| parts.layers.insert(layer, Layer { name: "0".into() }));
+    doc.edit_parts(|parts| {
+        parts.items.insert(
+            ItemId(2),
+            Item {
+                page: PageId(0xfeed),
+                style: Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 },
+                kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(0.0, 0.0) }),
+            },
+        )
+    });
     doc.rebuild_index();
     doc
 }
@@ -182,6 +184,6 @@ fn replay_checked_runs_exactly_the_check_asked_for_in_any_build() {
     assert!(Ledger::replay_checked_from(invalid_checkpoint(), l.log().to_vec(), 9, Check::Commit).is_ok());
     // The visitor sees each transaction once, in order, with the state after it.
     let mut seen = Vec::new();
-    Ledger::replay_checked_visit(Document::default(), l.log().to_vec(), 9, Check::Commit, |tx, doc| seen.push((tx.seq, doc.pages.len()))).unwrap();
+    Ledger::replay_checked_visit(Document::default(), l.log().to_vec(), 9, Check::Commit, |tx, doc| seen.push((tx.seq, doc.pages().len()))).unwrap();
     assert_eq!(seen, vec![(1, 1)]);
 }

@@ -4,7 +4,7 @@ use super::*;
 
 impl ReportModels {
     pub(super) fn set_box_checks(&mut self, doc: &Document, page: PageId) {
-        if !doc.pages.contains_key(&page) {
+        if !doc.pages().contains_key(&page) {
             self.box_checks.remove(&page);
             return;
         }

@@ -57,29 +57,6 @@ pub(super) fn restore(history: Committed<'_>) -> Option<Document> {
     Some(doc)
 }
 
-/// Test-only fault injection.
-#[cfg(test)]
-pub(super) mod hooks {
-    use std::cell::Cell;
-
-    thread_local! {
-        /// Panic when this many ops of a transaction have been applied.
-        pub(crate) static PANIC_AT: Cell<Option<usize>> = const { Cell::new(None) };
-        /// Treat every revert as failed.
-        pub(crate) static FAIL_REVERT: Cell<bool> = const { Cell::new(false) };
-    }
-
-    pub(super) fn maybe_panic(applied: usize) {
-        if PANIC_AT.with(Cell::get) == Some(applied) {
-            std::panic::resume_unwind(Box::new("injected panic"));
-        }
-    }
-
-    pub(super) fn fail_revert() -> bool {
-        FAIL_REVERT.with(Cell::get)
-    }
-}
-
 /// The rollback journal of one transaction: the ops applied to the live document so far.
 ///
 /// # Semantics
@@ -392,4 +369,27 @@ pub(super) fn check_bookmarks(ops: &[Op], seq: u64) -> Result<()> {
 
 pub(super) fn inverse_ops(ops: &[Op]) -> Vec<Op> {
     ops.iter().rev().map(Op::inverse).collect()
+}
+
+/// Test-only fault injection.
+#[cfg(test)]
+pub(super) mod hooks {
+    use std::cell::Cell;
+
+    thread_local! {
+        /// Panic when this many ops of a transaction have been applied.
+        pub(crate) static PANIC_AT: Cell<Option<usize>> = const { Cell::new(None) };
+        /// Treat every revert as failed.
+        pub(crate) static FAIL_REVERT: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(super) fn maybe_panic(applied: usize) {
+        if PANIC_AT.with(Cell::get) == Some(applied) {
+            std::panic::resume_unwind(Box::new("injected panic"));
+        }
+    }
+
+    pub(super) fn fail_revert() -> bool {
+        FAIL_REVERT.with(Cell::get)
+    }
 }

@@ -38,7 +38,7 @@ pub use crate::document::doc::Properties;
 pub use crate::document::doc::cable::{Cable, Core, CoreLabel, CorePosition, MAX_CORE_LABEL, Purpose};
 pub use crate::document::doc::definition::{Definition, Join, NotASlotText, SlotText, SymbolDefault, SymbolDefaultError, SymbolDefaults, TextSlot};
 pub use crate::document::doc::device::{Accepts, ConnectionPoint, ConnectionPointDef, ConnectionPointOwner, Device};
-pub use crate::document::doc::document::Document;
+pub use crate::document::doc::document::{Document, DocumentParts};
 pub use crate::document::doc::drawing::{
     Color, Folder, Form, Item, ItemKind, Layer, Page, Primitive, Representation, Style, Subject, SymbolInstance, TextHAlign, TextVAlign,
 };

@@ -536,7 +536,7 @@ fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
     let renamed = Page::titled("renamed").unwrap();
     let ops = vec![Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 }, Op::AddPage { id: b.page, page: renamed.clone(), index: 0 }];
     b.ledger.commit(Author::User, "rename", ops).unwrap();
-    assert_eq!(b.ledger.document().pages.get(&b.page), Some(&renamed));
+    assert_eq!(b.ledger.document().pages().get(&b.page), Some(&renamed));
     // Delete a terminal, then the wire that ended at it: in between, the wire is attached to a
     // missing terminal.
     let ops = vec![
@@ -551,8 +551,8 @@ fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
         },
     ];
     b.ledger.commit(Author::User, "delete", ops).unwrap();
-    assert!(!b.ledger.document().connection_points.contains_key(&b.term));
-    assert!(!b.ledger.document().wires.contains_key(&b.wire));
+    assert!(!b.ledger.document().connection_points().contains_key(&b.term));
+    assert!(!b.ledger.document().wires().contains_key(&b.wire));
     b.ledger.document().check().unwrap();
 }
 
@@ -633,7 +633,7 @@ fn queries_answer_from_the_index_as_a_scan_would() {
     let back: Document = serde_json::from_slice(&bytes(doc)).unwrap();
     back.check_index().unwrap();
     assert_eq!(back.cables_of(b.wire), vec![b.cable]);
-    assert!(doc.definitions.contains_key(&b.def));
+    assert!(doc.definitions().contains_key(&b.def));
 }
 
 #[test]
@@ -770,11 +770,11 @@ impl Gen {
 
     fn item(&mut self, doc: &Document) -> Item {
         // Mostly on an existing page and layer, so items are often valid.
-        let page = if self.rng.chance(90) { self.rng.pick_key(&doc.pages).unwrap_or_else(|| self.page()) } else { self.page() };
-        let layer = if self.rng.chance(90) { self.rng.pick_key(&doc.layers).unwrap_or_else(|| self.layer()) } else { self.layer() };
+        let page = if self.rng.chance(90) { self.rng.pick_key(doc.pages()).unwrap_or_else(|| self.page()) } else { self.page() };
+        let layer = if self.rng.chance(90) { self.rng.pick_key(doc.layers()).unwrap_or_else(|| self.layer()) } else { self.layer() };
         let kind = if self.rng.chance(30) {
             let scale = if self.rng.chance(5) { 0.0 } else { 1.0 };
-            let definition = if self.rng.chance(90) { self.rng.pick_key(&doc.definitions).unwrap_or_else(|| self.def()) } else { self.def() };
+            let definition = if self.rng.chance(90) { self.rng.pick_key(doc.definitions()).unwrap_or_else(|| self.def()) } else { self.def() };
             ItemKind::Symbol(SymbolInstance { definition, placement: Placement { scale, ..Placement::default() } })
         } else {
             let x = if self.rng.chance(3) { f64::NAN } else { self.rng.below(100) as f64 };
@@ -786,10 +786,10 @@ impl Gen {
     fn rep(&mut self, doc: &Document) -> Representation {
         // Half the time, aim for a valid symbol representation of a component with a definition.
         if self.rng.chance(50)
-            && let Some((cid, c)) = doc.devices.iter().nth(self.rng.below(doc.devices.len()))
+            && let Some((cid, c)) = doc.devices().iter().nth(self.rng.below(doc.devices().len()))
             && let Some(def) = c.definition
             && let Some((iid, it)) = doc
-                .items
+                .items()
                 .iter()
                 .find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == def) && doc.representation_of_item(**i).is_none())
         {
@@ -805,10 +805,10 @@ impl Gen {
         // Sometimes a symbol of any definition with connection points of the component's own
         // terminals (I14 as relaxed for brief 018: valid with any embedded definition).
         if self.rng.chance(30)
-            && let Some((cid, _)) = doc.devices.iter().nth(self.rng.below(doc.devices.len()))
+            && let Some((cid, _)) = doc.devices().iter().nth(self.rng.below(doc.devices().len()))
             && let Some(t) = doc.connection_points_of(*cid).map(|(t, _)| t).next()
             && let Some((iid, it)) =
-                doc.items.iter().find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(_)) && doc.representation_of_item(**i).is_none())
+                doc.items().iter().find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(_)) && doc.representation_of_item(**i).is_none())
         {
             let mut connection_points = std::collections::BTreeMap::new();
             connection_points.insert(t, Pt::new(0.0, 10.0));
@@ -826,12 +826,12 @@ impl Gen {
             1 => Subject::Wire(self.cond()),
             _ => Subject::Cable(self.rng.pick(&self.pools.cables).unwrap_or_else(|| fresh_in!(self, cables))),
         };
-        let page = self.rng.pick_key(&doc.pages).unwrap_or_else(|| self.page());
+        let page = self.rng.pick_key(doc.pages()).unwrap_or_else(|| self.page());
         let mut items = Vec::new();
         for _ in 0..self.rng.below(3) {
             // Prefer unowned items on the same page.
             let candidate = if self.rng.chance(70) {
-                doc.items
+                doc.items()
                     .iter()
                     .filter(|(i, it)| it.page == page && doc.representation_of_item(**i).is_none())
                     .map(|(i, _)| *i)
@@ -886,20 +886,20 @@ impl Gen {
         match kind {
             0..=1 => {
                 let id = if spoil { self.rng.pick(&self.pools.pages).unwrap_or_else(|| fresh_in!(self, pages)) } else { fresh_in!(self, pages) };
-                let index = self.rng.below(doc.page_order.len() + 1 + usize::from(spoil));
+                let index = self.rng.below(doc.page_order().len() + 1 + usize::from(spoil));
                 Op::AddPage { id, page: Page::titled("p").unwrap(), index }
             }
-            2 => match self.rng.pick(&doc.page_order) {
+            2 => match self.rng.pick(doc.page_order()) {
                 Some(id) => {
-                    let index = doc.page_order.iter().position(|p| *p == id).unwrap_or(0) + usize::from(spoil);
-                    Op::RemovePage { id, page: doc.pages.get(&id).cloned().unwrap_or(Page::titled("?").unwrap()), index }
+                    let index = doc.page_order().iter().position(|p| *p == id).unwrap_or(0) + usize::from(spoil);
+                    Op::RemovePage { id, page: doc.pages().get(&id).cloned().unwrap_or(Page::titled("?").unwrap()), index }
                 }
                 None => Op::AddPage { id: fresh_in!(self, pages), page: Page::titled("p").unwrap(), index: 0 },
             },
             3 => Op::AddLayer { id: fresh_in!(self, layers), layer: Layer { name: "l".into() } },
-            4 => match self.rng.pick_key(&doc.layers) {
+            4 => match self.rng.pick_key(doc.layers()) {
                 Some(id) => {
-                    let name = if spoil { "spoilt".into() } else { doc.layers.get(&id).map(|l| l.name.clone()).unwrap_or_default() };
+                    let name = if spoil { "spoilt".into() } else { doc.layers().get(&id).map(|l| l.name.clone()).unwrap_or_default() };
                     Op::RemoveLayer { id, layer: Layer { name } }
                 }
                 None => Op::AddLayer { id: fresh_in!(self, layers), layer: Layer { name: "l".into() } },
@@ -908,9 +908,9 @@ impl Gen {
                 let id = if spoil { self.rng.pick(&self.pools.items).unwrap_or_else(|| fresh_in!(self, items)) } else { fresh_in!(self, items) };
                 Op::AddItem { id, item: self.item(doc) }
             }
-            10..=11 => match self.rng.pick_key(&doc.items) {
+            10..=11 => match self.rng.pick_key(doc.items()) {
                 Some(id) => {
-                    let before = if spoil { self.item(doc) } else { doc.items.get(&id).cloned().unwrap_or_else(|| self.item(doc)) };
+                    let before = if spoil { self.item(doc) } else { doc.items().get(&id).cloned().unwrap_or_else(|| self.item(doc)) };
                     let mut after = self.item(doc);
                     if self.rng.chance(50) {
                         // Keep page and kind, change geometry only: the common edit.
@@ -923,29 +923,29 @@ impl Gen {
                 }
                 None => Op::AddItem { id: fresh_in!(self, items), item: self.item(doc) },
             },
-            12 => match self.rng.pick_key(&doc.items) {
-                Some(id) => Op::RemoveItem { id, item: doc.items.get(&id).cloned().unwrap_or_else(|| self.item(doc)) },
+            12 => match self.rng.pick_key(doc.items()) {
+                Some(id) => Op::RemoveItem { id, item: doc.items().get(&id).cloned().unwrap_or_else(|| self.item(doc)) },
                 None => Op::AddItem { id: fresh_in!(self, items), item: self.item(doc) },
             },
             13..=14 => {
-                let definition = if self.rng.chance(50) { None } else { Some(self.rng.pick_key(&doc.definitions).unwrap_or_else(|| self.def())) };
+                let definition = if self.rng.chance(50) { None } else { Some(self.rng.pick_key(doc.definitions()).unwrap_or_else(|| self.def())) };
                 Op::CreateDevice { id: fresh_in!(self, comps), device: Device { definition, ..Device::default() } }
             }
-            15 => match self.rng.pick_key(&doc.devices) {
-                Some(id) => Op::DeleteDevice { id, device: doc.devices.get(&id).cloned().unwrap_or_default() },
+            15 => match self.rng.pick_key(doc.devices()) {
+                Some(id) => Op::DeleteDevice { id, device: doc.devices().get(&id).cloned().unwrap_or_default() },
                 None => Op::CreateDevice { id: fresh_in!(self, comps), device: Device::default() },
             },
             16..=17 => {
-                let component = if self.rng.chance(85) { self.rng.pick_key(&doc.devices).unwrap_or_else(|| self.comp()) } else { self.comp() };
+                let component = if self.rng.chance(85) { self.rng.pick_key(doc.devices()).unwrap_or_else(|| self.comp()) } else { self.comp() };
                 Op::AddConnectionPoint {
                     id: fresh_in!(self, terms),
                     connection_point: ConnectionPoint { owner: component.into(), label: None, key: None, accepts: Default::default() },
                 }
             }
-            18 => match self.rng.pick_key(&doc.connection_points) {
+            18 => match self.rng.pick_key(doc.connection_points()) {
                 Some(id) => Op::RemoveConnectionPoint {
                     id,
-                    connection_point: doc.connection_points.get(&id).cloned().unwrap_or(ConnectionPoint {
+                    connection_point: doc.connection_points().get(&id).cloned().unwrap_or(ConnectionPoint {
                         owner: self.comp().into(),
                         label: None,
                         key: None,
@@ -958,9 +958,9 @@ impl Gen {
                 },
             },
             19..=21 => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },
-            22 => match self.rng.pick_key(&doc.representations) {
+            22 => match self.rng.pick_key(doc.representations()) {
                 Some(id) => {
-                    let before = doc.representations.get(&id).cloned().unwrap_or_else(|| self.rep(doc));
+                    let before = doc.representations().get(&id).cloned().unwrap_or_else(|| self.rep(doc));
                     let after = if self.rng.chance(50) {
                         let mut a = before.clone();
                         a.items.pop();
@@ -972,21 +972,21 @@ impl Gen {
                 }
                 None => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },
             },
-            23 => match self.rng.pick_key(&doc.representations) {
-                Some(id) => Op::UnlinkRepresentation { id, rep: doc.representations.get(&id).cloned().unwrap_or_else(|| self.rep(doc)) },
+            23 => match self.rng.pick_key(doc.representations()) {
+                Some(id) => Op::UnlinkRepresentation { id, rep: doc.representations().get(&id).cloned().unwrap_or_else(|| self.rep(doc)) },
                 None => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },
             },
             24..=26 => Op::CreateWire { id: fresh_in!(self, conds), wire: self.wire() },
-            27 => match self.rng.pick_key(&doc.wires) {
+            27 => match self.rng.pick_key(doc.wires()) {
                 Some(id) => {
-                    let wire = if spoil { self.wire() } else { doc.wires.get(&id).cloned().unwrap_or_else(|| self.wire()) };
+                    let wire = if spoil { self.wire() } else { doc.wires().get(&id).cloned().unwrap_or_else(|| self.wire()) };
                     Op::DeleteWire { id, wire }
                 }
                 None => Op::CreateWire { id: fresh_in!(self, conds), wire: self.wire() },
             },
-            28..=29 => match self.rng.pick_key(&doc.wires) {
+            28..=29 => match self.rng.pick_key(doc.wires()) {
                 Some(id) => {
-                    let current = doc.wires.get(&id).cloned().unwrap_or_else(|| self.wire());
+                    let current = doc.wires().get(&id).cloned().unwrap_or_else(|| self.wire());
                     let before = if spoil { self.wire() } else { current.clone() };
                     // Mostly a value; now and then its ends, which a ModifyWire refuses.
                     let after = if self.rng.chance(10) {
@@ -1005,14 +1005,14 @@ impl Gen {
                 }
                 Op::CreateCable { id: fresh_in!(self, cables), cable: Cable { cores: members, ..Cable::default() } }
             }
-            31 => match self.rng.pick_key(&doc.cables) {
-                Some(id) => Op::DeleteCable { id, cable: doc.cables.get(&id).cloned().unwrap_or_default() },
+            31 => match self.rng.pick_key(doc.cables()) {
+                Some(id) => Op::DeleteCable { id, cable: doc.cables().get(&id).cloned().unwrap_or_default() },
                 None => Op::CreateCable { id: fresh_in!(self, cables), cable: Cable::default() },
             },
             // A core added to a cable at some place (a spoilt `before` is not the stored cable).
-            32..=33 => match self.rng.pick_key(&doc.cables) {
+            32..=33 => match self.rng.pick_key(doc.cables()) {
                 Some(id) => {
-                    let current = doc.cables.get(&id).cloned().unwrap_or_default();
+                    let current = doc.cables().get(&id).cloned().unwrap_or_default();
                     let mut after = current.clone();
                     let index = self.rng.below(after.cores.len() + 1);
                     after.cores.insert(index, Core::on_wire(self.cond(), None));
@@ -1023,7 +1023,7 @@ impl Gen {
             },
             // A core taken off a cable.
             34 => {
-                let found = doc.cables.iter().filter(|(_, c)| !c.cores.is_empty()).map(|(id, c)| (*id, c.clone())).nth(self.rng.below(2));
+                let found = doc.cables().iter().filter(|(_, c)| !c.cores.is_empty()).map(|(id, c)| (*id, c.clone())).nth(self.rng.below(2));
                 match found {
                     Some((id, current)) => {
                         let mut after = current.clone();
@@ -1034,9 +1034,9 @@ impl Gen {
                     None => Op::CreateCable { id: fresh_in!(self, cables), cable: Cable::default() },
                 }
             }
-            35 => match self.rng.pick_key(&doc.devices) {
+            35 => match self.rng.pick_key(doc.devices()) {
                 Some(id) => {
-                    let current = doc.devices.get(&id).cloned().unwrap_or_default();
+                    let current = doc.devices().get(&id).cloned().unwrap_or_default();
                     let before = if spoil { current.with_tag(Some("spoilt"), ecad_model::naming::tag::TagState::Automatic) } else { current.clone() };
                     // Written two ways (`K3`, `-K03`) so the tag index sees the same tag under two values.
                     let after = match self.rng.below(3) {
@@ -1049,14 +1049,14 @@ impl Gen {
                 None => Op::CreateDevice { id: fresh_in!(self, comps), device: Device::default() },
             },
             36..=37 => Op::EmbedDefinition { id: fresh_in!(self, defs), definition: self.definition() },
-            38 => match self.rng.pick_key(&doc.definitions) {
-                Some(id) => Op::RemoveDefinition { id, definition: doc.definitions.get(&id).cloned().unwrap_or_else(|| self.definition()) },
+            38 => match self.rng.pick_key(doc.definitions()) {
+                Some(id) => Op::RemoveDefinition { id, definition: doc.definitions().get(&id).cloned().unwrap_or_else(|| self.definition()) },
                 None => Op::EmbedDefinition { id: fresh_in!(self, defs), definition: self.definition() },
             },
             _ => match self.rng.below(3) {
                 0 => {
                     let before =
-                        if spoil { ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() } } else { doc.settings.clone() };
+                        if spoil { ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() } } else { doc.settings().clone() };
                     let after = ProjectSettings {
                         length_unit: if self.rng.chance(50) { LengthUnit::Inch } else { LengthUnit::Millimetre },
                         // Brief 018's tag settings change with it sometimes.
@@ -1068,14 +1068,14 @@ impl Gen {
                 1 => {
                     // Sometimes names a transaction that does not precede this one.
                     let at = self.rng.below(head as usize + 1 + usize::from(spoil) * 2) as u64;
-                    let name = if spoil && !doc.versions.is_empty() {
-                        doc.versions.keys().next().cloned().unwrap_or(ecad_model::PointName::Revision(ecad_model::Rev::Initial))
+                    let name = if spoil && !doc.versions().is_empty() {
+                        doc.versions().keys().next().cloned().unwrap_or(ecad_model::PointName::Revision(ecad_model::Rev::Initial))
                     } else {
                         ecad_model::PointName::version(&format!("v{}", self.rng.next() % 1000)).unwrap()
                     };
                     Op::NameVersion { name, at, description: None }
                 }
-                _ => match doc.versions.iter().next() {
+                _ => match doc.versions().iter().next() {
                     Some((name, at)) => Op::UnnameVersion { name: name.clone(), at: *at + u64::from(spoil), description: None },
                     None => Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 0, description: None },
                 },
@@ -1324,7 +1324,7 @@ fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged(
     assert!(ran >= 2, "the closure ran (and panicked) in only {ran} cases");
 
     // The ledger carries on: a preview without a panic, a redo, and a commit of the same ops.
-    let pages = b.ledger.with_applied(&valid, |d| d.pages.len()).unwrap();
+    let pages = b.ledger.with_applied(&valid, |d| d.pages().len()).unwrap();
     assert_eq!(pages, 2);
     assert_as_before(&b, &before, "after a normal preview");
     b.ledger.redo(Author::User).unwrap();
@@ -1376,11 +1376,11 @@ fn a_state_diff_restores_exactly_what_undoing_the_steps_after_the_point_restores
             let by_diff = ledger.preview(&diff).unwrap_or_else(|e| panic!("seed {seed} k {k}: diff {e}: {diff:#?}"));
             assert_eq!(by_diff, by_walk, "seed {seed} k {k}");
             let mut want = target.clone();
-            want.versions = live.versions.clone();
+            want.edit_parts(|parts| parts.versions = live.versions().clone());
             assert_eq!(by_diff, want, "seed {seed} k {k}: the target state");
             // It scales with what differs: nothing differs, no ops (however many steps lie between).
             let mut same = live.clone();
-            same.versions = want.versions.clone();
+            same.edit_parts(|parts| parts.versions = want.versions().clone());
             assert_eq!(diff.is_empty(), same == want, "seed {seed} k {k}: {} ops", diff.len());
             if !diff.is_empty() {
                 let mut l = ledger.clone();
@@ -1433,7 +1433,7 @@ fn a_scoped_state_diff_equals_the_whole_diff_when_the_scope_covers_every_differe
             let scoped = ecad_model::document::diff::ops_between_in(&live, &target, &|_| true, Some(&scope.touched), scope.project);
             assert_eq!(scoped, whole, "seed {seed} k {k}");
             let mut want = target.clone();
-            want.versions = live.versions.clone();
+            want.edit_parts(|parts| parts.versions = live.versions().clone());
             if !scoped.is_empty() {
                 assert_eq!(ledger.preview(&scoped).unwrap_or_else(|e| panic!("seed {seed} k {k}: {e}")), want, "seed {seed} k {k}");
             }

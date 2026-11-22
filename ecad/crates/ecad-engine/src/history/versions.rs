@@ -19,7 +19,7 @@ pub(crate) fn check_version_name(p: &Project, name: &str) -> Result<VersionName,
     }
     // Versions and revisions are told apart by kind: a version may be named `B` or `Rev B`.
     let lower = n.to_lowercase();
-    if p.ledger.document().versions.keys().any(|k| matches!(k, PointName::Version(v) if v.as_str().to_lowercase() == lower)) {
+    if p.ledger.document().versions().keys().any(|k| matches!(k, PointName::Version(v) if v.as_str().to_lowercase() == lower)) {
         return Err(format!("There is already a version \"{n}\" on {}.", current_name(p)));
     }
     VersionName::new(n).map_err(|e| e.to_string())

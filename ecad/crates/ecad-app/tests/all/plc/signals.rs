@@ -242,8 +242,8 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     }
     assert_eq!(head_of(&mut h), before + 4);
     let d = doc(&mut h);
-    assert_eq!(d.devices[&a03].get("part_number"), Some("DQ16-R-2B"));
-    let ecad_model::DeviceType::PlcModule(m) = &d.devices[&a03].device_type else { panic!("a module") };
+    assert_eq!(d.devices()[&a03].get("part_number"), Some("DQ16-R-2B"));
+    let ecad_model::DeviceType::PlcModule(m) = &d.devices()[&a03].device_type else { panic!("a module") };
     assert_eq!(m.slot, Some(7), "design 072 §3: the slot is the module's field");
     // An accessory (the front connector) as a part line.
     ok(
@@ -276,7 +276,7 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     assert_eq!(head_of(&mut h), before + 1);
     assert_eq!(ecad_electrical::plc::card_type_of(&doc(&mut h), a03), Some(CardType::Di), "the card is now a DI card");
     let d = doc(&mut h);
-    let ecad_model::DeviceType::PlcModule(m) = &d.devices[&a03].device_type else { panic!("a module") };
+    let ecad_model::DeviceType::PlcModule(m) = &d.devices()[&a03].device_type else { panic!("a module") };
     assert_eq!(m.channel(2).and_then(|c| c.tag.as_ref()).map(|t| t.as_str()), Some("Valve_Inlet"));
     assert_eq!(ecad_electrical::input::plc_start("%Q4.0"), Ok(Some(4)));
     assert_eq!(ecad_electrical::input::plc_start("IW64"), Ok(Some(64)));
@@ -319,7 +319,7 @@ fn m_the_rack_sheet_prints_the_new_tile_lines() {
     p56(&mut h);
     let d = doc(&mut h);
     let racks: Vec<_> =
-        d.page_order.iter().copied().filter(|p| ecad_electrical::pages::generated::kind_of(&d, *p) == Some(ecad_model::GenKind::PlcRack)).collect();
+        d.page_order().iter().copied().filter(|p| ecad_electrical::pages::generated::kind_of(&d, *p) == Some(ecad_model::GenKind::PlcRack)).collect();
     assert_eq!(racks.len(), 1, "one rack page, the one the first rack brought");
     h.state_mut().set_workspace(Workspace::Draw);
     h.state_mut().show_page(racks[0]).unwrap();

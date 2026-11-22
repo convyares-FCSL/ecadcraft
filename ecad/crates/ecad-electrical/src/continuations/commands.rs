@@ -73,7 +73,7 @@ pub(crate) fn plan_contcaption(doc: &Document, arrows: &[AidId], caption: Option
 
 /// The `ModifyAid` giving continuation `a` the checked caption `caption`; `None` when it has it.
 fn caption_op(doc: &Document, a: AidId, caption: Option<&str>) -> Result<Option<Op>, CmdError> {
-    let Some(before @ Aid::Continuation { name, .. }) = doc.aids.get(&a) else { return Err(CmdError::refused(k::NO_SUCH_ARROW)) };
+    let Some(before @ Aid::Continuation { name, .. }) = doc.aids().get(&a) else { return Err(CmdError::refused(k::NO_SUCH_ARROW)) };
     let caption = caption.map(ecad_model::objects::aid::Caption::new).transpose().map_err(|_| CmdError::refused(k::CAPTION_RULE))?;
     let after = Aid::Continuation { name: name.clone(), caption };
     Ok((*before != after).then(|| Op::ModifyAid { id: a, before: before.clone(), after }))
@@ -82,7 +82,7 @@ fn caption_op(doc: &Document, a: AidId, caption: Option<&str>) -> Result<Option<
 /// The `ModifyAid` giving location box `a` the values `edit` leaves; `None` when it is not a box
 /// or nothing changes.
 pub(crate) fn box_op(doc: &Document, a: AidId, edit: impl FnOnce(&mut LocationBox)) -> Option<Op> {
-    let before @ Aid::Box(x) = doc.aids.get(&a)? else { return None };
+    let before @ Aid::Box(x) = doc.aids().get(&a)? else { return None };
     let mut after = x.clone();
     edit(&mut after);
     (after != *x).then(|| Op::ModifyAid { id: a, before: before.clone(), after: Aid::Box(after) })
@@ -111,7 +111,7 @@ pub(crate) fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId
         return Err(CmdError::refused("Name at least one continuation arrow or location box in `aids`."));
     }
     if let Some(a) = crate::locations::designations::Aspect::of_property(key) {
-        if aids.iter().any(|a| matches!(doc.aids.get(a), Some(Aid::Continuation { .. }))) {
+        if aids.iter().any(|a| matches!(doc.aids().get(a), Some(Aid::Continuation { .. }))) {
             return Err(continuation_keys(key));
         }
         return Ok(crate::locations::commands::locations::plan_box_set(doc, ids, aids, a, value)?.ops);
@@ -119,7 +119,7 @@ pub(crate) fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId
     let mut ops = Vec::new();
     let mut seen = BTreeSet::new();
     for a in aids.iter().filter(|a| seen.insert(**a)) {
-        match doc.aids.get(a) {
+        match doc.aids().get(a) {
             None => return Err(CmdError::refused("That is not a continuation arrow or a location box.")),
             Some(Aid::Box(_)) if key == crate::locations::PANEL_TEMPERATURE_KEY => {
                 let temp = value.filter(|v| !v.trim().is_empty()).map(crate::circuits::commands::panel_temperature).transpose()?;
@@ -142,7 +142,7 @@ pub(crate) fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId
             }
             NAME_KEY => {
                 let v = value.ok_or(CmdError::refused("A continuation needs a name."))?;
-                let Some(before @ Aid::Continuation { caption, .. }) = doc.aids.get(a) else { return Err(CmdError::refused(k::NO_SUCH_ARROW)) };
+                let Some(before @ Aid::Continuation { caption, .. }) = doc.aids().get(a) else { return Err(CmdError::refused(k::NO_SUCH_ARROW)) };
                 let Aid::Continuation { name, .. } = crate::wires::continuation_aid(v, None)? else { continue };
                 let after = Aid::Continuation { name, caption: caption.clone() };
                 if *before != after {

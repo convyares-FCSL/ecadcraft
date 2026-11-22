@@ -373,7 +373,7 @@ pub(crate) fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<Stri
         if crate::terminal_strips::strip_of(doc, c).is_none() {
             continue;
         }
-        let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { continue };
+        let Some(props) = doc.devices().get(&c).map(|x| &x.properties) else { continue };
         let tag = crate::devices::tags::tag_words(doc, c);
         for n in used_lines(props) {
             let key = part_key(n, Field::For);
@@ -517,7 +517,7 @@ pub struct PartSetRow {
 /// The part set of `c`, line 0 first; empty when `c` has no part lines (the section is then not
 /// shown).
 pub fn part_set(doc: &Document, c: DeviceId) -> Vec<PartSetRow> {
-    let Some(comp) = doc.devices.get(&c) else { return Vec::new() };
+    let Some(comp) = doc.devices().get(&c) else { return Vec::new() };
     let (lines, _) = lines(&comp.properties);
     if lines.is_empty() {
         return Vec::new();
@@ -571,7 +571,7 @@ pub(crate) fn is_bom_key(key: &str) -> bool {
 /// # Errors
 /// Every refusal of §2.1, §2.3 and §3, in words. Clearing a part line key is always allowed.
 pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    let props = doc.devices.get(&c).map(|x| &x.properties);
+    let props = doc.devices().get(&c).map(|x| &x.properties);
     let clearing = value.map(str::trim).is_none_or(str::is_empty);
     let Some(parsed) = parse_part_key(key) else { return Ok(value.map(str::to_string)) };
     if clearing {
@@ -641,7 +641,7 @@ pub fn item_unit_metres(doc: &Document) -> bool {
 
 /// The ops writing `fields` on line `n` of `c`, every value checked.
 pub(crate) fn line_ops(doc: &Document, c: DeviceId, n: u8, fields: &[(Field, Option<String>)]) -> Result<Vec<Op>, CmdError> {
-    let props = doc.devices.get(&c).map(|x| &x.properties).ok_or(CmdError::refused("no such component"))?;
+    let props = doc.devices().get(&c).map(|x| &x.properties).ok_or(CmdError::refused("no such component"))?;
     let given = |f: Field| fields.iter().find(|(g, _)| *g == f).map(|(_, v)| v.clone());
     let metres = match given(Field::Unit) {
         Some(u) => parse_unit(u.as_deref().unwrap_or(""))?,
@@ -706,13 +706,13 @@ impl ArticleTarget {
 /// (design 047 §5): the strip's own key, or the project's `strip_<x>_article_number`.
 pub(crate) fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<ArticleTarget> {
     let mut out = Vec::new();
-    for (id, p) in &doc.loose_parts {
+    for (id, p) in doc.loose_parts() {
         let maker_ok = maker.is_none_or(|m| same(p.manufacturer.as_ref(), m));
         if same(p.part_number.as_ref(), pn) && maker_ok {
             out.push(ArticleTarget::Item(*id));
         }
     }
-    for (c, comp) in &doc.devices {
+    for (c, comp) in doc.devices() {
         let props = &comp.properties;
         if comp.tag.is_none() {
             continue;
@@ -726,7 +726,7 @@ pub(crate) fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> 
             for (part, mk, article, project_maker) in strip_slots(props) {
                 // The maker as the BOM reads it: the strip's, else the project's.
                 let maker_here =
-                    comp.get(&mk).filter(|v| !v.trim().is_empty()).or_else(|| project_maker.and_then(|k| doc.display.get(&k)).map(String::as_str));
+                    comp.get(&mk).filter(|v| !v.trim().is_empty()).or_else(|| project_maker.and_then(|k| doc.display().get(&k)).map(String::as_str));
                 if same(comp.get(&part), pn) && maker.is_none_or(|m| same(maker_here, m)) {
                     out.push(ArticleTarget::Key(ObjectRef::Device(*c), article, "strip"));
                 }
@@ -740,7 +740,7 @@ pub(crate) fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> 
     }
     // The project's strip part defaults (`strip_<code>_part_number`, `strip_<item>_part_number`).
     for (part, mk, article) in project_strip_slots() {
-        if same(doc.display.get(&part), pn) && maker.is_none_or(|m| same(doc.display.get(&mk), m)) {
+        if same(doc.display().get(&part), pn) && maker.is_none_or(|m| same(doc.display().get(&mk), m)) {
             out.push(ArticleTarget::Key(ObjectRef::Project, article, "strip"));
         }
     }

@@ -85,7 +85,7 @@ pub fn route_at(doc: &Document, page: PageId, p: Pt, tol: f64, except: Option<Ro
         if Some(r) == except {
             continue;
         }
-        let Some(v) = doc.routes.get(&r).map(|x| &x.points) else { continue };
+        let Some(v) = doc.routes().get(&r).map(|x| &x.points) else { continue };
         let (first, last) = (v.first().copied(), v.last().copied());
         for (i, w) in v.windows(2).enumerate() {
             let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
@@ -108,7 +108,7 @@ pub fn route_at(doc: &Document, page: PageId, p: Pt, tol: f64, except: Option<Ro
 
 /// The route `r` met at `at`: its segment there, when `at` lies within [`ON_WIRE`] of it.
 pub fn on_route_of(doc: &Document, r: RouteId, at: Pt) -> Option<OnRoute> {
-    let v = &doc.routes.get(&r)?.points;
+    let v = &doc.routes().get(&r)?.points;
     let mut best: Option<(f64, usize)> = None;
     for (i, w) in v.windows(2).enumerate() {
         let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
@@ -143,7 +143,7 @@ pub(crate) fn plan_split(
     doc: &Document, ids: &mut IdAllocator, on: &OnRoute, first: (RouteEnd, Pt), second: (RouteEnd, Pt),
 ) -> Result<Split, CmdError> {
     let r = on.route;
-    let route = doc.routes.get(&r).ok_or(CmdError::NotFound(Noun::Wire))?;
+    let route = doc.routes().get(&r).ok_or(CmdError::NotFound(Noun::Wire))?;
     let v = &route.points;
     let [a, b] = route.end_points().ok_or(CmdError::refused("empty route"))?;
     if on.at.near(a, ON_WIRE) || on.at.near(b, ON_WIRE) {

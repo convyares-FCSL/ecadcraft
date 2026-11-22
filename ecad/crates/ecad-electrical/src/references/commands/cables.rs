@@ -104,8 +104,8 @@ pub(crate) fn continue_cable(
         return Err(CmdError::refused(cables::too_many_members()));
     }
     let plan = cables::plan_continue(doc, page, cable, members, at, toward, tol)?;
-    let source = doc.representations.get(&plan.source).ok_or(CmdError::refused(cables::no_reference(doc, cable)))?;
-    let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
+    let source = doc.representations().get(&plan.source).ok_or(CmdError::refused(cables::no_reference(doc, cable)))?;
+    let c = doc.cables().get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
     let mut reference = reference_ops(ids, page, style.clone(), cable, at);
     let mut source_after = source.clone();
     let mut cable_after = c.clone();
@@ -121,7 +121,7 @@ pub(crate) fn continue_cable(
         if let Some(core) = cable_after.cores.get_mut(stub.core) {
             core.through = points.to_vec();
         }
-        if let Some(line) = doc.routes.get(&stub.line) {
+        if let Some(line) = doc.routes().get(&stub.line) {
             let mut after = line.clone();
             if let Some(e) = after.ends.get_mut(stub.line_end) {
                 *e = RouteEnd::Point(points[0]);
@@ -336,7 +336,7 @@ impl Generic for CablereferencesParams {
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let doc = cx.doc;
         if let Some(k) = self.cable
-            && !doc.cables.contains_key(&k)
+            && !doc.cables().contains_key(&k)
         {
             return Err(CmdError::refused("no such cable"));
         }

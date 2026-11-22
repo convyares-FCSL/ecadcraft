@@ -43,7 +43,7 @@ pub(crate) fn demo_file(dir: &std::path::Path) -> String {
     let mut t = ecad_app::shell::app::App::new(None).unwrap();
     let p = t.project().unwrap().clone();
     p.configure(&mut t.cad.session, |p| p.author = ecad_model::Author::Agent("ecad-demo".into())).unwrap();
-    let page1 = p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order.first().map(|x| x.hex())).unwrap().unwrap();
+    let page1 = p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order().first().map(|x| x.hex())).unwrap().unwrap();
     let mut vars: Map<String, Value> = Map::new();
     vars.insert("page1".into(), Value::String(page1));
     fn lookup(s: &str, vars: &Map<String, Value>) -> Value {
@@ -87,7 +87,7 @@ pub(crate) fn demo_file(dir: &std::path::Path) -> String {
 }
 
 fn page(h: &mut H, n: usize) -> PageId {
-    doc(h).page_order[n]
+    doc(h).page_order()[n]
 }
 
 fn show(h: &mut H, p: PageId) {
@@ -177,7 +177,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
         p.read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let w = doc
-                .wires
+                .wires()
                 .iter()
                 .find(|(c, _)| {
                     ecad_model::connectivity::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("0V-01"))
@@ -284,7 +284,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     let rows = h.state().panel.checks.rows().to_vec();
     assert!(rows.iter().all(|r| r.check.kind != Kind::LooksConnected), "{rows:?}");
     let d = doc(&mut h);
-    assert!(d.routes.values().any(|r| r.ends.iter().any(|e| e.route().is_some())), "the end lands on the line");
+    assert!(d.routes().values().any(|r| r.ends.iter().any(|e| e.route().is_some())), "the end lands on the line");
     save(&h, &deltas, "022-tee-fixed.png");
     ok(&mut h, "u");
     let rows = h.state().panel.checks.rows().to_vec();
@@ -321,13 +321,13 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     click(&mut h, "ecad.projectprops.ok");
     assert_eq!(crate::canvas::mouse_acceptance::head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert_eq!(d.settings.wiring.colour_style(), ecad_model::geometry::colour::ColourWords::Code3);
-    assert!(d.settings.wiring.label_height.is_some_and(|x| (x - 3.0).abs() < 1e-9));
+    assert_eq!(d.settings().wiring.colour_style(), ecad_model::geometry::colour::ColourWords::Code3);
+    assert!(d.settings().wiring.label_height.is_some_and(|x| (x - 3.0).abs() < 1e-9));
     let labels = ecad_engine::wires::draw::labels_on_page(&d, p2);
     assert!(labels.iter().any(|l| l.text == "24V-04 0.5 BLU") && labels.iter().all(|l| (l.height - 3.0).abs() < 1e-9));
     ok(&mut h, "u");
     let d = doc(&mut h);
-    assert_eq!(d.settings.wiring.colour_style(), ecad_model::geometry::colour::ColourWords::Code2);
+    assert_eq!(d.settings().wiring.colour_style(), ecad_model::geometry::colour::ColourWords::Code2);
 
     // Brief 032 §12 item 20: the label rule rows by element name; Every wire and 10 mm run one
     // `wiresettings` line.
@@ -345,7 +345,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     click(&mut h, "ecad.projectprops.ok");
     assert_eq!(crate::canvas::mouse_acceptance::head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert_eq!(d.settings.wiring.label_rule.as_deref(), Some("each"));
-    assert!(d.settings.wiring.label_min_length.is_some_and(|x| (x - 10.0).abs() < 1e-9));
+    assert_eq!(d.settings().wiring.label_rule.as_deref(), Some("each"));
+    assert!(d.settings().wiring.label_min_length.is_some_and(|x| (x - 10.0).abs() < 1e-9));
     let _ = std::fs::remove_dir_all(&dir);
 }

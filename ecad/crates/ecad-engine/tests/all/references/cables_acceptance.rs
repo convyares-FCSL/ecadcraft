@@ -137,7 +137,7 @@ fn connected(seed: u64) -> R {
     }
     // Now each core is a wire, from K1 to K2 across the pages: name them W0, W5, W10.
     let doc = r.h.doc();
-    let wires: Vec<WireId> = doc.cables[&r.c1].cores.iter().filter_map(|c| c.wire()).collect();
+    let wires: Vec<WireId> = doc.cables()[&r.c1].cores.iter().filter_map(|c| c.wire()).collect();
     for (i, (w, y)) in wires.iter().zip(["0", "5", "10"]).enumerate() {
         set_tag(&mut r.h, "conductor", &w.hex(), &format!("W{y}"));
         r.w[i] = *w;
@@ -210,7 +210,7 @@ fn continuation_handles(h: &mut H, page: PageId) -> Vec<String> {
     let doc = h.doc();
     let map = h.p(|p| p.pages[&page].map.clone());
     let mut out = Vec::new();
-    for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page) {
+    for (rid, r) in doc.representations().iter().filter(|(_, r)| r.page == page) {
         if matches!(r.subject, Subject::Device(_)) {
             continue;
         }
@@ -272,14 +272,14 @@ fn ac1_splitting_a_cable_keeps_its_id_members_conductors_and_nets() {
         let v = r.h.run("cablecontinue", params).unwrap();
         assert_eq!(r.h.head(), head + 1, "{row}: one transaction");
         let after = r.h.doc();
-        let positions = |d: &Document| d.cables[&r.c1].cores.iter().map(|c| c.position).collect::<Vec<_>>();
+        let positions = |d: &Document| d.cables()[&r.c1].cores.iter().map(|c| c.position).collect::<Vec<_>>();
         assert_eq!(positions(&after), positions(&before), "{row}: same cable, same ID, same cores where they were");
-        assert_eq!(after.wires, before.wires, "{row}: no conductor or end changed");
+        assert_eq!(after.wires(), before.wires(), "{row}: no conductor or end changed");
         assert_eq!(nets(&after), nets(&before), "{row}: nets unchanged by the split");
         let routes = v["routes"].as_array().unwrap();
         assert_eq!(routes.len(), want, "{row}");
         if let Some(m) = members {
-            let cores = &after.cables[&r.c1].cores;
+            let cores = &after.cables()[&r.c1].cores;
             let got: Vec<String> = routes
                 .iter()
                 .map(|x| {
@@ -294,10 +294,10 @@ fn ac1_splitting_a_cable_keeps_its_id_members_conductors_and_nets() {
         // (design 072 §4.4, F4).
         for x in routes {
             let stub: ecad_model::RouteId = id(x, "route");
-            assert_eq!(after.routes[&stub].page, r.field, "{row}");
-            let core = &after.cables[&r.c1].cores[x["core"].as_u64().unwrap() as usize - 1];
+            assert_eq!(after.routes()[&stub].page, r.field, "{row}");
+            let core = &after.cables()[&r.c1].cores[x["core"].as_u64().unwrap() as usize - 1];
             assert_eq!(core.through.len(), 2, "{row}: {core:?}");
-            let line = core.route().and_then(|l| after.routes.get(&l)).map(|l| l.page);
+            let line = core.route().and_then(|l| after.routes().get(&l)).map(|l| l.page);
             assert_eq!(line, Some(r.supply), "{row}: {core:?}");
         }
         // Loose wires continue from the end nearer the Supply reference (B, at x = 60).
@@ -354,8 +354,8 @@ fn ac1_two_page_cable_has_the_nets_of_the_one_page_circuit() {
     assert_eq!(shape(&two), shape(&one));
     // The cable and its member list are the ones made by the slash on Supply.
     let doc = r.h.doc();
-    assert_eq!(doc.cables.len(), 1);
-    let members: Vec<WireId> = doc.cables[&r.c1].cores.iter().filter_map(|m| m.wire()).collect();
+    assert_eq!(doc.cables().len(), 1);
+    let members: Vec<WireId> = doc.cables()[&r.c1].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members, r.w.to_vec());
 }
 
@@ -414,7 +414,7 @@ fn ac2_page_moves_and_renames_update_drawn_texts_with_no_transaction_of_their_ow
     let head = r.h.head();
     let v = r.h.run("renamepage", json!({"page": s, "title": "Fält ⚡ 電源"})).unwrap();
     assert_eq!(v["changed"], false);
-    let idx = r.h.doc().page_order.iter().position(|p| *p == r.supply).unwrap() + 1;
+    let idx = r.h.doc().page_order().iter().position(|p| *p == r.supply).unwrap() + 1;
     let v = r.h.run("movepage", json!({"page": s, "index": idx})).unwrap();
     assert_eq!(v["changed"], false);
     assert_eq!(r.h.head(), head);
@@ -427,7 +427,7 @@ fn ac2_moving_a_reference_point_changes_the_other_ends_column() {
     let mut r = connected(SEED + 5);
     r.h.activate(r.supply);
     let rid = ref_on(&mut r.h, r.supply).unwrap();
-    let point = r.h.doc().representations[&rid].items[0];
+    let point = r.h.doc().representations()[&rid].items[0];
     let hp = r.h.handle_of(r.supply, point);
     // (delta, expected Field text after it)
     for (dx, want) in [(40.0, "1/F2"), (-200.0, "1/F1"), (1e6, "1/F8")] {
@@ -453,7 +453,7 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     let linked_colour = ring(&mut r.h, r.supply)[0].color;
     r.h.activate(r.field);
     let fid = ref_on(&mut r.h, r.field).unwrap();
-    let point = r.h.doc().representations[&fid].items[0];
+    let point = r.h.doc().representations()[&fid].items[0];
     let hp = r.h.handle_of(r.field, point);
     let linked = r.h.doc();
     r.h.run("erase", json!({"handles": [hp.hex()]})).unwrap();
@@ -471,7 +471,7 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     assert_eq!(format!("{:?}", e.common.color), format!("{:?}", cadcraft_engine::doc::color::Color::Index(1)), "red text");
     assert_eq!(diagnostics(&orphaned), vec!["Orphan: cable -C01 on page 1 (?)".to_string()]);
     // The wires and their attachments stay: only the reference went.
-    assert_eq!(orphaned.wires, linked.wires);
+    assert_eq!(orphaned.wires(), linked.wires());
     assert_eq!(nets(&orphaned), nets(&linked));
     r.h.cmdline("u");
     assert_eq!(r.h.doc(), linked, "undo restores the link, same IDs");
@@ -497,12 +497,12 @@ fn ac3_erase_and_delete_of_cable_drawings_follow_the_section_9_table() {
     let handles = continuation_handles(&mut r.h, r.field);
     r.h.run("erase", json!({"handles": handles})).unwrap();
     let doc = r.h.doc();
-    assert!(doc.wires.is_empty(), "no wire without Field's lines: {:?}", doc.wires.keys());
-    assert!(stubs.iter().all(|s| !doc.routes.contains_key(s)), "Field's stubs erased");
+    assert!(doc.wires().is_empty(), "no wire without Field's lines: {:?}", doc.wires().keys());
+    assert!(stubs.iter().all(|s| !doc.routes().contains_key(s)), "Field's stubs erased");
     for l in &supply_lines {
-        assert_eq!(doc.routes[l].points, linked.routes[l].points, "Supply's line stays");
+        assert_eq!(doc.routes()[l].points, linked.routes()[l].points, "Supply's line stays");
     }
-    assert_eq!(doc.cables[&r.c1].cores.len(), linked.cables[&r.c1].cores.len(), "the cable keeps its cores");
+    assert_eq!(doc.cables()[&r.c1].cores.len(), linked.cables()[&r.c1].cores.len(), "the cable keeps its cores");
     assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("?"));
     r.h.cmdline("u");
     assert_eq!(r.h.doc(), linked);
@@ -511,7 +511,7 @@ fn ac3_erase_and_delete_of_cable_drawings_follow_the_section_9_table() {
     let doc = r.h.doc();
     assert!(cable_references(&doc).is_empty(), "both references removed");
     for l in supply_lines.iter().chain(&stubs) {
-        assert_eq!(doc.routes.get(l).map(|x| &x.points), linked.routes.get(l).map(|x| &x.points), "lines stay on both pages");
+        assert_eq!(doc.routes().get(l).map(|x| &x.points), linked.routes().get(l).map(|x| &x.points), "lines stay on both pages");
     }
     r.h.cmdline("u");
     assert_eq!(r.h.doc(), linked);
@@ -528,7 +528,7 @@ fn ac3_erase_and_delete_of_cable_drawings_follow_the_section_9_table() {
         r.h.run("erase", json!({"handles": [h.hex()]})).unwrap();
     }
     let doc = r.h.doc();
-    assert!(!doc.wires.contains_key(&r.w[1]), "the wire is gone");
+    assert!(!doc.wires().contains_key(&r.w[1]), "the wire is gone");
     assert!(ecad_electrical::references::cables::route_pages(&doc, r.w[1]).is_empty());
     assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("2/F1"));
     let v = r.h.run("cablereferences", json!({})).unwrap();
@@ -567,13 +567,13 @@ fn ac4_save_close_reopen_and_replay_give_the_same_cable_drawings_and_references(
     assert_eq!(h.doc(), doc, "same document");
     assert!(h.p(|p| p.ledger.replay_matches().unwrap()), "replay equals live");
     assert_eq!(h.run("cablereferences", json!({})).unwrap(), references, "same references");
-    for page in doc.page_order.clone() {
+    for page in doc.page_order().to_vec() {
         if h.p(|p| p.pages.get(&page).and_then(|v| v.uid)).is_none() {
             h.run("openpage", json!({"page": page.hex()})).unwrap();
         }
     }
-    let supply = doc.page_order[1];
-    let field = doc.page_order[0];
+    let supply = doc.page_order()[1];
+    let field = doc.page_order()[0];
     assert_eq!([drawn_text(&mut h, supply), drawn_text(&mut h, field)], texts, "same drawn texts");
     h.check();
 }
@@ -603,7 +603,7 @@ fn ac5_cablegoto_opens_a_closed_page_and_works_read_only() {
     let fu = uid(&mut r.h, r.field);
     assert_eq!(r.h.s.state().unwrap().uid, fu, "Field opened and current");
     let fid = ref_on(&mut r.h, r.field).unwrap();
-    let point = r.h.doc().representations[&fid].items[0];
+    let point = r.h.doc().representations()[&fid].items[0];
     assert_eq!(r.h.s.selection(), vec![r.h.handle_of(r.field, point)], "the other end is selected");
     close_all(&mut r.h.s);
     drop(r);
@@ -648,7 +648,7 @@ fn ac5_hover_on_member_wires_names_the_other_drawing() {
     }
     // The slash on Field lists both pages and both references.
     let doc = r.h.doc();
-    let slash = doc.representations.iter().find(|(_, x)| x.page == r.field && x.role == ecad_model::Role::Slash).map(|(_, x)| x.items[0]).unwrap();
+    let slash = doc.representations().iter().find(|(_, x)| x.page == r.field && x.role == ecad_model::Role::Slash).map(|(_, x)| x.items[0]).unwrap();
     let hs = r.h.handle_of(r.field, slash);
     let u = uid(&mut r.h, r.field);
     let lines = r.h.p(|p| hover_lines(p, u, hs)).unwrap();
@@ -668,18 +668,18 @@ fn per_page_edits_touch_only_the_page_they_are_made_on() {
     // Disconnecting the stub ends the wire through it and connecting makes it again (design 072
     // §4.3: a wire is its lines'), so Supply's line is followed by its route ID.
     let line = r.h.route_of(r.supply, r.w[0]);
-    let supply_route = r.h.doc().routes[&line].clone();
+    let supply_route = r.h.doc().routes()[&line].clone();
     let (stub, end) = r.stubs[0].clone();
     r.h.run("disconnect", json!({"route": stub.hex(), "end": end})).unwrap();
-    assert_eq!(r.h.doc().routes[&line], supply_route, "Supply's route untouched");
+    assert_eq!(r.h.doc().routes()[&line], supply_route, "Supply's route untouched");
     r.h.run("connect", json!({"route": stub.hex(), "end": end, "connection_point": r.k2[0].hex()})).unwrap();
     // Move K2 (its outline lines) down 20: Field's stub ends follow, Supply's routes do not.
     let doc = r.h.doc();
-    let k2 = doc.connection_points[&r.k2[0]].device().unwrap();
+    let k2 = doc.connection_points()[&r.k2[0]].device().unwrap();
     let handles = r.h.rep_handles(r.field, k2);
     r.h.run("move", json!({"handles": handles, "delta": [0, -20]})).unwrap();
-    assert_eq!(r.h.doc().routes[&line], supply_route, "Supply's route untouched by the drag");
-    let b = r.h.doc().routes[&stub].end_points().map(|[_, b]| b);
+    assert_eq!(r.h.doc().routes()[&line], supply_route, "Supply's route untouched by the drag");
+    let b = r.h.doc().routes()[&stub].end_points().map(|[_, b]| b);
     assert_eq!(b, Some(r.h.connection_point_pos(r.field, r.k2[0])), "Field's stub end followed K2");
     // A slash across the Field stubs: they are already members of C1.
     let head = r.h.head();
@@ -820,10 +820,14 @@ fn ref_rep(subject: Subject, page: PageId, items: Vec<ItemId>) -> Representation
 
 /// Add a reference representation holding one Point item to a hand-built document.
 fn add_ref(doc: &mut Document, n: u128, at: Pt, page: PageId, subject: Subject) {
-    let style = doc.items.values().next().unwrap().style.clone();
+    let style = doc.items().values().next().unwrap().style.clone();
     let item = ItemId::from(0xdead_0000 + n);
-    doc.items.insert(item, Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at }) });
-    doc.representations.insert(RepresentationId::from(0xbeef_0000 + n), ref_rep(subject, page, vec![item]));
+    doc.edit_parts(|parts| {
+        parts.items.insert(item, Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at }) });
+    });
+    doc.edit_parts(|parts| {
+        parts.representations.insert(RepresentationId::from(0xbeef_0000 + n), ref_rep(subject, page, vec![item]));
+    });
 }
 
 /// AC6: hand-built (hostile) documents, as a file could hold, derive, draw, hover, diagnose and
@@ -833,29 +837,32 @@ fn add_ref(doc: &mut Document, n: u128, at: Pt, page: PageId, subject: Subject) 
 #[test]
 fn ac6_hostile_documents_never_panic() {
     let base = paired(SEED + 14).h.doc();
-    let cable = *base.cables.keys().next().unwrap();
-    let page = base.page_order[0];
+    let cable = *base.cables().keys().next().unwrap();
+    let page = base.page_order()[0];
     type Mutate = Box<dyn Fn(&mut Document)>;
     let rows: Vec<(&str, Mutate)> = vec![
         (
             "no item",
             Box::new(move |d| {
-                d.representations.insert(RepresentationId::from(0xbeef_0001), ref_rep(Subject::Cable(cable), page, vec![]));
+                d.edit_parts(|parts| {
+                    parts.representations.insert(RepresentationId::from(0xbeef_0001), ref_rep(Subject::Cable(cable), page, vec![]));
+                });
             }),
         ),
         (
             "a Line item",
             Box::new(move |d| {
                 let item = ItemId::from(0xdead_0002);
-                d.items.insert(
-                    item,
-                    Item {
-                        page,
-                        style: d.items.values().next().unwrap().style.clone(),
-                        kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(1.0, 1.0) }),
-                    },
-                );
-                d.representations.insert(RepresentationId::from(0xbeef_0002), ref_rep(Subject::Cable(cable), page, vec![item]));
+                let style = d.items().values().next().unwrap().style.clone();
+                d.edit_parts(|parts| {
+                    parts.items.insert(
+                        item,
+                        Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(1.0, 1.0) }) },
+                    );
+                });
+                d.edit_parts(|parts| {
+                    parts.representations.insert(RepresentationId::from(0xbeef_0002), ref_rep(Subject::Cable(cable), page, vec![item]));
+                });
             }),
         ),
         ("NaN point", Box::new(move |d| add_ref(d, 3, Pt::new(f64::NAN, 0.0), page, Subject::Cable(cable)))),
@@ -865,9 +872,11 @@ fn ac6_hostile_documents_never_panic() {
         (
             "missing member conductor",
             Box::new(move |d| {
-                if let Some(c) = d.cables.get_mut(&cable) {
-                    c.cores.push(Core { position: ecad_model::CorePosition::Wire(WireId::from(88)), ..c.cores[0].clone() });
-                }
+                d.edit_parts(|parts| {
+                    if let Some(c) = parts.cables.get_mut(&cable) {
+                        c.cores.push(Core { position: ecad_model::CorePosition::Wire(WireId::from(88)), ..c.cores[0].clone() });
+                    }
+                });
             }),
         ),
         (
@@ -881,7 +890,9 @@ fn ac6_hostile_documents_never_panic() {
             "page in no order",
             Box::new(move |d| {
                 let lost = PageId::from(99);
-                d.pages.insert(lost, Page::titled("lost").unwrap());
+                d.edit_parts(|parts| {
+                    parts.pages.insert(lost, Page::titled("lost").unwrap());
+                });
                 add_ref(d, 9, Pt::new(0.0, 0.0), lost, Subject::Cable(cable));
             }),
         ),
@@ -891,7 +902,9 @@ fn ac6_hostile_documents_never_panic() {
             Box::new(move |d| {
                 add_ref(d, 11, Pt::new(3.0, 3.0), page, Subject::Cable(cable));
                 let item = ItemId::from(0xdead_0000 + 11);
-                d.representations.insert(RepresentationId::from(0xbeef_1011), ref_rep(Subject::Cable(cable), page, vec![item]));
+                d.edit_parts(|parts| {
+                    parts.representations.insert(RepresentationId::from(0xbeef_1011), ref_rep(Subject::Cable(cable), page, vec![item]));
+                });
             }),
         ),
         (
@@ -899,25 +912,31 @@ fn ac6_hostile_documents_never_panic() {
             Box::new(move |d| {
                 // The paired fixture's lines are loose (no wire until continued, F4): a wire ID
                 // that names nothing is as hostile.
-                let w = d.wires.keys().next().copied().unwrap_or(WireId::from(0xbad_0012));
+                let w = d.wires().keys().next().copied().unwrap_or(WireId::from(0xbad_0012));
                 add_ref(d, 12, Pt::new(3.0, 3.0), page, Subject::Wire(w));
             }),
         ),
         (
             "a cable with no members",
             Box::new(move |d| {
-                if let Some(c) = d.cables.get_mut(&cable) {
-                    c.cores.clear();
-                }
+                d.edit_parts(|parts| {
+                    if let Some(c) = parts.cables.get_mut(&cable) {
+                        c.cores.clear();
+                    }
+                });
             }),
         ),
         (
             "empty title, all pages unordered",
             Box::new(move |d| {
-                for p in d.pages.values_mut() {
-                    p.title = ecad_model::PageTitle::new("-").unwrap();
-                }
-                d.page_order.clear();
+                d.edit_parts(|parts| {
+                    for p in parts.pages.values_mut() {
+                        p.title = ecad_model::PageTitle::new("-").unwrap();
+                    }
+                });
+                d.edit_parts(|parts| {
+                    parts.page_order.clear();
+                });
             }),
         ),
         (
@@ -935,7 +954,7 @@ fn ac6_hostile_documents_never_panic() {
         let started = Instant::now();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let references = cable_references(&doc);
-            let pages: Vec<PageId> = doc.pages.keys().copied().collect();
+            let pages: Vec<PageId> = doc.pages().keys().copied().collect();
             for p in &pages {
                 let _ = markers_on_page(&doc, *p);
                 // Combined trial of 009 and 010: 010's leaving ends are folded into 009's drawing.
@@ -1012,7 +1031,7 @@ fn copying_reference_drawings_never_makes_a_third_reference() {
         let handles: Vec<String> = if whole {
             continuation_handles(&mut r.h, r.field)
         } else {
-            let point = r.h.doc().representations[&fid].items[0];
+            let point = r.h.doc().representations()[&fid].items[0];
             vec![r.h.handle_of(r.field, point).hex()]
         };
         let before = cable_references(&r.h.doc()).len();
@@ -1085,8 +1104,8 @@ fn ac5_clicking_the_continued_ends_point_or_text_jumps() {
 #[test]
 fn many_references_of_one_cable_derive_in_bounded_time() {
     let base = paired(SEED + 19).h.doc();
-    let cable = *base.cables.keys().next().unwrap();
-    let page = base.page_order[0];
+    let cable = *base.cables().keys().next().unwrap();
+    let page = base.page_order()[0];
     // (references added, seconds allowed for one derivation)
     for (n, secs) in [(2_000u128, 2u64), (20_000, 5)] {
         let mut doc = base.clone();
@@ -1116,7 +1135,7 @@ fn an_end_freed_by_erasing_its_reference_shows_as_loose_here() {
     let mut r = connected(SEED + 20);
     r.h.activate(r.field);
     let fid = ref_on(&mut r.h, r.field).unwrap();
-    let point = r.h.doc().representations[&fid].items[0];
+    let point = r.h.doc().representations()[&fid].items[0];
     let hp = r.h.handle_of(r.field, point);
     r.h.run("erase", json!({"handles": [hp.hex()]})).unwrap();
     let u = uid(&mut r.h, r.field);

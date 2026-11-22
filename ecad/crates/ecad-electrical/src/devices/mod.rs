@@ -73,7 +73,7 @@ pub(crate) fn planned_device(doc: &Document, ops: &[Op], id: DeviceId) -> Option
 
 /// [`planned_device`] after `base` and then `ops`.
 fn planned_device_on(doc: &Document, base: &[Op], ops: &[Op], id: DeviceId) -> Option<Device> {
-    let mut d = doc.devices.get(&id).cloned();
+    let mut d = doc.devices().get(&id).cloned();
     for op in base.iter().chain(ops) {
         match op {
             Op::CreateDevice { id: x, device } | Op::ModifyDevice { id: x, after: device, .. } if *x == id => d = Some(device.clone()),
@@ -166,7 +166,7 @@ pub const PROPERTIES: [(&str, &str); 6] = [
 /// How many digits this project pads tag numbers to (its `tag_padding` setting, at most
 /// [`ecad_model::naming::tag::MAX_PADDING`]).
 pub fn padding(doc: &Document) -> u8 {
-    doc.settings.tag_padding().min(tag::MAX_PADDING)
+    doc.settings().tag_padding().min(tag::MAX_PADDING)
 }
 
 /// A prefix as a project may set it: 1 to [`MAX_PREFIX_LETTERS`] ASCII letters, with or without a

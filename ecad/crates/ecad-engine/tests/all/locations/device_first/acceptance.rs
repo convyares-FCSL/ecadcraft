@@ -128,13 +128,13 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, AidId, PageId, Document
             ..d.clone()
         };
         let ops = vec![
-            Op::ModifyDevice { id: k, before: d.devices[&k].clone(), after: gone(&d.devices[&k], OLD_CP1, Some(OLD_F1)) },
+            Op::ModifyDevice { id: k, before: d.devices()[&k].clone(), after: gone(&d.devices()[&k], OLD_CP1, Some(OLD_F1)) },
             Op::ModifyAid {
                 id: bx,
-                before: d.aids[&bx].clone(),
+                before: d.aids()[&bx].clone(),
                 after: ecad_model::Aid::Box(ecad_model::LocationBox {
                     location: Some(ecad_model::LocationId(OLD_FIELD)),
-                    ..d.aids[&bx].as_box().cloned().unwrap()
+                    ..d.aids()[&bx].as_box().cloned().unwrap()
                 }),
             },
         ];
@@ -161,7 +161,7 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     // The retired half key is not read (FP4, Q9), and the property is still in the file.
     let rows = ecad_electrical::connectors::half_rows(&d, x, &mut ecad_electrical::locations::BoxCache::default());
     assert!(rows.iter().all(|r| r.location.value.is_none()), "half.s.location is not read");
-    assert!(d.devices[&x].properties.keys().all(|k| !k.starts_with("half.")), "a half's keys are never in the bag");
+    assert!(d.devices()[&x].properties.keys().all(|k| !k.starts_with("half.")), "a half's keys are never in the bag");
     // Checks: the device's two values and the box.
     let rows = ecad_engine::checks::all(&d, 1e-6);
     let missing: Vec<&str> = rows.iter().filter(|r| r.kind == Kind::DesignationMissing).map(|r| r.which.as_str()).collect();
@@ -179,7 +179,7 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     assert_eq!(tags, "-K01");
     let heads = ecad_electrical::symbols::reps::heads(&d, k);
     assert_eq!(heads.len(), 1);
-    assert_eq!(d.representations[&heads[0]].role, ecad_model::Role::Part(ecad_model::PartRole::Head));
+    assert_eq!(d.representations()[&heads[0]].role, ecad_model::Role::Part(ecad_model::PartRole::Head));
     // Setting a location through the list is the way out, and it is one transaction.
     let head = h.head();
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
@@ -242,15 +242,15 @@ fn a_merge_moves_every_user_and_undo_redo_are_exact() {
     let after = h.doc();
     let k1 = key(&after, Aspect::Location, "+CP1");
     assert!(designations::find(&after, Aspect::Location, "+CP01").is_none());
-    assert_eq!(after.devices[&u.k].value("location"), Some(k1.clone()));
-    assert_eq!(after.devices[&u.x].properties.get("location.plug"), Some(&k1), "the override follows");
-    assert_eq!(designations::box_key(after.aids[&u.bx].as_box().unwrap(), Aspect::Location), Some(k1.clone()), "the box follows");
-    assert_eq!(designations::page_key(&after.pages[&u.p1], Aspect::Location), Some(k1.clone()), "the page follows");
-    assert_eq!(designations::default_key(&after.project, Aspect::Location), Some(k1.clone()), "the project default follows");
+    assert_eq!(after.devices()[&u.k].value("location"), Some(k1.clone()));
+    assert_eq!(after.devices()[&u.x].properties.get("location.plug"), Some(&k1), "the override follows");
+    assert_eq!(designations::box_key(after.aids()[&u.bx].as_box().unwrap(), Aspect::Location), Some(k1.clone()), "the box follows");
+    assert_eq!(designations::page_key(&after.pages()[&u.p1], Aspect::Location), Some(k1.clone()), "the page follows");
+    assert_eq!(designations::default_key(after.project(), Aspect::Location), Some(k1.clone()), "the project default follows");
     // No stored value anywhere still names the removed key.
     let old = key(&before, Aspect::Location, "+CP01");
-    let dangling = after.devices.values().flat_map(|c| c.properties.values()).chain(after.pages.values().flat_map(|p| p.display.values()));
-    assert!(dangling.chain(after.display.values()).all(|v| *v != old), "a value still names +CP01's key");
+    let dangling = after.devices().values().flat_map(|c| c.properties.values()).chain(after.pages().values().flat_map(|p| p.display.values()));
+    assert!(dangling.chain(after.display().values()).all(|v| *v != old), "a value still names +CP01's key");
     same_as_built(h, "after merge");
     let locs: Vec<Option<String>> = h.cfg(|p| p.reports().bom(Group::Location).into_iter().map(|r| r.location).collect());
     assert!(!locs.contains(&Some("+CP01".into())), "{locs:?}");
@@ -291,8 +291,8 @@ fn the_use_index_follows_undo_redo_and_equals_a_reopen() {
     h.run("designationmerge", json!({"aspect": "location", "from": "+CP01", "into": "+CP1"})).unwrap();
     let d = h.doc();
     let k1 = key(&d, Aspect::Location, "+CP1");
-    assert_eq!(d.devices[&u.x].properties.get("location.plug"), Some(&k1));
-    assert_eq!(designations::default_key(&d.project, Aspect::Location), Some(k1.clone()));
+    assert_eq!(d.devices()[&u.x].properties.get("location.plug"), Some(&k1));
+    assert_eq!(designations::default_key(d.project(), Aspect::Location), Some(k1.clone()));
     // A new device on +CP1, then undo both steps (a SetProperty and a CreateDevice undone).
     let q = place(h, "coil", (150.0, 150.0));
     h.run("setlocation", json!({"component": q.hex(), "value": "+CP1"})).unwrap();
@@ -527,7 +527,7 @@ fn a_box_location_style_is_not_a_missing_location() {
     h.run("setprop", json!({"aids": [bx.hex()], "key": "style", "value": pick})).unwrap();
     h.run("setdefault", json!({"key": "location.style", "level": "project", "value": pick})).unwrap();
     let d = h.doc();
-    assert!(d.aids[&bx].as_box().is_some_and(|b| b.style.is_some()), "the box stores its style");
+    assert!(d.aids()[&bx].as_box().is_some_and(|b| b.style.is_some()), "the box stores its style");
     let rows = ecad_engine::checks::all(&d, 1e-6);
     let missing: Vec<&str> = rows.iter().filter(|r| r.kind == Kind::DesignationMissing).map(|r| r.which.as_str()).collect();
     assert!(missing.is_empty(), "a style is not a location: {missing:?}");

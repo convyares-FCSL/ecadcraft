@@ -63,7 +63,7 @@ impl ReportsView {
     /// The sheet count of the generated pages drawn from the models.
     fn sheets(&self, doc: &Document) -> usize {
         let o = &self.model;
-        o.generated_pages().iter().filter(|p| doc.pages.contains_key(p)).map(|p| generated::sheets_of(doc, *p, Some(o))).sum()
+        o.generated_pages().iter().filter(|p| doc.pages().contains_key(p)).map(|p| generated::sheets_of(doc, *p, Some(o))).sum()
     }
 }
 
@@ -142,7 +142,7 @@ impl<'i> DerivedView<Inputs<'i>> for ReportsView {
             Some(GenKind::PlcRack) => !o.plc.last_changed.is_empty() || !o.plc.rows_changed.is_empty() || places_moved,
             Some(GenKind::Cover | GenKind::Contents | GenKind::Revisions) | None => false,
         };
-        let pages: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();
+        let pages: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages().contains_key(p) && rewritten(*p)).collect();
         let shown = cx.frame_page.is_some_and(rewritten);
         let frame_stale = self.sheets(doc) != before || shown || self.model.numbers_moved;
         Outcome { pages: PageSet::Only(pages), frame_stale, problems, ..Outcome::default() }

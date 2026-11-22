@@ -121,7 +121,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRepor
         let bom_page: Option<PageId> = bom_page["page"].as_str().and_then(|t| u128::from_str_radix(t, 16).ok()).map(PageId::from);
         let (page1, devices) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            (doc.page_order.first().copied(), ecad_electrical::devices::json::devices(doc, None))
+            (doc.page_order().first().copied(), ecad_electrical::devices::json::devices(doc, None))
         })?;
         let page1: PageId = page1.ok_or("the project has no pages")?;
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;
@@ -150,12 +150,12 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRepor
         // A plain polyline of the same shape, off to the side.
         let plain: Vec<[f64; 2]> = outline.iter().map(|[x, y]| [x + 2000.0, *y]).collect();
         let before: std::collections::BTreeSet<ecad_model::ItemId> =
-            project.read(&mut s, |p, _| p.ledger.document().items.keys().copied().collect())?;
+            project.read(&mut s, |p, _| p.ledger.document().items().keys().copied().collect())?;
         run(&mut s, "pline", json!({"vertices": plain, "closed": true}))?;
         let handle_of =
             |s: &mut Session, item: ecad_model::ItemId| project.read(s, |p, _| p.pages.get(&page1).and_then(|v| v.map.item(item)).map(|h| h.hex()));
         let plain_item =
-            project.read(&mut s, |p, _| p.ledger.document().items.keys().copied().find(|i| !before.contains(i)))?.ok_or("no plain item")?;
+            project.read(&mut s, |p, _| p.ledger.document().items().keys().copied().find(|i| !before.contains(i)))?.ok_or("no plain item")?;
         let mut boxmove = Vec::new();
         let mut plainmove = Vec::new();
         for _ in 0..runs {

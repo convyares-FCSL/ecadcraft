@@ -99,7 +99,7 @@ fn same_as_built(h: &mut H) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
+    (d.devices(), d.connection_points(), d.wires(), d.cables(), d.pages(), d.page_order(), d.representations(), d.items(), d.display())
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -121,11 +121,11 @@ fn step(h: &mut H, cmd: &str, params: Value) -> Value {
 }
 
 fn props(h: &mut H, c: DeviceId) -> BTreeMap<String, String> {
-    h.doc().devices[&c].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    h.doc().devices()[&c].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
 }
 
 fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
-    h.doc().devices[&c].value(key)
+    h.doc().devices()[&c].value(key)
 }
 
 /// A jumper bar or accessory value without spaces, for comparing canonical forms.
@@ -251,7 +251,7 @@ fn near(a: f64, b: f64) -> bool {
 }
 
 fn has_acc_or_jumper_bar_key(d: &Document) -> bool {
-    d.devices.values().any(|c| c.properties.keys().any(|k| k.starts_with("acc.") || k.starts_with("jumper_bar.") || k.starts_with("jumper.")))
+    d.devices().values().any(|c| c.properties.keys().any(|k| k.starts_with("acc.") || k.starts_with("jumper_bar.") || k.starts_with("jumper.")))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -398,8 +398,8 @@ fn e_renumber_moves_acc_and_jumper_bar_keys_in_one_transaction() {
     a.h.run("renumber", json!({"kind": "terminal_blocks"})).unwrap();
     assert_eq!(a.h.head(), head + 1, "one transaction");
     let d = a.h.doc();
-    assert_eq!(d.connection_points[&a.t[0]].label.as_deref(), Some("2"));
-    assert_eq!(d.connection_points[&a.t[1]].label.as_deref(), Some("1"));
+    assert_eq!(d.connection_points()[&a.t[0]].label.as_deref(), Some("2"));
+    assert_eq!(d.connection_points()[&a.t[1]].label.as_deref(), Some("1"));
     assert_eq!(prop(&mut a.h, a.x1, "acc.after.2").as_deref(), Some("partition"), "partition follows old 1");
     assert_eq!(prop(&mut a.h, a.x1, "acc.after.1").as_deref(), Some("end_plate"), "end plate follows old 2");
     assert_eq!(prop(&mut a.h, a.x1, "acc.on.2").as_deref(), Some("marker"));
@@ -636,9 +636,9 @@ fn m_jumper_bar_line_on_every_page_with_stub() {
     let far: ConnectionPointId = ecad_model::connectivity::derive::connection_point_positions(&doc, p2)
         .into_iter()
         .map(|(x, _, _)| x)
-        .find(|x| doc.connection_points.get(x).is_some_and(|t| t.device() == Some(a.x1)))
+        .find(|x| doc.connection_points().get(x).is_some_and(|t| t.device() == Some(a.x1)))
         .unwrap_or_else(|| panic!("{v}"));
-    let far_label = doc.connection_points[&far].label.clone().unwrap();
+    let far_label = doc.connection_points()[&far].label.clone().unwrap();
     a.h.run("jumper", json!({"strip": a.x1.hex(), "positions": format!("3-{far_label}")})).unwrap();
     let at3 = a.h.connection_point_pos(a.page, a.t[2]);
     let at4 = a.h.connection_point_pos(a.page, a.t[3]);
@@ -647,7 +647,7 @@ fn m_jumper_bar_line_on_every_page_with_stub() {
     // stub past 5").
     let last = ecad_model::connectivity::derive::connection_point_positions(&a.h.doc(), a.page)
         .into_iter()
-        .find(|(x, _, _)| !a.t.contains(x) && doc.connection_points.get(x).is_some_and(|t| t.device() == Some(a.x1)))
+        .find(|(x, _, _)| !a.t.contains(x) && doc.connection_points().get(x).is_some_and(|t| t.device() == Some(a.x1)))
         .map(|(_, _, p)| p)
         .expect("the PE terminal on page 1");
     let lines = jumper_bar_lines(&mut a.h, a.page);

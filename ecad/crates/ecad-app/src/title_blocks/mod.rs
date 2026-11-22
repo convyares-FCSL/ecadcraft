@@ -246,7 +246,7 @@ pub fn read_rows(doc: &ecad_model::Document) -> Vec<Row> {
         .into_iter()
         .map(|r| {
             let spec = sheet::frame_spec(doc, &r.id);
-            let shown = spec.unwrap_or(doc.settings.sheet());
+            let shown = spec.unwrap_or(doc.settings().sheet());
             let layout = layout_of(doc, &r.id, &shown, &text);
             let pages = pages_using(doc, &r.id).len();
             let sheet_text = match spec {
@@ -261,7 +261,7 @@ pub fn read_rows(doc: &ecad_model::Document) -> Vec<Row> {
 
 /// The sample page: the page open in Draw, else the first page.
 fn sample_of(doc: &ecad_model::Document, active: Option<PageId>, layout: &TitleBlockLayout) -> Option<Sample> {
-    let page = active.filter(|p| doc.pages.contains_key(p)).or_else(|| doc.page_order.first().copied())?;
+    let page = active.filter(|p| doc.pages().contains_key(p)).or_else(|| doc.page_order().first().copied())?;
     let book = Book::of(doc);
     let mut input = FrameInput::of(doc, page, &book);
     input.block.layout = Arc::new(layout.clone());
@@ -275,7 +275,7 @@ fn sample_of(doc: &ecad_model::Document, active: Option<PageId>, layout: &TitleB
             (f, v)
         })
         .collect();
-    Some(Sample { page: format!("on page {}", book.number(doc, page)), props: doc.display.clone(), newest, input })
+    Some(Sample { page: format!("on page {}", book.number(doc, page)), props: doc.display().clone(), newest, input })
 }
 
 impl App {
@@ -303,7 +303,7 @@ impl App {
             return;
         };
         let active = self.panel.active;
-        let head = p.read(&mut self.cad.session, |p, _| (p.ledger.head(), p.ledger.document().page_order.len())).ok();
+        let head = p.read(&mut self.cad.session, |p, _| (p.ledger.head(), p.ledger.document().page_order().len())).ok();
         if head.is_none() || head == self.library.tb.rows_head {
             return;
         }

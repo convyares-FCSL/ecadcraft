@@ -144,7 +144,7 @@ pub fn draw_of(doc: &Document, id: &StyleRef) -> TypeDraw {
 
 /// The type of `page` (design 054 §2.3).
 pub fn type_of(doc: &Document, page: PageId) -> StyleRef {
-    match doc.pages.get(&page) {
+    match doc.pages().get(&page) {
         Some(p) => msheet::page_type_of(doc, p),
         None => StyleRef::Builtin(SCHEMATIC.to_string()),
     }
@@ -203,7 +203,7 @@ pub fn ordered(doc: &Document) -> Vec<crate::styles::Row> {
 /// table and the picker, never per op).
 pub fn counts(doc: &Document) -> std::collections::BTreeMap<StyleRef, usize> {
     let mut out = std::collections::BTreeMap::new();
-    for p in doc.pages.values() {
+    for p in doc.pages().values() {
         *out.entry(msheet::page_type_of(doc, p)).or_insert(0) += 1;
     }
     out
@@ -211,7 +211,7 @@ pub fn counts(doc: &Document) -> std::collections::BTreeMap<StyleRef, usize> {
 
 /// The pages of type `id`, in page order.
 pub fn pages_of(doc: &Document, id: &StyleRef) -> Vec<PageId> {
-    doc.page_order.iter().copied().filter(|p| doc.pages.get(p).is_some_and(|x| msheet::page_type_of(doc, x) == *id)).collect()
+    doc.page_order().iter().copied().filter(|p| doc.pages().get(p).is_some_and(|x| msheet::page_type_of(doc, x) == *id)).collect()
 }
 
 /// The pages a `SetStyle` of catalogue `page` reaches (design 054 §10.2), worked out on the
@@ -239,10 +239,10 @@ fn reach(
     }
     let text = id.text();
     let pages = doc
-        .page_order
+        .page_order()
         .iter()
         .copied()
-        .filter(|p| doc.pages.get(p).is_some_and(|x| x.page_type.as_ref().is_some_and(|v| v.text() == text) || msheet::page_type_of(doc, x) == *id))
+        .filter(|p| doc.pages().get(p).is_some_and(|x| x.page_type.as_ref().is_some_and(|v| v.text() == text) || msheet::page_type_of(doc, x) == *id))
         .collect();
     let sheet = |r: Option<&ecad_model::StyleRecord>| r.and_then(|r| r.body.page()).and_then(|p| p.sheet);
     // A new or removed record can also make a `page.type` start or stop naming a type.

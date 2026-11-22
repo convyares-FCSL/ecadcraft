@@ -138,7 +138,7 @@ impl Live {
 
     /// The lines drawn (the tests' lines end free: routes that carry no wire, design 072).
     fn wires(&mut self) -> usize {
-        document(&mut self.h).routes.len()
+        document(&mut self.h).routes().len()
     }
 
     /// The project's author and transaction budget now (the frame invariant, §5.2).

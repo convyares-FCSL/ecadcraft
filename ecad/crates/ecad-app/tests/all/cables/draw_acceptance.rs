@@ -259,7 +259,7 @@ fn reference_end(h: &mut Harness<'static, App>, cable: &str, at: (f64, f64)) {
     }
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
-    let (page, layer) = p.read(&mut t.cad.session, |p, _| (p.ledger.document().page_order[0], p.default_layer)).unwrap();
+    let (page, layer) = p.read(&mut t.cad.session, |p, _| (p.ledger.document().page_order()[0], p.default_layer)).unwrap();
     let k = CableId::parse(cable).unwrap();
     let item = ItemId::from(0x0977_0000_0000_0000_0000_0000_0000_0001);
     let rep = RepresentationId::from(0x0978_0000_0000_0000_0000_0000_0000_0001);

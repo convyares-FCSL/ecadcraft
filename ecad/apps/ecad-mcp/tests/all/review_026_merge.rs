@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use crate::mcp_contracts::{Client, TempDir};
 
 fn tag_of(doc: &Document, comp: &str) -> Option<String> {
-    doc.devices.get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.tag_shown())
+    doc.devices().get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.tag_shown())
 }
 
 fn place(c: &mut Client, symbol: &str, at: [f64; 2], tag: Option<&str>) -> String {
@@ -63,7 +63,7 @@ fn a_rename_into_the_other_sides_new_tag_renumbers_and_joins_the_right_device() 
             }
             _ => {
                 let yid = DeviceId::parse(&y).unwrap();
-                assert!(!doc.devices.contains_key(&DeviceId::parse(&x).unwrap()), "X (the branch's) joined main's");
+                assert!(!doc.devices().contains_key(&DeviceId::parse(&x).unwrap()), "X (the branch's) joined main's");
                 assert_eq!(tag_of(&doc, &y).as_deref(), Some("-K05"));
                 assert_eq!(doc.representations_of(Subject::Device(yid)).count(), 2, "one device with both symbols");
             }
@@ -85,7 +85,7 @@ fn make_them_one_cable_in_a_merge_moves_the_slash_drawings() {
     let mk = c.exec("cableslash", json!({"from": [30, 115], "to": [30, 125]}))["cable"].as_str().unwrap().to_string();
     let doc = c.doc();
     let mid = CableId::parse(&mk).unwrap();
-    assert_eq!(doc.cables[&mid].tag(), Some("-W01"));
+    assert_eq!(doc.cables()[&mid].tag(), Some("-W01"));
     let pv = c.exec("merge", json!({"from": "Option C", "preview": true}));
     let k = tag_row(&pv);
     assert!(k["choices"].as_array().unwrap().contains(&json!("one")), "{k}");
@@ -94,8 +94,8 @@ fn make_them_one_cable_in_a_merge_moves_the_slash_drawings() {
     let r = c.exec("merge", json!({"from": "Option C", "choices": {id: "one"}}));
     assert_eq!(r["merged"], json!(true), "{r}");
     let doc = c.doc();
-    assert!(!doc.cables.contains_key(&CableId::parse(&bk).unwrap()), "the branch's cable joined main's");
-    assert_eq!(doc.cables[&mid].cores.len(), 2, "both wires in one cable");
+    assert!(!doc.cables().contains_key(&CableId::parse(&bk).unwrap()), "the branch's cable joined main's");
+    assert_eq!(doc.cables()[&mid].cores.len(), 2, "both wires in one cable");
     assert_eq!(doc.representations_of(Subject::Cable(mid)).count(), 2, "both slashes show main's cable");
 }
 
@@ -123,7 +123,7 @@ fn an_edit_and_a_finalise_issue_with_nothing_provisional_is_refused() {
     let replies: Vec<Value> = serde_json::from_str::<Value>(&reply).unwrap().as_array().unwrap().clone();
     assert!(!is_error(&replies[0]), "{}", replies[0]);
     assert!(is_error(&replies[1]), "{}", replies[1]);
-    assert!(c.doc().versions.is_empty(), "the issue was taken back");
+    assert!(c.doc().versions().is_empty(), "the issue was taken back");
 }
 
 /// Both sides renumber: `numbering.high.K` is internal, so no conflict row names it, and the
@@ -138,7 +138,7 @@ fn numbering_high_is_not_merged_as_a_property() {
     c.exec("renumber", json!({"kind": "devices", "scope": "all", "start": 20}));
     c.exec("switchbranch", json!({"branch": "main", "save": true}));
     c.exec("renumber", json!({"kind": "devices", "scope": "all", "start": 40}));
-    let main_high = c.doc().display.get("numbering.high.K").cloned();
+    let main_high = c.doc().display().get("numbering.high.K").cloned();
     assert!(main_high.is_some());
     let pv = c.exec("merge", json!({"from": "Option H", "preview": true}));
     let rows = pv["conflicts"].as_array().cloned().unwrap_or_default();
@@ -151,5 +151,5 @@ fn numbering_high_is_not_merged_as_a_property() {
     }
     let r = c.exec("merge", json!({"from": "Option H", "choices": Value::Object(ch)}));
     assert_eq!(r["merged"], json!(true), "{r}");
-    assert_eq!(c.doc().display.get("numbering.high.K"), main_high.as_ref(), "main's mark stays");
+    assert_eq!(c.doc().display().get("numbering.high.K"), main_high.as_ref(), "main's mark stays");
 }

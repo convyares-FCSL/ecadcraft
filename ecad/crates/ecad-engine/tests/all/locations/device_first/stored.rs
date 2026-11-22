@@ -50,7 +50,7 @@ fn a_box_never_changes_a_stored_location() {
     assert_eq!(code(&d, k).as_deref(), Some("+CP1"));
     assert!(texts(&d, p110).contains(&"+CP1-K01".to_string()), "{:?}", texts(&d, p110));
     // The stored value is the entry's key, not its code (FP8).
-    let stored = d.devices[&k].value("location").unwrap_or_default();
+    let stored = d.devices()[&k].value("location").unwrap_or_default();
     assert_ne!(stored, "+CP1");
     assert_eq!(designations::code_of(&d, Aspect::Location, &stored).as_deref(), Some("+CP1"));
     // Neither the coil's page (no location) nor the box (+FIELD) is +CP1: Checks says so.
@@ -103,8 +103,8 @@ fn connector_halves_have_their_own_locations() {
     // The old key routes to the override.
     h.run("setprop", json!({"component": x.hex(), "key": "half.s.location", "value": "+CP2"})).unwrap();
     let d = h.doc();
-    assert!(d.devices[&x].properties.contains_key("location.socket"));
-    assert!(!d.devices[&x].properties.contains_key("half.s.location"));
+    assert!(d.devices()[&x].properties.contains_key("location.socket"));
+    assert!(!d.devices()[&x].properties.contains_key("half.s.location"));
     // The head is the device.
     let e = h.run("setlocation", json!({"component": x.hex(), "type": "head", "value": "+CP3"})).unwrap_err();
     assert!(e.contains("The head is the device"), "{e}");
@@ -120,7 +120,7 @@ fn a_strip_terminal_block_keeps_the_strip_location() {
     h.run("locationbox", json!({"location": "+JB1", "corners": [[150, 100], [250, 200]]})).unwrap();
     let t5 = h.run("place", json!({"symbol": "terminal_block", "at": [200, 150], "device": x.hex()})).unwrap();
     let d = h.doc();
-    let r = &d.representations[&id(&t5, "representation")];
+    let r = &d.representations()[&id(&t5, "representation")];
     assert_eq!(ecad_electrical::locations::rep_location(&d, x, r).value.as_deref(), Some("+CP1"));
     let e = h.run("setlocation", json!({"component": x.hex(), "type": "terminal_block", "value": "+JB1"})).unwrap_err();
     assert!(e.contains("split strip is two strips"), "{e}");
@@ -200,12 +200,16 @@ fn missing_and_duplicate_entries_are_listed() {
     let mut h = H::new(SEED);
     let (k, _, _) = k01(&mut h);
     let mut d = h.doc();
-    if let Some(c) = d.devices.get_mut(&k) {
-        c.location = ecad_model::document::book::Place::Manual(ecad_model::LocationId(0xdead)); // an id the list has no entry for
-    }
+    d.edit_parts(|parts| {
+        if let Some(c) = parts.devices.get_mut(&k) {
+            c.location = ecad_model::document::book::Place::Manual(ecad_model::LocationId(0xdead)); // an id the list has no entry for
+        }
+    });
     // Design 072 §5.3: the ops refuse a code twice (I22); a hand-built document still shows it.
     for (id, code) in [(0xaa, "=F1"), (0xbb, "=f1")] {
-        d.project.functions.push(ecad_model::Function::new(ecad_model::FunctionId(id), ecad_model::ListCode::new(code).unwrap()));
+        d.edit_parts(|parts| {
+            parts.project.functions.push(ecad_model::Function::new(ecad_model::FunctionId(id), ecad_model::ListCode::new(code).unwrap()));
+        });
     }
     d.rebuild_index();
     assert_eq!(code(&d, k), None, "a v0.2.0 code shows ?");
@@ -223,9 +227,11 @@ fn two_heads_are_listed() {
     let other = h.run("place", json!({"symbol": "coil", "at": [200, 150]})).unwrap();
     let mut d = h.doc();
     let rid = id(&other, "representation");
-    if let Some(r) = d.representations.get_mut(&rid) {
-        r.subject = ecad_model::Subject::Device(k);
-    }
+    d.edit_parts(|parts| {
+        if let Some(r) = parts.representations.get_mut(&rid) {
+            r.subject = ecad_model::Subject::Device(k);
+        }
+    });
     d.rebuild_index();
     let rows = ecad_engine::checks::all(&d, 1e-6);
     let two: Vec<_> = rows.iter().filter(|r| r.kind == Kind::TwoHeads).collect();

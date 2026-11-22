@@ -38,11 +38,11 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     );
     // The font, and the wire label height in the wiring setting (one stored value, §3.4).
     one_by_agent(&mut c, "textstyle", json!({"font": "X"}));
-    assert_eq!(c.doc().display.get("text.font").map(String::as_str), Some("X"));
+    assert_eq!(c.doc().display().get("text.font").map(String::as_str), Some("X"));
     one_by_agent(&mut c, "textstyle", json!({"kind": "wire_label", "height": 2}));
     assert!(matches!(c.log().last().unwrap().ops.as_slice(), [Op::SetProjectSettings { .. }]));
-    assert_eq!(c.doc().settings.wiring.label_height, Some(2.0));
-    assert!(!c.doc().display.contains_key("text.wire_label.height"));
+    assert_eq!(c.doc().settings().wiring.label_height, Some(2.0));
+    assert!(!c.doc().display().contains_key("text.wire_label.height"));
     // Several fields: one transaction.
     one_by_agent(&mut c, "textstyle", json!({"kind": "tag", "height": null, "weight": "regular"}));
     // Several kinds (the Text section's OK): one transaction.
@@ -50,7 +50,10 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     let d = c.doc();
     // Brief 050a: each kind's text style record.
     let field = |kind: &str, f: &str| {
-        d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|m| m.get(&ecad_model::StyleRef::Builtin(kind.into()))).and_then(|r| r.body.entry(f))
+        d.styles()
+            .get(&ecad_model::StyleCatalogue::Text)
+            .and_then(|m| m.get(&ecad_model::StyleRef::Builtin(kind.into())))
+            .and_then(|r| r.body.entry(f))
     };
     assert_eq!((field("point_label", "height").as_deref(), field("location", "weight").as_deref()), (Some("2"), Some("bold")));
     let m = c.refused("execute", json!({"command": "textstyle", "params": {"kinds": [{"height": 2}]}}));
@@ -102,7 +105,7 @@ fn textstyle_refusals_write_nothing() {
 #[test]
 fn the_property_commands_refuse_text_keys() {
     let mut c = writer(SEED);
-    let page = c.doc().page_order[0].hex();
+    let page = c.doc().page_order()[0].hex();
     let comp = c.exec("place", json!({"symbol": "coil", "at": [100, 100]}))["component"].as_str().unwrap().to_string();
     let n = c.log().len();
     for (cmd, p) in [
@@ -124,7 +127,7 @@ fn defaults_lists_the_registry_with_writes_off() {
     let all = r.exec("defaults", json!({}));
     let rows = all["defaults"].as_array().unwrap();
     assert!(rows.iter().any(|d| d["key"] == "text.tag.style"), "{all}");
-    let page = r.doc().page_order[0].hex();
+    let page = r.doc().page_order()[0].hex();
     let text = r.exec("defaults", json!({"group": "Text", "page": page}));
     for d in text["defaults"].as_array().unwrap() {
         assert_eq!(d["from"], json!("builtin"), "{d}");
@@ -153,12 +156,12 @@ fn defaults_lists_the_registry_with_writes_off() {
 #[test]
 fn showtext_at_each_level_is_one_transaction_by_the_agent_and_refused_with_writes_off() {
     let mut c = writer(SEED);
-    let page = c.doc().page_order[0].hex();
+    let page = c.doc().page_order()[0].hex();
     let v = c.exec("place", json!({"symbol": "coil", "at": [100, 100]}));
     let comp = v["component"].as_str().unwrap().to_string();
     let rep = c
         .doc()
-        .representations
+        .representations()
         .iter()
         .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Device(x) if x.hex() == comp))
         .map(|(id, _)| id.hex())
@@ -193,7 +196,7 @@ fn showtext_at_each_level_is_one_transaction_by_the_agent_and_refused_with_write
 fn text_with_justify_is_one_transaction_by_the_agent_and_refused_with_writes_off() {
     let mut c = writer(SEED);
     one_by_agent(&mut c, "text", json!({"at": [100, 100], "text": "X", "height": 2.5, "justify": "MC"}));
-    let found = c.doc().items.values().any(|i| {
+    let found = c.doc().items().values().any(|i| {
         matches!(
             &i.kind,
             ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text {
@@ -215,7 +218,7 @@ fn movetext_and_its_reset_are_one_transaction_each_and_refused_with_writes_off()
     let comp = v["component"].as_str().unwrap().to_string();
     let rep = c
         .doc()
-        .representations
+        .representations()
         .iter()
         .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Device(x) if x.hex() == comp))
         .map(|(id, _)| id.hex())

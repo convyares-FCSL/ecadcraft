@@ -182,7 +182,7 @@ pub(crate) fn textstyle_changes(input: TextStyleInput) -> Result<TextStyleChange
 
 /// One `text.*` project property change, or nothing when it is already so.
 fn set_project(doc: &Document, key: &str, after: Option<String>, ops: &mut Vec<Op>) {
-    let before = doc.display.get(key).cloned();
+    let before = doc.display().get(key).cloned();
     if before != after {
         ops.push(Op::SetProperty { object: ObjectRef::Project, key: key.to_string(), before, after });
     }
@@ -207,7 +207,7 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut Style
             // One stored value (§3.4): the wiring setting, never a record. A later row of the
             // same call replaces an earlier one.
             ops.retain(|o| !matches!(o, Op::SetProjectSettings { .. }));
-            let before = doc.settings.clone();
+            let before = doc.settings().clone();
             let mut after = before.clone();
             after.wiring.label_height = h;
             if after != before {
@@ -276,20 +276,20 @@ pub(crate) fn textstyle_ops(doc: &Document, c: &TextStyleChanges) -> Vec<Op> {
 /// A representation, component or page the project does not have.
 pub fn scope(doc: &Document, rep: Option<RepresentationId>, component: Option<DeviceId>, page: Option<PageId>) -> Result<Scope, CmdError> {
     if let Some(r) = rep {
-        if !doc.representations.contains_key(&r) {
+        if !doc.representations().contains_key(&r) {
             return Err(CmdError::refused(format!("No representation {}.", r.hex())));
         }
         return Ok(Scope::symbol(doc, r));
     }
     let mut at = Scope::project();
     if let Some(c) = component {
-        if !doc.devices.contains_key(&c) {
+        if !doc.devices().contains_key(&c) {
             return Err(CmdError::refused(format!("No component {}.", c.hex())));
         }
         at.component = Some(c);
     }
     if let Some(pg) = page {
-        if !doc.pages.contains_key(&pg) {
+        if !doc.pages().contains_key(&pg) {
             return Err(CmdError::refused(format!("No page {}.", pg.hex())));
         }
         at.page = Some(pg);
@@ -382,20 +382,20 @@ pub fn show_level(doc: &Document, t: &ShowTarget) -> Result<ShowLevel, CmdError>
         return Err(CmdError::input("Name at most one of representation, component, conductor and page."));
     }
     if let Some(r) = t.representation {
-        let x = doc.representations.get(&r).ok_or_else(|| CmdError::refused(format!("No representation {}.", r.hex())))?;
+        let x = doc.representations().get(&r).ok_or_else(|| CmdError::refused(format!("No representation {}.", r.hex())))?;
         return match x.subject {
             Subject::Device(c) if x.form == Form::Symbol => Ok(ShowLevel::Symbol(r, c)),
             _ => Err(CmdError::refused(NOT_A_SYMBOL)),
         };
     }
     if let Some(c) = t.component {
-        return doc.devices.contains_key(&c).then_some(ShowLevel::Device(c)).ok_or_else(|| CmdError::refused(format!("No component {}.", c.hex())));
+        return doc.devices().contains_key(&c).then_some(ShowLevel::Device(c)).ok_or_else(|| CmdError::refused(format!("No component {}.", c.hex())));
     }
     if let Some(c) = t.conductor {
-        return doc.wires.contains_key(&c).then_some(ShowLevel::Wire(c)).ok_or_else(|| CmdError::refused(format!("No conductor {}.", c.hex())));
+        return doc.wires().contains_key(&c).then_some(ShowLevel::Wire(c)).ok_or_else(|| CmdError::refused(format!("No conductor {}.", c.hex())));
     }
     if let Some(p) = t.page {
-        return doc.pages.contains_key(&p).then_some(ShowLevel::Page(p)).ok_or_else(|| CmdError::refused(format!("No page {}.", p.hex())));
+        return doc.pages().contains_key(&p).then_some(ShowLevel::Page(p)).ok_or_else(|| CmdError::refused(format!("No page {}.", p.hex())));
     }
     Ok(ShowLevel::Project)
 }
@@ -415,10 +415,10 @@ pub fn show_ops(doc: &Document, level: ShowLevel, kind: TextKind, show: Option<&
     }
     let (object, key) = show_key(level, kind).ok_or(CmdError::refused(BAD_SHOW))?;
     let props = match object {
-        ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
-        ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
-        ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.display),
-        ObjectRef::Project => Some(&doc.display),
+        ObjectRef::Device(c) => doc.devices().get(&c).map(|x| &x.properties),
+        ObjectRef::Wire(c) => doc.wires().get(&c).map(|x| &x.display),
+        ObjectRef::Page(p) => doc.pages().get(&p).map(|x| &x.display),
+        ObjectRef::Project => Some(doc.display()),
         ObjectRef::Cable(_) | ObjectRef::Standard => None,
     }
     .ok_or(CmdError::NotFound(Noun::Object))?;
@@ -449,7 +449,7 @@ pub fn show_label(doc: &Document, level: ShowLevel, kind: TextKind, show: Option
 /// Neither given nor shown, or a page the project does not have.
 pub(crate) fn text_page(doc: &Document, page: Option<PageId>, shown: Option<PageId>) -> Result<PageId, CmdError> {
     let page = page.or(shown).ok_or(CmdError::input("`page` (hex id) is required: no page is shown"))?;
-    if !doc.pages.contains_key(&page) {
+    if !doc.pages().contains_key(&page) {
         return Err(CmdError::refused(format!("No page {}.", page.hex())));
     }
     Ok(page)
@@ -486,7 +486,7 @@ pub(crate) struct MoveTarget {
 pub(crate) fn move_target(
     doc: &Document, rep: RepresentationId, kind: TextKind, connection_point: Option<ConnectionPointId>,
 ) -> Result<MoveTarget, CmdError> {
-    let r = doc.representations.get(&rep).ok_or_else(|| CmdError::refused(format!("No representation {}.", rep.hex())))?;
+    let r = doc.representations().get(&rep).ok_or_else(|| CmdError::refused(format!("No representation {}.", rep.hex())))?;
     let c = match r.subject {
         Subject::Device(c) if r.form == Form::Symbol => c,
         _ => return Err(CmdError::refused(NOT_A_SYMBOL)),
@@ -495,7 +495,7 @@ pub(crate) fn move_target(
         TextKind::Tag => (format!("{}tag.at", text_style::symbol_prefix(rep)), TextOf::Tag),
         TextKind::PointLabel => {
             let t = connection_point.ok_or(CmdError::refused(NEEDS_CONNECTION_POINT))?;
-            if doc.connection_points.get(&t).is_none_or(|x| x.device() != Some(c)) {
+            if doc.connection_points().get(&t).is_none_or(|x| x.device() != Some(c)) {
                 return Err(CmdError::refused(format!("No connection point {} on that symbol.", t.hex())));
             }
             (devices::texts::point_label_key(doc, rep, t), TextOf::ConnectionPoint(t))
@@ -525,7 +525,7 @@ pub(crate) fn plan_move(
     doc: &Document, rep: RepresentationId, kind: TextKind, t: &MoveTarget, to: Option<Pt>, justify: Option<(TextHAlign, TextVAlign)>,
     current: Option<(TextHAlign, TextVAlign)>,
 ) -> Result<MovePlan, CmdError> {
-    let r = doc.representations.get(&rep).ok_or(CmdError::NotFound(Noun::Representation))?;
+    let r = doc.representations().get(&rep).ok_or(CmdError::NotFound(Noun::Representation))?;
     let (_, pl) = devices::tags::rep_definition(doc, r).ok_or(CmdError::refused("That symbol cannot be drawn."))?;
     let after = match to {
         None => None,
@@ -536,7 +536,7 @@ pub(crate) fn plan_move(
         }
     };
     let c = t.component;
-    let before = doc.devices.get(&c).and_then(|x| x.properties.get(&t.key)).cloned();
+    let before = doc.devices().get(&c).and_then(|x| x.properties.get(&t.key)).cloned();
     let what = match kind {
         TextKind::Tag => format!("tag {}", devices::tags::tag_words(doc, c)),
         _ => "label".to_string(),
@@ -758,7 +758,7 @@ pub(crate) fn pagetexts_json(doc: &Document, page: PageId, metrics: &dyn TextMet
             let style = draw.style(kind);
             let w = width_in(draw.fonts_for(kind), TextStyle { height: d.height, ..style }, &d.value, metrics);
             let (lo, hi) = text_box(w, d.height, d.at, d.halign, d.valign);
-            let component = doc.representations.get(&d.rep).and_then(|r| match r.subject {
+            let component = doc.representations().get(&d.rep).and_then(|r| match r.subject {
                 Subject::Device(c) => Some(c.hex()),
                 _ => None,
             });

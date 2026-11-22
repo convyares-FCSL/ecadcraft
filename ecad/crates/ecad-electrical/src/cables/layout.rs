@@ -416,7 +416,7 @@ fn markers_of(doc: &Document, idx: &PageIndex<'_>, cable: CableId, measure: &dyn
         .iter()
         .filter(|(_, r)| r.role == ecad_model::Role::Reference)
         .filter_map(|(id, r)| {
-            let at = r.items.iter().find_map(|i| match doc.items.get(i).map(|x| &x.kind) {
+            let at = r.items.iter().find_map(|i| match doc.items().get(i).map(|x| &x.kind) {
                 Some(ItemKind::Primitive(Primitive::Point { at } | Primitive::Text { at, .. })) => Some(*at),
                 _ => None,
             })?;
@@ -526,7 +526,7 @@ fn frame(doc: &Document, members: &[Member], reference: usize, side: usize, ends
             let wire = m
                 .position
                 .wire()
-                .and_then(|w| doc.wires.get(&w))
+                .and_then(|w| doc.wires().get(&w))
                 .filter(|c| c.number_fixed())
                 .and_then(|c| c.number_text())
                 .map(|t| shorten(t, MAX_SHOWN_CHARS));
@@ -651,7 +651,7 @@ fn trunk_to_marker(a: &FannedEnd, m: Pt, tol: f64) -> Vec<Pt> {
 
 /// The label box on the trunk (design §4.4): its parts and the trunk clipped by it.
 fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64) -> Vec<Part> {
-    let cab = doc.cables.get(&cable);
+    let cab = doc.cables().get(&cable);
     let get = |k: &str| cab.and_then(|c| c.get(k)).filter(|v| !v.is_empty()).map(|v| shorten(v, MAX_SHOWN_CHARS));
     let mut lines = vec![get("tag").unwrap_or_else(|| "?".to_string())];
     lines.extend(get("designation"));
@@ -686,7 +686,7 @@ fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &d
 
 /// Core labels just past the slash crossings (design §6).
 fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -> Vec<Part> {
-    let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
+    let Some(c) = doc.cables().get(&cable) else { return Vec::new() };
     let core_of: BTreeMap<CorePosition, String> = c
         .cores
         .iter()
@@ -701,7 +701,7 @@ fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -
         .cable_reps(cable)
         .iter()
         .flat_map(|(_, r)| r.items.iter())
-        .filter_map(|i| match doc.items.get(i).map(|x| &x.kind) {
+        .filter_map(|i| match doc.items().get(i).map(|x| &x.kind) {
             Some(ItemKind::Primitive(Primitive::Line { a, b })) => Some((*a, *b)),
             _ => None,
         })
@@ -741,7 +741,7 @@ fn cable_in(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bool, tol:
 
 fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bool, tol: f64, measure: &dyn Fn(&str) -> f64) -> CableDrawing {
     let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
-    let Some(c) = doc.cables.get(&cable) else { return CableDrawing::default() };
+    let Some(c) = doc.cables().get(&cable) else { return CableDrawing::default() };
     let mut seen = BTreeSet::new();
     let mut members: Vec<Member> = Vec::new();
     for m in &c.cores {
@@ -806,7 +806,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
                     continue;
                 }
                 for (m, e) in members.iter().zip(side_ends.get(s).into_iter().flatten()) {
-                    let attached = m.route.and_then(|r| doc.routes.get(&r)).is_some_and(|x| {
+                    let attached = m.route.and_then(|r| doc.routes().get(&r)).is_some_and(|x| {
                         let (a, b) = (m.path.first().copied(), m.path.last().copied());
                         let which = if a.is_some_and(|a| a.near(*e, tol)) {
                             0
@@ -921,7 +921,7 @@ fn anchors_by_side(doc: &Document, idx: &PageIndex<'_>, cable: CableId, spines: 
         .iter()
         .filter(|(_, r)| r.role == ecad_model::Role::FanAnchor)
         .filter_map(|(id, r)| {
-            r.items.iter().find_map(|i| match doc.items.get(i).map(|x| &x.kind) {
+            r.items.iter().find_map(|i| match doc.items().get(i).map(|x| &x.kind) {
                 Some(ItemKind::Primitive(Primitive::Point { at })) if at.is_finite() => Some((*id, *i, *at)),
                 _ => None,
             })
@@ -969,7 +969,7 @@ pub fn fan_ends(doc: &Document, page: PageId, cable: CableId, tol: f64, measure:
     if drawing.state != FanState::Drawn {
         return Vec::new();
     }
-    let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
+    let Some(c) = doc.cables().get(&cable) else { return Vec::new() };
     let mut seen = BTreeSet::new();
     let members: Vec<Member> = c
         .cores
@@ -1054,18 +1054,19 @@ impl<'a> PageIndex<'a> {
         for (id, r) in doc.representations_on(page) {
             match r.subject {
                 Subject::Route(x) => {
-                    let prim = |i: &ItemId| match doc.items.get(i).map(|x| &x.kind) {
+                    let prim = |i: &ItemId| match doc.items().get(i).map(|x| &x.kind) {
                         Some(ItemKind::Primitive(p)) => Some(p),
                         _ => None,
                     };
-                    let route = doc.routes.get(&x);
+                    let route = doc.routes().get(&x);
                     idx.lines.entry(x).or_default().push(r);
                     for w in crate::wires::routes::wires_of_route(doc, x) {
                         let at = CorePosition::Wire(w);
                         idx.prims.entry(at).or_default().extend(r.items.iter().filter_map(prim));
                         let Some(p) = r.items.first().and_then(prim).filter(|p| p.path_ends().is_some()) else { continue };
                         // The line running straight between the wire's two points wins.
-                        let direct = route.zip(doc.wires.get(&w)).is_some_and(|(x, c)| c.ends.iter().all(|t| x.ends.contains(&RouteEnd::Point(*t))));
+                        let direct =
+                            route.zip(doc.wires().get(&w)).is_some_and(|(x, c)| c.ends.iter().all(|t| x.ends.contains(&RouteEnd::Point(*t))));
                         if direct || !idx.routes.contains_key(&at) {
                             idx.routes.insert(at, (x, p));
                         }
@@ -1111,5 +1112,5 @@ pub fn switched(doc: &Document, cable: CableId, view_name: &str) -> String {
 
 /// Whether `cable` may be switched to fan view: it has two or more members (owner answer Q4).
 pub fn offers_fan(doc: &Document, cable: CableId) -> bool {
-    doc.cables.get(&cable).is_some_and(|c| c.cores.len() >= 2)
+    doc.cables().get(&cable).is_some_and(|c| c.cores.len() >= 2)
 }

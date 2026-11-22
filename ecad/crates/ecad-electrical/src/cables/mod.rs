@@ -20,7 +20,7 @@ use crate::styles::{self, cable};
 pub fn member_pages(doc: &Document, m: &ecad_model::Core) -> BTreeSet<PageId> {
     match m.position {
         ecad_model::CorePosition::Wire(w) => crate::wires::routes::wire_pages(doc, w),
-        ecad_model::CorePosition::Route { route, .. } => doc.routes.get(&route).map(|r| r.page).into_iter().collect(),
+        ecad_model::CorePosition::Route { route, .. } => doc.routes().get(&route).map(|r| r.page).into_iter().collect(),
         ecad_model::CorePosition::Unplaced => BTreeSet::new(),
     }
 }
@@ -190,7 +190,7 @@ fn text_ok(t: &str, max: usize) -> bool {
 /// A stored value of cable `k` that ECAD reads: its property for `field`, when within bounds.
 /// Entry keys (planned ends) and the cable type are given as stored; tags as stored.
 pub fn read(doc: &Document, k: CableId, field: CableField) -> Option<String> {
-    let c = doc.cables.get(&k)?;
+    let c = doc.cables().get(&k)?;
     if field == CableField::Shield {
         return c.shield.map(|s| ecad_model::naming::words::Word::word(s).to_string());
     }
@@ -218,7 +218,7 @@ fn valid(doc: &Document, field: CableField, v: &str) -> bool {
 
 /// The fields of §2.1 a file holds out of bounds (a file made elsewhere): `cable-bad-value`.
 pub(crate) fn bad_values(doc: &Document, k: CableId) -> Vec<(CableField, String)> {
-    let Some(c) = doc.cables.get(&k) else { return Vec::new() };
+    let Some(c) = doc.cables().get(&k) else { return Vec::new() };
     let checked = [
         CableField::Length,
         CableField::Gland(Side::From),
@@ -243,14 +243,14 @@ pub(crate) fn bad_values(doc: &Document, k: CableId) -> Vec<(CableField, String)
 /// Whether cable `k` is drawn: a core on a line, or a representation (FD1). Its stored unplaced
 /// cores (design 072 §4.5) do not draw it.
 pub fn is_drawn(doc: &Document, k: CableId) -> bool {
-    doc.cables.get(&k).is_some_and(|c| c.cores.iter().any(|m| m.position != ecad_model::CorePosition::Unplaced))
+    doc.cables().get(&k).is_some_and(|c| c.cores.iter().any(|m| m.position != ecad_model::CorePosition::Unplaced))
         || doc.representations_of(Subject::Cable(k)).next().is_some()
 }
 
 /// The cables not drawn yet, in tag order. O(cables): the pickers build it once when opened.
 pub fn not_drawn(doc: &Document) -> Vec<CableId> {
     let mut v: Vec<(String, CableId)> =
-        doc.cables.keys().filter(|k| !is_drawn(doc, **k)).map(|k| (crate::cables::cable_title(doc, *k), *k)).collect();
+        doc.cables().keys().filter(|k| !is_drawn(doc, **k)).map(|k| (crate::cables::cable_title(doc, *k), *k)).collect();
     v.sort_by(|a, b| crate::locations::natural_cmp(&a.0, &b.0));
     v.into_iter().map(|(_, k)| k).collect()
 }
@@ -260,7 +260,7 @@ pub fn not_drawn(doc: &Document) -> Vec<CableId> {
 pub fn planning(doc: &Document, key: &str) -> Vec<CableId> {
     let fields = [Side::From, Side::To].into_iter().flat_map(|s| [CableField::EndLocation(s), CableField::EndFunction(s)]);
     let fields: Vec<&str> = fields.map(CableField::key).collect();
-    doc.cables.iter().filter(|(_, c)| fields.iter().any(|f| c.properties.get(*f).is_some_and(|v| v.trim() == key))).map(|(k, _)| *k).collect()
+    doc.cables().iter().filter(|(_, c)| fields.iter().any(|f| c.properties.get(*f).is_some_and(|v| v.trim() == key))).map(|(k, _)| *k).collect()
 }
 
 /// Cable `k`'s planned code of `aspect` at `side` (`+CAB1`), when it names an entry.
@@ -269,7 +269,7 @@ pub fn planned(doc: &Document, k: CableId, side: Side, aspect: Aspect) -> Option
         Aspect::Location => CableField::EndLocation(side),
         Aspect::Function => CableField::EndFunction(side),
     };
-    let key = doc.cables.get(&k)?.properties.get(field.key())?;
+    let key = doc.cables().get(&k)?.properties.get(field.key())?;
     designations::code_of(doc, aspect, key.trim())
 }
 
@@ -300,7 +300,7 @@ pub fn gland(doc: &Document, k: CableId, side: Side) -> Option<(String, Source)>
 
 /// Cable `k`'s shield: its own field, else its cable type's.
 pub fn shield(doc: &Document, k: CableId) -> Option<(Shield, Source)> {
-    if let Some(s) = doc.cables.get(&k)?.shield {
+    if let Some(s) = doc.cables().get(&k)?.shield {
         return Some((s, Source::Here));
     }
     let id = type_of(doc, k)?;
@@ -321,7 +321,7 @@ pub fn part_value(doc: &Document, k: CableId, field: CableField) -> Option<(Stri
 /// Cable `k`'s core offer as written (`4G`, `BN,BK,GY`) and where it comes from.
 pub fn cores_shown(doc: &Document, k: CableId) -> Option<(String, Source)> {
     let (_, src, text) = cable::offer(doc, k)?;
-    let props = &doc.cables.get(&k)?.properties;
+    let props = &doc.cables().get(&k)?.properties;
     let own = props.get(CableField::Cores.key()).is_some_and(|v| crate::terminal_strips::cores::parse_cores(v).is_ok());
     Some((
         text,
@@ -336,10 +336,10 @@ pub fn cores_shown(doc: &Document, k: CableId) -> Option<(String, Source)> {
 /// The pages cable `k` is drawn on, with the place of its slash (`2/D1`), in book order: its
 /// representations' pages, else its members' route pages.
 pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
-    let style = doc.settings.reference_style();
+    let style = doc.settings().reference_style();
     let mut out: BTreeMap<PageId, String> = BTreeMap::new();
     for (_, r) in doc.representations_of(Subject::Cable(k)) {
-        let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+        let at = r.items.first().and_then(|i| doc.items().get(i)).and_then(|i| match &i.kind {
             ItemKind::Primitive(Primitive::Line { a, .. }) => Some(*a),
             ItemKind::Primitive(Primitive::Point { at }) => Some(*at),
             ItemKind::Primitive(Primitive::Polyline { vertices, .. }) => vertices.first().copied(),
@@ -351,7 +351,7 @@ pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
         out.entry(r.page).or_insert(words);
     }
     if out.is_empty()
-        && let Some(c) = doc.cables.get(&k)
+        && let Some(c) = doc.cables().get(&k)
     {
         for m in c.cores.iter().take(MAX_CABLE_MEMBERS) {
             for p in member_pages(doc, m) {
@@ -360,7 +360,7 @@ pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
         }
     }
     let mut v: Vec<(PageId, String)> = out.into_iter().collect();
-    v.sort_by_key(|(p, _)| doc.page_order.iter().position(|x| x == p).unwrap_or(usize::MAX));
+    v.sort_by_key(|(p, _)| doc.page_order().iter().position(|x| x == p).unwrap_or(usize::MAX));
     v
 }
 
@@ -391,11 +391,11 @@ impl DrawnEnd {
 pub(crate) fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
     let mut out = [DrawnEnd::default(), DrawnEnd::default()];
     // Each core is one wire, through any named points (design 072 §4.4, F5).
-    let wires: Vec<ecad_model::WireId> = doc.cables.get(&k).map(|c| c.cores.iter().filter_map(|m| m.wire()).collect()).unwrap_or_default();
+    let wires: Vec<ecad_model::WireId> = doc.cables().get(&k).map(|c| c.cores.iter().filter_map(|m| m.wire()).collect()).unwrap_or_default();
     for w in wires.iter().take(MAX_CABLE_MEMBERS) {
-        let ends = doc.wires.get(w).map(|c| c.ends).map_or([None, None], |[a, b]| [Some(a), Some(b)]);
+        let ends = doc.wires().get(w).map(|c| c.ends).map_or([None, None], |[a, b]| [Some(a), Some(b)]);
         for (slot, t) in out.iter_mut().zip(ends) {
-            let Some(c) = t.and_then(|t| doc.connection_points.get(&t)).and_then(|x| x.device()) else { continue };
+            let Some(c) = t.and_then(|t| doc.connection_points().get(&t)).and_then(|x| x.device()) else { continue };
             match crate::locations::resolve(doc, c).value {
                 Some(l) => {
                     slot.locations.insert(l);
@@ -424,7 +424,7 @@ pub struct OffPlan {
 /// function that the devices at that end do not have. The two ends differing from each other is
 /// normal and never raises; an end with no plan, or with no device drawn there, raises nothing.
 pub fn off_plan(doc: &Document, k: CableId) -> Vec<OffPlan> {
-    if doc.cables.get(&k).is_none_or(|c| c.cores.iter().all(|m| m.position == ecad_model::CorePosition::Unplaced)) {
+    if doc.cables().get(&k).is_none_or(|c| c.cores.iter().all(|m| m.position == ecad_model::CorePosition::Unplaced)) {
         return Vec::new();
     }
     let ends = drawn_ends(doc, k);
@@ -445,7 +445,7 @@ pub fn off_plan(doc: &Document, k: CableId) -> Vec<OffPlan> {
 /// `no-gland` (059d) once drawn.
 pub(crate) fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
     let mut out = Vec::new();
-    if !doc.cables.contains_key(&k) {
+    if !doc.cables().contains_key(&k) {
         return out;
     }
     let name = crate::cables::cable_title(doc, k);
@@ -510,7 +510,7 @@ pub(crate) fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
 
 /// A cable after the word "Cable" in messages: its tag, else `8a3f19c0…`.
 pub fn cable_title(doc: &Document, cable: CableId) -> String {
-    match doc.cables.get(&cable).and_then(|c| c.tag_shown()) {
+    match doc.cables().get(&cable).and_then(|c| c.tag_shown()) {
         Some(t) => t,
         None => format!("{}…", cable.hex().get(..8).unwrap_or_default()),
     }

@@ -26,7 +26,7 @@ pub(crate) fn styled_label_entity(
 ) -> cadcraft_engine::doc::Entity {
     use ecad_electrical::styles::text_style::TextKind;
     let mut e = label_entity(draw, value, at, handle);
-    let Some(c) = doc.representations.get(&rep).and_then(|r| match r.subject {
+    let Some(c) = doc.representations().get(&rep).and_then(|r| match r.subject {
         Subject::Aid(a) => Some(a),
         _ => None,
     }) else {
@@ -49,7 +49,7 @@ pub(crate) fn styled_label_entity(
 /// The font family a box's label style draws in when it is not the project font (brief 066d), for
 /// the page to install (`install_family`).
 pub(crate) fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
-    let c = doc.representations.get(&rep).and_then(|r| match r.subject {
+    let c = doc.representations().get(&rep).and_then(|r| match r.subject {
         Subject::Aid(a) => Some(a),
         _ => None,
     })?;

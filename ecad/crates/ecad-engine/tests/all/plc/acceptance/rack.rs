@@ -209,14 +209,14 @@ fn c_rack_missing_from_a_hand_made_file() {
     // Design 072 §3: a station that is no longer one (a device retyped by hand).
     let d = p.h.doc();
     let gone = c["-A06"];
-    let mut was = d.devices[&gone].clone();
+    let mut was = d.devices()[&gone].clone();
     was.device_type = ecad_model::DeviceType::PlcRack(ecad_model::objects::plc::PlcRack::default());
-    raw(&mut p.h, vec![ecad_model::Op::ModifyDevice { id: gone, before: d.devices[&gone].clone(), after: was }]);
+    raw(&mut p.h, vec![ecad_model::Op::ModifyDevice { id: gone, before: d.devices()[&gone].clone(), after: was }]);
     raw_setprop(&mut p.h, c["-A05"], "plc.rack", Some(&gone.hex()));
     let d = p.h.doc();
-    let mut card = d.devices[&gone].clone();
+    let mut card = d.devices()[&gone].clone();
     card.device_type = ecad_electrical::plc::types::of_card(ecad_electrical::plc::rack::CardType::Dq);
-    raw(&mut p.h, vec![ecad_model::Op::ModifyDevice { id: gone, before: d.devices[&gone].clone(), after: card }]);
+    raw(&mut p.h, vec![ecad_model::Op::ModifyDevice { id: gone, before: d.devices()[&gone].clone(), after: card }]);
     let mut h = reload(p.h, "rack missing", 0x7045_c102);
     let rows = checks_of(&mut h, "rack-missing");
     assert_eq!(rows.len(), 3, "{rows:?}");
@@ -286,16 +286,16 @@ fn d_round_trip_and_retag() {
     let cpu_page = p.cpu_page;
     let mut h = reload(p.h, "round trip", 0x7045_d101);
     let after = h.doc();
-    assert_eq!(after.devices, before.devices, "every property, plc.rack included, round-trips");
+    assert_eq!(after.devices(), before.devices(), "every property, plc.rack included, round-trips");
     assert_eq!(slots(&mut h, "-A01"), rows_before);
     let rack = by_tag(&after, "-A01");
-    let props_before: Vec<_> = c.values().map(|x| after.devices[x].properties.clone()).collect();
+    let props_before: Vec<_> = c.values().map(|x| after.devices()[x].properties.clone()).collect();
     h.activate(cpu_page);
     let caps: Vec<String> = text_values(&mut h, cpu_page).into_iter().filter(|t| t.starts_with("-A01 slot ")).collect();
     assert_eq!(caps.len(), 6, "a caption per card in a rack (§7.2): {caps:?}");
     step(&mut h, "setprop", json!({"component": rack.hex(), "key": "tag", "value": "-A10"}));
     let d = h.doc();
-    let props_after: Vec<_> = c.values().map(|x| d.devices[x].properties.clone()).collect();
+    let props_after: Vec<_> = c.values().map(|x| d.devices()[x].properties.clone()).collect();
     assert_eq!(props_before, props_after, "retagging the rack touches no card");
     assert_eq!(slots(&mut h, "-A10").len(), rows_before.len());
     let texts = text_values(&mut h, cpu_page);
@@ -315,9 +315,9 @@ fn fp1_deleting_a_rack_takes_its_cards_out_in_one_transaction() {
     p.h.run("devicedelete", json!({"component": p.rack.hex()})).unwrap();
     assert_eq!(p.h.head(), head + 1, "one transaction");
     let d = p.h.doc();
-    assert!(!d.devices.contains_key(&p.rack));
+    assert!(!d.devices().contains_key(&p.rack));
     for x in c.values() {
-        assert!(d.devices.contains_key(x), "cards stay");
+        assert!(d.devices().contains_key(x), "cards stay");
         assert_eq!((prop(&d, *x, "plc.rack"), prop(&d, *x, "plc.slot")), (None, None), "{}", tag(&d, *x));
     }
     let ops = p.h.p(|p| p.ledger.log().last().map(|t| t.ops.clone())).unwrap_or_default();
@@ -346,7 +346,7 @@ fn fp1_erasing_the_rack_body_never_leaves_a_dangling_id() {
     p.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     assert_eq!(p.h.head(), head + 1);
     let d = p.h.doc();
-    if !d.devices.contains_key(&p.rack) {
+    if !d.devices().contains_key(&p.rack) {
         for x in c.values() {
             assert_eq!(prop(&d, *x, "plc.rack"), None, "{}", tag(&d, *x));
         }

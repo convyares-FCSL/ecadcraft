@@ -44,7 +44,7 @@ impl AddConnectionPoint {
         read(s, |p, page| {
             let doc = p.ledger.document();
             let names: BTreeSet<String> = doc
-                .representations
+                .representations()
                 .values()
                 .filter(|r| r.page == page && r.form == ecad_model::Form::Drawn)
                 .filter_map(|r| match r.subject {

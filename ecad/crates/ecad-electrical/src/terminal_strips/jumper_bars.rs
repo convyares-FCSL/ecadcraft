@@ -60,7 +60,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
     strips.dedup();
     let mut out = Vec::new();
     for c in strips {
-        let Some(comp) = doc.devices.get(&c) else { continue };
+        let Some(comp) = doc.devices().get(&c) else { continue };
         let found = jumper_bars::of(&comp.properties);
         if found.is_empty() || crate::terminal_strips::strip_of(doc, c).is_none() {
             continue;

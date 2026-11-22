@@ -249,7 +249,7 @@ pub struct Part {
 }
 
 pub(super) fn unit(doc: &Document) -> f64 {
-    match doc.settings.length_unit {
+    match doc.settings().length_unit {
         LengthUnit::Millimetre => 1.0,
         LengthUnit::Inch => 1.0 / 25.4,
     }
@@ -263,9 +263,9 @@ pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: 
     if !dev.children.contains(&rep) {
         return None;
     }
-    let h = doc.representations.get(&head)?;
+    let h = doc.representations().get(&head)?;
     let value = places.text(h.page, anchor(doc, h));
-    let r = doc.representations.get(&rep)?;
+    let r = doc.representations().get(&rep)?;
     let k = unit(doc);
     let pts = connection_point_points(doc, dev.component, r);
     let vertical = match crate::devices::tags::rep_definition(doc, r) {
@@ -381,7 +381,7 @@ pub fn settle(
     if matches!(placement, Placement::At(_) | Placement::Off) {
         return (top, TableShown::AsPlaced);
     }
-    let Some(page) = doc.representations.get(&head).map(|r| r.page) else { return (top, TableShown::AsPlaced) };
+    let Some(page) = doc.representations().get(&head).map(|r| r.page) else { return (top, TableShown::AsPlaced) };
     let free = free_area(doc, page);
     if inside(table_box(doc, top, rows, m), free) {
         return (top, TableShown::AsPlaced);
@@ -431,7 +431,7 @@ fn run_down(path: &[Pt], from: Pt) -> Option<f64> {
 /// Where the table of head `head` of device `c` goes, for `placement`; `None` for `off` or a
 /// head that cannot be drawn.
 pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement: Placement) -> Option<Pt> {
-    let r = doc.representations.get(&head)?;
+    let r = doc.representations().get(&head)?;
     let k = unit(doc);
     let origin = anchor(doc, r)?;
     let pts = connection_point_points(doc, c, r);
@@ -451,7 +451,7 @@ pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement:
         }
         Placement::Auto => {
             let run = lowest.and_then(|(t, p)| {
-                doc.routes_at(t).filter_map(|x| doc.routes.get(&x)).filter(|x| x.page == r.page).find_map(|x| run_down(&x.points, p))
+                doc.routes_at(t).filter_map(|x| doc.routes().get(&x)).filter(|x| x.page == r.page).find_map(|x| run_down(&x.points, p))
             });
             match run {
                 Some(y) => Pt::new(origin.x, y - 4.0 * k),
@@ -472,7 +472,7 @@ pub fn table_measured(doc: &Document, places: &mut Places<'_>, dev: &Device, m: 
     }
     let (placement, _) = placement_of(doc, dev.component);
     let top = table_top(doc, dev.component, head, placement)?;
-    let page = doc.representations.get(&head)?.page;
+    let page = doc.representations().get(&head)?.page;
     let rows = rows(places, dev, offer.as_ref().map(|(_, o)| o.as_slice()));
     let (top, shown) = settle(doc, dev.component, head, placement, top, &rows, m);
     let parts = table_parts(doc, head, top, &rows);
@@ -546,8 +546,8 @@ pub(crate) fn connector_parts(doc: &Document, places: &mut Places<'_>, c: Device
     let k = unit(doc);
     let mut out = Vec::new();
     for (rid, ts) in targets {
-        let Some(r) = doc.representations.get(&rid) else { continue };
-        let mut texts: Vec<String> = ts.iter().filter_map(|t| doc.representations.get(t)).map(|t| places.text(t.page, anchor(doc, t))).collect();
+        let Some(r) = doc.representations().get(&rid) else { continue };
+        let mut texts: Vec<String> = ts.iter().filter_map(|t| doc.representations().get(t)).map(|t| places.text(t.page, anchor(doc, t))).collect();
         texts.sort();
         texts.dedup();
         let more = texts.len().saturating_sub(MAX_CONNECTOR_PLACES);
@@ -700,7 +700,7 @@ pub(crate) fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device,
         .into_iter()
         .filter(|c| !crate::connectors::connector_of(doc, *c).is_some_and(|x| x.mating))
         .map(|c| device(doc, c))
-        .filter(|d| d.head.is_some_and(|h| doc.representations.get(&h).is_some_and(|r| r.page == own.page)))
+        .filter(|d| d.head.is_some_and(|h| doc.representations().get(&h).is_some_and(|r| r.page == own.page)))
         .filter_map(|d| table_measured(doc, places, &d, m))
         .collect();
     let head = own.head;
@@ -725,7 +725,7 @@ pub(super) fn shown(doc: &Document, places: &mut Places<'_>, c: DeviceId, m: &dy
         return out;
     }
     for rid in &dev.children {
-        if let (Some(p), Some(r)) = (contact_text(doc, places, &dev, *rid), doc.representations.get(rid)) {
+        if let (Some(p), Some(r)) = (contact_text(doc, places, &dev, *rid), doc.representations().get(rid)) {
             out.entry(r.page).or_default().push(p);
         }
     }

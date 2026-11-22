@@ -119,7 +119,7 @@ impl<'i> DerivedView<Inputs<'i>> for GeneratedView {
 
     fn update(&mut self, doc: &Document, scope: GeneratedScope, cx: &Inputs<'i>) -> Outcome {
         let GeneratedScope { contents, revisions, cover, uses, cover_page } = scope;
-        let has_cover = doc.page_order.iter().any(|p| kind_of(doc, *p) == Some(GenKind::Cover));
+        let has_cover = doc.page_order().iter().any(|p| kind_of(doc, *p) == Some(GenKind::Cover));
         // Brief 054b (design 054 §10.1): the legend redraws only when a category's count crosses
         // zero.
         let wires = match (&mut self.uses, has_cover) {
@@ -137,7 +137,7 @@ impl<'i> DerivedView<Inputs<'i>> for GeneratedView {
         self.cover = k.cover || cover_page;
         let mut pages = PageSet::Only(Default::default());
         if k.cover || k.contents || k.revisions {
-            for p in doc.page_order.iter().copied().filter(|p| kind_of(doc, *p).is_some_and(|kind| changed(kind, k))) {
+            for p in doc.page_order().iter().copied().filter(|p| kind_of(doc, *p).is_some_and(|kind| changed(kind, k))) {
                 pages.insert(p);
             }
         }

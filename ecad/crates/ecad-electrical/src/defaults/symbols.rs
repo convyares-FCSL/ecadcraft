@@ -303,8 +303,8 @@ pub fn project_value(doc: &Document, symbol: &str, field: Field) -> Option<Strin
         return None;
     }
     match field {
-        Field::Prefix => doc.settings.project_prefix(symbol).map(|p| p.to_string()),
-        _ => family_property(symbol, field).and_then(|k| doc.display.get(&k)).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
+        Field::Prefix => doc.settings().project_prefix(symbol).map(|p| p.to_string()),
+        _ => family_property(symbol, field).and_then(|k| doc.display().get(&k)).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
     }
 }
 
@@ -413,12 +413,16 @@ mod tests {
         use ecad_model::naming::prefix::{PrefixOf, TagPrefix};
         let mut doc = Document::default();
         assert_eq!(prefix(&doc, crate::symbols::StarterKey::Fusebank8), "F");
-        doc.settings.tag_prefixes.insert(PrefixOf::Starter("fusebank8".into()), TagPrefix::typed("FB").unwrap());
+        doc.edit_parts(|parts| {
+            parts.settings.tag_prefixes.insert(PrefixOf::Starter("fusebank8".into()), TagPrefix::typed("FB").unwrap());
+        });
         assert_eq!(prefix(&doc, crate::symbols::StarterKey::Fusebank8), "FB");
         assert_eq!(crate::defaults::resolve(&doc, &FUSEBANK8, Scope::project()).from, crate::defaults::Source::Project);
         // A project property of the same key is never read: one project path.
-        doc.settings.tag_prefixes.clear();
-        doc.display.insert("symbol.fusebank8.prefix".into(), "ZZ".into());
+        doc.edit_parts(|parts| parts.settings.tag_prefixes.clear());
+        doc.edit_parts(|parts| {
+            parts.display.insert("symbol.fusebank8.prefix".into(), "ZZ".into());
+        });
         assert_eq!(prefix(&doc, crate::symbols::StarterKey::Fusebank8), "F");
         let long = "x".repeat(10_000);
         // A hostile value cannot be stored: the prefix type refuses it.

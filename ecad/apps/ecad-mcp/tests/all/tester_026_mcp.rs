@@ -23,14 +23,17 @@ fn place(c: &mut Client, symbol: &str, at: [f64; 2], tag: Option<&str>) -> Strin
 }
 
 fn tag_of(doc: &Document, comp: &str) -> Option<String> {
-    doc.devices.get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.tag_shown())
+    doc.devices().get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.tag_shown())
 }
 
 fn assert_unique(doc: &Document, step: &str) {
     let mut seen = BTreeSet::new();
     // A provisional -K1 and a real -K1 are different tags (S6, #3): the key carries the state.
-    for (k, t) in
-        doc.devices.values().filter_map(|c| c.tag_key().zip(c.tag_shown())).chain(doc.cables.values().filter_map(|c| c.tag_key().zip(c.tag_shown())))
+    for (k, t) in doc
+        .devices()
+        .values()
+        .filter_map(|c| c.tag_key().zip(c.tag_shown()))
+        .chain(doc.cables().values().filter_map(|c| c.tag_key().zip(c.tag_shown())))
     {
         assert!(seen.insert(k), "{step}: duplicate tag {t}");
     }
@@ -84,7 +87,7 @@ fn an_edit_before_issue_finalise_in_one_line_is_refused_and_taken_back() {
     assert!(m.contains("taken back"), "{m}");
     let doc = c.doc();
     assert_eq!((tag_of(&doc, &a).as_deref(), tag_of(&doc, &b).as_deref()), (Some("-K?1"), Some("-K?2")), "Finalise was taken back");
-    assert!(doc.versions.is_empty(), "the issue was taken back: {:?}", doc.versions);
+    assert!(doc.versions().is_empty(), "the issue was taken back: {:?}", doc.versions());
 }
 
 /// A plain `issuerevision` after an edit on the same line goes over the cap of one (019's gap,
@@ -98,7 +101,7 @@ fn an_edit_before_a_plain_issue_in_one_line_is_refused_and_taken_back() {
     assert!(is_error(&replies[1]), "{}", replies[1]);
     let m = replies[1]["result"]["content"][0]["text"].as_str().unwrap_or_default().to_string();
     assert!(m.contains("taken back") && !m.contains("NOT as before"), "{m}");
-    assert!(c.doc().versions.is_empty(), "the issue was taken back");
+    assert!(c.doc().versions().is_empty(), "the issue was taken back");
 }
 
 /// After `issuerevision {provisional: "finalise"}` (two transactions), any further write on the
@@ -114,8 +117,8 @@ fn an_edit_after_issue_finalise_in_one_line_is_refused() {
     assert!(is_error(&replies[1]), "{}", replies[1]);
     let doc = c.doc();
     assert_eq!(tag_of(&doc, &a).as_deref(), Some("-K01"));
-    assert_eq!(doc.versions.len(), 1);
-    assert!(doc.wires.is_empty(), "the wire was taken back");
+    assert_eq!(doc.versions().len(), 1);
+    assert!(doc.wires().is_empty(), "the wire was taken back");
 }
 
 /// `issuerevision` with `provisional: "finalise"` records Finalise and the issue as one
@@ -263,8 +266,8 @@ fn update_from_main_with_one_joins_and_keeps_tags_unique() {
     let doc = c.doc();
     assert_unique(&doc, "after the update");
     let bid = DeviceId::parse(&bk).unwrap();
-    assert!(doc.devices.contains_key(&bid), "the branch keeps its device");
-    assert!(!doc.devices.contains_key(&DeviceId::parse(&mk).unwrap()), "main's device joined the branch's");
+    assert!(doc.devices().contains_key(&bid), "the branch keeps its device");
+    assert!(!doc.devices().contains_key(&DeviceId::parse(&mk).unwrap()), "main's device joined the branch's");
     assert_eq!(doc.representations_of(ecad_model::Subject::Device(bid)).count(), 2);
 }
 
@@ -312,6 +315,6 @@ fn a_merged_fixed_flag_on_a_provisional_tag_does_not_survive_finalise() {
     c.exec("finalise", json!({}));
     let doc = c.doc();
     let t = tag_of(&doc, &x).unwrap_or_default();
-    let fixed = doc.devices[&DeviceId::parse(&x).unwrap()].is_fixed().then(|| "yes".to_string());
-    assert!(!doc.devices[&DeviceId::parse(&x).unwrap()].is_provisional(), "Finalise left {t} (tag_state {fixed:?})");
+    let fixed = doc.devices()[&DeviceId::parse(&x).unwrap()].is_fixed().then(|| "yes".to_string());
+    assert!(!doc.devices()[&DeviceId::parse(&x).unwrap()].is_provisional(), "Finalise left {t} (tag_state {fixed:?})");
 }

@@ -47,19 +47,19 @@ fn embedded_definitions_follow_the_owner_requirements() {
     let mut f = fixture();
     let doc = f.ledger.document().clone();
     // Embed once, many instances: c1 and c2 share d1; every terminal has its own ID.
-    assert_eq!(doc.devices[&f.c1].definition, Some(f.d1));
-    assert_eq!(doc.devices[&f.c2].definition, Some(f.d1));
+    assert_eq!(doc.devices()[&f.c1].definition, Some(f.d1));
+    assert_eq!(doc.devices()[&f.c2].definition, Some(f.d1));
     let ids: std::collections::BTreeSet<_> = f.t.iter().collect();
     assert_eq!(ids.len(), 6);
     // Versions coexist: d1 (library version 7) and d2 (version 9), different content hashes.
-    let (o1, o2) = (doc.definitions[&f.d1].origin.clone().unwrap(), doc.definitions[&f.d2].origin.clone().unwrap());
+    let (o1, o2) = (doc.definitions()[&f.d1].origin.clone().unwrap(), doc.definitions()[&f.d2].origin.clone().unwrap());
     assert_eq!((o1.library_seq, o2.library_seq), (7, 9));
     assert_eq!(o1.definition, o2.definition);
     assert_ne!(o1.content_hash, o2.content_hash);
     // The content hash ignores the origin it is recorded in.
-    assert_eq!(ecad_file::definition_hash(&doc.definitions[&f.d1]).unwrap(), o1.content_hash);
+    assert_eq!(ecad_file::definition_hash(&doc.definitions()[&f.d1]).unwrap(), o1.content_hash);
     // A referenced definition cannot be removed.
-    let d2 = doc.definitions[&f.d2].clone();
+    let d2 = doc.definitions()[&f.d2].clone();
     assert!(f.ledger.commit(Author::User, "remove", vec![Op::RemoveDefinition { id: f.d2, definition: d2 }]).is_err());
     // Remove the d1 instances, then d1 itself: earlier revisions keep the original content.
     let before = f.ledger.head();
@@ -70,23 +70,23 @@ fn embedded_definitions_follow_the_owner_requirements() {
         let doc = f.ledger.document();
         let (rid, rep) = doc.representations_of(Subject::Device(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
         // Its routes go with their drawings, and the wires to its points with their cable cores.
-        for (r, route) in doc.routes.iter() {
+        for (r, route) in doc.routes().iter() {
             let gone = ops.iter().any(|o| matches!(o, Op::RemoveRoute { id, .. } if id == r));
-            if !gone && route.ends.iter().any(|e| e.point().is_some_and(|t| doc.connection_points[&t].device() == Some(c))) {
+            if !gone && route.ends.iter().any(|e| e.point().is_some_and(|t| doc.connection_points()[&t].device() == Some(c))) {
                 for (rid, rep) in doc.representations_of(Subject::Route(*r)) {
                     ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
                     for i in &rep.items {
-                        ops.push(Op::RemoveItem { id: *i, item: doc.items[i].clone() });
+                        ops.push(Op::RemoveItem { id: *i, item: doc.items()[i].clone() });
                     }
                 }
                 ops.push(Op::RemoveRoute { id: *r, route: route.clone() });
             }
         }
-        for (w, wire) in doc.wires.iter() {
-            if wire.ends.iter().any(|t| doc.connection_points[t].device() == Some(c))
+        for (w, wire) in doc.wires().iter() {
+            if wire.ends.iter().any(|t| doc.connection_points()[t].device() == Some(c))
                 && !ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id == w))
             {
-                for (cable, cv) in doc.cables.iter() {
+                for (cable, cv) in doc.cables().iter() {
                     if cv.cores.iter().any(|m| m.wire() == Some(*w)) {
                         let (_, after): &mut (ecad_model::Cable, ecad_model::Cable) =
                             cables.entry(*cable).or_insert_with(|| (cv.clone(), cv.clone()));
@@ -97,20 +97,20 @@ fn embedded_definitions_follow_the_owner_requirements() {
             }
         }
         ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
-        ops.push(Op::RemoveItem { id: rep.items[0], item: doc.items[&rep.items[0]].clone() });
+        ops.push(Op::RemoveItem { id: rep.items[0], item: doc.items()[&rep.items[0]].clone() });
         for (t, term) in doc.connection_points_of(c) {
             ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
         }
-        ops.push(Op::DeleteDevice { id: c, device: doc.devices[&c].clone() });
+        ops.push(Op::DeleteDevice { id: c, device: doc.devices()[&c].clone() });
     }
-    ops.push(Op::RemoveDefinition { id: f.d1, definition: doc.definitions[&f.d1].clone() });
+    ops.push(Op::RemoveDefinition { id: f.d1, definition: doc.definitions()[&f.d1].clone() });
     ops.extend(cables.into_iter().filter_map(|(id, (before, after))| Op::modify_cable(id, &before, after)));
     f.commit("Remove old version", ops);
     let opened = reopened(&mut f.ledger);
-    assert!(!opened.ledger.document().definitions.contains_key(&f.d1));
+    assert!(!opened.ledger.document().definitions().contains_key(&f.d1));
     let past = opened.ledger.state_at(before).unwrap();
-    assert_eq!(past.definitions[&f.d1], doc.definitions[&f.d1], "history keeps the original definition");
-    assert_eq!(opened.ledger.document().definitions[&f.d2], doc.definitions[&f.d2]);
+    assert_eq!(past.definitions()[&f.d1], doc.definitions()[&f.d1], "history keeps the original definition");
+    assert_eq!(opened.ledger.document().definitions()[&f.d2], doc.definitions()[&f.d2]);
 }
 
 /// Brief 018 (owner decision 2026-11-08): the tag settings are left out of a record while they
@@ -122,7 +122,7 @@ fn tag_settings_are_written_only_when_set_and_round_trip() {
     assert!(!plain.contains("tag_padding") && !plain.contains("tag_prefixes"), "{plain}");
 
     let mut f = fixture();
-    let before = f.ledger.document().settings.clone();
+    let before = f.ledger.document().settings().clone();
     let mut after = before.clone();
     after.tag_padding = Some(3);
     after
@@ -134,7 +134,7 @@ fn tag_settings_are_written_only_when_set_and_round_trip() {
     f.ledger.commit(Author::User, "Tag settings", vec![op]).unwrap();
     let opened = reopened(&mut f.ledger);
     assert!(opened.report.damage.is_none());
-    assert_eq!(opened.ledger.document().settings, after);
+    assert_eq!(*opened.ledger.document().settings(), after);
     assert_eq!(opened.ledger.full_log().unwrap(), f.ledger.full_log().unwrap());
 }
 
@@ -147,7 +147,7 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     assert!(!plain.contains("wiring"), "{plain}");
 
     let mut f = fixture();
-    let before = f.ledger.document().settings.clone();
+    let before = f.ledger.document().settings().clone();
     let mut after = before.clone();
     after.wiring.scheme = ecad_model::connectivity::wiring::Scheme::PageColumn;
     after.wiring.digits = Some(3);
@@ -190,8 +190,8 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
 
     let opened = reopened(&mut f.ledger);
     assert!(opened.report.damage.is_none());
-    assert_eq!(opened.ledger.document().settings, after);
-    assert_eq!(opened.ledger.document().definitions.get(&id), Some(&bridged));
+    assert_eq!(*opened.ledger.document().settings(), after);
+    assert_eq!(opened.ledger.document().definitions().get(&id), Some(&bridged));
     assert_eq!(opened.ledger.full_log().unwrap(), f.ledger.full_log().unwrap());
 }
 
@@ -209,12 +209,12 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
 
     let mut f = fixture();
     let folder: FolderId = f.ids.fresh();
-    let before = f.ledger.document().settings.clone();
+    let before = f.ledger.document().settings().clone();
     let mut after = before.clone();
     after.sheet = Some(SheetSpec::parse("A2 12x8 numbers letters").unwrap());
     after.page_number_step = Some(5);
     after.reference_style = Some(ReferenceStyle::PageColumn);
-    let page = f.ledger.document().pages[&f.page].clone();
+    let page = f.ledger.document().pages()[&f.page].clone();
     let ops = vec![
         Op::AddFolder { id: folder, folder: Folder { name: "Layouts".into(), parent: None, start: None }, index: 0 },
         Op::ModifyPage { id: f.page, before: page.clone(), after: ecad_model::Page { folder: Some(folder), ..page } },
@@ -235,8 +235,8 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
     assert!(opened.report.damage.is_none());
     assert_eq!(opened.ledger.full_log().unwrap(), f.ledger.full_log().unwrap());
     assert_eq!(opened.ledger.document(), f.ledger.document());
-    assert_eq!(opened.ledger.document().settings, after);
-    assert_eq!(opened.ledger.document().folders[&folder], renamed);
+    assert_eq!(*opened.ledger.document().settings(), after);
+    assert_eq!(opened.ledger.document().folders()[&folder], renamed);
 }
 
 /// Brief 032 (FP-W1): wiring settings written before the label rule existed read with its

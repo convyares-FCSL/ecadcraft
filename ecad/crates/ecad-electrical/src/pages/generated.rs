@@ -74,18 +74,18 @@ use ecad_model::GenKind;
 
 /// The kind of `page`, if it is generated.
 pub fn kind_of(doc: &Document, page: PageId) -> Option<GenKind> {
-    doc.pages.get(&page).and_then(|p| p.kind.generated_kind())
+    doc.pages().get(&page).and_then(|p| p.kind.generated_kind())
 }
 
 /// Whether the project has a page drawn from the report models (BOM, terminal plan, cable
 /// schedule): its sheet count needs them.
 pub fn has_bom_page(doc: &Document) -> bool {
-    doc.pages.values().any(|p| p.kind.generated_kind().is_some_and(GenKind::needs_reports))
+    doc.pages().values().any(|p| p.kind.generated_kind().is_some_and(GenKind::needs_reports))
 }
 
 /// The strip a `connection_points` page shows, if it names one.
 pub fn strip_of(doc: &Document, page: PageId) -> Option<ecad_model::DeviceId> {
-    doc.pages.get(&page)?.kind.strip()
+    doc.pages().get(&page)?.kind.strip()
 }
 
 /// The strips a `connection_points` page shows, in tag order.
@@ -148,7 +148,7 @@ pub(crate) fn paginate_with(heads: &[Option<String>], break_on_heading: bool) ->
 pub fn sheets_of(doc: &Document, page: PageId, reports: Option<&ReportModels>) -> usize {
     let rows = match kind_of(doc, page) {
         None | Some(GenKind::Cover) => return 1,
-        Some(GenKind::Contents) => doc.page_order.len(),
+        Some(GenKind::Contents) => doc.page_order().len(),
         Some(GenKind::Revisions) => crate::releases::revisions::issued(doc).len(),
         Some(GenKind::BomLocation) => return reports.map_or(1, bom_sheets),
         // Brief 046: a graphic page counts its strips' kept graphic sheets.
@@ -211,7 +211,7 @@ pub fn continuation_of(doc: &Document, book: &Book, number: &str, reports: Optio
 
 /// The refusal of typing `number` when it is sheet `i` of `page` (design 033 §5.3).
 pub(crate) fn continuation_taken(doc: &Document, number: &str, page: PageId, i: usize) -> String {
-    let title = doc.pages.get(&page).map(|p| p.title.as_str()).unwrap_or_default();
+    let title = doc.pages().get(&page).map(|p| p.title.as_str()).unwrap_or_default();
     let owner = ecad_model::document::book::page_number(doc, page);
     format!("Number {number} is sheet {} of page {owner} ({title}).", i.saturating_add(1))
 }
@@ -234,7 +234,7 @@ pub(crate) fn continuation_checks(doc: &Document, reports: Option<&ReportModels>
         }
         let number = book.number(doc, *p);
         let last = sheet_number(&number, n - 1);
-        let title = doc.pages.get(p).map(|x| x.title.as_str()).unwrap_or_default();
+        let title = doc.pages().get(p).map(|x| x.title.as_str()).unwrap_or_default();
         for i in 1..n {
             let taken = sheet_number(&number, i);
             if let Some(other) = by_number.get(&taken.to_ascii_lowercase()).filter(|o| *o != p) {
@@ -254,8 +254,8 @@ pub(crate) fn continuation_checks(doc: &Document, reports: Option<&ReportModels>
 
 /// How many sheets the whole book has (Total).
 pub fn book_sheets_of(doc: &Document, reports: Option<&ReportModels>) -> usize {
-    let extra: usize = doc.pages.iter().filter(|(_, p)| !p.kind.is_schematic()).map(|(id, _)| sheets_of(doc, *id, reports).saturating_sub(1)).sum();
-    doc.page_order.len() + extra
+    let extra: usize = doc.pages().iter().filter(|(_, p)| !p.kind.is_schematic()).map(|(id, _)| sheets_of(doc, *id, reports).saturating_sub(1)).sum();
+    doc.page_order().len() + extra
 }
 
 /// Whether `ops` can change what a generated page of `kind` shows: [`touched_by`] on each of
@@ -289,7 +289,7 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, kind: GenKi
 pub(crate) fn connection_points_rewritten(doc: &Document, page: PageId, o: &ReportModels) -> bool {
     let sp = &o.strip_pages;
     let style = &crate::defaults::strip_pages::STYLE;
-    let own_style = doc.pages.get(&page).and_then(|p| p.display.get(style.key)).is_some_and(|v| style.parse(v).is_some());
+    let own_style = doc.pages().get(&page).and_then(|p| p.display.get(style.key)).is_some_and(|v| style.parse(v).is_some());
     if sp.style_changed && !own_style {
         return true;
     }
@@ -405,8 +405,8 @@ fn table_static(doc: &Document, kind: GenKind, reports: Option<&ReportModels>) -
                 .order
                 .iter()
                 .map(|p| {
-                    let folder = book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
-                    let title = doc.pages.get(p).map(|x| x.title.to_string()).unwrap_or_default();
+                    let folder = book::folder_of(doc, *p).filter(|f| doc.folders().contains_key(f));
+                    let title = doc.pages().get(p).map(|x| x.title.to_string()).unwrap_or_default();
                     row(vec![number_range(doc, &b, *p, reports), title, crate::releases::revisions::folder_path(doc, folder)])
                 })
                 .collect();
@@ -545,7 +545,7 @@ const TERMINAL_BLOCK_COLUMNS: [(&str, f64); 9] = [
 /// The terminal plan's rows of `page`: per strip a heading, then one line per position and
 /// conductor (a second conductor on one side on its own sub-row, labelled `3′`).
 fn terminal_block_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TRow> {
-    let style = doc.settings.reference_style();
+    let style = doc.settings().reference_style();
     let mut rows = Vec::new();
     for s in strips_shown(doc, page, o) {
         let mut head = format!("{}  {}  {}", s.tag, s.location.clone().unwrap_or_else(|| "?".into()), s.counts_text());
@@ -684,7 +684,7 @@ impl Laid {
 /// The sheet windows of `page` in model coordinates: (bottom-left, top-right) per sheet.
 pub fn sheet_windows_of(doc: &Document, page: PageId, reports: Option<&ReportModels>) -> Vec<(Pt, Pt)> {
     let spec = ecad_model::document::sheet::sheet_of(doc, page);
-    let k = unit_scale(doc.settings.length_unit);
+    let k = unit_scale(doc.settings().length_unit);
     let (w, h) = (f64::from(spec.width), f64::from(spec.height));
     (0..sheets_of(doc, page, reports))
         .map(|i| {

@@ -123,24 +123,28 @@ fn the_frame_decides_sheet_margins_and_keep_out() {
     let (mut doc, page) = doc_with_page();
     assert_eq!(sheet::sheet_of(&doc, page), SheetSpec::default());
     assert_eq!(sheet::keep_out(&doc, page), sheet::TITLE_BLOCK_MM);
-    doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(7), frame("A2", "15,10,12,8", 55.0));
+    doc.edit_parts(|parts| {
+        parts.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(7), frame("A2", "15,10,12,8", 55.0))
+    });
     // Not chosen yet: nothing changes.
     assert_eq!(sheet::sheet_of(&doc, page), SheetSpec::default());
-    doc.display.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(7).text());
+    doc.edit_parts(|parts| parts.display.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(7).text()));
     assert_eq!(sheet::sheet_of(&doc, page), SheetSpec::preset("A2").unwrap());
     assert_eq!(sheet::margins_of(&doc, page), Margins { left: 15.0, right: 10.0, bottom: 12.0, top: 8.0 });
     assert_eq!(sheet::keep_out(&doc, page), 55.0);
     let g = sheet::Grid::of(&doc, page);
     assert_eq!((g.frame_left(), g.frame_bottom()), (15.0, 12.0));
     // A choice naming no frame falls through to the next level.
-    if let Some(p) = doc.pages.get_mut(&page) {
-        p.display.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(99).text());
-        p.sheet = ecad_model::SheetSpec::parse("A1").ok();
-    }
+    doc.edit_parts(|parts| {
+        if let Some(p) = parts.pages.get_mut(&page) {
+            p.display.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(99).text());
+            p.sheet = ecad_model::SheetSpec::parse("A1").ok();
+        }
+    });
     assert_eq!(sheet::sheet_of(&doc, page).width, 594, "the project's frame wins over the page's sheet");
     assert_eq!(sheet::own_sheet(&doc, page).width, 841);
     // Unreadable fields count as absent.
-    doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(7), frame("A5", "1,2", 1e9));
+    doc.edit_parts(|parts| parts.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(7), frame("A5", "1,2", 1e9)));
     assert_eq!(sheet::sheet_of(&doc, page).width, 841);
     assert_eq!(sheet::margins_of(&doc, page), Margins::default());
     assert_eq!(sheet::keep_out(&doc, page), sheet::TITLE_BLOCK_MM);
@@ -217,20 +221,28 @@ fn a_page_borrows_a_title_block_and_the_page_type_steps_wait_for_054() {
     assert_eq!(sheet::page_type_frame(&doc, page), None);
     assert_eq!(sheet::page_type_title_block(&doc, page), None);
     assert_eq!(sheet::page_type_zones(&doc, page), Some(true), "a Schematic page shows zones (054)");
-    doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(7), frame("A2", "15,10,12,8", 55.0));
-    doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(8), frame("A3", "10,10,10,7", 30.0));
-    doc.display.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(7).text());
+    doc.edit_parts(|parts| {
+        parts.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(7), frame("A2", "15,10,12,8", 55.0))
+    });
+    doc.edit_parts(|parts| {
+        parts.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(8), frame("A3", "10,10,10,7", 30.0))
+    });
+    doc.edit_parts(|parts| parts.display.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(7).text()));
     assert_eq!(sheet::title_block_style(&doc, page), StyleRef::Own(7), "the frame's own block");
-    if let Some(p) = doc.pages.get_mut(&page) {
-        p.title_block = Some(StyleRef::Own(8));
-    }
+    doc.edit_parts(|parts| {
+        if let Some(p) = parts.pages.get_mut(&page) {
+            p.title_block = Some(StyleRef::Own(8));
+        }
+    });
     assert_eq!(sheet::title_block_style(&doc, page), StyleRef::Own(8), "borrowed");
     assert_eq!(sheet::frame_style(&doc, page), StyleRef::Own(7), "the border stays the frame's");
     assert_eq!(sheet::sheet_of(&doc, page).width, 594);
     assert_eq!(sheet::keep_out(&doc, page), 30.0, "the borrowed block's height");
     // A name that is no frame falls back to the frame's own block.
-    if let Some(p) = doc.pages.get_mut(&page) {
-        p.title_block = Some(StyleRef::Own(99));
-    }
+    doc.edit_parts(|parts| {
+        if let Some(p) = parts.pages.get_mut(&page) {
+            p.title_block = Some(StyleRef::Own(99));
+        }
+    });
     assert_eq!(sheet::title_block_style(&doc, page), StyleRef::Own(7));
 }

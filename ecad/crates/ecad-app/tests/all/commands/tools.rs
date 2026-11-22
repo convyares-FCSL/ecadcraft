@@ -105,12 +105,12 @@ fn convert_in_tool_sets_uses_the_selection_and_undoes_like_the_typed_command() {
     assert!(t.cad.take_tool_requests().is_empty(), "the click was consumed");
     assert_eq!(head(t), before + 1, "one transaction, recorded once");
     let d = doc(t);
-    assert_eq!(d.devices.len(), 1);
-    let rep = d.representations.values().next().unwrap();
+    assert_eq!(d.devices().len(), 1);
+    let rep = d.representations().values().next().unwrap();
     assert_eq!(rep.items.len(), 4, "made from the four selected lines");
     // Undo is the project's own: the component goes away.
     assert!(t.submit_command("u").is_none());
-    assert!(doc(t).devices.is_empty());
+    assert!(doc(t).devices().is_empty());
 }
 
 #[test]
@@ -193,8 +193,8 @@ fn templates_take_ids_from_the_selection() {
     crate::common::points_at(&mut t, &[(0.0, 0.0), (40.0, 0.0)]);
     assert!(t.submit_command(r#"wire {"points":[[0,0],[40,0]]}"#).is_none());
     let d = doc(&mut t);
-    let (cid, _) = d.wires.iter().next().unwrap();
-    let page = d.page_order[0];
+    let (cid, _) = d.wires().iter().next().unwrap();
+    let page = d.page_order()[0];
     let (item, _) = ecad_model::connectivity::derive::route_on_page(&d, *cid, page).unwrap();
     let p = t.project().unwrap().clone();
     let h = p.read(&mut t.cad.session, |p, _| p.pages[&page].map.item(item).unwrap()).unwrap();
@@ -208,7 +208,7 @@ fn templates_take_ids_from_the_selection() {
     // With the value filled in, the template runs as the typed command would.
     let line = t.command.replace("<cable tag>", "-W1");
     assert!(t.submit_command(&line).is_none(), "{line}");
-    assert_eq!(doc(&mut t).cables.len(), 1);
+    assert_eq!(doc(&mut t).cables().len(), 1);
 }
 
 #[test]
@@ -226,7 +226,7 @@ fn a_read_only_project_is_treated_as_the_typed_command_treats_it() {
     let lines = rectangle(&mut second);
     second.cad.session.set_selection(lines);
     second.tool("ecad.convertcomponent").unwrap();
-    assert_eq!(doc(&mut second).devices.len(), 1, "edits stay in memory, as for typed commands");
+    assert_eq!(doc(&mut second).devices().len(), 1, "edits stay in memory, as for typed commands");
     assert!(second.cad.run("qsave", json!(null)).is_err(), "and still cannot be saved over the other session's file");
     drop(second);
     drop(first);
@@ -267,7 +267,7 @@ fn a_command_waiting_at_a_prompt_is_cancelled_first() {
     t.tool("ecad.convertcomponent").unwrap();
     assert!(t.cad.session.running.is_none(), "LINE was cancelled");
     assert_eq!(head(&mut t), before + 1, "and the component was made");
-    assert_eq!(doc(&mut t).devices.len(), 1);
+    assert_eq!(doc(&mut t).devices().len(), 1);
     // A template is not handed to a running command either.
     assert!(t.submit_command("line").is_none());
     t.tool("ecad.setprop").unwrap();

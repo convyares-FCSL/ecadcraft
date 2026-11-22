@@ -19,7 +19,7 @@ pub struct Device {
 pub(super) fn device_of(doc: &Document, s: RatedSubject, found: &Found, issues: &mut Vec<Issue>) -> Option<Device> {
     if let Some(named) = s.circuit(doc).and_then(|c| c.protected_by()) {
         let fuse = named.position.map(|n| n.to_string());
-        return match doc.devices.contains_key(&named.device).then_some((named.device, fuse)) {
+        return match doc.devices().contains_key(&named.device).then_some((named.device, fuse)) {
             Some((c, fuse)) => {
                 let amps = trace::amps_of(doc, c, fuse.as_deref());
                 let tag = trace::device_words(doc, c, fuse.as_deref());
@@ -78,7 +78,9 @@ mod tests {
         let mut w = Wire::new(ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
         w.protected_by = Some(ProtectedBy { device: gone, position: Some(3) });
         let mut doc = Document::default();
-        doc.wires.insert(c, w);
+        doc.edit_parts(|parts| {
+            parts.wires.insert(c, w);
+        });
         let mut issues = Vec::new();
         assert_eq!(device_of(&doc, RatedSubject::Wire(c), &Found::default(), &mut issues), None);
         assert_eq!(issues, vec![Issue::DeviceMissing(format!("device {}", gone.hex()))]);

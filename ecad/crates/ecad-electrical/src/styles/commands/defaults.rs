@@ -179,7 +179,7 @@ pub enum Target {
 /// # Errors
 /// A level the entry does not allow, the standard level, or a missing target, in words.
 pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: Option<String>) -> Result<Vec<Op>, CmdError> {
-    if level == Level::Standard && doc.standard.is_none() {
+    if level == Level::Standard && doc.standard().is_none() {
         return Err(CmdError::refused(STANDARD_READ_ONLY));
     }
     if !entry.allows(level) {
@@ -192,9 +192,9 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
     };
     match (level, target) {
         (Level::Project, _) => match entry.project {
-            ProjectSource::Property => property(ObjectRef::Project, Some(&doc.display), entry.key.to_string()),
+            ProjectSource::Property => property(ObjectRef::Project, Some(doc.display()), entry.key.to_string()),
             ProjectSource::Settings(_) => {
-                let before = doc.settings.clone();
+                let before = doc.settings().clone();
                 let mut after = before.clone();
                 write_setting(entry, &mut after, value.as_deref())?;
                 Ok(if after == before { Vec::new() } else { vec![Op::SetProjectSettings { before, after }] })
@@ -202,7 +202,7 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
         },
         // Design 072 §5.1: a page's type is its field, changed with `ModifyPage`.
         (Level::Page, Target::Page(pg)) if entry.key == ecad_model::document::sheet::PAGE_TYPE_KEY => {
-            let before = doc.pages.get(&pg).ok_or(CmdError::NotFound(Noun::Object))?;
+            let before = doc.pages().get(&pg).ok_or(CmdError::NotFound(Noun::Object))?;
             let mut after = before.clone();
             after.page_type = match value.as_deref() {
                 Some(v) => Some(ecad_model::StyleRef::parse(v).ok_or_else(|| CmdError::refused(format!("`{v}` is not a page type")))?),
@@ -210,18 +210,18 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
             };
             Ok(if after == *before { Vec::new() } else { vec![Op::ModifyPage { id: pg, before: before.clone(), after }] })
         }
-        (Level::Page, Target::Page(pg)) => property(ObjectRef::Page(pg), doc.pages.get(&pg).map(|p| &p.display), entry.key.to_string()),
+        (Level::Page, Target::Page(pg)) => property(ObjectRef::Page(pg), doc.pages().get(&pg).map(|p| &p.display), entry.key.to_string()),
         (Level::Object, Target::Symbol(rep)) => {
-            let c = match doc.representations.get(&rep).map(|r| r.subject) {
+            let c = match doc.representations().get(&rep).map(|r| r.subject) {
                 Some(ecad_model::Subject::Device(c)) => c,
                 _ => return Err(CmdError::refused(format!("No symbol {}.", rep.hex()))),
             };
-            property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
+            property(ObjectRef::Device(c), doc.devices().get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
         }
-        (Level::Object, Target::Device(c)) => property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), entry.key.to_string()),
+        (Level::Object, Target::Device(c)) => property(ObjectRef::Device(c), doc.devices().get(&c).map(|c| &c.properties), entry.key.to_string()),
         // Design 072 §4.6: a wire's own type is its field, changed with `ModifyWire`.
         (Level::Object, Target::Wire(c)) if entry.key == ecad_model::connectivity::wiring::WIRE_CATEGORY => {
-            let before = doc.wires.get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
+            let before = doc.wires().get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
             let mut after = before.clone();
             after.wire_type = match value.as_deref() {
                 Some(v) => Some(ecad_model::StyleRef::parse(v).ok_or_else(|| CmdError::refused(format!("`{v}` is not a wire type")))?),
@@ -229,10 +229,10 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
             };
             Ok(if after == *before { Vec::new() } else { vec![Op::ModifyWire { id: c, before: before.clone(), after }] })
         }
-        (Level::Object, Target::Wire(c)) => property(ObjectRef::Wire(c), doc.wires.get(&c).map(|c| &c.display), entry.key.to_string()),
+        (Level::Object, Target::Wire(c)) => property(ObjectRef::Wire(c), doc.wires().get(&c).map(|c| &c.display), entry.key.to_string()),
         (Level::Object, _) => Err(CmdError::refused(NEEDS_OBJECT)),
         (Level::Page, _) => Err(CmdError::refused("The page level needs a `page`.")),
-        (Level::Standard, _) => property(ObjectRef::Standard, doc.standard.as_ref().map(|s| &s.values), entry.key.to_string()),
+        (Level::Standard, _) => property(ObjectRef::Standard, doc.standard().map(|s| &s.values), entry.key.to_string()),
     }
 }
 
@@ -365,7 +365,7 @@ pub(crate) fn plan_family(doc: &Document, key: &str, level: Option<&str>, value:
     }
     let ops = match field {
         Field::Prefix => {
-            let before = doc.settings.clone();
+            let before = doc.settings().clone();
             let mut after = before.clone();
             let of = ecad_model::naming::prefix::PrefixOf::Project(symbol.as_str().into());
             crate::devices::set_symbol_prefix(&mut after, of, value.as_deref());
@@ -373,7 +373,7 @@ pub(crate) fn plan_family(doc: &Document, key: &str, level: Option<&str>, value:
         }
         _ => {
             let k = family::family_property(&symbol, field).unwrap_or_default();
-            let before = doc.display.get(&k).cloned();
+            let before = doc.display().get(&k).cloned();
             if before == value { Vec::new() } else { vec![Op::SetProperty { object: ObjectRef::Project, key: k, before, after: value }] }
         }
     };

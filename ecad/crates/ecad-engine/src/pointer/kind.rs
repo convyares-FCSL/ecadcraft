@@ -151,7 +151,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     // Brief 051 (review of #89, 2): a card frame's part stands for the card, through its symbol.
     let h = match map.get(h) {
         Some(Mapped::DeviceReference(r)) if ecad_electrical::plc::draw::is_frame_rep(doc, r) => {
-            doc.representations.get(&r).and_then(|x| x.items.first()).and_then(|i| map.item(*i)).unwrap_or(h)
+            doc.representations().get(&r).and_then(|x| x.items.first()).and_then(|i| map.item(*i)).unwrap_or(h)
         }
         // Lane 072 D: a T's dot stands for the line that ends there.
         Some(Mapped::Tee(r)) => ecad_electrical::wires::routes::route_item(doc, r).and_then(|(_, i, _)| map.item(i)).unwrap_or(h),
@@ -179,7 +179,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.kind = ObjectKind::Text;
             t.representation = Some(r);
             t.handles = vec![h];
-            if let Some(Subject::Device(c)) = doc.representations.get(&r).map(|x| x.subject) {
+            if let Some(Subject::Device(c)) = doc.representations().get(&r).map(|x| x.subject) {
                 t.component = Some(c);
                 t.name = format!("tag of {}", ecad_electrical::devices::tags::tag_words(doc, c));
             } else {
@@ -196,7 +196,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         Some(Mapped::Marker(rep, term)) => match ecad_electrical::terminal_strips::strip_of_connection_point(doc, term) {
             Some(strip) => return connection_point(p, page, t, strip, Some(term)),
             None => {
-                if let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) {
+                if let Some(Subject::Device(c)) = doc.representations().get(&rep).map(|r| r.subject) {
                     return device(p, page, t, c, Some(rep));
                 }
             }
@@ -249,11 +249,11 @@ fn device(p: &Project, page: PageId, mut t: Target, c: DeviceId, rep: Option<Rep
     let map = p.pages.get(&page).map(|v| &v.map);
     // The symbol clicked (its outline), so turning or copying acts on that symbol only.
     t.handles = rep
-        .and_then(|r| doc.representations.get(&r))
+        .and_then(|r| doc.representations().get(&r))
         .map(|r| r.items.iter().filter_map(|i| map.and_then(|m| m.item(*i))).collect())
         .unwrap_or_default();
     t.others = doc.representations_of(Subject::Device(c)).filter(|(_, r)| r.page != page).count();
-    t.drawn = rep.and_then(|r| doc.representations.get(&r)).is_some_and(|r| r.form == ecad_model::Form::Drawn);
+    t.drawn = rep.and_then(|r| doc.representations().get(&r)).is_some_and(|r| r.form == ecad_model::Form::Drawn);
     t
 }
 
@@ -298,7 +298,7 @@ fn cable(p: &Project, page: PageId, mut t: Target, k: CableId) -> Target {
 fn reference(doc: &Document, map: &crate::project::HandleMap, page: PageId, mut t: Target, r: RepresentationId) -> Target {
     t.kind = ObjectKind::Reference;
     t.representation = Some(r);
-    if let Some(rep) = doc.representations.get(&r) {
+    if let Some(rep) = doc.representations().get(&r) {
         match rep.subject {
             Subject::Cable(k) => t.cable = Some(k),
             Subject::Device(c) => t.component = Some(c),

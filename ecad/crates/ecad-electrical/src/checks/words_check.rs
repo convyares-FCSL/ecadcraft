@@ -32,26 +32,26 @@ use crate::defaults::{self, Entry, Kind, Level, ProjectSource};
 /// ```
 pub fn check(doc: &Document) -> Vec<UnknownWord> {
     let mut out = Vec::new();
-    bag(&doc.display, WordPlace::Project, Level::Project, &mut out);
-    if let Some(std) = &doc.standard {
+    bag(doc.display(), WordPlace::Project, Level::Project, &mut out);
+    if let Some(std) = &doc.standard() {
         bag(&std.values, WordPlace::Standard, Level::Standard, &mut out);
     }
-    for (id, p) in &doc.pages {
+    for (id, p) in doc.pages() {
         bag(&p.display, WordPlace::Page(*id), Level::Page, &mut out);
     }
-    for (id, c) in &doc.devices {
+    for (id, c) in doc.devices() {
         bag(&c.properties, WordPlace::Device(*id), Level::Object, &mut out);
         old_kind(&c.properties, WordPlace::Device(*id), &mut out);
     }
-    for (id, c) in &doc.wires {
+    for (id, c) in doc.wires() {
         bag(&c.display, WordPlace::Wire(*id), Level::Object, &mut out);
     }
-    for (id, c) in &doc.cables {
+    for (id, c) in doc.cables() {
         reserved(&c.properties, WordPlace::Cable(*id), &mut out);
     }
     // Design 072 F5: a starter's prefix names a starter of the catalogue (the key's form is read
     // strictly with the file); a project symbol's prefix names a project symbol the project holds.
-    for key in doc.settings.tag_prefixes.keys() {
+    for key in doc.settings().tag_prefixes.keys() {
         let known = match key {
             ecad_model::naming::prefix::PrefixOf::Starter(w) => crate::symbols::catalogue::by_key(w).is_some(),
             ecad_model::naming::prefix::PrefixOf::Project(k) => crate::symbols::project::has_project_key(doc, k),

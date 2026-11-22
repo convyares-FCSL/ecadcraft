@@ -134,7 +134,7 @@ fn modify_wire_changes_values_undoes_and_never_moves_the_ends() {
     let op = Op::ModifyWire { id: w, before: created.clone(), after: after.clone() };
     assert!(matches!(op.inverse(), Op::ModifyWire { .. }));
     l.commit(Author::User, "size", vec![op]).unwrap();
-    let now = l.document().wires.get(&w).unwrap().clone();
+    let now = l.document().wires().get(&w).unwrap().clone();
     assert_eq!(now.size.map(|s| s.to_string()).as_deref(), Some("2.5"));
     // Other ends or another conductor id are another wire: refused.
     let moved = Wire { ends: [b, a], ..now.clone() };
@@ -145,7 +145,7 @@ fn modify_wire_changes_values_undoes_and_never_moves_the_ends() {
     let stale = Op::ModifyWire { id: w, before: created.clone(), after: created.clone() };
     assert!(l.commit(Author::User, "stale", vec![stale]).is_err());
     l.undo(Author::User).unwrap();
-    assert_eq!(l.document().wires.get(&w), Some(&created));
+    assert_eq!(l.document().wires().get(&w), Some(&created));
 }
 
 /// A page with a device of two connection points: the page, and the two points.
@@ -179,21 +179,21 @@ fn routes_are_added_modified_removed_and_undone() {
     // A T: a second route landing on the middle of the first.
     let tee = Route::new(p, vec![Pt::new(5.0, 10.0), Pt::new(5.0, 0.0)], [RouteEnd::Free, RouteEnd::On { route: r1, at: Pt::new(5.0, 0.0) }]);
     l.commit(Author::User, "draw", vec![Op::AddRoute { id: r1, route: ab.clone() }, Op::AddRoute { id: r2, route: tee.clone() }]).unwrap();
-    assert_eq!(l.document().routes.len(), 2);
+    assert_eq!(l.document().routes().len(), 2);
     l.document().check_index().unwrap();
     let mut moved = ab.clone();
     moved.points.insert(1, Pt::new(5.0, -5.0));
     l.commit(Author::User, "move", vec![Op::ModifyRoute { id: r1, before: ab.clone(), after: moved.clone() }]).unwrap();
-    assert_eq!(l.document().routes.get(&r1), Some(&moved));
+    assert_eq!(l.document().routes().get(&r1), Some(&moved));
     // A stale `before` is refused.
     assert!(l.commit(Author::User, "stale", vec![Op::ModifyRoute { id: r1, before: ab.clone(), after: ab.clone() }]).is_err());
     l.undo(Author::User).unwrap();
-    assert_eq!(l.document().routes.get(&r1), Some(&ab));
+    assert_eq!(l.document().routes().get(&r1), Some(&ab));
     // Removing the route a T lands on leaves the T dangling: refused by the invariant check.
     let e = l.commit(Author::User, "erase", vec![Op::RemoveRoute { id: r1, route: ab.clone() }]).unwrap_err();
     assert!(e.to_string().contains("not on its page"), "{e}");
     l.commit(Author::User, "erase", vec![Op::RemoveRoute { id: r2, route: tee }, Op::RemoveRoute { id: r1, route: ab }]).unwrap();
-    assert!(l.document().routes.is_empty());
+    assert!(l.document().routes().is_empty());
     l.document().check_index().unwrap();
 }
 
@@ -223,7 +223,7 @@ fn a_route_is_well_formed_and_lands_on_what_exists() {
     assert!(serde_json::from_value::<Route>(v).is_err(), "an unknown field is a read error");
     // Removing the connection point a route lands on is refused while the route lands there.
     l.commit(Author::User, "draw", vec![Op::AddRoute { id: r, route: ok }]).unwrap();
-    let term = l.document().connection_points.get(&a).cloned().unwrap();
+    let term = l.document().connection_points().get(&a).cloned().unwrap();
     let e = l.commit(Author::User, "rm", vec![Op::RemoveConnectionPoint { id: a, connection_point: term }]).unwrap_err();
     assert!(e.to_string().contains("route"), "{e}");
 }
@@ -267,7 +267,7 @@ fn routes_join_the_points_they_land_on_into_one_net() {
 /// a pair: they are listed in ID order.
 fn wires(l: &Ledger) -> Vec<(NetId, u16, [ConnectionPointId; 2])> {
     let pair = |e: [ConnectionPointId; 2]| if e[0] <= e[1] { e } else { [e[1], e[0]] };
-    let mut v: Vec<_> = l.document().wires.values().map(|w| (w.net, w.net_order, pair(w.ends))).collect();
+    let mut v: Vec<_> = l.document().wires().values().map(|w| (w.net, w.net_order, pair(w.ends))).collect();
     v.sort();
     v
 }
@@ -299,12 +299,12 @@ fn drawing_routes_makes_wires_in_drawing_order_and_a_tee_joins_from_the_nearer_e
     assert_eq!(w.len(), 1);
     let net = w[0].0;
     assert_eq!((w[0].1, w[0].2), (1, [a, b]));
-    let ab_wire = *l.document().wires.keys().next().unwrap();
+    let ab_wire = *l.document().wires().keys().next().unwrap();
     // C onto the middle of A–B, nearer B: 1 = A–B, 2 = B–C.
     let tee = route(p, &[(8.0, 5.0), (8.0, 0.0)], RouteEnd::Point(c), RouteEnd::On { route: r1, at: Pt::new(8.0, 0.0) });
     l.commit(Author::User, "tee", vec![Op::AddRoute { id: r2, route: tee.clone() }]).unwrap();
     assert_eq!(wires(&l), want(vec![(net, 1, [a, b]), (net, 2, [b, c])]));
-    assert!(l.document().wires.contains_key(&ab_wire), "A–B keeps its wire");
+    assert!(l.document().wires().contains_key(&ab_wire), "A–B keeps its wire");
     // D onto the middle of A–B nearer A: A has room, so 3 = A–D.
     let tee2 = route(p, &[(2.0, 5.0), (2.0, 0.0)], RouteEnd::Point(d), RouteEnd::On { route: r1, at: Pt::new(2.0, 0.0) });
     l.commit(Author::User, "tee2", vec![Op::AddRoute { id: r3, route: tee2 }]).unwrap();
@@ -317,7 +317,7 @@ fn drawing_routes_makes_wires_in_drawing_order_and_a_tee_joins_from_the_nearer_e
     let lifted = ecad_model::Route { ends: [RouteEnd::Point(c), RouteEnd::Free], ..tee.clone() };
     l.commit(Author::User, "lift", vec![Op::ModifyRoute { id: r2, before: tee, after: lifted }]).unwrap();
     assert_eq!(wires(&l), want(vec![(net, 1, [a, b])]));
-    assert!(l.document().wires.contains_key(&ab_wire));
+    assert!(l.document().wires().contains_key(&ab_wire));
     // Redrawing A–B through other places on the same points leaves the wires alone.
     let mut bent = ab.clone();
     bent.points.insert(1, Pt::new(5.0, -5.0));
@@ -344,16 +344,16 @@ fn joining_two_nets_keeps_the_bigger_ones_id_and_splitting_gives_the_smaller_a_n
     l.commit(Author::User, "abc", vec![Op::AddRoute { id: r[0], route: line(0.0, a, b) }, Op::AddRoute { id: r[1], route: line(10.0, b, c) }])
         .unwrap();
     l.commit(Author::User, "de", vec![Op::AddRoute { id: r[2], route: line(40.0, d, e) }]).unwrap();
-    let net_of = |l: &Ledger, t: ConnectionPointId| l.document().wires.values().find(|w| w.ends.contains(&t)).map(|w| w.net).unwrap();
+    let net_of = |l: &Ledger, t: ConnectionPointId| l.document().wires().values().find(|w| w.ends.contains(&t)).map(|w| w.net).unwrap();
     let (n1, n2) = (net_of(&l, a), net_of(&l, d));
     assert_ne!(n1, n2);
     assert_eq!(wires(&l).iter().filter(|w| w.0 == n1).count(), 2);
-    let de_conductor = l.document().wires.values().find(|w| w.ends.contains(&d)).unwrap().conductor;
+    let de_conductor = l.document().wires().values().find(|w| w.ends.contains(&d)).unwrap().conductor;
     // C–D joins them: net 1 keeps its id; its order stays, C–D follows, then D–E.
     let cd = line(30.0, c, d);
     l.commit(Author::User, "cd", vec![Op::AddRoute { id: r[3], route: cd.clone() }]).unwrap();
     assert_eq!(wires(&l), want(vec![(n1, 1, [a, b]), (n1, 2, [b, c]), (n1, 3, [c, d]), (n1, 4, [d, e])]));
-    let de = l.document().wires.values().find(|w| w.ends.contains(&e)).unwrap();
+    let de = l.document().wires().values().find(|w| w.ends.contains(&e)).unwrap();
     assert_eq!(de.conductor, de_conductor, "D–E keeps its conductor id");
     // Erasing C–D splits them again: net 1 keeps A–B–C; D–E gets a new net id.
     l.commit(Author::User, "split", vec![Op::RemoveRoute { id: r[3], route: cd }]).unwrap();
@@ -376,7 +376,7 @@ fn a_point_cut_out_of_a_chain_joins_its_neighbours() {
     // A–B–C, then A–C drawn too: no new point, no new wire.
     l.commit(Author::User, "abc", vec![Op::AddRoute { id: r1, route: line(a, b) }, Op::AddRoute { id: r2, route: line(b, c) }]).unwrap();
     l.commit(Author::User, "ac", vec![Op::AddRoute { id: r3, route: line(a, c) }]).unwrap();
-    let net = l.document().wires.values().next().unwrap().net;
+    let net = l.document().wires().values().next().unwrap().net;
     assert_eq!(wires(&l), want(vec![(net, 1, [a, b]), (net, 2, [b, c])]));
     // B's routes go: B leaves, A–C takes its place.
     l.commit(Author::User, "cut b", vec![Op::RemoveRoute { id: r1, route: line(a, b) }, Op::RemoveRoute { id: r2, route: line(b, c) }]).unwrap();
@@ -386,7 +386,7 @@ fn a_point_cut_out_of_a_chain_joins_its_neighbours() {
 
 /// The core of cable `k`, as stored.
 fn core_of(l: &Ledger, k: ecad_model::CableId) -> Vec<ecad_model::CorePosition> {
-    l.document().cables.get(&k).map(|c| c.cores.iter().map(|m| m.position).collect()).unwrap_or_default()
+    l.document().cables().get(&k).map(|c| c.cores.iter().map(|m| m.position).collect()).unwrap_or_default()
 }
 
 #[test]
@@ -409,9 +409,9 @@ fn a_core_on_a_loose_line_moves_onto_the_wire_when_the_second_end_lands() {
     // The second end lands on B: the wire forms and the core moves onto it, keeping its label.
     let landed = ecad_model::Route { ends: [RouteEnd::Point(a), RouteEnd::Point(b)], ..loose.clone() };
     l.commit(Author::User, "land", vec![Op::ModifyRoute { id: r, before: loose.clone(), after: landed.clone() }]).unwrap();
-    let w = *l.document().wires.keys().next().unwrap();
+    let w = *l.document().wires().keys().next().unwrap();
     assert_eq!(core_of(&l, k), vec![CorePosition::Wire(w)]);
-    assert_eq!(l.document().cables.get(&k).unwrap().cores[0].label_str(), Some("1"));
+    assert_eq!(l.document().cables().get(&k).unwrap().cores[0].label_str(), Some("1"));
     assert_eq!(l.document().cables_of(w), vec![k]);
     assert!(l.document().cables_on_route(r).is_empty());
     l.document().check_index().unwrap();
@@ -471,7 +471,7 @@ fn a_point_drawn_into_a_wires_line_splits_the_wire_and_a_new_net_starts_where_it
     // Drawn from B to A: the wire runs B→A, whichever ID is lower.
     let ba = route(p, &[(10.0, 0.0), (0.0, 0.0)], RouteEnd::Point(b), RouteEnd::Point(a));
     l.commit(Author::User, "b-a", vec![Op::AddRoute { id: r1, route: ba.clone() }]).unwrap();
-    let w = l.document().wires.values().next().unwrap().clone();
+    let w = l.document().wires().values().next().unwrap().clone();
     assert_eq!(w.ends, [b, a], "the wire starts where its line was drawn from");
     // A terminal T placed on the line: B–T and T–A, in the wire's place; no B–A left.
     let bt = route(p, &[(10.0, 0.0), (5.0, 0.0)], RouteEnd::Point(b), RouteEnd::Point(t));
@@ -482,7 +482,7 @@ fn a_point_drawn_into_a_wires_line_splits_the_wire_and_a_new_net_starts_where_it
 
 /// The wire numbers of `l`'s wires, in net order.
 fn numbers(l: &Ledger) -> Vec<Option<String>> {
-    let mut v: Vec<_> = l.document().wires.values().map(|w| (w.net, w.net_order, w.number_text().map(str::to_string))).collect();
+    let mut v: Vec<_> = l.document().wires().values().map(|w| (w.net, w.net_order, w.number_text().map(str::to_string))).collect();
     v.sort();
     v.into_iter().map(|x| x.2).collect()
 }
@@ -494,7 +494,7 @@ fn edit(l: &mut Ledger, label: &str, ops: Vec<Op>) {
 
 /// `l`'s project settings with `wiring.number_by` set to `by`, as one edit.
 fn number_by(l: &mut Ledger, by: ecad_model::connectivity::wiring::NumberBy) {
-    let before = l.document().settings.clone();
+    let before = l.document().settings().clone();
     let mut after = before.clone();
     after.wiring.number_by = by;
     edit(l, "number by", vec![Op::SetProjectSettings { before, after }]);
@@ -525,7 +525,7 @@ fn number_by_switches_every_shown_number_between_net_and_conductor_in_one_edit()
     let tx = l.transaction(l.head()).unwrap();
     assert!(tx.ops.iter().any(|o| matches!(o, Op::ModifyWire { .. })), "the numbers change in the settings edit itself");
     let doc = l.document();
-    for (id, w) in &doc.wires {
+    for (id, w) in doc.wires() {
         assert_eq!(wiring::wire_number(doc, *id).as_deref(), w.number_text(), "a wire shows its own number");
     }
     // Undo puts the settings and the numbers back together.
@@ -645,16 +645,16 @@ fn a_cores_purpose_is_kept_apart_from_its_position() {
     .unwrap();
     let landed = ecad_model::Route { ends: [RouteEnd::Point(a), RouteEnd::Point(b)], ..loose.clone() };
     l.commit(Author::User, "land", vec![Op::ModifyRoute { id: r, before: loose, after: landed.clone() }]).unwrap();
-    let w = *l.document().wires.keys().next().unwrap();
-    let cores = l.document().cables.get(&k).unwrap().cores.clone();
+    let w = *l.document().wires().keys().next().unwrap();
+    let cores = l.document().cables().get(&k).unwrap().cores.clone();
     assert_eq!(cores[0], Core { position: CorePosition::Wire(w), ..spare.clone() }, "purpose and colours ride along");
     // Erase both lines: the spare core stays unplaced, the unlabelled in-use core goes.
     l.commit(Author::User, "erase", vec![Op::RemoveRoute { id: r, route: landed }, Op::RemoveRoute { id: r2, route: other }]).unwrap();
-    let cores = l.document().cables.get(&k).unwrap().cores.clone();
+    let cores = l.document().cables().get(&k).unwrap().cores.clone();
     assert_eq!(cores, vec![Core { position: CorePosition::Unplaced, ..spare }]);
     l.document().check_index().unwrap();
     l.undo(Author::User).unwrap();
-    assert_eq!(l.document().cables.get(&k).unwrap().cores.len(), 2, "one undo brings both back");
+    assert_eq!(l.document().cables().get(&k).unwrap().cores.len(), 2, "one undo brings both back");
     // Strict reads: a purpose word ECAD does not know, or a label with spaces at its ends, is refused.
     for (bad, why) in [
         (r#"{"label":null,"colours":null,"purpose":"unused","position":"unplaced"}"#, "purpose"),

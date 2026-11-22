@@ -131,7 +131,7 @@ impl Review {
     /// Fill each row's device description from `doc`.
     pub fn describe(&mut self, doc: &ecad_model::Document) {
         for r in &mut self.rows {
-            if let Some(ecad_model::Subject::Device(c)) = doc.representations.get(&r.rep).map(|x| x.subject) {
+            if let Some(ecad_model::Subject::Device(c)) = doc.representations().get(&r.rep).map(|x| x.subject) {
                 r.description = ecad_electrical::devices::tags::description(doc, c);
             }
         }

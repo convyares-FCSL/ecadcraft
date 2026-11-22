@@ -252,14 +252,14 @@ fn release_with_finalise_is_one_transaction_and_one_undo_takes_back_both() {
     let v = h.s.execute("release", &json!({"provisional": "finalise"})).unwrap();
     assert_eq!(h.head(), head + 1, "{v}");
     let after = h.doc();
-    assert_ne!(after.devices, before.devices, "Finalise numbered the provisional tags");
-    assert_eq!(after.versions.len(), before.versions.len() + 1, "the revision point");
-    assert!(after.project.revisions.iter().any(|r| r.issued));
+    assert_ne!(after.devices(), before.devices(), "Finalise numbered the provisional tags");
+    assert_eq!(after.versions().len(), before.versions().len() + 1, "the revision point");
+    assert!(after.project().revisions.iter().any(|r| r.issued));
     h.s.execute("undoissue", &json!({})).unwrap();
     let undone = h.doc();
-    assert_eq!(undone.devices, before.devices, "one undo took the numbering back too");
-    assert_eq!(undone.versions, before.versions, "and the revision point");
-    assert_eq!(undone.project.revisions, before.project.revisions, "and the issued row");
+    assert_eq!(undone.devices(), before.devices(), "one undo took the numbering back too");
+    assert_eq!(undone.versions(), before.versions(), "and the revision point");
+    assert_eq!(undone.project().revisions, before.project().revisions, "and the issued row");
 }
 
 /// AC 2: with provisional items, no choice is refused before anything is recorded; `"finalise"`
@@ -347,11 +347,11 @@ fn fp1_follows_undo_redo_and_survives_save_and_reopen() {
     let (mut h, path) = project_in(&dir, "D-1001");
     h.run("release", json!({})).unwrap();
     let out = rel(&dir, "B");
-    let released = |h: &mut H| ecad_electrical::releases::revisions::field_of(&h.doc().project, 2, "released");
+    let released = |h: &mut H| ecad_electrical::releases::revisions::field_of(h.doc().project(), 2, "released");
     assert_eq!(released(&mut h).as_deref(), Some("release/Rev B"));
     h.run("undoissue", json!({})).unwrap();
     assert!(released(&mut h).is_none());
-    assert!(!h.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2))));
+    assert!(!h.doc().versions().contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2))));
     assert!(out.join("release.json").exists(), "undo never deletes files");
     // Released again while the folder is there: asked first, nothing recorded.
     let head = h.head();
@@ -369,7 +369,7 @@ fn fp1_follows_undo_redo_and_survives_save_and_reopen() {
     let (project, _) = ProjectHandle::open_file(&mut s, &path, 271).unwrap();
     let mut h2 = H { s, project, trail: Vec::new() };
     let doc = h2.doc();
-    assert_eq!(ecad_electrical::releases::revisions::field_of(&doc.project, 2, "released").as_deref(), Some("release/Rev B"));
+    assert_eq!(ecad_electrical::releases::revisions::field_of(doc.project(), 2, "released").as_deref(), Some("release/Rev B"));
     let row = ecad_electrical::releases::revisions::issued(&doc).into_iter().next().unwrap();
     assert_eq!((row.rev().to_string(), row.released.as_deref()), ("B".to_string(), Some("release/Rev B")));
     // Reopened: the issued revision's check reads its folder, and it is written again with
@@ -460,7 +460,7 @@ fn spaces_and_long_paths() {
     let longest = names(&out).iter().map(|n| out.join(n).to_string_lossy().len()).max().unwrap();
     assert!(longest > 260, "{longest}");
     hashes_match(&out);
-    assert_eq!(ecad_electrical::releases::revisions::field_of(&h.doc().project, 2, "released").as_deref(), Some("release/Rev B"));
+    assert_eq!(ecad_electrical::releases::revisions::field_of(h.doc().project(), 2, "released").as_deref(), Some("release/Rev B"));
     let v = h.run("release", json!({"rev": "B", "existing": "keep-both"})).unwrap();
     assert!(v["folder"].as_str().unwrap().ends_with("Rev B (2)"), "{v}");
     drop(h);

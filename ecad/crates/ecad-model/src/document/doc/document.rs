@@ -22,55 +22,55 @@ use crate::objects::wire::{End, Wire};
 ///
 /// The document also keeps reverse indexes (the private `index` module) for queries such as
 /// [`Document::cables_of`]. They are derived: not serialised, not compared by `==`, and kept up
-/// to date by [`crate::Op::apply`]. Code that edits the public maps directly must call
-/// [`Document::rebuild_index`] before querying.
+/// to date by [`crate::Op::apply`]. The maps are read through accessors (`doc.devices()`); the file reader builds a
+/// document with [`Document::from_parts`].
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(from = "DocumentData")]
 pub struct Document {
-    pub pages: BTreeMap<PageId, Page>,
-    pub page_order: Vec<PageId>,
-    pub layers: BTreeMap<LayerId, Layer>,
-    pub items: BTreeMap<ItemId, Item>,
-    pub devices: BTreeMap<DeviceId, Device>,
-    pub connection_points: BTreeMap<ConnectionPointId, ConnectionPoint>,
-    pub representations: BTreeMap<RepresentationId, Representation>,
-    pub wires: BTreeMap<WireId, Wire>,
-    pub cables: BTreeMap<CableId, Cable>,
+    pub(crate) pages: BTreeMap<PageId, Page>,
+    pub(crate) page_order: Vec<PageId>,
+    pub(crate) layers: BTreeMap<LayerId, Layer>,
+    pub(crate) items: BTreeMap<ItemId, Item>,
+    pub(crate) devices: BTreeMap<DeviceId, Device>,
+    pub(crate) connection_points: BTreeMap<ConnectionPointId, ConnectionPoint>,
+    pub(crate) representations: BTreeMap<RepresentationId, Representation>,
+    pub(crate) wires: BTreeMap<WireId, Wire>,
+    pub(crate) cables: BTreeMap<CableId, Cable>,
     /// The lines drawn on pages (design 072 F31).
-    pub routes: BTreeMap<RouteId, crate::objects::route::Route>,
+    pub(crate) routes: BTreeMap<RouteId, crate::objects::route::Route>,
     /// The drawing aids: continuations and location boxes (design 072 §6.2).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub aids: BTreeMap<crate::naming::id::AidId, crate::objects::aid::Aid>,
+    pub(crate) aids: BTreeMap<crate::naming::id::AidId, crate::objects::aid::Aid>,
     /// The loose parts: panel-only material on the BOM (design 072 §6.4).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub loose_parts: BTreeMap<crate::naming::id::LoosePartId, crate::objects::loose_part::LoosePart>,
+    pub(crate) loose_parts: BTreeMap<crate::naming::id::LoosePartId, crate::objects::loose_part::LoosePart>,
     /// The typed links between devices (design 072 §2.6).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub device_links: BTreeMap<crate::naming::id::LinkId, crate::objects::user::DeviceLink>,
-    pub definitions: BTreeMap<DefinitionId, Definition>,
-    pub settings: ProjectSettings,
+    pub(crate) device_links: BTreeMap<crate::naming::id::LinkId, crate::objects::user::DeviceLink>,
+    pub(crate) definitions: BTreeMap<DefinitionId, Definition>,
+    pub(crate) settings: ProjectSettings,
     /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
     #[serde(with = "crate::document::rev::as_points")]
-    pub versions: BTreeMap<crate::PointName, u64>,
+    pub(crate) versions: BTreeMap<crate::PointName, u64>,
     /// The project's own display bag (brief 019, decision FP1): title, drawing number, customer,
     /// status, default function and location, revisions (`rev.<n>.<field>`) and free ones.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub display: Properties,
+    pub(crate) display: Properties,
     /// The project's own data: the location and function lists (design 072 §5.3).
     #[serde(skip_serializing_if = "crate::document::project::Project::is_empty")]
-    pub project: crate::document::project::Project,
+    pub(crate) project: crate::document::project::Project,
     /// Folders of pages (brief 019, decision FP3).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub folders: BTreeMap<FolderId, Folder>,
+    pub(crate) folders: BTreeMap<FolderId, Folder>,
     /// Every folder once; siblings are ordered as they appear here.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub folder_order: Vec<FolderId>,
+    pub(crate) folder_order: Vec<FolderId>,
     /// The project's standard (brief 050a, FP1); `None` is IEC (built in).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub standard: Option<crate::objects::styles::Standard>,
+    pub(crate) standard: Option<crate::objects::styles::Standard>,
     /// The project layer of style records (brief 050a, FP2).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub styles: crate::objects::styles::StyleCatalogues,
+    pub(crate) styles: crate::objects::styles::StyleCatalogues,
     /// Derived reverse indexes; never serialised.
     #[serde(skip)]
     pub(crate) index: Index,
@@ -228,11 +228,310 @@ impl PartialEq for Document {
     }
 }
 
+/// The stored objects of a [`Document`], taken apart: what the file reader builds a document
+/// from ([`Document::from_parts`]) and what fixtures change ([`Document::edit_parts`]).
+#[derive(Debug, Clone, Default)]
+pub struct DocumentParts {
+    pub pages: BTreeMap<PageId, Page>,
+    pub page_order: Vec<PageId>,
+    pub layers: BTreeMap<LayerId, Layer>,
+    pub items: BTreeMap<ItemId, Item>,
+    pub devices: BTreeMap<DeviceId, Device>,
+    pub connection_points: BTreeMap<ConnectionPointId, ConnectionPoint>,
+    pub representations: BTreeMap<RepresentationId, Representation>,
+    pub wires: BTreeMap<WireId, Wire>,
+    pub cables: BTreeMap<CableId, Cable>,
+    /// The lines drawn on pages (design 072 F31).
+    pub routes: BTreeMap<RouteId, crate::objects::route::Route>,
+    /// The drawing aids: continuations and location boxes (design 072 §6.2).
+    pub aids: BTreeMap<crate::naming::id::AidId, crate::objects::aid::Aid>,
+    /// The loose parts: panel-only material on the BOM (design 072 §6.4).
+    pub loose_parts: BTreeMap<crate::naming::id::LoosePartId, crate::objects::loose_part::LoosePart>,
+    /// The typed links between devices (design 072 §2.6).
+    pub device_links: BTreeMap<crate::naming::id::LinkId, crate::objects::user::DeviceLink>,
+    pub definitions: BTreeMap<DefinitionId, Definition>,
+    pub settings: ProjectSettings,
+    /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
+    pub versions: BTreeMap<crate::PointName, u64>,
+    /// The project's own display bag (brief 019, decision FP1): title, drawing number, customer,
+    /// status, default function and location, revisions (`rev.<n>.<field>`) and free ones.
+    pub display: Properties,
+    /// The project's own data: the location and function lists (design 072 §5.3).
+    pub project: crate::document::project::Project,
+    /// Folders of pages (brief 019, decision FP3).
+    pub folders: BTreeMap<FolderId, Folder>,
+    /// Every folder once; siblings are ordered as they appear here.
+    pub folder_order: Vec<FolderId>,
+    /// The project's standard (brief 050a, FP1); `None` is IEC (built in).
+    pub standard: Option<crate::objects::styles::Standard>,
+    /// The project layer of style records (brief 050a, FP2).
+    pub styles: crate::objects::styles::StyleCatalogues,
+}
+
 impl Document {
+    /// Build a document from its stored objects and recompute its indexes.
+    ///
+    /// # Semantics
+    /// Runs [`Document::rebuild_index`] only, not [`Document::check`], so a file with a broken
+    /// state can still be loaded and reported.
+    #[must_use]
+    pub fn from_parts(parts: DocumentParts) -> Document {
+        let DocumentParts {
+            pages,
+            page_order,
+            layers,
+            items,
+            devices,
+            connection_points,
+            representations,
+            wires,
+            cables,
+            routes,
+            aids,
+            loose_parts,
+            device_links,
+            definitions,
+            settings,
+            versions,
+            display,
+            project,
+            folders,
+            folder_order,
+            standard,
+            styles,
+        } = parts;
+        let mut doc = Document {
+            pages,
+            page_order,
+            layers,
+            items,
+            devices,
+            connection_points,
+            representations,
+            wires,
+            cables,
+            routes,
+            aids,
+            loose_parts,
+            device_links,
+            definitions,
+            settings,
+            versions,
+            display,
+            project,
+            folders,
+            folder_order,
+            standard,
+            styles,
+            index: Index::default(),
+            conn: crate::connectivity::Connectivity::default(),
+        };
+        doc.rebuild_index();
+        doc
+    }
+
+    /// Take the document apart into its stored objects.
+    #[must_use]
+    pub fn into_parts(self) -> DocumentParts {
+        let Document {
+            pages,
+            page_order,
+            layers,
+            items,
+            devices,
+            connection_points,
+            representations,
+            wires,
+            cables,
+            routes,
+            aids,
+            loose_parts,
+            device_links,
+            definitions,
+            settings,
+            versions,
+            display,
+            project,
+            folders,
+            folder_order,
+            standard,
+            styles,
+            index: _,
+            conn: _,
+        } = self;
+        DocumentParts {
+            pages,
+            page_order,
+            layers,
+            items,
+            devices,
+            connection_points,
+            representations,
+            wires,
+            cables,
+            routes,
+            aids,
+            loose_parts,
+            device_links,
+            definitions,
+            settings,
+            versions,
+            display,
+            project,
+            folders,
+            folder_order,
+            standard,
+            styles,
+        }
+    }
+
+    /// Change the stored objects directly, then recompute the indexes.
+    ///
+    /// For test fixtures and the file reader. Production changes go through ops and the ledger,
+    /// which keep the history, the checks and the indexes.
+    pub fn edit_parts<R>(&mut self, edit: impl FnOnce(&mut DocumentParts) -> R) -> R {
+        let mut parts = std::mem::take(self).into_parts();
+        let out = edit(&mut parts);
+        *self = Document::from_parts(parts);
+        out
+    }
+
+    /// The `pages` of the document.
+    #[must_use]
+    pub fn pages(&self) -> &BTreeMap<PageId, Page> {
+        &self.pages
+    }
+
+    /// The `page_order` of the document.
+    #[must_use]
+    pub fn page_order(&self) -> &[PageId] {
+        &self.page_order
+    }
+
+    /// The `layers` of the document.
+    #[must_use]
+    pub fn layers(&self) -> &BTreeMap<LayerId, Layer> {
+        &self.layers
+    }
+
+    /// The `items` of the document.
+    #[must_use]
+    pub fn items(&self) -> &BTreeMap<ItemId, Item> {
+        &self.items
+    }
+
+    /// The `devices` of the document.
+    #[must_use]
+    pub fn devices(&self) -> &BTreeMap<DeviceId, Device> {
+        &self.devices
+    }
+
+    /// The `connection_points` of the document.
+    #[must_use]
+    pub fn connection_points(&self) -> &BTreeMap<ConnectionPointId, ConnectionPoint> {
+        &self.connection_points
+    }
+
+    /// The `representations` of the document.
+    #[must_use]
+    pub fn representations(&self) -> &BTreeMap<RepresentationId, Representation> {
+        &self.representations
+    }
+
+    /// The `wires` of the document.
+    #[must_use]
+    pub fn wires(&self) -> &BTreeMap<WireId, Wire> {
+        &self.wires
+    }
+
+    /// The `cables` of the document.
+    #[must_use]
+    pub fn cables(&self) -> &BTreeMap<CableId, Cable> {
+        &self.cables
+    }
+
+    /// The `routes` of the document.
+    #[must_use]
+    pub fn routes(&self) -> &BTreeMap<RouteId, crate::objects::route::Route> {
+        &self.routes
+    }
+
+    /// The `aids` of the document.
+    #[must_use]
+    pub fn aids(&self) -> &BTreeMap<crate::naming::id::AidId, crate::objects::aid::Aid> {
+        &self.aids
+    }
+
+    /// The `loose_parts` of the document.
+    #[must_use]
+    pub fn loose_parts(&self) -> &BTreeMap<crate::naming::id::LoosePartId, crate::objects::loose_part::LoosePart> {
+        &self.loose_parts
+    }
+
+    /// The `device_links` of the document.
+    #[must_use]
+    pub fn device_links(&self) -> &BTreeMap<crate::naming::id::LinkId, crate::objects::user::DeviceLink> {
+        &self.device_links
+    }
+
+    /// The `definitions` of the document.
+    #[must_use]
+    pub fn definitions(&self) -> &BTreeMap<DefinitionId, Definition> {
+        &self.definitions
+    }
+
+    /// The `settings` of the document.
+    #[must_use]
+    pub fn settings(&self) -> &ProjectSettings {
+        &self.settings
+    }
+
+    /// The `versions` of the document.
+    #[must_use]
+    pub fn versions(&self) -> &BTreeMap<crate::PointName, u64> {
+        &self.versions
+    }
+
+    /// The `display` of the document.
+    #[must_use]
+    pub fn display(&self) -> &Properties {
+        &self.display
+    }
+
+    /// The `project` of the document.
+    #[must_use]
+    pub fn project(&self) -> &crate::document::project::Project {
+        &self.project
+    }
+
+    /// The `folders` of the document.
+    #[must_use]
+    pub fn folders(&self) -> &BTreeMap<FolderId, Folder> {
+        &self.folders
+    }
+
+    /// The `folder_order` of the document.
+    #[must_use]
+    pub fn folder_order(&self) -> &[FolderId] {
+        &self.folder_order
+    }
+
+    /// The `standard` of the document.
+    #[must_use]
+    pub fn standard(&self) -> Option<&crate::objects::styles::Standard> {
+        self.standard.as_ref()
+    }
+
+    /// The `styles` of the document.
+    #[must_use]
+    pub fn styles(&self) -> &crate::objects::styles::StyleCatalogues {
+        &self.styles
+    }
+
     /// Recompute the reverse indexes from the stored objects.
     ///
     /// # Semantics
-    /// Needed only after changing the public maps directly; [`crate::Op::apply`] keeps the index
+    /// Needed only after changing the stored objects without [`Document::edit_parts`]; [`crate::Op::apply`] keeps the index
     /// current on its own.
     pub fn rebuild_index(&mut self) {
         self.index = Index::build(self);

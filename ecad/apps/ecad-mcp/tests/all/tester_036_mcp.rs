@@ -41,7 +41,7 @@ fn reads(c: &mut Client) -> Value {
 /// The strip's terminal IDs by (position label, level key).
 fn level(c: &mut Client, strip: &str, pos: &str, key: &str) -> String {
     let d = c.doc();
-    d.connection_points
+    d.connection_points()
         .iter()
         .find(|(_, t)| {
             t.owner.subject_hex() == strip && t.label.as_deref() == Some(pos) && t.key.as_ref().map(ToString::to_string).as_deref() == Some(key)

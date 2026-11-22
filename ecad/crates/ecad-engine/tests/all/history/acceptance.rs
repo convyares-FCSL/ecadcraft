@@ -64,8 +64,12 @@ pub(super) fn verify(path: &str) {
 /// Without versions (history) and revision fields: what Restore compares.
 fn restorable(d: &Document) -> Document {
     let mut d = d.clone();
-    d.versions.clear();
-    d.project.revisions.clear();
+    d.edit_parts(|parts| {
+        parts.versions.clear();
+    });
+    d.edit_parts(|parts| {
+        parts.project.revisions.clear();
+    });
     d
 }
 
@@ -125,7 +129,7 @@ fn branch_from_an_old_version_with_unsaved_edits_saves_them_on_main_and_starts_a
     let r = raw(&mut h, "branch", json!({"name": "From V1", "from": {"version": "V1"}})).unwrap();
     assert_eq!(r["switched"], json!(true), "{r}");
     assert_eq!(restorable(&h.doc()), restorable(&at_v1), "the branch starts at V1's state");
-    assert!(!h.doc().wires.is_empty());
+    assert!(!h.doc().wires().is_empty());
     assert!(!h.p(|p| p.unsaved()), "nothing unsaved right after switching");
     // The parent is untouched and kept its unsaved edits (they were saved on main first).
     raw(&mut h, "switchbranch", json!({"branch": "main"})).unwrap();
@@ -252,15 +256,15 @@ fn restore_is_one_undoable_step_that_keeps_versions_and_revision_fields() {
     h.run("issuerevision", json!({"rev": "A", "description": "first issue", "drawn": "CV"})).unwrap();
     wire(&mut h, 30.0);
     let live = h.doc();
-    let rev_keys = live.project.revisions.clone();
+    let rev_keys = live.project().revisions.clone();
     assert!(!rev_keys.is_empty(), "Rev A wrote a revision row");
     let log_len = h.p(|p| p.ledger.full_log().unwrap().len());
     let r = h.run("restore", json!({"version": "Before"})).unwrap();
     assert!(r["objects"].as_u64().unwrap() >= 3, "{r}");
     let after = h.doc();
     assert_eq!(restorable(&after), restorable(&before), "the state equals the version's");
-    assert_eq!(after.versions, live.versions, "version names untouched (Before and Rev A)");
-    assert_eq!(after.project.revisions, rev_keys, "revision rows untouched");
+    assert_eq!(after.versions(), live.versions(), "version names untouched (Before and Rev A)");
+    assert_eq!(after.project().revisions, rev_keys, "revision rows untouched");
     assert_eq!(h.p(|p| p.ledger.full_log().unwrap().len()), log_len + 1, "one transaction, history intact");
     h.run("u", Value::Null).unwrap();
     assert_eq!(h.doc(), live, "undo brings everything back");

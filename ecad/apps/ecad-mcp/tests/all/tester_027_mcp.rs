@@ -55,7 +55,7 @@ fn rev_b() -> ecad_model::PointName {
 fn versions_on_disk(path: &str) -> Vec<ecad_model::PointName> {
     let (s, _) = EcadMcp::open(path, Options { write: false, agent: None }).unwrap();
     let mut r = Client::new(s);
-    r.doc().versions.keys().cloned().collect()
+    r.doc().versions().keys().cloned().collect()
 }
 
 /// AC 2 and AC 6 together: 026's finalise choice through MCP. `issuerevision {provisional:
@@ -83,7 +83,7 @@ fn a_release_taken_back_by_the_cap_is_not_left_saved_on_disk() {
     let replies = batch(&mut c, vec![exec_call(1, "wire", json!({"points": [[0, 40], [60, 40]]})), exec_call(2, "release", json!({}))]);
     assert!(!is_error(&replies[0]), "{}", replies[0]);
     let taken_back = is_error(&replies[1]);
-    let in_memory = c.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2)));
+    let in_memory = c.doc().versions().contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2)));
     let on_disk = versions_on_disk(&path).contains(&rev_b());
     assert_eq!(in_memory, !taken_back, "{}", replies[1]);
     assert_eq!(on_disk, in_memory, "file on disk vs memory after: {}", replies[1]);
@@ -96,7 +96,7 @@ fn a_release_with_finalise_is_never_left_half_taken_back() {
     let (mut c, path) = project(&dir, true);
     let r = c.call("execute", json!({"command": "release", "params": {"provisional": "finalise"}}));
     let refused = r["isError"] == json!(true);
-    let in_memory = c.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2)));
+    let in_memory = c.doc().versions().contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2)));
     let on_disk = versions_on_disk(&path).contains(&rev_b());
     assert_eq!(in_memory, !refused, "{r}");
     assert_eq!(on_disk, in_memory, "file on disk vs memory: {r}");
@@ -115,7 +115,7 @@ fn with_writes_off_odd_rev_text_records_nothing() {
     for rev in ["", " ", " B ", "b", "B", " a "] {
         let _ = r.call("execute", json!({"command": "release", "params": {"rev": rev}}));
         assert_eq!(r.log(), before, "rev {rev:?}");
-        assert!(!r.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2))), "rev {rev:?}");
+        assert!(!r.doc().versions().contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2))), "rev {rev:?}");
     }
     // Nothing named Rev B on disk either.
     assert!(!root(&dir).join("release").join("Rev B").exists());

@@ -14,11 +14,17 @@ fn doc() -> Document {
 #[test]
 fn known_words_pass_and_unknown_ones_are_named() {
     let mut d = doc();
-    d.display.insert("text.tag.show".into(), "first".into());
+    d.edit_parts(|parts| {
+        parts.display.insert("text.tag.show".into(), "first".into());
+    });
     assert!(check(&d).is_empty(), "a known word passes");
-    d.display.insert("text.tag.show".into(), " FIRST ".into());
+    d.edit_parts(|parts| {
+        parts.display.insert("text.tag.show".into(), " FIRST ".into());
+    });
     assert!(check(&d).is_empty(), "case and spaces are read as today");
-    d.display.insert("text.tag.show".into(), "maybe".into());
+    d.edit_parts(|parts| {
+        parts.display.insert("text.tag.show".into(), "maybe".into());
+    });
     let found = check(&d);
     assert_eq!(found.len(), 1);
     let text = found[0].to_string();
@@ -34,7 +40,9 @@ fn an_old_style_cable_holding_its_tag_or_description_in_its_bag_is_named() {
     for key in ["tag", "description"] {
         cable.properties.insert(key.into(), "x".into());
     }
-    d.cables.insert(c, cable);
+    d.edit_parts(|parts| {
+        parts.cables.insert(c, cable);
+    });
     let found = check(&d);
     let keys: Vec<&str> = found
         .iter()
@@ -52,7 +60,9 @@ fn a_stored_junction_is_an_unknown_kind() {
     let j = DeviceId(4);
     let mut junction = Device::default();
     junction.properties.insert("kind".into(), "junction".into());
-    d.devices.insert(j, junction);
+    d.edit_parts(|parts| {
+        parts.devices.insert(j, junction);
+    });
     let found = check(&d);
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].place(), WordPlace::Device(j));
@@ -63,8 +73,12 @@ fn a_stored_junction_is_an_unknown_kind() {
 #[test]
 fn values_that_are_not_words_are_left_to_their_readers() {
     let mut d = doc();
-    d.display.insert("text.tag.height".into(), "huge".into());
-    d.display.insert("my_own_field".into(), "anything".into());
+    d.edit_parts(|parts| {
+        parts.display.insert("text.tag.height".into(), "huge".into());
+    });
+    d.edit_parts(|parts| {
+        parts.display.insert("my_own_field".into(), "anything".into());
+    });
     assert!(check(&d).is_empty());
 }
 
@@ -72,16 +86,24 @@ fn values_that_are_not_words_are_left_to_their_readers() {
 fn every_level_is_checked() {
     let mut d = doc();
     let page = PageId(1);
-    d.pages.insert(page, ecad_model::Page::titled("p").unwrap());
-    if let Some(p) = d.pages.get_mut(&page) {
-        p.display.insert("text.tag.show".into(), "sometimes".into());
-    }
+    d.edit_parts(|parts| {
+        parts.pages.insert(page, ecad_model::Page::titled("p").unwrap());
+    });
+    d.edit_parts(|parts| {
+        if let Some(p) = parts.pages.get_mut(&page) {
+            p.display.insert("text.tag.show".into(), "sometimes".into());
+        }
+    });
     let c = DeviceId(2);
-    d.devices.insert(c, Device::default());
+    d.edit_parts(|parts| {
+        parts.devices.insert(c, Device::default());
+    });
     let rep = RepresentationId(0xab);
-    if let Some(comp) = d.devices.get_mut(&c) {
-        comp.properties.insert(defaults::symbol_key("text.tag.show", rep), "never".into());
-    }
+    d.edit_parts(|parts| {
+        if let Some(comp) = parts.devices.get_mut(&c) {
+            comp.properties.insert(defaults::symbol_key("text.tag.show", rep), "never".into());
+        }
+    });
     let places: Vec<WordPlace> = check(&d).iter().map(UnknownWord::place).collect();
     assert_eq!(places, [WordPlace::Page(page), WordPlace::Device(c)]);
 }
@@ -90,9 +112,13 @@ fn every_level_is_checked() {
 fn tag_prefixes_name_built_in_symbols() {
     let mut d = doc();
     let q = ecad_model::naming::prefix::TagPrefix::typed("Q").unwrap();
-    d.settings.tag_prefixes.insert(ecad_model::naming::prefix::PrefixOf::Starter("nosuch".into()), q.clone());
+    d.edit_parts(|parts| {
+        parts.settings.tag_prefixes.insert(ecad_model::naming::prefix::PrefixOf::Starter("nosuch".into()), q.clone());
+    });
     // A project symbol's prefix names a project symbol the project holds: none here.
-    d.settings.tag_prefixes.insert(ecad_model::naming::prefix::PrefixOf::Project("valve-x".into()), q);
+    d.edit_parts(|parts| {
+        parts.settings.tag_prefixes.insert(ecad_model::naming::prefix::PrefixOf::Project("valve-x".into()), q);
+    });
     let found = check(&d);
     assert_eq!(found.len(), 2);
     assert!(found.iter().any(|f| f.to_string().contains("tag_prefixes") && f.to_string().contains("starter:nosuch")));

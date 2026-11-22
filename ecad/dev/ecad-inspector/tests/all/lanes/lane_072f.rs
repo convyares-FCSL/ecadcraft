@@ -100,8 +100,8 @@ fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
     let mut l = history();
     let mut ids = IdAllocator::seeded(0x72f2);
     let (a, t, i, r): (AidId, ConnectionPointId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let page = *l.document().page_order.first().unwrap();
-    let layer = *l.document().layers.keys().next().unwrap();
+    let page = *l.document().page_order().first().unwrap();
+    let layer = *l.document().layers().keys().next().unwrap();
     let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let named = |n: &str| Aid::Continuation { name: Some(ContinuationName::new(n).unwrap()), caption: None };
     l.commit(
@@ -161,8 +161,8 @@ fn a_location_box_aid_and_its_edit_are_shown_raw_and_readable() {
     let mut l = history();
     let mut ids = IdAllocator::seeded(0x72f3);
     let (a, i, r): (AidId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let page = *l.document().page_order.first().unwrap();
-    let layer = *l.document().layers.keys().next().unwrap();
+    let page = *l.document().page_order().first().unwrap();
+    let layer = *l.document().layers().keys().next().unwrap();
     let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "DASHED".into(), lineweight: 25 };
     let outline = vec![Pt::new(0.0, 0.0), Pt::new(40.0, 0.0), Pt::new(40.0, 30.0), Pt::new(0.0, 30.0)];
     let boxed = Aid::Box(LocationBox { location: Some(LocationId(0xc1)), ..LocationBox::default() });

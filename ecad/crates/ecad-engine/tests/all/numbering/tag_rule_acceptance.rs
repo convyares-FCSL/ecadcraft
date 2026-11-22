@@ -88,7 +88,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
     let r = s.execute("cableadd", &json!({"conductors": [wire.hex()]})).unwrap();
     let cable = r["cable"].as_str().unwrap().to_string();
     let tag =
-        project.read(&mut s, |p, _| p.ledger.document().cables.iter().find(|(id, _)| id.hex() == cable).and_then(|(_, c)| c.tag_shown())).unwrap();
+        project.read(&mut s, |p, _| p.ledger.document().cables().iter().find(|(id, _)| id.hex() == cable).and_then(|(_, c)| c.tag_shown())).unwrap();
     assert_eq!(tag.as_deref(), Some("-W03"), "-W02 was used before the snapshot");
     while !s.docs.is_empty() {
         s.execute("close", &json!({"index": 0})).unwrap();

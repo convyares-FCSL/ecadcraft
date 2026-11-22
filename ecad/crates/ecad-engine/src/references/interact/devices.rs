@@ -24,7 +24,7 @@ fn table_named(p: &Project, m: Mapped) -> Option<DeviceId> {
         Mapped::Item(i) => doc.representation_of_item(i)?.0,
         _ => return None,
     };
-    let Subject::Device(c) = doc.representations.get(&rep)?.subject else { return None };
+    let Subject::Device(c) = doc.representations().get(&rep)?.subject else { return None };
     (ecad_electrical::references::devices::classify::device(doc, c).head == Some(rep)).then_some(c)
 }
 
@@ -43,7 +43,7 @@ pub(crate) fn device_source(p: &Project, map: &crate::project::HandleMap, h: Han
     let target = match (m, class) {
         (Mapped::DeviceReference(_), ecad_electrical::references::devices::classify::Class::Head) => {
             let (_, i) = map.device_reference_part(h)?;
-            let Subject::Device(c) = doc.representations.get(&rep)?.subject else { return None };
+            let Subject::Device(c) = doc.representations().get(&rep)?.subject else { return None };
             let dev = ecad_electrical::references::devices::classify::device(doc, c);
             let mut places = ecad_electrical::references::devices::places::Places::new(doc);
             let t = crate::references::draw::devices::table(doc, &mut places, &dev)?;

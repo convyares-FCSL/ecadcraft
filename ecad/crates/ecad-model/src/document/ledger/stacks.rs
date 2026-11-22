@@ -84,9 +84,6 @@ pub(super) fn stacks(log: &[Transaction]) -> Result<Stacks> {
     Ok(s)
 }
 
-/// Where a ledger opened from a snapshot reads the history before its base (brief 021): a
-/// project file's store. Reads only; never changes the file.
-
 /// The whole undo and redo stacks after transaction `seq`, from the kinds of every transaction
 /// up to it.
 pub(super) fn stacks_from<H: History + ?Sized>(h: &H, seq: u64) -> Result<(Vec<(u64, TxId)>, Vec<(u64, TxId)>)> {

@@ -24,8 +24,8 @@ const NO_ROUTE: &str = "no such wire";
 /// # Errors
 /// No such route or connection point; the point is not shown on the route's page.
 pub fn connect(doc: &Document, r: RouteId, end: End, t: ConnectionPointId) -> Result<Vec<Op>, CmdError> {
-    let page: PageId = doc.routes.get(&r).ok_or(CmdError::refused(NO_ROUTE))?.page;
-    if !doc.connection_points.contains_key(&t) {
+    let page: PageId = doc.routes().get(&r).ok_or(CmdError::refused(NO_ROUTE))?.page;
+    if !doc.connection_points().contains_key(&t) {
         return Err(CmdError::refused("no such connection point"));
     }
     let at = ecad_model::connectivity::derive::connection_point_position(doc, page, t)
@@ -52,7 +52,7 @@ pub fn connect(doc: &Document, r: RouteId, end: End, t: ConnectionPointId) -> Re
 /// # Errors
 /// No such route; that end is not on a connection point.
 pub fn disconnect(doc: &Document, r: RouteId, end: End) -> Result<Vec<Op>, CmdError> {
-    let route = doc.routes.get(&r).ok_or(CmdError::refused(NO_ROUTE))?;
+    let route = doc.routes().get(&r).ok_or(CmdError::refused(NO_ROUTE))?;
     if route.ends.get(end_index(end)).and_then(|e| e.point()).is_none() {
         return Err(CmdError::refused("that end is not connected"));
     }

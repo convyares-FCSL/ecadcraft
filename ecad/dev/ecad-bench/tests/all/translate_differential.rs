@@ -85,7 +85,7 @@ fn page_state(project: &ProjectHandle, s: &mut Session, page: PageId) -> Page {
                     Subject::Device(_) if r.items.first() == Some(&item) => symbols.push(*h),
                     // A conductor's drawing is its route's (design 072 F31).
                     Subject::Route(_) => {
-                        if let Some(ItemKind::Primitive(prim)) = doc.items.get(&item).map(|i| &i.kind)
+                        if let Some(ItemKind::Primitive(prim)) = doc.items().get(&item).map(|i| &i.kind)
                             && let Some((a, b)) = prim.path_ends()
                         {
                             routes.push((*h, a, b));

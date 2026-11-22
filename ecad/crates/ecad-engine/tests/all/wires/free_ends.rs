@@ -24,7 +24,7 @@ fn point(h: &mut H, at: (f64, f64)) -> ConnectionPointId {
 /// The only member's position of cable `k`.
 fn core_position(h: &mut H, k: CableId) -> CorePosition {
     let doc = h.doc();
-    let members = &doc.cables[&k].cores;
+    let members = &doc.cables()[&k].cores;
     assert_eq!(members.len(), 1, "one core: {members:?}");
     members[0].position
 }
@@ -45,8 +45,8 @@ fn a_line_into_free_space_has_no_wire_and_a_no_wire_yet_row() {
     let page = h.first_page();
     let (_, route) = loose_line(&mut h);
     let doc = h.doc();
-    assert!(doc.wires.is_empty(), "no wire");
-    assert!(doc.routes.contains_key(&route), "the line is a route");
+    assert!(doc.wires().is_empty(), "no wire");
+    assert!(doc.routes().contains_key(&route), "the line is a route");
     let rows = no_wire_yet(&mut h);
     assert_eq!(rows.len(), 1, "{rows:?}");
     let row = &rows[0];
@@ -77,8 +77,8 @@ fn a_slashed_loose_line_gets_its_wire_when_extended_to_a_point() {
     let v = h.run("wire", json!({"points": [[60, 0], [120, 0]]})).unwrap();
     assert_eq!(h.head(), head + 1, "one commit");
     let doc = h.doc();
-    assert_eq!(doc.wires.len(), 1, "the wire forms: {v}");
-    let (&w, wire): (&WireId, _) = doc.wires.iter().next().unwrap();
+    assert_eq!(doc.wires().len(), 1, "the wire forms: {v}");
+    let (&w, wire): (&WireId, _) = doc.wires().iter().next().unwrap();
     let mut ends = wire.ends;
     ends.sort();
     let mut want = [a, b];
@@ -90,7 +90,7 @@ fn a_slashed_loose_line_gets_its_wire_when_extended_to_a_point() {
 
     h.cmdline("u");
     assert!(h.doc() == before, "one undo puts the line and the core back");
-    assert!(h.doc().wires.is_empty());
+    assert!(h.doc().wires().is_empty());
     assert_eq!(core_position(&mut h, k), CorePosition::Route { route, landed: Some(a) });
     assert_eq!(no_wire_yet(&mut h).len(), 1);
     h.check();
@@ -127,7 +127,7 @@ fn continued(seed: u64) -> Continued {
 #[test]
 fn cablecontinue_of_a_loose_line_keeps_the_core_on_the_line_until_it_connects() {
     let mut c = continued(SEED + 2);
-    assert!(c.h.doc().wires.is_empty(), "no wire yet: {}", c.v);
+    assert!(c.h.doc().wires().is_empty(), "no wire yet: {}", c.v);
     assert_eq!(c.v["routes"].as_array().map(Vec::len), Some(1), "one stub: {}", c.v);
     assert_eq!(core_position(&mut c.h, c.cable), CorePosition::Route { route: c.line, landed: Some(c.a) });
     c.h.check();
@@ -135,8 +135,8 @@ fn cablecontinue_of_a_loose_line_keeps_the_core_on_the_line_until_it_connects() 
     let b = point(&mut c.h, (120.0, 0.0));
     c.h.run("wire", json!({"points": [[60, 0], [120, 0]]})).unwrap();
     let doc = c.h.doc();
-    assert_eq!(doc.wires.len(), 1, "the wire forms");
-    let (&w, wire) = doc.wires.iter().next().unwrap();
+    assert_eq!(doc.wires().len(), 1, "the wire forms");
+    let (&w, wire) = doc.wires().iter().next().unwrap();
     assert!(wire.ends.contains(&c.a) && wire.ends.contains(&b));
     assert_eq!(core_position(&mut c.h, c.cable), CorePosition::Wire(w));
     c.h.check();
@@ -151,8 +151,8 @@ fn cablecontinue_across_two_pages_gives_one_wire_and_one_net() {
     let stub = c.v["routes"][0].clone();
     c.h.run("connect", json!({"route": stub["route"], "end": stub["free_end"], "connection_point": b.hex()})).unwrap();
     let doc = c.h.doc();
-    assert_eq!(doc.wires.len(), 1, "one wire across the pages");
-    let (&w, wire) = doc.wires.iter().next().unwrap();
+    assert_eq!(doc.wires().len(), 1, "one wire across the pages");
+    let (&w, wire) = doc.wires().iter().next().unwrap();
     assert!(wire.ends.contains(&c.a) && wire.ends.contains(&b), "from the first page's point to the second's");
     let pages = ecad_electrical::wires::routes::wire_pages(&doc, w);
     assert!(pages.contains(&c.pages[0]) && pages.contains(&c.pages[1]), "drawn on both pages: {pages:?}");
@@ -227,7 +227,7 @@ fn a_fixed_device_in_a_box_of_another_location_is_tied_to_multiple_locations() {
     assert!(tied(&mut h).is_empty());
     // Typed: +CP1, fixed. The contact is in +FIELD: one row per placed symbol, one message.
     h.run("setlocation", json!({"component": k.hex(), "aspect": "location", "value": "+CP1"})).unwrap();
-    assert!(matches!(h.doc().devices[&k].location, ecad_model::document::book::Place::Manual(_)), "typing sets by hand");
+    assert!(matches!(h.doc().devices()[&k].location, ecad_model::document::book::Place::Manual(_)), "typing sets by hand");
     let rows = tied(&mut h);
     let pages: std::collections::BTreeSet<PageId> = rows.iter().filter_map(|r| r.page).collect();
     assert_eq!(pages, [p105, p110].into_iter().collect(), "{rows:?}");
@@ -250,7 +250,7 @@ fn continuation(h: &mut H, at: (f64, f64), name: &str) -> ecad_model::AidId {
 fn wire_ends(h: &mut H) -> Vec<[ConnectionPointId; 2]> {
     let mut out: Vec<[ConnectionPointId; 2]> = h
         .doc()
-        .wires
+        .wires()
         .values()
         .map(|w| {
             let mut e = w.ends;
@@ -272,7 +272,7 @@ fn a_wire_runs_through_a_continuation_pair_from_device_point_to_device_point() {
     let a = point(&mut h, (0.0, 0.0));
     continuation(&mut h, (50.0, 0.0), "T1");
     h.run("wire", json!({"points": [[0, 0], [50, 0]]})).unwrap();
-    assert!(h.doc().wires.is_empty(), "a lonely continuation carries no wire");
+    assert!(h.doc().wires().is_empty(), "a lonely continuation carries no wire");
     let p2: PageId = id(&h.run("newpage", json!({"title": "Two"})).unwrap(), "page");
     h.activate(p2);
     let k2 = continuation(&mut h, (0.0, 0.0), "T1");
@@ -285,7 +285,7 @@ fn a_wire_runs_through_a_continuation_pair_from_device_point_to_device_point() {
     let t2 = doc.connection_points_of(k2).map(|(t, _)| t).next().unwrap();
     assert_eq!(doc.named_points(t2).map(|g| g.len()), Some(2), "the pair's two points");
     assert!(doc.ends_at(t2).is_empty(), "no wire ends at a continuation");
-    let w: WireId = *doc.wires.keys().next().unwrap();
+    let w: WireId = *doc.wires().keys().next().unwrap();
     assert!(
         ecad_model::connectivity::derive::route_on_page(&doc, w, p1).is_some()
             && ecad_model::connectivity::derive::route_on_page(&doc, w, p2).is_some()

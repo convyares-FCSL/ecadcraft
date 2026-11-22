@@ -135,7 +135,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     // 050b: two categories default for one potential.
     for (pot, ids) in &crate::styles::wire::WireDraws::new(doc).twice {
         let names: Vec<String> = ids.iter().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id)).collect();
-        let shown = doc.settings.wiring.potential(pot).map_or_else(|| pot.clone(), |p| p.name.clone());
+        let shown = doc.settings().wiring.potential(pot).map_or_else(|| pot.clone(), |p| p.name.clone());
         out.push(Check {
             kind: Kind::CategoryPotentialTwice,
             page: None,
@@ -195,7 +195,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         out.push(Check { kind: Kind::StyleUnknown, page, at: None, object, which: words(doc, key, value, &whose), fix: None });
     }
     // Brief 050a: a location box's own style naming no location style (boxes are few: one pass).
-    for (a, x) in &doc.aids {
+    for (a, x) in doc.aids() {
         let Some(value) = x.as_box().and_then(|b| b.style.as_ref()).map(StyleRef::text) else { continue };
         if !dangling(doc, ecad_model::StyleCatalogue::Location, &value) {
             continue;
@@ -220,8 +220,8 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             }
         }
     };
-    level(&doc.display, "Project", &mut out);
-    if let Some(s) = &doc.standard {
+    level(doc.display(), "Project", &mut out);
+    if let Some(s) = &doc.standard() {
         level(&s.values, "Standard", &mut out);
     }
     // Bounds (design 050 §3.2).

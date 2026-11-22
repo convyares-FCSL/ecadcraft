@@ -23,10 +23,10 @@ fn a_cables_shield_and_its_modify_op_come_back_from_the_snapshot_and_the_log() {
         let p = dir.path(name);
         Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
         let mut opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
-        assert_eq!(opened.ledger.document().cables.get(&k), Some(&after), "{name}");
+        assert_eq!(opened.ledger.document().cables().get(&k), Some(&after), "{name}");
         // The log holds the op whole: undoing it gives the cable as made.
         opened.ledger.undo(Author::User).unwrap();
-        assert_eq!(opened.ledger.document().cables.get(&k), Some(&made), "{name} undo");
+        assert_eq!(opened.ledger.document().cables().get(&k), Some(&made), "{name} undo");
     }
 }
 

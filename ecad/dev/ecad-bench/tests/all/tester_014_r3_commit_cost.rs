@@ -47,24 +47,24 @@ fn tester_014_r3_whole_document_work_per_commit() {
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_engine::cables::views::Settings::none()).unwrap();
     let doc = project.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
-    let page = *doc.page_order.first().unwrap();
+    let page = *doc.page_order().first().unwrap();
     let runs = 9;
     let references = ecad_model::connectivity::derive::cable_references(&doc);
-    let reps_of_page1 = doc.representations.values().filter(|r| r.page == page).count();
+    let reps_of_page1 = doc.representations().values().filter(|r| r.page == page).count();
     let linked = ecad_electrical::references::cables::linked(&doc);
     let t_references = time(runs, || drop(ecad_model::connectivity::derive::cable_references(&doc)));
     let t_linked = time(runs, || drop(ecad_electrical::references::cables::linked(&doc)));
     let t_orphan = time(runs, || drop(ecad_electrical::references::cables::orphaned_line(&doc, &linked)));
     let t_any = time(runs, || {
-        std::hint::black_box(doc.representations.values().any(ecad_electrical::references::cables::is_reference));
+        std::hint::black_box(doc.representations().values().any(ecad_electrical::references::cables::is_reference));
     });
     let t_draw = time(runs, || drop(ecad_engine::cables::views::drawings_on_page(&doc, page, &BTreeSet::new(), 1e-6)));
     eprintln!(
         "r3 cost: items {}, representations {} ({} on page 1), cables {}, references {}, linked {}",
-        doc.items.len(),
-        doc.representations.len(),
+        doc.items().len(),
+        doc.representations().len(),
         reps_of_page1,
-        doc.cables.len(),
+        doc.cables().len(),
         references.len(),
         linked.len()
     );

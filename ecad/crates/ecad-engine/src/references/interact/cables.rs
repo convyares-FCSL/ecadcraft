@@ -230,10 +230,10 @@ const MAX_LISTED: usize = 20;
 /// or a leading hex prefix of at least 8 digits naming one cable.
 fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, String> {
     let t = typed.trim();
-    let tagged: Vec<CableId> = doc.cables.iter().filter(|(_, c)| c.tag().is_some_and(|x| x.eq_ignore_ascii_case(t))).map(|(k, _)| *k).collect();
+    let tagged: Vec<CableId> = doc.cables().iter().filter(|(_, c)| c.tag().is_some_and(|x| x.eq_ignore_ascii_case(t))).map(|(k, _)| *k).collect();
     let found = if tagged.is_empty() && t.len() >= 8 && t.chars().all(|c| c.is_ascii_hexdigit()) {
         let lower = t.to_ascii_lowercase();
-        doc.cables.keys().copied().filter(|k| k.hex().starts_with(&lower)).collect()
+        doc.cables().keys().copied().filter(|k| k.hex().starts_with(&lower)).collect()
     } else {
         tagged
     };

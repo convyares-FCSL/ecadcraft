@@ -49,7 +49,7 @@ fn branching_and_switching_back_with_styles_survives_sheet_switches() {
     raw(&mut h, "setstyle", json!({"catalogue": "frame", "id": "sheet", "fields": {"line_colour": "BU"}}));
     raw(&mut h, "qsave", Value::Null);
     let main_doc = h.doc();
-    assert!(main_doc.standard.is_some() && !main_doc.styles.is_empty());
+    assert!(main_doc.standard().is_some() && !main_doc.styles().is_empty());
 
     let stop = Arc::new(AtomicBool::new(false));
     let flipper = {
@@ -69,8 +69,8 @@ fn branching_and_switching_back_with_styles_survives_sheet_switches() {
         raw(&mut h, "wire", json!({"points": [[200.0, 100.0 + f64::from(i)], [260.0, 100.0 + f64::from(i)]], "potential": "24V"}));
         let branch_doc = h.doc();
         assert_eq!(
-            (branch_doc.standard.clone(), branch_doc.styles.clone()),
-            (main_doc.standard.clone(), main_doc.styles.clone()),
+            (branch_doc.standard().cloned(), branch_doc.styles().clone()),
+            (main_doc.standard().cloned(), main_doc.styles().clone()),
             "the branch carries them"
         );
         raw(&mut h, "switchbranch", json!({"branch": "main", "save": true}));

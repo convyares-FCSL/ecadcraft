@@ -564,7 +564,7 @@ impl Check {
     pub fn locator(&self, doc: &Document) -> String {
         let Some(page) = self.page else { return String::new() };
         match self.at.and_then(|a| ecad_model::connectivity::wiring::place(doc, page, a)) {
-            Some(p) => p.text(doc.settings.reference_style()),
+            Some(p) => p.text(doc.settings().reference_style()),
             None => ecad_model::document::book::page_number(doc, page),
         }
     }
@@ -806,7 +806,7 @@ impl Scope {
                 self.cables.insert(*k);
                 self.tag_holders(doc, before.iter().chain(after.iter()).filter_map(|c| c.tag_key()));
                 // A cable's tag and cores are part of its members' words.
-                if let Some(cable) = doc.cables.get(k) {
+                if let Some(cable) = doc.cables().get(k) {
                     self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
                 }
                 self.wires.extend(before.iter().chain(after.iter()).flat_map(|c| c.cores.iter()).filter_map(|m| m.wire()));
@@ -919,7 +919,7 @@ impl Scope {
                 for a in Aspect::ALL {
                     if default_key(before, a) != default_key(after, a) {
                         self.relocate = true;
-                        self.devices.extend(doc.devices.keys().copied());
+                        self.devices.extend(doc.devices().keys().copied());
                     }
                     let changed = changed_codes(before, after, a);
                     if !changed.is_empty() {
@@ -929,12 +929,12 @@ impl Scope {
                     for entry in &changed {
                         // Brief 059: the cables planning an end there (their rows name its code).
                         self.cables.extend(crate::cables::planning(doc, entry));
-                        for (c, x) in &doc.devices {
+                        for (c, x) in doc.devices() {
                             if crate::locations::designations::device_keys(x).iter().any(|(_, v)| v == entry) {
                                 self.devices.insert(*c);
                             }
                         }
-                        for (b, x) in &doc.aids {
+                        for (b, x) in doc.aids() {
                             if x.as_box().is_some_and(|x| crate::locations::designations::box_key(x, a).as_deref() == Some(entry.as_str())) {
                                 self.aids.insert(*b);
                             }
@@ -987,7 +987,7 @@ impl Scope {
     }
 
     fn component_of(&mut self, doc: &Document, t: ConnectionPointId) {
-        if let Some(c) = doc.connection_points.get(&t).and_then(|x| x.device()) {
+        if let Some(c) = doc.connection_points().get(&t).and_then(|x| x.device()) {
             self.devices.insert(c);
         }
     }
@@ -1019,7 +1019,7 @@ impl Scope {
             // Design 072 §6.2: a box drawn, moved or erased changes the contexts on its page.
             // A continuation's place moves its own and its partners' rows.
             Subject::Aid(a) => {
-                if let Some(x) = doc.aids.get(&a) {
+                if let Some(x) = doc.aids().get(&a) {
                     self.aid(doc, a, [x]);
                 }
             }
@@ -1042,7 +1042,7 @@ impl Scope {
 
 /// `rows` in book order.
 pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
-    let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
+    let order: HashMap<PageId, usize> = doc.page_order().iter().enumerate().map(|(i, p)| (*p, i)).collect();
     rows.sort_by_key(|c| c.order_key(&order));
     rows
 }

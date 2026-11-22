@@ -270,12 +270,12 @@ fn a_page_changed_elsewhere_gets_a_dot_without_a_rebuild_and_views_are_kept_per_
     ok(&mut h, r#"newpage {"title":"Two"}"#);
     ok(&mut h, r#"newpage {"title":"Three"}"#);
     let d = doc(&mut h);
-    let (p1, p3) = (d.page_order[0], d.page_order[2]);
+    let (p1, p3) = (d.page_order()[0], d.page_order()[2]);
     // A device drawn on page 3 only.
     h.state_mut().show_page(p3).unwrap();
     h.run_steps(3);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
-    let coil = doc(&mut h).devices.keys().next().copied().expect("the coil");
+    let coil = doc(&mut h).devices().keys().next().copied().expect("the coil");
     h.state_mut().show_page(p1).unwrap();
     h.run_steps(3);
     assert_eq!(active(&mut h), Some(p1));
@@ -338,7 +338,7 @@ fn screenshots_of_the_four_workspaces() {
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
-    let first = doc(&mut h).page_order[0];
+    let first = doc(&mut h).page_order()[0];
     h.state_mut().show_page(first).unwrap();
     h.run_steps(3);
     h.state_mut().zoom_to_drawing();
@@ -406,11 +406,11 @@ fn a_go_to_keeps_its_view_on_a_page_seen_before() {
     let mut h = shell_harness();
     ok(&mut h, r#"newpage {"title":"Two"}"#);
     let d = doc(&mut h);
-    let (p1, p2) = (d.page_order[0], d.page_order[1]);
+    let (p1, p2) = (d.page_order()[0], d.page_order()[1]);
     h.state_mut().show_page(p2).unwrap();
     h.run_steps(3);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
-    let coil = doc(&mut h).devices.keys().next().copied().unwrap();
+    let coil = doc(&mut h).devices().keys().next().copied().unwrap();
     let rep = doc(&mut h).representations_of(ecad_model::Subject::Device(coil)).next().unwrap().0;
     // Page 2 seen far from the coil, then page 1.
     let mut far = h.state().cad.session.state().unwrap().view();
@@ -441,7 +441,7 @@ fn a_go_to_keeps_its_view_on_a_page_seen_before() {
 fn hover_tooltips_stay_off_hosted_views() {
     let mut h = shell_harness();
     crate::pages::project_panel::fixture_p(&mut h);
-    let supply = doc(&mut h).page_order[0];
+    let supply = doc(&mut h).page_order()[0];
     h.state_mut().show_page(supply).unwrap();
     h.run_steps(3);
     let reference_end = |h: &mut Harness<'static, App>| {

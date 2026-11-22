@@ -151,7 +151,7 @@ pub(crate) fn rep_place(doc: &Document, r: &ecad_model::Representation) -> (Opti
     let at = crate::devices::tags::rep_definition(doc, r).map(|(_, pl)| pl.origin).or_else(|| r.connection_points.values().next().copied());
     let place = at
         .and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a))
-        .map(|p| p.text(doc.settings.reference_style()))
+        .map(|p| p.text(doc.settings().reference_style()))
         .or_else(|| Some(crate::references::cables::page_number_words(doc, r.page)));
     (place, at)
 }
@@ -187,7 +187,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
         let (address, typed) = plc.address_of(doc, card.id, i);
         let address_out = (card.ty == crate::plc::rack::CardType::Iol).then(|| plc.automatic(doc, card.id, i, true)).flatten();
         let pins: Vec<(ecad_model::ChannelRole, String)> = ch.map(|c| c.points.iter().map(|(r, _, p)| (*r, p.clone())).collect()).unwrap_or_default();
-        let (place, page, at) = match ch.and_then(|c| c.cells.first()).and_then(|(rid, _, _)| doc.representations.get(rid)) {
+        let (place, page, at) = match ch.and_then(|c| c.cells.first()).and_then(|(rid, _, _)| doc.representations().get(rid)) {
             Some(r) => {
                 let (p, a) = rep_place(doc, r);
                 (p, Some(r.page), a)
@@ -202,7 +202,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
                 wire = ecad_model::connectivity::wiring::net_number(doc, net);
             }
             for o in &net.connection_points {
-                let Some(term) = doc.connection_points.get(o) else { continue };
+                let Some(term) = doc.connection_points().get(o) else { continue };
                 if term.device() == Some(card.id) || targets.len() >= 2 * MAX_TARGETS {
                     continue;
                 }
@@ -455,7 +455,7 @@ pub(crate) fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w
     for n in nets {
         let Some(net) = conn.net(n) else { continue };
         for t in &net.connection_points {
-            if let Some(x) = doc.connection_points.get(t)
+            if let Some(x) = doc.connection_points().get(t)
                 && let Some(c) = x.device()
                 && plc.cards.contains_key(&c)
                 && channels::point_of(doc, *t).is_some()
@@ -476,7 +476,7 @@ pub(crate) fn cards_on_nets_of_connection_points(doc: &Document, plc: &Plc, ts: 
     for n in ts.iter().filter_map(|t| conn.net_of_connection_point(*t)) {
         let Some(net) = conn.net(n) else { continue };
         for t in &net.connection_points {
-            if let Some(x) = doc.connection_points.get(t)
+            if let Some(x) = doc.connection_points().get(t)
                 && let Some(c) = x.device()
                 && plc.cards.contains_key(&c)
                 && channels::point_of(doc, *t).is_some()

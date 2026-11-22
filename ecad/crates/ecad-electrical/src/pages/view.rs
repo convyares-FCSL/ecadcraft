@@ -101,7 +101,7 @@ fn subject_pages(doc: &Document, s: Subject) -> impl Iterator<Item = PageId> + '
 /// The pages where the routes landing on connection points `points` are drawn (a wire's labels),
 /// through the index.
 pub fn points_pages(doc: &Document, points: &[ecad_model::ConnectionPointId]) -> BTreeSet<PageId> {
-    points.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|r| doc.routes.get(&r).map(|x| x.page)).collect()
+    points.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|r| doc.routes().get(&r).map(|x| x.page)).collect()
 }
 
 /// Brief 048 (FP8): whether definition `id` is shown by nothing after `effects` (its last copies
@@ -166,12 +166,12 @@ fn project_pages(doc: &Document, before: &ecad_model::document::project::Project
                 *out = PageSet::All;
                 return;
             }
-            for (c, x) in &doc.devices {
+            for (c, x) in doc.devices() {
                 if crate::locations::designations::device_keys(x).iter().any(|(_, v)| *v == entry) {
                     extend(out, subject_pages(doc, Subject::Device(*c)));
                 }
             }
-            extend(out, doc.pages.iter().filter(|(_, x)| page_key(x, a).as_deref() == Some(entry.as_str())).map(|(p, _)| *p));
+            extend(out, doc.pages().iter().filter(|(_, x)| page_key(x, a).as_deref() == Some(entry.as_str())).map(|(p, _)| *p));
         }
     }
 }
@@ -205,20 +205,20 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         Effect::Aid { id, .. } => extend(out, subject_pages(doc, Subject::Aid(*id))),
         // A loose part is drawn on no page (design 072 §6.4).
         Effect::LoosePart { .. } => {}
-        Effect::Device { id, before: None, after: Some(_) } if !doc.devices.contains_key(id) => {}
-        Effect::Wire { id, before: None, after: Some(_) } if !doc.wires.contains_key(id) => {}
+        Effect::Device { id, before: None, after: Some(_) } if !doc.devices().contains_key(id) => {}
+        Effect::Wire { id, before: None, after: Some(_) } if !doc.wires().contains_key(id) => {}
         Effect::Wire { before: Some(w), after: None, .. } => extend(out, points_pages(doc, &w.ends)),
         Effect::Wire { id, before: Some(_), after: Some(_) } => extend(out, crate::wires::routes::wire_pages(doc, *id)),
         Effect::Prop { object: ObjectRef::Wire(c), .. } => extend(out, crate::wires::routes::wire_pages(doc, *c)),
         // Brief 028: a connection point relabelled (removed and added) is drawn by its device's
         // symbols only. A new one is drawn through its device.
-        Effect::ConnectionPoint { id, before: None, after: Some(_) } if !doc.connection_points.contains_key(id) => {}
+        Effect::ConnectionPoint { id, before: None, after: Some(_) } if !doc.connection_points().contains_key(id) => {}
         Effect::ConnectionPoint { before, after, .. } => {
             for t in before.iter().chain(after.iter()) {
                 extend(out, subject_pages(doc, t.owner.subject()));
             }
         }
-        Effect::Definition { id, before: None, after: Some(_) } if !doc.definitions.contains_key(id) => {}
+        Effect::Definition { id, before: None, after: Some(_) } if !doc.definitions().contains_key(id) => {}
         // Brief 048 (FP8): a superseded version nothing shows after the transaction is drawn
         // nowhere; its last copies' own effects name their pages.
         Effect::Definition { id, before: Some(_), after: None } if unused_after(doc, *id, effects) => {}

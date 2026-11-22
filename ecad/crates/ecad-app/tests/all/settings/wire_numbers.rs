@@ -13,7 +13,7 @@ fn wire_numbers_one_per_wire_from_project_settings_in_one_transaction() {
     ok(&mut h, r#"wire {"points":[[0,0],[30,0]],"potential":"24V"}"#);
     ok(&mut h, r#"wire {"points":[[30,0],[60,0]],"potential":"24V"}"#);
     let numbers = |d: &ecad_model::Document| {
-        let mut v: Vec<_> = d.wires.values().map(|w| (w.net_order, w.number_text().map(str::to_string))).collect();
+        let mut v: Vec<_> = d.wires().values().map(|w| (w.net_order, w.number_text().map(str::to_string))).collect();
         v.sort();
         v.into_iter().map(|x| x.1).collect::<Vec<_>>()
     };
@@ -31,7 +31,7 @@ fn wire_numbers_one_per_wire_from_project_settings_in_one_transaction() {
     crate::pages::project_panel::click(&mut h, "ecad.projectprops.ok");
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert_eq!(d.settings.wiring.number_by, ecad_model::connectivity::wiring::NumberBy::Conductor);
+    assert_eq!(d.settings().wiring.number_by, ecad_model::connectivity::wiring::NumberBy::Conductor);
     let per_wire = numbers(&d);
     assert_eq!(per_wire[0], per_net[0], "the first wire keeps the number");
     assert!(per_wire[1].is_some() && per_wire[1] != per_wire[0], "{per_wire:?}");

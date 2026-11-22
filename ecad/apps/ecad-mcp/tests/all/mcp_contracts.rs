@@ -100,7 +100,7 @@ impl Client {
         self.s
             .with_session(|s, p| {
                 p.configure(s, |p| {
-                    let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
+                    let page = p.active_page().unwrap_or(p.ledger.document().page_order()[0]);
                     let device: DeviceId = p.ids.fresh();
                     let mut ops = vec![Op::CreateDevice { id: device, device: Device::default() }];
                     let mut cps = std::collections::BTreeMap::new();
@@ -144,7 +144,7 @@ impl Client {
     pub(crate) fn wire_pp(&mut self, params: Value) -> Value {
         let pts: Vec<(f64, f64)> = params["points"].as_array().unwrap().iter().map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap())).collect();
         let doc = self.doc();
-        let page = self.s.with_session(|s, p| p.read(s, |p, _| p.active_page()).unwrap()).unwrap().unwrap_or(doc.page_order[0]);
+        let page = self.s.with_session(|s, p| p.read(s, |p, _| p.active_page()).unwrap()).unwrap().unwrap_or(doc.page_order()[0]);
         let shown: Vec<ecad_model::Pt> =
             ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
         let ends: Vec<(f64, f64)> = [pts.first(), pts.last()]
@@ -279,7 +279,7 @@ fn the_cable_examples_through_mcp_record_the_json_forms_transactions_as_the_agen
         let params = if cmd == "cableview" { json!({"cable": cable.clone().unwrap(), "view": params["view"]}) } else { params };
         d.s.execute(cmd, &params).unwrap_or_else(|e| panic!("{cmd}: {e}"));
         if cmd == "cableslash" {
-            cable = d.p.read(&mut d.s, |p, _| p.ledger.document().cables.keys().next().unwrap().hex()).ok();
+            cable = d.p.read(&mut d.s, |p, _| p.ledger.document().cables().keys().next().unwrap().hex()).ok();
         }
     }
     let direct = d.log();
@@ -703,10 +703,10 @@ fn a_batch_is_one_call_for_the_transaction_cap() {
     assert_eq!(replies[1]["result"]["isError"], json!(true), "{}", replies[1]);
     let m = replies[1]["result"]["content"][0]["text"].as_str().unwrap();
     assert!(m.contains("one request line, batches included") && m.contains("taken back"), "{m}");
-    assert_eq!(c.doc().routes.len(), before.routes.len() + 1, "only the first wire stays");
+    assert_eq!(c.doc().routes().len(), before.routes().len() + 1, "only the first wire stays");
     // The next line is a new call.
     c.exec("wire", json!({"points": [[0, 10], [60, 10]]}));
-    assert_eq!(c.doc().routes.len(), before.routes.len() + 2);
+    assert_eq!(c.doc().routes().len(), before.routes().len() + 2);
 }
 
 #[test]
@@ -722,7 +722,7 @@ fn an_overflowing_undo_is_taken_back_by_a_redo_never_by_undoing_more() {
     let replies = batch(&mut c, vec![undo(1), undo(2)]);
     assert_ne!(replies[0]["result"]["isError"], json!(true), "{}", replies[0]);
     assert_eq!(replies[1]["result"]["isError"], json!(true), "{}", replies[1]);
-    assert_eq!(c.doc().routes.len(), 2, "exactly one wire undone; the others untouched");
+    assert_eq!(c.doc().routes().len(), 2, "exactly one wire undone; the others untouched");
     let log = c.log();
     let last = log.last().unwrap();
     assert!(matches!(last.kind, ecad_model::TxKind::Redo { .. }), "the overflowing undo was redone: {:?}", last.kind);
@@ -786,7 +786,7 @@ fn stdio_a_clean_exit_releases_the_writer_lock() {
 #[test]
 fn openpage_switches_the_one_active_page_and_undo_brings_back_the_page_it_changes() {
     let mut c = writer(SEED);
-    let first = c.doc().page_order[0];
+    let first = c.doc().page_order()[0];
     let p2 = c.exec("newpage", json!({"title": "Field"}));
     let field: ecad_model::PageId = ecad_model::PageId(u128::from_str_radix(p2["page"].as_str().unwrap(), 16).unwrap());
     let active = |c: &mut Client| c.s.with_session(|s, p| p.read(s, |p, _| p.active_page()).unwrap()).unwrap();
@@ -799,18 +799,18 @@ fn openpage_switches_the_one_active_page_and_undo_brings_back_the_page_it_change
     let last = c.log().last().cloned().unwrap();
     assert_eq!(last.author, Author::Agent(AGENT.into()));
     let doc = c.doc();
-    assert!(doc.items.values().any(|i| i.page == first), "the wire is on the page made active");
-    assert!(doc.items.values().all(|i| i.page != field));
+    assert!(doc.items().values().any(|i| i.page == first), "the wire is on the page made active");
+    assert!(doc.items().values().all(|i| i.page != field));
     // Undo from Field of the wire on page 1: page 1 is active again in the agent's session.
     c.exec("openpage", json!({"page": field.hex()}));
     c.exec("u", json!({}));
     assert_eq!(active(&mut c), Some(first), "the undo brought page 1 back");
-    assert!(c.doc().wires.keys().all(|k| k.hex() != conductor));
+    assert!(c.doc().wires().keys().all(|k| k.hex() != conductor));
     assert_eq!(c.log().last().unwrap().author, Author::Agent(AGENT.into()));
 
     // Writes off: openpage works, edits are refused.
     let mut r = reader();
-    let first = r.doc().page_order[0];
+    let first = r.doc().page_order()[0];
     r.exec("openpage", json!({"page": first.hex()}));
     let before = r.log();
     assert_eq!(r.refused("execute", json!({"command": "wire", "params": {"points": [[0, 0], [9, 0]]}})), policy::WRITES_OFF);
@@ -905,7 +905,7 @@ fn devices_through_mcp_record_the_json_forms_transactions_as_the_agent() {
 #[test]
 fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
     let mut c = writer(SEED);
-    let page = c.doc().page_order[0].hex();
+    let page = c.doc().page_order()[0].hex();
     let steps: Vec<(&str, Value)> = vec![
         ("pageprops", json!({"number": "100", "title": "Supply"})),
         ("projectprops", json!({"title": "Panel 7", "customer": "ACME", "props": {"site": "Leeds"}})),
@@ -920,7 +920,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
         assert_eq!(log.len(), before + 1, "{cmd}: one transaction");
         assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()), "{cmd}");
     }
-    let folder = c.doc().folder_order[0].hex();
+    let folder = c.doc().folder_order()[0].hex();
     let more: Vec<(&str, Value)> = vec![
         ("newfolder", json!({"name": "Spare", "parent": folder})),
         ("renamefolder", json!({"folder": folder, "name": "Layouts"})),
@@ -936,7 +936,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
         assert_eq!(log.len(), before + 1, "{cmd}: one transaction");
         assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()), "{cmd}");
     }
-    let spare = c.doc().folder_order[1].hex();
+    let spare = c.doc().folder_order()[1].hex();
     for (cmd, params) in [("movefolder", json!({"folder": spare, "parent": null})), ("deletefolder", json!({"folder": spare}))] {
         let before = c.log().len();
         c.exec(cmd, params);
@@ -956,8 +956,8 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
     assert_eq!(log.len(), before + 1);
     assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()));
     assert!(
-        !c.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2)))
-            && c.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1)))
+        !c.doc().versions().contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2)))
+            && c.doc().versions().contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1)))
     );
     // `setprop {components}`: two devices in one transaction, as the agent.
     let a = c.exec("place", json!({"symbol": "coil", "at": [200, 200]}))["component"].clone();
@@ -973,7 +973,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
     // Writes off: every write refused, the reads work and record nothing.
     let mut r = reader();
     let before = r.log();
-    let page = r.doc().page_order[0].hex();
+    let page = r.doc().page_order()[0].hex();
     for (cmd, params) in [
         ("pageprops", json!({"number": "7"})),
         ("projectprops", json!({"title": "x"})),
@@ -1042,7 +1042,7 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     assert!(t.ops.iter().any(|op| matches!(op, Op::CreateWire { .. })), "{:?}", t.ops);
     let first = r["conductor"].as_str().unwrap().to_string();
     let wire_potential =
-        |c: &mut Client, w: &str| c.doc().wires.get(&ecad_model::WireId::parse(w).unwrap()).and_then(|x| x.potential_name().map(str::to_string));
+        |c: &mut Client, w: &str| c.doc().wires().get(&ecad_model::WireId::parse(w).unwrap()).and_then(|x| x.potential_name().map(str::to_string));
     assert_eq!(wire_potential(&mut c, &first).as_deref(), Some("24V"));
 
     // A line ending on another line's interior lands there (a T), in its own transaction; no

@@ -93,7 +93,7 @@ fn wire_point_to_point_through_mcp_records_the_route_and_its_wire_as_the_agent()
         .unwrap_or_else(|| panic!("a CreateWire: {:?}", t.ops));
     assert_eq!(wire.ends, [a, b], "the wire runs between the two points");
     assert_eq!(v["conductor"], json!(w.hex()), "{v}");
-    assert!(c.doc().wires.contains_key(&w));
+    assert!(c.doc().wires().contains_key(&w));
 
     let mut r = reader();
     let before = r.log();
@@ -132,7 +132,7 @@ fn cableslash_across_a_loose_line_puts_the_core_on_the_line() {
     assert_eq!(v["lines"], json!([route.hex()]), "{v}");
     assert_eq!(v["conductors"], json!([]), "{v}");
     let cable = c.doc().cables_tagged("-W72")[0];
-    assert_eq!(c.doc().cables[&cable].cores.len(), 1);
+    assert_eq!(c.doc().cables()[&cable].cores.len(), 1);
 
     let mut r = reader();
     let before = r.log();
@@ -152,7 +152,7 @@ fn number_by_through_mcp_renumbers_in_the_settings_edit_as_the_agent() {
     c.exec("wire", json!({"points": [[30, 0], [60, 0]]}));
     let numbers = |c: &mut Client| -> Vec<Option<String>> {
         let d = c.doc();
-        let mut v: Vec<_> = d.wires.values().map(|w| (w.net, w.net_order, w.number_text().map(str::to_string))).collect();
+        let mut v: Vec<_> = d.wires().values().map(|w| (w.net, w.net_order, w.number_text().map(str::to_string))).collect();
         v.sort();
         v.into_iter().map(|x| x.2).collect()
     };
@@ -274,8 +274,8 @@ fn protected_by_through_mcp_is_the_device_and_deleting_it_clears_it() {
     let w = v["conductor"].as_str().unwrap().to_string();
     let q = c.exec("place", json!({"symbol": "mcb1", "at": [200, 100]}))["component"].as_str().unwrap().to_string();
     c.exec("setprop", json!({"component": q, "key": "rating", "value": "C16"}));
-    let q_id = c.doc().devices.keys().copied().find(|d| d.hex() == q).unwrap();
-    let tag = c.doc().devices[&q_id].tag_shown().unwrap_or_default();
+    let q_id = c.doc().devices().keys().copied().find(|d| d.hex() == q).unwrap();
+    let tag = c.doc().devices()[&q_id].tag_shown().unwrap_or_default();
 
     c.exec("rating", json!({"wire": w, "protected_by": tag}));
     let (author, after) = last_modified(&mut c);
@@ -292,10 +292,10 @@ fn protected_by_through_mcp_is_the_device_and_deleting_it_clears_it() {
     assert!(r["message"].as_str().is_some_and(|m| m.contains("protected_by cleared on 1 wire")), "{r}");
     let last = c.log().last().cloned().unwrap();
     assert!(last.ops.iter().any(|o| matches!(o, Op::DeleteDevice { .. })), "{:?}", last.ops);
-    let wid = c.doc().wires.keys().copied().find(|x| x.hex() == w).unwrap();
-    assert_eq!(c.doc().wires[&wid].protected_by, None, "cleared in the same transaction");
+    let wid = c.doc().wires().keys().copied().find(|x| x.hex() == w).unwrap();
+    assert_eq!(c.doc().wires()[&wid].protected_by, None, "cleared in the same transaction");
     c.exec("undo", json!({}));
-    assert_eq!(c.doc().wires[&wid].protected_by.map(|p| p.device), Some(q_id), "undo brings it back");
+    assert_eq!(c.doc().wires()[&wid].protected_by.map(|p| p.device), Some(q_id), "undo brings it back");
 
     let mut r = reader();
     r.refused("execute", json!({"command": "rating", "params": {"wire": w, "protected_by": tag}}));

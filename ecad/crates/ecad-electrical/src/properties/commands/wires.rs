@@ -57,7 +57,7 @@ pub(crate) static RULES: &[PropRule] = &[
 /// an `unused.` key naming no core.
 pub(crate) fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let ObjectRef::Cable(k) = o else { return Err(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT)) };
-    let cab = doc.cables.get(&k).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
+    let cab = doc.cables().get(&k).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
     if key.starts_with(crate::styles::cable::UNUSED_PREFIX) {
         return Ok(crate::styles::cable::unused_ops(doc, k, key, value)?.into_iter().next());
     }
@@ -131,7 +131,7 @@ fn rating_key(key: &str) -> Option<&'static str> {
 
 fn wire_of(doc: &Document, o: ObjectRef) -> Result<(WireId, &Wire), CmdError> {
     match o {
-        ObjectRef::Wire(c) => doc.wires.get(&c).map(|w| (c, w)).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT)),
+        ObjectRef::Wire(c) => doc.wires().get(&c).map(|w| (c, w)).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT)),
         _ => Err(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT)),
     }
 }

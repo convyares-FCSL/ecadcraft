@@ -313,7 +313,7 @@ clears; no fields: the current values, read only)";
             cx.derived.reports(doc);
         }
         let page = self.page.or(cx.page).ok_or(CmdError::input("`page` (hex id) is required: no page is shown"))?;
-        if !doc.pages.contains_key(&page) {
+        if !doc.pages().contains_key(&page) {
             return Err(CmdError::refused(msg::NO_SUCH_PAGE));
         }
         if !change.writes() {

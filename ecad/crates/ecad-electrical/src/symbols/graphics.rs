@@ -879,7 +879,7 @@ pub const POINT_GRID_MM: f64 = 5.0;
 
 /// Whether placed copy `rep` shows an older version than its lineage's newest (design 048 §8.4).
 pub fn update_available(doc: &Document, rep: ecad_model::RepresentationId) -> Option<(DefinitionId, u64, u64)> {
-    let r = doc.representations.get(&rep)?;
+    let r = doc.representations().get(&rep)?;
     let (d, _) = crate::devices::tags::rep_definition(doc, r)?;
     let o = d.origin.as_ref().filter(|o| o.library == PROJECT_SYMBOLS)?;
     let n = newest(doc, o.definition)?;

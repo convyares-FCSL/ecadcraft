@@ -67,7 +67,7 @@ pub(crate) fn load_side(kind: ProtectionKind, label: &str) -> bool {
 /// The kind of device `c` when it is an overcurrent protective device (design 072 §2.4).
 fn overcurrent_kind(doc: &Document, c: DeviceId) -> Option<ProtectionKind> {
     use crate::devices::traits::Protects;
-    let ecad_model::DeviceType::Protection(p) = &doc.devices.get(&c)?.device_type else { return None };
+    let ecad_model::DeviceType::Protection(p) = &doc.devices().get(&c)?.device_type else { return None };
     p.overcurrent().then(|| p.kind())
 }
 
@@ -75,7 +75,7 @@ fn overcurrent_kind(doc: &Document, c: DeviceId) -> Option<ProtectionKind> {
 /// its symbols.
 pub fn is_protective_component(doc: &Document, c: DeviceId) -> bool {
     use crate::devices::traits::DeviceKind;
-    doc.devices.get(&c).and_then(|d| d.device_type.as_protects()).is_some_and(|p| p.overcurrent())
+    doc.devices().get(&c).and_then(|d| d.device_type.as_protects()).is_some_and(|p| p.overcurrent())
 }
 
 /// The paired pin of a contact or RCD pole (IEC 60947): 1–2, 3–4, 5–6, 7–8 and their two-digit
@@ -111,7 +111,7 @@ fn crossed(doc: &Document, c: DeviceId) -> bool {
     use ecad_model::objects::devices::Operator;
     use ecad_model::{DeviceType, PartRole, Role};
     let has = |p: PartRole| doc.representations_of(Subject::Device(c)).any(|(_, r)| r.role == Role::Part(p));
-    match doc.devices.get(&c).map(|d| &d.device_type) {
+    match doc.devices().get(&c).map(|d| &d.device_type) {
         Some(DeviceType::Protection(p)) if p.kind() == ProtectionKind::Rcd => true,
         Some(DeviceType::Switching(s)) if matches!(s.operator, Operator::SolidState(_)) && has(PartRole::Pole) => true,
         _ => has(PartRole::Contact),
@@ -128,7 +128,7 @@ enum Step {
 }
 
 fn step(doc: &Document, t: ConnectionPointId) -> Step {
-    let Some(term) = doc.connection_points.get(&t) else { return Step::Stop };
+    let Some(term) = doc.connection_points().get(&t) else { return Step::Stop };
     let Some(c) = term.device() else { return Step::Stop };
     let label = term.label.clone().unwrap_or_default();
     // A strip: the other terminals of this position and level; a fuse position protects.
@@ -232,7 +232,7 @@ pub(crate) fn trace_subject(doc: &Document, s: RatedSubject) -> Found {
         RatedSubject::Wire(c) => trace_nets(doc, conn.net_of_conductor(c)),
         RatedSubject::Cable(k) => {
             let mut all = Found::default();
-            let Some(cable) = doc.cables.get(&k) else { return all };
+            let Some(cable) = doc.cables().get(&k) else { return all };
             for w in cable.cores.iter().filter_map(|m| m.wire()) {
                 let f = trace_nets(doc, conn.net_of_conductor(w));
                 all.bounded |= f.bounded;
@@ -263,7 +263,7 @@ pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
     if let Some(f) = &fuse {
         let has = crate::terminal_strips::terminal_blocks::positions(doc, c).iter().any(|p| &p.label == f && p.ty.code == "fuse")
             || doc.connection_points_of(c).any(|(_, x)| x.label.as_deref() == Some(f.as_str()))
-                && doc.devices.get(&c).is_some_and(
+                && doc.devices().get(&c).is_some_and(
                     |d| matches!(&d.device_type, ecad_model::DeviceType::Protection(p) if p.kind() == ecad_model::objects::devices::ProtectionKind::FuseBank),
                 );
         if !has {
@@ -287,7 +287,7 @@ pub fn protected_by(doc: &Document, text: &str) -> Option<ecad_model::objects::w
 /// How many wires and cables name device `c` as their protection: the ones deleting it clears.
 pub(crate) fn protected_count(doc: &Document, c: DeviceId) -> (usize, usize) {
     let names = |p: Option<ecad_model::objects::wire::ProtectedBy>| p.is_some_and(|p| p.device == c);
-    (doc.wires.values().filter(|w| names(w.protected_by)).count(), doc.cables.values().filter(|k| names(k.protected_by)).count())
+    (doc.wires().values().filter(|w| names(w.protected_by)).count(), doc.cables().values().filter(|k| names(k.protected_by)).count())
 }
 
 /// What deleting device `c` says of the `protected_by`s it clears (`protected_by cleared on 2
@@ -304,13 +304,13 @@ pub(crate) fn cleared_words(doc: &Document, c: DeviceId) -> Option<String> {
 pub(crate) fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
     let key = fuse
         .map_or_else(|| ecad_model::objects::devices::RATING_KEY.to_string(), |f| format!("{}{f}", ecad_model::objects::devices::RATING_OF_PREFIX));
-    doc.devices.get(&c).and_then(|d| d.value(&key)).map(|v| v.chars().take(64).collect()).unwrap_or_default()
+    doc.devices().get(&c).and_then(|d| d.value(&key)).map(|v| v.chars().take(64).collect()).unwrap_or_default()
 }
 
 /// In of a device (or its fuse): a protective device's or a strip's fuse position's typed rated
 /// current (design 072 §2.2 and §2.5: checks read only the typed fields).
 pub(crate) fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
-    let d = doc.devices.get(&c)?;
+    let d = doc.devices().get(&c)?;
     match &d.device_type {
         ecad_model::DeviceType::Protection(p) => {
             let output = match fuse {

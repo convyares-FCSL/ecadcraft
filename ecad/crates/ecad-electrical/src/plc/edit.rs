@@ -26,7 +26,7 @@ fn changes(op: &Op, c: DeviceId) -> bool {
 
 /// Device `c` as `doc` with `ops` applied would hold it; `None` when it does not exist then.
 pub fn current(doc: &Document, ops: &[Op], c: DeviceId) -> Option<Device> {
-    let mut d = doc.devices.get(&c).cloned();
+    let mut d = doc.devices().get(&c).cloned();
     for op in ops.iter().filter(|op| changes(op, c)) {
         match op {
             Op::CreateDevice { device, .. } => d = Some(device.clone()),
@@ -103,7 +103,7 @@ pub fn station(doc: &Document, ops: &mut Vec<Op>, c: DeviceId, f: impl FnOnce(&m
 
 /// Device `c`'s module data, if it is a module.
 pub(crate) fn module_of(doc: &Document, c: DeviceId) -> Option<&PlcModule> {
-    match &doc.devices.get(&c)?.device_type {
+    match &doc.devices().get(&c)?.device_type {
         DeviceType::PlcModule(m) => Some(m),
         _ => None,
     }
@@ -111,7 +111,7 @@ pub(crate) fn module_of(doc: &Document, c: DeviceId) -> Option<&PlcModule> {
 
 /// Device `c`'s station data, if it is a station.
 pub fn station_of(doc: &Document, c: DeviceId) -> Option<&PlcRack> {
-    match &doc.devices.get(&c)?.device_type {
+    match &doc.devices().get(&c)?.device_type {
         DeviceType::PlcRack(r) => Some(r),
         _ => None,
     }

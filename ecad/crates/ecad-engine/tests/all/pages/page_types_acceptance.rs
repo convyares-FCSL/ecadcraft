@@ -176,8 +176,8 @@ fn ac2_old_pages_resolve_their_type_and_keep_numbers_folders_and_sheets() {
     let before_numbers = numbers(&mut h);
     let before_sheets: Vec<String> = order(&mut h).into_iter().map(|p| sheet_text(&mut h, p)).collect();
     let d = h.doc();
-    for p in d.page_order.iter() {
-        assert!(d.pages[p].page_type.is_none(), "plain newpage writes no page.type (§4.2)");
+    for p in d.page_order().iter() {
+        assert!(d.pages()[p].page_type.is_none(), "plain newpage writes no page.type (§4.2)");
     }
     let head = h.head();
     for (p, want) in [(p1, "schematic"), (p2, "schematic"), (cover, "front"), (revs, "front"), (bom, "report")] {
@@ -218,7 +218,7 @@ fn ac3_plus_inserts_after_the_current_page_with_the_next_free_number() {
     assert!(!["1", "2", "3", "4", "5"].contains(&n.as_str()), "a free number: {n}");
     assert_eq!(n, "6", "the next available number after 3 (4 and 5 are taken)");
     assert_eq!(type_of(&mut h, net), "network");
-    assert_eq!(h.doc().pages[&net].page_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("network"), "§4.2: written when it differs");
+    assert_eq!(h.doc().pages()[&net].page_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("network"), "§4.2: written when it differs");
     // Back and front types do not force placement (Q1).
     let rep = new_page(&mut h, json!({"type": "report", "generated": "bom-location", "after": p[0].hex()}));
     assert_eq!(order(&mut h).iter().position(|x| *x == rep), Some(1), "a Report page goes where it is asked, not to the back");
@@ -226,7 +226,7 @@ fn ac3_plus_inserts_after_the_current_page_with_the_next_free_number() {
     assert_eq!(order(&mut h).last(), Some(&cov), "a cover after the last page stays last");
     // A schematic `newpage {type}` writes no page.type (the derived type).
     let sch = new_page(&mut h, json!({"type": "schematic", "after": p[1].hex()}));
-    assert!(h.doc().pages[&sch].page_type.is_none(), "§4.2: as small as today");
+    assert!(h.doc().pages()[&sch].page_type.is_none(), "§4.2: as small as today");
     // In a folder: after a page in a folder lands in that folder.
     let f = folder(&mut h, "Motors");
     move_into(&mut h, p[3], f);
@@ -244,7 +244,7 @@ fn num_newpage_defaults_and_refusals() {
     assert_eq!(order(&mut h).last(), Some(&plain));
     assert_eq!(number(&mut h, plain), "4");
     let net = new_page(&mut h, json!({"type": "network"}));
-    assert_eq!(h.doc().pages[&net].title, "Network", "title defaults to the type's name");
+    assert_eq!(h.doc().pages()[&net].title, "Network", "title defaults to the type's name");
     refused(&mut h, "newpage", json!({"type": "schematic", "after": "0000000000000000000000000000beef"}));
     refused(&mut h, "newpage", json!({"type": "nosuchtype"}));
     let _ = p;
@@ -257,7 +257,7 @@ fn ac3_a_folder_start_numbers_its_first_page() {
     let (mut h, _) = pages(0x54_0304, 2);
     let f = folder(&mut h, "Schematic");
     one_tx(&mut h, "folderprops", json!({"folder": f.hex(), "start": "100"}));
-    assert_eq!(h.doc().folders[&f].start.as_ref().map(ecad_model::PageNo::as_str), Some("100"), "Folder.start (design 072 §5.2)");
+    assert_eq!(h.doc().folders()[&f].start.as_ref().map(ecad_model::PageNo::as_str), Some("100"), "Folder.start (design 072 §5.2)");
     let a = new_page(&mut h, json!({"type": "schematic", "folder": f.hex()}));
     assert_eq!(number(&mut h, a), "100");
     let b = new_page(&mut h, json!({"type": "schematic", "after": a.hex()}));
@@ -293,12 +293,12 @@ fn ac5_folder_start_refusals_clear_and_delete() {
     refused(&mut h, "folderprops", json!({"folder": "0000000000000000000000000000beef", "start": "100"}));
     h.run("folderprops", json!({"folder": f.hex(), "start": "100"})).unwrap();
     one_tx(&mut h, "folderprops", json!({"folder": f.hex(), "start": null}));
-    assert!(h.doc().folders[&f].start.is_none(), "null clears");
+    assert!(h.doc().folders()[&f].start.is_none(), "null clears");
     h.run("folderprops", json!({"folder": f.hex(), "start": "100"})).unwrap();
     let (_, tx) = one_tx(&mut h, "deletefolder", json!({"folder": f.hex()}));
-    assert!(!h.doc().folders.contains_key(&f), "deletefolder takes the start with the folder: {:?}", tx.ops);
+    assert!(!h.doc().folders().contains_key(&f), "deletefolder takes the start with the folder: {:?}", tx.ops);
     undo(&mut h);
-    assert_eq!(h.doc().folders[&f].start.as_ref().map(ecad_model::PageNo::as_str), Some("100"), "one u brings folder and start back");
+    assert_eq!(h.doc().folders()[&f].start.as_ref().map(ecad_model::PageNo::as_str), Some("100"), "one u brings folder and start back");
 }
 
 /// AC5 (the owner's flow), §4.4: pages 1–50; folders Schematic (100) and Terminal (300); 40 pages
@@ -437,7 +437,7 @@ fn ac4_front_pages_after_the_cover_and_their_refusals() {
     assert_eq!(number(&mut h, cover), "1");
     let revs = new_page(&mut h, json!({"type": "front", "generated": "revisions", "after": cover.hex()}));
     assert_eq!(order(&mut h).iter().position(|x| *x == revs), Some(1));
-    assert_eq!(h.doc().pages[&revs].title, "Revision history", "§7 default title");
+    assert_eq!(h.doc().pages()[&revs].title, "Revision history", "§7 default title");
     let n = number(&mut h, revs);
     assert!(n == "2" || n == "3", "the next free after the cover: {n}");
     let m = refused(&mut h, "newpage", json!({"type": "front"}));
@@ -449,7 +449,7 @@ fn ac4_front_pages_after_the_cover_and_their_refusals() {
     // `generated` with no `type`: rule 2's type, and no page.type stored.
     let c = new_page(&mut h, json!({"generated": "contents", "after": revs.hex()}));
     assert_eq!(type_of(&mut h, c), "front");
-    assert!(h.doc().pages[&c].page_type.is_none());
+    assert!(h.doc().pages()[&c].page_type.is_none());
     // An own type copied from Cover sheet may hold a cover (§2.3).
     let own = s(&h.run("setstyle", json!({"catalogue": "page", "new": true, "name": "Cover A4", "copy_of": "front"})).unwrap()["id"]);
     new_page(&mut h, json!({"type": own, "generated": "cover", "after": sch.hex()}));
@@ -641,7 +641,7 @@ fn ac8_wire_colours_show_only_categories_in_use() {
     h.activate(sch);
     let _ = w;
     undo(&mut h);
-    assert!(h.doc().wires.is_empty(), "the undo removed the only conductor");
+    assert!(h.doc().wires().is_empty(), "the undo removed the only conductor");
     let t = gen_texts(&mut h, cover);
     assert!(t.iter().any(|x| x == "No wires yet."), "a count crossing 0 removes the line: {t:?}");
 }
@@ -743,15 +743,15 @@ fn ac11_notes_are_numbered_and_bounded() {
 fn ac12_deletepage_removes_generated_pages_only() {
     let (mut h, cover, sch) = with_cover(0x54_1201);
     let revs = new_page(&mut h, json!({"type": "front", "generated": "revisions", "after": cover.hex()}));
-    let (n, title) = (number(&mut h, revs), h.doc().pages[&revs].title.clone());
+    let (n, title) = (number(&mut h, revs), h.doc().pages()[&revs].title.clone());
     h.activate(sch);
     let (_, tx) = one_tx(&mut h, "deletepage", json!({"page": revs.hex()}));
     assert_eq!(tx.ops.iter().map(ecad_model::Op::name).collect::<Vec<_>>(), ["RemovePage"]);
-    assert!(!h.doc().pages.contains_key(&revs));
+    assert!(!h.doc().pages().contains_key(&revs));
     undo(&mut h);
     let d = h.doc();
-    assert!(d.pages.contains_key(&revs), "same id");
-    assert_eq!((number(&mut h, revs), d.pages[&revs].title.clone()), (n, title));
+    assert!(d.pages().contains_key(&revs), "same id");
+    assert_eq!((number(&mut h, revs), d.pages()[&revs].title.clone()), (n, title));
     let m = refused(&mut h, "deletepage", json!({"page": sch.hex()}));
     assert!(m.contains("Deleting a drawn page comes later; move its content first."), "{m}");
     refused(&mut h, "deletepage", json!({"page": "0000000000000000000000000000beef"}));
@@ -806,11 +806,11 @@ fn ac15_hostile_values_read_as_absent_with_checks_rows() {
     use ecad_model::Op;
     let (mut h, cover, sch) = with_cover(0x54_1501);
     let f = folder(&mut h, "Field");
-    let ghost = h.doc().pages[&sch].clone();
+    let ghost = h.doc().pages()[&sch].clone();
     let ghost =
         Op::ModifyPage { id: sch, before: ghost.clone(), after: ecad_model::Page { page_type: Some(ecad_model::StyleRef::Own(0xdead)), ..ghost } };
     let start = {
-        let before = h.doc().folders[&f].clone();
+        let before = h.doc().folders()[&f].clone();
         let after = ecad_model::Folder { start: ecad_model::PageNo::parse("99999999999"), ..before.clone() };
         assert!(after.start.is_some(), "a page number too long for a start");
         Op::ModifyFolder { id: f, before, after }
@@ -848,7 +848,7 @@ fn ac15_hostile_notes_read_cut_with_a_checks_row() {
             )
         })
         .collect();
-    let before = h.doc().project.clone();
+    let before = h.doc().project().clone();
     let after = ecad_model::Project {
         info: ecad_model::ProjectInfo { notes: Some(ecad_model::document::project::Notes::new(&notes).unwrap()), ..before.info.clone() },
         ..before.clone()

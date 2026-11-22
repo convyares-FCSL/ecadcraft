@@ -41,7 +41,7 @@ impl Checks {
     /// The whole list, computed from scratch (open, reload, first show).
     pub fn build_with(doc: &Document, tol: f64, m: &dyn TextMetrics) -> Self {
         let mut ch = Checks { off: ecad_model::document::sheet::checks_off_pages(doc), ..Checks::default() };
-        for r in doc.routes.keys() {
+        for r in doc.routes().keys() {
             ch.grid.insert(doc, *r);
         }
         let conn = doc.connectivity();
@@ -51,30 +51,30 @@ impl Checks {
                 ch.unnumbered.insert(id);
             }
         }
-        for c in doc.wires.keys() {
+        for c in doc.wires().keys() {
             let v = conductor_checks(doc, *c);
             ch.set(Key::Wire(*c), v);
         }
-        for r in doc.routes.keys() {
+        for r in doc.routes().keys() {
             let v = route_checks(doc, *r, &ch.grid, tol);
             ch.set(Key::Route(*r), v);
         }
-        for t in doc.connection_points.keys() {
+        for t in doc.connection_points().keys() {
             ch.set(Key::ConnectionPoint(*t), connection_point_checks(doc, *t));
         }
         // One drawing order for the pass: the book is built at most once (review of #105, 1).
         let mut places = Places::new(doc);
-        for c in doc.devices.keys() {
+        for c in doc.devices().keys() {
             ch.set(Key::Device(*c), component_checks_in(&mut places, *c, m));
         }
-        for a in doc.aids.keys() {
+        for a in doc.aids().keys() {
             ch.set(Key::Aid(*a), aid_checks(doc, *a));
         }
-        for k in doc.cables.keys() {
+        for k in doc.cables().keys() {
             ch.set(Key::CableReferences(*k), reference_checks(doc, *k));
             ch.set(Key::Cable(*k), cable_checks_in(&mut places, *k));
         }
-        for page in doc.pages.keys() {
+        for page in doc.pages().keys() {
             ch.set(Key::Page(*page), page_checks(doc, *page));
         }
         for s in PROJECT_SOURCES {
@@ -209,7 +209,7 @@ impl Checks {
         // An unnumbered potential's shared number (`PE`) is never a shared-number error, so the
         // other nets carrying it have nothing to re-check (otherwise every PE edit would re-check
         // every PE net in the project).
-        let exempt = |n: &str| doc.settings.wiring.potentials.iter().any(|p| !p.numbered && p.prefix == n);
+        let exempt = |n: &str| doc.settings().wiring.potentials.iter().any(|p| !p.numbered && p.prefix == n);
         for n in numbers.iter().filter(|n| !exempt(n)) {
             nets.extend(conn.nets_numbered(n).map(|(id, _)| id));
         }
@@ -260,9 +260,9 @@ impl Checks {
         for c in &scope.wires {
             pages.extend(crate::wires::routes::wire_pages(doc, *c));
         }
-        pages.extend(routes.iter().filter_map(|r| doc.routes.get(r)).map(|r| r.page));
+        pages.extend(routes.iter().filter_map(|r| doc.routes().get(r)).map(|r| r.page));
         for page in pages {
-            let rows = if doc.pages.contains_key(&page) { page_checks(doc, page) } else { Vec::new() };
+            let rows = if doc.pages().contains_key(&page) { page_checks(doc, page) } else { Vec::new() };
             self.set(Key::Page(page), rows);
         }
         // Brief 057 (design 057 §10): the subjects the ops reach, and the count rows.

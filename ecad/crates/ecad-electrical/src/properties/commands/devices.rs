@@ -40,7 +40,7 @@ pub(crate) static RULES: &[PropRule] = &[
             ObjectRef::Device(c) => {
                 k == ecad_model::objects::devices::RATING_KEY
                     || (k.starts_with(ecad_model::objects::devices::RATING_OF_PREFIX)
-                        && doc.devices.get(&c).is_some_and(|d| {
+                        && doc.devices().get(&c).is_some_and(|d| {
                             matches!(d.device_type, ecad_model::DeviceType::Protection(_) | ecad_model::DeviceType::TerminalStrip(_))
                         }))
             }
@@ -102,7 +102,7 @@ pub(crate) fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Op
 
 fn device_of(doc: &Document, o: ObjectRef) -> Result<(DeviceId, &Device), CmdError> {
     match o {
-        ObjectRef::Device(c) => doc.devices.get(&c).map(|d| (c, d)).ok_or(CmdError::refused(NO_SUCH_OBJECT)),
+        ObjectRef::Device(c) => doc.devices().get(&c).map(|d| (c, d)).ok_or(CmdError::refused(NO_SUCH_OBJECT)),
         _ => Err(CmdError::refused(NO_SUCH_OBJECT)),
     }
 }

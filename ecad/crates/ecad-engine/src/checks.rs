@@ -27,7 +27,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
         Object::Wire(c) => {
             let routes: Vec<_> = ecad_electrical::wires::routes::routes_of_wire(doc, c)
                 .into_iter()
-                .filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page))
+                .filter(|r| doc.routes().get(r).is_some_and(|x| x.page == page))
                 .collect();
             return routes
                 .into_iter()
@@ -41,14 +41,14 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
         Object::Aid(a) => Subject::Aid(a),
         Object::Reference(r) => {
             return doc
-                .representations
+                .representations()
                 .get(&r)
                 .filter(|x| x.page == page)
                 .map(|x| x.items.iter().filter_map(|i| map.item(*i)).collect())
                 .unwrap_or_default();
         }
         Object::Cable(k) => Subject::Cable(k),
-        Object::ConnectionPoint(t) => match doc.connection_points.get(&t) {
+        Object::ConnectionPoint(t) => match doc.connection_points().get(&t) {
             Some(x) => x.owner.subject(),
             None => return Vec::new(),
         },

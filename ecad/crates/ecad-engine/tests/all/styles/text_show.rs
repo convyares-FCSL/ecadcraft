@@ -30,7 +30,7 @@ fn strip_row(h: &mut H, x0: f64, y: f64, n: usize, step: f64, strip: Option<Devi
     let mut reps: Vec<(f64, f64, RepresentationId)> = doc
         .representations_of(Subject::Device(c))
         .filter_map(|(rid, r)| {
-            let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+            let at = r.items.first().and_then(|i| doc.items().get(i)).and_then(|i| match &i.kind {
                 ecad_model::ItemKind::Symbol(s) => Some(s.placement.origin),
                 _ => None,
             })?;
@@ -213,17 +213,17 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     let _ = n;
     h.run("showtext", json!({"kind": "tag", "show": "off", "representation": no_rep.hex()})).unwrap();
     let key = ecad_electrical::defaults::symbol_key("text.tag.show", no_rep);
-    assert!(h.doc().devices[&c].properties.contains_key(&key));
+    assert!(h.doc().devices()[&c].properties.contains_key(&key));
     // Erase the contact: its key goes in the same transaction.
     let page = h.first_page();
-    let item = h.doc().representations[&no_rep].items[0];
+    let item = h.doc().representations()[&no_rep].items[0];
     let hd = h.handle_of(page, item);
     let head = h.head();
     h.run("erase", json!({"handles": [hd.hex()]})).unwrap();
     assert_eq!(h.head(), head + 1);
-    assert!(!h.doc().devices[&c].properties.keys().any(|k| k.contains(&no_rep.hex())), "the symbol's keys went with it");
+    assert!(!h.doc().devices()[&c].properties.keys().any(|k| k.contains(&no_rep.hex())), "the symbol's keys went with it");
     h.cmdline("u");
-    assert!(h.doc().devices[&c].properties.contains_key(&key), "undo brings the key back");
+    assert!(h.doc().devices()[&c].properties.contains_key(&key), "undo brings the key back");
 
     // Merge another coil device's contact into this one: its keys move to the new representation.
     let k2 = place(&mut h, "no", [180.0, 150.0], None);
@@ -233,8 +233,8 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     let tag = h.p(|p| ecad_electrical::devices::tags::tag_of(p.ledger.document(), c).map(str::to_string)).unwrap();
     h.run("setprop", json!({"component": c2.hex(), "key": "tag", "value": tag, "merge": true})).unwrap();
     let doc = h.doc();
-    assert!(!doc.devices.contains_key(&c2));
-    let moved: Vec<&String> = doc.devices[&c].properties.keys().filter(|k| k.starts_with("text.") && k.ends_with(".tag.show")).collect();
+    assert!(!doc.devices().contains_key(&c2));
+    let moved: Vec<&String> = doc.devices()[&c].properties.keys().filter(|k| k.starts_with("text.") && k.ends_with(".tag.show")).collect();
     assert_eq!(moved.len(), 2, "{moved:?}");
     h.check();
 }
@@ -251,7 +251,7 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
         .iter()
         .copied()
         .find(|r| {
-            ecad_electrical::devices::tags::rep_starter(&h.doc(), &h.doc().representations[r])
+            ecad_electrical::devices::tags::rep_starter(&h.doc(), &h.doc().representations()[r])
                 .is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil)
         })
         .unwrap();
@@ -259,21 +259,21 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     h.run("showtext", json!({"kind": "tag", "show": "off", "representation": coil.hex()})).unwrap();
     h.run("showtext", json!({"kind": "tag", "show": "on", "representation": other.hex()})).unwrap();
     h.run("movetext", json!({"representation": coil.hex(), "kind": "tag", "to": [80, 170]})).unwrap();
-    let item = h.doc().representations[&coil].items[0];
+    let item = h.doc().representations()[&coil].items[0];
     let hd = h.handle_of(page, item);
     let head = h.head();
     h.run("copy", json!({"handles": [hd.hex()], "delta": [0, 60]})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
     let doc = h.doc();
     let (new_c, new_rep) = doc
-        .representations
+        .representations()
         .iter()
         .find_map(|(r, x)| match x.subject {
             Subject::Device(n) if n != c => Some((n, *r)),
             _ => None,
         })
         .expect("the copy");
-    let props = &doc.devices[&new_c].properties;
+    let props = &doc.devices()[&new_c].properties;
     let keys: Vec<&String> = props.keys().filter(|k| k.starts_with("text.")).collect();
     let new_hex = new_rep.hex();
     assert!(keys.iter().all(|k| k.contains(&new_hex)), "only the new symbol's keys: {keys:?}");

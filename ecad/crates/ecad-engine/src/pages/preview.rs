@@ -73,7 +73,7 @@ pub struct PreviewImage {
 /// be located.
 pub fn other_end(p: &Project, reference: RepresentationId) -> Result<(PageId, Pt), String> {
     let doc = p.ledger.document();
-    let cable = match doc.representations.get(&reference) {
+    let cable = match doc.representations().get(&reference) {
         Some(r) if ecad_electrical::references::cables::is_reference(r) => match r.subject {
             Subject::Cable(k) => k,
             _ => return Err(NOT_A_REFERENCE.into()),
@@ -100,7 +100,7 @@ pub(crate) const ORPHAN: &str = "This reference has no other end (orphan).";
 /// Unknown page, or an item that cannot be drawn.
 pub fn preview_drawing(p: &Project, page: PageId) -> Result<Drawing, String> {
     let doc = p.ledger.document();
-    if !doc.pages.contains_key(&page) {
+    if !doc.pages().contains_key(&page) {
         return Err("The previewed page no longer exists.".into());
     }
     project_page_with(
@@ -121,7 +121,7 @@ pub fn preview_drawing(p: &Project, page: PageId) -> Result<Drawing, String> {
 /// # Errors
 /// Unknown page, or an item that cannot be drawn.
 pub fn preview_drawing_of(doc: &ecad_model::Document, page: PageId, tol: f64) -> Result<Drawing, String> {
-    if !doc.pages.contains_key(&page) {
+    if !doc.pages().contains_key(&page) {
         return Err("That page is not in this revision.".into());
     }
     let reports = crate::project::engine_views().report_models(doc);

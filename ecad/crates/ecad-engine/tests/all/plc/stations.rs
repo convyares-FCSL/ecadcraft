@@ -13,14 +13,14 @@ fn placed(h: &mut H, symbol: &str, at: [f64; 2]) -> DeviceId {
 }
 
 fn station(doc: &Document, c: DeviceId) -> &PlcRack {
-    match &doc.devices[&c].device_type {
+    match &doc.devices()[&c].device_type {
         DeviceType::PlcRack(r) => r,
         other => panic!("not a station: {other:?}"),
     }
 }
 
 fn module(doc: &Document, c: DeviceId) -> &PlcModule {
-    match &doc.devices[&c].device_type {
+    match &doc.devices()[&c].device_type {
         DeviceType::PlcModule(m) => m,
         other => panic!("not a module: {other:?}"),
     }
@@ -116,9 +116,9 @@ fn setprop_writes_the_fields() {
     assert_eq!(s.address_style, Some(AddressStyle::Iec));
     // The bag holds none of them.
     assert!(
-        !doc.devices[&di].properties.keys().any(|k| k.starts_with("plc.ch.") || k == "plc.rack" || k == "plc.slot"),
+        !doc.devices()[&di].properties.keys().any(|k| k.starts_with("plc.ch.") || k == "plc.rack" || k == "plc.slot"),
         "{:?}",
-        doc.devices[&di].properties
+        doc.devices()[&di].properties
     );
 
     let head = h.head();

@@ -341,7 +341,7 @@ fn a_symbol_s_part_and_a_representation_s_role_are_shown_raw_and_readable() {
     use ecad_model::{Definition, DefinitionId, Form, PartRole, Representation, RepresentationId, Role, Subject};
     let mut ids = IdAllocator::seeded(85);
     let (c, d, r): (DeviceId, DefinitionId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let page = history().document().page_order[0];
+    let page = history().document().page_order()[0];
     let definition = Definition { name: "coil".into(), part_role: PartRole::Head, ..Definition::default() };
     let rep = Representation {
         subject: Subject::Device(c),

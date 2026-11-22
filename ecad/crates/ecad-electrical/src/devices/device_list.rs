@@ -88,7 +88,7 @@ impl DeviceTouch {
 /// The list entry of component `c` as it is now (`None`: gone, or a component without a tag that
 /// is drawn nowhere).
 pub fn device_entry(doc: &Document, c: DeviceId) -> Option<DeviceEntry> {
-    let comp = doc.devices.get(&c)?;
+    let comp = doc.devices().get(&c)?;
     let prefix = match comp.tag() {
         Some(t) => Some(group_and_number(t, comp.tag.state().unwrap_or_default()).0),
         None if doc.representations_of(Subject::Device(c)).next().is_none() => return None,
@@ -115,7 +115,7 @@ pub fn renumber(doc: &Document, entries: &mut [DeviceEntry]) {
     let book = Book::of(doc);
     for e in entries {
         for s in &mut e.symbols {
-            if let Some(r) = doc.representations.get(&s.rep) {
+            if let Some(r) = doc.representations().get(&s.rep) {
                 let (_, fresh) = symbol_entry(doc, &book, s.rep, r, s.name.clone());
                 *s = fresh;
             }
@@ -129,7 +129,7 @@ fn symbol_entry(doc: &Document, book: &Book, rid: RepresentationId, r: &ecad_mod
     let page_number = book.number(doc, r.page);
     let grid = ecad_model::document::sheet::Grid::of(doc, r.page);
     let place = position(doc, r).and_then(|p| ecad_model::connectivity::derive::place_on(&grid, &page_number, p));
-    let style = doc.settings.reference_style();
+    let style = doc.settings().reference_style();
     let n = book.position(r.page).unwrap_or(usize::MAX);
     (
         n,
@@ -171,7 +171,7 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
     let mut tagged: Vec<((String, u64, String), DeviceId)> = doc
         .tagged()
         .filter_map(|(_, c)| {
-            let d = doc.devices.get(&c)?;
+            let d = doc.devices().get(&c)?;
             let t = d.tag()?;
             let (p, n) = group_and_number(t, d.tag.state().unwrap_or_default());
             Some(((p, n, t.to_string()), c))
@@ -179,7 +179,7 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
         .collect();
     tagged.sort();
     let untagged = doc
-        .devices
+        .devices()
         .iter()
         .filter(|(_, c)| c.tag.is_none())
         .map(|(id, _)| *id)
@@ -204,7 +204,7 @@ pub(crate) fn group_and_number(t: &str, state: ecad_model::naming::tag::TagState
 }
 
 fn entry(doc: &Document, c: DeviceId, prefix: Option<String>, book: &Book) -> DeviceEntry {
-    let device = doc.devices.get(&c);
+    let device = doc.devices().get(&c);
     let mut symbols: Vec<(usize, Option<u32>, SymbolEntry)> = doc
         .representations_of(Subject::Device(c))
         .map(|(rid, r)| {
@@ -227,7 +227,7 @@ fn entry(doc: &Document, c: DeviceId, prefix: Option<String>, book: &Book) -> De
 
 /// Where a representation is: a symbol's insertion point, else its first connection point.
 pub fn position(doc: &Document, r: &ecad_model::Representation) -> Option<Pt> {
-    if let Some(ItemKind::Symbol(s)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) {
+    if let Some(ItemKind::Symbol(s)) = r.items.first().and_then(|i| doc.items().get(i)).map(|i| &i.kind) {
         return Some(s.placement.origin);
     }
     r.connection_points.values().next().copied()

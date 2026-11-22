@@ -93,7 +93,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelea
         // A reference end of a continued cable, on its page.
         let found = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            doc.representations.values().find_map(|r| match r.subject {
+            doc.representations().values().find_map(|r| match r.subject {
                 Subject::Cable(k) if ecad_electrical::references::cables::is_reference(r) => Some((k, r.page, *r.items.first()?)),
                 _ => None,
             })
@@ -142,7 +142,7 @@ pub fn measure_print(path: &Path, runs: usize, scratch: &Path) -> Result<Measure
         ecad_engine::export::printbook::install_io();
         let mut s = Session::empty();
         let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
-        let mut out = MeasuredPrint { pages: project.read(&mut s, |p, _| p.ledger.document().page_order.len())?, ..MeasuredPrint::default() };
+        let mut out = MeasuredPrint { pages: project.read(&mut s, |p, _| p.ledger.document().page_order().len())?, ..MeasuredPrint::default() };
         let mut print = Vec::new();
         for _ in 0..runs {
             let t = Instant::now();

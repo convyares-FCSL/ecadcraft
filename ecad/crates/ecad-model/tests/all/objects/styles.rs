@@ -48,9 +48,9 @@ fn each_op_inverts_exactly() {
     ];
     l.commit(Author::User, "make", ops).unwrap();
     let doc = l.document().clone();
-    assert_eq!(doc.standard.as_ref().map(|s| s.header.name.as_str()), Some("House"));
-    assert_eq!(doc.standard.as_ref().and_then(|s| s.values.get("tags.coil.prefix")).map(String::as_str), Some("K"));
-    assert!(doc.styles.get(&ecad_model::StyleCatalogue::Text).is_some_and(|m| m.contains_key(&StyleRef::Own(7))));
+    assert_eq!(doc.standard().map(|s| s.header.name.as_str()), Some("House"));
+    assert_eq!(doc.standard().and_then(|s| s.values.get("tags.coil.prefix")).map(String::as_str), Some("K"));
+    assert!(doc.styles().get(&ecad_model::StyleCatalogue::Text).is_some_and(|m| m.contains_key(&StyleRef::Own(7))));
     l.undo(Author::User).unwrap();
     assert_eq!(*l.document(), empty, "undo restores the empty document");
     l.redo(Author::User).unwrap();
@@ -86,9 +86,9 @@ fn removing_a_standard_needs_it_empty_first() {
         Op::SetStandard { before: Some(header("House")), after: None },
     ];
     l.commit(Author::User, "back to IEC", ops).unwrap();
-    assert!(l.document().standard.is_none());
+    assert!(l.document().standard().is_none());
     l.undo(Author::User).unwrap();
-    assert_eq!(l.document().standard.as_ref().map(|s| s.values.len()), Some(1));
+    assert_eq!(l.document().standard().map(|s| s.values.len()), Some(1));
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn style_choices_are_indexed_and_kept() {
     assert_eq!(l.document().style_users("text.tag.style", &own).count(), 1);
     assert!(l.document().check_index().is_ok());
     // A deleted device takes its choice with it.
-    let comp = l.document().devices.get(&c).cloned().unwrap();
+    let comp = l.document().devices().get(&c).cloned().unwrap();
     l.commit(Author::User, "delete", vec![Op::DeleteDevice { id: c, device: comp }]).unwrap();
     assert_eq!(l.document().style_users_of(&own).count(), 0);
     assert!(l.document().check_index().is_ok());
@@ -232,12 +232,15 @@ fn style_records_merge_as_units() {
     let mut m = t.clone();
     m.commit(Author::User, "merge", plan.ops).unwrap();
     let d = m.document();
-    assert_eq!(d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&big)).and_then(|r| r.body.entry("height")).as_deref(), Some("7"));
     assert_eq!(
-        d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&tag())).and_then(|r| r.body.entry("colour")).as_deref(),
+        d.styles().get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&big)).and_then(|r| r.body.entry("height")).as_deref(),
+        Some("7")
+    );
+    assert_eq!(
+        d.styles().get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&tag())).and_then(|r| r.body.entry("colour")).as_deref(),
         Some("BU")
     );
-    let values = &d.standard.as_ref().unwrap().values;
+    let values = &d.standard().unwrap().values;
     assert_eq!((values.get("x.one").map(String::as_str), values.get("x.two").map(String::as_str)), (Some("1"), Some("2")));
     assert!(d.check().is_ok());
 }
@@ -300,20 +303,20 @@ fn a_standard_removed_on_one_side_and_changed_on_the_other_is_one_conflict() {
     assert!(c[0].what.contains("Standard \"House\"") && c[0].what.contains("removed on main; changed on branch"), "{}", c[0].what);
     let keep = BTreeMap::from([("project/standard".to_string(), Choice::Source)]);
     let d = merged(&base, remove(), value(), &keep).1.unwrap();
-    let st = d.standard.as_ref().expect("kept with the branch's change");
+    let st = d.standard().expect("kept with the branch's change");
     assert_eq!((st.header.name.as_str(), st.values.get("text.tag.style").map(String::as_str)), ("House", Some("x")));
     let drop = BTreeMap::from([("project/standard".to_string(), Choice::Target)]);
-    assert!(merged(&base, remove(), value(), &drop).1.unwrap().standard.is_none());
+    assert!(merged(&base, remove(), value(), &drop).1.unwrap().standard().is_none());
 
     // The mirror: the target adds a standard-layer style, the source removes.
     let (plan, _) = merged(&base, style(), remove(), &BTreeMap::new());
     assert_eq!(plan.conflicts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), vec!["project/standard"], "{:?}", plan.conflicts);
     let keep = BTreeMap::from([("project/standard".to_string(), Choice::Target)]);
     let d = merged(&base, style(), remove(), &keep).1.unwrap();
-    let st = d.standard.as_ref().unwrap();
+    let st = d.standard().unwrap();
     assert!(st.styles.get(&ecad_model::StyleCatalogue::Text).is_some_and(|m| m.contains_key(&tag())), "{st:?}");
     let drop = BTreeMap::from([("project/standard".to_string(), Choice::Source)]);
-    assert!(merged(&base, style(), remove(), &drop).1.unwrap().standard.is_none());
+    assert!(merged(&base, style(), remove(), &drop).1.unwrap().standard().is_none());
 
     // Removed on one side, untouched on the other: it goes, no conflict.
     let (plan, d) = merged(
@@ -323,5 +326,5 @@ fn a_standard_removed_on_one_side_and_changed_on_the_other_is_one_conflict() {
         &BTreeMap::new(),
     );
     assert!(plan.conflicts.is_empty(), "{:?}", plan.conflicts);
-    assert!(d.unwrap().standard.is_none());
+    assert!(d.unwrap().standard().is_none());
 }

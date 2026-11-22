@@ -46,12 +46,12 @@ fn core_fixes_go_to_the_cable_and_tick_not_used_in_one_transaction() {
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
-    let first = doc(&mut h).page_order[0];
+    let first = doc(&mut h).page_order()[0];
     // A new page with a cable on a loose line (its core sits on the line, no wire yet): the
     // cable type offers more cores than are used, so open cores show.
     ok(&mut h, r#"newpage {}"#);
     let d = doc(&mut h);
-    let page = *d.page_order.last().unwrap();
+    let page = *d.page_order().last().unwrap();
     h.state_mut().show_page(page).unwrap();
     h.run_steps(2);
     ok(&mut h, r#"wire {"points": [[300, 100], [300, 20]]}"#);
@@ -94,7 +94,7 @@ fn core_fixes_go_to_the_cable_and_tick_not_used_in_one_transaction() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert_eq!(core_rows(&mut h).len(), n - 1, "the row goes");
     let d = doc(&mut h);
-    assert!(d.cables[&w90].cores.iter().any(|m| m.label_str() == Some(open.label.as_str()) && m.is_spare()), "the core is stored Spare");
+    assert!(d.cables()[&w90].cores.iter().any(|m| m.label_str() == Some(open.label.as_str()) && m.is_spare()), "the core is stored Spare");
     ok(&mut h, "u");
     assert_eq!(core_rows(&mut h).len(), n, "one undo brings it back");
     let _ = std::fs::remove_dir_all(&dir);

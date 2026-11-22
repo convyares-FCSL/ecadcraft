@@ -67,7 +67,7 @@ fn unknown_words_open_read_only() {
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file_read_only(&mut s, &file, 0x72_a6).unwrap();
     let mut h = H { s, project, trail: Vec::new() };
-    let (again, word) = h.cfg(|p| (p.ledger.head(), p.ledger.document().display.get("text.tag.show").cloned()));
+    let (again, word) = h.cfg(|p| (p.ledger.head(), p.ledger.document().display().get("text.tag.show").cloned()));
     assert_eq!((again, word.as_deref()), (head, Some("maybe")), "nothing was written");
     while !h.s.docs.is_empty() {
         h.s.execute("close", &json!({"index": 0})).unwrap();
@@ -108,7 +108,7 @@ fn a_project_symbol_with_its_own_prefix_opens_writable() {
     h.run("symbolnew", symbol).unwrap();
     h.run("setdefault", json!({"key": "symbol.float1.prefix", "level": "project", "value": "BL"})).unwrap();
     h.run("setdefault", json!({"key": "symbol.coil.prefix", "level": "project", "value": "KA"})).unwrap();
-    let keys = h.cfg(|p| p.ledger.document().settings.tag_prefixes.keys().map(ToString::to_string).collect::<Vec<_>>());
+    let keys = h.cfg(|p| p.ledger.document().settings().tag_prefixes.keys().map(ToString::to_string).collect::<Vec<_>>());
     assert_eq!(keys, ["starter:coil", "project:float1"]);
     let path = dir.0.join("prefix072").display().to_string();
     let saved = saved_as(&mut h, &path);
@@ -136,6 +136,6 @@ fn a_slot_rotation_is_given_in_degrees_and_stored_in_radians() {
         "defaults": {"prefix": "B", "join": "device"},
     });
     h.run("symbolnew", symbol).unwrap();
-    let turns = h.cfg(|p| p.ledger.document().definitions.values().flat_map(|d| d.texts.iter().map(|t| t.rotation)).collect::<Vec<_>>());
+    let turns = h.cfg(|p| p.ledger.document().definitions().values().flat_map(|d| d.texts.iter().map(|t| t.rotation)).collect::<Vec<_>>());
     assert_eq!(turns, [ecad_model::geometry::units::Radians(std::f64::consts::FRAC_PI_2)]);
 }

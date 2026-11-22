@@ -133,11 +133,11 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     click(&mut h, "ecad.projectprops.ok");
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert_eq!((d.settings.reference_style(), d.settings.tag_padding()), (ecad_model::ReferenceStyle::PageColumn, 3));
+    assert_eq!((d.settings().reference_style(), d.settings().tag_padding()), (ecad_model::ReferenceStyle::PageColumn, 3));
     let references = ecad_electrical::references::cables::markers_on_page(&d, field);
     assert_eq!(references.first().map(|m| m.text.as_str()), Some("/100.2"), "the column");
     ok(&mut h, "u");
-    assert_eq!(doc(&mut h).settings.reference_style(), ecad_model::ReferenceStyle::PageZone, "undo: back to the default, 2/B5");
+    assert_eq!(doc(&mut h).settings().reference_style(), ecad_model::ReferenceStyle::PageZone, "undo: back to the default, 2/B5");
 
     // Folders: New folder (renamed in place), a page into it, fold; one transaction each.
     let before = head(&mut h);
@@ -145,7 +145,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(head(&mut h), before + 1);
     type_focused(&mut h, "Schematic layouts");
     assert_eq!(head(&mut h), before + 2, "the rename is its own transaction");
-    let folder: FolderId = doc(&mut h).folder_order[0];
+    let folder: FolderId = doc(&mut h).folder_order()[0];
     h.state_mut().panel_action(Action::MoveInto { page: field, folder: Some(folder), index: None });
     h.run_steps(3);
     assert_eq!(head(&mut h), before + 3);
@@ -248,7 +248,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(head(&mut h), before, "stopped");
     assert!(h.query_by_label("Undo the issue").is_some(), "the question");
     click(&mut h, "Undo the issue");
-    assert!(!doc(&mut h).versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1))));
+    assert!(!doc(&mut h).versions().contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1))));
     let _ = sheets::ISSUE_UNDO_ID;
 }
 
@@ -264,7 +264,7 @@ fn the_demo_on_its_sheets() {
     t.dismiss_notice();
     let deltas: Deltas = Default::default();
     let mut h = build(t, Some(deltas.clone()));
-    let pages = doc(&mut h).page_order.clone();
+    let pages = doc(&mut h).page_order().to_vec();
     for (i, p) in pages.iter().enumerate() {
         h.state_mut().show_page(*p).unwrap();
         h.state_mut().cad.run("zoom", serde_json::json!({"mode": "extents"})).unwrap();

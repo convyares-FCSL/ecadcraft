@@ -91,7 +91,7 @@ fn fixture_with(deltas: Option<crate::canvas::mouse_acceptance::Deltas>) -> F {
     let k1 = t.cad.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap()["component"].as_str().unwrap().to_string();
     let k1 = DeviceId(u128::from_str_radix(&k1, 16).unwrap());
     let d = doc(&mut h);
-    let page1 = d.page_order[0];
+    let page1 = d.page_order()[0];
     let pos = |label: &str| {
         let (t, _) = d.connection_points_of(k1).find(|(_, x)| x.label.as_deref() == Some(label)).unwrap();
         let p = ecad_model::connectivity::derive::connection_point_positions(&d, page1).into_iter().find(|(x, _, _)| *x == t).unwrap().2;
@@ -115,7 +115,7 @@ fn fixture_with(deltas: Option<crate::canvas::mouse_acceptance::Deltas>) -> F {
 }
 
 fn exists(h: &mut H, k1: DeviceId) -> bool {
-    doc(h).devices.contains_key(&k1)
+    doc(h).devices().contains_key(&k1)
 }
 
 #[test]
@@ -348,7 +348,7 @@ fn ctrl_k_finds_a_page_a_tag_a_symbol_and_an_action_and_runs_the_action() {
     h.run_steps(3);
     assert_eq!(h.state().panel.active, Some(page2));
     // An action runs on the selection: Fix number on the selected wire.
-    let page1 = doc(&mut h).page_order[0];
+    let page1 = doc(&mut h).page_order()[0];
     h.state_mut().show_page(page1).unwrap();
     h.run_steps(2);
     let handles = {
@@ -402,7 +402,7 @@ fn screenshots_for_the_owner() {
     // The wire's wheel with Set potential's list.
     let (a, b) = {
         let d = doc(&mut h);
-        let page = d.page_order[0];
+        let page = d.page_order()[0];
         let (_, prim) = ecad_model::connectivity::derive::route_on_page(&d, wire, page).unwrap();
         prim.path_ends().unwrap()
     };

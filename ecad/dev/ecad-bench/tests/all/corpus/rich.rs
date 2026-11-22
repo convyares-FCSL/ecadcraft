@@ -20,10 +20,10 @@ fn rich_has_every_object_kind() {
     doc.check().unwrap();
 
     // The lean pattern is still all there.
-    assert!(doc.wires.len() >= SMALL.wires && doc.cables.len() >= SMALL.cables);
+    assert!(doc.wires().len() >= SMALL.wires && doc.cables().len() >= SMALL.cables);
 
     // Connectors: mated halves, with pins.
-    let connectors: Vec<_> = doc.devices.keys().filter_map(|c| ecad_electrical::connectors::connector_of(&doc, *c).map(|x| (*c, x))).collect();
+    let connectors: Vec<_> = doc.devices().keys().filter_map(|c| ecad_electrical::connectors::connector_of(&doc, *c).map(|x| (*c, x))).collect();
     assert!(connectors.iter().any(|(_, x)| x.mating), "a mated connector");
     assert!(connectors.iter().any(|(c, _)| doc.connection_points_of(*c).count() >= 4), "a connector with pins");
 
@@ -38,13 +38,13 @@ fn rich_has_every_object_kind() {
     assert!(plc.naming.values().any(|cards| !cards.is_empty()), "cards in racks");
 
     // Jumper bars on a page.
-    assert!(doc.page_order.iter().any(|p| !ecad_electrical::terminal_strips::jumper_bars::parts_on_page(&doc, *p).is_empty()), "jumper bars");
+    assert!(doc.page_order().iter().any(|p| !ecad_electrical::terminal_strips::jumper_bars::parts_on_page(&doc, *p).is_empty()), "jumper bars");
 
     // A cover page.
-    assert!(doc.pages.values().any(|p| matches!(p.kind, ecad_model::PageKind::Generated(ecad_model::GenKind::Cover))), "a cover page");
+    assert!(doc.pages().values().any(|p| matches!(p.kind, ecad_model::PageKind::Generated(ecad_model::GenKind::Cover))), "a cover page");
 
     // Ratings: on devices (protective), wires and cables.
-    assert!(doc.devices.keys().any(|c| ecad_electrical::circuits::trace::is_protective_component(&doc, *c)), "a protective device");
+    assert!(doc.devices().keys().any(|c| ecad_electrical::circuits::trace::is_protective_component(&doc, *c)), "a protective device");
     let kept = ecad_electrical::circuits::kept::Kept::build(&doc);
     use ecad_electrical::circuits::RatedSubject;
     assert!(kept.results.keys().any(|s| matches!(s, RatedSubject::Wire(_))), "a rated wire");

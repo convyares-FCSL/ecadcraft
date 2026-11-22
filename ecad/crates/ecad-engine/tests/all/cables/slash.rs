@@ -54,7 +54,7 @@ fn fixture() -> F {
     h.run("line", json!({"points": [[0, 15], [60, 15]]})).unwrap();
     let page = h.first_page();
     let d = h.doc();
-    let plain = d.items.keys().copied().find(|i| d.representation_of_item(*i).is_none()).expect("the plain line");
+    let plain = d.items().keys().copied().find(|i| d.representation_of_item(*i).is_none()).expect("the plain line");
     F { h, page, w0, w5, w10, plain }
 }
 
@@ -63,7 +63,7 @@ fn slash(h: &mut H, from: (f64, f64), to: (f64, f64)) -> Result<Value, String> {
 }
 
 fn members(h: &mut H, k: CableId) -> Vec<WireId> {
-    h.doc().cables[&k].cores.iter().filter_map(|m| m.wire()).collect()
+    h.doc().cables()[&k].cores.iter().filter_map(|m| m.wire()).collect()
 }
 
 fn history(h: &mut H) -> Vec<Transaction> {
@@ -100,7 +100,7 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     assert!(matches!(&tx.ops[0], Op::CreateCable { cable, .. } if cable.cores.len() == 3), "the new cable carries its three cores");
     let k: CableId = id(&r, "cable");
     let d = f.h.doc();
-    let cable = &d.cables[&k];
+    let cable = &d.cables()[&k];
     assert_eq!(members(&mut f.h, k), vec![f.w0, f.w5, f.w10], "crossing order from the first point");
     assert!(cable.cores.iter().all(|m| m.label.is_none()), "no core designations");
     // Brief 026: an automatic tag when none is given, and nothing else.
@@ -109,24 +109,24 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     assert_eq!(r["ignored"], json!([f.plain.hex()]), "the plain line is ignored and reported");
     assert_eq!(r["touched"], json!([]));
     // Nothing that existed changed (DOC-04).
-    assert_eq!(d.wires, before.wires, "conductor IDs and attachments unchanged");
-    for (i, item) in &before.items {
-        assert_eq!(d.items.get(i), Some(item), "item {i} unchanged");
+    assert_eq!(d.wires(), before.wires(), "conductor IDs and attachments unchanged");
+    for (i, item) in before.items() {
+        assert_eq!(d.items().get(i), Some(item), "item {i} unchanged");
     }
-    for (rid, rep) in &before.representations {
-        assert_eq!(d.representations.get(rid), Some(rep), "representation {rid} unchanged");
+    for (rid, rep) in before.representations() {
+        assert_eq!(d.representations().get(rid), Some(rep), "representation {rid} unchanged");
     }
     // The slash: a plain line in the wire style, the cable's drawn representation.
     let item: ItemId = id(&r, "item");
     let rid: RepresentationId = id(&r, "representation");
-    let rep = &d.representations[&rid];
+    let rep = &d.representations()[&rid];
     assert_eq!(rep.subject, Subject::Cable(k));
     assert_eq!((rep.form, rep.role, rep.page), (Form::Drawn, ecad_model::Role::Slash, f.page));
     assert_eq!(rep.items, vec![item]);
     assert!(rep.connection_points.is_empty());
-    assert_eq!(d.items[&item].kind, ItemKind::Primitive(Primitive::Line { a: Pt::new(28.0, -3.0), b: Pt::new(32.0, 18.0) }));
+    assert_eq!(d.items()[&item].kind, ItemKind::Primitive(Primitive::Line { a: Pt::new(28.0, -3.0), b: Pt::new(32.0, 18.0) }));
     let route = crate::common::wire_line(&d, f.w0, f.page).unwrap().0;
-    assert_eq!(d.items[&item].style, d.items[&route].style, "the same style as a new wire (O4)");
+    assert_eq!(d.items()[&item].style, d.items()[&route].style, "the same style as a new wire (O4)");
 }
 
 /// AC1 (design check C): the reversed slash gives the reversed order.
@@ -144,7 +144,7 @@ fn a_tag_is_stored_as_the_cable_tag() {
     let mut f = fixture();
     let r = f.h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "-W1"})).unwrap();
     let k: CableId = id(&r, "cable");
-    assert_eq!(f.h.doc().cables[&k].tag(), Some("-W01"));
+    assert_eq!(f.h.doc().cables()[&k].tag(), Some("-W01"));
 }
 
 /// AC7 (design check D): two clicks record exactly the JSON form's transaction; before the second
@@ -199,7 +199,7 @@ fn undo_enter_esc_and_a_repeated_point_write_nothing() {
     h.s.cancel();
     assert!(h.s.running.is_none());
     assert_eq!(h.head(), head);
-    assert!(h.doc().cables.is_empty());
+    assert!(h.doc().cables().is_empty());
 }
 
 /// AC2 (design check E): `u` removes cable and slash in one step; `redo` brings both back with
@@ -217,7 +217,7 @@ fn undo_and_redo_take_the_cable_and_its_slash_together() {
     assert!(again == after, "redo restores them");
     let k: CableId = id(&r, "cable");
     let item: ItemId = id(&r, "item");
-    assert!(again.cables.contains_key(&k) && again.items.contains_key(&item), "with the same IDs");
+    assert!(again.cables().contains_key(&k) && again.items().contains_key(&item), "with the same IDs");
 }
 
 /// AC3 (design check F): save, close and reopen give the same cable, members, order and slash;
@@ -282,7 +282,7 @@ fn the_crossing_rules() {
         let d = f.h.doc();
         let tag = |c: &str| {
             let c = WireId::from(u128::from_str_radix(c, 16).unwrap());
-            d.wires[&c].number_text().unwrap_or_default().to_string()
+            d.wires()[&c].number_text().unwrap_or_default().to_string()
         };
         let tags = |v: &Value| v.as_array().unwrap().iter().map(|c| tag(c.as_str().unwrap())).collect::<Vec<_>>();
         match want {
@@ -308,7 +308,7 @@ fn refusals_write_nothing_and_say_why() {
     let first = slash(&mut f.h, (28.0, -3.0), (32.0, 18.0)).unwrap();
     let cable: CableId = id(&first, "cable");
     // Brief 026: the cable has an automatic tag, which the message names.
-    let cable_tag = f.h.doc().cables[&cable].tag().unwrap().to_string();
+    let cable_tag = f.h.doc().cables()[&cable].tag().unwrap().to_string();
     let cases: Vec<(&str, Value, String)> = vec![
         (
             "a wire already in a cable",
@@ -403,7 +403,7 @@ fn erasing_the_slash_keeps_the_cable_and_deleting_the_cable_keeps_the_wires() {
     f.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     let d = f.h.doc();
     assert_eq!(members(&mut f.h, k), vec![f.w0, f.w5, f.w10], "the cable and its members stay");
-    assert!(!d.items.contains_key(&item) && !d.representations.contains_key(&rid), "only the slash went");
+    assert!(!d.items().contains_key(&item) && !d.representations().contains_key(&rid), "only the slash went");
     f.h.cmdline("u");
 
     let before = f.h.doc();
@@ -412,9 +412,9 @@ fn erasing_the_slash_keeps_the_cable_and_deleting_the_cable_keeps_the_wires() {
     assert_eq!(f.h.head(), head + 1);
     assert_eq!(r["message"], json!(format!("Cable {} deleted; its 3 wires are kept.", k.hex())));
     let d = f.h.doc();
-    assert!(d.cables.is_empty());
-    assert!(!d.items.contains_key(&item) && !d.representations.contains_key(&rid), "the slash goes with it");
-    assert_eq!(d.wires, before.wires, "every conductor stays");
+    assert!(d.cables().is_empty());
+    assert!(!d.items().contains_key(&item) && !d.representations().contains_key(&rid), "the slash goes with it");
+    assert_eq!(d.wires(), before.wires(), "every conductor stays");
     for c in [f.w0, f.w5, f.w10] {
         assert_eq!(crate::common::wire_line(&d, c, f.page), crate::common::wire_line(&before, c, f.page), "routes unchanged");
     }
@@ -465,7 +465,7 @@ fn the_drawing_shows_the_cable_and_hover_lists_its_wires() {
     let before = f.h.p(|p| hover_lines(p, uid, slash_handle)).unwrap();
     let line = f.h.route_of(f.page, f.w5);
     f.h.run("move", json!({"handles": [w5.hex()], "delta": [0, 50]})).unwrap();
-    let positions: Vec<CorePosition> = f.h.doc().cables[&k].cores.iter().map(|m| m.position).collect();
+    let positions: Vec<CorePosition> = f.h.doc().cables()[&k].cores.iter().map(|m| m.position).collect();
     assert_eq!(
         positions,
         vec![CorePosition::Wire(f.w0), CorePosition::Route { route: line, landed: None }, CorePosition::Wire(f.w10)],
@@ -501,7 +501,7 @@ fn many_wires(h: &mut H, n: usize) {
 /// as [`many_wires`] does.
 fn wires_at(h: &mut H, xs: &[f64]) {
     h.cfg(|p| {
-        let page = p.ledger.document().page_order[0];
+        let page = p.ledger.document().page_order()[0];
         let style = Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         let (ops, _) = crate::common::wired_lines(&mut p.ids, page, style, xs.len(), |i| {
             let x = xs.get(i).copied().unwrap_or_default();
@@ -531,7 +531,7 @@ fn hostile_slashes_never_panic() {
     let cable = r["cable"].as_str().unwrap().to_string();
     // The one wire the slash did not take (IDs do not follow creation order).
     let taken: Vec<&str> = r["conductors"].as_array().unwrap().iter().map(|c| c.as_str().unwrap()).collect();
-    let last = h.doc().wires.keys().copied().find(|c| !taken.contains(&c.hex().as_str())).unwrap();
+    let last = h.doc().wires().keys().copied().find(|c| !taken.contains(&c.hex().as_str())).unwrap();
     let e = h.s.execute("cableadd", &json!({"cable": cable, "conductors": [last.hex()]})).unwrap_err();
     assert!(e.to_string().contains("a cable holds at most 10000 wires"), "{e}");
     assert_eq!(h.head(), head + 1);

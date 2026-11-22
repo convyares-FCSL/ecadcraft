@@ -18,7 +18,7 @@ impl App {
         let Some(p) = self.project.clone() else { return };
         let found = p.read(&mut self.cad.session, |p, _| {
             let page = page.or_else(|| p.active_page())?;
-            Some((page, p.ledger.document().pages.get(&page)?.title.to_string()))
+            Some((page, p.ledger.document().pages().get(&page)?.title.to_string()))
         });
         match found {
             Ok(Some((page, title))) => self.name_box = Some(NameBox { kind: NameBoxKind::Rename(page), text: title, error: None, focused: false }),
@@ -28,7 +28,7 @@ impl App {
 
     fn project_page_count(&mut self) -> usize {
         let Some(p) = self.project.clone() else { return 0 };
-        p.read(&mut self.cad.session, |p, _| p.ledger.document().page_order.len()).unwrap_or(0)
+        p.read(&mut self.cad.session, |p, _| p.ledger.document().page_order().len()).unwrap_or(0)
     }
 
     /// OK in the page name box: one `newpage` (the new page is shown at once) or `renamepage`. A

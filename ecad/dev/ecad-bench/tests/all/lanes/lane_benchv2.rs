@@ -31,7 +31,7 @@ fn shape(path: &Path) -> Shape {
     let o = DiskProject::open(path, 3, "lane_benchv2").unwrap();
     assert!(o.report.damage.is_none(), "{:?}", o.report.damage);
     let doc = o.ledger.document().clone();
-    Shape { pages: doc.pages.len(), devices: doc.devices.len(), wires: doc.wires.len(), history: o.ledger.head(), document: doc }
+    Shape { pages: doc.pages().len(), devices: doc.devices().len(), wires: doc.wires().len(), history: o.ledger.head(), document: doc }
 }
 
 /// Written straight to the project file, as the bench does.
@@ -48,7 +48,7 @@ fn a_project_written_straight_to_the_file_matches_the_generated_one() {
         let g = generate(TINY, variant).unwrap();
         let s = shape(&direct(&g, &d));
         let doc = g.ledger.document();
-        assert_eq!((s.pages, s.devices, s.wires), (doc.pages.len(), doc.devices.len(), doc.wires.len()), "{}", variant.name());
+        assert_eq!((s.pages, s.devices, s.wires), (doc.pages().len(), doc.devices().len(), doc.wires().len()), "{}", variant.name());
         assert_eq!(s.history, g.ledger.head(), "{}: history entries", variant.name());
         assert!(&s.document == doc, "{}: the documents differ", variant.name());
     }

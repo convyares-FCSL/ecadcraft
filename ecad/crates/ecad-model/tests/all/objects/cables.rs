@@ -36,7 +36,7 @@ fn cable_on_a_wire() -> (Ledger, CableId, WireId, WireId) {
 #[test]
 fn modify_cable_changes_fields_and_cores_and_undoes() {
     let (mut l, k, w1, w2) = cable_on_a_wire();
-    let before = l.document().cables.get(&k).cloned().unwrap();
+    let before = l.document().cables().get(&k).cloned().unwrap();
     let mut after = before.clone();
     after.shield = Some(Shield::Overall);
     after.tag = ecad_model::naming::tag::TagSlot::of_text(Some("-W7"), Default::default());
@@ -46,7 +46,7 @@ fn modify_cable_changes_fields_and_cores_and_undoes() {
     assert_eq!(op.name(), "ModifyCable");
     l.commit(Author::User, "edit", vec![op]).unwrap();
     let doc = l.document();
-    assert_eq!(doc.cables.get(&k), Some(&after));
+    assert_eq!(doc.cables().get(&k), Some(&after));
     assert!(doc.cables_of(w1).is_empty() && doc.cables_of(w2) == vec![k], "the wire index follows");
     assert_eq!(doc.cables_tagged("-W7"), vec![k], "the tag index follows");
     assert!(doc.cables_tagged("-W1").is_empty());
@@ -57,7 +57,7 @@ fn modify_cable_changes_fields_and_cores_and_undoes() {
     assert!(l.commit(Author::User, "missing", vec![Op::ModifyCable { id: CableId(1), before: after.clone(), after: before.clone() }]).is_err());
     l.undo(Author::User).unwrap();
     let doc = l.document();
-    assert_eq!(doc.cables.get(&k), Some(&before));
+    assert_eq!(doc.cables().get(&k), Some(&before));
     assert_eq!(doc.cables_of(w1), vec![k]);
     assert_eq!(doc.cables_tagged("-W1"), vec![k]);
     doc.check_index().unwrap();
@@ -66,7 +66,7 @@ fn modify_cable_changes_fields_and_cores_and_undoes() {
 #[test]
 fn a_cores_purpose_stays_when_its_position_changes() {
     let (mut l, k, _, w2) = cable_on_a_wire();
-    let before = l.document().cables.get(&k).cloned().unwrap();
+    let before = l.document().cables().get(&k).cloned().unwrap();
     let mut spare = before.clone();
     spare.cores.push(Core { purpose: Purpose::Spare, ..Core::unplaced(CoreLabel::new("2").ok()) });
     l.commit(Author::User, "unused", Op::modify_cable(k, &before, spare.clone()).into_iter().collect()).unwrap();
@@ -75,7 +75,7 @@ fn a_cores_purpose_stays_when_its_position_changes() {
         m.position = CorePosition::Wire(w2);
     }
     l.commit(Author::User, "place", Op::modify_cable(k, &spare, placed).into_iter().collect()).unwrap();
-    let core = l.document().cables.get(&k).and_then(|c| c.cores.get(1).cloned()).unwrap();
+    let core = l.document().cables().get(&k).and_then(|c| c.cores.get(1).cloned()).unwrap();
     assert_eq!((core.purpose, core.position), (Purpose::Spare, CorePosition::Wire(w2)), "purpose is not worked out from the position");
 }
 
@@ -88,7 +88,7 @@ fn a_cables_fields_are_never_in_its_properties() {
         assert!(l.commit(Author::User, key, vec![op]).is_err(), "SetProperty {key} on a cable is refused");
     }
     // The invariant holds for a whole cable too: a bag holding `shield` is refused.
-    let before = l.document().cables.get(&k).cloned().unwrap();
+    let before = l.document().cables().get(&k).cloned().unwrap();
     let mut after = before.clone();
     after.properties.insert("shield".into(), "overall".into());
     assert!(l.commit(Author::User, "bag", vec![Op::ModifyCable { id: k, before, after }]).is_err());
@@ -100,7 +100,7 @@ fn a_cables_fields_are_never_in_its_properties() {
 fn a_cables_tag_and_description_are_fields_not_properties() {
     let (mut l, k, _, _) = cable_on_a_wire();
     for key in ["tag", "description"] {
-        let before = l.document().cables.get(&k).cloned().unwrap();
+        let before = l.document().cables().get(&k).cloned().unwrap();
         let mut after = before.clone();
         after.properties.insert(key.into(), "x".into());
         let err = l.commit(Author::User, key, vec![Op::ModifyCable { id: k, before, after }]).unwrap_err().to_string();

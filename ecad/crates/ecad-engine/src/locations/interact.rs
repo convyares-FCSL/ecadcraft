@@ -92,7 +92,7 @@ impl LocationBox {
                     let own = ecad_electrical::locations::designations::shown(
                         doc,
                         self.aspect,
-                        doc.devices.get(&c).and_then(|x| ecad_electrical::locations::designations::device_key(x, self.aspect)).as_deref(),
+                        doc.devices().get(&c).and_then(|x| ecad_electrical::locations::designations::device_key(x, self.aspect)).as_deref(),
                     );
                     Some((ecad_electrical::locations::anchor(doc, r)?, own))
                 })
@@ -260,7 +260,7 @@ impl LocationBox {
 /// The polyline item on `page` whose outline passes within `tol` of `at` (any, closed or not:
 /// the command says which ones are refused).
 fn outline_at(doc: &ecad_model::Document, page: ecad_model::PageId, at: Pt, tol: f64) -> Option<ItemId> {
-    doc.items
+    doc.items()
         .iter()
         .filter(|(_, i)| i.page == page)
         .filter_map(|(id, i)| match &i.kind {

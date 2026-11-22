@@ -28,7 +28,7 @@ pub(crate) fn pins(labels: &[String]) -> String {
 }
 
 fn label(doc: &Document, t: ConnectionPointId) -> String {
-    doc.connection_points.get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| "?".into())
+    doc.connection_points().get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| "?".into())
 }
 
 /// The labels a symbol shows: its connection points, in its definition's order.
@@ -58,7 +58,7 @@ pub fn rows(
     }
     let head_first = dev.head.into_iter().chain(reps.iter().map(|(id, _)| *id).filter(|id| Some(*id) != dev.head && !dev.children.contains(id)));
     for id in head_first {
-        let Some(r) = doc.representations.get(&id) else { continue };
+        let Some(r) = doc.representations().get(&id) else { continue };
         let what = if id == rep {
             "this symbol".to_string()
         } else {

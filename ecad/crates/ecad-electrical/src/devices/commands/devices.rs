@@ -104,7 +104,7 @@ fn remove_representations(doc: &Document, subject: Subject) -> Vec<Op> {
     for (rid, r) in doc.representations_of(subject) {
         ops.push(Op::UnlinkRepresentation { id: rid, rep: r.clone() });
         for i in &r.items {
-            if let Some(item) = doc.items.get(i) {
+            if let Some(item) = doc.items().get(i) {
                 ops.push(Op::RemoveItem { id: *i, item: item.clone() });
             }
         }
@@ -150,17 +150,17 @@ pub(crate) fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, Cmd
     let mut ops = Vec::new();
     match doomed {
         Doomed::Wire(c) => {
-            let wire = doc.wires.get(&c).ok_or(CmdError::refused("no such conductor"))?;
+            let wire = doc.wires().get(&c).ok_or(CmdError::refused("no such conductor"))?;
             let [a, b] = wire.ends;
             let direct: Vec<RouteId> = doc
                 .routes_at(a)
-                .filter(|r| doc.routes.get(r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(a)) && x.ends.contains(&RouteEnd::Point(b))))
+                .filter(|r| doc.routes().get(r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(a)) && x.ends.contains(&RouteEnd::Point(b))))
                 .collect();
             if direct.is_empty() {
                 return Err(CmdError::refused("This wire is not drawn as one line between its two points; erase the lines it runs along instead."));
             }
             for cable in doc.cables_of(c) {
-                if let Some(k) = doc.cables.get(&cable) {
+                if let Some(k) = doc.cables().get(&cable) {
                     let after = ecad_model::Cable { cores: k.cores.iter().filter(|m| m.wire() != Some(c)).cloned().collect(), ..k.clone() };
                     ops.extend(Op::modify_cable(cable, k, after));
                 }
@@ -169,13 +169,13 @@ pub(crate) fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, Cmd
             Ok(Deleted { ops, released: 0, kept: None, message: None })
         }
         Doomed::Route(r) => {
-            if !doc.routes.contains_key(&r) {
+            if !doc.routes().contains_key(&r) {
                 return Err(CmdError::refused("no such wire"));
             }
             Ok(Deleted { ops: remove_routes(doc, &[r]), released: 0, kept: None, message: None })
         }
         Doomed::Device(c) => {
-            let component = doc.devices.get(&c).ok_or(CmdError::refused("no such component"))?;
+            let component = doc.devices().get(&c).ok_or(CmdError::refused("no such component"))?;
             ops.extend(crate::wires::routes::free_points_ops(doc, doc.connection_points_of(c).map(|(t, _)| t)));
             ops.extend(remove_representations(doc, Subject::Device(c)));
             for (t, term) in doc.connection_points_of(c) {
@@ -195,7 +195,7 @@ pub(crate) fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, Cmd
             Ok(Deleted { ops, released, kept: None, message })
         }
         Doomed::Cable(k) => {
-            let cable = doc.cables.get(&k).ok_or(CmdError::refused("no such cable"))?;
+            let cable = doc.cables().get(&k).ok_or(CmdError::refused("no such cable"))?;
             // Its named points go with it (design 072 §4.4, F4): the lines on them end free.
             ops.extend(crate::wires::routes::free_points_ops(doc, cable.cores.iter().flat_map(|c| c.through.iter().copied())));
             ops.extend(remove_representations(doc, Subject::Cable(k)));
@@ -335,7 +335,7 @@ impl Generic for DevicepropsParams {
     const ACCESS: Access = Access::Reads;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        if !cx.doc.devices.contains_key(&self.component) {
+        if !cx.doc.devices().contains_key(&self.component) {
             return Err(CmdError::NotFound(Noun::Device));
         }
         Ok(Outcome::answer(devices::json::device_json(cx.doc, self.component)))
@@ -432,7 +432,7 @@ impl Generic for TagsettingsParams {
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let settings = tag_settings(self.padding, self.prefixes.unwrap_or_default())?;
-        let before = cx.doc.settings.clone();
+        let before = cx.doc.settings().clone();
         let mut after = before.clone();
         apply_tag_settings(&mut after, settings);
         let changed = after != before;

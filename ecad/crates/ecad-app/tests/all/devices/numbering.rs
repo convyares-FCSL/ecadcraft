@@ -40,7 +40,7 @@ fn head(h: &mut H) -> u64 {
 }
 
 fn tagged(h: &mut H, t: &str) -> DeviceId {
-    doc(h).devices.iter().find(|(_, c)| c.tag().is_some_and(|x| x == t)).map(|(k, _)| *k).unwrap()
+    doc(h).devices().iter().find(|(_, c)| c.tag().is_some_and(|x| x == t)).map(|(k, _)| *k).unwrap()
 }
 
 fn open(dir_name: &str) -> (H, Deltas, PathBuf) {
@@ -103,11 +103,11 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
     click(&mut h, "ecad.tagclash.swap");
     assert_eq!(head(&mut h), before + 1, "{:?}", h.state().panel.devices.error);
     let d = doc(&mut h);
-    assert_eq!((d.devices[&k1].tag().unwrap(), d.devices[&k2].tag().unwrap()), ("-K02", "-K01"));
+    assert_eq!((d.devices()[&k1].tag().unwrap(), d.devices()[&k2].tag().unwrap()), ("-K02", "-K01"));
 
     // Provisional tags (Project settings → Numbering, typed here), a new coil and a new net.
     ok(&mut h, r#"numbering {"provisional":true}"#);
-    let page = doc(&mut h).page_order[0];
+    let page = doc(&mut h).page_order()[0];
     h.state_mut().show_page(page).unwrap();
     h.run_steps(2);
     ok(&mut h, r#"place {"symbol":"coil","at":[150,60]}"#);
@@ -115,7 +115,7 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
     ok(&mut h, r#"wire {"points":[[150,20],[190,20]],"potential":"24V"}"#);
     ok(&mut h, "zoom e");
     h.run_steps(3);
-    assert!(doc(&mut h).devices.values().any(|c| c.tag_shown().as_deref() == Some("-K?1")));
+    assert!(doc(&mut h).devices().values().any(|c| c.tag_shown().as_deref() == Some("-K?1")));
     save_shot(&h, &deltas, "026-provisional.png");
     click(&mut h, panel::CHECKS_TAB);
     h.run_steps(3);
@@ -140,7 +140,7 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
     assert!(h.state().renumber.as_ref().is_some_and(|d| d.finalise), "Finalise numbering opens");
     click(&mut h, "ecad.renumber.apply");
     assert_eq!(head(&mut h), before + 2, "Finalise, then the issue");
-    assert!(!doc(&mut h).devices.values().any(|c| c.tag().is_some_and(|t| t.contains('?'))));
+    assert!(!doc(&mut h).devices().values().any(|c| c.tag().is_some_and(|t| t.contains('?'))));
     drop(h);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -164,7 +164,7 @@ fn the_merge_dialog_offers_make_them_one_device() {
     let before = head(&mut h);
     click(&mut h, "ecad.merge.ok");
     assert_eq!(head(&mut h), before + 1, "one merge step: {:?}", h.state().merge.as_ref().map(|d| d.error.clone()));
-    let n = doc(&mut h).devices.values().filter(|c| c.tag().is_some_and(|t| t == "-K40")).count();
+    let n = doc(&mut h).devices().values().filter(|c| c.tag().is_some_and(|t| t == "-K40")).count();
     assert_eq!(n, 1, "one device");
     drop(h);
     let _ = std::fs::remove_dir_all(&dir);

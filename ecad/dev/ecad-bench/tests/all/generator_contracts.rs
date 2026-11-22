@@ -19,16 +19,16 @@ fn opened(g: &Generated) -> (Document, u64) {
 /// Counts, attachments, nets, cores and continued cables of `doc` against what `g` intended.
 fn check_shape(g: &Generated, doc: &Document) {
     let t = g.tier;
-    assert_eq!(doc.page_order, g.pages);
-    assert_eq!(doc.pages.len(), t.pages);
-    assert_eq!(doc.devices.len(), t.devices);
-    assert_eq!(doc.connection_points.len(), 2 * t.devices);
-    assert_eq!(doc.wires.len(), t.wires);
-    assert_eq!(doc.cables.len(), t.cables);
+    assert_eq!(doc.page_order(), g.pages);
+    assert_eq!(doc.pages().len(), t.pages);
+    assert_eq!(doc.devices().len(), t.devices);
+    assert_eq!(doc.connection_points().len(), 2 * t.devices);
+    assert_eq!(doc.wires().len(), t.wires);
+    assert_eq!(doc.cables().len(), t.cables);
     assert!(
-        doc.wires
+        doc.wires()
             .values()
-            .all(|w| doc.routes_at(w.ends[0]).any(|r| doc.routes.get(&r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(w.ends[1]))))),
+            .all(|w| doc.routes_at(w.ends[0]).any(|r| doc.routes().get(&r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(w.ends[1]))))),
         "every wire is drawn by a route between its two connection points"
     );
     assert!(ecad_model::connectivity::derive::mismatches(doc, 1e-9).is_empty(), "every route ends on its terminals");
@@ -42,7 +42,7 @@ fn check_shape(g: &Generated, doc: &Document) {
     }
 
     let per_pair = t.wires / t.devices;
-    for cable in doc.cables.values() {
+    for cable in doc.cables().values() {
         assert_eq!(cable.cores.len(), per_pair);
         let cores: Vec<_> = cable.cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
         let want: Vec<_> = (1..=per_pair).map(|i| Some(i.to_string())).collect();
@@ -50,7 +50,7 @@ fn check_shape(g: &Generated, doc: &Document) {
     }
 
     assert_eq!(g.continuations.len(), t.pages - 1, "one continued cable per page boundary");
-    let references = doc.representations.values().filter(|r| r.role == ecad_model::Role::Reference).count();
+    let references = doc.representations().values().filter(|r| r.role == ecad_model::Role::Reference).count();
     assert_eq!(references, 2 * (t.pages - 1));
     // Brief 010's derivation recognises them: two partnered ends per continued cable, no orphans.
     let derived = ecad_model::connectivity::derive::cable_references(doc);
@@ -64,18 +64,18 @@ fn check_shape(g: &Generated, doc: &Document) {
             doc.representations_of(Subject::Cable(c.cable)).filter(|(_, r)| r.role == ecad_model::Role::Reference).map(|(_, r)| r.page).collect();
         assert_eq!(pages, BTreeSet::from([c.from, c.to]), "a reference end on each page");
         for (i, rep) in c.references.iter().enumerate() {
-            let r = doc.representations.get(rep).unwrap();
+            let r = doc.representations().get(rep).unwrap();
             assert_eq!(r.page, if i == 0 { c.from } else { c.to });
         }
         // Drawn on the first page by its routes; on the next page one stub each, a route with
         // free ends (cross-page wires form in lane F).
-        let members = &doc.cables.get(&c.cable).unwrap().cores;
+        let members = &doc.cables().get(&c.cable).unwrap().cores;
         for m in members {
-            let w = doc.wires.get(&m.wire().expect("a core on a wire")).expect("its wire");
-            let drawn = doc.routes_at(w.ends[0]).any(|r| doc.routes.get(&r).is_some_and(|x| x.page == c.from));
+            let w = doc.wires().get(&m.wire().expect("a core on a wire")).expect("its wire");
+            let drawn = doc.routes_at(w.ends[0]).any(|r| doc.routes().get(&r).is_some_and(|x| x.page == c.from));
             assert!(drawn, "a continued member is drawn on its first page");
         }
-        let stubs = doc.routes.values().filter(|r| r.page == c.to && r.ends == [RouteEnd::Free, RouteEnd::Free]).count();
+        let stubs = doc.routes().values().filter(|r| r.page == c.to && r.ends == [RouteEnd::Free, RouteEnd::Free]).count();
         assert!(stubs >= members.len(), "one stub per continued member on the next page");
     }
 }

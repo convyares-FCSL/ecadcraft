@@ -652,7 +652,7 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
             _ => a.orphans.push((k.clone(), items)),
         }
     }
-    let mut parts = Parts { strip: props, project: &doc.display, inherits: BTreeSet::new() };
+    let mut parts = Parts { strip: props, project: doc.display(), inherits: BTreeSet::new() };
     for g in Acc::GAP {
         if a.count(g) > 0 {
             if let Some(pn) = parts.get(&format!("{}.part_number", g.key())) {
@@ -878,7 +878,7 @@ pub(crate) fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>)
             Op::ModifyDevice { id, after, .. } if *id == c => Some(after),
             _ => None,
         });
-        renumber_strip(doc, c, planned.or(doc.devices.get(&c)), &map, &mut out, &mut lines);
+        renumber_strip(doc, c, planned.or(doc.devices().get(&c)), &map, &mut out, &mut lines);
     }
     (out, lines)
 }
@@ -918,7 +918,7 @@ fn renumber_strip(
     if crate::terminal_strips::strip_of(doc, c).is_none() {
         return;
     }
-    let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return };
+    let Some(props) = doc.devices().get(&c).map(|x| &x.properties) else { return };
     let tag = crate::devices::tags::tag_words(doc, c);
     let moved = |l: &str| map.get(l).cloned().unwrap_or_else(|| l.to_string());
     // Placement keys: the end state, then the difference.

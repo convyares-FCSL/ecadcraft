@@ -22,7 +22,7 @@ fn no_wire_yet(h: &mut H) -> Vec<Value> {
 
 /// Each wire's two ends, as unordered pairs.
 fn wire_ends(h: &mut H) -> BTreeSet<BTreeSet<ConnectionPointId>> {
-    h.doc().wires.values().map(|w| w.ends.iter().copied().collect()).collect()
+    h.doc().wires().values().map(|w| w.ends.iter().copied().collect()).collect()
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn place_terminal_blocks_on_a_loose_line_then_draw_on_to_a_second_device() {
     let v = h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap();
     assert!(v["conductor"].is_null(), "a line with a free end carries no wire: {v}");
     let line: RouteId = id(&v, "route");
-    assert!(h.doc().wires.is_empty());
+    assert!(h.doc().wires().is_empty());
     assert_eq!(no_wire_yet(&mut h).len(), 1);
     h.check();
 
@@ -49,10 +49,10 @@ fn place_terminal_blocks_on_a_loose_line_then_draw_on_to_a_second_device() {
     assert_eq!(terms.len(), 1, "one connection_point: {v}");
     let t: ConnectionPointId = id(&terms[0], "connection_point");
     let doc = h.doc();
-    assert_eq!(doc.connection_points[&t].device().unwrap(), strip);
+    assert_eq!(doc.connection_points()[&t].device().unwrap(), strip);
     // The route is split at the terminal: one piece from -A's point to the terminal, one from the
     // terminal to the free end.
-    let pieces: Vec<(RouteId, [RouteEnd; 2])> = doc.routes.iter().map(|(r, x)| (*r, x.ends)).collect();
+    let pieces: Vec<(RouteId, [RouteEnd; 2])> = doc.routes().iter().map(|(r, x)| (*r, x.ends)).collect();
     assert_eq!(pieces.len(), 2, "split in two: {pieces:?}");
     let landed = pieces.iter().find(|(_, e)| e.contains(&RouteEnd::Point(a)) && e.contains(&RouteEnd::Point(t)));
     assert!(landed.is_some(), "a piece from -A to the connection_point: {pieces:?}");
@@ -75,7 +75,7 @@ fn place_terminal_blocks_on_a_loose_line_then_draw_on_to_a_second_device() {
     assert_eq!(wire_ends(&mut h), BTreeSet::from([BTreeSet::from([a, t]), BTreeSet::from([t, b])]), "-A to the terminal, the terminal to -B");
     assert!(no_wire_yet(&mut h).is_empty(), "every line lands at both ends");
     let doc = h.doc();
-    let nets: BTreeSet<_> = doc.wires.values().map(|w| w.net).collect();
+    let nets: BTreeSet<_> = doc.wires().values().map(|w| w.net).collect();
     assert_eq!(nets.len(), 1, "one net through the terminal");
     h.check();
 }

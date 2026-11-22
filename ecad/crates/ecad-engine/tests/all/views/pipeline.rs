@@ -129,12 +129,12 @@ fn the_devices_feed_follows_its_update_map() {
     let doc = h.doc();
     let on = doc.representations_of(ecad_model::Subject::Device(k1)).map(|(_, r)| r.page).next().unwrap();
     assert_eq!(on, second, "K1 is on the second page");
-    let index = |p: PageId| doc.page_order.iter().position(|x| *x == p).unwrap();
-    let page = |p: PageId| doc.pages[&p].clone();
+    let index = |p: PageId| doc.page_order().iter().position(|x| *x == p).unwrap();
+    let page = |p: PageId| doc.pages()[&p].clone();
     let renumbered = Page { number: PageNo::parse("9"), ..page(second) };
     let retitled = Page { title: ecad_model::document::page::PageTitle::new("Other").unwrap(), ..page(first) };
-    let settings = doc.settings.clone();
-    let mut info = doc.project.clone();
+    let settings = doc.settings().clone();
+    let mut info = doc.project().clone();
     info.info.title = ecad_model::document::project::InfoText::new("Plant").ok();
     let note = |object| Op::SetProperty { object, key: "note".into(), before: None, after: Some("x".into()) };
     let new_page = PageId(9_999);
@@ -153,10 +153,16 @@ fn the_devices_feed_follows_its_update_map() {
             false,
             false,
         ),
-        ("a page appended", vec![Op::AddPage { id: new_page, page: Page::titled("New").unwrap(), index: doc.page_order.len() }], false, false, false),
+        (
+            "a page appended",
+            vec![Op::AddPage { id: new_page, page: Page::titled("New").unwrap(), index: doc.page_order().len() }],
+            false,
+            false,
+            false,
+        ),
         ("a page property", vec![note(ObjectRef::Page(first))], false, false, false),
         ("the project settings", vec![Op::SetProjectSettings { before: settings.clone(), after: settings }], false, false, true),
-        ("the project's own data", vec![Op::ModifyProject { before: doc.project.clone(), after: info }], false, false, false),
+        ("the project's own data", vec![Op::ModifyProject { before: doc.project().clone(), after: info }], false, false, false),
         ("nothing", vec![], false, false, false),
     ];
     for (what, ops, named, pages, settings) in cases {
@@ -200,18 +206,18 @@ fn the_props_feed_follows_its_update_map() {
     let k1 = b.device("K1");
     let mut h = crate::common::H::from_built(b);
     let doc = h.doc();
-    let retitled = Page { title: ecad_model::document::page::PageTitle::new("Other").unwrap(), ..doc.pages[&page].clone() };
-    let settings = doc.settings.clone();
-    let mut info = doc.project.clone();
+    let retitled = Page { title: ecad_model::document::page::PageTitle::new("Other").unwrap(), ..doc.pages()[&page].clone() };
+    let settings = doc.settings().clone();
+    let mut info = doc.project().clone();
     info.info.title = ecad_model::document::project::InfoText::new("Plant").ok();
     let note = |object| Op::SetProperty { object, key: "note".into(), before: None, after: Some("x".into()) };
     let set = |o: &[ObjectRef]| Some(o.iter().copied().collect::<BTreeSet<_>>());
     let cases: Vec<(&str, Vec<Op>, Option<BTreeSet<ObjectRef>>)> = vec![
         ("a device property", vec![note(ObjectRef::Device(k1))], set(&[ObjectRef::Device(k1)])),
         ("a page property", vec![note(ObjectRef::Page(page))], set(&[ObjectRef::Page(page)])),
-        ("a page retitled", vec![Op::ModifyPage { id: page, before: doc.pages[&page].clone(), after: retitled }], set(&[ObjectRef::Page(page)])),
+        ("a page retitled", vec![Op::ModifyPage { id: page, before: doc.pages()[&page].clone(), after: retitled }], set(&[ObjectRef::Page(page)])),
         ("the project settings", vec![Op::SetProjectSettings { before: settings.clone(), after: settings }], None),
-        ("the project's own data", vec![Op::ModifyProject { before: doc.project.clone(), after: info }], None),
+        ("the project's own data", vec![Op::ModifyProject { before: doc.project().clone(), after: info }], None),
         ("nothing", vec![], set(&[])),
     ];
     for (what, ops, want) in cases {
@@ -231,7 +237,7 @@ fn the_props_feed_reads_the_extension() {
     let (k1, k2) = (b.device("K1"), b.device("K2"));
     let mut h = crate::common::H::from_built(b);
     let doc = h.doc();
-    let (&w, wire) = doc.wires.iter().next().expect("the builder drew a wire");
+    let (&w, wire) = doc.wires().iter().next().expect("the builder drew a wire");
     let given = vec![Op::SetProperty { object: ObjectRef::Page(page), key: "note".into(), before: None, after: Some("x".into()) }];
     let extension = vec![
         Op::ModifyWire { id: w, before: wire.clone(), after: ecad_model::Wire { order_fixed: !wire.order_fixed, ..wire.clone() } },
@@ -386,14 +392,14 @@ fn the_frame_view_follows_its_update_map() {
     let doc = h.doc();
     let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
     let input = FrameInput::with(&doc, first, &ecad_model::document::book::Book::of(&doc), FrameText::with(&doc, &metrics));
-    let index = |p: PageId| doc.page_order.iter().position(|x| *x == p).unwrap();
-    let page = |p: PageId| doc.pages[&p].clone();
+    let index = |p: PageId| doc.page_order().iter().position(|x| *x == p).unwrap();
+    let page = |p: PageId| doc.pages()[&p].clone();
     let retitle = |p: PageId| Op::ModifyPage { id: p, before: page(p), after: Page { title: PageTitle::new("Other").unwrap(), ..page(p) } };
     let note = |object| Op::SetProperty { object, key: "note".into(), before: None, after: Some("x".into()) };
-    let settings = doc.settings.clone();
+    let settings = doc.settings().clone();
     let mut sheet = settings.clone();
     sheet.sheet = ecad_model::SheetSpec::parse("A2").ok();
-    let mut info = doc.project.clone();
+    let mut info = doc.project().clone();
     info.info.title = ecad_model::document::project::InfoText::new("Plant").ok();
     let moved =
         |p: PageId, to: usize| vec![Op::RemovePage { id: p, page: page(p), index: index(p) }, Op::AddPage { id: p, page: page(p), index: to }];
@@ -405,11 +411,11 @@ fn the_frame_view_follows_its_update_map() {
         ("another page retitled", vec![retitle(third)], false),
         ("another page removed and added in place", moved(third, index(third)), false),
         ("another page moved", moved(third, index(second)), true),
-        ("a page appended", vec![Op::AddPage { id: PageId(9_999), page: Page::titled("New").unwrap(), index: doc.page_order.len() }], true),
+        ("a page appended", vec![Op::AddPage { id: PageId(9_999), page: Page::titled("New").unwrap(), index: doc.page_order().len() }], true),
         ("a folder added", vec![Op::AddFolder { id: ecad_model::FolderId(9), folder, index: 0 }], true),
         ("the sheet setting", vec![Op::SetProjectSettings { before: settings.clone(), after: sheet }], true),
         ("settings unchanged", vec![Op::SetProjectSettings { before: settings.clone(), after: settings }], false),
-        ("the project's info", vec![Op::ModifyProject { before: doc.project.clone(), after: info }], true),
+        ("the project's info", vec![Op::ModifyProject { before: doc.project().clone(), after: info }], true),
         ("a version named", vec![Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None }], true),
         ("a device property", vec![note(ObjectRef::Device(k1))], false),
         ("a free project property", vec![note(ObjectRef::Project)], false),
@@ -452,7 +458,7 @@ fn the_frame_view_follows_the_rest_of_its_map() {
     let contents: PageId = crate::common::id(&h.run("newpage", json!({"generated": "contents"})).unwrap(), "page");
     let revisions: PageId = crate::common::id(&h.run("newpage", json!({"type": "front", "generated": "revisions"})).unwrap(), "page");
     let doc = h.doc();
-    let page = |p: PageId| doc.pages[&p].clone();
+    let page = |p: PageId| doc.pages()[&p].clone();
     let renumber = |p: PageId| Op::ModifyPage { id: p, before: page(p), after: Page { number: PageNo::parse("77"), ..page(p) } };
     let retitle = |p: PageId| Op::ModifyPage { id: p, before: page(p), after: Page { title: PageTitle::new("Other").unwrap(), ..page(p) } };
     let style = |catalogue| Op::SetStyle {
@@ -462,7 +468,7 @@ fn the_frame_view_follows_the_rest_of_its_map() {
         before: None,
         after: Some(StyleRecord::empty(catalogue)),
     };
-    let current = doc.standard.as_ref().map(|s| s.header.clone());
+    let current = doc.standard().map(|s| s.header.clone());
     let other = Some(StandardHeader {
         id: StandardId(99),
         name: ecad_model::objects::styles::StyleName::new("S").unwrap(),
@@ -537,7 +543,7 @@ fn a_refused_commit_leaves_the_frame_and_its_flag() {
     assert!(!h.p(|p| p.frame_is_stale()));
     let head = h.head();
     let builds = h.p(|p| p.frame_builds);
-    let project = h.doc().project.clone();
+    let project = h.doc().project().clone();
     let titled = |t: &str| {
         let mut p = project.clone();
         p.info.title = ecad_model::document::project::InfoText::new(t).ok();
@@ -617,7 +623,7 @@ fn a_page_number_change_rewords_its_page_type_row() {
     // A `page.type` naming nothing, written before the list is first shown.
     h.cfg(|p| {
         let d = p.ledger.document();
-        let before = d.pages[&p1].clone();
+        let before = d.pages()[&p1].clone();
         let after = ecad_model::Page { page_type: Some(ecad_model::StyleRef::Own(0xff)), ..before.clone() };
         p.ledger.commit(ecad_model::Author::User, "hostile", vec![Op::ModifyPage { id: p1, before, after }]).unwrap();
     });

@@ -137,7 +137,7 @@ pub fn pages_of(doc: &Document, c: DeviceId) -> Vec<PageId> {
     if pages.is_empty() {
         return Vec::new();
     }
-    doc.page_order.iter().filter(|p| pages.contains(p)).copied().collect()
+    doc.page_order().iter().filter(|p| pages.contains(p)).copied().collect()
 }
 
 /// The place of `c`'s first drawing in book order (its body or a cell), as `108-B-2`.
@@ -265,7 +265,7 @@ pub fn type_name(t: CardType) -> &'static str {
 /// The card's own description (not the body's name a placement writes), if any.
 pub fn description(doc: &Document, card: &CardData) -> Option<String> {
     let builtin = card.ty.body().map(crate::symbols::catalogue::starter).map(|s| s.name);
-    doc.devices
+    doc.devices()
         .get(&card.id)
         .and_then(|x| x.description.as_ref())
         .map(|v| v.as_str())
@@ -277,7 +277,7 @@ pub fn description(doc: &Document, card: &CardData) -> Option<String> {
 pub(crate) fn what_words(doc: &Document, card: &CardData) -> String {
     // The body's own name, which placing a card writes as its description, is not the user's.
     let builtin = card.ty.body().map(crate::symbols::catalogue::starter).map(|s| s.name);
-    let desc = doc.devices.get(&card.id).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
+    let desc = doc.devices().get(&card.id).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
         None if card.ty.has_channels() => format!("{} {}", card.ty.code(), card.channels),
@@ -397,7 +397,7 @@ pub fn rack_tiles(doc: &Document, plc: &Plc, rack: &RackData) -> Vec<Tile> {
         drawn: true,
         kind_words: if rack.ty == CardType::Cpu { "CPU".into() } else { "head module".into() },
         title: doc
-            .devices
+            .devices()
             .get(&rack.id)
             .and_then(|x| x.description.as_ref())
             .map(|v| v.to_string())

@@ -122,14 +122,14 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &
     }
     let a = Aspect::of_property(prop).ok_or(CmdError::refused("not a function or location property"))?;
     // A location box is a drawing aid (design 072 §6.2): named, not "no such device".
-    if let Some(c) = objects.iter().find(|c| !doc.devices.contains_key(c) && crate::locations::box_values(doc, AidId(c.0)).is_some()) {
+    if let Some(c) = objects.iter().find(|c| !doc.devices().contains_key(c) && crate::locations::box_values(doc, AidId(c.0)).is_some()) {
         return Err(CmdError::refused(format!("{} is a location box; edit it with setprop {{aids}}", c.hex())));
     }
     let mut out = Planned::default();
     let mut pending = designations::Pending::default();
     let key = stored_key(doc, ids, a, text, &mut pending, &mut out)?;
     for c in objects {
-        let comp = doc.devices.get(c).ok_or(CmdError::refused("no such device"))?;
+        let comp = doc.devices().get(c).ok_or(CmdError::refused("no such device"))?;
         if prop != a.property() && crate::terminal_strips::strip_of(doc, *c).is_some() {
             return Err(CmdError::refused(
                 "A strip's positions and levels are where the strip is; set the strip's location (a split strip is two strips).",
@@ -221,7 +221,7 @@ pub(crate) fn plan_box_set(doc: &Document, ids: &mut IdAllocator, aids: &[AidId]
     let key = stored_key(doc, ids, a, text, &mut pending, &mut planned)?;
     let mut seen = BTreeSet::new();
     for b in aids.iter().filter(|b| seen.insert(**b)) {
-        let Some(before @ Aid::Box(x)) = doc.aids.get(b) else { return Err(CmdError::refused(NOT_A_BOX)) };
+        let Some(before @ Aid::Box(x)) = doc.aids().get(b) else { return Err(CmdError::refused(NOT_A_BOX)) };
         let after = designations::with_box_key(x, a, key.as_deref());
         if after.location.is_none() && after.function.is_none() {
             return Err(CmdError::refused(crate::locations::NO_VALUE));

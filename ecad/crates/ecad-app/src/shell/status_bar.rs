@@ -131,7 +131,7 @@ impl App {
             let last = ecad_electrical::releases::revisions::issued(doc).last().map(|r| r.rev().to_string()).unwrap_or_default();
             let pending = ecad_electrical::releases::revisions::pending_rev(doc);
             let dirty = ecad_electrical::releases::revisions::is_pending(&p.ledger);
-            let sheet = page.map(|pg| ecad_model::document::sheet::sheet_of(doc, pg)).unwrap_or_else(|| doc.settings.sheet());
+            let sheet = page.map(|pg| ecad_model::document::sheet::sheet_of(doc, pg)).unwrap_or_else(|| doc.settings().sheet());
             let sheet = sheet.preset_name().map_or_else(|| format!("{}×{}", sheet.width, sheet.height), str::to_string);
             ((last, pending, dirty), sheet)
         });
@@ -658,9 +658,10 @@ impl App {
     /// `Standard: <name>` (brief 050a), or [`STANDARD`] with IEC (built in) or no project. One
     /// field read, no copy of the project.
     pub fn standard_words(&mut self) -> String {
-        let name = self.project.clone().and_then(|p| {
-            p.read(&mut self.cad.session, |p, _| p.ledger.document().standard.as_ref().map(|s| s.header.name.to_string())).ok().flatten()
-        });
+        let name = self
+            .project
+            .clone()
+            .and_then(|p| p.read(&mut self.cad.session, |p, _| p.ledger.document().standard().map(|s| s.header.name.to_string())).ok().flatten());
         name.map_or_else(|| STANDARD.to_string(), |n| format!("Standard: {n}"))
     }
 

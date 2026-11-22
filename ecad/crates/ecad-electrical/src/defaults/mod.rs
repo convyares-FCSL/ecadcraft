@@ -241,7 +241,7 @@ impl Scope {
     /// A symbol: the representation, its component and its page (looked up in `doc`; an unknown
     /// representation gives just the representation, whose keys are then never found).
     pub fn symbol(doc: &Document, rep: RepresentationId) -> Self {
-        let r = doc.representations.get(&rep);
+        let r = doc.representations().get(&rep);
         let component = r.and_then(|r| match r.subject {
             Subject::Device(c) => Some(c),
             _ => None,
@@ -262,7 +262,7 @@ impl Resolved<'_> {
     /// (never, for a [`Kind::Length`] entry) gives 0.
     pub fn length(&self, doc: &Document) -> f64 {
         match self.value {
-            Value::Length(mm) => match doc.settings.length_unit {
+            Value::Length(mm) => match doc.settings().length_unit {
                 LengthUnit::Millimetre => mm,
                 LengthUnit::Inch => mm / 25.4,
             },
@@ -490,7 +490,7 @@ pub fn find(key: &str) -> Option<&'static Entry> {
 pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> {
     let stored = |props: &'a ecad_model::Properties, key: &str| props.get(key).and_then(|v| entry.parse_in(doc, v.as_str()));
     if entry.allows(Level::Object) {
-        if let Some(c) = at.component.and_then(|c| doc.devices.get(&c)) {
+        if let Some(c) = at.component.and_then(|c| doc.devices().get(&c)) {
             if let Some(value) = at.rep.and_then(|rep| stored(&c.properties, &symbol_key(entry.key, rep))) {
                 return Resolved { value, from: Source::Symbol };
             }
@@ -498,19 +498,19 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
                 return Resolved { value, from: Source::Object };
             }
         }
-        if let Some(value) = at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| wire_value(doc, entry, c)) {
+        if let Some(value) = at.conductor.and_then(|c| doc.wires().get(&c)).and_then(|c| wire_value(doc, entry, c)) {
             return Resolved { value, from: Source::Object };
         }
     }
     if entry.allows(Level::Page)
-        && let Some(value) = at.page.and_then(|p| doc.pages.get(&p)).and_then(|p| page_value(doc, entry, p))
+        && let Some(value) = at.page.and_then(|p| doc.pages().get(&p)).and_then(|p| page_value(doc, entry, p))
     {
         return Resolved { value, from: Source::Page };
     }
     if entry.allows(Level::Project) {
         let value = match entry.project {
-            ProjectSource::Property => stored(&doc.display, entry.key),
-            ProjectSource::Settings(read) => read(&doc.settings).filter(|v| entry.accepts(v)),
+            ProjectSource::Property => stored(doc.display(), entry.key),
+            ProjectSource::Settings(read) => read(doc.settings()).filter(|v| entry.accepts(v)),
         };
         if let Some(value) = value {
             return Resolved { value, from: Source::Project };
@@ -546,7 +546,7 @@ fn wire_value<'a>(doc: &Document, entry: &Entry, w: &'a ecad_model::Wire) -> Opt
 /// The standard's valid value of `entry`, if the project has a standard that sets one (brief
 /// 050a, design 050 §2.4).
 pub fn standard_value<'a>(doc: &'a Document, entry: &Entry) -> Option<Value<'a>> {
-    doc.standard.as_ref()?.values.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
+    doc.standard()?.values.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
 }
 
 /// The chain of `entry` at `at`, broadest first (brief 042, screen e): the built-in, then each
@@ -563,21 +563,21 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
         out.push((Source::Standard, standard_value(doc, entry)));
     }
     let project = match entry.project {
-        ProjectSource::Property => stored(&doc.display, entry.key),
-        ProjectSource::Settings(read) => read(&doc.settings).filter(|v| entry.accepts(v)),
+        ProjectSource::Property => stored(doc.display(), entry.key),
+        ProjectSource::Settings(read) => read(doc.settings()).filter(|v| entry.accepts(v)),
     };
     if entry.allows(Level::Project) || project.is_some() {
         out.push((Source::Project, project.filter(|_| entry.allows(Level::Project))));
     }
-    let page = at.page.and_then(|p| doc.pages.get(&p)).and_then(|p| page_value(doc, entry, p));
+    let page = at.page.and_then(|p| doc.pages().get(&p)).and_then(|p| page_value(doc, entry, p));
     if entry.allows(Level::Page) || page.is_some() {
         out.push((Source::Page, page.filter(|_| entry.allows(Level::Page))));
     }
-    let component = at.component.and_then(|c| doc.devices.get(&c));
+    let component = at.component.and_then(|c| doc.devices().get(&c));
     let symbol = component.zip(at.rep).and_then(|(c, rep)| stored(&c.properties, &symbol_key(entry.key, rep)));
     let object = component
         .and_then(|c| stored(&c.properties, entry.key))
-        .or_else(|| at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| wire_value(doc, entry, c)));
+        .or_else(|| at.conductor.and_then(|c| doc.wires().get(&c)).and_then(|c| wire_value(doc, entry, c)));
     if entry.allows(Level::Object) || object.is_some() {
         out.push((Source::Object, object.filter(|_| entry.allows(Level::Object))));
     }
@@ -611,7 +611,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
         let px = resolve(doc, entry, Scope::project()).text();
         let px = px.trim().trim_start_matches('-').to_ascii_uppercase();
         return doc
-            .devices
+            .devices()
             .values()
             .filter_map(|c| c.tag())
             .filter(|t| {
@@ -629,9 +629,9 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
     }
     let own = |props: &ecad_model::Properties| entry.allows(Level::Object) && props.get(entry.key).is_some_and(|v| entry.parse(v.as_str()).is_some());
     match users_noun(entry) {
-        "devices" => doc.devices.values().filter(|c| !own(&c.properties)).count(),
-        "wires" => doc.wires.values().filter(|c| !(entry.allows(Level::Object) && wire_value(doc, entry, c).is_some())).count(),
-        _ => doc.pages.len(),
+        "devices" => doc.devices().values().filter(|c| !own(&c.properties)).count(),
+        "wires" => doc.wires().values().filter(|c| !(entry.allows(Level::Object) && wire_value(doc, entry, c).is_some())).count(),
+        _ => doc.pages().len(),
     }
 }
 
@@ -677,7 +677,9 @@ mod tests {
         for bad in ["NaN", "nan", "inf", "-inf", "1e308", "0.1", "11", "abc", "", "  ", "2.5mm", long.as_str()] {
             assert_eq!(tag.parse(bad), None, "height {bad:?}");
             let mut doc = Document::default();
-            doc.display.insert(tag.key.into(), bad.into());
+            doc.edit_parts(|parts| {
+                parts.display.insert(tag.key.into(), bad.into());
+            });
             assert_eq!(resolve(&doc, tag, Scope::project()), Resolved { value: tag.builtin(), from: Source::Builtin });
         }
         for bad in ["", "a\u{7}b", "line\nbreak", &"f".repeat(65), long.as_str()] {
@@ -694,11 +696,17 @@ mod tests {
         // A hostile page value under a good project value: the project wins.
         let mut doc = Document::default();
         let page = PageId(7);
-        doc.pages.insert(page, Page::titled("p").unwrap());
-        doc.display.insert(show.key.into(), "no".into());
-        if let Some(p) = doc.pages.get_mut(&page) {
-            p.display.insert(show.key.into(), "sideways".into());
-        }
+        doc.edit_parts(|parts| {
+            parts.pages.insert(page, Page::titled("p").unwrap());
+        });
+        doc.edit_parts(|parts| {
+            parts.display.insert(show.key.into(), "no".into());
+        });
+        doc.edit_parts(|parts| {
+            if let Some(p) = parts.pages.get_mut(&page) {
+                p.display.insert(show.key.into(), "sideways".into());
+            }
+        });
         assert_eq!(resolve(&doc, show, Scope::page(page)), Resolved { value: Value::Choice("no"), from: Source::Project });
     }
 
@@ -709,23 +717,37 @@ mod tests {
         let page = PageId(1);
         let comp = DeviceId(2);
         let rep = RepresentationId(3);
-        doc.pages.insert(page, Page::titled("p").unwrap());
-        doc.devices.insert(comp, Device::default());
+        doc.edit_parts(|parts| {
+            parts.pages.insert(page, Page::titled("p").unwrap());
+        });
+        doc.edit_parts(|parts| {
+            parts.devices.insert(comp, Device::default());
+        });
         let at = Scope { page: Some(page), component: Some(comp), rep: Some(rep), conductor: None };
         assert_eq!(resolve(&doc, show, at).from, Source::Builtin);
-        doc.display.insert(show.key.into(), "no".into());
+        doc.edit_parts(|parts| {
+            parts.display.insert(show.key.into(), "no".into());
+        });
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Project });
-        doc.pages.get_mut(&page).map(|p| p.display.insert(show.key.into(), "yes".into()));
+        doc.edit_parts(|parts| {
+            parts.pages.get_mut(&page).map(|p| p.display.insert(show.key.into(), "yes".into()));
+        });
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("yes"), from: Source::Page });
-        doc.devices.get_mut(&comp).map(|c| c.properties.insert(show.key.into(), "no".into()));
+        doc.edit_parts(|parts| {
+            parts.devices.get_mut(&comp).map(|c| c.properties.insert(show.key.into(), "no".into()));
+        });
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Object });
-        doc.devices.get_mut(&comp).map(|c| c.properties.insert(symbol_key(show.key, rep), "first".into()));
+        doc.edit_parts(|parts| {
+            parts.devices.get_mut(&comp).map(|c| c.properties.insert(symbol_key(show.key, rep), "first".into()));
+        });
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("first"), from: Source::Symbol });
         // The project-only scope still sees only the project.
         assert_eq!(resolve(&doc, show, Scope::project()).from, Source::Project);
         // An entry that does not allow the page level ignores a page value.
         let h = &text::RUN_ALIGN;
-        doc.pages.get_mut(&page).map(|p| p.display.insert(h.key.into(), "4".into()));
+        doc.edit_parts(|parts| {
+            parts.pages.get_mut(&page).map(|p| p.display.insert(h.key.into(), "4".into()));
+        });
         assert_eq!(resolve(&doc, h, at).from, Source::Builtin);
     }
 
@@ -740,9 +762,13 @@ mod tests {
         let e = &text::WIRE_LABEL_HEIGHT;
         let mut doc = Document::default();
         assert_eq!(resolve(&doc, e, Scope::project()).from, Source::Builtin);
-        doc.settings.wiring.label_height = Some(2.0);
+        doc.edit_parts(|parts| {
+            parts.settings.wiring.label_height = Some(2.0);
+        });
         assert_eq!(resolve(&doc, e, Scope::project()), Resolved { value: Value::Length(2.0), from: Source::Project });
-        doc.settings.wiring.label_height = Some(f64::NAN);
+        doc.edit_parts(|parts| {
+            parts.settings.wiring.label_height = Some(f64::NAN);
+        });
         assert_eq!(resolve(&doc, e, Scope::project()).from, Source::Builtin);
     }
 }
@@ -835,7 +861,9 @@ mod kind_tests {
         assert_eq!(PARSED.parse("ka"), None);
         assert_eq!(PARSED.parse("KAAA"), None);
         let mut doc = Document::default();
-        doc.display.insert(PARSED.key.into(), "x1".into());
+        doc.edit_parts(|parts| {
+            parts.display.insert(PARSED.key.into(), "x1".into());
+        });
         assert_eq!(resolve(&doc, &PARSED, Scope::project()).from, Source::Builtin);
     }
 
@@ -844,20 +872,30 @@ mod kind_tests {
         let mut doc = Document::default();
         assert_eq!(resolve(&doc, &CHOICE, Scope::project()), Resolved { value: Value::Choice("net"), from: Source::Builtin });
         // A property of the same key is never a second project path.
-        doc.display.insert(CHOICE.key.into(), "each".into());
+        doc.edit_parts(|parts| {
+            parts.display.insert(CHOICE.key.into(), "each".into());
+        });
         assert_eq!(resolve(&doc, &CHOICE, Scope::project()).from, Source::Builtin);
-        doc.settings.tag_padding = Some(3);
+        doc.edit_parts(|parts| {
+            parts.settings.tag_padding = Some(3);
+        });
         assert_eq!(resolve(&doc, &CHOICE, Scope::project()), Resolved { value: Value::Choice("each"), from: Source::Project });
     }
 
     #[test]
     fn an_entry_may_declare_fewer_levels() {
         let mut doc = Document::default();
-        doc.display.insert(PAGE_ONLY.key.into(), "5".into());
+        doc.edit_parts(|parts| {
+            parts.display.insert(PAGE_ONLY.key.into(), "5".into());
+        });
         assert_eq!(resolve(&doc, &PAGE_ONLY, Scope::project()).from, Source::Builtin);
         let page = PageId(9);
-        doc.pages.insert(page, ecad_model::Page::titled("p").unwrap());
-        doc.pages.get_mut(&page).map(|p| p.display.insert(PAGE_ONLY.key.into(), "5".into()));
+        doc.edit_parts(|parts| {
+            parts.pages.insert(page, ecad_model::Page::titled("p").unwrap());
+        });
+        doc.edit_parts(|parts| {
+            parts.pages.get_mut(&page).map(|p| p.display.insert(PAGE_ONLY.key.into(), "5".into()));
+        });
         assert_eq!(resolve(&doc, &PAGE_ONLY, Scope::page(page)), Resolved { value: Value::Length(5.0), from: Source::Page });
     }
 

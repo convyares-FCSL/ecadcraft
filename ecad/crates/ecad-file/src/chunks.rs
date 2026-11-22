@@ -280,7 +280,7 @@ struct PageChunk {
 
 #[derive(Serialize)]
 struct ProjectChunkRef<'a> {
-    page_order: &'a Vec<PageId>,
+    page_order: &'a [PageId],
     settings: &'a ProjectSettings,
     #[serde(with = "ecad_model::document::rev::as_points")]
     versions: &'a BTreeMap<PointName, u64>,
@@ -292,10 +292,10 @@ struct ProjectChunkRef<'a> {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     device_links: &'a BTreeMap<ecad_model::LinkId, ecad_model::DeviceLink>,
     folders: &'a BTreeMap<FolderId, Folder>,
-    folder_order: &'a Vec<FolderId>,
+    folder_order: &'a [FolderId],
     /// Brief 050a (FP1, FP2): left out while empty, so older chunks keep their hashes.
     #[serde(skip_serializing_if = "Option::is_none")]
-    standard: &'a Option<Standard>,
+    standard: Option<&'a Standard>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     styles: &'a StyleCatalogues,
 }
@@ -338,28 +338,28 @@ fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChun
         map.iter().filter(|(k, _)| bucket(k.raw(), count) == b).collect()
     }
     match kind {
-        "layer" => encode(&pick(&doc.layers, b, count)),
-        "device" => encode(&pick(&doc.devices, b, count)),
-        "connection_point" => encode(&pick(&doc.connection_points, b, count)),
-        "wire" => encode(&pick(&doc.wires, b, count)),
-        "cable" => encode(&pick(&doc.cables, b, count)),
-        "definition" => encode(&pick(&doc.definitions, b, count)),
-        "aid" => encode(&pick(&doc.aids, b, count)),
-        "loose_part" => encode(&pick(&doc.loose_parts, b, count)),
+        "layer" => encode(&pick(doc.layers(), b, count)),
+        "device" => encode(&pick(doc.devices(), b, count)),
+        "connection_point" => encode(&pick(doc.connection_points(), b, count)),
+        "wire" => encode(&pick(doc.wires(), b, count)),
+        "cable" => encode(&pick(doc.cables(), b, count)),
+        "definition" => encode(&pick(doc.definitions(), b, count)),
+        "aid" => encode(&pick(doc.aids(), b, count)),
+        "loose_part" => encode(&pick(doc.loose_parts(), b, count)),
         other => Err(FileError::ModelKind(other.to_string())),
     }
 }
 
 fn kind_len(doc: &Document, kind: &str) -> usize {
     match kind {
-        "layer" => doc.layers.len(),
-        "device" => doc.devices.len(),
-        "connection_point" => doc.connection_points.len(),
-        "wire" => doc.wires.len(),
-        "cable" => doc.cables.len(),
-        "definition" => doc.definitions.len(),
-        "aid" => doc.aids.len(),
-        "loose_part" => doc.loose_parts.len(),
+        "layer" => doc.layers().len(),
+        "device" => doc.devices().len(),
+        "connection_point" => doc.connection_points().len(),
+        "wire" => doc.wires().len(),
+        "cable" => doc.cables().len(),
+        "definition" => doc.definitions().len(),
+        "aid" => doc.aids().len(),
+        "loose_part" => doc.loose_parts().len(),
         _ => 0,
     }
 }
@@ -369,26 +369,26 @@ fn kind_len(doc: &Document, kind: &str) -> usize {
 fn page_chunks(doc: &Document, pages: &BTreeSet<PageId>) -> Result<Vec<(PageId, NewChunk)>, FileError> {
     let mut items: BTreeMap<PageId, BTreeMap<&ItemId, &Item>> = BTreeMap::new();
     let mut reps: BTreeMap<PageId, BTreeMap<&RepresentationId, &Representation>> = BTreeMap::new();
-    let all = pages.len() == doc.pages.len();
-    for (id, item) in &doc.items {
+    let all = pages.len() == doc.pages().len();
+    for (id, item) in doc.items() {
         if all || pages.contains(&item.page) {
             items.entry(item.page).or_default().insert(id, item);
         }
     }
-    for (id, rep) in &doc.representations {
+    for (id, rep) in doc.representations() {
         if all || pages.contains(&rep.page) {
             reps.entry(rep.page).or_default().insert(id, rep);
         }
     }
     let mut routes: BTreeMap<PageId, BTreeMap<&RouteId, &Route>> = BTreeMap::new();
-    for (id, r) in &doc.routes {
+    for (id, r) in doc.routes() {
         if all || pages.contains(&r.page) {
             routes.entry(r.page).or_default().insert(id, r);
         }
     }
     let mut out = Vec::new();
     for id in pages {
-        let Some(page) = doc.pages.get(id) else { continue };
+        let Some(page) = doc.pages().get(id) else { continue };
         let chunk = PageChunkRef {
             page,
             items: items.remove(id).unwrap_or_default(),
@@ -402,16 +402,16 @@ fn page_chunks(doc: &Document, pages: &BTreeSet<PageId>) -> Result<Vec<(PageId, 
 
 fn project_chunk(doc: &Document) -> Result<NewChunk, FileError> {
     encode(&ProjectChunkRef {
-        page_order: &doc.page_order,
-        settings: &doc.settings,
-        versions: &doc.versions,
-        display: &doc.display,
-        project: &doc.project,
-        device_links: &doc.device_links,
-        folders: &doc.folders,
-        folder_order: &doc.folder_order,
-        standard: &doc.standard,
-        styles: &doc.styles,
+        page_order: doc.page_order(),
+        settings: doc.settings(),
+        versions: doc.versions(),
+        display: doc.display(),
+        project: doc.project(),
+        device_links: doc.device_links(),
+        folders: doc.folders(),
+        folder_order: doc.folder_order(),
+        standard: doc.standard(),
+        styles: doc.styles(),
     })
 }
 
@@ -420,7 +420,7 @@ fn project_chunk(doc: &Document) -> Result<NewChunk, FileError> {
 /// # Errors
 /// An object could not be encoded.
 pub fn build_full(doc: &Document, meta: &ModelMeta) -> Result<(ChunkSet, Vec<NewChunk>), FileError> {
-    let mut dirty = Dirty { pages: doc.pages.keys().copied().collect(), objects: BTreeMap::new() };
+    let mut dirty = Dirty { pages: doc.pages().keys().copied().collect(), objects: BTreeMap::new() };
     for kind in KINDS {
         dirty.objects.insert(kind, BTreeSet::new());
     }
@@ -453,7 +453,7 @@ fn build(doc: &Document, prev: &ChunkSet, dirty: &Dirty, full: bool, meta: &Mode
         put(&mut set, page_key(id), chunk);
     }
     for id in &dirty.pages {
-        if !doc.pages.contains_key(id) {
+        if !doc.pages().contains_key(id) {
             set.chunks.remove(&page_key(*id));
         }
     }
@@ -612,7 +612,7 @@ pub fn assemble(set: &ChunkSet, bodies: Vec<(String, Vec<u8>)>) -> Result<(Docum
 }
 
 fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Option<ModelMeta>), FileError> {
-    let mut doc = Document::default();
+    let mut doc = ecad_model::DocumentParts::default();
     let mut project = false;
     let mut meta = None;
     for p in parsed {
@@ -658,7 +658,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
     if ordered != chunked || ordered.len() != doc.page_order.len() {
         return Err(FileError::PageOrder);
     }
-    Ok((doc, meta))
+    Ok((Document::from_parts(doc), meta))
 }
 
 #[cfg(test)]

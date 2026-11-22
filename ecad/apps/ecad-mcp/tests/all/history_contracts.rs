@@ -18,7 +18,7 @@ fn project(dir: &TempDir) -> Client {
 }
 
 fn conductors(c: &mut Client) -> usize {
-    c.doc().wires.len()
+    c.doc().wires().len()
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn version_restore_and_branches_through_execute_record_the_agents_steps() {
     let last = c.log().last().cloned().unwrap();
     assert_eq!(last.label, "Restore \"Before change\"");
     assert_eq!(last.author, Author::Agent(AGENT.into()));
-    assert!(c.doc().versions.contains_key(&ecad_model::PointName::version("Before change").unwrap()), "versions are not restored away");
+    assert!(c.doc().versions().contains_key(&ecad_model::PointName::version("Before change").unwrap()), "versions are not restored away");
     let m = c.refused("execute", json!({"command": "restore", "params": {"version": "Before change"}}));
     assert!(m.contains("already as it was"), "{m}");
     c.exec("u", json!({}));

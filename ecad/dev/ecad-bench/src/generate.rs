@@ -294,8 +294,8 @@ pub fn wire_ops(
 /// # Errors
 /// The project has no page, no layer `0`, or fewer than two terminals on its first page.
 pub fn added_wire(doc: &Document, ids: &mut IdAllocator) -> Result<Vec<Op>, String> {
-    let page = *doc.page_order.first().ok_or("the project has no page")?;
-    let layer = doc.layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("the project has no layer 0")?;
+    let page = *doc.page_order().first().ok_or("the project has no page")?;
+    let layer = doc.layers().iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("the project has no layer 0")?;
     let shown = ecad_model::connectivity::derive::connection_point_positions(doc, page);
     let (t1, _, p1) = *shown.first().ok_or("no terminal on the first page")?;
     let (t2, _, p2) = *shown.iter().find(|(t, _, _)| *t != t1).ok_or("fewer than two terminals on the first page")?;

@@ -87,7 +87,7 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
         // Renumber rewrote the links with their terminals.
         let d = c.doc();
         let sp = ecad_model::DeviceId::from(u128::from_str_radix(&strip, 16).unwrap());
-        let links: Vec<String> = d.devices[&sp]
+        let links: Vec<String> = d.devices()[&sp]
             .properties
             .iter()
             .filter(|(k, _)| k.starts_with("jumper_bar.") && k[11..].chars().all(|c| c.is_ascii_digit()))

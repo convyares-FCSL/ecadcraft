@@ -105,7 +105,7 @@ impl Command for WireParams {
             let mut plan = rules::wire(&p.ledger, &mut p.ids, input, category.as_deref())?;
             p.apply_edit(pg, "wire", "Wire", std::mem::take(&mut plan.ops))?;
             let doc = p.ledger.document();
-            let wire = plan.wire.filter(|w| doc.wires.contains_key(w)).or_else(|| ecad_electrical::wires::routes::wire_of_route(doc, plan.route));
+            let wire = plan.wire.filter(|w| doc.wires().contains_key(w)).or_else(|| ecad_electrical::wires::routes::wire_of_route(doc, plan.route));
             let number = wire.and_then(|w| rules::number_of(doc, w));
             let attached: Vec<Value> = plan.attached.iter().map(|(e, t)| json!({"end": format!("{e:?}"), "connection_point": t.hex()})).collect();
             let mut r = json!({
@@ -137,7 +137,7 @@ impl Command for WireParams {
 /// For the Wire tool: the potentials a person can choose (`auto` and the table's names).
 pub(crate) fn potential_choices(p: &Project) -> Vec<String> {
     let mut v = vec!["auto".to_string()];
-    v.extend(p.ledger.document().settings.wiring.potentials.iter().map(|x| x.name.clone()));
+    v.extend(p.ledger.document().settings().wiring.potentials.iter().map(|x| x.name.clone()));
     v
 }
 

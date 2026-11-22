@@ -12,7 +12,7 @@ pub(crate) fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check
     let joined = wiring::joined_potentials(doc, net);
     if !joined.is_empty() {
         // Point at a continuation in it, when it has one.
-        let cont = net.connection_points.iter().find(|t| doc.connection_points.get(t).is_some_and(|x| x.owner.aid().is_some()));
+        let cont = net.connection_points.iter().find(|t| doc.connection_points().get(t).is_some_and(|x| x.owner.aid().is_some()));
         let (page, at, object) = match cont {
             Some(t) => {
                 let (p, a) = connection_point_place(doc, *t);
@@ -33,7 +33,7 @@ pub(crate) fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check
     // A net with conductors, one connection point and no continuation.
     if !net.wires.is_empty() && net.connection_points.len() == 1 && net.names.is_empty() {
         let t = net.connection_points.first().copied();
-        let on_aid = t.and_then(|t| doc.connection_points.get(&t)).is_some_and(|x| x.owner.aid().is_some());
+        let on_aid = t.and_then(|t| doc.connection_points().get(&t)).is_some_and(|x| x.owner.aid().is_some());
         if !on_aid && let Some(t) = t {
             let (p, a) = connection_point_place(doc, t);
             out.push(Check {
@@ -48,7 +48,7 @@ pub(crate) fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check
     }
     if net.potentials.len() > 1 {
         let main = wiring::net_potential(doc, net).name;
-        let odd = net.wires.iter().find(|c| doc.wires.get(c).and_then(|x| x.potential_name()).is_some_and(|p| Some(p) != main.as_deref()));
+        let odd = net.wires.iter().find(|c| doc.wires().get(c).and_then(|x| x.potential_name()).is_some_and(|p| Some(p) != main.as_deref()));
         let (p, a) = odd.map_or((page, at), |c| conductor_place(doc, *c, None));
         out.push(Check {
             kind: Kind::MixedPotentials,
@@ -64,11 +64,11 @@ pub(crate) fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check
     // in the table give a net its potential (design 022 §6 rule 2).
     for key in &net.names {
         let numbered = net.numbers.keys().any(|n| name_key(n) == *key);
-        if doc.settings.wiring.potential(key).is_some() || numbered {
+        if doc.settings().wiring.potential(key).is_some() || numbered {
             continue;
         }
         let cont = net.connection_points.iter().find_map(|t| {
-            let a = doc.connection_points.get(t)?.owner.aid()?;
+            let a = doc.connection_points().get(t)?.owner.aid()?;
             (crate::continuations::name_of(doc, a).as_ref() == Some(key)).then_some((*t, a))
         });
         let (p, a, o, which) = match cont {
@@ -99,7 +99,7 @@ pub(super) fn looks_connected_fix(at: Pt) -> Fix {
 /// that looks connected, an end drawn away from its connection point.
 pub(crate) fn route_checks(doc: &Document, r: RouteId, grid: &Grid, tol: f64) -> Vec<Check> {
     let mut out = Vec::new();
-    let Some(route) = doc.routes.get(&r) else { return out };
+    let Some(route) = doc.routes().get(&r) else { return out };
     let which = route_words(doc, r);
     let page = route.page;
     let v = &route.points;
@@ -154,7 +154,7 @@ pub(crate) fn route_checks(doc: &Document, r: RouteId, grid: &Grid, tol: f64) ->
 /// The checks of conductor `c`: a colour code the app cannot draw.
 pub(crate) fn conductor_checks(doc: &Document, c: WireId) -> Vec<Check> {
     let mut out = Vec::new();
-    if !doc.wires.contains_key(&c) {
+    if !doc.wires().contains_key(&c) {
         return out;
     }
     let which = conductor_words(doc, c);
@@ -181,7 +181,7 @@ pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
 /// spare connector pin, fuse output or card supply point may stay unwired without an
 /// `Unconnected` check. Every other check on it still runs.
 pub(super) fn is_quiet_point(doc: &Document, t: ConnectionPointId) -> bool {
-    let Some(c) = doc.connection_points.get(&t).and_then(|x| x.device()) else { return false };
+    let Some(c) = doc.connection_points().get(&t).and_then(|x| x.device()) else { return false };
     doc.representations_of(Subject::Device(c)).any(|(_, r)| {
         let Some(s) = crate::devices::tags::rep_starter(doc, r) else { return false };
         let Some((def, _)) = crate::devices::tags::rep_definition(doc, r) else { return false };
@@ -196,7 +196,7 @@ pub(super) fn is_quiet_point(doc: &Document, t: ConnectionPointId) -> bool {
 /// The checks of connection point `t`: more wires than it accepts (design 072 §4.4: `-X1:3 takes
 /// 2 conductors; 3 are connected`); a device point with nothing attached.
 pub fn connection_point_checks(doc: &Document, t: ConnectionPointId) -> Vec<Check> {
-    let Some(term) = doc.connection_points.get(&t) else { return Vec::new() };
+    let Some(term) = doc.connection_points().get(&t) else { return Vec::new() };
     let mut out = Vec::new();
     let (wired, takes) = (doc.ends_at(t).len(), ecad_model::connectivity::wire_order::accepts(doc, t));
     if wired > takes {

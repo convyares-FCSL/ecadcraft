@@ -394,7 +394,7 @@ pub fn box_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Ve
     if catalogue != StyleCatalogue::Location {
         return Vec::new();
     }
-    doc.aids.iter().filter(|(_, a)| a.as_box().and_then(|b| b.style.as_ref()) == Some(id)).map(|(a, _)| *a).collect()
+    doc.aids().iter().filter(|(_, a)| a.as_box().and_then(|b| b.style.as_ref()) == Some(id)).map(|(a, _)| *a).collect()
 }
 
 /// The objects of `entry`'s kind with no own choice that resolve to `id` through the page,
@@ -403,30 +403,30 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
     let project = chosen(doc, entry, Scope::project());
     let own = |p: &Properties| p.get(entry.key).is_some_and(|v| entry.parse_in(doc, v).is_some());
     match cat.catalogue {
-        ecad_model::StyleCatalogue::Frame => doc.pages.iter().filter(|(_, p)| !own(&p.display)).filter(|_| project == *id).count(),
+        ecad_model::StyleCatalogue::Frame => doc.pages().iter().filter(|(_, p)| !own(&p.display)).filter(|_| project == *id).count(),
         // Brief 054: pages with no own type whose generated kind (or none) gives `id`.
         ecad_model::StyleCatalogue::Page => doc
-            .pages
+            .pages()
             .values()
             .filter(|p| !p.page_type.as_ref().is_some_and(|t| crate::styles::exists(doc, ecad_model::StyleCatalogue::Page, t)))
             .filter(|p| ecad_model::document::sheet::page_type_of(doc, p) == *id)
             .count(),
         ecad_model::StyleCatalogue::Location if project == *id => {
-            doc.aids.iter().filter(|(a, x)| x.as_box().is_some() && location::own_style(doc, **a).is_none()).count()
+            doc.aids().iter().filter(|(a, x)| x.as_box().is_some() && location::own_style(doc, **a).is_none()).count()
         }
         // 050b: conductors whose resolved category is `id` and that have none of their own.
         ecad_model::StyleCatalogue::Wire => {
             let draws = wire::WireDraws::new(doc);
-            doc.wires
+            doc.wires()
                 .iter()
                 .filter(|(_, x)| !x.wire_type.as_ref().is_some_and(|t| exists(doc, ecad_model::StyleCatalogue::Wire, t)))
                 .filter(|(c, _)| draws.category(doc, **c).0.as_ref() == Some(id))
                 .count()
         }
         ecad_model::StyleCatalogue::Text if project == *id => match text::noun(entry.key) {
-            text::Noun::Devices => doc.devices.values().filter(|x| !own(&x.properties)).count(),
-            text::Noun::Wires => doc.wires.values().filter(|x| !own(&x.display)).count(),
-            text::Noun::Pages => doc.pages.len(),
+            text::Noun::Devices => doc.devices().values().filter(|x| !own(&x.properties)).count(),
+            text::Noun::Wires => doc.wires().values().filter(|x| !own(&x.display)).count(),
+            text::Noun::Pages => doc.pages().len(),
         },
         _ => 0,
     }
@@ -483,7 +483,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
             let mut out = BTreeSet::new();
             // A box drawn in its own style (brief 050a): that style's boxes, or the boxes whose own
             // style labels with this text style.
-            for (a, x) in &doc.aids {
+            for (a, x) in doc.aids() {
                 let Some(b) = x.as_box() else { continue };
                 let hit = match cat.catalogue {
                     ecad_model::StyleCatalogue::Location => b.style.as_ref() == Some(id),

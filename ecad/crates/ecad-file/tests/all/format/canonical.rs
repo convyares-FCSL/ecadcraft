@@ -111,8 +111,8 @@ fn record_and_definition_hashes_are_pinned() {
     let hex = |h: ecad_model::ContentHash| h.hex();
     let got = [
         ("coil", hex(ecad_file::definition_hash(&coil(3.0)).unwrap())),
-        ("d1", hex(ecad_file::definition_hash(&doc.definitions[&f.d1]).unwrap())),
-        ("d2", hex(ecad_file::definition_hash(&doc.definitions[&f.d2]).unwrap())),
+        ("d1", hex(ecad_file::definition_hash(&doc.definitions()[&f.d1]).unwrap())),
+        ("d2", hex(ecad_file::definition_hash(&doc.definitions()[&f.d2]).unwrap())),
     ];
     let mut prev = chain::seed(ChainKind::Project, PROJECT.0);
     for tx in f.ledger.log() {

@@ -206,15 +206,15 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
     assert_eq!(defaults::users(&h.doc(), e), 2);
     h.run("setdefault", json!({"key": e.key, "value": "-q"})).unwrap();
     let d = h.doc();
-    assert_eq!(d.settings.starter_prefix("coil").map(|p| p.as_str()), Some("Q"), "as Tag Settings writes it");
-    assert!(!d.display.contains_key(e.key), "never a project property too");
+    assert_eq!(d.settings().starter_prefix("coil").map(|p| p.as_str()), Some("Q"), "as Tag Settings writes it");
+    assert!(!d.display().contains_key(e.key), "never a project property too");
     assert_eq!(defaults::resolve(&d, e, Scope::project()).from, Source::Project);
     // The chain: built-in K, the standard (no value of its own), the project's Q.
     let chain = defaults::chain(&d, e, Scope::project());
     let words: Vec<(Source, Option<String>)> = chain.iter().map(|(s, v)| (*s, v.map(|v| defaults::Resolved { value: v, from: *s }.text()))).collect();
     assert_eq!(words, vec![(Source::Builtin, Some("K".into())), (Source::Standard, None), (Source::Project, Some("Q".into()))]);
     h.run("setdefault", json!({"key": e.key, "reset": true})).unwrap();
-    assert!(!h.doc().settings.starter_prefix("coil").is_some());
+    assert!(!h.doc().settings().starter_prefix("coil").is_some());
 }
 
 #[test]

@@ -70,7 +70,7 @@ static BUILTINS: [Builtin; 23] = [
 /// one value with one way to set it.
 fn project_field<'a>(doc: &'a Document, id: &StyleRef, field: &str) -> Option<Value<'a>> {
     match (id, field) {
-        (StyleRef::Builtin(w), "height") if w == "wire_label" => crate::defaults::text::wire_label_height(&doc.settings),
+        (StyleRef::Builtin(w), "height") if w == "wire_label" => crate::defaults::text::wire_label_height(doc.settings()),
         _ => None,
     }
 }

@@ -11,7 +11,7 @@ fn the_demo_command_list_builds_the_control_panel() {
     assert!(n > 60, "{n} commands");
     let (doc, log) = mcp.with_session(|s, p| p.read(s, |p, _| (p.ledger.document().clone(), p.ledger.full_log().unwrap())).unwrap()).unwrap();
     // Three drawn pages, as named, then the generated revision list and BOM (brief 024).
-    let titles: Vec<&str> = doc.page_order.iter().map(|p| doc.pages[p].title.as_str()).collect();
+    let titles: Vec<&str> = doc.page_order().iter().map(|p| doc.pages()[p].title.as_str()).collect();
     // Brief 054 (design 054 §7): a new revisions page is titled Revision history.
     assert_eq!(titles, ["Supply", "Motor control", "Field", "Revision history", "BOM by location"]);
     // Every transaction after the project's creation is the demo's, as an agent.
@@ -24,10 +24,10 @@ fn the_demo_command_list_builds_the_control_panel() {
     let k1 = doc.components_tagged("-K01")[0];
     assert_eq!(doc.representations_of(Subject::Device(k1)).count(), 4);
     assert_eq!(ecad_electrical::devices::tags::page_numbers(&doc, k1), [2, 3]);
-    assert_eq!(doc.devices[&k1].get("part_number"), Some("CT-9A-24VDC"));
+    assert_eq!(doc.devices()[&k1].get("part_number"), Some("CT-9A-24VDC"));
     // Cable -W01 leaves page 2 at its reference and continues on page 3 (design 072 §4.4, F4/F5):
     // two linked references, and each -X02 point has the motor's wire and the cable core's wire.
-    assert_eq!(doc.cables.len(), 1);
+    assert_eq!(doc.cables().len(), 1);
     let references = ecad_electrical::references::cables::all(&doc);
     assert_eq!(references.len(), 2, "{references:?}");
     assert!(references.iter().all(|r| !r.orphan), "{references:?}");
@@ -35,7 +35,7 @@ fn the_demo_command_list_builds_the_control_panel() {
     let x2_connection_points: Vec<_> = doc.connection_points_of(x2).map(|(t, _)| t).collect();
     assert_eq!(x2_connection_points.len(), 3);
     let w01 = doc.cables_tagged("-W01")[0];
-    let cores: Vec<_> = doc.cables[&w01].cores.iter().filter_map(|c| c.wire()).collect();
+    let cores: Vec<_> = doc.cables()[&w01].cores.iter().filter_map(|c| c.wire()).collect();
     assert_eq!(cores.len(), 3, "each continued core is one wire");
     for t in x2_connection_points {
         let ends = doc.ends_at(t);
@@ -55,7 +55,7 @@ fn the_demo_nets_and_wire_numbers() {
     let doc = mcp.with_session(|s, p| p.read(s, |p, _| p.ledger.document().clone()).unwrap()).unwrap();
     // Every conductor's label, by page, as the pages show them.
     let mut shown: Vec<String> = Vec::new();
-    for (i, page) in doc.page_order.iter().enumerate() {
+    for (i, page) in doc.page_order().iter().enumerate() {
         let mut labels: Vec<String> =
             ecad_engine::wires::draw::labels_on_page(&doc, *page).into_iter().map(|l| format!("{}: {}", i + 1, l.text)).collect();
         labels.sort();
@@ -98,7 +98,7 @@ fn the_demo_nets_and_wire_numbers() {
     ];
     assert_eq!(shown, want, "{shown:#?}");
     // Owner, 2026-11-09: no two labels touch, on any page (page 2 is the busiest).
-    for page in &doc.page_order {
+    for page in doc.page_order() {
         let labels = ecad_engine::wires::draw::labels_on_page(&doc, *page);
         for (i, x) in labels.iter().enumerate() {
             for y in labels.iter().skip(i + 1) {
@@ -169,7 +169,7 @@ fn the_demo_locations_reports_and_generated_pages() {
     // propose, at each device's go-to symbol.
     let proposal = |doc: &ecad_model::Document, tag: &str| {
         let c = doc.components_tagged(tag)[0];
-        let r = &doc.representations[&ecad_electrical::symbols::reps::goto(doc, c, None).unwrap()];
+        let r = &doc.representations()[&ecad_electrical::symbols::reps::goto(doc, c, None).unwrap()];
         let x = ecad_electrical::locations::rep_context(doc, r, &mut ecad_electrical::locations::BoxCache::default());
         (ecad_electrical::locations::resolve(doc, c).value, x.value.unwrap_or_default(), x.source.word())
     };
@@ -181,11 +181,11 @@ fn the_demo_locations_reports_and_generated_pages() {
     assert_eq!(proposal(&doc, "-X02"), (s("+JB1"), "+JB1".to_string(), "box"));
     // Accept every device's proposal, as a person does from the inspector's Use link.
     let tagged: Vec<(ecad_model::DeviceId, String)> = doc
-        .devices
+        .devices()
         .keys()
         .filter(|c| ecad_electrical::locations::is_device(&doc, **c))
         .filter_map(|c| {
-            let r = &doc.representations[&ecad_electrical::symbols::reps::goto(&doc, *c, None)?];
+            let r = &doc.representations()[&ecad_electrical::symbols::reps::goto(&doc, *c, None)?];
             ecad_electrical::locations::rep_context(&doc, r, &mut ecad_electrical::locations::BoxCache::default()).value.map(|v| (*c, v))
         })
         .collect();
@@ -198,7 +198,7 @@ fn the_demo_locations_reports_and_generated_pages() {
     // -K01 (=PUMP, +CP1): its NC contact on page 3 (+FIELD) reads =PUMP+CP1-K01; its coil on page
     // 2 =PUMP-K01 (no page or project function).
     let texts =
-        |i: usize| -> Vec<String> { ecad_engine::devices::draw::texts_on_page(&doc, doc.page_order[i]).into_iter().map(|t| t.value).collect() };
+        |i: usize| -> Vec<String> { ecad_engine::devices::draw::texts_on_page(&doc, doc.page_order()[i]).into_iter().map(|t| t.value).collect() };
     assert!(texts(2).contains(&"=PUMP+CP1-K01".to_string()), "{:?}", texts(2));
     assert!(texts(1).contains(&"=PUMP-K01".to_string()), "{:?}", texts(1));
     // Reports: no wire on the BOM; the cable row.
@@ -219,6 +219,6 @@ fn the_demo_locations_reports_and_generated_pages() {
     let s01 = o.bom_table(ecad_electrical::reports::Group::Location);
     assert!(s01.rows.iter().any(|r| r[2].text == "-S01" && r[4].text == "?" && r[4].flag.is_some()), "-S01 has no maker");
     // The generated pages.
-    let kinds: Vec<_> = doc.page_order.iter().filter_map(|p| ecad_electrical::pages::generated::kind_of(&doc, *p)).collect();
+    let kinds: Vec<_> = doc.page_order().iter().filter_map(|p| ecad_electrical::pages::generated::kind_of(&doc, *p)).collect();
     assert_eq!(kinds, [ecad_model::GenKind::Revisions, ecad_model::GenKind::BomLocation]);
 }

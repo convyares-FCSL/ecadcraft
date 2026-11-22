@@ -1157,7 +1157,7 @@ impl Project {
         // Version snapshots, then the head: one forward pass over the log.
         let doc_end = ledger.document();
         let mut points: Vec<(u64, RowKind, String)> = Vec::new();
-        for (name, at) in &doc_end.versions {
+        for (name, at) in doc_end.versions() {
             points.push((*at, RowKind::of(name), name.key()));
         }
         points.push((ledger.head(), RowKind::Auto, auto_name(ledger.head())));
@@ -2141,7 +2141,7 @@ fn merge_record(seq: u64, chain: Hash, row: &MergeRow) -> VersionRecord {
 
 /// The issued revision row `rev` of `doc`, as release data.
 fn revision_of(doc: &Document, rev: Rev) -> Option<Release> {
-    let row = doc.project.revisions.iter().find(|r| r.issued && r.rev == Some(rev))?;
+    let row = doc.project().revisions.iter().find(|r| r.issued && r.rev == Some(rev))?;
     Some(Release { revision: row.clone(), assets: Vec::new() })
 }
 

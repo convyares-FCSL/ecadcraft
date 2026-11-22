@@ -107,7 +107,7 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
             page,
             at: p.change_count(),
             kind,
-            title: doc.pages.get(&page).map(|x| x.title.to_string()).unwrap_or_default(),
+            title: doc.pages().get(&page).map(|x| x.title.to_string()).unwrap_or_default(),
             number: book.number(doc, page),
             type_name: ecad_electrical::styles::name(doc, ecad_model::StyleCatalogue::Page, &ty),
             type_id: ty.text(),

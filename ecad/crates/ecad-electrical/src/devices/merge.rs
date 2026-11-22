@@ -42,8 +42,8 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     if from == into {
         return Err(CmdError::refused("A device cannot be merged with itself."));
     }
-    let from_c = doc.devices.get(&from).ok_or(CmdError::NotFound(Noun::Device))?.clone();
-    if !doc.devices.contains_key(&into) {
+    let from_c = doc.devices().get(&from).ok_or(CmdError::NotFound(Noun::Device))?.clone();
+    if !doc.devices().contains_key(&into) {
         return Err(CmdError::NotFound(Noun::Device));
     }
     let mut assigned: BTreeSet<String> = BTreeSet::new();
@@ -60,7 +60,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     // whose label is taken is refused.
     let name_for = |old: ConnectionPointId, label: String, assigned: &BTreeSet<String>| -> Result<(String, Option<String>), CmdError> {
         let taken = |n: &str| into_labels.contains(n) || assigned.contains(n);
-        let unlabelled = doc.connection_points.get(&old).is_some_and(|x| x.label.is_none()) && label == label_of(doc, old);
+        let unlabelled = doc.connection_points().get(&old).is_some_and(|x| x.label.is_none()) && label == label_of(doc, old);
         if !taken(&label) {
             let shown = (!unlabelled).then(|| label.clone());
             return Ok((label, shown));
@@ -94,7 +94,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         // hand-edited file) would move without any, which the model refuses (I14) with words
         // nobody can act on: say what is wrong instead.
         if r.form == Form::Symbol && shown.is_empty() && rep_definition(doc, r).is_some_and(|(def, _)| !def.connection_points.is_empty()) {
-            let page = doc.pages.get(&r.page).map_or_else(|| r.page.short(), |p| p.title.to_string());
+            let page = doc.pages().get(&r.page).map_or_else(|| r.page.short(), |p| p.title.to_string());
             return Err(CmdError::refused(format!(
                 "Cannot merge {from_words}: its symbol on page \"{page}\" is not linked to any of its connection points. Delete that symbol and place it again, then merge."
             )));
@@ -155,7 +155,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     for (t, term) in doc.connection_points_of(from) {
         ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
     }
-    let into_props = doc.devices.get(&into).map(|c| &c.properties);
+    let into_props = doc.devices().get(&into).map(|c| &c.properties);
     for (old, new) in renamed {
         for (key, value) in crate::styles::text_style::symbol_text_keys(&from_c.properties, old) {
             let moved = crate::styles::text_style::rename_symbol_key(&key, old, new);
@@ -181,7 +181,7 @@ const MAX_RENAMED: u32 = 999;
 /// point drawn with an empty label (a project symbol's earth point) is named by its key, never by
 /// its 32-digit ID (pack re-run, bug 1).
 pub fn label_of(doc: &Document, t: ConnectionPointId) -> String {
-    let term = doc.connection_points.get(&t);
+    let term = doc.connection_points().get(&t);
     term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.as_ref()).map(ToString::to_string)).unwrap_or_else(|| t.hex())
 }
 
@@ -211,13 +211,13 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
         .collect();
     for a in boxes {
         if doc.representations_of(Subject::Aid(a)).all(|(id, _)| gone.contains(&id))
-            && let Some(aid) = doc.aids.get(&a)
+            && let Some(aid) = doc.aids().get(&a)
         {
             ops.push(Op::DeleteAid { id: a, aid: aid.clone() });
         }
     }
     for (c, reps) in by_component {
-        let Some(component) = doc.devices.get(&c) else { continue };
+        let Some(component) = doc.devices().get(&c) else { continue };
         let remaining: Vec<&Representation> =
             doc.representations_of(Subject::Device(c)).filter(|(id, _)| !gone.contains(id)).map(|(_, r)| r).collect();
         let who = tag_words(doc, c);
@@ -235,7 +235,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
         };
         ops.extend(crate::wires::routes::free_points_ops(doc, drop.iter().copied()));
         for t in &drop {
-            if let Some(term) = doc.connection_points.get(t) {
+            if let Some(term) = doc.connection_points().get(t) {
                 ops.push(Op::RemoveConnectionPoint { id: *t, connection_point: term.clone() });
             }
         }
@@ -280,7 +280,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
 
 fn shown_pages_words(doc: &Document, reps: &[&Representation]) -> String {
     let pages: BTreeSet<PageId> = reps.iter().map(|r| r.page).collect();
-    let n: Vec<String> = doc.page_order.iter().enumerate().filter(|(_, p)| pages.contains(p)).map(|(i, _)| (i + 1).to_string()).collect();
+    let n: Vec<String> = doc.page_order().iter().enumerate().filter(|(_, p)| pages.contains(p)).map(|(i, _)| (i + 1).to_string()).collect();
     if n.len() == 1 { format!("page {}", n.join(", ")) } else { format!("pages {}", n.join(", ")) }
 }
 

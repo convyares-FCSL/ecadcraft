@@ -29,7 +29,7 @@ fn all_drawn(seed: u64) -> (P, BTreeMap<&'static str, DeviceId>) {
 
 /// Every shown text on every page.
 fn all_texts(p: &mut P) -> BTreeSet<String> {
-    let pages = p.h.doc().page_order.clone();
+    let pages = p.h.doc().page_order().to_vec();
     pages.into_iter().flat_map(|pg| text_values(&mut p.h, pg)).collect()
 }
 

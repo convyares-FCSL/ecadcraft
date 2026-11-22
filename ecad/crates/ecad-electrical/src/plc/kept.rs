@@ -73,7 +73,7 @@ impl Plc {
 
     /// Add device `c` (a rack, a card, or neither) and note the check groups it touches.
     fn set(&mut self, doc: &Document, c: DeviceId, groups: &mut BTreeSet<Group>) {
-        let ty = doc.devices.get(&c).and_then(|_| card_type_of(doc, c));
+        let ty = doc.devices().get(&c).and_then(|_| card_type_of(doc, c));
         let Some(ty) = ty else { return };
         let tag = crate::devices::tags::tag_words(doc, c);
         let page = first_page(doc, c);
@@ -85,7 +85,7 @@ impl Plc {
             return;
         }
         let r = rack::rack_ref(doc, c);
-        let device = doc.devices.get(&c);
+        let device = doc.devices().get(&c);
         let text = |k: &str| device.and_then(|d| d.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         if let RackRef::Rack(x) | RackRef::Missing(x) = r {
             self.naming.entry(x).or_default().insert(c);
@@ -347,10 +347,10 @@ impl Plc {
     fn channel_checks(&self, doc: &Document, card: &CardData, out: &mut Vec<Check>) {
         let first = channels::first_number(doc, card.id);
         let place = |rid: ecad_model::RepresentationId| -> String {
-            let Some(r) = doc.representations.get(&rid) else { return "?".into() };
+            let Some(r) = doc.representations().get(&rid) else { return "?".into() };
             let at = crate::devices::tags::rep_definition(doc, r).map(|(_, pl)| pl.origin);
             at.and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a))
-                .map_or_else(|| crate::references::cables::page_number_words(doc, r.page), |p| p.text(doc.settings.reference_style()))
+                .map_or_else(|| crate::references::cables::page_number_words(doc, r.page), |p| p.text(doc.settings().reference_style()))
         };
         let mut highest: Option<u32> = None;
         for (i, ch) in &card.chans {

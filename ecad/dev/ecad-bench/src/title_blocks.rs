@@ -69,7 +69,7 @@ fn exec(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<(f64, s
 fn frame_ms(project: &ProjectHandle, s: &mut Session) -> Result<f64, String> {
     project.read(s, |p, _| {
         let doc = p.ledger.document();
-        let page = doc.page_order.first().copied();
+        let page = doc.page_order().first().copied();
         let t = Instant::now();
         let n = page.map(|pg| frame::parts(&FrameInput::of(doc, pg, &Book::of(doc))).len());
         std::hint::black_box(n);
@@ -90,8 +90,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredTitle
     let result = (|| {
         let mut s = Session::empty();
         let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
-        let first = project.read(&mut s, |p, _| p.ledger.document().page_order.first().copied())?.ok_or("the project has no page")?;
-        out.pages = project.read(&mut s, |p, _| p.ledger.document().page_order.len())?;
+        let first = project.read(&mut s, |p, _| p.ledger.document().page_order().first().copied())?.ok_or("the project has no page")?;
+        out.pages = project.read(&mut s, |p, _| p.ledger.document().page_order().len())?;
         project.open_page(&mut s, first)?;
         let mut house = Vec::new();
         for _ in 0..runs.max(1) {

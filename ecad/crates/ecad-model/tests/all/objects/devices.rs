@@ -125,8 +125,12 @@ fn connection_points_of_a_symbol_follow_its_placement() {
     assert!(shown.iter().any(|(t, _, p)| *t == t1 && p.near(Pt::new(50.0, 10.0), 1e-9)));
     assert!(shown.iter().any(|(t, _, p)| *t == t2 && p.near(Pt::new(50.0, -10.0), 1e-9)));
     // Moving the instance moves its terminals, with no change to the representation.
-    let (item, before) =
-        doc.items.iter().find(|(_, i)| matches!(&i.kind, ItemKind::Symbol(s) if s.definition == fx.contact)).map(|(id, i)| (*id, i.clone())).unwrap();
+    let (item, before) = doc
+        .items()
+        .iter()
+        .find(|(_, i)| matches!(&i.kind, ItemKind::Symbol(s) if s.definition == fx.contact))
+        .map(|(id, i)| (*id, i.clone()))
+        .unwrap();
     let after = symbol(&fx, fx.contact, Pt::new(80.0, 5.0));
     fx.l.commit(Author::User, "move", vec![Op::ModifyItem { id: item, before, after }]).unwrap();
     let shown = connection_point_positions(fx.l.document(), fx.page);
@@ -166,7 +170,7 @@ fn the_tag_index_finds_one_tag_however_it_is_written() {
         assert_eq!(fx.l.document().components_tagged(written), vec![fx.k1], "{written}");
     }
     assert!(fx.l.document().components_tagged("-K10").is_empty());
-    let k1 = fx.l.document().devices[&fx.k1].clone();
+    let k1 = fx.l.document().devices()[&fx.k1].clone();
     let rename = |before: &str, after: &str| Op::ModifyDevice {
         id: fx.k1,
         before: k1.with_tag(Some(before), ecad_model::naming::tag::TagState::Automatic),
@@ -181,7 +185,7 @@ fn the_tag_index_finds_one_tag_however_it_is_written() {
     assert_eq!(fx.l.document().components_tagged("-K01"), vec![fx.k1]);
     fx.l.document().check_index().unwrap();
     // Deleting the component takes its tag out of the index.
-    let c = fx.l.document().devices.get(&fx.k1).cloned().unwrap();
+    let c = fx.l.document().devices().get(&fx.k1).cloned().unwrap();
     fx.l.commit(Author::User, "Delete", vec![Op::DeleteDevice { id: fx.k1, device: c }]).unwrap();
     assert!(fx.l.document().components_tagged("-K01").is_empty());
     fx.l.document().check_index().unwrap();

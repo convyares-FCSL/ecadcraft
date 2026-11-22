@@ -138,7 +138,9 @@ fn prefixes_are_registered_defaults() {
     let mut doc = ecad_model::Document::default();
     assert_eq!(defaults::symbols::prefix(&doc, ecad_electrical::symbols::StarterKey::Valve), "MB");
     let valve = ecad_model::naming::prefix::PrefixOf::Starter("valve".into());
-    doc.settings.tag_prefixes.insert(valve, ecad_model::naming::prefix::TagPrefix::typed("Y").unwrap());
+    doc.edit_parts(|parts| {
+        parts.settings.tag_prefixes.insert(valve, ecad_model::naming::prefix::TagPrefix::typed("Y").unwrap());
+    });
     assert_eq!(defaults::symbols::prefix(&doc, ecad_electrical::symbols::StarterKey::Valve), "Y");
     assert_eq!(defaults::symbols::prefix(&doc, ecad_electrical::symbols::StarterKey::Valve2), "MB", "only that key");
     // Design 072 F5: a bad prefix cannot be held at all (the file read refuses it).

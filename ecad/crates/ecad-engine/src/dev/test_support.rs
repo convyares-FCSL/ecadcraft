@@ -146,7 +146,7 @@ impl ProjectBuilder {
         let mut s = Session::empty();
         let project = Project::create(&mut s, "Demo", self.seed).expect("create the project");
         let doc = read_doc(&project, &mut s);
-        let first_page = doc.page_order[0];
+        let first_page = doc.page_order()[0];
         let mut b = Built { s, project, added_pages: Vec::new(), first_page, devices: BTreeMap::new(), wires: Vec::new(), cables: Vec::new() };
         for step in &self.steps {
             b.run_step(step);

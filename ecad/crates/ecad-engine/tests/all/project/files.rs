@@ -86,7 +86,7 @@ fn save_close_and_reopen_keep_connectivity_ids_and_history() {
     assert_eq!(h2.doc(), live, "the same objects, IDs, connections and pages");
     assert_eq!(h2.p(|p| p.ledger.full_log().unwrap()), log, "the same history");
     assert!(!h2.p(|p| p.unsaved()));
-    assert_eq!(h2.doc().page_order.len(), 2);
+    assert_eq!(h2.doc().page_order().len(), 2);
     h2.check();
     // Connectivity survives: moving the component again still drags the wire end.
     let handles = h2.rep_handles(first, c1);
@@ -265,9 +265,9 @@ fn a_justified_text_saves_and_reopens_aligned() {
     let before = h.doc();
     let mut h = reopen(&mut h, &d.path("justify.ecad"), 0x31_05);
     let after = h.doc();
-    assert_eq!(after.items, before.items, "the items reopen as saved");
+    assert_eq!(after.items(), before.items(), "the items reopen as saved");
     let align = |v: &str| {
-        after.items.values().find_map(|i| match &i.kind {
+        after.items().values().find_map(|i| match &i.kind {
             ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text { value, halign, valign, .. }) if value == v => Some((*halign, *valign)),
             _ => None,
         })

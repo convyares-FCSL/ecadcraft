@@ -39,8 +39,8 @@ impl ReportModels {
             return;
         }
         let mut work = 0;
-        self.style = doc.settings.reference_style();
-        self.colour_style = doc.settings.wiring.colour_style();
+        self.style = doc.settings().reference_style();
+        self.colour_style = doc.settings().wiring.colour_style();
         if scope.bom_view {
             self.view = BomView::of(doc);
         }
@@ -51,8 +51,8 @@ impl ReportModels {
             scope.wires.extend(self.wires.keys().copied());
         }
         if scope.sheet {
-            let own = |p: &PageId| doc.pages.get(p).is_some_and(|x| x.sheet.is_some());
-            scope.route_pages.extend(doc.page_order.iter().filter(|p| !own(p)).copied());
+            let own = |p: &PageId| doc.pages().get(p).is_some_and(|x| x.sheet.is_some());
+            scope.route_pages.extend(doc.page_order().iter().filter(|p| !own(p)).copied());
         }
         if scope.project_location {
             scope.loose.extend(self.from_project.iter().copied());
@@ -63,7 +63,7 @@ impl ReportModels {
         // connectors inheriting it (their half rows); a naming key also their pins' wire rows.
         for k in &scope.connector_keys {
             let naming = crate::defaults::connectors::is_naming_key(k);
-            let own = |c: &DeviceId| naming && doc.devices.get(c).is_some_and(|x| x.properties.contains_key(k.as_str()));
+            let own = |c: &DeviceId| naming && doc.devices().get(c).is_some_and(|x| x.properties.contains_key(k.as_str()));
             let inheriting: Vec<DeviceId> = self.connectors.keys().filter(|c| !own(c)).copied().collect();
             for c in inheriting {
                 scope.devices.insert(c);
@@ -98,8 +98,8 @@ impl ReportModels {
             }
         }
         for p in &scope.route_pages {
-            if doc.pages.contains_key(p) {
-                for r in doc.routes_on(*p).filter_map(|r| doc.routes.get(&r)) {
+            if doc.pages().contains_key(p) {
+                for r in doc.routes_on(*p).filter_map(|r| doc.routes().get(&r)) {
                     for t in r.points_landed() {
                         scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                     }
@@ -295,7 +295,7 @@ impl ReportModels {
 
     /// Brief 047: the entries of device `c` (its main part and part lines), and its fuse coverage.
     pub(super) fn set_entries(&mut self, doc: &Document, c: DeviceId, main: Option<Entry>) {
-        let Some(comp) = doc.devices.get(&c) else { return };
+        let Some(comp) = doc.devices().get(&c) else { return };
         let (lines, bad) = bom::lines(&comp.properties);
         if !bad.is_empty() {
             self.bad_part_keys.insert(c, bad);
@@ -363,11 +363,11 @@ impl ReportModels {
         use crate::locations::designations::{Aspect, code_of, default_key};
         use ecad_model::objects::loose_part::{Bom, ItemUnit};
         self.remove_entries(Owner::Loose(id));
-        let Some(p) = doc.loose_parts.get(&id) else { return };
+        let Some(p) = doc.loose_parts().get(&id) else { return };
         // Brief 052: stored values are entry keys of the project's list; shown by their codes.
         let location = match p.location {
             Some(l) => code_of(doc, Aspect::Location, &l.hex()),
-            None => match default_key(&doc.project, Aspect::Location) {
+            None => match default_key(doc.project(), Aspect::Location) {
                 Some(k) => {
                     self.from_project.insert(id);
                     code_of(doc, Aspect::Location, &k)
@@ -403,12 +403,12 @@ impl ReportModels {
         // Review of PR #57, 4: a link key on a device that is not a strip.
         let misplaced = crate::terminal_strips::strip_of(doc, c).is_none()
             && doc
-                .devices
+                .devices()
                 .get(&c)
                 .is_some_and(|x| x.properties.keys().any(|k| ecad_model::connectivity::jumper_bars::jumper_bar_number(k).is_some()));
         if misplaced {
             let keys = doc
-                .devices
+                .devices()
                 .get(&c)
                 .map(|x| x.properties.keys().filter(|k| ecad_model::connectivity::jumper_bars::jumper_bar_number(k).is_some()).cloned().collect())
                 .unwrap_or_default();
@@ -424,10 +424,10 @@ impl ReportModels {
         if !locations::is_device(doc, c) {
             return;
         }
-        let Some(comp) = doc.devices.get(&c) else { return };
+        let Some(comp) = doc.devices().get(&c) else { return };
         let location = locations::resolve_with(doc, c, cache);
-        let goto =
-            crate::symbols::reps::goto(doc, c, None).and_then(|rid| doc.representations.get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
+        let goto = crate::symbols::reps::goto(doc, c, None)
+            .and_then(|rid| doc.representations().get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
         let row = DeviceRow {
             component: c,
             tag: comp.tag_shown().unwrap_or_default(),
@@ -477,7 +477,7 @@ impl ReportModels {
             (pos, place.as_ref().map_or(0, |x| x.column), place.as_ref().map_or(0, |x| x.row))
         });
         let Some(t) = t else { return EndCell { order, ..EndCell::default() } };
-        let Some(term) = doc.connection_points.get(&t) else { return EndCell { order, ..EndCell::default() } };
+        let Some(term) = doc.connection_points().get(&t) else { return EndCell { order, ..EndCell::default() } };
         if let Some(a) = term.owner.aid() {
             let name = crate::continuations::display_name(doc, a);
             return EndCell { name: Some(format!("{name} >")), order, continuation: true, ..EndCell::default() };
@@ -514,12 +514,12 @@ impl ReportModels {
                 }
             }
         }
-        let Some(cond) = doc.wires.get(&w) else { return };
+        let Some(cond) = doc.wires().get(&w) else { return };
         // Where its ends are drawn (book order), and the middle of the first segment of the first
         // route landing on its first point.
         let [a_at, b_at] = crate::reports::end_points(doc, w, cx);
         let mid =
-            crate::wires::routes::routes_of_wire(doc, w).into_iter().filter_map(|r| doc.routes.get(&r)).min_by_key(|r| cx.pos(r.page)).and_then(
+            crate::wires::routes::routes_of_wire(doc, w).into_iter().filter_map(|r| doc.routes().get(&r)).min_by_key(|r| cx.pos(r.page)).and_then(
                 |r| {
                     let (Some(a), Some(b)) = (r.points.first(), r.points.get(1).or(r.points.first())) else { return None };
                     Some((r.page, Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
@@ -554,7 +554,7 @@ impl ReportModels {
             .cables_of(w)
             .into_iter()
             .filter_map(|k| {
-                let cab = doc.cables.get(&k)?;
+                let cab = doc.cables().get(&k)?;
                 let tag = cab.tag_shown().unwrap_or_else(|| "?".into());
                 let i = cab.cores.iter().position(|m| m.wire() == Some(w))?;
                 let core = cab.cores.get(i).and_then(|m| m.label_str().map(str::to_string)).unwrap_or_else(|| (i + 1).to_string());
@@ -614,7 +614,7 @@ impl ReportModels {
     }
 
     pub(super) fn set_cable_row(&mut self, doc: &Document, k: CableId) {
-        let Some(cab) = doc.cables.get(&k) else {
+        let Some(cab) = doc.cables().get(&k) else {
             self.cables.remove(&k);
             return;
         };
@@ -627,9 +627,9 @@ impl ReportModels {
         // Brief 028: the devices at the cores' ends, per location.
         let mut at_loc: BTreeMap<String, BTreeSet<((String, u64, String), DeviceId)>> = BTreeMap::new();
         for m in &cab.cores {
-            let Some(cond) = m.wire().and_then(|w| doc.wires.get(&w)) else { continue };
+            let Some(cond) = m.wire().and_then(|w| doc.wires().get(&w)) else { continue };
             for t in &cond.ends {
-                let Some(c) = doc.connection_points.get(t).and_then(|x| x.device()) else { continue };
+                let Some(c) = doc.connection_points().get(t).and_then(|x| x.device()) else { continue };
                 let (loc, tag) = match self.devices.get(&c) {
                     Some(d) => (d.location.value.clone(), d.tag.clone()),
                     None => (locations::resolve(doc, c).value, crate::devices::tags::tag_shown_of(doc, c).unwrap_or_else(|| "?".into())),
@@ -661,7 +661,7 @@ impl ReportModels {
         };
         let (from_devices, to_devices) = (tags_at(&from), tags_at(&to));
         let go = doc.representations_of(Subject::Cable(k)).find_map(|(_, r)| {
-            let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+            let at = r.items.first().and_then(|i| doc.items().get(i)).and_then(|i| match &i.kind {
                 ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, .. }) => Some(*a),
                 ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }) => vertices.first().copied(),
                 _ => None,

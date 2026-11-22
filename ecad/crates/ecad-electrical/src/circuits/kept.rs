@@ -351,7 +351,7 @@ impl Kept {
             if let RatedSubject::Wire(c) = s
                 && !self.results.is_empty()
                 && is_panel_wire(doc, c)
-                && doc.wires.contains_key(&c)
+                && doc.wires().contains_key(&c)
             {
                 let f = found.unwrap_or_else(|| {
                     self.retraced += 1;
@@ -405,7 +405,7 @@ impl Kept {
             }
             return;
         }
-        let wires: Vec<WireId> = doc.wires.keys().copied().filter(|c| !self.results.contains_key(&RatedSubject::Wire(*c))).collect();
+        let wires: Vec<WireId> = doc.wires().keys().copied().filter(|c| !self.results.contains_key(&RatedSubject::Wire(*c))).collect();
         for c in wires {
             self.put(doc, ctx, RatedSubject::Wire(c), false);
         }

@@ -71,7 +71,7 @@ const CAPTION_INDEX: u32 = 4;
 
 /// Continuation `a`'s name and caption, when `a` is a continuation (design 072 §6.2).
 pub fn continuation(doc: &Document, a: AidId) -> Option<(Option<&str>, Option<&str>)> {
-    match doc.aids.get(&a)? {
+    match doc.aids().get(&a)? {
         Aid::Continuation { name, caption } => Some((name.as_ref().map(|n| n.as_str()), caption.as_ref().map(|c| c.as_str()))),
         Aid::Box(_) => None,
     }
@@ -79,7 +79,7 @@ pub fn continuation(doc: &Document, a: AidId) -> Option<(Option<&str>, Option<&s
 
 /// The name key of continuation `a` (`24V`), when it is a named continuation.
 pub fn name_of(doc: &Document, a: AidId) -> Option<String> {
-    continuation_key(doc.aids.get(&a)?)
+    continuation_key(doc.aids().get(&a)?)
 }
 
 /// The name of continuation `a` as typed.
@@ -171,7 +171,7 @@ pub struct Arrow {
 
 /// Arrow `rid` as drawn, when it is a continuation symbol with a valid placement.
 pub fn arrow(doc: &Document, rid: RepresentationId) -> Option<Arrow> {
-    let r = doc.representations.get(&rid)?;
+    let r = doc.representations().get(&rid)?;
     let Subject::Aid(c) = r.subject else { return None };
     if r.form != Form::Symbol || continuation(doc, c).is_none() {
         return None;
@@ -206,7 +206,7 @@ impl Settings {
     fn of(doc: &Document) -> Settings {
         use crate::defaults::continuations as c;
         let len = |e: &defaults::Entry| defaults::resolve(doc, e, Scope::project()).length(doc);
-        let mm = |x: f64| match doc.settings.length_unit {
+        let mm = |x: f64| match doc.settings().length_unit {
             ecad_model::LengthUnit::Millimetre => x,
             ecad_model::LengthUnit::Inch => x / 25.4,
         };
@@ -241,11 +241,11 @@ pub struct End {
 /// O(m log m).
 pub fn ends_named(doc: &Document, places: &mut Places<'_>, key: &str) -> Vec<End> {
     let Some((_, members)) = group_named(doc, key) else { return Vec::new() };
-    let unlocated = ecad_model::connectivity::derive::unlocated(doc.settings.reference_style()).to_string();
+    let unlocated = ecad_model::connectivity::derive::unlocated(doc.settings().reference_style()).to_string();
     let mut out: Vec<End> = members
         .into_iter()
         .filter_map(|rid| {
-            let r = doc.representations.get(&rid)?;
+            let r = doc.representations().get(&rid)?;
             let (key, text) = match places.sorted(r.page, crate::references::devices::classify::anchor(doc, r)) {
                 Some((k, t)) => (Some(k), t),
                 None => (None, unlocated.clone()),
@@ -614,7 +614,7 @@ pub const NO_SUCH_ARROW: &str = "There is no such continuation arrow.";
 /// # Errors
 /// `a` is not a continuation arrow, or the caption breaks [`CAPTION_RULE`].
 pub(crate) fn caption_value(doc: &Document, a: AidId, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    match doc.aids.get(&a) {
+    match doc.aids().get(&a) {
         Some(Aid::Continuation { .. }) => caption_text(value),
         Some(Aid::Box(_)) => Err(CmdError::refused("Only continuation arrows have a caption; that is a location box.")),
         None => Err(CmdError::refused(NO_SUCH_ARROW)),
@@ -650,7 +650,7 @@ pub fn goto(doc: &Document, source: RepresentationId, target: Option<Representat
     if let Some(t) = target {
         return ends.iter().any(|e| e.rep == t).then_some(t);
     }
-    let at = |e: &End| doc.representations.get(&e.rep).and_then(|r| crate::references::devices::classify::anchor(doc, r));
+    let at = |e: &End| doc.representations().get(&e.rep).and_then(|r| crate::references::devices::classify::anchor(doc, r));
     let i = last.and_then(|(page, p)| ends.iter().position(|e| e.page == page && at(e).is_some_and(|a| a.x == p.x && a.y == p.y)));
     let next = match i {
         Some(i) => ends.get(i.saturating_add(1)).or_else(|| ends.first()),

@@ -19,7 +19,7 @@ fn one_page() -> (Ledger, PageId, IdAllocator) {
 #[test]
 fn modify_page_applies_inverts_and_refuses() {
     let (mut ledger, page, _) = one_page();
-    let before = ledger.document().pages[&page].clone();
+    let before = ledger.document().pages()[&page].clone();
     let mut after = before.clone();
     after.title = ecad_model::PageTitle::new("Main supply").unwrap();
     after.number = PageNo::parse("105a");
@@ -30,11 +30,11 @@ fn modify_page_applies_inverts_and_refuses() {
     assert_eq!(op.inverse(), Op::ModifyPage { id: page, before: after.clone(), after: before.clone() });
     ledger.commit(Author::User, "modify", vec![op.clone()]).unwrap();
     let doc = ledger.document();
-    assert_eq!(doc.pages[&page], after);
+    assert_eq!(doc.pages()[&page], after);
     assert_eq!(Book::of(doc).number(doc, page), "105a");
-    assert_eq!(doc.page_order, [page], "the page keeps its place");
+    assert_eq!(doc.page_order(), [page], "the page keeps its place");
     ledger.undo(Author::User).unwrap();
-    assert_eq!(ledger.document().pages[&page], before);
+    assert_eq!(ledger.document().pages()[&page], before);
     assert!(ledger.replay_matches().unwrap());
 
     let snapshot = ledger.document().clone();
@@ -128,20 +128,20 @@ fn modify_project_applies_inverts_and_refuses() {
     let op = Op::ModifyProject { before: ecad_model::Project::default(), after: after.clone() };
     assert_eq!(op.inverse(), Op::ModifyProject { before: after.clone(), after: ecad_model::Project::default() });
     ledger.commit(Author::User, "lists", vec![op]).unwrap();
-    assert_eq!(ledger.document().project, after);
+    assert_eq!(*ledger.document().project(), after);
     // A page refers to the entry by id.
-    let mut p = ledger.document().pages[&page].clone();
+    let mut p = ledger.document().pages()[&page].clone();
     p.location = Some(cp1.id);
-    let before_page = ledger.document().pages[&page].clone();
+    let before_page = ledger.document().pages()[&page].clone();
     ledger.commit(Author::User, "page", vec![Op::ModifyPage { id: page, before: before_page, after: p }]).unwrap();
     ledger.undo(Author::User).unwrap();
     ledger.undo(Author::User).unwrap();
-    assert!(ledger.document().project.is_empty());
+    assert!(ledger.document().project().is_empty());
     ledger.redo(Author::User).unwrap();
     assert!(ledger.replay_matches().unwrap());
 
     let snapshot = ledger.document().clone();
-    let now = snapshot.project.clone();
+    let now = snapshot.project().clone();
     let with = |l: Vec<ecad_model::Location>| ecad_model::Project { locations: l, ..now.clone() };
     let cases: Vec<(&str, Op)> = vec![
         ("before differs", Op::ModifyProject { before: ecad_model::Project::default(), after: now.clone() }),
@@ -281,7 +281,7 @@ fn a_folder_start_is_its_own_field() {
     ledger.commit(Author::User, "folder", vec![Op::AddFolder { id: f, folder: folder.clone(), index: 0 }]).unwrap();
     let after = ecad_model::Folder { start: PageNo::parse("100"), ..folder.clone() };
     ledger.commit(Author::User, "start", vec![Op::ModifyFolder { id: f, before: folder, after: after.clone() }]).unwrap();
-    assert_eq!(ledger.document().folders[&f], after);
+    assert_eq!(ledger.document().folders()[&f], after);
     let key = format!("folder.{}.start", f.hex());
     let op = Op::SetProperty { object: ObjectRef::Project, key: key.clone(), before: None, after: Some("100".into()) };
     assert!(matches!(ledger.commit(Author::User, "old key", vec![op]).unwrap_err(), ModelError::Precondition(_)));

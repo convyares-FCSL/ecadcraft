@@ -211,7 +211,7 @@ fn checked(
 /// No such cable ("No cable "-W9".").
 pub fn cable_named(doc: &Document, text: &str) -> Result<CableId, CmdError> {
     let t = text.trim();
-    if let Some(k) = CableId::parse(t).filter(|k| doc.cables.contains_key(k)) {
+    if let Some(k) = CableId::parse(t).filter(|k| doc.cables().contains_key(k)) {
         return Ok(k);
     }
     crate::references::cables::cable_tagged(doc, t).ok_or_else(|| no_cable(&t.chars().take(32).collect::<String>()))
@@ -224,14 +224,14 @@ fn placed(m: &ecad_model::Core) -> bool {
 
 /// The cores cable `k`'s members use, by label (their matched or stored labels, else their place).
 fn cores_in_use(doc: &Document, k: CableId) -> Vec<String> {
-    let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
+    let Some(cab) = doc.cables().get(&k) else { return Vec::new() };
     cab.cores.iter().enumerate().filter(|(_, m)| placed(m)).map(|(i, m)| m.label_str().map_or_else(|| (i + 1).to_string(), str::to_string)).collect()
 }
 
 /// Q6: a new offer (from `next`, the cable as it would be written) must hold every core cable
 /// `k`'s members use.
 fn check_offer(doc: &Document, k: CableId, next: &ecad_model::Cable) -> Result<(), CmdError> {
-    let Some(cab) = doc.cables.get(&k) else { return Ok(()) };
+    let Some(cab) = doc.cables().get(&k) else { return Ok(()) };
     if !cab.cores.iter().any(placed) {
         return Ok(());
     }
@@ -358,7 +358,7 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
 pub(crate) fn edit_ops(
     doc: &Document, ids: &mut IdAllocator, tag_high: &mut TagHigh, k: CableId, set: &CableInput,
 ) -> Result<(Vec<Op>, Vec<CableField>, Option<String>), CmdError> {
-    let cab = doc.cables.get(&k).ok_or_else(|| no_cable(&k.hex()))?;
+    let cab = doc.cables().get(&k).ok_or_else(|| no_cable(&k.hex()))?;
     let mut ops = Vec::new();
     let mut pending = designations::Pending::default();
     let mut after = cab.properties.clone();
@@ -441,7 +441,7 @@ impl Drawn {
 
 /// Cable `k` when it is drawn: what refuses its removal from the list.
 pub fn drawn(doc: &Document, k: CableId) -> Option<Drawn> {
-    (doc.cables.contains_key(&k) && is_drawn(doc, k)).then(|| Drawn { tag: crate::cables::cable_title(doc, k), pages: drawn_pages(doc, k) })
+    (doc.cables().contains_key(&k) && is_drawn(doc, k)).then(|| Drawn { tag: crate::cables::cable_title(doc, k), pages: drawn_pages(doc, k) })
 }
 
 /// Whether cable `k` may be removed from the list (Q1): only when it is not drawn.
@@ -449,7 +449,7 @@ pub fn drawn(doc: &Document, k: CableId) -> Option<Drawn> {
 /// # Errors
 /// No such cable, or it is drawn ([`Drawn::words`]; [`drawn`] gives its pages).
 pub(crate) fn check_remove(doc: &Document, k: CableId) -> Result<(), CmdError> {
-    if !doc.cables.contains_key(&k) {
+    if !doc.cables().contains_key(&k) {
         return Err(no_cable(&k.hex()));
     }
     match drawn(doc, k) {
@@ -466,7 +466,7 @@ pub(crate) fn check_remove(doc: &Document, k: CableId) -> Result<(), CmdError> {
 pub fn assign_cores(doc: &Document, k: CableId, n: usize) -> Result<Vec<Option<String>>, CmdError> {
     let Some(count) = crate::terminal_strips::cores::cable_cores(doc, k) else { return Err(no_cable(&k.hex())) };
     if count.offer.is_none() {
-        let start = doc.cables.get(&k).map_or(0, |c| c.cores.len());
+        let start = doc.cables().get(&k).map_or(0, |c| c.cores.len());
         return Ok((0..n).map(|i| Some((start + i + 1).to_string())).collect());
     }
     if n > count.spare.len() {
@@ -496,7 +496,7 @@ pub fn too_many() -> CmdError {
 /// Board 2.06's **Add a core** (design 059 §3): cable `k`'s offer plus one core (`4G` → `5G`,
 /// `7X` → `8X`; a list gains the next number), or its member count plus one with no offer.
 pub fn next_offer(doc: &Document, k: CableId) -> String {
-    let members = doc.cables.get(&k).map_or(0, |c| c.cores.len());
+    let members = doc.cables().get(&k).map_or(0, |c| c.cores.len());
     let Some((cores, _, text)) = cable::offer(doc, k) else { return (members + 1).to_string() };
     let t = text.trim();
     let digits: String = t.chars().take_while(char::is_ascii_digit).collect();
@@ -529,12 +529,12 @@ pub struct PickItem {
 /// not slashed on this page (032). Each group by tag. O(cables), built once when a picker opens.
 pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
     let mut here: BTreeSet<String> = crate::locations::boxes_on(doc, page).into_iter().filter_map(|b| b.location).collect();
-    let page_loc = doc.pages.get(&page).and_then(|x| designations::page_key(x, Aspect::Location));
+    let page_loc = doc.pages().get(&page).and_then(|x| designations::page_key(x, Aspect::Location));
     if let Some(code) = designations::shown(doc, Aspect::Location, page_loc.as_deref()) {
         here.insert(code);
     }
     let mut out: Vec<PickItem> = Vec::new();
-    for k in doc.cables.keys() {
+    for k in doc.cables().keys() {
         let drawn = is_drawn(doc, *k);
         if drawn && doc.representations_of(Subject::Cable(*k)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
             continue;
@@ -711,7 +711,7 @@ impl Generic for CableremoveParams {
         let doc = cx.doc;
         let k = cable_named(doc, &self.cable)?;
         check_remove(doc, k)?;
-        let cable = doc.cables.get(&k).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
+        let cable = doc.cables().get(&k).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
         let tag = crate::cables::cable_title(doc, k);
         let answer = json!({"cable": k.hex(), "removed": true, "message": format!("Removed {tag}. Undo with Ctrl Z.")});
         Ok(Outcome::edit("Remove cable", vec![Op::DeleteCable { id: k, cable }], answer).echo_message())

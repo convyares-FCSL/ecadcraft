@@ -52,17 +52,17 @@ impl Rng {
 const LOCS: &[&str] = &["+A", "+B", "+CP1", "+CP10", "+JB1", "+FIELD"];
 
 fn devices(doc: &Document) -> Vec<DeviceId> {
-    doc.devices.keys().copied().filter(|c| ecad_electrical::locations::is_device(doc, *c)).collect()
+    doc.devices().keys().copied().filter(|c| ecad_electrical::locations::is_device(doc, *c)).collect()
 }
 
 /// Every box: (component, page, outline item, vertex count).
 fn boxes(doc: &Document) -> Vec<(AidId, PageId, ItemId, usize)> {
-    doc.page_order.iter().flat_map(|p| ecad_electrical::locations::boxes_on(doc, *p)).map(|b| (b.aid, b.page, b.item, b.vertices.len())).collect()
+    doc.page_order().iter().flat_map(|p| ecad_electrical::locations::boxes_on(doc, *p)).map(|b| (b.aid, b.page, b.item, b.vertices.len())).collect()
 }
 
 /// Each device's own `location` property.
 fn own(doc: &Document) -> BTreeMap<DeviceId, Option<String>> {
-    devices(doc).into_iter().map(|c| (c, doc.devices[&c].value("location"))).collect()
+    devices(doc).into_iter().map(|c| (c, doc.devices()[&c].value("location"))).collect()
 }
 
 /// The page of a component's first representation.
@@ -79,7 +79,7 @@ fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> DeviceId {
 /// project, or none.
 fn context(doc: &Document, c: DeviceId) -> ecad_electrical::locations::Located {
     let r = ecad_electrical::symbols::reps::goto(doc, c, None).unwrap();
-    ecad_electrical::locations::rep_context(doc, &doc.representations[&r], &mut ecad_electrical::locations::BoxCache::default())
+    ecad_electrical::locations::rep_context(doc, &doc.representations()[&r], &mut ecad_electrical::locations::BoxCache::default())
 }
 
 fn s(v: &str) -> Option<String> {
@@ -120,7 +120,7 @@ fn verify(h: &mut H, what: &str) {
             assert!(ecad_electrical::locations::is_device(&doc, *d), "{what}: a BOM row holds {d:?}, not a device");
         }
     }
-    for p in &doc.page_order {
+    for p in doc.page_order() {
         if ecad_electrical::pages::generated::kind_of(&doc, *p).is_some() {
             assert_eq!(
                 ecad_electrical::pages::generated::sheets_of(&doc, *p, Some(&kept)),
@@ -337,7 +337,7 @@ fn step(f: &mut Fx, r: &mut Rng, act: Act) -> Result<Value, String> {
             }
         }
         Act::MovePage => {
-            let n = doc.page_order.len();
+            let n = doc.page_order().len();
             f.h.run("movepage", json!({"page": page.hex(), "index": 1 + r.below(n)}))
         }
         Act::Undo => f.h.run("u", Value::Null),
@@ -551,7 +551,7 @@ fn moving_pages_and_folders_keeps_the_models_equal_to_a_rebuild() {
 // ---------------------------------------------------------------- 2: translate and movement
 
 fn outline(doc: &Document, item: ItemId) -> (Vec<Pt>, bool) {
-    match &doc.items[&item].kind {
+    match &doc.items()[&item].kind {
         ItemKind::Primitive(Primitive::Polyline { vertices, closed }) => (vertices.clone(), *closed),
         k => panic!("not a polyline: {k:?}"),
     }
@@ -592,7 +592,7 @@ fn rotating_mirroring_and_scaling_a_box_with_its_devices_keeps_them_inside() {
         assert!(ecad_electrical::locations::box_values(&doc, bc).is_some(), "{cmd}: the box is still a box");
         let (v, closed) = outline(&doc, item);
         assert!(closed && v.len() >= 4, "{cmd}: still a closed outline: {v:?}");
-        assert_eq!(doc.items[&item].style.linetype, "DASHED", "{cmd}");
+        assert_eq!(doc.items()[&item].style.linetype, "DASHED", "{cmd}");
         if res.is_ok() {
             for c in [k1, k2] {
                 assert_eq!(context(&doc, c).value, s("+JB1"), "{cmd} {params}: {c:?} still inside");
@@ -618,8 +618,8 @@ fn erasing_a_box_with_its_devices_and_undoing() {
     handles.extend(h.rep_handles(page, k1));
     h.run("erase", json!({"handles": handles})).unwrap();
     let doc = h.doc();
-    assert!(!doc.aids.contains_key(&bc) && !doc.devices.contains_key(&k1));
-    assert!(!doc.items.contains_key(&item), "the outline goes with the box");
+    assert!(!doc.aids().contains_key(&bc) && !doc.devices().contains_key(&k1));
+    assert!(!doc.items().contains_key(&item), "the outline goes with the box");
     verify(&mut h, "erase both");
     h.run("u", Value::Null).unwrap();
     assert_eq!(h.doc(), before);
@@ -644,8 +644,8 @@ fn erasing_the_box_label_alone_leaves_no_half_box() {
     let Some(label) = label else { panic!("no +JB1 label drawn") };
     let res = h.run("erase", json!({"handles": [label.hex()]}));
     let doc = h.doc();
-    let gone = !doc.aids.contains_key(&bc);
-    assert_eq!(gone, !doc.items.contains_key(&item), "box and outline go together: {res:?}");
+    let gone = !doc.aids().contains_key(&bc);
+    assert_eq!(gone, !doc.items().contains_key(&item), "box and outline go together: {res:?}");
     if !gone {
         assert_eq!(ecad_electrical::locations::resolve(&doc, k1).value, s("+JB1"), "{res:?}");
     }
@@ -687,7 +687,7 @@ fn removing_box_vertices_down_to_a_line() {
         let _ = h.run("grip.option", json!({"handle": hd, "index": 0, "option": "removeVertex"}));
         verify(&mut h, "removeVertex");
         let doc = h.doc();
-        if let Some(i) = doc.items.get(&item)
+        if let Some(i) = doc.items().get(&item)
             && let ItemKind::Primitive(Primitive::Polyline { vertices, .. }) = &i.kind
             && vertices.len() < 3
         {
@@ -719,7 +719,7 @@ fn bom_csv_survives_hostile_values_end_to_end() {
     for cell in &rows[1] {
         assert!(!cell.starts_with(['=', '+', '-', '@']), "unsafe cell {cell:?} in {text:?}");
     }
-    let stored = h.doc().devices[&k].get("description").map(str::to_string);
+    let stored = h.doc().devices()[&k].get("description").map(str::to_string);
     if let Some(d) = stored {
         assert!(rows[1].iter().any(|c| c.trim_start_matches('\'') == d.trim()), "{rows:?}");
     }
@@ -852,7 +852,7 @@ fn contents_follow_pages_and_overflow() {
     h.run("movepage", json!({"page": p.hex(), "index": 1})).unwrap();
     let doc = h.doc();
     let t = texts(&doc, c);
-    let order: Vec<String> = ecad_model::document::book::Book::of(&doc).order.iter().map(|x| doc.pages[x].title.to_string()).collect();
+    let order: Vec<String> = ecad_model::document::book::Book::of(&doc).order.iter().map(|x| doc.pages()[x].title.to_string()).collect();
     let table = t.iter().position(|x| x == "Folder").map_or(&t[..], |i| &t[i..]);
     let shown: Vec<String> = table.iter().filter(|x| order.contains(x)).cloned().collect();
     assert_eq!(shown, order, "contents order vs book order");
@@ -866,7 +866,7 @@ fn contents_follow_pages_and_overflow() {
         h.run("newpage", json!({"title": format!("P{i}")})).unwrap();
     }
     let doc = h.doc();
-    assert_eq!(doc.page_order.len(), 46);
+    assert_eq!(doc.page_order().len(), 46);
     assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, c, None), 2);
     assert_eq!(ecad_electrical::pages::generated::book_sheets_of(&doc, None), 47);
     let t = texts(&doc, c);
@@ -978,7 +978,7 @@ fn save_and_reopen_keep_boxes_locations_and_generated_pages() {
     // Editing after reopening still goes through the update map.
     keep_models(&mut h2);
     let item = boxes(&d2)[0].2;
-    let p = d2.page_order[0];
+    let p = d2.page_order()[0];
     h2.activate(p);
     let hd = h2.handle_of(p, item).hex();
     h2.run("move", json!({"handles": [hd], "delta": [0, 200]})).unwrap();
@@ -1084,7 +1084,7 @@ fn merging_a_branch_with_a_box_edited_on_both_sides() {
     for c in [k1, k2] {
         let want = ecad_electrical::locations::innermost(
             &b,
-            ecad_electrical::locations::anchor(&doc, &doc.representations[&ecad_electrical::symbols::reps::goto(&doc, c, None).unwrap()]).unwrap(),
+            ecad_electrical::locations::anchor(&doc, &doc.representations()[&ecad_electrical::symbols::reps::goto(&doc, c, None).unwrap()]).unwrap(),
         )
         .and_then(|x| x.location.clone());
         assert_eq!(context(&doc, c).value, want, "{c:?}");

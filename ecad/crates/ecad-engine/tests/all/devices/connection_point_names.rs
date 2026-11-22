@@ -214,7 +214,7 @@ fn numbered_and_number_free_prompts_follow_the_cursor() {
     h.s.cmdline("N").unwrap();
     h.s.input(Input::Enter).unwrap();
     let d = h.doc();
-    let b = d.devices.keys().copied().find(|c| d.connection_points_of(*c).count() == 0).unwrap();
+    let b = d.devices().keys().copied().find(|c| d.connection_points_of(*c).count() == 0).unwrap();
     h.s.cmdline("100,10").unwrap();
     assert_eq!(labels(&mut h, b), ["1"]);
     h.s.cancel();

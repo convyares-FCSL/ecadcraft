@@ -452,7 +452,7 @@ impl App {
         let p = self.project.as_ref()?;
         p.read(&mut self.cad.session, |p, _| Status {
             name: p.name.clone(),
-            pages: p.ledger.document().page_order.len(),
+            pages: p.ledger.document().page_order().len(),
             unsaved: p.unsaved_transactions(),
             file: p.file_status(),
         })
@@ -660,7 +660,7 @@ impl App {
                 let doc = p.ledger.document();
                 panel.starts = ecad_electrical::pages::page_types::starts(doc);
                 panel.generated =
-                    doc.page_order.iter().copied().filter(|pg| ecad_electrical::pages::generated::kind_of(doc, *pg).is_some()).collect();
+                    doc.page_order().iter().copied().filter(|pg| ecad_electrical::pages::generated::kind_of(doc, *pg).is_some()).collect();
                 panel.starts_at = Some(p.change_count());
             }
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
