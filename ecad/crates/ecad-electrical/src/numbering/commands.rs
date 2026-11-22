@@ -320,6 +320,86 @@ pub fn preview_json(doc: &Document, plan: &Plan, change_count: u64) -> Value {
     })
 }
 
+/// A kind's JSON word, read back as the kind.
+#[derive(Deserialize)]
+#[serde(remote = "Kind", rename_all = "snake_case")]
+enum KindWord {
+    Devices,
+    Cables,
+    Wires,
+    TerminalBlocks,
+}
+
+/// What a preview row does, read from its `change` word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RowChange {
+    Change,
+    Fixed,
+    Same,
+    Skipped,
+}
+
+impl RowChange {
+    /// The mark as shown (`→`, `F`, `=`, `–`).
+    #[must_use]
+    pub fn glyph(self) -> &'static str {
+        match self {
+            RowChange::Change => "→",
+            RowChange::Fixed => "F",
+            RowChange::Same => "=",
+            RowChange::Skipped => "–",
+        }
+    }
+}
+
+/// One listed row of a preview: an item that is numbered.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct PreviewRow {
+    #[serde(with = "KindWord")]
+    pub kind: Kind,
+    pub old: String,
+    pub new: String,
+    pub at: String,
+    pub desc: String,
+    pub change: RowChange,
+    /// Where the anchor is, for going to it.
+    pub page: Option<PageId>,
+    pub point: Option<[f64; 2]>,
+}
+
+/// One item the run leaves alone, and why.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct PreviewSkipped {
+    #[serde(with = "KindWord")]
+    pub kind: Kind,
+    pub tag: String,
+    pub why: String,
+}
+
+/// A `renumber` or `finalise` preview reply, read as the types it holds (the JSON is for the agent
+/// and the command line; the app reads this).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct Preview {
+    pub rows: Vec<PreviewRow>,
+    pub skipped: Vec<PreviewSkipped>,
+    /// How many rows change.
+    pub changes: u64,
+    /// The project's change count the plan was made at (an Apply passes it back as `based_on`).
+    pub change_count: u64,
+    /// How many more rows than are listed.
+    pub more: u64,
+    pub summary: String,
+}
+
+impl Preview {
+    /// The preview a reply holds; `None` when the reply is not one.
+    #[must_use]
+    pub fn from_reply(reply: &Value) -> Option<Self> {
+        serde_json::from_value(reply.clone()).ok()
+    }
+}
+
 /// `42 to change · 3 fixed · 7 same · 1 skipped`.
 pub(crate) fn summary_line(plan: &Plan) -> String {
     format!("{} to change · {} fixed · {} same · {} skipped", plan.changes(), plan.fixed(), plan.same(), plan.skipped())

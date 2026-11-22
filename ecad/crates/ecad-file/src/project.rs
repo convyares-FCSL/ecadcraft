@@ -311,7 +311,7 @@ pub fn lineage(r: &Reader, project: ProjectId, branch: BranchId) -> Result<Linea
             out.push(Line { branch: at, seed: chain::seed(ChainKind::Project, project.0), fork: None });
             break;
         }
-        let (Some(parent), Some(fork)) = (rec.parent.as_deref().and_then(BranchId::parse), rec.fork_point.as_ref()) else {
+        let (Some(parent), Some(fork)) = (rec.parent, rec.fork_point.as_ref()) else {
             return Err(FileError::NoForkPoint(rec.name));
         };
         let fork_chain = fork.hash()?;
@@ -836,7 +836,7 @@ struct Facts {
 /// `older format version (file 1, this build 2)` / `newer ...`, when `file` is not the build's
 /// [`SCHEMA_VERSION`]. Such a file is opened read-only whatever replay found, and never called
 /// damaged: its records may mean something else here.
-pub fn format_note(file: u64) -> Option<String> {
+pub(crate) fn format_note(file: u64) -> Option<String> {
     match file.cmp(&SCHEMA_VERSION) {
         std::cmp::Ordering::Equal => None,
         std::cmp::Ordering::Less => Some(format!("older format version (file {file}, this build {SCHEMA_VERSION})")),
@@ -1788,7 +1788,7 @@ impl Project {
             if seq > 0 {
                 break;
             }
-            match r.branch(at)?.and_then(|b| b.parent.as_deref().and_then(BranchId::parse).zip(b.fork_point.map(|p| p.seq))) {
+            match r.branch(at)?.and_then(|b| b.parent.zip(b.fork_point.map(|p| p.seq))) {
                 Some((parent, fseq)) => (at, seq) = (parent, fseq),
                 None => break,
             }
@@ -1809,7 +1809,7 @@ impl Project {
         let rec = BranchRecord {
             name: name.clone(),
             status: BranchStatus::Open,
-            parent: Some(at.hex()),
+            parent: Some(at),
             fork_point: Some(Point::new(seq, &fork_chain)),
             head: Point::new(0, &seed),
             release_line: false,

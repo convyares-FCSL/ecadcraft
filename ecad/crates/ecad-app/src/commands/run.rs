@@ -751,7 +751,7 @@ impl App {
         }
         if let Ok((c, v)) = d.params(true) {
             match self.run_click(c, v) {
-                Ok(v) => d.preview = v,
+                Ok(v) => d.preview = ecad_electrical::numbering::commands::Preview::from_reply(&v).unwrap_or_default(),
                 Err(e) => d.error = Some(e),
             }
         }

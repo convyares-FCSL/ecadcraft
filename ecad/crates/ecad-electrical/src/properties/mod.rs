@@ -76,8 +76,32 @@ pub struct Section {
     pub target: Option<Target>,
     pub rows: Vec<Row>,
     pub note: Option<String>,
-    /// `goto:<reference hex>` (a reference).
-    pub buttons: Vec<String>,
+    pub buttons: Vec<Button>,
+}
+
+/// A button a section offers: what it does, with what it acts on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Button {
+    /// **Go to** a cable reference.
+    GoTo(ecad_model::RepresentationId),
+    /// **Show plan**: Reports ▸ Terminal blocks on this strip.
+    ShowPlan(DeviceId),
+    /// **Show cores**: a cable's cores.
+    ShowCores(ecad_model::CableId),
+    /// A device reference's go-to: from `source` to `target` (the coil when `None`), shown as `label`.
+    RefGoto { source: ecad_model::RepresentationId, target: Option<ecad_model::RepresentationId>, label: String },
+}
+
+impl Button {
+    /// The words on the button.
+    pub fn label(&self) -> &str {
+        match self {
+            Button::GoTo(_) => "Go to",
+            Button::ShowPlan(_) => "Show plan",
+            Button::ShowCores(_) => "Show cores",
+            Button::RefGoto { label, .. } => label,
+        }
+    }
 }
 
 impl Section {
@@ -365,7 +389,7 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
 /// Brief 025's rows of the device section (design 025 §5.2): Contacts offered, Contact table,
 /// and read-only Coil (a contact selected) or Contacts (its coil selected), each with Go to
 /// (`refgoto:<source>:<target>:<label>` buttons).
-fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
+fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<Button>) {
     use crate::references::devices;
     let offered = devices::parse::contacts_of(doc, c).map(|s| s.to_string()).unwrap_or_default();
     rows.push(Row::rw(devices::parse::CONTACTS_KEY, "Contacts offered", offered));
@@ -405,7 +429,7 @@ fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model:
         rows.push(Row::ro("contactrows", "Contacts", if text.is_empty() { "none drawn".into() } else { text.join("; ") }));
         for r in list.iter().filter(|r| r.state != devices::table::State::Spare) {
             if let Some(t) = r.rep {
-                buttons.push(format!("refgoto:{}:{}:Go to {}", sym.hex(), t.hex(), r.label_pair()));
+                buttons.push(Button::RefGoto { source: sym, target: Some(t), label: format!("Go to {}", r.label_pair()) });
             }
         }
     } else if dev.children.contains(&sym) {
@@ -415,7 +439,7 @@ fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model:
         };
         rows.push(Row::ro("coil", "Coil", value));
         if dev.head.is_some() {
-            buttons.push(format!("refgoto:{}::Go to coil", sym.hex()));
+            buttons.push(Button::RefGoto { source: sym, target: None, label: "Go to coil".into() });
         }
     }
 }
@@ -445,7 +469,7 @@ pub fn continuation_section(doc: &Document, arrows: &BTreeSet<ecad_model::AidId>
 
 fn continuation_rows(
     doc: &Document, arrows: &BTreeSet<ecad_model::AidId>, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>,
-    buttons: &mut Vec<String>,
+    buttons: &mut Vec<Button>,
 ) {
     use crate::continuations as k;
     let captions: BTreeSet<Option<&str>> = arrows.iter().map(|c| k::caption_of(doc, *c)).collect();
@@ -461,13 +485,13 @@ fn continuation_rows(
     let words: Vec<String> = ends.iter().map(|e| k::end_words(doc, e)).collect();
     rows.push(Row::ro("otherends", "Other ends", if words.is_empty() { "none".into() } else { words.join("; ") }));
     for e in &ends {
-        buttons.push(format!("refgoto:{}:{}:Go to {}", sym.hex(), e.rep.hex(), e.text));
+        buttons.push(Button::RefGoto { source: sym, target: Some(e.rep), label: format!("Go to {}", e.text) });
     }
 }
 
 /// Brief 028's rows of a strip (design 028 §7.2): Terminals offered, the read-only counts with
 /// **Show plan** (`showplan:<strip>`), and the PE terminals' part number and maker.
-fn strip_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
+fn strip_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>, buttons: &mut Vec<Button>) {
     use crate::terminal_strips;
     let props = doc.devices().get(&c).map(|x| &x.properties);
     let get = |k: &str| props.and_then(|p| p.get(k)).cloned().unwrap_or_default();
@@ -495,7 +519,7 @@ fn strip_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>, buttons: &mut Ve
     }
     rows.push(part_row(doc, props, crate::terminal_strips::accessories::PER_CARD_KEY, "markers per card"));
     rows.push(part_row(doc, props, crate::terminal_strips::accessories::BAR_KEY, "jumper bar size"));
-    buttons.push(format!("showplan:{}", c.hex()));
+    buttons.push(Button::ShowPlan(c));
 }
 
 /// A strip part row: its own value, else the project's shown faint.
@@ -691,7 +715,7 @@ pub fn cable_section(doc: &Document, k: CableId) -> Section {
         target: Some(Target::Cable(k)),
         rows,
         note: None,
-        buttons: vec![format!("showcores:{}", k.hex())],
+        buttons: vec![Button::ShowCores(k)],
     }
 }
 
@@ -720,14 +744,7 @@ pub fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Sec
         Row::ro("this", "This end", this.map_or_else(|| "?".into(), |x| x.locator())),
         Row::ro("others", "Other ends", if others.is_empty() { "none".into() } else { others.join(", ") }),
     ];
-    Section {
-        title: "ECAD · CABLE REFERENCE".into(),
-        kind: SectionKind::Reference,
-        target: None,
-        rows,
-        note: None,
-        buttons: vec![format!("goto:{}", r.hex())],
-    }
+    Section { title: "ECAD · CABLE REFERENCE".into(), kind: SectionKind::Reference, target: None, rows, note: None, buttons: vec![Button::GoTo(r)] }
 }
 
 // ---------------------------------------------------------------- Texts (brief 031, design §5.6)
@@ -900,6 +917,6 @@ pub fn jumper_bar_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usiz
         target: Some(Target::Devices(vec![c])),
         rows,
         note: None,
-        buttons: vec![format!("jumper_bar:{}:{n}", c.hex())],
+        buttons: Vec::new(),
     }
 }

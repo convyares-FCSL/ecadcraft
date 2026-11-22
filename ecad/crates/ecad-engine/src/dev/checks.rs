@@ -252,7 +252,7 @@ pub fn read_branches(store: &ecad_file::Store) -> Result<Vec<BranchRow>, String>
             // it is the row count. Counting the rows would read the whole log after every save.
             rows: r.last_seq(id).map_err(|e| e.to_string())?.unwrap_or(0),
             release_line: b.release_line,
-            fork: b.parent.clone().zip(b.fork_point.as_ref().map(|f| f.seq)),
+            fork: b.parent.map(|p| p.hex()).zip(b.fork_point.as_ref().map(|f| f.seq)),
         });
     }
     Ok(out)

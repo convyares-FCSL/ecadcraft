@@ -763,7 +763,7 @@ fn branches(st: &Store) -> Result<Vec<Value>, Problem> {
         .map(|(id, b)| {
             let rows = r.tx_count(*id).map_err(engine)?;
             let fork = match (&b.parent, &b.fork_point) {
-                (Some(p), Some(f)) => json!({"parent": names.get(p).cloned().unwrap_or_else(|| p.clone()), "seq": f.seq}),
+                (Some(p), Some(f)) => json!({"parent": names.get(&p.hex()).cloned().unwrap_or_else(|| p.hex()), "seq": f.seq}),
                 _ => Value::Null,
             };
             Ok(json!({

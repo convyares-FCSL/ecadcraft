@@ -53,9 +53,22 @@ pub const STACK_CAP: u64 = 1_024;
 /// Longest version name accepted from a file.
 pub const MAX_NAME: usize = 4_096;
 
-/// A branch ID: 16 bytes.
+/// A branch ID: 16 bytes. In JSON it is its 32 lower-case hex digits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BranchId(pub [u8; 16]);
+
+impl Serialize for BranchId {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for BranchId {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        BranchId::parse(&text).ok_or_else(|| serde::de::Error::custom(format!("{text:?} is not a branch ID (32 hex digits)")))
+    }
+}
 
 impl BranchId {
     /// The original branch, `main`, of project `project`: derived from the project ID, so every
@@ -227,7 +240,7 @@ pub struct BranchRecord {
     pub name: String,
     pub status: BranchStatus,
     /// Absent for the original branch.
-    pub parent: Option<String>,
+    pub parent: Option<BranchId>,
     /// Absent for the original branch: the parent transaction it starts after.
     pub fork_point: Option<Point>,
     /// The last `seq` and its chain value.

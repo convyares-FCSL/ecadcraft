@@ -940,5 +940,5 @@ fn n_erase_on_a_jumper_bar_line_says_deleted_jumper_bar() {
     let v = a.h.run("erase", json!({"handles": [lines[0].handle.hex()]})).unwrap();
     assert_eq!(prop(&mut a.h, a.x1, "jumper_bar.1"), None, "the jumper bar is deleted");
     let said = format!("{v} {}", last_echo(&a.h));
-    assert!(said.contains("Deleted link -X01 1-2"), "{said}");
+    assert!(said.contains("Deleted jumper bar -X01 1-2"), "{said}");
 }

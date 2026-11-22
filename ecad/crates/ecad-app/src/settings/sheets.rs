@@ -940,8 +940,8 @@ pub struct PropsShared {
     pub writable: bool,
     /// Edits: target, key, value (`None`: clear).
     pub edits: Vec<(Target, String, Option<String>)>,
-    /// Buttons pressed: `revisions`, `more`, `goto:<hex>`, `refgoto:<source>:<target>:<label>`.
-    pub buttons: Vec<String>,
+    /// Buttons pressed.
+    pub buttons: Vec<ecad_electrical::properties::Button>,
     /// A refusal per row key, shown under the field.
     pub errors: BTreeMap<String, String>,
     /// How many frames drew the section (tests).
@@ -978,18 +978,8 @@ fn draw(ui: &mut egui::Ui, sh: &mut PropsShared) {
         if !s.buttons.is_empty() {
             ui.horizontal(|ui| {
                 for b in &s.buttons {
-                    let label = match b.as_str() {
-                        "revisions" => "Revisions…".to_string(),
-                        "more" => "More…".to_string(),
-                        g if g.starts_with("goto:") => "Go to".to_string(),
-                        // Brief 028: a strip's plan, a cable's cores.
-                        g if g.starts_with("showplan:") => "Show plan".to_string(),
-                        g if g.starts_with("showcores:") => "Show cores".to_string(),
-                        // Brief 025: `refgoto:<source>:<target>:<label>`.
-                        g if g.starts_with("refgoto:") => g.splitn(4, ':').nth(3).unwrap_or("Go to").to_string(),
-                        other => other.to_string(),
-                    };
-                    if ui.add(Button::new(&label).small()).clicked() {
+                    let label = b.label();
+                    if ui.add(Button::new(label).small()).clicked() {
                         sh.buttons.push(b.clone());
                     }
                 }

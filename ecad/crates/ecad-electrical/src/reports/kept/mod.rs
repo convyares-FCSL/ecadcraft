@@ -19,6 +19,141 @@ mod update;
 use crate::reports::*;
 use crate::styles::text_style::fonts::TextMetrics;
 
+/// A column every cable report has, before the optional [`CableColumn`]s: by what it shows, so nothing reads a header back from text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CableBase {
+    Tag,
+    Type,
+    Cores,
+    FromLocation,
+    ToLocation,
+    Used,
+    Spare,
+    From,
+    To,
+}
+
+impl CableBase {
+    /// Every column, in the order the table shows them.
+    pub const ALL: [CableBase; 9] = [
+        CableBase::Tag,
+        CableBase::Type,
+        CableBase::Cores,
+        CableBase::FromLocation,
+        CableBase::ToLocation,
+        CableBase::Used,
+        CableBase::Spare,
+        CableBase::From,
+        CableBase::To,
+    ];
+
+    /// The column's header.
+    pub fn header(self) -> &'static str {
+        match self {
+            CableBase::Tag => "Tag",
+            CableBase::Type => "Type",
+            CableBase::Cores => "Cores",
+            CableBase::FromLocation => "From location",
+            CableBase::ToLocation => "To location",
+            CableBase::Used => "Used",
+            CableBase::Spare => "Spare",
+            CableBase::From => "From",
+            CableBase::To => "To",
+        }
+    }
+
+    /// The headers of every column, in order.
+    pub fn headers() -> Vec<&'static str> {
+        Self::ALL.iter().map(|c| c.header()).collect()
+    }
+}
+
+/// A column of the wire report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WireColumn {
+    WireNumber,
+    From,
+    FromLocation,
+    To,
+    ToLocation,
+    CrossSection,
+    Colour,
+    Potential,
+    Category,
+    Cable,
+    Page,
+}
+
+impl WireColumn {
+    /// Every column, in the order the table shows them.
+    pub const ALL: [WireColumn; 11] = [
+        WireColumn::WireNumber,
+        WireColumn::From,
+        WireColumn::FromLocation,
+        WireColumn::To,
+        WireColumn::ToLocation,
+        WireColumn::CrossSection,
+        WireColumn::Colour,
+        WireColumn::Potential,
+        WireColumn::Category,
+        WireColumn::Cable,
+        WireColumn::Page,
+    ];
+
+    /// The column's header.
+    pub fn header(self) -> &'static str {
+        match self {
+            WireColumn::WireNumber => "Wire number",
+            WireColumn::From => "From",
+            WireColumn::FromLocation => "From location",
+            WireColumn::To => "To",
+            WireColumn::ToLocation => "To location",
+            WireColumn::CrossSection => "Cross-section",
+            WireColumn::Colour => "Colour",
+            WireColumn::Potential => "Potential",
+            WireColumn::Category => "Category",
+            WireColumn::Cable => "Cable",
+            WireColumn::Page => "Page",
+        }
+    }
+
+    /// The headers of every column, in order.
+    pub fn headers() -> Vec<&'static str> {
+        Self::ALL.iter().map(|c| c.header()).collect()
+    }
+}
+
+/// A column of a cable's core table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoreColumn {
+    Core,
+    WireNumber,
+    From,
+    To,
+    State,
+}
+
+impl CoreColumn {
+    /// Every column, in the order the table shows them.
+    pub const ALL: [CoreColumn; 5] = [CoreColumn::Core, CoreColumn::WireNumber, CoreColumn::From, CoreColumn::To, CoreColumn::State];
+
+    /// The column's header.
+    pub fn header(self) -> &'static str {
+        match self {
+            CoreColumn::Core => "Core",
+            CoreColumn::WireNumber => "Wire number",
+            CoreColumn::From => "From",
+            CoreColumn::To => "To",
+            CoreColumn::State => "State",
+        }
+    }
+
+    /// The headers of every column, in order.
+    pub fn headers() -> Vec<&'static str> {
+        Self::ALL.iter().map(|c| c.header()).collect()
+    }
+}
+
 /// An optional column of the cable report ([`ReportModels::cable_columns`]), by what it shows:
 /// its header and its JSON key come from here, so nothing reads one back from the other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -249,7 +249,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
     for (id, b) in &shown {
         let is_cur = *id == cur;
         let head = if is_cur { p.ledger.head() } else { b.head.seq };
-        let fork = b.parent.as_deref().and_then(BranchId::parse).zip(b.fork_point.as_ref().map(|f| f.seq));
+        let fork = b.parent.zip(b.fork_point.as_ref().map(|f| f.seq));
         g.branches.push(BranchRow {
             id: *id,
             name: b.name.clone(),
@@ -326,7 +326,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
             let merges = if is_cur { v.merge_index(&p.ledger) } else { v.merge_rows(*id) }.map_err(|e| e.to_string())?;
             for m in merges {
                 let src = names.get(&m.source).cloned().unwrap_or_else(|| "a branch".into());
-                let update = b.parent.as_deref() == Some(m.source.hex().as_str());
+                let update = b.parent == Some(m.source);
                 lazy.push((
                     Node {
                         branch: *id,

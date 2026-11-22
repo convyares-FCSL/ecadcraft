@@ -226,14 +226,13 @@ fn branch_rec(p: &Path, b: BranchId) -> schema::BranchRecord {
 /// get the new fork chain value and are re-chained from their new seed in turn.
 fn rewrite(p: &Path, branch: BranchId, from: u64, txs: &[Transaction]) {
     // The children's logs, read while the file still opens.
-    let parent_hex = branch.hex();
     let children: Vec<(BranchId, u64, Vec<Transaction>)> = store(p)
         .reader()
         .unwrap()
         .branches()
         .unwrap()
         .into_iter()
-        .filter(|(_, b)| b.parent.as_deref() == Some(parent_hex.as_str()))
+        .filter(|(_, b)| b.parent == Some(branch))
         .filter_map(|(id, b)| b.fork_point.filter(|fp| fp.seq >= from).map(|fp| (id, fp.seq)))
         .map(|(id, seq)| (id, seq, log_of(p, id)))
         .collect();

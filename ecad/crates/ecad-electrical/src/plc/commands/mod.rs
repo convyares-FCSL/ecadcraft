@@ -332,9 +332,13 @@ pub(crate) fn plan_address(doc: &Document, input: &AddressInput) -> Result<Addre
         let n = match &value {
             None => None,
             Some(x) => Some(
-                ecad_model::naming::words::uint(x, max)
-                    .filter(|n| x.len() <= 5 && (key == "start" || *n >= 1))
-                    .ok_or_else(|| CmdError::refused(format!("`{key}` is a whole number of bytes from {} to {max}.", u32::from(key == "size"))))?,
+                // A start reads as the person types it (`%Q4.0`, `Q4`, `4`): one grammar, in `input`.
+                if key == "start" {
+                    crate::input::plc_start(x).ok().flatten().filter(|n| *n <= max)
+                } else {
+                    ecad_model::naming::words::uint(x, max).filter(|n| x.len() <= 5 && *n >= 1)
+                }
+                .ok_or_else(|| CmdError::refused(format!("`{key}` is a whole number of bytes from {} to {max}.", u32::from(key == "size"))))?,
             ),
         };
         crate::plc::edit::module(doc, &mut ops, c, |m| if key == "start" { m.address.start = n } else { m.address.size = n });
