@@ -607,7 +607,7 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
         lines.push(format!("References here: {}", references.join(", ")));
     }
     // Brief 028 (design 028 §7.1): the core count.
-    if let Some(line) = ecad_electrical::terminal_strips::cable_hover(doc, k) {
+    if let Some(line) = ecad_electrical::terminal_strips::hover::cable_hover(doc, k) {
         lines.insert(1, line);
     }
     let members = cable.map(|x| x.cores.as_slice()).unwrap_or_default();

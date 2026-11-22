@@ -224,7 +224,7 @@ fn reload(mut h: H, tag: &str, seed: u64) -> H {
 
 /// Fixture M, simplified: page 1 "Supply" with L drops at x 100/110/120, N drops at 200/210/220,
 /// PE drops at 300/310/320; page 2 "Sensors" with S drops at x 100…130, `+` drops at 200…230,
-/// `−` drops at 300…330, a 24 V wire at x 500 for a fuse position, and a `fuseterm` at (400, 200)
+/// `−` drops at 300…330, a 24 V wire at x 500 for a fuse position, and a `fuseterminalblock` at (400, 200)
 /// with a wire on each point.
 struct M {
     h: H,
@@ -253,7 +253,7 @@ fn fixture_m(seed: u64) -> M {
     drops(&mut h, &P_XS);
     drops(&mut h, &M_XS);
     drops(&mut h, &[500.0]);
-    let f = h.run("place", json!({"symbol": "fuseterm", "at": [400, 200]})).unwrap();
+    let f = h.run("place", json!({"symbol": "fuseterminalblock", "at": [400, 200]})).unwrap();
     let fuse_dev: DeviceId = id(&f, "component");
     h.wire_pp(&[(400.0, 210.0), (400.0, 260.0)]).unwrap();
     h.wire_pp(&[(400.0, 190.0), (400.0, 140.0)]).unwrap();
@@ -562,7 +562,7 @@ fn g_fuse_and_disconnect_positions_break_the_net() {
     m.h.check();
 }
 
-/// H: `toposition` turns 034's `fuseterm` device into a fuse position of `-X02` in one
+/// H: `toposition` turns 034's `fuseterminalblock` device into a fuse position of `-X02` in one
 /// transaction: the device is gone, its wires are on `.1i`/`.1o`, the nets keep their members, the
 /// rating is carried; `u` restores the device exactly.
 #[test]
@@ -601,7 +601,7 @@ fn h_toposition_converts_a_fuse_device() {
     assert_eq!(prop(&mut m.h, x2, &format!("rating.{p}")).as_deref(), Some("4 A"), "rating carried");
     let label = m.h.p(|p| p.ledger.log().last().map(|t| t.label.clone())).unwrap_or_default();
     assert!(label.starts_with("-F01 \u{2192} -X") && label.ends_with(":5"), "transaction label `-F05 → -X01:7`: {label}");
-    // The device's symbol now draws `termfuse` and is a symbol of the strip.
+    // The device's symbol now draws `terminalblockfuse` and is a symbol of the strip.
     let (rid, _, _) = symbol_of(&d, l[".1i"]).expect("the converted symbol shows the level");
     assert!(d.representations[&rid].connection_points.contains_key(&l[".1o"]));
     // No fuse-device row left.
@@ -632,7 +632,7 @@ fn h_toposition_refusals() {
     // A fuse device joined by a second symbol is refused with the sentence.
     let mut m2 = fixture_m(0x7036_000C);
     let _ = with_sensor(&mut m2);
-    m2.h.run("place", json!({"symbol": "fuseterm", "at": [800, 200], "device": m2.fuse_dev.hex()})).ok();
+    m2.h.run("place", json!({"symbol": "fuseterminalblock", "at": [800, 200], "device": m2.fuse_dev.hex()})).ok();
     let n = m2.h.doc().representations_of(Subject::Device(m2.fuse_dev)).count();
     if n > 1 {
         let strip = m2.h.doc().devices.keys().copied().find(|c| *c != m2.fuse_dev && positions(&m2.h.doc(), *c).len() == 4).unwrap();
@@ -693,11 +693,11 @@ fn i_offer_type_codes_spares_and_bom() {
 
 // ------------------------------------------------------------------------------- J, K (AC 7, 2)
 
-/// J: `termlabel {position}` renames a position (all levels; keys moved; links keep their nets);
-/// `termlabel {text}` sets one level's label (`*` / `label_overridden` in the plan), `null` clears;
+/// J: `terminalblocklabel {position}` renames a position (all levels; keys moved; links keep their nets);
+/// `terminalblocklabel {text}` sets one level's label (`*` / `label_overridden` in the plan), `null` clears;
 /// a duplicate position is refused with the way out.
 #[test]
-fn j_termlabel_position_and_level_text() {
+fn j_terminalblocklabel_position_and_level_text() {
     let mut m = fixture_m(0x7036_000E);
     let x2 = with_sensor(&mut m);
     let pos = positions(&m.h.doc(), x2);
@@ -706,7 +706,7 @@ fn j_termlabel_position_and_level_text() {
     m.h.run("accessory", json!({"strip": x2.hex(), "at": "2", "items": ["partition"]})).unwrap();
     m.h.run("setprop", json!({"component": x2.hex(), "key": "term_label.2.3", "value": "MINUS2"})).unwrap();
     let plus_net = net(&mut m.h, pos["1"][".2"]);
-    let v = step_with(&mut m.h, "termlabel", json!({"connection_point": t2s.hex(), "position": "2.1"}), true);
+    let v = step_with(&mut m.h, "terminalblocklabel", json!({"connection_point": t2s.hex(), "position": "2.1"}), true);
     let d = m.h.doc();
     for k in [".1", ".2", ".3"] {
         assert_eq!(label(&d, pos["2"][k]), "2.1", "every level relabelled ({k}): {v}");
@@ -729,33 +729,33 @@ fn j_termlabel_position_and_level_text() {
     let labels: Vec<String> = rows.iter().filter(|r| s(&r["position"]) == "2.1").map(|r| s(&r["label"])).collect();
     assert_eq!(labels[0], "2.1.S", "{labels:?}");
     // One level's text.
-    step_with(&mut m.h, "termlabel", json!({"connection_point": t2s.hex(), "text": "2.1S"}), true);
+    step_with(&mut m.h, "terminalblocklabel", json!({"connection_point": t2s.hex(), "text": "2.1S"}), true);
     assert_eq!(prop(&mut m.h, x2, "term_label.2.1.1").as_deref(), Some("2.1S"));
     let r = level_rows(&plan(&mut m.h, x2)).into_iter().find(|r| s(&r["position"]) == "2.1" && r["level"].as_u64() == Some(1)).unwrap();
     assert_eq!(s(&r["label"]), "2.1S");
     assert_eq!(r["label_overridden"], true);
-    step_with(&mut m.h, "termlabel", json!({"connection_point": t2s.hex(), "text": null}), true);
+    step_with(&mut m.h, "terminalblocklabel", json!({"connection_point": t2s.hex(), "text": null}), true);
     assert_eq!(prop(&mut m.h, x2, "term_label.2.1.1"), None);
     // A single one-level terminal reads `1.L` by an override.
     let (xf, tf) = {
         let v = m.h.run("terminalblocks", json!({"from": [495, 200], "to": [505, 200]})).unwrap();
         (id::<DeviceId>(&v, "strip"), ids(&v))
     };
-    step_with(&mut m.h, "termlabel", json!({"connection_point": tf[0].hex(), "text": "1.L"}), true);
+    step_with(&mut m.h, "terminalblocklabel", json!({"connection_point": tf[0].hex(), "text": "1.L"}), true);
     assert_eq!(s(&level_rows(&plan(&mut m.h, xf))[0]["label"]), "1.L");
     // Refusals.
-    survives(&mut m.h, "termlabel", json!({"strip": x2.hex(), "position": "3", "to": "4"}));
+    survives(&mut m.h, "terminalblocklabel", json!({"strip": x2.hex(), "position": "3", "to": "4"}));
     refused(
         &mut m.h,
-        "termlabel",
+        "terminalblocklabel",
         json!({"connection_point": pos["3"][".1"].hex(), "position": "4"}),
         "-X01 already has a position 4. Pick another label, or swap them with Renumber.",
     );
-    survives(&mut m.h, "termlabel", json!({"connection_point": pos["3"][".1"].hex(), "position": "a b"}));
-    survives(&mut m.h, "termlabel", json!({"connection_point": pos["3"][".1"].hex(), "position": ""}));
-    survives(&mut m.h, "termlabel", json!({"connection_point": pos["3"][".1"].hex(), "position": "x".repeat(17)}));
-    survives(&mut m.h, "termlabel", json!({"connection_point": pos["3"][".1"].hex(), "text": "x".repeat(25)}));
-    survives(&mut m.h, "termlabel", json!({"connection_point": pos["3"][".1"].hex(), "text": "a\u{1b}b"}));
+    survives(&mut m.h, "terminalblocklabel", json!({"connection_point": pos["3"][".1"].hex(), "position": "a b"}));
+    survives(&mut m.h, "terminalblocklabel", json!({"connection_point": pos["3"][".1"].hex(), "position": ""}));
+    survives(&mut m.h, "terminalblocklabel", json!({"connection_point": pos["3"][".1"].hex(), "position": "x".repeat(17)}));
+    survives(&mut m.h, "terminalblocklabel", json!({"connection_point": pos["3"][".1"].hex(), "text": "x".repeat(25)}));
+    survives(&mut m.h, "terminalblocklabel", json!({"connection_point": pos["3"][".1"].hex(), "text": "a\u{1b}b"}));
     m.h.check();
 }
 
@@ -1051,14 +1051,14 @@ fn q_hostile_input_never_panics() {
     m.h = reload(m.h, "keys", 0x7036_0033);
     m.h.run("setprop", json!({"component": s1, "key": "jumper_bar.1", "value": "1.1-2.3"})).ok();
     read_everything(&mut m.h);
-    // termlabel.
+    // terminalblocklabel.
     let t = pos["3"][".1"];
-    survives(&mut m.h, "termlabel", json!({"connection_point": t.hex(), "position": "x".repeat(10_000)}));
-    survives(&mut m.h, "termlabel", json!({"connection_point": t.hex(), "position": 3}));
-    survives(&mut m.h, "termlabel", json!({"connection_point": t.hex()}));
-    survives(&mut m.h, "termlabel", json!({"strip": s1}));
-    survives(&mut m.h, "termlabel", json!({"strip": s1, "position": "3", "text": "x"}));
-    survives(&mut m.h, "termlabel", json!({"connection_point": "zz", "text": "x"}));
+    survives(&mut m.h, "terminalblocklabel", json!({"connection_point": t.hex(), "position": "x".repeat(10_000)}));
+    survives(&mut m.h, "terminalblocklabel", json!({"connection_point": t.hex(), "position": 3}));
+    survives(&mut m.h, "terminalblocklabel", json!({"connection_point": t.hex()}));
+    survives(&mut m.h, "terminalblocklabel", json!({"strip": s1}));
+    survives(&mut m.h, "terminalblocklabel", json!({"strip": s1, "position": "3", "text": "x"}));
+    survives(&mut m.h, "terminalblocklabel", json!({"connection_point": "zz", "text": "x"}));
     // Registry values.
     for v in ["L,N".to_string(), "x".repeat(10_000), ",,".into(), "L,N,P\u{1b}E".into()] {
         survives(&mut m.h, "projectprops", json!({"props": {"terminal_block.lnpe.levels": v.clone()}}));
@@ -1117,7 +1117,7 @@ fn c_jumper_typed_positions_keep_their_level() {
     assert_eq!(ss.iter().collect::<std::collections::BTreeSet<_>>().len(), 4, "S levels stay apart: {ss:?}");
 }
 
-/// J / AC 7 (the shown label everywhere) and AC 10 (update maps): after `termlabel {text}` and a
+/// J / AC 7 (the shown label everywhere) and AC 10 (update maps): after `terminalblocklabel {text}` and a
 /// project separator change, the kept wire report equals a rebuild.
 #[test]
 fn j_wire_report_follows_label_changes() {
@@ -1127,6 +1127,6 @@ fn j_wire_report_follows_label_changes() {
     m.h.cfg(|p| {
         p.reports();
     });
-    step(&mut m.h, "termlabel", json!({"connection_point": t.hex(), "text": "2S"}));
+    step(&mut m.h, "terminalblocklabel", json!({"connection_point": t.hex(), "text": "2S"}));
     step(&mut m.h, "projectprops", json!({"props": {"terminal_block.level.separator": "none"}}));
 }

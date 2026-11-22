@@ -1,4 +1,4 @@
-//! The rules of brief 036's commands (design 036 §3.5, §4.2): `termlabel` (relabel a position, set
+//! The rules of brief 036's commands (design 036 §3.5, §4.2): `terminalblocklabel` (relabel a position, set
 //! or clear one level's own label, move a level to another position) and `toposition` (turn a brief
 //! 034 fuse terminal device into a fuse position of a strip). Each function reads the document and
 //! returns the ops to commit and what to report; both commands are generic ([`crate::commands::run`]).
@@ -19,9 +19,9 @@ use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 use crate::terminal_strips::terminal_blocks as tt;
 
-// ---------------------------------------------------------------- termlabel (§4.2)
+// ---------------------------------------------------------------- terminalblocklabel (§4.2)
 
-/// Whether `l` is a position label `termlabel` accepts.
+/// Whether `l` is a position label `terminalblocklabel` accepts.
 fn position_ok(l: &str) -> Result<(), CmdError> {
     if l.is_empty() || l.chars().count() > tt::MAX_POSITION_CHARS || l.chars().any(|c| c.is_whitespace() || c.is_control() || c == ',' || c == '-') {
         return Err(CmdError::refused(format!("A position label is 1 to {} characters, without spaces, commas or dashes.", tt::MAX_POSITION_CHARS)));
@@ -47,16 +47,16 @@ fn relabel_ops(doc: &Document, connection_points: &[ConnectionPointId], to: &str
 
 /// Where a level moves (`move_to`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MoveTo {
+pub(crate) enum MoveTo {
     /// The level drawn twice: to the next position of its type that lacks it.
     Next,
     /// Another type's levels: to a new position.
     New,
 }
 
-/// What `termlabel` is asked to change (design 036 §4.2).
+/// What `terminalblocklabel` is asked to change (design 036 §4.2).
 #[derive(Debug, Clone, Default)]
-pub struct TermlabelInput {
+pub(crate) struct TerminalblocklabelInput {
     /// A terminal of the position (and its level).
     pub connection_point: Option<ConnectionPointId>,
     /// With `at` (or `position`): the strip.
@@ -73,9 +73,9 @@ pub struct TermlabelInput {
     pub move_to: Option<MoveTo>,
 }
 
-/// A planned `termlabel` call.
+/// A planned `terminalblocklabel` call.
 #[derive(Debug, Clone, Default)]
-pub struct Termlabel {
+pub(crate) struct Terminalblocklabel {
     /// Empty: nothing to change.
     pub ops: Vec<Op>,
     /// The transaction's label.
@@ -85,12 +85,12 @@ pub struct Termlabel {
     pub lines: Vec<String>,
 }
 
-/// Plan `termlabel` (design 036 §4.2).
+/// Plan `terminalblocklabel` (design 036 §4.2).
 ///
 /// # Errors
 /// No such terminal, not a strip, a position or level the strip lacks, a label that does not read.
-pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel, CmdError> {
-    let TermlabelInput { connection_point, strip, at, level, position, text, move_to } = input;
+pub(crate) fn plan_terminal_block_label(doc: &Document, input: TerminalblocklabelInput) -> Result<Terminalblocklabel, CmdError> {
+    let TerminalblocklabelInput { connection_point, strip, at, level, position, text, move_to } = input;
     // Which strip and position: a terminal, or a strip and a position (`at`, else `position`
     // when only `text` is given).
     let (c, pos, n) = match (connection_point, strip) {
@@ -194,14 +194,14 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         message = if message.is_empty() { words } else { format!("{message} {words}") };
     }
     let label = if position.is_some() && move_to.is_none() { "Relabel position" } else { "Terminal label" };
-    Ok(Termlabel { ops, label, message, lines })
+    Ok(Terminalblocklabel { ops, label, message, lines })
 }
 
 // ---------------------------------------------------------------- toposition (§3.5)
 
 /// What `toposition` would do: the ops, the strip and position, and what goes with the device.
 #[derive(Debug, Clone)]
-pub struct ToPosition {
+pub(crate) struct ToPosition {
     pub ops: Vec<Op>,
     pub strip: DeviceId,
     pub position: String,
@@ -231,7 +231,7 @@ impl ToPosition {
 ///
 /// # Errors
 /// Not a fuse terminal device, more than one symbol, no strip on its page, an unknown strip.
-pub fn plan_toposition(
+pub(crate) fn plan_toposition(
     doc: &Document, ids: &mut IdAllocator, device: DeviceId, strip: Option<DeviceId>, position: Option<&str>,
 ) -> Result<ToPosition, CmdError> {
     let comp = doc.devices.get(&device).ok_or(CmdError::NotFound(Noun::Device))?;
@@ -241,7 +241,7 @@ pub fn plan_toposition(
     }
     if crate::terminal_strips::fuse_terminal_block_of(doc, device).is_none() {
         return Err(CmdError::refused(format!(
-            "{tag} is not a fuse terminal device. Make strip position turns a fuse terminal (fuseterm) into a strip position."
+            "{tag} is not a fuse terminal device. Make strip position turns a fuse terminal (fuseterminalblock) into a strip position."
         )));
     }
     let reps: Vec<(RepresentationId, &Representation)> = doc.representations_of(Subject::Device(device)).collect();
@@ -292,7 +292,7 @@ pub fn plan_toposition(
         }
     };
     let stag = crate::devices::tag_words(doc, strip);
-    let starter = crate::devices::starter("termfuse")?;
+    let starter = crate::devices::starter("terminalblockfuse")?;
     let ty = tt::by_code("fuse").ok_or(CmdError::refused("no fuse type"))?;
     let mut ops = Vec::new();
     let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
@@ -387,7 +387,8 @@ pub fn plan_toposition(
     }
     lost.extend(ecad_model::TextField::ALL.into_iter().filter(|f| comp.text(*f).is_some()).map(|f| f.key().to_string()));
     lost.sort();
-    let strip_part = doc.devices.get(&strip).and_then(|x| x.properties.get(&crate::terminal_strips::type_key(ty, "part_number"))).cloned();
+    let strip_part =
+        doc.devices.get(&strip).and_then(|x| x.properties.get(&crate::terminal_strips::strip_model::type_key(ty, "part_number"))).cloned();
     let note = match (comp.part_number.as_ref().map(|t| t.to_string()), &strip_part) {
         (Some(a), Some(b)) if a != *b => {
             Some(format!("{tag}'s part {a} differs from {stag}'s fuse terminal part {b}; set {stag}'s part if {a} is right."))
@@ -412,11 +413,11 @@ enum MoveToParam {
     New,
 }
 
-/// `termlabel {terminal | strip + at, level?, position?, text?, move_to?}` (design 036 §4.2):
+/// `terminalblocklabel {terminal | strip + at, level?, position?, text?, move_to?}` (design 036 §4.2):
 /// relabel a position, set or clear one level's own label, or move a level to another position.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct TermlabelParams {
+pub struct TerminalblocklabelParams {
     /// A terminal of the position (and its level).
     #[serde(default)]
     connection_point: Option<ConnectionPointId>,
@@ -440,13 +441,13 @@ pub struct TermlabelParams {
     move_to: Option<MoveToParam>,
 }
 
-impl Generic for TermlabelParams {
-    const ID: &'static str = "termlabel";
-    const TITLE: &'static str = "Terminal Label";
+impl Generic for TerminalblocklabelParams {
+    const ID: &'static str = "terminalblocklabel";
+    const TITLE: &'static str = "Terminal Block Label";
     const HELP: &'static str = "{connection_point?: id | strip?: id + at?: position, level?: n, position?: new position label (relabels every level), text?: a level's own label (null clears it), move_to?: \"next\" | \"new\" (a level drawn twice, or another type's levels)} (design 036 §4.2; one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let input = TermlabelInput {
+        let input = TerminalblocklabelInput {
             connection_point: self.connection_point,
             strip: self.strip,
             at: self.at,
@@ -458,7 +459,7 @@ impl Generic for TermlabelParams {
                 MoveToParam::New => MoveTo::New,
             }),
         };
-        let plan = plan_termlabel(cx.doc, input)?;
+        let plan = plan_terminal_block_label(cx.doc, input)?;
         if plan.ops.is_empty() {
             return Ok(Outcome::answer(json!({"changed": false, "message": "Nothing to change."})).echo(Some("Nothing to change.")));
         }

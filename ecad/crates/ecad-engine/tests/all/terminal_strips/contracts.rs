@@ -2,7 +2,7 @@
 //! cores, the terminal plan and cable schedule, the BOM per terminal type, the Checks rows, and
 //! the update maps. Driven through the commands' JSON forms on fixture T.
 
-use ecad_electrical::terminal_strips::Strips;
+use ecad_electrical::terminal_strips::strip_model::Strips;
 use ecad_model::{Author, CableId, ConnectionPointId, DeviceId, Op, PageId, RouteEnd, RouteId, WireId};
 use serde_json::{Value, json};
 use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
@@ -328,14 +328,14 @@ fn core_rows_of_the_checks_list() {
     assert_eq!(twice.len(), 1);
     assert_eq!(twice[0].which, "-W01: core 1 is used by two wires");
     assert_eq!(twice[0].fix, Some(Fix::NextFreeCore(t.wires[1])));
-    assert_eq!(ecad_electrical::terminal_strips::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("2"));
+    assert_eq!(ecad_electrical::terminal_strips::cores::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("2"));
     // Design 072 §4.5 (lane D c3): the offer labels the two unlabelled cores 2 and 3 and stores
     // 4 and 5 on no line; the core used twice is over, so the first stored free core is 4.
     t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "5X"})).unwrap();
-    assert_eq!(ecad_electrical::terminal_strips::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("4"));
+    assert_eq!(ecad_electrical::terminal_strips::cores::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("4"));
     t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "4X"})).unwrap();
     assert_eq!(
-        ecad_electrical::terminal_strips::next_free_label(&t.h.doc(), t.cable).as_deref(),
+        ecad_electrical::terminal_strips::cores::next_free_label(&t.h.doc(), t.cable).as_deref(),
         Some("4"),
         "core 5 went with the offer; 4 is still free"
     );

@@ -209,7 +209,7 @@ fn valid(doc: &Document, field: CableField, v: &str) -> bool {
         CableField::Gland(_) => cable::is_gland(v),
         CableField::Shield => <Shield as ecad_model::naming::words::Word>::parse(v).is_some(),
         CableField::Maker | CableField::PartNumber | CableField::Description | CableField::Type => text_ok(v, MAX_TEXT),
-        CableField::Cores => crate::terminal_strips::parse_cores(v).is_ok(),
+        CableField::Cores => crate::terminal_strips::cores::parse_cores(v).is_ok(),
         CableField::EndLocation(_) => designations::code_of(doc, Aspect::Location, v.trim()).is_some(),
         CableField::EndFunction(_) => designations::code_of(doc, Aspect::Function, v.trim()).is_some(),
         CableField::CableType => StyleRef::parse(v).is_some_and(|id| styles::exists(doc, ecad_model::StyleCatalogue::Cable, &id)),
@@ -323,13 +323,13 @@ pub fn part_value(doc: &Document, k: CableId, field: CableField) -> Option<(Stri
 pub fn cores_shown(doc: &Document, k: CableId) -> Option<(String, Source)> {
     let (_, src, text) = cable::offer(doc, k)?;
     let props = &doc.cables.get(&k)?.properties;
-    let own = props.get(CableField::Cores.key()).is_some_and(|v| crate::terminal_strips::parse_cores(v).is_ok());
+    let own = props.get(CableField::Cores.key()).is_some_and(|v| crate::terminal_strips::cores::parse_cores(v).is_ok());
     Some((
         text,
         match src {
-            crate::terminal_strips::OfferSource::Cores if own => Source::Here,
-            crate::terminal_strips::OfferSource::Cores => Source::Type,
-            crate::terminal_strips::OfferSource::Type => Source::Notation,
+            crate::terminal_strips::cores::OfferSource::Cores if own => Source::Here,
+            crate::terminal_strips::cores::OfferSource::Cores => Source::Type,
+            crate::terminal_strips::cores::OfferSource::Type => Source::Notation,
         },
     ))
 }
@@ -501,7 +501,7 @@ pub fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
 /// notation, else its cores and cross-section (`4G1.5`).
 pub fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
     let name = styles::name(doc, ecad_model::StyleCatalogue::Cable, id);
-    if crate::terminal_strips::offer_from_type(&name).is_some() {
+    if crate::terminal_strips::cores::offer_from_type(&name).is_some() {
         return Some(name);
     }
     let cores = cable::type_text(doc, id, cable::TYPE_CORES)?;

@@ -1751,7 +1751,7 @@ Your table of three clean runs goes here once you have run it.
 - **Multi-level terminals (brief 036):** no graphical strip pages yet (1.8) and no terminal
   manager (2.6): Reports ▸ Terminals shows the rows, `stripplan` gives the row model with its
   editable fields. A fuse position cannot be turned back into a device; fuse inserts are not on the
-  BOM. Labels, positions and ratings are set with `termlabel` and `setprop` typed at the command
+  BOM. Labels, positions and ratings are set with `terminalblocklabel` and `setprop` typed at the command
   line (no Properties fields or in-place plan cells yet); **Make strip position** is the Checks
   row's button (no context menu entry yet).
 - **Strip accessories (brief 030):** accessories are placed by hand (no automatic rule yet); no

@@ -32,7 +32,7 @@
 "symbol.rcd4.prefix" = "Q"
 "symbol.ssrin.prefix" = "K"
 "symbol.ssrout.prefix" = "K"
-"symbol.fuseterm.prefix" = "F"
+"symbol.fuseterminalblock.prefix" = "F"
 "symbol.fusebank4.prefix" = "F"
 "symbol.fusebank6.prefix" = "F"
 "symbol.fusebank8.prefix" = "F"

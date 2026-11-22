@@ -1,6 +1,7 @@
 //! The commands of brief 028 (design 028 §3, §4, §10): a terminal placed on a wire splits it
 //! (through `place`), `connection_points` (Place Terminals: one per wire a fence line crosses), `bridge`
-//! (Draw Bridge), and the reads `stripplan` and `cablecores`.
+//! (Draw Bridge). The reads `stripplan` and `cablecores` are generic
+//! ([`ecad_electrical::terminal_strips::commands::reads`]).
 //!
 //! Every write is one transaction, committed through [`Project::apply_edit`]; the reads record
 //! nothing.
@@ -15,28 +16,22 @@ pub use ecad_electrical::terminal_strips::commands::terminal_strips::{
     BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, plan_fence, plan_fence_typed, staple,
 };
 use ecad_model::geometry::units::{Degrees, Radians};
-use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, Noun, Op, PageId, Placement, Pt, RouteEnd, RouteId, Style, WireId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, Op, PageId, Placement, Pt, RouteEnd, RouteId, Style, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::{Command, Typed};
-use crate::commands::{err, on_any_page, on_project, plain_style};
+use crate::commands::{err, on_project, plain_style};
 use ecad_electrical::commands::input::Point;
 pub use ecad_electrical::connectors::strip_connection_point_at;
 pub use ecad_electrical::connectors::{Land, plan_land};
-use ecad_electrical::terminal_strips::StripData;
 pub use ecad_electrical::terminal_strips::connection_point_words;
 use ecad_electrical::terminal_strips::terminal_blocks as tt;
 use {ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::OnRoute};
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[
-    Typed::of::<TerminalBlocksParams>("terminalblocks"),
-    Typed::of::<BridgeParams>("bridge"),
-    Typed::of::<StripplanParams>("stripplan"),
-    Typed::of::<CablecoresParams>("cablecores"),
-];
+pub const TYPED: &[Typed] = &[Typed::of::<TerminalBlocksParams>("terminalblocks"), Typed::of::<BridgeParams>("bridge")];
 
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
@@ -52,15 +47,6 @@ position of its type that lacks it; at most 200)",
         CommandSpec::new("bridge", "Draw Bridge", crate::commands::input::typed::<BridgeParams>)
             .params("{from: terminal id, to: terminal id} (a wire between two terminals; of one strip it is a bridge)")
             .interactive(crate::interact::bridge)
-            .noundo(),
-        CommandSpec::new("stripplan", "Terminal Plan", crate::commands::input::typed::<StripplanParams>)
-            .params(
-                "{strip?: id, limit?: rows (500, max 5000), after?: row index, accessories?: bool (true: gap rows, markers and links)} \
-(every strip's terminals, drawn and spare; read only)",
-            )
-            .noundo(),
-        CommandSpec::new("cablecores", "Cable Cores", crate::commands::input::typed::<CablecoresParams>)
-            .params("{cable: id} (the cable's offered cores, used, spare and over; read only)")
             .noundo(),
     ]
 }
@@ -357,127 +343,5 @@ impl Command for BridgeParams {
             s.echo(m.to_string());
         }
         Ok(v)
-    }
-}
-
-// ---------------------------------------------------------------- reads (§10)
-
-/// `stripplan {strip?, limit?, after?, accessories?}` (read only): the strips in tag order (or
-/// one), paged by rows: `after` rows are skipped and at most `limit` returned, a strip split across
-/// pages carrying `first_row`; `total` counts the rows, `next` is the next `after`.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct StripplanParams {
-    /// Only this strip.
-    #[serde(default)]
-    strip: Option<DeviceId>,
-    /// At most this many rows (500, at most 5000).
-    #[serde(default)]
-    limit: Option<u64>,
-    /// Skip this many rows (the `next` of the last call).
-    #[serde(default)]
-    after: Option<u64>,
-    /// Gap rows, markers and links (default true).
-    #[serde(default)]
-    accessories: Option<bool>,
-}
-
-impl Command for StripplanParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let limit = self
-            .limit
-            .map_or(ecad_electrical::reports::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX))
-            .clamp(1, ecad_electrical::reports::MAX_LIMIT);
-        let after = self.after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
-        let accessories = self.accessories.unwrap_or(true);
-        let strip = self.strip;
-        on_any_page(s, |p, _| {
-            let style = p.ledger.document().settings.reference_style();
-            let o = p.reports();
-            let shown: Vec<&StripData> = match strip {
-                Some(c) => vec![o.strips.get(c).ok_or(CmdError::NotFound(Noun::TerminalStrip))?],
-                None => o.sorted_strips(),
-            };
-            let lens: Vec<usize> = shown.iter().map(|d| if accessories { d.rows.len() + d.acc.gap_rows() } else { d.rows.len() }).collect();
-            let page = rules::plan_page(&lens, after, limit);
-            let out: Vec<Value> = page
-                .parts
-                .iter()
-                .filter_map(|(i, first, end)| shown.get(*i).map(|d| rules::strip_json(d, style, *first, *end, accessories)))
-                .collect();
-            let mut v = json!({"strips": out, "total": page.total, "fields": rules::plan_fields_json()});
-            if let Some(n) = page.next {
-                v["next"] = json!(n);
-            }
-            Ok(v)
-        })
-    }
-}
-
-/// `cablecores {cable}` (read only): the cable's offered cores, used, spare and over.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct CablecoresParams {
-    /// The cable.
-    cable: CableId,
-}
-
-impl Command for CablecoresParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let k = self.cable;
-        on_any_page(s, |p, _| {
-            p.reports();
-            let o = p.kept_reports().ok_or(CmdError::refused("The reports could not be built."))?;
-            let row = o.cable_row(k).cloned().ok_or(CmdError::refused("no such cable"))?;
-            let wire = |w: WireId| o.wire(w).cloned();
-            let doc = p.ledger.document();
-            let style = doc.settings.reference_style();
-            let o_chain = |i: usize| o.chain_ends(&row, i, style);
-            let count = &row.count;
-            let member_json = |i: usize, label: Option<String>, state: &str| {
-                let w = row.members.get(i).copied();
-                let r = w.and_then(wire);
-                let mut o = serde_json::Map::new();
-                rules::put(&mut o, "label", label);
-                o.insert("state".into(), json!(state));
-                rules::put(&mut o, "conductor", w.map(|w| w.hex()));
-                rules::put(&mut o, "wire", r.as_ref().and_then(|r| r.wire_number.clone()));
-                // Brief 032: a core is a chain of members through continuations, From to To.
-                let (from, to) = o_chain(i);
-                rules::put(&mut o, "from", from);
-                rules::put(&mut o, "to", to);
-                Value::Object(o)
-            };
-            // Brief 032: the rows are the cable's core chains, each with its stored label.
-            let stored = |i: usize| row.member_cores.get(i).cloned().flatten();
-            let mut cores = Vec::new();
-            match &count.offer {
-                Some(offer) => {
-                    for label in offer {
-                        match count.matched.iter().position(|m| m.as_deref() == Some(label.as_str())) {
-                            Some(i) => cores.push(member_json(i, Some(label.clone()), "used")),
-                            // A spare core has no ends (review of PR #55, finding 3).
-                            None => cores.push(json!({"label": label, "state": "spare"})),
-                        }
-                    }
-                }
-                None => {
-                    for i in 0..row.members.len() {
-                        cores.push(member_json(i, stored(i), "used"));
-                    }
-                }
-            }
-            let over: Vec<Value> = count.over.iter().map(|i| member_json(*i, stored(*i), "over")).collect();
-            let mut v = serde_json::Map::new();
-            v.insert("cable".into(), json!(k.hex()));
-            rules::put(&mut v, "tag", row.tag.as_ref());
-            rules::put(&mut v, "offer", count.offer_text.as_ref());
-            rules::put(&mut v, "source", count.source.map(|s| s.word()));
-            v.insert("used".into(), json!(count.used()));
-            rules::put(&mut v, "spare", count.offer.as_ref().map(|_| count.spare.clone()));
-            v.insert("cores".into(), Value::Array(cores));
-            v.insert("over".into(), Value::Array(over));
-            Ok(Value::Object(v))
-        })
     }
 }

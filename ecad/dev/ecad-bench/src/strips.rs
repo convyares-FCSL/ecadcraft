@@ -257,13 +257,13 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 let Some(o) = p.kept_reports() else { return 0.0 };
                 let t = Instant::now();
                 let cx = ecad_electrical::reports::PageCx::of(doc);
-                let built = ecad_electrical::terminal_strips::Strips::build(doc, o, &cx);
+                let built = ecad_electrical::terminal_strips::strip_model::Strips::build(doc, o, &cx);
                 // Brief 046: the graphic pages' kept data, built with the strips.
                 let t2 = Instant::now();
                 std::hint::black_box(ecad_engine::terminal_strips::draw::StripPages::build(doc, &built));
                 sp.push(ms(t2));
                 for k in doc.cables.keys() {
-                    std::hint::black_box(ecad_electrical::terminal_strips::cable_cores(doc, *k));
+                    std::hint::black_box(ecad_electrical::terminal_strips::cores::cable_cores(doc, *k));
                 }
                 std::hint::black_box(&built);
                 ms(t)
@@ -397,7 +397,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         out.lvlsep_ms = median(&mut sep);
         let mut topo = Vec::new();
         for _ in 0..runs {
-            let f = run(&mut s, "place", json!({"symbol": "fuseterm", "at": [X0 - 40.0, 150.0]}))?;
+            let f = run(&mut s, "place", json!({"symbol": "fuseterminalblock", "at": [X0 - 40.0, 150.0]}))?;
             let f: DeviceId = hex(&f, "component")?;
             let t = Instant::now();
             run(&mut s, "toposition", json!({"device": f.hex(), "strip": lv.hex()}))?;

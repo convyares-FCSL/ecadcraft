@@ -86,7 +86,7 @@ pub const MAX_GLAND_CHARS: usize = 16;
 pub const SHIELDS: [&str; 4] = ["none", "overall", "pairs", "overall+pairs"];
 
 fn is_offer(s: &str) -> bool {
-    crate::terminal_strips::parse_cores(s).is_ok()
+    crate::terminal_strips::cores::parse_cores(s).is_ok()
 }
 
 fn is_shield(s: &str) -> bool {
@@ -138,25 +138,25 @@ pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
 
 /// Brief 059 (design 059 §2.2): cable `k`'s core offer and where it comes from: its own `cores`,
 /// else its cable type's `cores`, else its `type` notation; `None` when unknown.
-pub fn offer(doc: &Document, k: CableId) -> Option<(Vec<String>, crate::terminal_strips::OfferSource, String)> {
+pub fn offer(doc: &Document, k: CableId) -> Option<(Vec<String>, crate::terminal_strips::cores::OfferSource, String)> {
     offer_of(doc, doc.cables.get(&k)?)
 }
 
 /// [`offer`] for cable `cab` (one about to be written).
-pub fn offer_of(doc: &Document, cab: &ecad_model::Cable) -> Option<(Vec<String>, crate::terminal_strips::OfferSource, String)> {
+pub fn offer_of(doc: &Document, cab: &ecad_model::Cable) -> Option<(Vec<String>, crate::terminal_strips::cores::OfferSource, String)> {
     let props = &cab.properties;
     if let Some(v) = props.get(crate::terminal_strips::CORES_KEY).map(|v| v.trim()).filter(|v| !v.is_empty())
-        && let Ok(c) = crate::terminal_strips::parse_cores(v)
+        && let Ok(c) = crate::terminal_strips::cores::parse_cores(v)
     {
-        return Some((c, crate::terminal_strips::OfferSource::Cores, v.to_string()));
+        return Some((c, crate::terminal_strips::cores::OfferSource::Cores, v.to_string()));
     }
     let ty = cab.cable_type.as_ref().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Cable, id));
     if let Some(v) = ty.as_ref().and_then(|id| type_text(doc, id, TYPE_CORES))
-        && let Ok(c) = crate::terminal_strips::parse_cores(&v)
+        && let Ok(c) = crate::terminal_strips::cores::parse_cores(&v)
     {
-        return Some((c, crate::terminal_strips::OfferSource::Cores, v));
+        return Some((c, crate::terminal_strips::cores::OfferSource::Cores, v));
     }
-    crate::terminal_strips::cable_offer(props)
+    crate::terminal_strips::cores::cable_offer(props)
 }
 
 /// Store the cores `after`'s offer names (design 072 §4.5, a write rule): every offered core no
@@ -410,7 +410,7 @@ pub fn set(t: &mut CableType, key: &str, value: Option<&str>) -> Result<(), CmdE
         ("maker", Some(v)) => t.maker = Some(text_of(key, v)?),
         ("description", Some(v)) => t.description = Some(text_of(key, v)?),
         (TYPE_CORES, Some(v)) => {
-            crate::terminal_strips::parse_cores(v)?;
+            crate::terminal_strips::cores::parse_cores(v)?;
             t.cores = Some(text_of(key, v)?);
         }
         (TYPE_SHIELD, Some(v)) => t.shield = Some(Word::parse(v).ok_or_else(|| bad(&SHIELDS.join(", ")))?),

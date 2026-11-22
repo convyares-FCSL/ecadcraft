@@ -89,7 +89,7 @@ pub fn strip_of(doc: &Document, page: PageId) -> Option<ecad_model::DeviceId> {
 }
 
 /// The strips a `connection_points` page shows, in tag order.
-fn strips_shown<'o>(doc: &Document, page: PageId, o: &'o ReportModels) -> Vec<&'o crate::terminal_strips::StripData> {
+fn strips_shown<'o>(doc: &Document, page: PageId, o: &'o ReportModels) -> Vec<&'o crate::terminal_strips::strip_model::StripData> {
     match strip_of(doc, page) {
         Some(c) => o.strips.get(c).into_iter().collect(),
         None => o.sorted_strips(),
@@ -591,10 +591,10 @@ fn terminal_block_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TR
         let mut last_cable: Option<ecad_model::CableId> = None;
         for item in s.plan(true) {
             let (ri, r) = match item {
-                crate::terminal_strips::PlanItem::Term(i, r) => (i, r),
+                crate::terminal_strips::strip_model::PlanItem::Term(i, r) => (i, r),
                 // Brief 030 (design 030 §7.3): a gap row is a full row, the word in Inside target,
                 // a mark across Terminal, the part in Place.
-                crate::terminal_strips::PlanItem::Gap { gap, acc } => {
+                crate::terminal_strips::strip_model::PlanItem::Gap { gap, acc } => {
                     let mut cells = vec![String::new(); TERMINAL_BLOCK_COLUMNS.len()];
                     let words = if acc == crate::terminal_strips::accessories::Acc::StripLabel {
                         format!("strip label {}", s.tag)

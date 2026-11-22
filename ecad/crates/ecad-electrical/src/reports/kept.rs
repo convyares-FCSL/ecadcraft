@@ -62,7 +62,7 @@ pub struct ReportModels {
     /// Brief 052: devices with no function (one count row when some device has one).
     no_function: usize,
     /// Brief 028: the terminal strips (design 028 §11.1).
-    pub strips: crate::terminal_strips::Strips,
+    pub strips: crate::terminal_strips::strip_model::Strips,
     /// Brief 045: the PLC racks and cards (design 045 §11.1).
     pub plc: crate::plc::kept::Plc,
     /// Brief 046: the graphic strip pages' kept layout and indexes (design 046 §9).
@@ -169,7 +169,7 @@ impl ReportModels {
         for p in &doc.page_order {
             o.set_box_checks(doc, *p);
         }
-        o.strips = crate::terminal_strips::Strips::build(doc, &o, &cx);
+        o.strips = crate::terminal_strips::strip_model::Strips::build(doc, &o, &cx);
         o.plc = crate::plc::kept::Plc::build_with(doc, m);
         o.strip_pages = crate::terminal_strips::pages::StripPages::build(doc, &o.strips);
         o.generated = doc.page_order.iter().copied().filter(|p| needs_reports(doc, *p)).collect();
@@ -297,7 +297,7 @@ impl ReportModels {
     }
 
     /// The strips sorted by tag (counted in [`ReportModels::sorts`]).
-    pub fn sorted_strips(&self) -> Vec<&crate::terminal_strips::StripData> {
+    pub fn sorted_strips(&self) -> Vec<&crate::terminal_strips::strip_model::StripData> {
         self.sorts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.strips.sorted()
     }
@@ -449,7 +449,7 @@ impl ReportModels {
         let mut strips = std::mem::take(&mut self.strips);
         let which = strips.touched(
             doc,
-            &crate::terminal_strips::StripScope {
+            &crate::terminal_strips::strip_model::StripScope {
                 devices: &scope.devices,
                 wires: &scope.wires,
                 cables: &scope.cables,
@@ -486,7 +486,7 @@ impl ReportModels {
     /// Verify mode (brief 028, design 028 §11.4): the kept strips against a rebuild on `doc`; a
     /// difference is put right and described (a bug, for the event log).
     pub fn verify_strips_with(&mut self, doc: &Document) -> Option<String> {
-        let built = crate::terminal_strips::Strips::build(doc, self, &PageCx::of(doc));
+        let built = crate::terminal_strips::strip_model::Strips::build(doc, self, &PageCx::of(doc));
         // Brief 046: the graphic pages' kept data is built from the kept strips after every
         // commit (no update map), so it follows them.
         if self.strips.same_as(&built) {
@@ -632,15 +632,15 @@ impl ReportModels {
         // its first drawn half), with that half's tag and location.
         let halves = crate::connectors::half_rows(doc, c, &mut BoxCache::default());
         // Sub-items only where `for` can name some or fuses can be uncovered.
-        let fuseterm = crate::terminal_strips::fuse_terminal_block_of(doc, c).is_some();
-        let subs = if fuseterm { bom::Subs::None } else { bom::sub_items(doc, c) };
+        let fuseterminalblock = crate::terminal_strips::fuse_terminal_block_of(doc, c).is_some();
+        let subs = if fuseterminalblock { bom::Subs::None } else { bom::sub_items(doc, c) };
         let mut covered: BTreeSet<&str> = BTreeSet::new();
         let mut inserts = 0;
         let mut entries = Vec::new();
         for l in &lines {
             let (have, missing): (Vec<String>, Vec<String>) = l.subs.iter().cloned().partition(|s| subs_has(&subs, s));
             covered.extend(l.subs.iter().map(String::as_str));
-            inserts += usize::from(l.for_text.is_some() || fuseterm);
+            inserts += usize::from(l.for_text.is_some() || fuseterminalblock);
             let half = halves.iter().find(|h| Some(h.side) == l.half).or(halves.first());
             entries.push(Entry {
                 owner: Owner::Device(c),
@@ -658,7 +658,7 @@ impl ReportModels {
                 missing,
             });
         }
-        let gaps = if fuseterm {
+        let gaps = if fuseterminalblock {
             usize::from(!lines.iter().any(|l| l.for_text.is_none()))
         } else {
             subs.fuses().iter().filter(|f| !covered.contains(f.as_str())).count()
@@ -1003,7 +1003,7 @@ impl ReportModels {
                 designation: p("designation"),
                 go,
                 // The chains' heads, then the stored cores with no wire (spare or on a loose line).
-                count: crate::terminal_strips::count_cores(
+                count: crate::terminal_strips::cores::count_cores(
                     crate::styles::cable::offer(doc, k),
                     &heads.iter().cloned().chain(cab.cores.iter().filter(|m| m.wire().is_none()).cloned()).collect::<Vec<_>>(),
                 ),
@@ -1430,7 +1430,7 @@ impl ReportModels {
 
     /// A strip's BOM rows (design 028 §9.1, Q13; brief 036 §7.2): one row per terminal type, Qty
     /// in positions (a three-level terminal is one part), in catalogue order.
-    fn strip_bom(&self, s: &crate::terminal_strips::StripData, location: Option<String>) -> Vec<BomRow> {
+    fn strip_bom(&self, s: &crate::terminal_strips::strip_model::StripData, location: Option<String>) -> Vec<BomRow> {
         let mut out = Vec::new();
         for t in &s.types {
             if t.qty() == 0 {
@@ -1960,15 +1960,15 @@ impl ReportModels {
             rows: Vec::new(),
         };
         let mut go = Vec::new();
-        let strips: Vec<&crate::terminal_strips::StripData> = match strip {
+        let strips: Vec<&crate::terminal_strips::strip_model::StripData> = match strip {
             Some(c) => self.strips.get(c).into_iter().collect(),
             None => self.strips.sorted(),
         };
         for s in strips {
             for item in s.plan(accessories) {
                 let (ri, r) = match item {
-                    crate::terminal_strips::PlanItem::Term(i, r) => (i, r),
-                    crate::terminal_strips::PlanItem::Gap { gap, acc } => {
+                    crate::terminal_strips::strip_model::PlanItem::Term(i, r) => (i, r),
+                    crate::terminal_strips::strip_model::PlanItem::Gap { gap, acc } => {
                         let pe_before = gap_pe(s, gap);
                         let words = if acc == crate::terminal_strips::accessories::Acc::StripLabel {
                             format!("strip label {}", s.tag)
@@ -1998,8 +1998,8 @@ impl ReportModels {
                 let lines = r.inside.len().max(r.outside.len()).max(1);
                 for i in 0..lines {
                     let (inside, outside) = (r.inside.get(i), r.outside.get(i));
-                    let side = |c: Option<&crate::terminal_strips::SideCell>,
-                                f: fn(&crate::terminal_strips::SideCell) -> Option<String>,
+                    let side = |c: Option<&crate::terminal_strips::strip_model::SideCell>,
+                                f: fn(&crate::terminal_strips::strip_model::SideCell) -> Option<String>,
                                 why: &str| match c {
                         None => Cell::default(),
                         Some(c) => Cell::opt(&f(c), || why.to_string()),
@@ -2062,8 +2062,8 @@ impl ReportModels {
         for s in self.strips.sorted() {
             for item in s.plan(true) {
                 let r = match item {
-                    crate::terminal_strips::PlanItem::Term(_, r) => r,
-                    crate::terminal_strips::PlanItem::Gap { gap, acc } => {
+                    crate::terminal_strips::strip_model::PlanItem::Term(_, r) => r,
+                    crate::terminal_strips::strip_model::PlanItem::Gap { gap, acc } => {
                         let mut row =
                             vec![Cell::ok(s.tag.clone()), opt(s.location.as_ref()), Cell::ok(s.offer.map(|o| o.text()).unwrap_or_default())];
                         row.extend([Cell::default(), Cell::default(), Cell::ok("accessory")]);

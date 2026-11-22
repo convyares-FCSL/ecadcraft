@@ -44,7 +44,7 @@ pub const MAX_OUTPUT: u8 = 99;
 pub enum Protection {
     /// A fuse.
     Fuse(Fuse),
-    /// A fuse terminal: a fuse in a DIN-rail terminal housing, set by the `fuseterm` starter.
+    /// A fuse terminal: a fuse in a DIN-rail terminal housing, set by the `fuseterminalblock` starter.
     FuseTerminalBlock(Fuse),
     /// A miniature circuit breaker.
     Mcb(Breaker),
@@ -100,7 +100,7 @@ impl ProtectionKind {
 }
 
 impl Protection {
-    /// A fuse terminal's fuse, when it is a fuse terminal (brief 034's `fuseterm`).
+    /// A fuse terminal's fuse, when it is a fuse terminal (brief 034's `fuseterminalblock`).
     pub fn as_fuse_terminal_block(&self) -> Option<&Fuse> {
         match self {
             Protection::FuseTerminalBlock(f) => Some(f),

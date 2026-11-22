@@ -29,11 +29,11 @@ use crate::symbols::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
 
 /// Frame parts are indexed from here among their representation's parts (a cell or body has no
 /// cross-reference parts of its own; the base keeps them apart regardless).
-pub const INDEX_BASE: u32 = 1 << 20;
+pub(crate) const INDEX_BASE: u32 = 1 << 20;
 /// Most representations of one card on one page that form runs (045's bound is 256 channels).
 const MAX_PER_CARD: usize = 512;
 /// How far a break edge's bottom end lies out from its top, mm.
-pub const SLANT: f64 = 5.0;
+pub(crate) const SLANT: f64 = 5.0;
 /// Gap between two abutting symbols' edges still counted as one run, mm.
 const ABUT: f64 = 0.5;
 /// Top lines this close are one line, mm (031's `text.run.align`).
@@ -76,7 +76,7 @@ pub struct Run {
 }
 
 /// Whether the frame of card `c` is drawn (`plc.frame.show`).
-pub fn frame_shown(doc: &Document, c: DeviceId) -> bool {
+pub(crate) fn frame_shown(doc: &Document, c: DeviceId) -> bool {
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
     crate::defaults::resolve(doc, &crate::defaults::plc::FRAME_SHOW, at).flag()
 }
@@ -231,7 +231,7 @@ pub fn type_text(doc: &Document, c: DeviceId) -> String {
 }
 
 /// The name band's depth for a name block of these lines (design 051 §2.5).
-pub fn name_band(doc: &Document, lines: &[(String, TextKind)]) -> f64 {
+pub(crate) fn name_band(doc: &Document, lines: &[(String, TextKind)]) -> f64 {
     let h: f64 = lines.iter().map(|(_, k)| text_style(doc, *k).height).sum::<f64>() + LINE_GAP * lines.len().saturating_sub(1) as f64;
     let band = (h + 2.0 * INSET_Y).max(NAME_BAND);
     (band / BAND_STEP).ceil() * BAND_STEP
@@ -405,7 +405,7 @@ fn frame_rect(doc: &Document, run: &Run) -> (f64, f64, f64, f64) {
 /// `wire-through-card` rows of card `c` (design 051 §2.8): a wire attached to one of the card's
 /// points whose route goes on into the card's frame and is attached at both ends (kept by the
 /// fence because it reaches something; connectivity is never changed silently).
-pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crate::checks::Check>) {
+pub(crate) fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crate::checks::Check>) {
     let pages = crate::plc::overview::pages_of(doc, c);
     for page in pages {
         let runs = runs_of_card(doc, c, page);
@@ -477,7 +477,7 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
 /// `plc-text-wide` rows of card `c` (design 051 §2.5): one per run whose addresses are wider than
 /// its cells, or whose header or mark band texts are deeper than the band, at the project's text
 /// styles. Nothing is shrunk: the style is the user's.
-pub fn wide_checks(
+pub(crate) fn wide_checks(
     doc: &Document, c: DeviceId, tag: &str, address: impl Fn(u32) -> Option<String>, m: &dyn TextMetrics, out: &mut Vec<crate::checks::Check>,
 ) {
     let pin = text_style(doc, TextKind::PointLabel).height;

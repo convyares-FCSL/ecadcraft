@@ -27,7 +27,7 @@ fn table() -> Vec<(String, &'static str, Vec<String>)> {
         ("rcd4".into(), "Q", l(&["1", "2", "3", "4", "5", "6", "N1", "N2"])),
         ("ssrin".into(), "K", l(&["A1", "A2"])),
         ("ssrout".into(), "K", l(&["1", "2"])),
-        ("fuseterm".into(), "F", l(&["1", "2"])),
+        ("fuseterminalblock".into(), "F", l(&["1", "2"])),
         ("prox3".into(), "B", l(&["1", "3", "4"])),
         ("floatno".into(), "B", l(&["13", "14"])),
         ("floatnc".into(), "B", l(&["11", "12"])),

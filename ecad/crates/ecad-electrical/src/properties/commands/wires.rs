@@ -92,7 +92,8 @@ pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
         };
         return Ok(Op::modify_cable(k, cab, after));
     }
-    let stored = if key == crate::terminal_strips::CORES_KEY { crate::terminal_strips::cores_value(value)? } else { value.map(str::to_string) };
+    let stored =
+        if key == crate::terminal_strips::CORES_KEY { crate::terminal_strips::cores::cores_value(value)? } else { value.map(str::to_string) };
     match stored {
         Some(v) => after.properties.insert(key.to_string(), v),
         None => after.properties.remove(key),

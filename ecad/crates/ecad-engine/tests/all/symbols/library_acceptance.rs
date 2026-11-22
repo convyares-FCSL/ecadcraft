@@ -112,7 +112,7 @@ pub(crate) fn catalogue() -> Vec<Sym> {
         ),
         sym("ssrin", "K", "ssr", &[("A1", 0.0, 10.0), ("A2", 0.0, -10.0)], Some((12.0, 20.0)), &[], S1),
         sym("ssrout", "K", "ssr", &[("1", 0.0, 10.0), ("2", 0.0, -10.0)], Some((9.0, 20.0)), &[], S1),
-        sym("fuseterm", "F", "fuse terminal", &[("1", 0.0, 10.0), ("2", 0.0, -10.0)], Some((7.0, 20.0)), &[], S1),
+        sym("fuseterminalblock", "F", "fuse terminal", &[("1", 0.0, 10.0), ("2", 0.0, -10.0)], Some((7.0, 20.0)), &[], S1),
     ];
     for n in [4usize, 6, 8, 10, 12] {
         let xn = 10.0 * (n as f64 - 1.0);
@@ -394,7 +394,7 @@ fn a2_find_symbol_by_family_prefix_and_alias() {
     let mut h = H::new(0x7034_0002);
     let head = h.head();
     let prot = search_keys(&mut h, "protection");
-    for k in ["rcbo2", "rcd2", "rcd4", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"] {
+    for k in ["rcbo2", "rcd2", "rcd4", "fuseterminalblock", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"] {
         assert!(prot.contains(k), "protection finds {k}: {prot:?}");
     }
     let q = search_keys(&mut h, "-Q");
@@ -593,7 +593,7 @@ fn e_fixed_symbols_join_by_the_018_rules() {
     refused(&mut h, "place", json!({"symbol": "rcbo2", "at": [100, 50], "device": q1.hex()}), "-Q01 already has a");
     refused(&mut h, "place", json!({"symbol": "rcd2", "at": [100, 50], "device": q1.hex()}), "-Q01 already has");
     let f1: DeviceId = id(&place(&mut h, "fusebank4", (200.0, 50.0)), "component");
-    refused(&mut h, "place", json!({"symbol": "fuseterm", "at": [300, 50], "device": f1.hex()}), "-F01 already has");
+    refused(&mut h, "place", json!({"symbol": "fuseterminalblock", "at": [300, 50], "device": f1.hex()}), "-F01 already has");
     // A fault-signal contact on the bank is 13/14 (§3 notes).
     assert_eq!(labels(&join(&mut h, "no", (300.0, 50.0), f1).unwrap()), ["13", "14"]);
 
@@ -642,7 +642,7 @@ fn f_fuse_bank_breaks_the_net_per_fuse() {
 #[test]
 fn g_fuse_terminal_block_breaks_the_net() {
     let mut h = H::new(0x7034_000a);
-    let v = place(&mut h, "fuseterm", (100.0, 150.0));
+    let v = place(&mut h, "fuseterminalblock", (100.0, 150.0));
     assert_eq!(v["tag"], json!("-F01"));
     h.wire_pp(&[(100.0, 200.0), (100.0, 160.0)]).unwrap();
     h.wire_pp(&[(100.0, 140.0), (100.0, 100.0)]).unwrap();
@@ -683,7 +683,7 @@ fn i_ratings_set_and_refused_as_designed() {
     let mut h = H::new(0x7034_000c);
     let q1: DeviceId = id(&place(&mut h, "rcbo2", (50.0, 150.0)), "component");
     let f1: DeviceId = id(&place(&mut h, "fusebank8", (150.0, 150.0)), "component");
-    let f2: DeviceId = id(&place(&mut h, "fuseterm", (300.0, 150.0)), "component");
+    let f2: DeviceId = id(&place(&mut h, "fuseterminalblock", (300.0, 150.0)), "component");
     let e1: DeviceId = id(&place(&mut h, "heater", (50.0, 50.0)), "component");
     let b1: DeviceId = id(&place(&mut h, "tc", (100.0, 50.0)), "component");
     let k1: DeviceId = id(&place(&mut h, "coil", (150.0, 50.0)), "component");
@@ -827,7 +827,7 @@ fn fixture_all(seed: u64) -> H {
     setprop(&mut h, q, "rating", json!("13A C 30mA")).unwrap();
     place(&mut h, "rcd2", (350.0, 250.0));
     place(&mut h, "rcd4", (400.0, 250.0));
-    place(&mut h, "fuseterm", (20.0, 180.0));
+    place(&mut h, "fuseterminalblock", (20.0, 180.0));
     let f: DeviceId = id(&place(&mut h, "fusebank6", (70.0, 180.0)), "component");
     setprop(&mut h, f, "rating.2", json!("2A")).unwrap();
     place(&mut h, "prox3", (200.0, 180.0));

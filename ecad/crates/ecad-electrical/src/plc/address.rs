@@ -21,9 +21,9 @@ use crate::defaults::{self, Scope};
 use crate::plc::rack::{self, CardType, Direction, RackRef};
 
 /// The `setprop` name of a module's pinned start byte (FP3).
-pub const START_KEY: &str = "plc.addr.start";
+pub(crate) const START_KEY: &str = "plc.addr.start";
 /// The `setprop` name of a module's own block size in bytes (FP3).
-pub const SIZE_KEY: &str = "plc.addr.size";
+pub(crate) const SIZE_KEY: &str = "plc.addr.size";
 /// The highest byte an address may use.
 pub const MAX_BYTE: u32 = ecad_model::objects::plc::MAX_BYTE;
 /// The largest block size a card may set.
@@ -56,7 +56,7 @@ impl Style {
     }
 
     /// The style a station stores.
-    pub fn of_stored(s: ecad_model::objects::plc::AddressStyle) -> Style {
+    pub(crate) fn of_stored(s: ecad_model::objects::plc::AddressStyle) -> Style {
         use ecad_model::objects::plc::AddressStyle as A;
         match s {
             A::ByteBit => Style::ByteBit,
@@ -101,7 +101,7 @@ pub fn pinned(doc: &Document, c: DeviceId) -> Option<u32> {
 }
 
 /// The bytes one analogue or IO-Link channel of card `c` takes.
-pub fn word_size(doc: &Document, c: DeviceId, ty: CardType) -> u32 {
+pub(crate) fn word_size(doc: &Document, c: DeviceId, ty: CardType) -> u32 {
     let at = Scope { component: Some(c), ..Scope::project() };
     let e = if ty == CardType::Iol { &defaults::plc::IOL_BYTES } else { &defaults::plc::ANALOG_BYTES };
     let n = defaults::resolve(doc, e, at).number();
@@ -209,7 +209,7 @@ pub fn automatic(style: Style, ty: CardType, block: &Block, slot: u32, i: u32, s
 }
 
 /// `I2–I3`: a block in words.
-pub fn block_words(style: Style, output: bool, (start, size): (u32, u32)) -> String {
+pub(crate) fn block_words(style: Style, output: bool, (start, size): (u32, u32)) -> String {
     let letter = match (style, output) {
         (Style::Iec | Style::Percent, false) => "%I",
         (Style::Iec | Style::Percent, true) => "%Q",
@@ -232,7 +232,7 @@ pub fn shown(doc: &Document, c: DeviceId, i: u32, auto: Option<String>) -> (Opti
 
 /// The members of rack `r` read straight from the document (texts and commands, which have no
 /// kept model): its cards with a slot, in slot order.
-pub fn members_of(doc: &Document, r: DeviceId) -> Vec<Member> {
+pub(crate) fn members_of(doc: &Document, r: DeviceId) -> Vec<Member> {
     let Some(station) = crate::plc::edit::station_of(doc, r) else { return Vec::new() };
     station
         .modules(doc, r)
@@ -297,7 +297,7 @@ pub fn shows_output(ty: CardType) -> bool {
 
 /// Card `c`'s automatic address of channel `i` (input; and output for IO-Link), worked out from the
 /// document (texts, commands).
-pub fn of_channel(
+pub(crate) fn of_channel(
     doc: &Document, c: DeviceId, i: u32, kept: Option<&crate::plc::kept::Plc>, cache: &mut BTreeMap<DeviceId, BTreeMap<DeviceId, Block>>,
 ) -> (Option<String>, Option<String>) {
     let (RackRef::Rack(r), Some(slot)) = (rack::rack_ref(doc, c), rack::slot_of(doc, c)) else { return (None, None) };

@@ -39,4 +39,4 @@
 "terminal_block.termsensor.3.prefix" = "X"
 "terminal_block.termsensor.prefix" = "X"
 "terminal_block.termdisc.prefix" = "X"
-"terminal_block.termfuse.prefix" = "X"
+"terminal_block.terminalblockfuse.prefix" = "X"

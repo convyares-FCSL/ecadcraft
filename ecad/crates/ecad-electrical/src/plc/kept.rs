@@ -117,18 +117,7 @@ impl Plc {
         );
     }
 
-    /// Brief 045c (design 045 §11.1): the cards whose I/O rows `effects` (just committed; `doc`
-    /// is the state after) can change: a renamed target or a renumbered wire changes the rows of
-    /// the cards on its nets.
-    pub fn rows_touched(&self, doc: &Document, effects: &Effects<'_>) -> BTreeSet<DeviceId> {
-        let mut out = BTreeSet::new();
-        for effect in effects {
-            self.note_rows(doc, effect, &mut out);
-        }
-        out
-    }
-
-    /// Note the cards whose I/O rows one effect can change (one effect of [`Plc::rows_touched`]).
+    /// Note the cards whose I/O rows one effect can change.
     fn note_rows(&self, doc: &Document, effect: &Effect<'_>, out: &mut BTreeSet<DeviceId>) {
         match effect {
             Effect::Device { id: c, before: Some(before), after: Some(after) } if before.tag != after.tag && !self.cards.contains_key(c) => {
@@ -138,7 +127,7 @@ impl Plc {
             Effect::Prop { object: ObjectRef::Wire(w), .. } | Effect::Wire { id: w, before: Some(_), after: Some(_) } => {
                 out.extend(iolist::cards_on_nets_of(doc, self, None, Some(*w)));
             }
-            // Review of #84, 2: a terminal relabelled (renumber, `termlabel`) or added, on the
+            // Review of #84, 2: a terminal relabelled (renumber, `terminalblocklabel`) or added, on the
             // nets it is on.
             Effect::ConnectionPoint { id, after: Some(_), .. } => {
                 out.extend(iolist::cards_on_nets_of_connection_points(doc, self, &[*id]));
@@ -183,7 +172,7 @@ impl Plc {
     }
 
     /// Note the I/O rows one effect of the transaction just committed on `doc` (the state after)
-    /// can change ([`Plc::rows_touched`]), reading the model as it is before the update. Pair with
+    /// can change, reading the model as it is before the update. Pair with
     /// [`Plc::update_touched`].
     pub fn note(&self, doc: &Document, effect: &Effect<'_>, t: &mut Touch) {
         self.note_rows(doc, effect, &mut t.rows);
@@ -202,7 +191,7 @@ impl Plc {
     /// Build the model again from scratch on `doc`, the state after, and work out what reads
     /// differently from the model before; `t` names the I/O rows the effects reach besides
     /// ([`Plc::note`]). Returns whether anything changed.
-    pub fn update_touched(&mut self, doc: &Document, t: Touch, m: &dyn TextMetrics) -> bool {
+    pub(crate) fn update_touched(&mut self, doc: &Document, t: Touch, m: &dyn TextMetrics) -> bool {
         let rebuilt = Plc::build_with(doc, m);
         let ids: BTreeSet<DeviceId> =
             self.cards.keys().chain(self.racks.keys()).chain(rebuilt.cards.keys()).chain(rebuilt.racks.keys()).copied().collect();
@@ -282,7 +271,7 @@ impl Plc {
     }
 
     /// The next free slot of rack `r` in the model.
-    pub fn next_free(&self, r: DeviceId) -> Option<u32> {
+    pub(crate) fn next_free(&self, r: DeviceId) -> Option<u32> {
         let rack = self.racks.get(&r)?;
         let taken: BTreeSet<u32> = self.naming.get(&r).into_iter().flatten().filter_map(|c| self.cards.get(c)).filter_map(|c| c.slot).collect();
         (rack.first..rack.first.saturating_add(rack.slots)).find(|s| !taken.contains(s))
@@ -573,7 +562,7 @@ impl Plc {
 
     /// The buttons of a PLC Checks row's fix, each a label, a command and its parameters (design
     /// 045 §9). Empty when the row's card is gone.
-    pub fn fix_commands(&self, c: DeviceId, fix: PlcFix) -> Vec<(String, &'static str, Value)> {
+    pub(crate) fn fix_commands(&self, c: DeviceId, fix: PlcFix) -> Vec<(String, &'static str, Value)> {
         let tag = self.tag_of(c);
         match fix {
             PlcFix::NextFreeSlot => {
@@ -663,7 +652,7 @@ impl Plc {
 
     /// Brief 051: the Checks rows about device `c` (a card or a rack), from its own group and its
     /// rack's group (slot rows sit there).
-    pub fn checks_naming(&self, c: DeviceId) -> impl Iterator<Item = &Check> {
+    pub(crate) fn checks_naming(&self, c: DeviceId) -> impl Iterator<Item = &Check> {
         let rack = self.cards.get(&c).and_then(|x| match x.rack {
             RackRef::Rack(r) | RackRef::Missing(r) => Some(r),
             _ => None,
@@ -681,7 +670,7 @@ impl Plc {
     }
 
     /// The cards in no rack (or naming one that is missing), by tag.
-    pub fn unracked_by_tag(&self) -> Vec<DeviceId> {
+    pub(crate) fn unracked_by_tag(&self) -> Vec<DeviceId> {
         let mut v: Vec<&CardData> = self.cards.values().filter(|c| !matches!(c.rack, RackRef::Rack(_))).collect();
         v.sort_by(|a, b| (a.tag.as_str(), a.id).cmp(&(b.tag.as_str(), b.id)));
         v.into_iter().map(|c| c.id).collect()
@@ -696,7 +685,7 @@ impl Plc {
     }
 
     /// One card as `plcracks` lists it.
-    pub fn card_json(&self, doc: &Document, c: DeviceId) -> Value {
+    pub(crate) fn card_json(&self, doc: &Document, c: DeviceId) -> Value {
         let Some(card) = self.cards.get(&c) else { return Value::Null };
         // Brief 051 (design 051 §7): the tile's data.
         let tile = overview::card_tile(doc, self, card, String::new());
@@ -731,7 +720,7 @@ impl Plc {
     }
 
     /// One rack as `plcracks` lists it: its slots in order, free ones too.
-    pub fn rack_json(&self, doc: &Document, r: &RackData) -> Value {
+    pub(crate) fn rack_json(&self, doc: &Document, r: &RackData) -> Value {
         let cards = self.cards_of(r.id);
         let mut slots = Vec::new();
         let last = r.first.saturating_add(r.slots).saturating_sub(1);

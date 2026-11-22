@@ -1,6 +1,6 @@
 //! Graphical terminal-strip pages (brief 046, design 046): the `graphic` style of a `connection_points`
 //! generated page. Each strip is drawn as it is wired on the rail: one column per plan row of
-//! [`ecad_electrical::terminal_strips::StripData::plan`], inside conductors up to their targets, outside conductors
+//! [`ecad_electrical::terminal_strips::strip_model::StripData::plan`], inside conductors up to their targets, outside conductors
 //! down, cable bars and boxes under them, links, bridges, levels and accessories in the band.
 //!
 //! It reads only the kept report models ([`ReportModels`]: the strips, the cable and device rows). It
@@ -22,16 +22,16 @@ use crate::convert::kind_for_primitive;
 use crate::pages::frame::{FrameInput, Part, THIN_WEIGHT, TextDraw};
 use ecad_electrical::reports::kept::ReportModels;
 use ecad_electrical::terminal_strips::accessories::Acc;
-use ecad_electrical::terminal_strips::{SideCell, StripData};
+use ecad_electrical::terminal_strips::strip_model::{SideCell, StripData};
 use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextKind};
 use {ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
 
 /// Guard (design 046 §4.1): at most this many cable bar lanes; further cables share the last.
-pub const MAX_CABLE_LANES: usize = 8;
+pub(crate) const MAX_CABLE_LANES: usize = 8;
 /// Guard (§3.5): conductors drawn as leads on one side of a column; more are counted `+n`.
-pub const MAX_LEADS_PER_SIDE: usize = 2;
+pub(crate) const MAX_LEADS_PER_SIDE: usize = 2;
 /// Guard (§4.2): far devices named under a cable box; more are counted `+n`.
-pub const MAX_FAR_DEVICES: usize = 3;
+pub(crate) const MAX_FAR_DEVICES: usize = 3;
 /// Lane spacing (`ecad.strip.lane-gap`): links, cable bars.
 const JUMPER_BAR_LANE_MM: f64 = 2.0;
 const CABLE_LANE_MM: f64 = 2.5;

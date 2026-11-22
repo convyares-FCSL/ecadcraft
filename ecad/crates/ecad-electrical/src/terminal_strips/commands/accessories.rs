@@ -20,9 +20,9 @@ use crate::terminal_strips::accessories::{self as acc, Acc, Spot};
 use crate::views::Views;
 
 /// Most places one `accessory` call writes.
-pub const MAX_AT: usize = 999;
+pub(crate) const MAX_AT: usize = 999;
 /// Most terminals one `jumper` call picks.
-pub const MAX_PICKS: usize = 999;
+pub(crate) const MAX_PICKS: usize = 999;
 /// The refusal when a strip has no free link number.
 const JUMPER_BARS_FULL: &str = "This strip has 999 links; delete one first.";
 
@@ -110,7 +110,7 @@ fn plural(a: Acc, n: usize) -> String {
 
 /// What `accessory` is asked to write (design 030 §2.2).
 #[derive(Debug, Clone, Default)]
-pub struct AccessoryInput {
+pub(crate) struct AccessoryInput {
     pub strip: Option<DeviceId>,
     pub connection_point: Option<ConnectionPointId>,
     /// `start`, `end`, `all`, a position label, or a list of them (absent: `connection_point`'s position).
@@ -143,7 +143,7 @@ pub struct Accessory {
 ///
 /// # Errors
 /// No such strip or terminal, a place or item that does not read, too many items at a place.
-pub fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Accessory, CmdError> {
+pub(crate) fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Accessory, CmdError> {
     let on = input.on;
     let (c, label) = strip_of(doc, input.strip, input.connection_point)?;
     let at: Vec<String> = match input.at {
@@ -330,14 +330,14 @@ fn range_between(order: &[String], a: &str, b: &str) -> Vec<String> {
 
 /// The link a `jumper` edit names.
 #[derive(Debug, Clone, Default)]
-pub struct JumperBarRef {
+pub(crate) struct JumperBarRef {
     pub strip: Option<DeviceId>,
     pub n: Option<u64>,
 }
 
 /// What `jumper` is asked to do (design 030 §10): make a link (`jumper_bar` absent), or edit one.
 #[derive(Debug, Clone, Default)]
-pub struct JumperInput {
+pub(crate) struct JumperInput {
     /// The link to edit.
     pub jumper_bar: Option<JumperBarRef>,
     /// Make: the strip.
@@ -378,7 +378,7 @@ pub struct Jumper {
 ///
 /// # Errors
 /// No such strip or terminal, positions that do not read, a link the rules refuse.
-pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdError> {
+pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdError> {
     // Brief 036 (design 036 §5.3): the level the link runs on, or a cross-level link's text.
     let mut level: u32 = 1;
     let mut point: Option<char> = None;
@@ -603,7 +603,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
 /// Words written as one text or as a list.
 #[derive(Deserialize, JsonSchema)]
 #[serde(untagged)]
-pub enum WordsParam {
+pub(crate) enum WordsParam {
     /// A list.
     List(Vec<String>),
     /// One text (items and positions: comma-separated).
@@ -645,7 +645,7 @@ pub struct AccessoryParams {
 /// The link a `jumper` edit names.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct JumperBarParam {
+pub(crate) struct JumperBarParam {
     /// The strip.
     #[serde(default)]
     strip: Option<DeviceId>,

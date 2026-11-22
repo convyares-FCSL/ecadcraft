@@ -219,7 +219,7 @@ pub fn add_to_cable(
         crate::cables::commands::cables::assign_cores(doc, k, conductors.len())?;
     }
     let mut spare: VecDeque<String> =
-        existing.and_then(|k| crate::terminal_strips::cable_cores(doc, k)).map(|c| c.spare.into_iter().collect()).unwrap_or_default();
+        existing.and_then(|k| crate::terminal_strips::cores::cable_cores(doc, k)).map(|c| c.spare.into_iter().collect()).unwrap_or_default();
     let (cable, before, mut after) = match existing.and_then(|c| doc.cables.get(&c).map(|x| (c, x))) {
         Some((c, x)) => (c, Some(x), x.clone()),
         None => {

@@ -70,7 +70,7 @@ pub fn card_type_of(doc: &Document, c: DeviceId) -> Option<CardType> {
 }
 
 /// Every racked card's block, read in one pass (for counting what a change moves).
-pub fn all_blocks(doc: &Document) -> BTreeMap<DeviceId, address::Block> {
+pub(crate) fn all_blocks(doc: &Document) -> BTreeMap<DeviceId, address::Block> {
     let racks: BTreeSet<DeviceId> = doc
         .devices
         .values()
@@ -85,12 +85,12 @@ pub fn all_blocks(doc: &Document) -> BTreeMap<DeviceId, address::Block> {
 
 /// The cards whose automatic addresses a move of `card` may shift, before it (a snapshot to compare
 /// with [`moved_cards`]).
-pub fn moved_blocks_before(doc: &Document, _card: DeviceId) -> BTreeMap<DeviceId, address::Block> {
+pub(crate) fn moved_blocks_before(doc: &Document, _card: DeviceId) -> BTreeMap<DeviceId, address::Block> {
     all_blocks(doc)
 }
 
 /// How many cards other than `card` changed address since `before`.
-pub fn moved_cards(doc: &Document, card: DeviceId, before: &BTreeMap<DeviceId, address::Block>) -> usize {
+pub(crate) fn moved_cards(doc: &Document, card: DeviceId, before: &BTreeMap<DeviceId, address::Block>) -> usize {
     let after = all_blocks(doc);
     let keys: BTreeSet<&DeviceId> = before.keys().chain(after.keys()).collect();
     keys.into_iter()
@@ -143,7 +143,7 @@ impl ChannelData {
 }
 
 /// A channel's state (design 045 §6).
-pub fn state_word(used: bool, text: Option<&str>) -> &'static str {
+pub(crate) fn state_word(used: bool, text: Option<&str>) -> &'static str {
     match (used, text.is_some_and(|t| !t.is_empty())) {
         (true, _) => "used",
         (false, true) => "reserved",
@@ -228,7 +228,7 @@ pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, key:
 }
 
 /// Whether `d` is a PLC station or module.
-pub fn is_plc(d: &ecad_model::Device) -> bool {
+pub(crate) fn is_plc(d: &ecad_model::Device) -> bool {
     CardType::of_type(&d.device_type).is_some()
 }
 
@@ -236,7 +236,9 @@ pub fn is_plc(d: &ecad_model::Device) -> bool {
 /// map of design 045 §11.1): a station's cards' pages (they read its tag and address style), and a
 /// module's old and new station's cards' pages (a slot, count or pinned block moves the addresses of
 /// the cards after it).
-pub fn pages_modified(doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, before: &ecad_model::Device, after: &ecad_model::Device) -> Vec<PageId> {
+pub(crate) fn pages_modified(
+    doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, before: &ecad_model::Device, after: &ecad_model::Device,
+) -> Vec<PageId> {
     let pages_of = |r: DeviceId| -> Vec<PageId> {
         let cards: Vec<DeviceId> = match kept {
             Some(p) => p.naming.get(&r).into_iter().flatten().copied().collect(),
@@ -319,7 +321,7 @@ pub fn caption_text(
 /// Properties ▸ Card and ▸ Rack rows of device `c` (design 045 §2.6): a card's Rack (its tag,
 /// never the ID: FP1), Slot and Channels; a rack's Slots and First slot (registry values at object
 /// level, faint when inherited).
-pub fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::cables::words::Row>) {
+pub(crate) fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::cables::words::Row>) {
     let Some(ty) = card_type_of(doc, c) else { return };
     let props = doc.devices.get(&c).map(|x| &x.properties);
     let own = |k: &str| props.and_then(|p| p.get(k)).cloned();
@@ -391,7 +393,7 @@ pub fn edit_line(c: DeviceId, key: &str, value: Option<&str>) -> Option<String> 
 }
 
 /// Card `c`'s channels read from the document: points, cells, net state, text and typed address.
-pub fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, ChannelData> {
+pub(crate) fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, ChannelData> {
     let mut out: BTreeMap<u32, ChannelData> = BTreeMap::new();
     let conn = doc.connectivity();
     for (t, term) in doc.connection_points_of(c) {
@@ -425,7 +427,7 @@ pub fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, ChannelData> {
 /// The channel texts of cell `rid` (representation `r` at `pl`) of card `c` (design 045 §7.1): its
 /// channel number, its address and its description (`Spare` for a drawn spare), at the cell's
 /// anchors. `cache` holds the racks' blocks for one page draw.
-pub fn channel_texts(
+pub(crate) fn channel_texts(
     doc: &Document, c: DeviceId, rid: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
     kept: Option<&kept::Plc>, cache: &mut BTreeMap<DeviceId, BTreeMap<DeviceId, address::Block>>,
 ) -> Vec<crate::devices::PageText> {
@@ -521,7 +523,7 @@ pub fn channel_texts(
 /// The value rule of the registry's object-level `plc.*` entries written with `setprop` (design
 /// 045 §4.6), called where 034's is. A module's and station's own fields are the `setprop` rows of
 /// `crate::properties::commands::plc`. `None`: not a registry entry of this brief.
-pub fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
+pub(crate) fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     let entry = crate::defaults::find(key).filter(|e| e.key.starts_with("plc."))?;
     let v = value.map(str::trim).filter(|v| !v.is_empty());
     Some(match v {
@@ -536,7 +538,7 @@ pub fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Option<&str
 
 /// Properties ▸ Channel rows of a channel symbol (design 045 §4.7): the channel (read), its
 /// description and typed address (placeholder: the automatic one), and one pin per role.
-pub fn channel_rows(
+pub(crate) fn channel_rows(
     doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::cables::words::Row>,
 ) {
     let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) else { return };

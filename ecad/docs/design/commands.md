@@ -27,7 +27,7 @@ generic halves of device, output, page, sheet, symbol, terminal, text, wire and 
 | designation.rs | G | designations, designationadd/edit/merge/remove | Plan on the document and the designation-use index. |
 | device.rs | G/S | G: symbols, devices, deviceprops, ecaddelete, devicedelete, tagsettings. S: place, convertcomponent, addconnectionpoint | Placing and converting work on CADCraft entities, the selection and snapping. |
 | device_link.rs | G | linkdevices, unlinkdevices, userfield | Plan and commit. |
-| level.rs | G | termlabel, toposition | Plan and commit. |
+| level.rs | G | terminalblocklabel, toposition | Plan and commit. |
 | location.rs | G | conflicts, setlocation, setfunction | Plan and commit; keeps the waiting conflicts (project state). |
 | numbering.rs | G | renumber, finalise, numbering | Plan on the document in drawing order (the order is in the model). |
 | output.rs | G/S | G: locationbox, functionbox, bom, wirelist, cablelist. S: printbook, reports | Print Book renders pages; `reports` opens report pages. |

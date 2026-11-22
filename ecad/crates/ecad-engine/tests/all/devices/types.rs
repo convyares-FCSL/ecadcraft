@@ -18,7 +18,7 @@ fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
     use {ecad_electrical::connectors, ecad_electrical::terminal_strips};
     if terminal_strips::fuse_terminal_block_of(doc, c).is_some() {
         // The owner's answer (design 072 §2.2): a fuse terminal device is Protection; a fuse
-        // position in a strip (`termfuse`) is the strip's.
+        // position in a strip (`terminalblockfuse`) is the strip's.
         return Some(DeviceGroup::Protection);
     }
     if terminal_strips::strip_of(doc, c).is_some() {

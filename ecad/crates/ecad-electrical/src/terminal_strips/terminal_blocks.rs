@@ -30,8 +30,8 @@ pub const LABEL_PREFIX: &str = "term_label.";
 /// The `setprop` key prefix of a fuse position's rating (FP5): `rating.<p>`. The rating is the
 /// strip's typed field ([`ecad_model::objects::devices::TerminalStrip::fuses`], design 072 §2.5), not a
 /// property.
-pub const RATING_PREFIX: &str = ecad_model::objects::devices::RATING_OF_PREFIX;
-/// Every strip property keyed by a position label (review M1): what renumbering and `termlabel`
+pub(crate) const RATING_PREFIX: &str = ecad_model::objects::devices::RATING_OF_PREFIX;
+/// Every strip property keyed by a position label (review M1): what renumbering and `terminalblocklabel`
 /// move with a position, in one list, so a prefix added later is never left behind. `acc.after.`
 /// and `acc.on.` are brief 030's placements, `term_label.` this brief's; `jumper_bar.` values name
 /// positions inside and are rewritten, not moved ([`crate::terminal_strips::accessories::renumber_ops`]). A fuse
@@ -39,12 +39,12 @@ pub const RATING_PREFIX: &str = ecad_model::objects::devices::RATING_OF_PREFIX;
 pub const POSITION_KEYED: &[&str] =
     &[crate::terminal_strips::accessories::AFTER_PREFIX, crate::terminal_strips::accessories::ON_PREFIX, LABEL_PREFIX];
 
-/// Most characters of a position label (`termlabel {position}`).
+/// Most characters of a position label (`terminalblocklabel {position}`).
 pub const MAX_POSITION_CHARS: usize = 16;
-/// Most characters of a level's own label (`termlabel {text}`).
+/// Most characters of a level's own label (`terminalblocklabel {text}`).
 pub const MAX_LABEL_CHARS: usize = 24;
 /// Most characters of an offer read.
-pub const MAX_OFFER_CHARS: usize = 64;
+pub(crate) const MAX_OFFER_CHARS: usize = 64;
 
 /// A terminal type (design 036 §2.2).
 #[derive(Debug)]
@@ -89,7 +89,7 @@ impl TermType {
     }
 
     /// The definition keys of level `n` (`.n`, or `.ni` and `.no`).
-    pub fn level_keys(&self, n: u32) -> Vec<PointKey> {
+    pub(crate) fn level_keys(&self, n: u32) -> Vec<PointKey> {
         let level = u8::try_from(n).unwrap_or(u8::MAX);
         if self.breaks {
             vec![PointKey::Level { level, io: Some(LevelIo::In) }, PointKey::Level { level, io: Some(LevelIo::Out) }]
@@ -117,7 +117,7 @@ const fn level(n: u8) -> PointKey {
 }
 
 /// The catalogue, in offer order (design 036 §2.2). Adding a type is a row here and its starters.
-pub static TYPES: &[TermType] = &[
+pub(crate) static TYPES: &[TermType] = &[
     TermType {
         key: StarterKey::TerminalBlock,
         level_starters: &[],
@@ -215,7 +215,7 @@ pub static TYPES: &[TermType] = &[
         pe_level: None,
     },
     TermType {
-        key: StarterKey::Termfuse,
+        key: StarterKey::Terminalblockfuse,
         level_starters: &[],
         code: "fuse",
         offer: "FUSE",
@@ -229,7 +229,7 @@ pub static TYPES: &[TermType] = &[
 ];
 
 /// How many types.
-pub const TYPE_COUNT: usize = 9;
+pub(crate) const TYPE_COUNT: usize = 9;
 
 /// The feed-through type.
 pub fn feedthrough() -> &'static TermType {
@@ -242,7 +242,7 @@ pub fn by_code(code: &str) -> Option<&'static TermType> {
 }
 
 /// The type whose offer code is `code` (case-insensitive; empty: feed-through).
-pub fn by_offer(code: &str) -> Option<&'static TermType> {
+pub(crate) fn by_offer(code: &str) -> Option<&'static TermType> {
     TYPES.iter().find(|t| t.offer.eq_ignore_ascii_case(code))
 }
 
@@ -262,7 +262,7 @@ pub fn index_of(t: &TermType) -> usize {
 }
 
 /// The type and level a starter draws: `termlnpe.2` → (L/N/PE, level 2); `termlnpe` → (L/N/PE,
-/// `None`: the whole terminal); `connection_point`, `terminal_block_pe`, `termdisc`, `termfuse` → level 1.
+/// `None`: the whole terminal); `connection_point`, `terminal_block_pe`, `termdisc`, `terminalblockfuse` → level 1.
 pub fn of_starter(key: StarterKey) -> Option<(&'static TermType, Option<u32>)> {
     TYPES.iter().find_map(|t| {
         if t.key == key {
@@ -280,7 +280,8 @@ pub fn is_level_starter(key: crate::symbols::StarterKey) -> bool {
 
 /// Every new starter key, in catalogue order: per multi-level type its levels then its whole
 /// symbol; then disconnect and fuse.
-pub fn starter_keys() -> Vec<StarterKey> {
+#[cfg(test)]
+pub(crate) fn starter_keys() -> Vec<StarterKey> {
     let mut out = Vec::new();
     for t in TYPES.iter().filter(|t| !t.legacy()) {
         if t.multi() {
@@ -295,7 +296,7 @@ pub fn starter_keys() -> Vec<StarterKey> {
 
 /// The type a terminal is drawn as: the starter of the first symbol that shows it, else (an old
 /// strip's first symbol, matched by key) the strip's own definition.
-pub fn type_of_connection_point(doc: &Document, t: ConnectionPointId) -> &'static TermType {
+pub(crate) fn type_of_connection_point(doc: &Document, t: ConnectionPointId) -> &'static TermType {
     let from_reps = doc.representations_showing(t).find_map(|(_, r)| crate::devices::rep_starter(doc, r));
     let starter = from_reps.or_else(|| {
         let c = doc.connection_points.get(&t)?.device()?;
@@ -341,12 +342,12 @@ pub fn label_key(position: &str, n: u32) -> String {
 }
 
 /// The key of a position's rating (FP5).
-pub fn rating_key(position: &str) -> String {
+pub(crate) fn rating_key(position: &str) -> String {
     format!("{RATING_PREFIX}{position}")
 }
 
 /// Whether strip `d` has a fuse position rating on a label `map` (old → new) moves.
-pub fn fuses_move(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> bool {
+pub(crate) fn fuses_move(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> bool {
     match &d.device_type {
         ecad_model::DeviceType::TerminalStrip(s) => s.fuses.keys().any(|l| map.contains_key(l.as_str())),
         _ => false,
@@ -356,7 +357,7 @@ pub fn fuses_move(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> boo
 /// Strip `d` with its fuse position ratings relabelled by `map` (old → new), and a preview line
 /// per move (`rating rating.2 → rating.7`). A rating whose new label is no valid position label
 /// stays where it is, and says so.
-pub fn moved_fuses(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> (ecad_model::Device, Vec<String>) {
+pub(crate) fn moved_fuses(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> (ecad_model::Device, Vec<String>) {
     let ecad_model::DeviceType::TerminalStrip(s) = &d.device_type else { return (d.clone(), Vec::new()) };
     let mut lines = Vec::new();
     let mut fuses = BTreeMap::new();
@@ -413,7 +414,7 @@ pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
 /// a terminal (review M1, no silent data loss): `term_label.<p>.<n>` when level `n` of `p` has no
 /// terminal left, and the fuse rating of position `p` (the strip's field) when `p` has none; with
 /// a note for each.
-pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[ConnectionPointId]) -> (Vec<ecad_model::Op>, Vec<String>) {
+pub(crate) fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[ConnectionPointId]) -> (Vec<ecad_model::Op>, Vec<String>) {
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
     let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return (ops, notes) };
     if dropped.is_empty() || crate::terminal_strips::strip_of(doc, c).is_none() {
@@ -513,13 +514,13 @@ pub fn positions(doc: &Document, c: DeviceId) -> Vec<Position> {
 }
 
 /// The labels of strip `c`'s fuse positions (the positions a `rating.<p>` names).
-pub fn fuse_positions(doc: &Document, c: DeviceId) -> BTreeSet<String> {
+pub(crate) fn fuse_positions(doc: &Document, c: DeviceId) -> BTreeSet<String> {
     positions(doc, c).into_iter().filter(|p| p.ty.code == "fuse").map(|p| p.label).collect()
 }
 
 /// The position groups the numbering planner numbers (design 036 §10.3, FP8c): terminals with one
 /// label, split where a level is drawn twice (the second drawing is a group of its own).
-pub fn position_groups(doc: &Document, c: DeviceId) -> Vec<Vec<ConnectionPointId>> {
+pub(crate) fn position_groups(doc: &Document, c: DeviceId) -> Vec<Vec<ConnectionPointId>> {
     let mut out = Vec::new();
     for p in positions(doc, c) {
         let mut main: Vec<ConnectionPointId> = Vec::new();
@@ -674,7 +675,7 @@ fn offer_refusal(text: &str) -> CmdError {
 ///
 /// # Errors
 /// Unreadable text, an unknown code, no positions, more than [`crate::terminal_strips::MAX_POSITIONS`].
-pub fn parse_counts(text: &str) -> Result<Counts, CmdError> {
+pub(crate) fn parse_counts(text: &str) -> Result<Counts, CmdError> {
     if text.chars().count() > MAX_OFFER_CHARS {
         return Err(offer_refusal(text));
     }
@@ -722,7 +723,7 @@ pub fn counts_text(c: &Counts) -> String {
 /// The text of a link item for position `p`, level `n` as every ECAD writer writes it: `p` for
 /// level 1 of an undotted position, else `p.n` (a dotted position is always written with its
 /// level, roadmap question 5).
-pub fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
+pub(crate) fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
     match point {
         Some(c) => format!("{p}.{n}{c}"),
         None if n == 1 && !p.contains('.') => p.to_string(),
@@ -732,7 +733,7 @@ pub fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
 
 /// Canonical link text on level `n` and point `point` for `labels` (plan order) out of `order`:
 /// runs become ranges, each end written with [`jumper_bar_end`] (review 036, 2: the point is kept).
-pub fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Option<char>) -> String {
+pub(crate) fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Option<char>) -> String {
     let base = ecad_model::connectivity::jumper_bars::canonical(labels, order);
     if n == 1 && point.is_none() && !labels.iter().any(|l| l.contains('.')) {
         return base;
@@ -772,7 +773,7 @@ pub fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Opti
 /// as numbers, so renaming a level never breaks a link). An end that already reads as a level, or
 /// whose name no type of its position has, is left as typed. A name containing `-` (the sensor
 /// terminal's `-`) is written by its number.
-pub fn jumper_bar_names_to_numbers(doc: &Document, c: DeviceId, text: &str) -> String {
+pub(crate) fn jumper_bar_names_to_numbers(doc: &Document, c: DeviceId, text: &str) -> String {
     if text.chars().count() > ecad_model::connectivity::jumper_bars::MAX_TEXT_CHARS {
         return text.to_string();
     }
@@ -800,7 +801,7 @@ pub fn jumper_bar_names_to_numbers(doc: &Document, c: DeviceId, text: &str) -> S
 
 /// When link value `text` on strip `c` names an end like `2.1` while a position labelled `2.1`
 /// exists (§5.1, Q5): `Link -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.`
-pub fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> Option<String> {
+pub(crate) fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> Option<String> {
     let p = ecad_model::connectivity::jumper_bars::parse(text).ok()?;
     let labels: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     let mut words = Vec::new();
@@ -858,7 +859,7 @@ fn ticks(n: u32) -> Vec<Primitive> {
 pub fn graphics(key: StarterKey) -> Option<Vec<Primitive>> {
     let (t, n) = of_starter(key).filter(|(t, _)| !t.legacy())?;
     Some(match (t.key, n) {
-        (StarterKey::Termfuse, _) => crate::symbols::graphics_of(StarterKey::Fuseterm),
+        (StarterKey::Terminalblockfuse, _) => crate::symbols::graphics_of(StarterKey::Fuseterminalblock),
         (StarterKey::Termdisc, _) => {
             vec![rect((-3.5, -7.5), (3.5, 7.5)), line((0.0, 10.0), (0.0, 3.0)), line((0.0, 3.0), (2.5, -3.0)), line((0.0, -3.0), (0.0, -10.0))]
         }
@@ -949,7 +950,7 @@ mod tests {
         assert_eq!(of_starter(StarterKey::TermlnpeL2).map(|(t, n)| (t.code, n)), Some(("lnpe", Some(2))));
         assert_eq!(of_starter(StarterKey::Termlnpe).map(|(t, n)| (t.code, n)), Some(("lnpe", None)));
         assert_eq!(of_starter(StarterKey::Coil), None);
-        assert_eq!(of_starter(StarterKey::Termfuse).map(|(t, n)| (t.code, n)), Some(("fuse", Some(1))));
+        assert_eq!(of_starter(StarterKey::Terminalblockfuse).map(|(t, n)| (t.code, n)), Some(("fuse", Some(1))));
         for t in TYPES {
             assert_eq!(t.level_starters.len(), if t.multi() { t.levels.len() } else { 0 }, "{}", t.code);
             for (i, k) in t.level_starters.iter().enumerate() {

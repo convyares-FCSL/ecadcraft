@@ -21,12 +21,12 @@ use ecad_model::connectivity::jumper_bars::{self, Positions};
 use ecad_model::{DeviceId, Document, ObjectRef, Op, Properties};
 
 use crate::CmdError;
-use crate::terminal_strips::TermRow;
+use crate::terminal_strips::strip_model::TermRow;
 
 /// What every placement key starts with.
-pub const ACC_PREFIX: &str = "acc.";
-pub const START_KEY: &str = "acc.start";
-pub const END_KEY: &str = "acc.end";
+pub(crate) const ACC_PREFIX: &str = "acc.";
+pub(crate) const START_KEY: &str = "acc.start";
+pub(crate) const END_KEY: &str = "acc.end";
 pub const AFTER_PREFIX: &str = "acc.after.";
 pub const ON_PREFIX: &str = "acc.on.";
 /// Most items one place holds.
@@ -34,13 +34,13 @@ pub const MAX_ITEMS: usize = 8;
 /// Most characters of a position label in a key.
 pub const MAX_LABEL_CHARS: usize = 16;
 /// The marker card size key and its range.
-pub const PER_CARD_KEY: &str = "marker.per_card";
-pub const MAX_PER_CARD: u32 = 100;
+pub(crate) const PER_CARD_KEY: &str = "marker.per_card";
+pub(crate) const MAX_PER_CARD: u32 = 100;
 /// The jumper bar size key, its range and its default.
-pub const BAR_KEY: &str = "jumper.bar";
-pub const MIN_BAR: u32 = 2;
-pub const MAX_BAR: u32 = 50;
-pub const DEFAULT_BAR: usize = 10;
+pub(crate) const BAR_KEY: &str = "jumper.bar";
+pub(crate) const MIN_BAR: u32 = 2;
+pub(crate) const MAX_BAR: u32 = 50;
+pub(crate) const DEFAULT_BAR: usize = 10;
 /// The items with part data (FP2, FP6).
 pub const PART_ITEMS: [&str; 7] = ["end_stop", "end_plate", "end_plate_pe", "partition", "marker", "strip_label", "jumper"];
 /// A part's fields (brief 047, design 047 §5: and its article number).
@@ -153,7 +153,7 @@ impl Spot {
 }
 
 /// The place a key names, when it is a placement key.
-pub fn spot_of(key: &str) -> Option<Spot> {
+pub(crate) fn spot_of(key: &str) -> Option<Spot> {
     match key {
         START_KEY => Some(Spot::Start),
         END_KEY => Some(Spot::End),
@@ -175,7 +175,7 @@ fn shown(text: &str) -> String {
 ///
 /// # Errors
 /// Empty, longer than [`MAX_LABEL_CHARS`], or with spaces, control characters, `,` or `-`.
-pub fn check_label(l: &str) -> Result<(), CmdError> {
+pub(crate) fn check_label(l: &str) -> Result<(), CmdError> {
     if l.is_empty() || l.chars().count() > MAX_LABEL_CHARS || l.chars().any(|c| c.is_whitespace() || c.is_control() || c == ',') {
         return Err(CmdError::refused(format!(
             "\"{}\" is not a position label. A label has 1 to {MAX_LABEL_CHARS} characters, no spaces or commas.",
@@ -189,7 +189,7 @@ pub fn check_label(l: &str) -> Result<(), CmdError> {
 ///
 /// # Errors
 /// More than [`MAX_ITEMS`], or a word not allowed at that place, in words with the way forward.
-pub fn parse_items(text: &str, on: bool) -> Result<Vec<Acc>, CmdError> {
+pub(crate) fn parse_items(text: &str, on: bool) -> Result<Vec<Acc>, CmdError> {
     if text.chars().count() > MAX_ITEMS * 16 {
         return Err(CmdError::refused(format!("A place holds at most {MAX_ITEMS} accessories.")));
     }
@@ -218,7 +218,7 @@ pub fn parse_items(text: &str, on: bool) -> Result<Vec<Acc>, CmdError> {
 }
 
 /// Items as stored: `end_plate,end_stop`.
-pub fn items_text(items: &[Acc]) -> String {
+pub(crate) fn items_text(items: &[Acc]) -> String {
     items.iter().map(|a| a.key()).collect::<Vec<_>>().join(",")
 }
 
@@ -226,7 +226,7 @@ pub fn items_text(items: &[Acc]) -> String {
 ///
 /// # Errors
 /// [`parse_items`]'s.
-pub fn acc_value(spot: &Spot, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub(crate) fn acc_value(spot: &Spot, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     let items = parse_items(v, spot.is_on())?;
     Ok((!items.is_empty()).then(|| items_text(&items)))
@@ -239,7 +239,7 @@ pub fn project_key(strip_key: &str) -> String {
 }
 
 /// Every strip part key (FP2, FP6), in table order.
-pub fn part_keys() -> Vec<String> {
+pub(crate) fn part_keys() -> Vec<String> {
     let mut v: Vec<String> = PART_ITEMS.iter().flat_map(|i| FIELDS.iter().map(move |f| format!("{i}.{f}"))).collect();
     v.push(PER_CARD_KEY.into());
     v.push(BAR_KEY.into());
@@ -247,7 +247,7 @@ pub fn part_keys() -> Vec<String> {
 }
 
 /// Whether `key` is a strip part key.
-pub fn is_part_key(key: &str) -> bool {
+pub(crate) fn is_part_key(key: &str) -> bool {
     if key == PER_CARD_KEY || key == BAR_KEY {
         return true;
     }
@@ -261,7 +261,7 @@ fn is_article_key(key: &str) -> bool {
 }
 
 /// `jumper_bar.<n>.<field>`: the link and the field.
-pub fn jumper_bar_part_key(key: &str) -> Option<(u32, &str)> {
+pub(crate) fn jumper_bar_part_key(key: &str) -> Option<(u32, &str)> {
     let rest = key.strip_prefix(jumper_bars::PREFIX)?;
     let (n, f) = rest.split_once('.')?;
     let n = jumper_bars::jumper_bar_number(&jumper_bars::key(n.parse().ok()?)).filter(|x| x.to_string() == n)?;
@@ -269,7 +269,7 @@ pub fn jumper_bar_part_key(key: &str) -> Option<(u32, &str)> {
 }
 
 /// The strip key a project key stands for (`strip_jumper_bar` → `jumper.bar`).
-pub fn strip_key_of_project(key: &str) -> Option<String> {
+pub(crate) fn strip_key_of_project(key: &str) -> Option<String> {
     part_keys().into_iter().find(|k| project_key(k) == key)
 }
 
@@ -297,7 +297,7 @@ pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Resul
 }
 
 /// The rule for a project property `strip_*` (FP3, FP6): `None` when `key` is not one.
-pub fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
+pub(crate) fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     // Brief 047 (design 047 §5): a terminal type's article number, checked as every other.
     if is_type_article_project_key(key) {
         return Some(crate::reports::bom::article_value(value));
@@ -338,7 +338,7 @@ pub fn positions(doc: &Document, c: DeviceId) -> Vec<String> {
 ///
 /// # Errors
 /// Unreadable text, or fewer than 2 positions.
-pub fn jumper_bar_value(doc: &Document, c: DeviceId, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub(crate) fn jumper_bar_value(doc: &Document, c: DeviceId, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     let p = jumper_bars::parse(v)?;
     let order = positions(doc, c);
@@ -349,7 +349,7 @@ pub fn jumper_bar_value(doc: &Document, c: DeviceId, value: Option<&str>) -> Res
 ///
 /// # Errors
 /// Fewer than 2 positions.
-pub fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdError> {
+pub(crate) fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdError> {
     // Brief 036: a cross-level link joins levels of one position (`1.1-1.3`).
     if p.crosses_levels() {
         return Ok(p.text());
@@ -369,7 +369,7 @@ pub fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdErr
 
 /// A link value without the items written as `drop` (brief 036: **Drop missing levels**); empty
 /// when nothing is left.
-pub fn drop_items(text: &str, drop: &[String]) -> String {
+pub(crate) fn drop_items(text: &str, drop: &[String]) -> String {
     let Ok(p) = jumper_bars::parse(text) else { return text.to_string() };
     let kept: Vec<String> =
         p.0.iter()
@@ -387,7 +387,7 @@ pub fn drop_items(text: &str, drop: &[String]) -> String {
 ///
 /// # Errors
 /// A placement or link key on a device that is not a strip, and every refusal of the value.
-pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
+pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     let strip = crate::terminal_strips::strip_of(doc, c).is_some();
     let not_strip = || CmdError::refused(format!("{} is not a terminal strip. Pick a terminal of the strip.", crate::devices::tag_words(doc, c)));
     if key.starts_with(ACC_PREFIX) {
@@ -521,7 +521,7 @@ pub struct StripAcc {
 impl StripAcc {
     /// The part number of a gap row: `acc` in a gap, `pe_before` when the position before it is
     /// PE.
-    pub fn gap_part(&self, acc: Acc, pe_before: bool) -> Option<&String> {
+    pub(crate) fn gap_part(&self, acc: Acc, pe_before: bool) -> Option<&String> {
         if acc == Acc::EndPlate
             && pe_before
             && let Some(p) = self.parts.get("end_plate_pe")
@@ -612,7 +612,7 @@ impl Parts<'_> {
 }
 
 /// A strip's accessories on `doc`, from its properties and its plan rows (label order).
-pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripAcc {
+pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripAcc {
     let mut a = StripAcc::default();
     // Brief 036: one entry per position (rows are levels; plan order).
     let mut order: Vec<String> = Vec::with_capacity(rows.len());
@@ -864,7 +864,7 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
 /// plan: `RemoveConnectionPoint` + `AddConnectionPoint` of one ID) relabel them, and the preview lines
 /// (`-X01: partition after 4 → after 6`, `-X01: link 1-4 → 3-6`). Moves are worked out on the end
 /// state, so `4 ↔ 5` swaps cleanly; keys on labels no terminal had stay.
-pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
+pub(crate) fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
     let maps = relabels(ops);
     let mut out = Vec::new();
     let mut lines = Vec::new();

@@ -67,11 +67,11 @@ pub const MAX_BYTES: usize = 16 << 20;
 /// Most I/O tags kept.
 pub const MAX_ROWS: usize = 20_000;
 /// Longest comment kept.
-pub const MAX_COMMENT: usize = 256;
+pub(crate) const MAX_COMMENT: usize = 256;
 /// Longest data type kept.
-pub const MAX_TYPE: usize = 32;
+pub(crate) const MAX_TYPE: usize = 32;
 /// Most fields read in one row (a hostile line of separators is cut there).
-pub const MAX_FIELDS: usize = 64;
+pub(crate) const MAX_FIELDS: usize = 64;
 
 /// What a reader read.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -146,7 +146,7 @@ pub trait TagFormat: Sync {
 pub struct GenericCsv;
 
 /// The formats, in the order the path dialog lists them.
-pub static FORMATS: &[&dyn TagFormat] = &[&GenericCsv];
+pub(crate) static FORMATS: &[&dyn TagFormat] = &[&GenericCsv];
 
 /// Said when no format reads a file (design 056 §7.1).
 pub const UNKNOWN: &str = "Only the generic CSV tag table can be read yet (name, address, type, comment).";
@@ -157,12 +157,12 @@ pub fn format(id: &str) -> Option<&'static dyn TagFormat> {
 }
 
 /// The format that reads `bytes`, if any.
-pub fn sniff(bytes: &[u8]) -> Option<&'static dyn TagFormat> {
+pub(crate) fn sniff(bytes: &[u8]) -> Option<&'static dyn TagFormat> {
     FORMATS.iter().copied().find(|f| f.sniff(bytes))
 }
 
 /// The columns of the generic CSV, in order; the last five on export only.
-pub const CSV_COLUMNS: [&str; 9] = ["name", "address", "type", "comment", "card", "channel", "safe", "drives", "page"];
+pub(crate) const CSV_COLUMNS: [&str; 9] = ["name", "address", "type", "comment", "card", "channel", "safe", "drives", "page"];
 
 /// The header line's fields of a CSV text (BOM removed), with its separator.
 fn header(text: &str) -> (Vec<String>, char) {

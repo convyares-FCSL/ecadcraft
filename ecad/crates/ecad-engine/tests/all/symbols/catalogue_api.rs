@@ -53,7 +53,7 @@ fn families() {
     for k in ["co", "swco", "power4", "ssrin", "ssrout"] {
         assert!(matches!(s(k).family, Family::Contacts), "{k}");
     }
-    for k in ["rcbo2", "rcd2", "rcd4", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"] {
+    for k in ["rcbo2", "rcd2", "rcd4", "fuseterminalblock", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"] {
         assert!(matches!(s(k).family, Family::Protection), "{k}");
     }
     for k in ["prox3", "floatno", "floatnc", "rollerno", "rollernc", "interlocknc", "interlockno", "tc"] {

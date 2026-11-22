@@ -160,7 +160,7 @@ ecad_model::word_enum! {
         Rcd4,
         Ssrin,
         Ssrout,
-        Fuseterm,
+        Fuseterminalblock,
         Fusebank4,
         Fusebank6,
         Fusebank8,
@@ -247,7 +247,7 @@ ecad_model::word_enum! {
         TermsensorL3,
         Termsensor,
         Termdisc,
-        Termfuse,
+        Terminalblockfuse,
         Plcim,
         Plcpm,
         Plccm,
@@ -275,7 +275,7 @@ impl StarterKey {
             | K::Rcbo2
             | K::Rcd2
             | K::Rcd4
-            | K::Fuseterm
+            | K::Fuseterminalblock
             | K::Fusebank4
             | K::Fusebank6
             | K::Fusebank8
@@ -309,7 +309,7 @@ impl StarterKey {
             | K::TermsensorL3
             | K::Termsensor
             | K::Termdisc
-            | K::Termfuse => DeviceGroup::TerminalStrip,
+            | K::Terminalblockfuse => DeviceGroup::TerminalStrip,
             K::Socket2
             | K::Socket3
             | K::Socket4
@@ -398,7 +398,7 @@ impl StarterKey {
             | K::Rcd4
             | K::Ssrin
             | K::Ssrout
-            | K::Fuseterm
+            | K::Fuseterminalblock
             | K::Prox3
             | K::Floatno
             | K::Floatnc
@@ -467,7 +467,7 @@ impl StarterKey {
             | K::TermsensorL3
             | K::Termsensor
             | K::Termdisc
-            | K::Termfuse
+            | K::Terminalblockfuse
             | K::Plcim
             | K::Plcpm
             | K::Plccm
@@ -618,7 +618,7 @@ impl Starter {
                 P::Rcbo
             } else if matches!(self.key, K::Rcd2 | K::Rcd4) {
                 P::Rcd
-            } else if self.key == K::Fuseterm {
+            } else if self.key == K::Fuseterminalblock {
                 P::FuseTerminalBlock
             } else {
                 P::Fuse
@@ -838,7 +838,7 @@ pub const STARTERS: &[Starter] = &[
     st(K::Rcd4, "RCD, 4-pole", &["rcd", "rccb", "residual current", "protection"], HEAD, cp(6)).of(Family::Protection),
     st(K::Ssrin, "SSR input", &["ssr", "solid state relay", "relay"], HEAD, cp(7)).of(Family::Contacts),
     st(K::Ssrout, "SSR output", &["ssr", "solid state relay", "contact"], PART, cp(8)).of(Family::Contacts),
-    st(K::Fuseterm, "Fuse terminal", &["fuse", "terminal", "fuse holder", "protection"], HEAD, cp(9)).of(Family::Protection),
+    st(K::Fuseterminalblock, "Fuse terminal", &["fuse", "terminal", "fuse holder", "protection"], HEAD, cp(9)).of(Family::Protection),
     st(K::Fusebank4, "Fuse bank, 4-way", FUSE_BANK, HEAD, cp(10)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
     st(K::Fusebank6, "Fuse bank, 6-way", FUSE_BANK, HEAD, cp(11)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
     st(K::Fusebank8, "Fuse bank, 8-way", FUSE_BANK, HEAD, cp(12)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
@@ -902,7 +902,7 @@ pub const STARTERS: &[Starter] = &[
     card(K::Plcrtd, "PLC RTD card", &["plc", "rtd", "temperature", "card"], pc(7)).quiet_at(Quiet::All),
     card(K::Plciol, "PLC IO-Link master", &["plc", "io-link", "iol", "card"], pc(8)).quiet_at(Quiet::All),
     // ---- Brief 036: multi-level terminals (design 036 §3.1). Geometry, points and bridges come from
-    // `terminal_block_types`; `termfuse` shares `fuseterm`'s drawing.
+    // `terminal_block_types`; `terminalblockfuse` shares `fuseterminalblock`'s drawing.
     lvl(K::Term2L1, "Two-level terminal, level 1", TWO, mt(1)),
     lvl(K::Term2L2, "Two-level terminal, level 2", TWO, mt(2)),
     lvl(K::Term2, "Two-level terminal", TWO, mt(3)),
@@ -922,7 +922,7 @@ pub const STARTERS: &[Starter] = &[
     lvl(K::TermsensorL3, "Sensor terminal, level -", SENSOR, mt(17)),
     lvl(K::Termsensor, "Sensor terminal", SENSOR, mt(18)),
     lvl(K::Termdisc, "Disconnect terminal", &["disconnect", "knife", "isolating", "terminal"], mt(19)),
-    lvl(K::Termfuse, "Fuse terminal (strip position)", &["fuse terminal", "fuse", "terminal"], mt(20)),
+    lvl(K::Terminalblockfuse, "Fuse terminal (strip position)", &["fuse terminal", "fuse", "terminal"], mt(20)),
     // ---- Brief 045 (design 045 §3.1): a head module (a rack of its own), a power module and a
     // communication module, as 034's card bodies.
     card(K::Plcim, "PLC head module", &["plc", "im", "interface", "head", "remote", "station", "card"], pc(9)),
@@ -982,7 +982,7 @@ pub fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)
         | K::Rcd4
         | K::Ssrin
         | K::Ssrout
-        | K::Fuseterm
+        | K::Fuseterminalblock
         | K::Fusebank4
         | K::Fusebank6
         | K::Fusebank8
@@ -1056,7 +1056,7 @@ pub fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse
+        | K::Terminalblockfuse
         | K::Plcim
         | K::Plcpm
         | K::Plccm => return None,
@@ -1135,7 +1135,7 @@ fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
         | K::Rcd4
         | K::Ssrin
         | K::Ssrout
-        | K::Fuseterm
+        | K::Fuseterminalblock
         | K::Fusebank4
         | K::Fusebank6
         | K::Fusebank8
@@ -1209,7 +1209,7 @@ fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse
+        | K::Terminalblockfuse
         | K::Plcim
         | K::Plcpm
         | K::Plccm => {}
@@ -1792,7 +1792,7 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::Power4
         | K::Ssrin
         | K::Ssrout
-        | K::Fuseterm
+        | K::Fuseterminalblock
         | K::Fusebank4
         | K::Fusebank6
         | K::Fusebank8
@@ -1828,7 +1828,7 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => vec![tag, description, rating],
+        | K::Terminalblockfuse => vec![tag, description, rating],
     };
     if is_fuse_bank(s) {
         for (t, key) in d.connection_points.iter().filter_map(|t| Some((t, t.key.as_def().filter(|k| ecad_model::naming::words::is_digits(k))?))) {
@@ -2040,7 +2040,7 @@ impl Connector {
             | K::Rcd4
             | K::Ssrin
             | K::Ssrout
-            | K::Fuseterm
+            | K::Fuseterminalblock
             | K::Fusebank4
             | K::Fusebank6
             | K::Fusebank8
@@ -2087,7 +2087,7 @@ impl Connector {
             | K::TermsensorL3
             | K::Termsensor
             | K::Termdisc
-            | K::Termfuse
+            | K::Terminalblockfuse
             | K::Plcim
             | K::Plcpm
             | K::Plccm
@@ -2267,7 +2267,7 @@ fn motor(phase: &str, leads: &[((f64, f64), (f64, f64))]) -> Vec<Primitive> {
     g
 }
 
-/// The graphics of starter `key` (brief 036: `termfuse` draws `fuseterm`'s).
+/// The graphics of starter `key` (brief 036: `terminalblockfuse` draws `fuseterminalblock`'s).
 pub(crate) fn graphics_of(key: StarterKey) -> Vec<Primitive> {
     graphics(key)
 }
@@ -2400,7 +2400,7 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
             g.push(poly(&[(2.0, -1.5), (5.0, -1.5), (3.5, 1.5)], true));
             g
         }
-        K::Fuseterm => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0)), rect((-3.5, -7.5), (3.5, 7.5))],
+        K::Fuseterminalblock => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0)), rect((-3.5, -7.5), (3.5, 7.5))],
         // ---- Brief 034 stage 2 (design 034 §4).
         K::Prox3 => vec![
             rect((-10.0, -5.0), (10.0, 5.0)),
@@ -2531,7 +2531,7 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_strips::terminal_blocks::graphics(key).unwrap_or_else(|| sized_graphics(key)),
+        | K::Terminalblockfuse => crate::terminal_strips::terminal_blocks::graphics(key).unwrap_or_else(|| sized_graphics(key)),
     }
 }
 
@@ -2592,7 +2592,7 @@ fn connection_points(key: StarterKey) -> Vec<ConnectionPointDef> {
             t("N2", 30.0, -10.0),
         ],
         K::Ssrin => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
-        K::Ssrout | K::Fuseterm | K::Heater => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
+        K::Ssrout | K::Fuseterminalblock | K::Heater => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
         // ---- Brief 034 stage 2: IEC 60947-5-2's numbers (1 supply +, 3 supply −, 4 output).
         K::Prox3 => vec![t("1", -5.0, 10.0), t("3", -5.0, -10.0), t("4", 5.0, -10.0)],
         K::Valve => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
@@ -2676,7 +2676,7 @@ fn connection_points(key: StarterKey) -> Vec<ConnectionPointDef> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_strips::terminal_blocks::connection_points(key).unwrap_or_else(|| sized_connection_points(key, &t)),
+        | K::Terminalblockfuse => crate::terminal_strips::terminal_blocks::connection_points(key).unwrap_or_else(|| sized_connection_points(key, &t)),
     }
 }
 
@@ -2804,7 +2804,7 @@ mod tests {
         ("rcd4", 43.0, 20.0, "1/2/3/4/5/6/N1/N2"),
         ("ssrin", 12.0, 20.0, "A1/A2"),
         ("ssrout", 9.0, 20.0, "1/2"),
-        ("fuseterm", 7.0, 20.0, "1/2"),
+        ("fuseterminalblock", 7.0, 20.0, "1/2"),
         ("fusebank4", 50.0, 35.0, "L+/M/1/2/3/4"),
         ("fusebank6", 70.0, 35.0, "L+/M/1/2/3/4/5/6"),
         ("fusebank8", 90.0, 35.0, "L+/M/1/2/3/4/5/6/7/8"),
@@ -3031,8 +3031,14 @@ mod tests {
             ]
         );
         assert_eq!(keys("contact"), ["coil", "no", "nc", "power3", "co", "swco", "power4", "ssrin", "ssrout"]);
-        assert_eq!(keys("fuse"), ["fuse", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12", "termfuse"]);
-        assert_eq!(keys("protection"), ["rcbo2", "rcd2", "rcd4", "fuseterm", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]);
+        assert_eq!(
+            keys("fuse"),
+            ["fuse", "fuseterminalblock", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12", "terminalblockfuse"]
+        );
+        assert_eq!(
+            keys("protection"),
+            ["rcbo2", "rcd2", "rcd4", "fuseterminalblock", "fusebank4", "fusebank6", "fusebank8", "fusebank10", "fusebank12"]
+        );
         assert!(keys("xyz").is_empty());
         assert!(keys("basic").is_empty());
         assert_eq!(keys("").len(), STARTERS.len());

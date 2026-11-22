@@ -108,7 +108,7 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
         _ => "",
     };
     let members = doc.cables.get(&k).map_or(0, |x| x.cores.len());
-    c.cores_line = match ecad_electrical::terminal_strips::cable_cores(doc, k).and_then(|n| n.offer) {
+    c.cores_line = match ecad_electrical::terminal_strips::cores::cable_cores(doc, k).and_then(|n| n.offer) {
         Some(o) => format!("{} \u{b7} {members} assigned", o.len()),
         None => format!("{members} assigned"),
     };

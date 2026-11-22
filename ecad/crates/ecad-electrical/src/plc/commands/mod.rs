@@ -1,11 +1,20 @@
 //! The rules of the PLC commands (briefs 045, 051 and 056): a card's slot (`plcslot`), its type
 //! (`plccardtype`), its channels on the page (`plcchannels`, `plcchannel`), its page (`plcpage`),
 //! the addresses (`plcaddress`) and the tags (`plcmaketags`). Each function reads the document and
-//! returns the ops to commit and what to report; the engine crate's shims read the parameters, the
-//! kept PLC model and the files, commit and answer in JSON.
+//! returns the ops to commit and what to report. The generic commands built on them are declared in
+//! this folder's modules (`plcslot`, `plcracks`, `plccardtype` in [`racks`]; `plcaddress`,
+//! `plcchannel`, `iolist`, `plcimport` and `plcexport`, `plcmaketags` in the module of their name;
+//! the runner reads the parameters and the files, commits and answers). `plcchannels` and `plcpage`
+//! place drawing and stay session commands in the engine.
 //!
-//! Excludes: the kept model (`plcracks`, `iolist`, `plcexport` and `plcimport` read it in the
-//! engine crate) and the tag file formats ([`crate::plc::exchange`]).
+//! Excludes: the tag file formats ([`crate::plc::exchange`]).
+
+pub mod address;
+pub mod channel;
+pub mod exchange;
+pub mod iolist;
+pub mod racks;
+pub mod tags;
 
 use ecad_model::geometry::units::{Degrees, Radians};
 use std::collections::{BTreeMap, BTreeSet};
@@ -32,7 +41,7 @@ use crate::plc::signals;
 
 /// The rack `plcslot` puts a card in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RackChoice<'a> {
+pub(crate) enum RackChoice<'a> {
     /// Its own rack, else the only one.
     Default,
     /// No rack: take the card out.
@@ -45,7 +54,7 @@ pub enum RackChoice<'a> {
 ///
 /// # Errors
 /// A slot that does not read, or a slot with `rack: null`.
-pub fn slot_given(out: bool, slot: Option<&str>) -> Result<Option<u32>, CmdError> {
+pub(crate) fn slot_given(out: bool, slot: Option<&str>) -> Result<Option<u32>, CmdError> {
     let slot = slot.map(rack::slot_number).transpose()?;
     if out && slot.is_some() {
         return Err(CmdError::input("`slot` is for a card in a rack; `rack: null` takes the card out."));
@@ -58,7 +67,7 @@ pub fn slot_given(out: bool, slot: Option<&str>) -> Result<Option<u32>, CmdError
 ///
 /// # Errors
 /// No such card or rack, and the refusals of [`rack::plan_slot`].
-pub fn slot_plan(doc: &Document, card: &str, rack: RackChoice<'_>, slot: Option<u32>, swap: bool) -> Result<(DeviceId, Vec<Op>), CmdError> {
+pub(crate) fn slot_plan(doc: &Document, card: &str, rack: RackChoice<'_>, slot: Option<u32>, swap: bool) -> Result<(DeviceId, Vec<Op>), CmdError> {
     let card = card_named(doc, card)?;
     let ops = match rack {
         RackChoice::Out => rack::slot_ops(doc, card, None),
@@ -75,13 +84,13 @@ pub fn slot_plan(doc: &Document, card: &str, rack: RackChoice<'_>, slot: Option<
 ///
 /// # Errors
 /// Any other word.
-pub fn io_type(word: &str) -> Result<CardType, CmdError> {
+pub(crate) fn io_type(word: &str) -> Result<CardType, CmdError> {
     CardType::parse(word).filter(|t| IO_TYPES.contains(t)).ok_or(CmdError::refused("`type` is DI, DQ, AI, AO, RTD or IOL"))
 }
 
 /// What `plccardtype` does.
 #[derive(Debug, Clone)]
-pub struct CardTypePlan {
+pub(crate) struct CardTypePlan {
     pub card: DeviceId,
     /// The ops; empty when the card is that type already.
     pub ops: Vec<Op>,
@@ -96,7 +105,7 @@ pub struct CardTypePlan {
 /// # Errors
 /// No such card, not an I/O card, no card body drawn, or a signal (a channel in use, named or
 /// drawn) at or past the new type's channel count.
-pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: CardType) -> Result<CardTypePlan, CmdError> {
+pub(crate) fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: CardType) -> Result<CardTypePlan, CmdError> {
     let c = card_named(doc, card)?;
     let who = crate::devices::tag_words(doc, c);
     let from = card_type_of(doc, c).ok_or_else(|| CmdError::refused(format!("{who} is not a PLC card.")))?;
@@ -207,7 +216,7 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
 ///
 /// # Errors
 /// Neither or both, or no such card or rack.
-pub fn tag_cards(doc: &Document, card: Option<&str>, rack: Option<&str>) -> Result<(Vec<DeviceId>, String), CmdError> {
+pub(crate) fn tag_cards(doc: &Document, card: Option<&str>, rack: Option<&str>) -> Result<(Vec<DeviceId>, String), CmdError> {
     match (card, rack) {
         (Some(c), None) => {
             let c = card_named(doc, c)?;
@@ -227,7 +236,7 @@ pub fn tag_cards(doc: &Document, card: Option<&str>, rack: Option<&str>) -> Resu
 /// What `plcaddress` is given. Each value: absent (`None`), null (`Some(None)`, unpins or goes
 /// back to the default) or the text written.
 #[derive(Debug, Clone, Default)]
-pub struct AddressInput {
+pub(crate) struct AddressInput {
     pub rack: Option<String>,
     pub card: Option<String>,
     pub style: Option<Option<String>>,
@@ -241,7 +250,7 @@ pub struct AddressInput {
 
 /// What `plcaddress` changes.
 #[derive(Debug, Clone)]
-pub struct AddressPlan {
+pub(crate) struct AddressPlan {
     /// The rack's or card's tag.
     pub who: String,
     /// The rack whose cards' addresses may move.
@@ -257,7 +266,7 @@ pub struct AddressPlan {
 /// # Errors
 /// No such rack or card, a value that is not one of its setting's, `fix` with `clear`, or a start
 /// or size out of range.
-pub fn plan_address(doc: &Document, input: &AddressInput) -> Result<AddressPlan, CmdError> {
+pub(crate) fn plan_address(doc: &Document, input: &AddressInput) -> Result<AddressPlan, CmdError> {
     let mut ops = Vec::new();
     let set = |ops: &mut Vec<Op>, c: DeviceId, key: &str, after: Option<String>| {
         let before = doc.devices.get(&c).and_then(|x| x.properties.get(key)).cloned();
@@ -539,7 +548,7 @@ pub fn plan_rest(
 
 /// What `plcchannel` is given (besides its card).
 #[derive(Debug, Clone, Default)]
-pub struct ChannelInput {
+pub(crate) struct ChannelInput {
     /// The channel number as shown.
     pub channel: Option<u32>,
     /// The 0-based index, standing for `channel` when that is absent.
@@ -556,7 +565,7 @@ pub struct ChannelInput {
 
 /// What `plcchannel` changes.
 #[derive(Debug, Clone)]
-pub struct ChannelPlan {
+pub(crate) struct ChannelPlan {
     pub card: DeviceId,
     /// The channel number as shown.
     pub shown: u32,
@@ -574,7 +583,7 @@ pub struct ChannelPlan {
 /// # Errors
 /// No such card or channel, a value that does not read, a duplicate tag or pin, or a channel drawn
 /// already.
-pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<ChannelPlan, CmdError> {
+pub(crate) fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<ChannelPlan, CmdError> {
     let (c, t) = channel_card(doc, card)?;
     let who = crate::devices::tag_words(doc, c);
     let first = first_number(doc, c);
