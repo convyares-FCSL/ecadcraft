@@ -4,7 +4,7 @@
 //! Coordinates: the block's own millimetres, from its bottom-left corner, y up ([`View`]).
 
 use ecad_engine::title_block::bind;
-use ecad_model::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect as BRect, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect as BRect, TextDraw, TitleBlockLayout};
 use ecad_model::{Primitive, Pt};
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Shape, Stroke, pos2, vec2};
@@ -225,7 +225,7 @@ pub fn field_text(
 }
 
 /// Paint the text `value` in box `r` (screen) with `look`; returns whether it was cut.
-fn paint_text(p: &egui::Painter, v: View, r: &BRect, top_gap: f64, value: &str, look: &TextLook, ink: Color32) -> bool {
+fn paint_text(p: &egui::Painter, v: View, r: &BRect, top_gap: f64, value: &str, look: &TextDraw, ink: Color32) -> bool {
     if value.is_empty() {
         return false;
     }
@@ -269,7 +269,7 @@ fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sampl
     let thick = Stroke::new(2.0, ink);
     let outside = d.outside();
     for (i, item) in d.now.layout.items.iter().enumerate() {
-        let colour = |look: &TextLook| if look.colour == Ink::Red { red } else { ink };
+        let colour = |look: &TextDraw| if look.colour == Ink::Red { red } else { ink };
         match item {
             BlockItem::Line { a, b, weight } => {
                 p.line_segment([v.at(a.0, a.1), v.at(b.0, b.1)], if *weight == LineWeight::Thick { thick } else { thin });
@@ -599,7 +599,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
                         _ => None,
                     })
                     .unwrap_or_else(|| bind::name(&bind));
-                d.add(BlockItem::Field { at: r, bind, label: Some(label), look: TextLook::default(), if_empty: Default::default() });
+                d.add(BlockItem::Field { at: r, bind, label: Some(label), look: TextDraw::default(), if_empty: Default::default() });
                 acts.push(Act::Resample);
             }
         }
@@ -863,7 +863,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
             },
             Tool::Text if inside(sq) => {
                 let i =
-                    d.add(BlockItem::Text { at: BRect::new(sq.0, (sq.1 - 6.0).max(0.0), 30.0, 6.0), text: "Text".into(), look: TextLook::default() });
+                    d.add(BlockItem::Text { at: BRect::new(sq.0, (sq.1 - 6.0).max(0.0), 30.0, 6.0), text: "Text".into(), look: TextDraw::default() });
                 ed.canvas.edit_text = Some(i);
                 ed.tool = Tool::Select;
             }

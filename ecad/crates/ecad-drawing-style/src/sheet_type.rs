@@ -32,7 +32,7 @@ pub const TAG: SheetText = SheetText { cap_mm: 2.5, weight: 600 };
 /// Pin label, wire label, reference, continuation.
 pub const LABEL: SheetText = SheetText { cap_mm: 1.6, weight: 400 };
 /// Terminal label, description.
-pub const TERMINAL_LABEL: SheetText = SheetText { cap_mm: 1.5, weight: 400 };
+pub const CONNECTION_POINT_LABEL: SheetText = SheetText { cap_mm: 1.5, weight: 400 };
 /// Title block label.
 pub const TITLE_BLOCK_LABEL: SheetText = SheetText { cap_mm: 1.4, weight: 400 };
 /// Zone label.
@@ -46,7 +46,7 @@ pub const PAGE_NUMBER: SheetText = SheetText { cap_mm: 4.2, weight: 600 };
 pub const ALL: [(&str, SheetText); 7] = [
     ("sheet_type.tag", TAG),
     ("sheet_type.label", LABEL),
-    ("sheet_type.terminal_label", TERMINAL_LABEL),
+    ("sheet_type.terminal_label", CONNECTION_POINT_LABEL),
     ("sheet_type.title_block_label", TITLE_BLOCK_LABEL),
     ("sheet_type.zone_label", ZONE_LABEL),
     ("sheet_type.page_title", PAGE_TITLE),

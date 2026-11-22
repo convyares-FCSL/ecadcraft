@@ -86,7 +86,7 @@ fn ring(lo: Pt, hi: Pt) -> Vec<[f64; 2]> {
 }
 
 fn work(p: &ProjectHandle, s: &mut Session) -> usize {
-    p.read(s, |p, _| p.kept_outputs().map_or(0, |o| o.last_work)).unwrap_or(0)
+    p.read(s, |p, _| p.kept_reports().map_or(0, |o| o.last_work)).unwrap_or(0)
 }
 
 /// Measure brief 024 on a copy of `path` (in `scratch`), `runs` times each.
@@ -107,7 +107,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
         let mut first = Vec::new();
         for _ in 0..runs {
             first.push(project.configure(&mut s, |p| {
-                p.forget_outputs();
+                p.forget_reports();
                 let t = Instant::now();
                 let o = p.outputs();
                 std::hint::black_box((o.bom_table(ecad_engine::outputs::Group::Location), o.wire_table(), o.cable_table()));
@@ -115,7 +115,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
             })?);
         }
         out.reportfirst_ms = median(&mut first);
-        out.devices = project.read(&mut s, |p, _| p.kept_outputs().map_or(0, ecad_engine::outputs::kept::Outputs::device_count))?;
+        out.devices = project.read(&mut s, |p, _| p.kept_reports().map_or(0, ecad_engine::outputs::kept::ReportModels::device_count))?;
         // A BOM page, so its sheets and Total follow the models too.
         let bom_page = run(&mut s, "newpage", json!({"generated": "bom-location"}))?;
         let bom_page: Option<PageId> = bom_page["page"].as_str().and_then(|t| u128::from_str_radix(t, 16).ok()).map(PageId::from);

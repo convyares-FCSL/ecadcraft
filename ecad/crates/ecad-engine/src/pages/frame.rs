@@ -20,7 +20,7 @@ use ecad_model::{Document, PageId};
 use crate::draw::text_style::EngineMetrics;
 use crate::frames;
 pub use crate::frames::{
-    CUSTOMER, DERIVED, DRAWING_NUMBER, FRAME_ACI, FRAME_WEIGHT, LABEL_ACI, LAYER, STATUS, TABLE_ROWS, THIN_WEIGHT, TITLE, TextLook, fit, touches,
+    CUSTOMER, DERIVED, DRAWING_NUMBER, FRAME_ACI, FRAME_WEIGHT, LABEL_ACI, LAYER, STATUS, TABLE_ROWS, THIN_WEIGHT, TITLE, TextDraw, fit, touches,
 };
 
 /// The layer as the projection adds it.
@@ -78,7 +78,7 @@ pub fn entity(part: &Part, handle: Handle) -> Entity {
 
 /// Brief 050a: the frame style's line colour of `page` as drawn, or `None` for ink.
 pub fn line_colour(doc: &Document, page: PageId) -> Option<cadcraft_engine::doc::color::Rgb> {
-    crate::look::colour_rgb(&crate::styles::frame::frame_look(doc, page).colour, crate::look::projection_sheet())
+    crate::look::colour_rgb(&crate::styles::frame::frame_draw(doc, page).colour, crate::look::projection_sheet())
 }
 
 /// [`entity`] in the frame style's line colour `rgb` (brief 050a): the frame's own lines take it;

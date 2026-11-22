@@ -1,6 +1,6 @@
 //! Project ▸ Cables (UI rev 3, board 2.05): every cable with type, cores, length, ends, cores used
-//! and checks, as the one table over the cable report (`Outputs::cable_table`); under it the
-//! selected cable's core table (`Outputs::core_table`). Brief 057 (board 2.06): the cable drawn end
+//! and checks, as the one table over the cable report (`ReportModels::cable_table`); under it the
+//! selected cable's core table (`ReportModels::core_table`). Brief 057 (board 2.06): the cable drawn end
 //! to end ([`super::cable_view`]) with each core in its cable type's colour; the glands' sizes come
 //! with the cable manager (2.7) and show a dash. Brief 059 (the cable manager): a cable not drawn
 //! yet shows its planned ends and a `not drawn` badge; **+ Cable** builds one; the Details pane
@@ -10,7 +10,7 @@
 //! models' revision changed, and only while the tab is shown; the core table also when another
 //! cable is selected.
 
-use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::ReportModels;
 use ecad_model::CableId;
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
@@ -194,7 +194,7 @@ pub const UNUSED: ColumnId = ColumnId(8);
 /// shared `Cell::Toggle`; its accessible name.
 pub const NOT_USED_TOGGLE: &str = "Toggle";
 
-/// One cable's cores (`Outputs::core_table`).
+/// One cable's cores (`ReportModels::core_table`).
 #[derive(Debug)]
 pub struct CoresSource {
     cols: Vec<Column>,
@@ -376,7 +376,7 @@ impl Default for CablesView {
 impl CablesView {
     /// Bring the copies up to date (the cables when the models' revision changed; the cores also
     /// when the selected cable changed).
-    pub fn sync(&mut self, serial: u64, o: &Outputs) {
+    pub fn sync(&mut self, serial: u64, o: &ReportModels) {
         let key = (serial, o.build_id ^ o.revision);
         if self.seen != Some(key) {
             self.seen = Some(key);
@@ -694,7 +694,7 @@ fn beyond(doc: &ecad_model::Document, k: CableId, at: &str) -> String {
     let Some((tag, label)) = at.trim().rsplit_once(':') else { return String::new() };
     let members: Vec<ecad_model::WireId> = doc.cables.get(&k).map(|c| c.cores.iter().filter_map(|m| m.wire()).collect()).unwrap_or_default();
     for c in doc.components_tagged(tag) {
-        for (t, x) in doc.terminals_of(c) {
+        for (t, x) in doc.connection_points_of(c) {
             if x.label.as_deref() != Some(label) {
                 continue;
             }

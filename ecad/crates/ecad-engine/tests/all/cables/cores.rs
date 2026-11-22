@@ -2,7 +2,7 @@
 //! line and the checks say so; reading never works a core's place out, so a stored place the line
 //! no longer gives (a file made elsewhere) is reported, not changed.
 
-use ecad_model::{Author, CableId, Core, CorePosition, Op, Purpose, RouteId, TerminalId};
+use ecad_model::{Author, CableId, Core, CorePosition, Op, Purpose, RouteId, ConnectionPointId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -13,7 +13,7 @@ fn rows(h: &mut H, kind: &str) -> Vec<Value> {
 }
 
 /// A device point at (0, 0), a line from it to (60, 0) and a slash across it: the cable and line.
-fn slashed(h: &mut H) -> (TerminalId, RouteId, CableId) {
+fn slashed(h: &mut H) -> (ConnectionPointId, RouteId, CableId) {
     let a = h.points_at(&[(0.0, 0.0)])[0];
     let v = h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap();
     let route = id(&v, "route");

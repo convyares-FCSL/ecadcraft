@@ -24,7 +24,7 @@ use ecad_model::book::{self, Book};
 use ecad_model::{CableId, Document, FolderId, PageId, Pt};
 use serde_json::{Value, json};
 
-use crate::outputs::kept::Outputs;
+use crate::outputs::kept::ReportModels;
 use crate::project::{HandleMap, base_drawing, project_page_framed};
 
 /// Most sheets in one PDF (CADCraft's `MAX_PAGES`).
@@ -72,7 +72,7 @@ pub fn resolve(doc: &Document, scope: &Scope) -> Result<Resolved, String> {
 ///
 /// # Errors
 /// An unknown folder.
-pub fn resolve_with(doc: &Document, scope: &Scope, outputs: Option<&Outputs>) -> Result<Resolved, String> {
+pub fn resolve_with(doc: &Document, scope: &Scope, outputs: Option<&ReportModels>) -> Result<Resolved, String> {
     let b = Book::of(doc);
     match scope {
         Scope::All => Ok(Resolved { pages: b.order.clone(), ..Resolved::default() }),
@@ -149,7 +149,7 @@ pub struct Sheet {
 /// # Errors
 /// A page that cannot be projected.
 pub fn build(
-    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>,
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>,
 ) -> Result<(Drawing, Vec<Sheet>), String> {
     build_pending(doc, pages, fan, tol, outputs, false)
 }
@@ -160,7 +160,7 @@ pub fn build(
 /// # Errors
 /// A page that cannot be projected.
 pub fn build_pending(
-    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>, pending: bool,
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>, pending: bool,
 ) -> Result<(Drawing, Vec<Sheet>), String> {
     build_in(doc, pages, fan, tol, outputs, pending, false)
 }
@@ -174,7 +174,7 @@ pub fn build_pending(
 /// # Errors
 /// A page that cannot be projected.
 pub fn build_in(
-    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>, pending: bool, colour: bool,
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>, pending: bool, colour: bool,
 ) -> Result<(Drawing, Vec<Sheet>), String> {
     let mut scratch = base_drawing();
     // Overseer ruling 7: the scratch drawing carries ECAD's text styles (Standard, ECAD-BOLD).
@@ -343,7 +343,7 @@ pub struct Printed {
 /// # Errors
 /// A projection, plot or write failure; nothing is written then.
 pub fn print(
-    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>, o: Options, path: Option<&str>,
+    doc: &Document, pages: &[PageId], fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>, o: Options, path: Option<&str>,
     progress: &mut dyn FnMut(usize, usize) -> bool,
 ) -> Result<Printed, String> {
     if pages.is_empty() {
@@ -401,7 +401,7 @@ pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
     }
     p.refresh_pending();
     let doc = p.ledger.document();
-    let mut out = resolve_with(doc, scope, p.kept_outputs()).map(|r| r.notes).unwrap_or_default();
+    let mut out = resolve_with(doc, scope, p.kept_reports()).map(|r| r.notes).unwrap_or_default();
     out.extend(crate::revisions::pending_note(doc, p.pending));
     out
 }
@@ -413,10 +413,10 @@ pub fn count(p: &mut crate::Project, scope: &Scope) -> (usize, Vec<String>, usiz
         p.outputs();
     }
     let doc = p.ledger.document();
-    let Ok(r) = resolve_with(doc, scope, p.kept_outputs()) else { return (0, Vec::new(), 0) };
-    let sheets = r.pages.iter().map(|pg| crate::generated::sheets_of(doc, *pg, p.kept_outputs())).sum();
+    let Ok(r) = resolve_with(doc, scope, p.kept_reports()) else { return (0, Vec::new(), 0) };
+    let sheets = r.pages.iter().map(|pg| crate::generated::sheets_of(doc, *pg, p.kept_reports())).sum();
     let generated: BTreeSet<PageId> = r.pages.iter().copied().filter(|pg| crate::generated::kind_of(doc, *pg).is_some()).collect();
-    (sheets, r.unknown, crate::generated::flagged(doc, &generated, p.kept_outputs()))
+    (sheets, r.unknown, crate::generated::flagged(doc, &generated, p.kept_reports()))
 }
 
 /// Install CADCraft's file hooks (reading, writing and the PDF plotter) for an ECAD app, as

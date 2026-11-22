@@ -3,7 +3,7 @@
 //! palette, whose rows are dragged onto the block.
 
 use ecad_engine::styles::Layer;
-use ecad_model::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, Newest, Rect as BRect, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, Newest, Rect as BRect, TextDraw, TitleBlockLayout};
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Color32, Rect, Sense, Stroke, pos2, vec2};
 use serde_json::json;
@@ -94,7 +94,7 @@ impl PaletteRow {
                     let x = at.0 + (FIELD_SIZE.0 + 2.0) * i as f64;
                     let bind = Binding::parse(b).ok()?;
                     let red = matches!(&bind, Binding::Project(k) if k.as_str() == "status");
-                    let look = TextLook { size: 2.5, bold: red, align: Align::Left, colour: if red { Ink::Red } else { Ink::Ink } };
+                    let look = TextDraw { size: 2.5, bold: red, align: Align::Left, colour: if red { Ink::Red } else { Ink::Ink } };
                     Some(BlockItem::Field {
                         at: BRect::new(x, at.1 - FIELD_SIZE.1, FIELD_SIZE.0, FIELD_SIZE.1),
                         bind,
@@ -339,7 +339,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
                         at: BRect::new(at.0, at.1 - FIELD_SIZE.1, FIELD_SIZE.0, FIELD_SIZE.1),
                         bind: Binding::Project(pk),
                         label: Some(k.replace('_', " ")),
-                        look: TextLook::default(),
+                        look: TextDraw::default(),
                         if_empty: IfEmpty::Blank,
                     });
                     acts.push(Act::Resample);

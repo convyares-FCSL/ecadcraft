@@ -4,7 +4,7 @@ use ecad_engine::checks::Fix;
 use ecad_engine::devices::TextOf;
 use ecad_engine::outputs::accessory_fix_commands;
 use ecad_engine::plc::PlcFix;
-use ecad_model::{Author, DeviceId, Op, Subject, Terminal, TerminalId};
+use ecad_model::{Author, DeviceId, Op, Subject, Terminal, ConnectionPointId};
 use serde_json::{Value, json};
 
 use super::{checks_of, place, placed, prop, same_as_built};
@@ -47,7 +47,7 @@ fn fence(h: &mut H, card: DeviceId) -> Value {
 fn points(h: &mut H, c: DeviceId) -> Vec<(String, String)> {
     let d = h.doc();
     let mut v: Vec<(String, String)> = d
-        .terminals_of(c)
+        .connection_points_of(c)
         .filter(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
         .map(|(_, t)| (t.key.as_ref().map(ToString::to_string).unwrap_or_default(), t.label.clone().unwrap_or_default()))
         .collect();
@@ -61,7 +61,7 @@ fn points(h: &mut H, c: DeviceId) -> Vec<(String, String)> {
 fn addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
     h.cfg(|p| {
         p.outputs();
-        let o = p.kept_outputs().unwrap();
+        let o = p.kept_reports().unwrap();
         o.plc.address_of(p.ledger.document(), c, i).0
     })
 }
@@ -69,7 +69,7 @@ fn addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
 fn out_addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
     h.cfg(|p| {
         p.outputs();
-        let o = p.kept_outputs().unwrap();
+        let o = p.kept_reports().unwrap();
         o.plc.automatic(p.ledger.document(), c, i, true)
     })
 }
@@ -106,7 +106,7 @@ fn f_a_fence_across_eight_wires_makes_channels_0_to_7_and_rest_draws_the_spares(
     assert_eq!(pts[7], (".7.in".to_string(), "8".to_string()));
     // Each point is on its wire.
     let d = h.doc();
-    for (t, _) in d.terminals_of(di).filter(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.'))) {
+    for (t, _) in d.connection_points_of(di).filter(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.'))) {
         assert!(!d.ends_at(t).is_empty(), "channel point on its wire");
     }
     let v = h.run("plcchannels", json!({"card": "-A02", "rest": true})).unwrap();
@@ -150,8 +150,8 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     // the two loose lines get their wire (lamp to cell) and the lamp-to-lamp wire splits in two.
     assert_eq!(d.wires.len(), wires + 3, "two loose lines get their wire, the lamp-to-lamp wire splits in two");
     let page = d.page_order[0];
-    let mut cells: Vec<(String, TerminalId)> =
-        d.terminals_of(di).filter_map(|(t, x)| x.key.as_ref().filter(|k| k.as_def().is_none()).map(|k| (k.to_string(), t))).collect();
+    let mut cells: Vec<(String, ConnectionPointId)> =
+        d.connection_points_of(di).filter_map(|(t, x)| x.key.as_ref().filter(|k| k.as_def().is_none()).map(|k| (k.to_string(), t))).collect();
     cells.sort();
     let ends: Vec<usize> = cells.iter().map(|(_, t)| d.ends_at(*t).len()).collect();
     assert_eq!(ends, [1, 1, 2], "{cells:?}");
@@ -332,12 +332,12 @@ fn m_channel_and_address_rows_have_working_fixes() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     // channel-twice: a hand-made second copy of channel 0's key.
     let d = h.doc();
-    let (t1, _) = d.terminals_of(di).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".1.in")).unwrap();
+    let (t1, _) = d.connection_points_of(di).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".1.in")).unwrap();
     let term = d.terminals.get(&t1).cloned().unwrap();
     let after = Terminal { key: Some(".0.in".parse().unwrap()), ..term.clone() };
     h.cfg(|p| {
         p.ledger
-            .commit(Author::User, "hand-made", vec![Op::RemoveTerminal { id: t1, terminal: term }, Op::AddTerminal { id: t1, terminal: after }])
+            .commit(Author::User, "hand-made", vec![Op::RemoveConnectionPoint { id: t1, terminal: term }, Op::AddConnectionPoint { id: t1, terminal: after }])
             .map(|_| ())
             .unwrap()
     });
@@ -361,16 +361,16 @@ fn t_hostile_keys_counts_and_values_never_panic() {
     let e = h.run("setprop", json!({"component": di.hex(), "key": "plc.addr.start", "value": "70000"})).unwrap_err();
     assert!(e.contains("0 to 65535"), "{e}");
     let d = h.doc();
-    let ts: Vec<(TerminalId, Terminal)> = d
-        .terminals_of(di)
+    let ts: Vec<(ConnectionPointId, Terminal)> = d
+        .connection_points_of(di)
         .filter(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
         .map(|(i, t)| (i, t.clone()))
         .take(4)
         .collect();
     let mut ops = Vec::new();
     for ((t, term), k) in ts.into_iter().zip([".999.in", ".-1.in", ".3.nope", ".3"]) {
-        ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { key: k.parse().ok(), ..term } });
+        ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
+        ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { key: k.parse().ok(), ..term } });
     }
     // The longest values the module's fields hold.
     let mut d2 = d.clone();

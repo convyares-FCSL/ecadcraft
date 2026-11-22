@@ -45,7 +45,8 @@ pub enum Protection {
     /// A fuse.
     Fuse(Fuse),
     /// A fuse terminal: a fuse in a DIN-rail terminal housing, set by the `fuseterm` starter.
-    FuseTerminal(Fuse),
+    #[serde(rename = "fuse_terminal")]
+    FuseTerminalBlock(Fuse),
     /// A miniature circuit breaker.
     Mcb(Breaker),
     /// A residual current device (no overcurrent protection).
@@ -66,7 +67,7 @@ impl Default for Protection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ProtectionKind {
     Fuse,
-    FuseTerminal,
+    FuseTerminalBlock,
     Mcb,
     Rcd,
     Rcbo,
@@ -78,7 +79,7 @@ impl ProtectionKind {
     pub fn label(self) -> &'static str {
         match self {
             ProtectionKind::Fuse => "fuse",
-            ProtectionKind::FuseTerminal => "fuse terminal",
+            ProtectionKind::FuseTerminalBlock => "fuse terminal",
             ProtectionKind::Mcb => "MCB",
             ProtectionKind::Rcd => "RCD",
             ProtectionKind::Rcbo => "RCBO",
@@ -90,7 +91,7 @@ impl ProtectionKind {
     pub fn empty(self) -> Protection {
         match self {
             ProtectionKind::Fuse => Protection::Fuse(Fuse::default()),
-            ProtectionKind::FuseTerminal => Protection::FuseTerminal(Fuse::default()),
+            ProtectionKind::FuseTerminalBlock => Protection::FuseTerminalBlock(Fuse::default()),
             ProtectionKind::Mcb => Protection::Mcb(Breaker::default()),
             ProtectionKind::Rcd => Protection::Rcd(Rcd::default()),
             ProtectionKind::Rcbo => Protection::Rcbo(Rcbo::default()),
@@ -101,9 +102,9 @@ impl ProtectionKind {
 
 impl Protection {
     /// A fuse terminal's fuse, when it is a fuse terminal (brief 034's `fuseterm`).
-    pub fn as_fuse_terminal(&self) -> Option<&Fuse> {
+    pub fn as_fuse_terminal_block(&self) -> Option<&Fuse> {
         match self {
-            Protection::FuseTerminal(f) => Some(f),
+            Protection::FuseTerminalBlock(f) => Some(f),
             Protection::Fuse(_) | Protection::Mcb(_) | Protection::Rcd(_) | Protection::Rcbo(_) | Protection::FuseBank(_) => None,
         }
     }
@@ -112,7 +113,7 @@ impl Protection {
     pub fn kind(&self) -> ProtectionKind {
         match self {
             Protection::Fuse(_) => ProtectionKind::Fuse,
-            Protection::FuseTerminal(_) => ProtectionKind::FuseTerminal,
+            Protection::FuseTerminalBlock(_) => ProtectionKind::FuseTerminalBlock,
             Protection::Mcb(_) => ProtectionKind::Mcb,
             Protection::Rcd(_) => ProtectionKind::Rcd,
             Protection::Rcbo(_) => ProtectionKind::Rcbo,
@@ -141,7 +142,7 @@ impl Protection {
             Protection::Mcb(b) => Some(&b.contacts),
             Protection::Rcd(r) => Some(&r.contacts),
             Protection::Rcbo(r) => Some(&r.contacts),
-            Protection::Fuse(_) | Protection::FuseTerminal(_) | Protection::FuseBank(_) => None,
+            Protection::Fuse(_) | Protection::FuseTerminalBlock(_) | Protection::FuseBank(_) => None,
         }
     }
 
@@ -151,7 +152,7 @@ impl Protection {
             Protection::Mcb(b) => Some(&mut b.contacts),
             Protection::Rcd(r) => Some(&mut r.contacts),
             Protection::Rcbo(r) => Some(&mut r.contacts),
-            Protection::Fuse(_) | Protection::FuseTerminal(_) | Protection::FuseBank(_) => None,
+            Protection::Fuse(_) | Protection::FuseTerminalBlock(_) | Protection::FuseBank(_) => None,
         }
     }
 
@@ -160,7 +161,7 @@ impl Protection {
         match (self, output) {
             (Protection::FuseBank(b), Some(n)) => b.outputs.get(&n).and_then(|f| f.rated_current),
             (Protection::FuseBank(_), None) => None,
-            (Protection::Fuse(f) | Protection::FuseTerminal(f), _) => f.rated_current,
+            (Protection::Fuse(f) | Protection::FuseTerminalBlock(f), _) => f.rated_current,
             (Protection::Mcb(b), _) => b.rated_current,
             (Protection::Rcd(r), _) => r.rated_current,
             (Protection::Rcbo(r), _) => r.rated_current,
@@ -175,7 +176,7 @@ impl Protection {
         let ma = |m: Option<MilliAmps>| m.is_some_and(|m| !(m.0.is_finite() && m.0 > 0.0 && m.0 <= MAX_RESIDUAL_MA));
         let fuse = |f: &Fuse| amps(f.rated_current) || ka(f.breaking);
         let bad = match self {
-            Protection::Fuse(f) | Protection::FuseTerminal(f) => fuse(f),
+            Protection::Fuse(f) | Protection::FuseTerminalBlock(f) => fuse(f),
             Protection::Mcb(b) => amps(b.rated_current) || ka(b.breaking),
             Protection::Rcd(r) => amps(r.rated_current) || ma(r.residual),
             Protection::Rcbo(r) => amps(r.rated_current) || ka(r.breaking) || ma(r.residual),
@@ -196,7 +197,7 @@ impl Protection {
 impl fmt::Display for Protection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Protection::Fuse(x) | Protection::FuseTerminal(x) => x.fmt(f),
+            Protection::Fuse(x) | Protection::FuseTerminalBlock(x) => x.fmt(f),
             Protection::Mcb(x) => x.fmt(f),
             Protection::Rcd(x) => x.fmt(f),
             Protection::Rcbo(x) => x.fmt(f),

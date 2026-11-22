@@ -31,7 +31,7 @@ pub const LINK_DERIVED: &str =
 
 /// One segment of a link line.
 #[derive(Debug, Clone, PartialEq)]
-pub struct LinkPart {
+pub struct JumperBarPart {
     pub strip: DeviceId,
     pub n: u32,
     pub a: Pt,
@@ -49,7 +49,7 @@ fn stub(p: Pt, toward: Pt, back: bool) -> Pt {
 }
 
 /// The link lines of every strip shown on `page`.
-pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
+pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
     let mut strips: Vec<DeviceId> = doc
         .representations_on(page)
         .filter_map(|(_, r)| match r.subject {
@@ -83,12 +83,12 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
                         let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
                         let knee = Pt::new(a.x + STUB_MM, a.y);
                         let knee2 = Pt::new(a.x + STUB_MM, b.y);
-                        out.push(LinkPart { strip: c, n: *n, a: *a, b: knee });
-                        out.push(LinkPart { strip: c, n: *n, a: knee, b: knee2 });
-                        out.push(LinkPart { strip: c, n: *n, a: knee2, b: *b });
+                        out.push(JumperBarPart { strip: c, n: *n, a: *a, b: knee });
+                        out.push(JumperBarPart { strip: c, n: *n, a: knee, b: knee2 });
+                        out.push(JumperBarPart { strip: c, n: *n, a: knee2, b: *b });
                     }
                 } else if let Some(a) = pts.first() {
-                    out.push(LinkPart { strip: c, n: *n, a: *a, b: Pt::new(a.x + STUB_MM, a.y) });
+                    out.push(JumperBarPart { strip: c, n: *n, a: *a, b: Pt::new(a.x + STUB_MM, a.y) });
                 }
             }
         }
@@ -125,7 +125,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
             let horizontal = shown.len() < 2 || (lp.x - fp.x).abs() >= (lp.y - fp.y).abs();
             let off = lane as f64 * LANE_MM;
             let shift = |p: Pt| if horizontal { Pt::new(p.x, p.y + off) } else { Pt::new(p.x - off, p.y) };
-            let mut seg = |a: Pt, b: Pt| out.push(LinkPart { strip: c, n, a: shift(a), b: shift(b) });
+            let mut seg = |a: Pt, b: Pt| out.push(JumperBarPart { strip: c, n, a: shift(a), b: shift(b) });
             for w in shown.windows(2) {
                 let (Some((_, a)), Some((_, b))) = (w.first(), w.get(1)) else { continue };
                 if (a.x - b.x).abs() < 1e-6 || (a.y - b.y).abs() < 1e-6 {

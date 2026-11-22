@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use ecad_model::numbering::{self, Kind, Mark, Plan, Request, Scope};
 use ecad_model::tag;
 use ecad_model::tag::PROVISIONAL_SETTING;
-use ecad_model::{CableId, DeviceId, Document, FolderId, Ledger, Noun, ObjectRef, Op, PageId, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, FolderId, Ledger, Noun, ObjectRef, Op, PageId, ConnectionPointId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -160,7 +160,7 @@ pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSe
             let mut out: BTreeSet<DeviceId> = devices.iter().copied().filter(|c| crate::strips::strip_of(doc, *c).is_some()).collect();
             for t in named {
                 let n = hex(t, "strips")?;
-                let c = match doc.terminals.get(&TerminalId(n)) {
+                let c = match doc.terminals.get(&ConnectionPointId(n)) {
                     Some(t) => t.device(),
                     None => Some(DeviceId(n)),
                 };

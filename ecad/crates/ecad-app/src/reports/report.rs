@@ -4,7 +4,7 @@
 //! manager's ferrules, lengths and glands, brief 2.7), shown as a dash.
 //!
 //! **Update map.** The rows are a copy of the report table, taken again only when the report
-//! models' revision changed (`Outputs::revision`, kept from each change's ops), exactly as the
+//! models' revision changed (`ReportModels::revision`, kept from each change's ops), exactly as the
 //! Reports window did (design 024 §6.2); every other commit reads nothing. The copy is the
 //! whole table (`Changed::All`): the models do not say which rows a change touched.
 

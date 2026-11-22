@@ -126,7 +126,7 @@ mod hover_and_marks {
         ok(h, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
         let d = doc(h);
         let page = d.page_order[0];
-        ecad_model::derive::terminal_positions(&d, page)
+        ecad_model::derive::connection_point_positions(&d, page)
             .into_iter()
             .map(|(t, _, p)| (d.terminals[&t].label.clone().unwrap_or_default(), p.x, p.y))
             .collect()

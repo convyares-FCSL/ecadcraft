@@ -356,7 +356,7 @@ pub fn references_json(doc: &Document, refs: &[CableReference]) -> Value {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use ecad_model::{Author, ConductorId, Device, DeviceId, IdAllocator, NetId, Op, Terminal, TerminalId, Wire, WireId};
+    use ecad_model::{Author, ConductorId, Device, DeviceId, IdAllocator, NetId, Op, Terminal, ConnectionPointId, Wire, WireId};
 
     /// Design 072 §4.2: a wire's net and conductor have labels in the snapshot's index, the net
     /// named after the wire first in its order.
@@ -364,16 +364,16 @@ mod tests {
     fn a_wires_net_and_conductor_are_labelled() {
         let mut ids = IdAllocator::seeded(72);
         let mut l = ecad_model::Ledger::new(72);
-        let (k, a, b, c): (DeviceId, TerminalId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+        let (k, a, b, c): (DeviceId, ConnectionPointId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
         let (w1, w2, net, c1, c2): (WireId, WireId, NetId, ConductorId, ConductorId) =
             (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
         let point = |label: &str| Terminal { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
         let number = |n: &str| ecad_model::text::Text::new(n).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: true });
         let ops = vec![
             Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K1")) },
-            Op::AddTerminal { id: a, terminal: point("1") },
-            Op::AddTerminal { id: b, terminal: point("2") },
-            Op::AddTerminal { id: c, terminal: point("3") },
+            Op::AddConnectionPoint { id: a, terminal: point("1") },
+            Op::AddConnectionPoint { id: b, terminal: point("2") },
+            Op::AddConnectionPoint { id: c, terminal: point("3") },
             Op::CreateWire { id: w1, wire: Wire { net_order: 2, number: number("102"), ..Wire::new(net, c1, b, c) } },
             Op::CreateWire { id: w2, wire: Wire { net_order: 1, number: number("101"), ..Wire::new(net, c2, a, b) } },
         ];

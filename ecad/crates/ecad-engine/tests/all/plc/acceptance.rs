@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 
 use ecad_engine::Persistence;
-use ecad_model::{Author, DeviceId, Document, ObjectRef, Op, PageId, TerminalId};
+use ecad_model::{Author, DeviceId, Document, ObjectRef, Op, PageId, ConnectionPointId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -53,7 +53,7 @@ pub(crate) fn by_tag(d: &Document, t: &str) -> DeviceId {
 }
 
 /// A card's channel points: key (`.3.in`) to (label, terminal).
-pub(crate) fn channel_points(d: &Document, card: DeviceId) -> BTreeMap<String, (String, TerminalId)> {
+pub(crate) fn channel_points(d: &Document, card: DeviceId) -> BTreeMap<String, (String, ConnectionPointId)> {
     d.terminals
         .iter()
         .filter(|(_, t)| t.device() == Some(card) && t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
@@ -214,7 +214,7 @@ pub(crate) fn raw_setprop(h: &mut H, c: DeviceId, key: &str, value: Option<&str>
 }
 
 /// Relabel or rekey a terminal by hand: Remove + Add.
-pub(crate) fn rekey_raw(h: &mut H, t: TerminalId, new_label: Option<&str>, new_key: Option<&str>) {
+pub(crate) fn rekey_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>, new_key: Option<&str>) {
     let d = h.doc();
     let before = d.terminals[&t].clone();
     let mut after = before.clone();
@@ -225,7 +225,7 @@ pub(crate) fn rekey_raw(h: &mut H, t: TerminalId, new_label: Option<&str>, new_k
         // A text that is no key cannot be stored: the point is left without one.
         after.key = k.parse().ok();
     }
-    raw(h, vec![Op::RemoveTerminal { id: t, terminal: before }, Op::AddTerminal { id: t, terminal: after }]);
+    raw(h, vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }]);
 }
 
 /// Save to a file, close, reopen as a user would (also the hand-made-file path after raw commits).
@@ -254,7 +254,7 @@ pub(crate) const OUT_XS: [f64; 6] = [100.0, 120.0, 140.0, 160.0, 180.0, 200.0];
 
 /// Fixture P (design §13), simplified. Page 1 "PLC CPU": `plccpu` `-A01` at (100, 200). Page 2
 /// "Inputs": eight drops 10 mm apart (x 100…170, y 250→150) through a terminal strip `-X01` at
-/// y 160. Page 3 "Analogue": empty (cells go in space). Page 4 "Outputs": six drops with a strip at
+/// y 160. Page 3 "Analogue": empty (cells go in space). Page 4 "ReportModels": six drops with a strip at
 /// y 160. Page 5 "IO-Link": empty.
 pub(crate) struct P {
     pub(crate) h: H,

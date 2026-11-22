@@ -2,9 +2,9 @@
 //! report, the device locations they show, and the location rows of the Checks list.
 //!
 //! # Semantics
-//! - `Outputs` keeps one row per device (a component with a tag and no `kind`), per conductor
+//! - `ReportModels` keeps one row per device (a component with a tag and no `kind`), per conductor
 //!   and per cable, and the BOM groups. It is built whole only on open, reload or first show
-//!   (`kept::Outputs::build_with`, by `derived::OutputsView`); after that `kept::Outputs::update`
+//!   (`kept::ReportModels::build_with`, by `derived::ReportsView`); after that `kept::ReportModels::update`
 //!   recomputes only the rows a transaction's effects could change. Nothing here is stored or recorded.
 //! - Wires never appear on the BOM; cable cores are conductors and appear on the wire report with
 //!   their cable (owner answer Q10). Cables are not on the BOM (Q6). A terminal device counts once
@@ -711,14 +711,14 @@ impl Scope {
         let key = key.raw;
         let position = key.strip_prefix(crate::terminal_types::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
         if (position.is_some() || crate::defaults::terminals::is_label_key(key)) && crate::strips::strip_of(doc, *c).is_some() {
-            for (t, x) in doc.terminals_of(*c) {
+            for (t, x) in doc.connection_points_of(*c) {
                 if position.is_none_or(|p| x.label.as_deref() == Some(p)) {
                     self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
         }
         if crate::defaults::connectors::is_naming_key(key) && crate::connectors::connector_of(doc, *c).is_some_and(|x| x.mating) {
-            for (t, _) in doc.terminals_of(*c) {
+            for (t, _) in doc.connection_points_of(*c) {
                 self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
             }
         }
@@ -764,7 +764,7 @@ fn continuation_group_cables(doc: &Document, c: ecad_model::AidId) -> BTreeSet<C
     }
     let mut out = BTreeSet::new();
     for k in group {
-        for (t, _) in doc.terminals_of(k) {
+        for (t, _) in doc.connection_points_of(k) {
             for (w, _) in doc.ends_at(t) {
                 out.extend(doc.cables_of(w));
             }
@@ -870,8 +870,8 @@ fn group_halves<'a>(rows: impl Iterator<Item = &'a BomRow>, group: Group) -> Vec
         .collect()
 }
 
-fn needs_outputs(doc: &Document, page: PageId) -> bool {
-    doc.page_order.contains(&page) && crate::generated::kind_of(doc, page).is_some_and(ecad_model::GenKind::needs_outputs)
+fn needs_reports(doc: &Document, page: PageId) -> bool {
+    doc.page_order.contains(&page) && crate::generated::kind_of(doc, page).is_some_and(ecad_model::GenKind::needs_reports)
 }
 
 /// A cable end as the schedule shows it: `+CP1 -X01` (design 028 §6.3).
@@ -995,22 +995,22 @@ pub fn accessory_checks(s: &crate::strips::StripData) -> Vec<Check> {
         for at in &l.crosses {
             let i = s.rows.iter().position(|r| r.label == *at).unwrap_or(0);
             out.push(Check {
-                kind: Kind::LinkAcrossPartition,
+                kind: Kind::JumperBarAcrossPartition,
                 page: go.map(|(p, _)| p),
                 at: go.map(|(_, a)| a),
                 object: obj(first),
                 which: format!("{}: link {} crosses the partition after {at}", s.tag, l.text),
-                fix: Some(Fix::LinkAcrossPartition(s.component, n, u16::try_from(i).unwrap_or(u16::MAX))),
+                fix: Some(Fix::JumperBarAcrossPartition(s.component, n, u16::try_from(i).unwrap_or(u16::MAX))),
             });
         }
         if !l.missing.is_empty() {
             out.push(Check {
-                kind: Kind::LinkOrphan,
+                kind: Kind::JumperBarOrphan,
                 page: go.map(|(p, _)| p),
                 at: go.map(|(_, a)| a),
                 object: obj(first),
                 which: format!("{}: link {} names {}, which {} does not have", s.tag, l.text, l.missing.join(", "), s.tag),
-                fix: Some(Fix::LinkOrphan(s.component, n)),
+                fix: Some(Fix::JumperBarOrphan(s.component, n)),
             });
         }
     }
@@ -1020,7 +1020,7 @@ pub fn accessory_checks(s: &crate::strips::StripData) -> Vec<Check> {
 /// The JSON forms that carry out a brief 030 fix, one per button: (button words, command,
 /// params), each one transaction (**Move to end**, **Remove**; **Split link at 4**, **Remove
 /// partition**; **Drop missing positions**, **Delete link**). Empty when the strip or key is gone.
-pub fn accessory_fix_commands(o: &kept::Outputs, fix: Fix) -> Vec<(String, &'static str, serde_json::Value)> {
+pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, &'static str, serde_json::Value)> {
     use serde_json::json;
     match fix {
         Fix::AccessoryOrphan(c, i) => {
@@ -1033,20 +1033,20 @@ pub fn accessory_fix_commands(o: &kept::Outputs, fix: Fix) -> Vec<(String, &'sta
             out.push(("Remove".to_string(), "setprop", json!({"component": c.hex(), "key": key, "value": null})));
             out
         }
-        Fix::LinkAcrossPartition(c, n, i) => {
+        Fix::JumperBarAcrossPartition(c, n, i) => {
             let Some(label) = o.strips.get(c).and_then(|s| s.rows.get(usize::from(i))).map(|r| r.label.clone()) else { return Vec::new() };
             vec![
                 (format!("Split link at {label}"), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "split_at": label})),
                 ("Remove partition".to_string(), "accessory", json!({"strip": c.hex(), "at": label, "remove": ["partition"]})),
             ]
         }
-        Fix::LinkOnNonStrip(c) => o
+        Fix::JumperBarOnNonStrip(c) => o
             .link_keys_off_strip(c)
             .into_iter()
             .take(1)
             .map(|k| (format!("Remove {k}"), "setprop", json!({"component": c.hex(), "key": k, "value": null})))
             .collect(),
-        Fix::LinkOrphan(c, n) => vec![
+        Fix::JumperBarOrphan(c, n) => vec![
             ("Drop missing positions".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "drop_missing": true})),
             ("Delete link".to_string(), "jumper", json!({"link": {"strip": c.hex(), "n": n}, "delete": true})),
         ],

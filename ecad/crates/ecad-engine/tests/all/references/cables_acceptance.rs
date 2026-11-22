@@ -27,7 +27,7 @@ use ecad_engine::references::{diagnostics, markers_on_page, plan_continue};
 use ecad_engine::{HandleMap, Persistence, ProjectHandle, project_page};
 use ecad_model::derive::{cable_references, nets};
 use ecad_model::{
-    CableId, Core, Document, Form, Item, ItemId, ItemKind, Op, Page, PageId, Primitive, Pt, Representation, RepresentationId, Subject, TerminalId,
+    CableId, Core, Document, Form, Item, ItemId, ItemKind, Op, Page, PageId, Primitive, Pt, Representation, RepresentationId, Subject, ConnectionPointId,
     WireId,
 };
 use serde_json::{Value, json};
@@ -49,7 +49,7 @@ struct R {
     field: PageId,
     c1: CableId,
     w: [WireId; 3],
-    k2: [TerminalId; 3],
+    k2: [ConnectionPointId; 3],
     /// The continued stubs on Field (design 072 §4.3: routes), with the free end of each.
     stubs: Vec<(ecad_model::RouteId, String)>,
 }
@@ -63,7 +63,7 @@ fn set_tag(h: &mut H, key: &str, id: &str, value: &str) {
     }
 }
 
-fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: &str) -> [TerminalId; 3] {
+fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: &str) -> [ConnectionPointId; 3] {
     let before: BTreeSet<_> = h.lines_on(page).into_iter().collect();
     h.cmdline(outline);
     let lines: Vec<_> = h.lines_on(page).into_iter().filter(|l| !before.contains(l)).collect();
@@ -677,7 +677,7 @@ fn per_page_edits_touch_only_the_page_they_are_made_on() {
     r.h.run("move", json!({"handles": handles, "delta": [0, -20]})).unwrap();
     assert_eq!(r.h.doc().routes[&line], supply_route, "Supply's route untouched by the drag");
     let b = r.h.doc().routes[&stub].end_points().map(|[_, b]| b);
-    assert_eq!(b, Some(r.h.terminal_pos(r.field, r.k2[0])), "Field's stub end followed K2");
+    assert_eq!(b, Some(r.h.connection_point_pos(r.field, r.k2[0])), "Field's stub end followed K2");
     // A slash across the Field stubs: they are already members of C1.
     let head = r.h.head();
     let e = r.h.run("cableslash", json!({"from": [28, -30], "to": [32, 30]}));

@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, RouteEnd, RouteId, TerminalId};
+use ecad_model::{DeviceId, RouteEnd, RouteId, ConnectionPointId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -21,7 +21,7 @@ fn no_wire_yet(h: &mut H) -> Vec<Value> {
 }
 
 /// Each wire's two ends, as unordered pairs.
-fn wire_ends(h: &mut H) -> BTreeSet<BTreeSet<TerminalId>> {
+fn wire_ends(h: &mut H) -> BTreeSet<BTreeSet<ConnectionPointId>> {
     h.doc().wires.values().map(|w| w.ends.iter().copied().collect()).collect()
 }
 
@@ -47,7 +47,7 @@ fn place_terminals_on_a_loose_line_then_draw_on_to_a_second_device() {
     let strip: DeviceId = id(&v, "strip");
     let terms = v["terminals"].as_array().cloned().unwrap_or_default();
     assert_eq!(terms.len(), 1, "one terminal: {v}");
-    let t: TerminalId = id(&terms[0], "terminal");
+    let t: ConnectionPointId = id(&terms[0], "terminal");
     let doc = h.doc();
     assert_eq!(doc.terminals[&t].device().unwrap(), strip);
     // The route is split at the terminal: one piece from -A's point to the terminal, one from the

@@ -51,11 +51,11 @@ pub fn contacts_json(doc: &Document, c: DeviceId) -> Result<Value, String> {
 pub fn refusal(doc: &Document, mapped: Option<crate::project::Mapped>) -> &'static str {
     match mapped {
         // Brief 051 (review of #89, 2): a PLC card's frame.
-        Some(crate::project::Mapped::Xref(r)) if crate::plc::look::is_frame_rep(doc, r) => crate::plc::look::FRAME_DERIVED,
-        Some(crate::project::Mapped::Xref(r)) if crate::xref::class_in(doc, r).is_some_and(|(_, c)| c == crate::xref::Class::Head) => {
+        Some(crate::project::Mapped::DeviceReference(r)) if crate::plc::look::is_frame_rep(doc, r) => crate::plc::look::FRAME_DERIVED,
+        Some(crate::project::Mapped::DeviceReference(r)) if crate::xref::class_in(doc, r).is_some_and(|(_, c)| c == crate::xref::Class::Head) => {
             crate::xref::TABLE_DERIVED
         }
-        Some(crate::project::Mapped::Xref(r)) if crate::xref::class_in(doc, r).is_some_and(|(_, c)| c == crate::xref::Class::Arrow) => {
+        Some(crate::project::Mapped::DeviceReference(r)) if crate::xref::class_in(doc, r).is_some_and(|(_, c)| c == crate::xref::Class::Arrow) => {
             crate::continuations::TEXT_DERIVED
         }
         _ => crate::xref::TEXT_DERIVED,

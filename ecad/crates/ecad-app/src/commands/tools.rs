@@ -26,7 +26,7 @@ use std::collections::{BTreeSet, HashMap};
 use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup, ExtraToolTab};
 use ecad_engine::cad::Handle;
 use ecad_engine::{Mapped, Project};
-use ecad_model::{CableId, DeviceId, ItemId, PageId, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, ItemId, PageId, Subject, ConnectionPointId, WireId};
 
 /// The tab's name in the Tool Sets panel.
 pub const TAB: &str = "ECAD";
@@ -406,7 +406,7 @@ pub struct Picked {
     /// Cables whose slashes or fan lines are selected.
     pub cables: Vec<CableId>,
     /// Terminals whose markers are selected.
-    pub terminals: Vec<TerminalId>,
+    pub terminals: Vec<ConnectionPointId>,
     /// The selection had more than [`MAX_PICKED`] handles; only the first were followed.
     pub truncated: bool,
     /// The page shown in the active drawing, when it is an ECAD page (brief 010: the page
@@ -460,7 +460,7 @@ impl Picked {
                 }
                 // A cable reference's text names its cable (brief 010); a device's tag text or
                 // terminal label names its device (brief 018).
-                Some(Mapped::RefText(r) | Mapped::Tag(r) | Mapped::Xref(r)) => {
+                Some(Mapped::RefText(r) | Mapped::Tag(r) | Mapped::DeviceReference(r)) => {
                     if let Some(r) = doc.representations.get(&r) {
                         subjects.insert(r.subject);
                     }

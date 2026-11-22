@@ -424,7 +424,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
     let dir = TempDir::new("t029-escape");
     let mut ids = IdAllocator::seeded(0xE5C);
     let mut l = Ledger::new(3);
-    let (p1, layer, k, a, b): (PageId, LayerId, DeviceId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (p1, layer, k, a, b): (PageId, LayerId, DeviceId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let (w, c): (WireId, CableId) = (ids.fresh(), ids.fresh());
     let props = |pairs: &[(&str, &str)]| {
         let mut p = ecad_model::doc::Properties::new();
@@ -440,8 +440,8 @@ fn hostile_text_comes_back_as_plain_json_strings() {
             Op::AddPage { id: p1, page: Page::titled(X).unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: X.into() } },
             Op::CreateDevice { id: k, device: Device { properties: props(&[("note", X)]), ..Device::default() }.with_tag(Some(X)) },
-            Op::AddTerminal { id: a, terminal: Terminal { owner: k.into(), label: Some(X.into()), key: None, accepts: Default::default() } },
-            Op::AddTerminal { id: b, terminal: Terminal { owner: k.into(), label: Some("2".into()), key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: a, terminal: Terminal { owner: k.into(), label: Some(X.into()), key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: b, terminal: Terminal { owner: k.into(), label: Some("2".into()), key: None, accepts: Default::default() } },
             Op::CreateWire { id: w, wire: Wire::new(ids.fresh(), ids.fresh(), a, b) },
             Op::CreateCable {
                 id: c,

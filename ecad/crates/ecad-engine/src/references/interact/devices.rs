@@ -21,7 +21,7 @@ const PLACEMENTS: [&str; 4] = ["Auto", "Below", "Right", "Off"];
 fn table_named(p: &Project, m: Mapped) -> Option<DeviceId> {
     let doc = p.ledger.document();
     let rep = match m {
-        Mapped::Xref(r) | Mapped::Tag(r) | Mapped::Marker(r, _) => r,
+        Mapped::DeviceReference(r) | Mapped::Tag(r) | Mapped::Marker(r, _) => r,
         Mapped::Item(i) => doc.representation_of_item(i)?.0,
         _ => return None,
     };
@@ -36,14 +36,14 @@ pub(crate) fn device_source(p: &Project, map: &crate::project::HandleMap, h: Han
     let doc = p.ledger.document();
     let m = map.get(h)?;
     let rep = match m {
-        Mapped::Xref(r) | Mapped::Tag(r) | Mapped::Marker(r, _) => r,
+        Mapped::DeviceReference(r) | Mapped::Tag(r) | Mapped::Marker(r, _) => r,
         Mapped::Item(i) => doc.representation_of_item(i)?.0,
         _ => return None,
     };
     let (_, class) = p.xref().member(rep)?;
     let target = match (m, class) {
-        (Mapped::Xref(_), xref::Class::Head) => {
-            let (_, i) = map.xref_part(h)?;
+        (Mapped::DeviceReference(_), xref::Class::Head) => {
+            let (_, i) = map.device_reference_part(h)?;
             let Subject::Device(c) = doc.representations.get(&rep)?.subject else { return None };
             let dev = xref::device(doc, c);
             let mut places = xref::Places::new(doc);

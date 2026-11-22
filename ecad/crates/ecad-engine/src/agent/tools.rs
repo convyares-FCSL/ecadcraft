@@ -210,7 +210,7 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
             })
         });
         let devices = doc.devices.iter().map(|(id, c)| {
-            let terminals: Vec<Value> = doc.terminals_of(*id).map(|(t, term)| json!({"id": t.hex(), "label": term.label})).collect();
+            let terminals: Vec<Value> = doc.connection_points_of(*id).map(|(t, term)| json!({"id": t.hex(), "label": term.label})).collect();
             json!({"id": id.hex(), "properties": c.properties, "terminals": terminals})
         });
         let cable_of = |c| doc.cables.iter().find(|(_, k)| k.cores.iter().any(|m| m.wire() == Some(c))).map(|(id, _)| id.hex());

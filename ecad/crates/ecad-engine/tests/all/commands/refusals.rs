@@ -115,7 +115,7 @@ fn replacing_or_unsupported_edits_are_refused() {
 #[test]
 fn connecting_to_a_deleted_terminal_fails_cleanly() {
     let (mut h, c1, _c2, w) = fixture();
-    let t = h.doc().terminals_of(c1).next().map(|(t, _)| t).unwrap();
+    let t = h.doc().connection_points_of(c1).next().map(|(t, _)| t).unwrap();
     let page = h.first_page();
     let route = h.route_of(page, w);
     h.run("ecaddelete", json!({"component": c1.hex()})).unwrap();
@@ -165,12 +165,12 @@ fn ecad_edits_wait_for_a_running_command() {
 fn group_pick_moves_the_whole_component_and_its_wire_ends() {
     let (mut h, c1, _c2, w) = fixture();
     let page = h.first_page();
-    let t = h.doc().terminals_of(c1).next().map(|(t, _)| t).unwrap();
+    let t = h.doc().connection_points_of(c1).next().map(|(t, _)| t).unwrap();
     // A typed point at "Select objects" picks the rectangle's left edge; PICKSTYLE selects the group.
     h.cmdline("move 0,10  0,0 0,-5 ");
     assert!(h.s.running.is_none());
     h.check();
-    assert!(h.terminal_pos(page, t).near(ecad_model::Pt::new(40.0, 5.0), 1e-9), "the terminal moved with the component");
+    assert!(h.connection_point_pos(page, t).near(ecad_model::Pt::new(40.0, 5.0), 1e-9), "the terminal moved with the component");
     assert!(h.route_ends(page, w).0.near(ecad_model::Pt::new(40.0, 5.0), 1e-9), "the wire end followed (M2)");
 }
 

@@ -7,7 +7,7 @@ use super::*;
 pub enum Mapped {
     Item(ecad_model::ItemId),
     /// A terminal marker of a drawn representation.
-    Marker(RepresentationId, TerminalId),
+    Marker(RepresentationId, ConnectionPointId),
     /// A line of a cable's fan view (brief 005): computed, not an item. Edits of it are refused.
     Fan(CableId),
     /// The derived text of a cable reference (brief 010), by its reference representation:
@@ -27,7 +27,7 @@ pub enum Mapped {
     /// representation) or a part of the contact table under a head (by the head's): computed,
     /// not an item. Left out of an edit that also touches other objects; an edit of it alone is
     /// refused.
-    Xref(RepresentationId),
+    DeviceReference(RepresentationId),
     /// A segment of a strip's link line (brief 030, design 030 §5.3), by strip and link number:
     /// computed, not an item. Selecting it selects the link; erasing it deletes the link; other
     /// edits of it alone are refused, and it is left out of an edit with other objects.
@@ -43,7 +43,7 @@ pub enum Mapped {
 pub struct HandleMap {
     by_handle: HashMap<Handle, Mapped>,
     items: BTreeMap<ecad_model::ItemId, Handle>,
-    markers: BTreeMap<(RepresentationId, TerminalId), Handle>,
+    markers: BTreeMap<(RepresentationId, ConnectionPointId), Handle>,
     /// Computed cable drawing (fans, core labels, reference flags; briefs 005, 009): (cable,
     /// index of the part) → handle.
     fans: BTreeMap<(CableId, u32), Handle>,
@@ -67,7 +67,7 @@ pub struct HandleMap {
     /// Device cross-references (brief 025): (contact or head representation, part index) → handle.
     xrefs: BTreeMap<(RepresentationId, u32), Handle>,
     /// The part each cross-reference handle is.
-    xref_parts: HashMap<Handle, (RepresentationId, u32)>,
+    device_reference_parts: HashMap<Handle, (RepresentationId, u32)>,
     /// Brief 030: link line segments: (strip, link, index) → handle.
     links: BTreeMap<(DeviceId, u32, u32), Handle>,
     /// Brief 040: a two-colour wire's dashes, (route representation, index) → handle, mapped to
@@ -88,14 +88,14 @@ impl HandleMap {
     pub fn item(&self, id: ecad_model::ItemId) -> Option<Handle> {
         self.items.get(&id).copied()
     }
-    pub fn marker(&self, rep: RepresentationId, t: TerminalId) -> Option<Handle> {
+    pub fn marker(&self, rep: RepresentationId, t: ConnectionPointId) -> Option<Handle> {
         self.markers.get(&(rep, t)).copied()
     }
     pub fn insert_item(&mut self, id: ecad_model::ItemId, h: Handle) {
         self.items.insert(id, h);
         self.by_handle.insert(h, Mapped::Item(id));
     }
-    pub fn insert_marker(&mut self, rep: RepresentationId, t: TerminalId, h: Handle) {
+    pub fn insert_marker(&mut self, rep: RepresentationId, t: ConnectionPointId, h: Handle) {
         self.markers.insert((rep, t), h);
         self.by_handle.insert(h, Mapped::Marker(rep, t));
     }
@@ -234,17 +234,17 @@ impl HandleMap {
     pub fn is_coloured(&self, h: Handle) -> bool {
         self.coloured.contains(&h)
     }
-    pub fn insert_xref(&mut self, rep: RepresentationId, index: u32, h: Handle) {
+    pub fn insert_device_reference(&mut self, rep: RepresentationId, index: u32, h: Handle) {
         self.xrefs.insert((rep, index), h);
-        self.xref_parts.insert(h, (rep, index));
-        self.by_handle.insert(h, Mapped::Xref(rep));
+        self.device_reference_parts.insert(h, (rep, index));
+        self.by_handle.insert(h, Mapped::DeviceReference(rep));
     }
     /// Which cross-reference part a handle is: its representation and index.
-    pub fn xref_part(&self, h: Handle) -> Option<(RepresentationId, u32)> {
-        self.xref_parts.get(&h).copied()
+    pub fn device_reference_part(&self, h: Handle) -> Option<(RepresentationId, u32)> {
+        self.device_reference_parts.get(&h).copied()
     }
     /// Every handle of a cross-reference part.
-    pub fn xref_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+    pub fn device_reference_handles(&self) -> impl Iterator<Item = Handle> + '_ {
         self.xrefs.values().copied()
     }
     /// Every handle of the sheet frame.
@@ -282,8 +282,8 @@ impl HandleMap {
             && self.dash_routes.len() == self.dashes.len()
             && self.dashes.values().all(|h| matches!(self.by_handle.get(h), Some(Mapped::Label(_))))
             && self.links.iter().all(|((c, n, _), h)| self.by_handle.get(h) == Some(&Mapped::Link(*c, *n)))
-            && self.xref_parts.len() == self.xrefs.len()
-            && self.xrefs.iter().all(|(k, h)| self.by_handle.get(h) == Some(&Mapped::Xref(k.0)) && self.xref_parts.get(h) == Some(k))
+            && self.device_reference_parts.len() == self.xrefs.len()
+            && self.xrefs.iter().all(|(k, h)| self.by_handle.get(h) == Some(&Mapped::DeviceReference(k.0)) && self.device_reference_parts.get(h) == Some(k))
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))

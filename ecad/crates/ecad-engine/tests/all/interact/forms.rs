@@ -19,7 +19,7 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_engine::interact::{self, NOT_OWNED, OUT_OF_RANGE};
-use ecad_model::{DeviceId, Document, PageId, RouteEnd, RouteId, TerminalId, Transaction, WireId};
+use ecad_model::{DeviceId, Document, PageId, RouteEnd, RouteId, ConnectionPointId, Transaction, WireId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 8;
@@ -87,8 +87,8 @@ fn page(h: &mut H) -> PageId {
     h.first_page()
 }
 
-fn terminal_at(d: &Document, page: PageId, x: f64, y: f64) -> TerminalId {
-    ecad_model::derive::terminal_positions(d, page)
+fn connection_point_at(d: &Document, page: PageId, x: f64, y: f64) -> ConnectionPointId {
+    ecad_model::derive::connection_point_positions(d, page)
         .into_iter()
         .find(|(_, _, p)| p.near(ecad_model::Pt::new(x, y), 1e-9))
         .map(|(t, _, _)| t)
@@ -177,7 +177,7 @@ fn scene(h: &mut H, by_prompts: bool) {
     } else {
         // The coil's A1 is where its rotated placement puts it (90, 0 up to rounding).
         let d = h.doc();
-        let a1 = ecad_model::derive::terminal_positions(&d, pg)
+        let a1 = ecad_model::derive::connection_point_positions(&d, pg)
             .into_iter()
             .find(|(_, _, p)| p.near(ecad_model::Pt::new(90.0, 0.0), 1e-9))
             .map(|(_, _, p)| p)
@@ -191,7 +191,7 @@ fn scene(h: &mut H, by_prompts: bool) {
     h.run("wire", json!({"points": [[0.0, 30.0], [20.0, 30.0]]})).unwrap();
     let d = h.doc();
     let loose = *d.routes.iter().find(|(_, r)| r.ends.iter().all(|e| *e == RouteEnd::Free)).unwrap().0;
-    let t2 = terminal_at(&d, pg, 0.0, 10.0);
+    let t2 = connection_point_at(&d, pg, 0.0, 10.0);
     if by_prompts {
         start(h, "connect");
         assert_eq!(prompt(h), "Select wire near the end to connect:");
@@ -260,7 +260,7 @@ fn json_forms_never_prompt() {
     let w = only_route(&h.doc());
     h.run("disconnect", json!({"route": w.hex(), "end": "A"})).unwrap();
     assert!(h.s.running.is_none());
-    let t = terminal_at(&h.doc(), page(&mut h), 40.0, 10.0);
+    let t = connection_point_at(&h.doc(), page(&mut h), 40.0, 10.0);
     h.run("connect", json!({"route": w.hex(), "end": "A", "terminal": t.hex()})).unwrap();
     assert!(h.s.running.is_none());
     // `name {json}` at the command line runs the JSON form too.
@@ -359,10 +359,10 @@ fn esc_at_every_prompt_drops_only_the_pending_input_and_undo_takes_one_object() 
     h.s.cancel();
     assert!(state(&mut h) == two, "terminals added before Esc stay");
     let c = only_component_drawn(&h.doc());
-    assert_eq!(h.doc().terminals_of(c).count(), 2);
+    assert_eq!(h.doc().connection_points_of(c).count(), 2);
     h.s.undo().unwrap();
     h.check();
-    assert_eq!(h.doc().terminals_of(c).count(), 1, "one undo, one terminal");
+    assert_eq!(h.doc().connection_points_of(c).count(), 1, "one undo, one terminal");
     assert_eq!(h.head(), two.0 + 1, "undo appends one transaction");
 }
 
@@ -425,7 +425,7 @@ fn capture_is_within_the_aperture_only_and_the_preview_says_so_first() {
         let end = d.routes[&r].end_points().unwrap()[1];
         if attaches {
             let t = d.routes[&r].ends[1].point().unwrap();
-            let at = ecad_model::derive::terminal_positions(&d, page(&mut h)).into_iter().find(|x| x.0 == t).unwrap().2;
+            let at = ecad_model::derive::connection_point_positions(&d, page(&mut h)).into_iter().find(|x| x.0 == t).unwrap().2;
             assert_eq!(end, at, "the end is the terminal's point exactly");
         }
         // After the commit the end shows a dot when attached, a square when loose.
@@ -608,9 +608,9 @@ fn default_terminal_names_are_the_smallest_unused_number() {
     for (at, label) in [([40, 2], "2"), ([40, 4], "A")] {
         h.run("addterminal", json!({"handle": right.hex(), "at": at, "label": label})).unwrap();
     }
-    assert_eq!(h.p(|p| interact::next_terminal_name(p.ledger.document(), c)), "1");
+    assert_eq!(h.p(|p| interact::next_connection_point_name(p.ledger.document(), c)), "1");
     h.run("addterminal", json!({"handle": right.hex(), "at": [40, 6], "label": "1"})).unwrap();
-    assert_eq!(h.p(|p| interact::next_terminal_name(p.ledger.document(), c)), "3");
+    assert_eq!(h.p(|p| interact::next_connection_point_name(p.ledger.document(), c)), "3");
 }
 
 #[test]
@@ -657,6 +657,6 @@ fn a_panic_in_a_prompt_or_preview_keeps_what_the_run_committed() {
     typed(&mut h, "");
     assert!(h.s.running.is_none());
     let c = only_component_drawn(&h.doc());
-    assert_eq!(h.doc().terminals_of(c).count(), 3, "40,10 from the scene, then 0,10 and 0,5");
+    assert_eq!(h.doc().connection_points_of(c).count(), 3, "40,10 from the scene, then 0,10 and 0,5");
     h.check();
 }

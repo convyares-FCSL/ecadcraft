@@ -4,7 +4,7 @@
 //! Position and Label (`termlabel`), Rating on a fuse position (`setprop rating.<position>`); the
 //! links are lanes beside the terminals. Everything else is read.
 //!
-//! **Update map.** The rows are the kept report models' strip rows (`Outputs::strips`, kept from
+//! **Update map.** The rows are the kept report models' strip rows (`ReportModels::strips`, kept from
 //! each change's ops, design 036 §11). Per strip, the revision it last changed at
 //! (`Strips::changed_at`) is compared with the one the table last read: only strips that changed
 //! (or appeared or went) have their rows re-read and patched. Every other commit: nothing. Full
@@ -13,7 +13,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::ReportModels;
 use ecad_engine::strips::{PlanItem, SideCell, StripData, TermRow};
 use ecad_model::DeviceId;
 use ecad_ui::table::{Align, Cell, Changed, Column, ColumnId, Lane, LaneCell, Table, TableEvent, TableSource, Width};
@@ -32,7 +32,7 @@ pub const LABEL: ColumnId = ColumnId(4);
 pub const LEVEL: ColumnId = ColumnId(5);
 pub const TYPE: ColumnId = ColumnId(6);
 pub const RATING: ColumnId = ColumnId(7);
-pub const LINKS: ColumnId = ColumnId(8);
+pub const JUMPER_BARS: ColumnId = ColumnId(8);
 pub const OUT_WIRE: ColumnId = ColumnId(9);
 pub const CABLE: ColumnId = ColumnId(10);
 pub const CORE: ColumnId = ColumnId(11);
@@ -47,7 +47,7 @@ pub fn columns() -> Vec<Column> {
         Column::read(PLACE.0, "Page", Width::Initial(90.0)),
         Column::read(IN_TARGET.0, "From", Width::Initial(150.0)).align(Align::Right),
         Column::read(IN_WIRE.0, "Wire", Width::Initial(100.0)).align(Align::Right),
-        Column::read(LINKS.0, "Link", Width::Initial(64.0)).unsorted(),
+        Column::read(JUMPER_BARS.0, "Link", Width::Initial(64.0)).unsorted(),
         Column::set(POSITION.0, "Terminal", Width::Initial(80.0)).align(Align::Center),
         Column::set(LABEL.0, "Label", Width::Initial(72.0)).align(Align::Center),
         Column::read(LEVEL.0, "Level", Width::Initial(56.0)).align(Align::Center),
@@ -64,7 +64,7 @@ pub fn columns() -> Vec<Column> {
 pub fn bands() -> Vec<ecad_ui::table::Band> {
     use ecad_ui::table::Band;
     vec![
-        Band { caption: "Inside \u{b7} panel side \u{b7} read from the drawing", first: PLACE, last: LINKS },
+        Band { caption: "Inside \u{b7} panel side \u{b7} read from the drawing", first: PLACE, last: JUMPER_BARS },
         Band { caption: "The strip \u{b7} what you set", first: POSITION, last: RATING },
         Band { caption: "Outside \u{b7} field side \u{b7} read from the drawing", first: OUT_WIRE, last: OUT_TARGET },
     ]
@@ -89,7 +89,7 @@ pub enum PlanRow {
 
 /// The terminal plan as a table source.
 #[derive(Debug)]
-pub struct TerminalsSource {
+pub struct TerminalStripPlanSource {
     cols: Vec<Column>,
     keys: Vec<TermKey>,
     rows: HashMap<TermKey, PlanRow>,
@@ -97,7 +97,7 @@ pub struct TerminalsSource {
     by_strip: BTreeMap<DeviceId, Vec<TermKey>>,
 }
 
-impl Default for TerminalsSource {
+impl Default for TerminalStripPlanSource {
     fn default() -> Self {
         Self { cols: columns(), keys: Vec::new(), rows: HashMap::new(), by_strip: BTreeMap::new() }
     }
@@ -118,7 +118,7 @@ fn plan_rows(s: &StripData, accessories: bool, style: ecad_model::ReferenceStyle
             }
             PlanItem::Term(i, r) => {
                 let pi = s.position_index(i);
-                let at = s.links_at(i);
+                let at = s.jumper_bars_at(i);
                 let n = at.iter().map(|(l, _)| l.lane + 1).max().unwrap_or(0);
                 let mut lanes: Vec<Option<Lane>> = vec![None; n];
                 for (l, on) in &at {
@@ -141,7 +141,7 @@ fn plan_rows(s: &StripData, accessories: bool, style: ecad_model::ReferenceStyle
     out
 }
 
-impl TerminalsSource {
+impl TerminalStripPlanSource {
     pub fn row(&self, k: TermKey) -> Option<&PlanRow> {
         self.rows.get(&k)
     }
@@ -172,7 +172,7 @@ impl TerminalsSource {
     }
 }
 
-impl TableSource for TerminalsSource {
+impl TableSource for TerminalStripPlanSource {
     type Key = TermKey;
 
     fn columns(&self) -> &[Column] {
@@ -215,7 +215,7 @@ impl TableSource for TerminalsSource {
             TYPE => Cell::read(row.ty.name),
             RATING if row.breaks() && first => Cell::Input(row.rating.clone().unwrap_or_default()),
             RATING => Cell::Empty,
-            LINKS => Cell::Lanes(lanes.clone()),
+            JUMPER_BARS => Cell::Lanes(lanes.clone()),
             OUT_WIRE => Cell::read(side(&row.outside, |c| c.wire.clone())),
             CABLE => Cell::read(row.outside.iter().filter_map(cable).collect::<Vec<_>>().join(", ")),
             CORE => Cell::read(
@@ -256,8 +256,8 @@ pub fn edit_line(c: DeviceId, row: &TermRow, col: ColumnId, value: &str) -> Opti
 
 /// Reports ▸ Terminals: the source, the table and what it last read.
 #[derive(Debug)]
-pub struct TerminalsView {
-    pub source: TerminalsSource,
+pub struct TerminalStripPlanView {
+    pub source: TerminalStripPlanSource,
     pub table: Table<TermKey>,
     /// (project serial, models build, strip filter, accessories, reference style) of the build.
     built: Option<(u64, u64, Option<DeviceId>, bool, u64)>,
@@ -270,25 +270,25 @@ pub struct TerminalsView {
     pub rebuilds: u64,
 }
 
-impl Default for TerminalsView {
+impl Default for TerminalStripPlanView {
     fn default() -> Self {
         let mut table = Table::new("ecad.terminals", "Terminals");
         table.empty = "No terminal strips yet.";
         // UI rev 3: the plan's bands, a group of rows per strip.
         table.bands = bands();
-        table.view.set_group(&TerminalsSource::default(), Some(STRIP));
-        Self { source: TerminalsSource::default(), table, built: None, revision: 0, strips: BTreeMap::new(), pending: None, rebuilds: 0 }
+        table.view.set_group(&TerminalStripPlanSource::default(), Some(STRIP));
+        Self { source: TerminalStripPlanSource::default(), table, built: None, revision: 0, strips: BTreeMap::new(), pending: None, rebuilds: 0 }
     }
 }
 
-impl TerminalsView {
+impl TerminalStripPlanView {
     /// Forget what was read: the next sync rebuilds.
     pub fn invalidate(&mut self) {
         self.built = None;
     }
 
     /// Bring the view up to date with the models (the update map in the module docs).
-    pub fn sync(&mut self, serial: u64, o: &Outputs, strip: Option<DeviceId>, accessories: bool, style: ecad_model::ReferenceStyle) {
+    pub fn sync(&mut self, serial: u64, o: &ReportModels, strip: Option<DeviceId>, accessories: bool, style: ecad_model::ReferenceStyle) {
         let key = (serial, o.build_id, strip, accessories, style as u64);
         let shown: Vec<&StripData> = match strip {
             Some(c) => o.strips.get(c).into_iter().collect(),
@@ -296,7 +296,7 @@ impl TerminalsView {
         };
         let order: Vec<DeviceId> = shown.iter().map(|s| s.component).collect();
         if self.built != Some(key) {
-            self.source = TerminalsSource::default();
+            self.source = TerminalStripPlanSource::default();
             for s in &shown {
                 self.source.set_strip(s.component, plan_rows(s, accessories, style));
             }

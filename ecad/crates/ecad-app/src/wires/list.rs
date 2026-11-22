@@ -1,5 +1,5 @@
 //! Project ▸ Wires (UI rev 3, board 2.04): every wire, grouped by potential (or none, page,
-//! cable), as the one table over the wire report (`Outputs::wire_table`). Number, from, to,
+//! cable), as the one table over the wire report (`ReportModels::wire_table`). Number, from, to,
 //! colour, size, category, page and status are read from the drawing; ferrules and length belong
 //! to the cable manager (brief 2.7), not built yet, and show a dash. A provisional wire number
 //! is marked. Nothing here is set: a wire is changed on its page.
@@ -7,7 +7,7 @@
 //! **Update map:** see [`super::report`]: the copy is taken again only when the report models'
 //! revision changed, and only while the tab is shown.
 
-use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::ReportModels;
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
 
@@ -210,7 +210,7 @@ impl Default for WiresView {
 
 impl WiresView {
     /// Bring the copy up to date (only when the models' revision changed).
-    pub fn sync(&mut self, serial: u64, o: &Outputs) {
+    pub fn sync(&mut self, serial: u64, o: &ReportModels) {
         let key = (serial, o.build_id ^ o.revision);
         if self.seen == Some(key) {
             return;

@@ -215,9 +215,9 @@ fn a_location_style_restyles_boxes_and_a_page_frame_style_one_page() {
     let p2: PageId = id(&h.run("newpage", json!({"title": "Two"})).unwrap(), "page");
     h.run("setdefault", json!({"key": "print.frame.style", "level": "page", "page": page.hex(), "value": heavy})).unwrap();
     let doc = h.doc();
-    assert_eq!(styles::frame::frame_look(&doc, page).border, 100);
-    assert!(!styles::frame::frame_look(&doc, page).grid_labels);
-    assert_eq!(styles::frame::frame_look(&doc, p2).border, 50);
+    assert_eq!(styles::frame::frame_draw(&doc, page).border, 100);
+    assert!(!styles::frame::frame_draw(&doc, page).grid_labels);
+    assert_eq!(styles::frame::frame_draw(&doc, p2).border, 50);
     let parts = ecad_engine::frame::parts(&ecad_engine::frame::FrameInput::of(&doc, page, &ecad_model::book::Book::of(&doc)));
     assert!(parts.iter().any(|p| p.weight == Some(100)));
 }
@@ -351,7 +351,7 @@ fn a_24v_wire_takes_the_24_v_dc_category() {
     let l = wire(&mut h, 170.0, Some("L1"));
     let doc = h.doc();
     assert_eq!(ecad_engine::look::conductor_colour(&doc, l), None, "power in ink");
-    assert!((styles::wire::wire_look(&doc, l).line_weight - 0.6).abs() < 1e-9);
+    assert!((styles::wire::wire_draw(&doc, l).line_weight - 0.6).abs() < 1e-9);
 }
 
 #[test]
@@ -365,7 +365,7 @@ fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
     assert_eq!(ecad_engine::look::conductor_colour(&doc, a).map(|c| c.to_string()).as_deref(), Some("RD"));
     assert_eq!(ecad_engine::look::conductor_colour(&doc, b).map(|c| c.to_string()).as_deref(), Some("WH"), "its own colour stays");
     assert!(label_of(&mut h, page, a).unwrap().ends_with(" RD"));
-    let look = styles::wire::wire_look(&doc, b);
+    let look = styles::wire::wire_draw(&doc, b);
     assert_eq!(look.colour.map(|c| c.1), Some(Source::Object), "overridden");
     // Reset: it follows the category again.
     h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": null})).unwrap();
@@ -380,7 +380,7 @@ fn choosing_a_category_sets_a_missing_potential_and_keeps_another() {
     let v = h.run("category", json!({"conductor": a.hex(), "value": "signal"})).unwrap();
     assert_eq!(h.head(), before + 1);
     let doc = h.doc();
-    assert_eq!(styles::wire::wire_look(&doc, a).category, Some(StyleRef::Builtin("signal".into())));
+    assert_eq!(styles::wire::wire_draw(&doc, a).category, Some(StyleRef::Builtin("signal".into())));
     let net = doc.connectivity().net_of_conductor(a).and_then(|n| doc.connectivity().net(n)).unwrap();
     assert_eq!(ecad_model::wiring::net_potential(&doc, net).name.as_deref(), Some("24V"), "the net keeps 24V");
     assert!(v["message"].is_null(), "signal names no potential: {v}");
@@ -401,7 +401,7 @@ fn choosing_a_category_sets_a_missing_potential_and_keeps_another() {
     let r = h.run("wire", json!({"points": [[10, 190], [60, 190]], "category": "analogue"})).unwrap();
     assert_eq!(h.head(), before + 1);
     let c: ecad_model::WireId = id(&r, "conductor");
-    assert_eq!(styles::wire::wire_look(&h.doc(), c).category, Some(StyleRef::Builtin("analogue".into())));
+    assert_eq!(styles::wire::wire_draw(&h.doc(), c).category, Some(StyleRef::Builtin("analogue".into())));
 }
 
 #[test]

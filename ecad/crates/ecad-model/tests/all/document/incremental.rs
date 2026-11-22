@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use ecad_model::{
     Author, Cable, Color, Core, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit,
     ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer,
-    StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef, Touched, Wire,
+    StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, ConnectionPointDef, Touched, Wire,
 };
 
 /// Every `Op` variant's name, read from `Op` itself (brief 060): serde's derived `Deserialize`
@@ -74,9 +74,9 @@ pub(crate) struct Base {
     def_v: Definition,
     comp: ecad_model::DeviceId,
     comp_v: Device,
-    pub(crate) term: ecad_model::TerminalId,
+    pub(crate) term: ecad_model::ConnectionPointId,
     pub(crate) term_v: Terminal,
-    term3: ecad_model::TerminalId,
+    term3: ecad_model::ConnectionPointId,
     sym: ecad_model::ItemId,
     item: ecad_model::ItemId,
     item_v: Item,
@@ -126,7 +126,7 @@ pub(crate) fn base() -> Base {
         name: "K".into(),
         origin: None,
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
-        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
+        terminals: vec![ConnectionPointDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
         ..Default::default()
     };
     let comp: ecad_model::DeviceId = ids.fresh();
@@ -192,10 +192,10 @@ pub(crate) fn base() -> Base {
                 Op::AddLayer { id: layer, layer: layer_v.clone() },
                 Op::EmbedDefinition { id: def, definition: def_v.clone() },
                 Op::CreateDevice { id: comp, device: comp_v.clone() },
-                Op::AddTerminal { id: term, terminal: term_v.clone() },
-                Op::AddTerminal { id: term2, terminal: point("2") },
-                Op::AddTerminal { id: term3, terminal: point("3") },
-                Op::AddTerminal { id: term4, terminal: point("4") },
+                Op::AddConnectionPoint { id: term, terminal: term_v.clone() },
+                Op::AddConnectionPoint { id: term2, terminal: point("2") },
+                Op::AddConnectionPoint { id: term3, terminal: point("3") },
+                Op::AddConnectionPoint { id: term4, terminal: point("4") },
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
                 Op::LinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
@@ -291,8 +291,8 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
             before: b.comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..b.comp_v.clone() },
         },
-        Op::AddTerminal { id: b.ids.fresh(), terminal: Terminal { owner: b.comp.into(), label: None, key: None, accepts: Default::default() } },
-        Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() },
+        Op::AddConnectionPoint { id: b.ids.fresh(), terminal: Terminal { owner: b.comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() },
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
@@ -382,8 +382,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::DeleteDevice { id: b.comp, device: Device::default() },
         Op::ModifyDevice { id: b.comp, before: Device::default(), after: b.comp_v.clone() },
         Op::ModifyDevice { id: missing_comp, before: Device::default(), after: Device::default() },
-        Op::AddTerminal { id: b.term, terminal: b.term_v.clone() },
-        Op::RemoveTerminal { id: b.ids.fresh(), terminal: b.term_v.clone() },
+        Op::AddConnectionPoint { id: b.term, terminal: b.term_v.clone() },
+        Op::RemoveConnectionPoint { id: b.ids.fresh(), terminal: b.term_v.clone() },
         Op::LinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_sym_v.clone(), after: b.rep_wire_v.clone() },
         Op::UnlinkRepresentation { id: b.ids.fresh(), rep: b.rep_sym_v.clone() },
@@ -532,7 +532,7 @@ fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
     // Delete a terminal, then the wire that ended at it: in between, the wire is attached to a
     // missing terminal.
     let ops = vec![
-        Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() },
+        Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() },
         Op::ModifyCable { id: b.cable, before: b.cable_v.clone(), after: Cable { cores: Vec::new(), ..b.cable_v.clone() } },
         Op::DeleteWire { id: b.wire, wire: b.wire_v.clone() },
         // The route landing on it is freed too (design 072 F31).
@@ -556,7 +556,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
     let wire = b.ids.fresh();
     let ops = vec![
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: term, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: term, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::CreateWire { id: wire, wire: Wire::new(b.ids.fresh(), b.ids.fresh(), term, b.term3) },
         Op::ModifyCable {
             id: b.cable,
@@ -568,7 +568,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
     let doc = b.ledger.document();
     assert_eq!(doc.ends_at(term), vec![(wire, End::A)]);
     assert_eq!(doc.cables_of(wire), vec![b.cable]);
-    assert_eq!(doc.terminals_of(comp).map(|(t, _)| t).collect::<Vec<_>>(), vec![term]);
+    assert_eq!(doc.connection_points_of(comp).map(|(t, _)| t).collect::<Vec<_>>(), vec![term]);
 }
 
 #[test]
@@ -598,7 +598,7 @@ fn a_transaction_failing_the_end_check_is_rolled_back() {
     // Every op applies, but the terminal removed takes its wire with it (design 072 §4.4) while a
     // cable still lists the wire and the route still lands on the terminal.
     let ops =
-        vec![Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 3.0) }, Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() }];
+        vec![Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 3.0) }, Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() }];
     let r = b.ledger.commit(Author::User, "dangling", ops);
     let Err(ModelError::Invariant(m)) = r else { panic!("{r:?}") };
     assert!(m.contains("missing"), "{m}");
@@ -651,7 +651,7 @@ fn a_damaged_history_opens_at_its_last_good_transaction() {
     let mut log = b.ledger.full_log().unwrap();
     let mut bad = log[1].clone();
     bad.seq = 3;
-    bad.ops = vec![Op::AddLayer { id: LayerId(1), layer: Layer { name: "a".into() } }, Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() }];
+    bad.ops = vec![Op::AddLayer { id: LayerId(1), layer: Layer { name: "a".into() } }, Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() }];
     log.push(bad);
     let (ledger, failure) = Ledger::replay_prefix(log, 0);
     assert_eq!(ledger.head(), 2);
@@ -695,7 +695,7 @@ struct Pools {
     layers: Vec<LayerId>,
     items: Vec<ecad_model::ItemId>,
     comps: Vec<ecad_model::DeviceId>,
-    terms: Vec<ecad_model::TerminalId>,
+    terms: Vec<ecad_model::ConnectionPointId>,
     reps: Vec<ecad_model::RepresentationId>,
     conds: Vec<ecad_model::WireId>,
     cables: Vec<ecad_model::CableId>,
@@ -733,7 +733,7 @@ impl Gen {
     fn comp(&mut self) -> ecad_model::DeviceId {
         self.rng.pick(&self.pools.comps).unwrap_or_else(|| fresh_in!(self, comps))
     }
-    fn term(&mut self) -> Option<ecad_model::TerminalId> {
+    fn term(&mut self) -> Option<ecad_model::ConnectionPointId> {
         if self.rng.chance(30) { None } else { self.rng.pick(&self.pools.terms) }
     }
     fn cond(&mut self) -> ecad_model::WireId {
@@ -790,7 +790,7 @@ impl Gen {
         // terminals (I14 as relaxed for brief 018: valid with any embedded definition).
         if self.rng.chance(30)
             && let Some((cid, _)) = doc.devices.iter().nth(self.rng.below(doc.devices.len()))
-            && let Some(t) = doc.terminals_of(*cid).map(|(t, _)| t).next()
+            && let Some(t) = doc.connection_points_of(*cid).map(|(t, _)| t).next()
             && let Some((iid, it)) =
                 doc.items.iter().find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(_)) && doc.representation_of_item(**i).is_none())
         {
@@ -829,7 +829,7 @@ impl Gen {
         }
         let mut connection_points = std::collections::BTreeMap::new();
         if let (Subject::Device(c), true) = (subject, self.rng.chance(50)) {
-            let t = if self.rng.chance(80) { doc.terminals_of(c).map(|(t, _)| t).next() } else { self.term() };
+            let t = if self.rng.chance(80) { doc.connection_points_of(c).map(|(t, _)| t).next() } else { self.term() };
             if let Some(t) = t {
                 let y = if self.rng.chance(5) { f64::INFINITY } else { 1.0 };
                 connection_points.insert(t, Pt::new(0.0, y));
@@ -840,10 +840,10 @@ impl Gen {
     }
 
     fn definition(&mut self) -> Definition {
-        let mut terminals = vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 1.0), accepts: Default::default() }];
+        let mut terminals = vec![ConnectionPointDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 1.0), accepts: Default::default() }];
         if self.rng.chance(20) {
             let key = if self.rng.chance(50) { "1" } else { "2" };
-            terminals.push(TerminalDef { key: key.parse().unwrap(), label: None, at: Pt::new(0.0, -1.0), accepts: Default::default() });
+            terminals.push(ConnectionPointDef { key: key.parse().unwrap(), label: None, at: Pt::new(0.0, -1.0), accepts: Default::default() });
         }
         let r = if self.rng.chance(5) { f64::NAN } else { 1.0 };
         Definition {
@@ -915,13 +915,13 @@ impl Gen {
             },
             16..=17 => {
                 let component = if self.rng.chance(85) { self.rng.pick_key(&doc.devices).unwrap_or_else(|| self.comp()) } else { self.comp() };
-                Op::AddTerminal {
+                Op::AddConnectionPoint {
                     id: fresh_in!(self, terms),
                     terminal: Terminal { owner: component.into(), label: None, key: None, accepts: Default::default() },
                 }
             }
             18 => match self.rng.pick_key(&doc.terminals) {
-                Some(id) => Op::RemoveTerminal {
+                Some(id) => Op::RemoveConnectionPoint {
                     id,
                     terminal: doc.terminals.get(&id).cloned().unwrap_or(Terminal {
                         owner: self.comp().into(),
@@ -930,7 +930,7 @@ impl Gen {
                         accepts: Default::default(),
                     }),
                 },
-                None => Op::AddTerminal {
+                None => Op::AddConnectionPoint {
                     id: fresh_in!(self, terms),
                     terminal: Terminal { owner: self.comp().into(), label: None, key: None, accepts: Default::default() },
                 },

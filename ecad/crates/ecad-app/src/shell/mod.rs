@@ -109,7 +109,7 @@ impl ListsView {
     pub fn label(self) -> &'static str {
         match self {
             ListsView::Devices => LISTS_DEVICES,
-            ListsView::Terminals => LISTS_TERMINALS,
+            ListsView::Terminals => LISTS_TERMINAL_STRIPS,
             ListsView::Plc => LISTS_PLC,
             ListsView::Wires => LISTS_WIRES,
             ListsView::Cables => LISTS_CABLES,
@@ -120,7 +120,7 @@ impl ListsView {
 }
 
 pub const LISTS_DEVICES: &str = "Devices";
-pub const LISTS_TERMINALS: &str = "Terminals";
+pub const LISTS_TERMINAL_STRIPS: &str = "Terminals";
 /// Brief 051 (design 051 §3.1): the rack overview and the I/O list (045c's "I/O").
 pub const LISTS_PLC: &str = "PLC";
 pub const LISTS_WIRES: &str = "Wires";

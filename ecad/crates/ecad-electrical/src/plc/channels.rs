@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     ChannelRole, DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, PointKey, Pt, Representation,
-    RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
+    RepresentationId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId,
 };
 
 use super::card_type_of;
@@ -49,15 +49,15 @@ pub fn key(i: u32, role: ChannelRole) -> Option<PointKey> {
 }
 
 /// The channel and role of terminal `t` of a card; `None` for a point that is not a channel's.
-pub fn point_of(doc: &Document, t: TerminalId) -> Option<(u32, ChannelRole)> {
+pub fn point_of(doc: &Document, t: ConnectionPointId) -> Option<(u32, ChannelRole)> {
     let (i, role) = doc.terminals.get(&t)?.key.as_ref()?.channel()?;
     Some((u32::from(i), role))
 }
 
 /// The channel points of card `c`: index → (role, terminal, pin), roles in their cell order.
-pub fn points(doc: &Document, c: DeviceId) -> BTreeMap<u32, Vec<(ChannelRole, TerminalId, String)>> {
-    let mut out: BTreeMap<u32, Vec<(ChannelRole, TerminalId, String)>> = BTreeMap::new();
-    for (t, term) in doc.terminals_of(c) {
+pub fn points(doc: &Document, c: DeviceId) -> BTreeMap<u32, Vec<(ChannelRole, ConnectionPointId, String)>> {
+    let mut out: BTreeMap<u32, Vec<(ChannelRole, ConnectionPointId, String)>> = BTreeMap::new();
+    for (t, term) in doc.connection_points_of(c) {
         if let Some((i, role)) = point_of(doc, t) {
             out.entry(i).or_default().push((role, t, term.label.clone().unwrap_or_default()));
         }
@@ -101,7 +101,7 @@ pub fn first_number(doc: &Document, c: DeviceId) -> u32 {
 }
 
 /// Where channel `i` of card `c` is drawn, in words (`105-C-2`, or `page 3`).
-fn drawn_words(doc: &Document, t: TerminalId) -> String {
+fn drawn_words(doc: &Document, t: ConnectionPointId) -> String {
     let Some((_, r)) = doc.representations_showing(t).next() else { return "no page".into() };
     let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin);
     match at.and_then(|a| ecad_model::wiring::place(doc, r.page, a)) {
@@ -214,7 +214,7 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
 #[derive(Debug, Clone)]
 pub struct Cell {
     pub index: u32,
-    pub terminals: Vec<(ChannelRole, TerminalId, String, Pt)>,
+    pub terminals: Vec<(ChannelRole, ConnectionPointId, String, Pt)>,
     pub representation: RepresentationId,
     pub item: ItemId,
 }
@@ -237,8 +237,8 @@ pub fn plan_cell(
             .find(|td| td.key.role() == Some(*role))
             .map(|td| td.at)
             .ok_or(CmdError::refused("The channel symbol has no point for that role."))?;
-        let t: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal {
+        let t: ConnectionPointId = ids.fresh();
+        ops.push(Op::AddConnectionPoint {
             id: t,
             terminal: Terminal {
                 owner: card.into(),
@@ -328,7 +328,7 @@ pub struct Landing {
 }
 
 /// The local place of point `role` in a channel symbol's definition terminals.
-pub fn role_at(terms: &[ecad_model::TerminalDef], role: ChannelRole) -> Option<Pt> {
+pub fn role_at(terms: &[ecad_model::ConnectionPointDef], role: ChannelRole) -> Option<Pt> {
     terms.iter().find(|td| td.key.role() == Some(role)).map(|td| td.at)
 }
 
@@ -416,7 +416,7 @@ pub fn landings(doc: &Document, s: &Starter, members: &[crate::slash::Crossing],
 ///
 /// # Errors
 /// As [`crate::connectors::plan_land`].
-pub fn land_cell(doc: &Document, ids: &mut IdAllocator, on: crate::wires::OnRoute, t: TerminalId) -> Result<Vec<Op>, CmdError> {
+pub fn land_cell(doc: &Document, ids: &mut IdAllocator, on: crate::wires::OnRoute, t: ConnectionPointId) -> Result<Vec<Op>, CmdError> {
     let route = doc.routes.get(&on.route).ok_or(CmdError::NotFound(ecad_model::Noun::Wire))?;
     let (a_free, b_free) = (route.ends[0] == ecad_model::RouteEnd::Free, route.ends[1] == ecad_model::RouteEnd::Free);
     if a_free == b_free || doc.tees_of(on.route).next().is_some() {

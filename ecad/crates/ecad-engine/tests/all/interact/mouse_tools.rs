@@ -19,7 +19,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use common::H;
-use ecad_model::{DeviceId, Document, PageId, TerminalId, Transaction};
+use ecad_model::{DeviceId, Document, PageId, ConnectionPointId, Transaction};
 use serde_json::json;
 
 const SEED: u64 = 80_08;
@@ -68,8 +68,8 @@ fn line_handle(h: &H, x0: f64, y0: f64, x1: f64, y1: f64) -> Handle {
         .expect("line")
 }
 
-fn terminal_at(d: &Document, page: PageId, x: f64, y: f64) -> TerminalId {
-    ecad_model::derive::terminal_positions(d, page)
+fn connection_point_at(d: &Document, page: PageId, x: f64, y: f64) -> ConnectionPointId {
+    ecad_model::derive::connection_point_positions(d, page)
         .into_iter()
         .find(|(_, _, p)| p.near(ecad_model::Pt::new(x, y), 1e-9))
         .map(|(t, _, _)| t)
@@ -220,7 +220,7 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
                 let pg = h.first_page();
                 let d = h.doc();
                 let w = route_from(&d, pg, 0.0, 30.0);
-                let t = terminal_at(&d, pg, 40.0, 10.0);
+                let t = connection_point_at(&d, pg, 40.0, 10.0);
                 h.run("connect", json!({"route": w.hex(), "end": "B", "terminal": t.hex()})).unwrap();
             },
         ),
@@ -413,7 +413,7 @@ fn ac4_preview_and_click_agree_inside_and_outside_the_aperture() {
             }
             let pg = h.first_page();
             let d = h.doc();
-            let a2 = terminal_at(&d, pg, 110.0, 0.0);
+            let a2 = connection_point_at(&d, pg, 110.0, 0.0);
             let attached = d.routes_at(a2).next().is_some();
             assert_eq!(attached, inside, "{tool} at {pixels} px: click");
             h.check();
@@ -575,7 +575,7 @@ fn the_prompt_names_the_default_terminal_name_that_is_used() {
     typed(&mut h, "0,10");
     let pg = h.first_page();
     let d = h.doc();
-    let t = terminal_at(&d, pg, 0.0, 10.0);
+    let t = connection_point_at(&d, pg, 0.0, 10.0);
     let label = d.terminals[&t].label.clone().unwrap_or_default();
     assert_eq!(label, "2", "smallest unused number on that component");
     assert_eq!(
@@ -658,7 +658,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     assert!(h2.s.running.is_none());
     let d = h2.doc();
     assert_eq!(d.routes.len(), ends + 1);
-    let t1 = terminal_at(&d, pg, 40.0, 10.0);
+    let t1 = connection_point_at(&d, pg, 40.0, 10.0);
     assert!(d.routes.values().any(|r| r.ends[1] == ecad_model::RouteEnd::Point(t1)));
     h2.check();
     while !h2.s.docs.is_empty() {

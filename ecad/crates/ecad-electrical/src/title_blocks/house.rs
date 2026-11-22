@@ -13,7 +13,7 @@ use ecad_model::project::{InfoField, RevField};
 use ecad_model::sheet::TITLE_BLOCK_MM;
 use ecad_model::title_block::{
     Align, Binding, BlockItem, IfEmpty, Ink, LineWeight, MAX_TEXT_MM, MIN_TEXT_MM, Newest, PageField, PrintField, ProjectKey, Rect, RevisionColumn,
-    TextLook, TitleBlockLayout,
+    TextDraw, TitleBlockLayout,
 };
 
 use crate::frames::{FrameText, TABLE_ROWS};
@@ -30,13 +30,13 @@ pub const ROW_MM: f64 = 12.5;
 /// Narrowest revision table the house block keeps (mm).
 pub const MIN_TABLE_MM: f64 = 60.0;
 
-fn look(size: f64, bold: bool, align: Align) -> TextLook {
+fn look(size: f64, bold: bool, align: Align) -> TextDraw {
     // The text styles keep their own bounds; a block keeps its own (design 055 §1.3).
     let size = if size.is_finite() { size.clamp(MIN_TEXT_MM, MAX_TEXT_MM) } else { MIN_TEXT_MM };
-    TextLook { size: (size * 100.0).round() / 100.0, bold, align, colour: Ink::Ink }
+    TextDraw { size: (size * 100.0).round() / 100.0, bold, align, colour: Ink::Ink }
 }
 
-fn field(at: Rect, bind: Binding, label: &str, look: TextLook) -> BlockItem {
+fn field(at: Rect, bind: Binding, label: &str, look: TextDraw) -> BlockItem {
     BlockItem::Field { at, bind, label: Some(label.to_string()), look, if_empty: IfEmpty::Blank }
 }
 

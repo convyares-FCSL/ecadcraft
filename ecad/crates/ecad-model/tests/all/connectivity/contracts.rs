@@ -7,7 +7,7 @@ use ecad_model::aid::ContinuationName;
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
     Aid, AidId, Author, Connectivity, Definition, DefinitionId, Device, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, Page, PageId,
-    Terminal, TerminalDef, TerminalId, Wire, WireId,
+    Terminal, ConnectionPointDef, ConnectionPointId, Wire, WireId,
 };
 
 /// A small project driven through the ledger, with the numbering pass as ECAD commits run it.
@@ -38,17 +38,17 @@ impl P {
     }
 
     /// A device with `n` terminals keyed `1`..`n`.
-    fn device(&mut self, n: usize) -> (DeviceId, Vec<TerminalId>) {
+    fn device(&mut self, n: usize) -> (DeviceId, Vec<ConnectionPointId>) {
         self.device_with(n, Device::default())
     }
 
-    fn device_with(&mut self, n: usize, component: Device) -> (DeviceId, Vec<TerminalId>) {
+    fn device_with(&mut self, n: usize, component: Device) -> (DeviceId, Vec<ConnectionPointId>) {
         let c: DeviceId = self.ids.fresh();
         let mut ops = vec![Op::CreateDevice { id: c, device: component }];
         let mut ts = Vec::new();
         for k in 1..=n {
-            let t: TerminalId = self.ids.fresh();
-            ops.push(Op::AddTerminal {
+            let t: ConnectionPointId = self.ids.fresh();
+            ops.push(Op::AddConnectionPoint {
                 id: t,
                 terminal: Terminal {
                     owner: c.into(),
@@ -64,31 +64,31 @@ impl P {
     }
 
     /// A continuation (a drawing aid, design 072 §6.2) named `name`, with its one point.
-    fn continuation(&mut self, name: &str) -> (AidId, TerminalId) {
+    fn continuation(&mut self, name: &str) -> (AidId, ConnectionPointId) {
         let a: AidId = self.ids.fresh();
-        let t: TerminalId = self.ids.fresh();
+        let t: ConnectionPointId = self.ids.fresh();
         let aid = Aid::Continuation { name: Some(ContinuationName::new(name).unwrap()), caption: None };
         let terminal = Terminal { owner: a.into(), label: None, key: None, accepts: Default::default() };
-        self.commit(vec![Op::CreateAid { id: a, aid }, Op::AddTerminal { id: t, terminal }]);
+        self.commit(vec![Op::CreateAid { id: a, aid }, Op::AddConnectionPoint { id: t, terminal }]);
         (a, t)
     }
 
     /// A connection point of its own (a one-terminal device), joined to nothing: where a wire
     /// that goes nowhere else ends.
-    fn point(&mut self) -> TerminalId {
+    fn point(&mut self) -> ConnectionPointId {
         self.device(1).1[0]
     }
 
     /// A wire whose bare ends are given connection points: the wire is one commit.
-    fn bare(&mut self, a: TerminalId, b: TerminalId) -> Wire {
+    fn bare(&mut self, a: ConnectionPointId, b: ConnectionPointId) -> Wire {
         Wire::new(self.ids.fresh(), self.ids.fresh(), a, b)
     }
 
-    fn wire(&mut self, a: TerminalId, b: TerminalId) -> WireId {
+    fn wire(&mut self, a: ConnectionPointId, b: ConnectionPointId) -> WireId {
         self.wire_props(a, b, &[])
     }
 
-    fn wire_props(&mut self, a: TerminalId, b: TerminalId, props: &[(&str, &str)]) -> WireId {
+    fn wire_props(&mut self, a: ConnectionPointId, b: ConnectionPointId, props: &[(&str, &str)]) -> WireId {
         let w: WireId = self.ids.fresh();
         let mut wire = self.bare(a, b);
         for (k, v) in props {
@@ -99,7 +99,7 @@ impl P {
     }
 
     /// A wire from `a` to a point of its own.
-    fn loose(&mut self, a: TerminalId) -> WireId {
+    fn loose(&mut self, a: ConnectionPointId) -> WireId {
         let b = self.point();
         self.wire(a, b)
     }
@@ -188,7 +188,7 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
         graphics: vec![],
         terminals: ["1", "2", "3"]
             .iter()
-            .map(|k| TerminalDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
+            .map(|k| ConnectionPointDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
             .collect(),
         bridges: vec![vec!["1".parse().unwrap(), "2".parse().unwrap()]],
         ..Default::default()
@@ -407,7 +407,7 @@ fn random_ops(seed: u64, steps: usize) {
     let names = ["24V", "0V", "L1"];
     for step in 0..steps {
         let doc = p.doc();
-        let terminals: Vec<TerminalId> = doc.terminals.keys().copied().collect();
+        let terminals: Vec<ConnectionPointId> = doc.terminals.keys().copied().collect();
         let conductors: Vec<WireId> = doc.wires.keys().copied().collect();
         let comps: Vec<DeviceId> = doc.devices.keys().copied().collect();
         let aids: Vec<AidId> = doc.aids.keys().copied().collect();
@@ -462,9 +462,9 @@ fn random_ops(seed: u64, steps: usize) {
                 // Remove a device whose terminals are free, with its terminals.
                 let c = comps[next(comps.len())];
                 let doc = p.doc();
-                let ts: Vec<(TerminalId, Terminal)> = doc.terminals_of(c).map(|(t, x)| (t, x.clone())).collect();
+                let ts: Vec<(ConnectionPointId, Terminal)> = doc.connection_points_of(c).map(|(t, x)| (t, x.clone())).collect();
                 if ts.iter().all(|(t, _)| doc.ends_at(*t).is_empty()) {
-                    let mut ops: Vec<Op> = ts.into_iter().map(|(id, terminal)| Op::RemoveTerminal { id, terminal }).collect();
+                    let mut ops: Vec<Op> = ts.into_iter().map(|(id, terminal)| Op::RemoveConnectionPoint { id, terminal }).collect();
                     ops.push(Op::DeleteDevice { id: c, device: doc.devices.get(&c).unwrap().clone() });
                     p.commit(ops);
                 }
@@ -540,7 +540,7 @@ fn links_join_terminals_by_label_and_number_in_the_same_transaction() {
     let old = p.doc().terminals.get(&t[0]).unwrap().clone();
     let mut new = old.clone();
     new.label = Some("9".into());
-    p.commit(vec![Op::RemoveTerminal { id: t[0], terminal: old }, Op::AddTerminal { id: t[0], terminal: new }]);
+    p.commit(vec![Op::RemoveConnectionPoint { id: t[0], terminal: old }, Op::AddConnectionPoint { id: t[0], terminal: new }]);
     assert!(!p.same_net(w[0], w[1]));
     p.check();
     // Undo of the link edit restores the joined net; clearing the key splits everything.

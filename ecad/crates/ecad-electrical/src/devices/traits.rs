@@ -233,7 +233,7 @@ impl DeviceKind for DeviceType {
             DeviceType::Protection(Protection::Mcb(b)) => Some(b),
             DeviceType::Protection(Protection::Rcd(r)) => Some(r),
             DeviceType::Protection(Protection::Rcbo(r)) => Some(r),
-            DeviceType::Protection(Protection::Fuse(_) | Protection::FuseTerminal(_) | Protection::FuseBank(_))
+            DeviceType::Protection(Protection::Fuse(_) | Protection::FuseTerminalBlock(_) | Protection::FuseBank(_))
             | DeviceType::PowerSupply(_)
             | DeviceType::Motor(_)
             | DeviceType::Load(_)
@@ -253,7 +253,7 @@ impl DeviceKind for DeviceType {
             DeviceType::Protection(Protection::Mcb(b)) => Some(b),
             DeviceType::Protection(Protection::Rcd(r)) => Some(r),
             DeviceType::Protection(Protection::Rcbo(r)) => Some(r),
-            DeviceType::Protection(Protection::Fuse(_) | Protection::FuseTerminal(_) | Protection::FuseBank(_))
+            DeviceType::Protection(Protection::Fuse(_) | Protection::FuseTerminalBlock(_) | Protection::FuseBank(_))
             | DeviceType::PowerSupply(_)
             | DeviceType::Motor(_)
             | DeviceType::Load(_)
@@ -347,7 +347,7 @@ impl Protects for Protection {
     fn overcurrent(&self) -> bool {
         match self.kind() {
             ProtectionKind::Rcd => false,
-            ProtectionKind::Fuse | ProtectionKind::FuseTerminal | ProtectionKind::Mcb | ProtectionKind::Rcbo | ProtectionKind::FuseBank => true,
+            ProtectionKind::Fuse | ProtectionKind::FuseTerminalBlock | ProtectionKind::Mcb | ProtectionKind::Rcbo | ProtectionKind::FuseBank => true,
         }
     }
 }
@@ -439,7 +439,7 @@ mod tests {
     fn an_rcd_protects_but_not_against_overcurrent() {
         for kind in [
             ProtectionKind::Fuse,
-            ProtectionKind::FuseTerminal,
+            ProtectionKind::FuseTerminalBlock,
             ProtectionKind::Mcb,
             ProtectionKind::Rcd,
             ProtectionKind::Rcbo,

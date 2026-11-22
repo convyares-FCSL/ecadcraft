@@ -61,7 +61,7 @@ fn terminal_strips_in_the_app() {
     ok(&mut h, r#"terminals {"from":[90,170],"to":[260,170]}"#);
     let d = doc(&mut h);
     let x1 = d.components_tagged("-X01")[0];
-    let mut terms: Vec<(String, ecad_model::TerminalId)> = d.terminals_of(x1).map(|(t, x)| (x.label.clone().unwrap(), t)).collect();
+    let mut terms: Vec<(String, ecad_model::ConnectionPointId)> = d.connection_points_of(x1).map(|(t, x)| (x.label.clone().unwrap(), t)).collect();
     terms.sort();
     assert_eq!(terms.len(), 4);
     ok(&mut h, &format!(r#"bridge {{"from":"{}","to":"{}"}}"#, terms[2].1.hex(), terms[3].1.hex()));
@@ -140,7 +140,7 @@ fn terminal_strips_in_the_app() {
     h.state_mut().panel.tab = project_panel::Tab::Checks;
     h.run_steps(4);
     let rows = h.state().panel.checks.rows().to_vec();
-    assert!(rows.iter().any(|r| r.check.kind == Kind::TooManyTerminals), "{rows:?}");
+    assert!(rows.iter().any(|r| r.check.kind == Kind::TooManyTerminalBlocks), "{rows:?}");
     save(&h, &deltas, "028-checks.png");
     h.state_mut().panel_action(project_panel::Action::OfferDrawn(x1));
     h.run_steps(3);

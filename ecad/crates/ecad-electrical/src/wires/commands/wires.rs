@@ -10,7 +10,7 @@ use ecad_model::text::Text;
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
     Document, End, IdAllocator, Ledger, NetData, NetKey, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, RouteEnd, RouteId, Style,
-    StyleRef, TerminalId, Wire, WireId,
+    StyleRef, ConnectionPointId, Wire, WireId,
 };
 
 use crate::error::{CmdError, msg};
@@ -28,7 +28,7 @@ pub const MAX_POTENTIALS: usize = 200;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NetChoice {
     pub conductor: Option<WireId>,
-    pub terminal: Option<TerminalId>,
+    pub terminal: Option<ConnectionPointId>,
     pub number: Option<String>,
 }
 
@@ -58,7 +58,7 @@ pub struct NetView {
     pub categories: Option<Vec<CategoryName>>,
     pub wires: Vec<WireId>,
     /// Its device connection points (not continuations), with their words.
-    pub points: Vec<(TerminalId, String)>,
+    pub points: Vec<(ConnectionPointId, String)>,
     /// The names of its continuations.
     pub continuations: BTreeSet<String>,
     /// Per page it is drawn on, in page order: the shown page number and the column of the first
@@ -134,7 +134,7 @@ pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetKey, CmdError
         return conn.net_of_conductor(c).ok_or(CmdError::NotFound(Noun::Wire));
     }
     if let Some(t) = choice.terminal {
-        return conn.net_of_terminal(t).ok_or(CmdError::NotFound(Noun::Terminal));
+        return conn.net_of_connection_point(t).ok_or(CmdError::NotFound(Noun::Terminal));
     }
     if let Some(n) = &choice.number {
         let n = n.trim();

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::book::Book;
 use crate::doc::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
 use crate::geom::Pt;
-use crate::id::{CableId, ItemId, PageId, RepresentationId, RouteId, TerminalId, WireId};
+use crate::id::{CableId, ItemId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::sheet::Grid;
 
 /// Where each terminal sits on one page, from drawn connection points and symbol placements.
@@ -17,7 +17,7 @@ use crate::sheet::Grid;
 /// definition's local terminal position (proposal §4.3), or the representation's connection
 /// points in the definition's local frame when it has them (brief 018). A terminal shown by several
 /// representations on the same page appears once per representation.
-pub fn terminal_positions(doc: &Document, page: PageId) -> Vec<(TerminalId, RepresentationId, Pt)> {
+pub fn connection_point_positions(doc: &Document, page: PageId) -> Vec<(ConnectionPointId, RepresentationId, Pt)> {
     let mut out = Vec::new();
     for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page) {
         out.extend(shown_by(doc, r).into_iter().map(|(t, p)| (t, *rid, p)));
@@ -25,16 +25,16 @@ pub fn terminal_positions(doc: &Document, page: PageId) -> Vec<(TerminalId, Repr
     out
 }
 
-/// Where `terminal` is shown on `page`: the first entry for it in [`terminal_positions`], found
+/// Where `terminal` is shown on `page`: the first entry for it in [`connection_point_positions`], found
 /// through its component's representations only, so the cost does not grow with the page or
 /// the project.
 ///
 /// # Semantics
-/// The same answer as `terminal_positions(doc, page)`'s first entry for `terminal` on any valid
+/// The same answer as `connection_point_positions(doc, page)`'s first entry for `terminal` on any valid
 /// document, where a representation shows only its own component's terminals (a drawn
 /// representation's connection points are its component's terminals). Both read a
 /// representation through the same helper, so they cannot drift apart.
-pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> Option<Pt> {
+pub fn connection_point_position(doc: &Document, page: PageId, terminal: ConnectionPointId) -> Option<Pt> {
     let subject = match doc.terminals.get(&terminal) {
         Some(t) => t.owner.subject(),
         None => Subject::Cable(doc.cable_point(terminal)?.0),
@@ -45,13 +45,13 @@ pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> 
 }
 
 /// The terminals a component representation shows, with their positions, in the order
-/// [`terminal_positions`] lists them.
-fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
+/// [`connection_point_positions`] lists them.
+fn shown_by(doc: &Document, r: &Representation) -> Vec<(ConnectionPointId, Pt)> {
     // A cable reference shows its cores' named points (design 072 §4.4, F4).
     if let Subject::Cable(_) = r.subject {
         return r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
     }
-    let owner: crate::doc::TerminalOwner = match r.subject {
+    let owner: crate::doc::ConnectionPointOwner = match r.subject {
         Subject::Device(d) => d.into(),
         Subject::Aid(a) => a.into(),
         _ => return Vec::new(),
@@ -68,7 +68,7 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
                 return r.connection_points.iter().map(|(t, p)| (*t, inst.placement.apply(*p))).collect();
             }
             let Some(def) = doc.definitions.get(&inst.definition) else { return Vec::new() };
-            doc.terminals_of(owner)
+            doc.connection_points_of(owner)
                 .filter_map(|(tid, t)| {
                     let td = t.key.as_ref().and_then(|k| def.terminals.iter().find(|d| &d.key == k))?;
                     Some((tid, inst.placement.apply(td.at)))
@@ -127,10 +127,11 @@ pub struct Mismatch {
     pub route: RouteId,
     /// End A is the route's first point, end B its last.
     pub end: End,
-    pub terminal: TerminalId,
+    pub terminal: ConnectionPointId,
     pub page: PageId,
     pub route_end: Pt,
-    pub terminal_at: Pt,
+    #[serde(rename = "terminal_at")]
+    pub connection_point_at: Pt,
 }
 
 /// Route ends on a connection point whose drawn end is not where that point is shown (DOC-03 check).
@@ -140,9 +141,9 @@ pub struct Mismatch {
 /// terminal not shown on the route's page is not a mismatch. Positions compare within `tol`.
 pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
     let mut out = Vec::new();
-    let mut positions: BTreeMap<PageId, Vec<(TerminalId, RepresentationId, Pt)>> = BTreeMap::new();
+    let mut positions: BTreeMap<PageId, Vec<(ConnectionPointId, RepresentationId, Pt)>> = BTreeMap::new();
     for page in &doc.page_order {
-        positions.insert(*page, terminal_positions(doc, *page));
+        positions.insert(*page, connection_point_positions(doc, *page));
     }
     for (rid, r) in &doc.routes {
         let Some([a, b]) = r.end_points() else { continue };
@@ -150,8 +151,8 @@ pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
             let Some(t) = e.point() else { continue };
             let shown: Vec<Pt> = positions.get(&r.page).into_iter().flatten().filter(|(pt, _, _)| *pt == t).map(|(_, _, p)| *p).collect();
             if !shown.is_empty() && !shown.iter().any(|p| p.near(at, tol)) {
-                let terminal_at = shown.first().copied().unwrap_or_default();
-                out.push(Mismatch { route: *rid, end, terminal: t, page: r.page, route_end: at, terminal_at });
+                let connection_point_at = shown.first().copied().unwrap_or_default();
+                out.push(Mismatch { route: *rid, end, terminal: t, page: r.page, route_end: at, connection_point_at });
             }
         }
     }
@@ -161,7 +162,7 @@ pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
 /// A connected set of terminals and conductors (derived net; identity not stable, §15).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Net {
-    pub terminals: Vec<TerminalId>,
+    pub terminals: Vec<ConnectionPointId>,
     pub wires: Vec<WireId>,
 }
 
@@ -219,7 +220,7 @@ pub fn nets(doc: &Document) -> Vec<Net> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Node {
-    Terminal(TerminalId),
+    Terminal(ConnectionPointId),
     Wire(WireId),
 }
 

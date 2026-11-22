@@ -146,7 +146,7 @@ pub struct Debugger {
     events_page: usize,
     /// The `Cable references` diagnostics (brief 010), derived once per snapshot.
     ref_lines: Vec<String>,
-    refs_page: usize,
+    references_page: usize,
     at_text: String,
     historical: Option<Historical>,
     checks: Vec<Ran>,
@@ -179,7 +179,7 @@ impl Default for Debugger {
             history_page: 0,
             events_page: 0,
             ref_lines: Vec::new(),
-            refs_page: 0,
+            references_page: 0,
             at_text: String::new(),
             historical: None,
             checks: Vec::new(),
@@ -806,8 +806,8 @@ impl Debugger {
         rule(ui);
         // Brief 010: derived once per snapshot from its copy of the document, never saved; paged.
         prim::caption(ui, "Cable references");
-        pager(ui, "references", self.ref_lines.len(), &mut self.refs_page);
-        for line in self.ref_lines.iter().skip(self.refs_page * PAGE).take(PAGE) {
+        pager(ui, "references", self.ref_lines.len(), &mut self.references_page);
+        for line in self.ref_lines.iter().skip(self.references_page * PAGE).take(PAGE) {
             prim::body(ui, line, false);
         }
         rule(ui);

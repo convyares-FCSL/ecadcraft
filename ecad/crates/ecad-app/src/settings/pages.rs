@@ -122,7 +122,7 @@ pub fn read(t: &mut App) -> Option<Snapshot> {
         let rows = ptype::ordered(doc)
             .into_iter()
             .map(|r| {
-                let look = ptype::look_of(doc, &r.id);
+                let look = ptype::draw_of(doc, &r.id);
                 TypeRow {
                     subtitle: ptype::subtitle(&r.id),
                     own: r.layer != ecad_engine::styles::Layer::Builtin,

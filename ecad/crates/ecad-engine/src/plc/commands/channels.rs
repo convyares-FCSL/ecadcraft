@@ -14,7 +14,7 @@ use crate::plc::channels::*;
 use crate::plc::rack::channel_count;
 use crate::symbols::Starter;
 use ecad_electrical::cmd::input::{Point, TextOrNumber, nullable};
-use ecad_model::{Placement, Pt, TerminalId};
+use ecad_model::{Placement, Pt, ConnectionPointId};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -250,7 +250,7 @@ pub(crate) struct PlcchannelParams {
     move_to: Option<Option<TextOrNumber>>,
     /// With `move_to`: a connection point of the copy to move (absent: the last drawn).
     #[serde(default)]
-    terminal: Option<TerminalId>,
+    terminal: Option<ConnectionPointId>,
 }
 
 impl Command for PlcchannelParams {

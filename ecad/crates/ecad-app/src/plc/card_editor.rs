@@ -109,7 +109,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
     let p = t.project()?.clone();
     p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
-        let plc = &p.kept_outputs()?.plc;
+        let plc = &p.kept_reports()?.plc;
         let card = plc.cards.get(&c)?;
         let comp = doc.devices.get(&c)?;
         let own = |k: &str| comp.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());

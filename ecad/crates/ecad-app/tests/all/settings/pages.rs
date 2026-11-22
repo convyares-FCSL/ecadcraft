@@ -27,7 +27,7 @@ fn pages_and_sheets_lists_the_types_and_each_control_writes_one_setstyle() {
     click(&mut h, "ecad.settings.pages.zones.schematic");
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert!(!ptype::look_of(&d, &StyleRef::Builtin("schematic".into())).zones);
+    assert!(!ptype::draw_of(&d, &StyleRef::Builtin("schematic".into())).zones);
     // The rows follow the commit.
     h.run_steps(3);
     let row = h.state().settings.pages.snapshot.as_ref().and_then(|s| s.rows.iter().find(|r| r.id.text() == "schematic").cloned());

@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 use ecad_model::{
     CableId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, RouteEnd,
-    RouteId, Style, Subject, TerminalId, WireId,
+    RouteId, Style, Subject, ConnectionPointId, WireId,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -66,7 +66,7 @@ pub struct StubRoute {
     /// The core's index in the cable.
     pub core: usize,
     /// The core's named points: on the source page's reference, and on the new one.
-    pub points: [TerminalId; 2],
+    pub points: [ConnectionPointId; 2],
     pub route: RouteId,
     pub item: ItemId,
     pub free_end: End,
@@ -113,7 +113,7 @@ pub fn continue_cable(
     let mut routes = Vec::with_capacity(plan.stubs.len());
     let mut stub_ops = Vec::new();
     for stub in &plan.stubs {
-        let points: [TerminalId; 2] = [ids.fresh(), ids.fresh()];
+        let points: [ConnectionPointId; 2] = [ids.fresh(), ids.fresh()];
         source_after.connection_points.insert(points[0], stub.line_at);
         if let Some(Op::LinkRepresentation { rep, .. }) = reference.ops.get_mut(1) {
             rep.connection_points.insert(points[1], stub.a);

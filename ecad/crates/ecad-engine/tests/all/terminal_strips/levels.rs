@@ -3,8 +3,8 @@
 //! `toposition`, the plan, the BOM per type and the update maps. Driven through the commands'
 //! JSON forms on a small fixture of loose vertical wires.
 
-use ecad_engine::outputs::{Group, kept::Outputs};
-use ecad_model::{DeviceId, TerminalId, WireId};
+use ecad_engine::outputs::{Group, kept::ReportModels};
+use ecad_model::{DeviceId, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -13,7 +13,7 @@ use crate::common::{H, id};
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
@@ -38,12 +38,12 @@ fn fence(h: &mut H, strip: Option<DeviceId>, ty: &str, level: &str, y: f64) -> V
     h.run("terminals", p).unwrap()
 }
 
-fn terminals(v: &Value) -> Vec<TerminalId> {
+fn terminals(v: &Value) -> Vec<ConnectionPointId> {
     v["terminals"].as_array().unwrap().iter().map(|t| id(t, "terminal")).collect()
 }
 
-fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetKey> {
-    h.doc().connectivity().net_of_terminal(t)
+fn net(h: &mut H, t: ConnectionPointId) -> Option<ecad_model::NetKey> {
+    h.doc().connectivity().net_of_connection_point(t)
 }
 
 fn plan(h: &mut H, c: DeviceId) -> Value {
@@ -79,7 +79,7 @@ fn lnpe_fences_fill_positions_and_label_each_level() {
     assert_eq!((x_rows[0]["qty"].as_u64(), x_rows[0]["description"].as_str()), (Some(3), Some("L/N/PE terminal")));
     // Hover and words show the shown label.
     let t = terminals(&n)[1];
-    assert_eq!(h.p(|p| ecad_electrical::strips::terminal_words(p.ledger.document(), t)), "-X01:2.N");
+    assert_eq!(h.p(|p| ecad_electrical::strips::connection_point_words(p.ledger.document(), t)), "-X01:2.N");
     same_as_built(&mut h);
     // `u` undoes the last fence only.
     h.run("undo", json!({})).unwrap();
@@ -134,7 +134,7 @@ fn bridged_two_level_positions_and_fuse_positions_break_the_net() {
     h.wire_pp(&[(10.0, 0.0), (10.0, 80.0)]).unwrap();
     let f = h.run("terminals", json!({"type": "FUSE", "from": [0, 40], "to": [20, 40]})).unwrap();
     let x1: DeviceId = id(&f, "strip");
-    let t_in: TerminalId = id(&f["terminals"][0], "terminal");
+    let t_in: ConnectionPointId = id(&f["terminals"][0], "terminal");
     let doc = h.doc();
     // The two parts of the line (design 072 §4.3: routes), each carrying its own wire.
     let (kept, new) = (
@@ -145,7 +145,7 @@ fn bridged_two_level_positions_and_fuse_positions_break_the_net() {
     let conn = doc.connectivity();
     let net_of = |w: Option<WireId>| w.and_then(|w| conn.net_of_conductor(w));
     assert_ne!(net_of(kept), net_of(new), "the fuse breaks the net");
-    let tout = doc.terminals_of(x1).find(|(_, x)| x.key.as_ref().map(ToString::to_string).as_deref() == Some(".1o")).map(|(t, _)| t).unwrap();
+    let tout = doc.connection_points_of(x1).find(|(_, x)| x.key.as_ref().map(ToString::to_string).as_deref() == Some(".1o")).map(|(t, _)| t).unwrap();
     assert!(doc.ends_at(t_in).len() == 1 && doc.ends_at(tout).len() == 1, "one half on each point");
     h.run("setprop", json!({"component": x1.hex(), "key": "rating.1", "value": "2A"})).unwrap();
     let s = plan(&mut h, x1);
@@ -174,7 +174,7 @@ fn termlabel_relabels_a_position_and_sets_a_level_label() {
     let e = h.run("termlabel", json!({"terminal": t2.hex(), "position": "3"})).unwrap_err();
     assert!(e.contains("already has a position 3"), "{e}");
     h.run("termlabel", json!({"terminal": t2.hex(), "text": "2.1S"})).unwrap();
-    assert_eq!(h.p(|p| ecad_engine::interact::terminal_name(p.ledger.document(), t2)), "2.1S");
+    assert_eq!(h.p(|p| ecad_engine::interact::connection_point_name(p.ledger.document(), t2)), "2.1S");
     let s = plan(&mut h, x1);
     let row = s["rows"].as_array().unwrap().iter().find(|r| r["terminal"] == json!(t2.hex())).cloned().unwrap();
     assert_eq!((row["label"].as_str(), row["label_overridden"].as_bool(), row["position"].as_str()), (Some("2.1S"), Some(true), Some("2.1")));
@@ -182,11 +182,11 @@ fn termlabel_relabels_a_position_and_sets_a_level_label() {
     let t1 = terminals(&s1)[0];
     h.run("projectprops", json!({"props": {"terminal.level.separator": ""}})).unwrap();
     assert_eq!(h.doc().display.get("terminal.level.separator").map(String::as_str), Some("none"));
-    assert_eq!(h.p(|p| ecad_engine::interact::terminal_name(p.ledger.document(), t1)), "1S");
+    assert_eq!(h.p(|p| ecad_engine::interact::connection_point_name(p.ledger.document(), t1)), "1S");
     same_as_built(&mut h);
     // The strip's own value wins.
     h.run("setprop", json!({"component": x1.hex(), "key": "terminal.level.separator", "value": "/"})).unwrap();
-    assert_eq!(h.p(|p| ecad_engine::interact::terminal_name(p.ledger.document(), t1)), "1/S");
+    assert_eq!(h.p(|p| ecad_engine::interact::connection_point_name(p.ledger.document(), t1)), "1/S");
     same_as_built(&mut h);
     h.check();
 }
@@ -218,7 +218,7 @@ fn toposition_turns_a_fuse_terminal_device_into_a_fuse_position() {
     let c = doc.connectivity();
     // Design 072 §4.4: the wires now end on the position's points, so they are new wires (the
     // rewrite carries their values); their nets are as before: two, one on each point.
-    let at4: Vec<TerminalId> = doc.terminals_of(x1).filter(|(_, x)| x.label.as_deref() == Some("4")).map(|(t, _)| t).collect();
+    let at4: Vec<ConnectionPointId> = doc.connection_points_of(x1).filter(|(_, x)| x.label.as_deref() == Some("4")).map(|(t, _)| t).collect();
     let wires4: Vec<WireId> = at4.iter().flat_map(|t| doc.ends_at(*t)).map(|(w, _)| w).collect();
     assert_eq!(wires4.len(), 2, "each wire on its point");
     let (n1, n2) = (c.net_of_conductor(wires4[0]), c.net_of_conductor(wires4[1]));
@@ -274,7 +274,7 @@ fn renumber_keeps_028_strips_and_numbers_colliding_keys_by_their_own_symbol() {
         let before = doc.terminals[&ts[1]].clone();
         let mut after = before.clone();
         after.key = Some("1".parse().unwrap());
-        let ops = vec![ecad_model::Op::RemoveTerminal { id: ts[1], terminal: before }, ecad_model::Op::AddTerminal { id: ts[1], terminal: after }];
+        let ops = vec![ecad_model::Op::RemoveConnectionPoint { id: ts[1], terminal: before }, ecad_model::Op::AddConnectionPoint { id: ts[1], terminal: after }];
         p.ledger.commit(ecad_model::Author::User, "collide", ops).unwrap();
     });
     // The page is not reprojected after that direct commit, so the session runs the command

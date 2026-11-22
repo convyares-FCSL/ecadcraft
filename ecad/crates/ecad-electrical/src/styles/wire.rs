@@ -268,7 +268,7 @@ pub enum CategoryFrom {
 
 /// A conductor's resolved look (design 050 §5.3).
 #[derive(Debug, Clone, PartialEq)]
-pub struct WireLook {
+pub struct WireDraw {
     pub category: Option<StyleRef>,
     pub from: CategoryFrom,
     /// Its colours and cross-section, with where they come from (`Object` = the conductor's own).
@@ -284,7 +284,7 @@ pub struct WireLook {
     pub label_rule: String,
 }
 
-impl WireLook {
+impl WireDraw {
     /// The colours a route is drawn in: the insulation colours for `wire`, none for `ink`, else the
     /// line colour.
     pub fn route_code(&self) -> Option<Colours> {
@@ -385,7 +385,7 @@ impl WireLooks {
     }
 
     /// The look of conductor `c` (design 050 §5.3).
-    pub fn look(&self, doc: &Document, c: WireId) -> WireLook {
+    pub fn look(&self, doc: &Document, c: WireId) -> WireDraw {
         let (category, from) = self.category(doc, c);
         let wire = doc.wires.get(&c);
         let core = !doc.cables_of(c).is_empty();
@@ -408,17 +408,17 @@ impl WireLooks {
             "project" | "" => crate::wires::label_rule_word(doc).to_string(),
             other => other.to_string(),
         };
-        WireLook { category, from, colour, cross_section, line_colour, line_type, line_weight, label_rule }
+        WireDraw { category, from, colour, cross_section, line_colour, line_type, line_weight, label_rule }
     }
 }
 
 /// [`WireLooks::look`] for one conductor (reads the categories once).
-pub fn wire_look(doc: &Document, c: WireId) -> WireLook {
+pub fn wire_draw(doc: &Document, c: WireId) -> WireDraw {
     WireLooks::new(doc).look(doc, c)
 }
 
 /// The category name of conductor `c` for reports (empty for none).
-pub fn category_name(doc: &Document, look: &WireLook) -> String {
+pub fn category_name(doc: &Document, look: &WireDraw) -> String {
     look.category.as_ref().map(|id| super::name(doc, ecad_model::StyleCatalogue::Wire, id)).unwrap_or_default()
 }
 

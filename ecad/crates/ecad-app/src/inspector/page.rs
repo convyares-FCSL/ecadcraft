@@ -99,7 +99,7 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
             .iter()
             .rev()
             .find(|x| {
-                ecad_engine::styles::page::look_of(doc, &ecad_engine::styles::page::type_of(doc, **x)).holds
+                ecad_engine::styles::page::draw_of(doc, &ecad_engine::styles::page::type_of(doc, **x)).holds
                     == ecad_engine::styles::page::Holds::Front
             })
             .copied();

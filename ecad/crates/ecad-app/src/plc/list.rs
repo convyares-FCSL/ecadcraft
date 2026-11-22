@@ -4,7 +4,7 @@
 //! (`All cards`). Description, Address and Pins are inputs that run `plcchannel` (Q11); everything
 //! else is read.
 //!
-//! **Update map.** The rows and tiles come from the kept PLC model (`Outputs::plc`). After a commit
+//! **Update map.** The rows and tiles come from the kept PLC model (`ReportModels::plc`). After a commit
 //! only the cards in `Plc::rows_changed` have their rows re-read and patched, and only the tiles
 //! of the cards in `Plc::last_changed` or `rows_changed` are made again (a rack among them, or a
 //! change in the chips, makes the shown rack's tiles again). A page renumber changes only the link
@@ -20,7 +20,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::ReportModels;
 use ecad_engine::plc::iolist::{self, Row};
 use ecad_engine::plc::overview::{self, Chip, Square, Tile, TileKind};
 use ecad_engine::plc::signals;
@@ -629,7 +629,7 @@ impl IoView {
     }
 
     /// Make the shown chip's tiles again.
-    fn build_strip(&mut self, doc: &Document, o: &Outputs) {
+    fn build_strip(&mut self, doc: &Document, o: &ReportModels) {
         let plc = &o.plc;
         let now = overview::chips(plc);
         let keep = self.chips.get(self.chip).cloned();
@@ -651,7 +651,7 @@ impl IoView {
     }
 
     /// Make tile `i` again from the model.
-    fn patch_tile(&mut self, doc: &Document, o: &Outputs, i: usize) {
+    fn patch_tile(&mut self, doc: &Document, o: &ReportModels, i: usize) {
         let Some(c) = self.tiles.get(i).and_then(Tile::card) else { return };
         let Some(card) = o.plc.cards.get(&c) else { return };
         let head = self.tiles.get(i).map(|t| t.head.clone()).unwrap_or_default();
@@ -690,7 +690,7 @@ impl IoView {
 
     /// Bring the view up to date with the models (the update map in the module docs). `writable`:
     /// the project can be written now.
-    pub fn sync(&mut self, serial: u64, doc: &Document, o: &Outputs, writable: bool) {
+    pub fn sync(&mut self, serial: u64, doc: &Document, o: &ReportModels, writable: bool) {
         let cards: Vec<DeviceId> = iolist::cards_in_order(&o.plc).into_iter().map(|c| c.id).collect();
         if self.source.writable != writable {
             self.source.writable = writable;
@@ -775,7 +775,7 @@ impl IoView {
 
     /// Brief 056: the rack heading, the card header and the book's overview page, from the kept
     /// model (words only; no rows made).
-    fn after_sync(&mut self, doc: &Document, o: &Outputs) {
+    fn after_sync(&mut self, doc: &Document, o: &ReportModels) {
         let plc = &o.plc;
         self.project_name = ecad_engine::frames::project_text(doc, ecad_engine::frame::TITLE)
             .map(|v| v.trim().to_string())

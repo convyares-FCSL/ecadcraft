@@ -24,7 +24,7 @@ use ecad_engine::{Mapped, ProjectHandle};
 use ecad_model::derive::{cable_references, nets};
 use ecad_model::{
     Cable, CableId, Color, Core, Document, Form, Item, ItemId, ItemKind, Layer, LayerId, Op, Page, PageId, Primitive, Pt, Representation,
-    RepresentationId, Style, Subject, TerminalId, WireId,
+    RepresentationId, Style, Subject, ConnectionPointId, WireId,
 };
 use serde_json::{Value, json};
 
@@ -43,7 +43,7 @@ struct R {
     field: PageId,
     c1: CableId,
     w: [WireId; 3],
-    k2: [TerminalId; 3],
+    k2: [ConnectionPointId; 3],
 }
 
 fn tag(h: &mut H, key: &str, id: &str, value: &str) {
@@ -56,7 +56,7 @@ fn tag(h: &mut H, key: &str, id: &str, value: &str) {
 }
 
 /// A drawn component from a closed outline typed at the command line, with three terminals.
-fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: &str) -> [TerminalId; 3] {
+fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: &str) -> [ConnectionPointId; 3] {
     h.cmdline(outline);
     let lines = h.lines_on(page);
     let r = h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();

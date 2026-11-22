@@ -23,7 +23,7 @@ fn connector_row_and_pins_by_the_agent() {
     let x = component(&v);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateDevice { .. })).count(), 1);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::EmbedDefinition { .. })).count(), 2);
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddTerminal { .. })).count(), 8);
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddConnectionPoint { .. })).count(), 8);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::LinkRepresentation { rep, .. } if !rep.connection_points.is_empty())).count(), 2);
     assert_eq!(v["terminals"].as_array().map(Vec::len), Some(8));
 

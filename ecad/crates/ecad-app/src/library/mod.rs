@@ -195,13 +195,13 @@ impl App {
                     }
                 }
                 let o = ecad_electrical::cmd::symbol::grid_origin(&prims);
-                let points: Vec<ecad_model::TerminalDef> = rep
+                let points: Vec<ecad_model::ConnectionPointDef> = rep
                     .connection_points
                     .iter()
                     .enumerate()
                     .filter_map(|(n, (term, at))| {
                         let tm = doc.terminals.get(term)?;
-                        Some(ecad_model::TerminalDef {
+                        Some(ecad_model::ConnectionPointDef {
                             key: tm
                                 .key
                                 .clone()

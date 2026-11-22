@@ -35,7 +35,7 @@ use cadcraft_engine::doc::{Drawing, Handle};
 use ecad_inspect::Event;
 use ecad_model::{
     CableId, DefinitionId, DeviceId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, RouteId, Subject,
-    TerminalId, Transaction, TxId, WireId,
+    ConnectionPointId, Transaction, TxId, WireId,
 };
 use serde_json::{Value, json};
 
@@ -56,7 +56,7 @@ pub enum ObjectId {
     Layer(LayerId),
     Item(ItemId),
     Device(DeviceId),
-    Terminal(TerminalId),
+    Terminal(ConnectionPointId),
     Representation(RepresentationId),
     Wire(WireId),
     Cable(CableId),
@@ -909,8 +909,8 @@ pub fn op_view(op: &Op) -> OpView {
         Op::DeleteDevice { device, .. } => (val(device), None),
         Op::ModifyDevice { before, after, .. } => (val(before), val(after)),
         Op::SetDeviceDefinition { before, after, .. } => (val(before), val(after)),
-        Op::AddTerminal { terminal, .. } => (None, val(terminal)),
-        Op::RemoveTerminal { terminal, .. } => (val(terminal), None),
+        Op::AddConnectionPoint { terminal, .. } => (None, val(terminal)),
+        Op::RemoveConnectionPoint { terminal, .. } => (val(terminal), None),
         Op::LinkRepresentation { rep, .. } => (None, val(rep)),
         Op::ModifyRepresentation { before, after, .. } => (val(before), val(after)),
         Op::UnlinkRepresentation { rep, .. } => (val(rep), None),
@@ -999,11 +999,11 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             out.push(ObjectId::Device(*id));
             out.extend(before.iter().chain(after).copied().map(ObjectId::Definition));
         }
-        Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
+        Op::AddConnectionPoint { id, terminal } | Op::RemoveConnectionPoint { id, terminal } => {
             out.push(ObjectId::Terminal(*id));
             out.push(match terminal.owner {
-                ecad_model::TerminalOwner::Device(c) => ObjectId::Device(c),
-                ecad_model::TerminalOwner::Aid(a) => ObjectId::Aid(a),
+                ecad_model::ConnectionPointOwner::Device(c) => ObjectId::Device(c),
+                ecad_model::ConnectionPointOwner::Aid(a) => ObjectId::Aid(a),
             });
         }
         Op::LinkRepresentation { id, rep } | Op::UnlinkRepresentation { id, rep } => {
@@ -1081,9 +1081,9 @@ pub struct Resolved {
     pub representation: Option<RepresentationId>,
     pub subject: Option<Subject>,
     /// A terminal marker's terminal.
-    pub terminal: Option<TerminalId>,
+    pub terminal: Option<ConnectionPointId>,
     /// The subject's terminals (a component) or attached terminals (a conductor).
-    pub terminals: Vec<TerminalId>,
+    pub terminals: Vec<ConnectionPointId>,
     /// The objects whose history the trail follows: item, representation, subject, terminals.
     pub ids: Vec<ObjectId>,
 }
@@ -1111,7 +1111,7 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         // A line or text of the sheet frame (brief 019) stands for nothing stored.
         Mapped::Frame(_) => {}
         // A device cross-reference (brief 025) stands for its contact or head representation.
-        Mapped::Xref(rep) => r.representation = Some(rep),
+        Mapped::DeviceReference(rep) => r.representation = Some(rep),
         // A link line (brief 030) stands for its strip.
         Mapped::Link(..) => {}
         // A T's dot (lane 072 D) stands for the route that ends there.

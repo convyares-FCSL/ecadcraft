@@ -2,7 +2,7 @@
 //! component property `link.<n>`, never a conductor.
 //!
 //! # Semantics
-//! - A **link key** is `link.<n>` with `n` a whole number 1…[`MAX_LINK`] written without leading
+//! - A **link key** is `link.<n>` with `n` a whole number 1…[`MAX_JUMPER_BAR`] written without leading
 //!   zeros. `link.<n>.part_number` and the like are not link keys.
 //! - Its value names **positions** by terminal label: ranges `a-b` (every label from `a` to `b` in
 //!   natural order, [`natural_key`]) and single labels, comma-separated (`1-4`, `7, 9, 11`).
@@ -23,13 +23,13 @@ use std::cmp::Ordering;
 
 use crate::doc::{Document, Properties};
 use crate::error::{ParseError, Parsed};
-use crate::id::{DeviceId, TerminalId};
+use crate::id::{DeviceId, ConnectionPointId};
 use crate::point::{LevelIo, PointKey};
 
 /// What every link key starts with.
 pub const PREFIX: &str = "link.";
 /// The highest link number.
-pub const MAX_LINK: u32 = 999;
+pub const MAX_JUMPER_BAR: u32 = 999;
 /// Most positions (items) one link names.
 pub const MAX_ITEMS: usize = 999;
 /// Most characters of one position label.
@@ -114,9 +114,9 @@ fn cmp_labels(a: &str, b: &str) -> Ordering {
 }
 
 /// The link number of `key` when it is a link key (`link.3` → 3).
-pub fn link_number(key: &str) -> Option<u32> {
+pub fn jumper_bar_number(key: &str) -> Option<u32> {
     let n = key.strip_prefix(PREFIX)?;
-    crate::words::uint_canonical(n, MAX_LINK).filter(|n| *n >= 1)
+    crate::words::uint_canonical(n, MAX_JUMPER_BAR).filter(|n| *n >= 1)
 }
 
 /// The link key of number `n`.
@@ -356,7 +356,7 @@ pub fn of(props: &Properties) -> Vec<(u32, Positions)> {
     props
         .range(PREFIX.to_string()..)
         .take_while(|(k, _)| k.starts_with(PREFIX))
-        .filter_map(|(k, v)| Some((link_number(k)?, parse(v).ok()?)))
+        .filter_map(|(k, v)| Some((jumper_bar_number(k)?, parse(v).ok()?)))
         .collect()
 }
 
@@ -428,7 +428,7 @@ impl Matcher {
     }
 
     /// [`Matcher::matches_level`] for a terminal: its label and its key's level.
-    pub fn matches_terminal(&self, t: &crate::doc::Terminal) -> bool {
+    pub fn matches_connection_point(&self, t: &crate::doc::ConnectionPoint) -> bool {
         let Some(l) = t.label.as_deref() else { return false };
         let Some((n, p)) = level_of_key(t.key.as_ref()) else { return false };
         self.matches_level(l, n, p)
@@ -447,17 +447,17 @@ pub fn plan_order(labels: impl IntoIterator<Item = String>) -> Vec<String> {
 /// The terminals of `component` joined to `t` by its links (not `t` itself), level by level
 /// (brief 036). One pass over the
 /// component's terminals per link that names `t`.
-pub fn linked(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
+pub fn linked(doc: &Document, t: ConnectionPointId) -> Vec<ConnectionPointId> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
     let Some(comp) = term.device().and_then(|d| doc.devices.get(&d)) else { return Vec::new() };
     let mut out = std::collections::BTreeSet::new();
     for (_, p) in of(&comp.properties) {
         let m = Matcher::of(&p);
-        if !m.matches_terminal(term) {
+        if !m.matches_connection_point(term) {
             continue;
         }
-        for (id, x) in doc.terminals_of(term.owner) {
-            if id != t && m.matches_terminal(x) {
+        for (id, x) in doc.connection_points_of(term.owner) {
+            if id != t && m.matches_connection_point(x) {
                 out.insert(id);
             }
         }
@@ -466,10 +466,10 @@ pub fn linked(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
 }
 
 /// The terminals of `component` a link value names (unreadable: none).
-pub fn terminals_named(doc: &Document, component: DeviceId, value: Option<&str>) -> Vec<TerminalId> {
+pub fn terminals_named(doc: &Document, component: DeviceId, value: Option<&str>) -> Vec<ConnectionPointId> {
     let Some(p) = value.and_then(|v| parse(v).ok()) else { return Vec::new() };
     let m = Matcher::of(&p);
-    doc.terminals_of(component).filter(|(_, x)| m.matches_terminal(x)).map(|(id, _)| id).collect()
+    doc.connection_points_of(component).filter(|(_, x)| m.matches_connection_point(x)).map(|(id, _)| id).collect()
 }
 
 #[cfg(test)]
@@ -478,12 +478,12 @@ mod tests {
 
     #[test]
     fn keys_and_values() {
-        assert_eq!(link_number("link.1"), Some(1));
-        assert_eq!(link_number("link.999"), Some(999));
-        assert_eq!(link_number("link.0"), None);
-        assert_eq!(link_number("link.1000"), None);
-        assert_eq!(link_number("link.01"), None);
-        assert_eq!(link_number("link.1.part_number"), None);
+        assert_eq!(jumper_bar_number("link.1"), Some(1));
+        assert_eq!(jumper_bar_number("link.999"), Some(999));
+        assert_eq!(jumper_bar_number("link.0"), None);
+        assert_eq!(jumper_bar_number("link.1000"), None);
+        assert_eq!(jumper_bar_number("link.01"), None);
+        assert_eq!(jumper_bar_number("link.1.part_number"), None);
         let p = parse(" 1 - 4 ,7").unwrap_or_default();
         assert_eq!(p.text(), "1-4, 7");
         assert!(p.contains("3") && p.contains("7") && !p.contains("5") && !p.contains("10"));

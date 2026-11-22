@@ -85,7 +85,7 @@ pub enum ListAction {
 pub struct Lists<'a> {
     pub checks: &'a mut crate::checks_panel::ChecksPanel,
     pub devices: &'a mut crate::devices_panel::DevicesPanel,
-    pub terminals: &'a mut terminals::TerminalsView,
+    pub terminals: &'a mut terminals::TerminalStripPlanView,
     pub io: &'a mut plc::IoView,
 }
 

@@ -88,7 +88,7 @@ impl Command for PlcracksParams {
                 None => None,
             };
             p.outputs();
-            let o = p.kept_outputs().ok_or(CmdError::refused("The PLC model is not available."))?;
+            let o = p.kept_reports().ok_or(CmdError::refused("The PLC model is not available."))?;
             let doc = p.ledger.document();
             let plc = &o.plc;
             let mut racks = Vec::new();

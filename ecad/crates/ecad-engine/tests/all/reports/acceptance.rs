@@ -7,7 +7,7 @@
 //! moves pages, rotates and mirrors selections holding a box and devices, and undoes and redoes.
 //! After every command it checks, as an oracle:
 //! - the kept report models (BOM by location and by part, wires, cables, the location Checks rows,
-//!   every device's location) equal a fresh `Outputs::build`;
+//!   every device's location) equal a fresh `ReportModels::build`;
 //! - no command other than `setprop`, undo and redo changes a device's own `location` property,
 //!   except a proposal taken by a device that had none (brief 052d: place, box, page, project,
 //!   the move follow-up);
@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 use crate::common::{H, id, pts};
 use crate::common::{close_all, reopen};
 use ecad_engine::locations::{self, Source};
-use ecad_engine::outputs::{Cell, Group, Table, csv, kept::Outputs};
+use ecad_engine::outputs::{Cell, Group, Table, csv, kept::ReportModels};
 use ecad_model::{AidId, DeviceId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject};
 use serde_json::{Value, json};
 
@@ -97,7 +97,7 @@ fn verify(h: &mut H, what: &str) {
     let (kept, built, doc) = h.cfg(|p| {
         let kept = p.outputs().clone();
         let doc = p.ledger.document().clone();
-        (kept, Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics), doc)
+        (kept, ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics), doc)
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "{what}: BOM by location");
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part), "{what}: BOM by part");
@@ -825,7 +825,7 @@ fn bom_page_overflow_counts_sheets_and_loses_no_row() {
         assert!(t.iter().any(|x| x.split(", ").any(|y| y == tag)), "{tag} is on no sheet: {t:?}");
     }
     // The Total in the title block of an ordinary page counts the sheets.
-    let total = ecad_engine::generated::book_sheets_of(&doc, Some(&Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics)));
+    let total = ecad_engine::generated::book_sheets_of(&doc, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics)));
     assert!(texts(&doc, first).contains(&total.to_string()), "{total}: {:?}", texts(&doc, first));
     // Undo back to one sheet.
     h.run("u", Value::Null).unwrap();
@@ -850,7 +850,7 @@ fn a_continued_bom_sheet_keeps_its_rows_inside_the_drawing_area() {
         h.s.execute("place", &json!({"symbol": "coil", "at": at})).unwrap();
     }
     let doc = h.doc();
-    let o = Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+    let o = ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
     assert_eq!(ecad_engine::generated::sheets_of(&doc, bom, Some(&o)), 3);
     // Sheet 2 (x from 470 to 890 mm): the lowest content text's row must end inside the area.
     let bottom = ecad_engine::generated::parts_of(&doc, bom, Some(&o))

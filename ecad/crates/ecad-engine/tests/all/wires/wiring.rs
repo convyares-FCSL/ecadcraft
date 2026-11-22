@@ -18,7 +18,7 @@ fn number(doc: &Document, c: WireId) -> Option<String> {
 fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> WireId {
     let doc = h.doc();
     let page = h.p(|p| p.active_page()).unwrap_or(doc.page_order[0]);
-    let shown: Vec<ecad_model::Pt> = ecad_model::derive::terminal_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
+    let shown: Vec<ecad_model::Pt> = ecad_model::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
     let ends: Vec<(f64, f64)> = [points.first(), points.last()]
         .into_iter()
         .flatten()
@@ -48,7 +48,7 @@ fn line(h: &mut H, points: &[(f64, f64)], extra: Value) -> ecad_model::RouteId {
     id(&h.run("wire", params).unwrap(), "route")
 }
 
-fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::TerminalId {
+fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::ConnectionPointId {
     let r = h.run("place", json!({"symbol": "terminal", "at": [at.0, at.1], "tag": tag})).unwrap();
     id(&r["terminals"][0], "terminal")
 }

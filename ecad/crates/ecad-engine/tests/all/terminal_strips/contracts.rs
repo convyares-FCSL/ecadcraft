@@ -3,9 +3,9 @@
 //! the update maps. Driven through the commands' JSON forms on fixture T.
 
 use ecad_engine::checks::{Fix, Kind};
-use ecad_engine::outputs::{Group, kept::Outputs};
+use ecad_engine::outputs::{Group, kept::ReportModels};
 use ecad_engine::strips::Strips;
-use ecad_model::{Author, CableId, DeviceId, Op, PageId, RouteEnd, RouteId, TerminalId, WireId};
+use ecad_model::{Author, CableId, DeviceId, Op, PageId, RouteEnd, RouteId, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::place;
@@ -62,7 +62,7 @@ fn fixture(seed: u64) -> T {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
     assert_eq!(kept.cable_table(), built.cable_table());
@@ -91,7 +91,7 @@ fn a_terminal_on_a_wire_splits_it_and_undo_restores_it() {
     assert!(v["message"].as_str().unwrap().starts_with("Placed -X01:1 on wire"), "{v}");
     let (kept, new): (RouteId, RouteId) = (id(&v["split"], "route"), id(&v["split"], "new"));
     let x1: DeviceId = id(&v, "component");
-    let term: TerminalId = id(&v["terminals"][0], "terminal");
+    let term: ConnectionPointId = id(&v["terminals"][0], "terminal");
     let doc = t.h.doc();
     assert_eq!(doc.routes[&kept].ends[1], RouteEnd::Point(term));
     assert_eq!(doc.routes[&new].ends[0], RouteEnd::Point(term));
@@ -137,7 +137,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     // Brief 052: the strip stores the location of the box it is drawn in.
     let x1: DeviceId = id(&v, "strip");
     t.h.run("setlocation", json!({"component": x1.hex(), "value": "+CP1"})).unwrap();
-    let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let terms: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     let labels: Vec<&str> = v["terminals"].as_array().unwrap().iter().map(|x| x["label"].as_str().unwrap()).collect();
     assert_eq!(labels, ["1", "2", "3", "4"]);
     let doc = t.h.doc();
@@ -166,8 +166,8 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let c = conn.connectivity();
     let n3 = c.net_of_conductor(bridge);
     // The terminals' wires are new since the split (design 072 §4.4): their nets by point.
-    assert_eq!(n3, c.net_of_terminal(terms[2]), "bridged terminals share a net");
-    assert_eq!(n3, c.net_of_terminal(terms[3]));
+    assert_eq!(n3, c.net_of_connection_point(terms[2]), "bridged terminals share a net");
+    assert_eq!(n3, c.net_of_connection_point(terms[3]));
     let again = t.h.run("bridge", json!({"from": terms[2].hex(), "to": terms[3].hex()})).unwrap();
     assert_eq!(again["changed"], false);
     assert_eq!(again["message"], "-X01:3 and -X01:4 are already bridged.");
@@ -254,7 +254,7 @@ fn setting_a_field_device_to_the_strip_location_flips_only_its_rows() {
     assert_eq!(plan["strips"][0]["rows"][4]["outside"][0]["target"], "-H01:X1", "a box proposes, it moves nothing: {plan}");
     // Set -H01 to +CP1: its far side matches the strip's location, so it is inside now.
     t.h.run("setlocation", json!({"component": h1.hex(), "value": "+CP1"})).unwrap();
-    let work = t.h.p(|p| p.kept_outputs().unwrap().strips.last_work);
+    let work = t.h.p(|p| p.kept_reports().unwrap().strips.last_work);
     assert_eq!(work, 1, "one strip recomputed");
     same_as_built(&mut t.h);
     let plan = strip_plan(&mut t.h);
@@ -303,7 +303,7 @@ fn the_offer_gives_spares_and_the_bom_counts_per_terminal_type() {
     // More drawn than offered: a Checks row with Offer n.
     t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "2+1PE"})).unwrap();
     let rows = ecad_engine::checks::all(&t.h.doc(), 1e-6);
-    let over: Vec<_> = rows.iter().filter(|c| c.kind == Kind::TooManyTerminals).collect();
+    let over: Vec<_> = rows.iter().filter(|c| c.kind == Kind::TooManyTerminalBlocks).collect();
     assert_eq!(over.len(), 1);
     assert_eq!(over[0].which, "-X01: 5 terminals drawn, strip offers 3");
     assert_eq!(over[0].fix, Some(Fix::OfferDrawn(x1)));
@@ -350,7 +350,7 @@ fn terminal_plan_and_cable_schedule_pages() {
     let doc = t.h.doc();
     assert_eq!(ecad_engine::generated::kind_of(&doc, plan_page), Some(ecad_model::GenKind::Terminals));
     assert_eq!(ecad_engine::generated::strip_of(&doc, plan_page), Some(x1));
-    let o = Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+    let o = ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
     assert_eq!(ecad_engine::generated::sheets_of(&doc, plan_page, Some(&o)), 1);
     let parts = ecad_engine::generated::parts_of(&doc, plan_page, Some(&o));
     assert!(parts.len() > 20, "the plan draws its table");
@@ -374,13 +374,13 @@ fn no_ordinary_edit_rebuilds_the_strips() {
     });
     t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     t.h.run("terminals", json!({"from": [90, 190], "to": [260, 190]})).unwrap();
-    assert_eq!(t.h.p(|p| p.kept_outputs().unwrap().strips.len()), 2);
+    assert_eq!(t.h.p(|p| p.kept_reports().unwrap().strips.len()), 2);
     // A coil far from any strip.
     place(&mut t.h, "coil", (350.0, 250.0));
-    assert_eq!(t.h.p(|p| p.kept_outputs().unwrap().strips.last_work), 0);
+    assert_eq!(t.h.p(|p| p.kept_reports().unwrap().strips.last_work), 0);
     // A property of -M01 (a far end of -X01's rows).
     t.h.run("setprop", json!({"component": t.m1.hex(), "key": "tag", "value": "-M07"})).unwrap();
-    assert_eq!(t.h.p(|p| p.kept_outputs().unwrap().strips.last_work), 1);
+    assert_eq!(t.h.p(|p| p.kept_reports().unwrap().strips.last_work), 1);
     let plan = strip_plan(&mut t.h);
     assert!(plan.to_string().contains("-M07:U1"));
     same_as_built(&mut t.h);
@@ -393,21 +393,21 @@ fn no_ordinary_edit_rebuilds_the_strips() {
 }
 
 /// FP5 finding (design 028 §9.5, decisions 2026-11-12): relabelling wired terminals by
-/// `RemoveTerminal` + `AddTerminal` of the same ID in one transaction is accepted, with or
+/// `RemoveConnectionPoint` + `AddConnectionPoint` of the same ID in one transaction is accepted, with or
 /// without detaching their wires first; the wires stay attached, and undo restores the labels.
 /// So no `RelabelTerminal` op is needed.
 #[test]
 fn relabelling_wired_terminals_by_remove_and_add_needs_no_new_op() {
     let mut t = fixture(0x28_08);
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let terms: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     let (t3, t4) = (terms[2], terms[3]);
     let doc = t.h.doc();
-    let relabel = |t: TerminalId, to: &str| {
+    let relabel = |t: ConnectionPointId, to: &str| {
         let before = doc.terminals[&t].clone();
         let mut after = before.clone();
         after.label = Some(to.into());
-        [Op::RemoveTerminal { id: t, terminal: before }, Op::AddTerminal { id: t, terminal: after }]
+        [Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }]
     };
     // Bare: remove and add while still attached (3 ↔ 4, unique on the end state).
     let mut ops: Vec<Op> = relabel(t3, "4").into();
@@ -428,7 +428,7 @@ fn relabelling_wired_terminals_by_remove_and_add_needs_no_new_op() {
     let d = t.h.doc();
     assert_eq!(d.terminals[&t3].label.as_deref(), Some("9"));
     assert_eq!(d.ends_at(t3), doc.ends_at(t3));
-    let built = Strips::build(&d, &Outputs::build_with(&d, &ecad_engine::text_style::EngineMetrics), &ecad_engine::outputs::PageCx::of(&d));
+    let built = Strips::build(&d, &ReportModels::build_with(&d, &ecad_engine::text_style::EngineMetrics), &ecad_engine::outputs::PageCx::of(&d));
     assert!(built.get(id(&v, "strip")).is_some());
 }
 
@@ -438,7 +438,7 @@ fn hostile_strip_and_core_input_is_refused_with_a_way_forward() {
     let mut t = fixture(0x28_09);
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     let x1: DeviceId = id(&v, "strip");
-    let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let terms: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     let long = "9".repeat(10_000);
     assert!(t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": long})).is_err());
     assert!(t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "1000"})).unwrap_err().contains("at most 100"));
@@ -457,12 +457,12 @@ fn hostile_strip_and_core_input_is_refused_with_a_way_forward() {
         p.ledger.commit(
             Author::User,
             "dup",
-            vec![Op::RemoveTerminal { id: terms[1], terminal: before }, Op::AddTerminal { id: terms[1], terminal: after }],
+            vec![Op::RemoveConnectionPoint { id: terms[1], terminal: before }, Op::AddConnectionPoint { id: terms[1], terminal: after }],
         )
     })
     .unwrap();
     let rows = ecad_engine::checks::all(&t.h.doc(), 1e-6);
-    let twice: Vec<_> = rows.iter().filter(|c| c.kind == Kind::TerminalTwice).collect();
+    let twice: Vec<_> = rows.iter().filter(|c| c.kind == Kind::TerminalBlockTwice).collect();
     assert_eq!(twice.len(), 1, "{rows:?}");
     assert_eq!(twice[0].which, "-X01:1 is drawn twice");
     assert_eq!(twice[0].fix, Some(Fix::RenumberStrip(x1)));
@@ -492,7 +492,7 @@ fn renumbering_terminals_follows_drawing_order() {
     });
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     let x1: DeviceId = id(&v, "strip");
-    let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let terms: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     // Move terminal 4's symbol left of terminal 1 (its wires follow).
     let doc = t.h.doc();
     let rep4 = doc
@@ -513,7 +513,7 @@ fn renumbering_terminals_follows_drawing_order() {
     assert_eq!(t.h.head(), head + 1, "one transaction");
     assert_eq!(r["terminals"], 4, "{r}");
     let d = t.h.doc();
-    let label = |x: TerminalId| d.terminals[&x].label.clone().unwrap();
+    let label = |x: ConnectionPointId| d.terminals[&x].label.clone().unwrap();
     assert_eq!([label(terms[3]), label(terms[0]), label(terms[1]), label(terms[2])], ["1", "2", "3", "4"]);
     let after: Vec<_> = terms.iter().map(|x| d.ends_at(*x)).collect();
     assert_eq!(ends, after, "the wires stay attached");
@@ -550,17 +550,17 @@ fn generated_page_counts_need_no_walk_on_an_unrelated_edit() {
     });
     for shown in [plan_page, cables_page, t.page] {
         t.h.activate(shown);
-        let sorts = t.h.p(|p| p.kept_outputs().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed));
+        let sorts = t.h.p(|p| p.kept_reports().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed));
         let builds = t.h.p(|p| p.frame_builds);
         t.h.run("setprop", json!({"component": far.hex(), "key": "part_number", "value": format!("K-{}", shown.hex())})).unwrap();
         t.h.activate(shown);
-        assert_eq!(t.h.p(|p| p.kept_outputs().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed)), sorts, "no sort");
+        assert_eq!(t.h.p(|p| p.kept_reports().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed)), sorts, "no sort");
         assert_eq!(t.h.p(|p| p.frame_builds), builds, "no frame rebuilt");
     }
     let (kept, doc) = t.h.cfg(|p| (p.outputs().clone(), p.ledger.document().clone()));
-    let built = Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+    let built = ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
     for page in [plan_page, cables_page] {
-        let s = |o: &Outputs| ecad_engine::generated::sheets_of(&doc, page, Some(o));
+        let s = |o: &ReportModels| ecad_engine::generated::sheets_of(&doc, page, Some(o));
         assert_eq!(s(&kept), s(&built));
     }
     assert_eq!(kept.generated_pages(), built.generated_pages());

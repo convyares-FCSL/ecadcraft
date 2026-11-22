@@ -6,7 +6,7 @@ use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign, Handle, Text, VAl
 use cadcraft_engine::geom::Vec3;
 use ecad_model::{Document, Form, ItemId, PageId, Pt, Subject};
 
-use crate::draw::text_style::{EngineMetrics, LookApply as _};
+use crate::draw::text_style::{EngineMetrics, DrawApply as _};
 use crate::wires::{DASH_LAYER, LABEL_LAYER, WireLabel};
 
 /// [`labels_on_page`] without the routes whose items are `hidden` (a cable drawn as a fan: its

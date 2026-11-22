@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::{Drawing, EntityKind, EntityStore, Space};
 use cadcraft_engine::geom::{Bounds2, Mat3, Vec2};
-use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::ReportModels;
 use ecad_engine::printbook::{self, Sheet};
 use ecad_engine::{frame, generated, xref};
 use ecad_model::{DeviceId, Document, Op, PageId};
@@ -51,7 +51,7 @@ fn page_texts(h: &mut H, page: PageId) -> Vec<String> {
 
 /// Every text of a generated page (all its sheets) and of its frames.
 fn gen_texts(doc: &Document, page: PageId) -> Vec<String> {
-    generated::parts_of(doc, page, Some(&Outputs::build_with(doc, &ecad_engine::text_style::EngineMetrics)))
+    generated::parts_of(doc, page, Some(&ReportModels::build_with(doc, &ecad_engine::text_style::EngineMetrics)))
         .iter()
         .filter_map(|p| match &p.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
@@ -101,7 +101,7 @@ fn light_page(h: &mut H, title: &str) -> PageId {
 fn scratch(h: &mut H, pages: &[PageId]) -> (Drawing, Vec<Sheet>) {
     let doc = h.doc();
     let tol = h.p(|p| p.tolerance);
-    printbook::build(&doc, pages, &BTreeSet::new(), tol, Some(&Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics))).unwrap()
+    printbook::build(&doc, pages, &BTreeSet::new(), tol, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics))).unwrap()
 }
 
 fn window(s: &Sheet) -> Bounds2 {
@@ -214,7 +214,7 @@ fn ac4_a_missing_value_is_boxed_and_prints_black() {
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
     let bom: PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     let doc = h.doc();
-    let parts = generated::parts_of(&doc, bom, Some(&Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics)));
+    let parts = generated::parts_of(&doc, bom, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics)));
     let marks: Vec<_> = parts.iter().filter(|p| matches!(&p.kind, EntityKind::Text(t) if t.value == "?")).collect();
     assert!(!marks.is_empty(), "the BOM shows missing values");
     assert!(marks.iter().all(|p| p.aci == Some(generated::FLAGGED_ACI)), "`?` is yellow on screen");
@@ -345,7 +345,7 @@ fn long_plan(h: &mut H, number: &str) -> (PageId, usize) {
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "120"})).unwrap();
     let page: PageId = id(&h.run("newpage", json!({"generated": "terminals", "number": number})).unwrap(), "page");
     let doc = h.doc();
-    let n = generated::sheets_of(&doc, page, Some(&Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics)));
+    let n = generated::sheets_of(&doc, page, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics)));
     assert!(n >= 3, "120 terminals run to three sheets or more ({n})");
     (page, n)
 }
@@ -420,7 +420,7 @@ fn ac8_continuation_numbers_are_taken_and_a_clash_is_a_warning() {
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "200"})).unwrap();
     let checks = h.run("checks", json!({})).unwrap().to_string();
     let doc = h.doc();
-    let last = 400 + generated::sheets_of(&doc, plan, Some(&Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics))) - 1;
+    let last = 400 + generated::sheets_of(&doc, plan, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics))) - 1;
     let want = format!("Page 400 ({title}) now runs to {last}, and page {next} has that number.");
     assert!(checks.contains(&want), "{want}: {checks}");
     // The book still prints.

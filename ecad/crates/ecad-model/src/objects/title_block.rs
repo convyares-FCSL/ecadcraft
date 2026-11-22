@@ -121,7 +121,7 @@ pub enum Ink {
 
 /// How a text or a field's value looks.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct TextLook {
+pub struct TextDraw {
     /// Cap height, mm.
     pub size: f64,
     #[serde(default, skip_serializing_if = "is_false")]
@@ -132,9 +132,9 @@ pub struct TextLook {
     pub colour: Ink,
 }
 
-impl Default for TextLook {
+impl Default for TextDraw {
     fn default() -> Self {
-        TextLook { size: 2.5, bold: false, align: Align::Left, colour: Ink::Ink }
+        TextDraw { size: 2.5, bold: false, align: Align::Left, colour: Ink::Ink }
     }
 }
 
@@ -365,7 +365,7 @@ pub enum BlockItem {
         at: Rect,
         text: String,
         #[serde(default)]
-        look: TextLook,
+        look: TextDraw,
     },
     Field {
         at: Rect,
@@ -373,7 +373,7 @@ pub enum BlockItem {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         label: Option<String>,
         #[serde(default)]
-        look: TextLook,
+        look: TextDraw,
         #[serde(default, skip_serializing_if = "is_default")]
         if_empty: IfEmpty,
     },
@@ -422,7 +422,7 @@ impl BlockItem {
     /// Why this item breaks a bound (design 055 §1.3), in words; `None` when it keeps them.
     pub fn fault(&self) -> Option<String> {
         let coord = |v: f64| v.is_finite() && (0.0..=MAX_COORD_MM).contains(&v);
-        let look_ok = |l: &TextLook| l.size.is_finite() && (MIN_TEXT_MM..=MAX_TEXT_MM).contains(&l.size);
+        let draw_ok = |l: &TextDraw| l.size.is_finite() && (MIN_TEXT_MM..=MAX_TEXT_MM).contains(&l.size);
         let long = |s: &str| s.chars().count() > MAX_BODY_TEXT;
         match self {
             BlockItem::Line { a, b, .. } => {
@@ -433,7 +433,7 @@ impl BlockItem {
                     Some(box_words())
                 } else if long(text) {
                     Some(format!("A text is longer than {MAX_BODY_TEXT} characters."))
-                } else if !look_ok(look) {
+                } else if !draw_ok(look) {
                     Some(size_words())
                 } else {
                     None
@@ -444,7 +444,7 @@ impl BlockItem {
                     Some(box_words())
                 } else if long(bind.key()) || bind.key().is_empty() || label.as_deref().is_some_and(long) {
                     Some(format!("A field's key must be 1 to {MAX_BODY_TEXT} characters, and its label at most {MAX_BODY_TEXT}."))
-                } else if !look_ok(look) {
+                } else if !draw_ok(look) {
                     Some(size_words())
                 } else if matches!(if_empty, IfEmpty::Text(t) if t.chars().count() > MAX_IF_EMPTY_TEXT) {
                     Some(format!("An \"if empty\" text is at most {MAX_IF_EMPTY_TEXT} characters."))

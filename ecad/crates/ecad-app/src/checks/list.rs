@@ -61,7 +61,7 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::RenumberStrip(_) => cp::RENUMBER_STRIP,
         Fix::SetCores(_) => cp::SET_CORES,
         Fix::NextFreeCore(_) => cp::NEXT_FREE_CORE,
-        Fix::AccessoryOrphan(..) | Fix::LinkAcrossPartition(..) | Fix::LinkOrphan(..) | Fix::LinkOnNonStrip(_) => cp::REMOVE,
+        Fix::AccessoryOrphan(..) | Fix::JumperBarAcrossPartition(..) | Fix::JumperBarOrphan(..) | Fix::JumperBarOnNonStrip(_) => cp::REMOVE,
         Fix::MoveTable(_) => cp::MOVE_TABLE,
         Fix::RenumberPage(_) => cp::RENUMBER_PAGE,
         Fix::Page(f) => f.label(),

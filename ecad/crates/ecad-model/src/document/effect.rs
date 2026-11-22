@@ -13,7 +13,7 @@
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use crate::doc::{Cable, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
 use crate::project::Project;
@@ -62,7 +62,7 @@ pub enum Effect<'a> {
     },
     /// A connection point added, removed, or both (brief 028's relabel).
     Terminal {
-        id: TerminalId,
+        id: ConnectionPointId,
         before: Option<&'a Terminal>,
         after: Option<&'a Terminal>,
     },
@@ -316,7 +316,7 @@ pub struct Effects<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Open {
     Page(PageId),
-    Terminal(TerminalId),
+    Terminal(ConnectionPointId),
     Folder(FolderId),
 }
 
@@ -400,8 +400,8 @@ fn classify(op: &Op) -> Effect<'_> {
         Op::DeleteDevice { id, device } => Effect::Device { id: *id, before: Some(device), after: None },
         Op::ModifyDevice { id, before, after } => Effect::Device { id: *id, before: Some(before), after: Some(after) },
         Op::SetDeviceDefinition { id, before, after } => Effect::DeviceDefinition { id: *id, before: *before, after: *after },
-        Op::AddTerminal { id, terminal } => Effect::Terminal { id: *id, before: None, after: Some(terminal) },
-        Op::RemoveTerminal { id, terminal } => Effect::Terminal { id: *id, before: Some(terminal), after: None },
+        Op::AddConnectionPoint { id, terminal } => Effect::Terminal { id: *id, before: None, after: Some(terminal) },
+        Op::RemoveConnectionPoint { id, terminal } => Effect::Terminal { id: *id, before: Some(terminal), after: None },
         Op::LinkRepresentation { id, rep } => Effect::Rep { id: *id, before: None, after: Some(rep) },
         Op::ModifyRepresentation { id, before, after } => Effect::Rep { id: *id, before: Some(before), after: Some(after) },
         Op::UnlinkRepresentation { id, rep } => Effect::Rep { id: *id, before: Some(rep), after: None },

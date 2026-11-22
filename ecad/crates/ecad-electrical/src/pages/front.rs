@@ -570,7 +570,7 @@ impl UsesNote {
                 self.gone.insert(*id);
             }
             Effect::Prop { object: ObjectRef::Device(c), key, .. } if key.raw == ecad_model::connectivity::POTENTIAL => {
-                for (t, _) in doc.terminals_of(*c) {
+                for (t, _) in doc.connection_points_of(*c) {
                     self.seeds.extend(doc.ends_at(t).into_iter().map(|(c, _)| c));
                 }
             }

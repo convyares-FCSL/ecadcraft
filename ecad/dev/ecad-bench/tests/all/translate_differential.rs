@@ -12,7 +12,7 @@ use cadcraft_engine::Session;
 use cadcraft_engine::doc::Handle;
 use ecad_bench::generate::{Variant, generate, tier};
 use ecad_engine::{Mapped, ProjectHandle};
-use ecad_model::derive::terminal_positions;
+use ecad_model::derive::connection_point_positions;
 use ecad_model::{ItemKind, PageId, Primitive, Pt, Subject};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -99,7 +99,7 @@ fn page_state(project: &ProjectHandle, s: &mut Session, page: PageId) -> Page {
                     _ => {}
                 }
             }
-            let terminals = terminal_positions(doc, page).into_iter().map(|(_, _, p)| p).collect();
+            let terminals = connection_point_positions(doc, page).into_iter().map(|(_, _, p)| p).collect();
             Page { entities, symbols, routes, polylines, terminals }
         })
         .unwrap()

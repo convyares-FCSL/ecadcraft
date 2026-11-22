@@ -19,7 +19,7 @@ fn cap_height_gives_the_font_size() {
     let rows: &[(sheet_type::SheetText, f32)] = &[
         (sheet_type::TAG, 3.57),
         (sheet_type::LABEL, 2.29),
-        (sheet_type::TERMINAL_LABEL, 2.14),
+        (sheet_type::CONNECTION_POINT_LABEL, 2.14),
         (sheet_type::TITLE_BLOCK_LABEL, 2.0),
         (sheet_type::ZONE_LABEL, 2.86),
         (sheet_type::PAGE_TITLE, 5.0),

@@ -30,7 +30,7 @@ fn f_fence_makes_channels_0_to_7_in_one_transaction() {
     let mut xs: Vec<(u32, f64)> = Vec::new();
     for i in 0..8 {
         let (_, t) = pts[&format!(".{i}.in")].clone();
-        xs.push((i, p.h.terminal_pos(p.inputs, t).x));
+        xs.push((i, p.h.connection_point_pos(p.inputs, t).x));
     }
     for (i, x) in &xs {
         assert!((x - IN_XS[*i as usize]).abs() < 1e-6, "channel {i} at x {x}");
@@ -56,7 +56,7 @@ fn f_rest_draws_the_remaining_channels_as_spare() {
     let spares = text_values(&mut p.h, p.inputs).iter().filter(|t| *t == "Spare").count();
     assert_eq!(spares, 8, "a drawn spare cell shows plc.spare.text");
     // The rest cells continue to the right of the last fenced cell.
-    let x15 = p.h.terminal_pos(p.inputs, channel_points(&d, a03)[".15.in"].1).x;
+    let x15 = p.h.connection_point_pos(p.inputs, channel_points(&d, a03)[".15.in"].1).x;
     assert!(x15 > IN_XS[7], "{x15}");
     // Nothing left: rest is refused or a no-op, never a second set.
     let head = p.h.head();
@@ -235,7 +235,7 @@ fn fp2_di_and_do_are_channels_and_an_old_key_is_refused() {
     after.key = Some("I1.3".parse().unwrap());
     let head = p.h.head();
     let e = p.h.cfg(|x| {
-        x.ledger.commit(Author::User, "hand-made", vec![Op::RemoveTerminal { id: t, terminal: before }, Op::AddTerminal { id: t, terminal: after }])
+        x.ledger.commit(Author::User, "hand-made", vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }])
     });
     assert!(e.is_err_and(|e| e.to_string().contains("keyed I1.3")), "the old key is refused");
     assert_eq!(p.h.head(), head);
@@ -290,7 +290,7 @@ fn k_plcchannel_relabels_pins() {
     assert_eq!(after[".0.+"].1, before[".0.+"].1, "same terminal ID");
     let ops = p.h.p(|p| p.ledger.log().last().map(|t| t.ops.clone())).unwrap_or_default();
     assert!(
-        ops.iter().any(|o| matches!(o, ecad_model::Op::RemoveTerminal { .. })) && ops.iter().any(|o| matches!(o, ecad_model::Op::AddTerminal { .. })),
+        ops.iter().any(|o| matches!(o, ecad_model::Op::RemoveConnectionPoint { .. })) && ops.iter().any(|o| matches!(o, ecad_model::Op::AddConnectionPoint { .. })),
         "{ops:?}"
     );
     refused(

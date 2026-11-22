@@ -18,8 +18,8 @@ pub fn install_family(d: &mut cadcraft_engine::doc::Drawing, doc: &Document, fam
 /// Style a text entity of `kind` as this project draws it (the one entry point for other lanes,
 /// design 031 §3.3): its height, its style name (the project font, or the kind's own font), and
 /// for bold drawn in the stroke-font fallback the bold lineweight. The drawing must hold the
-/// styles: [`install`] (or [`install_look`]) writes them. A caller styling many entities holds a
-/// [`Look`] and calls [`LookApply::apply`] instead (one resolution per page, not per entity).
+/// styles: [`install`] (or [`install_draw`]) writes them. A caller styling many entities holds a
+/// [`Look`] and calls [`DrawApply::apply`] instead (one resolution per page, not per entity).
 pub fn apply(doc: &Document, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
     let s = text_style(doc, kind);
     if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
@@ -116,11 +116,11 @@ impl Fonts {
 /// (`ECAD-TAG`, `ECAD-TAG-BOLD`…). Any drawing ECAD builds calls it; a drawing that already has
 /// the same styles is unchanged.
 pub fn install(d: &mut cadcraft_engine::doc::Drawing, doc: &Document) {
-    install_look(d, &Look::new(doc));
+    install_draw(d, &Look::new(doc));
 }
 
 /// [`install`] with the look already resolved.
-pub fn install_look(d: &mut cadcraft_engine::doc::Drawing, look: &fonts::Look) {
+pub fn install_draw(d: &mut cadcraft_engine::doc::Drawing, look: &fonts::Look) {
     install_fonts(d, &look.fonts);
     for (kind, fonts) in TextKind::ALL.iter().zip(look.kind_fonts.iter()) {
         if let Some(f) = fonts {
@@ -172,18 +172,18 @@ impl Look {
 }
 
 /// Styling a derived text entity from a page's resolved look.
-pub trait LookApply {
+pub trait DrawApply {
     /// Give a text entity `kind`'s style name (the project font or the kind's own) and, for bold
     /// in the stroke font, its lineweight (§2.2), as [`apply`] does from a page's resolved look.
     /// Its height is left as it is (derived texts set their own).
     fn apply(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind);
 
-    /// [`LookApply::apply`] with an object's own text style (brief 050a): its weight, colour and
+    /// [`DrawApply::apply`] with an object's own text style (brief 050a): its weight, colour and
     /// the CADCraft style naming its font.
     fn apply_own(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind, own: &OwnStyle);
 }
 
-impl LookApply for fonts::Look {
+impl DrawApply for fonts::Look {
     fn apply(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
         style_entity(e, self.style(kind), self.fonts_for(kind).bold_lineweight);
     }

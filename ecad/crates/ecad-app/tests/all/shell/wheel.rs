@@ -93,8 +93,8 @@ fn fixture_with(deltas: Option<crate::mouse_tester::Deltas>) -> F {
     let d = doc(&mut h);
     let page1 = d.page_order[0];
     let pos = |label: &str| {
-        let (t, _) = d.terminals_of(k1).find(|(_, x)| x.label.as_deref() == Some(label)).unwrap();
-        let p = ecad_model::derive::terminal_positions(&d, page1).into_iter().find(|(x, _, _)| *x == t).unwrap().2;
+        let (t, _) = d.connection_points_of(k1).find(|(_, x)| x.label.as_deref() == Some(label)).unwrap();
+        let p = ecad_model::derive::connection_point_positions(&d, page1).into_iter().find(|(x, _, _)| *x == t).unwrap().2;
         Vec2::new(p.x, p.y)
     };
     let (a1, a2) = (pos("A1"), pos("A2"));

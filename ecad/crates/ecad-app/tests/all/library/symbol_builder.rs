@@ -321,7 +321,7 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
     let (_, rep) = d.representations_of(Subject::Device(c)).next().expect("the same device");
     assert_eq!(rep.form, ecad_model::Form::Symbol);
     let w = ecad_model::WireId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
-    assert!(d.terminals_of(c).any(|(term, _)| d.ends_at(term).iter().any(|(x, _)| *x == w)), "the wire stays attached");
+    assert!(d.connection_points_of(c).any(|(term, _)| d.ends_at(term).iter().any(|(x, _)| *x == w)), "the wire stays attached");
     let v = symbols::project_by_key(&d, "mine").unwrap();
     let slot = v.def.texts.first().expect("the tag slot");
     assert!(slot.at.x.abs() < 50.0 && slot.at.y.abs() < 50.0, "the slot is in the symbol's frame: {:?}", slot.at);

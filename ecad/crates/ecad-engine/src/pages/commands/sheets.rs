@@ -237,7 +237,7 @@ pub(crate) fn new_page_ops_at(
         p.outputs();
     }
     let doc = p.ledger.document();
-    let outputs = p.kept_outputs();
+    let outputs = p.kept_reports();
     rules::check_folder(doc, folder)?;
     let book = Book::of(doc);
     let (folder, index, place) = rules::new_page_at(doc, &book, folder, after)?;
@@ -330,7 +330,7 @@ impl Command for PagepropsParams {
                 if !doc.pages.contains_key(&page) {
                     return Err(CmdError::refused(ecad_electrical::msg::NO_SUCH_PAGE));
                 }
-                Ok(rules::page_json(doc, &Book::of(doc), page, p.kept_outputs()))
+                Ok(rules::page_json(doc, &Book::of(doc), page, p.kept_reports()))
             });
         }
         let proposal = self.proposal;
@@ -343,17 +343,17 @@ impl Command for PagepropsParams {
                 return Err(CmdError::refused(ecad_electrical::msg::NO_SUCH_PAGE));
             }
             change.mode = rules::proposal_mode(proposal.as_deref())?;
-            let kept = p.derived.kept_outputs();
+            let kept = p.derived.kept_reports();
             let plan = rules::page_props(p.ledger.document(), &mut p.ids, page, &change, kept)?;
             if plan.ops.is_empty() {
                 let doc = p.ledger.document();
-                let mut v = rules::page_json(doc, &Book::of(doc), page, p.kept_outputs());
+                let mut v = rules::page_json(doc, &Book::of(doc), page, p.kept_reports());
                 v["changed"] = json!(false);
                 return Ok(v);
             }
             commit_props(p, pg, "pageprops", "Page properties", plan)?;
             let doc = p.ledger.document();
-            let mut v = rules::page_json(doc, &Book::of(doc), page, p.kept_outputs());
+            let mut v = rules::page_json(doc, &Book::of(doc), page, p.kept_reports());
             v["changed"] = json!(true);
             Ok(v)
         })

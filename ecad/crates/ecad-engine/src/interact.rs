@@ -44,14 +44,14 @@ use cadcraft_engine::doc::{Circle, Entity, EntityKind, Handle, Line, Text};
 use cadcraft_engine::ext::{Mark, MarkShape};
 use cadcraft_engine::geom::{Vec2, Vec3};
 use cadcraft_engine::{EngineError, Session};
-use ecad_model::derive::terminal_positions;
-use ecad_model::{CableId, DeviceId, Document, End, Form, ItemKind, PageId, Primitive, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
+use ecad_model::derive::connection_point_positions;
+use ecad_model::{CableId, DeviceId, Document, End, Form, ItemKind, PageId, Primitive, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
 
 use crate::access::{owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
 use crate::terminal_types::short;
-pub use crate::terminal_types::{position_label, terminal_name};
-use crate::translate::terminal_at;
+pub use crate::terminal_types::{position_label, connection_point_name};
+use crate::translate::connection_point_at;
 use crate::views::{FanOnPage, View, fan_on_page};
 pub use crate::words::{MAX_COORD, MAX_HOVER_LINES, OUT_OF_RANGE};
 
@@ -79,7 +79,7 @@ pub(crate) fn model_space(s: &Session) -> bool {
 }
 
 /// Canvas colours (design tokens, ACI on the dark canvas).
-pub(crate) const TERMINAL_ACI: u8 = 4;
+pub(crate) const CONNECTION_POINT_ACI: u8 = 4;
 pub(crate) const ATTACHED_ACI: u8 = 3;
 /// The owner chose a neutral colour for loose ends, not red (brief 008 answer Q3): light grey.
 pub(crate) const LOOSE_ACI: u8 = 9;
@@ -87,7 +87,7 @@ pub(crate) const LOOSE_ACI: u8 = 9;
 pub(crate) const REFUSE_ACI: u8 = 1;
 
 /// Glyph sizes in screen pixels (design tokens).
-pub(crate) const TERMINAL_PX: f64 = 8.0;
+pub(crate) const CONNECTION_POINT_RING_PX: f64 = 8.0;
 pub(crate) const RING_PX: f64 = 16.0;
 const PREVIEW_TEXT_PX: f64 = 12.0;
 /// Crossing dot of a cable slash on a member wire (`ecad.crossing-size`).
@@ -165,7 +165,7 @@ pub(crate) fn pick(s: &Session, p: Vec2) -> Option<Handle> {
 /// A terminal under the cursor.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Capture {
-    pub terminal: TerminalId,
+    pub terminal: ConnectionPointId,
     /// The terminal's position: the point used instead of the cursor.
     pub at: Pt,
     /// Its name as the preview shows it.
@@ -182,15 +182,15 @@ pub fn capture(p: &Project, page: PageId, cursor: Vec2, aperture: f64) -> Option
     let c = pt(cursor);
     let doc = p.ledger.document();
     let mut best: Option<(f64, Pt)> = None;
-    for (_, _, at) in terminal_positions(doc, page) {
+    for (_, _, at) in connection_point_positions(doc, page) {
         let d = at.dist(c);
         if d <= aperture && best.is_none_or(|(b, _)| d < b) {
             best = Some((d, at));
         }
     }
     let (_, at) = best?;
-    let terminal = terminal_at(doc, page, at, p.tolerance)?;
-    Some(Capture { terminal, at, name: terminal_name(doc, terminal) })
+    let terminal = connection_point_at(doc, page, at, p.tolerance)?;
+    Some(Capture { terminal, at, name: connection_point_name(doc, terminal) })
 }
 
 /// The capture at the cursor, with the session's aperture (APERTURE pixels).
@@ -201,13 +201,13 @@ pub(crate) fn capture_at(s: &Session, cursor: Vec2) -> Option<Capture> {
 
 /// The terminal a point resolves to: captured when it is the cursor's, else only a terminal
 /// exactly there (the JSON form's own resolution; typed points are literal).
-pub(crate) fn terminal_for(s: &Session, p: Vec2) -> Option<(TerminalId, Pt, String)> {
+pub(crate) fn connection_point_for(s: &Session, p: Vec2) -> Option<(ConnectionPointId, Pt, String)> {
     if from_cursor(s, p) {
         return capture_at(s, p).map(|c| (c.terminal, c.at, c.name));
     }
     read(s, |proj, page| {
         let doc = proj.ledger.document();
-        Ok(terminal_at(doc, page, pt(p), proj.tolerance).map(|t| (t, pt(p), terminal_name(doc, t))))
+        Ok(connection_point_at(doc, page, pt(p), proj.tolerance).map(|t| (t, pt(p), connection_point_name(doc, t))))
     })
     .ok()
     .flatten()
@@ -215,8 +215,8 @@ pub(crate) fn terminal_for(s: &Session, p: Vec2) -> Option<(TerminalId, Pt, Stri
 
 /// The default name of the next terminal of component `c`: the smallest positive integer not
 /// already used as a label among its terminals (owner answer Q2).
-pub fn next_terminal_name(doc: &Document, c: DeviceId) -> String {
-    let used: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
+pub fn next_connection_point_name(doc: &Document, c: DeviceId) -> String {
+    let used: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     let mut n: u64 = 1;
     // At most one more than the labels in use: bounded by the component's terminals.
     while used.contains(&n.to_string()) && n <= used.len() as u64 {
@@ -306,7 +306,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     let sheet = crate::look::sheet();
     let colour = |m: ecad_drawing_style::Meaning| crate::look::rgb(sheet.color(m));
     let doc = p.ledger.document();
-    let positions = terminal_positions(doc, page);
+    let positions = connection_point_positions(doc, page);
     let ring = colour(ecad_drawing_style::Meaning::ConnectionPoint);
     // A cable reference's named points are drawn by its marker, never as rings or dots (F4).
     let mut out: Vec<Mark> = positions
@@ -389,19 +389,19 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         }
         // A device's tag text or terminal label (brief 018): the device's lens.
         Mapped::Tag(r) => match doc.representations.get(&r)?.subject {
-            Subject::Device(c) => with_xrefs(doc, c, r, crate::devices::hover_lines(doc, c, r)),
+            Subject::Device(c) => with_device_references(doc, c, r, crate::devices::hover_lines(doc, c, r)),
             _ => return None,
         },
         // A device cross-reference (brief 025): a table row's pole, the table's contacts, or the
         // contact's lens with its coil.
-        Mapped::Xref(r) => {
+        Mapped::DeviceReference(r) => {
             // Brief 049 (design 049 §5.4): an arrow's reference text, bracket or caption.
             if let Subject::Aid(a) = doc.representations.get(&r)?.subject {
                 crate::continuations::arrow(doc, r)?;
                 return Some(crate::continuations::hover_lines(doc, a, r));
             }
             let Subject::Device(c) = doc.representations.get(&r)?.subject else { return None };
-            let row = view.map.xref_part(h).and_then(|(_, i)| {
+            let row = view.map.device_reference_part(h).and_then(|(_, i)| {
                 let dev = crate::xref::device(doc, c);
                 let mut places = crate::xref::Places::new(doc);
                 let t = crate::xref::table(doc, &mut places, &dev)?;
@@ -410,7 +410,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             match row {
                 Some(i) => crate::xref::row_lines(doc, c, i, &crate::draw::text_style::EngineMetrics)?,
                 None if crate::xref::device(doc, c).head == Some(r) => crate::xref::head_lines(doc, c, r),
-                None => with_xrefs(doc, c, r, crate::devices::hover_lines(doc, c, r)),
+                None => with_device_references(doc, c, r, crate::devices::hover_lines(doc, c, r)),
             }
         }
         // A conductor label (brief 022): its wire's lens.
@@ -418,12 +418,12 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         // A T's dot (lane 072 D): the lens of the line that ends there.
         Mapped::Tee(r) => wire_lines(doc, crate::wires::wire_of_route(doc, r), Some(r), page),
         // A link line (brief 030, design 030 §5.3).
-        Mapped::Link(c, n) => vec![crate::link_lines::hover(doc, p.kept_outputs().and_then(|o| o.strips.get(c)), c, n)],
+        Mapped::Link(c, n) => vec![crate::link_lines::hover(doc, p.kept_reports().and_then(|o| o.strips.get(c)), c, n)],
         Mapped::Item(i) => match doc.representation_of_item(i)? {
             (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
             (rid, r) => match r.subject {
                 // A device (a tagged component, brief 018): design 018 §6.4's lens.
-                Subject::Device(c) if crate::devices::tag_of(doc, c).is_some() => with_xrefs(doc, c, rid, crate::devices::hover_lines(doc, c, rid)),
+                Subject::Device(c) if crate::devices::tag_of(doc, c).is_some() => with_device_references(doc, c, rid, crate::devices::hover_lines(doc, c, rid)),
                 // Brief 049 (design 049 §5.4): a continuation arrow's other ends.
                 Subject::Device(c) => component_lines(doc, c),
                 Subject::Wire(w) => wire_lines(doc, Some(w), None, page),
@@ -473,7 +473,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
 /// nearest, as a capture picks it), with what hovering it shows: drawn and symbol terminals
 /// alike, connected or free; never a cable reference's named point. A terminal under the pointer wins over the objects around it (the
 /// wire ending on it, the symbol it belongs to). Read only.
-pub fn hover_terminal(p: &Project, uid: u64, cursor: Vec2, aperture: f64) -> Option<(TerminalId, Vec<String>)> {
+pub fn hover_connection_point(p: &Project, uid: u64, cursor: Vec2, aperture: f64) -> Option<(ConnectionPointId, Vec<String>)> {
     let page = p.page_of(uid)?;
     if p.pages.get(&page).is_none_or(|v| v.unavailable) {
         return None;
@@ -547,8 +547,8 @@ fn capped(lines: &mut Vec<String>) {
 fn component_lines(doc: &Document, c: DeviceId) -> Vec<String> {
     let component = doc.devices.get(&c);
     let mut lines = vec![format!("Device {}", component.and_then(|x| x.tag()).unwrap_or("(no tag)")), format!("id {}", c.hex())];
-    let terminals: Vec<(TerminalId, String)> =
-        doc.terminals_of(c).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "(no label)".into()))).collect();
+    let terminals: Vec<(ConnectionPointId, String)> =
+        doc.connection_points_of(c).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "(no label)".into()))).collect();
     lines.push(format!("Connection points: {}", terminals.len()));
     for (t, label) in terminals {
         let k = doc.ends_at(t).len();
@@ -557,7 +557,7 @@ fn component_lines(doc: &Document, c: DeviceId) -> Vec<String> {
     lines
 }
 
-fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
+fn terminal_lines(doc: &Document, t: ConnectionPointId) -> Vec<String> {
     let term = doc.terminals.get(&t);
     let of = term
         .map(|x| {
@@ -662,7 +662,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
                         .and_then(|c| doc.devices.get(&c))
                         .and_then(|c| c.tag())
                         .map_or_else(|| short(&x.owner.subject_hex()).to_string(), str::to_string);
-                    format!("End {end:?}: connection point {} of {of}", terminal_name(doc, t))
+                    format!("End {end:?}: connection point {} of {of}", connection_point_name(doc, t))
                 }
                 None => format!("End {end:?}: not connected"),
             });
@@ -709,7 +709,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
 
 /// A device's lens (design 018 §6.4) with its cross-reference lines (design 025 §5.1): the coil's
 /// place on a contact, the table's contacts on a coil, before the lens's last (`id`) line.
-fn with_xrefs(doc: &ecad_model::Document, c: DeviceId, rep: ecad_model::RepresentationId, mut lines: Vec<String>) -> Vec<String> {
+fn with_device_references(doc: &ecad_model::Document, c: DeviceId, rep: ecad_model::RepresentationId, mut lines: Vec<String>) -> Vec<String> {
     let mut extra = crate::xref::contact_lines(doc, c, rep);
     extra.extend(crate::xref::head_lines(doc, c, rep));
     let at = lines.len().saturating_sub(1);
@@ -726,7 +726,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(D
     let doc = p.ledger.document();
     let item = match map.get(h) {
         Some(Mapped::Item(i)) => i,
-        Some(Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Label(_) | Mapped::Xref(_)) => return Err(NOT_OUTLINE.into()),
+        Some(Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Label(_) | Mapped::DeviceReference(_)) => return Err(NOT_OUTLINE.into()),
         Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
         Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
         Some(Mapped::Link(..)) => return Err(crate::link_lines::LINK_DERIVED.into()),

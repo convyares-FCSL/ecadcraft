@@ -316,7 +316,7 @@ pub fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&s
         return Ok(ValueSet { op: None, note: None });
     }
     let note = match (object, &after) {
-        (ObjectRef::Device(c), Some(_)) if ecad_model::links::link_number(key).is_some() => {
+        (ObjectRef::Device(c), Some(_)) if ecad_model::links::jumper_bar_number(key).is_some() => {
             typed.and_then(|v| crate::terminal_types::dotted_position_words(doc, c, v))
         }
         _ => None,

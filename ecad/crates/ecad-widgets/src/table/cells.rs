@@ -39,7 +39,7 @@ pub fn text(ui: &Ui, rect: Rect, t: &str, ink: Color32, align: Align) {
 
 /// The field look of a set value that is not being edited (the field primitive's frame, without
 /// an editor, so a table of thousands of rows registers no text editors).
-pub fn input_look(ui: &Ui, rect: Rect, t: &str, align: Align, focused: bool) {
+pub fn input_draw(ui: &Ui, rect: Rect, t: &str, align: Align, focused: bool) {
     let s = crate::SHELL;
     let frame = rect.shrink2(vec2(space::XS, space::XXS));
     let stroke = if focused { Stroke::new(line::FOCUS_RING_PX, color(s.accent_text)) } else { Stroke::new(line::HAIRLINE_PX, color(s.line)) };
@@ -90,7 +90,7 @@ pub fn draw(ui: &mut Ui, rect: Rect, cell: &Cell, align: Align, focused: bool) -
     match cell {
         Cell::Text(t) => text(ui, rect, t, color(s.text), align),
         Cell::Number(..) => text(ui, rect, &cell.text(), color(s.text), Align::Right),
-        Cell::Input(t) => input_look(ui, rect, t, align, focused),
+        Cell::Input(t) => input_draw(ui, rect, t, align, focused),
         Cell::Read { text: t, go: false } => text(ui, rect, t, color(s.text_2), align),
         Cell::Read { text: t, go: true } => {
             if t.is_empty() {

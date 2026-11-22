@@ -12,8 +12,8 @@
 use std::collections::BTreeMap;
 
 use ecad_engine::Persistence;
-use ecad_engine::outputs::{Group, kept::Outputs};
-use ecad_model::{Author, DeviceId, Document, Op, PageId, Subject, TerminalId};
+use ecad_engine::outputs::{Group, kept::ReportModels};
+use ecad_model::{Author, DeviceId, Document, Op, PageId, Subject, ConnectionPointId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -21,7 +21,7 @@ use crate::common::{reopen, tmp_dir};
 
 // ------------------------------------------------------------------------------- helpers
 
-fn ids(v: &Value) -> Vec<TerminalId> {
+fn ids(v: &Value) -> Vec<ConnectionPointId> {
     v["terminals"].as_array().map(|a| a.iter().map(|x| id(x, "terminal")).collect()).unwrap_or_default()
 }
 
@@ -34,7 +34,7 @@ fn drops(h: &mut H, xs: &[f64]) {
 
 /// Place Terminals' JSON form with a type and a level (design §3.2), a fence at y 200 from `x0`
 /// to `x1`. Returns the strip and the new terminals.
-fn fence(h: &mut H, strip: Option<DeviceId>, ty: &str, level: &str, x0: f64, x1: f64) -> (DeviceId, Vec<TerminalId>) {
+fn fence(h: &mut H, strip: Option<DeviceId>, ty: &str, level: &str, x0: f64, x1: f64) -> (DeviceId, Vec<ConnectionPointId>) {
     let v = fence_v(h, strip, ty, level, x0, x1).unwrap_or_else(|e| panic!("terminals {ty} {level}: {e}"));
     (id(&v, "strip"), ids(&v))
 }
@@ -44,17 +44,17 @@ fn fence_v(h: &mut H, strip: Option<DeviceId>, ty: &str, level: &str, x0: f64, x
     h.run("terminals", json!({"strip": s, "type": ty, "level": level, "from": [x0, 200.0], "to": [x1, 200.0]}))
 }
 
-fn label(d: &Document, t: TerminalId) -> String {
+fn label(d: &Document, t: ConnectionPointId) -> String {
     d.terminals.get(&t).and_then(|x| x.label.clone()).unwrap_or_default()
 }
 
-fn key(d: &Document, t: TerminalId) -> String {
+fn key(d: &Document, t: ConnectionPointId) -> String {
     d.terminals.get(&t).and_then(|x| x.key.as_ref()).map(ToString::to_string).unwrap_or_default()
 }
 
 /// A strip's terminals by position label, then level key.
-fn positions(d: &Document, strip: DeviceId) -> BTreeMap<String, BTreeMap<String, TerminalId>> {
-    let mut out: BTreeMap<String, BTreeMap<String, TerminalId>> = BTreeMap::new();
+fn positions(d: &Document, strip: DeviceId) -> BTreeMap<String, BTreeMap<String, ConnectionPointId>> {
+    let mut out: BTreeMap<String, BTreeMap<String, ConnectionPointId>> = BTreeMap::new();
     for (tid, t) in &d.terminals {
         if t.device() == Some(strip) {
             out.entry(t.label.clone().unwrap_or_default()).or_default().insert(t.key.as_ref().map(ToString::to_string).unwrap_or_default(), *tid);
@@ -113,11 +113,11 @@ fn rows_have_a_way_out(h: &mut H, kind: &str) {
     }
 }
 
-fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetKey> {
-    h.doc().connectivity().net_of_terminal(t)
+fn net(h: &mut H, t: ConnectionPointId) -> Option<ecad_model::NetKey> {
+    h.doc().connectivity().net_of_connection_point(t)
 }
 
-fn wire_number(h: &mut H, t: TerminalId) -> String {
+fn wire_number(h: &mut H, t: ConnectionPointId) -> String {
     s(&h.run("net", json!({"terminal": t.hex()})).unwrap()["number"])
 }
 
@@ -130,7 +130,7 @@ fn same_as_built(h: &mut H) {
 fn same_as_built_with(h: &mut H, wires: bool) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ from a rebuild");
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
@@ -202,7 +202,7 @@ fn read_everything(h: &mut H) {
 }
 
 /// The representation (symbol) that shows terminal `t`, and its item.
-fn symbol_of(d: &Document, t: TerminalId) -> Option<(ecad_model::RepresentationId, ecad_model::ItemId, PageId)> {
+fn symbol_of(d: &Document, t: ConnectionPointId) -> Option<(ecad_model::RepresentationId, ecad_model::ItemId, PageId)> {
     let comp = d.terminals.get(&t)?.device()?;
     d.representations_of(Subject::Device(comp))
         .find(|(_, r)| r.connection_points.contains_key(&t))
@@ -357,7 +357,7 @@ fn b_level_on_another_page_joins_its_position() {
     // Page 2: `termlnpe.2` on the wire at x 500 fills position 3's free N.
     m.h.activate(m.p2);
     let v = step(&mut m.h, "place", json!({"symbol": "termlnpe.2", "at": [500, 200], "device": x1.hex()}));
-    let t: TerminalId = ids(&v).first().copied().unwrap_or_else(|| {
+    let t: ConnectionPointId = ids(&v).first().copied().unwrap_or_else(|| {
         let d = m.h.doc();
         positions(&d, x1)["3"][".2"]
     });
@@ -570,11 +570,11 @@ fn h_toposition_converts_a_fuse_device() {
     let mut m = fixture_m(0x7036_000A);
     let x2 = with_sensor(&mut m);
     let d0 = m.h.doc();
-    let ft: Vec<TerminalId> = d0.terminals.iter().filter(|(_, t)| t.device() == Some(m.fuse_dev)).map(|(i, _)| *i).collect();
+    let ft: Vec<ConnectionPointId> = d0.terminals.iter().filter(|(_, t)| t.device() == Some(m.fuse_dev)).map(|(i, _)| *i).collect();
     assert_eq!(ft.len(), 2);
-    let conductors_of = |d: &Document, t: TerminalId| -> Vec<ecad_model::WireId> {
+    let conductors_of = |d: &Document, t: ConnectionPointId| -> Vec<ecad_model::WireId> {
         let c = d.connectivity();
-        c.net_of_terminal(t).and_then(|n| c.net(n)).map(|n| n.wires.iter().copied().collect()).unwrap_or_default()
+        c.net_of_connection_point(t).and_then(|n| c.net(n)).map(|n| n.wires.iter().copied().collect()).unwrap_or_default()
     };
     let (ca, cb) = (conductors_of(&d0, ft[0]), conductors_of(&d0, ft[1]));
     assert!(!ca.is_empty() && !cb.is_empty());
@@ -766,7 +766,7 @@ fn k_renumber_moves_positions_and_their_keys() {
     let (mut m, x1) = with_lnpe(0x7036_000F);
     let d = m.h.doc();
     let pos = positions(&d, x1);
-    let p3: Vec<TerminalId> = pos["3"].values().copied().collect();
+    let p3: Vec<ConnectionPointId> = pos["3"].values().copied().collect();
     m.h.run("setprop", json!({"component": x1.hex(), "key": "term_label.3.2", "value": "N3"})).unwrap();
     m.h.run("accessory", json!({"strip": x1.hex(), "at": "3", "on": true, "items": ["marker"]})).unwrap();
     m.h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "2.2-3.2"})).unwrap();
@@ -836,7 +836,7 @@ fn k_deleting_a_level_loses_nothing_silently() {
 // ------------------------------------------------------------------------------- L (AC 8)
 
 /// Relabel a terminal by hand (a hostile file or a merge): Remove + Add with a new label.
-fn relabel_raw(h: &mut H, t: TerminalId, new_label: Option<&str>, new_key: Option<&str>) {
+fn relabel_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>, new_key: Option<&str>) {
     let d = h.doc();
     let before = d.terminals[&t].clone();
     let mut after = before.clone();
@@ -848,7 +848,7 @@ fn relabel_raw(h: &mut H, t: TerminalId, new_label: Option<&str>, new_key: Optio
         after.key = k.parse().ok();
     }
     h.cfg(|p| {
-        p.ledger.commit(Author::User, "hand-made", vec![Op::RemoveTerminal { id: t, terminal: before }, Op::AddTerminal { id: t, terminal: after }])
+        p.ledger.commit(Author::User, "hand-made", vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }])
     })
     .unwrap();
 }

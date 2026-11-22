@@ -57,7 +57,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::doc::{Cable, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal, Wire};
 use crate::effect::{Effect, Effects};
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::index::referrers;
 use crate::op::{ObjectRef, Op};
 use crate::point::PointKey;
@@ -75,7 +75,7 @@ pub struct Touched {
     pub layers: BTreeSet<LayerId>,
     pub items: BTreeSet<ItemId>,
     pub devices: BTreeSet<DeviceId>,
-    pub terminals: BTreeSet<TerminalId>,
+    pub terminals: BTreeSet<ConnectionPointId>,
     pub representations: BTreeSet<RepresentationId>,
     pub wires: BTreeSet<WireId>,
     pub cables: BTreeSet<CableId>,
@@ -215,7 +215,7 @@ impl Document {
             check_definition(*id, d)?;
         }
         for (id, t) in &self.terminals {
-            self.check_terminal(*id, t)?;
+            self.check_connection_point(*id, t)?;
         }
         for (id, c) in &self.devices {
             self.check_component(*id, c)?;
@@ -369,11 +369,11 @@ impl Document {
 
         let mut terminals = touched.terminals.clone();
         for c in &touched.devices {
-            terminals.extend(referrers(&ix.component_terminals, &crate::doc::TerminalOwner::Device(*c)));
+            terminals.extend(referrers(&ix.component_connection_points, &crate::doc::ConnectionPointOwner::Device(*c)));
         }
         for id in &terminals {
             if let Some(t) = self.terminals.get(id) {
-                self.check_terminal(*id, t)?;
+                self.check_connection_point(*id, t)?;
             }
         }
 
@@ -403,7 +403,7 @@ impl Document {
             reps.extend(referrers(&ix.item_reps, i));
         }
         for t in &touched.terminals {
-            reps.extend(referrers(&ix.terminal_reps, t));
+            reps.extend(referrers(&ix.connection_point_reps, t));
         }
         for id in &reps {
             if let Some(r) = self.representations.get(id) {
@@ -420,7 +420,7 @@ impl Document {
 
         let mut conductors = touched.wires.clone();
         for t in &touched.terminals {
-            conductors.extend(referrers(&ix.terminal_ends, t).map(|(c, _)| c));
+            conductors.extend(referrers(&ix.connection_point_ends, t).map(|(c, _)| c));
         }
         for id in &conductors {
             if let Some(c) = self.wires.get(id) {
@@ -446,7 +446,7 @@ impl Document {
             routes.extend(referrers(&ix.page_routes, p));
         }
         for t in &touched.terminals {
-            routes.extend(referrers(&ix.terminal_routes, t));
+            routes.extend(referrers(&ix.connection_point_routes, t));
         }
         for r in &touched.routes {
             routes.extend(referrers(&ix.route_tees, r));
@@ -556,10 +556,10 @@ impl Document {
     }
 
     /// I8.
-    fn check_terminal(&self, id: TerminalId, t: &Terminal) -> Result<()> {
+    fn check_connection_point(&self, id: ConnectionPointId, t: &Terminal) -> Result<()> {
         let device = match t.owner {
-            crate::doc::TerminalOwner::Device(d) => d,
-            crate::doc::TerminalOwner::Aid(a) => {
+            crate::doc::ConnectionPointOwner::Device(d) => d,
+            crate::doc::ConnectionPointOwner::Aid(a) => {
                 return match self.aids.get(&a) {
                     Some(crate::aid::Aid::Continuation { .. }) => Ok(()),
                     Some(_) => bad(format!("terminal {id} belongs to drawing aid {a}, which is not a continuation")),

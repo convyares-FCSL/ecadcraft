@@ -73,7 +73,7 @@ fn cablenew_makes_a_cable_that_is_not_drawn_in_one_transaction() {
     assert_eq!(c.release_severity(), Severity::Warning);
     assert_eq!(ecad_electrical::release::counts(&[c]), (0, 1, 0));
     // The cable's row in the report says not drawn.
-    let drawn = h.p(|p| p.kept_outputs().and_then(|o| o.cable_row(k)).map(|r| r.drawn));
+    let drawn = h.p(|p| p.kept_reports().and_then(|o| o.cable_row(k)).map(|r| r.drawn));
     assert!(drawn != Some(true));
 }
 
@@ -243,7 +243,7 @@ fn a_drawn_cable_end_off_its_plan_warns_for_that_end_only() {
     h.run("setlocation", json!({"component": b.hex(), "value": "+JB1"})).unwrap();
     let doc = h.doc();
     let page = h.first_page();
-    let tp = ecad_model::derive::terminal_positions(&doc, page);
+    let tp = ecad_model::derive::connection_point_positions(&doc, page);
     let pos = |c: ecad_model::DeviceId| {
         let (rid, _) = doc.representations_of(ecad_model::Subject::Device(c)).next().unwrap();
         tp.iter().find(|(_, r, _)| *r == rid).unwrap().2
@@ -289,7 +289,7 @@ fn a_cable_not_drawn_survives_join_and_the_report_lists_it() {
     let mut h = H::new(5912);
     let k = new_cable(&mut h, json!({"from": {"location": "+CAB1"}, "to": {"location": "+FIELD", "gland": "M20"}}));
     let doc = h.doc();
-    let row = h.p(|p| p.kept_outputs().and_then(|o| o.cable_row(k).cloned()));
+    let row = h.p(|p| p.kept_reports().and_then(|o| o.cable_row(k).cloned()));
     if let Some(r) = row {
         assert!(!r.drawn);
         assert_eq!(r.planned[1].as_deref(), Some("+FIELD"));

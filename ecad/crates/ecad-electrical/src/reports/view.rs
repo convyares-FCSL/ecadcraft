@@ -1,4 +1,4 @@
-//! The report models' view (design 064 §4.2, `OutputsView`): the kept [`Outputs`] (rows, strips,
+//! The report models' view (design 064 §4.2, `ReportsView`): the kept [`ReportModels`] (rows, strips,
 //! PLC model, strip pages), built on first show and then kept from each commit's effects.
 //!
 //! # Update map
@@ -9,7 +9,7 @@
 //! model's touch (`plc::kept::Plc::note`), the strip pages' names (`strips::pages::Named`), a page
 //! number or sheet count that can move, the pages added, removed or moved, the book positions,
 //! and what can move a place on a rack sheet (`plc::sheets::RackPlaces`).
-//! The update recomputes what was noted ([`Outputs::update`]). Its outcome:
+//! The update recomputes what was noted ([`ReportModels::update`]). Its outcome:
 //! - `pages`: the generated pages drawn from the models whose content changed, by kind: a BOM
 //!   page when the models' revision moved, a terminal plan when a strip it shows changed
 //!   (`generated::terminals_rewritten`), a cable schedule when a cable row changed, an I/O list
@@ -28,35 +28,35 @@ use ecad_model::{Document, PageId};
 
 use super::Inputs;
 use crate::generated;
-use crate::outputs::kept::{Noted, Outputs};
+use crate::outputs::kept::{Noted, ReportModels};
 use crate::plc::sheets::RackPlaces;
 use crate::text_style::fonts::TextMetrics;
 use ecad_model::GenKind;
 
 /// The kept report models.
 #[derive(Debug)]
-pub struct OutputsView {
-    model: Outputs,
+pub struct ReportsView {
+    model: ReportModels,
 }
 
-impl OutputsView {
+impl ReportsView {
     /// Every model, from scratch (first show), with text measured in `m`.
     pub fn build(doc: &Document, m: &dyn TextMetrics) -> Self {
-        OutputsView { model: Outputs::build_with(doc, m) }
+        ReportsView { model: ReportModels::build_with(doc, m) }
     }
 
     /// The kept models.
-    pub fn model(&self) -> &Outputs {
+    pub fn model(&self) -> &ReportModels {
         &self.model
     }
 
     /// The models, the view dropped.
-    pub fn into_model(self) -> Outputs {
+    pub fn into_model(self) -> ReportModels {
         self.model
     }
 
     /// The kept models, to put them out of step on purpose (tests of verify mode only).
-    pub fn model_mut(&mut self) -> &mut Outputs {
+    pub fn model_mut(&mut self) -> &mut ReportModels {
         &mut self.model
     }
 
@@ -69,14 +69,14 @@ impl OutputsView {
 
 /// What a commit could change in the models: noted on both states.
 #[derive(Debug, Default)]
-pub struct OutputsScope {
+pub struct ReportsScope {
     noted: Noted,
     places: RackPlaces,
-    /// The Before phase was closed ([`OutputsView::close_before`]): the view was kept then.
+    /// The Before phase was closed ([`ReportsView::close_before`]): the view was kept then.
     begun: bool,
 }
 
-impl ViewScope for OutputsScope {
+impl ViewScope for ReportsScope {
     fn is_empty(&self) -> bool {
         !self.begun
     }
@@ -86,20 +86,20 @@ impl ViewScope for OutputsScope {
     }
 }
 
-impl OutputsView {
+impl ReportsView {
     /// The end of the Before phase on `before`: the noted rows' net mates and renamed entries' users.
-    pub fn close_before(&self, before: &Document, scope: &mut OutputsScope) {
+    pub fn close_before(&self, before: &Document, scope: &mut ReportsScope) {
         self.model.close_before(before, &mut scope.noted);
         scope.begun = true;
     }
 }
 
-impl<'i> DerivedView<Inputs<'i>> for OutputsView {
-    type Scope = OutputsScope;
+impl<'i> DerivedView<Inputs<'i>> for ReportsView {
+    type Scope = ReportsScope;
     const NAME: &'static str = "outputs";
     const AREAS: AreaSet = AreaSet::ALL;
 
-    fn note(&self, cx: &NoteCx<'_>, effect: &Effect<'_>, scope: &mut OutputsScope) {
+    fn note(&self, cx: &NoteCx<'_>, effect: &Effect<'_>, scope: &mut ReportsScope) {
         match cx.phase {
             Phase::Before => self.model.note_before(cx.doc, effect, &mut scope.noted),
             Phase::After => {
@@ -109,8 +109,8 @@ impl<'i> DerivedView<Inputs<'i>> for OutputsView {
         }
     }
 
-    fn update(&mut self, doc: &Document, scope: OutputsScope, cx: &Inputs<'i>) -> Outcome {
-        let OutputsScope { noted, places, begun } = scope;
+    fn update(&mut self, doc: &Document, scope: ReportsScope, cx: &Inputs<'i>) -> Outcome {
+        let ReportsScope { noted, places, begun } = scope;
         if !begun {
             return Outcome::default();
         }

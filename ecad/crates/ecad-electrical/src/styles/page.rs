@@ -105,7 +105,7 @@ pub fn holds_of_kind(kind: GenKind) -> Holds {
 
 /// What a page type brings to its pages (design 054 §3).
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeLook {
+pub struct TypeDraw {
     /// `None`: the project's sheet.
     pub sheet: Option<SheetSpec>,
     /// `None`: the `print.frame.style` choice, as before types.
@@ -124,7 +124,7 @@ fn field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<crate::defau
 }
 
 /// What type `id` brings (design 054 §2.1, §3). Never fails: a malformed field falls through.
-pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
+pub fn draw_of(doc: &Document, id: &StyleRef) -> TypeDraw {
     let sheet = msheet::type_sheet(doc, id);
     let frame = field(doc, id, "frame")
         .map(|r| r.text())
@@ -139,7 +139,7 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
     let zones = field(doc, id, "zones").is_none_or(|r| ecad_model::words::flag(r.word()) != Some(false));
     let holds = field(doc, id, "holds").and_then(|r| <Holds as Word>::parse(r.word())).unwrap_or(Holds::None);
     let checks = msheet::type_checks(doc, id);
-    TypeLook { sheet, frame, title_block, zones, holds, checks }
+    TypeDraw { sheet, frame, title_block, zones, holds, checks }
 }
 
 /// The type of `page` (design 054 §2.3).
@@ -261,7 +261,7 @@ pub fn kind_refusal(kind: GenKind) -> String {
 
 /// The refusal for a generated-only type with no `generated` (design 054 §4.2).
 pub fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
-    let pos = look_of(doc, id).holds;
+    let pos = draw_of(doc, id).holds;
     let list: Vec<String> = kinds(pos).iter().map(|k| format!("\"{}\"", ecad_model::Word::word(*k))).collect();
     let words = match list.as_slice() {
         [] => String::new(),

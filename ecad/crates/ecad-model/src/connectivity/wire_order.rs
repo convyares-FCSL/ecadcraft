@@ -31,7 +31,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::doc::{Cable, Core, CorePosition, Document, Wire};
 use crate::geom::Pt;
-use crate::id::{ConductorId, IdAllocator, NetId, RouteId, TerminalId, WireId};
+use crate::id::{ConductorId, IdAllocator, NetId, RouteId, ConnectionPointId, WireId};
 use crate::op::Op;
 use crate::route::RouteEnd;
 
@@ -39,10 +39,10 @@ use crate::route::RouteEnd;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Join {
     /// Its route starts at this point of the net.
-    From(TerminalId),
+    From(ConnectionPointId),
     /// Its route lands on the middle of a route carrying the wire `wire`; `near` is the wire's end
     /// nearer to where it lands.
-    OnWire { wire: [TerminalId; 2], near: TerminalId },
+    OnWire { wire: [ConnectionPointId; 2], near: ConnectionPointId },
     /// No route to follow: the chain continues from the last point added.
     Next,
 }
@@ -50,14 +50,14 @@ pub enum Join {
 /// One net's points, in the order they joined, and its wires, in order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Order {
-    points: Vec<TerminalId>,
-    wires: Vec<[TerminalId; 2]>,
+    points: Vec<ConnectionPointId>,
+    wires: Vec<[ConnectionPointId; 2]>,
 }
 
 impl Order {
     /// An order from stored wires (in `net_order`): the points in the order they first appear.
-    pub fn from_wires(wires: Vec<[TerminalId; 2]>) -> Self {
-        let mut points: Vec<TerminalId> = Vec::new();
+    pub fn from_wires(wires: Vec<[ConnectionPointId; 2]>) -> Self {
+        let mut points: Vec<ConnectionPointId> = Vec::new();
         for w in &wires {
             for t in w {
                 if !points.contains(t) {
@@ -69,28 +69,28 @@ impl Order {
     }
 
     /// The wires, in order: index 0 is `net_order` 1.
-    pub fn wires(&self) -> &[[TerminalId; 2]] {
+    pub fn wires(&self) -> &[[ConnectionPointId; 2]] {
         &self.wires
     }
 
     /// The points on the net, in the order they joined.
-    pub fn points(&self) -> &[TerminalId] {
+    pub fn points(&self) -> &[ConnectionPointId] {
         &self.points
     }
 
     /// How many wires end at `t`.
-    pub fn count(&self, t: TerminalId) -> usize {
+    pub fn count(&self, t: ConnectionPointId) -> usize {
         self.wires.iter().map(|w| w.iter().filter(|x| **x == t).count()).sum()
     }
 
     /// Whether `t` is on the net.
-    pub fn has(&self, t: TerminalId) -> bool {
+    pub fn has(&self, t: ConnectionPointId) -> bool {
         self.points.contains(&t)
     }
 
     /// Add point `p` by the drawing-order rule (see the module docs). A point already on the net
     /// changes nothing.
-    pub fn add(&mut self, p: TerminalId, join: Join, accepts: &impl Fn(TerminalId) -> usize) {
+    pub fn add(&mut self, p: ConnectionPointId, join: Join, accepts: &impl Fn(ConnectionPointId) -> usize) {
         if self.has(p) {
             return;
         }
@@ -98,8 +98,8 @@ impl Order {
             self.points.push(p);
             return;
         };
-        let room = |t: TerminalId| self.has(t) && self.count(t) < accepts(t).max(1);
-        let on_net = |t: TerminalId| self.has(t).then_some(t);
+        let room = |t: ConnectionPointId| self.has(t) && self.count(t) < accepts(t).max(1);
+        let on_net = |t: ConnectionPointId| self.has(t).then_some(t);
         let start = match join {
             Join::From(q) => on_net(q),
             Join::OnWire { wire, near } => {
@@ -115,13 +115,13 @@ impl Order {
 
     /// Cut point `x` out: its neighbours are joined to each other, in order, in the place of its
     /// first wire. A point not on the net changes nothing.
-    pub fn cut(&mut self, x: TerminalId) {
+    pub fn cut(&mut self, x: ConnectionPointId) {
         if !self.has(x) {
             return;
         }
         self.points.retain(|t| *t != x);
         let first = self.wires.iter().position(|w| w.contains(&x));
-        let mut neighbours: Vec<TerminalId> = Vec::new();
+        let mut neighbours: Vec<ConnectionPointId> = Vec::new();
         for w in self.wires.iter().filter(|w| w.contains(&x)) {
             for t in w {
                 if *t != x && !neighbours.contains(t) {
@@ -131,7 +131,7 @@ impl Order {
         }
         self.wires.retain(|w| !w.contains(&x));
         let Some(at) = first else { return };
-        let joined: Vec<[TerminalId; 2]> = neighbours.windows(2).filter_map(|p| Some([*p.first()?, *p.get(1)?])).collect();
+        let joined: Vec<[ConnectionPointId; 2]> = neighbours.windows(2).filter_map(|p| Some([*p.first()?, *p.get(1)?])).collect();
         let at = at.min(self.wires.len());
         self.wires.splice(at..at, joined);
     }
@@ -139,7 +139,7 @@ impl Order {
     /// Insert point `p` into wire `a`–`b`: it becomes `a`–`p` and `p`–`b`, in its place (the
     /// reverse of [`Order::cut`]: a terminal placed on a wire's line splits that wire). Returns
     /// whether there was such a wire; a point already on the net changes nothing.
-    pub fn insert(&mut self, p: TerminalId, a: TerminalId, b: TerminalId) -> bool {
+    pub fn insert(&mut self, p: ConnectionPointId, a: ConnectionPointId, b: ConnectionPointId) -> bool {
         if self.has(p) {
             return false;
         }
@@ -151,14 +151,14 @@ impl Order {
     }
 
     /// The points that take more wires than they accept: `(point, wires, accepted)`.
-    pub fn over(&self, accepts: &impl Fn(TerminalId) -> usize) -> Vec<(TerminalId, usize, usize)> {
+    pub fn over(&self, accepts: &impl Fn(ConnectionPointId) -> usize) -> Vec<(ConnectionPointId, usize, usize)> {
         self.points.iter().filter(|t| self.count(**t) > accepts(**t)).map(|t| (*t, self.count(*t), accepts(*t))).collect()
     }
 }
 
 /// How many conductors connection point `t` accepts (design 072 §4.4, F38): its stored
 /// [`crate::Accepts`]; two for a point that does not exist.
-pub fn accepts(doc: &Document, t: TerminalId) -> usize {
+pub fn accepts(doc: &Document, t: ConnectionPointId) -> usize {
     doc.terminals.get(&t).map_or(2, |x| x.accepts.get())
 }
 
@@ -188,11 +188,11 @@ pub fn rewrite(doc: &Document, ops: &[Op]) -> Vec<Op> {
                 seeds.route(doc, *id, before);
                 seeds.route(doc, *id, after);
             }
-            Op::RemoveTerminal { id, .. } => {
+            Op::RemoveConnectionPoint { id, .. } => {
                 seeds.points.insert(*id);
             }
             // A point added to a continuation joins its name group (F5).
-            Op::AddTerminal { id, .. } if doc.named_points(*id).is_some() => {
+            Op::AddConnectionPoint { id, .. } if doc.named_points(*id).is_some() => {
                 seeds.points.insert(*id);
             }
             // A continuation joining or leaving a name group (F5): the lines at its partners, old
@@ -213,7 +213,7 @@ pub fn rewrite(doc: &Document, ops: &[Op]) -> Vec<Op> {
 
 /// A loose route (one with a free end) that has landed at one of `ends`, with the point it landed
 /// at: the line that carried a wire whose other end came away.
-fn loose_route_at(doc: &Document, ends: [TerminalId; 2]) -> Option<(RouteId, TerminalId)> {
+fn loose_route_at(doc: &Document, ends: [ConnectionPointId; 2]) -> Option<(RouteId, ConnectionPointId)> {
     // A line ending at a named point (F4) is loose too once the wire through it went.
     let open = |e: &RouteEnd| *e == RouteEnd::Free || e.point().is_some_and(|t| doc.named_points(t).is_some());
     ends.into_iter().find_map(|e| doc.routes_at(e).find(|r| doc.routes.get(r).is_some_and(|x| x.ends.iter().any(open))).map(|r| (r, e)))
@@ -330,7 +330,7 @@ pub fn cores(doc: &Document, ops: &[Op]) -> Vec<Op> {
 
 #[derive(Default)]
 struct Seeds {
-    points: BTreeSet<TerminalId>,
+    points: BTreeSet<ConnectionPointId>,
     routes: BTreeSet<RouteId>,
 }
 
@@ -363,10 +363,10 @@ impl Seeds {
 
 /// A wire net found over the routes.
 struct Component {
-    points: BTreeSet<TerminalId>,
+    points: BTreeSet<ConnectionPointId>,
     routes: BTreeSet<RouteId>,
     /// The named points it runs through (F4).
-    named: BTreeSet<TerminalId>,
+    named: BTreeSet<ConnectionPointId>,
 }
 
 impl Component {
@@ -377,7 +377,7 @@ impl Component {
 
 #[derive(Debug, Clone, Copy)]
 enum Start {
-    Point(TerminalId),
+    Point(ConnectionPointId),
     Route(RouteId),
 }
 
@@ -412,7 +412,7 @@ fn segments_meet(s: (Pt, Pt), t: (Pt, Pt)) -> bool {
 }
 
 /// The two ends of a wire in ID order: the pair it joins, whichever way it runs.
-fn pair(ends: [TerminalId; 2]) -> [TerminalId; 2] {
+fn pair(ends: [ConnectionPointId; 2]) -> [ConnectionPointId; 2] {
     if ends[0] <= ends[1] { ends } else { [ends[1], ends[0]] }
 }
 
@@ -511,7 +511,7 @@ impl<'a> Rewrite<'a> {
         // 1. The wire nets touching the seeds, and every old net with a wire at one of their points
         //    (its other points are seeds too: a net may have split).
         let mut comps: Vec<Component> = Vec::new();
-        let mut placed: BTreeSet<TerminalId> = BTreeSet::new();
+        let mut placed: BTreeSet<ConnectionPointId> = BTreeSet::new();
         let mut seen_routes: BTreeSet<RouteId> = BTreeSet::new();
         let mut old_nets: BTreeSet<NetId> = BTreeSet::new();
         let mut todo: Vec<Start> = seeds.points.iter().map(|t| Start::Point(*t)).chain(seeds.routes.iter().map(|r| Start::Route(*r))).collect();
@@ -566,7 +566,7 @@ impl<'a> Rewrite<'a> {
         //    its wires once rewritten; ties: the first).
         let mut claims: BTreeMap<usize, Vec<(usize, NetId)>> = BTreeMap::new();
         for (n, ws) in &old {
-            let points: BTreeSet<TerminalId> = ws.iter().flat_map(|(_, w)| w.ends).collect();
+            let points: BTreeSet<ConnectionPointId> = ws.iter().flat_map(|(_, w)| w.ends).collect();
             let best = comps
                 .iter()
                 .enumerate()
@@ -584,7 +584,7 @@ impl<'a> Rewrite<'a> {
         // A deleted wire → the wire made in its place: its cable membership moves there.
         let mut replacements: BTreeMap<WireId, WireId> = BTreeMap::new();
         // A deleted wire → every wire made sharing an end with it (the pieces of a split wire).
-        let mut pieces: BTreeMap<WireId, Vec<(WireId, [TerminalId; 2])>> = BTreeMap::new();
+        let mut pieces: BTreeMap<WireId, Vec<(WireId, [ConnectionPointId; 2])>> = BTreeMap::new();
         // The old net ids a net keeps (step 3's keepers).
         let taken: BTreeSet<NetId> =
             claims.values().filter_map(|ks| ks.iter().max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1))).map(|(_, n)| *n)).collect();
@@ -621,8 +621,8 @@ impl<'a> Rewrite<'a> {
             let fixed = keeper.and_then(|n| old.get(&n)).is_some_and(|ws| ws.iter().any(|(_, w)| w.order_fixed));
             let mut o = keeper.map(trimmed).unwrap_or_default();
             let others: Vec<Order> = nets_here.iter().copied().filter(|n| Some(*n) != keeper).map(trimmed).collect();
-            let acc = |t: TerminalId| accepts(doc, t);
-            let mut pending: Vec<TerminalId> = c.points.iter().copied().filter(|p| !o.has(*p)).collect();
+            let acc = |t: ConnectionPointId| accepts(doc, t);
+            let mut pending: Vec<ConnectionPointId> = c.points.iter().copied().filter(|p| !o.has(*p)).collect();
             // A new net starts where its first drawn route starts (drawing order), not at the lower ID.
             if o.points().is_empty()
                 && let Some(first) = self
@@ -668,11 +668,11 @@ impl<'a> Rewrite<'a> {
             }
             // 4. A wire for each of the order's pairs.
             let pool: Vec<(WireId, &Wire)> = old.values().flatten().filter(|(_, w)| c.inside(w)).map(|(id, w)| (*id, *w)).collect();
-            let mut by_pair: BTreeMap<[TerminalId; 2], (WireId, &Wire)> = BTreeMap::new();
+            let mut by_pair: BTreeMap<[ConnectionPointId; 2], (WireId, &Wire)> = BTreeMap::new();
             for (id, w) in &pool {
                 by_pair.entry(pair(w.ends)).or_insert((*id, *w));
             }
-            let wanted: BTreeSet<[TerminalId; 2]> = o.wires().iter().map(|w| pair(*w)).collect();
+            let wanted: BTreeSet<[ConnectionPointId; 2]> = o.wires().iter().map(|w| pair(*w)).collect();
             // Dropped: the pool's wires no longer wanted, and old wires with one end here and the
             // other in another net now (a wire split across a device's mated points, a fuse): no
             // net keeps those, and the new wires here replace them.
@@ -781,7 +781,7 @@ impl<'a> Rewrite<'a> {
 
     /// Whether a slash of `cable` (a line of one of its drawings) crosses the route running
     /// straight between points `ends` (one route from one to the other, on the slash's page).
-    fn slash_crosses(&self, cable: crate::id::CableId, ends: [TerminalId; 2]) -> bool {
+    fn slash_crosses(&self, cable: crate::id::CableId, ends: [ConnectionPointId; 2]) -> bool {
         let doc = self.doc;
         let [a, b] = ends;
         let Some(route) = doc
@@ -806,7 +806,7 @@ impl<'a> Rewrite<'a> {
 
     /// The loose line that carried a wire between `ends` (its route now has a free end): one still
     /// landed at an end, else one that `ops` moved off them. Where a core on it now sits.
-    fn loose_line_of(&self, gone: WireId, ends: [TerminalId; 2]) -> Option<CorePosition> {
+    fn loose_line_of(&self, gone: WireId, ends: [ConnectionPointId; 2]) -> Option<CorePosition> {
         let doc = self.doc;
         let r = loose_route_at(doc, ends).map(|(r, _)| r).or_else(|| {
             self.lifted
@@ -826,7 +826,7 @@ impl<'a> Rewrite<'a> {
     }
 
     /// The points joined to `t` by routes of `c` without passing another point.
-    fn neighbours(&self, c: &Component, t: TerminalId) -> BTreeSet<TerminalId> {
+    fn neighbours(&self, c: &Component, t: ConnectionPointId) -> BTreeSet<ConnectionPointId> {
         let doc = self.doc;
         let mut out = BTreeSet::new();
         let mut seen: BTreeSet<RouteId> = BTreeSet::new();
@@ -858,7 +858,7 @@ impl<'a> Rewrite<'a> {
 
     /// How new point `p` joins order `o` through the routes of `c`, when a route leads to a point
     /// already in the order.
-    fn join_for(&self, c: &Component, o: &Order, p: TerminalId) -> Option<Join> {
+    fn join_for(&self, c: &Component, o: &Order, p: ConnectionPointId) -> Option<Join> {
         let doc = self.doc;
         for r in doc.routes_at(p).filter(|r| c.routes.contains(r)) {
             let Some(route) = doc.routes.get(&r) else { continue };
@@ -944,11 +944,11 @@ pub fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
 mod tests {
     use super::*;
 
-    fn t(n: u128) -> TerminalId {
-        TerminalId(n)
+    fn t(n: u128) -> ConnectionPointId {
+        ConnectionPointId(n)
     }
 
-    fn two(_: TerminalId) -> usize {
+    fn two(_: ConnectionPointId) -> usize {
         2
     }
 
@@ -994,7 +994,7 @@ mod tests {
 
     #[test]
     fn a_point_accepting_more_fans_out_as_a_star() {
-        let pe = |x: TerminalId| if x == t(1) { 6 } else { 2 };
+        let pe = |x: ConnectionPointId| if x == t(1) { 6 } else { 2 };
         let mut o = Order::default();
         o.add(t(1), Join::Next, &pe);
         for n in 2..=5 {
@@ -1018,7 +1018,7 @@ mod tests {
 
     #[test]
     fn with_no_room_anywhere_the_preferred_point_takes_it_and_is_over() {
-        let one = |_: TerminalId| 1;
+        let one = |_: ConnectionPointId| 1;
         let mut o = Order::default();
         o.add(t(1), Join::Next, &one);
         o.add(t(2), Join::From(t(1)), &one);

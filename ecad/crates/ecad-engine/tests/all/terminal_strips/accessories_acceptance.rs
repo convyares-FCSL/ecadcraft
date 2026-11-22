@@ -13,8 +13,8 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::geom::Vec2;
 use ecad_engine::Persistence;
-use ecad_engine::outputs::{Group, kept::Outputs};
-use ecad_model::{DeviceId, Document, PageId, TerminalId};
+use ecad_engine::outputs::{Group, kept::ReportModels};
+use ecad_model::{DeviceId, Document, PageId, ConnectionPointId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -25,7 +25,7 @@ struct A {
     page: PageId,
     x1: DeviceId,
     /// `-X01:1…4` at x 100, 150, 200, 250 on y 170.
-    t: [TerminalId; 4],
+    t: [ConnectionPointId; 4],
     coil: DeviceId,
 }
 
@@ -56,7 +56,7 @@ fn fixture(seed: u64, parts: bool) -> A {
     h.run("setprop", json!({"cable": cable.hex(), "key": "type", "value": "YSLY-JZ 7G1.5"})).unwrap();
     let v = h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     let x1: DeviceId = id(&v, "strip");
-    let t: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let t: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     assert_eq!(t.len(), 4, "{v}");
     h.run("bridge", json!({"from": t[2].hex(), "to": t[3].hex()})).unwrap();
     h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "12+2PE"})).unwrap();
@@ -79,7 +79,7 @@ fn fixture(seed: u64, parts: bool) -> A {
 }
 
 /// A second strip `-X02:1,2` on two wires of its own (x 320, 330).
-fn second_strip(h: &mut H) -> (DeviceId, Vec<TerminalId>) {
+fn second_strip(h: &mut H) -> (DeviceId, Vec<ConnectionPointId>) {
     for x in [320.0, 330.0] {
         h.run("wire", json!({"points": pts(&[(x, 270.0), (x, 160.0)])})).unwrap();
     }
@@ -90,7 +90,7 @@ fn second_strip(h: &mut H) -> (DeviceId, Vec<TerminalId>) {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ from a rebuild");
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
@@ -193,7 +193,7 @@ fn rows_have_a_way_out(h: &mut H, kind: &str) {
     }
 }
 
-fn net_number(h: &mut H, t: TerminalId) -> Value {
+fn net_number(h: &mut H, t: ConnectionPointId) -> Value {
     h.run("net", json!({"terminal": t.hex()})).unwrap()["number"].clone()
 }
 
@@ -377,7 +377,7 @@ fn e_renumber_moves_acc_and_link_keys_in_one_transaction() {
     let doc = a.h.doc();
     // The strip's first symbol is of its own definition: its terminal is matched by key and its
     // `connection_points` is empty (doc.rs, brief 018); the other terminals are mapped.
-    let item_of = |d: &Document, term: TerminalId| {
+    let item_of = |d: &Document, term: ConnectionPointId| {
         let mut reps = d.representations_of(ecad_model::Subject::Device(a.x1));
         let mapped =
             d.representations_of(ecad_model::Subject::Device(a.x1)).find(|(_, r)| r.connection_points.contains_key(&term)).map(|(_, r)| r.items[0]);
@@ -501,7 +501,7 @@ fn g_update_maps_recompute_only_what_changed() {
     a.h.cfg(|p| {
         p.outputs();
     });
-    let work = |h: &mut H| h.p(|p| p.kept_outputs().unwrap().strips.last_work);
+    let work = |h: &mut H| h.p(|p| p.kept_reports().unwrap().strips.last_work);
     let x2_before = plan(&mut a.h, x2);
     a.h.run("setprop", json!({"component": a.x1.hex(), "key": "acc.after.2", "value": "partition"})).unwrap();
     assert_eq!(work(&mut a.h), 1, "acc.* on -X01 recomputes -X01 only");
@@ -547,8 +547,8 @@ fn l_jumper_tool_range_skip_and_wire_numbers() {
     let mut a = fixture(0x7030_0008, true);
     let (_x2, y) = second_strip(&mut a.h);
     a.h.activate(a.page);
-    let at: Vec<_> = a.t.iter().map(|t| a.h.terminal_pos(a.page, *t)).collect();
-    let y_at = a.h.terminal_pos(a.page, y[0]);
+    let at: Vec<_> = a.t.iter().map(|t| a.h.connection_point_pos(a.page, *t)).collect();
+    let y_at = a.h.connection_point_pos(a.page, y[0]);
     let (n1, n4) = (net_number(&mut a.h, a.t[0]), net_number(&mut a.h, a.t[3]));
     assert_ne!(n1, n4, "1 and 4 are different nets before the link");
     // Esc writes nothing.
@@ -632,19 +632,19 @@ fn m_link_line_on_every_page_with_stub() {
     let v = a.h.run("place", json!({"symbol": "terminal", "at": [100, 150], "device": a.x1.hex()})).unwrap();
     let doc = a.h.doc();
     // The terminal drawn on page 2 (PE terminals have numeric labels too, so pick by page).
-    let far: TerminalId = ecad_model::derive::terminal_positions(&doc, p2)
+    let far: ConnectionPointId = ecad_model::derive::connection_point_positions(&doc, p2)
         .into_iter()
         .map(|(x, _, _)| x)
         .find(|x| doc.terminals.get(x).is_some_and(|t| t.device() == Some(a.x1)))
         .unwrap_or_else(|| panic!("{v}"));
     let far_label = doc.terminals[&far].label.clone().unwrap();
     a.h.run("jumper", json!({"strip": a.x1.hex(), "positions": format!("3-{far_label}")})).unwrap();
-    let at3 = a.h.terminal_pos(a.page, a.t[2]);
-    let at4 = a.h.terminal_pos(a.page, a.t[3]);
+    let at3 = a.h.connection_point_pos(a.page, a.t[2]);
+    let at4 = a.h.connection_point_pos(a.page, a.t[3]);
     // The fixture's PE terminal (label 5, drawn on page 1 at 360,250) lies between 4 and the far
     // terminal, so page 1 draws 3, 4, 5 and the stub runs past 5 (design M: "through 3–5 with a
     // stub past 5").
-    let last = ecad_model::derive::terminal_positions(&a.h.doc(), a.page)
+    let last = ecad_model::derive::connection_point_positions(&a.h.doc(), a.page)
         .into_iter()
         .find(|(x, _, _)| !a.t.contains(x) && doc.terminals.get(x).is_some_and(|t| t.device() == Some(a.x1)))
         .map(|(_, _, p)| p)
@@ -657,7 +657,7 @@ fn m_link_line_on_every_page_with_stub() {
     assert!(pts.iter().any(|p| near(dist(p), 0.0)), "the line reaches 5: {pts:?}");
     assert!(pts.iter().any(|p| near(dist(p), 4.0)), "a 4 mm stub past 5: {pts:?}");
     assert!(pts.iter().all(|p| dist(p) <= 4.05 || p.0 <= last.x), "nothing beyond the stub: {pts:?}");
-    let atf = a.h.terminal_pos(p2, far);
+    let atf = a.h.connection_point_pos(p2, far);
     let lines = link_lines(&mut a.h, p2);
     assert!(!lines.is_empty(), "page 2 draws the stub");
     let (x0, y0, x1, y1) = extent(&lines);

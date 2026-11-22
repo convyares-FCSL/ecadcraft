@@ -4,7 +4,7 @@
 //! engine is a CADCraft document whose drawing is a projection of the ECAD document; the
 //! [`HandleMap`] relates its handles to ECAD IDs and lives only in the session (proposal §13).
 
-use crate::draw::text_style::LookApply as _;
+use crate::draw::text_style::DrawApply as _;
 use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, Weak};
@@ -18,13 +18,13 @@ use ecad_electrical::CmdError;
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
     Author, CableId, DeviceId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId, ProjectId,
-    ProjectSettings, Pt, RepresentationId, Subject, TerminalId, WireId,
+    ProjectSettings, Pt, RepresentationId, Subject, ConnectionPointId, WireId,
 };
 use ecad_store::MemoryBackend;
 use serde_json::{Value, json};
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
-use crate::outputs::kept::Outputs;
+use crate::outputs::kept::ReportModels;
 use crate::translate;
 pub use crate::views::View;
 
@@ -277,7 +277,7 @@ pub(crate) fn part_entity(look: &crate::text_style::Look, part: &ecad_electrical
 /// line (the table's bar at the wire lineweight).
 /// Brief 066d: a text part is drawn in its kind's text style (font, weight, colour), as every
 /// other derived text is.
-pub(crate) fn xref_entity(look: &crate::text_style::Look, part: &crate::xref::Part, handle: Handle) -> Entity {
+pub(crate) fn device_reference_entity(look: &crate::text_style::Look, part: &crate::xref::Part, handle: Handle) -> Entity {
     let mut e = match &part.shape {
         crate::xref::Shape::Text { kind, at, value, height, halign, valign, rotation } => {
             let mut e = crate::devices::text_entity_with(
@@ -313,7 +313,7 @@ pub(crate) fn xref_entity(look: &crate::text_style::Look, part: &crate::xref::Pa
 }
 
 /// One link line segment (brief 030) as a dashed hairline on the links layer.
-pub(crate) fn link_entity(part: &crate::link_lines::LinkPart, handle: Handle) -> Entity {
+pub(crate) fn link_entity(part: &crate::link_lines::JumperBarPart, handle: Handle) -> Entity {
     Entity {
         handle,
         common: Common {
@@ -380,7 +380,7 @@ fn placeholder_drawing() -> Drawing {
 /// # Errors
 /// An item that cannot be drawn (missing layer or definition).
 pub fn project_page(
-    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, outputs: Option<&Outputs>,
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, outputs: Option<&ReportModels>,
 ) -> Result<(Drawing, HandleMap), String> {
     project_page_with(doc, page, base, prev, &BTreeSet::new(), 0.0, outputs)
 }
@@ -394,7 +394,7 @@ pub fn project_page(
 /// # Errors
 /// As [`project_page`].
 pub fn project_page_with(
-    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>,
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>,
 ) -> Result<(Drawing, HandleMap), String> {
     project_page_framed(doc, page, base, prev, fan, tol, &crate::generated::parts_of(doc, page, outputs))
 }
@@ -418,7 +418,7 @@ pub fn project_page_framed(
 /// As [`project_page`].
 #[allow(clippy::too_many_arguments)]
 pub fn project_page_with_hidden(
-    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, outputs: Option<&Outputs>,
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, outputs: Option<&ReportModels>,
 ) -> Result<(Drawing, HandleMap), String> {
     project_page_pending(doc, page, base, prev, fan, tol, hidden_text, false, outputs)
 }
@@ -431,7 +431,7 @@ pub fn project_page_with_hidden(
 #[allow(clippy::too_many_arguments)]
 pub fn project_page_pending(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
-    outputs: Option<&Outputs>,
+    outputs: Option<&ReportModels>,
 ) -> Result<(Drawing, HandleMap), String> {
     let frame = crate::generated::parts_of_pending(doc, page, outputs, pending);
     project_page_shown(doc, page, base, prev, fan, tol, &frame, hidden_text)
@@ -574,7 +574,7 @@ pub fn project_page_kept(
     }
     // Device tags and terminal labels (brief 018): derived on every draw, never stored, in the
     // project's text styles (brief 031).
-    crate::text_style::install_look(&mut d, &look);
+    crate::text_style::install_draw(&mut d, &look);
     if hidden_text {
         crate::text_style::add_hidden_layer(&mut d);
     }
@@ -598,17 +598,17 @@ pub fn project_page_kept(
     // on every draw of the page, never stored.
     for part in crate::xref::parts_on_page(doc, page) {
         let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
-        let mut e = xref_entity(&look, &part, h);
+        let mut e = device_reference_entity(&look, &part, h);
         // Brief 049 (review of #85, 3): a continuation's other-end text in the sheet's Ink 2.
         crate::continuations::colour(doc, &part, &mut e);
         ents.push(e);
-        map.insert_xref(part.rep, part.index, h);
+        map.insert_device_reference(part.rep, part.index, h);
     }
     // PLC card frames (brief 051): derived on every draw, never stored; mapped like 025's parts.
     for part in crate::plc::look::parts_on_page(doc, page) {
         let h = prev.xref(part.rep, part.index).unwrap_or_else(|| d.new_handle());
-        ents.push(xref_entity(&look, &part, h));
-        map.insert_xref(part.rep, part.index, h);
+        ents.push(device_reference_entity(&look, &part, h));
+        map.insert_device_reference(part.rep, part.index, h);
     }
     // Link lines (brief 030): derived on every draw, never stored.
     let mut seen: BTreeMap<(DeviceId, u32), u32> = BTreeMap::new();
@@ -689,10 +689,10 @@ impl Project {
         let parts = self.frame_parts(page);
         // Brief 045 (review of #84, 3): a page with PLC channel cells reads its addresses from the
         // kept PLC model, built on its first show.
-        if self.kept_outputs().is_none() && crate::plc::page_has_cells(self.ledger.document(), page) {
+        if self.kept_reports().is_none() && crate::plc::page_has_cells(self.ledger.document(), page) {
             self.outputs();
         }
-        let plc = self.kept_outputs().map(|o| &o.plc);
+        let plc = self.kept_reports().map(|o| &o.plc);
         project_page_kept(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts, self.show_hidden_text, plc)
     }
 
@@ -706,14 +706,14 @@ impl Project {
         }
         // A BOM page's sheet count (and so every page's Total) needs the report models (brief 024);
         // once built they track their pages themselves.
-        if self.kept_outputs().is_none() && crate::generated::has_bom_page(self.ledger.document()) {
+        if self.kept_reports().is_none() && crate::generated::has_bom_page(self.ledger.document()) {
             self.outputs();
         }
         if !self.pending_known {
             self.refresh_pending();
         }
         let doc = self.ledger.document();
-        let (input, total) = crate::generated::input_of(doc, page, self.kept_outputs());
+        let (input, total) = crate::generated::input_of(doc, page, self.kept_reports());
         let input = input.with_pending(doc, self.pending);
         self.frame_stale = false;
         let generated = crate::generated::kind_of(doc, page).is_some();
@@ -725,7 +725,7 @@ impl Project {
             return parts.clone();
         }
         self.frame_builds += 1;
-        let parts = Arc::new(crate::generated::page_parts(doc, page, &input, self.kept_outputs(), total));
+        let parts = Arc::new(crate::generated::page_parts(doc, page, &input, self.kept_reports(), total));
         self.frame = Some((page, parts.clone()));
         self.derived.frame_mut().show(page, input.0);
         parts
@@ -954,19 +954,19 @@ impl Project {
     }
 
     /// The report models, built whole on their first show (design 024 §8.1) and kept after that
-    /// by the views' pipeline (`ecad_electrical::derived::OutputsView`).
-    pub fn outputs(&mut self) -> &crate::outputs::kept::Outputs {
+    /// by the views' pipeline (`ecad_electrical::derived::ReportsView`).
+    pub fn outputs(&mut self) -> &crate::outputs::kept::ReportModels {
         self.derived.outputs(self.ledger.document())
     }
 
     /// The report models, if shown once.
-    pub fn kept_outputs(&self) -> Option<&crate::outputs::kept::Outputs> {
-        self.derived.kept_outputs()
+    pub fn kept_reports(&self) -> Option<&crate::outputs::kept::ReportModels> {
+        self.derived.kept_reports()
     }
 
     /// Forget the report models: they are built again on their next show.
-    pub fn forget_outputs(&mut self) {
-        self.derived.forget_outputs();
+    pub fn forget_reports(&mut self) {
+        self.derived.forget_reports();
     }
 
     /// The Checks list, built whole on its first show (design 022 §8) and kept after that by the
@@ -1041,7 +1041,7 @@ impl Project {
     }
 
     /// Positions of attached route ends that follow the dragged terminals (drag preview, M2).
-    fn following_routes(&self, page: PageId, moved: &dyn Fn(TerminalId) -> Option<Pt>) -> Vec<cadcraft_engine::doc::EntityKind> {
+    fn following_routes(&self, page: PageId, moved: &dyn Fn(ConnectionPointId) -> Option<Pt>) -> Vec<cadcraft_engine::doc::EntityKind> {
         let doc = self.ledger.document();
         let mut out = Vec::new();
         for r in doc.routes_on(page) {

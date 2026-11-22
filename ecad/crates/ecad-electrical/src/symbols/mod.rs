@@ -27,7 +27,7 @@ use std::sync::OnceLock;
 use crate::CmdError;
 use ecad_model::{
     Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, PartRole, PointKey, Primitive, Pt, Subject,
-    TerminalDef, Word,
+    ConnectionPointDef, Word,
 };
 
 /// The library ID of the starter symbols.
@@ -145,7 +145,7 @@ ecad_model::word_enum! {
         Motor1,
         Trafo,
         Terminal,
-        Terminalpe,
+        TerminalBlockPe,
         Di,
         Do,
         Continuation,
@@ -286,7 +286,7 @@ impl StarterKey {
             K::Heater | K::Valve | K::Valve2 => DeviceGroup::Load,
             K::Lamp => DeviceGroup::Indicator,
             K::Terminal
-            | K::Terminalpe
+            | K::TerminalBlockPe
             | K::Term2L1
             | K::Term2L2
             | K::Term2
@@ -383,7 +383,7 @@ impl StarterKey {
             | K::Motor1
             | K::Trafo
             | K::Terminal
-            | K::Terminalpe
+            | K::TerminalBlockPe
             | K::Di
             | K::Do
             | K::Continuation
@@ -616,7 +616,7 @@ impl Starter {
             } else if matches!(self.key, K::Rcd2 | K::Rcd4) {
                 P::Rcd
             } else if self.key == K::Fuseterm {
-                P::FuseTerminal
+                P::FuseTerminalBlock
             } else {
                 P::Fuse
             };
@@ -822,7 +822,7 @@ pub const STARTERS: &[Starter] = &[
     st(K::Trafo, "Transformer", &["control transformer"], HEAD, def_id(15)),
     st(K::Terminal, "Terminal", &["terminal", "clamp"], Kind::Terminal, def_id(16)),
     // Brief 028 (design 028 §2): a protective-earth terminal; it joins a strip like `terminal`.
-    st(K::Terminalpe, "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
+    st(K::TerminalBlockPe, "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
     st(K::Di, "PLC digital input", &["plc", "input", "di"], Kind::Channel(crate::plc::rack::CardType::Di), def_id(17)),
     st(K::Do, "PLC digital output", &["plc", "output", "do"], Kind::Channel(crate::plc::rack::CardType::Dq), def_id(18)),
     st(K::Continuation, "Continuation", &["continuation", "arrow", "potential", "link"], Kind::Tagless, def_id(20)),
@@ -967,7 +967,7 @@ pub fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)
         | K::Motor1
         | K::Trafo
         | K::Terminal
-        | K::Terminalpe
+        | K::TerminalBlockPe
         | K::Di
         | K::Do
         | K::Continuation
@@ -1120,7 +1120,7 @@ fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
         | K::Motor1
         | K::Trafo
         | K::Terminal
-        | K::Terminalpe
+        | K::TerminalBlockPe
         | K::Di
         | K::Do
         | K::Continuation
@@ -1780,7 +1780,7 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::Motor1
         | K::Trafo
         | K::Terminal
-        | K::Terminalpe
+        | K::TerminalBlockPe
         | K::Di
         | K::Do
         | K::Continuation
@@ -2025,7 +2025,7 @@ impl Connector {
             | K::Motor1
             | K::Trafo
             | K::Terminal
-            | K::Terminalpe
+            | K::TerminalBlockPe
             | K::Di
             | K::Do
             | K::Continuation
@@ -2151,14 +2151,14 @@ impl Connector {
         g
     }
 
-    fn terminals(self, t: &dyn Fn(&str, f64, f64) -> TerminalDef) -> Vec<TerminalDef> {
+    fn terminals(self, t: &dyn Fn(&str, f64, f64) -> ConnectionPointDef) -> Vec<ConnectionPointDef> {
         let n = self.pins();
         let y = match self {
             Connector::Bulkhead(_) => 0.0,
             Connector::Socket(_) | Connector::DsubSocket(_) | Connector::M12Socket(_) => 5.0,
             Connector::Plug(_) | Connector::DsubPlug(_) | Connector::M12Plug(_) => -5.0,
         };
-        let mut v: Vec<TerminalDef> = (1..=n).map(|i| t(&i.to_string(), pin_x(i, PIN_PITCH), y)).collect();
+        let mut v: Vec<ConnectionPointDef> = (1..=n).map(|i| t(&i.to_string(), pin_x(i, PIN_PITCH), y)).collect();
         if let Connector::Bulkhead(_) = self {
             v.push(t("SH", pin_x(n + 1, PIN_PITCH), 0.0));
         }
@@ -2223,7 +2223,7 @@ fn sized_graphics(key: StarterKey) -> Vec<Primitive> {
 }
 
 /// Terminals of the sized keys.
-fn sized_terminals(key: StarterKey, t: &dyn Fn(&str, f64, f64) -> TerminalDef) -> Vec<TerminalDef> {
+fn sized_terminals(key: StarterKey, t: &dyn Fn(&str, f64, f64) -> ConnectionPointDef) -> Vec<ConnectionPointDef> {
     if let Some(n) = key.fuse_bank_ways() {
         let mut v = vec![t("L+", -10.0, 20.0), t("M", -10.0, -15.0)];
         v.extend((1..=n).map(|i| t(&i.to_string(), pin_x(i, 10.0), -15.0)));
@@ -2346,7 +2346,7 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
         }
         K::Terminal => vec![circle((0.0, 0.0), 1.5)],
         // Our own earth mark to the right of the ring (design 028 §2).
-        K::Terminalpe => vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))],
+        K::TerminalBlockPe => vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))],
         // An arrow pointing away from its wire (design 022 §3.2).
         K::Continuation => vec![line((0.0, 0.0), (0.0, -5.0)), poly(&[(-1.5, -3.5), (0.0, -5.0), (1.5, -3.5)], false)],
         K::Di => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DI"), line((0.0, 2.5), (0.0, 10.0))],
@@ -2530,9 +2530,9 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
     }
 }
 
-fn terminals(key: StarterKey) -> Vec<TerminalDef> {
-    let t = |k: &str, x: f64, y: f64| TerminalDef { key: PointKey::def(k), label: Some(k.into()), at: p(x, y), accepts: Default::default() };
-    let side = |k: PointKey, x: f64, y: f64| TerminalDef { label: Some(k.to_string()), key: k, at: p(x, y), accepts: Default::default() };
+fn terminals(key: StarterKey) -> Vec<ConnectionPointDef> {
+    let t = |k: &str, x: f64, y: f64| ConnectionPointDef { key: PointKey::def(k), label: Some(k.into()), at: p(x, y), accepts: Default::default() };
+    let side = |k: PointKey, x: f64, y: f64| ConnectionPointDef { label: Some(k.to_string()), key: k, at: p(x, y), accepts: Default::default() };
     match key {
         K::Coil => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
         K::No | K::Pbno | K::Sel | K::Floatno | K::Rollerno | K::Interlockno => vec![t("13", 0.0, 10.0), t("14", 0.0, -10.0)],
@@ -2547,17 +2547,17 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
         K::Motor3 => vec![t("U1", -10.0, 15.0), t("V1", 0.0, 15.0), t("W1", 10.0, 15.0), t("PE", 20.0, 15.0)],
         K::Motor1 => vec![t("U1", -5.0, 15.0), t("U2", 5.0, 15.0), t("PE", 20.0, 15.0)],
         K::Trafo => vec![t("1U1", -5.0, 15.0), t("1U2", 5.0, 15.0), t("2U1", -5.0, -15.0), t("2U2", 5.0, -15.0)],
-        K::Terminal | K::Terminalpe => vec![t("1", 0.0, 0.0)],
+        K::Terminal | K::TerminalBlockPe => vec![t("1", 0.0, 0.0)],
         // No label: a continuation shows no connection point name.
-        K::Continuation => vec![TerminalDef { key: PointKey::def("1"), label: None, at: p(0.0, 0.0), accepts: Default::default() }],
+        K::Continuation => vec![ConnectionPointDef { key: PointKey::def("1"), label: None, at: p(0.0, 0.0), accepts: Default::default() }],
         // Design 072 §3: a channel symbol's point is keyed by its role; the label is what it shows.
-        K::Di => vec![TerminalDef {
+        K::Di => vec![ConnectionPointDef {
             key: PointKey::Role(ecad_model::ChannelRole::In),
             label: Some("I0.0".into()),
             at: p(0.0, 10.0),
             accepts: Default::default(),
         }],
-        K::Do => vec![TerminalDef {
+        K::Do => vec![ConnectionPointDef {
             key: PointKey::Role(ecad_model::ChannelRole::Out),
             label: Some("Q0.0".into()),
             at: p(0.0, -10.0),
@@ -2606,7 +2606,7 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
                 pts.iter()
                     .filter_map(|(role, x)| {
                         let role = ecad_model::ChannelRole::exact(role)?;
-                        Some(TerminalDef {
+                        Some(ConnectionPointDef {
                             key: PointKey::Role(role),
                             label: Some(role.word().to_string()),
                             at: p(*x, 5.0),

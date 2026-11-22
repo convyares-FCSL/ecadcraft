@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{NetId, TerminalId};
+use ecad_model::{NetId, ConnectionPointId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, tmp_dir};
@@ -12,19 +12,19 @@ use crate::common::{H, id, tmp_dir};
 const SEED: u64 = 0x72_d7;
 
 /// Every wire as (net, net_order, {ends}), sorted by net then order.
-fn wires(h: &mut H) -> Vec<(NetId, u16, BTreeSet<TerminalId>)> {
+fn wires(h: &mut H) -> Vec<(NetId, u16, BTreeSet<ConnectionPointId>)> {
     let doc = h.doc();
     let mut v: Vec<_> = doc.wires.values().map(|w| (w.net, w.net_order, w.ends.iter().copied().collect())).collect();
     v.sort_by_key(|(n, o, _)| (*n, *o));
     v
 }
 
-fn pair(a: TerminalId, b: TerminalId) -> BTreeSet<TerminalId> {
+fn pair(a: ConnectionPointId, b: ConnectionPointId) -> BTreeSet<ConnectionPointId> {
     [a, b].into_iter().collect()
 }
 
 /// The ends of the wire with `net_order` `n` (only one net expected).
-fn nth(h: &mut H, n: u16) -> BTreeSet<TerminalId> {
+fn nth(h: &mut H, n: u16) -> BTreeSet<ConnectionPointId> {
     wires(h).into_iter().find(|(_, o, _)| *o == n).map(|(_, _, e)| e).unwrap_or_else(|| panic!("no wire {n}"))
 }
 

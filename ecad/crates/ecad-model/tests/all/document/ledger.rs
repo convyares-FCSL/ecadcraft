@@ -48,8 +48,8 @@ fn every_op_inverts_to_the_previous_state() {
     let ops = vec![
         Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 0.0)) },
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: term, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
-        Op::AddTerminal { id: term2, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: term, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: term2, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::LinkRepresentation {
             id: rep,
             rep: Representation {
@@ -147,8 +147,8 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
             "setup",
             vec![
                 Op::CreateDevice { id: comp, device: Device::default() },
-                Op::AddTerminal { id: term, terminal: t.clone() },
-                Op::AddTerminal { id: term2, terminal: t.clone() },
+                Op::AddConnectionPoint { id: term, terminal: t.clone() },
+                Op::AddConnectionPoint { id: term2, terminal: t.clone() },
                 Op::CreateWire { id: cond, wire: wire.clone() },
                 Op::CreateCable { id: cable, cable: with_member.clone() },
             ],
@@ -159,7 +159,7 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
     assert!(f.ledger.commit(Author::User, "delete without detaching", delete.clone()).is_err());
     // Removing a connection point takes the wires ending there with it (design 072 §4.4): the
     // rewrite removes the wire's place in its cable too, in the same transaction.
-    let remove_point = vec![Op::RemoveTerminal { id: term, terminal: t.clone() }];
+    let remove_point = vec![Op::RemoveConnectionPoint { id: term, terminal: t.clone() }];
     f.ledger.commit(Author::User, "remove a point of a cabled wire", remove_point).unwrap();
     assert!(!f.ledger.document().wires.contains_key(&cond));
     assert!(f.ledger.document().cables[&cable].cores.is_empty());
@@ -279,8 +279,8 @@ fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
         origin: None,
         graphics: vec![Primitive::Line { a: Pt::new(0.0, 0.0), b: at }],
         terminals: vec![
-            ecad_model::TerminalDef { key: "A1".parse().unwrap(), label: None, at, accepts: Default::default() },
-            ecad_model::TerminalDef { key: key2.parse().unwrap(), label: None, at: Pt::new(0.0, 1.0), accepts: Default::default() },
+            ecad_model::ConnectionPointDef { key: "A1".parse().unwrap(), label: None, at, accepts: Default::default() },
+            ecad_model::ConnectionPointDef { key: key2.parse().unwrap(), label: None, at: Pt::new(0.0, 1.0), accepts: Default::default() },
         ],
         ..Default::default()
     };

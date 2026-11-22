@@ -16,7 +16,7 @@ use crate::common::{H, id};
 /// item) with `Aid` and `LoosePart`, which are not devices.
 fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
     use ecad_engine::{connectors, plc, strips};
-    if strips::fuse_terminal_of(doc, c).is_some() {
+    if strips::fuse_terminal_block_of(doc, c).is_some() {
         // The owner's answer (design 072 §2.2): a fuse terminal device is Protection; a fuse
         // position in a strip (`termfuse`) is the strip's.
         return Some(DeviceGroup::Protection);

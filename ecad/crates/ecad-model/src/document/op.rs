@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::doc::{Cable, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::index::Delta;
 use crate::route::Route;
 use crate::style::{Standard, StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
@@ -114,12 +114,14 @@ pub enum Op {
         before: Option<DefinitionId>,
         after: Option<DefinitionId>,
     },
-    AddTerminal {
-        id: TerminalId,
+    #[serde(rename = "AddTerminal")]
+    AddConnectionPoint {
+        id: ConnectionPointId,
         terminal: Terminal,
     },
-    RemoveTerminal {
-        id: TerminalId,
+    #[serde(rename = "RemoveTerminal")]
+    RemoveConnectionPoint {
+        id: ConnectionPointId,
         terminal: Terminal,
     },
     LinkRepresentation {
@@ -373,8 +375,8 @@ impl Op {
             Op::DeleteDevice { id, device } => Op::CreateDevice { id, device },
             Op::ModifyDevice { id, before, after } => Op::ModifyDevice { id, before: after, after: before },
             Op::SetDeviceDefinition { id, before, after } => Op::SetDeviceDefinition { id, before: after, after: before },
-            Op::AddTerminal { id, terminal } => Op::RemoveTerminal { id, terminal },
-            Op::RemoveTerminal { id, terminal } => Op::AddTerminal { id, terminal },
+            Op::AddConnectionPoint { id, terminal } => Op::RemoveConnectionPoint { id, terminal },
+            Op::RemoveConnectionPoint { id, terminal } => Op::AddConnectionPoint { id, terminal },
             Op::LinkRepresentation { id, rep } => Op::UnlinkRepresentation { id, rep },
             Op::UnlinkRepresentation { id, rep } => Op::LinkRepresentation { id, rep },
             Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id, before: after, after: before },
@@ -553,12 +555,12 @@ impl Op {
                     doc.devices.insert(*id, new);
                 }
             }
-            Op::AddTerminal { id, terminal } => {
+            Op::AddConnectionPoint { id, terminal } => {
                 absent(&doc.terminals, *id, "terminal")?;
                 doc.index.terminal(*id, terminal, Delta::Add);
                 doc.terminals.insert(*id, terminal.clone());
             }
-            Op::RemoveTerminal { id, terminal } => {
+            Op::RemoveConnectionPoint { id, terminal } => {
                 holds(&doc.terminals, *id, terminal, "terminal", checked)?;
                 if let Some(old) = doc.terminals.remove(id) {
                     doc.index.terminal(*id, &old, Delta::Remove);
@@ -855,8 +857,8 @@ impl Op {
             Op::DeleteDevice { .. } => "DeleteDevice",
             Op::ModifyDevice { .. } => "ModifyDevice",
             Op::SetDeviceDefinition { .. } => "SetDeviceDefinition",
-            Op::AddTerminal { .. } => "AddTerminal",
-            Op::RemoveTerminal { .. } => "RemoveTerminal",
+            Op::AddConnectionPoint { .. } => "AddTerminal",
+            Op::RemoveConnectionPoint { .. } => "RemoveTerminal",
             Op::LinkRepresentation { .. } => "LinkRepresentation",
             Op::ModifyRepresentation { .. } => "ModifyRepresentation",
             Op::UnlinkRepresentation { .. } => "UnlinkRepresentation",

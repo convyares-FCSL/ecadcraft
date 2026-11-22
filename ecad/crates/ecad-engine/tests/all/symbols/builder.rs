@@ -4,7 +4,7 @@
 //! unchanged content, `makesymbol` and promotion, superseded versions and hostile input.
 
 use ecad_engine::symbols::{self, PROJECT_SYMBOLS};
-use ecad_model::{DefinitionId, DeviceId, Document, Op, PageId, RepresentationId, TerminalId, WireId};
+use ecad_model::{DefinitionId, DeviceId, Document, Op, PageId, RepresentationId, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -35,8 +35,8 @@ fn place(h: &mut H, x: f64, y: f64) -> Value {
     h.run("place", json!({"symbol": "float1", "at": [x, y]})).unwrap()
 }
 
-fn term(d: &Document, c: DeviceId, key: &str) -> TerminalId {
-    d.terminals_of(c)
+fn term(d: &Document, c: DeviceId, key: &str) -> ConnectionPointId {
+    d.connection_points_of(c)
         .find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(key))
         .map(|(t, _)| t)
         .unwrap_or_else(|| panic!("no point {key}"))
@@ -46,7 +46,7 @@ fn term(d: &Document, c: DeviceId, key: &str) -> TerminalId {
 fn wire_from(h: &mut H, page: PageId, c: DeviceId, key: &str) -> WireId {
     let d = h.doc();
     let t = term(&d, c, key);
-    let at = h.terminal_pos(page, t);
+    let at = h.connection_point_pos(page, t);
     let w: WireId = id(&h.wire_pp(&[(at.x, at.y), (at.x + 20.0, at.y)]).unwrap(), "conductor");
     assert!(h.doc().ends_at(t).iter().any(|(c, _)| *c == w), "the wire is attached to point {key}");
     w
@@ -84,7 +84,7 @@ fn row_2_place_makes_a_device_with_its_prefix_description_and_points() {
     let comp = &d.devices[&c];
     assert_eq!(comp.get("description"), Some("Float switch"));
     assert_eq!(comp.value("rating").as_deref(), Some("24 V"));
-    let labels: Vec<(String, String)> = d.terminals_of(c).map(|(_, t)| (t.key.as_ref().unwrap().to_string(), t.label.clone().unwrap())).collect();
+    let labels: Vec<(String, String)> = d.connection_points_of(c).map(|(_, t)| (t.key.as_ref().unwrap().to_string(), t.label.clone().unwrap())).collect();
     assert!(labels.contains(&("1".into(), "BN".into())) && labels.contains(&("2".into(), "BU".into())), "{labels:?}");
     // The tag sits at its slot (-4, 0) from the origin, right-aligned; the rating at (4, 0).
     let page = h.first_page();
@@ -192,9 +192,9 @@ fn row_5_impact_clashes_and_selected_updates() {
     assert_eq!(v["version"], 2);
     let d = h.doc();
     for (c, _) in &copies[1..] {
-        assert_eq!(d.terminals_of(*c).count(), 1, "point 2 removed");
+        assert_eq!(d.connection_points_of(*c).count(), 1, "point 2 removed");
     }
-    assert_eq!(d.terminals_of(copies[0].0).count(), 2, "the clashing copy is left");
+    assert_eq!(d.connection_points_of(copies[0].0).count(), 2, "the clashing copy is left");
     assert!(ecad_electrical::symbols::update_available(&d, copies[0].1).is_some(), "update available");
     assert!(ecad_electrical::symbols::update_available(&d, copies[1].1).is_none());
     assert!(h.run("symbolupdate", json!({"copies": [copies[0].1.hex()]})).unwrap_err().contains("would clash"));
@@ -207,7 +207,7 @@ fn row_6_a_moved_wired_point_takes_its_wire_end_and_keeps_ids() {
     let (def, page, copies, w) = three(&mut h);
     let d = h.doc();
     let t2 = term(&d, copies[0].0, "2");
-    let net = d.connectivity().net_of_terminal(t2);
+    let net = d.connectivity().net_of_connection_point(t2);
     let (a, _) = h.route_ends(page, w);
     let moved = json!([{"key": "1", "label": "BN", "at": [0, 5]}, {"key": "2", "label": "BU", "at": [0, -10]}]);
     let v = h.run("symboledit", float(json!({"definition": def.hex(), "points": moved, "update": "all"}))).unwrap();
@@ -217,8 +217,8 @@ fn row_6_a_moved_wired_point_takes_its_wire_end_and_keeps_ids() {
     assert!(d.ends_at(t2).iter().any(|(c, _)| *c == w), "still attached");
     let (a2, b2) = h.route_ends(page, w);
     assert!(a2.near(ecad_model::Pt::new(a.x, a.y - 5.0), 1e-9) || b2.near(ecad_model::Pt::new(a.x, a.y - 5.0), 1e-9), "{a:?} → {a2:?} {b2:?}");
-    assert_eq!(h.terminal_pos(page, t2), ecad_model::Pt::new(100.0, 90.0));
-    assert_eq!(d.connectivity().net_of_terminal(t2), net, "the net is unchanged");
+    assert_eq!(h.connection_point_pos(page, t2), ecad_model::Pt::new(100.0, 90.0));
+    assert_eq!(d.connectivity().net_of_connection_point(t2), net, "the net is unchanged");
     // FP8: version 1 is gone, the transaction has no delete of a component.
     let ops = last_ops(&mut h);
     assert!(ops.iter().any(|o| matches!(o, Op::RemoveDefinition { id, .. } if *id == def)), "v1 removed");
@@ -229,7 +229,7 @@ fn row_6_a_moved_wired_point_takes_its_wire_end_and_keeps_ids() {
     h.cmdline("u");
     let d = h.doc();
     assert!(d.definitions.contains_key(&def));
-    assert_eq!(h.terminal_pos(page, t2), ecad_model::Pt::new(100.0, 95.0));
+    assert_eq!(h.connection_point_pos(page, t2), ecad_model::Pt::new(100.0, 95.0));
 }
 
 #[test]
@@ -242,8 +242,8 @@ fn row_7_relabels_follow_unless_set_by_hand() {
     let term3 = d.terminals[&t].clone();
     h.cfg(|p| {
         let ops = vec![
-            Op::RemoveTerminal { id: t, terminal: term3.clone() },
-            Op::AddTerminal { id: t, terminal: ecad_model::Terminal { label: Some("X".into()), ..term3.clone() } },
+            Op::RemoveConnectionPoint { id: t, terminal: term3.clone() },
+            Op::AddConnectionPoint { id: t, terminal: ecad_model::ConnectionPoint { label: Some("X".into()), ..term3.clone() } },
         ];
         p.ledger.commit(ecad_model::Author::User, "relabel", ops).unwrap();
     });
@@ -320,10 +320,10 @@ fn row_11_makesymbol_from_lines_replaces_the_drawing() {
     assert_eq!(v["tag"], "-A01");
     let d = h.doc();
     let c: DeviceId = id(&v, "component");
-    assert_eq!(d.terminals_of(c).count(), 2);
+    assert_eq!(d.connection_points_of(c).count(), 2);
     assert!(h.lines_on(page).is_empty(), "the drawing is replaced");
     // The symbol's origin is the grid point at the middle (105, 105): point 1 stays at (100, 100).
-    assert_eq!(h.terminal_pos(page, term(&d, c, "1")), ecad_model::Pt::new(100.0, 100.0));
+    assert_eq!(h.connection_point_pos(page, term(&d, c, "1")), ecad_model::Pt::new(100.0, 100.0));
     h.cmdline("u");
     assert_eq!(h.lines_on(page).len(), 4, "undo restores the lines");
 }
@@ -343,11 +343,11 @@ fn row_12_promotion_keeps_ids_and_wires() {
         h.run("addterminal", json!({"handle": first, "at": at, "label": label})).unwrap();
     }
     let d = h.doc();
-    let terms: Vec<TerminalId> = d.terminals_of(c).map(|(t, _)| t).collect();
+    let terms: Vec<ConnectionPointId> = d.connection_points_of(c).map(|(t, _)| t).collect();
     assert_eq!(terms.len(), 2, "{v}");
     let mut wires = Vec::new();
     for t in &terms {
-        let at = h.terminal_pos(page, *t);
+        let at = h.connection_point_pos(page, *t);
         wires.push(id::<WireId>(&h.wire_pp(&[(at.x, at.y), (at.x, at.y - 20.0)]).unwrap(), "conductor"));
     }
     let v = h.run(
@@ -357,7 +357,7 @@ fn row_12_promotion_keeps_ids_and_wires() {
     let v = v.unwrap();
     let d = h.doc();
     assert_eq!(id::<DeviceId>(&v, "component"), c);
-    let after: Vec<TerminalId> = d.terminals_of(c).map(|(t, _)| t).collect();
+    let after: Vec<ConnectionPointId> = d.connection_points_of(c).map(|(t, _)| t).collect();
     assert_eq!(after, terms, "terminal IDs kept");
     for (t, w) in terms.iter().zip(&wires) {
         assert!(d.ends_at(*t).iter().any(|(x, _)| x == w), "wire still attached");

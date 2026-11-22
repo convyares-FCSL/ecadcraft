@@ -338,11 +338,11 @@ impl crate::App {
                 })?;
                 self.goto_symbols(&there.ok_or_else(|| format!("{} has no symbol on another page.", t.name))?)?;
             }
-            App::DeviceRow | App::TerminalRow | App::CableRow | App::PlcRacks => {
+            App::DeviceRow | App::TerminalStripRow | App::CableRow | App::PlcRacks => {
                 self.set_workspace(Workspace::Lists);
                 self.shell.lists = match app {
                     App::DeviceRow => ListsView::Devices,
-                    App::TerminalRow => ListsView::Terminals,
+                    App::TerminalStripRow => ListsView::Terminals,
                     App::PlcRacks => ListsView::Plc,
                     _ => ListsView::Reports,
                 };

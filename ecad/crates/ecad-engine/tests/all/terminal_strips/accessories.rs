@@ -2,8 +2,8 @@
 //! strip and the project, the plan, BOM and Checks rows, renumbering, links made and edited with
 //! `jumper`, and the update maps. Driven through the commands' JSON forms.
 
-use ecad_engine::outputs::{Group, kept::Outputs};
-use ecad_model::{DeviceId, TerminalId};
+use ecad_engine::outputs::{Group, kept::ReportModels};
+use ecad_model::{DeviceId, ConnectionPointId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -13,7 +13,7 @@ use crate::common::{H, id, pts};
 struct F {
     h: H,
     strip: DeviceId,
-    terms: Vec<TerminalId>,
+    terms: Vec<ConnectionPointId>,
 }
 
 fn fixture(seed: u64) -> F {
@@ -25,7 +25,7 @@ fn fixture(seed: u64) -> F {
     }
     let v = h.run("terminals", json!({"from": [30, 160], "to": [280, 160]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
-    let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let terms: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     assert_eq!(terms.len(), 6, "{v}");
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "12+2PE"})).unwrap();
     h.run(
@@ -71,7 +71,7 @@ impl F {
     }
 
     fn same_as_built(&mut self) {
-        let (kept, built) = self.h.cfg(|p| (p.outputs().clone(), Outputs::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics)));
+        let (kept, built) = self.h.cfg(|p| (p.outputs().clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics)));
         assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
         assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
         assert_eq!(kept.terminal_table(None), built.terminal_table(None));
@@ -210,7 +210,7 @@ fn checks_rows_have_working_fixes() {
     assert!(v.to_string().contains("-X01: link 3-5 crosses the partition after 4"), "{v}");
     let fixes = f.h.cfg(|p| {
         let o = p.outputs().clone();
-        let fix = o.checks().into_iter().find(|c| c.kind == ecad_engine::checks::Kind::LinkAcrossPartition).and_then(|c| c.fix).unwrap();
+        let fix = o.checks().into_iter().find(|c| c.kind == ecad_engine::checks::Kind::JumperBarAcrossPartition).and_then(|c| c.fix).unwrap();
         ecad_engine::outputs::accessory_fix_commands(&o, fix)
     });
     assert_eq!(fixes[0].0, "Split link at 4");
@@ -376,12 +376,12 @@ fn link_lines_are_drawn_from_the_link() {
     let v = parts(&mut f);
     let two: Vec<_> = v.iter().filter(|s| s.n == 2).collect();
     assert_eq!(two.len(), 2, "5-6 and the stub: {two:?}");
-    let x6 = f.h.terminal_pos(page, f.terms[5]).x;
+    let x6 = f.h.connection_point_pos(page, f.terms[5]).x;
     assert!(two.iter().any(|s| (s.b.x - (x6 + ecad_engine::link_lines::STUB_MM)).abs() < 1e-6), "{two:?}");
     // A skip link over 1-4 runs in lane 1, offset up.
     f.jumper(json!({"strip": f.strip.hex(), "positions": "2, 4", "skip": true}));
     let v = parts(&mut f);
-    let y = f.h.terminal_pos(page, f.terms[1]).y;
+    let y = f.h.connection_point_pos(page, f.terms[1]).y;
     assert!(v.iter().filter(|s| s.n == 3).all(|s| (s.a.y - (y + ecad_engine::link_lines::LANE_MM)).abs() < 1e-6), "{v:?}");
     // The page as projected shows them, and verify mode agrees.
     f.h.check();
@@ -400,7 +400,7 @@ fn renumbering_onto_a_spare_position_in_a_link() {
     }
     let v = h.run("terminals", json!({"from": [30, 160], "to": [150, 160]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
-    let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let terms: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     let before = h.doc().terminals[&terms[2]].clone();
     let mut after = before.clone();
     after.label = Some("5".into());
@@ -408,7 +408,7 @@ fn renumbering_onto_a_spare_position_in_a_link() {
         p.ledger.commit(
             ecad_model::Author::User,
             "label 5",
-            vec![ecad_model::Op::RemoveTerminal { id: terms[2], terminal: before }, ecad_model::Op::AddTerminal { id: terms[2], terminal: after }],
+            vec![ecad_model::Op::RemoveConnectionPoint { id: terms[2], terminal: before }, ecad_model::Op::AddConnectionPoint { id: terms[2], terminal: after }],
         )
     })
     .unwrap();

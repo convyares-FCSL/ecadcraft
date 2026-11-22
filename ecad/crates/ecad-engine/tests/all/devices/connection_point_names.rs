@@ -59,7 +59,7 @@ fn rect(h: &mut H, x0: f64) -> DeviceId {
 }
 
 fn labels(h: &mut H, c: DeviceId) -> Vec<String> {
-    let mut l: Vec<String> = h.doc().terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
+    let mut l: Vec<String> = h.doc().connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     l.sort();
     l
 }
@@ -213,7 +213,7 @@ fn numbered_and_number_free_prompts_follow_the_cursor() {
     h.s.cmdline("N").unwrap();
     h.s.input(Input::Enter).unwrap();
     let d = h.doc();
-    let b = d.devices.keys().copied().find(|c| d.terminals_of(*c).count() == 0).unwrap();
+    let b = d.devices.keys().copied().find(|c| d.connection_points_of(*c).count() == 0).unwrap();
     h.s.cmdline("100,10").unwrap();
     assert_eq!(labels(&mut h, b), ["1"]);
     h.s.cancel();

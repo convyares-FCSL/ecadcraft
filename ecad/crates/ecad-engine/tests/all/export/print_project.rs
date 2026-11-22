@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::doc::color::Color;
 use ecad_engine::generated::{FLAGGED_ACI, FLAGGED_PRINT_ACI, LAYER, MISSING};
-use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::ReportModels;
 use ecad_model::PageId;
 use serde_json::json;
 
@@ -51,7 +51,7 @@ fn a_missing_value_is_a_boxed_question_mark_yellow_on_screen() {
 fn a_missing_value_prints_black_in_screen_colours() {
     let (mut h, bom) = bom_with_missing();
     let doc = h.doc();
-    let outputs = Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+    let outputs = ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
     let (scratch, _) = ecad_engine::printbook::build(&doc, &[bom], &BTreeSet::new(), 1e-6, Some(&outputs)).unwrap();
     let generated: Vec<_> = scratch.model.iter().filter(|e| e.common.layer == LAYER).collect();
     assert!(

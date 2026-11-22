@@ -36,7 +36,7 @@ pub(crate) mod xref;
 
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;
-use ecad_model::{Color, Definition, PageId, Primitive, Pt, Style, TerminalDef};
+use ecad_model::{Color, Definition, PageId, Primitive, Pt, Style, ConnectionPointDef};
 use serde_json::Value;
 
 use crate::access::{Pages, owner_of_active, try_lock};
@@ -116,7 +116,7 @@ fn generic_specs() -> Vec<CommandSpec> {
         generic::spec::<numbering::NumberingParams>(),
         generic::spec::<ecad_electrical::cmd::page_type::FolderpropsParams>(),
         generic::spec::<ecad_electrical::cmd::page_type::RenumberpagesParams>(),
-        generic::spec::<ecad_electrical::cmd::xref::XrefsParams>(),
+        generic::spec::<ecad_electrical::cmd::xref::DeviceReferencesParams>(),
         generic::spec::<ecad_electrical::cmd::xref::ContactsParams>(),
         generic::spec::<ecad_electrical::cmd::xref::MirrormoveParams>().interactive(interact::mirrormove),
         generic::spec::<ecad_electrical::cmd::reference::CablerefParams>().interactive(interact::cableref),
@@ -168,7 +168,7 @@ const GENERIC_TYPED: &[input::Typed] = &[
     generic::typed::<numbering::NumberingParams>(),
     generic::typed::<ecad_electrical::cmd::page_type::FolderpropsParams>(),
     generic::typed::<ecad_electrical::cmd::page_type::RenumberpagesParams>(),
-    generic::typed::<ecad_electrical::cmd::xref::XrefsParams>(),
+    generic::typed::<ecad_electrical::cmd::xref::DeviceReferencesParams>(),
     generic::typed::<ecad_electrical::cmd::xref::ContactsParams>(),
     generic::typed::<ecad_electrical::cmd::xref::MirrormoveParams>(),
     generic::typed::<ecad_electrical::cmd::reference::CablerefParams>(),
@@ -186,7 +186,7 @@ fn base_specs() -> Vec<CommandSpec> {
             .params("{handles?: [hex]} (default: selection)")
             .interactive(interact::convert)
             .noundo(),
-        CommandSpec::new("addterminal", "Add Connection Point", crate::cmd::input::typed::<crate::cmd::device::AddterminalParams>)
+        CommandSpec::new("addterminal", "Add Connection Point", crate::cmd::input::typed::<crate::cmd::device::AddConnectionPointParams>)
             .params("{handle: hex (an item of the component), at: [x,y], label?}")
             .interactive(interact::addterminal)
             .noundo(),
@@ -409,8 +409,8 @@ pub fn builtin_coil() -> Definition {
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
-            TerminalDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
-            TerminalDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
+            ConnectionPointDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            ConnectionPointDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }

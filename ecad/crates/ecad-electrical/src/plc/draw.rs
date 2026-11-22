@@ -98,7 +98,7 @@ fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Rep
     };
     let k = if pl.scale.is_finite() && pl.scale > 0.0 { pl.scale } else { 1.0 };
     let (x0, x1, local_top, channel) = if let Some((w, _)) = crate::symbols::cell_shape(s.key) {
-        let i = crate::devices::shown_terminals(doc, c, r).iter().find_map(|(t, _)| super::channels::point_of(doc, *t)).map(|x| x.0);
+        let i = crate::devices::shown_connection_points(doc, c, r).iter().find_map(|(t, _)| super::channels::point_of(doc, *t)).map(|x| x.0);
         (-w / 2.0, w / 2.0, CELL_TOP, Some(i?))
     } else {
         let ty = CardType::of_symbol(s)?;
@@ -414,7 +414,7 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
         }
         let rects: Vec<(f64, f64, f64, f64)> = runs.iter().map(|r| frame_rect(doc, r)).collect();
         let mut seen = std::collections::BTreeSet::new();
-        for (t, _) in doc.terminals_of(c) {
+        for (t, _) in doc.connection_points_of(c) {
             let Some((i, _)) = super::channels::point_of(doc, t) else { continue };
             for (w, _) in doc.ends_at(t) {
                 if !seen.insert(w) {
@@ -440,7 +440,7 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                     .iter()
                     .find(|x| **x != t)
                     .map(|x| {
-                        let name = crate::terminal_types::terminal_name(doc, *x);
+                        let name = crate::terminal_types::connection_point_name(doc, *x);
                         match doc.terminals.get(x).and_then(|t| t.device()).and_then(|c| crate::devices::tag_of(doc, c)) {
                             Some(_) if !name.contains(':') => {
                                 format!(

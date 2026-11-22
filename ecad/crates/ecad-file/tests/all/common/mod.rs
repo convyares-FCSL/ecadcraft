@@ -21,7 +21,7 @@ pub struct Fixture {
     pub c1: DeviceId,
     pub c2: DeviceId,
     pub c3: DeviceId,
-    pub t: Vec<TerminalId>,
+    pub t: Vec<ConnectionPointId>,
     pub time: u64,
 }
 
@@ -60,8 +60,8 @@ impl Fixture {
     }
 
     /// Place an instance of `def` as component with two terminals; returns (component, terminals).
-    pub fn place(&mut self, def: DefinitionId, at: Pt, rotation: f64) -> (DeviceId, [TerminalId; 2]) {
-        let (c, t1, t2, item, rep): (DeviceId, TerminalId, TerminalId, ItemId, RepresentationId) =
+    pub fn place(&mut self, def: DefinitionId, at: Pt, rotation: f64) -> (DeviceId, [ConnectionPointId; 2]) {
+        let (c, t1, t2, item, rep): (DeviceId, ConnectionPointId, ConnectionPointId, ItemId, RepresentationId) =
             (self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh());
         let ops = vec![
             Op::CreateDevice { id: c, device: Device { definition: Some(def), ..Device::default() } },

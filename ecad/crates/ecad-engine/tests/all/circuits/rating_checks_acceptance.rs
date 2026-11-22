@@ -160,7 +160,7 @@ fn own_id(v: &Value) -> String {
 fn conductor_at(h: &mut H, component: DeviceId, label: &str) -> WireId {
     let d = h.doc();
     let t = d
-        .terminals_of(component)
+        .connection_points_of(component)
         .find(|(_, t)| t.label.as_deref() == Some(label) || t.key.as_ref().map(ToString::to_string).as_deref() == Some(label))
         .map(|(i, _)| i)
         .unwrap_or_else(|| panic!("no pin {label}"));

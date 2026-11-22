@@ -5,7 +5,7 @@
 //! The checks drive `style {catalogue: "wire"}`, `category`, `wire {category}`, `potential`,
 //! `wiresettings`, `setprop`, `bom`, `wirelist`, `checks` and read the document, the page drawing
 //! (`wires::labels_on_page`, `look::coloured_routes`, the route's entity) and the prints. The one
-//! new Rust name used is the design's `styles::wire::wire_look` (§5.3).
+//! new Rust name used is the design's `styles::wire::wire_draw` (§5.3).
 //!
 //! Each test name starts with the §12 check (`b11`…`b18`) or the focus item it checks.
 
@@ -86,8 +86,8 @@ fn bom(h: &mut H) -> Vec<Value> {
     h.run("bom", json!({"limit": 5000})).unwrap()["rows"].as_array().cloned().unwrap_or_default()
 }
 
-fn look_category(h: &mut H, c: WireId) -> Option<String> {
-    ecad_engine::styles::wire::wire_look(&h.doc(), c).category.map(|r| r.to_string())
+fn draw_category(h: &mut H, c: WireId) -> Option<String> {
+    ecad_engine::styles::wire::wire_draw(&h.doc(), c).category.map(|r| r.to_string())
 }
 
 // ------------------------------------------------------------------ b11: the built-ins
@@ -127,13 +127,13 @@ fn b11_twelve_built_in_wire_types_and_a_24v_wire_is_dc24() {
     let w = wire_at(&mut h, 50.0, Some("24V"));
     assert_eq!(label(&mut h, page, w).as_deref(), Some("24V-01 0.5 BU"));
     assert_eq!(route_colour(&mut h, page, w), Some(code_colour("BU")), "drawn blue (line_colour wire)");
-    assert_eq!(look_category(&mut h, w).as_deref(), Some("dc24"), "from potential 24V");
+    assert_eq!(draw_category(&mut h, w).as_deref(), Some("dc24"), "from potential 24V");
     let row = wire_row(&mut h, w);
     assert_eq!(s(&row["category"]), "24 V DC", "{row}");
     let n = h.run("nets", json!({})).unwrap().to_string();
     // No potential: no category, today's look (ink, 0.25, continuous).
     let plain = wire_at(&mut h, 80.0, None);
-    assert_eq!(look_category(&mut h, plain), None);
+    assert_eq!(draw_category(&mut h, plain), None);
     assert_eq!(route_colour(&mut h, page, plain), None, "ink");
     assert!(thin(route_entity(&mut h, page, plain).common.lineweight), "today's 0.25");
     assert!(part_numbers.is_empty(), "§5.3: empty text fields read empty: {part_numbers:?}");
@@ -224,15 +224,15 @@ fn b13_category_on_a_conductor_and_the_potential_rule() {
         "{:?}",
         tx.ops
     );
-    assert_eq!(look_category(&mut h, a).as_deref(), Some("signal"));
-    assert_eq!(look_category(&mut h, b).as_deref(), Some("dc24"), "only that conductor");
+    assert_eq!(draw_category(&mut h, a).as_deref(), Some("signal"));
+    assert_eq!(draw_category(&mut h, b).as_deref(), Some("dc24"), "only that conductor");
     assert_eq!(net_potential(&mut h, a), "24V", "the net keeps 24V");
     // No potential: the category writes it, one transaction.
     let c = wire_at(&mut h, 80.0, None);
     let (_, tx) = one_tx(&mut h, "category", json!({"conductor": c.hex(), "value": "24 V DC"}));
     assert!(tx.ops.len() >= 2, "category and potential together: {:?}", tx.ops);
     assert_eq!(net_potential(&mut h, c), "24V");
-    assert_eq!(look_category(&mut h, c).as_deref(), Some("dc24"));
+    assert_eq!(draw_category(&mut h, c).as_deref(), Some("dc24"));
     undo(&mut h);
     assert_eq!(net_potential(&mut h, c), "", "one undo takes both back");
     // Another potential is never changed.
@@ -242,9 +242,9 @@ fn b13_category_on_a_conductor_and_the_potential_rule() {
     assert!(v.to_string().contains("keeps potential L"), "{v}");
     // `net` form: every conductor of the net; `conductors` form; null clears.
     one_tx(&mut h, "category", json!({"net": a.hex(), "value": "analogue"}));
-    assert_eq!((look_category(&mut h, a).as_deref(), look_category(&mut h, b).as_deref()), (Some("analogue"), Some("analogue")));
+    assert_eq!((draw_category(&mut h, a).as_deref(), draw_category(&mut h, b).as_deref()), (Some("analogue"), Some("analogue")));
     one_tx(&mut h, "category", json!({"conductors": [a.hex(), b.hex()], "value": null}));
-    assert_eq!((look_category(&mut h, a).as_deref(), look_category(&mut h, b).as_deref()), (Some("dc24"), Some("dc24")), "cleared: from potential");
+    assert_eq!((draw_category(&mut h, a).as_deref(), draw_category(&mut h, b).as_deref()), (Some("dc24"), Some("dc24")), "cleared: from potential");
 }
 
 /// AC 4, §5.4: a potential change on a net moves its unassigned conductors to the new potential's
@@ -259,8 +259,8 @@ fn b13_a_potential_change_moves_only_unassigned_conductors() {
     assert_ne!(a, b, "two conductors");
     h.run("category", json!({"conductor": b.hex(), "value": "signal"})).unwrap();
     h.run("potential", json!({"conductor": a.hex(), "value": "0V"})).unwrap();
-    assert_eq!(look_category(&mut h, a).as_deref(), Some("dc0"));
-    assert_eq!(look_category(&mut h, b).as_deref(), Some("signal"), "own category kept");
+    assert_eq!(draw_category(&mut h, a).as_deref(), Some("dc0"));
+    assert_eq!(draw_category(&mut h, b).as_deref(), Some("signal"), "own category kept");
     assert!(label(&mut h, page, a).is_some_and(|t| t.starts_with("0V-")));
 }
 
@@ -332,9 +332,9 @@ fn b14_two_defaults_for_one_potential() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert!(rows[0].to_string().contains("24V") && rows[0].to_string().to_lowercase().contains("warn"), "{}", rows[0]);
     // The first by ID: `dc24` (a word) against `#…` — whichever sorts first is used, steadily.
-    let first = look_category(&mut h, w);
+    let first = draw_category(&mut h, w);
     reproject_twice(&mut h);
-    assert_eq!(look_category(&mut h, w), first, "the same one every time");
+    assert_eq!(draw_category(&mut h, w), first, "the same one every time");
 }
 
 fn reproject_twice(h: &mut H) {
@@ -420,7 +420,7 @@ fn b17_mono_prints_ink_and_colour_prints_line_colours() {
         .unwrap(),
     );
     let red = wire_at(&mut h, 80.0, Some("48V"));
-    assert_eq!(look_category(&mut h, red).as_deref(), Some(ac.as_str()));
+    assert_eq!(draw_category(&mut h, red).as_deref(), Some(ac.as_str()));
     let _ = (dc, pw, pe);
     let d = h.doc();
     let fan = Default::default();
@@ -480,7 +480,7 @@ fn b18_category_records_and_choices_round_trip() {
     let mut h = save_and_reopen(h, &dir, "Kategorien (1).ecad", 0x50b_1804);
     assert!(h.doc() == want);
     assert_eq!(styles(&mut h, "wire"), rows);
-    assert_eq!(look_category(&mut h, a), Some(ac));
+    assert_eq!(draw_category(&mut h, a), Some(ac));
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -515,7 +515,7 @@ fn b_an_unknown_category_draws_without_one_and_is_reported() {
     let w = wire_at(&mut h, 20.0, None);
     let op = typed(&mut h, w, &format!("#{}", "d".repeat(32)));
     inject(&mut h, vec![op]);
-    assert_eq!(look_category(&mut h, w), None);
+    assert_eq!(draw_category(&mut h, w), None);
     assert_eq!(route_colour(&mut h, page, w), None);
     let rows = checks_of(&mut h, "category-unknown");
     assert_eq!(rows.len(), 1, "{rows:?}");
@@ -550,7 +550,7 @@ fn b_hostile_category_input_never_panics() {
     for v in ["box", "#eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"] {
         let op = typed(&mut h, w, v);
         inject(&mut h, vec![op]);
-        assert_eq!(look_category(&mut h, w).as_deref(), Some("dc24"), "{v:.20}: falls to the potential's category");
+        assert_eq!(draw_category(&mut h, w).as_deref(), Some("dc24"), "{v:.20}: falls to the potential's category");
     }
     let _ = rows_of(h.run("styles", json!({"catalogue": "wire", "users": true})).unwrap());
 }

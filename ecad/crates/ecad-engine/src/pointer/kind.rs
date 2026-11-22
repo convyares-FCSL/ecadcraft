@@ -13,9 +13,9 @@
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
-use ecad_model::{CableId, DeviceId, Document, End, PageId, RepresentationId, RouteId, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, PageId, RepresentationId, RouteId, Subject, ConnectionPointId, WireId};
 
-use super::{capture, pick, pixel, pt, read, route_ends, terminal_name};
+use super::{capture, pick, pixel, pt, read, route_ends, connection_point_name};
 use crate::kinds::ObjectKind;
 use crate::project::{Mapped, Project};
 
@@ -34,7 +34,7 @@ pub struct Target {
     pub route: Option<RouteId>,
     pub end: Option<End>,
     pub cable: Option<CableId>,
-    pub terminal: Option<TerminalId>,
+    pub terminal: Option<ConnectionPointId>,
     pub representation: Option<RepresentationId>,
     /// The object's drawn handles on the page (what a selection-based action selects).
     pub handles: Vec<Handle>,
@@ -143,14 +143,14 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     // A terminal strip's terminal within the aperture.
     if ok_aperture
         && let Some(cap) = capture(p, page, cursor, aperture)
-        && let Some(strip) = crate::strips::strip_of_terminal(doc, cap.terminal)
+        && let Some(strip) = crate::strips::strip_of_connection_point(doc, cap.terminal)
     {
         return terminal(p, page, t, strip, Some(cap.terminal));
     }
     let Some(h) = picked else { return t };
     // Brief 051 (review of #89, 2): a card frame's part stands for the card, through its symbol.
     let h = match map.get(h) {
-        Some(Mapped::Xref(r)) if crate::plc::look::is_frame_rep(doc, r) => {
+        Some(Mapped::DeviceReference(r)) if crate::plc::look::is_frame_rep(doc, r) => {
             doc.representations.get(&r).and_then(|x| x.items.first()).and_then(|i| map.item(*i)).unwrap_or(h)
         }
         // Lane 072 D: a T's dot stands for the line that ends there.
@@ -170,7 +170,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.handles = vec![h];
         }
         Some(Mapped::Frame(_) | Mapped::Tee(_)) => {}
-        Some(Mapped::RefText(r) | Mapped::Xref(r)) => return reference(doc, map, page, t, r),
+        Some(Mapped::RefText(r) | Mapped::DeviceReference(r)) => return reference(doc, map, page, t, r),
         Some(Mapped::Fan(k)) => match map.reference_of(h) {
             Some(r) => return reference(doc, map, page, t, r),
             None => return cable(p, page, t, k),
@@ -193,7 +193,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.handles = vec![h];
         }
         Some(Mapped::Link(strip, _)) => return terminal(p, page, t, strip, None),
-        Some(Mapped::Marker(rep, term)) => match crate::strips::strip_of_terminal(doc, term) {
+        Some(Mapped::Marker(rep, term)) => match crate::strips::strip_of_connection_point(doc, term) {
             Some(strip) => return terminal(p, page, t, strip, Some(term)),
             None => {
                 if let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) {
@@ -257,7 +257,7 @@ fn device(p: &Project, page: PageId, mut t: Target, c: DeviceId, rep: Option<Rep
     t
 }
 
-fn terminal(p: &Project, page: PageId, mut t: Target, strip: DeviceId, term: Option<TerminalId>) -> Target {
+fn terminal(p: &Project, page: PageId, mut t: Target, strip: DeviceId, term: Option<ConnectionPointId>) -> Target {
     let doc = p.ledger.document();
     t.kind = ObjectKind::Terminal;
     t.component = Some(strip);
@@ -265,7 +265,7 @@ fn terminal(p: &Project, page: PageId, mut t: Target, strip: DeviceId, term: Opt
     let tag = crate::devices::tag_words(doc, strip);
     t.name = match term {
         // Brief 044: a connector pin is named by its half (`-X10.S:3`).
-        Some(x) => crate::connectors::pin_name(doc, x).unwrap_or_else(|| format!("{tag}:{}", terminal_name(doc, x))),
+        Some(x) => crate::connectors::pin_name(doc, x).unwrap_or_else(|| format!("{tag}:{}", connection_point_name(doc, x))),
         None => tag,
     };
     let map = p.pages.get(&page).map(|v| &v.map);

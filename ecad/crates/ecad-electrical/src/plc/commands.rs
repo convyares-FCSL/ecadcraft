@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::book::Book;
 use ecad_model::{
-    ChannelRole, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject, Terminal, TerminalId, Word,
+    ChannelRole, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject, Terminal, ConnectionPointId, Word,
 };
 
 use crate::defaults;
@@ -550,7 +550,7 @@ pub struct ChannelInput {
     /// The channel number a drawn copy moves to, as text; `Some(None)`: given as null.
     pub move_to: Option<Option<String>>,
     /// The drawn copy to move (absent: the last drawn).
-    pub terminal: Option<TerminalId>,
+    pub terminal: Option<ConnectionPointId>,
 }
 
 /// What `plcchannel` changes.
@@ -634,8 +634,8 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
             labels.insert(pin.to_string());
             let term = doc.terminals.get(tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
             let after = Terminal { label: Some(pin.to_string()), ..term.clone() };
-            ops.push(Op::RemoveTerminal { id: *tid, terminal: term });
-            ops.push(Op::AddTerminal { id: *tid, terminal: after });
+            ops.push(Op::RemoveConnectionPoint { id: *tid, terminal: term });
+            ops.push(Op::AddConnectionPoint { id: *tid, terminal: after });
             said.push(format!("{role} pin {old} → {pin}"));
         }
     }
@@ -659,8 +659,8 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
             let role = point_of(doc, tid).map(|x| x.1).ok_or(CmdError::refused("Not a channel point."))?;
             let key = crate::plc::channels::key(j, role).ok_or(CmdError::refused("Not a channel point."))?;
             let after = Terminal { key: Some(key), ..term.clone() };
-            ops.push(Op::RemoveTerminal { id: tid, terminal: term });
-            ops.push(Op::AddTerminal { id: tid, terminal: after });
+            ops.push(Op::RemoveConnectionPoint { id: tid, terminal: term });
+            ops.push(Op::AddConnectionPoint { id: tid, terminal: after });
         }
         said.push(format!("moved to channel {to}"));
     }

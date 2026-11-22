@@ -57,7 +57,7 @@ fn terminal_strip_commands_through_execute() {
     c.exec("renumber", json!({"kind": "terminals", "start": 5}));
     let (label, ops) = last_by_agent(&mut c);
     assert_eq!(label, "Renumber terminals");
-    assert!(ops.iter().any(|o| matches!(o, Op::AddTerminal { terminal, .. } if terminal.label.as_deref() == Some("5"))));
+    assert!(ops.iter().any(|o| matches!(o, Op::AddConnectionPoint { terminal, .. } if terminal.label.as_deref() == Some("5"))));
     // The offers.
     c.exec("setprop", json!({"component": strip, "key": "terminals", "value": "8+1PE"}));
     assert!(

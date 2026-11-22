@@ -227,7 +227,7 @@ impl Project {
                     // Wire labels follow their routes and nets (brief 022).
                     amended.extend(prev.label_handles().chain(map.label_handles()));
                     // Contact texts and mirror tables follow their device (brief 025).
-                    amended.extend(prev.xref_handles().chain(map.xref_handles()));
+                    amended.extend(prev.device_reference_handles().chain(map.device_reference_handles()));
                     let mismatched = fidelity_mismatches(committed, &d, &amended);
                     if !mismatched.is_empty() {
                         self.events.record(

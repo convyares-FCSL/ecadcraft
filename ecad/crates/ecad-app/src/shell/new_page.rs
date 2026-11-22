@@ -111,11 +111,11 @@ impl App {
             let after = after.filter(|a| doc.pages.contains_key(a));
             let folder = folder.filter(|f| doc.folders.contains_key(f));
             let (f, _, place) = ecad_electrical::cmd::sheet::new_page_at(doc, &book, folder, after).ok()?;
-            let number = ecad_electrical::cmd::sheet::next_number(doc, &book, f, place, p.kept_outputs());
+            let number = ecad_electrical::cmd::sheet::next_number(doc, &book, f, place, p.kept_reports());
             let rows: Vec<TypeRow> = ptype::ordered(doc)
                 .into_iter()
                 .map(|r| {
-                    let holds = ptype::look_of(doc, &r.id).holds;
+                    let holds = ptype::draw_of(doc, &r.id).holds;
                     let panel = r.id == StyleRef::Builtin(ptype::PANEL.into());
                     TypeRow { kinds: kind_rows(holds, doc, &book), enabled: !panel, name: r.name, holds, id: r.id }
                 })

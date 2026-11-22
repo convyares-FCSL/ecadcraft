@@ -211,25 +211,25 @@ pub struct Slot {
     /// After `<stem> Rev B`.
     pub suffix: &'static str,
     /// The table, or `None` with [`Slot::missing_why`] when the project gives none.
-    pub build: fn(&Document, &crate::outputs::kept::Outputs) -> Option<Table>,
+    pub build: fn(&Document, &crate::outputs::kept::ReportModels) -> Option<Table>,
     pub missing_why: &'static str,
 }
 
-fn bom(_: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+fn bom(_: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
     Some(o.bom_table(crate::outputs::Group::Location))
 }
-fn wires(_: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+fn wires(_: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
     Some(o.wire_table())
 }
-fn cables(_: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+fn cables(_: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
     Some(o.cable_table())
 }
 /// Brief 028's terminal plan, when the project has strips.
-fn terminal_plan(_: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+fn terminal_plan(_: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
     (!o.strips.is_empty()).then(|| o.terminal_plan_csv())
 }
 /// Brief 028's cable schedule, when the project has cables.
-fn cable_schedule(_: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+fn cable_schedule(_: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
     (o.cable_count() > 0).then(|| o.cable_schedule_csv())
 }
 
@@ -247,12 +247,12 @@ pub const LISTS: [Slot; 7] = [
 ];
 
 /// Brief 051's PLC racks list, when the project has a rack or a card.
-fn plc_racks(doc: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+fn plc_racks(doc: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
     crate::plc::sheets::rack_csv(doc, &o.plc)
 }
 
 /// Brief 045's I/O list, when the project has a card with channels.
-fn io_list(doc: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+fn io_list(doc: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
     crate::plc::iolist::csv_table(doc, &o.plc)
 }
 

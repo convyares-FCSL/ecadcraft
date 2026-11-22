@@ -7,7 +7,7 @@ use ecad_engine::frame::{self, FrameInput};
 use ecad_engine::title_block::{dxf, house};
 use ecad_model::book::Book;
 use ecad_model::sheet::{self, SheetSpec};
-use ecad_model::title_block::{Binding, BlockItem, IfEmpty, Rect, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Binding, BlockItem, IfEmpty, Rect, TextDraw, TitleBlockLayout};
 use ecad_model::{PageId, Primitive, Pt};
 use serde_json::{Value, json};
 
@@ -227,7 +227,7 @@ fn hostile_bodies_draw_and_are_refused_by_commands() {
         at: Rect::new(x, 1.0, 10.0, 5.0),
         bind: Binding::Print(ecad_model::title_block::PrintField::Sheet),
         label: Some("é".repeat(10_000)),
-        look: TextLook::default(),
+        look: TextDraw::default(),
         if_empty: IfEmpty::Text("t".repeat(100)),
     };
     let mut items: Vec<BlockItem> = (0..10_000).map(|i| field(f64::from(i))).collect();

@@ -191,7 +191,7 @@ fn address_blocks_and_station_reads_are_methods() {
     let dq = placed(&mut h, "plcdq", [180.0, 40.0]);
     let ai = placed(&mut h, "plcai", [220.0, 40.0]);
     let doc = h.doc();
-    let kept = ecad_engine::outputs::kept::Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+    let kept = ecad_engine::outputs::kept::ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
     for c in [di, dq, ai] {
         assert_eq!(module(&doc, c).address_block(&doc, c), kept.plc.blocks.get(&c).copied(), "{c:?}");
     }

@@ -37,7 +37,7 @@ use std::collections::BTreeSet;
 
 use ecad_model::effect::{AreaSet, Effect, Effects};
 use ecad_model::view::{DerivedView, NoteCx, Outcome, Phase, ViewScope};
-use ecad_model::{Document, ObjectRef, Op, Subject, TerminalId};
+use ecad_model::{Document, ObjectRef, Op, Subject, ConnectionPointId};
 
 use super::Inputs;
 
@@ -98,7 +98,7 @@ impl ViewScope for PropsScope {
 }
 
 /// The devices of the connection points `ends`, in `doc`.
-fn devices_at<'a>(doc: &'a Document, ends: impl Iterator<Item = TerminalId> + 'a) -> impl Iterator<Item = ObjectRef> + 'a {
+fn devices_at<'a>(doc: &'a Document, ends: impl Iterator<Item = ConnectionPointId> + 'a) -> impl Iterator<Item = ObjectRef> + 'a {
     ends.filter_map(|t| doc.terminals.get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device)
 }
 

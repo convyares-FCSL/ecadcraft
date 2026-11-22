@@ -228,7 +228,7 @@ pub enum App {
     /// Lists ▸ Device list.
     DeviceRow,
     /// Lists ▸ Terminal plan.
-    TerminalRow,
+    TerminalStripRow,
     /// Lists ▸ Reports (the cable report).
     CableRow,
     /// Select every drawn wire of the wire's net on this page.
@@ -531,7 +531,7 @@ pub const ACTIONS: &[Action] = &[
     coming_tool("terminal.reorder", "Reorder the strip…", Icon::Move, ToolGroup::Terminal, 4),
     group_app("terminal.renumber", "renumber", App::Renumber, "Renumber…", Icon::Number, Some((ToolGroup::Terminal, 5)), &["renumber terminals"], ok),
     // The Terminal flyout's foot (not one of its tools): the Terminal manager, Project ▸ Terminals.
-    group_app("terminal.manager", "", App::TerminalRow, "Terminal manager", Icon::ShowRow, None, &["terminal plan", "strips"], ok),
+    group_app("terminal.manager", "", App::TerminalStripRow, "Terminal manager", Icon::ShowRow, None, &["terminal plan", "strips"], ok),
     // ---- PLC: the rack overview, then the card commands through their templates, as Ctrl+K
     // ran them before (brief 045).
     group_app("plc.racks", "", App::PlcRacks, "Rack overview", Icon::Plc, Some((ToolGroup::Plc, 0)), &["plc", "rack", "racks"], ok),
@@ -740,8 +740,8 @@ pub const ACTIONS: &[Action] = &[
     // ---- Terminal.
     slot("terminal.label", "termlabel", Params::App(App::Template), "Edit label", Icon::Edit, &[(K::Terminal, S::Top)], write),
     slot("terminal.jumper", "jumper", Params::StartAt, "Jumper", Icon::Connect, &[(K::Terminal, S::TopRight)], write),
-    slot("terminal.plan", "stripplan", Params::App(App::TerminalRow), "Go to strip plan", Icon::GoTo, &[(K::Terminal, S::Right)], ok),
-    slot("terminal.row", "", Params::App(App::TerminalRow), "Show row", Icon::ShowRow, &[(K::Terminal, S::BottomRight)], ok),
+    slot("terminal.plan", "stripplan", Params::App(App::TerminalStripRow), "Go to strip plan", Icon::GoTo, &[(K::Terminal, S::Right)], ok),
+    slot("terminal.row", "", Params::App(App::TerminalStripRow), "Show row", Icon::ShowRow, &[(K::Terminal, S::BottomRight)], ok),
     slot("terminal.accessory", "accessory", Params::StartAt, "Accessory", Icon::Terminal, &[(K::Terminal, S::BottomLeft)], write),
     // ---- Cable.
     slot("cable.view", "cableview", Params::Id(IdOf::Cable), "Cable view", Icon::Eye, &[(K::Cable, S::Top)], ok),

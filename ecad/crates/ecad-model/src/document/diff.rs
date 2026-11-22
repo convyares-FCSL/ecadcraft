@@ -156,10 +156,10 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         let (a, b) = (from.terminals.get(&id), to.terminals.get(&id));
         if a != b {
             if let Some(a) = a {
-                removes.push(Op::RemoveTerminal { id, terminal: a.clone() });
+                removes.push(Op::RemoveConnectionPoint { id, terminal: a.clone() });
             }
             if let Some(b) = b {
-                adds.push(Op::AddTerminal { id, terminal: b.clone() });
+                adds.push(Op::AddConnectionPoint { id, terminal: b.clone() });
             }
         }
     }
@@ -374,7 +374,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                 ("device", id.0)
             }
-            Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => ("terminal", id.0),
+            Op::AddConnectionPoint { id, .. } | Op::RemoveConnectionPoint { id, .. } => ("terminal", id.0),
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
             Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => ("wire", id.0),
             Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => ("route", id.0),

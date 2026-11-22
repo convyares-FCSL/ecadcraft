@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use ecad_model as m;
 use ecad_model::{
-    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, TerminalId, TxId, WireId,
+    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, ConnectionPointId, TxId, WireId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -219,7 +219,7 @@ pub struct Device {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Terminal {
-    pub owner: m::TerminalOwner,
+    pub owner: m::ConnectionPointOwner,
     pub label: Option<String>,
     pub key: Option<m::PointKey>,
     /// Design 072 F38: how many conductors it accepts, 1 to 64; left out at two.
@@ -250,7 +250,7 @@ pub struct Route {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum RouteEnd {
-    Point(TerminalId),
+    Point(ConnectionPointId),
     On { route: RouteId, at: Pt },
     Free,
 }
@@ -270,7 +270,7 @@ pub struct Representation {
     pub form: Form,
     pub role: m::Role,
     pub items: Vec<ItemId>,
-    pub connection_points: BTreeMap<TerminalId, Pt>,
+    pub connection_points: BTreeMap<ConnectionPointId, Pt>,
 }
 
 /// A wire (design 072 §4.2): its net, its conductor id, its place in the net's order, its two
@@ -281,7 +281,7 @@ pub struct Wire {
     pub net: m::NetId,
     pub conductor: m::ConductorId,
     pub net_order: u16,
-    pub ends: [TerminalId; 2],
+    pub ends: [ConnectionPointId; 2],
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub order_fixed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -315,7 +315,7 @@ pub struct Core {
     pub position: CorePosition,
     /// The core's named points on the cable's references (design 072 §4.4, F4).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub through: Vec<m::TerminalId>,
+    pub through: Vec<m::ConnectionPointId>,
 }
 
 /// What a cable core is for, as written.
@@ -352,7 +352,7 @@ pub enum CorePosition {
     Route {
         route: RouteId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        landed: Option<TerminalId>,
+        landed: Option<ConnectionPointId>,
     },
     Wire(WireId),
 }
@@ -815,11 +815,11 @@ pub enum Op {
         after: Option<DefinitionId>,
     },
     AddTerminal {
-        id: TerminalId,
+        id: ConnectionPointId,
         terminal: Terminal,
     },
     RemoveTerminal {
-        id: TerminalId,
+        id: ConnectionPointId,
         terminal: Terminal,
     },
     LinkRepresentation {
@@ -1089,8 +1089,8 @@ impl From<&m::Device> for Device {
     }
 }
 
-impl From<&m::Terminal> for Terminal {
-    fn from(t: &m::Terminal) -> Self {
+impl From<&m::ConnectionPoint> for Terminal {
+    fn from(t: &m::ConnectionPoint) -> Self {
         Terminal { owner: t.owner, label: t.label.clone(), key: t.key.clone(), accepts: t.accepts }
     }
 }
@@ -1308,8 +1308,8 @@ impl From<&m::Op> for Op {
             m::Op::DeleteDevice { id, device } => Op::DeleteDevice { id: *id, device: device.into() },
             m::Op::ModifyDevice { id, before, after } => Op::ModifyDevice { id: *id, before: before.into(), after: after.into() },
             m::Op::SetDeviceDefinition { id, before, after } => Op::SetDeviceDefinition { id: *id, before: *before, after: *after },
-            m::Op::AddTerminal { id, terminal } => Op::AddTerminal { id: *id, terminal: terminal.into() },
-            m::Op::RemoveTerminal { id, terminal } => Op::RemoveTerminal { id: *id, terminal: terminal.into() },
+            m::Op::AddConnectionPoint { id, terminal } => Op::AddTerminal { id: *id, terminal: terminal.into() },
+            m::Op::RemoveConnectionPoint { id, terminal } => Op::RemoveTerminal { id: *id, terminal: terminal.into() },
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
             m::Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id: *id, before: before.into(), after: after.into() },
             m::Op::UnlinkRepresentation { id, rep } => Op::UnlinkRepresentation { id: *id, rep: rep.into() },
@@ -1483,9 +1483,9 @@ impl From<Device> for m::Device {
     }
 }
 
-impl From<Terminal> for m::Terminal {
+impl From<Terminal> for m::ConnectionPoint {
     fn from(t: Terminal) -> Self {
-        m::Terminal { owner: t.owner, label: t.label, key: t.key, accepts: t.accepts }
+        m::ConnectionPoint { owner: t.owner, label: t.label, key: t.key, accepts: t.accepts }
     }
 }
 
@@ -1558,7 +1558,7 @@ impl From<Definition> for m::Definition {
             name: d.name,
             origin: d.origin.map(morigin),
             graphics: d.graphics.into_iter().map(Into::into).collect(),
-            terminals: d.terminals.into_iter().map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at), accepts: t.accepts }).collect(),
+            terminals: d.terminals.into_iter().map(|t| m::ConnectionPointDef { key: t.key, label: t.label, at: mpt(t.at), accepts: t.accepts }).collect(),
             bridges: d.bridges,
             texts: d.texts.into_iter().map(|t| m::TextSlot { text: t.text, at: mpt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
             defaults: d.defaults,
@@ -1624,8 +1624,8 @@ impl TryFrom<Op> for m::Op {
             Op::DeleteDevice { id, device } => m::Op::DeleteDevice { id, device: a_device(device.into())? },
             Op::ModifyDevice { id, before, after } => m::Op::ModifyDevice { id, before: a_device(before.into())?, after: a_device(after.into())? },
             Op::SetDeviceDefinition { id, before, after } => m::Op::SetDeviceDefinition { id, before, after },
-            Op::AddTerminal { id, terminal } => m::Op::AddTerminal { id, terminal: terminal.into() },
-            Op::RemoveTerminal { id, terminal } => m::Op::RemoveTerminal { id, terminal: terminal.into() },
+            Op::AddTerminal { id, terminal } => m::Op::AddConnectionPoint { id, terminal: terminal.into() },
+            Op::RemoveTerminal { id, terminal } => m::Op::RemoveConnectionPoint { id, terminal: terminal.into() },
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },
             Op::ModifyRepresentation { id, before, after } => m::Op::ModifyRepresentation { id, before: before.into(), after: after.into() },
             Op::UnlinkRepresentation { id, rep } => m::Op::UnlinkRepresentation { id, rep: rep.into() },

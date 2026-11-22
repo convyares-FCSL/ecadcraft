@@ -308,7 +308,7 @@ fn drawn_references_cannot_be_edited_alone() {
     let mut x = fixture();
     x.h.activate(x.p105);
     let h_text = x.h.p(|p| p.pages[&x.p105].map.xref(x.no, 0).unwrap());
-    assert_eq!(x.h.mapped(x.p105, h_text), Some(Mapped::Xref(x.no)));
+    assert_eq!(x.h.mapped(x.p105, h_text), Some(Mapped::DeviceReference(x.no)));
     let e = x.h.run("move", json!({"handles": [h_text.hex()], "delta": [5, 0]})).unwrap_err();
     assert!(e.contains(xref::TEXT_DERIVED), "{e}");
     x.h.activate(x.p100);
@@ -419,7 +419,7 @@ fn e_cable_groups_are_kept_on_the_index() {
 fn a_stale_index_is_reported_and_rebuilt() {
     use ecad_inspect::EventKind;
     let mut x = fixture();
-    x.h.cfg(|p| *p.views_mut().refs_view_mut() = ecad_electrical::derived::RefsView::default());
+    x.h.cfg(|p| *p.views_mut().references_view_mut() = ecad_electrical::derived::RefsView::default());
     let head = x.h.head();
     x.h.run("setprop", json!({"component": x.k1.hex(), "key": "contacts", "value": "3P+2NO+2NC"})).unwrap();
     assert_eq!(x.h.head(), head + 1);

@@ -137,7 +137,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
         let mut targets = Vec::new();
         let mut wire = None;
         for (_, t, _) in ch.map(|c| c.points.as_slice()).unwrap_or_default() {
-            let Some(net) = conn.net_of_terminal(*t).and_then(|n| conn.net(n)) else { continue };
+            let Some(net) = conn.net_of_connection_point(*t).and_then(|n| conn.net(n)) else { continue };
             if wire.is_none() {
                 wire = ecad_model::wiring::net_number(doc, net);
             }
@@ -161,7 +161,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
                 let at = shown.and_then(|(_, r)| r.connection_points.get(o).copied()).or(at);
                 targets.push(Target {
                     device: crate::devices::tag_words(doc, device),
-                    point: crate::terminal_types::terminal_name(doc, *o),
+                    point: crate::terminal_types::connection_point_name(doc, *o),
                     place: place.unwrap_or_default(),
                     through,
                     page: shown.map(|(_, r)| r.page),
@@ -397,7 +397,7 @@ pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Optio
     let conn = doc.connectivity();
     let mut nets = Vec::new();
     if let Some(d) = d {
-        nets.extend(doc.terminals_of(d).filter_map(|(t, _)| conn.net_of_terminal(t)));
+        nets.extend(doc.connection_points_of(d).filter_map(|(t, _)| conn.net_of_connection_point(t)));
     }
     if let Some(w) = w {
         nets.extend(conn.net_of_conductor(w));
@@ -421,10 +421,10 @@ pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Optio
 }
 
 /// The cards with a channel point on the nets of terminals `ts`.
-pub fn cards_on_nets_of_terminals(doc: &Document, plc: &Plc, ts: &[ecad_model::TerminalId]) -> Vec<DeviceId> {
+pub fn cards_on_nets_of_terminals(doc: &Document, plc: &Plc, ts: &[ecad_model::ConnectionPointId]) -> Vec<DeviceId> {
     let conn = doc.connectivity();
     let mut out = Vec::new();
-    for n in ts.iter().filter_map(|t| conn.net_of_terminal(*t)) {
+    for n in ts.iter().filter_map(|t| conn.net_of_connection_point(*t)) {
         let Some(net) = conn.net(n) else { continue };
         for t in &net.terminals {
             if let Some(x) = doc.terminals.get(t)

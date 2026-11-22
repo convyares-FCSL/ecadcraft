@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use ecad_engine::text_style::TextKind;
-use ecad_model::{DeviceId, Document, ObjectRef, PageId, RepresentationId, Subject, TerminalId};
+use ecad_model::{DeviceId, Document, ObjectRef, PageId, RepresentationId, Subject, ConnectionPointId};
 
 /// At most this many rows in "Where it is drawn" and "Connections" (hostile files can hold
 /// thousands; the full lists are in Project).
@@ -71,7 +71,7 @@ pub struct DeviceDetails {
     pub connections: Vec<ConnRow>,
     pub placed: Option<Placed>,
     /// The device's connection points (its own checks are about these or the device).
-    pub terminals: BTreeSet<TerminalId>,
+    pub terminals: BTreeSet<ConnectionPointId>,
     /// The size each text slot takes (`2.5 B`), by kind.
     pub sizes: Vec<(TextKind, String)>,
 }
@@ -81,13 +81,13 @@ fn pins(labels: &[String]) -> String {
     labels.join("\u{2013}")
 }
 
-fn label(doc: &Document, t: TerminalId) -> String {
+fn label(doc: &Document, t: ConnectionPointId) -> String {
     doc.terminals.get(&t).and_then(|x| x.label.clone()).unwrap_or_else(|| "?".into())
 }
 
 /// The labels a symbol shows: its connection points, in its definition's order.
 fn rep_labels(doc: &Document, c: DeviceId, r: &ecad_model::Representation) -> Vec<String> {
-    let points = ecad_engine::xref::terminal_points(doc, c, r);
+    let points = ecad_engine::xref::connection_point_points(doc, c, r);
     if points.is_empty() {
         return r.connection_points.keys().take(8).map(|t| label(doc, *t)).collect();
     }
@@ -169,12 +169,12 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
     d.drawn_count = d.drawn.iter().filter(|r| !r.place.is_empty()).count();
     // Connections: each connection point, its net's wire number and the other points on it.
     let conn = doc.connectivity();
-    let mut points: Vec<(TerminalId, String)> =
-        doc.terminals_of(c).take(MAX_ROWS).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "?".into()))).collect();
+    let mut points: Vec<(ConnectionPointId, String)> =
+        doc.connection_points_of(c).take(MAX_ROWS).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "?".into()))).collect();
     points.sort_by_key(|p| xref::natural_key(&p.1));
     for (t, pin) in points {
         d.terminals.insert(t);
-        let net = conn.net_of_terminal(t).and_then(|n| conn.net(n));
+        let net = conn.net_of_connection_point(t).and_then(|n| conn.net(n));
         let Some(net) = net else {
             d.connections.push(ConnRow { pin, wire: "not connected".into(), others: String::new() });
             continue;

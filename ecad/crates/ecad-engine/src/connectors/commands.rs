@@ -17,7 +17,7 @@ use std::collections::BTreeSet;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::connector::{self as rules, ConnectorInput, Made, NamesInput, Pinlabel, PinlabelInput};
-use ecad_model::{PageId, Placement, Pt, TerminalId, WireId};
+use ecad_model::{PageId, Placement, Pt, ConnectionPointId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -279,7 +279,7 @@ pub(crate) struct PinlabelParams {
     pin: Option<String>,
     /// One drawn pin.
     #[serde(default)]
-    terminal: Option<TerminalId>,
+    terminal: Option<ConnectionPointId>,
     /// The new pin name, or "next".
     to: String,
 }

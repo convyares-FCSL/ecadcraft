@@ -4,7 +4,7 @@
 //! tab (double-click a cable).
 //!
 //! The Reports window shows a copy of a table of the project's kept report models
-//! ([`ecad_engine::outputs::kept::Outputs`], built on first show and then kept from each change's
+//! ([`ecad_engine::outputs::kept::ReportModels`], built on first show and then kept from each change's
 //! ops); the copy is taken again only when the models' revision, the tab or the grouping changed.
 //! Live while open: no refresh button. Rows are virtualised.
 
@@ -131,7 +131,7 @@ pub struct Reports {
     /// The project folder and name, for the export path's default.
     pub stem: String,
     /// Brief 039: the Terminals tab as the one table's terminal manager.
-    pub terminals: crate::lists::terminals::TerminalsView,
+    pub terminals: crate::lists::terminals::TerminalStripPlanView,
     /// Brief 045c and 051: Lists ▸ PLC, kept in step while it is shown.
     pub io: crate::lists::plc::IoView,
     pub io_shown: bool,
@@ -177,7 +177,7 @@ impl Reports {
         // Brief 045c: Lists ▸ I/O follows the PLC model's own update map while it is shown.
         if self.io_shown {
             p.outputs();
-            if let Some(o) = p.kept_outputs() {
+            if let Some(o) = p.kept_reports() {
                 self.io.sync(serial, p.ledger.document(), o, self.writable);
             }
         }

@@ -20,7 +20,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::colour::{ColourWords, ConductorColour};
 use crate::doc::Properties;
-use crate::id::{ConductorId, DeviceId, NetId, TerminalId};
+use crate::id::{ConductorId, DeviceId, NetId, ConnectionPointId};
 use crate::style::StyleRef;
 use crate::text::Text;
 use crate::units::{Amps, Celsius, Mm2, Percent, Volts};
@@ -60,7 +60,7 @@ pub struct Wire {
     /// Its place in its net's order, 1-based (design 072 §4.4).
     pub net_order: u16,
     /// Its two connection points.
-    pub ends: [TerminalId; 2],
+    pub ends: [ConnectionPointId; 2],
     /// The person reordered this net by hand: the rewrite keeps its order.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub order_fixed: bool,
@@ -96,7 +96,7 @@ pub struct Wire {
 
 impl Wire {
     /// A wire of net `net` between `a` and `b`, first in its net's order, with no values of its own.
-    pub fn new(net: NetId, conductor: ConductorId, a: TerminalId, b: TerminalId) -> Self {
+    pub fn new(net: NetId, conductor: ConductorId, a: ConnectionPointId, b: ConnectionPointId) -> Self {
         Wire {
             net,
             conductor,
@@ -116,7 +116,7 @@ impl Wire {
     }
 
     /// The connection point at `end`.
-    pub fn end(&self, end: End) -> TerminalId {
+    pub fn end(&self, end: End) -> ConnectionPointId {
         match end {
             End::A => self.ends[0],
             End::B => self.ends[1],
@@ -124,7 +124,7 @@ impl Wire {
     }
 
     /// The end at connection point `t`, if the wire ends there (end A first).
-    pub fn end_at(&self, t: TerminalId) -> Option<End> {
+    pub fn end_at(&self, t: ConnectionPointId) -> Option<End> {
         End::BOTH.into_iter().find(|e| self.end(*e) == t)
     }
 

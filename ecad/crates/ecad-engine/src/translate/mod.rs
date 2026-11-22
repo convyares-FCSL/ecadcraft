@@ -17,10 +17,10 @@ use std::sync::Arc;
 
 use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
-use ecad_model::derive::{terminal_position, terminal_positions};
+use ecad_model::derive::{connection_point_position, connection_point_positions};
 use ecad_model::{
     Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive, Pt, Representation, RepresentationId,
-    Route, RouteEnd, RouteId, Subject, Terminal, TerminalId,
+    Route, RouteEnd, RouteId, Subject, Terminal, ConnectionPointId,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
@@ -48,7 +48,7 @@ pub(crate) struct Ctx<'a> {
 pub(crate) struct Translation {
     pub ops: Vec<Op>,
     pub new_items: Vec<(ItemId, Handle)>,
-    pub new_markers: Vec<((RepresentationId, TerminalId), Handle)>,
+    pub new_markers: Vec<((RepresentationId, ConnectionPointId), Handle)>,
     /// Handles whose geometry the owner changed beyond what the engine committed (M2, M3).
     pub amended: BTreeSet<Handle>,
     pub summary: String,
@@ -102,8 +102,8 @@ fn preview<R>(ledger: &mut Ledger, ops: &[Op], read: impl FnOnce(&Document) -> R
 }
 
 /// The terminal shown at `at` on `page`, if any.
-pub(crate) fn terminal_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Option<TerminalId> {
-    first_near(&terminal_positions(doc, page), at, tol)
+pub(crate) fn connection_point_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Option<ConnectionPointId> {
+    first_near(&connection_point_positions(doc, page), at, tol)
 }
 
 /// What a set of proposed ops could move on a page, worked out on the document before them.
@@ -121,12 +121,12 @@ pub(crate) fn terminal_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Opt
 ///
 /// Op kinds a translation does not produce make the scope the whole document, which is exactly
 /// the earlier behaviour: `AddPage`, `RemovePage`, `AddLayer`, `RemoveLayer`, `DeleteDevice`,
-/// `RemoveTerminal`, the wire and cable ops, `SetProperty`, `RemoveDefinition`,
-/// `SetProjectSettings`, `NameVersion`, `UnnameVersion`, and `CreateDevice`, `AddTerminal` or
+/// `RemoveConnectionPoint`, the wire and cable ops, `SetProperty`, `RemoveDefinition`,
+/// `SetProjectSettings`, `NameVersion`, `UnnameVersion`, and `CreateDevice`, `AddConnectionPoint` or
 /// `EmbedDefinition` of an ID the document already has.
 #[derive(Debug, Default)]
 struct Scope {
-    terminals: BTreeSet<TerminalId>,
+    terminals: BTreeSet<ConnectionPointId>,
     routes: BTreeSet<RouteId>,
 }
 
@@ -172,13 +172,13 @@ impl Scope {
                 }
                 // New objects; a definition the document lacks cannot be shown by anything in it.
                 Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
-                Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
+                Op::AddConnectionPoint { id, .. } if !doc.terminals.contains_key(id) => {}
                 Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
                 _ => return Scope::everything(doc),
             }
         }
         for c in devices {
-            s.terminals.extend(doc.terminals_of(c).map(|(t, _)| t));
+            s.terminals.extend(doc.connection_points_of(c).map(|(t, _)| t));
         }
         s
     }
@@ -191,7 +191,7 @@ impl Scope {
 /// What [`movement`] needs from the document before the ops: positions of the scope's connection
 /// points and the end points of the scope's routes.
 struct Earlier {
-    positions: BTreeMap<TerminalId, Option<Pt>>,
+    positions: BTreeMap<ConnectionPointId, Option<Pt>>,
     /// A route's first and last point, `None` when there was no such route.
     routes: BTreeMap<RouteId, Option<[Pt; 2]>>,
 }
@@ -201,7 +201,7 @@ pub(crate) const ROUTE_SHAPE: &str = "a wire's line stays one open line; draw a 
 
 /// What a route end at `at` lands on now (design 072 §4.3): the connection point `found` there,
 /// else the interior of another route on `page` (a T), else nothing.
-pub(crate) fn landing(doc: &Document, page: PageId, r: RouteId, at: Pt, found: Option<TerminalId>) -> RouteEnd {
+pub(crate) fn landing(doc: &Document, page: PageId, r: RouteId, at: Pt, found: Option<ConnectionPointId>) -> RouteEnd {
     if let Some(t) = found {
         return RouteEnd::Point(t);
     }
@@ -309,7 +309,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // Device cross-references (brief 025) too.
     let drawn = |map: &HandleMap, h: Handle| {
         matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k))
-            || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)))
+            || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::DeviceReference(_) | Mapped::Tee(_)))
     };
     // Device tag texts and terminal labels (brief 018) are left out the same way when changed or
     // copied with other objects; erasing one erases its symbol (below).
@@ -353,7 +353,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         let tags_only = skipped.iter().all(|h| tag_text(cx.map, *h) || copied_source(h, &tag_text));
         let label = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Label(_)));
         let labels_only = skipped.iter().all(|h| label(cx.map, *h) || copied_source(h, &label));
-        let xref = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Xref(_)));
+        let xref = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::DeviceReference(_)));
         let xrefs_only = skipped.iter().all(|h| xref(cx.map, *h) || copied_source(h, &xref));
         let link = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Link(..)));
         if skipped.iter().all(|h| link(cx.map, *h) || copied_source(h, &link)) {
@@ -401,10 +401,10 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 counts[2] += 1;
             }
             // Left out (above); drawn again from the document.
-            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::DeviceReference(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
             Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
-            Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
+            Some(m @ Mapped::DeviceReference(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(rid)) => erased_refs.push(rid),
@@ -485,10 +485,10 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                     counts[1] += 1;
                 }
             }
-            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::DeviceReference(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
             Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
-            Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
+            Some(m @ Mapped::DeviceReference(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => {}
@@ -605,7 +605,7 @@ pub(crate) fn route_edit(doc: &Document, id: ItemId, item: &Item) -> Result<Opti
 /// A cable reference's named points follow its point (design 072 §4.4, F4): when item `id` is a
 /// reference's point moved from `old` to `item`, that reference and its connection points moved
 /// by the same distance (as the document has them, so a moved marker of one of them agrees).
-pub(crate) fn reference_points_follow(doc: &Document, id: ItemId, old: &Item, item: &Item) -> Option<(RepresentationId, BTreeMap<TerminalId, Pt>)> {
+pub(crate) fn reference_points_follow(doc: &Document, id: ItemId, old: &Item, item: &Item) -> Option<(RepresentationId, BTreeMap<ConnectionPointId, Pt>)> {
     let (rid, rep) = doc.representation_of_item(id)?;
     if !matches!(rep.subject, Subject::Cable(_)) || rep.connection_points.is_empty() {
         return None;
@@ -681,13 +681,13 @@ fn copy_batch(
     }
     let (Some(sdoc), Some(smap)) = (src_doc, src_map) else { return Ok(()) };
     let mut consumed: BTreeSet<Handle> = BTreeSet::new();
-    let mut term_map: BTreeMap<TerminalId, TerminalId> = BTreeMap::new();
+    let mut term_map: BTreeMap<ConnectionPointId, ConnectionPointId> = BTreeMap::new();
 
     // Whole component representations: independent copies.
     for (rid, r) in sdoc.representations.iter().filter(|(_, r)| r.page == cx.page) {
         let Subject::Device(src_comp) = r.subject else { continue };
         let item_handles: Vec<Handle> = r.items.iter().filter_map(|i| smap.item(*i)).collect();
-        let marker_handles: Vec<(TerminalId, Handle)> =
+        let marker_handles: Vec<(ConnectionPointId, Handle)> =
             r.connection_points.keys().filter_map(|tm| smap.marker(*rid, *tm).map(|h| (*tm, h))).collect();
         let all_copied = item_handles.len() == r.items.len()
             // A symbol's connection points are in its definition's frame: it has no markers.
@@ -711,10 +711,10 @@ fn copy_batch(
             comp = comp.with_tag(tag.as_deref());
         }
         t.ops.push(Op::CreateDevice { id: new_comp, device: Device { ..comp } });
-        for (src_t, term) in sdoc.terminals_of(src_comp) {
-            let nt: TerminalId = cx.ids.fresh();
+        for (src_t, term) in sdoc.connection_points_of(src_comp) {
+            let nt: ConnectionPointId = cx.ids.fresh();
             term_map.insert(src_t, nt);
-            t.ops.push(Op::AddTerminal { id: nt, terminal: Terminal { owner: new_comp.into(), ..term.clone() } });
+            t.ops.push(Op::AddConnectionPoint { id: nt, terminal: Terminal { owner: new_comp.into(), ..term.clone() } });
         }
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();
@@ -851,7 +851,7 @@ fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(RouteId, End)]
     let doc = cx.ledger.document();
     let scope = Scope::of(doc, page, &t.ops);
     let earlier = Earlier {
-        positions: scope.terminals.iter().map(|term| (*term, terminal_position(doc, page, *term))).collect(),
+        positions: scope.terminals.iter().map(|term| (*term, connection_point_position(doc, page, *term))).collect(),
         routes: scope.routes.iter().map(|r| (*r, doc.routes.get(r).and_then(Route::end_points))).collect(),
     };
     // After the ops, on the live document, rolled back afterwards.
@@ -906,7 +906,7 @@ fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &E
         candidates.extend(proposed.tees_of(*r));
     }
     let mut shown = ShownOnce::new(proposed, page);
-    let mut found = |at: Pt| shown.terminal_at(at, tol);
+    let mut found = |at: Pt| shown.connection_point_at(at, tol);
     let mut out: Moves = Default::default();
     for r in &candidates {
         let Some(route) = proposed.routes.get(r).filter(|x| x.page == page) else { continue };
@@ -916,8 +916,8 @@ fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &E
             None => route.end_points(),
         };
         // A connection point outside the scope is where it was.
-        let position = |term: TerminalId| match earlier.positions.get(&term) {
-            Some(op) => (*op, terminal_position(proposed, page, term)),
+        let position = |term: ConnectionPointId| match earlier.positions.get(&term) {
+            Some(op) => (*op, connection_point_position(proposed, page, term)),
             None => (None, None),
         };
         let after = route_moved(proposed, page, *r, route, old_ends, fresh_ends, position, &mut found);
@@ -937,7 +937,7 @@ fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &E
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn route_moved(
     proposed: &Document, page: PageId, r: RouteId, route: &Route, old_ends: Option<[Pt; 2]>, fresh_ends: &[(RouteId, End)],
-    position: impl Fn(TerminalId) -> (Option<Pt>, Option<Pt>), found: &mut dyn FnMut(Pt) -> Option<TerminalId>,
+    position: impl Fn(ConnectionPointId) -> (Option<Pt>, Option<Pt>), found: &mut dyn FnMut(Pt) -> Option<ConnectionPointId>,
 ) -> Route {
     let eps = 1e-9;
     let mut after = route.clone();

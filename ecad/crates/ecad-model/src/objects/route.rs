@@ -15,7 +15,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::geom::Pt;
-use crate::id::{PageId, RouteId, TerminalId};
+use crate::id::{PageId, RouteId, ConnectionPointId};
 
 /// Most points of one route.
 pub const MAX_POINTS: usize = 4096;
@@ -37,7 +37,7 @@ pub struct Route {
 #[serde(deny_unknown_fields)]
 pub enum RouteEnd {
     /// A connection point.
-    Point(TerminalId),
+    Point(ConnectionPointId),
     /// The middle of another route, at `at` (a T).
     On { route: RouteId, at: Pt },
     /// Nothing: an open end.
@@ -46,7 +46,7 @@ pub enum RouteEnd {
 
 impl RouteEnd {
     /// The connection point it lands on, if it lands on one.
-    pub fn point(self) -> Option<TerminalId> {
+    pub fn point(self) -> Option<ConnectionPointId> {
         match self {
             RouteEnd::Point(t) => Some(t),
             RouteEnd::On { .. } | RouteEnd::Free => None,
@@ -87,7 +87,7 @@ impl Route {
     }
 
     /// The connection points its ends land on.
-    pub fn points_landed(&self) -> impl Iterator<Item = TerminalId> + '_ {
+    pub fn points_landed(&self) -> impl Iterator<Item = ConnectionPointId> + '_ {
         self.ends.iter().filter_map(|e| e.point())
     }
 

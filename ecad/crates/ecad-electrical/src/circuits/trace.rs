@@ -17,7 +17,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, NetKey, Node, Subject, TerminalId};
+use ecad_model::{DeviceId, Document, NetKey, Node, Subject, ConnectionPointId};
 
 use super::RatedSubject;
 use ecad_model::device::ProtectionKind;
@@ -58,7 +58,7 @@ pub fn load_side(kind: ProtectionKind, label: &str) -> bool {
     let even = n.is_some_and(|n| n % 2 == 0 && n > 0);
     match kind {
         ProtectionKind::FuseBank => n.is_some_and(|n| n >= 1),
-        ProtectionKind::Fuse | ProtectionKind::FuseTerminal | ProtectionKind::Mcb => even,
+        ProtectionKind::Fuse | ProtectionKind::FuseTerminalBlock | ProtectionKind::Mcb => even,
         ProtectionKind::Rcbo => label == "N2" || even,
         ProtectionKind::Rcd => false,
     }
@@ -123,11 +123,11 @@ enum Step {
     /// A protective device's load side (with a bank's fuse or a strip's position).
     Found(DeviceId, Option<String>),
     /// Cross to these terminals.
-    Cross(Vec<TerminalId>),
+    Cross(Vec<ConnectionPointId>),
     Stop,
 }
 
-fn step(doc: &Document, t: TerminalId) -> Step {
+fn step(doc: &Document, t: ConnectionPointId) -> Step {
     let Some(term) = doc.terminals.get(&t) else { return Step::Stop };
     let Some(c) = term.device() else { return Step::Stop };
     let label = term.label.clone().unwrap_or_default();
@@ -166,7 +166,7 @@ fn step(doc: &Document, t: TerminalId) -> Step {
     if crossed(doc, c)
         && let Some(other) = pair(&label)
     {
-        return Step::Cross(doc.terminals_of(c).filter(|(_, x)| x.label.as_deref() == Some(other.as_str())).map(|(id, _)| id).collect());
+        return Step::Cross(doc.connection_points_of(c).filter(|(_, x)| x.label.as_deref() == Some(other.as_str())).map(|(id, _)| id).collect());
     }
     Step::Stop
 }
@@ -262,7 +262,7 @@ pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
     let c = doc.components_tagged(&tag).into_iter().next()?;
     if let Some(f) = &fuse {
         let has = crate::terminal_types::positions(doc, c).iter().any(|p| &p.label == f && p.ty.code == "fuse")
-            || doc.terminals_of(c).any(|(_, x)| x.label.as_deref() == Some(f.as_str()))
+            || doc.connection_points_of(c).any(|(_, x)| x.label.as_deref() == Some(f.as_str()))
                 && doc.devices.get(&c).is_some_and(
                     |d| matches!(&d.device_type, ecad_model::DeviceType::Protection(p) if p.kind() == ecad_model::device::ProtectionKind::FuseBank),
                 );

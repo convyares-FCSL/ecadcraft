@@ -18,7 +18,7 @@ use crate::defaults::strip_pages;
 use crate::designations::{self, Aspect, Pending};
 use crate::error::{CmdError, msg};
 use crate::frames::{CUSTOMER, DRAWING_NUMBER, STATUS, TITLE};
-use crate::outputs::kept::Outputs;
+use crate::outputs::kept::ReportModels;
 use crate::page_types::MAX_NUMBER_CHARS;
 use crate::proposals::{self, Mode, Planned};
 use crate::revisions::{self, FIELDS, Revision};
@@ -271,7 +271,7 @@ pub const NUMBER_WORDS: &str = "A page number is 1 to 12 letters, digits or _ (n
 ///
 /// # Errors
 /// In words.
-pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &str, outputs: Option<&Outputs>) -> Result<(), CmdError> {
+pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &str, outputs: Option<&ReportModels>) -> Result<(), CmdError> {
     let n = number.chars().count();
     if !(1..=MAX_NUMBER_CHARS).contains(&n) || !number.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return Err(CmdError::refused(NUMBER_WORDS));
@@ -509,7 +509,7 @@ fn code_with(doc: &Document, pending: &Pending, a: Aspect, key: &str) -> String 
 /// # Errors
 /// No such page, a page number in use, a bad function, location or sheet.
 pub fn page_props(
-    doc: &Document, ids: &mut IdAllocator, page: PageId, change: &PageChange, outputs: Option<&Outputs>,
+    doc: &Document, ids: &mut IdAllocator, page: PageId, change: &PageChange, outputs: Option<&ReportModels>,
 ) -> Result<PropsPlan, CmdError> {
     let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
     let book = Book::of(doc);
@@ -1058,7 +1058,7 @@ pub fn undone_issue(undo: &[Op]) -> Result<String, CmdError> {
 /// The number a new page gets after the page shown as `before` (design 019 §6.1): its leading
 /// digits plus the project's step, skipping numbers in use; with no digits or no page before, its
 /// book position `position`.
-pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&Outputs>) -> String {
+pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&ReportModels>) -> String {
     default_number_from(doc, book, before, position, outputs, None)
 }
 
@@ -1066,7 +1066,7 @@ pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, posit
 /// 054 §4.3) that start when it is free, else the next free after it. Leading zeros keep their
 /// width (`01` gives `01`, `02`), from the start or from the page before.
 pub fn default_number_from(
-    doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&Outputs>, start: Option<&str>,
+    doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&ReportModels>, start: Option<&str>,
 ) -> String {
     // Brief 033: every sheet's number, continuation sheets included, is in use.
     let used: BTreeSet<String> =
@@ -1132,7 +1132,7 @@ pub fn new_page_at(
 
 /// The number a new page placed by [`new_page_at`] gets (design 054 §4.3): the first page of a
 /// folder with a start number takes it; every other page the next after the page before it.
-pub fn next_number(doc: &Document, book: &Book, folder: Option<FolderId>, place: (Option<PageId>, usize), outputs: Option<&Outputs>) -> String {
+pub fn next_number(doc: &Document, book: &Book, folder: Option<FolderId>, place: (Option<PageId>, usize), outputs: Option<&ReportModels>) -> String {
     let (before, position) = place;
     let first = before.is_none_or(|b| book::folder_of(doc, b).filter(|f| doc.folders.contains_key(f)) != folder);
     let start = folder.filter(|_| first).and_then(|f| crate::page_types::start_of(doc, f));
@@ -1140,7 +1140,7 @@ pub fn next_number(doc: &Document, book: &Book, folder: Option<FolderId>, place:
 }
 
 /// The page's properties as `pageprops` reports them.
-pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&Outputs>) -> Value {
+pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&ReportModels>) -> Value {
     let pg = doc.pages.get(&page);
     use crate::designations::{Aspect, default_key, page_key};
     let prop = |k: &str| Aspect::of_property(k).and_then(|a| pg.and_then(|x| page_key(x, a)));

@@ -15,7 +15,7 @@
 //! | --- | --- |
 //! | `CreateWire` / `DeleteWire` (the commit's wire rewrite included) | that conductor; the connection points at its ends; their nets (before and after) and the nets sharing their numbers |
 //! | `AddRoute` / `RemoveRoute` / `ModifyRoute` | that route (open end, loose route, looks connected, drawn away); free route ends near its old and new path; the connection points it lands on before and after |
-//! | `AddTerminal` / `RemoveTerminal` | that point and its net |
+//! | `AddConnectionPoint` / `RemoveConnectionPoint` | that point and its net |
 //! | `CreateDevice` / `DeleteDevice` / `SetProperty` component | that component (its contact count against its part's `contacts`, brief 025); its points' nets; continuations with its name (partners) |
 //! | `SetProperty` conductor | that conductor's net, and the nets sharing its old and new number |
 //! | `AddItem` / `ModifyItem` / `RemoveItem` / representation ops of a route | that route |
@@ -35,7 +35,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ecad_model::connectivity::name_key;
 use ecad_model::effect::Effect;
 use ecad_model::wiring;
-use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
 use crate::text_style::fonts::TextMetrics;
@@ -186,9 +186,9 @@ check_kinds! {
     /// set (a rating note does not count).
     NoRating = "no-rating", Warning, "Device with no rating";
     /// Brief 028 (design 028 §8): a strip with more terminals drawn than it offers.
-    TooManyTerminals = "too-many-terminals", Warning, "More terminals than the strip offers";
+    TooManyTerminalBlocks = "too-many-terminals", Warning, "More terminals than the strip offers";
     /// Two terminals of one strip with one label.
-    TerminalTwice = "terminal-twice", Error, "Terminal drawn twice";
+    TerminalBlockTwice = "terminal-twice", Error, "Terminal drawn twice";
     /// A cable with more members than cores offered.
     TooManyCores = "too-many-cores", Warning, "More cores used than the cable offers";
     /// Two members of one cable with one core label.
@@ -202,11 +202,11 @@ check_kinds! {
     /// Placed strip accessories without a part number (one count row).
     NoAccessoryPart = "no-accessory-part", Info, "Strip accessories without a part number", count;
     /// A link spanning a partition.
-    LinkAcrossPartition = "link-across-partition", Warning, "Link crosses a partition";
+    JumperBarAcrossPartition = "link-across-partition", Warning, "Link crosses a partition";
     /// A link naming positions the strip does not have.
-    LinkOrphan = "link-orphan", Warning, "Link names positions the strip lacks";
+    JumperBarOrphan = "link-orphan", Warning, "Link names positions the strip lacks";
     /// A `link.<n>` key on a device that is not a terminal strip (review of PR #57, 4).
-    LinkOnNonStrip = "link-on-non-strip", Warning, "Link on a device that is not a strip";
+    JumperBarOnNonStrip = "link-on-non-strip", Warning, "Link on a device that is not a strip";
     /// Brief 033: a contact table the user placed overlaps the title block.
     TableOverTitle = "table-over-title", Warning, "Contact table over the title block";
     /// Brief 033 (design 033 §5.3): a generated page grew onto another page's number.
@@ -374,7 +374,7 @@ pub enum Object {
     Wire(WireId),
     /// A drawn route (design 072 §4.3).
     Route(RouteId),
-    Terminal(TerminalId),
+    Terminal(ConnectionPointId),
     Device(DeviceId),
     /// A drawing aid: a location box (design 072 §6.2).
     Aid(ecad_model::AidId),
@@ -417,21 +417,21 @@ pub enum Fix {
     AccessoryOrphan(DeviceId, u16),
     /// Brief 030: link `n` crossing the partition after position index `at`: **Split link at**
     /// (`jumper split_at`) or **Remove partition** (`accessory remove [partition]`).
-    LinkAcrossPartition(DeviceId, u16, u16),
+    JumperBarAcrossPartition(DeviceId, u16, u16),
     /// Brief 030: link `n` names missing positions: **Drop missing positions** or **Delete link**.
-    LinkOrphan(DeviceId, u16),
+    JumperBarOrphan(DeviceId, u16),
     /// Brief 030 (review of PR #57, 4): **Remove** a link key from a device that is not a strip.
-    LinkOnNonStrip(DeviceId),
+    JumperBarOnNonStrip(DeviceId),
     /// Brief 033 (design 033 §4.1): **Move table…** starts `mirrormove` for the device.
     MoveTable(DeviceId),
     /// Brief 033 (design 033 §5.3): **Renumber…** opens this page's number field.
     RenumberPage(PageId),
     /// Brief 036: **Move to next free** (the level drawn twice, to the next position of its type
     /// with that level free; `termlabel {terminal, move_to: "next"}`).
-    MoveToNextFree(TerminalId),
+    MoveToNextFree(ConnectionPointId),
     /// Brief 036: **Move to new position** (the other type's levels; `termlabel {terminal,
     /// move_to: "new"}`).
-    MoveToNewPosition(TerminalId),
+    MoveToNewPosition(ConnectionPointId),
     /// Brief 036: link `n` names missing levels: **Drop missing levels** or **Delete link**.
     LevelMissing(DeviceId, u16),
     /// Brief 036: **Show** the fuse terminal devices, each with **Make strip position**
@@ -441,7 +441,7 @@ pub enum Fix {
     /// (`crate::plc::Plc::fix_commands`).
     Plc(DeviceId, crate::plc::PlcFix),
     /// Brief 044: **Move to next free** (`pinlabel {terminal, to: "next"}`).
-    ConnectorNextPin(TerminalId),
+    ConnectorNextPin(ConnectionPointId),
     /// Brief 044: **Set pins to n** (`setprop pins`).
     SetPins(DeviceId, u32),
     /// Brief 044: **Place mates**: Place ▸ Connector on this connector, pin by pin, on the side
@@ -611,7 +611,7 @@ pub enum Key {
     Wire(WireId),
     /// A drawn route's rows (open end, loose, looks connected, drawn away).
     Route(RouteId),
-    Terminal(TerminalId),
+    Terminal(ConnectionPointId),
     Device(DeviceId),
     /// A continuation's rows (design 072 §6.2: no partner).
     Aid(ecad_model::AidId),
@@ -864,12 +864,12 @@ fn route_words(doc: &Document, r: RouteId) -> String {
 }
 
 /// Where a connection point is shown first (book order).
-fn terminal_place(doc: &Document, t: TerminalId) -> (Option<PageId>, Option<Pt>) {
+fn terminal_place(doc: &Document, t: ConnectionPointId) -> (Option<PageId>, Option<Pt>) {
     // A device's point or a drawing aid's (a continuation's, design 072 §6.2).
     let Some(owner) = doc.terminals.get(&t).map(|x| x.owner.subject()) else { return (None, None) };
     for page in &doc.page_order {
         let shown = doc.representations_of(owner).any(|(_, r)| r.page == *page);
-        if shown && let Some(at) = ecad_model::derive::terminal_position(doc, *page, t) {
+        if shown && let Some(at) = ecad_model::derive::connection_point_position(doc, *page, t) {
             return (Some(*page), Some(at));
         }
     }
@@ -1023,7 +1023,7 @@ pub fn route_checks(doc: &Document, r: RouteId, grid: &Grid, tol: f64) -> Vec<Ch
     // Drawn away: an end on a connection point that is not where the point is on this page.
     for (at, e) in [v.first(), v.last()].into_iter().zip(route.ends) {
         let (Some(t), Some(at)) = (e.point(), at) else { continue };
-        if let Some(tp) = ecad_model::derive::terminal_position(doc, page, t)
+        if let Some(tp) = ecad_model::derive::connection_point_position(doc, page, t)
             && !tp.near(*at, tol.max(1e-6))
         {
             out.push(Check { kind: Kind::DrawnAway, page: Some(page), at: Some(*at), object: Object::Route(r), which: which.clone(), fix: None });
@@ -1061,12 +1061,12 @@ pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
 /// Whether connection point `t` is one its symbol marks quiet (brief 034, design 034 §11): a
 /// spare connector pin, fuse output or card supply point may stay unwired without an
 /// `Unconnected` check. Every other check on it still runs.
-fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
+fn is_quiet_point(doc: &Document, t: ConnectionPointId) -> bool {
     let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return false };
     doc.representations_of(Subject::Device(c)).any(|(_, r)| {
         let Some(s) = crate::devices::rep_starter(doc, r) else { return false };
         let Some((def, _)) = crate::devices::rep_definition(doc, r) else { return false };
-        crate::devices::shown_terminals(doc, c, r)
+        crate::devices::shown_connection_points(doc, c, r)
             .iter()
             .filter(|(x, _)| *x == t)
             .filter_map(|(_, at)| def.terminals.iter().find(|td| td.at.near(*at, 1e-9)))
@@ -1076,7 +1076,7 @@ fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
 
 /// The checks of connection point `t`: more wires than it accepts (design 072 §4.4: `-X1:3 takes
 /// 2 conductors; 3 are connected`); a device point with nothing attached.
-pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
+pub fn connection_point_checks(doc: &Document, t: ConnectionPointId) -> Vec<Check> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
     let mut out = Vec::new();
     let (wired, takes) = (doc.ends_at(t).len(), ecad_model::wire_order::accepts(doc, t));
@@ -1090,7 +1090,7 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     }
     // Bridged inside its device to an attached point: connected.
     let conn = doc.connectivity();
-    if conn.net_of_terminal(t).and_then(|id| conn.net(id)).is_some_and(|n| !n.wires.is_empty()) {
+    if conn.net_of_connection_point(t).and_then(|id| conn.net(id)).is_some_and(|n| !n.wires.is_empty()) {
         return out;
     }
     if is_quiet_point(doc, t) {
@@ -1113,7 +1113,7 @@ pub fn aid_checks(doc: &Document, a: ecad_model::AidId) -> Vec<Check> {
     if partners >= 2 {
         return Vec::new();
     }
-    let t = doc.terminals_of(a).next().map(|(t, _)| t);
+    let t = doc.connection_points_of(a).next().map(|(t, _)| t);
     let (page, at) = t.map_or((None, None), |t| terminal_place(doc, t));
     let object = t.map_or(Object::None, Object::Terminal);
     vec![Check { kind: Kind::LonelyContinuation, page, at, object, which: crate::continuations::display_name(doc, a), fix: None }]
@@ -1434,8 +1434,8 @@ fn wire_core_stale(doc: &Document, w: WireId) -> Option<&'static str> {
 }
 
 /// The connection points `route` lands on, and those of each route it ends on (a T, one level).
-fn route_points(doc: &Document, route: &ecad_model::Route) -> Vec<TerminalId> {
-    let mut out: Vec<TerminalId> = route.points_landed().collect();
+fn route_points(doc: &Document, route: &ecad_model::Route) -> Vec<ConnectionPointId> {
+    let mut out: Vec<ConnectionPointId> = route.points_landed().collect();
     for on in route.ends.iter().filter_map(|e| e.route()) {
         if let Some(r) = doc.routes.get(&on) {
             out.extend(r.points_landed());
@@ -1456,7 +1456,7 @@ pub struct Scope {
     numbers: BTreeSet<String>,
     wires: BTreeSet<WireId>,
     routes: BTreeSet<RouteId>,
-    terminals: BTreeSet<TerminalId>,
+    terminals: BTreeSet<ConnectionPointId>,
     devices: BTreeSet<DeviceId>,
     /// Aids to re-check (design 072 §6.2): continuations made, removed or renamed, and their
     /// partners by name; boxes made, removed or changed.
@@ -1528,7 +1528,7 @@ impl Scope {
             // Brief 048: another definition may bridge other points.
             Effect::DeviceDefinition { id, .. } => {
                 self.devices.insert(*id);
-                for (t, _) in doc.terminals_of(*id) {
+                for (t, _) in doc.connection_points_of(*id) {
                     node(self, Node::Terminal(t));
                 }
             }
@@ -1537,7 +1537,7 @@ impl Scope {
                     self.tag_holders(doc, device.tag());
                 }
                 self.component(doc, *id);
-                for (t, _) in doc.terminals_of(*id) {
+                for (t, _) in doc.connection_points_of(*id) {
                     node(self, Node::Terminal(t));
                 }
                 // Design 072 §6.3: a device's location and function are fields, where the cables
@@ -1545,7 +1545,7 @@ impl Scope {
                 if let (Some(before), Some(after)) = (before, after)
                     && (before.location != after.location || before.function != after.function)
                 {
-                    for (t, _) in doc.terminals_of(*id) {
+                    for (t, _) in doc.connection_points_of(*id) {
                         for (w, _) in doc.ends_at(t) {
                             self.cables.extend(doc.cables_of(w));
                         }
@@ -1560,14 +1560,14 @@ impl Scope {
                 // Brief 059 (design 059 §8): a device's location or function is where the
                 // cables at its points are drawn (`cable-end-off-plan`).
                 if crate::designations::Aspect::of_property(key).is_some() {
-                    for (t, _) in doc.terminals_of(*c) {
+                    for (t, _) in doc.connection_points_of(*c) {
                         for (w, _) in doc.ends_at(t) {
                             self.cables.extend(doc.cables_of(w));
                         }
                     }
                 }
                 self.component(doc, *c);
-                for (t, _) in doc.terminals_of(*c) {
+                for (t, _) in doc.connection_points_of(*c) {
                     node(self, Node::Terminal(t));
                 }
             }
@@ -1614,7 +1614,7 @@ impl Scope {
             Effect::Definition { id, .. } => {
                 for c in doc.components_using(*id) {
                     self.devices.insert(c);
-                    for (t, _) in doc.terminals_of(c) {
+                    for (t, _) in doc.connection_points_of(c) {
                         self.terminals.insert(t);
                         node(self, Node::Terminal(t));
                     }
@@ -1683,14 +1683,14 @@ impl Scope {
                 }
                 // Made or deleted: its points.
                 if before.is_none() || after.is_none() {
-                    for (t, _) in doc.terminals_of(*id) {
+                    for (t, _) in doc.connection_points_of(*id) {
                         self.terminals.insert(t);
                         node(self, Node::Terminal(t));
                     }
                 }
             }
             // Design 072 §6.4: a loose part's checks (an item with no part number) are the BOM's,
-            // kept by the outputs model (`Outputs::bom_checks`); no drawing check reads one.
+            // kept by the outputs model (`ReportModels::bom_checks`); no drawing check reads one.
             Effect::LoosePart { .. } => {}
             // Brief 052 (design 052 §6): the project's default context for every device (rare);
             // the list's codes for the objects storing that entry, and the duplicate rows.
@@ -1766,7 +1766,7 @@ impl Scope {
         }
     }
 
-    fn component_of(&mut self, doc: &Document, t: TerminalId) {
+    fn component_of(&mut self, doc: &Document, t: ConnectionPointId) {
         if let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) {
             self.devices.insert(c);
         }
@@ -1775,7 +1775,7 @@ impl Scope {
     /// A component and its points.
     fn component(&mut self, doc: &Document, c: DeviceId) {
         self.devices.insert(c);
-        for (t, _) in doc.terminals_of(c) {
+        for (t, _) in doc.connection_points_of(c) {
             self.terminals.insert(t);
         }
     }
@@ -1806,7 +1806,7 @@ impl Scope {
             Subject::Device(c) => {
                 // Its points moved: the routes landing on them may now be drawn away.
                 self.component(doc, c);
-                for (t, _) in doc.terminals_of(c) {
+                for (t, _) in doc.connection_points_of(c) {
                     self.routes.extend(doc.routes_at(t));
                 }
             }
@@ -1829,7 +1829,7 @@ pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
 
 /// Every check of the project with the report models already kept, measuring text with `m`
 /// (ecad-engine's `crate::checks::all` and `crate::checks::all_with` pass CADCraft's fonts).
-pub fn all_measured(doc: &Document, tol: f64, outputs: &crate::outputs::kept::Outputs, m: &dyn TextMetrics) -> Vec<Check> {
+pub fn all_measured(doc: &Document, tol: f64, outputs: &crate::outputs::kept::ReportModels, m: &dyn TextMetrics) -> Vec<Check> {
     let mut rows: Vec<Check> = kept::Checks::build_with(doc, tol, m).rows().cloned().collect();
     rows.extend(outputs.checks());
     sort(doc, rows)

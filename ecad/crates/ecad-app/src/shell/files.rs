@@ -376,7 +376,7 @@ impl App {
     }
 
     /// The project file's path without `.ecad`, or its name, for default output names.
-    pub(crate) fn output_stem(&mut self) -> String {
+    pub(crate) fn report_stem(&mut self) -> String {
         let Some(p) = self.project.clone() else { return "project".into() };
         p.read(&mut self.cad.session, |p, _| match &p.path {
             Some(path) => std::path::Path::new(path).with_extension("").to_string_lossy().into_owned(),
@@ -386,7 +386,7 @@ impl App {
     }
 
     /// A typed output path with `~` expanded.
-    pub(crate) fn output_path(&self, path: &str) -> Result<String, String> {
+    pub(crate) fn report_path(&self, path: &str) -> Result<String, String> {
         ecad_engine::expand_home(path.trim(), self.home.as_deref()).map(|p| p.to_string_lossy().into_owned()).map_err(|e| e.to_string())
     }
 }

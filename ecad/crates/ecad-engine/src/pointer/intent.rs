@@ -10,7 +10,7 @@
 
 use cadcraft_engine::Session;
 use cadcraft_engine::geom::Vec2;
-use ecad_model::{Document, PageId, Subject, TerminalId};
+use ecad_model::{Document, PageId, Subject, ConnectionPointId};
 
 use super::{capture, pick, pixel, read, route_ends};
 use crate::project::{Mapped, Project};
@@ -58,8 +58,8 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
 }
 
 /// `A1 of -K01` (a device's connection point), or the terminal's name (`-X01:3`).
-fn point_words(doc: &Document, t: TerminalId) -> String {
-    let name = super::terminal_name(doc, t);
+fn point_words(doc: &Document, t: ConnectionPointId) -> String {
+    let name = super::connection_point_name(doc, t);
     // Brief 044: a connector pin is named by its half (`-X10.S:3`).
     if let Some(n) = crate::connectors::pin_name(doc, t) {
         return n;

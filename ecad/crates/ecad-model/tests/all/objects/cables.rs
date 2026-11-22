@@ -6,7 +6,7 @@
 
 use ecad_model::style::cable::Shield;
 use ecad_model::{
-    Author, Cable, CableId, ConductorId, Core, CoreLabel, CorePosition, IdAllocator, Ledger, NetId, ObjectRef, Op, Purpose, Terminal, TerminalId,
+    Author, Cable, CableId, ConductorId, Core, CoreLabel, CorePosition, IdAllocator, Ledger, NetId, ObjectRef, Op, Purpose, Terminal, ConnectionPointId,
     Wire, WireId,
 };
 
@@ -15,11 +15,11 @@ fn cable_on_a_wire() -> (Ledger, CableId, WireId, WireId) {
     let mut l = Ledger::new(0x72dc);
     let mut ids = IdAllocator::seeded(0x72dc);
     let d: ecad_model::DeviceId = ids.fresh();
-    let t: Vec<TerminalId> = (0..4).map(|_| ids.fresh()).collect();
+    let t: Vec<ConnectionPointId> = (0..4).map(|_| ids.fresh()).collect();
     let (w1, w2, k): (WireId, WireId, CableId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let mut ops = vec![Op::CreateDevice { id: d, device: ecad_model::Device::default() }];
     for id in &t {
-        ops.push(Op::AddTerminal { id: *id, terminal: Terminal { owner: d.into(), label: None, key: None, accepts: Default::default() } });
+        ops.push(Op::AddConnectionPoint { id: *id, terminal: Terminal { owner: d.into(), label: None, key: None, accepts: Default::default() } });
     }
     ops.push(Op::CreateWire { id: w1, wire: Wire::new(NetId(901), ConductorId(902), t[0], t[1]) });
     ops.push(Op::CreateWire { id: w2, wire: Wire::new(NetId(903), ConductorId(904), t[2], t[3]) });

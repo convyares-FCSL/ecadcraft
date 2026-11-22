@@ -23,7 +23,7 @@ use cadcraft_engine::doc::{Drawing, Entity, EntityKind, Handle};
 use ecad_model::{CableId, Document, End, Form, ItemId, ItemKind, PageId, Pt, Subject};
 
 use crate::convert::{ECAD_PREFIX, block_name, item_from, kind_for_primitive, marker_position};
-use crate::outputs::kept::Outputs;
+use crate::outputs::kept::ReportModels;
 use crate::project::{HandleMap, Mapped, part_entity};
 
 /// What [`verify_page`] compared and what disagreed.
@@ -89,7 +89,7 @@ fn same_points(a: Vec<Pt>, b: Vec<Pt>) -> bool {
 /// Check that `drawing` (with `map`) shows `page` of `doc`, without relying on handle numbers.
 /// Pages drawn from the report models are expected with `outputs`
 /// ([`crate::generated::parts_of`]).
-pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, outputs: Option<&Outputs>) -> Verification {
+pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, outputs: Option<&ReportModels>) -> Verification {
     verify_page_with(doc, page, drawing, map, &BTreeSet::new(), 0.0, outputs)
 }
 
@@ -97,7 +97,7 @@ pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &Handle
 /// fan can be drawn on the page must show exactly their fan ([`crate::views::fan_on_page`] with
 /// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
 pub fn verify_page_with(
-    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>,
+    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>,
 ) -> Verification {
     verify_page_shown(doc, page, drawing, map, fan, tol, false, outputs)
 }
@@ -106,7 +106,7 @@ pub fn verify_page_with(
 /// with it on, the hidden derived texts are expected too, dimmed.
 #[allow(clippy::too_many_arguments)]
 pub fn verify_page_shown(
-    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, outputs: Option<&Outputs>,
+    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, outputs: Option<&ReportModels>,
 ) -> Verification {
     verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false, outputs)
 }
@@ -116,7 +116,7 @@ pub fn verify_page_shown(
 #[allow(clippy::too_many_arguments)]
 pub fn verify_page_pending(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
-    outputs: Option<&Outputs>,
+    outputs: Option<&ReportModels>,
 ) -> Verification {
     let mut v = Verification::default();
     let fans = crate::views::drawings_on_page(doc, page, fan, tol);
@@ -144,14 +144,14 @@ pub fn verify_page_pending(
     }
     // Device cross-references (brief 025), derived the same way.
     for part in crate::xref::parts_on_page(doc, page) {
-        let mut e = crate::project::xref_entity(&look, &part, Handle(0));
+        let mut e = crate::project::device_reference_entity(&look, &part, Handle(0));
         // Brief 049: a continuation's other-end text in Ink 2, as the page draws it.
         crate::continuations::colour(doc, &part, &mut e);
         *fan_expected.entry(computed_key(&e)).or_default() += 1;
     }
     // PLC card frames (brief 051), derived the same way.
     for part in crate::plc::look::parts_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::project::xref_entity(&look, &part, Handle(0)))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::project::device_reference_entity(&look, &part, Handle(0)))).or_default() += 1;
     }
     // Link lines (brief 030), derived the same way.
     for part in crate::link_lines::parts_on_page(doc, page) {
@@ -251,7 +251,7 @@ pub fn verify_page_pending(
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
-        if let Some(Mapped::Xref(r)) = map.get(e.handle) {
+        if let Some(Mapped::DeviceReference(r)) = map.get(e.handle) {
             if !doc.representations.contains_key(&r) {
                 problems.push(format!("a cross-reference is drawn for {r}, which does not exist"));
             }
@@ -333,7 +333,7 @@ pub fn verify_page_pending(
                     continue;
                 }
                 let want: Vec<Pt> =
-                    ecad_model::derive::terminal_positions(doc, page).into_iter().filter(|(_, rep, _)| rep == rid).map(|(_, _, p)| p).collect();
+                    ecad_model::derive::connection_point_positions(doc, page).into_iter().filter(|(_, rep, _)| rep == rid).map(|(_, _, p)| p).collect();
                 let got = block_terminals(drawing, e);
                 v.terminals += want.len();
                 // The block shows every terminal of the definition; the component may use a subset.
@@ -396,9 +396,9 @@ pub fn verify_page_pending(
 
     // 6. Relationships shown on the page: a route end on a connection point drawn here ends on a
     //    terminal position read from the drawing (markers and symbol blocks), not from the document.
-    let mut drawn_terminals: Vec<Pt> = entities.values().filter_map(|e| marker_position(e)).collect();
-    drawn_terminals.extend(entities.values().flat_map(|e| block_terminals(drawing, e)));
-    let shown = ecad_model::derive::terminal_positions(doc, page);
+    let mut drawn_connection_points: Vec<Pt> = entities.values().filter_map(|e| marker_position(e)).collect();
+    drawn_connection_points.extend(entities.values().flat_map(|e| block_terminals(drawing, e)));
+    let shown = ecad_model::derive::connection_point_positions(doc, page);
     for rid in doc.routes_on(page) {
         let Some(c) = doc.routes.get(&rid) else { continue };
         let Some((item, _)) = doc.representations_of(ecad_model::Subject::Route(rid)).find_map(|(_, r)| r.items.first().map(|i| (*i, r))) else {
@@ -419,7 +419,7 @@ pub fn verify_page_pending(
             }
             v.attached_ends += 1;
             let at = if end == End::A { path.0 } else { path.1 };
-            if !drawn_terminals.iter().any(|p| near(*p, at)) {
+            if !drawn_connection_points.iter().any(|p| near(*p, at)) {
                 problems.push(format!("route {rid} end {end:?} is on a connection point but not drawn on it"));
             }
         }

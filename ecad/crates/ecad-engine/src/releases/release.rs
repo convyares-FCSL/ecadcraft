@@ -39,7 +39,7 @@ use crate::access::Pages;
 use crate::checks::{self, Check};
 use crate::cmd::opt_typed;
 use crate::outputs;
-use crate::outputs::kept::Outputs;
+use crate::outputs::kept::ReportModels;
 use crate::printbook::{self, Options};
 use crate::project::Project;
 use crate::revisions;
@@ -77,7 +77,7 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
     p.checks();
     let doc = p.ledger.document();
     let mut rows: Vec<Check> = p.kept_checks().map(|c| c.rows().cloned().collect()).unwrap_or_default();
-    rows.extend(p.kept_outputs().map(Outputs::checks).unwrap_or_default());
+    rows.extend(p.kept_reports().map(ReportModels::checks).unwrap_or_default());
     checks::sort(doc, rows)
 }
 
@@ -413,7 +413,7 @@ pub struct Staged {
 /// The inputs of a build: the state as issued, its report models, its check rows.
 pub struct Build<'a> {
     pub doc: &'a Document,
-    pub outputs: &'a Outputs,
+    pub outputs: &'a ReportModels,
     pub rows: &'a [Check],
     pub fan: &'a BTreeSet<ecad_model::CableId>,
     pub tol: f64,
@@ -946,7 +946,7 @@ pub fn prerelease(p: &mut Project, params: &Value) -> Result<Value, String> {
 pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
     use std::hash::{Hash, Hasher};
     let checks = p.kept_checks()?;
-    let outputs = p.kept_outputs()?;
+    let outputs = p.kept_reports()?;
     let doc = p.ledger.document();
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (checks.changed, outputs.checks_key(), accept).hash(&mut h);
@@ -1083,7 +1083,7 @@ pub(crate) fn release_pending(
     let staged = {
         let fail = injected(p, Step::Partial);
         p.outputs();
-        let kept = p.kept_outputs().ok_or("the report models could not be built")?;
+        let kept = p.kept_reports().ok_or("the report models could not be built")?;
         let outputs = finalised.as_ref().map_or(kept, |(o, _)| o.outputs());
         let b =
             Build { doc: &issued_doc, outputs, rows: &rows, fan: &p.views, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen };
@@ -1139,7 +1139,7 @@ pub(crate) fn release_pending(
     let iss = Issued { branch: crate::history::current_name(p), transaction: tx, point: plan.head, chain };
     let doc = p.ledger.document().clone();
     let row = revisions::list(&doc).into_iter().find(|r| r.n == plan.n).unwrap_or_default();
-    let outputs = p.kept_outputs().cloned().unwrap_or_default();
+    let outputs = p.kept_reports().cloned().unwrap_or_default();
     let fan = p.views.clone();
     let b =
         Build { doc: &doc, outputs: &outputs, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen: None };

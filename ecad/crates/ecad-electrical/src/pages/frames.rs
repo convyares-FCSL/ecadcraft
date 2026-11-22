@@ -89,7 +89,7 @@ pub struct FrameInput {
     /// The frame's text looks, from lane T's getter (design 033 §1.2).
     pub text: FrameText,
     /// Brief 050a: the page's frame style (line weights, colour, grid labels).
-    pub look: crate::styles::frame::FrameLook,
+    pub look: crate::styles::frame::FrameDraw,
     /// Brief 055: the block the frame draws (its own, or the house block for this sheet).
     pub block: crate::title_block::Block,
     /// Brief 055: the project properties the block's fields read, by key (empty when unset): the
@@ -102,7 +102,7 @@ pub struct FrameInput {
 /// A text kind's look where ECAD draws in paper millimetres (frame, generated pages): its height
 /// in millimetres, its style name, and the lineweight of bold drawn in the stroke font.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TextLook {
+pub struct TextDraw {
     pub mm: f64,
     pub style: &'static str,
     pub weight: Option<u16>,
@@ -112,18 +112,18 @@ pub struct TextLook {
 /// Project and Page title, the Page number box, the Rev box.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FrameText {
-    pub grid: TextLook,
-    pub caption: TextLook,
-    pub value: TextLook,
-    pub main: TextLook,
-    pub page: TextLook,
-    pub rev: TextLook,
+    pub grid: TextDraw,
+    pub caption: TextDraw,
+    pub value: TextDraw,
+    pub main: TextDraw,
+    pub page: TextDraw,
+    pub rev: TextDraw,
     /// Brief 055: the lineweight bold is drawn with in the title fonts, for a block's bold texts
     /// when the main style is not bold itself.
     pub bold_weight: Option<u16>,
 }
 
-impl TextLook {
+impl TextDraw {
     /// Whether its style is bold (the CADCraft style name of a bold weight; brief 066d: a block
     /// item's `bold` comes from its kind's style, never a literal).
     pub fn bold(&self) -> bool {
@@ -131,16 +131,16 @@ impl TextLook {
     }
 
     /// `kind`'s look in a project of length unit `unit`, from its resolved `look`.
-    pub fn of(look: &Look, kind: TextKind, unit: LengthUnit) -> TextLook {
+    pub fn of(look: &Look, kind: TextKind, unit: LengthUnit) -> TextDraw {
         let s = look.style(kind);
         let mm = height_mm(s.height, unit);
         // Lane T's per-kind fonts decide whether bold is drawn as a heavier stroke (design 031
-        // §2.2), as the engine's `LookApply::apply` does.
+        // §2.2), as the engine's `DrawApply::apply` does.
         let weight = match s.weight {
             Weight::Bold => look.fonts_for(kind).bold_lineweight,
             Weight::Regular => None,
         };
-        TextLook { mm, style: s.style_name, weight }
+        TextDraw { mm, style: s.style_name, weight }
     }
 }
 
@@ -155,7 +155,7 @@ impl FrameText {
     pub fn with(doc: &Document, m: &dyn TextMetrics) -> FrameText {
         let look = Look::with(doc, m);
         let u = doc.settings.length_unit;
-        let t = |k| TextLook::of(&look, k, u);
+        let t = |k| TextDraw::of(&look, k, u);
         FrameText {
             grid: t(TextKind::Grid),
             caption: t(TextKind::TitleCaption),
@@ -173,7 +173,7 @@ impl FrameText {
     /// [`FrameText::with`].
     pub fn sizes(doc: &Document) -> FrameText {
         let t = FrameText::with(doc, &AllFound);
-        let plain = |l: TextLook| TextLook { weight: None, ..l };
+        let plain = |l: TextDraw| TextDraw { weight: None, ..l };
         FrameText {
             grid: plain(t.grid),
             caption: plain(t.caption),
@@ -212,7 +212,7 @@ impl FrameInput {
         // Checked there, so the frame and the references always use the same sheet (brief 055:
         // the frame's own sheet first).
         let sheet = ecad_model::sheet::sheet_of(doc, page);
-        let look = crate::styles::frame::frame_look(doc, page);
+        let look = crate::styles::frame::frame_draw(doc, page);
         // The block may be borrowed from another frame (overseer ruling: page, page type, frame).
         let id = ecad_model::sheet::title_block_style(doc, page);
         let block = crate::title_block::block_of(doc, &id, &sheet, &look.margins, &text);

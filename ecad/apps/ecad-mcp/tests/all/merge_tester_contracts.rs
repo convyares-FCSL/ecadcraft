@@ -298,7 +298,7 @@ fn a_line_end_attached_differently_on_both_sides_offers_main_or_branch() {
     let choices: Vec<&str> = k["choices"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
     assert_eq!(choices, ["main", "branch"], "{k}");
     let rid = ecad_model::RouteId::parse(&w).unwrap();
-    let point = |s: &str| ecad_model::RouteEnd::Point(ecad_model::TerminalId::parse(s).unwrap());
+    let point = |s: &str| ecad_model::RouteEnd::Point(ecad_model::ConnectionPointId::parse(s).unwrap());
     let (on_main, on_branch) = (point(&t[0]), point(&t[1]));
     let ends_id = format!("{w}/ends");
     let tried = every_choice_merges(&mut c, "Option W", &mut |c, id, ch| {

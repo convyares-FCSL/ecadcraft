@@ -8,7 +8,7 @@ use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_engine::devices::{self, TextOf};
 use ecad_engine::symbols::{self, STARTERS};
-use ecad_model::{DeviceId, ItemId, Op, PageId, Subject, TerminalId};
+use ecad_model::{DeviceId, ItemId, Op, PageId, Subject, ConnectionPointId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 18;
@@ -338,7 +338,7 @@ fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly
     let mut doc = f.h.doc();
     let (rid, _) = doc.representations_of(Subject::Device(k2)).next().unwrap();
     doc.representations.get_mut(&rid).unwrap().connection_points.clear();
-    let ts: Vec<TerminalId> = doc.terminals_of(k2).map(|(t, _)| t).collect();
+    let ts: Vec<ConnectionPointId> = doc.connection_points_of(k2).map(|(t, _)| t).collect();
     for t in ts {
         doc.terminals.get_mut(&t).unwrap().key = Some(ecad_model::PointKey::Def(format!("old-{}", t.short())));
     }
@@ -371,7 +371,7 @@ fn g_typed_search_then_device_then_click_records_the_json_join() {
     let ops = last_ops(&mut h);
     assert!(ops.iter().any(|o| matches!(o, Op::LinkRepresentation { rep, .. } if rep.role == ecad_model::Role::Part(ecad_model::PartRole::Contact) && rep.connection_points.len() == 2)));
     let doc = h.doc();
-    let labels: Vec<String> = doc.terminals_of(k1).filter_map(|(_, t)| t.label.clone()).collect();
+    let labels: Vec<String> = doc.connection_points_of(k1).filter_map(|(_, t)| t.label.clone()).collect();
     assert!(labels.contains(&"13".to_string()) && labels.contains(&"14".to_string()));
     // Rotated: the tag sits above the contact, centred.
     let page = h.first_page();
@@ -497,7 +497,7 @@ fn i_erasing_one_symbol_keeps_the_device_and_the_last_one_deletes_it() {
     f.h.run("erase", json!({"handles": [h.hex()]})).unwrap();
     let doc = f.h.doc();
     assert!(doc.devices.contains_key(&f.k1));
-    let labels: Vec<String> = doc.terminals_of(f.k1).filter_map(|(_, t)| t.label.clone()).collect();
+    let labels: Vec<String> = doc.connection_points_of(f.k1).filter_map(|(_, t)| t.label.clone()).collect();
     assert_eq!(labels.len(), 4, "A1, A2, 13, 14 stay; 21, 22 went: {labels:?}");
     assert!(!labels.contains(&"21".to_string()));
     assert!(f.h.s.log.iter().any(|l| l.starts_with("Removed -K01's NC contact 21/22 (page 2)")), "{:?}", f.h.s.log);
@@ -542,7 +542,7 @@ fn i_delete_device_asks_first() {
 fn i_moving_a_contact_moves_its_terminals_and_copying_a_device_gives_the_next_tag() {
     let mut f = k1();
     let w: ecad_model::RouteId = id(&f.h.run("wire", json!({"points": [[0, 10], [0, 40]]})).unwrap(), "route");
-    let t13: TerminalId = id(&f.no["terminals"][0], "terminal");
+    let t13: ConnectionPointId = id(&f.no["terminals"][0], "terminal");
     assert_eq!(f.h.doc().routes[&w].ends[0], ecad_model::RouteEnd::Point(t13));
     let item: ItemId = id(&f.no, "item");
     let h = f.h.handle_of(f.p2, item);

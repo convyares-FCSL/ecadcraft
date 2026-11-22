@@ -146,16 +146,16 @@ impl Plc {
             // A continuation renamed joins or splits nets: every continuation of the old and
             // the new name, and the nets they are on now.
             Effect::Aid { id, before: Some(before), after: Some(after) } => {
-                let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*id).map(|(t, _)| t).collect();
+                let mut ts: Vec<ecad_model::ConnectionPointId> = doc.connection_points_of(*id).map(|(t, _)| t).collect();
                 for k in [before, after].into_iter().filter_map(|a| ecad_model::connectivity::continuation_key(a)) {
                     for a in doc.continuations_named(&k) {
-                        ts.extend(doc.terminals_of(a).map(|(t, _)| t));
+                        ts.extend(doc.connection_points_of(a).map(|(t, _)| t));
                     }
                 }
                 out.extend(iolist::cards_on_nets_of_terminals(doc, self, &ts));
             }
             // A strip link joins its positions' nets.
-            Effect::Prop { object: ObjectRef::Device(c), key, .. } if ecad_model::links::link_number(key.raw).is_some() => {
+            Effect::Prop { object: ObjectRef::Device(c), key, .. } if ecad_model::links::jumper_bar_number(key.raw).is_some() => {
                 out.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
             }
             Effect::Device { .. }

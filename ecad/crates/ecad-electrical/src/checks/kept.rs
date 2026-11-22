@@ -56,7 +56,7 @@ impl Checks {
             ch.set(Key::Route(*r), v);
         }
         for t in doc.terminals.keys() {
-            ch.set(Key::Terminal(*t), terminal_checks(doc, *t));
+            ch.set(Key::Terminal(*t), connection_point_checks(doc, *t));
         }
         // One drawing order for the pass: the book is built at most once (review of #105, 1).
         let mut places = Places::new(doc);
@@ -235,7 +235,7 @@ impl Checks {
             self.set(Key::Route(*r), v);
         }
         for t in &scope.terminals {
-            self.set(Key::Terminal(*t), terminal_checks(doc, *t));
+            self.set(Key::Terminal(*t), connection_point_checks(doc, *t));
         }
         let mut places = Places::new(doc);
         for c in &scope.devices {

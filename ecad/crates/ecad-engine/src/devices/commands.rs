@@ -18,7 +18,7 @@ use ecad_electrical::cmd::place as rules;
 use ecad_electrical::proposals::Mode;
 use ecad_model::{
     CableId, Color, DefinitionId, Device, DeviceId, Form, Item, ItemId, ItemKind, Noun, Op, Placement, Representation, RepresentationId, Style,
-    Subject, SymbolInstance, Terminal, TerminalId, WireId,
+    Subject, SymbolInstance, Terminal, ConnectionPointId, WireId,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -49,7 +49,7 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<DevicedeleteParams>("devicedelete"),
     Typed::of::<TagsettingsParams>("tagsettings"),
     Typed::of::<ConvertcomponentParams>("convertcomponent"),
-    Typed::of::<AddterminalParams>("addterminal"),
+    Typed::of::<AddConnectionPointParams>("addterminal"),
 ];
 
 /// `place {at, rotation?, mirror?, symbol?, definition?, device?, tag?, …}` (design 018 §8): a
@@ -287,8 +287,8 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
         ops.push(Op::CreateDevice { id: c, device: Device { definition: Some(def_id), ..Device::default() } });
         let mut terminals = Vec::new();
         for td in &def.terminals {
-            let t: TerminalId = p.ids.fresh();
-            ops.push(Op::AddTerminal {
+            let t: ConnectionPointId = p.ids.fresh();
+            ops.push(Op::AddConnectionPoint {
                 id: t,
                 terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
             });
@@ -513,7 +513,7 @@ impl Command for ConvertcomponentParams {
 /// `addterminal {handle, at, label?}` (experiment 008): a connection point on a drawn component.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct AddterminalParams {
+pub(crate) struct AddConnectionPointParams {
     /// An item of the component, as a hex handle.
     handle: String,
     /// Where the connection point is, [x, y].
@@ -523,7 +523,7 @@ pub(crate) struct AddterminalParams {
     label: Option<String>,
 }
 
-impl Command for AddterminalParams {
+impl Command for AddConnectionPointParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let h = Handle::parse_hex(&self.handle).ok_or_else(|| err(format!("`{}` is not a valid handle", json!(self.handle))))?;
         let (at, label) = (self.at.0, self.label);

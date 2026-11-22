@@ -1,20 +1,20 @@
 //! The kept report models (see [`super`]'s update map). The kept PLC model's rules measure text
 //! (an address wider than its cell), so building and updating take the sheet font metrics,
-//! [`TextMetrics`]; the project keeps them in its `derived::OutputsView`, which passes the
+//! [`TextMetrics`]; the project keeps them in its `derived::ReportsView`, which passes the
 //! engine's metrics.
 
 use ecad_model::effect::Effect;
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, DeviceId, Document, End, LoosePartId, ObjectRef, PageId, Pt, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, LoosePartId, ObjectRef, PageId, Pt, Subject, ConnectionPointId, WireId};
 
 use super::*;
 use crate::text_style::fonts::TextMetrics;
 
 /// The kept report models (see the module docs).
 #[derive(Debug, Clone, Default)]
-pub struct Outputs {
+pub struct ReportModels {
     devices: BTreeMap<DeviceId, DeviceRow>,
     /// Brief 047: items whose location is the project's, or none: a project location set reaches
     /// them. Devices never are (brief 052: a device's location is stored).
@@ -113,7 +113,7 @@ pub struct Outputs {
 }
 
 /// What one commit's effects name for the report models, noted effect by effect
-/// ([`Outputs::note_before`], [`Outputs::note_after`]) and recomputed by [`Outputs::update`].
+/// ([`ReportModels::note_before`], [`ReportModels::note_after`]) and recomputed by [`ReportModels::update`].
 #[derive(Debug, Clone, Default)]
 pub struct Noted {
     /// The rows: noted on the state before and on the state after.
@@ -124,9 +124,9 @@ pub struct Noted {
     plc: crate::plc::kept::Touch,
     /// What the strip pages' indexes are read for.
     strips: crate::strips::pages::Named,
-    /// A page number or a sheet count can move ([`Outputs::moves_page_number`]).
+    /// A page number or a sheet count can move ([`ReportModels::moves_page_number`]).
     numbers: bool,
-    /// Pages added, removed or moved ([`Outputs::placed_page`]).
+    /// Pages added, removed or moved ([`ReportModels::placed_page`]).
     placed: Vec<PageId>,
     /// The pages whose book position changes (the strips on them): the book before, compared
     /// with the state after.
@@ -142,14 +142,14 @@ struct Rows {
     positions: ecad_model::book::PositionsNoted,
 }
 
-impl Outputs {
+impl ReportModels {
     /// Every model, from scratch (open, reload, first show), with text measured in `m`.
-    pub fn build_with(doc: &Document, m: &dyn TextMetrics) -> Outputs {
-        let mut o = Outputs {
+    pub fn build_with(doc: &Document, m: &dyn TextMetrics) -> ReportModels {
+        let mut o = ReportModels {
             style: doc.settings.reference_style(),
             colour_style: doc.settings.wiring.colour_style(),
             view: BomView::of(doc),
-            ..Outputs::default()
+            ..ReportModels::default()
         };
         let mut cache = BoxCache::default();
         for (_, c) in doc.tagged() {
@@ -172,7 +172,7 @@ impl Outputs {
         o.strips = crate::strips::Strips::build(doc, &o, &cx);
         o.plc = crate::plc::kept::Plc::build_with(doc, m);
         o.strip_pages = crate::strips::pages::StripPages::build(doc, &o.strips);
-        o.generated = doc.page_order.iter().copied().filter(|p| needs_outputs(doc, *p)).collect();
+        o.generated = doc.page_order.iter().copied().filter(|p| needs_reports(doc, *p)).collect();
         static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         o.refresh_continuation(doc);
@@ -296,14 +296,14 @@ impl Outputs {
         self.cables.len()
     }
 
-    /// The strips sorted by tag (counted in [`Outputs::sorts`]).
+    /// The strips sorted by tag (counted in [`ReportModels::sorts`]).
     pub fn sorted_strips(&self) -> Vec<&crate::strips::StripData> {
         self.sorts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.strips.sorted()
     }
 
     /// Before phase: note what one effect, about to be committed on `before`, names. Pair with
-    /// [`Outputs::close_before`], [`Outputs::note_after`] and [`Outputs::update`].
+    /// [`ReportModels::close_before`], [`ReportModels::note_after`] and [`ReportModels::update`].
     pub fn note_before(&self, before: &Document, effect: &Effect<'_>, n: &mut Noted) {
         n.rows.note(before, effect);
         n.positions.note_before(before, effect);
@@ -351,7 +351,7 @@ impl Outputs {
             self.revision += 1;
         }
         for p in placed {
-            if needs_outputs(doc, p) {
+            if needs_reports(doc, p) {
                 self.generated.insert(p);
             } else {
                 self.generated.remove(&p);
@@ -391,7 +391,7 @@ impl Outputs {
             for c in inheriting {
                 scope.devices.insert(c);
                 if crate::defaults::connectors::is_naming_key(k) {
-                    for (t, _) in doc.terminals_of(c) {
+                    for (t, _) in doc.connection_points_of(c) {
                         scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                     }
                 }
@@ -399,7 +399,7 @@ impl Outputs {
         }
         for k in scope.strip_keys.iter().filter(|k| crate::defaults::terminals::is_label_key(k)) {
             for c in self.strips.inheriting(k) {
-                for (t, _) in doc.terminals_of(c) {
+                for (t, _) in doc.connection_points_of(c) {
                     scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
@@ -415,7 +415,7 @@ impl Outputs {
             work += 1;
             let after = self.devices.get(c).map(|d| (d.tag.clone(), d.location.value.clone()));
             if before != after {
-                for (t, _) in doc.terminals_of(*c) {
+                for (t, _) in doc.connection_points_of(*c) {
                     scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
@@ -632,7 +632,7 @@ impl Outputs {
         // its first drawn half), with that half's tag and location.
         let halves = crate::connectors::half_rows(doc, c, &mut BoxCache::default());
         // Sub-items only where `for` can name some or fuses can be uncovered.
-        let fuseterm = crate::strips::fuse_terminal_of(doc, c).is_some();
+        let fuseterm = crate::strips::fuse_terminal_block_of(doc, c).is_some();
         let subs = if fuseterm { bom::Subs::None } else { bom::sub_items(doc, c) };
         let mut covered: BTreeSet<&str> = BTreeSet::new();
         let mut inserts = 0;
@@ -725,12 +725,12 @@ impl Outputs {
         self.remove_entries(Owner::Device(c));
         // Review of PR #57, 4: a link key on a device that is not a strip.
         let misplaced = crate::strips::strip_of(doc, c).is_none()
-            && doc.devices.get(&c).is_some_and(|x| x.properties.keys().any(|k| ecad_model::links::link_number(k).is_some()));
+            && doc.devices.get(&c).is_some_and(|x| x.properties.keys().any(|k| ecad_model::links::jumper_bar_number(k).is_some()));
         if misplaced {
             let keys = doc
                 .devices
                 .get(&c)
-                .map(|x| x.properties.keys().filter(|k| ecad_model::links::link_number(k).is_some()).cloned().collect())
+                .map(|x| x.properties.keys().filter(|k| ecad_model::links::jumper_bar_number(k).is_some()).cloned().collect())
                 .unwrap_or_default();
             self.link_keys.insert(c, keys);
             self.links_off_strip.insert(c);
@@ -789,7 +789,7 @@ impl Outputs {
         self.set_entries(doc, c, main);
     }
 
-    fn end_cell(&self, doc: &Document, t: Option<TerminalId>, at: Option<(PageId, Pt)>, cx: &PageCx) -> EndCell {
+    fn end_cell(&self, doc: &Document, t: Option<ConnectionPointId>, at: Option<(PageId, Pt)>, cx: &PageCx) -> EndCell {
         let order = at.map_or((usize::MAX, 0, 0), |(p, a)| {
             let pos = cx.pos(p);
             let place = cx.place(doc, p, a);
@@ -804,7 +804,7 @@ impl Outputs {
         let Some(c) = term.device() else { return EndCell { order, ..EndCell::default() } };
         {
             {
-                let label = crate::terminal_types::terminal_name(doc, t);
+                let label = crate::terminal_types::connection_point_name(doc, t);
                 let device = self.devices.get(&c);
                 let tag = device.map(|d| d.tag.clone()).or_else(|| crate::devices::tag_of(doc, c).map(str::to_string)).unwrap_or_else(|| "?".into());
                 // Brief 044: a connector pin's end is named by its half (`-X10.S:3`).
@@ -819,7 +819,7 @@ impl Outputs {
     }
 
     /// The cell of conductor end `t` drawn at `at` (brief 028: a terminal's far end).
-    pub(crate) fn end_cell_of(&self, doc: &Document, t: Option<TerminalId>, at: Option<(PageId, Pt)>, cx: &PageCx) -> EndCell {
+    pub(crate) fn end_cell_of(&self, doc: &Document, t: Option<ConnectionPointId>, at: Option<(PageId, Pt)>, cx: &PageCx) -> EndCell {
         self.end_cell(doc, t, at, cx)
     }
 
@@ -850,7 +850,7 @@ impl Outputs {
         let net = conn.net_of_conductor(w).and_then(|id| conn.net(id));
         let pot = net.map(|n| ecad_model::wiring::net_potential(doc, n));
         // Brief 050b: the wire's category gives what the wire has none of its own.
-        let look = crate::styles::wire::wire_look(doc, w);
+        let look = crate::styles::wire::wire_draw(doc, w);
         let cross_section = look.cross_section.as_ref().map(|v| v.0.clone());
         let colour = look.colour.as_ref().map(|v| v.0.to_string());
         let colour_own = look.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
@@ -1121,7 +1121,7 @@ impl Outputs {
                     format!("{}: {} {} terminals drawn, strip offers {offered}", s.tag, tc.drawn, tc.ty.word)
                 };
                 out.push(Check {
-                    kind: Kind::TooManyTerminals,
+                    kind: Kind::TooManyTerminalBlocks,
                     page: hi.and_then(|r| r.go).map(|(p, _)| p),
                     at: hi.and_then(|r| r.go).map(|(_, a)| a),
                     object: hi.and_then(|r| r.terminal).map_or(Object::Device(s.component), Object::Terminal),
@@ -1135,7 +1135,7 @@ impl Outputs {
                 // Brief 036: a level of a multi-level position drawn twice goes to the next free one.
                 let multi = row.is_some_and(|r| r.ty.multi() || r.ty.breaks);
                 out.push(Check {
-                    kind: if multi { Kind::LevelTwice } else { Kind::TerminalTwice },
+                    kind: if multi { Kind::LevelTwice } else { Kind::TerminalBlockTwice },
                     page: go.map(|(p, _)| p),
                     at: go.map(|(_, a)| a),
                     object: Object::Terminal(*t),
@@ -1198,12 +1198,12 @@ impl Outputs {
         for c in &self.links_off_strip {
             let tag = self.devices.get(c).map_or_else(|| "?".to_string(), |d| d.tag.clone());
             out.push(Check {
-                kind: Kind::LinkOnNonStrip,
+                kind: Kind::JumperBarOnNonStrip,
                 page: None,
                 at: None,
                 object: Object::Device(*c),
                 which: format!("{tag} has link keys but is not a terminal strip"),
-                fix: Some(Fix::LinkOnNonStrip(*c)),
+                fix: Some(Fix::JumperBarOnNonStrip(*c)),
             });
         }
         if self.strips.acc_no_part > 0 {
@@ -1335,7 +1335,7 @@ impl Outputs {
         if self.inserts.is_empty() { 0 } else { self.fuse_gaps.values().sum() }
     }
 
-    /// The check rows by severity: (errors, warnings, info), as [`Outputs::checks`] would give
+    /// The check rows by severity: (errors, warnings, info), as [`ReportModels::checks`] would give
     /// them. O(1): kept by every change (brief 027's badge).
     pub fn check_counts(&self) -> (usize, usize, usize) {
         let info = self.box_counts[1]
@@ -1358,7 +1358,7 @@ impl Outputs {
         (self.strips.check_errors, warnings, info)
     }
 
-    /// What the check rows depend on besides [`Outputs::checks_changed`]: the three count rows.
+    /// What the check rows depend on besides [`ReportModels::checks_changed`]: the three count rows.
     pub fn checks_key(&self) -> (u64, usize, usize, usize, usize) {
         (self.checks_changed, self.no_part_number, self.no_location, self.no_function, self.devices.len())
     }
@@ -1857,7 +1857,7 @@ impl Outputs {
 
     /// The cable report as a table; `Maker`, `Length` and `Designation` follow when any cable
     /// has them. Brief 059: cables not drawn are listed (design 059 §4.5, Q3); see
-    /// [`Outputs::cable_table_with`].
+    /// [`ReportModels::cable_table_with`].
     pub fn cable_table(&self) -> Table {
         self.cable_table_with(true)
     }
@@ -1940,14 +1940,14 @@ impl Outputs {
     }
 }
 
-impl Outputs {
+impl ReportModels {
     /// The terminal plan as a table (Reports ▸ Terminals, CSV): every strip, or `strip` only;
     /// one line per position and conductor (design 028 §5.1), with where each line goes.
     pub fn terminal_table(&self, strip: Option<DeviceId>) -> (Table, Vec<Option<(PageId, Pt)>>) {
         self.terminal_table_with(strip, true)
     }
 
-    /// [`Outputs::terminal_table`], with or without the accessory gap rows (brief 030: the
+    /// [`ReportModels::terminal_table`], with or without the accessory gap rows (brief 030: the
     /// Terminals tab's Accessories check box; view only).
     pub fn terminal_table_with(&self, strip: Option<DeviceId>, accessories: bool) -> (Table, Vec<Option<(PageId, Pt)>>) {
         let style = self.style;
@@ -2184,7 +2184,7 @@ impl Outputs {
     }
 }
 
-impl Outputs {
+impl ReportModels {
     /// Keep connector `c`'s half rows and their groups (review of #81, 2). `set_device` has taken
     /// the old ones out.
     fn set_connector(&mut self, c: DeviceId, rows: Vec<BomRow>) {

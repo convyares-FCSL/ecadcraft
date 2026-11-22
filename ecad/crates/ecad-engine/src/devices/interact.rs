@@ -13,7 +13,7 @@ use ecad_model::{DeviceId, Placement, Subject};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, other, paper_guard, safely};
-use super::{OUT_OF_RANGE, TERMINAL_ACI, TERMINAL_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
+use super::{OUT_OF_RANGE, CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
 use crate::devices::{self, TextOf};
 use crate::project::Mapped;
 use crate::symbols::{self, Starter};
@@ -663,7 +663,7 @@ impl Interactive for Place {
         let pl = self.placement(cursor);
         let Some(def) = self.definition() else { return Vec::new() };
         let mut out: Vec<Entity> =
-            def.terminals.iter().map(|t| preview_entity(s, ring_kind(pl.apply(t.at), TERMINAL_PX, px), TERMINAL_ACI)).collect();
+            def.terminals.iter().map(|t| preview_entity(s, ring_kind(pl.apply(t.at), CONNECTION_POINT_RING_PX, px), CONNECTION_POINT_ACI)).collect();
         if let Some((_, tag, labels)) = self.outcome(s) {
             let at: Vec<(TextOf, String, ecad_model::Pt)> = def.terminals.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
             // The project's sizes (design 031 §3.2), as the page will draw them.
@@ -671,7 +671,7 @@ impl Interactive for Place {
             for (_, value, p, h, ha, va) in devices::texts_for(def, &pl, Some(&tag), &at, sizes) {
                 let (ha, va) = (crate::convert::engine_halign(ha), crate::convert::engine_valign(va));
                 let e = devices::text_entity_with(&value, p, h, ha, va, cadcraft_engine::doc::Handle(0), "0");
-                out.push(preview_entity(s, e.kind, TERMINAL_ACI));
+                out.push(preview_entity(s, e.kind, CONNECTION_POINT_ACI));
             }
         }
         out

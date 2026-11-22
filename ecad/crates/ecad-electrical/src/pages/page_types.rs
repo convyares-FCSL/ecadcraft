@@ -27,7 +27,7 @@ use serde_json::{Value, json};
 
 use crate::checks::{Check, Kind, Object};
 use crate::generated;
-use crate::outputs::kept::Outputs;
+use crate::outputs::kept::ReportModels;
 use crate::styles::page as ptype;
 use ecad_model::GenKind;
 
@@ -94,7 +94,7 @@ fn run_name(doc: &Document, run: Option<FolderId>) -> String {
 /// One run's pages in book order, with their sheet counts.
 type Runs = BTreeMap<Option<FolderId>, Vec<(PageId, usize)>>;
 
-fn runs(doc: &Document, book: &Book, outputs: Option<&Outputs>) -> Runs {
+fn runs(doc: &Document, book: &Book, outputs: Option<&ReportModels>) -> Runs {
     let mut out: Runs = BTreeMap::new();
     for p in &book.order {
         out.entry(run_of(doc, *p)).or_default().push((*p, generated::sheets_of(doc, *p, outputs).max(1)));
@@ -123,7 +123,7 @@ fn spans(doc: &Document, runs: &Runs) -> BTreeMap<Option<FolderId>, BTreeSet<u64
 
 /// Where two runs' spans meet: the run that reaches into the other, the other, and the first
 /// number they share. Each pair once, the earlier start first.
-pub fn overlaps(doc: &Document, outputs: Option<&Outputs>) -> Vec<(Option<FolderId>, Option<FolderId>, u64)> {
+pub fn overlaps(doc: &Document, outputs: Option<&ReportModels>) -> Vec<(Option<FolderId>, Option<FolderId>, u64)> {
     let book = Book::of(doc);
     let rs = runs(doc, &book, outputs);
     let sp = spans(doc, &rs);
@@ -153,7 +153,7 @@ pub fn overlap_words(doc: &Document, from: Option<FolderId>, into: Option<Folder
 }
 
 /// What [`renumber`] would write: each page whose number changes, with its new number.
-pub fn renumber(doc: &Document, outputs: Option<&Outputs>, scope: Option<FolderId>) -> Vec<(PageId, String)> {
+pub fn renumber(doc: &Document, outputs: Option<&ReportModels>, scope: Option<FolderId>) -> Vec<(PageId, String)> {
     let book = Book::of(doc);
     let step = u64::from(doc.settings.page_number_step().max(1));
     let rs = runs(doc, &book, outputs);
@@ -226,7 +226,7 @@ pub fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKind>) -> 
     let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Page, t)?;
     match kind {
         None if ptype::generated_only(&id) => Err(CmdError::refused(ptype::generated_refusal(doc, &id))),
-        Some(k) if ptype::look_of(doc, &id).holds != ptype::holds_of_kind(k) => Err(CmdError::refused(ptype::kind_refusal(k))),
+        Some(k) if ptype::draw_of(doc, &id).holds != ptype::holds_of_kind(k) => Err(CmdError::refused(ptype::kind_refusal(k))),
         _ => Ok(Some(id)),
     }
 }

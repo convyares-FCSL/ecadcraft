@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use ecad_model::{
     DeviceId, Document, IdAllocator, ItemKind, LevelIo, Noun, ObjectRef, Op, PointKey, Representation, RepresentationId, Subject, Terminal,
-    TerminalId,
+    ConnectionPointId,
 };
 
 use schemars::JsonSchema;
@@ -29,8 +29,8 @@ fn position_ok(l: &str) -> Result<(), CmdError> {
     Ok(())
 }
 
-/// The ops relabelling `terminals` to `to`: `RemoveTerminal` + `AddTerminal` of each ID.
-fn relabel_ops(doc: &Document, terminals: &[TerminalId], to: &str) -> Vec<Op> {
+/// The ops relabelling `terminals` to `to`: `RemoveConnectionPoint` + `AddConnectionPoint` of each ID.
+fn relabel_ops(doc: &Document, terminals: &[ConnectionPointId], to: &str) -> Vec<Op> {
     let mut ops = Vec::new();
     for t in terminals {
         let Some(x) = doc.terminals.get(t) else { continue };
@@ -39,8 +39,8 @@ fn relabel_ops(doc: &Document, terminals: &[TerminalId], to: &str) -> Vec<Op> {
         }
         let mut after = x.clone();
         after.label = Some(to.to_string());
-        ops.push(Op::RemoveTerminal { id: *t, terminal: x.clone() });
-        ops.push(Op::AddTerminal { id: *t, terminal: after });
+        ops.push(Op::RemoveConnectionPoint { id: *t, terminal: x.clone() });
+        ops.push(Op::AddConnectionPoint { id: *t, terminal: after });
     }
     ops
 }
@@ -58,7 +58,7 @@ pub enum MoveTo {
 #[derive(Debug, Clone, Default)]
 pub struct TermlabelInput {
     /// A terminal of the position (and its level).
-    pub terminal: Option<TerminalId>,
+    pub terminal: Option<ConnectionPointId>,
     /// With `at` (or `position`): the strip.
     pub strip: Option<DeviceId>,
     /// The position's current label.
@@ -124,7 +124,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
     let mut message = String::new();
     // Move one level (or another type's levels) to another position (Checks fixes, §8).
     if let Some(m) = move_to {
-        let who: Vec<TerminalId> = match (m, terminal) {
+        let who: Vec<ConnectionPointId> = match (m, terminal) {
             (MoveTo::Next, Some(t)) => {
                 // The drawing of `t`: itself, and its out point for a two-point level.
                 let mut v = vec![t];
@@ -136,12 +136,12 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
                 v
             }
             (MoveTo::New, Some(t)) => {
-                let ty = tt::type_of_terminal(doc, t);
-                here.terminals().filter(|x| tt::type_of_terminal(doc, *x) == ty).collect()
+                let ty = tt::type_of_connection_point(doc, t);
+                here.terminals().filter(|x| tt::type_of_connection_point(doc, *x) == ty).collect()
             }
             _ => return Err(CmdError::input("`move_to` is \"next\" or \"new\", with `terminal`.")),
         };
-        let ty = who.first().map(|t| tt::type_of_terminal(doc, *t)).ok_or(CmdError::refused("Nothing to move."))?;
+        let ty = who.first().map(|t| tt::type_of_connection_point(doc, *t)).ok_or(CmdError::refused("Nothing to move."))?;
         let mut chooser = tt::Chooser::new(doc, Some(c));
         let to = match m {
             MoveTo::Next => chooser.choose(doc, Some(c), ty, Some(n), None),
@@ -156,7 +156,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         if positions.iter().any(|x| &x.label == q) {
             return Err(CmdError::refused(format!("{tag} already has a position {q}. Pick another label, or swap them with Renumber.")));
         }
-        let ts: Vec<TerminalId> = here.terminals().collect();
+        let ts: Vec<ConnectionPointId> = here.terminals().collect();
         let rel = relabel_ops(doc, &ts, q);
         let (follow, fl) = crate::accessories::renumber_ops(doc, &rel);
         ops.extend(rel);
@@ -237,7 +237,7 @@ pub fn plan_toposition(
     if crate::strips::strip_of(doc, device).is_some() {
         return Err(CmdError::refused(format!("{tag} is a terminal strip, not a fuse terminal device.")));
     }
-    if crate::strips::fuse_terminal_of(doc, device).is_none() {
+    if crate::strips::fuse_terminal_block_of(doc, device).is_none() {
         return Err(CmdError::refused(format!(
             "{tag} is not a fuse terminal device. Make strip position turns a fuse terminal (fuseterm) into a strip position."
         )));
@@ -296,8 +296,8 @@ pub fn plan_toposition(
     let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
     let mut chooser = tt::Chooser::new(doc, Some(strip));
     let pos = chooser.choose(doc, Some(strip), ty, Some(1), position)?;
-    let (tin, tout): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
-    ops.push(Op::AddTerminal {
+    let (tin, tout): (ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh());
+    ops.push(Op::AddConnectionPoint {
         id: tin,
         terminal: Terminal {
             owner: strip.into(),
@@ -306,7 +306,7 @@ pub fn plan_toposition(
             accepts: Default::default(),
         },
     });
-    ops.push(Op::AddTerminal {
+    ops.push(Op::AddConnectionPoint {
         id: tout,
         terminal: Terminal {
             owner: strip.into(),
@@ -316,7 +316,7 @@ pub fn plan_toposition(
         },
     });
     // The device's points by key: `1` → in, `2` → out.
-    let old: Vec<(TerminalId, Terminal)> = doc.terminals_of(device).map(|(t, x)| (t, x.clone())).collect();
+    let old: Vec<(ConnectionPointId, Terminal)> = doc.connection_points_of(device).map(|(t, x)| (t, x.clone())).collect();
     let mut moved = std::collections::BTreeMap::new();
     for (t, x) in &old {
         let to = match x.key.as_ref().and_then(PointKey::as_def) {
@@ -352,7 +352,7 @@ pub fn plan_toposition(
         },
     });
     for (t, x) in &old {
-        ops.push(Op::RemoveTerminal { id: *t, terminal: x.clone() });
+        ops.push(Op::RemoveConnectionPoint { id: *t, terminal: x.clone() });
     }
     let props = comp.properties.clone();
     let keep: [&str; 0] = [];
@@ -362,7 +362,7 @@ pub fn plan_toposition(
     // Design 072 §2.2 and §2.5: the fuse's typed rating becomes the position's. A note is no fuse
     // rating and a position has no note: it goes with the device and is listed.
     let typed = match &comp.device_type {
-        ecad_model::DeviceType::Protection(ecad_model::device::Protection::Fuse(f) | ecad_model::device::Protection::FuseTerminal(f))
+        ecad_model::DeviceType::Protection(ecad_model::device::Protection::Fuse(f) | ecad_model::device::Protection::FuseTerminalBlock(f))
             if *f != ecad_model::device::Fuse::default() =>
         {
             Some(f)
@@ -419,7 +419,7 @@ enum MoveToParam {
 pub struct TermlabelParams {
     /// A terminal of the position (and its level).
     #[serde(default)]
-    terminal: Option<TerminalId>,
+    terminal: Option<ConnectionPointId>,
     /// The strip (with `at`).
     #[serde(default)]
     strip: Option<DeviceId>,

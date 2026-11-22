@@ -358,7 +358,7 @@ pub struct App {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Hovered {
     /// A terminal within the capture aperture (drawn or symbol, free or connected).
-    Terminal(ecad_model::TerminalId),
+    Terminal(ecad_model::ConnectionPointId),
     /// A cable reference end (its point or its text) within the pick box (brief 010).
     Reference(ecad_model::RepresentationId),
     /// The object CADCraft's rollover highlights.
@@ -639,7 +639,7 @@ impl App {
         self.handle_tools();
         self.sheet_windows(ui.ctx());
         self.host_windows();
-        self.output_windows(ui.ctx());
+        self.report_windows(ui.ctx());
         self.merge_windows(ui.ctx());
         self.renumber_window(ui.ctx());
         self.issue_prompt_window(ui.ctx());

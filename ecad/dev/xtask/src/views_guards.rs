@@ -1,5 +1,5 @@
 //! Design 064 §5.2: every derived view has one way in, the project's `Views`. This guard counts
-//! direct full builds of a view type (`Outputs::build(`, `RefIndex::build(`, …) outside `Views`
+//! direct full builds of a view type (`ReportModels::build(`, `RefIndex::build(`, …) outside `Views`
 //! and the view's own module; the count only falls and reaches 0 at the end of lane R9 (test C13).
 //!
 //! Counted over `src/` of every product and Dev crate (the bench included), outside `//` comments

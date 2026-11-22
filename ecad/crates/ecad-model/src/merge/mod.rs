@@ -39,7 +39,7 @@ use crate::diff;
 use crate::doc::{
     Cable, Core, CorePosition, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Terminal, Wire,
 };
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
 use crate::route::{Route, RouteEnd};
@@ -54,7 +54,7 @@ pub enum Obj {
     Layer(LayerId),
     Definition(DefinitionId),
     Device(DeviceId),
-    Terminal(TerminalId),
+    Terminal(ConnectionPointId),
     Representation(RepresentationId),
     Item(ItemId),
     Wire(WireId),
@@ -549,10 +549,10 @@ fn object<T: PartialEq + Clone>(
 }
 
 /// The object that owns a connection point.
-fn owner_obj(owner: crate::doc::TerminalOwner) -> Obj {
+fn owner_obj(owner: crate::doc::ConnectionPointOwner) -> Obj {
     match owner {
-        crate::doc::TerminalOwner::Device(c) => Obj::Device(c),
-        crate::doc::TerminalOwner::Aid(a) => Obj::Aid(a),
+        crate::doc::ConnectionPointOwner::Device(c) => Obj::Device(c),
+        crate::doc::ConnectionPointOwner::Aid(a) => Obj::Aid(a),
     }
 }
 
@@ -570,8 +570,8 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
             Some(term) => format!(
                 "{}:{}",
                 match term.owner {
-                    crate::doc::TerminalOwner::Device(c) => tag_of(c),
-                    crate::doc::TerminalOwner::Aid(a) => a.short(),
+                    crate::doc::ConnectionPointOwner::Device(c) => tag_of(c),
+                    crate::doc::ConnectionPointOwner::Aid(a) => a.short(),
                 },
                 term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short())
             ),
@@ -1213,7 +1213,7 @@ fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
         use crate::id::*;
         [
             Obj::Device(DeviceId(id)),
-            Obj::Terminal(TerminalId(id)),
+            Obj::Terminal(ConnectionPointId(id)),
             Obj::Wire(WireId(id)),
             Obj::Cable(CableId(id)),
             Obj::Page(PageId(id)),
@@ -1721,7 +1721,7 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
             Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                 out.insert(Obj::Device(*id));
             }
-            Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
+            Op::AddConnectionPoint { id, terminal } | Op::RemoveConnectionPoint { id, terminal } => {
                 out.insert(Obj::Terminal(*id));
                 out.insert(owner_obj(terminal.owner));
             }
@@ -2133,7 +2133,7 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
         let docs = [s, a];
         for (e, word) in [(End::A, "end A"), (End::B, "end B")] {
             if x.end(e) != y.end(e) {
-                let show = |t: TerminalId| name_of(&docs, Obj::Terminal(t));
+                let show = |t: ConnectionPointId| name_of(&docs, Obj::Terminal(t));
                 return format!("· {word} {} → {}", show(x.end(e)), show(y.end(e)));
             }
         }
@@ -2591,12 +2591,12 @@ mod tests {
         d.devices.insert(DeviceId(c), Device::default().with_tag(Some(tag_text)));
         for t in terminals {
             d.terminals
-                .insert(TerminalId(*t), Terminal { owner: DeviceId(c).into(), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
+                .insert(ConnectionPointId(*t), Terminal { owner: DeviceId(c).into(), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
         }
     }
 
     fn wire(d: &mut Document, w: u128, a: u128, b: u128) {
-        d.wires.insert(WireId(w), Wire::new(NetId(90), ConductorId(91), TerminalId(a), TerminalId(b)));
+        d.wires.insert(WireId(w), Wire::new(NetId(90), ConductorId(91), ConnectionPointId(a), ConnectionPointId(b)));
     }
 
     fn scope_all(ids: &[Obj]) -> Scope {
@@ -2636,7 +2636,7 @@ mod tests {
         let t = Document::default();
         let mut s = a.clone();
         s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::device::Description::new("Pump").ok();
-        let scope = scope_all(&[Obj::Device(DeviceId(1)), Obj::Terminal(TerminalId(11)), Obj::Terminal(TerminalId(12))]);
+        let scope = scope_all(&[Obj::Device(DeviceId(1)), Obj::Terminal(ConnectionPointId(11)), Obj::Terminal(ConnectionPointId(12))]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         let k = p.conflicts.iter().find(|c| c.kind == ConflictKind::Removed).unwrap();
         assert!(k.source.contains("connection points"), "{}", k.source);
@@ -2666,7 +2666,7 @@ mod tests {
         assert_eq!(p.conflicts[0].choices, vec![Choice::Target, Choice::Source]);
         for (c, want) in [(Choice::Target, 13), (Choice::Source, 14)] {
             let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, c.clone())));
-            assert_eq!(doc.wires[&WireId(5)].end(End::B), TerminalId(want), "{c:?}");
+            assert_eq!(doc.wires[&WireId(5)].end(End::B), ConnectionPointId(want), "{c:?}");
         }
     }
 
@@ -2678,19 +2678,19 @@ mod tests {
         let mut s = a.clone();
         wire(&mut s, 5, 21, 11);
         let mut t = a.clone();
-        t.terminals.remove(&TerminalId(11));
+        t.terminals.remove(&ConnectionPointId(11));
         t.devices.remove(&DeviceId(1));
-        let scope = scope_all(&[Obj::Wire(WireId(5)), Obj::Terminal(TerminalId(11)), Obj::Device(DeviceId(1))]);
-        let tid = format!("{}/needed", TerminalId(11).hex());
+        let scope = scope_all(&[Obj::Wire(WireId(5)), Obj::Terminal(ConnectionPointId(11)), Obj::Device(DeviceId(1))]);
+        let tid = format!("{}/needed", ConnectionPointId(11).hex());
         let cid = format!("{}/needed", DeviceId(1).hex());
         // Not brought back: a wire runs between two points, so without one it goes.
         let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&tid, Choice::Drop)));
         assert!(!doc.wires.contains_key(&WireId(5)));
-        assert!(!doc.terminals.contains_key(&TerminalId(11)));
+        assert!(!doc.terminals.contains_key(&ConnectionPointId(11)));
         // Bring back the point and its device.
         let both = BTreeMap::from([(tid.clone(), Choice::BringBack), (cid.clone(), Choice::BringBack)]);
         let doc = applied(&t, &run(&a, &t, &s, &scope, &both));
-        assert!(doc.terminals.contains_key(&TerminalId(11)) && doc.devices.contains_key(&DeviceId(1)));
+        assert!(doc.terminals.contains_key(&ConnectionPointId(11)) && doc.devices.contains_key(&DeviceId(1)));
         // Bring back the point but not what it needs: a problem with the way through, no ops.
         let contradiction = BTreeMap::from([(tid, Choice::BringBack), (cid, Choice::Drop)]);
         let p = run(&a, &t, &s, &scope, &contradiction);

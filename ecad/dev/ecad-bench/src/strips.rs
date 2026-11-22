@@ -54,7 +54,7 @@ use std::time::Instant;
 
 use cadcraft_engine::Session;
 use ecad_engine::ProjectHandle;
-use ecad_model::{Author, CableId, Core, CorePosition, DeviceId, ObjectRef, Op, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId};
+use ecad_model::{Author, CableId, Core, CorePosition, DeviceId, ObjectRef, Op, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId};
 use serde_json::json;
 
 use crate::measure::{median, path_text, remove};
@@ -123,7 +123,7 @@ fn hex<T: From<u128>>(v: &serde_json::Value, key: &str) -> Result<T, String> {
 }
 
 fn work(p: &ProjectHandle, s: &mut Session) -> usize {
-    p.read(s, |p, _| p.kept_outputs().map_or(0, |o| o.strips.last_work)).unwrap_or(0)
+    p.read(s, |p, _| p.kept_reports().map_or(0, |o| o.strips.last_work)).unwrap_or(0)
 }
 
 /// Add the strips, bridges and cables to the open project (one transaction per strip, straight
@@ -176,7 +176,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
             }
             // Half the outside halves (the second halves) as two-core cables.
             // Each a loose line (landed on its terminal, the other end free): the core sits on it.
-            let halves: Vec<(RouteId, TerminalId)> = f.placed.iter().take(TERMINALS / 2).map(|x| (x.3, x.0)).collect();
+            let halves: Vec<(RouteId, ConnectionPointId)> = f.placed.iter().take(TERMINALS / 2).map(|x| (x.3, x.0)).collect();
             for two in halves.chunks(2) {
                 let k: CableId = p.ids.fresh();
                 let mut cable = ecad_model::Cable::default();
@@ -254,7 +254,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             build.push(project.configure(&mut s, |p| {
                 p.outputs();
                 let doc = p.ledger.document();
-                let Some(o) = p.kept_outputs() else { return 0.0 };
+                let Some(o) = p.kept_reports() else { return 0.0 };
                 let t = Instant::now();
                 let cx = ecad_engine::outputs::PageCx::of(doc);
                 let built = ecad_engine::strips::Strips::build(doc, o, &cx);
@@ -273,7 +273,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         out.spbuild_ms = median(&mut spbuild);
         let (page1, first_strip, strips, terminals, cables) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            let o = p.kept_outputs();
+            let o = p.kept_reports();
             let strips = o.map_or(0, |o| o.strips.len());
             let terminals = o.map_or(0, |o| o.strips.strips.values().map(|x| x.drawn).sum());
             let first = o.and_then(|o| o.strips.sorted().first().map(|x| x.component));
@@ -324,8 +324,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 if ecad_engine::strips::strip_of(doc, c).is_some() || !ecad_engine::locations::is_device(doc, c) {
                     return None;
                 }
-                let t = doc.terminals_of(c).map(|(t, _)| t).next()?;
-                ecad_model::derive::terminal_position(doc, page1, t)
+                let t = doc.connection_points_of(c).map(|(t, _)| t).next()?;
+                ecad_model::derive::connection_point_position(doc, page1, t)
             })
         })?;
         if let Some(at) = point {
@@ -427,7 +427,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let lamp = run(&mut s, "place", json!({"symbol": "lamp", "at": [X0, 210.0]}))?;
         let lamp_c: DeviceId = hex(&lamp, "component")?;
         let x2 = lamp["terminals"].as_array().and_then(|a| a.iter().find(|t| t["key"] == "X2")).cloned().ok_or("no lamp X2")?;
-        let x2: ecad_model::TerminalId = hex(&x2, "terminal")?;
+        let x2: ecad_model::ConnectionPointId = hex(&x2, "terminal")?;
         let top = project
             .read(&mut s, |p, _| {
                 let doc = p.ledger.document();
@@ -457,8 +457,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 p.outputs();
                 let doc = p.ledger.document();
                 let t = Instant::now();
-                let (input, total) = ecad_engine::generated::input_of(doc, plan_page, p.kept_outputs());
-                std::hint::black_box(ecad_engine::generated::page_parts(doc, plan_page, &input, p.kept_outputs(), total));
+                let (input, total) = ecad_engine::generated::input_of(doc, plan_page, p.kept_reports());
+                std::hint::black_box(ecad_engine::generated::page_parts(doc, plan_page, &input, p.kept_reports(), total));
                 ms(t)
             })?);
         }
@@ -472,8 +472,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 p.outputs();
                 let doc = p.ledger.document();
                 let t = Instant::now();
-                let (input, total) = ecad_engine::generated::input_of(doc, sp_page, p.kept_outputs());
-                std::hint::black_box(ecad_engine::generated::page_parts(doc, sp_page, &input, p.kept_outputs(), total));
+                let (input, total) = ecad_engine::generated::input_of(doc, sp_page, p.kept_reports());
+                std::hint::black_box(ecad_engine::generated::page_parts(doc, sp_page, &input, p.kept_reports(), total));
                 ms(t)
             })?);
         }
@@ -481,10 +481,10 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         // A wire of this strip and one of another strip; a cable of this strip.
         let (mine, other, cable) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            let wire_of = |c: DeviceId| doc.terminals_of(c).find_map(|(t, _)| doc.ends_at(t).into_iter().next().map(|(w, _)| w));
-            let other = p.kept_outputs().and_then(|o| o.strips.strips.keys().copied().find(|c| *c != strip && *c != lv));
+            let wire_of = |c: DeviceId| doc.connection_points_of(c).find_map(|(t, _)| doc.ends_at(t).into_iter().next().map(|(w, _)| w));
+            let other = p.kept_reports().and_then(|o| o.strips.strips.keys().copied().find(|c| *c != strip && *c != lv));
             let cable = wire_of(strip)
-                .and_then(|_| doc.terminals_of(strip).flat_map(|(t, _)| doc.ends_at(t)).find_map(|(w, _)| doc.cables_of(w).into_iter().next()));
+                .and_then(|_| doc.connection_points_of(strip).flat_map(|(t, _)| doc.ends_at(t)).find_map(|(w, _)| doc.cables_of(w).into_iter().next()));
             (wire_of(strip), other.and_then(wire_of), cable)
         })?;
         run(&mut s, "openpage", json!({"page": sp_page.hex()}))?;
@@ -519,7 +519,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 v.push(ms(t));
                 out.spagetype_work = out
                     .spagetype_work
-                    .max(project.read(&mut s, |p, _| p.kept_outputs().map_or(0, |o| o.strip_pages.last_changed.len())).unwrap_or(0));
+                    .max(project.read(&mut s, |p, _| p.kept_reports().map_or(0, |o| o.strip_pages.last_changed.len())).unwrap_or(0));
                 run(&mut s, "undo", json!({}))?;
             }
             out.spagetype_ms = median(&mut v);

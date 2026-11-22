@@ -21,7 +21,7 @@ impl App {
 
     pub fn open_reports(&mut self) {
         if self.reports.is_none() {
-            let stem = self.output_stem();
+            let stem = self.report_stem();
             let mut r = outputs_ui::Reports::default();
             r.stem = stem;
             self.reports = Some(r);
@@ -38,7 +38,7 @@ impl App {
             })
             .unwrap_or_default();
         let chosen = folder.and_then(|f| folders.iter().position(|(h, _)| *h == f.hex()));
-        let path = format!("{}.pdf", self.output_stem());
+        let path = format!("{}.pdf", self.report_stem());
         self.print_book = Some(outputs_ui::PrintBook {
             scope: if chosen.is_some() { outputs_ui::ScopeKind::Folder } else { outputs_ui::ScopeKind::All },
             folders,
@@ -51,7 +51,7 @@ impl App {
     }
 
     /// The Reports window and the Print Book dialog.
-    pub(crate) fn output_windows(&mut self, ctx: &egui::Context) {
+    pub(crate) fn report_windows(&mut self, ctx: &egui::Context) {
         let serial = self.project_serial;
         if let Some(p) = self.project.clone()
             && p.is_attached(&self.cad.session)
@@ -88,7 +88,7 @@ impl App {
 
     /// Write the Reports tab as shown to `path` as CSV (design 024 §6.3).
     pub fn export_report(&mut self, path: &str) {
-        let path = self.output_path(path);
+        let path = self.report_path(path);
         let Some(r) = &mut self.reports else { return };
         let t = r.shown_table();
         let flagged = t.flagged();
@@ -289,7 +289,7 @@ impl App {
     pub fn print_from_dialog(&mut self) -> Result<serde_json::Value, String> {
         let Some(d) = self.print_book.clone() else { return Err("Print Book is not open".into()) };
         let mut params = d.params();
-        params["path"] = json!(self.output_path(&d.path)?);
+        params["path"] = json!(self.report_path(&d.path)?);
         let r = self.run_value("printbook", params);
         match &r {
             Ok(_) => self.print_book = None,

@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt, Representation,
-    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId,
+    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId,
 };
 
 use ecad_model::Noun;
@@ -32,7 +32,7 @@ use crate::CmdError;
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 use crate::defaults::{self, Scope};
 use crate::locations::{BoxCache, Located};
-use crate::strips::{self, terminal_words};
+use crate::strips::{self, connection_point_words};
 use crate::symbols::{self, Kind, PLUG_KEY, Side, Starter, StarterKey};
 use crate::wires::{ON_WIRE, OnRoute};
 
@@ -178,7 +178,7 @@ pub fn size_of(s: &Starter) -> Option<usize> {
 // ---------------------------------------------------------------- what is a connector
 
 /// The side of terminal `t` when it is a connector pin.
-pub fn side_of(doc: &Document, t: TerminalId) -> Option<Side> {
+pub fn side_of(doc: &Document, t: ConnectionPointId) -> Option<Side> {
     let term = doc.terminals.get(&t)?;
     let side = Side::of_key(term.key.as_ref()?)?;
     connector_of(doc, term.device()?).is_some_and(|x| x.mating).then_some(side)
@@ -227,14 +227,14 @@ pub fn half_tag(doc: &Document, c: DeviceId, side: Side) -> String {
 }
 
 /// The half tag a connector pin belongs to (`-X10.S`); `None` for any other terminal.
-pub fn half_tag_of(doc: &Document, t: TerminalId) -> Option<String> {
+pub fn half_tag_of(doc: &Document, t: ConnectionPointId) -> Option<String> {
     let side = side_of(doc, t)?;
     let c = doc.terminals.get(&t)?.device()?;
     Some(half_tag(doc, c, side))
 }
 
 /// A connector pin's full name, `-X10.S:3`; `None` for any other terminal.
-pub fn pin_name(doc: &Document, t: TerminalId) -> Option<String> {
+pub fn pin_name(doc: &Document, t: ConnectionPointId) -> Option<String> {
     let half = half_tag_of(doc, t)?;
     let label = doc.terminals.get(&t)?.label.clone()?;
     Some(format!("{half}:{label}"))
@@ -248,7 +248,7 @@ pub fn rep_tag(doc: &Document, c: DeviceId, r: &Representation) -> Option<String
 
 /// Whether a pin pair's plug-side label is hidden (design 044 §5.2: a pin pair shows its pin name
 /// once, beside the socket point).
-pub fn hides_label(doc: &Document, r: &Representation, t: TerminalId) -> bool {
+pub fn hides_label(doc: &Document, r: &Representation, t: ConnectionPointId) -> bool {
     rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.terminals.get(&t).and_then(|x| x.key.as_ref()) == Some(&PLUG_KEY)
 }
 
@@ -267,7 +267,7 @@ pub fn run_class(doc: &Document, r: &Representation) -> Option<u64> {
 ///
 /// # Errors
 /// `-X10:3` on a connector with pin 3 on both halves, and a pin the half does not have.
-pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Side>, Option<TerminalId>), CmdError>> {
+pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Side>, Option<ConnectionPointId>), CmdError>> {
     let text: String = text.trim().chars().take(64).collect();
     let (head, pin) = match text.split_once(':') {
         Some((h, p)) => (h.to_string(), Some(p.to_string())),
@@ -296,7 +296,7 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
     let (c, side) = found?;
     let Some(pin) = pin else { return Some(Ok((c, side, None))) };
     let pin = pin.trim().to_string();
-    let with = |want: Side| doc.terminals_of(c).find(|(_, x)| x.label.as_deref() == Some(pin.as_str()) && x.key == want.key()).map(|(t, _)| t);
+    let with = |want: Side| doc.connection_points_of(c).find(|(_, x)| x.label.as_deref() == Some(pin.as_str()) && x.key == want.key()).map(|(t, _)| t);
     Some(match side {
         Some(s) => with(s).map(|t| (c, Some(s), Some(t))).ok_or_else(|| CmdError::refused(format!("{} has no pin {pin}.", half_tag(doc, c, s)))),
         None => match (with(Side::Socket), with(Side::Plug)) {
@@ -320,15 +320,15 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
 /// The pins a connector has drawn: per side, pin name → its terminals (more than one: drawn twice).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Drawn {
-    pub socket: BTreeMap<String, Vec<TerminalId>>,
-    pub plug: BTreeMap<String, Vec<TerminalId>>,
+    pub socket: BTreeMap<String, Vec<ConnectionPointId>>,
+    pub plug: BTreeMap<String, Vec<ConnectionPointId>>,
     /// Every pin name, in name order (natural order for numbers, else the order drawn).
     pub order: Vec<String>,
 }
 
 impl Drawn {
     /// The pins of `side` (`Both`: none).
-    pub fn side(&self, side: Side) -> Option<&BTreeMap<String, Vec<TerminalId>>> {
+    pub fn side(&self, side: Side) -> Option<&BTreeMap<String, Vec<ConnectionPointId>>> {
         match side {
             Side::Socket => Some(&self.socket),
             Side::Plug => Some(&self.plug),
@@ -345,8 +345,8 @@ impl Drawn {
 /// The pins drawn on connector `c`: O(its terminals).
 pub fn drawn(doc: &Document, c: DeviceId) -> Drawn {
     let mut d = Drawn::default();
-    let mut first: BTreeMap<String, TerminalId> = BTreeMap::new();
-    for (t, x) in doc.terminals_of(c) {
+    let mut first: BTreeMap<String, ConnectionPointId> = BTreeMap::new();
+    for (t, x) in doc.connection_points_of(c) {
         let (Some(label), Some(side)) = (x.label.clone(), x.key.as_ref().and_then(Side::of_key)) else { continue };
         let e = first.entry(label.clone()).or_insert(t);
         if t < *e {
@@ -358,7 +358,7 @@ pub fn drawn(doc: &Document, c: DeviceId) -> Drawn {
             Side::Both => {}
         }
     }
-    let mut order: Vec<(String, TerminalId)> = first.into_iter().collect();
+    let mut order: Vec<(String, ConnectionPointId)> = first.into_iter().collect();
     if order.iter().all(|(n, _)| n.parse::<u64>().is_ok()) {
         order.sort_by_key(|(n, _)| n.parse::<u64>().unwrap_or(u64::MAX));
     } else {
@@ -617,7 +617,7 @@ pub fn half_family(doc: &Document, c: DeviceId, side: Side) -> ConnectorFamily {
 pub struct Shown {
     pub side: Side,
     pub name: String,
-    pub terminal: TerminalId,
+    pub terminal: ConnectionPointId,
     /// Its point in the definition's frame.
     pub local: Pt,
 }
@@ -645,9 +645,9 @@ pub fn symbol_ops(
             Some(s) => s,
         };
         let name = if pin { names.first() } else { names.get(i) }.ok_or(CmdError::refused("Not enough pin names for this symbol."))?;
-        let t: TerminalId = ids.fresh();
+        let t: ConnectionPointId = ids.fresh();
         let key = side.key().ok_or(CmdError::refused("A connector symbol's point has no side."))?;
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { owner: c.into(), label: Some(name.clone()), key: Some(key), accepts: td.accepts } });
+        ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { owner: c.into(), label: Some(name.clone()), key: Some(key), accepts: td.accepts } });
         cps.insert(t, td.at);
         shown.push(Shown { side, name: name.clone(), terminal: t, local: td.at });
     }
@@ -978,7 +978,7 @@ pub fn half_rows(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Vec<Half
 // ---------------------------------------------------------------- checks (design 044 §6.3)
 
 /// Where terminal `t` is drawn: the page and anchor of the first symbol showing it.
-fn terminal_at(doc: &Document, t: TerminalId) -> (Option<PageId>, Option<Pt>, Option<RepresentationId>) {
+fn connection_point_at(doc: &Document, t: ConnectionPointId) -> (Option<PageId>, Option<Pt>, Option<RepresentationId>) {
     match doc.representations_showing(t).next() {
         Some((rid, r)) => (Some(r.page), crate::xref::anchor(doc, r), Some(rid)),
         None => (None, None, None),
@@ -1007,7 +1007,7 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
             let mut ts = ts.clone();
             ts.sort();
             if let Some(second) = ts.get(1).copied() {
-                let (page, at, _) = terminal_at(doc, second);
+                let (page, at, _) = connection_point_at(doc, second);
                 out.push(Check {
                     kind: CheckKind::ConnectorPinTwice,
                     page,
@@ -1053,7 +1053,7 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
     // Lone pins, only when both halves have pins.
     if !d.socket.is_empty() && !d.plug.is_empty() {
         let (_, s, p) = side_names(doc, Some(c));
-        let mut lone: Vec<(String, TerminalId)> = Vec::new();
+        let mut lone: Vec<(String, ConnectionPointId)> = Vec::new();
         let mut lacking = None;
         for name in &d.order {
             match (d.socket.get(name), d.plug.get(name)) {
@@ -1069,7 +1069,7 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
             }
         }
         if let Some((_, first)) = lone.first() {
-            let (page, at, _) = terminal_at(doc, *first);
+            let (page, at, _) = connection_point_at(doc, *first);
             let n = lone.len();
             let names: Vec<String> = lone.iter().take(8).map(|(w, _)| w.clone()).collect();
             let more = if n > 8 { ", …" } else { "" };
@@ -1093,7 +1093,7 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
         let over = d.order.iter().filter_map(|x| x.parse::<usize>().ok().map(|v| (v, x))).filter(|(v, _)| *v > n).max_by_key(|(v, _)| *v);
         if let Some((v, name)) = over {
             let t = d.socket.get(name).or_else(|| d.plug.get(name)).and_then(|ts| ts.first()).copied();
-            let (page, at, _) = t.map_or((None, None, None), |t| terminal_at(doc, t));
+            let (page, at, _) = t.map_or((None, None, None), |t| connection_point_at(doc, t));
             out.push(Check {
                 kind: CheckKind::ConnectorOver,
                 page,
@@ -1154,7 +1154,7 @@ pub fn ref_edges(doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::
         for t in r.connection_points.keys() {
             let Some(x) = doc.terminals.get(t) else { continue };
             let other = side.other().key();
-            for (m, mx) in doc.terminals_of(c) {
+            for (m, mx) in doc.connection_points_of(c) {
                 if mx.label != x.label || mx.key != other {
                     continue;
                 }
@@ -1335,7 +1335,7 @@ pub struct Land {
 ///
 /// # Errors
 /// As [`plan_land_ends`].
-pub fn plan_land(doc: &Document, ids: &mut IdAllocator, on: OnRoute, t: TerminalId) -> Result<Land, CmdError> {
+pub fn plan_land(doc: &Document, ids: &mut IdAllocator, on: OnRoute, t: ConnectionPointId) -> Result<Land, CmdError> {
     plan_land_ends(doc, ids, on, (RouteEnd::Point(t), on.at), (RouteEnd::Point(t), on.at))
 }
 
@@ -1346,8 +1346,8 @@ pub fn plan_land(doc: &Document, ids: &mut IdAllocator, on: OnRoute, t: Terminal
 /// The point at a route end, or a strip terminal already there; each says what to do instead.
 pub fn plan_land_ends(doc: &Document, ids: &mut IdAllocator, on: OnRoute, first: (RouteEnd, Pt), second: (RouteEnd, Pt)) -> Result<Land, CmdError> {
     let route = doc.routes.get(&on.route).ok_or(CmdError::NotFound(Noun::Wire))?;
-    if let Some(x) = strip_terminal_at(doc, route.page, on.at) {
-        return Err(CmdError::refused(format!("{} is already there. Click elsewhere on the wire.", terminal_words(doc, x))));
+    if let Some(x) = strip_connection_point_at(doc, route.page, on.at) {
+        return Err(CmdError::refused(format!("{} is already there. Click elsewhere on the wire.", connection_point_words(doc, x))));
     }
     if let Some([a, b]) = route.end_points() {
         for (p, e) in [a, b].into_iter().zip(route.ends) {
@@ -1355,7 +1355,7 @@ pub fn plan_land_ends(doc: &Document, ids: &mut IdAllocator, on: OnRoute, first:
                 return Err(CmdError::refused(match e.point() {
                     Some(x) => format!(
                         "That is the end of the wire at {}. Click along the wire, away from its ends, or on empty space.",
-                        terminal_words(doc, x)
+                        connection_point_words(doc, x)
                     ),
                     None => "That is the end of the wire. Click along the wire, away from its ends, or on empty space.".into(),
                 }));
@@ -1371,13 +1371,13 @@ pub fn segments(v: &[Pt]) -> impl Iterator<Item = (Pt, Pt)> + '_ {
 }
 
 /// The terminal of any strip drawn at `at` on `page`.
-pub fn strip_terminal_at(doc: &Document, page: PageId, at: Pt) -> Option<TerminalId> {
+pub fn strip_connection_point_at(doc: &Document, page: PageId, at: Pt) -> Option<ConnectionPointId> {
     // Each terminal symbol shows its own connection point: O(representations on the page).
     doc.representations_on(page).find_map(|(_, r)| {
         let Subject::Device(c) = r.subject else { return None };
         strips::strip_of(doc, c)?;
         let placement = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl);
-        crate::devices::shown_terminals(doc, c, r).into_iter().find_map(|(t, p)| {
+        crate::devices::shown_connection_points(doc, c, r).into_iter().find_map(|(t, p)| {
             let p = match (r.form, placement) {
                 (Form::Symbol, Some(pl)) => pl.apply(p),
                 _ => p,

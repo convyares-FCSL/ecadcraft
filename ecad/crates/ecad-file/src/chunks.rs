@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     Cable, CableId, Definition, DefinitionId, Device, DeviceId, Document, Folder, FolderId, Item, ItemId, Layer, LayerId, ObjectRef, Op, Page,
-    PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues, Terminal, TerminalId, Touched,
+    PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues, Terminal, ConnectionPointId, Touched,
     Wire, WireId,
 };
 use rayon::prelude::*;
@@ -92,7 +92,7 @@ trait RawId: Copy + Ord + std::fmt::Display {
 macro_rules! raw_id {
     ($($t:ty),*) => {$(impl RawId for $t { fn raw(self) -> u128 { self.0 } })*};
 }
-raw_id!(LayerId, DeviceId, TerminalId, WireId, CableId, DefinitionId, ecad_model::AidId, ecad_model::LoosePartId);
+raw_id!(LayerId, DeviceId, ConnectionPointId, WireId, CableId, DefinitionId, ecad_model::AidId, ecad_model::LoosePartId);
 
 /// A version row's `chunks`: key → hex hash.
 pub type ChunkHashes = BTreeMap<String, String>;
@@ -440,7 +440,7 @@ enum Parsed {
     Page(PageId, Box<PageChunk>),
     Layer(BTreeMap<LayerId, Layer>),
     Device(BTreeMap<DeviceId, Device>),
-    Terminal(BTreeMap<TerminalId, Terminal>),
+    Terminal(BTreeMap<ConnectionPointId, Terminal>),
     Wire(BTreeMap<WireId, Wire>),
     Cable(BTreeMap<CableId, Cable>),
     Definition(BTreeMap<DefinitionId, Definition>),

@@ -347,6 +347,6 @@ pub fn fill_folders(rows: &mut [crate::sheets_ui::RevRow], p: &ecad_engine::Proj
 /// `None` when the Checks have not been kept yet (nothing is built for it).
 pub fn badge(p: &ecad_engine::Project) -> Option<(usize, usize)> {
     let (e, w, _) = p.kept_checks()?.counts();
-    let (oe, ow, _) = p.kept_outputs().map_or((0, 0, 0), ecad_engine::outputs::kept::Outputs::check_counts);
+    let (oe, ow, _) = p.kept_reports().map_or((0, 0, 0), ecad_engine::outputs::kept::ReportModels::check_counts);
     Some((e + oe, w + ow))
 }

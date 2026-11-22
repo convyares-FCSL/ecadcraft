@@ -108,7 +108,7 @@ fn two_devices(h: &mut H, loc_a: &str, loc_b: &str) -> (DeviceId, DeviceId, f64,
     h.run("setlocation", json!({"component": b.hex(), "value": loc_b})).unwrap();
     let doc = h.doc();
     let page = h.first_page();
-    let tp = ecad_model::derive::terminal_positions(&doc, page);
+    let tp = ecad_model::derive::connection_point_positions(&doc, page);
     let pos = |c: DeviceId| {
         let (rid, _) = doc.representations_of(ecad_model::Subject::Device(c)).next().unwrap();
         tp.iter().find(|(_, r, _)| *r == rid).unwrap().2
@@ -774,7 +774,7 @@ fn scope_words(h: &mut H, before: &Document, ops: &[Op]) -> (String, String) {
             s.collect(d, ops);
             s
         };
-        let o = p.kept_outputs().map(|_| format!("{:?} {:?}", scope(before), scope(&after))).unwrap_or_default();
+        let o = p.kept_reports().map(|_| format!("{:?} {:?}", scope(before), scope(&after))).unwrap_or_default();
         (a, o)
     })
 }
@@ -808,7 +808,7 @@ fn r8_a_cable_edit_touches_only_that_cables_views() {
         let kept = p.checks().sorted(&doc);
         let built = ecad_engine::project::engine_views().checks(&doc, tol).sorted(&doc);
         let row = p.outputs().cable_row(k).cloned();
-        let fresh = ecad_engine::outputs::kept::Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics).cable_row(k).cloned();
+        let fresh = ecad_engine::outputs::kept::ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics).cable_row(k).cloned();
         (kept, built, row, fresh)
     });
     assert!(kept == built, "kept checks equal a rebuild");
@@ -834,7 +834,7 @@ fn r8_kept_rows_follow_new_remove_assign_and_undo() {
         let built = ecad_engine::project::engine_views().checks(&doc, tol).sorted(&doc);
         let o = p.outputs();
         let rows = (o.cable_row(k).cloned(), o.cable_row(k2).cloned(), o.cable_count());
-        let f = ecad_engine::outputs::kept::Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+        let f = ecad_engine::outputs::kept::ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
         let fresh = (f.cable_row(k).cloned(), f.cable_row(k2).cloned(), f.cable_count());
         (kept, built, rows, fresh)
     });

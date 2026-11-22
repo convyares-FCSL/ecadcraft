@@ -511,25 +511,25 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             }
             // Brief 048: another definition may bridge other points.
             Op::SetDeviceDefinition { id, .. } => {
-                for (t, _) in doc.terminals_of(*id) {
+                for (t, _) in doc.connection_points_of(*id) {
                     add(Node::Terminal(t), &mut nets);
                 }
             }
-            Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
+            Op::AddConnectionPoint { id, terminal } | Op::RemoveConnectionPoint { id, terminal } => {
                 add(Node::Terminal(*id), &mut nets);
-                for (t, _) in doc.terminals_of(terminal.owner) {
+                for (t, _) in doc.connection_points_of(terminal.owner) {
                     add(Node::Terminal(t), &mut nets);
                 }
             }
             Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
-                for (t, _) in doc.terminals_of(*id) {
+                for (t, _) in doc.connection_points_of(*id) {
                     add(Node::Terminal(t), &mut nets);
                 }
             }
             // A continuation (design 072 §6.2) added, removed or renamed: its points and its name
             // groups carry its potential.
             Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => {
-                for (t, _) in doc.terminals_of(*id) {
+                for (t, _) in doc.connection_points_of(*id) {
                     add(Node::Terminal(t), &mut nets);
                     add(Node::Terminal(t), &mut potential);
                 }
@@ -539,7 +539,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
                 }
             }
             Op::ModifyAid { id, before, after } if connectivity::continuation_key(before) != connectivity::continuation_key(after) => {
-                for (t, _) in doc.terminals_of(*id) {
+                for (t, _) in doc.connection_points_of(*id) {
                     add(Node::Terminal(t), &mut nets);
                     add(Node::Terminal(t), &mut potential);
                 }
@@ -550,7 +550,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             }
             // Brief 030 (FP7): a link edit touches the nets of its old and new terminals, so the
             // numbering pass merges or splits their numbers in the same transaction.
-            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if crate::links::link_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if crate::links::jumper_bar_number(key).is_some() => {
                 for v in [before, after] {
                     for t in crate::links::terminals_named(doc, *c, v.as_deref()) {
                         add(Node::Terminal(t), &mut nets);
@@ -569,7 +569,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             }
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                 for comp in doc.components_using(*id) {
-                    for (t, _) in doc.terminals_of(comp) {
+                    for (t, _) in doc.connection_points_of(comp) {
                         add(Node::Terminal(t), &mut nets);
                     }
                 }

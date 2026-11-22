@@ -167,7 +167,7 @@ pub const MAX_LIMIT: usize = 2000;
 /// a page at a time.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct XrefsParams {
+pub struct DeviceReferencesParams {
     /// Only this device's references.
     #[serde(default)]
     component: Option<DeviceId>,
@@ -210,7 +210,7 @@ pub struct MirrormoveParams {
     placement: Option<String>,
 }
 
-impl Generic for XrefsParams {
+impl Generic for DeviceReferencesParams {
     const ID: &'static str = "xrefs";
     const TITLE: &'static str = "List References";
     const HELP: &'static str = "{component?: id, aid?: id, cable?: id, page?: id, limit?: n (200, max 2000), after?: n} (cable, device and continuation references; read only)";
@@ -225,7 +225,7 @@ impl Generic for XrefsParams {
         let limit = self.limit.map_or(DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(MAX_LIMIT).clamp(1, MAX_LIMIT));
         let after = self.after.map_or(Ok(0), |n| usize::try_from(n).map_err(|_| CmdError::refused("`after` must be a number")))?;
         let doc = cx.doc;
-        let v = xref::xrefs_json(doc, cx.derived.refs(), self.component, self.aid, self.cable, self.page, limit, after)?;
+        let v = xref::device_references_json(doc, cx.derived.refs(), self.component, self.aid, self.cable, self.page, limit, after)?;
         Ok(Outcome::answer(v))
     }
 }

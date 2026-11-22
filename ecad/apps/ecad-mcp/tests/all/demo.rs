@@ -31,7 +31,7 @@ fn the_demo_command_list_builds_the_control_panel() {
     assert_eq!(refs.len(), 2, "{refs:?}");
     assert!(refs.iter().all(|r| !r.orphan), "{refs:?}");
     let x2 = doc.components_tagged("-X02")[0];
-    let x2_terminals: Vec<_> = doc.terminals_of(x2).map(|(t, _)| t).collect();
+    let x2_terminals: Vec<_> = doc.connection_points_of(x2).map(|(t, _)| t).collect();
     assert_eq!(x2_terminals.len(), 3);
     let w01 = doc.cables_tagged("-W01")[0];
     let cores: Vec<_> = doc.cables[&w01].cores.iter().filter_map(|c| c.wire()).collect();
@@ -199,7 +199,7 @@ fn the_demo_locations_reports_and_generated_pages() {
     assert!(texts(2).contains(&"=PUMP+CP1-K01".to_string()), "{:?}", texts(2));
     assert!(texts(1).contains(&"=PUMP-K01".to_string()), "{:?}", texts(1));
     // Reports: no wire on the BOM; the cable row.
-    let o = ecad_engine::outputs::kept::Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+    let o = ecad_engine::outputs::kept::ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
     let bom = o.bom(ecad_engine::outputs::Group::Location);
     // Brief 028 (Q13): a strip counts its terminals, so -X01 and -X02 add their other terminals.
     let terminals: usize = o.strips.strips.values().map(|s| s.drawn).sum();

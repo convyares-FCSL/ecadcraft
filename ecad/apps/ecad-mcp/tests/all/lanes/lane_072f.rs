@@ -23,7 +23,7 @@ fn continuations_through_mcp_are_aids() {
     let (author, ops) = last_aid(&mut c);
     assert_eq!(author, Author::Agent(AGENT.into()));
     assert!(ops.iter().any(|o| matches!(o, Op::CreateAid { aid: Aid::Continuation { .. }, .. })), "{ops:?}");
-    assert!(ops.iter().any(|o| matches!(o, Op::AddTerminal { terminal, .. } if terminal.owner.aid().is_some())), "{ops:?}");
+    assert!(ops.iter().any(|o| matches!(o, Op::AddConnectionPoint { terminal, .. } if terminal.owner.aid().is_some())), "{ops:?}");
     assert!(!ops.iter().any(|o| matches!(o, Op::CreateDevice { .. })), "no device: {ops:?}");
     let b = c.exec("place", json!({"symbol": "continuation", "at": [80, 20], "name": "24V"}))["aid"].as_str().unwrap().to_string();
 

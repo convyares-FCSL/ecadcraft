@@ -30,7 +30,7 @@ fn same(a: &[Pt], b: &[(f64, f64)]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(p, (x, y))| p.near(Pt::new(*x, *y), 1e-9))
 }
 
-fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::TerminalId {
+fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::ConnectionPointId {
     let r = h.run("place", json!({"symbol": "terminal", "at": [at.0, at.1], "tag": tag})).unwrap();
     id(&r["terminals"][0], "terminal")
 }
@@ -568,8 +568,8 @@ fn kept_equals_rebuild(h: &mut H, what: &str) {
         assert_eq!(kept_checks, fresh, "{what}: Checks differ from a rebuild");
         p.outputs();
         let doc = p.ledger.document();
-        let kept = p.kept_outputs().map(|o| o.cables().into_iter().cloned().collect::<Vec<_>>()).unwrap_or_default();
-        let rebuilt = ecad_engine::outputs::kept::Outputs::build_with(doc, &ecad_engine::text_style::EngineMetrics);
+        let kept = p.kept_reports().map(|o| o.cables().into_iter().cloned().collect::<Vec<_>>()).unwrap_or_default();
+        let rebuilt = ecad_engine::outputs::kept::ReportModels::build_with(doc, &ecad_engine::text_style::EngineMetrics);
         let fresh: Vec<_> = rebuilt.cables().into_iter().cloned().collect();
         assert_eq!(kept, fresh, "{what}: cable rows differ from a rebuild");
     });
@@ -621,7 +621,7 @@ fn chain_updates_in_checks_and_outputs_match_a_rebuild() {
     kept_equals_rebuild(&mut f.h, "a member's end detached");
     // Unrelated: a wire far away on page 115 changes no cable row.
     f.h.run("wire", json!({"points": [[400, 400], [440, 400]]})).unwrap();
-    let changed = f.h.p(|p| p.kept_outputs().is_some_and(|o| o.last_cables_changed));
+    let changed = f.h.p(|p| p.kept_reports().is_some_and(|o| o.last_cables_changed));
     assert!(!changed, "an unrelated wire changes no cable row");
     kept_equals_rebuild(&mut f.h, "unrelated wire");
 }
@@ -653,7 +653,7 @@ fn the_outputs_map_takes_a_continuation_rename_to_its_cables() {
         assert!(all.len() > ops.len(), "the rewrite extends the rename");
         let doc = p.ledger.document().clone();
         p.views_mut().finish(&doc, &all, pending);
-        let kept = p.kept_outputs().unwrap().cable_row(cable).cloned();
+        let kept = p.kept_reports().unwrap().cable_row(cable).cloned();
         let fresh = p.derived().detached(&doc).outputs().cable_row(cable).cloned();
         (kept, fresh)
     });

@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_engine::Persistence;
 use ecad_engine::checks::{self, Object};
 use ecad_engine::symbols::{self, STARTER_LIBRARY, STARTERS};
-use ecad_model::{DeviceId, Document, Pt, TerminalId, Word};
+use ecad_model::{DeviceId, Document, Pt, ConnectionPointId, Word};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -227,7 +227,7 @@ fn labels(v: &Value) -> Vec<String> {
 }
 
 /// A terminal of a `place` result by label.
-fn term(v: &Value, label: &str) -> TerminalId {
+fn term(v: &Value, label: &str) -> ConnectionPointId {
     let t = v["terminals"].as_array().and_then(|a| a.iter().find(|t| t["label"] == label)).unwrap_or_else(|| panic!("no point {label} in {v}"));
     id(t, "terminal")
 }
@@ -264,8 +264,8 @@ fn search_keys(h: &mut H, q: &str) -> BTreeSet<String> {
     v["symbols"].as_array().map(|a| a.iter().filter_map(|s| s["key"].as_str().map(String::from)).collect()).unwrap_or_default()
 }
 
-fn net_of(d: &Document, t: TerminalId) -> Option<ecad_model::connectivity::NetKey> {
-    d.connectivity().net_of_terminal(t)
+fn net_of(d: &Document, t: ConnectionPointId) -> Option<ecad_model::connectivity::NetKey> {
+    d.connectivity().net_of_connection_point(t)
 }
 
 /// The definitions in `d` whose origin is the starter library's `key`.
@@ -275,7 +275,7 @@ fn embeds_of(d: &Document, key: &str) -> usize {
 }
 
 /// The terminals raised as `Unconnected` in `d`.
-fn unconnected(d: &Document) -> BTreeSet<TerminalId> {
+fn unconnected(d: &Document) -> BTreeSet<ConnectionPointId> {
     checks::all(d, 1e-6)
         .into_iter()
         .filter(|c| c.kind.name() == "unconnected")
@@ -462,7 +462,7 @@ fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
             let want = if symbols::by_key(&e.key).and_then(|s| s.side()).is_some() { "Connector" } else { name.as_str() };
             assert_eq!(prop(&mut h, c, "description").as_deref(), Some(want), "{}: default description", e.key);
             let d = h.doc();
-            let shown = ecad_model::derive::terminal_positions(&d, page);
+            let shown = ecad_model::derive::connection_point_positions(&d, page);
             for (label, x, y) in &e.points {
                 let t = term(&v, label);
                 let got = shown.iter().find(|(x, _, _)| *x == t).map(|(_, _, p)| *p).unwrap_or_else(|| panic!("{} {label} not shown", e.key));
@@ -514,9 +514,9 @@ fn c_change_over_takes_the_next_sequence_digit() {
     let page = h.first_page();
     let v = join(&mut h, "co", (170.0, 150.0), k1).unwrap();
     assert_eq!(labels(&v), ["41", "42", "44"]);
-    assert!(near(h.terminal_pos(page, term(&v, "41")), Pt::new(170.0, 160.0)));
-    assert!(near(h.terminal_pos(page, term(&v, "42")), Pt::new(175.0, 140.0)));
-    assert!(near(h.terminal_pos(page, term(&v, "44")), Pt::new(170.0, 140.0)));
+    assert!(near(h.connection_point_pos(page, term(&v, "41")), Pt::new(170.0, 160.0)));
+    assert!(near(h.connection_point_pos(page, term(&v, "42")), Pt::new(175.0, 140.0)));
+    assert!(near(h.connection_point_pos(page, term(&v, "44")), Pt::new(170.0, 140.0)));
     docs.push(h.doc());
     for want in docs.iter().rev().skip(1) {
         h.cmdline("u");

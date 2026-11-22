@@ -9,11 +9,11 @@
 use cadcraft_engine::doc::{EntityKind, HAlign, Text, VAlign};
 use cadcraft_engine::geom::Vec3;
 use ecad_model::sheet::{Grid, Margins};
-use ecad_model::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect, TextLook as ItemLook, TitleBlockLayout};
+use ecad_model::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect, TextDraw as ItemDraw, TitleBlockLayout};
 use ecad_model::{LengthUnit, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::frame::{LABEL_ACI, LAYER, Part, TextLook};
+use crate::frame::{LABEL_ACI, LAYER, Part, TextDraw};
 use crate::frames::FrameInput;
 
 /// `ecad.title-red`: ACI 1, red (a field's Red colour; house style: the status).
@@ -57,7 +57,7 @@ impl Pen {
     }
 
     /// Text at `at`, aligned, fitted into `room` mm when given. Returns whether it was cut.
-    pub fn text(&mut self, at: (f64, f64), look: TextLook, value: &str, align: (HAlign, VAlign), aci: Option<u8>, room: Option<f64>) -> bool {
+    pub fn text(&mut self, at: (f64, f64), look: TextDraw, value: &str, align: (HAlign, VAlign), aci: Option<u8>, room: Option<f64>) -> bool {
         if value.is_empty() || !(look.mm.is_finite() && look.mm > 0.0) {
             return false;
         }
@@ -161,9 +161,9 @@ pub fn block_origin(input: &FrameInput, layout: &TitleBlockLayout) -> (f64, f64)
 
 /// The look a block item's text is drawn with: the frame's main style for bold, its value style
 /// otherwise, at the item's size.
-pub fn text_look(input: &FrameInput, look: &ItemLook) -> TextLook {
+pub fn text_draw(input: &FrameInput, look: &ItemDraw) -> TextDraw {
     let base = if look.bold { input.text.main } else { input.text.value };
-    TextLook { mm: look.size, style: base.style, weight: if look.bold { base.weight.or(input.text.bold_weight) } else { None } }
+    TextDraw { mm: look.size, style: base.style, weight: if look.bold { base.weight.or(input.text.bold_weight) } else { None } }
 }
 
 fn aci_of(ink: Ink) -> Option<u8> {
@@ -215,8 +215,8 @@ pub fn block(pen: &mut Pen, input: &FrameInput, layout: &TitleBlockLayout, origi
 }
 
 /// A value or static text in its box below `top_gap` mm, aligned; returns whether it was cut.
-fn value_text(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), value: &str, look: &ItemLook, top_gap: f64) -> bool {
-    let tl = text_look(input, look);
+fn value_text(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), value: &str, look: &ItemDraw, top_gap: f64) -> bool {
+    let tl = text_draw(input, look);
     let room = r.w - 2.0 * INSET_MM;
     let y = origin.1 + r.y + (r.h - top_gap).max(0.0) / 2.0;
     let (x, h) = match look.align {

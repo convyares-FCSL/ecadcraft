@@ -36,7 +36,7 @@ fn the_six_built_in_types_are_listed_with_their_fields() {
     let ids: Vec<String> = s["styles"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap_or_default().to_string()).collect();
     assert_eq!(ids, ["front", "schematic", "network", "singleline", "panel", "report", "plain"]);
     let d = h.doc();
-    let look = |w: &str| ptype::look_of(&d, &StyleRef::Builtin(w.into()));
+    let look = |w: &str| ptype::draw_of(&d, &StyleRef::Builtin(w.into()));
     assert_eq!(look("front").holds, ptype::Holds::Front);
     assert!(!look("front").zones && look("schematic").zones && !look("panel").zones && !look("report").zones);
     assert_eq!(look("report").holds, ptype::Holds::Report);
@@ -264,7 +264,7 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     let hostile = json!({"name": "", "body": {"page": {"holds": "x", "sheet": "A0 999x999", "zones": "maybe"}}});
     assert!(serde_json::from_value::<ecad_model::StyleRecord>(hostile).is_err());
     let d = h.doc();
-    let look = ptype::look_of(&d, &StyleRef::Builtin("schematic".into()));
+    let look = ptype::draw_of(&d, &StyleRef::Builtin("schematic".into()));
     assert_eq!((look.holds, look.zones, look.sheet), (ptype::Holds::None, true, None));
     assert_eq!(sheet_of(&d, p1), d.settings.sheet());
     let rows = kinds(&mut h);
@@ -439,7 +439,7 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     let plain = page(&mut h, json!({"type": "plain"}));
     assert_eq!(ty(&mut h, plain), "plain");
     let d = h.doc();
-    assert!(!ptype::look_of(&d, &StyleRef::Builtin("plain".into())).checks);
+    assert!(!ptype::draw_of(&d, &StyleRef::Builtin("plain".into())).checks);
     assert!(!ecad_model::sheet::page_checks(&d, plain));
     let before_numbered = numbered(&mut h);
     h.wire_pp(&[(0.0, 40.0), (60.0, 40.0)]).unwrap();

@@ -13,7 +13,7 @@ use crate::book::PageNo;
 use crate::device::DeviceType;
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::page::{PageKind, PageTitle};
 use crate::point::PointKey;
 use crate::role::{PartRole, Role};
@@ -584,24 +584,24 @@ impl<'de> Deserialize<'de> for Accepts {
 /// continuation's point, §6.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TerminalOwner {
+pub enum ConnectionPointOwner {
     Device(DeviceId),
     Aid(crate::id::AidId),
 }
 
-impl From<DeviceId> for TerminalOwner {
+impl From<DeviceId> for ConnectionPointOwner {
     fn from(d: DeviceId) -> Self {
         Self::Device(d)
     }
 }
 
-impl From<crate::id::AidId> for TerminalOwner {
+impl From<crate::id::AidId> for ConnectionPointOwner {
     fn from(a: crate::id::AidId) -> Self {
         Self::Aid(a)
     }
 }
 
-impl TerminalOwner {
+impl ConnectionPointOwner {
     /// The device it belongs to, if a device owns it.
     pub fn device(self) -> Option<DeviceId> {
         match self {
@@ -637,9 +637,9 @@ impl TerminalOwner {
 
 /// A connection point of a device or a drawing aid.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Terminal {
+pub struct ConnectionPoint {
     /// What it belongs to (design 072 §3).
-    pub owner: TerminalOwner,
+    pub owner: ConnectionPointOwner,
     pub label: Option<String>,
     /// The definition terminal this one was created from (LIB-02; design 072 §2.7).
     pub key: Option<PointKey>,
@@ -648,7 +648,7 @@ pub struct Terminal {
     pub accepts: Accepts,
 }
 
-impl Terminal {
+impl ConnectionPoint {
     /// The device it belongs to; `None` for a drawing aid's point.
     pub fn device(&self) -> Option<DeviceId> {
         self.owner.device()
@@ -689,7 +689,7 @@ pub struct Representation {
     /// I14): empty for a symbol of the component's own definition, whose terminals are matched to
     /// the definition by key; otherwise where each terminal sits in the **definition's local
     /// frame**, so the terminals follow the instance's placement.
-    pub connection_points: BTreeMap<TerminalId, Pt>,
+    pub connection_points: BTreeMap<ConnectionPointId, Pt>,
 }
 
 /// Where a cable core is (owner ruling, 2026-11-18): stored, never worked out from the
@@ -705,7 +705,7 @@ pub struct Representation {
 #[serde(rename_all = "snake_case")]
 pub enum CorePosition {
     Unplaced,
-    Route { route: RouteId, landed: Option<TerminalId> },
+    Route { route: RouteId, landed: Option<ConnectionPointId> },
     Wire(WireId),
 }
 
@@ -767,7 +767,7 @@ pub struct Core {
     /// page's are one net, and the wire runs from device point to device point across the pages.
     /// They are aids: never a wire's end.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub through: Vec<TerminalId>,
+    pub through: Vec<ConnectionPointId>,
 }
 
 impl Core {
@@ -1048,11 +1048,11 @@ impl ProjectSettings {
 
 /// A terminal of a definition, in the symbol's local frame.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TerminalDef {
+pub struct ConnectionPointDef {
     pub key: PointKey,
     pub label: Option<String>,
     pub at: Pt,
-    /// How many conductors the point accepts (design 072 F38); copied to each [`Terminal`] made
+    /// How many conductors the point accepts (design 072 F38); copied to each [`ConnectionPoint`] made
     /// from it.
     #[serde(default, skip_serializing_if = "Accepts::is_two")]
     pub accepts: Accepts,
@@ -1357,7 +1357,7 @@ pub struct Definition {
     pub name: String,
     pub origin: Option<Origin>,
     pub graphics: Vec<Primitive>,
-    pub terminals: Vec<TerminalDef>,
+    pub terminals: Vec<ConnectionPointDef>,
     /// Groups of terminal keys joined inside the device (brief 022, FP5): every terminal of one
     /// group is on one net. Empty for almost every definition, and then left out of the file so
     /// existing content hashes do not change. A bridge may name a key the placement writes rather
@@ -1415,7 +1415,7 @@ pub struct Document {
     pub layers: BTreeMap<LayerId, Layer>,
     pub items: BTreeMap<ItemId, Item>,
     pub devices: BTreeMap<DeviceId, Device>,
-    pub terminals: BTreeMap<TerminalId, Terminal>,
+    pub terminals: BTreeMap<ConnectionPointId, ConnectionPoint>,
     pub representations: BTreeMap<RepresentationId, Representation>,
     pub wires: BTreeMap<WireId, Wire>,
     pub cables: BTreeMap<CableId, Cable>,
@@ -1469,7 +1469,7 @@ struct DocumentData {
     layers: BTreeMap<LayerId, Layer>,
     items: BTreeMap<ItemId, Item>,
     devices: BTreeMap<DeviceId, Device>,
-    terminals: BTreeMap<TerminalId, Terminal>,
+    terminals: BTreeMap<ConnectionPointId, ConnectionPoint>,
     representations: BTreeMap<RepresentationId, Representation>,
     wires: BTreeMap<WireId, Wire>,
     cables: BTreeMap<CableId, Cable>,
@@ -1692,8 +1692,8 @@ impl Document {
 
     /// Representations that show `terminal` through an explicit connection point, in ID order
     /// (brief 036: a level terminal is always shown that way).
-    pub fn representations_showing(&self, terminal: TerminalId) -> impl Iterator<Item = (RepresentationId, &Representation)> {
-        referrers(&self.index.terminal_reps, &terminal).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
+    pub fn representations_showing(&self, terminal: ConnectionPointId) -> impl Iterator<Item = (RepresentationId, &Representation)> {
+        referrers(&self.index.connection_point_reps, &terminal).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
     }
 
     /// The definition a symbol representation places (its one symbol instance), if any.
@@ -1705,18 +1705,18 @@ impl Document {
     }
 
     /// Connection points of `owner` (a device or a drawing aid), in ID order.
-    pub fn terminals_of(&self, owner: impl Into<TerminalOwner>) -> impl Iterator<Item = (TerminalId, &Terminal)> {
-        referrers(&self.index.component_terminals, &owner.into()).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
+    pub fn connection_points_of(&self, owner: impl Into<ConnectionPointOwner>) -> impl Iterator<Item = (ConnectionPointId, &ConnectionPoint)> {
+        referrers(&self.index.component_connection_points, &owner.into()).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
     }
 
     /// Whether any conductor end is attached to `terminal`, through the index, without listing them.
-    pub fn has_ends(&self, terminal: TerminalId) -> bool {
-        self.index.terminal_ends.get(&terminal).is_some_and(|m| !m.is_empty())
+    pub fn has_ends(&self, terminal: ConnectionPointId) -> bool {
+        self.index.connection_point_ends.get(&terminal).is_some_and(|m| !m.is_empty())
     }
 
     /// Wire ends attached to `terminal`, in conductor ID order, end A before end B.
-    pub fn ends_at(&self, terminal: TerminalId) -> Vec<(WireId, End)> {
-        referrers(&self.index.terminal_ends, &terminal).collect()
+    pub fn ends_at(&self, terminal: ConnectionPointId) -> Vec<(WireId, End)> {
+        referrers(&self.index.connection_point_ends, &terminal).collect()
     }
 
     /// The wires of net `net`, in ID order, through the index.
@@ -1725,8 +1725,8 @@ impl Document {
     }
 
     /// The routes with an end on connection point `t`, in ID order, through the index.
-    pub fn routes_at(&self, t: TerminalId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
-        referrers(&self.index.terminal_routes, &t)
+    pub fn routes_at(&self, t: ConnectionPointId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+        referrers(&self.index.connection_point_routes, &t)
     }
 
     /// The routes ending on the middle of route `r` (its T-joins), in ID order, through the index.
@@ -1823,14 +1823,14 @@ impl Document {
 
     /// The cable and core index whose named point `t` is (a point of a cable reference, design 072
     /// §4.4, F4), through the index.
-    pub fn cable_point(&self, t: TerminalId) -> Option<(CableId, usize)> {
+    pub fn cable_point(&self, t: ConnectionPointId) -> Option<(CableId, usize)> {
         let cable = referrers(&self.index.cable_points, &t).next()?;
         let index = self.cables.get(&cable)?.cores.iter().position(|c| c.through.contains(&t))?;
         Some((cable, index))
     }
 
     /// Whether `t` is a connection point: a component's terminal or a cable reference's point.
-    pub fn has_point(&self, t: TerminalId) -> bool {
+    pub fn has_point(&self, t: ConnectionPointId) -> bool {
         self.terminals.contains_key(&t) || self.cable_point(t).is_some()
     }
 
@@ -1839,7 +1839,7 @@ impl Document {
     /// continuation's point joins the points of every continuation with the same name (an unnamed
     /// continuation's, its own). `None` for a device's own point. Named points are aids: a wire
     /// runs through them, never to them, so it runs device point to device point across pages.
-    pub fn named_points(&self, t: TerminalId) -> Option<Vec<TerminalId>> {
+    pub fn named_points(&self, t: ConnectionPointId) -> Option<Vec<ConnectionPointId>> {
         if let Some((cable, i)) = self.cable_point(t) {
             return self.cables.get(&cable)?.cores.get(i).map(|c| c.through.clone());
         }
@@ -1849,13 +1849,13 @@ impl Document {
 
     /// The points of continuation `id` (as `aid`, before or after an edit) and of its partners by
     /// name, in ID order.
-    pub fn continuation_points(&self, id: crate::id::AidId, aid: &crate::aid::Aid) -> Vec<TerminalId> {
+    pub fn continuation_points(&self, id: crate::id::AidId, aid: &crate::aid::Aid) -> Vec<ConnectionPointId> {
         let aids = match crate::connectivity::continuation_key(aid) {
             Some(k) => self.continuations_named(&k),
             None => Vec::new(),
         };
         let aids = aids.into_iter().chain(std::iter::once(id));
-        let mut out: Vec<TerminalId> = aids.into_iter().flat_map(|a| self.terminals_of(a).map(|(t, _)| t)).collect();
+        let mut out: Vec<ConnectionPointId> = aids.into_iter().flat_map(|a| self.connection_points_of(a).map(|(t, _)| t)).collect();
         out.sort();
         out.dedup();
         out

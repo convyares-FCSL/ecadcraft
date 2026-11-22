@@ -91,15 +91,15 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
         ],
     )
     .unwrap();
-    let device = |ids: &mut IdAllocator, tag: &str, points: &[&str]| -> (Vec<Op>, Vec<TerminalId>) {
+    let device = |ids: &mut IdAllocator, tag: &str, points: &[&str]| -> (Vec<Op>, Vec<ConnectionPointId>) {
         let c: DeviceId = ids.fresh();
         let mut props = ecad_model::doc::Properties::new();
         props.insert("note".into(), title.into());
         let mut ops = vec![Op::CreateDevice { id: c, device: Device { properties: props, ..Device::default() }.with_tag(Some(tag)) }];
         let mut ts = Vec::new();
         for p in points {
-            let t: TerminalId = ids.fresh();
-            ops.push(Op::AddTerminal {
+            let t: ConnectionPointId = ids.fresh();
+            ops.push(Op::AddConnectionPoint {
                 id: t,
                 terminal: Terminal { owner: c.into(), label: Some((*p).into()), key: None, accepts: Default::default() },
             });
@@ -113,7 +113,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     l.commit(Author::User, "Devices", [k1, k1b, x1].concat()).unwrap();
     // Whole wires, no routes (design 072 §4.2): one net, its order 1 then 2.
     let net: NetId = ids.fresh();
-    let wire = |ids: &mut IdAllocator, number: &str, order: u16, a: TerminalId, b: TerminalId| -> (WireId, Op) {
+    let wire = |ids: &mut IdAllocator, number: &str, order: u16, a: ConnectionPointId, b: ConnectionPointId| -> (WireId, Op) {
         let w: WireId = ids.fresh();
         let wire = Wire {
             net_order: order,

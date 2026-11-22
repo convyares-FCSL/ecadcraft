@@ -1,10 +1,10 @@
 //! Brief 018 at the model level: one device drawn by several symbols of different definitions
 //! (I14 as relaxed, owner decision 2026-11-08) and the tag index.
 
-use ecad_model::derive::terminal_positions;
+use ecad_model::derive::connection_point_positions;
 use ecad_model::{
     Author, Color, Definition, DefinitionId, Device, DeviceId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, Op, Page, PageId, Placement,
-    Primitive, Pt, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
+    Primitive, Pt, Representation, Style, Subject, SymbolInstance, Terminal, ConnectionPointDef, ConnectionPointId,
 };
 
 struct Fx {
@@ -24,8 +24,8 @@ fn def(name: &str, keys: [&str; 2]) -> Definition {
         origin: None,
         graphics: vec![Primitive::Line { a: Pt::new(0.0, 10.0), b: Pt::new(0.0, -10.0) }],
         terminals: vec![
-            TerminalDef { key: keys[0].parse().unwrap(), label: Some(keys[0].into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
-            TerminalDef { key: keys[1].parse().unwrap(), label: Some(keys[1].into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
+            ConnectionPointDef { key: keys[0].parse().unwrap(), label: Some(keys[0].into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            ConnectionPointDef { key: keys[1].parse().unwrap(), label: Some(keys[1].into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }
@@ -63,8 +63,8 @@ fn fixture() -> Fx {
 
 /// Ops adding a symbol of `definition` at `at` as a representation of K1 with two new terminals
 /// labelled `labels`, with connection points (local frame) when `cps`.
-fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2], cps: bool) -> (Vec<Op>, [TerminalId; 2]) {
-    let (t1, t2, item, rep): (TerminalId, TerminalId, ItemId, ecad_model::RepresentationId) =
+fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2], cps: bool) -> (Vec<Op>, [ConnectionPointId; 2]) {
+    let (t1, t2, item, rep): (ConnectionPointId, ConnectionPointId, ItemId, ecad_model::RepresentationId) =
         (fx.ids.fresh(), fx.ids.fresh(), fx.ids.fresh(), fx.ids.fresh());
     let mut connection_points = std::collections::BTreeMap::new();
     if cps {
@@ -74,8 +74,8 @@ fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2],
     let k1 = fx.k1;
     let term = |l: &str| Terminal { owner: k1.into(), label: Some(l.into()), key: Some(l.parse().unwrap()), accepts: Default::default() };
     let ops = vec![
-        Op::AddTerminal { id: t1, terminal: term(labels[0]) },
-        Op::AddTerminal { id: t2, terminal: term(labels[1]) },
+        Op::AddConnectionPoint { id: t1, terminal: term(labels[0]) },
+        Op::AddConnectionPoint { id: t2, terminal: term(labels[1]) },
         Op::AddItem { id: item, item: symbol(fx, definition, at) },
         Op::LinkRepresentation {
             id: rep,
@@ -118,7 +118,7 @@ fn connection_points_of_a_symbol_follow_its_placement() {
     let (ops, [t1, t2]) = contact_ops(&mut fx, contact, Pt::new(50.0, 0.0), ["23", "24"], true);
     fx.l.commit(Author::User, "join", ops).unwrap();
     let doc = fx.l.document();
-    let shown = terminal_positions(doc, fx.page);
+    let shown = connection_point_positions(doc, fx.page);
     assert!(shown.iter().any(|(t, _, p)| *t == t1 && p.near(Pt::new(50.0, 10.0), 1e-9)));
     assert!(shown.iter().any(|(t, _, p)| *t == t2 && p.near(Pt::new(50.0, -10.0), 1e-9)));
     // Moving the instance moves its terminals, with no change to the representation.
@@ -126,7 +126,7 @@ fn connection_points_of_a_symbol_follow_its_placement() {
         doc.items.iter().find(|(_, i)| matches!(&i.kind, ItemKind::Symbol(s) if s.definition == fx.contact)).map(|(id, i)| (*id, i.clone())).unwrap();
     let after = symbol(&fx, fx.contact, Pt::new(80.0, 5.0));
     fx.l.commit(Author::User, "move", vec![Op::ModifyItem { id: item, before, after }]).unwrap();
-    let shown = terminal_positions(fx.l.document(), fx.page);
+    let shown = connection_point_positions(fx.l.document(), fx.page);
     assert!(shown.iter().any(|(t, _, p)| *t == t1 && p.near(Pt::new(80.0, 15.0), 1e-9)));
 }
 
@@ -134,13 +134,13 @@ fn connection_points_of_a_symbol_follow_its_placement() {
 fn connection_points_must_name_the_components_own_terminals() {
     let mut fx = fixture();
     let other: DeviceId = fx.ids.fresh();
-    let foreign: TerminalId = fx.ids.fresh();
+    let foreign: ConnectionPointId = fx.ids.fresh();
     fx.l.commit(
         Author::User,
         "other",
         vec![
             Op::CreateDevice { id: other, device: Device::default() },
-            Op::AddTerminal { id: foreign, terminal: Terminal { owner: other.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: foreign, terminal: Terminal { owner: other.into(), label: None, key: None, accepts: Default::default() } },
         ],
     )
     .unwrap();

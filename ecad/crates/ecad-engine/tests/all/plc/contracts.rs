@@ -5,7 +5,7 @@ mod fixes;
 mod iolist;
 mod rack;
 
-use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::ReportModels;
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
@@ -37,7 +37,7 @@ pub(crate) fn tag(h: &mut H, c: DeviceId) -> String {
 pub(crate) fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().plc.clone();
-        (kept, Outputs::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics).plc.clone())
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics).plc.clone())
     });
     assert!(kept == built, "the kept PLC model differs from a rebuild");
 }

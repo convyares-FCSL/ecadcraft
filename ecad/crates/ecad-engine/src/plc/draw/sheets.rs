@@ -5,7 +5,7 @@
 use cadcraft_engine::doc::HAlign;
 use ecad_model::{Document, LengthUnit};
 
-use crate::frame::{LABEL_ACI, THIN_WEIGHT, TextLook};
+use crate::frame::{LABEL_ACI, THIN_WEIGHT, TextDraw};
 use crate::generated::{Draw, row_mm};
 use crate::plc::overview::{self, Square, Tile, TileKind};
 use crate::plc::sheets::*;
@@ -14,7 +14,7 @@ use crate::text_style::{Look, TextKind};
 
 /// Sheet `i` of the I/O list page.
 pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &Look, unit: LengthUnit, a: Area, i: usize) {
-    let look = |k| TextLook::of(looks, k, unit);
+    let look = |k| TextDraw::of(looks, k, unit);
     let (heading, header, cell) = (look(TextKind::TableHeading), look(TextKind::TableHeader), look(TextKind::Table));
     let cards = plc.map(iolist::cards_in_order).unwrap_or_default();
     let Some(plc) = plc.filter(|_| !cards.is_empty()) else {
@@ -122,7 +122,7 @@ fn square(d: &mut Draw, x: f64, y: f64, s: Square) {
 
 /// One tile with its top-left corner at (x, y).
 fn tile(doc: &Document, d: &mut Draw, looks: &Look, unit: LengthUnit, t: &Tile, x: f64, y: f64) {
-    let look = |k| TextLook::of(looks, k, unit);
+    let look = |k| TextDraw::of(looks, k, unit);
     let room = Some(TILE_W - 3.0);
     let at = |dy: f64| (x + 1.5, y - dy);
     if t.kind == TileKind::Free {
@@ -169,7 +169,7 @@ fn tile(doc: &Document, d: &mut Draw, looks: &Look, unit: LengthUnit, t: &Tile, 
 
 /// Sheet `i` of the `plcrack` page.
 pub(crate) fn rack_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &Look, unit: LengthUnit, a: Area, i: usize) {
-    let look = |k| TextLook::of(looks, k, unit);
+    let look = |k| TextDraw::of(looks, k, unit);
     let Some(plc) = plc.filter(|p| !p.racks.is_empty() || !p.cards.is_empty()) else {
         d.text((a.l + 1.0, a.t - row_mm() / 2.0), look(TextKind::Table), NO_RACKS, HAlign::Left, None, Some(a.r - a.l - 2.0));
         return;

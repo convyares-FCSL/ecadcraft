@@ -20,7 +20,7 @@ use ecad_electrical::CmdError;
 use ecad_model::sheet::{FRAME_CATALOGUE, SheetSpec};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::title_block::{
-    Align, BlockItem, LineWeight, MAX_BODY_PRIMS, MAX_ITEMS, MAX_LOGO_PRIMS, MAX_TEXT_MM, MIN_TEXT_MM, Rect, TextLook, TitleBlockLayout, logo_words,
+    Align, BlockItem, LineWeight, MAX_BODY_PRIMS, MAX_ITEMS, MAX_LOGO_PRIMS, MAX_TEXT_MM, MIN_TEXT_MM, Rect, TextDraw, TitleBlockLayout, logo_words,
 };
 use ecad_model::{Op, Primitive, Pt};
 use serde_json::{Value, json};
@@ -206,7 +206,7 @@ pub fn block(bytes: &[u8], spec: &SheetSpec, margins: &ecad_model::sheet::Margin
                 items.push(BlockItem::Text {
                     at: rect,
                     text: value.chars().take(ecad_model::title_block::MAX_BODY_TEXT).collect(),
-                    look: TextLook { size, align, ..TextLook::default() },
+                    look: TextDraw { size, align, ..TextDraw::default() },
                 });
             }
             Primitive::Text { .. } => {}

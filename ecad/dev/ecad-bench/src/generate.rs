@@ -30,7 +30,7 @@ use std::collections::BTreeMap;
 use ecad_model::{
     Author, Cable, CableId, Color, ConductorId, Core, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId,
     ItemKind, Layer, LayerId, Ledger, LengthUnit, NetId, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
-    RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId, TxKind, Wire,
+    RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, ConnectionPointDef, ConnectionPointId, Transaction, TxId, TxKind, Wire,
     WireId,
 };
 
@@ -99,7 +99,7 @@ impl Variant {
 /// `ecad_model::derive::nets` reports them).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntendedNet {
-    pub terminals: Vec<TerminalId>,
+    pub terminals: Vec<ConnectionPointId>,
     pub wires: Vec<WireId>,
 }
 
@@ -154,8 +154,8 @@ fn coil() -> Definition {
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
-            TerminalDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
-            TerminalDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
+            ConnectionPointDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            ConnectionPointDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }
@@ -218,7 +218,7 @@ fn moved(id: ItemId, before: Item, dx: f64) -> Op {
 
 /// Wire `w` of net `net`, `order`th in it, between `ends`, named `name` (its wire number, not
 /// fixed, so renumbering reaches it), as [`wire_ops`] makes it.
-fn named_wire(net: NetId, conductor: ConductorId, order: u16, ends: [TerminalId; 2], name: &str) -> Wire {
+fn named_wire(net: NetId, conductor: ConductorId, order: u16, ends: [ConnectionPointId; 2], name: &str) -> Wire {
     let number = ecad_model::text::Text::new(name).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false });
     let [a, b] = ends;
     Wire { number, net_order: order, ..Wire::new(net, conductor, a, b) }
@@ -262,7 +262,7 @@ pub fn route_ops(ids: &mut IdAllocator, page: PageId, style: &Style, vertices: V
 /// ledger's rewrite pass, so it records the wire itself, as the rewrite would have; parallel
 /// wires of one pair are kept as the bench's tiers count them. Returns the new wire and its value.
 pub fn wire_ops(
-    ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [TerminalId; 2], net: NetId, order: u16, tag: &str,
+    ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [ConnectionPointId; 2], net: NetId, order: u16, tag: &str,
 ) -> (WireId, Wire, Vec<Op>) {
     let (_, mut ops) = route_ops(ids, page, style, vertices, ends.map(RouteEnd::Point));
     let (w, conductor): (WireId, ConductorId) = (ids.fresh(), ids.fresh());
@@ -281,7 +281,7 @@ pub fn wire_ops(
 pub fn added_wire(doc: &Document, ids: &mut IdAllocator) -> Result<Vec<Op>, String> {
     let page = *doc.page_order.first().ok_or("the project has no page")?;
     let layer = doc.layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("the project has no layer 0")?;
-    let shown = ecad_model::derive::terminal_positions(doc, page);
+    let shown = ecad_model::derive::connection_point_positions(doc, page);
     let (t1, _, p1) = *shown.first().ok_or("no terminal on the first page")?;
     let (t2, _, p2) = *shown.iter().find(|(t, _, _)| *t != t1).ok_or("fewer than two terminals on the first page")?;
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
@@ -365,7 +365,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         pages.push(page);
 
         // Components (`place`): terminals A1 and A2 of each, in placement order.
-        let mut terminals: Vec<(TerminalId, TerminalId, Pt)> = Vec::with_capacity(n);
+        let mut terminals: Vec<(ConnectionPointId, ConnectionPointId, Pt)> = Vec::with_capacity(n);
         let mut comp_ids: Vec<DeviceId> = Vec::with_capacity(n);
         for i in 0..n {
             comp_no += 1;
@@ -378,8 +378,8 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             ops.push(Op::CreateDevice { id: c, device: component });
             let mut keyed = Vec::new();
             for td in &def.terminals {
-                let t: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal {
+                let t: ConnectionPointId = ids.fresh();
+                ops.push(Op::AddConnectionPoint {
                     id: t,
                     terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });

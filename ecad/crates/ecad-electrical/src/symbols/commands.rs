@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, Origin, PageId, Placement,
-    Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, TextHAlign, TextSlot,
+    Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, ConnectionPointDef, ConnectionPointId, TextHAlign, TextSlot,
     TextVAlign, WireId,
 };
 
@@ -54,7 +54,7 @@ const TOL: f64 = 1e-6;
 pub struct Content {
     pub name: String,
     pub graphics: Vec<Primitive>,
-    pub points: Vec<TerminalDef>,
+    pub points: Vec<ConnectionPointDef>,
     pub slots: Vec<TextSlot>,
     pub defaults: ecad_model::SymbolDefaults,
     pub bridges: Vec<Vec<PointKey>>,
@@ -149,7 +149,7 @@ pub fn content(input: ContentInput) -> Result<Content, CmdError> {
         let key = PointKey::parse(&key).map_err(|e| CmdError::refused(format!("{e}.")))?;
         let label = p.label.map(|l| l.trim().to_string()).filter(|l| !l.is_empty());
         let at = p.at.ok_or_else(|| CmdError::refused(format!("Point {key} needs `at` [x, y].")))?;
-        c.points.push(TerminalDef { key, label, at, accepts: Default::default() });
+        c.points.push(ConnectionPointDef { key, label, at, accepts: Default::default() });
     }
     for s in input.slots {
         let word = s.text.map(|t| t.trim().to_string()).ok_or(CmdError::refused("Each slot needs a `text`."))?;
@@ -382,9 +382,9 @@ fn copies_of(doc: &Document, defs: &[DefinitionId]) -> Vec<(ItemId, Representati
 }
 
 /// The terminal of component `c` a representation shows for definition key `key`.
-fn shown_terminal(doc: &Document, c: DeviceId, r: &Representation, old: &Definition, key: &PointKey) -> Option<TerminalId> {
+fn shown_connection_point(doc: &Document, c: DeviceId, r: &Representation, old: &Definition, key: &PointKey) -> Option<ConnectionPointId> {
     if r.connection_points.is_empty() {
-        return doc.terminals_of(c).find(|(_, t)| t.key.as_ref() == Some(key)).map(|(t, _)| t);
+        return doc.connection_points_of(c).find(|(_, t)| t.key.as_ref() == Some(key)).map(|(t, _)| t);
     }
     let at = old.terminals.iter().find(|td| td.key == *key)?.at;
     r.connection_points.iter().find(|(_, p)| p.near(at, 1e-9)).map(|(t, _)| *t)
@@ -400,7 +400,7 @@ fn wire_number(doc: &Document, c: WireId) -> String {
     ecad_model::wiring::wire_number(doc, c).unwrap_or_else(|| crate::slash::wire_name(doc, c))
 }
 
-fn wire_words(doc: &Document, t: TerminalId) -> String {
+fn wire_words(doc: &Document, t: ConnectionPointId) -> String {
     let names: Vec<String> = doc.ends_at(t).iter().take(3).map(|(c, _)| wire_number(doc, *c)).collect();
     match names.len() {
         0 => String::new(),
@@ -419,17 +419,17 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
     };
     let mut changes = Vec::new();
     let mut clash = None;
-    let new_keys: BTreeMap<&PointKey, &TerminalDef> = new.terminals.iter().map(|t| (&t.key, t)).collect();
-    let old_keys: BTreeMap<&PointKey, &TerminalDef> = old.terminals.iter().map(|t| (&t.key, t)).collect();
+    let new_keys: BTreeMap<&PointKey, &ConnectionPointDef> = new.terminals.iter().map(|t| (&t.key, t)).collect();
+    let old_keys: BTreeMap<&PointKey, &ConnectionPointDef> = old.terminals.iter().map(|t| (&t.key, t)).collect();
     let mut labels_after: BTreeMap<String, usize> = BTreeMap::new();
-    for (_, t) in doc.terminals_of(c) {
+    for (_, t) in doc.connection_points_of(c) {
         if let Some(l) = &t.label {
             *labels_after.entry(l.clone()).or_default() += 1;
         }
     }
-    let mut page_spots: Option<Vec<(TerminalId, Pt)>> = None;
+    let mut page_spots: Option<Vec<(ConnectionPointId, Pt)>> = None;
     for (k, td) in &old_keys {
-        let t = shown_terminal(doc, c, r, old, k);
+        let t = shown_connection_point(doc, c, r, old, k);
         match new_keys.get(k) {
             None => match t {
                 Some(t) if doc.has_ends(t) => {
@@ -447,7 +447,7 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
                             // Rule 2: onto another point or wire end of the page.
                             let to = placement.apply(nd.at);
                             let spots = page_spots.get_or_insert_with(|| {
-                                ecad_model::derive::terminal_positions(doc, r.page).into_iter().map(|(t, _, p)| (t, p)).collect()
+                                ecad_model::derive::connection_point_positions(doc, r.page).into_iter().map(|(t, _, p)| (t, p)).collect()
                             });
                             let ends = crate::wires::loose_ends_at(doc, r.page, to, TOL);
                             if spots.iter().any(|(o, p)| *o != t && p.near(to, TOL)) || !ends.is_empty() {
@@ -534,21 +534,21 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
             ops.push(Op::SetDeviceDefinition { id: c, before: comp.definition, after: Some(new_id) });
             ops.extend(crate::devices::retype(c, comp, new_id, &new.device_type));
         }
-        let new_keys: BTreeMap<&PointKey, &TerminalDef> = new.terminals.iter().map(|t| (&t.key, t)).collect();
+        let new_keys: BTreeMap<&PointKey, &ConnectionPointDef> = new.terminals.iter().map(|t| (&t.key, t)).collect();
         let mut cps = r.connection_points.clone();
         for td in &old.terminals {
-            let Some(t) = shown_terminal(doc, c, r, old, &td.key) else { continue };
+            let Some(t) = shown_connection_point(doc, c, r, old, &td.key) else { continue };
             let term = doc.terminals.get(&t).ok_or(CmdError::refused("A connection point is gone."))?;
             match new_keys.get(&td.key) {
                 None => {
                     // Rows with a wired removal clash, so this one is unwired.
-                    ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
+                    ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
                     cps.remove(&t);
                 }
                 Some(nd) => {
                     if nd.label != td.label && term.label == td.label && r.connection_points.is_empty() {
-                        ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
-                        ops.push(Op::AddTerminal { id: t, terminal: Terminal { label: nd.label.clone(), ..term.clone() } });
+                        ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
+                        ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { label: nd.label.clone(), ..term.clone() } });
                     }
                     if !nd.at.near(td.at, TOL) {
                         if cps.contains_key(&t) {
@@ -561,9 +561,9 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
             }
         }
         for nd in new.terminals.iter().filter(|nd| !old.terminals.iter().any(|td| td.key == nd.key)) {
-            let t: TerminalId = ids.fresh();
+            let t: ConnectionPointId = ids.fresh();
             let key = if r.connection_points.is_empty() { nd.key.clone() } else { nd.label.clone().map_or_else(|| nd.key.clone(), PointKey::Def) };
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { owner: c.into(), label: nd.label.clone(), key: Some(key), accepts: nd.accepts } });
+            ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { owner: c.into(), label: nd.label.clone(), key: Some(key), accepts: nd.accepts } });
             if !r.connection_points.is_empty() {
                 cps.insert(t, nd.at);
             }
@@ -584,7 +584,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
 
 /// Move the ends of the routes on `page` landing on connection point `t` at `from` to `to` (the
 /// routes' other points stay), gathering several moves of one route in `edits`.
-fn follow(doc: &Document, t: TerminalId, page: PageId, from: Pt, to: Pt, edits: &mut crate::wires::RouteEdits<'_>) {
+fn follow(doc: &Document, t: ConnectionPointId, page: PageId, from: Pt, to: Pt, edits: &mut crate::wires::RouteEdits<'_>) {
     for r in doc.routes_at(t).filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page)).collect::<Vec<_>>() {
         let Some(route) = edits.get(r) else { continue };
         let n = route.points.len();
@@ -1025,7 +1025,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     content.graphics = prims.iter().map(|x| shifted(x, origin)).collect();
     // Points: the drawing's connection points, keyed by terminal key, else label, else 1…n.
     let mut points = Vec::new();
-    let mut rekey: Vec<(TerminalId, PointKey)> = Vec::new();
+    let mut rekey: Vec<(ConnectionPointId, PointKey)> = Vec::new();
     let mut used = BTreeSet::new();
     for (n, (t, at)) in rep.connection_points.iter().enumerate() {
         let term = doc.terminals.get(t).ok_or(CmdError::refused("A connection point is gone."))?;
@@ -1037,7 +1037,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
         if term.key.as_ref() != Some(&key) {
             rekey.push((*t, key.clone()));
         }
-        points.push(TerminalDef { key, label: term.label.clone(), at: Pt::new(at.x - origin.x, at.y - origin.y), accepts: Default::default() });
+        points.push(ConnectionPointDef { key, label: term.label.clone(), at: Pt::new(at.x - origin.x, at.y - origin.y), accepts: Default::default() });
     }
     content.points = points;
     for sl in &mut content.slots {
@@ -1081,8 +1081,8 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     ops.push(Op::SetDeviceDefinition { id: c, before: comp.definition, after: Some(id) });
     for (t, key) in rekey {
         if let Some(term) = doc.terminals.get(&t) {
-            ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { key: Some(key), ..term.clone() } });
+            ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
+            ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { key: Some(key), ..term.clone() } });
         }
     }
     Ok(Promoted { plan: SymbolPlan { ops, label: format!("Make symbol {}", content.name), id, updated: 0, left: 0 }, representation: new_rep })
@@ -1122,16 +1122,16 @@ pub fn plan_place(
                 return Err(CmdError::NotFound(Noun::Device));
             }
             // Unlabelled points count by their key.
-            let have: BTreeSet<String> = doc.terminals_of(c).map(|(t, _)| crate::devices::label_of(doc, t)).collect();
+            let have: BTreeSet<String> = doc.connection_points_of(c).map(|(t, _)| crate::devices::label_of(doc, t)).collect();
             let mut cps = BTreeMap::new();
             for td in &def.terminals {
                 let label = td.label.clone().unwrap_or_else(|| td.key.to_string());
                 if have.contains(&label) {
                     return Err(CmdError::refused(format!("{} already has a connection point {label}.", crate::devices::tag_words(doc, c))));
                 }
-                let t: TerminalId = ids.fresh();
+                let t: ConnectionPointId = ids.fresh();
                 // A point drawn without a label stays unlabelled: it prints no label (bug 1).
-                ops.push(Op::AddTerminal {
+                ops.push(Op::AddConnectionPoint {
                     id: t,
                     terminal: Terminal {
                         owner: c.into(),
@@ -1183,8 +1183,8 @@ pub fn plan_place(
                 },
             });
             for td in &def.terminals {
-                let t: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal {
+                let t: ConnectionPointId = ids.fresh();
+                ops.push(Op::AddConnectionPoint {
                     id: t,
                     terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });

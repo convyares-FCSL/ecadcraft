@@ -22,7 +22,7 @@
 //!   with its type's levels. Counts (`drawn`, `spare`) and BOM quantities are in positions.
 //!
 //! # Update map (design 028 §11.1)
-//! [`Strips`] lives inside `crate::outputs::kept::Outputs` and is updated with it from the same
+//! [`Strips`] lives inside `crate::outputs::kept::ReportModels` and is updated with it from the same
 //! [`crate::outputs::Scope`], after the device, wire and cable rows:
 //!
 //! | In scope (from the ops) | Recomputed |
@@ -45,11 +45,11 @@ pub mod pages;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::derive::Place;
-use ecad_model::{CableId, Core, DeviceId, Document, End, PageId, Pt, RepresentationId, Subject, TerminalId, WireId};
+use ecad_model::{CableId, Core, DeviceId, Document, End, PageId, Pt, RepresentationId, Subject, ConnectionPointId, WireId};
 
 use crate::CmdError;
 use crate::outputs::PageCx;
-use crate::outputs::kept::Outputs;
+use crate::outputs::kept::ReportModels;
 
 /// The strip property that offers positions (FP1).
 pub const OFFER_KEY: &str = "terminals";
@@ -65,7 +65,7 @@ pub const MAX_CORES: usize = 100;
 /// The green-yellow core of an IEC `G` cable.
 pub const GNYE: &str = "GNYE";
 /// The PE starter's key.
-pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::Terminalpe;
+pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::TerminalBlockPe;
 
 // ---------------------------------------------------------------- strips and terminals
 
@@ -80,12 +80,12 @@ pub fn rep_is_pe(doc: &Document, r: &ecad_model::Representation) -> bool {
 }
 
 /// A strip's drawn terminals: (terminal, its representation, whether PE).
-pub fn drawn_terminals(doc: &Document, c: DeviceId) -> Vec<(TerminalId, RepresentationId, bool)> {
+pub fn drawn_connection_points(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, RepresentationId, bool)> {
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
     for (rid, r) in doc.representations_of(Subject::Device(c)) {
         let pe = rep_is_pe(doc, r);
-        for (t, _) in crate::devices::shown_terminals(doc, c, r) {
+        for (t, _) in crate::devices::shown_connection_points(doc, c, r) {
             if seen.insert(t) {
                 out.push((t, rid, pe));
             }
@@ -94,15 +94,15 @@ pub fn drawn_terminals(doc: &Document, c: DeviceId) -> Vec<(TerminalId, Represen
     out
 }
 
-/// [`drawn_terminals`] with where each sits on its page, worked out from its own representation
+/// [`drawn_connection_points`] with where each sits on its page, worked out from its own representation
 /// (O(the strip's symbols), never a search per terminal).
-fn drawn_at(doc: &Document, c: DeviceId) -> Vec<(TerminalId, RepresentationId, bool, Option<Pt>)> {
+fn drawn_at(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, RepresentationId, bool, Option<Pt>)> {
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
     for (rid, r) in doc.representations_of(Subject::Device(c)) {
         let pe = rep_is_pe(doc, r);
         let placement = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl);
-        for (t, p) in crate::devices::shown_terminals(doc, c, r) {
+        for (t, p) in crate::devices::shown_connection_points(doc, c, r) {
             let at = match (r.form, placement) {
                 (ecad_model::Form::Symbol, Some(pl)) => Some(pl.apply(p)),
                 (ecad_model::Form::Symbol, None) => None,
@@ -117,12 +117,12 @@ fn drawn_at(doc: &Document, c: DeviceId) -> Vec<(TerminalId, RepresentationId, b
 }
 
 /// A strip's drawn terminals with the page and point each is drawn at (brief 030: link lines).
-pub fn drawn_points(doc: &Document, c: DeviceId) -> Vec<(TerminalId, RepresentationId, PageId, Pt)> {
+pub fn drawn_points(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, RepresentationId, PageId, Pt)> {
     drawn_at(doc, c).into_iter().filter_map(|(t, rid, _, at)| Some((t, rid, doc.representations.get(&rid)?.page, at?))).collect()
 }
 
 /// The terminal of a strip a conductor end is on: (strip, terminal).
-pub fn strip_of_terminal(doc: &Document, t: TerminalId) -> Option<DeviceId> {
+pub fn strip_of_connection_point(doc: &Document, t: ConnectionPointId) -> Option<DeviceId> {
     let c = doc.terminals.get(&t)?.device()?;
     strip_of(doc, c).map(|_| c)
 }
@@ -134,7 +134,7 @@ pub fn bridge_of(doc: &Document, w: WireId) -> Option<DeviceId> {
     if a == b {
         return None;
     }
-    let (sa, sb) = (strip_of_terminal(doc, a)?, strip_of_terminal(doc, b)?);
+    let (sa, sb) = (strip_of_connection_point(doc, a)?, strip_of_connection_point(doc, b)?);
     (sa == sb).then_some(sa)
 }
 
@@ -619,9 +619,9 @@ pub struct SideCell {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermRow {
     /// The level's terminal (the in point of a two-point level); `None` for a free or spare row.
-    pub terminal: Option<TerminalId>,
+    pub terminal: Option<ConnectionPointId>,
     /// The out point of a two-point level (its outside cells come from it, Q6).
-    pub out: Option<TerminalId>,
+    pub out: Option<ConnectionPointId>,
     /// The **position** label (what links, accessories and renumbering name).
     pub label: String,
     /// The shown label (§4.1): `1.L`, or the level's own label.
@@ -732,12 +732,12 @@ pub struct StripData {
     pub description: Option<String>,
     /// Terminals drawn with a label an earlier one has: (label, the second terminal); a level
     /// drawn twice (brief 036: `level-twice`).
-    pub twice: Vec<(String, TerminalId)>,
+    pub twice: Vec<(String, ConnectionPointId)>,
     /// Brief 036: positions and their BOM part data per type, in catalogue order (types with
     /// positions only).
     pub types: Vec<TypeCount>,
     /// Positions whose levels are drawn by symbols of another type: (position, a terminal).
-    pub mixed: Vec<(String, TerminalId)>,
+    pub mixed: Vec<(String, ConnectionPointId)>,
     /// Links naming levels their positions lack: (link number, the items as written).
     pub level_missing: Vec<(u32, Vec<String>)>,
     /// Fuse positions with no rating.
@@ -745,7 +745,7 @@ pub struct StripData {
     /// Each row's position index (brief 036).
     pos_of_row: Vec<usize>,
     /// The type word of each `mixed` terminal's own symbol.
-    mixed_types: BTreeMap<TerminalId, &'static str>,
+    mixed_types: BTreeMap<ConnectionPointId, &'static str>,
     /// Sheets of its terminal plan section and rows of its BOM (review of PR #55, finding 1):
     /// kept with the strip, so sheet counts never walk the rows.
     pub sheets: usize,
@@ -809,7 +809,7 @@ impl StripData {
     }
 
     /// The type word of the symbol that draws terminal `t` (`position-mixed`).
-    pub fn other_type_word(&self, t: TerminalId) -> &'static str {
+    pub fn other_type_word(&self, t: ConnectionPointId) -> &'static str {
         self.mixed_types.get(&t).copied().unwrap_or("?")
     }
 
@@ -819,7 +819,7 @@ impl StripData {
     }
 
     /// A drawn row by terminal.
-    pub fn row_of(&self, t: TerminalId) -> Option<&TermRow> {
+    pub fn row_of(&self, t: ConnectionPointId) -> Option<&TermRow> {
         self.rows.iter().find(|r| r.terminal == Some(t))
     }
 
@@ -847,7 +847,7 @@ impl StripData {
     /// The links through plan row `i`: (link, whether its level of its position is one the link
     /// names). Brief 036: a link runs on its own level; a cross-level link only through the
     /// levels of its position.
-    pub fn links_at(&self, i: usize) -> Vec<(&crate::accessories::LinkInfo, bool)> {
+    pub fn jumper_bars_at(&self, i: usize) -> Vec<(&crate::accessories::JumperBarInfo, bool)> {
         let Some(r) = self.rows.get(i) else { return Vec::new() };
         let pi = self.position_index(i);
         self.acc
@@ -862,7 +862,7 @@ impl StripData {
     /// lane: `●` on a linked position, `┆` past a skipped one.
     pub fn bridge_cell(&self, i: usize) -> String {
         let mut text = self.rows.get(i).and_then(|r| r.bridge_group).map_or_else(String::new, |g| format!("\u{25cf} {g}"));
-        let at = self.links_at(i);
+        let at = self.jumper_bars_at(i);
         let lanes = at.iter().map(|(l, _)| l.lane + 1).max().unwrap_or(0);
         if lanes > 0 {
             let mut marks = vec![' '; lanes];
@@ -951,13 +951,13 @@ pub struct StripScope<'a> {
 
 impl Strips {
     /// Every strip, from scratch.
-    pub fn build(doc: &Document, o: &Outputs, cx: &PageCx) -> Strips {
+    pub fn build(doc: &Document, o: &ReportModels, cx: &PageCx) -> Strips {
         let mut s = Strips::default();
         for c in doc.devices.keys() {
             if strip_of(doc, *c).is_some() {
                 s.set(doc, *c, o, cx);
             }
-            if fuse_terminal_of(doc, *c).is_some() {
+            if fuse_terminal_block_of(doc, *c).is_some() {
                 s.fuse_devices.insert(*c);
             }
         }
@@ -974,7 +974,7 @@ impl Strips {
     pub fn note_devices(&mut self, doc: &Document, devices: &BTreeSet<DeviceId>) -> bool {
         let mut changed = false;
         for c in devices {
-            changed |= if fuse_terminal_of(doc, *c).is_some() { self.fuse_devices.insert(*c) } else { self.fuse_devices.remove(c) };
+            changed |= if fuse_terminal_block_of(doc, *c).is_some() { self.fuse_devices.insert(*c) } else { self.fuse_devices.remove(c) };
         }
         changed
     }
@@ -998,7 +998,7 @@ impl Strips {
         for w in &wires {
             out.extend(self.by_conductor.get(w).into_iter().flatten().copied());
             if let Some(cond) = doc.wires.get(w) {
-                out.extend(cond.ends.iter().filter_map(|t| strip_of_terminal(doc, *t)));
+                out.extend(cond.ends.iter().filter_map(|t| strip_of_connection_point(doc, *t)));
             }
         }
         for p in scope.pages {
@@ -1050,7 +1050,7 @@ impl Strips {
     }
 
     /// Recompute `which` on `doc`.
-    pub fn recompute(&mut self, doc: &Document, which: &BTreeSet<DeviceId>, o: &Outputs, cx: &PageCx) {
+    pub fn recompute(&mut self, doc: &Document, which: &BTreeSet<DeviceId>, o: &ReportModels, cx: &PageCx) {
         self.last_changed.clear();
         for c in which {
             let before = self.strips.get(c).cloned();
@@ -1088,7 +1088,7 @@ impl Strips {
         self.acc_no_part = self.acc_no_part.saturating_sub(old.acc.no_part);
     }
 
-    fn set(&mut self, doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) {
+    fn set(&mut self, doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) {
         self.remove(c);
         if strip_of(doc, c).is_none() {
             return;
@@ -1185,7 +1185,7 @@ fn geometric_inside(doc: &Document, w: WireId, end: End, page: PageId) -> Option
 }
 
 /// The cell of a terminal's conductor's far end, worked out like the wire report's.
-fn far_cell(doc: &Document, o: &Outputs, w: WireId, far: End, cx: &PageCx) -> (Option<String>, Option<DeviceId>) {
+fn far_cell(doc: &Document, o: &ReportModels, w: WireId, far: End, cx: &PageCx) -> (Option<String>, Option<DeviceId>) {
     let Some(cond) = doc.wires.get(&w) else { return (None, None) };
     let t = cond.end(far);
     let comp = doc.terminals.get(&t).and_then(|x| x.device());
@@ -1198,7 +1198,7 @@ fn clean(v: Option<impl AsRef<str>>) -> Option<String> {
 }
 
 /// One strip's data on `doc`.
-fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripData {
+fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> StripData {
     use crate::terminal_types as tt;
     let strip = doc.devices.get(&c).cloned().unwrap_or_default();
     let props = &strip.properties;
@@ -1238,13 +1238,13 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
         cables: BTreeSet::new(),
     };
     let drawn = drawn_at(doc, c);
-    let shown_at: BTreeMap<TerminalId, (RepresentationId, bool, Option<Pt>)> = drawn.iter().map(|(t, rid, pe, at)| (*t, (*rid, *pe, *at))).collect();
-    let mine: BTreeSet<TerminalId> = doc.terminals_of(c).map(|(t, _)| t).collect();
+    let shown_at: BTreeMap<ConnectionPointId, (RepresentationId, bool, Option<Pt>)> = drawn.iter().map(|(t, rid, pe, at)| (*t, (*rid, *pe, *at))).collect();
+    let mine: BTreeSet<ConnectionPointId> = doc.connection_points_of(c).map(|(t, _)| t).collect();
     let mut grids: BTreeMap<PageId, ecad_model::sheet::Grid> = BTreeMap::new();
     let mut rows: Vec<TermRow> = Vec::new();
     // Bridges, for groups: union of terminals joined by a bridge.
-    let mut parent: BTreeMap<TerminalId, TerminalId> = mine.iter().map(|t| (*t, *t)).collect();
-    fn find(p: &mut BTreeMap<TerminalId, TerminalId>, t: TerminalId) -> TerminalId {
+    let mut parent: BTreeMap<ConnectionPointId, ConnectionPointId> = mine.iter().map(|t| (*t, *t)).collect();
+    fn find(p: &mut BTreeMap<ConnectionPointId, ConnectionPointId>, t: ConnectionPointId) -> ConnectionPointId {
         let mut x = t;
         // Bounded by the strip's terminals.
         for _ in 0..=p.len() {
@@ -1255,14 +1255,14 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
         }
         x
     }
-    let mut bridged: BTreeSet<TerminalId> = BTreeSet::new();
+    let mut bridged: BTreeSet<ConnectionPointId> = BTreeSet::new();
     let separator = tt::separator(doc, c);
     let mut names_of: BTreeMap<crate::symbols::StarterKey, Vec<String>> = BTreeMap::new();
     let mut inherits: BTreeSet<String> = BTreeSet::new();
     let own = |k: &str| props.get(k).is_some_and(|v| !v.trim().is_empty());
     // The conductors on one terminal, sorted into inside and outside cells (§5.2; two-point levels
     // by their point, Q6).
-    let mut cells = |t: TerminalId, side: Option<bool>, page: Option<PageId>, row: &mut TermRow, d: &mut StripData| {
+    let mut cells = |t: ConnectionPointId, side: Option<bool>, page: Option<PageId>, row: &mut TermRow, d: &mut StripData| {
         for (w, end) in doc.ends_at(t) {
             d.wires.insert(w);
             let Some(cond) = doc.wires.get(&w) else { continue };
@@ -1324,7 +1324,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
         }
         if let Some(t) = pos.mixed.first() {
             d.mixed.push((pos.label.clone(), *t));
-            d.mixed_types.insert(*t, tt::type_of_terminal(doc, *t).word);
+            d.mixed_types.insert(*t, tt::type_of_connection_point(doc, *t).word);
         }
         let fuse_rating = match &strip.device_type {
             ecad_model::DeviceType::TerminalStrip(s) => s.fuse_rating(&pos.label),
@@ -1352,7 +1352,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
             let level_name = names.get(usize::try_from(n.saturating_sub(1)).unwrap_or(0)).cloned().unwrap_or_else(|| n.to_string());
             let derived = if ty.multi() { format!("{}{separator}{level_name}", pos.label) } else { pos.label.clone() };
             let over = clean(props.get(&tt::label_key(&pos.label, n)));
-            let terms: Vec<TerminalId> = pos.levels.get(&n).cloned().unwrap_or_default();
+            let terms: Vec<ConnectionPointId> = pos.levels.get(&n).cloned().unwrap_or_default();
             if terms.is_empty() {
                 if n > ty.count() {
                     continue;
@@ -1366,10 +1366,10 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
                 continue;
             }
             // Split into drawings: in/out pairs for a two-point level, one terminal otherwise.
-            let mut drawings: Vec<(TerminalId, Option<TerminalId>)> = Vec::new();
+            let mut drawings: Vec<(ConnectionPointId, Option<ConnectionPointId>)> = Vec::new();
             if ty.breaks {
-                let ins: Vec<TerminalId> = terms.iter().copied().filter(|t| tt::level_of(doc, *t).1 != Some('o')).collect();
-                let outs: Vec<TerminalId> = terms.iter().copied().filter(|t| tt::level_of(doc, *t).1 == Some('o')).collect();
+                let ins: Vec<ConnectionPointId> = terms.iter().copied().filter(|t| tt::level_of(doc, *t).1 != Some('o')).collect();
+                let outs: Vec<ConnectionPointId> = terms.iter().copied().filter(|t| tt::level_of(doc, *t).1 == Some('o')).collect();
                 for (i, t) in ins.iter().enumerate() {
                     drawings.push((*t, outs.get(i).copied()));
                 }
@@ -1421,7 +1421,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
         }
     }
     // Bridge groups, numbered in plan order.
-    let mut groups: BTreeMap<TerminalId, usize> = BTreeMap::new();
+    let mut groups: BTreeMap<ConnectionPointId, usize> = BTreeMap::new();
     for r in &mut rows {
         let Some(t) = r.terminal else { continue };
         let t = if bridged.contains(&t) {
@@ -1620,22 +1620,22 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
         return (format!("{} >", crate::continuations::display_name(doc, a)), None);
     }
     let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return ("loose".into(), None) };
-    (crate::strips::terminal_words(doc, t), Some(c))
+    (crate::strips::connection_point_words(doc, t), Some(c))
 }
 
 /// The hover lines of a terminal symbol `here` of strip `c` (design 028 §7.1), from the document
 /// alone: `-X01:3  feed-through  +CP1`, `inside  -K01:A1  24V-07`, `outside  -W01 core 3 → -M01:U1`,
 /// `bridged to 4`, then the strip's positions.
-pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
+pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
     let mut lines = Vec::new();
     let Some(r) = doc.representations.get(&here) else { return lines };
     let pe = rep_is_pe(doc, r);
     let location = crate::locations::resolve(doc, c).value;
     let number = |w: WireId| ecad_model::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
-    let mine: BTreeSet<TerminalId> = doc.terminals_of(c).map(|(t, _)| t).collect();
-    for (t, _) in crate::devices::shown_terminals(doc, c, r) {
+    let mine: BTreeSet<ConnectionPointId> = doc.connection_points_of(c).map(|(t, _)| t).collect();
+    for (t, _) in crate::devices::shown_connection_points(doc, c, r) {
         // Brief 036: the type, and the level of a multi-level position.
-        let ty = crate::terminal_types::type_of_terminal(doc, t);
+        let ty = crate::terminal_types::type_of_connection_point(doc, t);
         let kind = if ty.multi() {
             format!("{} level {}", ty.word, crate::terminal_types::level_name(doc, c, ty, crate::terminal_types::level_of(doc, t).0))
         } else if pe {
@@ -1643,7 +1643,7 @@ pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Ve
         } else {
             ty.word.to_string()
         };
-        lines.push(format!("{}  {kind}  {}", crate::strips::terminal_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
+        lines.push(format!("{}  {kind}  {}", crate::strips::connection_point_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
         let mut bridged = Vec::new();
         for (w, end) in doc.ends_at(t) {
             let far_t = doc.wires.get(&w).map(|x| {
@@ -1653,7 +1653,7 @@ pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Ve
                 })
             });
             if let Some(o) = far_t.filter(|o| *o != t && mine.contains(o)) {
-                bridged.push(crate::terminal_types::terminal_name(doc, o));
+                bridged.push(crate::terminal_types::connection_point_name(doc, o));
                 continue;
             }
             let (target, far) = far_words(doc, w, end);
@@ -1685,7 +1685,7 @@ pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Ve
         }
     }
     // Brief 036: counted in positions (a three-level terminal is one).
-    let labels: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
+    let labels: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     let drawn = labels.len();
     let tag = crate::devices::tag_words(doc, c);
     lines.push(match offer_of(doc, c) {
@@ -1731,20 +1731,20 @@ pub fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
 }
 
 /// `-X01:3`.
-pub fn terminal_words(doc: &Document, t: TerminalId) -> String {
+pub fn connection_point_words(doc: &Document, t: ConnectionPointId) -> String {
     let c = doc.terminals.get(&t).and_then(|x| x.device());
     // Brief 044: a connector pin is named by its half (`-X10.S:3`).
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return name;
     }
     let tag = c.and_then(|c| crate::devices::tag_of(doc, c)).unwrap_or("?");
-    format!("{tag}:{}", crate::terminal_types::terminal_name(doc, t))
+    format!("{tag}:{}", crate::terminal_types::connection_point_name(doc, t))
 }
 
 /// Fuse terminal device `c`'s fuse (brief 034's `fuseterm`): its stored
-/// [`ecad_model::device::Protection::FuseTerminal`] (design 072 §2.2).
-pub fn fuse_terminal_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::device::Fuse> {
-    doc.devices.get(&c)?.device_type.as_protection()?.as_fuse_terminal()
+/// [`ecad_model::device::Protection::FuseTerminalBlock`] (design 072 §2.2).
+pub fn fuse_terminal_block_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::device::Fuse> {
+    doc.devices.get(&c)?.device_type.as_protection()?.as_fuse_terminal_block()
 }
 
 /// Level stagger (§3.1): level *n* is raised by (*n* − 1) × this.

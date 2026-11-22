@@ -78,8 +78,8 @@ pub const RAISE_SLOTS: &str = "Raise slots";
 pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
     match f {
         Fix::AccessoryOrphan(..) => Some([MOVE_TO_END, REMOVE]),
-        Fix::LinkAcrossPartition(..) => Some([SPLIT_LINK, REMOVE_PARTITION]),
-        Fix::LinkOrphan(..) => Some([DROP_MISSING, DELETE_LINK]),
+        Fix::JumperBarAcrossPartition(..) => Some([SPLIT_LINK, REMOVE_PARTITION]),
+        Fix::JumperBarOrphan(..) => Some([DROP_MISSING, DELETE_LINK]),
         Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_LINK]),
         Fix::CoreOpen(..) => Some([TICK_NOT_USED, GO_TO_OPEN_END]),
         Fix::AssignCable(_) | Fix::UseDrawing(..) => crate::lists::cable_manager::pair(f),
@@ -191,7 +191,7 @@ impl ChecksPanel {
         let doc = p.ledger.document();
         let Some(list) = p.kept_checks() else { return };
         let mut all: Vec<Check> = list.rows().cloned().collect();
-        all.extend(p.kept_outputs().map(|o| o.checks()).unwrap_or_default());
+        all.extend(p.kept_reports().map(|o| o.checks()).unwrap_or_default());
         let rows: Vec<Row> = ecad_engine::checks::sort(doc, all)
             .into_iter()
             .filter(|c| !hidden.contains(&c.kind))
@@ -262,7 +262,7 @@ impl ChecksPanel {
                 _,
             ) => Action::RatingFix(f),
             (
-                Fix::LinkOnNonStrip(_)
+                Fix::JumperBarOnNonStrip(_)
                 | Fix::MoveToNextFree(_)
                 | Fix::MoveToNewPosition(_)
                 | Fix::FuseDevices
@@ -271,8 +271,8 @@ impl ChecksPanel {
                 | Fix::SetPins(..)
                 | Fix::IgnoreConnector(..)
                 | Fix::AccessoryOrphan(..)
-                | Fix::LinkAcrossPartition(..)
-                | Fix::LinkOrphan(..)
+                | Fix::JumperBarAcrossPartition(..)
+                | Fix::JumperBarOrphan(..)
                 | Fix::LevelMissing(..)
                 | Fix::UseArticle(..)
                 | Fix::DropMissingFor(..),

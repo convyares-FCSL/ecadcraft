@@ -5,25 +5,25 @@
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{DeviceId, Pt, TerminalId};
+use ecad_model::{DeviceId, Pt, ConnectionPointId};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, other, paper_guard, safely};
-use super::{OUT_OF_RANGE, can_start, in_range, line_kind, pt, read, terminal_for, v2};
+use super::{OUT_OF_RANGE, can_start, in_range, line_kind, pt, read, connection_point_for, v2};
 use crate::cmd::terminal;
 use crate::strips;
 
 /// A picked terminal: its strip, its label and where it is drawn.
-fn picked(s: &Session, p: Vec2) -> R<(TerminalId, DeviceId, String, Pt)> {
+fn picked(s: &Session, p: Vec2) -> R<(ConnectionPointId, DeviceId, String, Pt)> {
     if !in_range(p) {
         return Err(other(OUT_OF_RANGE));
     }
-    let Some((t, at, _)) = terminal_for(s, p) else {
+    let Some((t, at, _)) = connection_point_for(s, p) else {
         return Err(other("No terminal there. Click a terminal of a strip (its ring)."));
     };
     let found = read(s, |p, _| {
         let doc = p.ledger.document();
-        Ok(strips::strip_of_terminal(doc, t).map(|c| (c, crate::terminal_types::position_label(doc, t))))
+        Ok(strips::strip_of_connection_point(doc, t).map(|c| (c, crate::terminal_types::position_label(doc, t))))
     })
     .ok()
     .flatten();
@@ -95,7 +95,7 @@ impl StripAccessory {
         match i {
             Input::Point(p) => {
                 let (t, c, label, at) = picked(s, p)?;
-                let words = read(s, |p, _| Ok(terminal::terminal_words(p.ledger.document(), t))).unwrap_or_default();
+                let words = read(s, |p, _| Ok(terminal::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
                 self.at = Some((c, label, words, Some(at)));
                 Ok(Step::Continue)
             }
@@ -155,7 +155,7 @@ struct Jumper {
     strip: Option<(DeviceId, String)>,
     /// The link the first pick extends.
     extend: Option<u32>,
-    picks: Vec<(TerminalId, String, Pt)>,
+    picks: Vec<(ConnectionPointId, String, Pt)>,
     /// Labels typed at the prompt (positions on other pages).
     typed: Vec<String>,
     skip: bool,
@@ -217,7 +217,7 @@ impl Jumper {
                         self.extend = found.1;
                     }
                     Some((sc, tag)) if *sc != c => {
-                        let w = read(s, |p, _| Ok(terminal::terminal_words(p.ledger.document(), t))).unwrap_or_default();
+                        let w = read(s, |p, _| Ok(terminal::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
                         return Err(other(format!(
                             "{w} is on another strip; a link stays on one strip. Pick a terminal of {tag}, or Enter to finish."
                         )));
@@ -287,7 +287,7 @@ impl Interactive for Jumper {
             return Vec::new();
         }
         let mut out: Vec<EntityKind> = self.picks.windows(2).filter_map(|w| Some(line_kind(w.first()?.2, w.get(1)?.2))).collect();
-        let b = terminal_for(s, cursor).map_or(pt(cursor), |(_, at, _)| at);
+        let b = connection_point_for(s, cursor).map_or(pt(cursor), |(_, at, _)| at);
         out.push(line_kind(*last, b));
         out
     }

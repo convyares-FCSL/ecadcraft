@@ -485,7 +485,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
                 let Some(b) = x.as_box() else { continue };
                 let hit = match cat.catalogue {
                     ecad_model::StyleCatalogue::Location => b.style.as_ref() == Some(id),
-                    ecad_model::StyleCatalogue::Text => location::own_style(doc, *a).is_some_and(|s| location::look_of(doc, s).label_style == *id),
+                    ecad_model::StyleCatalogue::Text => location::own_style(doc, *a).is_some_and(|s| location::draw_of(doc, s).label_style == *id),
                     _ => false,
                 };
                 if hit {

@@ -21,7 +21,7 @@
 use std::collections::BTreeMap;
 
 use crate::doc::{Cable, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::op::ObjectRef;
 
 /// Whether a reference is being added or removed.
@@ -64,15 +64,15 @@ pub(crate) fn referrers<'a, K: Ord, V: Copy + 'a>(map: &'a Multi<K, V>, key: &K)
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Index {
     /// Terminal → conductor ends attached to it.
-    pub(crate) terminal_ends: Multi<TerminalId, (WireId, End)>,
+    pub(crate) connection_point_ends: Multi<ConnectionPointId, (WireId, End)>,
     /// Wire → cables listing it.
     pub(crate) conductor_cables: Multi<WireId, CableId>,
     /// Route → the cables with a core on it (a line with no wire yet).
     pub(crate) route_cables: Multi<RouteId, CableId>,
     /// A cable reference's named point → the cable whose core lists it (design 072 §4.4, F4).
-    pub(crate) cable_points: Multi<TerminalId, CableId>,
+    pub(crate) cable_points: Multi<ConnectionPointId, CableId>,
     /// Device → its terminals.
-    pub(crate) component_terminals: Multi<crate::doc::TerminalOwner, TerminalId>,
+    pub(crate) component_connection_points: Multi<crate::doc::ConnectionPointOwner, ConnectionPointId>,
     /// PLC station → the modules naming it (design 072 §3).
     pub(crate) station_modules: Multi<DeviceId, DeviceId>,
     /// Subject → representations depicting it.
@@ -82,7 +82,7 @@ pub(crate) struct Index {
     /// Item → representations listing it.
     pub(crate) item_reps: Multi<ItemId, RepresentationId>,
     /// Terminal → representations giving it a connection point.
-    pub(crate) terminal_reps: Multi<TerminalId, RepresentationId>,
+    pub(crate) connection_point_reps: Multi<ConnectionPointId, RepresentationId>,
     /// Page → items on it.
     pub(crate) page_items: Multi<PageId, ItemId>,
     /// Layer → items using it.
@@ -110,7 +110,7 @@ pub(crate) struct Index {
     /// Page → routes drawn on it (design 072 F31).
     pub(crate) page_routes: Multi<PageId, RouteId>,
     /// Terminal → routes landing on it.
-    pub(crate) terminal_routes: Multi<TerminalId, RouteId>,
+    pub(crate) connection_point_routes: Multi<ConnectionPointId, RouteId>,
     /// Route → routes landing on its middle (a T).
     pub(crate) route_tees: Multi<RouteId, RouteId>,
     /// Net → its wires (design 072 §4.2).
@@ -149,7 +149,7 @@ impl Index {
         ix.subject_reps = b.subject_reps;
         ix.page_reps = b.page_reps;
         ix.item_reps = b.item_reps;
-        ix.terminal_reps = b.terminal_reps;
+        ix.connection_point_reps = b.connection_point_reps;
         ix
     }
 
@@ -200,7 +200,7 @@ impl Index {
         bump(&mut self.page_routes, r.page, id, delta);
         for e in r.ends {
             match e {
-                crate::route::RouteEnd::Point(t) => bump(&mut self.terminal_routes, t, id, delta),
+                crate::route::RouteEnd::Point(t) => bump(&mut self.connection_point_routes, t, id, delta),
                 crate::route::RouteEnd::On { route, .. } => bump(&mut self.route_tees, route, id, delta),
                 crate::route::RouteEnd::Free => {}
             }
@@ -272,8 +272,8 @@ impl Index {
         bump(&mut self.tags, crate::tag::key(tag), id, delta);
     }
 
-    pub(crate) fn terminal(&mut self, id: TerminalId, t: &Terminal, delta: Delta) {
-        bump(&mut self.component_terminals, t.owner, id, delta);
+    pub(crate) fn terminal(&mut self, id: ConnectionPointId, t: &Terminal, delta: Delta) {
+        bump(&mut self.component_connection_points, t.owner, id, delta);
     }
 
     pub(crate) fn representation(&mut self, id: RepresentationId, r: &Representation, delta: Delta) {
@@ -283,13 +283,13 @@ impl Index {
             bump(&mut self.item_reps, *item, id, delta);
         }
         for t in r.connection_points.keys() {
-            bump(&mut self.terminal_reps, *t, id, delta);
+            bump(&mut self.connection_point_reps, *t, id, delta);
         }
     }
 
     pub(crate) fn conductor(&mut self, id: WireId, c: &Wire, delta: Delta) {
         for end in End::BOTH {
-            bump(&mut self.terminal_ends, c.end(end), (id, end), delta);
+            bump(&mut self.connection_point_ends, c.end(end), (id, end), delta);
         }
         bump(&mut self.net_wires, c.net, id, delta);
         if let Some(t) = &c.wire_type {

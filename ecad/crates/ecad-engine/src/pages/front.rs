@@ -6,7 +6,7 @@ use cadcraft_engine::geom::Vec3;
 use ecad_model::{DefinitionId, Document, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::frame::{FrameInput, LABEL_ACI, Part, TextLook};
+use crate::frame::{FrameInput, LABEL_ACI, Part, TextDraw};
 use crate::front::*;
 use crate::generated::{Draw, LAYER};
 use crate::text_style::{Look, TextKind};
@@ -27,7 +27,7 @@ const TYPED_ACI: u8 = 30;
 type R = (f64, f64, f64, f64);
 
 /// Dashed outline of `r` on the overlay layer, and its caption at the top right.
-fn outline(d: &mut Draw, r: R, aci: u8, caption: &str, look: TextLook) {
+fn outline(d: &mut Draw, r: R, aci: u8, caption: &str, look: TextDraw) {
     let (l, b, rr, t) = r;
     let dash = 3.0;
     let gap = 2.0;
@@ -59,7 +59,7 @@ fn outline(d: &mut Draw, r: R, aci: u8, caption: &str, look: TextLook) {
 }
 
 /// A block's title and the thin rule under it; returns the y the block's content starts at.
-fn title(d: &mut Draw, r: R, text: &str, look: TextLook, s: f64) -> f64 {
+fn title(d: &mut Draw, r: R, text: &str, look: TextDraw, s: f64) -> f64 {
     let (l, _, rr, t) = r;
     let y = t - 6.5 * s;
     d.text((l + 4.0 * s, y), look, text, HAlign::Left, None, Some(rr - l - 8.0 * s));
@@ -172,8 +172,8 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     let k = ecad_model::sheet::unit_scale(input.unit);
     let mut d = Draw { k, x0, out: Vec::new() };
     let looks = Look::new(doc);
-    let look = |kind| TextLook::of(&looks, kind, input.unit);
-    let cover_look = look(TextKind::Cover);
+    let look = |kind| TextDraw::of(&looks, kind, input.unit);
+    let cover_draw = look(TextKind::Cover);
     let Layout {
         area: (l, _, r, _),
         s,
@@ -198,10 +198,10 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         cell: (cw, ch, row_h),
         take,
         fit,
-    } = layout(doc, input, cover_look.mm);
+    } = layout(doc, input, cover_draw.mm);
     let cover = look(TextKind::Cover);
-    let sized = |key: &str| TextLook { mm: cover.mm * cover_factor(key) * s, ..cover };
-    let heading_look = sized("front.cover.block_title");
+    let sized = |key: &str| TextDraw { mm: cover.mm * cover_factor(key) * s, ..cover };
+    let heading_draw = sized("front.cover.block_title");
     let small = sized("front.cover.body");
     let caption = sized("front.cover.column_head");
     let on = |b: Block| b.on(doc);
@@ -218,7 +218,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         (true, _) => heading.to_string(),
     };
     let mid = (l + r) / 2.0;
-    d.text((mid, heading_y), cover_look, &line, HAlign::Center, None, Some(r - l));
+    d.text((mid, heading_y), cover_draw, &line, HAlign::Center, None, Some(r - l));
     if on(Block::CustomerSite) {
         let cs: Vec<String> = [prop(crate::frames::CUSTOMER), prop("site")].into_iter().flatten().collect();
         if !cs.is_empty() {
@@ -233,7 +233,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         let mut x = bl;
         if on(Block::Notes) {
             let rect = (x, bottom, x + half, top);
-            let mut yy = title(&mut d, rect, "Notes", heading_look, s);
+            let mut yy = title(&mut d, rect, "Notes", heading_draw, s);
             for (i, n) in notes_list.iter().enumerate() {
                 if yy < bottom + 2.0 * s {
                     break;
@@ -246,7 +246,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         }
         if on(Block::WireColours) {
             let rect = (x, bottom, x + half, top);
-            let mut yy = title(&mut d, rect, "Wire colours", heading_look, s);
+            let mut yy = title(&mut d, rect, "Wire colours", heading_draw, s);
             if wires.is_empty() {
                 d.text((x + 4.0 * s, yy), small, "No wires yet.", HAlign::Left, Some(LABEL_ACI), Some(half - 8.0 * s));
             }
@@ -265,7 +265,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     if on(Block::SymbolLegend) {
         let rect = (bl, y - legend_h, br, y);
         let used = cells.iter().filter(|c| matches!(c, Cell::Symbol(..))).count();
-        let yy = title(&mut d, rect, "Symbol legend", heading_look, s);
+        let yy = title(&mut d, rect, "Symbol legend", heading_draw, s);
         if cells.is_empty() {
             d.text((bl + 4.0 * s, yy), small, "No symbols yet.", HAlign::Left, Some(LABEL_ACI), Some(br - bl));
         }
@@ -296,7 +296,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         let third = (br - bl - gap) / 3.0;
         if on(Block::Revisions) {
             let rect = (bl, bottom, bl + 2.0 * third + gap / 2.0, top);
-            let mut yy = title(&mut d, rect, "Revisions", heading_look, s);
+            let mut yy = title(&mut d, rect, "Revisions", heading_draw, s);
             let (x0, x1) = (rect.0 + 4.0 * s, rect.2 - 4.0 * s);
             // Rev 15, Description 120, By 40, Date 40 on A3, the description taking what is left.
             let fixed = [15.0 * s, 0.0, 40.0 * s, 40.0 * s];
@@ -329,7 +329,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         }
         if on(Block::StructureCodes) {
             let rect = (bl + 2.0 * third + gap * 1.5, bottom, br, top);
-            let yy = title(&mut d, rect, "Structure codes", heading_look, s);
+            let yy = title(&mut d, rect, "Structure codes", heading_draw, s);
             let cw = (rect.2 - rect.0 - 8.0 * s) / 2.0;
             for (j, list) in [&codes.0, &codes.1].into_iter().enumerate() {
                 let x = rect.0 + 4.0 * s + cw * j as f64;

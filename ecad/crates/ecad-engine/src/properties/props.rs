@@ -41,7 +41,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
     for h in selection.iter().take(MAX_LOOKED_AT) {
         let rep = match map.get(*h) {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(id, _)| id),
-            Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r) | Mapped::Xref(r)) => Some(r),
+            Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r) | Mapped::DeviceReference(r)) => Some(r),
             // Lane 072 D: a T's dot stands for the line that ends there.
             Some(Mapped::Tee(r)) => crate::wires::route_item(doc, r).map(|(rid, _, _)| rid),
             // Brief 030: a link line shows its strip (Properties ▸ Link).
@@ -144,7 +144,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
             doc,
             c,
             n,
-            p.kept_outputs().and_then(|o| o.strips.get(c)).and_then(|d| d.acc.links.iter().find(|l| l.n == n)).map(|l| l.bars),
+            p.kept_reports().and_then(|o| o.strips.get(c)).and_then(|d| d.acc.links.iter().find(|l| l.n == n)).map(|l| l.bars),
         ));
         return v;
     }
@@ -193,7 +193,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         if let Some(r) = k.symbol.and_then(|s| doc.representations.get(&s)) {
             v.deps.insert(ObjectRef::Page(r.page));
         }
-        v.sections.push(device_section(doc, p.kept_outputs().map(|o| &o.plc), &k.devices, k.symbol));
+        v.sections.push(device_section(doc, p.kept_reports().map(|o| &o.plc), &k.devices, k.symbol));
     } else if !k.boxes.is_empty() {
         // Design 072 §6.2: an aid has no `ObjectRef`, so an aid op rebuilds the view
         // (`ecad_electrical::derived::props`). Devices inside and codes: its page and the list.

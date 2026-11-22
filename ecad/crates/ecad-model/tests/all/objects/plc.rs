@@ -118,19 +118,19 @@ fn network_addresses_read_strictly() {
 /// the last good transaction). Nothing reads a channel out of its text.
 #[test]
 fn an_old_channel_key_on_a_module_is_a_read_error() {
-    use ecad_model::{Author, Device, Ledger, Op, Terminal, TerminalId, Transaction, TxKind};
+    use ecad_model::{Author, Device, Ledger, Op, Terminal, ConnectionPointId, Transaction, TxKind};
     let mut l = Ledger::new(0x0007_2cf2);
     let c: DeviceId = DeviceId::from(0x072c_0001u128);
-    let good: TerminalId = TerminalId::from(0x072c_0002u128);
+    let good: ConnectionPointId = ConnectionPointId::from(0x072c_0002u128);
     let module = Device {
         device_type: DeviceType::PlcModule(PlcModule::new(ModuleFunction::DigitalIn(ChannelGroup::new(Signal::Dc24v, 16)))),
         ..Device::default()
     };
     let point = |k: &str| Terminal { owner: c.into(), label: Some("1".into()), key: Some(k.parse().unwrap()), accepts: Default::default() };
-    l.commit(Author::User, "card", vec![Op::CreateDevice { id: c, device: module }, Op::AddTerminal { id: good, terminal: point(".0.in") }]).unwrap();
+    l.commit(Author::User, "card", vec![Op::CreateDevice { id: c, device: module }, Op::AddConnectionPoint { id: good, terminal: point(".0.in") }]).unwrap();
     for old in ["I1.3", "Q0.0", "L+"] {
-        let t: TerminalId = TerminalId::from(0x072c_0100u128);
-        let e = l.commit(Author::User, "old key", vec![Op::AddTerminal { id: t, terminal: point(old) }]).unwrap_err().to_string();
+        let t: ConnectionPointId = ConnectionPointId::from(0x072c_0100u128);
+        let e = l.commit(Author::User, "old key", vec![Op::AddConnectionPoint { id: t, terminal: point(old) }]).unwrap_err().to_string();
         assert!(e.contains(&format!("keyed {old}")), "{old}: {e}");
     }
     assert_eq!(l.head(), 1, "nothing was committed");
@@ -143,7 +143,7 @@ fn an_old_channel_key_on_a_module_is_a_read_error() {
         label: "old key".into(),
         kind: TxKind::Edit,
         time_ms: None,
-        ops: vec![Op::AddTerminal { id: TerminalId::from(0x072c_0200u128), terminal: point("I1.3") }],
+        ops: vec![Op::AddConnectionPoint { id: ConnectionPointId::from(0x072c_0200u128), terminal: point("I1.3") }],
     };
     log.push(bad);
     let (read, failure) = Ledger::replay_prefix(log, 0x0007_2cf2);

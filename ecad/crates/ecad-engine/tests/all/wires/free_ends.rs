@@ -3,7 +3,7 @@
 //! line (`CorePosition::Route`), and the wire forms, with the core moving onto it, when the line's
 //! other end lands on a connection point. Driven through the commands' JSON forms.
 
-use ecad_model::{CableId, CorePosition, PageId, RouteId, TerminalId, WireId};
+use ecad_model::{CableId, CorePosition, PageId, RouteId, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -17,7 +17,7 @@ fn no_wire_yet(h: &mut H) -> Vec<Value> {
 }
 
 /// One device's connection point at `at` on the active page.
-fn point(h: &mut H, at: (f64, f64)) -> TerminalId {
+fn point(h: &mut H, at: (f64, f64)) -> ConnectionPointId {
     h.points_at(&[at])[0]
 }
 
@@ -30,7 +30,7 @@ fn core_position(h: &mut H, k: CableId) -> CorePosition {
 }
 
 /// A device point at (0, 0) and a line from it into free space to (60, 0): no wire.
-fn loose_line(h: &mut H) -> (TerminalId, RouteId) {
+fn loose_line(h: &mut H) -> (ConnectionPointId, RouteId) {
     let a = point(h, (0.0, 0.0));
     let v = h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap();
     assert!(v["conductor"].is_null(), "a line with a free end carries no wire: {v}");
@@ -104,7 +104,7 @@ struct Continued {
     pages: [PageId; 2],
     cable: CableId,
     line: RouteId,
-    a: TerminalId,
+    a: ConnectionPointId,
     v: Value,
 }
 
@@ -246,8 +246,8 @@ fn continuation(h: &mut H, at: (f64, f64), name: &str) -> ecad_model::AidId {
 }
 
 /// The wires' end pairs, each sorted.
-fn wire_ends(h: &mut H) -> Vec<[TerminalId; 2]> {
-    let mut out: Vec<[TerminalId; 2]> = h
+fn wire_ends(h: &mut H) -> Vec<[ConnectionPointId; 2]> {
+    let mut out: Vec<[ConnectionPointId; 2]> = h
         .doc()
         .wires
         .values()
@@ -281,7 +281,7 @@ fn a_wire_runs_through_a_continuation_pair_from_device_point_to_device_point() {
     want.sort();
     assert_eq!(wire_ends(&mut h), [want], "one wire, page 1's point to page 2's: {r}");
     let doc = h.doc();
-    let t2 = doc.terminals_of(k2).map(|(t, _)| t).next().unwrap();
+    let t2 = doc.connection_points_of(k2).map(|(t, _)| t).next().unwrap();
     assert_eq!(doc.named_points(t2).map(|g| g.len()), Some(2), "the pair's two points");
     assert!(doc.ends_at(t2).is_empty(), "no wire ends at a continuation");
     let w: WireId = *doc.wires.keys().next().unwrap();

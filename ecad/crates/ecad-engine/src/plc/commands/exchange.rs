@@ -130,7 +130,7 @@ impl Command for PlcimportParams {
         let counts = json!({"not_io": read.not_io, "bad_address": read.bad, "bad_name": read.bad_name, "twice": read.twice});
         let plan = |p: &mut crate::project::Project| -> Result<Fill, CmdError> {
             p.outputs();
-            let o = p.kept_outputs().ok_or(CmdError::refused("The PLC model is not available."))?;
+            let o = p.kept_reports().ok_or(CmdError::refused("The PLC model is not available."))?;
             plan_fill(p.ledger.document(), &o.plc, &read.rows, tags, texts)
         };
         let report = |fill: &Fill, written: bool| {
@@ -188,7 +188,7 @@ impl Command for PlcexportParams {
         let path = self.path;
         let v = on_any_page(s, |p, _| {
             p.outputs();
-            let o = p.kept_outputs().ok_or(CmdError::refused("The PLC model is not available."))?;
+            let o = p.kept_reports().ok_or(CmdError::refused("The PLC model is not available."))?;
             let doc = p.ledger.document();
             let rack = self.rack.as_deref().map(|r| crate::plc::rack::rack_named(doc, r)).transpose()?;
             let ex = export_rows(doc, &o.plc, rack, f);

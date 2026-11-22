@@ -235,7 +235,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
     let mut rail_ms = rail_cut(runs, if cfg!(debug_assertions) { 200 } else { RAIL_WIRES })?;
     let mut sheet = sheet_edits(app, &scratch.join("sheets.ecad"), runs)?;
     let numbering = numbering_edits(app, &scratch.join("numbering.ecad"), runs)?;
-    let mut xr = xref_edits(path, &scratch.join("xref.ecad"), runs)?;
+    let mut xr = device_reference_edits(path, &scratch.join("xref.ecad"), runs)?;
 
     let m = Measured {
         bytes,
@@ -372,22 +372,22 @@ pub const RAIL_WIRES: usize = 25_000;
 /// own points, built and numbered once (not timed); per run one leaf conductor is deleted (timed:
 /// the commit with the numbering pass and the Checks update) and the deletion undone (not timed).
 fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
-    use ecad_model::{ConductorId, Device, DeviceId, Ledger, NetId, Op, Page, PageId, Terminal, TerminalId, Wire, WireId};
+    use ecad_model::{ConductorId, Device, DeviceId, Ledger, NetId, Op, Page, PageId, Terminal, ConnectionPointId, Wire, WireId};
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x0FA1);
     let mut ledger = Ledger::new(7);
     let page: PageId = ids.fresh();
     let comp: DeviceId = ids.fresh();
-    let hub: TerminalId = ids.fresh();
+    let hub: ConnectionPointId = ids.fresh();
     let mut ops = vec![
         Op::AddPage { id: page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: hub, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: hub, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
     ];
     let mut leaves = Vec::with_capacity(wires);
     let net: NetId = ids.fresh();
     for i in 0..wires {
-        let (t, c, k): (TerminalId, WireId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } });
+        let (t, c, k): (ConnectionPointId, WireId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
+        ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } });
         let order = u16::try_from(i + 1).unwrap_or(u16::MAX);
         let wire = Wire { potential: ecad_model::text::Text::new("0V").ok(), net_order: order, ..Wire::new(net, k, hub, t) };
         ops.push(Op::CreateWire { id: c, wire });
@@ -513,7 +513,7 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
                 .find_map(|r| {
                     let Subject::Device(c) = r.subject else { return None };
                     let item = *r.items.first()?;
-                    let wired = doc.terminals_of(c).any(|(t, _)| doc.routes_at(t).next().is_some());
+                    let wired = doc.connection_points_of(c).any(|(t, _)| doc.routes_at(t).next().is_some());
                     (r.page == page && r.form == Form::Symbol && wired && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
                         .then_some((c, item))
                 })
@@ -522,7 +522,7 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
             let symbol = map.item(item).ok_or("the wired component's symbol is not drawn on page 1")?;
             let mut with_wires = vec![symbol];
             // The routes landing on its connection points, by their drawing.
-            for (t, _) in doc.terminals_of(component) {
+            for (t, _) in doc.connection_points_of(component) {
                 for r in doc.routes_at(t) {
                     for (_, rep) in doc.representations_of(Subject::Route(r)).filter(|(_, rep)| rep.page == page) {
                         if let Some(h) = rep.items.first().and_then(|i| map.item(*i))
@@ -533,7 +533,7 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
                     }
                 }
             }
-            let shown = ecad_model::derive::terminal_positions(doc, page);
+            let shown = ecad_model::derive::connection_point_positions(doc, page);
             let mut others = shown.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.device() != Some(component)));
             let (_, _, from) = *others.next().ok_or("page 1 has no connection point of another component")?;
             let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6)).ok_or("page 1 has no second connection point of another component")?;
@@ -736,7 +736,7 @@ pub const XREF_COILS: usize = 1_000;
 
 /// Brief 025's timings, one sample per run each.
 #[derive(Debug, Default)]
-struct XrefTimes {
+struct DeviceReferenceTimes {
     build: Vec<f64>,
     moves: Vec<f64>,
     renum: Vec<f64>,
@@ -753,7 +753,7 @@ struct XrefTimes {
 /// - **xrenum**: page 2 renumbered (its 40 contacts' rows on other pages), then back (not timed);
 /// - **xmirror**: page 3 brought to the front (projected with its 10 tables), then page 1 again
 ///   (not timed).
-fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String> {
+fn device_reference_edits(path: &Path, copy: &Path, runs: usize) -> Result<DeviceReferenceTimes, String> {
     use serde_json::json;
 
     remove(copy);
@@ -771,7 +771,7 @@ fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String
         let mut s = cadcraft_engine::Session::empty();
         let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
-        let mut out = XrefTimes::default();
+        let mut out = DeviceReferenceTimes::default();
         for _ in 0..runs {
             let t = project.read(&mut s, |p, _| {
                 let t = Instant::now();
@@ -826,7 +826,7 @@ fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String
     result
 }
 
-/// The coils of [`xref_edits`], committed to `ledger` one placement at a time: their head
+/// The coils of [`device_reference_edits`], committed to `ledger` one placement at a time: their head
 /// representations and the page order.
 fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::RepresentationId>, Vec<ecad_model::PageId>), String> {
     use ecad_engine::devices::{TagHigh, Target, plan_place};

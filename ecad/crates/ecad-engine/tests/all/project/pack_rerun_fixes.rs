@@ -57,7 +57,7 @@ fn bug_1_an_unlabelled_point_never_prints_its_id_after_a_merge() {
     }
     // Both points are unlabelled, with two different names: the moved one is renamed, never the
     // same name twice on one device (review of #92, 1).
-    let mut terms: Vec<_> = d.terminals_of(a).map(|(_, t)| (t.key.as_ref().map(ToString::to_string), t.label.clone())).collect();
+    let mut terms: Vec<_> = d.connection_points_of(a).map(|(_, t)| (t.key.as_ref().map(ToString::to_string), t.label.clone())).collect();
     terms.sort();
     assert_eq!(terms, [(Some("PE".to_string()), None), (Some("PE2".to_string()), None)]);
     // A labelled point whose label the device already has is still refused.
@@ -246,8 +246,8 @@ fn bug_5_a_card_drawn_in_several_calls_has_one_frame() {
     assert_eq!(runs.first().map(|r| (r.first, r.last)), Some((Some(0), Some(3))));
     // The placed cell's point is on the wire, on the line of the others.
     let d = h.doc();
-    let ch2 = d.terminals_of(card).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".2.in")).map(|(t, _)| t).unwrap();
-    let at = h.terminal_pos(page, ch2);
+    let ch2 = d.connection_points_of(card).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".2.in")).map(|(t, _)| t).unwrap();
+    let at = h.connection_point_pos(page, ch2);
     assert!((at.y - 200.0).abs() < 1e-6 && (at.x - 140.0).abs() < 1e-6, "{at:?}");
     assert!(!h.doc().ends_at(ch2).is_empty(), "channel 2 lands on its wire");
 }
@@ -297,9 +297,9 @@ fn bug_7_raising_a_cards_channel_count_addresses_the_new_channels() {
 /// The key of the card's point that wire `x` (vertical, through y 200) is attached to.
 fn landed_on(h: &mut H, card: DeviceId, page: PageId, x: f64) -> Vec<String> {
     let d = h.doc();
-    d.terminals_of(card)
+    d.connection_points_of(card)
         .filter(|(t, _)| !d.ends_at(*t).is_empty())
-        .filter(|(t, _)| (h.terminal_pos(page, *t).x - x).abs() < 1e-6)
+        .filter(|(t, _)| (h.connection_point_pos(page, *t).x - x).abs() < 1e-6)
         .filter_map(|(_, term)| term.key.as_ref().map(ToString::to_string))
         .collect()
 }

@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 
 use ecad_model::links::{self, Positions};
-use ecad_model::{DeviceId, Document, Noun, ObjectRef, Op, TerminalId};
+use ecad_model::{DeviceId, Document, Noun, ObjectRef, Op, ConnectionPointId};
 
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -24,7 +24,7 @@ pub const MAX_AT: usize = 999;
 /// Most terminals one `jumper` call picks.
 pub const MAX_PICKS: usize = 999;
 /// The refusal when a strip has no free link number.
-const LINKS_FULL: &str = "This strip has 999 links; delete one first.";
+const JUMPER_BARS_FULL: &str = "This strip has 999 links; delete one first.";
 
 /// Words given as one text or as a list.
 #[derive(Debug, Clone, PartialEq)]
@@ -50,7 +50,7 @@ fn strip_words(doc: &Document, c: DeviceId) -> String {
 }
 
 /// The strip a call names (`strip`, or `terminal`'s), and the terminal's label.
-fn strip_of(doc: &Document, strip: Option<DeviceId>, terminal: Option<TerminalId>) -> Result<(DeviceId, Option<String>), CmdError> {
+fn strip_of(doc: &Document, strip: Option<DeviceId>, terminal: Option<ConnectionPointId>) -> Result<(DeviceId, Option<String>), CmdError> {
     let (c, label) = match (strip, terminal) {
         (Some(c), _) => (c, None),
         (None, Some(t)) => {
@@ -112,7 +112,7 @@ fn plural(a: Acc, n: usize) -> String {
 #[derive(Debug, Clone, Default)]
 pub struct AccessoryInput {
     pub strip: Option<DeviceId>,
-    pub terminal: Option<TerminalId>,
+    pub terminal: Option<ConnectionPointId>,
     /// `start`, `end`, `all`, a position label, or a list of them (absent: `terminal`'s position).
     pub at: Option<Words>,
     /// Markers on positions.
@@ -266,7 +266,7 @@ pub fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Accessory
 // ---------------------------------------------------------------- jumper (§5.4, §5.5)
 
 /// The positions a link names in plan order, with the labels it names that the strip lacks.
-fn link_labels(p: &Positions, order: &[String]) -> Vec<String> {
+fn jumper_bar_labels(p: &Positions, order: &[String]) -> Vec<String> {
     let mut v: Vec<String> = p.select(order).into_iter().cloned().collect();
     for m in p.missing(order) {
         if !v.contains(&m) {
@@ -281,16 +281,16 @@ fn canonical_of(labels: &[String], order: &[String], level: u32, point: Option<c
     let mut sorted: Vec<&String> = labels.iter().collect();
     sorted.sort_by_key(|l| (order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
     sorted.dedup();
-    crate::terminal_types::link_text(&sorted, order, level, point)
+    crate::terminal_types::jumper_bar_text(&sorted, order, level, point)
 }
 
 /// Labels from a text (`5,6` or `5-8`).
 fn labels_of(text: &str, order: &[String]) -> Result<Vec<String>, CmdError> {
-    Ok(link_labels(&links::parse(text)?, order))
+    Ok(jumper_bar_labels(&links::parse(text)?, order))
 }
 
 /// The next free link number on a strip.
-fn next_link(doc: &Document, c: DeviceId) -> Option<u32> {
+fn next_jumper_bar(doc: &Document, c: DeviceId) -> Option<u32> {
     let props = &doc.devices.get(&c)?.properties;
     let high = props
         .range(links::PREFIX.to_string()..)
@@ -299,10 +299,10 @@ fn next_link(doc: &Document, c: DeviceId) -> Option<u32> {
             let rest = k.strip_prefix(links::PREFIX)?;
             rest.split('.').next()?.parse::<u32>().ok()
         })
-        .filter(|n| *n <= links::MAX_LINK)
+        .filter(|n| *n <= links::MAX_JUMPER_BAR)
         .max()
         .unwrap_or(0);
-    (high < links::MAX_LINK).then_some(high + 1)
+    (high < links::MAX_JUMPER_BAR).then_some(high + 1)
 }
 
 fn set_op(doc: &Document, c: DeviceId, key: String, after: Option<String>) -> Option<Op> {
@@ -330,7 +330,7 @@ fn range_between(order: &[String], a: &str, b: &str) -> Vec<String> {
 
 /// The link a `jumper` edit names.
 #[derive(Debug, Clone, Default)]
-pub struct LinkRef {
+pub struct JumperBarRef {
     pub strip: Option<DeviceId>,
     pub n: Option<u64>,
 }
@@ -339,11 +339,11 @@ pub struct LinkRef {
 #[derive(Debug, Clone, Default)]
 pub struct JumperInput {
     /// The link to edit.
-    pub link: Option<LinkRef>,
+    pub link: Option<JumperBarRef>,
     /// Make: the strip.
     pub strip: Option<DeviceId>,
     /// Make: the picked terminals.
-    pub terminals: Vec<TerminalId>,
+    pub terminals: Vec<ConnectionPointId>,
     /// Make: no ranges between consecutive picks.
     pub skip: bool,
     /// The positions as text (`1-4, 7`).
@@ -386,7 +386,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
     let (c, n, before_text, labels, label, extra) = if let Some(l) = &input.link {
         let c = l.strip.ok_or(CmdError::input("`strip` (hex id) is required"))?;
         let (c, _) = strip_of(doc, Some(c), None)?;
-        let n = l.n.and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=links::MAX_LINK).contains(n));
+        let n = l.n.and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=links::MAX_JUMPER_BAR).contains(n));
         let n = n.ok_or(CmdError::input("`link.n` must be a whole number from 1 to 999"))?;
         let key = links::key(n);
         let cur_text = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
@@ -395,7 +395,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
         let parsed = links::parse(&cur_text).unwrap_or_default();
         level = parsed.level().unwrap_or(1);
         point = parsed.point().flatten();
-        let cur = link_labels(&parsed, &order);
+        let cur = jumper_bar_labels(&parsed, &order);
         let tag = strip_words(doc, c);
         if parsed.crosses_levels() && !input.delete {
             return Err(CmdError::refused(format!(
@@ -448,7 +448,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
                     one.join(", ")
                 )));
             }
-            let m = next_link(doc, c).ok_or(CmdError::refused(LINKS_FULL))?;
+            let m = next_jumper_bar(doc, c).ok_or(CmdError::refused(JUMPER_BARS_FULL))?;
             next = first;
             extra = Some((m, rest));
         }
@@ -491,10 +491,10 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
                     cross_levels.push(lv);
                     continue;
                 }
-                let ty = crate::terminal_types::type_of_terminal(doc, *t);
+                let ty = crate::terminal_types::type_of_connection_point(doc, *t);
                 return Err(CmdError::refused(format!(
                     "{} is on level {}; this link is on level {}. Pick level {} terminals, or Enter to finish.",
-                    crate::strips::terminal_words(doc, *t),
+                    crate::strips::connection_point_words(doc, *t),
                     crate::terminal_types::level_name(doc, c, ty, lv),
                     crate::terminal_types::level_name(doc, c, ty, level),
                     crate::terminal_types::level_name(doc, c, ty, level)
@@ -507,7 +507,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
             if term.device() != Some(c) {
                 return Err(CmdError::refused(format!(
                     "{} is on another strip; a link stays on one strip. Pick a terminal of {}.",
-                    crate::strips::terminal_words(doc, *t),
+                    crate::strips::connection_point_words(doc, *t),
                     strip_words(doc, c)
                 )));
             }
@@ -548,7 +548,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
             // A cross-level link names both levels (`1.1-1.3`).
             cross = Some(format!("{pos}.{lo}-{pos}.{hi}"));
         }
-        let n = next_link(doc, c).ok_or(CmdError::refused(LINKS_FULL))?;
+        let n = next_jumper_bar(doc, c).ok_or(CmdError::refused(JUMPER_BARS_FULL))?;
         (c, n, None, labels, format!("Link {}", strip_words(doc, c)), None)
     };
     let order = acc::positions(doc, c);
@@ -620,7 +620,7 @@ pub struct AccessoryParams {
     strip: Option<DeviceId>,
     /// A terminal of the strip (its position is the place when `at` is absent).
     #[serde(default)]
-    terminal: Option<TerminalId>,
+    terminal: Option<ConnectionPointId>,
     /// "start", "end", "all", a position label, or a list of them (at most 999).
     #[serde(default)]
     at: Option<WordsParam>,
@@ -667,7 +667,7 @@ pub struct JumperParams {
     strip: Option<DeviceId>,
     /// Make: the picked terminals (at most 999).
     #[serde(default)]
-    terminals: Option<Bounded<TerminalId, 0, MAX_PICKS>>,
+    terminals: Option<Bounded<ConnectionPointId, 0, MAX_PICKS>>,
     /// Make: no ranges between consecutive picks.
     #[serde(default)]
     skip: Option<bool>,
@@ -736,7 +736,7 @@ edit: {link: {strip: id, n}, add?: \"5,6\", remove?: \"5\", positions?: text, sp
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let text = |w: Option<WordsParam>| w.map(|w| w.words().text());
         let input = JumperInput {
-            link: self.link.map(|l| LinkRef { strip: l.strip, n: l.n }),
+            link: self.link.map(|l| JumperBarRef { strip: l.strip, n: l.n }),
             strip: self.strip,
             terminals: self.terminals.map(|t| t.0).unwrap_or_default(),
             skip: self.skip.unwrap_or(false),

@@ -3,7 +3,7 @@
 //! Discard, Duplicate for… and Delete….
 
 use ecad_engine::title_block::bind;
-use ecad_model::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, LineWeight, Newest, SIZES, TextLook};
+use ecad_model::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, LineWeight, Newest, SIZES, TextDraw};
 use ecad_ui::tokens::space;
 use eframe::egui::{self, Color32, RichText};
 use serde_json::json;
@@ -277,7 +277,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     let r = ecad_ui::prim::segmented(ui, &mut i, &refs);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, SIZE));
                     if let Some(v) = SIZES.get(i).filter(|v| (**v - look.size).abs() > 1e-9) {
-                        set_look(d, &sel, |l| l.size = *v);
+                        set_draw(d, &sel, |l| l.size = *v);
                     }
                 });
                 ui.horizontal(|ui| {
@@ -285,7 +285,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     let r = ui.checkbox(&mut b, "Bold");
                     r.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, b, BOLD));
                     if r.changed() {
-                        set_look(d, &sel, |l| l.bold = b);
+                        set_draw(d, &sel, |l| l.bold = b);
                     }
                 });
                 ui.horizontal(|ui| {
@@ -299,7 +299,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, ALIGN));
                     let a = [Align::Left, Align::Centre, Align::Right].get(i).copied().unwrap_or_default();
                     if a != look.align {
-                        set_look(d, &sel, |l| l.align = a);
+                        set_draw(d, &sel, |l| l.align = a);
                     }
                 });
                 ui.horizontal(|ui| {
@@ -309,7 +309,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, COLOUR));
                     let c = if i == 1 { Ink::Red } else { Ink::Ink };
                     if c != look.colour {
-                        set_look(d, &sel, |l| l.colour = c);
+                        set_draw(d, &sel, |l| l.colour = c);
                     }
                 });
             });
@@ -457,7 +457,7 @@ fn set_fields(d: &mut Draft, sel: &[usize], f: impl Fn(&mut BlockItem)) {
 }
 
 /// Apply `f` to the look of every selected field and text (one undo step).
-fn set_look(d: &mut Draft, sel: &[usize], f: impl Fn(&mut TextLook)) {
+fn set_draw(d: &mut Draft, sel: &[usize], f: impl Fn(&mut TextDraw)) {
     set_fields(d, sel, |it| {
         if let BlockItem::Field { look, .. } | BlockItem::Text { look, .. } = it {
             f(look);

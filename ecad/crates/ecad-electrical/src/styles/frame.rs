@@ -65,7 +65,7 @@ pub use ecad_model::style::frame::BlockAt;
 
 /// A page frame's resolved look.
 #[derive(Debug, Clone, PartialEq)]
-pub struct FrameLook {
+pub struct FrameDraw {
     /// Hundredths of a millimetre.
     pub border: u16,
     pub inner: u16,
@@ -83,9 +83,9 @@ pub struct FrameLook {
     pub zones: bool,
 }
 
-impl Default for FrameLook {
+impl Default for FrameDraw {
     fn default() -> Self {
-        FrameLook {
+        FrameDraw {
             border: 50,
             inner: 25,
             colour: "none".into(),
@@ -104,17 +104,17 @@ fn weight(mm: f64) -> u16 {
 
 /// The frame look of `page`: its frame (`ecad_model::sheet::frame_style`, the one resolver: page,
 /// page type, project, standard, built-in), with zones off when its page type turns them off.
-pub fn frame_look(doc: &Document, page: PageId) -> FrameLook {
+pub fn frame_draw(doc: &Document, page: PageId) -> FrameDraw {
     let id = ecad_model::sheet::frame_style(doc, page);
-    let mut look = look_of(doc, &id);
+    let mut look = draw_of(doc, &id);
     look.zones = ecad_model::sheet::page_type_zones(doc, page).unwrap_or(true);
     look
 }
 
 /// The look of frame style `id`.
-pub fn look_of(doc: &Document, id: &StyleRef) -> FrameLook {
+pub fn draw_of(doc: &Document, id: &StyleRef) -> FrameDraw {
     let f = |k: &str| super::field_of(doc, ecad_model::StyleCatalogue::Frame, id, k, None);
-    FrameLook {
+    FrameDraw {
         border: weight(f("border_weight").map_or(0.5, |r| r.number())),
         inner: weight(f("inner_weight").map_or(0.25, |r| r.number())),
         colour: f("line_colour").map_or_else(|| "none".to_string(), |r| r.text()),

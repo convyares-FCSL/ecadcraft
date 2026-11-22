@@ -9,9 +9,9 @@ use std::collections::BTreeSet;
 use cadcraft_engine::doc::EntityKind;
 use ecad_engine::frame::Part;
 use ecad_engine::generated;
-use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::ReportModels;
 use ecad_engine::strip_page::{self, StripPages};
-use ecad_model::{CableId, DeviceId, PageId, TerminalId};
+use ecad_model::{CableId, DeviceId, PageId, ConnectionPointId};
 use serde_json::{Value, json};
 
 use crate::common::place;
@@ -23,7 +23,7 @@ struct G {
     schematic: PageId,
     x1: DeviceId,
     cable: CableId,
-    terms: Vec<TerminalId>,
+    terms: Vec<ConnectionPointId>,
     m1: DeviceId,
 }
 
@@ -56,7 +56,7 @@ fn fixture(seed: u64) -> G {
     let v = h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     let x1: DeviceId = id(&v, "strip");
     h.run("setlocation", json!({"component": x1.hex(), "value": "+CP1"})).unwrap();
-    let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let terms: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     // A PE and a fuse position on wires of their own.
     for x in [300.0, 340.0] {
         h.wire_pp(&[(x, 260.0), (x, 160.0)]).unwrap();
@@ -78,7 +78,7 @@ fn fixture(seed: u64) -> G {
 }
 
 /// The kept models, built on first show.
-fn outputs(h: &mut H) -> Outputs {
+fn outputs(h: &mut H) -> ReportModels {
     h.cfg(|p| p.outputs().clone())
 }
 

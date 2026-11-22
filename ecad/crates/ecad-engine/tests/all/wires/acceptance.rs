@@ -8,9 +8,9 @@ use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;
 use ecad_engine::Persistence;
 use ecad_engine::checks::Kind;
-use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::ReportModels;
 use ecad_engine::wires::{self, LABEL_LAYER};
-use ecad_model::{CableId, DeviceId, Document, Op, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, Op, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -80,11 +80,11 @@ fn fix_names(h: &mut H, kind: Kind) -> Vec<String> {
     ecad_engine::checks::all(&doc, 1e-6).into_iter().filter(|c| c.kind == kind).map(|c| format!("{:?}", c.fix)).collect()
 }
 
-fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> (DeviceId, TerminalId, Pt) {
+fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> (DeviceId, ConnectionPointId, Pt) {
     let r = h.run("place", json!({"symbol": "terminal", "at": [at.0, at.1], "tag": tag})).unwrap();
-    let t: TerminalId = id(&r["terminals"][0], "terminal");
+    let t: ConnectionPointId = id(&r["terminals"][0], "terminal");
     let page = h.p(|p| p.active_page()).expect("an active page");
-    let at = h.terminal_pos(page, t);
+    let at = h.connection_point_pos(page, t);
     (id(&r, "component"), t, at)
 }
 
@@ -448,7 +448,7 @@ fn same_outputs_as_built(h: &mut H) {
     let (kept, built, kept_checks, built_checks) = h.cfg(|p| {
         let kept = p.outputs().clone();
         let doc = p.ledger.document();
-        let built = Outputs::build_with(doc, &ecad_engine::text_style::EngineMetrics);
+        let built = ReportModels::build_with(doc, &ecad_engine::text_style::EngineMetrics);
         let kc: Vec<String> = ecad_engine::checks::all_with(doc, p.tolerance, &kept).iter().map(|c| c.to_json(doc).to_string()).collect();
         let bc: Vec<String> = ecad_engine::checks::all_with(doc, p.tolerance, &built).iter().map(|c| c.to_json(doc).to_string()).collect();
         (kept, built, kc, bc)
@@ -614,7 +614,7 @@ fn t13c_continue_refusals() {
         .iter()
         .copied()
         .find(|t| ecad_engine::devices::tag_of(&doc, doc.terminals[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5")));
-    let tp = x51.map(|t| f.h.terminal_pos(f.p2, t)).expect("X51's point");
+    let tp = x51.map(|t| f.h.connection_point_pos(f.p2, t)).expect("X51's point");
     f.h.points_at(&[(tp.x, tp.y + 40.0)]);
     wire(&mut f.h, &[(tp.x, tp.y), (tp.x, tp.y + 40.0)], json!({}));
     let m = f.h.run("cableslash", json!({"from": [tp.x - 5.0, tp.y + 20.0], "to": [tp.x + 5.0, tp.y + 20.0], "tag": "-W04"})).unwrap_err();

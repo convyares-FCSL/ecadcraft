@@ -61,7 +61,7 @@ impl Command for PlcpageParams {
             let pc = rules::page_card(doc, &self.card)?;
             let book = Book::of(doc);
             let before = rules::after_page(doc, &book, pc.card, after.as_deref())?;
-            let outputs = p.kept_outputs();
+            let outputs = p.kept_reports();
             let position = before.and_then(|b| book.position(b)).map_or(book.order.len() + 1, |x| x + 1);
             let number = ecad_electrical::cmd::sheet::default_number(doc, &book, before, position, outputs);
             let title = title(doc, pc.card, pc.ty);

@@ -18,7 +18,7 @@ use cadcraft_engine::Session;
 use ecad_engine::ProjectHandle;
 use ecad_engine::frame::{self, FrameInput};
 use ecad_model::book::Book;
-use ecad_model::title_block::{Binding, BlockItem, Rect, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Binding, BlockItem, Rect, TextDraw, TitleBlockLayout};
 use ecad_model::{Primitive, Pt};
 use serde_json::json;
 
@@ -45,12 +45,12 @@ pub fn big_layout() -> TitleBlockLayout {
         let y = f64::from(i / 30) * 4.0;
         items.push(match i % 3 {
             0 => BlockItem::Line { a: (x, y), b: (x + 5.0, y), weight: Default::default() },
-            1 => BlockItem::Text { at: Rect::new(x, y, 5.5, 3.5), text: format!("T{i}"), look: TextLook::default() },
+            1 => BlockItem::Text { at: Rect::new(x, y, 5.5, 3.5), text: format!("T{i}"), look: TextDraw::default() },
             _ => BlockItem::Field {
                 at: Rect::new(x, y, 5.5, 3.5),
                 bind: Binding::Project(ecad_model::title_block::ProjectKey::of_info(ecad_model::InfoField::DrawingNumber)),
                 label: None,
-                look: TextLook::default(),
+                look: TextDraw::default(),
                 if_empty: Default::default(),
             },
         });

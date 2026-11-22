@@ -11,7 +11,7 @@ use ecad_electrical::CmdError;
 use ecad_electrical::cmd::wire::{self as rules, Conflict, NetChoice, Numbered, PotentialRow, WireSettingsChange, Wires};
 use ecad_model::units::{Degrees, Radians};
 use ecad_model::wiring;
-use ecad_model::{PageId, Placement, Pt, TerminalId, WireId};
+use ecad_model::{PageId, Placement, Pt, ConnectionPointId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -60,7 +60,7 @@ pub(crate) struct NetsParams {
     conductor: Option<WireId>,
     /// The net of this connection point.
     #[serde(default)]
-    terminal: Option<TerminalId>,
+    terminal: Option<ConnectionPointId>,
     /// Also nets without a wire.
     #[serde(default)]
     all: Option<bool>,
@@ -101,7 +101,7 @@ pub(crate) struct NetParams {
     conductor: Option<WireId>,
     /// The net of this connection point.
     #[serde(default)]
-    terminal: Option<TerminalId>,
+    terminal: Option<ConnectionPointId>,
     /// The (first) net with this wire number.
     #[serde(default)]
     number: Option<String>,
@@ -138,7 +138,7 @@ pub(crate) struct WirenumberParams {
     conductor: Option<WireId>,
     /// A connection point of the net.
     #[serde(default)]
-    terminal: Option<TerminalId>,
+    terminal: Option<ConnectionPointId>,
     /// The net's current number.
     #[serde(default)]
     number: Option<String>,
@@ -472,7 +472,7 @@ impl Command for ChecksParams {
             // The project's kept report models (built on first use, then kept from each change).
             p.outputs();
             let doc = p.ledger.document();
-            let outputs = p.kept_outputs().ok_or(CmdError::refused("the report models could not be built"))?;
+            let outputs = p.kept_reports().ok_or(CmdError::refused("the report models could not be built"))?;
             let rows: Vec<_> = crate::checks::all_with(doc, p.tolerance, outputs)
                 .into_iter()
                 .filter(|c| kinds.as_ref().is_none_or(|k| k.contains(&c.kind)))

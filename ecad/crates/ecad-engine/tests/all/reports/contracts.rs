@@ -3,7 +3,7 @@
 
 use ecad_engine::checks::{Fix, Kind};
 use ecad_engine::locations::{self, Source};
-use ecad_engine::outputs::{Group, kept::Outputs};
+use ecad_engine::outputs::{Group, kept::ReportModels};
 use ecad_model::{DeviceId, Document, PageId, WireId};
 use serde_json::{Value, json};
 
@@ -35,7 +35,7 @@ fn s(v: &str) -> Option<String> {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part));
@@ -309,7 +309,7 @@ fn generated_pages_follow_the_project_and_print() {
     let hexes: Vec<String> = coils.iter().map(|c| c.hex()).collect();
     h.run("setlocation", json!({"devices": hexes, "value": "+CP1"})).unwrap();
     let doc = h.doc();
-    assert_eq!(ecad_engine::generated::sheets_of(&doc, bom_page, Some(&Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics))), 2);
+    assert_eq!(ecad_engine::generated::sheets_of(&doc, bom_page, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics))), 2);
     let parts = ecad_engine::generated::parts_of(&doc, bom_page, ecad_engine::project::engine_views().report_models(&doc).as_ref());
     let texts: Vec<String> = parts
         .iter()
@@ -405,7 +405,7 @@ fn settings_changes_update_only_the_rows_they_reach() {
         h.run("wire", json!({"points": pts(&[(0.0, y), (60.0, y)]), "potential": potential})).unwrap();
     }
     same_as_built(&mut h);
-    let work = |h: &mut H| h.p(|p| p.kept_outputs().map_or(0, |o| o.last_work));
+    let work = |h: &mut H| h.p(|p| p.kept_reports().map_or(0, |o| o.last_work));
     // The 24V wires' colour default changes (brief 050b: the 24 V DC category's): only the 24V wire.
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD"}})).unwrap();
     assert_eq!(work(&mut h), 1, "only the one 24V wire");

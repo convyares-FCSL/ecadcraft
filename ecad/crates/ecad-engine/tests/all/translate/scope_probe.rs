@@ -20,8 +20,8 @@ use crate::common;
 use cadcraft_engine::doc::Handle;
 use common::{H, id};
 use ecad_engine::references::markers_on_page;
-use ecad_model::derive::{cable_references, terminal_positions};
-use ecad_model::{CableId, PageId, Pt, TerminalId, WireId};
+use ecad_model::derive::{cable_references, connection_point_positions};
+use ecad_model::{CableId, PageId, Pt, ConnectionPointId, WireId};
 use serde_json::json;
 
 struct Rng(u64);
@@ -40,7 +40,7 @@ impl Rng {
     }
 }
 
-fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: &str) -> [TerminalId; 3] {
+fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: &str) -> [ConnectionPointId; 3] {
     h.cmdline(outline);
     let lines = h.lines_on(page);
     let r = h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();
@@ -55,8 +55,8 @@ struct R {
     field: PageId,
     c1: CableId,
     w: [WireId; 3],
-    k1: [TerminalId; 3],
-    k2: [TerminalId; 3],
+    k1: [ConnectionPointId; 3],
+    k2: [ConnectionPointId; 3],
 }
 
 /// Fixture R of design 010 §11, connected on both pages.
@@ -99,7 +99,7 @@ fn route(h: &mut H, page: PageId, c: WireId) -> Option<(Handle, Vec<Pt>)> {
 }
 
 fn terminals_on(h: &mut H, page: PageId) -> Vec<Pt> {
-    terminal_positions(&h.doc(), page).into_iter().map(|(_, _, p)| p).collect()
+    connection_point_positions(&h.doc(), page).into_iter().map(|(_, _, p)| p).collect()
 }
 
 /// `page/zone` (the default since UI rev 3 D, e.g. `2/F1`), `page-column-row` (019's, e.g.
@@ -142,8 +142,8 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
         let n_log = r.h.s.log.len();
         // Ends attached to a terminal not shown on this page before the edit.
         let doc0 = r.h.doc();
-        let here: std::collections::BTreeSet<TerminalId> = terminal_positions(&doc0, page).into_iter().map(|(t, _, _)| t).collect();
-        let elsewhere: Vec<(ecad_model::RouteId, usize, TerminalId)> = doc0
+        let here: std::collections::BTreeSet<ConnectionPointId> = connection_point_positions(&doc0, page).into_iter().map(|(t, _, _)| t).collect();
+        let elsewhere: Vec<(ecad_model::RouteId, usize, ConnectionPointId)> = doc0
             .routes_on(page)
             .flat_map(|x| (0..2).map(move |i| (x, i)))
             .filter_map(|(x, i)| doc0.routes[&x].ends[i].point().map(|t| (x, i, t)))

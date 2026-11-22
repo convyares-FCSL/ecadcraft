@@ -21,7 +21,7 @@ fn conn(v: &Value) -> String {
 fn sides(ops: &[Op]) -> Vec<(String, String)> {
     ops.iter()
         .filter_map(|o| match o {
-            Op::AddTerminal { terminal, .. } => {
+            Op::AddConnectionPoint { terminal, .. } => {
                 Some((terminal.key.as_ref().map(ToString::to_string).unwrap_or_default(), terminal.label.clone().unwrap_or_default()))
             }
             _ => None,

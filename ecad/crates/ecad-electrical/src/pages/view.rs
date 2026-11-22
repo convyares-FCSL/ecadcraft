@@ -100,7 +100,7 @@ fn subject_pages(doc: &Document, s: Subject) -> impl Iterator<Item = PageId> + '
 
 /// The pages where the routes landing on connection points `points` are drawn (a wire's labels),
 /// through the index.
-pub fn points_pages(doc: &Document, points: &[ecad_model::TerminalId]) -> BTreeSet<PageId> {
+pub fn points_pages(doc: &Document, points: &[ecad_model::ConnectionPointId]) -> BTreeSet<PageId> {
     points.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|r| doc.routes.get(&r).map(|x| x.page)).collect()
 }
 

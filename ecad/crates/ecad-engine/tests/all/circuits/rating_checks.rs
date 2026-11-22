@@ -484,7 +484,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     touch.collect(&after, &ops);
     touch.collect(&later, &ops);
     assert!(!touch.all_results);
-    let on_q01: Vec<WireId> = later.terminals_of(f.q01).flat_map(|(t, _)| later.ends_at(t)).map(|(w, _)| w).collect();
+    let on_q01: Vec<WireId> = later.connection_points_of(f.q01).flat_map(|(t, _)| later.ends_at(t)).map(|(w, _)| w).collect();
     for s in k.update(&later, &touch) {
         assert!(matches!(s, rating::RatedSubject::Wire(c) if on_q01.contains(&c)), "{s:?}");
     }
@@ -549,13 +549,13 @@ fn a_strip_fuse_position_protects_its_out_point_only() {
     let doc = h.doc();
     let page = h.first_page();
     let mut points: Vec<(char, ecad_model::Pt)> = Vec::new();
-    for (t, _) in doc.terminals_of(x) {
+    for (t, _) in doc.connection_points_of(x) {
         let side = ecad_engine::terminal_types::level_of(&doc, t).1;
-        if let (Some(c), Some(at)) = (side, ecad_model::derive::terminal_position(&doc, page, t)) {
+        if let (Some(c), Some(at)) = (side, ecad_model::derive::connection_point_position(&doc, page, t)) {
             points.push((c, at));
         }
     }
-    let label = doc.terminals_of(x).find_map(|(_, t)| t.label.clone()).unwrap();
+    let label = doc.connection_points_of(x).find_map(|(_, t)| t.label.clone()).unwrap();
     setprop(&mut h, "component", x.hex(), &format!("rating.{label}"), json!("2 A"));
     let at = |c: char| points.iter().find(|(s, _)| *s == c).map(|(_, p)| *p).unwrap();
     let (i, o) = (at('i'), at('o'));

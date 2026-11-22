@@ -32,7 +32,7 @@
 //! | the same of a conductor route | the components at the conductor's ends (a table under `auto` follows the rail its coil's wire meets) |
 //! | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyRepresentation` | the component it shows, or the components at its conductor's ends |
 //! | `CreateWire`, `DeleteWire` (the commit's wire rewrite included) | the components at the ends |
-//! | `AddTerminal` / `RemoveTerminal` | that component (its labels) |
+//! | `AddConnectionPoint` / `RemoveConnectionPoint` | that component (its labels) |
 //! | `CreateDevice` / `DeleteDevice` | that component |
 //! | `ModifyDevice` changing its contacts or contact table | that component |
 //! | `SetProperty` page number or sheet | the devices with a member on that page |
@@ -476,8 +476,8 @@ fn bounds(pts: &[Pt]) -> Option<(Pt, Pt)> {
 
 /// The page positions of a representation's connection points, in its definition's terminal
 /// order.
-pub fn terminal_points(doc: &Document, c: DeviceId, r: &Representation) -> Vec<(ecad_model::TerminalId, Pt)> {
-    let shown = crate::devices::shown_terminals(doc, c, r);
+pub fn connection_point_points(doc: &Document, c: DeviceId, r: &Representation) -> Vec<(ecad_model::ConnectionPointId, Pt)> {
+    let shown = crate::devices::shown_connection_points(doc, c, r);
     match (r.form, crate::devices::rep_definition(doc, r)) {
         (Form::Symbol, Some((_, pl))) if pl.is_valid() => shown.into_iter().map(|(t, p)| (t, pl.apply(p))).filter(|(_, p)| p.is_finite()).collect(),
         (Form::Symbol, _) => Vec::new(),
@@ -503,7 +503,7 @@ pub fn device(doc: &Document, c: DeviceId) -> Device {
         children.push(rid);
         let Some(s) = crate::devices::rep_starter(doc, r) else { continue };
         let kinds = poles_of(s);
-        let pts = crate::devices::shown_terminals(doc, c, r);
+        let pts = crate::devices::shown_connection_points(doc, c, r);
         let at = anchor(doc, r);
         for (i, (kind, power)) in kinds.iter().enumerate() {
             let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::label_of(doc, *t));
@@ -840,7 +840,7 @@ pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: 
     let value = places.text(h.page, anchor(doc, h));
     let r = doc.representations.get(&rep)?;
     let k = unit(doc);
-    let pts = terminal_points(doc, dev.component, r);
+    let pts = connection_point_points(doc, dev.component, r);
     let vertical = match crate::devices::rep_definition(doc, r) {
         Some((_, pl)) if r.form == Form::Symbol => crate::devices::vertical(&pl),
         _ => {
@@ -1004,7 +1004,7 @@ pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement:
     let r = doc.representations.get(&head)?;
     let k = unit(doc);
     let origin = anchor(doc, r)?;
-    let pts = terminal_points(doc, c, r);
+    let pts = connection_point_points(doc, c, r);
     let lowest = pts.iter().min_by(|a, b| a.1.y.total_cmp(&b.1.y).then(a.0.cmp(&b.0))).copied();
     let below = || lowest.map_or(Pt::new(origin.x, origin.y - 4.0 * k), |(_, p)| Pt::new(origin.x, p.y - 4.0 * k));
     let top = match placement {
@@ -2097,7 +2097,7 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
 ///
 /// # Errors
 /// Unknown component, continuation, cable or page.
-pub fn xrefs_json(
+pub fn device_references_json(
     doc: &Document, idx: &RefIndex, component: Option<DeviceId>, aid: Option<ecad_model::AidId>, cable: Option<CableId>, page: Option<PageId>,
     limit: usize, after: usize,
 ) -> Result<Value, CmdError> {
@@ -2289,7 +2289,7 @@ fn head_noun(t: &ecad_model::DeviceType) -> &'static str {
         },
         T::Protection(p) => match p.kind() {
             ProtectionKind::Mcb => "MCB",
-            ProtectionKind::Fuse | ProtectionKind::FuseTerminal | ProtectionKind::Rcd | ProtectionKind::Rcbo | ProtectionKind::FuseBank => "Head",
+            ProtectionKind::Fuse | ProtectionKind::FuseTerminalBlock | ProtectionKind::Rcd | ProtectionKind::Rcbo | ProtectionKind::FuseBank => "Head",
         },
         T::PowerSupply(_)
         | T::Sensor(_)

@@ -6,7 +6,7 @@
 use ecad_model::text::Text;
 use ecad_model::units::Amps;
 use ecad_model::wire::{Basis, Bundling, CircuitInputs, Colours, InstallMethod, SupplySystem, WireNumber, WireSize};
-use ecad_model::{Author, ConductorId, IdAllocator, Ledger, NetId, Op, TerminalId, Wire, WireId, Word};
+use ecad_model::{Author, ConductorId, IdAllocator, Ledger, NetId, Op, ConnectionPointId, Wire, WireId, Word};
 
 #[test]
 fn sizes_read_typed_and_store_one_form() {
@@ -106,7 +106,7 @@ fn a_wire_is_strict_on_reading() {
         number: Some(WireNumber { text: Text::new("24V-07").unwrap(), fixed: true }),
         potential: Text::new("24V").ok(),
         load: Some(Amps(2.0)),
-        ..Wire::new(NetId(1), ConductorId(2), TerminalId(4), TerminalId(5))
+        ..Wire::new(NetId(1), ConductorId(2), ConnectionPointId(4), ConnectionPointId(5))
     };
     let text = serde_json::to_string(&w).unwrap();
     assert_eq!(serde_json::from_str::<Wire>(&text).unwrap(), w);
@@ -149,9 +149,9 @@ fn modify_wire_changes_values_undoes_and_never_moves_the_ends() {
 }
 
 /// A page with a device of two connection points: the page, and the two points.
-fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageId, TerminalId, TerminalId) {
+fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageId, ConnectionPointId, ConnectionPointId) {
     use ecad_model::{Device, DeviceId, Page, PageId, Terminal};
-    let (p, d, a, b): (PageId, DeviceId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (p, d, a, b): (PageId, DeviceId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let t = |label: &str| Terminal { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts: Default::default() };
     l.commit(
         Author::User,
@@ -159,8 +159,8 @@ fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageI
         vec![
             Op::AddPage { id: p, page: Page::titled("1").unwrap(), index: 0 },
             Op::CreateDevice { id: d, device: Device::default() },
-            Op::AddTerminal { id: a, terminal: t("1") },
-            Op::AddTerminal { id: b, terminal: t("2") },
+            Op::AddConnectionPoint { id: a, terminal: t("1") },
+            Op::AddConnectionPoint { id: b, terminal: t("2") },
         ],
     )
     .unwrap();
@@ -208,7 +208,7 @@ fn a_route_is_well_formed_and_lands_on_what_exists() {
         ("one point", Route::new(p, vec![Pt::new(0.0, 0.0)], [RouteEnd::Free, RouteEnd::Free])),
         ("not finite", Route::new(p, vec![Pt::new(0.0, 0.0), Pt::new(f64::NAN, 0.0)], [RouteEnd::Free, RouteEnd::Free])),
         ("on itself", Route::new(p, two.clone(), [RouteEnd::On { route: r, at: Pt::new(0.0, 0.0) }, RouteEnd::Free])),
-        ("missing point", Route::new(p, two.clone(), [RouteEnd::Point(TerminalId(12345)), RouteEnd::Free])),
+        ("missing point", Route::new(p, two.clone(), [RouteEnd::Point(ConnectionPointId(12345)), RouteEnd::Free])),
         ("missing page", Route::new(ecad_model::PageId(999), two.clone(), [RouteEnd::Point(a), RouteEnd::Free])),
     ];
     for (what, route) in cases {
@@ -223,7 +223,7 @@ fn a_route_is_well_formed_and_lands_on_what_exists() {
     // Removing the connection point a route lands on is refused while the route lands there.
     l.commit(Author::User, "draw", vec![Op::AddRoute { id: r, route: ok }]).unwrap();
     let term = l.document().terminals.get(&a).cloned().unwrap();
-    let e = l.commit(Author::User, "rm", vec![Op::RemoveTerminal { id: a, terminal: term }]).unwrap_err();
+    let e = l.commit(Author::User, "rm", vec![Op::RemoveConnectionPoint { id: a, terminal: term }]).unwrap_err();
     assert!(e.to_string().contains("route"), "{e}");
 }
 
@@ -234,7 +234,7 @@ fn routes_join_the_points_they_land_on_into_one_net() {
     let mut l = Ledger::new(33);
     let (p, a, b) = page_with_points(&mut l, &mut ids);
     let (_, c, _) = page_with_points(&mut l, &mut ids);
-    let net = |l: &Ledger, t: TerminalId| l.document().connectivity().net_of_terminal(t);
+    let net = |l: &Ledger, t: ConnectionPointId| l.document().connectivity().net_of_connection_point(t);
     // The device bridges nothing: only routes join its points.
     assert_ne!(net(&l, a), net(&l, b));
     let (r1, r2): (RouteId, RouteId) = (ids.fresh(), ids.fresh());
@@ -264,15 +264,15 @@ fn routes_join_the_points_they_land_on_into_one_net() {
 
 /// The wires of `l`, as `(net, net_order, [end, end])`, in net then order. A wire's two ends are
 /// a pair: they are listed in ID order.
-fn wires(l: &Ledger) -> Vec<(NetId, u16, [TerminalId; 2])> {
-    let pair = |e: [TerminalId; 2]| if e[0] <= e[1] { e } else { [e[1], e[0]] };
+fn wires(l: &Ledger) -> Vec<(NetId, u16, [ConnectionPointId; 2])> {
+    let pair = |e: [ConnectionPointId; 2]| if e[0] <= e[1] { e } else { [e[1], e[0]] };
     let mut v: Vec<_> = l.document().wires.values().map(|w| (w.net, w.net_order, pair(w.ends))).collect();
     v.sort();
     v
 }
 
 /// `v` as [`wires`] lists it: each pair in ID order, sorted.
-fn want(v: Vec<(NetId, u16, [TerminalId; 2])>) -> Vec<(NetId, u16, [TerminalId; 2])> {
+fn want(v: Vec<(NetId, u16, [ConnectionPointId; 2])>) -> Vec<(NetId, u16, [ConnectionPointId; 2])> {
     let mut v: Vec<_> = v.into_iter().map(|(n, o, e)| (n, o, if e[0] <= e[1] { e } else { [e[1], e[0]] })).collect();
     v.sort();
     v
@@ -337,12 +337,12 @@ fn joining_two_nets_keeps_the_bigger_ones_id_and_splitting_gives_the_smaller_a_n
     let (_, c, d) = page_with_points(&mut l, &mut ids);
     let (_, e, _) = page_with_points(&mut l, &mut ids);
     let r: Vec<RouteId> = (0..4).map(|_| ids.fresh()).collect();
-    let line = |x: f64, from: TerminalId, to: TerminalId| route(p, &[(x, 0.0), (x + 10.0, 0.0)], RouteEnd::Point(from), RouteEnd::Point(to));
+    let line = |x: f64, from: ConnectionPointId, to: ConnectionPointId| route(p, &[(x, 0.0), (x + 10.0, 0.0)], RouteEnd::Point(from), RouteEnd::Point(to));
     // Net 1: A–B–C (two wires); net 2: D–E (one wire).
     l.commit(Author::User, "abc", vec![Op::AddRoute { id: r[0], route: line(0.0, a, b) }, Op::AddRoute { id: r[1], route: line(10.0, b, c) }])
         .unwrap();
     l.commit(Author::User, "de", vec![Op::AddRoute { id: r[2], route: line(40.0, d, e) }]).unwrap();
-    let net_of = |l: &Ledger, t: TerminalId| l.document().wires.values().find(|w| w.ends.contains(&t)).map(|w| w.net).unwrap();
+    let net_of = |l: &Ledger, t: ConnectionPointId| l.document().wires.values().find(|w| w.ends.contains(&t)).map(|w| w.net).unwrap();
     let (n1, n2) = (net_of(&l, a), net_of(&l, d));
     assert_ne!(n1, n2);
     assert_eq!(wires(&l).iter().filter(|w| w.0 == n1).count(), 2);
@@ -370,7 +370,7 @@ fn a_point_cut_out_of_a_chain_joins_its_neighbours() {
     let (p, a, b) = page_with_points(&mut l, &mut ids);
     let (_, c, _) = page_with_points(&mut l, &mut ids);
     let (r1, r2, r3): (RouteId, RouteId, RouteId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let line = |from: TerminalId, to: TerminalId| route(p, &[(0.0, 0.0), (10.0, 0.0)], RouteEnd::Point(from), RouteEnd::Point(to));
+    let line = |from: ConnectionPointId, to: ConnectionPointId| route(p, &[(0.0, 0.0), (10.0, 0.0)], RouteEnd::Point(from), RouteEnd::Point(to));
     // A–B–C, then A–C drawn too: no new point, no new wire.
     l.commit(Author::User, "abc", vec![Op::AddRoute { id: r1, route: line(a, b) }, Op::AddRoute { id: r2, route: line(b, c) }]).unwrap();
     l.commit(Author::User, "ac", vec![Op::AddRoute { id: r3, route: line(a, c) }]).unwrap();
@@ -564,9 +564,9 @@ fn accepts_is_one_to_sixty_four_and_anything_else_is_a_read_error() {
 }
 
 /// A page with a device of two points, the first accepting `n` conductors.
-fn page_with_bar(l: &mut Ledger, ids: &mut IdAllocator, n: u64) -> (ecad_model::PageId, TerminalId, TerminalId) {
+fn page_with_bar(l: &mut Ledger, ids: &mut IdAllocator, n: u64) -> (ecad_model::PageId, ConnectionPointId, ConnectionPointId) {
     use ecad_model::{Accepts, Device, DeviceId, Page, PageId, Terminal};
-    let (p, d, a, b): (PageId, DeviceId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (p, d, a, b): (PageId, DeviceId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let t = |label: &str, accepts| Terminal { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts };
     l.commit(
         Author::User,
@@ -574,8 +574,8 @@ fn page_with_bar(l: &mut Ledger, ids: &mut IdAllocator, n: u64) -> (ecad_model::
         vec![
             Op::AddPage { id: p, page: Page::titled("1").unwrap(), index: 0 },
             Op::CreateDevice { id: d, device: Device::default() },
-            Op::AddTerminal { id: a, terminal: t("PE", Accepts::new(n).unwrap()) },
-            Op::AddTerminal { id: b, terminal: t("2", Accepts::TWO) },
+            Op::AddConnectionPoint { id: a, terminal: t("PE", Accepts::new(n).unwrap()) },
+            Op::AddConnectionPoint { id: b, terminal: t("2", Accepts::TWO) },
         ],
     )
     .unwrap();
@@ -599,7 +599,7 @@ fn a_point_accepting_more_than_two_fans_out_and_one_accepting_two_chains() {
             vec![Op::AddRoute { id: r1, route: route(p, &[(0.0, 0.0), (10.0, 0.0)], RouteEnd::Point(a), RouteEnd::Point(b)) }],
         )
         .unwrap();
-        let tee = |q: TerminalId, x: f64| route(p, &[(x, 5.0), (x, 0.0)], RouteEnd::Point(q), RouteEnd::On { route: r1, at: Pt::new(x, 0.0) });
+        let tee = |q: ConnectionPointId, x: f64| route(p, &[(x, 5.0), (x, 0.0)], RouteEnd::Point(q), RouteEnd::On { route: r1, at: Pt::new(x, 0.0) });
         l.commit(Author::User, "c", vec![Op::AddRoute { id: r2, route: tee(c, 2.0) }]).unwrap();
         l.commit(Author::User, "d", vec![Op::AddRoute { id: r3, route: tee(d, 3.0) }]).unwrap();
         let w = wires(&l);

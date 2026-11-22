@@ -161,8 +161,8 @@ pub(crate) fn click(h: &mut Harness<'static, App>, at: Pos2) {
 /// Connection points at `at` on the active page (design 072: a wire runs between two connection
 /// points): one drawn device holding one point per place, committed straight to the ledger.
 /// Returns the points, in the order given.
-pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::TerminalId> {
-    use ecad_model::{Author, Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject, Terminal, TerminalId};
+pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::ConnectionPointId> {
+    use ecad_model::{Author, Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject, Terminal, ConnectionPointId};
     let p = t.project().unwrap().clone();
     p.configure(&mut t.cad.session, |p| {
         let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
@@ -171,8 +171,8 @@ pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::Termi
         let mut cps = std::collections::BTreeMap::new();
         let mut out = Vec::new();
         for (i, (x, y)) in at.iter().enumerate() {
-            let t: TerminalId = p.ids.fresh();
-            ops.push(Op::AddTerminal {
+            let t: ConnectionPointId = p.ids.fresh();
+            ops.push(Op::AddConnectionPoint {
                 id: t,
                 terminal: Terminal { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
             });
@@ -205,7 +205,7 @@ pub(crate) fn wire_pp(t: &mut App, points: &[(f64, f64)]) -> serde_json::Value {
         .read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let page = p.active_page().unwrap_or(doc.page_order[0]);
-            ecad_model::derive::terminal_positions(doc, page).into_iter().map(|(_, _, at)| at).collect()
+            ecad_model::derive::connection_point_positions(doc, page).into_iter().map(|(_, _, at)| at).collect()
         })
         .unwrap();
     let ends: Vec<(f64, f64)> = [points.first(), points.last()]

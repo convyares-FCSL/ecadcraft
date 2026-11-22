@@ -16,7 +16,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::{Common, EntityKind, HAlign, Lineweight, Text, VAlign};
 use cadcraft_engine::geom::Vec2;
 use ecad_engine::Persistence;
-use ecad_model::{Author, DeviceId, Document, ItemId, ObjectRef, Op, PageId, RepresentationId, Subject, TerminalId};
+use ecad_model::{Author, DeviceId, Document, ItemId, ObjectRef, Op, PageId, RepresentationId, Subject, ConnectionPointId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -186,7 +186,7 @@ fn textstyle_kind(v: &Value, kind: &str) -> Value {
 
 /// A strip of terminals on vertical wires at `xs` crossing the line y = `y`; returns the strip
 /// and its terminals (added to `strip` when given).
-fn strip_at(h: &mut H, xs: &[f64], y: f64, strip: Option<DeviceId>) -> (DeviceId, Vec<TerminalId>) {
+fn strip_at(h: &mut H, xs: &[f64], y: f64, strip: Option<DeviceId>) -> (DeviceId, Vec<ConnectionPointId>) {
     for x in xs {
         h.run("wire", json!({"points": pts(&[(*x, y + 30.0), (*x, y - 30.0)])})).unwrap();
     }
@@ -197,15 +197,15 @@ fn strip_at(h: &mut H, xs: &[f64], y: f64, strip: Option<DeviceId>) -> (DeviceId
         p["strip"] = json!(s.hex());
     }
     let v = h.run("terminals", p).unwrap();
-    let t: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let t: Vec<ConnectionPointId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     assert_eq!(t.len(), xs.len(), "{v}");
     (id(&v, "strip"), t)
 }
 
 /// The symbol representation of strip terminal `t` on `page`.
-fn rep_of_terminal(h: &mut H, page: PageId, t: TerminalId) -> RepresentationId {
+fn rep_of_connection_point(h: &mut H, page: PageId, t: ConnectionPointId) -> RepresentationId {
     let doc = h.doc();
-    ecad_model::derive::terminal_positions(&doc, page).into_iter().find(|(x, _, _)| *x == t).map(|(_, r, _)| r).expect("terminal drawn")
+    ecad_model::derive::connection_point_positions(&doc, page).into_iter().find(|(x, _, _)| *x == t).map(|(_, r, _)| r).expect("terminal drawn")
 }
 
 fn click(h: &mut H, at: (f64, f64)) -> cadcraft_engine::Result<()> {
@@ -317,7 +317,7 @@ fn t1_defaults_sizes_weights_and_one_tag_per_strip_run() {
     assert_eq!(x01.len(), 10, "hidden tags are still rows: {rows:?}");
     let shown_x01 = shown_tags(&rows, "-X01");
     assert_eq!(shown_x01.len(), 1, "{x01:?}");
-    let first = rep_of_terminal(&mut h, page, terms[0]);
+    let first = rep_of_connection_point(&mut h, page, terms[0]);
     assert_eq!(shown_x01[0]["representation"], first.hex(), "the leftmost carries the tag");
 
     // The drawing: tags in ECAD-BOLD at 2.5, labels in Standard at 1.5, location 1.6.
@@ -712,14 +712,14 @@ fn t6_runs_once_per_run_symbol_override_and_another_device_splits() {
     let rows = texts(&mut h, page);
     let s = shown_tags(&rows, "-X01");
     assert_eq!(s.len(), 2, "{s:?}");
-    let firsts: BTreeSet<String> = [a[0], b[0]].iter().map(|t| rep_of_terminal(&mut h, page, *t).hex()).collect();
+    let firsts: BTreeSet<String> = [a[0], b[0]].iter().map(|t| rep_of_connection_point(&mut h, page, *t).hex()).collect();
     assert_eq!(s.iter().map(|r| r["representation"].as_str().unwrap().to_string()).collect::<BTreeSet<_>>(), firsts);
     // The fifth terminal (last of group A) set on: three.
-    let fifth = rep_of_terminal(&mut h, page, a[4]);
+    let fifth = rep_of_connection_point(&mut h, page, a[4]);
     one_tx(&mut h, "showtext", json!({"kind": "tag", "show": "on", "representation": fifth.hex()}));
     assert_eq!(shown_tags(&texts(&mut h, page), "-X01").len(), 3);
     // A symbol-level off on the first of group B hides that run's tag.
-    let b0 = rep_of_terminal(&mut h, page, b[0]);
+    let b0 = rep_of_connection_point(&mut h, page, b[0]);
     one_tx(&mut h, "showtext", json!({"kind": "tag", "show": "off", "representation": b0.hex()}));
     assert_eq!(shown_tags(&texts(&mut h, page), "-X01").len(), 2);
     // Device on: every terminal of -X01 shows its tag except b0 (symbol off wins).

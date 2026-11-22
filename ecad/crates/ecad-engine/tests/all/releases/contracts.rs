@@ -564,7 +564,7 @@ fn the_badge_counts_are_kept_and_an_unrelated_edit_recounts_nothing() {
                 (n(Error), n(Warning), n(Info))
             };
             let rows: Vec<_> = p.kept_checks().unwrap().rows().cloned().collect();
-            let o = p.kept_outputs().unwrap();
+            let o = p.kept_reports().unwrap();
             (p.kept_checks().unwrap().counts(), tally(&rows), o.check_counts(), tally(&o.checks()))
         })
     };
@@ -587,7 +587,7 @@ fn the_badge_counts_are_kept_and_an_unrelated_edit_recounts_nothing() {
     assert_eq!(kept, rows, "after undo");
     assert!(kept.0 + kept.1 > 0, "something to count: {kept:?}");
     // Unrelated edits: nothing changes in the rows, so nothing is recounted or rebuilt.
-    let key = |h: &mut H| h.p(|p| (p.kept_checks().unwrap().changed, p.kept_outputs().unwrap().checks_key(), release::dialog_key(p, false)));
+    let key = |h: &mut H| h.p(|p| (p.kept_checks().unwrap().changed, p.kept_reports().unwrap().checks_key(), release::dialog_key(p, false)));
     let before = key(&mut f.h);
     let page = f.supply;
     f.h.run("renamepage", json!({"page": page.hex(), "title": "Supply renamed"})).unwrap();

@@ -12,7 +12,7 @@
 //!   of [`crate::front::UsesNote`] when they change the set of wire categories in use. A cover
 //!   that comes with the transaction is drawn, and its categories are read then.
 //! - The report kinds (BOM, terminals, cables, I/O list, rack) follow their models: their pages
-//!   come from [`super::OutputsView`]'s outcome.
+//!   come from [`super::ReportsView`]'s outcome.
 //! - Every other effect changes nothing.
 //!
 //! The pages of each changed kind are read from the page order only when some kind changed. The
@@ -88,7 +88,7 @@ fn changed(kind: GenKind, k: Kinds) -> bool {
         GenKind::Cover => k.cover,
         GenKind::Contents => k.contents,
         GenKind::Revisions => k.revisions,
-        // Their models' pages come from `OutputsView`'s outcome.
+        // Their models' pages come from `ReportsView`'s outcome.
         GenKind::BomLocation | GenKind::Terminals | GenKind::Cables | GenKind::PlcRack | GenKind::IoList => false,
     }
 }

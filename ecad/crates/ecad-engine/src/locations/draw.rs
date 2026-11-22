@@ -3,7 +3,7 @@
 
 use ecad_model::{Document, ItemId, PageId, Pt, RepresentationId, Subject};
 
-use crate::draw::text_style::LookApply as _;
+use crate::draw::text_style::DrawApply as _;
 use crate::locations::{LAYER, LINETYPE, boxes_on};
 
 /// A box label as an entity on [`LAYER`], top-left aligned, in the location label style of `look`
@@ -30,7 +30,7 @@ pub fn styled_label_entity(
     }) else {
         return e;
     };
-    let label = crate::styles::location::box_look(doc, c).label_style;
+    let label = crate::styles::location::box_draw(doc, c).label_style;
     if label == crate::text_style::style_of(doc, TextKind::LocationLabel, crate::defaults::Scope::project()) {
         return e;
     }
@@ -51,7 +51,7 @@ pub fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
         Subject::Aid(a) => Some(a),
         _ => None,
     })?;
-    let label = crate::styles::location::box_look(doc, c).label_style;
+    let label = crate::styles::location::box_draw(doc, c).label_style;
     crate::text_style::own_style_of(doc, &label).family
 }
 
@@ -67,7 +67,7 @@ pub fn style_boxes(
     }
     let index: std::collections::HashMap<cadcraft_engine::doc::Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     for b in boxes {
-        let look = crate::styles::location::box_look(doc, b.aid);
+        let look = crate::styles::location::box_draw(doc, b.aid);
         let Some(e) = item_handle(b.item).and_then(|h| index.get(&h)).and_then(|i| ents.get_mut(*i)) else { continue };
         e.common.linetype = look.linetype.into();
         e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(u16::try_from(look.lineweight).unwrap_or(25));

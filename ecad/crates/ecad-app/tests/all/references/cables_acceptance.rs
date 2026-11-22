@@ -362,7 +362,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     // wire until they land on K2.
     let d = doc(&mut h);
     // K2's points (the reference's named points are shown on Field too).
-    let k2: Vec<_> = ecad_model::derive::terminal_positions(&d, field)
+    let k2: Vec<_> = ecad_model::derive::connection_point_positions(&d, field)
         .into_iter()
         .filter(|(t, _, _)| d.terminals.contains_key(t))
         .map(|(t, _, p)| (t, p))

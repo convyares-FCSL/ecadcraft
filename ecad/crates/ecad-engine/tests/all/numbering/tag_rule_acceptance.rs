@@ -28,7 +28,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
     let mut l = Ledger::new(0x7029);
     let (page, layer): (PageId, LayerId) = (ids.fresh(), ids.fresh());
     let (k1, x1): (DeviceId, DeviceId) = (ids.fresh(), ids.fresh());
-    let (a1, t3): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
+    let (a1, t3): (ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh());
     let wire: WireId = ids.fresh();
     l.commit(
         Author::User,
@@ -38,8 +38,8 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::CreateDevice { id: k1, device: Device::default().with_tag(Some("-K1")) },
             Op::CreateDevice { id: x1, device: Device::default().with_tag(Some("-X1")) },
-            Op::AddTerminal { id: a1, terminal: Terminal { owner: k1.into(), label: Some("A1".into()), key: None, accepts: Default::default() } },
-            Op::AddTerminal { id: t3, terminal: Terminal { owner: x1.into(), label: Some("3".into()), key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: a1, terminal: Terminal { owner: k1.into(), label: Some("A1".into()), key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: t3, terminal: Terminal { owner: x1.into(), label: Some("3".into()), key: None, accepts: Default::default() } },
             Op::CreateWire { id: wire, wire: Wire::new(ids.fresh(), ids.fresh(), a1, t3) },
         ],
     )

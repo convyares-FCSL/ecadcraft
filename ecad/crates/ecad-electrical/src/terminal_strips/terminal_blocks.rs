@@ -20,7 +20,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::links::{level_of_key, natural_key};
-use ecad_model::{DeviceId, Document, LevelIo, PointKey, Primitive, Pt, Subject, TerminalDef, TerminalId};
+use ecad_model::{DeviceId, Document, LevelIo, PointKey, Primitive, Pt, Subject, ConnectionPointDef, ConnectionPointId};
 
 use crate::CmdError;
 use crate::symbols::StarterKey;
@@ -130,7 +130,7 @@ pub static TYPES: &[TermType] = &[
         pe_level: None,
     },
     TermType {
-        key: StarterKey::Terminalpe,
+        key: StarterKey::TerminalBlockPe,
         level_starters: &[],
         code: "pe",
         offer: "PE",
@@ -294,7 +294,7 @@ pub fn starter_keys() -> Vec<StarterKey> {
 
 /// The type a terminal is drawn as: the starter of the first symbol that shows it, else (an old
 /// strip's first symbol, matched by key) the strip's own definition.
-pub fn type_of_terminal(doc: &Document, t: TerminalId) -> &'static TermType {
+pub fn type_of_connection_point(doc: &Document, t: ConnectionPointId) -> &'static TermType {
     let from_reps = doc.representations_showing(t).find_map(|(_, r)| crate::devices::rep_starter(doc, r));
     let starter = from_reps.or_else(|| {
         let c = doc.terminals.get(&t)?.device()?;
@@ -305,7 +305,7 @@ pub fn type_of_terminal(doc: &Document, t: TerminalId) -> &'static TermType {
 }
 
 /// A terminal's level and point (`.1i` → (1, `i`)); a hostile key is level 1.
-pub fn level_of(doc: &Document, t: TerminalId) -> (u32, Option<char>) {
+pub fn level_of(doc: &Document, t: ConnectionPointId) -> (u32, Option<char>) {
     level_of_key(doc.terminals.get(&t).and_then(|x| x.key.as_ref())).unwrap_or((1, None))
 }
 
@@ -389,7 +389,7 @@ pub fn derived_label(doc: &Document, c: DeviceId, t: &TermType, p: &str, n: u32)
 }
 
 /// The shown label of a strip terminal (design 036 §4.1); `None` for a terminal with no label.
-pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
+pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
     let term = doc.terminals.get(&t)?;
     let p = term.label.clone()?;
     let (n, _) = level_of(doc, t);
@@ -405,22 +405,22 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
     if crate::strips::strip_of(doc, c).is_none() {
         return Some(crate::connectors::pin_name(doc, t).unwrap_or(p));
     }
-    Some(derived_label(doc, c, type_of_terminal(doc, t), &p, n))
+    Some(derived_label(doc, c, type_of_connection_point(doc, t), &p, n))
 }
 
 /// The ops removing strip `c`'s position-keyed properties that `dropped` terminals leave without
 /// a terminal (review M1, no silent data loss): `term_label.<p>.<n>` when level `n` of `p` has no
 /// terminal left, and the fuse rating of position `p` (the strip's field) when `p` has none; with
 /// a note for each.
-pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[TerminalId]) -> (Vec<ecad_model::Op>, Vec<String>) {
+pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[ConnectionPointId]) -> (Vec<ecad_model::Op>, Vec<String>) {
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
     let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return (ops, notes) };
     if dropped.is_empty() || crate::strips::strip_of(doc, c).is_none() {
         return (ops, notes);
     }
-    let gone: BTreeSet<TerminalId> = dropped.iter().copied().collect();
+    let gone: BTreeSet<ConnectionPointId> = dropped.iter().copied().collect();
     let left: Vec<(String, u32)> =
-        doc.terminals_of(c).filter(|(t, _)| !gone.contains(t)).filter_map(|(t, x)| Some((x.label.clone()?, level_of(doc, t).0))).collect();
+        doc.connection_points_of(c).filter(|(t, _)| !gone.contains(t)).filter_map(|(t, x)| Some((x.label.clone()?, level_of(doc, t).0))).collect();
     let tag = crate::devices::tag_words(doc, c);
     let remove = |key: String, ops: &mut Vec<ecad_model::Op>, notes: &mut Vec<String>| {
         if let Some(v) = props.get(&key)
@@ -466,9 +466,9 @@ pub struct Position {
     pub label: String,
     pub ty: &'static TermType,
     /// Drawn levels: level → its terminals (one, or in and out; more when drawn twice).
-    pub levels: BTreeMap<u32, Vec<TerminalId>>,
+    pub levels: BTreeMap<u32, Vec<ConnectionPointId>>,
     /// Another type's symbols draw some of its levels (`position-mixed`).
-    pub mixed: Vec<TerminalId>,
+    pub mixed: Vec<ConnectionPointId>,
 }
 
 impl Position {
@@ -478,15 +478,15 @@ impl Position {
     }
 
     /// Every terminal of the position.
-    pub fn terminals(&self) -> impl Iterator<Item = TerminalId> + '_ {
+    pub fn terminals(&self) -> impl Iterator<Item = ConnectionPointId> + '_ {
         self.levels.values().flatten().copied()
     }
 }
 
 /// The positions of strip `c`, in plan order (natural order of their labels).
 pub fn positions(doc: &Document, c: DeviceId) -> Vec<Position> {
-    let mut by_label: BTreeMap<String, Vec<TerminalId>> = BTreeMap::new();
-    for (t, x) in doc.terminals_of(c) {
+    let mut by_label: BTreeMap<String, Vec<ConnectionPointId>> = BTreeMap::new();
+    for (t, x) in doc.connection_points_of(c) {
         if let Some(l) = &x.label {
             by_label.entry(l.clone()).or_default().push(t);
         }
@@ -495,12 +495,12 @@ pub fn positions(doc: &Document, c: DeviceId) -> Vec<Position> {
         .into_iter()
         .map(|(label, ts)| {
             let first = ts.iter().min().copied();
-            let ty = first.map_or_else(feedthrough, |t| type_of_terminal(doc, t));
-            let mut levels: BTreeMap<u32, Vec<TerminalId>> = BTreeMap::new();
+            let ty = first.map_or_else(feedthrough, |t| type_of_connection_point(doc, t));
+            let mut levels: BTreeMap<u32, Vec<ConnectionPointId>> = BTreeMap::new();
             let mut mixed = Vec::new();
             for t in ts {
                 levels.entry(level_of(doc, t).0).or_default().push(t);
-                if !std::ptr::eq(type_of_terminal(doc, t), ty) {
+                if !std::ptr::eq(type_of_connection_point(doc, t), ty) {
                     mixed.push(t);
                 }
             }
@@ -518,10 +518,10 @@ pub fn fuse_positions(doc: &Document, c: DeviceId) -> BTreeSet<String> {
 
 /// The position groups the numbering planner numbers (design 036 §10.3, FP8c): terminals with one
 /// label, split where a level is drawn twice (the second drawing is a group of its own).
-pub fn position_groups(doc: &Document, c: DeviceId) -> Vec<Vec<TerminalId>> {
+pub fn position_groups(doc: &Document, c: DeviceId) -> Vec<Vec<ConnectionPointId>> {
     let mut out = Vec::new();
     for p in positions(doc, c) {
-        let mut main: Vec<TerminalId> = Vec::new();
+        let mut main: Vec<ConnectionPointId> = Vec::new();
         let ty = p.ty;
         for ts in p.levels.values() {
             let per = if ty.breaks { 2 } else { 1 };
@@ -538,7 +538,7 @@ pub fn position_groups(doc: &Document, c: DeviceId) -> Vec<Vec<TerminalId>> {
 
 /// The highest whole-number position label of strip `c`.
 pub fn highest_number(doc: &Document, c: DeviceId) -> u64 {
-    doc.terminals_of(c).filter_map(|(_, t)| t.label.as_deref()?.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0)
+    doc.connection_points_of(c).filter_map(|(_, t)| t.label.as_deref()?.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0)
 }
 
 /// Positions chosen for levels within one transaction (design 036 §3.3).
@@ -718,7 +718,7 @@ pub fn counts_text(c: &Counts) -> String {
 /// The text of a link item for position `p`, level `n` as every ECAD writer writes it: `p` for
 /// level 1 of an undotted position, else `p.n` (a dotted position is always written with its
 /// level, roadmap question 5).
-pub fn link_end(p: &str, n: u32, point: Option<char>) -> String {
+pub fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
     match point {
         Some(c) => format!("{p}.{n}{c}"),
         None if n == 1 && !p.contains('.') => p.to_string(),
@@ -727,8 +727,8 @@ pub fn link_end(p: &str, n: u32, point: Option<char>) -> String {
 }
 
 /// Canonical link text on level `n` and point `point` for `labels` (plan order) out of `order`:
-/// runs become ranges, each end written with [`link_end`] (review 036, 2: the point is kept).
-pub fn link_text(labels: &[&String], order: &[String], n: u32, point: Option<char>) -> String {
+/// runs become ranges, each end written with [`jumper_bar_end`] (review 036, 2: the point is kept).
+pub fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Option<char>) -> String {
     let base = ecad_model::links::canonical(labels, order);
     if n == 1 && point.is_none() && !labels.iter().any(|l| l.contains('.')) {
         return base;
@@ -739,8 +739,8 @@ pub fn link_text(labels: &[&String], order: &[String], n: u32, point: Option<cha
     let mut run: Vec<(usize, &String)> = Vec::new();
     let flush = |run: &mut Vec<(usize, &String)>, out: &mut Vec<String>| {
         match (run.first(), run.last()) {
-            (Some((_, a)), Some((_, b))) if run.len() >= 2 => out.push(format!("{}-{}", link_end(a, n, point), link_end(b, n, point))),
-            (Some((_, a)), _) => out.push(link_end(a, n, point)),
+            (Some((_, a)), Some((_, b))) if run.len() >= 2 => out.push(format!("{}-{}", jumper_bar_end(a, n, point), jumper_bar_end(b, n, point))),
+            (Some((_, a)), _) => out.push(jumper_bar_end(a, n, point)),
             _ => {}
         }
         run.clear();
@@ -755,7 +755,7 @@ pub fn link_text(labels: &[&String], order: &[String], n: u32, point: Option<cha
             }
             None => {
                 flush(&mut run, &mut out);
-                out.push(link_end(l, n, point));
+                out.push(jumper_bar_end(l, n, point));
             }
         }
     }
@@ -768,7 +768,7 @@ pub fn link_text(labels: &[&String], order: &[String], n: u32, point: Option<cha
 /// as numbers, so renaming a level never breaks a link). An end that already reads as a level, or
 /// whose name no type of its position has, is left as typed. A name containing `-` (the sensor
 /// terminal's `-`) is written by its number.
-pub fn link_names_to_numbers(doc: &Document, c: DeviceId, text: &str) -> String {
+pub fn jumper_bar_names_to_numbers(doc: &Document, c: DeviceId, text: &str) -> String {
     if text.chars().count() > ecad_model::links::MAX_TEXT_CHARS {
         return text.to_string();
     }
@@ -798,7 +798,7 @@ pub fn link_names_to_numbers(doc: &Document, c: DeviceId, text: &str) -> String 
 /// exists (§5.1, Q5): `Link -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.`
 pub fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> Option<String> {
     let p = ecad_model::links::parse(text).ok()?;
-    let labels: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
+    let labels: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     let mut words = Vec::new();
     for item in &p.0 {
         let ends: Vec<&String> = match item {
@@ -808,7 +808,7 @@ pub fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> Option<
         for e in ends {
             let Ok((pos, Some((n, _)))) = ecad_model::links::split_level(e) else { continue };
             if labels.contains(e.as_str()) {
-                words.push(format!("{e} (position {pos}, level {n}); position {e} is written {}", link_end(e, 1, None)));
+                words.push(format!("{e} (position {pos}, level {n}); position {e} is written {}", jumper_bar_end(e, 1, None)));
             }
         }
     }
@@ -891,9 +891,9 @@ pub fn graphics(key: StarterKey) -> Option<Vec<Primitive>> {
 }
 
 /// The connection points of a new starter (`None` for any other key).
-pub fn terminals(key: StarterKey) -> Option<Vec<TerminalDef>> {
+pub fn terminals(key: StarterKey) -> Option<Vec<ConnectionPointDef>> {
     let (t, n) = of_starter(key).filter(|(t, _)| !t.legacy())?;
-    let d = |k: PointKey, x: f64, y: f64| TerminalDef { key: k, label: None, at: p(x, y), accepts: Default::default() };
+    let d = |k: PointKey, x: f64, y: f64| ConnectionPointDef { key: k, label: None, at: p(x, y), accepts: Default::default() };
     let level = |n: u32, io: Option<LevelIo>| PointKey::Level { level: u8::try_from(n).unwrap_or(u8::MAX), io };
     Some(match (t.breaks, n) {
         (true, _) => vec![d(level(1, Some(LevelIo::In)), 0.0, 10.0), d(level(1, Some(LevelIo::Out)), 0.0, -10.0)],
@@ -919,7 +919,7 @@ pub fn short(hex: &str) -> &str {
 }
 
 /// A terminal's name: its label, or `terminal <first 8 hex digits>`.
-pub fn terminal_name(doc: &Document, t: TerminalId) -> String {
+pub fn connection_point_name(doc: &Document, t: ConnectionPointId) -> String {
     // Brief 036 (design 036 §4.1): a strip level's shown label (`1.L`, or its own label).
     match crate::terminal_types::shown_label(doc, t) {
         Some(l) => l,
@@ -928,8 +928,8 @@ pub fn terminal_name(doc: &Document, t: TerminalId) -> String {
 }
 
 /// The stored label of a terminal: a strip terminal's **position** (brief 036), what links,
-/// accessories and renumbering name. [`terminal_name`] is what a person sees.
-pub fn position_label(doc: &Document, t: TerminalId) -> String {
+/// accessories and renumbering name. [`connection_point_name`] is what a person sees.
+pub fn position_label(doc: &Document, t: ConnectionPointId) -> String {
     match doc.terminals.get(&t).and_then(|x| x.label.clone()) {
         Some(l) => l,
         None => format!("connection point {}", short(&t.hex())),
@@ -975,13 +975,13 @@ mod tests {
 
     #[test]
     fn link_ends() {
-        assert_eq!(link_end("4", 1, None), "4");
-        assert_eq!(link_end("4", 2, None), "4.2");
-        assert_eq!(link_end("2.1", 1, None), "2.1.1");
+        assert_eq!(jumper_bar_end("4", 1, None), "4");
+        assert_eq!(jumper_bar_end("4", 2, None), "4.2");
+        assert_eq!(jumper_bar_end("2.1", 1, None), "2.1.1");
         let order: Vec<String> = ["1", "2", "3", "4"].iter().map(|s| s.to_string()).collect();
         let sel: Vec<&String> = order.iter().collect();
-        assert_eq!(link_text(&sel, &order, 2, None), "1.2-4.2");
-        assert_eq!(link_text(&sel, &order, 1, None), "1-4");
-        assert_eq!(link_text(&sel, &order, 1, Some('o')), "1.1o-4.1o", "review 036, 2: the point is kept");
+        assert_eq!(jumper_bar_text(&sel, &order, 2, None), "1.2-4.2");
+        assert_eq!(jumper_bar_text(&sel, &order, 1, None), "1-4");
+        assert_eq!(jumper_bar_text(&sel, &order, 1, Some('o')), "1.1o-4.1o", "review 036, 2: the point is kept");
     }
 }

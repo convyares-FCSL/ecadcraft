@@ -81,7 +81,7 @@ fn o_the_generated_page_heads_each_card_and_marks_typed_addresses() {
     let d = h.doc();
     let (sheets, lines) = h.cfg(|p| {
         p.outputs();
-        let o = p.kept_outputs().unwrap();
+        let o = p.kept_reports().unwrap();
         (ecad_engine::generated::sheets_of(&d, page, Some(o)), ecad_engine::plc::iolist::page_lines(&d, &o.plc))
     });
     // Brief 051 (design 051 §4.1, W7): cards are packed on sheets; these 44 lines fit one.

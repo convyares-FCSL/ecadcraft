@@ -25,7 +25,7 @@ use crate::CmdError;
 use ecad_model::derive::{CableReference, cable_references, cable_references_of};
 use ecad_model::{
     CableId, CorePosition, Document, End, ItemId, LengthUnit, Op, PageId, Pt, Representation, RepresentationId, RouteEnd, RouteId, Subject,
-    TerminalId, WireId,
+    ConnectionPointId, WireId,
 };
 
 pub use ecad_model::derive::MAX_REFERENCES_PER_CABLE;
@@ -708,7 +708,7 @@ pub(crate) fn cables_on(doc: &Document, page: PageId) -> impl Iterator<Item = Ca
 }
 
 /// Per member of a cable: the conductor, the pages it is routed on, and its end attachments.
-type MemberState = Vec<(ecad_model::CorePosition, Vec<PageId>, Option<[TerminalId; 2]>)>;
+type MemberState = Vec<(ecad_model::CorePosition, Vec<PageId>, Option<[ConnectionPointId; 2]>)>;
 
 /// The references of some cables at one moment, and what their reference ends are drawn from, so
 /// that one commit derives them once before and once after (brief 014).
@@ -821,8 +821,8 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
             lines.push(format!("Other end: {}", place(o)));
             // Built once per hover; the lines stop one past the hover's cap, so the caller still
             // says `… and N more`.
-            let shown: BTreeSet<ecad_model::TerminalId> =
-                ecad_model::derive::terminal_positions(doc, o.page).into_iter().map(|(t, _, _)| t).collect();
+            let shown: BTreeSet<ecad_model::ConnectionPointId> =
+                ecad_model::derive::connection_point_positions(doc, o.page).into_iter().map(|(t, _, _)| t).collect();
             let members = doc.cables.get(&r.cable).map(|c| c.cores.as_slice()).unwrap_or_default();
             for m in members.iter().filter(|m| crate::cables::member_pages(doc, m).contains(&o.page)) {
                 if lines.len() > crate::words::MAX_HOVER_LINES {
@@ -838,7 +838,7 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
 }
 
 /// `K2:1`: the terminal among `shown` (those on the other end's page) a conductor attaches to.
-fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::TerminalId>, c: &ecad_model::Wire) -> Option<String> {
+fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::ConnectionPointId>, c: &ecad_model::Wire) -> Option<String> {
     let t = End::BOTH.into_iter().map(|e| c.end(e)).find(|t| shown.contains(t))?;
     // Brief 044: a connector pin is named by its half (`-X10.S:3`).
     if let Some(name) = crate::connectors::pin_name(doc, t) {
@@ -847,7 +847,7 @@ fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::TerminalId>, c: &eca
     let term = doc.terminals.get(&t)?;
     let c = term.device()?;
     let comp = doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_else(|| format!("{}…", c.hex().get(..8).unwrap_or_default()));
-    Some(format!("{comp}:{}", crate::terminal_types::terminal_name(doc, t)))
+    Some(format!("{comp}:{}", crate::terminal_types::connection_point_name(doc, t)))
 }
 
 /// The debugger's `Cable references` diagnostics (design 010 §8): one line per orphan, one per
@@ -999,7 +999,7 @@ fn reference_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
         if r.role != ecad_model::Role::Reference || r.connection_points.is_empty() {
             continue;
         }
-        let gone: BTreeSet<TerminalId> = r.connection_points.keys().copied().collect();
+        let gone: BTreeSet<ConnectionPointId> = r.connection_points.keys().copied().collect();
         Op::edit_cable(doc, ops, k, |c| {
             for core in &mut c.cores {
                 core.through.retain(|t| !gone.contains(t));

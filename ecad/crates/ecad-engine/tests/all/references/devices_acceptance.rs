@@ -107,7 +107,7 @@ fn item_handles(h: &mut H, r: RepresentationId) -> (PageId, Vec<String>) {
 }
 
 /// The handles of the drawn reference parts owned by `r` (its text, or its table).
-fn xref_handles(h: &mut H, page: PageId, r: RepresentationId) -> Vec<String> {
+fn device_reference_handles(h: &mut H, page: PageId, r: RepresentationId) -> Vec<String> {
     h.p(|p| (0u32..400).map_while(|i| p.pages[&page].map.xref(r, i)).map(|hd| hd.hex()).collect())
 }
 
@@ -159,7 +159,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
             // A window round the head and its table.
             let head = x.h.p(|p| xref::device(p.ledger.document(), dev).head)?;
             let (page, mut hs) = item_handles(&mut x.h, head);
-            hs.extend(xref_handles(&mut x.h, page, head));
+            hs.extend(device_reference_handles(&mut x.h, page, head));
             r(&mut x.h, "move", json!({"handles": hs, "delta": d}));
             "window move head+table"
         }
@@ -171,7 +171,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
             };
             let one = *rng.pick(&all)?;
             let (page, mut hs) = item_handles(&mut x.h, one);
-            hs.extend(xref_handles(&mut x.h, page, one));
+            hs.extend(device_reference_handles(&mut x.h, page, one));
             let at = x.h.p(|p| xref::anchor(p.ledger.document(), &p.ledger.document().representations[&one]))?;
             r(&mut x.h, "rotate", json!({"handles": hs, "base": [at.x, at.y], "angle": 90.0 * (1 + rng.below(3)) as f64}));
             "rotate symbol+parts"
@@ -179,7 +179,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
         6 => {
             let head = x.h.p(|p| xref::device(p.ledger.document(), dev).head)?;
             let (page, mut hs) = item_handles(&mut x.h, head);
-            hs.extend(xref_handles(&mut x.h, page, head));
+            hs.extend(device_reference_handles(&mut x.h, page, head));
             let at = x.h.p(|p| xref::anchor(p.ledger.document(), &p.ledger.document().representations[&head]))?;
             r(&mut x.h, "mirror", json!({"handles": hs, "p1": [at.x + 5.0, at.y], "p2": [at.x + 5.0, at.y + 10.0], "erase": true}));
             "mirror head+table"
@@ -531,7 +531,7 @@ fn tester_025_counts_orphans_and_duplicate_tags() {
     x.h.activate(p105);
     let lone = x.h.run("place", json!({"symbol": "no", "at": [30, 30]})).unwrap();
     let lone_c: DeviceId = id(&lone, "component");
-    assert!(xref_handles(&mut x.h, p105, rep(&lone)).is_empty());
+    assert!(device_reference_handles(&mut x.h, p105, rep(&lone)).is_empty());
     let v = x.h.run("xrefs", json!({"component": lone_c.hex()})).unwrap();
     assert!(v["references"].as_array().unwrap().is_empty(), "{v}");
     let v = x.h.run("contacts", json!({"component": lone_c.hex()})).unwrap();
@@ -539,10 +539,10 @@ fn tester_025_counts_orphans_and_duplicate_tags() {
     // A coil with no contacts and no offer: no table; with an offer: spare rows only.
     let k2 = x.h.run("place", json!({"symbol": "coil", "at": [200, 220]})).unwrap();
     let k2c: DeviceId = id(&k2, "component");
-    assert!(xref_handles(&mut x.h, p105, rep(&k2)).is_empty(), "no table for a bare coil");
+    assert!(device_reference_handles(&mut x.h, p105, rep(&k2)).is_empty(), "no table for a bare coil");
     x.h.run("setprop", json!({"component": k2c.hex(), "key": "contacts", "value": "2NO"})).unwrap();
     assert!(rows(&mut x.h, k2c).iter().all(|r| r.2 == "spare"));
-    assert!(!xref_handles(&mut x.h, p105, rep(&k2)).is_empty(), "a table of spares");
+    assert!(!device_reference_handles(&mut x.h, p105, rep(&k2)).is_empty(), "a table of spares");
     // Duplicate tags: give -K2 the tag of -K1 (merge refused or asked): the two devices stay
     // apart in the index.
     let tag = x.h.doc().devices[&x.k1].tag().map(str::to_string).unwrap_or_default();
@@ -561,7 +561,7 @@ fn tester_025_parts_follow_their_owner_and_are_refused_alone() {
     let mut x = fixture(2504);
     let p100 = x.pages[0];
     x.h.activate(p100);
-    let table = xref_handles(&mut x.h, p100, x.coil);
+    let table = device_reference_handles(&mut x.h, p100, x.coil);
     assert!(table.len() > 10, "{table:?}");
     let head = x.h.head();
     for (cmd, v) in [
@@ -589,7 +589,7 @@ fn tester_025_parts_follow_their_owner_and_are_refused_alone() {
     // a symbol of its own and the index matches.
     let (_, coil_h) = item_handles(&mut x.h, x.coil);
     let mut sel = coil_h;
-    sel.extend(xref_handles(&mut x.h, p100, x.coil));
+    sel.extend(device_reference_handles(&mut x.h, p100, x.coil));
     let before = x.h.head();
     let m = x.h.run("mirror", json!({"handles": sel, "p1": [150, 0], "p2": [150, 10], "erase": false}));
     if let Err(e) = &m {
@@ -602,7 +602,7 @@ fn tester_025_parts_follow_their_owner_and_are_refused_alone() {
     let p105 = x.pages[1];
     let no = children(&mut x.h, x.k1).into_iter().find(|r| x.h.doc().representations[r].page == p105).unwrap();
     let (_, no_h) = item_handles(&mut x.h, no);
-    let text = xref_handles(&mut x.h, p105, no);
+    let text = device_reference_handles(&mut x.h, p105, no);
     assert_eq!(text.len(), 1);
     let e = x.h.run("move", json!({"handles": text, "delta": [5, 0]})).unwrap_err();
     assert!(e.contains(xref::TEXT_DERIVED), "{e}");
@@ -622,7 +622,7 @@ fn tester_025_parts_follow_their_owner_and_are_refused_alone() {
 
 /// Bug: moving a coil (or a contact) through a drawing command records a `FidelityMismatch`
 /// event: the commit path's amended set leaves out the reference parts (`refresh_page` adds fan,
-/// reference text, tag and label handles, not `Mapped::Xref` ones), so every moved table or
+/// reference text, tag and label handles, not `Mapped::DeviceReference` ones), so every moved table or
 /// contact text is reported as the engine's drawing differing from the projection (016 H2).
 #[test]
 fn tester_025_bug_moving_a_coil_records_fidelity_mismatches() {
@@ -645,7 +645,7 @@ fn tester_025_bug_copying_a_table_alone_says_text_not_table() {
     let mut x = fixture(2506);
     let p100 = x.pages[0];
     x.h.activate(p100);
-    let table = xref_handles(&mut x.h, p100, x.coil);
+    let table = device_reference_handles(&mut x.h, p100, x.coil);
     for (cmd, v) in
         [("copy", json!({"handles": table, "delta": [0, -50]})), ("mirror", json!({"handles": table, "p1": [80, 0], "p2": [80, 10], "erase": false}))]
     {

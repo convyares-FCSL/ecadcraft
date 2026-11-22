@@ -1402,7 +1402,7 @@ mod tests {
 
     use super::*;
     use crate::doc::{Cable, Core, Device, End, Layer, Page, Terminal, Wire};
-    use crate::id::{CableId, ConductorId, DeviceId, LayerId, NetId, PageId, TerminalId, WireId};
+    use crate::id::{CableId, ConductorId, DeviceId, LayerId, NetId, PageId, ConnectionPointId, WireId};
 
     fn json(doc: &Document) -> String {
         serde_json::to_string(doc).unwrap()
@@ -1420,10 +1420,10 @@ mod tests {
                 Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 },
                 Op::AddLayer { id: LayerId(2), layer: Layer { name: "0".into() } },
                 Op::CreateDevice { id: c, device: Device::default() },
-                Op::AddTerminal { id: TerminalId(4), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
-                Op::AddTerminal { id: TerminalId(5), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
-                Op::AddTerminal { id: TerminalId(10), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
-                Op::CreateWire { id: w, wire: Wire::new(NetId(14), ConductorId(15), TerminalId(4), TerminalId(10)) },
+                Op::AddConnectionPoint { id: ConnectionPointId(4), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+                Op::AddConnectionPoint { id: ConnectionPointId(5), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+                Op::AddConnectionPoint { id: ConnectionPointId(10), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+                Op::CreateWire { id: w, wire: Wire::new(NetId(14), ConductorId(15), ConnectionPointId(4), ConnectionPointId(10)) },
                 Op::CreateCable { id: CableId(7), cable: Cable { cores: vec![Core::on_wire(w, None)], ..Cable::default() } },
             ],
         )
@@ -1434,7 +1434,7 @@ mod tests {
     /// A valid three-op transaction touching indexes.
     fn three_ops() -> Vec<Op> {
         vec![
-            Op::CreateWire { id: WireId(11), wire: Wire::new(NetId(12), ConductorId(13), TerminalId(4), TerminalId(5)) },
+            Op::CreateWire { id: WireId(11), wire: Wire::new(NetId(12), ConductorId(13), ConnectionPointId(4), ConnectionPointId(5)) },
             Op::ModifyCable {
                 id: CableId(7),
                 before: Cable { cores: vec![Core::on_wire(WireId(6), None)], ..Cable::default() },
@@ -1449,8 +1449,8 @@ mod tests {
         l.document().check_index().unwrap();
         assert_eq!(l.head(), head);
         assert_eq!(l.state_at(head).unwrap(), *l.document());
-        assert_eq!(l.document().ends_at(TerminalId(4)), vec![(WireId(6), End::A)]);
-        assert!(l.document().ends_at(TerminalId(5)).is_empty());
+        assert_eq!(l.document().ends_at(ConnectionPointId(4)), vec![(WireId(6), End::A)]);
+        assert!(l.document().ends_at(ConnectionPointId(5)).is_empty());
         assert_eq!(l.document().cables_of(WireId(6)), vec![CableId(7)]);
     }
 
@@ -1496,7 +1496,7 @@ mod tests {
         // Ops that apply, then an end state that fails: a wire end on a missing terminal.
         let ops = vec![
             Op::AddPage { id: PageId(8), page: Page::titled("2").unwrap(), index: 1 },
-            Op::CreateWire { id: WireId(11), wire: Wire::new(NetId(12), ConductorId(13), TerminalId(4), TerminalId(99)) },
+            Op::CreateWire { id: WireId(11), wire: Wire::new(NetId(12), ConductorId(13), ConnectionPointId(4), ConnectionPointId(99)) },
         ];
         hooks::FAIL_REVERT.with(|c| c.set(true));
         // The debug assertion fires only after the document has been rebuilt.
@@ -1522,8 +1522,8 @@ mod tests {
         bad.seq = 3;
         bad.ops = vec![
             Op::AddLayer { id: LayerId(50), layer: Layer { name: "x".into() } },
-            Op::RemoveTerminal {
-                id: TerminalId(5),
+            Op::RemoveConnectionPoint {
+                id: ConnectionPointId(5),
                 terminal: Terminal { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() },
             },
         ];
@@ -1561,7 +1561,7 @@ mod tests {
     fn with_applied_shows_the_changed_document_and_reverts_it() {
         let mut l = ledger();
         let (doc, head) = (json(l.document()), l.head());
-        let seen = l.with_applied(&three_ops(), |d| (d.ends_at(TerminalId(5)), d.cables_of(WireId(6)), d.pages.len(), d.check().is_ok())).unwrap();
+        let seen = l.with_applied(&three_ops(), |d| (d.ends_at(ConnectionPointId(5)), d.cables_of(WireId(6)), d.pages.len(), d.check().is_ok())).unwrap();
         assert_eq!(seen, (vec![(WireId(11), End::B)], vec![], 2, true));
         assert_unchanged(&l, &doc, head);
         // The plain document form does the same.
@@ -1577,10 +1577,10 @@ mod tests {
         let (doc, head) = (json(l.document()), l.head());
         let bad_end = vec![
             Op::AddPage { id: PageId(8), page: Page::titled("2").unwrap(), index: 1 },
-            Op::CreateWire { id: WireId(11), wire: Wire::new(NetId(12), ConductorId(13), TerminalId(4), TerminalId(99)) },
+            Op::CreateWire { id: WireId(11), wire: Wire::new(NetId(12), ConductorId(13), ConnectionPointId(4), ConnectionPointId(99)) },
         ];
         // A recorded wire that differs from the one in the document.
-        let bad_before = vec![Op::DeleteWire { id: WireId(6), wire: Wire::new(NetId(14), ConductorId(15), TerminalId(5), TerminalId(10)) }];
+        let bad_before = vec![Op::DeleteWire { id: WireId(6), wire: Wire::new(NetId(14), ConductorId(15), ConnectionPointId(5), ConnectionPointId(10)) }];
         for ops in [bad_end, bad_before] {
             let mut ran = false;
             let previewed = l.with_applied(&ops, |_| ran = true).map_err(|e| e.to_string());
@@ -1647,7 +1647,7 @@ mod tests {
         // A terminal written straight into the map: the full check passes, the index check does
         // not, and the scoped check of `three_ops` never looks at it. Only verify mode notices.
         let mut l = ledger();
-        l.doc.terminals.insert(TerminalId(50), Terminal { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() });
+        l.doc.terminals.insert(ConnectionPointId(50), Terminal { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() });
         let doc = json(l.document());
         let r = catch_unwind(AssertUnwindSafe(|| l.with_applied(&three_ops(), |_| ())));
         match r {

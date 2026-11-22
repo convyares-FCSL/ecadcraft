@@ -40,7 +40,7 @@ fn texts(h: &mut H, page: PageId) -> Vec<String> {
     let d = h.doc();
     h.cfg(|p| {
         p.outputs();
-        let o = p.kept_outputs().unwrap();
+        let o = p.kept_reports().unwrap();
         ecad_engine::generated::parts_of(&d, page, Some(o))
             .into_iter()
             .filter_map(|x| match x.kind {
@@ -55,7 +55,7 @@ fn sheets_of(h: &mut H, page: PageId) -> usize {
     let d = h.doc();
     h.cfg(|p| {
         p.outputs();
-        ecad_engine::generated::sheets_of(&d, page, p.kept_outputs())
+        ecad_engine::generated::sheets_of(&d, page, p.kept_reports())
     })
 }
 
@@ -449,7 +449,7 @@ fn review_2_the_frame_stands_for_the_card() {
     let t = h.p(|p| ecad_engine::interact::kind::classify(p, u, cadcraft_engine::geom::Vec2::new(0.0, 0.0), 0.5, Some(handle), &[], false));
     assert_eq!(t.kind, ecad_engine::kinds::ObjectKind::Device, "{t:?}");
     assert_eq!(t.component, Some(di));
-    let words = ecad_engine::xref::refusal(&d, Some(ecad_engine::project::Mapped::Xref(part.rep)));
+    let words = ecad_engine::xref::refusal(&d, Some(ecad_engine::project::Mapped::DeviceReference(part.rep)));
     assert_eq!(words, ecad_engine::plc::look::FRAME_DERIVED);
 }
 

@@ -1,14 +1,14 @@
 //! Brief 044 (overseer condition on FP2): invariant I7 refuses a definition whose bridge names a
 //! key it has no terminal for and no placement writes; side keys and level keys are allowed.
 
-use ecad_model::{Author, Definition, DefinitionId, Ledger, Op, Pt, TerminalDef};
+use ecad_model::{Author, Definition, DefinitionId, Ledger, Op, Pt, ConnectionPointDef};
 
 fn def(bridges: &[&[&str]]) -> Definition {
     Definition {
         name: "test".into(),
         origin: None,
         graphics: Vec::new(),
-        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: Some("1".into()), at: Pt::new(0.0, 0.0), accepts: Default::default() }],
+        terminals: vec![ConnectionPointDef { key: "1".parse().unwrap(), label: Some("1".into()), at: Pt::new(0.0, 0.0), accepts: Default::default() }],
         bridges: bridges.iter().map(|g| g.iter().map(|k| k.parse().unwrap()).collect()).collect(),
         ..Default::default()
     }

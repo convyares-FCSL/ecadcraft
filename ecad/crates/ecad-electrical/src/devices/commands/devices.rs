@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use ecad_model::{
     CableId, Device, DeviceId, Document, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt, Representation, RepresentationId, RouteEnd,
-    RouteId, Subject, Terminal, TerminalId, WireId,
+    RouteId, Subject, Terminal, ConnectionPointId, WireId,
 };
 
 use crate::devices;
@@ -173,10 +173,10 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
         }
         Doomed::Device(c) => {
             let component = doc.devices.get(&c).ok_or(CmdError::refused("no such component"))?;
-            ops.extend(crate::wires::free_points_ops(doc, doc.terminals_of(c).map(|(t, _)| t)));
+            ops.extend(crate::wires::free_points_ops(doc, doc.connection_points_of(c).map(|(t, _)| t)));
             ops.extend(remove_representations(doc, Subject::Device(c)));
-            for (t, term) in doc.terminals_of(c) {
-                ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
+            for (t, term) in doc.connection_points_of(c) {
+                ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
             }
             // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
             let (released_ops, released) =
@@ -245,17 +245,17 @@ pub const NOT_A_COMPONENTS_ITEM: &str = "that item is not part of a component";
 /// An item of no component; a placed symbol (its connection points come from its definition).
 pub fn plan_addterminal(
     doc: &Document, ids: &mut IdAllocator, item: ItemId, at: Pt, label: Option<String>,
-) -> Result<(TerminalId, Vec<Op>), CmdError> {
+) -> Result<(ConnectionPointId, Vec<Op>), CmdError> {
     let (rid, r) = doc.representation_of_item(item).ok_or(CmdError::refused(NOT_A_COMPONENTS_ITEM))?;
     let Subject::Device(c) = r.subject else { return Err(CmdError::refused(NOT_A_COMPONENTS_ITEM)) };
     if r.form != Form::Drawn {
         return Err(CmdError::refused("connection points of placed symbols come from their definition"));
     }
-    let t: TerminalId = ids.fresh();
+    let t: ConnectionPointId = ids.fresh();
     let mut after = r.clone();
     after.connection_points.insert(t, at);
     let ops = vec![
-        Op::AddTerminal { id: t, terminal: Terminal { owner: c.into(), label, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: t, terminal: Terminal { owner: c.into(), label, key: None, accepts: Default::default() } },
         Op::ModifyRepresentation { id: rid, before: r.clone(), after },
     ];
     Ok((t, ops))

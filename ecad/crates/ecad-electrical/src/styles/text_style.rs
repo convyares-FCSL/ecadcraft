@@ -24,7 +24,7 @@ pub const STYLE_REGULAR: &str = "Standard";
 /// The CADCraft text style of bold ECAD text (the project font, bold).
 pub const STYLE_BOLD: &str = "ECAD-BOLD";
 /// The style name a text entity is built with before its kind's style is applied (brief 066d:
-/// every drawn text then takes its kind's style through `LookApply`; symbol line art, exempt by
+/// every drawn text then takes its kind's style through `DrawApply`; symbol line art, exempt by
 /// the overseer's ruling 1, keeps it).
 pub const PLACEHOLDER_STYLE: &str = STYLE_REGULAR;
 

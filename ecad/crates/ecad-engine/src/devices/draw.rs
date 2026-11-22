@@ -7,7 +7,7 @@ use cadcraft_engine::geom::Vec3;
 use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId};
 
 use crate::devices::{DerivedText, PageText, TAG_LAYER, TextOf, kind_of, prefix_for};
-use crate::draw::text_style::{EngineMetrics, LookApply as _};
+use crate::draw::text_style::{EngineMetrics, DrawApply as _};
 use crate::symbols::Starter;
 
 /// [`all_texts_on_page`], reading PLC addresses from the kept model `plc` when there is one

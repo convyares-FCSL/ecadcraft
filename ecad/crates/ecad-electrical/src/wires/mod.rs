@@ -38,7 +38,7 @@ use std::collections::BTreeSet;
 
 use ecad_model::{
     Aid, AidId, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, NetId, Op, PageId, Placement, Primitive, Pt,
-    Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
+    Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId, Wire, WireId,
 };
 
 use crate::devices::{DerivedText, TextOf};
@@ -516,7 +516,7 @@ impl<'a> RouteEdits<'a> {
 
     /// Every route end on connection point `from` (found through the index) lands on `to`
     /// instead: another point, or `Free` when the point goes.
-    pub fn repoint(&mut self, from: TerminalId, to: RouteEnd) {
+    pub fn repoint(&mut self, from: ConnectionPointId, to: RouteEnd) {
         let routes: Vec<RouteId> = self.doc.routes_at(from).collect();
         for r in routes {
             if let Some(route) = self.get(r) {
@@ -583,7 +583,7 @@ impl<'a> RouteEdits<'a> {
 
 /// The ops that let go of connection points `points` (being removed or replaced): every route
 /// end on one of them ends free where it is, so the commit's rewrite takes their wires away.
-pub fn free_points_ops(doc: &Document, points: impl IntoIterator<Item = TerminalId>) -> Vec<Op> {
+pub fn free_points_ops(doc: &Document, points: impl IntoIterator<Item = ConnectionPointId>) -> Vec<Op> {
     let mut edits = RouteEdits::new(doc);
     for t in points {
         edits.repoint(t, RouteEnd::Free);
@@ -593,7 +593,7 @@ pub fn free_points_ops(doc: &Document, points: impl IntoIterator<Item = Terminal
 
 /// The ops moving every route end from one connection point to another (`map`: from → to), in
 /// one `ModifyRoute` per route.
-pub fn repoint_ops(doc: &Document, map: &BTreeMap<TerminalId, TerminalId>) -> Vec<Op> {
+pub fn repoint_ops(doc: &Document, map: &BTreeMap<ConnectionPointId, ConnectionPointId>) -> Vec<Op> {
     let mut edits = RouteEdits::new(doc);
     for (from, to) in map {
         edits.repoint(*from, RouteEnd::Point(*to));
@@ -618,14 +618,14 @@ pub fn loose_ends_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Vec<(Rou
 // ---------------------------------------------------------------- the wires a route carries
 
 /// The wire between connection points `a` and `b`, if there is one (through the index).
-pub fn wire_between(doc: &Document, a: TerminalId, b: TerminalId) -> Option<WireId> {
+pub fn wire_between(doc: &Document, a: ConnectionPointId, b: ConnectionPointId) -> Option<WireId> {
     doc.ends_at(a).into_iter().map(|(w, _)| w).find(|w| doc.wires.get(w).is_some_and(|x| x.ends.contains(&a) && x.ends.contains(&b)))
 }
 
 /// A connection point route `r` reaches over routes, the nearest first: its own ends, then the
 /// routes it lands on and that land on it; never a named point. The cost follows the routes
 /// joined to it.
-fn point_of_route(doc: &Document, r: RouteId) -> Option<TerminalId> {
+fn point_of_route(doc: &Document, r: RouteId) -> Option<ConnectionPointId> {
     let mut seen = BTreeSet::new();
     let mut todo = std::collections::VecDeque::from([r]);
     while let Some(x) = todo.pop_front() {
@@ -695,7 +695,7 @@ pub fn route_of_wire_on(doc: &Document, w: WireId, page: PageId) -> Option<Route
 
 /// Where connection point `t` is drawn as a route end: (page, point) of every route end landing
 /// on it, in route ID order (through the index).
-pub fn drawn_ends_at(doc: &Document, t: TerminalId) -> Vec<(PageId, Pt)> {
+pub fn drawn_ends_at(doc: &Document, t: ConnectionPointId) -> Vec<(PageId, Pt)> {
     let mut out = Vec::new();
     for r in doc.routes_at(t) {
         let Some(route) = doc.routes.get(&r) else { continue };
@@ -722,7 +722,7 @@ pub fn wire_pages(doc: &Document, w: WireId) -> BTreeSet<PageId> {
 pub struct Tagless {
     pub ops: Vec<Op>,
     pub aid: AidId,
-    pub terminal: TerminalId,
+    pub terminal: ConnectionPointId,
     pub item: ItemId,
     pub representation: RepresentationId,
     pub definition: DefinitionId,
@@ -747,9 +747,9 @@ pub fn plan_tagless(
             d
         }
     };
-    let (id, terminal, item, representation): (AidId, TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (id, terminal, item, representation): (AidId, ConnectionPointId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     ops.push(Op::CreateAid { id, aid });
-    ops.push(Op::AddTerminal {
+    ops.push(Op::AddConnectionPoint {
         id: terminal,
         terminal: Terminal { owner: id.into(), label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
     });
@@ -903,7 +903,7 @@ pub fn plan_split(doc: &Document, ids: &mut IdAllocator, on: &OnRoute, first: (R
 pub const MAX_POINTS_SHOWN: usize = 6;
 
 /// A connection point in words: `-K01:A1`; a continuation `→24V`.
-pub fn point_words(doc: &Document, t: TerminalId) -> String {
+pub fn point_words(doc: &Document, t: ConnectionPointId) -> String {
     let Some(term) = doc.terminals.get(&t) else { return "?".into() };
     if let Some(a) = term.owner.aid() {
         return format!("\u{2192}{}", crate::continuations::display_name(doc, a));
@@ -964,7 +964,7 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
         lines.push(format!("Potential {p}{from}"));
     }
     // Brief 050b: the wire's own values, else its category's (named).
-    let look = crate::styles::wire::wire_look(doc, w);
+    let look = crate::styles::wire::wire_draw(doc, w);
     let w = &doc.settings.wiring;
     let cat = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let shown = |key: &str, v: &Option<(String, crate::defaults::Source)>| {
@@ -1001,7 +1001,7 @@ enum Meets {
     /// Nothing there: a deliberate open end.
     Free,
     /// A connection point there.
-    Point(TerminalId),
+    Point(ConnectionPointId),
     /// The one free end of another route: the new line extends that route.
     Merge { route: RouteId, end: End },
     /// The middle of route `route` (a T), or its free end where the free ends of several routes
@@ -1043,7 +1043,7 @@ pub struct WirePlan {
     /// Routes merged into the survivor and removed.
     pub removed: Vec<RouteId>,
     /// Ends on a connection point.
-    pub attached: Vec<(End, TerminalId)>,
+    pub attached: Vec<(End, ConnectionPointId)>,
     /// Reverse T: (point, the route whose free end now lands on the drawn line there).
     pub tees: Vec<(Pt, RouteId)>,
     /// The wire made between the two connection points to carry the tool's potential.
@@ -1279,7 +1279,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
     // 1. The ends.
     let mut meets: Vec<Meets> = Vec::with_capacity(2);
     for (i, at) in [first, last].into_iter().enumerate() {
-        let (m, p) = if let Some(t) = shown.terminal_at(at, tol) {
+        let (m, p) = if let Some(t) = shown.connection_point_at(at, tol) {
             (Meets::Point(t), at)
         } else if join {
             meet_at(doc, page, at, quiet)
@@ -1298,7 +1298,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
     let tees: Vec<(Pt, RouteId, End)> = if join {
         ends_on_path(doc, page, &pts, quiet)
             .into_iter()
-            .filter(|(_, _, q, _, _)| shown.terminal_at(*q, tol).is_none())
+            .filter(|(_, _, q, _, _)| shown.connection_point_at(*q, tol).is_none())
             .map(|(_, _, q, r, e)| (q, r, e))
             .collect()
     } else {
@@ -1684,18 +1684,18 @@ pub fn label_rule(doc: &Document) -> LabelRule {
     if label_rule_word(doc) == ecad_model::wiring::LABEL_RULE_EACH { LabelRule::Each(label_min_length(doc)) } else { LabelRule::Net }
 }
 
-/// The first terminal of `shown` (as `ecad_model::derive::terminal_positions` lists them) within
+/// The first terminal of `shown` (as `ecad_model::derive::connection_point_positions` lists them) within
 /// `tol` of `at`.
-pub fn first_near(shown: &[(TerminalId, RepresentationId, Pt)], at: Pt, tol: f64) -> Option<TerminalId> {
+pub fn first_near(shown: &[(ConnectionPointId, RepresentationId, Pt)], at: Pt, tol: f64) -> Option<ConnectionPointId> {
     shown.iter().find(|(_, _, p)| p.near(at, tol)).map(|(t, _, _)| *t)
 }
 
-/// The terminal at each of many points on one document (`translate::terminal_at`): the positions are worked out on
+/// The terminal at each of many points on one document (`translate::connection_point_at`): the positions are worked out on
 /// first use and kept, so an edit that moves many route ends lists them once, not once per end.
 pub struct ShownOnce<'a> {
     doc: &'a Document,
     page: PageId,
-    shown: Option<Vec<(TerminalId, RepresentationId, Pt)>>,
+    shown: Option<Vec<(ConnectionPointId, RepresentationId, Pt)>>,
 }
 
 impl<'a> ShownOnce<'a> {
@@ -1703,9 +1703,9 @@ impl<'a> ShownOnce<'a> {
         Self { doc, page, shown: None }
     }
 
-    pub fn terminal_at(&mut self, at: Pt, tol: f64) -> Option<TerminalId> {
+    pub fn connection_point_at(&mut self, at: Pt, tol: f64) -> Option<ConnectionPointId> {
         let (doc, page) = (self.doc, self.page);
-        first_near(self.shown.get_or_insert_with(|| ecad_model::derive::terminal_positions(doc, page)), at, tol)
+        first_near(self.shown.get_or_insert_with(|| ecad_model::derive::connection_point_positions(doc, page)), at, tol)
     }
 }
 

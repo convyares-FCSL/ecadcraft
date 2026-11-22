@@ -4,27 +4,27 @@
 
 use ecad_engine::connectors;
 use ecad_engine::symbols::{self, Side};
-use ecad_model::{DeviceId, Document, PageId, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, PageId, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
 
 /// The connector's terminals by (side key, pin name).
-fn pins(d: &Document, c: DeviceId) -> Vec<(String, String, TerminalId)> {
-    let mut v: Vec<(String, String, TerminalId)> = d
-        .terminals_of(c)
+fn pins(d: &Document, c: DeviceId) -> Vec<(String, String, ConnectionPointId)> {
+    let mut v: Vec<(String, String, ConnectionPointId)> = d
+        .connection_points_of(c)
         .map(|(t, x)| (x.key.as_ref().map(ToString::to_string).unwrap_or_default(), x.label.clone().unwrap_or_default(), t))
         .collect();
     v.sort();
     v
 }
 
-fn pin(d: &Document, c: DeviceId, key: &str, name: &str) -> TerminalId {
+fn pin(d: &Document, c: DeviceId, key: &str, name: &str) -> ConnectionPointId {
     pins(d, c).into_iter().find(|(k, n, _)| k == key && n == name).map(|(_, _, t)| t).unwrap_or_else(|| panic!("no {key} {name}"))
 }
 
-fn net(d: &Document, t: TerminalId) -> Option<ecad_model::NetKey> {
-    d.connectivity().net_of_terminal(t)
+fn net(d: &Document, t: ConnectionPointId) -> Option<ecad_model::NetKey> {
+    d.connectivity().net_of_connection_point(t)
 }
 
 /// A connector row of four pins on the active page at (50, 50).
@@ -321,7 +321,7 @@ fn a_connector_pin_is_never_read_as_a_strip_level() {
     let t = pin(&d, c, ".s", "2");
     let tag = ecad_engine::devices::tag_words(&d, c);
     assert_eq!(ecad_engine::terminal_types::shown_label(&d, t), Some(format!("{tag}.S:2")));
-    assert_eq!(ecad_engine::interact::terminal_name(&d, t), format!("{tag}.S:2"));
+    assert_eq!(ecad_engine::interact::connection_point_name(&d, t), format!("{tag}.S:2"));
 }
 
 #[test]
@@ -416,7 +416,7 @@ fn half_row_groups_are_kept_not_regrouped() {
     let g1 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
     assert_eq!(g0, g1, "an unrelated edit and the counts group no half rows");
     let rebuilt = h.p(|p| {
-        ecad_engine::outputs::kept::Outputs::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics)
+        ecad_engine::outputs::kept::ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics)
             .bom_count(ecad_engine::outputs::Group::Location)
     });
     assert_eq!(count(&mut h), rebuilt);

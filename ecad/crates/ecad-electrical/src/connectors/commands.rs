@@ -8,7 +8,7 @@ use ecad_model::units::{Degrees, Radians};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, RouteId, Style, Terminal, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, RouteId, Style, Terminal, ConnectionPointId, WireId};
 
 use crate::connectors::{self as cn, FamilyRules, Names, Shown};
 use crate::defaults::{self, Scope};
@@ -551,7 +551,7 @@ pub struct PinlabelInput {
     /// With `device`: the pin's current name.
     pub pin: Option<String>,
     /// One drawn pin.
-    pub terminal: Option<TerminalId>,
+    pub terminal: Option<ConnectionPointId>,
     /// The new name, or `next`.
     pub to: String,
 }
@@ -597,29 +597,29 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
         // The pin itself is not free for itself: drawn once more on this side.
         let next = cn::next_pin(doc, c, side, &BTreeSet::new())?;
         let after = Terminal { label: Some(next.clone()), ..x.clone() };
-        let ops = vec![Op::RemoveTerminal { id: t, terminal: x }, Op::AddTerminal { id: t, terminal: after }];
+        let ops = vec![Op::RemoveConnectionPoint { id: t, terminal: x }, Op::AddConnectionPoint { id: t, terminal: after }];
         let half = cn::half_tag(doc, c, side);
         let message = format!("{half}:{old} is now {half}:{next}.");
         return Ok(Pinlabel::Moved { component: c, label: format!("Move pin {half}:{old}"), from: old, to: next, ops, message });
     }
     cn::check_name(&to)?;
-    let targets: Vec<(TerminalId, Terminal)> =
-        doc.terminals_of(c).filter(|(_, x)| x.label.as_deref() == Some(old.as_str())).map(|(t, x)| (t, x.clone())).collect();
+    let targets: Vec<(ConnectionPointId, Terminal)> =
+        doc.connection_points_of(c).filter(|(_, x)| x.label.as_deref() == Some(old.as_str())).map(|(t, x)| (t, x.clone())).collect();
     if targets.is_empty() {
         return Err(CmdError::refused(format!("{tag} has no pin {old}.")));
     }
     if to == old {
         return Ok(Pinlabel::Unchanged { component: c, to });
     }
-    if doc.terminals_of(c).any(|(_, x)| x.label.as_deref() == Some(to.as_str())) || cn::pin_names(doc, c).is_some_and(|l| l.contains(&to)) {
+    if doc.connection_points_of(c).any(|(_, x)| x.label.as_deref() == Some(to.as_str())) || cn::pin_names(doc, c).is_some_and(|l| l.contains(&to)) {
         return Err(CmdError::refused(format!("{tag} already has a pin {to}. Pick another name, or rename that pin first.")));
     }
     let mut ops = Vec::new();
     for (t, x) in &targets {
-        ops.push(Op::RemoveTerminal { id: *t, terminal: x.clone() });
+        ops.push(Op::RemoveConnectionPoint { id: *t, terminal: x.clone() });
     }
     for (t, x) in targets {
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { label: Some(to.clone()), ..x } });
+        ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { label: Some(to.clone()), ..x } });
     }
     // A typed list keeps the pin's place under its new name.
     if let Some(list) = cn::pin_names(doc, c)

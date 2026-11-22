@@ -20,7 +20,7 @@ use ecad_file::Store;
 use ecad_file::schema::VersionKind;
 use ecad_file::store::TABLES as TABLES_ORDER;
 use ecad_file::verify::VerifyReport;
-use ecad_model::{DeviceId, Document, Subject, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, Subject, ConnectionPointId, WireId};
 use serde_json::{Map, Value, json};
 
 use crate::source::{Opened, Problem, Source, VerifyState, size_text};
@@ -428,10 +428,10 @@ fn tag_of(d: &ecad_model::Device) -> Option<&str> {
 }
 
 /// The name of what owns a connection point: a device's tag, or a drawing aid's name.
-fn owner_name(d: &Document, owner: ecad_model::TerminalOwner) -> String {
+fn owner_name(d: &Document, owner: ecad_model::ConnectionPointOwner) -> String {
     match owner {
-        ecad_model::TerminalOwner::Device(c) => device_name(d, c),
-        ecad_model::TerminalOwner::Aid(a) => match d.aids.get(&a).and_then(|x| x.continuation_name()) {
+        ecad_model::ConnectionPointOwner::Device(c) => device_name(d, c),
+        ecad_model::ConnectionPointOwner::Aid(a) => match d.aids.get(&a).and_then(|x| x.continuation_name()) {
             Some(name) => format!("\u{2192}{name}"),
             None => a.short(),
         },
@@ -442,7 +442,7 @@ fn device_name(d: &Document, c: DeviceId) -> String {
     d.devices.get(&c).and_then(tag_of).map(str::to_string).unwrap_or_else(|| format!("({})", c.short()))
 }
 
-fn point_name(d: &Document, t: TerminalId) -> String {
+fn point_name(d: &Document, t: ConnectionPointId) -> String {
     match d.terminals.get(&t) {
         Some(term) => {
             let own = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
@@ -570,7 +570,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
             *tags.entry(t).or_default() += 1;
         }
     }
-    let mut attached: BTreeMap<TerminalId, Vec<WireId>> = BTreeMap::new();
+    let mut attached: BTreeMap<ConnectionPointId, Vec<WireId>> = BTreeMap::new();
     for (id, w) in &d.wires {
         for t in &w.ends {
             attached.entry(*t).or_default().push(*id);
@@ -591,7 +591,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
         .map(|(id, c)| {
             let tag = tag_of(c);
             let points: Vec<Value> = d
-                .terminals_of(*id)
+                .connection_points_of(*id)
                 .map(|(t, term)| {
                     let name = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
                     let wires: Vec<String> = attached.get(&t).into_iter().flatten().map(|w| wire_name(d, *w)).collect();

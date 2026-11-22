@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use crate::cmd::input::nullable;
 use crate::cmd::run::{Cx, Generic, Outcome};
 use crate::error::{CmdError, msg};
-use crate::outputs::kept::Outputs;
+use crate::outputs::kept::ReportModels;
 use crate::page_types::*;
 
 /// Most pages one `deletepage` names.
@@ -105,7 +105,7 @@ pub struct Renumbered {
 
 /// `renumberpages {folder?}`: each folder from its start number, the rest from 1; with `scope`,
 /// that folder and its sub-folders only. `outputs` are the generated pages kept.
-pub fn plan_renumber(doc: &Document, outputs: Option<&Outputs>, scope: Option<FolderId>) -> Renumbered {
+pub fn plan_renumber(doc: &Document, outputs: Option<&ReportModels>, scope: Option<FolderId>) -> Renumbered {
     let pages = renumber(doc, outputs, scope);
     let overlaps = overlaps(doc, outputs).into_iter().map(|(a, b, n)| overlap_words(doc, a, b, n)).collect();
     let ops = pages
@@ -249,7 +249,7 @@ impl Generic for RenumberpagesParams {
         if crate::generated::has_bom_page(doc) {
             cx.derived.outputs(doc);
         }
-        let plan = plan_renumber(doc, cx.derived.kept_outputs(), scope);
+        let plan = plan_renumber(doc, cx.derived.kept_reports(), scope);
         if plan.ops.is_empty() {
             let line = "Page numbers already in order.".to_string();
             let answer = json!({"renumbered": 0, "message": line, "overlaps": plan.overlaps});

@@ -44,7 +44,7 @@ pub static CATALOGUE: Catalogue = Catalogue {
 
 /// A location box's resolved look.
 #[derive(Debug, Clone, PartialEq)]
-pub struct BoxLook {
+pub struct BoxDraw {
     /// The CADCraft linetype name.
     pub linetype: &'static str,
     /// Hundredths of a millimetre.
@@ -66,8 +66,8 @@ pub fn linetype(word: &str) -> &'static str {
 
 /// The look of location box `a`: its own style when it names one that exists (brief 050a), else
 /// the project's location style, the standard's, the built-in `box`.
-pub fn box_look(doc: &Document, a: AidId) -> BoxLook {
-    look_of(doc, &box_style(doc, a))
+pub fn box_draw(doc: &Document, a: AidId) -> BoxDraw {
+    draw_of(doc, &box_style(doc, a))
 }
 
 /// The location style box `a` is drawn in: its own when it names one that exists, else the
@@ -82,21 +82,21 @@ pub fn own_style(doc: &Document, a: AidId) -> Option<&StyleRef> {
 }
 
 /// The look of location style `id`.
-pub fn look_of(doc: &Document, id: &StyleRef) -> BoxLook {
+pub fn draw_of(doc: &Document, id: &StyleRef) -> BoxDraw {
     let f = |k: &str| super::field_of(doc, ecad_model::StyleCatalogue::Location, id, k, None);
     let lt = f("line_type").map(|r| r.word()).unwrap_or("dashed");
     let mm = f("line_weight").map_or(0.25, |r| r.number());
     let lineweight = (mm * 100.0).round().clamp(0.0, 211.0) as i16;
     let colour = f("line_colour").map_or_else(|| "none".to_string(), |r| r.text());
     let label_style = f("label_style").and_then(|r| StyleRef::parse(&r.text())).unwrap_or_else(|| StyleRef::Builtin("location".into()));
-    BoxLook { linetype: linetype(lt), lineweight, colour, label_style }
+    BoxDraw { linetype: linetype(lt), lineweight, colour, label_style }
 }
 
 /// Whether the project's location style labels with text style `id` (a change of that text style
 /// then reaches every box).
 pub fn labels_with(doc: &Document, id: &StyleRef) -> bool {
     let project = super::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project());
-    look_of(doc, &project).label_style == *id
+    draw_of(doc, &project).label_style == *id
 }
 
 /// The value of field `key` that `l` sets, if it sets one.

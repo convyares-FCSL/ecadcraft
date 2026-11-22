@@ -94,7 +94,7 @@ typed_id!(/// A drawn item: a primitive or a symbol instance.
 typed_id!(/// A component.
     DeviceId, "cmp");
 typed_id!(/// A terminal of a component.
-    TerminalId, "trm");
+    ConnectionPointId, "trm");
 typed_id!(/// A representation (depiction) of a component, conductor or cable.
     RepresentationId, "rep");
 typed_id!(/// A conductor.

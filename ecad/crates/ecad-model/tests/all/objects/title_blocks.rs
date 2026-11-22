@@ -5,7 +5,7 @@ use ecad_model::sheet::{self, Margins, SheetSpec};
 use ecad_model::style::frame::{FrameMargins, FrameSheet};
 use ecad_model::style::{FrameStyle, StyleBody};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-use ecad_model::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, TextDraw, TitleBlockLayout};
 use std::collections::BTreeMap;
 
 use ecad_model::merge::{self, Inputs, Scope};
@@ -17,7 +17,7 @@ fn field(x: f64) -> BlockItem {
         at: Rect::new(x, 1.0, 10.0, 5.0),
         bind: Binding::Page(ecad_model::title_block::PageField::Number),
         label: None,
-        look: TextLook::default(),
+        look: TextDraw::default(),
         if_empty: Default::default(),
     }
 }
@@ -42,14 +42,14 @@ fn every_bound_refuses_in_words_and_is_skipped_when_drawing() {
         (
             TitleBlockLayout {
                 size: (180.0, 40.0),
-                items: vec![BlockItem::Text { at: Rect::new(0.0, 0.0, 0.1, 5.0), text: "x".into(), look: TextLook::default() }],
+                items: vec![BlockItem::Text { at: Rect::new(0.0, 0.0, 0.1, 5.0), text: "x".into(), look: TextDraw::default() }],
             },
             "sides of at least",
         ),
         (
             TitleBlockLayout {
                 size: (180.0, 40.0),
-                items: vec![BlockItem::Text { at: Rect::new(0.0, 0.0, 9.0, 5.0), text: "x".repeat(257), look: TextLook::default() }],
+                items: vec![BlockItem::Text { at: Rect::new(0.0, 0.0, 9.0, 5.0), text: "x".repeat(257), look: TextDraw::default() }],
             },
             "longer than 256",
         ),
@@ -59,7 +59,7 @@ fn every_bound_refuses_in_words_and_is_skipped_when_drawing() {
                 items: vec![BlockItem::Text {
                     at: Rect::new(0.0, 0.0, 9.0, 5.0),
                     text: "x".into(),
-                    look: TextLook { size: f64::INFINITY, ..TextLook::default() },
+                    look: TextDraw { size: f64::INFINITY, ..TextDraw::default() },
                 }],
             },
             "text size must be",

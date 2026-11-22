@@ -226,8 +226,8 @@ impl DocumentOwner for Project {
         }
         let doc = self.ledger.document();
         let dragged: BTreeSet<Handle> = drag.handles.iter().copied().collect();
-        let mut moved: HashMap<TerminalId, Pt> = HashMap::new();
-        for (t, rep, at) in ecad_model::derive::terminal_positions(doc, page) {
+        let mut moved: HashMap<ConnectionPointId, Pt> = HashMap::new();
+        for (t, rep, at) in ecad_model::derive::connection_point_positions(doc, page) {
             let carried = match doc.representations.get(&rep).map(|r| r.form) {
                 Some(Form::Drawn) => view.map.marker(rep, t).is_some_and(|h| dragged.contains(&h)),
                 Some(Form::Symbol) => {

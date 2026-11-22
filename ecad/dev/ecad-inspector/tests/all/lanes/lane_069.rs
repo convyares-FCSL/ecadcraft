@@ -11,7 +11,7 @@ use ecad_inspector::source::{FileSource, Source, VerifyState};
 use ecad_model::{
     Author, Cable, Color, Core, Definition, Device, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op,
     Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer, StyleRecord, StyleRef, Subject,
-    SymbolInstance, Terminal, TerminalDef, Wire,
+    SymbolInstance, Terminal, ConnectionPointDef, Wire,
 };
 use serde_json::{Value, json};
 
@@ -82,16 +82,16 @@ fn every_op_ledger() -> Ledger {
     let def_v = Definition {
         name: "K".into(),
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
-        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
+        terminals: vec![ConnectionPointDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
         ..Default::default()
     };
     let comp: ecad_model::DeviceId = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
-    let term: ecad_model::TerminalId = ids.fresh();
+    let term: ecad_model::ConnectionPointId = ids.fresh();
     let term_v = Terminal { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
-    let (term2, term3, term4): (ecad_model::TerminalId, ecad_model::TerminalId, ecad_model::TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let (term2, term3, term4): (ecad_model::ConnectionPointId, ecad_model::ConnectionPointId, ecad_model::ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let point = |label: &str| Terminal { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     let sym: ecad_model::ItemId = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
@@ -141,10 +141,10 @@ fn every_op_ledger() -> Ledger {
                 Op::AddLayer { id: layer, layer: layer_v.clone() },
                 Op::EmbedDefinition { id: def, definition: def_v.clone() },
                 Op::CreateDevice { id: comp, device: comp_v.clone() },
-                Op::AddTerminal { id: term, terminal: term_v.clone() },
-                Op::AddTerminal { id: term2, terminal: point("2") },
-                Op::AddTerminal { id: term3, terminal: point("3") },
-                Op::AddTerminal { id: term4, terminal: point("4") },
+                Op::AddConnectionPoint { id: term, terminal: term_v.clone() },
+                Op::AddConnectionPoint { id: term2, terminal: point("2") },
+                Op::AddConnectionPoint { id: term3, terminal: point("3") },
+                Op::AddConnectionPoint { id: term4, terminal: point("4") },
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
                 Op::LinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
@@ -208,8 +208,8 @@ fn every_op_ledger() -> Ledger {
             before: comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..comp_v.clone() },
         },
-        Op::AddTerminal { id: ids.fresh(), terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
-        Op::RemoveTerminal { id: term, terminal: term_v.clone() },
+        Op::AddConnectionPoint { id: ids.fresh(), terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::RemoveConnectionPoint { id: term, terminal: term_v.clone() },
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },
         Op::ModifyRepresentation { id: rep_wire, before: rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },

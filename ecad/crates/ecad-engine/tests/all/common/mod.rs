@@ -7,7 +7,7 @@ use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle, Space};
 use ecad_engine::{Mapped, PagesRef, Project, ProjectHandle};
 use ecad_model::derive::mismatches;
-use ecad_model::{DeviceId, Document, ItemKind, PageId, Pt, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, ItemKind, PageId, Pt, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -215,8 +215,8 @@ impl H {
         (a, b)
     }
 
-    pub fn terminal_pos(&mut self, page: PageId, t: TerminalId) -> Pt {
-        ecad_model::derive::terminal_positions(&self.doc(), page).into_iter().find(|(x, _, _)| *x == t).map(|(_, _, p)| p).expect("terminal shown")
+    pub fn connection_point_pos(&mut self, page: PageId, t: ConnectionPointId) -> Pt {
+        ecad_model::derive::connection_point_positions(&self.doc(), page).into_iter().find(|(x, _, _)| *x == t).map(|(_, _, p)| p).expect("terminal shown")
     }
 
     pub fn lines_on(&mut self, page: PageId) -> Vec<Handle> {
@@ -338,7 +338,7 @@ impl H {
     /// Connection points at `at` on the active page (design 072: a wire runs between two
     /// connection points): one drawn device holding one point per place, committed straight to the
     /// ledger. Returns the points, in the order given.
-    pub fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<TerminalId> {
+    pub fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<ConnectionPointId> {
         use ecad_model::{Author, Device, Form, Op, Representation, Subject, Terminal};
         self.cfg(|p| {
             let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
@@ -347,8 +347,8 @@ impl H {
             let mut cps = std::collections::BTreeMap::new();
             let mut out = Vec::new();
             for (i, (x, y)) in at.iter().enumerate() {
-                let t: TerminalId = p.ids.fresh();
-                ops.push(Op::AddTerminal {
+                let t: ConnectionPointId = p.ids.fresh();
+                ops.push(Op::AddConnectionPoint {
                     id: t,
                     terminal: Terminal { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
                 });
@@ -377,7 +377,7 @@ impl H {
     pub fn wire_pp(&mut self, points: &[(f64, f64)]) -> Result<Value, String> {
         let doc = self.doc();
         let page = self.p(|p| p.active_page()).unwrap_or(doc.page_order[0]);
-        let shown: Vec<Pt> = ecad_model::derive::terminal_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
+        let shown: Vec<Pt> = ecad_model::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
         let ends: Vec<(f64, f64)> = [points.first(), points.last()]
             .into_iter()
             .flatten()
@@ -451,7 +451,7 @@ pub fn small_project(seed: u64) -> (H, DeviceId, DeviceId, WireId) {
     // Wire to the rotated symbol's first terminal, wherever the placement puts it.
     let doc = h.doc();
     let (rid, _) = doc.representations_of(ecad_model::Subject::Device(c2)).next().unwrap();
-    let to = ecad_model::derive::terminal_positions(&doc, first).into_iter().find(|(_, r, _)| *r == rid).unwrap().2;
+    let to = ecad_model::derive::connection_point_positions(&doc, first).into_iter().find(|(_, r, _)| *r == rid).unwrap().2;
     let w: WireId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (to.x, to.y)])})).unwrap(), "conductor");
     assert!(doc.wires.is_empty());
     assert!(h.doc().wires.contains_key(&w), "the wire between the two points");
@@ -472,9 +472,9 @@ pub fn wired_lines(
     let mut out = Vec::with_capacity(n);
     for i in 0..n {
         let (a, b) = line(i);
-        let (ta, tb): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
+        let (ta, tb): (ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh());
         for (t, at, k) in [(ta, a, 2 * i), (tb, b, 2 * i + 1)] {
-            ops.push(Op::AddTerminal {
+            ops.push(Op::AddConnectionPoint {
                 id: t,
                 terminal: Terminal { owner: device.into(), label: Some(k.to_string()), key: None, accepts: Default::default() },
             });

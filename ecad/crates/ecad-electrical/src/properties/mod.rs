@@ -216,12 +216,12 @@ pub fn device_section(
         if let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) {
             let name = crate::devices::rep_starter(doc, r).map_or_else(|| "drawn".to_string(), |s| s.name.to_string());
             // The terminals this symbol shows: its connection points, else the device's own.
-            let shown: Vec<ecad_model::TerminalId> = if r.connection_points.is_empty() {
-                c.map(|c| doc.terminals_of(c).map(|(t, _)| t).collect()).unwrap_or_default()
+            let shown: Vec<ecad_model::ConnectionPointId> = if r.connection_points.is_empty() {
+                c.map(|c| doc.connection_points_of(c).map(|(t, _)| t).collect()).unwrap_or_default()
             } else {
                 r.connection_points.keys().copied().collect()
             };
-            let labels: Vec<String> = shown.iter().map(|t| crate::terminal_types::terminal_name(doc, *t)).collect();
+            let labels: Vec<String> = shown.iter().map(|t| crate::terminal_types::connection_point_name(doc, *t)).collect();
             let mut this = name;
             if !labels.is_empty() {
                 this.push(' ');
@@ -262,7 +262,7 @@ pub fn device_section(
         // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
         (true, Some(c)) if crate::strips::strip_of(doc, c).is_some() => strip_rows(doc, c, &mut rows, &mut buttons),
         (true, Some(c)) => {
-            xref_rows(doc, c, symbol, &mut rows, &mut buttons);
+            device_reference_rows(doc, c, symbol, &mut rows, &mut buttons);
             // Brief 045 (design 045 §2.6): Properties ▸ Card and ▸ Rack.
             crate::plc::props_rows(doc, c, &mut rows);
             crate::plc::channel_rows(doc, plc, c, symbol, &mut rows);
@@ -319,7 +319,7 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
 /// Brief 025's rows of the device section (design 025 §5.2): Contacts offered, Contact table,
 /// and read-only Coil (a contact selected) or Contacts (its coil selected), each with Go to
 /// (`refgoto:<source>:<target>:<label>` buttons).
-fn xref_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
+fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
     use crate::xref;
     let offered = xref::contacts_of(doc, c).map(|s| s.to_string()).unwrap_or_default();
     rows.push(Row::rw(xref::CONTACTS_KEY, "Contacts offered", offered));
@@ -426,10 +426,10 @@ fn strip_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>, buttons: &mut Ve
     let props = doc.devices.get(&c).map(|x| &x.properties);
     let get = |k: &str| props.and_then(|p| p.get(k)).cloned().unwrap_or_default();
     rows.push(Row::rw(strips::OFFER_KEY, "Terminals offered", get(strips::OFFER_KEY)));
-    let drawn = strips::drawn_terminals(doc, c).len();
+    let drawn = strips::drawn_connection_points(doc, c).len();
     let value = match strips::offer_of(doc, c) {
         Some(o) => {
-            let labels: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
+            let labels: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
             let spare = (1..=o.positions).filter(|n| !labels.contains(&n.to_string())).count();
             format!("{drawn} drawn, {spare} spare")
         }
@@ -527,7 +527,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     }
     top.push(potential);
     // Brief 050b: what the wire has none of its own comes from its category.
-    let look = crate::styles::wire::wire_look(doc, w);
+    let look = crate::styles::wire::wire_draw(doc, w);
     let cat_value =
         |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
     let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));

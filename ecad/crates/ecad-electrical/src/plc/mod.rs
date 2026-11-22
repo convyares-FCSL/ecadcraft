@@ -99,10 +99,10 @@ pub fn moved_cards(doc: &Document, card: DeviceId, before: &BTreeMap<DeviceId, a
 }
 
 /// The drawn copies of channel `i` of card `c`: the points of each symbol showing it.
-pub fn copies(doc: &Document, c: DeviceId, i: u32) -> Vec<Vec<ecad_model::TerminalId>> {
-    let mut by_rep: BTreeMap<ecad_model::RepresentationId, Vec<ecad_model::TerminalId>> = BTreeMap::new();
+pub fn copies(doc: &Document, c: DeviceId, i: u32) -> Vec<Vec<ecad_model::ConnectionPointId>> {
+    let mut by_rep: BTreeMap<ecad_model::RepresentationId, Vec<ecad_model::ConnectionPointId>> = BTreeMap::new();
     let mut loose = Vec::new();
-    for (t, _) in doc.terminals_of(c) {
+    for (t, _) in doc.connection_points_of(c) {
         if channels::point_of(doc, t).is_some_and(|(j, _)| j == i) {
             match doc.representations_showing(t).next() {
                 Some((rid, _)) => by_rep.entry(rid).or_default().push(t),
@@ -110,7 +110,7 @@ pub fn copies(doc: &Document, c: DeviceId, i: u32) -> Vec<Vec<ecad_model::Termin
             }
         }
     }
-    let mut out: Vec<Vec<ecad_model::TerminalId>> = by_rep.into_values().collect();
+    let mut out: Vec<Vec<ecad_model::ConnectionPointId>> = by_rep.into_values().collect();
     if !loose.is_empty() {
         out.push(loose);
     }
@@ -121,7 +121,7 @@ pub fn copies(doc: &Document, c: DeviceId, i: u32) -> Vec<Vec<ecad_model::Termin
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ChannelData {
     /// (role, terminal, pin), roles in cell order; a role twice when the channel is drawn twice.
-    pub points: Vec<(ecad_model::ChannelRole, ecad_model::TerminalId, String)>,
+    pub points: Vec<(ecad_model::ChannelRole, ecad_model::ConnectionPointId, String)>,
     /// The symbols drawing it: (representation, page, the symbol's card type).
     pub cells: Vec<(ecad_model::RepresentationId, PageId, Option<CardType>)>,
     /// A point is on a net with another connection point.
@@ -393,11 +393,11 @@ pub fn edit_line(c: DeviceId, key: &str, value: Option<&str>) -> Option<String> 
 pub fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, ChannelData> {
     let mut out: BTreeMap<u32, ChannelData> = BTreeMap::new();
     let conn = doc.connectivity();
-    for (t, term) in doc.terminals_of(c) {
+    for (t, term) in doc.connection_points_of(c) {
         let Some((i, role)) = channels::point_of(doc, t) else { continue };
         let ch = out.entry(i).or_default();
         ch.points.push((role, t, term.label.clone().unwrap_or_default()));
-        let used = conn.net_of_terminal(t).and_then(|n| conn.net(n)).is_some_and(|n| n.terminals.len() > 1);
+        let used = conn.net_of_connection_point(t).and_then(|n| conn.net(n)).is_some_and(|n| n.terminals.len() > 1);
         ch.used |= used;
         for (rid, r) in doc.representations_showing(t) {
             if !ch.cells.iter().any(|(x, _, _)| *x == rid) {
@@ -435,7 +435,7 @@ pub fn channel_texts(
         return Vec::new();
     }
     // The channel this symbol shows: its first point's.
-    let shown_points = crate::devices::shown_terminals(doc, c, r);
+    let shown_points = crate::devices::shown_connection_points(doc, c, r);
     let Some(i) = shown_points.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return Vec::new() };
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
     let on = |e: &crate::defaults::Entry| crate::defaults::resolve(doc, e, at).flag();
@@ -445,9 +445,9 @@ pub fn channel_texts(
     let text = edit::module_of(doc, c).and_then(|m| m.channel(i)).and_then(|x| x.text.as_ref()).map(ToString::to_string);
     let conn = doc.connectivity();
     let used = doc
-        .terminals_of(c)
+        .connection_points_of(c)
         .filter(|(t, _)| channels::point_of(doc, *t).is_some_and(|x| x.0 == i))
-        .any(|(t, _)| conn.net_of_terminal(t).and_then(|n| conn.net(n)).is_some_and(|n| n.terminals.len() > 1));
+        .any(|(t, _)| conn.net_of_connection_point(t).and_then(|n| conn.net(n)).is_some_and(|n| n.terminals.len() > 1));
     let description = match (&text, used) {
         (Some(t), _) => Some(t.clone()),
         (None, false) => Some(crate::defaults::resolve(doc, &crate::defaults::plc::SPARE_TEXT, crate::defaults::Scope::project()).text()),
@@ -542,7 +542,7 @@ pub fn channel_rows(
     if crate::devices::rep_starter(doc, r).and_then(channels::cell_type).is_none() {
         return;
     }
-    let shown = crate::devices::shown_terminals(doc, c, r);
+    let shown = crate::devices::shown_connection_points(doc, c, r);
     let Some(i) = shown.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return };
     let first = channels::first_number(doc, c);
     let row = |key: String, label: &str, value: String, editable: bool, inherited: bool| crate::words::Row {

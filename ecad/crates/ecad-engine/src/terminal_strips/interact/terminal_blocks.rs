@@ -6,13 +6,13 @@
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{DeviceId, Pt, TerminalId};
+use ecad_model::{DeviceId, Pt, ConnectionPointId};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use super::{
     ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind,
-    terminal_for, v2,
+    connection_point_for, v2,
 };
 use crate::cmd::terminal::{self, MAX_FENCE};
 use crate::strips;
@@ -33,7 +33,7 @@ pub(crate) fn terminals(s: &Session) -> R<Box<dyn Interactive>> {
     })
     .unwrap_or((None, None));
     let ty = last_type.unwrap_or_else(tt::feedthrough);
-    Ok(Box::new(Safe(PlaceTerminals { stage: Stage::Strip, last, strip: None, pe: false, ty, level: Some(1), position: None, first: None })))
+    Ok(Box::new(Safe(PlaceTerminalBlocks { stage: Stage::Strip, last, strip: None, pe: false, ty, level: Some(1), position: None, first: None })))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -51,7 +51,7 @@ enum Stage {
 /// The type keywords of the Type prompt.
 const TYPE_WORDS: &[&str] = &["Feedthrough", "PE", "x2", "x2B", "x3", "LNPE", "SEN", "DIS", "FUSE"];
 
-struct PlaceTerminals {
+struct PlaceTerminalBlocks {
     stage: Stage,
     /// The strip Enter takes: the last one used.
     last: Option<(DeviceId, String)>,
@@ -68,7 +68,7 @@ struct PlaceTerminals {
 /// The answers that start a new strip.
 const NEW_STRIP: [&str; 2] = ["new", "n"];
 
-impl PlaceTerminals {
+impl PlaceTerminalBlocks {
     fn choose(&mut self, s: &Session, text: &str) -> R<Step> {
         let t = text.trim();
         if NEW_STRIP.iter().any(|w| t.eq_ignore_ascii_case(w)) {
@@ -248,7 +248,7 @@ impl PlaceTerminals {
     }
 }
 
-impl Interactive for PlaceTerminals {
+impl Interactive for PlaceTerminalBlocks {
     fn name(&self) -> &'static str {
         "TERMINALS"
     }
@@ -322,7 +322,7 @@ pub(crate) fn bridge(s: &Session) -> R<Box<dyn Interactive>> {
 }
 
 struct DrawBridge {
-    first: Option<(TerminalId, Pt, String)>,
+    first: Option<(ConnectionPointId, Pt, String)>,
 }
 
 impl DrawBridge {
@@ -332,10 +332,10 @@ impl DrawBridge {
                 if !in_range(p) {
                     return Err(other(OUT_OF_RANGE));
                 }
-                let Some((t, at, _)) = terminal_for(s, p) else {
+                let Some((t, at, _)) = connection_point_for(s, p) else {
                     return Err(other("No terminal there. Click a terminal of a strip (its ring)."));
                 };
-                let words = read(s, |p, _| Ok(terminal::terminal_words(p.ledger.document(), t))).unwrap_or_default();
+                let words = read(s, |p, _| Ok(terminal::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
                 match self.first.take() {
                     None => {
                         self.first = Some((t, at, words));
@@ -390,7 +390,7 @@ impl Interactive for DrawBridge {
         if !(super::model_space(s) && in_range(cursor)) {
             return Vec::new();
         }
-        let b = terminal_for(s, cursor).map_or(pt(cursor), |(_, at, _)| at);
+        let b = connection_point_for(s, cursor).map_or(pt(cursor), |(_, at, _)| at);
         let pts = terminal::staple(*a, b);
         pts.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect()
     }

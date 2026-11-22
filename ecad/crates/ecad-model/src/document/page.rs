@@ -51,7 +51,7 @@ crate::word_enum! {
 
 impl GenKind {
     /// Whether its content comes from the report models (built for it on first show).
-    pub fn needs_outputs(self) -> bool {
+    pub fn needs_reports(self) -> bool {
         match self {
             GenKind::BomLocation | GenKind::Terminals | GenKind::Cables | GenKind::PlcRack | GenKind::IoList => true,
             GenKind::Cover | GenKind::Contents | GenKind::Revisions => false,

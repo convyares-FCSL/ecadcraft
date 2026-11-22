@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use crate::designations::{Aspect, Pending};
 use crate::error::CmdError;
 use crate::locations;
-use crate::outputs::kept::Outputs;
+use crate::outputs::kept::ReportModels;
 use crate::outputs::{self, Group, Table};
 use crate::proposals::{self, Mode};
 
@@ -203,7 +203,7 @@ impl Paging {
 
 /// The ids of each `bom` row (`group`, kits `nested`): its devices, an accessory's item and strip
 /// (brief 030, design 030 §10) and what the row counts (brief 047).
-pub fn bom_ids_json(o: &Outputs, group: Group, nested: bool) -> Vec<Value> {
+pub fn bom_ids_json(o: &ReportModels, group: Group, nested: bool) -> Vec<Value> {
     o.bom_with(group, nested)
         .iter()
         .map(|r| {
@@ -258,7 +258,7 @@ pub const WIRE_KEYS: &[&str] =
     &["wire_number", "from", "from_location", "to", "to_location", "cross_section", "colour", "potential", "category", "cable", "page"];
 
 /// The ids of each `wirelist` row.
-pub fn wire_ids_json(o: &Outputs) -> Vec<Value> {
+pub fn wire_ids_json(o: &ReportModels) -> Vec<Value> {
     o.wires().iter().map(|r| json!({"conductor": r.conductor.hex()})).collect()
 }
 
@@ -266,7 +266,7 @@ pub fn wire_ids_json(o: &Outputs) -> Vec<Value> {
 ///
 /// Brief 028 (design 028 §9.2): `used` (a count), `spare` (the spare cores, or null when the offer
 /// is unknown) and the devices at each end; these keys are 027's CSV columns.
-pub fn cable_ids_json(o: &Outputs, include: bool) -> Vec<Value> {
+pub fn cable_ids_json(o: &ReportModels, include: bool) -> Vec<Value> {
     o.cables()
         .iter()
         .filter(|r| include || r.drawn)

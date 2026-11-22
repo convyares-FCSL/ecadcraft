@@ -34,7 +34,7 @@ pub fn related(p: &Project, page: PageId, selection: &[Handle]) -> Related {
     for h in selection.iter().take(MAX_LOOKED_AT) {
         let rep = match map.get(*h) {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(id, _)| id),
-            Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::Xref(r)) => Some(r),
+            Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::DeviceReference(r)) => Some(r),
             _ => None,
         };
         let Some((rid, r)) = rep.and_then(|id| doc.representations.get(&id).map(|r| (id, r))) else { continue };

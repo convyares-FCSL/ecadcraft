@@ -10,29 +10,29 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::terminal::{self as rules, Bridge, TerminalsInput};
+use ecad_electrical::cmd::terminal::{self as rules, Bridge, TerminalBlocksInput};
 pub use ecad_electrical::cmd::terminal::{
     BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, plan_fence, plan_fence_typed, staple,
 };
 use ecad_model::units::{Degrees, Radians};
-use ecad_model::{CableId, DeviceId, Document, Noun, Op, PageId, Placement, Pt, RouteEnd, RouteId, Style, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, Noun, Op, PageId, Placement, Pt, RouteEnd, RouteId, Style, ConnectionPointId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_any_page, on_project, plain_style};
-pub use crate::connectors::strip_terminal_at;
+pub use crate::connectors::strip_connection_point_at;
 pub use crate::connectors::{Land, plan_land};
 use crate::strips::StripData;
-pub use crate::strips::terminal_words;
+pub use crate::strips::connection_point_words;
 use crate::terminal_types as tt;
 use crate::wires::{ON_WIRE, OnRoute};
 use ecad_electrical::cmd::input::Point;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
-    Typed::of::<TerminalsParams>("terminals"),
+    Typed::of::<TerminalBlocksParams>("terminals"),
     Typed::of::<BridgeParams>("bridge"),
     Typed::of::<StripplanParams>("stripplan"),
     Typed::of::<CablecoresParams>("cablecores"),
@@ -41,7 +41,7 @@ pub const TYPED: &[Typed] = &[
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("terminals", "Place Terminals", crate::cmd::input::typed::<TerminalsParams>)
+        CommandSpec::new("terminals", "Place Terminals", crate::cmd::input::typed::<TerminalBlocksParams>)
             .params(
                 "{strip?: id (null or absent: a new strip), pe?: bool, type?: Feedthrough|PE|x2|x2B|x3|LNPE|SEN|DIS|FUSE, level?: name, number \
 or All, position?: label, from: [x,y], to: [x,y]} (one terminal, or one level, on each wire the line crosses; a level fills the next \
@@ -68,8 +68,8 @@ position of its type that lacks it; at most 200)",
 // ---------------------------------------------------------------- landing on a wire (§3.1)
 
 /// The echo of a landed terminal.
-fn land_words(doc: &Document, t: TerminalId, land: &Land) -> String {
-    format!("Placed {} on wire {} (split in two).", terminal_words(doc, t), route_words(doc, land.route))
+fn land_words(doc: &Document, t: ConnectionPointId, land: &Land) -> String {
+    format!("Placed {} on wire {} (split in two).", connection_point_words(doc, t), route_words(doc, land.route))
 }
 
 /// Where a terminal starter placed at `at` lands on a route (018's `place`), or `None` when `at`
@@ -87,7 +87,7 @@ pub(crate) fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnRo
 }
 
 /// The JSON fields and echo of a landed place.
-pub(crate) fn land_result(doc: &Document, t: TerminalId, land: &Land) -> (Value, String) {
+pub(crate) fn land_result(doc: &Document, t: ConnectionPointId, land: &Land) -> (Value, String) {
     (json!({"split": {"route": land.route.hex(), "new": land.new.hex()}}), land_words(doc, t, land))
 }
 
@@ -118,7 +118,7 @@ pub fn plan_fence_in(
 /// §3.2, brief 036 §3.2): one terminal, or one level, on each wire the line crosses.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct TerminalsParams {
+pub(crate) struct TerminalBlocksParams {
     /// The strip to join (null or absent: a new strip).
     #[serde(default)]
     strip: Option<DeviceId>,
@@ -140,7 +140,7 @@ pub(crate) struct TerminalsParams {
     to: Point,
 }
 
-impl Command for TerminalsParams {
+impl Command for TerminalBlocksParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let ty = rules::term_type(self.ty.as_deref(), self.pe.unwrap_or(false)).map_err(|e| err(e.to_string()))?;
         let (from, to) = (self.from.0, self.to.0);
@@ -148,11 +148,11 @@ impl Command for TerminalsParams {
         if bad(from) || bad(to) {
             return Err(err(crate::interact::OUT_OF_RANGE));
         }
-        let input = TerminalsInput { strip: self.strip, ty, level: self.level, position: self.position, from, to };
+        let input = TerminalBlocksInput { strip: self.strip, ty, level: self.level, position: self.position, from, to };
         let v = on_project(s, |p, pg, page| {
             let style = plain_style(p);
             let tol = p.tolerance;
-            let done = rules::plan_terminals(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, input, tol)?;
+            let done = rules::plan_terminal_blocks(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, input, tol)?;
             let f = done.fence;
             // The wire numbers on the crossed lines before: a half that ends up in another net (a
             // fuse position) does not keep its number (design 072 §4.4), which is said.
@@ -199,7 +199,7 @@ impl Command for TerminalsParams {
 /// The halves of crossed lines that no longer carry the number their line's wire carried before
 /// (`before`, by placed terminal): each half's wire and the number it lost.
 fn dropped_numbers(
-    doc: &Document, placed: &[(TerminalId, String, RouteId, RouteId)], before: &[Option<ecad_model::wire::WireNumber>],
+    doc: &Document, placed: &[(ConnectionPointId, String, RouteId, RouteId)], before: &[Option<ecad_model::wire::WireNumber>],
 ) -> Vec<(WireId, ecad_model::wire::WireNumber)> {
     let mut out = Vec::new();
     for ((_, _, r, n), was) in placed.iter().zip(before) {
@@ -284,7 +284,7 @@ pub(crate) fn place_level(
         p.last_placed = Some((starter.key.to_string(), c));
         let doc = p.ledger.document();
         let first = shown.first().map(|(_, t, _)| *t);
-        let name = first.map(|t| terminal_words(doc, t)).unwrap_or_else(|| tag_text.clone());
+        let name = first.map(|t| connection_point_words(doc, t)).unwrap_or_else(|| tag_text.clone());
         let what = match level {
             Some(n) if ty.multi() => format!("position {position}, level {}", tt::level_name(doc, c, ty, n)),
             _ => format!("position {position}, {}", ty.name.to_lowercase()),
@@ -309,7 +309,7 @@ pub(crate) fn place_level(
             "tag": tag_text,
             "position": position,
             "joined": strip.is_some(),
-            "terminals": shown.iter().map(|(k, t, _)| json!({"key": k, "label": crate::terminal_types::terminal_name(doc, *t), "terminal": t.hex()})).collect::<Vec<_>>(),
+            "terminals": shown.iter().map(|(k, t, _)| json!({"key": k, "label": crate::terminal_types::connection_point_name(doc, *t), "terminal": t.hex()})).collect::<Vec<_>>(),
             "message": message,
         });
         if let Some(l) = &land {
@@ -332,9 +332,9 @@ pub(crate) fn place_level(
 #[serde(deny_unknown_fields)]
 pub(crate) struct BridgeParams {
     /// The first terminal (a connection point).
-    from: TerminalId,
+    from: ConnectionPointId,
     /// The second terminal.
-    to: TerminalId,
+    to: ConnectionPointId,
 }
 
 impl Command for BridgeParams {
@@ -424,7 +424,7 @@ impl Command for CablecoresParams {
         let k = self.cable;
         on_any_page(s, |p, _| {
             p.outputs();
-            let o = p.kept_outputs().ok_or(CmdError::refused("The reports could not be built."))?;
+            let o = p.kept_reports().ok_or(CmdError::refused("The reports could not be built."))?;
             let row = o.cable_row(k).cloned().ok_or(CmdError::refused("no such cable"))?;
             let wire = |w: WireId| o.wire(w).cloned();
             let doc = p.ledger.document();

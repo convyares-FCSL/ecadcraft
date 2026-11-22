@@ -320,7 +320,7 @@ impl Touch {
     pub fn note(&mut self, doc: &Document, effect: &ecad_model::effect::Effect<'_>) {
         use ecad_model::effect::Effect;
         let conn = doc.connectivity();
-        let net_of_terminal = |t: ecad_model::TerminalId, s: &mut Touch| {
+        let net_of_connection_point = |t: ecad_model::ConnectionPointId, s: &mut Touch| {
             if let Some(n) = conn.net_of(&ecad_model::Node::Terminal(t)) {
                 s.nets.insert(n);
             }
@@ -350,7 +350,7 @@ impl Touch {
                     self.nets.insert(n);
                 }
                 for t in before.iter().chain(after.iter()).flat_map(|w| w.ends.iter()) {
-                    net_of_terminal(*t, self);
+                    net_of_connection_point(*t, self);
                 }
             }
             Effect::Prop { object: ObjectRef::Device(c), key, .. } => {
@@ -358,8 +358,8 @@ impl Touch {
                 if crate::symbols::is_rating_key(key) || key == ecad_model::tag::TAG_KEY {
                     self.devices.insert(*c);
                 } else if key.starts_with("link.") {
-                    for (t, _) in doc.terminals_of(*c) {
-                        net_of_terminal(t, self);
+                    for (t, _) in doc.connection_points_of(*c) {
+                        net_of_connection_point(t, self);
                     }
                 }
             }
@@ -397,7 +397,7 @@ impl Touch {
                     self.all_results = true;
                 }
             }
-            Effect::Terminal { id, .. } => net_of_terminal(*id, self),
+            Effect::Terminal { id, .. } => net_of_connection_point(*id, self),
             // A location box made or deleted.
             Effect::Aid { id, before: None, after: Some(aid) } | Effect::Aid { id, before: Some(aid), after: None } => {
                 if let Some(b) = aid.as_box() {
@@ -434,14 +434,14 @@ impl Touch {
             }
             Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => {
                 self.devices.insert(*id);
-                for (t, _) in doc.terminals_of(*id) {
-                    net_of_terminal(t, self);
+                for (t, _) in doc.connection_points_of(*id) {
+                    net_of_connection_point(t, self);
                 }
             }
             Effect::Definition { id, .. } => {
                 for c in doc.components_using(*id) {
-                    for (t, _) in doc.terminals_of(c) {
-                        net_of_terminal(t, self);
+                    for (t, _) in doc.connection_points_of(c) {
+                        net_of_connection_point(t, self);
                     }
                 }
             }
@@ -754,7 +754,7 @@ impl Kept {
             }));
         }
         for c in &moved {
-            for (t, _) in doc.terminals_of(*c) {
+            for (t, _) in doc.connection_points_of(*c) {
                 results.extend(doc.ends_at(t).into_iter().map(|(w, _)| RatedSubject::Wire(w)));
             }
         }

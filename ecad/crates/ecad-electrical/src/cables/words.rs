@@ -97,7 +97,7 @@ pub fn drawn(c: ConductorColour, sheet: &ecad_drawing_style::Sheet) -> ecad_draw
 /// category's line colour (`wire`: the insulation colour, its own or the category's; `ink`: none;
 /// or a code). `None` when it is drawn in ink.
 pub fn conductor_colour(doc: &Document, c: WireId) -> Option<Colours> {
-    crate::styles::wire::wire_look(doc, c).route_code()
+    crate::styles::wire::wire_draw(doc, c).route_code()
 }
 
 /// [`conductor_colour`] with the project's categories read once (`looks`).

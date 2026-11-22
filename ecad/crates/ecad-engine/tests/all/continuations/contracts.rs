@@ -69,7 +69,7 @@ fn drawn(h: &mut H, page: PageId) -> Vec<String> {
         let Some(d) = pg.drawing_of(p, page) else { return Vec::new() };
         p.pages[&page]
             .map
-            .xref_handles()
+            .device_reference_handles()
             .filter_map(|hd| d.model.iter().find(|e| e.handle == hd))
             .filter_map(|e| match &e.kind {
                 EntityKind::Text(t) => Some(t.value.clone()),
@@ -347,7 +347,7 @@ fn the_text_is_derived_and_properties_list_the_other_ends() {
     let (a_c, a) = f.arrows[0];
     f.h.activate(f.pages[0]);
     let hd = f.h.p(|p| p.pages[&f.pages[0]].map.xref(a, 0).unwrap());
-    assert_eq!(f.h.mapped(f.pages[0], hd), Some(Mapped::Xref(a)));
+    assert_eq!(f.h.mapped(f.pages[0], hd), Some(Mapped::DeviceReference(a)));
     let e = f.h.run("move", json!({"handles": [hd.hex()], "delta": [5, 0]})).unwrap_err();
     assert!(e.contains(TEXT_DERIVED), "{e}");
     let item = f.h.subject_item(Subject::Aid(a_c));
@@ -477,15 +477,15 @@ fn xrefs_on_a_name_of(m: usize) {
     assert_eq!(doc.continuations_named("BIG").len(), m);
     let idx = RefIndex::build(&doc);
     let t = std::time::Instant::now();
-    let v = xref::xrefs_json(&doc, &idx, None, first, None, None, 2000, 0).unwrap();
+    let v = xref::device_references_json(&doc, &idx, None, first, None, None, 2000, 0).unwrap();
     assert_eq!(v["references"].as_array().unwrap().len(), m - 1);
     assert!(v.get("next").is_none(), "{}", v["next"]);
-    let v = xref::xrefs_json(&doc, &idx, None, None, None, Some(pages[3]), 30, 10).unwrap();
+    let v = xref::device_references_json(&doc, &idx, None, None, None, Some(pages[3]), 30, 10).unwrap();
     let rows = v["references"].as_array().unwrap();
     assert_eq!(rows.len(), 30);
     assert!(rows.iter().all(|r| r["kind"] == "continuation"));
     assert_eq!(v["next"], json!(40));
-    let v = xref::xrefs_json(&doc, &idx, None, None, None, None, 10, m * (m - 1) - 2).unwrap();
+    let v = xref::device_references_json(&doc, &idx, None, None, None, None, 10, m * (m - 1) - 2).unwrap();
     assert_eq!((v["references"].as_array().unwrap().len(), v.get("next").is_none()), (2, true), "{v}");
     // All m(m−1) rows would take minutes in a debug build for 2,000; the window takes little.
     assert!(t.elapsed().as_secs_f64() < 2.0, "{:?}", t.elapsed());

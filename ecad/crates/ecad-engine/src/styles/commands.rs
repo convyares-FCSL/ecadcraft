@@ -9,7 +9,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::text::{self as rules, KindRow, ShowLevel, ShowTarget, TextStyleInput};
 use ecad_model::Word;
-use ecad_model::{DeviceId, Document, PageId, RepresentationId, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, PageId, RepresentationId, ConnectionPointId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -21,7 +21,7 @@ use crate::defaults::{self};
 pub use crate::text_style::kind_words;
 use crate::text_style::{Fonts, TextKind};
 use ecad_electrical::cmd::input::{Bounded, Point, nullable};
-pub use ecad_electrical::cmd::text::{BAD_FONT, BAD_HEIGHT, BAD_JUSTIFY, BAD_POINT, BAD_SHOW, BAD_WEIGHT, NEEDS_KIND, NEEDS_TERMINAL};
+pub use ecad_electrical::cmd::text::{BAD_FONT, BAD_HEIGHT, BAD_JUSTIFY, BAD_POINT, BAD_SHOW, BAD_WEIGHT, NEEDS_KIND, NEEDS_CONNECTION_POINT};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -370,7 +370,7 @@ pub(crate) struct MovetextParams {
     kind: Option<String>,
     /// The connection point whose label moves (point_label).
     #[serde(default)]
-    terminal: Option<TerminalId>,
+    terminal: Option<ConnectionPointId>,
     /// The page point the text moves to.
     #[serde(default)]
     to: Option<Point>,

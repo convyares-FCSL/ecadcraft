@@ -34,7 +34,7 @@ fn cross_reference_commands_through_execute() {
     // A join takes the offered labels.
     let no = c.exec("place", json!({"symbol": "no", "at": [100, 100], "device": k1}));
     assert_eq!(no["offer_slot"], json!(true));
-    assert!(last_by_agent(&mut c).iter().any(|o| matches!(o, Op::AddTerminal { terminal, .. } if terminal.label.as_deref() == Some("13"))));
+    assert!(last_by_agent(&mut c).iter().any(|o| matches!(o, Op::AddConnectionPoint { terminal, .. } if terminal.label.as_deref() == Some("13"))));
     // The table's placement, by `setprop` and by Move Mirror Table.
     c.exec("setprop", json!({"component": k1, "key": "mirror", "value": "below"}));
     assert!(matches!(&last_by_agent(&mut c)[..], [Op::ModifyDevice { after, .. }] if table(after) == Some(ecad_model::device::ContactTable::Below)));

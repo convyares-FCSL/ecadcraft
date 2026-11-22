@@ -12,13 +12,13 @@ use std::collections::BTreeMap;
 
 use ecad_model::{
     DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, PageId, Placement, Pt, Representation,
-    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId, WireId,
+    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId, WireId,
 };
 
-use crate::connectors::{Land, plan_land, plan_land_ends, strip_terminal_at};
+use crate::connectors::{Land, plan_land, plan_land_ends, strip_connection_point_at};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
-use crate::strips::{self, terminal_words};
+use crate::strips::{self, connection_point_words};
 use crate::terminal_types as tt;
 use crate::wires::OnRoute;
 
@@ -53,10 +53,10 @@ pub fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols:
 fn terminal_symbol(
     ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: DeviceId, label: &str, at: Pt, first: bool, role: ecad_model::Role,
     ops: &mut Vec<Op>,
-) -> TerminalId {
-    let (t, item, rep): (TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
+) -> ConnectionPointId {
+    let (t, item, rep): (ConnectionPointId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let key = PointKey::Def(if first { "1".to_string() } else { label.to_string() });
-    ops.push(Op::AddTerminal {
+    ops.push(Op::AddConnectionPoint {
         id: t,
         terminal: Terminal { owner: strip.into(), label: Some(label.to_string()), key: Some(key), accepts: Default::default() },
     });
@@ -80,7 +80,7 @@ pub struct Fence {
     pub strip: DeviceId,
     pub tag: String,
     /// (terminal, label, route, its new second part) in crossing order.
-    pub placed: Vec<(TerminalId, String, RouteId, RouteId)>,
+    pub placed: Vec<(ConnectionPointId, String, RouteId, RouteId)>,
     /// Wires skipped because a terminal of the strip is already there.
     pub skipped: usize,
 }
@@ -134,7 +134,7 @@ pub fn plan_fence_typed(
     let mut crossings = Vec::new();
     let mut skipped = 0;
     for m in &found.members {
-        if let Some(x) = strip_terminal_at(doc, page, m.at)
+        if let Some(x) = strip_connection_point_at(doc, page, m.at)
             && strip.is_some_and(|c| doc.terminals.get(&x).is_some_and(|t| t.device() == Some(c)))
         {
             skipped += 1;
@@ -217,14 +217,14 @@ pub fn plan_fence_typed(
 pub fn level_symbol(
     ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &crate::symbols::Starter, strip: DeviceId, position: &str,
     placement: Placement, ops: &mut Vec<Op>,
-) -> Result<Vec<(PointKey, TerminalId, Pt)>, CmdError> {
+) -> Result<Vec<(PointKey, ConnectionPointId, Pt)>, CmdError> {
     let d = starter.definition()?;
     let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     let mut cps = BTreeMap::new();
     let mut out = Vec::new();
     for td in &d.terminals {
-        let t: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal {
+        let t: ConnectionPointId = ids.fresh();
+        ops.push(Op::AddConnectionPoint {
             id: t,
             terminal: Terminal { owner: strip.into(), label: Some(position.to_string()), key: Some(td.key.clone()), accepts: td.accepts },
         });
@@ -253,7 +253,7 @@ pub fn level_symbol(
 /// # Errors
 /// [`plan_land`]'s.
 pub fn land_level(
-    doc: &Document, ids: &mut IdAllocator, on: OnRoute, shown: &[(PointKey, TerminalId, Pt)], placement: Placement,
+    doc: &Document, ids: &mut IdAllocator, on: OnRoute, shown: &[(PointKey, ConnectionPointId, Pt)], placement: Placement,
 ) -> Result<Land, CmdError> {
     let first = shown.first().map(|(_, t, _)| *t).ok_or(CmdError::refused("The symbol has no connection point."))?;
     let io = |want: LevelIo| shown.iter().find(|(k, _, _)| matches!(k.level(), Some((_, Some(io))) if io == want));
@@ -318,7 +318,7 @@ pub fn term_type(word: Option<&str>, pe: bool) -> Result<&'static tt::TermType, 
 
 /// A `terminals` call, as given.
 #[derive(Debug, Clone)]
-pub struct TerminalsInput {
+pub struct TerminalBlocksInput {
     /// The strip joined (`None`: a new strip).
     pub strip: Option<DeviceId>,
     pub ty: &'static tt::TermType,
@@ -344,8 +344,8 @@ pub struct Terminals {
 ///
 /// # Errors
 /// `from` and `to` the same point, a level word that names no level, or [`plan_fence_typed`]'s.
-pub fn plan_terminals(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, input: TerminalsInput, tol: f64,
+pub fn plan_terminal_blocks(
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, input: TerminalBlocksInput, tol: f64,
 ) -> Result<Terminals, CmdError> {
     if input.from.near(input.to, tol) {
         return Err(CmdError::input("`from` and `to` must differ"));
@@ -364,7 +364,7 @@ pub fn plan_terminals(
 /// brief 036 §3.2): the range placed, the wires, positions and level, and any stored wire number
 /// an out half did not keep (review M1: said, never dropped silently).
 pub fn terminals_message(doc: &Document, ty: &tt::TermType, level: Option<u32>, f: &Fence) -> (Vec<String>, String) {
-    let shown: Vec<String> = f.placed.iter().map(|(t, _, _, _)| tt::terminal_name(doc, *t)).collect();
+    let shown: Vec<String> = f.placed.iter().map(|(t, _, _, _)| tt::connection_point_name(doc, *t)).collect();
     let range = match shown.as_slice() {
         [one] => one.clone(),
         [a, .., b] => format!("{a}\u{2026}{b}"),
@@ -416,22 +416,22 @@ pub enum Bridge {
 ///
 /// # Errors
 /// No such terminal, the same terminal twice, or one not on this page.
-pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, a: TerminalId, b: TerminalId) -> Result<Bridge, CmdError> {
+pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, a: ConnectionPointId, b: ConnectionPointId) -> Result<Bridge, CmdError> {
     if !doc.terminals.contains_key(&a) || !doc.terminals.contains_key(&b) {
         return Err(CmdError::NotFound(Noun::TerminalDevice));
     }
     if a == b {
         return Err(CmdError::refused("Pick two different terminals: a bridge links one terminal to another."));
     }
-    let (wa, wb) = (terminal_words(doc, a), terminal_words(doc, b));
-    let (sa, sb) = (strips::strip_of_terminal(doc, a), strips::strip_of_terminal(doc, b));
+    let (wa, wb) = (connection_point_words(doc, a), connection_point_words(doc, b));
+    let (sa, sb) = (strips::strip_of_connection_point(doc, a), strips::strip_of_connection_point(doc, b));
     let same = sa.is_some() && sa == sb;
     if let Some(w) = crate::wires::wire_between(doc, a, b) {
         return Ok(Bridge::Already { conductor: w, same, message: format!("{wa} and {wb} are already bridged.") });
     }
-    let pos = |t: TerminalId| {
+    let pos = |t: ConnectionPointId| {
         doc.representations_of(doc.terminals.get(&t)?.owner.subject())
-            .find_map(|(_, r)| (r.page == page).then(|| ecad_model::derive::terminal_position(doc, page, t)).flatten())
+            .find_map(|(_, r)| (r.page == page).then(|| ecad_model::derive::connection_point_position(doc, page, t)).flatten())
     };
     let (Some(pa), Some(pb)) = (pos(a), pos(b)) else {
         return Err(CmdError::refused(format!(
@@ -440,7 +440,7 @@ pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: S
     };
     let points = if same { staple(pa, pb) } else { vec![pa, pb] };
     let (route, _, ops) = crate::wires::add_route(ids, page, style, points, [RouteEnd::Point(a), RouteEnd::Point(b)]);
-    let label_b = tt::terminal_name(doc, b);
+    let label_b = tt::connection_point_name(doc, b);
     let label = if same { format!("Bridge {wa}\u{2013}{label_b}") } else { "Wire".to_string() };
     let message = if same {
         format!("Bridged {wa}\u{2013}{label_b}.")
@@ -604,7 +604,7 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
                     v["kind"] = json!("terminal");
                     v["marker"] = json!(s.acc.markers.contains(&r.label));
                     let links: Vec<Value> =
-                        s.links_at(*i).iter().filter(|(_, on)| *on).map(|(l, _)| json!({"link": l.n, "lane": l.lane, "level": l.level})).collect();
+                        s.jumper_bars_at(*i).iter().filter(|(_, on)| *on).map(|(l, _)| json!({"link": l.n, "lane": l.lane, "level": l.level})).collect();
                     v["links"] = Value::Array(links);
                 }
                 v

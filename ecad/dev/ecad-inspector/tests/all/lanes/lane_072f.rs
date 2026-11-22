@@ -51,22 +51,22 @@ fn aids_and_their_ops_are_shown_raw_and_readable() {
 /// Lane F F1b: a connection point says what owns it, a device or a drawing aid, in both views.
 #[test]
 fn a_points_owner_is_shown_raw_and_readable() {
-    use ecad_model::{Device, DeviceId, Terminal, TerminalId};
+    use ecad_model::{Device, DeviceId, Terminal, ConnectionPointId};
     let dir = TempDir::new("072f-owner");
     let mut l = history();
     let mut ids = IdAllocator::seeded(0x72f1);
     let (a, d): (AidId, DeviceId) = (ids.fresh(), ids.fresh());
-    let (ta, td): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
+    let (ta, td): (ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh());
     let arrow = Aid::Continuation { name: Some(ContinuationName::new("24V").unwrap()), caption: None };
-    let point = |owner: ecad_model::TerminalOwner| Terminal { owner, label: None, key: None, accepts: Default::default() };
+    let point = |owner: ecad_model::ConnectionPointOwner| Terminal { owner, label: None, key: None, accepts: Default::default() };
     l.commit(
         Author::User,
         "points",
         vec![
             Op::CreateAid { id: a, aid: arrow },
-            Op::AddTerminal { id: ta, terminal: point(a.into()) },
+            Op::AddConnectionPoint { id: ta, terminal: point(a.into()) },
             Op::CreateDevice { id: d, device: Device::default() },
-            Op::AddTerminal { id: td, terminal: point(d.into()) },
+            Op::AddConnectionPoint { id: td, terminal: point(d.into()) },
         ],
     )
     .unwrap();
@@ -93,11 +93,11 @@ fn a_points_owner_is_shown_raw_and_readable() {
 /// `ModifyAid`; both read in the Raw and Readable views.
 #[test]
 fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
-    use ecad_model::{Form, Item, ItemId, ItemKind, Primitive, Pt, Representation, RepresentationId, Style, Subject, Terminal, TerminalId};
+    use ecad_model::{Form, Item, ItemId, ItemKind, Primitive, Pt, Representation, RepresentationId, Style, Subject, Terminal, ConnectionPointId};
     let dir = TempDir::new("072f-rename");
     let mut l = history();
     let mut ids = IdAllocator::seeded(0x72f2);
-    let (a, t, i, r): (AidId, TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (a, t, i, r): (AidId, ConnectionPointId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let page = *l.document().page_order.first().unwrap();
     let layer = *l.document().layers.keys().next().unwrap();
     let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
@@ -107,7 +107,7 @@ fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
         "arrow",
         vec![
             Op::CreateAid { id: a, aid: named("24V") },
-            Op::AddTerminal { id: t, terminal: Terminal { owner: a.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: t, terminal: Terminal { owner: a.into(), label: None, key: None, accepts: Default::default() } },
             Op::AddItem { id: i, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 10.0) }) } },
             Op::LinkRepresentation {
                 id: r,

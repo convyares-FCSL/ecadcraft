@@ -187,7 +187,7 @@ impl Built {
                 let (rid, r) =
                     doc.representations_of(Subject::Device(c)).next().unwrap_or_else(|| panic!("device {tag} has no drawn representation"));
                 let page = r.page;
-                ecad_model::derive::terminal_positions(&doc, page)
+                ecad_model::derive::connection_point_positions(&doc, page)
                     .into_iter()
                     .find(|(_, r, _)| *r == rid)
                     .map(|(_, _, p)| p)

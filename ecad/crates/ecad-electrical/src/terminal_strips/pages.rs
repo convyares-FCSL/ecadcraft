@@ -3,7 +3,7 @@
 //! `crate::strip_page` draws from them is the engine's.
 //!
 //! # No update map
-//! [`StripPages`] is kept in [`Outputs`] beside the strips: per strip, its position block widths
+//! [`StripPages`] is kept in [`ReportModels`] beside the strips: per strip, its position block widths
 //! and its sheet count at the project's sheet, and two indexes, `by_cable` (cables with a core on
 //! the strip) and `by_far` (far devices named in a cable box). A full build takes 0.5 ms on the
 //! large project (end-gate review, 2026-11-21), under the ~5 ms bar, so [`StripPages::update`]
@@ -25,7 +25,7 @@ use ecad_model::{CableId, DeviceId, Document, ObjectRef, PageId};
 
 use crate::accessories::Acc;
 use crate::defaults::strip_pages as entries;
-use crate::outputs::kept::Outputs;
+use crate::outputs::kept::ReportModels;
 use crate::strips::{PlanItem, StripData, Strips, TermRow};
 
 /// Gap between the tag box and the first column.
@@ -383,13 +383,13 @@ impl StripPages {
 }
 
 /// The column width of `page`'s sheet.
-pub fn page_avail(doc: &Document, page: PageId, o: &Outputs) -> f64 {
+pub fn page_avail(doc: &Document, page: PageId, o: &ReportModels) -> f64 {
     o.strip_pages.geometry.available(&ecad_model::sheet::sheet_of(doc, page))
 }
 
 /// How many sheets a graphic `terminals` page needs: each strip from a new sheet, its kept
 /// count (O(strips) with no row walk at the project's sheet).
-pub fn sheets(doc: &Document, page: PageId, o: &Outputs) -> usize {
+pub fn sheets(doc: &Document, page: PageId, o: &ReportModels) -> usize {
     let sp = &o.strip_pages;
     let avail = page_avail(doc, page, o);
     let n = match crate::generated::strip_of(doc, page) {
@@ -403,7 +403,7 @@ pub fn sheets(doc: &Document, page: PageId, o: &Outputs) -> usize {
 /// What sheet `i` of a graphic page shows: the strip (if any; `Err` when the page's `strip`
 /// names no strip), its sheet within the strip and how many it has.
 #[allow(clippy::result_unit_err)]
-pub fn sheet_at<'o>(doc: &Document, page: PageId, o: &'o Outputs, i: usize) -> Result<Option<(&'o StripData, usize, usize)>, ()> {
+pub fn sheet_at<'o>(doc: &Document, page: PageId, o: &'o ReportModels, i: usize) -> Result<Option<(&'o StripData, usize, usize)>, ()> {
     let avail = page_avail(doc, page, o);
     let shown: Vec<&StripData> = match crate::generated::strip_of(doc, page) {
         Some(c) => match o.strips.get(c) {
@@ -424,7 +424,7 @@ pub fn sheet_at<'o>(doc: &Document, page: PageId, o: &'o Outputs, i: usize) -> R
 }
 
 /// The words after a graphic sheet's page title (design 046 §6.3): `-X01 Interface (2/3)`.
-pub fn sheet_title(doc: &Document, page: PageId, o: &Outputs, i: usize) -> Option<String> {
+pub fn sheet_title(doc: &Document, page: PageId, o: &ReportModels, i: usize) -> Option<String> {
     let (s, j, n) = sheet_at(doc, page, o, i).ok().flatten()?;
     let mut t = s.tag.clone();
     if let Some(d) = s.description.as_deref().map(str::trim).filter(|d| !d.is_empty()) {

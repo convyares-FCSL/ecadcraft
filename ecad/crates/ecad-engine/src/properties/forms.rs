@@ -12,9 +12,9 @@ use ecad_model::{CableId, DeviceId, End, Primitive, Pt, RouteId, Subject, WireId
 use serde_json::{Value, json};
 
 use super::{
-    ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, TERMINAL_ACI, TERMINAL_PX, can_start, capture_at, capture_preview,
-    drawn_component, from_cursor, in_range, line_kind, next_terminal_name, pick, pixel, preview_entity, preview_text, pt, read, ring_kind,
-    terminal_for, terminal_name, v2, valid_name,
+    ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, can_start, capture_at, capture_preview,
+    drawn_component, from_cursor, in_range, line_kind, next_connection_point_name, pick, pixel, preview_entity, preview_text, pt, read, ring_kind,
+    connection_point_for, connection_point_name, v2, valid_name,
 };
 use crate::cmd::{MAX_HANDLES, MAX_WIRE_POINTS, on_project};
 use crate::project::Mapped;
@@ -137,18 +137,18 @@ fn end_name(e: End) -> &'static str {
 /// `addterminal`: click on a component's outline to add a terminal there; repeat until Enter.
 pub(crate) fn addterminal(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    Ok(Box::new(Safe(AddTerminal::default())))
+    Ok(Box::new(Safe(AddConnectionPoint::default())))
 }
 
 #[derive(Default)]
-struct AddTerminal {
+struct AddConnectionPoint {
     /// A name typed with the Name option, for the next terminal only.
     name: Option<String>,
     /// At the "Enter terminal name" prompt.
     naming: bool,
 }
 
-impl AddTerminal {
+impl AddConnectionPoint {
     /// The name the next terminal gets, when it is known: a typed one, else the default of the
     /// component under the cursor (the one a click there adds to, so the prompt and the commit
     /// agree). With the cursor off any component a typed point gets the default of the component
@@ -159,7 +159,7 @@ impl AddTerminal {
             return Some(n.clone());
         }
         if let Ok((_, c, _)) = Self::resolve(s, s.cursor, true) {
-            return read(s, |p, _| Ok(next_terminal_name(p.ledger.document(), c))).ok();
+            return read(s, |p, _| Ok(next_connection_point_name(p.ledger.document(), c))).ok();
         }
         // Off any component: a number only when every drawn component on the page would get the
         // same one, so whichever a typed point lands on gets what the prompt says.
@@ -170,7 +170,7 @@ impl AddTerminal {
                 .values()
                 .filter(|r| r.page == page && r.form == ecad_model::Form::Drawn)
                 .filter_map(|r| match r.subject {
-                    Subject::Device(c) => Some(next_terminal_name(doc, c)),
+                    Subject::Device(c) => Some(next_connection_point_name(doc, c)),
                     _ => None,
                 })
                 .collect();
@@ -227,7 +227,7 @@ impl AddTerminal {
                 let (h, c, at) = Self::resolve(s, p, clicked).map_err(other)?;
                 let label = match &self.name {
                     Some(n) => n.clone(),
-                    None => read(s, |proj, _| Ok(next_terminal_name(proj.ledger.document(), c))).map_err(other)?,
+                    None => read(s, |proj, _| Ok(next_connection_point_name(proj.ledger.document(), c))).map_err(other)?,
                 };
                 commit(s, "addterminal", &json!({"handle": h.hex(), "at": [at.x, at.y], "label": label}))?;
                 self.name = None;
@@ -241,7 +241,7 @@ impl AddTerminal {
     }
 }
 
-impl Interactive for AddTerminal {
+impl Interactive for AddConnectionPoint {
     fn name(&self) -> &'static str {
         "ADDTERMINAL"
     }
@@ -270,7 +270,7 @@ impl Interactive for AddTerminal {
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
         let (Some(px), false) = (pixel(s), self.naming) else { return Vec::new() };
         match Self::resolve(s, cursor, true) {
-            Ok((_, _, at)) => vec![preview_entity(s, ring_kind(at, TERMINAL_PX, px), TERMINAL_ACI)],
+            Ok((_, _, at)) => vec![preview_entity(s, ring_kind(at, CONNECTION_POINT_RING_PX, px), CONNECTION_POINT_ACI)],
             Err(_) => Vec::new(),
         }
     }
@@ -295,7 +295,7 @@ pub(crate) fn wire(s: &Session) -> R<Box<dyn Interactive>> {
 struct Wire {
     points: Vec<Pt>,
     /// The first point is on a terminal.
-    first_on_terminal: bool,
+    first_on_connection_point: bool,
     /// Asking for the potential of new wires (design 022 §6).
     asking_potential: bool,
     /// Brief 032 §2.4: ends that meet other wires join them (the Join keyword turns it off).
@@ -351,7 +351,7 @@ impl Wire {
             Ok(attached
                 .iter()
                 .map(|(end, t)| {
-                    let name = u128::from_str_radix(t, 16).map_or_else(|_| t.clone(), |t| terminal_name(doc, t.into()));
+                    let name = u128::from_str_radix(t, 16).map_or_else(|_| t.clone(), |t| connection_point_name(doc, t.into()));
                     (end.clone(), name)
                 })
                 .collect::<Vec<_>>())
@@ -454,7 +454,7 @@ impl Wire {
                 if !in_range(p) {
                     return Err(other(OUT_OF_RANGE));
                 }
-                let (q, on_terminal) = match terminal_for(s, p) {
+                let (q, on_connection_point) = match connection_point_for(s, p) {
                     Some((_, at, _)) => (at, true),
                     // Brief 032 §2.4: a click near another wire's open end lands on it.
                     None if self.join => (self.open_end(s, p).unwrap_or_else(|| pt(p)), false),
@@ -470,15 +470,15 @@ impl Wire {
                 }
                 self.points.push(q);
                 if self.points.len() == 1 {
-                    self.first_on_terminal = on_terminal;
+                    self.first_on_connection_point = on_connection_point;
                     return Ok(Step::Continue);
                 }
-                if on_terminal { self.finish(s) } else { Ok(Step::Continue) }
+                if on_connection_point { self.finish(s) } else { Ok(Step::Continue) }
             }
             Input::Keyword(k) if k == "Undo" => {
                 self.points.pop();
                 if self.points.is_empty() {
-                    self.first_on_terminal = false;
+                    self.first_on_connection_point = false;
                 }
                 Ok(Step::Continue)
             }
@@ -577,7 +577,7 @@ impl Interactive for Wire {
                 out.push(preview_text(s, at, px, text, aci));
             }
         }
-        if let (true, Some(first), Some(px)) = (self.first_on_terminal, self.points.first(), pixel(s)) {
+        if let (true, Some(first), Some(px)) = (self.first_on_connection_point, self.points.first(), pixel(s)) {
             out.extend([4.0, 2.0].map(|d| preview_entity(s, ring_kind(*first, d, px), ATTACHED_ACI)));
         }
         out
@@ -599,7 +599,7 @@ pub(crate) fn disconnect(s: &Session) -> R<Box<dyn Interactive>> {
 }
 
 const NOT_WIRE: &str = "That is not a wire.";
-const NO_TERMINAL: &str = "No connection point there. Move onto a connection point until the green ring shows.";
+const NO_CONNECTION_POINT: &str = "No connection point there. Move onto a connection point until the green ring shows.";
 
 struct Link {
     connect: bool,
@@ -646,7 +646,7 @@ impl Link {
                 Ok(Step::Continue)
             }
             (Input::Point(p), Some((w, end, _))) => {
-                let (t, _, name) = terminal_for(s, p).ok_or_else(|| other(NO_TERMINAL))?;
+                let (t, _, name) = connection_point_for(s, p).ok_or_else(|| other(NO_CONNECTION_POINT))?;
                 commit(s, "connect", &json!({"route": w.hex(), "end": end_name(end), "terminal": t.hex()}))?;
                 s.echo(format!("End {} of wire {} connected to {name}.", end_name(end), w.hex()));
                 self.end = None;
@@ -1140,7 +1140,7 @@ pub(super) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<Cable
             let w = cabled_wire(doc, r).ok_or(WIRE_NOT_IN_CABLE)?;
             doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE)
         }
-        Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Frame(_) | Mapped::Xref(_) | Mapped::Link(..) => Err(NOT_A_CABLE),
+        Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Frame(_) | Mapped::DeviceReference(_) | Mapped::Link(..) => Err(NOT_A_CABLE),
     }
 }
 
@@ -1488,7 +1488,7 @@ impl Interactive for CableFan {
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
         let (Some((_, _, spine)), Some(px)) = (self.picked, pixel(s)) else { return Vec::new() };
         match spine.join_for(pt(cursor)) {
-            Some(j) => vec![preview_entity(s, ring_kind(j, TERMINAL_PX, px), ATTACHED_ACI)],
+            Some(j) => vec![preview_entity(s, ring_kind(j, CONNECTION_POINT_RING_PX, px), ATTACHED_ACI)],
             None => Vec::new(),
         }
     }

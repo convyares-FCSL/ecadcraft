@@ -20,7 +20,7 @@
 //!   ([`Request::strips`]; this crate does not know the starter catalogue). Per strip, its drawn
 //!   terminals are labelled `start`, `start + 1`, … in drawing order, feed-through and PE in one
 //!   sequence; a strip's fixed tag does not stop it. A changed terminal is relabelled by
-//!   `RemoveTerminal` + `AddTerminal` of the same ID with the same key; its wires stay attached
+//!   `RemoveConnectionPoint` + `AddConnectionPoint` of the same ID with the same key; its wires stay attached
 //!   (the transaction's end state holds every invariant, decision FP5 of 2026-11-12).
 //! - The plan is built on request only (a preview, an Apply); it reads each item once, sorts, and
 //!   writes one op per changed item (§11).
@@ -33,7 +33,7 @@ use crate::book::Book;
 use crate::connectivity::{NetData, NetKey, split_number};
 use crate::doc::{Document, ItemKind, Primitive, Representation, Subject};
 use crate::geom::Pt;
-use crate::id::{CableId, DeviceId, FolderId, PageId, TerminalId, WireId};
+use crate::id::{CableId, DeviceId, FolderId, PageId, ConnectionPointId, WireId};
 use crate::op::{ObjectRef, Op};
 use crate::sheet::Grid;
 use crate::tag::{self, FIXED_KEY, HIGH_RESET_PREFIX, HighWater, TAG_KEY};
@@ -104,7 +104,7 @@ pub struct Request {
     /// The planner numbers groups, each anchored at its earliest symbol in drawing order, and gives
     /// every terminal of a group the group's new label. A strip with no groups is numbered one
     /// terminal per group, as brief 028 did.
-    pub positions: BTreeMap<DeviceId, Vec<Vec<TerminalId>>>,
+    pub positions: BTreeMap<DeviceId, Vec<Vec<ConnectionPointId>>>,
 }
 
 /// What a row does (design §3, row marks).
@@ -174,7 +174,7 @@ pub struct Row {
     pub point: Option<Pt>,
     pub mark: Mark,
     /// Brief 028: the terminal a [`Kind::Terminals`] row relabels.
-    pub terminal: Option<TerminalId>,
+    pub terminal: Option<ConnectionPointId>,
     order: Order,
 }
 
@@ -505,7 +505,7 @@ pub fn plan_ranked(doc: &Document, req: &Request, high: &HighWater, rank: Rank<'
         plan_wires(doc, req, &mut places, pages.as_ref(), &mut rows, &mut ops);
     }
     if req.kinds.contains(&Kind::Terminals) {
-        plan_terminals(doc, req, &mut places, pages.as_ref(), &mut rows, &mut ops);
+        plan_terminal_blocks(doc, req, &mut places, pages.as_ref(), &mut rows, &mut ops);
     }
     // Brief 054 (design 054 §3.4): what is anchored on a page with checks and references off is
     // not numbered.
@@ -736,17 +736,17 @@ fn plan_tags(
 }
 
 /// Brief 028: number each strip's terminals in drawing order (module docs).
-fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>) {
+fn plan_terminal_blocks(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>) {
     let start = req.start.unwrap_or(1);
     for strip in &req.strips {
         let Some(comp) = doc.devices.get(strip) else { continue };
         let tag = comp.tag().unwrap_or("?").to_string();
         // Each terminal once, anchored at the symbol that shows it.
-        let mut seen: BTreeSet<TerminalId> = BTreeSet::new();
-        let mut list: Vec<(TerminalId, PageId, Pt, Order)> = Vec::new();
+        let mut seen: BTreeSet<ConnectionPointId> = BTreeSet::new();
+        let mut list: Vec<(ConnectionPointId, PageId, Pt, Order)> = Vec::new();
         for (_, r) in doc.representations_of(Subject::Device(*strip)) {
             let Some(at) = places.rep_point(r) else { continue };
-            let shown: Vec<TerminalId> = if r.connection_points.is_empty() {
+            let shown: Vec<ConnectionPointId> = if r.connection_points.is_empty() {
                 let keys: BTreeSet<&crate::point::PointKey> = match doc.items.get(r.items.first().unwrap_or(&crate::id::ItemId(0))).map(|i| &i.kind) {
                     Some(ItemKind::Symbol(s)) => {
                         doc.definitions.get(&s.definition).map(|d| d.terminals.iter().map(|t| &t.key).collect()).unwrap_or_default()
@@ -758,7 +758,7 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
                 // definition key, review M1 2.1), else the first.
                 let mut shown = Vec::new();
                 for k in keys {
-                    let mut with_key = doc.terminals_of(*strip).filter(|(_, t)| t.key.as_ref() == Some(k)).map(|(t, _)| t);
+                    let mut with_key = doc.connection_points_of(*strip).filter(|(_, t)| t.key.as_ref() == Some(k)).map(|(t, _)| t);
                     let first = with_key.next();
                     let free = first.into_iter().chain(with_key).find(|t| doc.representations_showing(*t).next().is_none());
                     if let Some(t) = free.or(first) {
@@ -784,8 +784,8 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
         }
         list.sort_by(|a, b| a.3.cmp(&b.3).then(a.0.cmp(&b.0)));
         // Brief 036: the caller's position groups; a terminal in none is a group of its own.
-        let groups: Vec<Vec<TerminalId>> = req.positions.get(strip).cloned().unwrap_or_default();
-        let group_of: BTreeMap<TerminalId, usize> = groups.iter().enumerate().flat_map(|(i, g)| g.iter().map(move |t| (*t, i))).collect();
+        let groups: Vec<Vec<ConnectionPointId>> = req.positions.get(strip).cloned().unwrap_or_default();
+        let group_of: BTreeMap<ConnectionPointId, usize> = groups.iter().enumerate().flat_map(|(i, g)| g.iter().map(move |t| (*t, i))).collect();
         let mut done: BTreeSet<usize> = BTreeSet::new();
         let anchors = list.into_iter().filter(|(t, _, _, _)| match group_of.get(t) {
             Some(g) => done.insert(*g),
@@ -795,7 +795,7 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
             let Some(term) = doc.terminals.get(&t) else { continue };
             let old_label = term.label.clone().unwrap_or_default();
             let new_label = n.to_string();
-            let members: Vec<TerminalId> = match group_of.get(&t).and_then(|g| groups.get(*g)) {
+            let members: Vec<ConnectionPointId> = match group_of.get(&t).and_then(|g| groups.get(*g)) {
                 Some(g) => g.clone(),
                 None => vec![t],
             };
@@ -808,8 +808,8 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
                 }
                 let mut after = x.clone();
                 after.label = Some(new_label.clone());
-                ops.push(Op::RemoveTerminal { id: *m, terminal: x.clone() });
-                ops.push(Op::AddTerminal { id: *m, terminal: after });
+                ops.push(Op::RemoveConnectionPoint { id: *m, terminal: x.clone() });
+                ops.push(Op::AddConnectionPoint { id: *m, terminal: after });
             }
             rows.push(Row {
                 object: ObjectRef::Device(*strip),

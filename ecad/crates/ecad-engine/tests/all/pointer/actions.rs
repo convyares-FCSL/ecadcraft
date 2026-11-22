@@ -33,8 +33,8 @@ fn coil_and_wire() -> (H, PageId, DeviceId, WireId) {
     let page = h.first_page();
     let k1: DeviceId = id(&h.run("place", json!({"symbol": "coil", "at": [0, 0]})).unwrap(), "component");
     let doc = h.doc();
-    let a1 = doc.terminals_of(k1).find(|(_, t)| t.label.as_deref() == Some("A1")).map(|(t, _)| t).unwrap();
-    let at = h.terminal_pos(page, a1);
+    let a1 = doc.connection_points_of(k1).find(|(_, t)| t.label.as_deref() == Some("A1")).map(|(t, _)| t).unwrap();
+    let at = h.connection_point_pos(page, a1);
     let w: WireId = id(&h.wire_pp(&[(at.x, at.y), (at.x + 60.0, at.y)]).unwrap(), "conductor");
     (h, page, k1, w)
 }
@@ -76,9 +76,9 @@ fn a_wire_its_end_and_empty_paper() {
 fn wire_intent_names_the_connection_point_under_the_cursor() {
     let (mut h, page, k1, w) = coil_and_wire();
     let doc = h.doc();
-    let a2 = doc.terminals_of(k1).find(|(_, t)| t.label.as_deref() == Some("A2")).map(|(t, _)| t).unwrap();
-    let a1 = doc.terminals_of(k1).find(|(_, t)| t.label.as_deref() == Some("A1")).map(|(t, _)| t).unwrap();
-    let (p1, p2) = (h.terminal_pos(page, a1), h.terminal_pos(page, a2));
+    let a2 = doc.connection_points_of(k1).find(|(_, t)| t.label.as_deref() == Some("A2")).map(|(t, _)| t).unwrap();
+    let a1 = doc.connection_points_of(k1).find(|(_, t)| t.label.as_deref() == Some("A1")).map(|(t, _)| t).unwrap();
+    let (p1, p2) = (h.connection_point_pos(page, a1), h.connection_point_pos(page, a2));
     let u = uid(&h);
     let s = h.p(|p| intent::sentence(p, u, "wire", Vec2::new(p2.x, p2.y), 0.5, None));
     assert_eq!(s.as_deref(), Some("joins A2 of -K01"));

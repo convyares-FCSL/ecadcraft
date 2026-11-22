@@ -23,7 +23,7 @@ impl App {
         p.read(&mut self.cad.session, |p, _| ecad_engine::interact::hover_reference(p, uid, world, radius)).ok().flatten()
     }
 
-    fn terminal_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::TerminalId, Vec<String>)> {
+    fn connection_point_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::ConnectionPointId, Vec<String>)> {
         // Terminals are at model positions: in a paper-space layout (or one of its viewports) the
         // canvas shows the sheet, and nothing on it is a terminal.
         if self.cad.session.layout_space() != ecad_engine::cad::Space::Model {
@@ -37,7 +37,7 @@ impl App {
         let aperture = self.cad.session.pixel_size() * self.cad.session.settings.aperture.max(1.0);
         let uid = self.cad.session.state().ok()?.uid;
         let p = self.project.as_ref()?;
-        p.read(&mut self.cad.session, |p, _| ecad_engine::interact::hover_terminal(p, uid, world, aperture)).ok().flatten()
+        p.read(&mut self.cad.session, |p, _| ecad_engine::interact::hover_connection_point(p, uid, world, aperture)).ok().flatten()
     }
 
     /// The hover description shown now, if any (design 008 §4.3).
@@ -55,7 +55,7 @@ impl App {
         let idle = self.cad.session.running.is_none() && !pressed;
         // A terminal under the pointer wins over the wire ending on it or the symbol around it.
         let terminal = match pointer.filter(|_| idle) {
-            Some(at) => self.terminal_under(at),
+            Some(at) => self.connection_point_under(at),
             None => None,
         };
         // Then a cable reference end, which wins over the wire starting on its point (brief 010).

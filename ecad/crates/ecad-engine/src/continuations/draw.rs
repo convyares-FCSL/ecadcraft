@@ -68,7 +68,7 @@ mod tests {
             crate::devices::TAG_LAYER,
         );
         // Brief 066d: and in the Reference text style, as every reference text.
-        crate::draw::text_style::LookApply::apply(&look.0, &mut before, crate::text_style::TextKind::Reference);
-        assert_eq!(format!("{:?}", crate::project::xref_entity(&look, &part, h)), format!("{before:?}"));
+        crate::draw::text_style::DrawApply::apply(&look.0, &mut before, crate::text_style::TextKind::Reference);
+        assert_eq!(format!("{:?}", crate::project::device_reference_entity(&look, &part, h)), format!("{before:?}"));
     }
 }

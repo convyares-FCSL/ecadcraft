@@ -8,7 +8,7 @@ use common::{H, hex, id, pts};
 use ecad_engine::ProjectHandle;
 use ecad_inspect::EventKind;
 use ecad_model::derive::nets;
-use ecad_model::{DeviceId, Document, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
 #[test]
@@ -30,19 +30,19 @@ fn scenario_s1_to_s16() {
     let mut t = Vec::new();
     for y in [15.0, 10.0, 5.0] {
         let r = h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, y]})).unwrap();
-        t.push(id::<TerminalId>(&r, "terminal"));
+        t.push(id::<ConnectionPointId>(&r, "terminal"));
     }
     let (t1, t2, t3) = (t[0], t[1], t[2]);
-    assert_eq!(h.doc().terminals_of(c1).count(), 3);
+    assert_eq!(h.doc().connection_points_of(c1).count(), 3);
 
     // S3: place a symbol rotated 90°.
     let r = h.run("place", json!({"at": [100, 10], "rotation": 90})).unwrap();
     let c2: DeviceId = id(&r, "component");
-    let keys: Vec<(String, TerminalId)> =
+    let keys: Vec<(String, ConnectionPointId)> =
         r["terminals"].as_array().unwrap().iter().map(|x| (x["key"].as_str().unwrap().to_string(), id(x, "terminal"))).collect();
     let (s1, s2) = (keys[0].1, keys[1].1);
-    assert!(h.terminal_pos(p1, s1).near(Pt::new(90.0, 10.0), 1e-9), "A1 at (90,10): placement applied");
-    assert!(h.terminal_pos(p1, s2).near(Pt::new(110.0, 10.0), 1e-9));
+    assert!(h.connection_point_pos(p1, s1).near(Pt::new(90.0, 10.0), 1e-9), "A1 at (90,10): placement applied");
+    assert!(h.connection_point_pos(p1, s2).near(Pt::new(110.0, 10.0), 1e-9));
 
     // S4: three lines: one from t1 to s1 (a wire), two from t2 and t3 into free space (routes
     // with one connection point carry no wire, design 072 §4.2).
@@ -75,19 +75,19 @@ fn scenario_s1_to_s16() {
     let handles = h.rep_handles(p1, c1);
     assert_eq!(handles.len(), 7, "four lines and three terminal markers");
     h.run("move", json!({"handles": handles, "delta": [0, -5]})).unwrap();
-    assert!(h.terminal_pos(p1, t1).near(Pt::new(40.0, 10.0), 1e-9));
+    assert!(h.connection_point_pos(p1, t1).near(Pt::new(40.0, 10.0), 1e-9));
     assert!(h.route_ends(p1, w1).0.near(Pt::new(40.0, 10.0), 1e-9), "w1 end A followed t1");
     assert!(ends(&mut h, r2)[0].near(Pt::new(40.0, 5.0), 1e-9), "r2 end A followed t2");
     assert!(ends(&mut h, r2)[1].near(Pt::new(55.0, -10.0), 1e-9), "r2's free end stayed");
     let sym_item = h.symbol_item(c2);
     let sym = h.handle_of(p1, sym_item);
     h.run("rotate", json!({"handles": [sym.hex()], "base": [100, 10], "angle": 180})).unwrap();
-    assert!(h.terminal_pos(p1, s1).near(Pt::new(110.0, 10.0), 1e-6));
-    assert!(h.route_ends(p1, w1).1.near(h.terminal_pos(p1, s1), 1e-9), "w1 end B followed s1");
+    assert!(h.connection_point_pos(p1, s1).near(Pt::new(110.0, 10.0), 1e-6));
+    assert!(h.route_ends(p1, w1).1.near(h.connection_point_pos(p1, s1), 1e-9), "w1 end B followed s1");
     assert_eq!(nets(&h.doc()), nets_before, "moving equipment does not change connectivity");
 
     // S7: deliberate reconnection of r3's free end: onto s2, then into free space, then back (M3).
-    let s2_at = h.terminal_pos(p1, s2);
+    let s2_at = h.connection_point_pos(p1, s2);
     let route = h.line_handle(p1, r3);
     h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [s2_at.x, s2_at.y]})).unwrap();
     assert_eq!(h.doc().routes[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Point(s2)], "landing on s2 attached it");
@@ -109,13 +109,13 @@ fn scenario_s1_to_s16() {
     let after = h.doc();
     assert_eq!(after.devices.len(), before.devices.len() + 1);
     let c1b = *after.devices.keys().find(|c| !before.devices.contains_key(c)).unwrap();
-    let new_terms: Vec<TerminalId> = after.terminals_of(c1b).map(|(t, _)| t).collect();
+    let new_terms: Vec<ConnectionPointId> = after.connection_points_of(c1b).map(|(t, _)| t).collect();
     assert_eq!(new_terms.len(), 3);
     assert!(new_terms.iter().all(|t| !before.terminals.contains_key(t)), "new terminal IDs");
     let r2b = *after.routes.keys().find(|r| !before.routes.contains_key(r)).unwrap();
     let t2b = after.routes[&r2b].ends[0].point().expect("the copied line is attached");
     assert_eq!(after.terminals[&t2b].device().unwrap(), c1b, "attached to the copied component, not the original");
-    assert!(h.terminal_pos(p1, t2b).near(Pt::new(40.0, -55.0), 1e-9));
+    assert!(h.connection_point_pos(p1, t2b).near(Pt::new(40.0, -55.0), 1e-9));
     assert_eq!(after.routes[&r2b].ends[1], RouteEnd::Free);
     for k in before.devices.keys() {
         assert_eq!(before.devices[k], after.devices[k], "originals unchanged");
@@ -132,7 +132,7 @@ fn scenario_s1_to_s16() {
     let after = h.doc();
     let c2b = *after.devices.keys().find(|c| !before.devices.contains_key(c)).unwrap();
     assert_eq!(after.devices[&c2b].definition, after.devices[&c2].definition, "same embedded definition");
-    let keys_b: Vec<_> = after.terminals_of(c2b).map(|(_, t)| t.key.clone()).collect();
+    let keys_b: Vec<_> = after.connection_points_of(c2b).map(|(_, t)| t.key.clone()).collect();
     assert_eq!(keys_b.len(), 2);
     assert!(keys_b.contains(&Some(ecad_model::PointKey::def("A1"))) && keys_b.contains(&Some(ecad_model::PointKey::def("A2"))));
 
@@ -157,8 +157,8 @@ fn scenario_s1_to_s16() {
     h.activate(p2);
     h.run("line", json!({"points": [[0, 0], [10, 10]]})).unwrap();
     let r = h.run("place", json!({"at": [100, 10], "rotation": 90})).unwrap();
-    let ends4: Vec<TerminalId> = r["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
-    let (a4, b4) = (h.terminal_pos(p2, ends4[0]), h.terminal_pos(p2, ends4[1]));
+    let ends4: Vec<ConnectionPointId> = r["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let (a4, b4) = (h.connection_point_pos(p2, ends4[0]), h.connection_point_pos(p2, ends4[1]));
     let w4: WireId =
         id(&h.run("wire", json!({"points": pts(&[(a4.x, a4.y), (a4.x, a4.y + 20.0), (b4.x, b4.y + 20.0), (b4.x, b4.y)])})).unwrap(), "conductor");
     let cable = h.run("cableadd", json!({"conductors": [w2_hex(w3), w2_hex(w4)], "tag": "-W1"})).unwrap();
@@ -268,7 +268,7 @@ fn scenario_s1_to_s16() {
     h.cfg(|p| p.faults.fail_projections = 1);
     h.run("move", json!({"handles": handles, "delta": [0, 5]})).unwrap();
     assert_eq!(h.head(), head + 1, "the accepted transaction stays");
-    assert!(h.terminal_pos(p1, t1).near(Pt::new(40.0, 15.0), 1e-9), "the document holds the move");
+    assert!(h.connection_point_pos(p1, t1).near(Pt::new(40.0, 15.0), 1e-9), "the document holds the move");
     assert_eq!(h.p(|p| p.events.count(EventKind::ProjectionFailed)), 1);
     assert_eq!(h.p(|p| p.events.count(EventKind::ProjectionRebuilt)), 1);
     h.check(); // drawing and map rebuilt and consistent
@@ -285,7 +285,7 @@ fn scenario_s1_to_s16() {
     h.run("close", json!({"index": i1})).unwrap();
     h.activate(p2);
     h.run("openpage", json!({"page": p1.hex()})).unwrap();
-    assert!(h.terminal_pos(p1, t1).near(Pt::new(40.0, 10.0), 1e-9));
+    assert!(h.connection_point_pos(p1, t1).near(Pt::new(40.0, 10.0), 1e-9));
     h.check();
     // H2: no committed drawing ever differed from its projection.
     let mismatched: Vec<_> = h.p(|p| p.events.events().filter(|e| e.kind == EventKind::FidelityMismatch).cloned().collect());

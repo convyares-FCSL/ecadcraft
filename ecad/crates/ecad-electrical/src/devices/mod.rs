@@ -21,11 +21,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::Word;
-use ecad_model::derive::terminal_positions;
+use ecad_model::derive::connection_point_positions;
 use ecad_model::tag::{self, TAG_KEY};
 use ecad_model::{
     Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt,
-    Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
+    Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId,
 };
 use ecad_model::{DeviceType, Noun, PointKey, TextHAlign as HAlign, TextVAlign as VAlign};
 
@@ -474,7 +474,7 @@ pub(crate) fn head_noun(doc: &Document, h: RepresentationId) -> &'static str {
 
 /// The terminal labels of component `c`.
 pub fn labels_of(doc: &Document, c: DeviceId) -> BTreeSet<String> {
-    doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect()
+    doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect()
 }
 
 /// The labels a symbol `s` gets when it joins `c`, in its definition's terminal order; `extra`
@@ -551,7 +551,7 @@ pub struct Placed {
     pub tag: String,
     pub joined: bool,
     /// (definition key, label, terminal), in definition order.
-    pub terminals: Vec<(PointKey, String, TerminalId)>,
+    pub terminals: Vec<(PointKey, String, ConnectionPointId)>,
 }
 
 /// Plan placing starter symbol `s` at `placement` on `page` (design 018 §10).
@@ -611,8 +611,8 @@ pub fn plan_place(
                 },
             });
             for td in &def.terminals {
-                let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal {
+                let tid: ConnectionPointId = ids.fresh();
+                ops.push(Op::AddConnectionPoint {
                     id: tid,
                     terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
@@ -639,8 +639,8 @@ pub fn plan_place(
             let labels = join_labels(doc, c, s, &BTreeSet::new())?;
             let mut cps = BTreeMap::new();
             for (td, label) in def.terminals.iter().zip(&labels) {
-                let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal {
+                let tid: ConnectionPointId = ids.fresh();
+                ops.push(Op::AddConnectionPoint {
                     id: tid,
                     terminal: Terminal { owner: c.into(), label: Some(label.clone()), key: Some(PointKey::Def(label.clone())), accepts: td.accepts },
                 });
@@ -678,7 +678,7 @@ pub fn plan_place(
 
 /// The terminals a representation shows, each with where it sits: in the definition's local frame
 /// for a symbol, on the page for a drawn representation; in definition order for a symbol.
-pub(crate) fn shown_terminals(doc: &Document, c: DeviceId, r: &Representation) -> Vec<(TerminalId, Pt)> {
+pub(crate) fn shown_connection_points(doc: &Document, c: DeviceId, r: &Representation) -> Vec<(ConnectionPointId, Pt)> {
     match r.form {
         Form::Drawn => r.connection_points.iter().map(|(t, p)| (*t, *p)).collect(),
         Form::Symbol => {
@@ -689,14 +689,14 @@ pub(crate) fn shown_terminals(doc: &Document, c: DeviceId, r: &Representation) -
                 def.terminals
                     .iter()
                     .filter_map(|td| {
-                        let with_key: Vec<TerminalId> =
-                            doc.terminals_of(c).filter(|(_, t)| t.key.as_ref() == Some(&td.key)).map(|(t, _)| t).collect();
+                        let with_key: Vec<ConnectionPointId> =
+                            doc.connection_points_of(c).filter(|(_, t)| t.key.as_ref() == Some(&td.key)).map(|(t, _)| t).collect();
                         let t = with_key.iter().find(|t| doc.representations_showing(**t).next().is_none()).or(with_key.first())?;
                         Some((*t, td.at))
                     })
                     .collect()
             } else {
-                let mut v: Vec<(TerminalId, Pt)> = r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
+                let mut v: Vec<(ConnectionPointId, Pt)> = r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
                 let order = |p: &Pt| def.terminals.iter().position(|td| td.at.near(*p, 1e-9)).unwrap_or(usize::MAX);
                 v.sort_by_key(|(t, p)| (order(p), *t));
                 v
@@ -721,18 +721,18 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         return Err(CmdError::NotFound(Noun::Device));
     }
     let mut assigned: BTreeSet<String> = BTreeSet::new();
-    let mut new_terminal: BTreeMap<TerminalId, TerminalId> = BTreeMap::new();
+    let mut new_connection_point: BTreeMap<ConnectionPointId, ConnectionPointId> = BTreeMap::new();
     let mut ops_add = Vec::new();
     let mut ops_reps = Vec::new();
     let mut exclusive_taken = crate::reps::head(doc, into).is_some();
     let who = tag_words(doc, into);
     // `into`'s point names, unlabelled points by their key (review of #92, 1).
-    let into_labels: BTreeSet<String> = doc.terminals_of(into).map(|(t, _)| label_of(doc, t)).collect();
+    let into_labels: BTreeSet<String> = doc.connection_points_of(into).map(|(t, _)| label_of(doc, t)).collect();
     // The name and label `old` moves under as `label`: an unlabelled point keeping its own name
     // stays unlabelled, so it prints no label (bug 1); one whose name `into` already has is
     // renamed to the next free `<name>2`, `<name>3`… and still prints nothing. A labelled point
     // whose label is taken is refused.
-    let name_for = |old: TerminalId, label: String, assigned: &BTreeSet<String>| -> Result<(String, Option<String>), CmdError> {
+    let name_for = |old: ConnectionPointId, label: String, assigned: &BTreeSet<String>| -> Result<(String, Option<String>), CmdError> {
         let taken = |n: &str| into_labels.contains(n) || assigned.contains(n);
         let unlabelled = doc.terminals.get(&old).is_some_and(|x| x.label.is_none()) && label == label_of(doc, old);
         if !taken(&label) {
@@ -744,14 +744,14 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         }
         Err(CmdError::refused(format!("{who} already has connection point {label}.")))
     };
-    let add = |old: TerminalId,
+    let add = |old: ConnectionPointId,
                (name, label): (String, Option<String>),
                ops: &mut Vec<Op>,
                ids: &mut IdAllocator,
-               map: &mut BTreeMap<TerminalId, TerminalId>|
-     -> TerminalId {
-        let nt: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal {
+               map: &mut BTreeMap<ConnectionPointId, ConnectionPointId>|
+     -> ConnectionPointId {
+        let nt: ConnectionPointId = ids.fresh();
+        ops.push(Op::AddConnectionPoint {
             id: nt,
             terminal: Terminal { owner: into.into(), label, key: Some(PointKey::Def(name)), accepts: Default::default() },
         });
@@ -763,7 +763,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     // Brief 031 (FP5): each symbol's own text keys move with it to its new representation.
     let mut renamed: Vec<(RepresentationId, RepresentationId)> = Vec::new();
     for (rid, r) in &reps {
-        let shown = shown_terminals(doc, from, r);
+        let shown = shown_connection_points(doc, from, r);
         // A symbol whose device's connection points do not match its definition (an old or
         // hand-edited file) would move without any, which the model refuses (I14) with words
         // nobody can act on: say what is wrong instead.
@@ -798,9 +798,9 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         for ((old, at), label) in shown.iter().zip(labels) {
             let named = name_for(*old, label, &assigned)?;
             assigned.insert(named.0.clone());
-            let nt = match new_terminal.get(old) {
+            let nt = match new_connection_point.get(old) {
                 Some(nt) => *nt,
-                None => add(*old, named, &mut ops_add, ids, &mut new_terminal),
+                None => add(*old, named, &mut ops_add, ids, &mut new_connection_point),
             };
             cps.insert(nt, *at);
         }
@@ -813,21 +813,21 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         ));
     }
     // Terminals no representation shows move too, with their labels.
-    for (t, _) in doc.terminals_of(from) {
-        if new_terminal.contains_key(&t) {
+    for (t, _) in doc.connection_points_of(from) {
+        if new_connection_point.contains_key(&t) {
             continue;
         }
         let named = name_for(t, label_of(doc, t), &assigned)?;
         assigned.insert(named.0.clone());
-        add(t, named, &mut ops_add, ids, &mut new_terminal);
+        add(t, named, &mut ops_add, ids, &mut new_connection_point);
     }
     let mut ops = ops_add;
     let (unlinks, links): (Vec<Op>, Vec<Op>) = ops_reps.into_iter().unzip();
     ops.extend(unlinks);
     ops.extend(links);
-    ops.extend(crate::wires::repoint_ops(doc, &new_terminal.iter().map(|(old, nt)| (*old, *nt)).collect()));
-    for (t, term) in doc.terminals_of(from) {
-        ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
+    ops.extend(crate::wires::repoint_ops(doc, &new_connection_point.iter().map(|(old, nt)| (*old, *nt)).collect()));
+    for (t, term) in doc.connection_points_of(from) {
+        ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
     }
     let into_props = doc.devices.get(&into).map(|c| &c.properties);
     for (old, new) in renamed {
@@ -854,7 +854,7 @@ const MAX_RENAMED: u32 = 999;
 /// A terminal's name: its label, else its definition key; its ID only when it has neither. A
 /// point drawn with an empty label (a project symbol's earth point) is named by its key, never by
 /// its 32-digit ID (pack re-run, bug 1).
-pub fn label_of(doc: &Document, t: TerminalId) -> String {
+pub fn label_of(doc: &Document, t: ConnectionPointId) -> String {
     let term = doc.terminals.get(&t);
     term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.as_ref()).map(ToString::to_string)).unwrap_or_else(|| t.hex())
 }
@@ -895,12 +895,12 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
         let remaining: Vec<&Representation> =
             doc.representations_of(Subject::Device(c)).filter(|(id, _)| !gone.contains(id)).map(|(_, r)| r).collect();
         let who = tag_words(doc, c);
-        let drop: Vec<TerminalId> = if remaining.is_empty() {
-            doc.terminals_of(c).map(|(t, _)| t).collect()
+        let drop: Vec<ConnectionPointId> = if remaining.is_empty() {
+            doc.connection_points_of(c).map(|(t, _)| t).collect()
         } else {
-            let kept: BTreeSet<TerminalId> = remaining.iter().flat_map(|r| shown_terminals(doc, c, r)).map(|(t, _)| t).collect();
+            let kept: BTreeSet<ConnectionPointId> = remaining.iter().flat_map(|r| shown_connection_points(doc, c, r)).map(|(t, _)| t).collect();
             reps.iter()
-                .flat_map(|(_, r)| shown_terminals(doc, c, r))
+                .flat_map(|(_, r)| shown_connection_points(doc, c, r))
                 .map(|(t, _)| t)
                 .filter(|t| !kept.contains(t))
                 .collect::<BTreeSet<_>>()
@@ -910,7 +910,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
         ops.extend(crate::wires::free_points_ops(doc, drop.iter().copied()));
         for t in &drop {
             if let Some(term) = doc.terminals.get(t) {
-                ops.push(Op::RemoveTerminal { id: *t, terminal: term.clone() });
+                ops.push(Op::RemoveConnectionPoint { id: *t, terminal: term.clone() });
             }
         }
         if remaining.is_empty() {
@@ -939,7 +939,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             }
             for (_, r) in &reps {
                 let name = rep_starter(doc, r).map_or("symbol", |s| s.name);
-                let labels: Vec<String> = shown_terminals(doc, c, r).iter().map(|(t, _)| label_of(doc, *t)).collect();
+                let labels: Vec<String> = shown_connection_points(doc, c, r).iter().map(|(t, _)| label_of(doc, *t)).collect();
                 notes.push(format!(
                     "Removed {who}'s {name} {} ({}); {who} is still shown on {}.",
                     labels.join("/"),
@@ -972,7 +972,7 @@ pub fn copy_tag(doc: &Document, high: &mut TagHigh, c: &Device) -> Option<String
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TextOf {
     Tag,
-    Terminal(TerminalId),
+    Terminal(ConnectionPointId),
     /// A continuation's name (brief 022).
     Name,
     /// A continuation's other places (brief 022).
@@ -1161,7 +1161,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     use crate::text_style::fonts::width_in;
     use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
-    for (t, rid, at) in terminal_positions(doc, page) {
+    for (t, rid, at) in connection_point_positions(doc, page) {
         // Brief 044: a pin pair shows its pin name once, beside the socket point.
         if doc.representations.get(&rid).is_some_and(|r| crate::connectors::hides_label(doc, r, t)) {
             continue;
@@ -1423,7 +1423,7 @@ fn slot_texts(
 /// The key a connection point label's stored place is kept under (design 031 §6.4):
 /// `text.<rep>.point_label.<terminal key>.at`, the terminal key being its definition key, else its
 /// label.
-pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> String {
+pub fn point_label_key(doc: &Document, rep: RepresentationId, t: ConnectionPointId) -> String {
     let term = doc.terminals.get(&t);
     let key = term.and_then(|x| x.key.as_ref()).map(ToString::to_string).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
     format!("{}point_label.{key}.at", crate::text_style::symbol_prefix(rep))
@@ -1523,7 +1523,7 @@ pub fn device_json(doc: &Document, c: DeviceId) -> Value {
     let mut reps: Vec<(usize, RepresentationId, Value)> = doc
         .representations_of(Subject::Device(c))
         .map(|(rid, r)| {
-            let labels: Vec<String> = shown_terminals(doc, c, r).iter().map(|(t, _)| label_of(doc, *t)).collect();
+            let labels: Vec<String> = shown_connection_points(doc, c, r).iter().map(|(t, _)| label_of(doc, *t)).collect();
             let n = order.get(&r.page).copied().unwrap_or(usize::MAX);
             (
                 n,
@@ -1610,7 +1610,7 @@ fn short_name(s: &Starter) -> &'static str {
 
 /// `NO contact 13/14` for a representation.
 fn rep_words(doc: &Document, c: DeviceId, r: &Representation) -> String {
-    let labels: Vec<String> = shown_terminals(doc, c, r).iter().map(|(t, _)| label_of(doc, *t)).collect();
+    let labels: Vec<String> = shown_connection_points(doc, c, r).iter().map(|(t, _)| label_of(doc, *t)).collect();
     let name = rep_starter(doc, r).map_or("symbol", short_name);
     if labels.is_empty() { name.to_string() } else { format!("{name} {}", labels.join("/")) }
 }
@@ -1643,7 +1643,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
     }
     // Brief 028 (design 028 §7.1): a terminal's sides and its strip's positions.
     if crate::strips::strip_of(doc, c).is_some() {
-        lines.extend(crate::strips::terminal_hover(doc, c, here));
+        lines.extend(crate::strips::connection_point_hover(doc, c, here));
     }
     // Brief 024 (design 024 §3.3): the location shown, where it comes from, and this symbol's own
     // context when it differs.
@@ -1694,7 +1694,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
         lines.push(format!("Also: {}", words.join("; ")));
     }
     if let Some(r) = doc.representations.get(&here) {
-        let ends: Vec<String> = shown_terminals(doc, c, r)
+        let ends: Vec<String> = shown_connection_points(doc, c, r)
             .iter()
             .map(|(t, _)| {
                 let label = label_of(doc, *t);

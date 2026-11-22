@@ -41,7 +41,7 @@ pub use connectors::{ConnectorsScope, ConnectorsView};
 pub use devices::{DevicesFeed, DevicesScope};
 pub use frame::{FrameScope, FrameView};
 pub use generated::{GeneratedScope, GeneratedView};
-pub use outputs::{OutputsScope, OutputsView};
+pub use outputs::{ReportsScope, ReportsView};
 pub use pages::{PagesScope, PagesView, points_pages};
 pub use props::{PropsFeed, PropsScope};
 pub use refs::{RefsScope, RefsView};
@@ -113,7 +113,7 @@ pub struct Pending {
     pages: PagesScope,
     frame: FrameScope,
     generated: GeneratedScope,
-    outputs: OutputsScope,
+    outputs: ReportsScope,
     checks: ChecksScope,
     tree: TreeScope,
     devices: DevicesScope,
@@ -125,12 +125,12 @@ pub struct Pending {
 #[derive(Debug)]
 pub struct Detached {
     inputs: EngineInputs,
-    outputs: OutputsView,
+    outputs: ReportsView,
 }
 
 impl Detached {
     /// The report models of that state.
-    pub fn outputs(&self) -> &crate::outputs::kept::Outputs {
+    pub fn outputs(&self) -> &crate::outputs::kept::ReportModels {
         self.outputs.model()
     }
 
@@ -149,7 +149,7 @@ pub struct Views {
     refs: RefsView,
     connectors: ConnectorsView,
     // Stage 2: the report models, built on first show.
-    outputs: Lazy<OutputsView>,
+    outputs: Lazy<ReportsView>,
     // Stage 3: pages.
     pages: PagesView,
     frame: FrameView,
@@ -201,7 +201,7 @@ impl Views {
     }
 
     /// The references view, to put it out of step on purpose (tests of verify mode only).
-    pub fn refs_view_mut(&mut self) -> &mut RefsView {
+    pub fn references_view_mut(&mut self) -> &mut RefsView {
         &mut self.refs
     }
 
@@ -211,24 +211,24 @@ impl Views {
     }
 
     /// The report models, built on their first show (design 024 §8.1) and kept after that.
-    pub fn outputs(&mut self, doc: &Document) -> &crate::outputs::kept::Outputs {
+    pub fn outputs(&mut self, doc: &Document) -> &crate::outputs::kept::ReportModels {
         let metrics = &*self.inputs.metrics;
-        self.outputs.get_or_build(|| OutputsView::build(doc, metrics)).model()
+        self.outputs.get_or_build(|| ReportsView::build(doc, metrics)).model()
     }
 
     /// The report models, if shown once.
-    pub fn kept_outputs(&self) -> Option<&crate::outputs::kept::Outputs> {
-        self.outputs.get().map(OutputsView::model)
+    pub fn kept_reports(&self) -> Option<&crate::outputs::kept::ReportModels> {
+        self.outputs.get().map(ReportsView::model)
     }
 
     /// The report models' view, if shown once, to put it out of step on purpose (tests of verify
     /// mode only).
-    pub fn outputs_view_mut(&mut self) -> Option<&mut OutputsView> {
+    pub fn reports_view_mut(&mut self) -> Option<&mut ReportsView> {
         self.outputs.get_mut()
     }
 
     /// Forget the report models: they are built again on their next show.
-    pub fn forget_outputs(&mut self) {
+    pub fn forget_reports(&mut self) {
         self.outputs.reset();
     }
 
@@ -361,15 +361,15 @@ impl Views {
     /// The views of another document state (an issued or finalised revision), built with the
     /// same engine inputs.
     pub fn detached(&self, doc: &Document) -> Detached {
-        Detached { inputs: self.inputs.clone(), outputs: OutputsView::build(doc, &*self.inputs.metrics) }
+        Detached { inputs: self.inputs.clone(), outputs: ReportsView::build(doc, &*self.inputs.metrics) }
     }
 
     /// The report models of another state `doc`, worked out from scratch, when it has a page drawn
     /// from them ([`crate::generated::has_bom_page`]); `None` otherwise. For drawing a state the
     /// project does not keep (debugger, verification, a revision, tests): the project passes its
     /// kept models instead.
-    pub fn report_models(&self, doc: &Document) -> Option<crate::outputs::kept::Outputs> {
-        crate::generated::has_bom_page(doc).then(|| OutputsView::build(doc, &*self.inputs.metrics).into_model())
+    pub fn report_models(&self, doc: &Document) -> Option<crate::outputs::kept::ReportModels> {
+        crate::generated::has_bom_page(doc).then(|| ReportsView::build(doc, &*self.inputs.metrics).into_model())
     }
 }
 

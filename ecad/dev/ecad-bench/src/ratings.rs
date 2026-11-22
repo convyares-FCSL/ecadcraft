@@ -69,10 +69,10 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
         let doc = p.ledger.document();
         let dev = doc.devices.keys().copied().find(|c| ecad_engine::rating::trace::is_protective_component(doc, *c));
         let pin = dev.and_then(|c| {
-            doc.terminals_of(c).find_map(|(t, x)| {
+            doc.connection_points_of(c).find_map(|(t, x)| {
                 let label = x.label.clone().unwrap_or_default();
                 let on = doc.representations_of(ecad_model::Subject::Device(c)).next().map(|(_, r)| r.page)?;
-                let at = ecad_model::derive::terminal_position(doc, on, t)?;
+                let at = ecad_model::derive::connection_point_position(doc, on, t)?;
                 (label.parse::<u32>().is_ok_and(|n| n % 2 == 0)).then_some((on, at))
             })
         });
