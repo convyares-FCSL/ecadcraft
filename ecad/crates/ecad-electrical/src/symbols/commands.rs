@@ -1234,7 +1234,9 @@ fn field_value(doc: &Document, key: &str, def: &Definition, field: Field) -> Opt
 /// The row of a copy as data; `book` is the project's page book, built once per listing (a page's
 /// number alone walks the book); `places` gives the copy's place (`2-D-4`, in the project's
 /// reference style, design 048 §6.1's page and zone).
-pub fn row_json(r: &Row, doc: &Document, book: &ecad_model::document::book::Book, places: &mut crate::references::devices::Places<'_>) -> Value {
+pub fn row_json(
+    r: &Row, doc: &Document, book: &ecad_model::document::book::Book, places: &mut crate::references::devices::places::Places<'_>,
+) -> Value {
     let at = match doc.items.get(&r.item).map(|i| &i.kind) {
         Some(ecad_model::ItemKind::Symbol(s)) => Some(s.placement.origin),
         _ => None,

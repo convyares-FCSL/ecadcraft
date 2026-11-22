@@ -7,7 +7,7 @@
 //! ([`crate::interact`], briefs 008, 004, 005 and 009), started by a bare command name, a menu or a
 //! tool button; they commit through these JSON forms. `cableview` records nothing: a cable's
 //! view is presentation only ([`crate::cables::views`]).
-//! Brief 010 adds `cableref`, `cablecontinue` and `cablegoto` (with interactive forms),
+//! Brief 010 adds `cablereference`, `cablecontinue` and `cablegoto` (with interactive forms),
 //! `cablereferences` (read only), `renamepage` and `movepage` ([`crate::references`]).
 //! Programmatic calls (`Session::execute`, `name {json}`) always run the JSON form and never
 //! prompt.
@@ -109,7 +109,7 @@ fn generic_specs() -> Vec<CommandSpec> {
         crate::generic::spec::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
         crate::generic::spec::<ecad_electrical::references::commands::devices::ContactsParams>(),
         crate::generic::spec::<ecad_electrical::references::commands::devices::MirrormoveParams>().interactive(interact::mirrormove),
-        crate::generic::spec::<ecad_electrical::references::commands::cables::CablerefParams>().interactive(interact::cableref),
+        crate::generic::spec::<ecad_electrical::references::commands::cables::CableReferenceParams>().interactive(interact::cablereference),
         crate::generic::spec::<ecad_electrical::references::commands::cables::CablecontinueParams>().interactive(interact::cablecontinue),
         crate::generic::spec::<ecad_electrical::references::commands::cables::CablereferencesParams>(),
         crate::generic::spec::<device::EcaddeleteParams>(),
@@ -179,7 +179,7 @@ const GENERIC_TYPED: &[input::Typed] = &[
     crate::generic::typed::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::devices::ContactsParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::devices::MirrormoveParams>(),
-    crate::generic::typed::<ecad_electrical::references::commands::cables::CablerefParams>(),
+    crate::generic::typed::<ecad_electrical::references::commands::cables::CableReferenceParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::cables::CablecontinueParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::cables::CablereferencesParams>(),
     crate::generic::typed::<device::EcaddeleteParams>(),

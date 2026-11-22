@@ -4,7 +4,6 @@
 //! engine's metrics.
 
 use ecad_model::document::effect::Effect;
-use ecad_model::naming::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, End, LoosePartId, ObjectRef, PageId, Pt, Subject, WireId};
@@ -879,7 +878,7 @@ impl ReportModels {
             .into_iter()
             .filter_map(|k| {
                 let cab = doc.cables.get(&k)?;
-                let tag = cab.properties.text(ecad_model::naming::keys::TAG).map(str::to_string).unwrap_or_else(|| "?".into());
+                let tag = cab.tag().map(str::to_string).unwrap_or_else(|| "?".into());
                 let i = cab.cores.iter().position(|m| m.wire() == Some(w))?;
                 let core = cab.cores.get(i).and_then(|m| m.label_str().map(str::to_string)).unwrap_or_else(|| (i + 1).to_string());
                 Some(format!("{tag} core {core}"))
@@ -942,7 +941,7 @@ impl ReportModels {
             self.cables.remove(&k);
             return;
         };
-        let p = |key: &str| clean(cab.properties.get(key));
+        let p = |key: &str| clean(cab.get(key));
         // Brief 032 §3.5: cores are counted by chain; each chain is shown by its first member,
         // with the first stored label along it.
         let (heads, tails) = chain_heads(doc, k, cab);

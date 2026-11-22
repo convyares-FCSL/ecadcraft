@@ -128,7 +128,8 @@ fn record_and_definition_hashes_are_pinned() {
         // cable cores with their position; F3′ (lane B): the representation roles; lane F F1b: a
         // connection point's owner.
         // 0.2.3 structure move: ConnectionPoint ops, `connection_points` fields, `jumper_bar` keys.
-        ("head", "9b2049a4692545979b455053c5ac2a9dc6677cf730ad9a1701ab29fa749aa36a"),
+        // 0.2.3 S1 (#2): a cable's `tag`, `tag_fixed` and `description` are record fields.
+        ("head", "4f0e3f2e60e733b57871ffa55ce8fb4c8db69354741981aa4edc3adff2c71f72"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");

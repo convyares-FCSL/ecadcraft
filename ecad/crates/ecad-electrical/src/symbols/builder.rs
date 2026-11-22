@@ -319,7 +319,7 @@ whether it clashes, design 048 §6.2)";
         let i = rules::plan_impact(doc, cx.ids, self.definition, &content, builtins)?;
         let pages: BTreeSet<PageId> = i.rows.iter().map(|r| r.page).collect();
         let book = ecad_model::document::book::Book::of(doc);
-        let mut places = crate::references::devices::Places::new(doc);
+        let mut places = crate::references::devices::places::Places::new(doc);
         let rows_json: Vec<Value> = i.rows.iter().map(|r| rules::row_json(r, doc, &book, &mut places)).collect();
         Ok(Outcome::answer(json!({
             "name": content.name, "version": i.version, "builtin": i.builtin,

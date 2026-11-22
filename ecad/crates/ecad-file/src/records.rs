@@ -380,6 +380,10 @@ impl From<CorePosition> for m::CorePosition {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cable {
+    /// Design 026: validated on read; a cable's tag, as a device's.
+    pub tag: Option<m::naming::tag::Tag>,
+    pub tag_fixed: bool,
+    pub description: Option<m::objects::devices::Description>,
     pub properties: BTreeMap<String, String>,
     pub cores: Vec<Core>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1179,6 +1183,9 @@ impl From<&m::Core> for Core {
 impl From<&m::Cable> for Cable {
     fn from(c: &m::Cable) -> Self {
         Cable {
+            tag: c.tag.clone(),
+            tag_fixed: c.tag_fixed,
+            description: c.description.clone(),
             properties: c.properties.clone(),
             cores: c.cores.iter().map(Into::into).collect(),
             cable_type: c.cable_type.clone(),
@@ -1545,6 +1552,9 @@ impl From<Core> for m::Core {
 impl From<Cable> for m::Cable {
     fn from(c: Cable) -> Self {
         m::Cable {
+            tag: c.tag,
+            tag_fixed: c.tag_fixed,
+            description: c.description,
             properties: c.properties,
             cores: c.cores.into_iter().map(Into::into).collect(),
             cable_type: c.cable_type,

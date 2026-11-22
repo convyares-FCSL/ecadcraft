@@ -580,7 +580,7 @@ pub fn next_pin(doc: &Document, c: DeviceId, side: Side, taken: &BTreeSet<(Side,
 pub fn where_words(doc: &Document, rid: RepresentationId) -> String {
     let Some(r) = doc.representations.get(&rid) else { return String::new() };
     let page = ecad_model::document::book::page_number(doc, r.page);
-    match crate::references::devices::anchor(doc, r).and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a)) {
+    match crate::references::devices::classify::anchor(doc, r).and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a)) {
         Some(p) => format!("{page} {}", ecad_model::connectivity::derive::zone_text(&p.column_label, &p.row_label)),
         None => page,
     }
@@ -989,14 +989,14 @@ pub fn half_rows(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Vec<Half
 /// Where terminal `t` is drawn: the page and anchor of the first symbol showing it.
 fn connection_point_at(doc: &Document, t: ConnectionPointId) -> (Option<PageId>, Option<Pt>, Option<RepresentationId>) {
     match doc.representations_showing(t).next() {
-        Some((rid, r)) => (Some(r.page), crate::references::devices::anchor(doc, r), Some(rid)),
+        Some((rid, r)) => (Some(r.page), crate::references::devices::classify::anchor(doc, r), Some(rid)),
         None => (None, None, None),
     }
 }
 
 fn rep_at(doc: &Document, rid: Option<RepresentationId>) -> (Option<PageId>, Option<Pt>) {
     match rid.and_then(|r| doc.representations.get(&r)) {
-        Some(r) => (Some(r.page), crate::references::devices::anchor(doc, r)),
+        Some(r) => (Some(r.page), crate::references::devices::classify::anchor(doc, r)),
         None => (None, None),
     }
 }
@@ -1122,8 +1122,8 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
 /// whole-half symbol ([`crate::symbols::reps::half_anchor`]) is a half of that side, every other connector
 /// symbol a pin of its side (a pin pair: `Both`). A pin-only half has no half member: its pins
 /// keep their mate edges.
-pub fn ref_classes(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, crate::references::devices::Class)> {
-    use crate::references::devices::Class;
+pub fn ref_classes(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, crate::references::devices::classify::Class)> {
+    use crate::references::devices::classify::Class;
     if !connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
     }
@@ -1143,9 +1143,9 @@ pub fn ref_classes(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, crate:
 /// The edges between connector `c`'s members (design 044 §7): each half's whole-half symbol shows
 /// the other half's, and a pin whose mate is drawn only on other pages shows those.
 pub fn ref_edges(
-    doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::references::devices::Class)],
+    doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::references::devices::classify::Class)],
 ) -> Vec<(RepresentationId, RepresentationId)> {
-    use crate::references::devices::Class;
+    use crate::references::devices::classify::Class;
     let mut out = Vec::new();
     let half = |want: Side| list.iter().find(|(_, k)| *k == Class::Half(want)).map(|(r, _)| *r);
     if let (Some(a), Some(b)) = (half(Side::Socket), half(Side::Plug))

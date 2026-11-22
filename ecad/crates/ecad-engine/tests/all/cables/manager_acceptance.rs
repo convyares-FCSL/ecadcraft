@@ -124,7 +124,7 @@ fn synth_type(h: &mut H, name: &str, fields: Value) -> String {
 }
 
 fn tag_of(doc: &Document, k: CableId) -> Option<String> {
-    doc.cables.get(&k).and_then(|c| c.properties.get("tag").cloned())
+    doc.cables.get(&k).and_then(|c| c.tag().map(str::to_string))
 }
 
 // ---------------------------------------------------------------- r1: cablenew
@@ -854,7 +854,7 @@ fn on_two_pages(h: &mut H) -> (CableId, ecad_model::PageId, ecad_model::PageId) 
         h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
     }
     let w: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18]})).unwrap(), "cable");
-    h.run("cableref", json!({"cable": w.hex(), "at": [65, 5]})).unwrap();
+    h.run("cablereference", json!({"cable": w.hex(), "at": [65, 5]})).unwrap();
     let p2: ecad_model::PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(p2);
     h.reference_end(w, p2, (20.0, 5.0));

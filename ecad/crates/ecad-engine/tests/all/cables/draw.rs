@@ -143,9 +143,9 @@ fn last_echo(h: &H) -> String {
 /// `reference` representation holding it (one transaction).
 fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (ItemId, RepresentationId) {
     // Combined trial of 009 and 010: the first reference end of a cable on a page is placed with
-    // 010's `cableref`; a second one there (010 refuses it; only a hand-edited file has one) is still
+    // 010's `cablereference`; a second one there (010 refuses it; only a hand-edited file has one) is still
     // built with the ops.
-    if let Ok(r) = h.run("cableref", json!({"cable": cable.hex(), "at": [at.x, at.y]})) {
+    if let Ok(r) = h.run("cablereference", json!({"cable": cable.hex(), "at": [at.x, at.y]})) {
         h.check();
         return (id(&r, "item"), id(&r, "reference"));
     }

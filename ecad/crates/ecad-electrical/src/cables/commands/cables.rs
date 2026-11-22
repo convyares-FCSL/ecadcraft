@@ -32,7 +32,7 @@ use ecad_model::objects::styles::cable::Shield;
 
 /// Why a value is refused.
 #[derive(Debug, Clone, PartialEq)]
-pub enum BadReason {
+pub(crate) enum BadReason {
     Empty,
     TooLong(usize),
     NotANumber,
@@ -74,7 +74,7 @@ fn clip_quoted(m: &str) -> String {
 }
 
 /// The refusal of `value` for `field` (design 059 §9).
-pub fn bad_value(field: CableField, value: &str, reason: &BadReason) -> CmdError {
+pub(crate) fn bad_value(field: CableField, value: &str, reason: &BadReason) -> CmdError {
     let shown = clip(value);
     said(match (field, reason) {
         (CableField::Length, _) => format!("Length must be a number of metres from {MIN_LENGTH} to {MAX_LENGTH}."),
@@ -277,6 +277,14 @@ fn refuse_taken(doc: &Document, typed: &str, except: Option<CableId>) -> Result<
 fn take_fields(mut cable: ecad_model::Cable) -> ecad_model::Cable {
     cable.shield = cable.properties.remove(CableField::Shield.key()).and_then(|w| <Shield as Word>::parse(&w));
     cable.cable_type = cable.properties.remove(CableField::CableType.key()).and_then(|v| StyleRef::parse(&v));
+    // The tag, its fixed flag and the description, likewise (#2).
+    cable.tag = cable.properties.remove(CableField::Tag.key()).and_then(|t| ecad_model::naming::tag::Tag::new(t.trim()).ok());
+    cable.tag_fixed = cable.properties.remove(ecad_model::naming::tag::FIXED_KEY).and_then(|f| ecad_model::naming::words::flag(&f)) == Some(true);
+    cable.description = cable
+        .properties
+        .remove(CableField::Description.key())
+        .and_then(|d| Some(d.trim().to_string()).filter(|d| !d.is_empty()))
+        .and_then(|d| ecad_model::objects::devices::Description::new(&d).ok());
     cable
 }
 
@@ -336,7 +344,7 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
 ///
 /// # Errors
 /// A bad value, a taken tag, or cores in use.
-pub fn edit_ops(
+pub(crate) fn edit_ops(
     doc: &Document, ids: &mut IdAllocator, tag_high: &mut TagHigh, k: CableId, set: &CableInput,
 ) -> Result<(Vec<Op>, Vec<CableField>, Option<String>), CmdError> {
     let cab = doc.cables.get(&k).ok_or_else(|| no_cable(&k.hex()))?;
@@ -346,6 +354,9 @@ pub fn edit_ops(
     // The typed fields are read back from the properties at the end (`take_fields`).
     after.extend(cab.cable_type.as_ref().map(|t| (CableField::CableType.key().to_string(), t.text())));
     after.extend(cab.shield.map(|s| (CableField::Shield.key().to_string(), s.word().to_string())));
+    after.extend(cab.tag().map(|t| (CableField::Tag.key().to_string(), t.to_string())));
+    after.extend(cab.description().map(|d| (CableField::Description.key().to_string(), d.to_string())));
+    after.extend(cab.tag_fixed.then(|| (ecad_model::naming::tag::FIXED_KEY.to_string(), ecad_model::naming::words::flag_word(true).to_string())));
     let mut changed = Vec::new();
     for (field, v) in set.entries() {
         let value = if field == CableField::Tag {
@@ -427,7 +438,7 @@ pub fn drawn(doc: &Document, k: CableId) -> Option<Drawn> {
 ///
 /// # Errors
 /// No such cable, or it is drawn ([`Drawn::words`]; [`drawn`] gives its pages).
-pub fn check_remove(doc: &Document, k: CableId) -> Result<(), CmdError> {
+pub(crate) fn check_remove(doc: &Document, k: CableId) -> Result<(), CmdError> {
     if !doc.cables.contains_key(&k) {
         return Err(no_cable(&k.hex()));
     }
@@ -463,7 +474,7 @@ pub fn assign_cores(doc: &Document, k: CableId, n: usize) -> Result<Vec<Option<S
 }
 
 /// The refusal of a slash whose wires are in a cable already (`words`), cut at [`MAX_WORDS`].
-pub fn already_in_cable(words: String) -> CmdError {
+pub(crate) fn already_in_cable(words: String) -> CmdError {
     said(words)
 }
 
@@ -543,7 +554,7 @@ pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
 /// An end's plan and gland.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct EndParams {
+pub(crate) struct EndParams {
     /// The planned location (+CAB1); null clears it.
     #[serde(default, deserialize_with = "nullable")]
     location: Option<Option<TextOrNumber>>,

@@ -602,25 +602,28 @@ fn contacts_and_the_table_are_written_as_modify_device() {
     h.run("setprop", json!({"component": k.hex(), "key": "contacts", "value": "3p + 1no, 21/22 nc"})).unwrap();
     assert!(matches!(last(&mut h).as_slice(), [Op::ModifyDevice { id, .. }] if *id == k));
     let doc = h.doc();
-    assert_eq!(ecad_electrical::references::devices::offer_of(&doc, k).map(|(t, _)| t).as_deref(), Some("3P+1NO+21/22 NC"));
+    assert_eq!(ecad_electrical::references::devices::parse::offer_of(&doc, k).map(|(t, _)| t).as_deref(), Some("3P+1NO+21/22 NC"));
     assert!(!doc.devices[&k].properties.contains_key("contacts"), "nothing in the bag");
     h.run("setprop", json!({"component": k.hex(), "key": "mirror", "value": "below"})).unwrap();
-    assert_eq!(ecad_electrical::references::devices::placement_of(&h.doc(), k), (ecad_electrical::references::devices::Placement::Below, true));
+    assert_eq!(
+        ecad_electrical::references::devices::parse::placement_of(&h.doc(), k),
+        (ecad_electrical::references::devices::parse::Placement::Below, true)
+    );
     // A rating edit keeps the contacts and the table.
     h.run("setprop", json!({"component": k.hex(), "key": "rating", "value": "coil 24 V DC"})).unwrap();
-    assert!(ecad_electrical::references::devices::offer_of(&h.doc(), k).is_some());
-    assert!(ecad_electrical::references::devices::placement_of(&h.doc(), k).1);
+    assert!(ecad_electrical::references::devices::parse::offer_of(&h.doc(), k).is_some());
+    assert!(ecad_electrical::references::devices::parse::placement_of(&h.doc(), k).1);
     // An MCB's auxiliaries; it has no table of its own.
     h.run("setprop", json!({"component": q.hex(), "key": "contacts", "value": "1NO+1NC"})).unwrap();
-    assert_eq!(ecad_electrical::references::devices::offer_of(&h.doc(), q).map(|(_, p)| p.len()), Some(2));
+    assert_eq!(ecad_electrical::references::devices::parse::offer_of(&h.doc(), q).map(|(_, p)| p.len()), Some(2));
     assert!(h.run("setprop", json!({"component": q.hex(), "key": "mirror", "value": "below"})).is_err());
     // A fuse has no contacts.
     assert!(h.run("setprop", json!({"component": f.hex(), "key": "contacts", "value": "1NO"})).is_err());
     // Cleared: nothing offered, the project default.
     h.run("setprop", json!({"component": k.hex(), "key": "contacts", "value": ""})).unwrap();
     h.run("setprop", json!({"component": k.hex(), "key": "mirror", "value": "default"})).unwrap();
-    assert!(ecad_electrical::references::devices::offer_of(&h.doc(), k).is_none());
-    assert!(!ecad_electrical::references::devices::placement_of(&h.doc(), k).1);
+    assert!(ecad_electrical::references::devices::parse::offer_of(&h.doc(), k).is_none());
+    assert!(!ecad_electrical::references::devices::parse::placement_of(&h.doc(), k).1);
 }
 
 /// Step 5 (design 072 §2.8): `userfield` adds a project field, `setprop user.<name>` sets a

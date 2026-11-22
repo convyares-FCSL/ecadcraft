@@ -139,7 +139,7 @@ fn cable_tags_share_the_namespace_and_swap() {
     }
     let w1 = c.exec("cableslash", json!({"from": [20, -3], "to": [20, 13]}))["cable"].as_str().unwrap().to_string();
     let w2 = c.exec("cableslash", json!({"from": [40, 17], "to": [40, 33]}))["cable"].as_str().unwrap().to_string();
-    let cable_tag = |c: &mut Client, k: &str| c.doc().cables[&ecad_model::CableId::parse(k).unwrap()].properties.get("tag").cloned();
+    let cable_tag = |c: &mut Client, k: &str| c.doc().cables[&ecad_model::CableId::parse(k).unwrap()].tag().map(str::to_string);
     assert_eq!((cable_tag(&mut c, &w1).as_deref(), cable_tag(&mut c, &w2).as_deref()), (Some("-W01"), Some("-W02")));
     // A device may not take a cable's tag, except by the next free one.
     let k = coil_at(&mut c, 3, 3, None);

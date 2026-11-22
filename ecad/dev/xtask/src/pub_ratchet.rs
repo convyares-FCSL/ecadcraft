@@ -19,12 +19,12 @@ use serde_json::Value;
 
 /// The crates that still hold unreachable `pub` items, and how many. The count only falls.
 const ALLOWED: &[(&str, usize)] = &[
-    ("ecad-app", 541),
+    ("ecad-app", 521),
     ("ecad-drawing-style", 14),
-    ("ecad-electrical", 906),
-    ("ecad-engine", 147),
+    ("ecad-electrical", 830),
+    ("ecad-engine", 137),
     ("ecad-file", 44),
-    ("ecad-model", 117),
+    ("ecad-model", 116),
     ("ecad-store", 6),
     ("ecad-widgets", 33),
 ];

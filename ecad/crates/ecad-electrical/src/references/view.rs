@@ -1,10 +1,10 @@
 //! The references view (design 064 §4.1, `ReferencesView`): the kept reference index
-//! ([`crate::references::devices::RefIndex`]), and per commit the pages whose references changed (cable
+//! ([`crate::references::devices::index::RefIndex`]), and per commit the pages whose references changed (cable
 //! references, contact texts and mirror tables, connector halves and pins, continuation arrows)
 //! and the line about references left without another end.
 //!
 //! # Update map
-//! Its scope is a [`crate::references::devices::Watch`] (design 025 §6, the table in [`crate::references::devices`]). Before the
+//! Its scope is a [`crate::references::devices::watch::Watch`] (design 025 §6, the table in [`crate::references::devices`]). Before the
 //! commit, for the ops given to `begin`, each effect looked up on the document before them; after
 //! it, for the transaction as recorded, on the document after:
 //! - The cables (before only, [`crate::references::cables::cables_touched_by`]): a reference
@@ -23,7 +23,7 @@
 //!   default: every page with a device member (the wide case); the continuation text settings:
 //!   every page with an arrow.
 //! - The index: the groups the effects name are made again
-//!   ([`crate::references::devices::RefIndex::groups_named_by`]); a page type's checks switched on or off makes it
+//!   ([`crate::references::devices::index::RefIndex::groups_named_by`]); a page type's checks switched on or off makes it
 //!   again whole (the scope's `is_all`, after the commit only).
 //! - Every other effect changes nothing.
 //!
@@ -37,7 +37,8 @@ use ecad_model::document::effect::{AreaSet, Effect};
 use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, Op};
 
-use crate::references::devices::{RefIndex, Shown, Watch};
+use crate::references::devices::index::RefIndex;
+use crate::references::devices::watch::{Shown, Watch};
 use crate::styles::text_style::fonts::TextMetrics;
 use crate::views::Inputs;
 

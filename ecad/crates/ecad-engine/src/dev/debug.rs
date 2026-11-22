@@ -26,7 +26,6 @@
 //!
 //! Nothing here changes a project: the only project access is through `try_lock` reads.
 
-use ecad_model::naming::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
@@ -543,7 +542,7 @@ pub struct Check {
 
 /// Rebuild the reference index (brief 025) from a copy of the document and compare it with a copy
 /// of the kept one (the debugger's **Check index**, design 025 §3.3).
-pub fn verify_index(doc: &Document, kept: &ecad_electrical::references::devices::RefIndex, head: u64) -> Check {
+pub fn verify_index(doc: &Document, kept: &ecad_electrical::references::devices::index::RefIndex, head: u64) -> Check {
     let (members, groups, edges) = kept.sizes();
     match kept.verify(doc) {
         Ok(()) => Check {
@@ -1246,15 +1245,11 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
     }
 }
 
-fn tag(p: &ecad_model::Properties) -> Option<String> {
-    p.text(ecad_model::naming::keys::TAG).map(str::to_string)
-}
-
 fn subject_label(doc: &Document, s: Subject) -> String {
     let t = match s {
         Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)),
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string),
-        Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)),
+        Subject::Cable(c) => doc.cables.get(&c).and_then(|x| x.tag().map(str::to_string)),
         Subject::Route(r) => doc.routes.get(&r).map(|x| format!("line on {}", x.page.short())),
         Subject::Aid(a) => doc.aids.get(&a).map(|x| match x {
             ecad_model::Aid::Continuation { name: Some(n), .. } => format!("continuation {n}"),

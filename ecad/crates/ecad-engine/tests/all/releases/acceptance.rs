@@ -35,7 +35,7 @@ fn project_in(dir: &Path, drawing_number: &str) -> (H, String) {
     for l in ["1", "2", "3"] {
         h.run("setprop", json!({"cable": c1, "key": format!("unused.{l}"), "value": "yes"})).unwrap();
     }
-    h.run("cableref", json!({"cable": c1, "at": [120, 5]})).unwrap();
+    h.run("cablereference", json!({"cable": c1, "at": [120, 5]})).unwrap();
     h.run("projectprops", json!({"title": "Pump panel", "drawing_number": drawing_number})).unwrap();
     h.run("revision", json!({"description": "First issue", "drawn": "CVA"})).unwrap();
     h.run("issuerevision", json!({"date": "2026-11-01"})).unwrap();

@@ -24,7 +24,6 @@
 //! This module stores nothing and has no notion of cores or numbering: the order is the member
 //! order and nothing else.
 
-use ecad_model::naming::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, CorePosition, Document, ItemId, ItemKind, PageId, Primitive, Pt, RouteId, Subject, WireId};
@@ -270,7 +269,7 @@ pub fn blocked(doc: &Document, members: &[Crossing]) -> Vec<(Crossing, CableId)>
 }
 
 /// The first cable with a core at `position`.
-pub fn cable_at(doc: &Document, position: CorePosition) -> Option<CableId> {
+pub(crate) fn cable_at(doc: &Document, position: CorePosition) -> Option<CableId> {
     match position {
         CorePosition::Wire(w) => doc.cables_of(w).first().copied(),
         CorePosition::Route { route, .. } => doc.cables_on_route(route).first().copied(),
@@ -292,13 +291,8 @@ pub fn slashes_of(doc: &Document, page: PageId, cable: CableId) -> Vec<(ItemId, 
 
 /// Where each slash of every cable on `page` crosses one of that cable's own members (design
 /// §7.2): one point per member and slash, by the rules above, from the current geometry. A member
-/// moved away from its slash gets none.
-pub fn member_crossing_points(doc: &Document, page: PageId, tol: f64) -> Vec<Pt> {
-    member_crossing_points_where(doc, page, tol, |_| true)
-}
-
-/// [`member_crossing_points`] for the slashes `shown` accepts only (by slash item): a slash that
-/// is not drawn, because its cable is shown as a fan (brief 005), has no dots.
+/// moved away from its slash gets none. Only the slashes `shown` accepts (by slash item): a slash
+/// that is not drawn, because its cable is shown as a fan (brief 005), has no dots.
 pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, shown: impl Fn(ItemId) -> bool) -> Vec<Pt> {
     let tol = usable(tol);
     let routes = routes(doc, page);
@@ -321,21 +315,12 @@ pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, show
     out
 }
 
-/// Where each slash of `cable` on `page` crosses one of its own members (the
-/// [`member_crossing_points`] rules), with the member and the direction of its route segment there
-/// (design 009 §6): one entry per member and slash, in slash order then member order.
-pub fn member_crossings_of(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Vec<(CorePosition, Pt, Pt)> {
-    let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
-    let routes = routes(doc, page);
-    let by_conductor = prims_by_position(doc, &routes);
-    let slashes: Vec<(Pt, Pt)> = slashes_of(doc, page, cable).into_iter().map(|(_, a, b)| (a, b)).collect();
-    member_crossings_with(c, &slashes, |w| by_conductor.get(&w).map(Vec::as_slice).unwrap_or_default(), tol)
-}
-
-/// [`member_crossings_of`] for one cable with its `slashes` on the page and each member's route
-/// primitives there (`prims`), already gathered by the caller (one index per page, brief 009
-/// review S4).
-pub fn member_crossings_with<'p>(
+/// Where each slash of a cable crosses one of its own members (the
+/// [`member_crossing_points_where`] rules), with the member and the direction of its route segment there
+/// (design 009 §6): one entry per member and slash, in slash order then member order, for the
+/// cable's `slashes` on the page and each member's route primitives there (`prims`), already
+/// gathered by the caller (one index per page, brief 009 review S4).
+pub(crate) fn member_crossings_with<'p>(
     c: &ecad_model::Cable, slashes: &[(Pt, Pt)], prims: impl Fn(CorePosition) -> &'p [&'p Primitive], tol: f64,
 ) -> Vec<(CorePosition, Pt, Pt)> {
     let tol = usable(tol);
@@ -409,8 +394,8 @@ pub fn position_name(doc: &Document, p: CorePosition) -> String {
 }
 
 /// A cable's name: its `tag` property, else `cable <first 8 hex>…`.
-pub fn cable_name(doc: &Document, k: CableId) -> String {
-    match doc.cables.get(&k).and_then(|x| x.properties.text(ecad_model::naming::keys::TAG)) {
+pub(crate) fn cable_name(doc: &Document, k: CableId) -> String {
+    match doc.cables.get(&k).and_then(|x| x.tag()) {
         Some(t) => t.to_string(),
         None => format!("cable {}…", short(&k.hex())),
     }
@@ -435,7 +420,7 @@ pub fn wires(n: usize) -> String {
 }
 
 /// Refusal: the slash crosses no wires (with the count of other objects it crosses).
-pub fn no_wires(ignored: usize) -> String {
+pub(crate) fn no_wires(ignored: usize) -> String {
     let mut m = "The slash crosses no wires; nothing was created.".to_string();
     match ignored {
         0 => {}
@@ -467,7 +452,7 @@ fn bare_position_name(doc: &Document, p: CorePosition) -> String {
 }
 
 /// Refusal: some wires are already in a cable. `tail` ends the message (`Nothing was created.`).
-pub fn already_in_cable(doc: &Document, blocked: &[(CorePosition, CableId)], tail: &str) -> String {
+pub(crate) fn already_in_cable(doc: &Document, blocked: &[(CorePosition, CableId)], tail: &str) -> String {
     match blocked {
         [(w, k)] => format!("Wire {} is already in {}; a wire can be in only one cable. {tail}", bare_position_name(doc, *w), cable_label(doc, *k)),
         _ => {
@@ -479,7 +464,7 @@ pub fn already_in_cable(doc: &Document, blocked: &[(CorePosition, CableId)], tai
 
 /// `cable C1` for a tagged cable, else `cable 8a3f19c0…`.
 fn cable_label(doc: &Document, k: CableId) -> String {
-    match doc.cables.get(&k).and_then(|x| x.properties.text(ecad_model::naming::keys::TAG)) {
+    match doc.cables.get(&k).and_then(|x| x.tag()) {
         Some(t) => format!("cable {t}"),
         None => cable_name(doc, k),
     }

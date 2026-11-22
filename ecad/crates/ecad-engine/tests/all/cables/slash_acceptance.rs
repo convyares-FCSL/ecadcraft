@@ -136,7 +136,7 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
         assert_eq!(members(&d, k), want, "crossing order from `from` to `to`");
         assert!(d.cables[&k].cores.iter().all(|m| m.label.is_none()), "core stays None");
         // Brief 026: an automatic tag when none is given.
-        assert!(d.cables[&k].properties.get("tag").is_some_and(|t| t.starts_with("-W")), "an automatic tag");
+        assert!(d.cables[&k].tag().is_some_and(|t| t.starts_with("-W")), "an automatic tag");
         let want_hex: Vec<String> = want.iter().map(|c| c.hex()).collect();
         assert_eq!(hexes(&r, "conductors"), want_hex);
         // AC4: the plain line is reported, not taken.
@@ -899,7 +899,7 @@ fn ac8_hostile_typed_points_and_huge_valid_coordinates() {
     let mut f = fixture(SEED);
     let r = f.h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "K1"})).unwrap();
     let k: CableId = id(&r, "cable");
-    assert_eq!(f.h.doc().cables[&k].properties.get("tag").map(String::as_str), Some("-K01"));
+    assert_eq!(f.h.doc().cables[&k].tag(), Some("-K01"));
 }
 
 /// A reopened project with `n` + 1 parallel unit wires at y = 0 ..= n (x from 0 to 1), made in one

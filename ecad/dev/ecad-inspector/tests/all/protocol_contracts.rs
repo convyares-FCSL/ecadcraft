@@ -98,6 +98,7 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
         (json!({"op": "cables"}), |o| {
             assert_eq!(o["total"], 1);
             assert_eq!(o["rows"][0]["tag"], "-W1");
+            assert_eq!((&o["rows"][0]["tag_fixed"], &o["rows"][0]["description"]), (&json!(false), &json!(null)));
             assert_eq!(o["rows"][0]["members"], json!([{"wire": "101", "core": "1", "purpose": "in use", "colours": null}]));
         }),
         (json!({"op": "branches"}), |o| {
@@ -185,6 +186,29 @@ fn row_is_readable_or_raw_and_raw_is_the_stored_bytes() {
     assert_eq!(ok(&raw)["truncated"], false);
     assert_eq!(what(&ask(s, json!({"op": "row", "table": "transactions", "key": "00"}))), "not-found");
     assert_eq!(what(&ask(s, json!({"op": "rows", "table": "nope"}))), "bad-request");
+}
+
+/// S1 (#2): a cable's tag, fixed flag and description are record fields, seen in both views of the
+/// transaction that created it (the Readable text and the stored bytes), never in its bag.
+#[test]
+fn a_cables_tag_fields_show_in_the_readable_and_raw_views() {
+    let dir = TempDir::new("cablefields");
+    let f = opened(&dir);
+    let s = src(&f);
+    let all = ask(s, json!({"op": "rows", "table": "transactions", "count": 100}));
+    let keys: Vec<String> = ok(&all)["rows"].as_array().unwrap().iter().filter_map(|r| r["key"].as_str().map(str::to_string)).collect();
+    let (key, readable) = keys
+        .iter()
+        .map(|k| (k.clone(), ask(s, json!({"op": "row", "table": "transactions", "key": k, "form": "readable"})).to_string()))
+        .find(|(_, text)| text.contains("CreateCable"))
+        .expect("the transaction that creates the cable");
+    for want in ["\"tag\":\"-W1\"", "\"tag_fixed\":false", "\"description\":null"] {
+        assert!(readable.contains(want), "{want} in {readable}");
+    }
+    assert!(!readable.contains("\"properties\":{\"tag\""), "not in the bag: {readable}");
+    let raw = ask(s, json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    assert_eq!(ok(&raw)["truncated"], false);
+    assert!(ok(&raw)["size"].as_u64().is_some_and(|n| n > 0), "the stored bytes are shown");
 }
 
 #[test]

@@ -80,8 +80,7 @@ fn the_cable_manager_commands_are_agent_transactions_and_refused_with_writes_off
     let (sess, _) = EcadMcp::open(&path, Options::default()).unwrap();
     let mut c = Client::new(sess);
     let doc = c.doc();
-    let w09 =
-        doc.cables.values().find(|x| x.properties.get("tag").map(String::as_str) == Some("-W09")).expect("FD1: the cable not drawn round-trips");
+    let w09 = doc.cables.values().find(|x| x.tag() == Some("-W09")).expect("FD1: the cable not drawn round-trips");
     assert!(w09.cores.iter().all(|m| m.position == ecad_model::CorePosition::Unplaced), "stored offered cores only");
     assert!(w09.properties.contains_key("end.from.location"));
     let log = c.log();

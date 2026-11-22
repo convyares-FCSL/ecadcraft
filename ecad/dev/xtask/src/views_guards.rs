@@ -40,7 +40,7 @@ const OWN_MODULES: &[&str] = &[
     "crates/ecad-electrical/src/plc/",
     "crates/ecad-electrical/src/checks/",
     "crates/ecad-electrical/src/checks/mod.rs",
-    "crates/ecad-electrical/src/references/devices.rs",
+    "crates/ecad-electrical/src/references/devices/index.rs",
     "crates/ecad-electrical/src/connectors/mod.rs",
     "crates/ecad-electrical/src/pages/front.rs",
 ];
@@ -81,7 +81,7 @@ const OWN_BUILDS: &[(&str, usize, &str)] = &[
         1,
         "StripPages builds itself again after every commit (no update map, decision 7: 0.5 ms on large)",
     ),
-    ("crates/ecad-electrical/src/references/devices.rs", 1, "RefIndex::verify compares the kept index with a rebuild"),
+    ("crates/ecad-electrical/src/references/devices/index.rs", 1, "RefIndex::verify compares the kept index with a rebuild"),
 ];
 
 /// `Views` and every feature's view module: all of them count as view notes for [`KEY_PREFIXES`].
@@ -427,7 +427,7 @@ mod tests {
     fn a_views_own_module_may_build_it() {
         let rows: &[(&str, bool)] = &[
             ("crates/ecad-electrical/src/reports/kept.rs", true),
-            ("crates/ecad-electrical/src/references/devices.rs", true),
+            ("crates/ecad-electrical/src/references/devices/index.rs", true),
             ("crates/ecad-electrical/src/views/mod.rs", true),
             ("crates/ecad-electrical/src/pages/generated.rs", false),
             ("crates/ecad-electrical/src/xref_extra.rs", false),

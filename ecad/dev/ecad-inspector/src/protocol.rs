@@ -654,7 +654,7 @@ fn nets(d: &Document) -> Vec<Value> {
 fn wires(d: &Document) -> Vec<Value> {
     let mut in_cable: BTreeMap<WireId, (String, Option<String>)> = BTreeMap::new();
     for (id, k) in &d.cables {
-        let tag = k.properties.get(ecad_model::naming::tag::TAG_KEY).cloned().unwrap_or_else(|| format!("({})", id.short()));
+        let tag = k.tag().map(str::to_string).unwrap_or_else(|| format!("({})", id.short()));
         for w in k.cores.iter().filter_map(|m| m.wire()) {
             in_cable.insert(w, (tag.clone(), k.cores.iter().find(|m| m.wire() == Some(w)).and_then(|m| m.label_str().map(str::to_string))));
         }
@@ -738,7 +738,9 @@ fn cables(d: &Document) -> Vec<Value> {
             }
             json!({
                 "id": id.to_string(),
-                "tag": k.properties.get(ecad_model::naming::tag::TAG_KEY),
+                "tag": k.tag(),
+                "tag_fixed": k.tag_fixed,
+                "description": k.description(),
                 "cable_type": k.cable_type.as_ref().map(ecad_model::StyleRef::text),
                 "shield": k.shield.map(ecad_model::naming::words::Word::word),
                 "protected_by": k.protected_by.map(|p| protected_name(d, p)),

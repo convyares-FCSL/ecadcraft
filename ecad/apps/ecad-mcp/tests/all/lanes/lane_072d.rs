@@ -237,7 +237,7 @@ fn a_cables_values_set_through_mcp_record_one_modify_cable() {
     let after = step(&mut c, "rating", json!({"cable": k, "basis": "manual", "manual": "20 A"}));
     assert_eq!((after.rating.basis, after.rating.manual), (Some(Basis::Manual), Some(Amps(20.0))));
     let after = step(&mut c, "setprop", json!({"cable": k, "key": "tag", "value": "-W50"}));
-    assert_eq!(after.properties.get("tag").map(String::as_str), Some("-W50"));
+    assert_eq!(after.tag(), Some("-W50"));
     // A slash places two stored cores; `cablecore` relabels one, still one ModifyCable.
     c.exec("cableslash", json!({"from": [-5, 25], "to": [15, 25], "cable": k}));
     let after = step(&mut c, "cablecore", json!({"cable": k, "cores": ["2", "1", "3", "GNYE"]}));

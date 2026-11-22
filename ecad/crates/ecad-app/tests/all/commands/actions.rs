@@ -20,7 +20,7 @@ const ECAD_COMMANDS: &[&str] = &[
     "cableview",
     "cablecore",
     "cablefan",
-    "cableref",
+    "cablereference",
     "cablecontinue",
     "cablegoto",
     "cablereferences",

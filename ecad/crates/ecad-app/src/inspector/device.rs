@@ -36,12 +36,12 @@ const PLACED: [&str; 15] = [
     "where",
     "contactrows",
     "coil",
-    ecad_electrical::references::devices::CONTACTS_KEY,
+    ecad_electrical::references::devices::parse::CONTACTS_KEY,
 ];
 
 /// A row the Layout tab draws.
 pub fn on_layout_tab(row: &Row) -> bool {
-    row.key == ecad_electrical::references::devices::MIRROR_KEY || row.label.starts_with("Texts")
+    row.key == ecad_electrical::references::devices::parse::MIRROR_KEY || row.label.starts_with("Texts")
 }
 
 /// The device's own checks: about it or one of its connection points.
@@ -228,7 +228,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
                 out.push(InspectorAction::Placements(vec![rep]));
             }
         }
-        if let Some(row) = find(s, ecad_electrical::references::devices::CONTACTS_KEY) {
+        if let Some(row) = find(s, ecad_electrical::references::devices::parse::CONTACTS_KEY) {
             ui.add_space(space::XS);
             fields::prop(ui, sh, target, "device", row, "Contacts offered", "");
         }

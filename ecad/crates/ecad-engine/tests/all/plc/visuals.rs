@@ -307,8 +307,8 @@ fn frame(h: &mut H, page: PageId) -> (Vec<(ecad_model::Pt, ecad_model::Pt)>, Vec
     let mut texts = Vec::new();
     for p in ecad_engine::plc::draw::card::parts_on_page(&d, page) {
         match p.shape {
-            ecad_electrical::references::devices::Shape::Line(a, b) => lines.push((a, b)),
-            ecad_electrical::references::devices::Shape::Text { value, .. } => texts.push(value),
+            ecad_electrical::references::devices::table::Shape::Line(a, b) => lines.push((a, b)),
+            ecad_electrical::references::devices::table::Shape::Text { value, .. } => texts.push(value),
         }
     }
     (lines, texts)
@@ -384,11 +384,11 @@ fn f_a_card_at_180_keeps_its_name_block_upright_above() {
     let tag = parts
         .iter()
         .find_map(|p| match &p.shape {
-            ecad_electrical::references::devices::Shape::Text { value, at, valign, .. } if value == "-A04" => Some((*at, *valign)),
+            ecad_electrical::references::devices::table::Shape::Text { value, at, valign, .. } if value == "-A04" => Some((*at, *valign)),
             _ => None,
         })
         .expect("the tag in the name block");
-    assert_eq!(tag.1, ecad_electrical::references::devices::VAlign::Top, "top left, under the far edge");
+    assert_eq!(tag.1, ecad_electrical::references::devices::table::VAlign::Top, "top left, under the far edge");
     assert!(tag.0.y > runs[0].top, "above the points");
 }
 
@@ -445,7 +445,7 @@ fn review_2_the_frame_stands_for_the_card() {
     let d = h.doc();
     let part = ecad_engine::plc::draw::card::parts_on_page(&d, page)
         .into_iter()
-        .find(|p| matches!(&p.shape, ecad_electrical::references::devices::Shape::Text { value, .. } if value == "-A02"))
+        .find(|p| matches!(&p.shape, ecad_electrical::references::devices::table::Shape::Text { value, .. } if value == "-A02"))
         .expect("the name block's tag");
     let handle = h.p(|p| p.pages.get(&page).and_then(|v| v.map.reference(part.rep, part.index))).expect("mapped");
     let u = h.s.state().unwrap().uid;

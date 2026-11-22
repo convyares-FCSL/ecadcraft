@@ -70,7 +70,7 @@
 {"command":"wire","params":{"points":[[130,100],[130,70]],"potential":"L2"}}
 {"command":"wire","params":{"points":[[140,100],[140,70]],"potential":"L3"}}
 {"command":"cableslash","params":{"from":[115,82],"to":[145,88],"tag":"-W01"},"as":"w1"}
-{"command":"cableref","params":{"cable":"$w1.cable","at":[130,65]}}
+{"command":"cablereference","params":{"cable":"$w1.cable","at":[130,65]}}
 {"command":"setprop","params":{"component":"$q2.component","key":"description","value":"Control circuit breaker"}}
 {"command":"setprop","params":{"component":"$s1.component","key":"description","value":"Stop"}}
 {"command":"setprop","params":{"component":"$s2.component","key":"description","value":"Start"}}

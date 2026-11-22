@@ -184,7 +184,8 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         // Brief 025 (design 025 §4.3): a joined contact takes its part's next free offered labels.
         let offer_slot = match (&target, starter.kind) {
             (ecad_electrical::devices::placing::Target::Join(c), ecad_electrical::symbols::Kind::Contact { make }) => {
-                ecad_electrical::references::devices::offer_labels(doc, *c, make, &ecad_electrical::devices::placing::labels_of(doc, *c)).is_some()
+                ecad_electrical::references::devices::table::offer_labels(doc, *c, make, &ecad_electrical::devices::placing::labels_of(doc, *c))
+                    .is_some()
             }
             _ => false,
         };
@@ -221,7 +222,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         let landed = land.map(|(t, l)| crate::terminal_strips::commands::land_result(doc, t, &l));
         if let (true, ecad_electrical::symbols::Kind::Contact { make }) = (plan.joined, starter.kind) {
             let labels: Vec<String> = plan.connection_points.iter().map(|(_, l, _)| l.clone()).collect();
-            if let Some(line) = ecad_electrical::references::devices::over_line(doc, plan.component, &labels, make) {
+            if let Some(line) = ecad_electrical::references::devices::table::over_line(doc, plan.component, &labels, make) {
                 pg.echo(line);
             }
         }

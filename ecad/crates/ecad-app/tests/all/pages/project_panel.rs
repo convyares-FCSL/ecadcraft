@@ -286,7 +286,7 @@ pub(crate) fn fixture_p(h: &mut Harness<'static, App>) -> (PageId, PageId, PageI
     }
     ok(h, r#"cableslash {"from":[28,-3],"to":[32,18],"tag":"C1"}"#);
     let cable = doc(h).cables.keys().next().copied().unwrap();
-    ok(h, &format!(r#"cableref {{"cable":"{}","at":[65,5]}}"#, cable.hex()));
+    ok(h, &format!(r#"cablereference {{"cable":"{}","at":[65,5]}}"#, cable.hex()));
     ok(h, r#"newpage {"title":"Field"}"#);
     // C1's other end on Field at (20,5), written as `cablecontinue` writes it but without its stubs:
     // a continuation needs wires leaving the page through the reference, which form only with lane

@@ -29,6 +29,20 @@ pub fn devices_touched(before: &Document, after: &Document, ops: &[ecad_model::O
     views.finish(after, ops, pending).devices
 }
 
+/// The cables whose references `ops` could change, effect by effect on `doc` before them (the
+/// page-order case is the references view's, after the commit); `None` when any effect could reach
+/// every cable.
+pub fn cables_touched(doc: &Document, ops: &[ecad_model::Op]) -> Option<std::collections::BTreeSet<ecad_model::CableId>> {
+    let effects = ecad_model::document::effect::Effects::of(ops);
+    let mut out = std::collections::BTreeSet::new();
+    for e in &effects {
+        if !ecad_electrical::references::cables::cables_touched_by(doc, e, &mut out) {
+            return None;
+        }
+    }
+    Some(out)
+}
+
 /// What `before_ops` (the ops given) and the transaction `tx_ops` (with its extension), taking
 /// `before` to `after`, could change in the Properties palette: the Properties feed's objects.
 pub fn props_touched(

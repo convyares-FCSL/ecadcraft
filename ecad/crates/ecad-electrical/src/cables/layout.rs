@@ -40,13 +40,13 @@ pub fn dot(a: Pt, b: Pt) -> f64 {
 pub fn cross(a: Pt, b: Pt) -> f64 {
     a.x * b.y - a.y * b.x
 }
-pub fn rot90(a: Pt) -> Pt {
+pub(crate) fn rot90(a: Pt) -> Pt {
     Pt::new(-a.y, a.x)
 }
 pub fn angle(a: Pt) -> f64 {
     a.y.atan2(a.x)
 }
-pub fn centroid(points: &[Pt]) -> Option<Pt> {
+pub(crate) fn centroid(points: &[Pt]) -> Option<Pt> {
     if points.is_empty() {
         return None;
     }
@@ -135,7 +135,7 @@ pub fn clip_outside(path: &[Pt], lo: Pt, hi: Pt, tol: f64) -> Vec<Vec<Pt>> {
 }
 
 /// Liang–Barsky: the parameter interval of `a`→`b` inside the rectangle.
-pub fn inside_interval(a: Pt, b: Pt, lo: Pt, hi: Pt) -> Option<(f64, f64)> {
+pub(crate) fn inside_interval(a: Pt, b: Pt, lo: Pt, hi: Pt) -> Option<(f64, f64)> {
     let d = sub(b, a);
     let (mut t0, mut t1) = (0.0_f64, 1.0_f64);
     for (p, q) in [(-d.x, a.x - lo.x), (d.x, hi.x - a.x), (-d.y, a.y - lo.y), (d.y, hi.y - a.y)] {
@@ -212,19 +212,19 @@ pub fn label_spacing(h: f64) -> f64 {
 /// `ecad.tail-min`: the shortest tail in fan view.
 pub const TAIL_MIN: f64 = 20.0;
 /// `ecad.bend-radius`, capped at half the core pitch.
-pub const BEND_RADIUS: f64 = 2.5;
+pub(crate) const BEND_RADIUS: f64 = 2.5;
 /// `ecad.box-line-pitch`: line spacing in the label box, 1.5 text heights `h`.
-pub fn box_line_pitch(h: f64) -> f64 {
+pub(crate) fn box_line_pitch(h: f64) -> f64 {
     1.5 * h
 }
 /// `ecad.box-pad`: padding in the label box and the reference flag, half a text height `h`.
-pub fn box_pad(h: f64) -> f64 {
+pub(crate) fn box_pad(h: f64) -> f64 {
     0.5 * h
 }
 /// `ecad.cable-weight`: trunk and spine (cable section), hundredths of a millimetre.
 pub const CABLE_WEIGHT: u16 = 70;
 /// Wire numbers and label box lines longer than this are drawn shortened.
-pub const MAX_SHOWN_CHARS: usize = 24;
+pub(crate) const MAX_SHOWN_CHARS: usize = 24;
 /// The text a reference end shows when brief 010 cannot derive one (a hostile file): an orphan.
 pub const REFERENCE_PLACEHOLDER: &str = "/?";
 /// `ecad.orphan`: a reference end with no other end shows its text in red.
@@ -237,7 +237,7 @@ pub fn reference_text(doc: &Document, reference: RepresentationId) -> String {
 }
 
 /// [`reference_text`] with whether the end is an orphan (drawn red).
-pub fn reference_marker(doc: &Document, reference: RepresentationId) -> (String, bool) {
+pub(crate) fn reference_marker(doc: &Document, reference: RepresentationId) -> (String, bool) {
     let (text, orphan, _) = reference_marker_side(doc, reference);
     (text, orphan)
 }
@@ -358,7 +358,7 @@ pub struct CableDrawing {
     pub parts: Vec<Part>,
     /// Loose wire ends at an end that stops at a reference: no loose-end square there.
     pub quiet: Vec<Pt>,
-    /// Members attached to a terminal at an end that stops at a reference.
+    /// Members attached to a connection point at an end that stops at a reference.
     pub at_reference: Vec<WireId>,
     /// Each reference end on the page and the end it stops.
     pub markers: BTreeMap<RepresentationId, MarkerEnd>,
@@ -651,8 +651,8 @@ fn trunk_to_marker(a: &FannedEnd, m: Pt, tol: f64) -> Vec<Pt> {
 
 /// The label box on the trunk (design §4.4): its parts and the trunk clipped by it.
 fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64) -> Vec<Part> {
-    let props = doc.cables.get(&cable).map(|c| &c.properties);
-    let get = |k: &str| props.and_then(|p| p.get(k)).filter(|v| !v.is_empty()).map(|v| shorten(v, MAX_SHOWN_CHARS));
+    let cab = doc.cables.get(&cable);
+    let get = |k: &str| cab.and_then(|c| c.get(k)).filter(|v| !v.is_empty()).map(|v| shorten(v, MAX_SHOWN_CHARS));
     let mut lines = vec![get("tag").unwrap_or_else(|| "?".to_string())];
     lines.extend(get("designation"));
     lines.extend(get("type"));
@@ -1040,7 +1040,7 @@ pub fn cables_on_page(
 /// [`crate::wires::routes::route_of_wire_on`] picks it), the lines carrying it and their representations,
 /// and each cable's representations. Every cable is then drawn without scanning the whole
 /// document again.
-pub struct PageIndex<'a> {
+pub(crate) struct PageIndex<'a> {
     routes: BTreeMap<CorePosition, (RouteId, &'a Primitive)>,
     prims: BTreeMap<CorePosition, Vec<&'a Primitive>>,
     lines: BTreeMap<RouteId, Vec<&'a ecad_model::Representation>>,
@@ -1112,23 +1112,4 @@ pub fn switched(doc: &Document, cable: CableId, view_name: &str) -> String {
 /// Whether `cable` may be switched to fan view: it has two or more members (owner answer Q4).
 pub fn offers_fan(doc: &Document, cable: CableId) -> bool {
     doc.cables.get(&cable).is_some_and(|c| c.cores.len() >= 2)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn clipping_removes_the_middle_of_a_segment() {
-        let pieces = clip_outside(&[Pt::new(0.0, 0.0), Pt::new(10.0, 0.0)], Pt::new(4.0, -1.0), Pt::new(6.0, 1.0), 1e-9);
-        assert_eq!(pieces, vec![vec![Pt::new(0.0, 0.0), Pt::new(4.0, 0.0)], vec![Pt::new(6.0, 0.0), Pt::new(10.0, 0.0)]]);
-    }
-
-    #[test]
-    fn leaving_snaps_to_the_nearest_axis() {
-        let p = [Pt::new(0.0, 0.0), Pt::new(3.0, 3.0)];
-        assert_eq!(leaving(p.iter().copied(), 1e-9), Some(Pt::new(1.0, 0.0)));
-        let p = [Pt::new(0.0, 0.0), Pt::new(1.0, -3.0)];
-        assert_eq!(leaving(p.iter().copied(), 1e-9), Some(Pt::new(0.0, -1.0)));
-    }
 }

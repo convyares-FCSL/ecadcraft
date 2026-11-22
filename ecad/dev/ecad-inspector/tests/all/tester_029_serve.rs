@@ -453,7 +453,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
             Op::CreateCable {
                 id: c,
                 cable: Cable {
-                    properties: props(&[("tag", X)]),
+                    tag: ecad_model::naming::tag::Tag::new(X).ok(),
                     cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new(X).ok())],
                     ..Default::default()
                 },
