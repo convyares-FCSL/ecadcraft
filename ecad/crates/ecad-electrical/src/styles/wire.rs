@@ -433,7 +433,7 @@ pub fn linetype(word: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use crate::styles::*;
+    use super::*;
 
     /// Design 072 F37: the built-in data reads as typed records, every built-in type has its values
     /// and every type in the data is listed, and the 230 V L/N types are there.

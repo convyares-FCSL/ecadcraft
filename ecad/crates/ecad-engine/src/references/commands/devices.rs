@@ -44,7 +44,7 @@ impl Command for RefgotoParams {
             let opened = p.pages.get(&jump.page).and_then(|v| v.uid).is_none();
             let uid = p.open_page(pg, jump.page).map_err(CmdError::refused)?;
             // The go-to ring (display only, until the next change), as the Checks tab's.
-            p.goto_ring = Some((jump.page, jump.at, crate::checks::Severity::Info));
+            p.goto_ring = Some((jump.page, jump.at, ecad_electrical::checks::Severity::Info));
             Ok((uid, jump, opened))
         })?;
         if opened {

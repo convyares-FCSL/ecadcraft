@@ -6,7 +6,7 @@
 use crate::common;
 
 use common::{H, id};
-use ecad_engine::checks::{self, Kind as CheckKind};
+use {ecad_electrical::checks::Kind as CheckKind};
 use ecad_electrical::symbols::{self, Family, STARTER_LIBRARY, STARTERS};
 use ecad_model::{DeviceId, Op, ConnectionPointId, Word};
 use serde_json::{Value, json};
@@ -51,7 +51,7 @@ fn embeds(ops: &[Op]) -> usize {
 /// Brief 034's symbols, with the tag their first placement in a fresh project gets.
 fn new_keys() -> Vec<&'static symbols::Starter> {
     // Brief 045's channel cells join cards (`plc_contracts`).
-    STARTERS.iter().filter(|s| s.family != Family::Basic && ecad_engine::plc::channels::cell_type(s).is_none()).collect()
+    STARTERS.iter().filter(|s| s.family != Family::Basic && ecad_electrical::plc::channels::cell_type(s).is_none()).collect()
 }
 
 #[test]
@@ -81,8 +81,7 @@ fn every_new_symbol_places_with_its_prefix_labels_and_description() {
             .iter()
             .find_map(|o| match o {
                 Op::EmbedDefinition { definition, .. } => Some(definition.clone()),
-                _ => None,
-            })
+                _ => None})
             .unwrap();
         let o = d.origin.unwrap();
         assert_eq!((o.library, o.definition), (STARTER_LIBRARY, s.id), "{}", s.key);
@@ -145,18 +144,18 @@ fn a_fuse_bank_breaks_the_net_and_its_spare_points_are_quiet() {
     assert_ne!(net(lp), net(f2));
     // Spare fuse outputs and M raise no `Unconnected`; a wired point none either.
     for t in [m, f3] {
-        assert!(!checks::connection_point_checks(&doc, t).iter().any(|c| c.kind == CheckKind::Unconnected), "quiet point flagged");
+        assert!(!ecad_electrical::checks::connection_point_checks(&doc, t).iter().any(|c| c.kind == CheckKind::Unconnected), "quiet point flagged");
     }
     // L+ is not quiet: unwired, it is flagged.
     let mut h2 = new_h();
     let bank2 = place(&mut h2, "fusebank4", [0.0, 0.0]);
     let doc2 = h2.doc();
-    assert!(checks::connection_point_checks(&doc2, terminal(&bank2, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
-    assert!(checks::connection_point_checks(&doc2, terminal(&bank2, "M")).is_empty());
+    assert!(ecad_electrical::checks::connection_point_checks(&doc2, terminal(&bank2, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
+    assert!(ecad_electrical::checks::connection_point_checks(&doc2, terminal(&bank2, "M")).is_empty());
     // A non-quiet symbol still raises it (a coil).
     let coil = place(&mut h2, "coil", [100.0, 0.0]);
     let doc2 = h2.doc();
-    assert!(checks::connection_point_checks(&doc2, terminal(&coil, "A1")).iter().any(|c| c.kind == CheckKind::Unconnected));
+    assert!(ecad_electrical::checks::connection_point_checks(&doc2, terminal(&coil, "A1")).iter().any(|c| c.kind == CheckKind::Unconnected));
 }
 
 #[test]
@@ -256,7 +255,7 @@ fn a_bulkhead_pin_is_one_net_from_both_sides_and_spare_pins_are_quiet() {
     let conn = doc.connectivity();
     assert_eq!(conn.net_of_conductor(up), conn.net_of_conductor(down), "a feed-through is one net");
     for t in [p2, sh] {
-        assert!(checks::connection_point_checks(&doc, t).is_empty(), "spare pin flagged");
+        assert!(ecad_electrical::checks::connection_point_checks(&doc, t).is_empty(), "spare pin flagged");
     }
     // Plugs and sockets are separate devices with their own tags in v0.15.
     assert_eq!(place(&mut h, "socket4", [0.0, -60.0])["tag"], "-X02");
@@ -273,13 +272,13 @@ fn a_card_body_takes_its_channels_as_one_device() {
     assert_eq!(labels(&join(&mut h, "di", a, [40.0, 0.0]).unwrap()), ["1"]);
     assert_eq!(labels(&join(&mut h, "di", a, [50.0, 0.0]).unwrap()), ["2"]);
     let doc = h.doc();
-    let all: std::collections::BTreeSet<String> = ecad_engine::devices::labels_of(&doc, a);
+    let all: std::collections::BTreeSet<String> = ecad_electrical::devices::labels_of(&doc, a);
     assert_eq!(all.into_iter().collect::<Vec<_>>(), ["1", "2", "L+", "M"]);
     // A card's supply points are quiet; a CPU's are not.
-    assert!(checks::connection_point_checks(&doc, terminal(&card, "L+")).is_empty());
+    assert!(ecad_electrical::checks::connection_point_checks(&doc, terminal(&card, "L+")).is_empty());
     let cpu = place(&mut h, "plccpu", [100.0, 0.0]);
     let doc = h.doc();
-    assert!(checks::connection_point_checks(&doc, terminal(&cpu, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
+    assert!(ecad_electrical::checks::connection_point_checks(&doc, terminal(&cpu, "L+")).iter().any(|c| c.kind == CheckKind::Unconnected));
 }
 
 /// Brief 034 criterion 11: a symbol's prefix is a registered default (`symbol.<key>.prefix`),
@@ -378,7 +377,7 @@ fn save_close_and_reopen_keep_the_library_devices() {
     let doc = h2.doc();
     assert_eq!(doc, live, "devices, labels, ratings and embedded definitions");
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()));
-    let all: std::collections::BTreeSet<String> = ecad_engine::devices::labels_of(&doc, k);
+    let all: std::collections::BTreeSet<String> = ecad_electrical::devices::labels_of(&doc, k);
     assert_eq!(all.into_iter().collect::<Vec<_>>(), ["11", "12", "14", "23", "24", "A1", "A2"]);
     assert_eq!(doc.devices[&f].value("rating.3").as_deref(), Some("2 A"));
     assert_eq!(doc.devices[&q].value("rating").as_deref(), Some("curve C, 13 A, 30 mA"));

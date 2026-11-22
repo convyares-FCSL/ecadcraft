@@ -264,8 +264,8 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
 
 impl crate::App {
     /// Act on a rating row's fix (design 057 §7).
-    pub(crate) fn rating_fix(&mut self, f: ecad_engine::checks::Fix) {
-        use ecad_engine::checks::Fix;
+    pub(crate) fn rating_fix(&mut self, f: ecad_electrical::checks::Fix) {
+        use ecad_electrical::checks::Fix;
         let words = |s: RatedSubject| subject_key(s);
         match f {
             Fix::ShowRating(s) => self.show_rating(s),

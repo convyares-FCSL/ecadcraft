@@ -91,8 +91,8 @@ pub fn bars(code: &str) -> Vec<ecad_widgets::tokens::Color> {
 impl crate::App {
     /// An open core's fix (brief 057, owner): `0` ticks it Not used (one `setprop`); `1` goes to
     /// the cable (an open core has no wire of its own).
-    pub(crate) fn core_fix(&mut self, f: ecad_engine::checks::Fix, k: usize) {
-        use ecad_engine::checks::{Check, Fix, Kind, Object};
+    pub(crate) fn core_fix(&mut self, f: ecad_electrical::checks::Fix, k: usize) {
+        use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Object};
         let Fix::CoreOpen(cable, i) = f else { return };
         let Some(p) = self.project.clone() else { return };
         let read = p.read(&mut self.cad.session, |p, _| {

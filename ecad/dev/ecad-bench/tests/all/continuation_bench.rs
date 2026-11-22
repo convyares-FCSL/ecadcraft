@@ -3,15 +3,14 @@
 //! is not changed. Debug runs (the fast tests) use smaller counts and check only that the work is
 //! scoped; `cargo test --release -p ecad-bench --test all continuation_bench -- --nocapture` prints the rows.
 //!
-//! The per-commit rows time the continuation work a commit does (`continuations::names_named`,
+//! The per-commit rows time the continuation work a commit does (`ecad_electrical::continuations::names_named`,
 //! `shown` before and after, and refreshing the name group), not a whole commit: this crate's
 //! tests run in verify mode, which rebuilds the whole index after every commit.
 
 use std::collections::BTreeSet;
 use std::time::Instant;
 
-use ecad_engine::continuations;
-use ecad_engine::xref::{Places, RefIndex};
+use {ecad_electrical::references::devices::Places, ecad_electrical::references::devices::RefIndex};
 use ecad_model::{Color, Document, IdAllocator, ItemKind, Op, PageId, Placement, Pt, Style};
 
 /// Pages, names of 20 arrows, and the size of the big name.
@@ -68,11 +67,11 @@ fn pages(n: usize) -> Document {
 
 /// Add an arrow named `name` at `at` on `page` (with a caption when given).
 fn arrow(doc: &mut Document, ids: &mut IdAllocator, page: PageId, at: Pt, name: &str, caption: Option<&str>) {
-    let aid = ecad_engine::wires::continuation_aid(name, caption).unwrap();
+    let aid = ecad_electrical::wires::continuation_aid(name, caption).unwrap();
     let style = Style { layer: ecad_model::LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let starter = ecad_engine::wires::continuation_starter();
-    let pl = Placement { origin: at, rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
-    let t = ecad_engine::wires::plan_tagless(doc, ids, page, style, starter, pl, aid).unwrap();
+    let starter = ecad_electrical::wires::continuation_starter();
+    let pl = Placement { origin: at, rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 };
+    let t = ecad_electrical::wires::plan_tagless(doc, ids, page, style, starter, pl, aid).unwrap();
     for op in &t.ops {
         op.apply(doc).unwrap();
     }
@@ -95,13 +94,13 @@ fn move_first(doc: &Document, name: &str, dx: f64) -> Vec<Op> {
 /// and the groups refreshed. Returns the pages whose parts changed.
 /// `after_doc` is `doc` with `ops` applied (made outside the timing: a commit does not clone).
 fn commit_work(doc: &Document, after_doc: &Document, idx: &mut RefIndex, ops: &[Op]) -> BTreeSet<PageId> {
-    let mut names = continuations::names_named(doc, ops);
+    let mut names = ecad_electrical::continuations::names_named(doc, ops);
     let mut groups = RefIndex::groups_named(doc, ops);
-    let before = continuations::shown(doc, &mut Places::new(doc), &names);
-    names.extend(continuations::names_named(after_doc, ops));
+    let before = ecad_engine::continuations::draw::shown(doc, &mut Places::new(doc), &names);
+    names.extend(ecad_electrical::continuations::names_named(after_doc, ops));
     groups.extend(RefIndex::groups_named(after_doc, ops));
     idx.refresh(after_doc, &groups);
-    let after = continuations::shown(after_doc, &mut Places::new(after_doc), &names);
+    let after = ecad_engine::continuations::draw::shown(after_doc, &mut Places::new(after_doc), &names);
     before.keys().chain(after.keys()).filter(|p| before.get(*p) != after.get(*p)).copied().collect()
 }
 
@@ -140,9 +139,9 @@ fn bench_049_continuation_rows() {
     }
     let build_with = time(runs, || drop(RefIndex::build(&doc)));
     let mut idx = RefIndex::build(&doc);
-    let project_page = time(runs, || drop(continuations::parts_on_page(&doc, &mut Places::new(&doc), shown_page)));
-    let page_parts = continuations::parts_on_page(&doc, &mut Places::new(&doc), shown_page);
-    let all_parts = time(runs, || drop(ecad_engine::xref::parts_on_page(&doc, shown_page)));
+    let project_page = time(runs, || drop(ecad_engine::continuations::draw::parts_on_page(&doc, &mut Places::new(&doc), shown_page)));
+    let page_parts = ecad_engine::continuations::draw::parts_on_page(&doc, &mut Places::new(&doc), shown_page);
+    let all_parts = time(runs, || drop(ecad_engine::references::draw::devices::parts_on_page(&doc, shown_page)));
 
     // Move one arrow of a 20-arrow name.
     let ops = move_first(&doc, "N3", 5.0);
@@ -158,7 +157,7 @@ fn bench_049_continuation_rows() {
     let rename = vec![Op::ModifyAid {
         id: c,
         before: doc.aids[&c].clone(),
-        after: ecad_engine::wires::continuation_aid("N4", doc.aids[&c].continuation_caption().map(|t| t.as_str())).unwrap(),
+        after: ecad_electrical::wires::continuation_aid("N4", doc.aids[&c].continuation_caption().map(|t| t.as_str())).unwrap(),
     }];
     let after = applied(&doc, &rename);
     let rename20 = time_with(runs, || idx.clone(), |mut i| drop(commit_work(&doc, &after, &mut i, &rename)));

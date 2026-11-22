@@ -18,7 +18,7 @@ pub struct PageView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageRow {
     pub id: PageId,
-    /// The number the page is shown with ([`crate::references::page_number`]).
+    /// The number the page is shown with ([`ecad_electrical::references::cables::page_number`]).
     pub number: String,
     pub title: String,
     /// Its projection failed (PROJ-02).

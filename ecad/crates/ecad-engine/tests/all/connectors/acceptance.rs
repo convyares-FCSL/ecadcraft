@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 
 use ecad_engine::Persistence;
-use ecad_engine::outputs::{Group, kept::ReportModels};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use ecad_model::{Author, DefinitionId, DeviceId, Document, Op, PageId, Pt, RepresentationId, Subject, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
@@ -62,7 +62,7 @@ fn side_labels(d: &Document, c: DeviceId, side: &str) -> Vec<String> {
 }
 
 fn tag(d: &Document, c: DeviceId) -> String {
-    ecad_engine::devices::tag_words(d, c)
+    ecad_electrical::devices::tag_words(d, c)
 }
 
 fn name(h: &mut H, t: ConnectionPointId) -> String {
@@ -150,7 +150,7 @@ fn rows_have(h: &mut H, kind: &str, fix: bool) {
     let mine: Vec<_> = rows.iter().filter(|c| c.kind.name() == kind).collect();
     assert!(!mine.is_empty(), "no {kind} row");
     for c in mine {
-        assert!(c.object != ecad_engine::checks::Object::None, "{kind} row without a go-to: {c:?}");
+        assert!(c.object != ecad_electrical::checks::Object::None, "{kind} row without a go-to: {c:?}");
         if fix {
             assert!(c.fix.is_some(), "{kind} row without its fix: {c:?}");
         }
@@ -160,7 +160,7 @@ fn rows_have(h: &mut H, kind: &str, fix: bool) {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "kept BOM differs from a rebuild");
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part), "kept BOM by part differs from a rebuild");
@@ -1074,7 +1074,7 @@ fn r08_a_half_location_is_its_override_else_the_connector() {
     let d = c.h.doc();
     let proposed = |side: ecad_electrical::symbols::Side| {
         let r = ecad_electrical::symbols::reps::goto(&d, x, Some(side)).unwrap();
-        ecad_engine::locations::rep_context(&d, &d.representations[&r], &mut ecad_engine::locations::BoxCache::default()).value
+        ecad_electrical::locations::rep_context(&d, &d.representations[&r], &mut ecad_electrical::locations::BoxCache::default()).value
     };
     assert_eq!(proposed(ecad_electrical::symbols::Side::Socket).as_deref(), Some("+FIELD"), "the box on 101 proposes");
     assert_eq!(proposed(ecad_electrical::symbols::Side::Plug).as_deref(), Some("+CP1"), "the box on 102 proposes");
@@ -1109,7 +1109,7 @@ fn r09_cross_references_between_the_halves() {
     let from_s = refs.iter().find(|r| s(&r["source"]) == srep.hex()).unwrap_or_else(|| panic!("socket half reference: {v}"));
     assert_eq!(s(&from_s["target_page"]), n102, "{from_s}");
     // 025's style, as the project writes it (design 044 §7: `/102.C4`, or `102-C-4` per project).
-    let want = ecad_engine::xref::Places::new(&d).text(c.p102, ecad_engine::xref::anchor(&d, &d.representations[&prep]));
+    let want = ecad_electrical::references::devices::Places::new(&d).text(c.p102, ecad_electrical::references::devices::anchor(&d, &d.representations[&prep]));
     assert_eq!(s(&from_s["text"]), want, "025's style: {from_s}");
     let from_p = refs.iter().find(|r| s(&r["source"]) == prep.hex()).unwrap_or_else(|| panic!("plug half reference: {v}"));
     assert_eq!(s(&from_p["target_page"]), n101, "{from_p}");
@@ -1119,7 +1119,7 @@ fn r09_cross_references_between_the_halves() {
     assert_eq!(s(&g["target"]), prep.hex(), "{g}");
     // Hover (025 §5.1).
     let d = c.h.doc();
-    let lines = ecad_engine::devices::hover_lines(&d, x, srep).join("\n");
+    let lines = ecad_engine::devices::draw::hover_lines(&d, x, srep).join("\n");
     assert!(lines.contains("-X01.S") && lines.contains("mates with -X01.P") && lines.contains(&n102), "{lines}");
     // The reference updates when the plug moves page (undo-based: delete it, place it on 100).
     let pitem = d.representations[&prep].items[0];
@@ -1129,7 +1129,7 @@ fn r09_cross_references_between_the_halves() {
     let v = c.h.run("xrefs", json!({"component": x.hex()})).unwrap();
     assert!(v["references"].as_array().is_none_or(Vec::is_empty), "a lone half has no references: {v}");
     let d = c.h.doc();
-    let lines = ecad_engine::devices::hover_lines(&d, x, srep).join("\n");
+    let lines = ecad_engine::devices::draw::hover_lines(&d, x, srep).join("\n");
     assert!(lines.contains("-X01.S has no plug half."), "{lines}");
     c.h.activate(c.p100);
     c.h.run("connector", json!({"device": x.hex(), "halves": "plug", "layout": "row", "at": [250, 100], "page": c.p100.hex()})).unwrap();
@@ -1138,7 +1138,7 @@ fn r09_cross_references_between_the_halves() {
     let refs = v["references"].as_array().cloned().unwrap_or_default();
     assert!(refs.iter().any(|r| s(&r["source"]) == srep.hex() && s(&r["target_page"]) == n100), "{v}");
     // The kept index equals a rebuild (verify mode does this on every commit too).
-    let (kept, built) = c.h.cfg(|p| (p.xref().clone(), ecad_engine::xref::RefIndex::build(p.ledger.document())));
+    let (kept, built) = c.h.cfg(|p| (p.xref().clone(), ecad_electrical::references::devices::RefIndex::build(p.ledger.document())));
     assert!(kept == built, "kept reference index differs from a rebuild");
 }
 
@@ -1458,7 +1458,7 @@ fn r12_hand_made_connectors_never_panic() {
     let (mut h, _) = reload(c.h, "hostile", 0x7044_00c3);
     read_everything(&mut h);
     let d = h.doc();
-    let _ = ecad_engine::devices::hover_lines(
+    let _ = ecad_engine::devices::draw::hover_lines(
         &d,
         x,
         reps_on(&d, x, d.page_order[1]).first().copied().unwrap_or_else(|| d.representations.keys().next().copied().unwrap()),

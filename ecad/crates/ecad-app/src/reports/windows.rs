@@ -92,7 +92,7 @@ impl App {
         let Some(r) = &mut self.reports else { return };
         let t = r.shown_table();
         let flagged = t.flagged();
-        let text = ecad_engine::outputs::csv(&t, true);
+        let text = ecad_electrical::reports::csv(&t, true);
         match path.and_then(|path| ecad_engine::export::printbook::write_file(&path, text.as_bytes()).map(|()| path)) {
             Ok(path) => {
                 let marked = if flagged == 1 { "1 cell marked ?".to_string() } else { format!("{flagged} cells marked ?") };

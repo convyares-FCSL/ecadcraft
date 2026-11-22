@@ -238,7 +238,7 @@ impl Command for AgentaccessParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::agent::*;
+    use super::*;
 
     #[test]
     fn the_file_round_trips_and_anything_unusable_reads_as_off() {

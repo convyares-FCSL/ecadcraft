@@ -36,7 +36,7 @@ fn cpu_and_head_module_cards_are_stations() {
     let doc = h.doc();
     assert!(station(&doc, cpu).head.is_cpu());
     assert_eq!(station(&doc, im).head, RackHead::Coupler { protocol: Protocol::Profinet });
-    assert_eq!(ecad_engine::plc::rack::racks(&doc).len(), 2);
+    assert_eq!(ecad_electrical::plc::rack::racks(&doc).len(), 2);
 }
 
 /// A19: each of today's PLC starters gives its module function (design 072 §3 mapping), with no
@@ -184,14 +184,14 @@ fn a_card_type_change_keeps_channel_data() {
 /// lists read; a station's modules and I/O count come from the index.
 #[test]
 fn address_blocks_and_station_reads_are_methods() {
-    use ecad_engine::plc::address::{Addressed, Station};
+    use ecad_electrical::plc::address::{Addressed, Station};
     let mut h = H::new(0x72_c8);
     let cpu = placed(&mut h, "plccpu", [40.0, 40.0]);
     let di = placed(&mut h, "plcdi", [140.0, 40.0]);
     let dq = placed(&mut h, "plcdq", [180.0, 40.0]);
     let ai = placed(&mut h, "plcai", [220.0, 40.0]);
     let doc = h.doc();
-    let kept = ecad_engine::outputs::kept::ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+    let kept = ecad_electrical::reports::kept::ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
     for c in [di, dq, ai] {
         assert_eq!(module(&doc, c).address_block(&doc, c), kept.plc.blocks.get(&c).copied(), "{c:?}");
     }

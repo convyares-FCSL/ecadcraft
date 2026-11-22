@@ -1,5 +1,5 @@
 //! `titleblockimport` (brief 055, design 055 §9): a new frame from a DXF, or a logo into a title
-//! block's item. It reads the DXF with CADCraft's reader ([`crate::title_block::dxf`]), so it is the
+//! block's item. It reads the DXF with CADCraft's reader ([`crate::title_blocks::dxf`]), so it is the
 //! engine's; the other title block commands are generic ([`ecad_electrical::title_blocks::commands`]).
 
 use cadcraft_engine::{CommandSpec, Session};
@@ -35,7 +35,7 @@ pub(crate) fn target(doc: &Document, params: &Value) -> Result<StyleRef, CmdErro
 /// `titleblockimport {path | dxf, sheet?, name?}` makes a new frame from a DXF drawing;
 /// `{id | name, item, path | dxf}` puts a DXF drawing into a logo item. One transaction.
 ///
-/// The import itself is the DXF reader's ([`crate::title_block::dxf::run_import`], lane 066d's
+/// The import itself is the DXF reader's ([`crate::title_blocks::dxf::run_import`], lane 066d's
 /// drawing code), which still takes JSON: [`Command::run`] writes the read parameters back
 /// (`serde_json::to_value`) and calls it, so the input is checked strictly here. Lane 066d may take
 /// this struct directly later.
@@ -59,12 +59,11 @@ pub(crate) struct TitleblockimportParams {
     id: Option<String>,
     /// A logo: the logo item's number (from 0).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    item: Option<u64>,
-}
+    item: Option<u64>}
 
 impl Command for TitleblockimportParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let params = serde_json::to_value(&self).map_err(|e| err(e.to_string()))?;
-        crate::title_block::dxf::run_import(s, &params)
+        crate::title_blocks::dxf::run_import(s, &params)
     }
 }

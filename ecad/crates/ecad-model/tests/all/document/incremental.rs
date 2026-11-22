@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use ecad_model::{
     Author, Cable, Color, Core, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit,
     ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer,
-    StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, ConnectionPointDef, Touched, Wire,
+    StyleRecord, StyleRef, Subject, SymbolInstance, ConnectionPoint, ConnectionPointDef, Touched, Wire,
 };
 
 /// Every `Op` variant's name, read from `Op` itself (brief 060): serde's derived `Deserialize`
@@ -75,7 +75,7 @@ pub(crate) struct Base {
     comp: ecad_model::DeviceId,
     comp_v: Device,
     pub(crate) term: ecad_model::ConnectionPointId,
-    pub(crate) term_v: Terminal,
+    pub(crate) term_v: ConnectionPoint,
     term3: ecad_model::ConnectionPointId,
     sym: ecad_model::ItemId,
     item: ecad_model::ItemId,
@@ -133,10 +133,10 @@ pub(crate) fn base() -> Base {
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
     let term = ids.fresh();
-    let term_v = Terminal { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
+    let term_v = ConnectionPoint { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
     let (term2, term3, term4) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let point = |label: &str| Terminal { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |label: &str| ConnectionPoint { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     let sym = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item = ids.fresh();
@@ -291,7 +291,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
             before: b.comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..b.comp_v.clone() },
         },
-        Op::AddConnectionPoint { id: b.ids.fresh(), terminal: Terminal { owner: b.comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: b.ids.fresh(), terminal: ConnectionPoint { owner: b.comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() },
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_wire_v.clone(), after: rep_after },
@@ -556,7 +556,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
     let wire = b.ids.fresh();
     let ops = vec![
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddConnectionPoint { id: term, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: term, terminal: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::CreateWire { id: wire, wire: Wire::new(b.ids.fresh(), b.ids.fresh(), term, b.term3) },
         Op::ModifyCable {
             id: b.cable,
@@ -917,13 +917,13 @@ impl Gen {
                 let component = if self.rng.chance(85) { self.rng.pick_key(&doc.devices).unwrap_or_else(|| self.comp()) } else { self.comp() };
                 Op::AddConnectionPoint {
                     id: fresh_in!(self, terms),
-                    terminal: Terminal { owner: component.into(), label: None, key: None, accepts: Default::default() },
+                    terminal: ConnectionPoint { owner: component.into(), label: None, key: None, accepts: Default::default() },
                 }
             }
             18 => match self.rng.pick_key(&doc.terminals) {
                 Some(id) => Op::RemoveConnectionPoint {
                     id,
-                    terminal: doc.terminals.get(&id).cloned().unwrap_or(Terminal {
+                    terminal: doc.terminals.get(&id).cloned().unwrap_or(ConnectionPoint {
                         owner: self.comp().into(),
                         label: None,
                         key: None,
@@ -932,7 +932,7 @@ impl Gen {
                 },
                 None => Op::AddConnectionPoint {
                     id: fresh_in!(self, terms),
-                    terminal: Terminal { owner: self.comp().into(), label: None, key: None, accepts: Default::default() },
+                    terminal: ConnectionPoint { owner: self.comp().into(), label: None, key: None, accepts: Default::default() },
                 },
             },
             19..=21 => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },

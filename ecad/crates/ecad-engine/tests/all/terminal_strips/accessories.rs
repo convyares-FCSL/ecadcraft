@@ -2,7 +2,7 @@
 //! strip and the project, the plan, BOM and Checks rows, renumbering, links made and edited with
 //! `jumper`, and the update maps. Driven through the commands' JSON forms.
 
-use ecad_engine::outputs::{Group, kept::ReportModels};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use ecad_model::{DeviceId, ConnectionPointId};
 use serde_json::{Value, json};
 
@@ -71,7 +71,7 @@ impl F {
     }
 
     fn same_as_built(&mut self) {
-        let (kept, built) = self.h.cfg(|p| (p.outputs().clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics)));
+        let (kept, built) = self.h.cfg(|p| (p.outputs().clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics)));
         assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
         assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
         assert_eq!(kept.terminal_table(None), built.terminal_table(None));
@@ -193,8 +193,8 @@ fn checks_rows_have_working_fixes() {
     assert!(v.to_string().contains("-X01: partition after 11, but -X01 has no position 11"), "{v}");
     let fixes = f.h.cfg(|p| {
         let o = p.outputs().clone();
-        let fix = o.checks().into_iter().find(|c| c.kind == ecad_engine::checks::Kind::AccessoryOrphan).and_then(|c| c.fix).unwrap();
-        ecad_engine::outputs::accessory_fix_commands(&o, fix)
+        let fix = o.checks().into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::AccessoryOrphan).and_then(|c| c.fix).unwrap();
+        ecad_electrical::reports::accessory_fix_commands(&o, fix)
     });
     assert_eq!(fixes.len(), 2);
     assert_eq!(fixes[0].0, "Move to end");
@@ -210,8 +210,8 @@ fn checks_rows_have_working_fixes() {
     assert!(v.to_string().contains("-X01: link 3-5 crosses the partition after 4"), "{v}");
     let fixes = f.h.cfg(|p| {
         let o = p.outputs().clone();
-        let fix = o.checks().into_iter().find(|c| c.kind == ecad_engine::checks::Kind::JumperBarAcrossPartition).and_then(|c| c.fix).unwrap();
-        ecad_engine::outputs::accessory_fix_commands(&o, fix)
+        let fix = o.checks().into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::JumperBarAcrossPartition).and_then(|c| c.fix).unwrap();
+        ecad_electrical::reports::accessory_fix_commands(&o, fix)
     });
     assert_eq!(fixes[0].0, "Split link at 4");
     f.jumper(json!({"link": {"strip": f.strip.hex(), "n": 1}, "positions": "3-6"}));

@@ -142,7 +142,7 @@ pub enum Action {
     /// Brief 054: a Checks fix's command line (a page type or folder start fix).
     RunLine(String),
     /// Checks tab (brief 022): show this row's page, centre on it, select it, ring it.
-    GotoCheck(Box<ecad_engine::checks::Check>),
+    GotoCheck(Box<ecad_electrical::checks::Check>),
     /// Checks tab (brief 032): `joinwires {at}` on this page.
     JoinWires(PageId, ecad_model::Pt),
     /// Checks tab: `renumberwires {scope: "unnumbered"}`.
@@ -151,7 +151,7 @@ pub enum Action {
     Finalise,
     /// Checks tab (brief 033): show this row (a table over the title block), then start Move
     /// Mirror Table.
-    MoveTable(Box<ecad_engine::checks::Check>),
+    MoveTable(Box<ecad_electrical::checks::Check>),
     /// Checks tab (brief 033): open this page's number field in the Pages list.
     RenumberPage(PageId),
     /// Devices tab (brief 026): open the Renumber dialog.
@@ -220,19 +220,19 @@ pub enum Action {
     OpenStandards(ecad_model::StyleCatalogue),
     /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
     /// Choose a table, Show the rated wires).
-    RatingFix(ecad_engine::checks::Fix),
+    RatingFix(ecad_electrical::checks::Fix),
     /// Brief 057 (owner): an open core's button `0` (Tick Not used) or `1` (Go to the open end).
-    CoreFix(ecad_engine::checks::Fix, usize),
+    CoreFix(ecad_electrical::checks::Fix, usize),
     /// Brief 059: a cable manager row's button `k` (Assign in the drawing… / Remove, Use the drawing /
     /// Go to, Set gland, Show).
-    CableFix(ecad_engine::checks::Fix, usize),
+    CableFix(ecad_electrical::checks::Fix, usize),
     /// Brief 055: **Edit block** (Library ▸ Title blocks on the page's frame, item selected) and
     /// **Clear the page's sheet** (`pageprops {page, sheet: null}`).
     EditTitleBlock(PageId, u16),
     ClearPageSheet(PageId),
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
     /// Split link / Remove partition, Drop missing positions / Delete link).
-    AccessoryFix(ecad_engine::checks::Fix, usize),
+    AccessoryFix(ecad_electrical::checks::Fix, usize),
     /// Brief 044: Place ▸ Connector on this connector's lacking side, pin by pin.
     PlaceMates(ecad_model::DeviceId, ecad_electrical::symbols::Side),
     /// Brief 041: a page row's right-click opens its wheel here (screen point).

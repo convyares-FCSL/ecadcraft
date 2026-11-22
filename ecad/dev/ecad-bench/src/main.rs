@@ -7,7 +7,7 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     // Verify mode (brief 013): the model reads no environment, so the program passes the switch in.
-    ecad_model::ledger::set_verify_invariants(ecad_model::ledger::verify_switch_on(std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref()));
+    ecad_model::document::ledger::set_verify_invariants(ecad_model::document::ledger::verify_switch_on(std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref()));
     let args: Vec<String> = std::env::args().skip(1).collect();
     // The version 2 crash child (brief 021): save one edit and exit without closing the file.
     if let [flag, file] = args.as_slice()

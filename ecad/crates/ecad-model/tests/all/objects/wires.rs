@@ -150,9 +150,9 @@ fn modify_wire_changes_values_undoes_and_never_moves_the_ends() {
 
 /// A page with a device of two connection points: the page, and the two points.
 fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageId, ConnectionPointId, ConnectionPointId) {
-    use ecad_model::{Device, DeviceId, Page, PageId, Terminal};
+    use ecad_model::{Device, DeviceId, Page, PageId, ConnectionPoint};
     let (p, d, a, b): (PageId, DeviceId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let t = |label: &str| Terminal { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts: Default::default() };
+    let t = |label: &str| ConnectionPoint { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts: Default::default() };
     l.commit(
         Author::User,
         "setup",
@@ -548,8 +548,8 @@ fn number_by_switches_every_shown_number_between_net_and_conductor_in_one_edit()
 
 #[test]
 fn accepts_is_one_to_sixty_four_and_anything_else_is_a_read_error() {
-    use ecad_model::{Accepts, Terminal};
-    let read = |json: &str| serde_json::from_str::<Terminal>(json).map(|t| t.accepts.get()).map_err(|e| e.to_string());
+    use ecad_model::{Accepts, ConnectionPoint};
+    let read = |json: &str| serde_json::from_str::<ConnectionPoint>(json).map(|t| t.accepts.get()).map_err(|e| e.to_string());
     let base = r#"{"owner":{"device":"00000000000000000000000000000001"},"label":null,"key":null"#;
     assert_eq!(read(&format!("{base}}}")), Ok(2), "left out: two");
     assert_eq!(read(&format!(r#"{base},"accepts":6}}"#)), Ok(6));
@@ -559,15 +559,15 @@ fn accepts_is_one_to_sixty_four_and_anything_else_is_a_read_error() {
         assert!(e.is_err(), "{hostile} must not read: {e:?}");
     }
     assert!(read(&format!(r#"{base},"accepts":0}}"#)).unwrap_err().contains("1 to 64"));
-    let t = Terminal { owner: ecad_model::DeviceId(1).into(), label: None, key: None, accepts: Accepts::TWO };
+    let t = ConnectionPoint { owner: ecad_model::DeviceId(1).into(), label: None, key: None, accepts: Accepts::TWO };
     assert!(!serde_json::to_string(&t).unwrap().contains("accepts"), "two is left out");
 }
 
 /// A page with a device of two points, the first accepting `n` conductors.
 fn page_with_bar(l: &mut Ledger, ids: &mut IdAllocator, n: u64) -> (ecad_model::PageId, ConnectionPointId, ConnectionPointId) {
-    use ecad_model::{Accepts, Device, DeviceId, Page, PageId, Terminal};
+    use ecad_model::{Accepts, Device, DeviceId, Page, PageId, ConnectionPoint};
     let (p, d, a, b): (PageId, DeviceId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let t = |label: &str, accepts| Terminal { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts };
+    let t = |label: &str, accepts| ConnectionPoint { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts };
     l.commit(
         Author::User,
         "setup",

@@ -5,7 +5,7 @@
 //! the command and its parameters, and moves the view.
 
 use ecad_electrical::cables::{self, Side};
-use ecad_engine::checks::{Check, Fix, Kind, Object};
+use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Object};
 use ecad_electrical::locations::designations::Aspect;
 use serde_json::json;
 

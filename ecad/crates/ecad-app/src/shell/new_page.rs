@@ -84,7 +84,7 @@ fn kind_rows(holds: Holds, doc: &ecad_model::Document, book: &Book) -> Vec<KindR
         let in_book = |style: Option<&str>| -> Vec<String> {
             book.order
                 .iter()
-                .filter(|p| ecad_engine::generated::kind_of(doc, **p) == Some(*k))
+                .filter(|p| ecad_electrical::pages::generated::kind_of(doc, **p) == Some(*k))
                 .filter(|p| {
                     *k != GenKind::Terminals
                         || (ecad_engine::terminal_strips::draw::style_of(doc, **p) == ecad_engine::terminal_strips::draw::Style::Graphic) == style.is_some()

@@ -240,15 +240,15 @@ impl App {
                 let items = doc.items.values().filter(|it| it.page == *page).count();
                 out.push(format!("  {:>3}  {title}  ({items} items)  {}", i + 1, page.hex()));
             }
-            let devices = ecad_engine::devices::devices(doc, None);
+            let devices = ecad_electrical::devices::devices(doc, None);
             out.push(String::new());
             out.push(format!("Devices ({}):", devices.len()));
             for c in &devices {
                 out.push(format!(
                     "  {:<8} {}  ({})  {}",
-                    ecad_engine::devices::tag_words(doc, *c),
-                    ecad_engine::devices::description(doc, *c),
-                    ecad_engine::devices::pages_words(doc, *c),
+                    ecad_electrical::devices::tag_words(doc, *c),
+                    ecad_electrical::devices::description(doc, *c),
+                    ecad_electrical::devices::pages_words(doc, *c),
                     c.hex()
                 ));
             }
@@ -398,7 +398,7 @@ impl App {
             A::RenumberFolder(f) => self.open_renumber(false, false, Some(f)),
             A::UseContext(c, a) => {
                 let code = self.project.clone().and_then(|p| {
-                    p.read(&mut self.cad.session, |p, _| ecad_engine::locations::shared_context(p.ledger.document(), c, a)).ok().flatten()
+                    p.read(&mut self.cad.session, |p, _| ecad_electrical::locations::shared_context(p.ledger.document(), c, a)).ok().flatten()
                 });
                 if let Some(code) = code {
                     let _ = self.run_line(&format!("setlocation {}", json!({"component": c.hex(), "aspect": a.word(), "value": code})));
@@ -458,7 +458,7 @@ impl App {
             // halves, draw), as a person answers them.
             A::PlaceMates(c, side) => {
                 let tag = self.project.clone().and_then(|p| {
-                    p.read(&mut self.cad.session, |p, _| ecad_engine::devices::tag_of(p.ledger.document(), c).map(str::to_string)).ok().flatten()
+                    p.read(&mut self.cad.session, |p, _| ecad_electrical::devices::tag_of(p.ledger.document(), c).map(str::to_string)).ok().flatten()
                 });
                 if let Some(tag) = tag {
                     let half = if side == ecad_electrical::symbols::Side::Socket { "Socket" } else { "Plug" };
@@ -473,7 +473,7 @@ impl App {
                 let cmd: Option<String> = self.project.clone().and_then(|p| {
                     p.configure(&mut self.cad.session, |p| {
                         let o = p.outputs();
-                        ecad_engine::outputs::accessory_fix_commands(o, fix).into_iter().nth(i).map(|(_, c, v)| format!("{c} {v}"))
+                        ecad_electrical::reports::accessory_fix_commands(o, fix).into_iter().nth(i).map(|(_, c, v)| format!("{c} {v}"))
                     })
                     .ok()
                     .flatten()
@@ -731,7 +731,7 @@ impl App {
             (
                 ecad_electrical::numbering::commands::choices(doc),
                 objects,
-                ecad_engine::devices::padding(doc),
+                ecad_electrical::devices::padding(doc),
                 u8::try_from(doc.settings.wiring.digits()).unwrap_or(ecad_model::connectivity::wiring::MAX_DIGITS),
             )
         });
@@ -800,14 +800,14 @@ impl App {
         let symbol = *symbols.first().ok_or("that device has no symbols")?;
         let p = self.project.clone().ok_or("no ECAD project is open")?;
         let page = p
-            .read(&mut self.cad.session, |p, _| ecad_engine::device_list::symbol_target(p, symbol).map(|t| t.0))?
+            .read(&mut self.cad.session, |p, _| ecad_engine::reports::device_list::symbol_target(p, symbol).map(|t| t.0))?
             .ok_or("that symbol no longer exists")?;
         self.show_page(page)?;
         let (_, at, handles) = p
             .read(&mut self.cad.session, |p, _| {
-                let (pg, at, mut handles) = ecad_engine::device_list::symbol_target(p, symbol)?;
+                let (pg, at, mut handles) = ecad_engine::reports::device_list::symbol_target(p, symbol)?;
                 for rep in symbols.iter().skip(1) {
-                    if let Some((other, _, more)) = ecad_engine::device_list::symbol_target(p, *rep)
+                    if let Some((other, _, more)) = ecad_engine::reports::device_list::symbol_target(p, *rep)
                         && other == pg
                     {
                         handles.extend(more);
@@ -833,7 +833,7 @@ impl App {
     ///
     /// # Errors
     /// No project, a row with no page, or a page that cannot be shown (echoed).
-    pub fn goto_check(&mut self, check: &ecad_engine::checks::Check) -> Result<(), String> {
+    pub fn goto_check(&mut self, check: &ecad_electrical::checks::Check) -> Result<(), String> {
         let p = self.project.clone().ok_or("no ECAD project is open")?;
         let page = check.page.ok_or("that row is not on a page")?;
         self.show_page(page)?;

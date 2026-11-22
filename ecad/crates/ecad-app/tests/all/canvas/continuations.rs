@@ -69,11 +69,11 @@ fn continuation_arrows_draw_their_other_ends_and_captions() {
         arrows.push(v["component"].as_str().unwrap().to_string());
     }
     let d = doc(&mut h);
-    let on_first = ecad_engine::xref::parts_on_page(&d, first);
+    let on_first = ecad_engine::references::draw::devices::parts_on_page(&d, first);
     assert_eq!(on_first.len(), 3, "one other-end text per arrow");
     exec(&mut h, "contcaption", json!({"continuations": arrows, "caption": "TO CONTROL SUPPLY"}));
     let d = doc(&mut h);
-    assert_eq!(ecad_engine::xref::parts_on_page(&d, first).iter().filter(|p| p.index == 1).count(), 1, "one bracket");
+    assert_eq!(ecad_engine::references::draw::devices::parts_on_page(&d, first).iter().filter(|p| p.index == 1).count(), 1, "one bracket");
     let Some(out) = shots() else { return };
     let _ = std::fs::create_dir_all(&out);
     view(&mut h, 80.0, 105.0, 135.0, 160.0);
@@ -92,7 +92,7 @@ fn continuation_arrows_draw_their_other_ends_and_captions() {
     exec(&mut h, "wire", json!({"points": [[155.0, 200.0], [155.0, 150.0]]}));
     exec(&mut h, "place", json!({"symbol": "continuation", "at": [155.0, 150.0], "name": "L1", "caption": "TO CONTROL SUPPLY"}));
     let d = doc(&mut h);
-    assert_eq!(ecad_engine::xref::parts_on_page(&d, first).iter().filter(|p| p.index == 1).count(), 2, "two brackets");
+    assert_eq!(ecad_engine::references::draw::devices::parts_on_page(&d, first).iter().filter(|p| p.index == 1).count(), 2, "two brackets");
     view(&mut h, 80.0, 105.0, 175.0, 160.0);
     let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("049-split.png"));
 }

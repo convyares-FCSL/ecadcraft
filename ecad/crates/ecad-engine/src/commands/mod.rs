@@ -26,8 +26,15 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
 pub use ecad_electrical::terminal_strips::core_label;
-use ecad_electrical::commands::{
-    accessory, bom, cable, connect, continuation, default, designation, device_link, level, location, numbering, prop, rating, style,
+use ecad_electrical::circuits::commands as rating;
+use ecad_electrical::continuations::commands as continuation;
+use ecad_electrical::numbering::commands as numbering;
+use ecad_electrical::properties::commands as prop;
+use ecad_electrical::{
+    cables::commands::cables as cable, devices::commands::device_links as device_link,
+    locations::commands::designations as designation, locations::commands::locations as location, reports::commands::bom,
+    styles::commands::defaults as default, styles::commands::styles as style, terminal_strips::commands::accessories as accessory,
+    terminal_strips::commands::levels as level, wires::commands::connect,
 };
 
 /// The commands this crate adds. Lanes in flight register theirs in [`LANES`], not here;
@@ -55,108 +62,108 @@ pub fn specs() -> Vec<CommandSpec> {
     v
 }
 
-/// The generic commands (run by [`generic::run`]) not registered in [`base_specs`].
+/// The generic commands (run by [`crate::generic::run`]) not registered in [`base_specs`].
 fn generic_specs() -> Vec<CommandSpec> {
     // `linkdevices`, `unlinkdevices` and `userfield` keep CADCraft's undo grouping, as before.
     let drawing_undo = |c: CommandSpec| CommandSpec { undoable: true, ..c };
     vec![
-        generic::spec::<default::SetdefaultParams>(),
-        generic::spec::<designation::DesignationsParams>(),
-        generic::spec::<designation::AddParams>(),
-        generic::spec::<designation::EditParams>(),
-        generic::spec::<designation::MergeParams>(),
-        generic::spec::<designation::RemoveParams>(),
-        generic::spec::<level::TermlabelParams>(),
-        generic::spec::<level::TopositionParams>(),
-        generic::spec::<continuation::ContcaptionParams>().interactive(interact::contcaption),
-        drawing_undo(generic::spec::<device_link::LinkParams>()),
-        drawing_undo(generic::spec::<device_link::UnlinkParams>()),
-        drawing_undo(generic::spec::<device_link::UserFieldParams>()),
-        generic::spec::<location::SetlocationParams>(),
-        generic::spec::<location::SetfunctionParams>(),
-        generic::spec::<location::ConflictsParams>(),
-        generic::spec::<prop::SetpropParams>(),
-        generic::spec::<cable::CablenewParams>(),
-        generic::spec::<cable::CableeditParams>(),
-        generic::spec::<cable::CableremoveParams>(),
-        generic::spec::<style::StylesParams>(),
-        generic::spec::<style::StandardParams>(),
-        generic::spec::<style::SetstyleParams>(),
-        generic::spec::<style::DeletestyleParams>(),
-        generic::spec::<style::PromoteParams>(),
-        generic::spec::<ecad_electrical::title_blocks::commands::TitleblocksParams>(),
-        generic::spec::<ecad_electrical::title_blocks::commands::TitleblockParams>(),
-        generic::spec::<bom::PartlineParams>(),
-        generic::spec::<bom::BomitemParams>().interactive(interact::bomitem),
-        generic::spec::<bom::ArticleParams>(),
-        generic::spec::<accessory::AccessoryParams>().interactive(interact::accessory),
-        generic::spec::<accessory::JumperParams>().interactive(interact::jumper),
-        generic::spec::<rating::RatingParams>(),
-        generic::spec::<rating::RatingtableParams>(),
-        generic::spec::<rating::RatingsParams>(),
-        generic::spec::<numbering::RenumberParams>(),
-        generic::spec::<numbering::FinaliseParams>(),
-        generic::spec::<numbering::NumberingParams>(),
-        generic::spec::<ecad_electrical::pages::commands::page_types::FolderpropsParams>(),
-        generic::spec::<ecad_electrical::pages::commands::page_types::RenumberpagesParams>(),
-        generic::spec::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
-        generic::spec::<ecad_electrical::references::commands::devices::ContactsParams>(),
-        generic::spec::<ecad_electrical::references::commands::devices::MirrormoveParams>().interactive(interact::mirrormove),
-        generic::spec::<ecad_electrical::references::commands::cables::CablerefParams>().interactive(interact::cableref),
-        generic::spec::<ecad_electrical::references::commands::cables::CablecontinueParams>().interactive(interact::cablecontinue),
-        generic::spec::<ecad_electrical::references::commands::cables::CablerefsParams>(),
+        crate::generic::spec::<default::SetdefaultParams>(),
+        crate::generic::spec::<designation::DesignationsParams>(),
+        crate::generic::spec::<designation::AddParams>(),
+        crate::generic::spec::<designation::EditParams>(),
+        crate::generic::spec::<designation::MergeParams>(),
+        crate::generic::spec::<designation::RemoveParams>(),
+        crate::generic::spec::<level::TermlabelParams>(),
+        crate::generic::spec::<level::TopositionParams>(),
+        crate::generic::spec::<continuation::ContcaptionParams>().interactive(interact::contcaption),
+        drawing_undo(crate::generic::spec::<device_link::LinkParams>()),
+        drawing_undo(crate::generic::spec::<device_link::UnlinkParams>()),
+        drawing_undo(crate::generic::spec::<device_link::UserFieldParams>()),
+        crate::generic::spec::<location::SetlocationParams>(),
+        crate::generic::spec::<location::SetfunctionParams>(),
+        crate::generic::spec::<location::ConflictsParams>(),
+        crate::generic::spec::<prop::SetpropParams>(),
+        crate::generic::spec::<cable::CablenewParams>(),
+        crate::generic::spec::<cable::CableeditParams>(),
+        crate::generic::spec::<cable::CableremoveParams>(),
+        crate::generic::spec::<style::StylesParams>(),
+        crate::generic::spec::<style::StandardParams>(),
+        crate::generic::spec::<style::SetstyleParams>(),
+        crate::generic::spec::<style::DeletestyleParams>(),
+        crate::generic::spec::<style::PromoteParams>(),
+        crate::generic::spec::<ecad_electrical::title_blocks::commands::TitleblocksParams>(),
+        crate::generic::spec::<ecad_electrical::title_blocks::commands::TitleblockParams>(),
+        crate::generic::spec::<bom::PartlineParams>(),
+        crate::generic::spec::<bom::BomitemParams>().interactive(interact::bomitem),
+        crate::generic::spec::<bom::ArticleParams>(),
+        crate::generic::spec::<accessory::AccessoryParams>().interactive(interact::accessory),
+        crate::generic::spec::<accessory::JumperParams>().interactive(interact::jumper),
+        crate::generic::spec::<rating::RatingParams>(),
+        crate::generic::spec::<rating::RatingtableParams>(),
+        crate::generic::spec::<rating::RatingsParams>(),
+        crate::generic::spec::<numbering::RenumberParams>(),
+        crate::generic::spec::<numbering::FinaliseParams>(),
+        crate::generic::spec::<numbering::NumberingParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::page_types::FolderpropsParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::page_types::RenumberpagesParams>(),
+        crate::generic::spec::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
+        crate::generic::spec::<ecad_electrical::references::commands::devices::ContactsParams>(),
+        crate::generic::spec::<ecad_electrical::references::commands::devices::MirrormoveParams>().interactive(interact::mirrormove),
+        crate::generic::spec::<ecad_electrical::references::commands::cables::CablerefParams>().interactive(interact::cableref),
+        crate::generic::spec::<ecad_electrical::references::commands::cables::CablecontinueParams>().interactive(interact::cablecontinue),
+        crate::generic::spec::<ecad_electrical::references::commands::cables::CablerefsParams>(),
     ]
 }
 
 /// The generic commands with their schemas.
 const GENERIC_TYPED: &[input::Typed] = &[
-    generic::typed::<connect::ConnectParams>(),
-    generic::typed::<connect::DisconnectParams>(),
-    generic::typed::<default::SetdefaultParams>(),
-    generic::typed::<designation::DesignationsParams>(),
-    generic::typed::<designation::AddParams>(),
-    generic::typed::<designation::EditParams>(),
-    generic::typed::<designation::MergeParams>(),
-    generic::typed::<designation::RemoveParams>(),
-    generic::typed::<level::TermlabelParams>(),
-    generic::typed::<level::TopositionParams>(),
-    generic::typed::<continuation::ContcaptionParams>(),
-    generic::typed::<device_link::LinkParams>(),
-    generic::typed::<device_link::UnlinkParams>(),
-    generic::typed::<device_link::UserFieldParams>(),
-    generic::typed::<location::SetlocationParams>(),
-    generic::typed::<location::SetfunctionParams>(),
-    generic::typed::<location::ConflictsParams>(),
-    generic::typed::<prop::SetpropParams>(),
-    generic::typed::<cable::CablenewParams>(),
-    generic::typed::<cable::CableeditParams>(),
-    generic::typed::<cable::CableremoveParams>(),
-    generic::typed::<style::StylesParams>(),
-    generic::typed::<style::StandardParams>(),
-    generic::typed::<style::SetstyleParams>(),
-    generic::typed::<style::DeletestyleParams>(),
-    generic::typed::<style::PromoteParams>(),
-    generic::typed::<ecad_electrical::title_blocks::commands::TitleblocksParams>(),
-    generic::typed::<ecad_electrical::title_blocks::commands::TitleblockParams>(),
-    generic::typed::<bom::PartlineParams>(),
-    generic::typed::<bom::BomitemParams>(),
-    generic::typed::<bom::ArticleParams>(),
-    generic::typed::<accessory::AccessoryParams>(),
-    generic::typed::<accessory::JumperParams>(),
-    generic::typed::<rating::RatingParams>(),
-    generic::typed::<rating::RatingtableParams>(),
-    generic::typed::<rating::RatingsParams>(),
-    generic::typed::<numbering::RenumberParams>(),
-    generic::typed::<numbering::FinaliseParams>(),
-    generic::typed::<numbering::NumberingParams>(),
-    generic::typed::<ecad_electrical::pages::commands::page_types::FolderpropsParams>(),
-    generic::typed::<ecad_electrical::pages::commands::page_types::RenumberpagesParams>(),
-    generic::typed::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
-    generic::typed::<ecad_electrical::references::commands::devices::ContactsParams>(),
-    generic::typed::<ecad_electrical::references::commands::devices::MirrormoveParams>(),
-    generic::typed::<ecad_electrical::references::commands::cables::CablerefParams>(),
-    generic::typed::<ecad_electrical::references::commands::cables::CablecontinueParams>(),
-    generic::typed::<ecad_electrical::references::commands::cables::CablerefsParams>(),
+    crate::generic::typed::<connect::ConnectParams>(),
+    crate::generic::typed::<connect::DisconnectParams>(),
+    crate::generic::typed::<default::SetdefaultParams>(),
+    crate::generic::typed::<designation::DesignationsParams>(),
+    crate::generic::typed::<designation::AddParams>(),
+    crate::generic::typed::<designation::EditParams>(),
+    crate::generic::typed::<designation::MergeParams>(),
+    crate::generic::typed::<designation::RemoveParams>(),
+    crate::generic::typed::<level::TermlabelParams>(),
+    crate::generic::typed::<level::TopositionParams>(),
+    crate::generic::typed::<continuation::ContcaptionParams>(),
+    crate::generic::typed::<device_link::LinkParams>(),
+    crate::generic::typed::<device_link::UnlinkParams>(),
+    crate::generic::typed::<device_link::UserFieldParams>(),
+    crate::generic::typed::<location::SetlocationParams>(),
+    crate::generic::typed::<location::SetfunctionParams>(),
+    crate::generic::typed::<location::ConflictsParams>(),
+    crate::generic::typed::<prop::SetpropParams>(),
+    crate::generic::typed::<cable::CablenewParams>(),
+    crate::generic::typed::<cable::CableeditParams>(),
+    crate::generic::typed::<cable::CableremoveParams>(),
+    crate::generic::typed::<style::StylesParams>(),
+    crate::generic::typed::<style::StandardParams>(),
+    crate::generic::typed::<style::SetstyleParams>(),
+    crate::generic::typed::<style::DeletestyleParams>(),
+    crate::generic::typed::<style::PromoteParams>(),
+    crate::generic::typed::<ecad_electrical::title_blocks::commands::TitleblocksParams>(),
+    crate::generic::typed::<ecad_electrical::title_blocks::commands::TitleblockParams>(),
+    crate::generic::typed::<bom::PartlineParams>(),
+    crate::generic::typed::<bom::BomitemParams>(),
+    crate::generic::typed::<bom::ArticleParams>(),
+    crate::generic::typed::<accessory::AccessoryParams>(),
+    crate::generic::typed::<accessory::JumperParams>(),
+    crate::generic::typed::<rating::RatingParams>(),
+    crate::generic::typed::<rating::RatingtableParams>(),
+    crate::generic::typed::<rating::RatingsParams>(),
+    crate::generic::typed::<numbering::RenumberParams>(),
+    crate::generic::typed::<numbering::FinaliseParams>(),
+    crate::generic::typed::<numbering::NumberingParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::page_types::FolderpropsParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::page_types::RenumberpagesParams>(),
+    crate::generic::typed::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
+    crate::generic::typed::<ecad_electrical::references::commands::devices::ContactsParams>(),
+    crate::generic::typed::<ecad_electrical::references::commands::devices::MirrormoveParams>(),
+    crate::generic::typed::<ecad_electrical::references::commands::cables::CablerefParams>(),
+    crate::generic::typed::<ecad_electrical::references::commands::cables::CablecontinueParams>(),
+    crate::generic::typed::<ecad_electrical::references::commands::cables::CablerefsParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
@@ -179,8 +186,8 @@ fn base_specs() -> Vec<CommandSpec> {
             )
             .interactive(interact::wire)
             .noundo(),
-        generic::spec::<connect::ConnectParams>().interactive(interact::connect),
-        generic::spec::<connect::DisconnectParams>().interactive(interact::disconnect),
+        crate::generic::spec::<connect::ConnectParams>().interactive(interact::connect),
+        crate::generic::spec::<connect::DisconnectParams>().interactive(interact::disconnect),
         CommandSpec::new("cableslash", "Cable Slash", crate::commands::input::typed::<crate::cables::commands::CableslashParams>)
             .params("{from: [x,y], to: [x,y], tag?} (the wires the slash crosses become one cable)")
             .interactive(interact::cableslash)
@@ -369,8 +376,7 @@ pub const UNAVAILABLE: &str = "this page is unavailable (its drawing could not b
 pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn(&'a Value) -> Option<T>) -> Result<Option<T>, CmdError> {
     match p.get(key) {
         None | Some(Value::Null) => Ok(None),
-        Some(v) => get(v).map(Some).ok_or_else(|| CmdError::input(format!("`{key}` must be {what}"))),
-    }
+        Some(v) => get(v).map(Some).ok_or_else(|| CmdError::input(format!("`{key}` must be {what}")))}
 }
 
 /// Most points one WIRE accepts: a route's own bound (design 072 §4.3).
@@ -411,12 +417,12 @@ mod lane_tests {
         }
     }
 
-    /// Every ECAD command id is registered once, so the order of the lists in [`crate::specs`]
+    /// Every ECAD command id is registered once, so the order of the lists in [`super::specs`]
     /// never decides which command a name finds (lookups take the first match).
     #[test]
     fn command_ids_are_unique() {
         let mut seen = std::collections::BTreeSet::new();
-        let twice: Vec<&str> = crate::specs().iter().map(|c| c.id).filter(|id| !seen.insert(*id)).collect();
+        let twice: Vec<&str> = super::specs().iter().map(|c| c.id).filter(|id| !seen.insert(*id)).collect();
         assert!(twice.is_empty(), "registered more than once: {twice:?}");
     }
 }

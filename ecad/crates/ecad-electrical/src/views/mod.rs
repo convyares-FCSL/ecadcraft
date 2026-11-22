@@ -26,16 +26,16 @@ use ecad_model::document::view::{DerivedView, NoteCx, Outcome, Phase};
 use ecad_model::{Document, Op};
 
 pub use changes::Changes;
-pub use checks::{ChecksScope, ChecksView};
-pub use connectors::{ConnectorsScope, ConnectorsView};
-pub use devices::{DevicesFeed, DevicesScope};
-pub use frame::{FrameScope, FrameView};
-pub use generated::{GeneratedScope, GeneratedView};
-pub use outputs::{ReportsScope, ReportsView};
-pub use pages::{PagesScope, PagesView, points_pages};
-pub use props::{PropsFeed, PropsScope};
-pub use refs::{RefsScope, RefsView};
-pub use tree::{TreeFeed, TreeScope};
+pub use crate::checks::view::{ChecksScope, ChecksView};
+pub use crate::connectors::view::{ConnectorsScope, ConnectorsView};
+pub use crate::devices::view::{DevicesFeed, DevicesScope};
+pub use crate::pages::frame_view::{FrameScope, FrameView};
+pub use crate::pages::generated_view::{GeneratedScope, GeneratedView};
+pub use crate::reports::view::{ReportsScope, ReportsView};
+pub use crate::pages::view::{PagesScope, PagesView, points_pages};
+pub use crate::properties::view::{PropsFeed, PropsScope};
+pub use crate::references::view::{RefsScope, RefsView};
+pub use crate::pages::tree_view::{TreeFeed, TreeScope};
 
 use crate::styles::text_style::fonts::TextMetrics;
 

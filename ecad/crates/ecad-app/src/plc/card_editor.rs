@@ -18,8 +18,8 @@
 
 use std::collections::BTreeMap;
 
-use ecad_engine::plc::overview;
-use ecad_engine::plc::rack::{CardType, IO_TYPES, RackRef};
+use ecad_electrical::plc::overview;
+use ecad_electrical::plc::rack::{CardType, IO_TYPES, RackRef};
 use ecad_model::{DeviceId, PageId};
 use eframe::egui::{self, Rect, vec2};
 use serde_json::json;
@@ -119,11 +119,11 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         // from: the box, page or project whose code it is where one of the card's symbols is drawn
         // (a box first), else `set here`.
         let symbols: Vec<_> = doc.representations_of(ecad_model::Subject::Device(c)).map(|(_, r)| r).take(MAX_SYMBOLS).collect();
-        let mut boxes = ecad_engine::locations::BoxCache::default();
-        let mut aspect = |a: ecad_electrical::locations::designations::Aspect, l: ecad_engine::locations::Located| -> (String, &'static str) {
+        let mut boxes = ecad_electrical::locations::BoxCache::default();
+        let mut aspect = |a: ecad_electrical::locations::designations::Aspect, l: ecad_electrical::locations::Located| -> (String, &'static str) {
             let mut hint = "set here";
             for r in &symbols {
-                let x = ecad_engine::locations::rep_context_in(doc, a, r, &mut boxes);
+                let x = ecad_electrical::locations::rep_context_in(doc, a, r, &mut boxes);
                 if x.key.is_some() && x.key == l.key {
                     let h = source_hint(Some(&x.source));
                     if h == "from box" || hint == "set here" || (h == "from page" && hint == "from project") {
@@ -137,17 +137,17 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
                 None => (String::new(), ""),
             }
         };
-        let function = aspect(ecad_electrical::locations::designations::Aspect::Function, ecad_engine::locations::resolve_function(doc, c));
-        let location = aspect(ecad_electrical::locations::designations::Aspect::Location, ecad_engine::locations::resolve(doc, c));
+        let function = aspect(ecad_electrical::locations::designations::Aspect::Function, ecad_electrical::locations::resolve_function(doc, c));
+        let location = aspect(ecad_electrical::locations::designations::Aspect::Location, ecad_electrical::locations::resolve(doc, c));
         let (rack, rule) = match card.rack {
             RackRef::Rack(r) => (
                 plc.racks.get(&r).map(|x| x.tag.clone()),
-                match ecad_engine::plc::address::Style::of(doc, r) {
-                    ecad_engine::plc::address::Style::Iec => "IEC",
-                    ecad_engine::plc::address::Style::Percent => "%",
-                    ecad_engine::plc::address::Style::ByteBit => "byte.bit",
-                    ecad_engine::plc::address::Style::Slot => "slot",
-                    ecad_engine::plc::address::Style::None => "none",
+                match ecad_electrical::plc::address::Style::of(doc, r) {
+                    ecad_electrical::plc::address::Style::Iec => "IEC",
+                    ecad_electrical::plc::address::Style::Percent => "%",
+                    ecad_electrical::plc::address::Style::ByteBit => "byte.bit",
+                    ecad_electrical::plc::address::Style::Slot => "slot",
+                    ecad_electrical::plc::address::Style::None => "none",
                 }
                 .to_string(),
             ),
@@ -155,7 +155,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         };
         let used: Vec<u32> = card.chans.iter().filter(|(_, x)| x.used || x.mark().is_some()).map(|(i, _)| *i).collect();
         let drawn = used.iter().filter(|i| card.chans.get(i).is_some_and(|x| !x.cells.is_empty())).count();
-        let start = plc.automatic(doc, c, 0, ecad_engine::plc::address::shows_output(card.ty)).unwrap_or_default();
+        let start = plc.automatic(doc, c, 0, ecad_electrical::plc::address::shows_output(card.ty)).unwrap_or_default();
         let slot_words = card.slot.map(|s| format!(", slot {s}")).unwrap_or_default();
         let kind = overview::kind_words(doc, card);
         let ty_name = overview::type_name(card.ty);
@@ -175,7 +175,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
             pinned: plc.blocks.get(&c).is_some_and(|b| b.pinned),
             rule,
             page: page
-                .map(|pg| (pg, ecad_engine::references::page_number(doc, pg), doc.pages.get(&pg).map(|x| x.title.to_string()).unwrap_or_default())),
+                .map(|pg| (pg, ecad_electrical::references::cables::page_number(doc, pg), doc.pages.get(&pg).map(|x| x.title.to_string()).unwrap_or_default())),
             drawn: (drawn, used.len()),
             maker: own("maker").unwrap_or_default(),
             part_number: own("part_number").unwrap_or_default(),
@@ -187,8 +187,8 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
 }
 
 /// The source hint of a stored function or location whose code is also the context's there.
-fn source_hint(source: Option<&ecad_engine::locations::Source>) -> &'static str {
-    use ecad_engine::locations::Source;
+fn source_hint(source: Option<&ecad_electrical::locations::Source>) -> &'static str {
+    use ecad_electrical::locations::Source;
     match source {
         Some(Source::Box { .. }) => "from box",
         Some(Source::Page(_)) => "from page",
@@ -360,8 +360,8 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
                     let words = format!(
                         "Change {} to {}? {}",
                         info.tag,
-                        ecad_engine::plc::rack::with_article(to),
-                        ecad_engine::plc::rack::change_words(from, to)
+                        ecad_electrical::plc::rack::with_article(to),
+                        ecad_electrical::plc::rack::change_words(from, to)
                     );
                     ui.add(egui::Label::new(w::rich(ui, words, ecad_widgets::tokens::ui_type::SMALL, w::text_2())).wrap());
                     let (yes, no) = ui

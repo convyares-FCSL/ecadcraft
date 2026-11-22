@@ -1,16 +1,16 @@
 //! Drawing the PLC sheets (brief 051, design 051 §4): the I/O tables and the rack overview as the
-//! generated page's parts ([`crate::generated::Draw`]), in paper millimetres. Packing and the
-//! sheet counts are [`crate::plc::sheets`].
+//! generated page's parts ([`crate::pages::generated::Draw`]), in paper millimetres. Packing and the
+//! sheet counts are [`ecad_electrical::plc::sheets`].
 
 use cadcraft_engine::doc::HAlign;
 use ecad_model::{Document, LengthUnit};
 
 use crate::pages::frame::{LABEL_ACI, THIN_WEIGHT, TextDraw};
-use crate::generated::{Draw, row_mm};
-use crate::plc::overview::{self, Square, Tile, TileKind};
-use crate::plc::sheets::*;
-use crate::plc::{iolist, kept::Plc};
-use crate::text_style::{Look, TextKind};
+use {crate::pages::generated::Draw, ecad_electrical::pages::generated::row_mm};
+use ecad_electrical::plc::overview::{self, Square, Tile, TileKind};
+use ecad_electrical::plc::sheets::*;
+use {ecad_electrical::plc::iolist, ecad_electrical::plc::kept::Plc};
+use {crate::styles::draw::Look, ecad_electrical::styles::text_style::TextKind};
 
 /// Sheet `i` of the I/O list page.
 pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &Look, unit: LengthUnit, a: Area, i: usize) {

@@ -31,9 +31,9 @@ fn check_shape(g: &Generated, doc: &Document) {
             .all(|w| doc.routes_at(w.ends[0]).any(|r| doc.routes.get(&r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(w.ends[1]))))),
         "every wire is drawn by a route between its two connection points"
     );
-    assert!(ecad_model::derive::mismatches(doc, 1e-9).is_empty(), "every route ends on its terminals");
+    assert!(ecad_model::connectivity::derive::mismatches(doc, 1e-9).is_empty(), "every route ends on its terminals");
 
-    let nets = ecad_model::derive::nets(doc);
+    let nets = ecad_model::connectivity::derive::nets(doc);
     assert_eq!(nets.len(), g.nets.len());
     assert_eq!(nets.len(), t.devices, "one net per pair of neighbouring components");
     for (got, want) in nets.iter().zip(&g.nets) {
@@ -53,7 +53,7 @@ fn check_shape(g: &Generated, doc: &Document) {
     let references = doc.representations.values().filter(|r| r.role == ecad_model::Role::Reference).count();
     assert_eq!(references, 2 * (t.pages - 1));
     // Brief 010's derivation recognises them: two partnered ends per continued cable, no orphans.
-    let derived = ecad_model::derive::cable_references(doc);
+    let derived = ecad_model::connectivity::derive::cable_references(doc);
     assert_eq!(derived.len(), 2 * (t.pages - 1), "every generated reference is derived");
     assert!(derived.iter().all(|r| !r.orphan && r.partner_count == 1), "each end has its partner");
     for c in &g.continuations {
@@ -130,7 +130,7 @@ fn a_generated_project_opens_in_a_session_and_shows_every_page() {
     assert_eq!(m.transactions, g.ledger.head());
     assert_eq!(&doc, g.ledger.document());
     let mut s = cadcraft_engine::Session::empty();
-    let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 9, ecad_engine::views::Settings::none()).unwrap();
+    let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 9, ecad_engine::cables::views::Settings::none()).unwrap();
     for page in &g.pages {
         project.open_page(&mut s, *page).unwrap();
         assert_eq!(project.read(&mut s, |p, _| p.active_page()).unwrap(), Some(*page));

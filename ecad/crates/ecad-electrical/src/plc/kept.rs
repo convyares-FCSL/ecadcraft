@@ -293,8 +293,8 @@ impl Plc {
         if let Some(card) = self.cards.get(&g) {
             self.channel_checks(doc, card, &mut out);
             // Brief 051 (design 051 §2.5, §2.8): the card on its pages.
-            look::through_checks(doc, card.id, &card.tag, &mut out);
-            look::wide_checks(doc, card.id, &card.tag, |i| self.address_of(doc, card.id, i).0, m, &mut out);
+            draw::through_checks(doc, card.id, &card.tag, &mut out);
+            draw::wide_checks(doc, card.id, &card.tag, |i| self.address_of(doc, card.id, i).0, m, &mut out);
         }
         if let Some(card) = self.cards.get(&g)
             && matches!(card.rack, RackRef::Missing(_))

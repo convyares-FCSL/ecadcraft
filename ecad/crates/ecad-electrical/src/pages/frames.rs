@@ -388,7 +388,7 @@ pub fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn long_text_is_narrowed_then_cut() {

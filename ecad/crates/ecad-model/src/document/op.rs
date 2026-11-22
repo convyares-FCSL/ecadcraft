@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::doc::{Cable, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::document::doc::{Cable, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, ConnectionPoint, Wire};
 use crate::error::{ModelError, Result};
 use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::document::index::Delta;
@@ -117,12 +117,12 @@ pub enum Op {
     #[serde(rename = "AddTerminal")]
     AddConnectionPoint {
         id: ConnectionPointId,
-        terminal: Terminal,
+        terminal: ConnectionPoint,
     },
     #[serde(rename = "RemoveTerminal")]
     RemoveConnectionPoint {
         id: ConnectionPointId,
-        terminal: Terminal,
+        terminal: ConnectionPoint,
     },
     LinkRepresentation {
         id: RepresentationId,

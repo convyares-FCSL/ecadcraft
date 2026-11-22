@@ -22,6 +22,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
+use serde_json::{Value, json};
 use ecad_model::connectivity::derive::{CableReference, cable_references, cable_references_of};
 use ecad_model::{
     CableId, CorePosition, Document, End, ItemId, LengthUnit, Op, PageId, Pt, Representation, RepresentationId, RouteEnd, RouteId, Subject,

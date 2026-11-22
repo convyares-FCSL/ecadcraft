@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     Cable, CableId, Definition, DefinitionId, Device, DeviceId, Document, Folder, FolderId, Item, ItemId, Layer, LayerId, ObjectRef, Op, Page,
-    PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues, Terminal, ConnectionPointId, Touched,
+    PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues, ConnectionPoint, ConnectionPointId, Touched,
     Wire, WireId,
 };
 use rayon::prelude::*;
@@ -43,7 +43,7 @@ pub const META_KEY: &str = "model:meta";
 pub struct ModelMeta {
     /// The highest number each tag prefix has had up to the snapshot's point, deleted and
     /// undone tags included (brief 018).
-    pub tag_high: ecad_model::tag::HighWater,
+    pub tag_high: ecad_model::naming::tag::HighWater,
 }
 /// Most buckets a kind may have (a bound on hostile files).
 pub const MAX_BUCKETS: u32 = 1 << 20;
@@ -440,12 +440,12 @@ enum Parsed {
     Page(PageId, Box<PageChunk>),
     Layer(BTreeMap<LayerId, Layer>),
     Device(BTreeMap<DeviceId, Device>),
-    Terminal(BTreeMap<ConnectionPointId, Terminal>),
+    Terminal(BTreeMap<ConnectionPointId, ConnectionPoint>),
     Wire(BTreeMap<WireId, Wire>),
     Cable(BTreeMap<CableId, Cable>),
     Definition(BTreeMap<DefinitionId, Definition>),
     Aid(BTreeMap<ecad_model::AidId, ecad_model::Aid>),
-    LoosePart(BTreeMap<ecad_model::LoosePartId, ecad_model::loose_part::LoosePart>),
+    LoosePart(BTreeMap<ecad_model::LoosePartId, ecad_model::objects::loose_part::LoosePart>),
 }
 
 /// A model chunk's objects, checked to belong in bucket `b` of `count`.

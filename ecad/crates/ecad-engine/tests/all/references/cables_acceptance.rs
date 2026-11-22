@@ -23,7 +23,7 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_engine::interact::{hover_lines, overlay_marks};
-use ecad_engine::references::{diagnostics, markers_on_page, plan_continue};
+use {ecad_electrical::references::cables::diagnostics, ecad_electrical::references::cables::markers_on_page, ecad_electrical::references::cables::plan_continue};
 use ecad_engine::{HandleMap, Persistence, ProjectHandle, project_page};
 use ecad_model::connectivity::derive::{cable_references, nets};
 use ecad_model::{
@@ -405,7 +405,7 @@ fn ac2_page_moves_and_renames_update_drawn_texts_with_no_transaction_of_their_ow
     }
     // Renames show in the hover (the title), not in the marker text (design Q4).
     let rid = ref_on(&mut r.h, r.field).unwrap();
-    let lines = ecad_engine::references::hover_lines(&r.h.doc(), rid).unwrap();
+    let lines = ecad_electrical::references::cables::hover_lines(&r.h.doc(), rid).unwrap();
     assert!(lines.iter().any(|l| l.contains("\"Fält ⚡ 電源\"")), "{lines:?}");
     // Same title, same position: no transaction.
     let head = r.h.head();
@@ -526,7 +526,7 @@ fn ac3_erase_and_delete_of_cable_drawings_follow_the_section_9_table() {
     }
     let doc = r.h.doc();
     assert!(!doc.wires.contains_key(&r.w[1]), "the wire is gone");
-    assert!(ecad_engine::references::route_pages(&doc, r.w[1]).is_empty());
+    assert!(ecad_electrical::references::cables::route_pages(&doc, r.w[1]).is_empty());
     assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("2/F1"));
     let v = r.h.run("cablerefs", json!({})).unwrap();
     assert!(v["references"].as_array().unwrap().iter().all(|x| x["wires_here"] == 2), "{v}");
@@ -945,11 +945,11 @@ fn ac6_hostile_documents_never_panic() {
                     ecad_engine::project::engine_views().report_models(&doc).as_ref(),
                 );
                 let _ = plan_continue(&doc, *p, cable, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6);
-                let _ = ecad_engine::references::check_reference(&doc, *p, cable);
+                let _ = ecad_electrical::references::cables::check_reference(&doc, *p, cable);
             }
             let _ = diagnostics(&doc);
             for r in refs.iter().take(50) {
-                let _ = ecad_engine::references::hover_lines(&doc, r.reference);
+                let _ = ecad_electrical::references::cables::hover_lines(&doc, r.reference);
             }
             let _ = ecad_electrical::references::cables::references_json(&doc, &refs);
             let _ = ecad_electrical::references::cables::over_referenced(&refs);

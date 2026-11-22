@@ -509,7 +509,7 @@ pub fn order(a: &str) -> (char, u8, u32, u32) {
 
 #[cfg(test)]
 mod tests {
-    use crate::plc::*;
+    use super::*;
 
     #[test]
     fn addresses_normalise() {

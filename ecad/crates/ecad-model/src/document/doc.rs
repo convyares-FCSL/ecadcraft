@@ -831,7 +831,7 @@ pub struct Cable {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shield: Option<crate::objects::styles::cable::Shield>,
     /// The cable's own rating inputs (design 057 §6.1, 072 §4.5); each overrides the project's.
-    #[serde(default, skip_serializing_if = "crate::wire::CircuitInputs::is_empty")]
+    #[serde(default, skip_serializing_if = "crate::objects::wire::CircuitInputs::is_empty")]
     pub rating: crate::objects::wire::CircuitInputs,
     /// The design current typed for the cable (`load`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1439,7 +1439,7 @@ pub struct Document {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub display: Properties,
     /// The project's own data: the location and function lists (design 072 §5.3).
-    #[serde(skip_serializing_if = "crate::project::Project::is_empty")]
+    #[serde(skip_serializing_if = "crate::document::project::Project::is_empty")]
     pub project: crate::document::project::Project,
     /// Folders of pages (brief 019, decision FP3).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]

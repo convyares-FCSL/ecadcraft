@@ -1,5 +1,5 @@
 //! Tag rule (brief 029, FP1): a snapshot's `model:meta` tag marks are a cache of what the history
-//! gives under [`ecad_model::tag::TAG_RULE`]. A file written before brief 026 (rule 1) cached marks
+//! gives under [`ecad_model::naming::tag::TAG_RULE`]. A file written before brief 026 (rule 1) cached marks
 //! without cable tags; it opens with the marks recomputed, Verify reports that as information, and
 //! a re-save writes the current rule. The rule is in the version row, which builds before 029 read
 //! (they ignore fields they do not know).
@@ -13,11 +13,11 @@ use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
 use ecad_file::schema::{self, BranchId, VersionKind};
 use ecad_file::{Project, Store, StoreError};
-use ecad_model::tag::{HighWater, TAG_RULE, note_ops};
+use ecad_model::naming::tag::{HighWater, TAG_RULE, note_ops};
 use ecad_model::*;
 
 fn cable(tag: &str) -> Cable {
-    let mut properties = ecad_model::doc::Properties::new();
+    let mut properties = ecad_model::document::doc::Properties::new();
     properties.insert("tag".into(), tag.into());
     Cable { properties, cores: Vec::new(), ..Default::default() }
 }

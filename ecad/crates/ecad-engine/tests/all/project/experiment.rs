@@ -91,15 +91,15 @@ fn scenario_s1_to_s16() {
     let route = h.line_handle(p1, r3);
     h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [s2_at.x, s2_at.y]})).unwrap();
     assert_eq!(h.doc().routes[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Point(s2)], "landing on s2 attached it");
-    assert!(ecad_engine::wires::wire_between(&h.doc(), t3, s2).is_some(), "and made the wire t3-s2");
+    assert!(ecad_electrical::wires::wire_between(&h.doc(), t3, s2).is_some(), "and made the wire t3-s2");
     let route = h.line_handle(p1, r3);
     h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [80, -20]})).unwrap();
     assert_eq!(h.doc().routes[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Free], "dragging into free space detached it");
-    assert!(ecad_engine::wires::wire_between(&h.doc(), t3, s2).is_none(), "and took the wire away");
+    assert!(ecad_electrical::wires::wire_between(&h.doc(), t3, s2).is_none(), "and took the wire away");
     assert_eq!(h.doc().routes[&r2].ends, [RouteEnd::Point(t2), RouteEnd::Free], "r2 untouched");
     let route = h.line_handle(p1, r3);
     h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [s2_at.x, s2_at.y]})).unwrap();
-    let w3 = ecad_engine::wires::wire_between(&h.doc(), t3, s2).expect("t3-s2 wired again");
+    let w3 = ecad_electrical::wires::wire_between(&h.doc(), t3, s2).expect("t3-s2 wired again");
 
     // S8: COPY c1 together with r2: an independent copy with preserved internal relationships.
     let before = h.doc();

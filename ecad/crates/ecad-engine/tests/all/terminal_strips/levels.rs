@@ -3,7 +3,7 @@
 //! `toposition`, the plan, the BOM per type and the update maps. Driven through the commands'
 //! JSON forms on a small fixture of loose vertical wires.
 
-use ecad_engine::outputs::{Group, kept::ReportModels};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use ecad_model::{DeviceId, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
@@ -13,7 +13,7 @@ use crate::common::{H, id};
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
@@ -138,8 +138,8 @@ fn bridged_two_level_positions_and_fuse_positions_break_the_net() {
     let doc = h.doc();
     // The two parts of the line (design 072 §4.3: routes), each carrying its own wire.
     let (kept, new) = (
-        ecad_engine::wires::wire_of_route(&doc, id(&f["terminals"][0], "route")),
-        ecad_engine::wires::wire_of_route(&doc, id(&f["terminals"][0], "new")),
+        ecad_electrical::wires::wire_of_route(&doc, id(&f["terminals"][0], "route")),
+        ecad_electrical::wires::wire_of_route(&doc, id(&f["terminals"][0], "new")),
     );
     assert!(kept.is_some() && new.is_some(), "{f}");
     let conn = doc.connectivity();

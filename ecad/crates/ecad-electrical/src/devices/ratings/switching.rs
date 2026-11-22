@@ -211,7 +211,7 @@ fn build(kind: OperatorKind, f: &Found) -> Result<Switching, Read<Switching>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::devices::ratings::*;
+    use super::*;
     use OperatorKind as K;
 
     fn shown(kind: K, text: &str) -> String {

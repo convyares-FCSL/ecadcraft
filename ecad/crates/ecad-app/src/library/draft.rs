@@ -728,7 +728,7 @@ impl Drafts {
 
 #[cfg(test)]
 mod tests {
-    use crate::library::*;
+    use super::*;
 
     fn line(a: (f64, f64), b: (f64, f64)) -> Primitive {
         Primitive::Line { a: Pt::new(a.0, a.1), b: Pt::new(b.0, b.1) }

@@ -159,7 +159,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
         .read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let page = p.page_of(field_uid)?;
-            let r = ecad_engine::references::references_on_page(doc, page).into_iter().next()?;
+            let r = ecad_electrical::references::cables::references_on_page(doc, page).into_iter().next()?;
             p.pages.get(&page)?.map.item(r.item?)
         })
         .unwrap()
@@ -265,7 +265,7 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     // says, with no frame in which the change count moved and the text did not.
     let derived = |t: &mut App, page: ecad_model::PageId| {
         let d = doc(t);
-        let mut v: Vec<String> = ecad_engine::references::markers_on_page(&d, page).into_iter().map(|m| m.text).collect();
+        let mut v: Vec<String> = ecad_electrical::references::cables::markers_on_page(&d, page).into_iter().map(|m| m.text).collect();
         v.sort();
         v
     };

@@ -8,9 +8,9 @@ use ecad_model::{CableId, ItemId, Op, PageId, Pt, Representation, Representation
 use crate::styles::draw::EngineMetrics;
 
 /// The cable reference end at `p` on `page` within `radius`, measuring flags with CADCraft's fonts
-/// ([`crate::references::reference_at_measured`]).
+/// ([`ecad_electrical::references::cables::reference_at_measured`]).
 pub fn reference_at(doc: &ecad_model::Document, page: PageId, p: Pt, radius: f64) -> Option<RepresentationId> {
-    crate::references::reference_at_measured(doc, page, p, radius, &EngineMetrics)
+    ecad_electrical::references::cables::reference_at_measured(doc, page, p, radius, &EngineMetrics)
 }
 
 /// `cableslash` with an existing cable's tag (design 072 §4.4, F5, superseding design 032 §3.3):
@@ -26,14 +26,13 @@ pub(crate) fn run_slash_continue(
 ) -> Result<serde_json::Value, String> {
     let doc = p.ledger.document();
     let crossed: Vec<ecad_model::CorePosition> = found.members.iter().map(|m| m.position).collect();
-    let plan = crate::references::plan_slash_continue(doc, page, cable, &crossed)?;
+    let plan = ecad_electrical::references::cables::plan_slash_continue(doc, page, cable, &crossed)?;
     let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
     let mut ops = Vec::new();
     let style = crate::commands::plain_style(p);
     ops.push(Op::AddItem {
         id: item,
-        item: ecad_model::Item { page, style, kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a: from, b: to }) },
-    });
+        item: ecad_model::Item { page, style, kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a: from, b: to }) }});
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
@@ -42,9 +41,7 @@ pub(crate) fn run_slash_continue(
             form: ecad_model::Form::Drawn,
             role: ecad_model::Role::Slash,
             items: vec![item],
-            connection_points: BTreeMap::new(),
-        },
-    });
+            connection_points: BTreeMap::new()}});
     p.apply_edit(pg, "cableslash", "Cable slash", ops)?;
     Ok(serde_json::json!({
         "cable": cable.hex(),
@@ -57,6 +54,5 @@ pub(crate) fn run_slash_continue(
         "cores": plan
             .iter()
             .map(|w| serde_json::json!({"conductor": w.position.wire().map(|c| c.hex()), "route": w.position.route().map(|r| r.hex()), "core": w.core}))
-            .collect::<Vec<_>>(),
-    }))
+            .collect::<Vec<_>>()}))
 }

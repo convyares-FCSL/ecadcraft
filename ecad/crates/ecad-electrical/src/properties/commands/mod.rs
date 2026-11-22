@@ -21,7 +21,7 @@ use crate::locations::commands::locations::{self, MAX_DEVICES};
 use crate::commands::input::{Bounded, OrNull, nullable};
 use crate::commands::run::{Cx, Generic, Outcome, State};
 use crate::locations::designations::Aspect;
-use crate::devices::{self, Holder, TagHigh};
+use crate::devices::{Holder, TagHigh};
 use crate::error::CmdError;
 use crate::cables::words::MAX_HANDLES;
 
@@ -171,7 +171,7 @@ fn tagged(o: ObjectRef) -> bool {
 
 /// Whether `key` on `object` is one of design 018 §6.1's device properties.
 pub fn is_device_property(object: ObjectRef, key: &str) -> bool {
-    is_component(object) && devices::PROPERTIES.iter().any(|(k, _)| *k == key)
+    is_component(object) && crate::devices::PROPERTIES.iter().any(|(k, _)| *k == key)
 }
 
 fn free_text(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -179,7 +179,7 @@ fn free_text(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result
 }
 
 fn device_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    devices::property_value(doc, key, value)
+    crate::devices::property_value(doc, key, value)
 }
 
 fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -191,7 +191,7 @@ fn offer_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Resu
 }
 
 fn pe_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    devices::property_value(doc, key, value)
+    crate::devices::property_value(doc, key, value)
 }
 
 fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -389,19 +389,19 @@ pub fn plan_device(
     let before = component.value(key);
     if key == TAG_KEY
         && let Some(t) = &value
-        && let Some(holder) = devices::holder_of(doc, t, Some(c))
+        && let Some(holder) = crate::devices::holder_of(doc, t, Some(c))
     {
         if !merge {
             let next =
-                devices::tag_of(doc, c).and_then(tag::parse).or_else(|| tag::parse(t)).and_then(|(prefix, _)| tag_high.peek(doc, &prefix).ok());
+                crate::devices::tag_of(doc, c).and_then(tag::parse).or_else(|| tag::parse(t)).and_then(|(prefix, _)| tag_high.peek(doc, &prefix).ok());
             let way = match next {
                 Some(n) => format!("Set `merge` to true to make this the same device, or choose another tag (the next free one is {n})."),
                 None => "Set `merge` to true to make this the same device, or choose another tag.".into(),
             };
-            return Err(CmdError::refused(devices::duplicate_words(doc, t, holder, &way)));
+            return Err(CmdError::refused(crate::devices::duplicate_words(doc, t, holder, &way)));
         }
-        let ops = devices::plan_merge(doc, ids, c, holder)?;
-        return Ok(DeviceSet::Merged { ops, holder, into: devices::tag_words(doc, holder), before });
+        let ops = crate::devices::plan_merge(doc, ids, c, holder)?;
+        return Ok(DeviceSet::Merged { ops, holder, into: crate::devices::tag_words(doc, holder), before });
     }
     if before == value {
         return Ok(DeviceSet::Unchanged(value));
@@ -422,7 +422,7 @@ pub fn merged_device_words(doc: &Document, before: Option<&str>, holder: DeviceI
         "{} is now part of {into} ({} symbols on {}).",
         before.unwrap_or("The device"),
         doc.representations_of(Subject::Device(holder)).count(),
-        devices::pages_words(doc, holder)
+        crate::devices::pages_words(doc, holder)
     )
 }
 
@@ -520,7 +520,7 @@ fn taken_words(doc: &Document, tag_high: &TagHigh, o: ObjectRef, t: &str, holder
     } else {
         format!("It is a {}, so only conflict: \"next\" (use {next}) works.", noun(holder.object()))
     };
-    format!("{t} is used by {}. {ways}", devices::holder_words_of(doc, holder))
+    format!("{t} is used by {}. {ways}", crate::devices::holder_words_of(doc, holder))
 }
 
 /// A tag's change ([`plan_tag`]).
@@ -570,9 +570,9 @@ pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Opt
     if let Some(Ok((c, Some(side), None))) = crate::connectors::resolve(doc, &t)
         && ObjectRef::Device(c) != o
     {
-        return Err(CmdError::refused(format!("{t} is the {} half of {}. Pick another tag.", side.word(), devices::tag_words(doc, c))));
+        return Err(CmdError::refused(format!("{t} is the {} half of {}. Pick another tag.", side.word(), crate::devices::tag_words(doc, c))));
     }
-    let Some(holder) = devices::tag_holder(doc, &t, Some(o)) else {
+    let Some(holder) = crate::devices::tag_holder(doc, &t, Some(o)) else {
         let ops = tag_ops(doc, o, Some(t.clone()), typed_fixed);
         if ops.is_empty() {
             return Ok(TagSet::Unchanged(Some(t)));

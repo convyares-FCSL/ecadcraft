@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use ecad_model::{
     CableId, Device, DeviceId, Document, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt, Representation, RepresentationId, RouteEnd,
-    RouteId, Subject, Terminal, ConnectionPointId, WireId,
+    RouteId, Subject, ConnectionPoint, ConnectionPointId, WireId,
 };
 
 use crate::devices;
@@ -255,7 +255,7 @@ pub fn plan_addterminal(
     let mut after = r.clone();
     after.connection_points.insert(t, at);
     let ops = vec![
-        Op::AddConnectionPoint { id: t, terminal: Terminal { owner: c.into(), label, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { owner: c.into(), label, key: None, accepts: Default::default() } },
         Op::ModifyRepresentation { id: rid, before: r.clone(), after },
     ];
     Ok((t, ops))

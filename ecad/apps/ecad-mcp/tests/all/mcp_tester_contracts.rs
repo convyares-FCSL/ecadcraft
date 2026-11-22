@@ -31,7 +31,7 @@ impl Client {
         let mut c = Client { s, next: 1 };
         let r = c.request("initialize", json!({"protocolVersion": "2025-06-18", "clientInfo": {"name": AGENT}}));
         assert!(r.get("result").is_some(), "{r}");
-        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_engine::views::Settings::none())).unwrap().unwrap();
+        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_engine::cables::views::Settings::none())).unwrap().unwrap();
         c
     }
     fn request(&mut self, method: &str, params: Value) -> Value {
@@ -86,7 +86,7 @@ impl Direct {
         ecad_engine::install();
         let mut s = Session::empty();
         let p = Project::create_with(&mut s, "tester", SEED, Persistence::File).unwrap();
-        p.configure(&mut s, |p| p.settings = ecad_engine::views::Settings::none()).unwrap();
+        p.configure(&mut s, |p| p.settings = ecad_engine::cables::views::Settings::none()).unwrap();
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {
@@ -628,7 +628,7 @@ fn rpc(id: u64, method: &str, params: Value) -> String {
 fn run_binary(args: &[&str], input: &[u8], settings: &TempDir) -> (Vec<Value>, Option<i32>, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_ecad-mcp"))
         .args(args)
-        .env(ecad_engine::views::SETTINGS_ENV, &settings.0)
+        .env(ecad_engine::cables::views::SETTINGS_ENV, &settings.0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -753,7 +753,7 @@ fn stdio_a_backslash_path_and_a_second_server_on_a_held_file() {
     // A first server holds the writer lock while a second one opens the file.
     let mut first = Command::new(env!("CARGO_BIN_EXE_ecad-mcp"))
         .args(["--write", &path])
-        .env(ecad_engine::views::SETTINGS_ENV, &dir.0)
+        .env(ecad_engine::cables::views::SETTINGS_ENV, &dir.0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

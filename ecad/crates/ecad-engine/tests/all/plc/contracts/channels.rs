@@ -1,10 +1,10 @@
 //! Brief 045b (design 045 §4–§7, §9 b-rows, §13 F–M, T): channels, pins, addressing and texts.
 
-use ecad_engine::checks::Fix;
-use ecad_engine::devices::TextOf;
-use ecad_engine::outputs::accessory_fix_commands;
-use ecad_engine::plc::PlcFix;
-use ecad_model::{Author, DeviceId, Op, Subject, Terminal, ConnectionPointId};
+use ecad_electrical::checks::Fix;
+use ecad_electrical::devices::TextOf;
+use ecad_electrical::reports::accessory_fix_commands;
+use ecad_electrical::plc::PlcFix;
+use ecad_model::{Author, DeviceId, Op, Subject, ConnectionPoint, ConnectionPointId};
 use serde_json::{Value, json};
 
 use crate::plc::contracts::{checks_of, place, placed, prop, same_as_built};
@@ -86,7 +86,7 @@ fn texts(h: &mut H, c: DeviceId, kind: fn(TextOf) -> bool) -> Vec<(String, bool)
     let d = h.doc();
     let page = d.page_order[0];
     let reps: Vec<_> = d.representations_of(Subject::Device(c)).map(|(r, _)| r).collect();
-    ecad_engine::devices::all_texts_on_page(&d, page)
+    ecad_engine::devices::draw::all_texts_on_page(&d, page)
         .into_iter()
         .filter(|t| reps.contains(&t.text.rep) && kind(t.text.of))
         .map(|t| (t.text.value, t.shown))
@@ -157,8 +157,8 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     assert_eq!(ends, [1, 1, 2], "{cells:?}");
     for (_, t) in cells.iter().take(2) {
         let (c, _) = d.ends_at(*t)[0];
-        let r = ecad_engine::wires::route_of_wire_on(&d, c, page).unwrap();
-        let (_, _, route) = ecad_engine::wires::route_vertices(&d, r).unwrap();
+        let r = ecad_electrical::wires::route_of_wire_on(&d, c, page).unwrap();
+        let (_, _, route) = ecad_electrical::wires::route_vertices(&d, r).unwrap();
         assert!(route.iter().all(|q| q.y >= 200.0 - 1e-9), "nothing past the point, into the cell: {route:?}");
     }
     same_as_built(&mut h);
@@ -204,7 +204,7 @@ fn h_a_wrong_type_is_refused_and_a_compact_di_joins_as_the_next_channel() {
     // A cell on its own makes a new card of its type, in no rack.
     let v = place(&mut h, "chrtd", 300.0, 100.0, json!({})).unwrap();
     let c: DeviceId = id(&v, "component");
-    assert_eq!(ecad_engine::plc::card_type_of(&h.doc(), c), Some(ecad_engine::plc::rack::CardType::Rtd));
+    assert_eq!(ecad_electrical::plc::card_type_of(&h.doc(), c), Some(ecad_electrical::plc::rack::CardType::Rtd));
     assert_eq!(v["terminals"].as_array().map(Vec::len), Some(4));
 }
 
@@ -334,7 +334,7 @@ fn m_channel_and_address_rows_have_working_fixes() {
     let d = h.doc();
     let (t1, _) = d.connection_points_of(di).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".1.in")).unwrap();
     let term = d.terminals.get(&t1).cloned().unwrap();
-    let after = Terminal { key: Some(".0.in".parse().unwrap()), ..term.clone() };
+    let after = ConnectionPoint { key: Some(".0.in".parse().unwrap()), ..term.clone() };
     h.cfg(|p| {
         p.ledger
             .commit(Author::User, "hand-made", vec![Op::RemoveConnectionPoint { id: t1, terminal: term }, Op::AddConnectionPoint { id: t1, terminal: after }])
@@ -361,7 +361,7 @@ fn t_hostile_keys_counts_and_values_never_panic() {
     let e = h.run("setprop", json!({"component": di.hex(), "key": "plc.addr.start", "value": "70000"})).unwrap_err();
     assert!(e.contains("0 to 65535"), "{e}");
     let d = h.doc();
-    let ts: Vec<(ConnectionPointId, Terminal)> = d
+    let ts: Vec<(ConnectionPointId, ConnectionPoint)> = d
         .connection_points_of(di)
         .filter(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
         .map(|(i, t)| (i, t.clone()))
@@ -370,7 +370,7 @@ fn t_hostile_keys_counts_and_values_never_panic() {
     let mut ops = Vec::new();
     for ((t, term), k) in ts.into_iter().zip([".999.in", ".-1.in", ".3.nope", ".3"]) {
         ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
-        ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { key: k.parse().ok(), ..term } });
+        ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { key: k.parse().ok(), ..term } });
     }
     // The longest values the module's fields hold.
     let mut d2 = d.clone();
@@ -382,7 +382,7 @@ fn t_hostile_keys_counts_and_values_never_panic() {
     h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops).map(|_| ()).unwrap());
     let d = h.doc();
     let _ = ecad_engine::checks::all(&d, 1e-6);
-    let _ = ecad_engine::devices::all_texts_on_page(&d, d.page_order[0]);
+    let _ = ecad_engine::devices::draw::all_texts_on_page(&d, d.page_order[0]);
 }
 
 #[test]

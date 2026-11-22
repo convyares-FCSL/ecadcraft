@@ -86,7 +86,7 @@ impl LocationBox {
                 .representations_on(page)
                 .filter_map(|(_, r)| {
                     let Subject::Device(c) = r.subject else { return None };
-                    if !crate::locations::is_device(doc, c) {
+                    if !ecad_electrical::locations::is_device(doc, c) {
                         return None;
                     }
                     let own = ecad_electrical::locations::designations::shown(
@@ -94,7 +94,7 @@ impl LocationBox {
                         self.aspect,
                         doc.devices.get(&c).and_then(|x| ecad_electrical::locations::designations::device_key(x, self.aspect)).as_deref(),
                     );
-                    Some((crate::locations::anchor(doc, r)?, own))
+                    Some((ecad_electrical::locations::anchor(doc, r)?, own))
                 })
                 .collect())
         })
@@ -245,7 +245,7 @@ impl LocationBox {
                                 self.finish(s, params)
                             }
                             None => {
-                                s.echo(crate::locations::NOT_CLOSED);
+                                s.echo(ecad_electrical::locations::NOT_CLOSED);
                                 Ok(Step::Continue)
                             }
                         }
@@ -327,7 +327,7 @@ impl Interactive for LocationBox {
         let loc = self.location.as_deref().map(|l| if l.starts_with(sign) { l.to_string() } else { format!("{sign}{l}") });
         self.anchors
             .iter()
-            .filter(|(a, _)| crate::locations::contains(&v, *a))
+            .filter(|(a, _)| ecad_electrical::locations::contains(&v, *a))
             .map(|(a, own)| {
                 let aci = if own.is_some() && own.as_deref() != loc.as_deref() { WARNING_ACI } else { ATTACHED_ACI };
                 preview_entity(s, kind_for_primitive(&Primitive::Circle { center: *a, radius: r }), aci)

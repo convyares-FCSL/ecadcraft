@@ -52,7 +52,7 @@ pub fn related(p: &Project, page: PageId, selection: &[Handle]) -> Related {
                 continue;
             }
             if r.page == page {
-                let handles = ecad_engine::device_list::symbol_target(p, rid).map(|t| t.2).unwrap_or_default();
+                let handles = ecad_engine::reports::device_list::symbol_target(p, rid).map(|t| t.2).unwrap_or_default();
                 if !handles.is_empty() {
                     out.here.push(handles);
                 }

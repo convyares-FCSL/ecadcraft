@@ -7,7 +7,7 @@ use crate::container_v2::TempDir;
 use ecad_file::ReadOnly;
 use ecad_file::disk::DiskProject;
 use ecad_file::schema::META;
-use ecad_model::strict::{UnknownWord, WordPlace};
+use ecad_model::document::strict::{UnknownWord, WordPlace};
 use redb::ReadableDatabase;
 
 /// A saved project at `p` whose `meta` table also holds `future_name`.

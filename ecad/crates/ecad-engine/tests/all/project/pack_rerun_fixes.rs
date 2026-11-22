@@ -32,7 +32,7 @@ fn tag(d: &Document, c: DeviceId) -> String {
 /// Every text value derived on `page`, shown or not.
 fn page_texts(h: &mut H, page: PageId) -> Vec<String> {
     let d = h.doc();
-    ecad_engine::devices::all_texts_on_page(&d, page).into_iter().map(|t| t.text.value).collect()
+    ecad_engine::devices::draw::all_texts_on_page(&d, page).into_iter().map(|t| t.text.value).collect()
 }
 
 fn is_hex_id(s: &str) -> bool {
@@ -125,18 +125,18 @@ fn bug_3_a_located_tag_keeps_a_separator_with_the_tag_dash_off() {
         assert!(texts.contains(&format!("+X1-{bare}")), "dash {dash}: {texts:?}");
         assert!(!texts.contains(&format!("+X1{bare}")), "dash {dash}: {texts:?}");
     }
-    assert_eq!(ecad_engine::locations::located_tag("+X1", "K01"), "+X1-K01");
-    assert_eq!(ecad_engine::locations::located_tag("+X1", "-K01"), "+X1-K01");
-    assert_eq!(ecad_engine::locations::located_tag("+X1", "=PWR"), "+X1=PWR");
+    assert_eq!(ecad_electrical::locations::located_tag("+X1", "K01"), "+X1-K01");
+    assert_eq!(ecad_electrical::locations::located_tag("+X1", "-K01"), "+X1-K01");
+    assert_eq!(ecad_electrical::locations::located_tag("+X1", "=PWR"), "+X1=PWR");
 }
 
 // ---------------------------------------------------------------- bug 4
 
 /// Each contact table's box on `page` (its lines and text anchors), by head.
 fn table_boxes(h: &mut H, page: PageId) -> Vec<(ecad_model::Pt, ecad_model::Pt)> {
-    use ecad_engine::xref::Shape;
+    use ecad_electrical::references::devices::Shape;
     use std::collections::BTreeMap;
-    let parts = h.p(|p| ecad_engine::xref::parts_on_page(p.ledger.document(), page));
+    let parts = h.p(|p| ecad_engine::references::draw::devices::parts_on_page(p.ledger.document(), page));
     let mut boxes: BTreeMap<_, (ecad_model::Pt, ecad_model::Pt)> = BTreeMap::new();
     for part in parts.iter().filter(|p| parts.iter().any(|q| q.rep == p.rep && q.bar)) {
         let pts = match &part.shape {
@@ -167,7 +167,7 @@ fn bug_4_tables_of_coils_drawn_close_together_do_not_overlap() {
     assert_eq!(boxes.len(), 4, "one table per coil");
     // The `contacts` reply reports each table where it is drawn (review of #92, 2).
     for k in &coils {
-        let top = h.p(|p| ecad_engine::xref::contacts_json(p.ledger.document(), *k)).unwrap()["table"]["top"][0].as_f64().unwrap();
+        let top = h.p(|p| ecad_engine::references::draw::devices::contacts_json(p.ledger.document(), *k)).unwrap()["table"]["top"][0].as_f64().unwrap();
         assert!(boxes.iter().any(|b| (b.0.x - (top - 10.0)).abs() < 1e-6), "reply top {top} matches no drawn table: {boxes:?}");
     }
     for (i, a) in boxes.iter().enumerate() {
@@ -183,7 +183,7 @@ fn bug_4_tables_of_coils_drawn_close_together_do_not_overlap() {
     solo.run("newpage", json!({"title": "Contacts"})).unwrap();
     solo.run("place", json!({"symbol": "no", "at": [60.0, 150.0], "device": k.hex()})).unwrap();
     let one = table_boxes(&mut solo, p);
-    let top = solo.p(|p| ecad_engine::xref::contacts_json(p.ledger.document(), k)).unwrap()["table"]["top"][0].as_f64().unwrap();
+    let top = solo.p(|p| ecad_engine::references::draw::devices::contacts_json(p.ledger.document(), k)).unwrap()["table"]["top"][0].as_f64().unwrap();
     assert_eq!(one.len(), 1);
     assert!(one.iter().all(|b| (b.0.x - (top - 10.0)).abs() < 1e-6), "{one:?} {top}");
     // The leftmost of the four keeps that same place: only the later ones move.
@@ -194,7 +194,7 @@ fn bug_4_tables_of_coils_drawn_close_together_do_not_overlap() {
 
 #[test]
 fn bug_11_four_pole_power_contacts_show_their_coil_like_no_and_nc() {
-    use ecad_engine::xref::Shape;
+    use ecad_electrical::references::devices::Shape;
     let mut h = H::new(9111);
     let p1 = h.first_page();
     let p2: PageId = id(&h.run("newpage", json!({"title": "Coils"})).unwrap(), "page");
@@ -202,7 +202,7 @@ fn bug_11_four_pole_power_contacts_show_their_coil_like_no_and_nc() {
     h.activate(p1);
     let power = h.run("place", json!({"symbol": "power4", "at": [100, 150], "device": k.hex()})).unwrap();
     let nc = h.run("place", json!({"symbol": "nc", "at": [200, 150], "device": k.hex()})).unwrap();
-    let parts = h.p(|p| ecad_engine::xref::parts_on_page(p.ledger.document(), p1));
+    let parts = h.p(|p| ecad_engine::references::draw::devices::parts_on_page(p.ledger.document(), p1));
     let text_of = |rep: ecad_model::RepresentationId| {
         parts.iter().find(|x| x.rep == rep).and_then(|x| match &x.shape {
             Shape::Text { value, .. } => Some(value.clone()),
@@ -212,7 +212,7 @@ fn bug_11_four_pole_power_contacts_show_their_coil_like_no_and_nc() {
     let nc_text = text_of(id(&nc, "representation")).expect("the NC shows its coil");
     assert_eq!(text_of(id(&power, "representation")).as_deref(), Some(nc_text.as_str()), "the power contacts show the same place");
     // The coil's table lists four power poles and the NC.
-    let rows = h.p(|p| ecad_engine::xref::contacts_json(p.ledger.document(), k)).unwrap();
+    let rows = h.p(|p| ecad_engine::references::draw::devices::contacts_json(p.ledger.document(), k)).unwrap();
     assert!(p2 != p1);
     assert_eq!(rows["rows"].as_array().map(Vec::len), Some(5), "{rows}");
 }
@@ -241,7 +241,7 @@ fn bug_5_a_card_drawn_in_several_calls_has_one_frame() {
     let card = card_of(&v);
     h.run("plcchannels", json!({"card": card.hex(), "first": 3, "from": [155, 200], "to": [165, 200]})).unwrap();
     h.run("place", json!({"symbol": "chdi", "at": [140, 200], "device": card.hex(), "channel": 2})).unwrap();
-    let runs = h.p(|p| ecad_engine::plc::look::runs_of_card(p.ledger.document(), card, page));
+    let runs = h.p(|p| ecad_electrical::plc::draw::runs_of_card(p.ledger.document(), card, page));
     assert_eq!(runs.len(), 1, "{runs:?}");
     assert_eq!(runs.first().map(|r| (r.first, r.last)), Some((Some(0), Some(3))));
     // The placed cell's point is on the wire, on the line of the others.
@@ -259,7 +259,7 @@ fn addresses(h: &mut H, page: PageId) -> Vec<String> {
     let d = h.doc();
     h.cfg(|p| {
         let plc = p.outputs().plc.clone();
-        ecad_engine::devices::all_texts_on_page_with(&d, page, Some(&plc))
+        ecad_engine::devices::draw::all_texts_on_page_with(&d, page, Some(&plc))
             .into_iter()
             .filter(|t| t.text.value.starts_with("IW"))
             .map(|t| t.text.value)
@@ -349,7 +349,7 @@ fn bug_8_cells_on_wires_running_down_are_turned_with_their_frame_above() {
     }
     let v = h.run("plcchannels", json!({"type": "DQ", "from": [95, 228], "to": [125, 228]})).unwrap();
     let card = card_of(&v);
-    let runs = h.p(|p| ecad_engine::plc::look::runs_of_card(p.ledger.document(), card, page));
+    let runs = h.p(|p| ecad_electrical::plc::draw::runs_of_card(p.ledger.document(), card, page));
     assert_eq!(runs.len(), 1, "{runs:?}");
     assert!(runs.iter().all(|r| r.dir > 0.0 && (r.top - 228.0).abs() < 1e-6), "the frame grows up from the points: {runs:?}");
     for x in [100.0, 120.0] {
@@ -362,7 +362,7 @@ fn bug_8_cells_on_wires_running_down_are_turned_with_their_frame_above() {
         h.wire_pp(&[(x, 270.0), (x, 190.0)]).unwrap();
     }
     let v = h.run("plcchannels", json!({"type": "DI", "from": [95, 192], "to": [125, 192]})).unwrap();
-    let runs = h.p(|p| ecad_engine::plc::look::runs_of_card(p.ledger.document(), card_of(&v), page));
+    let runs = h.p(|p| ecad_electrical::plc::draw::runs_of_card(p.ledger.document(), card_of(&v), page));
     assert!(runs.iter().all(|r| r.dir < 0.0), "{runs:?}");
 }
 

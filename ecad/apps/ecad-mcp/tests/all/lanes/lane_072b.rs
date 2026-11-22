@@ -2,7 +2,7 @@
 //! its symbol declares, as the agent, and is refused with writes off.
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::device::DeviceGroup;
+use ecad_model::objects::devices::DeviceGroup;
 use ecad_model::{Author, Op};
 use serde_json::json;
 

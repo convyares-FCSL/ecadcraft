@@ -287,7 +287,7 @@ pub fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use crate::commands::*;
+    use super::*;
     use ecad_model::WireId;
     use serde_json::json;
 

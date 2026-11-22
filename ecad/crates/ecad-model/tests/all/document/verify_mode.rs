@@ -36,7 +36,7 @@ fn child_probe() {
         return;
     }
     // The program passes the switch in (design 065 §3.1); here the test harness is the program.
-    ledger::set_verify_invariants(ledger::verify_switch_on(std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref()));
+    document::ledger::set_verify_invariants(document::ledger::verify_switch_on(std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref()));
     let doc = invalid_checkpoint();
     assert!(doc.check().is_err(), "the checkpoint is invalid");
     let mut ledger = Ledger::from_checkpoint(doc, 0, Vec::new(), 1).unwrap();
@@ -117,9 +117,9 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
             Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::CreateDevice { id: c, device: Device::default() },
-            Op::AddConnectionPoint { id: t1, terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
-            Op::AddConnectionPoint { id: t2, terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
-            Op::AddConnectionPoint { id: t3, terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: t1, terminal: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: t2, terminal: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: t3, terminal: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() } },
             Op::CreateWire { id: w, wire: w_v.clone() },
             Op::CreateCable { id: cable, cable: cabled.clone() },
         ],
@@ -131,7 +131,7 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
             Op::CreateWire { id: WireId(12), wire: Wire::new(NetId(13), ConductorId(14), t1, t2) },
             Op::ModifyCable { id: cable, before: cabled.clone(), after: Cable::default() },
             Op::DeleteCable { id: cable, cable: Cable::default() },
-            Op::RemoveConnectionPoint { id: ConnectionPointId(99), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+            Op::RemoveConnectionPoint { id: ConnectionPointId(99), terminal: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() } },
         ],
         // The wire deleted and made again to a point that does not exist.
         vec![Op::DeleteWire { id: w, wire: w_v.clone() }, Op::CreateWire { id: w, wire: Wire { ends: [t1, ConnectionPointId(99)], ..w_v.clone() } }],

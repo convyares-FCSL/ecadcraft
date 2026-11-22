@@ -211,7 +211,7 @@ fn build(motor: &Motor, f: &Found) -> Result<Motor, Read<Motor>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::devices::ratings::*;
+    use super::*;
     use ecad_model::objects::devices::Phases;
 
     fn shown(text: &str) -> String {

@@ -368,10 +368,10 @@ fn wiring_settings_and_bridges_survive_chunks() {
     let mut o = open(&tail);
     let before = f.ledger.document().settings.clone();
     let mut after = before.clone();
-    after.wiring.colour_style = Some(ecad_model::colour::ColourWords::Code3);
+    after.wiring.colour_style = Some(ecad_model::geometry::colour::ColourWords::Code3);
     after.wiring.label_height = Some(2.5);
     // Brief 032 (FP-W1).
-    after.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
+    after.wiring.label_rule = Some(ecad_model::connectivity::wiring::LABEL_RULE_EACH.into());
     after.wiring.label_min_length = Some(10.0);
     let def: DefinitionId = f.ids.fresh();
     let mut bridged = coil(2.0);

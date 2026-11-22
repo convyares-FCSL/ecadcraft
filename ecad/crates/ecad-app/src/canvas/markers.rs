@@ -3,7 +3,7 @@
 //! with "!", a provisional tag gets a dotted underline, a device's other placements on the page a
 //! dashed outline in the selection colour. Markers keep their screen size at every zoom; outlines
 //! follow the sheet's line weights, with a 1 px floor. (Wire colours are ink, drawn by the page's
-//! projection: `ecad_engine::wires::colour_routes`.)
+//! projection: `ecad_engine::wires::draw::colour_routes`.)
 //!
 //! None of it is an entity: it is painted over CADCraft's drawing and never reaches a plot.
 

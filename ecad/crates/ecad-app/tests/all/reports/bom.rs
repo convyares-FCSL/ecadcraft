@@ -49,7 +49,7 @@ fn fixture(deltas: Option<Deltas>) -> H {
     h
 }
 
-fn table(h: &H) -> ecad_engine::outputs::Table {
+fn table(h: &H) -> ecad_electrical::reports::Table {
     h.state().reports.as_ref().unwrap().table().clone()
 }
 

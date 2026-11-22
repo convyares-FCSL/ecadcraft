@@ -34,8 +34,7 @@ pub const INSET_MM: f64 = 1.0;
 pub struct Block {
     pub frame: StyleRef,
     pub layout: Arc<TitleBlockLayout>,
-    pub builtin: bool,
-}
+    pub builtin: bool}
 
 /// The width of the frame of `spec` with `margins`, in millimetres.
 pub fn frame_width(spec: &SheetSpec, margins: &Margins) -> f64 {
@@ -47,8 +46,7 @@ pub fn frame_width(spec: &SheetSpec, margins: &Margins) -> f64 {
 pub fn block_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, margins: &Margins, text: &FrameText) -> Block {
     match sheet::frame_block(doc, id) {
         Some(l) => Block { frame: id.clone(), layout: Arc::new(l.clone()), builtin: false },
-        None => Block { frame: id.clone(), layout: Arc::new(house::house(frame_width(spec, margins), text)), builtin: true },
-    }
+        None => Block { frame: id.clone(), layout: Arc::new(house::house(frame_width(spec, margins), text)), builtin: true }}
 }
 
 /// The block `page` shows.
@@ -69,8 +67,7 @@ pub enum Reach {
     /// The pages whose grid or keep-out may change.
     Pages(std::collections::BTreeSet<PageId>),
     /// Any page (the project's or the standard's frame choice, a standard switched).
-    Wide,
-}
+    Wide}
 
 /// What a frame record sets that the grid and the keep-out read: its sheet, its margins and its
 /// block's height.
@@ -113,8 +110,7 @@ pub fn frame_reach_of(doc: &Document, effect: &ecad_model::document::effect::Eff
                         .copied()
                         .filter(|p| sheet::frame_style(doc, *p) == **id || sheet::title_block_style(doc, *p) == **id)
                         .collect(),
-                ),
-            }
+                )}
         }
         Effect::Page { .. }
         | Effect::Layer { .. }
@@ -136,8 +132,7 @@ pub fn frame_reach_of(doc: &Document, effect: &ecad_model::document::effect::Eff
         | Effect::Project { .. }
         | Effect::Aid { .. }
         | Effect::LoosePart { .. }
-        | Effect::DeviceLink { .. } => Reach::NotFrame,
-    }
+        | Effect::DeviceLink { .. } => Reach::NotFrame}
 }
 
 /// `A3`, or `594×420`: how a field bound to `print:sheet` names a sheet.

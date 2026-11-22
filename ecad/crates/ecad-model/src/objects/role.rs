@@ -173,7 +173,7 @@ crate::__word_schema!(Role);
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn every_role_reads_back_its_own_word() {

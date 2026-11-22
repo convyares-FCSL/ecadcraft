@@ -1,5 +1,5 @@
 //! `plcchannels`, `plcchannel` and placing a channel cell (brief 045, design 045 §4): channels
-//! on the page. The rules are [`crate::plc::channels`].
+//! on the page. The rules are [`ecad_electrical::plc::channels`].
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
@@ -10,8 +10,8 @@ use serde::Deserialize;
 
 use crate::commands::input::Command;
 use crate::commands::{err, on_project, plain_style};
-use crate::plc::channels::*;
-use crate::plc::rack::channel_count;
+use ecad_electrical::plc::channels::*;
+use ecad_electrical::plc::rack::channel_count;
 use ecad_electrical::symbols::Starter;
 use ecad_electrical::commands::input::{Point, TextOrNumber, nullable};
 use ecad_model::{Placement, Pt, ConnectionPointId};
@@ -40,7 +40,7 @@ pub(crate) fn place_channel(
         let mut ops = Vec::new();
         let def = crate::terminal_strips::commands::definition_for(doc, &mut p.ids, starter, &mut ops)?;
         let (card, card_tag, new) = match card {
-            Some(c) => (c, crate::devices::tag_words(doc, c), false),
+            Some(c) => (c, ecad_electrical::devices::tag_words(doc, c), false),
             None => {
                 let (c, t2) = new_card_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, t, new_tag, &mut ops)?;
                 (c, t2, true)
@@ -49,7 +49,7 @@ pub(crate) fn place_channel(
         let doc = p.ledger.document();
         let j = if new {
             // The new card is made in `ops`: its count is the one it is made with.
-            let n = crate::plc::edit::current(doc, &ops, card).and_then(|d| match d.device_type {
+            let n = ecad_electrical::plc::edit::current(doc, &ops, card).and_then(|d| match d.device_type {
                 ecad_model::DeviceType::PlcModule(m) => Some(m.channel_count()),
                 _ => None,
             });
@@ -70,7 +70,7 @@ pub(crate) fn place_channel(
         // that line, so the card keeps one frame.
         if !new && let Some(q) = first_point(starter, &pl) {
             let dir = if (degrees.0.rem_euclid(360.0) - 180.0).abs() < 0.5 { 1.0 } else { -1.0 };
-            let line = crate::plc::look::runs_of_card(doc, card, page)
+            let line = ecad_electrical::plc::draw::runs_of_card(doc, card, page)
                 .iter()
                 .filter(|r| r.dir == dir && (r.top - q.y).abs() <= SNAP_TO_LINE)
                 .map(|r| r.top)
@@ -100,7 +100,7 @@ pub(crate) fn place_channel(
         let first = first_number(doc, card);
         let pins: Vec<String> = cell.terminals.iter().map(|(_, _, pin, _)| pin.clone()).collect();
         let on = wire
-            .and_then(|r| crate::wires::wire_of_route(doc, r))
+            .and_then(|r| ecad_electrical::wires::wire_of_route(doc, r))
             .map(|w| format!(" on wire {}", ecad_electrical::cables::slash::wire_name(doc, w)))
             .unwrap_or_default();
         let message = format!("Placed {card_tag} channel {} ({}){on}.", j.index + first, pins_words(&pins));
@@ -263,7 +263,7 @@ impl Command for PlcchannelParams {
             return Err(err("`channel` (a number as shown) is required"));
         }
         let values: Vec<(&'static str, Option<String>)> =
-            [("text", self.text), ("address", self.address), (crate::plc::signals::TAG, self.tag), (crate::plc::signals::SAFE, self.safe)]
+            [("text", self.text), ("address", self.address), (ecad_electrical::plc::signals::TAG, self.tag), (ecad_electrical::plc::signals::SAFE, self.safe)]
                 .into_iter()
                 .filter_map(|(what, v)| v.map(|v| (what, v)))
                 .collect();

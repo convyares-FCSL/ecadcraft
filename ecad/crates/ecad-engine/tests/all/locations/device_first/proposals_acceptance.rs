@@ -5,17 +5,16 @@
 
 use crate::common::{H, id};
 
-use ecad_engine::checks::{self, Kind};
-use ecad_engine::locations;
+use {ecad_electrical::checks::Kind};
 use ecad_model::{DeviceId, Document, PageId};
 use serde_json::{Value, json};
 
 fn loc(d: &Document, c: DeviceId) -> Option<String> {
-    locations::resolve(d, c).value
+    ecad_electrical::locations::resolve(d, c).value
 }
 
 fn func(d: &Document, c: DeviceId) -> Option<String> {
-    locations::resolve_function(d, c).value
+    ecad_electrical::locations::resolve_function(d, c).value
 }
 
 fn conflicts(h: &mut H) -> Vec<Value> {
@@ -44,8 +43,7 @@ fn float_symbol(h: &mut H) {
             "graphics": [{"kind": "polyline", "vertices": [[-2.5, -7.5], [2.5, -7.5], [2.5, 7.5], [-2.5, 7.5]], "closed": true}],
             "points": [{"key": "1", "label": "BN", "at": [0, 5]}, {"key": "2", "label": "BU", "at": [0, -5]}],
             "slots": [{"text": "tag", "at": [-4, 0], "h": "right", "v": "middle"}],
-            "defaults": {"prefix": "B", "description": "Float switch", "join": "device"},
-        }),
+            "defaults": {"prefix": "B", "description": "Float switch", "join": "device"}}),
     )
     .unwrap();
 }
@@ -199,7 +197,7 @@ fn an_undone_proposal_leaves_no_conflict_to_answer() {
     let d = h.doc();
     assert_eq!(loc(&d, k).as_deref(), Some("+CP2"), "the device keeps +CP2");
     assert_eq!(h.head(), head, "nothing written for a proposal that was undone");
-    let missing: Vec<_> = checks::all(&d, 1e-6).into_iter().filter(|r| r.kind == Kind::DesignationMissing).collect();
+    let missing: Vec<_> = ecad_engine::checks::all(&d, 1e-6).into_iter().filter(|r| r.kind == Kind::DesignationMissing).collect();
     assert!(missing.is_empty(), "{missing:?}");
 }
 
@@ -320,8 +318,7 @@ fn the_title_block_shows_codes_and_follows_a_rename() {
             .into_iter()
             .filter_map(|p| match p.kind {
                 EntityKind::Text(t) => Some(t.value),
-                _ => None,
-            })
+                _ => None})
             .collect()
     };
     let mut h = H::new(0x52_d00a);

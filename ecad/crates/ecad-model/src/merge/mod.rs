@@ -37,7 +37,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::document::diff;
 use crate::document::doc::{
-    Cable, Core, CorePosition, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Terminal, Wire,
+    Cable, Core, CorePosition, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, ConnectionPoint, Wire,
 };
 use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::document::invariant::Touched;
@@ -1001,7 +1001,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             Obj::Terminal(id) => {
                 let v = object(ctx, obj, &what, a.terminals.get(&id), t.terminals.get(&id), s.terminals.get(&id), |ctx, a, t, s| {
                     let show =
-                        |x: &Terminal| x.label.clone().or_else(|| x.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "(no label)".into());
+                        |x: &ConnectionPoint| x.label.clone().or_else(|| x.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "(no label)".into());
                     field(ctx, obj, "record", format!("{what} · changed on both"), a, t, s, &show)
                 });
                 set(&mut m.terminals, id, v);
@@ -2399,7 +2399,7 @@ pub fn kind_word(k: ConflictKind) -> &'static str {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use crate::*;
+    use super::*;
     use crate::naming::id::{ConductorId, NetId};
 
     fn doc_with(tags: &[(u128, &str)]) -> Document {
@@ -2591,7 +2591,7 @@ mod tests {
         d.devices.insert(DeviceId(c), Device::default().with_tag(Some(tag_text)));
         for t in terminals {
             d.terminals
-                .insert(ConnectionPointId(*t), Terminal { owner: DeviceId(c).into(), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
+                .insert(ConnectionPointId(*t), ConnectionPoint { owner: DeviceId(c).into(), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
         }
     }
 

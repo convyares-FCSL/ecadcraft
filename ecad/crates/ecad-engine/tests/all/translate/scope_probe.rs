@@ -19,7 +19,7 @@ use crate::common;
 
 use cadcraft_engine::doc::Handle;
 use common::{H, id};
-use ecad_engine::references::markers_on_page;
+use ecad_electrical::references::cables::markers_on_page;
 use ecad_model::connectivity::derive::{cable_references, connection_point_positions};
 use ecad_model::{CableId, PageId, Pt, ConnectionPointId, WireId};
 use serde_json::json;

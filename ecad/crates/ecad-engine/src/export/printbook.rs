@@ -24,7 +24,7 @@ use ecad_model::document::book::{self, Book};
 use ecad_model::{CableId, Document, FolderId, PageId, Pt};
 use serde_json::{Value, json};
 
-use crate::outputs::kept::ReportModels;
+use ecad_electrical::reports::kept::ReportModels;
 use crate::project::{HandleMap, base_drawing, project_page_framed};
 
 /// Most sheets in one PDF (CADCraft's `MAX_PAGES`).
@@ -95,7 +95,7 @@ pub fn resolve_with(doc: &Document, scope: &Scope, outputs: Option<&ReportModels
                     keep.insert(i);
                     continue;
                 }
-                if let Some((owner, i)) = crate::generated::continuation_of(doc, &b, token, outputs)
+                if let Some((owner, i)) = ecad_electrical::pages::generated::continuation_of(doc, &b, token, outputs)
                     && let Some(at) = b.position(owner).and_then(|n| n.checked_sub(1))
                 {
                     keep.insert(at);
@@ -178,13 +178,13 @@ pub fn build_in(
 ) -> Result<(Drawing, Vec<Sheet>), String> {
     let mut scratch = base_drawing();
     // Overseer ruling 7: the scratch drawing carries ECAD's text styles (Standard, ECAD-BOLD).
-    crate::text_style::install(&mut scratch, doc);
-    crate::locations::add_linetype(&mut scratch);
+    crate::styles::draw::install(&mut scratch, doc);
+    crate::locations::draw::add_linetype(&mut scratch);
     let mut store = EntityStore::new();
     let mut sheets = Vec::new();
     let mut x = 0.0;
     for page in pages {
-        let parts = crate::generated::parts_of_pending(doc, *page, outputs, pending);
+        let parts = crate::pages::generated::parts_of_pending(doc, *page, outputs, pending);
         // Brief 040: a print is on white paper: wire colours for the paper sheet.
         let (d, map) = crate::cables::draw::with_paper(|| project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts))?;
         for l in &d.layers {
@@ -209,26 +209,26 @@ pub fn build_in(
         let m = Mat3::translate(Vec2::new(x, 0.0));
         for e in d.model.iter() {
             // Brief 040: mono leaves a two-colour wire's dashes out (ink on ink).
-            if !colour && e.common.layer == crate::wires::DASH_LAYER {
+            if !colour && e.common.layer == ecad_electrical::wires::DASH_LAYER {
                 continue;
             }
             let mut e = (**e).clone();
             e.kind.transform(&m);
             // Design 033 §3.1: a missing value prints black in either colour mode.
-            if e.common.layer == crate::generated::LAYER && e.common.color == Color::Index(crate::generated::FLAGGED_ACI) {
-                e.common.color = Color::Index(crate::generated::FLAGGED_PRINT_ACI);
+            if e.common.layer == ecad_electrical::pages::generated::LAYER && e.common.color == Color::Index(ecad_electrical::pages::generated::FLAGGED_ACI) {
+                e.common.color = Color::Index(ecad_electrical::pages::generated::FLAGGED_PRINT_ACI);
             }
             // Colour: everything but the wire colours prints in ink. Mono: the wires print in ink.
             // Brief 050a: a style's colour (text, location box, frame; set as a true colour by
             // the projection) prints like a wire colour: in a colour print only.
-            let wire_colour = e.common.layer == crate::wires::DASH_LAYER || map.is_coloured(e.handle) || matches!(e.common.color, Color::True(_));
+            let wire_colour = e.common.layer == ecad_electrical::wires::DASH_LAYER || map.is_coloured(e.handle) || matches!(e.common.color, Color::True(_));
             if colour != wire_colour {
                 e.common.color = Color::Index(7);
             }
             e.handle = scratch.new_handle();
             store.push(e);
         }
-        let windows = crate::generated::sheet_windows_of(doc, *page, outputs);
+        let windows = ecad_electrical::pages::generated::sheet_windows_of(doc, *page, outputs);
         let mut right = x;
         for (lo, hi) in windows {
             let (paper, exact, landscape) = paper_for(hi.x - lo.x, hi.y - lo.y);
@@ -350,14 +350,14 @@ pub fn print(
         return Err("No page matches.".into());
     }
     // Brief 040: a headless print draws in the sheet font too (a no-op once installed).
-    crate::text_style::register_sheet_font();
+    crate::styles::draw::register_sheet_font();
     let (scratch, sheets) = build_in(doc, pages, fan, tol, outputs, o.pending, !o.mono)?;
     let mut done = Printed { sheets: sheets.len(), ..Printed::default() };
     // Design 033 §6.2: nobody prints a pending book by mistake.
     done.notes.extend(ecad_electrical::releases::revisions::pending_note(doc, o.pending));
-    let generated: BTreeSet<PageId> = pages.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some()).collect();
+    let generated: BTreeSet<PageId> = pages.iter().copied().filter(|p| ecad_electrical::pages::generated::kind_of(doc, *p).is_some()).collect();
     done.generated = sheets.iter().filter(|s| generated.contains(&s.page)).count();
-    done.flagged = crate::generated::flagged(doc, &generated, outputs);
+    done.flagged = ecad_electrical::pages::generated::flagged(doc, &generated, outputs);
     let mut noted = BTreeSet::new();
     for s in sheets.iter().filter(|s| !s.exact) {
         if noted.insert(s.page) {
@@ -396,7 +396,7 @@ pub fn write_file(path: &str, bytes: &[u8]) -> Result<(), String> {
 /// The dialog's notes for printing `scope` of `p` (brief 033): a continuation sheet's number
 /// chooses its whole page, and the pending-revision note. Reads only.
 pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
-    if crate::generated::has_bom_page(p.ledger.document()) {
+    if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
         p.outputs();
     }
     p.refresh_pending();
@@ -409,14 +409,14 @@ pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
 /// What printing `scope` of `p` would give, for the dialog's live counts: sheets, numbers that
 /// match no page, `?` values on generated pages. Reads pages only (and the kept report models).
 pub fn count(p: &mut crate::Project, scope: &Scope) -> (usize, Vec<String>, usize) {
-    if crate::generated::has_bom_page(p.ledger.document()) {
+    if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
         p.outputs();
     }
     let doc = p.ledger.document();
     let Ok(r) = resolve_with(doc, scope, p.kept_reports()) else { return (0, Vec::new(), 0) };
-    let sheets = r.pages.iter().map(|pg| crate::generated::sheets_of(doc, *pg, p.kept_reports())).sum();
-    let generated: BTreeSet<PageId> = r.pages.iter().copied().filter(|pg| crate::generated::kind_of(doc, *pg).is_some()).collect();
-    (sheets, r.unknown, crate::generated::flagged(doc, &generated, p.kept_reports()))
+    let sheets = r.pages.iter().map(|pg| ecad_electrical::pages::generated::sheets_of(doc, *pg, p.kept_reports())).sum();
+    let generated: BTreeSet<PageId> = r.pages.iter().copied().filter(|pg| ecad_electrical::pages::generated::kind_of(doc, *pg).is_some()).collect();
+    (sheets, r.unknown, ecad_electrical::pages::generated::flagged(doc, &generated, p.kept_reports()))
 }
 
 /// Install CADCraft's file hooks (reading, writing and the PDF plotter) for an ECAD app, as
@@ -431,7 +431,7 @@ pub fn install_io() {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn papers_are_the_smallest_iso_a_that_fits() {

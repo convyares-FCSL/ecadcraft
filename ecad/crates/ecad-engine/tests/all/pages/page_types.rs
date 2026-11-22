@@ -1,7 +1,7 @@
 //! Brief 054a (design 054 §2–§4, §8.3, §9): page types, `newpage {type, after}`, folder start
 //! numbers, Renumber pages, `deletepage`, and their Checks rows.
 
-use ecad_engine::checks::Kind;
+use ecad_electrical::checks::Kind;
 use ecad_electrical::styles::page as ptype;
 use ecad_model::document::book::{Book, NUMBER_KEY};
 use ecad_model::document::sheet::sheet_of;
@@ -145,7 +145,7 @@ fn zones_off_draws_no_ticks_or_labels() {
     let p1 = h.first_page();
     let count = |h: &mut H| {
         let d = h.doc();
-        ecad_engine::generated::parts_of(&d, p1, ecad_engine::project::engine_views().report_models(&d).as_ref()).len()
+        ecad_engine::pages::generated::parts_of(&d, p1, ecad_engine::project::engine_views().report_models(&d).as_ref()).len()
     };
     let with = count(&mut h);
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"zones": "off"}})).unwrap();
@@ -294,7 +294,7 @@ fn cover_notes_are_written_one_per_line_and_bounded() {
 
 fn cover_texts(h: &mut H, cover: PageId) -> Vec<String> {
     let d = h.doc();
-    ecad_engine::generated::parts_of(&d, cover, ecad_engine::project::engine_views().report_models(&d).as_ref())
+    ecad_engine::pages::generated::parts_of(&d, cover, ecad_engine::project::engine_views().report_models(&d).as_ref())
         .into_iter()
         .filter_map(|p| match p.kind {
             cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
@@ -345,22 +345,22 @@ fn the_symbol_legend_shows_symbols_used_and_redraws_only_at_zero() {
     let d = h.doc();
     let tx = d.clone();
     let _ = tx;
-    let cells = ecad_engine::front::legend_cells(&d);
+    let cells = ecad_electrical::pages::front::legend_cells(&d);
     assert_eq!(cells.len(), 1, "{cells:?}");
     // The first copy of a definition changes the cover; a second does not.
     let last = |h: &mut H| h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
     let ops = last(&mut h);
-    assert!(ecad_engine::front::touches(&h.doc(), &ops));
+    assert!(ecad_electrical::pages::front::touches(&h.doc(), &ops));
     h.run("place", json!({"symbol": "coil", "at": [150, 100]})).unwrap();
     let ops = last(&mut h);
-    assert!(!ecad_engine::front::touches(&h.doc(), &ops), "a second coil leaves the cover");
+    assert!(!ecad_electrical::pages::front::touches(&h.doc(), &ops), "a second coil leaves the cover");
     let name = cells.first().map(|c| c.name().to_string()).unwrap_or_default();
     assert!(cover_texts(&mut h, cover).contains(&name));
 }
 
 #[test]
 fn wire_colour_lines_merge_equal_categories() {
-    let l = ecad_engine::front::WireLine {
+    let l = ecad_electrical::pages::front::WireLine {
         names: vec!["L1".into(), "L2".into(), "L3".into()],
         cross_section: "2.5".into(),
         colour: ecad_model::objects::wire::Colours::parse("BK"),
@@ -368,7 +368,7 @@ fn wire_colour_lines_merge_equal_categories() {
     };
     assert_eq!(l.text(), "L1, L2, L3 · 2.5 mm² · black");
     let gnye = ecad_model::objects::wire::Colours::parse("GNYE").expect("GNYE");
-    assert_eq!(ecad_engine::front::colour_words(&gnye), "green / yellow");
+    assert_eq!(ecad_electrical::pages::front::colour_words(&gnye), "green / yellow");
 }
 
 /// Review of #111, 1 and 2: several new copies of a definition in one transaction, and a
@@ -387,12 +387,12 @@ fn the_legend_sees_several_new_copies_at_once_and_a_redrawn_definition() {
         d.items.iter().filter(|(_, it)| matches!(it.kind, ItemKind::Symbol(_))).map(|(id, it)| Op::AddItem { id: *id, item: it.clone() }).collect();
     assert_eq!(copies.len(), 2);
     // Both copies in one transaction: the definition is new to the legend.
-    assert!(ecad_engine::front::touches(&d, &copies));
+    assert!(ecad_electrical::pages::front::touches(&d, &copies));
     // One of two copies alone is not.
-    assert!(!ecad_engine::front::touches(&d, &copies[..1]));
+    assert!(!ecad_electrical::pages::front::touches(&d, &copies[..1]));
     // A definition in use redrawn or renamed (048's Edit symbol embeds it again).
     let (def_id, def) = d.definitions.iter().next().map(|(i, x)| (*i, x.clone())).unwrap();
-    assert!(ecad_engine::front::touches(&d, &[Op::EmbedDefinition { id: def_id, definition: def }]));
+    assert!(ecad_electrical::pages::front::touches(&d, &[Op::EmbedDefinition { id: def_id, definition: def }]));
 }
 
 /// Design 054 §10.1: a second wire of a category in use leaves the cover; the first of a new
@@ -404,7 +404,7 @@ fn wire_categories_in_use_cross_zero_only() {
     page(&mut h, json!({"generated": "cover"}));
     h.activate(first);
     let d0 = h.doc();
-    let mut uses = ecad_engine::front::Uses::build(&d0);
+    let mut uses = ecad_electrical::pages::front::Uses::build(&d0);
     let last = |h: &mut H| h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
     let w: ecad_model::WireId = id(&h.wire_pp(&[(0.0, 0.0), (60.0, 0.0)]).unwrap(), "conductor");
     let ops = last(&mut h);
@@ -445,7 +445,7 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     h.wire_pp(&[(0.0, 40.0), (60.0, 40.0)]).unwrap();
     assert_eq!(on_page(&mut h, plain), 0, "no Checks row on a Plain page");
     let d = h.doc();
-    let on_plain: Vec<_> = d.wires.iter().filter(|(c, _)| ecad_engine::wires::wire_pages(&d, **c).iter().all(|p| *p == plain)).collect();
+    let on_plain: Vec<_> = d.wires.iter().filter(|(c, _)| ecad_electrical::wires::wire_pages(&d, **c).iter().all(|p| *p == plain)).collect();
     assert!(!on_plain.is_empty());
     assert!(on_plain.iter().all(|(_, c)| !c.number.is_some()), "no wire number on a Plain page");
     let _ = before_numbered;
@@ -454,7 +454,7 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     let d = h.doc();
     let coil = d.devices.keys().copied().find(|c| d.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == plain));
     if let Some(c) = coil {
-        assert!(ecad_engine::xref::device(&d, c).head.is_none(), "no references from a Plain page");
+        assert!(ecad_electrical::references::devices::device(&d, c).head.is_none(), "no references from a Plain page");
     }
     // The switch on: checks come back, in one step.
     let head = h.head();
@@ -475,7 +475,7 @@ fn cover_rows_hide_reorder_and_relabel_the_generated_legend() {
     h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     h.run("place", json!({"symbol": "lamp", "at": [150, 100]})).unwrap();
     let d = h.doc();
-    let rows = ecad_engine::front::legend_rows(&d);
+    let rows = ecad_electrical::pages::front::legend_rows(&d);
     assert_eq!(rows.len(), 2);
     let (a, b) = (rows[0].1.clone(), rows[1].1.clone());
     // b first and relabelled, a hidden, plus a key no longer generated.
@@ -484,9 +484,9 @@ fn cover_rows_hide_reorder_and_relabel_the_generated_legend() {
     h.run("projectprops", json!({"props": {"cover.symbol_legend": text}})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
     let d = h.doc();
-    let shown: Vec<String> = ecad_engine::front::legend_rows(&d).into_iter().filter(|(_, r)| r.shown).map(|(_, r)| r.label).collect();
+    let shown: Vec<String> = ecad_electrical::pages::front::legend_rows(&d).into_iter().filter(|(_, r)| r.shown).map(|(_, r)| r.label).collect();
     assert_eq!(shown, ["My lamp"]);
-    let texts: Vec<String> = ecad_engine::generated::parts_of(&d, cover, ecad_engine::project::engine_views().report_models(&d).as_ref())
+    let texts: Vec<String> = ecad_engine::pages::generated::parts_of(&d, cover, ecad_engine::project::engine_views().report_models(&d).as_ref())
         .into_iter()
         .filter_map(|p| match p.kind {
             cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),

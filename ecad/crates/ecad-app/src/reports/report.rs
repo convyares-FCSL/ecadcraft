@@ -1,4 +1,4 @@
-//! A column set over one of the kept report models' tables (`ecad_engine::outputs::Table`):
+//! A column set over one of the kept report models' tables (`ecad_electrical::reports::Table`):
 //! UI rev 3's Wires and Cables tabs (boards 2.04, 2.05) and the Reports tab's list. Each column
 //! names the report header it reads, or is a placeholder for data that is not built yet (the cable
 //! manager's ferrules, lengths and glands, brief 2.7), shown as a dash.
@@ -8,7 +8,6 @@
 //! Reports window did (design 024 §6.2); every other commit reads nothing. The copy is the
 //! whole table (`Changed::All`): the models do not say which rows a change touched.
 
-use ecad_engine::outputs;
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Column, ColumnId};
 
@@ -30,20 +29,20 @@ pub const DASH: &str = "\u{2014}";
 #[derive(Debug, Default)]
 pub struct ReportRows {
     pub headers: Vec<&'static str>,
-    pub rows: Vec<Vec<outputs::Cell>>,
+    pub rows: Vec<Vec<ecad_electrical::reports::Cell>>,
     pub keys: Vec<usize>,
 }
 
 impl ReportRows {
     /// Copy `t`.
-    pub fn take(&mut self, t: outputs::Table) {
+    pub fn take(&mut self, t: ecad_electrical::reports::Table) {
         self.keys = (0..t.rows.len()).collect();
         self.headers = t.headers;
         self.rows = t.rows;
     }
 
     /// The cell of row `k` under `header` (`None`: no such row or column).
-    pub fn get(&self, k: usize, header: &str) -> Option<&outputs::Cell> {
+    pub fn get(&self, k: usize, header: &str) -> Option<&ecad_electrical::reports::Cell> {
         let i = self.headers.iter().position(|h| *h == header)?;
         self.rows.get(k)?.get(i)
     }

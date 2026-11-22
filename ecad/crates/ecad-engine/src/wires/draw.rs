@@ -7,13 +7,13 @@ use cadcraft_engine::geom::Vec3;
 use ecad_model::{Document, Form, ItemId, PageId, Pt, Subject};
 
 use crate::styles::draw::{EngineMetrics, DrawApply as _};
-use crate::wires::{DASH_LAYER, LABEL_LAYER, WireLabel};
+use {ecad_electrical::wires::DASH_LAYER, ecad_electrical::wires::LABEL_LAYER, ecad_electrical::wires::WireLabel};
 
 /// [`labels_on_page`] without the routes whose items are `hidden` (a cable drawn as a fan: its
 /// members' routes and their labels are not shown, brief 005 and owner 2026-11-09), measured with
-/// CADCraft's fonts ([`crate::wires::labels_measured`]).
+/// CADCraft's fonts ([`ecad_electrical::wires::labels_measured`]).
 pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>) -> Vec<WireLabel> {
-    crate::wires::labels_measured(doc, page, hidden, &EngineMetrics)
+    ecad_electrical::wires::labels_measured(doc, page, hidden, &EngineMetrics)
 }
 
 /// Brief 040: draw the page's wires and cores in their colour codes (spec §4): the route entity
@@ -69,7 +69,7 @@ pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], it
             continue;
         }
         // A line looks as the wire it stands for (design 072 §4.3).
-        let Some(c) = crate::wires::wire_of_route(doc, x) else { continue };
+        let Some(c) = ecad_electrical::wires::wire_of_route(doc, x) else { continue };
         let look = looks.look(doc, c);
         let weight = (look.line_weight * 100.0).round().clamp(0.0, 211.0) as u16;
         if look.line_type == "continuous" && weight == crate::cables::draw::WIRE_WEIGHT {
@@ -96,8 +96,7 @@ pub(crate) fn route_dashes(r: &crate::cables::draw::ColouredRoute, route: &Commo
         .map(|(a, b)| Entity {
             handle: Handle::default(),
             common: common.clone(),
-            kind: EntityKind::Line(cadcraft_engine::doc::Line { a: Vec3::new(a.x, a.y, 0.0), b: Vec3::new(b.x, b.y, 0.0) }),
-        })
+            kind: EntityKind::Line(cadcraft_engine::doc::Line { a: Vec3::new(a.x, a.y, 0.0), b: Vec3::new(b.x, b.y, 0.0) })})
         .collect()
 }
 
@@ -109,13 +108,13 @@ pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<WireLabel> {
 /// A label as an entity on [`LABEL_LAYER`].
 ///
 /// Its style (the wire-label kind's font, weight, and bold lineweight in the stroke font) comes
-/// from lane T's resolved `look` of the page ([`crate::text_style::Look::apply`]).
-pub fn label_entity(look: &crate::text_style::Look, l: &WireLabel, handle: Handle) -> Entity {
+/// from lane T's resolved `look` of the page ([`crate::styles::draw::Look::apply`]).
+pub fn label_entity(look: &crate::styles::draw::Look, l: &WireLabel, handle: Handle) -> Entity {
     let p = Vec3::new(l.at.x, l.at.y, 0.0);
     let color = if l.error {
-        cadcraft_engine::doc::color::Color::Index(crate::references::ORPHAN_ACI)
+        cadcraft_engine::doc::color::Color::Index(ecad_electrical::references::cables::ORPHAN_ACI)
     } else if l.provisional {
-        cadcraft_engine::doc::color::Color::Index(crate::devices::PROVISIONAL_ACI)
+        cadcraft_engine::doc::color::Color::Index(ecad_electrical::devices::PROVISIONAL_ACI)
     } else {
         cadcraft_engine::doc::color::Color::ByLayer
     };
@@ -130,15 +129,12 @@ pub fn label_entity(look: &crate::text_style::Look, l: &WireLabel, handle: Handl
             rotation: l.rotation,
             width_factor: 1.0,
             oblique: 0.0,
-            style: crate::text_style::PLACEHOLDER_STYLE.into(),
+            style: ecad_electrical::styles::text_style::PLACEHOLDER_STYLE.into(),
             halign: HAlign::Center,
-            valign: VAlign::Bottom,
-        }),
-    };
+            valign: VAlign::Bottom})};
     match &l.own {
-        Some(o) => look.apply_own(&mut e, crate::text_style::TextKind::WireLabel, o),
-        None => look.apply(&mut e, crate::text_style::TextKind::WireLabel),
-    }
+        Some(o) => look.apply_own(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel, o),
+        None => look.apply(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel)}
     // Brief 050a: an error or provisional label keeps its own colour over the style's.
     if l.error || l.provisional {
         e.common.color = color;
@@ -151,7 +147,7 @@ pub fn label_entity(look: &crate::text_style::Look, l: &WireLabel, handle: Handl
 /// as fans (`fan`), never from what is on screen (review of #65, finding 5). Only a page with a
 /// cable reference has any, so other pages cost nothing.
 pub fn quiet_ends_of(doc: &Document, page: PageId, fan: &std::collections::BTreeSet<ecad_model::CableId>, tol: f64) -> Vec<Pt> {
-    if crate::references::markers_on_page(doc, page).is_empty() {
+    if ecad_electrical::references::cables::markers_on_page(doc, page).is_empty() {
         return Vec::new();
     }
     crate::cables::views::drawings_on_page(doc, page, fan, tol).into_values().flat_map(|d| d.quiet).collect()

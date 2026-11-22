@@ -22,7 +22,7 @@ pub fn applied(doc: &Document, ops: &[ecad_model::Op]) -> Document {
 
 /// What `ops`, taking `before` to `after`, could change in the Devices list: the Devices feed's
 /// touch through the views' pipeline (design 064 §4.1).
-pub fn devices_touched(before: &Document, after: &Document, ops: &[ecad_model::Op]) -> ecad_engine::device_list::DeviceTouch {
+pub fn devices_touched(before: &Document, after: &Document, ops: &[ecad_model::Op]) -> ecad_electrical::devices::device_list::DeviceTouch {
     let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FixedWidth);
     let mut views = ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { metrics });
     let pending = views.begin(before, ops);
@@ -192,7 +192,7 @@ impl H {
 
     /// The route drawing wire `c` on `page` (`wires::route_of_wire_on`).
     pub fn route_of(&mut self, page: PageId, c: WireId) -> ecad_model::RouteId {
-        ecad_engine::wires::route_of_wire_on(&self.doc(), c, page).expect("route")
+        ecad_electrical::wires::route_of_wire_on(&self.doc(), c, page).expect("route")
     }
 
     /// The handle of wire `c`'s line on `page`.
@@ -204,7 +204,7 @@ impl H {
     /// The handle of route `r`'s line on `page`.
     pub fn line_handle(&mut self, page: PageId, r: ecad_model::RouteId) -> Handle {
         let doc = self.doc();
-        let (_, item, _) = ecad_engine::wires::route_item(&doc, r).expect("route item");
+        let (_, item, _) = ecad_electrical::wires::route_item(&doc, r).expect("route item");
         self.handle_of(page, item)
     }
 
@@ -339,7 +339,7 @@ impl H {
     /// connection points): one drawn device holding one point per place, committed straight to the
     /// ledger. Returns the points, in the order given.
     pub fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<ConnectionPointId> {
-        use ecad_model::{Author, Device, Form, Op, Representation, Subject, Terminal};
+        use ecad_model::{Author, Device, Form, Op, Representation, Subject, ConnectionPoint};
         self.cfg(|p| {
             let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
             let device: DeviceId = p.ids.fresh();
@@ -350,7 +350,7 @@ impl H {
                 let t: ConnectionPointId = p.ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: t,
-                    terminal: Terminal { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                    terminal: ConnectionPoint { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
                 });
                 cps.insert(t, Pt::new(*x, *y));
                 out.push(t);
@@ -465,7 +465,7 @@ pub fn small_project(seed: u64) -> (H, DeviceId, DeviceId, WireId) {
 pub fn wired_lines(
     ids: &mut ecad_model::IdAllocator, page: PageId, style: ecad_model::Style, n: usize, line: impl Fn(usize) -> (Pt, Pt),
 ) -> (Vec<ecad_model::Op>, Vec<(WireId, ecad_model::RouteId, ecad_model::ItemId)>) {
-    use ecad_model::{Device, Form, Op, Representation, RouteEnd, Subject, Terminal, Wire};
+    use ecad_model::{Device, Form, Op, Representation, RouteEnd, Subject, ConnectionPoint, Wire};
     let device: DeviceId = ids.fresh();
     let mut ops = vec![Op::CreateDevice { id: device, device: Device::default() }];
     let mut cps = std::collections::BTreeMap::new();
@@ -476,11 +476,11 @@ pub fn wired_lines(
         for (t, at, k) in [(ta, a, 2 * i), (tb, b, 2 * i + 1)] {
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                terminal: Terminal { owner: device.into(), label: Some(k.to_string()), key: None, accepts: Default::default() },
+                terminal: ConnectionPoint { owner: device.into(), label: Some(k.to_string()), key: None, accepts: Default::default() },
             });
             cps.insert(t, at);
         }
-        let (r, item, add) = ecad_engine::wires::add_route(ids, page, style.clone(), vec![a, b], [RouteEnd::Point(ta), RouteEnd::Point(tb)]);
+        let (r, item, add) = ecad_electrical::wires::add_route(ids, page, style.clone(), vec![a, b], [RouteEnd::Point(ta), RouteEnd::Point(tb)]);
         ops.extend(add);
         let w: WireId = ids.fresh();
         ops.push(Op::CreateWire { id: w, wire: Wire::new(ids.fresh(), ids.fresh(), ta, tb) });
@@ -504,8 +504,8 @@ pub fn wired_lines(
 /// Wire `w`'s line on `page`: the item drawing its route there (`wires::route_of_wire_on`) and
 /// the item's path (design 072 §4.3; what `derive::route_on_page` gave before routes).
 pub fn wire_line(doc: &Document, w: WireId, page: PageId) -> Option<(ecad_model::ItemId, ecad_model::Primitive)> {
-    let r = ecad_engine::wires::route_of_wire_on(doc, w, page)?;
-    let (_, item, it) = ecad_engine::wires::route_item(doc, r)?;
+    let r = ecad_electrical::wires::route_of_wire_on(doc, w, page)?;
+    let (_, item, it) = ecad_electrical::wires::route_item(doc, r)?;
     match &it.kind {
         ItemKind::Primitive(p) => Some((item, p.clone())),
         ItemKind::Symbol(_) => None,

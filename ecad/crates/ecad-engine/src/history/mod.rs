@@ -614,7 +614,7 @@ pub fn plan_restore(p: &Project, pt: &Point) -> Result<RestorePlan, String> {
         };
         if let Some(pg) = page {
             let doc = if live.pages.contains_key(&pg) { live } else { &then };
-            pages.insert(crate::references::page_number(doc, pg));
+            pages.insert(ecad_electrical::references::cables::page_number(doc, pg));
         }
     }
     let after_revisions = named_points(p, current(p))?
@@ -1494,7 +1494,7 @@ fn reopen_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, name: Option<
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn times_read_in_the_local_zone() {

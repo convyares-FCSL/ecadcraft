@@ -853,7 +853,7 @@ pub fn sequence_of(number: &str) -> Option<(&str, u64)> {
 
 #[cfg(test)]
 mod uiv3_tests {
-    use crate::page_column_scope;
+    use super::page_column_scope;
 
     /// Review of PR #96, finding 1: numbered columns are separated from the page number.
     #[test]

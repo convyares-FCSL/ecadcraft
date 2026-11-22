@@ -146,7 +146,7 @@ mod schema {
 
     use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 
-    impl JsonSchema for crate::TagPrefix {
+    impl JsonSchema for super::TagPrefix {
         fn schema_name() -> Cow<'static, str> {
             "TagPrefix".into()
         }
@@ -155,7 +155,7 @@ mod schema {
         }
     }
 
-    impl JsonSchema for crate::PrefixOf {
+    impl JsonSchema for super::PrefixOf {
         fn schema_name() -> Cow<'static, str> {
             "PrefixOf".into()
         }
@@ -167,7 +167,7 @@ mod schema {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn prefixes_and_keys_read_only_their_stored_forms() {

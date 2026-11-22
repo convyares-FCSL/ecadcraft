@@ -7,7 +7,7 @@ use crate::common;
 
 use cadcraft_engine::Session;
 use common::{H, id};
-use ecad_engine::devices::{self, PROVISIONAL_ACI, TextOf};
+use {ecad_electrical::devices::PROVISIONAL_ACI, ecad_electrical::devices::TextOf};
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::document::sheet::Grid;
 use ecad_model::{DeviceId, PageId};
@@ -32,7 +32,7 @@ fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> DeviceId {
 }
 
 fn tag(h: &mut H, c: DeviceId) -> String {
-    h.p(|p| devices::tag_words(p.ledger.document(), c))
+    h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c))
 }
 
 /// Fixture N (design §14): page 1 has `-K07` at column A and `-K01` at column C; page 2, in folder
@@ -45,8 +45,7 @@ struct N {
     k03: DeviceId,
     k02: DeviceId,
     q01: DeviceId,
-    folder: String,
-}
+    folder: String}
 
 fn fixture() -> N {
     let mut h = H::new(SEED);
@@ -109,7 +108,7 @@ fn e_provisional_tags_are_drawn_orange_listed_in_checks_and_finalised() {
     let k = coil(&mut f.h, at, None);
     assert_eq!(tag(&mut f.h, k), "-K?1");
     let p1 = f.p1;
-    let texts = f.h.p(|p| devices::texts_on_page(p.ledger.document(), p1));
+    let texts = f.h.p(|p| ecad_engine::devices::draw::texts_on_page(p.ledger.document(), p1));
     let t = texts.iter().find(|t| t.of == TextOf::Tag && t.value == "-K?1").expect("the tag is drawn");
     assert_eq!(t.aci, Some(PROVISIONAL_ACI));
     // A new net with a potential reads 24V-?, provisional.

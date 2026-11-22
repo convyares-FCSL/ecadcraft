@@ -20,7 +20,7 @@ use std::time::Instant;
 
 use ecad_drawing_style::sheet;
 use ecad_engine::cad::Bounds2;
-use ecad_engine::checks::Object;
+use ecad_electrical::checks::Object;
 use ecad_model::{ObjectRef, PageId, TxId};
 use ecad_widgets::tokens::{Color, line, space, ui_type};
 use eframe::egui;

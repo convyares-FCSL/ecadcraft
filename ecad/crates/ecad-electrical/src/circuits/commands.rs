@@ -15,7 +15,8 @@ use serde_json::{Value, json};
 use crate::commands::input::{Bounded, TextOrNumber, nullable};
 use crate::commands::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
 use crate::error::CmdError;
-use crate::circuits::{self, RatedSubject, dataset, parse};
+use crate::circuits::{self, RatedSubject};
+use crate::devices::ratings::{dataset, parse};
 use crate::styles::{self, cable, ratingtable};
 use ecad_model::objects::wire::Basis;
 
@@ -109,10 +110,10 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
     let no = |why: &'static str| CmdError::refused(why);
     match key {
         "basis" => Basis::parse(v).map(|b| b.word().to_string()).ok_or_else(|| no("basis is datasheet, table or manual.")),
-        "manual" | "load" => parse::current(v)
+        "manual" | "load" => crate::devices::ratings::parse::current(v)
             .map(|_| v.to_string())
             .ok_or_else(|| CmdError::refused(format!("{key} is a current above 0 and up to 6300 A, not {shown:?}."))),
-        "bundling" => parse::bundling(v)
+        "bundling" => crate::devices::ratings::parse::bundling(v)
             .map(|_| v.to_string())
             .ok_or_else(|| no("bundling is a factor 0.30 to 1.00, or a circuit count 1 to 20 (\"3 bunched\").")),
         "protected_by" => match circuits::trace::protected_by(doc, v).map(|p| (p.device, p.position.map(|n| n.to_string()))) {
@@ -127,16 +128,16 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
                 "There is no device or fuse {shown:?}; give a tag such as -Q01, or -F01:3 for a fuse of a bank (positions 1 to 255)."
             ))),
         },
-        "method" => dataset::method(v)
+        "method" => crate::devices::ratings::dataset::method(v)
             .map(str::to_string)
-            .ok_or_else(|| CmdError::refused(format!("method is an IEC 60364-5-52 name: {}.", dataset::METHODS.join(", ")))),
-        "ambient" => parse::ambient(v).map(|_| v.to_string()).ok_or_else(|| no("ambient is \u{2212}40 to 90 \u{b0}C.")),
-        "grouped" => parse::count(v).map(|n| n.to_string()).ok_or_else(|| no("grouped is a circuit count 1 to 20.")),
-        "voltage" => parse::voltage(v).map(|_| v.to_string()).ok_or_else(|| no("voltage is 1 to 1000 V.")),
+            .ok_or_else(|| CmdError::refused(format!("method is an IEC 60364-5-52 name: {}.", crate::devices::ratings::dataset::METHODS.join(", ")))),
+        "ambient" => crate::devices::ratings::parse::ambient(v).map(|_| v.to_string()).ok_or_else(|| no("ambient is \u{2212}40 to 90 \u{b0}C.")),
+        "grouped" => crate::devices::ratings::parse::count(v).map(|n| n.to_string()).ok_or_else(|| no("grouped is a circuit count 1 to 20.")),
+        "voltage" => crate::devices::ratings::parse::voltage(v).map(|_| v.to_string()).ok_or_else(|| no("voltage is 1 to 1000 V.")),
         "system" => {
             ["ac1", "ac3", "dc"].into_iter().find(|w| w.eq_ignore_ascii_case(v)).map(str::to_string).ok_or_else(|| no("system is ac1, ac3 or dc."))
         }
-        "vd_limit" => parse::percent(v).map(|_| v.to_string()).ok_or_else(|| no("vd_limit is 0.5 to 20 %.")),
+        "vd_limit" => crate::devices::ratings::parse::percent(v).map(|_| v.to_string()).ok_or_else(|| no("vd_limit is 0.5 to 20 %.")),
         "cable_type" => styles::find(doc, ecad_model::StyleCatalogue::Cable, v).map(|id| id.text()),
         _ => Err(CmdError::refused(format!("{key} is not a rating key."))),
     }
@@ -201,9 +202,9 @@ pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<Rated
 pub fn set_wire(doc: &Document, w: &mut Wire, key: &str, value: Option<&str>) {
     match key {
         "basis" => w.rating.basis = value.and_then(Basis::parse),
-        "manual" => w.rating.manual = value.and_then(parse::current).map(Amps),
-        "bundling" => w.rating.bundling = value.and_then(parse::bundling),
-        "load" => w.load = value.and_then(parse::current).map(Amps),
+        "manual" => w.rating.manual = value.and_then(crate::devices::ratings::parse::current).map(Amps),
+        "bundling" => w.rating.bundling = value.and_then(crate::devices::ratings::parse::bundling),
+        "load" => w.load = value.and_then(crate::devices::ratings::parse::current).map(Amps),
         "protected_by" => w.protected_by = value.and_then(|v| circuits::trace::protected_by(doc, v)),
         _ => {}
     }
@@ -215,14 +216,14 @@ pub fn set_cable(doc: &Document, c: &mut ecad_model::Cable, key: &str, value: Op
     let r = &mut c.rating;
     match key {
         "basis" => r.basis = value.and_then(Basis::parse),
-        "manual" => r.manual = value.and_then(parse::current).map(Amps),
+        "manual" => r.manual = value.and_then(crate::devices::ratings::parse::current).map(Amps),
         "method" => r.method = value.and_then(InstallMethod::parse),
-        "ambient" => r.ambient = value.and_then(parse::ambient).map(Celsius),
-        "grouped" => r.grouped = value.and_then(parse::count).and_then(|n| u8::try_from(n).ok()),
-        "voltage" => r.voltage = value.and_then(parse::voltage).map(Volts),
+        "ambient" => r.ambient = value.and_then(crate::devices::ratings::parse::ambient).map(Celsius),
+        "grouped" => r.grouped = value.and_then(crate::devices::ratings::parse::count).and_then(|n| u8::try_from(n).ok()),
+        "voltage" => r.voltage = value.and_then(crate::devices::ratings::parse::voltage).map(Volts),
         "system" => r.system = value.and_then(SupplySystem::parse),
-        "vd_limit" => r.vd_limit = value.and_then(parse::percent).map(Percent),
-        "load" => c.load = value.and_then(parse::current).map(Amps),
+        "vd_limit" => r.vd_limit = value.and_then(crate::devices::ratings::parse::percent).map(Percent),
+        "load" => c.load = value.and_then(crate::devices::ratings::parse::current).map(Amps),
         "protected_by" => c.protected_by = value.and_then(|v| circuits::trace::protected_by(doc, v)),
         "cable_type" => c.cable_type = value.and_then(ecad_model::StyleRef::parse),
         _ => {}
@@ -271,7 +272,7 @@ pub struct PanelTemperature {
 /// # Errors
 /// Outside −40 to 90 °C.
 pub fn panel_temperature(text: &str) -> Result<ecad_model::geometry::units::Celsius, CmdError> {
-    parse::ambient(text.trim()).map(ecad_model::geometry::units::Celsius).ok_or(CmdError::refused("temperature is \u{2212}40 to 90 \u{b0}C."))
+    crate::devices::ratings::parse::ambient(text.trim()).map(ecad_model::geometry::units::Celsius).ok_or(CmdError::refused("temperature is \u{2212}40 to 90 \u{b0}C."))
 }
 
 /// Check a panel temperature (°C) and give the text stored.
@@ -280,7 +281,7 @@ pub fn panel_temperature(text: &str) -> Result<ecad_model::geometry::units::Cels
 /// Outside −40 to 90 °C.
 pub fn check_temperature(text: &str) -> Result<String, CmdError> {
     let t = text.trim();
-    match parse::ambient(t) {
+    match crate::devices::ratings::parse::ambient(t) {
         Some(_) => Ok(t.to_string()),
         None => Err(CmdError::refused("temperature is \u{2212}40 to 90 \u{b0}C.")),
     }
@@ -336,9 +337,9 @@ pub fn export_table(doc: &Document, name: Option<&str>) -> Result<ratingtable::T
     Ok(ratingtable::read(doc, &id))
 }
 
-/// The refusal for a CSV file over [`dataset::MAX_BYTES`].
+/// The refusal for a CSV file over [`crate::devices::ratings::dataset::MAX_BYTES`].
 pub fn too_big() -> CmdError {
-    CmdError::refused(format!("The table is over {} KiB. Nothing was written.", dataset::MAX_BYTES / 1024))
+    CmdError::refused(format!("The table is over {} KiB. Nothing was written.", crate::devices::ratings::dataset::MAX_BYTES / 1024))
 }
 
 /// The layer `ratingtable` writes to: `project` (the default) or `standard`.
@@ -378,8 +379,8 @@ pub struct TablePlan {
 ///
 /// # Errors
 /// A bad row (the whole import is refused), a name or source that does not read.
-pub fn check_table(w: &TableWrite) -> Result<dataset::Dataset, CmdError> {
-    let data = dataset::parse_strict(&w.csv)?;
+pub fn check_table(w: &TableWrite) -> Result<crate::devices::ratings::dataset::Dataset, CmdError> {
+    let data = crate::devices::ratings::dataset::parse_strict(&w.csv)?;
     if !is_name(&w.name) {
         return Err(CmdError::refused("A rating table needs a name (1 to 64 characters, no control characters)."));
     }
@@ -736,7 +737,7 @@ impl Generic for RatingtableParams {
     const TITLE: &'static str = "Rating Table";
     const HELP: &'static str = "{name, source?, csv, layer?: \"project\"|\"standard\"} (creates or replaces; one transaction) | {import: path, name?, source?} | {export: path, name?}";
     const PAGES: Pages = Pages::ReadAnywhere;
-    const IO: Io = Io { reads: &[("import", Read::Bytes(dataset::MAX_BYTES))], writes: &["export"] };
+    const IO: Io = Io { reads: &[("import", Read::Bytes(crate::devices::ratings::dataset::MAX_BYTES))], writes: &["export"] };
 
     fn check(&self) -> Result<(), CmdError> {
         self.source_given()
@@ -748,7 +749,7 @@ impl Generic for RatingtableParams {
         if self.export.is_some() {
             let t = export_table(cx.doc, name.as_deref())?;
             let mut out = Outcome::answer(json!({"exported": trim(&self.export), "rows": t.data.rows.len()}));
-            out.writes.push(("export", dataset::to_csv(&t.data).into_bytes()));
+            out.writes.push(("export", crate::devices::ratings::dataset::to_csv(&t.data).into_bytes()));
             return Ok(out);
         }
         self.source_given()?;
@@ -759,7 +760,7 @@ impl Generic for RatingtableParams {
                     Some(Err(e)) => return Err(CmdError::refused(format!("Could not read {path}: {e}"))),
                     Some(Ok(Got::Standard(_))) | None => return Err(CmdError::refused(format!("Could not read {path}"))),
                 };
-                if bytes.len() > dataset::MAX_BYTES {
+                if bytes.len() > crate::devices::ratings::dataset::MAX_BYTES {
                     return Err(too_big());
                 }
                 let text = String::from_utf8(bytes.clone())

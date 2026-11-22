@@ -140,7 +140,7 @@ fn with_writes_off_newpage_and_pageprops_are_refused() {
 }
 
 /// The kept Checks rows of `kind` (the list the Checks tab shows, updated per commit).
-fn kept(c: &mut Client, kind: ecad_engine::checks::Kind) -> usize {
+fn kept(c: &mut Client, kind: ecad_electrical::checks::Kind) -> usize {
     c.s.with_session(|s, h| h.configure(s, |p| p.checks().rows().filter(|r| r.kind == kind).count()).unwrap()).unwrap()
 }
 
@@ -151,7 +151,7 @@ fn the_title_block_row_follows_a_sheet_change() {
     c.exec("pageprops", json!({"page": page, "sheet": "A2"}));
     let k = coil_with_contacts(&mut c, [440.0, 100.0]);
     c.exec("mirrormove", json!({"component": k, "at": [450.0, 40.0]}));
-    let over = ecad_engine::checks::Kind::TableOverTitle;
+    let over = ecad_electrical::checks::Kind::TableOverTitle;
     assert_eq!(kept(&mut c, over), 1, "inside the A2 frame, over its title block");
     // The page becomes A3: the frame ends at 410 mm, the table is outside it.
     c.exec("pageprops", json!({"page": page, "sheet": "A3"}));

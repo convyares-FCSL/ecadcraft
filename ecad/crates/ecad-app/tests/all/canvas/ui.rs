@@ -92,7 +92,7 @@ fn device_on_two_pages(h: &mut Harness<'static, App>) -> (DeviceId, PageId, Page
         .read(&mut h.state_mut().cad.session, |p, _| {
             let doc = p.ledger.document();
             let (rid, _) = doc.representations_of(Subject::Device(k)).find(|(_, r)| r.page == p1).unwrap();
-            ecad_engine::device_list::symbol_target(p, rid).unwrap().2
+            ecad_engine::reports::device_list::symbol_target(p, rid).unwrap().2
         })
         .unwrap();
     (k, p1, p2, coil)
@@ -210,7 +210,7 @@ fn screenshots_of_the_canvas() {
             let page = p.active_page()?;
             doc.tagged().find_map(|(_, c)| {
                 let reps: Vec<_> = doc.representations_of(Subject::Device(c)).filter(|(_, r)| r.page == page).map(|(id, _)| id).collect();
-                (reps.len() > 1).then(|| ecad_engine::device_list::symbol_target(p, reps[0]).map(|t| t.2).unwrap_or_default())
+                (reps.len() > 1).then(|| ecad_engine::reports::device_list::symbol_target(p, reps[0]).map(|t| t.2).unwrap_or_default())
             })
         })
         .unwrap()

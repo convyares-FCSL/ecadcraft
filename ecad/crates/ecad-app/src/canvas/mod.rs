@@ -199,11 +199,11 @@ fn refresh(t: &mut App, st: &mut State) -> bool {
         let doc = p.ledger.document();
         let pick = ecad_engine::cables::draw::pick_routes(p, page, &selection);
         let data = PageData {
-            frames: ecad_engine::generated::sheet_windows_of(doc, page, p.kept_reports()),
+            frames: ecad_electrical::pages::generated::sheet_windows_of(doc, page, p.kept_reports()),
             painted: ecad_engine::cables::draw::painted_marks(p, uid),
             provisional: ecad_engine::cables::draw::provisional_tag_handles(p, page),
             related: related(p, page, &selection),
-            tag_height: ecad_engine::text_style::text_style(doc, ecad_engine::text_style::TextKind::Tag).height,
+            tag_height: ecad_electrical::styles::text_style::text_style(doc, ecad_electrical::styles::text_style::TextKind::Tag).height,
         };
         (data, pick)
     });
@@ -258,7 +258,7 @@ fn first_open_zoom(t: &mut App, st: &mut State, rect: Rect) {
 /// Give CADCraft's font table the sheet font (US3; `ecad_engine::install` does it too, and a
 /// print). Whether it is registered.
 pub fn register_sheet_faces() -> bool {
-    ecad_engine::text_style::register_sheet_font()
+    ecad_engine::styles::draw::register_sheet_font()
 }
 
 /// Whether `line` is the `ui.sheet` command.

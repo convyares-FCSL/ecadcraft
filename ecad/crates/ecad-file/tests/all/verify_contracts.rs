@@ -468,7 +468,7 @@ fn verify_passes_the_clean_fixture_with_one_full_check_per_snapshot_point_and_br
     assert!(v.failures.is_empty());
     // Verify mode stays out: this test build runs with `verify-invariants` on, yet Verify runs
     // the full check only at snapshot points and branch ends.
-    assert!(cfg!(test) && ecad_model::ledger::verify_mode(), "every cargo test runs in verify mode");
+    assert!(cfg!(test) && ecad_model::document::ledger::verify_mode(), "every cargo test runs in verify mode");
     let r = store(&f.path).reader().unwrap();
     let mut points = std::collections::BTreeSet::new();
     let mut txs = 0;

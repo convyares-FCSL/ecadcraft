@@ -327,7 +327,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
                 ok = ui.small_button("Add").clicked() || (f.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
                 cancel = ui.small_button("Cancel").clicked();
             });
-            let valid = ecad_engine::title_block::bind::is_project_key(key.trim());
+            let valid = ecad_electrical::title_blocks::bind::is_project_key(key.trim());
             if !valid && !key.is_empty() {
                 ui.label(egui::RichText::new("a-z, 0-9 and _, 1 to 32 characters").small().color(c32(s.warning)));
             }

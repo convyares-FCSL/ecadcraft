@@ -6,27 +6,27 @@ use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign as EHAlign, Handle
 use cadcraft_engine::geom::Vec3;
 use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId};
 
-use crate::devices::{DerivedText, PageText, TAG_LAYER, TextOf, kind_of, prefix_for};
+use {ecad_electrical::devices::DerivedText, ecad_electrical::devices::PageText, ecad_electrical::devices::TAG_LAYER, ecad_electrical::devices::TextOf, ecad_electrical::devices::kind_of, ecad_electrical::devices::prefix_for};
 use crate::styles::draw::{EngineMetrics, DrawApply as _};
 use ecad_electrical::symbols::Starter;
 
 /// [`all_texts_on_page`], reading PLC addresses from the kept model `plc` when there is one
 /// (brief 045, review of #84, 3); measured with CADCraft's fonts
-/// ([`crate::devices::all_texts_measured`]).
-pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>) -> Vec<PageText> {
-    crate::devices::all_texts_measured(doc, page, plc, &EngineMetrics)
+/// ([`ecad_electrical::devices::all_texts_measured`]).
+pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&ecad_electrical::plc::kept::Plc>) -> Vec<PageText> {
+    ecad_electrical::devices::all_texts_measured(doc, page, plc, &EngineMetrics)
 }
 
 /// Every derived text shown on `page` (what the page draws and prints), measured with CADCraft's
-/// fonts ([`crate::devices::texts_on_page_measured`]).
+/// fonts ([`ecad_electrical::devices::texts_on_page_measured`]).
 pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
-    crate::devices::texts_on_page_measured(doc, page, &EngineMetrics)
+    ecad_electrical::devices::texts_on_page_measured(doc, page, &EngineMetrics)
 }
 
 /// The lens of device `c` hovered through its representation `here` (design 018 §6.4), measured
-/// with CADCraft's fonts ([`crate::devices::hover_lines_measured`]).
+/// with CADCraft's fonts ([`ecad_electrical::devices::hover_lines_measured`]).
 pub fn hover_lines(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
-    crate::devices::hover_lines_measured(doc, c, here, &EngineMetrics)
+    ecad_electrical::devices::hover_lines_measured(doc, c, here, &EngineMetrics)
 }
 
 /// Every derived text on `page`, shown or hidden: for each symbol representation of a component,
@@ -40,7 +40,7 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
 }
 
 /// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `look` (design 031 §3).
-pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Handle) -> Entity {
+pub fn text_entity(look: &crate::styles::draw::Look, t: &DerivedText, handle: Handle) -> Entity {
     let mut e = text_entity_with(
         &t.value,
         t.at,
@@ -53,8 +53,7 @@ pub fn text_entity(look: &crate::text_style::Look, t: &DerivedText, handle: Hand
     match &t.own {
         // Brief 050a: the device's own text style (its height is already the text's).
         Some(s) => look.apply_own(&mut e, kind_of(t.of), s),
-        None => look.apply(&mut e, kind_of(t.of)),
-    }
+        None => look.apply(&mut e, kind_of(t.of))}
     // Brief 045 (design 045 §7.1): a channel description reads upwards under its cell.
     if let (TextOf::ChannelText { rotated: true }, EntityKind::Text(x)) = (t.of, &mut e.kind) {
         x.rotation = std::f64::consts::FRAC_PI_2;
@@ -80,11 +79,9 @@ pub fn text_entity_with(value: &str, at: Pt, height: f64, halign: EHAlign, valig
             rotation: 0.0,
             width_factor: 1.0,
             oblique: 0.0,
-            style: crate::text_style::PLACEHOLDER_STYLE.into(),
+            style: ecad_electrical::styles::text_style::PLACEHOLDER_STYLE.into(),
             halign,
-            valign,
-        }),
-    }
+            valign})}
 }
 
 /// The tag the next new device of symbol `s` would get in project `p`, without using it up (for

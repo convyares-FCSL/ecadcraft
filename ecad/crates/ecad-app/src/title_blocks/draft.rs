@@ -215,7 +215,7 @@ impl Drafts {
 
 #[cfg(test)]
 mod tests {
-    use crate::title_blocks::*;
+    use super::*;
     use ecad_model::objects::title_block::LineWeight;
 
     fn state() -> State {

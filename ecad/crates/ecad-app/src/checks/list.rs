@@ -10,7 +10,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use ecad_engine::checks::{Fix, Kind, Severity};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Severity};
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Align, Cell, Changed, Column, ColumnId, TableSource, Width};
 
@@ -70,7 +70,7 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::LevelMissing(..) => cp::DROP_MISSING_LEVELS,
         Fix::FuseDevices => cp::MAKE_STRIP_POSITION,
         // Brief 045: the pairs are in `cp::pair`.
-        Fix::Plc(_, ecad_engine::plc::PlcFix::Unracked) => cp::PUT_IN_RACK,
+        Fix::Plc(_, ecad_electrical::plc::PlcFix::Unracked) => cp::PUT_IN_RACK,
         Fix::Plc(..) => cp::MOVE_TO_FREE_SLOT,
         // Brief 044.
         Fix::ConnectorNextPin(_) => cp::MOVE_NEXT_FREE,

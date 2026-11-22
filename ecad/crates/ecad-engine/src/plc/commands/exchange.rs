@@ -1,5 +1,5 @@
 //! `plcimport` and `plcexport` (brief 056): reading and writing tag files. The formats and the
-//! plan are [`crate::plc::exchange`] (bytes in, bytes out).
+//! plan are [`ecad_electrical::plc::exchange`] (bytes in, bytes out).
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
@@ -8,8 +8,8 @@ use serde::Deserialize;
 
 use crate::commands::input::Command;
 use crate::commands::{err, on_any_page, on_project};
-use crate::plc::exchange::*;
-use crate::plc::tagtable::{self, Read, TagFormat};
+use ecad_electrical::plc::exchange::*;
+use ecad_electrical::plc::tagtable::{self, Read, TagFormat};
 use serde_json::{Value, json};
 
 /// The format named `id`, else the generic CSV.
@@ -190,10 +190,10 @@ impl Command for PlcexportParams {
             p.outputs();
             let o = p.kept_reports().ok_or(CmdError::refused("The PLC model is not available."))?;
             let doc = p.ledger.document();
-            let rack = self.rack.as_deref().map(|r| crate::plc::rack::rack_named(doc, r)).transpose()?;
+            let rack = self.rack.as_deref().map(|r| ecad_electrical::plc::rack::rack_named(doc, r)).transpose()?;
             let ex = export_rows(doc, &o.plc, rack, f);
             let bytes = f.write(&ex.rows)?;
-            let scope = rack.map_or_else(|| "every rack".to_string(), |r| format!("rack {}", crate::devices::tag_words(doc, r)));
+            let scope = rack.map_or_else(|| "every rack".to_string(), |r| format!("rack {}", ecad_electrical::devices::tag_words(doc, r)));
             let n = ex.rows.len();
             let left = ex.left_out_words();
             let left_out = json!({"no_tag": ex.no_tag, "no_address": ex.no_address, "refused": ex.refused});

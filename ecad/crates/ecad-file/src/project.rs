@@ -28,7 +28,7 @@ use super::store::{Reader, Store, StoreError};
 use crate::FileError;
 use crate::chain::{self, ChainKind, Hash};
 use crate::record::{self, SCHEMA_VERSION};
-use ecad_model::tag::HighWater;
+use ecad_model::naming::tag::HighWater;
 
 /// Why a version 2 file could not be opened at all.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -381,7 +381,7 @@ pub fn line_state(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<(D
             for op in &tx.ops {
                 op.apply(&mut doc).map_err(|error| FileError::Replay { seq: tx.seq, error })?;
             }
-            ecad_model::tag::note_ops(&mut high, &tx.ops);
+            ecad_model::naming::tag::note_ops(&mut high, &tx.ops);
         }
         prev = last;
         let Some(next) = to.checked_add(1) else { break };
@@ -433,7 +433,7 @@ fn scan_tag_high(r: &Reader, branch: BranchId, mut high: HighWater, after: u64, 
             return Err(FileError::AtTx { seq: d.seq, detail: d.detail });
         }
         for tx in &txs {
-            ecad_model::tag::note_ops(&mut high, &tx.ops);
+            ecad_model::naming::tag::note_ops(&mut high, &tx.ops);
         }
         prev = last;
         let Some(next) = to.checked_add(1) else { break };
@@ -805,7 +805,7 @@ pub struct Opened {
     /// Words this build does not read in the file's container facts: each `meta` name not in
     /// [`META_NAMES`](crate::schema::META_NAMES). When there are any the project opens read-only
     /// (pre-v1 strict reading) and the file is kept as it is.
-    pub unknown_words: Vec<ecad_model::strict::UnknownWord>,
+    pub unknown_words: Vec<ecad_model::document::strict::UnknownWord>,
 }
 
 fn meta_json(r: &Reader, name: &'static str) -> Result<Option<Value>, OpenError> {
@@ -823,7 +823,7 @@ struct Facts {
     /// `meta.active`: the branch the project was last shown on (FQ4).
     active: Option<BranchId>,
     /// The `meta` names this build does not read.
-    unknown: Vec<ecad_model::strict::UnknownWord>,
+    unknown: Vec<ecad_model::document::strict::UnknownWord>,
 }
 
 fn read_facts(r: &Reader) -> Result<Facts, OpenError> {
@@ -834,7 +834,7 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenError> {
         .meta_all()?
         .into_iter()
         .filter(|(name, _)| !crate::schema::META_NAMES.contains(&name.as_str()))
-        .map(|(name, _)| ecad_model::strict::UnknownWord::MetaName { name })
+        .map(|(name, _)| ecad_model::document::strict::UnknownWord::MetaName { name })
         .collect();
     let format = meta_json(r, "format")?;
     if format.as_ref().and_then(Value::as_str) != Some(FORMAT_PROJECT) {
@@ -1140,7 +1140,7 @@ impl Project {
                     op.apply(&mut doc).map_err(|error| SaveError::Encode(FileError::Replay { seq: tx.seq, error }))?;
                 }
                 dirty.add_ops(&tx.ops);
-                ecad_model::tag::note_ops(&mut high, &tx.ops);
+                ecad_model::naming::tag::note_ops(&mut high, &tx.ops);
             }
             stacks.advance(range);
             done = at;
@@ -1171,7 +1171,7 @@ impl Project {
                     stack_cap: STACK_CAP,
                     description: None,
                     merge: None,
-                    tag_rule: Some(ecad_model::tag::TAG_RULE),
+                    tag_rule: Some(ecad_model::naming::tag::TAG_RULE),
                 },
             )?;
             saved.snapshots += 1;
@@ -1620,7 +1620,7 @@ impl Project {
                 stack_cap: STACK_CAP,
                 description: None,
                 merge: None,
-                tag_rule: Some(ecad_model::tag::TAG_RULE),
+                tag_rule: Some(ecad_model::naming::tag::TAG_RULE),
             },
         )?;
         saved.snapshots += 1;
@@ -1687,7 +1687,7 @@ impl Project {
             let mut high = self.base_tag_high.clone();
             for seq in self.base_seq.saturating_add(1)..=at {
                 if let Some(tx) = ledger.transaction(seq) {
-                    ecad_model::tag::note_ops(&mut high, &tx.ops);
+                    ecad_model::naming::tag::note_ops(&mut high, &tx.ops);
                 }
             }
             return Ok(high);

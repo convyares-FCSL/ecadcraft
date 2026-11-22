@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
-use ecad_model::style::cable::Shield;
+use ecad_model::objects::styles::cable::Shield;
 use ecad_model::{Author, Cable, CableId, Core, CoreLabel, IdAllocator, Op, Purpose};
 
 use crate::common::*;
@@ -20,8 +20,8 @@ fn a_modify_cable_is_shown_raw_and_readable_and_the_shield_on_the_cable_row() {
     l.commit(Author::User, "new", vec![Op::CreateCable { id: k, cable: made.clone() }]).unwrap();
     let mut after = made.clone();
     after.shield = Some(Shield::OverallAndPairs);
-    after.rating.basis = Some(ecad_model::wire::Basis::Manual);
-    after.load = Some(ecad_model::units::Amps(4.0));
+    after.rating.basis = Some(ecad_model::objects::wire::Basis::Manual);
+    after.load = Some(ecad_model::geometry::units::Amps(4.0));
     after.cores.push(Core { purpose: Purpose::Spare, ..Core::unplaced(CoreLabel::new("GNYE").ok()) });
     l.commit(Author::User, "edit", Op::modify_cable(k, &made, after).into_iter().collect()).unwrap();
     let path = written(&dir, &l);
@@ -52,7 +52,7 @@ fn a_protected_by_is_shown_readable_and_on_the_cable_row() {
     let (k, gone): (CableId, ecad_model::DeviceId) = (ids.fresh(), ids.fresh());
     let made = Cable::default();
     l.commit(Author::User, "new", vec![Op::CreateCable { id: k, cable: made.clone() }]).unwrap();
-    let after = Cable { protected_by: Some(ecad_model::wire::ProtectedBy { device: gone, position: Some(3) }), ..made.clone() };
+    let after = Cable { protected_by: Some(ecad_model::objects::wire::ProtectedBy { device: gone, position: Some(3) }), ..made.clone() };
     l.commit(Author::User, "protect", Op::modify_cable(k, &made, after).into_iter().collect()).unwrap();
     let path = written(&dir, &l);
     let f = FileSource::from_path(&path);

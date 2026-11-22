@@ -13,7 +13,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ecad_engine::outputs::kept::ReportModels;
+use ecad_electrical::reports::kept::ReportModels;
 use ecad_electrical::terminal_strips::{PlanItem, SideCell, StripData, TermRow};
 use ecad_model::DeviceId;
 use ecad_widgets::table::{Align, Cell, Changed, Column, ColumnId, Lane, LaneCell, Table, TableEvent, TableSource, Width};

@@ -1,5 +1,5 @@
 //! `plcmaketags` (brief 056): make the PLC tags of the channels. The rules are
-//! [`crate::plc::signals`].
+//! [`ecad_electrical::plc::signals`].
 
 use cadcraft_engine::Session;
 use ecad_electrical::plc::commands as rules;
@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::commands::input::Command;
 use crate::commands::on_project;
-use crate::plc::signals::*;
+use ecad_electrical::plc::signals::*;
 use serde_json::{Value, json};
 
 /// `plcmaketags {card | rack}` (design 056 §4.3): fill the empty tags of a card's (or a rack's

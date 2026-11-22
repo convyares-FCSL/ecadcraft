@@ -4,6 +4,7 @@
 
 use std::collections::VecDeque;
 
+use ecad_model::PageId;
 use serde::{Deserialize, Serialize};
 
 /// What happened at runtime.

@@ -71,7 +71,7 @@ fn conductors_snapshot(d: &Document) -> Vec<String> {
     d.wires
         .iter()
         .map(|(c, x)| {
-            let reps: Vec<String> = ecad_engine::wires::routes_of_wire(d, *c)
+            let reps: Vec<String> = ecad_electrical::wires::routes_of_wire(d, *c)
                 .into_iter()
                 .flat_map(|r| d.representations_of(Subject::Route(r)).map(|(rid, r)| (rid, r.clone())).collect::<Vec<_>>())
                 .map(|(rid, r)| format!("{rid:?} {r:?} {:?}", r.items.iter().map(|i| &d.items[i]).collect::<Vec<_>>()))

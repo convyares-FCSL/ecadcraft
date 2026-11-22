@@ -5,7 +5,7 @@
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::{Project, Store};
-use ecad_model::aid::{Caption, ContinuationName};
+use ecad_model::objects::aid::{Caption, ContinuationName};
 use ecad_model::*;
 
 #[test]
@@ -14,9 +14,9 @@ fn aids_come_back_from_the_snapshot_and_the_log() {
     let mut f = fixture();
     let (a, b): (AidId, AidId) = (f.ids.fresh(), f.ids.fresh());
     let arrow = Aid::Continuation { name: Some(ContinuationName::new("24V").unwrap()), caption: Some(Caption::new("To the PSU").unwrap()) };
-    let boxed = Aid::Box(LocationBox { panel_temperature: Some(units::Celsius(35.0)), ..LocationBox::default() });
+    let boxed = Aid::Box(LocationBox { panel_temperature: Some(geometry::units::Celsius(35.0)), ..LocationBox::default() });
     f.ledger.commit(Author::User, "aids", vec![Op::CreateAid { id: a, aid: arrow }, Op::CreateAid { id: b, aid: boxed.clone() }]).unwrap();
-    let after = Aid::Box(LocationBox { panel_temperature: Some(units::Celsius(40.0)), ..LocationBox::default() });
+    let after = Aid::Box(LocationBox { panel_temperature: Some(geometry::units::Celsius(40.0)), ..LocationBox::default() });
     f.ledger.commit(Author::User, "warmer", vec![Op::ModifyAid { id: b, before: boxed, after }]).unwrap();
     // Snapshot every transaction for one file, never for the other: both open the same aids.
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
@@ -75,9 +75,9 @@ fn a_location_box_device_is_a_read_error() {
 /// F2a: loose parts come back the same from the snapshot and from the log.
 #[test]
 fn loose_parts_come_back_from_the_snapshot_and_the_log() {
-    use ecad_model::device::PartText;
-    use ecad_model::loose_part::LooseDescription as Description;
-    use ecad_model::loose_part::{ItemUnit, LoosePart, Qty};
+    use ecad_model::objects::devices::PartText;
+    use ecad_model::objects::loose_part::LooseDescription as Description;
+    use ecad_model::objects::loose_part::{ItemUnit, LoosePart, Qty};
     let dir = TempDir::new("072f-loose");
     let mut f = fixture();
     let (a, b, gone): (LoosePartId, LoosePartId, LoosePartId) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh());

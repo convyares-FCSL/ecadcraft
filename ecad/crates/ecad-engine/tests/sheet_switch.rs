@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use common::small_project;
 use ecad_engine::Persistence;
-use ecad_inspect::EventKind;
+use ecad_engine::history::event_log::EventKind;
 use serde_json::{Value, json};
 
 fn raw(h: &mut common::H, cmd: &str, params: Value) -> Value {

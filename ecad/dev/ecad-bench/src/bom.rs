@@ -15,8 +15,8 @@ use std::time::Instant;
 
 use cadcraft_engine::Session;
 use ecad_engine::ProjectHandle;
-use ecad_engine::outputs::kept::ReportModels;
-use ecad_engine::outputs::{BomView, Group};
+use ecad_electrical::reports::kept::ReportModels;
+use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group};
 use ecad_model::{DeviceId, PageId};
 use serde_json::json;
 
@@ -90,7 +90,7 @@ pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[DeviceId], b
     out.sheets = project.read(s, |p, _| p.kept_reports().map_or(0, ReportModels::bom_sheets))?;
     let mut v = Vec::new();
     for i in 0..runs {
-        let value = ecad_model::words::flag_word(i % 2 == 0);
+        let value = ecad_model::naming::words::flag_word(i % 2 == 0);
         v.push(timed(s, "setdefault", json!({"key": "bom.column.article", "level": "project", "value": value}))?);
     }
     out.bomcols_ms = median(&mut v);

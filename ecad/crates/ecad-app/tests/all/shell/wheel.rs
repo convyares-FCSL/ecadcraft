@@ -354,7 +354,7 @@ fn ctrl_k_finds_a_page_a_tag_a_symbol_and_an_action_and_runs_the_action() {
     let handles = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
-        p.read(&mut t.cad.session, |p, _| ecad_engine::checks::handles_of(p, page1, ecad_engine::checks::Object::Wire(wire))).unwrap()
+        p.read(&mut t.cad.session, |p, _| ecad_engine::checks::handles_of(p, page1, ecad_electrical::checks::Object::Wire(wire))).unwrap()
     };
     h.state_mut().cad.session.set_selection(handles);
     keys(&mut h, Modifiers::COMMAND, Key::K);

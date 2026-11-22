@@ -146,7 +146,7 @@ pub fn paginate_with(heads: &[Option<String>], break_on_heading: bool) -> Vec<(u
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn continuation_sheets_are_numbered_in_sequence() {

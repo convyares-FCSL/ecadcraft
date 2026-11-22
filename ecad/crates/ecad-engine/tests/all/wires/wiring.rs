@@ -1,9 +1,9 @@
 //! Brief 022 acceptance (design 022 §15): nets on the page, labels, stable numbers, the Checks
 //! list and its incremental upkeep. Driven through the commands' JSON forms.
 
-use ecad_engine::checks::kept::Checks;
-use ecad_engine::checks::{Fix, Kind};
-use ecad_engine::wires::{self, LABEL_LAYER};
+use ecad_electrical::checks::kept::Checks;
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
+use {ecad_electrical::wires::LABEL_LAYER};
 use ecad_model::{Author, Document, ObjectRef, Op, PageId, WireId};
 use serde_json::{Value, json};
 
@@ -115,7 +115,7 @@ fn every_wire_shows_its_number_cross_section_and_colour_never_upside_down() {
         ws.push(wire(&mut h, &[(x0, 0.0), (x0 + dx, dy)], json!({"potential": "24V"})));
     }
     let doc = h.doc();
-    let labels = wires::labels_on_page(&doc, page);
+    let labels = ecad_engine::wires::draw::labels_on_page(&doc, page);
     assert_eq!(labels.len(), ws.len());
     for l in &labels {
         let deg = l.rotation.to_degrees();
@@ -129,7 +129,7 @@ fn every_wire_shows_its_number_cross_section_and_colour_never_upside_down() {
     h.run("setprop", json!({"conductor": ws[0].hex(), "key": "colours", "value": "Red"})).unwrap();
     h.run("setprop", json!({"conductor": ws[0].hex(), "key": "size", "value": "18 AWG"})).unwrap();
     let doc = h.doc();
-    let l = wires::labels_on_page(&doc, page).into_iter().find(|l| l.conductor == ws[0]).unwrap();
+    let l = ecad_engine::wires::draw::labels_on_page(&doc, page).into_iter().find(|l| l.conductor == ws[0]).unwrap();
     assert!(l.text.ends_with(" 18 AWG RD"), "{}", l.text);
     // The labels are drawn on their reserved layer and mapped to their wire.
     let n = h.pv(|p, pg| pg.entities_of(p, page)).iter().filter(|e| e.common.layer == LABEL_LAYER).count();
@@ -194,7 +194,7 @@ fn adding_a_wire_never_renumbers_and_a_fixed_number_survives() {
 /// them works, and `u` undoes it.
 #[test]
 fn each_seeded_fault_appears_once_where_it_is() {
-    use ecad_engine::checks::Object;
+    use ecad_electrical::checks::Object;
     let mut h = H::new(0x22_04);
     let page = h.first_page();
     // Open end, and its net's single connection point.
@@ -251,8 +251,8 @@ fn each_seeded_fault_appears_once_where_it_is() {
         let wire = ecad_model::Wire::new(p.ids.fresh(), p.ids.fresh(), o1, o2);
         p.ledger.commit(Author::User, "old", vec![Op::CreateWire { id: w, wire }]).unwrap();
         let doc = p.ledger.document();
-        let r = wires::route_of_wire_on(doc, fa, page).unwrap();
-        let (item, before, mut points) = wires::route_vertices(doc, r).unwrap();
+        let r = ecad_electrical::wires::route_of_wire_on(doc, fa, page).unwrap();
+        let (item, before, mut points) = ecad_electrical::wires::route_vertices(doc, r).unwrap();
         if let Some(last) = points.last_mut() {
             *last = ecad_model::Pt::new(805.0, 30.0);
         }
@@ -300,7 +300,7 @@ fn each_seeded_fault_appears_once_where_it_is() {
     assert_eq!(lamp.page, Some(page));
     // Brief 019: places read page-column-row on the page's sheet.
     assert_eq!(lamp.locator(&doc), "1/D4");
-    assert_eq!(all.first().map(|c| c.severity()), Some(ecad_engine::checks::Severity::Error));
+    assert_eq!(all.first().map(|c| c.severity()), Some(ecad_electrical::checks::Severity::Error));
     // Put the drawn-away end back (written past the commands, it is undone the same way).
     h.cfg(|p| p.ledger.undo(Author::User).unwrap());
     // Number them, then `u`.
@@ -336,8 +336,8 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
     line(&mut h, &[(0.0, 0.0), (0.0, 30.0)], json!({}));
     assert!(kept(&mut h).iter().any(|c| c.which == "Motor-run"), "the name is not in the table");
     let row = kept(&mut h).into_iter().find(|c| c.which == "Motor-run").unwrap();
-    assert_eq!(row.severity(), ecad_engine::checks::Severity::Warning);
-    assert!(matches!(row.object, ecad_engine::checks::Object::Terminal(_)), "the arrow's point: {r}");
+    assert_eq!(row.severity(), ecad_electrical::checks::Severity::Warning);
+    assert!(matches!(row.object, ecad_electrical::checks::Object::Terminal(_)), "the arrow's point: {r}");
     assert!(row.page.is_some() && row.at.is_some());
     // Names in the table are not rows: the net takes the potential.
     terminal(&mut h, (100.0, 0.0), "X2");
@@ -516,7 +516,7 @@ fn colours_are_iec_codes_or_three_letter_and_free_text_stays() {
     h.run("setprop", json!({"conductor": c.hex(), "key": "colours", "value": "bn"})).unwrap();
     let texts = |h: &mut H| {
         let doc = h.doc();
-        let all = wires::labels_on_page(&doc, page);
+        let all = ecad_engine::wires::draw::labels_on_page(&doc, page);
         [a, b, c].map(|w| all.iter().find(|l| l.conductor == w).unwrap().text.clone())
     };
     assert_eq!(texts(&mut h), ["24V-01 0.5 BU", "PE 2.5 GN/YE", "L-01 2.5 BN"]);
@@ -545,20 +545,20 @@ fn labels_are_small_and_never_touch() {
         wire(&mut h, &[(80.0, y), (80.0, y + 10.0)], json!({"potential": "0V"}));
     }
     let doc = h.doc();
-    let labels = wires::labels_on_page(&doc, page);
+    let labels = ecad_engine::wires::draw::labels_on_page(&doc, page);
     assert_eq!(labels.len(), 10);
     let builtin = ecad_electrical::defaults::text::WIRE_LABEL_HEIGHT.builtin();
     assert!(labels.iter().all(|l| ecad_electrical::defaults::Value::Length(l.height) == builtin));
     for (i, x) in labels.iter().enumerate() {
         for y in labels.iter().skip(i + 1) {
-            let (p, q) = (wires::label_box(x), wires::label_box(y));
+            let (p, q) = (ecad_electrical::wires::label_box(x), ecad_electrical::wires::label_box(y));
             let meet = p.0.x < q.1.x && q.0.x < p.1.x && p.0.y < q.1.y && q.0.y < p.1.y;
             assert!(!meet, "{} and {} touch", x.text, y.text);
         }
     }
     h.run("wiresettings", json!({"label_height": 2.5})).unwrap();
     let doc = h.doc();
-    assert!(wires::labels_on_page(&doc, page).iter().all(|l| (l.height - 2.5).abs() < 1e-9));
+    assert!(ecad_engine::wires::draw::labels_on_page(&doc, page).iter().all(|l| (l.height - 2.5).abs() < 1e-9));
     assert!(h.run("wiresettings", json!({"label_height": 50})).is_err());
 }
 

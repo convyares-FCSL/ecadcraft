@@ -10,7 +10,7 @@
 //! models' revision changed, and only while the tab is shown; the core table also when another
 //! cable is selected.
 
-use ecad_engine::outputs::kept::ReportModels;
+use ecad_electrical::reports::kept::ReportModels;
 use ecad_model::CableId;
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
@@ -337,7 +337,7 @@ pub struct CablesView {
     /// Brief 059 (owner, board 2.06): the Details pane's tab, Cable (0) or Checks (1), and the
     /// selected cable's Checks rows with their place (`2/E3`), read with its copy.
     pub detail_tab: usize,
-    pub cable_checks: Vec<(ecad_engine::checks::Check, String)>,
+    pub cable_checks: Vec<(ecad_electrical::checks::Check, String)>,
     checks_of: Option<(CableId, u64)>,
 }
 
@@ -494,11 +494,11 @@ impl CablesView {
         self.checks_of = want;
         self.cable_checks.clear();
         let Some(k) = selected else { return };
-        let rows: Vec<ecad_engine::checks::Check> =
-            p.checks().rows().filter(|c| c.object == ecad_engine::checks::Object::Cable(k)).cloned().collect();
+        let rows: Vec<ecad_electrical::checks::Check> =
+            p.checks().rows().filter(|c| c.object == ecad_electrical::checks::Object::Cable(k)).cloned().collect();
         let doc = p.ledger.document();
         let style = doc.settings.reference_style();
-        let mut rows = ecad_engine::checks::sort(doc, rows);
+        let mut rows = ecad_electrical::checks::sort(doc, rows);
         rows.truncate(200);
         self.cable_checks = rows
             .into_iter()
@@ -667,7 +667,7 @@ pub fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_m
 }
 
 /// Brief 059: a cable not drawn as + Cable's menu lists it: `-W03  H07RN-F 4G1.5 · +CAB1 → +FIELD`.
-pub fn undrawn_line(r: &ecad_engine::outputs::CableRow) -> String {
+pub fn undrawn_line(r: &ecad_electrical::reports::CableRow) -> String {
     let dash = crate::reports::report::DASH;
     let ends = format!("{} \u{2192} {}", r.planned[0].as_deref().unwrap_or(dash), r.planned[1].as_deref().unwrap_or(dash));
     let tag = r.tag.clone().unwrap_or_default();

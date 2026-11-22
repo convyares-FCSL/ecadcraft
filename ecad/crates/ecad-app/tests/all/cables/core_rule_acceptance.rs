@@ -5,7 +5,7 @@
 
 use ecad_app::App;
 use ecad_app::pages::project_panel::Action;
-use ecad_engine::checks::{Fix, Kind, Object};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Object};
 use eframe::egui::{self, vec2};
 use egui_kittest::Harness;
 
@@ -31,7 +31,7 @@ fn harness() -> H {
     h
 }
 
-fn core_rows(h: &mut H) -> Vec<ecad_engine::checks::Check> {
+fn core_rows(h: &mut H) -> Vec<ecad_electrical::checks::Check> {
     let d = doc(h);
     ecad_engine::checks::all(&d, 0.01).into_iter().filter(|c| c.kind == Kind::CoreOpen).collect()
 }

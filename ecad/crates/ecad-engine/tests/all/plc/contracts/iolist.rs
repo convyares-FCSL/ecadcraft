@@ -82,7 +82,7 @@ fn o_the_generated_page_heads_each_card_and_marks_typed_addresses() {
     let (sheets, lines) = h.cfg(|p| {
         p.outputs();
         let o = p.kept_reports().unwrap();
-        (ecad_engine::generated::sheets_of(&d, page, Some(o)), ecad_engine::plc::iolist::page_lines(&d, &o.plc))
+        (ecad_electrical::pages::generated::sheets_of(&d, page, Some(o)), ecad_electrical::plc::iolist::page_lines(&d, &o.plc))
     });
     // Brief 051 (design 051 §4.1, W7): cards are packed on sheets; these 44 lines fit one.
     assert_eq!(sheets, 1, "cards packed on one sheet");
@@ -105,7 +105,7 @@ fn p_the_release_csv_and_its_missing_reason() {
     let t = h.cfg(|p| (slot.build)(&d, p.outputs())).expect("a table");
     assert_eq!(t.headers.first(), Some(&"Rack"));
     assert_eq!(t.rows.len(), 36);
-    let csv = ecad_engine::outputs::csv(&t, true);
+    let csv = ecad_electrical::reports::csv(&t, true);
     assert!(csv.contains("-A02"));
     let mut empty = H::new(4544);
     let d = empty.doc();

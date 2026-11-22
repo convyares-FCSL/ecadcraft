@@ -363,7 +363,7 @@ impl crate::App {
                     .unwrap_or_default();
                 if let (Some(pg), Some(p)) = (page, self.project.clone()) {
                     let handles = p.read(&mut self.cad.session, |p, _| {
-                        wires.iter().flat_map(|w| ecad_engine::checks::handles_of(p, pg, ecad_engine::checks::Object::Wire(*w))).collect::<Vec<_>>()
+                        wires.iter().flat_map(|w| ecad_engine::checks::handles_of(p, pg, ecad_electrical::checks::Object::Wire(*w))).collect::<Vec<_>>()
                     })?;
                     self.cad.session.set_selection(handles);
                 }
@@ -379,7 +379,7 @@ impl crate::App {
                     p.ledger
                         .document()
                         .representations_of(Subject::Cable(k))
-                        .filter(|(_, r)| ecad_engine::references::is_reference(r))
+                        .filter(|(_, r)| ecad_electrical::references::cables::is_reference(r))
                         .map(|(id, r)| (id, r.page))
                         .collect::<Vec<_>>()
                 })?;

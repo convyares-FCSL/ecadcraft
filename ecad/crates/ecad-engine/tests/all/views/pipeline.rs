@@ -603,7 +603,7 @@ fn every_front_kind_redraws_after_its_trigger() {
 
 /// The page type rows of a kept Checks list, as words.
 fn page_type_rows(h: &mut crate::common::H) -> Vec<String> {
-    h.cfg(|p| p.checks().rows().filter(|c| c.kind == ecad_engine::checks::Kind::PageTypeUnknown).map(|c| c.what()).collect())
+    h.cfg(|p| p.checks().rows().filter(|c| c.kind == ecad_electrical::checks::Kind::PageTypeUnknown).map(|c| c.what()).collect())
 }
 
 /// Step 8b's fix: a page's number changed on its own works out the page type rows again (their
@@ -629,7 +629,7 @@ fn a_page_number_change_rewords_its_page_type_row() {
     let doc = h.doc();
     let fresh: Vec<String> = ecad_engine::checks::all(&doc, h.cfg(|p| p.tolerance))
         .into_iter()
-        .filter(|c| c.kind == ecad_engine::checks::Kind::PageTypeUnknown)
+        .filter(|c| c.kind == ecad_electrical::checks::Kind::PageTypeUnknown)
         .map(|c| c.what())
         .collect();
     assert_eq!(kept, fresh, "the kept rows equal a rebuild");

@@ -474,7 +474,7 @@ pub fn terminals_named(doc: &Document, component: DeviceId, value: Option<&str>)
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn keys_and_values() {

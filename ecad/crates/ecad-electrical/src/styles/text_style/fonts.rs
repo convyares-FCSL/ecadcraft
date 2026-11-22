@@ -185,7 +185,7 @@ const ROUGH_WIDTH: f64 = 0.8;
 
 #[cfg(test)]
 mod tests {
-    use crate::styles::text_style::*;
+    use super::*;
 
     #[test]
     fn a_fixed_width_text_is_its_characters_times_the_share() {

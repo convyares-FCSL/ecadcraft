@@ -942,7 +942,7 @@ pub fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     fn t(n: u128) -> ConnectionPointId {
         ConnectionPointId(n)

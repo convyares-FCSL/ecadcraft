@@ -5,8 +5,8 @@
 //! with writes off each command is refused.
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::units::Amps;
-use ecad_model::wire::Basis;
+use ecad_model::geometry::units::Amps;
+use ecad_model::objects::wire::Basis;
 use ecad_model::{Author, CorePosition, Op, RouteEnd, RouteId, Wire};
 use serde_json::{Value, json};
 
@@ -280,7 +280,7 @@ fn protected_by_through_mcp_is_the_device_and_deleting_it_clears_it() {
     c.exec("rating", json!({"wire": w, "protected_by": tag}));
     let (author, after) = last_modified(&mut c);
     assert_eq!(author, Author::Agent(AGENT.into()));
-    assert_eq!(after.protected_by, Some(ecad_model::wire::ProtectedBy { device: q_id, position: None }));
+    assert_eq!(after.protected_by, Some(ecad_model::objects::wire::ProtectedBy { device: q_id, position: None }));
     assert!(!after.display.contains_key("protected_by"), "no free-text copy: {:?}", after.display);
 
     let before = c.log().len();
@@ -359,7 +359,7 @@ fn place_junction_through_mcp_is_refused_and_no_command_offers_one() {
     assert!(m.contains("No symbol \"junction\""), "{m}");
     assert_eq!(c.log(), before, "nothing recorded");
     // ECAD's own commands (CADCraft's geometry commands may use the word for line ends).
-    let ecad: Vec<&str> = ecad_engine::cmd::specs().iter().map(|s| s.id).collect();
+    let ecad: Vec<&str> = ecad_engine::commands::specs().iter().map(|s| s.id).collect();
     let catalog = c.ok("list_commands", json!({}));
     for info in catalog.as_array().unwrap().iter().filter(|i| i["id"].as_str().is_some_and(|id| ecad.contains(&id))) {
         let text = info.to_string().to_lowercase();

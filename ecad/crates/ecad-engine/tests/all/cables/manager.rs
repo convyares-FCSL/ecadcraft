@@ -3,7 +3,7 @@
 //! Cable types here are synthetic (made-up names and values).
 
 use ecad_electrical::cables::{self, Side};
-use ecad_engine::checks::{self, Severity};
+use {ecad_electrical::checks::Severity};
 use ecad_model::{CableId, Op, WireId};
 use serde_json::{Value, json};
 
@@ -68,7 +68,7 @@ fn cablenew_makes_a_cable_that_is_not_drawn_in_one_transaction() {
     assert!(checks_of(&mut h, "core-open").is_empty(), "no core-open for a cable not drawn");
     assert!(checks_of(&mut h, "no-core-count").is_empty());
     // Q2: Warning in the release check.
-    let c = checks::cable_checks(&doc, k).into_iter().find(|c| c.kind == checks::Kind::CableNotDrawn).unwrap();
+    let c = ecad_electrical::checks::cable_checks(&doc, k).into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::CableNotDrawn).unwrap();
     assert_eq!(c.severity(), Severity::Info);
     assert_eq!(c.release_severity(), Severity::Warning);
     assert_eq!(ecad_electrical::releases::release::counts(&[c]), (0, 1, 0));
@@ -179,8 +179,7 @@ fn cableremove_deletes_a_cable_not_drawn_and_refuses_a_drawn_one() {
     let page = h.first_page();
     match ecad_electrical::cables::commands::cables::drawn(&doc, w) {
         Some(ecad_electrical::cables::commands::cables::Drawn { pages, .. }) => assert_eq!(pages.first().map(|p| p.0), Some(page)),
-        other => panic!("{other:?}"),
-    }
+        other => panic!("{other:?}")}
     let e = h.run("cableremove", json!({"cable": w.hex(), "drawn": "unassign"})).unwrap_err();
     assert!(e.contains("is not a parameter of this command"), "{e}");
 }

@@ -473,7 +473,7 @@ pub(crate) fn put(cats: &mut StyleCatalogues, catalogue: StyleCatalogue, id: &St
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn style_refs_parse_and_print() {

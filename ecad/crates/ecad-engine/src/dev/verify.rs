@@ -23,7 +23,7 @@ use cadcraft_engine::doc::{Drawing, Entity, EntityKind, Handle};
 use ecad_model::{CableId, Document, End, Form, ItemId, ItemKind, PageId, Pt, Subject};
 
 use crate::convert::{ECAD_PREFIX, block_name, item_from, kind_for_primitive, marker_position};
-use crate::outputs::kept::ReportModels;
+use ecad_electrical::reports::kept::ReportModels;
 use crate::project::{HandleMap, Mapped, part_entity};
 
 /// What [`verify_page`] compared and what disagreed.
@@ -88,7 +88,7 @@ fn same_points(a: Vec<Pt>, b: Vec<Pt>) -> bool {
 
 /// Check that `drawing` (with `map`) shows `page` of `doc`, without relying on handle numbers.
 /// Pages drawn from the report models are expected with `outputs`
-/// ([`crate::generated::parts_of`]).
+/// ([`crate::pages::generated::parts_of`]).
 pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, outputs: Option<&ReportModels>) -> Verification {
     verify_page_with(doc, page, drawing, map, &BTreeSet::new(), 0.0, outputs)
 }
@@ -124,7 +124,7 @@ pub fn verify_page_pending(
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
     let mut tees_shown: Vec<(ecad_model::RouteId, Pt)> = Vec::new();
-    let look = crate::text_style::Look::new(doc);
+    let look = crate::styles::draw::Look::new(doc);
     for f in fans.values() {
         for part in &f.parts {
             let e = part_entity(&look, part, Handle(0));
@@ -132,25 +132,25 @@ pub fn verify_page_pending(
         }
     }
     // Device tags and terminal labels (brief 018), derived like the cable parts.
-    for t in crate::devices::all_texts_on_page(doc, page) {
+    for t in crate::devices::draw::all_texts_on_page(doc, page) {
         if !t.shown && !hidden_text {
             continue;
         }
-        let mut e = crate::devices::text_entity(&look, &t.text, Handle(0));
+        let mut e = crate::devices::draw::text_entity(&look, &t.text, Handle(0));
         if !t.shown {
-            crate::text_style::dim_hidden(&mut e);
+            crate::styles::draw::dim_hidden(&mut e);
         }
         *fan_expected.entry(computed_key(&e)).or_default() += 1;
     }
     // Device cross-references (brief 025), derived the same way.
-    for part in crate::xref::parts_on_page(doc, page) {
+    for part in crate::references::draw::devices::parts_on_page(doc, page) {
         let mut e = crate::project::device_reference_entity(&look, &part, Handle(0));
         // Brief 049: a continuation's other-end text in Ink 2, as the page draws it.
-        crate::continuations::colour(doc, &part, &mut e);
+        crate::continuations::draw::colour(doc, &part, &mut e);
         *fan_expected.entry(computed_key(&e)).or_default() += 1;
     }
     // PLC card frames (brief 051), derived the same way.
-    for part in crate::plc::look::parts_on_page(doc, page) {
+    for part in crate::plc::draw::card::parts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::project::device_reference_entity(&look, &part, Handle(0)))).or_default() += 1;
     }
     // Link lines (brief 030), derived the same way.
@@ -158,17 +158,17 @@ pub fn verify_page_pending(
         *fan_expected.entry(computed_key(&crate::project::link_entity(&part, Handle(0)))).or_default() += 1;
     }
     // Location box labels (brief 024), derived the same way.
-    for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
-        *fan_expected.entry(computed_key(&crate::locations::styled_label_entity(doc, &look, rep, &value, at, Handle(0)))).or_default() += 1;
+    for (rep, value, at) in ecad_electrical::locations::labels_on_page(doc, page) {
+        *fan_expected.entry(computed_key(&crate::locations::draw::styled_label_entity(doc, &look, rep, &value, at, Handle(0)))).or_default() += 1;
     }
     // Wire labels (brief 022), derived the same way.
-    for l in crate::wires::labels_on_page_with(doc, page, &hidden) {
-        *fan_expected.entry(computed_key(&crate::wires::label_entity(&look, &l, Handle(0)))).or_default() += 1;
+    for l in crate::wires::draw::labels_on_page_with(doc, page, &hidden) {
+        *fan_expected.entry(computed_key(&crate::wires::draw::label_entity(&look, &l, Handle(0)))).or_default() += 1;
     }
     // The sheet frame (brief 019), derived like the cable parts.
     // Generated pages and Total in sheets (brief 024) come from the same function.
     let frame_rgb = crate::pages::frame::line_colour(doc, page);
-    for part in crate::generated::parts_of_pending(doc, page, outputs, pending) {
+    for part in crate::pages::generated::parts_of_pending(doc, page, outputs, pending) {
         *fan_expected.entry(computed_key(&crate::pages::frame::styled_entity(&part, Handle(0), frame_rgb))).or_default() += 1;
     }
     let mut problems: Vec<String> = Vec::new();
@@ -280,12 +280,12 @@ pub fn verify_page_pending(
         problems.push(format!("drawn items differ from the document's items ({missing} kinds of item differ)"));
     }
     // T dots (lane 072 D): one dot of rings per route end on another route, where it lands.
-    let tees: Vec<(ecad_model::RouteId, Pt)> = crate::wires::tees_on_page(doc, page)
+    let tees: Vec<(ecad_model::RouteId, Pt)> = ecad_electrical::wires::tees_on_page(doc, page)
         .into_iter()
-        .filter(|(r, _, _)| crate::wires::route_item(doc, *r).is_some_and(|(_, i, _)| !hidden.contains(&i)))
+        .filter(|(r, _, _)| ecad_electrical::wires::route_item(doc, *r).is_some_and(|(_, i, _)| !hidden.contains(&i)))
         .map(|(r, _, at)| (r, at))
         .collect();
-    let rings = crate::wires::TEE_DOT_RADII.len();
+    let rings = ecad_electrical::wires::TEE_DOT_RADII.len();
     if tees_shown.len() != tees.len() * rings || !tees_shown.iter().all(|(r, at)| tees.iter().any(|(x, p)| x == r && near(*p, *at))) {
         problems.push("the T dots drawn differ from the T's of the document".into());
     }

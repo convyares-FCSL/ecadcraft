@@ -51,7 +51,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let mut out = MeasuredRatings::default();
     let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+    let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
     if let Some(p) = project.read(&mut s, |p, _| p.ledger.document().page_order.first().copied())? {
         project.open_page(&mut s, p)?;
     }
@@ -67,12 +67,12 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
         let build = t.elapsed().as_secs_f64() * 1e3;
         let rated = p.checks().rating.results.len();
         let doc = p.ledger.document();
-        let dev = doc.devices.keys().copied().find(|c| ecad_engine::rating::trace::is_protective_component(doc, *c));
+        let dev = doc.devices.keys().copied().find(|c| ecad_electrical::circuits::trace::is_protective_component(doc, *c));
         let pin = dev.and_then(|c| {
             doc.connection_points_of(c).find_map(|(t, x)| {
                 let label = x.label.clone().unwrap_or_default();
                 let on = doc.representations_of(ecad_model::Subject::Device(c)).next().map(|(_, r)| r.page)?;
-                let at = ecad_model::derive::connection_point_position(doc, on, t)?;
+                let at = ecad_model::connectivity::derive::connection_point_position(doc, on, t)?;
                 (label.parse::<u32>().is_ok_and(|n| n % 2 == 0)).then_some((on, at))
             })
         });
@@ -90,7 +90,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
                 p.ledger.document().devices.get(&dev).is_some_and(|x| {
                     matches!(
                         x.device_type,
-                        ecad_model::DeviceType::Protection(ecad_model::device::Protection::Mcb(_) | ecad_model::device::Protection::Rcbo(_))
+                        ecad_model::DeviceType::Protection(ecad_model::objects::devices::Protection::Mcb(_) | ecad_model::objects::devices::Protection::Rcbo(_))
                     )
                 })
             })?;

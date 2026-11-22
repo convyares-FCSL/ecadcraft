@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use {ecad_app::reports::panel, ecad_app::pages::project_panel};
-use ecad_engine::checks::Kind;
+use ecad_electrical::checks::Kind;
 use ecad_model::PageId;
 use egui_kittest::Harness;
 
@@ -86,9 +86,9 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     // of the demo has its locations stored.
     let d = doc(&mut h);
     let mut proposed: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
-    for c in d.devices.keys().copied().filter(|c| ecad_engine::locations::is_device(&d, *c)) {
+    for c in d.devices.keys().copied().filter(|c| ecad_electrical::locations::is_device(&d, *c)) {
         let Some(r) = ecad_electrical::symbols::reps::goto(&d, c, None) else { continue };
-        let ctx = ecad_engine::locations::rep_context(&d, &d.representations[&r], &mut ecad_engine::locations::BoxCache::default());
+        let ctx = ecad_electrical::locations::rep_context(&d, &d.representations[&r], &mut ecad_electrical::locations::BoxCache::default());
         if let Some(v) = ctx.value {
             proposed.entry(v).or_default().push(c.hex());
         }
@@ -106,9 +106,9 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     let m1 = d.components_tagged("-M01")[0];
     // Brief 052: the new box proposes +JB2 for -M01; its stored location does not change.
     let m1_rep = ecad_electrical::symbols::reps::goto(&d, m1, None).unwrap();
-    let m1_ctx = ecad_engine::locations::rep_context(&d, &d.representations[&m1_rep], &mut ecad_engine::locations::BoxCache::default());
+    let m1_ctx = ecad_electrical::locations::rep_context(&d, &d.representations[&m1_rep], &mut ecad_electrical::locations::BoxCache::default());
     assert_eq!(m1_ctx.value.as_deref(), Some("+JB2"));
-    assert_ne!(ecad_engine::locations::resolve(&d, m1).value.as_deref(), Some("+JB2"), "a box gives nothing");
+    assert_ne!(ecad_electrical::locations::resolve(&d, m1).value.as_deref(), Some("+JB2"), "a box gives nothing");
     let texts: Vec<String> = h
         .state()
         .cad
@@ -145,7 +145,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.run_steps(3);
     assert_ne!(doc(&mut h), before, "one step");
     let d = doc(&mut h);
-    assert_eq!(ecad_engine::locations::resolve(&d, x2).source.word(), "device");
+    assert_eq!(ecad_electrical::locations::resolve(&d, x2).source.word(), "device");
 
     // 4. Reports: the BOM has devices only, -S01 flagged; wires; cables.
     h.state_mut().panel_action(project_panel::Action::Reports);

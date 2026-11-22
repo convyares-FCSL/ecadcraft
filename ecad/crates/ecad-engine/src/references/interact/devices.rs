@@ -11,7 +11,6 @@ use serde_json::{Value, json};
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::interact::{OUT_OF_RANGE, can_start, in_range, line_kind, pick, pt, read};
 use crate::project::{Mapped, Project};
-use crate::xref;
 
 const NOT_A_TABLE: &str = "That is not a contact table or a coil. Click a coil or its table.";
 const NOTHING_THERE: &str = "Nothing there. Click a coil or its contact table.";
@@ -26,7 +25,7 @@ fn table_named(p: &Project, m: Mapped) -> Option<DeviceId> {
         _ => return None,
     };
     let Subject::Device(c) = doc.representations.get(&rep)?.subject else { return None };
-    (xref::device(doc, c).head == Some(rep)).then_some(c)
+    (ecad_electrical::references::devices::device(doc, c).head == Some(rep)).then_some(c)
 }
 
 /// The reference source and target a mapped object names for Go to Reference (design 025
@@ -42,12 +41,12 @@ pub(crate) fn device_source(p: &Project, map: &crate::project::HandleMap, h: Han
     };
     let (_, class) = p.xref().member(rep)?;
     let target = match (m, class) {
-        (Mapped::DeviceReference(_), xref::Class::Head) => {
+        (Mapped::DeviceReference(_), ecad_electrical::references::devices::Class::Head) => {
             let (_, i) = map.device_reference_part(h)?;
             let Subject::Device(c) = doc.representations.get(&rep)?.subject else { return None };
-            let dev = xref::device(doc, c);
-            let mut places = xref::Places::new(doc);
-            let t = xref::table(doc, &mut places, &dev)?;
+            let dev = ecad_electrical::references::devices::device(doc, c);
+            let mut places = ecad_electrical::references::devices::Places::new(doc);
+            let t = crate::references::draw::devices::table(doc, &mut places, &dev)?;
             let row = t.parts.get(usize::try_from(i).ok()?)?.row;
             row.and_then(|r| t.rows.get(r)).and_then(|r| r.rep)
         }
@@ -156,17 +155,17 @@ impl Interactive for MirrorMove {
         }
         read(s, |p, _| {
             let doc = p.ledger.document();
-            let dev = xref::device(doc, c);
+            let dev = ecad_electrical::references::devices::device(doc, c);
             let Some(head) = dev.head else { return Ok(Vec::new()) };
-            let mut places = xref::Places::new(doc);
-            let offer = xref::offer_of(doc, c);
-            let rows = xref::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
-            let parts = xref::table_parts(doc, head, pt(cursor), &rows);
+            let mut places = ecad_electrical::references::devices::Places::new(doc);
+            let offer = ecad_electrical::references::devices::offer_of(doc, c);
+            let rows = ecad_electrical::references::devices::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
+            let parts = ecad_electrical::references::devices::table_parts(doc, head, pt(cursor), &rows);
             Ok(parts
                 .iter()
                 .filter_map(|part| match &part.shape {
-                    xref::Shape::Line(a, b) => Some(line_kind(*a, *b)),
-                    xref::Shape::Text { .. } => None,
+                    ecad_electrical::references::devices::Shape::Line(a, b) => Some(line_kind(*a, *b)),
+                    ecad_electrical::references::devices::Shape::Text { .. } => None,
                 })
                 .collect())
         })

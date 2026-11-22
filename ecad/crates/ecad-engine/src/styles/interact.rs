@@ -9,9 +9,9 @@ use serde_json::json;
 
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::interact::{OUT_OF_RANGE, can_start, in_range, pick, read};
-use crate::devices::TextOf;
+use ecad_electrical::devices::TextOf;
 use crate::project::Mapped;
-use crate::text_style::TextKind;
+use ecad_electrical::styles::text_style::TextKind;
 
 const PICK_A_TEXT: &str = "Pick a tag, a label or a symbol.";
 const FREE_TEXT: &str = "That is free text; erase it to remove it.";
@@ -51,7 +51,7 @@ impl ShowText {
         read(s, |p, page| {
             let doc = p.ledger.document();
             let map = &p.pages.get(&page).ok_or(PICK_A_TEXT)?.map;
-            let texts = || crate::devices::all_texts_on_page(doc, page);
+            let texts = || crate::devices::draw::all_texts_on_page(doc, page);
             if let Some((rep, of)) = map.tag_text_of(h) {
                 let r = doc.representations.get(&rep).ok_or(PICK_A_TEXT)?;
                 let component = match r.subject {
@@ -84,7 +84,7 @@ impl ShowText {
     fn change(&self, s: &mut Session, picked: Picked) -> R<Step> {
         let (rep, component, page, kind, show) = match picked {
             Picked::Text { rep, of, component, symbol, shown, page } => {
-                (rep, component, page, crate::devices::derived_text_kind(of, symbol), ecad_model::naming::words::flag_word(!shown))
+                (rep, component, page, ecad_electrical::devices::derived_text_kind(of, symbol), ecad_model::naming::words::flag_word(!shown))
             }
             Picked::Symbol { tag_hidden: false, .. } => return Err(other(NOTHING_HIDDEN)),
             Picked::Symbol { rep, component, page, .. } => (rep, Some(component), page, TextKind::Tag, ecad_model::naming::words::flag_word(true)),
@@ -134,12 +134,12 @@ fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show:
     if let Some(first) = what.get(..1) {
         what = format!("{}{}", first.to_ascii_uppercase(), what.get(1..).unwrap_or_default());
     }
-    let tag = component.map(|c| crate::devices::tag_words(doc, c));
+    let tag = component.map(|c| ecad_electrical::devices::tag_words(doc, c));
     let subject = match (&tag, kind) {
         (Some(t), TextKind::Tag) => format!("{what} {t}"),
         _ => what,
     };
-    let done = if <crate::text_style::Shown as ecad_model::Word>::parse(show).unwrap_or_default() == crate::text_style::Shown::Off {
+    let done = if <ecad_electrical::styles::text_style::Shown as ecad_model::Word>::parse(show).unwrap_or_default() == ecad_electrical::styles::text_style::Shown::Off {
         "hidden"
     } else {
         "shown"
@@ -150,7 +150,7 @@ fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show:
         "device" => format!("for {}", tag.clone().unwrap_or_default()),
         "page" => {
             let page = v.get("target").and_then(|t| t.as_str()).and_then(PageId::parse);
-            page.map_or_else(|| "on this page".to_string(), |p| format!("on page {}", crate::references::page_number(doc, p)))
+            page.map_or_else(|| "on this page".to_string(), |p| format!("on page {}", ecad_electrical::references::cables::page_number(doc, p)))
         }
         _ => "in the project".to_string(),
     };
@@ -218,14 +218,14 @@ impl MoveText {
                     if r.form != Form::Symbol {
                         return Err(PICK_TO_MOVE.into());
                     }
-                    let t = crate::devices::all_texts_on_page(doc, page).into_iter().find(|t| t.text.rep == rep && t.text.of == of);
+                    let t = crate::devices::draw::all_texts_on_page(doc, page).into_iter().find(|t| t.text.rep == rep && t.text.of == of);
                     if t.as_ref().is_some_and(|t| !t.shown) {
                         return Err(SHOW_FIRST.into());
                     }
                     let what = match of {
                         TextOf::Terminal(_) => "Label".to_string(),
                         _ => match r.subject {
-                            Subject::Device(c) => format!("Tag {}", crate::devices::tag_words(doc, c)),
+                            Subject::Device(c) => format!("Tag {}", ecad_electrical::devices::tag_words(doc, c)),
                             _ => "Tag".to_string(),
                         },
                     };
@@ -275,7 +275,7 @@ impl MoveText {
             (Input::Keyword(k) | Input::Text(k), picked) => {
                 let w = k.trim().to_ascii_lowercase();
                 if self.asking_justify {
-                    if crate::text_style::parse_justify(&w).is_none() {
+                    if ecad_electrical::styles::text_style::parse_justify(&w).is_none() {
                         return Err(other(crate::styles::commands::BAD_JUSTIFY));
                     }
                     self.justify = Some(w.to_ascii_uppercase());

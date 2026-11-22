@@ -172,14 +172,14 @@ pub fn coloured_routes(
             continue;
         }
         // A line is coloured as the wire it stands for (design 072 §4.3).
-        let Some(c) = crate::wires::wire_of_route(doc, x) else { continue };
+        let Some(c) = ecad_electrical::wires::wire_of_route(doc, x) else { continue };
         let Some(item) = r.items.first() else { continue };
         let handle = map.and_then(|m| m.item(*item));
         if map.is_some() && handle.is_none() {
             continue;
         }
         let Some(ItemKind::Primitive(prim)) = doc.items.get(item).map(|i| &i.kind) else { continue };
-        let Some(points) = crate::wires::path_vertices(prim) else { continue };
+        let Some(points) = ecad_electrical::wires::path_vertices(prim) else { continue };
         if points.len() < 2 || !points.iter().all(|q| q.x.is_finite() && q.y.is_finite()) {
             continue;
         }
@@ -211,7 +211,7 @@ pub fn painted_marks(p: &crate::Project, uid: u64) -> Vec<Painted> {
     let Some(view) = p.pages.get(&page).filter(|v| !v.unavailable) else { return Vec::new() };
     let doc = p.ledger.document();
     let mut out: Vec<Painted> =
-        crate::references::markers_on_page(doc, page).into_iter().filter(|m| m.orphan).map(|m| Painted::Error(m.at)).collect();
+        ecad_electrical::references::cables::markers_on_page(doc, page).into_iter().filter(|m| m.orphan).map(|m| Painted::Error(m.at)).collect();
     out.extend(view.map.looks_connected().iter().map(|at| Painted::Warning(*at)));
     out
 }
@@ -223,19 +223,19 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
     let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Vec::new() };
     map.tag_text_handles()
         .filter(|h| {
-            let Some((rep, crate::devices::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
+            let Some((rep, ecad_electrical::devices::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
             let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
-            crate::devices::tag_of(doc, c).is_some_and(ecad_model::naming::tag::is_provisional)
+            ecad_electrical::devices::tag_of(doc, c).is_some_and(ecad_model::naming::tag::is_provisional)
         })
         .collect()
 }
 
 /// A text style's colour as drawn on `sheet` (brief 050a): its own colour, or its colour code's
 /// first colour on that sheet, as [`colour_rgb`] draws the stored value.
-pub fn text_colour_rgb(c: crate::text_style::TextColour, sheet: &ecad_drawing_style::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
+pub fn text_colour_rgb(c: ecad_electrical::styles::text_style::TextColour, sheet: &ecad_drawing_style::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
     match c {
-        crate::text_style::TextColour::Rgb(r, g, b) => Some(cadcraft_engine::doc::color::Rgb(r, g, b)),
-        crate::text_style::TextColour::Code(i) => {
+        ecad_electrical::styles::text_style::TextColour::Rgb(r, g, b) => Some(cadcraft_engine::doc::color::Rgb(r, g, b)),
+        ecad_electrical::styles::text_style::TextColour::Code(i) => {
             let dark = sheet.sheet == ecad_drawing_style::sheet::DARK.sheet;
             ecad_electrical::cables::words::CODE_COLOURS.get(i).map(|(_, paper, on_dark)| rgb(if dark { *on_dark } else { *paper }))
         }
@@ -257,7 +257,7 @@ pub fn colour_rgb(value: &str, sheet: &ecad_drawing_style::Sheet) -> Option<cadc
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn shortening_counts_characters_and_hides_controls() {

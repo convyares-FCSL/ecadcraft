@@ -39,8 +39,8 @@ pub fn coil(graphics_scale: f64) -> Definition {
             Primitive::Circle { center: Pt::new(0.0, 0.0), radius: graphics_scale },
         ],
         terminals: vec![
-            TerminalDef { key: "A1".parse().unwrap(), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
-            TerminalDef { key: "A2".parse().unwrap(), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
+            ConnectionPointDef { key: "A1".parse().unwrap(), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            ConnectionPointDef { key: "A2".parse().unwrap(), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }
@@ -65,13 +65,13 @@ impl Fixture {
             (self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh());
         let ops = vec![
             Op::CreateDevice { id: c, device: Device { definition: Some(def), ..Device::default() } },
-            Op::AddTerminal {
+            Op::AddConnectionPoint {
                 id: t1,
-                terminal: Terminal { owner: c.into(), label: Some("A1".into()), key: Some("A1".parse().unwrap()), accepts: Default::default() },
+                terminal: ConnectionPoint { owner: c.into(), label: Some("A1".into()), key: Some("A1".parse().unwrap()), accepts: Default::default() },
             },
-            Op::AddTerminal {
+            Op::AddConnectionPoint {
                 id: t2,
-                terminal: Terminal { owner: c.into(), label: Some("A2".into()), key: Some("A2".parse().unwrap()), accepts: Default::default() },
+                terminal: ConnectionPoint { owner: c.into(), label: Some("A2".into()), key: Some("A2".parse().unwrap()), accepts: Default::default() },
             },
             Op::AddItem {
                 id: item,
@@ -80,7 +80,7 @@ impl Fixture {
                     style: style(self.layer),
                     kind: ItemKind::Symbol(SymbolInstance {
                         definition: def,
-                        placement: Placement { origin: at, rotation: ecad_model::units::Radians(rotation), mirror: false, scale: 1.0 },
+                        placement: Placement { origin: at, rotation: ecad_model::geometry::units::Radians(rotation), mirror: false, scale: 1.0 },
                     }),
                 },
             },
@@ -152,7 +152,7 @@ pub fn fixture() -> Fixture {
                 kind: ItemKind::Primitive(Primitive::Text {
                     at: Pt::new(-2.5, 1e21),
                     height: 2.5,
-                    rotation: ecad_model::units::Radians(std::f64::consts::FRAC_PI_2),
+                    rotation: ecad_model::geometry::units::Radians(std::f64::consts::FRAC_PI_2),
                     value: "K1 \"quoted\" \\ tab\t ünï 😀".into(),
                     halign: Default::default(),
                     valign: Default::default(),

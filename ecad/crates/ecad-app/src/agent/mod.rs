@@ -1151,7 +1151,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn base64_matches_the_standard_alphabet() {

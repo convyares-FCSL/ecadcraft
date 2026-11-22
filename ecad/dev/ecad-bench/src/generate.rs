@@ -30,12 +30,12 @@ use std::collections::BTreeMap;
 use ecad_model::{
     Author, Cable, CableId, Color, ConductorId, Core, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId,
     ItemKind, Layer, LayerId, Ledger, LengthUnit, NetId, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
-    RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, ConnectionPointDef, ConnectionPointId, Transaction, TxId, TxKind, Wire,
+    RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointDef, ConnectionPointId, Transaction, TxId, TxKind, Wire,
     WireId,
 };
 
 /// The role brief 010 gives a cable reference end: its own constant, so the generated references
-/// are the ones `ecad_model::derive::cable_references` derives.
+/// are the ones `ecad_model::connectivity::derive::cable_references` derives.
 /// Seed of every ID the generator allocates.
 pub const SEED: u64 = 0x0ECA_D012;
 /// What the file header names as its writer.
@@ -96,7 +96,7 @@ impl Variant {
 }
 
 /// A net as the generator intends it: terminals and conductors, each sorted (as
-/// `ecad_model::derive::nets` reports them).
+/// `ecad_model::connectivity::derive::nets` reports them).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntendedNet {
     pub terminals: Vec<ConnectionPointId>,
@@ -122,7 +122,7 @@ pub struct Generated {
     pub ledger: Ledger,
     /// Pages in order.
     pub pages: Vec<PageId>,
-    /// Nets in the order `ecad_model::derive::nets` reports them.
+    /// Nets in the order `ecad_model::connectivity::derive::nets` reports them.
     pub nets: Vec<IntendedNet>,
     pub continuations: Vec<Continuation>,
 }
@@ -219,14 +219,14 @@ fn moved(id: ItemId, before: Item, dx: f64) -> Op {
 /// Wire `w` of net `net`, `order`th in it, between `ends`, named `name` (its wire number, not
 /// fixed, so renumbering reaches it), as [`wire_ops`] makes it.
 fn named_wire(net: NetId, conductor: ConductorId, order: u16, ends: [ConnectionPointId; 2], name: &str) -> Wire {
-    let number = ecad_model::text::Text::new(name).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false });
+    let number = ecad_model::naming::text::Text::new(name).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: false });
     let [a, b] = ends;
     Wire { number, net_order: order, ..Wire::new(net, conductor, a, b) }
 }
 
 /// The op renaming wire `w` (value `wire`, named `name`) to `<name>X` (the rename step of a wire).
 fn renamed_wire(w: WireId, wire: &Wire, name: &str) -> Op {
-    let number = ecad_model::text::Text::new(&format!("{name}X")).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false });
+    let number = ecad_model::naming::text::Text::new(&format!("{name}X")).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: false });
     Op::ModifyWire { id: w, before: wire.clone(), after: Wire { number, ..wire.clone() } }
 }
 
@@ -281,7 +281,7 @@ pub fn wire_ops(
 pub fn added_wire(doc: &Document, ids: &mut IdAllocator) -> Result<Vec<Op>, String> {
     let page = *doc.page_order.first().ok_or("the project has no page")?;
     let layer = doc.layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("the project has no layer 0")?;
-    let shown = ecad_model::derive::connection_point_positions(doc, page);
+    let shown = ecad_model::connectivity::derive::connection_point_positions(doc, page);
     let (t1, _, p1) = *shown.first().ok_or("no terminal on the first page")?;
     let (t2, _, p2) = *shown.iter().find(|(t, _, _)| *t != t1).ok_or("fewer than two terminals on the first page")?;
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
@@ -381,7 +381,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                 let t: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: t,
-                    terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    terminal: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
                 keyed.push(t);
             }

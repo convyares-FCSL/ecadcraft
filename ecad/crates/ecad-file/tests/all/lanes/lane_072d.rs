@@ -35,7 +35,7 @@ fn core_positions_come_back_from_the_snapshot_and_the_log() {
     let on_line = Core { position: CorePosition::Route { route: r, landed: None }, ..Core::unplaced(CoreLabel::new("1").ok()) };
     let spare = Core {
         label: CoreLabel::new("2").ok(),
-        colours: ecad_model::wire::Colours::parse("BN"),
+        colours: ecad_model::objects::wire::Colours::parse("BN"),
         purpose: Purpose::Spare,
         position: CorePosition::Unplaced,
         through: Vec::new(),
@@ -60,14 +60,14 @@ fn core_positions_come_back_from_the_snapshot_and_the_log() {
 fn number_by_is_stored_as_a_word_and_comes_back_from_the_snapshot_and_the_log() {
     // Design 072 F40: `wiring.number_by` is `net` (left out of the file) or `conductor`.
     use ecad_file::records::WiringSettings as Rec;
-    use ecad_model::wiring::NumberBy;
-    let mut w = ecad_model::wiring::WiringSettings::default();
+    use ecad_model::connectivity::wiring::NumberBy;
+    let mut w = ecad_model::connectivity::wiring::WiringSettings::default();
     let net = serde_json::to_value(Rec::from(&w)).unwrap();
     assert!(net.get("number_by").is_none(), "the default is left out: {net}");
     w.number_by = NumberBy::Conductor;
     let mut v = serde_json::to_value(Rec::from(&w)).unwrap();
     assert_eq!(v["number_by"], "conductor");
-    let back: ecad_model::wiring::WiringSettings = serde_json::from_value::<Rec>(v.clone()).unwrap().into();
+    let back: ecad_model::connectivity::wiring::WiringSettings = serde_json::from_value::<Rec>(v.clone()).unwrap().into();
     assert_eq!(back.number_by, NumberBy::Conductor);
     v["number_by"] = "wire".into();
     let err = serde_json::from_value::<Rec>(v).unwrap_err().to_string();
@@ -95,9 +95,9 @@ fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
     let dir = TempDir::new("072d-accepts");
     let mut f = fixture();
     let (d, t): (DeviceId, ConnectionPointId) = (f.ids.fresh(), f.ids.fresh());
-    let bar = Terminal { owner: d.into(), label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: Accepts::new(12).unwrap() };
+    let bar = ConnectionPoint { owner: d.into(), label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: Accepts::new(12).unwrap() };
     f.ledger
-        .commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddTerminal { id: t, terminal: bar.clone() }])
+        .commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddConnectionPoint { id: t, terminal: bar.clone() }])
         .unwrap();
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
     for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
@@ -108,7 +108,7 @@ fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
     }
     let mut v = serde_json::to_value(Rec::from(&bar)).unwrap();
     assert_eq!(v["accepts"], 12);
-    let two = serde_json::to_value(Rec::from(&Terminal { accepts: Accepts::TWO, ..bar.clone() })).unwrap();
+    let two = serde_json::to_value(Rec::from(&ConnectionPoint { accepts: Accepts::TWO, ..bar.clone() })).unwrap();
     assert!(two.get("accepts").is_none(), "two is left out: {two}");
     for hostile in [serde_json::json!(0), serde_json::json!(65), serde_json::json!(100_000), serde_json::json!(-3)] {
         v["accepts"] = hostile.clone();

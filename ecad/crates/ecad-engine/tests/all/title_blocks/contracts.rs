@@ -4,7 +4,7 @@
 
 use cadcraft_engine::doc::EntityKind;
 use ecad_engine::pages::frame::{self, FrameInput};
-use ecad_engine::title_block::{dxf, house};
+use {ecad_engine::title_blocks::dxf, ecad_electrical::title_blocks::house};
 use ecad_model::document::book::Book;
 use ecad_model::document::sheet::{self, SheetSpec};
 use ecad_model::objects::title_block::{Binding, BlockItem, IfEmpty, Rect, TextDraw, TitleBlockLayout};
@@ -20,13 +20,11 @@ fn texts(h: &mut H, page: PageId) -> Vec<(String, Option<u8>, f64, f64)> {
             EntityKind::Text(t) => {
                 let aci = match e.common.color {
                     cadcraft_engine::doc::color::Color::Index(i) => Some(i),
-                    _ => None,
-                };
+                    _ => None};
                 let at = t.align_pt.unwrap_or(t.insert);
                 Some((t.value.clone(), aci, at.x, at.y))
             }
-            _ => None,
-        })
+            _ => None})
         .collect()
 }
 
@@ -64,7 +62,7 @@ fn the_house_block_is_on_every_page() {
         assert!(has(value), "{value} in {t:?}");
     }
     let status = t.iter().find(|x| x.0 == "RELEASED").unwrap();
-    assert_eq!(status.1, Some(ecad_engine::title_block::layout::RED_ACI), "the status is red");
+    assert_eq!(status.1, Some(ecad_engine::title_blocks::layout::RED_ACI), "the status is red");
     // Nothing moves: the keep-out strip is still 40 mm.
     let doc = h.doc();
     assert_eq!(sheet::keep_out(&doc, page), sheet::TITLE_BLOCK_MM);
@@ -78,7 +76,7 @@ fn the_house_block_fits_every_preset() {
     let mut last = 0.0;
     for (name, ..) in sheet::PRESETS {
         let spec = SheetSpec::preset(name).unwrap();
-        let w = ecad_engine::title_block::frame_width(&spec, &sheet::Margins::default());
+        let w = ecad_electrical::title_blocks::frame_width(&spec, &sheet::Margins::default());
         let l = house::house(w, &text);
         l.check().unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(l.size, (w, 40.0), "{name}");
@@ -228,15 +226,13 @@ fn hostile_bodies_draw_and_are_refused_by_commands() {
         bind: Binding::Print(ecad_model::objects::title_block::PrintField::Sheet),
         label: Some("é".repeat(10_000)),
         look: TextDraw::default(),
-        if_empty: IfEmpty::Text("t".repeat(100)),
-    };
+        if_empty: IfEmpty::Text("t".repeat(100))};
     let mut items: Vec<BlockItem> = (0..10_000).map(|i| field(f64::from(i))).collect();
     items.push(BlockItem::Line { a: (f64::NAN, 0.0), b: (1e308, f64::INFINITY), weight: Default::default() });
     items.push(BlockItem::Logo {
         at: Rect::new(1.0, 1.0, 5.0, 5.0),
         name: String::new(),
-        prims: vec![Primitive::Circle { center: Pt::new(f64::NAN, 0.0), radius: 1.0 }; 5000],
-    });
+        prims: vec![Primitive::Circle { center: Pt::new(f64::NAN, 0.0), radius: 1.0 }; 5000]});
     let l = TitleBlockLayout { size: (f64::NAN, 1e308), items };
     assert!(l.check().is_err());
     input.block.layout = std::sync::Arc::new(l);
@@ -317,8 +313,7 @@ fn logos_fit_their_box_and_bad_files_are_refused() {
             {
                 Some((l.a.y - l.b.y).abs())
             }
-            _ => None,
-        })
+            _ => None})
         .collect();
     assert_eq!(ys.len(), 120, "every shape drawn");
     assert!(ys.iter().all(|h| (h - 10.0).abs() < 1e-6), "fitted to the box's height: {ys:?}");
@@ -352,20 +347,18 @@ fn drawn_texts(h: &mut H, page: PageId) -> Vec<String> {
         .filter(|e| e.common.layer != frame::LAYER)
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None,
-        })
+            _ => None})
         .collect()
 }
 
 /// The texts a fresh derivation puts on `page` (contact references and tables, brief 025).
 fn fresh_xref_texts(h: &mut H, page: PageId) -> Vec<String> {
     let doc = h.doc();
-    ecad_engine::xref::parts_on_page(&doc, page)
+    ecad_engine::references::draw::devices::parts_on_page(&doc, page)
         .into_iter()
         .filter_map(|p| match p.shape {
-            ecad_engine::xref::Shape::Text { value, .. } => Some(value),
-            ecad_engine::xref::Shape::Line(..) => None,
-        })
+            ecad_electrical::references::devices::Shape::Text { value, .. } => Some(value),
+            ecad_electrical::references::devices::Shape::Line(..) => None})
         .collect()
 }
 
@@ -411,14 +404,12 @@ fn a_standard_switch_redraws_the_frame() {
         id: ecad_model::StandardId(1),
         name: ecad_model::objects::styles::StyleName::new("A").unwrap(),
         based_on: ecad_model::objects::styles::BasedOn::Iec,
-        origin: None,
-    };
+        origin: None};
     let b = ecad_model::StandardHeader {
         id: ecad_model::StandardId(2),
         name: ecad_model::objects::styles::StyleName::new("B").unwrap(),
         based_on: ecad_model::objects::styles::BasedOn::Iec,
-        origin: None,
-    };
+        origin: None};
     let doc = ecad_model::Document::default();
     let shown = FrameInput::of(&doc, page, &Book::of(&doc));
     let op = ecad_model::Op::SetStandard { before: Some(a), after: Some(b) };
@@ -430,7 +421,6 @@ fn a_standard_switch_redraws_the_frame() {
 #[test]
 fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     use crate::common::{applied, devices_touched};
-    use ecad_engine::references;
     use ecad_model::{ObjectRef, Op};
     let mut h = H::new(0x055B);
     let page = h.first_page();
@@ -445,7 +435,7 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     let doc = h.doc();
     let choice = |object| Op::SetProperty { object, key: "print.frame.style".into(), before: None, after: Some(id.clone()) };
     // The project's frame: every cable, every place.
-    assert_eq!(references::cables_touched(&doc, &[choice(ObjectRef::Project)]), None);
+    assert_eq!(ecad_electrical::references::cables::cables_touched(&doc, &[choice(ObjectRef::Project)]), None);
     let ops = [choice(ObjectRef::Project)];
     assert!(devices_touched(&doc, &applied(&doc, &ops), &ops).pages);
     // A page's frame or borrowed block: that page's cables and devices.
@@ -456,7 +446,7 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     };
     let frame = Op::SetProperty { object: ObjectRef::Page(page), key: "print.frame.style".into(), before: None, after: Some(id.clone()) };
     for (key, op) in [("print.frame.style", frame), ("title_block", borrowed)] {
-        assert!(references::cables_touched(&doc, std::slice::from_ref(&op)).is_some_and(|s| s.contains(&c1)), "{key}");
+        assert!(ecad_electrical::references::cables::cables_touched(&doc, std::slice::from_ref(&op)).is_some_and(|s| s.contains(&c1)), "{key}");
         let ops = [op];
         assert!(devices_touched(&doc, &applied(&doc, &ops), &ops).devices.contains(&coil), "{key}");
     }
@@ -468,16 +458,15 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
         catalogue: ecad_model::StyleCatalogue::Frame,
         id: own.clone(),
         before: Some(rec.clone()),
-        after: Some(after),
-    };
+        after: Some(after)};
     let mut heavier = rec.clone();
     ecad_electrical::styles::frame::set(frame_of(&mut heavier), "border_weight", Some("0.7")).unwrap();
-    assert_eq!(references::cables_touched(&doc, &[set(heavier)]), Some(Default::default()), "a weight moves no reference");
+    assert_eq!(ecad_electrical::references::cables::cables_touched(&doc, &[set(heavier)]), Some(Default::default()), "a weight moves no reference");
     let mut a1 = rec.clone();
     ecad_electrical::styles::frame::set(frame_of(&mut a1), "sheet", Some("A1")).unwrap();
     let mut used = doc.clone();
     used.display.insert("print.frame.style".into(), id.clone());
-    assert!(references::cables_touched(&used, &[set(a1)]).is_some_and(|s| s.contains(&c1)), "its pages' cables");
+    assert!(ecad_electrical::references::cables::cables_touched(&used, &[set(a1)]).is_some_and(|s| s.contains(&c1)), "its pages' cables");
 }
 
 /// Tester 055 (§12.1 J, §1.3): a title block whose size is past the bounds opens, keeps the
@@ -491,13 +480,12 @@ fn an_out_of_bounds_block_size_is_reported() {
         ecad_model::objects::styles::StyleBody::Frame(ecad_model::objects::styles::FrameStyle { title_block, ..Default::default() }),
     );
     doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(ecad_model::StyleRef::Own(5), rec);
-    let rows = ecad_engine::title_block::checks::rows(&doc);
+    let rows = ecad_electrical::title_blocks::checks::rows(&doc);
     assert!(rows.iter().any(|r| r.which.contains("Huge's title block size is out of bounds")), "{rows:?}");
 }
 
 fn frame_of(r: &mut ecad_model::StyleRecord) -> &mut ecad_model::objects::styles::FrameStyle {
     match &mut r.body {
         ecad_model::objects::styles::StyleBody::Frame(f) => f,
-        other => panic!("not a frame: {other:?}"),
-    }
+        other => panic!("not a frame: {other:?}")}
 }

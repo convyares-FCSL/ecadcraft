@@ -541,7 +541,7 @@ pub fn echo(d: &Device, key: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::circuits::*;
+    use super::*;
     use ProtectionKind as K;
 
     fn shown(kind: K, text: &str) -> String {

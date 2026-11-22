@@ -7,7 +7,7 @@
 //! **Update map:** see [`crate::reports::report`]: the copy is taken again only when the report models'
 //! revision changed, and only while the tab is shown.
 
-use ecad_engine::outputs::kept::ReportModels;
+use ecad_electrical::reports::kept::ReportModels;
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
 

@@ -13,7 +13,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::geom::Vec2;
 use ecad_engine::Persistence;
-use ecad_engine::outputs::{Group, kept::ReportModels};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use ecad_model::{DeviceId, Document, PageId, ConnectionPointId};
 use serde_json::{Value, json};
 
@@ -90,7 +90,7 @@ fn second_strip(h: &mut H) -> (DeviceId, Vec<ConnectionPointId>) {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ from a rebuild");
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
@@ -189,7 +189,7 @@ fn rows_have_a_way_out(h: &mut H, kind: &str) {
     let mine: Vec<_> = rows.iter().filter(|c| c.kind.name() == kind).collect();
     assert!(!mine.is_empty(), "no {kind} row");
     for c in mine {
-        assert!(c.fix.is_some() || c.object != ecad_engine::checks::Object::None, "{kind} row without a fix or go-to: {c:?}");
+        assert!(c.fix.is_some() || c.object != ecad_electrical::checks::Object::None, "{kind} row without a fix or go-to: {c:?}");
     }
 }
 

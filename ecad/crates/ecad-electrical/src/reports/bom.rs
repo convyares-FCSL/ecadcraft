@@ -797,7 +797,7 @@ fn project_strip_slots() -> Vec<(String, String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn quantities_parse_and_print() {

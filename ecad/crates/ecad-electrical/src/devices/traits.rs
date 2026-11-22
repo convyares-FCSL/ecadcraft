@@ -378,7 +378,7 @@ impl Signals for Indicator {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
     use ecad_model::objects::devices::{Control, Operator, Psu, Transformer};
     use ecad_model::geometry::units::{Percent, VoltAmps, Volts};
 

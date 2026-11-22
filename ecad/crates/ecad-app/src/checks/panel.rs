@@ -2,7 +2,7 @@
 //! false-looking connections, nets with one connection point, unconnected device points and
 //! number or potential conflicts, each row with where it is and a go-to.
 //!
-//! The rows are a copy of [`ecad_engine::checks::kept::Checks`], which the project builds whole on the
+//! The rows are a copy of [`ecad_electrical::checks::kept::Checks`], which the project builds whole on the
 //! tab's first show and then keeps from each transaction's ops; the copy is taken again only when
 //! that list's revision moved (or the project or the Show filter changed). Live: no refresh button.
 //! Brief 039: the rows are drawn by the one table ([`crate::checks::list`]), patched with the rows
@@ -10,7 +10,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_engine::checks::{Check, Fix, Kind, Severity};
+use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Severity};
 use eframe::egui::{self, RichText};
 
 use crate::pages::project_panel::Action;
@@ -83,8 +83,8 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
         Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_LINK]),
         Fix::CoreOpen(..) => Some([TICK_NOT_USED, GO_TO_OPEN_END]),
         Fix::AssignCable(_) | Fix::UseDrawing(..) => crate::cables::manager::pair(f),
-        Fix::Plc(_, ecad_engine::plc::PlcFix::RackMissing) => Some([PUT_IN_RACK, TAKE_OUT_OF_RACK]),
-        Fix::Plc(_, ecad_engine::plc::PlcFix::SlotRange) => Some([RAISE_SLOTS, MOVE_TO_FREE_SLOT]),
+        Fix::Plc(_, ecad_electrical::plc::PlcFix::RackMissing) => Some([PUT_IN_RACK, TAKE_OUT_OF_RACK]),
+        Fix::Plc(_, ecad_electrical::plc::PlcFix::SlotRange) => Some([RAISE_SLOTS, MOVE_TO_FREE_SLOT]),
         _ => None,
     }
 }
@@ -192,7 +192,7 @@ impl ChecksPanel {
         let Some(list) = p.kept_checks() else { return };
         let mut all: Vec<Check> = list.rows().cloned().collect();
         all.extend(p.kept_reports().map(|o| o.checks()).unwrap_or_default());
-        let rows: Vec<Row> = ecad_engine::checks::sort(doc, all)
+        let rows: Vec<Row> = ecad_electrical::checks::sort(doc, all)
             .into_iter()
             .filter(|c| !hidden.contains(&c.kind))
             .map(|c| Row { locator: c.locator(doc), check: c })

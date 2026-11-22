@@ -6,7 +6,7 @@ use crate::common;
 use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
-use ecad_engine::devices::{self, TextOf};
+use {ecad_electrical::devices::TextOf};
 use ecad_electrical::symbols::{self, STARTERS};
 use ecad_model::{DeviceId, ItemId, Op, PageId, Subject, ConnectionPointId};
 use serde_json::{Value, json};
@@ -32,12 +32,12 @@ fn labels(v: &Value) -> Vec<String> {
 }
 
 fn tag(h: &mut H, c: DeviceId) -> String {
-    h.p(|p| devices::tag_words(p.ledger.document(), c))
+    h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c))
 }
 
 /// The derived tag texts drawn on `page` (as the projection draws them).
 fn tag_texts(h: &mut H, page: PageId) -> Vec<String> {
-    h.p(|p| devices::texts_on_page(p.ledger.document(), page).into_iter().filter(|t| t.of == TextOf::Tag).map(|t| t.value).collect())
+    h.p(|p| ecad_engine::devices::draw::texts_on_page(p.ledger.document(), page).into_iter().filter(|t| t.of == TextOf::Tag).map(|t| t.value).collect())
 }
 
 fn new_page(h: &mut H, title: &str) -> PageId {
@@ -68,8 +68,7 @@ struct K1 {
     p2: PageId,
     k1: DeviceId,
     no: Value,
-    nc: Value,
-}
+    nc: Value}
 
 fn k1() -> K1 {
     let mut h = new_h();
@@ -128,7 +127,7 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
         assert_eq!(r["joined"], json!(false));
         let s = symbols::by_key(key).unwrap();
         // Brief 045 (FP7): a channel's labels are pins (1…), not its definition's names.
-        if ecad_engine::plc::channels::cell_type(s).is_some() {
+        if ecad_electrical::plc::channels::cell_type(s).is_some() {
             assert_eq!(labels(&r), ["1"], "{key}: its first pin");
         } else {
             assert_eq!(labels(&r), s.labels(), "{key}: the definition's terminal names");
@@ -309,7 +308,7 @@ fn e_a_reopened_project_previews_the_next_tag_from_its_history() {
     let k2: DeviceId = id(&place(&mut h, "coil", [50.0, 0.0]), "component");
     h.run("ecaddelete", json!({"component": k2.hex()})).unwrap();
     let coil = symbols::by_key("coil").unwrap();
-    assert_eq!(h.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K03"));
+    assert_eq!(h.p(|p| ecad_engine::devices::draw::next_tag_preview(p, coil)).as_deref(), Some("-K03"));
     h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
     let dir = std::env::temp_dir().join(format!("ecad-018-s2-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -321,9 +320,9 @@ fn e_a_reopened_project_previews_the_next_tag_from_its_history() {
     let mut s = cadcraft_engine::Session::empty();
     let (project, _) = ecad_engine::ProjectHandle::open_file(&mut s, &path, 77).unwrap();
     let mut h2 = H { s, project, trail: Vec::new() };
-    assert_eq!(h2.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K03"), "-K02 was used once");
+    assert_eq!(h2.p(|p| ecad_engine::devices::draw::next_tag_preview(p, coil)).as_deref(), Some("-K03"), "-K02 was used once");
     // The preview uses nothing up.
-    assert_eq!(h2.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K03"));
+    assert_eq!(h2.p(|p| ecad_engine::devices::draw::next_tag_preview(p, coil)).as_deref(), Some("-K03"));
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -343,7 +342,7 @@ fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly
         doc.terminals.get_mut(&t).unwrap().key = Some(ecad_model::PointKey::Def(format!("old-{}", t.short())));
     }
     let mut ids = ecad_model::IdAllocator::seeded(5);
-    let e = devices::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err().to_string();
+    let e = ecad_electrical::devices::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err().to_string();
     assert!(e.starts_with("Cannot merge -K02: its symbol on page"), "{e}");
     assert!(e.contains("not linked to any of its connection points"), "{e}");
 }
@@ -376,7 +375,7 @@ fn g_typed_search_then_device_then_click_records_the_json_join() {
     // Rotated: the tag sits above the contact, centred.
     let page = h.first_page();
     let above = h.p(|p| {
-        devices::texts_on_page(p.ledger.document(), page).into_iter().any(|t| t.of == TextOf::Tag && t.halign == ecad_model::TextHAlign::Center)
+        ecad_engine::devices::draw::texts_on_page(p.ledger.document(), page).into_iter().any(|t| t.of == TextOf::Tag && t.halign == ecad_model::TextHAlign::Center)
     });
     assert!(above);
 }
@@ -425,8 +424,7 @@ fn g_device_properties_renames_and_asks_before_merging() {
         let doc = f.h.doc();
         match &doc.items[&sym].kind {
             ecad_model::ItemKind::Symbol(s) => s.placement.origin,
-            _ => unreachable!(),
-        }
+            _ => unreachable!()}
     };
     let h = f.h.handle_of(f.p1, sym);
     f.h.s.input(Input::Pick(vec![h])).unwrap();
@@ -564,7 +562,7 @@ fn hover_lens_names_the_device_its_symbols_and_wires() {
     let mut f = k1();
     let rep = id::<ecad_model::RepresentationId>(&f.no, "representation");
     f.h.run("setprop", json!({"component": f.k1.hex(), "key": "maker", "value": "Acme"})).unwrap();
-    let lines = f.h.p(|p| devices::hover_lines(p.ledger.document(), f.k1, rep));
+    let lines = f.h.p(|p| ecad_engine::devices::draw::hover_lines(p.ledger.document(), f.k1, rep));
     assert_eq!(lines[0], "Device -K01   Contactor / relay coil");
     assert_eq!(lines[1], "Maker: Acme   Part number: ?");
     assert_eq!(lines[2], "This symbol: NO contact 13/14, page 2 \"Control\"");
@@ -637,7 +635,7 @@ fn a_tag_deleted_before_the_snapshot_is_not_given_again_after_reopening() {
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.p(|p| (p.ledger.base(), p.ledger.log().len())), (head, 0), "opened from the snapshot");
     let coil = symbols::by_key("coil").unwrap();
-    assert_eq!(h2.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K06"));
+    assert_eq!(h2.p(|p| ecad_engine::devices::draw::next_tag_preview(p, coil)).as_deref(), Some("-K06"));
     let placed = place(&mut h2, "coil", [400.0, 0.0]);
     let c: DeviceId = id(&placed, "component");
     let tag = h2.p(|p| p.ledger.document().devices[&c].tag().map(str::to_string));

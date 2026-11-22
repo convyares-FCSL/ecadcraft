@@ -172,7 +172,7 @@ const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
 ];
 
 /// Raw egui value controls (design `docs/design/components.md`): panels and dialogs use
-/// `ecad_ui::control` (text entry, number with unit, selector, toggle, value box) instead, so
+/// `ecad_widgets::control` (text entry, number with unit, selector, toggle, value box) instead, so
 /// anything the person can change looks editable and a read value never looks like an input.
 const RAW_CONTROL: &[&str] = &["TextEdit::", "ComboBox::"];
 

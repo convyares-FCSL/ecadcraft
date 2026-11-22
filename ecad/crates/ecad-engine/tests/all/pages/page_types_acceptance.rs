@@ -82,7 +82,7 @@ fn gen_texts(h: &mut H, page: PageId) -> Vec<String> {
     h.activate(page);
     h.pv(|p, pg| pg.entities_of(p, page))
         .iter()
-        .filter(|e| e.common.layer == ecad_engine::generated::LAYER)
+        .filter(|e| e.common.layer == ecad_electrical::pages::generated::LAYER)
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
             EntityKind::MText(t) => Some(t.contents.clone()),
@@ -329,7 +329,7 @@ fn ac5_renumber_pages_numbers_each_folder_from_its_start() {
     assert!(s(&v["message"]).contains("Renumbered 50 pages."), "§4.4 status words: {v}");
     // References follow (019's update map): the contact's page names the coil's new number.
     let d = h.doc();
-    let refs: Vec<String> = ecad_engine::references::markers_on_page(&d, p[44]).into_iter().map(|m| m.text).collect();
+    let refs: Vec<String> = ecad_electrical::references::cables::markers_on_page(&d, p[44]).into_iter().map(|m| m.text).collect();
     assert!(refs.iter().all(|t| !t.starts_with("1.") && !t.starts_with("1/")), "no reference to the old number 1: {refs:?}");
     // Again: nothing to do, nothing written.
     let head = h.head();
@@ -413,7 +413,7 @@ fn num_renumber_skips_continuation_numbers() {
     let b = Book::of(&d);
     for p in &b.order {
         let n = b.number(&d, *p);
-        let c = ecad_engine::generated::continuation_of(&d, &b, &n, None);
+        let c = ecad_electrical::pages::generated::continuation_of(&d, &b, &n, None);
         assert!(c.is_none_or(|(owner, _)| owner == *p), "page {p}'s number {n} is a continuation number of {c:?}");
     }
     let mut seen = std::collections::BTreeSet::new();
@@ -570,12 +570,12 @@ fn ac7_zones_off_hides_zone_labels_and_references_keep_zones() {
     h.activate(p[1]);
     h.run("place", json!({"symbol": "no", "at": [150, 100], "device": k.hex()})).ok();
     let d = h.doc();
-    let refs_before: Vec<String> = ecad_engine::references::markers_on_page(&d, p[1]).into_iter().map(|m| m.text).collect();
+    let refs_before: Vec<String> = ecad_electrical::references::cables::markers_on_page(&d, p[1]).into_iter().map(|m| m.text).collect();
     one_tx(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"zones": "off"}}));
     let t = frame_texts(&mut h, p[0]);
     assert!(!["A", "B", "C", "D", "E", "F"].iter().all(|r| t.iter().any(|x| x == r)), "no zone row labels: {t:?}");
     let d = h.doc();
-    let refs_after: Vec<String> = ecad_engine::references::markers_on_page(&d, p[1]).into_iter().map(|m| m.text).collect();
+    let refs_after: Vec<String> = ecad_electrical::references::cables::markers_on_page(&d, p[1]).into_iter().map(|m| m.text).collect();
     assert_eq!(refs_after, refs_before, "Q14: references keep their zones");
     undo(&mut h);
     h.run("setstyle", json!({"catalogue": "frame", "id": "sheet", "fields": {"grid_labels": "off"}})).unwrap();

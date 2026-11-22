@@ -21,7 +21,7 @@ use crate::document::sheet::SheetSpec;
 use crate::naming::words::Word as _;
 
 /// The embedded data file.
-pub const SETTINGS: &str = include_str!("../defaults/settings.toml");
+pub const SETTINGS: &str = include_str!("../../defaults/settings.toml");
 /// Its name, for messages.
 pub const FILE: &str = "settings.toml";
 
@@ -113,7 +113,7 @@ pub fn load(text: &str) -> Builtins {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn the_built_ins_are_today_s_values() {

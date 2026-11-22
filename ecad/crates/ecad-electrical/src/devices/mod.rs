@@ -31,7 +31,7 @@ use ecad_model::connectivity::derive::connection_point_positions;
 use ecad_model::naming::tag::{self, TAG_KEY};
 use ecad_model::{
     Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt,
-    Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId,
+    Representation, RepresentationId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointId,
 };
 use ecad_model::{DeviceType, Noun, PointKey, TextHAlign as HAlign, TextVAlign as VAlign};
 
@@ -620,7 +620,7 @@ pub fn plan_place(
                 let tid: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: tid,
-                    terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    terminal: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
                 terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.to_string()), tid));
             }
@@ -648,7 +648,7 @@ pub fn plan_place(
                 let tid: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: tid,
-                    terminal: Terminal { owner: c.into(), label: Some(label.clone()), key: Some(PointKey::Def(label.clone())), accepts: td.accepts },
+                    terminal: ConnectionPoint { owner: c.into(), label: Some(label.clone()), key: Some(PointKey::Def(label.clone())), accepts: td.accepts },
                 });
                 cps.insert(tid, td.at);
                 terminals.push((td.key.clone(), label.clone(), tid));
@@ -759,7 +759,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         let nt: ConnectionPointId = ids.fresh();
         ops.push(Op::AddConnectionPoint {
             id: nt,
-            terminal: Terminal { owner: into.into(), label, key: Some(PointKey::Def(name)), accepts: Default::default() },
+            terminal: ConnectionPoint { owner: into.into(), label, key: Some(PointKey::Def(name)), accepts: Default::default() },
         });
         map.insert(old, nt);
         nt

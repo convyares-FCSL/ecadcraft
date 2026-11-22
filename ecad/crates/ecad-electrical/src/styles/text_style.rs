@@ -1038,7 +1038,7 @@ pub fn kind_words(kind: TextKind) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
     use crate::defaults::Value;
     use ecad_model::{Device, LengthUnit, Page, Representation};
 

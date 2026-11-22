@@ -182,7 +182,7 @@ fn change_line(ui: &mut egui::Ui, mark: &str, words: &str) {
         "free" => {
             p.circle_stroke(at, 4.5, Stroke::new(1.6, ecad_widgets::color(s.connect)));
         }
-        _ => w::severity_mark(p, at, ecad_engine::checks::Severity::Warning),
+        _ => w::severity_mark(p, at, ecad_electrical::checks::Severity::Warning),
     }
     let width = ui.available_width() - 26.0;
     ui.horizontal(|ui| {
@@ -196,7 +196,7 @@ fn change_line(ui: &mut egui::Ui, mark: &str, words: &str) {
 
 #[cfg(test)]
 mod tests {
-    use crate::inspector::*;
+    use super::*;
 
     #[test]
     fn a_new_coil_says_what_the_click_adds_and_leaves() {

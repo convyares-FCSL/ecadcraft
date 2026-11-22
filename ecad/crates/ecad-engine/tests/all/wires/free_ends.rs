@@ -105,8 +105,7 @@ struct Continued {
     cable: CableId,
     line: RouteId,
     a: ConnectionPointId,
-    v: Value,
-}
+    v: Value}
 
 fn continued(seed: u64) -> Continued {
     let mut h = H::new(seed);
@@ -154,7 +153,7 @@ fn cablecontinue_across_two_pages_gives_one_wire_and_one_net() {
     assert_eq!(doc.wires.len(), 1, "one wire across the pages");
     let (&w, wire) = doc.wires.iter().next().unwrap();
     assert!(wire.ends.contains(&c.a) && wire.ends.contains(&b), "from the first page's point to the second's");
-    let pages = ecad_engine::wires::wire_pages(&doc, w);
+    let pages = ecad_electrical::wires::wire_pages(&doc, w);
     assert!(pages.contains(&c.pages[0]) && pages.contains(&c.pages[1]), "drawn on both pages: {pages:?}");
     assert_eq!(core_position(&mut c.h, c.cable), CorePosition::Wire(w));
     let nets = c.h.run("nets", json!({})).unwrap();
@@ -205,7 +204,7 @@ fn a_point_with_more_wires_than_it_accepts_is_an_error() {
 /// rebuild after each step (the update map).
 #[test]
 fn a_fixed_device_in_a_box_of_another_location_is_tied_to_multiple_locations() {
-    use ecad_engine::checks::{self, Kind};
+    use {ecad_electrical::checks::Kind};
     let mut h = H::new(SEED + 30);
     let p105 = h.first_page();
     let k = id::<ecad_model::DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [75, 180], "tag": "-K01"})).unwrap(), "component");
@@ -213,8 +212,8 @@ fn a_fixed_device_in_a_box_of_another_location_is_tied_to_multiple_locations() {
     h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex()})).unwrap();
     let tied = |h: &mut H| {
         let doc = h.doc();
-        let fresh: Vec<checks::Check> = checks::all(&doc, 1e-6).into_iter().filter(|r| r.kind == Kind::TiedLocations).collect();
-        let kept: Vec<checks::Check> = h.cfg(|p| {
+        let fresh: Vec<ecad_electrical::checks::Check> = ecad_engine::checks::all(&doc, 1e-6).into_iter().filter(|r| r.kind == Kind::TiedLocations).collect();
+        let kept: Vec<ecad_electrical::checks::Check> = h.cfg(|p| {
             let doc = p.ledger.document().clone();
             p.checks().sorted(&doc).into_iter().filter(|r| r.kind == Kind::TiedLocations).collect()
         });
@@ -232,7 +231,7 @@ fn a_fixed_device_in_a_box_of_another_location_is_tied_to_multiple_locations() {
     assert_eq!(pages, [p105, p110].into_iter().collect(), "{rows:?}");
     assert_eq!(rows.len(), 2, "{rows:?}");
     assert!(rows.iter().all(|r| r.which == "-K01: Symbol tied to multiple locations" && r.at.is_some()), "{rows:?}");
-    assert_eq!(rows[0].kind.severity(), checks::Severity::Error);
+    assert_eq!(rows[0].kind.severity(), ecad_electrical::checks::Severity::Error);
     // The device typed as +FIELD: the box agrees, no row.
     h.run("setlocation", json!({"component": k.hex(), "aspect": "location", "value": "+FIELD"})).unwrap();
     assert!(tied(&mut h).is_empty());

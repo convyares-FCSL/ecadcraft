@@ -4,7 +4,7 @@
 use crate::common::{H, id};
 
 use cadcraft_engine::doc::EntityKind;
-use ecad_engine::devices::{self, TextOf};
+use {ecad_electrical::devices::TextOf};
 use ecad_model::{DeviceId, PageId, RepresentationId, Subject};
 use serde_json::{Value, json};
 
@@ -32,8 +32,7 @@ fn strip_row(h: &mut H, x0: f64, y: f64, n: usize, step: f64, strip: Option<Devi
         .filter_map(|(rid, r)| {
             let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
                 ecad_model::ItemKind::Symbol(s) => Some(s.placement.origin),
-                _ => None,
-            })?;
+                _ => None})?;
             Some((at.y, at.x, rid))
         })
         .collect();
@@ -44,7 +43,7 @@ fn strip_row(h: &mut H, x0: f64, y: f64, n: usize, step: f64, strip: Option<Devi
 /// Tag texts on `page`: (representation, shown).
 fn tags(h: &mut H, page: PageId) -> Vec<(RepresentationId, bool)> {
     let doc = h.doc();
-    devices::all_texts_on_page(&doc, page).into_iter().filter(|t| t.text.of == TextOf::Tag).map(|t| (t.text.rep, t.shown)).collect()
+    ecad_engine::devices::draw::all_texts_on_page(&doc, page).into_iter().filter(|t| t.text.of == TextOf::Tag).map(|t| (t.text.rep, t.shown)).collect()
 }
 
 fn shown_tags(h: &mut H, page: PageId, c: DeviceId) -> Vec<RepresentationId> {
@@ -61,7 +60,7 @@ fn a_strip_of_ten_adjacent_terminals_shows_its_tag_once() {
     assert_eq!(reps.len(), 10);
     assert_eq!(shown_tags(&mut h, page, x1), vec![reps[0]], "only the leftmost");
     // The page draws one tag text for the strip.
-    let tag = h.p(|p| devices::tag_words(p.ledger.document(), x1));
+    let tag = h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), x1));
     let drawn = h.pv(|p, pg| pg.entities_of(p, page)).iter().filter(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == tag)).count();
     assert_eq!(drawn, 1);
     // `pagetexts` lists all ten, nine hidden.
@@ -141,7 +140,7 @@ fn hidden_texts_are_still_data_and_show_hidden_text_draws_them_dimmed() {
     let page = h.first_page();
     let k = place(&mut h, "coil", [100.0, 150.0], None);
     let c: DeviceId = id(&k, "component");
-    let tag = h.p(|p| devices::tag_words(p.ledger.document(), c));
+    let tag = h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c));
     h.run("showtext", json!({"kind": "tag", "show": "off"})).unwrap();
     // Still found by `devices`.
     let found = h.run("devices", json!({"tag": tag.trim_start_matches('-')})).unwrap();
@@ -151,8 +150,7 @@ fn hidden_texts_are_still_data_and_show_hidden_text_draws_them_dimmed() {
             .iter()
             .filter_map(|e| match &e.kind {
                 EntityKind::Text(t) if t.value == tag => Some((e.common.layer.clone(), format!("{:?}", e.common.color))),
-                _ => None,
-            })
+                _ => None})
             .collect()
     };
     assert!(texts(&mut h).is_empty(), "hidden: not drawn");
@@ -161,12 +159,12 @@ fn hidden_texts_are_still_data_and_show_hidden_text_draws_them_dimmed() {
     assert_eq!(h.head(), head, "display only: nothing recorded");
     let t = texts(&mut h);
     assert_eq!(t.len(), 1, "{t:?}");
-    assert_eq!(t[0].0, ecad_engine::text_style::HIDDEN_LAYER);
+    assert_eq!(t[0].0, ecad_engine::styles::draw::HIDDEN_LAYER);
     assert!(t[0].1.contains('8'), "{t:?}");
     h.check();
     // The layer does not plot.
     let d = h.pv(|p, pg| pg.drawing_of(p, page)).unwrap();
-    assert_eq!(d.layer(ecad_engine::text_style::HIDDEN_LAYER).map(|l| l.plot), Some(false));
+    assert_eq!(d.layer(ecad_engine::styles::draw::HIDDEN_LAYER).map(|l| l.plot), Some(false));
     h.run("hiddentext", json!({})).unwrap();
     assert!(texts(&mut h).is_empty(), "toggled off");
     assert_eq!(h.head(), head);
@@ -182,7 +180,7 @@ fn description_and_part_number_lines_are_hidden_until_asked_for() {
     h.run("setprop", json!({"component": c.hex(), "key": "part_number", "value": "LC1D09"})).unwrap();
     let lines = |h: &mut H| -> Vec<(TextOf, bool)> {
         let doc = h.doc();
-        devices::all_texts_on_page(&doc, page)
+        ecad_engine::devices::draw::all_texts_on_page(&doc, page)
             .into_iter()
             .filter(|t| matches!(t.text.of, TextOf::Description | TextOf::PartNumber))
             .map(|t| (t.text.of, t.shown))
@@ -203,7 +201,7 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     let no_rep: RepresentationId = h
         .doc()
         .representations_of(Subject::Device(c))
-        .find(|(_, r)| devices::rep_starter(&h.doc(), r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::No))
+        .find(|(_, r)| ecad_electrical::devices::rep_starter(&h.doc(), r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::No))
         .map(|(r, _)| r)
         .unwrap();
     let _ = n;
@@ -226,7 +224,7 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     let c2: DeviceId = id(&k2, "component");
     let r2: RepresentationId = h.doc().representations_of(Subject::Device(c2)).map(|(r, _)| r).next().unwrap();
     h.run("showtext", json!({"kind": "tag", "show": "on", "representation": r2.hex()})).unwrap();
-    let tag = h.p(|p| devices::tag_of(p.ledger.document(), c).map(str::to_string)).unwrap();
+    let tag = h.p(|p| ecad_electrical::devices::tag_of(p.ledger.document(), c).map(str::to_string)).unwrap();
     h.run("setprop", json!({"component": c2.hex(), "key": "tag", "value": tag, "merge": true})).unwrap();
     let doc = h.doc();
     assert!(!doc.devices.contains_key(&c2));
@@ -246,7 +244,7 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     let coil = reps
         .iter()
         .copied()
-        .find(|r| devices::rep_starter(&h.doc(), &h.doc().representations[r]).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
+        .find(|r| ecad_electrical::devices::rep_starter(&h.doc(), &h.doc().representations[r]).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
         .unwrap();
     let other = reps.iter().copied().find(|r| *r != coil).unwrap();
     h.run("showtext", json!({"kind": "tag", "show": "off", "representation": coil.hex()})).unwrap();
@@ -263,8 +261,7 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
         .iter()
         .find_map(|(r, x)| match x.subject {
             Subject::Device(n) if n != c => Some((n, *r)),
-            _ => None,
-        })
+            _ => None})
         .expect("the copy");
     let props = &doc.devices[&new_c].properties;
     let keys: Vec<&String> = props.keys().filter(|k| k.starts_with("text.")).collect();
@@ -296,10 +293,10 @@ fn text_views_are_worked_out_again_only_where_a_change_shows() {
     h.project.open_page(&mut h.s, p1).unwrap();
     // Run `cmd`; the passes it caused per page, and the pages it names.
     let counted = |h: &mut H, cmd: &str, params: Value| -> ([u64; 3], Option<std::collections::BTreeSet<PageId>>) {
-        let before = [p1, p2, p3].map(devices::text_passes);
+        let before = [p1, p2, p3].map(ecad_electrical::devices::text_passes);
         let n = h.p(|p| p.change_count());
         h.s.execute(cmd, &params).unwrap();
-        let after = [p1, p2, p3].map(devices::text_passes);
+        let after = [p1, p2, p3].map(ecad_electrical::devices::text_passes);
         ([after[0] - before[0], after[1] - before[1], after[2] - before[2]], h.p(|p| p.changes_since(n)))
     };
     // -K01's tag (on pages 1 and 2), page 1 on screen: page 1 now, page 2 named, page 3 neither.

@@ -15,7 +15,7 @@ use crate::common::{H, id};
 /// independent are the PLC card body; lane F replaced the `kind` predicates (continuation, box,
 /// item) with `Aid` and `LoosePart`, which are not devices.
 fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
-    use {ecad_electrical::connectors, ecad_engine::plc, ecad_electrical::terminal_strips};
+    use {ecad_electrical::connectors, ecad_electrical::terminal_strips};
     if terminal_strips::fuse_terminal_block_of(doc, c).is_some() {
         // The owner's answer (design 072 §2.2): a fuse terminal device is Protection; a fuse
         // position in a strip (`termfuse`) is the strip's.
@@ -30,7 +30,7 @@ fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
     // Lane C (design 072 §3) removed the PLC predicates; the oracle reads the card body drawn.
     let body = doc
         .representations_of(ecad_model::Subject::Device(c))
-        .find_map(|(_, r)| ecad_engine::devices::rep_starter(doc, r).and_then(plc::rack::CardType::of_symbol));
+        .find_map(|(_, r)| ecad_electrical::devices::rep_starter(doc, r).and_then(ecad_electrical::plc::rack::CardType::of_symbol));
     match body {
         Some(t) if t.is_rack() => return Some(DeviceGroup::PlcRack),
         Some(_) => return Some(DeviceGroup::PlcModule),
@@ -98,8 +98,7 @@ fn a_project_prefix_follows_a_renamed_symbol_key() {
             "name": "Float switch", "key": key, "graphics": [shape.clone()],
             "points": [{"key": "1", "at": [0, 5]}, {"key": "2", "at": [0, -5]}],
             "slots": [{"text": "tag", "at": [-4, 0]}],
-            "defaults": {"prefix": "B", "description": "Float switch", "join": "device"},
-        })
+            "defaults": {"prefix": "B", "description": "Float switch", "join": "device"}})
     };
     let def: ecad_model::DefinitionId = id(&h.run("symbolnew", symbol("float1")).unwrap(), "definition");
     h.run("setdefault", json!({"key": "symbol.float1.prefix", "value": "S"})).unwrap();
@@ -186,8 +185,7 @@ fn connector_fields_are_written_as_modify_device() {
     let c: DeviceId = id(&crate::common::place(&mut h, "dsub9s", (100.0, 100.0)), "component");
     let family = |h: &mut H| match &h.doc().devices[&c].device_type {
         DeviceType::Connector(x) => Some(x.family),
-        _ => None,
-    };
+        _ => None};
     assert_eq!(family(&mut h), Some(ConnectorFamily::Dsub), "the symbol's family is stored");
     for (key, value) in
         [("pins", "8"), ("pin_names", "A,B,C"), ("half.s.maker", "Acme"), ("half.p.part_number", "PLG-9"), ("ignore.connector-size", "yes")]
@@ -265,8 +263,7 @@ fn a_switching_rating_is_read_into_typed_fields() {
     let k: DeviceId = id(&crate::common::place(&mut h, "coil", (100.0, 100.0)), "component");
     let kind = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
         DeviceType::Switching(s) => Some(s.operator_kind()),
-        _ => None,
-    };
+        _ => None};
     assert_eq!(kind(&mut h, k), Some(OperatorKind::Coil));
     // An unrated coil has the Checks row `no-rating`; a rated one does not.
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
@@ -312,8 +309,7 @@ fn a_sensor_rating_is_read_into_typed_fields() {
     let mut h = H::new(7207);
     let kind = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
         DeviceType::Sensor(s) => Some((s.sensing, s.output)),
-        _ => None,
-    };
+        _ => None};
     for (symbol, want) in [
         ("prox3", (Sensing::Proximity, Output::Pnp)),
         ("floatno", (Sensing::Float, Output::Contact)),
@@ -411,8 +407,7 @@ fn a_motor_rating_is_read_into_typed_fields() {
     let mut h = H::new(7209);
     let phases = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
         DeviceType::Motor(m) => Some(m.phases),
-        _ => None,
-    };
+        _ => None};
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let m1: DeviceId = id(&crate::common::place(&mut h, "motor1", (200.0, 100.0)), "component");
     assert_eq!(phases(&mut h, m1), Some(Phases::Single));
@@ -592,7 +587,6 @@ fn a_connector_s_mating_is_stored_by_its_starter() {
 /// table on anything but a switching device, are refused; a rating edit keeps the contacts.
 #[test]
 fn contacts_and_the_table_are_written_as_modify_device() {
-    use ecad_engine::xref;
     use ecad_model::Op;
     let mut h = H::new(0x72_ba);
     let k = id::<DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [40, 40], "tag": "-K01"})).unwrap(), "component");
@@ -602,25 +596,25 @@ fn contacts_and_the_table_are_written_as_modify_device() {
     h.run("setprop", json!({"component": k.hex(), "key": "contacts", "value": "3p + 1no, 21/22 nc"})).unwrap();
     assert!(matches!(last(&mut h).as_slice(), [Op::ModifyDevice { id, .. }] if *id == k));
     let doc = h.doc();
-    assert_eq!(xref::offer_of(&doc, k).map(|(t, _)| t).as_deref(), Some("3P+1NO+21/22 NC"));
+    assert_eq!(ecad_electrical::references::devices::offer_of(&doc, k).map(|(t, _)| t).as_deref(), Some("3P+1NO+21/22 NC"));
     assert!(!doc.devices[&k].properties.contains_key("contacts"), "nothing in the bag");
     h.run("setprop", json!({"component": k.hex(), "key": "mirror", "value": "below"})).unwrap();
-    assert_eq!(xref::placement_of(&h.doc(), k), (xref::Placement::Below, true));
+    assert_eq!(ecad_electrical::references::devices::placement_of(&h.doc(), k), (ecad_electrical::references::devices::Placement::Below, true));
     // A rating edit keeps the contacts and the table.
     h.run("setprop", json!({"component": k.hex(), "key": "rating", "value": "coil 24 V DC"})).unwrap();
-    assert!(xref::offer_of(&h.doc(), k).is_some());
-    assert!(xref::placement_of(&h.doc(), k).1);
+    assert!(ecad_electrical::references::devices::offer_of(&h.doc(), k).is_some());
+    assert!(ecad_electrical::references::devices::placement_of(&h.doc(), k).1);
     // An MCB's auxiliaries; it has no table of its own.
     h.run("setprop", json!({"component": q.hex(), "key": "contacts", "value": "1NO+1NC"})).unwrap();
-    assert_eq!(xref::offer_of(&h.doc(), q).map(|(_, p)| p.len()), Some(2));
+    assert_eq!(ecad_electrical::references::devices::offer_of(&h.doc(), q).map(|(_, p)| p.len()), Some(2));
     assert!(h.run("setprop", json!({"component": q.hex(), "key": "mirror", "value": "below"})).is_err());
     // A fuse has no contacts.
     assert!(h.run("setprop", json!({"component": f.hex(), "key": "contacts", "value": "1NO"})).is_err());
     // Cleared: nothing offered, the project default.
     h.run("setprop", json!({"component": k.hex(), "key": "contacts", "value": ""})).unwrap();
     h.run("setprop", json!({"component": k.hex(), "key": "mirror", "value": "default"})).unwrap();
-    assert!(xref::offer_of(&h.doc(), k).is_none());
-    assert!(!xref::placement_of(&h.doc(), k).1);
+    assert!(ecad_electrical::references::devices::offer_of(&h.doc(), k).is_none());
+    assert!(!ecad_electrical::references::devices::placement_of(&h.doc(), k).1);
 }
 
 /// Step 5 (design 072 §2.8): `userfield` adds a project field, `setprop user.<name>` sets a

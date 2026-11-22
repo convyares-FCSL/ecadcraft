@@ -2426,7 +2426,7 @@ pub fn title_check(doc: &Document, c: DeviceId, m: &dyn TextMetrics) -> Option<(
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn the_table_text_keys_are_the_wide_case() {

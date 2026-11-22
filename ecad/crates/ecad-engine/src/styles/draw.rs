@@ -5,8 +5,8 @@
 
 use ecad_model::Document;
 
-use crate::text_style::fonts::{self, TextMetrics};
-use crate::text_style::*;
+use ecad_electrical::styles::text_style::fonts::{self, TextMetrics};
+use ecad_electrical::styles::text_style::*;
 
 /// Write the two CADCraft text styles of `family` into `d` (an object's own text style's font).
 pub fn install_family(d: &mut cadcraft_engine::doc::Drawing, doc: &Document, family: &str) {
@@ -49,13 +49,11 @@ static SHEET_FACES: [cadcraft_engine::fonts::ttf::EmbeddedFace; 2] = [
     cadcraft_engine::fonts::ttf::EmbeddedFace {
         family: ecad_drawing_style::sheet_font::FAMILY,
         style: "Regular",
-        bytes: ecad_drawing_style::sheet_font::REGULAR,
-    },
+        bytes: ecad_drawing_style::sheet_font::REGULAR},
     cadcraft_engine::fonts::ttf::EmbeddedFace {
         family: ecad_drawing_style::sheet_font::FAMILY,
         style: "SemiBold",
-        bytes: ecad_drawing_style::sheet_font::SEMIBOLD,
-    },
+        bytes: ecad_drawing_style::sheet_font::SEMIBOLD},
 ];
 
 /// Give CADCraft's font table the sheet font, Barlow Semi Condensed Regular and SemiBold (brief
@@ -147,8 +145,7 @@ fn put_style(d: &mut cadcraft_engine::doc::Drawing, name: &str, font: &String) {
             name: name.to_string(),
             font: font.clone(),
             ..cadcraft_engine::doc::TextStyle::default()
-        }),
-    }
+        })}
 }
 
 /// [`fonts::Look`] resolved on this machine with CADCraft's fonts ([`EngineMetrics`]), and how a

@@ -7,7 +7,7 @@ use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::doc::color::{Color, Rgb};
 use cadcraft_engine::ext::MarkShape;
 use ecad_drawing_style::sheet::PAPER;
-use ecad_engine::checks::Kind;
+use ecad_electrical::checks::Kind;
 use ecad_engine::interact::overlay_marks;
 use ecad_engine::cables::draw::{self, Painted};
 use ecad_engine::export::printbook;
@@ -115,7 +115,7 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
     let route = r.handle.unwrap();
     assert_eq!(ents.iter().find(|e| e.handle == route).map(|e| e.common.color), Some(green));
-    let dashes: Vec<_> = ents.iter().filter(|e| e.common.layer == ecad_engine::wires::DASH_LAYER).collect();
+    let dashes: Vec<_> = ents.iter().filter(|e| e.common.layer == ecad_electrical::wires::DASH_LAYER).collect();
     assert!(dashes.len() >= 10 && dashes.iter().all(|e| e.common.color == yellow), "{} dashes", dashes.len());
     let dash = dashes[0].handle;
     assert_eq!(h.mapped(page, dash), Some(ecad_engine::project::Mapped::Label(w)));
@@ -144,7 +144,7 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     assert!(colour.model.iter().filter(|e| !wire(e)).all(|e| e.common.color == Color::Index(7)), "the rest in ink");
     // Mono (the default): the wire in ink, no dashes; the label carries the code.
     let (mono, _) = printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
-    assert!(mono.model.iter().all(|e| e.common.layer != ecad_engine::wires::DASH_LAYER), "no dashes in mono");
+    assert!(mono.model.iter().all(|e| e.common.layer != ecad_electrical::wires::DASH_LAYER), "no dashes in mono");
     assert!(mono.model.iter().all(|e| e.common.color != green), "the route prints in ink");
     let label = mono.model.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value.contains("GN/YE")));
     assert!(label, "the mono print's wire label says GN/YE");
@@ -225,7 +225,7 @@ fn a_tag_is_its_height_from_baseline_to_cap_in_the_sheet_font() {
     assert_eq!(v["drawn_with"], "Barlow Semi Condensed", "{v}");
     let tag = v["kinds"].as_array().unwrap().iter().find(|k| k["kind"] == "tag").unwrap().clone();
     assert_eq!((tag["height"].as_f64(), tag["weight"].as_str()), (Some(2.5), Some("bold")));
-    let fonts = h.p(|p| ecad_engine::text_style::Fonts::resolve(p.ledger.document()));
+    let fonts = h.p(|p| ecad_engine::styles::draw::Fonts::resolve(p.ledger.document()));
     assert_eq!(fonts.bold, "Barlow Semi Condensed SemiBold", "bold is the SemiBold face");
     // The plotted geometry of `K` at the tag height: its outline, baseline at y = 0.
     let face = ttf::find(&fonts.bold).expect("the SemiBold face");
@@ -265,7 +265,7 @@ fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
     assert_eq!((budget.dashed.len(), budget.left_out.len()), (5, 2), "{budget:?}");
     assert!(budget.left_out.contains(wires.last().unwrap()), "the 100 km wire is left out");
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
-    let dashes = ents.iter().filter(|e| e.common.layer == ecad_engine::wires::DASH_LAYER).count();
+    let dashes = ents.iter().filter(|e| e.common.layer == ecad_electrical::wires::DASH_LAYER).count();
     assert!(dashes > 0 && dashes <= draw::MAX_PAGE_DASHES, "{dashes} dashes");
     // Every wire still has its first colour.
     let green = Color::True(rgb(ecad_drawing_style::wire::PE.paper.solid));

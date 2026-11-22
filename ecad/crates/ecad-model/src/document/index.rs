@@ -20,7 +20,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::document::doc::{Cable, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
+use crate::document::doc::{Cable, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, ConnectionPoint, Wire};
 use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::document::op::ObjectRef;
 
@@ -272,7 +272,7 @@ impl Index {
         bump(&mut self.tags, crate::naming::tag::key(tag), id, delta);
     }
 
-    pub(crate) fn terminal(&mut self, id: ConnectionPointId, t: &Terminal, delta: Delta) {
+    pub(crate) fn terminal(&mut self, id: ConnectionPointId, t: &ConnectionPoint, delta: Delta) {
         bump(&mut self.component_connection_points, t.owner, id, delta);
     }
 

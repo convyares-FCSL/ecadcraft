@@ -45,7 +45,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
                 let Some(Mapped::Item(i)) = p.pages.get(&page)?.map.get(h) else { return None };
                 match doc.representation_of_item(i)?.1.subject {
                     Subject::Route(r) => {
-                        let words = crate::wires::wire_of_route(doc, r).map_or_else(|| "the wire line".into(), |w| crate::pointer::kind::wire_words(doc, w));
+                        let words = ecad_electrical::wires::wire_of_route(doc, r).map_or_else(|| "the wire line".into(), |w| crate::pointer::kind::wire_words(doc, w));
                         Some(format!("joins {words} (a T)"))
                     }
                     _ => None,
@@ -65,8 +65,8 @@ fn point_words(doc: &Document, t: ConnectionPointId) -> String {
         return n;
     }
     match doc.terminals.get(&t).and_then(|x| x.device()) {
-        Some(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => format!("{}:{name}", crate::devices::tag_words(doc, c)),
-        Some(c) => match crate::devices::tag_of(doc, c) {
+        Some(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => format!("{}:{name}", ecad_electrical::devices::tag_words(doc, c)),
+        Some(c) => match ecad_electrical::devices::tag_of(doc, c) {
             Some(tag) => format!("{name} of {tag}"),
             None => name,
         },
@@ -79,5 +79,5 @@ fn wire_ending_at(doc: &Document, page: PageId, at: ecad_model::Pt, aperture: f6
     route_ends(doc, page)
         .into_iter()
         .filter(|(_, a, b)| a.dist(at) <= aperture || b.dist(at) <= aperture)
-        .find_map(|(r, _, _)| crate::wires::wire_of_route(doc, r))
+        .find_map(|(r, _, _)| ecad_electrical::wires::wire_of_route(doc, r))
 }

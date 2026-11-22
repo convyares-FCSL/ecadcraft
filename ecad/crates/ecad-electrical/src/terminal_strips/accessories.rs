@@ -1065,7 +1065,7 @@ fn renumber_strip(
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn places_and_values() {

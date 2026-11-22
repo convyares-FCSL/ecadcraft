@@ -366,7 +366,7 @@ pub fn builtin_prefix(entry: &Entry) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use crate::defaults::*;
+    use super::*;
     use crate::symbols::{Kind as SymbolKind, STARTERS};
 
     #[test]
@@ -376,7 +376,7 @@ mod tests {
             assert_eq!(e.is_some(), s.kind != SymbolKind::Tagless, "{}", s.key);
             // Brief 036 (overseer ruling): its starters' prefixes are in the `terminal` area.
             // Brief 045: its new starters' prefixes are in the `plc` area.
-            let plc = crate::plc::prefix_entry(s.key).is_some();
+            let plc = crate::defaults::plc::prefix_entry(s.key).is_some();
             let area = if crate::terminal_strips::terminal_blocks::is_level_starter(s.key) {
                 "terminal"
             } else if plc {
@@ -387,8 +387,8 @@ mod tests {
             if let Some(e) = e {
                 assert_eq!(e.key, format!("{area}.{}.prefix", s.key));
                 let list = match area {
-                    "terminal" => crate::terminals::ENTRIES,
-                    "plc" => crate::plc::ENTRIES,
+                    "terminal" => crate::defaults::terminals::ENTRIES,
+                    "plc" => crate::defaults::plc::ENTRIES,
                     _ => ENTRIES,
                 };
                 assert!(list.iter().any(|x| std::ptr::eq(*x, e)), "{}", s.key);
@@ -400,7 +400,7 @@ mod tests {
                 .iter()
                 .filter(|s| s.kind != SymbolKind::Tagless
                     && !crate::terminal_strips::terminal_blocks::is_level_starter(s.key)
-                    && crate::plc::prefix_entry(s.key).is_none())
+                    && crate::defaults::plc::prefix_entry(s.key).is_none())
                 .count()
         );
     }
@@ -412,7 +412,7 @@ mod tests {
         assert_eq!(prefix(&doc, crate::symbols::StarterKey::Fusebank8), "F");
         doc.settings.tag_prefixes.insert(PrefixOf::Starter("fusebank8".into()), TagPrefix::typed("FB").unwrap());
         assert_eq!(prefix(&doc, crate::symbols::StarterKey::Fusebank8), "FB");
-        assert_eq!(crate::resolve(&doc, &FUSEBANK8, Scope::project()).from, crate::Source::Project);
+        assert_eq!(crate::defaults::resolve(&doc, &FUSEBANK8, Scope::project()).from, crate::defaults::Source::Project);
         // A project property of the same key is never read: one project path.
         doc.settings.tag_prefixes.clear();
         doc.display.insert("symbol.fusebank8.prefix".into(), "ZZ".into());

@@ -4,7 +4,7 @@
 use ecad_model::connectivity::derive::connection_point_positions;
 use ecad_model::{
     Author, Color, Definition, DefinitionId, Device, DeviceId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, Op, Page, PageId, Placement,
-    Primitive, Pt, Representation, Style, Subject, SymbolInstance, Terminal, ConnectionPointDef, ConnectionPointId,
+    Primitive, Pt, Representation, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointDef, ConnectionPointId,
 };
 
 struct Fx {
@@ -72,7 +72,7 @@ fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2],
         connection_points.insert(t2, Pt::new(0.0, -10.0));
     }
     let k1 = fx.k1;
-    let term = |l: &str| Terminal { owner: k1.into(), label: Some(l.into()), key: Some(l.parse().unwrap()), accepts: Default::default() };
+    let term = |l: &str| ConnectionPoint { owner: k1.into(), label: Some(l.into()), key: Some(l.parse().unwrap()), accepts: Default::default() };
     let ops = vec![
         Op::AddConnectionPoint { id: t1, terminal: term(labels[0]) },
         Op::AddConnectionPoint { id: t2, terminal: term(labels[1]) },
@@ -140,7 +140,7 @@ fn connection_points_must_name_the_components_own_terminals() {
         "other",
         vec![
             Op::CreateDevice { id: other, device: Device::default() },
-            Op::AddConnectionPoint { id: foreign, terminal: Terminal { owner: other.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: foreign, terminal: ConnectionPoint { owner: other.into(), label: None, key: None, accepts: Default::default() } },
         ],
     )
     .unwrap();

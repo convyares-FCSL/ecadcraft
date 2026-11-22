@@ -91,7 +91,7 @@ pub fn kind_for_primitive(p: &Primitive) -> EntityKind {
                 rotation: rotation.0,
                 width_factor: 1.0,
                 oblique: 0.0,
-                style: crate::text_style::PLACEHOLDER_STYLE.into(),
+                style: ecad_electrical::styles::text_style::PLACEHOLDER_STYLE.into(),
                 halign: h,
                 valign: v,
             })
@@ -165,7 +165,7 @@ pub fn entity_for(doc: &Document, item: &Item, handle: Handle) -> Option<Entity>
     // Brief 066d: a free text on a page is drawn in the `Free` text style's font and weight (its
     // height and colour are the user's own).
     if let EntityKind::Text(t) = &mut kind {
-        t.style = crate::text_style::text_style(doc, crate::text_style::TextKind::Free).style_name.to_string();
+        t.style = ecad_electrical::styles::text_style::text_style(doc, ecad_electrical::styles::text_style::TextKind::Free).style_name.to_string();
     }
     Some(Entity { handle, common: common_for(&item.style, &layer.name), kind })
 }

@@ -19,22 +19,8 @@
 //! This module adds no ECAD meaning: no numbering beyond the default terminal name, no new
 //! transaction kinds, nothing stored. It contains no UI toolkit code.
 
-mod accessories;
-mod connectors;
-mod continuations;
 // Brief 047: Reports ▸ BOM ▸ + Item.
-mod bom_item;
-mod devices;
 // Brief 041: what is under the cursor (the wheel) and the running tool's intent.
-mod forms;
-pub mod intent;
-pub mod kind;
-mod location_form;
-mod refs;
-mod terminals;
-pub(crate) mod text_tools;
-mod wiring_forms;
-mod xrefs;
 
 use ecad_model::naming::keys::PropsExt;
 use std::collections::BTreeSet;
@@ -55,17 +41,17 @@ use crate::translate::connection_point_at;
 use crate::cables::views::{FanOnPage, View, fan_on_page};
 pub use ecad_electrical::cables::words::{MAX_COORD, MAX_HOVER_LINES, OUT_OF_RANGE};
 
-pub(crate) use accessories::{accessory, jumper};
-pub(crate) use bom_item::bomitem;
-pub(crate) use connectors::connector;
-pub(crate) use continuations::contcaption;
-pub(crate) use devices::{devicedelete, deviceprops, place};
-pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
-pub(crate) use location_form::{functionbox, locationbox};
-pub(crate) use refs::{cablecontinue, cablegoto, cableref};
-pub(crate) use terminals::{bridge, terminals};
-pub(crate) use wiring_forms::{joinwires, renumberwires, wirenumber};
-pub(crate) use xrefs::mirrormove;
+pub(crate) use crate::terminal_strips::interact::accessories::{accessory, jumper};
+pub(crate) use crate::reports::interact::bomitem;
+pub(crate) use crate::connectors::interact::connector;
+pub(crate) use crate::continuations::interact::contcaption;
+pub(crate) use crate::devices::interact::{devicedelete, deviceprops, place};
+pub(crate) use crate::properties::forms::{addterminal, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
+pub(crate) use crate::locations::interact::{functionbox, locationbox};
+pub(crate) use crate::references::interact::cables::{cablecontinue, cablegoto, cableref};
+pub(crate) use crate::terminal_strips::interact::terminal_blocks::{bridge, terminals};
+pub(crate) use crate::wires::interact::{joinwires, renumberwires, wirenumber};
+pub(crate) use crate::references::interact::devices::mirrormove;
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
 pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";
@@ -285,7 +271,7 @@ pub(crate) fn preview_text(s: &Session, at: Pt, px: f64, value: String, aci: u8)
 }
 
 /// Where conductor routes on `page` start and end, once per conductor (its first route).
-fn route_ends(doc: &Document, page: PageId) -> Vec<(RouteId, Pt, Pt)> {
+pub(crate) fn route_ends(doc: &Document, page: PageId) -> Vec<(RouteId, Pt, Pt)> {
     doc.routes_on(page).filter_map(|r| doc.routes.get(&r).and_then(|x| x.end_points()).map(|[a, b]| (r, a, b))).collect()
 }
 
@@ -317,7 +303,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     // Rings at the reference ends (brief 010); loose-end squares are left out where a cable stops
     // at a reference or a wire leaves for another page (brief 009 `quiet`, with brief 010 §6.4
     // folded in).
-    let markers = crate::references::markers_on_page(doc, page);
+    let markers = ecad_electrical::references::cables::markers_on_page(doc, page);
     let quiet = p.pages.get(&page).map(|v| v.map.quiet_ends()).unwrap_or_default();
     for (r, a, b) in route_ends(doc, page) {
         let Some(route) = doc.routes.get(&r) else { continue };
@@ -353,16 +339,16 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     out.extend(markers.into_iter().filter(|m| !m.orphan).map(|m| Mark {
         at: v2(m.at),
         shape: MarkShape::Ring,
-        size: crate::references::RING_PX,
-        stroke: crate::references::BOLD_PX,
+        size: ecad_electrical::references::cables::RING_PX,
+        stroke: ecad_electrical::references::cables::BOLD_PX,
         color: cable,
     }));
     // The Checks tab's go-to ring (design 022 §8), in the row's severity colour.
     if let Some((_, at, sev)) = p.goto_ring.filter(|(pg, _, _)| *pg == page) {
         let color = colour(match sev {
-            crate::checks::Severity::Error => ecad_drawing_style::Meaning::Error,
-            crate::checks::Severity::Warning => ecad_drawing_style::Meaning::Warning,
-            crate::checks::Severity::Info => ecad_drawing_style::Meaning::Ink2,
+            ecad_electrical::checks::Severity::Error => ecad_drawing_style::Meaning::Error,
+            ecad_electrical::checks::Severity::Warning => ecad_drawing_style::Meaning::Warning,
+            ecad_electrical::checks::Severity::Info => ecad_drawing_style::Meaning::Ink2,
         });
         out.push(Mark { at: v2(at), shape: MarkShape::Ring, size: 24.0, stroke: 2.0, color });
     }
@@ -381,15 +367,15 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
     let doc = p.ledger.document();
     let mut lines = match view.map.get(h)? {
         // A reference end, by its text, its point or 009's flag: brief 010's hover (one source).
-        Mapped::RefText(r) => crate::references::hover_lines(doc, r)?,
-        Mapped::Fan(_) if view.map.reference_of(h).is_some() => crate::references::hover_lines(doc, view.map.reference_of(h)?)?,
+        Mapped::RefText(r) => ecad_electrical::references::cables::hover_lines(doc, r)?,
+        Mapped::Fan(_) if view.map.reference_of(h).is_some() => ecad_electrical::references::cables::hover_lines(doc, view.map.reference_of(h)?)?,
         // The sheet frame and title block (design 019 §4): where to change it.
         Mapped::Frame(_) => {
-            vec![format!("Page {}: change it in the Properties panel", crate::references::page_number(doc, page))]
+            vec![format!("Page {}: change it in the Properties panel", ecad_electrical::references::cables::page_number(doc, page))]
         }
         // A device's tag text or terminal label (brief 018): the device's lens.
         Mapped::Tag(r) => match doc.representations.get(&r)?.subject {
-            Subject::Device(c) => with_device_references(doc, c, r, crate::devices::hover_lines(doc, c, r)),
+            Subject::Device(c) => with_device_references(doc, c, r, crate::devices::draw::hover_lines(doc, c, r)),
             _ => return None,
         },
         // A device cross-reference (brief 025): a table row's pole, the table's contacts, or the
@@ -397,39 +383,39 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         Mapped::DeviceReference(r) => {
             // Brief 049 (design 049 §5.4): an arrow's reference text, bracket or caption.
             if let Subject::Aid(a) = doc.representations.get(&r)?.subject {
-                crate::continuations::arrow(doc, r)?;
-                return Some(crate::continuations::hover_lines(doc, a, r));
+                ecad_electrical::continuations::arrow(doc, r)?;
+                return Some(ecad_electrical::continuations::hover_lines(doc, a, r));
             }
             let Subject::Device(c) = doc.representations.get(&r)?.subject else { return None };
             let row = view.map.device_reference_part(h).and_then(|(_, i)| {
-                let dev = crate::xref::device(doc, c);
-                let mut places = crate::xref::Places::new(doc);
-                let t = crate::xref::table(doc, &mut places, &dev)?;
+                let dev = ecad_electrical::references::devices::device(doc, c);
+                let mut places = ecad_electrical::references::devices::Places::new(doc);
+                let t = crate::references::draw::devices::table(doc, &mut places, &dev)?;
                 t.parts.get(usize::try_from(i).ok()?)?.row
             });
             match row {
-                Some(i) => crate::xref::row_lines(doc, c, i, &crate::styles::draw::EngineMetrics)?,
-                None if crate::xref::device(doc, c).head == Some(r) => crate::xref::head_lines(doc, c, r),
-                None => with_device_references(doc, c, r, crate::devices::hover_lines(doc, c, r)),
+                Some(i) => ecad_electrical::references::devices::row_lines(doc, c, i, &crate::styles::draw::EngineMetrics)?,
+                None if ecad_electrical::references::devices::device(doc, c).head == Some(r) => ecad_electrical::references::devices::head_lines(doc, c, r),
+                None => with_device_references(doc, c, r, crate::devices::draw::hover_lines(doc, c, r)),
             }
         }
         // A conductor label (brief 022): its wire's lens.
-        Mapped::Label(w) => wire_lines(doc, Some(w), crate::wires::route_of_wire_on(doc, w, page), page),
+        Mapped::Label(w) => wire_lines(doc, Some(w), ecad_electrical::wires::route_of_wire_on(doc, w, page), page),
         // A T's dot (lane 072 D): the lens of the line that ends there.
-        Mapped::Tee(r) => wire_lines(doc, crate::wires::wire_of_route(doc, r), Some(r), page),
+        Mapped::Tee(r) => wire_lines(doc, ecad_electrical::wires::wire_of_route(doc, r), Some(r), page),
         // A link line (brief 030, design 030 §5.3).
         Mapped::Link(c, n) => vec![ecad_electrical::terminal_strips::jumper_bars::hover(doc, p.kept_reports().and_then(|o| o.strips.get(c)), c, n)],
         Mapped::Item(i) => match doc.representation_of_item(i)? {
-            (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
+            (rid, r) if ecad_electrical::references::cables::is_reference(r) => ecad_electrical::references::cables::hover_lines(doc, rid)?,
             (rid, r) => match r.subject {
                 // A device (a tagged component, brief 018): design 018 §6.4's lens.
-                Subject::Device(c) if crate::devices::tag_of(doc, c).is_some() => with_device_references(doc, c, rid, crate::devices::hover_lines(doc, c, rid)),
+                Subject::Device(c) if ecad_electrical::devices::tag_of(doc, c).is_some() => with_device_references(doc, c, rid, crate::devices::draw::hover_lines(doc, c, rid)),
                 // Brief 049 (design 049 §5.4): a continuation arrow's other ends.
                 Subject::Device(c) => component_lines(doc, c),
                 Subject::Wire(w) => wire_lines(doc, Some(w), None, page),
-                Subject::Route(x) => wire_lines(doc, crate::wires::wire_of_route(doc, x), Some(x), page),
+                Subject::Route(x) => wire_lines(doc, ecad_electrical::wires::wire_of_route(doc, x), Some(x), page),
                 // Brief 049 (design 049 §5.4): a continuation arrow's other ends (design 072 §6.2).
-                Subject::Aid(a) if crate::continuations::arrow(doc, rid).is_some() => crate::continuations::hover_lines(doc, a, rid),
+                Subject::Aid(a) if ecad_electrical::continuations::arrow(doc, rid).is_some() => ecad_electrical::continuations::hover_lines(doc, a, rid),
                 Subject::Aid(_) => Vec::new(),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
                 Subject::Cable(k) => {
@@ -446,8 +432,8 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             },
         },
         // A cable reference's named point (design 072 §4.4, F4) is the reference's: its lens.
-        Mapped::Marker(rid, _) if doc.representations.get(&rid).is_some_and(crate::references::is_reference) => {
-            crate::references::hover_lines(doc, rid)?
+        Mapped::Marker(rid, _) if doc.representations.get(&rid).is_some_and(ecad_electrical::references::cables::is_reference) => {
+            ecad_electrical::references::cables::hover_lines(doc, rid)?
         }
         Mapped::Marker(_, t) => terminal_lines(doc, t),
         Mapped::Fan(k) => {
@@ -497,8 +483,8 @@ pub fn hover_reference(p: &Project, uid: u64, cursor: Vec2, radius: f64) -> Opti
         return None;
     }
     let doc = p.ledger.document();
-    let r = crate::references::reference_at(doc, page, pt(cursor), radius)?;
-    let mut lines = crate::references::hover_lines(doc, r)?;
+    let r = crate::references::draw::cables::reference_at(doc, page, pt(cursor), radius)?;
+    let mut lines = ecad_electrical::references::cables::hover_lines(doc, r)?;
     capped(&mut lines);
     Some((r, lines))
 }
@@ -506,7 +492,7 @@ pub fn hover_reference(p: &Project, uid: u64, cursor: Vec2, radius: f64) -> Opti
 /// A cable's hover with the pages it is drawn on and its references, after the view line
 /// (design 010 §8), when it has a reference.
 fn with_drawings(doc: &Document, k: CableId, mut lines: Vec<String>) -> Vec<String> {
-    let refs: Vec<_> = crate::references::all(doc).into_iter().filter(|r| r.cable == k).collect();
+    let refs: Vec<_> = ecad_electrical::references::cables::all(doc).into_iter().filter(|r| r.cable == k).collect();
     if refs.is_empty() {
         return lines;
     }
@@ -520,7 +506,7 @@ fn with_drawings(doc: &Document, k: CableId, mut lines: Vec<String>) -> Vec<Stri
         }
     }
     let at = lines.len().min(2);
-    let words: Vec<String> = pages.iter().map(|p| crate::references::page_number_words(doc, *p)).collect();
+    let words: Vec<String> = pages.iter().map(|p| ecad_electrical::references::cables::page_number_words(doc, *p)).collect();
     let shown = match refs.as_slice() {
         [one] => format!("References: {} (orphan)", one.text),
         many => format!("References: {}", many.iter().map(|r| r.locator()).collect::<Vec<_>>().join(" <-> ")),
@@ -650,7 +636,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
             lines.push(match doc.terminals.get(&t) {
                 // A continuation (brief 022) is named by what it is.
                 Some(x) if x.owner.aid().is_some() => {
-                    let words = crate::wires::point_words(doc, t);
+                    let words = ecad_electrical::wires::point_words(doc, t);
                     match words.strip_prefix('\u{2192}') {
                         Some(name) => format!("End {end:?}: continuation {name}"),
                         None => format!("End {end:?}: {words}"),
@@ -676,15 +662,15 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
             match landed {
                 // A T (design 072 §4.4) is joined, not open: it names the line it lands on.
                 RouteEnd::On { route: on, .. } => {
-                    let joined = match crate::wires::wire_of_route(doc, on) {
+                    let joined = match ecad_electrical::wires::wire_of_route(doc, on) {
                         Some(w) => format!("wire {}", ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| "(no number)".into())),
                         None => "a line with no wire yet".into(),
                     };
                     lines.push(format!("End {end:?} joins {joined} (a T)."));
                 }
                 RouteEnd::Free => {
-                    if let Some(on) = crate::wires::route_at(doc, page, at, crate::wires::ON_WIRE, Some(r)) {
-                        let number = crate::wires::wire_of_route(doc, on.route)
+                    if let Some(on) = ecad_electrical::wires::route_at(doc, page, at, ecad_electrical::wires::ON_WIRE, Some(r)) {
+                        let number = ecad_electrical::wires::wire_of_route(doc, on.route)
                             .and_then(|w| ecad_model::connectivity::wiring::wire_number(doc, w))
                             .unwrap_or_else(|| "?".into());
                         lines.push(format!("Open end: looks connected to {number}; Join Wires joins them."));
@@ -697,21 +683,21 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
     let Some(w) = w else { return lines };
     // Brief 010: a wire continued on other pages says where.
     let others: Vec<String> =
-        crate::references::route_pages(doc, w).into_iter().filter(|p| *p != page).map(|p| crate::references::page_number_words(doc, p)).collect();
+        ecad_electrical::references::cables::route_pages(doc, w).into_iter().filter(|p| *p != page).map(|p| ecad_electrical::references::cables::page_number_words(doc, p)).collect();
     if !others.is_empty() {
         lines.push(format!("Also drawn on {}", others.join(", ")));
     }
     // Brief 022: the wire's number, potential, label and net (the Properties panel's facts until
     // 019's panel is merged).
-    lines.extend(crate::wires::hover_lines(doc, w));
+    lines.extend(ecad_electrical::wires::hover_lines(doc, w));
     lines
 }
 
 /// A device's lens (design 018 §6.4) with its cross-reference lines (design 025 §5.1): the coil's
 /// place on a contact, the table's contacts on a coil, before the lens's last (`id`) line.
 fn with_device_references(doc: &ecad_model::Document, c: DeviceId, rep: ecad_model::RepresentationId, mut lines: Vec<String>) -> Vec<String> {
-    let mut extra = crate::xref::contact_lines(doc, c, rep);
-    extra.extend(crate::xref::head_lines(doc, c, rep));
+    let mut extra = ecad_electrical::references::devices::contact_lines(doc, c, rep);
+    extra.extend(ecad_electrical::references::devices::head_lines(doc, c, rep));
     let at = lines.len().saturating_sub(1);
     for (i, l) in extra.into_iter().enumerate() {
         lines.insert(at + i, l);
@@ -730,7 +716,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(D
         Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(map, k).into()),
         Some(Mapped::Frame(_)) => return Err(crate::pages::frame::DERIVED.into()),
         Some(Mapped::Link(..)) => return Err(ecad_electrical::terminal_strips::jumper_bars::LINK_DERIVED.into()),
-        Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
+        Some(Mapped::Tee(_)) => return Err(ecad_electrical::wires::TEE_DERIVED.into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),
     };
     let Some((_, rep)) = doc.representation_of_item(item) else { return Err(NOT_COMPONENT.into()) };

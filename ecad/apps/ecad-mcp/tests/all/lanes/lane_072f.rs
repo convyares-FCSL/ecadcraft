@@ -75,7 +75,7 @@ fn location_boxes_through_mcp_are_aids() {
     assert_eq!(author, Author::Agent(AGENT.into()));
     assert_eq!(c.log().len(), unchanged + 1);
     match ops.as_slice() {
-        [Op::ModifyAid { after: Aid::Box(x), .. }] => assert_eq!(x.panel_temperature, Some(ecad_model::units::Celsius(40.0))),
+        [Op::ModifyAid { after: Aid::Box(x), .. }] => assert_eq!(x.panel_temperature, Some(ecad_model::geometry::units::Celsius(40.0))),
         other => panic!("one ModifyAid: {other:?}"),
     }
     let n = c.log().len();
@@ -155,7 +155,7 @@ fn bom_items_through_mcp_are_loose_parts() {
     assert_eq!(id, item);
     assert_eq!(
         (part.description.as_str(), part.qty.to_string(), part.unit),
-        ("DIN rail 35x7.5", "1.5".to_string(), ecad_model::loose_part::ItemUnit::Metres)
+        ("DIN rail 35x7.5", "1.5".to_string(), ecad_model::objects::loose_part::ItemUnit::Metres)
     );
     assert!(part.location.is_some(), "the typed location is an entry of the list");
     assert!(!ops.iter().any(|o| matches!(o, Op::CreateDevice { .. })), "no device: {ops:?}");

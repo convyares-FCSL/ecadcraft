@@ -322,7 +322,7 @@ fn build(supply: &PowerSupply, f: &Found) -> Result<PowerSupply, Err> {
 
 #[cfg(test)]
 mod tests {
-    use crate::devices::ratings::*;
+    use super::*;
 
     fn shown_on(supply: &PowerSupply, text: &str) -> String {
         match read_power_supply(supply, text) {

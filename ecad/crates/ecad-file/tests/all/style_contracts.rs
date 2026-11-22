@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::common::{PROJECT, SEED, WRITER};
 use ecad_file::{Project, Store};
-use ecad_model::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
+use ecad_model::objects::styles::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{Author, Ledger, ObjectRef, Op, StandardId};
 
 struct TempDir(PathBuf);
@@ -31,8 +31,8 @@ impl Drop for TempDir {
 fn header(name: &str) -> StandardHeader {
     StandardHeader {
         id: StandardId(0x50a),
-        name: ecad_model::style::StyleName::new(name).unwrap(),
-        based_on: ecad_model::style::BasedOn::Iec,
+        name: ecad_model::objects::styles::StyleName::new(name).unwrap(),
+        based_on: ecad_model::objects::styles::BasedOn::Iec,
         origin: None,
     }
 }
@@ -41,7 +41,7 @@ fn rec(name: &str, fields: &[(&str, &str)]) -> StyleRecord {
     // A text style's fields, as a file holds them (numbers as numbers).
     let body: serde_json::Map<String, serde_json::Value> =
         fields.iter().map(|(k, v)| (k.to_string(), v.parse::<f64>().map_or_else(|_| serde_json::json!(v), |x| serde_json::json!(x)))).collect();
-    StyleRecord::new(name, ecad_model::style::StyleBody::Text(serde_json::from_value(serde_json::Value::Object(body)).unwrap()))
+    StyleRecord::new(name, ecad_model::objects::styles::StyleBody::Text(serde_json::from_value(serde_json::Value::Object(body)).unwrap()))
 }
 
 /// A ledger with a standard, values, records in both layers, and one undo.
@@ -126,7 +126,7 @@ fn hostile_style_records_are_refused_in_words() {
 fn a_potential_row_with_a_colour_is_refused() {
     use ecad_file::chunks::{ModelMeta, PROJECT_KEY, assemble, build_full};
     let mut doc = ecad_model::Document::default();
-    doc.settings.wiring.potentials = ecad_model::wiring::default_potentials();
+    doc.settings.wiring.potentials = ecad_model::connectivity::wiring::default_potentials();
     let (set, chunks) = build_full(&doc, &ModelMeta::default()).unwrap();
     let h = set.chunks[PROJECT_KEY];
     let text = String::from_utf8(chunks.iter().find(|c| c.hash == h).unwrap().body.clone()).unwrap();

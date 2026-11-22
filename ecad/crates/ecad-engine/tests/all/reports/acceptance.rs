@@ -20,8 +20,8 @@ use std::collections::BTreeMap;
 
 use crate::common::{H, id, pts};
 use crate::common::{close_all, reopen};
-use ecad_engine::locations::{self, Source};
-use ecad_engine::outputs::{Cell, Group, Table, csv, kept::ReportModels};
+use {ecad_electrical::locations::Source};
+use {ecad_electrical::reports::Cell, ecad_electrical::reports::Group, ecad_electrical::reports::Table, ecad_electrical::reports::csv, ecad_electrical::reports::kept::ReportModels};
 use ecad_model::{AidId, DeviceId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject};
 use serde_json::{Value, json};
 
@@ -52,12 +52,12 @@ impl Rng {
 const LOCS: &[&str] = &["+A", "+B", "+CP1", "+CP10", "+JB1", "+FIELD"];
 
 fn devices(doc: &Document) -> Vec<DeviceId> {
-    doc.devices.keys().copied().filter(|c| locations::is_device(doc, *c)).collect()
+    doc.devices.keys().copied().filter(|c| ecad_electrical::locations::is_device(doc, *c)).collect()
 }
 
 /// Every box: (component, page, outline item, vertex count).
 fn boxes(doc: &Document) -> Vec<(AidId, PageId, ItemId, usize)> {
-    doc.page_order.iter().flat_map(|p| locations::boxes_on(doc, *p)).map(|b| (b.aid, b.page, b.item, b.vertices.len())).collect()
+    doc.page_order.iter().flat_map(|p| ecad_electrical::locations::boxes_on(doc, *p)).map(|b| (b.aid, b.page, b.item, b.vertices.len())).collect()
 }
 
 /// Each device's own `location` property.
@@ -77,9 +77,9 @@ fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> DeviceId {
 
 /// What device `c`'s go-to symbol's context proposes (design 052 §5.3): a box, the page, the
 /// project, or none.
-fn context(doc: &Document, c: DeviceId) -> locations::Located {
+fn context(doc: &Document, c: DeviceId) -> ecad_electrical::locations::Located {
     let r = ecad_electrical::symbols::reps::goto(doc, c, None).unwrap();
-    locations::rep_context(doc, &doc.representations[&r], &mut locations::BoxCache::default())
+    ecad_electrical::locations::rep_context(doc, &doc.representations[&r], &mut ecad_electrical::locations::BoxCache::default())
 }
 
 fn s(v: &str) -> Option<String> {
@@ -97,7 +97,7 @@ fn verify(h: &mut H, what: &str) {
     let (kept, built, doc) = h.cfg(|p| {
         let kept = p.outputs().clone();
         let doc = p.ledger.document().clone();
-        (kept, ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics), doc)
+        (kept, ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics), doc)
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "{what}: BOM by location");
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part), "{what}: BOM by part");
@@ -110,21 +110,21 @@ fn verify(h: &mut H, what: &str) {
     assert_eq!(a, b, "{what}: location checks");
     assert_eq!(kept.device_count(), built.device_count(), "{what}: device count");
     for c in devices(&doc) {
-        let want = locations::resolve(&doc, c);
+        let want = ecad_electrical::locations::resolve(&doc, c);
         assert_eq!(kept.device(c).map(|d| d.location.clone()), Some(want), "{what}: kept location of {c:?}");
         assert_eq!(kept.device(c), built.device(c), "{what}: device row {c:?}");
     }
     // No wire on the BOM: every BOM row is made of devices only.
     for r in kept.bom(Group::Location) {
         for d in &r.devices {
-            assert!(locations::is_device(&doc, *d), "{what}: a BOM row holds {d:?}, not a device");
+            assert!(ecad_electrical::locations::is_device(&doc, *d), "{what}: a BOM row holds {d:?}, not a device");
         }
     }
     for p in &doc.page_order {
-        if ecad_engine::generated::kind_of(&doc, *p).is_some() {
+        if ecad_electrical::pages::generated::kind_of(&doc, *p).is_some() {
             assert_eq!(
-                ecad_engine::generated::sheets_of(&doc, *p, Some(&kept)),
-                ecad_engine::generated::sheets_of(&doc, *p, Some(&built)),
+                ecad_electrical::pages::generated::sheets_of(&doc, *p, Some(&kept)),
+                ecad_electrical::pages::generated::sheets_of(&doc, *p, Some(&built)),
                 "{what}: sheets of a generated page"
             );
         }
@@ -132,12 +132,11 @@ fn verify(h: &mut H, what: &str) {
 }
 
 fn texts(doc: &Document, page: PageId) -> Vec<String> {
-    ecad_engine::generated::parts_of(doc, page, ecad_engine::project::engine_views().report_models(doc).as_ref())
+    ecad_engine::pages::generated::parts_of(doc, page, ecad_engine::project::engine_views().report_models(doc).as_ref())
         .into_iter()
         .filter_map(|p| match p.kind {
             cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
-            _ => None,
-        })
+            _ => None})
         .collect()
 }
 
@@ -163,8 +162,7 @@ enum Act {
     Group,
     MovePage,
     Undo,
-    Redo,
-}
+    Redo}
 
 const ACTS: &[Act] = &[
     Act::BoxRect,
@@ -196,8 +194,7 @@ const ACTS: &[Act] = &[
 
 struct Fx {
     h: H,
-    pages: Vec<PageId>,
-}
+    pages: Vec<PageId>}
 
 /// Two pages; devices on both; two terminals wired with a cable over the wire; a BOM page.
 fn fixture(seed: u64) -> Fx {
@@ -251,8 +248,7 @@ fn step(f: &mut Fx, r: &mut Rng, act: Act) -> Result<Value, String> {
                 }
                 Act::BoxGrip => f.h.run("grip.stretch", json!({"handle": hd, "index": r.below(n), "to": [r.x(), r.y()]})),
                 Act::BoxVertex => f.h.run("grip.option", json!({"handle": hd, "index": n + r.below(n), "option": "addVertex", "to": [r.x(), r.y()]})),
-                _ => f.h.run("erase", json!({"handles": [hd]})),
-            }
+                _ => f.h.run("erase", json!({"handles": [hd]}))}
         }
         Act::BoxRelabel => {
             let Some((c, ..)) = r.pick(&boxes(&doc)) else { return Err("no box".into()) };
@@ -311,8 +307,7 @@ fn step(f: &mut Fx, r: &mut Rng, act: Act) -> Result<Value, String> {
             let v = match key {
                 "tag" => json!(format!("K{}", 50 + r.below(50))),
                 _ if r.below(4) == 0 => Value::Null,
-                _ => json!(["UT 2.5", "ut 2.5", "CT-9A, 24 V", "=SUM(A1)", "Say \"hi\""][r.below(5)]),
-            };
+                _ => json!(["UT 2.5", "ut 2.5", "CT-9A, 24 V", "=SUM(A1)", "Say \"hi\""][r.below(5)])};
             f.h.run("setprop", json!({"component": c.hex(), "key": key, "value": v}))
         }
         Act::Group => {
@@ -333,16 +328,14 @@ fn step(f: &mut Fx, r: &mut Rng, act: Act) -> Result<Value, String> {
                     let angle = [90.0, 180.0, 270.0, 30.0][r.below(4)];
                     f.h.run("rotate", json!({"handles": handles, "base": base, "angle": angle}))
                 }
-                _ => f.h.run("mirror", json!({"handles": handles, "p1": base, "p2": [base[0], base[1] + 10.0], "erase": true})),
-            }
+                _ => f.h.run("mirror", json!({"handles": handles, "p1": base, "p2": [base[0], base[1] + 10.0], "erase": true}))}
         }
         Act::MovePage => {
             let n = doc.page_order.len();
             f.h.run("movepage", json!({"page": page.hex(), "index": 1 + r.below(n)}))
         }
         Act::Undo => f.h.run("u", Value::Null),
-        Act::Redo => f.h.run("redo", Value::Null),
-    }
+        Act::Redo => f.h.run("redo", Value::Null)}
 }
 
 fn run_random(seed: u64, steps: usize) {
@@ -401,16 +394,16 @@ fn setting_the_project_location_gives_it_to_devices_that_had_none() {
     let mut h = H::new(0x24_7101);
     keep_models(&mut h);
     let k = place(&mut h, "coil", (100.0, 100.0));
-    assert_eq!(locations::resolve(&h.doc(), k).source, Source::None);
+    assert_eq!(ecad_electrical::locations::resolve(&h.doc(), k).source, Source::None);
     let head = h.head();
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
     let doc = h.doc();
-    assert_eq!((locations::resolve(&doc, k).value, locations::resolve(&doc, k).source), (s("+CP1"), Source::Device), "taken");
+    assert_eq!((ecad_electrical::locations::resolve(&doc, k).value, ecad_electrical::locations::resolve(&doc, k).source), (s("+CP1"), Source::Device), "taken");
     assert_eq!((context(&doc, k).value, context(&doc, k).source), (s("+CP1"), Source::Project));
     verify(&mut h, "project location set");
     h.run("projectprops", json!({"location": null})).unwrap();
-    assert_eq!(locations::resolve(&h.doc(), k).value, s("+CP1"), "a stored value is never cleared by the project's");
+    assert_eq!(ecad_electrical::locations::resolve(&h.doc(), k).value, s("+CP1"), "a stored value is never cleared by the project's");
     verify(&mut h, "project location cleared");
     h.run("u", Value::Null).unwrap();
     verify(&mut h, "undo of the clear");
@@ -549,8 +542,7 @@ fn moving_pages_and_folders_keeps_the_models_equal_to_a_rebuild() {
 fn outline(doc: &Document, item: ItemId) -> (Vec<Pt>, bool) {
     match &doc.items[&item].kind {
         ItemKind::Primitive(Primitive::Polyline { vertices, closed }) => (vertices.clone(), *closed),
-        k => panic!("not a polyline: {k:?}"),
-    }
+        k => panic!("not a polyline: {k:?}")}
 }
 
 /// Rotating, mirroring and scaling a box together with the devices inside keeps it a box, keeps
@@ -585,7 +577,7 @@ fn rotating_mirroring_and_scaling_a_box_with_its_devices_keeps_them_inside() {
         params["handles"] = json!(sel(&mut h));
         let res = h.run(cmd, params.clone());
         let doc = h.doc();
-        assert!(locations::box_values(&doc, bc).is_some(), "{cmd}: the box is still a box");
+        assert!(ecad_electrical::locations::box_values(&doc, bc).is_some(), "{cmd}: the box is still a box");
         let (v, closed) = outline(&doc, item);
         assert!(closed && v.len() >= 4, "{cmd}: still a closed outline: {v:?}");
         assert_eq!(doc.items[&item].style.linetype, "DASHED", "{cmd}");
@@ -643,7 +635,7 @@ fn erasing_the_box_label_alone_leaves_no_half_box() {
     let gone = !doc.aids.contains_key(&bc);
     assert_eq!(gone, !doc.items.contains_key(&item), "box and outline go together: {res:?}");
     if !gone {
-        assert_eq!(locations::resolve(&doc, k1).value, s("+JB1"), "{res:?}");
+        assert_eq!(ecad_electrical::locations::resolve(&doc, k1).value, s("+JB1"), "{res:?}");
     }
     verify(&mut h, "erase label");
 }
@@ -663,7 +655,7 @@ fn opening_a_box_outline_is_refused_or_ends_the_box() {
     let doc = h.doc();
     let (_, closed) = outline(&doc, item);
     if !closed {
-        assert_ne!(locations::resolve(&doc, k1).value, s("+JB1"), "an open outline still gives its location ({res:?})");
+        assert_ne!(ecad_electrical::locations::resolve(&doc, k1).value, s("+JB1"), "an open outline still gives its location ({res:?})");
     }
     verify(&mut h, "pedit open");
 }
@@ -687,7 +679,7 @@ fn removing_box_vertices_down_to_a_line() {
             && let ItemKind::Primitive(Primitive::Polyline { vertices, .. }) = &i.kind
             && vertices.len() < 3
         {
-            assert_ne!(locations::resolve(&doc, k1).value, s("+JB1"));
+            assert_ne!(ecad_electrical::locations::resolve(&doc, k1).value, s("+JB1"));
         }
     }
 }
@@ -706,8 +698,7 @@ fn csv_quotes_and_neutralises_formula_starts() {
             row(&["=1+1", "+CP1", "-K01"]),
             row(&["@SUM(A1)", "\tx", "\rx"]),
             row(&["plain", "", "?"]),
-        ],
-    };
+        ]};
     let out = csv(&t, true);
     assert!(out.starts_with('\u{feff}'));
     let body = out.trim_start_matches('\u{feff}');
@@ -716,7 +707,7 @@ fn csv_quotes_and_neutralises_formula_starts() {
     assert_eq!(lines[1], "\"a,b\",\"say \"\"hi\"\"\",\"two\nlines\"");
     assert_eq!(lines[2], "'=1+1,'+CP1,'-K01");
     assert_eq!(lines[3], "'@SUM(A1),'\tx,\"'\rx\"");
-    assert_eq!(lines[4], "plain,,?");
+    assert_eq!(lines[4], "plain,?");
     // Without Excel-safe, values are written as they are.
     assert!(csv(&t, false).contains("=1+1,+CP1,-K01\r\n"));
 }
@@ -778,8 +769,7 @@ fn parse_csv(t: &str) -> Vec<Vec<String>> {
                 row.push(std::mem::take(&mut cell));
                 rows.push(std::mem::take(&mut row));
             }
-            (false, c) => cell.push(c),
-        }
+            (false, c) => cell.push(c)}
     }
     if !cell.is_empty() || !row.is_empty() {
         row.push(cell);
@@ -807,7 +797,7 @@ fn bom_page_overflow_counts_sheets_and_loses_no_row() {
     let n = |h: &mut H| {
         let doc = h.doc();
         let o = h.cfg(|p| p.outputs().clone());
-        (ecad_engine::generated::sheets_of(&doc, bom, Some(&o)), ecad_engine::generated::book_sheets_of(&doc, Some(&o)))
+        (ecad_electrical::pages::generated::sheets_of(&doc, bom, Some(&o)), ecad_electrical::pages::generated::book_sheets_of(&doc, Some(&o)))
     };
     assert_eq!(n(&mut h), (1, 2));
     place(&mut h, "coil", (20.0, 250.0));
@@ -821,11 +811,11 @@ fn bom_page_overflow_counts_sheets_and_loses_no_row() {
     let doc = h.doc();
     let t = texts(&doc, bom);
     for c in devices(&doc) {
-        let tag = ecad_engine::devices::tag_of(&doc, c).unwrap().to_string();
+        let tag = ecad_electrical::devices::tag_of(&doc, c).unwrap().to_string();
         assert!(t.iter().any(|x| x.split(", ").any(|y| y == tag)), "{tag} is on no sheet: {t:?}");
     }
     // The Total in the title block of an ordinary page counts the sheets.
-    let total = ecad_engine::generated::book_sheets_of(&doc, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics)));
+    let total = ecad_electrical::pages::generated::book_sheets_of(&doc, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
     assert!(texts(&doc, first).contains(&total.to_string()), "{total}: {:?}", texts(&doc, first));
     // Undo back to one sheet.
     h.run("u", Value::Null).unwrap();
@@ -850,16 +840,15 @@ fn a_continued_bom_sheet_keeps_its_rows_inside_the_drawing_area() {
         h.s.execute("place", &json!({"symbol": "coil", "at": at})).unwrap();
     }
     let doc = h.doc();
-    let o = ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
-    assert_eq!(ecad_engine::generated::sheets_of(&doc, bom, Some(&o)), 3);
+    let o = ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
+    assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, bom, Some(&o)), 3);
     // Sheet 2 (x from 470 to 890 mm): the lowest content text's row must end inside the area.
-    let bottom = ecad_engine::generated::parts_of(&doc, bom, Some(&o))
+    let bottom = ecad_engine::pages::generated::parts_of(&doc, bom, Some(&o))
         .into_iter()
-        .filter(|p| p.layer == ecad_engine::generated::LAYER)
+        .filter(|p| p.layer == ecad_electrical::pages::generated::LAYER)
         .filter_map(|p| match p.kind {
             cadcraft_engine::doc::EntityKind::Text(t) if t.insert.x > 470.0 && t.insert.x < 890.0 => Some(t.insert.y - 2.5),
-            _ => None,
-        })
+            _ => None})
         .fold(f64::INFINITY, f64::min);
     assert!(bottom >= 55.0 - 1e-6, "the last row of sheet 2 ends at y = {bottom} mm, below the drawing area (55 mm)");
 }
@@ -897,8 +886,8 @@ fn contents_follow_pages_and_overflow() {
     }
     let doc = h.doc();
     assert_eq!(doc.page_order.len(), 46);
-    assert_eq!(ecad_engine::generated::sheets_of(&doc, c, None), 2);
-    assert_eq!(ecad_engine::generated::book_sheets_of(&doc, None), 47);
+    assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, c, None), 2);
+    assert_eq!(ecad_electrical::pages::generated::book_sheets_of(&doc, None), 47);
     let t = texts(&doc, c);
     assert!(t.iter().any(|x| x == "Contents (2/2)"), "{t:?}");
     assert!(t.iter().any(|x| x == "P42"), "the last page is listed: {t:?}");
@@ -937,7 +926,7 @@ fn revision_list_follows_issuerevision_and_undo() {
         h.run("issuerevision", json!({"rev": format!("R{i}"), "description": "d", "drawn": "CV"})).unwrap();
     }
     let doc = h.doc();
-    assert_eq!(ecad_engine::generated::sheets_of(&doc, r, None), 2);
+    assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, r, None), 2);
 }
 
 // ---------------------------------------------------------------- 5: files and branches
@@ -994,9 +983,9 @@ fn save_and_reopen_keep_boxes_locations_and_generated_pages() {
     assert!(!h2.p(|p| p.unsaved()));
     let d2 = h2.doc();
     assert_eq!(context(&d2, k1).value, s("+JB1"));
-    assert_eq!((locations::resolve(&d2, k1).value, locations::resolve(&d2, k1).source), (s("+CP1"), Source::Device));
-    assert_eq!(locations::resolve(&d2, k2).source, Source::Device);
-    assert_eq!(locations::resolve(&d2, k2).value, s("+CP9"));
+    assert_eq!((ecad_electrical::locations::resolve(&d2, k1).value, ecad_electrical::locations::resolve(&d2, k1).source), (s("+CP1"), Source::Device));
+    assert_eq!(ecad_electrical::locations::resolve(&d2, k2).source, Source::Device);
+    assert_eq!(ecad_electrical::locations::resolve(&d2, k2).value, s("+CP9"));
     assert_eq!(h2.run("bom", json!({})).unwrap()["rows"], bom);
     assert_eq!(h2.run("wirelist", json!({})).unwrap()["rows"], wires);
     h2.check();
@@ -1036,7 +1025,7 @@ fn a_project_without_024_opens_unchanged() {
     assert!(
         checks.iter().all(|c| !matches!(
             c.kind,
-            ecad_engine::checks::Kind::LocationUnused | ecad_engine::checks::Kind::BoxCrosses | ecad_engine::checks::Kind::BoxesOverlap
+            ecad_electrical::checks::Kind::LocationUnused | ecad_electrical::checks::Kind::BoxCrosses | ecad_electrical::checks::Kind::BoxesOverlap
         )),
         "{checks:?}"
     );
@@ -1102,15 +1091,15 @@ fn merging_a_branch_with_a_box_edited_on_both_sides() {
     }
     raw(&mut h, "merge", json!({"from": "B", "choices": choices, "close": false})).unwrap();
     let doc = h.doc();
-    assert!(locations::box_values(&doc, bc).is_some());
-    let b = locations::boxes_on(&doc, page);
+    assert!(ecad_electrical::locations::box_values(&doc, bc).is_some());
+    let b = ecad_electrical::locations::boxes_on(&doc, page);
     assert_eq!(b.len(), 1, "one box after the merge");
     assert!(b[0].vertices.len() >= 3);
     for c in [k1, k2] {
-        let want = locations::innermost(&b, locations::anchor(&doc, &doc.representations[&ecad_electrical::symbols::reps::goto(&doc, c, None).unwrap()]).unwrap())
+        let want = ecad_electrical::locations::innermost(&b, ecad_electrical::locations::anchor(&doc, &doc.representations[&ecad_electrical::symbols::reps::goto(&doc, c, None).unwrap()]).unwrap())
             .and_then(|x| x.location.clone());
         assert_eq!(context(&doc, c).value, want, "{c:?}");
-        let stored = locations::resolve(&doc, c).value;
+        let stored = ecad_electrical::locations::resolve(&doc, c).value;
         assert!(stored.is_none() || ["+JB1", "+JB2", "+JB3"].contains(&stored.as_deref().unwrap_or_default()), "{c:?}: {stored:?}");
     }
     verify(&mut h, "after merge");
@@ -1130,7 +1119,7 @@ fn merging_a_branch_with_a_box_edited_on_both_sides() {
         let _ = raw(&mut h, "merge", json!({"from": "main", "into": "B", "choices": choices, "close": false}));
         verify(&mut h, "after update from main");
         let doc = h.doc();
-        assert_eq!(locations::boxes_on(&doc, page).len(), 1);
+        assert_eq!(ecad_electrical::locations::boxes_on(&doc, page).len(), 1);
     }
 }
 
@@ -1180,8 +1169,7 @@ fn b64(s: &str) -> Vec<u8> {
             b'0'..=b'9' => Some(u32::from(c - b'0') + 52),
             b'+' => Some(62),
             b'/' => Some(63),
-            _ => None,
-        }
+            _ => None}
     };
     let mut out = Vec::new();
     let mut acc = 0u32;

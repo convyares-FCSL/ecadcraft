@@ -13,7 +13,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use ecad_engine::device_list::DeviceEntry;
+use ecad_electrical::devices::device_list::DeviceEntry;
 use ecad_model::DeviceId;
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
@@ -38,8 +38,7 @@ pub fn property(col: ColumnId) -> Option<&'static str> {
     match col {
         TAG => Some("tag"),
         DESCRIPTION => Some("description"),
-        _ => None,
-    }
+        _ => None}
 }
 
 /// The column a property is shown in.
@@ -47,8 +46,7 @@ pub fn column_of(key: &str) -> Option<ColumnId> {
     match key {
         "tag" => Some(TAG),
         "description" => Some(DESCRIPTION),
-        _ => None,
-    }
+        _ => None}
 }
 
 /// The columns, in UI rev 3's order (board 2.01). The state (provisional, not on a page yet,
@@ -79,8 +77,7 @@ pub struct DeviceRow {
     /// `+CP1`, `+CP1 (from box on 105)`, `?`.
     pub location: String,
     /// UI rev 3: its part set's lines (`ecad_electrical::reports::bom::part_set`).
-    pub parts: usize,
-}
+    pub parts: usize}
 
 /// The devices as a table source, in the Devices list's order.
 #[derive(Debug)]
@@ -89,8 +86,7 @@ pub struct DevicesSource {
     keys: Vec<DeviceId>,
     rows: HashMap<DeviceId, DeviceRow>,
     /// The search matches as the Devices filter does (`k1` finds `-K01`).
-    pub search: bool,
-}
+    pub search: bool}
 
 impl Default for DevicesSource {
     fn default() -> Self {
@@ -98,11 +94,11 @@ impl Default for DevicesSource {
     }
 }
 
-fn location(doc: &ecad_model::Document, c: DeviceId, cache: &mut ecad_engine::locations::BoxCache) -> String {
-    ecad_engine::locations::resolve_with(doc, c, cache).shown(doc)
+fn location(doc: &ecad_model::Document, c: DeviceId, cache: &mut ecad_electrical::locations::BoxCache) -> String {
+    ecad_electrical::locations::resolve_with(doc, c, cache).shown(doc)
 }
 
-fn row(doc: &ecad_model::Document, e: &DeviceEntry, cache: &mut ecad_engine::locations::BoxCache) -> DeviceRow {
+fn row(doc: &ecad_model::Document, e: &DeviceEntry, cache: &mut ecad_electrical::locations::BoxCache) -> DeviceRow {
     // A part set lists the main part first; a device with only a main part has that one line.
     let set = ecad_electrical::reports::bom::part_set(doc, e.id).len();
     let main = e.properties.get(3).is_some_and(|p| p.as_deref().is_some_and(|p| !p.trim().is_empty()));
@@ -121,14 +117,14 @@ impl DevicesSource {
 
     /// Read every row from `entries` (the whole list: first show, rebuild).
     pub fn build(&mut self, doc: &ecad_model::Document, entries: &[DeviceEntry]) {
-        let mut cache = ecad_engine::locations::BoxCache::default();
+        let mut cache = ecad_electrical::locations::BoxCache::default();
         self.keys = entries.iter().map(|e| e.id).collect();
         self.rows = entries.iter().map(|e| (e.id, row(doc, e, &mut cache))).collect();
     }
 
     /// Re-read the rows of `touched` from `entries` (added, changed or removed), and the order.
     pub fn patch(&mut self, doc: &ecad_model::Document, entries: &[DeviceEntry], touched: &BTreeSet<DeviceId>) {
-        let mut cache = ecad_engine::locations::BoxCache::default();
+        let mut cache = ecad_electrical::locations::BoxCache::default();
         for c in touched {
             match entries.iter().find(|e| e.id == *c) {
                 Some(e) => {
@@ -168,8 +164,7 @@ impl TableSource for DevicesSource {
             TAG => match e.tag.as_deref() {
                 Some(t) if ecad_model::naming::tag::is_provisional(t) => Cell::Provisional(t.to_string()),
                 Some(t) => Cell::Input(t.to_string()),
-                None => Cell::Input(String::new()),
-            },
+                None => Cell::Input(String::new())},
             DESCRIPTION => Cell::Input(prop(1)),
             FUNCTION => Cell::read(prop(5)),
             LOCATION => Cell::read(r.location.clone()),
@@ -205,8 +200,7 @@ impl TableSource for DevicesSource {
                     Cell::Empty
                 }
             }
-            _ => Cell::Empty,
-        }
+            _ => Cell::Empty}
     }
 
     fn row_label(&self, key: DeviceId) -> String {
@@ -222,15 +216,14 @@ impl TableSource for DevicesSource {
         match chip {
             0 => e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional),
             1 => e.symbols.is_empty(),
-            _ => true,
-        }
+            _ => true}
     }
 
     fn matches(&self, key: DeviceId, query: &str) -> Option<bool> {
         if !self.search {
             return None;
         }
-        Some(self.rows.get(&key).is_some_and(|r| ecad_engine::device_list::matches(&r.entry, query)))
+        Some(self.rows.get(&key).is_some_and(|r| ecad_electrical::devices::device_list::matches(&r.entry, query)))
     }
 }
 

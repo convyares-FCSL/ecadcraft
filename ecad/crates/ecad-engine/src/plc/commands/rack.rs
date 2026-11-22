@@ -1,5 +1,5 @@
 //! `plcslot`, `plcracks` and `plccardtype` (brief 045, design 045 §3): cards in racks. The rules
-//! are [`crate::plc::rack`] and [`ecad_electrical::plc::commands`].
+//! are [`ecad_electrical::plc::rack`] and [`ecad_electrical::plc::commands`].
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use crate::commands::input::Command;
 use crate::commands::{err, on_any_page, on_project};
-use crate::plc::rack::*;
+use ecad_electrical::plc::rack::*;
 use ecad_electrical::commands::input::{TextOrNumber, nullable};
 
 /// `plcslot {card, rack?, slot?, swap?}` (design 045 §2.5): put a card in a slot, move it, swap it
@@ -45,16 +45,16 @@ impl Command for PlcslotParams {
         let v = on_project(s, |p, pg, _| {
             let doc = p.ledger.document();
             let (card, ops) = rules::slot_plan(doc, &self.card, rack, slot, swap)?;
-            let who = crate::devices::tag_words(doc, card);
+            let who = ecad_electrical::devices::tag_words(doc, card);
             let was = place_words(doc, card);
-            let before = crate::plc::moved_blocks_before(doc, card);
+            let before = ecad_electrical::plc::moved_blocks_before(doc, card);
             if ops.is_empty() {
                 return Ok(json!({"card": card.hex(), "changed": false, "message": format!("{who} is already in {was}.")}));
             }
             p.apply_edit(pg, "plcslot", "Move card", ops)?;
             let doc = p.ledger.document();
             let now = place_words(doc, card);
-            let moved = crate::plc::moved_cards(doc, card, &before);
+            let moved = ecad_electrical::plc::moved_cards(doc, card, &before);
             let tail = if moved > 0 { format!(" (addresses of {moved} card{} change)", if moved == 1 { "" } else { "s" }) } else { String::new() };
             let message = format!("{who}: {was} → {now}{tail}.");
             let (rack, slot) = match (rack_ref(doc, card), slot_of(doc, card)) {

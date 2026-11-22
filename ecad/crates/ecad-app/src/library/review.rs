@@ -132,7 +132,7 @@ impl Review {
         for r in &mut self.rows {
             let rep = u128::from_str_radix(&r.rep, 16).ok().map(ecad_model::RepresentationId::from);
             if let Some(ecad_model::Subject::Device(c)) = rep.and_then(|x| doc.representations.get(&x)).map(|x| x.subject) {
-                r.description = ecad_engine::devices::description(doc, c);
+                r.description = ecad_electrical::devices::description(doc, c);
             }
         }
     }
@@ -372,7 +372,7 @@ fn choice_row(ui: &mut egui::Ui, r: &mut Review, writable: bool, acts: &mut Vec<
 
 #[cfg(test)]
 mod tests {
-    use crate::library::*;
+    use super::*;
 
     fn impact() -> Value {
         json!({"name": "Coil", "version": 4, "copies": 3, "pages": 2, "clashes": 1, "rows": [

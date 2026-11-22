@@ -4,12 +4,12 @@
 //! tab (double-click a cable).
 //!
 //! The Reports window shows a copy of a table of the project's kept report models
-//! ([`ecad_engine::outputs::kept::ReportModels`], built on first show and then kept from each change's
+//! ([`ecad_electrical::reports::kept::ReportModels`], built on first show and then kept from each change's
 //! ops); the copy is taken again only when the models' revision, the tab or the grouping changed.
 //! Live while open: no refresh button. Rows are virtualised.
 
 use crate::shell::Hosted;
-use ecad_engine::outputs::{BomView, Group, Table};
+use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group, ecad_electrical::reports::Table};
 use ecad_widgets::control::{Select, TextEntry, Toggle};
 use ecad_widgets::prim::{self, Button, Checkbox, Kind, Radio, SearchField, Tone};
 use ecad_widgets::tokens::{size, space};
@@ -212,7 +212,7 @@ impl Reports {
             self.counts = [o.bom_count(self.group), o.wire_count(), o.cable_count(), o.strips.len()];
             let terminals = o.strips.sorted().iter().map(|s| s.rows.len()).sum();
             let cards: Vec<_> = o.plc.cards.values().collect();
-            let channels = usize::try_from(ecad_engine::plc::overview::totals(&cards).0).unwrap_or(usize::MAX);
+            let channels = usize::try_from(ecad_electrical::plc::overview::totals(&cards).0).unwrap_or(usize::MAX);
             self.tab_counts = [terminals, channels, o.wire_count(), o.cable_count()];
             self.counted = Some((serial, o.build_id ^ o.revision, self.group));
         }
@@ -289,7 +289,7 @@ impl Reports {
         if let Some((col, desc)) = self.sort {
             v.sort_by(|a, b| {
                 let get = |i: &usize| self.table.rows.get(*i).and_then(|r| r.get(col)).map(|c| c.text.clone()).unwrap_or_default();
-                let o = ecad_engine::locations::natural_cmp(&get(a), &get(b));
+                let o = ecad_electrical::locations::natural_cmp(&get(a), &get(b));
                 if desc { o.reverse() } else { o }
             });
         }

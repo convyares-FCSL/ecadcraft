@@ -99,9 +99,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
         ecad_engine::install();
-        ecad_engine::printbook::install_io();
+        ecad_engine::export::printbook::install_io();
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let mut out = MeasuredOutputs::default();
         // First show of the reports (built whole, every table made).
         let mut first = Vec::new();
@@ -110,18 +110,18 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
                 p.forget_reports();
                 let t = Instant::now();
                 let o = p.outputs();
-                std::hint::black_box((o.bom_table(ecad_engine::outputs::Group::Location), o.wire_table(), o.cable_table()));
+                std::hint::black_box((o.bom_table(ecad_electrical::reports::Group::Location), o.wire_table(), o.cable_table()));
                 ms(t)
             })?);
         }
         out.reportfirst_ms = median(&mut first);
-        out.devices = project.read(&mut s, |p, _| p.kept_reports().map_or(0, ecad_engine::outputs::kept::ReportModels::device_count))?;
+        out.devices = project.read(&mut s, |p, _| p.kept_reports().map_or(0, ecad_electrical::reports::kept::ReportModels::device_count))?;
         // A BOM page, so its sheets and Total follow the models too.
         let bom_page = run(&mut s, "newpage", json!({"generated": "bom-location"}))?;
         let bom_page: Option<PageId> = bom_page["page"].as_str().and_then(|t| u128::from_str_radix(t, 16).ok()).map(PageId::from);
         let (page1, devices) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            (doc.page_order.first().copied(), ecad_engine::devices::devices(doc, None))
+            (doc.page_order.first().copied(), ecad_electrical::devices::devices(doc, None))
         })?;
         let page1: PageId = page1.ok_or("the project has no pages")?;
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;
@@ -136,11 +136,11 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
         let anchors: Vec<Pt> = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             doc.representations_on(page1)
-                .filter(|(_, r)| matches!(r.subject, Subject::Device(c) if ecad_engine::locations::is_device(doc, c)))
-                .filter_map(|(_, r)| ecad_engine::locations::anchor(doc, r))
+                .filter(|(_, r)| matches!(r.subject, Subject::Device(c) if ecad_electrical::locations::is_device(doc, c)))
+                .filter_map(|(_, r)| ecad_electrical::locations::anchor(doc, r))
                 .collect()
         })?;
-        let (lo, hi) = ecad_engine::locations::bounds(&anchors);
+        let (lo, hi) = ecad_electrical::locations::bounds(&anchors);
         let (lo, hi) = if anchors.is_empty() { (Pt::new(50.0, 80.0), Pt::new(150.0, 180.0)) } else { (lo, hi) };
         let outline = ring(lo, hi);
         let b = run(&mut s, "locationbox", json!({"location": "+BENCH", "points": outline}))?;
@@ -176,11 +176,11 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
             let doc = p.ledger.document();
             doc.representations_on(page1).find_map(|(_, r)| {
                 let Subject::Device(c) = r.subject else { return None };
-                if !ecad_engine::locations::is_device(doc, c) {
+                if !ecad_electrical::locations::is_device(doc, c) {
                     return None;
                 }
                 let item = *r.items.first()?;
-                Some((item, ecad_engine::locations::anchor(doc, r)?))
+                Some((item, ecad_electrical::locations::anchor(doc, r)?))
             })
         })?;
         if let Some((item, at)) = sym {

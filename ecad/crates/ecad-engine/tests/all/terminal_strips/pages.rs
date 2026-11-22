@@ -8,8 +8,7 @@ use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::EntityKind;
 use ecad_engine::pages::frame::Part;
-use ecad_engine::generated;
-use ecad_engine::outputs::kept::ReportModels;
+use ecad_electrical::reports::kept::ReportModels;
 use ecad_engine::terminal_strips::draw::{self, StripPages};
 use ecad_model::{CableId, DeviceId, PageId, ConnectionPointId};
 use serde_json::{Value, json};
@@ -86,7 +85,7 @@ fn outputs(h: &mut H) -> ReportModels {
 fn parts(h: &mut H, page: PageId) -> Vec<Part> {
     let o = outputs(h);
     let doc = h.doc();
-    generated::parts_of(&doc, page, Some(&o))
+    ecad_engine::pages::generated::parts_of(&doc, page, Some(&o))
 }
 
 fn texts(parts: &[Part]) -> Vec<(String, f64)> {
@@ -190,8 +189,8 @@ fn a_long_strip_runs_onto_a_second_sheet() {
     let page = strip_page(&mut g);
     let o = outputs(&mut g.h);
     let doc = g.h.doc();
-    assert_eq!(generated::sheets_of(&doc, page, Some(&o)), 2);
-    let before = generated::book_sheets_of(&doc, Some(&o));
+    assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, page, Some(&o)), 2);
+    let before = ecad_electrical::pages::generated::book_sheets_of(&doc, Some(&o));
     assert_eq!(before, doc.page_order.len() + 1, "Total counts both sheets");
     let p = parts(&mut g.h, page);
     // `<page title>: <tag> <description> (i/n)` (design 046 §6.3).
@@ -308,9 +307,9 @@ fn print_book_prints_what_the_page_shows() {
     let page = strip_page(&mut g);
     let shown = parts(&mut g.h, page);
     let doc = g.h.doc();
-    let printed = generated::parts_of(&doc, page, ecad_engine::project::engine_views().report_models(&doc).as_ref());
+    let printed = ecad_engine::pages::generated::parts_of(&doc, page, ecad_engine::project::engine_views().report_models(&doc).as_ref());
     assert_eq!(shown, printed);
-    let content: Vec<Part> = shown.iter().filter(|p| p.layer == generated::LAYER).cloned().collect();
+    let content: Vec<Part> = shown.iter().filter(|p| p.layer == ecad_electrical::pages::generated::LAYER).cloned().collect();
     let flagged = content.iter().filter(|p| p.aci.is_some()).count();
     let missing = texts(&content).iter().filter(|(t, _)| t == "?").count();
     assert!(flagged <= missing * 2, "only `?` marks are coloured ({flagged} coloured, {missing} `?`)");
@@ -336,13 +335,13 @@ fn empty_and_hostile_states_draw_without_crashing() {
     g.h.run("setprop", json!({"component": g.x1.hex(), "key": "terminals", "value": "999"})).unwrap();
     let page = strip_page(&mut g);
     let o = outputs(&mut g.h);
-    let n = generated::sheets_of(&g.h.doc(), page, Some(&o));
+    let n = ecad_electrical::pages::generated::sheets_of(&g.h.doc(), page, Some(&o));
     assert!((20..=40).contains(&n), "999 positions at about 40 a sheet: {n}");
     let _ = parts(&mut g.h, page);
     // The page's `strip` names a device that is then deleted.
     let mut doc = g.h.doc();
     doc.devices.remove(&g.x1);
-    let p = generated::parts_of(&doc, page, ecad_engine::project::engine_views().report_models(&doc).as_ref());
+    let p = ecad_engine::pages::generated::parts_of(&doc, page, ecad_engine::project::engine_views().report_models(&doc).as_ref());
     assert!(texts(&p).iter().any(|(t, _)| t == "?"), "a flagged `?`");
 }
 
@@ -367,7 +366,7 @@ fn a_style_switch_moves_the_total_on_the_shown_page() {
     g.h.activate(g.schematic);
     let total = |h: &mut H| {
         let o = outputs(h);
-        generated::book_sheets_of(&h.doc(), Some(&o))
+        ecad_electrical::pages::generated::book_sheets_of(&h.doc(), Some(&o))
     };
     let before = total(&mut g.h);
     let (n, _) = counted(&mut g.h, "setdefault", json!({"key": "terminal.plan.style", "level": "project", "value": "graphic"}));

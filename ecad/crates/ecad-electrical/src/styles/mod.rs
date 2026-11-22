@@ -600,7 +600,7 @@ pub fn text_of(r: &Resolved<'_>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn every_builtin_value_is_valid_for_its_field() {

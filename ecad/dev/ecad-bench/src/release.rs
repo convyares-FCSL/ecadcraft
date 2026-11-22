@@ -72,9 +72,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelea
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
         ecad_engine::install();
-        ecad_engine::printbook::install_io();
+        ecad_engine::export::printbook::install_io();
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let mut out = MeasuredRelease::default();
         run(&mut s, "revision", json!({"description": "Bench", "drawn": "BEN"}))?;
         // The kept lists, as on the dialog's first show.
@@ -94,7 +94,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelea
         let found = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             doc.representations.values().find_map(|r| match r.subject {
-                Subject::Cable(k) if ecad_engine::references::is_reference(r) => Some((k, r.page, *r.items.first()?)),
+                Subject::Cable(k) if ecad_electrical::references::cables::is_reference(r) => Some((k, r.page, *r.items.first()?)),
                 _ => None,
             })
         })?;
@@ -109,7 +109,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelea
             upd.push(ms(t));
             work.push(project.read(&mut s, |p, _| {
                 let t = Instant::now();
-                std::hint::black_box(ecad_engine::checks::reference_checks(p.ledger.document(), cable));
+                std::hint::black_box(ecad_electrical::checks::reference_checks(p.ledger.document(), cable));
                 ms(t)
             })?);
             run(&mut s, "undo", json!({}))?;
@@ -139,9 +139,9 @@ pub fn measure_print(path: &Path, runs: usize, scratch: &Path) -> Result<Measure
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
         ecad_engine::install();
-        ecad_engine::printbook::install_io();
+        ecad_engine::export::printbook::install_io();
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let mut out = MeasuredPrint { pages: project.read(&mut s, |p, _| p.ledger.document().page_order.len())?, ..MeasuredPrint::default() };
         let mut print = Vec::new();
         for _ in 0..runs {

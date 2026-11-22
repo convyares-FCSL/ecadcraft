@@ -48,7 +48,7 @@ fn fp1_make_them_one_re_points_the_cards_too() {
     // Make them one (026, a branch merge's tag clash) runs 018's `plan_merge`: the same ops.
     let (mut h, cpu, cards, k) = rack_and_contact(4582);
     let d = h.doc();
-    let ops = h.cfg(|p| ecad_engine::devices::plan_merge(&d, &mut p.ids, cpu, k)).unwrap();
+    let ops = h.cfg(|p| ecad_electrical::devices::plan_merge(&d, &mut p.ids, cpu, k)).unwrap();
     for c in &cards {
         let repointed = ops.iter().any(|op| {
             matches!(op, ecad_model::Op::ModifyDevice { id, after, .. }
@@ -176,9 +176,9 @@ fn review_3_the_io_sheet_count_comes_from_kept_row_counts() {
             // Brief 051 (design 051 §4.1): the packing of the rows as made.
             let d = p.ledger.document();
             let made: Vec<usize> =
-                ecad_engine::plc::iolist::cards_in_order(&o.plc).iter().map(|c| ecad_engine::plc::iolist::rows_of(d, &o.plc, c).len()).collect();
-            let per = ecad_engine::generated::rows_per_sheet();
-            (o.plc.iolist_sheets(per), ecad_engine::plc::sheets::pack(&made, 2.0, 1.0, 1.0, per as f64).len())
+                ecad_electrical::plc::iolist::cards_in_order(&o.plc).iter().map(|c| ecad_electrical::plc::iolist::rows_of(d, &o.plc, c).len()).collect();
+            let per = ecad_electrical::pages::generated::rows_per_sheet();
+            (o.plc.iolist_sheets(per), ecad_electrical::plc::sheets::pack(&made, 2.0, 1.0, 1.0, per as f64).len())
         });
         assert_eq!(kept, laid, "{n} channels");
     }

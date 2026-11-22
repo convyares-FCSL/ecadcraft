@@ -145,7 +145,7 @@ fn entry_of(key: &str, level: Level) -> Option<(&'static Entry, Level)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
     use ecad_model::{Device, DeviceId, PageId};
 
     fn doc() -> Document {

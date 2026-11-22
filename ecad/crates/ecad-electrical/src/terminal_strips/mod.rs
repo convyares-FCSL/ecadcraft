@@ -1766,7 +1766,7 @@ pub fn first_of_label(s: &StripData, r: &TermRow) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn offers_read_and_refuse_with_a_way_forward() {

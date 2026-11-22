@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::{DeviceId, Document, tag};
+use {ecad_model::DeviceId, ecad_model::Document, ecad_model::naming::tag};
 use serde_json::{Value, json};
 
 use crate::common::writer;

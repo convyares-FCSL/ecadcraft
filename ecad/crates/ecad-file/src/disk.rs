@@ -40,7 +40,7 @@ pub enum ReadOnly {
     /// The file holds words this build does not know in values that stay text (design 072 §9.5,
     /// F11), or `meta` names it does not read: each names the word, the setting or name, and where
     /// it is. The file is kept as it is.
-    UnknownWords(Vec<ecad_model::strict::UnknownWord>),
+    UnknownWords(Vec<ecad_model::document::strict::UnknownWord>),
 }
 
 /// Most unknown words a read-only message names; the rest are counted.
@@ -373,7 +373,7 @@ impl DiskProject {
     /// Open the project read-only for the unknown words the words check found on open (design 072
     /// §9.5), unless it is already read-only for another reason; when it is read-only for unknown
     /// `meta` names already, these words are added to them. Nothing when `words` is empty.
-    pub fn refuse_unknown_words(&mut self, mut words: Vec<ecad_model::strict::UnknownWord>) {
+    pub fn refuse_unknown_words(&mut self, mut words: Vec<ecad_model::document::strict::UnknownWord>) {
         if words.is_empty() {
             return;
         }

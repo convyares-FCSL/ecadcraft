@@ -1,6 +1,6 @@
 //! Brief 060 (tidy-up guards, R0): `setprop` on several components walks the same rules as on one.
 
-use ecad_engine::checks::{Kind, Severity};
+use {ecad_electrical::checks::Kind, ecad_electrical::checks::Severity};
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
@@ -208,6 +208,6 @@ fn every_check_kind_is_in_the_table_once_and_keeps_its_words() {
 /// Brief 060 (R7): each whole-project check source keeps its rows under a key of its own.
 #[test]
 fn every_project_check_source_has_a_key_of_its_own() {
-    let keys: std::collections::BTreeSet<_> = ecad_engine::checks::PROJECT_SOURCES.iter().map(|s| s.key()).collect();
-    assert_eq!(keys.len(), ecad_engine::checks::PROJECT_SOURCES.len());
+    let keys: std::collections::BTreeSet<_> = ecad_electrical::checks::PROJECT_SOURCES.iter().map(|s| s.key()).collect();
+    assert_eq!(keys.len(), ecad_electrical::checks::PROJECT_SOURCES.len());
 }

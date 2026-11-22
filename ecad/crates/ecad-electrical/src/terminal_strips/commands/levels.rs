@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    DeviceId, Document, IdAllocator, ItemKind, LevelIo, Noun, ObjectRef, Op, PointKey, Representation, RepresentationId, Subject, Terminal,
+    DeviceId, Document, IdAllocator, ItemKind, LevelIo, Noun, ObjectRef, Op, PointKey, Representation, RepresentationId, Subject, ConnectionPoint,
     ConnectionPointId,
 };
 
@@ -299,7 +299,7 @@ pub fn plan_toposition(
     let (tin, tout): (ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh());
     ops.push(Op::AddConnectionPoint {
         id: tin,
-        terminal: Terminal {
+        terminal: ConnectionPoint {
             owner: strip.into(),
             label: Some(pos.clone()),
             key: Some(PointKey::Level { level: 1, io: Some(LevelIo::In) }),
@@ -308,7 +308,7 @@ pub fn plan_toposition(
     });
     ops.push(Op::AddConnectionPoint {
         id: tout,
-        terminal: Terminal {
+        terminal: ConnectionPoint {
             owner: strip.into(),
             label: Some(pos.clone()),
             key: Some(PointKey::Level { level: 1, io: Some(LevelIo::Out) }),
@@ -316,7 +316,7 @@ pub fn plan_toposition(
         },
     });
     // The device's points by key: `1` → in, `2` → out.
-    let old: Vec<(ConnectionPointId, Terminal)> = doc.connection_points_of(device).map(|(t, x)| (t, x.clone())).collect();
+    let old: Vec<(ConnectionPointId, ConnectionPoint)> = doc.connection_points_of(device).map(|(t, x)| (t, x.clone())).collect();
     let mut moved = std::collections::BTreeMap::new();
     for (t, x) in &old {
         let to = match x.key.as_ref().and_then(PointKey::as_def) {

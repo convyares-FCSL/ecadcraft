@@ -308,7 +308,7 @@ impl PagesRef<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     /// The project held further up the stack (as during an owner callback): ECAD commands and
     /// handle accessors are refused at once instead of blocking forever.

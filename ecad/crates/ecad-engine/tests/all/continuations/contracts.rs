@@ -5,9 +5,9 @@ use std::collections::BTreeSet;
 
 use crate::common::{H, id};
 use cadcraft_engine::doc::EntityKind;
-use ecad_engine::continuations::{self, CAPTION_KEY, CAPTION_RULE, TEXT_DERIVED};
+use {ecad_electrical::continuations::CAPTION_KEY, ecad_electrical::continuations::CAPTION_RULE, ecad_electrical::continuations::TEXT_DERIVED};
 use ecad_engine::project::Mapped;
-use ecad_engine::xref::{self, Group, HAlign, Places, RefIndex, Shape};
+use {ecad_electrical::references::devices::Group, ecad_electrical::references::devices::HAlign, ecad_electrical::references::devices::Places, ecad_electrical::references::devices::RefIndex, ecad_electrical::references::devices::Shape};
 use ecad_model::{AidId, DeviceId, ObjectRef, PageId, Pt, RepresentationId, Subject};
 use serde_json::{Value, json};
 
@@ -15,8 +15,7 @@ struct F {
     h: H,
     pages: [PageId; 3],
     /// The `24V` arrows on 101, 102 and 103: component and symbol.
-    arrows: [(AidId, RepresentationId); 3],
-}
+    arrows: [(AidId, RepresentationId); 3]}
 
 fn arrow(h: &mut H, at: (f64, f64), name: &str) -> (AidId, RepresentationId) {
     let v = h.run("place", json!({"symbol": "continuation", "at": [at.0, at.1], "name": name})).unwrap();
@@ -51,7 +50,7 @@ fn parts(h: &mut H, page: PageId) -> Vec<(RepresentationId, u32, Shape)> {
     h.p(|p| {
         let doc = p.ledger.document();
         let mut places = Places::new(doc);
-        continuations::parts_on_page(doc, &mut places, page).into_iter().map(|x| (x.rep, x.index, x.shape)).collect()
+        ecad_engine::continuations::draw::parts_on_page(doc, &mut places, page).into_iter().map(|x| (x.rep, x.index, x.shape)).collect()
     })
 }
 
@@ -59,8 +58,7 @@ fn parts(h: &mut H, page: PageId) -> Vec<(RepresentationId, u32, Shape)> {
 fn text_of(h: &mut H, page: PageId, r: RepresentationId) -> Option<String> {
     parts(h, page).into_iter().find_map(|(x, i, s)| match s {
         Shape::Text { value, .. } if x == r && i == 0 => Some(value),
-        _ => None,
-    })
+        _ => None})
 }
 
 /// The cross-reference texts as drawn on `page` (the drawing, not a fresh derivation).
@@ -73,8 +71,7 @@ fn drawn(h: &mut H, page: PageId) -> Vec<String> {
             .filter_map(|hd| d.model.iter().find(|e| e.handle == hd))
             .filter_map(|e| match &e.kind {
                 EntityKind::Text(t) => Some(t.value.clone()),
-                _ => None,
-            })
+                _ => None})
             .collect()
     })
 }
@@ -145,7 +142,7 @@ fn the_reference_style_and_an_unlocated_end() {
     assert!(t.starts_with("/102.") && t.contains(" /103."), "{t}");
     // An end that cannot be located sorts last as `?`.
     let doc = f.h.doc();
-    let ends = continuations::ends_named(&doc, &mut Places::new(&doc), "24V");
+    let ends = ecad_electrical::continuations::ends_named(&doc, &mut Places::new(&doc), "24V");
     assert_eq!(ends.len(), 3);
     assert!(ends.iter().all(|e| e.key.is_some()));
 }
@@ -245,8 +242,7 @@ fn captions_group_adjacent_arrows_under_one_bracket() {
             .into_iter()
             .filter_map(|(_, i, s)| match s {
                 Shape::Text { value, rotation, .. } if i >= 4 => Some((value, rotation)),
-                _ => None,
-            })
+                _ => None})
             .collect::<Vec<_>>()
     };
     assert_eq!(brackets(&mut f.h), 1);
@@ -287,7 +283,7 @@ fn caption_rules_and_wrapping() {
     let coil = f.h.run("place", json!({"symbol": "coil", "at": [250, 150]})).unwrap();
     let k: DeviceId = id(&coil, "component");
     let e = f.h.run("contcaption", json!({"continuations": [k.hex()], "caption": "X"})).unwrap_err();
-    assert_eq!(e, ecad_engine::continuations::NO_SUCH_ARROW, "a device is not an arrow");
+    assert_eq!(e, ecad_electrical::continuations::NO_SUCH_ARROW, "a device is not an arrow");
     let e = f.h.run("setprop", json!({"component": k.hex(), "key": CAPTION_KEY, "value": "X"})).unwrap_err();
     assert!(e.contains("that is a device"), "{e}");
     // The junction went with routes (design 072 D): a T is a line landing on a line.
@@ -300,8 +296,7 @@ fn caption_rules_and_wrapping() {
         .into_iter()
         .filter_map(|(_, i, s)| match s {
             Shape::Text { value, .. } if i >= 4 => Some(value),
-            _ => None,
-        })
+            _ => None})
         .collect();
     assert!((2..=3).contains(&lines.len()), "{lines:?}");
     let pc: AidId = id(&v, "aid");
@@ -373,7 +368,7 @@ fn registry_defaults_apply() {
     let s = f.h.run("styles", json!({"catalogue": "text"})).unwrap();
     let row = s["styles"].as_array().unwrap().iter().find(|r| r["id"] == "continuation_caption").cloned();
     assert!(row.is_some_and(|r| r["fields"]["height"]["value"] == 2.5 && r["fields"]["weight"]["value"] == "regular"), "{s}");
-    assert!(<ecad_engine::text_style::TextKind as ecad_model::Word>::parse("continuation_caption").is_some());
+    assert!(<ecad_electrical::styles::text_style::TextKind as ecad_model::Word>::parse("continuation_caption").is_some());
 }
 
 /// Check 13: a name with many arrows keeps implicit edges (no m² storage) and stays equal to a
@@ -390,7 +385,7 @@ fn a_large_name_group_has_implicit_edges() {
     let idx = RefIndex::build(&doc);
     assert_eq!(idx.sizes(), (n, 1, n * (n - 1)));
     let mut places = Places::new(&doc);
-    let parts = continuations::parts_on_page(&doc, &mut places, page);
+    let parts = ecad_engine::continuations::draw::parts_on_page(&doc, &mut places, page);
     assert_eq!(parts.len(), n);
     let more = format!("+{}", n - 4);
     assert!(parts.iter().all(|p| matches!(&p.shape, Shape::Text { value, .. } if value.ends_with(&more))));
@@ -449,10 +444,10 @@ fn xrefs_on_a_name_of(m: usize) {
     ledger.commit(ecad_model::Author::User, "pages", setup).unwrap();
     let mut ids = IdAllocator::seeded(0x49_15);
     let style = Style { layer: LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let starter = ecad_engine::wires::continuation_starter();
-    let aid = ecad_engine::wires::continuation_aid("BIG", None).unwrap();
+    let starter = ecad_electrical::wires::continuation_starter();
+    let aid = ecad_electrical::wires::continuation_aid("BIG", None).unwrap();
     let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 };
-    let t = ecad_engine::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, aid).unwrap();
+    let t = ecad_electrical::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, aid).unwrap();
     ledger.commit(ecad_model::Author::User, "first", t.ops.clone()).unwrap();
     // The other arrows: the first one's ops with fresh IDs, place and page, in one transaction
     // (planning and settling each one in a debug build takes seconds; the subject is `xrefs`).

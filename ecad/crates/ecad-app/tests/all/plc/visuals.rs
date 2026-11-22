@@ -162,7 +162,7 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
 
 #[test]
 fn edit_lines_follow_the_column() {
-    use ecad_engine::plc::iolist::Row;
+    use ecad_electrical::plc::iolist::Row;
     let row = |pins: Vec<(ecad_model::ChannelRole, String)>| Row {
         card: DeviceId(1),
         card_tag: "-A02".into(),

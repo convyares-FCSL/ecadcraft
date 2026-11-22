@@ -9,16 +9,15 @@ use ecad_model::{Document, GenKind, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
 use crate::pages::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextDraw};
-use crate::generated::*;
-use crate::outputs::kept::ReportModels;
-use crate::text_style::{Look, TextKind};
+use ecad_electrical::pages::generated::*;
+use ecad_electrical::reports::kept::ReportModels;
+use {crate::styles::draw::Look, ecad_electrical::styles::text_style::TextKind};
 
 /// Draws in paper millimetres, sheet origin at `x0`.
 pub struct Draw {
     pub k: f64,
     pub x0: f64,
-    pub out: Vec<Part>,
-}
+    pub out: Vec<Part>}
 
 impl Draw {
     pub fn p(&self, x: f64, y: f64) -> Pt {
@@ -65,8 +64,7 @@ impl Draw {
             oblique: 0.0,
             style: look.style.into(),
             halign: h,
-            valign: VAlign::Middle,
-        });
+            valign: VAlign::Middle});
         self.out.push(Part { kind, weight: look.weight, aci, layer: LAYER });
     }
 }
@@ -102,7 +100,7 @@ fn content(
     let (header, cell_draw, heading) = (look(TextKind::TableHeader), look(TextKind::Table), look(TextKind::TableHeading));
     // Brief 054b (design 054 §6): the cover's blocks.
     if kind == GenKind::Cover {
-        return crate::front::cover(doc, input, x0).0;
+        return crate::pages::front::cover(doc, input, x0).0;
     }
     // Brief 046: a graphic terminal plan draws its strip sheet.
     if kind == GenKind::Terminals && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic {
@@ -110,7 +108,7 @@ fn content(
     }
     // Brief 051 (design 051 §4): the I/O list as ruled tables per card, the rack overview as tiles.
     if matches!(kind, GenKind::IoList | GenKind::PlcRack) {
-        let a = crate::plc::sheets::Area { l, b, r, t, scale: (r - l) / A3_AREA };
+        let a = ecad_electrical::plc::sheets::Area { l, b, r, t, scale: (r - l) / A3_AREA };
         let plc = outputs.map(|o| &o.plc);
         if kind == GenKind::IoList {
             crate::plc::draw::sheets::io_sheet(doc, plc, &mut d, &looks, input.unit, a, i);

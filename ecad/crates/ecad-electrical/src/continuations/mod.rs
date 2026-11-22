@@ -689,7 +689,7 @@ pub fn arrows_among(doc: &Document, cs: &[AidId]) -> (Vec<AidId>, usize) {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
     use ecad_model::geometry::units::{Degrees, Radians};
 
     #[test]

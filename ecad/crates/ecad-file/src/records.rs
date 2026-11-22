@@ -135,7 +135,7 @@ pub enum Primitive {
     Text {
         at: Pt,
         height: f64,
-        rotation: m::units::Radians,
+        rotation: m::geometry::units::Radians,
         value: String,
         #[serde(default, skip_serializing_if = "is_left")]
         halign: m::TextHAlign,
@@ -160,7 +160,7 @@ fn is_baseline(v: &m::TextVAlign) -> bool {
 pub struct Placement {
     pub origin: Pt,
     /// Counter-clockwise.
-    pub rotation: m::units::Radians,
+    pub rotation: m::geometry::units::Radians,
     pub mirror: bool,
     pub scale: f64,
 }
@@ -191,21 +191,21 @@ pub struct Item {
 #[serde(deny_unknown_fields)]
 pub struct Device {
     /// Design 072 §2.1: validated on read (1 to 40 characters, no hidden character).
-    pub tag: Option<m::tag::Tag>,
+    pub tag: Option<m::naming::tag::Tag>,
     pub tag_fixed: bool,
     /// Design 072 §2.1: the text fields, validated on read.
-    pub description: Option<m::device::Description>,
-    pub part_number: Option<m::device::PartText>,
-    pub manufacturer: Option<m::device::PartText>,
-    pub article_number: Option<m::device::PartText>,
-    pub type_text: Option<m::device::PartText>,
+    pub description: Option<m::objects::devices::Description>,
+    pub part_number: Option<m::objects::devices::PartText>,
+    pub manufacturer: Option<m::objects::devices::PartText>,
+    pub article_number: Option<m::objects::devices::PartText>,
+    pub type_text: Option<m::objects::devices::PartText>,
     /// Design 072 §6.3: ids of the project's lists, and whether each was set by hand.
     pub location: Option<m::LocationId>,
     pub location_fixed: bool,
     pub function: Option<m::FunctionId>,
     pub function_fixed: bool,
     /// Design 072 §2.2: text that did not read as the group's typed rating.
-    pub rating_note: Option<m::device::RatingNote>,
+    pub rating_note: Option<m::objects::devices::RatingNote>,
     pub properties: BTreeMap<String, String>,
     pub definition: Option<DefinitionId>,
     /// What the device is (design 072 F15): the model's own type, whose words and fields are
@@ -287,19 +287,19 @@ pub struct Wire {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wire_type: Option<m::StyleRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub size: Option<m::wire::WireSize>,
+    pub size: Option<m::objects::wire::WireSize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub colours: Option<m::wire::Colours>,
+    pub colours: Option<m::objects::wire::Colours>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub number: Option<m::wire::WireNumber>,
+    pub number: Option<m::objects::wire::WireNumber>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub potential: Option<m::text::Text<{ m::wire::MAX_VALUE_CHARS }>>,
-    #[serde(default, skip_serializing_if = "m::wire::CircuitInputs::is_empty")]
-    pub rating: m::wire::CircuitInputs,
+    pub potential: Option<m::naming::text::Text<{ m::objects::wire::MAX_VALUE_CHARS }>>,
+    #[serde(default, skip_serializing_if = "m::objects::wire::CircuitInputs::is_empty")]
+    pub rating: m::objects::wire::CircuitInputs,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub load: Option<m::units::Amps>,
+    pub load: Option<m::geometry::units::Amps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub protected_by: Option<m::wire::ProtectedBy>,
+    pub protected_by: Option<m::objects::wire::ProtectedBy>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub display: BTreeMap<String, String>,
 }
@@ -310,7 +310,7 @@ pub struct Core {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<m::CoreLabel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub colours: Option<m::wire::Colours>,
+    pub colours: Option<m::objects::wire::Colours>,
     pub purpose: Purpose,
     pub position: CorePosition,
     /// The core's named points on the cable's references (design 072 §4.4, F4).
@@ -385,13 +385,13 @@ pub struct Cable {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cable_type: Option<m::StyleRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shield: Option<m::style::cable::Shield>,
-    #[serde(default, skip_serializing_if = "m::wire::CircuitInputs::is_empty")]
-    pub rating: m::wire::CircuitInputs,
+    pub shield: Option<m::objects::styles::cable::Shield>,
+    #[serde(default, skip_serializing_if = "m::objects::wire::CircuitInputs::is_empty")]
+    pub rating: m::objects::wire::CircuitInputs,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub load: Option<m::units::Amps>,
+    pub load: Option<m::geometry::units::Amps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub protected_by: Option<m::wire::ProtectedBy>,
+    pub protected_by: Option<m::objects::wire::ProtectedBy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -454,10 +454,10 @@ pub struct TextSlot {
     #[serde(default, skip_serializing_if = "is_baseline")]
     pub v: m::TextVAlign,
     #[serde(default, skip_serializing_if = "is_zero")]
-    pub rotation: m::units::Radians,
+    pub rotation: m::geometry::units::Radians,
 }
 
-fn is_zero(x: &m::units::Radians) -> bool {
+fn is_zero(x: &m::geometry::units::Radians) -> bool {
     // -0.0 too: the canonical form does not keep its sign, so writing it would give a content hash
     // that the read-back value (0.0, left out) does not match.
     x.0 == 0.0
@@ -491,10 +491,10 @@ pub struct ProjectSettings {
     pub tag_padding: Option<u8>,
     /// Design 072 F5: keyed by the symbol, `starter:<word>` or `project:<key>`; read strictly.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub tag_prefixes: BTreeMap<m::prefix::PrefixOf, m::prefix::TagPrefix>,
+    pub tag_prefixes: BTreeMap<m::naming::prefix::PrefixOf, m::naming::prefix::TagPrefix>,
     /// Design 072 F5: the cable tag prefix, written only when the project chose one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cable_prefix: Option<m::prefix::TagPrefix>,
+    pub cable_prefix: Option<m::naming::prefix::TagPrefix>,
     /// Wire numbering and potential defaults (brief 022, FP1): left out at its default, so a
     /// project that never changes them is written exactly as before.
     #[serde(default, skip_serializing_if = "is_default_wiring")]
@@ -532,7 +532,7 @@ impl ContactMirror {
 }
 
 fn is_default_wiring(w: &WiringSettings) -> bool {
-    *w == WiringSettings::from(&m::wiring::WiringSettings::default())
+    *w == WiringSettings::from(&m::connectivity::wiring::WiringSettings::default())
 }
 
 /// How automatic wire numbers are made.
@@ -567,7 +567,7 @@ pub struct WiringSettings {
     pub unclassified_prefix: String,
     pub potentials: Vec<PotentialDef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub colour_style: Option<m::colour::ColourWords>,
+    pub colour_style: Option<m::geometry::colour::ColourWords>,
     /// Brief 066 (F2): written only when the project chose a height, even one equal to the
     /// built-in; absent follows the built-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -579,23 +579,23 @@ pub struct WiringSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_min_length: Option<f64>,
     /// Design 072 F40: what one wire number counts, `net` or `conductor`; left out at `net`.
-    #[serde(default, skip_serializing_if = "m::wiring::NumberBy::is_net")]
-    pub number_by: m::wiring::NumberBy,
+    #[serde(default, skip_serializing_if = "m::connectivity::wiring::NumberBy::is_net")]
+    pub number_by: m::connectivity::wiring::NumberBy,
 }
 
 impl Default for WiringSettings {
     fn default() -> Self {
-        WiringSettings::from(&m::wiring::WiringSettings::default())
+        WiringSettings::from(&m::connectivity::wiring::WiringSettings::default())
     }
 }
 
-impl From<&m::wiring::WiringSettings> for WiringSettings {
-    fn from(w: &m::wiring::WiringSettings) -> Self {
+impl From<&m::connectivity::wiring::WiringSettings> for WiringSettings {
+    fn from(w: &m::connectivity::wiring::WiringSettings) -> Self {
         WiringSettings {
             scheme: match w.scheme {
-                m::wiring::Scheme::Potential => Scheme::Potential,
-                m::wiring::Scheme::Page => Scheme::Page,
-                m::wiring::Scheme::PageColumn => Scheme::PageColumn,
+                m::connectivity::wiring::Scheme::Potential => Scheme::Potential,
+                m::connectivity::wiring::Scheme::Page => Scheme::Page,
+                m::connectivity::wiring::Scheme::PageColumn => Scheme::PageColumn,
             },
             digits: w.digits,
             unclassified_prefix: w.unclassified_prefix.clone(),
@@ -636,17 +636,17 @@ impl From<&m::SheetSpec> for SheetSpec {
     }
 }
 
-impl From<WiringSettings> for m::wiring::WiringSettings {
+impl From<WiringSettings> for m::connectivity::wiring::WiringSettings {
     fn from(w: WiringSettings) -> Self {
-        m::wiring::WiringSettings {
+        m::connectivity::wiring::WiringSettings {
             scheme: match w.scheme {
-                Scheme::Potential => m::wiring::Scheme::Potential,
-                Scheme::Page => m::wiring::Scheme::Page,
-                Scheme::PageColumn => m::wiring::Scheme::PageColumn,
+                Scheme::Potential => m::connectivity::wiring::Scheme::Potential,
+                Scheme::Page => m::connectivity::wiring::Scheme::Page,
+                Scheme::PageColumn => m::connectivity::wiring::Scheme::PageColumn,
             },
             digits: w.digits,
             unclassified_prefix: w.unclassified_prefix,
-            potentials: w.potentials.into_iter().map(|p| m::wiring::PotentialDef { name: p.name, prefix: p.prefix, numbered: p.numbered }).collect(),
+            potentials: w.potentials.into_iter().map(|p| m::connectivity::wiring::PotentialDef { name: p.name, prefix: p.prefix, numbered: p.numbered }).collect(),
             colour_style: w.colour_style,
             label_height: w.label_height,
             label_rule: w.label_rule,
@@ -967,16 +967,16 @@ pub enum Op {
     /// Design 072 §6.4: a loose part made, removed or changed, the model's strict record.
     CreateLoosePart {
         id: m::LoosePartId,
-        part: m::loose_part::LoosePart,
+        part: m::objects::loose_part::LoosePart,
     },
     DeleteLoosePart {
         id: m::LoosePartId,
-        part: m::loose_part::LoosePart,
+        part: m::objects::loose_part::LoosePart,
     },
     ModifyLoosePart {
         id: m::LoosePartId,
-        before: m::loose_part::LoosePart,
-        after: m::loose_part::LoosePart,
+        before: m::objects::loose_part::LoosePart,
+        after: m::objects::loose_part::LoosePart,
     },
 }
 

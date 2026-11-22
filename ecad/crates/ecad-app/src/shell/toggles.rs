@@ -181,7 +181,7 @@ fn mm(v: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::shell::*;
+    use super::*;
 
     #[test]
     fn ortho_reads_and_sets_its_three_ways() {

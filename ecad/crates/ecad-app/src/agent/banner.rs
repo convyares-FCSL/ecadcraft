@@ -409,7 +409,7 @@ pub fn show_line(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool) -> Option<
 
 #[cfg(test)]
 mod tests {
-    use crate::agent::*;
+    use super::*;
     use std::time::Duration;
 
     #[test]

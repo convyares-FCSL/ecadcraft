@@ -1116,7 +1116,7 @@ pub fn offers_fan(doc: &Document, cable: CableId) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn clipping_removes_the_middle_of_a_segment() {

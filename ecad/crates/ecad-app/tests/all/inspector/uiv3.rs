@@ -58,7 +58,7 @@ fn coil(h: &mut H) -> RepresentationId {
     let d = doc(h);
     let k1 = d.devices.iter().find(|(_, c)| c.tag().is_some_and(|t| t.ends_with("K01"))).map(|(id, _)| *id).expect("-K01");
     d.representations_of(Subject::Device(k1))
-        .find(|(_, r)| ecad_engine::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
+        .find(|(_, r)| ecad_electrical::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
         .map(|(id, _)| id)
         .expect("its coil")
 }
@@ -148,7 +148,7 @@ fn the_layout_tab_reads_the_placement_and_sets_the_texts_and_contact_table() {
     h.get_by_label(&format!("{}.right", ecad_app::inspector::CONTACT_TABLE)).click();
     h.run_steps(4);
     let k1 = h.state().settings.inspector.device.as_ref().and_then(|d| d.component).unwrap();
-    assert_eq!(ecad_engine::xref::placement_of(&doc(&mut h), k1), (ecad_engine::xref::Placement::Right, true));
+    assert_eq!(ecad_electrical::references::devices::placement_of(&doc(&mut h), k1), (ecad_electrical::references::devices::Placement::Right, true));
     let _ = std::fs::remove_dir_all(&dir);
 }
 

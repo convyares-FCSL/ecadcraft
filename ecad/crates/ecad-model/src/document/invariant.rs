@@ -54,7 +54,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::document::doc::{Cable, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal, Wire};
+use crate::document::doc::{Cable, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, ConnectionPoint, Wire};
 use crate::document::effect::{Effect, Effects};
 use crate::error::{ModelError, Result};
 use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
@@ -556,7 +556,7 @@ impl Document {
     }
 
     /// I8.
-    fn check_connection_point(&self, id: ConnectionPointId, t: &Terminal) -> Result<()> {
+    fn check_connection_point(&self, id: ConnectionPointId, t: &ConnectionPoint) -> Result<()> {
         let device = match t.owner {
             crate::document::doc::ConnectionPointOwner::Device(d) => d,
             crate::document::doc::ConnectionPointOwner::Aid(a) => {

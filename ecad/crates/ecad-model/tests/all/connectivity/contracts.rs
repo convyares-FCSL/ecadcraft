@@ -7,7 +7,7 @@ use ecad_model::objects::aid::ContinuationName;
 use ecad_model::connectivity::wiring::{self, Scheme};
 use ecad_model::{
     Aid, AidId, Author, Connectivity, Definition, DefinitionId, Device, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, Page, PageId,
-    Terminal, ConnectionPointDef, ConnectionPointId, Wire, WireId,
+    ConnectionPoint, ConnectionPointDef, ConnectionPointId, Wire, WireId,
 };
 
 /// A small project driven through the ledger, with the numbering pass as ECAD commits run it.
@@ -50,7 +50,7 @@ impl P {
             let t: ConnectionPointId = self.ids.fresh();
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                terminal: Terminal {
+                terminal: ConnectionPoint {
                     owner: c.into(),
                     label: Some(k.to_string()),
                     key: Some(k.to_string().parse().unwrap()),
@@ -68,7 +68,7 @@ impl P {
         let a: AidId = self.ids.fresh();
         let t: ConnectionPointId = self.ids.fresh();
         let aid = Aid::Continuation { name: Some(ContinuationName::new(name).unwrap()), caption: None };
-        let terminal = Terminal { owner: a.into(), label: None, key: None, accepts: Default::default() };
+        let terminal = ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default() };
         self.commit(vec![Op::CreateAid { id: a, aid }, Op::AddConnectionPoint { id: t, terminal }]);
         (a, t)
     }
@@ -462,7 +462,7 @@ fn random_ops(seed: u64, steps: usize) {
                 // Remove a device whose terminals are free, with its terminals.
                 let c = comps[next(comps.len())];
                 let doc = p.doc();
-                let ts: Vec<(ConnectionPointId, Terminal)> = doc.connection_points_of(c).map(|(t, x)| (t, x.clone())).collect();
+                let ts: Vec<(ConnectionPointId, ConnectionPoint)> = doc.connection_points_of(c).map(|(t, x)| (t, x.clone())).collect();
                 if ts.iter().all(|(t, _)| doc.ends_at(*t).is_empty()) {
                     let mut ops: Vec<Op> = ts.into_iter().map(|(id, terminal)| Op::RemoveConnectionPoint { id, terminal }).collect();
                     ops.push(Op::DeleteDevice { id: c, device: doc.devices.get(&c).unwrap().clone() });

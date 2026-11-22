@@ -41,7 +41,7 @@ pub fn fmt_amps(x: f64, against: Option<f64>) -> String {
         // §3.6: a pass never reads the same as a fail (`21.60 A` against `21.6 A`).
         return format!("{:.2}", half_up(x, 2));
     }
-    dataset::fmt_num(half_up(x, 1))
+    crate::devices::ratings::dataset::fmt_num(half_up(x, 1))
 }
 
 /// A volt drop as shown: 0.1 %, half up; 0.01 % below 0.1 %.
@@ -112,7 +112,7 @@ impl Rating {
     /// volt drop.
     pub fn summary(&self) -> String {
         let mut s = match (self.iz, self.device.as_ref().and_then(|d| d.amps)) {
-            (Some(iz), Some(i)) => format!("{} A {} {} A", fmt_amps(iz, Some(i)), if iz >= i { "\u{2265}" } else { "<" }, dataset::fmt_num(i)),
+            (Some(iz), Some(i)) => format!("{} A {} {} A", fmt_amps(iz, Some(i)), if iz >= i { "\u{2265}" } else { "<" }, crate::devices::ratings::dataset::fmt_num(i)),
             (Some(iz), None) => format!("{} A", fmt_amps(iz, None)),
             (None, _) => "no data".into(),
         };
@@ -266,7 +266,7 @@ pub struct Sheet {
 pub(super) fn sheet(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: Option<&StyleRef>) -> Sheet {
     let f = |k: &str| id.and_then(|id| styles::field_of(doc, catalogue, id, k, None));
     Sheet {
-        rated: f("rated_current").and_then(|r| parse::current(&r.text())),
+        rated: f("rated_current").and_then(|r| crate::devices::ratings::parse::current(&r.text())),
         rated_at: f("rated_at").map_or(30.0, |r| r.number()),
         max: f("max_temperature").map_or(70.0, |r| r.number()),
         class: f("conductor_class").and_then(|r| r.word().parse().ok()).unwrap_or(5),
@@ -351,7 +351,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
         RatedSubject::Wire(c) => {
             let look = ctx.looks.look(doc, c);
             let sh = sheet(doc, ecad_model::StyleCatalogue::Wire, look.category.as_ref());
-            (sh, look.cross_section.as_ref().and_then(|(t, _)| parse::cross_section(t)), false)
+            (sh, look.cross_section.as_ref().and_then(|(t, _)| crate::devices::ratings::parse::cross_section(t)), false)
         }
         RatedSubject::Cable(k) => {
             let ty = cable::of(doc, k);
@@ -359,7 +359,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
             let from_type = ty
                 .as_ref()
                 .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, "size", None))
-                .and_then(|r| parse::cross_section(&r.text()));
+                .and_then(|r| crate::devices::ratings::parse::cross_section(&r.text()));
             let size = from_type.or_else(|| circuit.and_then(|c| c.type_text()).and_then(crate::terminal_strips::notation_size));
             (sh, size, ty.is_none())
         }
@@ -398,7 +398,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
             Some(b) => Some((b, "set here".to_string())),
             None => {
                 let r = defaults::resolve(doc, &defaults::rating::BUNDLING, Scope::project());
-                parse::bundling(&r.text()).map(|b| (b, default_from(doc, &defaults::rating::BUNDLING).to_string()))
+                crate::devices::ratings::parse::bundling(&r.text()).map(|b| (b, default_from(doc, &defaults::rating::BUNDLING).to_string()))
             }
         }
     };
@@ -471,7 +471,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                         factors.push(Factor {
                             name: temp_name,
                             factor: 0.0,
-                            input: format!("{} \u{b0}C", dataset::fmt_num(theta)),
+                            input: format!("{} \u{b0}C", crate::devices::ratings::dataset::fmt_num(theta)),
                             from: theta_from.clone(),
                         });
                         Some(0.0)
@@ -480,7 +480,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                         factors.push(Factor {
                             name: temp_name,
                             factor: k,
-                            input: format!("{} \u{b0}C", dataset::fmt_num(theta)),
+                            input: format!("{} \u{b0}C", crate::devices::ratings::dataset::fmt_num(theta)),
                             from: theta_from.clone(),
                         });
                         let data = ctx.table.as_ref().map(|t| &t.data);
@@ -503,7 +503,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                         None
                     }
                     (Some(sz), None) => {
-                        issues.push(Issue::NoTable(format!("No rating table column for a {} \u{b0}C conductor", dataset::fmt_num(sh.max))));
+                        issues.push(Issue::NoTable(format!("No rating table column for a {} \u{b0}C conductor", crate::devices::ratings::dataset::fmt_num(sh.max))));
                         let _ = sz;
                         None
                     }
@@ -511,7 +511,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                         None => {
                             issues.push(Issue::NoTable(format!(
                                 "{named} has no capacity for {} mm\u{b2}, {method}, {}, {loaded} loaded",
-                                dataset::fmt_num(sz),
+                                crate::devices::ratings::dataset::fmt_num(sz),
                                 ins.word()
                             )));
                             None
@@ -524,7 +524,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                                     None => {
                                         issues.push(Issue::NoTable(format!(
                                             "{named} has no ambient factor at {} \u{b0}C, {}",
-                                            dataset::fmt_num(theta),
+                                            crate::devices::ratings::dataset::fmt_num(theta),
                                             ins.word()
                                         )));
                                         None
@@ -549,7 +549,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                                     } else {
                                         theta_from.clone()
                                     };
-                                    factors.push(Factor { name: temp_name, factor: k, input: format!("{} \u{b0}C", dataset::fmt_num(theta)), from });
+                                    factors.push(Factor { name: temp_name, factor: k, input: format!("{} \u{b0}C", crate::devices::ratings::dataset::fmt_num(theta)), from });
                                     grouping_factor(Some(&t.data), &mut issues, &mut factors).map(|g| cap * k * g)
                                 }
                             }
@@ -609,7 +609,7 @@ pub(super) fn volt_drop_of(
     doc: &Document, ctx: &Context, circuit: Option<&dyn Circuit>, inp: &CircuitInputs, sh: &Sheet, size: Option<f64>, system: &str,
     load: Option<&Load>, device: Option<&Device>, issues: &mut Vec<Issue>,
 ) -> Option<VoltDrop> {
-    let metres = circuit.and_then(|c| c.length()).and_then(parse::length_m)?;
+    let metres = circuit.and_then(|c| c.length()).and_then(crate::devices::ratings::parse::length_m)?;
     let (amps, why) = match (load, device.and_then(|d| d.amps.map(|a| (a, d.tag.clone())))) {
         (Some(l), _) => (l.amps, if l.from == LoadFrom::Typed { "typed".to_string() } else { "from Power".to_string() }),
         (None, Some((a, tag))) => (a, format!("{tag} rating")),
@@ -628,7 +628,7 @@ pub(super) fn volt_drop_of(
         issues.push(Issue::NoTable(format!(
             "Rating table '{}' has no resistance for {} mm\u{b2}, class {}",
             t.name,
-            dataset::fmt_num(size),
+            crate::devices::ratings::dataset::fmt_num(size),
             sh.class
         )));
         return None;

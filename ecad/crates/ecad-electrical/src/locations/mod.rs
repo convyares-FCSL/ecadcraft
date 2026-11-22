@@ -37,7 +37,7 @@ use ecad_model::{
     Representation, RepresentationId, Style, Subject,
 };
 
-use crate::locations::designations::{self, Aspect};
+use crate::locations::designations::Aspect;
 
 /// A location box's panel temperature key (`setprop {aids}`, design 072 §6.2).
 pub const PANEL_TEMPERATURE_KEY: &str = "panel_temperature";
@@ -856,7 +856,7 @@ pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<(RepresentationId, St
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     fn sq(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<Pt> {
         vec![Pt::new(x0, y0), Pt::new(x1, y0), Pt::new(x1, y1), Pt::new(x0, y1)]

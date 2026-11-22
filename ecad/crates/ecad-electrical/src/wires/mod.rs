@@ -39,7 +39,7 @@ use std::collections::BTreeSet;
 
 use ecad_model::{
     Aid, AidId, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, NetId, Op, PageId, Placement, Primitive, Pt,
-    Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId, Wire, WireId,
+    Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointId, Wire, WireId,
 };
 
 use crate::devices::{DerivedText, TextOf};
@@ -752,7 +752,7 @@ pub fn plan_tagless(
     ops.push(Op::CreateAid { id, aid });
     ops.push(Op::AddConnectionPoint {
         id: terminal,
-        terminal: Terminal { owner: id.into(), label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
+        terminal: ConnectionPoint { owner: id.into(), label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
     });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {
@@ -1712,7 +1712,7 @@ impl<'a> ShownOnce<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
     use ecad_model::{Color, Layer, LayerId, Page};
 
     /// A document with one page and one layer, and the style to draw on it.

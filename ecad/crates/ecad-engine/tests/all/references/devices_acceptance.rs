@@ -22,7 +22,7 @@ use crate::common::{H, id, pts};
 
 use crate::common::close_all;
 use cadcraft_engine::Session;
-use ecad_engine::xref::{self, RefIndex};
+use {ecad_electrical::references::devices::RefIndex};
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_engine::history::event_log::EventKind;
 use ecad_model::{DeviceId, PageId, RepresentationId, WireId};
@@ -49,8 +49,7 @@ struct X {
     pages: Vec<PageId>,
     k1: DeviceId,
     coil: RepresentationId,
-    a2: WireId,
-}
+    a2: WireId}
 
 fn rep(v: &Value) -> RepresentationId {
     id(v, "representation")
@@ -615,8 +614,7 @@ fn tester_025_parts_follow_their_owner_and_are_refused_alone() {
         (Some(xref::Shape::Text { at: a, .. }), Some(xref::Shape::Text { at: b, .. })) => {
             assert!((b.x - a.x - 10.0).abs() < 1e-9 && (b.y - a.y).abs() < 1e-9)
         }
-        o => panic!("{o:?}"),
-    }
+        o => panic!("{o:?}")}
     index_is_a_rebuild(&mut x.h, "contact move");
 }
 

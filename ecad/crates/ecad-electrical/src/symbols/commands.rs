@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, Origin, PageId, Placement,
-    Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, ConnectionPointDef, ConnectionPointId, TextHAlign, TextSlot,
+    Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointDef, ConnectionPointId, TextHAlign, TextSlot,
     TextVAlign, WireId,
 };
 
@@ -548,7 +548,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
                 Some(nd) => {
                     if nd.label != td.label && term.label == td.label && r.connection_points.is_empty() {
                         ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
-                        ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { label: nd.label.clone(), ..term.clone() } });
+                        ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { label: nd.label.clone(), ..term.clone() } });
                     }
                     if !nd.at.near(td.at, TOL) {
                         if cps.contains_key(&t) {
@@ -563,7 +563,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
         for nd in new.terminals.iter().filter(|nd| !old.terminals.iter().any(|td| td.key == nd.key)) {
             let t: ConnectionPointId = ids.fresh();
             let key = if r.connection_points.is_empty() { nd.key.clone() } else { nd.label.clone().map_or_else(|| nd.key.clone(), PointKey::Def) };
-            ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { owner: c.into(), label: nd.label.clone(), key: Some(key), accepts: nd.accepts } });
+            ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { owner: c.into(), label: nd.label.clone(), key: Some(key), accepts: nd.accepts } });
             if !r.connection_points.is_empty() {
                 cps.insert(t, nd.at);
             }
@@ -1082,7 +1082,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     for (t, key) in rekey {
         if let Some(term) = doc.terminals.get(&t) {
             ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
-            ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { key: Some(key), ..term.clone() } });
+            ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { key: Some(key), ..term.clone() } });
         }
     }
     Ok(Promoted { plan: SymbolPlan { ops, label: format!("Make symbol {}", content.name), id, updated: 0, left: 0 }, representation: new_rep })
@@ -1133,7 +1133,7 @@ pub fn plan_place(
                 // A point drawn without a label stays unlabelled: it prints no label (bug 1).
                 ops.push(Op::AddConnectionPoint {
                     id: t,
-                    terminal: Terminal {
+                    terminal: ConnectionPoint {
                         owner: c.into(),
                         label: td.label.clone(),
                         key: Some(td.label.clone().map_or_else(|| td.key.clone(), PointKey::Def)),
@@ -1186,7 +1186,7 @@ pub fn plan_place(
                 let t: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: t,
-                    terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    terminal: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
             }
             ops.push(Op::AddItem { id: item, item: instance });

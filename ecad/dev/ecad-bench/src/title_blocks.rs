@@ -16,9 +16,9 @@ use std::time::Instant;
 
 use cadcraft_engine::Session;
 use ecad_engine::ProjectHandle;
-use ecad_engine::frame::{self, FrameInput};
-use ecad_model::book::Book;
-use ecad_model::title_block::{Binding, BlockItem, Rect, TextDraw, TitleBlockLayout};
+use ecad_engine::pages::frame::{self, FrameInput};
+use ecad_model::document::book::Book;
+use ecad_model::objects::title_block::{Binding, BlockItem, Rect, TextDraw, TitleBlockLayout};
 use ecad_model::{Primitive, Pt};
 use serde_json::json;
 
@@ -48,7 +48,7 @@ pub fn big_layout() -> TitleBlockLayout {
             1 => BlockItem::Text { at: Rect::new(x, y, 5.5, 3.5), text: format!("T{i}"), look: TextDraw::default() },
             _ => BlockItem::Field {
                 at: Rect::new(x, y, 5.5, 3.5),
-                bind: Binding::Project(ecad_model::title_block::ProjectKey::of_info(ecad_model::InfoField::DrawingNumber)),
+                bind: Binding::Project(ecad_model::objects::title_block::ProjectKey::of_info(ecad_model::InfoField::DrawingNumber)),
                 label: None,
                 look: TextDraw::default(),
                 if_empty: Default::default(),
@@ -89,7 +89,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredTitle
     let mut out = MeasuredTitleBlocks::default();
     let result = (|| {
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let first = project.read(&mut s, |p, _| p.ledger.document().page_order.first().copied())?.ok_or("the project has no page")?;
         out.pages = project.read(&mut s, |p, _| p.ledger.document().page_order.len())?;
         project.open_page(&mut s, first)?;

@@ -246,7 +246,7 @@ a name of digits only must be its level's number (so 1.2 in a link is always lev
 
 #[cfg(test)]
 mod tests {
-    use crate::defaults::*;
+    use super::*;
     use crate::terminal_strips::terminal_blocks::TYPES;
 
     #[test]

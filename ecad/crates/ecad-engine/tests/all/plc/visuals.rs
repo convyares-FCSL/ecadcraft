@@ -2,8 +2,8 @@
 //! ruled I/O sheet and the `plcrack` sheet.
 
 use cadcraft_engine::doc::EntityKind;
-use ecad_engine::plc::overview::{self, Square, TileKind};
-use ecad_engine::plc::sheets::{self, Seg};
+use ecad_electrical::plc::overview::{self, Square, TileKind};
+use ecad_electrical::plc::sheets::{self, Seg};
 use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
@@ -41,7 +41,7 @@ fn texts(h: &mut H, page: PageId) -> Vec<String> {
     h.cfg(|p| {
         p.outputs();
         let o = p.kept_reports().unwrap();
-        ecad_engine::generated::parts_of(&d, page, Some(o))
+        ecad_engine::pages::generated::parts_of(&d, page, Some(o))
             .into_iter()
             .filter_map(|x| match x.kind {
                 EntityKind::Text(t) => Some(t.value),
@@ -55,7 +55,7 @@ fn sheets_of(h: &mut H, page: PageId) -> usize {
     let d = h.doc();
     h.cfg(|p| {
         p.outputs();
-        ecad_engine::generated::sheets_of(&d, page, p.kept_reports())
+        ecad_electrical::pages::generated::sheets_of(&d, page, p.kept_reports())
     })
 }
 
@@ -305,10 +305,10 @@ fn frame(h: &mut H, page: PageId) -> (Vec<(ecad_model::Pt, ecad_model::Pt)>, Vec
     let d = h.doc();
     let mut lines = Vec::new();
     let mut texts = Vec::new();
-    for p in ecad_engine::plc::look::parts_on_page(&d, page) {
+    for p in ecad_engine::plc::draw::card::parts_on_page(&d, page) {
         match p.shape {
-            ecad_engine::xref::Shape::Line(a, b) => lines.push((a, b)),
-            ecad_engine::xref::Shape::Text { value, .. } => texts.push(value),
+            ecad_electrical::references::devices::Shape::Line(a, b) => lines.push((a, b)),
+            ecad_electrical::references::devices::Shape::Text { value, .. } => texts.push(value),
         }
     }
     (lines, texts)
@@ -323,7 +323,7 @@ fn slanted(l: &(ecad_model::Pt, ecad_model::Pt)) -> bool {
 fn a_d_e_one_frame_per_run_with_break_edges_where_the_card_goes_on() {
     let F { mut h, di, .. } = fixture(5120);
     let page = h.first_page();
-    let runs = ecad_engine::plc::look::runs_on_page(&h.doc(), page);
+    let runs = ecad_electrical::plc::draw::runs_on_page(&h.doc(), page);
     let di_runs: Vec<_> = runs.iter().filter(|r| r.card == di).collect();
     assert_eq!(di_runs.len(), 2, "the fenced cells and the body elsewhere on the page");
     let cells = di_runs.iter().find(|r| r.first == Some(0)).expect("the cells' run");
@@ -338,7 +338,7 @@ fn a_d_e_one_frame_per_run_with_break_edges_where_the_card_goes_on() {
     let d = h.doc();
     let body = d
         .representations_of(ecad_model::Subject::Device(di))
-        .find(|(_, r)| ecad_engine::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Plcdi))
+        .find(|(_, r)| ecad_electrical::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Plcdi))
         .map(|(_, r)| r.items[0])
         .unwrap();
     // Cells' points are at y 200; the body's at its origin + 25; cell 15 ends at x 100 + 15·20 + 10.
@@ -349,7 +349,7 @@ fn a_d_e_one_frame_per_run_with_break_edges_where_the_card_goes_on() {
     h.cfg(|p| {
         p.ledger.commit(ecad_model::Author::User, "move body", vec![ecad_model::Op::ModifyItem { id: body, before: item, after }]).unwrap();
     });
-    let runs = ecad_engine::plc::look::runs_on_page(&h.doc(), page);
+    let runs = ecad_electrical::plc::draw::runs_on_page(&h.doc(), page);
     let di_runs: Vec<_> = runs.iter().filter(|r| r.card == di).collect();
     assert_eq!(di_runs.len(), 1, "{di_runs:?}");
     assert!(!di_runs[0].right_cell, "the body is the run's power end");
@@ -376,19 +376,19 @@ fn f_a_card_at_180_keeps_its_name_block_upright_above() {
     let F { mut h, dq, .. } = fixture(5122);
     let v = h.run("plcpage", json!({"card": dq.hex()})).unwrap();
     let page: PageId = id(&v, "page");
-    let runs = ecad_engine::plc::look::runs_on_page(&h.doc(), page);
+    let runs = ecad_electrical::plc::draw::runs_on_page(&h.doc(), page);
     assert!(!runs.is_empty());
     assert!(runs.iter().all(|r| r.dir > 0.0), "outputs at 180°: the frame above the points");
     let d = h.doc();
-    let parts = ecad_engine::plc::look::parts_on_page(&d, page);
+    let parts = ecad_engine::plc::draw::card::parts_on_page(&d, page);
     let tag = parts
         .iter()
         .find_map(|p| match &p.shape {
-            ecad_engine::xref::Shape::Text { value, at, valign, .. } if value == "-A04" => Some((*at, *valign)),
+            ecad_electrical::references::devices::Shape::Text { value, at, valign, .. } if value == "-A04" => Some((*at, *valign)),
             _ => None,
         })
         .expect("the tag in the name block");
-    assert_eq!(tag.1, ecad_engine::xref::VAlign::Top, "top left, under the far edge");
+    assert_eq!(tag.1, ecad_electrical::references::devices::VAlign::Top, "top left, under the far edge");
     assert!(tag.0.y > runs[0].top, "above the points");
 }
 
@@ -396,8 +396,8 @@ fn f_a_card_at_180_keeps_its_name_block_upright_above() {
 fn h_i_text_styles_and_name_block_lines() {
     let F { mut h, di, .. } = fixture(5123);
     let d = h.doc();
-    let ts = |k| ecad_engine::text_style::text_style(&d, k).height;
-    assert_eq!((ts(ecad_engine::text_style::TextKind::ChannelText), ts(ecad_engine::text_style::TextKind::Address)), (2.5, 2.0));
+    let ts = |k| ecad_electrical::styles::text_style::text_style(&d, k).height;
+    assert_eq!((ts(ecad_electrical::styles::text_style::TextKind::ChannelText), ts(ecad_electrical::styles::text_style::TextKind::Address)), (2.5, 2.0));
     let page = h.first_page();
     h.run("setprop", json!({"component": di.hex(), "key": "maker", "value": "Maker A"})).unwrap();
     h.run("setprop", json!({"component": di.hex(), "key": "part_number", "value": "DI-16"})).unwrap();
@@ -424,10 +424,10 @@ fn review_1_a_body_with_no_frame_keeps_its_tag() {
     let di: DeviceId = id(&v, "component");
     let page = h.first_page();
     let d = h.doc();
-    assert!(ecad_engine::plc::look::runs_on_page(&d, page).iter().all(|r| r.card != di), "no run at 90°");
-    let tags: Vec<String> = ecad_engine::devices::all_texts_on_page(&d, page)
+    assert!(ecad_electrical::plc::draw::runs_on_page(&d, page).iter().all(|r| r.card != di), "no run at 90°");
+    let tags: Vec<String> = ecad_engine::devices::draw::all_texts_on_page(&d, page)
         .into_iter()
-        .filter(|t| t.text.of == ecad_engine::devices::TextOf::Tag)
+        .filter(|t| t.text.of == ecad_electrical::devices::TextOf::Tag)
         .map(|t| t.text.value)
         .collect();
     assert!(tags.iter().any(|t| t == "-A02"), "{tags:?}");
@@ -440,17 +440,17 @@ fn review_2_the_frame_stands_for_the_card() {
     let F { mut h, di, .. } = fixture(5131);
     let page = h.first_page();
     let d = h.doc();
-    let part = ecad_engine::plc::look::parts_on_page(&d, page)
+    let part = ecad_engine::plc::draw::card::parts_on_page(&d, page)
         .into_iter()
-        .find(|p| matches!(&p.shape, ecad_engine::xref::Shape::Text { value, .. } if value == "-A02"))
+        .find(|p| matches!(&p.shape, ecad_electrical::references::devices::Shape::Text { value, .. } if value == "-A02"))
         .expect("the name block's tag");
     let handle = h.p(|p| p.pages.get(&page).and_then(|v| v.map.xref(part.rep, part.index))).expect("mapped");
     let u = h.s.state().unwrap().uid;
     let t = h.p(|p| ecad_engine::pointer::kind::classify(p, u, cadcraft_engine::geom::Vec2::new(0.0, 0.0), 0.5, Some(handle), &[], false));
     assert_eq!(t.kind, ecad_electrical::devices::kinds::ObjectKind::Device, "{t:?}");
     assert_eq!(t.component, Some(di));
-    let words = ecad_engine::xref::refusal(&d, Some(ecad_engine::project::Mapped::DeviceReference(part.rep)));
-    assert_eq!(words, ecad_engine::plc::look::FRAME_DERIVED);
+    let words = ecad_engine::references::draw::devices::refusal(&d, Some(ecad_engine::project::Mapped::DeviceReference(part.rep)));
+    assert_eq!(words, ecad_electrical::plc::draw::FRAME_DERIVED);
 }
 
 /// Finding 3: a card's symbol moved or its page renumbered rewrites the rack sheet's places.
@@ -466,13 +466,13 @@ fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
         ecad_model::Op::ModifyPage { id: p, before: before.clone(), after: ecad_model::Page { number: ecad_model::PageNo::parse(n), ..before } }
     };
     let renumber = vec![renumbered(first, "7")];
-    assert!(ecad_engine::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&renumber)));
+    assert!(ecad_electrical::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&renumber)));
     let empty = vec![renumbered(sheet, "9")];
-    assert!(!ecad_engine::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&empty)), "a page with no PLC symbol");
+    assert!(!ecad_electrical::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&empty)), "a page with no PLC symbol");
     let item = h.symbol_item(ai);
     let it = d.items[&item].clone();
     let moved = vec![ecad_model::Op::ModifyItem { id: item, before: it.clone(), after: it }];
-    assert!(ecad_engine::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&moved)));
+    assert!(ecad_electrical::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&moved)));
     // Through the command path: the sheet's text follows the renumber.
     h.run("pageprops", json!({"page": first.hex(), "number": "7"})).unwrap();
     let t = texts(&mut h, sheet);

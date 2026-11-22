@@ -192,7 +192,7 @@ fn every_safe_value_is_valid_where_the_kind_allows_one() {
 fn a_tested_build_reports_no_damaged_defaults() {
     let doc = ecad_model::Document::default();
     let rows = ecad_engine::checks::all(&doc, 0.01);
-    assert!(rows.iter().all(|c| c.kind != ecad_engine::checks::Kind::DefaultsDamaged));
+    assert!(rows.iter().all(|c| c.kind != ecad_electrical::checks::Kind::DefaultsDamaged));
 }
 
 // ---------------------------------------------------------------- 066b: the saved-file rule (F2)
@@ -246,7 +246,7 @@ fn a_project_that_chose_no_height_follows_the_built_in() {
     assert_eq!(doc.settings.wiring.label_height, None);
     assert_eq!(wire_label_height(&doc), Value::Length(2.5));
     let page = h.first_page();
-    let labels = ecad_engine::wires::labels_on_page(&doc, page);
+    let labels = ecad_engine::wires::draw::labels_on_page(&doc, page);
     assert!(!labels.is_empty() && labels.iter().all(|l| (l.height - 2.5).abs() < 1e-9), "{:?}", labels.iter().map(|l| l.height).collect::<Vec<_>>());
 }
 
@@ -266,7 +266,7 @@ fn chosen_and_unset_heights_survive_save_and_open() {
         assert_eq!(resolved_all(&after), want, "{chosen:?}: every entry resolves the same");
         let page = h.first_page();
         let height = chosen.unwrap_or(2.5);
-        let labels = ecad_engine::wires::labels_on_page(&after, page);
+        let labels = ecad_engine::wires::draw::labels_on_page(&after, page);
         assert!(labels.iter().all(|l| (l.height - height).abs() < 1e-9), "{chosen:?}");
     }
 }
@@ -311,7 +311,7 @@ fn a_project_reads_the_same_whatever_company_files_the_machine_holds() {
         let mut h = reopen(&format!("{path}.ecad"), seed);
         let doc = h.doc();
         let page = h.first_page();
-        let heights: Vec<f64> = ecad_engine::wires::labels_on_page(&doc, page).iter().map(|l| l.height).collect();
+        let heights: Vec<f64> = ecad_engine::wires::draw::labels_on_page(&doc, page).iter().map(|l| l.height).collect();
         reads.push((resolved_all(&doc), heights));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -351,7 +351,7 @@ fn every_built_in_lives_in_exactly_one_place() {
 /// Rows per sheet are computed from the row and header heights: 44 on A3, as before.
 #[test]
 fn rows_per_sheet_are_computed_and_unchanged() {
-    use ecad_engine::generated::{header_mm, row_mm, rows_per_sheet};
+    use {ecad_electrical::pages::generated::header_mm, ecad_electrical::pages::generated::row_mm, ecad_electrical::pages::generated::rows_per_sheet};
     assert_eq!((row_mm(), header_mm(), rows_per_sheet()), (5.0, 7.0, 44));
 }
 
@@ -421,10 +421,10 @@ fn contact_cross_references_follow_the_reference_style() {
     h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k1})).unwrap();
     let heights = |h: &mut H| -> Vec<f64> {
         let doc = h.doc();
-        ecad_engine::xref::parts_on_page(&doc, p2)
+        ecad_engine::references::draw::devices::parts_on_page(&doc, p2)
             .into_iter()
             .filter_map(|p| match p.shape {
-                ecad_engine::xref::Shape::Text { kind: ecad_engine::text_style::TextKind::Reference, height, .. } => Some(height),
+                ecad_electrical::references::devices::Shape::Text { kind: ecad_electrical::styles::text_style::TextKind::Reference, height, .. } => Some(height),
                 _ => None,
             })
             .collect()

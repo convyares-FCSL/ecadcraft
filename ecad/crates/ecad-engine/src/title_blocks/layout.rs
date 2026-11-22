@@ -20,7 +20,7 @@ use ecad_electrical::pages::frames::FrameInput;
 pub const RED_ACI: u8 = 1;
 /// How far a zone tick reaches into the margin, mm.
 pub const TICK_MM: f64 = 3.0;
-pub use crate::title_block::INSET_MM;
+pub use ecad_electrical::title_blocks::INSET_MM;
 /// Gap under a caption before the value area, mm.
 pub const CAPTION_GAP_MM: f64 = 1.5;
 /// The most of a revision row its text may fill: a fit bound (it keeps a large `TitleValue` style
@@ -202,7 +202,7 @@ pub fn block(pen: &mut Pen, input: &FrameInput, layout: &TitleBlockLayout, origi
                     pen.text(at(r.x + INSET_MM, r.top() - INSET_MM), input.text.caption, l, tl, Some(LABEL_ACI), Some(r.w - 2.0 * INSET_MM));
                     top_gap = input.text.caption.mm + CAPTION_GAP_MM;
                 }
-                let v = crate::title_block::bind::shown(crate::title_block::bind::value(input, bind), if_empty);
+                let v = ecad_electrical::title_blocks::bind::shown(ecad_electrical::title_blocks::bind::value(input, bind), if_empty);
                 if value_text(pen, input, *r, origin, &v, look, top_gap) {
                     drawn.cut.push(i);
                 }

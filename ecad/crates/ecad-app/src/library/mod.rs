@@ -214,7 +214,7 @@ impl App {
                     })
                     .collect();
                 let graphics = prims.iter().map(|g| ecad_electrical::symbols::commands::shifted(g, o)).collect();
-                let tag = ecad_engine::devices::tag_words(doc, c);
+                let tag = ecad_electrical::devices::tag_words(doc, c);
                 Some((graphics, points, tag, [o.x, o.y]))
             })?;
             let (graphics, points, tag, at) = found.ok_or("That device has no drawing to make a symbol of.")?;
@@ -253,7 +253,7 @@ impl App {
                     None => return Err("The selection holds an object this page does not know.".into()),
                 }
             }
-            Ok((prims, ecad_engine::references::page_number(doc, page)))
+            Ok((prims, ecad_electrical::references::cables::page_number(doc, page)))
         })??;
         let (prims, number) = found;
         if prims.is_empty() {

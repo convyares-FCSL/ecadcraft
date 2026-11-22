@@ -100,10 +100,10 @@ fn a_tee_draws_a_dot_that_follows_its_line() {
     assert!(matches!(h.doc().routes[&tee].ends[1], RouteEnd::On { route, .. } if route == main), "a T");
 
     let d = dots(&mut h, page);
-    assert_eq!(d.len(), ecad_engine::wires::TEE_DOT_RADII.len(), "one dot of rings: {d:?}");
+    assert_eq!(d.len(), ecad_electrical::wires::TEE_DOT_RADII.len(), "one dot of rings: {d:?}");
     assert!(d.iter().all(|(_, m, at, _, _)| *m == Some(Mapped::Tee(tee)) && at.near(mid, 1e-6)), "{d:?}");
     let radii: Vec<f64> = d.iter().map(|x| x.3).collect();
-    assert!(ecad_engine::wires::TEE_DOT_RADII.iter().all(|r| radii.iter().any(|x| (x - r).abs() < 1e-9)), "{radii:?}");
+    assert!(ecad_electrical::wires::TEE_DOT_RADII.iter().all(|r| radii.iter().any(|x| (x - r).abs() < 1e-9)), "{radii:?}");
     // On the T line's own layer, which plots: the dot prints with the drawing.
     let line = h.line_handle(page, tee);
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
@@ -149,7 +149,7 @@ fn a_tee_end_is_joined_not_open() {
         let mut params = extra;
         params["handles"] = json!([dot.hex()]);
         let e = h.run(cmd, params).unwrap_err();
-        assert_eq!(e, ecad_engine::wires::TEE_DERIVED, "{cmd}");
+        assert_eq!(e, ecad_electrical::wires::TEE_DERIVED, "{cmd}");
     }
     assert_eq!(dots(&mut h, page).len(), 3, "nothing changed");
 }
@@ -191,5 +191,5 @@ fn a_tee_dot_shows_in_the_raster_and_the_print() {
     assert!(h.doc().routes[&tee].ends[1].route().is_some(), "a T");
     let after = ink_beside_the_tee(&mut h, page);
     assert!(after > before + 5, "the dot is drawn: {before} inked pixels before, {after} after");
-    assert_eq!(circles(&mut h), printed + ecad_engine::wires::TEE_DOT_RADII.len(), "the dot prints");
+    assert_eq!(circles(&mut h), printed + ecad_electrical::wires::TEE_DOT_RADII.len(), "the dot prints");
 }

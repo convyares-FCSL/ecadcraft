@@ -123,8 +123,7 @@ fn hostile_stored_places_draw_the_automatic_place() {
             object: ecad_model::ObjectRef::Device(c),
             key: key.clone(),
             before: h.doc().devices[&c].properties.get(&key).cloned(),
-            after: Some(bad.to_string()),
-        };
+            after: Some(bad.to_string())};
         h.project.apply_ops(&mut h.s, "hostile", vec![op]).unwrap();
         let row = tag_row(&mut h, page, r);
         assert_eq!((row["moved"].as_bool(), &row["at"]), (Some(false), &auto["at"]), "{bad:.20}");
@@ -145,19 +144,17 @@ fn a_tag_stays_upright_when_its_symbol_rotates() {
         let hd = h.handle_of(page, item);
         let origin = match &h.doc().items[&item].kind {
             ecad_model::ItemKind::Symbol(s) => s.placement.origin,
-            _ => unreachable!(),
-        };
+            _ => unreachable!()};
         h.run("rotate", json!({"handles": [hd.hex()], "base": [origin.x, origin.y], "angle": 90})).unwrap();
     }
     let tags: Vec<(String, f64)> = h
         .pv(|p, pg| pg.entities_of(p, page))
         .iter()
         .filter_map(|e| match &e.kind {
-            cadcraft_engine::doc::EntityKind::Text(t) if e.common.layer == ecad_engine::devices::TAG_LAYER && t.value.starts_with('-') => {
+            cadcraft_engine::doc::EntityKind::Text(t) if e.common.layer == ecad_electrical::devices::TAG_LAYER && t.value.starts_with('-') => {
                 Some((t.value.clone(), t.rotation))
             }
-            _ => None,
-        })
+            _ => None})
         .collect();
     assert_eq!(tags.len(), 2, "{tags:?}");
     assert!(tags.iter().all(|(_, rot)| *rot == 0.0), "upright: {tags:?}");
@@ -195,18 +192,18 @@ fn a_moved_tag_survives_save_and_reopen() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The entry point for other lanes: `text_style::apply` gives an entity its kind's height, style
+/// The entry point for other lanes: `ecad_engine::styles::draw::apply` gives an entity its kind's height, style
 /// name (with a kind's own font) and, for bold in the stroke font, the bold lineweight.
 #[test]
 fn apply_styles_an_entity_like_the_page_does() {
     use cadcraft_engine::doc::{Entity, EntityKind, HAlign, Handle, Lineweight, VAlign};
-    use ecad_engine::text_style::{self, TextKind};
+    use {ecad_electrical::styles::text_style::TextKind};
     let mut doc = ecad_model::Document::default();
-    let mut e: Entity = ecad_engine::devices::text_entity_with("X", Pt::new(0.0, 0.0), 9.0, HAlign::Left, VAlign::Top, Handle(1), "0");
-    text_style::apply(&doc, &mut e, TextKind::Tag);
+    let mut e: Entity = ecad_engine::devices::draw::text_entity_with("X", Pt::new(0.0, 0.0), 9.0, HAlign::Left, VAlign::Top, Handle(1), "0");
+    ecad_engine::styles::draw::apply(&doc, &mut e, TextKind::Tag);
     let EntityKind::Text(t) = &e.kind else { unreachable!() };
     assert_eq!((t.height, t.style.as_str()), (2.5, "ECAD-BOLD"));
-    let stroke = text_style::Fonts::resolve(&doc).bold_lineweight;
+    let stroke = ecad_engine::styles::draw::Fonts::resolve(&doc).bold_lineweight;
     assert_eq!(e.common.lineweight, stroke.map_or(Lineweight::ByLayer, Lineweight::Mm100));
     // Brief 050a: a kind's own font is its text style's `font`.
     let rec = ecad_model::StyleRecord::new(
@@ -217,11 +214,11 @@ fn apply_styles_an_entity_like_the_page_does() {
         }),
     );
     doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(ecad_model::StyleRef::Builtin("grid".into()), rec);
-    text_style::apply(&doc, &mut e, TextKind::Grid);
+    ecad_engine::styles::draw::apply(&doc, &mut e, TextKind::Grid);
     let EntityKind::Text(t) = &e.kind else { unreachable!() };
     assert_eq!((t.height, t.style.as_str()), (3.0, "ECAD-GRID"));
     // text_width measures one kind, the same as from a held Look.
-    let look = text_style::Look::new(&doc);
-    let w = text_style::width_in(look.fonts_for(TextKind::Grid), look.style(TextKind::Grid), "ABC");
-    assert_eq!(text_style::text_width(&doc, TextKind::Grid, "ABC"), w);
+    let look = ecad_engine::styles::draw::Look::new(&doc);
+    let w = ecad_engine::styles::draw::width_in(look.fonts_for(TextKind::Grid), look.style(TextKind::Grid), "ABC");
+    assert_eq!(ecad_engine::styles::draw::text_width(&doc, TextKind::Grid, "ABC"), w);
 }

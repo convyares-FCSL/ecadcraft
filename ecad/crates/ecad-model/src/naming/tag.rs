@@ -387,7 +387,7 @@ pub fn normalise(text: &str, style: impl Into<Style>) -> Result<String, crate::P
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn same_tag_table() {

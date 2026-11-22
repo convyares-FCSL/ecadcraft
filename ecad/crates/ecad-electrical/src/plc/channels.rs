@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     ChannelRole, DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, PointKey, Pt, Representation,
-    RepresentationId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId,
+    RepresentationId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointId,
 };
 
 use crate::plc::card_type_of;
@@ -240,7 +240,7 @@ pub fn plan_cell(
         let t: ConnectionPointId = ids.fresh();
         ops.push(Op::AddConnectionPoint {
             id: t,
-            terminal: Terminal {
+            terminal: ConnectionPoint {
                 owner: card.into(),
                 label: Some(pin.clone()),
                 key: Some(key(j.index, *role).ok_or(CmdError::refused("That channel has no such point."))?),
@@ -582,7 +582,7 @@ fn wire_words(doc: &Document, c: ecad_model::CorePosition) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::plc::*;
+    use super::*;
 
     #[test]
     fn keys_parse_only_their_own_form() {

@@ -118,7 +118,7 @@ fn network_addresses_read_strictly() {
 /// the last good transaction). Nothing reads a channel out of its text.
 #[test]
 fn an_old_channel_key_on_a_module_is_a_read_error() {
-    use ecad_model::{Author, Device, Ledger, Op, Terminal, ConnectionPointId, Transaction, TxKind};
+    use ecad_model::{Author, Device, Ledger, Op, ConnectionPoint, ConnectionPointId, Transaction, TxKind};
     let mut l = Ledger::new(0x0007_2cf2);
     let c: DeviceId = DeviceId::from(0x072c_0001u128);
     let good: ConnectionPointId = ConnectionPointId::from(0x072c_0002u128);
@@ -126,7 +126,7 @@ fn an_old_channel_key_on_a_module_is_a_read_error() {
         device_type: DeviceType::PlcModule(PlcModule::new(ModuleFunction::DigitalIn(ChannelGroup::new(Signal::Dc24v, 16)))),
         ..Device::default()
     };
-    let point = |k: &str| Terminal { owner: c.into(), label: Some("1".into()), key: Some(k.parse().unwrap()), accepts: Default::default() };
+    let point = |k: &str| ConnectionPoint { owner: c.into(), label: Some("1".into()), key: Some(k.parse().unwrap()), accepts: Default::default() };
     l.commit(Author::User, "card", vec![Op::CreateDevice { id: c, device: module }, Op::AddConnectionPoint { id: good, terminal: point(".0.in") }]).unwrap();
     for old in ["I1.3", "Q0.0", "L+"] {
         let t: ConnectionPointId = ConnectionPointId::from(0x072c_0100u128);

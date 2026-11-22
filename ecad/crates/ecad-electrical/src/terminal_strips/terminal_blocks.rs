@@ -938,7 +938,7 @@ pub fn position_label(doc: &Document, t: ConnectionPointId) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn starters_and_codes() {

@@ -3,7 +3,7 @@
 
 use crate::common::{H, id};
 
-use ecad_engine::checks::{self, Kind};
+use {ecad_electrical::checks::Kind};
 use ecad_electrical::locations::designations::{self, Aspect};
 use ecad_engine::{devices, locations};
 use ecad_model::{DeviceId, Document, PageId};
@@ -55,7 +55,7 @@ fn a_box_never_changes_a_stored_location() {
     assert_ne!(stored, "+CP1");
     assert_eq!(designations::code_of(&d, Aspect::Location, &stored).as_deref(), Some("+CP1"));
     // Neither the coil's page (no location) nor the box (+FIELD) is +CP1: Checks says so.
-    let rows = checks::all(&d, 1e-6);
+    let rows = ecad_engine::checks::all(&d, 1e-6);
     assert!(rows.iter().any(|r| r.kind == Kind::LocationUnused && r.which.contains("-K01 is +CP1")), "{rows:?}");
 }
 
@@ -211,7 +211,7 @@ fn missing_and_duplicate_entries_are_listed() {
     d.rebuild_index();
     assert_eq!(code(&d, k), None, "a v0.2.0 code shows ?");
     assert!(locations::resolve(&d, k).missing());
-    let rows = checks::all(&d, 1e-6);
+    let rows = ecad_engine::checks::all(&d, 1e-6);
     assert!(rows.iter().any(|r| r.kind == Kind::DesignationMissing && r.which == "-K01's location is no longer in the list"), "{rows:?}");
     assert!(rows.iter().any(|r| r.kind == Kind::DesignationDuplicate && r.which == "Two functions are called =F1"), "{rows:?}");
 }
@@ -228,7 +228,7 @@ fn two_heads_are_listed() {
         r.subject = ecad_model::Subject::Device(k);
     }
     d.rebuild_index();
-    let rows = checks::all(&d, 1e-6);
+    let rows = ecad_engine::checks::all(&d, 1e-6);
     let two: Vec<_> = rows.iter().filter(|r| r.kind == Kind::TwoHeads).collect();
     assert_eq!(two.len(), 1, "{rows:?}");
     assert!(two[0].which.starts_with("-K01 has two coils ("), "{}", two[0].which);

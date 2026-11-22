@@ -2,7 +2,7 @@
 //! texts) and Box (every item), folding; with nothing selected, the block itself with Save,
 //! Discard, Duplicate for… and Delete….
 
-use ecad_engine::title_block::bind;
+use ecad_electrical::title_blocks::bind;
 use ecad_model::objects::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, LineWeight, Newest, SIZES, TextDraw};
 use ecad_widgets::tokens::space;
 use eframe::egui::{self, Color32, RichText};

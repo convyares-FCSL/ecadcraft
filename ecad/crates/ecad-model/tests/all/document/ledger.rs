@@ -2,7 +2,7 @@
 
 use ecad_model::{
     Author, Color, Core, Device, Document, IdAllocator, Item, ItemKind, Layer, Ledger, ModelError, Op, Page, PageId, Primitive, Pt, Representation,
-    Style, Subject, Terminal, TxKind, Wire,
+    Style, Subject, ConnectionPoint, TxKind, Wire,
 };
 
 struct Fixture {
@@ -48,8 +48,8 @@ fn every_op_inverts_to_the_previous_state() {
     let ops = vec![
         Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 0.0)) },
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddConnectionPoint { id: term, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
-        Op::AddConnectionPoint { id: term2, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: term, terminal: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint { id: term2, terminal: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::LinkRepresentation {
             id: rep,
             rep: Representation {
@@ -138,7 +138,7 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
     let (term, term2) = (f.ids.fresh(), f.ids.fresh());
     let cond = f.ids.fresh();
     let cable = f.ids.fresh();
-    let t = Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() };
+    let t = ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() };
     let wire = Wire::new(f.ids.fresh(), f.ids.fresh(), term, term2);
     let with_member = ecad_model::Cable { cores: vec![Core::on_wire(cond, None)], ..Default::default() };
     f.ledger

@@ -4,7 +4,7 @@
 use cadcraft_engine::doc::Handle;
 use ecad_model::{PageId, Pt, RepresentationId};
 
-use crate::device_list::kept;
+use ecad_electrical::devices::device_list::kept;
 use crate::project::Project;
 
 /// For a "go to" from the list: representation `rep`'s page, a point to centre on, and its drawn
@@ -17,7 +17,7 @@ pub fn symbol_target(p: &Project, rep: RepresentationId) -> Option<(PageId, Opti
         handles.extend(r.items.iter().filter_map(|i| view.map.item(*i)));
         handles.extend(r.connection_points.keys().filter_map(|t| view.map.marker(rep, *t)));
     }
-    Some((r.page, crate::device_list::position(doc, r), handles))
+    Some((r.page, ecad_electrical::devices::device_list::position(doc, r), handles))
 }
 
 /// The Devices tab's list kept up to date from a project ([`kept::DeviceList`]): built whole once
@@ -42,7 +42,7 @@ impl std::ops::DerefMut for DeviceList {
 
 impl DeviceList {
     /// Bring the list up to date with `p` (the project numbered `serial` by the caller). Returns
-    /// whether it changed. Filtering is the caller's ([`crate::device_list::matches`]): it never
+    /// whether it changed. Filtering is the caller's ([`ecad_electrical::devices::device_list::matches`]): it never
     /// rebuilds the list.
     pub fn sync(&mut self, serial: u64, p: &Project) -> bool {
         self.0.sync_with(serial, p.change_count(), p.ledger.document(), |n| p.device_changes_since(n))

@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 use ecad_model::{
     DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, PageId, Placement, Pt, Representation,
-    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId, WireId,
+    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointId, WireId,
 };
 
 use crate::connectors::{Land, plan_land, plan_land_ends, strip_connection_point_at};
@@ -58,7 +58,7 @@ fn terminal_symbol(
     let key = PointKey::Def(if first { "1".to_string() } else { label.to_string() });
     ops.push(Op::AddConnectionPoint {
         id: t,
-        terminal: Terminal { owner: strip.into(), label: Some(label.to_string()), key: Some(key), accepts: Default::default() },
+        terminal: ConnectionPoint { owner: strip.into(), label: Some(label.to_string()), key: Some(key), accepts: Default::default() },
     });
     let placement = Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
@@ -226,7 +226,7 @@ pub fn level_symbol(
         let t: ConnectionPointId = ids.fresh();
         ops.push(Op::AddConnectionPoint {
             id: t,
-            terminal: Terminal { owner: strip.into(), label: Some(position.to_string()), key: Some(td.key.clone()), accepts: td.accepts },
+            terminal: ConnectionPoint { owner: strip.into(), label: Some(position.to_string()), key: Some(td.key.clone()), accepts: td.accepts },
         });
         cps.insert(t, td.at);
         out.push((td.key.clone(), t, td.at));

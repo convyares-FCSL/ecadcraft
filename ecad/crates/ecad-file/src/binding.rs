@@ -104,7 +104,7 @@ pub struct Opened {
     /// A lock file left by a session that ended without releasing it, reclaimed: its record.
     pub reclaimed_lock: Option<String>,
     /// The tag high-water mark at the snapshot the ledger starts from (brief 021).
-    pub tag_high: ecad_model::tag::HighWater,
+    pub tag_high: ecad_model::naming::tag::HighWater,
 }
 
 /// The file a project is bound to, holding its writer lock while bound.
@@ -276,7 +276,7 @@ impl Binding {
 
     /// Make the opened project read-only for the unknown words found on open
     /// ([`crate::disk::DiskProject::refuse_unknown_words`]).
-    pub fn refuse_unknown_words(&mut self, words: Vec<ecad_model::strict::UnknownWord>) {
+    pub fn refuse_unknown_words(&mut self, words: Vec<ecad_model::document::strict::UnknownWord>) {
         if let Some(d) = self.disk.as_mut() {
             d.refuse_unknown_words(words);
         }

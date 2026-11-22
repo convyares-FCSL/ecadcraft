@@ -1,9 +1,9 @@
 //! Brief 024 acceptance (design 024 §13): device locations and location boxes, the location
 //! prefix, the reports, generated pages and Print Book. Driven through the commands' JSON forms.
 
-use ecad_engine::checks::{Fix, Kind};
-use ecad_engine::locations::{self, Source};
-use ecad_engine::outputs::{Group, kept::ReportModels};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
+use {ecad_electrical::locations::Source};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use ecad_model::{DeviceId, Document, PageId, WireId};
 use serde_json::{Value, json};
 
@@ -15,7 +15,7 @@ fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> DeviceId {
 }
 
 fn loc(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
-    let l = locations::resolve(doc, c);
+    let l = ecad_electrical::locations::resolve(doc, c);
     (l.value, l.source.word())
 }
 
@@ -23,7 +23,7 @@ fn loc(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
 /// project, or none.
 fn ctx(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
     let r = ecad_electrical::symbols::reps::goto(doc, c, None).unwrap();
-    let l = locations::rep_context(doc, &doc.representations[&r], &mut locations::BoxCache::default());
+    let l = ecad_electrical::locations::rep_context(doc, &doc.representations[&r], &mut ecad_electrical::locations::BoxCache::default());
     (l.value, l.source.word())
 }
 
@@ -35,7 +35,7 @@ fn s(v: &str) -> Option<String> {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part));
@@ -113,7 +113,7 @@ fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
     assert_eq!(loc(&doc, x), (s("+JB1"), "device"));
     assert_eq!(ctx(&doc, m), (s("+JB1"), "box"));
     let rm = ecad_electrical::symbols::reps::goto(&doc, m, None).unwrap();
-    let l = locations::rep_context(&doc, &doc.representations[&rm], &mut locations::BoxCache::default());
+    let l = ecad_electrical::locations::rep_context(&doc, &doc.representations[&rm], &mut ecad_electrical::locations::BoxCache::default());
     assert_eq!(l.source, Source::Box { aid: boxc, page });
     assert!(l.shown(&doc).contains("from box on 1"), "{}", l.shown(&doc));
     same_as_built(&mut h);
@@ -201,10 +201,10 @@ fn a_contact_away_from_its_coil_shows_the_location_prefix() {
     h.run("place", json!({"symbol": "no", "at": [100, 100], "device": k.hex()})).unwrap();
     let doc = h.doc();
     assert_eq!(loc(&doc, k), (s("+CP1"), "device"), "the stored value, wherever its symbols are");
-    let tag = ecad_engine::devices::tag_of(&doc, k).unwrap().to_string();
-    let texts2: Vec<String> = ecad_engine::devices::texts_on_page(&doc, p2).into_iter().map(|t| t.value).collect();
+    let tag = ecad_electrical::devices::tag_of(&doc, k).unwrap().to_string();
+    let texts2: Vec<String> = ecad_engine::devices::draw::texts_on_page(&doc, p2).into_iter().map(|t| t.value).collect();
     assert!(texts2.contains(&format!("+CP1{tag}")), "{texts2:?}");
-    let texts1: Vec<String> = ecad_engine::devices::texts_on_page(&doc, p1).into_iter().map(|t| t.value).collect();
+    let texts1: Vec<String> = ecad_engine::devices::draw::texts_on_page(&doc, p1).into_iter().map(|t| t.value).collect();
     assert!(texts1.contains(&tag), "{texts1:?}");
     assert!(ecad_engine::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::LocationUnused));
 }
@@ -237,7 +237,7 @@ fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
     assert!(rows.iter().all(|r| r["location"] == "+CP1"), "{bom}");
     assert!(bom["flagged"].as_u64().unwrap() >= 2, "X2 has no maker or part number: {bom}");
     let doc = h.doc();
-    let (ta, tb) = (ecad_engine::devices::tag_of(&doc, a).unwrap().to_string(), ecad_engine::devices::tag_of(&doc, b).unwrap().to_string());
+    let (ta, tb) = (ecad_electrical::devices::tag_of(&doc, a).unwrap().to_string(), ecad_electrical::devices::tag_of(&doc, b).unwrap().to_string());
     let flagged_row = rows.iter().find(|r| r["tags"] == tb.as_str()).unwrap();
     assert!(flagged_row["flags"].as_array().unwrap().contains(&json!("maker")));
     let wires = h.run("wirelist", json!({})).unwrap();
@@ -309,14 +309,13 @@ fn generated_pages_follow_the_project_and_print() {
     let hexes: Vec<String> = coils.iter().map(|c| c.hex()).collect();
     h.run("setlocation", json!({"devices": hexes, "value": "+CP1"})).unwrap();
     let doc = h.doc();
-    assert_eq!(ecad_engine::generated::sheets_of(&doc, bom_page, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics))), 2);
-    let parts = ecad_engine::generated::parts_of(&doc, bom_page, ecad_engine::project::engine_views().report_models(&doc).as_ref());
+    assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, bom_page, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics))), 2);
+    let parts = ecad_engine::pages::generated::parts_of(&doc, bom_page, ecad_engine::project::engine_views().report_models(&doc).as_ref());
     let texts: Vec<String> = parts
         .iter()
         .filter_map(|p| match &p.kind {
             cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None,
-        })
+            _ => None})
         .collect();
     assert!(texts.iter().any(|t| t == "BOM by location (2/2)"), "{texts:?}");
     assert!(texts.iter().any(|t| t == "+CP1 (continued)"), "{texts:?}");
@@ -346,12 +345,11 @@ fn cover_contents_and_revision_list_show_the_project() {
     let doc = h.doc();
     let outputs = ecad_engine::project::engine_views().report_models(&doc);
     let text = |p: PageId| -> Vec<String> {
-        ecad_engine::generated::parts_of(&doc, p, outputs.as_ref())
+        ecad_engine::pages::generated::parts_of(&doc, p, outputs.as_ref())
             .into_iter()
             .filter_map(|p| match p.kind {
                 cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
-                _ => None,
-            })
+                _ => None})
             .collect()
     };
     let c = text(cover);

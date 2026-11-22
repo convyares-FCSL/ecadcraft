@@ -132,7 +132,7 @@ fn commit<P: Generic>(
             tag_high: &mut proj.tag_high,
             designation_uses: &mut proj.designation_uses,
             derived: &mut proj.derived,
-            metrics: &crate::text_style::EngineMetrics,
+            metrics: &crate::styles::draw::EngineMetrics,
             read,
             state,
         };

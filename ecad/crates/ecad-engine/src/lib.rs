@@ -68,80 +68,6 @@ pub mod wires;
 
 // The electrical rules live in `ecad-electrical` (design 065 §5 step 6). Each module stays reachable under
 // its old name; a module with an engine half in `draw` is a facade over both halves.
-/// `ecad_electrical::checks` and its engine half, [`draw::checks`].
-pub mod checks {
-    pub use crate::checks::{all, all_with, handles_of};
-    pub use ecad_electrical::checks::*;
-}
-/// `ecad_electrical::continuations` and its engine half, [`draw::continuations`].
-pub mod continuations {
-    pub use crate::continuations::draw::*;
-    pub use ecad_electrical::continuations::*;
-}
-/// `ecad_electrical::devices::device_list` and its engine half, [`draw::device_list`].
-pub mod device_list {
-    pub use crate::reports::device_list::{DeviceList, symbol_target};
-    pub use ecad_electrical::devices::device_list::*;
-}
-/// `ecad_electrical::devices` and its engine half, [`draw::devices`].
-pub mod devices {
-    pub use crate::devices::draw::*;
-    pub use ecad_electrical::devices::*;
-}
-/// `ecad_electrical::pages::front` and its engine half, [`draw::front`].
-pub mod front {
-    pub use crate::pages::front::cover;
-    pub use ecad_electrical::pages::front::*;
-}
-/// `ecad_electrical::pages::generated` and its engine half, [`draw::generated`].
-pub mod generated {
-    pub use crate::pages::generated::{Draw, input_of, missing_mark, page_parts, parts_of, parts_of_pending};
-    pub use ecad_electrical::pages::generated::*;
-}
-/// `ecad_electrical::locations` and its engine half, [`draw::locations`].
-pub mod locations {
-    pub use crate::locations::draw::*;
-    pub use ecad_electrical::locations::*;
-}
-/// `ecad_electrical::reports`.
-pub mod outputs {
-    pub use ecad_electrical::reports::*;
-}
-/// `ecad_electrical::plc` and its engine half, [`draw::plc`].
-pub mod plc {
-    pub use crate::plc::draw::Plc;
-    pub use ecad_electrical::plc::*;
-    /// `ecad_electrical::plc::draw` and its engine half, [`crate::plc::draw::card`].
-    pub mod look {
-        pub use crate::plc::draw::card::parts_on_page;
-        pub use ecad_electrical::plc::draw::*;
-    }
-}
-/// `ecad_electrical::references::cables::cables` and its engine half, [`draw::references`].
-pub mod references {
-    pub use crate::references::draw::cables::reference_at;
-    pub use ecad_electrical::references::cables::cables::*;
-}
-/// `ecad_electrical::styles::text_style` and its engine half, [`draw::text_style`].
-pub mod text_style {
-    pub use crate::styles::draw::*;
-    pub use ecad_electrical::styles::text_style::*;
-}
-/// `ecad_electrical::title_blocks` and its engine half, [`draw::title_block`].
-pub mod title_block {
-    pub use crate::title_blocks::{dxf, layout};
-    pub use ecad_electrical::title_blocks::*;
-}
-/// `ecad_electrical::wires` and its engine half, [`draw::wires`].
-pub mod wires {
-    pub use crate::wires::draw::*;
-    pub use ecad_electrical::wires::*;
-}
-/// `ecad_electrical::references::cables::devices` and its engine half, [`draw::xref`].
-pub mod xref {
-    pub use crate::references::draw::devices::*;
-    pub use ecad_electrical::references::cables::devices::*;
-}
 
 // The commands' paths before step 11 of lane 067, used outside the crate.
 
@@ -161,8 +87,8 @@ pub const UPSTREAM_COMMIT: &str = "227e3c385b20129cf525775e3d9cbe78b722b3bb";
 /// list is first used. Returns `false` if it was too late or already done.
 pub fn install() -> bool {
     // Brief 040: the sheet font for every page drawn or printed, in the window or headless.
-    draw::register_sheet_font();
-    cadcraft_engine::cmd::set_extension_commands(cmd::specs)
+    styles::draw::register_sheet_font();
+    cadcraft_engine::cmd::set_extension_commands(commands::specs)
 }
 
 /// Fault injection for the experiment (`Faults::panic_in_commit`): a deliberate panic inside an

@@ -2,8 +2,8 @@
 //! cores, the terminal plan and cable schedule, the BOM per terminal type, the Checks rows, and
 //! the update maps. Driven through the commands' JSON forms on fixture T.
 
-use ecad_engine::checks::{Fix, Kind};
-use ecad_engine::outputs::{Group, kept::ReportModels};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use ecad_electrical::terminal_strips::Strips;
 use ecad_model::{Author, CableId, DeviceId, Op, PageId, RouteEnd, RouteId, ConnectionPointId, WireId};
 use serde_json::{Value, json};
@@ -62,7 +62,7 @@ fn fixture(seed: u64) -> T {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
     assert_eq!(kept.cable_table(), built.cable_table());
@@ -144,7 +144,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     // The cable's members are the field halves (§3.1).
     for (i, x) in v["terminals"].as_array().unwrap().iter().enumerate() {
         // `new` is the route from the terminal on (design 072 §4.3); the wire it carries.
-        let new = ecad_engine::wires::wire_of_route(&doc, id(x, "new"));
+        let new = ecad_electrical::wires::wire_of_route(&doc, id(x, "new"));
         assert!(new.is_some() && doc.cables[&t.cable].cores.iter().any(|m| m.wire() == new), "member {i}");
     }
     same_as_built(&mut t.h);
@@ -348,15 +348,15 @@ fn terminal_plan_and_cable_schedule_pages() {
     let p = t.h.run("newpage", json!({"generated": "terminals", "strip": x1.hex()})).unwrap();
     let plan_page: PageId = id(&p, "page");
     let doc = t.h.doc();
-    assert_eq!(ecad_engine::generated::kind_of(&doc, plan_page), Some(ecad_model::GenKind::Terminals));
-    assert_eq!(ecad_engine::generated::strip_of(&doc, plan_page), Some(x1));
-    let o = ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
-    assert_eq!(ecad_engine::generated::sheets_of(&doc, plan_page, Some(&o)), 1);
-    let parts = ecad_engine::generated::parts_of(&doc, plan_page, Some(&o));
+    assert_eq!(ecad_electrical::pages::generated::kind_of(&doc, plan_page), Some(ecad_model::GenKind::Terminals));
+    assert_eq!(ecad_electrical::pages::generated::strip_of(&doc, plan_page), Some(x1));
+    let o = ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
+    assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, plan_page, Some(&o)), 1);
+    let parts = ecad_engine::pages::generated::parts_of(&doc, plan_page, Some(&o));
     assert!(parts.len() > 20, "the plan draws its table");
     let c = t.h.run("newpage", json!({"generated": "cables"})).unwrap();
     let cables_page: PageId = id(&c, "page");
-    assert_eq!(ecad_engine::generated::sheets_of(&t.h.doc(), cables_page, Some(&o)), 1);
+    assert_eq!(ecad_electrical::pages::generated::sheets_of(&t.h.doc(), cables_page, Some(&o)), 1);
     let e = t.h.run("newpage", json!({"generated": "cables", "strip": x1.hex()})).unwrap_err();
     assert!(e.contains("terminal plan page"), "{e}");
     // Nothing is drawn on it.
@@ -428,7 +428,7 @@ fn relabelling_wired_terminals_by_remove_and_add_needs_no_new_op() {
     let d = t.h.doc();
     assert_eq!(d.terminals[&t3].label.as_deref(), Some("9"));
     assert_eq!(d.ends_at(t3), doc.ends_at(t3));
-    let built = Strips::build(&d, &ReportModels::build_with(&d, &ecad_engine::text_style::EngineMetrics), &ecad_engine::outputs::PageCx::of(&d));
+    let built = Strips::build(&d, &ReportModels::build_with(&d, &ecad_engine::styles::draw::EngineMetrics), &ecad_electrical::reports::PageCx::of(&d));
     assert!(built.get(id(&v, "strip")).is_some());
 }
 
@@ -558,9 +558,9 @@ fn generated_page_counts_need_no_walk_on_an_unrelated_edit() {
         assert_eq!(t.h.p(|p| p.frame_builds), builds, "no frame rebuilt");
     }
     let (kept, doc) = t.h.cfg(|p| (p.outputs().clone(), p.ledger.document().clone()));
-    let built = ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+    let built = ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
     for page in [plan_page, cables_page] {
-        let s = |o: &ReportModels| ecad_engine::generated::sheets_of(&doc, page, Some(o));
+        let s = |o: &ReportModels| ecad_electrical::pages::generated::sheets_of(&doc, page, Some(o));
         assert_eq!(s(&kept), s(&built));
     }
     assert_eq!(kept.generated_pages(), built.generated_pages());

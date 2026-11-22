@@ -4,15 +4,15 @@
 use ecad_model::{Document, ItemId, PageId, Pt, RepresentationId, Subject};
 
 use crate::styles::draw::DrawApply as _;
-use crate::locations::{LAYER, LINETYPE, boxes_on};
+use {ecad_electrical::locations::LAYER, ecad_electrical::locations::LINETYPE, ecad_electrical::locations::boxes_on};
 
 /// A box label as an entity on [`LAYER`], top-left aligned, in the location label style of `look`
 /// (design 031 §3.2).
-pub fn label_entity(look: &crate::text_style::Look, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle) -> cadcraft_engine::doc::Entity {
-    use crate::text_style::TextKind;
+pub fn label_entity(look: &crate::styles::draw::Look, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle) -> cadcraft_engine::doc::Entity {
+    use ecad_electrical::styles::text_style::TextKind;
     use cadcraft_engine::doc::{HAlign, VAlign};
     let h = look.style(TextKind::LocationLabel).height;
-    let mut e = crate::devices::text_entity_with(value, at, h, HAlign::Left, VAlign::Top, handle, LAYER);
+    let mut e = crate::devices::draw::text_entity_with(value, at, h, HAlign::Left, VAlign::Top, handle, LAYER);
     look.apply(&mut e, TextKind::LocationLabel);
     e
 }
@@ -20,23 +20,22 @@ pub fn label_entity(look: &crate::text_style::Look, value: &str, at: Pt, handle:
 /// Brief 050a (design 050 §4.2): a box label in its box's label style when that is not the
 /// location text kind's own style: the style's height, weight and colour.
 pub fn styled_label_entity(
-    doc: &Document, look: &crate::text_style::Look, rep: RepresentationId, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
+    doc: &Document, look: &crate::styles::draw::Look, rep: RepresentationId, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
 ) -> cadcraft_engine::doc::Entity {
-    use crate::text_style::TextKind;
+    use ecad_electrical::styles::text_style::TextKind;
     let mut e = label_entity(look, value, at, handle);
     let Some(c) = doc.representations.get(&rep).and_then(|r| match r.subject {
         Subject::Aid(a) => Some(a),
-        _ => None,
-    }) else {
+        _ => None}) else {
         return e;
     };
     let label = ecad_electrical::styles::location::box_draw(doc, c).label_style;
-    if label == crate::text_style::style_of(doc, TextKind::LocationLabel, ecad_electrical::defaults::Scope::project()) {
+    if label == ecad_electrical::styles::text_style::style_of(doc, TextKind::LocationLabel, ecad_electrical::defaults::Scope::project()) {
         return e;
     }
     // Brief 066d: the label style as a whole (height, weight, font, colour), never a literal
     // style name; a font of its own is installed by the page (`install_family`).
-    let own = crate::text_style::own_style_of(doc, &label);
+    let own = ecad_electrical::styles::text_style::own_style_of(doc, &label);
     if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
         t.height = own.style.height;
     }
@@ -49,10 +48,9 @@ pub fn styled_label_entity(
 pub fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
     let c = doc.representations.get(&rep).and_then(|r| match r.subject {
         Subject::Aid(a) => Some(a),
-        _ => None,
-    })?;
+        _ => None})?;
     let label = ecad_electrical::styles::location::box_draw(doc, c).label_style;
-    crate::text_style::own_style_of(doc, &label).family
+    ecad_electrical::styles::text_style::own_style_of(doc, &label).family
 }
 
 /// Brief 050a (design 050 §4.2): draw the outlines of `page`'s boxes in their location style

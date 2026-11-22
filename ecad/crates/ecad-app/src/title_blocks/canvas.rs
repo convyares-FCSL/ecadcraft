@@ -3,7 +3,7 @@
 //!
 //! Coordinates: the block's own millimetres, from its bottom-left corner, y up ([`View`]).
 
-use ecad_engine::title_block::bind;
+use ecad_electrical::title_blocks::bind;
 use ecad_model::objects::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect as BRect, TextDraw, TitleBlockLayout};
 use ecad_model::{Primitive, Pt};
 use ecad_widgets::tokens::{space, ui_type};

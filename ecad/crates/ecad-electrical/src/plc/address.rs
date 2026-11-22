@@ -324,7 +324,7 @@ pub fn snapshot(doc: &Document, r: DeviceId) -> BTreeMap<DeviceId, Block> {
 
 #[cfg(test)]
 mod tests {
-    use crate::plc::*;
+    use super::*;
 
     #[test]
     fn formats_follow_design_045_table_5_2() {

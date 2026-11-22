@@ -7,9 +7,9 @@
 use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;
 use ecad_engine::Persistence;
-use ecad_engine::checks::Kind;
-use ecad_engine::outputs::kept::ReportModels;
-use ecad_engine::wires::{self, LABEL_LAYER};
+use ecad_electrical::checks::Kind;
+use ecad_electrical::reports::kept::ReportModels;
+use {ecad_electrical::wires::LABEL_LAYER};
 use ecad_model::{CableId, DeviceId, Document, Op, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
@@ -56,7 +56,7 @@ fn vertices(doc: &Document, r: RouteId) -> Vec<Pt> {
 
 /// The points of wire `c`'s line on `page`.
 fn wire_vertices(doc: &Document, c: WireId, page: PageId) -> Vec<Pt> {
-    wires::route_of_wire_on(doc, c, page).map(|r| vertices(doc, r)).unwrap_or_default()
+    ecad_electrical::wires::route_of_wire_on(doc, c, page).map(|r| vertices(doc, r)).unwrap_or_default()
 }
 
 fn same_pts(got: &[Pt], want: &[(f64, f64)]) -> bool {
@@ -127,7 +127,7 @@ fn t01_end_to_end_is_one_conductor_one_net() {
     let nets = nets["nets"].as_array().unwrap();
     assert_eq!(nets.len(), 1, "{nets:?}");
     assert!(same_pts(&vertices(&doc, first), &[(p1.x, p1.y), (50.0, 0.0), (p2.x, p2.y)]), "{:?}", vertices(&doc, first));
-    assert_eq!(wires::labels_on_page(&doc, page).len(), 1, "one wire, one label");
+    assert_eq!(ecad_engine::wires::draw::labels_on_page(&doc, page).len(), 1, "one wire, one label");
     let tx = last_tx(&mut h);
     assert_eq!(tx.label, "Wire");
     assert!(!tx.ops.iter().any(|o| matches!(o, Op::AddRoute { .. })), "no new route: {:?}", tx.ops);
@@ -186,7 +186,7 @@ fn t03_both_ends_fold_into_one_wire() {
     assert!(!doc.routes.contains_key(&c), "the folded route no longer exists");
     let ends = doc.routes[&a].ends;
     assert!(ends.contains(&RouteEnd::Point(t1)) && ends.contains(&RouteEnd::Point(t2)), "{ends:?}");
-    assert!(wires::wire_between(&doc, t1, t2).is_some(), "the wire t1-t2");
+    assert!(ecad_electrical::wires::wire_between(&doc, t1, t2).is_some(), "the wire t1-t2");
     assert_eq!(doc.representations_of(Subject::Route(c)).count(), 0, "its drawing is gone");
     assert!(before.routes.contains_key(&c));
     undo_is_one_step(&mut h, &before);
@@ -408,8 +408,7 @@ struct W04 {
     cable: CableId,
     /// The cable's three cores: each one wire from `-X0n` on page 1 to `-X5n` on page 2, through
     /// the continuation pair An (design 072 §4.4, F5).
-    w: Vec<WireId>,
-}
+    w: Vec<WireId>}
 
 /// Design §3.1, as design 072 §4.4 (F5) has it: page 1 `-X1…3` → arrows A1…A3, slashed `-W04`
 /// (the lines carry no wire yet, the cores sit on them); page 2 arrows A1…A3 → `-X51…53`, which
@@ -448,7 +447,7 @@ fn same_outputs_as_built(h: &mut H) {
     let (kept, built, kept_checks, built_checks) = h.cfg(|p| {
         let kept = p.outputs().clone();
         let doc = p.ledger.document();
-        let built = ReportModels::build_with(doc, &ecad_engine::text_style::EngineMetrics);
+        let built = ReportModels::build_with(doc, &ecad_engine::styles::draw::EngineMetrics);
         let kc: Vec<String> = ecad_engine::checks::all_with(doc, p.tolerance, &kept).iter().map(|c| c.to_json(doc).to_string()).collect();
         let bc: Vec<String> = ecad_engine::checks::all_with(doc, p.tolerance, &built).iter().map(|c| c.to_json(doc).to_string()).collect();
         (kept, built, kc, bc)
@@ -487,7 +486,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     let tagged = |pre: &str| -> Vec<String> {
         doc.devices
             .keys()
-            .filter(|c| ecad_engine::devices::tag_of(&doc, **c).is_some_and(|t| t.to_string().starts_with(pre)))
+            .filter(|c| ecad_electrical::devices::tag_of(&doc, **c).is_some_and(|t| t.to_string().starts_with(pre)))
             .map(|c| c.hex())
             .collect()
     };
@@ -613,7 +612,7 @@ fn t13c_continue_refusals() {
         .ends
         .iter()
         .copied()
-        .find(|t| ecad_engine::devices::tag_of(&doc, doc.terminals[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5")));
+        .find(|t| ecad_electrical::devices::tag_of(&doc, doc.terminals[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5")));
     let tp = x51.map(|t| f.h.connection_point_pos(f.p2, t)).expect("X51's point");
     f.h.points_at(&[(tp.x, tp.y + 40.0)]);
     wire(&mut f.h, &[(tp.x, tp.y), (tp.x, tp.y + 40.0)], json!({}));
@@ -717,19 +716,19 @@ fn t15_label_rule_on_a_bus_with_short_drops() {
     assert_eq!(s["label_rule"], "net", "default (owner Q6): {s}");
     assert_eq!(s["label_min_length"], json!(0.0), "{s}");
     let doc = h.doc();
-    assert_eq!(wires::labels_on_page(&doc, page).len(), 1, "one per net");
+    assert_eq!(ecad_engine::wires::draw::labels_on_page(&doc, page).len(), 1, "one per net");
     assert_eq!(label_entities(&mut h, page), 1);
 
     h.run("wiresettings", json!({"label_rule": "each", "label_min_length": 0})).unwrap();
     let doc = h.doc();
     let routes = routes_on(&doc, page);
-    let labels = wires::labels_on_page(&doc, page);
+    let labels = ecad_engine::wires::draw::labels_on_page(&doc, page);
     assert_eq!(labels.len(), routes.len(), "every route labelled: {routes:?}");
     assert_eq!(label_entities(&mut h, page), routes.len());
 
     h.run("wiresettings", json!({"label_min_length": 10})).unwrap();
     let doc = h.doc();
-    let labels = wires::labels_on_page(&doc, page);
+    let labels = ecad_engine::wires::draw::labels_on_page(&doc, page);
     let long: Vec<_> = routes_on(&doc, page).into_iter().filter(|(_, l)| *l >= 10.0 - 1e-9).map(|(c, _)| c).collect();
     assert_eq!(labels.len(), long.len().max(1), "{labels:?}");
     assert!(labels.iter().all(|l| !drops.contains(&l.conductor)), "5 mm drops carry no label");
@@ -737,13 +736,13 @@ fn t15_label_rule_on_a_bus_with_short_drops() {
     // A net with no route that long still gets one label.
     h.run("wiresettings", json!({"label_min_length": 100})).unwrap();
     let doc = h.doc();
-    assert_eq!(wires::labels_on_page(&doc, page).len(), 1, "every net drawn on a page is labelled at least once");
+    assert_eq!(ecad_engine::wires::draw::labels_on_page(&doc, page).len(), 1, "every net drawn on a page is labelled at least once");
 
     // "net" again; one drop with its own cross-section is labelled too (owner Q7).
     h.run("wiresettings", json!({"label_rule": "net"})).unwrap();
     h.run("setprop", json!({"conductor": drops[2].hex(), "key": "size", "value": "2.5"})).unwrap();
     let doc = h.doc();
-    let labels = wires::labels_on_page(&doc, page);
+    let labels = ecad_engine::wires::draw::labels_on_page(&doc, page);
     assert_eq!(labels.len(), 2, "{labels:?}");
     assert!(labels.iter().any(|l| l.conductor == drops[2] && l.text.contains("2.5")), "{labels:?}");
     assert_eq!(label_entities(&mut h, page), 2);
@@ -767,8 +766,8 @@ fn t15b_a_net_on_two_pages_is_labelled_on_each() {
     h.points_at(&[(100.0, 0.0)]);
     wire(&mut h, &[(0.0, 0.0), (100.0, 0.0)], json!({}));
     let doc = h.doc();
-    assert_eq!(wires::labels_on_page(&doc, p1).len(), 1);
-    assert_eq!(wires::labels_on_page(&doc, p2).len(), 1);
+    assert_eq!(ecad_engine::wires::draw::labels_on_page(&doc, p1).len(), 1);
+    assert_eq!(ecad_engine::wires::draw::labels_on_page(&doc, p2).len(), 1);
 }
 
 /// §8.1: with `"net"`, joining two nets on page 2 changes page 1's labels (two nets, one label
@@ -805,7 +804,7 @@ fn t17_update_map_nets_joined_on_another_page_reproject_labels() {
     assert!(c.iter().all(|x| net_of(&doc, *x) == net), "one net now");
     h.activate(p1);
     h.check();
-    assert_eq!(label_entities(&mut h, p1), wires::labels_on_page(&h.doc(), p1).len());
+    assert_eq!(label_entities(&mut h, p1), ecad_engine::wires::draw::labels_on_page(&h.doc(), p1).len());
     assert_eq!(label_entities(&mut h, p1), 1, "page 1 now shows one label for the joined net");
     // A settings change re-projects every page.
     h.run("wiresettings", json!({"label_rule": "each"})).unwrap();
@@ -874,8 +873,8 @@ fn t16_label_settings_round_trip_and_default_when_absent() {
     assert_eq!((back.label_rule.as_deref(), back.label_min_length), (None, None));
     let mut doc = ecad_model::Document::default();
     doc.settings.wiring = back;
-    assert_eq!(ecad_engine::wires::label_rule_word(&doc), "net");
-    assert_eq!(ecad_engine::wires::label_min_length(&doc), 0.0);
+    assert_eq!(ecad_electrical::wires::label_rule_word(&doc), "net");
+    assert_eq!(ecad_electrical::wires::label_min_length(&doc), 0.0);
 }
 
 /// `wiresettings` refuses bad values in words and writes nothing.

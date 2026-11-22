@@ -98,7 +98,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     let at = [cursor.x, cursor.y];
     let Some(page) = p.page_of(uid) else { return Target::new(ObjectKind::EmptyPage, at, "page") };
     let doc = p.ledger.document();
-    let page_name = format!("Page {}", crate::references::page_number(doc, page));
+    let page_name = format!("Page {}", ecad_electrical::references::cables::page_number(doc, page));
     let mut t = Target::new(ObjectKind::EmptyPage, at, page_name);
     t.page = Some(page);
     let Some(view) = p.pages.get(&page) else { return t };
@@ -112,7 +112,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     let c = pt(cursor);
     let ok_aperture = aperture.is_finite() && aperture > 0.0 && crate::interact::in_range(cursor);
     // A cable reference end (its point or text) wins over the wire running into it.
-    if ok_aperture && let Some(r) = crate::references::reference_at(doc, page, c, aperture) {
+    if ok_aperture && let Some(r) = crate::references::draw::cables::reference_at(doc, page, c, aperture) {
         return reference(doc, map, page, t, r);
     }
     // A wire's end within the aperture.
@@ -127,7 +127,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             }
         }
         if let Some((_, r, end)) = best {
-            let w = crate::wires::wire_of_route(doc, r);
+            let w = ecad_electrical::wires::wire_of_route(doc, r);
             t.kind = ObjectKind::WireEnd;
             t.conductor = w;
             t.route = Some(r);
@@ -136,7 +136,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
                 Some(w) => format!("end of {}", wire_words(doc, w)),
                 None => "end of a wire line".into(),
             };
-            t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Route(r));
+            t.handles = crate::checks::handles_of(p, page, ecad_electrical::checks::Object::Route(r));
             return t;
         }
     }
@@ -150,11 +150,11 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     let Some(h) = picked else { return t };
     // Brief 051 (review of #89, 2): a card frame's part stands for the card, through its symbol.
     let h = match map.get(h) {
-        Some(Mapped::DeviceReference(r)) if crate::plc::look::is_frame_rep(doc, r) => {
+        Some(Mapped::DeviceReference(r)) if ecad_electrical::plc::draw::is_frame_rep(doc, r) => {
             doc.representations.get(&r).and_then(|x| x.items.first()).and_then(|i| map.item(*i)).unwrap_or(h)
         }
         // Lane 072 D: a T's dot stands for the line that ends there.
-        Some(Mapped::Tee(r)) => crate::wires::route_item(doc, r).and_then(|(_, i, _)| map.item(i)).unwrap_or(h),
+        Some(Mapped::Tee(r)) => ecad_electrical::wires::route_item(doc, r).and_then(|(_, i, _)| map.item(i)).unwrap_or(h),
         _ => h,
     };
     match map.get(h) {
@@ -181,7 +181,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.handles = vec![h];
             if let Some(Subject::Device(c)) = doc.representations.get(&r).map(|x| x.subject) {
                 t.component = Some(c);
-                t.name = format!("tag of {}", crate::devices::tag_words(doc, c));
+                t.name = format!("tag of {}", ecad_electrical::devices::tag_words(doc, c));
             } else {
                 t.name = "tag".into();
             }
@@ -202,7 +202,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             }
         },
         Some(Mapped::Item(i)) => match doc.representation_of_item(i) {
-            Some((rid, r)) if crate::references::is_reference(r) => return reference(doc, map, page, t, rid),
+            Some((rid, r)) if ecad_electrical::references::cables::is_reference(r) => return reference(doc, map, page, t, rid),
             Some((rid, r)) => match r.subject {
                 Subject::Device(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => return terminal(p, page, t, c, None),
                 Subject::Device(c) => return device(p, page, t, c, Some(rid)),
@@ -210,25 +210,25 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
                     t.kind = ObjectKind::Wire;
                     t.conductor = Some(w);
                     t.name = wire_words(doc, w);
-                    t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Wire(w));
+                    t.handles = crate::checks::handles_of(p, page, ecad_electrical::checks::Object::Wire(w));
                 }
                 Subject::Cable(k) => return cable(p, page, t, k),
                 Subject::Route(r) => {
-                    let w = crate::wires::wire_of_route(doc, r);
+                    let w = ecad_electrical::wires::wire_of_route(doc, r);
                     t.kind = ObjectKind::Wire;
                     t.conductor = w;
                     t.route = Some(r);
                     t.name = w.map_or_else(|| "wire line".into(), |w| wire_words(doc, w));
-                    t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Route(r));
+                    t.handles = crate::checks::handles_of(p, page, ecad_electrical::checks::Object::Route(r));
                 }
                 // Design 072 §6.2: a drawing aid (a continuation arrow, a location box) is its own
                 // kind; its handles are its own.
                 Subject::Aid(a) => {
                     t.kind = ObjectKind::Aid;
                     t.representation = Some(rid);
-                    t.name = match crate::locations::boxes_on(doc, page).into_iter().find(|b| b.aid == a) {
-                        Some(b) => format!("location box {}", crate::locations::label_of(&b).0),
-                        None => format!("continuation {}", crate::continuations::display_name(doc, a)),
+                    t.name = match ecad_electrical::locations::boxes_on(doc, page).into_iter().find(|b| b.aid == a) {
+                        Some(b) => format!("location box {}", ecad_electrical::locations::label_of(&b).0),
+                        None => format!("continuation {}", ecad_electrical::continuations::display_name(doc, a)),
                     };
                     let map = p.pages.get(&page).map(|v| &v.map);
                     t.handles = r.items.iter().filter_map(|i| map.and_then(|m| m.item(*i))).collect();
@@ -245,7 +245,7 @@ fn device(p: &Project, page: PageId, mut t: Target, c: DeviceId, rep: Option<Rep
     t.kind = ObjectKind::Device;
     t.component = Some(c);
     t.representation = rep;
-    t.name = crate::devices::tag_of(doc, c).map_or_else(|| "component".to_string(), str::to_string);
+    t.name = ecad_electrical::devices::tag_of(doc, c).map_or_else(|| "component".to_string(), str::to_string);
     let map = p.pages.get(&page).map(|v| &v.map);
     // The symbol clicked (its outline), so turning or copying acts on that symbol only.
     t.handles = rep
@@ -262,7 +262,7 @@ fn terminal(p: &Project, page: PageId, mut t: Target, strip: DeviceId, term: Opt
     t.kind = ObjectKind::Terminal;
     t.component = Some(strip);
     t.terminal = term;
-    let tag = crate::devices::tag_words(doc, strip);
+    let tag = ecad_electrical::devices::tag_words(doc, strip);
     t.name = match term {
         // Brief 044: a connector pin is named by its half (`-X10.S:3`).
         Some(x) => ecad_electrical::connectors::pin_name(doc, x).unwrap_or_else(|| format!("{tag}:{}", connection_point_name(doc, x))),
@@ -289,9 +289,9 @@ fn cable(p: &Project, page: PageId, mut t: Target, k: CableId) -> Target {
     let doc = p.ledger.document();
     t.kind = ObjectKind::Cable;
     t.cable = Some(k);
-    t.name = crate::devices::cable_tag_of(doc, k).map_or_else(|| "cable".to_string(), str::to_string);
-    t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Cable(k));
-    t.others = doc.representations_of(Subject::Cable(k)).filter(|(_, r)| crate::references::is_reference(r)).count();
+    t.name = ecad_electrical::devices::cable_tag_of(doc, k).map_or_else(|| "cable".to_string(), str::to_string);
+    t.handles = crate::checks::handles_of(p, page, ecad_electrical::checks::Object::Cable(k));
+    t.others = doc.representations_of(Subject::Cable(k)).filter(|(_, r)| ecad_electrical::references::cables::is_reference(r)).count();
     t
 }
 
@@ -308,7 +308,7 @@ fn reference(doc: &Document, map: &crate::project::HandleMap, page: PageId, mut 
             t.handles = rep.items.iter().filter_map(|i| map.item(*i)).collect();
         }
     }
-    t.name = crate::references::hover_lines(doc, r).and_then(|l| l.into_iter().next()).unwrap_or_else(|| "reference".into());
+    t.name = ecad_electrical::references::cables::hover_lines(doc, r).and_then(|l| l.into_iter().next()).unwrap_or_else(|| "reference".into());
     t
 }
 

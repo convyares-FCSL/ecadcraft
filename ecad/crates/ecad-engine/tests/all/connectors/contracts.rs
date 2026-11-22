@@ -121,7 +121,7 @@ fn pin_pairs_across_wires_split_them_and_keep_one_net() {
         // Both parts of the wire are on that net.
         // The two parts of the line (design 072 §4.3: routes), each carrying its own wire in
         // place of `w[i]`.
-        let part = |key: &str| ecad_engine::wires::wire_of_route(&d, id(&v["split"][i], key));
+        let part = |key: &str| ecad_electrical::wires::wire_of_route(&d, id(&v["split"][i], key));
         let (kept, new) = (part("route"), part("new"));
         assert!(kept.is_some() && new.is_some() && !d.wires.contains_key(&w[i]), "{v}");
         let net_of = |x: Option<WireId>| x.and_then(|x| d.connectivity().net_of_conductor(x));
@@ -263,7 +263,7 @@ fn halves_reference_each_other_across_pages() {
     let list = connectors::ref_classes(&d, c);
     let edges = connectors::ref_edges(&d, c, &list);
     assert!(edges.contains(&(s, p)) && edges.contains(&(p, s)));
-    let parts = ecad_engine::xref::parts_on_page(&d, p2);
+    let parts = ecad_engine::references::draw::devices::parts_on_page(&d, p2);
     assert!(parts.iter().any(|x| x.rep == p), "the plug's reference is drawn on its page");
     assert!(connectors::hover_words(&d, c, Side::Socket).unwrap().contains("mates with"));
 }
@@ -319,7 +319,7 @@ fn a_connector_pin_is_never_read_as_a_strip_level() {
     let c: DeviceId = id(&row(&mut h, json!({})), "component");
     let d = h.doc();
     let t = pin(&d, c, ".s", "2");
-    let tag = ecad_engine::devices::tag_words(&d, c);
+    let tag = ecad_electrical::devices::tag_words(&d, c);
     assert_eq!(ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, t), Some(format!("{tag}.S:2")));
     assert_eq!(ecad_engine::interact::connection_point_name(&d, t), format!("{tag}.S:2"));
 }
@@ -384,7 +384,7 @@ fn a_half_location_is_its_override_else_the_connector_not_its_page() {
     let plug_context = |h: &mut H| {
         let d = h.doc();
         let r = ecad_electrical::symbols::reps::goto(&d, c, Some(Side::Plug)).unwrap();
-        ecad_engine::locations::rep_context(&d, &d.representations[&r], &mut ecad_engine::locations::BoxCache::default()).value
+        ecad_electrical::locations::rep_context(&d, &d.representations[&r], &mut ecad_electrical::locations::BoxCache::default()).value
     };
     // Brief 052d: `keep`, so the connector is not given the proposal (that is the outputs tests').
     h.run("pageprops", json!({"location": "+FIELD", "proposal": "keep"})).unwrap();
@@ -408,7 +408,7 @@ fn a_half_location_is_its_override_else_the_connector_not_its_page() {
 fn half_row_groups_are_kept_not_regrouped() {
     let mut h = H::new(4421);
     row(&mut h, json!({}));
-    let count = |h: &mut H| h.cfg(|p| p.outputs().bom_count(ecad_engine::outputs::Group::Location));
+    let count = |h: &mut H| h.cfg(|p| p.outputs().bom_count(ecad_electrical::reports::Group::Location));
     let n = count(&mut h);
     let g0 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
     h.wire_pp(&[(300.0, 300.0), (350.0, 300.0)]).unwrap();
@@ -416,8 +416,8 @@ fn half_row_groups_are_kept_not_regrouped() {
     let g1 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
     assert_eq!(g0, g1, "an unrelated edit and the counts group no half rows");
     let rebuilt = h.p(|p| {
-        ecad_engine::outputs::kept::ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics)
-            .bom_count(ecad_engine::outputs::Group::Location)
+        ecad_electrical::reports::kept::ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics)
+            .bom_count(ecad_electrical::reports::Group::Location)
     });
     assert_eq!(count(&mut h), rebuilt);
 }
@@ -476,15 +476,15 @@ fn checks_fixes_and_typed_search() {
     h.run("place", json!({"symbol": "m12p5", "device": c.hex(), "at": [50, 150]})).unwrap();
     let rows = ecad_engine::checks::all(&h.doc(), 1e-6);
     let fam = rows.iter().find(|r| r.kind.name() == "connector-family").expect("family row");
-    assert!(matches!(fam.fix, Some(ecad_engine::checks::Fix::IgnoreConnector(..))));
+    assert!(matches!(fam.fix, Some(ecad_electrical::checks::Fix::IgnoreConnector(..))));
     h.run("setprop", json!({"component": c.hex(), "key": "ignore.connector-family", "value": "yes"})).unwrap();
     assert!(ecad_engine::checks::all(&h.doc(), 1e-6).iter().all(|r| r.kind.name() != "connector-family"));
     let lone = ecad_engine::checks::all(&h.doc(), 1e-6).into_iter().find(|r| r.kind.name() == "connector-lone-pin").expect("lone row");
-    assert_eq!(lone.fix, Some(ecad_engine::checks::Fix::PlaceMates(c, Side::Plug)));
+    assert_eq!(lone.fix, Some(ecad_electrical::checks::Fix::PlaceMates(c, Side::Plug)));
     let d = h.doc();
-    let tag = ecad_engine::devices::tag_words(&d, c);
-    assert_eq!(ecad_engine::devices::devices(&d, Some(&format!("{tag}.S:3"))), vec![c]);
-    assert_eq!(ecad_engine::devices::devices(&d, Some(&format!("{tag}.P"))), vec![c]);
+    let tag = ecad_electrical::devices::tag_words(&d, c);
+    assert_eq!(ecad_electrical::devices::devices(&d, Some(&format!("{tag}.S:3"))), vec![c]);
+    assert_eq!(ecad_electrical::devices::devices(&d, Some(&format!("{tag}.P"))), vec![c]);
 }
 
 /// Overseer ruling (fix round 1): `pin_names` and `ignore.<check kind>` survive saving and
@@ -512,7 +512,7 @@ fn pin_names_and_ignore_keys_round_trip() {
     assert_eq!(after.device_type, before.device_type);
     assert_eq!(after.value("ignore.connector-family").as_deref(), Some("yes"));
     assert_eq!(connectors::pin_names(&doc, c), Some(["A", "B", "C", "D", "E", "F", "G", "H", "J"].map(String::from).to_vec()));
-    assert!(connectors::ignores(&doc, c, ecad_engine::checks::Kind::ConnectorFamily));
+    assert!(connectors::ignores(&doc, c, ecad_electrical::checks::Kind::ConnectorFamily));
     drop(project);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -527,7 +527,7 @@ fn part_lines_go_under_their_half() {
     h.run("setprop", json!({"component": c.hex(), "key": "half.p.location", "value": "+FIELD"})).unwrap();
     h.run("partline", json!({"component": c.hex(), "add": {"part_number": "CRIMP-1", "description": "Crimp contact", "qty": "4"}})).unwrap();
     h.run("setprop", json!({"component": c.hex(), "key": "part.1.half", "value": "p"})).unwrap();
-    let tag = ecad_engine::devices::tag_words(&h.doc(), c);
+    let tag = ecad_electrical::devices::tag_words(&h.doc(), c);
     let rows = |h: &mut H| h.run("bom", json!({"limit": 500})).unwrap()["rows"].as_array().cloned().unwrap();
     let flat = rows(&mut h);
     let line = flat.iter().find(|r| r["part_number"] == "CRIMP-1").unwrap_or_else(|| panic!("{flat:?}"));

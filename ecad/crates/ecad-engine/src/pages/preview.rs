@@ -74,7 +74,7 @@ pub struct PreviewImage {
 pub fn other_end(p: &Project, reference: RepresentationId) -> Result<(PageId, Pt), String> {
     let doc = p.ledger.document();
     let cable = match doc.representations.get(&reference) {
-        Some(r) if crate::references::is_reference(r) => match r.subject {
+        Some(r) if ecad_electrical::references::cables::is_reference(r) => match r.subject {
             Subject::Cable(k) => k,
             _ => return Err(NOT_A_REFERENCE.into()),
         },
@@ -166,7 +166,7 @@ pub fn selected_reference(p: &Project, uid: u64, handles: &[cadcraft_engine::doc
     let doc = p.ledger.document();
     handles.iter().find_map(|h| match map.get(*h)? {
         crate::project::Mapped::RefText(r) => Some(r),
-        crate::project::Mapped::Item(i) => doc.representation_of_item(i).filter(|(_, r)| crate::references::is_reference(r)).map(|(id, _)| id),
+        crate::project::Mapped::Item(i) => doc.representation_of_item(i).filter(|(_, r)| ecad_electrical::references::cables::is_reference(r)).map(|(id, _)| id),
         _ => None,
     })
 }

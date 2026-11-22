@@ -199,7 +199,7 @@ fn build(indicator: &Indicator, f: &Found) -> Result<Indicator, Read<Indicator>>
 
 #[cfg(test)]
 mod tests {
-    use crate::devices::ratings::*;
+    use super::*;
 
     fn shown_on(signal: SignalType, text: &str) -> String {
         match read_indicator(&Indicator::empty(signal), text) {

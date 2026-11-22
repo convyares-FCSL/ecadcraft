@@ -2,7 +2,7 @@
 //! §3.3, §3.5; brief AC 1 and AC 7). Written from the design before the implementation existed.
 
 use ecad_electrical::defaults::{self, Scope};
-use ecad_engine::text_style::{self, TextKind, TextStyle, Weight};
+use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::TextStyle, ecad_electrical::styles::text_style::Weight};
 use ecad_model::{Author, Document, ObjectRef, Op};
 
 use crate::common::H;
@@ -41,8 +41,7 @@ fn doc_with(props: &[(&str, &str)]) -> Document {
                     let _ = ecad_electrical::styles::text::set(t, field, Some(v));
                 }
             }
-            None => ops.push(Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) }),
-        }
+            None => ops.push(Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) })}
     }
     for (kind, r) in records {
         ops.push(Op::SetStyle {
@@ -50,8 +49,7 @@ fn doc_with(props: &[(&str, &str)]) -> Document {
             catalogue: ecad_model::StyleCatalogue::Text,
             id: ecad_model::StyleRef::Builtin(kind),
             before: None,
-            after: Some(r),
-        });
+            after: Some(r)});
     }
     if !ops.is_empty() {
         h.cfg(|p| p.ledger.commit(Author::User, "t", ops)).unwrap();
@@ -64,13 +62,13 @@ fn doc_with(props: &[(&str, &str)]) -> Document {
 fn getter_returns_the_design_defaults_for_every_kind() {
     let d = doc_with(&[]);
     for (kind, height, weight) in KINDS {
-        let s: TextStyle = text_style::text_style(&d, *kind);
+        let s: TextStyle = ecad_electrical::styles::text_style::text_style(&d, *kind);
         assert_eq!(s.height, *height, "{kind:?}");
         assert_eq!(s.weight, *weight, "{kind:?}");
         let name = if *weight == Weight::Bold { "ECAD-BOLD" } else { "Standard" };
         assert_eq!(s.style_name, name, "{kind:?}");
     }
-    assert_eq!(text_style::text_style(&d, TextKind::Free).style_name, "Standard");
+    assert_eq!(ecad_electrical::styles::text_style::text_style(&d, TextKind::Free).style_name, "Standard");
 }
 
 /// T2: hostile stored heights and weights give the default; a value in range is used.
@@ -78,18 +76,18 @@ fn getter_returns_the_design_defaults_for_every_kind() {
 fn getter_ignores_hostile_stored_values() {
     for bad in ["NaN", "abc", "0.1", "11", "1e308", "-1", "inf", "", " 3 x"] {
         let d = doc_with(&[("text.tag.height", bad), ("text.tag.weight", "heavy")]);
-        let s = text_style::text_style(&d, TextKind::Tag);
+        let s = ecad_electrical::styles::text_style::text_style(&d, TextKind::Tag);
         assert_eq!(s.height, 2.5, "{bad:?}");
         assert!(s.height.is_finite());
         assert_eq!((s.weight, s.style_name), (Weight::Bold, "ECAD-BOLD"), "{bad:?}");
     }
     let huge = "9".repeat(10_000);
     let d = doc_with(&[("text.tag.height", &huge)]);
-    assert_eq!(text_style::text_style(&d, TextKind::Tag).height, 2.5);
+    assert_eq!(ecad_electrical::styles::text_style::text_style(&d, TextKind::Tag).height, 2.5);
     let d = doc_with(&[("text.tag.height", "0.5"), ("text.point_label.height", "10"), ("text.tag.weight", "regular")]);
-    assert_eq!(text_style::text_style(&d, TextKind::Tag).height, 0.5);
-    assert_eq!(text_style::text_style(&d, TextKind::PointLabel).height, 10.0);
-    assert_eq!(text_style::text_style(&d, TextKind::Tag).style_name, "Standard");
+    assert_eq!(ecad_electrical::styles::text_style::text_style(&d, TextKind::Tag).height, 0.5);
+    assert_eq!(ecad_electrical::styles::text_style::text_style(&d, TextKind::PointLabel).height, 10.0);
+    assert_eq!(ecad_electrical::styles::text_style::text_style(&d, TextKind::Tag).style_name, "Standard");
 }
 
 /// AC 7: keys unique and of the key rule, built-ins valid for their own kind, every entry allows

@@ -19,7 +19,7 @@ fn a_bom_page_lays_its_table_out_once_per_draw() {
         let o = p.outputs().clone();
         let doc = p.ledger.document();
         let before = o.half_groupings.load(Ordering::Relaxed);
-        std::hint::black_box(ecad_engine::generated::parts_of(doc, page, Some(&o)));
+        std::hint::black_box(ecad_engine::pages::generated::parts_of(doc, page, Some(&o)));
         (o.bom_sheets(), o.half_groupings.load(Ordering::Relaxed) - before)
     });
     assert!(sheets >= 3, "the page needs several sheets, it has {sheets}");
@@ -35,7 +35,7 @@ fn ops_that_read_no_reference_touch_no_cable() {
     use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
     use ecad_model::{CableId, Device, DeviceId, Op};
     let doc = ecad_model::Document::default();
-    let touched = |ops: Vec<Op>| ecad_engine::references::cables_touched(&doc, &ops);
+    let touched = |ops: Vec<Op>| ecad_electrical::references::cables::cables_touched(&doc, &ops);
     let style = |catalogue: ecad_model::StyleCatalogue| Op::SetStyle {
         layer: StyleLayer::Project,
         catalogue,
@@ -81,7 +81,7 @@ fn paired_cable(seed: u64) -> (H, ecad_model::CableId, ecad_model::PageId, ecad_
 fn a_standard_change_retraces_every_cable_reference() {
     let (mut h, c1, supply, _) = paired_cable(0x53_03);
     let zone = |doc: &ecad_model::Document| {
-        ecad_engine::references::all(doc)
+        ecad_electrical::references::cables::all(doc)
             .into_iter()
             .filter(|r| r.cable == c1 && r.page == supply)
             .map(|r| (r.column, r.row, r.column_label, r.row_label, r.text))
@@ -93,8 +93,8 @@ fn a_standard_change_retraces_every_cable_reference() {
     let ops = h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
     assert!(ops.iter().any(|op| matches!(op, ecad_model::Op::SetStandard { .. })), "the commit set the standard: {ops:?}");
     let doc = h.doc();
-    assert_eq!(ecad_engine::references::cables_touched(&doc, &ops), None, "a standard re-traces every cable");
-    let shown: Vec<_> = ecad_engine::references::markers_on_page(&doc, supply).into_iter().map(|m| m.text).collect();
+    assert_eq!(ecad_electrical::references::cables::cables_touched(&doc, &ops), None, "a standard re-traces every cable");
+    let shown: Vec<_> = ecad_electrical::references::cables::markers_on_page(&doc, supply).into_iter().map(|m| m.text).collect();
     let fresh = zone(&doc);
     assert_eq!(shown, fresh.iter().map(|z| z.4.clone()).collect::<Vec<_>>(), "the page shows the fresh zone");
     assert_eq!(fresh, before, "this standard carries no sheet, so the zone is unchanged");
@@ -106,13 +106,13 @@ fn a_standard_change_retraces_every_cable_reference() {
 fn a_page_s_markers_equal_those_of_every_reference() {
     let (mut h, _, supply, field) = paired_cable(0x53_02);
     let doc = h.doc();
-    let every = ecad_engine::references::all(&doc);
+    let every = ecad_electrical::references::cables::all(&doc);
     for page in [supply, field] {
-        let markers = ecad_engine::references::markers_on_page(&doc, page);
+        let markers = ecad_electrical::references::cables::markers_on_page(&doc, page);
         assert!(!markers.is_empty(), "a marker on each page");
-        assert_eq!(markers, ecad_engine::references::markers_from(&doc, every.clone(), page));
+        assert_eq!(markers, ecad_electrical::references::cables::markers_from(&doc, every.clone(), page));
         let on_page: Vec<_> = every.iter().filter(|r| r.page == page).cloned().collect();
-        assert_eq!(ecad_engine::references::references_on_page(&doc, page), on_page);
+        assert_eq!(ecad_electrical::references::cables::references_on_page(&doc, page), on_page);
         let items: Vec<_> = doc.items.iter().filter(|(_, i)| i.page == page).map(|(id, _)| *id).collect();
         assert_eq!(doc.items_on(page).map(|(id, _)| id).collect::<Vec<_>>(), items, "the page index lists the page's items in ID order");
     }

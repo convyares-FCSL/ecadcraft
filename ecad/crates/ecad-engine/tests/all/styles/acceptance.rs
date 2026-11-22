@@ -17,7 +17,7 @@ use cadcraft_engine::doc::color::{Color, Rgb};
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_drawing_style::sheet::PAPER;
 use ecad_electrical::defaults::{self, Kind, Level, Scope, Source};
-use ecad_engine::text_style::{self, TextKind};
+use {ecad_electrical::styles::text_style::TextKind};
 use {ecad_engine::Persistence, ecad_engine::export::printbook};
 use ecad_model::Word;
 use ecad_model::{Author, DeviceId, ObjectRef, Op, PageId, Transaction};
@@ -32,8 +32,7 @@ pub(crate) fn s(v: &Value) -> String {
     match v {
         Value::String(x) => x.clone(),
         Value::Null => String::new(),
-        other => other.to_string(),
-    }
+        other => other.to_string()}
 }
 
 pub(crate) fn num(v: &Value) -> Option<f64> {
@@ -48,8 +47,7 @@ pub(crate) fn styles(h: &mut H, catalogue: &str) -> Vec<Value> {
 pub(crate) fn rows_of(v: Value) -> Vec<Value> {
     match v {
         Value::Array(a) => a,
-        other => other["styles"].as_array().cloned().unwrap_or_else(|| panic!("no style rows in {other}")),
-    }
+        other => other["styles"].as_array().cloned().unwrap_or_else(|| panic!("no style rows in {other}"))}
 }
 
 /// One row of `styles` by ID or by name.
@@ -138,8 +136,7 @@ pub(crate) fn reproject(h: &mut H) {
     let page = h.first_page();
     let other = match h.doc().page_order.get(1).copied() {
         Some(p) => p,
-        None => id(&h.run("newpage", json!({"title": "Other"})).unwrap(), "page"),
-    };
+        None => id(&h.run("newpage", json!({"title": "Other"})).unwrap(), "page")};
     h.activate(other);
     h.activate(page);
     h.check();
@@ -165,7 +162,7 @@ pub(crate) fn texts_on(h: &mut H, page: PageId, text: &str) -> Vec<std::sync::Ar
 }
 
 pub(crate) fn tag(h: &mut H, c: DeviceId) -> String {
-    ecad_engine::devices::tag_words(&h.doc(), c)
+    ecad_electrical::devices::tag_words(&h.doc(), c)
 }
 
 pub(crate) fn coil(h: &mut H, x: f64) -> DeviceId {
@@ -242,8 +239,7 @@ pub(crate) fn find_obj_mut<'a>(v: &'a mut Value, k: &str) -> Option<&'a mut serd
     match v {
         Value::Object(m) => m.values_mut().find_map(|x| find_obj_mut(x, k)),
         Value::Array(a) => a.iter_mut().find_map(|x| find_obj_mut(x, k)),
-        _ => None,
-    }
+        _ => None}
 }
 
 /// The 031/040 built-in text sizes (cap height, weight) of every kind, from `dev` before 050a
@@ -311,9 +307,9 @@ fn a01_new_project_is_iec_with_twenty_builtin_text_styles_at_031_sizes() {
         assert_eq!(field_text(r, "font"), "project", "{word}");
         let kind = TextKind::ALL.into_iter().find(|k| k.word() == word).unwrap();
         // 031's drift test: the shared contract's signature, unchanged.
-        let st: text_style::TextStyle = text_style::text_style(&d, kind);
+        let st: ecad_electrical::styles::text_style::TextStyle = ecad_electrical::styles::text_style::text_style(&d, kind);
         assert!(near(st.height, height), "{word}: text_style height {}", st.height);
-        assert_eq!(st.weight == text_style::Weight::Bold, weight == "bold", "{word}: text_style weight");
+        assert_eq!(st.weight == ecad_electrical::styles::text_style::Weight::Bold, weight == "bold", "{word}: text_style weight");
     }
     assert_eq!(h.head(), head, "reads record nothing");
 }
@@ -368,7 +364,7 @@ fn a01_built_in_styles_draw_todays_page() {
     for w in [Lineweight::Mm100(50), Lineweight::Mm100(25)] {
         assert!(weights.contains(&format!("{w:?}")), "frame weight {w:?} in {weights:?}");
     }
-    let boxes: Vec<_> = ents.iter().filter(|e| e.common.layer == ecad_engine::locations::LAYER).collect();
+    let boxes: Vec<_> = ents.iter().filter(|e| e.common.layer == ecad_electrical::locations::LAYER).collect();
     assert!(boxes.iter().any(|e| e.common.linetype.eq_ignore_ascii_case("DASHED")), "the box is dashed");
     let before: Vec<String> = ents.iter().chain(frame_ents.iter()).map(|e| format!("{:?}{:?}", e.common, e.kind)).collect();
     // The same values written as project records: nothing on the page moves.
@@ -490,7 +486,7 @@ fn res_field_and_choice_resolution_order() {
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (4.0, "standard".into()));
     h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}})).unwrap();
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (3.0, "project".into()));
-    assert!(near(text_style::text_style(&h.doc(), TextKind::Tag).height, 3.0));
+    assert!(near(ecad_electrical::styles::text_style::text_style(&h.doc(), TextKind::Tag).height, 3.0));
     h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": null}})).unwrap();
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (4.0, "standard".into()), "clearing the project field falls to the standard");
     h.run("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": null}})).unwrap();
@@ -508,7 +504,7 @@ fn res_field_and_choice_resolution_order() {
     let small =
         own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Small", "copy_of": "tag", "fields": {"height": 1.5}})).unwrap());
     let at = |c: DeviceId| Scope { page: Some(page), component: Some(c), ..Scope::project() };
-    let height = |h: &mut H, c: DeviceId| text_style::text_style_at(&h.doc(), TextKind::Tag, at(c)).height;
+    let height = |h: &mut H, c: DeviceId| ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, at(c)).height;
     let e = defaults::find("text.tag.style").unwrap();
     h.run("setdefault", json!({"key": e.key, "level": "standard", "value": big})).unwrap();
     assert_eq!((height(&mut h, k1), defaults::resolve(&h.doc(), e, at(k1)).from), (6.0, Source::Standard));
@@ -566,8 +562,8 @@ fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
         find_obj_mut(&mut tx, "body").expect("a record with a body").insert("body".into(), json!({"text": {k: v}}));
         let ops = decoded_ops(&tx);
         inject(&mut h, ops.clone());
-        let st = text_style::text_style(&h.doc(), TextKind::Tag);
-        assert!(near(st.height, 2.5) && st.weight == text_style::Weight::Bold, "{k}={v:?}: the built-in tag style");
+        let st = ecad_electrical::styles::text_style::text_style(&h.doc(), TextKind::Tag);
+        assert!(near(st.height, 2.5) && st.weight == ecad_electrical::styles::text_style::Weight::Bold, "{k}={v:?}: the built-in tag style");
         let _ = styles(&mut h, "text");
         inject(&mut h, ops.iter().rev().map(Op::inverse).collect());
     }
@@ -595,7 +591,7 @@ fn ids_a_dangling_reference_falls_through_and_is_reported() {
         ],
     );
     let at = Scope { page: Some(page), component: Some(k), ..Scope::project() };
-    assert!(near(text_style::text_style_at(&h.doc(), TextKind::Tag, at).height, 2.5), "drawn as tag");
+    assert!(near(ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, at).height, 2.5), "drawn as tag");
     let t = tag(&mut h, k);
     assert!(!texts_on(&mut h, page, &t).is_empty(), "the tag still draws");
     let rows = checks_of(&mut h, "style-unknown");
@@ -617,7 +613,7 @@ fn a03_tag_colour_and_height_in_one_transaction() {
     let before = h.doc();
     let (_, tx) = one_tx(&mut h, "setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD", "height": 3}}));
     assert_eq!(op_names(&tx), ["SetStyle"], "one record write");
-    assert!(near(text_style::text_style(&h.doc(), TextKind::Tag).height, 3.0));
+    assert!(near(ecad_electrical::styles::text_style::text_style(&h.doc(), TextKind::Tag).height, 3.0));
     let red = code_colour("RD");
     let shown = texts_on(&mut h, page, &t);
     assert!(!shown.is_empty() && shown.iter().all(|e| e.common.color == red), "the tag is red on screen");
@@ -705,8 +701,8 @@ fn a04_own_style_object_choice_and_delete_with_a_replacement() {
         tx.ops
     );
     let at = |c| Scope { page: Some(page), component: Some(c), ..Scope::project() };
-    assert!(near(text_style::text_style_at(&h.doc(), TextKind::Tag, at(k1)).height, 5.0), "K1's tag is large");
-    assert!(near(text_style::text_style_at(&h.doc(), TextKind::Tag, at(k2)).height, 2.5), "K2's is not");
+    assert!(near(ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, at(k1)).height, 5.0), "K1's tag is large");
+    assert!(near(ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, at(k2)).height, 2.5), "K2's is not");
     let (t1, t2) = (tag(&mut h, k1), tag(&mut h, k2));
     let hgt =
         |h: &mut H, t: &str| texts_on(h, page, t).first().map(|e| if let EntityKind::Text(x) = &e.kind { x.height } else { 0.0 }).unwrap_or(0.0);
@@ -729,7 +725,7 @@ fn a04_own_style_object_choice_and_delete_with_a_replacement() {
     assert!(names.contains(&"SetStyle") && names.contains(&"SetProperty"), "{names:?}");
     let d = h.doc();
     assert_eq!(d.devices[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"), "the user moved to the replacement");
-    assert!(near(text_style::text_style_at(&d, TextKind::Tag, at(k1)).height, 2.5), "K1 is back to normal");
+    assert!(near(ecad_electrical::styles::text_style::text_style_at(&d, TextKind::Tag, at(k1)).height, 2.5), "K1 is back to normal");
     assert!(styles(&mut h, "text").iter().all(|r| s(&r["id"]) != large));
     undo(&mut h);
     assert!(h.doc() == before, "one undo restores the style and K1's choice");
@@ -778,7 +774,7 @@ fn a05_promote_a_style_and_a_value() {
     assert_eq!(s(&r["layer"]), "standard");
     assert!(near(field_num(&r, "height"), 5.0) && field(&r, "height").1 == "standard");
     let page = h.first_page();
-    assert!(near(text_style::text_style_at(&h.doc(), TextKind::Tag, Scope { page: Some(page), component: Some(k), ..Scope::project() }).height, 5.0));
+    assert!(near(ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, Scope { page: Some(page), component: Some(k), ..Scope::project() }).height, 5.0));
     // A built-in or a standard style cannot be promoted.
     refused(&mut h, "promote", json!({"catalogue": "text", "id": large}));
     refused(&mut h, "promote", json!({"catalogue": "text", "id": "tag"}));
@@ -911,7 +907,7 @@ fn a07_box_style_changes_every_box_and_a_page_frame_style_one_page() {
     assert_eq!(op_names(&tx), ["SetStyle"]);
     for p in [p1, p2] {
         h.activate(p);
-        let boxes: Vec<_> = h.pv(|pr, pg| pg.entities_of(pr, p)).into_iter().filter(|e| e.common.layer == ecad_engine::locations::LAYER).collect();
+        let boxes: Vec<_> = h.pv(|pr, pg| pg.entities_of(pr, p)).into_iter().filter(|e| e.common.layer == ecad_electrical::locations::LAYER).collect();
         assert!(!boxes.is_empty() && boxes.iter().all(|e| !e.common.linetype.eq_ignore_ascii_case("DASHED")), "page {p}: continuous");
         assert!(boxes.iter().any(|e| e.common.lineweight == Lineweight::Mm100(50)), "page {p}: 0.5 mm");
     }
@@ -999,8 +995,7 @@ fn fp3_a_standard_layer_record_without_a_standard_is_refused_by_apply() {
     let remove = first.ops.iter().find(|o| o.name() == "SetStandard").unwrap().inverse();
     match remove.apply(&mut d) {
         Ok(()) => assert!(d.check().is_ok() && d.standard.is_none(), "removed with everything it held"),
-        Err(_) => assert!(header.is_some(), "or refused while it holds records"),
-    }
+        Err(_) => assert!(header.is_some(), "or refused while it holds records")}
 }
 
 /// §12.8: save, close and reopen keep the standard, the records and every choice; undo and redo
@@ -1081,8 +1076,7 @@ fn a08_a_hostile_style_file_opens_draws_and_reports() {
         object: ObjectRef::Device(k),
         key: "text.tag.style".into(),
         before: None,
-        after: Some(format!("#{}", "c".repeat(32))),
-    });
+        after: Some(format!("#{}", "c".repeat(32)))});
     inject(&mut h, ops);
     let rows = styles(&mut h, "text");
     assert!(rows.len() <= 20 + 1000 + 5, "MAX_STYLES_PER_CATALOGUE bounds the listing: {}", rows.len());
@@ -1187,6 +1181,6 @@ fn a04_a_conductors_own_wire_label_style_draws() {
         &h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Label big", "copy_of": "wire_label", "fields": {"height": 3}})).unwrap(),
     );
     h.run("setdefault", json!({"key": "text.wire_label.style", "level": "object", "conductor": w.hex(), "value": big})).unwrap();
-    let l = ecad_engine::wires::labels_on_page(&h.doc(), page).into_iter().find(|l| l.conductor == w).expect("labelled");
+    let l = ecad_engine::wires::draw::labels_on_page(&h.doc(), page).into_iter().find(|l| l.conductor == w).expect("labelled");
     assert!(near(l.height, 3.0), "the conductor's own label style draws: {}", l.height);
 }

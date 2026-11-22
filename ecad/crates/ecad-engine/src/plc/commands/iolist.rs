@@ -1,5 +1,5 @@
 //! `iolist` (brief 045, design 045 §7): the I/O list rows, read only. The rows are
-//! [`crate::plc::iolist`].
+//! [`ecad_electrical::plc::iolist`].
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
@@ -8,8 +8,8 @@ use serde::Deserialize;
 
 use crate::commands::input::Command;
 use crate::commands::on_any_page;
-use crate::plc::iolist::*;
-use crate::plc::rack::{RackRef, card_named, rack_named};
+use ecad_electrical::plc::iolist::*;
+use ecad_electrical::plc::rack::{RackRef, card_named, rack_named};
 use serde_json::{Value, json};
 
 /// A channel's state in the I/O list.
@@ -60,7 +60,7 @@ impl Command for IolistParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let state = self.state.map(StateParam::word);
         let limit =
-            self.limit.map_or(crate::outputs::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, crate::outputs::MAX_LIMIT);
+            self.limit.map_or(ecad_electrical::reports::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, ecad_electrical::reports::MAX_LIMIT);
         let after = self.after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
         on_any_page(s, |p, _| {
             p.outputs();

@@ -2,7 +2,7 @@
 //! typed record (size, colours, insulation) as the agent, and is refused with writes off.
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::style::wire::Insulation;
+use ecad_model::objects::styles::wire::Insulation;
 use ecad_model::{Author, Op, StyleCatalogue};
 use serde_json::json;
 
@@ -41,7 +41,7 @@ fn a_value_the_field_does_not_take_is_refused() {
 /// Design 072 F37: a cable type takes a core colour scheme; recorded typed, as the agent.
 #[test]
 fn setstyle_records_a_cable_type_with_a_core_scheme() {
-    use ecad_model::style::cable::CoreScheme;
+    use ecad_model::objects::styles::cable::CoreScheme;
     let mut c = Client::new(EcadMcp::in_memory("lane072g-cable", 72, Options { write: true, agent: None }).unwrap());
     let params =
         json!({"catalogue": "cable", "new": true, "name": "Power 5G", "fields": {"cores": "5G", "size": "2.5", "core_scheme": "harmonised"}});

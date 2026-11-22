@@ -7,29 +7,29 @@
 use std::collections::BTreeSet;
 
 use ecad_bench::generate::{Tier, Variant, generate, tier};
-use ecad_electrical::derived::{self, EngineInputs};
-use ecad_model::view::PageSet;
+use ecad_electrical::views::{self, EngineInputs};
+use ecad_model::document::view::PageSet;
 use ecad_model::{Author, Document, PageId};
 
 /// What the references show on each page of `doc`, worked out over the whole document: the device
 /// and connector parts, the continuation arrows, and the cable reference texts.
-fn every_reference(doc: &Document, m: &dyn ecad_electrical::text_style::fonts::TextMetrics) -> std::collections::BTreeMap<PageId, String> {
-    use ecad_electrical::{continuations, xref};
+fn every_reference(doc: &Document, m: &dyn ecad_electrical::styles::text_style::fonts::TextMetrics) -> std::collections::BTreeMap<PageId, String> {
+    use {ecad_electrical::continuations, ecad_electrical::references::devices};
     let mut out: std::collections::BTreeMap<PageId, String> = std::collections::BTreeMap::new();
     for p in &doc.page_order {
-        let parts = xref::parts_on_page_measured(doc, *p, m);
+        let parts = devices::parts_on_page_measured(doc, *p, m);
         if !parts.is_empty() {
             out.insert(*p, format!("{parts:?}"));
         }
     }
     let names: BTreeSet<String> = doc.aids.keys().filter_map(|a| continuations::name_of(doc, *a)).collect();
-    let mut places = xref::Places::new(doc);
+    let mut places = devices::Places::new(doc);
     for (p, parts) in continuations::shown_measured(doc, &mut places, &names, m) {
         if !parts.is_empty() {
             out.entry(p).or_default().push_str(&format!("{parts:?}"));
         }
     }
-    for r in ecad_model::derive::cable_references(doc) {
+    for r in ecad_model::connectivity::derive::cable_references(doc) {
         out.entry(r.page).or_default().push_str(&format!("{}:{};", r.reference.hex(), r.text));
     }
     out
@@ -38,14 +38,14 @@ fn every_reference(doc: &Document, m: &dyn ecad_electrical::text_style::fonts::T
 /// The references view on every transaction of `tier`'s churned history with five undos and five
 /// redos at its end, against the whole document. Returns how many transactions were compared.
 fn refs_view_agrees(tier: Tier) -> usize {
-    use derived::{Inputs, RefsView};
+    use views::{Inputs, RefsView};
     let mut g = generate(tier, Variant::Churned).unwrap();
     for undo in [true, true, true, true, true, false, false, false, false, false] {
         let r = if undo { g.ledger.undo_at(Author::User, None) } else { g.ledger.redo_at(Author::User, None) };
         r.unwrap();
     }
     assert_eq!(g.ledger.base(), 0, "the corpus replays from the empty document");
-    let metrics = std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth);
+    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FixedWidth);
     let engine = EngineInputs { metrics: metrics.clone() };
     let inputs = Inputs { engine: &engine, frame_page: None };
     let mut view = RefsView::build(&Document::default());
@@ -66,10 +66,10 @@ fn refs_view_agrees(tier: Tier) -> usize {
                 }
             }
         }
-        let whole = ecad_electrical::references::Snapshot::take(&before, None);
-        let orphaned = whole.orphaned_line(&doc, &ecad_electrical::references::Snapshot::take(&doc, None));
+        let whole = ecad_electrical::references::cables::Snapshot::take(&before, None);
+        let orphaned = whole.orphaned_line(&doc, &ecad_electrical::references::cables::Snapshot::take(&doc, None));
         assert_eq!(out.echo, orphaned.into_iter().collect::<Vec<_>>(), "{what}: orphaned line");
-        assert_eq!(view.index(), &ecad_electrical::xref::RefIndex::build(&doc), "{what}: index");
+        assert_eq!(view.index(), &ecad_electrical::references::devices::RefIndex::build(&doc), "{what}: index");
         checked += 1;
     }
     checked

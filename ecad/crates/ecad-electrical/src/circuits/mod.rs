@@ -53,7 +53,7 @@ use ecad_model::{CableId, DeviceId, Document, NetKey, ObjectRef, Op, StyleRef, W
 
 use crate::defaults::{self, Scope};
 use crate::styles::{self, cable, ratingtable, wire};
-use dataset::{Dataset, Insulation};
+use crate::devices::ratings::dataset::{Dataset, Insulation};
 use load::{Load, LoadFrom, LoadSource, TypedLoads};
 use trace::{Found, How};
 
@@ -68,11 +68,11 @@ pub mod fields {
     use crate::styles::Field;
 
     fn is_current(s: &str) -> bool {
-        crate::parse::current(s).is_some()
+        crate::devices::ratings::parse::current(s).is_some()
     }
 
     fn is_size(s: &str) -> bool {
-        crate::parse::cross_section(s).is_some()
+        crate::devices::ratings::parse::cross_section(s).is_some()
     }
 
     pub const RATED_CURRENT: Field = Field {
@@ -92,11 +92,11 @@ pub mod fields {
         over: None,
     };
     pub const MATERIAL: Field =
-        Field { key: "material", label: "Material", kind: Kind::Choice(<crate::Material as ecad_model::Word>::WORDS), slot: Slot::new(), over: None };
+        Field { key: "material", label: "Material", kind: Kind::Choice(<super::Material as ecad_model::Word>::WORDS), slot: Slot::new(), over: None };
     pub const CONDUCTOR_CLASS: Field = Field {
         key: "conductor_class",
         label: "Conductor class",
-        kind: Kind::Choice(<crate::ConductorClass as ecad_model::Word>::WORDS),
+        kind: Kind::Choice(<super::ConductorClass as ecad_model::Word>::WORDS),
         slot: Slot::new(),
         over: None,
     };
@@ -121,7 +121,7 @@ pub fn check_style(catalogue: ecad_model::StyleCatalogue, r: &ecad_model::object
         _ => return None,
     };
     let (at, max) = (rating.rated_at.map_or(30.0, |c| c.0), rating.max_temperature.map_or(70.0, |c| c.0));
-    (at >= max).then(|| format!("Rated at {} \u{b0}C is not below the conductor's {} \u{b0}C.", dataset::fmt_num(at), dataset::fmt_num(max)))
+    (at >= max).then(|| format!("Rated at {} \u{b0}C is not below the conductor's {} \u{b0}C.", crate::devices::ratings::dataset::fmt_num(at), crate::devices::ratings::dataset::fmt_num(max)))
 }
 
 /// A panel wire or a field cable.
@@ -903,32 +903,32 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
                     (Some(sz), RatedSubject::Cable(k)) => Some(Fix::PickCableType(k, *sz)),
                     _ => show,
                 };
-                row(CheckKind::RatingUnder, format!("{who} carries {} A; {} is {} A", fmt_amps(iz, Some(a)), d.tag, dataset::fmt_num(a)), fix);
+                row(CheckKind::RatingUnder, format!("{who} carries {} A; {} is {} A", fmt_amps(iz, Some(a)), d.tag, crate::devices::ratings::dataset::fmt_num(a)), fix);
             }
             Issue::TooHot { place, temp, max } => row(
                 CheckKind::RatingTooHot,
-                format!("{place} at {} \u{b0}C is not below {who}'s {} \u{b0}C", dataset::fmt_num(*temp), dataset::fmt_num(*max)),
+                format!("{place} at {} \u{b0}C is not below {who}'s {} \u{b0}C", crate::devices::ratings::dataset::fmt_num(*temp), crate::devices::ratings::dataset::fmt_num(*max)),
                 show,
             ),
             Issue::LoadOver => {
                 let (Some(l), Some(d), Some(a)) = (r.load.as_ref(), dev, i_n) else { continue };
                 row(
                     CheckKind::RatingLoadOver,
-                    format!("{who} load {} A is above {}'s {} A", dataset::fmt_num(l.amps), d.tag, dataset::fmt_num(a)),
+                    format!("{who} load {} A is above {}'s {} A", crate::devices::ratings::dataset::fmt_num(l.amps), d.tag, crate::devices::ratings::dataset::fmt_num(a)),
                     show,
                 );
             }
             Issue::VoltDropOver => {
                 let Some(v) = &r.voltdrop else { continue };
                 let larger =
-                    v.larger.map(|(sz, p)| format!(" ({} mm\u{b2} would drop {} %)", dataset::fmt_num(sz), fmt_percent(p))).unwrap_or_default();
+                    v.larger.map(|(sz, p)| format!(" ({} mm\u{b2} would drop {} %)", crate::devices::ratings::dataset::fmt_num(sz), fmt_percent(p))).unwrap_or_default();
                 row(
                     CheckKind::VoltdropOver,
                     format!(
                         "{who} drops {} % at {} A; limit {} %{larger}",
                         fmt_percent(v.percent),
-                        dataset::fmt_num(v.amps),
-                        dataset::fmt_num(v.limit)
+                        crate::devices::ratings::dataset::fmt_num(v.amps),
+                        crate::devices::ratings::dataset::fmt_num(v.limit)
                     ),
                     show,
                 );
@@ -939,7 +939,7 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
                 Some(Fix::ClearProtectedBy(s)),
             ),
             Issue::TwoDevices(a, b) => {
-                let used = i_n.map(|x| format!("; {} A ({a}) used", dataset::fmt_num(x))).unwrap_or_default();
+                let used = i_n.map(|x| format!("; {} A ({a}) used", crate::devices::ratings::dataset::fmt_num(x))).unwrap_or_default();
                 row(CheckKind::RatingTwoDevices, format!("{who} is fed by {a} and {b}{used}"), None);
             }
             // F6 (§4.2 step 3): the bound, said in words.

@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_engine::Persistence;
-use ecad_engine::checks::{self, Object};
+use {ecad_electrical::checks::Object};
 use ecad_electrical::symbols::{self, STARTER_LIBRARY, STARTERS};
 use ecad_model::{DeviceId, Document, Pt, ConnectionPointId, Word};
 use serde_json::{Value, json};
@@ -36,8 +36,7 @@ pub(crate) struct Sym {
     pub quiet: Vec<String>,
     /// The ID block: 0x100 contacts and protection, 0x200 sensors and actuators, 0x300 connectors,
     /// 0x400 PLC card bodies (§2.2).
-    pub block: u128,
-}
+    pub block: u128}
 
 fn sym(key: &str, prefix: &'static str, word: &'static str, points: &[(&str, f64, f64)], bx: Option<(f64, f64)>, quiet: &[&str], block: u128) -> Sym {
     Sym {
@@ -47,8 +46,7 @@ fn sym(key: &str, prefix: &'static str, word: &'static str, points: &[(&str, f64
         points: points.iter().map(|(k, x, y)| ((*k).to_string(), *x, *y)).collect(),
         bx,
         quiet: quiet.iter().map(|q| (*q).to_string()).collect(),
-        block,
-    }
+        block}
 }
 
 fn row(n: usize, y: f64) -> Vec<(String, f64, f64)> {
@@ -276,13 +274,12 @@ fn embeds_of(d: &Document, key: &str) -> usize {
 
 /// The terminals raised as `Unconnected` in `d`.
 fn unconnected(d: &Document) -> BTreeSet<ConnectionPointId> {
-    checks::all(d, 1e-6)
+    ecad_engine::checks::all(d, 1e-6)
         .into_iter()
         .filter(|c| c.kind.name() == "unconnected")
         .filter_map(|c| match c.object {
             Object::Terminal(t) => Some(t),
-            _ => None,
-        })
+            _ => None})
         .collect()
 }
 

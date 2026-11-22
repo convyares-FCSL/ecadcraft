@@ -6,7 +6,7 @@ use ecad_model::Word;
 use eframe::egui::{self, RichText};
 use serde_json::{Map, Value, json};
 
-use ecad_engine::text_style::{Shown, TextKind};
+use {ecad_electrical::styles::text_style::Shown, ecad_electrical::styles::text_style::TextKind};
 
 /// The section's element name.
 pub const SECTION_ID: &str = "ecad.projectsettings.text";
@@ -212,7 +212,7 @@ impl TextSection {
         }
         let mut doc = ecad_model::Document::default();
         doc.display.insert(ecad_electrical::defaults::text::FONT.key.into(), self.font.trim().to_string());
-        let f = ecad_engine::text_style::Fonts::resolve(&doc);
+        let f = ecad_engine::styles::draw::Fonts::resolve(&doc);
         self.status = f.status();
         self.warn = !f.is_wanted();
         self.status_for.clone_from(&self.font);
@@ -288,11 +288,11 @@ const MAX_FAMILIES: usize = 400;
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     fn read() -> TextSection {
         let doc = ecad_model::Document::default();
-        let fonts = ecad_engine::text_style::Fonts::resolve(&doc);
+        let fonts = ecad_engine::styles::draw::Fonts::resolve(&doc);
         TextSection::from_json(&ecad_electrical::styles::commands::text::textstyle_json(&doc, &fonts, false))
     }
 

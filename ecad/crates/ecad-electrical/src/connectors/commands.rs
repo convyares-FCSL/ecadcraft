@@ -8,7 +8,7 @@ use ecad_model::geometry::units::{Degrees, Radians};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, RouteId, Style, Terminal, ConnectionPointId, WireId};
+use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, RouteId, Style, ConnectionPoint, ConnectionPointId, WireId};
 
 use crate::connectors::{self as cn, FamilyRules, Names, Shown};
 use crate::defaults::{self, Scope};
@@ -596,14 +596,14 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
         let x = doc.terminals.get(&t).ok_or(CmdError::NotFound(Noun::Terminal))?.clone();
         // The pin itself is not free for itself: drawn once more on this side.
         let next = cn::next_pin(doc, c, side, &BTreeSet::new())?;
-        let after = Terminal { label: Some(next.clone()), ..x.clone() };
+        let after = ConnectionPoint { label: Some(next.clone()), ..x.clone() };
         let ops = vec![Op::RemoveConnectionPoint { id: t, terminal: x }, Op::AddConnectionPoint { id: t, terminal: after }];
         let half = cn::half_tag(doc, c, side);
         let message = format!("{half}:{old} is now {half}:{next}.");
         return Ok(Pinlabel::Moved { component: c, label: format!("Move pin {half}:{old}"), from: old, to: next, ops, message });
     }
     cn::check_name(&to)?;
-    let targets: Vec<(ConnectionPointId, Terminal)> =
+    let targets: Vec<(ConnectionPointId, ConnectionPoint)> =
         doc.connection_points_of(c).filter(|(_, x)| x.label.as_deref() == Some(old.as_str())).map(|(t, x)| (t, x.clone())).collect();
     if targets.is_empty() {
         return Err(CmdError::refused(format!("{tag} has no pin {old}.")));
@@ -619,7 +619,7 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
         ops.push(Op::RemoveConnectionPoint { id: *t, terminal: x.clone() });
     }
     for (t, x) in targets {
-        ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { label: Some(to.clone()), ..x } });
+        ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { label: Some(to.clone()), ..x } });
     }
     // A typed list keeps the pin's place under its new name.
     if let Some(list) = cn::pin_names(doc, c)

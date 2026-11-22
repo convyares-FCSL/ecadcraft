@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use crate::common::{H, id};
 
 use cadcraft_engine::Session;
-use ecad_engine::outputs::{BomView, Group, kept::ReportModels};
+use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
@@ -65,7 +65,7 @@ fn checks(h: &mut H, kind: &str) -> Vec<Value> {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     for article in [false, true] {
         for nested in [false, true] {
@@ -386,8 +386,8 @@ fn article_numbers_column_command_and_conflict() {
     same_as_built(&mut f.h);
     let fixes = f.h.cfg(|p| {
         let o = p.outputs();
-        let fix = o.checks().into_iter().find(|c| c.kind == ecad_engine::checks::Kind::ArticleConflict).and_then(|c| c.fix).unwrap();
-        ecad_engine::outputs::accessory_fix_commands(o, fix)
+        let fix = o.checks().into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::ArticleConflict).and_then(|c| c.fix).unwrap();
+        ecad_electrical::reports::accessory_fix_commands(o, fix)
     });
     assert_eq!(fixes.len(), 1);
     assert_eq!(fixes[0].0, "Use A-0110 for all");
@@ -494,8 +494,8 @@ fn missing_for_names_and_bad_keys_are_checked() {
     assert_eq!(c[0]["which"], "-F01 has part.100.maker, which ECAD does not read");
     let fixes = f.h.cfg(|p| {
         let o = p.outputs();
-        let fix = o.checks().into_iter().find(|c| c.kind == ecad_engine::checks::Kind::PartForMissing).and_then(|c| c.fix).unwrap();
-        ecad_engine::outputs::accessory_fix_commands(o, fix)
+        let fix = o.checks().into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::PartForMissing).and_then(|c| c.fix).unwrap();
+        ecad_electrical::reports::accessory_fix_commands(o, fix)
     });
     assert_eq!(fixes[0].0, "Remove 9");
     f.h.run(fixes[0].1, fixes[0].2.clone()).unwrap();
@@ -626,7 +626,7 @@ fn the_bom_page_shows_units_articles_and_nested_lines() {
     let texts = |h: &mut H| -> Vec<String> {
         h.cfg(|p| {
             let o = p.outputs().clone();
-            ecad_engine::generated::parts_of(p.ledger.document(), page, Some(&o))
+            ecad_engine::pages::generated::parts_of(p.ledger.document(), page, Some(&o))
                 .into_iter()
                 .filter_map(|p| match p.kind {
                     cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),

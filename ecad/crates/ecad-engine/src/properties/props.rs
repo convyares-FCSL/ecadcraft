@@ -43,7 +43,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(id, _)| id),
             Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r) | Mapped::DeviceReference(r)) => Some(r),
             // Lane 072 D: a T's dot stands for the line that ends there.
-            Some(Mapped::Tee(r)) => crate::wires::route_item(doc, r).map(|(rid, _, _)| rid),
+            Some(Mapped::Tee(r)) => ecad_electrical::wires::route_item(doc, r).map(|(rid, _, _)| rid),
             // Brief 030: a link line shows its strip (Properties ▸ Link).
             Some(Mapped::Link(c, n)) => {
                 out.links.insert((c, n));
@@ -73,7 +73,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             continue;
         };
         match r.subject {
-            _ if crate::references::is_reference(r) => {
+            _ if ecad_electrical::references::cables::is_reference(r) => {
                 out.references.insert(rid);
             }
             Subject::Device(c) => {
@@ -88,16 +88,16 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             }
             // An aid is not a device, wire or cable (design 072 §6.2); a continuation has its own
             // section.
-            Subject::Aid(a) if crate::continuations::continuation(doc, a).is_some() => {
+            Subject::Aid(a) if ecad_electrical::continuations::continuation(doc, a).is_some() => {
                 out.aids.insert(a);
                 out.aid_symbol.get_or_insert(rid);
             }
-            Subject::Aid(a) if crate::locations::box_values(doc, a).is_some() => {
+            Subject::Aid(a) if ecad_electrical::locations::box_values(doc, a).is_some() => {
                 out.boxes.insert(a);
             }
             Subject::Aid(_) => {}
             // A drawn line stands for the wire it carries (design 072 §4.3).
-            Subject::Route(x) => match crate::wires::wire_of_route(doc, x) {
+            Subject::Route(x) => match ecad_electrical::wires::wire_of_route(doc, x) {
                 Some(w) => {
                     out.wires.insert(w);
                 }
@@ -189,7 +189,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // selected symbol's page (its boxes and values) and the project's.
         v.deps.insert(ObjectRef::Project);
         // Brief 045: a card's Rack row shows its rack's tag.
-        v.deps.extend(k.devices.iter().filter_map(|c| crate::plc::props_deps(doc, *c)));
+        v.deps.extend(k.devices.iter().filter_map(|c| ecad_electrical::plc::props_deps(doc, *c)));
         if let Some(r) = k.symbol.and_then(|s| doc.representations.get(&s)) {
             v.deps.insert(ObjectRef::Page(r.page));
         }
@@ -217,7 +217,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // (`ecad_electrical::properties::view`); brief 049: the Other ends row names its partners'
         // places, on their pages.
         for a in &k.aids {
-            let partners = crate::continuations::name_of(doc, *a).map(|n| doc.continuations_named(&n)).unwrap_or_default();
+            let partners = ecad_electrical::continuations::name_of(doc, *a).map(|n| doc.continuations_named(&n)).unwrap_or_default();
             for o in partners.into_iter().chain([*a]) {
                 v.deps.extend(doc.representations_of(Subject::Aid(o)).map(|(_, r)| ObjectRef::Page(r.page)));
             }

@@ -603,7 +603,7 @@ impl TitleBlockLayout {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn bindings_read_and_write() {

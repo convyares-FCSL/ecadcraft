@@ -543,7 +543,7 @@ pub struct Check {
 
 /// Rebuild the reference index (brief 025) from a copy of the document and compare it with a copy
 /// of the kept one (the debugger's **Check index**, design 025 §3.3).
-pub fn verify_index(doc: &Document, kept: &crate::xref::RefIndex, head: u64) -> Check {
+pub fn verify_index(doc: &Document, kept: &ecad_electrical::references::devices::RefIndex, head: u64) -> Check {
     let (members, groups, edges) = kept.sizes();
     match kept.verify(doc) {
         Ok(()) => Check {
@@ -1135,7 +1135,7 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
     r.ids.extend(r.subject.map(ObjectId::from));
     // A route's line: the wire it carries follows it (design 072 §4: routes draw, wires connect).
     if let Some(Subject::Route(x)) = r.subject {
-        r.ids.extend(crate::wires::wire_of_route(doc, x).map(ObjectId::Wire));
+        r.ids.extend(ecad_electrical::wires::wire_of_route(doc, x).map(ObjectId::Wire));
     }
     r.ids.extend(r.terminal.map(ObjectId::Terminal));
     for t in &r.terminals {
@@ -1211,7 +1211,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .filter(|(_, k)| k.cores.iter().any(|m| m.wire() == Some(c)))
             .map(|(i, _)| ObjectId::Cable(*i))
             .chain(reps_of(Subject::Wire(c)))
-            .chain(crate::wires::routes_of_wire(doc, c).into_iter().map(ObjectId::Route))
+            .chain(ecad_electrical::wires::routes_of_wire(doc, c).into_iter().map(ObjectId::Route))
             .collect(),
         ObjectId::Cable(c) => {
             doc.cables.get(&c).into_iter().flat_map(|k| k.cores.iter().filter_map(member_object)).chain(reps_of(Subject::Cable(c))).collect()
@@ -1223,7 +1223,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .filter(|(_, x)| x.ends.iter().any(|e| e.route() == Some(r)))
             .map(|(i, _)| ObjectId::Route(*i))
             .chain(reps_of(Subject::Route(r)))
-            .chain(crate::wires::wire_of_route(doc, r).map(ObjectId::Wire))
+            .chain(ecad_electrical::wires::wire_of_route(doc, r).map(ObjectId::Wire))
             .collect(),
         ObjectId::Page(p) => doc
             .representations
@@ -1233,9 +1233,9 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .chain(doc.routes.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Route(*i)))
             .collect(),
         ObjectId::Representation(r) => match doc.representations.get(&r) {
-            Some(rep) if crate::references::is_reference(rep) => {
+            Some(rep) if ecad_electrical::references::cables::is_reference(rep) => {
                 let mut out: Vec<ObjectId> = vec![ObjectId::from(rep.subject)];
-                if let Some(x) = crate::references::all(doc).into_iter().find(|x| x.reference == r) {
+                if let Some(x) = ecad_electrical::references::cables::all(doc).into_iter().find(|x| x.reference == r) {
                     out.extend(x.partners.into_iter().map(ObjectId::Representation));
                 }
                 out

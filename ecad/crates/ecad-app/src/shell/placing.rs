@@ -402,7 +402,7 @@ fn tile(ui: &mut egui::Ui, sym: &symbols::Starter, w: f32, on: bool) -> egui::Re
 
 #[cfg(test)]
 mod tests {
-    use crate::shell::*;
+    use super::*;
 
     #[test]
     fn the_chip_reads_the_tag_the_prompt_names() {

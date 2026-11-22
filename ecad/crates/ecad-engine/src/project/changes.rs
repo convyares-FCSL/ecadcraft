@@ -14,7 +14,7 @@ pub struct Change {
     pub n: u64,
     pub pages: Option<BTreeSet<PageId>>,
     /// What it could change in the Devices list (the Devices feed, `ecad_electrical::views::DevicesFeed`).
-    pub devices: crate::device_list::DeviceTouch,
+    pub devices: ecad_electrical::devices::device_list::DeviceTouch,
     /// The objects whose Properties rows it could change (the Properties feed, `ecad_electrical::views::PropsFeed`); `None`: any.
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
     /// Whether it could change the Pages tree (the tree feed, `ecad_electrical::views::TreeFeed`).
@@ -24,7 +24,7 @@ pub struct Change {
 impl Project {
     /// A number that changes exactly when [`Project::page_rows`] could differ (update map of the
     /// Project panel's rows, brief 016): a page added or removed (rename and move are a remove and
-    /// an add, [`crate::device_list::DeviceTouch::pages`]), or a page becoming available or
+    /// an add, [`ecad_electrical::devices::device_list::DeviceTouch::pages`]), or a page becoming available or
     /// unavailable. Every other change (drawing edits, devices, undo or redo of those, view
     /// switches) leaves it alone, so the panel keeps its rows.
     pub fn page_list_version(&self) -> u64 {
@@ -33,7 +33,7 @@ impl Project {
 
     /// The general reference index (brief 025, design 025 §3.3), kept by the views' pipeline
     /// (`ecad_electrical::views::RefsView`).
-    pub fn xref(&self) -> &crate::xref::RefIndex {
+    pub fn xref(&self) -> &ecad_electrical::references::devices::RefIndex {
         self.derived.refs()
     }
 
@@ -85,8 +85,8 @@ impl Project {
 
     /// What the changes after change `n` could change in the Devices list, together; `None` when
     /// the changes are too old to tell (rebuild the list).
-    pub fn device_changes_since(&self, n: u64) -> Option<crate::device_list::DeviceTouch> {
-        let mut out = crate::device_list::DeviceTouch::default();
+    pub fn device_changes_since(&self, n: u64) -> Option<ecad_electrical::devices::device_list::DeviceTouch> {
+        let mut out = ecad_electrical::devices::device_list::DeviceTouch::default();
         if n >= self.change_count {
             return Some(out);
         }
@@ -118,7 +118,7 @@ impl Project {
     }
 
     pub(super) fn record_change(
-        &mut self, pages: Option<BTreeSet<PageId>>, devices: crate::device_list::DeviceTouch, props: Option<BTreeSet<ecad_model::ObjectRef>>,
+        &mut self, pages: Option<BTreeSet<PageId>>, devices: ecad_electrical::devices::device_list::DeviceTouch, props: Option<BTreeSet<ecad_model::ObjectRef>>,
         tree: bool,
     ) {
         self.goto_ring = None;
@@ -340,7 +340,7 @@ impl Project {
         // Brief 052d (design 052 §5.5): any other edit is a Leave of the conflicts waiting.
         self.conflicts.clear();
         // Nothing is drawn on a generated page (brief 024, design 024 §5.3).
-        if let Some(m) = crate::generated::refusal(self.ledger.document(), &ops) {
+        if let Some(m) = ecad_electrical::pages::generated::refusal(self.ledger.document(), &ops) {
             return Err(m);
         }
         // Brief 056 (design 056 §8): the first rack brings the book's rack overview page with it,
@@ -421,7 +421,7 @@ impl Project {
                 if was_active == Some(page) {
                     self.redraw_window(pg, Some(command));
                 }
-                let words = crate::references::page_words(self.ledger.document(), page);
+                let words = ecad_electrical::references::cables::page_words(self.ledger.document(), page);
                 pg.echo(format!("{} brought to the front.", words.replacen("page", "Page", 1)));
             }
             (Path::History { .. }, _) => self.redraw_touched(pg, Some(command), pages.as_ref()),
@@ -486,7 +486,7 @@ pub(crate) fn front_after_history(before: &[PageId], after: &[PageId], touched: 
 
 #[cfg(test)]
 mod tests {
-    use crate::project::*;
+    use super::*;
 
     /// Design 016 section 4.3, table-driven: which page an undo or redo brings to the front.
     #[test]

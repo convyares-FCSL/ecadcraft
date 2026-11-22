@@ -20,8 +20,7 @@ use ecad_model::{Document, PageId};
 use crate::styles::draw::EngineMetrics;
 use ecad_electrical::pages::frames;
 pub use ecad_electrical::pages::frames::{
-    CUSTOMER, DERIVED, DRAWING_NUMBER, FRAME_ACI, FRAME_WEIGHT, LABEL_ACI, LAYER, STATUS, TABLE_ROWS, THIN_WEIGHT, TITLE, TextDraw, fit, touches,
-};
+    CUSTOMER, DERIVED, DRAWING_NUMBER, FRAME_ACI, FRAME_WEIGHT, LABEL_ACI, LAYER, STATUS, TABLE_ROWS, THIN_WEIGHT, TITLE, TextDraw, fit, touches};
 
 /// The layer as the projection adds it.
 pub fn layer() -> cadcraft_engine::doc::Layer {
@@ -59,8 +58,7 @@ pub struct Part {
     /// `None`: ByLayer (ACI 7).
     pub aci: Option<u8>,
     /// Its layer: [`LAYER`], or a generated page's content layer (brief 024).
-    pub layer: &'static str,
-}
+    pub layer: &'static str}
 
 /// The entity of `part` with `handle`.
 pub fn entity(part: &Part, handle: Handle) -> Entity {
@@ -72,8 +70,7 @@ pub fn entity(part: &Part, handle: Handle) -> Entity {
             color: part.aci.map_or(Color::ByLayer, Color::Index),
             ..Common::default()
         },
-        kind: part.kind.clone(),
-    }
+        kind: part.kind.clone()}
 }
 
 /// Brief 050a: the frame style's line colour of `page` as drawn, or `None` for ink.
@@ -120,15 +117,14 @@ pub fn parts(input: &frames::FrameInput) -> Vec<Part> {
 }
 
 /// [`parts`], and what drawing the block found (items skipped, fields cut).
-pub fn drawn(input: &frames::FrameInput) -> (Vec<Part>, crate::title_block::layout::Drawn) {
-    use crate::title_block::layout;
+pub fn drawn(input: &frames::FrameInput) -> (Vec<Part>, crate::title_blocks::layout::Drawn) {
+    use crate::title_blocks::layout;
     let mut pen = layout::Pen::new(unit_scale(input.unit));
     layout::border(&mut pen, input);
     let l = &input.block.layout;
     let origin = match input.look.block {
         ecad_electrical::styles::frame::BlockAt::BottomFull => (input.look.margins.left, input.look.margins.bottom),
-        ecad_electrical::styles::frame::BlockAt::BottomRight => layout::block_origin(input, l),
-    };
+        ecad_electrical::styles::frame::BlockAt::BottomRight => layout::block_origin(input, l)};
     let d = layout::block(&mut pen, input, l, origin);
     (pen.out, d)
 }

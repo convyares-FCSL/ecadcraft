@@ -204,7 +204,7 @@ pub(crate) fn place_half(
             (None, false) => cn::names_for(&Names::Numbers, cn::size_of(starter).unwrap_or(0))?,
         };
         let (c, tag_text, new) = match device {
-            Some(c) => (c, crate::devices::tag_words(doc, c), false),
+            Some(c) => (c, ecad_electrical::devices::tag_words(doc, c), false),
             None => {
                 let pins = cn::size_of(starter);
                 let (c, t) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, new_tag, pins, None, &mut ops)?;

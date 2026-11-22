@@ -325,7 +325,7 @@ impl Debugger {
             self.tx = None;
             self.record = None;
         }
-        self.ref_lines = ecad_engine::references::diagnostics(&snap.doc);
+        self.ref_lines = ecad_electrical::references::cables::diagnostics(&snap.doc);
         self.snap = Some(snap);
         self.taken = now();
         self.stale = None;

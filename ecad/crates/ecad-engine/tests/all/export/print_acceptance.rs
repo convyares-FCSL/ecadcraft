@@ -11,9 +11,9 @@ use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::{Drawing, EntityKind, EntityStore, Space};
 use cadcraft_engine::geom::{Bounds2, Mat3, Vec2};
-use ecad_engine::outputs::kept::ReportModels;
+use ecad_electrical::reports::kept::ReportModels;
 use ecad_engine::export::printbook::{self, Sheet};
-use {ecad_engine::pages::frame, ecad_engine::generated, ecad_engine::xref};
+use {ecad_engine::pages::frame};
 use ecad_model::{DeviceId, Document, Op, PageId};
 use serde_json::{Value, json};
 
@@ -32,8 +32,7 @@ fn frame_texts(h: &mut H, page: PageId) -> Vec<String> {
         .iter()
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None,
-        })
+            _ => None})
         .collect()
 }
 
@@ -44,19 +43,17 @@ fn page_texts(h: &mut H, page: PageId) -> Vec<String> {
     all.iter()
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None,
-        })
+            _ => None})
         .collect()
 }
 
 /// Every text of a generated page (all its sheets) and of its frames.
 fn gen_texts(doc: &Document, page: PageId) -> Vec<String> {
-    generated::parts_of(doc, page, Some(&ReportModels::build_with(doc, &ecad_engine::text_style::EngineMetrics)))
+    ecad_engine::pages::generated::parts_of(doc, page, Some(&ReportModels::build_with(doc, &ecad_engine::styles::draw::EngineMetrics)))
         .iter()
         .filter_map(|p| match &p.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None,
-        })
+            _ => None})
         .collect()
 }
 
@@ -101,7 +98,7 @@ fn light_page(h: &mut H, title: &str) -> PageId {
 fn scratch(h: &mut H, pages: &[PageId]) -> (Drawing, Vec<Sheet>) {
     let doc = h.doc();
     let tol = h.p(|p| p.tolerance);
-    printbook::build(&doc, pages, &BTreeSet::new(), tol, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics))).unwrap()
+    printbook::build(&doc, pages, &BTreeSet::new(), tol, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics))).unwrap()
 }
 
 fn window(s: &Sheet) -> Bounds2 {
@@ -171,7 +168,7 @@ fn ac1_pdf_bytes_grow_linearly_with_sheets() {
     let dense = dense_page(&mut h, "Dense", 36);
     let (one, s) = scratch(&mut h, &[dense]);
     let s0 = s[0].clone();
-    let step = s0.hi.x - s0.lo.x + generated::SHEET_GAP;
+    let step = s0.hi.x - s0.lo.x + ecad_electrical::pages::generated::SHEET_GAP;
     let book = |n: usize| -> (Drawing, Vec<Sheet>) {
         let mut d = one.clone();
         let mut store = EntityStore::new();
@@ -214,21 +211,21 @@ fn ac4_a_missing_value_is_boxed_and_prints_black() {
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
     let bom: PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     let doc = h.doc();
-    let parts = generated::parts_of(&doc, bom, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics)));
+    let parts = ecad_engine::pages::generated::parts_of(&doc, bom, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
     let marks: Vec<_> = parts.iter().filter(|p| matches!(&p.kind, EntityKind::Text(t) if t.value == "?")).collect();
     assert!(!marks.is_empty(), "the BOM shows missing values");
-    assert!(marks.iter().all(|p| p.aci == Some(generated::FLAGGED_ACI)), "`?` is yellow on screen");
-    let boxes = parts.iter().filter(|p| p.aci == Some(generated::FLAGGED_ACI) && !matches!(p.kind, EntityKind::Text(_))).count();
+    assert!(marks.iter().all(|p| p.aci == Some(ecad_electrical::pages::generated::FLAGGED_ACI)), "`?` is yellow on screen");
+    let boxes = parts.iter().filter(|p| p.aci == Some(ecad_electrical::pages::generated::FLAGGED_ACI) && !matches!(p.kind, EntityKind::Text(_))).count();
     assert!(boxes >= marks.len(), "each `?` has its box ({boxes} boxes for {} marks)", marks.len());
     // Print Book's scratch drawing: every flagged part is ACI 7, nothing else recoloured.
     let (d, _) = scratch(&mut h, &[bom]);
-    let gen_parts: Vec<_> = d.model.iter().filter(|e| e.common.layer == generated::LAYER).collect();
+    let gen_parts: Vec<_> = d.model.iter().filter(|e| e.common.layer == ecad_electrical::pages::generated::LAYER).collect();
     let printed_marks: Vec<_> = gen_parts.iter().filter(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "?")).collect();
     assert_eq!(printed_marks.len(), marks.len());
     for e in &printed_marks {
         assert_eq!(e.common.color, cadcraft_engine::doc::color::Color::Index(7), "`?` printed black");
     }
-    assert!(gen_parts.iter().all(|e| e.common.color != cadcraft_engine::doc::color::Color::Index(generated::FLAGGED_ACI)), "no yellow left in print");
+    assert!(gen_parts.iter().all(|e| e.common.color != cadcraft_engine::doc::color::Color::Index(ecad_electrical::pages::generated::FLAGGED_ACI)), "no yellow left in print");
     // On screen still yellow (the page's own drawing).
     h.activate(bom);
     let shown = h.pv(|p, pg| pg.entities_of(p, bom));
@@ -261,13 +258,12 @@ fn coil_low(seed: u64, at: (f64, f64)) -> (H, PageId, DeviceId) {
 /// The table's drawn parts on `page`: (min x, min y, max x, max y).
 fn table_box(h: &mut H, page: PageId, coil: DeviceId) -> (f64, f64, f64, f64) {
     let doc = h.doc();
-    let head = xref::device(&doc, coil).head.unwrap();
+    let head = ecad_electrical::references::devices::device(&doc, coil).head.unwrap();
     let mut b = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-    for part in xref::parts_on_page(&doc, page).into_iter().filter(|p| p.rep == head) {
+    for part in ecad_engine::references::draw::devices::parts_on_page(&doc, page).into_iter().filter(|p| p.rep == head) {
         let ps = match part.shape {
-            xref::Shape::Line(a, c) => vec![a, c],
-            xref::Shape::Text { at, .. } => vec![at],
-        };
+            ecad_electrical::references::devices::Shape::Line(a, c) => vec![a, c],
+            ecad_electrical::references::devices::Shape::Text { at, .. } => vec![at]};
         for p in ps {
             b = (b.0.min(p.x), b.1.min(p.y), b.2.max(p.x), b.3.max(p.y));
         }
@@ -303,7 +299,7 @@ fn ac5_an_automatic_table_clears_the_title_block() {
     let shown = v["table"]["shown"].as_str().unwrap_or_default().to_string();
     assert!(shown != "right" && shown != "lifted", "{v}");
     let top =
-        h.p(|p| xref::table(p.ledger.document(), &mut xref::Places::new(p.ledger.document()), &xref::device(p.ledger.document(), k1)).map(|t| t.top));
+        h.p(|p| ecad_engine::references::draw::devices::table(p.ledger.document(), &mut ecad_electrical::references::devices::Places::new(p.ledger.document()), &ecad_electrical::references::devices::device(p.ledger.document(), k1)).map(|t| t.top));
     assert_eq!(top.map(|t| t.x), Some(100.0), "under the coil as today");
     let _ = table_box(&mut h, p1, k1);
     // Moving the low coil's head up: the table follows and goes back under it.
@@ -345,7 +341,7 @@ fn long_plan(h: &mut H, number: &str) -> (PageId, usize) {
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "120"})).unwrap();
     let page: PageId = id(&h.run("newpage", json!({"generated": "terminals", "number": number})).unwrap(), "page");
     let doc = h.doc();
-    let n = generated::sheets_of(&doc, page, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics)));
+    let n = ecad_electrical::pages::generated::sheets_of(&doc, page, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
     assert!(n >= 3, "120 terminals run to three sheets or more ({n})");
     (page, n)
 }
@@ -420,7 +416,7 @@ fn ac8_continuation_numbers_are_taken_and_a_clash_is_a_warning() {
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "200"})).unwrap();
     let checks = h.run("checks", json!({})).unwrap().to_string();
     let doc = h.doc();
-    let last = 400 + generated::sheets_of(&doc, plan, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics))) - 1;
+    let last = 400 + ecad_electrical::pages::generated::sheets_of(&doc, plan, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics))) - 1;
     let want = format!("Page 400 ({title}) now runs to {last}, and page {next} has that number.");
     assert!(checks.contains(&want), "{want}: {checks}");
     // The book still prints.
@@ -452,7 +448,7 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
     h.run("wire", json!({"points": pts(&[(10.0, 30.0), (60.0, 30.0)])})).unwrap();
     assert!(has(&mut h, "A*"), "edit after the issue: {:?}", rev_box(&mut h, page));
     let cover: PageId = id(&h.run("newpage", json!({"generated": "cover"})).unwrap(), "page");
-    // The cover as drawn (the project's pending flag; `generated::parts_of` alone has none).
+    // The cover as drawn (the project's pending flag; `ecad_engine::pages::generated::parts_of` alone has none).
     let shown = page_texts(&mut h, cover);
     // Brief 054b (design 054 §6): the cover draws blocks; its revisions are the issued rows, and it
     // no longer counts sheets.
@@ -488,8 +484,7 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
         .iter()
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None,
-        })
+            _ => None})
         .collect();
     assert!(texts.iter().any(|t| t == "A*"), "reopened: {texts:?}");
     // Issue B: no marker.

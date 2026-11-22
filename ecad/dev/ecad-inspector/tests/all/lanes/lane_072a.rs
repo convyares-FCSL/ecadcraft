@@ -29,7 +29,7 @@ fn tag_prefixes_by_symbol_and_the_cable_prefix_are_shown_raw_and_readable() {
     use std::time::Duration;
 
     use ecad_inspector::source::{FileSource, Source, VerifyState};
-    use ecad_model::prefix::{PrefixOf, TagPrefix};
+    use ecad_model::naming::prefix::{PrefixOf, TagPrefix};
 
     let dir = TempDir::new("072a2-prefixes");
     let mut l = history();

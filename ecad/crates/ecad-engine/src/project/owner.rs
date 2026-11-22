@@ -106,7 +106,7 @@ impl DocumentOwner for Project {
         }
         let label = c.command.to_ascii_uppercase();
         // Nothing is drawn on a generated page (brief 024, design 024 §5.3).
-        if let Some(m) = crate::generated::refusal(self.ledger.document(), &t.ops) {
+        if let Some(m) = ecad_electrical::pages::generated::refusal(self.ledger.document(), &t.ops) {
             self.restore(pg, c.uid, page);
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
             return Verdict::Refuse(m);
@@ -365,7 +365,7 @@ impl Project {
         let conflicts = planned.conflicts.clone();
         if !planned.ops.is_empty() {
             let follow = ecad_electrical::symbols::proposals::follow_up_label(&planned);
-            let set: Vec<String> = planned.set.iter().map(|(c, _, v)| format!("{} is now in {v}", crate::devices::tag_words(doc, *c))).collect();
+            let set: Vec<String> = planned.set.iter().map(|(c, _, v)| format!("{} is now in {v}", ecad_electrical::devices::tag_words(doc, *c))).collect();
             match self.apply_edit(pg, "move", &follow, planned.ops) {
                 Ok(_) => pg.echo(format!("{label}; {}.", set.join("; "))),
                 Err(e) => pg.echo(format!("Not set ({e}).")),

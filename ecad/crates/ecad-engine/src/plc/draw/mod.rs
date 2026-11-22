@@ -7,7 +7,7 @@ pub mod sheets;
 use ecad_model::{Document, Op};
 
 use crate::styles::draw::EngineMetrics;
-use crate::plc::kept;
+use ecad_electrical::plc::kept;
 
 /// The kept PLC model ([`kept::Plc`]) with text measured in CADCraft's fonts.
 #[derive(Debug, Clone, Default, PartialEq)]

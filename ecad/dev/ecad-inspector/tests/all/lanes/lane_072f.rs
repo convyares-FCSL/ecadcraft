@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
-use ecad_model::aid::{Caption, ContinuationName};
-use ecad_model::units::Celsius;
+use ecad_model::objects::aid::{Caption, ContinuationName};
+use ecad_model::geometry::units::Celsius;
 use ecad_model::{Aid, AidId, Author, IdAllocator, LocationBox, Op};
 
 use crate::common::*;
@@ -51,14 +51,14 @@ fn aids_and_their_ops_are_shown_raw_and_readable() {
 /// Lane F F1b: a connection point says what owns it, a device or a drawing aid, in both views.
 #[test]
 fn a_points_owner_is_shown_raw_and_readable() {
-    use ecad_model::{Device, DeviceId, Terminal, ConnectionPointId};
+    use ecad_model::{Device, DeviceId, ConnectionPoint, ConnectionPointId};
     let dir = TempDir::new("072f-owner");
     let mut l = history();
     let mut ids = IdAllocator::seeded(0x72f1);
     let (a, d): (AidId, DeviceId) = (ids.fresh(), ids.fresh());
     let (ta, td): (ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh());
     let arrow = Aid::Continuation { name: Some(ContinuationName::new("24V").unwrap()), caption: None };
-    let point = |owner: ecad_model::ConnectionPointOwner| Terminal { owner, label: None, key: None, accepts: Default::default() };
+    let point = |owner: ecad_model::ConnectionPointOwner| ConnectionPoint { owner, label: None, key: None, accepts: Default::default() };
     l.commit(
         Author::User,
         "points",
@@ -93,7 +93,7 @@ fn a_points_owner_is_shown_raw_and_readable() {
 /// `ModifyAid`; both read in the Raw and Readable views.
 #[test]
 fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
-    use ecad_model::{Form, Item, ItemId, ItemKind, Primitive, Pt, Representation, RepresentationId, Style, Subject, Terminal, ConnectionPointId};
+    use ecad_model::{Form, Item, ItemId, ItemKind, Primitive, Pt, Representation, RepresentationId, Style, Subject, ConnectionPoint, ConnectionPointId};
     let dir = TempDir::new("072f-rename");
     let mut l = history();
     let mut ids = IdAllocator::seeded(0x72f2);
@@ -107,7 +107,7 @@ fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
         "arrow",
         vec![
             Op::CreateAid { id: a, aid: named("24V") },
-            Op::AddConnectionPoint { id: t, terminal: Terminal { owner: a.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default() } },
             Op::AddItem { id: i, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 10.0) }) } },
             Op::LinkRepresentation {
                 id: r,
@@ -231,8 +231,8 @@ fn a_location_box_aid_and_its_edit_are_shown_raw_and_readable() {
 /// snapshot (with the part in its own `model:loose_part:` chunk) reads back.
 #[test]
 fn a_loose_part_and_its_edit_are_shown_raw_and_readable() {
-    use ecad_model::loose_part::LooseDescription as Description;
-    use ecad_model::loose_part::{ItemUnit, LoosePart, Qty};
+    use ecad_model::objects::loose_part::LooseDescription as Description;
+    use ecad_model::objects::loose_part::{ItemUnit, LoosePart, Qty};
     use ecad_model::{LocationId, LoosePartId};
     let dir = TempDir::new("072f-loose");
     let mut l = history();

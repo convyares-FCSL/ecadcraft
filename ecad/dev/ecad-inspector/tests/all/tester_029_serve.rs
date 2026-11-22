@@ -427,7 +427,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
     let (p1, layer, k, a, b): (PageId, LayerId, DeviceId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let (w, c): (WireId, CableId) = (ids.fresh(), ids.fresh());
     let props = |pairs: &[(&str, &str)]| {
-        let mut p = ecad_model::doc::Properties::new();
+        let mut p = ecad_model::document::doc::Properties::new();
         for (k, v) in pairs {
             p.insert((*k).into(), (*v).into());
         }
@@ -440,8 +440,8 @@ fn hostile_text_comes_back_as_plain_json_strings() {
             Op::AddPage { id: p1, page: Page::titled(X).unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: X.into() } },
             Op::CreateDevice { id: k, device: Device { properties: props(&[("note", X)]), ..Device::default() }.with_tag(Some(X)) },
-            Op::AddConnectionPoint { id: a, terminal: Terminal { owner: k.into(), label: Some(X.into()), key: None, accepts: Default::default() } },
-            Op::AddConnectionPoint { id: b, terminal: Terminal { owner: k.into(), label: Some("2".into()), key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: a, terminal: ConnectionPoint { owner: k.into(), label: Some(X.into()), key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint { id: b, terminal: ConnectionPoint { owner: k.into(), label: Some("2".into()), key: None, accepts: Default::default() } },
             Op::CreateWire { id: w, wire: Wire::new(ids.fresh(), ids.fresh(), a, b) },
             Op::CreateCable {
                 id: c,

@@ -36,17 +36,15 @@ use ecad_model::{Document, Op};
 use serde_json::{Map, Value, json};
 
 use crate::access::Pages;
-use crate::checks::{self, Check};
+use {ecad_electrical::checks::Check};
 use crate::commands::opt_typed;
-use crate::outputs;
-use crate::outputs::kept::ReportModels;
+use ecad_electrical::reports::kept::ReportModels;
 use crate::export::printbook::{self, Options};
 use crate::project::Project;
 use ecad_electrical::releases::revisions;
 
 use ecad_electrical::releases::release::{
-    DEFAULT_ROWS, Group, LISTS, MAX_ROWS, SAVE_FIRST, checks_table, clean_stem, counts, folder_name, grouped, slot_gives,
-};
+    DEFAULT_ROWS, Group, LISTS, MAX_ROWS, SAVE_FIRST, checks_table, clean_stem, counts, folder_name, grouped, slot_gives};
 use ecad_electrical::releases::release::{errors_refusal, finalising, over_budget, stopped};
 
 /// The manifest's file name.
@@ -78,7 +76,7 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
     let doc = p.ledger.document();
     let mut rows: Vec<Check> = p.kept_checks().map(|c| c.rows().cloned().collect()).unwrap_or_default();
     rows.extend(p.kept_reports().map(ReportModels::checks).unwrap_or_default());
-    checks::sort(doc, rows)
+    ecad_electrical::checks::sort(doc, rows)
 }
 
 // ---------------------------------------------------------------- 026 seam
@@ -93,7 +91,7 @@ pub mod numbering_seam {
     use serde_json::Value;
 
     use crate::access::Pages;
-    use crate::checks::Check;
+    use ecad_electrical::checks::Check;
     use crate::commands::opt_typed;
     use crate::project::Project;
 
@@ -159,8 +157,7 @@ pub mod numbering_seam {
     pub(crate) fn before_issue(p: &mut Project, pg: &mut Pages<'_>, way: Option<&str>) -> Result<Option<String>, CmdError> {
         match plan_before(p, way)? {
             BeforeIssue::Go(note) => Ok(note),
-            BeforeIssue::Finalise(plan) => commit(p, pg, &plan).map(|()| None),
-        }
+            BeforeIssue::Finalise(plan) => commit(p, pg, &plan).map(|()| None)}
     }
 }
 
@@ -193,8 +190,7 @@ fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
             }
             Ok(Some(out))
         }
-        Some(_) => Err("`outputs` is a list of slot names".into()),
-    }
+        Some(_) => Err("`outputs` is a list of slot names".into())}
 }
 
 // ---------------------------------------------------------------- names and places (§7.1)
@@ -259,8 +255,7 @@ fn lexical(path: &Path) -> PathBuf {
             std::path::Component::ParentDir => {
                 out.pop();
             }
-            other => out.push(other.as_os_str()),
-        }
+            other => out.push(other.as_os_str())}
     }
     out
 }
@@ -300,8 +295,7 @@ pub fn check_target(p: &Project, folder: &Path) -> Result<(), String> {
             let dir = lexical(&dir);
             same_or_below(&dir, &f) || same_path(&f, &dir.join(RELEASE_DIR)) || same_path(&f, &dir.join(RELEASE_DIR).join(REPLACED_DIR))
         }
-        None => false,
-    };
+        None => false};
     if bad || f.parent().is_none() {
         return Err(format!(
             "{} cannot be a release folder: it holds the project or other releases. Choose a folder inside release, or another folder.",
@@ -333,8 +327,7 @@ pub enum Step {
     Issue,
     Save,
     Manifest,
-    Rename,
-}
+    Rename}
 
 fn injected(p: &mut Project, step: Step) -> Result<(), String> {
     if p.faults.fail_release_at == Some(step) {
@@ -355,8 +348,7 @@ pub struct Written {
     pub sha256: String,
     pub sheets: Option<usize>,
     pub rows: Option<usize>,
-    pub flagged: Option<usize>,
-}
+    pub flagged: Option<usize>}
 
 impl Written {
     fn json(&self, folder: Option<&Path>) -> Value {
@@ -407,8 +399,7 @@ pub struct Staged {
     pub files: Vec<Written>,
     pub not_included: Vec<(String, String)>,
     pub sheets: usize,
-    pub lists: usize,
-}
+    pub lists: usize}
 
 /// The inputs of a build: the state as issued, its report models, its check rows.
 pub struct Build<'a> {
@@ -422,8 +413,7 @@ pub struct Build<'a> {
     pub rev: String,
     /// Errors accepted with `accept: "errors"`.
     pub accepted: bool,
-    pub chosen: Option<BTreeSet<String>>,
-}
+    pub chosen: Option<BTreeSet<String>>}
 
 /// Build every output into `dir` (created fresh; an old one removed first).
 ///
@@ -460,18 +450,17 @@ pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -
         }
         match (slot.build)(b.doc, b.outputs) {
             Some(t) => {
-                put(dir, slot.id, format!("{base}{}", slot.suffix), outputs::csv(&t, true).as_bytes(), &mut st.files)?;
+                put(dir, slot.id, format!("{base}{}", slot.suffix), ecad_electrical::reports::csv(&t, true).as_bytes(), &mut st.files)?;
                 if let Some(w) = st.files.last_mut() {
                     w.rows = Some(t.rows.len());
                     w.flagged = Some(t.flagged());
                 }
                 st.lists += 1;
             }
-            None => st.not_included.push((slot.id.into(), slot.missing_why.into())),
-        }
+            None => st.not_included.push((slot.id.into(), slot.missing_why.into()))}
     }
     let t = checks_table(b.doc, b.rows, b.accepted);
-    put(dir, "checks", format!("{base} checks.csv"), outputs::csv(&t, true).as_bytes(), &mut st.files)?;
+    put(dir, "checks", format!("{base} checks.csv"), ecad_electrical::reports::csv(&t, true).as_bytes(), &mut st.files)?;
     if let Some(w) = st.files.last_mut() {
         w.rows = Some(t.rows.len());
     }
@@ -485,8 +474,7 @@ pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -
 pub enum Existing {
     AddMissing,
     Replace,
-    KeepBoth,
-}
+    KeepBoth}
 
 impl Existing {
     fn parse(params: &Value) -> Result<Option<Existing>, String> {
@@ -496,10 +484,8 @@ impl Existing {
                 "add-missing" => Ok(Some(Existing::AddMissing)),
                 "replace" => Ok(Some(Existing::Replace)),
                 "keep-both" => Ok(Some(Existing::KeepBoth)),
-                other => Err(format!("`existing` is \"add-missing\", \"replace\" or \"keep-both\", not {other:?}")),
-            },
-            Some(_) => Err("`existing` is \"add-missing\", \"replace\" or \"keep-both\"".into()),
-        }
+                other => Err(format!("`existing` is \"add-missing\", \"replace\" or \"keep-both\", not {other:?}"))},
+            Some(_) => Err("`existing` is \"add-missing\", \"replace\" or \"keep-both\"".into())}
     }
 }
 
@@ -513,8 +499,7 @@ pub struct OldFolder {
     /// File name → SHA-256.
     pub files: BTreeMap<String, String>,
     /// The whole manifest, for Add missing.
-    pub raw: Value,
-}
+    pub raw: Value}
 
 /// Read `folder`'s manifest, if any.
 pub fn read_old(folder: &Path) -> OldFolder {
@@ -536,8 +521,7 @@ pub fn read_old(folder: &Path) -> OldFolder {
         written: raw.get("written").and_then(Value::as_str).map(str::to_string),
         app: raw.get("app").and_then(Value::as_str).map(str::to_string),
         files,
-        raw,
-    }
+        raw}
 }
 
 /// The staged files against an old folder.
@@ -545,8 +529,7 @@ pub fn read_old(folder: &Path) -> OldFolder {
 pub struct Compare {
     pub same: Vec<String>,
     pub new: Vec<String>,
-    pub different: Vec<String>,
-}
+    pub different: Vec<String>}
 
 impl Compare {
     pub fn of(old: &OldFolder, staged: &[Written]) -> Compare {
@@ -555,8 +538,7 @@ impl Compare {
             match old.files.get(&w.name) {
                 None => c.new.push(w.name.clone()),
                 Some(h) if *h == w.sha256 => c.same.push(w.name.clone()),
-                Some(_) => c.different.push(w.name.clone()),
-            }
+                Some(_) => c.different.push(w.name.clone())}
         }
         c
     }
@@ -617,8 +599,7 @@ struct Landing {
     move_old: Option<(PathBuf, PathBuf)>,
     /// Add the missing staged files to the old folder instead of renaming.
     add_missing: Option<OldFolder>,
-    compare: Option<Compare>,
-}
+    compare: Option<Compare>}
 
 /// Decide what an existing `folder` means (design 027 §9).
 ///
@@ -645,8 +626,7 @@ fn landing(folder: &Path, staged: &Staged, existing: Option<Existing>) -> Result
             let to = replaced_place(folder, &old);
             Ok(Landing { folder: folder.to_path_buf(), move_old: Some((folder.to_path_buf(), to)), add_missing: None, compare: Some(cmp) })
         }
-        Some(Existing::KeepBoth) => Ok(Landing { folder: keep_both(folder)?, move_old: None, add_missing: None, compare: Some(cmp) }),
-    }
+        Some(Existing::KeepBoth) => Ok(Landing { folder: keep_both(folder)?, move_old: None, add_missing: None, compare: Some(cmp) })}
 }
 
 /// Put the staged folder in place (step 7).
@@ -699,8 +679,7 @@ pub struct Issued {
     pub branch: String,
     pub transaction: u64,
     pub point: u64,
-    pub chain: Option<String>,
-}
+    pub chain: Option<String>}
 
 /// The manifest (design 027 §2, FP2).
 pub fn manifest(
@@ -732,12 +711,10 @@ pub fn manifest(
             "lineweights": b.options.lineweights,
             "excel_safe": true,
             "bom_group": "location",
-            "cable_views": views,
-        },
+            "cable_views": views},
         "files": st.files.iter().map(Written::manifest).collect::<Vec<_>>(),
         "not_included": st.not_included.iter().map(|(k, why)| json!({"kind": k, "why": why})).collect::<Vec<_>>(),
-        "checks": {"errors": e, "warnings": w, "info": i, "accepted_errors": b.accepted && e > 0},
-    })
+        "checks": {"errors": e, "warnings": w, "info": i, "accepted_errors": b.accepted && e > 0}})
 }
 
 /// `ECAD 0.3.0-dev (CADCraft 227e3c3)`.
@@ -821,8 +798,7 @@ pub struct View {
     /// The pending revision's fields (`revisions::FIELDS` order).
     pub fields: [String; 6],
     /// The rows as JSON (`checks`' form), for `prerelease`.
-    json_rows: Vec<Vec<Value>>,
-}
+    json_rows: Vec<Vec<Value>>}
 
 /// The [`View`] of `rev` (an issued rev, or `None` for the pending one); `accept` as the dialog's
 /// tick. Reads the kept Checks and report models for the pending revision (no rescan); builds an
@@ -848,7 +824,7 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
         Some(row) => {
             let (_, _, then) = crate::history::issued_state(p, row.rev())?;
             let detached = p.derived().detached(&then);
-            let rows = checks::all_with(&then, p.tolerance, detached.outputs());
+            let rows = crate::checks::all_with(&then, p.tolerance, detached.outputs());
             to_rows(&then, &rows, &mut v);
             v.rev = row.rev().to_string();
             v.issued = Some(v.rev.clone());
@@ -892,15 +868,13 @@ impl View {
         let mut v = json!({
             "rev": self.rev, "state": if self.issued.is_some() { "issued" } else { "pending" },
             "groups": self.groups.iter().zip(&self.json_rows).map(|((g, r), rows)| json!({
-                "group": g.id(), "words": g.words(), "count": r.len(), "rows": rows,
-            })).collect::<Vec<_>>(),
+                "group": g.id(), "words": g.words(), "count": r.len(), "rows": rows})).collect::<Vec<_>>(),
             "errors": self.errors, "warnings": self.warnings, "info": self.info,
             "provisional": self.provisional,
             "folder": self.folder.as_deref().map(shown),
             "exists": self.existing.is_some(),
             "writes": self.writes.iter().map(|(s, f)| json!({"slot": s, "file": f})).collect::<Vec<_>>(),
-            "not_included": self.not_included.iter().map(|(s, w)| json!({"slot": s, "why": w})).collect::<Vec<_>>(),
-        });
+            "not_included": self.not_included.iter().map(|(s, w)| json!({"slot": s, "why": w})).collect::<Vec<_>>()});
         if let Some(old) = &self.existing {
             v["existing"] = json!({"manifest": old.manifest, "written": old.written, "app": old.app, "files": old.files.len()});
         }
@@ -921,8 +895,7 @@ impl View {
             (Some(w), true) => {
                 format!("Rev {rev}'s folder exists (written {}). Release asks what to do with it.", w.replacen('T', " ", 1).trim_end_matches('Z'))
             }
-            _ => format!("Rev {rev}'s folder exists (not written by a release). Release asks what to do with it."),
-        })
+            _ => format!("Rev {rev}'s folder exists (not written by a release). Release asks what to do with it.")})
     }
 }
 
@@ -994,8 +967,7 @@ fn done_words(rev: &str, folder: &Path, st: &Staged, rows: &[Check]) -> String {
     let errs = match e {
         0 => String::new(),
         1 => "1 error and ".into(),
-        n => format!("{n} errors and "),
-    };
+        n => format!("{n} errors and ")};
     let warns = if w == 1 { "1 warning".to_string() } else { format!("{w} warnings") };
     format!("Rev {rev} released to {}: {sheets}, {lists}, {errs}{warns} listed.", shown(folder))
 }
@@ -1007,8 +979,7 @@ fn folder_param(p: &Project, params: &Value, default: Option<PathBuf>) -> Result
             let path = PathBuf::from(f.trim());
             Ok(if path.is_absolute() { path } else { project_dir(p).map_or(path.clone(), |d| d.join(&path)) })
         }
-        _ => default.ok_or_else(|| SAVE_FIRST.to_string()),
-    }
+        _ => default.ok_or_else(|| SAVE_FIRST.to_string())}
     .and_then(|f| check_target(p, &f).map(|()| f))
 }
 
@@ -1036,8 +1007,7 @@ pub(crate) fn release_pending(
     // release that stops before the issue records nothing at all (tester 027, 1).
     let (finalise, note) = match numbering_seam::plan(p, params)? {
         ecad_electrical::numbering::commands::BeforeIssue::Go(note) => (None, note),
-        ecad_electrical::numbering::commands::BeforeIssue::Finalise(plan) => (Some(plan), None),
-    };
+        ecad_electrical::numbering::commands::BeforeIssue::Finalise(plan) => (Some(plan), None)};
     // The caller's transaction budget (an agent's cap of one per call, two with Finalise): known
     // before anything reaches the disk, never found out after (tester 027, 3).
     let needed = 1 + usize::from(finalise.is_some());
@@ -1068,7 +1038,7 @@ pub(crate) fn release_pending(
     // copy, as for a re-release); otherwise the kept ones (the issue changes no list or check).
     let finalised = finalise.as_ref().map(|_| {
         let detached = p.derived().detached(&issued_doc);
-        let r = checks::all_with(&issued_doc, p.tolerance, detached.outputs());
+        let r = crate::checks::all_with(&issued_doc, p.tolerance, detached.outputs());
         (detached, r)
     });
     let rows = finalised.as_ref().map_or(rows, |(_, r)| r.clone());
@@ -1117,8 +1087,7 @@ pub(crate) fn release_pending(
         if finalise_tx.is_some() {
             return Err(match p.undo_step(pg) {
                 Ok(()) => format!("Release stopped: {e}. Finalise numbering was undone; nothing was issued or written."),
-                Err(u) => format!("Release stopped: {e}. Finalise numbering stays recorded ({u}); nothing was issued or written. Undo it with u."),
-            });
+                Err(u) => format!("Release stopped: {e}. Finalise numbering stays recorded ({u}); nothing was issued or written. Undo it with u.")});
         }
         return Err(e);
     }
@@ -1176,8 +1145,7 @@ pub(crate) fn release_pending(
         "rev": rev, "folder": shown(&l.folder), "finished": landed,
         "files": st.files.iter().map(|w| w.json(Some(&l.folder))).collect::<Vec<_>>(),
         "not_included": st.not_included.iter().map(|(k, why)| json!({"slot": k, "why": why})).collect::<Vec<_>>(),
-        "transactions": transactions, "saved": saved.is_ok(), "message": message,
-    });
+        "transactions": transactions, "saved": saved.is_ok(), "message": message});
     if let Some(c) = &l.compare {
         v["compare"] = c.json();
     }
@@ -1209,7 +1177,7 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
     let (named, seq, then) = crate::history::issued_state(p, &rev)?;
     let detached = p.derived().detached(&then);
     let outputs = detached.outputs();
-    let rows = checks::all_with(&then, p.tolerance, outputs);
+    let rows = crate::checks::all_with(&then, p.tolerance, outputs);
     let staging = partial_of(&target);
     let fan = p.views.clone();
     let b =
@@ -1246,8 +1214,7 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
         "rev": rev, "folder": shown(&l.folder), "finished": true,
         "files": st.files.iter().map(|w| w.json(Some(&l.folder))).collect::<Vec<_>>(),
         "not_included": st.not_included.iter().map(|(k, why)| json!({"slot": k, "why": why})).collect::<Vec<_>>(),
-        "transactions": [], "saved": false, "message": format!("{message}."),
-    });
+        "transactions": [], "saved": false, "message": format!("{message}.")});
     if let Some(c) = &l.compare {
         v["compare"] = c.json();
     }

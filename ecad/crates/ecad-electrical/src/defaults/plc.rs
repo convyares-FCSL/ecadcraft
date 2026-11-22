@@ -457,7 +457,7 @@ pub static ENTRIES: &[&Entry] = &[
 
 #[cfg(test)]
 mod tests {
-    use crate::defaults::*;
+    use super::*;
 
     #[test]
     fn caption_patterns_name_only_rack_and_slot() {

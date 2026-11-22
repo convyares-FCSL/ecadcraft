@@ -98,8 +98,8 @@ fn embedded_definitions_follow_the_owner_requirements() {
         }
         ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
         ops.push(Op::RemoveItem { id: rep.items[0], item: doc.items[&rep.items[0]].clone() });
-        for (t, term) in doc.terminals_of(c) {
-            ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
+        for (t, term) in doc.connection_points_of(c) {
+            ops.push(Op::RemoveConnectionPoint { id: t, terminal: term.clone() });
         }
         ops.push(Op::DeleteDevice { id: c, device: doc.devices[&c].clone() });
     }
@@ -125,7 +125,7 @@ fn tag_settings_are_written_only_when_set_and_round_trip() {
     let before = f.ledger.document().settings.clone();
     let mut after = before.clone();
     after.tag_padding = Some(3);
-    after.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Starter("coil".into()), ecad_model::prefix::TagPrefix::typed("KA").unwrap());
+    after.tag_prefixes.insert(ecad_model::naming::prefix::PrefixOf::Starter("coil".into()), ecad_model::naming::prefix::TagPrefix::typed("KA").unwrap());
     let op = Op::SetProjectSettings { before, after: after.clone() };
     let line = ecad_file::record::op_value(&op).unwrap().to_string();
     assert!(line.contains("\"tag_padding\":3") && line.contains("\"starter:coil\":\"KA\""), "{line}");
@@ -147,12 +147,12 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     let mut f = fixture();
     let before = f.ledger.document().settings.clone();
     let mut after = before.clone();
-    after.wiring.scheme = ecad_model::wiring::Scheme::PageColumn;
+    after.wiring.scheme = ecad_model::connectivity::wiring::Scheme::PageColumn;
     after.wiring.digits = Some(3);
-    after.wiring.colour_style = Some(ecad_model::colour::ColourWords::Code3);
+    after.wiring.colour_style = Some(ecad_model::geometry::colour::ColourWords::Code3);
     after.wiring.label_height = Some(2.5);
     // Brief 032 (FP-W1): the label rule and the shortest labelled wire.
-    after.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
+    after.wiring.label_rule = Some(ecad_model::connectivity::wiring::LABEL_RULE_EACH.into());
     after.wiring.label_min_length = Some(10.0);
     after.wiring.potentials.retain(|p| p.name != "PE");
     let op = Op::SetProjectSettings { before, after: after.clone() };
@@ -171,7 +171,7 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     // Brief 044 (FP2, invariant I7): a bridge names keys the definition has terminals for.
     let points = ["1", "2"]
         .iter()
-        .map(|k| ecad_model::TerminalDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
+        .map(|k| ecad_model::ConnectionPointDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
         .collect();
     let bridged = ecad_model::Definition { terminals: points, bridges: vec![vec!["1".parse().unwrap(), "2".parse().unwrap()]], ..bare.clone() };
     let bare_line = serde_json::to_string(&ecad_file::records::Definition::from(&bare)).unwrap();
@@ -213,7 +213,7 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
         Op::ModifyProject {
             before: ecad_model::Project::default(),
             after: ecad_model::Project {
-                info: ecad_model::ProjectInfo { title: ecad_model::text::Text::new("P7").ok(), ..Default::default() },
+                info: ecad_model::ProjectInfo { title: ecad_model::naming::text::Text::new("P7").ok(), ..Default::default() },
                 ..Default::default()
             },
         },
@@ -236,11 +236,11 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
 #[test]
 fn wiring_settings_without_the_label_rule_read_with_its_defaults() {
     // Not chosen, the fields are left out (brief 066, F2); such a record reads back not chosen.
-    let v = serde_json::to_value(ecad_file::records::WiringSettings::from(&ecad_model::wiring::WiringSettings::default())).unwrap();
+    let v = serde_json::to_value(ecad_file::records::WiringSettings::from(&ecad_model::connectivity::wiring::WiringSettings::default())).unwrap();
     let o = v.as_object().unwrap();
     assert!(!o.contains_key("label_rule") && !o.contains_key("label_min_length"), "{v}");
     let read: ecad_file::records::WiringSettings = serde_json::from_value(v).unwrap();
-    let w = ecad_model::wiring::WiringSettings::from(read);
+    let w = ecad_model::connectivity::wiring::WiringSettings::from(read);
     // Brief 066 (F2): absent is "not chosen", which follows the built-in.
     assert_eq!((w.label_rule, w.label_min_length, w.label_height), (None, None, None));
 }

@@ -1,7 +1,7 @@
 //! Brief 045a (design 045 §2, §3, §9 a-rows, §11, §13 A–E, M, T): racks, slots and cards.
 
-use ecad_engine::checks::{Fix, Kind};
-use ecad_engine::outputs::accessory_fix_commands;
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
+use ecad_electrical::reports::accessory_fix_commands;
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::{Author, DeviceId, Op};
 use serde_json::{Value, json};
@@ -40,7 +40,7 @@ fn hand_made(h: &mut H, ops: Vec<Op>) {
 }
 
 /// The rows of `kind` a fresh build finds (hand-made files bypass the kept model's commit path).
-fn built_rows(h: &mut H, kind: Kind) -> Vec<ecad_engine::checks::Check> {
+fn built_rows(h: &mut H, kind: Kind) -> Vec<ecad_electrical::checks::Check> {
     ecad_engine::checks::all(&h.doc(), 1e-6).into_iter().filter(|c| c.kind == kind).collect()
 }
 
@@ -140,7 +140,7 @@ fn a3_slot_rows_appear_and_every_fix_works() {
     let rows = checks_of(&mut h, "slot-range");
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert!(rows[0]["which"].as_str().unwrap().contains("-A03 is in slot 40; -A01 has slots 1–32"), "{rows:?}");
-    let fix = Fix::Plc(cards[1], ecad_engine::plc::PlcFix::SlotRange);
+    let fix = Fix::Plc(cards[1], ecad_electrical::plc::PlcFix::SlotRange);
     run_fix(&mut h, fix, 0);
     assert_eq!(prop(&mut h, cpu, "plc.slots"), Some("40".into()), "Raise -A01 to 40 slots");
     assert!(checks_of(&mut h, "slot-range").is_empty());
@@ -155,7 +155,7 @@ fn a3_slot_rows_appear_and_every_fix_works() {
     assert_eq!(rows[0]["severity"], "error");
     assert!(rows[0]["which"].as_str().unwrap().contains("-A01 slot 4 holds -A04 and -A05"), "{rows:?}");
     let c: DeviceId = DeviceId::parse(rows[0]["object"]["component"].as_str().unwrap()).unwrap();
-    run_fix(&mut h, Fix::Plc(c, ecad_engine::plc::PlcFix::NextFreeSlot), 0);
+    run_fix(&mut h, Fix::Plc(c, ecad_electrical::plc::PlcFix::NextFreeSlot), 0);
     assert!(checks_of(&mut h, "slot-twice").is_empty());
     same_as_built(&mut h);
     // unracked: a card in no rack, one count row.
@@ -163,7 +163,7 @@ fn a3_slot_rows_appear_and_every_fix_works() {
     let rows = checks_of(&mut h, "unracked");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["which"], "1 PLC card is in no rack");
-    run_fix(&mut h, Fix::Plc(DeviceId(0), ecad_engine::plc::PlcFix::Unracked), 0);
+    run_fix(&mut h, Fix::Plc(DeviceId(0), ecad_electrical::plc::PlcFix::Unracked), 0);
     assert!(checks_of(&mut h, "unracked").is_empty());
     assert_eq!(rack_of(&mut h, cards[5]), Some(cpu.hex()));
     same_as_built(&mut h);
@@ -180,11 +180,11 @@ fn a3_a_dangling_rack_id_is_a_rack_missing_row_with_two_fixes() {
     assert_eq!(rows[0].which, "-A03 names a rack that is not in the project");
     // The kept model, rebuilt from the file as a reopen would.
     h.cfg(|p| p.forget_reports());
-    run_fix(&mut h, Fix::Plc(a03, ecad_engine::plc::PlcFix::RackMissing), 0);
+    run_fix(&mut h, Fix::Plc(a03, ecad_electrical::plc::PlcFix::RackMissing), 0);
     assert_eq!(slot(&mut h, a03), Some("2".into()), "Put in rack: the only rack's lowest free slot");
     assert!(checks_of(&mut h, "rack-missing").is_empty());
     h.cmdline("u");
-    run_fix(&mut h, Fix::Plc(a03, ecad_engine::plc::PlcFix::RackMissing), 1);
+    run_fix(&mut h, Fix::Plc(a03, ecad_electrical::plc::PlcFix::RackMissing), 1);
     assert_eq!((rack_of(&mut h, a03), slot(&mut h, a03)), (None, None), "Take out of rack");
     // The rack of a DI card (a module, not a station).
     let di = cards[2].hex();
@@ -232,10 +232,10 @@ fn a4_save_and_reopen_keep_racks_slots_and_the_rack_reference() {
     }
     let page = h.first_page();
     // Brief 051 (design 051 §2.6): captions are in the cards' name blocks.
-    let captions: Vec<String> = ecad_engine::plc::look::parts_on_page(&d, page)
+    let captions: Vec<String> = ecad_engine::plc::draw::card::parts_on_page(&d, page)
         .into_iter()
         .filter_map(|p| match p.shape {
-            ecad_engine::xref::Shape::Text { value, .. } if value.contains(" slot ") => Some(value),
+            ecad_electrical::references::devices::Shape::Text { value, .. } if value.contains(" slot ") => Some(value),
             _ => None,
         })
         .collect();
@@ -253,11 +253,11 @@ fn a4_the_caption_pattern_and_show_rule_come_from_the_registry() {
     let caption = |h: &mut H, c: DeviceId| {
         let d = h.doc();
         let rep = d.representations_of(ecad_model::Subject::Device(c)).next().map(|(r, _)| r);
-        ecad_engine::plc::look::parts_on_page(&d, page)
+        ecad_engine::plc::draw::card::parts_on_page(&d, page)
             .into_iter()
             .filter(|p| Some(p.rep) == rep)
             .filter_map(|p| match p.shape {
-                ecad_engine::xref::Shape::Text { value, .. } if value.contains("lot") => Some((value, true)),
+                ecad_electrical::references::devices::Shape::Text { value, .. } if value.contains("lot") => Some((value, true)),
                 _ => None,
             })
             .next()
@@ -286,7 +286,7 @@ fn a5_card_bodies_placed_before_a_rack_are_cards_in_no_rack() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["severity"], "info");
     let cpu = placed(&mut h, "plccpu", 50.0, 200.0);
-    run_fix(&mut h, Fix::Plc(DeviceId(0), ecad_engine::plc::PlcFix::Unracked), 0);
+    run_fix(&mut h, Fix::Plc(DeviceId(0), ecad_electrical::plc::PlcFix::Unracked), 0);
     assert_eq!((rack_of(&mut h, di), slot(&mut h, di)), (Some(cpu.hex()), Some("1".into())));
     assert!(checks_of(&mut h, "unracked").is_empty());
     same_as_built(&mut h);

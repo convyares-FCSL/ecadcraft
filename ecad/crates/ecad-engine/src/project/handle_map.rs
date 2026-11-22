@@ -59,7 +59,7 @@ pub struct HandleMap {
     /// Reference texts (brief 010): reference representation → handle.
     refs: BTreeMap<RepresentationId, Handle>,
     /// Tag texts and terminal labels (brief 018): (symbol representation, which text) → handle.
-    tags: BTreeMap<(RepresentationId, crate::devices::TextOf), Handle>,
+    tags: BTreeMap<(RepresentationId, ecad_electrical::devices::TextOf), Handle>,
     /// Wire labels (brief 022): route representation → (conductor, handle).
     labels: BTreeMap<RepresentationId, (WireId, Handle)>,
     /// The sheet frame's parts (brief 019): index → handle.
@@ -150,15 +150,15 @@ impl HandleMap {
         self.by_handle.insert(h, Mapped::RefText(reference));
     }
     /// The handle of a derived tag text or terminal label.
-    pub fn tag_text(&self, rep: RepresentationId, of: crate::devices::TextOf) -> Option<Handle> {
+    pub fn tag_text(&self, rep: RepresentationId, of: ecad_electrical::devices::TextOf) -> Option<Handle> {
         self.tags.get(&(rep, of)).copied()
     }
-    pub fn insert_tag_text(&mut self, rep: RepresentationId, of: crate::devices::TextOf, h: Handle) {
+    pub fn insert_tag_text(&mut self, rep: RepresentationId, of: ecad_electrical::devices::TextOf, h: Handle) {
         self.tags.insert((rep, of), h);
         self.by_handle.insert(h, Mapped::Tag(rep));
     }
     /// The derived text a handle draws (brief 031: Show/Hide Text and Move Text pick by it).
-    pub fn tag_text_of(&self, h: Handle) -> Option<(RepresentationId, crate::devices::TextOf)> {
+    pub fn tag_text_of(&self, h: Handle) -> Option<(RepresentationId, ecad_electrical::devices::TextOf)> {
         self.tags.iter().find(|(_, x)| **x == h).map(|(k, _)| *k)
     }
     /// Every handle of a tag text or terminal label.

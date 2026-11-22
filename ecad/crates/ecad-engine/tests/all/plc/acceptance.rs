@@ -84,7 +84,7 @@ pub(crate) fn rows_have_a_way_out(h: &mut H, kind: &str) {
     let mine: Vec<_> = rows.iter().filter(|c| c.kind.name() == kind).collect();
     assert!(!mine.is_empty(), "no {kind} row");
     for c in mine {
-        assert!(c.fix.is_some() || c.object != ecad_engine::checks::Object::None, "{kind} row without a fix or go-to: {c:?}");
+        assert!(c.fix.is_some() || c.object != ecad_electrical::checks::Object::None, "{kind} row without a fix or go-to: {c:?}");
     }
 }
 
@@ -159,9 +159,9 @@ pub(crate) fn text_values(h: &mut H, page: PageId) -> Vec<String> {
     let mut v: Vec<String> = page_texts(h, page).iter().map(|r| s(&r["value"])).collect();
     // Brief 051 (design 051 §2.6): a framed card's tag and caption are in its frame's name block.
     let d = h.doc();
-    v.extend(ecad_engine::plc::look::parts_on_page(&d, page).into_iter().filter_map(|p| match p.shape {
-        ecad_engine::xref::Shape::Text { value, .. } => Some(value),
-        ecad_engine::xref::Shape::Line(..) => None,
+    v.extend(ecad_engine::plc::draw::card::parts_on_page(&d, page).into_iter().filter_map(|p| match p.shape {
+        ecad_electrical::references::devices::Shape::Text { value, .. } => Some(value),
+        ecad_electrical::references::devices::Shape::Line(..) => None,
     }));
     v
 }

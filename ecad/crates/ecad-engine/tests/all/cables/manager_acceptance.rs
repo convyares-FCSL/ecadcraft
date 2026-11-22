@@ -17,7 +17,7 @@
 //! - r8: atomic, exact undo and redo, replay; update maps touch only that cable.
 
 use ecad_electrical::cables::{self, CableField, Side, Source};
-use ecad_engine::checks::{self, Severity};
+use {ecad_electrical::checks::Severity};
 use ecad_electrical::locations::designations::Aspect;
 use ecad_model::{CableId, DeviceId, Document, Op, WireId};
 use serde_json::{Value, json};
@@ -71,8 +71,7 @@ fn refused(h: &mut H, cmd: &str, params: Value) -> String {
     let before = h.doc();
     let e = match h.run(cmd, params.clone()) {
         Ok(v) => panic!("{cmd} {:.200} should be refused: {v}", params.to_string()),
-        Err(e) => e,
-    };
+        Err(e) => e};
     assert_eq!(h.head(), head, "{cmd} {:.200}: nothing recorded", params.to_string());
     assert!(h.doc() == before, "{cmd} {:.200}: document unchanged", params.to_string());
     e
@@ -239,8 +238,7 @@ fn r2_removing_a_drawn_cable_is_refused_with_its_pages_and_an_undrawn_one_is_rem
             assert_eq!(pages[0].0, page, "the Go to's page");
             assert!(!pages[0].1.is_empty());
         }
-        other => panic!("{other:?}"),
-    }
+        other => panic!("{other:?}")}
     // Not drawn: one transaction, one DeleteCable of exactly the cable; undo and redo exact.
     let k = new_cable(&mut h, json!({"cores": "4G", "length": 5, "to": {"location": "+FIELD", "gland": "M20"}, "maker": "Synthmaker"}));
     let before = h.doc();
@@ -253,8 +251,7 @@ fn r2_removing_a_drawn_cable_is_refused_with_its_pages_and_an_undrawn_one_is_rem
             assert_eq!(*id, k);
             assert!(*cable == kept, "the op holds the whole cable");
         }
-        other => panic!("{other:?}"),
-    }
+        other => panic!("{other:?}")}
     let after = h.doc();
     assert!(!after.cables.contains_key(&k));
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty(), "its row goes with it");
@@ -288,8 +285,7 @@ fn r2_a_cable_drawn_on_two_pages_names_both() {
     assert!(e.contains(" and "), "both pages: {e}");
     match ecad_electrical::cables::commands::cables::drawn(&h.doc(), w) {
         Some(ecad_electrical::cables::commands::cables::Drawn { pages, .. }) => assert_eq!(pages.len(), 2, "{pages:?}"),
-        other => panic!("{other:?}"),
-    }
+        other => panic!("{other:?}")}
 }
 
 // ---------------------------------------------------------------- r3: cores in use
@@ -389,7 +385,7 @@ fn r5_not_drawn_is_info_and_a_warning_in_the_release_check() {
     assert_eq!(rows[0]["severity"], json!("info"));
     assert!(checks_of(&mut h, "core-open").is_empty(), "a type giving 4G raises no core-open while not drawn");
     let release = h.cfg(ecad_engine::releases::release::check_rows);
-    let row: Vec<&checks::Check> = release.iter().filter(|c| c.kind == checks::Kind::CableNotDrawn).collect();
+    let row: Vec<&ecad_electrical::checks::Check> = release.iter().filter(|c| c.kind == ecad_electrical::checks::Kind::CableNotDrawn).collect();
     assert_eq!(row.len(), 1);
     assert_eq!(row[0].severity(), Severity::Info);
     assert_eq!(row[0].release_severity(), Severity::Warning);
@@ -762,7 +758,7 @@ fn scope_words(h: &mut H, before: &Document, ops: &[Op]) -> (String, String) {
     let after = h.doc();
     h.cfg(|p| {
         let checks_scope = |d: &Document| {
-            let mut s = checks::Scope::default();
+            let mut s = ecad_electrical::checks::Scope::default();
             for e in &ecad_model::document::effect::Effects::of(ops) {
                 s.note(d, e);
             }
@@ -770,7 +766,7 @@ fn scope_words(h: &mut H, before: &Document, ops: &[Op]) -> (String, String) {
         };
         let a = format!("{:?} {:?}", checks_scope(before), checks_scope(&after));
         let scope = |d: &Document| {
-            let mut s = ecad_engine::outputs::Scope::default();
+            let mut s = ecad_electrical::reports::Scope::default();
             s.collect(d, ops);
             s
         };
@@ -808,7 +804,7 @@ fn r8_a_cable_edit_touches_only_that_cables_views() {
         let kept = p.checks().sorted(&doc);
         let built = ecad_engine::project::engine_views().checks(&doc, tol).sorted(&doc);
         let row = p.outputs().cable_row(k).cloned();
-        let fresh = ecad_engine::outputs::kept::ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics).cable_row(k).cloned();
+        let fresh = ecad_electrical::reports::kept::ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics).cable_row(k).cloned();
         (kept, built, row, fresh)
     });
     assert!(kept == built, "kept checks equal a rebuild");
@@ -834,7 +830,7 @@ fn r8_kept_rows_follow_new_remove_assign_and_undo() {
         let built = ecad_engine::project::engine_views().checks(&doc, tol).sorted(&doc);
         let o = p.outputs();
         let rows = (o.cable_row(k).cloned(), o.cable_row(k2).cloned(), o.cable_count());
-        let f = ecad_engine::outputs::kept::ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+        let f = ecad_electrical::reports::kept::ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
         let fresh = (f.cable_row(k).cloned(), f.cable_row(k2).cloned(), f.cable_count());
         (kept, built, rows, fresh)
     });
@@ -875,8 +871,7 @@ fn f1_removing_a_cable_drawn_on_two_pages_names_both_with_a_go_to_each() {
             assert!(pages.iter().all(|p| !p.1.is_empty()));
             assert!(e.contains(&pages[0].1) && e.contains(&pages[1].1), "the words name both places: {e} / {pages:?}");
         }
-        other => panic!("{other:?}"),
-    }
+        other => panic!("{other:?}")}
 }
 
 /// Page `page`'s location set to `code`.
@@ -940,8 +935,7 @@ fn f3_the_slash_tool_assigns_a_picked_cable_not_drawn_in_crossing_order() {
         .iter()
         .filter_map(|o| match o {
             Op::ModifyCable { id, before, after } if *id == k => Some(placed(after) - placed(before)),
-            _ => None,
-        })
+            _ => None})
         .collect();
     assert_eq!(added, vec![3], "{:?}", ops);
     let doc = h.doc();

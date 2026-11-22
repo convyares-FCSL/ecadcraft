@@ -19,7 +19,7 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_engine::interact::{hover_lines, overlay_marks};
-use ecad_engine::references::markers_on_page;
+use ecad_electrical::references::cables::markers_on_page;
 use ecad_engine::{Mapped, ProjectHandle};
 use ecad_model::connectivity::derive::{cable_references, nets};
 use ecad_model::{
@@ -392,7 +392,7 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     assert!(supply_lines.iter().all(|l| doc.routes.values().any(|x| x.points == l.points)), "Supply's lines stay");
     assert_eq!(doc.cables[&r.c1].cores.len(), before.cables[&r.c1].cores.len(), "the cable keeps its cores");
     assert!(log_since(&r.h, n).contains("Cable -C01's reference on page 1 now has no other end."), "{}", log_since(&r.h, n));
-    assert_eq!(ecad_engine::references::diagnostics(&doc), vec!["Orphan: cable -C01 on page 1 (?)".to_string()]);
+    assert_eq!(ecad_electrical::references::cables::diagnostics(&doc), vec!["Orphan: cable -C01 on page 1 (?)".to_string()]);
     let snap = r.h.project.snapshot(&mut r.h.s, None).unwrap();
     assert_eq!(snap["checks"]["orphan_references"].as_array().map(Vec::len), Some(1));
     r.h.cmdline("u");
@@ -699,7 +699,7 @@ fn hostile_documents_derive_without_panicking() {
     let lost = refs.iter().find(|r| r.at.is_none()).unwrap();
     assert_eq!(lost.locator(), "?");
     assert!(markers_on_page(&doc, page).len() == 4, "an end that cannot be located is not drawn");
-    let lines = ecad_engine::references::diagnostics(&doc);
+    let lines = ecad_electrical::references::cables::diagnostics(&doc);
     assert!(lines.iter().any(|l| l.contains("has 5 references; only two are supported.")), "{lines:?}");
     let snap_refs = ecad_electrical::references::cables::over_referenced(&refs);
     assert_eq!(snap_refs, vec![cable]);
@@ -736,8 +736,8 @@ fn hostile_documents_derive_without_panicking() {
     assert_eq!(on_page.text, "?", "a partner that cannot be located reads ?");
     assert!(!on_page.orphan, "it still has another end");
     assert_eq!(markers_on_page(&two, lost_page).len(), 1);
-    let _ = ecad_engine::references::diagnostics(&two);
-    let _ = ecad_engine::references::hover_lines(&two, on_lost.reference);
+    let _ = ecad_electrical::references::cables::diagnostics(&two);
+    let _ = ecad_electrical::references::cables::hover_lines(&two, on_lost.reference);
 }
 
 /// B1 (never-crash): a hostile file with 20 000 references of one cable derives in bounded time
@@ -778,7 +778,7 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     assert!(refs.iter().all(|r| r.partner_count == n - 1 && r.partners.len() == 3));
     assert!(refs[0].text.ends_with(&format!("+{}", n - 1 - 3)), "{}", refs[0].text);
     assert!(took < std::time::Duration::from_secs(10), "one derivation took {took:?}");
-    let _ = ecad_engine::references::diagnostics(&doc);
+    let _ = ecad_electrical::references::cables::diagnostics(&doc);
     // Combined trial of 009 and 010: 010's leaving ends are folded into 009's drawing (`quiet`).
     let _ = ecad_engine::cables::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
 }
@@ -949,7 +949,7 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
         .flat_map(|x| {
             let mut lines: Vec<ecad_model::RouteId> = x.through.iter().flat_map(|t| doc.routes_at(*t)).collect();
             lines.extend(x.route());
-            lines.extend(x.wire().and_then(|w| ecad_engine::wires::route_of_wire_on(&doc, w, page)));
+            lines.extend(x.wire().and_then(|w| ecad_electrical::wires::route_of_wire_on(&doc, w, page)));
             lines
         })
         .filter_map(|l| doc.routes.get(&l).filter(|l| l.page == page).and_then(|l| l.end_points()))
@@ -972,8 +972,8 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
     let centre = Pt::new(text_at.x + 0.5 * w, text_at.y + 0.5 * hh);
     // Among the wires, 1.5 h behind the point (beyond the flat side's h/2 margin).
     let mirror = Pt::new(m.at.x - 1.5 * hh * u.x, m.at.y - 1.5 * hh * u.y);
-    assert_eq!(ecad_engine::references::reference_at(&doc, page, centre, 0.1), Some(m.reference), "pick the text");
-    assert_eq!(ecad_engine::references::reference_at(&doc, page, mirror, 0.1), None, "the box follows the flag");
+    assert_eq!(ecad_engine::references::draw::cables::reference_at(&doc, page, centre, 0.1), Some(m.reference), "pick the text");
+    assert_eq!(ecad_engine::references::draw::cables::reference_at(&doc, page, mirror, 0.1), None, "the box follows the flag");
 }
 
 /// Fixture R's page 1: the wires come from the left, the flag points right.

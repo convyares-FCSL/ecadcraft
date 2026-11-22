@@ -6,7 +6,7 @@
 //! are recorded the same way; reopened with writes off every write is refused and nothing is
 //! recorded; hostile input is an error, never a panic.
 
-use ecad_engine::symbols::{self, STARTER_LIBRARY};
+use ecad_electrical::symbols::{self, STARTER_LIBRARY};
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::{DeviceId, Op};
 use serde_json::{Value, json};
@@ -120,7 +120,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
                 assert_eq!(&labels(&v), want, "{key}: labels");
                 let device = c.doc().devices[&cid(&v)].clone();
                 // Brief 044 (design 044 §4.6): a connector half's device is described `Connector`.
-                let want = if matches!(s.kind, ecad_engine::symbols::Kind::ConnectorHalf { .. }) { "Connector" } else { s.name };
+                let want = if matches!(s.kind, ecad_electrical::symbols::Kind::ConnectorHalf { .. }) { "Connector" } else { s.name };
                 assert_eq!(device.get("description"), Some(want), "{key}: default description");
                 assert_eq!(c.doc().devices[&cid(&v)].tag(), Some(tag.as_str()), "{key}: tag");
                 if round == 0 && key == "fusebank8" {

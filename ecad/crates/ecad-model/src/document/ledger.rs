@@ -1400,8 +1400,8 @@ impl Ledger {
 mod tests {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    use crate::*;
-    use crate::document::doc::{Cable, Core, Device, End, Layer, Page, Terminal, Wire};
+    use super::*;
+    use crate::document::doc::{Cable, Core, Device, End, Layer, Page, ConnectionPoint, Wire};
     use crate::naming::id::{CableId, ConductorId, DeviceId, LayerId, NetId, PageId, ConnectionPointId, WireId};
 
     fn json(doc: &Document) -> String {
@@ -1420,9 +1420,9 @@ mod tests {
                 Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 },
                 Op::AddLayer { id: LayerId(2), layer: Layer { name: "0".into() } },
                 Op::CreateDevice { id: c, device: Device::default() },
-                Op::AddConnectionPoint { id: ConnectionPointId(4), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
-                Op::AddConnectionPoint { id: ConnectionPointId(5), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
-                Op::AddConnectionPoint { id: ConnectionPointId(10), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+                Op::AddConnectionPoint { id: ConnectionPointId(4), terminal: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+                Op::AddConnectionPoint { id: ConnectionPointId(5), terminal: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+                Op::AddConnectionPoint { id: ConnectionPointId(10), terminal: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() } },
                 Op::CreateWire { id: w, wire: Wire::new(NetId(14), ConductorId(15), ConnectionPointId(4), ConnectionPointId(10)) },
                 Op::CreateCable { id: CableId(7), cable: Cable { cores: vec![Core::on_wire(w, None)], ..Cable::default() } },
             ],
@@ -1524,7 +1524,7 @@ mod tests {
             Op::AddLayer { id: LayerId(50), layer: Layer { name: "x".into() } },
             Op::RemoveConnectionPoint {
                 id: ConnectionPointId(5),
-                terminal: Terminal { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() },
+                terminal: ConnectionPoint { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() },
             },
         ];
         log.push(bad);
@@ -1647,7 +1647,7 @@ mod tests {
         // A terminal written straight into the map: the full check passes, the index check does
         // not, and the scoped check of `three_ops` never looks at it. Only verify mode notices.
         let mut l = ledger();
-        l.doc.terminals.insert(ConnectionPointId(50), Terminal { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() });
+        l.doc.terminals.insert(ConnectionPointId(50), ConnectionPoint { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() });
         let doc = json(l.document());
         let r = catch_unwind(AssertUnwindSafe(|| l.with_applied(&three_ops(), |_| ())));
         match r {

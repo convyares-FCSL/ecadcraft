@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 
 use ecad_electrical::releases::release::Group;
-use ecad_engine::checks::{Check, Severity};
+use {ecad_electrical::checks::Check, ecad_electrical::checks::Severity};
 use ecad_engine::releases::release::View;
 use ecad_widgets::control::TextEntry;
 use ecad_widgets::dialog::action;
@@ -347,6 +347,6 @@ pub fn fill_folders(rows: &mut [crate::settings::sheets::RevRow], p: &ecad_engin
 /// `None` when the Checks have not been kept yet (nothing is built for it).
 pub fn badge(p: &ecad_engine::Project) -> Option<(usize, usize)> {
     let (e, w, _) = p.kept_checks()?.counts();
-    let (oe, ow, _) = p.kept_reports().map_or((0, 0, 0), ecad_engine::outputs::kept::ReportModels::check_counts);
+    let (oe, ow, _) = p.kept_reports().map_or((0, 0, 0), ecad_electrical::reports::kept::ReportModels::check_counts);
     Some((e + oe, w + ow))
 }

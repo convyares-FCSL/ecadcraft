@@ -239,7 +239,7 @@ fn said(h: &Harness<'static, App>) -> String {
 fn shown_text(h: &mut Harness<'static, App>) -> String {
     let page = current_page(h);
     let d = doc(h);
-    ecad_engine::references::markers_on_page(&d, page).first().map(|m| m.text.clone()).unwrap_or_default()
+    ecad_electrical::references::cables::markers_on_page(&d, page).first().map(|m| m.text.clone()).unwrap_or_default()
 }
 
 /// Park the pointer on empty canvas (no hover) and let the frame settle.
@@ -265,7 +265,7 @@ fn zoom_e(h: &mut Harness<'static, App>) {
 /// The drawn handle of `page`'s reference point.
 fn reference_point(h: &mut Harness<'static, App>, page: PageId) -> cadcraft_engine::doc::Handle {
     let d = doc(h);
-    let r = ecad_engine::references::references_on_page(&d, page).into_iter().next().expect("a reference");
+    let r = ecad_electrical::references::cables::references_on_page(&d, page).into_iter().next().expect("a reference");
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.pages[&page].map.item(r.item.unwrap())).unwrap().expect("point drawn")

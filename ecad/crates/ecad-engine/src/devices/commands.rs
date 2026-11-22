@@ -18,7 +18,7 @@ use ecad_electrical::devices::commands::place as rules;
 use ecad_electrical::symbols::proposals::Mode;
 use ecad_model::{
     CableId, Color, DefinitionId, Device, DeviceId, Form, Item, ItemId, ItemKind, Noun, Op, Placement, Representation, RepresentationId, Style,
-    Subject, SymbolInstance, Terminal, ConnectionPointId, WireId,
+    Subject, SymbolInstance, ConnectionPoint, ConnectionPointId, WireId,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -26,7 +26,6 @@ use serde_json::{Value, json};
 
 use crate::commands::input::{Command, Typed};
 use crate::commands::{MAX_HANDLES, on_any_page, on_project, plain_style};
-use crate::devices;
 use crate::project::{Mapped, Project};
 use crate::cables::views;
 use ecad_electrical::commands::input::{Bounded, Point, TextOrNumber, nullable};
@@ -146,7 +145,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
     }
     let key = params.symbol.clone().ok_or_else(|| err("`symbol` (a starter symbol key, see `symbols`) is required with `device` or `tag`"))?;
     // Brief 048: a project symbol's key places its newest version.
-    let starter = match devices::starter(&key) {
+    let starter = match ecad_electrical::devices::starter(&key) {
         Ok(st) => st,
         Err(e) => return crate::symbols::commands::place_project_key(s, &params, &key)?.ok_or_else(|| err(e)),
     };
@@ -165,7 +164,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         return crate::terminal_strips::commands::place_level(s, &params, starter, at, degrees, mirror);
     }
     // Brief 045 (design 045 §4.4): a channel symbol joins a card as a channel.
-    if crate::plc::channels::cell_type(starter).is_some() {
+    if ecad_electrical::plc::channels::cell_type(starter).is_some() {
         return crate::plc::commands::channels::place_channel(s, &params, starter, at, degrees, mirror);
     }
     // Brief 044: a connector half or pin makes or joins a connector (design 044 §3.3).
@@ -188,12 +187,12 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         let style = style(p);
         // Brief 025 (design 025 §4.3): a joined contact takes its part's next free offered labels.
         let offer_slot = match (&target, starter.kind) {
-            (devices::Target::Join(c), ecad_electrical::symbols::Kind::Contact { make }) => {
-                crate::xref::offer_labels(doc, *c, make, &devices::labels_of(doc, *c)).is_some()
+            (ecad_electrical::devices::Target::Join(c), ecad_electrical::symbols::Kind::Contact { make }) => {
+                ecad_electrical::references::devices::offer_labels(doc, *c, make, &ecad_electrical::devices::labels_of(doc, *c)).is_some()
             }
             _ => false,
         };
-        let mut plan = devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
+        let mut plan = ecad_electrical::devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
         let land = match (landing, plan.terminals.first()) {
             (Some(on), Some((_, _, t))) => {
                 let land = ecad_electrical::connectors::plan_land(p.ledger.document(), &mut p.ids, on, *t)?;
@@ -203,12 +202,12 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             _ => None,
         };
         // Brief 045 (design 045 §2.4): a new card goes in a rack's slot when the project has a rack.
-        let card_slot = match crate::plc::rack::CardType::of_symbol(starter) {
+        let card_slot = match ecad_electrical::plc::rack::CardType::of_symbol(starter) {
             Some(t) if !t.is_rack() && !plan.joined => {
                 let last = p.last_placed.as_ref().map(|(_, c)| *c);
-                let at = crate::plc::rack::place_target(p.ledger.document(), rack.as_ref().map(Option::as_deref), slot.as_deref(), last)?;
+                let at = ecad_electrical::plc::rack::place_target(p.ledger.document(), rack.as_ref().map(Option::as_deref), slot.as_deref(), last)?;
                 if let Some((r, s)) = at {
-                    crate::plc::rack::put_new_card(p.ledger.document(), &mut plan.ops, plan.component, r, s);
+                    ecad_electrical::plc::rack::put_new_card(p.ledger.document(), &mut plan.ops, plan.component, r, s);
                 }
                 at.map(|x| (t, x))
             }
@@ -225,7 +224,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         let landed = land.map(|(t, l)| crate::terminal_strips::commands::land_result(doc, t, &l));
         if let (true, ecad_electrical::symbols::Kind::Contact { make }) = (plan.joined, starter.kind) {
             let labels: Vec<String> = plan.terminals.iter().map(|(_, l, _)| l.clone()).collect();
-            if let Some(line) = crate::xref::over_line(doc, plan.component, &labels, make) {
+            if let Some(line) = ecad_electrical::references::devices::over_line(doc, plan.component, &labels, make) {
                 pg.echo(line);
             }
         }
@@ -238,13 +237,13 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             "tag": plan.tag,
             "joined": plan.joined,
             "offer_slot": offer_slot,
-            "pages": devices::page_numbers(doc, plan.component),
+            "pages": ecad_electrical::devices::page_numbers(doc, plan.component),
             "terminals": plan.terminals.iter().map(|(k, l, t)| json!({"key": k, "label": l, "terminal": t.hex()})).collect::<Vec<_>>(),
         });
         crate::symbols::draw::finish_place(p, pg, plan.component, plan.joined, &proposed, &mut v);
         let doc = p.ledger.document();
         if let Some((t, (r, slot))) = card_slot {
-            let message = format!("Placed {} ({}) in {} slot {slot}.", plan.tag, t.noun(), devices::tag_words(doc, r));
+            let message = format!("Placed {} ({}) in {} slot {slot}.", plan.tag, t.noun(), ecad_electrical::devices::tag_words(doc, r));
             v["rack"] = json!(r.hex());
             v["slot"] = json!(slot);
             v["message"] = json!(message);
@@ -290,7 +289,7 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
             let t: ConnectionPointId = p.ids.fresh();
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                terminal: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
             });
             terminals.push(json!({"key": td.key, "terminal": t.hex()}));
         }
@@ -326,7 +325,7 @@ pub(crate) struct SymbolsParams {
 
 impl Command for SymbolsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        on_any_page(s, |p, _| Ok(devices::symbols_json(p.ledger.document(), self.query.as_deref())))
+        on_any_page(s, |p, _| Ok(ecad_electrical::devices::symbols_json(p.ledger.document(), self.query.as_deref())))
     }
 }
 
@@ -341,7 +340,7 @@ pub(crate) struct DevicesParams {
 
 impl Command for DevicesParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        on_any_page(s, |p, _| Ok(devices::devices_json(p.ledger.document(), self.tag.as_deref())))
+        on_any_page(s, |p, _| Ok(ecad_electrical::devices::devices_json(p.ledger.document(), self.tag.as_deref())))
     }
 }
 
@@ -361,7 +360,7 @@ impl Command for DevicepropsParams {
             if !doc.devices.contains_key(&self.component) {
                 return Err(CmdError::NotFound(Noun::Device));
             }
-            Ok(devices::device_json(doc, self.component))
+            Ok(ecad_electrical::devices::device_json(doc, self.component))
         })
     }
 }
@@ -421,7 +420,7 @@ pub(crate) struct DevicedeleteParams {
 
 impl Command for DevicedeleteParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let tag = on_any_page(s, |p, _| Ok(devices::tag_words(p.ledger.document(), self.component)))?;
+        let tag = on_any_page(s, |p, _| Ok(ecad_electrical::devices::tag_words(p.ledger.document(), self.component)))?;
         let r = delete(s, Doomed::Device(self.component))?;
         Ok(json!({"deleted": r.get("deleted").cloned().unwrap_or(Value::Bool(true)), "message": format!("Deleted {tag}.")}))
     }
@@ -454,7 +453,7 @@ impl Command for TagsettingsParams {
                 p.apply_edit(pg, "tagsettings", "Tag settings", vec![Op::SetProjectSettings { before, after: after.clone() }])?;
             }
             let doc = p.ledger.document();
-            Ok(json!({"changed": changed, "padding": devices::padding(doc), "prefixes": device_rules::prefixes_json(doc)}))
+            Ok(json!({"changed": changed, "padding": ecad_electrical::devices::padding(doc), "prefixes": device_rules::prefixes_json(doc)}))
         })
     }
 }

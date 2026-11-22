@@ -637,7 +637,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
     use ecad_model::{Device, Page};
 
     fn key_ok(key: &str) -> bool {
@@ -749,7 +749,7 @@ mod tests {
 
 #[cfg(test)]
 mod kind_tests {
-    use crate::*;
+    use super::*;
 
     /// Design 072 A2: each choice declared as a word enum keeps the words, in the order, of the
     /// list it replaced (the first word is the entry's fallback).

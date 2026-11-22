@@ -11,7 +11,7 @@ use crate::common::close_all;
 use cadcraft_engine::Session;
 use common::{H, id, pts};
 use ecad_engine::project::Mapped;
-use ecad_engine::xref::{self, Group, RefIndex};
+use {ecad_electrical::references::devices::Group, ecad_electrical::references::devices::RefIndex};
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::{DeviceId, ObjectRef, Op, PageId, RepresentationId};
 use serde_json::{Value, json};
@@ -29,8 +29,7 @@ struct X {
     nc: RepresentationId,
     q1: DeviceId,
     mcb: RepresentationId,
-    q_nc: RepresentationId,
-}
+    q_nc: RepresentationId}
 
 fn rep(v: &Value) -> RepresentationId {
     id(v, "representation")
@@ -63,8 +62,7 @@ fn drawn(h: &mut H, page: PageId) -> Vec<(RepresentationId, u32, String)> {
             .into_iter()
             .filter_map(|part| match part.shape {
                 xref::Shape::Text { value, .. } => Some((part.rep, part.index, value)),
-                xref::Shape::Line(..) => None,
-            })
+                xref::Shape::Line(..) => None})
             .collect()
     })
 }
@@ -184,10 +182,10 @@ fn c_the_offer_spares_join_labels_and_too_many() {
     assert!(list[0]["which"].as_str().unwrap().contains("3 auxiliary NO drawn, part offers 2 (3P+2NO+1NC)"), "{}", list[0]);
     assert!(list[0]["at"].is_array(), "go-to rings the over pole");
     // The kept list (the Checks tab) agrees.
-    let kept = x.h.cfg(|p| p.checks().rows().filter(|c| c.kind == ecad_engine::checks::Kind::TooManyContacts).count());
+    let kept = x.h.cfg(|p| p.checks().rows().filter(|c| c.kind == ecad_electrical::checks::Kind::TooManyContacts).count());
     assert_eq!(kept, 1);
     x.h.run("u", json!({})).unwrap();
-    let kept = x.h.cfg(|p| p.checks().rows().filter(|c| c.kind == ecad_engine::checks::Kind::TooManyContacts).count());
+    let kept = x.h.cfg(|p| p.checks().rows().filter(|c| c.kind == ecad_electrical::checks::Kind::TooManyContacts).count());
     assert_eq!(kept, 0, "the kept list follows the undo");
     // An unreadable offer is refused; nothing changes.
     let head = x.h.head();
@@ -402,7 +400,7 @@ fn e_cable_groups_are_kept_on_the_index() {
     assert_eq!(members.len(), 2);
     h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
     let doc = h.doc();
-    let scope = ecad_engine::references::cables_touched(&doc, &[Op::DeleteCable { id: k, cable: doc.cables[&k].clone() }]);
+    let scope = ecad_electrical::references::cables::cables_touched(&doc, &[Op::DeleteCable { id: k, cable: doc.cables[&k].clone() }]);
     assert_eq!(scope, Some(BTreeSet::from([k])), "a cable op touches its cable only");
     let v = h.run("xrefs", json!({"cable": k.hex()})).unwrap();
     assert_eq!(v["references"].as_array().unwrap().len(), 2);

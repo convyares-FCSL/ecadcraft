@@ -88,7 +88,7 @@ fn row_2_place_makes_a_device_with_its_prefix_description_and_points() {
     assert!(labels.contains(&("1".into(), "BN".into())) && labels.contains(&("2".into(), "BU".into())), "{labels:?}");
     // The tag sits at its slot (-4, 0) from the origin, right-aligned; the rating at (4, 0).
     let page = h.first_page();
-    let texts = ecad_engine::devices::all_texts_on_page(&d, page);
+    let texts = ecad_engine::devices::draw::all_texts_on_page(&d, page);
     let tag = texts.iter().find(|t| t.text.value == "-B01").expect("tag text");
     assert!(tag.text.at.near(ecad_model::Pt::new(96.0, 100.0), 1e-9), "{:?}", tag.text.at);
     assert!(texts.iter().any(|t| t.text.value == "24 V" && t.text.at.near(ecad_model::Pt::new(104.0, 100.0), 1e-9)), "rating slot");
@@ -419,7 +419,7 @@ fn update_available_reaches_the_devices_list_through_its_update_map() {
     let mut h = H::new(4815);
     let def: DefinitionId = id(&h.run("symbolnew", float(json!({}))).unwrap(), "definition");
     let a: DeviceId = id(&place(&mut h, 100.0, 100.0), "component");
-    let entry = |d: &Document| ecad_engine::device_list::device_entry(d, a).unwrap();
+    let entry = |d: &Document| ecad_electrical::devices::device_list::device_entry(d, a).unwrap();
     assert!(!entry(&h.doc()).symbols[0].update);
     let before = h.doc();
     let moved = json!([{"key": "1", "label": "BN", "at": [0, 10]}, {"key": "2", "label": "BU", "at": [0, -5]}]);

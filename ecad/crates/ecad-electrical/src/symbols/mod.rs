@@ -2739,7 +2739,7 @@ pub fn side_word(side: Side) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn starters_are_keyed_in_order() {

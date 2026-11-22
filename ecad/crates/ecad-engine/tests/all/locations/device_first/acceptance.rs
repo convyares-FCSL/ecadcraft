@@ -11,9 +11,9 @@ use crate::common::{H, id};
 use crate::common::close_all;
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::EntityKind;
-use ecad_engine::checks::{self, Kind};
+use {ecad_electrical::checks::Kind};
 use ecad_electrical::locations::designations::{self, Aspect};
-use ecad_engine::outputs::{Group, kept::ReportModels};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use ecad_engine::{Persistence, ProjectHandle, generated, locations};
 use ecad_model::{AidId, Author, DeviceId, Document, Op, PageId};
 use serde_json::{Value, json};
@@ -77,7 +77,7 @@ fn change_n(h: &mut H) -> u64 {
 fn same_as_built(h: &mut H, what: &str) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "{what}: BOM by location");
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part), "{what}: BOM by part");
@@ -135,8 +135,7 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, AidId, PageId, Document
                 after: ecad_model::Aid::Box(ecad_model::LocationBox {
                     location: Some(ecad_model::LocationId(OLD_FIELD)),
                     ..d.aids[&bx].as_box().cloned().unwrap()
-                }),
-            },
+                })},
         ];
         p.ledger.commit(Author::User, "as v0.2.0 wrote it", ops).unwrap();
     });
@@ -163,7 +162,7 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     assert!(rows.iter().all(|r| r.location.value.is_none()), "half.s.location is not read");
     assert!(d.devices[&x].properties.keys().all(|k| !k.starts_with("half.")), "a half's keys are never in the bag");
     // Checks: the device's two values and the box.
-    let rows = checks::all(&d, 1e-6);
+    let rows = ecad_engine::checks::all(&d, 1e-6);
     let missing: Vec<&str> = rows.iter().filter(|r| r.kind == Kind::DesignationMissing).map(|r| r.which.as_str()).collect();
     assert!(missing.contains(&"-K01's location is no longer in the list"), "{missing:?}");
     assert!(missing.contains(&"-K01's function is no longer in the list"), "{missing:?}");
@@ -175,7 +174,7 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     assert!(lm.contains(&hex(OLD_CP1).as_str()) && lm.contains(&hex(OLD_FIELD).as_str()), "{v}");
     assert_eq!(v["functions"]["missing"], json!([hex(OLD_F1)]), "{v}");
     // The tag and the head are kept: the contact is a contact, the coil the head.
-    let tags = ecad_engine::devices::tag_words(&d, k);
+    let tags = ecad_electrical::devices::tag_words(&d, k);
     assert_eq!(tags, "-K01");
     let heads = ecad_electrical::symbols::reps::heads(&d, k);
     assert_eq!(heads.len(), 1);
@@ -199,8 +198,7 @@ struct Users {
     bx: AidId,
     p1: PageId,
     p2: PageId,
-    p3: PageId,
-}
+    p3: PageId}
 
 fn users(seed: u64) -> Users {
     let mut h = H::new(seed);
@@ -339,8 +337,7 @@ fn a_rename_redraws_its_users_pages_and_no_other() {
             .into_iter()
             .filter_map(|x| match x.kind {
                 EntityKind::Text(t) => Some(t.value),
-                _ => None,
-            })
+                _ => None})
             .collect()
     });
     assert!(texts.iter().any(|t| t == "+CP10"), "{texts:?}");
@@ -412,7 +409,7 @@ fn refusals_write_nothing_and_add_no_entry() {
     let strip = place(&mut h, "terminal", (150.0, 150.0));
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
     h.run("setfunction", json!({"component": k.hex(), "value": "=F1"})).unwrap();
-    let long = format!("+{}", "A".repeat(ecad_engine::devices::MAX_PROPERTY_CHARS + 1));
+    let long = format!("+{}", "A".repeat(ecad_electrical::devices::MAX_PROPERTY_CHARS + 1));
     let cases: Vec<(&str, Value)> = vec![
         ("setlocation", json!({"devices": [k.hex(), "fffffffffffffffffffffff"], "value": "+NEW1"})),
         ("setlocation", json!({"devices": [k.hex(), strip.hex()], "type": "terminal", "value": "+NEW2"})),
@@ -528,7 +525,7 @@ fn a_box_location_style_is_not_a_missing_location() {
     h.run("setdefault", json!({"key": "location.style", "level": "project", "value": pick})).unwrap();
     let d = h.doc();
     assert!(d.aids[&bx].as_box().is_some_and(|b| b.style.is_some()), "the box stores its style");
-    let rows = checks::all(&d, 1e-6);
+    let rows = ecad_engine::checks::all(&d, 1e-6);
     let missing: Vec<&str> = rows.iter().filter(|r| r.kind == Kind::DesignationMissing).map(|r| r.which.as_str()).collect();
     assert!(missing.is_empty(), "a style is not a location: {missing:?}");
     let v = designations_now(&mut h);
@@ -545,7 +542,7 @@ fn the_bom_page_flags_its_question_mark_heading() {
     place(&mut h, "coil", (100.0, 150.0)); // no location
     let bom: PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     let doc = h.doc();
-    let parts = generated::parts_of(&doc, bom, Some(&ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics)));
+    let parts = generated::parts_of(&doc, bom, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
     let qs: Vec<_> = parts.iter().filter(|p| matches!(&p.kind, EntityKind::Text(t) if t.value == generated::MISSING)).collect();
     // The heading `?`, the maker `?` and the part number `?`.
     assert!(qs.len() >= 3, "{} `?` texts", qs.len());

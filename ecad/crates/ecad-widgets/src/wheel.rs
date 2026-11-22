@@ -334,7 +334,7 @@ fn ring(center: Pos2, a0: f32, a1: f32, fill: Color32) -> Shape {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     /// Board 1.14: a slot's tooltip clears the ring, so it never covers another slot's icon (the
     /// top slot's used to sit on the top-right one).

@@ -184,7 +184,7 @@ pub fn amps(text: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use crate::circuits::*;
+    use super::*;
 
     #[test]
     fn device_ratings_read_as_the_design_says() {

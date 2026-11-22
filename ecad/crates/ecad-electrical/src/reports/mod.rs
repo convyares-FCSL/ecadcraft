@@ -39,7 +39,7 @@ use ecad_model::document::effect::{Effect, Effects};
 use ecad_model::{CableId, DeviceId, Document, LoosePartId, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, WireId};
 use serde_json::{Value, json};
 
-use crate::reports::bom::{self, Qty};
+use crate::reports::bom::Qty;
 use crate::checks::{Check, Fix, Kind, Object};
 use crate::locations::{self, BoxCache, Located};
 
@@ -1113,7 +1113,7 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn csv_is_excel_safe_and_quoted() {

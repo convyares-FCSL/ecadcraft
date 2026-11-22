@@ -76,7 +76,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
     let result = (|| {
         ecad_engine::install();
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let mut out = MeasuredWires::default();
         let runs = runs.max(1);
         // The densest page's labels under both rules (read only, on the document). Densest by its
@@ -91,19 +91,19 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
                     return Err(LabelPage::Unrouted(page));
                 }
                 let mut each_doc = doc.clone();
-                each_doc.settings.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
+                each_doc.settings.wiring.label_rule = Some(ecad_model::connectivity::wiring::LABEL_RULE_EACH.into());
                 for (rule, d) in [("net", doc), ("each", &each_doc)] {
-                    if ecad_engine::wires::labels_on_page(d, page).is_empty() {
+                    if ecad_engine::wires::draw::labels_on_page(d, page).is_empty() {
                         return Err(LabelPage::Unlabelled { page, routes, rule });
                     }
                 }
                 let (mut a, mut b) = (Vec::new(), Vec::new());
                 for _ in 0..runs {
                     let t = Instant::now();
-                    std::hint::black_box(ecad_engine::wires::labels_on_page(doc, page));
+                    std::hint::black_box(ecad_engine::wires::draw::labels_on_page(doc, page));
                     a.push(ms(t));
                     let t = Instant::now();
-                    std::hint::black_box(ecad_engine::wires::labels_on_page(&each_doc, page));
+                    std::hint::black_box(ecad_engine::wires::draw::labels_on_page(&each_doc, page));
                     b.push(ms(t));
                 }
                 Ok((a, b, routes))

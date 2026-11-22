@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_engine::text_style::TextKind;
+use ecad_electrical::styles::text_style::TextKind;
 use ecad_model::{DeviceId, Document, ObjectRef, PageId, RepresentationId, Subject, ConnectionPointId};
 
 /// At most this many rows in "Where it is drawn" and "Connections" (hostile files can hold
@@ -87,7 +87,7 @@ fn label(doc: &Document, t: ConnectionPointId) -> String {
 
 /// The labels a symbol shows: its connection points, in its definition's order.
 fn rep_labels(doc: &Document, c: DeviceId, r: &ecad_model::Representation) -> Vec<String> {
-    let points = ecad_engine::xref::connection_point_points(doc, c, r);
+    let points = ecad_electrical::references::devices::connection_point_points(doc, c, r);
     if points.is_empty() {
         return r.connection_points.keys().take(8).map(|t| label(doc, *t)).collect();
     }
@@ -95,25 +95,24 @@ fn rep_labels(doc: &Document, c: DeviceId, r: &ecad_model::Representation) -> Ve
 }
 
 /// A size as the Layout tab shows it: `2.5` and ` B` when bold.
-pub fn size_words(s: &ecad_engine::text_style::TextStyle) -> String {
+pub fn size_words(s: &ecad_electrical::styles::text_style::TextStyle) -> String {
     let h = (s.height * 100.0).round() / 100.0;
-    let bold = matches!(s.weight, ecad_engine::text_style::Weight::Bold);
+    let bold = matches!(s.weight, ecad_electrical::styles::text_style::Weight::Bold);
     format!("{h}{}", if bold { " B" } else { "" })
 }
 
 /// Build the details of device `c` with symbol `rep` selected, adding what they read to `deps`.
 pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKind], deps: &mut BTreeSet<ObjectRef>) -> DeviceDetails {
-    use ecad_engine::xref;
     let mut d = DeviceDetails { component: Some(c), rep: Some(rep), ..DeviceDetails::default() };
-    d.tag = ecad_engine::devices::tag_words(doc, c);
+    d.tag = ecad_electrical::devices::tag_words(doc, c);
     d.description = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|t| t.to_string()).unwrap_or_default();
     d.standard = doc.standard.as_ref().map_or_else(|| "IEC".to_string(), |s| s.header.name.to_string());
-    let dev = xref::device(doc, c);
-    let mut places = xref::Places::new(doc);
-    let place_of = |places: &mut xref::Places<'_>, r: &ecad_model::Representation| places.text(r.page, xref::anchor(doc, r));
+    let dev = ecad_electrical::references::devices::device(doc, c);
+    let mut places = ecad_electrical::references::devices::Places::new(doc);
+    let place_of = |places: &mut ecad_electrical::references::devices::Places<'_>, r: &ecad_model::Representation| places.text(r.page, ecad_electrical::references::devices::anchor(doc, r));
     if let Some(r) = doc.representations.get(&rep) {
         deps.insert(ObjectRef::Page(r.page));
-        d.symbol_name = ecad_engine::devices::rep_starter(doc, r).map_or_else(|| "Drawn symbol".to_string(), |s| s.name.to_string());
+        d.symbol_name = ecad_electrical::devices::rep_starter(doc, r).map_or_else(|| "Drawn symbol".to_string(), |s| s.name.to_string());
         let role = if dev.head == Some(rep) {
             "coil".to_string()
         } else if dev.children.contains(&rep) {
@@ -134,7 +133,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             _ => None,
         });
         let scope = ecad_electrical::defaults::Scope::symbol(doc, rep);
-        d.sizes = kinds.iter().map(|k| (*k, size_words(&ecad_engine::text_style::text_style_at(doc, *k, scope)))).collect();
+        d.sizes = kinds.iter().map(|k| (*k, size_words(&ecad_electrical::styles::text_style::text_style_at(doc, *k, scope)))).collect();
     }
     // Where it is drawn: the coil (or the symbol) first, then each contact the part offers.
     let reps: Vec<(RepresentationId, &ecad_model::Representation)> = doc.representations_of(Subject::Device(c)).take(MAX_ROWS).collect();
@@ -147,20 +146,20 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
         let what = if id == rep {
             "this symbol".to_string()
         } else {
-            ecad_engine::devices::rep_starter(doc, r).map_or_else(|| "drawn".to_string(), |s| s.name.to_lowercase())
+            ecad_electrical::devices::rep_starter(doc, r).map_or_else(|| "drawn".to_string(), |s| s.name.to_lowercase())
         };
         let labels = rep_labels(doc, c, r);
         let first = if dev.head == Some(id) { format!("Coil {}", pins(&labels)) } else { pins(&labels) };
         d.drawn.push(DrawnRow { pins: first, what, place: place_of(&mut places, r), rep: Some(id), this: id == rep });
     }
     if dev.head.is_some() {
-        let offer = xref::offer_of(doc, c);
-        for row in xref::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice())).into_iter().take(MAX_ROWS) {
+        let offer = ecad_electrical::references::devices::offer_of(doc, c);
+        for row in ecad_electrical::references::devices::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice())).into_iter().take(MAX_ROWS) {
             let kind = if row.power { format!("main, {}", row.kind.upper()) } else { row.kind.upper().to_string() };
             let (what, place) = match row.state {
-                xref::State::Drawn => (kind, row.place.clone()),
-                xref::State::Spare => (format!("{kind}, not used yet"), String::new()),
-                xref::State::Over => (format!("{kind}, beyond the part"), row.place.clone()),
+                ecad_electrical::references::devices::State::Drawn => (kind, row.place.clone()),
+                ecad_electrical::references::devices::State::Spare => (format!("{kind}, not used yet"), String::new()),
+                ecad_electrical::references::devices::State::Over => (format!("{kind}, beyond the part"), row.place.clone()),
             };
             d.drawn.push(DrawnRow { pins: pins(&row.labels), what, place, rep: row.rep, this: row.rep == Some(rep) });
         }
@@ -171,7 +170,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
     let conn = doc.connectivity();
     let mut points: Vec<(ConnectionPointId, String)> =
         doc.connection_points_of(c).take(MAX_ROWS).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "?".into()))).collect();
-    points.sort_by_key(|p| xref::natural_key(&p.1));
+    points.sort_by_key(|p| ecad_electrical::references::devices::natural_key(&p.1));
     for (t, pin) in points {
         d.terminals.insert(t);
         let net = conn.net_of_connection_point(t).and_then(|n| conn.net(n));
@@ -192,7 +191,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             let Some(oc) = ot.device() else { continue };
             deps.insert(ObjectRef::Device(oc));
             // Junctions and other untagged helpers are not named.
-            let Some(tag) = ecad_engine::devices::tag_of(doc, oc) else { continue };
+            let Some(tag) = ecad_electrical::devices::tag_of(doc, oc) else { continue };
             if others.len() < MAX_OTHERS {
                 others.push(format!("{tag}:{}", ot.label.as_deref().unwrap_or("?")));
             } else {

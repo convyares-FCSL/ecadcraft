@@ -4,18 +4,17 @@
 
 use crate::common::{H, id};
 
-use ecad_engine::locations;
 use ecad_model::{DeviceId, Document};
 use serde_json::{Value, json};
 
 const SEED: u64 = 522;
 
 fn loc(d: &Document, c: DeviceId) -> Option<String> {
-    locations::resolve(d, c).value
+    ecad_electrical::locations::resolve(d, c).value
 }
 
 fn func(d: &Document, c: DeviceId) -> Option<String> {
-    locations::resolve_function(d, c).value
+    ecad_electrical::locations::resolve_function(d, c).value
 }
 
 fn conflicts(h: &mut H) -> Value {
@@ -142,7 +141,7 @@ fn a_function_box_around_a_location_box_proposes_both() {
     assert!(v["message"].as_str().is_some_and(|m| m.starts_with("Function box =F1")), "{v}");
     h.run("locationbox", json!({"location": "+CP1", "corners": [[20, 100], [200, 220]]})).unwrap();
     let d = h.doc();
-    let labels: Vec<String> = locations::labels_on_page(&d, h.first_page()).into_iter().map(|(_, t, _)| t).collect();
+    let labels: Vec<String> = ecad_electrical::locations::labels_on_page(&d, h.first_page()).into_iter().map(|(_, t, _)| t).collect();
     assert!(labels.contains(&"=F1".to_string()) && labels.contains(&"+CP1".to_string()), "{labels:?}");
     let head = h.head();
     let (k, _) = place(&mut h, "coil", [75, 180]);
@@ -178,14 +177,14 @@ fn a_connector_half_answers_half() {
     assert_eq!(h.head(), head + 1);
     let d = h.doc();
     assert_eq!(loc(&d, x).as_deref(), Some("+CP1"), "the connector keeps its location");
-    assert_eq!(locations::half_location(&d, x, ecad_electrical::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
+    assert_eq!(ecad_electrical::locations::half_location(&d, x, ecad_electrical::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
     // JSON: the half answered in the place's own transaction.
     let v = h.run("place", json!({"symbol": "pins", "at": [320, 40]})).unwrap();
     let y: DeviceId = id(&v, "component");
     h.run("setlocation", json!({"component": y.hex(), "value": "+CP1"})).unwrap();
     h.run("place", json!({"symbol": "pinp", "device": y.hex(), "at": [75, 140], "location": "half"})).unwrap();
     let d = h.doc();
-    assert_eq!(locations::half_location(&d, y, ecad_electrical::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
+    assert_eq!(ecad_electrical::locations::half_location(&d, y, ecad_electrical::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
     assert_eq!(loc(&d, y).as_deref(), Some("+CP1"));
 }
 

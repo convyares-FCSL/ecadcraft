@@ -4,7 +4,7 @@
 //!
 //! The checks drive `style {catalogue: "wire"}`, `category`, `wire {category}`, `potential`,
 //! `wiresettings`, `setprop`, `bom`, `wirelist`, `checks` and read the document, the page drawing
-//! (`wires::labels_on_page`, `draw::coloured_routes`, the route's entity) and the prints. The one
+//! (`ecad_engine::wires::draw::labels_on_page`, `draw::coloured_routes`, the route's entity) and the prints. The one
 //! new Rust name used is the design's `styles::wire::wire_draw` (§5.3).
 //!
 //! Each test name starts with the §12 check (`b11`…`b18`) or the focus item it checks.
@@ -12,14 +12,13 @@
 use cadcraft_engine::doc::color::Color;
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_drawing_style::sheet::PAPER;
-use {ecad_engine::cables::draw, ecad_engine::export::printbook, ecad_engine::wires};
+use {ecad_engine::cables::draw, ecad_engine::export::printbook};
 use ecad_model::{Op, PageId, WireId};
 use serde_json::{Value, json};
 
 use crate::styles::acceptance::{
     checks_all, checks_of, code_colour, decoded_ops, field, field_num, field_text, find_obj_mut, inject, inverses_restore, last_tx_json, num, one_tx,
-    op_names, own_id, records_round_trip, redo, refused, rows_of, s, save_and_reopen, style_row, styles, undo,
-};
+    op_names, own_id, records_round_trip, redo, refused, rows_of, s, save_and_reopen, style_row, styles, undo};
 use crate::common::{H, id, pts, tmp_dir};
 
 // ------------------------------------------------------------------------------- helpers
@@ -52,7 +51,7 @@ fn wire_at(h: &mut H, y: f64, potential: Option<&str>) -> WireId {
 }
 
 fn label(h: &mut H, page: PageId, c: WireId) -> Option<String> {
-    wires::labels_on_page(&h.doc(), page).into_iter().find(|l| l.conductor == c).map(|l| l.text)
+    ecad_engine::wires::draw::labels_on_page(&h.doc(), page).into_iter().find(|l| l.conductor == c).map(|l| l.text)
 }
 
 /// The colour `c`'s route is drawn in on screen (`None`: ink).
@@ -425,7 +424,7 @@ fn b17_mono_prints_ink_and_colour_prints_line_colours() {
     let d = h.doc();
     let fan = Default::default();
     let (mono, _) = printbook::build_pending(&d, &[page], &fan, 0.01, None, false).unwrap();
-    assert!(mono.model.iter().all(|e| e.common.layer != wires::DASH_LAYER), "no dashes in mono");
+    assert!(mono.model.iter().all(|e| e.common.layer != ecad_electrical::wires::DASH_LAYER), "no dashes in mono");
     let lines = |m: &cadcraft_engine::doc::Drawing| {
         m.model
             .iter()

@@ -163,7 +163,7 @@ struct Detail {
     /// Its checks (an empty list: "No checks on …").
     checks: Vec<(String, Tone)>,
     /// Brief 057 (owner): the open cores' fixes, as buttons under the checks.
-    core_fixes: Vec<ecad_engine::checks::Fix>,
+    core_fixes: Vec<ecad_electrical::checks::Fix>,
     /// The Devices row's property editor goes after the head.
     editor: bool,
     /// Brief 059: the cable editor goes after the head, with the cable's drawn ends.
@@ -311,7 +311,7 @@ fn terminal(t: &App, k: crate::terminal_strips::plan::TermKey) -> Option<Detail>
 
 /// Brief 056 (design 056 §5): a channel row: its signal, where it is drawn and its test.
 fn channel(t: &App, k: crate::plc::list::IoKey) -> Option<Detail> {
-    use ecad_engine::plc::signals;
+    use ecad_electrical::plc::signals;
     let r = t.reports.as_ref()?;
     let row = r.io.source.row(k)?;
     let addr = row.address.clone().unwrap_or_default();
@@ -349,8 +349,8 @@ fn channel(t: &App, k: crate::plc::list::IoKey) -> Option<Detail> {
                     set("PLC tag", nonempty(row.tag.as_deref().unwrap_or_default()), ""),
                     set("Description", nonempty(row.text.as_deref().unwrap_or_default()), ""),
                     safe,
-                    set("Address", nonempty(&ecad_engine::plc::iolist::address_words(row)), if row.typed { "typed" } else { "automatic" }),
-                    set("Pins", nonempty(&ecad_engine::plc::iolist::pins_words(&row.pins)), ""),
+                    set("Address", nonempty(&ecad_electrical::plc::iolist::address_words(row)), if row.typed { "typed" } else { "automatic" }),
+                    set("Pins", nonempty(&ecad_electrical::plc::iolist::pins_words(&row.pins)), ""),
                 ],
                 ..Section::default()
             },
@@ -464,7 +464,7 @@ fn cable(t: &App, k: usize) -> Option<Detail> {
     for (i, label) in v.source.open.get(k).into_iter().flatten().enumerate() {
         checks.push((format!("Core {label} is open at an end: connect it, or tick Not used."), Tone::Error));
         if let Some(cable) = v.ids.get(k) {
-            core_fixes.push(ecad_engine::checks::Fix::CoreOpen(*cable, u16::try_from(i).unwrap_or(u16::MAX)));
+            core_fixes.push(ecad_electrical::checks::Fix::CoreOpen(*cable, u16::try_from(i).unwrap_or(u16::MAX)));
         }
     }
     let spare = rows.text(k, "Spare");
@@ -686,9 +686,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
                     }
                     for (c, place) in &cable_checks {
                         let tone = match c.severity() {
-                            ecad_engine::checks::Severity::Error => Tone::Error,
-                            ecad_engine::checks::Severity::Warning => Tone::Warning,
-                            ecad_engine::checks::Severity::Info => Tone::Neutral,
+                            ecad_electrical::checks::Severity::Error => Tone::Error,
+                            ecad_electrical::checks::Severity::Warning => Tone::Warning,
+                            ecad_electrical::checks::Severity::Info => Tone::Neutral,
                         };
                         let words = c.what();
                         panel::status_pill(ui, tone, &words, &words);

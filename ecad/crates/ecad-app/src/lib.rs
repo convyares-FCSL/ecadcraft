@@ -740,7 +740,7 @@ impl App {
             if panel.starts_at != Some(p.change_count()) {
                 let doc = p.ledger.document();
                 panel.starts = ecad_electrical::pages::page_types::starts(doc);
-                panel.generated = doc.page_order.iter().copied().filter(|pg| ecad_engine::generated::kind_of(doc, *pg).is_some()).collect();
+                panel.generated = doc.page_order.iter().copied().filter(|pg| ecad_electrical::pages::generated::kind_of(doc, *pg).is_some()).collect();
                 panel.starts_at = Some(p.change_count());
             }
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for

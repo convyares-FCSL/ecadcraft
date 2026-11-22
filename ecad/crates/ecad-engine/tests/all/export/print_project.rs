@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::doc::color::Color;
-use ecad_engine::generated::{FLAGGED_ACI, FLAGGED_PRINT_ACI, LAYER, MISSING};
-use ecad_engine::outputs::kept::ReportModels;
+use {ecad_electrical::pages::generated::FLAGGED_ACI, ecad_electrical::pages::generated::FLAGGED_PRINT_ACI, ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
+use ecad_electrical::reports::kept::ReportModels;
 use ecad_model::PageId;
 use serde_json::json;
 
@@ -23,7 +23,7 @@ fn bom_with_missing() -> (H, PageId) {
 fn a_missing_value_is_a_boxed_question_mark_yellow_on_screen() {
     let (mut h, bom) = bom_with_missing();
     let doc = h.doc();
-    let parts = ecad_engine::generated::parts_of(&doc, bom, ecad_engine::project::engine_views().report_models(&doc).as_ref());
+    let parts = ecad_engine::pages::generated::parts_of(&doc, bom, ecad_engine::project::engine_views().report_models(&doc).as_ref());
     // Missing cells are flagged; a block heading of devices without a location also reads `?`,
     // in the heading's own colour, and is not a cell.
     let marks: Vec<_> = parts.iter().filter(|p| p.aci == Some(FLAGGED_ACI) && matches!(&p.kind, EntityKind::Text(t) if t.value == MISSING)).collect();
@@ -51,7 +51,7 @@ fn a_missing_value_is_a_boxed_question_mark_yellow_on_screen() {
 fn a_missing_value_prints_black_in_screen_colours() {
     let (mut h, bom) = bom_with_missing();
     let doc = h.doc();
-    let outputs = ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
+    let outputs = ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
     let (scratch, _) = ecad_engine::export::printbook::build(&doc, &[bom], &BTreeSet::new(), 1e-6, Some(&outputs)).unwrap();
     let generated: Vec<_> = scratch.model.iter().filter(|e| e.common.layer == LAYER).collect();
     assert!(

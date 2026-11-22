@@ -115,7 +115,7 @@ impl Preview {
                 let tol = project.read(s, |p, _| p.tolerance).unwrap_or(1e-6);
                 self.title = format!(
                     "{name} · page {}: {}",
-                    ecad_engine::references::page_number(&doc, page),
+                    ecad_electrical::references::cables::page_number(&doc, page),
                     doc.pages.get(&page).map(|x| x.title.as_str()).unwrap_or_default()
                 );
                 match ecad_engine::pages::preview::preview_drawing_of(&doc, page, tol) {
@@ -143,7 +143,7 @@ impl Preview {
             }
             let title = format!(
                 "page {}: {}",
-                ecad_engine::references::page_number(doc, page),
+                ecad_electrical::references::cables::page_number(doc, page),
                 doc.pages.get(&page).map(|x| x.title.as_str()).unwrap_or_default()
             );
             let stale = match since {

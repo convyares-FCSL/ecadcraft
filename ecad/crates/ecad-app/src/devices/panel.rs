@@ -13,8 +13,8 @@
 
 use std::collections::BTreeSet;
 
-use ecad_engine::device_list::DeviceEntry;
-use ecad_engine::devices::PROPERTIES;
+use ecad_electrical::devices::device_list::DeviceEntry;
+use ecad_electrical::devices::PROPERTIES;
 use ecad_model::DeviceId;
 use eframe::egui::{self, Rect, RichText, Stroke, pos2, vec2};
 
@@ -117,7 +117,7 @@ pub struct DevicesPanel {
     /// The search text (the table's search field).
     pub filter: String,
     /// The list of every device, kept up to date by `ecad-engine`.
-    pub list: ecad_engine::device_list::DeviceList,
+    pub list: ecad_engine::reports::device_list::DeviceList,
     /// Brief 039: the rows as a table source, and the table.
     pub source: DevicesSource,
     pub table: ecad_widgets::table::Table<DeviceId>,
@@ -173,11 +173,11 @@ impl Default for DevicesPanel {
 impl DevicesPanel {
     /// The devices listed now (those the filter matches).
     pub fn entries(&self) -> Vec<DeviceEntry> {
-        self.list.entries.iter().filter(|e| ecad_engine::device_list::matches(e, &self.filter)).cloned().collect()
+        self.list.entries.iter().filter(|e| ecad_electrical::devices::device_list::matches(e, &self.filter)).cloned().collect()
     }
 
     /// Bring the list and the table up to date: the list through
-    /// [`ecad_engine::device_list::DeviceList::sync`] (built whole once, then only the devices a
+    /// [`ecad_engine::reports::device_list::DeviceList::sync`] (built whole once, then only the devices a
     /// change touched), the table by the update map of [`crate::devices::list`].
     pub fn sync(&mut self, serial: u64, p: &ecad_engine::Project) {
         let count = p.change_count();
@@ -404,7 +404,7 @@ impl DevicesPanel {
             return;
         }
         let shown: Vec<usize> =
-            self.list.entries.iter().enumerate().filter(|(_, e)| ecad_engine::device_list::matches(e, &self.filter)).map(|(i, _)| i).collect();
+            self.list.entries.iter().enumerate().filter(|(_, e)| ecad_electrical::devices::device_list::matches(e, &self.filter)).map(|(i, _)| i).collect();
         let (unplaced, placed): (Vec<usize>, Vec<usize>) =
             shown.into_iter().partition(|i| self.list.entries.get(*i).is_some_and(|e| e.symbols.is_empty()));
         let mut lines = Vec::new();

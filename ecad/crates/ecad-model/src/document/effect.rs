@@ -12,7 +12,7 @@
 //! document lookups.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::document::doc::{Cable, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::document::doc::{Cable, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, ConnectionPoint, Wire};
 use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::naming::keys::{Area, area_of};
 use crate::document::op::{ObjectRef, Op};
@@ -63,8 +63,8 @@ pub enum Effect<'a> {
     /// A connection point added, removed, or both (brief 028's relabel).
     Terminal {
         id: ConnectionPointId,
-        before: Option<&'a Terminal>,
-        after: Option<&'a Terminal>,
+        before: Option<&'a ConnectionPoint>,
+        after: Option<&'a ConnectionPoint>,
     },
     Rep {
         id: RepresentationId,

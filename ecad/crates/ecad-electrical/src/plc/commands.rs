@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::document::book::Book;
 use ecad_model::{
-    ChannelRole, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject, Terminal, ConnectionPointId, Word,
+    ChannelRole, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject, ConnectionPoint, ConnectionPointId, Word,
 };
 
 use crate::defaults;
@@ -633,7 +633,7 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
             labels.remove(old);
             labels.insert(pin.to_string());
             let term = doc.terminals.get(tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
-            let after = Terminal { label: Some(pin.to_string()), ..term.clone() };
+            let after = ConnectionPoint { label: Some(pin.to_string()), ..term.clone() };
             ops.push(Op::RemoveConnectionPoint { id: *tid, terminal: term });
             ops.push(Op::AddConnectionPoint { id: *tid, terminal: after });
             said.push(format!("{role} pin {old} → {pin}"));
@@ -658,7 +658,7 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
             let term = doc.terminals.get(&tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
             let role = point_of(doc, tid).map(|x| x.1).ok_or(CmdError::refused("Not a channel point."))?;
             let key = crate::plc::channels::key(j, role).ok_or(CmdError::refused("Not a channel point."))?;
-            let after = Terminal { key: Some(key), ..term.clone() };
+            let after = ConnectionPoint { key: Some(key), ..term.clone() };
             ops.push(Op::RemoveConnectionPoint { id: tid, terminal: term });
             ops.push(Op::AddConnectionPoint { id: tid, terminal: after });
         }

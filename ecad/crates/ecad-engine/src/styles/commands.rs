@@ -18,8 +18,8 @@ use crate::commands::err;
 use crate::commands::input::{Command, Typed};
 use crate::commands::{on_any_page, on_project};
 use ecad_electrical::defaults::{self};
-pub use crate::text_style::kind_words;
-use crate::text_style::{Fonts, TextKind};
+pub use ecad_electrical::styles::text_style::kind_words;
+use {crate::styles::draw::Fonts, ecad_electrical::styles::text_style::TextKind};
 use ecad_electrical::commands::input::{Bounded, Point, nullable};
 pub use ecad_electrical::styles::commands::text::{BAD_FONT, BAD_HEIGHT, BAD_JUSTIFY, BAD_POINT, BAD_SHOW, BAD_WEIGHT, NEEDS_KIND, NEEDS_CONNECTION_POINT};
 
@@ -219,7 +219,7 @@ pub(crate) struct ShowtextParams {
     kind: String,
     /// "on", "off" or "first" (tag only), or null to inherit.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "ecad_electrical::cmd::input::OrNull<String>")]
+    #[schemars(required, with = "ecad_electrical::commands::input::OrNull<String>")]
     show: Option<Option<String>>,
     /// A symbol of a device.
     #[serde(default)]
@@ -308,16 +308,16 @@ impl Command for PagetextsParams {
 
 /// The rows of `pagetexts` for `page`.
 pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
-    use crate::text_style::{TextStyle, Weight, justify_code, text_box, width_in};
-    let look = crate::text_style::Look::new(doc);
-    let all = crate::devices::all_texts_on_page(doc, page);
+    use {ecad_electrical::styles::text_style::TextStyle, ecad_electrical::styles::text_style::Weight, ecad_electrical::styles::text_style::justify_code, ecad_electrical::styles::text_style::text_box, crate::styles::draw::width_in};
+    let look = crate::styles::draw::Look::new(doc);
+    let all = crate::devices::draw::all_texts_on_page(doc, page);
     let more = all.len().saturating_sub(MAX_TEXT_ROWS);
     let rows: Vec<Value> = all
         .iter()
         .take(MAX_TEXT_ROWS)
         .map(|t| {
             let d = &t.text;
-            let kind = crate::devices::kind_of(d.of);
+            let kind = ecad_electrical::devices::kind_of(d.of);
             let style = look.style(kind);
             let w = width_in(look.fonts_for(kind), TextStyle { height: d.height, ..style }, &d.value);
             let (lo, hi) = text_box(w, d.height, d.at, d.halign, d.valign);
@@ -343,7 +343,7 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
                 "overlaps": t.overlaps,
                 "box": [[lo.x, lo.y], [hi.x, hi.y]],
             });
-            if let crate::devices::TextOf::Terminal(id) = d.of {
+            if let ecad_electrical::devices::TextOf::Terminal(id) = d.of {
                 row["terminal"] = json!(id.hex());
             }
             row
@@ -408,7 +408,7 @@ impl Command for MovetextParams {
                 "representation": rep.hex(),
                 "kind": kind.word(),
                 "at": if plan.after.is_some() { now.as_ref().map(|t| json!([t.text.at.x, t.text.at.y])) } else { None },
-                "justify": now.as_ref().map(|t| crate::text_style::justify_code(t.text.halign, t.text.valign)),
+                "justify": now.as_ref().map(|t| ecad_electrical::styles::text_style::justify_code(t.text.halign, t.text.valign)),
                 "changed": changed,
             }))
         })
@@ -416,6 +416,6 @@ impl Command for MovetextParams {
 }
 
 /// The text `t` names as drawn now.
-fn current_text(doc: &Document, rep: RepresentationId, t: &rules::MoveTarget) -> Option<crate::devices::PageText> {
-    crate::devices::all_texts_on_page(doc, t.page).into_iter().find(|x| x.text.rep == rep && x.text.of == t.of)
+fn current_text(doc: &Document, rep: RepresentationId, t: &rules::MoveTarget) -> Option<ecad_electrical::devices::PageText> {
+    crate::devices::draw::all_texts_on_page(doc, t.page).into_iter().find(|x| x.text.rep == rep && x.text.of == t.of)
 }

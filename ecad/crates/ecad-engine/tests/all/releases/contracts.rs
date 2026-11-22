@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use ecad_engine::checks::Kind;
+use ecad_electrical::checks::Kind;
 use ecad_engine::releases::release::{self, Step};
 use ecad_model::{CableId, Op, PageId};
 use serde_json::{Value, json};
@@ -108,7 +108,7 @@ fn an_orphan_reference_is_a_check_kept_by_its_update_map() {
     kept_is_built(&mut h);
     let row = h.cfg(|p| p.checks().rows().find(|c| c.kind == Kind::OrphanReference).cloned()).unwrap();
     assert_eq!(row.page, Some(supply));
-    assert_eq!(row.severity(), ecad_engine::checks::Severity::Warning);
+    assert_eq!(row.severity(), ecad_electrical::checks::Severity::Warning);
     let v = h.run("checks", json!({"kinds": ["orphan-reference"]})).unwrap();
     assert_eq!(v["total"], 1, "{v}");
     assert_eq!(v["checks"][0]["which"], "-C01 /?");
@@ -558,9 +558,9 @@ fn the_badge_counts_are_kept_and_an_unrelated_edit_recounts_nothing() {
         h.cfg(|p| {
             p.checks();
             p.outputs();
-            let tally = |rows: &[ecad_engine::checks::Check]| {
+            let tally = |rows: &[ecad_electrical::checks::Check]| {
                 let n = |s| rows.iter().filter(|c| c.severity() == s).count();
-                use ecad_engine::checks::Severity::*;
+                use ecad_electrical::checks::Severity::*;
                 (n(Error), n(Warning), n(Info))
             };
             let rows: Vec<_> = p.kept_checks().unwrap().rows().cloned().collect();

@@ -34,7 +34,6 @@ pub mod table;
 pub mod tokens;
 pub mod wheel;
 
-pub use ecad_tokens as tokens;
 pub use crate::tokens::Icon;
 
 /// An `ecad-tokens` colour as egui's.

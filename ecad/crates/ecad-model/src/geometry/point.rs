@@ -276,7 +276,7 @@ impl schemars::JsonSchema for PointKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn every_form_reads_back_as_written() {

@@ -128,7 +128,7 @@ pub fn read_sensor(sensor: &Sensor, text: &str) -> Read<Sensor> {
 
 #[cfg(test)]
 mod tests {
-    use crate::devices::ratings::*;
+    use super::*;
     use ecad_model::objects::devices::{Output, Sensing};
 
     fn shown(sensor: &Sensor, text: &str) -> String {

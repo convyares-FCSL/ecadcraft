@@ -215,7 +215,7 @@ fn c_rack_missing_from_a_hand_made_file() {
     raw_setprop(&mut p.h, c["-A05"], "plc.rack", Some(&gone.hex()));
     let d = p.h.doc();
     let mut card = d.devices[&gone].clone();
-    card.device_type = ecad_engine::plc::types::of_card(ecad_engine::plc::rack::CardType::Dq);
+    card.device_type = ecad_electrical::plc::types::of_card(ecad_electrical::plc::rack::CardType::Dq);
     raw(&mut p.h, vec![ecad_model::Op::ModifyDevice { id: gone, before: d.devices[&gone].clone(), after: card }]);
     let mut h = reload(p.h, "rack missing", 0x7045_c102);
     let rows = checks_of(&mut h, "rack-missing");

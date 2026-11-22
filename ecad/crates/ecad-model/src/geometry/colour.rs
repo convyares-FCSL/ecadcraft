@@ -17,7 +17,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// The embedded data file.
-pub const COLOURS: &str = include_str!("../defaults/colours.toml");
+pub const COLOURS: &str = include_str!("../../defaults/colours.toml");
 /// Its name, for messages.
 pub const FILE: &str = "colours.toml";
 

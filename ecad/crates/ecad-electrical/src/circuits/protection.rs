@@ -66,7 +66,7 @@ pub(super) fn device_of(doc: &Document, s: RatedSubject, found: &Found, issues: 
 
 #[cfg(test)]
 mod tests {
-    use crate::circuits::*;
+    use super::*;
     use ecad_model::IdAllocator;
     use ecad_model::objects::wire::{ProtectedBy, Wire};
 

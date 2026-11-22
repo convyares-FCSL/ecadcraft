@@ -20,7 +20,6 @@ use crate::commands::input::{Command, Typed};
 use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, err, on_any_page, on_project, plain_style};
 use crate::project::Project;
 use ecad_electrical::symbols::Starter;
-use crate::wires;
 use ecad_electrical::commands::input::{Bounded, Point, nullable};
 
 /// The commands of this module with a typed input.
@@ -214,7 +213,7 @@ pub(crate) struct PotentialParams {
     conductor: WireId,
     /// The potential (24V, L1…), or null to clear it.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "ecad_electrical::cmd::input::OrNull<String>")]
+    #[schemars(required, with = "ecad_electrical::commands::input::OrNull<String>")]
     value: Option<Option<String>>,
 }
 
@@ -254,7 +253,7 @@ pub(crate) struct CategoryParams {
     conductors: Option<Bounded<WireId, 0, { MAX_HANDLES }>>,
     /// The wire category (its ID or name), or null to clear the wires' own.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "ecad_electrical::cmd::input::OrNull<String>")]
+    #[schemars(required, with = "ecad_electrical::commands::input::OrNull<String>")]
     value: Option<Option<String>>,
 }
 
@@ -461,12 +460,12 @@ impl Command for ChecksParams {
             Some(words) => Some(
                 words
                     .iter()
-                    .map(|k| crate::checks::Kind::parse(k).ok_or_else(|| err(format!("unknown check kind {k:?}"))))
+                    .map(|k| ecad_electrical::checks::Kind::parse(k).ok_or_else(|| err(format!("unknown check kind {k:?}"))))
                     .collect::<cadcraft_engine::Result<std::collections::BTreeSet<_>>>()?,
             ),
             None => None,
         };
-        let limit = self.limit.unwrap_or(crate::checks::DEFAULT_LIMIT).clamp(1, crate::checks::MAX_LIMIT);
+        let limit = self.limit.unwrap_or(ecad_electrical::checks::DEFAULT_LIMIT).clamp(1, ecad_electrical::checks::MAX_LIMIT);
         let after = self.after.unwrap_or(0);
         on_any_page(s, |p, _| {
             // The project's kept report models (built on first use, then kept from each change).
@@ -519,7 +518,7 @@ impl Command for WireParams {
             let style = plain_style(p);
             let quiet = quiet_ends(p, page);
             let join = join.unwrap_or_else(|| rules::join_by_default(p.ledger.document()));
-            let input = wires::WireInput {
+            let input = ecad_electrical::wires::WireInput {
                 page,
                 style,
                 points,
@@ -532,7 +531,7 @@ impl Command for WireParams {
             let mut plan = rules::wire(&p.ledger, &mut p.ids, input, category.as_deref())?;
             p.apply_edit(pg, "wire", "Wire", std::mem::take(&mut plan.ops))?;
             let doc = p.ledger.document();
-            let wire = plan.wire.filter(|w| doc.wires.contains_key(w)).or_else(|| wires::wire_of_route(doc, plan.route));
+            let wire = plan.wire.filter(|w| doc.wires.contains_key(w)).or_else(|| ecad_electrical::wires::wire_of_route(doc, plan.route));
             let number = wire.and_then(|w| rules::number_of(doc, w));
             let attached: Vec<Value> = plan.attached.iter().map(|(e, t)| json!({"end": format!("{e:?}"), "terminal": t.hex()})).collect();
             let mut r = json!({
@@ -572,7 +571,7 @@ pub(crate) fn potential_choices(p: &Project) -> Vec<String> {
 /// from the document (review of #65, finding 5), not from what is on screen; only a page with a
 /// cable reference has any, so other pages cost nothing.
 pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
-    wires::quiet_ends_of(p.ledger.document(), page, &p.views, p.tolerance)
+    crate::wires::draw::quiet_ends_of(p.ledger.document(), page, &p.views, p.tolerance)
 }
 
 // ---------------------------------------------------------------- place (the continuation form)
@@ -589,9 +588,9 @@ pub(crate) fn place_tagless(
     on_project(s, |p, pg, page| {
         let style = plain_style(p);
         let doc = p.ledger.document();
-        let aid = wires::continuation_aid(name.as_deref().unwrap_or_default(), caption.as_deref())?;
+        let aid = ecad_electrical::wires::continuation_aid(name.as_deref().unwrap_or_default(), caption.as_deref())?;
         let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
-        let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, aid)?;
+        let t = ecad_electrical::wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, aid)?;
         p.apply_edit(pg, "place", starter.name, t.ops.clone())?;
         if let Some(n) = &name {
             p.last_continuation = Some(n.clone());

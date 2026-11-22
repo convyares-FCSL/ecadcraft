@@ -28,7 +28,7 @@ fn last_ops(h: &mut H) -> (String, Vec<Op>) {
 
 fn text_on(h: &mut H, page: PageId) -> String {
     let doc = h.doc();
-    ecad_engine::references::markers_on_page(&doc, page).first().map(|m| m.text.clone()).unwrap_or_default()
+    ecad_electrical::references::cables::markers_on_page(&doc, page).first().map(|m| m.text.clone()).unwrap_or_default()
 }
 
 /// Two pages, Supply and Field, and cable C1 slashed on Supply with its reference there at (120,5)
@@ -435,13 +435,13 @@ fn old_projects_touch_only_pages_whose_position_changed() {
         Op::RemovePage { id: s.supply, page: old.clone(), index: 0 },
         Op::AddPage { id: s.supply, page: ecad_model::Page { title: ecad_model::PageTitle::new("Renamed").unwrap(), ..old.clone() }, index: 0 },
     ];
-    assert_eq!(ecad_engine::references::cables_touched(&doc, &rename), Some(Default::default()));
+    assert_eq!(ecad_electrical::references::cables::cables_touched(&doc, &rename), Some(Default::default()));
     assert!(crate::common::devices_touched(&doc, &crate::common::applied(&doc, &rename), &rename).is_empty());
     let append = vec![Op::AddPage { id: PageId(77), page: ecad_model::Page::titled("New").unwrap(), index: 2 }];
-    assert_eq!(ecad_engine::references::cables_touched(&doc, &append), Some(Default::default()));
+    assert_eq!(ecad_electrical::references::cables::cables_touched(&doc, &append), Some(Default::default()));
     // Moving Supply after Field: both positions change, so the cable with references on them.
     let moved = vec![Op::RemovePage { id: s.supply, page: old.clone(), index: 0 }, Op::AddPage { id: s.supply, page: old, index: 1 }];
-    let k = ecad_engine::references::cables_touched(&doc, &moved).unwrap();
+    let k = ecad_electrical::references::cables::cables_touched(&doc, &moved).unwrap();
     assert_eq!(k.len(), 1, "{k:?}");
 }
 

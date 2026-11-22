@@ -89,7 +89,7 @@ fn the_coil_table_the_contact_texts_properties_and_checks() {
         .model
         .iter()
         .filter_map(|e| match &e.kind {
-            cadcraft_engine::doc::EntityKind::Text(t) if e.common.layer == ecad_engine::devices::TAG_LAYER => Some(t.value.clone()),
+            cadcraft_engine::doc::EntityKind::Text(t) if e.common.layer == ecad_electrical::devices::TAG_LAYER => Some(t.value.clone()),
             _ => None,
         })
         .collect();
@@ -130,7 +130,7 @@ fn the_coil_table_the_contact_texts_properties_and_checks() {
     h.state_mut().shell.lists = ecad_app::shell::ListsView::Checks;
     h.run_steps(3);
     let rows = h.state().panel.checks.rows().to_vec();
-    let row = rows.iter().find(|r| r.check.kind == ecad_engine::checks::Kind::TooManyContacts).expect("the too-many-contacts row").clone();
+    let row = rows.iter().find(|r| r.check.kind == ecad_electrical::checks::Kind::TooManyContacts).expect("the too-many-contacts row").clone();
     h.get_by_label(&panel::row_label(&row)).click();
     h.run_steps(3);
     assert_eq!(h.state().panel.active.map(|p| p.hex()), Some(p105));

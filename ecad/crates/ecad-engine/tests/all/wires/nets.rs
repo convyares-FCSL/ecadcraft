@@ -2,7 +2,7 @@
 //! out (`join: false`), `joinwires`, a cable continued across pages, and the wire label rule.
 //! Driven through the commands' JSON forms.
 
-use ecad_engine::checks::{Fix, Kind};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
 use ecad_model::{PageId, Pt, RouteEnd, RouteId, WireId};
 use serde_json::{Value, json};
 
@@ -378,8 +378,8 @@ fn bus() -> (H, PageId) {
     (h, page)
 }
 
-fn labels(h: &mut H, page: PageId) -> Vec<ecad_engine::wires::WireLabel> {
-    h.p(|p| ecad_engine::wires::labels_on_page(p.ledger.document(), page))
+fn labels(h: &mut H, page: PageId) -> Vec<ecad_electrical::wires::WireLabel> {
+    h.p(|p| ecad_engine::wires::draw::labels_on_page(p.ledger.document(), page))
 }
 
 #[test]
@@ -404,14 +404,14 @@ fn the_label_rule_labels_a_net_once_or_every_wire() {
             let v = &d.routes[r].points;
             v.len() == 2 && v[0].x == 20.0 && v[0].y == 0.0
         })
-        .and_then(|r| ecad_engine::wires::wire_of_route(&d, r));
+        .and_then(|r| ecad_electrical::wires::wire_of_route(&d, r));
     let drop = drop.expect("the first drop");
     h.run("setprop", json!({"conductor": drop.hex(), "key": "size", "value": "2.5"})).unwrap();
     let l = labels(&mut h, page);
     assert_eq!(l.len(), 2, "{l:?}");
     for (i, a) in l.iter().enumerate() {
         for b in l.iter().skip(i + 1) {
-            let (x, y) = (ecad_engine::wires::label_box(a), ecad_engine::wires::label_box(b));
+            let (x, y) = (ecad_electrical::wires::label_box(a), ecad_electrical::wires::label_box(b));
             assert!(x.1.x < y.0.x || y.1.x < x.0.x || x.1.y < y.0.y || y.1.y < x.0.y, "labels touch: {a:?} {b:?}");
         }
     }
@@ -486,21 +486,21 @@ fn wire_labels_take_the_wire_label_text_style() {
     let page = h.first_page();
     h.points_at(&[(0.0, 0.0), (60.0, 0.0)]);
     wire(&mut h, &[(0.0, 0.0), (60.0, 0.0)], json!({}));
-    let regular = h.p(|p| ecad_engine::wires::labels_on_page(p.ledger.document(), page));
+    let regular = h.p(|p| ecad_engine::wires::draw::labels_on_page(p.ledger.document(), page));
     assert_eq!(regular.len(), 1);
     h.run("textstyle", json!({"kind": "wire_label", "weight": "bold"})).unwrap();
     let (bold, width) = h.p(|p| {
         let doc = p.ledger.document();
-        let l = ecad_engine::wires::labels_on_page(doc, page);
-        let w = l.first().map(|x| ecad_engine::text_style::text_width(doc, ecad_engine::text_style::TextKind::WireLabel, &x.text));
+        let l = ecad_engine::wires::draw::labels_on_page(doc, page);
+        let w = l.first().map(|x| ecad_engine::styles::draw::text_width(doc, ecad_electrical::styles::text_style::TextKind::WireLabel, &x.text));
         (l, w)
     });
     let l = &bold[0];
     assert!((l.width - width.unwrap()).abs() < 1e-9, "the box is the font's width");
-    let look = h.p(|p| ecad_engine::text_style::Look::new(p.ledger.document()));
-    let e = ecad_engine::wires::label_entity(&look, l, cadcraft_engine::doc::Handle(1));
+    let look = h.p(|p| ecad_engine::styles::draw::Look::new(p.ledger.document()));
+    let e = ecad_engine::wires::draw::label_entity(&look, l, cadcraft_engine::doc::Handle(1));
     let cadcraft_engine::doc::EntityKind::Text(t) = &e.kind else { panic!("{e:?}") };
-    assert_eq!(t.style, ecad_engine::text_style::STYLE_BOLD);
+    assert_eq!(t.style, ecad_electrical::styles::text_style::STYLE_BOLD);
 }
 
 /// Review of #65, finding 5: the quiet ends (the ends at a cable reference of the wires that
@@ -530,12 +530,12 @@ fn quiet_ends_come_from_the_document() {
     let doc = h.doc();
     assert_eq!(doc.wires.len(), 3, "a wire per core across the pages");
     // No project, no page map: the document alone.
-    let quiet = ecad_engine::wires::quiet_ends_of(&doc, page, &std::collections::BTreeSet::new(), 1e-6);
+    let quiet = ecad_engine::wires::draw::quiet_ends_of(&doc, page, &std::collections::BTreeSet::new(), 1e-6);
     let shown = h.p(|p| p.pages.get(&page).map(|v| v.map.quiet_ends().to_vec()).unwrap_or_default());
     assert!(
         !quiet.is_empty(),
         "the ends at the reference are quiet: {quiet:?} shown {shown:?} markers {}",
-        ecad_engine::references::markers_on_page(&doc, page).len()
+        ecad_electrical::references::cables::markers_on_page(&doc, page).len()
     );
     for q in &shown {
         assert!(quiet.iter().any(|x| x.near(*q, 1e-9)), "{q:?} not in {quiet:?}");
@@ -569,7 +569,7 @@ fn kept_equals_rebuild(h: &mut H, what: &str) {
         p.outputs();
         let doc = p.ledger.document();
         let kept = p.kept_reports().map(|o| o.cables().into_iter().cloned().collect::<Vec<_>>()).unwrap_or_default();
-        let rebuilt = ecad_engine::outputs::kept::ReportModels::build_with(doc, &ecad_engine::text_style::EngineMetrics);
+        let rebuilt = ecad_electrical::reports::kept::ReportModels::build_with(doc, &ecad_engine::styles::draw::EngineMetrics);
         let fresh: Vec<_> = rebuilt.cables().into_iter().cloned().collect();
         assert_eq!(kept, fresh, "{what}: cable rows differ from a rebuild");
     });
@@ -643,7 +643,7 @@ fn the_outputs_map_takes_a_continuation_rename_to_its_cables() {
         p.outputs();
         let before = p.ledger.document().clone();
         let before_aid = p.ledger.document().aids.get(&a1).cloned().unwrap();
-        let after_aid = ecad_engine::wires::continuation_aid("Z1", None).unwrap();
+        let after_aid = ecad_electrical::wires::continuation_aid("Z1", None).unwrap();
         let ops = vec![ecad_model::Op::ModifyAid { id: a1, before: before_aid, after: after_aid }];
         let pending = p.views_mut().begin(&before, &ops);
         p.ledger.commit(ecad_model::Author::User, "rename", ops.clone()).unwrap();

@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt, Representation,
-    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId,
+    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointId,
 };
 
 use ecad_model::Noun;
@@ -649,7 +649,7 @@ pub fn symbol_ops(
         let name = if pin { names.first() } else { names.get(i) }.ok_or(CmdError::refused("Not enough pin names for this symbol."))?;
         let t: ConnectionPointId = ids.fresh();
         let key = side.key().ok_or(CmdError::refused("A connector symbol's point has no side."))?;
-        ops.push(Op::AddConnectionPoint { id: t, terminal: Terminal { owner: c.into(), label: Some(name.clone()), key: Some(key), accepts: td.accepts } });
+        ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { owner: c.into(), label: Some(name.clone()), key: Some(key), accepts: td.accepts } });
         cps.insert(t, td.at);
         shown.push(Shown { side, name: name.clone(), terminal: t, local: td.at });
     }
@@ -1287,7 +1287,7 @@ impl Index {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn families_name_their_halves() {

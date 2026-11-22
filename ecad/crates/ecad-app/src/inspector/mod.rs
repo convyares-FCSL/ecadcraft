@@ -52,7 +52,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
 use ecad_electrical::defaults::{self, Entry, Kind, Level, Scope, Source};
 use ecad_engine::project::Mapped;
-use ecad_engine::text_style::TextKind;
+use ecad_electrical::styles::text_style::TextKind;
 use ecad_model::{ObjectRef, PageId, RepresentationId, Subject};
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, RichText, pos2, vec2};
@@ -487,7 +487,7 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         set: Some(("setprop", serde_json::json!({"component": comp, "key": cn::PINS_KEY}), "value")),
         goto: Vec::new(),
     }];
-    let mut cache = ecad_engine::locations::BoxCache::default();
+    let mut cache = ecad_electrical::locations::BoxCache::default();
     for h in cn::half_rows(doc, c, &mut cache) {
         let Some(letter) = h.side.letter() else { continue };
         let own = |f: &str| cn::half_prop(doc, c, h.side, f).is_some();
@@ -509,8 +509,8 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         };
         // Brief 052 (design 052 §5.2): the half's override, else the connector's stored value.
         let loc_origin = match h.location.source {
-            ecad_engine::locations::Source::Override => "set here",
-            ecad_engine::locations::Source::Device => "from device",
+            ecad_electrical::locations::Source::Override => "set here",
+            ecad_electrical::locations::Source::Device => "from device",
             _ => "none",
         };
         out.push(row("description", "Description", h.description.clone(), desc_origin, Some(h.tag.clone())));
@@ -610,7 +610,7 @@ const SYMBOL_KINDS: [TextKind; 4] = [TextKind::Tag, TextKind::PointLabel, TextKi
 /// A value as the inspector shows it: a show word in words (spec §3), else as the Standards table.
 fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     if e.key.ends_with(".show") {
-        use ecad_engine::text_style::Shown;
+        use ecad_electrical::styles::text_style::Shown;
         return match <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default() {
             Shown::Off => "Hidden".into(),
             Shown::First => "Shown on the first of each run".into(),

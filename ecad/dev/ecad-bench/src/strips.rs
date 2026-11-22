@@ -137,7 +137,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         for page in &pages {
             for i in 0..TERMINALS {
                 let x = X0 + PITCH * i as f64;
-                let (_, _, add) = ecad_engine::wires::add_route(
+                let (_, _, add) = ecad_electrical::wires::add_route(
                     &mut p.ids,
                     *page,
                     style.clone(),
@@ -152,7 +152,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         let mut serial = 0usize;
         let mut made: Vec<DeviceId> = Vec::new();
         for page in &pages {
-            let f = ecad_engine::cmd::terminal::plan_fence_in(
+            let f = ecad_engine::terminal_strips::commands::plan_fence_in(
                 p,
                 *page,
                 style.clone(),
@@ -168,10 +168,10 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 let (Some(a), Some(b)) = (pair.first(), pair.get(1)) else { continue };
                 let ia = f.placed.iter().position(|x| x.0 == a.0).unwrap_or(0) as f64;
                 let (xa, xb) = (X0 + PITCH * ia, X0 + PITCH * (ia + 1.0));
-                let route = ecad_electrical::cmd::terminal::staple(Pt::new(xa, 100.0), Pt::new(xb, 100.0));
+                let route = ecad_electrical::terminal_strips::commands::terminal_strips::staple(Pt::new(xa, 100.0), Pt::new(xb, 100.0));
                 // A route from terminal to terminal: the commit's rewrite makes its wire.
                 let (_, _, add) =
-                    ecad_engine::wires::add_route(&mut p.ids, *page, style.clone(), route, [RouteEnd::Point(a.0), RouteEnd::Point(b.0)]);
+                    ecad_electrical::wires::add_route(&mut p.ids, *page, style.clone(), route, [RouteEnd::Point(a.0), RouteEnd::Point(b.0)]);
                 ops.extend(add);
             }
             // Half the outside halves (the second halves) as two-core cables.
@@ -197,7 +197,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         let set = |ops: &mut Vec<Op>, object: ObjectRef, key: String, value: String| {
             ops.push(Op::SetProperty { object, key, before: None, after: Some(value) });
         };
-        for item in ecad_engine::accessories::PART_ITEMS {
+        for item in ecad_electrical::terminal_strips::accessories::PART_ITEMS {
             if !doc.display.contains_key(&format!("strip_{item}_part_number")) {
                 set(&mut ops, ObjectRef::Project, format!("strip_{item}_part_number"), format!("{}-1", item.to_ascii_uppercase()));
             }
@@ -238,13 +238,13 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         ecad_engine::install();
         {
             let mut s = Session::empty();
-            let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+            let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
             populate(&project, &mut s)?;
             drop(project);
         }
         crate::measure::release_lock_file(&copy);
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED + 1, ecad_engine::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED + 1, ecad_engine::cables::views::Settings::none())?;
         let mut out = MeasuredStrips::default();
         // First build of the strips and core counts (the report models built, untimed, first).
         let mut build = Vec::new();
@@ -256,14 +256,14 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 let doc = p.ledger.document();
                 let Some(o) = p.kept_reports() else { return 0.0 };
                 let t = Instant::now();
-                let cx = ecad_engine::outputs::PageCx::of(doc);
-                let built = ecad_engine::strips::Strips::build(doc, o, &cx);
+                let cx = ecad_electrical::reports::PageCx::of(doc);
+                let built = ecad_electrical::terminal_strips::Strips::build(doc, o, &cx);
                 // Brief 046: the graphic pages' kept data, built with the strips.
                 let t2 = Instant::now();
-                std::hint::black_box(ecad_engine::strip_page::StripPages::build(doc, &built));
+                std::hint::black_box(ecad_engine::terminal_strips::draw::StripPages::build(doc, &built));
                 sp.push(ms(t2));
                 for k in doc.cables.keys() {
-                    std::hint::black_box(ecad_engine::strips::cable_cores(doc, *k));
+                    std::hint::black_box(ecad_electrical::terminal_strips::cable_cores(doc, *k));
                 }
                 std::hint::black_box(&built);
                 ms(t)
@@ -321,11 +321,11 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             let doc = p.ledger.document();
             doc.representations_on(page1).find_map(|(_, r)| {
                 let Subject::Device(c) = r.subject else { return None };
-                if ecad_engine::strips::strip_of(doc, c).is_some() || !ecad_engine::locations::is_device(doc, c) {
+                if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() || !ecad_electrical::locations::is_device(doc, c) {
                     return None;
                 }
                 let t = doc.connection_points_of(c).map(|(t, _)| t).next()?;
-                ecad_model::derive::connection_point_position(doc, page1, t)
+                ecad_model::connectivity::derive::connection_point_position(doc, page1, t)
             })
         })?;
         if let Some(at) = point {
@@ -375,7 +375,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         for _ in 0..runs {
             lp.push(project.read(&mut s, |p, _| {
                 let t = Instant::now();
-                std::hint::black_box(ecad_engine::link_lines::parts_on_page(p.ledger.document(), page1));
+                std::hint::black_box(ecad_electrical::terminal_strips::jumper_bars::parts_on_page(p.ledger.document(), page1));
                 ms(t)
             })?);
         }
@@ -457,8 +457,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 p.outputs();
                 let doc = p.ledger.document();
                 let t = Instant::now();
-                let (input, total) = ecad_engine::generated::input_of(doc, plan_page, p.kept_reports());
-                std::hint::black_box(ecad_engine::generated::page_parts(doc, plan_page, &input, p.kept_reports(), total));
+                let (input, total) = ecad_engine::pages::generated::input_of(doc, plan_page, p.kept_reports());
+                std::hint::black_box(ecad_engine::pages::generated::page_parts(doc, plan_page, &input, p.kept_reports(), total));
                 ms(t)
             })?);
         }
@@ -472,8 +472,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 p.outputs();
                 let doc = p.ledger.document();
                 let t = Instant::now();
-                let (input, total) = ecad_engine::generated::input_of(doc, sp_page, p.kept_reports());
-                std::hint::black_box(ecad_engine::generated::page_parts(doc, sp_page, &input, p.kept_reports(), total));
+                let (input, total) = ecad_engine::pages::generated::input_of(doc, sp_page, p.kept_reports());
+                std::hint::black_box(ecad_engine::pages::generated::page_parts(doc, sp_page, &input, p.kept_reports(), total));
                 ms(t)
             })?);
         }

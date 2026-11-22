@@ -6,7 +6,7 @@
 //! was fixed (all three are fixed and run now).
 
 use ecad_engine::Persistence;
-use ecad_engine::outputs::{Group, kept::ReportModels};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use {ecad_model::CableId, ecad_model::DeviceId, ecad_model::Document, ecad_model::PageId, ecad_model::ConnectionPointId, ecad_model::WireId, ecad_model::naming::tag};
 use serde_json::{Value, json};
 
@@ -53,7 +53,7 @@ fn fixture(seed: u64) -> T {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ from a rebuild");
     assert_eq!(kept.cable_table(), built.cable_table());
@@ -129,8 +129,8 @@ fn k_save_reopen_and_replay_keep_every_new_property() {
     assert_eq!(h2.head(), before_head, "open adds no transaction");
     let after_doc = h2.doc();
     assert_eq!(model_parts(&after_doc), model_parts(&before_doc));
-    assert_eq!(ecad_engine::generated::strip_of(&after_doc, plan_page), Some(x1));
-    assert_eq!(ecad_engine::generated::kind_of(&after_doc, cables_page), Some(ecad_model::GenKind::Cables));
+    assert_eq!(ecad_electrical::pages::generated::strip_of(&after_doc, plan_page), Some(x1));
+    assert_eq!(ecad_electrical::pages::generated::kind_of(&after_doc, cables_page), Some(ecad_model::GenKind::Cables));
     let after_reads = reads(&mut h2, t.cable);
     assert_eq!(after_reads, before_reads, "reads after reopen");
     same_as_built(&mut h2);

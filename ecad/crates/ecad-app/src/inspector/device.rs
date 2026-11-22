@@ -5,7 +5,7 @@
 
 use ecad_electrical::properties::Section;
 use ecad_electrical::cables::words::Row;
-use ecad_engine::checks::{Object, Severity};
+use {ecad_electrical::checks::Object, ecad_electrical::checks::Severity};
 use ecad_widgets::tokens::{radius, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 
@@ -36,12 +36,12 @@ const PLACED: [&str; 15] = [
     "where",
     "contactrows",
     "coil",
-    ecad_engine::xref::CONTACTS_KEY,
+    ecad_electrical::references::devices::CONTACTS_KEY,
 ];
 
 /// A row the Layout tab draws.
 pub fn on_layout_tab(row: &Row) -> bool {
-    row.key == ecad_engine::xref::MIRROR_KEY || row.label.starts_with("Texts")
+    row.key == ecad_electrical::references::devices::MIRROR_KEY || row.label.starts_with("Texts")
 }
 
 /// The device's own checks: about it or one of its connection points.
@@ -228,7 +228,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
                 out.push(InspectorAction::Placements(vec![rep]));
             }
         }
-        if let Some(row) = find(s, ecad_engine::xref::CONTACTS_KEY) {
+        if let Some(row) = find(s, ecad_electrical::references::devices::CONTACTS_KEY) {
             ui.add_space(space::XS);
             fields::prop(ui, sh, target, "device", row, "Contacts offered", "");
         }
@@ -385,7 +385,7 @@ fn connection_row(ui: &mut egui::Ui, c: &crate::inspector::details::ConnRow, i: 
 
 #[cfg(test)]
 mod tests {
-    use crate::inspector::parts_summary;
+    use super::parts_summary;
 
     /// Review of #91, 3: a device with only its main part has a part.
     #[test]

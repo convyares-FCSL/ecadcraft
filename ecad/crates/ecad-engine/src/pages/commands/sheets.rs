@@ -183,7 +183,7 @@ pub(crate) struct MovefolderParams {
     folder: FolderId,
     /// The folder it goes in, or null for the top level.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "ecad_electrical::cmd::input::OrNull<FolderId>")]
+    #[schemars(required, with = "ecad_electrical::commands::input::OrNull<FolderId>")]
     parent: Option<Option<FolderId>>,
     /// Its place among its new siblings, 1 = first (default last).
     #[serde(default)]
@@ -233,7 +233,7 @@ impl Command for DeletefolderParams {
 pub(crate) fn new_page_ops_at(
     p: &mut Project, title: String, number: Option<String>, folder: Option<FolderId>, after: Option<PageId>,
 ) -> Result<(PageId, String, Vec<Op>), CmdError> {
-    if crate::generated::has_bom_page(p.ledger.document()) {
+    if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
         p.outputs();
     }
     let doc = p.ledger.document();
@@ -306,12 +306,12 @@ pub(crate) struct PagepropsParams {
 impl Command for PagepropsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         if self.generated.is_some() {
-            return Err(err(crate::generated::KIND_FIXED));
+            return Err(err(ecad_electrical::pages::generated::KIND_FIXED));
         }
         // Brief 031 (§10.6): a page's `text.` keys are written by `showtext` only, also when asked
         // for as `props`.
-        if self.props.as_ref().is_some_and(|o| o.keys().any(|k| crate::text_style::is_reserved_key(k))) {
-            return Err(err(crate::text_style::RESERVED_KEY));
+        if self.props.as_ref().is_some_and(|o| o.keys().any(|k| ecad_electrical::styles::text_style::is_reserved_key(k))) {
+            return Err(err(ecad_electrical::styles::text_style::RESERVED_KEY));
         }
         let page = self.page;
         let title = match self.title {
@@ -322,7 +322,7 @@ impl Command for PagepropsParams {
             PageChange { number: self.number, title, function: self.function, location: self.location, sheet: self.sheet, mode: Default::default() };
         if !change.writes() {
             return on_any_page(s, |p, _| {
-                if crate::generated::has_bom_page(p.ledger.document()) {
+                if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
                     p.outputs();
                 }
                 let doc = p.ledger.document();
@@ -336,7 +336,7 @@ impl Command for PagepropsParams {
         let proposal = self.proposal;
         on_project(s, |p, pg, active| {
             let page = page.unwrap_or(active);
-            if crate::generated::has_bom_page(p.ledger.document()) {
+            if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
                 p.outputs();
             }
             if !p.ledger.document().pages.contains_key(&page) {
@@ -367,9 +367,7 @@ pub const STATUS_SUGGESTIONS: [&str; 4] = ["Draft", "For review", "For construct
 
 /// Brief 054 (FP4): the cover's notes, a project property of newline-separated notes, at most
 /// [`MAX_COVER_NOTES`] of [`MAX_COVER_NOTE_CHARS`] characters (design 054 §6.4).
-pub use crate::front::{
-    MAX_NOTE_CHARS as MAX_COVER_NOTE_CHARS, MAX_NOTES as MAX_COVER_NOTES, NOTES_KEY as COVER_NOTES, NOTES_TOO_LONG as COVER_NOTES_TOO_LONG,
-};
+pub use {ecad_electrical::pages::front::MAX_NOTE_CHARS as MAX_COVER_NOTE_CHARS, ecad_electrical::pages::front::MAX_NOTES as MAX_COVER_NOTES, ecad_electrical::pages::front::NOTES_KEY as COVER_NOTES, ecad_electrical::pages::front::NOTES_TOO_LONG as COVER_NOTES_TOO_LONG};
 
 /// How cross-references are written.
 #[derive(Deserialize, JsonSchema, Clone, Copy)]

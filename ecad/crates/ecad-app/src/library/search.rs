@@ -13,7 +13,6 @@
 //! action table, by label and search words). Picking one of those runs it at once: a page is
 //! shown, an action runs on the selection or starts its tool ([`SymbolSearch::ran`]).
 
-use ecad_engine::devices;
 use ecad_electrical::symbols;
 use ecad_model::{DeviceId, Document, Subject};
 use eframe::egui;
@@ -81,14 +80,14 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
     if let Some(doc) = doc
         && !q.is_empty()
     {
-        for c in devices::devices(doc, Some(&q)) {
-            let tag = devices::tag_words(doc, c);
+        for c in ecad_electrical::devices::devices(doc, Some(&q)) {
+            let tag = ecad_electrical::devices::tag_words(doc, c);
             let n = doc.representations_of(Subject::Device(c)).count();
-            let pages = devices::pages_words(doc, c);
+            let pages = ecad_electrical::devices::pages_words(doc, c);
             out.push(Row {
                 text: format!(
                     "{tag:<6} {:<26} {n} symbol{}, {pages}  (device)",
-                    clip(&devices::description(doc, c), 26),
+                    clip(&ecad_electrical::devices::description(doc, c), 26),
                     if n == 1 { "" } else { "s" }
                 ),
                 pick: Pick::Device(tag),
@@ -110,7 +109,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
         }
     }
     for s in symbols::search(&q) {
-        let prefix = doc.map_or_else(|| s.prefix().to_string(), |d| devices::prefix_for(d, s));
+        let prefix = doc.map_or_else(|| s.prefix().to_string(), |d| ecad_electrical::devices::prefix_for(d, s));
         out.push(Row { text: format!("{:<6} {:<26} -{prefix:<3} {}  (symbol)", s.key, s.name, s.labels().join("/")), pick: Pick::Symbol(s.key) });
     }
     let more = out.len().saturating_sub(MAX_ROWS);
@@ -145,20 +144,20 @@ pub fn choices(p: &ecad_engine::Project, pick: &Pick) -> Vec<Choice> {
     match pick {
         Pick::Symbol(key) => {
             let s = symbols::starter(*key);
-            let next = devices::next_tag_preview(p, s).unwrap_or_else(|| "new tag".into());
+            let next = ecad_engine::devices::draw::next_tag_preview(p, s).unwrap_or_else(|| "new tag".into());
             let mut out = vec![Choice { text: format!("New device ({next})"), symbol: s.key, device: None }];
-            let prefix = devices::prefix_for(doc, s);
-            let mut found: Vec<(u8, u8, DeviceId, String)> = devices::devices(doc, None)
+            let prefix = ecad_electrical::devices::prefix_for(doc, s);
+            let mut found: Vec<(u8, u8, DeviceId, String)> = ecad_electrical::devices::devices(doc, None)
                 .into_iter()
                 .filter_map(|c| {
-                    let labels = devices::join_labels(doc, c, s, &none).ok()?;
-                    let tag = devices::tag_words(doc, c);
+                    let labels = ecad_electrical::devices::join_labels(doc, c, s, &none).ok()?;
+                    let tag = ecad_electrical::devices::tag_words(doc, c);
                     let own = ecad_model::naming::tag::parse(&tag).is_some_and(|(px, _)| px == prefix);
                     let main = doc
                         .representations_of(Subject::Device(c))
-                        .filter_map(|(_, r)| devices::rep_starter(doc, r))
+                        .filter_map(|(_, r)| ecad_electrical::devices::rep_starter(doc, r))
                         .any(|x| matches!(x.kind, symbols::Kind::Fixed { exclusive: true }));
-                    let text = format!("{tag:<6} {:<26} {}", clip(&devices::description(doc, c), 26), labels.join("/"));
+                    let text = format!("{tag:<6} {:<26} {}", clip(&ecad_electrical::devices::description(doc, c), 26), labels.join("/"));
                     Some((u8::from(!own), u8::from(!main), c, text))
                 })
                 .collect();
@@ -166,19 +165,19 @@ pub fn choices(p: &ecad_engine::Project, pick: &Pick) -> Vec<Choice> {
             out.extend(found.into_iter().take(MAX_CHOICES - 1).map(|(_, _, c, text)| Choice {
                 text,
                 symbol: s.key,
-                device: Some(devices::tag_words(doc, c)),
+                device: Some(ecad_electrical::devices::tag_words(doc, c)),
             }));
             out
         }
         Pick::Device(tag) => {
-            let Some(c) = devices::holder_of(doc, tag, None) else { return Vec::new() };
+            let Some(c) = ecad_electrical::devices::holder_of(doc, tag, None) else { return Vec::new() };
             let own = ecad_model::naming::tag::parse(tag).map(|(px, _)| px).unwrap_or_default();
             let mut found: Vec<(u8, Choice)> = symbols::STARTERS
                 .iter()
                 .filter_map(|s| {
-                    let labels = devices::join_labels(doc, c, s, &none).ok()?;
+                    let labels = ecad_electrical::devices::join_labels(doc, c, s, &none).ok()?;
                     let text = format!("{:<28} {}", s.name, labels.join("/"));
-                    let rank = u8::from(devices::prefix_for(doc, s) != own);
+                    let rank = u8::from(ecad_electrical::devices::prefix_for(doc, s) != own);
                     Some((rank, Choice { text, symbol: s.key, device: Some(tag.clone()) }))
                 })
                 .collect();
@@ -383,7 +382,7 @@ impl SymbolSearch {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
     use ecad_electrical::symbols::StarterKey as K;
 
     #[test]

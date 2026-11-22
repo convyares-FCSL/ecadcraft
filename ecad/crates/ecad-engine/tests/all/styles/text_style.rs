@@ -4,7 +4,7 @@
 use crate::common::{H, id};
 
 use cadcraft_engine::doc::{Entity, EntityKind, Lineweight};
-use ecad_engine::text_style::{self, STYLE_BOLD, STYLE_REGULAR, TextKind};
+use {ecad_electrical::styles::text_style::STYLE_BOLD, ecad_electrical::styles::text_style::STYLE_REGULAR, ecad_electrical::styles::text_style::TextKind};
 use ecad_model::{DeviceId, PageId};
 use serde_json::json;
 
@@ -16,8 +16,7 @@ fn drawn(h: &mut H, page: PageId, value: &str) -> Vec<(f64, String, Lineweight)>
         .iter()
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) if t.value == value => Some((t.height, t.style.clone(), e.common.lineweight)),
-            _ => None,
-        })
+            _ => None})
         .collect()
 }
 
@@ -31,8 +30,8 @@ fn a_new_project_draws_tags_bold_and_labels_small() {
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     let c: DeviceId = id(&r, "component");
-    let tag = h.p(|p| ecad_engine::devices::tag_words(p.ledger.document(), c));
-    let fonts = h.p(|p| text_style::Fonts::resolve(p.ledger.document()));
+    let tag = h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c));
+    let fonts = h.p(|p| ecad_engine::styles::draw::Fonts::resolve(p.ledger.document()));
     let bold_lw = fonts.bold_lineweight.map_or(Lineweight::ByLayer, Lineweight::Mm100);
     assert_eq!(drawn(&mut h, page, &tag), vec![(2.5, STYLE_BOLD.to_string(), bold_lw)]);
     // A coil's connection point labels: 1.5 mm, regular.
@@ -54,7 +53,7 @@ fn without_craft_fonts_bold_is_a_heavier_stroke() {
     // Test builds do not embed craft-fonts; when the default family is not on the machine either,
     // the stroke font draws and bold gets `text.bold_stroke_weight` (§2.2 step 4).
     let doc = ecad_model::Document::default();
-    let f = text_style::Fonts::resolve(&doc);
+    let f = ecad_engine::styles::draw::Fonts::resolve(&doc);
     if f.drawn_with == "stroke" {
         assert_eq!(f.bold_lineweight, Some(35));
         assert_eq!(f.regular, cadcraft_engine::fonts::BUILTIN_FONT);
@@ -67,7 +66,7 @@ fn without_craft_fonts_bold_is_a_heavier_stroke() {
     // A family nobody has falls back the same way and says so.
     let mut doc = ecad_model::Document::default();
     doc.display.insert("text.font".into(), "NoSuchFont 031".into());
-    let g = text_style::Fonts::resolve(&doc);
+    let g = ecad_engine::styles::draw::Fonts::resolve(&doc);
     assert_eq!((g.wanted.as_str(), g.drawn_with.as_str()), ("NoSuchFont 031", f.drawn_with.as_str()));
     assert!(g.status().starts_with("NoSuchFont 031 is not available here; drawn with"), "{}", g.status());
 }
@@ -78,7 +77,7 @@ fn textstyle_redraws_the_open_page_in_one_transaction() {
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     let c: DeviceId = id(&r, "component");
-    let tag = h.p(|p| ecad_engine::devices::tag_words(p.ledger.document(), c));
+    let tag = h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c));
     let head = h.head();
     h.run("textstyle", json!({"kind": "tag", "height": 3, "weight": "regular"})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
@@ -89,7 +88,7 @@ fn textstyle_redraws_the_open_page_in_one_transaction() {
     h.cmdline("u");
     h.cmdline("u");
     let doc = h.doc();
-    assert_eq!(text_style::text_style(&doc, TextKind::Tag).height, 2.5);
+    assert_eq!(ecad_electrical::styles::text_style::text_style(&doc, TextKind::Tag).height, 2.5);
     assert_eq!(drawn(&mut h, page, &tag)[0].0, 2.5);
     assert_eq!(drawn(&mut h, page, &tag)[0].1, STYLE_BOLD);
 }
@@ -122,8 +121,7 @@ fn text_with_justify_is_recorded_with_its_alignment() {
             ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text { value, halign, valign, at, .. }) if value == "X" => {
                 Some((*halign, *valign, *at))
             }
-            _ => None,
-        })
+            _ => None})
         .expect("the text item");
     assert_eq!(item, (ecad_model::TextHAlign::Center, ecad_model::TextVAlign::Middle, ecad_model::Pt::new(100.0, 100.0)));
     let e = texts(&mut h, page).into_iter().find(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "X")).unwrap();
@@ -138,7 +136,7 @@ fn a_kind_may_have_its_own_font() {
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     let c: DeviceId = id(&r, "component");
-    let tag = h.p(|p| ecad_engine::devices::tag_words(p.ledger.document(), c));
+    let tag = h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c));
     let head = h.head();
     h.run("textstyle", json!({"kind": "tag", "font": "Kind Font 031"})).unwrap();
     assert_eq!(h.head(), head + 1);
@@ -151,14 +149,14 @@ fn a_kind_may_have_its_own_font() {
         .and_then(|r| r.body.entry("font"));
     assert_eq!(font.as_deref(), Some("Kind Font 031"));
     assert!(!doc.display.contains_key("text.font"), "the project font is unchanged");
-    let s = text_style::text_style(&doc, TextKind::Tag);
+    let s = ecad_electrical::styles::text_style::text_style(&doc, TextKind::Tag);
     assert_eq!(s.style_name, "ECAD-TAG-BOLD");
-    assert_eq!(text_style::text_style(&doc, TextKind::PointLabel).style_name, STYLE_REGULAR);
+    assert_eq!(ecad_electrical::styles::text_style::text_style(&doc, TextKind::PointLabel).style_name, STYLE_REGULAR);
     assert_eq!(drawn(&mut h, page, &tag)[0].1, "ECAD-TAG-BOLD");
     let d = h.pv(|p, pg| pg.drawing_of(p, page)).unwrap();
     assert!(d.text_style("ECAD-TAG-BOLD").is_some() && d.text_style("ECAD-TAG").is_some());
     // `null` goes back to the project font.
     h.run("textstyle", json!({"kind": "tag", "font": null})).unwrap();
-    assert_eq!(text_style::text_style(&h.doc(), TextKind::Tag).style_name, STYLE_BOLD);
+    assert_eq!(ecad_electrical::styles::text_style::text_style(&h.doc(), TextKind::Tag).style_name, STYLE_BOLD);
     h.check();
 }

@@ -51,7 +51,7 @@ impl Caption {
                         _ => None,
                     };
                     match rep.map(|r| r.subject) {
-                        Some(Subject::Aid(c)) if crate::continuations::continuation(doc, c).is_some() => Some(c),
+                        Some(Subject::Aid(c)) if ecad_electrical::continuations::continuation(doc, c).is_some() => Some(c),
                         _ => None,
                     }
                 })
@@ -116,10 +116,10 @@ impl Caption {
                 self.finish(s, None)
             }
             Input::Keyword(t) | Input::Text(t) => {
-                let caption = crate::continuations::caption_text(Some(&t)).map_err(other)?;
+                let caption = ecad_electrical::continuations::caption_text(Some(&t)).map_err(other)?;
                 match caption {
                     Some(c) => self.finish(s, Some(c)),
-                    None => Err(other(crate::continuations::CAPTION_RULE)),
+                    None => Err(other(ecad_electrical::continuations::CAPTION_RULE)),
                 }
             }
             Input::Enter => match self.last.clone() {

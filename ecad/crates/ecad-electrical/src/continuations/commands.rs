@@ -172,7 +172,7 @@ pub struct ContcaptionParams {
     continuations: Bounded<AidId, 0, MAX_ARROWS>,
     /// The caption, or null to remove it.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
+    #[schemars(required, with = "crate::commands::input::OrNull<String>")]
     caption: Option<Option<String>>,
 }
 

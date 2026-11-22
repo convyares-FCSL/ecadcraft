@@ -453,7 +453,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert!(matches!(ops.as_slice(), [Op::RemovePage { id, index: 2, .. }, Op::AddPage { index: 0, .. }] if *id == spare), "{ops:?}");
     assert_eq!(titles(&mut h), ["Spare", "Supply", "Field", "4"]);
     // Page numbers are stored (brief 019): the move changes no reference text.
-    let texts: Vec<String> = ecad_engine::references::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
+    let texts: Vec<String> = ecad_electrical::references::cables::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
     assert_eq!(texts, ["2/F1"]);
     // Alt+Down on the cursor row (Spare, row 1): `movepage {index: 2}`.
     click(&mut h, "Page 3: Spare");
@@ -529,7 +529,7 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
         p.read(&mut t.cad.session, |p, _| {
-            let r = ecad_engine::references::references_on_page(p.ledger.document(), supply).into_iter().next()?;
+            let r = ecad_electrical::references::cables::references_on_page(p.ledger.document(), supply).into_iter().next()?;
             p.pages.get(&supply)?.map.item(r.item?)
         })
         .unwrap()
@@ -796,7 +796,7 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
     let mapped = p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
         let rep = doc.representations_of(ecad_model::Subject::Device(coil)).find(|(_, r)| r.page == page1).unwrap().0;
-        ecad_engine::device_list::symbol_target(p, rep).unwrap().2
+        ecad_engine::reports::device_list::symbol_target(p, rep).unwrap().2
     });
     assert_eq!(selected, mapped.unwrap(), "exactly the coil's drawing is selected");
     assert_eq!(head(&mut h), before, "a go to records nothing");

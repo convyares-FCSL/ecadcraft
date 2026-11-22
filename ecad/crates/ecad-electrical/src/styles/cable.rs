@@ -496,7 +496,7 @@ fn offer_has_earth(text: &str) -> bool {
 
 #[cfg(test)]
 mod scheme_tests {
-    use crate::styles::*;
+    use super::*;
 
     fn codes(v: Option<Vec<Colours>>) -> Vec<String> {
         v.unwrap_or_default().iter().map(ToString::to_string).collect()

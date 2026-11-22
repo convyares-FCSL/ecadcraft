@@ -1,5 +1,5 @@
 //! `plcaddress` (brief 045, design 045 §5): a rack's address style and starts, a card's pinned
-//! start. The rules are [`crate::plc::address`] and [`ecad_electrical::plc::commands::plan_address`].
+//! start. The rules are [`ecad_electrical::plc::address`] and [`ecad_electrical::plc::commands::plan_address`].
 
 use cadcraft_engine::Session;
 use ecad_electrical::plc::commands::{self as rules, AddressInput};
@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::commands::input::Command;
 use crate::commands::on_project;
-use crate::plc::address::*;
+use ecad_electrical::plc::address::*;
 use ecad_electrical::commands::input::{TextOrNumber, nullable};
 use serde_json::{Value, json};
 

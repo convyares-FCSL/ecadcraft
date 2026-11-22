@@ -3,8 +3,8 @@
 //! table, Import an I/O list, Export tags, the card type, the rack page in the book, Checks, and
 //! hostile files.
 
-use ecad_engine::outputs::kept::ReportModels;
-use ecad_engine::plc::tagtable::{self, Caps, TagFormat};
+use ecad_electrical::reports::kept::ReportModels;
+use ecad_electrical::plc::tagtable::{self, Caps, TagFormat};
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
@@ -78,7 +78,7 @@ fn rows(h: &mut H, card: &str) -> Vec<Value> {
 
 fn same_as_built(h: &mut H) {
     let (kept, built) =
-        h.cfg(|p| (p.outputs().plc.clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics).plc.clone()));
+        h.cfg(|p| (p.outputs().plc.clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics).plc.clone()));
     assert!(kept == built, "the kept PLC model differs from a rebuild");
 }
 
@@ -303,7 +303,7 @@ fn m_the_first_rack_brings_the_rack_page_into_the_book() {
     let mut h = H::new(5620);
     let racks = |h: &mut H| {
         let d = h.doc();
-        d.page_order.iter().filter(|p| ecad_engine::generated::kind_of(&d, **p) == Some(ecad_model::GenKind::PlcRack)).count()
+        d.page_order.iter().filter(|p| ecad_electrical::pages::generated::kind_of(&d, **p) == Some(ecad_model::GenKind::PlcRack)).count()
     };
     assert_eq!(racks(&mut h), 0);
     let head = h.head();
@@ -314,7 +314,7 @@ fn m_the_first_rack_brings_the_rack_page_into_the_book() {
     // `page.type` written (FP2: only a type that differs from the kind's is stored).
     {
         let d = h.doc();
-        let pg = d.page_order.iter().copied().find(|p| ecad_engine::generated::kind_of(&d, *p) == Some(ecad_model::GenKind::PlcRack));
+        let pg = d.page_order.iter().copied().find(|p| ecad_electrical::pages::generated::kind_of(&d, *p) == Some(ecad_model::GenKind::PlcRack));
         let page = &d.pages[&pg.unwrap()];
         assert!(page.page_type.is_none());
         assert_eq!(ecad_model::document::sheet::page_type_of(&d, page), ecad_model::StyleRef::Builtin("report".into()));
@@ -336,8 +336,8 @@ fn a_type_with_fewer_channels_than_the_signals_in_use_is_refused_in_words() {
     let e = h.run("plccardtype", json!({"card": "-A03", "type": "AO"})).unwrap_err();
     assert_eq!(e, "-A03 has 9 signals; an AO card has 4 channels. Move or remove 5 signals first.");
     assert_eq!(h.head(), head, "refused: nothing recorded");
-    let ty = h.cfg(|p| ecad_engine::plc::card_type_of(p.ledger.document(), a03));
-    assert_eq!(ty, Some(ecad_engine::plc::rack::CardType::Dq));
+    let ty = h.cfg(|p| ecad_electrical::plc::card_type_of(p.ledger.document(), a03));
+    assert_eq!(ty, Some(ecad_electrical::plc::rack::CardType::Dq));
     let e = h.run("plccardtype", json!({"card": "-A03", "type": "RTD"})).unwrap_err();
     assert_eq!(e, "-A03 has 9 signals; an RTD card has 4 channels. Move or remove 5 signals first.");
     // A described but unwired channel counts as a signal too.
@@ -356,8 +356,8 @@ fn a_type_change_keeps_tags_and_descriptions_and_changes_the_signal_type() {
     let v = h.run("plccardtype", json!({"card": "-A03", "type": "DI"})).unwrap();
     assert_eq!(h.head(), head + 1, "{v}");
     assert_eq!(v["message"], "-A03 is now a DI card. Its channels become digital inputs (they were digital outputs); tags and descriptions stay.");
-    let ty = h.cfg(|p| ecad_engine::plc::card_type_of(p.ledger.document(), a03));
-    assert_eq!(ty, Some(ecad_engine::plc::rack::CardType::Di));
+    let ty = h.cfg(|p| ecad_electrical::plc::card_type_of(p.ledger.document(), a03));
+    assert_eq!(ty, Some(ecad_electrical::plc::rack::CardType::Di));
     let p = crate::common::plc_view(&h.doc(), a03);
     assert_eq!(p.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"), "tags stay");
     assert_eq!(p.get("plc.ch.2.text").map(String::as_str), Some("Inlet valve open"), "descriptions stay");
@@ -367,8 +367,8 @@ fn a_type_change_keeps_tags_and_descriptions_and_changes_the_signal_type() {
     assert_eq!(rows[2]["type"], "DI");
     same_as_built(&mut h);
     h.cmdline("u");
-    let ty = h.cfg(|p| ecad_engine::plc::card_type_of(p.ledger.document(), a03));
-    assert_eq!(ty, Some(ecad_engine::plc::rack::CardType::Dq), "u undoes it");
+    let ty = h.cfg(|p| ecad_electrical::plc::card_type_of(p.ledger.document(), a03));
+    assert_eq!(ty, Some(ecad_electrical::plc::rack::CardType::Dq), "u undoes it");
     assert_eq!(crate::common::plc_view(&h.doc(), a03).get("plc.ch.4.safe").map(String::as_str), Some("on"));
     // An AO card with room: -A05 (AO, 4 channels) to DQ.
     h.run("plcchannel", json!({"card": "-A05", "channel": 0, "tag": "Damper_Pos", "text": "Damper position"})).unwrap();

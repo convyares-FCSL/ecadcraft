@@ -5,10 +5,10 @@
 use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
-use ecad_model::text::Text;
-use ecad_model::units::Amps;
-use ecad_model::wire::{Basis, Colours, WireNumber, WireSize};
-use ecad_model::{Author, ConductorId, Device, DeviceId, IdAllocator, NetId, Op, Terminal, ConnectionPointId, Wire, WireId};
+use ecad_model::naming::text::Text;
+use ecad_model::geometry::units::Amps;
+use ecad_model::objects::wire::{Basis, Colours, WireNumber, WireSize};
+use ecad_model::{Author, ConductorId, Device, DeviceId, IdAllocator, NetId, Op, ConnectionPoint, ConnectionPointId, Wire, WireId};
 
 use crate::common::*;
 
@@ -26,7 +26,7 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
         potential: Text::new("24V").ok(),
         ..Wire::new(net, conductor, a, b)
     };
-    let point = |label: &str| Terminal { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |label: &str| ConnectionPoint { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     l.commit(
         Author::User,
         "wire",
@@ -158,7 +158,7 @@ fn core_positions_are_shown_raw_and_readable() {
             Op::CreateDevice { id: d, device: Device::default() },
             Op::AddConnectionPoint {
                 id: t,
-                terminal: Terminal { owner: d.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() },
+                terminal: ConnectionPoint { owner: d.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() },
             },
             Op::AddRoute { id: r, route: loose },
             Op::CreateCable { id: k, cable: Cable { cores: vec![on_line, spare], ..Cable::default() } },
@@ -188,7 +188,7 @@ fn number_by_and_its_settings_op_are_shown_raw_and_readable() {
     let mut l = history();
     let before = l.document().settings.clone();
     let mut after = before.clone();
-    after.wiring.number_by = ecad_model::wiring::NumberBy::Conductor;
+    after.wiring.number_by = ecad_model::connectivity::wiring::NumberBy::Conductor;
     l.commit(Author::User, "number by", vec![Op::SetProjectSettings { before, after }]).unwrap();
     let path = written(&dir, &l);
     let f = FileSource::from_path(&path);
@@ -214,7 +214,7 @@ fn accepts_is_shown_raw_readable_and_on_the_device_row() {
     let mut ids = IdAllocator::seeded(74);
     let (d, t): (DeviceId, ConnectionPointId) = (ids.fresh(), ids.fresh());
     let bar =
-        Terminal { owner: d.into(), label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: ecad_model::Accepts::new(12).unwrap() };
+        ConnectionPoint { owner: d.into(), label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: ecad_model::Accepts::new(12).unwrap() };
     l.commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddConnectionPoint { id: t, terminal: bar }]).unwrap();
     let path = written(&dir, &l);
     let f = FileSource::from_path(&path);
@@ -343,9 +343,9 @@ fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
     let (i1, i2, r1, r2): (ItemId, ItemId, RepresentationId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let layer = *l.document().layers.keys().next().unwrap();
     let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let point = |owner: ecad_model::ConnectionPointOwner, label: &str| Terminal { owner, label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |owner: ecad_model::ConnectionPointOwner, label: &str| ConnectionPoint { owner, label: Some(label.into()), key: None, accepts: Default::default() };
     // Design 072 §6.2: a continuation is a drawing aid.
-    let arrow = || ecad_model::Aid::Continuation { name: Some(ecad_model::aid::ContinuationName::new("A1").unwrap()), caption: None };
+    let arrow = || ecad_model::Aid::Continuation { name: Some(ecad_model::objects::aid::ContinuationName::new("A1").unwrap()), caption: None };
     let slash = |id: ItemId, page: PageId| Op::AddItem {
         id,
         item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(50.0, -5.0), b: Pt::new(50.0, 5.0) }) },

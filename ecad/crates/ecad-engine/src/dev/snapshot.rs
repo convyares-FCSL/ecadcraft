@@ -204,7 +204,7 @@ pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog,
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use ecad_model::{Author, ConductorId, Device, DeviceId, IdAllocator, NetId, Op, Terminal, ConnectionPointId, Wire, WireId};
+    use ecad_model::{Author, ConductorId, Device, DeviceId, IdAllocator, NetId, Op, ConnectionPoint, ConnectionPointId, Wire, WireId};
 
     /// Design 072 §4.2: a wire's net and conductor have labels in the snapshot's index, the net
     /// named after the wire first in its order.
@@ -215,7 +215,7 @@ mod tests {
         let (k, a, b, c): (DeviceId, ConnectionPointId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
         let (w1, w2, net, c1, c2): (WireId, WireId, NetId, ConductorId, ConductorId) =
             (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-        let point = |label: &str| Terminal { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
+        let point = |label: &str| ConnectionPoint { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
         let number = |n: &str| ecad_model::naming::text::Text::new(n).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: true });
         let ops = vec![
             Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K1")) },
@@ -226,7 +226,7 @@ mod tests {
             Op::CreateWire { id: w2, wire: Wire { net_order: 1, number: number("101"), ..Wire::new(net, c2, a, b) } },
         ];
         l.commit(Author::User, "wires", ops).unwrap();
-        let s = crate::dev::snapshot::snapshot("t", &l, None, &EventLog::default(), None).unwrap();
+        let s = super::snapshot("t", &l, None, &super::EventLog::default(), None).unwrap();
         let label = |kind: &str, hex: String| {
             s["index"].as_array().unwrap().iter().find(|x| x["kind"] == kind && x["id"] == hex.as_str()).map(|x| x["label"].clone())
         };

@@ -35,7 +35,7 @@ pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
         let names = defaults::resolve(doc, &defaults::connectors::MAKER_NAMES, Scope::project()).word().to_string();
         let pins_layout =
             defaults::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).choice() == Some(defaults::connectors::MakerLayout::Pins);
-        let next = p.tag_high.peek_auto(doc, &crate::devices::prefix_for(doc, crate::devices::starter("socket4")?)).unwrap_or_else(|_| "-X?".into());
+        let next = p.tag_high.peek_auto(doc, &ecad_electrical::devices::prefix_for(doc, ecad_electrical::devices::starter("socket4")?)).unwrap_or_else(|_| "-X?".into());
         Ok((halves, family, pins, names, pins_layout, next))
     })
     .map_err(other)?;
@@ -130,13 +130,13 @@ impl PlaceConnector {
         let found = read(s, |p, _| {
             let doc = p.ledger.document();
             let tag = ecad_model::naming::tag::normalise(t, ecad_electrical::defaults::print::tag_style(doc))?;
-            let c = crate::devices::holder_of(doc, &tag, None)
+            let c = ecad_electrical::devices::holder_of(doc, &tag, None)
                 .ok_or_else(|| format!("No device {tag}. Type a connector's tag, or Enter for a new one."))?;
             if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
                 return Err(cn::not_a_connector(doc, c));
             }
             let d = cn::drawn(doc, c);
-            Ok((c, crate::devices::tag_words(doc, c), cn::half_family(doc, c, Side::Socket), cn::pin_count(doc, c, &d), d))
+            Ok((c, ecad_electrical::devices::tag_words(doc, c), cn::half_family(doc, c, Side::Socket), cn::pin_count(doc, c, &d), d))
         })
         .map_err(other)?;
         let (c, tag, family, pins, d) = found;
@@ -244,7 +244,7 @@ impl PlaceConnector {
         if a.near(b, 1e-9) {
             let w = read(s, |p, page| {
                 let doc = p.ledger.document();
-                Ok(crate::wires::route_at(doc, page, a, crate::wires::ON_WIRE, None).and_then(|o| crate::wires::wire_of_route(doc, o.route)))
+                Ok(ecad_electrical::wires::route_at(doc, page, a, ecad_electrical::wires::ON_WIRE, None).and_then(|o| ecad_electrical::wires::wire_of_route(doc, o.route)))
             })
             .map_err(other)?
             .ok_or_else(|| other("Click on a wire, or draw a line across the wires."))?;

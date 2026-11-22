@@ -135,7 +135,7 @@ pub fn read_load(text: &str) -> Read<Load> {
 
 #[cfg(test)]
 mod tests {
-    use crate::devices::ratings::*;
+    use super::*;
 
     fn shown(text: &str) -> String {
         match read_load(text) {

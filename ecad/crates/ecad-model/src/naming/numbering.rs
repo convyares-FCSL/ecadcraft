@@ -979,7 +979,7 @@ pub fn object_id(o: ObjectRef) -> u128 {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use crate::*;
+    use super::*;
     use crate::document::doc::{Device, Form, Item, Page, Style, SymbolInstance};
     use crate::geometry::geom::Placement;
     use crate::naming::id::{DefinitionId, ItemId, LayerId, RepresentationId};

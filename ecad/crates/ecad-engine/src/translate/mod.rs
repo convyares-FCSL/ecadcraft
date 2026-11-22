@@ -21,12 +21,12 @@ use cadcraft_engine::ext::{Provenance, Source};
 use ecad_model::connectivity::derive::{connection_point_position, connection_point_positions};
 use ecad_model::{
     Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive, Pt, Representation, RepresentationId,
-    Route, RouteEnd, RouteId, Subject, Terminal, ConnectionPointId,
+    Route, RouteEnd, RouteId, Subject, ConnectionPoint, ConnectionPointId,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
 use crate::project::{ClipSnapshot, HandleMap, Mapped};
-use crate::wires::{ON_WIRE, ShownOnce, first_near, on_route_of, path_vertices, route_at, route_item};
+use {ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::ShownOnce, ecad_electrical::wires::first_near, ecad_electrical::wires::on_route_of, ecad_electrical::wires::path_vertices, ecad_electrical::wires::route_at, ecad_electrical::wires::route_item};
 
 /// Everything the translation reads. The ledger is borrowed mutably only to preview proposed
 /// ops in place ([`Ledger::with_applied`]); the translation never changes it.
@@ -41,7 +41,7 @@ pub(crate) struct Ctx<'a> {
     pub ids: &'a mut IdAllocator,
     pub tol: f64,
     /// Tag numbers for copied devices (brief 018), caught up with the ledger before the edit.
-    pub tags: &'a mut crate::devices::TagHigh,
+    pub tags: &'a mut ecad_electrical::devices::TagHigh,
 }
 
 /// The result: ops plus the handles of objects the engine created.
@@ -363,12 +363,12 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         // Lane 072 D: a T's dot alone.
         let tee = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Tee(_)));
         if skipped.iter().all(|h| tee(cx.map, *h) || copied_source(h, &tee)) {
-            return Err(crate::wires::TEE_DERIVED.into());
+            return Err(ecad_electrical::wires::TEE_DERIVED.into());
         }
         return Err(if tags_only {
-            crate::devices::TAG_DERIVED
+            ecad_electrical::devices::TAG_DERIVED
         } else if labels_only {
-            crate::wires::LABEL_DERIVED
+            ecad_electrical::wires::LABEL_DERIVED
         } else if xrefs_only {
             {
                 // A copy's handle is not mapped: its source says whether it is a table (brief 025).
@@ -377,7 +377,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                     Some(Source::Clipboard { serial, handle }) => cx.clips.get(serial).and_then(|c| c.map.get(*handle)),
                     None => None,
                 };
-                crate::xref::refusal(cx.ledger.document(), skipped.iter().find_map(|h| cx.map.get(*h).or_else(|| source(h))))
+                crate::references::draw::devices::refusal(cx.ledger.document(), skipped.iter().find_map(|h| cx.map.get(*h).or_else(|| source(h))))
             }
         } else {
             crate::cables::views::DRAWN_REFUSED
@@ -403,9 +403,9 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             }
             // Left out (above); drawn again from the document.
             Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::DeviceReference(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
-            Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
-            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
-            Some(m @ Mapped::DeviceReference(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
+            Some(Mapped::Label(_)) => return Err(ecad_electrical::wires::LABEL_DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(ecad_electrical::wires::TEE_DERIVED.into()),
+            Some(m @ Mapped::DeviceReference(_)) => return Err(crate::references::draw::devices::refusal(cx.ledger.document(), Some(m)).into()),
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(rid)) => erased_refs.push(rid),
@@ -432,7 +432,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         let props = cx.ledger.document().devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
         let key = ecad_model::connectivity::jumper_bars::key(n);
         if let Some(v) = props.get(&key) {
-            t.notes.push(format!("Deleted link {} {v}.", crate::devices::tag_words(cx.ledger.document(), c)));
+            t.notes.push(format!("Deleted link {} {v}.", ecad_electrical::devices::tag_words(cx.ledger.document(), c)));
         }
         for k in std::iter::once(key.clone()).chain(ecad_electrical::terminal_strips::accessories::FIELDS.iter().map(|f| format!("{key}.{f}"))) {
             if let Some(before) = props.get(&k).cloned() {
@@ -469,7 +469,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 }
                 if item != old {
                     // A location box stays a closed outline of three points or more (tester 024).
-                    if let Some(m) = crate::locations::reshape_refusal(cx.ledger.document(), id, &item) {
+                    if let Some(m) = ecad_electrical::locations::reshape_refusal(cx.ledger.document(), id, &item) {
                         return Err(m);
                     }
                     linked_changed |= cx.ledger.document().representation_of_item(id).is_some();
@@ -487,16 +487,16 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 }
             }
             Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::DeviceReference(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
-            Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
-            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
-            Some(m @ Mapped::DeviceReference(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
+            Some(Mapped::Label(_)) => return Err(ecad_electrical::wires::LABEL_DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(ecad_electrical::wires::TEE_DERIVED.into()),
+            Some(m @ Mapped::DeviceReference(_)) => return Err(crate::references::draw::devices::refusal(cx.ledger.document(), Some(m)).into()),
             Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(cx.map, k).into()),
-            Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
+            Some(Mapped::RefText(_)) => return Err(ecad_electrical::references::cables::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => {}
             Some(Mapped::Link(..)) if skipped.contains(h) => {}
             Some(Mapped::Link(..)) => return Err(ecad_electrical::terminal_strips::jumper_bars::LINK_DERIVED.into()),
             Some(Mapped::Tag(_)) if skipped.contains(h) => {}
-            Some(Mapped::Tag(_)) => return Err(crate::devices::TAG_DERIVED.into()),
+            Some(Mapped::Tag(_)) => return Err(ecad_electrical::devices::TAG_DERIVED.into()),
             Some(Mapped::Marker(rid, term)) => {
                 let at = marker_position(new).ok_or("connection point markers can only be moved")?;
                 if marker_entity(at, *h) != ***new {
@@ -563,11 +563,11 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
 
     // Erased device symbols (design 018 §3.3): the terminals only they showed go, and a device
     // whose last symbol went is deleted.
-    let (more, notes) = crate::devices::erase_followups(cx.ledger.document(), &unlinked);
+    let (more, notes) = ecad_electrical::devices::erase_followups(cx.ledger.document(), &unlinked);
     t.ops.extend(more);
     t.notes.extend(notes);
     // Brief 032 §3.5: one of a cable's several slashes erased takes its page's members along.
-    t.ops.extend(crate::references::slash_erase_followups(cx.ledger.document(), &unlinked));
+    t.ops.extend(ecad_electrical::references::cables::slash_erase_followups(cx.ledger.document(), &unlinked));
     // An erased line removes its route; routes landing on it end free (design 072 §4.3).
     erase_routes(cx.ledger.document(), &unlinked, &mut t.ops);
     merge_route_edits(&mut t.ops);
@@ -671,9 +671,9 @@ fn copy_batch(
         };
         match map.get(h) {
             Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(map, k).into()),
-            Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
+            Some(Mapped::RefText(_)) => return Err(ecad_electrical::references::cables::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => return Err(crate::pages::frame::DERIVED.into()),
-            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(ecad_electrical::wires::TEE_DERIVED.into()),
             _ => {}
         }
         src_doc = Some(doc);
@@ -708,14 +708,14 @@ fn copy_batch(
         // A copied device gets the next tag of its prefix (design 018 §3.3).
         let mut comp = comp;
         if comp.tag.is_some() {
-            let tag = crate::devices::copy_tag(cx.ledger.document(), cx.tags, &comp);
+            let tag = ecad_electrical::devices::copy_tag(cx.ledger.document(), cx.tags, &comp);
             comp = comp.with_tag(tag.as_deref());
         }
         t.ops.push(Op::CreateDevice { id: new_comp, device: Device { ..comp } });
         for (src_t, term) in sdoc.connection_points_of(src_comp) {
             let nt: ConnectionPointId = cx.ids.fresh();
             term_map.insert(src_t, nt);
-            t.ops.push(Op::AddConnectionPoint { id: nt, terminal: Terminal { owner: new_comp.into(), ..term.clone() } });
+            t.ops.push(Op::AddConnectionPoint { id: nt, terminal: ConnectionPoint { owner: new_comp.into(), ..term.clone() } });
         }
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();
@@ -750,7 +750,7 @@ fn copy_batch(
             if let Op::CreateDevice { id, device: component } = op
                 && *id == new_comp
             {
-                crate::text_style::copy_symbol_keys(&mut component.properties, *rid, new_rep);
+                ecad_electrical::styles::text_style::copy_symbol_keys(&mut component.properties, *rid, new_rep);
                 break;
             }
         }

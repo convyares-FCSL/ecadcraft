@@ -310,7 +310,7 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
 
 #[cfg(test)]
 mod tests {
-    use crate::agent::*;
+    use super::*;
     use serde_json::json;
 
     #[test]

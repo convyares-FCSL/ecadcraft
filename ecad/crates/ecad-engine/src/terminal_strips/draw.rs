@@ -21,10 +21,10 @@ use ecad_model::{CableId, DeviceId, Document, PageId, Primitive, Pt};
 use ecad_electrical::terminal_strips::accessories::Acc;
 use crate::convert::kind_for_primitive;
 use crate::pages::frame::{FrameInput, Part, THIN_WEIGHT, TextDraw};
-use crate::generated::{LAYER, MISSING};
-use crate::outputs::kept::ReportModels;
+use {ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
+use ecad_electrical::reports::kept::ReportModels;
 use ecad_electrical::terminal_strips::{SideCell, StripData};
-use crate::text_style::{Look, TextKind};
+use {crate::styles::draw::Look, ecad_electrical::styles::text_style::TextKind};
 
 /// Guard (design 046 §4.1): at most this many cable bar lanes; further cables share the last.
 pub const MAX_CABLE_LANES: usize = 8;
@@ -163,7 +163,7 @@ impl Pen {
                     _ => at.1,
                 };
                 let (lo, hi) = (self.p(at.0 - s / 2.0, y), self.p(at.0 + s / 2.0, y + s));
-                self.out.extend(crate::generated::missing_mark(doc, lo, hi, self.k, look));
+                self.out.extend(crate::pages::generated::missing_mark(doc, lo, hi, self.k, look));
             }
         }
     }
@@ -186,7 +186,7 @@ struct Looks {
 /// The content of sheet `i` of graphic `terminals` page `page` (paper millimetres, sheet origin at
 /// `x0`): its strip's columns that fall on this sheet. O(rows of that strip + what it draws).
 pub fn content(doc: &Document, page: PageId, input: &FrameInput, i: usize, x0: f64, o: &ReportModels) -> Vec<Part> {
-    let (l, b, r, t) = crate::generated::area(input);
+    let (l, b, r, t) = ecad_electrical::pages::generated::area(input);
     let mut pen = Pen { k: unit_scale(input.unit), x0, out: Vec::new() };
     let looks = Look::new(doc);
     let look = |kind| TextDraw::of(&looks, kind, input.unit);
@@ -210,7 +210,7 @@ pub fn content(doc: &Document, page: PageId, input: &FrameInput, i: usize, x0: f
         Err(()) => {
             pen.rect((l, yc - g.body / 2.0), (l + g.tagbox, yc + g.body / 2.0));
             let (lo, hi) = (pen.p(l + 1.0, yc - 3.0), pen.p(l + g.tagbox - 1.0, yc + 3.0));
-            pen.out.extend(crate::generated::missing_mark(doc, lo, hi, pen.k, lk.table));
+            pen.out.extend(crate::pages::generated::missing_mark(doc, lo, hi, pen.k, lk.table));
         }
         Ok(None) => pen.text((l, yc), lk.table, NO_STRIPS, HAlign::Left, false, Some(r - l)),
         Ok(Some((s, j, _))) => {
@@ -600,7 +600,7 @@ fn cables(
             pen.line((a + 0.8, ay + 1.2), (*a, ay));
             let mut names: Vec<(String, Option<String>)> =
                 far.iter().filter_map(|f| o.device(*f)).map(|d| (d.tag.clone(), d.description.clone().filter(|x| !x.trim().is_empty()))).collect();
-            names.sort_by_key(|x| crate::locations::natural_key(&x.0));
+            names.sort_by_key(|x| ecad_electrical::locations::natural_key(&x.0));
             let room = Some((ay - 1.0 - fr.b).max(2.0));
             let shown = names.len().min(MAX_FAR_DEVICES);
             for (n, (t, d)) in names.iter().take(MAX_FAR_DEVICES).enumerate() {

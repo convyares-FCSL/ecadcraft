@@ -546,7 +546,7 @@ pub fn folder_path(doc: &Document, folder: Option<FolderId>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn next_revs() {

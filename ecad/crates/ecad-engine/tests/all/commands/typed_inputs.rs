@@ -167,7 +167,7 @@ fn the_sheet_commands_keep_their_rule_words() {
         ("newfolder", json!({"name": "A", "parent": "1"}), "no such folder"),
         ("movefolder", json!({"folder": "1", "parent": null}), "no such folder"),
         ("pageprops", json!({"title": null}), ecad_electrical::msg::PAGE_TITLE),
-        ("pageprops", json!({"generated": "bom"}), ecad_engine::generated::KIND_FIXED),
+        ("pageprops", json!({"generated": "bom"}), ecad_electrical::pages::generated::KIND_FIXED),
         ("pageprops", json!({"number": "a b"}), "A page number is 1 to 12 letters, digits or _ (no spaces, `.`, `-` or `/`)."),
         ("pageprops", json!({"function": "=F1", "proposal": "x"}), ecad_electrical::msg::PROPOSAL_WORDS),
         ("projectprops", json!({"page_number_step": 0}), "`page_number_step` must be a whole number from 1 to 1000"),
@@ -1490,7 +1490,7 @@ fn contcaption_refuses_input_uniformly_and_keeps_its_rule_words() {
     }
     let rules: &[(Value, &str)] = &[
         (json!({"continuations": [], "caption": "X"}), "Name at least one continuation arrow in `continuations`."),
-        (json!({"continuations": ["1"], "caption": "A\nB"}), ecad_engine::continuations::CAPTION_RULE),
+        (json!({"continuations": ["1"], "caption": "A\nB"}), ecad_electrical::continuations::CAPTION_RULE),
     ];
     for (params, says) in rules {
         let e = h.run("contcaption", params.clone()).err().unwrap_or_default();

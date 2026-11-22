@@ -12,7 +12,7 @@
 //! The tab's copy ([`PageView`]) is read again only when the project's change count moves or
 //! another page is shown.
 
-use ecad_engine::front::Block;
+use ecad_electrical::pages::front::Block;
 use ecad_model::GenKind;
 use ecad_model::PageId;
 use ecad_widgets::tokens::{space, ui_type};
@@ -51,8 +51,8 @@ pub struct PageView {
     pub blocks: Vec<(Block, bool)>,
     pub notes: String,
     /// The wire colours' and the legend's rows with the person's overrides (design 054 §8.1a).
-    pub wire_rows: Vec<ecad_engine::front::EditedRow>,
-    pub legend_rows: Vec<ecad_engine::front::EditedRow>,
+    pub wire_rows: Vec<ecad_electrical::pages::front::EditedRow>,
+    pub legend_rows: Vec<ecad_electrical::pages::front::EditedRow>,
     /// The issued revisions, oldest first: `A · First issue · CvA · 2026-11-14`.
     pub revisions: Vec<String>,
     pub front: Vec<FrontRow>,
@@ -78,7 +78,7 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
     let p = t.project.clone()?;
     p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
-        let kind = ecad_engine::generated::kind_of(doc, page)?;
+        let kind = ecad_electrical::pages::generated::kind_of(doc, page)?;
         let book = ecad_model::document::book::Book::of(doc);
         let ty = ecad_electrical::styles::page::type_of(doc, page);
         let sheet = ecad_model::document::sheet::sheet_of(doc, page);
@@ -89,7 +89,7 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
                 pages: book
                     .order
                     .iter()
-                    .filter(|x| ecad_engine::generated::kind_of(doc, **x) == Some(k))
+                    .filter(|x| ecad_electrical::pages::generated::kind_of(doc, **x) == Some(k))
                     .map(|x| (*x, book.number(doc, *x)))
                     .collect(),
             })
@@ -113,9 +113,9 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
             type_id: ty.text(),
             title_block: crate::settings::pages::title_block_words(&sheet),
             blocks: Block::ALL.iter().map(|b| (*b, b.on(doc))).collect(),
-            notes: ecad_electrical::pages::frames::project_text(doc, ecad_engine::front::NOTES_KEY).unwrap_or_default(),
-            wire_rows: if kind == GenKind::Cover { ecad_engine::front::wire_rows(doc).into_iter().map(|(_, r)| r).collect() } else { Vec::new() },
-            legend_rows: if kind == GenKind::Cover { ecad_engine::front::legend_rows(doc).into_iter().map(|(_, r)| r).collect() } else { Vec::new() },
+            notes: ecad_electrical::pages::frames::project_text(doc, ecad_electrical::pages::front::NOTES_KEY).unwrap_or_default(),
+            wire_rows: if kind == GenKind::Cover { ecad_electrical::pages::front::wire_rows(doc).into_iter().map(|(_, r)| r).collect() } else { Vec::new() },
+            legend_rows: if kind == GenKind::Cover { ecad_electrical::pages::front::legend_rows(doc).into_iter().map(|(_, r)| r).collect() } else { Vec::new() },
             revisions: ecad_electrical::releases::revisions::issued(doc)
                 .iter()
                 .rev()
@@ -253,8 +253,8 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, v: &PageView, writable: bool, full: 
             crate::shell::table_editor::Outcome::Save => {
                 match what {
                     "notes" => todo.push(Do::Notes(notes_text(&ed.rows))),
-                    "wire_colours" => todo.push(Do::Rows(ecad_engine::front::WIRE_ROWS_KEY, rows_text(&ed.rows))),
-                    _ => todo.push(Do::Rows(ecad_engine::front::LEGEND_ROWS_KEY, rows_text(&ed.rows))),
+                    "wire_colours" => todo.push(Do::Rows(ecad_electrical::pages::front::WIRE_ROWS_KEY, rows_text(&ed.rows))),
+                    _ => todo.push(Do::Rows(ecad_electrical::pages::front::LEGEND_ROWS_KEY, rows_text(&ed.rows))),
                 }
                 // Kept open until the write is accepted (a refusal shows in it).
                 t.settings.page_tab.editor = Some(ed);
@@ -289,7 +289,7 @@ fn editable(b: Block) -> bool {
 /// The editor of block `b`, filled from the page's copy.
 fn editor_of(v: &PageView, b: Block, writable: bool) -> Option<crate::shell::table_editor::TableEditor> {
     use crate::shell::table_editor::{Caps, Row, TableEditor};
-    let generated = |rows: &[ecad_engine::front::EditedRow]| -> Vec<Row> {
+    let generated = |rows: &[ecad_electrical::pages::front::EditedRow]| -> Vec<Row> {
         rows.iter().map(|r| Row { key: r.key.clone(), text: r.label.clone(), generated: r.generated.clone(), shown: r.shown }).collect()
     };
     Some(match b {
@@ -302,7 +302,7 @@ fn editor_of(v: &PageView, b: Block, writable: bool) -> Option<crate::shell::tab
                 .map(|l| Row { text: l.to_string(), shown: true, ..Row::default() })
                 .collect();
             let mut e = TableEditor::new("notes", "Notes", rows, Caps::TYPED, writable);
-            e.max_rows = ecad_engine::front::MAX_NOTES;
+            e.max_rows = ecad_electrical::pages::front::MAX_NOTES;
             e
         }
         Block::WireColours => TableEditor::new("wire_colours", "Wire colours", generated(&v.wire_rows), Caps::GENERATED, writable),
@@ -320,9 +320,9 @@ fn editor_of(v: &PageView, b: Block, writable: bool) -> Option<crate::shell::tab
 /// Whether the editor's rows may be saved.
 fn check_rows(what: &str, rows: &[crate::shell::table_editor::Row]) -> Result<(), String> {
     match what {
-        "notes" => ecad_engine::front::check_notes(&notes_text(rows)).map_err(String::from),
+        "notes" => ecad_electrical::pages::front::check_notes(&notes_text(rows)).map_err(String::from),
         "revisions" => Ok(()),
-        _ => ecad_engine::front::check_overrides(&rows_text(rows)).map_err(String::from),
+        _ => ecad_electrical::pages::front::check_overrides(&rows_text(rows)).map_err(String::from),
     }
 }
 
@@ -333,14 +333,14 @@ fn notes_text(rows: &[crate::shell::table_editor::Row]) -> String {
 
 /// A generated block's rows as stored (design 054 §8.1a): an empty label is the generated one.
 fn rows_text(rows: &[crate::shell::table_editor::Row]) -> String {
-    let edited: Vec<ecad_engine::front::EditedRow> = rows
+    let edited: Vec<ecad_electrical::pages::front::EditedRow> = rows
         .iter()
         .map(|r| {
             let label = if r.text.trim().is_empty() { r.generated.clone() } else { r.text.trim().to_string() };
-            ecad_engine::front::EditedRow { key: r.key.clone(), generated: r.generated.clone(), label, shown: r.shown }
+            ecad_electrical::pages::front::EditedRow { key: r.key.clone(), generated: r.generated.clone(), label, shown: r.shown }
         })
         .collect();
-    ecad_engine::front::overrides_text(&edited)
+    ecad_electrical::pages::front::overrides_text(&edited)
 }
 
 fn act(t: &mut App, v: &PageView, d: Do) {
@@ -368,7 +368,7 @@ fn act(t: &mut App, v: &PageView, d: Do) {
         }
         Do::Notes(text) => {
             let value = if text.trim().is_empty() { serde_json::Value::Null } else { serde_json::Value::String(text) };
-            let r = t.run_value("projectprops", json!({"props": {ecad_engine::front::NOTES_KEY: value}})).map(|_| ());
+            let r = t.run_value("projectprops", json!({"props": {ecad_electrical::pages::front::NOTES_KEY: value}})).map(|_| ());
             if r.is_ok() {
                 t.settings.page_tab.editor = None;
             }

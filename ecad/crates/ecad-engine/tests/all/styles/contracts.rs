@@ -8,7 +8,7 @@ use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::doc::color::Color;
 use ecad_electrical::defaults::{self, Scope, Source};
 use ecad_electrical::styles;
-use ecad_engine::text_style::{TextKind, text_style};
+use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::text_style};
 use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{DeviceId, ObjectRef, Op, PageId};
 use serde_json::json;
@@ -26,7 +26,7 @@ fn fixture() -> (H, PageId, DeviceId) {
 fn tag_texts(h: &mut H, page: PageId, tag_prefix: &str) -> Vec<(f64, Color)> {
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
     ents.iter()
-        .filter(|e| e.common.layer == ecad_engine::devices::TAG_LAYER)
+        .filter(|e| e.common.layer == ecad_electrical::devices::TAG_LAYER)
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) if t.value.starts_with(tag_prefix) => Some((t.height, e.common.color)),
             _ => None,
@@ -185,7 +185,7 @@ fn a_location_style_restyles_boxes_and_a_page_frame_style_one_page() {
     let boxes = |h: &mut H| {
         let ents = h.pv(|p, pg| pg.entities_of(p, page));
         ents.iter()
-            .filter(|e| e.common.layer == ecad_engine::locations::LAYER && !matches!(e.kind, EntityKind::Text(_)))
+            .filter(|e| e.common.layer == ecad_electrical::locations::LAYER && !matches!(e.kind, EntityKind::Text(_)))
             .map(|e| (e.common.linetype.clone(), e.common.lineweight))
             .collect::<Vec<_>>()
     };
@@ -236,7 +236,7 @@ fn checks_report_unknown_styles() {
     });
     let doc = h.doc();
     let rows = ecad_engine::checks::all(&doc, 0.01);
-    let unknown: Vec<_> = rows.iter().filter(|c| c.kind == ecad_engine::checks::Kind::StyleUnknown).collect();
+    let unknown: Vec<_> = rows.iter().filter(|c| c.kind == ecad_electrical::checks::Kind::StyleUnknown).collect();
     assert_eq!(unknown.len(), 1);
     assert!(unknown[0].which.contains("not found; drawn as Tag"), "{}", unknown[0].which);
 }
@@ -307,8 +307,8 @@ fn a_hostile_style_document_opens_draws_and_reports() {
     let cat = styles::catalogue(ecad_model::StyleCatalogue::Text);
     assert!(styles::rows(&doc, cat).len() <= 23 + ecad_model::objects::styles::MAX_STYLES_PER_CATALOGUE);
     let rows = ecad_engine::checks::all(&doc, 0.01);
-    assert!(rows.iter().any(|c| c.kind == ecad_engine::checks::Kind::StyleLimits));
-    assert!(rows.iter().filter(|c| c.kind == ecad_engine::checks::Kind::StyleUnknown).count() >= 2);
+    assert!(rows.iter().any(|c| c.kind == ecad_electrical::checks::Kind::StyleLimits));
+    assert!(rows.iter().filter(|c| c.kind == ecad_electrical::checks::Kind::StyleUnknown).count() >= 2);
     let name = styles::name(&doc, ecad_model::StyleCatalogue::Location, &StyleRef::Own(9));
     assert!(name.chars().count() <= 64);
     // It draws (the page projected from the document, as a print does) and the reads answer.
@@ -330,7 +330,7 @@ fn wire(h: &mut H, y: f64, potential: Option<&str>) -> ecad_model::WireId {
 }
 
 fn label_of(h: &mut H, page: PageId, c: ecad_model::WireId) -> Option<String> {
-    h.p(|p| ecad_engine::wires::labels_on_page(p.ledger.document(), page).into_iter().find(|l| l.conductor == c).map(|l| l.text))
+    h.p(|p| ecad_engine::wires::draw::labels_on_page(p.ledger.document(), page).into_iter().find(|l| l.conductor == c).map(|l| l.text))
 }
 
 #[test]
@@ -424,7 +424,7 @@ fn a_category_with_a_part_number_puts_wire_on_the_bom() {
     }
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"part_number": "W-05-BU"}})).unwrap();
     let rows = ecad_engine::checks::all(&h.doc(), 0.01);
-    assert!(rows.iter().any(|c| c.kind == ecad_engine::checks::Kind::WireAllowance), "no allowance: the BOM check");
+    assert!(rows.iter().any(|c| c.kind == ecad_electrical::checks::Kind::WireAllowance), "no allowance: the BOM check");
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"allowance": 1.5}})).unwrap();
     let bom = h.cfg(|p| p.outputs().wire_bom());
     assert_eq!(bom.len(), 1);

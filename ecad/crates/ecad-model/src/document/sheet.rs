@@ -668,7 +668,7 @@ fn index_of(v: f64, size: f64, count: u32) -> Option<u32> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use crate::*;
+    use super::*;
 
     #[test]
     fn specs_read_and_write_back() {

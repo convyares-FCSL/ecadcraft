@@ -93,7 +93,7 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     let Some(mapped @ Mapped::Item(item)) = sel.mapped else { panic!("the route is an ECAD item: {sel:?}") };
     let r = resolve(&snap.doc, mapped);
     assert_eq!(r.item, Some(item));
-    let line = ecad_engine::wires::route_of_wire_on(&snap.doc, w, first).unwrap();
+    let line = ecad_electrical::wires::route_of_wire_on(&snap.doc, w, first).unwrap();
     assert_eq!(r.subject, Some(Subject::Route(line)));
     assert_eq!(r.terminals.len(), 2, "both attached terminals");
     let conductor = debug::object_json(&snap.doc, ObjectId::Wire(w)).unwrap();

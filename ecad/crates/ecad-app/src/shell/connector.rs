@@ -309,7 +309,7 @@ fn row(ui: &mut egui::Ui, label: &str, value: &str) {
 
 #[cfg(test)]
 mod tests {
-    use crate::shell::*;
+    use super::*;
 
     #[test]
     fn every_prompt_of_the_form_has_a_section() {
