@@ -312,7 +312,7 @@ pub fn added_wire(doc: &Document, ids: &mut IdAllocator) -> Result<Vec<Op>, Stri
 /// internal inconsistency (reported, never a panic).
 pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
     if variant == Variant::Rich {
-        return crate::rich::generate_rich(tier);
+        return crate::rich::generate_rich(tier).map_err(|e| e.to_string());
     }
     let p_count = tier.pages;
     let shape_err = || {

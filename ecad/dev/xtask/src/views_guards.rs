@@ -45,10 +45,13 @@ const OWN_MODULES: &[&str] = &[
     "crates/ecad-electrical/src/pages/front.rs",
 ];
 
-/// The count on `refactor/0.2.3` at 3e54b06a; lower it as the view steps land. The bench's
-/// `views.rs` adds three: it times each view's full rebuild, which is what a direct build is (D1,
-/// 2026-11-22).
-const ALLOWED: usize = 6;
+/// Probe files whose direct builds are not counted, each with its reason: they time a full rebuild
+/// on purpose (the reference point for deciding which views keep an update map). Listed by file;
+/// a file not listed is counted.
+const PROBES: &[(&str, &str)] = &[("dev/ecad-bench/src/views.rs", "bench probe timing each view's full rebuild on purpose (D1, 2026-11-22)")];
+
+/// The count on `refactor/0.2.3` at 3e54b06a; lower it as the view steps land.
+const ALLOWED: usize = 3;
 
 /// The calls that work out views of a state from scratch, outside `Views` (`.detached(`,
 /// `.report_models(`).
@@ -318,6 +321,9 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
                 if !is_view_module(&rel) && !own.is_empty() {
                     own_found.push((rel, own));
                 }
+                continue;
+            }
+            if PROBES.iter().any(|(p, _)| *p == rel) {
                 continue;
             }
             found.extend(places(&rel, &text));

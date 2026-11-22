@@ -34,8 +34,8 @@ fn time<T>(runs: usize, mut f: impl FnMut() -> T) -> f64 {
 ///
 /// # Errors
 /// The file cannot be opened.
-pub fn measure(path: &Path, runs: usize) -> Result<Vec<Row>, String> {
-    let o = crate::container::open(path)?;
+pub fn measure(path: &Path, runs: usize) -> Result<Vec<Row>, crate::rich::CorpusError> {
+    let o = crate::container::open(path).map_err(crate::rich::CorpusError::Project)?;
     let doc = o.ledger.document();
     let m = FixedWidth;
     let models = ecad_electrical::views::ReportsView::build(doc, &m);
