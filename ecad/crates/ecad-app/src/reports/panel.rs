@@ -87,6 +87,9 @@ pub enum Out {
 /// The Reports window's state.
 #[derive(Debug, Default)]
 pub struct Reports {
+    /// The report models' first build is still running on the background pool (issue 48): the
+    /// window says so instead of the table.
+    pub building: bool,
     /// Brief 038: the shell's slot it fills (no title bar, not movable), or `None` to float.
     pub host: Option<egui::Rect>,
     /// Brief 038: its workspace is not shown, so it is not drawn.
@@ -353,6 +356,10 @@ impl Reports {
             .open(&mut open)
             .hosted(self.host)
             .show(ctx, |ui| {
+                if self.building {
+                    prim::note(ui, crate::checks::panel::RUNNING, Tone::Neutral);
+                    return;
+                }
                 ui.horizontal(|ui| {
                     // UI rev 3: as Project ▸ Reports' preview the list above picks the tab.
                     for (i, tab) in TABS.into_iter().enumerate().filter(|_| !self.preview) {

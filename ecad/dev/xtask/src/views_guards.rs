@@ -120,6 +120,33 @@ const KEY_PREFIXES: &[(&str, usize, &str)] = &[
     ("crates/ecad-electrical/src/circuits/kept.rs", 2, "`link.*`, `rating.*` and `wire.*` keys; no key table"),
 ];
 
+/// Every place a view widens a change to "everything" (an unclassified or project-wide change
+/// rebuilds all it keeps), per file, how many, and why (lane D2, owner ruling 2026-11-22: no
+/// "unknown means everything" path; each wide case is a named kind of change with its reason, and
+/// the count only falls). The cable references' `Touch::All` arms each carry
+/// their reason in the code.
+const WIDE: &[(&str, usize, &str)] = &[
+    (
+        "crates/ecad-electrical/src/references/cables.rs",
+        8,
+        "Touch::All arms: frame or standard, a wire made again, other style catalogues, a standard, settings, the project record, an aid; each carries its reason",
+    ),
+    (
+        "crates/ecad-electrical/src/references/devices/watch.rs",
+        11,
+        "project-wide table, style, sheet and frame settings reach every device or arrow page; the cable scope's all_cables",
+    ),
+    ("crates/ecad-electrical/src/pages/front.rs", 5, "the cover's uses: wire style, potentials and standards reach every wire"),
+    ("crates/ecad-electrical/src/title_blocks/mod.rs", 3, "a frame or standard change moves every page's grid"),
+    ("crates/ecad-electrical/src/devices/view.rs", 1, "a wide frame change marks the pages list"),
+    ("crates/ecad-electrical/src/checks/mod.rs", 1, "wiring scheme, digits or potentials renumber every wire's check"),
+];
+
+/// Whether `line` widens a view's work to everything (see [`WIDE`]).
+fn is_wide(line: &str) -> bool {
+    ["Touch::All(\"", ".wide = true", "arrows_wide = true", "all_cables = true", "self.all = true", "Reach::Wide"].iter().any(|p| line.contains(p))
+}
+
 /// Whether `rel` is a view's own module, or `Views`.
 fn is_own_module(rel: &str) -> bool {
     OWN_MODULES.iter().any(|m| if m.ends_with('/') { rel.starts_with(m) } else { rel == *m })
@@ -298,6 +325,7 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let mut found = Vec::new();
     let mut fresh_found: Vec<(String, Vec<String>)> = Vec::new();
     let (mut own_found, mut wild_found, mut prefix_found) = (Vec::new(), Vec::new(), Vec::new());
+    let mut wide_found: Vec<(String, Vec<String>)> = Vec::new();
     for (_, class, dir, _) in super::classed_packages(meta)? {
         let (false, Some(dir)) = (matches!(class, super::Class::Exempt), dir) else {
             continue;
@@ -314,6 +342,10 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
                 }
                 if !prefix.is_empty() {
                     prefix_found.push((rel.clone(), prefix));
+                }
+                let wide = lines_where(&rel, &text, is_wide);
+                if !wide.is_empty() {
+                    wide_found.push((rel.clone(), wide));
                 }
             }
             if is_own_module(&rel) {
@@ -356,6 +388,8 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     out.extend(ratchet(&[], wild_found, "wildcard arms in matches over effects", fix));
     let fix = "say what the key is in its definition and route on that";
     out.extend(ratchet(KEY_PREFIXES, prefix_found, "property keys routed by prefix in a view's note", fix));
+    let fix = "decide what the change reaches and name it; a project-wide case needs its reason in WIDE";
+    out.extend(ratchet(WIDE, wide_found, "places a view widens a change to everything", fix));
     Ok(out)
 }
 
@@ -393,7 +427,7 @@ mod tests {
 
     #[test]
     fn every_fresh_build_has_a_reason() {
-        for (path, n, why) in FRESH_BUILDS.iter().chain(OWN_BUILDS).chain(KEY_PREFIXES) {
+        for (path, n, why) in FRESH_BUILDS.iter().chain(OWN_BUILDS).chain(KEY_PREFIXES).chain(WIDE) {
             assert!(*n > 0 && !why.trim().is_empty(), "{path}");
         }
     }
@@ -425,6 +459,20 @@ mod tests {
         for (text, whole, wild, prefix) in rows {
             let (w, p) = effect_routing("f.rs", text, *whole);
             assert_eq!((w.len(), p.len()), (*wild, *prefix), "{text}");
+        }
+    }
+
+    #[test]
+    fn wide_fallbacks_are_found() {
+        let rows: &[(&str, bool)] = &[
+            ("Effect::Aid { .. } => return Touch::All(\"an aid\"),", true),
+            ("self.wide = true;", true),
+            ("self.all_cables = true;", true),
+            ("matches!(touched, Touch::All(_))", false),
+            ("let wide = false;", false),
+        ];
+        for (text, want) in rows {
+            assert_eq!(is_wide(text), *want, "{text}");
         }
     }
 

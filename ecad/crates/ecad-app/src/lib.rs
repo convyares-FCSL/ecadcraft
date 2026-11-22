@@ -266,6 +266,8 @@ pub struct App {
     ecad_style_again: bool,
     /// The read-only debugger panel (closed until opened from ECAD Dev).
     pub debugger: Debugger,
+    /// The kept views' first builds, on the background pool (issue 48).
+    pub warm: ecad_engine::warm::Warm,
     /// The Project panel (brief 016).
     pub panel: ProjectPanel,
     /// The read-only preview of another page (brief 016), when open.
@@ -390,7 +392,11 @@ impl App {
     /// # Errors
     /// The project could not be created.
     pub fn new(snapshots: Option<PathBuf>) -> Result<Self, String> {
-        Self::start::<dyn StartMarks>(snapshots, None, None)
+        // Headless: the kept views' first builds run on the calling thread, as the tests that read
+        // them at once need (the desktop builds them on the background pool: `App::start`).
+        let mut t = Self::start::<dyn StartMarks>(snapshots, None, None)?;
+        t.warm.set_inline(true);
+        Ok(t)
     }
 
     /// A harness opening the project file at `path`. If it cannot be opened, a new project is
@@ -399,7 +405,9 @@ impl App {
     /// # Errors
     /// Neither the file nor a new project could be opened.
     pub fn with_file(snapshots: Option<PathBuf>, path: &str) -> Result<Self, String> {
-        Self::start::<dyn StartMarks>(snapshots, Some(path), None)
+        let mut t = Self::start::<dyn StartMarks>(snapshots, Some(path), None)?;
+        t.warm.set_inline(true);
+        Ok(t)
     }
 
     /// [`App::with_file`] when `project` is given, otherwise [`App::new`], marking
@@ -457,6 +465,7 @@ impl App {
             ecad_style: None,
             ecad_style_again: false,
             debugger: Debugger::default(),
+            warm: ecad_engine::warm::Warm::default(),
             panel: ProjectPanel::default(),
             preview: None,
             project_serial: 0,
@@ -759,8 +768,13 @@ impl App {
         // project builds its list on the first show and keeps it from each change; the copy
         // follows its revision.
         {
-            let checks = &mut self.panel.checks;
-            let _ = p.configure(&mut self.cad.session, |p| checks.sync(serial, p));
+            let (checks, warm) = (&mut self.panel.checks, &mut self.warm);
+            let _ = p.configure(&mut self.cad.session, |p| {
+                checks.building = !warm.pump(p);
+                if !checks.building {
+                    checks.sync(serial, p);
+                }
+            });
         }
         self.panel.previewed = self.preview.as_ref().map(|v| v.page);
     }

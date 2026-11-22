@@ -9,8 +9,11 @@
 //! it, for the transaction as recorded, on the document after:
 //! - The cables (before only, [`crate::references::cables::cables_touched_by`]): a reference
 //!   representation or item, a member's route, wire or connection point, a cable, a page's
-//!   number, sheet, type or book position, a page type's sheet, a frame's grid; every cable for
-//!   the effects no drawing edit makes (a layer, a standard, a project record, other settings).
+//!   number, sheet, type or book position, a page type's sheet, a frame's grid. A device, strip
+//!   or connector name, a layer, a definition or a link reaches none: a reference says only its
+//!   own cable's other ends' page and column or row. Every cable only for the effects that carry
+//!   a reason in [`crate::references::cables::Touch::All`] (a frame or standard, the sheet,
+//!   length unit or reference style, the project record, a drawing aid).
 //!   Their reference ends' pages when their texts changed, and the orphaned-reference line
 //!   (design 010 §4.3) for the command line.
 //! - The devices: items, representations, wires at their ends, connection points, a device made

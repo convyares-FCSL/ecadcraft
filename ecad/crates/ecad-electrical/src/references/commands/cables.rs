@@ -199,7 +199,7 @@ pub fn other_end(doc: &Document, reference: RepresentationId) -> Result<OtherEnd
 
 /// A reference's text, whether it is an orphan, and its partner, as `doc` shows them.
 fn reference_fields(doc: &Document, reference: RepresentationId) -> (Value, bool, Value) {
-    match cables::all(doc).into_iter().find(|r| r.reference == reference) {
+    match cables::reference_of(doc, reference) {
         Some(r) => (Value::String(r.text.clone()), r.orphan, r.partner().map_or(Value::Null, |p| Value::String(p.hex()))),
         None => (Value::String("/?".into()), true, Value::Null),
     }
