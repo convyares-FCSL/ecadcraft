@@ -47,9 +47,9 @@ pub struct LiveFacts {
 
 fn label_of(doc: &Document, s: Subject) -> String {
     match s {
-        Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_else(|| "untagged device".into()),
+        Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag_shown()).unwrap_or_else(|| "untagged device".into()),
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text().map(|n| format!("wire {n}"))).unwrap_or_else(|| "unnumbered wire".into()),
-        Subject::Cable(c) => doc.cables.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_else(|| "untagged cable".into()),
+        Subject::Cable(c) => doc.cables.get(&c).and_then(|x| x.tag_shown()).unwrap_or_else(|| "untagged cable".into()),
         Subject::Route(r) => doc.routes.get(&r).map_or_else(|| "line".into(), |x| format!("line on page {}", x.page.short())),
         Subject::Aid(a) => match doc.aids.get(&a) {
             Some(ecad_model::Aid::Continuation { name: Some(n), .. }) => format!("continuation {n}"),
@@ -231,7 +231,7 @@ mod tests {
         let point = |label: &str| ConnectionPoint { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
         let number = |n: &str| ecad_model::naming::text::Text::new(n).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: true });
         let ops = vec![
-            Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K1")) },
+            Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K1"), ecad_model::naming::tag::TagState::Automatic) },
             Op::AddConnectionPoint { id: a, connection_point: point("1") },
             Op::AddConnectionPoint { id: b, connection_point: point("2") },
             Op::AddConnectionPoint { id: c, connection_point: point("3") },

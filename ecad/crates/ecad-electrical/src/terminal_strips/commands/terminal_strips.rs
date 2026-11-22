@@ -156,18 +156,20 @@ pub fn plan_fence_typed(
         None => {
             let c: DeviceId = ids.fresh();
             // Brief 026: a provisional `-X?n` when provisional tags are on, as Place gives.
-            let tag = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
+            let given = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
             ops.push(Op::CreateDevice {
                 id: c,
-                device: ecad_model::Device {
-                    tag: Some(crate::devices::stored_tag(&tag)?),
-                    description: crate::devices::description_of("Terminal"),
-                    definition: Some(def),
-                    device_type: starter.device_type(),
-                    ..ecad_model::Device::default()
-                },
+                device: crate::devices::with_given(
+                    ecad_model::Device {
+                        description: crate::devices::description_of("Terminal"),
+                        definition: Some(def),
+                        device_type: starter.device_type(),
+                        ..ecad_model::Device::default()
+                    },
+                    &given,
+                )?,
             });
-            (c, tag, 1, legacy)
+            (c, given.shown(), 1, legacy)
         }
     };
     let mut placed = Vec::new();

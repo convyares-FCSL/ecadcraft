@@ -18,7 +18,7 @@ use crate::commands::run::{Cx, Generic, Outcome, Slot, State};
 use crate::error::CmdError;
 
 /// Most arrows one `contcaption` names.
-pub const MAX_ARROWS: usize = 2000;
+pub(crate) const MAX_ARROWS: usize = 2000;
 
 /// The label of a `contcaption` transaction.
 pub fn label(caption: Option<&str>) -> String {
@@ -30,7 +30,7 @@ pub fn label(caption: Option<&str>) -> String {
 
 /// A planned `contcaption` call.
 #[derive(Debug, Clone)]
-pub struct Contcaption {
+pub(crate) struct Contcaption {
     /// Empty: every arrow already has the caption.
     pub ops: Vec<Op>,
     /// The caption as stored (`None`: removed).
@@ -48,7 +48,7 @@ pub struct Contcaption {
 /// # Errors
 /// No arrow named, a caption the rule refuses, or an object that is not a continuation arrow
 /// (named).
-pub fn plan_contcaption(doc: &Document, arrows: &[AidId], caption: Option<&str>) -> Result<Contcaption, CmdError> {
+pub(crate) fn plan_contcaption(doc: &Document, arrows: &[AidId], caption: Option<&str>) -> Result<Contcaption, CmdError> {
     if arrows.is_empty() {
         return Err(CmdError::refused("Name at least one continuation arrow in `continuations`."));
     }
@@ -81,7 +81,7 @@ fn caption_op(doc: &Document, a: AidId, caption: Option<&str>) -> Result<Option<
 
 /// The `ModifyAid` giving location box `a` the values `edit` leaves; `None` when it is not a box
 /// or nothing changes.
-pub fn box_op(doc: &Document, a: AidId, edit: impl FnOnce(&mut LocationBox)) -> Option<Op> {
+pub(crate) fn box_op(doc: &Document, a: AidId, edit: impl FnOnce(&mut LocationBox)) -> Option<Op> {
     let before @ Aid::Box(x) = doc.aids.get(&a)? else { return None };
     let mut after = x.clone();
     edit(&mut after);
@@ -106,7 +106,7 @@ fn box_keys(key: &str) -> CmdError {
 /// # Errors
 /// No aid named, an id that is no aid, a key the aid's kind does not have, or a value the rules
 /// refuse.
-pub fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], key: &str, value: Option<&str>) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], key: &str, value: Option<&str>) -> Result<Vec<Op>, CmdError> {
     if aids.is_empty() {
         return Err(CmdError::refused("Name at least one continuation arrow or location box in `aids`."));
     }

@@ -42,21 +42,21 @@ use crate::styles::text_style::fonts::TextMetrics;
 use crate::styles::text_style::{TextKind, TextTarget, text_shown, text_style};
 
 /// The `setprop` key of a continuation's name (design 072 §6.2).
-pub const NAME_KEY: &str = "name";
+pub(crate) const NAME_KEY: &str = "name";
 /// The `setprop` key of a continuation's caption (FP1).
 pub const CAPTION_KEY: &str = "caption";
 /// Most characters of a caption.
-pub const MAX_CAPTION_CHARS: usize = 80;
+pub(crate) const MAX_CAPTION_CHARS: usize = 80;
 /// Most lines a caption wraps to.
-pub const MAX_CAPTION_LINES: usize = 3;
+pub(crate) const MAX_CAPTION_LINES: usize = 3;
 /// The narrowest a caption wraps to, millimetres (design 049 §3.2).
-pub const MIN_WRAP_MM: f64 = 25.0;
+pub(crate) const MIN_WRAP_MM: f64 = 25.0;
 /// How far a bracket runs past the first and last arrow, millimetres.
-pub const BRACKET_OVERHANG_MM: f64 = 1.5;
+pub(crate) const BRACKET_OVERHANG_MM: f64 = 1.5;
 /// The gap between a bracket and its caption text, millimetres.
-pub const CAPTION_TEXT_GAP_MM: f64 = 1.0;
+pub(crate) const CAPTION_TEXT_GAP_MM: f64 = 1.0;
 /// Hover lines listing other ends before `+N more`.
-pub const HOVER_ENDS: usize = 6;
+pub(crate) const HOVER_ENDS: usize = 6;
 /// Refusal of an edit of an arrow's reference text, bracket or caption (design 049 §10, 11).
 pub const TEXT_DERIVED: &str = "The continuation reference is derived; move or rename the continuation instead.";
 /// The caption rule, in words (design 049 §3.1).
@@ -88,7 +88,7 @@ pub fn display_name(doc: &Document, a: AidId) -> String {
 }
 
 /// The caption of continuation `a`, when it has one.
-pub fn caption_of(doc: &Document, a: AidId) -> Option<&str> {
+pub(crate) fn caption_of(doc: &Document, a: AidId) -> Option<&str> {
     continuation(doc, a)?.1.filter(|t| !t.trim().is_empty())
 }
 
@@ -99,7 +99,7 @@ pub fn group_key(doc: &Document, key: &str) -> Option<Group> {
 
 /// The group of the arrows named `key` and its members: every symbol representation of each, in
 /// aid then representation order. O(arrows of the name).
-pub fn group_named(doc: &Document, key: &str) -> Option<(Group, Vec<RepresentationId>)> {
+pub(crate) fn group_named(doc: &Document, key: &str) -> Option<(Group, Vec<RepresentationId>)> {
     let ids = doc.continuations_named(key);
     let g = Group::Continuation(*ids.first()?);
     let members: Vec<RepresentationId> =
@@ -108,7 +108,7 @@ pub fn group_named(doc: &Document, key: &str) -> Option<(Group, Vec<Representati
 }
 
 /// The group a representation is a member of, when it is a continuation arrow's symbol.
-pub fn group_of_rep(doc: &Document, r: &Representation) -> Option<Group> {
+pub(crate) fn group_of_rep(doc: &Document, r: &Representation) -> Option<Group> {
     let Subject::Aid(a) = r.subject else { return None };
     if r.form != Form::Symbol {
         return None;
@@ -278,7 +278,7 @@ fn text_for(ends: &[End], me: RepresentationId, member: bool, max: usize) -> Str
 }
 
 /// The other ends of arrow `rep` (every one, sorted), for hover, Properties and Go to.
-pub fn other_ends(doc: &Document, rep: RepresentationId) -> Vec<End> {
+pub(crate) fn other_ends(doc: &Document, rep: RepresentationId) -> Vec<End> {
     let Some(a) = arrow(doc, rep) else { return Vec::new() };
     let Some(key) = name_of(doc, a.aid) else { return Vec::new() };
     let mut places = Places::new(doc);
@@ -525,7 +525,7 @@ pub fn names_named(doc: &Document, ops: &[Op]) -> BTreeSet<String> {
 
 /// One effect of [`names_named`]: adds to `out` the continuation names `effect` could change the
 /// texts or runs of, looked up in `doc`.
-pub fn names_named_by(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>, out: &mut BTreeSet<String>) {
+pub(crate) fn names_named_by(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>, out: &mut BTreeSet<String>) {
     use ecad_model::document::effect::Effect;
     let rep = |out: &mut BTreeSet<String>, r: &Representation| {
         if let Subject::Aid(a) = r.subject {
@@ -576,7 +576,7 @@ pub fn names_named_by(doc: &Document, effect: &ecad_model::document::effect::Eff
 }
 
 /// The names of the arrows on `page` (through the page index and the reference index).
-pub fn names_on(doc: &Document, idx: &RefIndex, page: PageId) -> BTreeSet<String> {
+pub(crate) fn names_on(doc: &Document, idx: &RefIndex, page: PageId) -> BTreeSet<String> {
     doc.representations_on(page)
         .filter(|(rid, _)| matches!(idx.member(*rid), Some((Group::Continuation(_), _))))
         .filter_map(|(_, r)| match r.subject {
@@ -589,13 +589,15 @@ pub fn names_on(doc: &Document, idx: &RefIndex, page: PageId) -> BTreeSet<String
 /// Whether a project key redraws every page with an arrow: this area's keys, the reference and
 /// caption texts' style choices (`text.reference.style`, `text.continuation_caption.style`) and
 /// the project font. A change inside those text styles is [`is_wide_style`].
-pub fn is_wide_key(key: &str) -> bool {
-    key.starts_with("continuation.") || key.starts_with("text.reference.") || key.starts_with("text.continuation_caption.") || key == "text.font"
+pub(crate) fn is_wide_key(key: &str) -> bool {
+    ecad_model::naming::keys::in_area(key, ecad_model::naming::keys::Area::Continuation)
+        || matches!(ecad_model::naming::keys::text_kind(key), Some("reference" | "continuation_caption"))
+        || key == crate::defaults::text::FONT.key
 }
 
 /// Brief 050a: whether a change of text style `id` redraws every page with an arrow: it is the
 /// style the reference or the caption text uses.
-pub fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: &ecad_model::StyleRef) -> bool {
+pub(crate) fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: &ecad_model::StyleRef) -> bool {
     use crate::styles::text_style::{TextKind, style_of};
     let at = crate::defaults::Scope::project();
     catalogue == ecad_model::StyleCatalogue::Text
@@ -611,7 +613,7 @@ pub const NO_SUCH_ARROW: &str = "There is no such continuation arrow.";
 ///
 /// # Errors
 /// `a` is not a continuation arrow, or the caption breaks [`CAPTION_RULE`].
-pub fn caption_value(doc: &Document, a: AidId, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub(crate) fn caption_value(doc: &Document, a: AidId, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match doc.aids.get(&a) {
         Some(Aid::Continuation { .. }) => caption_text(value),
         Some(Aid::Box(_)) => Err(CmdError::refused("Only continuation arrows have a caption; that is a location box.")),
@@ -658,7 +660,7 @@ pub fn goto(doc: &Document, source: RepresentationId, target: Option<Representat
 }
 
 /// One other end in words: `102-C-2  page 102 "Supply"`.
-pub fn end_words(doc: &Document, e: &End) -> String {
+pub(crate) fn end_words(doc: &Document, e: &End) -> String {
     format!("{}  {}", e.text, crate::references::cables::page_words(doc, e.page))
 }
 
@@ -680,14 +682,6 @@ pub fn hover_lines(doc: &Document, c: AidId, rep: RepresentationId) -> Vec<Strin
         lines.push(format!("  +{} more", ends.len() - HOVER_ENDS));
     }
     lines
-}
-
-/// The arrows among `cs`, and how many are not arrows.
-pub fn arrows_among(doc: &Document, cs: &[AidId]) -> (Vec<AidId>, usize) {
-    let mut seen = BTreeSet::new();
-    let arrows: Vec<AidId> = cs.iter().copied().filter(|c| continuation(doc, *c).is_some() && seen.insert(*c)).collect();
-    let other = cs.iter().filter(|c| continuation(doc, **c).is_none()).collect::<BTreeSet<_>>().len();
-    (arrows, other)
 }
 
 #[cfg(test)]

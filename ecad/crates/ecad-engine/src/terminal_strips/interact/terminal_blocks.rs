@@ -82,7 +82,10 @@ impl PlaceTerminalBlocks {
         } else {
             let found = read(s, |p, _| {
                 let doc = p.ledger.document();
-                Ok(ecad_electrical::devices::tags::holder_of(doc, t, None).filter(|c| terminal_strips::strip_of(doc, *c).is_some()))
+                Ok(ecad_model::naming::tag::enter_given(t, ecad_electrical::defaults::print::tag_style(doc))
+                    .ok()
+                    .and_then(|g| ecad_electrical::devices::tags::holder_of(doc, &g.key(), None))
+                    .filter(|c| terminal_strips::strip_of(doc, *c).is_some()))
             })
             .ok()
             .flatten();

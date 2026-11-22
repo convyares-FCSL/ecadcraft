@@ -96,7 +96,10 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
         let c: DeviceId = ids.fresh();
         let mut props = ecad_model::document::doc::Properties::new();
         props.insert("note".into(), title.into());
-        let mut ops = vec![Op::CreateDevice { id: c, device: Device { properties: props, ..Device::default() }.with_tag(Some(tag)) }];
+        let mut ops = vec![Op::CreateDevice {
+            id: c,
+            device: Device { properties: props, ..Device::default() }.with_tag(Some(tag), ecad_model::naming::tag::TagState::Automatic),
+        }];
         let mut ts = Vec::new();
         for p in points {
             let t: ConnectionPointId = ids.fresh();
@@ -131,7 +134,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     let cable_op = Op::CreateCable {
         id: cable,
         cable: Cable {
-            tag: ecad_model::naming::tag::Tag::new("-W1").ok(),
+            tag: ecad_model::naming::tag::TagSlot::of_text(Some("-W1"), Default::default()),
             cores: vec![Core::on_wire(w1, ecad_model::CoreLabel::new("1").ok())],
             ..Default::default()
         },

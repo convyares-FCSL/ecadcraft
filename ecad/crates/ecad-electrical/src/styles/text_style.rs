@@ -56,7 +56,7 @@ pub enum TextColour {
 }
 
 /// A colour field's value as a [`TextColour`]: `None` for `none` (ink) and anything unknown.
-pub fn text_colour(value: &str) -> Option<TextColour> {
+pub(crate) fn text_colour(value: &str) -> Option<TextColour> {
     let t = value.trim();
     if t.eq_ignore_ascii_case("none") {
         return None;
@@ -70,7 +70,7 @@ pub fn text_colour(value: &str) -> Option<TextColour> {
 pub use ecad_model::objects::styles::text::Weight;
 
 /// The CADCraft text style of a weight.
-pub trait WeightStyle {
+pub(crate) trait WeightStyle {
     /// The CADCraft text style for this weight.
     fn style_name(self) -> &'static str;
 }
@@ -265,7 +265,7 @@ pub fn family_style_name(family: &str, weight: Weight) -> String {
 
 /// The own text style of `kind` that the object with `props` chooses (its `text.<kind>.style`),
 /// resolved at `at`; `None` when it has no valid choice of its own.
-pub fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_model::Properties) -> Option<OwnStyle> {
+pub(crate) fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_model::Properties) -> Option<OwnStyle> {
     let e = kind.style_entry();
     props.get(e.key).and_then(|v| e.parse_in(doc, v))?;
     let style = text_style_at(doc, kind, at);
@@ -358,7 +358,7 @@ pub fn kind_style_name(kind: TextKind, weight: Weight) -> &'static str {
 /// A kind's own font family (its text style's `font`, brief 050a), when it names a family that
 /// differs from the project font; `None` when the kind uses the project font (`project`, the
 /// built-in).
-pub fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
+pub(crate) fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
     let id = style_of(doc, kind, Scope::project());
     let r = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, "font", None)?;
     let defaults::Value::Text(f) = r.value else { return None };
@@ -411,7 +411,7 @@ impl Shown {
 /// The built-in run rule of a symbol (design 031 §5.3): strip terminals and PLC channels show
 /// their tag once per run unless something narrower says otherwise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RunRule {
+pub(crate) enum RunRule {
     /// Any other symbol.
     #[default]
     None,
@@ -424,7 +424,7 @@ pub enum RunRule {
 /// What a text belongs to, for [`text_shown`]: a symbol (its representation, component and page),
 /// a conductor, a page or the project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct TextTarget {
+pub(crate) struct TextTarget {
     pub page: Option<PageId>,
     pub component: Option<DeviceId>,
     pub representation: Option<RepresentationId>,
@@ -435,7 +435,8 @@ pub struct TextTarget {
 
 impl TextTarget {
     /// The project only.
-    pub fn project() -> Self {
+    #[cfg(test)]
+    pub(crate) fn project() -> Self {
         TextTarget::default()
     }
 
@@ -445,7 +446,8 @@ impl TextTarget {
     }
 
     /// A symbol: `rep`, its component and its page (looked up in `doc`), with its run rule.
-    pub fn symbol(doc: &Document, rep: RepresentationId, run: RunRule) -> Self {
+    #[cfg(test)]
+    pub(crate) fn symbol(doc: &Document, rep: RepresentationId, run: RunRule) -> Self {
         let s = Scope::symbol(doc, rep);
         TextTarget { page: s.page, component: s.component, representation: Some(rep), conductor: None, run }
     }
@@ -464,7 +466,7 @@ impl TextTarget {
 /// value wins (symbol, device or conductor, page, project); then, for a tag with a run rule, the
 /// project's `text.tag.show.strip` / `.plc`; then the built-in. `First` is only ever returned for
 /// a tag. Kinds with no visibility entry are always `On`. Never fails.
-pub fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
+pub(crate) fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
     let Some(entry) = kind.show_entry() else { return Shown::On };
     let r = defaults::resolve(doc, entry, target.scope());
     if r.from == defaults::Source::Builtin && kind == TextKind::Tag {
@@ -496,7 +498,7 @@ pub(crate) fn default_family() -> &'static str {
 // ---------------------------------------------------------------- Justification and boxes
 
 /// A two-letter justification code (`L`/`C`/`R` then `T`/`M`/`B`; baseline counts as `B`).
-pub fn justify_code(h: TextHAlign, v: TextVAlign) -> String {
+pub(crate) fn justify_code(h: TextHAlign, v: TextVAlign) -> String {
     let a = match h {
         TextHAlign::Center => 'C',
         TextHAlign::Right => 'R',
@@ -530,7 +532,7 @@ pub fn parse_justify(code: &str) -> Option<(TextHAlign, TextVAlign)> {
 }
 
 /// The box of a one-line text of `width` and `height` at `at` with this justification.
-pub fn text_box(width: f64, height: f64, at: ecad_model::Pt, h: TextHAlign, v: TextVAlign) -> (ecad_model::Pt, ecad_model::Pt) {
+pub(crate) fn text_box(width: f64, height: f64, at: ecad_model::Pt, h: TextHAlign, v: TextVAlign) -> (ecad_model::Pt, ecad_model::Pt) {
     let x0 = match h {
         TextHAlign::Center => at.x - width / 2.0,
         TextHAlign::Right => at.x - width,
@@ -547,18 +549,18 @@ pub fn text_box(width: f64, height: f64, at: ecad_model::Pt, h: TextHAlign, v: T
 // ---------------------------------------------------------------- Symbol keys (§6.4, FP5)
 
 /// The prefix of a symbol's own text keys on its component: `text.<rep>.`.
-pub fn symbol_prefix(rep: RepresentationId) -> String {
+pub(crate) fn symbol_prefix(rep: RepresentationId) -> String {
     format!("text.{}.", rep.hex())
 }
 
 /// A symbol's own text keys and values on its component (`text.<rep>.*`).
-pub fn symbol_text_keys(props: &ecad_model::Properties, rep: RepresentationId) -> Vec<(String, String)> {
+pub(crate) fn symbol_text_keys(props: &ecad_model::Properties, rep: RepresentationId) -> Vec<(String, String)> {
     let prefix = symbol_prefix(rep);
     props.range(prefix.clone()..).take_while(|(k, _)| k.starts_with(&prefix)).map(|(k, v)| (k.clone(), v.clone())).collect()
 }
 
 /// Whether `key` is a symbol's own text key (`text.<32 hex digits>.…`).
-pub fn is_symbol_key(key: &str) -> bool {
+pub(crate) fn is_symbol_key(key: &str) -> bool {
     key.strip_prefix("text.").and_then(|r| r.split_once('.')).is_some_and(|(id, _)| id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
@@ -573,7 +575,7 @@ pub fn copy_symbol_keys(props: &mut ecad_model::Properties, old: RepresentationI
 }
 
 /// `key` of symbol `old` as the same key of symbol `new`.
-pub fn rename_symbol_key(key: &str, old: RepresentationId, new: RepresentationId) -> String {
+pub(crate) fn rename_symbol_key(key: &str, old: RepresentationId, new: RepresentationId) -> String {
     match key.strip_prefix(&symbol_prefix(old)) {
         Some(rest) => format!("{}{rest}", symbol_prefix(new)),
         None => key.to_string(),
@@ -593,7 +595,7 @@ const CELL: f64 = 20.0;
 const MAX_CELLS_PER_BOX: i64 = 400;
 
 /// An axis-aligned box `(lo, hi)`.
-pub type TextBox = (ecad_model::Pt, ecad_model::Pt);
+pub(crate) type TextBox = (ecad_model::Pt, ecad_model::Pt);
 
 fn finite_box(b: &TextBox) -> bool {
     b.0.is_finite() && b.1.is_finite()
@@ -661,7 +663,7 @@ impl Obstacles {
 /// Where a symbol's tag block goes: its box and its horizontal justification (the lines are
 /// stacked down from the box's top).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BlockPlace {
+pub(crate) struct BlockPlace {
     pub rect: TextBox,
     pub halign: TextHAlign,
     /// Stored by Move Text (§6.4).
@@ -680,20 +682,10 @@ impl BlockPlace {
         };
         ecad_model::Pt::new(x, top)
     }
-
-    /// The justification code of the block (its halign and the vertical anchor `v`).
-    pub fn code(&self, v: char) -> String {
-        let h = match self.halign {
-            TextHAlign::Right => 'R',
-            TextHAlign::Center => 'C',
-            _ => 'L',
-        };
-        format!("{h}{v}")
-    }
 }
 
 /// The box of a block `w` × `h` anchored at `at` with a two-letter justification.
-pub fn block_rect(at: ecad_model::Pt, w: f64, h: f64, halign: TextHAlign, v: TextVAlign) -> TextBox {
+pub(crate) fn block_rect(at: ecad_model::Pt, w: f64, h: f64, halign: TextHAlign, v: TextVAlign) -> TextBox {
     let x0 = match halign {
         TextHAlign::Right => at.x - w,
         TextHAlign::Center => at.x - w / 2.0,
@@ -726,7 +718,7 @@ pub fn candidates(lo: ecad_model::Pt, hi: ecad_model::Pt, vertical: bool, w: f64
 
 /// A stored text place (`"x,y,J"`, design 031 §6.4): the point in the symbol's own frame and the
 /// justification. `None` for anything that does not parse.
-pub fn parse_at(v: &str) -> Option<(ecad_model::Pt, TextHAlign, TextVAlign)> {
+pub(crate) fn parse_at(v: &str) -> Option<(ecad_model::Pt, TextHAlign, TextVAlign)> {
     let mut it = v.split(',');
     let x: f64 = it.next()?.trim().parse().ok()?;
     let y: f64 = it.next()?.trim().parse().ok()?;
@@ -744,7 +736,7 @@ pub fn at_text(p: ecad_model::Pt, h: TextHAlign, v: TextVAlign) -> String {
 }
 
 /// A page point in a placement's local frame (the inverse of `Placement::apply`).
-pub fn to_local(pl: &ecad_model::Placement, p: ecad_model::Pt) -> Option<ecad_model::Pt> {
+pub(crate) fn to_local(pl: &ecad_model::Placement, p: ecad_model::Pt) -> Option<ecad_model::Pt> {
     if !pl.is_valid() || !p.is_finite() {
         return None;
     }
@@ -815,7 +807,9 @@ fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles 
 /// the others in reading order, each at its first free candidate (else the one with the least
 /// overlap), never crossing the frame's inside edge when a candidate inside it exists. Each placed
 /// block becomes an obstacle. Deterministic: the result does not depend on op order.
-pub fn place_blocks(doc: &Document, page: PageId, blocks: &[Block], fixed: &[TextBox]) -> std::collections::BTreeMap<RepresentationId, BlockPlace> {
+pub(crate) fn place_blocks(
+    doc: &Document, page: PageId, blocks: &[Block], fixed: &[TextBox],
+) -> std::collections::BTreeMap<RepresentationId, BlockPlace> {
     let mut out = std::collections::BTreeMap::new();
     let mut obs = page_obstacles(doc, page, fixed);
     let grid = ecad_model::document::sheet::Grid::of(doc, page);
@@ -901,7 +895,7 @@ struct Placed {
 /// starter kind, whose centres are within `text.run.align` across the line, whose neighbouring
 /// boxes are at most `text.run.gap` apart along it, with no symbol of another device between
 /// them. Rows are tried before columns.
-pub fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTreeSet<RepresentationId> {
+pub(crate) fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTreeSet<RepresentationId> {
     use std::collections::BTreeSet;
     let align = defaults::resolve(doc, &d::RUN_ALIGN, Scope::project()).length(doc);
     let gap = defaults::resolve(doc, &d::RUN_GAP, Scope::project()).length(doc);

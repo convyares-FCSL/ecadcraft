@@ -31,7 +31,7 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
         Author::User,
         "wire",
         vec![
-            Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K7")) },
+            Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K7"), ecad_model::naming::tag::TagState::Automatic) },
             Op::AddConnectionPoint { id: a, connection_point: point("A1") },
             Op::AddConnectionPoint { id: b, connection_point: point("A2") },
             Op::CreateWire { id: w, wire: before.clone() },

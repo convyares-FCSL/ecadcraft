@@ -132,9 +132,9 @@ impl PlaceConnector {
         }
         let found = read(s, |p, _| {
             let doc = p.ledger.document();
-            let tag = ecad_model::naming::tag::normalise(t, ecad_electrical::defaults::print::tag_style(doc))?;
-            let c = ecad_electrical::devices::tags::holder_of(doc, &tag, None)
-                .ok_or_else(|| format!("No device {tag}. Type a connector's tag, or Enter for a new one."))?;
+            let tag = ecad_model::naming::tag::enter_given(t, ecad_electrical::defaults::print::tag_style(doc))?;
+            let c = ecad_electrical::devices::tags::holder_of(doc, &tag.key(), None)
+                .ok_or_else(|| format!("No device {}. Type a connector's tag, or Enter for a new one.", tag.shown()))?;
             if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
                 return Err(cn::not_a_connector(doc, c));
             }

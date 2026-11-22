@@ -31,18 +31,238 @@ pub const MAX_TAG_NUMBER: u64 = 999_999_999;
 /// Most digits a project may pad tag numbers to.
 pub const MAX_PADDING: u8 = 6;
 
-/// The property key of a device's or cable's fixed flag (brief 026, FP1): `"yes"`, absent when not
-/// fixed. Renumber and Finalise never change a fixed tag.
-pub const FIXED_KEY: &str = "tag_fixed";
+crate::word_enum! {
+    /// What the tag of a device or cable is (S6, #3): the word of a [`TagSlot`]'s state. A provisional
+    /// tag is stored bare (`-K3`) and only drawn with its `?` (`-K?3`, [`shown`]); a provisional `-K3`
+    /// and a real `-K3` are different tags ([`Key`]).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+    pub enum TagState {
+        /// Given by numbering (or a tag no person typed); Renumber may change it.
+        #[default]
+        Automatic,
+        /// Typed by a person; Renumber and Finalise never change it (brief 026, FP1).
+        Fixed,
+        /// A placeholder number (`-K?3`, brief 026, FP3) that Finalise turns into an automatic tag.
+        Provisional,
+    }
+}
+
+impl TagState {
+    /// Whether this is [`TagState::Provisional`].
+    pub fn is_provisional(self) -> bool {
+        self == TagState::Provisional
+    }
+}
+
+/// A device's or cable's tag and what it is, as one field (S6, #3): the state carries the tag, so a
+/// state without a tag cannot be written. A provisional tag holds the bare text (`-K3`); the `?` is
+/// only drawn ([`shown`]).
+///
+/// # Example
+/// ```
+/// use ecad_model::naming::tag::{Tag, TagSlot, TagState};
+/// let slot = TagSlot::new(Tag::new("-K3").ok(), TagState::Provisional);
+/// assert_eq!((slot.tag(), slot.state()), (Some("-K3"), Some(TagState::Provisional)));
+/// assert_eq!(slot.shown().as_deref(), Some("-K?3"));
+/// assert_eq!(TagSlot::new(None, TagState::Fixed), TagSlot::None);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "state", content = "tag", rename_all = "snake_case")]
+pub enum TagSlot {
+    /// No tag: written as `{"state":"none"}`.
+    #[default]
+    None,
+    /// Given by numbering (or a tag no person typed); Renumber may change it.
+    Automatic(Tag),
+    /// Typed by a person; Renumber and Finalise never change it (brief 026, FP1).
+    Fixed(Tag),
+    /// A placeholder number (`-K?3`) that Finalise turns into an automatic tag; holds the bare tag.
+    Provisional(Tag),
+}
+
+impl TagSlot {
+    /// The slot holding `tag` in `state`; no tag is [`TagSlot::None`] whatever the state.
+    pub fn new(tag: Option<Tag>, state: TagState) -> TagSlot {
+        match (tag, state) {
+            (None, _) => TagSlot::None,
+            (Some(t), TagState::Automatic) => TagSlot::Automatic(t),
+            (Some(t), TagState::Fixed) => TagSlot::Fixed(t),
+            (Some(t), TagState::Provisional) => TagSlot::Provisional(t),
+        }
+    }
+
+    /// The slot holding bare text `text` in `state`; text that is not a valid tag, or `None`, is
+    /// [`TagSlot::None`] (callers rule it out with [`Tag::new`] first).
+    pub fn of_text(text: Option<&str>, state: TagState) -> TagSlot {
+        TagSlot::new(text.and_then(|t| Tag::new(t).ok()), state)
+    }
+
+    /// The bare tag.
+    pub fn text(&self) -> Option<&Tag> {
+        match self {
+            TagSlot::None => None,
+            TagSlot::Automatic(t) | TagSlot::Fixed(t) | TagSlot::Provisional(t) => Some(t),
+        }
+    }
+
+    /// The bare tag as text.
+    pub fn tag(&self) -> Option<&str> {
+        self.text().map(Tag::as_str)
+    }
+
+    /// What the tag is; `None` without a tag.
+    pub fn state(&self) -> Option<TagState> {
+        match self {
+            TagSlot::None => None,
+            TagSlot::Automatic(_) => Some(TagState::Automatic),
+            TagSlot::Fixed(_) => Some(TagState::Fixed),
+            TagSlot::Provisional(_) => Some(TagState::Provisional),
+        }
+    }
+
+    /// Whether there is no tag.
+    pub fn is_none(&self) -> bool {
+        matches!(self, TagSlot::None)
+    }
+
+    /// Whether the tag is fixed (FP1).
+    pub fn is_fixed(&self) -> bool {
+        matches!(self, TagSlot::Fixed(_))
+    }
+
+    /// Whether the tag is provisional.
+    pub fn is_provisional(&self) -> bool {
+        matches!(self, TagSlot::Provisional(_))
+    }
+
+    /// The tag as drawn: a provisional tag with its `?` ([`shown`]).
+    pub fn shown(&self) -> Option<String> {
+        self.tag().map(|t| shown(t, self.state().unwrap_or_default()))
+    }
+
+    /// The tag's identity in the tag indexes.
+    pub fn key(&self) -> Option<Key> {
+        self.tag().map(|t| Key::of(t, self.state().unwrap_or_default()))
+    }
+}
+
+/// The identity a tag has in the tag indexes: its [`key`] and whether it is provisional. A
+/// provisional `-K3` and a real `-K3` are different tags (S6, #3).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Key {
+    /// Whether the tag is provisional (so it sorts after every real key).
+    pub provisional: bool,
+    /// The tag's [`key`].
+    pub text: String,
+}
+
+impl Key {
+    /// The key of stored tag text `tag` in `state`.
+    pub fn of(tag: &str, state: TagState) -> Key {
+        Key { provisional: state.is_provisional(), text: key(tag) }
+    }
+
+    /// The key of a real (not provisional) tag.
+    pub fn real(tag: &str) -> Key {
+        Key::of(tag, TagState::Fixed)
+    }
+}
+
+/// A tag as drawn and spoken: the stored text, with the `?` of a provisional tag put before its
+/// number (`-K3` provisional is `-K?3`). The one place the `?` is made.
+pub fn shown(tag: &str, state: TagState) -> String {
+    if !state.is_provisional() {
+        return tag.to_string();
+    }
+    let dash = usize::from(tag.starts_with('-'));
+    let split = tag.get(dash..).and_then(|t| t.find(|c: char| !c.is_ascii_alphabetic())).map_or(tag.len(), |i| i + dash);
+    format!("{}?{}", &tag[..split], &tag[split..])
+}
+
+/// A tag to store: its bare text and its state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Given {
+    /// The bare text (`-K3` also for the provisional `-K?3`).
+    pub text: String,
+    pub state: TagState,
+}
+
+impl Given {
+    /// A tag in `state`.
+    pub fn new(text: impl Into<String>, state: TagState) -> Given {
+        Given { text: text.into(), state }
+    }
+
+    /// As a new object takes it (Place, a new cable): a typed real tag is automatic, not fixed
+    /// (brief 026: only `setprop tag` fixes), a provisional one stays provisional.
+    pub fn placed(self) -> Given {
+        let state = if self.state.is_provisional() { TagState::Provisional } else { TagState::Automatic };
+        Given { state, ..self }
+    }
+
+    /// As drawn ([`shown`]).
+    pub fn shown(&self) -> String {
+        shown(&self.text, self.state)
+    }
+
+    /// Its identity in the tag indexes.
+    pub fn key(&self) -> Key {
+        Key::of(&self.text, self.state)
+    }
+}
+
+/// A tag as typed, read once where the text comes in (S6, #3): the bare text and its state, or
+/// the request for the next provisional number.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Entry {
+    /// A tag to store: typed real tags are [`TagState::Fixed`], `-K?3` is [`TagState::Provisional`]
+    /// with the bare text `-K3`.
+    Tag(Given),
+    /// `-K?`: the next provisional number of this prefix (upper case, without `-`); never stored.
+    Next(String),
+}
+
+/// Read typed `text` ([`normalise`] and the `?`).
+///
+/// # Errors
+/// As [`normalise`].
+pub fn enter(text: &str, style: impl Into<Style>) -> Result<Entry, crate::ParseError> {
+    let style = style.into();
+    let t = normalise_any(text, style)?;
+    Ok(match provisional(&t) {
+        Some((prefix, 0)) => Entry::Next(prefix),
+        Some((prefix, n)) => Entry::Tag(Given::new(style.provisional(&prefix, n), TagState::Provisional)),
+        None => Entry::Tag(Given::new(t, TagState::Fixed)),
+    })
+}
+
+/// Read a stored tag slot given as a value of the `tag` key (S6, #3): its bare tag and its own
+/// state. The tag is written as [`enter`] writes a typed one; a `?` is refused (a provisional tag is
+/// given bare, the `?` is only drawn).
+///
+/// # Errors
+/// As [`normalise`]; a slot with no tag; a bare tag holding a `?`.
+///
+/// # Example
+/// ```
+/// use ecad_model::naming::tag::{enter_slot, Entry, Given, TagSlot, TagState};
+/// let slot = TagSlot::of_text(Some("-K1"), TagState::Automatic);
+/// assert_eq!(enter_slot(&slot, 2u8), Ok(Entry::Tag(Given::new("-K01", TagState::Automatic))));
+/// assert!(enter_slot(&TagSlot::None, 2u8).is_err());
+/// ```
+pub fn enter_slot(slot: &TagSlot, style: impl Into<Style>) -> Result<Entry, crate::ParseError> {
+    let (Some(t), Some(state)) = (slot.tag(), slot.state()) else {
+        return Err(crate::ParseError::invalid(crate::Parsed::Tag, BAD_TAG));
+    };
+    let bare = normalise_any(t, style)?;
+    if bare.contains('?') {
+        return Err(crate::ParseError::invalid(crate::Parsed::Tag, "A provisional tag is given bare (\"-K3\"); its ? is only drawn."));
+    }
+    Ok(Entry::Tag(Given::new(bare, state)))
+}
 
 /// The project property turning provisional tags on (brief 026, FP2): `"yes"`, absent = off.
 pub const PROVISIONAL_SETTING: &str = "numbering.provisional";
-
-/// The project property prefix of a high-water reset (brief 026, FP4): `numbering.high.<P>` =
-/// [`reset_value`]: the highest number of prefix `P` in use after a renumber, the mark it
-/// replaced and a generation. [`note_ops`] reads a reset as "the mark of `P` is now this", so new
-/// tags follow the renumbered set, and the undo of one as "the mark is back to what it replaced".
-pub const HIGH_RESET_PREFIX: &str = "numbering.high.";
 
 /// The stored value of a high-water reset: `"<n>;<was>;<generation>"`, where `n` is the new mark,
 /// `was` the mark it replaced and `generation` one more than the reset it overwrites (tester 026:
@@ -119,19 +339,9 @@ pub fn provisional(tag: &str) -> Option<(String, u64)> {
     Some((letters.to_ascii_uppercase(), n))
 }
 
-/// The written provisional tag `-K?3` (never padded).
-pub fn format_provisional(prefix: &str, n: u64) -> String {
-    format!("-{}?{n}", prefix.trim_start_matches('-').to_ascii_uppercase())
-}
-
-/// Whether `tag` is a stored provisional tag (`-K?3`, number at least 1).
-pub fn is_provisional(tag: &str) -> bool {
-    provisional(tag).is_some_and(|(_, n)| n > 0)
-}
-
-/// The letter prefix of a tag in the usual or the provisional form.
+/// The letter prefix of a tag in the usual form.
 pub fn prefix_of(tag: &str) -> Option<String> {
-    parse(tag).or_else(|| provisional(tag)).map(|(p, _)| p)
+    parse(tag).map(|(p, _)| p)
 }
 
 /// The highest number each tag prefix has had in a history (brief 018: the next automatic number
@@ -147,8 +357,16 @@ pub fn note(high: &mut HighWater, t: &str) {
     }
 }
 
+/// Count the tag an object holds, unless it is provisional.
+fn note_held(high: &mut HighWater, slot: &TagSlot) {
+    if let (Some(t), false) = (slot.tag(), slot.is_provisional()) {
+        note(high, t);
+    }
+}
+
 /// The version of the rule [`note_ops`] counts by (brief 029, FP1): 1 counted device tags only
-/// (before brief 026); 2 also counts cable tags and `numbering.high.<P>` resets. A file records the
+/// (before brief 026); 2 also counts cable tags and `numbering.high.<P>` resets. Rule 2 also skips provisional
+/// tags (S6, #3): no file written before the typed tag state exists to be read, so the rule keeps its number. A file records the
 /// rule its cached marks were computed with, and marks of an older rule are recomputed on open.
 pub const TAG_RULE: u32 = 2;
 
@@ -162,32 +380,30 @@ pub const TAG_RULE: u32 = 2;
 /// its redo) sets the mark of `P` to its number (FP4: overwrite, not max), so new tags follow a
 /// renumbered set; a later tag write raises it again as usual. One back to an older generation or
 /// to nothing (the renumber's undo) is not a reset: the mark becomes at least the one the undone
-/// reset replaced, so every number held before or since it stays used (tester 026, 3-6).
+/// reset replaced, so every number held before or since it stays used (tester 026, 3-6). A
+/// provisional tag is never counted (S6, #3): its number is a placeholder, not a number used.
 pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
     for op in ops {
         match op {
             crate::Op::CreateDevice { device, .. } | crate::Op::DeleteDevice { device, .. } => {
-                if let Some(t) = device.tag() {
-                    note(high, t);
-                }
+                note_held(high, &device.tag);
             }
             crate::Op::ModifyDevice { before, after, .. } => {
-                for t in before.tag().into_iter().chain(after.tag()) {
-                    note(high, t);
-                }
+                note_held(high, &before.tag);
+                note_held(high, &after.tag);
             }
             crate::Op::CreateCable { cable, .. } | crate::Op::DeleteCable { cable, .. } => {
-                if let Some(t) = cable.tag() {
-                    note(high, t);
-                }
+                note_held(high, &cable.tag);
             }
             crate::Op::ModifyCable { before, after, .. } => {
-                for t in before.tag().into_iter().chain(after.tag()) {
-                    note(high, t);
-                }
+                note_held(high, &before.tag);
+                note_held(high, &after.tag);
             }
-            crate::Op::SetProperty { object: crate::ObjectRef::Project, key, before, after } if key.starts_with(HIGH_RESET_PREFIX) => {
-                let prefix = key[HIGH_RESET_PREFIX.len()..].to_ascii_uppercase();
+            crate::Op::SetProperty { object: crate::ObjectRef::Project, key, before, after }
+                if crate::naming::keys::NUMBERING_HIGH.parse(key).is_some() =>
+            {
+                let prefix =
+                    crate::naming::keys::NUMBERING_HIGH.parse(key).and_then(|p| p.first().map(|p| p.to_ascii_uppercase())).unwrap_or_default();
                 if prefix.is_empty() || !prefix.bytes().all(|b| b.is_ascii_alphabetic()) {
                     continue;
                 }
@@ -292,10 +508,10 @@ impl Style {
         }
     }
 
-    /// A provisional tag `-K?3` in this style (never padded): the dash as set, the letters in
-    /// this style's case.
+    /// The stored text of provisional number `n` (never padded): the dash as set, the letters in
+    /// this style's case, no `?` ([`shown`] draws it).
     pub fn provisional(&self, prefix: &str, n: u64) -> String {
-        format!("{}{}?{n}", self.dash(), self.letters(prefix.trim_start_matches('-')))
+        format!("{}{}{n}", self.dash(), self.letters(prefix.trim_start_matches('-')))
     }
 
     /// `letters` as this style writes them.
@@ -351,7 +567,38 @@ pub fn restyle(tag: &str, style: impl Into<Style>) -> String {
     if style.dash && (bare.starts_with(|c: char| c.is_alphabetic()) || t.starts_with('-')) { format!("-{bare}") } else { bare }
 }
 
-/// A typed tag as it is stored.
+/// Refusal of `-K?` where a tag that exists is named.
+pub const NEXT_HERE: &str = "-K? asks for the next provisional number; type the tag of a device that exists.";
+
+/// A typed tag that names one (S6, #3): [`enter`], refusing the request for the next provisional
+/// number, which names nothing.
+///
+/// # Errors
+/// As [`enter`]; [`NEXT_HERE`] for `-K?`.
+pub fn enter_given(text: &str, style: impl Into<Style>) -> Result<Given, crate::ParseError> {
+    match enter(text, style)? {
+        Entry::Tag(g) => Ok(g),
+        Entry::Next(_) => Err(crate::ParseError::invalid(crate::Parsed::Tag, NEXT_HERE)),
+    }
+}
+
+/// A typed real tag as it is stored ([`normalise_any`], refusing the provisional form: that is
+/// [`enter`]'s).
+///
+/// # Errors
+/// As [`normalise_any`], and [`PROVISIONAL_HERE`] for `-K?3`.
+pub fn normalise(text: &str, style: impl Into<Style>) -> Result<String, crate::ParseError> {
+    let t = normalise_any(text, style)?;
+    if provisional(&t).is_some() {
+        return Err(crate::ParseError::invalid(crate::Parsed::Tag, PROVISIONAL_HERE));
+    }
+    Ok(t)
+}
+
+/// Refusal of a provisional tag where only a real one is stored.
+pub const PROVISIONAL_HERE: &str = "A provisional tag (-K?3) can only be set on a device or cable's tag, not here.";
+
+/// A typed tag as written, provisional spelling included (read by [`enter`]).
 ///
 /// # Semantics
 /// Trimmed and in upper case. In the usual form ([`parse`]) it is written by [`format`] with the
@@ -361,7 +608,7 @@ pub fn restyle(tag: &str, style: impl Into<Style>) -> String {
 /// # Errors
 /// [`BAD_TAG`] when it is empty, longer than [`MAX_TAG_CHARS`] characters, holds a control
 /// character, or is nothing but `-` (its [`key`] would be empty or `-`).
-pub fn normalise(text: &str, style: impl Into<Style>) -> Result<String, crate::ParseError> {
+pub fn normalise_any(text: &str, style: impl Into<Style>) -> Result<String, crate::ParseError> {
     let style = style.into();
     let t = text.trim();
     let n = t.chars().count();
@@ -410,7 +657,6 @@ mod tests {
             ("N01 Slot02", ["-N01 SLOT02", "N01 SLOT02", "N01 Slot02", "-N01 Slot02"]),
             ("-K1", ["-K01", "K01", "K01", "-K01"]),
             ("=PWR", ["=PWR", "=PWR", "=PWR", "=PWR"]),
-            ("-k?3", ["-K?3", "K?3", "k?3", "-k?3"]),
         ];
         let styles = [st(true, Case::Upper), st(false, Case::Upper), st(false, Case::Typed), st(true, Case::Typed)];
         for (typed, want) in rows {
@@ -461,11 +707,15 @@ mod tests {
         for (t, want) in rows {
             assert_eq!(provisional(t), want.map(|(p, n)| (p.to_string(), n)), "{t}");
         }
-        assert_eq!(normalise("k?03", 2).as_deref(), Ok("-K?3"));
-        assert_eq!(normalise("-k?", 2).as_deref(), Ok("-K?"));
-        assert_eq!(key("-K?3"), key("k?3"));
-        assert_ne!(key("-K?3"), key("-K3"));
-        assert!(is_provisional("-K?1") && !is_provisional("-K?") && !is_provisional("-K1"));
+        assert_eq!(enter("k?03", 2), Ok(Entry::Tag(Given::new("-K3", TagState::Provisional))));
+        assert_eq!(enter("-k?", 2), Ok(Entry::Next("K".into())));
+        assert_eq!(enter("k3", 2), Ok(Entry::Tag(Given::new("-K03", TagState::Fixed))));
+        assert!(normalise("-K?3", 2).is_err(), "a real-tag entry refuses the provisional spelling");
+        assert_eq!(shown("-K3", TagState::Provisional), "-K?3");
+        assert_eq!(shown("K3", TagState::Provisional), "K?3");
+        assert_eq!(shown("-K03", TagState::Fixed), "-K03");
+        assert_ne!(Key::of("-K3", TagState::Provisional), Key::of("-K3", TagState::Fixed), "a provisional -K3 is not the real -K3");
+        assert_eq!(Key::of("-K03", TagState::Fixed), Key::of("k3", TagState::Automatic));
     }
 
     #[test]

@@ -446,6 +446,14 @@ impl H {
     }
 }
 
+/// Give device `c` (hex id) the tag state `state` (`automatic`, `fixed` or `provisional`), keeping its
+/// bare tag: the `tag` key takes the state and the tag as one value (S6, #3).
+pub fn set_tag_state(h: &mut H, c: &str, state: &str) -> Result<Value, String> {
+    let props = h.run("deviceprops", json!({"component": c}))?;
+    let value = json!({"state": state, "tag": props["tag"]["tag"]}).to_string();
+    h.run("setprop", json!({"component": c, "key": "tag", "value": value}))
+}
+
 /// `place` a symbol at `at`; the command's JSON result (`component`, ...).
 pub fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
     h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap()

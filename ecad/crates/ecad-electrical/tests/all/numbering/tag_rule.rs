@@ -12,7 +12,7 @@ use {ecad_electrical::devices::tags::TagHigh, ecad_electrical::devices::tags::ne
 const PROJECT: ProjectId = ProjectId(0x0029_0000_0000_0000_0000_0000_0000_0007);
 
 fn cable(tag: &str) -> Cable {
-    Cable { tag: ecad_model::naming::tag::Tag::new(tag).ok(), cores: Vec::new(), ..Default::default() }
+    Cable { tag: ecad_model::naming::tag::TagSlot::of_text(Some(tag), Default::default()), cores: Vec::new(), ..Default::default() }
 }
 
 #[test]
@@ -49,10 +49,10 @@ fn a_cable_tag_deleted_before_a_rule_1_snapshot_is_not_handed_out_again() {
     // With the cached rule 1 marks, -W02 would be given again (the only guard is the mark: no
     // cable holds -W02 now).
     let mut stale = TagHigh::starting_at(HighWater::new());
-    assert_eq!(new_cable_tag(&o.ledger, &mut stale, None).unwrap(), "-W02");
+    assert_eq!(new_cable_tag(&o.ledger, &mut stale, None).unwrap().shown(), "-W02");
     // As opened: the marks are recomputed from the history.
     let mut high = TagHigh::starting_at(o.project.base_tag_high().clone());
-    assert_eq!(new_cable_tag(&o.ledger, &mut high, None).unwrap(), "-W03");
+    assert_eq!(new_cable_tag(&o.ledger, &mut high, None).unwrap().shown(), "-W03");
     drop(o);
     let _ = std::fs::remove_dir_all(&dir);
 }

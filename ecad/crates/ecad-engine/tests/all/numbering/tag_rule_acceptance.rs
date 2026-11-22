@@ -13,8 +13,8 @@ use serde_json::json;
 
 const PROJECT: ProjectId = ProjectId(0x0029_7e57_0000_0000_0000_0000_0000_0001);
 
-fn tagged(tag: &str) -> Option<ecad_model::naming::tag::Tag> {
-    ecad_model::naming::tag::Tag::new(tag).ok()
+fn tagged(tag: &str) -> ecad_model::naming::tag::TagSlot {
+    ecad_model::naming::tag::TagSlot::of_text(Some(tag), Default::default())
 }
 
 #[test]
@@ -34,8 +34,8 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
         vec![
             Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
-            Op::CreateDevice { id: k1, device: Device::default().with_tag(Some("-K1")) },
-            Op::CreateDevice { id: x1, device: Device::default().with_tag(Some("-X1")) },
+            Op::CreateDevice { id: k1, device: Device::default().with_tag(Some("-K1"), ecad_model::naming::tag::TagState::Automatic) },
+            Op::CreateDevice { id: x1, device: Device::default().with_tag(Some("-X1"), ecad_model::naming::tag::TagState::Automatic) },
             Op::AddConnectionPoint {
                 id: a1,
                 connection_point: ConnectionPoint { owner: k1.into(), label: Some("A1".into()), key: None, accepts: Default::default() },
@@ -87,9 +87,8 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
     let (project, _) = ecad_engine::ProjectHandle::open_file(&mut s, &path.display().to_string(), 5).unwrap();
     let r = s.execute("cableadd", &json!({"conductors": [wire.hex()]})).unwrap();
     let cable = r["cable"].as_str().unwrap().to_string();
-    let tag = project
-        .read(&mut s, |p, _| p.ledger.document().cables.iter().find(|(id, _)| id.hex() == cable).and_then(|(_, c)| c.tag().map(str::to_string)))
-        .unwrap();
+    let tag =
+        project.read(&mut s, |p, _| p.ledger.document().cables.iter().find(|(id, _)| id.hex() == cable).and_then(|(_, c)| c.tag_shown())).unwrap();
     assert_eq!(tag.as_deref(), Some("-W03"), "-W02 was used before the snapshot");
     while !s.docs.is_empty() {
         s.execute("close", &json!({"index": 0})).unwrap();

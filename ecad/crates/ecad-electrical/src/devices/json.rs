@@ -130,9 +130,10 @@ pub(crate) fn device_json(doc: &Document, c: DeviceId) -> Value {
         }
     }
     v["representations"] = Value::Array(reps.into_iter().map(|(_, _, x)| x).collect());
-    // Brief 026.
-    v["tag_fixed"] = Value::Bool(comp.is_fixed());
-    v["provisional"] = Value::Bool(comp.tag().is_some_and(tag::is_provisional));
+    // Brief 026, S6 #3: the tag with its state as one value (`{"state","tag"}`, the bare tag), and as drawn
+    // (a provisional one with its `?`).
+    v["tag"] = json!(comp.tag);
+    v["tag_shown"] = json!(comp.tag_shown());
     v
 }
 

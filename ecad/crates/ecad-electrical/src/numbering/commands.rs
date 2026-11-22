@@ -1,4 +1,4 @@
-//! The rules of brief 026's `renumber` (design 026 §3, §13; brief 028 §9.5 for terminals): what a
+//! The rules of brief 026's `renumber` (design 026 §3, §13; brief 028 §9.5 for terminal blocks): what a
 //! renumber covers, read from its typed input into an [`ecad_model::naming::numbering::Request`]. The plan
 //! itself is [`ecad_model::naming::numbering`]'s; the engine crate's shim plans it against the project's
 //! tag marks, commits and answers in JSON.
@@ -29,11 +29,13 @@ pub fn kinds(word: Option<&str>) -> Result<BTreeSet<Kind>, CmdError> {
         "devices" | "device" | "dev" => [Kind::Devices].into(),
         "cables" | "cable" | "cbl" => [Kind::Cables].into(),
         "wires" | "wire" => [Kind::Wires].into(),
-        // Brief 028: terminal labels per strip ("all" keeps its 026 meaning: tags and wires).
+        // Brief 028: terminal block labels per strip ("all" keeps its 026 meaning: tags and wires).
         "terminal_blocks" | "terminal_block" | "trm" => [Kind::TerminalBlocks].into(),
         "all" => [Kind::Devices, Kind::Cables, Kind::Wires].into(),
         other => {
-            return Err(CmdError::refused(format!("`kind` must be \"devices\", \"cables\", \"wires\", \"terminals\" or \"all\", not {other:?}")));
+            return Err(CmdError::refused(format!(
+                "`kind` must be \"devices\", \"cables\", \"wires\", \"terminal_blocks\" or \"all\", not {other:?}"
+            )));
         }
     })
 }
@@ -41,7 +43,7 @@ pub fn kinds(word: Option<&str>) -> Result<BTreeSet<Kind>, CmdError> {
 /// A renumber's `scope` as given: a word, or an object. Each of the object's entries: absent
 /// (`None`), null (`Some(None)`) or given.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ScopeInput {
+pub(crate) enum ScopeInput {
     /// `all`, `selection`, `provisional` (or `unnumbered`).
     Word(String),
     /// `{prefix}`, `{folder: id}` or `{pages: [id]}`, read in that order.
@@ -49,9 +51,9 @@ pub enum ScopeInput {
 }
 
 /// What `renumber` is given. `objects` and `strips` are hex IDs as written (a device, cable or
-/// wire; a strip or one of its terminals); `Some(None)`: given as null.
+/// wire; a strip or one of its terminal blocks); `Some(None)`: given as null.
 #[derive(Debug, Clone, Default)]
-pub struct RenumberInput {
+pub(crate) struct RenumberInput {
     pub kind: Option<String>,
     pub scope: Option<ScopeInput>,
     pub objects: Option<Option<Vec<String>>>,
@@ -73,13 +75,13 @@ fn hex(t: &str, list: &str) -> Result<u128, CmdError> {
 /// # Errors
 /// An unknown word, a selection without `objects`, an object that is none of the three, or an
 /// ID the project does not have.
-pub fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -> Result<Scope, CmdError> {
+pub(crate) fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -> Result<Scope, CmdError> {
     match &input.scope {
         None => Ok(Scope::All),
         Some(ScopeInput::Word(w)) => match w.trim().to_ascii_lowercase().as_str() {
             "all" => Ok(Scope::All),
             "provisional" | "unnumbered" => Ok(Scope::Provisional),
-            // Brief 028: a terminal renumber may name its strips in `strips` alone.
+            // Brief 028: a terminal block renumber may name its strips in `strips` alone.
             "selection" if input.objects.is_none() && input.strips.is_some() => {
                 Ok(Scope::Selection { devices: BTreeSet::new(), cables: BTreeSet::new(), conductors: BTreeSet::new() })
             }
@@ -143,12 +145,12 @@ pub fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -> Resul
     }
 }
 
-/// Brief 028 (design 028 §9.5): the strips a terminal renumber covers, from the scope: every
+/// Brief 028 (design 028 §9.5): the strips a terminal block renumber covers, from the scope: every
 /// strip (all, folder, pages; the planner keeps those on the pages), the strips with that tag
-/// prefix, or the strips named in `strips` or `objects` (selection; a terminal ID names its strip).
+/// prefix, or the strips named in `strips` or `objects` (selection; a terminal block ID names its strip).
 ///
 /// # Errors
-/// A named strip that is not a terminal strip or one of its terminals.
+/// A named strip that is not a terminal strip or one of its terminal blocks.
 pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSet<DeviceId>, CmdError> {
     let all = || doc.devices.keys().copied().filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some());
     Ok(match scope {
@@ -166,7 +168,7 @@ pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSe
                     None => Some(DeviceId(n)),
                 };
                 let Some(c) = c.filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some()) else {
-                    return Err(CmdError::refused(format!("{t} in `strips` is not a terminal strip or one of its terminals.")));
+                    return Err(CmdError::refused(format!("{t} in `strips` is not a terminal strip or one of its terminal blocks.")));
                 };
                 out.insert(c);
             }
@@ -181,7 +183,7 @@ pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSe
 ///
 /// # Errors
 /// As [`kinds`], [`scope`] and [`strips`]; digits that are not a small whole number.
-pub fn request(doc: &Document, input: &RenumberInput, max_named: usize) -> Result<Request, CmdError> {
+pub(crate) fn request(doc: &Document, input: &RenumberInput, max_named: usize) -> Result<Request, CmdError> {
     let kinds = kinds(input.kind.as_deref())?;
     let scope = scope(doc, input, max_named)?;
     let digits = match input.digits {
@@ -214,14 +216,14 @@ pub fn finalise_request() -> Request {
 // ---------------------------------------------------------------- words, choices and provisional items (brief 074: from the engine)
 
 /// Most rows a JSON preview lists (`more` counts the rest).
-pub const MAX_PREVIEW_ROWS: usize = 2_000;
+pub(crate) const MAX_PREVIEW_ROWS: usize = 2_000;
 
-pub fn kind_label(kinds: &BTreeSet<Kind>) -> &'static str {
+pub(crate) fn kind_label(kinds: &BTreeSet<Kind>) -> &'static str {
     match kinds.iter().collect::<Vec<_>>().as_slice() {
         [Kind::Devices] => "Renumber devices",
         [Kind::Cables] => "Renumber cables",
         [Kind::Wires] => "Renumber wires",
-        [Kind::TerminalBlocks] => "Renumber terminals",
+        [Kind::TerminalBlocks] => "Renumber terminal blocks",
         _ => "Renumber",
     }
 }
@@ -251,7 +253,7 @@ pub fn applied_words(plan: &Plan, finalise: bool) -> String {
     format!("{verb} {what}{kept}. U undoes it.")
 }
 
-pub fn row_json(doc: &Document, r: &numbering::Row) -> Value {
+pub(crate) fn row_json(doc: &Document, r: &numbering::Row) -> Value {
     json!({
         "desc": desc(doc, r.object),
         "page": r.page.map(|p| p.hex()),
@@ -319,7 +321,7 @@ pub fn preview_json(doc: &Document, plan: &Plan, change_count: u64) -> Value {
 }
 
 /// `42 to change · 3 fixed · 7 same · 1 skipped`.
-pub fn summary_line(plan: &Plan) -> String {
+pub(crate) fn summary_line(plan: &Plan) -> String {
     format!("{} to change · {} fixed · {} same · {} skipped", plan.changes(), plan.fixed(), plan.same(), plan.skipped())
 }
 
@@ -338,7 +340,7 @@ pub struct Choices {
 pub fn choices(doc: &Document) -> Choices {
     let mut prefixes: BTreeSet<String> = BTreeSet::new();
     for k in doc.tagged().map(|(k, _)| k).chain(doc.tagged_cables().map(|(k, _)| k)) {
-        if let Some(p) = tag::prefix_of(k) {
+        if let Some(p) = tag::prefix_of(&k.text) {
             prefixes.insert(p);
         }
     }
@@ -411,15 +413,21 @@ impl Provisional {
 /// The provisional items of `doc` (read when a revision is issued: a walk over the tag index and
 /// the nets).
 pub fn provisional_items(doc: &Document) -> Provisional {
-    let mut tags: Vec<String> = doc
+    // The provisional keys are their own part of the index: no scan of the real tags.
+    let mut held: Vec<(Option<(String, u64)>, String)> = doc
         .tagged()
-        .filter_map(|(_, c)| crate::devices::tags::tag_of(doc, c).filter(|t| tag::is_provisional(t)).map(str::to_string))
+        .filter(|(k, _)| k.provisional)
+        .filter_map(|(_, c)| doc.devices.get(&c))
+        .map(|d| (d.tag().and_then(tag::parse), d.tag_shown().unwrap_or_default()))
         .chain(
             doc.tagged_cables()
-                .filter_map(|(_, k)| crate::devices::tags::cable_tag_of(doc, k).filter(|t| tag::is_provisional(t)).map(str::to_string)),
+                .filter(|(k, _)| k.provisional)
+                .filter_map(|(_, k)| doc.cables.get(&k))
+                .map(|c| (c.tag().and_then(tag::parse), c.tag_shown().unwrap_or_default())),
         )
         .collect();
-    tags.sort_by_key(|t| tag::provisional(t));
+    held.sort();
+    let tags: Vec<String> = held.into_iter().map(|(_, shown)| shown).collect();
     let mut by: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     let mut nets = 0;
     // Unnumbered nets are provisional only with provisional tags on; otherwise they are 022's
@@ -481,7 +489,7 @@ pub fn way_before_issue(doc: &Document, way: Option<&str>) -> Result<Option<Opti
 // The commands (generic: crate::commands::run)
 
 /// The refusal of an Apply whose preview the project has moved past.
-pub const STALE: &str = "The project changed since the preview; check the new list and Apply again.";
+pub(crate) const STALE: &str = "The project changed since the preview; check the new list and Apply again.";
 
 /// `scope` as an object: `{prefix}`, `{folder: id}` or `{pages: [id]}`.
 #[derive(Deserialize, JsonSchema)]
@@ -512,10 +520,10 @@ pub enum ScopeParam {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RenumberParams {
-    /// What to renumber: devices, cables, wires, terminals or all (default devices).
+    /// What to renumber: devices, cables, wires, terminal blocks or all (default devices).
     #[serde(default)]
     kind: Option<String>,
-    /// Terminals with scope "selection": the strips (or terminals of them), as hex ids.
+    /// Terminal blocks with scope "selection": the strips (or terminal blocks of them), as hex ids.
     #[serde(default, deserialize_with = "nullable")]
     strips: Option<Option<Vec<String>>>,
     /// "all", "selection", "provisional", {prefix}, {folder: id} or {pages: [id]}.
@@ -593,7 +601,7 @@ fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Re
     let plan = plan_for(cx.ledger, cx.tag_high, &req)?;
     let doc = cx.doc;
     let count = cx.change_count;
-    // Brief 030 (FP4, FP7): accessories and links follow their relabelled terminals.
+    // Brief 030 (FP4, FP7): accessories and jumper bars follow their relabelled terminal blocks.
     let (mut acc_ops, mut acc_lines) = crate::terminal_strips::accessories::renumber_ops(doc, &plan.ops);
     // Brief 047 (design 047 §2.3): a strip's part lines keep naming the positions they serve.
     let (for_ops, for_lines) = crate::reports::bom::renumber_for_ops(doc, &plan.ops);
@@ -646,7 +654,7 @@ fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Re
 impl Generic for RenumberParams {
     const ID: &'static str = "renumber";
     const TITLE: &'static str = "Renumber";
-    const HELP: &'static str = "{kind?: \"devices\"|\"cables\"|\"wires\"|\"terminal_blocks\"|\"all\", strips?: [id] (terminals, with scope \"selection\"), scope?: \"all\"|\"selection\"|\"provisional\"|{prefix}|{folder: id}|{pages: [id]}, objects?: [id] (selection), start?: n, digits?: 1..6, digits_for_new?: bool, preview?: bool, based_on?: change count} (drawing order; fixed tags kept; one transaction)";
+    const HELP: &'static str = "{kind?: \"devices\"|\"cables\"|\"wires\"|\"terminal_blocks\"|\"all\", strips?: [id] (terminal blocks, with scope \"selection\"), scope?: \"all\"|\"selection\"|\"provisional\"|{prefix}|{folder: id}|{pages: [id]}, objects?: [id] (selection), start?: n, digits?: 1..6, digits_for_new?: bool, preview?: bool, based_on?: change count} (drawing order; fixed tags kept; one transaction)";
     const PAGES: Pages = Pages::ReadAnywhere;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {

@@ -310,7 +310,7 @@ fn join_and(v: &[String]) -> String {
 /// target's stays, so its mark is never lowered, and the merge's own tag ops raise it to every
 /// tag brought in (reviewer 026, 4: no conflict row for them either).
 fn keeps(update: bool) -> impl Fn(&str) -> bool {
-    move |k: &str| !k.starts_with(ecad_model::naming::tag::HIGH_RESET_PREFIX) && (update || !k.starts_with("rev."))
+    move |k: &str| ecad_model::naming::keys::NUMBERING_HIGH.parse(k).is_none() && (update || !k.starts_with("rev."))
 }
 
 /// Plan the prepared merge with `choices` (nothing is written). The plan's ops are then tried

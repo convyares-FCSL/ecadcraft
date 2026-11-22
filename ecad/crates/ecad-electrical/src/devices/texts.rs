@@ -316,13 +316,13 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         // The tag block (design 031 §6.1): the tag, then the description and part number.
         let Some((lo, hi)) = placed_box(def, &pl) else { continue };
         // Brief 026: a provisional tag is drawn in `ecad.provisional`.
-        let prov = tag_of(doc, c).is_some_and(tag::is_provisional);
+        let prov = doc.devices.get(&c).is_some_and(ecad_model::Device::is_provisional);
         let mut lines: Vec<(TextOf, String, f64, bool, Option<u8>)> = Vec::new();
         // Brief 044 (design 044 §5.2): a connector symbol shows its half's tag and fields.
         let half = crate::connectors::rep_side(doc, r);
         let tag_text = match half {
             Some(side) => Some(crate::connectors::half_tag(doc, c, side)),
-            None => tag_of(doc, c).map(str::to_string),
+            None => crate::devices::tags::tag_shown_of(doc, c),
         };
         if let Some(t) = tag_text.map(|t| crate::locations::shown_tag(doc, c, r, &t, &mut boxes)) {
             lines.push((TextOf::Tag, t, height_of(c, TextKind::Tag, sizes.tag), shown(TextKind::Tag), prov.then_some(PROVISIONAL_ACI)));
@@ -414,8 +414,8 @@ fn slot_texts(
     for (i, slot) in def.texts.iter().enumerate().take(usize::from(u8::MAX)) {
         let (of, kind, value, aci) = match &slot.text {
             SlotText::Tag => {
-                let t = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, boxes));
-                let prov = tag_of(doc, c).is_some_and(tag::is_provisional);
+                let t = crate::devices::tags::tag_shown_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, &t, boxes));
+                let prov = doc.devices.get(&c).is_some_and(ecad_model::Device::is_provisional);
                 (TextOf::Tag, TextKind::Tag, t, prov.then_some(PROVISIONAL_ACI))
             }
             SlotText::Description => (TextOf::Description, TextKind::Description, prop("description"), None),

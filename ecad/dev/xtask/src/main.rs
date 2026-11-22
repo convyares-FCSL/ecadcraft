@@ -128,7 +128,7 @@ const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "fault-injection", "
 /// needs it fails `layers`, and a new place is a violation.
 const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
     ("crates/ecad-engine/src/access.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-engine/src/properties/forms.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-engine/src/properties/forms/mod.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-engine/src/lib.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-engine/src/project/changes.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-engine/src/project/owner.rs", "dev tree, part 2 (after 026, 027, 028)"),
@@ -589,7 +589,7 @@ const DRAWN_TEXT_EXEMPT: &[&str] = &[
     "ecad-electrical/src/symbols",
     "ecad-engine/src/interact.rs",
     "ecad-engine/src/pointer/",
-    "ecad-engine/src/properties/forms.rs",
+    "ecad-engine/src/properties/forms/",
     "ecad-engine/src/connectors/interact.rs",
     "ecad-engine/src/continuations/interact.rs",
     "ecad-engine/src/devices/interact.rs",

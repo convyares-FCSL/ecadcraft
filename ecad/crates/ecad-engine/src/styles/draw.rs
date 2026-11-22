@@ -9,7 +9,7 @@ use ecad_electrical::styles::text_style::fonts::{self, TextMetrics};
 use ecad_electrical::styles::text_style::*;
 
 /// Write the two CADCraft text styles of `family` into `d` (an object's own text style's font).
-pub fn install_family(d: &mut cadcraft_engine::doc::Drawing, doc: &Document, family: &str) {
+pub(crate) fn install_family(d: &mut cadcraft_engine::doc::Drawing, doc: &Document, family: &str) {
     let f = Fonts::for_family(doc, family.to_string());
     put_style(d, &family_style_name(family, Weight::Regular), &f.regular);
     put_style(d, &family_style_name(family, Weight::Bold), &f.bold);
@@ -120,7 +120,7 @@ pub fn install(d: &mut cadcraft_engine::doc::Drawing, doc: &Document) {
 }
 
 /// [`install`] with the look already resolved.
-pub fn install_draw(d: &mut cadcraft_engine::doc::Drawing, draw: &fonts::DrawStyles) {
+pub(crate) fn install_draw(d: &mut cadcraft_engine::doc::Drawing, draw: &fonts::DrawStyles) {
     install_fonts(d, &draw.fonts);
     for (kind, fonts) in TextKind::ALL.iter().zip(draw.kind_fonts.iter()) {
         if let Some(f) = fonts {
@@ -131,7 +131,7 @@ pub fn install_draw(d: &mut cadcraft_engine::doc::Drawing, draw: &fonts::DrawSty
 }
 
 /// Write `Standard` and `ECAD-BOLD` with `fonts` into `d`.
-pub fn install_fonts(d: &mut cadcraft_engine::doc::Drawing, f: &fonts::Fonts) {
+pub(crate) fn install_fonts(d: &mut cadcraft_engine::doc::Drawing, f: &fonts::Fonts) {
     put_style(d, STYLE_REGULAR, &f.regular);
     put_style(d, STYLE_BOLD, &f.bold);
 }
@@ -172,7 +172,7 @@ impl DrawStyles {
 }
 
 /// Styling a derived text entity from a page's resolved look.
-pub trait DrawApply {
+pub(crate) trait DrawApply {
     /// Give a text entity `kind`'s style name (the project font or the kind's own) and, for bold
     /// in the stroke font, its lineweight (§2.2), as [`apply`] does from a page's resolved look.
     /// Its height is left as it is (derived texts set their own).
@@ -211,10 +211,10 @@ pub fn width_in(f: &fonts::Fonts, s: TextStyle, value: &str) -> f64 {
 pub const HIDDEN_LAYER: &str = "ECAD-HIDDEN-TEXT";
 
 /// `ecad.hidden-text`: ACI 8.
-pub const HIDDEN_ACI: u8 = 8;
+pub(crate) const HIDDEN_ACI: u8 = 8;
 
 /// Add [`HIDDEN_LAYER`] to `d` when it is missing (not plotted).
-pub fn add_hidden_layer(d: &mut cadcraft_engine::doc::Drawing) {
+pub(crate) fn add_hidden_layer(d: &mut cadcraft_engine::doc::Drawing) {
     if d.layer(HIDDEN_LAYER).is_none() {
         let mut l = cadcraft_engine::doc::Layer::new(HIDDEN_LAYER);
         l.plot = false;
@@ -224,7 +224,7 @@ pub fn add_hidden_layer(d: &mut cadcraft_engine::doc::Drawing) {
 }
 
 /// Draw a derived text entity as a hidden one: on [`HIDDEN_LAYER`], in `ecad.hidden-text`.
-pub fn dim_hidden(e: &mut cadcraft_engine::doc::Entity) {
+pub(crate) fn dim_hidden(e: &mut cadcraft_engine::doc::Entity) {
     e.common.layer = HIDDEN_LAYER.to_string();
     e.common.color = cadcraft_engine::doc::color::Color::Index(HIDDEN_ACI);
 }

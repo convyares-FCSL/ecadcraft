@@ -8,10 +8,7 @@
 use ecad_engine::Persistence;
 use serde_json::{Value, json};
 use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
-use {
-    ecad_model::CableId, ecad_model::ConnectionPointId, ecad_model::DeviceId, ecad_model::Document, ecad_model::PageId, ecad_model::WireId,
-    ecad_model::naming::tag,
-};
+use {ecad_model::CableId, ecad_model::ConnectionPointId, ecad_model::DeviceId, ecad_model::Document, ecad_model::PageId, ecad_model::WireId};
 
 use crate::common::{H, id};
 use crate::common::{place, reopen, tmp_dir};
@@ -225,13 +222,13 @@ fn terminal_block_renumber_with_fixed_and_provisional_strip_tags() {
     t.h.run("renumber", json!({"kind": "terminal_blocks"})).unwrap();
     assert_eq!(t.h.head(), head, "a renumber that changes nothing records nothing");
     // Fixed strip tag.
-    t.h.run("setprop", json!({"component": x1.hex(), "key": "tag_fixed", "value": "yes"})).unwrap();
+    crate::common::set_tag_state(&mut t.h, &x1.hex(), "fixed").unwrap();
     t.h.run("renumber", json!({"kind": "terminal_blocks", "start": 21})).unwrap();
     assert_eq!(labels(&mut t.h, &a), ["21", "22", "23", "24"]);
     assert_eq!(labels(&mut t.h, &b), ["21", "22", "23", "24"]);
     let d = t.h.doc();
     assert_eq!(d.devices[&x1].tag(), Some("-X01"));
-    assert!(d.devices[&x1].tag_fixed);
+    assert!(d.devices[&x1].is_fixed());
     // One strip by selection; the other keeps its labels.
     t.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "selection", "strips": [x2.hex()]})).unwrap();
     assert_eq!(labels(&mut t.h, &a), ["21", "22", "23", "24"]);
@@ -256,21 +253,21 @@ fn provisional_strip_tags_from_place_terminal_blocks_and_finalise() {
     // Control: Place on a wire makes a provisional strip.
     let v = place(&mut t.h, "terminal_block", (100.0, 190.0));
     let p_tag = v["tag"].as_str().unwrap_or_default().to_string();
-    assert!(tag::is_provisional(&p_tag), "Place terminal on a wire in provisional mode: {v}");
+    assert!(p_tag.contains('?'), "Place terminal on a wire in provisional mode: {v}");
     for x in [320.0, 330.0, 340.0] {
         t.h.wire_pp(&[(x, 270.0), (x, 160.0)]).unwrap();
     }
     let v = t.h.run("terminalblocks", json!({"from": [310, 200], "to": [350, 200]})).unwrap();
     let x3: DeviceId = id(&v, "strip");
     let c: Vec<ConnectionPointId> = v["connection_points"].as_array().unwrap().iter().map(|x| id(x, "connection_point")).collect();
-    let tag3 = t.h.doc().devices[&x3].tag().map(str::to_string).unwrap_or_default();
-    assert!(tag::is_provisional(&tag3), "a strip placed in provisional mode: {tag3}");
+    let tag3 = t.h.doc().devices[&x3].tag_shown().unwrap_or_default();
+    assert!(t.h.doc().devices[&x3].is_provisional(), "a strip placed in provisional mode: {tag3}");
     t.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "selection", "strips": [c[0].hex()], "start": 5})).unwrap();
     assert_eq!(labels(&mut t.h, &c), ["5", "6", "7"]);
     t.h.run("finalise", json!({})).unwrap();
     assert_eq!(labels(&mut t.h, &c), ["5", "6", "7"], "Finalise does not touch terminal labels");
-    let tag3 = t.h.doc().devices[&x3].tag().map(str::to_string).unwrap_or_default();
-    assert!(!tag::is_provisional(&tag3), "{tag3}");
+    let tag3 = t.h.doc().devices[&x3].tag_shown().unwrap_or_default();
+    assert!(!t.h.doc().devices[&x3].is_provisional(), "{tag3}");
     // Undo the finalise and the renumber, redo both.
     t.h.cmdline("u");
     t.h.cmdline("u");

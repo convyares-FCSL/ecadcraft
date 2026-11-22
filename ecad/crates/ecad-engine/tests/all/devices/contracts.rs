@@ -190,7 +190,7 @@ fn c_renaming_the_tag_updates_every_symbol_in_one_undoable_transaction() {
     let ops = last_ops(&mut f.h);
     // Brief 026: typing a tag fixes it, in the same transaction (one ModifyDevice, design 072).
     assert!(
-        matches!(ops.as_slice(), [Op::ModifyDevice { before, after, .. }] if before.tag() == Some("-K01") && after.tag() == Some("-K05") && after.tag_fixed),
+        matches!(ops.as_slice(), [Op::ModifyDevice { before, after, .. }] if before.tag() == Some("-K01") && after.tag() == Some("-K05") && after.is_fixed()),
         "{ops:?}"
     );
     assert_eq!(f.h.p(|p| p.ledger.log().last().unwrap().label.clone()), "Set tag");
@@ -649,7 +649,7 @@ fn a_tag_deleted_before_the_snapshot_is_not_given_again_after_reopening() {
     assert_eq!(h2.p(|p| ecad_engine::devices::draw::next_tag_preview(p, coil)).as_deref(), Some("-K06"));
     let placed = place(&mut h2, "coil", [400.0, 0.0]);
     let c: DeviceId = id(&placed, "component");
-    let tag = h2.p(|p| p.ledger.document().devices[&c].tag().map(str::to_string));
+    let tag = h2.p(|p| p.ledger.document().devices[&c].tag_shown());
     assert_eq!(tag.as_deref(), Some("-K06"));
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);

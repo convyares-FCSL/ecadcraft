@@ -17,7 +17,7 @@ use crate::defaults::{Kind, Slot, Value};
 use crate::styles::{Builtin, Catalogue, Field};
 
 /// A font field's value meaning "the project font" (`text.font`).
-pub const PROJECT_FONT: &str = "project";
+pub(crate) const PROJECT_FONT: &str = "project";
 
 static FIELDS: [Field; 4] = [
     Field { key: "font", label: "Font", kind: Kind::Text { max_chars: 64 }, slot: Slot::new(), over: None },

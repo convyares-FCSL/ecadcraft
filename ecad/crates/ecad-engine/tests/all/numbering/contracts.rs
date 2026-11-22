@@ -59,7 +59,7 @@ fn fixture() -> N {
     h.activate(p2);
     let (b, d, e) = (cell(&mut h, p2, 1, 1), cell(&mut h, p2, 3, 1), cell(&mut h, p2, 4, 2));
     let k03 = coil(&mut h, b, Some("-K03"));
-    h.run("setprop", json!({"component": k03.hex(), "key": "tag_fixed", "value": "yes"})).unwrap();
+    crate::common::set_tag_state(&mut h, &k03.hex(), "fixed").unwrap();
     let k02 = coil(&mut h, d, Some("-K02"));
     let q01: DeviceId = id(&h.run("place", json!({"symbol": "mcb1", "at": e, "tag": "-Q01"})).unwrap(), "component");
     h.activate(p1);
@@ -162,7 +162,7 @@ fn h_save_and_reopen_keep_tags_fixed_flags_the_setting_and_the_high_water_mark()
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.doc(), live);
     assert!(ecad_model::naming::numbering::provisional_on(&h2.doc()));
-    assert!(h2.doc().devices[&f.k03].tag_fixed);
+    assert!(h2.doc().devices[&f.k03].is_fixed());
     // The reset mark survives: the next real tag follows the renumbered set.
     h2.run("numbering", json!({"provisional": false})).unwrap();
     let page = h2.first_page();
@@ -199,7 +199,7 @@ fn l_hostile_requests_are_refused_without_writing() {
         assert_eq!(tag(&mut f.h, k), format!("-K?{i}"));
     }
     assert!(f.h.run("setprop", json!({"component": f.k07.hex(), "key": "tag", "value": "-K?"})).is_ok());
-    let e = f.h.run("setprop", json!({"component": f.k07.hex(), "key": "tag_fixed", "value": "yes"})).unwrap_err();
+    let e = crate::common::set_tag_state(&mut f.h, &f.k07.hex(), "fixed").unwrap_err();
     assert!(e.contains("provisional"), "{e}");
     f.h.check();
 }

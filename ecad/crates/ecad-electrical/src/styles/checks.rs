@@ -73,7 +73,9 @@ fn catalogue_of(key: &str) -> Option<ecad_model::StyleCatalogue> {
         "location.style" => Some(ecad_model::StyleCatalogue::Location),
         crate::styles::cable::CABLE_TYPE => Some(ecad_model::StyleCatalogue::Cable),
         "print.frame.style" => Some(ecad_model::StyleCatalogue::Frame),
-        k if k.starts_with("text.") && k.ends_with(".style") => Some(ecad_model::StyleCatalogue::Text),
+        k if ecad_model::naming::keys::in_area(k, ecad_model::naming::keys::Area::Text) && k.ends_with(".style") => {
+            Some(ecad_model::StyleCatalogue::Text)
+        }
         _ => None,
     }
 }
@@ -97,7 +99,7 @@ fn words(doc: &Document, key: &str, value: &str, whose: &str) -> String {
 }
 
 /// The style rows as a [`crate::checks::CheckSource`] (brief 060): kept on pages with checks off.
-pub struct StyleRows;
+pub(crate) struct StyleRows;
 
 impl crate::checks::CheckSource for StyleRows {
     fn key(&self) -> crate::checks::Key {

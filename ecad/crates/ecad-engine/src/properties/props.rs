@@ -44,7 +44,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r) | Mapped::DeviceReference(r)) => Some(r),
             // Lane 072 D: a T's dot stands for the line that ends there.
             Some(Mapped::Tee(r)) => ecad_electrical::wires::routes::route_item(doc, r).map(|(rid, _, _)| rid),
-            // Brief 030: a link line shows its strip (Properties ▸ Link).
+            // Brief 030: a jumper bar shows its strip (Properties ▸ Jumper bar).
             Some(Mapped::JumperBar(c, n)) => {
                 out.jumper_bars.insert((c, n));
                 None

@@ -37,7 +37,7 @@ use crate::document::op::{ObjectRef, Op};
 use crate::document::sheet::Grid;
 use crate::geometry::geom::Pt;
 use crate::naming::id::{CableId, ConnectionPointId, DeviceId, FolderId, PageId, WireId};
-use crate::naming::tag::{self, FIXED_KEY, HIGH_RESET_PREFIX, HighWater, TAG_KEY};
+use crate::naming::tag::{self, HighWater};
 
 /// The kind of item a row numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -409,19 +409,12 @@ pub fn provisional_on(doc: &Document) -> bool {
     doc.display.flag(crate::naming::keys::NUMBERING_PROVISIONAL) == Some(true)
 }
 
-/// The next provisional tag of `prefix` (`-K?3`): the highest provisional number of that prefix
-/// in use + 1, through a range of the tag indexes (devices and cables).
+/// The stored text of the next provisional tag of `prefix` (`-K3`, shown `-K?3`): the highest
+/// provisional number of that prefix in use + 1, through a range of the tag indexes (devices and
+/// cables).
 pub fn next_provisional(doc: &Document, prefix: &str) -> String {
     let p = prefix.trim_start_matches('-').to_ascii_uppercase();
-    let lo = format!("{p}?");
-    let mut top = 0;
-    for k in doc.tag_keys_starting(&lo) {
-        if let Some(rest) = k.strip_prefix(&lo)
-            && let Ok(n) = rest.parse::<u64>()
-        {
-            top = top.max(n);
-        }
-    }
+    let top = doc.provisional_keys(&p).filter_map(tag::parse).filter(|(q, _)| *q == p).map(|(_, n)| n).max().unwrap_or(0);
     tag::Style::of(doc).provisional(&p, top.saturating_add(1))
 }
 
@@ -431,14 +424,21 @@ pub fn highest_in_use(doc: &Document, prefix: &str) -> u64 {
     doc.tag_keys_starting(&p).filter_map(tag::parse).filter(|(q, _)| *q == p).map(|(_, n)| n).max().unwrap_or(0)
 }
 
+impl Tagged {
+    /// Its tag as drawn.
+    fn shown(&self) -> Option<String> {
+        self.tag.as_deref().map(|t| tag::shown(t, self.state))
+    }
+}
+
 /// One tagged item (device or cable).
 struct Tagged {
     object: ObjectRef,
     kind: Kind,
+    /// The stored (bare) tag text.
     tag: Option<String>,
+    state: tag::TagState,
     fixed: bool,
-    /// A flag left on a provisional tag (it does not count): dropped when the tag is numbered.
-    stale_flag: Option<String>,
     anchor: Option<(PageId, Pt, Order)>,
     id: u128,
 }
@@ -550,8 +550,8 @@ fn plan_tags(
             object: ObjectRef::Device(*id),
             kind: Kind::Devices,
             tag,
+            state: c.tag.state().unwrap_or_default(),
             fixed: c.is_fixed(),
-            stale_flag: (c.tag_fixed && !c.is_fixed()).then(|| crate::naming::words::flag_word(true).to_string()),
             anchor: None,
             id: id.0,
         });
@@ -563,8 +563,8 @@ fn plan_tags(
             object: ObjectRef::Cable(k),
             kind: Kind::Cables,
             tag,
+            state: c.tag.state().unwrap_or_default(),
             fixed: c.is_fixed(),
-            stale_flag: (c.tag_fixed && !c.is_fixed()).then(|| crate::naming::words::flag_word(true).to_string()),
             anchor: None,
             id: k.0,
         });
@@ -578,8 +578,8 @@ fn plan_tags(
     for (i, it) in items.iter_mut().enumerate() {
         let wanted_kind = req.kinds.contains(&it.kind);
         let parsed = it.tag.as_deref().and_then(tag::parse);
-        let prov = it.tag.as_deref().and_then(tag::provisional).filter(|(_, n)| *n > 0);
-        let prefix = parsed.as_ref().or(prov.as_ref()).map(|(p, _)| p.clone());
+        let provisional = it.state.is_provisional() && parsed.is_some();
+        let prefix = parsed.as_ref().map(|(p, _)| p.clone());
         // Scope needs the anchor only for folder and page scopes; the row needs it to sort.
         let in_scope = wanted_kind && {
             match &req.scope {
@@ -599,15 +599,16 @@ fn plan_tags(
                     it.anchor = places.anchor(subject, if it.kind == Kind::Devices { rank } else { &|_| 0 });
                     it.anchor.as_ref().is_some_and(|(pg, _, _)| pages.is_some_and(|s| s.contains(pg)))
                 }
-                Scope::Provisional => prov.is_some(),
+                Scope::Provisional => provisional,
             }
         };
-        let numbered = in_scope && !it.fixed && (parsed.is_some() || prov.is_some());
+        let numbered = in_scope && !it.fixed && parsed.is_some();
         if numbered {
             if let Some(p) = &prefix {
                 chosen.push((i, p.clone()));
             }
-        } else if let Some((p, n)) = &parsed {
+        } else if let (Some((p, n)), false) = (&parsed, provisional) {
+            // A provisional number is a placeholder, not a number used.
             taken.entry(p.clone()).or_default().insert(*n);
         }
         if in_scope && it.anchor.is_none() {
@@ -619,7 +620,7 @@ fn plan_tags(
             it.anchor = places.anchor(subject, if it.kind == Kind::Devices { rank } else { &|_| 0 });
         }
         if in_scope && !numbered {
-            let old = it.tag.clone().unwrap_or_else(|| "(no tag)".into());
+            let old = it.shown().unwrap_or_else(|| "(no tag)".into());
             let mark = if it.tag.is_none() {
                 Mark::Skipped(NO_TAG)
             } else if it.fixed {
@@ -662,7 +663,7 @@ fn plan_tags(
                 tries += 1;
             }
             let it = &items[*i];
-            let old = it.tag.clone().unwrap_or_default();
+            let old = it.shown().unwrap_or_default();
             if next > tag::MAX_TAG_NUMBER {
                 rows.push(row_of(places, it, old.clone(), old, Mark::Skipped("no number left")));
                 continue;
@@ -676,33 +677,22 @@ fn plan_tags(
             let new = tag::format(letters, next, tag::Style { padding: digits, ..style });
             top = top.max(next);
             next = next.saturating_add(1);
-            if new == old {
+            // Numbering gives an automatic tag: a provisional one becomes real, also at the same text.
+            if new == old && !it.state.is_provisional() {
                 rows.push(row_of(places, it, old.clone(), new, Mark::Same));
             } else {
                 changed_prefixes.insert(p.clone());
-                let before = it.tag.clone();
                 match it.object {
                     ObjectRef::Device(c) => {
                         if let Some(d) = doc.devices.get(&c) {
-                            let after = crate::Device { tag_fixed: d.tag_fixed && it.stale_flag.is_none(), ..d.with_tag(Some(&new)) };
+                            let after = d.with_tag(Some(&new), tag::TagState::Automatic);
                             ops.push(Op::ModifyDevice { id: c, before: d.clone(), after });
                         }
                     }
                     ObjectRef::Cable(k) => {
-                        let stale = it.stale_flag.is_some();
-                        Op::edit_cable(doc, ops, k, |c| {
-                            let _ = c.set_value(TAG_KEY, Some(&new));
-                            if stale {
-                                c.tag_fixed = false;
-                            }
-                        });
+                        Op::edit_cable(doc, ops, k, |c| c.tag = tag::TagSlot::of_text(Some(&new), tag::TagState::Automatic));
                     }
-                    object => {
-                        ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before, after: Some(new.clone()) });
-                        if let Some(f) = &it.stale_flag {
-                            ops.push(Op::SetProperty { object, key: FIXED_KEY.into(), before: Some(f.clone()), after: None });
-                        }
-                    }
+                    ObjectRef::Wire(_) | ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => {}
                 }
                 rows.push(row_of(places, it, old, new, Mark::Change));
             }
@@ -712,7 +702,9 @@ fn plan_tags(
     // FP4: the mark of each prefix whose tags changed is the highest number now in use.
     for p in changed_prefixes {
         let n = in_use_after.get(&p).copied().unwrap_or(0);
-        let key = format!("{HIGH_RESET_PREFIX}{p}");
+        let Some(key) = crate::naming::keys::NUMBERING_HIGH.build(&[p.as_str()]) else {
+            continue;
+        };
         let before = doc.display.get(&key).cloned();
         // Always written, also when the number is the stored one (tester 026, 6): the reset
         // carries the mark it replaces and a newer generation (`tag::reset_value`).
@@ -985,8 +977,13 @@ mod tests {
         }
         let style = Style { layer: LayerId(1), color: crate::document::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         for (id, t, page, x, y, fixed) in devs {
-            let mut c = Device::default().with_tag(Some(t));
-            c.tag_fixed = *fixed;
+            // A test tag typed `-K?3` is provisional, stored bare.
+            let (text, state) = match t.split_once('?') {
+                Some((a, b)) => (format!("{a}{b}"), tag::TagState::Provisional),
+                None if *fixed => (t.to_string(), tag::TagState::Fixed),
+                None => (t.to_string(), tag::TagState::Automatic),
+            };
+            let c = Device::default().with_tag(Some(&text), state);
             d.devices.insert(DeviceId(*id), c);
             let item = ItemId(5000 + id);
             let pg = d.page_order[*page];
@@ -1060,7 +1057,10 @@ mod tests {
             matches!(p.ops.last(), Some(Op::SetProperty { object: ObjectRef::Project, key, after: Some(v), .. }) if key == "numbering.high.K" && v.starts_with("4;"))
         );
         let mut high = HighWater::new();
-        tag::note_ops(&mut high, &[Op::SetProperty { object: ObjectRef::Project, key: TAG_KEY.into(), before: None, after: Some("-K07".into()) }]);
+        tag::note_ops(
+            &mut high,
+            &[Op::SetProperty { object: ObjectRef::Project, key: tag::TAG_KEY.into(), before: None, after: Some("-K07".into()) }],
+        );
         tag::note_ops(&mut high, &p.ops);
         assert_eq!(high.get("K"), Some(&4));
     }
@@ -1096,8 +1096,25 @@ mod tests {
         assert_eq!((t[&2].as_str(), t[&1].as_str(), t[&3].as_str(), t[&4].as_str()), ("-K07", "-K08", "-K04", "-K1A"));
         let p = plan(&d, &req(Scope::All), &HighWater::new()).unwrap();
         assert!(p.rows.iter().any(|r| r.mark == Mark::Skipped(NOT_USUAL) && r.old == "-K1A"));
-        assert_eq!(next_provisional(&d, "K"), "-K?3");
-        assert_eq!(next_provisional(&d, "W"), "-W?1");
+        assert_eq!(next_provisional(&d, "K"), "-K3");
+        assert_eq!(next_provisional(&d, "W"), "-W1");
+    }
+
+    /// S6 (#3): Finalise gives a provisional tag a real number and the state automatic; a fixed one
+    /// is left as it is.
+    #[test]
+    fn finalise_turns_a_provisional_tag_into_an_automatic_one() {
+        let mut d = fixture(&[(1, "-K?3", 0, 50.0, 200.0, false), (2, "-K05", 0, 150.0, 200.0, true)]);
+        d.rebuild_index();
+        assert!(d.devices[&DeviceId(1)].is_provisional());
+        let p = plan(&d, &req(Scope::Provisional), &HighWater::new()).unwrap();
+        for op in &p.ops {
+            op.apply(&mut d).unwrap();
+        }
+        let (one, two) = (&d.devices[&DeviceId(1)], &d.devices[&DeviceId(2)]);
+        assert_eq!(one.tag.state(), Some(tag::TagState::Automatic), "{one:?}");
+        assert!(!one.tag().unwrap().contains('?') && one.tag().unwrap() != "-K3", "numbered after the used -K05: {:?}", one.tag());
+        assert_eq!((two.tag(), two.tag.state()), (Some("-K05"), Some(tag::TagState::Fixed)));
     }
 
     #[test]

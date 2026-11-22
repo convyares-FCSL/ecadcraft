@@ -34,8 +34,10 @@ pub fn device(doc: &Document, device: Option<&str>) -> Result<Option<DeviceId>, 
     {
         return Ok(Some(DeviceId::from(n)));
     }
-    let tag = ecad_model::naming::tag::normalise(t, crate::defaults::print::tag_style(doc))?;
-    crate::devices::tags::holder_of(doc, &tag, None).map(Some).ok_or_else(|| CmdError::refused(format!("No device {tag}.")))
+    let ecad_model::naming::tag::Entry::Tag(tag) = ecad_model::naming::tag::enter(t, crate::defaults::print::tag_style(doc))? else {
+        return Err(CmdError::refused(format!("No device {t}.")));
+    };
+    crate::devices::tags::holder_of(doc, &tag.key(), None).map(Some).ok_or_else(|| CmdError::refused(format!("No device {}.", tag.shown())))
 }
 
 /// The page `page` names, else `active`.

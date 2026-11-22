@@ -115,7 +115,7 @@ impl Default for WiresSource {
 impl WiresSource {
     /// Whether row `k`'s number is provisional.
     pub fn provisional(&self, k: usize) -> bool {
-        ecad_model::naming::tag::is_provisional(&self.rows.text(k, "Wire number"))
+        ecad_model::naming::tag::provisional(&self.rows.text(k, "Wire number")).is_some_and(|(_, n)| n > 0)
     }
 
     /// Brief 057: row `k`'s rating result.

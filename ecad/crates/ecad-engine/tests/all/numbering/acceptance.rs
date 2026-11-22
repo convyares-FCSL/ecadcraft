@@ -31,17 +31,17 @@ fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> Result<DeviceId, String> 
 }
 
 fn tag_of(h: &mut H, c: DeviceId) -> Option<String> {
-    h.doc().devices.get(&c).and_then(|x| x.tag().map(str::to_string))
+    h.doc().devices.get(&c).and_then(|x| x.tag_shown())
 }
 
 fn fixed(h: &mut H, c: DeviceId) -> bool {
-    h.doc().devices.get(&c).is_some_and(|x| x.tag_fixed)
+    h.doc().devices.get(&c).is_some_and(|x| x.is_fixed())
 }
 
 /// The tags of the fixed devices among `cs`.
 fn fixed_tags(h: &mut H, cs: &[DeviceId]) -> BTreeMap<DeviceId, Option<String>> {
     let doc = h.doc();
-    cs.iter().filter_map(|c| doc.devices.get(c).filter(|x| x.tag_fixed).map(|x| (*c, x.tag().map(str::to_string)))).collect()
+    cs.iter().filter_map(|c| doc.devices.get(c).filter(|x| x.is_fixed()).map(|x| (*c, x.tag_shown()))).collect()
 }
 
 fn erase_device(h: &mut H, page: PageId, c: DeviceId) {
@@ -194,8 +194,8 @@ fn oracle_run(seed: u64, steps: usize, strict: bool) {
             8 => {
                 if let Some(c) = pick(&mut rng, &live) {
                     let on = !fixed(&mut h, c);
-                    what = format!("tag_fixed {on} on {:?}", tag_of(&mut h, c));
-                    let _ = h.run("setprop", json!({"component": c.hex(), "key": "tag_fixed", "value": if on { json!("yes") } else { Value::Null }}));
+                    what = format!("tag fixed {on} on {:?}", tag_of(&mut h, c));
+                    let _ = crate::common::set_tag_state(&mut h, &c.hex(), if on { "fixed" } else { "automatic" });
                 }
             }
             9 => {
@@ -290,7 +290,7 @@ fn three_and_a_deleted_fourth(seed: u64) -> (H, PageId, DeviceId, DeviceId, Devi
 fn scramble(h: &mut H, a: DeviceId, b: DeviceId) {
     let tb = tag_of(h, b).unwrap();
     h.run("setprop", json!({"component": a.hex(), "key": "tag", "value": tb, "conflict": "swap"})).unwrap();
-    h.run("setprop", json!({"component": a.hex(), "key": "tag_fixed", "value": null})).unwrap();
+    crate::common::set_tag_state(h, &a.hex(), "automatic").unwrap();
 }
 
 /// FP4 and undo: the first renumber writes `numbering.high.K` (no value before). Undoing it gives
@@ -390,7 +390,7 @@ fn renumber_with_a_start_around_fixed_tags_makes_no_duplicate() {
         let at = cell(&mut h, page, col, 1);
         cs.push(coil(&mut h, at, None).unwrap());
     }
-    h.run("setprop", json!({"component": cs[5].hex(), "key": "tag_fixed", "value": "yes"})).unwrap();
+    crate::common::set_tag_state(&mut h, &cs[5].hex(), "fixed").unwrap();
     h.run("setprop", json!({"component": cs[0].hex(), "key": "tag", "value": "-K05", "conflict": "swap"})).unwrap();
     h.run("setprop", json!({"component": cs[2].hex(), "key": "tag", "value": "-K1A"})).unwrap();
     let fixed_tags = fixed_tags(&mut h, &cs);
@@ -431,7 +431,7 @@ fn finalise_follows_the_mark_and_leaves_nothing_provisional() {
         h.run("wire", json!({"points": [[3000, y], [3060, y]], "potential": "24V"})).unwrap();
     }
     let w: CableId = id(&h.run("cableslash", json!({"from": [3020, -3], "to": [3020, 13]})).unwrap(), "cable");
-    let cable_tag = |h: &mut H| h.doc().cables[&w].tag().map(str::to_string);
+    let cable_tag = |h: &mut H| h.doc().cables[&w].tag_shown();
     assert_eq!(cable_tag(&mut h).as_deref(), Some("-W?1"));
     assert!(!provisional_left(&mut h).is_empty());
     let r = h.run("finalise", json!({})).unwrap();
@@ -441,7 +441,7 @@ fn finalise_follows_the_mark_and_leaves_nothing_provisional() {
         let n = tag::parse(t).map(|x| x.1).unwrap_or(0);
         assert!(n >= 5, "{t}: -K04 was held by a deleted device; finalised tags follow the mark ({tags:?})");
     }
-    assert!(cable_tag(&mut h).is_some_and(|t| !tag::is_provisional(&t)));
+    assert!(h.doc().cables.values().next().is_some_and(|c| c.tag().is_some() && !c.is_provisional()));
     assert_unique(&mut h, "after finalise");
     // A second Finalise changes nothing and records nothing.
     let head = h.head();
@@ -601,7 +601,7 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
             .map(|(k, t)| {
                 let before = doc.cables[k].clone();
                 let mut after = before.clone();
-                after.tag = ecad_model::naming::tag::Tag::new(t).ok();
+                after.tag = ecad_model::naming::tag::TagSlot::of_text(Some(t), Default::default());
                 Op::ModifyCable { id: *k, before, after }
             })
             .collect();
@@ -634,7 +634,7 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
     // A new cable continues after every W tag the history held.
     h2.run("wire", json!({"points": [[0, 100], [60, 100]]})).unwrap();
     let k4: CableId = id(&h2.run("cableslash", json!({"from": [20, 97], "to": [20, 103]})).unwrap(), "cable");
-    let t4 = h2.doc().cables[&k4].tag().map(str::to_string).unwrap_or_default();
+    let t4 = h2.doc().cables[&k4].tag_shown().unwrap_or_default();
     assert_eq!(t4, "-W04", "-W01…-W03 were given before the old tags were typed");
     let doc = h2.doc();
     let mut seen = BTreeSet::new();

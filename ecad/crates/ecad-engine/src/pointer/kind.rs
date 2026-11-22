@@ -245,7 +245,7 @@ fn device(p: &Project, page: PageId, mut t: Target, c: DeviceId, rep: Option<Rep
     t.kind = ObjectKind::Device;
     t.component = Some(c);
     t.representation = rep;
-    t.name = ecad_electrical::devices::tags::tag_of(doc, c).map_or_else(|| "component".to_string(), str::to_string);
+    t.name = ecad_electrical::devices::tags::tag_shown_of(doc, c).unwrap_or_else(|| "component".to_string());
     let map = p.pages.get(&page).map(|v| &v.map);
     // The symbol clicked (its outline), so turning or copying acts on that symbol only.
     t.handles = rep
@@ -289,7 +289,7 @@ fn cable(p: &Project, page: PageId, mut t: Target, k: CableId) -> Target {
     let doc = p.ledger.document();
     t.kind = ObjectKind::Cable;
     t.cable = Some(k);
-    t.name = ecad_electrical::devices::tags::cable_tag_of(doc, k).map_or_else(|| "cable".to_string(), str::to_string);
+    t.name = ecad_electrical::devices::tags::cable_tag_shown_of(doc, k).unwrap_or_else(|| "cable".to_string());
     t.handles = crate::checks::handles_of(p, page, ecad_electrical::checks::Object::Cable(k));
     t.others = doc.representations_of(Subject::Cable(k)).filter(|(_, r)| ecad_electrical::references::cables::is_reference(r)).count();
     t

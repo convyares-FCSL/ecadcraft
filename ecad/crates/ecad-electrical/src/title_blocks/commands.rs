@@ -76,7 +76,7 @@ fn name_taken(n: &str) -> CmdError {
 pub struct FrameEdit {
     /// The new name (trimmed); the same name is no rename.
     pub rename: Option<String>,
-    pub fields: Vec<(String, FieldInput)>,
+    pub(crate) fields: Vec<(String, FieldInput)>,
     pub body: Option<TitleBlockLayout>,
 }
 

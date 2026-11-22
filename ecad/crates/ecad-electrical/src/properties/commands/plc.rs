@@ -24,23 +24,23 @@ use crate::plc::{address, channels, edit, rack};
 use crate::properties::commands::{Build, PropRule};
 
 /// The `setprop` key of a module's signal.
-pub const SIGNAL: &str = "plc.signal";
+pub(crate) const SIGNAL: &str = "plc.signal";
 /// The `setprop` key of a module's safety rating.
-pub const SAFETY_RATED: &str = "plc.safety_rated";
+pub(crate) const SAFETY_RATED: &str = "plc.safety_rated";
 /// The `setprop` key of a module being intrinsically safe (Ex i).
-pub const EX_I: &str = "plc.ex_i";
+pub(crate) const EX_I: &str = "plc.ex_i";
 /// The `setprop` key of a module's calibration certificate.
-pub const CALIBRATION: &str = "plc.calibration";
+pub(crate) const CALIBRATION: &str = "plc.calibration";
 /// The `setprop` key of a coupler's or communication module's protocol.
-pub const PROTOCOL: &str = "plc.protocol";
+pub(crate) const PROTOCOL: &str = "plc.protocol";
 /// The `setprop` key of a station's network.
-pub const NETWORK: &str = "plc.network";
+pub(crate) const NETWORK: &str = "plc.network";
 /// The `setprop` key of a station's address on its network.
-pub const NETWORK_ADDRESS: &str = "plc.network.address";
+pub(crate) const NETWORK_ADDRESS: &str = "plc.network.address";
 /// The `setprop` key of a CPU's family.
-pub const CPU_FAMILY: &str = "plc.cpu.family";
+pub(crate) const CPU_FAMILY: &str = "plc.cpu.family";
 /// The `setprop` key of a station's own address style.
-pub const ADDRESS_STYLE: &str = "plc.address.style";
+pub(crate) const ADDRESS_STYLE: &str = "plc.address.style";
 
 /// The module keys of this lane (besides the channel keys).
 const MODULE_KEYS: [&str; 9] =
@@ -49,7 +49,7 @@ const MODULE_KEYS: [&str; 9] =
 const STATION_KEYS: [&str; 5] = [NETWORK, NETWORK_ADDRESS, CPU_FAMILY, ADDRESS_STYLE, PROTOCOL];
 
 /// This lane's rows, asked before [`crate::properties::commands::PROP_RULES`].
-pub static RULES: &[PropRule] = &[
+pub(crate) static RULES: &[PropRule] = &[
     PropRule {
         what: "PLC module fields (072 C)",
         claims: |doc, o, k| module(doc, o).is_some() && (MODULE_KEYS.contains(&k) || k == PROTOCOL || channels::parse_ch_key(k).is_some()),
@@ -72,7 +72,8 @@ fn is_field_key(k: &str) -> bool {
     MODULE_KEYS.contains(&k)
         || STATION_KEYS.contains(&k)
         || channels::parse_ch_key(k).is_some()
-        || (k.starts_with("plc.") && ecad_model::naming::keys::is_reserved_on(ecad_model::naming::keys::Holder::Device, k))
+        || (ecad_model::naming::keys::in_area(k, ecad_model::naming::keys::Area::Plc)
+            && ecad_model::naming::keys::is_reserved_on(ecad_model::naming::keys::Holder::Device, k))
 }
 
 /// The refusal of a module's or station's key on another device.

@@ -96,7 +96,7 @@ pub struct PropsView {
 }
 
 /// The Sheet combo's choices for a page: the project's sheet, then the presets.
-pub fn sheet_choices(doc: &Document) -> Vec<String> {
+pub(crate) fn sheet_choices(doc: &Document) -> Vec<String> {
     let mut out = vec![format!("Project ({})", doc.settings.sheet().summary())];
     out.extend(ecad_model::document::sheet::PRESETS.iter().map(|p| p.0.to_string()));
     out
@@ -223,7 +223,9 @@ pub fn device_section(
     let one = devices.len() == 1;
     let mut rows = Vec::new();
     for (key, label) in crate::devices::PROPERTIES {
-        let values: BTreeSet<Option<String>> = devices.iter().map(|c| doc.devices.get(c).and_then(|x| x.value(key))).collect();
+        // A tag is shown as drawn, with the `?` of a provisional one.
+        let read = |x: &ecad_model::Device| if key == "tag" { x.tag_shown() } else { x.value(key) };
+        let values: BTreeSet<Option<String>> = devices.iter().map(|c| doc.devices.get(c).and_then(read)).collect();
         let varies = values.len() > 1;
         let value = if varies {
             "*varies*".into()
@@ -233,6 +235,9 @@ pub fn device_section(
         };
         let mut r = if key == "tag" && !one { Row::ro(key, label, value) } else { Row::rw(key, label, value) };
         r.varies = varies;
+        if key == "tag" && one {
+            r.tag_state = devices.iter().next().and_then(|c| doc.devices.get(c)).and_then(|d| d.tag.state());
+        }
         // Brief 052 (design 052 §9.1): an unset function or location is `?`, with the selected
         // symbol's context offered as **Use +CP1**. Nothing is inherited.
         if let Some(a) = crate::locations::designations::Aspect::of_property(key) {
@@ -250,15 +255,10 @@ pub fn device_section(
         {
             override_rows(doc, c, &mut rows);
         }
-        // Brief 026 (design §4, §9): Fixed beside Tag; greyed for a provisional tag.
-        if key == "tag" && one {
-            let d = devices.iter().next().and_then(|c| doc.devices.get(c));
-            rows.push(fixed_row(d.and_then(|d| d.tag()), d.is_some_and(ecad_model::Device::is_fixed)));
-        }
     }
     let title = if one {
         let c = devices.iter().next().copied();
-        let tag = c.and_then(|c| crate::devices::tags::tag_of(doc, c)).unwrap_or("(no tag)").to_string();
+        let tag = c.and_then(|c| crate::devices::tags::tag_shown_of(doc, c)).unwrap_or_else(|| "(no tag)".into());
         if let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) {
             let name = crate::devices::tags::rep_definition(doc, r).map_or_else(|| "drawn".to_string(), |(d, _)| d.name.to_string());
             // The terminals this symbol shows: its connection points, else the device's own.
@@ -656,9 +656,9 @@ pub fn wire_section(doc: &Document, w: WireId) -> Section {
 pub fn cable_section(doc: &Document, k: CableId) -> Section {
     let cable = doc.cables.get(&k);
     let props = cable.map(|c| &c.properties);
-    let mut rows = vec![Row::rw("tag", "Tag", cable.and_then(|c| c.tag()).unwrap_or_default().to_string())];
-    // Brief 026: Fixed beside Tag.
-    rows.push(fixed_row(cable.and_then(|c| c.tag()), cable.is_some_and(ecad_model::Cable::is_fixed)));
+    let mut tag = Row::rw("tag", "Tag", cable.and_then(|c| c.tag_shown()).unwrap_or_default());
+    tag.tag_state = cable.and_then(|c| c.tag.state());
+    let mut rows = vec![tag];
     rows.push(Row::rw(
         ecad_model::objects::devices::DESCRIPTION_KEY,
         "Description",
@@ -691,19 +691,6 @@ pub fn cable_section(doc: &Document, k: CableId) -> Section {
         note: None,
         buttons: vec![format!("showcores:{}", k.hex())],
     }
-}
-
-/// The Fixed row of a device or cable (brief 026): `yes` or `no`, read-only for a provisional tag
-/// or none.
-fn fixed_row(t: Option<&str>, fixed: bool) -> Row {
-    let value = if fixed { "yes" } else { "no" }.to_string();
-    let mut r = if t.is_some_and(|t| !ecad_model::naming::tag::is_provisional(t)) {
-        Row::rw(ecad_model::naming::tag::FIXED_KEY, "Fixed", value)
-    } else {
-        Row::ro(ecad_model::naming::tag::FIXED_KEY, "Fixed", value)
-    };
-    r.choices = vec!["yes".into(), "no".into()];
-    r
 }
 
 /// The key a clash box's button edits (`tag#swap`, `tag#merge`, `tag#next`): the tag, with that
@@ -849,11 +836,6 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         j["conflict"] = way.into();
         return format!("setprop {j}");
     }
-    let v = if key == ecad_model::naming::tag::FIXED_KEY && value.and_then(ecad_model::naming::words::flag) == Some(false) {
-        serde_json::Value::Null
-    } else {
-        v
-    };
     let j = match target {
         Target::Page(p) => {
             let mut m = serde_json::Map::new();
@@ -897,8 +879,8 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
     format!("{} {}", j.0, j.1)
 }
 
-/// Properties ▸ Link (design 030 §5.5): positions, part, bars.
-/// A link line's section (brief 030): its positions, part and the bars it needs (`bars`, from the
+/// Properties ▸ Jumper bar (design 030 §5.5): positions, part, bars.
+/// A jumper bar's section (brief 030): its positions, part and the bars it needs (`bars`, from the
 /// strips' report model, when kept).
 pub fn jumper_bar_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usize>) -> Section {
     let key = ecad_model::connectivity::jumper_bars::key(n);

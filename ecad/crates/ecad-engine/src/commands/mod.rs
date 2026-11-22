@@ -34,7 +34,7 @@ pub use ecad_electrical::terminal_strips::core_label;
 use ecad_electrical::{
     cables::commands::cables as cable, devices::commands::device_links as device_link, devices::commands::devices as device,
     locations::commands::designations as designation, locations::commands::locations as location, reports::commands::bom, reports::commands::boxes,
-    reports::commands::lists, styles::commands::defaults as default, styles::commands::styles as style,
+    reports::commands::lists, styles::commands::defaults as default, styles::commands::styles as style, styles::commands::text,
     terminal_strips::commands::accessories as accessory, terminal_strips::commands::levels as level, wires::commands::connect,
     wires::commands::nets as net,
 };
@@ -70,6 +70,10 @@ fn generic_specs() -> Vec<CommandSpec> {
     let drawing_undo = |c: CommandSpec| CommandSpec { undoable: true, ..c };
     vec![
         crate::generic::spec::<default::SetdefaultParams>(),
+        crate::generic::spec::<default::DefaultsParams>(),
+        crate::generic::spec::<text::TextstyleParams>(),
+        crate::generic::spec::<text::PagetextsParams>(),
+        crate::generic::spec::<text::MovetextParams>().interactive(crate::styles::interact::movetext),
         crate::generic::spec::<designation::DesignationsParams>(),
         crate::generic::spec::<designation::AddParams>(),
         crate::generic::spec::<designation::EditParams>(),
@@ -167,6 +171,10 @@ const GENERIC_TYPED: &[input::Typed] = &[
     crate::generic::typed::<connect::ConnectParams>(),
     crate::generic::typed::<connect::DisconnectParams>(),
     crate::generic::typed::<default::SetdefaultParams>(),
+    crate::generic::typed::<default::DefaultsParams>(),
+    crate::generic::typed::<text::TextstyleParams>(),
+    crate::generic::typed::<text::PagetextsParams>(),
+    crate::generic::typed::<text::MovetextParams>(),
     crate::generic::typed::<designation::DesignationsParams>(),
     crate::generic::typed::<designation::AddParams>(),
     crate::generic::typed::<designation::EditParams>(),

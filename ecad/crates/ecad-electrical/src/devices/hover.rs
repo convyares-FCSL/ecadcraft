@@ -26,9 +26,9 @@ pub(crate) const MAX_ALSO: usize = 4;
 pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId, m: &dyn TextMetrics) -> Vec<String> {
     let device = doc.devices.get(&c).cloned().unwrap_or_default();
     let get = |k: &str| device.value(k).unwrap_or_else(|| "?".into());
-    let head = match device.tag() {
+    let head = match device.tag_shown() {
         // Brief 026 (design §9): `(fixed)` or `(provisional)` after the tag.
-        Some(t) if tag::is_provisional(t) => format!("Device {t} (provisional)   {}", description(doc, c)),
+        Some(t) if device.is_provisional() => format!("Device {t} (provisional)   {}", description(doc, c)),
         Some(t) if device.is_fixed() => format!("Device {t} (fixed)   {}", description(doc, c)),
         Some(t) => format!("Device {t}   {}", description(doc, c)),
         None => format!("Device (no tag)   {}", description(doc, c)),
@@ -58,7 +58,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
             words.push_str(&format!("; this symbol is inside {}", ctx.text()));
         }
     }
-    if loc.key.is_some() || device.function.is_some() {
+    if loc.key.is_some() || !device.function.is_unset() {
         let function = crate::locations::resolve_function(doc, c);
         let function = if function.key.is_some() { function.text() } else { String::new() };
         lines.push(format!("Location: {words}   Function: {function}"));

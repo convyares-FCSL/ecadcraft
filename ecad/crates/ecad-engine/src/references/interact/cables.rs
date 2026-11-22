@@ -16,7 +16,8 @@ use crate::interact::{
     OUT_OF_RANGE, can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
 };
 use crate::project::{Mapped, Project};
-use crate::properties::forms::{NOTHING_THERE, R, Safe, cable_named, commit, not_a_point, other, paper_guard, safely};
+use crate::properties::forms::cable_view::{NOTHING_THERE, cable_named};
+use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use {ecad_electrical::references::cables::ORPHAN_ACI, ecad_electrical::references::cables::REFERENCE_ACI};
 
 /// The ring of a reference in a preview, in screen pixels (`ecad.ref-size`).
@@ -119,7 +120,7 @@ impl CableRef {
             (Input::Point(p), None) => {
                 let h = pick(s, p).ok_or_else(|| other(NOTHING_THERE))?;
                 let k = read(s, |proj, page| {
-                    let m = proj.pages.get(&page).and_then(|v| v.map.get(h)).ok_or(crate::properties::forms::NOT_A_CABLE)?;
+                    let m = proj.pages.get(&page).and_then(|v| v.map.get(h)).ok_or(crate::properties::forms::cable_view::NOT_A_CABLE)?;
                     cable_named(proj.ledger.document(), m).map_err(str::to_string)
                 })
                 .map_err(other)?;

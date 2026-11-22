@@ -804,7 +804,7 @@ fn k_bom_one_row_per_device() {
         }
     }
     for c in &devices {
-        assert_eq!(seen.get(&c.hex()).copied(), Some(1), "{} on one BOM row: {rows:?}", d.devices[c].tag().map(str::to_string).unwrap_or_default());
+        assert_eq!(seen.get(&c.hex()).copied(), Some(1), "{} on one BOM row: {rows:?}", d.devices[c].tag_shown().unwrap_or_default());
     }
     assert_eq!(seen.len(), devices.len(), "nothing but devices on the BOM: {seen:?}");
     let qty: u64 = rows.iter().map(|r| r["qty"].as_u64().unwrap_or(0)).sum();

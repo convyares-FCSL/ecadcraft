@@ -130,7 +130,8 @@ fn record_and_definition_hashes_are_pinned() {
         // 0.2.3 structure move: ConnectionPoint ops, `connection_points` fields, `jumper_bar` keys.
         // 0.2.3 S1 (#2): a cable's `tag`, `tag_fixed` and `description` are record fields.
         // 0.2.3 S4 (#37): `NameVersion` names a `PointName` (typed rev or version), revision records are typed.
-        ("head", "ae059c1632dbe5cbea011f802298a250a748896fc6f9814f9b228b959e74241b"),
+        // 0.2.3 S6 (#3): a tag, location and function each carry their state in one field (`tag`, `location`, `function`).
+        ("head", "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");
@@ -141,7 +142,8 @@ fn record_and_definition_hashes_are_pinned() {
 /// change bumps `ecad_file::SCHEMA_VERSION`** (a record's fields or meaning, an op, the canonical
 /// form): the head hash of this fixture then changes, and this table gets a new row with the new
 /// number. A changed head under an unchanged number is the forgotten bump.
-const SCHEMA_PINS: &[(u64, &str)] = &[(2, "ae059c1632dbe5cbea011f802298a250a748896fc6f9814f9b228b959e74241b")];
+// Version 2 covers S4 and S6 (nothing was released between them).
+const SCHEMA_PINS: &[(u64, &str)] = &[(2, "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274")];
 
 #[test]
 fn the_schema_version_is_bumped_with_every_format_change() {

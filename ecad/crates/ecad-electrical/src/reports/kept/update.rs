@@ -430,7 +430,7 @@ impl ReportModels {
             crate::symbols::reps::goto(doc, c, None).and_then(|rid| doc.representations.get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
         let row = DeviceRow {
             component: c,
-            tag: comp.tag().unwrap_or_default().to_string(),
+            tag: comp.tag_shown().unwrap_or_default(),
             description: clean(comp.description.as_ref().map(|t| t.as_str())),
             maker: clean(comp.manufacturer.as_ref().map(|t| t.as_str())),
             part_number: clean(comp.part_number.as_ref().map(|t| t.as_str())),
@@ -487,8 +487,7 @@ impl ReportModels {
             {
                 let label = crate::terminal_strips::terminal_blocks::connection_point_name(doc, t);
                 let device = self.devices.get(&c);
-                let tag =
-                    device.map(|d| d.tag.clone()).or_else(|| crate::devices::tags::tag_of(doc, c).map(str::to_string)).unwrap_or_else(|| "?".into());
+                let tag = device.map(|d| d.tag.clone()).or_else(|| crate::devices::tags::tag_shown_of(doc, c)).unwrap_or_else(|| "?".into());
                 // Brief 044: a connector pin's end is named by its half (`-X10.S:3`).
                 let name = crate::connectors::pin_name(doc, t).unwrap_or_else(|| format!("{tag}:{label}"));
                 let location = match device {
@@ -556,7 +555,7 @@ impl ReportModels {
             .into_iter()
             .filter_map(|k| {
                 let cab = doc.cables.get(&k)?;
-                let tag = cab.tag().map(str::to_string).unwrap_or_else(|| "?".into());
+                let tag = cab.tag_shown().unwrap_or_else(|| "?".into());
                 let i = cab.cores.iter().position(|m| m.wire() == Some(w))?;
                 let core = cab.cores.get(i).and_then(|m| m.label_str().map(str::to_string)).unwrap_or_else(|| (i + 1).to_string());
                 Some(format!("{tag} core {core}"))
@@ -565,7 +564,7 @@ impl ReportModels {
             .join(", ");
         // Brief 028 (design 028 §9.2): a wire between two terminals of one strip is a bridge.
         let cable = match crate::terminal_strips::bridge_of(doc, w) {
-            Some(strip) if cable.is_empty() => format!("Bridge {}", crate::devices::tags::tag_of(doc, strip).unwrap_or("?")),
+            Some(strip) if cable.is_empty() => format!("Bridge {}", crate::devices::tags::tag_shown_of(doc, strip).unwrap_or_else(|| "?".into())),
             _ => cable,
         };
         let page = mid.and_then(|(p, a)| cx.place(doc, p, a));
@@ -633,7 +632,7 @@ impl ReportModels {
                 let Some(c) = doc.connection_points.get(t).and_then(|x| x.device()) else { continue };
                 let (loc, tag) = match self.devices.get(&c) {
                     Some(d) => (d.location.value.clone(), d.tag.clone()),
-                    None => (locations::resolve(doc, c).value, crate::devices::tags::tag_of(doc, c).unwrap_or("?").to_string()),
+                    None => (locations::resolve(doc, c).value, crate::devices::tags::tag_shown_of(doc, c).unwrap_or_else(|| "?".into())),
                 };
                 match loc {
                     Some(l) => {

@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use crate::mcp_contracts::{Client, TempDir};
 
 fn tag_of(doc: &Document, comp: &str) -> Option<String> {
-    doc.devices.get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.tag().map(str::to_string))
+    doc.devices.get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.tag_shown())
 }
 
 fn place(c: &mut Client, symbol: &str, at: [f64; 2], tag: Option<&str>) -> String {

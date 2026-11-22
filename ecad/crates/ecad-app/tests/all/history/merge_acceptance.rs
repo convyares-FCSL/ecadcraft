@@ -252,7 +252,7 @@ fn a_versions_details_name_the_devices_it_added() {
     h.state_mut().save().unwrap();
     let placed = run(&mut h, "place", json!({"symbol": "coil", "at": [60, 150]}));
     let c = ecad_model::DeviceId::parse(placed["component"].as_str().unwrap()).unwrap();
-    let tag = doc(&mut h).devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap();
+    let tag = doc(&mut h).devices.get(&c).and_then(|x| x.tag_shown()).unwrap();
     ok(&mut h, r#"version {"name":"After"}"#);
     h.state_mut().save().unwrap();
     let info = run(&mut h, "pointinfo", json!({"version": "After"}));

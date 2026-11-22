@@ -478,7 +478,7 @@ pub fn device_changes(
         Some(out)
     };
     let (ca, cb) = (load(a)?, load(b)?);
-    let tag = |c: &ecad_model::Device| c.tag().unwrap_or("a device").to_string();
+    let tag = |c: &ecad_model::Device| c.tag_shown().unwrap_or_else(|| "a device".to_string());
     let mut lines: Vec<String> = Vec::new();
     for (id, c) in &cb {
         match ca.get(id) {

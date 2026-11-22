@@ -30,3 +30,5 @@ chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).
 ecad-model = { workspace = true, features = ["verify-invariants"] }
+# The tag-rule test opens a store on disk.
+ecad-store = { workspace = true }

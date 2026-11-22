@@ -168,7 +168,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
     let summary = if d.description.is_empty() { d.tag.clone() } else { format!("{} \u{b7} {}", d.tag, d.description) };
     let mut folded = std::mem::take(&mut insp.folded);
     w::section(ui, &mut folded, full, "identity", "Identity", &summary, false, |ui| {
-        let fixed = find(s, ecad_model::naming::tag::FIXED_KEY).and_then(|r| ecad_model::naming::words::flag(&r.value)) == Some(true);
+        let fixed = find(s, "tag").and_then(|r| r.tag_state) == Some(ecad_model::naming::tag::TagState::Fixed);
         for (key, label) in [("tag", "Tag"), ("function", "Function"), ("location", "Location"), ("description", "Description")] {
             let Some(row) = find(s, key) else { continue };
             let hint = match key {
@@ -182,7 +182,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
             // The overrides under Location (design 052 §5.2): a connector's halves, a field
             // device's terminals.
             if key == "location" {
-                for o in s.rows.iter().filter(|r| r.key.starts_with("location.")) {
+                for o in s.rows.iter().filter(|r| ecad_model::naming::keys::in_area(&r.key, ecad_model::naming::keys::Area::Location)) {
                     fields::prop(ui, sh, target, "device", o, &o.label, if o.inherited { "device" } else { "" });
                 }
             }
@@ -247,16 +247,11 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
         }
     });
     // Notes and attributes: everything else about the device.
-    let rest: Vec<&Row> =
-        s.rows.iter().filter(|r| !PLACED.contains(&r.key.as_str()) && !on_layout_tab(r) && r.key != ecad_model::naming::tag::FIXED_KEY).collect();
-    let fixed = find(s, ecad_model::naming::tag::FIXED_KEY);
+    let rest: Vec<&Row> = s.rows.iter().filter(|r| !PLACED.contains(&r.key.as_str()) && !on_layout_tab(r)).collect();
     let buttons: Vec<String> = s.buttons.iter().filter(|b| !b.starts_with("refgoto:")).cloned().collect();
     let n = rest.len() + insp.connector.len();
     let summary = if n == 0 { "none".to_string() } else { n.to_string() };
     w::section(ui, &mut folded, full, "notes", "Notes and attributes", &summary, true, |ui| {
-        if let Some(row) = fixed {
-            fields::prop(ui, sh, target, "device", row, "Tag fixed", "");
-        }
         for row in rest {
             fields::prop(ui, sh, target, "device", row, &row.label, if row.inherited { "from project" } else { "" });
         }

@@ -137,10 +137,11 @@ fn unused_after(doc: &Document, id: DefinitionId, effects: &Effects<'_>) -> bool
 }
 
 /// Whether a project property write of `key` is drawn on no page (`false`: on every page).
-fn project_key_drawn_nowhere(key: &str) -> bool {
-    key.starts_with(ecad_model::naming::tag::HIGH_RESET_PREFIX)
+fn project_key_drawn_nowhere(key: ecad_model::document::effect::Key<'_>) -> bool {
+    let (area, key) = (key.area, key.raw);
+    ecad_model::naming::keys::NUMBERING_HIGH.parse(key).is_some()
         // Brief 044 (design 044 §11.1): a connector default's pages come from `ConnectorsView`.
-        || key.starts_with("connector.")
+        || area == ecad_model::naming::keys::Area::Connector
         // Brief 030: strip accessory defaults (the plan page is a generated page, kept by its own rule).
         || crate::terminal_strips::accessories::strip_key_of_project(key).is_some()
 }
@@ -272,7 +273,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         }
         Effect::Project { before, after } => project_pages(doc, before, after, out),
         Effect::Prop { object: ObjectRef::Project, key, .. } => {
-            if !project_key_drawn_nowhere(key.raw) {
+            if !project_key_drawn_nowhere(*key) {
                 *out = PageSet::All;
             }
         }
@@ -281,7 +282,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         Effect::Prop { object: ObjectRef::Standard, key, .. } => {
             let hidden = crate::defaults::find(key.raw)
                 .is_some_and(|e| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).from == crate::defaults::Source::Project);
-            if !hidden && !project_key_drawn_nowhere(key.raw) {
+            if !hidden && !project_key_drawn_nowhere(*key) {
                 *out = PageSet::All;
             }
         }

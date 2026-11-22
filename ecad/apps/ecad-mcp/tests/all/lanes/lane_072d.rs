@@ -275,7 +275,7 @@ fn protected_by_through_mcp_is_the_device_and_deleting_it_clears_it() {
     let q = c.exec("place", json!({"symbol": "mcb1", "at": [200, 100]}))["component"].as_str().unwrap().to_string();
     c.exec("setprop", json!({"component": q, "key": "rating", "value": "C16"}));
     let q_id = c.doc().devices.keys().copied().find(|d| d.hex() == q).unwrap();
-    let tag = c.doc().devices[&q_id].tag().unwrap_or_default().to_string();
+    let tag = c.doc().devices[&q_id].tag_shown().unwrap_or_default();
 
     c.exec("rating", json!({"wire": w, "protected_by": tag}));
     let (author, after) = last_modified(&mut c);

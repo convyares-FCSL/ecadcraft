@@ -869,7 +869,16 @@ pub(crate) fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_mod
             ledger.commit(Author::User, "Bench coils", plan.ops.clone()).map_err(|e| e.to_string())?;
             Ok(plan)
         };
-        let coil = step(ledger, a, "coil", (x, 260.0), Target::New(Some(format!("-KX{:04}", i + 1))))?;
+        let coil = step(
+            ledger,
+            a,
+            "coil",
+            (x, 260.0),
+            Target::New(Some(ecad_model::naming::tag::Entry::Tag(ecad_model::naming::tag::Given::new(
+                format!("-KX{:04}", i + 1),
+                ecad_model::naming::tag::TagState::Fixed,
+            )))),
+        )?;
         let c = coil.component;
         coils.push(coil.representation);
         step(ledger, a, "power3", (x + 15.0, 230.0), Target::Join(c))?;

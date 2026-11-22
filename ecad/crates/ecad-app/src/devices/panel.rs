@@ -31,7 +31,7 @@ pub(crate) const RENUMBER: &str = "Renumber…";
 
 /// The accessible label of a device row: `Device -K01: Contactor / relay coil`.
 pub(crate) fn device_label(e: &DeviceEntry) -> String {
-    format!("Device {}: {}", e.tag.as_deref().unwrap_or("(no tag)"), e.description)
+    format!("Device {}: {}", e.shown().as_deref().unwrap_or("(no tag)"), e.description)
 }
 
 /// A property being edited: (device, property key, text).
@@ -323,7 +323,7 @@ impl DevicesPanel {
                                 p.rect_filled(rect, 0.0, c(s.hover));
                             }
                             let x = rect.left() + 20.0;
-                            let tag = e.tag.as_deref().unwrap_or("(no tag)");
+                            let tag = e.shown().unwrap_or_else(|| "(no tag)".to_string());
                             let tag_ink = c(s.text);
                             p.text(pos2(x, y), egui::Align2::LEFT_CENTER, tag, bold.clone(), tag_ink);
                             let place = e.symbols.first().map(|sym| sym.place.clone()).unwrap_or_default();
@@ -599,7 +599,7 @@ impl DevicesPanel {
             ui.add_space(4.0);
             ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, line));
             ui.add_space(4.0);
-            ui.label(RichText::new(format!("DEVICE {}", e.tag.as_deref().unwrap_or("(no tag)"))).small().strong().color(dim));
+            ui.label(RichText::new(format!("DEVICE {}", e.shown().as_deref().unwrap_or("(no tag)"))).small().strong().color(dim));
         }
         ui.spacing_mut().item_spacing.y = 0.0;
         if let Some((msg, offer)) = self.error.clone() {
@@ -633,16 +633,20 @@ impl DevicesPanel {
             }
         }
         // Brief 026 (design §4): the Fixed box beside the tag; greyed for a provisional tag.
-        let provisional = e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional);
-        let mut fixed = e.fixed;
+        let provisional = e.tag_state.is_provisional();
+        let mut fixed = e.tag_state == ecad_model::naming::tag::TagState::Fixed;
         let can = writable && e.tag.is_some() && !provisional;
         let r = ui.add_enabled(can, egui::Checkbox::new(&mut fixed, RichText::new("Fixed").small())).accessible_name("ecad.props.tagfixed");
         let r = if provisional { r.on_disabled_hover_text("A provisional tag can't be fixed; give it a number first.") } else { r };
         if r.changed() {
             out.push(Action::SetDeviceProperty {
                 component: c,
-                key: "tag_fixed",
-                value: if fixed { "yes".into() } else { String::new() },
+                key: ecad_model::naming::tag::TAG_KEY,
+                value: serde_json::to_string(&ecad_model::naming::tag::TagSlot::of_text(
+                    e.tag.as_deref(),
+                    if fixed { ecad_model::naming::tag::TagState::Fixed } else { ecad_model::naming::tag::TagState::Automatic },
+                ))
+                .unwrap_or_default(),
                 conflict: None,
             });
         }
@@ -654,7 +658,7 @@ impl DevicesPanel {
             let mut text = mine.map_or_else(|| stored.clone(), |(_, _, x)| x.clone());
             let (placeholder, hint) = match *key {
                 "tag" if provisional => (String::new(), "provisional"),
-                "tag" if e.fixed => (String::new(), "fixed"),
+                "tag" if e.tag_state == ecad_model::naming::tag::TagState::Fixed => (String::new(), "fixed"),
                 "location" if stored.is_empty() => {
                     (derived_location.clone().unwrap_or_default(), if derived_location.is_some() { "from box" } else { "" })
                 }

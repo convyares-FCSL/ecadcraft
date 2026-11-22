@@ -28,10 +28,82 @@ pub const NUMBER_KEY: &str = "number";
 pub const FUNCTION_KEY: &str = "function";
 /// Page and project property: the `+` location.
 pub const LOCATION_KEY: &str = "location";
-/// `setprop` key of a device's [`crate::Device::location_fixed`] (yes/no).
-pub const LOCATION_FIXED_KEY: &str = "location_fixed";
-/// `setprop` key of a device's [`crate::Device::function_fixed`] (yes/no).
-pub const FUNCTION_FIXED_KEY: &str = "function_fixed";
+
+/// A device's location or function and how it came to be, as one value (S6, #3): the state holds
+/// the entry, so a state without an entry cannot be written. `I` is [`crate::naming::id::LocationId`]
+/// or [`crate::naming::id::FunctionId`].
+///
+/// # Example
+/// ```
+/// use ecad_model::{LocationId, document::book::Place};
+/// let p = Place::manual(Some(LocationId(7)));
+/// assert_eq!(p.id(), Some(LocationId(7)));
+/// assert!(Place::<LocationId>::manual(None).is_unset());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(tag = "state", content = "id", rename_all = "snake_case")]
+pub enum Place<I> {
+    /// The device has none: written as `{"state":"unset"}`.
+    Unset,
+    /// Set by hand (typed, or a box drawn around it): kept when a box around it changes.
+    Manual(I),
+    /// Proposed by its page or a location box: a box may change it; stays proposed until set by hand.
+    Proposed(I),
+}
+
+// Derived, `Default` would ask `I: Default`, which an id need not be.
+#[allow(clippy::derivable_impls)]
+impl<I> Default for Place<I> {
+    fn default() -> Self {
+        Place::Unset
+    }
+}
+
+impl<I: Copy> Place<I> {
+    /// Manual `id`, or unset for none.
+    pub fn manual(id: Option<I>) -> Self {
+        id.map_or(Place::Unset, Place::Manual)
+    }
+
+    /// Proposed `id`, or unset for none.
+    pub fn proposed(id: Option<I>) -> Self {
+        id.map_or(Place::Unset, Place::Proposed)
+    }
+
+    /// The entry, whatever its state.
+    pub fn id(&self) -> Option<I> {
+        match self {
+            Place::Unset => None,
+            Place::Manual(i) | Place::Proposed(i) => Some(*i),
+        }
+    }
+
+    /// The same state with entry `id` (unset stays unset; `None` unsets).
+    pub fn with_id(&self, id: Option<I>) -> Self {
+        match (self, id) {
+            (_, None) | (Place::Unset, _) => Place::Unset,
+            (Place::Manual(_), Some(i)) => Place::Manual(i),
+            (Place::Proposed(_), Some(i)) => Place::Proposed(i),
+        }
+    }
+}
+
+impl<I> Place<I> {
+    /// Whether there is none.
+    pub fn is_unset(&self) -> bool {
+        matches!(self, Place::Unset)
+    }
+
+    /// Whether it was set by hand.
+    pub fn is_manual(&self) -> bool {
+        matches!(self, Place::Manual(_))
+    }
+
+    /// Whether it was proposed.
+    pub fn is_proposed(&self) -> bool {
+        matches!(self, Place::Proposed(_))
+    }
+}
 
 /// Folders nest at most this deep (a top-level folder is depth 1).
 pub const MAX_FOLDER_DEPTH: usize = 8;

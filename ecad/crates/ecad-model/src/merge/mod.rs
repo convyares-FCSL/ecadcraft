@@ -430,6 +430,20 @@ fn merge_props(
 
 /// Merge one field as a whole value.
 #[allow(clippy::too_many_arguments)]
+/// A tag slot as shown in a conflict: the tag as drawn, or `(none)`.
+fn tag_text(v: &tag::TagSlot) -> String {
+    v.shown().unwrap_or_else(|| "(none)".into())
+}
+
+/// A location or function as shown in a conflict: its short id, with `(proposed)` when it was.
+fn place_text<I: Copy>(v: &crate::document::book::Place<I>, short: fn(I) -> String) -> String {
+    match v {
+        crate::document::book::Place::Unset => "(none)".to_string(),
+        crate::document::book::Place::Manual(i) => short(*i),
+        crate::document::book::Place::Proposed(i) => format!("{} (proposed)", short(*i)),
+    }
+}
+
 fn field<T: PartialEq + Clone>(ctx: &mut Ctx<'_, '_>, obj: Obj, name: &str, what: String, a: &T, t: &T, s: &T, show: &dyn Fn(&T) -> String) -> T {
     match pick(Some(a), Some(t), Some(s)) {
         Some(Some(v)) => v,
@@ -771,12 +785,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                 let v = object(ctx, obj, &what, a.devices.get(&id), t.devices.get(&id), s.devices.get(&id), |ctx, a, t, s| {
                     let texts = merge_props(ctx, obj, &what, &text_bag(a), &text_bag(t), &text_bag(s), &all);
                     let d = Device {
-                        tag: field(ctx, obj, tag::TAG_KEY, format!("{what} · tag"), &a.tag, &t.tag, &s.tag, &|v| {
-                            v.as_ref().map_or_else(|| "(none)".into(), |t| t.to_string())
-                        }),
-                        tag_fixed: field(ctx, obj, tag::FIXED_KEY, format!("{what} · tag fixed"), &a.tag_fixed, &t.tag_fixed, &s.tag_fixed, &|v| {
-                            crate::naming::words::flag_word(*v).into()
-                        }),
+                        tag: field(ctx, obj, tag::TAG_KEY, format!("{what} · tag"), &a.tag, &t.tag, &s.tag, &|v| tag_text(v)),
                         location: field(
                             ctx,
                             obj,
@@ -785,17 +794,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                             &a.location,
                             &t.location,
                             &s.location,
-                            &|x| x.map_or_else(|| "(none)".to_string(), crate::naming::id::LocationId::short),
-                        ),
-                        location_fixed: field(
-                            ctx,
-                            obj,
-                            crate::document::book::LOCATION_FIXED_KEY,
-                            format!("{what} · location fixed"),
-                            &a.location_fixed,
-                            &t.location_fixed,
-                            &s.location_fixed,
-                            &|v| crate::naming::words::flag_word(*v).into(),
+                            &|x| place_text(x, crate::naming::id::LocationId::short),
                         ),
                         function: field(
                             ctx,
@@ -805,17 +804,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                             &a.function,
                             &t.function,
                             &s.function,
-                            &|x| x.map_or_else(|| "(none)".to_string(), crate::naming::id::FunctionId::short),
-                        ),
-                        function_fixed: field(
-                            ctx,
-                            obj,
-                            crate::document::book::FUNCTION_FIXED_KEY,
-                            format!("{what} · function fixed"),
-                            &a.function_fixed,
-                            &t.function_fixed,
-                            &s.function_fixed,
-                            &|v| crate::naming::words::flag_word(*v).into(),
+                            &|x| place_text(x, crate::naming::id::FunctionId::short),
                         ),
                         properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
                         definition: field(ctx, obj, "definition", format!("{what} · symbol"), &a.definition, &t.definition, &s.definition, &|d| {
@@ -891,12 +880,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             }
             Obj::Cable(id) => {
                 let v = object(ctx, obj, &what, a.cables.get(&id), t.cables.get(&id), s.cables.get(&id), |ctx, a, t, s| Cable {
-                    tag: field(ctx, obj, tag::TAG_KEY, format!("{what} · tag"), &a.tag, &t.tag, &s.tag, &|v| {
-                        v.as_ref().map_or_else(|| "(none)".into(), |t| t.to_string())
-                    }),
-                    tag_fixed: field(ctx, obj, tag::FIXED_KEY, format!("{what} · tag fixed"), &a.tag_fixed, &t.tag_fixed, &s.tag_fixed, &|v| {
-                        crate::naming::words::flag_word(*v).into()
-                    }),
+                    tag: field(ctx, obj, tag::TAG_KEY, format!("{what} · tag"), &a.tag, &t.tag, &s.tag, &|v| tag_text(v)),
                     description: field(
                         ctx,
                         obj,
@@ -1763,16 +1747,34 @@ impl Holder {
         }
     }
 
-    fn set_tag(self, m: &mut Document, t: String) {
+    /// This holder's tag identity (its text and state).
+    fn key(self, d: &Document) -> Option<tag::Key> {
+        match self {
+            Holder::Device(c) => d.devices.get(&c).and_then(Device::tag_key),
+            Holder::Cable(c) => d.cables.get(&c).and_then(Cable::tag_key),
+        }
+    }
+
+    /// This holder's tag state.
+    fn state(self, d: &Document) -> tag::TagState {
+        match self {
+            Holder::Device(c) => d.devices.get(&c).and_then(|x| x.tag.state()),
+            Holder::Cable(c) => d.cables.get(&c).and_then(|x| x.tag.state()),
+        }
+        .unwrap_or_default()
+    }
+
+    /// Give this holder bare tag text `t` in `state`.
+    fn set_tag(self, m: &mut Document, t: String, state: tag::TagState) {
         match self {
             Holder::Device(c) => {
                 if let Some(x) = m.devices.get_mut(&c) {
-                    *x = x.with_tag(Some(&t));
+                    *x = x.with_tag(Some(&t), state);
                 }
             }
             Holder::Cable(c) => {
                 if let Some(x) = m.cables.get_mut(&c) {
-                    x.properties.insert(tag::TAG_KEY.into(), t);
+                    x.tag = tag::TagSlot::of_text(Some(&t), state);
                 }
             }
         }
@@ -1808,12 +1810,14 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
 
 /// The highest provisional number of `prefix` in `m` (a scan: merges only).
 fn top_provisional(m: &Document, prefix: &str) -> u64 {
-    let lo = format!("{prefix}?");
     m.devices
         .values()
-        .filter_map(|c| c.tag())
-        .chain(m.cables.values().filter_map(|c| c.tag()))
-        .filter_map(|x| tag::key(x).strip_prefix(&lo).and_then(|n| n.parse::<u64>().ok()))
+        .map(|c| &c.tag)
+        .chain(m.cables.values().map(|c| &c.tag))
+        .filter(|s| s.is_provisional())
+        .filter_map(|s| s.tag().and_then(tag::parse))
+        .filter(|(p, _)| p == prefix)
+        .map(|(_, n)| n)
         .max()
         .unwrap_or(0)
 }
@@ -1825,15 +1829,21 @@ fn top_provisional(m: &Document, prefix: &str) -> u64 {
 fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>) -> BTreeSet<Obj> {
     let t = ctx.inp.target;
     let mut high = ctx.inp.high.clone();
-    let present: Vec<String> =
-        m.devices.values().filter_map(|c| c.tag()).chain(m.cables.values().filter_map(|c| c.tag())).map(str::to_string).collect();
+    let present: Vec<String> = m
+        .devices
+        .values()
+        .filter(|c| !c.is_provisional())
+        .filter_map(|c| c.tag())
+        .chain(m.cables.values().filter(|c| !c.is_provisional()).filter_map(|c| c.tag()))
+        .map(str::to_string)
+        .collect();
     for x in &present {
         tag::note(&mut high, x);
     }
     // Brief 033: the merged project's tag style (padding, dash, case).
     let style = tag::Style::of(m);
     let mut out = BTreeSet::new();
-    let mut done: BTreeSet<String> = BTreeSet::new();
+    let mut done: BTreeSet<tag::Key> = BTreeSet::new();
     let ours: Vec<Holder> = objects
         .iter()
         .filter_map(|o| match o {
@@ -1846,20 +1856,20 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
     let mut indexed: Option<Document> = None;
     for h in ours.iter().copied() {
         let Some(tag_text) = h.tag(m).map(str::to_string) else { continue };
+        let Some(key) = h.key(m) else { continue };
         // Only a tag the merge brought from the source.
-        if h.tag(t) == Some(&tag_text) {
+        if h.key(t).as_ref() == Some(&key) {
             continue;
         }
-        let key = tag::key(&tag_text);
         if done.contains(&key) {
             continue;
         }
-        let same = |d: Holder| d != h && d.tag(m).is_some_and(|x| tag::key(x) == key);
+        let same = |d: Holder| d != h && d.key(m).as_ref() == Some(&key);
         let mut others: Vec<Holder> = t
-            .components_tagged(&tag_text)
+            .components_with(&key)
             .into_iter()
             .map(Holder::Device)
-            .chain(t.cables_tagged(&tag_text).into_iter().map(Holder::Cable))
+            .chain(t.cables_with(&key).into_iter().map(Holder::Cable))
             .filter(|d| same(*d))
             .collect();
         let more: Vec<Holder> = ours.iter().copied().filter(|d| same(*d) && !others.contains(d)).collect();
@@ -1871,9 +1881,11 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
         // under an older tag (reviewer 026, 1).
         let (src, tgt) = (h, other);
         // Provisional duplicates were never issued: the source's takes the next one, silently.
-        if let Some((p, _)) = tag::provisional(&tag_text) {
+        if key.provisional
+            && let Some((p, _)) = tag::parse(&tag_text)
+        {
             let n = top_provisional(m, &p).saturating_add(1);
-            src.set_tag(m, style.provisional(&p, n));
+            src.set_tag(m, style.provisional(&p, n), tag::TagState::Provisional);
             // The indexed copy is stale now (reviewer 026, 5): rebuilt when next needed.
             indexed = None;
             out.insert(src.obj());
@@ -1885,7 +1897,7 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
             Some(p) => next_tag(p, &mut high, style),
             None => format!("{tag_text}-2"),
         };
-        let id = format!("rule/tag/{key}");
+        let id = format!("rule/tag/{}", key.text);
         // Make them one: two devices or two cables, never a device and a cable.
         let one: Result<Vec<Op>, String> = match (src, tgt) {
             (Holder::Device(a), Holder::Device(b)) => {
@@ -1956,7 +1968,8 @@ fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>
             _ => None,
         };
         if let Some(d) = which {
-            d.set_tag(m, fresh);
+            let state = d.state(m);
+            d.set_tag(m, fresh, state);
             out.insert(d.obj());
             indexed = None;
         }
@@ -2231,7 +2244,7 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .filter(|k| pa.get(*k) != ps.get(*k))
-                .filter(|k| !k.starts_with(tag::HIGH_RESET_PREFIX))
+                .filter(|k| crate::naming::keys::NUMBERING_HIGH.parse(k).is_none())
                 .collect();
             // `numbering.high.<P>` is internal (brief 026): never listed (reviewer 026, nit).
             match keys.first() {
@@ -2254,28 +2267,6 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
             }
         }
         _ => "changed".into(),
-    }
-}
-
-/// A provisional tag never counts as fixed (overseer ruling, tester 026 bug 2): a merge that
-/// combines one side's fixed flag with the other side's provisional tag drops the flag.
-fn clear_provisional_fixed(m: &mut Document, all: &BTreeSet<Obj>) {
-    for o in all {
-        if let Obj::Device(i) = *o
-            && let Some(c) = m.devices.get_mut(&i)
-            && c.tag().is_some_and(tag::is_provisional)
-        {
-            c.tag_fixed = false;
-        }
-        let props = match *o {
-            Obj::Device(_) => None,
-            Obj::Cable(i) => m.cables.get_mut(&i).map(|c| &mut c.properties),
-            _ => None,
-        };
-        let Some(props) = props else { continue };
-        if props.get(tag::TAG_KEY).is_some_and(|t| tag::is_provisional(t)) {
-            props.remove(tag::FIXED_KEY);
-        }
     }
 }
 
@@ -2310,7 +2301,6 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
     all.extend(needed);
     let renamed = resolve_tags(&mut ctx, &mut m, &all);
     all.extend(renamed);
-    clear_provisional_fixed(&mut m, &all);
     let renumbered = resolve_page_numbers(&mut ctx, &mut m, &all);
     all.extend(renumbered);
     let folders = resolve_folder_names(&mut ctx, &mut m, &all);
@@ -2468,7 +2458,12 @@ mod tests {
     fn doc_with(tags: &[(u128, &str)]) -> Document {
         let mut d = Document::default();
         for (id, t) in tags {
-            d.devices.insert(DeviceId(*id), Device::default().with_tag(Some(t)));
+            // `-K?1` is a provisional tag, stored bare.
+            let device = match t.split_once('?') {
+                Some((a, b)) => Device::default().with_tag(Some(&format!("{a}{b}")), tag::TagState::Provisional),
+                None => Device::default().with_tag(Some(t), tag::TagState::Fixed),
+            };
+            d.devices.insert(DeviceId(*id), device);
         }
         d.rebuild_index();
         d
@@ -2613,7 +2608,7 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert_eq!(doc.devices[&DeviceId(2)].tag().unwrap(), "-K?2");
+        assert_eq!(doc.devices[&DeviceId(2)].tag_shown().unwrap(), "-K?2");
     }
 
     #[test]
@@ -2651,7 +2646,7 @@ mod tests {
     }
 
     fn device(d: &mut Document, c: u128, tag_text: &str, connection_points: &[u128]) {
-        d.devices.insert(DeviceId(c), Device::default().with_tag(Some(tag_text)));
+        d.devices.insert(DeviceId(c), Device::default().with_tag(Some(tag_text), tag::TagState::Fixed));
         for t in connection_points {
             d.connection_points.insert(
                 ConnectionPointId(*t),

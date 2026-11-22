@@ -276,7 +276,8 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
         if !connector_of(doc, c).is_some_and(|x| x.mating) {
             return None;
         }
-        let t = crate::devices::tags::tag_of(doc, c)?;
+        // A provisional connector is named with its `?`, which no half name carries.
+        let t = crate::devices::tags::tag_of(doc, c).filter(|_| doc.devices.get(&c).is_some_and(|d| !d.is_provisional()))?;
         if t.eq_ignore_ascii_case(&head) {
             return Some((c, None));
         }
@@ -661,18 +662,11 @@ pub fn symbol_ops(
 /// # Errors
 /// No tag number left.
 pub fn create_ops(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut crate::devices::tags::TagHigh, starter: &Starter, def: DefinitionId, tag: Option<String>,
-    pins: Option<usize>, names: Option<&[String]>, ops: &mut Vec<Op>,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut crate::devices::tags::TagHigh, starter: &Starter, def: DefinitionId,
+    tag: Option<ecad_model::naming::tag::Entry>, pins: Option<usize>, names: Option<&[String]>, ops: &mut Vec<Op>,
 ) -> Result<(DeviceId, String), CmdError> {
     let doc = ledger.document();
-    let tag = match tag {
-        Some(t) if ecad_model::naming::tag::provisional(&t).is_some_and(|(_, n)| n == 0) => {
-            high.catch_up(ledger);
-            high.next_provisional_in(doc, &ecad_model::naming::tag::provisional(&t).map(|x| x.0).unwrap_or_default())
-        }
-        Some(t) => t,
-        None => high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?,
-    };
+    let tag = high.given(ledger, tag, &crate::devices::prefix_for(doc, starter))?;
     let c: DeviceId = ids.fresh();
     let description = defaults::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text();
     let mut device_type = starter.device_type();
@@ -682,15 +676,12 @@ pub fn create_ops(
     }
     ops.push(Op::CreateDevice {
         id: c,
-        device: Device {
-            tag: Some(crate::devices::stored_tag(&tag)?),
-            description: crate::devices::description_of(&description),
-            definition: Some(def),
-            device_type,
-            ..Device::default()
-        },
+        device: crate::devices::with_given(
+            Device { description: crate::devices::description_of(&description), definition: Some(def), device_type, ..Device::default() },
+            &tag,
+        )?,
     });
-    Ok((c, tag))
+    Ok((c, tag.shown()))
 }
 
 /// The refusal for joining a device that is not a connector (design 044 §6.1).

@@ -259,14 +259,19 @@ fn check_offer(doc: &Document, k: CableId, next: &ecad_model::Cable) -> Result<(
 
 /// The refusal when another device or cable holds `typed`.
 fn refuse_taken(doc: &Document, typed: &str, except: Option<CableId>) -> Result<(), CmdError> {
-    let Ok(t) = ecad_model::naming::tag::normalise(typed, crate::defaults::print::tag_style(doc)) else { return Ok(()) };
-    if ecad_model::naming::tag::provisional(&t).is_some() {
+    let Ok(ecad_model::naming::tag::Entry::Tag(given)) = ecad_model::naming::tag::enter(typed, crate::defaults::print::tag_style(doc)) else {
+        return Ok(());
+    };
+    if given.state.is_provisional() {
         return Ok(());
     }
-    match crate::devices::tags::tag_holder(doc, &t, except.map(ObjectRef::Cable)) {
+    let t = given.shown();
+    match crate::devices::tags::tag_holder(doc, &given.key(), except.map(ObjectRef::Cable)) {
         Some(h) => {
             let by = match h {
-                crate::devices::tags::Holder::Device(c) => format!("{} (device)", crate::devices::tags::tag_of(doc, c).unwrap_or("?")),
+                crate::devices::tags::Holder::Device(c) => {
+                    format!("{} (device)", crate::devices::tags::tag_shown_of(doc, c).unwrap_or_else(|| "?".into()))
+                }
                 crate::devices::tags::Holder::Cable(k) => format!("{} (cable)", crate::cables::cable_title(doc, k)),
             };
             Err(said(format!("{} is already the tag of {}. Choose another tag.", clip(&t), clip(&by))))
@@ -277,12 +282,13 @@ fn refuse_taken(doc: &Document, typed: &str, except: Option<CableId>) -> Result<
 
 /// `cable` with the shield and the cable type moved from its properties (where the checked inputs
 /// put them) to their fields (design 072 §4.5): a field is cleared when the properties hold none.
-fn take_fields(mut cable: ecad_model::Cable) -> ecad_model::Cable {
+/// The tag's `state` is given, never read off the text.
+fn take_fields(mut cable: ecad_model::Cable, state: ecad_model::naming::tag::TagState) -> ecad_model::Cable {
     cable.shield = cable.properties.remove(CableField::Shield.key()).and_then(|w| <Shield as Word>::parse(&w));
     cable.cable_type = cable.properties.remove(CableField::CableType.key()).and_then(|v| StyleRef::parse(&v));
-    // The tag, its fixed flag and the description, likewise (#2).
-    cable.tag = cable.properties.remove(CableField::Tag.key()).and_then(|t| ecad_model::naming::tag::Tag::new(t.trim()).ok());
-    cable.tag_fixed = cable.properties.remove(ecad_model::naming::tag::FIXED_KEY).and_then(|f| ecad_model::naming::words::flag(&f)) == Some(true);
+    // The tag, its state and the description, likewise (#2).
+    let tag = cable.properties.remove(CableField::Tag.key());
+    cable.tag = ecad_model::naming::tag::TagSlot::of_text(tag.as_deref().map(str::trim), state);
     cable.description = cable
         .properties
         .remove(CableField::Description.key())
@@ -295,6 +301,7 @@ fn take_fields(mut cable: ecad_model::Cable) -> ecad_model::Cable {
 #[derive(Debug, Clone)]
 pub struct NewCable {
     pub id: CableId,
+    /// Its tag as drawn.
     pub tag: String,
     /// The `CreateCable` (after the project list entries a new planned code adds).
     pub ops: Vec<Op>,
@@ -334,9 +341,10 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
         refuse_taken(doc, t, None)?;
     }
     let tag = crate::devices::tags::new_cable_tag(ledger, high, typed_tag.as_deref())?;
-    props.insert(CableField::Tag.key().to_string(), tag.clone());
+    props.insert(CableField::Tag.key().to_string(), tag.text.clone());
     let id: CableId = ids.fresh();
-    let mut cable = take_fields(ecad_model::Cable { properties: props, ..ecad_model::Cable::default() });
+    let mut cable = take_fields(ecad_model::Cable { properties: props, ..ecad_model::Cable::default() }, tag.state);
+    let tag = tag.shown();
     crate::styles::cable::sync_offered_cores(doc, &ecad_model::Cable::default(), &mut cable);
     ops.push(Op::CreateCable { id, cable });
     Ok(NewCable { id, tag, ops, added: pending.words() })
@@ -359,7 +367,8 @@ pub(crate) fn edit_ops(
     after.extend(cab.shield.map(|s| (CableField::Shield.key().to_string(), s.word().to_string())));
     after.extend(cab.tag().map(|t| (CableField::Tag.key().to_string(), t.to_string())));
     after.extend(cab.description().map(|d| (CableField::Description.key().to_string(), d.to_string())));
-    after.extend(cab.tag_fixed.then(|| (ecad_model::naming::tag::FIXED_KEY.to_string(), ecad_model::naming::words::flag_word(true).to_string())));
+    // The tag's state is kept beside the bag, never in it.
+    let mut state = cab.tag.state().unwrap_or_default();
     let mut changed = Vec::new();
     for (field, v) in set.entries() {
         let value = if field == CableField::Tag {
@@ -367,13 +376,19 @@ pub(crate) fn edit_ops(
                 // Tester 059a, rule 1: clearing the tag would leave the cable without one.
                 None => return Err(bad_value(field, "", &BadReason::Empty)),
                 Some(t) => {
-                    let n = ecad_model::naming::tag::normalise(&t, crate::defaults::print::tag_style(doc))
-                        .map_err(|e| bad_value(field, &t, &BadReason::BadOffer(e.to_string())))?;
-                    refuse_taken(doc, &n, Some(k))?;
-                    match ecad_model::naming::tag::provisional(&n) {
-                        Some((px, 0)) => Some(tag_high.next_provisional_in(doc, &px)),
-                        _ => Some(n),
-                    }
+                    refuse_taken(doc, &t, Some(k))?;
+                    let given = match ecad_model::naming::tag::enter(&t, crate::defaults::print::tag_style(doc))
+                        .map_err(|e| bad_value(field, &t, &BadReason::BadOffer(e.to_string())))?
+                    {
+                        ecad_model::naming::tag::Entry::Next(px) => ecad_model::naming::tag::Given::new(
+                            tag_high.next_provisional_in(doc, &px),
+                            ecad_model::naming::tag::TagState::Provisional,
+                        ),
+                        ecad_model::naming::tag::Entry::Tag(g) => g,
+                    };
+                    // A typed tag is fixed (026), as Set property on `tag` makes it.
+                    state = given.state;
+                    Some(given.text)
                 }
             }
         } else {
@@ -401,16 +416,8 @@ pub(crate) fn edit_ops(
         }
     }
     // Q6: never fewer cores than those in use.
-    check_offer(doc, k, &take_fields(ecad_model::Cable { properties: after.clone(), ..cab.clone() }))?;
-    // A typed tag is fixed (026), as Set property on `tag` makes it.
-    if set.tag.is_some() {
-        let fixed = after.get(CableField::Tag.key()).is_some_and(|t| !ecad_model::naming::tag::is_provisional(t));
-        match fixed {
-            true => after.insert(ecad_model::naming::tag::FIXED_KEY.into(), ecad_model::naming::words::flag_word(true).to_string()),
-            false => after.remove(ecad_model::naming::tag::FIXED_KEY),
-        };
-    }
-    let mut cable = take_fields(ecad_model::Cable { properties: after, ..cab.clone() });
+    check_offer(doc, k, &take_fields(ecad_model::Cable { properties: after.clone(), ..cab.clone() }, state))?;
+    let mut cable = take_fields(ecad_model::Cable { properties: after, ..cab.clone() }, state);
     crate::styles::cable::sync_offered_cores(doc, cab, &mut cable);
     ops.extend(Op::modify_cable(k, cab, cable));
     Ok((ops, changed, pending.words()))

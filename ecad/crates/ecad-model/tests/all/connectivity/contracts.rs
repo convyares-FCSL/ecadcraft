@@ -499,7 +499,7 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
     p.wire(k[0], k[1]);
     let before = p.doc().connectivity().clone();
     let d = p.doc().devices[&c].clone();
-    let tag = Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some("-K1")) };
+    let tag = Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some("-K1"), ecad_model::naming::tag::TagState::Automatic) };
     let page: PageId = p.ids.fresh();
     let ops = vec![tag, Op::AddPage { id: page, page: Page::titled("2").unwrap(), index: 1 }];
     let head = p.ledger.head();

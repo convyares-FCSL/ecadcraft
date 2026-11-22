@@ -429,7 +429,7 @@ fn a1_place_symbol_asks_rack_and_slot_for_a_card_and_enter_takes_both() {
         .filter(|(_, c)| c.get("description").is_some_and(|x| x.contains("digital input card")))
         .map(|(id, c)| {
             let v = crate::common::plc_view(&d, *id);
-            (c.tag().unwrap_or_default().to_string(), v.get("plc.rack").cloned(), v.get("plc.slot").cloned())
+            (c.tag_shown().unwrap_or_default(), v.get("plc.rack").cloned(), v.get("plc.slot").cloned())
         })
         .collect();
     let mut slots = slots;

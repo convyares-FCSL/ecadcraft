@@ -15,7 +15,7 @@ use crate::defaults::{Kind, Scope, Slot, Value};
 use crate::styles::{Builtin, Catalogue, Field};
 
 /// The line types a box may take, as the field stores them.
-pub const LINE_TYPES: &[&str] = &["dashed", "continuous", "dashdot"];
+pub(crate) const LINE_TYPES: &[&str] = &["dashed", "continuous", "dashdot"];
 
 static FIELDS: [Field; 5] = [
     Field { key: "line_type", label: "Line type", kind: Kind::Choice(LINE_TYPES), slot: Slot::new(), over: None },
@@ -84,19 +84,19 @@ pub fn box_draw(doc: &Document, a: AidId) -> BoxDraw {
 
 /// The location style box `a` is drawn in: its own when it names one that exists, else the
 /// project's (the standard's, the built-in `box`).
-pub fn box_style(doc: &Document, a: AidId) -> StyleRef {
+pub(crate) fn box_style(doc: &Document, a: AidId) -> StyleRef {
     own_style(doc, a).cloned().unwrap_or_else(|| crate::styles::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project()))
 }
 
 /// Box `a`'s own location style, when it names one that exists (a dangling one falls through).
-pub fn own_style(doc: &Document, a: AidId) -> Option<&StyleRef> {
+pub(crate) fn own_style(doc: &Document, a: AidId) -> Option<&StyleRef> {
     crate::locations::box_values(doc, a)
         .and_then(|b| b.style.as_ref())
         .filter(|s| crate::styles::exists(doc, ecad_model::StyleCatalogue::Location, s))
 }
 
 /// The look of location style `id`.
-pub fn draw_of(doc: &Document, id: &StyleRef) -> BoxDraw {
+pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> BoxDraw {
     let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Location, id, k, None);
     let lt = f("line_type").map(|r| r.word()).unwrap_or("dashed");
     let mm = f("line_weight").map_or(0.25, |r| r.number());
@@ -108,7 +108,7 @@ pub fn draw_of(doc: &Document, id: &StyleRef) -> BoxDraw {
 
 /// Whether the project's location style labels with text style `id` (a change of that text style
 /// then reaches every box).
-pub fn labels_with(doc: &Document, id: &StyleRef) -> bool {
+pub(crate) fn labels_with(doc: &Document, id: &StyleRef) -> bool {
     let project = crate::styles::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project());
     draw_of(doc, &project).label_style == *id
 }

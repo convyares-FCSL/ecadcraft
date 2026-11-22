@@ -40,23 +40,23 @@ use ecad_model::{
 use crate::locations::designations::Aspect;
 
 /// A location box's panel temperature key (`setprop {aids}`, design 072 §6.2).
-pub const PANEL_TEMPERATURE_KEY: &str = "panel_temperature";
+pub(crate) const PANEL_TEMPERATURE_KEY: &str = "panel_temperature";
 /// A location box's own location style key (`setprop {aids}`, brief 050a, design 072 §6.2).
-pub const BOX_STYLE_KEY: &str = "style";
+pub(crate) const BOX_STYLE_KEY: &str = "style";
 /// The reserved layer of location boxes (`ecad.location-box`).
 pub const LAYER: &str = "ECAD-LOCATIONS";
 /// The linetype of a box outline.
 pub const LINETYPE: &str = "DASHED";
 /// How far the label sits inside the top-left vertex.
-pub const LABEL_INSET: f64 = 1.5;
+pub(crate) const LABEL_INSET: f64 = 1.5;
 /// Smallest outline area (mm²): 10 x 10 mm.
-pub const MIN_AREA: f64 = 100.0;
+pub(crate) const MIN_AREA: f64 = 100.0;
 /// A point this close to the outline is inside.
-pub const EDGE_TOL: f64 = 0.01;
+pub(crate) const EDGE_TOL: f64 = 0.01;
 /// Most vertices of one box.
-pub const MAX_VERTICES: usize = 10_000;
+pub(crate) const MAX_VERTICES: usize = 10_000;
 /// Refusal of a too small outline (design 024 §3.5).
-pub const TOO_SMALL: &str = "A location box needs at least 10 x 10 mm.";
+pub(crate) const TOO_SMALL: &str = "A location box needs at least 10 x 10 mm.";
 /// Refusal of an item that is not a closed polyline.
 pub const NOT_CLOSED: &str = "Pick a closed polyline (an open one can be closed with PEDIT first).";
 
@@ -84,7 +84,7 @@ pub struct LocBox {
 /// A device in the sense of locations and the BOM (design 024 §6.1): a device with a tag (a BOM
 /// item is a loose part, design 072 §6.4).
 pub fn is_device(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(|x| x.tag.is_some())
+    doc.devices.get(&c).is_some_and(|x| !x.tag.is_none())
 }
 
 /// Location box `a`'s values, when `a` is one.
@@ -93,7 +93,7 @@ pub fn box_values(doc: &Document, a: AidId) -> Option<&LocationBox> {
 }
 
 /// The box representation `r` (`rid`) stands for, if it is one with a drawable outline.
-pub fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representation) -> Option<LocBox> {
+pub(crate) fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representation) -> Option<LocBox> {
     let Subject::Aid(c) = r.subject else { return None };
     if r.form != Form::Drawn || r.role != ecad_model::Role::LocationBox {
         return None;
@@ -183,7 +183,7 @@ pub fn contains(v: &[Pt], p: Pt) -> bool {
 }
 
 /// Whether the closed outline `v` crosses itself (two non-adjacent segments intersect).
-pub fn crosses_itself(v: &[Pt]) -> bool {
+pub(crate) fn crosses_itself(v: &[Pt]) -> bool {
     let n = v.len();
     if n < 4 {
         return false;
@@ -238,7 +238,7 @@ pub fn innermost(boxes: &[LocBox], p: Pt) -> Option<&LocBox> {
 
 /// The innermost of `boxes` carrying aspect `a` and holding `p` (design 052 §5.8: a box without a
 /// function is ignored when looking for the function context, and the other way round).
-pub fn innermost_in(boxes: &[LocBox], a: Aspect, p: Pt) -> Option<&LocBox> {
+pub(crate) fn innermost_in(boxes: &[LocBox], a: Aspect, p: Pt) -> Option<&LocBox> {
     innermost_where(boxes, p, |b| b.key(a).is_some())
 }
 
@@ -360,20 +360,14 @@ pub struct BoxCache {
 
 impl BoxCache {
     /// The boxes on `page`.
-    pub fn on(&mut self, doc: &Document, page: PageId) -> &[LocBox] {
+    pub(crate) fn on(&mut self, doc: &Document, page: PageId) -> &[LocBox] {
         self.pages.entry(page).or_insert_with(|| boxes_on(doc, page))
     }
 }
 
-/// The location context of a point `at` on `page` with that page's `boxes` (design 024 §3.1):
-/// what is proposed there.
-pub fn context_at(doc: &Document, page: PageId, at: Option<Pt>, boxes: &[LocBox]) -> Located {
-    context_in(doc, Aspect::Location, page, at, boxes)
-}
-
 /// The context of aspect `a` at `at` on `page` (design 052 §5.3, §5.8): the innermost box
 /// carrying `a`, else the page's value, else the project's.
-pub fn context_in(doc: &Document, a: Aspect, page: PageId, at: Option<Pt>, boxes: &[LocBox]) -> Located {
+pub(crate) fn context_in(doc: &Document, a: Aspect, page: PageId, at: Option<Pt>, boxes: &[LocBox]) -> Located {
     if let Some(b) = at.and_then(|p| innermost_in(boxes, a, p))
         && let Some(k) = b.key(a)
     {
@@ -442,12 +436,6 @@ pub(crate) fn rep_context_in(doc: &Document, a: Aspect, r: &Representation, cach
     context_in(doc, a, r.page, at, boxes)
 }
 
-/// The box (if any) holding the anchor of `r`.
-pub fn box_holding(doc: &Document, r: &Representation, cache: &mut BoxCache) -> Option<LocBox> {
-    let at = anchor(doc, r)?;
-    innermost(cache.on(doc, r.page), at).cloned()
-}
-
 /// The code of the one context of aspect `a` all of device `c`'s symbols share, if they share
 /// one that has a value (the Checks row's **Use it**, design 052 §6).
 pub fn shared_context(doc: &Document, c: DeviceId, a: Aspect) -> Option<String> {
@@ -465,7 +453,7 @@ pub fn shared_context(doc: &Document, c: DeviceId, a: Aspect) -> Option<String> 
 }
 
 /// Device `c`'s stored value of aspect `a` (design 052 §5.1): its own field, else none.
-pub fn resolve_in(doc: &Document, c: DeviceId, a: Aspect) -> Located {
+pub(crate) fn resolve_in(doc: &Document, c: DeviceId, a: Aspect) -> Located {
     match doc.devices.get(&c).and_then(|x| designations::device_key(x, a)) {
         Some(k) => Located::of(doc, a, &k, Source::Device),
         None => Located::none(),
@@ -491,7 +479,7 @@ pub fn resolve_function(doc: &Document, c: DeviceId) -> Located {
 /// The override property of representation `r` (design 052 §5.2): `location.socket` or
 /// `location.plug` for a connector half or pin (a pin pair uses the socket's), else
 /// `location.<type>`; `None` for a head.
-pub fn override_key(doc: &Document, r: &Representation) -> Option<String> {
+pub(crate) fn override_key(doc: &Document, r: &Representation) -> Option<String> {
     use crate::symbols::Side;
     if let Some(side) = crate::connectors::rep_side(doc, r) {
         return Some(format!("{LOCATION_KEY}.{}", if side == Side::Plug { "plug" } else { "socket" }));
@@ -502,7 +490,7 @@ pub fn override_key(doc: &Document, r: &Representation) -> Option<String> {
 
 /// Whether `t` may name an override (design 052 FP3): a §3.1 type word other than `head`, or
 /// `socket` / `plug`.
-pub fn override_type_ok(t: &str) -> bool {
+pub(crate) fn override_type_ok(t: &str) -> bool {
     matches!(t, "socket" | "plug") || <ecad_model::PartRole as ecad_model::Word>::parse(t).is_some_and(|x| x != ecad_model::PartRole::Head)
 }
 
@@ -532,7 +520,7 @@ pub fn half_location(doc: &Document, c: DeviceId, side: crate::symbols::Side) ->
 /// The tag a symbol representation `r` of device `c` shows (design 024 §3.3, design 052 §5.8):
 /// the tag after the device's function and its representation's location, each where the
 /// symbol's context for that aspect differs (`=F1+CP1-K01`). Reads `r`'s page only.
-pub fn shown_tag(doc: &Document, c: DeviceId, r: &Representation, tag: &str, cache: &mut BoxCache) -> String {
+pub(crate) fn shown_tag(doc: &Document, c: DeviceId, r: &Representation, tag: &str, cache: &mut BoxCache) -> String {
     let mut prefix = String::new();
     for a in Aspect::ALL {
         let own = match a {
@@ -575,7 +563,7 @@ fn box_style_for(layer: LayerId, b: &LocationBox) -> Style {
 }
 
 /// The linetype of a box carrying a function (design 052 §9.5, our own definition).
-pub const FUNCTION_LINETYPE: &str = "DASHDOT";
+pub(crate) const FUNCTION_LINETYPE: &str = "DASHDOT";
 
 /// The style of a box outline on layer `layer`.
 fn box_style(layer: LayerId) -> Style {
@@ -591,19 +579,11 @@ fn layer_ops(doc: &Document, ids: &mut IdAllocator) -> (LayerId, Vec<Op>) {
     (id, vec![Op::AddLayer { id, layer: Layer { name: LAYER.into() } }])
 }
 
-/// A location value as stored: trimmed, with a leading `+`.
-///
-/// # Errors
-/// Empty, too long or a control character.
-pub fn location_value(doc: &Document, text: &str) -> Result<String, CmdError> {
-    crate::devices::json::property_value(doc, LOCATION_KEY, Some(text))?.ok_or(CmdError::refused("A location box needs a location, such as +CP1."))
-}
-
 /// Check an outline for a box.
 ///
 /// # Errors
 /// Fewer than three points, a non-finite point, too many points, or too small.
-pub fn check_outline(v: &[Pt]) -> Result<(), CmdError> {
+pub(crate) fn check_outline(v: &[Pt]) -> Result<(), CmdError> {
     if v.len() < 3 {
         return Err(CmdError::refused("A location box needs at least three points."));
     }
@@ -650,16 +630,7 @@ fn new_box(
 }
 
 /// Refusal of a box with neither a function nor a location (design 052 §5.8).
-pub const NO_VALUE: &str = "A box needs a function or a location, such as =F1 or +CP1.";
-
-/// The ops of a new location box `location` drawn on `page` with outline `vertices`
-/// (design 024 §7): `CreateAid`, `AddItem` (closed polyline), `LinkRepresentation`.
-///
-/// # Errors
-/// As [`plan_box_with`].
-pub fn plan_box(doc: &Document, ids: &mut IdAllocator, page: PageId, location: &str, vertices: Vec<Pt>) -> Result<Planned, CmdError> {
-    plan_box_with(doc, ids, page, &[(Aspect::Location, location)], vertices)
-}
+pub(crate) const NO_VALUE: &str = "A box needs a function or a location, such as =F1 or +CP1.";
 
 /// The ops of a new box carrying `values` (a function, a location or both, design 052 FP9),
 /// drawn on `page` with outline `vertices`. A code not in the project's list adds its entry in
@@ -667,7 +638,9 @@ pub fn plan_box(doc: &Document, ids: &mut IdAllocator, page: PageId, location: &
 ///
 /// # Errors
 /// As [`check_outline`]; a value that is not a valid code; neither value given.
-pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values: &[(Aspect, &str)], vertices: Vec<Pt>) -> Result<Planned, CmdError> {
+pub(crate) fn plan_box_with(
+    doc: &Document, ids: &mut IdAllocator, page: PageId, values: &[(Aspect, &str)], vertices: Vec<Pt>,
+) -> Result<Planned, CmdError> {
     if !doc.pages.contains_key(&page) {
         return Err(CmdError::refused(crate::msg::NO_SUCH_PAGE));
     }
@@ -697,20 +670,11 @@ pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values
     Ok(Planned { aid, rep, item, ops, added: pending.words() })
 }
 
-/// The ops that turn the existing closed polyline `item` into location box `location`
-/// (design 024 §3.5, §7).
-///
-/// # Errors
-/// As [`plan_from_item_with`].
-pub fn plan_from_item(doc: &Document, ids: &mut IdAllocator, item: ItemId, location: &str) -> Result<Planned, CmdError> {
-    plan_from_item_with(doc, ids, item, &[(Aspect::Location, location)])
-}
-
 /// The ops that turn the existing closed polyline `item` into a box carrying `values`.
 ///
 /// # Errors
 /// Not a closed polyline, part of another object, or as [`plan_box_with`].
-pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, values: &[(Aspect, &str)]) -> Result<Planned, CmdError> {
+pub(crate) fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, values: &[(Aspect, &str)]) -> Result<Planned, CmdError> {
     let it = doc.items.get(&item).ok_or(CmdError::refused("no such item"))?;
     if let Some((_, r)) = doc.representation_of_item(item) {
         let who = match r.subject {
@@ -756,7 +720,7 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
 }
 
 /// The box a [`Planned`] box will be, read from its ops (for proposals before it is committed).
-pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
+pub(crate) fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
     let mut props = None;
     let mut vertices = None;
     let mut page = None;
@@ -828,7 +792,7 @@ pub fn reshape_refusal(doc: &Document, id: ItemId, after: &Item) -> Option<Strin
 
 /// How many device symbols on `b`'s page are inside it, and how many of those keep an own
 /// location that differs (for the echo and the box's Properties).
-pub fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
+pub(crate) fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
     let mut cache = BoxCache::default();
     let (mut n, mut keeps) = (0, 0);
     for (_, r) in doc.representations_on(b.page) {
@@ -852,12 +816,6 @@ pub fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
         }
     }
     (n, keeps)
-}
-
-/// The JSON of a device's location (`devices` results gain these, design 024 §3.4).
-pub fn json_fields(doc: &Document, c: DeviceId) -> (serde_json::Value, &'static str) {
-    let l = resolve(doc, c);
-    (l.value.map_or(serde_json::Value::Null, serde_json::Value::String), l.source.word())
 }
 
 /// Natural order of two location or tag texts: digit runs compare by value (`+CP2` < `+CP10`).

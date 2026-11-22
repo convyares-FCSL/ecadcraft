@@ -93,11 +93,12 @@ pub(crate) struct Index {
     pub(crate) definition_items: Multi<DefinitionId, ItemId>,
     /// Definition → components using it.
     pub(crate) definition_components: Multi<DefinitionId, DeviceId>,
-    /// Tag key ([`crate::naming::tag::key`]) → components whose `tag` property has it (brief 018).
-    pub(crate) tags: Multi<String, DeviceId>,
+    /// Tag key ([`crate::naming::tag::Key`]: the tag's key and whether it is provisional) → components
+    /// holding it (brief 018, S6 #3).
+    pub(crate) tags: Multi<crate::naming::tag::Key, DeviceId>,
     /// Tag key → cables whose `tag` property has it (brief 026: devices and cables share one tag
     /// namespace).
-    pub(crate) cable_tags: Multi<String, CableId>,
+    pub(crate) cable_tags: Multi<crate::naming::tag::Key, CableId>,
     /// Continuation name key ([`crate::connectivity::name_key`]) → continuation components with
     /// that name (brief 022).
     pub(crate) continuations: Multi<String, crate::naming::id::AidId>,
@@ -256,8 +257,8 @@ impl Index {
         {
             bump(&mut self.station_modules, r, id, delta);
         }
-        if let Some(t) = c.tag() {
-            self.tag(id, t, delta);
+        if let Some(k) = c.tag_key() {
+            bump(&mut self.tags, k, id, delta);
         }
         self.style_choices(ObjectRef::Device(id), &c.properties, delta);
     }
@@ -267,11 +268,6 @@ impl Index {
         if let Some(k) = crate::connectivity::continuation_key(aid) {
             bump(&mut self.continuations, k, id, delta);
         }
-    }
-
-    /// A component's tag `tag` (its stored value) is added or removed.
-    pub(crate) fn tag(&mut self, id: DeviceId, tag: &str, delta: Delta) {
-        bump(&mut self.tags, crate::naming::tag::key(tag), id, delta);
     }
 
     pub(crate) fn connection_point(&mut self, id: ConnectionPointId, t: &ConnectionPoint, delta: Delta) {
@@ -304,19 +300,14 @@ impl Index {
         for m in &c.cores {
             self.cable_member(id, m, delta);
         }
-        if let Some(t) = c.tag() {
-            self.cable_tag(id, t, delta);
+        if let Some(k) = c.tag_key() {
+            bump(&mut self.cable_tags, k, id, delta);
         }
         // Design 072 §4.5: a cable's type is a style user, though no registry level chooses one.
         if let Some(t) = &c.cable_type {
             bump(&mut self.style_users, (t.text(), crate::document::doc::CABLE_TYPE_KEY.to_string()), ObjectRef::Cable(id), delta);
         }
         self.style_choices(ObjectRef::Cable(id), &c.properties, delta);
-    }
-
-    /// A cable's tag `tag` (its stored value) is added or removed (brief 026).
-    pub(crate) fn cable_tag(&mut self, id: CableId, tag: &str, delta: Delta) {
-        bump(&mut self.cable_tags, crate::naming::tag::key(tag), id, delta);
     }
 
     pub(crate) fn cable_member(&mut self, id: CableId, m: &Core, delta: Delta) {

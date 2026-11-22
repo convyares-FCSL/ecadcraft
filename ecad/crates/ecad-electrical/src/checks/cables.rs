@@ -59,17 +59,18 @@ pub(crate) fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -
             });
         }
     }
-    let Some(t) = crate::devices::tags::cable_tag_of(doc, k) else { return out };
-    if !ecad_model::naming::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
+    let Some(cable) = doc.cables.get(&k) else { return out };
+    let (Some(key), Some(t)) = (cable.tag_key(), cable.tag_shown()) else { return out };
+    if !cable.is_provisional() && doc.cables_with(&key).len() < 2 && doc.components_with(&key).is_empty() {
         return out;
     }
     let (page, at) = ecad_model::naming::numbering::rep_anchor_in(places, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
-    if ecad_model::naming::tag::is_provisional(t) {
-        out.push(Check { kind: Kind::ProvisionalTag, page, at, object: Object::Cable(k), which: t.to_string(), fix: Some(Fix::Finalise) });
+    if cable.is_provisional() {
+        out.push(Check { kind: Kind::ProvisionalTag, page, at, object: Object::Cable(k), which: t.clone(), fix: Some(Fix::Finalise) });
     }
-    if doc.cables_tagged(t).len() > 1 {
+    if doc.cables_with(&key).len() > 1 {
         out.push(Check { kind: Kind::DuplicateTag, page, at, object: Object::Cable(k), which: format!("Two cables share {t}"), fix: None });
-    } else if !doc.components_tagged(t).is_empty() {
+    } else if !doc.components_with(&key).is_empty() {
         out.push(Check { kind: Kind::DuplicateTag, page, at, object: Object::Cable(k), which: format!("A cable and a device share {t}"), fix: None });
     }
     out

@@ -37,7 +37,6 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ("crates/ecad-electrical/src/plc/draw.rs", 3, "the cell or body piece a representation draws"),
     ("crates/ecad-electrical/src/plc/mod.rs", 5, "which representation is a channel cell or card caption (drawn pieces)"),
     ("crates/ecad-electrical/src/references/devices/classify.rs", 2, "the poles a drawn contact symbol shows (gap: a `poles` table on the definition)"),
-    ("crates/ecad-electrical/src/styles/text_style.rs", 1, "like symbols run together in a text style (a symbol key)"),
     ("crates/ecad-electrical/src/symbols/catalogue.rs", 1, "the symbols catalogue itself: the starter a definition was made from"),
     ("crates/ecad-electrical/src/symbols/project.rs", 3, "the symbols catalogue itself: registry key, mating half, bridge keys"),
     ("crates/ecad-electrical/src/symbols/rules.rs", 1, "fuse bank ways (gap: `FuseBank.ways` is not stored)"),

@@ -504,7 +504,11 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         };
         let desc_origin = if own("description") {
             "set here"
-        } else if doc.display.keys().any(|k| k.starts_with("connector.") && k.ends_with(".description")) {
+        } else if doc
+            .display
+            .keys()
+            .any(|k| ecad_model::naming::keys::in_area(k, ecad_model::naming::keys::Area::Connector) && k.ends_with(".description"))
+        {
             "from project"
         } else {
             "from standard"
@@ -711,7 +715,11 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         What::Wire(w) => {
             deps.insert(ObjectRef::Wire(w));
             let es = defaults::all()
-                .filter(|e| e.key == defaults::text::WIRE_LABEL_HEIGHT.key || e.group == "Wire labels" || e.key.starts_with("wire."))
+                .filter(|e| {
+                    e.key == defaults::text::WIRE_LABEL_HEIGHT.key
+                        || e.group == "Wire labels"
+                        || ecad_model::naming::keys::in_area(e.key, ecad_model::naming::keys::Area::Wire)
+                })
                 .collect();
             (Scope { conductor: Some(w), ..Scope::project() }, es, Some((Level::Object, Target::Wire(w))))
         }

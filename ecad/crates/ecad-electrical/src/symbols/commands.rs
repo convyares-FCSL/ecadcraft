@@ -1126,7 +1126,7 @@ pub struct PlacedProject {
 #[allow(clippy::too_many_arguments)]
 pub fn plan_place(
     ledger: &Ledger, ids: &mut IdAllocator, tag_high: &mut TagHigh, page: PageId, style: Style, def_id: DefinitionId, def: &Definition,
-    pl: Placement, join: Option<DeviceId>, tag: Option<String>,
+    pl: Placement, join: Option<DeviceId>, tag: Option<ecad_model::naming::tag::Entry>,
 ) -> Result<PlacedProject, CmdError> {
     let key = def.defaults.key.as_ref().map(|k| k.to_string()).unwrap_or_default();
     let (item, representation): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
@@ -1175,13 +1175,9 @@ pub fn plan_place(
             Ok(PlacedProject { ops, component: c, representation, tag: crate::devices::tags::tag_words(doc, c) })
         }
         (Join::Device, None) => {
-            let tag = match tag {
-                Some(t) => t,
-                None => {
-                    let prefix = field_value(doc, &key, def, Field::Prefix).unwrap_or_else(|| "X".into());
-                    tag_high.next_auto(ledger, &prefix)?
-                }
-            };
+            let prefix = field_value(doc, &key, def, Field::Prefix).unwrap_or_else(|| "X".into());
+            let given = tag_high.given(ledger, tag, &prefix)?;
+            let tag = given.shown();
             let c: DeviceId = ids.fresh();
             let description = field_value(doc, &key, def, Field::Description).unwrap_or_else(|| def.name.clone());
             // Design 072 §2.2: the default rating is read by the group's reader; text it cannot
@@ -1191,14 +1187,16 @@ pub fn plan_place(
                 .unwrap_or_else(|_| (def.device_type.clone(), rating.as_deref().and_then(|r| ecad_model::objects::devices::RatingNote::new(r).ok())));
             ops.push(Op::CreateDevice {
                 id: c,
-                device: Device {
-                    tag: Some(crate::devices::stored_tag(&tag)?),
-                    description: crate::devices::description_of(&description),
-                    rating_note,
-                    definition: Some(def_id),
-                    device_type,
-                    ..Device::default()
-                },
+                device: crate::devices::with_given(
+                    Device {
+                        description: crate::devices::description_of(&description),
+                        rating_note,
+                        definition: Some(def_id),
+                        device_type,
+                        ..Device::default()
+                    },
+                    &given,
+                )?,
             });
             for td in &def.connection_points {
                 let t: ConnectionPointId = ids.fresh();

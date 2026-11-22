@@ -26,7 +26,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::commands::input::TextOrNumber;
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::defaults::Scope;
 use crate::error::CmdError;
 
@@ -35,7 +35,7 @@ pub const STANDARD_READ_ONLY: &str = "This project uses IEC (built in). Make a s
 pub const NEEDS_VALUE: &str = "Give a `value`, or `reset: true` to remove this level's value.";
 pub const NEEDS_OBJECT: &str = "The object level needs a `component`, `conductor` or `representation`.";
 /// A call with both a value and a reset.
-pub const NOT_BOTH: &str = "Give either `value` or `reset: true`, not both.";
+pub(crate) const NOT_BOTH: &str = "Give either `value` or `reset: true`, not both.";
 
 /// The words of a level in `defaults` and here.
 pub fn level_word(l: Level) -> &'static str {
@@ -62,7 +62,7 @@ pub fn level_of(word: &str) -> Result<Level, CmdError> {
 }
 
 /// `"`text.tag.height` cannot be set at page level. It can be set at: project, object."`
-pub fn level_refused(entry: &Entry, level: Level) -> String {
+pub(crate) fn level_refused(entry: &Entry, level: Level) -> String {
     let allowed: Vec<&str> = entry.levels.iter().filter(|l| **l != Level::Standard).map(|l| level_word(*l)).collect();
     if allowed.is_empty() {
         return format!("`{}` cannot be set at {} level; it has only its built-in value.", entry.key, level_word(level));
@@ -76,7 +76,7 @@ pub fn level_refused(entry: &Entry, level: Level) -> String {
 ///
 /// # Errors
 /// The value is not valid for the entry, in words.
-pub fn stored_text(entry: &Entry, typed: &str) -> Result<String, CmdError> {
+pub(crate) fn stored_text(entry: &Entry, typed: &str) -> Result<String, CmdError> {
     let parsed = entry.parse_input(typed).ok_or_else(|| bad_value(entry))?;
     if is_prefix(entry) {
         return crate::devices::valid_prefix(typed).ok_or_else(|| bad_value(entry));
@@ -127,7 +127,7 @@ fn starter_key(entry: &Entry) -> Option<&'static str> {
 
 /// Set (or with `None` remove) starter `key`'s tag prefix in `s`, as Tag Settings writes it: the
 /// starter's own prefix is stored as none.
-pub fn set_tag_prefix(s: &mut ProjectSettings, key: &str, prefix: Option<&str>) {
+pub(crate) fn set_tag_prefix(s: &mut ProjectSettings, key: &str, prefix: Option<&str>) {
     crate::devices::set_symbol_prefix(s, ecad_model::naming::prefix::PrefixOf::Starter(key.into()), prefix);
 }
 
@@ -136,7 +136,7 @@ pub fn set_tag_prefix(s: &mut ProjectSettings, key: &str, prefix: Option<&str>) 
 ///
 /// # Errors
 /// The entry has no setting this command knows (a registry entry added without a writer).
-pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>) -> Result<(), CmdError> {
+pub(crate) fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>) -> Result<(), CmdError> {
     // Brief 066 (F2): `None` stores "not chosen", never the built-in's value.
     let number = |v: Option<&str>| v.and_then(|t| t.parse::<f64>().ok());
     // A whole number; the entry's kind has already checked its range.
@@ -238,7 +238,7 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
 
 /// A value as a call gives it.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Given {
+pub(crate) enum Given {
     /// Text.
     Text(String),
     /// A number, as JSON writes it.
@@ -258,7 +258,7 @@ pub enum Chosen {
 ///
 /// # Errors
 /// Neither or both given, or a value the entry refuses.
-pub fn chosen(entry: &Entry, value: Option<Given>, reset: bool) -> Result<Chosen, CmdError> {
+pub(crate) fn chosen(entry: &Entry, value: Option<Given>, reset: bool) -> Result<Chosen, CmdError> {
     // A style choice names a style by ID or name, resolved in the project (brief 050a).
     if let (Some(Given::Text(v)), false, defaults::Kind::Style(cat)) = (&value, reset, entry.kind) {
         return Ok(Chosen::Style(cat, v.clone()));
@@ -305,7 +305,7 @@ pub fn target(level: Level, page: Option<PageId>, shown: PageId, o: Objects) -> 
 ///
 /// # Errors
 /// A style that does not exist, a page type a generated page cannot take, or [`ops`]' refusals.
-pub fn ops_for(doc: &Document, entry: &Entry, level: Level, target: Target, chosen: Chosen) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn ops_for(doc: &Document, entry: &Entry, level: Level, target: Target, chosen: Chosen) -> Result<Vec<Op>, CmdError> {
     let value = match chosen {
         Chosen::Style(cat, v) => Some(crate::styles::find(doc, cat, &v)?.text()),
         Chosen::Stored(v) => v,
@@ -323,7 +323,7 @@ pub fn ops_for(doc: &Document, entry: &Entry, level: Level, target: Target, chos
 
 /// A symbol family entry's change ([`plan_family`]).
 #[derive(Debug, Clone, PartialEq)]
-pub struct FamilySet {
+pub(crate) struct FamilySet {
     /// The symbol's key.
     pub symbol: String,
     pub field: crate::defaults::symbols::Field,
@@ -339,10 +339,10 @@ pub struct FamilySet {
 /// # Errors
 /// Neither or both of a text value and `reset`; another level; a field the symbol keeps as its
 /// own; a value the field does not take.
-pub fn plan_family(doc: &Document, key: &str, level: Option<&str>, value: Option<Given>, reset: bool) -> Result<Option<FamilySet>, CmdError> {
+pub(crate) fn plan_family(doc: &Document, key: &str, level: Option<&str>, value: Option<Given>, reset: bool) -> Result<Option<FamilySet>, CmdError> {
     use crate::defaults::symbols::{self as family, Field};
     // Only `symbol.<key>.<field>` keys: any other key is "No default" for the caller to say.
-    if !key.trim().starts_with("symbol.") {
+    if !ecad_model::naming::keys::in_area(key.trim(), ecad_model::naming::keys::Area::Symbol) {
         return Ok(None);
     }
     let Some((symbol, field)) = family::family(doc, key) else { return Ok(None) };
@@ -510,5 +510,65 @@ impl SetdefaultParams {
             TextOrNumber::Text(t) => Given::Text(t.clone()),
             TextOrNumber::Number(n) => Given::Number(n.to_string()),
         })
+    }
+}
+
+/// `defaults {group?, key?, page?, component?, representation?}` (design 031 §10.8, read only):
+/// the defaults registry, resolved at a symbol, a device and a page, or the project.
+#[derive(serde::Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DefaultsParams {
+    /// Only this group's entries ("Text", "Project symbols", …; any case).
+    #[serde(default)]
+    group: Option<String>,
+    /// Only this entry.
+    #[serde(default)]
+    key: Option<String>,
+    /// Resolve on this page.
+    #[serde(default)]
+    page: Option<PageId>,
+    /// Resolve for this device.
+    #[serde(default)]
+    component: Option<DeviceId>,
+    /// Resolve for this symbol (wins over `component` and `page`).
+    #[serde(default)]
+    representation: Option<RepresentationId>,
+}
+
+impl Generic for DefaultsParams {
+    const ID: &'static str = "defaults";
+    const TITLE: &'static str = "Defaults";
+    const HELP: &'static str = "{group?: string, key?: string, page?: id, component?: id, representation?: id} (read only)";
+    const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let group = self.group.map(|g| g.trim().to_string());
+        let key = self.key.map(|k| k.trim().to_string());
+        let doc = cx.doc;
+        let at = super::text::scope(doc, self.representation, self.component, self.page)?;
+        if let Some(k) = &key {
+            super::text::default_key(doc, k)?;
+        }
+        let mut list: Vec<serde_json::Value> = defaults::all()
+            .filter(|e| group.as_deref().is_none_or(|g| e.group.eq_ignore_ascii_case(g)))
+            .filter(|e| key.as_deref().is_none_or(|k| e.key == k))
+            .map(|e| super::text::entry_json(doc, e, at))
+            .collect();
+        // Brief 048 (FP6): one line per field of each project symbol, and the asked-for family entry.
+        let mut family = defaults::symbols::family_lines(doc);
+        if let Some((sym, f)) = key.as_deref().and_then(|k| defaults::symbols::family(doc, k))
+            && !family.contains(&(sym.clone(), f))
+        {
+            family.push((sym, f));
+        }
+        list.extend(
+            family
+                .into_iter()
+                .filter(|_| group.as_deref().is_none_or(|g| g.eq_ignore_ascii_case("Project symbols")))
+                .filter(|(sym, f)| key.as_deref().is_none_or(|k| k == defaults::symbols::family_key(sym, *f)))
+                .map(|(sym, f)| defaults::symbols::family_json(doc, &sym, f)),
+        );
+        Ok(Outcome::answer(json!({ "defaults": list })))
     }
 }

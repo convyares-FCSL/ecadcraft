@@ -411,7 +411,7 @@ pub enum Fix {
     ShowReports,
     /// Brief 028: offer the drawn count (`setprop terminals`, PE kept): Offer 14.
     OfferDrawn(DeviceId),
-    /// Brief 028: renumber the strip's terminals (`renumber {kind: "terminals"}`).
+    /// Brief 028: renumber the strip's terminal blocks (`renumber {kind: "terminal_blocks"}`).
     RenumberStrip(DeviceId),
     /// Brief 028: focus Properties ▸ Cores on the cable.
     SetCores(ecad_model::CableId),
@@ -753,7 +753,7 @@ impl Scope {
             }
             Effect::Device { id, before, after } => {
                 for device in before.iter().chain(after.iter()) {
-                    self.tag_holders(doc, device.tag());
+                    self.tag_holders(doc, device.tag_key());
                 }
                 self.component(doc, *id);
                 for (t, _) in doc.connection_points_of(*id) {
@@ -774,7 +774,10 @@ impl Scope {
             Effect::Prop { object: ObjectRef::Device(c), key, before, after } => {
                 let key = key.raw;
                 if key == ecad_model::naming::tag::TAG_KEY {
-                    self.tag_holders(doc, [before, after].into_iter().flatten().copied());
+                    // The op names the text only: the holders of it in either state.
+                    use ecad_model::naming::tag::{Key, TagState};
+                    let keys = [before, after].into_iter().flatten().flat_map(|t| [Key::of(t, TagState::Fixed), Key::of(t, TagState::Provisional)]);
+                    self.tag_holders(doc, keys);
                 }
                 // Brief 059 (design 059 §8): a device's location or function is where the
                 // cables at its points are drawn (`cable-end-off-plan`).
@@ -801,8 +804,7 @@ impl Scope {
                 self.cable_references.insert(*k);
                 // Brief 026: the cable's own rows, and every holder of the tags it had or has.
                 self.cables.insert(*k);
-                let tags: Vec<String> = before.iter().chain(after.iter()).filter_map(|c| c.tag().map(str::to_string)).collect();
-                self.tag_holders(doc, tags.iter().map(String::as_str));
+                self.tag_holders(doc, before.iter().chain(after.iter()).filter_map(|c| c.tag_key()));
                 // A cable's tag and cores are part of its members' words.
                 if let Some(cable) = doc.cables.get(k) {
                     self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
@@ -977,10 +979,10 @@ impl Scope {
     }
 
     /// Every device and cable holding one of `tags` (a shared tag's rows on both sides).
-    fn tag_holders<'t>(&mut self, doc: &Document, tags: impl IntoIterator<Item = &'t str>) {
-        for t in tags {
-            self.devices.extend(doc.components_tagged(t));
-            self.cables.extend(doc.cables_tagged(t));
+    fn tag_holders(&mut self, doc: &Document, tags: impl IntoIterator<Item = ecad_model::naming::tag::Key>) {
+        for k in tags {
+            self.devices.extend(doc.components_with(&k));
+            self.cables.extend(doc.cables_with(&k));
         }
     }
 

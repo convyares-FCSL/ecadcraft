@@ -123,8 +123,8 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, AidId, PageId, Document
         let d = p.ledger.document();
         // Design 072 §6.3: a device stores list ids; these name no entry (a removed one).
         let gone = |d: &ecad_model::Device, l: u128, f: Option<u128>| ecad_model::Device {
-            location: Some(ecad_model::LocationId(l)),
-            function: f.map(ecad_model::FunctionId).or(d.function),
+            location: ecad_model::document::book::Place::Proposed(ecad_model::LocationId(l)),
+            function: ecad_model::document::book::Place::proposed(f.map(ecad_model::FunctionId).or(d.function.id())),
             ..d.clone()
         };
         let ops = vec![

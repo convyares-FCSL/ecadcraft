@@ -24,7 +24,7 @@ use crate::styles::{Catalogue, Field};
 
 /// The input word (and style-choice index key) naming a cable's cable type (FP2); stored in
 /// [`ecad_model::Cable::cable_type`], never as a property.
-pub const CABLE_TYPE: &str = ecad_model::document::doc::CABLE_TYPE_KEY;
+pub(crate) const CABLE_TYPE: &str = ecad_model::document::doc::CABLE_TYPE_KEY;
 
 fn any_text(_: &str) -> bool {
     true
@@ -33,14 +33,14 @@ fn any_text(_: &str) -> bool {
 const TEXT64: Kind = Kind::Parsed { max_chars: 64, parse: any_text };
 
 /// The field naming the cores' colours, in core order (`BN,BK,GY,GN/YE`): board 2.06's drawn cable.
-pub const CORE_COLOURS: &str = "core_colours";
+pub(crate) const CORE_COLOURS: &str = "core_colours";
 
 fn is_colour_list(s: &str) -> bool {
     CoreColours::parse(s).is_some()
 }
 
 /// The field naming a scheme the cores' colours come from (design 072 F37).
-pub const CORE_SCHEME: &str = "core_scheme";
+pub(crate) const CORE_SCHEME: &str = "core_scheme";
 
 fn is_size(s: &str) -> bool {
     WireSize::parse(s).is_some()
@@ -73,15 +73,15 @@ static FIELDS: [Field; 15] = [
 
 /// Brief 059: the cable type's core offer (`4G`, `BN,BK,GY,GNYE`), used when the cable has no
 /// `cores` of its own.
-pub const TYPE_CORES: &str = "cores";
+pub(crate) const TYPE_CORES: &str = "cores";
 /// Brief 059: the cable type's shield (`none`, `overall`, `pairs`, `overall+pairs`).
-pub const TYPE_SHIELD: &str = "shield";
+pub(crate) const TYPE_SHIELD: &str = "shield";
 /// Brief 059: the cable type's gland at both ends (`M20`).
-pub const TYPE_GLAND: &str = "gland";
+pub(crate) const TYPE_GLAND: &str = "gland";
 /// Brief 059: the cable type's outer diameter in millimetres, 1 to 200 (shown; computed glands later).
-pub const TYPE_OUTER_DIAMETER: &str = "outer_diameter";
+pub(crate) const TYPE_OUTER_DIAMETER: &str = "outer_diameter";
 /// The longest gland size stored.
-pub const MAX_GLAND_CHARS: usize = 16;
+pub(crate) const MAX_GLAND_CHARS: usize = 16;
 /// The shield words, as stored.
 pub const SHIELDS: [&str; 4] = ["none", "overall", "pairs", "overall+pairs"];
 
@@ -95,7 +95,7 @@ fn is_shield(s: &str) -> bool {
 
 /// A gland size: 1 to [`MAX_GLAND_CHARS`] characters, with no control or invisible (bidi,
 /// zero-width) characters (`ecad_model::naming::text::check`, tester 059 f4).
-pub fn is_gland(s: &str) -> bool {
+pub(crate) fn is_gland(s: &str) -> bool {
     ecad_model::naming::text::check(s, MAX_GLAND_CHARS).is_ok()
 }
 
@@ -165,7 +165,7 @@ pub fn offer_of(doc: &Document, cab: &ecad_model::Cable) -> Option<(Vec<String>,
 /// (`before`'s) named and the new one does not goes. Placed cores never move. Run by
 /// the commands that set `cores`, `type` or `cable_type`; reading never does it. Labels compare
 /// without case.
-pub fn sync_offered_cores(doc: &Document, before: &ecad_model::Cable, after: &mut ecad_model::Cable) {
+pub(crate) fn sync_offered_cores(doc: &Document, before: &ecad_model::Cable, after: &mut ecad_model::Cable) {
     let labels = |cab: &ecad_model::Cable| -> Vec<String> { offer_of(doc, cab).map(|(o, _, _)| o).unwrap_or_default() };
     let (old, new) = (labels(before), labels(after));
     let named = |list: &[String], l: &str| list.iter().any(|x| x.eq_ignore_ascii_case(l.trim()));
@@ -196,7 +196,7 @@ pub fn sync_offered_cores(doc: &Document, before: &ecad_model::Cable, after: &mu
 /// Place a core of `cable` at `position` (design 072 §4.5, a write rule): the first unplaced in-use
 /// core labelled `label` moves there; with none (or no label), a new in-use core labelled `label`
 /// is added at the end.
-pub fn place_core(cable: &mut ecad_model::Cable, label: Option<ecad_model::CoreLabel>, position: ecad_model::CorePosition) {
+pub(crate) fn place_core(cable: &mut ecad_model::Cable, label: Option<ecad_model::CoreLabel>, position: ecad_model::CorePosition) {
     let free = |m: &ecad_model::Core| m.position == ecad_model::CorePosition::Unplaced && !m.is_spare();
     let at = label
         .as_ref()
@@ -229,7 +229,7 @@ pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
 /// `unused.<label>` = `yes`. Nothing is stored under it: it sets the core's
 /// [`ecad_model::Purpose`] (design 072 §4.5). An in-use core that is not connected at both ends is
 /// an open end (an error).
-pub const UNUSED_PREFIX: &str = "unused.";
+pub(crate) const UNUSED_PREFIX: &str = "unused.";
 /// The longest core label read in an `unused.` key.
 pub const MAX_LABEL_CHARS: usize = ecad_model::MAX_CORE_LABEL;
 
@@ -267,7 +267,7 @@ pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
 ///
 /// # Errors
 /// In plain words, bounded: the core is not the cable's, or the value is not yes or no.
-pub fn unused_ops(doc: &Document, k: CableId, key: &str, value: Option<&str>) -> Result<Vec<ecad_model::Op>, CmdError> {
+pub(crate) fn unused_ops(doc: &Document, k: CableId, key: &str, value: Option<&str>) -> Result<Vec<ecad_model::Op>, CmdError> {
     use ecad_model::{Core, CoreLabel, CorePosition, Op, Purpose};
     let label = key.strip_prefix(UNUSED_PREFIX).unwrap_or_default();
     let tick = match value.map(str::trim) {
@@ -441,14 +441,12 @@ pub fn set(t: &mut CableType, key: &str, value: Option<&str>) -> Result<(), CmdE
 // ---------------------------------------------------------------- core colour schemes (F37)
 
 /// The built-in core colour schemes' data.
-pub const SCHEMES: &str = include_str!("../../defaults/core_schemes.toml");
-/// Its name, for messages.
-pub const SCHEMES_FILE: &str = "core_schemes.toml";
+pub(crate) const SCHEMES: &str = include_str!("../../defaults/core_schemes.toml");
 
 /// One scheme's data (see the file's own description).
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SchemeData {
+pub(crate) struct SchemeData {
     #[serde(default)]
     pub with_earth: BTreeMap<String, Vec<Colours>>,
     #[serde(default)]
@@ -466,8 +464,11 @@ pub struct SchemeData {
 /// Read the built-in schemes.
 ///
 /// # Errors
+#[cfg(test)]
+const SCHEMES_FILE: &str = "core_schemes.toml";
+
 /// The data's first problem ([`SCHEMES_FILE`]'s key, value or syntax).
-pub fn read_schemes(text: &str) -> Result<BTreeMap<CoreScheme, SchemeData>, toml::de::Error> {
+pub(crate) fn read_schemes(text: &str) -> Result<BTreeMap<CoreScheme, SchemeData>, toml::de::Error> {
     toml::from_str(text)
 }
 
@@ -480,7 +481,7 @@ fn schemes() -> &'static BTreeMap<CoreScheme, SchemeData> {
 
 /// The colours scheme `scheme` gives a cable of `n` cores, with an earth core (`G`) or without
 /// (`X`); `None` when the scheme (and the ones it hands on to) does not cover `n`.
-pub fn scheme_colours(scheme: CoreScheme, n: usize, earth: bool) -> Option<Vec<Colours>> {
+pub(crate) fn scheme_colours(scheme: CoreScheme, n: usize, earth: bool) -> Option<Vec<Colours>> {
     scheme_colours_in(schemes(), scheme, n, earth, 0)
 }
 

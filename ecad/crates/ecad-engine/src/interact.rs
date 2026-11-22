@@ -44,7 +44,14 @@ pub(crate) use crate::connectors::interact::connector;
 pub(crate) use crate::continuations::interact::contcaption;
 pub(crate) use crate::devices::interact::{devicedelete, deviceprops, place};
 pub(crate) use crate::locations::interact::{functionbox, locationbox};
-pub(crate) use crate::properties::forms::{addconnectionpoint, cablecore, cablefan, cableslash, cableview, connect, convert, disconnect, wire};
+pub(crate) use crate::properties::forms::add_connection_point::addconnectionpoint;
+pub(crate) use crate::properties::forms::cable_core::cablecore;
+pub(crate) use crate::properties::forms::cable_fan::cablefan;
+pub(crate) use crate::properties::forms::cable_slash::cableslash;
+pub(crate) use crate::properties::forms::cable_view::cableview;
+pub(crate) use crate::properties::forms::connect::{connect, disconnect};
+pub(crate) use crate::properties::forms::convert::convert;
+pub(crate) use crate::properties::forms::wire::wire;
 pub(crate) use crate::references::interact::cables::{cablecontinue, cablegoto, cablereference};
 pub(crate) use crate::references::interact::devices::mirrormove;
 pub(crate) use crate::reports::interact::bomitem;
@@ -539,7 +546,7 @@ fn capped(lines: &mut Vec<String>) {
 
 fn component_lines(doc: &Document, c: DeviceId) -> Vec<String> {
     let component = doc.devices.get(&c);
-    let mut lines = vec![format!("Device {}", component.and_then(|x| x.tag()).unwrap_or("(no tag)")), format!("id {}", c.hex())];
+    let mut lines = vec![format!("Device {}", component.and_then(|x| x.tag_shown()).unwrap_or_else(|| "(no tag)".into())), format!("id {}", c.hex())];
     let connection_points: Vec<(ConnectionPointId, String)> =
         doc.connection_points_of(c).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "(no label)".into()))).collect();
     lines.push(format!("Connection points: {}", connection_points.len()));
@@ -555,7 +562,7 @@ fn connection_point_lines(doc: &Document, t: ConnectionPointId) -> Vec<String> {
     let of = term
         .map(|x| {
             let c = x.device().and_then(|c| doc.devices.get(&c));
-            c.and_then(|c| c.tag()).map_or_else(|| x.owner.subject_hex(), str::to_string)
+            c.and_then(|c| c.tag_shown()).unwrap_or_else(|| x.owner.subject_hex())
         })
         .unwrap_or_default();
     let mut lines = vec![
@@ -586,7 +593,7 @@ fn core_of(doc: &Document, k: CableId, w: WireId) -> Option<String> {
 /// ends on `page`, and its members in stored order with their cores.
 fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     let cable = doc.cables.get(&k);
-    let mut lines = vec![format!("Cable {}", cable.and_then(|x| x.tag()).unwrap_or("(no tag)")), format!("id {}", k.hex())];
+    let mut lines = vec![format!("Cable {}", cable.and_then(|x| x.tag_shown()).unwrap_or_else(|| "(no tag)".into())), format!("id {}", k.hex())];
     for (key, label) in [("designation", "Designation"), ("type", "Type")] {
         if let Some(v) = cable.and_then(|x| x.properties.get(key)) {
             lines.push(format!("{label}: {}", ecad_electrical::cables::words::shorten(v, 64)));
@@ -628,8 +635,8 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
         None => vec!["Wire line (no connection points yet)".to_string()],
     };
     if let Some((w, k)) = w.and_then(|w| doc.cables_of(w).first().map(|k| (w, *k))) {
-        let name = match doc.cables.get(&k).and_then(|x| x.tag()) {
-            Some(t) => t.to_string(),
+        let name = match doc.cables.get(&k).and_then(|x| x.tag_shown()) {
+            Some(t) => t,
             None => format!("{}…", short(&k.hex())),
         };
         match core_of(doc, k, w) {
@@ -653,8 +660,8 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
                     let of = x
                         .device()
                         .and_then(|c| doc.devices.get(&c))
-                        .and_then(|c| c.tag())
-                        .map_or_else(|| short(&x.owner.subject_hex()).to_string(), str::to_string);
+                        .and_then(|c| c.tag_shown())
+                        .unwrap_or_else(|| short(&x.owner.subject_hex()).to_string());
                     format!("End {end:?}: connection point {} of {of}", connection_point_name(doc, t))
                 }
                 None => format!("End {end:?}: not connected"),

@@ -334,6 +334,9 @@ pub struct Row {
     /// symbol's context: the code, and where it comes from (`From the box on 105`). Shown as a
     /// **Use +CP1** link that sets it.
     pub proposal: Option<(String, String)>,
+    /// A tag row's state (S6, #3): what its tag is, `None` without a tag or on other rows. Not a
+    /// setprop key: the tag is one value, set through the `tag` key.
+    pub tag_state: Option<ecad_model::naming::tag::TagState>,
     /// What the row is: a plain value, or the visibility of one kind of text.
     pub kind: RowKind,
 }
@@ -358,6 +361,7 @@ impl Row {
             varies: false,
             choices: Vec::new(),
             proposal: None,
+            tag_state: None,
             kind: RowKind::Value,
         }
     }

@@ -1037,12 +1037,12 @@ impl Gen {
             35 => match self.rng.pick_key(&doc.devices) {
                 Some(id) => {
                     let current = doc.devices.get(&id).cloned().unwrap_or_default();
-                    let before = if spoil { current.with_tag(Some("spoilt")) } else { current.clone() };
+                    let before = if spoil { current.with_tag(Some("spoilt"), ecad_model::naming::tag::TagState::Automatic) } else { current.clone() };
                     // Written two ways (`K3`, `-K03`) so the tag index sees the same tag under two values.
                     let after = match self.rng.below(3) {
-                        0 => current.with_tag(None),
-                        1 => current.with_tag(Some(&format!("K{}", self.rng.below(9)))),
-                        _ => current.with_tag(Some(&format!("-K0{}", self.rng.below(9)))),
+                        0 => current.with_tag(None, ecad_model::naming::tag::TagState::Automatic),
+                        1 => current.with_tag(Some(&format!("K{}", self.rng.below(9))), ecad_model::naming::tag::TagState::Automatic),
+                        _ => current.with_tag(Some(&format!("-K0{}", self.rng.below(9))), ecad_model::naming::tag::TagState::Automatic),
                     };
                     Op::ModifyDevice { id, before, after }
                 }

@@ -248,7 +248,7 @@ fn renamed_wire(w: WireId, wire: &Wire, name: &str) -> Op {
 /// The op renaming cable `k` (value `cable`, tagged `tag`): a cable is written whole.
 fn renamed_cable(k: CableId, cable: &Cable, tag: &str) -> Op {
     let mut after = cable.clone();
-    after.tag = ecad_model::naming::tag::Tag::new(&format!("{tag}X")).ok();
+    after.tag = ecad_model::naming::tag::TagSlot::of_text(Some(&format!("{tag}X")), Default::default());
     Op::ModifyCable { id: k, before: cable.clone(), after }
 }
 
@@ -392,7 +392,8 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             if comp_no == 1 {
                 ops.push(Op::EmbedDefinition { id: definition, definition: def.clone() });
             }
-            let component = Device { definition: Some(definition), ..Device::default() }.with_tag(Some(&format!("-K{comp_no}")));
+            let component = Device { definition: Some(definition), ..Device::default() }
+                .with_tag(Some(&format!("-K{comp_no}")), ecad_model::naming::tag::TagState::Automatic);
             ops.push(Op::CreateDevice { id: c, device: component });
             let mut keyed = Vec::new();
             for td in &def.connection_points {
@@ -484,7 +485,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let tag = format!("-W{cable_no}");
             let cores =
                 members.iter().enumerate().map(|(index, w)| Core::on_wire(*w, ecad_model::CoreLabel::new(&(index + 1).to_string()).ok())).collect();
-            let value = Cable { tag: ecad_model::naming::tag::Tag::new(&tag).ok(), cores, ..Cable::default() };
+            let value = Cable { tag: ecad_model::naming::tag::TagSlot::of_text(Some(&tag), Default::default()), cores, ..Cable::default() };
             let rename = renamed_cable(cable, &value, &tag);
             let mut ops = vec![Op::CreateCable { id: cable, cable: value }];
             ops.push(Op::AddItem {

@@ -1,6 +1,6 @@
 //! Brief 030, MCP contract (the ECAD rule of brief 011, design 030 §10): `accessory`, `jumper`
 //! (make, extend, shorten, split, delete), `setprop` of `acc.*`, `jumper_bar.<n>`, `jumper.bar` and
-//! accessory part keys, `projectprops` with `strip_*` and `renumber {kind: "terminals"}` with
+//! accessory part keys, `projectprops` with `strip_*` and `renumber {kind: "terminal_blocks"}` with
 //! accessory keys and jumper bars, through `execute`, record the agent's transaction and are refused
 //! with writes off; `stripplan`, `bom`, `checks` and the renumber preview work with writes off and
 //! record nothing.
@@ -77,7 +77,7 @@ fn accessory_and_jumper_commands_through_execute() {
     c.exec("renumber", json!({"kind": "terminal_blocks", "start": 3}));
     assert_eq!(c.log().len(), n + 1);
     let (label, ops) = last_by_agent(&mut c);
-    assert_eq!(label, "Renumber terminals");
+    assert_eq!(label, "Renumber terminal blocks");
     assert!(sets(&ops, "acc.after.6") && sets(&ops, "jumper_bar.1"), "{ops:?}");
     // The reads record nothing.
     let n = c.log().len();

@@ -97,7 +97,7 @@ only.
 | I13 | Function and location lists | `designation.<aspect>.<entry>.*` | `Project.locations`, `functions` (§5.3) |
 | I14 | A strip's jumpers | `link.<n>` range text | `TerminalStrip.links` |
 | I15 | A cable's ends, glands, rating inputs | `end.from.location`, `gland.to`, `rating.*` | `Cable` fields |
-| I15a | A cable's tag, its fixed flag and its description (0.2.3 S1, #2) | `tag`, `tag_fixed`, `description` | `Cable.tag: Option<Tag>`, `Cable.tag_fixed: bool`, `Cable.description: Option<Description>`, as a device's; written on every cable record; a cable record whose bag still holds one of the keys is a read error |
+| I15a | A cable's tag, its fixed flag and its description (0.2.3 S1, #2) | `tag`, `description` | `Cable.tag: TagSlot` (state and bare tag in one value), `Cable.description: Option<Description>`, as a device's; written on every cable record; a cable record whose bag still holds one of the keys is a read error |
 | I16 | Part lines | `part.<n>.<field>` | `Device.parts` |
 | I17 | Which device text a symbol slot places | `TextSlot.text` words | `SlotText` (§7) |
 | I18 | Title block bindings, unknown items | text kept as written | strict elements (§5.4) |
@@ -138,9 +138,9 @@ only.
 ```rust
 pub struct Device {
     pub definition: Option<DefinitionId>,
-    pub tag: Option<Tag>, pub tag_fixed: bool,
-    pub location: Option<LocationId>, pub location_fixed: bool,     // §6.3
-    pub function: Option<FunctionId>, pub function_fixed: bool,
+    pub tag: TagSlot,                      // None | Automatic(Tag) | Fixed(Tag) | Provisional(Tag): the state holds the tag (0.2.3 S6 #3)
+    pub location: Place<LocationId>,       // §6.3: Unset | Manual(id) | Proposed(id): the state holds the entry
+    pub function: Place<FunctionId>,
     pub description: Option<Text<256>>,
     pub part_number: Option<Text<64>>, pub manufacturer: Option<Text<64>>,
     pub article_number: Option<Text<64>>, pub type_text: Option<Text<64>>,
@@ -479,7 +479,7 @@ redrawing routes is an ordinary edit of routes (`AddRoute`, `RemoveRoute`, `Modi
 
 ```rust
 pub struct Cable {
-    pub tag: Option<Tag>, pub tag_fixed: bool,
+    pub tag: TagSlot,
     pub cable_type: Option<StyleRef>,                  // a cable type (§8)
     pub type_text, pub manufacturer, pub part_number, pub description: Option<Text<64>>,
     pub cores: Vec<Core { label: Text<16>, colours: Vec<ConductorColour>, wire: Option<WireId>, unused: bool }>,
@@ -627,7 +627,7 @@ bucketed `model:aid:` chunks; invariant I25 (a box's panel temperature is a numb
 
 ### 6.3 Location and function: stored on the device, with `fixed`
 
-- `Device { location: Option<LocationId>, location_fixed: bool }`, and the same for function. **The
+- `Device { location: Place<LocationId> }` (`Unset`, `Manual(id)`, `Proposed(id)`: the state holds the entry, so a state without its value cannot be written; 0.2.3 S6 #3), and the same for function. **The
   action that sets the value decides `fixed`:** typing a location, or adding a location box around
   the device, sets `fixed = true`; inheriting from the page leaves `fixed = false`.
 - **A box overwrites only when `fixed` is false.** Moving a device's symbol into a box, drawing a
@@ -771,7 +771,7 @@ colour and wire-type records), on a normal project and on one opened read-only.
 | --- | --- | --- | --- |
 | F31 | **Routes**: `Document.routes: BTreeMap<RouteId, Route>`, `RouteEnd`, `Subject::Route`; ops **`AddRoute`, `RemoveRoute`, `ModifyRoute`**. The drawing of today's conductors moves to routes | new object, three new ops | F |
 | F32 | **Ordered wires**: `Wire { net_order, ends: [TerminalId; 2], order_fixed, … }` between two connection points of one net; `AttachEnd` goes (ends are set by `CreateWire`/`ModifyWire`) | record shape; one op removed | F |
-| F33 | `Device.location_fixed`, `function_fixed`; `Location`/`Function` entries with code, tag and descriptions; devices, pages, boxes and cable ends refer by `LocationId`/`FunctionId` | record shape | E (lists), B (device fields), F (boxes) |
+| F33 | `Device.location`, `function` (`Place<LocationId>`, `Place<FunctionId>`: `Unset`, `Manual(id)`, `Proposed(id)`); `Location`/`Function` entries with code, tag and descriptions; devices, pages, boxes and cable ends refer by `LocationId`/`FunctionId` | record shape | E (lists), B (device fields), F (boxes) |
 | F34 | `Text<N>` / `LongText<N>` for every free-text field: a file with a hidden or bidi character, or an over-long text, is a read error | validation on read | A1 (type), each lane for its fields |
 | F35 | `ConductorColour` (§4.6), one primitive for wires and cable cores, with every form (name, 2-letter, 3-letter, display hex) as built-in data in `ecad-model/defaults/colours.toml`; wire and core colours as ordered lists stored by 2-letter code (`GNYE` → `GN/YE`); `wiring.colour_style` words become `code2`, `code3`, `name` (were `iec`, `three-letter`); an indicator's colour is a separate `IndicatorColour` | **words change** (`GNYE` becomes a two-colour list; the setting's words) and built-in data | A1 (type and data), D, G |
 | F36 | `Wire.wire_type` (today's `wire.category`), `size`, `colours` as overrides; wire types gain `insulation`; the `wire` catalogue's user-facing name becomes **wire types** | record shape, one new field | D, G |

@@ -219,8 +219,6 @@ pub const ARTICLE_NUMBER: PropKey = PropKey(crate::objects::devices::ARTICLE_KEY
 pub const TYPE_TEXT: PropKey = PropKey(crate::objects::devices::TYPE_KEY);
 /// A device's or cable's tag.
 pub const TAG: PropKey = PropKey(crate::naming::tag::TAG_KEY);
-/// Whether a device's or cable's tag is fixed (yes/no).
-pub(crate) const TAG_FIXED: PropKey = PropKey(crate::naming::tag::FIXED_KEY);
 /// Whether the project gives provisional tags (yes/no).
 pub(crate) const NUMBERING_PROVISIONAL: PropKey = PropKey(crate::naming::tag::PROVISIONAL_SETTING);
 /// A wire's number.
@@ -231,21 +229,20 @@ pub const WIRE_NUMBER_FIXED: PropKey = PropKey(crate::connectivity::WIRE_NUMBER_
 pub const FUNCTION: PropKey = PropKey(crate::document::book::FUNCTION_KEY);
 /// The `+` location code of a page or the project.
 pub const LOCATION: PropKey = PropKey(crate::document::book::LOCATION_KEY);
-/// Whether a device's location was set by hand (yes/no).
-pub const LOCATION_FIXED: PropKey = PropKey(crate::document::book::LOCATION_FIXED_KEY);
-/// Whether a device's function was set by hand (yes/no).
-pub const FUNCTION_FIXED: PropKey = PropKey(crate::document::book::FUNCTION_FIXED_KEY);
 
 /// The fixed keys the program stores outside the defaults registry. One key per line; lanes add or
 /// remove lines.
 #[rustfmt::skip]
 pub const KEYS: &[KeySpec] = &[
     KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Cable], value: ValueSpec::Ruled },
-    KeySpec { key: TAG_FIXED, area: Area::Identity, holders: &[Holder::Cable], value: ValueSpec::Flag },
     KeySpec { key: NUMBERING_PROVISIONAL, area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
     KeySpec { key: FUNCTION, area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
     KeySpec { key: LOCATION, area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
 ];
+
+/// A project's tag high-water reset for one prefix (`numbering.high.<P>`).
+pub const NUMBERING_HIGH: Family =
+    Family { pattern: "numbering.high.{}", area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Ruled };
 
 /// The key families. One family per line.
 #[rustfmt::skip]
@@ -253,7 +250,7 @@ pub const FAMILIES: &[Family] = &[
     Family { pattern: "text.{}.{}.style", area: Area::Text, holders: &[Holder::Project, Holder::Page, Holder::Device, Holder::Representation], value: ValueSpec::Ruled },
     Family { pattern: "text.{}.{}.show", area: Area::Text, holders: &[Holder::Project, Holder::Page, Holder::Device, Holder::Representation], value: ValueSpec::Ruled },
     Family { pattern: "jumper_bar.{}", area: Area::JumperBar, holders: &[Holder::Device], value: ValueSpec::Ruled },
-    Family { pattern: "numbering.high.{}", area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Ruled },
+    NUMBERING_HIGH,
 ];
 
 /// Keys that became struct fields: a property bag holding one is a read error (design 072 §9.4).
@@ -306,10 +303,9 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
     (Holder::Cable, PropKey("shield")),
     // Lane 072 D: a cable's design current is its field (design 072 §4.5).
     (Holder::Cable, PropKey("load")),
-    // S1 (#2): a cable's tag, its fixed flag and its description are `Cable.tag`, `Cable.tag_fixed`
-    // and `Cable.description`, as a device's are.
+    // S1 (#2): a cable's tag (with its state) and its description are `Cable.tag` and
+    // `Cable.description`, as a device's are.
     (Holder::Cable, TAG),
-    (Holder::Cable, TAG_FIXED),
     (Holder::Cable, PropKey(crate::objects::devices::DESCRIPTION_KEY)),
 ];
 
@@ -366,22 +362,7 @@ pub const RATING: PropKey = PropKey(crate::objects::devices::RATING_KEY);
 /// Keys that became fields of [`crate::Device`] (design 072 §2.1) while other holders still keep
 /// them in their bags (a cable's `tag` until lane D): a device's bag holding one is a read error,
 /// and `SetProperty` refuses them on a device.
-pub const DEVICE_FIELDS: &[PropKey] = &[
-    TAG,
-    TAG_FIXED,
-    DESCRIPTION,
-    PART_NUMBER,
-    MAKER,
-    ARTICLE_NUMBER,
-    TYPE_TEXT,
-    LOCATION,
-    LOCATION_FIXED,
-    FUNCTION,
-    FUNCTION_FIXED,
-    PINS,
-    PIN_NAMES,
-    RATING,
-];
+pub const DEVICE_FIELDS: &[PropKey] = &[TAG, DESCRIPTION, PART_NUMBER, MAKER, ARTICLE_NUMBER, TYPE_TEXT, LOCATION, FUNCTION, PINS, PIN_NAMES, RATING];
 
 /// The area `key` belongs to.
 ///
@@ -400,6 +381,20 @@ pub fn area_of(key: &str) -> Area {
         Some(a) if key.len() > first.len() => *a,
         Some(_) | None => Area::Free,
     }
+}
+
+/// Whether `key` belongs to `area` ([`area_of`]).
+pub fn in_area(key: &str, area: Area) -> bool {
+    area_of(key) == area
+}
+
+/// The text kind a text key names (`reference` of `text.reference.show`): a [`Area::Text`] key's
+/// second segment.
+pub fn text_kind(key: &str) -> Option<&str> {
+    if area_of(key) != Area::Text {
+        return None;
+    }
+    key.split('.').nth(1)
 }
 
 /// Typed readers on a property bag. A value that does not have the shape asked for reads as

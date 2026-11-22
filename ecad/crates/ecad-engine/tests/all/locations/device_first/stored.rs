@@ -201,7 +201,7 @@ fn missing_and_duplicate_entries_are_listed() {
     let (k, _, _) = k01(&mut h);
     let mut d = h.doc();
     if let Some(c) = d.devices.get_mut(&k) {
-        c.location = Some(ecad_model::LocationId(0xdead)); // an id the list has no entry for
+        c.location = ecad_model::document::book::Place::Manual(ecad_model::LocationId(0xdead)); // an id the list has no entry for
     }
     // Design 072 §5.3: the ops refuse a code twice (I22); a hand-built document still shows it.
     for (id, code) in [(0xaa, "=F1"), (0xbb, "=f1")] {

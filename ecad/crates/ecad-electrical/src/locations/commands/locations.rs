@@ -21,18 +21,18 @@ use crate::symbols::proposals::{self, Conflict};
 
 /// Most components one `setlocation` names (tester 052: a list over it is refused before any
 /// work).
-pub const MAX_DEVICES: usize = 10_000;
+pub(crate) const MAX_DEVICES: usize = 10_000;
 
 /// The refusal for an override on a function.
-pub const NO_FUNCTION_OVERRIDES: &str = "A function has no overrides: a device's parts share its function.";
+pub(crate) const NO_FUNCTION_OVERRIDES: &str = "A function has no overrides: a device's parts share its function.";
 /// The refusal for an `aspect` word that does not read.
-pub const ASPECT_WORDS: &str = "`aspect` is \"location\" or \"function\"";
+pub(crate) const ASPECT_WORDS: &str = "`aspect` is \"location\" or \"function\"";
 /// The refusal for an `answer` word that does not read.
-pub const ANSWER_WORDS: &str = "`answer` is \"move\", \"half\" or \"leave\"";
+pub(crate) const ANSWER_WORDS: &str = "`answer` is \"move\", \"half\" or \"leave\"";
 
 /// The property `key` names when it is an aspect property, with the retired connector half key
 /// `half.<s|p>.location` read as the override `location.socket` / `location.plug` (FP4).
-pub fn aspect_property(key: &str) -> Option<String> {
+pub(crate) fn aspect_property(key: &str) -> Option<String> {
     let key = key.trim();
     match key {
         "half.s.location" => return Some("location.socket".into()),
@@ -58,7 +58,7 @@ pub fn aspect(word: Option<&str>) -> Result<Aspect, CmdError> {
 ///
 /// # Errors
 /// An override on a function.
-pub fn property_for(a: Aspect, ty: Option<&str>) -> Result<String, CmdError> {
+pub(crate) fn property_for(a: Aspect, ty: Option<&str>) -> Result<String, CmdError> {
     match ty.map(str::trim).filter(|t| !t.is_empty()) {
         None => Ok(a.property().to_string()),
         Some(_) if a == Aspect::Function => Err(CmdError::refused(NO_FUNCTION_OVERRIDES)),
@@ -170,15 +170,19 @@ pub fn label(a: Aspect, value: Option<&(String, String)>, n: usize) -> String {
 ///
 /// # Errors
 /// Not a function or location property.
-pub fn aspect_of(prop: &str) -> Result<Aspect, CmdError> {
-    (if prop.starts_with("location.") { Some(Aspect::Location) } else { Aspect::of_property(prop) })
-        .ok_or(CmdError::refused("not a function or location property"))
+pub(crate) fn aspect_of(prop: &str) -> Result<Aspect, CmdError> {
+    (if ecad_model::naming::keys::in_area(prop, ecad_model::naming::keys::Area::Location) {
+        Some(Aspect::Location)
+    } else {
+        Aspect::of_property(prop)
+    })
+    .ok_or(CmdError::refused("not a function or location property"))
 }
 
 /// A set with its follow-ups: the box's proposals for the devices inside (brief 052d, design 052
 /// §5.6).
 #[derive(Debug, Default)]
-pub struct SetPlan {
+pub(crate) struct SetPlan {
     pub planned: Planned,
     /// The ops to record: the set's and the proposals'.
     pub ops: Vec<Op>,
@@ -193,7 +197,7 @@ pub struct SetPlan {
 ///
 /// # Errors
 /// [`plan`]'s refusals.
-pub fn plan_set(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &str, text: Option<&str>) -> Result<SetPlan, CmdError> {
+pub(crate) fn plan_set(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &str, text: Option<&str>) -> Result<SetPlan, CmdError> {
     let a = aspect_of(prop)?;
     let mut planned = plan(doc, ids, objects, prop, text)?;
     let out =
@@ -202,7 +206,7 @@ pub fn plan_set(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], pro
 }
 
 /// The refusal of an aid that is not a location box.
-pub const NOT_A_BOX: &str = "That is not a location box.";
+pub(crate) const NOT_A_BOX: &str = "That is not a location box.";
 
 /// `setprop {aids, key: function | location, value}` (design 072 §6.2): location boxes `aids`
 /// take the code `text` of aspect `a` (`None` clears it), one `ModifyAid` per box that changes.
@@ -211,7 +215,7 @@ pub const NOT_A_BOX: &str = "That is not a location box.";
 ///
 /// # Errors
 /// An aid that is not a box, a box left with neither value, or a code that is not valid.
-pub fn plan_box_set(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], a: Aspect, text: Option<&str>) -> Result<SetPlan, CmdError> {
+pub(crate) fn plan_box_set(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], a: Aspect, text: Option<&str>) -> Result<SetPlan, CmdError> {
     let mut planned = Planned::default();
     let mut pending = designations::Pending::default();
     let key = stored_key(doc, ids, a, text, &mut pending, &mut planned)?;
@@ -298,7 +302,7 @@ impl Pick {
 ///
 /// # Errors
 /// No half waiting.
-pub fn plan_half(doc: &Document, waiting: &[Conflict], pick: &Pick) -> Result<(Vec<Op>, String), CmdError> {
+pub(crate) fn plan_half(doc: &Document, waiting: &[Conflict], pick: &Pick) -> Result<(Vec<Op>, String), CmdError> {
     let chosen: Vec<Conflict> = proposals::still_valid(doc, waiting).into_iter().filter(|c| c.half.is_some() && pick.picks(c)).collect();
     let ops = proposals::half_ops(doc, &chosen);
     if ops.is_empty() {
@@ -314,14 +318,14 @@ pub fn plan_half(doc: &Document, waiting: &[Conflict], pick: &Pick) -> Result<(V
 /// What `conflicts {answer: "move"}` records: the ops (empty when nothing still differs), the
 /// label, and the conflicts that still hold.
 #[derive(Debug, Clone, PartialEq)]
-pub struct MovePlan {
+pub(crate) struct MovePlan {
     pub ops: Vec<Op>,
     pub label: String,
     pub still_valid: Vec<Conflict>,
 }
 
 /// `conflicts {answer: "move"}`: the chosen devices that still differ, moved to their box's value.
-pub fn plan_move(doc: &Document, waiting: &[Conflict], pick: &Pick) -> MovePlan {
+pub(crate) fn plan_move(doc: &Document, waiting: &[Conflict], pick: &Pick) -> MovePlan {
     let valid = proposals::still_valid(doc, waiting);
     let chosen: Vec<Conflict> = valid.iter().filter(|c| pick.picks(c)).cloned().collect();
     let ops = proposals::move_ops(doc, &chosen);
@@ -335,7 +339,7 @@ pub fn plan_move(doc: &Document, waiting: &[Conflict], pick: &Pick) -> MovePlan 
 /// A planned set of aspect `a` as the outcome: committed when it changes anything, with its
 /// proposals, the words for the entries added and the devices asked about, which wait as the
 /// conflicts (`count`: the word for the objects changed).
-pub fn set_outcome(doc: &Document, a: Aspect, plan: SetPlan, count: &str, state: &mut Slot<'_>) -> Outcome {
+pub(crate) fn set_outcome(doc: &Document, a: Aspect, plan: SetPlan, count: &str, state: &mut Slot<'_>) -> Outcome {
     let planned = &plan.planned;
     let mut v = json!({
         "changed": planned.changed > 0,
@@ -366,7 +370,7 @@ pub fn set_outcome(doc: &Document, a: Aspect, plan: SetPlan, count: &str, state:
 ///
 /// # Errors
 /// A command that does not declare them.
-pub fn conflicts_slot<'s, 'a>(state: &'s mut Slot<'a>) -> Result<(&'a [Conflict], &'s mut Option<Vec<Conflict>>), CmdError> {
+pub(crate) fn conflicts_slot<'s, 'a>(state: &'s mut Slot<'a>) -> Result<(&'a [Conflict], &'s mut Option<Vec<Conflict>>), CmdError> {
     match state {
         Slot::Conflicts { waiting, set } => Ok((*waiting, &mut **set)),
         _ => Err(CmdError::refused("this command does not keep the location conflicts")),

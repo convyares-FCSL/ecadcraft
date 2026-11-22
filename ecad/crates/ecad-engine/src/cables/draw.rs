@@ -225,14 +225,14 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
         .filter(|h| {
             let Some((rep, ecad_electrical::devices::texts::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
             let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
-            ecad_electrical::devices::tags::tag_of(doc, c).is_some_and(ecad_model::naming::tag::is_provisional)
+            doc.devices.get(&c).is_some_and(ecad_model::Device::is_provisional)
         })
         .collect()
 }
 
 /// A text style's colour as drawn on `sheet` (brief 050a): its own colour, or its colour code's
 /// first colour on that sheet, as [`colour_rgb`] draws the stored value.
-pub fn text_colour_rgb(
+pub(crate) fn text_colour_rgb(
     c: ecad_electrical::styles::text_style::TextColour, sheet: &ecad_drawing_style::Sheet,
 ) -> Option<cadcraft_engine::doc::color::Rgb> {
     match c {

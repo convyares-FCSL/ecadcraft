@@ -1085,7 +1085,7 @@ On the demo project (`cargo xtask demo`, then open `C:\dev\ecad-projects\demo.ec
 Typed instead, in the ECAD command field: `renumber {"kind":"devices","scope":"all","preview":true}`,
 `renumber {"kind":"devices","scope":{"prefix":"-K"},"start":1,"digits":2}`, `finalise {}`,
 `numbering {"provisional":true}`, `setprop {"component":"<id>","key":"tag","value":"-K02","conflict":"swap"}`
-(`"merge"`, `"next"`), `setprop {"component":"<id>","key":"tag_fixed","value":null}`,
+(`"merge"`, `"next"`), `setprop {"component":"<id>","key":"tag","value":{"state":"automatic","tag":"-K02"}}`,
 `issuerevision {"provisional":"finalise"}` (or `"issue"`), and in a merge `choices: {"<id>": "one"}`.
 
 ## 5N. Release (by clicking)
