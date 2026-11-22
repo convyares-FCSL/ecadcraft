@@ -40,7 +40,7 @@ generic halves of device, output, page, sheet, symbol, terminal, text, wire and 
 | sheet.rs | G/S | G: pageprops, projectprops, newfolder, renamefolder, movefolder, deletefolder, revision, issuerevision. S: openrevision, closerevision, undoissue | Revision views redraw pages; `undoissue` drives the engine's undo history. |
 | style.rs | G | standard, setstyle, deletestyle, promote, styles | Plan and commit; `standard` declares reading another `.ecad`. |
 | symbol.rs | G/S | G: symbolnew, symboledit, symbolimpact, symbolupdate. S: makesymbol | `makesymbol` reads the selection's CADCraft entities. |
-| terminal.rs | G/S | G: terminals, stripplan, cablecores. S: bridge | `bridge` places through the drawing's place planner. |
+| terminal.rs | G/S | G: terminalblocks, stripplan, cablecores. S: bridge | `bridge` places through the drawing's place planner. |
 | text.rs | G/S | G: textstyle, pagetexts, defaults, movetext. S: showtext, hiddentext | Showing hidden text is a drawing setting that redraws open pages. |
 | title_block.rs | G/S | G: titleblocks, titleblock. S: titleblockimport | `titleblockimport` reads the DXF with CADCraft's reader. |
 | wire.rs | G/S | G: nets, net, wirenumber, potential, category, wiresettings, renumberwires, checks. S: wire, joinwires | Drawing wires snaps to the page's geometry with the drawing tolerance. |

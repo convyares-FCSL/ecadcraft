@@ -26,7 +26,7 @@ pub enum Kind {
 /// # Example
 /// ```
 /// # egui::__run_test_ui(|ui| {
-/// use crate::prim::{Button, Kind};
+/// use ecad_widgets::prim::{Button, Kind};
 /// if ui.add(Button::new("Save").kind(Kind::Primary)).clicked() { /* save */ }
 /// ui.add(Button::new("Release").disabled("Nothing changed since revision B"));
 /// # });

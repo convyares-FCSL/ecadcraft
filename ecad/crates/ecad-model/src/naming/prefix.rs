@@ -20,7 +20,7 @@ pub const MAX_SYMBOL_KEY: usize = 16;
 ///
 /// # Example
 /// ```
-/// use crate::naming::prefix::TagPrefix;
+/// use ecad_model::naming::prefix::TagPrefix;
 /// assert_eq!(TagPrefix::typed(" -ka ").map(|p| p.to_string()), Some("KA".to_string()));
 /// assert!(TagPrefix::typed("K1").is_none());
 /// ```
@@ -80,7 +80,7 @@ impl<'de> Deserialize<'de> for TagPrefix {
 ///
 /// # Example
 /// ```
-/// use crate::naming::prefix::PrefixOf;
+/// use ecad_model::naming::prefix::PrefixOf;
 /// let p = PrefixOf::parse("project:valve-x").unwrap();
 /// assert_eq!(p, PrefixOf::Project("valve-x".into()));
 /// assert_eq!(PrefixOf::Starter("coil".into()).to_string(), "starter:coil");

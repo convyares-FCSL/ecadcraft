@@ -349,7 +349,7 @@ fn refusals_through_mcp_say_why_and_change_nothing() {
 // ---------------------------------------------------------------- writes off
 
 #[test]
-fn with_writes_off_the_changes_are_refused_and_cablerefs_and_cablegoto_only_read() {
+fn with_writes_off_the_changes_are_refused_and_cablereferences_and_cablegoto_only_read() {
     let dir = TempDir::new("readonly");
     let path = dir.file("cables.ecad");
     {
@@ -379,7 +379,7 @@ fn with_writes_off_the_changes_are_refused_and_cablerefs_and_cablegoto_only_read
         assert_eq!(c.log(), log, "{cmd} moved the head");
     }
 
-    // cablerefs reads.
+    // cablereferences reads.
     let references = c.exec("cablereferences", json!({}));
     let texts: Vec<&str> = references["references"].as_array().unwrap().iter().filter_map(|r| r["text"].as_str()).collect();
     assert_eq!(texts.len(), 2, "{references}");

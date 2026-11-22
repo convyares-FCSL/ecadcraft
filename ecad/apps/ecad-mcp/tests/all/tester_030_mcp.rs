@@ -60,10 +60,10 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
             ("jumper", json!({"connection_points": [terms[0], terms[1]]}), &["jumper_bar.1"]),
             ("jumper", json!({"strip": strip, "positions": "3-4"}), &["jumper_bar.2"]),
             ("jumper", json!({"connection_points": [terms[0], terms[2]], "skip": true}), &["jumper_bar.3"]),
-            ("jumper", json!({"link": {"strip": strip, "n": 2}, "add": ["5", "6", "7", "8"]}), &["jumper_bar.2"]),
-            ("jumper", json!({"link": {"strip": strip, "n": 2}, "remove": ["8"]}), &["jumper_bar.2"]),
-            ("jumper", json!({"link": {"strip": strip, "n": 2}, "split_at": "4"}), &["jumper_bar.2"]),
-            ("jumper", json!({"link": {"strip": strip, "n": 3}, "delete": true}), &["jumper_bar.3"]),
+            ("jumper", json!({"jumper_bar": {"strip": strip, "n": 2}, "add": ["5", "6", "7", "8"]}), &["jumper_bar.2"]),
+            ("jumper", json!({"jumper_bar": {"strip": strip, "n": 2}, "remove": ["8"]}), &["jumper_bar.2"]),
+            ("jumper", json!({"jumper_bar": {"strip": strip, "n": 2}, "split_at": "4"}), &["jumper_bar.2"]),
+            ("jumper", json!({"jumper_bar": {"strip": strip, "n": 3}, "delete": true}), &["jumper_bar.3"]),
             ("setprop", json!({"component": strip, "key": "jumper_bar.1", "value": "1-3"}), &["jumper_bar.1"]),
             ("setprop", json!({"component": strip, "key": "jumper.bar", "value": "4"}), &["jumper.bar"]),
             ("setprop", json!({"component": strip, "key": "jumper_bar.1.part_number", "value": "JB-RD"}), &["jumper_bar.1.part_number"]),
@@ -90,7 +90,7 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
         let links: Vec<String> = d.devices[&sp]
             .properties
             .iter()
-            .filter(|(k, _)| k.starts_with("jumper_bar.") && k[5..].chars().all(|c| c.is_ascii_digit()))
+            .filter(|(k, _)| k.starts_with("jumper_bar.") && k[11..].chars().all(|c| c.is_ascii_digit()))
             .map(|(_, v)| v.replace(' ', ""))
             .collect();
         assert!(links.contains(&"5-7".to_string()), "link 1-3 → 5-7: {links:?}");
@@ -107,7 +107,7 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
         let before = reads(&mut c);
         assert_eq!(c.log().len(), n, "reads record nothing");
         let plan = &before["stripplan"]["strips"][0];
-        assert!(plan["links"].as_array().is_some_and(|l| !l.is_empty()), "stripplan returns links: {plan}");
+        assert!(plan["jumper_bars"].as_array().is_some_and(|l| !l.is_empty()), "stripplan returns links: {plan}");
         assert!(plan["rows"].as_array().unwrap().iter().any(|r| r["kind"] == "accessory"), "{plan}");
         assert_eq!(c.ok("save", json!({}))["saved"], json!(true));
         (strip, terms, before)
@@ -132,10 +132,10 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
         ("renumber", json!({"kind": "terminal_blocks", "start": 1})),
         ("jumper", json!({"connection_points": [terms[0], terms[3]]})),
         ("jumper", json!({"strip": strip, "positions": "11-12"})),
-        ("jumper", json!({"link": {"strip": strip, "n": 1}, "add": ["9"]})),
-        ("jumper", json!({"link": {"strip": strip, "n": 1}, "remove": ["6"]})),
-        ("jumper", json!({"link": {"strip": strip, "n": 1}, "split_at": "6"})),
-        ("jumper", json!({"link": {"strip": strip, "n": 1}, "delete": true})),
+        ("jumper", json!({"jumper_bar": {"strip": strip, "n": 1}, "add": ["9"]})),
+        ("jumper", json!({"jumper_bar": {"strip": strip, "n": 1}, "remove": ["6"]})),
+        ("jumper", json!({"jumper_bar": {"strip": strip, "n": 1}, "split_at": "6"})),
+        ("jumper", json!({"jumper_bar": {"strip": strip, "n": 1}, "delete": true})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd} {params}");

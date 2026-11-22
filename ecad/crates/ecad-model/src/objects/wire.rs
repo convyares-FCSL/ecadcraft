@@ -210,7 +210,7 @@ impl WireSize {
     ///
     /// # Example
     /// ```
-    /// use crate::objects::wire::WireSize;
+    /// use ecad_model::objects::wire::WireSize;
     /// assert_eq!(WireSize::parse("2.5 mm²").map(|s| s.to_string()), Some("2.5".into()));
     /// assert_eq!(WireSize::parse("awg18").map(|s| s.to_string()), Some("18 AWG".into()));
     /// assert_eq!(WireSize::parse("2/0 AWG").map(|s| s.to_string()), Some("2/0 AWG".into()));
@@ -335,7 +335,7 @@ impl Colours {
     ///
     /// # Example
     /// ```
-    /// use crate::objects::wire::Colours;
+    /// use ecad_model::objects::wire::Colours;
     /// assert_eq!(Colours::parse("GNYE").map(|c| c.to_string()), Some("GN/YE".into()));
     /// assert_eq!(Colours::parse("green / yellow").map(|c| c.to_string()), Some("GN/YE".into()));
     /// assert_eq!(Colours::parse("blu").map(|c| c.to_string()), Some("BU".into()));

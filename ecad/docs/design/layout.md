@@ -136,7 +136,7 @@ ecad-engine/src/
   export/          formats: PDF, Print Book (printbook.rs), the release folder's rendering; later DXF
   dev/             debugger (debug.rs, split), verify, test_support (feature-gated)
 
-  devices/         draw, interact, session commands: place, convertcomponent, addterminal
+  devices/         draw, interact, session commands: place, convertcomponent, addconnectionpoint
   symbols.rs       session command: makesymbol; draw (proposals)
   wires/           draw, interact (wiring forms), session commands: wire, joinwires
   cables/          draw (look.rs), views (traditional or fan), session commands: cableslash, cableadd,

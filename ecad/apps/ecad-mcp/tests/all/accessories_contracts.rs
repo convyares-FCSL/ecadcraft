@@ -62,11 +62,11 @@ fn accessory_and_jumper_commands_through_execute() {
     );
     one(&mut c, "jumper", json!({"strip": strip, "positions": "2, 4", "skip": true}), "jumper_bar.2");
     let l1 = json!({"strip": strip, "n": 1});
-    one(&mut c, "jumper", json!({"link": l1, "add": "4"}), "jumper_bar.1");
-    one(&mut c, "jumper", json!({"link": l1, "remove": "4"}), "jumper_bar.1");
-    one(&mut c, "jumper", json!({"link": l1, "add": "4"}), "jumper_bar.1");
-    one(&mut c, "jumper", json!({"link": l1, "split_at": "2"}), "jumper_bar.3");
-    one(&mut c, "jumper", json!({"link": {"strip": strip, "n": 3}, "delete": true}), "jumper_bar.3");
+    one(&mut c, "jumper", json!({"jumper_bar": l1, "add": "4"}), "jumper_bar.1");
+    one(&mut c, "jumper", json!({"jumper_bar": l1, "remove": "4"}), "jumper_bar.1");
+    one(&mut c, "jumper", json!({"jumper_bar": l1, "add": "4"}), "jumper_bar.1");
+    one(&mut c, "jumper", json!({"jumper_bar": l1, "split_at": "2"}), "jumper_bar.3");
+    one(&mut c, "jumper", json!({"jumper_bar": {"strip": strip, "n": 3}, "delete": true}), "jumper_bar.3");
     one(&mut c, "setprop", json!({"component": strip, "key": "jumper_bar.1", "value": "1-4"}), "jumper_bar.1");
     one(&mut c, "setprop", json!({"component": strip, "key": "jumper.bar", "value": "2"}), "jumper.bar");
     // Renumber moves the keys and rewrites the links, in its one transaction.
@@ -83,8 +83,8 @@ fn accessory_and_jumper_commands_through_execute() {
     let n = c.log().len();
     let plan = c.exec("stripplan", json!({}));
     let s0 = &plan["strips"][0];
-    assert_eq!(s0["links"][0]["positions"], "3-6", "{plan}");
-    assert_eq!(s0["links"][0]["bars"], 2, "4 positions, bars of 2");
+    assert_eq!(s0["jumper_bars"][0]["positions"], "3-6", "{plan}");
+    assert_eq!(s0["jumper_bars"][0]["bars"], 2, "4 positions, bars of 2");
     let bom = c.exec("bom", json!({}));
     assert!(bom["rows"].as_array().unwrap().iter().any(|r| r["accessory"] == "end_stop" && r["part_number"] == "ES-1"), "{bom}");
     c.exec("checks", json!({"kinds": ["accessory-orphan", "no-accessory-part", "jumper-bar-across-partition", "jumper-bar-orphan"]}));
@@ -98,7 +98,7 @@ fn with_writes_off_the_accessory_writes_are_refused_and_the_reads_work() {
     for (cmd, params) in [
         ("accessory", json!({"strip": "1", "at": "start", "items": ["end_stop"]})),
         ("jumper", json!({"strip": "1", "positions": "1-4"})),
-        ("jumper", json!({"link": {"strip": "1", "n": 1}, "delete": true})),
+        ("jumper", json!({"jumper_bar": {"strip": "1", "n": 1}, "delete": true})),
         ("setprop", json!({"component": "1", "key": "acc.after.4", "value": "partition"})),
         ("setprop", json!({"component": "1", "key": "jumper_bar.1", "value": "1-4"})),
         ("setprop", json!({"component": "1", "key": "jumper.bar", "value": "4"})),

@@ -101,7 +101,7 @@ fn k_save_reopen_and_replay_keep_every_new_property() {
     let (x1, terms) = fence(&mut t.h, 170.0);
     t.h.run("bridge", json!({"from": terms[2].hex(), "to": terms[3].hex()})).unwrap();
     t.h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "12+2PE"})).unwrap();
-    t.h.run("place", json!({"symbol": "terminalblockpe", "at": [360, 250], "device": x1.hex()})).unwrap();
+    t.h.run("place", json!({"symbol": "terminal_block_pe", "at": [360, 250], "device": x1.hex()})).unwrap();
     for (k, v) in [("part_number", "FT-2.5"), ("maker", "Acme"), ("part_number.pe", "PE-2.5"), ("maker.pe", "Acme PE")] {
         t.h.run("setprop", json!({"component": x1.hex(), "key": k, "value": v})).unwrap();
     }
@@ -159,7 +159,7 @@ fn undo_and_redo_of_every_strip_write_are_exact() {
     t.h.cfg(|p| {
         p.reports();
     });
-    let x1: DeviceId = id(&place(&mut t.h, "terminalblock", (100.0, 170.0)), "component");
+    let x1: DeviceId = id(&place(&mut t.h, "terminal_block", (100.0, 170.0)), "component");
     let steps: Vec<(&str, Value)> = vec![
         ("terminalblocks", json!({"strip": x1.hex(), "from": [140, 170], "to": [260, 170]})),
         ("terminalblocks", json!({"strip": x1.hex(), "pe": true, "from": [90, 190], "to": [160, 190]})),
@@ -254,7 +254,7 @@ fn provisional_strip_tags_from_place_terminal_blocks_and_finalise() {
     fence(&mut t.h, 170.0);
     t.h.run("numbering", json!({"provisional": true})).unwrap();
     // Control: Place on a wire makes a provisional strip.
-    let v = place(&mut t.h, "terminalblock", (100.0, 190.0));
+    let v = place(&mut t.h, "terminal_block", (100.0, 190.0));
     let p_tag = v["tag"].as_str().unwrap_or_default().to_string();
     assert!(tag::is_provisional(&p_tag), "Place terminal on a wire in provisional mode: {v}");
     for x in [320.0, 330.0, 340.0] {
@@ -392,8 +392,8 @@ fn the_cable_schedule_page_follows_only_cable_edits() {
 fn an_old_project_opens_unchanged_and_shows_its_strips() {
     let dir = tmp_dir("old");
     let mut h = H::new(0x7028_0008);
-    let x1: DeviceId = id(&place(&mut h, "terminalblock", (300.0, 250.0)), "component");
-    h.run("place", json!({"symbol": "terminalblock", "at": [310, 250], "device": x1.hex()})).unwrap();
+    let x1: DeviceId = id(&place(&mut h, "terminal_block", (300.0, 250.0)), "component");
+    h.run("place", json!({"symbol": "terminal_block", "at": [310, 250], "device": x1.hex()})).unwrap();
     let k: DeviceId = id(&place(&mut h, "coil", (300.0, 200.0)), "component");
     let _ = k;
     h.cfg(|p| p.persistence = Persistence::File);

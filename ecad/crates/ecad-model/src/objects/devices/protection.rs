@@ -33,8 +33,8 @@ pub const MAX_OUTPUT: u8 = 99;
 ///
 /// # Example
 /// ```
-/// use crate::objects::devices::{Breaker, Protection, TripCurve};
-/// use crate::geometry::units::Amps;
+/// use ecad_model::objects::devices::{Breaker, Protection, TripCurve};
+/// use ecad_model::geometry::units::Amps;
 /// let p = Protection::Mcb(Breaker { rated_current: Some(Amps(16.0)), curve: Some(TripCurve::B), ..Breaker::default() });
 /// assert_eq!(p.to_string(), "curve B, 16 A");
 /// assert_eq!(serde_json::to_string(&p).unwrap(), r#"{"mcb":{"rated_current":16.0,"curve":"b"}}"#);

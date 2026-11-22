@@ -28,8 +28,8 @@ pub const MAX_SUPPLY_VOLTS: f64 = 1000.0;
 ///
 /// # Example
 /// ```
-/// use crate::objects::devices::{Output, Sensing, Sensor};
-/// use crate::geometry::units::{Current, RatedVoltage, Volts};
+/// use ecad_model::objects::devices::{Output, Sensing, Sensor};
+/// use ecad_model::geometry::units::{Current, RatedVoltage, Volts};
 /// let b = Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), ..Sensor::default() };
 /// assert_eq!(b.to_string(), "24 V DC");
 /// assert_eq!(

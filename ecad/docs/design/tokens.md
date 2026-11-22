@@ -214,7 +214,7 @@ Tool icons echo the schematic.
 | `icon.rectangle` | Rectangle | A rectangle (041: an action) |
 | `icon.circle` | Circle | A circle (041: an action) |
 | `icon.arc` | Arc | A half circle with its centre (041: an action) |
-| `icon.terminal` | Terminal | A block with a screw ring between two leads (041: an action) |
+| `icon.terminal_block` | Terminal | A block with a screw ring between two leads (041: an action) |
 | `icon.junction` | Junction | A dot where a line meets a line (041: an action) |
 | `icon.cloud` | Revision cloud | Scallops round a box (041: an action) |
 | `icon.eye` | Show or hide | An eye (041: an action) |
@@ -239,7 +239,7 @@ Tool icons echo the schematic.
 | `icon.plus` | Zoom in | A plus (UI rev 3: the view group) |
 | `icon.pencil` | Draw tools | A pencil (UI rev 3: the Draw group) |
 | `icon.pin` | Device tools | A body on a lead (UI rev 3: the Device group) |
-| `icon.terminal_pin` | Terminal tools | A lead through a ring with a slash (UI rev 3: the Terminal group) |
+| `icon.terminal_block_pin` | Terminal tools | A lead through a ring with a slash (UI rev 3: the Terminal group) |
 | `icon.wire_bend` | Wire tools | A wire bending up from one end ring to another (UI rev 3: the Wire group) |
 | `icon.cable_bundle` | Cable tools | Three leads tied by two strokes (UI rev 3: the Cable group) |
 | `icon.location_box` | Location tools | A dashed box with a marked corner (UI rev 3: the Location group) |
@@ -318,7 +318,7 @@ U4a. (The spec's table writes 2.15 mm for the terminal label; 1.5 / 0.70 is 2.14
 | --- | --- | --- | --- | --- |
 | `sheet_type.tag` | `2.5 mm` | `3.57 mm` | `600` | Device tag |
 | `sheet_type.label` | `1.6 mm` | `2.29 mm` | `400` | Pin label, wire label, reference, continuation |
-| `sheet_type.terminal_label` | `1.5 mm` | `2.14 mm` | `400` | Terminal label, description |
+| `sheet_type.connection_point_label` | `1.5 mm` | `2.14 mm` | `400` | Terminal label, description |
 | `sheet_type.title_block_label` | `1.4 mm` | `2.00 mm` | `400` | Title block label |
 | `sheet_type.zone_label` | `2 mm` | `2.86 mm` | `400` | Zone label |
 | `sheet_type.page_title` | `3.5 mm` | `5.00 mm` | `600` | Page title |
@@ -363,7 +363,7 @@ test. Where a row has a new token, U4a takes it:
 | `ecad.check-warning`, `ecad.flagged` | `sheet.warning` |
 | `ecad.provisional` | `sheet.provisional` |
 | `ecad.terminal-size`, `ecad.dot-size`, `ecad.loose-size` | `marker` sizes (8, 5, 7 px) |
-| `ecad.text-tag`, `ecad.text-label`, `ecad.text-point-label` | `sheet_type.tag`, `sheet_type.label`, `sheet_type.terminal_label` (cap heights) |
+| `ecad.text-tag`, `ecad.text-label`, `ecad.text-point-label` | `sheet_type.tag`, `sheet_type.label`, `sheet_type.connection_point_label` (cap heights) |
 | `ecad.tooltip-*`, `ecad.revision-bar`, `ecad.branch-bar`, `ecad.point-bar`, `ecad.history-*` | `shell.*` and the primitives, when U2 to U4 restyle their panels |
 
 ## Canvas colours

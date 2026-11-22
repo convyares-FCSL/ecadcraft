@@ -207,7 +207,7 @@ fn milli(x: f64) -> f64 {
 ///
 /// # Example
 /// ```
-/// use crate::devices::ratings::{Read, read_power_supply};
+/// use ecad_electrical::devices::ratings::{Read, read_power_supply};
 /// use ecad_model::objects::devices::{PowerSupply, Psu, Transformer};
 /// let psu = PowerSupply::Psu(Psu::default());
 /// let Read::Rating(r) = read_power_supply(&psu, "230VAC/24VDC 5A") else { panic!() };

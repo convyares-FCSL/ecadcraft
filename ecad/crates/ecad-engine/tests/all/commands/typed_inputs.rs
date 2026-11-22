@@ -659,18 +659,18 @@ fn the_terminal_block_commands_refuse_input_uniformly() {
 fn the_terminal_block_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         (
-            "terminal_blocks",
+            "terminalblocks",
             json!({"from": [0, 0], "to": [9, 9], "type": "nope"}),
             "No terminal type \"nope\". Types: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE.",
         ),
         ("terminalblocks", json!({"from": [0, 0], "to": [0, 0]}), "`from` and `to` must differ"),
         ("terminalblocks", json!({"from": [0, 0], "to": [9, 9]}), "The line crosses no wire. Draw it across the wires to land."),
         (
-            "terminal_blocks",
+            "terminalblocks",
             json!({"from": [0, 0], "to": [9, 9], "type": "x2", "level": "Q"}),
             "A two-level terminal has levels 1, 2. Type one of them, or All for the whole terminal.",
         ),
-        ("bridge", json!({"from": "1", "to": "2"}), "No such terminal."),
+        ("bridge", json!({"from": "1", "to": "2"}), "No such terminal block."),
         ("stripplan", json!({"strip": "1"}), "No such terminal strip."),
         ("cablecores", json!({"cable": "1"}), "no such cable"),
     ];
@@ -1326,7 +1326,7 @@ fn the_accessory_commands_refuse_input_uniformly() {
         ("accessory", json!({"strip": "1", "clear": "acc.start"}), "`clear` must be a list of texts, or null"),
         ("jumper", json!({"connection_points": "1"}), "`connection_points` must be a list of hex ids, or null"),
         ("jumper", json!({"strip": "1", "skip": 1}), "`skip` must be true or false, or null"),
-        ("jumper", json!({"link": 5}), "`link` must be an object, or null"),
+        ("jumper", json!({"jumper_bar": 5}), "`jumper_bar` must be an object, or null"),
     ];
     let mut h = H::new(7057);
     for (cmd, params, says) in rows {
@@ -1340,9 +1340,9 @@ fn the_accessory_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("accessory", json!({"at": "start"}), "`strip` or `connection_point` (hex id) is required"),
         ("accessory", json!({"strip": "1", "at": "start", "add": ["end_stop"]}), "No such strip."),
-        ("accessory", json!({"connection_point": "1", "at": "start", "add": ["end_stop"]}), "No such terminal."),
+        ("accessory", json!({"connection_point": "1", "at": "start", "add": ["end_stop"]}), "No such terminal block."),
         ("jumper", json!({}), "`strip` with `positions`, or `connection_points`, is required"),
-        ("jumper", json!({"link": {"n": 1}}), "`strip` (hex id) is required"),
+        ("jumper", json!({"jumper_bar": {"n": 1}}), "`strip` (hex id) is required"),
         ("jumper", json!({"strip": "1", "positions": "1-2"}), "No such strip."),
     ];
     let mut h = H::new(7058);
@@ -1368,10 +1368,10 @@ fn the_typed_accessory_commands_still_work() {
     let none = h.run("accessory", json!({"strip": strip, "at": "all", "on": true, "items": null})).unwrap_or_else(|e| json!(e));
     assert_eq!(none["keys"][0]["items"], json!([]), "{none}");
     let l = h.run("jumper", json!({"strip": strip, "positions": "1-3"})).unwrap_or_else(|e| json!(e));
-    assert_eq!((l["link"].clone(), l["changed"].clone()), (json!(1), json!(true)), "{l}");
-    let e = h.run("jumper", json!({"link": {"strip": strip, "n": 1}, "remove": ["3"]})).unwrap_or_else(|e| json!(e));
+    assert_eq!((l["jumper_bar"].clone(), l["changed"].clone()), (json!(1), json!(true)), "{l}");
+    let e = h.run("jumper", json!({"jumper_bar": {"strip": strip, "n": 1}, "remove": ["3"]})).unwrap_or_else(|e| json!(e));
     assert_eq!(e["positions"], json!("1-2"), "{e}");
-    let d = h.run("jumper", json!({"link": {"strip": strip, "n": 1}, "delete": true})).unwrap_or_else(|e| json!(e));
+    let d = h.run("jumper", json!({"jumper_bar": {"strip": strip, "n": 1}, "delete": true})).unwrap_or_else(|e| json!(e));
     assert_eq!((d["positions"].clone(), d["changed"].clone()), (Value::Null, json!(true)), "{d}");
 }
 
@@ -1388,7 +1388,7 @@ fn the_release_commands_refuse_input_uniformly() {
         (
             "release",
             json!({"x": 1}),
-            "`x` is not a parameter of this command; it takes `accept`, `colour`, `existing`, `folder`, `lineweights`, `reports`, `provisional`, `rev`",
+            "`x` is not a parameter of this command; it takes `accept`, `colour`, `existing`, `folder`, `lineweights`, `provisional`, `reports`, `rev`",
         ),
     ];
     let mut h = H::new(7060);
@@ -1443,7 +1443,7 @@ fn the_level_commands_refuse_input_uniformly() {
 fn the_level_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("termlabel", json!({}), "`connection_point` or `strip` (hex id) is required"),
-        ("termlabel", json!({"connection_point": "1"}), "No such terminal."),
+        ("termlabel", json!({"connection_point": "1"}), "No such terminal block."),
         ("termlabel", json!({"strip": "1"}), "Name the position to relabel with `at` (its current label), or give `connection_point`."),
         ("termlabel", json!({"strip": "1", "at": "1"}), "That device is not a terminal strip."),
         ("toposition", json!({"device": "1"}), "No such device."),
@@ -1639,8 +1639,8 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
     let mut h = H::new(7074);
     let coil = crate::common::place(&mut h, "coil", (100.0, 100.0))["component"].clone();
     let coil2 = crate::common::place(&mut h, "coil", (200.0, 100.0))["component"].clone();
-    let strip = crate::common::place(&mut h, "terminalblock", (100.0, 200.0))["component"].clone();
-    let strip2 = crate::common::place(&mut h, "terminalblock", (100.0, 300.0))["component"].clone();
+    let strip = crate::common::place(&mut h, "terminal_block", (100.0, 200.0))["component"].clone();
+    let strip2 = crate::common::place(&mut h, "terminal_block", (100.0, 300.0))["component"].clone();
     let socket = crate::common::place(&mut h, "socket4", (300.0, 200.0))["component"].clone();
     let socket2 = crate::common::place(&mut h, "socket4", (300.0, 300.0))["component"].clone();
     let card = crate::common::place(&mut h, "plcdi", (400.0, 200.0))["component"].clone();
@@ -1740,7 +1740,7 @@ fn the_typed_place_still_works() {
     assert_eq!(j["joined"], json!(true), "{j}");
     let c = h.run("place", json!({"symbol": "continuation", "at": [300, 100], "name": "24V", "caption": "to page 2"})).unwrap_or_else(|e| json!(e));
     assert_eq!((c["name"].clone(), c["caption"].clone()), (json!("24V"), json!("to page 2")), "{c}");
-    let t = h.run("place", json!({"symbol": "terminalblock", "at": [100, 300]})).unwrap_or_else(|e| json!(e));
+    let t = h.run("place", json!({"symbol": "terminal_block", "at": [100, 300]})).unwrap_or_else(|e| json!(e));
     assert!(t["tag"].as_str().is_some_and(|x| x.starts_with("-X")), "{t}");
     let x = h.run("place", json!({"at": [400, 100]})).unwrap_or_else(|e| json!(e));
     assert_eq!(x["connection_points"].as_array().map(Vec::len), Some(2), "{x}");

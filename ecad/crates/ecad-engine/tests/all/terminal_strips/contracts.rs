@@ -85,7 +85,7 @@ fn a_connection_point_on_a_wire_splits_it_and_undo_restores_it() {
     });
     let before = t.h.doc();
     let head = t.h.head();
-    let v = place(&mut t.h, "terminalblock", (100.0, 170.0));
+    let v = place(&mut t.h, "terminal_block", (100.0, 170.0));
     assert_eq!(t.h.head(), head + 1, "one transaction");
     assert_eq!(v["tag"], "-X01", "{v}");
     assert!(v["message"].as_str().unwrap().starts_with("Placed -X01:1 on wire"), "{v}");
@@ -116,10 +116,10 @@ fn a_connection_point_on_a_wire_splits_it_and_undo_restores_it() {
     assert!(!after.devices.contains_key(&x1));
     same_as_built(&mut t.h);
     // Refusals with a way forward.
-    let e = t.h.run("place", json!({"symbol": "terminalblock", "at": [100, 210]})).unwrap_err();
+    let e = t.h.run("place", json!({"symbol": "terminal_block", "at": [100, 210]})).unwrap_err();
     assert!(e.contains("That is the end of the wire at -K01:A2"), "{e}");
-    place(&mut t.h, "terminalblock", (100.0, 170.0));
-    let e = t.h.run("place", json!({"symbol": "terminalblock", "at": [100, 170]})).unwrap_err();
+    place(&mut t.h, "terminal_block", (100.0, 170.0));
+    let e = t.h.run("place", json!({"symbol": "terminal_block", "at": [100, 170]})).unwrap_err();
     assert!(e.contains("is already there. Click elsewhere on the wire."), "{e}");
 }
 
@@ -237,7 +237,7 @@ fn setting_a_field_device_to_the_strip_location_flips_only_its_rows() {
     let k = t.h.wire_pp(&[(330.0, 200.0), (330.0, 70.0), (340.0, 70.0)]).unwrap();
     let _w: WireId = id(&k, "conductor");
     // Land -X01:5 on it inside +CP1.
-    let x = t.h.run("place", json!({"symbol": "terminalblock", "at": [330, 170], "tag": "-X01"})).unwrap();
+    let x = t.h.run("place", json!({"symbol": "terminal_block", "at": [330, 170], "tag": "-X01"})).unwrap();
     assert_eq!(x["joined"], true, "{x}");
     same_as_built(&mut t.h);
     let plan = strip_plan(&mut t.h);
@@ -277,7 +277,7 @@ fn the_offer_gives_spares_and_the_bom_counts_per_terminal_block_type() {
     assert!(e.contains("\"12X\" is not a terminal count. Write 12, 12+2PE or 12+4x3"), "{e}");
     t.h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "12 + 2pe"})).unwrap();
     assert_eq!(t.h.doc().devices[&x1].properties["terminal_blocks"], "12+2PE");
-    t.h.run("place", json!({"symbol": "terminalblockpe", "at": [360, 250], "device": x1.hex()})).unwrap();
+    t.h.run("place", json!({"symbol": "terminal_block_pe", "at": [360, 250], "device": x1.hex()})).unwrap();
     same_as_built(&mut t.h);
     let bom = t.h.run("bom", json!({})).unwrap();
     let x_rows: Vec<&Value> = bom["rows"].as_array().unwrap().iter().filter(|r| r["tags"] == "-X01").collect();

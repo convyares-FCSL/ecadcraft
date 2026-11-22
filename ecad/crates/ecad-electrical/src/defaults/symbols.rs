@@ -81,7 +81,7 @@ prefixes! {
     MOTOR1 = Motor1 "motor1", "Motor, single-phase";
     TRAFO = Trafo "trafo", "Transformer";
     TERMINAL_BLOCK = TerminalBlock "terminal_block", "Terminal";
-    TERMINAL_BLOCK_PE = TerminalBlockPe "terminalblockpe", "PE terminal";
+    TERMINAL_BLOCK_PE = TerminalBlockPe "terminal_block_pe", "PE terminal";
     DI = Di "di", "PLC digital input";
     DO = Do "do", "PLC digital output";
     CO = Co "co", "Change-over contact";

@@ -222,8 +222,8 @@ fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
         p.reports();
     });
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
-    let a = h.run("place", json!({"symbol": "terminalblock", "at": [0, 0], "tag": "X1"})).unwrap();
-    let b = h.run("place", json!({"symbol": "terminalblock", "at": [60, 0], "tag": "X2"})).unwrap();
+    let a = h.run("place", json!({"symbol": "terminal_block", "at": [0, 0], "tag": "X1"})).unwrap();
+    let b = h.run("place", json!({"symbol": "terminal_block", "at": [60, 0], "tag": "X2"})).unwrap();
     let (a, b): (DeviceId, DeviceId) = (id(&a, "component"), id(&b, "component"));
     // Brief 052: the project's location proposes; the devices store theirs.
     h.run("setlocation", json!({"devices": [a.hex(), b.hex()], "value": "+CP1"})).unwrap();
@@ -406,8 +406,8 @@ fn settings_changes_update_only_the_rows_they_reach() {
     });
     for i in 0..4 {
         let y = 40.0 + f64::from(i) * 20.0;
-        h.run("place", json!({"symbol": "terminalblock", "at": [0, y]})).unwrap();
-        h.run("place", json!({"symbol": "terminalblock", "at": [60, y]})).unwrap();
+        h.run("place", json!({"symbol": "terminal_block", "at": [0, y]})).unwrap();
+        h.run("place", json!({"symbol": "terminal_block", "at": [60, y]})).unwrap();
         let potential = if i == 0 { "24V" } else { "0V" };
         h.run("wire", json!({"points": pts(&[(0.0, y), (60.0, y)]), "potential": potential})).unwrap();
     }

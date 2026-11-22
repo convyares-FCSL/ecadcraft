@@ -243,8 +243,8 @@ fn a_028_project_opens_unchanged_with_no_accessories() {
     assert!(!h2.p(|p| p.unsaved()));
     let plan = h2.run("stripplan", json!({})).unwrap();
     let s0 = &plan["strips"][0];
-    assert!(s0["rows"].as_array().unwrap().iter().all(|r| r["kind"] == "connection_point"), "{plan}");
-    assert_eq!(s0["links"], json!([]));
+    assert!(s0["rows"].as_array().unwrap().iter().all(|r| r["kind"] == "terminal_block"), "{plan}");
+    assert_eq!(s0["jumper_bars"], json!([]));
     let bom = h2.run("bom", json!({})).unwrap();
     assert!(bom["rows"].as_array().unwrap().iter().all(|r| r.get("accessory").is_none()), "{bom}");
     // The store's own pages (session and lock records) change on any open; the project's log

@@ -40,8 +40,8 @@ pub use crate::tokens::Icon;
 ///
 /// # Example
 /// ```
-/// let c = crate::color(crate::tokens::GRAPHITE.accent_soft);
-/// assert_eq!(c.a(), crate::tokens::GRAPHITE.accent_soft.a);
+/// let c = ecad_widgets::color(ecad_widgets::tokens::GRAPHITE.accent_soft);
+/// assert_eq!(c.a(), ecad_widgets::tokens::GRAPHITE.accent_soft.a);
 /// ```
 pub fn color(c: crate::tokens::Color) -> egui::Color32 {
     egui::Color32::from_rgba_unmultiplied(c.r, c.g, c.b, c.a)
@@ -94,10 +94,10 @@ pub fn theme() -> Theme {
 ///
 /// # Example
 /// ```
-/// crate::set_theme(crate::Theme::Light);
-/// assert_eq!(crate::SHELL.panel, crate::tokens::LIGHT.panel);
-/// crate::set_theme(crate::Theme::Dark);
-/// assert_eq!(crate::SHELL.panel, crate::tokens::GRAPHITE.panel);
+/// ecad_widgets::set_theme(ecad_widgets::Theme::Light);
+/// assert_eq!(ecad_widgets::SHELL.panel, ecad_widgets::tokens::LIGHT.panel);
+/// ecad_widgets::set_theme(ecad_widgets::Theme::Dark);
+/// assert_eq!(ecad_widgets::SHELL.panel, ecad_widgets::tokens::GRAPHITE.panel);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CurrentShell;

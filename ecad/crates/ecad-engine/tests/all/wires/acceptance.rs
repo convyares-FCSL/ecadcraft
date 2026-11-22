@@ -81,7 +81,7 @@ fn fix_names(h: &mut H, kind: Kind) -> Vec<String> {
 }
 
 fn connection_point(h: &mut H, at: (f64, f64), tag: &str) -> (DeviceId, ConnectionPointId, Pt) {
-    let r = h.run("place", json!({"symbol": "terminalblock", "at": [at.0, at.1], "tag": tag})).unwrap();
+    let r = h.run("place", json!({"symbol": "terminal_block", "at": [at.0, at.1], "tag": tag})).unwrap();
     let t: ConnectionPointId = id(&r["connection_points"][0], "connection_point");
     let page = h.p(|p| p.active_page()).expect("an active page");
     let at = h.connection_point_pos(page, t);

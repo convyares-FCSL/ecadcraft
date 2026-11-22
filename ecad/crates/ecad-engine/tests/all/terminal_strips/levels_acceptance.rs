@@ -376,7 +376,7 @@ fn b_level_on_another_page_joins_its_position() {
     // A named position of another type is refused too (fence form).
     refused(
         &mut m.h,
-        "terminal_blocks",
+        "terminalblocks",
         json!({"strip": x1.hex(), "type": "x3", "level": "1", "position": "1", "from": [530, 200], "to": [550, 200]}),
         "-X01:1",
     );

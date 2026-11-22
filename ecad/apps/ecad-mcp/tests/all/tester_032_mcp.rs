@@ -14,7 +14,7 @@ fn hex(v: &Value, key: &str) -> String {
 }
 
 fn place_connection_point(c: &mut Client, at: (f64, f64), tag: &str) -> (f64, f64) {
-    let r = c.exec("place", json!({"symbol": "terminalblock", "at": [at.0, at.1], "tag": tag}));
+    let r = c.exec("place", json!({"symbol": "terminal_block", "at": [at.0, at.1], "tag": tag}));
     let t = hex(&r["connection_points"][0], "connection_point");
     let d = c.doc();
     let tid = ecad_model::ConnectionPointId::from(u128::from_str_radix(&t, 16).unwrap());

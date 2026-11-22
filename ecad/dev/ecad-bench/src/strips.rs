@@ -287,7 +287,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let mut tplace = Vec::new();
         for _ in 0..runs {
             let t = Instant::now();
-            run(&mut s, "place", json!({"symbol": "terminalblock", "at": [X0 + PITCH, 40.0], "device": strip.hex()}))?;
+            run(&mut s, "place", json!({"symbol": "terminal_block", "at": [X0 + PITCH, 40.0], "device": strip.hex()}))?;
             tplace.push(ms(t));
             out.work = out.work.max(work(&project, &mut s));
             run(&mut s, "undo", json!({}))?;
@@ -408,7 +408,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         out.toposition_ms = median(&mut topo);
         run(
             &mut s,
-            "terminal_blocks",
+            "terminalblocks",
             json!({"strip": lv.hex(), "type": "LNPE", "level": "N", "from": [X0 - 5.0, 60.0], "to": [X0 + PITCH * TERMINAL_BLOCKS as f64, 60.0]}),
         )?;
         run(&mut s, "setprop", json!({"component": lv.hex(), "key": "jumper_bar.1", "value": "1-10"}))?;

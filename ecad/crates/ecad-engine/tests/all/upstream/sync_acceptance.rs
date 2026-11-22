@@ -513,7 +513,7 @@ fn oops_twice_after_the_delete_key_and_after_a_later_erase_of_a_wire() {
 fn with_file_formats_wblock_and_emergency_save_respect_ecad_pages() {
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "tester_023_contracts::child_with_file_formats", "--ignored", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "upstream::sync_acceptance::child_with_file_formats", "--ignored", "--nocapture", "--test-threads=1"])
         .output()
         .unwrap();
     let text = format!("{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));

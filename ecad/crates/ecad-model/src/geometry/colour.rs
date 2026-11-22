@@ -108,7 +108,7 @@ impl ConductorColour {
     ///
     /// # Example
     /// ```
-    /// use crate::geometry::colour::ConductorColour;
+    /// use ecad_model::geometry::colour::ConductorColour;
     /// assert_eq!(ConductorColour::parse("bu"), Some(ConductorColour::Blue));
     /// assert_eq!(ConductorColour::parse(" BLU "), Some(ConductorColour::Blue));
     /// assert_eq!(ConductorColour::parse("blue"), Some(ConductorColour::Blue));

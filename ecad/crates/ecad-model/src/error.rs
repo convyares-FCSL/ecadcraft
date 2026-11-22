@@ -37,7 +37,7 @@ pub enum ModelError {
 /// # Example
 /// ```
 /// use ecad_model::Noun;
-/// assert_eq!(format!("No such {}.", Noun::Terminal), "No such connection point.");
+/// assert_eq!(format!("No such {}.", Noun::ConnectionPoint), "No such connection point.");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Noun {
@@ -78,7 +78,7 @@ impl Noun {
             Noun::Strip => "strip",
             Noun::Symbol => "symbol",
             Noun::ConnectionPoint => "connection point",
-            Noun::TerminalBlock => "connection_point",
+            Noun::TerminalBlock => "terminal block",
             Noun::TerminalStrip => "terminal strip",
             Noun::Wire => "wire",
         }

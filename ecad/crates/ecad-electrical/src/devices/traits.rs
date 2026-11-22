@@ -82,7 +82,7 @@ pub trait Signals {
 ///
 /// # Example
 /// ```
-/// use crate::devices::traits::{DeviceKind, Supply};
+/// use ecad_electrical::devices::traits::{DeviceKind, Supply};
 /// use ecad_model::DeviceType;
 /// use ecad_model::objects::devices::{PowerSupply, Psu};
 /// use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Volts, Watts};

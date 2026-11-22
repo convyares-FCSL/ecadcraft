@@ -409,13 +409,13 @@ fn device_box_and_page_values_name_only_their_pages() {
 fn refusals_write_nothing_and_add_no_entry() {
     let mut h = H::new(0x52_7301);
     let k = place(&mut h, "coil", (75.0, 180.0));
-    let strip = place(&mut h, "terminalblock", (150.0, 150.0));
+    let strip = place(&mut h, "terminal_block", (150.0, 150.0));
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
     h.run("setfunction", json!({"component": k.hex(), "value": "=F1"})).unwrap();
     let long = format!("+{}", "A".repeat(ecad_electrical::devices::MAX_PROPERTY_CHARS + 1));
     let cases: Vec<(&str, Value)> = vec![
         ("setlocation", json!({"devices": [k.hex(), "fffffffffffffffffffffff"], "value": "+NEW1"})),
-        ("setlocation", json!({"devices": [k.hex(), strip.hex()], "type": "connection_point", "value": "+NEW2"})),
+        ("setlocation", json!({"devices": [k.hex(), strip.hex()], "type": "terminal_block", "value": "+NEW2"})),
         ("setlocation", json!({"component": k.hex(), "value": long})),
         ("setlocation", json!({"component": k.hex(), "value": "+CP\u{7}9"})),
         ("setlocation", json!({"component": k.hex(), "value": 12})),
@@ -423,7 +423,7 @@ fn refusals_write_nothing_and_add_no_entry() {
         ("setlocation", json!({"component": k.hex(), "aspect": "colour", "value": "+X"})),
         ("setlocation", json!({"component": k.hex(), "type": "head", "value": "+NEW3"})),
         ("setlocation", json!({"component": k.hex(), "type": "bogus", "value": "+NEW4"})),
-        ("setfunction", json!({"component": k.hex(), "type": "connection_point", "value": "=NEW5"})),
+        ("setfunction", json!({"component": k.hex(), "type": "terminal_block", "value": "=NEW5"})),
         ("designationadd", json!({"aspect": "location", "code": "+cp1"})),
         ("designationadd", json!({"aspect": "location", "code": long})),
         ("designationadd", json!({"aspect": "location", "code": ""})),

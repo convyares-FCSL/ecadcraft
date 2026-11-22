@@ -22,7 +22,7 @@ use {crate::color, crate::fonts};
 /// ```
 /// # egui::__run_test_ui(|ui| {
 /// let mut open = true;
-/// crate::prim::SectionHeader::new(&mut open, "Rating").summary("18.8 A ≥ 4 A").show(ui);
+/// ecad_widgets::prim::SectionHeader::new(&mut open, "Rating").summary("18.8 A ≥ 4 A").show(ui);
 /// if open { /* the section's rows */ }
 /// # });
 /// ```
@@ -105,9 +105,9 @@ pub fn property_row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R)
 /// ```
 /// # egui::__run_test_ui(|ui| {
 /// let mut name = String::from("main");
-/// crate::prim::PropertyGrid::new().show(ui, |g| {
-///     g.row("Name", |ui| crate::control::TextEntry::new(&mut name, "Name").show(ui));
-///     g.row("Made", |ui| crate::control::read_text(ui, "today", Default::default(), "Made"));
+/// ecad_widgets::prim::PropertyGrid::new().show(ui, |g| {
+///     g.row("Name", |ui| ecad_widgets::control::TextEntry::new(&mut name, "Name").show(ui));
+///     g.row("Made", |ui| ecad_widgets::control::read_text(ui, "today", Default::default(), "Made"));
 /// });
 /// # });
 /// ```

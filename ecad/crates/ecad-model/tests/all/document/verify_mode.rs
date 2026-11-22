@@ -54,7 +54,7 @@ fn child_probe() {
 fn run_child(switch: Option<&str>) -> String {
     let exe = std::env::current_exe().unwrap();
     let mut cmd = Command::new(exe);
-    cmd.args(["--ignored", "--exact", "verify_mode_acceptance::child_probe", "--nocapture", "--test-threads=1"]);
+    cmd.args(["--ignored", "--exact", "document::verify_mode::child_probe", "--nocapture", "--test-threads=1"]);
     cmd.env("ECAD_TEST_CHILD", "1");
     cmd.env_remove("ECAD_VERIFY_INVARIANTS");
     if let Some(v) = switch {

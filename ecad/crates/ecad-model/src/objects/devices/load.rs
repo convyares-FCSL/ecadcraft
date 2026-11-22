@@ -24,8 +24,8 @@ pub const MAX_POWER_WATTS: f64 = 100_000_000.0;
 ///
 /// # Example
 /// ```
-/// use crate::objects::devices::Load;
-/// use crate::geometry::units::Watts;
+/// use ecad_model::objects::devices::Load;
+/// use ecad_model::geometry::units::Watts;
 /// assert_eq!(Load { rated_power: Some(Watts(3000.0)) }.to_string(), "3 kW");
 /// assert_eq!(Load { rated_power: Some(Watts(5.0)) }.to_string(), "5 W");
 /// assert_eq!(serde_json::to_string(&Load { rated_power: Some(Watts(5.0)) }).unwrap(), r#"{"rated_power":5.0}"#);

@@ -42,8 +42,8 @@ pub struct Shown<B, F> {
 /// # Example
 /// ```
 /// # egui::__run_test_ui(|ui| {
-/// use crate::dialog::action;
-/// use crate::prim::Kind;
+/// use ecad_widgets::dialog::action;
+/// use ecad_widgets::prim::Kind;
 /// let ok = action(ui, "Merge", Kind::Primary, "ecad.merge.ok", Some("Choose for 2 conflicts first")).clicked();
 /// let cancel = action(ui, "Cancel", Kind::Secondary, "ecad.merge.cancel", None).clicked();
 /// # let _ = (ok, cancel);

@@ -75,7 +75,7 @@ fn tokens(text: &str) -> Option<Vec<Tok>> {
 ///
 /// # Example
 /// ```
-/// use crate::devices::ratings::{Read, read_sensor};
+/// use ecad_electrical::devices::ratings::{Read, read_sensor};
 /// use ecad_model::objects::devices::{Output, Sensing, Sensor};
 /// let prox = Sensor::empty(Sensing::Proximity, Output::Pnp);
 /// let Read::Rating(b) = read_sensor(&prox, "24VDC") else { panic!() };

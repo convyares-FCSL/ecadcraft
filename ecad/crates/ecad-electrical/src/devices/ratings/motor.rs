@@ -164,7 +164,7 @@ fn within(x: f64, max: f64, what: &str, unit: &str) -> Result<f64, Read<Motor>> 
 ///
 /// # Example
 /// ```
-/// use crate::devices::ratings::{Read, read_motor};
+/// use ecad_electrical::devices::ratings::{Read, read_motor};
 /// use ecad_model::objects::devices::{Motor, Phases};
 /// let m = Motor::empty(Phases::Three);
 /// let Read::Rating(r) = read_motor(&m, "7,5kW 15.2A DOL") else { panic!() };

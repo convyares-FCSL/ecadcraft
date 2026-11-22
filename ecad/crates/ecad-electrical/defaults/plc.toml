@@ -29,7 +29,7 @@
 "plc.text.channel.show" = "yes"
 "plc.text.address.show" = "yes"
 "plc.text.channel.rotation" = "90"
-"plc.xref.table" = "no"
+"plc.references.table" = "no"
 "plc.chdi.prefix" = "A"
 "plc.chdq.prefix" = "A"
 "plc.chai.prefix" = "A"

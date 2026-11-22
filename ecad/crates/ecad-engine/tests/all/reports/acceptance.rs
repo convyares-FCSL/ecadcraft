@@ -211,8 +211,8 @@ fn fixture(seed: u64) -> Fx {
     for (x, y) in [(40.0, 100.0), (90.0, 120.0), (150.0, 180.0), (220.0, 90.0)] {
         place(&mut h, "coil", (x, y));
     }
-    let a = place(&mut h, "terminalblock", (60.0, 220.0));
-    let b = place(&mut h, "terminalblock", (160.0, 220.0));
+    let a = place(&mut h, "terminal_block", (60.0, 220.0));
+    let b = place(&mut h, "terminal_block", (160.0, 220.0));
     h.run("wire", json!({"points": pts(&[(60.0, 220.0), (160.0, 220.0)])})).unwrap();
     h.run("cableslash", json!({"from": [110, 230], "to": [110, 210]})).unwrap();
     h.run("setprop", json!({"component": a.hex(), "key": "part_number", "value": "UT 2.5"})).unwrap();
@@ -723,7 +723,7 @@ fn csv_quotes_and_neutralises_formula_starts() {
     assert_eq!(lines[1], "\"a,b\",\"say \"\"hi\"\"\",\"two\nlines\"");
     assert_eq!(lines[2], "'=1+1,'+CP1,'-K01");
     assert_eq!(lines[3], "'@SUM(A1),'\tx,\"'\rx\"");
-    assert_eq!(lines[4], "plain,?");
+    assert_eq!(lines[4], "plain,,?");
     // Without Excel-safe, values are written as they are.
     assert!(csv(&t, false).contains("=1+1,+CP1,-K01\r\n"));
 }

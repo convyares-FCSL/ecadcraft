@@ -39,8 +39,8 @@ pub const MAX_VOLT_AMPS: f64 = 10_000_000.0;
 ///
 /// # Example
 /// ```
-/// use crate::objects::devices::{PowerSupply, Psu, Transformer};
-/// use crate::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts};
+/// use ecad_model::objects::devices::{PowerSupply, Psu, Transformer};
+/// use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts};
 /// let dc24 = RatedVoltage { volts: Volts(24.0), current: Current::Dc };
 /// let psu = PowerSupply::Psu(Psu { output: Some(dc24), output_current: Some(Amps(5.0)), ..Psu::default() });
 /// assert_eq!(psu.to_string(), "24 V DC, 5 A");

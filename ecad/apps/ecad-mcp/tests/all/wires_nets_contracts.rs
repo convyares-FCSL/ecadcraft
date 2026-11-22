@@ -73,7 +73,7 @@ fn with_writes_off_the_wire_commands_are_refused() {
 /// one wire across the pages. Returns the cable.
 fn pack(c: &mut Client) -> String {
     for (i, y) in [0, 10, 20].into_iter().enumerate() {
-        c.exec("place", json!({"symbol": "terminalblock", "at": [0, y], "tag": "X01"}));
+        c.exec("place", json!({"symbol": "terminal_block", "at": [0, y], "tag": "X01"}));
         c.exec("place", json!({"symbol": "continuation", "at": [100, y], "name": format!("A{}", i + 1)}));
         c.exec("wire", json!({"points": [[0, y], [100, y]]}));
     }
@@ -82,7 +82,7 @@ fn pack(c: &mut Client) -> String {
     c.exec("openpage", json!({"page": page}));
     for (i, y) in [0, 10, 20].into_iter().enumerate() {
         c.exec("place", json!({"symbol": "continuation", "at": [0, y], "name": format!("A{}", i + 1)}));
-        c.exec("place", json!({"symbol": "terminalblock", "at": [100, y], "tag": "X05"}));
+        c.exec("place", json!({"symbol": "terminal_block", "at": [100, y], "tag": "X05"}));
         c.exec("wire", json!({"points": [[0, y], [100, y]]}));
     }
     k

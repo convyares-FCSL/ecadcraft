@@ -82,7 +82,7 @@ impl LevelIo {
 ///
 /// # Example
 /// ```
-/// use crate::geometry::point::{ChannelRole, PointKey};
+/// use ecad_model::geometry::point::{ChannelRole, PointKey};
 /// let k = PointKey::parse(".3.in").unwrap();
 /// assert_eq!(k, PointKey::Channel { index: 3, role: ChannelRole::In });
 /// assert_eq!(k.to_string(), ".3.in");

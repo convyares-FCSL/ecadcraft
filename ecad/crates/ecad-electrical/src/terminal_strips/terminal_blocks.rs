@@ -262,7 +262,7 @@ pub fn index_of(t: &TermType) -> usize {
 }
 
 /// The type and level a starter draws: `termlnpe.2` → (L/N/PE, level 2); `termlnpe` → (L/N/PE,
-/// `None`: the whole terminal); `connection_point`, `terminalblockpe`, `termdisc`, `termfuse` → level 1.
+/// `None`: the whole terminal); `connection_point`, `terminal_block_pe`, `termdisc`, `termfuse` → level 1.
 pub fn of_starter(key: StarterKey) -> Option<(&'static TermType, Option<u32>)> {
     TYPES.iter().find_map(|t| {
         if t.key == key {

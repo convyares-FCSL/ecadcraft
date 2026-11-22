@@ -206,7 +206,7 @@ fn milli(x: f64) -> Result<MilliAmps, Problem> {
 ///
 /// # Example
 /// ```
-/// use crate::devices::ratings::{Read, read_protection};
+/// use ecad_electrical::devices::ratings::{Read, read_protection};
 /// use ecad_model::objects::devices::ProtectionKind;
 /// let Read::Rating(p) = read_protection(ProtectionKind::Mcb, "B16") else { panic!() };
 /// assert_eq!(p.to_string(), "curve B, 16 A");

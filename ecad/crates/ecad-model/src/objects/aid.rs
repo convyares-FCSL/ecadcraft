@@ -33,7 +33,7 @@ pub type Caption = Text<MAX_CAPTION>;
 ///
 /// # Example
 /// ```
-/// use crate::objects::aid::{Aid, ContinuationName};
+/// use ecad_model::objects::aid::{Aid, ContinuationName};
 /// let a = Aid::Continuation { name: Some(ContinuationName::new("24V").unwrap()), caption: None };
 /// assert_eq!(serde_json::to_string(&a).unwrap(), r#"{"continuation":{"name":"24V"}}"#);
 /// assert_eq!(serde_json::from_str::<Aid>(r#"{"box":{}}"#).unwrap(), Aid::Box(Default::default()));

@@ -27,8 +27,8 @@ pub type PositionLabel = crate::naming::text::Text<MAX_POSITION>;
 ///
 /// # Example
 /// ```
-/// use crate::objects::devices::{Fuse, PositionLabel, TerminalStrip};
-/// use crate::geometry::units::Amps;
+/// use ecad_model::objects::devices::{Fuse, PositionLabel, TerminalStrip};
+/// use ecad_model::geometry::units::Amps;
 /// let mut s = TerminalStrip::default();
 /// s.fuses.insert(PositionLabel::new("3").unwrap(), Fuse { rated_current: Some(Amps(4.0)), ..Fuse::default() });
 /// assert_eq!(s.fuse_rating("3").as_deref(), Some("4 A"));

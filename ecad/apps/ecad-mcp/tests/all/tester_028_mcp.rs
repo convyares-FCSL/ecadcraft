@@ -83,8 +83,8 @@ fn strip_writes_by_the_agent_then_refused_with_writes_off_on_the_saved_project()
     assert!(!c.s.writes());
     let log = c.log();
     for (cmd, params) in [
-        ("place", json!({"symbol": "terminalblock", "at": [100, 150]})),
-        ("place", json!({"symbol": "terminalblockpe", "at": [300, 150], "device": strip})),
+        ("place", json!({"symbol": "terminal_block", "at": [100, 150]})),
+        ("place", json!({"symbol": "terminal_block_pe", "at": [300, 150], "device": strip})),
         ("terminalblocks", json!({"strip": strip, "from": [90, 150], "to": [170, 150]})),
         ("bridge", json!({"from": terms[0], "to": terms[1]})),
         ("renumber", json!({"kind": "terminal_blocks", "start": 9})),

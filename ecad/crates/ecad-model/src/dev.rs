@@ -33,8 +33,8 @@ pub fn set_verify_invariants(on: bool) {
 /// # Example
 /// ```
 /// use std::ffi::OsStr;
-/// assert!(crate::document::ledger::verify_switch_on(Some(OsStr::new("1"))));
-/// assert!(!crate::document::ledger::verify_switch_on(Some(OsStr::new("0"))));
+/// assert!(ecad_model::document::ledger::verify_switch_on(Some(OsStr::new("1"))));
+/// assert!(!ecad_model::document::ledger::verify_switch_on(Some(OsStr::new("0"))));
 /// ```
 pub fn switch_on(value: Option<&std::ffi::OsStr>) -> bool {
     value.is_some_and(|v| v == "1")

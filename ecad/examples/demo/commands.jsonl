@@ -11,9 +11,9 @@
 
 // ---------------------------------------------------------------- page 1: Supply
 {"command":"renamepage","params":{"page":"$page1","title":"Supply"}}
-{"command":"place","params":{"symbol":"terminalblock","at":[30,150],"tag":"X01"},"as":"x1"}
-{"command":"place","params":{"symbol":"terminalblock","at":[50,150],"tag":"X01"}}
-{"command":"place","params":{"symbol":"terminalblock","at":[70,150],"tag":"X01"}}
+{"command":"place","params":{"symbol":"terminal_block","at":[30,150],"tag":"X01"},"as":"x1"}
+{"command":"place","params":{"symbol":"terminal_block","at":[50,150],"tag":"X01"}}
+{"command":"place","params":{"symbol":"terminal_block","at":[70,150],"tag":"X01"}}
 {"command":"place","params":{"symbol":"mcb2","at":[30,120],"tag":"Q01"},"as":"q1"}
 {"command":"place","params":{"symbol":"psu","at":[40,85],"tag":"G01"},"as":"g1"}
 {"command":"wire","params":{"points":[[30,150],[30,130]],"potential":"L"}}
@@ -86,9 +86,9 @@
 // -W01 continues here (design 072 §4.4): its page-2 lines end loose at the reference; `cablecontinue`
 // lands them on named points and draws three stubs from this page's reference, which run on to
 // X02. Each core is then one wire from -K01 on page 2 to -X02 here.
-{"command":"place","params":{"symbol":"terminalblock","at":[110,110],"tag":"X02"},"as":"x2a"}
-{"command":"place","params":{"symbol":"terminalblock","at":[130,110],"tag":"X02"},"as":"x2b"}
-{"command":"place","params":{"symbol":"terminalblock","at":[150,110],"tag":"X02"},"as":"x2c"}
+{"command":"place","params":{"symbol":"terminal_block","at":[110,110],"tag":"X02"},"as":"x2a"}
+{"command":"place","params":{"symbol":"terminal_block","at":[130,110],"tag":"X02"},"as":"x2b"}
+{"command":"place","params":{"symbol":"terminal_block","at":[150,110],"tag":"X02"},"as":"x2c"}
 {"command":"cablecontinue","params":{"cable":"$w1.cable","at":[130,150],"toward":[130,130]}}
 {"command":"wire","params":{"points":[[125,130],[110,130],[110,110]]},"as":"c1"}
 {"command":"wire","params":{"points":[[130,130],[130,110]]},"as":"c2"}

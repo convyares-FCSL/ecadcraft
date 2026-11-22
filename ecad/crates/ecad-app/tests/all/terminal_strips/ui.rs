@@ -58,14 +58,14 @@ fn terminal_strips_in_the_app() {
     let cable = *doc(&mut h).cables.keys().next().unwrap();
     ok(&mut h, &format!(r#"setprop {{"cable":"{}","key":"type","value":"YSLY-JZ 7G1.5"}}"#, cable.hex()));
     // Place Terminals and a bridge.
-    ok(&mut h, r#"terminals {"from":[90,170],"to":[260,170]}"#);
+    ok(&mut h, r#"terminalblocks {"from":[90,170],"to":[260,170]}"#);
     let d = doc(&mut h);
     let x1 = d.components_tagged("-X01")[0];
     let mut terms: Vec<(String, ecad_model::ConnectionPointId)> = d.connection_points_of(x1).map(|(t, x)| (x.label.clone().unwrap(), t)).collect();
     terms.sort();
     assert_eq!(terms.len(), 4);
     ok(&mut h, &format!(r#"bridge {{"from":"{}","to":"{}"}}"#, terms[2].1.hex(), terms[3].1.hex()));
-    ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"terminals","value":"8+1PE"}}"#, x1.hex()));
+    ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"terminal_blocks","value":"8+1PE"}}"#, x1.hex()));
     view(&mut h, 60.0, 30.0, 300.0, 250.0);
     save(&h, &deltas, "028-strip.png");
     // Properties of a terminal: the offer, the counts, Show plan.
@@ -96,7 +96,7 @@ fn terminal_strips_in_the_app() {
         h.run_steps(3);
         assert_eq!(h.state().reports.as_ref().unwrap().copies, copies, "an unrelated edit copies nothing");
         let offer = if strip.is_some() { "9" } else { "8+1PE" };
-        ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"terminals","value":"{offer}"}}"#, x1.hex()));
+        ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"terminal_blocks","value":"{offer}"}}"#, x1.hex()));
         h.run_steps(3);
         assert_eq!(h.state().reports.as_ref().unwrap().copies, copies + 1, "the strip's own edit copies once");
     }
@@ -127,7 +127,7 @@ fn terminal_strips_in_the_app() {
     assert_eq!(t.rows.len(), 7, "one row per offered core");
     h.state_mut().reports = None;
     // A terminal plan page.
-    ok(&mut h, &format!(r#"newpage {{"generated":"terminals","strip":"{}"}}"#, x1.hex()));
+    ok(&mut h, &format!(r#"newpage {{"generated":"terminal_blocks","strip":"{}"}}"#, x1.hex()));
     h.run_steps(3);
     ok(&mut h, "zoom e");
     h.run_steps(3);
@@ -136,7 +136,7 @@ fn terminal_strips_in_the_app() {
     let page1 = doc(&mut h).page_order[0];
     h.state_mut().show_page(page1).unwrap();
     h.run_steps(2);
-    ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"terminals","value":"2"}}"#, x1.hex()));
+    ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"terminal_blocks","value":"2"}}"#, x1.hex()));
     h.state_mut().panel.tab = project_panel::Tab::Checks;
     h.run_steps(4);
     let rows = h.state().panel.checks.rows().to_vec();

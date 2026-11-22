@@ -1176,7 +1176,7 @@ a new one); the steps make their own page so its numbers do not matter.
     others shifted, in drawing order; **Apply**: one step, the wires stay on their terminals;
     `u` puts the labels back.
 
-Typed instead, in the ECAD command field: `place {"symbol":"terminalblock","at":[x,y]}` (on a wire: it
+Typed instead, in the ECAD command field: `place {"symbol":"terminal_block","at":[x,y]}` (on a wire: it
 is split), `terminals {"from":[x,y],"to":[x,y]}` (add `"strip":"<id>"`, `"pe":true`),
 `bridge {"from":"<terminal id>","to":"<terminal id>"}`,
 `setprop {"component":"<strip id>","key":"terminals","value":"12+2PE"}`,

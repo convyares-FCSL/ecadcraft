@@ -2,9 +2,9 @@
 //! and the core count per cable, derived from the drawing and never stored.
 //!
 //! # Semantics
-//! - A **strip** is a device whose definition is a terminal starter (`connection_point`, `terminalblockpe`);
+//! - A **strip** is a device whose definition is a terminal starter (`connection_point`, `terminal_block_pe`);
 //!   each terminal is one symbol with one connection point (018's model, owner answer Q1). Its
-//!   **type** is its symbol's: `terminalblockpe` is PE, anything else feed-through.
+//!   **type** is its symbol's: `terminal_block_pe` is PE, anything else feed-through.
 //! - The strip's **offer** is its `connection_points` property, `12` or `12+2PE`: feed-through positions,
 //!   then PE positions (design 028 §3.3, owner decision 2026-11-12: `12+2PE` is 14 positions; a
 //!   BOM of 12 feed-through and 2 PE). Positions with no drawn terminal are **spare**.

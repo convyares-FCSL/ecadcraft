@@ -44,7 +44,7 @@ pub fn p56_lines() -> Vec<String> {
         v.push(format!(r#"place {{"symbol":"lamp","at":[{x},160]}}"#));
         v.push(format!(r#"wire {{"points":[[{x},150],[{x},60]]}}"#));
     }
-    v.push(r#"place {"symbol":"terminal","at":[100,130]}"#.into());
+    v.push(r#"place {"symbol":"terminal_block","at":[100,130]}"#.into());
     v.push(r#"plcchannels {"card":"-A03","from":[55,100],"to":[225,100]}"#.into());
     for (ch, (tag, text)) in A03.iter().enumerate() {
         v.push(format!(r#"plcchannel {{"card":"-A03","channel":{ch},"tag":"{tag}","text":"{text}"}}"#));

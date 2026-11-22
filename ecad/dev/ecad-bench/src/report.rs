@@ -390,7 +390,7 @@ Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {
         ));
         // Brief 036 (design 036 §11.3).
         out.push_str(&format!(
-            "Multi-level connection_points: lvlfence {:.2} ms (< 16), lvlplace {:.2} ms (< 16), lvlsep {:.2} ms (< 16; {} strips recomputed), \
+            "Multi-level terminals: lvlfence {:.2} ms (< 16), lvlplace {:.2} ms (< 16), lvlsep {:.2} ms (< 16; {} strips recomputed), \
              toposition {:.2} ms (< 16), lvltrenum {:.2} ms (< 16)\n",
             t.lvlfence_ms, t.lvlplace_ms, t.lvlsep_ms, t.lvlsep_work, t.toposition_ms, t.lvltrenum_ms
         ));

@@ -104,7 +104,7 @@ impl fmt::Display for ContactEntry {
 ///
 /// # Example
 /// ```
-/// use crate::objects::devices::{ContactEntry, ContactPoles, ContactSet, PoleKind};
+/// use ecad_model::objects::devices::{ContactEntry, ContactPoles, ContactSet, PoleKind};
 /// let n = |n| ContactPoles::Count(std::num::NonZeroU8::new(n).unwrap());
 /// let s = ContactSet::new(vec![
 ///     ContactEntry { poles: n(3), kind: PoleKind::No, power: true },

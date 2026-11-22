@@ -248,7 +248,7 @@ impl PageNo {
     ///
     /// # Example
     /// ```
-    /// use crate::document::book::PageNo;
+    /// use ecad_model::document::book::PageNo;
     /// assert_eq!(PageNo::parse(" 105a ").map(|n| n.to_string()), Some("105a".into()));
     /// assert!(PageNo::parse("1.5").is_none());
     /// ```

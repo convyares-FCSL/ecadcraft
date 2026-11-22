@@ -27,7 +27,7 @@ pub const STUB_MM: f64 = 4.0;
 pub const LAYER: &str = "ecad.jumper_bar";
 /// Said when a link line is moved or stretched.
 pub const JUMPER_BAR_DERIVED: &str =
-    "A link line is drawn from its jumper_bar: select it and use Extend, Shorten, Split or Delete (Jumper), or erase it to delete the link.";
+    "A link line is drawn from its link: select it and use Extend, Shorten, Split or Delete (Jumper), or erase it to delete the link.";
 
 /// One segment of a link line.
 #[derive(Debug, Clone, PartialEq)]

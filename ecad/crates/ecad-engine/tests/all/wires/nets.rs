@@ -31,7 +31,7 @@ fn same(a: &[Pt], b: &[(f64, f64)]) -> bool {
 }
 
 fn connection_point(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::ConnectionPointId {
-    let r = h.run("place", json!({"symbol": "terminalblock", "at": [at.0, at.1], "tag": tag})).unwrap();
+    let r = h.run("place", json!({"symbol": "terminal_block", "at": [at.0, at.1], "tag": tag})).unwrap();
     id(&r["connection_points"][0], "connection_point")
 }
 

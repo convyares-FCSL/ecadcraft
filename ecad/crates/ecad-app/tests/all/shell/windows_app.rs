@@ -138,7 +138,7 @@ fn odd_paths_through_the_dialog_save_where_the_banner_says() {
     std::fs::create_dir_all(cwd.0.join("inner")).unwrap();
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "windows_app_contracts::child_saves_odd_paths", "--ignored", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "shell::windows_app::child_saves_odd_paths", "--ignored", "--nocapture", "--test-threads=1"])
         .current_dir(cwd.0.join("inner"))
         .output()
         .unwrap();
@@ -237,7 +237,7 @@ fn child_reports_home() {
 
 fn child_home(env: &[(&str, Option<&str>)]) -> String {
     let mut c = std::process::Command::new(std::env::current_exe().unwrap());
-    c.args(["--exact", "windows_app_contracts::child_reports_home", "--ignored", "--nocapture", "--test-threads=1"]);
+    c.args(["--exact", "shell::windows_app::child_reports_home", "--ignored", "--nocapture", "--test-threads=1"]);
     c.env("ECAD_TEST_CHILD", "1");
     for (k, v) in env {
         match v {
@@ -288,7 +288,7 @@ fn snapshots_with_a_tilde_never_make_a_tilde_folder() {
     let cwd = TempDir::new("snap-cwd");
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "windows_app_contracts::child_exports_a_snapshot_to_tilde", "--ignored", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "shell::windows_app::child_exports_a_snapshot_to_tilde", "--ignored", "--nocapture", "--test-threads=1"])
         .current_dir(&cwd.0)
         .output()
         .unwrap();

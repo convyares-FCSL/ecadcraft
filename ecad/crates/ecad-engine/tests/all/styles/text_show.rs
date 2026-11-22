@@ -22,7 +22,7 @@ fn place(h: &mut H, symbol: &str, at: [f64; 2], device: Option<DeviceId>) -> Val
 fn strip_row(h: &mut H, x0: f64, y: f64, n: usize, step: f64, strip: Option<DeviceId>) -> (DeviceId, Vec<RepresentationId>) {
     let mut c = strip;
     for i in 0..n {
-        let v = place(h, "connection_point", [x0 + step * i as f64, y], c);
+        let v = place(h, "terminal_block", [x0 + step * i as f64, y], c);
         c = Some(id(&v, "component"));
     }
     let c = c.unwrap();
@@ -97,7 +97,7 @@ fn two_groups_on_a_line_and_another_device_between_split_runs() {
     assert_eq!(shown.len(), 2, "one run, plus the symbol set on: {shown:?}");
     // A -X02 terminal between two -X01 terminals of another line splits that line's run.
     let (_, c) = strip_row(&mut h, 60.0, 70.0, 1, 10.0, Some(x1));
-    let other = place(&mut h, "terminalblock", [70.0, 70.0], None);
+    let other = place(&mut h, "terminal_block", [70.0, 70.0], None);
     assert_ne!(id::<DeviceId>(&other, "component"), x1);
     let (_, d) = strip_row(&mut h, 80.0, 70.0, 1, 10.0, Some(x1));
     let shown = shown_tags(&mut h, page, x1);

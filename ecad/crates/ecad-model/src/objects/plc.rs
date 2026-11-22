@@ -52,7 +52,7 @@ pub type PlcTag = Text<128>;
 ///
 /// # Example
 /// ```
-/// use crate::objects::plc::{PlcRack, RackHead, Protocol};
+/// use ecad_model::objects::plc::{PlcRack, RackHead, Protocol};
 /// let s = PlcRack { head: RackHead::Coupler { protocol: Protocol::Ethercat }, ..PlcRack::default() };
 /// assert_eq!(serde_json::to_string(&s).unwrap(), r#"{"head":{"coupler":{"protocol":"ethercat"}}}"#);
 /// ```
@@ -118,7 +118,7 @@ impl NetAddress {
     ///
     /// # Example
     /// ```
-    /// use crate::objects::plc::NetAddress;
+    /// use ecad_model::objects::plc::NetAddress;
     /// assert_eq!(NetAddress::parse("3"), Some(NetAddress::Node(3)));
     /// assert!(matches!(NetAddress::parse("192.168.0.10"), Some(NetAddress::Ip(_))));
     /// assert_eq!(NetAddress::parse("3a"), None);
@@ -221,7 +221,7 @@ crate::word_enum! {
 ///
 /// # Example
 /// ```
-/// use crate::objects::plc::{ChannelGroup, ModuleFunction, PlcModule, Signal};
+/// use ecad_model::objects::plc::{ChannelGroup, ModuleFunction, PlcModule, Signal};
 /// let m = PlcModule::new(ModuleFunction::DigitalIn(ChannelGroup::new(Signal::Dc24v, 16)));
 /// assert_eq!(m.channel_count(), 16);
 /// assert_eq!(serde_json::to_string(&m).unwrap(), r#"{"function":{"digital_in":{"signal":"dc24v","count":16}}}"#);
@@ -559,7 +559,7 @@ impl Channel {
 ///
 /// # Example
 /// ```
-/// use crate::objects::plc::SafeState;
+/// use ecad_model::objects::plc::SafeState;
 /// assert_eq!(SafeState::parse("Hold"), Some(SafeState::Hold));
 /// assert_eq!(SafeState::parse("4 mA").map(|s| s.to_string()), Some("4 mA".to_string()));
 /// ```

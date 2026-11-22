@@ -133,7 +133,7 @@ fn child_prints_its_home_folder() {
 fn the_home_folder_is_known_without_the_home_variable() {
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "paths_contracts::child_prints_its_home_folder", "--ignored", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "shell::paths::child_prints_its_home_folder", "--ignored", "--nocapture", "--test-threads=1"])
         .env_remove("HOME")
         .output()
         .unwrap();

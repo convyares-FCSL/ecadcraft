@@ -213,7 +213,7 @@ pub fn is_reserved_key(key: &str) -> bool {
 /// # Example
 ///
 /// ```
-/// use crate::styles::text_style::{text_style, TextKind, Weight};
+/// use ecad_electrical::styles::text_style::{text_style, TextKind, Weight};
 /// let doc = ecad_model::Document::default();
 /// let tag = text_style(&doc, TextKind::Tag);
 /// assert_eq!((tag.height, tag.weight, tag.style_name), (2.5, Weight::Bold, "ECAD-BOLD"));

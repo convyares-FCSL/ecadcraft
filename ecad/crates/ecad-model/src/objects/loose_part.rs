@@ -59,7 +59,7 @@ impl ItemUnit {
 ///
 /// # Example
 /// ```
-/// use crate::objects::loose_part::Qty;
+/// use ecad_model::objects::loose_part::Qty;
 /// let q = Qty::parse("3.6").unwrap();
 /// assert_eq!(q, Qty(3600));
 /// assert_eq!(serde_json::to_string(&q).unwrap(), r#""3.6""#);
@@ -134,7 +134,7 @@ impl<'de> Deserialize<'de> for Qty {
 ///
 /// # Example
 /// ```
-/// use crate::objects::loose_part::{LooseDescription, LoosePart, Qty};
+/// use ecad_model::objects::loose_part::{LooseDescription, LoosePart, Qty};
 /// let p = LoosePart::new(LooseDescription::new("DIN rail").unwrap(), Qty(2000));
 /// assert_eq!(serde_json::to_string(&p).unwrap(), r#"{"description":"DIN rail","qty":"2"}"#);
 /// assert!(serde_json::from_str::<LoosePart>(r#"{"description":"x","qty":"1","colour":"red"}"#).is_err());
@@ -221,7 +221,7 @@ pub struct BomLine {
 ///
 /// # Example
 /// ```
-/// use crate::objects::loose_part::{Bom, LooseDescription, LoosePart, Qty};
+/// use ecad_model::objects::loose_part::{Bom, LooseDescription, LoosePart, Qty};
 /// let p = LoosePart::new(LooseDescription::new("Cable ties").unwrap(), Qty(100_000));
 /// let lines = p.bom_lines();
 /// assert_eq!((lines.len(), lines[0].qty), (1, Qty(100_000)));

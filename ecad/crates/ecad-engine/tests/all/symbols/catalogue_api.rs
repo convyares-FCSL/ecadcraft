@@ -41,11 +41,11 @@ fn families() {
         "motor3",
         "motor1",
         "trafo",
-        "connection_point",
+        "terminal_block",
         "di",
         "do",
         "continuation",
-        "terminalblockpe",
+        "terminal_block_pe",
     ];
     for k in old {
         assert!(matches!(s(k).family, Family::Basic), "{k}");

@@ -74,7 +74,7 @@ const ECAD_COMMANDS: &[&str] = &[
     "printbook",
     "reports",
     "locationbox",
-    "terminal_blocks",
+    "terminalblocks",
     "bridge",
     "stripplan",
     "cablecores",

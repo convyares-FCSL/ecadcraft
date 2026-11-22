@@ -65,7 +65,7 @@ impl DeviceGroup {
 ///
 /// # Example
 /// ```
-/// use crate::objects::devices::{DeviceGroup, DeviceType, Protection};
+/// use ecad_model::objects::devices::{DeviceGroup, DeviceType, Protection};
 /// let t = DeviceType::Protection(Protection::default());
 /// assert_eq!(t.group(), DeviceGroup::Protection);
 /// assert_eq!(serde_json::to_string(&t).unwrap(), r#"{"protection":{"fuse":{}}}"#);

@@ -34,7 +34,7 @@ fn terminal_strip_commands_through_execute() {
     let slash = c.exec("cableslash", json!({"from": [90, 120], "to": [150, 120], "tag": "-W01"}));
     let cable = hex(&slash, "cable");
     // A terminal on a wire: split in one transaction, by the agent.
-    let t = c.exec("place", json!({"symbol": "terminalblock", "at": [100, 170]}));
+    let t = c.exec("place", json!({"symbol": "terminal_block", "at": [100, 170]}));
     assert!(t["split"].is_object(), "{t}");
     let (label, ops) = last_by_agent(&mut c);
     assert_eq!(label, "Place terminal");
@@ -92,7 +92,7 @@ fn with_writes_off_the_strip_writes_are_refused_and_the_reads_work() {
     let mut c = reader();
     let before = c.log();
     for (cmd, params) in [
-        ("place", json!({"symbol": "terminalblock", "at": [0, 0]})),
+        ("place", json!({"symbol": "terminal_block", "at": [0, 0]})),
         ("terminalblocks", json!({"from": [0, 0], "to": [10, 0]})),
         ("bridge", json!({"from": "1", "to": "2"})),
         ("setprop", json!({"component": "1", "key": "terminal_blocks", "value": "12"})),

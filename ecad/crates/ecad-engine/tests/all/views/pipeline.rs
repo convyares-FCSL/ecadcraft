@@ -29,7 +29,7 @@ fn areas_cover_the_keys() {
         "revisions",
         "print",
         "symbol",
-        "connection_point",
+        "terminal_block",
         "connector",
         "strippage",
         "bom",

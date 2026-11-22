@@ -64,7 +64,7 @@ fn words_are_the_stored_ones() {
             "revisions",
             "print",
             "symbol",
-            "connection_point",
+            "terminal_block",
             "connector",
             "strippage",
             "bom",

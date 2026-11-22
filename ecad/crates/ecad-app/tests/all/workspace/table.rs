@@ -179,7 +179,7 @@ fn terminal_blocks_table_edits_a_label_in_one_transaction() {
     crate::common::points_at(h.state_mut(), &[(100.0, 65.0), (150.0, 65.0)]);
     ok(&mut h, r#"wire {"points":[[100,210],[100,65]]}"#);
     ok(&mut h, r#"wire {"points":[[150,210],[150,65]]}"#);
-    ok(&mut h, r#"terminals {"from":[90,170],"to":[160,170]}"#);
+    ok(&mut h, r#"terminalblocks {"from":[90,170],"to":[160,170]}"#);
     let x1 = doc(&mut h).components_tagged("-X01")[0];
     h.state_mut().show_plan(Some(x1));
     h.run_steps(4);

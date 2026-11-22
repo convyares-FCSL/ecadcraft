@@ -24,7 +24,7 @@ crate::word_enum! {
         /// A further pole or part of a multi-part device.
         Pole,
         /// A strip position or level; a device's terminal.
-        ConnectionPoint,
+        TerminalBlock,
         /// A PLC channel cell.
         Channel,
         /// A whole connector half (socket or plug).
@@ -53,9 +53,7 @@ impl PartRole {
     pub fn numbering_rank(self) -> u8 {
         match self {
             PartRole::Head => 0,
-            PartRole::Contact | PartRole::Pole | PartRole::ConnectionPoint | PartRole::Channel | PartRole::Half | PartRole::Pin | PartRole::Other => {
-                1
-            }
+            PartRole::Contact | PartRole::Pole | PartRole::TerminalBlock | PartRole::Channel | PartRole::Half | PartRole::Pin | PartRole::Other => 1,
         }
     }
 }
@@ -102,7 +100,7 @@ impl Word for Role {
         Role::Part(PartRole::Head),
         Role::Part(PartRole::Contact),
         Role::Part(PartRole::Pole),
-        Role::Part(PartRole::ConnectionPoint),
+        Role::Part(PartRole::TerminalBlock),
         Role::Part(PartRole::Channel),
         Role::Part(PartRole::Half),
         Role::Part(PartRole::Pin),
@@ -119,7 +117,7 @@ impl Word for Role {
         "head",
         "contact",
         "pole",
-        "connection_point",
+        "terminal_block",
         "channel",
         "half",
         "pin",

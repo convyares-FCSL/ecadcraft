@@ -60,7 +60,7 @@ fn fixture(seed: u64, parts: bool) -> A {
     assert_eq!(t.len(), 4, "{v}");
     h.run("bridge", json!({"from": t[2].hex(), "to": t[3].hex()})).unwrap();
     h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "12+2PE"})).unwrap();
-    h.run("place", json!({"symbol": "terminalblockpe", "at": [360, 250], "device": x1.hex()})).unwrap();
+    h.run("place", json!({"symbol": "terminal_block_pe", "at": [360, 250], "device": x1.hex()})).unwrap();
     if parts {
         h.run(
             "projectprops",
@@ -212,7 +212,7 @@ fn last_echo(h: &H) -> String {
 }
 
 /// `Mapped` variants that existed before 030; anything else on a page is new derived drawing.
-const OLD_MAPPED: [&str; 8] = ["Item(", "Marker(", "Fan(", "RefText(", "Tag(", "Label(", "Frame(", "Xref("];
+const OLD_MAPPED: [&str; 8] = ["Item(", "Marker(", "Fan(", "RefText(", "Tag(", "Label(", "Frame(", "DeviceReference("];
 
 struct Drawn {
     handle: cadcraft_engine::doc::Handle,
@@ -393,7 +393,7 @@ fn e_renumber_moves_acc_and_jumper_bar_keys_in_one_transaction() {
     assert_eq!(a.h.head(), head, "the preview writes nothing");
     let text = pv.to_string();
     assert!(text.contains("partition after 1"), "preview lists the partition move: {pv}");
-    assert!(text.contains("jumper_bar"), "preview lists the link rewrite: {pv}");
+    assert!(text.contains("link"), "preview lists the link rewrite: {pv}");
     let before = a.h.doc();
     a.h.run("renumber", json!({"kind": "terminal_blocks"})).unwrap();
     assert_eq!(a.h.head(), head + 1, "one transaction");
@@ -474,7 +474,7 @@ fn p_jumper_bar_across_partition_is_a_warning_with_fixes() {
     step(&mut a.h, "jumper", json!({"jumper_bar": {"strip": s, "n": 1}, "split_at": "4"}));
     let jumper_bars: Vec<String> = props(&mut a.h, a.x1)
         .into_iter()
-        .filter(|(k, _)| k.starts_with("jumper_bar.") && k[5..].chars().all(|c| c.is_ascii_digit()))
+        .filter(|(k, _)| k.starts_with("jumper_bar.") && k[11..].chars().all(|c| c.is_ascii_digit()))
         .map(|(_, v)| v.replace(' ', ""))
         .collect();
     assert_eq!(jumper_bars.len(), 2, "{jumper_bars:?}");
@@ -630,7 +630,7 @@ fn m_jumper_bar_line_on_every_page_with_stub() {
     let p2: PageId = id(&a.h.run("newpage", json!({"title": "Two"})).unwrap(), "page");
     a.h.activate(p2);
     a.h.run("wire", json!({"points": pts(&[(100.0, 200.0), (100.0, 100.0)])})).unwrap();
-    let v = a.h.run("place", json!({"symbol": "terminalblock", "at": [100, 150], "device": a.x1.hex()})).unwrap();
+    let v = a.h.run("place", json!({"symbol": "terminal_block", "at": [100, 150], "device": a.x1.hex()})).unwrap();
     let doc = a.h.doc();
     // The terminal drawn on page 2 (PE terminals have numeric labels too, so pick by page).
     let far: ConnectionPointId = ecad_model::connectivity::derive::connection_point_positions(&doc, p2)
@@ -686,12 +686,12 @@ fn n_extend_shorten_split_delete_each_one_transaction() {
     a.h.run("setprop", json!({"component": s, "key": "jumper_bar.1.part_number", "value": "JB-RD"})).unwrap();
     step(&mut a.h, "jumper", json!({"jumper_bar": l1, "split_at": "4"}));
     let jumper_bars: BTreeMap<String, String> =
-        props(&mut a.h, a.x1).into_iter().filter(|(k, _)| k.starts_with("jumper_bar.") && k[5..].chars().all(|c| c.is_ascii_digit())).collect();
+        props(&mut a.h, a.x1).into_iter().filter(|(k, _)| k.starts_with("jumper_bar.") && k[11..].chars().all(|c| c.is_ascii_digit())).collect();
     assert_eq!(jumper_bars.len(), 2, "{jumper_bars:?}");
     assert_eq!(squash(jumper_bars.get("jumper_bar.1").cloned()).as_deref(), Some("3-4"));
     let (k2, v2) = jumper_bars.iter().find(|(k, _)| *k != "jumper_bar.1").unwrap();
     assert_eq!(squash(Some(v2.clone())).as_deref(), Some("6-8"));
-    let n2: u64 = k2[5..].parse().unwrap();
+    let n2: u64 = k2[11..].parse().unwrap();
     assert!(n2 >= 2, "a new number, never reused: {k2}");
     // Delete link 1 clears its part keys too.
     step(&mut a.h, "jumper", json!({"jumper_bar": l1, "delete": true}));

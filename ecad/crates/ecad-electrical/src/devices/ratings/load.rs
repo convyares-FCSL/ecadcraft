@@ -102,7 +102,7 @@ pub(super) fn one_power(toks: &[PowerTok], group: &str, example: &str) -> Result
 ///
 /// # Example
 /// ```
-/// use crate::devices::ratings::{Read, read_load};
+/// use ecad_electrical::devices::ratings::{Read, read_load};
 /// let Read::Rating(r) = read_load("3kW") else { panic!() };
 /// assert_eq!(r.to_string(), "3 kW");
 /// assert!(matches!(read_load("3"), Read::Ask(_)));

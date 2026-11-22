@@ -300,7 +300,7 @@ impl Effect<'_> {
 ///
 /// # Example
 /// ```
-/// use crate::document::effect::{EffectKind, Effects};
+/// use ecad_model::document::effect::{EffectKind, Effects};
 /// use ecad_model::{Op, ProjectSettings};
 /// let s = ProjectSettings::default();
 /// let ops = [Op::SetProjectSettings { before: s.clone(), after: s }];

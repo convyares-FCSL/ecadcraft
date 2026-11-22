@@ -68,8 +68,8 @@ fn fixture() -> Fx {
     let mut h = H::new(57);
     let q01 = place(&mut h, "mcb1", [50.0, 100.0], "-Q01");
     let _k01 = place(&mut h, "power3", [50.0, 50.0], "-K01");
-    let _x01 = place(&mut h, "terminalblock", [50.0, 0.0], "-X01");
-    let _x02 = place(&mut h, "terminalblock", [150.0, 0.0], "-X02");
+    let _x01 = place(&mut h, "terminal_block", [50.0, 0.0], "-X01");
+    let _x02 = place(&mut h, "terminal_block", [150.0, 0.0], "-X02");
     setprop(&mut h, "component", q01.hex(), "rating", json!("4A C"));
     let _feed = wire(&mut h, &[(50.0, 90.0), (50.0, 60.0)]);
     let l2 = wire(&mut h, &[(50.0, 40.0), (50.0, 0.0)]);

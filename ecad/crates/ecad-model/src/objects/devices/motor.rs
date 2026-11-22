@@ -31,8 +31,8 @@ pub const MAX_CURRENT_AMPS: f64 = 10_000.0;
 ///
 /// # Example
 /// ```
-/// use crate::objects::devices::{Motor, Phases, Starting};
-/// use crate::geometry::units::{Amps, Watts};
+/// use ecad_model::objects::devices::{Motor, Phases, Starting};
+/// use ecad_model::geometry::units::{Amps, Watts};
 /// let m = Motor { rated_power: Some(Watts(7500.0)), rated_current: Some(Amps(15.2)), starting: Some(Starting::StarDelta), ..Motor::empty(Phases::Three) };
 /// assert_eq!(m.to_string(), "7.5 kW, 15.2 A, star-delta");
 /// assert_eq!(

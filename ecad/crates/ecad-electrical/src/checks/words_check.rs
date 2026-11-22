@@ -24,9 +24,9 @@ use crate::defaults::{self, Entry, Kind, Level, ProjectSource};
 /// ```
 /// use ecad_model::Document;
 /// let mut doc = Document::default();
-/// assert!(crate::checks::words_check::check(&doc).is_empty());
+/// assert!(ecad_electrical::checks::words_check::check(&doc).is_empty());
 /// doc.display.insert("text.tag.show".into(), "maybe".into());
-/// let found = crate::checks::words_check::check(&doc);
+/// let found = ecad_electrical::checks::words_check::check(&doc);
 /// assert_eq!(found.len(), 1);
 /// assert!(found[0].to_string().contains("`maybe`"));
 /// ```

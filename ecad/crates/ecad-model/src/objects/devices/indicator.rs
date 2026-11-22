@@ -33,8 +33,8 @@ pub const MAX_VOLTS: f64 = 1000.0;
 ///
 /// # Example
 /// ```
-/// use crate::objects::devices::{Indicator, IndicatorColour, SignalType};
-/// use crate::geometry::units::{Current, RatedVoltage, Volts, Watts};
+/// use ecad_model::objects::devices::{Indicator, IndicatorColour, SignalType};
+/// use ecad_model::geometry::units::{Current, RatedVoltage, Volts, Watts};
 /// let v = RatedVoltage { volts: Volts(24.0), current: Current::Dc };
 /// let i = Indicator { colour: Some(IndicatorColour::Red), rated_voltage: Some(v), power: Some(Watts(2.0)), ..Indicator::empty(SignalType::Flashing) };
 /// assert_eq!(i.to_string(), "red, flashing, 24 V DC, 2 W");

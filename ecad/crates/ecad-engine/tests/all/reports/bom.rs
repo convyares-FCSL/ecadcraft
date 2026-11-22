@@ -39,7 +39,7 @@ fn fixture(seed: u64) -> F {
     }
     let f01 = place(&mut h, json!({"symbol": "fusebank8", "at": [100, 60], "tag": "F01"}));
     let x05 = place(&mut h, json!({"symbol": "termfuse", "at": [250, 200], "tag": "X05"}));
-    for (i, sym) in ["terminalblock", "terminalblock", "terminalblock", "termfuse", "termfuse"].iter().enumerate() {
+    for (i, sym) in ["terminal_block", "terminal_block", "terminal_block", "termfuse", "termfuse"].iter().enumerate() {
         place(&mut h, json!({"symbol": sym, "at": [270.0 + 20.0 * i as f64, 200], "device": x05.hex()}));
     }
     // Brief 052: the project's location only proposes; the devices store +CP1.
@@ -297,8 +297,8 @@ fn strip_parts_take_article_numbers_from_their_own_level() {
     set(&mut f.h, f.x05, "part_number", "TB-4");
     set(&mut f.h, f.x05, "article_number", "A-0200");
     set(&mut f.h, f.x05, "acc.end", "end_plate");
-    let x06 = place(&mut f.h, json!({"symbol": "terminalblock", "at": [250, 260], "tag": "X06"}));
-    place(&mut f.h, json!({"symbol": "terminalblock", "at": [270, 260], "device": x06.hex()}));
+    let x06 = place(&mut f.h, json!({"symbol": "terminal_block", "at": [250, 260], "tag": "X06"}));
+    place(&mut f.h, json!({"symbol": "terminal_block", "at": [270, 260], "device": x06.hex()}));
     set(&mut f.h, x06, "acc.end", "end_plate");
     set(&mut f.h, x06, "end_plate.part_number", "EP-2");
     f.h.run(

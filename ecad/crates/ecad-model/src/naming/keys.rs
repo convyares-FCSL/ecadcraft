@@ -57,7 +57,7 @@ crate::word_enum! {
         Revisions,
         Print,
         Symbol,
-        ConnectionPoint,
+        TerminalBlock,
         Connector,
         #[strum(serialize = "strippage")]
         StripPage,
@@ -91,7 +91,7 @@ impl Area {
         Area::Revisions,
         Area::Print,
         Area::Symbol,
-        Area::ConnectionPoint,
+        Area::TerminalBlock,
         Area::Connector,
         Area::StripPage,
         Area::Bom,

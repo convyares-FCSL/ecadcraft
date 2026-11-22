@@ -50,7 +50,7 @@ fn line(h: &mut H, points: &[(f64, f64)], extra: Value) -> ecad_model::RouteId {
 }
 
 fn connection_point(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::ConnectionPointId {
-    let r = h.run("place", json!({"symbol": "terminalblock", "at": [at.0, at.1], "tag": tag})).unwrap();
+    let r = h.run("place", json!({"symbol": "terminal_block", "at": [at.0, at.1], "tag": tag})).unwrap();
     id(&r["connection_points"][0], "connection_point")
 }
 
@@ -383,8 +383,8 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
         assert_eq!(kept, fresh, "after {step}");
     };
     let steps: Vec<(&str, Value)> = vec![
-        ("place", json!({"symbol": "terminalblock", "at": [0, 0], "tag": "X1"})),
-        ("place", json!({"symbol": "terminalblock", "at": [40, 0], "tag": "X1"})),
+        ("place", json!({"symbol": "terminal_block", "at": [0, 0], "tag": "X1"})),
+        ("place", json!({"symbol": "terminal_block", "at": [40, 0], "tag": "X1"})),
         ("wire", json!({"points": [[0, 0], [40, 0]]})),
         ("wire", json!({"points": [[20, 30], [20, 0]], "join": false})),
         ("joinwires", json!({"at": [20, 0]})),

@@ -27,7 +27,7 @@ pub const MAX_UINT_DIGITS: usize = 10;
 ///
 /// # Example
 /// ```
-/// use crate::naming::words::flag;
+/// use ecad_model::naming::words::flag;
 /// assert_eq!(flag(" Yes "), Some(true));
 /// assert_eq!(flag("off"), Some(false));
 /// assert_eq!(flag("y"), None);
@@ -61,7 +61,7 @@ pub fn is_digits(text: &str) -> bool {
 ///
 /// # Example
 /// ```
-/// use crate::naming::words::uint;
+/// use ecad_model::naming::words::uint;
 /// assert_eq!(uint(" 07 ", 99), Some(7));
 /// assert_eq!(uint("100", 99), None);
 /// assert_eq!(uint("+1", 99), None);
@@ -76,7 +76,7 @@ pub fn uint(text: &str, max: u32) -> Option<u32> {
 ///
 /// # Example
 /// ```
-/// use crate::naming::words::uint_canonical;
+/// use ecad_model::naming::words::uint_canonical;
 /// assert_eq!(uint_canonical("12", 99), Some(12));
 /// assert_eq!(uint_canonical("0", 99), Some(0));
 /// assert_eq!(uint_canonical("012", 99), None);
@@ -178,7 +178,7 @@ pub use serde as __serde;
 ///
 /// # Example
 /// ```
-/// use crate::naming::words::Word;
+/// use ecad_model::naming::words::Word;
 /// ecad_model::word_enum! {
 ///     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 ///     pub enum Corner {

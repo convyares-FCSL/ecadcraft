@@ -388,7 +388,7 @@ fn ac2_views_survive_reopen_through_ecad_settings_dir() {
     let work = Tmp::new("env-work");
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "cable_view_tester_contracts::child_reopen_through_env", "--ignored", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "cables::views_acceptance::child_reopen_through_env", "--ignored", "--nocapture", "--test-threads=1"])
         .env("ECAD_SETTINGS_DIR", &settings.0)
         .env("APPDATA", &decoy.0)
         .env("HOME", &decoy.0)
@@ -479,7 +479,7 @@ fn child_reopen_through_env() {
 fn ac2_no_settings_folder_switches_and_says_so_once() {
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "cable_view_tester_contracts::child_no_settings_folder", "--ignored", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "cables::views_acceptance::child_no_settings_folder", "--ignored", "--nocapture", "--test-threads=1"])
         .env_remove("ECAD_SETTINGS_DIR")
         .env_remove("APPDATA")
         .env_remove("HOME")

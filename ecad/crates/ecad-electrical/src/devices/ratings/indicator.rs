@@ -147,7 +147,7 @@ fn indicator_colour(c: ConductorColour) -> Option<IndicatorColour> {
 ///
 /// # Example
 /// ```
-/// use crate::devices::ratings::{Read, read_indicator};
+/// use ecad_electrical::devices::ratings::{Read, read_indicator};
 /// use ecad_model::objects::devices::{Indicator, SignalType};
 /// let lamp = Indicator::empty(SignalType::Steady);
 /// let Read::Rating(r) = read_indicator(&lamp, "RD 24VDC 2W") else { panic!() };

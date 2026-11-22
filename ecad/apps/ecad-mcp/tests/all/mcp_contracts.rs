@@ -1020,7 +1020,7 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
 
     // Design 072: a wire runs between two connection points; terminals give the lines their ends.
     for at in [[0, 0], [60, 0], [45, 30], [100, 40], [200, 40]] {
-        c.exec("place", json!({"symbol": "terminalblock", "at": at}));
+        c.exec("place", json!({"symbol": "terminal_block", "at": at}));
     }
 
     // `wire` with a potential: the route, the wire and its number in the same transaction.

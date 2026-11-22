@@ -76,9 +76,9 @@ pub const BAD_TAG: &str = "A tag is 1 to 40 printable characters, for example -K
 ///
 /// # Example
 /// ```
-/// assert_eq!(crate::naming::tag::parse("-k01"), Some(("K".to_string(), 1)));
-/// assert_eq!(crate::naming::tag::parse("TB12"), Some(("TB".to_string(), 12)));
-/// assert_eq!(crate::naming::tag::parse("-K1A"), None);
+/// assert_eq!(ecad_model::naming::tag::parse("-k01"), Some(("K".to_string(), 1)));
+/// assert_eq!(ecad_model::naming::tag::parse("TB12"), Some(("TB".to_string(), 12)));
+/// assert_eq!(ecad_model::naming::tag::parse("-K1A"), None);
 /// ```
 pub fn parse(tag: &str) -> Option<(String, u64)> {
     let t = tag.trim();
@@ -101,9 +101,9 @@ pub fn parse(tag: &str) -> Option<(String, u64)> {
 ///
 /// # Example
 /// ```
-/// assert_eq!(crate::naming::tag::provisional("-k?3"), Some(("K".to_string(), 3)));
-/// assert_eq!(crate::naming::tag::provisional("-W?"), Some(("W".to_string(), 0)));
-/// assert_eq!(crate::naming::tag::provisional("-K03"), None);
+/// assert_eq!(ecad_model::naming::tag::provisional("-k?3"), Some(("K".to_string(), 3)));
+/// assert_eq!(ecad_model::naming::tag::provisional("-W?"), Some(("W".to_string(), 0)));
+/// assert_eq!(ecad_model::naming::tag::provisional("-K03"), None);
 /// ```
 pub fn provisional(tag: &str) -> Option<(String, u64)> {
     let t = tag.trim();
@@ -224,7 +224,7 @@ pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
 ///
 /// # Example
 /// ```
-/// use crate::naming::tag::key;
+/// use ecad_model::naming::tag::key;
 /// assert_eq!(key("-K1"), key("k01"));
 /// assert_ne!(key("-K1"), key("-K10"));
 /// ```
@@ -316,10 +316,10 @@ impl Style {
 ///
 /// # Example
 /// ```
-/// use crate::naming::tag::{Case, Style};
-/// assert_eq!(crate::naming::tag::format("K", 1, 2), "-K01");
-/// assert_eq!(crate::naming::tag::format("k", 123, 2), "-K123");
-/// assert_eq!(crate::naming::tag::format("k", 5, Style { padding: 2, dash: false, case: Case::Typed }), "k05");
+/// use ecad_model::naming::tag::{Case, Style};
+/// assert_eq!(ecad_model::naming::tag::format("K", 1, 2), "-K01");
+/// assert_eq!(ecad_model::naming::tag::format("k", 123, 2), "-K123");
+/// assert_eq!(ecad_model::naming::tag::format("k", 5, Style { padding: 2, dash: false, case: Case::Typed }), "k05");
 /// ```
 pub fn format(prefix: &str, n: u64, style: impl Into<Style>) -> String {
     let style = style.into();

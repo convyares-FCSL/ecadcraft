@@ -165,7 +165,7 @@ text_type!(
     ///
     /// # Example
     /// ```
-    /// use crate::naming::text::{Text, TextError};
+    /// use ecad_model::naming::text::{Text, TextError};
     /// assert_eq!(Text::<8>::new("  Motor ").map(|t| t.to_string()), Ok("Motor".into()));
     /// assert_eq!(Text::<3>::new("Motor"), Err(TextError::TooLong { max: 3 }));
     /// assert_eq!(Text::<8>::new("a\u{202E}b"), Err(TextError::Hidden { at: 1, char: '\u{202E}' }));

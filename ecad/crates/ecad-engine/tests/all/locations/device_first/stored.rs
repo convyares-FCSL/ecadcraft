@@ -82,7 +82,7 @@ fn function_is_stored_and_prefixed_like_location() {
     let f2 = rows.iter().find(|r| r["code"] == "=F2").unwrap();
     assert_eq!(f2["devices"], 0, "{v}");
     // A function has no overrides.
-    let e = h.run("setfunction", json!({"component": k.hex(), "value": "=F1", "type": "connection_point"})).unwrap_err();
+    let e = h.run("setfunction", json!({"component": k.hex(), "value": "=F1", "type": "terminal_block"})).unwrap_err();
     assert!(e.contains("no overrides"), "{e}");
 }
 
@@ -114,15 +114,15 @@ fn connector_halves_have_their_own_locations() {
 #[test]
 fn a_strip_terminal_block_keeps_the_strip_location() {
     let mut h = H::new(SEED);
-    let v = h.run("place", json!({"symbol": "terminalblock", "at": [50, 150]})).unwrap();
+    let v = h.run("place", json!({"symbol": "terminal_block", "at": [50, 150]})).unwrap();
     let x: DeviceId = id(&v, "component");
     set(&mut h, x, "location", json!("+CP1"));
     h.run("locationbox", json!({"location": "+JB1", "corners": [[150, 100], [250, 200]]})).unwrap();
-    let t5 = h.run("place", json!({"symbol": "terminalblock", "at": [200, 150], "device": x.hex()})).unwrap();
+    let t5 = h.run("place", json!({"symbol": "terminal_block", "at": [200, 150], "device": x.hex()})).unwrap();
     let d = h.doc();
     let r = &d.representations[&id(&t5, "representation")];
     assert_eq!(ecad_electrical::locations::rep_location(&d, x, r).value.as_deref(), Some("+CP1"));
-    let e = h.run("setlocation", json!({"component": x.hex(), "type": "connection_point", "value": "+JB1"})).unwrap_err();
+    let e = h.run("setlocation", json!({"component": x.hex(), "type": "terminal_block", "value": "+JB1"})).unwrap_err();
     assert!(e.contains("split strip is two strips"), "{e}");
 }
 

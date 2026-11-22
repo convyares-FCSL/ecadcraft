@@ -39,8 +39,8 @@ pub const MAX_AC3_WATTS: f64 = 4_000_000.0;
 ///
 /// # Example
 /// ```
-/// use crate::objects::devices::{Control, Operator, Switching};
-/// use crate::geometry::units::{Amps, Current, RatedVoltage, Volts};
+/// use ecad_model::objects::devices::{Control, Operator, Switching};
+/// use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Volts};
 /// let k = Switching {
 ///     operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: None }),
 ///     ac3_current: Some(Amps(9.0)),

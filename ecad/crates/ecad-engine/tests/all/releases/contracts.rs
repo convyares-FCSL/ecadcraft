@@ -623,7 +623,7 @@ fn a_release_writes_the_terminal_block_plan_and_cable_schedule() {
     let mut lines = plan.lines();
     assert_eq!(
         lines.next().unwrap().trim_start_matches('\u{feff}'),
-        "tag,location,offered,label,type,state,inside_target,inside_wire,bridge_group,outside_wire,cable,core,outside_target,place,kind,accessory,gap,marker,links"
+        "tag,location,offered,label,type,state,inside_target,inside_wire,bridge_group,outside_wire,cable,core,outside_target,place,kind,accessory,gap,marker,jumper_bars"
     );
     assert_eq!(lines.count(), 3, "{plan}");
     let schedule = read("cable schedule");

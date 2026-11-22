@@ -47,7 +47,7 @@ fn p56(h: &mut H) {
         ok(h, &format!(r#"place {{"symbol":"lamp","at":[{x},160]}}"#));
         ok(h, &format!(r#"wire {{"points":[[{x},150],[{x},60]]}}"#));
     }
-    ok(h, r#"place {"symbol":"terminal","at":[100,130]}"#);
+    ok(h, r#"place {"symbol":"terminal_block","at":[100,130]}"#);
     ok(h, r#"plcchannels {"card":"-A03","from":[55,100],"to":[225,100]}"#);
     let a03 = [
         ("Fan_On", "Fan contactor on"),

@@ -58,7 +58,7 @@ pub const MAX_CODE_CHARS: usize = 16;
 ///
 /// # Example
 /// ```
-/// use crate::cables::words::colour_code;
+/// use ecad_electrical::cables::words::colour_code;
 /// assert_eq!(colour_code("GNYE"), colour_code("grn/yel"));
 /// assert!(colour_code("GNYE").is_some_and(|(_, dashes)| dashes.is_some()));
 /// assert_eq!(colour_code("PURPLISH"), None);

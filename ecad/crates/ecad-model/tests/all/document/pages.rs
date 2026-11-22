@@ -98,7 +98,7 @@ fn a_page_record_is_strict() {
         r#"{"title":"p","properties":{"number":"1"}}"#,
         r#"{"title":"p","kind":{"generated":"poster"}}"#,
         r#"{"title":"p","kind":{"terminal_strip":{}}}"#,
-        r#"{"title":"p","kind":{"generated":"terminals","strip":"0abc"}}"#,
+        r#"{"title":"p","kind":{"generated":"terminal_blocks","strip":"0abc"}}"#,
         "{\"title\":\"p\u{202E}q\"}",
         r#"{"title":""}"#,
         r#"{"title":"p","number":"1.5"}"#,

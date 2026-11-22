@@ -312,7 +312,7 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
         row("location.socket", "Location (socket)");
         row("location.plug", "Location (plug)");
     } else if crate::terminal_strips::strip_of(doc, c).is_none()
-        && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::ConnectionPoint)
+        && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::TerminalBlock)
     {
         row("location.terminal_block", "Terminals in");
     }

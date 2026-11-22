@@ -142,7 +142,7 @@ fn within(x: f64, max: f64, what: &str, unit: &str) -> Result<f64, Read<Switchin
 ///
 /// # Example
 /// ```
-/// use crate::devices::ratings::{Read, read_switching};
+/// use ecad_electrical::devices::ratings::{Read, read_switching};
 /// use ecad_model::objects::devices::OperatorKind;
 /// let Read::Rating(k) = read_switching(OperatorKind::Coil, "24VDC AC-3 9A") else { panic!() };
 /// assert_eq!(k.to_string(), "coil 24 V DC, AC-3 9 A");

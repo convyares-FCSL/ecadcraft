@@ -373,7 +373,7 @@ fn ac2_app_reopens_each_cable_in_its_view() {
     let decoy = Tmp::new("reopen-decoy");
     let out = std::process::Command::new(std::env::current_exe().unwrap())
         .env("ECAD_TEST_CHILD", "1")
-        .args(["--exact", "cable_view_tester::child_app_reopen", "--ignored", "--nocapture", "--test-threads=1"])
+        .args(["--exact", "cables::view_acceptance::child_app_reopen", "--ignored", "--nocapture", "--test-threads=1"])
         .env("ECAD_SETTINGS_DIR", &settings.0)
         .env("APPDATA", &decoy.0)
         .env("HOME", &decoy.0)
