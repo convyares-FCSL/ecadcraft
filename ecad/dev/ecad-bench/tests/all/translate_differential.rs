@@ -270,7 +270,7 @@ fn print_seed(seed: u64) {
 
 #[test]
 #[ignore = "slow: 1,200 random edits, about 110 s; runs at the QA gate"]
-fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
+fn randomised_edits_on_the_small_project_are_recorded_or_change_nothing() {
     let mut o = open_small("differential");
     let seed = seed();
     print_seed(seed);

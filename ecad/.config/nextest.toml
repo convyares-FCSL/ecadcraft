@@ -41,8 +41,8 @@ default-filter = """
 not (
     test(/the_small_tier_is_the_same_both_ways$/)
     | test(/the_medium_tier_is_the_same_both_ways$/)
-    | test(/randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation$/)
-    | test(/tester_014_r3_random_edits_across_two_pages_match_the_oracle$/)
+    | test(/randomised_edits_on_the_small_project_are_recorded_or_change_nothing$/)
+    | test(/tester_014_r3_random_edits_across_two_pages_keep_ends_and_references$/)
     | test(/random_edits_keep_locations_and_reports_equal_to_a_rebuild_long$/)
     | test(/tester_025_random_edits_keep_the_index_and_the_update_map$/)
     | test(/oracle_random_numbering_sequences_keep_tags_unique_and_fixed_tags_still$/)

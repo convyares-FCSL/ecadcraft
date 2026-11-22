@@ -218,7 +218,7 @@ crate edges already point at other modules going to E.
 | `text_style` | 1,385 | 54 | split | Text kinds, resolved heights, own styles, run rules and `parse_at` are E. CADCraft `TextStyle`, entities, fonts and `register_sheet_font` are C. | Cut 4, the largest. |
 | `title_block/` (6 files) | 1,233 | 9 | split | `bind`, `checks` and `house` are E. `layout` and `dxf` (`cadcraft_io::read_dxf`) are C. | `title_block_cmds` and `style_cmds` edges are cut. `frame::fit` moves to E. |
 | `title_block_cmds` | 276 | 4 | C | Commands. | — |
-| `translate`, `translate_oracle` | 1,629 | 4 | C | CADCraft commit → transaction. | — |
+| `translate` | 1,629 | 4 | C | CADCraft commit → transaction. | — |
 | `verify` | 406 | 1 | C | Does a rebuilt page show the document? | — |
 | `views` | 391 | 0 | C | Per-user fan or traditional setting, read by the projection. | `cable_title` (read by `checks`, `rating`, `props` and `styles`) moves to E. |
 | `wire_cmds` | 912 | 15 | C | Commands. | — |
@@ -382,7 +382,7 @@ the engine and the commands may touch the disk.
 | `release` (17) | Writes the stamped release folder: staging, manifest, rename. | Stays C. |
 | `views` (7) | The per-user settings file and its folder (environment). | Stays C. `cable_title` moves to E (pure; already in §2.1). |
 | `agent_access` (4) | The agent preference file. | Stays C (`agent`). |
-| `debug` (4), `translate_oracle` (4) | Debugger file reads; the oracle's log path from the environment, and abort. | Stay C (dev features). |
+| `debug` (4) | Debugger file reads. | Stays C (dev feature). |
 | `rating_cmds` (3) | Reads and writes the rating dataset CSV. | Stays C. The parse and `to_csv` are already in `rating/dataset` (E, no I/O). |
 | `plc/exchange` (2) | `read_file` and `write_file` for tag import and export. | Cut: `export_rows`, `read_tags`, `plan_fill` and the formats go to E (bytes in, bytes out). `read_file`, `write_file`, `run_plcimport` and `run_plcexport` go to C (`plc_cmds/exchange`). |
 | `title_block/dxf` (2) | Reads the DXF file. | Stays C (already C in §2.1). |
