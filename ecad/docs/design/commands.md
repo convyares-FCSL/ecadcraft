@@ -46,34 +46,35 @@ engine file), **G/S** mixed (the generic commands move, the file keeps the sessi
 ## 2. The runner
 
 ```rust
-// ecad-electrical::cmd::run (Core: no engine, no session)
-pub struct Cx<'a> {                    // what a generic command may read and change
-    pub doc: &'a Document, pub ids: &'a mut IdAllocator, pub page: PageId,
-    pub tag_high: &'a mut TagHigh, pub uses: &'a mut designations::Uses,
-    pub derived: &'a mut Derived,      // report models, built on demand
-    pub conflicts: &'a mut Vec<Conflict>, pub last_caption: &'a mut Option<String>,
-}
-pub struct Outcome { pub edit: Option<Edit>, pub answer: Value }      // Edit { label, ops }
-pub enum Page { Available, Any }       // refuse an unavailable page, or not (inspect, open)
-pub enum Io { None, Read(&'static str), Write(&'static str) }   // the path parameter, by name
+// ecad-electrical::cmd::run (Core: no engine, no session, no disk)
 pub trait Generic: DeserializeOwned + JsonSchema {
     const ID: &'static str; const TITLE: &'static str; const HELP: &'static str;
-    const PAGE: Page = Page::Available; const IO: Io = Io::None;
-    const ECHO: bool = false;          // echo the answer's `message`
-    fn run(self, cx: &mut Cx<'_>, io: Files) -> Result<Outcome, CmdError>;
+    const PAGES: Pages = Pages::Available;       // or Any (also an unavailable page)
+    const ACCESS: Access = Access::Edits;        // or Reads: the agent gate lets it run with writes off
+    const IO: Io = Io::NONE;                     // Io { reads: &[(param, max bytes)], writes: &[param] }
+    const STATE: State = State::None;            // state only this command uses, e.g. LastCaption
+    const ECHO: Echo = Echo::Nothing;            // or Message: echo the answer's `message`
+    fn check(&self) -> Result<(), CmdError> { Ok(()) }   // before the project is taken
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError>;
 }
+pub struct Cx<'a> { doc, ledger, ids, page, tag_high, designation_uses (uses()), derived,
+                    read: &BTreeMap<param, Result<bytes, Unread>>, state: Slot<'a> }
+pub struct Outcome { edit: Option<Edit { label, ops }>, answer: Answer, writes: Vec<(param, bytes)> }
+pub enum Answer { Now(Value), Committed(Box<dyn FnOnce(&Document) -> Value>) }
 ```
 
-- **Params:** the command's `#[derive(Deserialize, JsonSchema)]` struct moves next to its rules in
-  ecad-electrical and implements `Generic`. Parsing and refusal wording (`cmd::input`) move with it.
-- **Runner (ecad-engine `commands.rs`):** `generic::<P>()` builds the `CommandSpec` (id, title,
-  help, `.noundo()`) and the `Typed` entry. Its run: parse, lock the project (`try_lock`), check
-  the page, do the declared reads, call `P::run`, commit `edit` as one transaction under `P::ID`
-  (`apply_edit`: undo, views, history), do the declared writes, echo, answer.
-- **File I/O:** `Io` names the path parameter; the runner reads it (bytes, refused in one wording)
-  or writes the `Outcome`'s bytes after the commit. Rules never touch the disk.
-- **MCP schema:** `schema::<P>()` from the same struct, so `schema_of(id)` is unchanged.
-- **Agent gate:** unchanged and outside the command: `ecad-mcp`'s policy and the engine's
-  write gate see the same id and the same `Author`; the runner records the session's author.
-- **Interactive forms** stay in `interact`; the engine table adds `.interactive(f)` to a generic
-  entry. A session command keeps its engine file and the `Command` trait.
+- **Params:** the command's `#[derive(Deserialize, JsonSchema)]` struct lives next to its rules
+  in ecad-electrical (schemars is a plain Core dependency, owner 2026-11-21). Reading and refusal
+  wording are `cmd::input`.
+- **Cx holds only shared state.** State one command uses is declared (`STATE`) and handed to it
+  as a `Slot`; the engine puts it back when the edit is not committed.
+- **Runner (ecad-engine `cmd::generic`):** `spec::<P>()` registers it (`.noundo()`; the table may
+  add `.interactive(f)`), `typed::<P>()` lists it. `run`: parse, `check`, read the declared files,
+  lock (`try_lock`), check the page, `P::run`, commit `edit` under `P::ID` (`apply_edit`: undo,
+  views, history), write `writes` to the paths their parameters name, echo, answer.
+- **File I/O:** declared as data; the engine alone opens files. Core has no `std::fs`.
+- **MCP schema:** `schema::<P>()`, so `schema_of(id)` is unchanged.
+- **Agent gate:** derived from the declaration: `ACCESS` (read commands run with writes off;
+  `policy::is_read_command`) and `IO` (file parameters refused from an agent). The hand-listed
+  `READ_COMMANDS` and `COMMAND_FILE_KEYS` keep only session commands and commands not moved yet.
+- A session command keeps its engine file and the `Command` trait (`cmd::input`).

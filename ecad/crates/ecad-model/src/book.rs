@@ -330,8 +330,7 @@ pub const MAX_PAGE_NO_CHARS: usize = 12;
 /// # Semantics
 /// Built only through [`PageNo::parse`] or deserialisation, which refuse any other text, so a
 /// held `PageNo` is always well formed. Case is kept as written.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, schemars::JsonSchema)]
 #[serde(transparent)]
 pub struct PageNo(Text<MAX_PAGE_NO_CHARS>);
 

@@ -12,7 +12,8 @@
 
 use serde_json::Value;
 
-/// Commands that change nothing in the project or its files, allowed with writes off.
+/// Session commands that change nothing in the project or its files, allowed with writes off. A
+/// generic command says so in its declaration instead ([`is_read_command`]).
 pub const READ_COMMANDS: &[&str] = &[
     "ecadinspect",
     "entities",
@@ -81,8 +82,6 @@ pub const READ_COMMANDS: &[&str] = &[
     "iolist",
     // Brief 057: the rating results read the project.
     "ratings",
-    // Brief 052: the project's list of functions and locations, with counts, reads the project.
-    "designations",
     // Brief 056: the tag table as text (no `path` from an agent); export changes nothing.
     "plcexport",
     // Brief 055: the title blocks' list reads the project.
@@ -120,6 +119,17 @@ const READ_WITH_REV: &[&str] = &["release"];
 
 /// Commands whose form with `dry_run: true` only reads (brief 056: what an import would set).
 const READ_WITH_DRY_RUN: &[&str] = &["plcimport"];
+
+/// Whether command `id` only reads, whatever its parameters: a session command in
+/// [`READ_COMMANDS`], or a generic command that declares it.
+pub fn is_read_command(id: &str) -> bool {
+    READ_COMMANDS.contains(&id) || crate::cmd::declared_read(id)
+}
+
+/// Every command that only reads, whatever its parameters ([`is_read_command`]).
+pub fn read_commands() -> Vec<&'static str> {
+    READ_COMMANDS.iter().copied().chain(crate::cmd::declared_reads()).collect()
+}
 
 /// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`],
 /// [`READ_WITH_REV`], [`READ_WITH_DRY_RUN`]).
@@ -290,13 +300,16 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
     if let Some((_, k)) = COMMAND_FILE_KEYS.iter().find(|(c, k)| *c == id && params.get(*k).is_some_and(|v| !v.is_null())) {
         return Err(file_key(id, k));
     }
+    if let Some(k) = crate::cmd::declared_file_keys(id).find(|k| params.get(*k).is_some_and(|v| !v.is_null())) {
+        return Err(file_key(id, k));
+    }
     if NEVER_COMMANDS.contains(&id) {
         return Err(never(id));
     }
     if sets_auditctl(id, params) {
         return Err(never("setvar auditctl"));
     }
-    if READ_COMMANDS.contains(&id) || reads_only(id, params) {
+    if is_read_command(id) || reads_only(id, params) {
         return Ok(());
     }
     if !writes {

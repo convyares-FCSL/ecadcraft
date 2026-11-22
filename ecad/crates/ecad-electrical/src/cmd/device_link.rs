@@ -165,7 +165,7 @@ pub fn shown_value(doc: &Document, d: DeviceId, name: &str) -> Option<String> {
 // The commands (generic: crate::cmd::run)
 
 /// What joins the two devices.
-#[derive(Deserialize, JsonSchema, Clone, Copy)]
+#[derive(Deserialize, Clone, Copy, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum KindParam {
     /// Two contactors that must not close together.
@@ -225,7 +225,7 @@ impl Generic for UnlinkParams {
 }
 
 /// A user field's kind.
-#[derive(Deserialize, JsonSchema, Clone, Copy)]
+#[derive(Deserialize, Clone, Copy, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldKindParam {
     /// Free text.

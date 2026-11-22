@@ -402,6 +402,17 @@ pub struct Point {
     pub kind: NodeKind,
 }
 
+impl Point {
+    /// The name a version or revision point was given (`Before change`, `Rev B`); none for a step.
+    pub fn title_name(&self) -> Option<String> {
+        match self.kind {
+            NodeKind::Version => self.title.strip_prefix("Version \"").and_then(|t| t.strip_suffix('"')).map(str::to_string),
+            NodeKind::Revision => Some(self.title.clone()),
+            _ => None,
+        }
+    }
+}
+
 /// What a restore would do: its ops, how many objects change, and the pages they are on.
 #[derive(Debug, Clone, Default)]
 pub struct RestorePlan {

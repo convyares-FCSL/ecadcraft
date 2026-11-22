@@ -65,11 +65,6 @@ from?: {location?, function?, gland?}, to?: {…}}} (null clears a field; one tr
 // ---------------------------------------------------------------------------------------------
 // Parameters (design 059 §4.1, §4.2)
 
-/// A value as text: the text, or a number as JSON writes it; `None` for null.
-fn text(v: Option<Option<TextOrNumber>>) -> Option<Option<String>> {
-    v.map(|v| v.map(|t| t.text()))
-}
-
 /// An end's plan and gland.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -87,7 +82,11 @@ pub(crate) struct EndParams {
 
 impl From<EndParams> for EndInput {
     fn from(e: EndParams) -> Self {
-        EndInput { location: text(e.location), function: text(e.function), gland: text(e.gland) }
+        EndInput {
+            location: TextOrNumber::nullable_text(e.location),
+            function: TextOrNumber::nullable_text(e.function),
+            gland: TextOrNumber::nullable_text(e.gland),
+        }
     }
 }
 
@@ -135,15 +134,15 @@ pub(crate) struct CablenewParams {
 impl From<CablenewParams> for CableInput {
     fn from(p: CablenewParams) -> Self {
         CableInput {
-            tag: text(p.tag),
-            cable_type: text(p.cable_type),
-            kind: text(p.kind),
-            cores: text(p.cores),
-            length: text(p.length),
-            shield: text(p.shield),
-            maker: text(p.maker),
-            part_number: text(p.part_number),
-            description: text(p.description),
+            tag: TextOrNumber::nullable_text(p.tag),
+            cable_type: TextOrNumber::nullable_text(p.cable_type),
+            kind: TextOrNumber::nullable_text(p.kind),
+            cores: TextOrNumber::nullable_text(p.cores),
+            length: TextOrNumber::nullable_text(p.length),
+            shield: TextOrNumber::nullable_text(p.shield),
+            maker: TextOrNumber::nullable_text(p.maker),
+            part_number: TextOrNumber::nullable_text(p.part_number),
+            description: TextOrNumber::nullable_text(p.description),
             from: p.from.map(EndInput::from),
             to: p.to.map(EndInput::from),
         }

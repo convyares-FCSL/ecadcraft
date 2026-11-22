@@ -7,6 +7,7 @@
 use cadcraft_engine::Session;
 use cadcraft_engine::cmd::Run;
 use ecad_electrical::cmd::input::{parse, schema};
+use ecad_electrical::cmd::run::{Access, Io};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -31,17 +32,22 @@ pub(crate) fn typed<P: Command>(s: &mut Session, params: &Value) -> cadcraft_eng
     p.run(s)
 }
 
-/// A command with a typed input, as registered: its id, its run function and its schema.
+/// A command with a typed input, as registered: its id, its run function and its schema, and for
+/// a generic command what the agent gate reads from its declaration.
 #[derive(Clone, Copy)]
 pub struct Typed {
     pub id: &'static str,
     pub run: Run,
     pub schema: fn() -> Value,
+    /// A generic command's access (a session command's is in the gate's own lists).
+    pub access: Option<Access>,
+    /// The parameters that name a file.
+    pub files: Io,
 }
 
 impl Typed {
     /// Session command `id` reading its parameters as `P`.
     pub(crate) const fn of<P: Command>(id: &'static str) -> Typed {
-        Typed { id, run: typed::<P>, schema: schema::<P> }
+        Typed { id, run: typed::<P>, schema: schema::<P>, access: None, files: Io::NONE }
     }
 }

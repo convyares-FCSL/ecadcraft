@@ -13,8 +13,8 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::cmd::input::{Bounded, OrNull, nullable};
-use crate::cmd::run::{Cx, Echo, Generic, Keep, Outcome};
+use crate::cmd::input::{Bounded, nullable};
+use crate::cmd::run::{Cx, Echo, Generic, Outcome, Slot, State};
 use crate::error::CmdError;
 
 /// Most arrows one `contcaption` names.
@@ -172,7 +172,7 @@ pub struct ContcaptionParams {
     continuations: Bounded<AidId, 0, MAX_ARROWS>,
     /// The caption, or null to remove it.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "OrNull<String>")]
+    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
     caption: Option<Option<String>>,
 }
 
@@ -182,6 +182,7 @@ impl Generic for ContcaptionParams {
     const HELP: &'static str =
         "{continuations: [id…] (1-2000), caption: \"TO CONTROL SUPPLY\" | null} (sets or removes the arrows' caption, one transaction)";
     const ECHO: Echo = Echo::Message;
+    const STATE: State = State::LastCaption;
 
     fn check(&self) -> Result<(), CmdError> {
         match self.caption {
@@ -194,10 +195,9 @@ impl Generic for ContcaptionParams {
         let caption = self.caption.ok_or(CmdError::input("`caption` (text, or null) is required"))?;
         let plan = plan_contcaption(cx.doc, &self.continuations.0, caption.as_deref())?;
         let answer = json!({"changed": plan.changed, "unchanged": plan.unchanged, "caption": plan.caption, "message": plan.message});
-        let mut out = Outcome::edit_if_any(plan.label, plan.ops, answer);
-        if let Some(t) = plan.caption {
-            out.keep = Keep::Caption(t);
+        if let (Some(t), Slot::LastCaption(last)) = (plan.caption, &mut cx.state) {
+            **last = Some(t);
         }
-        Ok(out)
+        Ok(Outcome::edit_if_any(plan.label, plan.ops, answer))
     }
 }

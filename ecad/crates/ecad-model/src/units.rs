@@ -21,8 +21,7 @@ use crate::doc::LengthUnit;
 macro_rules! unit {
     ($(#[$doc:meta])* $name:ident, $suffix:literal) => {
         $(#[$doc])*
-        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
-        #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, Serialize, Deserialize, schemars::JsonSchema)]
         #[serde(transparent)]
         pub struct $name(pub f64);
 
@@ -189,8 +188,7 @@ impl From<Radians> for Degrees {
 }
 
 /// Whether a voltage is alternating or direct.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Current {
     Ac,
@@ -208,8 +206,7 @@ impl Current {
 }
 
 /// A rated voltage with its kind: `24 V DC`, `230 V AC`.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RatedVoltage {
     pub volts: Volts,
     pub current: Current,

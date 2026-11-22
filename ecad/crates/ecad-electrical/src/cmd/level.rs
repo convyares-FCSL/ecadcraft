@@ -403,7 +403,7 @@ pub fn plan_toposition(
 // The commands (generic: crate::cmd::run)
 
 /// Where a level moves.
-#[derive(Deserialize, JsonSchema, Clone, Copy)]
+#[derive(Deserialize, Clone, Copy, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 enum MoveToParam {
     /// The next position of its type that lacks the level (a level drawn twice).

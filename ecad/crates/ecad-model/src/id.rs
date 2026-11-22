@@ -30,7 +30,6 @@ macro_rules! typed_id {
         }
 
         /// A hex string in a command's parameters (brief 070).
-        #[cfg(feature = "schema")]
         impl schemars::JsonSchema for $name {
             fn inline_schema() -> bool {
                 true

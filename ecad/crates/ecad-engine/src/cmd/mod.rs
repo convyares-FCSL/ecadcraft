@@ -325,6 +325,21 @@ pub fn typed_commands() -> Vec<input::Typed> {
     .concat()
 }
 
+/// Whether generic command `id` declares that it only reads ([`ecad_electrical::cmd::run::Access`]).
+pub fn declared_read(id: &str) -> bool {
+    GENERIC_TYPED.iter().any(|t| t.id == id && t.access == Some(ecad_electrical::cmd::run::Access::Reads))
+}
+
+/// The ids of the generic commands that declare that they only read.
+pub fn declared_reads() -> impl Iterator<Item = &'static str> {
+    GENERIC_TYPED.iter().filter(|t| t.access == Some(ecad_electrical::cmd::run::Access::Reads)).map(|t| t.id)
+}
+
+/// The parameters of generic command `id` that name a file, as it declares them.
+pub fn declared_file_keys(id: &str) -> impl Iterator<Item = &'static str> {
+    GENERIC_TYPED.iter().filter(move |t| t.id == id).flat_map(|t| t.files.keys())
+}
+
 /// The JSON Schema of command `id`'s parameters, when its input is typed.
 pub fn schema_of(id: &str) -> Option<Value> {
     typed_commands().into_iter().find(|t| t.id == id).map(|t| (t.schema)())

@@ -63,7 +63,7 @@ pub fn disconnect(doc: &Document, r: RouteId, end: End) -> Result<Vec<Op>, CmdEr
 // The commands (generic: crate::cmd::run)
 
 /// A route's end.
-#[derive(Deserialize, JsonSchema, Clone, Copy)]
+#[derive(Deserialize, Clone, Copy, JsonSchema)]
 pub enum EndParam {
     /// The start.
     #[serde(rename = "A", alias = "a")]

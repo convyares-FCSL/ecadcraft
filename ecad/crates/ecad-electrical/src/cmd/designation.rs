@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cmd::input::nullable;
-use crate::cmd::run::{Cx, Generic, Outcome, Pages};
+use crate::cmd::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
 
 /// The aspect `word` names: "function" or "location" (also `f`, `l`, `=`, `+`).
@@ -329,6 +329,7 @@ impl Generic for DesignationsParams {
     const TITLE: &'static str = "Functions and Locations";
     const HELP: &'static str = "{aspect?: \"function\" | \"location\"} (read only: each entry's key, code, description and counts)";
     const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
 
     fn check(&self) -> Result<(), CmdError> {
         opt_aspect(self.aspect.as_deref()).map(|_| ())

@@ -13,7 +13,6 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::cable_draw::on_sheet;
 use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_any_page, on_project, plain_style};
 use ecad_electrical::cmd::input::Point;
@@ -48,7 +47,7 @@ pub(crate) struct CablerefParams {
 
 impl Command for CablerefParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let at = on_sheet(self.at, "at").map_err(|e| err(e.to_string()))?;
+        let at = self.at.within(crate::interact::MAX_COORD, "at").map_err(|e| err(e.to_string()))?;
         on_project(s, |p, pg, page| {
             let style = plain_style(p);
             let done = rules::reference(p.ledger.document(), &mut p.ids, page, style, self.cable, at)?;
@@ -89,8 +88,8 @@ pub(crate) struct CablecontinueParams {
 
 impl Command for CablecontinueParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let at = on_sheet(self.at, "at").map_err(|e| err(e.to_string()))?;
-        let toward = on_sheet(self.toward, "toward").map_err(|e| err(e.to_string()))?;
+        let at = self.at.within(crate::interact::MAX_COORD, "at").map_err(|e| err(e.to_string()))?;
+        let toward = self.toward.within(crate::interact::MAX_COORD, "toward").map_err(|e| err(e.to_string()))?;
         on_project(s, |p, pg, page| {
             let style = plain_style(p);
             let tol = p.tolerance;

@@ -33,19 +33,6 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<CableviewParams>("cableview"),
 ];
 
-/// A point on the sheet: within ±[`crate::interact::MAX_COORD`].
-///
-/// # Errors
-/// A point farther out, naming parameter `name`.
-pub(crate) fn on_sheet(p: Point, name: &str) -> Result<Pt, CmdError> {
-    let q = p.0;
-    if q.x.abs() <= crate::interact::MAX_COORD && q.y.abs() <= crate::interact::MAX_COORD {
-        Ok(q)
-    } else {
-        Err(CmdError::input(format!("`{name}` is not a finite [x,y] point")))
-    }
-}
-
 /// `cableslash {from, to, tag?, cable?}` (brief 004, design 004 §2, §4, §6): the conductors the
 /// slash `from → to` crosses on the active page become one new cable, in crossing order, with the
 /// slash as its drawn representation; one transaction. With `cable`, or the `tag` of a cable that
@@ -69,8 +56,8 @@ pub(crate) struct CableslashParams {
 
 impl Command for CableslashParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let from = on_sheet(self.from, "from").map_err(|e| err(e.to_string()))?;
-        let to = on_sheet(self.to, "to").map_err(|e| err(e.to_string()))?;
+        let from = self.from.within(crate::interact::MAX_COORD, "from").map_err(|e| err(e.to_string()))?;
+        let to = self.to.within(crate::interact::MAX_COORD, "to").map_err(|e| err(e.to_string()))?;
         on_project(s, |p, pg, page| {
             let doc = p.ledger.document();
             let found = rules::crossed(doc, page, from, to, p.tolerance)?;

@@ -147,7 +147,6 @@ impl<'de> Deserialize<'de> for ConductorColour {
     }
 }
 
-#[cfg(feature = "schema")]
 impl schemars::JsonSchema for ConductorColour {
     fn inline_schema() -> bool {
         true

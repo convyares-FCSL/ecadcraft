@@ -726,7 +726,7 @@ pub fn point_info(p: &Project, pt: &Point) -> Result<Value, String> {
     let restore = on_current_line(p, pt).unwrap_or(false);
     let description = named
         .iter()
-        .find(|n| n.branch == pt.branch && n.seq == pt.seq && Some(&n.name) == title_name(pt).as_ref())
+        .find(|n| n.branch == pt.branch && n.seq == pt.seq && Some(&n.name) == pt.title_name().as_ref())
         .and_then(|n| n.description.clone());
     Ok(json!({
         "title": pt.title, "kind": pt.kind.word(), "branch": bname, "branch_id": pt.branch.hex(), "seq": pt.seq,
@@ -740,21 +740,13 @@ fn current_or(p: &Project, b: BranchId) -> BranchId {
     if lineage_of(p, current(p)).map(|l| l.iter().any(|x| x.0 == b)).unwrap_or(false) { current(p) } else { b }
 }
 
-fn title_name(pt: &Point) -> Option<String> {
-    match pt.kind {
-        NodeKind::Version => pt.title.strip_prefix("Version \"").and_then(|t| t.strip_suffix('"')).map(str::to_string),
-        NodeKind::Revision => Some(pt.title.clone()),
-        _ => None,
-    }
-}
-
 /// Pages changed, added and removed between two saved snapshots, from their chunk hashes
 /// (design 020 §2.4): no document is built.
 fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
     let Some(v) = p.file.v2() else { return Vec::new() };
     let Ok(r) = v.store().reader() else { return Vec::new() };
     let find = |b: BranchId, name: &str| [VersionKind::User, VersionKind::Revision].iter().find_map(|k| r.version(b, *k, name).ok().flatten());
-    let (Some(name), Some(a)) = (title_name(pt), find(prev.branch, &prev.name)) else { return Vec::new() };
+    let (Some(name), Some(a)) = (pt.title_name(), find(prev.branch, &prev.name)) else { return Vec::new() };
     let Some(b) = find(pt.branch, &name) else { return Vec::new() };
     let pages = |v: &ecad_file::schema::VersionRecord| -> BTreeMap<String, String> {
         v.chunks.iter().filter(|(k, _)| k.starts_with("page:")).map(|(k, h)| (k.clone(), h.clone())).collect()

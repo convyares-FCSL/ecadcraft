@@ -15,9 +15,11 @@
 use crate::CmdError;
 use ecad_model::Pt;
 use schemars::JsonSchema;
-use serde::de::{DeserializeOwned, Error as _};
+use serde::de::DeserializeOwned;
+use serde::de::Error as _;
 use serde::{Deserialize, Deserializer};
-use serde_json::{Map, Value};
+use serde_json::Map;
+use serde_json::Value;
 
 /// The refusal of parameters that are not an object (strict input: parse or fail).
 pub const NOT_AN_OBJECT: &str = "The parameters must be an object: {name: value, …}.";
@@ -184,6 +186,17 @@ impl JsonSchema for Point {
     }
 }
 
+impl Point {
+    /// The point when it lies within ±`max` on both axes.
+    ///
+    /// # Errors
+    /// A point farther out, naming parameter `name`.
+    pub fn within(self, max: f64, name: &str) -> Result<Pt, CmdError> {
+        let q = self.0;
+        if q.x.abs() <= max && q.y.abs() <= max { Ok(q) } else { Err(CmdError::input(format!("`{name}` is not a finite [x,y] point"))) }
+    }
+}
+
 /// A list of `MIN` to `MAX` entries.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bounded<T, const MIN: usize, const MAX: usize>(pub Vec<T>);
@@ -228,6 +241,11 @@ pub enum TextOrNumber {
 }
 
 impl TextOrNumber {
+    /// A nullable value as text: absent stays absent, null stays null.
+    pub fn nullable_text(v: Option<Option<TextOrNumber>>) -> Option<Option<String>> {
+        v.map(|v| v.map(|t| t.text()))
+    }
+
     /// The value as text: the text itself, or the number as JSON writes it.
     pub fn text(&self) -> String {
         match self {
@@ -238,7 +256,7 @@ impl TextOrNumber {
 }
 
 /// The schema of a parameter that must be given and may be `null`: `T`, or null. Use it as
-/// `#[schemars(required, with = "OrNull<T>")]` on a [`nullable`] field (schemars drops the null of
+/// `#[schemars(required, with = "crate::cmd::input::OrNull<T>")]` on a [`nullable`] field (schemars drops the null of
 /// a required `Option`).
 pub struct OrNull<T>(std::marker::PhantomData<T>);
 
