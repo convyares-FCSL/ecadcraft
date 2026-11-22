@@ -10,6 +10,10 @@ texts do not change.
 **G** generic (moves onto the runner, its engine file goes), **S** session-specific (keeps an
 engine file), **G/S** mixed (the generic commands move, the file keeps the session ones).
 
+Status (2026-11-22): every **G** file has moved and its engine file is gone; of the mixed files,
+page_type, reference, title_block and xref keep only their session commands. Still to move: the
+generic halves of device, output, page, sheet, symbol, terminal, text, wire and plc/.
+
 | File | | Commands | Reason |
 | --- | --- | --- | --- |
 | accessory.rs | G | accessory, jumper | Plan on the document plus the derived strip models; the interactive forms stay in `interact`. |
@@ -38,7 +42,7 @@ engine file), **G/S** mixed (the generic commands move, the file keeps the sessi
 | symbol.rs | G/S | G: symbolnew, symboledit, symbolimpact, symbolupdate. S: makesymbol | `makesymbol` reads the selection's CADCraft entities. |
 | terminal.rs | G/S | G: terminals, stripplan, cablecores. S: bridge | `bridge` places through the drawing's place planner. |
 | text.rs | G/S | G: textstyle, pagetexts, defaults, movetext. S: showtext, hiddentext | Showing hidden text is a drawing setting that redraws open pages. |
-| title_block.rs | G | titleblocks, titleblock, titleblockimport | Plan and commit; `titleblockimport` declares a DXF read. |
+| title_block.rs | G/S | G: titleblocks, titleblock. S: titleblockimport | `titleblockimport` reads the DXF with CADCraft's reader. |
 | wire.rs | G/S | G: nets, net, wirenumber, potential, category, wiresettings, renumberwires, checks. S: wire, joinwires | Drawing wires snaps to the page's geometry with the drawing tolerance. |
 | xref.rs | G/S | G: xrefs, contacts, mirrormove. S: refgoto | `refgoto` opens a page, zooms and selects. |
 | plc/ | G/S | G: plcslot, plcracks, plcchannel, iolist, plcaddress, plcmaketags, plcexport, plcimport, plccardtype. S: plcchannels, plcpage | Channel cells are placed through the drawing's planner; `plcpage` creates a page view. |
@@ -49,32 +53,42 @@ engine file), **G/S** mixed (the generic commands move, the file keeps the sessi
 // ecad-electrical::cmd::run (Core: no engine, no session, no disk)
 pub trait Generic: DeserializeOwned + JsonSchema {
     const ID: &'static str; const TITLE: &'static str; const HELP: &'static str;
-    const PAGES: Pages = Pages::Available;       // or Any (also an unavailable page)
+    const PAGES: Pages = Pages::Available;       // Any (also an unavailable page), or ReadAnywhere
+                                                 // (reads anywhere, an edit only on an available page)
     const ACCESS: Access = Access::Edits;        // or Reads: the agent gate lets it run with writes off
-    const IO: Io = Io::NONE;                     // Io { reads: &[(param, max bytes)], writes: &[param] }
-    const STATE: State = State::None;            // state only this command uses, e.g. LastCaption
-    const ECHO: Echo = Echo::Nothing;            // or Message: echo the answer's `message`
+    const IO: Io = Io::NONE;                     // Io { reads: &[(param, Read)], writes: &[param] }
+                                                 // Read::Bytes(max) | Read::Standard (another .ecad's)
+    const STATE: State = State::None;            // LastCaption | Conflicts: state kept beyond the document
     fn check(&self) -> Result<(), CmdError> { Ok(()) }   // before the project is taken
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError>;
 }
-pub struct Cx<'a> { doc, ledger, ids, page, tag_high, designation_uses (uses()), derived,
-                    read: &BTreeMap<param, Result<bytes, Unread>>, state: Slot<'a> }
-pub struct Outcome { edit: Option<Edit { label, ops }>, answer: Answer, writes: Vec<(param, bytes)> }
-pub enum Answer { Now(Value), Committed(Box<dyn FnOnce(&Document) -> Value>) }
+pub struct Cx<'a> { doc, ledger, ids, page, metrics (this machine's fonts), plain (style of new
+                    items), tolerance, change_count, tag_high, designation_uses (uses()), derived,
+                    read: &BTreeMap<param, Result<Got, Unread>>, state: Slot<'a> }
+pub struct Outcome { edit: Option<Edit { label, ops }>, answer: Answer, writes: Vec<(param, bytes)>,
+                     echo: Echo /* Nothing | Lines(..) | Message: the answer's, once committed */ }
+pub enum Answer { Now(Value), Committed(Box<dyn FnOnce(&Document, &mut Views) -> Result<Value, CmdError>>) }
 ```
 
 - **Params:** the command's `#[derive(Deserialize, JsonSchema)]` struct lives next to its rules
   in ecad-electrical (schemars is a plain Core dependency, owner 2026-11-21). Reading and refusal
   wording are `cmd::input`.
-- **Cx holds only shared state.** State one command uses is declared (`STATE`) and handed to it
-  as a `Slot`; the engine puts it back when the edit is not committed.
+- **Cx holds only shared state** (fonts, plain style, tolerance, change count, tag marks,
+  designation uses, derived views). State a few commands keep beyond the document is declared
+  (`STATE`) and handed over as a `Slot`; it is kept only when the edit is committed. `Conflicts`
+  hands the waiting conflicts and a slot for the ones to wait after the edit: any committed edit
+  leaves them, as `apply_edit` always did.
 - **Runner (ecad-engine `cmd::generic`):** `spec::<P>()` registers it (`.noundo()`; the table may
   add `.interactive(f)`), `typed::<P>()` lists it. `run`: parse, `check`, read the declared files,
   lock (`try_lock`), check the page, `P::run`, commit `edit` under `P::ID` (`apply_edit`: undo,
-  views, history), write `writes` to the paths their parameters name, echo, answer.
-- **File I/O:** declared as data; the engine alone opens files. Core has no `std::fs`.
+  views, history), answer (an answer read after the commit may refuse; the edit stays), write
+  `writes` to the paths their parameters name, echo.
+- **File I/O:** declared as data; the engine alone opens files (`Read::Standard` opens the other
+  project read-only through `ecad_engine::file::read_standard`). Core has no `std::fs`.
 - **MCP schema:** `schema::<P>()`, so `schema_of(id)` is unchanged.
 - **Agent gate:** derived from the declaration: `ACCESS` (read commands run with writes off;
   `policy::is_read_command`) and `IO` (file parameters refused from an agent). The hand-listed
-  `READ_COMMANDS` and `COMMAND_FILE_KEYS` keep only session commands and commands not moved yet.
+  `READ_COMMANDS` keeps only session commands and commands not moved yet; `COMMAND_FILE_KEYS` is
+  gone. Commands that read only with some parameters (`READ_WITHOUT_FIELDS`, `READ_WITH_PREVIEW`
+  …) are still listed in the gate.
 - A session command keeps its engine file and the `Command` trait (`cmd::input`).
