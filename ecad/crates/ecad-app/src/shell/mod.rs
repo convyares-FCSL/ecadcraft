@@ -66,19 +66,13 @@ pub use layout::{Slots, layout};
 pub use state::{LeftTab, RightTab, ShellState, Views, Workspace};
 
 /// The margin round the sheet when it fits the canvas (UI rev 3), px.
-pub const FIT_MARGIN: f32 = 24.0;
+pub(crate) const FIT_MARGIN: f32 = 24.0;
 
 /// Accessible labels of the shell's own elements (design §9: tests find them by label).
 pub const SETTINGS: &str = "Settings";
-pub const DEVELOPER_SWITCH: &str = "Show CADCraft's interface (developer)";
-pub const COMPANION: &str = "Open beside";
-pub const CLOSE_COMPANION: &str = "Close the companion view";
-pub const PUBLISH_RELEASE: &str = "Release";
-pub const PUBLISH_PRINT: &str = "Print Book";
-/// Publish ▸ Release with no dialog open (after a release): open it for the pending revision.
-pub const RELEASE_PENDING: &str = "Release the pending revision…";
+pub(crate) const DEVELOPER_SWITCH: &str = "Show CADCraft's interface (developer)";
 /// The Text panel command that flips the developer switch.
-pub const CAD_CHROME_COMMAND: &str = "ui.cadchrome";
+pub(crate) const CAD_CHROME_COMMAND: &str = "ui.cadchrome";
 
 /// One place visited, for Back and Forward (Alt+Left, Alt+Right).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,18 +118,18 @@ impl ListsView {
     }
 }
 
-pub const LISTS_DEVICES: &str = "Devices";
+pub(crate) const LISTS_DEVICES: &str = "Devices";
 pub const LISTS_TERMINAL_STRIPS: &str = "Terminals";
 /// Brief 051 (design 051 §3.1): the rack overview and the I/O list (045c's "I/O").
-pub const LISTS_PLC: &str = "PLC";
-pub const LISTS_WIRES: &str = "Wires";
-pub const LISTS_CABLES: &str = "Cables";
-pub const LISTS_CHECKS: &str = "Check list";
-pub const LISTS_REPORTS: &str = "Reports";
+pub(crate) const LISTS_PLC: &str = "PLC";
+pub(crate) const LISTS_WIRES: &str = "Wires";
+pub(crate) const LISTS_CABLES: &str = "Cables";
+pub(crate) const LISTS_CHECKS: &str = "Check list";
+pub(crate) const LISTS_REPORTS: &str = "Reports";
 /// Said in the inspector's Checks tab while Lists shows the Check list.
-pub const CHECKS_IN_LISTS: &str = "The checks are shown in Project ▸ Check list.";
+pub(crate) const CHECKS_IN_LISTS: &str = "The checks are shown in Project ▸ Check list.";
 /// Said in the left panel's Devices tab while Lists shows the same view.
-pub const DEVICES_IN_LISTS: &str = "The devices are shown in Project ▸ Devices.";
+pub(crate) const DEVICES_IN_LISTS: &str = "The devices are shown in Project ▸ Devices.";
 
 /// Publish's two hosted bodies.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -282,7 +276,7 @@ pub(crate) fn in_rect<R>(ui: &mut egui::Ui, rect: Rect, id: &str, add: impl FnOn
 
 /// A floating window of today's (Reports, Release, Print Book, symbol search) hosted in a slot:
 /// filling `host`, without a title bar, not movable. `None` leaves the window as it was.
-pub fn hosted(window: egui::Window<'_>, host: Option<Rect>) -> egui::Window<'_> {
+pub(crate) fn hosted(window: egui::Window<'_>, host: Option<Rect>) -> egui::Window<'_> {
     match host {
         Some(r) => window.title_bar(false).movable(false).resizable(false).collapsible(false).fixed_rect(r.shrink(ecad_widgets::tokens::space::XS)),
         None => window,
@@ -291,7 +285,7 @@ pub fn hosted(window: egui::Window<'_>, host: Option<Rect>) -> egui::Window<'_> 
 
 /// [`hosted`] as a method, so a window's builder chain (and its body's indentation) stays as it
 /// was: `egui::Window::new(..).open(&mut open).hosted(self.host).show(ctx, ..)`.
-pub trait Hosted {
+pub(crate) trait Hosted {
     fn hosted(self, host: Option<Rect>) -> Self;
 }
 

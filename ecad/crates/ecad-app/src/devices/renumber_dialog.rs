@@ -16,7 +16,7 @@ use eframe::egui::{self, RichText};
 use serde_json::{Value, json};
 
 /// The dialog's window id.
-pub const DIALOG_ID: &str = "ecad.renumber.dialog";
+pub(crate) const DIALOG_ID: &str = "ecad.renumber.dialog";
 /// Row height of the preview list.
 const ROW_H: f32 = 16.0;
 

@@ -21,11 +21,11 @@ use crate::shell::{Workspace, bar};
 pub const PROJECT_MENU: &str = "Project menu";
 pub const SEARCH: &str = "Search (Ctrl+K)";
 /// The search box's grey text.
-pub const SEARCH_HINT: &str = "Find a page, tag, symbol or command";
+pub(crate) const SEARCH_HINT: &str = "Find a page, tag, symbol or command";
 /// The bottom bar's checks counter (opens the inspector's Checks tab).
 pub const CHECKS_PILL: &str = "Checks pill";
 /// The bottom bar's revision (opens History).
-pub const REVISION_PILL: &str = "Revision pill";
+pub(crate) const REVISION_PILL: &str = "Revision pill";
 /// The agent icon.
 pub const AGENT_PILL: &str = "Agent pill";
 pub const THEME_DARK: &str = "Dark interface";
@@ -33,7 +33,7 @@ pub const THEME_LIGHT: &str = "Light interface";
 pub const HELP: &str = "Help";
 /// Share (coming; it does nothing yet).
 pub const SHARE: &str = "Share";
-pub const ACCOUNT: &str = "Account";
+pub(crate) const ACCOUNT: &str = "Account";
 /// The project menu's entries (the header's labels).
 pub const NEW: &str = "New project";
 pub const OPEN: &str = "Open project…";
@@ -41,7 +41,7 @@ pub const SAVE: &str = "Save";
 pub const SAVE_AS: &str = "Save As…";
 pub const CLOSE: &str = "Close project";
 /// The project menu's last entry.
-pub const STANDARDS: &str = "Standards";
+pub(crate) const STANDARDS: &str = "Standards";
 
 /// Heights inside the bar: the pills and the search box.
 const PILL_H: f32 = 28.0;

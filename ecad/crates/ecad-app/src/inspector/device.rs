@@ -15,7 +15,7 @@ use crate::inspector::{Cx, InspectorAction, fields};
 /// Accessible names.
 pub const OWN_CHECKS: &str = "ecad.inspector.own-checks";
 pub const DRAWN_ROW: &str = "ecad.inspector.drawn.row";
-pub const CONNECTION_ROW: &str = "ecad.inspector.connection.row";
+pub(crate) const CONNECTION_ROW: &str = "ecad.inspector.connection.row";
 /// What a button that has nothing behind it yet says.
 pub const NOT_YET: &str = "Not available yet";
 
@@ -40,12 +40,12 @@ const PLACED: [&str; 15] = [
 ];
 
 /// A row the Layout tab draws.
-pub fn on_layout_tab(row: &Row) -> bool {
+pub(crate) fn on_layout_tab(row: &Row) -> bool {
     row.key == ecad_electrical::references::devices::parse::MIRROR_KEY || row.label.starts_with("Texts")
 }
 
 /// The device's own checks: about it or one of its connection points.
-pub fn own_checks<'r>(cx: &Cx<'r>) -> Vec<&'r crate::checks::panel::Row> {
+pub(crate) fn own_checks<'r>(cx: &Cx<'r>) -> Vec<&'r crate::checks::panel::Row> {
     let Some(d) = &cx.insp.device else { return Vec::new() };
     let Some(c) = d.component else { return Vec::new() };
     cx.checks
@@ -97,7 +97,7 @@ fn kind_title(kind: &str) -> &'static str {
 }
 
 /// A text's name from its row's label (`Texts: connection point labels` → `Pin labels`).
-pub fn text_label(label: &str) -> String {
+pub(crate) fn text_label(label: &str) -> String {
     match label.trim_start_matches("Texts: ").trim_start_matches("Texts on this symbol: ") {
         "connection point labels" => "Pin labels".to_string(),
         l => {
@@ -269,7 +269,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
 
 /// The folded Parts section's summary: its part lines, else the main part's maker and number
 /// (a device with only a main part has a part), else `none yet`.
-pub fn parts_summary(lines: usize, maker: Option<&str>, part_number: Option<&str>) -> String {
+pub(crate) fn parts_summary(lines: usize, maker: Option<&str>, part_number: Option<&str>) -> String {
     if lines > 0 {
         return format!("{lines} line{} \u{b7} qty", ecad_widgets::plural(lines));
     }

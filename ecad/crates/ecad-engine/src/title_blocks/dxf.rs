@@ -128,14 +128,26 @@ fn walk(d: &Drawing, ents: &[&Entity], m: Mat3, depth: usize, out: &mut Read) {
     }
 }
 
+/// Why a logo file could not be used, in words a person reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogoError(pub String);
+
+impl std::fmt::Display for LogoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for LogoError {}
+
 /// Read the DXF file at `path` as a logo, with the file's name (design 055 §6; the app never reads disk).
 ///
 /// # Errors
 /// The file cannot be read, or as [`logo`].
-pub fn logo_from_file(path: &str) -> Result<(String, Vec<Primitive>), String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("Cannot read {path}: {e}."))?;
+pub fn logo_from_file(path: &str) -> Result<(String, Vec<Primitive>), LogoError> {
+    let bytes = std::fs::read(path).map_err(|e| LogoError(format!("Cannot read {path}: {e}.")))?;
     let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    logo(&bytes).map(|prims| (name, prims))
+    logo(&bytes).map(|prims| (name, prims)).map_err(LogoError)
 }
 
 /// Read `bytes` as a logo (design 055 §6).

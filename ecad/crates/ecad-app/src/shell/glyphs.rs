@@ -30,7 +30,7 @@ pub fn list(p: &Painter, r: Rect, c: Color32) {
 }
 
 /// Thumbnail view: a small page beside two lines, twice.
-pub fn thumbs(p: &Painter, r: Rect, c: Color32) {
+pub(crate) fn thumbs(p: &Painter, r: Rect, c: Color32) {
     let r = r.shrink(r.width() * 0.12);
     let half = r.height() / 2.0;
     for i in 0..2 {
@@ -43,7 +43,7 @@ pub fn thumbs(p: &Painter, r: Rect, c: Color32) {
 }
 
 /// A checkbox in `r`: ticked and filled in `accent` when `on`, else an outline with a faint tick.
-pub fn checkbox(p: &Painter, r: Rect, on: bool, accent: Color32, line: Color32, faint: Color32) {
+pub(crate) fn checkbox(p: &Painter, r: Rect, on: bool, accent: Color32, line: Color32, faint: Color32) {
     if on {
         p.rect_filled(r, 2.0, accent);
         tick(p, r.shrink(2.5), Color32::WHITE);
@@ -73,7 +73,7 @@ pub fn person(p: &Painter, r: Rect, c: Color32) {
 
 /// A page thumbnail: the sheet's ground with a frame and a schematic sketch (three rails and a
 /// box, as the boards draw it); outlined in `outline` (the open page's blue) when given.
-pub fn thumbnail(p: &Painter, r: Rect, paper: Color32, ink: Color32, outline: Option<Color32>) {
+pub(crate) fn thumbnail(p: &Painter, r: Rect, paper: Color32, ink: Color32, outline: Option<Color32>) {
     p.rect_filled(r, 1.0, paper);
     let inner = r.shrink(r.width() * 0.1);
     let x = |f: f32| inner.left() + inner.width() * f;
@@ -118,7 +118,7 @@ pub fn preview(p: &Painter, r: Rect, paper: Color32, ink: Color32) {
 }
 
 /// A lane dot of the Changes graph: filled in the lane's colour, ringed in the panel's ground.
-pub fn lane_dot(p: &Painter, at: Pos2, c: Color32, ground: Color32) {
+pub(crate) fn lane_dot(p: &Painter, at: Pos2, c: Color32, ground: Color32) {
     p.circle_filled(at, 4.0, ground);
     p.circle_stroke(at, 3.0, Stroke::new(1.5, c));
 }

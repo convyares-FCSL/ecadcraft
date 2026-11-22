@@ -32,7 +32,7 @@ pub fn pill(ui: &egui::Ui, rect: Rect) {
 }
 
 /// A vertical hairline at `x` from `top` to `bottom`.
-pub fn vline(ui: &egui::Ui, x: f32, top: f32, bottom: f32) {
+pub(crate) fn vline(ui: &egui::Ui, x: f32, top: f32, bottom: f32) {
     ui.painter().vline(x.round() + 0.5, top..=bottom, Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(ecad_widgets::SHELL.line)));
 }
 
@@ -73,7 +73,7 @@ pub fn ink(on: bool, accent: bool, enabled: bool) -> Color32 {
 }
 
 /// A text button at `rect`: [`hit`], with `text` centred.
-pub fn text_button(ui: &mut egui::Ui, rect: Rect, text: &str, label: &str, on: bool, accent: bool) -> Response {
+pub(crate) fn text_button(ui: &mut egui::Ui, rect: Rect, text: &str, label: &str, on: bool, accent: bool) -> Response {
     let r = hit(ui, rect, label, on, accent, true);
     let c = ink(on, accent, true);
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, text, font(ui, ui_type::BODY), c);
@@ -81,7 +81,7 @@ pub fn text_button(ui: &mut egui::Ui, rect: Rect, text: &str, label: &str, on: b
 }
 
 /// A small text button at `rect` (a page in the well): the accent when `on`.
-pub fn text_button_small(ui: &mut egui::Ui, rect: Rect, text: &str, label: &str, on: bool) -> Response {
+pub(crate) fn text_button_small(ui: &mut egui::Ui, rect: Rect, text: &str, label: &str, on: bool) -> Response {
     let r = hit(ui, rect, label, on, true, true);
     let c = if on { ink(true, true, true) } else { ecad_widgets::color(ecad_widgets::SHELL.text) };
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, text, font(ui, ui_type::BODY_EMPHASIS), c);

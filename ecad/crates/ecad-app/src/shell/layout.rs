@@ -19,29 +19,29 @@ use eframe::egui::{Rect, pos2, vec2};
 use crate::shell::state::{LeftTab, ShellState, Workspace};
 
 /// The panel slot's default width (Book, Devices), its drag range, and History's default.
-pub const LEFT_W: f32 = 248.0;
-pub const LEFT_MIN: f32 = 200.0;
-pub const LEFT_MAX: f32 = 420.0;
-pub const HISTORY_W: f32 = 280.0;
+pub(crate) const LEFT_W: f32 = 248.0;
+pub(crate) const LEFT_MIN: f32 = 200.0;
+pub(crate) const LEFT_MAX: f32 = 420.0;
+pub(crate) const HISTORY_W: f32 = 280.0;
 /// The inspector's collapsed rail: the tool strip's width, its mirror image.
-pub const RAIL_W: f32 = size::TOOL_STRIP;
+pub(crate) const RAIL_W: f32 = size::TOOL_STRIP;
 /// The inspector's width in Draw, and in the other workspaces.
-pub const RIGHT_W: f32 = 320.0;
+pub(crate) const RIGHT_W: f32 = 320.0;
 pub const RIGHT_W_WIDE: f32 = 340.0;
 /// The right panel's width in the symbol builder (spec §2, design 048 §3.1).
-pub const RIGHT_W_BUILDER: f32 = 380.0;
+pub(crate) const RIGHT_W_BUILDER: f32 = 380.0;
 /// Publish's print settings column (board 4.01).
 pub const RIGHT_W_PUBLISH: f32 = 360.0;
 /// Brief 048's review drawer: its body and its header row.
-pub const DRAWER_BODY: f32 = 150.0;
-pub const DRAWER_HEADER: f32 = 36.0;
+pub(crate) const DRAWER_BODY: f32 = 150.0;
+pub(crate) const DRAWER_HEADER: f32 = 36.0;
 /// The drawer's body under the Library's symbol review (board 3.04).
-pub const DRAWER_BODY_LIBRARY: f32 = 300.0;
+pub(crate) const DRAWER_BODY_LIBRARY: f32 = 300.0;
 /// Compare revisions (board 1.16): its header row over the canvas and its list of changes under it.
 pub const COMPARE_HEADER: f32 = 44.0;
 pub const COMPARE_LIST: f32 = 172.0;
 /// Below this main-view width the shell collapses panels (the inspector, then the panel slot).
-pub const MAIN_MIN_W: f32 = 760.0;
+pub(crate) const MAIN_MIN_W: f32 = 760.0;
 /// The companion split's handle, and the least width of each half.
 pub const SPLIT_HANDLE: f32 = 6.0;
 pub const HALF_MIN: f32 = 360.0;
@@ -77,13 +77,13 @@ pub struct Slots {
 }
 
 /// The panel slot's width for its tab, kept within the drag range.
-pub fn left_width(state: &ShellState) -> f32 {
+pub(crate) fn left_width(state: &ShellState) -> f32 {
     let w = state.left.width_per_tab.get(state.left.tab.index()).copied().unwrap_or(LEFT_W);
     if w.is_finite() { w.clamp(LEFT_MIN, LEFT_MAX) } else { LEFT_W }
 }
 
 /// The inspector's open width in `workspace` (`builder`: the symbol builder is shown).
-pub fn right_width(workspace: Workspace, builder: bool) -> f32 {
+pub(crate) fn right_width(workspace: Workspace, builder: bool) -> f32 {
     match workspace {
         Workspace::Draw => RIGHT_W,
         Workspace::Library if builder => RIGHT_W_BUILDER,
@@ -172,7 +172,7 @@ fn split(view: Rect, state: &ShellState) -> (Rect, Option<Rect>, Option<Rect>) {
 }
 
 /// The panel slot's default width for `tab`.
-pub fn default_width(tab: LeftTab) -> f32 {
+pub(crate) fn default_width(tab: LeftTab) -> f32 {
     match tab {
         LeftTab::History => HISTORY_W,
         LeftTab::Pages | LeftTab::Devices => LEFT_W,

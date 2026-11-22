@@ -40,20 +40,20 @@ pub use draft::{Draft, Drafts, State};
 use crate::shell::app::App;
 
 /// Element names (design 055 §5).
-pub const LIST: &str = "library.tb.list";
+pub(crate) const LIST: &str = "library.tb.list";
 pub const CANVAS: &str = "library.tb.canvas";
 pub const SAMPLE: &str = "library.tb.sample";
-pub const SNAP: &str = "library.tb.snap";
+pub(crate) const SNAP: &str = "library.tb.snap";
 pub const FRAME: &str = "library.tb.frame";
-pub const USED_BY: &str = "library.tb.usedby";
-pub const RELOAD: &str = "library.tb.banner.reload";
-pub const KEEP: &str = "library.tb.banner.keep";
+pub(crate) const USED_BY: &str = "library.tb.usedby";
+pub(crate) const RELOAD: &str = "library.tb.banner.reload";
+pub(crate) const KEEP: &str = "library.tb.banner.keep";
 /// Words (design 055 §4).
-pub const FOOTER: &str = "Changes reach every page that uses this block. Fields fill themselves; nothing is typed on a page.";
+pub(crate) const FOOTER: &str = "Changes reach every page that uses this block. Fields fill themselves; nothing is typed on a page.";
 pub const CAPTION: &str = "Zones and frame come from Frame…";
 pub const EMPTY_HINT: &str = "Drag fields from the left, or draw lines";
-pub const DROP_ON_BLOCK: &str = "Drop it on the block.";
-pub const BUILTIN_NOTE: &str = "Built-in. Duplicate it to make your own.";
+pub(crate) const DROP_ON_BLOCK: &str = "Drop it on the block.";
+pub(crate) const BUILTIN_NOTE: &str = "Built-in. Duplicate it to make your own.";
 pub const WRITES_OFF: &str = "Writes are off for this project.";
 
 /// The editor's tools (design 055 §4.5).
@@ -505,7 +505,7 @@ impl App {
     fn tb_logo(&mut self, at: Option<ecad_model::objects::title_block::Rect>, path: &str) {
         let (name, r) = match ecad_engine::title_blocks::dxf::logo_from_file(path) {
             Ok((name, p)) => (name, Ok(p)),
-            Err(e) => (String::new(), Err(e)),
+            Err(e) => (String::new(), Err(e.to_string())),
         };
         let ed = &mut self.library.tb;
         let prims = match r {

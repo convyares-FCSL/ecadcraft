@@ -17,7 +17,7 @@ use crate::canvas::PageData;
 use crate::shell::app::App;
 
 /// The error disc's and warning triangle's size on screen, px.
-pub const MARKER_PX: f32 = 12.0;
+pub(crate) const MARKER_PX: f32 = 12.0;
 /// The dotted underline: dot length and gap, px.
 const DOT_PX: f32 = 1.5;
 const DOT_GAP_PX: f32 = 2.0;
@@ -70,13 +70,13 @@ fn exclamation(p: &egui::Painter, at: Pos2, h: f32, colour: egui::Color32) {
 }
 
 /// An error: a filled disc with "!".
-pub fn error_disc(p: &egui::Painter, at: Pos2, colour: egui::Color32) {
+pub(crate) fn error_disc(p: &egui::Painter, at: Pos2, colour: egui::Color32) {
     p.circle_filled(at, MARKER_PX / 2.0, colour);
     exclamation(p, at, MARKER_PX * 0.6, ecad_widgets::color(ecad_widgets::tokens::WHITE));
 }
 
 /// A warning: a filled triangle with "!".
-pub fn warning_triangle(p: &egui::Painter, at: Pos2, colour: egui::Color32) {
+pub(crate) fn warning_triangle(p: &egui::Painter, at: Pos2, colour: egui::Color32) {
     let s = MARKER_PX;
     let pts = vec![at + vec2(0.0, -s * 0.6), at + vec2(s * 0.6, s * 0.45), at + vec2(-s * 0.6, s * 0.45)];
     p.add(egui::Shape::convex_polygon(pts, colour, Stroke::NONE));

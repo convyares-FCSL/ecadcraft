@@ -30,8 +30,8 @@ pub const STATE: ColumnId = ColumnId(7);
 pub const PARTS: ColumnId = ColumnId(8);
 
 /// The chips.
-pub const PROVISIONAL: &str = "Provisional";
-pub const NOT_PLACED: &str = "Not on a page yet";
+pub(crate) const PROVISIONAL: &str = "Provisional";
+pub(crate) const NOT_PLACED: &str = "Not on a page yet";
 
 /// The property a set column writes.
 pub fn property(col: ColumnId) -> Option<&'static str> {
@@ -68,7 +68,7 @@ pub fn columns() -> Vec<Column> {
 }
 
 /// What the Main part column says of a device with no part (board 2.01).
-pub const NO_PARTS: &str = "No parts yet";
+pub(crate) const NO_PARTS: &str = "No parts yet";
 /// What On page says of a device on no page.
 pub const NOT_YET: &str = "not yet";
 

@@ -61,22 +61,22 @@ pub const FROM: ColumnId = ColumnId(1);
 pub const TO: ColumnId = ColumnId(2);
 pub const COLOUR: ColumnId = ColumnId(3);
 pub const SIZE: ColumnId = ColumnId(4);
-pub const CATEGORY: ColumnId = ColumnId(5);
-pub const FERRULES: ColumnId = ColumnId(6);
-pub const LENGTH: ColumnId = ColumnId(7);
+pub(crate) const CATEGORY: ColumnId = ColumnId(5);
+pub(crate) const FERRULES: ColumnId = ColumnId(6);
+pub(crate) const LENGTH: ColumnId = ColumnId(7);
 pub const PAGE: ColumnId = ColumnId(8);
 pub const STATUS: ColumnId = ColumnId(9);
 /// Group columns, not shown.
 pub const POTENTIAL: ColumnId = ColumnId(20);
 pub const CABLE: ColumnId = ColumnId(21);
-pub const ON_PAGE: ColumnId = ColumnId(22);
+pub(crate) const ON_PAGE: ColumnId = ColumnId(22);
 
 /// The grouping switch (board 2.04: None, Potential, Page, Cable).
 pub const GROUPS: [&str; 4] = ["None", "Potential", "Page", "Cable"];
 
 /// The status words.
 pub const OK: &str = "ok";
-pub const PROVISIONAL: &str = "provisional";
+pub(crate) const PROVISIONAL: &str = "provisional";
 pub const CHECK: &str = "check";
 
 pub fn columns() -> Vec<Column> {
@@ -130,9 +130,6 @@ impl WiresSource {
 impl ReportColumns for WiresSource {
     fn rows(&self) -> &ReportRows {
         &self.rows
-    }
-    fn cols(&self) -> &[Column] {
-        &self.cols
     }
     fn from(&self, col: ColumnId) -> From {
         match col {

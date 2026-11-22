@@ -49,7 +49,7 @@ use ecad_electrical::releases::release::{
 use ecad_electrical::releases::release::{errors_refusal, finalising, over_budget, stopped};
 
 /// The manifest's file name.
-pub const MANIFEST: &str = "release.json";
+pub(crate) const MANIFEST: &str = "release.json";
 /// The manifest's version (`ecad_release`); a breaking change bumps it.
 pub(crate) const MANIFEST_VERSION: u64 = 1;
 /// The folder that holds release folders, beside the project file.

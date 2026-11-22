@@ -26,7 +26,7 @@ pub const FIELD: &str = "ECAD command";
 /// Button labels.
 pub const DEBUGGER: &str = "Debugger";
 pub const INSPECT: &str = "Inspect Project";
-pub const SNAPSHOT: &str = "Export Inspector Snapshot";
+pub(crate) const SNAPSHOT: &str = "Export Inspector Snapshot";
 /// Element names of the Agent access row (brief 035, design §13).
 pub const AGENT_MODE: &str = "agent.access.mode";
 pub const AGENT_PORT: &str = "agent.access.port";
@@ -34,9 +34,9 @@ pub const AGENT_STATUS: &str = "agent.access.status";
 /// The port field's tooltip and warning.
 pub const AGENT_PORT_RANGE: &str = "1024–65535";
 /// Said when the port changes while the listener runs on another.
-pub const AGENT_RESTART: &str = "The new port is used the next time ECAD starts.";
+pub(crate) const AGENT_RESTART: &str = "The new port is used the next time ECAD starts.";
 /// The mode's tooltip under `--control`.
-pub const AGENT_THIS_RUN: &str = "Set by --control for this run.";
+pub(crate) const AGENT_THIS_RUN: &str = "Set by --control for this run.";
 /// The primitives showcase's button (brief 037), named as its page.
 pub const PRIMITIVES: &str = ecad_widgets::showcase::PAGE;
 
@@ -62,7 +62,7 @@ pub enum Action {
 }
 
 /// The Agent access row's state, borrowed from the app.
-pub struct AgentRow<'a> {
+pub(crate) struct AgentRow<'a> {
     pub mode: Mode,
     pub port: &'a mut String,
     pub status: String,
@@ -117,7 +117,7 @@ pub struct Parts<'a> {
 
 /// The Agent access row: mode, port and status (design 035 §3.2). Since brief 042 it is drawn
 /// by Settings ▸ Agent access ([`crate::settings::agent`]), not by this section.
-pub fn agent_row(ui: &mut egui::Ui, a: AgentRow<'_>, out: &mut Vec<Action>) {
+pub(crate) fn agent_row(ui: &mut egui::Ui, a: AgentRow<'_>, out: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new("Agent access").small());
         let mut mode = a.mode;

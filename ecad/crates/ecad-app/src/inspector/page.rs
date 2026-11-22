@@ -25,10 +25,10 @@ use crate::shell::app::App;
 /// Accessible names (design 054 §8).
 pub const NOTES: &str = "ecad.page.notes";
 /// A block's Edit… button: `ecad.page.edit.<block>`.
-pub fn edit_name(b: Block) -> String {
+pub(crate) fn edit_name(b: Block) -> String {
     format!("ecad.page.edit.{}", b.entry().key.trim_start_matches("front.cover."))
 }
-pub const GOTO_TYPE: &str = "ecad.page.sheet.goto";
+pub(crate) const GOTO_TYPE: &str = "ecad.page.sheet.goto";
 
 /// One front kind's row.
 #[derive(Debug, Clone, PartialEq)]
@@ -160,7 +160,7 @@ pub fn current(t: &mut App) -> Option<PageView> {
 }
 
 /// The header's words: `Cover sheet · generated · page 01`.
-pub fn head_words(v: &PageView) -> (String, String) {
+pub(crate) fn head_words(v: &PageView) -> (String, String) {
     (v.title.clone(), format!("{} · generated · page {}", v.type_name, v.number))
 }
 

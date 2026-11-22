@@ -25,7 +25,7 @@ pub fn host() -> Host {
 ///
 /// # Errors
 /// The file manager could not be started.
-pub fn open_folder(folder: &Path) -> Result<(), String> {
+pub fn open_folder(folder: &Path) -> std::io::Result<()> {
     let program = if cfg!(target_os = "windows") {
         "explorer"
     } else if cfg!(target_os = "macos") {
@@ -33,7 +33,7 @@ pub fn open_folder(folder: &Path) -> Result<(), String> {
     } else {
         "xdg-open"
     };
-    std::process::Command::new(program).arg(folder).spawn().map(|_| ()).map_err(|e| format!("Could not open {}: {e}", folder.display()))
+    std::process::Command::new(program).arg(folder).spawn().map(|_| ())
 }
 
 fn now_ms() -> u64 {

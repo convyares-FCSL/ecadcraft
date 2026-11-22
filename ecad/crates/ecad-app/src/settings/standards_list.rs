@@ -14,14 +14,14 @@ use ecad_model::Document;
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
 
-pub const SETTING: ColumnId = ColumnId(0);
+pub(crate) const SETTING: ColumnId = ColumnId(0);
 pub const GROUP: ColumnId = ColumnId(1);
 pub const VALUE: ColumnId = ColumnId(2);
 pub const FROM: ColumnId = ColumnId(3);
 pub const KEY: ColumnId = ColumnId(4);
 
 /// The words of a source on a badge.
-pub fn source_word(s: Source) -> &'static str {
+pub(crate) fn source_word(s: Source) -> &'static str {
     match s {
         Source::Builtin => "Built-in",
         Source::Standard => "Standard",
@@ -35,7 +35,7 @@ pub fn source_word(s: Source) -> &'static str {
 }
 
 /// A badge's tone: the built-in and the standard are quiet, the overrides stand out.
-pub fn source_tone(s: Source) -> Tone {
+pub(crate) fn source_tone(s: Source) -> Tone {
     match s {
         Source::Builtin | Source::Standard | Source::Definition => Tone::Neutral,
         Source::Project | Source::Page => Tone::Ok,

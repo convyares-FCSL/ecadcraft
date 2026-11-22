@@ -14,7 +14,7 @@ pub struct Host {
     /// The person's login name; the top bar shows its initials.
     pub user: String,
     /// Open a folder in the system's file manager.
-    pub open_folder: fn(&Path) -> Result<(), String>,
+    pub open_folder: fn(&Path) -> std::io::Result<()>,
     /// The wall clock, milliseconds since the epoch.
     pub now_ms: fn() -> u64,
     /// `%H:%M:%S`-style local time of `ms` since the epoch: the format is `HH:MM:SS` when `seconds`
@@ -22,8 +22,8 @@ pub struct Host {
     pub local_time: fn(ms: u64, seconds: bool) -> String,
 }
 
-fn no_file_manager(folder: &Path) -> Result<(), String> {
-    Err(format!("Could not open {}: no file manager is available", folder.display()))
+fn no_file_manager(_: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "no file manager is available"))
 }
 
 fn system_now_ms() -> u64 {

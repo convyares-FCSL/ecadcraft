@@ -24,19 +24,19 @@ pub const TABLE: &str = "ecad.settings.pages.table";
 pub const ADD: &str = "ecad.settings.pages.add";
 pub const PROJECT: &str = "ecad.settings.pages.project";
 /// The header line (design 054 §5.1).
-pub const ABOUT: &str = "Each page type brings its own sheet. + Page asks which type and adds the page after the one you are on.";
+pub(crate) const ABOUT: &str = "Each page type brings its own sheet. + Page asks which type and adds the page after the one you are on.";
 /// Under the table.
-pub const LIBRARY_NOTE: &str = "Frames and title blocks are made in Library ▸ Title blocks.";
+pub(crate) const LIBRARY_NOTE: &str = "Frames and title blocks are made in Library ▸ Title blocks.";
 /// Under Position in the right panel (design 054 §5.3).
-pub const NUMBERS_NOTE: &str = "Pages are numbered by folder: set a folder's start number in the Book.";
+pub(crate) const NUMBERS_NOTE: &str = "Pages are numbered by folder: set a folder's start number in the Book.";
 /// The right panel's Checks and references switch (design 054 §3.4), and what it means.
-pub const CHECKS: &str = "ecad.settings.pages.checks";
-pub const CHECKS_NOTE: &str = "Off: pages of this type get no electrical checks, no cross-references and no device or wire numbering. Plain uses it for imported drawings and notes.";
+pub(crate) const CHECKS: &str = "ecad.settings.pages.checks";
+pub(crate) const CHECKS_NOTE: &str = "Off: pages of this type get no electrical checks, no cross-references and no device or wire numbering. Plain uses it for imported drawings and notes.";
 /// Row height and thumbnail size (design 054 §5.2).
 pub const ROW_H: f32 = 58.0;
-pub const THUMB: egui::Vec2 = vec2(52.0, 36.0);
+pub(crate) const THUMB: egui::Vec2 = vec2(52.0, 36.0);
 /// The right panel's width.
-pub const PANEL_W: f32 = 400.0;
+pub(crate) const PANEL_W: f32 = 400.0;
 
 /// One page type as the table shows it.
 #[derive(Debug, Clone, PartialEq)]
@@ -88,7 +88,7 @@ pub struct PagesView {
 }
 
 /// `A3 landscape`, `600×400 landscape`.
-pub fn sheet_words(s: &SheetSpec) -> String {
+pub(crate) fn sheet_words(s: &SheetSpec) -> String {
     match s.preset_name() {
         Some(n) => format!("{n} landscape"),
         None => format!("{}×{} landscape", s.width, s.height),
@@ -96,7 +96,7 @@ pub fn sheet_words(s: &SheetSpec) -> String {
 }
 
 /// `A–F × 1–8`: the zone grid of a sheet.
-pub fn zone_words(s: &SheetSpec) -> String {
+pub(crate) fn zone_words(s: &SheetSpec) -> String {
     let label = |l: GridLabels, n: u32| l.label(n);
     format!(
         "{}–{} × {}–{}",
@@ -108,7 +108,7 @@ pub fn zone_words(s: &SheetSpec) -> String {
 }
 
 /// `A3 standard`: a title block layout's name on a sheet.
-pub fn title_block_words(s: &SheetSpec) -> String {
+pub(crate) fn title_block_words(s: &SheetSpec) -> String {
     format!("{} standard", s.preset_name().map_or_else(|| format!("{}×{}", s.width, s.height), str::to_string))
 }
 
@@ -155,7 +155,7 @@ fn head(t: &mut App) -> Option<u64> {
 /// Paint a type's thumbnail glyph (design 054 §5.2): lines for front, the schematic glyph, nodes
 /// for network, a tree for single-line, plate and door for panel, a ruled table for report. An own
 /// type takes the glyph of what it holds.
-pub fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
+pub(crate) fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
     let (paper, ink) =
         (ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER), ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_INK));
     p.rect_filled(r, 2.0, paper);

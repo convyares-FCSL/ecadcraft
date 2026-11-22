@@ -32,7 +32,7 @@ use eframe::egui::{self, RichText};
 use {ecad_widgets::Icon, ecad_widgets::SHELL, ecad_widgets::color};
 
 /// The ECAD Dev Debugger button's hover text.
-pub const HOVER: &str = "Read-only developer debugger: selection → ECAD IDs → model → transactions → saved records";
+pub(crate) const HOVER: &str = "Read-only developer debugger: selection → ECAD IDs → model → transactions → saved records";
 
 /// Rows per page in long lists.
 pub const PAGE: usize = 100;
@@ -858,11 +858,7 @@ impl Debugger {
         }
         let dropped = self.jobs.dropped();
         if dropped > 0 {
-            prim::body(
-                ui,
-                &format!("{dropped} result{} dropped: the project changed while the check ran.", ecad_widgets::plural(dropped)),
-                true,
-            );
+            prim::body(ui, &format!("{dropped} result{} dropped: the project changed while the check ran.", ecad_widgets::plural(dropped)), true);
         }
         for r in self.checks.iter().rev() {
             let head = format!("{} {} at seq {}, {}", if r.check.ok { "PASS" } else { "FAIL" }, r.check.what, r.check.at_seq, r.time);

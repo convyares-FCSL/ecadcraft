@@ -33,9 +33,9 @@ pub const PAUSE: &str = "agent.banner.pause";
 pub const DISCONNECT: &str = "agent.banner.disconnect";
 pub const DISMISS: &str = "agent.banner.dismiss";
 /// The Undo session button's tooltip when nothing is left to undo.
-pub const NOTHING_TO_UNDO: &str = "Nothing of this session is left to undo";
+pub(crate) const NOTHING_TO_UNDO: &str = "Nothing of this session is left to undo";
 /// The Undo session button's reason while the person is in the middle of a command.
-pub const FINISH_FIRST: &str = "Finish the command first";
+pub(crate) const FINISH_FIRST: &str = "Finish the command first";
 /// The banner's ground: its state's colour at this opacity, %, over the panel.
 const GROUND_PERCENT: u8 = 8;
 
@@ -201,7 +201,7 @@ fn named(r: &egui::Response, role: egui::Role, name: &str) {
 /// The colour of a shown state (spec §2, design 035 §7.2): `agent` while it works, `warning`
 /// while a write waits or writes are paused, `text_2` when reading only or finished, `error` when
 /// access stopped.
-pub fn state_color(state: BannerState) -> Color {
+pub(crate) fn state_color(state: BannerState) -> Color {
     let s = ecad_widgets::SHELL;
     match state {
         BannerState::Connected | BannerState::Writing => s.agent,
@@ -222,13 +222,13 @@ pub fn state_tone(state: BannerState) -> Tone {
 }
 
 /// `connected since 14:02` from the wall clock of the hello (ms since the epoch).
-pub fn since_text(since_ms: u64) -> String {
+pub(crate) fn since_text(since_ms: u64) -> String {
     let t = clock(since_ms);
     format!("connected since {}", t.get(..5).unwrap_or(&t))
 }
 
 /// The Undo session button's text: `Undo session (12)`.
-pub fn undo_text(steps: usize) -> String {
+pub(crate) fn undo_text(steps: usize) -> String {
     format!("Undo session ({steps})")
 }
 
@@ -242,7 +242,7 @@ pub fn hidden(ctx: &egui::Context, session: &str) -> bool {
 }
 
 /// Hide the banner of `session`, or show it again.
-pub fn toggle_hidden(ctx: &egui::Context, session: &str) {
+pub(crate) fn toggle_hidden(ctx: &egui::Context, session: &str) {
     let now = hidden(ctx, session);
     ctx.data_mut(|d| {
         if now {
@@ -350,7 +350,7 @@ pub fn show(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool, since_ms: Optio
 /// fallback; the shell draws [`show`]): the controls first, so they never move when the text changes, then
 /// the agent, its state, the last change (a link to History) and the rest. Returns the control
 /// clicked.
-pub fn show_line(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool) -> Option<BannerAction> {
+pub(crate) fn show_line(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool) -> Option<BannerAction> {
     let now = Instant::now();
     let state = banner.shown_state(now);
     let mut out = None;

@@ -15,18 +15,18 @@ use serde_json::{Value, json};
 use crate::shell::bar;
 
 /// Accessible labels of the popouts.
-pub const SNAP: &str = "Snap settings";
+pub(crate) const SNAP: &str = "Snap settings";
 pub const GRID: &str = "Grid settings";
 pub const ORTHO: &str = "Ortho settings";
 
 /// Spacings offered (mm), and major-line counts.
-pub const SNAP_STEPS: [f64; 4] = [0.5, 1.0, 2.5, 5.0];
-pub const GRID_STEPS: [f64; 4] = [2.5, 5.0, 10.0, 20.0];
-pub const MAJOR_STEPS: [u32; 3] = [4, 5, 10];
+pub(crate) const SNAP_STEPS: [f64; 4] = [0.5, 1.0, 2.5, 5.0];
+pub(crate) const GRID_STEPS: [f64; 4] = [2.5, 5.0, 10.0, 20.0];
+pub(crate) const MAJOR_STEPS: [u32; 3] = [4, 5, 10];
 
 /// Why the greyed options are greyed.
-pub const ALWAYS_POINTS: &str = "Always on: ECAD's tools snap to connection points.";
-pub const ONE_STYLE: &str = "One grid style for now: dots.";
+pub(crate) const ALWAYS_POINTS: &str = "Always on: ECAD's tools snap to connection points.";
+pub(crate) const ONE_STYLE: &str = "One grid style for now: dots.";
 
 /// Ortho's three ways.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +57,7 @@ pub fn is_on(s: &Settings, command: &str) -> bool {
 }
 
 /// The commands for Ortho set to `o`.
-pub fn set_ortho(o: Ortho) -> Vec<(&'static str, Value)> {
+pub(crate) fn set_ortho(o: Ortho) -> Vec<(&'static str, Value)> {
     match o {
         Ortho::Right => vec![("polar", json!({"on": false})), ("ortho", json!({"on": true}))],
         Ortho::Steps45 => vec![("ortho", json!({"on": false})), ("dsettings", json!({"polarang": 45.0})), ("polar", json!({"on": true}))],

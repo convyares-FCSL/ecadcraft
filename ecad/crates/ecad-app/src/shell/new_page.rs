@@ -23,9 +23,9 @@ use crate::shell::bar;
 /// Accessible names (design 054 §4.1).
 pub const PICKER: &str = "ecad.newpage.picker";
 /// Panel layout's tooltip (Q3).
-pub const PANEL_LATER: &str = "Panel layout pages come with the panel layout page.";
+pub(crate) const PANEL_LATER: &str = "Panel layout pages come with the panel layout page.";
 /// The list's width and row height.
-pub const WIDTH: f32 = 220.0;
+pub(crate) const WIDTH: f32 = 220.0;
 pub const ROW_H: f32 = 28.0;
 
 /// One generated kind offered under Front sheet or Report.
@@ -379,7 +379,7 @@ impl App {
 
 /// Where the picker opens for a + at `rect`: centred on it, above it when it is in the lower half
 /// of the window.
-pub fn anchor_of(ctx: &egui::Context, rect: Rect) -> (Pos2, bool) {
+pub(crate) fn anchor_of(ctx: &egui::Context, rect: Rect) -> (Pos2, bool) {
     let above = rect.center().y > ctx.content_rect().center().y;
     (if above { rect.center_top() } else { rect.center_bottom() }, above)
 }

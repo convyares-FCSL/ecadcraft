@@ -15,10 +15,10 @@ use crate::inspector::{Cx, InspectorAction, fields};
 
 /// Accessible names.
 pub const ROTATION: &str = "ecad.inspector.layout.rotation";
-pub const MIRROR: &str = "ecad.inspector.layout.mirror";
+pub(crate) const MIRROR: &str = "ecad.inspector.layout.mirror";
 pub const CONTACT_TABLE: &str = "ecad.inspector.layout.contacts";
-pub const CONTACT_ROWS: &str = "ecad.inspector.layout.contact-rows";
-pub const RESET_TEXTS: &str = "Reset to standard";
+pub(crate) const CONTACT_ROWS: &str = "ecad.inspector.layout.contact-rows";
+pub(crate) const RESET_TEXTS: &str = "Reset to standard";
 
 /// A slot's name on the sheet.
 fn slot_words(k: TextKind) -> &'static str {

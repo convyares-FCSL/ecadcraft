@@ -10,14 +10,14 @@ use eframe::egui::{self, Rect, pos2};
 pub const GRID_MM: f64 = 5.0;
 pub const DOT_MM: f64 = 0.25;
 /// Dots closer than this on screen are not drawn (the grid would be a tint), px.
-pub const MIN_PITCH_PX: f64 = 10.0;
+pub(crate) const MIN_PITCH_PX: f64 = 10.0;
 /// Most dots drawn in one frame; above it the grid is left out.
-pub const MAX_DOTS: usize = 20_000;
+pub(crate) const MAX_DOTS: usize = 20_000;
 /// How much of the drawing outside the sheet still shows through the surround, % opaque.
 const SURROUND_PERCENT: u8 = 88;
 
 /// A drawing rectangle on screen.
-pub fn screen_rect(xf: &Xf, lo: ecad_model::Pt, hi: ecad_model::Pt) -> Rect {
+pub(crate) fn screen_rect(xf: &Xf, lo: ecad_model::Pt, hi: ecad_model::Pt) -> Rect {
     let a = xf.to_screen(Vec2::new(lo.x, lo.y));
     let b = xf.to_screen(Vec2::new(hi.x, hi.y));
     Rect::from_two_pos(a, b)

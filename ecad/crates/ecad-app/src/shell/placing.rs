@@ -30,12 +30,12 @@ pub const CHIP: &str = "Placing";
 pub const CHANGE: &str = "Change symbol";
 pub const SEARCH: &str = "Search symbols";
 pub const FIELD: &str = "Find a symbol";
-pub const BROWSE: &str = "Browse the library";
-pub const SYMBOL_TAB: &str = "Symbol";
-pub const CONNECTOR_TAB: &str = "Connector";
+pub(crate) const BROWSE: &str = "Browse the library";
+pub(crate) const SYMBOL_TAB: &str = "Symbol";
+pub(crate) const CONNECTOR_TAB: &str = "Connector";
 
 /// The panel's width (board 1.12), its tiles per row and most tiles shown.
-pub const WIDTH: f32 = 396.0;
+pub(crate) const WIDTH: f32 = 396.0;
 const COLUMNS: usize = 3;
 const MAX_TILES: usize = 9;
 const TILE_H: f32 = 104.0;
@@ -62,7 +62,7 @@ pub struct State {
 /// The built-in symbol a typed answer to "Enter symbol" names: its key, or the one symbol the
 /// text finds (as the tool takes one match). `None` for a device tag, a project symbol or an
 /// answer that matches several.
-pub fn typed_symbol(text: &str) -> Option<symbols::StarterKey> {
+pub(crate) fn typed_symbol(text: &str) -> Option<symbols::StarterKey> {
     let t = text.trim();
     if let Some(s) = symbols::catalogue::by_key(t) {
         return Some(s.key);
@@ -83,7 +83,7 @@ pub enum Shown {
 
 /// The tag a Place Symbol prompt names ("… (new device -K02, rotation 0)" or "… (joins -K01 as
 /// 13/14, …)"), if it names one.
-pub fn tag_in(prompt: &str) -> Option<String> {
+pub(crate) fn tag_in(prompt: &str) -> Option<String> {
     let after = ["new device ", "joins "].iter().find_map(|w| prompt.split_once(w).map(|(_, rest)| rest))?;
     let tag: String = after.chars().take_while(|c| !c.is_whitespace() && *c != ',' && *c != ')').collect();
     (!tag.is_empty()).then_some(tag)

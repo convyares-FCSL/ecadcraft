@@ -88,7 +88,8 @@ impl App {
     pub fn save_as(&mut self, path: &str) -> Result<(), String> {
         self.focus_project()?;
         let target = ecad_engine::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
-        ecad_engine::ensure_default_folder(&target, &crate::shell::host::host().default_folder, self.home.as_deref())?;
+        ecad_engine::ensure_default_folder(&target, &crate::shell::host::host().default_folder, self.home.as_deref())
+            .map_err(|e| format!("{target}: {e}"))?;
         let r = self.cad.run("saveas", json!({ "path": target })).map(|_| ());
         self.after_logic();
         r
@@ -301,7 +302,9 @@ impl App {
         let p = self.project.as_ref().ok_or("there is no project")?;
         let snap = p.snapshot(&mut self.cad.session, None)?;
         self.snapshot_count += 1;
-        let path = ecad_engine::dev::snapshot::write_snapshot_file(&snap, &dir, why, self.snapshot_count, (crate::shell::host::host().now_ms)() / 1000)?;
+        let path =
+            ecad_engine::dev::snapshot::write_snapshot_file(&snap, &dir, why, self.snapshot_count, (crate::shell::host::host().now_ms)() / 1000)
+                .map_err(|e| format!("{}: {e}", dir.display()))?;
         self.cad.session.echo(format!("Snapshot written: {} ({SNAPSHOT_NOTE})", path.display()));
         Ok(path)
     }

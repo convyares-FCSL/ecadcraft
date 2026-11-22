@@ -13,11 +13,11 @@ use crate::shell::placing::{Shown, tag_in};
 
 /// Accessible names.
 pub const CHANGES: &str = "ecad.inspector.placing.changes";
-pub const NOT_PLACED: &str = "not placed yet";
+pub(crate) const NOT_PLACED: &str = "not placed yet";
 
 /// What the inspector knows about the device being placed.
 #[derive(Debug, Clone)]
-pub struct Placing {
+pub(crate) struct Placing {
     /// `-K02` (a new device) or `-K01` (another symbol of it); `None` until the tool names it.
     pub tag: Option<String>,
     /// The symbol joins an existing device.

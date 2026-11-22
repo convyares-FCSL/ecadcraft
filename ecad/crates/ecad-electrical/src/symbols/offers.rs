@@ -28,7 +28,7 @@ pub fn same(a: Pt, b: Pt) -> bool {
 }
 
 /// Whether `text` reads like a tag (`-` then letters then digits), so it is offered as the Tag slot.
-pub fn looks_like_tag(text: &str) -> bool {
+pub(crate) fn looks_like_tag(text: &str) -> bool {
     let Some(rest) = text.trim().strip_prefix('-') else { return false };
     let letters = rest.chars().take_while(char::is_ascii_alphabetic).count();
     let digits = rest.chars().skip(letters).take_while(char::is_ascii_digit).count();

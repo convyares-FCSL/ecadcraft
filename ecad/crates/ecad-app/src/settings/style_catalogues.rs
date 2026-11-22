@@ -23,14 +23,14 @@ use eframe::egui::{self, RichText};
 use crate::settings::standards_list::{source_tone, source_word};
 
 /// Accessible names (design 050 §9).
-pub const DETAIL: &str = "ecad.standards.style";
+pub(crate) const DETAIL: &str = "ecad.standards.style";
 pub const CONSEQUENCE: &str = "ecad.standards.style.consequence";
 pub const APPLY: &str = "ecad.standards.style.apply";
 pub const NEW: &str = "ecad.standards.style.new";
 pub const RENAME: &str = "ecad.standards.style.rename";
-pub const DELETE: &str = "ecad.standards.style.delete";
-pub const REPLACE_WITH: &str = "ecad.standards.style.replace_with";
-pub const PROMOTE: &str = "ecad.standards.style.promote";
+pub(crate) const DELETE: &str = "ecad.standards.style.delete";
+pub(crate) const REPLACE_WITH: &str = "ecad.standards.style.replace_with";
+pub(crate) const PROMOTE: &str = "ecad.standards.style.promote";
 
 const NAME: ColumnId = ColumnId(0);
 const LAYER: ColumnId = ColumnId(1);
@@ -282,7 +282,7 @@ pub fn consequence(cat: &Catalogue, d: &Detail, field: &str, from: &str, to: &st
 
 /// What the detail asks the screen for.
 #[derive(Debug, Clone, PartialEq)]
-pub enum DetailAction {
+pub(crate) enum DetailAction {
     /// Run this command line.
     Run(String),
 }
@@ -308,7 +308,7 @@ fn quote(s: &str) -> String {
 /// Draw the style detail of `d` (design 050 §7.2): the consequence line first, then each field's
 /// chain with its editor and Reset per level, then New style from this, Rename, Delete… and
 /// Promote to standard. Returns the command lines to run.
-pub fn show_detail(
+pub(crate) fn show_detail(
     ui: &mut egui::Ui, cat: &Catalogue, d: &Detail, st: &mut DetailState, writable: bool, others: &[(String, String)],
 ) -> Vec<DetailAction> {
     let mut out = Vec::new();

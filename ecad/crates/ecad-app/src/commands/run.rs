@@ -2,9 +2,7 @@
 //! debugger's actions, branch and merge questions, Renumber, and going to places in the drawing.
 
 use crate::shell::app::*;
-use crate::{
-    developer, settings, shell,
-};
+use crate::{developer, settings, shell};
 use ecad_model::PageId;
 use eframe::egui::{self};
 use serde_json::json;

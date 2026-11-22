@@ -239,12 +239,12 @@ mod tests {
 /// snapshot writer (the app only says where, why and when). Returns the file written.
 ///
 /// # Errors
-/// The folder or file could not be written, in words.
-pub fn write_snapshot_file(snap: &Value, dir: &std::path::Path, why: &str, count: u32, stamp: u64) -> Result<std::path::PathBuf, String> {
+/// The folder or file could not be written.
+pub fn write_snapshot_file(snap: &Value, dir: &std::path::Path, why: &str, count: u32, stamp: u64) -> std::io::Result<std::path::PathBuf> {
     let head = snap.get("seq").and_then(Value::as_u64).unwrap_or(0);
     let path = dir.join(format!("ecad-desktop-{stamp}-{count:02}-seq{head:03}-{why}.json"));
-    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let bytes = serde_json::to_vec_pretty(snap).map_err(|e| e.to_string())?;
-    std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    std::fs::create_dir_all(dir)?;
+    let bytes = serde_json::to_vec_pretty(snap).map_err(std::io::Error::other)?;
+    std::fs::write(&path, bytes)?;
     Ok(path)
 }

@@ -1,7 +1,7 @@
 //! Reports, Print Book and Release (briefs 024 and 027).
 
-use crate::shell::app::*;
 use crate::shell;
+use crate::shell::app::*;
 use ecad_model::PageId;
 use eframe::egui::{self};
 use serde_json::json;

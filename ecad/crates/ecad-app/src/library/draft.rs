@@ -21,15 +21,15 @@ use serde_json::{Value, json};
 /// The eframe storage key of the drafts (design 048 §3.2).
 pub const DRAFTS_KEY: &str = "symbol_drafts";
 /// Most drafts kept per project (the oldest goes first).
-pub const MAX_DRAFTS: usize = 8;
+pub(crate) const MAX_DRAFTS: usize = 8;
 /// Most undo steps a draft keeps.
-pub const MAX_UNDO: usize = 200;
+pub(crate) const MAX_UNDO: usize = 200;
 /// The builder's drawing grid (`ecad.builder-grid-minor`), millimetres.
 pub const GRID_MM: f64 = 2.5;
 /// A new text's height, millimetres.
 pub const TEXT_MM: f64 = 2.5;
 /// The name field's placeholder: a new draft has no name yet.
-pub const NEW_NAME: &str = "New symbol";
+pub(crate) const NEW_NAME: &str = "New symbol";
 
 /// Where the draft came from, which says how Save writes it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -114,7 +114,7 @@ pub struct Missing {
 
 /// The device texts a slot may show, in chip order, with the sample each draws (design 048 §3.3
 /// step 4).
-pub const SLOT_TEXTS: [(&str, &str, &str); 8] = [
+pub(crate) const SLOT_TEXTS: [(&str, &str, &str); 8] = [
     ("tag", "Tag", "-K01"),
     ("description", "Description", "Description"),
     ("rating", "Rating", "10 A"),
@@ -126,12 +126,12 @@ pub const SLOT_TEXTS: [(&str, &str, &str); 8] = [
 ];
 
 /// The chip label of slot text `text`.
-pub fn slot_label(text: &str) -> String {
+pub(crate) fn slot_label(text: &str) -> String {
     SLOT_TEXTS.iter().find(|(t, _, _)| *t == text).map_or_else(|| text.to_string(), |(_, l, _)| l.to_string())
 }
 
 /// The sample slot text `text` draws in the builder.
-pub fn slot_sample(text: &str, prefix: &str) -> String {
+pub(crate) fn slot_sample(text: &str, prefix: &str) -> String {
     if text == "tag" {
         let p = if prefix.trim().is_empty() { "K" } else { prefix.trim() };
         return format!("-{p}01");
@@ -684,7 +684,6 @@ mod tests {
         assert_eq!(at, [100.0, 100.0]);
     }
 
-
     #[test]
     fn drafts_keep_at_most_eight_per_project() {
         let mut s = Drafts::default();
@@ -697,7 +696,6 @@ mod tests {
         let back = Drafts::from_stored(Some(&s.to_stored()));
         assert_eq!(back.of("p").len(), MAX_DRAFTS);
     }
-
 
     #[test]
     fn free_ends_on_the_grid_and_a_tag_like_text_are_offered() {

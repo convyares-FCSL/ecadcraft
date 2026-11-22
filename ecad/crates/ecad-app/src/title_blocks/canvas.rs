@@ -16,12 +16,12 @@ use crate::title_blocks::list::{Drops, PALETTE};
 use crate::title_blocks::{Act, DxfAsk, Editor, Sample, Tool};
 
 /// Element names.
-pub const LOGO_PATH: &str = "library.tb.logo.path";
-pub const LOGO_GO: &str = "library.tb.logo.go";
+pub(crate) const LOGO_PATH: &str = "library.tb.logo.path";
+pub(crate) const LOGO_GO: &str = "library.tb.logo.go";
 /// The footer's height.
-pub const FOOTER_H: f32 = 32.0;
+pub(crate) const FOOTER_H: f32 = 32.0;
 /// The frame shown around the block (mm).
-pub const AROUND_MM: f64 = 20.0;
+pub(crate) const AROUND_MM: f64 = 20.0;
 /// A handle's half size (px).
 const HANDLE: f32 = 4.0;
 
@@ -100,7 +100,7 @@ pub struct CanvasState {
 }
 
 /// The next free place in the block's top-left for a box of `size` (its top-left corner).
-pub fn free_place(l: &TitleBlockLayout, size: (f64, f64)) -> (f64, f64) {
+pub(crate) fn free_place(l: &TitleBlockLayout, size: (f64, f64)) -> (f64, f64) {
     let (w, h) = l.size;
     let taken: Vec<BRect> = l.items.iter().filter_map(|i| i.bounds()).collect();
     let mut y = h - 1.0;
@@ -120,7 +120,7 @@ pub fn free_place(l: &TitleBlockLayout, size: (f64, f64)) -> (f64, f64) {
 
 /// `p` snapped (design 055 §4.5): to item edges and line ends within 1.5 mm, else to 1 mm.
 /// Also whether it snapped to an item.
-pub fn snap_point(p: (f64, f64), l: &TitleBlockLayout, on: bool) -> ((f64, f64), bool) {
+pub(crate) fn snap_point(p: (f64, f64), l: &TitleBlockLayout, on: bool) -> ((f64, f64), bool) {
     if !on {
         return ((draft::snap(p.0, false), draft::snap(p.1, false)), false);
     }

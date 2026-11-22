@@ -23,9 +23,9 @@ use crate::shell::{ListsView, in_rect};
 /// The head's height (the tab strip and the actions), px.
 pub const HEAD: f32 = 48.0;
 /// The foot's height, px.
-pub const FOOT: f32 = 32.0;
+pub(crate) const FOOT: f32 = 32.0;
 /// A tab's height in the strip, px.
-pub const TAB_H: f32 = 30.0;
+pub(crate) const TAB_H: f32 = 30.0;
 
 /// The tabs, in the tool strip's order; a divider after PLC and after Cables (board 2.01).
 pub const TABS: [ListsView; 6] =
@@ -33,28 +33,28 @@ pub const TABS: [ListsView; 6] =
 
 /// The head's buttons.
 pub const IMPORT: &str = "Import";
-pub const IMPORT_LIST: &str = "Import a list";
-pub const IMPORT_IO: &str = "Import an I/O list";
+pub(crate) const IMPORT_LIST: &str = "Import a list";
+pub(crate) const IMPORT_IO: &str = "Import an I/O list";
 pub const EXPORT: &str = "Export";
 pub const OPEN_BESIDE: &str = "Open beside the page";
 /// Brief 057 (owner): Project ▸ Cables opens as a list; Details opens the selected cable below it.
 pub const DETAILS: &str = "Details";
 pub const CLOSE_BESIDE: &str = "Close the page beside";
-pub const RENUMBER: &str = "Renumber\u{2026}";
-pub const REGENERATE: &str = "Regenerate all";
-pub const NEW_REPORT: &str = "+ New report";
+pub(crate) const RENUMBER: &str = "Renumber\u{2026}";
+pub(crate) const REGENERATE: &str = "Regenerate all";
+pub(crate) const NEW_REPORT: &str = "+ New report";
 /// Why Import is greyed (no importer is built yet).
-pub const IMPORT_COMES: &str = "Importing a list comes later.";
+pub(crate) const IMPORT_COMES: &str = "Importing a list comes later.";
 /// The footer's sentence (design 056 §8).
-pub fn overview_words(page: &str) -> String {
+pub(crate) fn overview_words(page: &str) -> String {
     format!("This overview is also page {page} of the book: generated, always current, each card a link to its page.")
 }
 /// Why the report generator's buttons are greyed (brief 2.9 is not built yet).
-pub const REPORTS_COME: &str = "The report generator comes later.";
+pub(crate) const REPORTS_COME: &str = "The report generator comes later.";
 
 /// The foot's legend words.
-pub const LEGEND_INPUT: &str = "you set it here";
-pub const LEGEND_READ: &str = "read from the drawing, go to its page to change it";
+pub(crate) const LEGEND_INPUT: &str = "you set it here";
+pub(crate) const LEGEND_READ: &str = "read from the drawing, go to its page to change it";
 
 /// The head, the body and the foot of `main`.
 pub fn layout(main: Rect) -> (Rect, Rect, Rect) {
@@ -65,7 +65,7 @@ pub fn layout(main: Rect) -> (Rect, Rect, Rect) {
 }
 
 /// Where the Reports tab hosts today's Reports window: its preview, under the list of reports.
-pub fn reports_preview(main: Rect) -> Rect {
+pub(crate) fn reports_preview(main: Rect) -> Rect {
     let (_, body, _) = layout(main);
     let top = (body.top() + crate::reports::list::LIST_H).min(body.bottom());
     Rect::from_min_max(pos2(body.left(), top), body.max)

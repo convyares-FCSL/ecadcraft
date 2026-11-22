@@ -42,14 +42,14 @@ pub fn path_exists(path: &std::path::Path) -> bool {
 /// is made. `default` and `target` are typed paths (`~` is `home`).
 ///
 /// # Errors
-/// The folder could not be made, in words.
-pub fn ensure_default_folder(target: &str, default: &str, home: Option<&std::path::Path>) -> Result<(), String> {
+/// The folder could not be made.
+pub fn ensure_default_folder(target: &str, default: &str, home: Option<&std::path::Path>) -> std::io::Result<()> {
     if let Some(dir) = std::path::Path::new(target).parent()
         && let Ok(default) = expand_home(default, home)
         && same_path(dir, &default)
         && !dir.exists()
     {
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        std::fs::create_dir_all(dir)?;
     }
     Ok(())
 }

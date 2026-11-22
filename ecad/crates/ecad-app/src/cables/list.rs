@@ -100,9 +100,6 @@ impl ReportColumns for CablesSource {
     fn rows(&self) -> &ReportRows {
         &self.rows
     }
-    fn cols(&self) -> &[Column] {
-        &self.cols
-    }
     fn from(&self, col: ColumnId) -> From {
         match col {
             CABLE => From::Header("Tag"),
@@ -255,9 +252,6 @@ impl Default for CoresSource {
 impl ReportColumns for CoresSource {
     fn rows(&self) -> &ReportRows {
         &self.rows
-    }
-    fn cols(&self) -> &[Column] {
-        &self.cols
     }
     fn from(&self, col: ColumnId) -> From {
         match col {

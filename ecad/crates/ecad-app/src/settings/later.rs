@@ -11,7 +11,7 @@ use crate::shell::app::App;
 
 /// Accessible names.
 pub const REVISIONS: &str = "settings.versions.revisions";
-pub const LIBRARIES: &str = "settings.libraries.sources";
+pub(crate) const LIBRARIES: &str = "settings.libraries.sources";
 
 /// The keys, read only (the shell's keys and the action table's; [`crate::shell::keys`]).
 pub const KEYS: &[(&str, &str)] = &[
@@ -38,7 +38,7 @@ pub const KEYS: &[(&str, &str)] = &[
 ];
 
 /// Settings ▸ Libraries: the sources the Library reads, with their counts.
-pub fn libraries(t: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn libraries(t: &mut App, ui: &mut egui::Ui) {
     let builtin = ecad_electrical::symbols::catalogue::STARTERS.len();
     let project = t
         .project
@@ -98,7 +98,7 @@ pub fn versions(t: &mut App, ui: &mut egui::Ui) {
 }
 
 /// Settings ▸ Shortcuts: the keys, read only.
-pub fn shortcuts(ui: &mut egui::Ui) {
+pub(crate) fn shortcuts(ui: &mut egui::Ui) {
     ui.set_max_width(760.0);
     card(
         ui,

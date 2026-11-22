@@ -24,12 +24,12 @@ pub const SAVE: &str = "library.details.save";
 pub const SAVE_AS: &str = "library.details.saveas";
 pub const CANCEL: &str = "library.details.cancel";
 pub const DISCARD: &str = "library.details.discard";
-pub const KEEP: &str = "library.details.keep";
+pub(crate) const KEEP: &str = "library.details.keep";
 pub const ACCEPT_ALL: &str = "library.details.offers.accept";
 pub const REPLACE: &str = "library.details.replace";
 pub const REFUSAL: &str = "library.details.refusal";
 /// The built-in banner (design 048 §3.4).
-pub const BUILTIN_BANNER: &str = "Built-in symbol. Saving makes a project copy; the built-in stays as it is.";
+pub(crate) const BUILTIN_BANNER: &str = "Built-in symbol. Saving makes a project copy; the built-in stays as it is.";
 /// Save's reason with writes off.
 pub const WRITES_OFF: &str = "Writes are off for this project.";
 
@@ -236,7 +236,9 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
                 ecad_electrical::symbols::offers::Offer::Point { at } => {
                     ("Line end".to_string(), format!("Offered as connection point {next} at {}, {}", draft::fmt_mm(at.x), draft::fmt_mm(at.y)))
                 }
-                ecad_electrical::symbols::offers::Offer::Slot { text, .. } => (format!("The text \"{text}\""), "Offered as the tag slot; else kept as lettering".to_string()),
+                ecad_electrical::symbols::offers::Offer::Slot { text, .. } => {
+                    (format!("The text \"{text}\""), "Offered as the tag slot; else kept as lettering".to_string())
+                }
             };
             let r = ui.horizontal(|ui| {
                 ui.vertical(|ui| {

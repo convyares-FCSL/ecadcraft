@@ -19,9 +19,9 @@ use eframe::egui;
 use serde_json::{Value, json};
 
 /// Changes listed before Show all.
-pub const CHANGES_SHOWN: usize = 20;
+pub(crate) const CHANGES_SHOWN: usize = 20;
 /// The undo-merge question's window id.
-pub const UNDO_MERGE_ID: &str = "ecad.undomerge";
+pub(crate) const UNDO_MERGE_ID: &str = "ecad.undomerge";
 
 /// What the dialog asks the app to do.
 #[derive(Debug, Clone, PartialEq)]

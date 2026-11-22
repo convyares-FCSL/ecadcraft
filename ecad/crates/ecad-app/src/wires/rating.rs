@@ -16,7 +16,7 @@ use eframe::egui::{self, Stroke, pos2, vec2};
 use serde_json::{Value, json};
 
 /// Element names (design 057 §9).
-pub const SECTION: &str = "ecad.project.detail.rating";
+pub(crate) const SECTION: &str = "ecad.project.detail.rating";
 
 /// What the section shows.
 #[derive(Debug, Clone, PartialEq)]
@@ -116,8 +116,7 @@ fn rows(r: &Rating) -> Vec<Row> {
         Basis::Table => {
             if let Some((a, size, method)) = r.table_value {
                 let name = r.table.as_ref().map(|(n, _)| n.clone()).unwrap_or_default();
-                let mut x =
-                    row("Table", dataset::amps_text(a), format!("{} \u{b7} {method} \u{b7} {name}", dataset::area_text(size)));
+                let mut x = row("Table", dataset::amps_text(a), format!("{} \u{b7} {method} \u{b7} {name}", dataset::area_text(size)));
                 x.tip = r
                     .table
                     .as_ref()
@@ -180,8 +179,7 @@ fn after(r: &Rating) -> Vec<Row> {
     }
     let cable = matches!(r.subject, RatedSubject::Cable(_));
     if let Some(l) = r.load {
-        let mut x =
-            row("Load", dataset::amps_text(l.amps), if l.from == circuits::load::LoadFrom::Typed { "typed" } else { "from Power" });
+        let mut x = row("Load", dataset::amps_text(l.amps), if l.from == circuits::load::LoadFrom::Typed { "typed" } else { "from Power" });
         x.edit = Some("load");
         v.push(x);
     } else if cable {

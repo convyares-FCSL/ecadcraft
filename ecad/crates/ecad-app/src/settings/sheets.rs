@@ -23,9 +23,7 @@ use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui;
 use serde_json::{Map, Value, json};
 
-/// Element names (design 019 §10).
-pub const PROJECT_PROPS_ID: &str = "ecad.projectprops";
-pub const REVISIONS_ID: &str = "ecad.revisions";
+pub(crate) const REVISIONS_ID: &str = "ecad.revisions";
 pub const ISSUE_UNDO_ID: &str = "ecad.issueundo";
 
 /// The fields of the dialog's top group: key, label.
@@ -63,8 +61,8 @@ pub enum Part {
 }
 
 /// Element names of the two popouts (now the id salts of their Settings sections).
-pub const PROJECT_INFO_ID: &str = "ecad.projectinfo";
-pub const PROJECT_SETTINGS_ID: &str = "ecad.projectsettings";
+pub(crate) const PROJECT_INFO_ID: &str = "ecad.projectinfo";
+pub(crate) const PROJECT_SETTINGS_ID: &str = "ecad.projectsettings";
 
 /// The Project info or Project settings popout (design 019 §7.1, split by the owner): a copy of
 /// the project's properties and settings taken when it opens; OK writes the changed fields as one
@@ -923,7 +921,7 @@ impl Revisions {
 
 /// The question a plain `u` across an issued revision stops at (owner answer Q7). Returns
 /// `Some(true)` to undo the issue, `Some(false)` to keep it.
-pub fn issue_undo(ctx: &egui::Context, question: &str) -> Option<bool> {
+pub(crate) fn issue_undo(ctx: &egui::Context, question: &str) -> Option<bool> {
     let shown = Dialog::new(egui::Id::unique(ISSUE_UNDO_ID), "Undo the issue?", ISSUE_UNDO_ID).small().show(
         ctx,
         |ui| prim::body(ui, question, false),
@@ -1087,7 +1085,7 @@ fn prop_row(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
 }
 
 /// `Rev A, 2026-11-08: read-only` (the revision bar's text).
-pub fn revision_bar(rev: &str, date: &str) -> String {
+pub(crate) fn revision_bar(rev: &str, date: &str) -> String {
     if date.is_empty() { format!("Rev {rev}: read-only") } else { format!("Rev {rev}, {date}: read-only") }
 }
 

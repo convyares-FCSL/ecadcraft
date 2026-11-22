@@ -29,13 +29,13 @@ use crate::shell::{Workspace, bar};
 pub const SAVE_STATE: &str = "Save state";
 /// The standard (brief 042): opens Settings ▸ Standards.
 pub const STANDARD: &str = "Standard: IEC (built in)";
-pub const SHEET_SIZE: &str = "Sheet size";
+pub(crate) const SHEET_SIZE: &str = "Sheet size";
 pub const SHEET_COLOUR: &str = "Sheet colour";
-pub const FIT: &str = "Fit the sheet";
-pub const ZOOM_IN: &str = "Zoom in";
-pub const ZOOM_OUT: &str = "Zoom out";
-pub const ZOOM: &str = "Zoom";
-pub const PREV_GROUP: &str = "Previous group";
+pub(crate) const FIT: &str = "Fit the sheet";
+pub(crate) const ZOOM_IN: &str = "Zoom in";
+pub(crate) const ZOOM_OUT: &str = "Zoom out";
+pub(crate) const ZOOM: &str = "Zoom";
+pub(crate) const PREV_GROUP: &str = "Previous group";
 pub const PREV_PAGE: &str = "Previous page";
 pub const NEXT_PAGE: &str = "Next page";
 pub const NEXT_GROUP: &str = "Next group";
@@ -47,7 +47,8 @@ pub const FOLLOW: &str = "Follow";
 pub const DARK: &str = "Dark";
 /// The sheet colour menu's title and footnote (board 1.18).
 pub const SHEET_MENU_TITLE: &str = "Sheet colour on screen";
-pub const SHEET_MENU_NOTE: &str = "Only the screen changes. PDFs and prints always use paper colours. Set the default for new projects in Settings.";
+pub(crate) const SHEET_MENU_NOTE: &str =
+    "Only the screen changes. PDFs and prints always use paper colours. Set the default for new projects in Settings.";
 /// The sheet colour menu's width, px (board 1.18).
 const SHEET_MENU_W: f32 = 260.0;
 /// Kept for the Commands button's old callers: the Text panel opens with Ctrl+/.
@@ -710,7 +711,7 @@ impl App {
 }
 
 /// The sheet colour's name in the bottom bar and the menu.
-pub fn sheet_label(sheet: crate::canvas::Sheet) -> &'static str {
+pub(crate) fn sheet_label(sheet: crate::canvas::Sheet) -> &'static str {
     match sheet {
         crate::canvas::Sheet::Paper => PAPER,
         crate::canvas::Sheet::Follow => FOLLOW,

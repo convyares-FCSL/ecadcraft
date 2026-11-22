@@ -47,8 +47,6 @@ pub const YOU: &str = "You";
 
 /// Accessible label of the tab.
 pub const HISTORY_TAB: &str = "History";
-/// Width of one lane of the graph.
-pub const LANE_W: f32 = 12.0;
 
 /// What the History tab asks the app to do.
 #[derive(Debug, Clone, PartialEq)]
@@ -76,18 +74,18 @@ pub struct AgentCard {
 }
 
 /// Board 1.04's texts.
-pub const FOOTER: &str = "Selecting a change marks it on the page. Compare opens the full view with clouds.";
-pub const NEW_BRANCH: &str = "New branch";
+pub(crate) const FOOTER: &str = "Selecting a change marks it on the page. Compare opens the full view with clouds.";
+pub(crate) const NEW_BRANCH: &str = "New branch";
 pub const NAME_THIS: &str = "Name this one";
 pub const EARLIER: &str = "Show earlier changes";
 pub const OLDER: &str = "Show older versions";
 /// How many changes the panel shows before "Show n earlier changes" (board 1.04 shows about 8, so
 /// Versions stays in view).
 pub const FIRST_CHANGES: usize = 8;
-pub const AGENT_DISCONNECT: &str = "Disconnect the agent";
+pub(crate) const AGENT_DISCONNECT: &str = "Disconnect the agent";
 /// The placeholders' reasons.
-pub const COMPARE_LATER: &str = "Compare is not available yet";
-pub const FILTER_LATER: &str = "Filtering the changes is not available yet";
+pub(crate) const COMPARE_LATER: &str = "Compare is not available yet";
+pub(crate) const FILTER_LATER: &str = "Filtering the changes is not available yet";
 
 /// A selected row: a node of the graph, or a step of the Steps list.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,7 +152,7 @@ pub enum Dialog {
 
 /// One step row of the Steps list.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StepRow {
+pub(crate) struct StepRow {
     pub seq: u64,
     pub label: String,
     pub author: String,
@@ -165,7 +163,7 @@ pub struct StepRow {
 
 /// The author chip's text: "You" for the person, the agent's name otherwise (owner, Q1 of brief
 /// 043: no name is stored for a person).
-pub fn author_chip(agent: Option<&str>) -> &str {
+pub(crate) fn author_chip(agent: Option<&str>) -> &str {
     agent.unwrap_or(YOU)
 }
 

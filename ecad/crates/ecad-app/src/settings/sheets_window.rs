@@ -1,9 +1,7 @@
 //! Project Properties, Revisions and the ECAD section of the Properties palette (brief 019).
 
 use crate::shell::app::*;
-use crate::{
-    settings, shell,
-};
+use crate::{settings, shell};
 use eframe::egui::{self};
 use serde_json::json;
 

@@ -22,19 +22,19 @@ use eframe::egui::{self, Color32, Key, Modifiers, Rect, RichText, Sense, Stroke,
 /// Row height (design 016 §2.2).
 pub const ROW_H: f32 = 20.0;
 /// Book's row height (UI rev 3, board 1.02): with thumbnails, and as a plain list.
-pub const THUMB_ROW_H: f32 = 36.0;
-pub const LIST_ROW_H: f32 = 26.0;
+pub(crate) const THUMB_ROW_H: f32 = 36.0;
+pub(crate) const LIST_ROW_H: f32 = 26.0;
 /// Book's search field, its multi-select footer and its buttons (board 1.02).
 pub const FIND: &str = "Find a page";
 pub const CLEAR_PICKED: &str = "Clear";
 pub const MOVE_TO_GROUP: &str = "Move to group";
 pub const DUPLICATE: &str = "Duplicate";
-pub const DELETE_PAGES: &str = "Delete the selected pages";
+pub(crate) const DELETE_PAGES: &str = "Delete the selected pages";
 /// The placeholders' reason (no command yet duplicates or deletes a page).
 pub const NOT_YET: &str = "Not available yet";
 /// Brief 054: a folder row's menu items and the Book header's Renumber pages.
-pub const START_NUMBER: &str = "Start number…";
-pub const RENUMBER_PAGES: &str = "Renumber pages";
+pub(crate) const START_NUMBER: &str = "Start number…";
+pub(crate) const RENUMBER_PAGES: &str = "Renumber pages";
 /// The accessible label of a page row's checkbox: `Select page 04`.
 pub fn pick_label(number: &str) -> String {
     format!("Select page {number}")
@@ -44,33 +44,22 @@ pub fn padded(number: &str) -> String {
     if number.len() < 2 && ecad_model::naming::words::is_digits(number) { format!("{number:0>2}") } else { number.to_string() }
 }
 /// `text` cut with `…` to `width` in `font` (the panels' rows).
-pub fn cut_text(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32) -> String {
+pub(crate) fn cut_text(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32) -> String {
     cut(ui, text, font, width)
 }
 /// The accessible label of a group row's +: `New page in Power`.
 pub fn add_in_label(name: &str) -> String {
     format!("New page in {name}")
 }
-/// Width of the collapsed strip.
-pub const STRIP_W: f32 = 22.0;
 /// Accessible labels of the header buttons (design 016 §8 names them `ecad.project.*`).
 pub const NEW_PAGE: &str = "New page";
-/// Brief 024: the Reports and Print Book buttons.
-pub const REPORTS: &str = "Reports: BOM, wires and cables";
-pub const PRINT_BOOK: &str = "Print Book: every page to one PDF";
-pub const MOVE_UP: &str = "Move page up";
-pub const MOVE_DOWN: &str = "Move page down";
-pub const PREVIEW: &str = "Preview page";
 pub const COLLAPSE: &str = "Collapse the Project panel";
-pub const EXPAND: &str = "Project";
 /// Accessible label of the rename field.
 pub const RENAME: &str = "Page title";
 /// Said where writing is disabled.
 pub const READ_ONLY: &str = "The project is read-only.";
-/// Said by Preview with no row picked.
-pub const PICK_FIRST: &str = "Click a page first.";
 /// Said when the active page itself is asked for a preview.
-pub const ALREADY_SHOWN: &str = "This page is already shown.";
+pub(crate) const ALREADY_SHOWN: &str = "This page is already shown.";
 /// Accessible labels of the header's brief 019 buttons (design 019 §10).
 pub const NEW_FOLDER: &str = "New folder";
 /// The project popouts of the header (owner, fix round of 2026-11-08).
@@ -78,20 +67,18 @@ pub const PROJECT_INFO: &str = "Project info";
 pub const PROJECT_SETTINGS: &str = "Project settings";
 pub const REVISIONS: &str = "Revisions";
 /// The folder menu's entry for a folder inside a folder.
-pub const NEW_SUB_FOLDER: &str = "New sub-folder";
+pub(crate) const NEW_SUB_FOLDER: &str = "New sub-folder";
 /// Accessible label of the page-number field.
 pub const NUMBER: &str = "Page number";
 /// Accessible label of the folder-name field.
 pub const FOLDER_NAME: &str = "Folder name";
 /// Accessible label of Back to current (design 019 §7.3).
 pub const BACK_TO_CURRENT: &str = "Back to current";
-/// Said when a folder is dragged into itself.
-pub const INSIDE_ITSELF: &str = "A folder cannot go inside itself.";
 /// Indent per folder level, in points (design 019 §5.2).
-pub const INDENT: f32 = 12.0;
+pub(crate) const INDENT: f32 = 12.0;
 
 /// The accessible label of a folder row: `Folder Schematic layouts: 3 pages`.
-pub fn folder_label(name: &str, pages: usize) -> String {
+pub(crate) fn folder_label(name: &str, pages: usize) -> String {
     format!("Folder {name}: {pages} page{}", ecad_widgets::plural(pages))
 }
 
@@ -258,9 +245,6 @@ enum Vis {
     Page(usize),
     Empty(FolderId, usize),
 }
-
-/// Accessible label of the Developer section's header ([`crate::developer`]).
-pub const DEVELOPER: &str = crate::developer::HEADER;
 
 /// The panel's two tabs.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

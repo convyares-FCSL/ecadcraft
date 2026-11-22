@@ -20,7 +20,7 @@ use crate::shell::app::App;
 /// Accessible label of the maker.
 pub const MAKER: &str = "Connector maker";
 /// Why a greyed option is greyed.
-pub const LATER: &str = "Not in the connector library yet.";
+pub(crate) const LATER: &str = "Not in the connector library yet.";
 
 /// The maker's sections, in order, and the prompts of the `connector` form each one answers.
 pub const SECTIONS: [(&str, &[&str]); 5] = [
@@ -64,7 +64,7 @@ pub struct State {
 }
 
 /// The Halves row for tag `t` and the Halves answer (`None`: not answered yet).
-pub fn halves_words(t: &str, halves: Option<&str>) -> String {
+pub(crate) fn halves_words(t: &str, halves: Option<&str>) -> String {
     match halves {
         Some("Socket") => format!("{t}.S socket"),
         Some("Plug") => format!("{t}.P plug"),
@@ -74,7 +74,7 @@ pub fn halves_words(t: &str, halves: Option<&str>) -> String {
 }
 
 /// The section prompt `label` belongs to.
-pub fn section_of(label: &str) -> Option<usize> {
+pub(crate) fn section_of(label: &str) -> Option<usize> {
     SECTIONS.iter().position(|(_, prompts)| prompts.contains(&label))
 }
 

@@ -2,8 +2,8 @@
 //! merge, and the symbol search window.
 
 use crate::commands::run::with_param;
-use crate::shell::app::*;
 use crate::shell;
+use crate::shell::app::*;
 use ecad_model::PageId;
 use ecad_widgets::dialog::{Dialog, action};
 use ecad_widgets::prim::{self, Kind, Tone};

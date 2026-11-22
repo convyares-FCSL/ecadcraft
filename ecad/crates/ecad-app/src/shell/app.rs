@@ -36,7 +36,7 @@ pub const NOTE: &str = "ECAD desktop (experiment): keep .ecad files in a local f
 pub const SNAPSHOT_NOTE: &str =
     "Inspector snapshots are diagnostic files for the developer inspector, not saved ECAD projects; they cannot be reopened.";
 /// Name of a new project until it is saved.
-pub const PROJECT_NAME: &str = "Untitled";
+pub(crate) const PROJECT_NAME: &str = "Untitled";
 
 /// The project's status line at the top of the Project panel, for example
 /// `Project "demo": 2 pages, file C:\dev\ecad-projects\demo.ecad, no unsaved changes.`
@@ -81,12 +81,12 @@ pub struct NameBox {
 }
 
 /// The drawing height a Devices tab go to shows at least and at most, in drawing units (mm).
-pub const GOTO_MIN_HEIGHT: f64 = 60.0;
+pub(crate) const GOTO_MIN_HEIGHT: f64 = 60.0;
 /// See [`GOTO_MIN_HEIGHT`].
-pub const GOTO_MAX_HEIGHT: f64 = 600.0;
+pub(crate) const GOTO_MAX_HEIGHT: f64 = 600.0;
 
 /// Accessible label of the name box's field.
-pub const NAME_BOX_FIELD: &str = "Page title";
+pub(crate) const NAME_BOX_FIELD: &str = "Page title";
 
 /// The user's answer to the close dialog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -287,7 +287,7 @@ pub(crate) enum Hovered {
 /// The hover tooltip's egui id (and element name, design 008 §4.3).
 pub const HOVER_ID: &str = "ecad.hover";
 /// Default [`App::hover_delay`].
-pub const HOVER_DELAY: f64 = 0.5;
+pub(crate) const HOVER_DELAY: f64 = 0.5;
 
 impl App {
     /// A harness with one new ECAD project. `snapshots`: where exported snapshots go (none when

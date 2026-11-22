@@ -33,10 +33,10 @@ pub enum Selected {
 /// What the panel says with nothing selected.
 pub const NOTHING: &str = "Select a row to see it here.";
 /// The greyed parts buttons' reason.
-pub const CATALOGUE_COMES: &str = "The part catalogue comes later.";
-pub const CABLE_MANAGER_COMES: &str = "Comes with the cable manager.";
+pub(crate) const CATALOGUE_COMES: &str = "The part catalogue comes later.";
+pub(crate) const CABLE_MANAGER_COMES: &str = "Comes with the cable manager.";
 /// Brief 059 (owner): the Rating section of a cable with nothing to rate yet.
-pub const RATE_NOTE: &str = "Set a cable type to rate this cable.";
+pub(crate) const RATE_NOTE: &str = "Set a cable type to rate this cable.";
 /// Brief 059 (board 2.06): the Details pane's tabs and their accessible name.
 pub const CABLE_TABS: &str = "ecad.project.detail.cable.tabs";
 /// A cross-section's unit.
@@ -47,7 +47,7 @@ fn first<K: Copy + Ord>(t: &ecad_widgets::table::Table<K>) -> Option<K> {
 }
 
 /// The selected row of the tab shown, if any.
-pub fn selected_key(t: &App) -> Option<Selected> {
+pub(crate) fn selected_key(t: &App) -> Option<Selected> {
     let r = t.reports.as_ref();
     match t.shell.lists {
         ListsView::Devices => t.panel.devices.selected.map(Selected::Device),
@@ -506,8 +506,7 @@ fn report(t: &App, k: usize) -> Option<Detail> {
         if rep.tab == Some(r.tab) { r.table().headers.iter().map(|h| ((*h).to_string(), "shown".to_string())).collect() } else { Vec::new() };
     // Counted when the copy is taken, not each frame.
     let flagged = if rep.tab == Some(r.tab) { r.flagged } else { 0 };
-    let checks =
-        if flagged > 0 { vec![(format!("{flagged} cell{} marked ?", ecad_widgets::plural(flagged)), Tone::Warning)] } else { Vec::new() };
+    let checks = if flagged > 0 { vec![(format!("{flagged} cell{} marked ?", ecad_widgets::plural(flagged)), Tone::Warning)] } else { Vec::new() };
     Some(Detail {
         title: rep.name.to_string(),
         provisional: false,

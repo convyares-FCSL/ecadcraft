@@ -284,7 +284,7 @@ impl Command for HiddentextParams {
 }
 
 /// Most rows `pagetexts` returns.
-pub const MAX_TEXT_ROWS: usize = 5_000;
+pub(crate) const MAX_TEXT_ROWS: usize = 5_000;
 
 /// `pagetexts {page?}` (design 031 §10.4; named so because `texts` is CADCraft's): every derived
 /// text on a page, hidden ones too.

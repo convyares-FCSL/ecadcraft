@@ -46,22 +46,22 @@ use crate::shell::app::App;
 pub use banner::{AgentBanner, BannerAction, BannerState, LastChange};
 
 /// How long a call that may change the project waits while the person is busy (design §6.2).
-pub const AGENT_HOLD: Duration = Duration::from_secs(5);
+pub(crate) const AGENT_HOLD: Duration = Duration::from_secs(5);
 /// Most agent requests answered in one frame, so a burst cannot freeze the window (design §5.3).
-pub const MAX_AGENT_CALLS_PER_FRAME: usize = 8;
+pub(crate) const MAX_AGENT_CALLS_PER_FRAME: usize = 8;
 /// A bridge session without a call for this long is finished (its writer role released).
-pub const SESSION_IDLE: Duration = Duration::from_secs(600);
+pub(crate) const SESSION_IDLE: Duration = Duration::from_secs(600);
 /// Most bridge sessions remembered at once; the oldest finished one is forgotten first.
-pub const MAX_SESSIONS: usize = 64;
+pub(crate) const MAX_SESSIONS: usize = 64;
 /// How long the banner shows a write after it was accepted.
-pub const WRITE_FLASH: Duration = Duration::from_secs(1);
+pub(crate) const WRITE_FLASH: Duration = Duration::from_secs(1);
 /// Requests waiting in the app at once (the listener's own queue holds 64 more).
-pub const MAX_WAITING: usize = 256;
+pub(crate) const MAX_WAITING: usize = 256;
 /// Longest agent name accepted, in bytes, before it is cleaned (larger is refused).
 const MAX_NAME_BYTES: usize = 1024;
 
 /// Said when access is off or was turned off.
-pub const ACCESS_OFF: &str = "agent access is off in the ECAD window; the person turns it on in ECAD Dev ▸ Agent access";
+pub(crate) const ACCESS_OFF: &str = "agent access is off in the ECAD window; the person turns it on in ECAD Dev ▸ Agent access";
 /// Said for a write under the Read only preference.
 pub const READ_ONLY: &str = "Agent access in the ECAD window is Read only.";
 /// Said for a write while paused.
@@ -70,9 +70,11 @@ pub const PAUSED: &str = "Refused: paused by the designer; nothing was changed."
 pub const DISCONNECTED: &str = "the designer disconnected this agent; restart the MCP server to connect again";
 /// Said to agent calls while the person is not yet the author again (the project stayed busy
 /// through every attempt after the last call; the next frames keep trying).
-pub const RESETTING: &str = "Refused: ECAD is still making the designer the author again after the last agent call; nothing was changed. Try again.";
+pub(crate) const RESETTING: &str =
+    "Refused: ECAD is still making the designer the author again after the last agent call; nothing was changed. Try again.";
 /// Logged once when the reset has to wait.
-pub const RESETTING_LOG: &str = "Agent access: the project was busy, so you are not yet the author again; ECAD keeps trying, and agent calls wait.";
+pub(crate) const RESETTING_LOG: &str =
+    "Agent access: the project was busy, so you are not yet the author again; ECAD keeps trying, and agent calls wait.";
 
 /// Said to a write by a session that is not the writer.
 pub fn not_writer(writer: &str) -> String {

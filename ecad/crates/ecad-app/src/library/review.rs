@@ -20,7 +20,7 @@ pub const UPDATE: &str = "drawer.symbol-review.update";
 pub const REFUSAL: &str = "drawer.symbol-review.refusal";
 /// The drawer's tab while the review shows.
 pub const TAB: &str = "Before saving";
-pub const COMPARE_TAB: &str = "Compare";
+pub(crate) const COMPARE_TAB: &str = "Compare";
 
 /// The three choices (design 048 §6.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

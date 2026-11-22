@@ -27,29 +27,29 @@ use ecad_widgets::tokens::{space, ui_type};
 /// Accessible names.
 pub const STANDARD_LINE: &str = "ecad.standards.standard";
 /// Brief 050a (design 050 §9): `ecad.standards.catalogue.<word>`.
-pub const CATALOGUE_DEFAULTS: &str = "ecad.standards.catalogue.defaults";
+pub(crate) const CATALOGUE_DEFAULTS: &str = "ecad.standards.catalogue.defaults";
 pub const CATALOGUE_STYLES: &str = "ecad.standards.catalogue.text";
 /// 042's names of those two tabs, kept as aliases until the phase-end tidy-up (design 050 §9).
-pub const ALIAS_DEFAULTS: &str = "ecad.standards.defaults";
-pub const ALIAS_TEXT_STYLES: &str = "ecad.standards.text_styles";
+pub(crate) const ALIAS_DEFAULTS: &str = "ecad.standards.defaults";
+pub(crate) const ALIAS_TEXT_STYLES: &str = "ecad.standards.text_styles";
 pub const VALUE: &str = "ecad.standards.value";
 pub const APPLY: &str = "ecad.standards.apply";
 pub const RESET: &str = "ecad.standards.reset";
 pub const CONSEQUENCE: &str = "ecad.standards.consequence";
-pub const ERROR: &str = "ecad.standards.error";
+pub(crate) const ERROR: &str = "ecad.standards.error";
 pub const IN_USE: &str = "In use";
 /// The catalogue list's width and the detail's (board 5.02).
-pub const CATALOGUE_LIST_W: f32 = 232.0;
-pub const DETAIL_W: f32 = 420.0;
+pub(crate) const CATALOGUE_LIST_W: f32 = 232.0;
+pub(crate) const DETAIL_W: f32 = 420.0;
 /// The standards cards (board 5.02): IEC in use; US and another standard come later.
-pub const CARD_IEC: &str = "ecad.standards.card.iec";
+pub(crate) const CARD_IEC: &str = "ecad.standards.card.iec";
 /// Brief 050a (design 050 §9): the standard header and its parts.
 pub const HEADER: &str = "ecad.standards.header";
 pub const MAKE: &str = "ecad.standards.header.make";
 pub const RENAME: &str = "ecad.standards.header.rename";
 /// Brief 055: Standards ▸ Frames, a frame's **Edit in Library**.
-pub const EDIT_IN_LIBRARY: &str = "ecad.standards.frame.edit_in_library";
-pub const COPY_FROM: &str = "ecad.standards.header.copy_from";
+pub(crate) const EDIT_IN_LIBRARY: &str = "ecad.standards.frame.edit_in_library";
+pub(crate) const COPY_FROM: &str = "ecad.standards.header.copy_from";
 pub const BACK_TO_IEC: &str = "ecad.standards.header.back_to_iec";
 pub const HEADER_NAME: &str = "ecad.standards.header.name";
 pub const HEADER_CONSEQUENCE: &str = "ecad.standards.header.consequence";
