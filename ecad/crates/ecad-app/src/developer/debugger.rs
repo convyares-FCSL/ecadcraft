@@ -21,7 +21,9 @@ use std::path::Path;
 use ecad_engine::ProjectHandle;
 use ecad_engine::background::{At, Jobs};
 use ecad_engine::cad::Session;
-use ecad_engine::dev::debug::{self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve};
+use ecad_engine::dev::checks::{self, Check, RecordBytes};
+use ecad_engine::dev::debug::{DebugSnapshot, ObjectId, RecordState, TxCursor};
+use ecad_engine::dev::objects::{self, Resolved, op_view, resolve};
 use ecad_model::{Author, Document, ProjectId, Transaction};
 use ecad_widgets::control::{Select, TextEntry};
 use ecad_widgets::prim::{self, Button, IconButton, Kind, ListRow, SectionHeader, Tone};
@@ -153,10 +155,10 @@ pub struct Debugger {
     /// Checks running on the background pool.
     jobs: Jobs<Check>,
     /// The Storage view's file read, on request.
-    storage: Option<(Result<debug::StorageRead, String>, String)>,
+    storage: Option<(Result<checks::StorageRead, String>, String)>,
     /// The Branches view's rows, read after each save (a few rows), and the saved position they
     /// were read at.
-    branches: Option<Result<Vec<debug::BranchRow>, String>>,
+    branches: Option<Result<Vec<checks::BranchRow>, String>>,
     branches_at: Option<(ProjectId, u64)>,
 }
 
@@ -316,7 +318,7 @@ impl Debugger {
         // moves (outside the project lock: the snapshot is already a copy).
         let at = (snap.project, snap.persisted);
         if self.branches_at != Some(at) {
-            self.branches = snap.store_arc().map(|s| debug::read_branches(&s));
+            self.branches = snap.store_arc().map(|s| checks::read_branches(&s));
             self.branches_at = Some(at);
         }
         self.log.truncate(usize::try_from(snap.log_from).unwrap_or(usize::MAX));
@@ -369,7 +371,7 @@ impl Debugger {
         if ids.is_empty() {
             return Vec::new();
         }
-        self.log.iter().filter(|t| debug::touches(t, &ids)).map(|t| t.seq).collect()
+        self.log.iter().filter(|t| objects::touches(t, &ids)).map(|t| t.seq).collect()
     }
 
     /// Read the trail transaction's row from the project file (no project lock).
@@ -383,14 +385,14 @@ impl Debugger {
             self.record = Some(Err(format!("transaction {seq} is not in the file yet")));
             return;
         }
-        self.record = Some(debug::read_row(&store, seq, snap.tx_in(&self.log, seq)));
+        self.record = Some(checks::read_row(&store, seq, snap.tx_in(&self.log, seq)));
     }
 
     /// Rebuild the document after transaction `seq` from the panel's copy of the history (and,
     /// before the snapshot the project was opened from, from the file).
     pub fn show_at(&mut self, seq: u64) {
         let Some(snap) = &self.snap else { return };
-        let doc = debug::state_at_from(snap.base, snap.history.as_ref(), &self.log, seq);
+        let doc = checks::state_at_from(snap.base, snap.history.as_ref(), &self.log, seq);
         self.historical = Some(Historical { seq, doc, focus: None });
     }
 
@@ -398,7 +400,7 @@ impl Debugger {
     pub fn read_storage(&mut self) {
         let Some(snap) = &self.snap else { return };
         let read = match snap.store_arc() {
-            Some(st) => debug::read_storage(&st, snap.file.path.as_deref().map(Path::new)),
+            Some(st) => checks::read_storage(&st, snap.file.path.as_deref().map(Path::new)),
             None => Err("the project has no file yet".into()),
         };
         self.storage = Some((read, now()));
@@ -413,24 +415,24 @@ impl Debugger {
         match kind {
             CheckKind::Replay => {
                 let (base, history, log, doc) = (snap.base, snap.history.clone(), self.log.clone(), snap.doc.clone());
-                self.jobs.spawn(at, move || debug::verify_replay_from(base, history.as_ref(), &log, &doc));
+                self.jobs.spawn(at, move || checks::verify_replay_from(base, history.as_ref(), &log, &doc));
             }
             CheckKind::Projection => match project.debug_projection_inputs(s) {
                 Ok(inputs) => {
                     let at = At { head: inputs.head, ..at };
-                    self.jobs.spawn(at, move || debug::verify_projection(&inputs));
+                    self.jobs.spawn(at, move || checks::verify_projection(&inputs));
                 }
                 Err(e) => self.checks.push(Ran { check: failed("projection", e), time: now() }),
             },
             CheckKind::File => match snap.store_arc() {
                 Some(st) => {
                     let (base, log, persisted) = (snap.base, self.log.clone(), snap.persisted);
-                    self.jobs.spawn(at, move || debug::verify_store(&st, base, &log, persisted));
+                    self.jobs.spawn(at, move || checks::verify_store(&st, base, &log, persisted));
                 }
                 None => self.checks.push(Ran { check: failed("file", "the project has no file yet".into()), time: now() }),
             },
             CheckKind::Index => match project.read(s, |p, _| (p.ledger.document().clone(), p.reference().clone(), p.ledger.head())) {
-                Ok((doc, idx, head)) => self.jobs.spawn(At { head, ..at }, move || debug::verify_index(&doc, &idx, head)),
+                Ok((doc, idx, head)) => self.jobs.spawn(At { head, ..at }, move || checks::verify_index(&doc, &idx, head)),
                 Err(e) => self.checks.push(Ran { check: failed("reference index", e), time: now() }),
             },
         }
@@ -542,16 +544,16 @@ impl Debugger {
 
     fn model_view(&mut self, ui: &mut egui::Ui, definitions: bool) {
         let Some(snap) = &self.snap else { return };
-        let counts = debug::counts(&snap.doc);
+        let counts = objects::counts(&snap.doc);
         prim::body(ui, &counts.iter().map(|(k, n)| format!("{n} {k}")).collect::<Vec<_>>().join(", "), true);
         if prim::SearchField::new(&mut self.query, "ecad.debug.search").show(ui).changed() {
             self.list_page = 0;
         }
         let q = self.query.trim().to_lowercase();
-        let rows: Vec<(ObjectId, String)> = debug::objects(&snap.doc)
+        let rows: Vec<(ObjectId, String)> = objects::objects(&snap.doc)
             .into_iter()
             .filter(|id| matches!(id, ObjectId::Definition(_)) == definitions)
-            .map(|id| (id, debug::object_label(&snap.doc, id)))
+            .map(|id| (id, objects::object_label(&snap.doc, id)))
             .filter(|(id, label)| {
                 q.is_empty() || label.to_lowercase().contains(&q) || id.short().contains(&q) || id.hex().contains(&q) || id.kind().contains(&q)
             })
@@ -633,11 +635,11 @@ impl Debugger {
             }
             Ok(doc) => {
                 prim::caption(ui, &format!("History at seq {} (rebuilt from a copy of the log; the live project is unchanged)", h.seq));
-                let counts = debug::counts(doc);
+                let counts = objects::counts(doc);
                 prim::body(ui, &counts.iter().map(|(k, n)| format!("{n} {k}")).collect::<Vec<_>>().join(", "), true);
                 let mut pick = None;
-                for id in debug::objects(doc).into_iter().filter(|i| !matches!(i, ObjectId::Item(_))).take(PAGE) {
-                    let text = format!("{} {}  {}", id.kind(), id.short(), debug::object_label(doc, id));
+                for id in objects::objects(doc).into_iter().filter(|i| !matches!(i, ObjectId::Item(_))).take(PAGE) {
+                    let text = format!("{} {}  {}", id.kind(), id.short(), objects::object_label(doc, id));
                     if ListRow::new(&text).selected(h.focus == Some(id)).show(ui).clicked() {
                         pick = Some(id);
                     }
@@ -645,7 +647,7 @@ impl Debugger {
                 if let Some(id) = pick {
                     h.focus = Some(id);
                 }
-                if let Some(v) = h.focus.and_then(|id| debug::object_json(doc, id)) {
+                if let Some(v) = h.focus.and_then(|id| objects::object_json(doc, id)) {
                     mono(ui, json_text(&v));
                 }
             }
@@ -877,15 +879,15 @@ impl Debugger {
         prim::caption(ui, &format!("Trail from {}", self.focus_from));
         // ECAD IDs → model objects (live values).
         for id in &self.focus {
-            let label = debug::object_label(&snap.doc, *id);
+            let label = objects::object_label(&snap.doc, *id);
             fold(ui, ui.scope_id().with(("dbg_obj", id.hex(), id.kind())), &format!("{} {} {label}", id.kind(), id.short()), |ui| {
                 mono(ui, format!("ID {}", id.hex()));
-                let users = debug::used_by(&snap.doc, *id);
+                let users = objects::used_by(&snap.doc, *id);
                 if !users.is_empty() {
                     let shown: Vec<String> = users.iter().take(PAGE).map(|u| format!("{} {}", u.kind(), u.short())).collect();
                     prim::body(ui, &format!("Used by: {}{}", shown.join(", "), if users.len() > PAGE { ", …" } else { "" }), false);
                 }
-                match debug::object_json(&snap.doc, *id) {
+                match objects::object_json(&snap.doc, *id) {
                     Some(v) => mono(ui, json_text(&v)),
                     None => prim::body(ui, "Not in the live model (deleted or never created).", true),
                 };
@@ -951,7 +953,7 @@ impl Debugger {
                     Ok(()) => prim::note(ui, &format!("The row ({} bytes stored) holds exactly this transaction.", r.stored), Tone::Ok),
                     Err(e) => prim::note(ui, &format!("The bytes do NOT match: {e}"), Tone::Warning),
                 };
-                mono(ui, debug::printable(&r.shown));
+                mono(ui, objects::printable(&r.shown));
                 if r.truncated {
                     prim::body(ui, &format!("… cut at {} bytes", r.shown.len()), true);
                 }
@@ -1044,14 +1046,14 @@ fn describe(doc: &Document, r: &Resolved) -> String {
         chunks.push(format!("item {}", i.short()));
     }
     if let Some(t) = r.connection_point {
-        chunks.push(format!("connection point {} {}", t.short(), debug::object_label(doc, ObjectId::ConnectionPoint(t))));
+        chunks.push(format!("connection point {} {}", t.short(), objects::object_label(doc, ObjectId::ConnectionPoint(t))));
     }
     if let Some(rep) = r.representation {
-        chunks.push(format!("{} {}", rep.short(), debug::object_label(doc, ObjectId::Representation(rep))));
+        chunks.push(format!("{} {}", rep.short(), objects::object_label(doc, ObjectId::Representation(rep))));
     }
     if let Some(s) = r.subject {
         let id = ObjectId::from(s);
-        chunks.push(format!("{} {} {}", id.kind(), id.short(), debug::object_label(doc, id)));
+        chunks.push(format!("{} {} {}", id.kind(), id.short(), objects::object_label(doc, id)));
     }
     if chunks.is_empty() { "not found in the model".into() } else { chunks.join(" → ") }
 }

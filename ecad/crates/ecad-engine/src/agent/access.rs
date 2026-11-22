@@ -36,13 +36,11 @@ pub const FORMAT: &str = "ecad-agent-access/1";
 /// the project-scoped defaults registry does not hold it.
 pub const DEFAULT_PORT: u16 = 47823;
 /// The lowest port accepted (below are the system's).
-pub const MIN_PORT: u16 = 1024;
+pub(crate) const MIN_PORT: u16 = 1024;
 /// Largest preference file read, in bytes; a larger one reads as Off.
 pub const MAX_FILE_BYTES: u64 = 4 * 1024;
 /// Said when the file cannot be used.
 pub const UNREADABLE: &str = "Agent access settings could not be read; agent access is off.";
-/// Said when a port is out of range.
-pub const PORT_RANGE: &str = "1024–65535";
 
 /// Also read as Read only when typed.
 const READONLY: &str = "readonly";

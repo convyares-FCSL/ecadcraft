@@ -825,7 +825,8 @@ fn moving_a_stub_never_detaches_the_end_connected_on_the_other_page() {
 /// representations by page; a conductor its route on each page.
 #[test]
 fn the_debugger_trail_follows_references_across_pages() {
-    use ecad_engine::dev::debug::{ObjectId, used_by};
+    use ecad_engine::dev::debug::ObjectId;
+    use ecad_engine::dev::objects::used_by;
     let mut r = connected();
     let doc = r.h.doc();
     let s = reference_on(&mut r.h, r.supply);

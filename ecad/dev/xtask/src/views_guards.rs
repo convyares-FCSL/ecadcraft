@@ -61,7 +61,7 @@ const FRESH_CALLS: &[&str] = &[".detached(", ".report_models("];
 /// project does not keep, or a check that must not trust the kept views (design 064 §5.2). A
 /// file not listed may not; a listed count is exact, so it only falls.
 const FRESH_BUILDS: &[(&str, usize, &str)] = &[
-    ("crates/ecad-engine/src/dev/debug.rs", 1, "debugger projection check, on a copy, must not trust the kept models"),
+    ("crates/ecad-engine/src/dev/checks.rs", 1, "debugger projection check, on a copy, must not trust the kept models"),
     ("crates/ecad-engine/src/checks.rs", 1, "the `checks` command's from-scratch pass, on request"),
     ("crates/ecad-engine/src/pages/preview.rs", 2, "previews: a page outside its window, and an issued revision's state"),
     ("crates/ecad-engine/src/project/changes.rs", 1, "recovery check of a rebuilt page, must not trust the kept models"),

@@ -1,1 +1,1 @@
-pub(crate) mod scope_probe;
+pub(crate) mod scoped_movement;
