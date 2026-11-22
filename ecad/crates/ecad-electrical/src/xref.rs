@@ -1687,8 +1687,8 @@ struct Scope {
 
 impl Scope {
     /// Add what `effect` names, looked up in `doc` (the state before the commit, or after it).
-    /// `moved` notes that the book positions of `effects` were looked at already in this phase.
-    fn note(&mut self, doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, moved: &mut bool) {
+    /// The pages whose book position changes are added by [`Watch`] after the commit.
+    fn note(&mut self, doc: &Document, effect: &Effect<'_>) {
         let ends = |s: &mut Scope, w: ecad_model::WireId| {
             if let Some(c) = doc.wires.get(&w) {
                 for t in &c.ends {
@@ -1739,9 +1739,6 @@ impl Scope {
                     self.device_pages.insert(*p);
                     self.name_pages.insert(*p);
                 }
-                if ch.folder {
-                    self.moved(doc, effects, moved);
-                }
             }
             // Brief 054 (design 054 §10.2): a page type's sheet changes its pages' grids.
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Page, .. } => {
@@ -1750,7 +1747,7 @@ impl Scope {
                     self.name_pages.extend(pages);
                 }
             }
-            Effect::Page { .. } | Effect::Folder { .. } => self.moved(doc, effects, moved),
+            Effect::Page { .. } | Effect::Folder { .. } => {}
             Effect::Definition { id, .. } => self.devices.extend(doc.components_using(*id)),
             // Brief 033 (design 033 §9.3): the table text's size or the font sizes every table.
             Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if table_text_key(key.raw) => {
@@ -1836,15 +1833,6 @@ impl Scope {
         crate::continuations::names_named_by(doc, effect, &mut self.names);
     }
 
-    fn moved(&mut self, doc: &Document, effects: &Effects<'_>, done: &mut bool) {
-        if std::mem::replace(done, true) {
-            return;
-        }
-        let pages = ecad_model::book::positions_changed_by(doc, effects);
-        self.device_pages.extend(pages.iter().copied());
-        self.name_pages.extend(pages);
-    }
-
     /// The devices with a member, and the names of the arrows, on the pages noted so far, through
     /// `idx`, the reference index of `doc`'s state.
     fn resolve(&mut self, doc: &Document, idx: &RefIndex) {
@@ -1880,10 +1868,10 @@ pub struct Watch {
     /// Brief 054 (design 054 §3.4): a page moved to or from a type with checks off changes the
     /// groups of every device on it: the index is made again ([`Watch::rebuilds`]).
     rebuild: bool,
-    /// Whether the book positions were looked at already, before and after the commit.
-    moved_before: bool,
-    moved_after: bool,
-    moved_cables: bool,
+    /// The book positions before the commit, compared with the book after it once
+    /// (`moved_done`): the pages whose position changed, their devices, arrows and cables.
+    positions: ecad_model::book::PositionsNoted,
+    moved_done: bool,
     /// What verify mode found wrong (bugs), for the caller to record.
     problems: Vec<String>,
 }
@@ -1906,16 +1894,27 @@ pub struct Outcome {
 pub type Shown = BTreeMap<DeviceId, BTreeMap<PageId, Vec<Part>>>;
 
 impl Watch {
-    /// Note one effect of the transaction `effects`. `before` says which side `doc` is: the
+    /// Note one effect of the transaction. `before` says which side `doc` is: the
     /// state before the commit (the ops given to it) or after it (the transaction as recorded).
-    pub fn note(&mut self, doc: &Document, before: bool, effects: &Effects<'_>, effect: &Effect<'_>) {
+    pub fn note(&mut self, doc: &Document, before: bool, effect: &Effect<'_>) {
         if before {
-            if !self.all_cables && !crate::references::cables_touched_by(doc, effects, effect, &mut self.moved_cables, &mut self.cable_scope) {
+            if !self.all_cables && !crate::references::cables_touched_by(doc, effect, &mut self.cable_scope) {
                 self.all_cables = true;
             }
-            self.scope.note(doc, effects, effect, &mut self.moved_before);
+            self.positions.note_before(doc, effect);
+            self.scope.note(doc, effect);
         } else {
-            self.scope.note(doc, effects, effect, &mut self.moved_after);
+            if !std::mem::replace(&mut self.moved_done, true) {
+                let pages = self.positions.changed(doc);
+                if !self.all_cables {
+                    for p in &pages {
+                        self.cable_scope.extend(crate::references::cables_on(doc, *p));
+                    }
+                }
+                self.scope.device_pages.extend(pages.iter().copied());
+                self.scope.name_pages.extend(pages);
+            }
+            self.scope.note(doc, effect);
             self.rebuild |= crate::page_types::checks_changed(doc, effect);
         }
         RefIndex::groups_named_by(doc, effect, &mut self.groups);

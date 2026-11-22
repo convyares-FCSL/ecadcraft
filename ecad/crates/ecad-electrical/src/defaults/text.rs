@@ -3,8 +3,7 @@
 //! Read them through [`crate::text_style`] (`text_style`, `text_shown`), not by key.
 //!
 //! Brief 050a (FP4): a kind's cap height, weight and font are no longer registry entries; they are
-//! fields of its text style (`crate::styles::text`). 031's project properties
-//! `text.<kind>.height`, `.weight` and `.font` are no longer read (Checks: `ignored-old-setting`).
+//! fields of its text style (`crate::styles::text`).
 
 use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
 

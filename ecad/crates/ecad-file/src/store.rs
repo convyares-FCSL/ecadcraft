@@ -82,7 +82,6 @@ impl Store {
     /// # Errors
     /// [`StoreError::Refused`] when `path` exists; the file could not be created (it is then
     /// removed).
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn create(path: &std::path::Path) -> Result<Self, StoreError> {
         let me = Self { db: Database::create(path)? };
         // The file is ours from here: a failure removes it.
@@ -98,7 +97,6 @@ impl Store {
     ///
     /// # Errors
     /// The file could not be opened, is not a redb database, or [`StoreError::Busy`].
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn open(path: &std::path::Path, writable: bool) -> Result<Self, StoreError> {
         Ok(Self { db: Database::open(path, writable)? })
     }
@@ -467,7 +465,7 @@ pub struct Writer {
 }
 
 impl Writer {
-    /// Put a `meta` row. Only the names EEP-0005 §3.1 lists (and `link_v1`) are accepted.
+    /// Put a `meta` row. Only the names EEP-0005 §3.1 lists are accepted.
     ///
     /// # Errors
     /// [`StoreError::Refused`] for another name; the engine failed.

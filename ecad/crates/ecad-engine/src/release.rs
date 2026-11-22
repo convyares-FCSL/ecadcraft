@@ -45,7 +45,7 @@ use crate::project::Project;
 use crate::revisions;
 
 use ecad_electrical::release::{
-    DEFAULT_ROWS, Group, LISTS, MAX_ROWS, NO_FILES_HERE, SAVE_FIRST, checks_table, clean_stem, counts, folder_name, grouped, slot_gives,
+    DEFAULT_ROWS, Group, LISTS, MAX_ROWS, SAVE_FIRST, checks_table, clean_stem, counts, folder_name, grouped, slot_gives,
 };
 use ecad_electrical::release::{errors_refusal, finalising, over_budget, stopped};
 
@@ -756,9 +756,6 @@ pub fn now_utc() -> Option<String> {
 /// Why the pending revision cannot be released now, with the way out (design 027 §6); `None`
 /// when it can.
 pub fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<String> {
-    if cfg!(target_arch = "wasm32") {
-        return Some(NO_FILES_HERE.into());
-    }
     if p.path.is_none() {
         return Some(SAVE_FIRST.into());
     }
@@ -1133,8 +1130,12 @@ pub(crate) fn release_pending(
         problems.push(format!("The project could not be saved: {e}. Save it before closing, or Rev {rev} is not kept."));
     }
     // 6. Manifest, 7. rename.
-    let chain =
-        p.file.v2().filter(|_| saved.is_ok()).and_then(|v| v.chain_of(v.branch(), tx).ok()).map(|h| h.iter().map(|b| format!("{b:02x}")).collect());
+    let chain = p
+        .file
+        .project()
+        .filter(|_| saved.is_ok())
+        .and_then(|v| v.chain_of(v.branch(), tx).ok())
+        .map(|h| h.iter().map(|b| format!("{b:02x}")).collect());
     let iss = Issued { branch: crate::history::current_name(p), transaction: tx, point: plan.head, chain };
     let doc = p.ledger.document().clone();
     let row = revisions::list(&doc).into_iter().find(|r| r.n == plan.n).unwrap_or_default();
@@ -1198,9 +1199,6 @@ fn write_manifest(dir: &Path, m: &Value) -> Result<(), String> {
 /// Not issued, no place for the folder, a write failure (no `.partial` left), or an existing
 /// folder without `existing`.
 pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Value, String> {
-    if cfg!(target_arch = "wasm32") {
-        return Err(NO_FILES_HERE.into());
-    }
     let chosen = chosen(params)?;
     let existing = Existing::parse(params)?;
     let o = options(p.ledger.document(), params)?;
@@ -1229,7 +1227,7 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
         }
     };
     let branch = crate::history::find_branch(p, &named.branch.hex()).map(|b| b.1.name).unwrap_or_else(|_| "main".into());
-    let chain = p.file.v2().and_then(|v| v.chain_of(named.branch, seq).ok()).map(|h| h.iter().map(|b| format!("{b:02x}")).collect());
+    let chain = p.file.project().and_then(|v| v.chain_of(named.branch, seq).ok()).map(|h| h.iter().map(|b| format!("{b:02x}")).collect());
     let iss = Issued { branch, transaction: seq, point: named.seq, chain };
     let m = manifest(&then, &row, &iss, &b, &st, &rows, &fan_tags(&then, &fan));
     let finished = injected(p, Step::Manifest)

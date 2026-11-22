@@ -1,5 +1,4 @@
 //! Files on disk (proposal §20.5): the file medium, the writer lock and the replacement steps.
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::path::{Path, PathBuf};
 

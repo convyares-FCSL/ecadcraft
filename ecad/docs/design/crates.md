@@ -218,7 +218,7 @@ crate edges already point at other modules going to E.
 | `text_style` | 1,385 | 54 | split | Text kinds, resolved heights, own styles, run rules and `parse_at` are E. CADCraft `TextStyle`, entities, fonts and `register_sheet_font` are C. | Cut 4, the largest. |
 | `title_block/` (6 files) | 1,233 | 9 | split | `bind`, `checks` and `house` are E. `layout` and `dxf` (`cadcraft_io::read_dxf`) are C. | `title_block_cmds` and `style_cmds` edges are cut. `frame::fit` moves to E. |
 | `title_block_cmds` | 276 | 4 | C | Commands. | — |
-| `translate`, `translate_oracle` | 1,629 | 4 | C | CADCraft commit → transaction. | — |
+| `translate` | 1,629 | 4 | C | CADCraft commit → transaction. | — |
 | `verify` | 406 | 1 | C | Does a rebuilt page show the document? | — |
 | `views` | 391 | 0 | C | Per-user fan or traditional setting, read by the projection. | `cable_title` (read by `checks`, `rating`, `props` and `styles`) moves to E. |
 | `wire_cmds` | 912 | 15 | C | Commands. | — |
@@ -382,7 +382,7 @@ the engine and the commands may touch the disk.
 | `release` (17) | Writes the stamped release folder: staging, manifest, rename. | Stays C. |
 | `views` (7) | The per-user settings file and its folder (environment). | Stays C. `cable_title` moves to E (pure; already in §2.1). |
 | `agent_access` (4) | The agent preference file. | Stays C (`agent`). |
-| `debug` (4), `translate_oracle` (4) | Debugger file reads; the oracle's log path from the environment, and abort. | Stay C (dev features). |
+| `debug` (4) | Debugger file reads. | Stays C (dev feature). |
 | `rating_cmds` (3) | Reads and writes the rating dataset CSV. | Stays C. The parse and `to_csv` are already in `rating/dataset` (E, no I/O). |
 | `plc/exchange` (2) | `read_file` and `write_file` for tag import and export. | Cut: `export_rows`, `read_tags`, `plan_fill` and the formats go to E (bytes in, bytes out). `read_file`, `write_file`, `run_plcimport` and `run_plcexport` go to C (`plc_cmds/exchange`). |
 | `title_block/dxf` (2) | Reads the DXF file. | Stays C (already C in §2.1). |
@@ -425,8 +425,7 @@ the redb format stores every transaction as these records) → `records`; `recor
 `tx_value`, `decode_tx`, `check_limits`, `seq_and_prev`, `SCHEMA_VERSION`, `definition_hash`
 (pinned by a known-hash test); `canonical`, `chain`, `crc`. From the v1 `disk`, `ReadOnly`,
 `JUST_ENDED`, `holder_record` (used by `v2/disk.rs`) and `utc` (used by ecad-app's debugger and
-ecad-bench's report) move to a neutral module. `v2::schema::LinkV1` stays: it is part of the
-version 2 format (a converted file's link), read and verified, just never written again.
+ecad-bench's report) move to a neutral module. (`LinkV1` was deleted in 0.2.3: nothing writes it.)
 
 **Agreed knock-ons:** ecad-bench `generate.rs` writes v1 (to the redb format); its
 `generator_contracts`, `tester_contracts` and `lane_benchv2` read v1 or convert; its open, edit and
@@ -534,7 +533,7 @@ tests E through C.
 | 7 | **Cut 11**: `ecad_engine::cad`. Apps and ecad-mcp switch paths and drop `cadcraft-engine`. | Path changes only. |
 | 8 | **Cut 12**: `ecad_engine::agent`. ecad-trial drops `ecad-mcp`. | MCP contract tests and the bridge tests unchanged. |
 | 9 | **App split.** ecad-trial's library becomes `crates/ecad-app` (`Trial` → `App`), and `apps/ecad-desktop` keeps `main`, `window`, `startup` and `args`. Cut 13's action table moves in. Update `docs/quick-start.md` (`cargo run -p ecad-desktop`), the CI, `xtask demo`, `ecad-mcp`'s `--launch` binary name, `DEV_BY_DEFAULT` and the raw-egui allowlist paths. | The trial tests move with the library. |
-| 10 | **Guards and wasm.** The §4 table, source checks and 061 rules in `layers`; the README check (§6) and the READMEs. **Remove the ECAD wasm check:** `WASM_CRATES`, `cargo xtask wasm` and its step in `cargo xtask ci`, and the ECAD wasm job in CI. `ecad/CLAUDE.md`: add the §1 vocabulary and the desktop-only ruling. Remove its wasm lines: the "Run wasm locally (`cargo xtask wasm` …) only when a change could affect it …" sentence, and "with the slow set and wasm" in the CI paragraph. 061's design and lane rules lose "rayon native only". Existing `cfg(target_arch = "wasm32")` branches (`ruzstd` decoding in `ecad-file`, `chrono` clock, `agent_access`, `same-file`) stay working. Removing them is a later clean-up, listed in `docs/deferred-work.md`, not part of this lane. | The new rules pass on the result of steps 1–9. |
+| 10 | **Guards and wasm.** The §4 table, source checks and 061 rules in `layers`; the README check (§6) and the READMEs. **Remove the ECAD wasm check:** `WASM_CRATES`, `cargo xtask wasm` and its step in `cargo xtask ci`, and the ECAD wasm job in CI. `ecad/CLAUDE.md`: add the §1 vocabulary and the desktop-only ruling. Remove its wasm lines: the "Run wasm locally (`cargo xtask wasm` …) only when a change could affect it …" sentence, and "with the slow set and wasm" in the CI paragraph. 061's design and lane rules lose "rayon native only". Existing `cfg(target_arch = "wasm32")` branches (`ruzstd` decoding in `ecad-file`, `chrono` clock, `agent_access`, `same-file`) stay working. Removing them was a later clean-up (0.2.3 leftovers, done), not part of this lane. | The new rules pass on the result of steps 1–9. |
 | 11 | **Drop the re-exports** from step 6 that only tests and apps use. Callers say `ecad_electrical::…`. This step is optional, and can be left for the phase-end tidy-up. | Path changes only. |
 
 Tester: yes. Step 1c changes the file reader and writer; steps 4 and 6 touch the projection and `translate.rs` neighbours. The tester runs

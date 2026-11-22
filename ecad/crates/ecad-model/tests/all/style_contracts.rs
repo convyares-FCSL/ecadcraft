@@ -324,13 +324,3 @@ fn a_standard_removed_on_one_side_and_changed_on_the_other_is_one_conflict() {
     assert!(plan.conflicts.is_empty(), "{:?}", plan.conflicts);
     assert!(d.unwrap().standard.is_none());
 }
-
-/// Review of PR 88, finding 1: a potential row as an older build stored it names `colour` and
-/// `cross_section`; they read as the legacy fields and write back under the same names.
-#[test]
-fn an_old_potential_row_reads_its_colour_as_legacy() {
-    let old = r#"{"name":"L","prefix":"L-","numbered":true,"colour":"BN","cross_section":"2.5"}"#;
-    let p: ecad_model::wiring::PotentialDef = serde_json::from_str(old).unwrap();
-    assert_eq!((p.legacy_colour.as_deref(), p.legacy_cross_section.as_deref()), (Some("BN"), Some("2.5")));
-    assert_eq!(serde_json::to_string(&p).unwrap(), old);
-}

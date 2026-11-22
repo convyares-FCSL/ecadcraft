@@ -16,8 +16,7 @@ use ecad_model::words::Word;
 use ecad_model::{CableId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Properties, StyleRef, Subject};
 
 use crate::cables::{
-    CableField, MAX_LENGTH, MAX_TEXT, MAX_WORDS, MIN_LENGTH, Shield, Side, clip, drawn_pages, is_drawn, length_of, plan_words, planned, read,
-    type_notation,
+    CableField, MAX_LENGTH, MAX_TEXT, MAX_WORDS, MIN_LENGTH, Side, clip, drawn_pages, is_drawn, length_of, plan_words, planned, read, type_notation,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -29,6 +28,7 @@ use crate::designations::{self, Aspect};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
 use crate::styles::{self, cable};
+use ecad_model::style::cable::Shield;
 
 /// Why a value is refused.
 #[derive(Debug, Clone, PartialEq)]

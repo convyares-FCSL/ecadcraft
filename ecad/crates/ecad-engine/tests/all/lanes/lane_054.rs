@@ -90,7 +90,7 @@ fn newpage_type_after_inserts_after_the_page_with_the_next_number() {
     let c = page(&mut h, json!({"type": "front", "generated": "cover", "folder": g.hex()}));
     let r = page(&mut h, json!({"type": "front", "generated": "revisions", "after": c.hex()}));
     assert_eq!((number(&mut h, c), number(&mut h, r)), ("01".into(), "02".into()));
-    assert_eq!(h.doc().pages[&r].title, ecad_engine::generated::GenKind::Revisions.title());
+    assert_eq!(h.doc().pages[&r].title, ecad_model::GenKind::Revisions.title());
     h.check();
 }
 

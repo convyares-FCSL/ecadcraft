@@ -14,7 +14,6 @@
 //!   long and empty labels stored by another route; NaN, infinite and overflowing geometry; a
 //!   20-core cable at a tight pitch, horizontal and vertical.
 //! - AC7: brief 005 criteria 1, 2 and 4 with cores and a reference end present.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

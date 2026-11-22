@@ -25,7 +25,7 @@ use crate::defaults::{self, Entry, Kind, Level, ProjectSource};
 /// use ecad_model::Document;
 /// let mut doc = Document::default();
 /// assert!(ecad_electrical::words_check::check(&doc).is_empty());
-/// doc.properties.insert("text.tag.show".into(), "maybe".into());
+/// doc.display.insert("text.tag.show".into(), "maybe".into());
 /// let found = ecad_electrical::words_check::check(&doc);
 /// assert_eq!(found.len(), 1);
 /// assert!(found[0].to_string().contains("`maybe`"));
@@ -118,7 +118,7 @@ fn reserved(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
         WordPlace::Device(_) => Some(keys::Holder::Device),
         WordPlace::Wire(_) => Some(keys::Holder::Wire),
         WordPlace::Cable(_) => Some(keys::Holder::Cable),
-        WordPlace::Settings | WordPlace::Standard => None,
+        WordPlace::Settings | WordPlace::Standard | WordPlace::File => None,
     };
     let reserved = |k: &str| holder.map_or_else(|| keys::is_reserved(k), |h| keys::is_reserved_on(h, k));
     out.extend(props.keys().filter(|k| reserved(k)).map(|k| UnknownWord::ReservedKey { place, key: k.clone() }));

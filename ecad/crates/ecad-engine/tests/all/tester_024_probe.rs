@@ -15,7 +15,6 @@
 //! - the harness's own project checks (projection equals the page drawing, replay, mismatches).
 //!
 //! Bugs are kept as tests marked `#[ignore = "tester 024: <bug>"]`.
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::collections::BTreeMap;
 

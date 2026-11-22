@@ -15,7 +15,7 @@ Part of the [quick start](../quick-start.md). Builds on [050a-style-model.md](05
 | Wire tool | `Specify first point of wire or [Potential/Category/Join]`; **C** asks `Category for new wires [auto/…]` for this run of the tool. `wire {category}` in the JSON form |
 | Choosing a category | On a net with no potential it also sets the category's potential; a net with another potential keeps it ("Category set; the net keeps potential L") |
 | Reports | The wire report has a **Category** column; its colour and cross-section are the resolved ones. The BOM gains one metres row per part number, colour and cross-section of categories with a part number: wires × allowance, rounded up to 0.5 m, marked "estimate" |
-| Checks | `category-unknown`, `category-potential-twice`, `wire-allowance` (a category on the BOM with no allowance), and the potential kind of `ignored-old-setting` |
+| Checks | `category-unknown`, `category-potential-twice`, and `wire-allowance` (a category on the BOM with no allowance) |
 
 **Differences on the page from `dev`** (asked for by the UI spec): power wires (L, L1–L3, N) are
 drawn in ink at 0.6 mm instead of in their insulation colour; their label still says the colour.

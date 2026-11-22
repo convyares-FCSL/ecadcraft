@@ -435,7 +435,7 @@ fn wire(t: &App, k: usize) -> Option<Detail> {
 /// Brief 057 (design 057 §2): the Rating section, after Made as or Part; its folded line is the
 /// result. A wire or cable with no rating data shows none, so a project that does not rate is
 /// not nagged.
-fn rating_section(_t: &App, r: Option<&ecad_engine::rating::Rating>, methods: &[&'static str]) -> Section {
+fn rating_section(_t: &App, r: Option<&ecad_engine::rating::circuit::Rating>, methods: &[&'static str]) -> Section {
     let Some(r) = r else { return Section::default() };
     let methods = if methods.is_empty() { ecad_engine::rating::dataset::METHODS.to_vec() } else { methods.to_vec() };
     Section {

@@ -3,15 +3,13 @@
 //! - `style-unknown` (Info): an object's (or the project's, or the standard's) style choice names
 //!   no style of its catalogue; the object is drawn with the next level's style. A cable's
 //!   `cable_type` naming no cable type is one too (design 072 §4.5).
-//! - `ignored-old-setting` (Info, overseer ruling on FP4): one row per kind of 031 key
-//!   (`text.<kind>.height`, `.weight`, `.font`) still in the project's properties.
 //! - `style-limits` (Info): style records past the bounds, which are ignored.
 //! - `defaults-damaged` (Warning, brief 066): a built-in default failed to load.
 //!
 //! # Update map
 //! The rows are worked out on open, reload or first show, and again only after an effect
 //! [`touches`] names: a style record or the standard, a style choice on any object (a wire's or a
-//! cable's type included, a location box's own style), a project property of the old kinds, or what the page type and folder
+//! cable's type included, a location box's own style), or what the page type and folder
 //! rows read (`crate::page_types::touches_checks`: a page added, removed, renumbered, moved to
 //! another folder or given another type, a folder, the page number step). Every other effect leaves them. Working them out reads the
 //! style-choice index (explicit choices only), the location boxes' own styles, the project's
@@ -23,27 +21,6 @@ use ecad_model::{Document, ObjectRef, Properties};
 
 use crate::checks::{Check, Fix, Kind, Object};
 
-/// The kinds of old 031 key (FP4): the field word, and the row's words.
-const OLD_KEYS: [(&str, &str); 3] = [
-    ("height", "Text heights set in an older build, now ignored: set them in Standards"),
-    ("weight", "Text weights set in an older build, now ignored: set them in Standards"),
-    ("font", "Text fonts set in an older build, now ignored: set them in Standards"),
-];
-
-/// Whether project property `key` is one of 031's old text keys of field `field`
-/// (`text.<kind>.<field>` for a kind word).
-pub fn is_old_text_key(key: &str, field: &str) -> bool {
-    key.strip_prefix("text.")
-        .and_then(|r| r.strip_suffix(field))
-        .and_then(|r| r.strip_suffix('.'))
-        .is_some_and(|kind| <crate::text_style::TextKind as ecad_model::Word>::parse(kind).is_some())
-}
-
-/// Whether `key` is any of 031's old text keys.
-pub fn is_old_key(key: &str) -> bool {
-    OLD_KEYS.iter().any(|(f, _)| is_old_text_key(key, f))
-}
-
 /// Whether `effect` can change the style rows: its own rows ([`touches_own`]) or the page type and
 /// folder rows they include ([`crate::page_types::touches_checks`], brief 054).
 pub fn touches(effect: &Effect<'_>) -> bool {
@@ -54,9 +31,8 @@ pub fn touches(effect: &Effect<'_>) -> bool {
 fn touches_own(effect: &Effect<'_>) -> bool {
     match effect {
         Effect::Style { .. } | Effect::Standard { .. } => true,
-        // 050b: a potentials table written again clears its older colours.
+        // 050b: a potential's name is shown in the category-potential-twice row.
         Effect::Settings { before, after } => before.wiring.potentials != after.wiring.potentials,
-        Effect::Prop { object: ObjectRef::Project, key, .. } => is_choice_key(key.raw) || is_old_key(key.raw),
         Effect::Prop { key, .. } => is_choice_key(key.raw),
         // A deleted object takes its choices with it.
         Effect::Device { before: Some(component), after: None, .. } => component.properties.keys().any(|k| is_choice_key(k)),
@@ -143,19 +119,6 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     let mut out = Vec::new();
     // One drawing order for the rows' go-to places: the book is built at most once.
     let mut places = ecad_model::numbering::Places::new(doc);
-    // Old 031 keys: one row per kind found.
-    for (field, text) in OLD_KEYS {
-        if doc.display.keys().any(|k| is_old_text_key(k, field)) {
-            out.push(Check {
-                kind: Kind::IgnoredOldSetting,
-                page: None,
-                at: None,
-                object: Object::None,
-                which: text.into(),
-                fix: Some(Fix::OpenStandards(ecad_model::StyleCatalogue::Text)),
-            });
-        }
-    }
     // Brief 066 (design 066 §7): a built-in default that failed to load. Never in a tested build.
     if let Some(first) = crate::defaults::data::builtin_problems().first() {
         out.push(Check {
@@ -165,17 +128,6 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             object: Object::None,
             which: format!("Built-in defaults damaged ({first}): safe values used"),
             fix: None,
-        });
-    }
-    // 050b (FP6 ruling): potential colours or cross-sections an older build stored.
-    if doc.settings.wiring.potentials.iter().any(|p| p.legacy_colour.is_some() || p.legacy_cross_section.is_some()) {
-        out.push(Check {
-            kind: Kind::IgnoredOldSetting,
-            page: None,
-            at: None,
-            object: Object::None,
-            which: "Potential colours and cross-sections set in an older build, now ignored: set them in Standards ▸ Wire categories".into(),
-            fix: Some(Fix::OpenStandards(ecad_model::StyleCatalogue::Wire)),
         });
     }
     // 050b: two categories default for one potential.
@@ -308,20 +260,4 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         });
     }
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn old_keys_are_031_kind_fields_only() {
-        assert!(is_old_key("text.tag.height"));
-        assert!(is_old_key("text.wire_label.weight"));
-        assert!(is_old_key("text.cover.font"));
-        assert!(!is_old_key("text.font"));
-        assert!(!is_old_key("text.tag.style"));
-        assert!(!is_old_key("text.tag.show"));
-        assert!(!is_old_key("text.nothing.height"));
-    }
 }

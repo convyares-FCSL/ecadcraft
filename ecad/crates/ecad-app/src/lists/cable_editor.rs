@@ -10,7 +10,8 @@
 
 use std::collections::BTreeMap;
 
-use ecad_electrical::cables::{self, CableField, Shield, Side, Source};
+use ecad_electrical::cables::{self, CableField, Side, Source};
+use ecad_model::style::cable::Shield;
 use ecad_model::words::Word;
 use ecad_model::{CableId, Document, PageId};
 use ecad_ui::control::{self, Select, TextEntry};

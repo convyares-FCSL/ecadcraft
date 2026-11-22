@@ -267,16 +267,6 @@ pub fn component_key(doc: &Document, c: DeviceId, key: &str) -> String {
     }
 }
 
-/// The op clearing an older build's text size, weight or font on the project (brief 050a, design
-/// 050 §3.4: its Checks row goes; it is never written), when `key` is one and the project has it.
-pub fn clear_old_key(doc: &Document, key: &str) -> Option<Op> {
-    if !crate::styles::checks::is_old_key(key) {
-        return None;
-    }
-    let before = doc.display.get(key).cloned()?;
-    Some(Op::SetProperty { object: ObjectRef::Project, key: key.to_string(), before: Some(before), after: None })
-}
-
 // ---------------------------------------------------------------- values (Device and Value rows)
 
 /// The value `setprop` stores for `key` on `object` by its row of [`PROP_RULES`] (a `Device` or
@@ -711,9 +701,6 @@ pub struct SetpropParams {
     /// A device tag another device holds: make this the same device (as conflict merge).
     #[serde(default)]
     merge: Option<bool>,
-    /// With a null value: clear an older build's text setting on the project.
-    #[serde(default)]
-    project: Option<bool>,
 }
 
 /// The devices a function or location `setprop` names (brief 052, design 052 §5.9).
@@ -739,11 +726,6 @@ fn one_object(p: &SetpropParams) -> Result<ObjectRef, CmdError> {
 }
 
 impl SetpropParams {
-    /// Whether this clears an older build's text setting on the project (brief 050a).
-    fn clears_old_key(&self) -> bool {
-        self.project == Some(true) && matches!(self.value, None | Some(None)) && crate::styles::checks::is_old_key(&self.key)
-    }
-
     /// Whether this sets a function or location on devices (brief 052).
     fn sets_location(&self) -> bool {
         (self.component.is_some() || self.devices.is_some()) && location::aspect_property(&self.key).is_some()
@@ -757,9 +739,6 @@ impl Generic for SetpropParams {
     const STATE: State = State::Conflicts;
 
     fn check(&self) -> Result<(), CmdError> {
-        if self.clears_old_key() {
-            return Ok(());
-        }
         reserved(&self.key)?;
         if self.sets_location() {
             return location_objects(self.component, self.devices.as_ref().map(|c| c.0.as_slice())).map(|_| ());
@@ -771,14 +750,6 @@ impl Generic for SetpropParams {
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        // Brief 050a (design 050 §3.4): an older build's text size, weight or font on the project is
-        // cleared here (its Checks row goes); it is never written.
-        if self.clears_old_key() {
-            return Ok(match clear_old_key(cx.doc, &self.key) {
-                None => Outcome::answer(json!({"changed": false})),
-                Some(op) => Outcome::edit("Clear an older build's text setting", vec![op], json!({"changed": true})),
-            });
-        }
         reserved(&self.key)?;
         let object = one_object(&self);
         let key = self.key;

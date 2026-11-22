@@ -99,6 +99,13 @@ guard autosaves open drawings through `autosave::plan_with`, which skips owned d
 an ECAD page's unsaved work is not saved when the UI panics (the app keeps running, so the
 project can still be saved). A generic `DocumentOwner::emergency_save` hook would close that gap.
 
+**Fix to offer upstream (owner, 2026-11-22; not a patch here):** `crates/ui-egui/src/canvas/rebuild.rs`
+has wasm-only dead code: `Request`, `MeshRequest` and `run` are used only by the native background
+rebuild, so a wasm32 build warns that their fields and `run` are never read (an error under
+`-D warnings`). A `#[cfg(not(target_arch = "wasm32"))]` on them, or the wasm path using them, would
+fix it. Our CI's `cadcraft-wasm` job runs without `-D warnings` because of it; once the fix lands
+upstream, that job goes back to denying warnings.
+
 ## Code patches to upstream crates: PDF window culling (brief 033, owner answer Q1, 2026-11-12)
 
 Generic and not ECAD-specific: a page of a `pages` plot writes only what lies in its window. To

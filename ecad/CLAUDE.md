@@ -82,9 +82,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     `tests/all/common`), so tests are named `<name>::<test>` and `cargo test -p <crate> <name>`
     runs one file. A new test file is a new module there (in a lane, under `tests/all/lanes/`; see
     "Per-lane files"), never a new `tests/*.rs`, which would
-    link egui and wgpu once more. The exception is `ecad-bench`'s `translate_differential.rs`: it
-    reads process-wide oracle counters and the oracle aborts the process, so it keeps its own
-    executable. ECAD's own crates build at `opt-level = 0` for dev and test, dependencies at 2.
+    link egui and wgpu once more. ECAD's own crates build at `opt-level = 0` for dev and test, dependencies at 2.
   - **Slow set.** A test that takes more than about 2 s is marked `#[ignore = "slow: <why>"]`.
     Everyday runs (`cargo test`, `cargo xtask test-changed`) skip it. **Workers and testers never
     run `--include-ignored`** (owner, 2026-11-12): the slow set runs only at the dev→main QA gate

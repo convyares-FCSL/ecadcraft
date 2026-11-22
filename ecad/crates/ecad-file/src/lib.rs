@@ -5,8 +5,8 @@
 //!
 //! - **Records** ([`records`], [`record`]): the transaction records every file stores, schema
 //!   version 1, separate from `ecad-model` and converted explicitly, so a model change never
-//!   silently changes the format. Ops are written flat, `{"op": name, "v": n, …}`, and older op
-//!   versions are upcast after integrity checks.
+//!   silently changes the format. Ops are written flat, `{"op": name, "v": n, …}`; any op
+//!   version but the current one is refused (pre-v1: no upcasts).
 //! - **Integrity** ([`canonical`], [`chain`]): RFC 8785 canonical form (the bytes stored and
 //!   hashed), and an unkeyed SHA-256 history chain with domain-separated seeds for projects and
 //!   libraries. It detects accidental damage, reordering and divergence; it does not resist
@@ -32,7 +32,6 @@ pub mod canonical;
 pub mod chain;
 pub mod chunks;
 mod crc;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
 mod error;
 pub mod history;
@@ -45,9 +44,8 @@ pub mod store;
 pub mod verify;
 
 pub use crc::crc32c;
-#[cfg(not(target_arch = "wasm32"))]
 pub use disk::{JUST_ENDED, ReadOnly, utc};
 pub use error::FileError;
-pub use project::{BranchError, DamageV2, OpenErrorV2, OpenedV2, ProjectV2, ReportV2, SaveErrorV2, SavedV2, StoreHistory};
+pub use project::{BranchError, Damage, OpenError, Opened, Project, Report, SaveError, Saved, StoreHistory};
 pub use record::{SCHEMA_VERSION, definition_hash};
 pub use store::{Reader, Store, StoreError, TableStat, Writer};

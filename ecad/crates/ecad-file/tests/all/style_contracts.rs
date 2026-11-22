@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use crate::common::{PROJECT, SEED, WRITER};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{Author, Ledger, ObjectRef, Op, StandardId};
 
@@ -88,9 +88,9 @@ fn style_ops_round_trip_through_a_project_file_and_its_snapshots() {
     for (name, every) in [("snap.ecad", 16), ("log.ecad", 1_000_000)] {
         let p = dir.path(name);
         let store = Store::create(&p).unwrap();
-        let proj = ProjectV2::create(store, PROJECT, &ledger, Some(1), WRITER, every).unwrap().0;
+        let proj = Project::create(store, PROJECT, &ledger, Some(1), WRITER, every).unwrap().0;
         drop(proj);
-        let o = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        let o = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
         assert_eq!(o.ledger.document(), ledger.document(), "{name}");
         assert_eq!(o.ledger.full_log().unwrap(), ledger.full_log().unwrap(), "{name}: the log reads back the same ops");
         let v = ecad_file::verify::verify(o.project.store());
@@ -120,35 +120,26 @@ fn hostile_style_records_are_refused_in_words() {
     }
 }
 
-/// Review of PR 88, finding 1 (FP6): a version 2 project chunk written before 050b stores a
-/// potential's `colour` and `cross_section`; read now, they arrive as the legacy fields (so Checks
-/// can name them), and an unchanged table writes back the same bytes.
+/// Pre-v1 there is no compatibility: a potential row naming `colour` or `cross_section` (an older
+/// build's) is refused by the strict reader.
 #[test]
-fn a_pre_050b_project_chunk_keeps_its_potential_colours() {
+fn a_potential_row_with_a_colour_is_refused() {
     use ecad_file::chunks::{ModelMeta, PROJECT_KEY, assemble, build_full};
     let mut doc = ecad_model::Document::default();
     doc.settings.wiring.potentials = ecad_model::wiring::default_potentials();
-    let meta = ModelMeta::default();
-    let body_of = |doc: &ecad_model::Document| {
-        let (set, chunks) = build_full(doc, &meta).unwrap();
-        let h = set.chunks[PROJECT_KEY];
-        let body = chunks.iter().find(|c| c.hash == h).unwrap().body.clone();
-        (set, chunks, body)
-    };
-    let (set, chunks, body) = body_of(&doc);
-    let text = String::from_utf8(body).unwrap();
-    assert!(!text.contains(r#""colour":"#) && !text.contains("legacy"), "050b's table stores no colour: {text}");
-    // The same row as an older build wrote it.
+    let (set, chunks) = build_full(&doc, &ModelMeta::default()).unwrap();
+    let h = set.chunks[PROJECT_KEY];
+    let text = String::from_utf8(chunks.iter().find(|c| c.hash == h).unwrap().body.clone()).unwrap();
+    assert!(!text.contains(r#""colour":"#), "the table stores no colour: {text}");
     let old = text.replacen(r#""numbered":true"#, r#""numbered":true,"colour":"BN","cross_section":"2.5""#, 1);
     assert_ne!(old, text);
-    let mut bodies: Vec<(String, Vec<u8>)> = Vec::new();
-    for (k, h) in &set.chunks {
-        let b = if k == PROJECT_KEY { old.clone().into_bytes() } else { chunks.iter().find(|c| c.hash == *h).unwrap().body.clone() };
-        bodies.push((k.clone(), b));
-    }
-    let (read, _) = assemble(&set, bodies).unwrap();
-    let row = &read.settings.wiring.potentials[0];
-    assert_eq!((row.legacy_colour.as_deref(), row.legacy_cross_section.as_deref()), (Some("BN"), Some("2.5")), "{row:?}");
-    let (_, _, again) = body_of(&read);
-    assert_eq!(String::from_utf8(again).unwrap(), old, "the old chunk's bytes (and hash) are kept");
+    let bodies: Vec<(String, Vec<u8>)> = set
+        .chunks
+        .iter()
+        .map(|(k, h)| {
+            let b = if k == PROJECT_KEY { old.clone().into_bytes() } else { chunks.iter().find(|c| c.hash == *h).unwrap().body.clone() };
+            (k.clone(), b)
+        })
+        .collect();
+    assert!(assemble(&set, bodies).is_err(), "an unknown `colour` key is a read error");
 }

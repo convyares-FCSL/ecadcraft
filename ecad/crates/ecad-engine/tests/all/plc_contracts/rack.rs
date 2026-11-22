@@ -323,20 +323,18 @@ fn a6_deleting_a_rack_takes_its_cards_out_in_the_same_transaction() {
 }
 
 #[test]
-fn a8_an_op_the_update_map_does_not_list_recomputes_nothing() {
+fn a8_an_unrelated_op_changes_nothing_in_the_plc_model() {
     let Rack { mut h, cards, .. } = rack(4509);
     h.cfg(|p| {
         p.outputs();
     });
-    let n = h.cfg(|p| p.outputs().plc.recomputed);
-    // A wire, a coil, a page property: nothing PLC.
+    // A wire, a coil: nothing PLC reads differently (the model is rebuilt, design 064 bar).
     h.run("wire", json!({"points": [[0.0, 0.0], [0.0, 50.0]]})).unwrap();
     placed(&mut h, "coil", 300.0, 300.0);
-    assert_eq!(h.cfg(|p| p.outputs().plc.recomputed), n, "no PLC recompute for unrelated edits");
-    // A slot move recomputes the card (and the rack's group), not the whole model.
+    assert!(h.cfg(|p| p.outputs().plc.last_changed.is_empty()), "no PLC change for unrelated edits");
+    // A slot move changes the card.
     h.run("plcslot", json!({"card": cards[1].hex(), "slot": 20})).unwrap();
-    let work = h.cfg(|p| p.outputs().plc.last_work);
-    assert!((1..=2).contains(&work), "work {work}");
+    assert!(h.cfg(|p| p.outputs().plc.last_changed.contains(&cards[1])), "the moved card changed");
     same_as_built(&mut h);
 }
 

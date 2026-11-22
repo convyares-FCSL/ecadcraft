@@ -110,7 +110,10 @@ fn same_as_built(h: &mut H) {
         let built = StripPages::build(p.ledger.document(), &o.strips);
         (o.strip_pages.clone(), built)
     });
-    assert!(kept.same_as(&built), "strip pages differ from a rebuild");
+    let mut kept = kept;
+    kept.last_changed.clear();
+    (kept.layout_changed, kept.style_changed) = (false, false);
+    assert!(kept == built, "strip pages differ from a rebuild");
 }
 
 /// Run `cmd` on the session; the window projections it caused and the pages it names.
@@ -230,8 +233,8 @@ fn text_heights_follow_the_text_styles() {
     assert!((after - 3.5).abs() < 1e-9 && (before - 1.6).abs() < 1e-9, "{before} → {after}");
 }
 
-/// §11 #7–#9: the update map. A wire on -X01:3 redraws the shown page once; an edit no strip shows
-/// projects nothing; a cable type change lays out only the strips its cores are on.
+/// §11 #7–#9: the redraw. A wire on -X01:3 redraws the shown page once; an edit no strip shows
+/// projects nothing; a cable type change marks only the strips its cores are on.
 #[test]
 fn the_shown_strip_page_redraws_only_for_its_strip() {
     let mut g = fixture(0x46_05);
@@ -251,8 +254,6 @@ fn the_shown_strip_page_redraws_only_for_its_strip() {
     let (n, named) = counted(&mut g.h, "wirenumber", json!({"conductor": w3.hex(), "value": "W-77"}));
     assert_eq!(n, 1, "the strip page redraws once");
     assert!(named.expect("pages known").contains(&page));
-    let o = outputs(&mut g.h);
-    assert_eq!(o.strip_pages.last_work, 1, "one strip laid out");
     same_as_built(&mut g.h);
     // The cable's type: only -X01 is marked, the box shows the new type.
     let (n, _) = counted(&mut g.h, "setprop", json!({"cable": g.cable.hex(), "key": "type", "value": "5G1.5"}));

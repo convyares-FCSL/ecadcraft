@@ -553,7 +553,7 @@ fn revision_fields(standard: [Option<Option<String>>; 6], n: Option<u64>, custom
 /// Revisions are issued, and the pending one edited, on a release line only (design 020 §2.5.2,
 /// owner answer 10): on another branch, the refusal names the way forward.
 pub fn release_line_refusal(p: &Project, issuing: bool) -> Option<String> {
-    let v = p.file.v2()?;
+    let v = p.file.project()?;
     if v.branch_record().release_line {
         return None;
     }

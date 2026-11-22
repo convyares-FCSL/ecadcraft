@@ -13,7 +13,7 @@
 //! another page is shown.
 
 use ecad_engine::front::Block;
-use ecad_engine::generated::GenKind;
+use ecad_model::GenKind;
 use ecad_model::PageId;
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui;

@@ -1,5 +1,5 @@
 //! Transaction records as JSON values: the flat op form `{"op": name, "v": n, …}`, version
-//! checks, upcasts and input caps (proposal §20.2, §20.7, §20.11). The project file stores every
+//! checks and input caps (proposal §20.2, §20.7, §20.11). The project file stores every
 //! transaction as one such record, in canonical form ([`crate::canonical`]).
 
 use ecad_model as m;
@@ -105,8 +105,8 @@ pub enum DecodeError {
     Parse(String),
     /// An op this build does not know.
     UnknownOp(String),
-    /// An op version that is newer, or older with no upcast.
-    Upcast(String),
+    /// An op stored in a version this build does not read.
+    OpVersion(String),
     /// A size or integer limit.
     Limits(String),
     /// An embedded definition's recorded content hash does not match its content (§20.3).
@@ -165,8 +165,8 @@ pub fn seq_and_prev(v: &Value) -> (Option<u64>, Option<&str>) {
     (v.get("seq").and_then(Value::as_u64), v.get("prev").and_then(Value::as_str))
 }
 
-/// Decode a transaction record that has passed the frame and chain checks: check op versions,
-/// upcast, and convert to the model.
+/// Decode a transaction record that has passed the frame and chain checks: check op versions
+/// and convert to the model.
 ///
 /// # Errors
 /// [`DecodeError`] naming the first problem.
@@ -203,7 +203,7 @@ fn decode_op(v: Value) -> Result<m::Op, DecodeError> {
         return Err(DecodeError::UnknownOp(format!("op {name:?} is not known to this build")));
     }
     let version = obj.remove("v").and_then(|v| v.as_u64()).ok_or_else(|| DecodeError::Parse(format!("op {name} has no version")))?;
-    upcast_op(&name, version, &mut obj).map_err(|e| DecodeError::Upcast(e.to_string()))?;
+    check_op_version(&name, version).map_err(|e| DecodeError::OpVersion(e.to_string()))?;
     let mut tagged = Map::new();
     tagged.insert(name, Value::Object(obj));
     let rec: records::Op = serde_json::from_value(Value::Object(tagged)).map_err(|e| DecodeError::Parse(e.to_string()))?;
@@ -231,28 +231,9 @@ fn check_content_hash(op: &m::Op) -> Result<(), DecodeError> {
     Ok(())
 }
 
-/// Bring an op stored in an older version up to [`records::OP_VERSION`], on its JSON fields.
-/// Runs only after the record's integrity has been verified on its stored form (§20.7).
-#[cfg_attr(not(test), allow(unused_variables))]
-fn upcast_op(name: &str, version: u64, obj: &mut Map<String, Value>) -> Result<(), FileError> {
-    if version == records::OP_VERSION {
-        return Ok(());
-    }
-    if version > records::OP_VERSION {
-        return Err(FileError::OpNewer { name: name.to_string(), version });
-    }
-    match (name, version) {
-        // A synthetic older version, compiled only into the crate's own tests, proving the
-        // upcast path: in "v0" a page's title was called "name".
-        #[cfg(test)]
-        ("AddPage", 0) => {
-            let page = obj.get_mut("page").and_then(Value::as_object_mut).ok_or(FileError::OpUpcastShape("AddPage v0 has no page"))?;
-            let title = page.remove("name").ok_or(FileError::OpUpcastShape("AddPage v0 page has no name"))?;
-            page.insert("title".into(), title);
-            Ok(())
-        }
-        _ => Err(FileError::OpNoUpcast { name: name.to_string(), version }),
-    }
+/// Refuse an op stored in any version but [`records::OP_VERSION`] (pre-v1: no upcasts).
+fn check_op_version(name: &str, version: u64) -> Result<(), FileError> {
+    if version == records::OP_VERSION { Ok(()) } else { Err(FileError::OpVersion { name: name.to_string(), version }) }
 }
 
 /// Integer fields of ops must be exact as doubles (§20.10).
@@ -314,33 +295,11 @@ pub fn definition_hash(d: &m::Definition) -> Result<m::ContentHash, FileError> {
 mod tests {
     use super::*;
 
-    /// A transaction whose `AddPage` is stored in the synthetic version 0 is upcast on decoding.
     #[test]
-    fn old_op_versions_are_upcast() {
-        let tx = m::Transaction {
-            id: TxId(1),
-            seq: 1,
-            author: m::Author::User,
-            label: "v0 page".into(),
-            kind: m::TxKind::Edit,
-            time_ms: None,
-            ops: vec![m::Op::AddPage { id: m::PageId(9), page: m::Page::titled("1").unwrap(), index: 0 }],
-        };
-        let mut v = tx_value(&tx, &[0; 32]).unwrap();
-        let op = v["ops"][0].as_object_mut().unwrap();
-        op.insert("v".into(), Value::from(0u64));
-        let page = op.get_mut("page").unwrap().as_object_mut().unwrap();
-        let title = page.remove("title").unwrap();
-        page.insert("name".into(), title);
-        let back = decode_tx(&v).unwrap();
-        let m::Op::AddPage { page, .. } = &back.ops[0] else { panic!("not AddPage") };
-        assert_eq!(page.title.as_str(), "1");
-    }
-
-    #[test]
-    fn newer_op_versions_are_refused() {
-        let mut obj = Map::new();
-        assert!(upcast_op("AddPage", 2, &mut obj).unwrap_err().to_string().contains("newer"));
-        assert!(upcast_op("AddItem", 0, &mut obj).unwrap_err().to_string().contains("no upcast"));
+    fn every_other_op_version_is_one_error() {
+        assert!(check_op_version("AddPage", records::OP_VERSION).is_ok());
+        for v in [0, records::OP_VERSION + 1] {
+            assert_eq!(check_op_version("AddPage", v), Err(FileError::OpVersion { name: "AddPage".into(), version: v }));
+        }
     }
 }

@@ -18,11 +18,11 @@ use crate::defaults::strip_pages;
 use crate::designations::{self, Aspect, Pending};
 use crate::error::{CmdError, msg};
 use crate::frames::{CUSTOMER, DRAWING_NUMBER, STATUS, TITLE};
-use crate::generated::GenKind;
 use crate::outputs::kept::Outputs;
 use crate::page_types::MAX_NUMBER_CHARS;
 use crate::proposals::{self, Mode, Planned};
 use crate::revisions::{self, FIELDS, Revision};
+use ecad_model::GenKind;
 
 /// Most characters of a folder name.
 pub const MAX_FOLDER_NAME: usize = 100;
@@ -825,12 +825,6 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     }
     ops.extend(proposed.ops.iter().cloned());
     for (k, v) in &change.props {
-        // Brief 050a (FP4 ruling): an old 031 text key may be cleared, which removes its
-        // `ignored-old-setting` row; it is never written.
-        if v.is_none() && crate::styles::checks::is_old_key(k) {
-            ops.extend(set(ObjectRef::Project, Some(&doc.display), k, None));
-            continue;
-        }
         check_free_key(doc, k)?;
         let v = free_value(doc, k, v.as_deref())?;
         // Design 072 §5.3: the site and the cover's notes are the project's info.

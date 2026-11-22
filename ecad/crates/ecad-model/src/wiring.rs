@@ -87,24 +87,13 @@ impl Scheme {
 
 /// One row of the potentials table (design 022 §6).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PotentialDef {
     pub name: String,
     pub prefix: String,
     /// `false`: every net of this potential is numbered with the prefix alone, shared and exempt
     /// from the duplicate check (`PE`).
     pub numbered: bool,
-    /// Brief 050b (FP6): a colour an older build stored on the row. Never read for drawing or
-    /// labels (wire categories give colours now); kept so Checks can say it is ignored, and
-    /// cleared when the table is written again.
-    ///
-    /// Stored under its pre-050b name `colour`: a version 2 project chunk serialises this struct,
-    /// so an older chunk's value is read here and an unchanged table keeps its bytes.
-    #[serde(rename = "colour", default, skip_serializing_if = "Option::is_none")]
-    pub legacy_colour: Option<String>,
-    /// Brief 050b (FP6): as [`PotentialDef::legacy_colour`], for a cross-section (stored as
-    /// `cross_section`).
-    #[serde(rename = "cross_section", default, skip_serializing_if = "Option::is_none")]
-    pub legacy_cross_section: Option<String>,
 }
 
 /// The defaults-registry key choosing the wire type (brief 050b, FP5) for the project or the
@@ -194,7 +183,7 @@ pub const COLOUR_STYLE_WORDS: &[&str] = <ColourWords as crate::words::Word>::WOR
 pub const MAX_DIGITS: u8 = 6;
 
 fn row(name: &str, prefix: &str, numbered: bool) -> PotentialDef {
-    PotentialDef { name: name.into(), prefix: prefix.into(), numbered, legacy_colour: None, legacy_cross_section: None }
+    PotentialDef { name: name.into(), prefix: prefix.into(), numbered }
 }
 
 /// The default potentials table (IEC 60445 and 60204-1 practice; owner answer Q10). Brief 050b

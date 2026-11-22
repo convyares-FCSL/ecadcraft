@@ -6,7 +6,7 @@
 use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
 use ecad_file::schema::{self, BranchId, VersionKind};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::tag::HighWater;
 use ecad_model::*;
 use serde_json::json;
@@ -60,7 +60,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
         vec![Op::DeleteCable { id: w2, cable: Cable { properties: tagged("-W02"), cores: Vec::new(), ..Default::default() } }],
     )
     .unwrap();
-    ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), "tester 029", 16).unwrap();
+    Project::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), "tester 029", 16).unwrap();
     // As a build before 026 wrote it: device marks only (-K, -X), no rule in the row.
     {
         let store = Store::open(&path, true).unwrap();

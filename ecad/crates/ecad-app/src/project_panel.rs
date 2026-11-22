@@ -206,7 +206,7 @@ pub enum Action {
     /// Brief 027: the Release dialog for the pending revision.
     Release,
     /// Brief 024: `newpage {generated}`.
-    NewGenerated(ecad_engine::generated::GenKind),
+    NewGenerated(ecad_model::GenKind),
     /// Brief 046: `newpage {generated: "terminals", style: "graphic"}`.
     NewStripPage,
     /// Brief 028 Checks fixes: **Offer n**, **Renumber -X01**, **Set cores…**, **Next free core**,
@@ -1263,14 +1263,14 @@ impl ProjectPanel {
                     out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
                     ui.close();
                 }
-                for &k in <ecad_engine::generated::GenKind as ecad_model::Word>::ALL {
+                for &k in <ecad_model::GenKind as ecad_model::Word>::ALL {
                     let b = ui.button(k.title()).on_hover_text(format!("ecad.project.newpage.{}", ecad_model::Word::word(k)));
                     if b.clicked() {
                         out.push(Action::NewGenerated(k));
                         ui.close();
                     }
                     // Brief 046 (design 046 §8.1): Terminal strips after Terminal plan.
-                    if k == ecad_engine::generated::GenKind::Terminals {
+                    if k == ecad_model::GenKind::Terminals {
                         let b = ui.button(ecad_engine::strip_page::TITLE).on_hover_text("ecad.project.newpage.terminals-graphic");
                         if b.clicked() {
                             out.push(Action::NewStripPage);

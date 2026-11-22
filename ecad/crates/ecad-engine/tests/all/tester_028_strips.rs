@@ -130,7 +130,7 @@ fn k_save_reopen_and_replay_keep_every_new_property() {
     let after_doc = h2.doc();
     assert_eq!(model_parts(&after_doc), model_parts(&before_doc));
     assert_eq!(ecad_engine::generated::strip_of(&after_doc, plan_page), Some(x1));
-    assert_eq!(ecad_engine::generated::kind_of(&after_doc, cables_page), Some(ecad_engine::generated::GenKind::Cables));
+    assert_eq!(ecad_engine::generated::kind_of(&after_doc, cables_page), Some(ecad_model::GenKind::Cables));
     let after_reads = reads(&mut h2, t.cable);
     assert_eq!(after_reads, before_reads, "reads after reopen");
     same_as_built(&mut h2);

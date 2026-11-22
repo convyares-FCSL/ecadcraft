@@ -319,7 +319,7 @@ fn m_the_rack_sheet_prints_the_new_tile_lines() {
     p56(&mut h);
     let d = doc(&mut h);
     let racks: Vec<_> =
-        d.page_order.iter().copied().filter(|p| ecad_engine::generated::kind_of(&d, *p) == Some(ecad_engine::generated::GenKind::PlcRack)).collect();
+        d.page_order.iter().copied().filter(|p| ecad_engine::generated::kind_of(&d, *p) == Some(ecad_model::GenKind::PlcRack)).collect();
     assert_eq!(racks.len(), 1, "one rack page, the one the first rack brought");
     h.state_mut().set_workspace(Workspace::Draw);
     h.state_mut().show_page(racks[0]).unwrap();

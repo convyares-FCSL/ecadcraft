@@ -128,7 +128,8 @@ pub struct Noted {
     numbers: bool,
     /// Pages added, removed or moved ([`Outputs::placed_page`]).
     placed: Vec<PageId>,
-    /// The pages whose book position changes (the strips on them), read on the state after.
+    /// The pages whose book position changes (the strips on them): the book before, compared
+    /// with the state after.
     positions: ecad_model::book::PositionsNoted,
 }
 
@@ -305,6 +306,7 @@ impl Outputs {
     /// [`Outputs::close_before`], [`Outputs::note_after`] and [`Outputs::update`].
     pub fn note_before(&self, before: &Document, effect: &Effect<'_>, n: &mut Noted) {
         n.rows.note(before, effect);
+        n.positions.note_before(before, effect);
     }
 
     /// The end of the Before phase: the noted wires' net mates and the users of renamed entries on
@@ -322,7 +324,6 @@ impl Outputs {
         n.strips.note(effect);
         n.numbers |= Self::moves_page_number(effect);
         n.placed.extend(Self::placed_page(effect));
-        n.positions.note(after, effect);
     }
 
     /// Recompute what `n` names on `doc` (the state after), with text measured in `m`.
@@ -344,7 +345,7 @@ impl Outputs {
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
-        // Brief 045: the PLC model follows its own update map (design 045 §11.1).
+        // Brief 045: the PLC model is built again after every commit (no update map since 0.2.3).
         if self.plc.update_touched(doc, plc, m) {
             self.checks_changed += 1;
             self.revision += 1;
@@ -444,7 +445,7 @@ impl Outputs {
         }
         // Brief 028: the strips these rows touch (design 028 §11.1).
         let mut pages = scope.route_pages.clone();
-        pages.extend(positions.changed());
+        pages.extend(positions.changed(doc));
         let mut strips = std::mem::take(&mut self.strips);
         let which = strips.touched(
             doc,
@@ -484,37 +485,19 @@ impl Outputs {
 
     /// Verify mode (brief 028, design 028 §11.4): the kept strips against a rebuild on `doc`; a
     /// difference is put right and described (a bug, for the event log).
-    pub fn verify_strips_with(&mut self, doc: &Document, m: &dyn TextMetrics) -> Option<String> {
-        // Brief 045 (design 045 §11.2): the kept PLC model too.
-        let plc = crate::plc::kept::Plc::build_with(doc, m);
-        let plc_line = (!self.plc.same_as(&plc)).then(|| {
-            let (work, n) = (self.plc.last_work, self.plc.recomputed);
-            self.plc = plc;
-            self.plc.last_work = work;
-            self.plc.recomputed = n;
-            "the PLC model was out of step; rebuilt".to_string()
-        });
+    pub fn verify_strips_with(&mut self, doc: &Document) -> Option<String> {
         let built = crate::strips::Strips::build(doc, self, &PageCx::of(doc));
-        // Brief 046: the graphic pages' kept data against a rebuild from the kept strips.
-        let pages = crate::strips::pages::StripPages::build(doc, &self.strips);
-        let pages_ok = self.strip_pages.same_as(&pages);
-        if !pages_ok {
-            self.strip_pages.adopt(pages);
-        }
+        // Brief 046: the graphic pages' kept data is built from the kept strips after every
+        // commit (no update map), so it follows them.
         if self.strips.same_as(&built) {
-            let pages_line = (!pages_ok).then(|| "the terminal strip page layout was out of step; rebuilt".to_string());
-            return match (plc_line, pages_line) {
-                (Some(a), Some(b)) => Some(format!("{a}; {b}")),
-                (a, b) => a.or(b),
-            };
+            return None;
         }
         let work = self.strips.last_work;
         self.strips = built;
         self.strips.last_work = work;
         // The page layout follows the rebuilt strips (review of 046, finding 2).
         self.strip_pages.adopt(crate::strips::pages::StripPages::build(doc, &self.strips));
-        let line = "the terminal strip model was out of step; rebuilt".to_string();
-        Some(plc_line.map_or_else(|| line.clone(), |l| format!("{line}; {l}")))
+        Some("the terminal strip model was out of step; rebuilt".to_string())
     }
 
     fn remove_device(&mut self, c: DeviceId) {
@@ -1030,7 +1013,7 @@ impl Outputs {
                 glands: crate::cables::Side::BOTH.map(|side| crate::cables::gland(doc, k, side).map(|(g, _)| g)),
                 shield: crate::cables::shield(doc, k)
                     .map(|(w, _)| w)
-                    .filter(|w| *w != crate::cables::Shield::None)
+                    .filter(|w| *w != ecad_model::style::cable::Shield::None)
                     .map(|w| ecad_model::words::Word::word(w).to_string()),
             },
         );

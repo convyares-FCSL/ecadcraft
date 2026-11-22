@@ -345,7 +345,7 @@ impl Views {
         if generated.is_some() {
             self.generated.forget();
         }
-        self.refs.check(doc).into_iter().chain(self.connectors.check(doc)).chain(generated).collect()
+        self.refs.check(doc).into_iter().chain(generated).collect()
     }
 
     /// Open, reload, branch switch: rebuild every kept view from `doc`.

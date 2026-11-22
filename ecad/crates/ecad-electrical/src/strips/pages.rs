@@ -2,20 +2,17 @@
 //! block widths and sheet count, the pages' style and their sheets and titles. What
 //! `crate::strip_page` draws from them is the engine's.
 //!
-//! # Update map (design 046 §9)
+//! # No update map
 //! [`StripPages`] is kept in [`Outputs`] beside the strips: per strip, its position block widths
 //! and its sheet count at the project's sheet, and two indexes, `by_cable` (cables with a core on
-//! the strip) and `by_far` (far devices named in a cable box). It is built whole where the strips
-//! are; after that [`StripPages::update`] runs right after the strips' own update:
+//! the strip) and `by_far` (far devices named in a cable box). A full build takes 0.5 ms on the
+//! large project (end-gate review, 2026-11-21), under the ~5 ms bar, so [`StripPages::update`]
+//! builds it again from scratch after every commit, right after the strips' own update.
 //!
-//! | Effect or change | Recomputed |
-//! | --- | --- |
-//! | a strip in `Strips::last_changed` | that strip (sheet count, indexes) |
-//! | `Cable k` changed in place | strips in `by_cable[k]` marked changed (box texts) |
-//! | `Prop(Device d, …)` or `Device d` changed in place, `d` in `by_far` | strips in `by_far[d]` marked changed |
-//! | `Prop(Project, strippage.*)`, the project's sheet | every strip (a layout setting) |
-//! | `Prop(Project, terminal.plan.style)` | nothing here; `style_changed` is set |
-//! | anything else | nothing |
+//! Which strips' drawing changed (for the redraw) is still worked out from what the effects name
+//! ([`Named`]): the strips the strips' update changed, every strip when the layout changed, the
+//! strips of a cable changed in place (`by_cable`, box texts) and of a far device changed
+//! (`by_far`). The project's `terminal.plan.style` sets `style_changed`.
 //!
 //! A page's own style (`SetProperty(Page P, terminal.plan.style)`) is P's own property, which
 //! [`crate::frames::touches`] already redraws; its sheet count reads the kept counts.
@@ -57,7 +54,7 @@ pub fn style_of(doc: &Document, page: PageId) -> Style {
 
 /// Whether `page` is a `terminals` page drawn in the graphic style.
 pub fn is_graphic(doc: &Document, page: PageId) -> bool {
-    crate::generated::kind_of(doc, page) == Some(crate::generated::GenKind::Terminals) && style_of(doc, page) == Style::Graphic
+    crate::generated::kind_of(doc, page) == Some(ecad_model::GenKind::Terminals) && style_of(doc, page) == Style::Graphic
 }
 
 /// The strip layout lengths (design 046 §7.2), paper millimetres.
@@ -226,8 +223,7 @@ impl Kept {
     }
 }
 
-/// What a transaction's effects name for the strip pages (the module's update map), before the
-/// kept indexes are read.
+/// What a transaction's effects name for the strip pages' redraw.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Named {
     /// A layout setting (`strippage.*`) or the project's sheet changed.
@@ -288,7 +284,7 @@ impl Named {
     }
 }
 
-/// The graphic pages' kept layout data (see the module's update map).
+/// The graphic pages' kept layout data, built from scratch after every commit.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StripPages {
     kept: BTreeMap<DeviceId, Kept>,
@@ -301,8 +297,6 @@ pub struct StripPages {
     pub sheets_total: usize,
     /// The strips whose drawing the last update changed.
     pub last_changed: BTreeSet<DeviceId>,
-    /// How many strips the last update laid out (tests, bench).
-    pub last_work: usize,
     /// The last update changed the layout settings (every graphic page redraws).
     pub layout_changed: bool,
     /// The last update changed the project's `terminal.plan.style`.
@@ -320,7 +314,6 @@ impl Default for StripPages {
             geometry,
             sheets_total: 0,
             last_changed: BTreeSet::new(),
-            last_work: 0,
             layout_changed: false,
             style_changed: false,
         }
@@ -333,36 +326,18 @@ fn index_add<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<DeviceId>>, keys: &BT
     }
 }
 
-fn index_remove<K: Ord + Copy>(map: &mut BTreeMap<K, BTreeSet<DeviceId>>, keys: &BTreeSet<K>, c: DeviceId) {
-    for k in keys {
-        if let Some(set) = map.get_mut(k) {
-            set.remove(&c);
-            if set.is_empty() {
-                map.remove(k);
-            }
-        }
-    }
-}
-
 impl StripPages {
     /// Every strip, from scratch (open, reload, first show).
     pub fn build(doc: &Document, strips: &Strips) -> StripPages {
         let geometry = Geometry::of(doc);
         let mut p = StripPages { avail: geometry.available(&project_sheet(doc)), geometry, ..StripPages::default() };
         for (c, s) in &strips.strips {
-            p.set(*c, Some(s));
+            p.add(*c, s);
         }
-        p.last_work = strips.strips.len();
         p
     }
 
-    fn set(&mut self, c: DeviceId, s: Option<&StripData>) {
-        if let Some(old) = self.kept.remove(&c) {
-            self.sheets_total = self.sheets_total.saturating_sub(old.sheets);
-            index_remove(&mut self.by_cable, &old.cables, c);
-            index_remove(&mut self.by_far, &old.far, c);
-        }
-        let Some(s) = s else { return };
+    fn add(&mut self, c: DeviceId, s: &StripData) {
         let k = Kept::of(s, &self.geometry, self.avail);
         self.sheets_total += k.sheets;
         index_add(&mut self.by_cable, &k.cables, c);
@@ -370,53 +345,30 @@ impl StripPages {
         self.kept.insert(c, k);
     }
 
-    /// Bring the kept data in line with `strips` (just updated for `effects`) on `doc`, the state
-    /// after. See the module's update map; every effect not listed does nothing.
-    /// `named` is what the effects named, noted before the kept indexes are read ([`Named::note`]).
+    /// Build the kept data again from `strips` (just updated) on `doc`, the state after, and work
+    /// out which strips' drawing changed from what the effects named (`named`, see the module).
     pub fn update(&mut self, doc: &Document, named: Named, strips: &Strips) {
-        self.last_changed.clear();
-        self.last_work = 0;
-        self.layout_changed = false;
-        self.style_changed = named.style;
+        let rebuilt = StripPages::build(doc, strips);
+        let layout_changed = rebuilt.geometry != self.geometry || (rebuilt.avail - self.avail).abs() > 1e-9;
+        let mut last_changed: BTreeSet<DeviceId> = if layout_changed { strips.strips.keys().copied().collect() } else { strips.last_changed.clone() };
         for k in &named.cables {
-            self.last_changed.extend(self.by_cable.get(k).into_iter().flatten().copied());
-        }
-        for d in &named.devices {
-            self.last_changed.extend(self.by_far.get(d).into_iter().flatten().copied());
-        }
-        if named.layout {
-            let geometry = Geometry::of(doc);
-            let avail = geometry.available(&project_sheet(doc));
-            if geometry != self.geometry || (avail - self.avail).abs() > 1e-9 {
-                *self = StripPages::build(doc, strips);
-                self.layout_changed = true;
-                self.last_changed = strips.strips.keys().copied().collect();
-                return;
+            for idx in [&self.by_cable, &rebuilt.by_cable] {
+                last_changed.extend(idx.get(k).into_iter().flatten().copied());
             }
         }
-        for c in &strips.last_changed {
-            self.set(*c, strips.get(*c));
-            self.last_work += 1;
-            self.last_changed.insert(*c);
+        for d in &named.devices {
+            for idx in [&self.by_far, &rebuilt.by_far] {
+                last_changed.extend(idx.get(d).into_iter().flatten().copied());
+            }
         }
+        *self = StripPages { last_changed, layout_changed, style_changed: named.style, ..rebuilt };
     }
 
     /// Take the kept data of `rebuilt` (verify mode put right), keeping what the last update
     /// changed.
     pub fn adopt(&mut self, rebuilt: StripPages) {
-        let (last_changed, last_work, layout_changed, style_changed) =
-            (std::mem::take(&mut self.last_changed), self.last_work, self.layout_changed, self.style_changed);
-        *self = StripPages { last_changed, last_work, layout_changed, style_changed, ..rebuilt };
-    }
-
-    /// Whether `other` holds the same kept data (verify mode: against a rebuild).
-    pub fn same_as(&self, other: &StripPages) -> bool {
-        self.kept == other.kept
-            && self.by_cable == other.by_cable
-            && self.by_far == other.by_far
-            && self.geometry == other.geometry
-            && (self.avail - other.avail).abs() < 1e-9
-            && self.sheets_total == other.sheets_total
+        let (last_changed, layout_changed, style_changed) = (std::mem::take(&mut self.last_changed), self.layout_changed, self.style_changed);
+        *self = StripPages { last_changed, layout_changed, style_changed, ..rebuilt };
     }
 
     /// The sheets of strip `c` at column width `avail`: kept at the project's sheet, else counted

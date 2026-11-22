@@ -38,7 +38,7 @@ pub const HOLDER: &str = "ecad-bench";
 pub struct Measured {
     pub bytes: u64,
     pub transactions: u64,
-    /// Open the version 2 file to its document (`DiskProjectV2::open`, no CADCraft).
+    /// Open the version 2 file to its document (`DiskProject::open`, no CADCraft).
     pub open_ms: f64,
     /// Nets on the opened document (`ecad_model::derive::nets`).
     pub derive_ms: f64,
@@ -48,7 +48,7 @@ pub struct Measured {
     pub first_page_ms: f64,
     /// Commit one add-wire transaction to the loaded project (`Ledger::commit`).
     pub edit_ms: f64,
-    /// Write that transaction to the file, durable before it returns (`DiskProjectV2::save`).
+    /// Write that transaction to the file, durable before it returns (`DiskProject::save`).
     pub save_ms: f64,
     /// Move a component with wires attached on page 1, in a headless CADCraft session (brief 014).
     pub draw_move_ms: f64,
@@ -159,8 +159,8 @@ pub(crate) fn path_text(path: &Path) -> Result<&str, String> {
 }
 
 /// Open `path` as the app's file layer does; refuse a damaged or read-only open.
-fn open(path: &Path) -> Result<ecad_file::disk::OpenedDiskV2, String> {
-    crate::v2::open(path)
+fn open(path: &Path) -> Result<ecad_file::disk::OpenedDisk, String> {
+    crate::container::open(path)
 }
 
 /// The time to derive the cable references of `doc` (brief 010's
@@ -503,41 +503,43 @@ struct DrawTarget {
 
 fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Session) -> Result<DrawTarget, String> {
     use ecad_model::{Form, ItemKind, Subject};
-    project.read(s, |p, _| -> Result<DrawTarget, String> {
-        let doc = p.ledger.document();
-        let page = doc.page_order.first().copied().ok_or("the project has no page")?;
-        let (component, item) = doc
-            .representations
-            .values()
-            .find_map(|r| {
-                let Subject::Device(c) = r.subject else { return None };
-                let item = *r.items.first()?;
-                let wired = doc.terminals_of(c).any(|(t, _)| doc.routes_at(t).next().is_some());
-                (r.page == page && r.form == Form::Symbol && wired && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
-                    .then_some((c, item))
-            })
-            .ok_or("page 1 has no component with routes landing on it")?;
-        let map = &p.pages.get(&page).ok_or("page 1 is not open")?.map;
-        let symbol = map.item(item).ok_or("the wired component's symbol is not drawn on page 1")?;
-        let mut with_wires = vec![symbol];
-        // The routes landing on its connection points, by their drawing.
-        for (t, _) in doc.terminals_of(component) {
-            for r in doc.routes_at(t) {
-                for (_, rep) in doc.representations_of(Subject::Route(r)).filter(|(_, rep)| rep.page == page) {
-                    if let Some(h) = rep.items.first().and_then(|i| map.item(*i))
-                        && !with_wires.contains(&h)
-                    {
-                        with_wires.push(h);
+    project
+        .read(s, |p, _| -> Result<DrawTarget, &'static str> {
+            let doc = p.ledger.document();
+            let page = doc.page_order.first().copied().ok_or("the project has no page")?;
+            let (component, item) = doc
+                .representations
+                .values()
+                .find_map(|r| {
+                    let Subject::Device(c) = r.subject else { return None };
+                    let item = *r.items.first()?;
+                    let wired = doc.terminals_of(c).any(|(t, _)| doc.routes_at(t).next().is_some());
+                    (r.page == page && r.form == Form::Symbol && wired && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
+                        .then_some((c, item))
+                })
+                .ok_or("page 1 has no component with routes landing on it")?;
+            let map = &p.pages.get(&page).ok_or("page 1 is not open")?.map;
+            let symbol = map.item(item).ok_or("the wired component's symbol is not drawn on page 1")?;
+            let mut with_wires = vec![symbol];
+            // The routes landing on its connection points, by their drawing.
+            for (t, _) in doc.terminals_of(component) {
+                for r in doc.routes_at(t) {
+                    for (_, rep) in doc.representations_of(Subject::Route(r)).filter(|(_, rep)| rep.page == page) {
+                        if let Some(h) = rep.items.first().and_then(|i| map.item(*i))
+                            && !with_wires.contains(&h)
+                        {
+                            with_wires.push(h);
+                        }
                     }
                 }
             }
-        }
-        let shown = ecad_model::derive::terminal_positions(doc, page);
-        let mut others = shown.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.device() != Some(component)));
-        let (_, _, from) = *others.next().ok_or("page 1 has no connection point of another component")?;
-        let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6)).ok_or("page 1 has no second connection point of another component")?;
-        Ok(DrawTarget { head: p.ledger.head(), symbol, with_wires, from, to })
-    })?
+            let shown = ecad_model::derive::terminal_positions(doc, page);
+            let mut others = shown.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.device() != Some(component)));
+            let (_, _, from) = *others.next().ok_or("page 1 has no connection point of another component")?;
+            let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6)).ok_or("page 1 has no second connection point of another component")?;
+            Ok(DrawTarget { head: p.ledger.head(), symbol, with_wires, from, to })
+        })?
+        .map_err(String::from)
 }
 
 /// Draw-edit timings: move, move with wires, wire.

@@ -11,7 +11,7 @@ const TINY: Tier = Tier { name: "tiny", pages: 3, devices: 9, wires: 18, cables:
 
 fn opened(g: &Generated) -> (Document, u64) {
     let bytes = g.file_bytes().unwrap();
-    let o = ecad_file::ProjectV2::open(ecad_file::Store::from_bytes(bytes).unwrap(), 5, "test").unwrap();
+    let o = ecad_file::Project::open(ecad_file::Store::from_bytes(bytes).unwrap(), 5, "test").unwrap();
     assert!(o.report.damage.is_none(), "{}", o.report.describe());
     (o.ledger.document().clone(), o.ledger.head())
 }
@@ -123,7 +123,7 @@ fn a_generated_project_opens_in_a_session_and_shows_every_page() {
     let g = generate(TINY, Variant::Churned).unwrap();
     // Written straight in the version 2 format the app opens.
     let v2 = dir.join("tiny.ecad");
-    ecad_bench::v2::write(&g, &v2).unwrap();
+    ecad_bench::container::write(&g, &v2).unwrap();
 
     // The whole measurement path, once.
     let (m, doc) = ecad_bench::measure::measure(&v2, 1, &dir).unwrap();

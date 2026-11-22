@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use super::chunks::{self, ChunkSet, Dirty, ModelMeta};
 use super::pack;
 use super::schema::{
-    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME, MergeRow, Merged, Point, Release,
+    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, MAX_NAME, MergeRow, Merged, Point, Release,
     SNAPSHOT_EVERY_RANGE, STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
 };
 use super::store::{Reader, Store, StoreError};
@@ -32,7 +32,7 @@ use ecad_model::tag::HighWater;
 
 /// Why a version 2 file could not be opened at all.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum OpenErrorV2 {
+pub enum OpenError {
     #[error("{0}")]
     Store(#[from] StoreError),
     #[error("{0}")]
@@ -45,7 +45,7 @@ pub enum OpenErrorV2 {
 /// Why a save did not complete. The file then holds exactly what it held before, and the
 /// project is still unsaved.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum SaveErrorV2 {
+pub enum SaveError {
     #[error("the file was opened read-only: {0}")]
     ReadOnly(String),
     #[error("the file was changed by something else ({0}); it was not modified; use Save As")]
@@ -97,7 +97,7 @@ pub fn check_branch_name(name: &str) -> Result<String, BranchError> {
 
 /// What a successful save wrote.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SavedV2 {
+pub struct Saved {
     pub first_seq: u64,
     pub last_seq: u64,
     /// Bytes of new rows and chunks (before redb's own overhead).
@@ -109,7 +109,7 @@ pub struct SavedV2 {
 
 /// What a check found wrong while opening (EEP-0005 §5.8): the project opens read-only.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DamageV2 {
+pub struct Damage {
     /// The transaction (or snapshot point) that failed, when known.
     pub seq: Option<u64>,
     pub detail: String,
@@ -117,7 +117,7 @@ pub struct DamageV2 {
 
 /// What opening found.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReportV2 {
+pub struct Report {
     /// The branch's recorded head.
     pub head: u64,
     /// The last transaction that verified (equal to `head` unless damaged).
@@ -128,12 +128,10 @@ pub struct ReportV2 {
     pub tail: u64,
     /// redb repaired the file while opening it (it was not closed cleanly).
     pub repaired: bool,
-    pub damage: Option<DamageV2>,
-    /// Converted from a version 1 file.
-    pub link_v1: Option<LinkV1>,
+    pub damage: Option<Damage>,
 }
 
-impl ReportV2 {
+impl Report {
     /// One paragraph for the user.
     pub fn describe(&self) -> String {
         let mut s = format!("Opened: {} transactions (from the snapshot at {}, then {} replayed).", self.verified_seq, self.snapshot_seq, self.tail);
@@ -154,7 +152,7 @@ impl ReportV2 {
 }
 
 /// The project ID and cache of a file, after checking its container facts.
-pub(crate) fn read_facts_pub(r: &Reader) -> Result<(ProjectId, Cache), OpenErrorV2> {
+pub(crate) fn read_facts_pub(r: &Reader) -> Result<(ProjectId, Cache), OpenError> {
     read_facts(r).map(|f| (f.project, f.cache))
 }
 
@@ -162,7 +160,7 @@ pub(crate) fn read_facts_pub(r: &Reader) -> Result<(ProjectId, Cache), OpenError
 ///
 /// # Errors
 /// Not a version 2 project file this build reads, or its facts are damaged.
-pub fn project_id(r: &Reader) -> Result<ProjectId, OpenErrorV2> {
+pub fn project_id(r: &Reader) -> Result<ProjectId, OpenError> {
     read_facts(r).map(|f| f.project)
 }
 
@@ -457,28 +455,28 @@ fn load_snapshot(r: &Reader, v: &VersionRecord) -> Result<(Document, Option<Mode
 
 /// Rows `from..=to` of `branch`, decoded and chain-checked from `prev`. Stops at the first bad
 /// row: the good prefix, and the failure.
-fn read_rows(r: &Reader, branch: BranchId, from: u64, to: u64, mut prev: Hash) -> Result<(Vec<Transaction>, Hash, Option<DamageV2>), StoreError> {
+fn read_rows(r: &Reader, branch: BranchId, from: u64, to: u64, mut prev: Hash) -> Result<(Vec<Transaction>, Hash, Option<Damage>), StoreError> {
     let rows = r.tx_range(branch, from..=to)?;
     let mut out = Vec::with_capacity(rows.len());
     // `None` once past u64::MAX: no row can follow.
     let mut expected = Some(from);
     for (seq, flag, stored, body) in rows {
         if Some(seq) != expected {
-            return Ok((out, prev, Some(DamageV2 { seq: expected, detail: "the transaction is missing".into() })));
+            return Ok((out, prev, Some(Damage { seq: expected, detail: "the transaction is missing".into() })));
         }
         match decode_row(seq, flag, &stored, &body, &prev) {
             Ok(tx) => {
                 out.push(tx);
                 prev = stored;
             }
-            Err(e) => return Ok((out, prev, Some(DamageV2 { seq: Some(seq), detail: e.to_string() }))),
+            Err(e) => return Ok((out, prev, Some(Damage { seq: Some(seq), detail: e.to_string() }))),
         }
         expected = seq.checked_add(1);
     }
     if let Some(e) = expected
         && e <= to
     {
-        return Ok((out, prev, Some(DamageV2 { seq: Some(e), detail: "the transaction is missing".into() })));
+        return Ok((out, prev, Some(Damage { seq: Some(e), detail: "the transaction is missing".into() })));
     }
     Ok((out, prev, None))
 }
@@ -726,7 +724,7 @@ struct Snap {
 
 /// A project bound to a version 2 database.
 #[derive(Debug)]
-pub struct ProjectV2 {
+pub struct Project {
     store: Arc<Store>,
     project: ProjectId,
     branch: BranchId,
@@ -749,9 +747,8 @@ pub struct ProjectV2 {
     read_only: Option<String>,
     /// Why the file is read-only, apart from damage on the branch shown (kept across a switch).
     file_read_only: Option<String>,
-    link_v1: Option<LinkV1>,
     created_ms: Option<u64>,
-    last_save: Option<SavedV2>,
+    last_save: Option<Saved>,
     /// `meta.writer` names this build already (written by the first save of a session).
     wrote_writer: bool,
     /// Merges committed this session that close their source branch when saved (design 020
@@ -788,7 +785,7 @@ impl MergeIndex {
 }
 
 /// What following merges, their undos and redos over some steps gives (shared by Save, which
-/// writes it, and [`ProjectV2::merge_index`], which only reads).
+/// writes it, and [`Project::merge_index`], which only reads).
 #[derive(Debug, Default)]
 struct MergeFollow {
     /// Rows to write (`Some`) or remove (`None`), by `seq`.
@@ -801,16 +798,20 @@ struct MergeFollow {
 
 /// A project opened from a version 2 database.
 #[derive(Debug)]
-pub struct OpenedV2 {
-    pub project: ProjectV2,
+pub struct Opened {
+    pub project: Project,
     pub ledger: Ledger,
-    pub report: ReportV2,
+    pub report: Report,
+    /// Words this build does not read in the file's container facts: each `meta` name not in
+    /// [`META_NAMES`](crate::schema::META_NAMES). When there are any the project opens read-only
+    /// (pre-v1 strict reading) and the file is kept as it is.
+    pub unknown_words: Vec<ecad_model::strict::UnknownWord>,
 }
 
-fn meta_json(r: &Reader, name: &'static str) -> Result<Option<Value>, OpenErrorV2> {
+fn meta_json(r: &Reader, name: &'static str) -> Result<Option<Value>, OpenError> {
     match r.meta(name)? {
         None => Ok(None),
-        Some(b) => serde_json::from_slice(&b).map(Some).map_err(|e| OpenErrorV2::Damaged(FileError::Meta { name, error: e.to_string() })),
+        Some(b) => serde_json::from_slice(&b).map(Some).map_err(|e| OpenError::Damaged(FileError::Meta { name, error: e.to_string() })),
     }
 }
 
@@ -818,60 +819,64 @@ fn meta_json(r: &Reader, name: &'static str) -> Result<Option<Value>, OpenErrorV
 struct Facts {
     project: ProjectId,
     cache: Cache,
-    link_v1: Option<LinkV1>,
     created_ms: Option<u64>,
     /// `meta.active`: the branch the project was last shown on (FQ4).
     active: Option<BranchId>,
+    /// The `meta` names this build does not read.
+    unknown: Vec<ecad_model::strict::UnknownWord>,
 }
 
-fn read_facts(r: &Reader) -> Result<Facts, OpenErrorV2> {
-    // Unknown `meta` names are ignored (brief 020, forward compatibility): every name this build
+fn read_facts(r: &Reader) -> Result<Facts, OpenError> {
+    // Pre-v1 there is no forward compatibility (owner, 0.2.3): a `meta` name this build does not
+    // read is an unknown word, so the project opens read-only and names it. Every name this build
     // needs is checked below.
+    let unknown = r
+        .meta_all()?
+        .into_iter()
+        .filter(|(name, _)| !crate::schema::META_NAMES.contains(&name.as_str()))
+        .map(|(name, _)| ecad_model::strict::UnknownWord::MetaName { name })
+        .collect();
     let format = meta_json(r, "format")?;
     if format.as_ref().and_then(Value::as_str) != Some(FORMAT_PROJECT) {
-        return Err(OpenErrorV2::Unsupported(format!("not an ECAD project file (format {format:?})")));
+        return Err(OpenError::Unsupported(format!("not an ECAD project file (format {format:?})")));
     }
     let cv = meta_json(r, "container_version")?.and_then(|v| v.as_u64());
     if cv != Some(CONTAINER_VERSION) {
-        return Err(OpenErrorV2::Unsupported(format!("container version {cv:?} is not supported (this build reads {CONTAINER_VERSION})")));
+        return Err(OpenError::Unsupported(format!("container version {cv:?} is not supported (this build reads {CONTAINER_VERSION})")));
     }
     let sv = meta_json(r, "schema_version")?.and_then(|v| v.as_u64()).unwrap_or(0);
     if sv == 0 || sv > SCHEMA_VERSION {
-        return Err(OpenErrorV2::Unsupported(format!("schema version {sv} is not supported (this build reads 1 to {SCHEMA_VERSION})")));
+        return Err(OpenError::Unsupported(format!("schema version {sv} is not supported (this build reads 1 to {SCHEMA_VERSION})")));
     }
     let codec = meta_json(r, "codec")?;
     if codec.as_ref().and_then(Value::as_str) != Some(CODEC) {
-        return Err(OpenErrorV2::Unsupported(format!("codec {codec:?} is not supported (this build reads {CODEC:?})")));
+        return Err(OpenError::Unsupported(format!("codec {codec:?} is not supported (this build reads {CODEC:?})")));
     }
-    let project = meta_json(r, "file_id")?.and_then(|v| v.as_str().and_then(ProjectId::parse)).ok_or(OpenErrorV2::Damaged(FileError::FileId))?;
+    let project = meta_json(r, "file_id")?.and_then(|v| v.as_str().and_then(ProjectId::parse)).ok_or(OpenError::Damaged(FileError::FileId))?;
     let cache: Cache = match meta_json(r, "cache")? {
-        Some(v) => serde_json::from_value(v).map_err(|e| OpenErrorV2::Damaged(FileError::Meta { name: "cache", error: e.to_string() }))?,
+        Some(v) => serde_json::from_value(v).map_err(|e| OpenError::Damaged(FileError::Meta { name: "cache", error: e.to_string() }))?,
         None => Cache::default(),
     };
     if !(SNAPSHOT_EVERY_RANGE.0..=SNAPSHOT_EVERY_RANGE.1).contains(&cache.every) {
-        return Err(OpenErrorV2::Damaged(FileError::CacheEvery(cache.every)));
+        return Err(OpenError::Damaged(FileError::CacheEvery(cache.every)));
     }
-    let link_v1 = match meta_json(r, "link_v1")? {
-        Some(v) => Some(serde_json::from_value(v).map_err(|e| OpenErrorV2::Damaged(FileError::Meta { name: "link_v1", error: e.to_string() }))?),
-        None => None,
-    };
     let created_ms = meta_json(r, "created_ms")?.and_then(|v| v.as_u64());
     // An unreadable `active` is not damage: the project opens on `main`.
     let active = meta_json(r, "active").ok().flatten().and_then(|v| v.as_str().and_then(BranchId::parse));
-    Ok(Facts { project, cache, link_v1, created_ms, active })
+    Ok(Facts { project, cache, created_ms, active, unknown })
 }
 
 /// [`main_branch`], for Verify: the check that opening applies.
-pub(crate) fn main_branch_pub(r: &Reader, project: ProjectId) -> Result<(), OpenErrorV2> {
+pub(crate) fn main_branch_pub(r: &Reader, project: ProjectId) -> Result<(), OpenError> {
     main_branch(r, project).map(|_| ())
 }
 
 /// The original branch, `main`.
-fn main_branch(r: &Reader, project: ProjectId) -> Result<(BranchId, BranchRecord), OpenErrorV2> {
+fn main_branch(r: &Reader, project: ProjectId) -> Result<(BranchId, BranchRecord), OpenError> {
     let id = BranchId::main_of(project.0);
-    let rec = r.branch(id)?.ok_or(OpenErrorV2::Damaged(FileError::NoMain))?;
+    let rec = r.branch(id)?.ok_or(OpenError::Damaged(FileError::NoMain))?;
     if rec.name != "main" || rec.parent.is_some() || rec.fork_point.is_some() || rec.status != BranchStatus::Open {
-        return Err(OpenErrorV2::Damaged(FileError::MainInconsistent));
+        return Err(OpenError::Damaged(FileError::MainInconsistent));
     }
     Ok((id, rec))
 }
@@ -879,7 +884,7 @@ fn main_branch(r: &Reader, project: ProjectId) -> Result<(BranchId, BranchRecord
 /// What loading one branch gave.
 struct Loaded {
     ledger: Ledger,
-    report: ReportV2,
+    report: Report,
     lineage: Lineage,
     head: (u64, Hash),
     snap: Snap,
@@ -892,24 +897,22 @@ struct Loaded {
 /// Load `branch` (EEP-0005 §5 items 1–2): its latest snapshot and the transactions after it; a
 /// branch with no snapshot of its own starts from its parent's state at the fork point. Damage
 /// found loads the last state that verifies, with a report.
-fn load_branch(
-    store: &Arc<Store>, project: ProjectId, cache: &Cache, link: Option<&LinkV1>, branch: BranchId, rec: &BranchRecord, seed: u64,
-) -> Result<Loaded, OpenErrorV2> {
+fn load_branch(store: &Arc<Store>, project: ProjectId, cache: &Cache, branch: BranchId, rec: &BranchRecord, seed: u64) -> Result<Loaded, OpenError> {
     let r = store.reader()?;
-    let lineage = lineage(&r, project, branch).map_err(OpenErrorV2::Damaged)?;
-    let own = lineage.first().cloned().ok_or(OpenErrorV2::Damaged(FileError::EmptyLineage))?;
+    let lineage = lineage(&r, project, branch).map_err(OpenError::Damaged)?;
+    let own = lineage.first().cloned().ok_or(OpenError::Damaged(FileError::EmptyLineage))?;
     let seed_chain = own.seed;
     let head = rec.head.seq;
-    let head_chain = rec.head.hash().map_err(OpenErrorV2::Damaged)?;
+    let head_chain = rec.head.hash().map_err(OpenError::Damaged)?;
     let mut damage = None;
     // The head must be the branch's last row, with the recorded chain value.
     let last = r.last_seq(branch)?.unwrap_or(0);
     if last != head {
-        damage = Some(DamageV2 { seq: Some(head), detail: format!("the head is {head} but the last stored transaction is {last}") });
+        damage = Some(Damage { seq: Some(head), detail: format!("the head is {head} but the last stored transaction is {last}") });
     } else if head > 0 && r.tx(branch, head)?.map(|(_, c, _)| c) != Some(head_chain) {
-        damage = Some(DamageV2 { seq: Some(head), detail: "the head transaction does not match the branch head".into() });
+        damage = Some(Damage { seq: Some(head), detail: "the head transaction does not match the branch head".into() });
     } else if head == 0 && head_chain != seed_chain {
-        damage = Some(DamageV2 { seq: Some(0), detail: "the branch head does not match its fork point".into() });
+        damage = Some(Damage { seq: Some(0), detail: "the branch head does not match its fork point".into() });
     }
     // The latest snapshot at or before the head.
     let latest = cache.latest.get(&branch.hex()).filter(|s| s.seq <= head);
@@ -930,12 +933,12 @@ fn load_branch(
                             loaded = Some((v, doc, meta));
                             snap_ref = Some(s.clone());
                         }
-                        Err(e) => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: format!("snapshot breaks an invariant: {e}") })),
+                        Err(e) => damage = damage.or(Some(Damage { seq: Some(s.seq), detail: format!("snapshot breaks an invariant: {e}") })),
                     }
                 }
-                Err(e) => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: format!("snapshot: {e}") })),
+                Err(e) => damage = damage.or(Some(Damage { seq: Some(s.seq), detail: format!("snapshot: {e}") })),
             },
-            _ => damage = damage.or(Some(DamageV2 { seq: Some(s.seq), detail: "the latest snapshot is missing".into() })),
+            _ => damage = damage.or(Some(Damage { seq: Some(s.seq), detail: "the latest snapshot is missing".into() })),
         }
     }
     // Start from the snapshot; if anything about it fails (its point row, its stack record,
@@ -997,16 +1000,16 @@ fn load_branch(
         match (attempt, from_snapshot) {
             (Ok(done), _) => break done,
             (Err(e), Some(seq)) => {
-                damage = damage.or(Some(DamageV2 { seq: Some(seq), detail: format!("snapshot: {e}") }));
+                damage = damage.or(Some(Damage { seq: Some(seq), detail: format!("snapshot: {e}") }));
                 snap_ref = None;
             }
-            (Err(e), None) => return Err(OpenErrorV2::Damaged(e)),
+            (Err(e), None) => return Err(OpenError::Damaged(e)),
         }
     };
     drop(r);
     let damage = damage.or(row_damage);
     let damage =
-        damage.or(failure.map(|(i, e)| DamageV2 { seq: snap_seq.checked_add(i as u64).and_then(|n| n.checked_add(1)), detail: e.to_string() }));
+        damage.or(failure.map(|(i, e)| Damage { seq: snap_seq.checked_add(i as u64).and_then(|n| n.checked_add(1)), detail: e.to_string() }));
     let verified = ledger.head();
     let verified_chain = if verified == snap_seq + tail_len {
         verified_chain
@@ -1015,15 +1018,7 @@ fn load_branch(
         store.reader()?.tx(branch, verified)?.map(|(_, c, _)| c).unwrap_or(snap_chain)
     };
     let damage_text = damage.as_ref().map(|d| format!("the file is damaged ({})", d.detail));
-    let report = ReportV2 {
-        head,
-        verified_seq: verified,
-        snapshot_seq: snap_seq,
-        tail: verified - snap_seq,
-        repaired: store.repaired(),
-        damage,
-        link_v1: link.cloned(),
-    };
+    let report = Report { head, verified_seq: verified, snapshot_seq: snap_seq, tail: verified - snap_seq, repaired: store.repaired(), damage };
     Ok(Loaded {
         ledger,
         report,
@@ -1037,15 +1032,15 @@ fn load_branch(
     })
 }
 
-impl ProjectV2 {
+impl Project {
     /// Open the project in `store` (EEP-0005 §5) on the branch it was last shown on
     /// (`meta.active`, FQ4), or `main` when that is absent, unknown or not open. `seed` seeds IDs
     /// allocated after opening. Damage found while loading opens read-only, at the last state that
     /// verifies, with a report.
     ///
     /// # Errors
-    /// [`OpenErrorV2`] when the container facts or the branch row are unusable.
-    pub fn open(store: Store, seed: u64, writer: &str) -> Result<OpenedV2, OpenErrorV2> {
+    /// [`OpenError`] when the container facts or the branch row are unusable.
+    pub fn open(store: Store, seed: u64, writer: &str) -> Result<Opened, OpenError> {
         let store = Arc::new(store);
         let r = store.reader()?;
         let facts = read_facts(&r)?;
@@ -1058,10 +1053,14 @@ impl ProjectV2 {
             None => (main, main_rec),
         };
         drop(r);
-        let l = load_branch(&store, facts.project, &facts.cache, facts.link_v1.as_ref(), branch, &rec, seed)?;
-        let file_read_only = (!store.writable()).then(|| "it is open in another session".to_string());
+        let l = load_branch(&store, facts.project, &facts.cache, branch, &rec, seed)?;
+        // Unknown `meta` names keep the file exactly as it is: nothing writes to it, not even a
+        // branch switch's `meta.active`.
+        let unknown_words = facts.unknown;
+        let unknown_read_only = (!unknown_words.is_empty()).then(|| crate::disk::ReadOnly::UnknownWords(unknown_words.clone()).to_string());
+        let file_read_only = (!store.writable()).then(|| "it is open in another session".to_string()).or(unknown_read_only);
         let read_only = l.damage.clone().or_else(|| file_read_only.clone());
-        let project = ProjectV2 {
+        let project = Project {
             store,
             project: facts.project,
             branch,
@@ -1077,14 +1076,13 @@ impl ProjectV2 {
             writer: writer.to_string(),
             read_only,
             file_read_only,
-            link_v1: facts.link_v1,
             created_ms: facts.created_ms,
             last_save: None,
             wrote_writer: false,
             closing: BTreeMap::new(),
             reopened: BTreeMap::new(),
         };
-        Ok(OpenedV2 { project, ledger: l.ledger, report: l.report })
+        Ok(Opened { project, ledger: l.ledger, report: l.report, unknown_words })
     }
 
     /// Write `ledger`'s whole history into the empty database `store` as a new project file:
@@ -1092,28 +1090,28 @@ impl ProjectV2 {
     /// head.
     ///
     /// # Errors
-    /// [`SaveErrorV2`]; nothing is committed. `every` outside [`SNAPSHOT_EVERY_RANGE`] is refused
+    /// [`SaveError`]; nothing is committed. `every` outside [`SNAPSHOT_EVERY_RANGE`] is refused
     /// (an open would refuse the file).
     pub fn create(
         store: Store, project: ProjectId, ledger: &Ledger, created_ms: Option<u64>, writer: &str, every: u64,
-    ) -> Result<(ProjectV2, SavedV2), SaveErrorV2> {
+    ) -> Result<(Project, Saved), SaveError> {
         if ledger.base() != 0 {
-            return Err(SaveErrorV2::Encode(FileError::WholeHistory));
+            return Err(SaveError::Encode(FileError::WholeHistory));
         }
         if !(SNAPSHOT_EVERY_RANGE.0..=SNAPSHOT_EVERY_RANGE.1).contains(&every) {
-            return Err(SaveErrorV2::Encode(FileError::SnapshotEvery));
+            return Err(SaveError::Encode(FileError::SnapshotEvery));
         }
         let store = Arc::new(store);
         let branch = BranchId::main_of(project.0);
         let seed = chain::seed(ChainKind::Project, project.0);
         let mut w = store.writer()?;
-        let mut saved = SavedV2 { first_seq: 1, last_seq: ledger.head(), ..SavedV2::default() };
+        let mut saved = Saved { first_seq: 1, last_seq: ledger.head(), ..Saved::default() };
         // Rows, and the chain value of every point.
         let mut chains = Vec::with_capacity(ledger.log().len() + 1);
         chains.push(seed);
         let mut prev = seed;
         for tx in ledger.log() {
-            let (bytes, hash) = encode_tx(tx, &prev).map_err(SaveErrorV2::Encode)?;
+            let (bytes, hash) = encode_tx(tx, &prev).map_err(SaveError::Encode)?;
             saved.bytes += w.append_tx(branch, tx.seq, &hash, &bytes)?;
             chains.push(hash);
             prev = hash;
@@ -1139,7 +1137,7 @@ impl ProjectV2 {
             let mut dirty = Dirty::default();
             for tx in range {
                 for op in &tx.ops {
-                    op.apply(&mut doc).map_err(|error| SaveErrorV2::Encode(FileError::Replay { seq: tx.seq, error }))?;
+                    op.apply(&mut doc).map_err(|error| SaveError::Encode(FileError::Replay { seq: tx.seq, error }))?;
                 }
                 dirty.add_ops(&tx.ops);
                 ecad_model::tag::note_ops(&mut high, &tx.ops);
@@ -1148,7 +1146,7 @@ impl ProjectV2 {
             done = at;
             let meta = ModelMeta { tag_high: high.clone() };
             let (set, new) = if first { chunks::build_full(&doc, &meta) } else { chunks::build_incremental(&doc, &snap.1, &dirty, &meta) }
-                .map_err(SaveErrorV2::Encode)?;
+                .map_err(SaveError::Encode)?;
             first = false;
             for p in &new {
                 let n = w.put_chunk(&p.hash, &p.body)?;
@@ -1174,11 +1172,10 @@ impl ProjectV2 {
                     description: None,
                     merge: None,
                     tag_rule: Some(ecad_model::tag::TAG_RULE),
-                    extra: BTreeMap::new(),
                 },
             )?;
             saved.snapshots += 1;
-            latest = Some(SnapshotRef { kind, name, seq: at, extra: BTreeMap::new() });
+            latest = Some(SnapshotRef { kind, name, seq: at });
             snap = (at, set);
         }
         let mut cache = Cache { every, ..Cache::default() };
@@ -1195,10 +1192,10 @@ impl ProjectV2 {
         w.set_meta("file_id", &json!(project.hex()))?;
         w.set_meta("writer", &json!(writer))?;
         w.set_meta("created_ms", &json!(created_ms))?;
-        w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(FileError::json(&e)))?)?;
+        w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveError::Encode(FileError::json(&e)))?)?;
         w.commit()?;
         let lineage = Arc::new(vec![Line { branch, seed, fork: None }]);
-        let me = ProjectV2 {
+        let me = Project {
             store,
             project,
             branch,
@@ -1214,7 +1211,6 @@ impl ProjectV2 {
             writer: writer.to_string(),
             read_only: None,
             file_read_only: None,
-            link_v1: None,
             created_ms,
             last_save: Some(saved.clone()),
             wrote_writer: true,
@@ -1229,22 +1225,22 @@ impl ProjectV2 {
     /// success the ledger is marked persisted.
     ///
     /// # Errors
-    /// [`SaveErrorV2`]; the file and the ledger are then unchanged.
-    pub fn save(&mut self, ledger: &mut Ledger) -> Result<SavedV2, SaveErrorV2> {
+    /// [`SaveError`]; the file and the ledger are then unchanged.
+    pub fn save(&mut self, ledger: &mut Ledger) -> Result<Saved, SaveError> {
         if let Some(r) = &self.read_only {
-            return Err(SaveErrorV2::ReadOnly(r.clone()));
+            return Err(SaveError::ReadOnly(r.clone()));
         }
         let (head, mut prev) = self.head;
         if ledger.head() == head {
             if ledger.persisted() != head {
-                ledger.mark_persisted(head).map_err(|e| SaveErrorV2::Encode(e.into()))?;
+                ledger.mark_persisted(head).map_err(|e| SaveError::Encode(e.into()))?;
             }
-            return Ok(SavedV2 { first_seq: head.saturating_add(1), last_seq: head, ..SavedV2::default() });
+            return Ok(Saved { first_seq: head.saturating_add(1), last_seq: head, ..Saved::default() });
         }
         if ledger.base() > head || ledger.head() < head {
-            return Err(SaveErrorV2::Encode(FileError::NotContinuing { base: ledger.base(), head: ledger.head(), file: head }));
+            return Err(SaveError::Encode(FileError::NotContinuing { base: ledger.base(), head: ledger.head(), file: head }));
         }
-        let start = usize::try_from(head - ledger.base()).map_err(|e| SaveErrorV2::Encode(e.into()))?;
+        let start = usize::try_from(head - ledger.base()).map_err(|e| SaveError::Encode(e.into()))?;
         let pending: Vec<Transaction> = ledger.log().get(start..).unwrap_or_default().to_vec();
         let mut w = self.store.writer()?;
         // Another writer cannot exist (locks); check anyway, inside this write transaction: one
@@ -1252,15 +1248,15 @@ impl ProjectV2 {
         {
             match w.branch(self.branch)? {
                 Some(b) if b.head.seq == head && b.head.hash().ok() == Some(prev) => {}
-                Some(b) => return Err(SaveErrorV2::ExternalChange(format!("the branch head is now {}", b.head.seq))),
-                None => return Err(SaveErrorV2::ExternalChange("the branch is gone".into())),
+                Some(b) => return Err(SaveError::ExternalChange(format!("the branch head is now {}", b.head.seq))),
+                None => return Err(SaveError::ExternalChange("the branch is gone".into())),
             }
         }
-        let mut saved = SavedV2 { first_seq: head.saturating_add(1), last_seq: ledger.head(), ..SavedV2::default() };
+        let mut saved = Saved { first_seq: head.saturating_add(1), last_seq: ledger.head(), ..Saved::default() };
         let mut chains: BTreeMap<u64, Hash> = BTreeMap::new();
         chains.insert(head, prev);
         for tx in &pending {
-            let (bytes, hash) = encode_tx(tx, &prev).map_err(SaveErrorV2::Encode)?;
+            let (bytes, hash) = encode_tx(tx, &prev).map_err(SaveError::Encode)?;
             saved.bytes += w.append_tx(self.branch, tx.seq, &hash, &bytes)?;
             chains.insert(tx.seq, hash);
             prev = hash;
@@ -1278,7 +1274,7 @@ impl ProjectV2 {
                             w.remove_version(self.branch, k, name)?;
                         }
                         let release =
-                            if kind == VersionKind::Revision { Some(release_at(ledger, tx, name).map_err(SaveErrorV2::Encode)?) } else { None };
+                            if kind == VersionKind::Revision { Some(release_at(ledger, tx, name).map_err(SaveError::Encode)?) } else { None };
                         let chain = self.chain_at(*at, &chains)?;
                         self.write_snapshot(&mut w, ledger, &mut snap, &mut cache, *at, chain, kind, name, release, &mut saved)?;
                         if let Some(d) = description {
@@ -1336,7 +1332,7 @@ impl ProjectV2 {
             w.set_meta("writer", &json!(self.writer))?;
         }
         if cache != self.cache {
-            w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(FileError::json(&e)))?)?;
+            w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveError::Encode(FileError::json(&e)))?)?;
         }
         w.commit()?;
         self.rec = rec;
@@ -1344,7 +1340,7 @@ impl ProjectV2 {
         self.snap = snap;
         self.snap_ref = cache.latest.get(&self.branch.hex()).cloned();
         self.cache = cache;
-        ledger.mark_persisted(end).map_err(|e| SaveErrorV2::Encode(e.into()))?;
+        ledger.mark_persisted(end).map_err(|e| SaveError::Encode(e.into()))?;
         for tx in &pending {
             self.closing.remove(&tx.id);
         }
@@ -1361,7 +1357,7 @@ impl ProjectV2 {
     /// reopen. Only the steps' kinds are read, plus the undo and redo stacks when the branch has
     /// merges at all (in the file, or in `steps`) and a step is an undo or redo. `w`: read the
     /// stored rows inside Save's write transaction.
-    fn follow_merges(&self, ledger: &Ledger, steps: &[Transaction], w: Option<&super::store::Writer>) -> Result<MergeFollow, SaveErrorV2> {
+    fn follow_merges(&self, ledger: &Ledger, steps: &[Transaction], w: Option<&super::store::Writer>) -> Result<MergeFollow, SaveError> {
         let mut out = MergeFollow::default();
         let any_merge = steps.iter().any(|t| matches!(t.kind, TxKind::Merge { .. }));
         let any_step = steps.iter().any(|t| matches!(t.kind, TxKind::Undo { .. } | TxKind::Redo { .. }));
@@ -1453,7 +1449,7 @@ impl ProjectV2 {
     }
 
     /// Whether a redo in `steps` may redo a merge undone before them: a redo whose undo's label
-    /// is a merge's (a cheap filter; [`ProjectV2::undone_merge`] then reads the stacks).
+    /// is a merge's (a cheap filter; [`Project::undone_merge`] then reads the stacks).
     fn has_undone_merges(&self, ledger: &Ledger, steps: &[Transaction]) -> bool {
         let _ = ledger;
         steps.iter().any(|t| matches!(t.kind, TxKind::Redo { .. }) && (t.label.starts_with("Merge ") || t.label.starts_with("Update from ")))
@@ -1542,7 +1538,7 @@ impl ProjectV2 {
     /// to merge, closed from the merge dialog: design 020 §4.2).
     ///
     /// # Errors
-    /// As [`ProjectV2::create_branch`].
+    /// As [`Project::create_branch`].
     pub fn mark_merged(&mut self, source: BranchId, into: BranchId, seq: u64) -> Result<BranchRecord, BranchError> {
         self.check_writable()?;
         if source == BranchId::main_of(self.project.0) {
@@ -1560,7 +1556,7 @@ impl ProjectV2 {
     }
 
     /// The chain value at `seq`: from this save's rows, or the stored row.
-    fn chain_at(&self, seq: u64, chains: &BTreeMap<u64, Hash>) -> Result<Hash, SaveErrorV2> {
+    fn chain_at(&self, seq: u64, chains: &BTreeMap<u64, Hash>) -> Result<Hash, SaveError> {
         if let Some(c) = chains.get(&seq) {
             return Ok(*c);
         }
@@ -1568,7 +1564,7 @@ impl ProjectV2 {
             return Ok(self.seed());
         }
         let r = self.store.reader()?;
-        r.tx(self.branch, seq)?.map(|(_, c, _)| c).ok_or(SaveErrorV2::Encode(FileError::TxNotStored(seq)))
+        r.tx(self.branch, seq)?.map(|(_, c, _)| c).ok_or(SaveError::Encode(FileError::TxNotStored(seq)))
     }
 
     /// Build and write the snapshot at `at` (a point at or before the ledger's head), relative to
@@ -1576,9 +1572,9 @@ impl ProjectV2 {
     #[allow(clippy::too_many_arguments)]
     fn write_snapshot(
         &mut self, w: &mut super::store::Writer, ledger: &mut Ledger, snap: &mut Snap, cache: &mut Cache, at: u64, chain: Hash, kind: VersionKind,
-        name: &str, release: Option<Release>, saved: &mut SavedV2,
-    ) -> Result<(), SaveErrorV2> {
-        let enc = SaveErrorV2::Encode;
+        name: &str, release: Option<Release>, saved: &mut Saved,
+    ) -> Result<(), SaveError> {
+        let enc = SaveError::Encode;
         let base = ledger.base();
         let meta = ModelMeta { tag_high: self.tag_high_at(ledger, at)? };
         let (lo, hi) = (at.min(snap.seq), at.max(snap.seq));
@@ -1625,14 +1621,13 @@ impl ProjectV2 {
                 description: None,
                 merge: None,
                 tag_rule: Some(ecad_model::tag::TAG_RULE),
-                extra: BTreeMap::new(),
             },
         )?;
         saved.snapshots += 1;
         // The latest snapshot (the one opening uses) only moves forward.
         let latest = cache.latest.get(&self.branch.hex()).map_or(0, |s| s.seq);
         if at >= latest {
-            cache.latest.insert(self.branch.hex(), SnapshotRef { kind, name: name.to_string(), seq: at, extra: BTreeMap::new() });
+            cache.latest.insert(self.branch.hex(), SnapshotRef { kind, name: name.to_string(), seq: at });
         }
         if in_memory {
             *snap = Snap { seq: at, set: Some(set) };
@@ -1646,7 +1641,7 @@ impl ProjectV2 {
     ///
     /// # Errors
     /// The engine failed.
-    pub fn write_rescue(&self, w: &mut super::store::Writer, r: &Reader) -> Result<(), SaveErrorV2> {
+    pub fn write_rescue(&self, w: &mut super::store::Writer, r: &Reader) -> Result<(), SaveError> {
         let (seq, chain) = self.head;
         let mut rec = self.rec.clone();
         rec.head = Point::new(seq, &chain);
@@ -1663,7 +1658,7 @@ impl ProjectV2 {
         if let Some(s) = self.snap_ref.as_ref().filter(|s| s.seq <= seq) {
             cache.latest.insert(self.branch.hex(), s.clone());
         }
-        w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveErrorV2::Encode(FileError::json(&e)))?)?;
+        w.set_meta("cache", &serde_json::to_value(&cache).map_err(|e| SaveError::Encode(FileError::json(&e)))?)?;
         Ok(())
     }
 
@@ -1671,7 +1666,7 @@ impl ProjectV2 {
     /// and the transactions after it in memory. When that pops below what is held, the next
     /// entries of the snapshot's stacks are read from the file (the record's cap at a time, walking
     /// back only as far as they go) and kept. A point before the snapshot is read from the file.
-    fn stacks_at(&mut self, ledger: &Ledger, at: u64) -> Result<StackState, SaveErrorV2> {
+    fn stacks_at(&mut self, ledger: &Ledger, at: u64) -> Result<StackState, SaveError> {
         let history = self.history();
         let mut base = std::mem::take(&mut self.base_stacks);
         let r = stacks_from(&*history, &mut base, self.base_seq, ledger, at);
@@ -1679,15 +1674,15 @@ impl ProjectV2 {
         r
     }
 
-    /// [`ProjectV2::stacks_at`] without keeping what it read (for reads that do not save).
-    fn stacks_at_ro(&self, ledger: &Ledger, at: u64) -> Result<StackState, SaveErrorV2> {
+    /// [`Project::stacks_at`] without keeping what it read (for reads that do not save).
+    fn stacks_at_ro(&self, ledger: &Ledger, at: u64) -> Result<StackState, SaveError> {
         let mut base = self.base_stacks.clone();
         stacks_from(&*self.history(), &mut base, self.base_seq, ledger, at)
     }
 
     /// The tag high-water mark at `at`: from the one at the snapshot this project was opened from
     /// and the transactions after it in memory, or (for an earlier point) read from the file.
-    fn tag_high_at(&self, ledger: &Ledger, at: u64) -> Result<HighWater, SaveErrorV2> {
+    fn tag_high_at(&self, ledger: &Ledger, at: u64) -> Result<HighWater, SaveError> {
         if at >= self.base_seq && self.base_seq >= ledger.base() {
             let mut high = self.base_tag_high.clone();
             for seq in self.base_seq.saturating_add(1)..=at {
@@ -1698,7 +1693,7 @@ impl ProjectV2 {
             return Ok(high);
         }
         let r = self.store.reader()?;
-        line_high(&r, &self.lineage, 0, at).map_err(SaveErrorV2::Encode)
+        line_high(&r, &self.lineage, 0, at).map_err(SaveError::Encode)
     }
 
     /// This branch's chain value at `seq` 0: the project seed on `main`, the branch seed
@@ -1788,7 +1783,6 @@ impl ProjectV2 {
             merged: None,
             created_ms,
             created_by,
-            extra: BTreeMap::new(),
         };
         let mut w = self.store.writer()?;
         if w.branch(id)?.is_some() {
@@ -1802,7 +1796,7 @@ impl ProjectV2 {
     /// Rename `branch` (not `main`), written at once.
     ///
     /// # Errors
-    /// As [`ProjectV2::create_branch`].
+    /// As [`Project::create_branch`].
     pub fn rename_branch(&mut self, branch: BranchId, name: &str) -> Result<BranchRecord, BranchError> {
         self.check_writable()?;
         let name = check_branch_name(name)?;
@@ -1823,7 +1817,7 @@ impl ProjectV2 {
     /// unique among open branches again.
     ///
     /// # Errors
-    /// As [`ProjectV2::create_branch`].
+    /// As [`Project::create_branch`].
     pub fn set_branch_open(&mut self, branch: BranchId, open: bool) -> Result<BranchRecord, BranchError> {
         self.check_writable()?;
         if branch == BranchId::main_of(self.project.0) {
@@ -1851,7 +1845,7 @@ impl ProjectV2 {
     /// branch took is never a dead end).
     ///
     /// # Errors
-    /// As [`ProjectV2::set_branch_open`]; the new name is checked as a rename's.
+    /// As [`Project::set_branch_open`]; the new name is checked as a rename's.
     pub fn reopen_as(&mut self, branch: BranchId, name: &str) -> Result<BranchRecord, BranchError> {
         self.check_writable()?;
         let name = check_branch_name(name)?;
@@ -1890,7 +1884,7 @@ impl ProjectV2 {
     ///
     /// # Errors
     /// [`BranchError`]; on an error the project still shows the previous branch.
-    pub fn switch_to(&mut self, ledger: &Ledger, branch: BranchId, seed: u64) -> Result<(Ledger, ReportV2), BranchError> {
+    pub fn switch_to(&mut self, ledger: &Ledger, branch: BranchId, seed: u64) -> Result<(Ledger, Report), BranchError> {
         // Unsaved transactions are never switched away from, read-only or not (design 020 §3.3).
         if ledger.head() != self.head.0 {
             return Err(BranchError::Refused("Save first: the branch shown has unsaved changes.".into()));
@@ -1899,8 +1893,7 @@ impl ProjectV2 {
         if rec.status != BranchStatus::Open {
             return Err(BranchError::Refused(format!("Branch \"{}\" is not open; reopen it first.", rec.name)));
         }
-        let l = load_branch(&self.store, self.project, &self.cache, self.link_v1.as_ref(), branch, &rec, seed)
-            .map_err(|e| BranchError::Refused(e.to_string()))?;
+        let l = load_branch(&self.store, self.project, &self.cache, branch, &rec, seed).map_err(|e| BranchError::Refused(e.to_string()))?;
         let writable = self.file_read_only.is_none();
         if writable {
             let mut w = self.store.writer()?;
@@ -1943,7 +1936,7 @@ impl ProjectV2 {
         Ok(out)
     }
 
-    /// How many transactions [`ProjectV2::point_state`] replays for `seq` of `branch`: from the
+    /// How many transactions [`Project::point_state`] replays for `seq` of `branch`: from the
     /// nearest snapshot at or before it on its line (never more than the snapshot interval past a
     /// snapshot, wherever the point is).
     ///
@@ -2041,18 +2034,13 @@ impl ProjectV2 {
         self.read_only = Some(why);
     }
 
-    /// The version 1 history this file continues, if converted.
-    pub fn link_v1(&self) -> Option<&LinkV1> {
-        self.link_v1.as_ref()
-    }
-
     /// When the file was created (informational).
     pub fn created_ms(&self) -> Option<u64> {
         self.created_ms
     }
 
     /// What the last save wrote.
-    pub fn last_save(&self) -> Option<&SavedV2> {
+    pub fn last_save(&self) -> Option<&Saved> {
         self.last_save.as_ref()
     }
 }
@@ -2062,8 +2050,8 @@ impl ProjectV2 {
 /// and the transactions after it in memory. When that pops below what `base` holds, its next
 /// entries are read from `history` (the record's cap at a time, walking back only as far as they
 /// go) and kept in `base`. A point before `base_seq` is read from the history.
-fn stacks_from(history: &dyn History, base: &mut StackState, base_seq: u64, ledger: &Ledger, at: u64) -> Result<StackState, SaveErrorV2> {
-    let enc = |e: ModelError| SaveErrorV2::Encode(e.into());
+fn stacks_from(history: &dyn History, base: &mut StackState, base_seq: u64, ledger: &Ledger, at: u64) -> Result<StackState, SaveError> {
+    let enc = |e: ModelError| SaveError::Encode(e.into());
     if at >= base_seq && base_seq >= ledger.base() {
         let from = usize::try_from(base_seq - ledger.base()).unwrap_or(usize::MAX);
         let to = usize::try_from(at - ledger.base()).unwrap_or(usize::MAX);
@@ -2083,7 +2071,7 @@ fn stacks_from(history: &dyn History, base: &mut StackState, base_seq: u64, ledg
                 let n = (*hidden).min(cap);
                 let more = history.stack_slice(base_seq, undo, stack.len() as u64, n).map_err(enc)?;
                 if more.len() as u64 != n {
-                    return Err(SaveErrorV2::Encode(FileError::FewerUndo));
+                    return Err(SaveError::Encode(FileError::FewerUndo));
                 }
                 let mut all = more;
                 all.append(stack);
@@ -2092,7 +2080,7 @@ fn stacks_from(history: &dyn History, base: &mut StackState, base_seq: u64, ledg
                 grew = true;
             }
             if !grew {
-                return Err(SaveErrorV2::Encode(FileError::UndoInconsistent));
+                return Err(SaveError::Encode(FileError::UndoInconsistent));
             }
         }
     }
@@ -2116,7 +2104,6 @@ fn merge_record(seq: u64, chain: Hash, row: &MergeRow) -> VersionRecord {
         description: None,
         merge: Some(row.clone()),
         tag_rule: None,
-        extra: BTreeMap::new(),
     }
 }
 
@@ -2138,7 +2125,7 @@ fn revision_of(doc: &Document, name: &str) -> Option<Release> {
     if let Some(r) = &row.released {
         fields.insert("released".into(), r.to_string());
     }
-    Some(Release { fields, assets: Vec::new(), extra: BTreeMap::new() })
+    Some(Release { fields, assets: Vec::new() })
 }
 
 /// The release data of revision `name` as issued by `tx`: the revision row's fields once `tx`

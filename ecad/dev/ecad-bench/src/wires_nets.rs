@@ -82,35 +82,33 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
         // The densest page's labels under both rules (read only, on the document). Densest by its
         // routes (design 072 D: a wire is drawn by routes, not by representations of the wire); a
         // project whose pages have none is refused, never timed as an empty page.
-        let (lnet, leach, routes) = project.read(&mut s, |p, _| -> Result<_, String> {
-            let doc = p.ledger.document();
-            let (page, routes) = doc
-                .page_order
-                .iter()
-                .map(|pg| (*pg, doc.routes_on(*pg).count()))
-                .max_by_key(|(_, n)| *n)
-                .ok_or("lnet/leach: the project has no page")?;
-            if routes == 0 {
-                return Err(format!("lnet/leach: no page has a route (densest page {}): nothing to label", page.hex()));
-            }
-            let mut each_doc = doc.clone();
-            each_doc.settings.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
-            for (rule, d) in [("net", doc), ("each", &each_doc)] {
-                if ecad_engine::wires::labels_on_page(d, page).is_empty() {
-                    return Err(format!("lnet/leach: the densest page {} ({routes} routes) has no wire labels under the {rule} rule", page.hex()));
+        let (lnet, leach, routes) = project
+            .read(&mut s, |p, _| -> Result<_, LabelPage> {
+                let doc = p.ledger.document();
+                let (page, routes) =
+                    doc.page_order.iter().map(|pg| (*pg, doc.routes_on(*pg).count())).max_by_key(|(_, n)| *n).ok_or(LabelPage::Empty)?;
+                if routes == 0 {
+                    return Err(LabelPage::Unrouted(page));
                 }
-            }
-            let (mut a, mut b) = (Vec::new(), Vec::new());
-            for _ in 0..runs {
-                let t = Instant::now();
-                std::hint::black_box(ecad_engine::wires::labels_on_page(doc, page));
-                a.push(ms(t));
-                let t = Instant::now();
-                std::hint::black_box(ecad_engine::wires::labels_on_page(&each_doc, page));
-                b.push(ms(t));
-            }
-            Ok((a, b, routes))
-        })??;
+                let mut each_doc = doc.clone();
+                each_doc.settings.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
+                for (rule, d) in [("net", doc), ("each", &each_doc)] {
+                    if ecad_engine::wires::labels_on_page(d, page).is_empty() {
+                        return Err(LabelPage::Unlabelled { page, routes, rule });
+                    }
+                }
+                let (mut a, mut b) = (Vec::new(), Vec::new());
+                for _ in 0..runs {
+                    let t = Instant::now();
+                    std::hint::black_box(ecad_engine::wires::labels_on_page(doc, page));
+                    a.push(ms(t));
+                    let t = Instant::now();
+                    std::hint::black_box(ecad_engine::wires::labels_on_page(&each_doc, page));
+                    b.push(ms(t));
+                }
+                Ok((a, b, routes))
+            })?
+            .map_err(|e| e.to_string())?;
         (out.lnet_ms, out.leach_ms, out.routes) = (median(&mut lnet.clone()), median(&mut leach.clone()), routes);
         // A page of its own for the edits.
         let page: PageId = crate_hex(&run(&mut s, "newpage", json!({"title": "bench 032"}))?, "page")?;
@@ -152,4 +150,24 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
 
 fn crate_hex<T: From<u128>>(v: &serde_json::Value, key: &str) -> Result<T, String> {
     v[key].as_str().and_then(|t| u128::from_str_radix(t, 16).ok()).map(T::from).ok_or_else(|| format!("no `{key}` in {v}"))
+}
+
+/// Why the densest page cannot be labelled for `lnet` / `leach`.
+#[derive(Debug)]
+enum LabelPage {
+    Empty,
+    Unrouted(PageId),
+    Unlabelled { page: PageId, routes: usize, rule: &'static str },
+}
+
+impl std::fmt::Display for LabelPage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LabelPage::Empty => write!(f, "lnet/leach: the project has no page"),
+            LabelPage::Unrouted(page) => write!(f, "lnet/leach: no page has a route (densest page {}): nothing to label", page.hex()),
+            LabelPage::Unlabelled { page, routes, rule } => {
+                write!(f, "lnet/leach: the densest page {} ({routes} routes) has no wire labels under the {rule} rule", page.hex())
+            }
+        }
+    }
 }

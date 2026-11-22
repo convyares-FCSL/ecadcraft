@@ -31,7 +31,7 @@ pub const CABLE_ACI: u8 = 6;
 pub const FAN_REFUSED: &str = "This cable is shown in fan view; switch to traditional view to edit.";
 /// Refusal of new geometry drawn on [`LAYER`].
 pub const LAYER_RESERVED: &str = "the ECAD-CABLES layer is reserved for cable views";
-/// Said once when no settings folder exists (wasm, or no folder found).
+/// Said once when no settings folder is found.
 pub const NOT_REMEMBERED: &str = "Cable views will not be remembered: no settings folder.";
 /// Said at open when the settings file cannot be used.
 pub const UNREADABLE: &str = "Cable views file could not be read; all cables start in traditional view.";
@@ -175,8 +175,7 @@ pub fn isolate_for_tests() {
     use_process_settings_dir(std::env::temp_dir().join(format!("ecad-test-settings-{}", process_id())));
 }
 
-/// A non-empty environment variable as a path (no settings folder is looked up on wasm).
-#[cfg(not(target_arch = "wasm32"))]
+/// A non-empty environment variable as a path.
 fn env_dir(name: &str) -> Option<PathBuf> {
     std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from)
 }
@@ -184,26 +183,19 @@ fn env_dir(name: &str) -> Option<PathBuf> {
 impl Settings {
     /// The folder for this user: `ECAD_SETTINGS_DIR` when set; else the folder given to
     /// [`use_process_settings_dir`]; else `%APPDATA%\ECAD` on Windows,
-    /// `$XDG_CONFIG_HOME/ecad` or `$HOME/.config/ecad` elsewhere; none on wasm.
+    /// `$XDG_CONFIG_HOME/ecad` or `$HOME/.config/ecad` elsewhere.
     pub fn from_env() -> Settings {
-        #[cfg(target_arch = "wasm32")]
-        {
-            Settings::none()
+        if let Some(d) = env_dir(SETTINGS_ENV) {
+            return Settings::at(d);
         }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if let Some(d) = env_dir(SETTINGS_ENV) {
-                return Settings::at(d);
-            }
-            if let Some(d) = PROCESS_DIR.get() {
-                return Settings::at(d.clone());
-            }
-            #[cfg(windows)]
-            let dir = env_dir("APPDATA").map(|d| d.join("ECAD"));
-            #[cfg(not(windows))]
-            let dir = env_dir("XDG_CONFIG_HOME").map(|d| d.join("ecad")).or_else(|| env_dir("HOME").map(|d| d.join(".config").join("ecad")));
-            Settings { dir }
+        if let Some(d) = PROCESS_DIR.get() {
+            return Settings::at(d.clone());
         }
+        #[cfg(windows)]
+        let dir = env_dir("APPDATA").map(|d| d.join("ECAD"));
+        #[cfg(not(windows))]
+        let dir = env_dir("XDG_CONFIG_HOME").map(|d| d.join("ecad")).or_else(|| env_dir("HOME").map(|d| d.join(".config").join("ecad")));
+        Settings { dir }
     }
 
     /// Views remembered in folder `dir`.
@@ -365,14 +357,7 @@ larger than 1 MiB)"
 }
 
 fn process_id() -> u32 {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::process::id()
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        0
-    }
+    std::process::id()
 }
 
 fn next_serial() -> u64 {

@@ -8,7 +8,6 @@
 //! `renamepage`, `movepage`) is driven through its **JSON form** (`Session::execute`) in a table,
 //! checking the result and the transaction, or the absence of one, so the rows can move to the MCP
 //! harness of brief 011 unchanged.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

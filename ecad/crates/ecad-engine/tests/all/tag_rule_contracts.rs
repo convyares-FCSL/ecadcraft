@@ -5,7 +5,7 @@ use ecad_engine::devices::{TagHigh, new_cable_tag};
 use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
 use ecad_file::schema::{self, BranchId, VersionKind};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::tag::HighWater;
 use ecad_model::*;
 
@@ -28,7 +28,7 @@ fn a_cable_tag_deleted_before_a_rule_1_snapshot_is_not_handed_out_again() {
     l.commit(Author::User, "Cables", vec![Op::CreateCable { id: w1, cable: cable("-W01") }, Op::CreateCable { id: w2, cable: cable("-W02") }])
         .unwrap();
     l.commit(Author::User, "Delete", vec![Op::DeleteCable { id: w2, cable: cable("-W02") }]).unwrap();
-    ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), "test", 16).unwrap();
+    Project::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), "test", 16).unwrap();
     // As a build before brief 026 wrote it: marks without cable tags, and no rule on the row.
     {
         let store = Store::open(&path, true).unwrap();
@@ -46,7 +46,7 @@ fn a_cable_tag_deleted_before_a_rule_1_snapshot_is_not_handed_out_again() {
         }
         w.commit().unwrap();
     }
-    let o = ProjectV2::open(Store::open(&path, false).unwrap(), 1, "test").unwrap();
+    let o = Project::open(Store::open(&path, false).unwrap(), 1, "test").unwrap();
     assert!(o.report.snapshot_seq > 0, "opened from the snapshot");
     // With the cached rule 1 marks, -W02 would be given again (the only guard is the mark: no
     // cable holds -W02 now).

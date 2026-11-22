@@ -27,10 +27,11 @@ use ecad_model::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, PageId};
 
 use super::Inputs;
-use crate::generated::{self, GenKind};
+use crate::generated;
 use crate::outputs::kept::{Noted, Outputs};
 use crate::plc::sheets::RackPlaces;
 use crate::text_style::fonts::TextMetrics;
+use ecad_model::GenKind;
 
 /// The kept report models.
 #[derive(Debug)]
@@ -123,7 +124,7 @@ impl<'i> DerivedView<Inputs<'i>> for OutputsView {
         let places_moved = places.touched(doc, &self.model.plc);
         let mut problems = Vec::new();
         if ecad_model::ledger::verify_mode()
-            && let Some(line) = self.model.verify_strips_with(doc, metrics)
+            && let Some(line) = self.model.verify_strips_with(doc)
         {
             problems.push(line);
         }

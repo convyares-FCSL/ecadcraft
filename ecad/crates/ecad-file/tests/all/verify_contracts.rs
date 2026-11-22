@@ -2,7 +2,6 @@
 //! then the full check at every snapshot and branch end. It catches everything the old Verify
 //! caught (the full check after every transaction, kept here as [`reference`]), and a history
 //! rewritten with valid ops between two snapshots is caught at the next snapshot.
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -12,7 +11,7 @@ use crate::container_v2::TempDir;
 use ecad_file::chain::{self, Hash};
 use ecad_file::schema::{self, BranchId, VersionKind, VersionRecord};
 use ecad_file::verify::{VerifyReport, verify, verify_chain};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
 use redb::ReadableTable;
 
@@ -49,7 +48,7 @@ fn build(name: &str) -> Fixture2 {
     let path = dir.path("p.ecad");
     let mut proj = {
         let store = Store::create(&path).unwrap();
-        ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0
+        Project::create(store, PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0
     };
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     for i in 0..20 {
@@ -297,7 +296,7 @@ fn rewrite_rows(
 
 /// `branch`'s whole log, decoded.
 fn log_of(p: &Path, branch: BranchId) -> Vec<Transaction> {
-    let o = ProjectV2::open(store(p), 1, WRITER).unwrap();
+    let o = Project::open(store(p), 1, WRITER).unwrap();
     let last = o.project.store().reader().unwrap().last_seq(branch).unwrap().unwrap();
     o.project.tx_display(branch, 1, last).unwrap()
 }
@@ -420,7 +419,6 @@ fn merge_row_chain(f: &Fixture2) {
             ancestor: BranchPoint { branch: f.main.0, seq: 0, chain: [2; 32] },
         }),
         tag_rule: None,
-        extra: Default::default(),
     };
     write(&f.path, |w| {
         let k = schema::version_key(f.main, VersionKind::Merge, &rec.name);

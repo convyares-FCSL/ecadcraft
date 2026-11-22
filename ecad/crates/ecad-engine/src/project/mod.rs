@@ -58,7 +58,7 @@ pub struct Project {
     pub file: crate::file::Binding,
     /// What opening reported, when the project was opened from a file on disk or from the test
     /// store.
-    pub open_report: Option<ecad_file::ReportV2>,
+    pub open_report: Option<ecad_file::Report>,
     pub pages: BTreeMap<PageId, PageView>,
     pub events: EventLog,
     pub clips: BTreeMap<u64, ClipSnapshot>,
@@ -128,10 +128,8 @@ pub struct Project {
     pub open_reports: bool,
     /// Brief 035: `agentaccess` asked for this agent access preference (the desktop app applies it and
     /// clears this).
-    #[cfg(not(target_arch = "wasm32"))]
     pub agent_access_request: Option<crate::agent::access::Preference>,
     /// Brief 035: the desktop app's agent access state as `agentaccess` reports it (set by the desktop app).
-    #[cfg(not(target_arch = "wasm32"))]
     pub agent_access_status: Option<crate::agent::access::Status>,
     /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
     /// next change. Display only, never recorded.
@@ -209,28 +207,17 @@ fn file_stem(path: &str) -> String {
     std::path::Path::new(path).file_stem().map_or_else(|| path.to_string(), |s| s.to_string_lossy().into_owned())
 }
 
-/// Milliseconds since the epoch, where a clock exists.
+/// Milliseconds since the epoch (`None` for a clock set before it).
 pub(crate) fn now_ms() -> Option<u64> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        None
-    }
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
 }
 
 /// A seed for IDs that differs for every call: a per-process counter mixed with the clock and,
-/// natively, the process id. Two projects created in the same millisecond, or on wasm (no clock),
-/// still get different ID streams.
+/// the process id. Two projects created in the same millisecond still get different ID streams.
 pub fn session_seed() -> u64 {
     static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    #[cfg(not(target_arch = "wasm32"))]
     let pid = u64::from(std::process::id());
-    #[cfg(target_arch = "wasm32")]
-    let pid = 0_u64;
     // SplitMix64 finaliser over the combined inputs, so nearby values give unrelated seeds.
     let mut z = now_ms().unwrap_or(0x5EED) ^ pid.rotate_left(40) ^ n.wrapping_mul(0x9E37_79B9_7F4A_7C15);
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);

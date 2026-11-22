@@ -26,5 +26,5 @@ cargo xtask bench
 ```
 This is a release build and is not part of `cargo xtask ci` or the pull-request checks. While
 building, bench the medium tier; run the large tier once, at the end of a brief. `cargo test -p
-ecad-bench` runs only the small tests of the generator's shape. `translate_differential.rs` keeps
-its own test executable.
+ecad-bench` runs only the small tests of the generator's shape. `translate_differential` (randomised
+edits on the small project) is in the slow set.

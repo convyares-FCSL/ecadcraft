@@ -6,13 +6,29 @@ Code, file and command names may differ, as noted.
 
 ## Where conductors land
 
-| Word | Means | Example |
-| --- | --- | --- |
-| **connection point** | A place on a device where a conductor's end can be attached: a coil's `A1`, a contact's `13`, a motor's `U1`. "Pin" is acceptable where space is tight. | `-K01:A1`; "end attached to connection point A1"; **Add Connection Point** |
-| **terminal** | Only the DIN-rail terminal device: a device of its own (prefix `X`), with one connection point per terminal level. The starter symbol **Terminal** is this device. | `-X01:1` |
-| **terminal strip** | A group of terminals with one tag, side by side on a rail. | `-X01` with terminals 1, 2, 3 |
+These names hold in code as well as on screen (owner decision, 2026-11-21, 0.2.3 structure
+decision 1). The structure moves of 0.2.3 rename the code to them; until a move reaches an area,
+its code may still use the superseded names below.
 
-**In code and files** the connection point is still `Terminal` / `TerminalId`, the op is
+| Word | In code | Means | Example |
+| --- | --- | --- | --- |
+| **connection point** | `ConnectionPoint` | A place on a device where a conductor's end can be attached: a coil's `A1`, a contact's `13`, a motor's `U1`, one level of a terminal block, and each pin of a connector. "Pin" is acceptable where space is tight. Replaces the model's `Terminal`. | `-K01:A1`; "end attached to connection point A1"; **Add Connection Point** |
+| **terminal block** | `TerminalBlock` | One unit on the DIN rail, in the IEC 60947-7-1 sense. It may have several levels, each with its own connection points. On screen "terminal" may still stand for it where the meaning is clear; in code never. | `-X01:1` |
+| **terminal strip** | `TerminalStrip` | One tagged run of terminal blocks side by side on a rail, with its accessories (end stops, plates, markers, jumper bars). | `-X01` with blocks 1, 2, 3 |
+| **connector** | `Connector` | A plug or socket (or both halves that mate, or a bulkhead). Its pins are connection points. | `-X10` |
+| **jumper bar** | `JumperBar` | A plug-in or screw bridge joining blocks of one terminal strip: a part on the strip, not a wire. A bridge made of real wire is a **wire**. | `-X01` 1-4 |
+
+**"Terminal" alone is never a code word** (owner, 2026-11-21): a type, field, module, file or
+function says `ConnectionPoint`, `TerminalBlock` or `TerminalStrip`, whichever it means. **Link**
+is not the word for a jumper bar: it is renamed to jumper bar throughout.
+
+**Superseded (2026-11-21).** The earlier rows read: *terminal*: "only the DIN-rail terminal
+device: a device of its own (prefix `X`), with one connection point per terminal level"; *terminal
+strip*: "a group of terminals with one tag, side by side on a rail". The paragraph below on the
+code's `Terminal` names, and the **link** row under Terminal accessories, are superseded the same
+way. They stay as written until the structure moves rename the code.
+
+**In code and files (superseded for `Terminal`, see above)** the connection point is still `Terminal` / `TerminalId`, the op is
 `AddTerminal`, the command `addterminal`, and JSON parameters say `terminal`. A device is `Device` /
 `DeviceId`, with the ops `CreateDevice`, `DeleteDevice`, `SetDeviceDefinition` and `ModifyDevice`
 (design 072, F13, F14; it was `Component` before 0.2.3); what it is lives in its `DeviceType`. A
@@ -113,7 +129,7 @@ stay as they are.
 | **strip label** | The marker that carries the strip's tag, usually on an end stop. |
 | **gap** | Where a plate or stop sits: start, after a position, or end. |
 | **jumper** | A plug-in or screw bridge between terminals of one strip: a part, not a wire. |
-| **link** | How ECAD stores a jumper: positions of one strip joined into one net (`1-4`, `7, 9, 11`), owned by the strip, drawn as a dashed line through its terminals on every page. |
+| **link** *(superseded 2026-11-21: say **jumper bar**, see the top)* | How ECAD stores a jumper: positions of one strip joined into one net (`1-4`, `7, 9, 11`), owned by the strip, drawn as a dashed line through its terminals on every page. |
 | **bar** | One jumper bar as bought (10-way unless the strip or project says otherwise); a link needs span ÷ bar size, rounded up. |
 
 ## Multi-level terminals (brief 036)
@@ -178,3 +194,13 @@ stay as they are.
 | **other end** | Another arrow with the same name. An arrow shows its other ends' places past its tip (`102-C-2 103-B-5`), derived, never typed. |
 | **caption** | A short text on an arrow (`TO CONTROL SUPPLY`) saying where it goes. Display only: it joins nothing. |
 | **caption run** | The arrows on one page with the same caption and direction, next to each other, drawn under one bracket with the caption. |
+
+## One word each (owner, 2026-11-21)
+
+| Word | In code | Means |
+| --- | --- | --- |
+| **references** | `references` | Every cross-reference: a coil's contact list and a contact's coil place, a cable's other end, a continuation arrow's other ends, and any other text that points at a place on another page. Areas, modules and views use this one word (not "xref", "cross-refs" or "refs"). |
+| **draw** | `draw` | Making something visible on a page or screen. Never "look" for the same thing. |
+
+Area and folder names in code are the glossary's plural nouns: `references`, `cables`,
+`terminal_strips`, `connectors`, `devices`, `circuits`, `reports`.

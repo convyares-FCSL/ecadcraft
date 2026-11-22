@@ -5,8 +5,6 @@
 //! Every check runs through the harness in `common`, which after each step asserts replay equals
 //! the live document, the drawing equals the projection and the handle map is one-to-one.
 
-#![cfg(not(target_arch = "wasm32"))]
-
 use crate::common;
 
 use std::path::PathBuf;

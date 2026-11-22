@@ -66,7 +66,7 @@ pub fn run(args: &[&str]) -> std::result::Result<String, String> {
 /// `history` written as the project file `p.ecad` in `dir`; its path.
 pub fn written(dir: &TempDir, l: &Ledger) -> PathBuf {
     let path = dir.path("p.ecad");
-    ecad_file::ProjectV2::create(ecad_file::Store::create(&path).unwrap(), PROJECT, l, Some(5), "test", 16).unwrap();
+    ecad_file::Project::create(ecad_file::Store::create(&path).unwrap(), PROJECT, l, Some(5), "test", 16).unwrap();
     path
 }
 
@@ -77,7 +77,7 @@ pub const WRITER: &str = "ecad-inspector tests";
 /// and the tag text `TITLE` in a page title and a property; a branch `Option B` forked from main
 /// with edits of its own. Snapshots every 16 transactions. Returns the file's path.
 pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
-    use ecad_file::{ProjectV2, Store};
+    use ecad_file::{Project, Store};
     let mut ids = IdAllocator::seeded(0x1A5);
     let mut l = Ledger::new(11);
     let (p1, p2, layer): (PageId, PageId, LayerId) = (ids.fresh(), ids.fresh(), ids.fresh());
@@ -164,7 +164,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     )
     .unwrap();
     let path = dir.path("rich.v2.ecad");
-    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), WRITER, 16).unwrap().0;
+    let mut proj = Project::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), WRITER, 16).unwrap().0;
     l.mark_persisted(l.head()).unwrap();
     let main = proj.branch();
     let (b, _) = proj.create_branch("Option B", main, at, None, None).unwrap();

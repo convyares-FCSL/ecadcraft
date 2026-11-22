@@ -11,7 +11,6 @@
 //! - Damage at rest (bytes changed inside the stored file) in a transaction row, a chunk, the
 //!   row a snapshot stands on, and a snapshot's recorded stacks: detected, never loaded silently;
 //!   EEP-0005 §5.8 says the project then opens read-only with a report.
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::io;
 use std::ops::Bound;
@@ -20,7 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::common::*;
 use ecad_file::schema::{self, VersionKind};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
 use ecad_store::power::{CrashMode, PowerLoss, Rng};
 
@@ -84,9 +83,9 @@ fn image(disk: &PowerLoss) -> Vec<u8> {
     disk.crash(&mut Rng::new(7), CrashMode::TornLast)
 }
 
-fn reopen(image: Vec<u8>) -> std::result::Result<ecad_file::OpenedV2, String> {
+fn reopen(image: Vec<u8>) -> std::result::Result<ecad_file::Opened, String> {
     let store = Store::with_backend(PowerLoss::from_image(image)).map_err(|e| format!("store: {e}"))?;
-    ProjectV2::open(store, 1, WRITER).map_err(|e| format!("open: {e}"))
+    Project::open(store, 1, WRITER).map_err(|e| format!("open: {e}"))
 }
 
 fn find_all(hay: &[u8], needle: &[u8]) -> Vec<usize> {
@@ -99,7 +98,7 @@ fn find_all(hay: &[u8], needle: &[u8]) -> Vec<usize> {
 /// A project on a simulated disk: the fixture, then `before` saves of line edits.
 struct Sim {
     disk: PowerLoss,
-    proj: ProjectV2,
+    proj: Project,
     ledger: Ledger,
 }
 
@@ -107,7 +106,7 @@ fn sim(every: u64, before: u64, rng: &mut Rng) -> Sim {
     let disk = PowerLoss::default();
     let mut f = fixture();
     let store = Store::with_backend(disk.clone()).unwrap();
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, WRITER, every).unwrap();
+    let (mut proj, _) = Project::create(store, PROJECT, &f.ledger, None, WRITER, every).unwrap();
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let mut ledger = f.ledger;
     for _ in 0..before {
@@ -235,7 +234,7 @@ fn a_second_power_cut_during_recovery_loses_nothing_acknowledged() {
             let recovering = PowerLoss::from_image(first.clone());
             recovering.cut_after(second_cut);
             let opened = Store::with_backend(recovering.clone())
-                .and_then(|s| ProjectV2::open(s, 1, WRITER).map_err(|e| ecad_file::StoreError::Engine(e.to_string())));
+                .and_then(|s| Project::open(s, 1, WRITER).map_err(|e| ecad_file::StoreError::Engine(e.to_string())));
             let survived = opened.is_ok();
             drop(opened);
             let second = recovering.crash(&mut rng, CrashMode::Reordered);
@@ -361,7 +360,7 @@ fn a_failed_save_then_a_retry_never_loses_or_mixes_saves() {
         let disk = Flaky::default();
         let mut f = fixture();
         let store = Store::with_backend(disk.clone()).unwrap();
-        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, WRITER, 16).unwrap();
+        let (mut proj, _) = Project::create(store, PROJECT, &f.ledger, None, WRITER, 16).unwrap();
         f.ledger.mark_persisted(f.ledger.head()).unwrap();
         let mut ledger = f.ledger;
         lines(&mut ledger, &mut rng, 5);
@@ -391,7 +390,7 @@ fn a_failed_save_then_a_retry_never_loses_or_mixes_saves() {
             Err(e) => {
                 maybe.push(ledger.head());
                 let kind = match e {
-                    ecad_file::SaveErrorV2::ExternalChange(_) => "the retry was refused: the head moved",
+                    ecad_file::SaveError::ExternalChange(_) => "the retry was refused: the head moved",
                     _ => "the retry was refused: engine error",
                 };
                 *outcomes.entry(kind).or_default() += 1;
@@ -432,11 +431,11 @@ fn a_failed_save_then_a_retry_never_loses_or_mixes_saves() {
 /// save; once the first commits, a new opener sees the new head.
 #[test]
 fn a_second_opener_mid_save_reads_the_last_commit_read_only() {
-    use ecad_file::disk::DiskProjectV2;
+    use ecad_file::disk::DiskProject;
     let dir = TempDir::new("second-opener");
     let p = dir.path("p.ecad");
     let mut f = fixture();
-    let (mut a, _) = DiskProjectV2::create(&p, PROJECT, &mut f.ledger, None, None, "first").unwrap();
+    let (mut a, _) = DiskProject::create(&p, PROJECT, &mut f.ledger, None, None, "first").unwrap();
     let mut ledger = f.ledger;
     let mut rng = Rng::new(42);
     lines(&mut ledger, &mut rng, 10);
@@ -446,7 +445,7 @@ fn a_second_opener_mid_save_reads_the_last_commit_read_only() {
     let store = a.project().store().clone();
     let mut w = store.writer().unwrap();
     w.put_asset("application/octet-stream", &vec![7u8; 300_000]).unwrap();
-    let b = DiskProjectV2::open(&p, 9, "second").expect("a second opener mid-save must open");
+    let b = DiskProject::open(&p, 9, "second").expect("a second opener mid-save must open");
     assert!(b.project.read_only().is_some(), "the second opener must be read-only");
     assert!(b.project.lock_file().is_none());
     assert!(b.report.damage.is_none(), "{:?}", b.report);
@@ -460,7 +459,7 @@ fn a_second_opener_mid_save_reads_the_last_commit_read_only() {
     // The first session saves again; a new second opener sees it.
     lines(&mut ledger, &mut rng, 4);
     a.save(&mut ledger).unwrap();
-    let c = DiskProjectV2::open(&p, 10, "third").unwrap();
+    let c = DiskProject::open(&p, 10, "third").unwrap();
     assert!(c.report.damage.is_none());
     assert_eq!(c.ledger.head(), ledger.head());
     assert_eq!(c.ledger.document(), ledger.document());
@@ -472,7 +471,7 @@ fn a_second_opener_mid_save_reads_the_last_commit_read_only() {
 #[test]
 #[ignore = "slow: forty opens while another thread saves 150 times"]
 fn second_openers_during_a_stream_of_saves_always_see_a_committed_state() {
-    use ecad_file::disk::DiskProjectV2;
+    use ecad_file::disk::DiskProject;
     use std::sync::mpsc;
     let dir = TempDir::new("second-stream");
     let p = dir.path("p.ecad");
@@ -483,7 +482,7 @@ fn second_openers_during_a_stream_of_saves_always_see_a_committed_state() {
         let p = p.clone();
         std::thread::spawn(move || {
             let mut f = fixture();
-            let (mut a, _) = DiskProjectV2::create(&p, PROJECT, &mut f.ledger, None, None, "first").unwrap();
+            let (mut a, _) = DiskProject::create(&p, PROJECT, &mut f.ledger, None, None, "first").unwrap();
             let mut ledger = f.ledger;
             tx.send((ledger.head(), ledger.document().clone())).unwrap();
             ready_tx.send(()).unwrap();
@@ -508,7 +507,7 @@ fn second_openers_during_a_stream_of_saves_always_see_a_committed_state() {
     let mut failures = Vec::new();
     let mut heads = std::collections::BTreeSet::new();
     for round in 0..40 {
-        let o = DiskProjectV2::open(&p, 100 + round, "second");
+        let o = DiskProject::open(&p, 100 + round, "second");
         while let Ok((h, d)) = rx.try_recv() {
             known.insert(h, d);
         }
@@ -551,7 +550,7 @@ fn undo_and_redo_across_the_stack_cap_after_a_power_cut() {
         prop(&mut f.ledger, i);
     }
     let store = Store::with_backend(disk.clone()).unwrap();
-    let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, WRITER, 500).unwrap();
+    let (mut proj, _) = Project::create(store, PROJECT, &f.ledger, None, WRITER, 500).unwrap();
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let mut ledger = f.ledger;
     for _ in 0..1_060 {
@@ -763,7 +762,7 @@ fn a_damaged_stack_record_in_a_snapshot_opens_read_only_not_refused() {
 
 /// After a save fails and the engine refuses further saves on that handle, the work is not lost:
 /// Save As (copy the file's rows into a new file, open it, save the pending transactions, as
-/// `DiskProjectV2::save_as` does) keeps everything in memory.
+/// `DiskProject::save_as` does) keeps everything in memory.
 #[test]
 fn after_a_failed_save_the_work_can_still_be_saved_as_a_new_file() {
     let mut refused = 0;
@@ -772,7 +771,7 @@ fn after_a_failed_save_the_work_can_still_be_saved_as_a_new_file() {
         let disk = Flaky::default();
         let mut f = fixture();
         let store = Store::with_backend(disk.clone()).unwrap();
-        let (mut proj, _) = ProjectV2::create(store, PROJECT, &f.ledger, None, WRITER, 16).unwrap();
+        let (mut proj, _) = Project::create(store, PROJECT, &f.ledger, None, WRITER, 16).unwrap();
         f.ledger.mark_persisted(f.ledger.head()).unwrap();
         let mut ledger = f.ledger;
         lines(&mut ledger, &mut rng, 25);
@@ -794,7 +793,7 @@ fn after_a_failed_save_the_work_can_still_be_saved_as_a_new_file() {
             w.copy_all(&r, None).unwrap_or_else(|e| panic!("fail_at {fail_at}: copy after the error: {e}"));
             w.commit().unwrap();
             drop(r);
-            let mut o = ProjectV2::open(new, 2, WRITER).unwrap();
+            let mut o = Project::open(new, 2, WRITER).unwrap();
             assert!(o.report.damage.is_none(), "fail_at {fail_at}: {:?}", o.report);
             o.project.save(&mut ledger).unwrap_or_else(|e| panic!("fail_at {fail_at}: saving the copy: {e}"));
         }

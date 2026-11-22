@@ -109,7 +109,7 @@ impl<'i> DerivedView<Inputs<'i>> for RefsView {
     const AREAS: AreaSet = AreaSet::ALL;
 
     fn note(&self, cx: &NoteCx<'_>, effect: &Effect<'_>, scope: &mut RefsScope) {
-        scope.watch.note(cx.doc, cx.phase == Phase::Before, cx.effects, effect);
+        scope.watch.note(cx.doc, cx.phase == Phase::Before, effect);
     }
 
     fn update(&mut self, doc: &Document, scope: RefsScope, cx: &Inputs<'i>) -> Outcome {

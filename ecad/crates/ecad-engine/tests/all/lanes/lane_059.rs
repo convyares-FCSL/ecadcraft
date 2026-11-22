@@ -105,7 +105,7 @@ fn cableedit_sets_fields_in_one_transaction_and_refuses_bad_values() {
     let doc = h.doc();
     assert_eq!(cables::planned(&doc, k, Side::To, ecad_engine::designations::Aspect::Location).as_deref(), Some("+FIELD"));
     assert_eq!(cables::gland(&doc, k, Side::To).map(|g| g.0).as_deref(), Some("M20"));
-    assert_eq!(cables::shield(&doc, k).map(|s| s.0), Some(cables::Shield::Overall));
+    assert_eq!(cables::shield(&doc, k).map(|s| s.0), Some(ecad_model::style::cable::Shield::Overall));
     let head = h.head();
     for (set, words) in [
         (json!({"length": "x"}), "Length must be a number of metres"),

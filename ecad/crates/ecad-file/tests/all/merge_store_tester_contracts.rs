@@ -1,14 +1,13 @@
 //! Tester contract for brief 020b (FQ2, forward compatibility): a merge index row (`versions`
 //! kind 4) carrying a field a newer build added keeps it through this build's saves, and a
 //! version row of a kind this build does not know (5) is ignored on open and kept on save.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common::*;
 use crate::container_v2::TempDir;
-use ecad_file::schema::{VERSIONS, VersionKind, auto_name, version_key};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::schema::VERSIONS;
+use ecad_file::{Project, Store};
 use ecad_model::*;
-use redb::{ReadableDatabase, ReadableTable};
+use redb::ReadableDatabase;
 
 fn line(l: &mut Ledger, ids: &mut IdAllocator, page: PageId, layer: LayerId, x: f64) -> Op {
     let id: ItemId = ids.fresh();
@@ -26,12 +25,12 @@ fn row(p: &std::path::Path, key: &[u8]) -> Option<serde_json::Value> {
 }
 
 #[test]
-fn a_merge_row_keeps_a_newer_builds_field_and_an_unknown_version_kind_is_kept() {
+fn an_unknown_version_kind_row_is_kept() {
     let dir = TempDir::new("merge-forward");
     let mut f = fixture();
     let p = dir.path("p.ecad");
     let store = Store::create(&p).unwrap();
-    let mut proj = ProjectV2::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap().0;
+    let mut proj = Project::create(store, PROJECT, &f.ledger, Some(1), WRITER, 2_000).unwrap().0;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     let main = proj.branch();
     let fork = f.ledger.head();
@@ -50,11 +49,10 @@ fn a_merge_row_keeps_a_newer_builds_field_and_an_unknown_version_kind_is_kept() 
     let tx = ml.commit_merge(Author::User, "Merge \"Option B\"", kind, vec![added], None).unwrap();
     proj.close_on_save(tx, b);
     proj.save(&mut ml).unwrap();
-    let merge_seq = ml.head();
+
     let doc = ml.document().clone();
     drop(proj);
-    // A newer build's additions: a field on the merge row, and a version row of kind 5.
-    let mkey = version_key(main, VersionKind::Merge, &auto_name(merge_seq));
+    // A version row of a kind this build does not know (5).
     let mut fkey = main.0.to_vec();
     fkey.push(5);
     fkey.extend_from_slice(b"future");
@@ -63,25 +61,20 @@ fn a_merge_row_keeps_a_newer_builds_field_and_an_unknown_version_kind_is_kept() 
         let w = db.begin_write().unwrap();
         {
             let mut t = w.open_table(VERSIONS).unwrap();
-            let mut v: serde_json::Value = serde_json::from_slice(t.get(mkey.as_slice()).unwrap().expect("the merge row").value()).unwrap();
-            v["future_merge"] = serde_json::json!({"kept": [1, 2]});
-            t.insert(mkey.as_slice(), serde_json::to_vec(&v).unwrap().as_slice()).unwrap();
             t.insert(fkey.as_slice(), br#"{"anything": true}"#.as_slice()).unwrap();
         }
         w.commit().unwrap();
     }
     // This build opens it undamaged, edits and saves.
-    let o = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 4, WRITER).unwrap();
+    let o = Project::open(Store::open(&p, true).unwrap(), SEED ^ 4, WRITER).unwrap();
     assert!(o.report.damage.is_none(), "{:?}", o.report);
     assert_eq!(o.ledger.document(), &doc);
     let mut proj = o.project;
     let mut ml = o.ledger;
-    assert_eq!(proj.merge_rows(main).unwrap().len(), 1, "the merge row still reads with an extra field");
+    assert_eq!(proj.merge_rows(main).unwrap().len(), 1, "the merge row reads");
     line(&mut ml, &mut ids, f.page, f.layer, 70.0);
     proj.save(&mut ml).unwrap();
     drop(proj);
-    let kept = row(&p, &mkey).expect("the merge row survives the save");
-    assert_eq!(kept["future_merge"], serde_json::json!({"kept": [1, 2]}), "{kept}");
     assert_eq!(row(&p, &fkey), Some(serde_json::json!({"anything": true})), "the unknown kind's row is kept");
     let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);

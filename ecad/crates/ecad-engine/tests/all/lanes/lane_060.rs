@@ -144,7 +144,6 @@ const KINDS_AT_060: &[(&str, &str, Severity)] = &[
     ("part-for-missing", "Part line names a fuse or position the device lacks", Severity::Warning),
     ("bad-part-key", "Part line or item value ECAD does not read", Severity::Info),
     ("style-unknown", "Style not found; drawn without it", Severity::Info),
-    ("ignored-old-setting", "Set in an older build, now ignored: set it in Standards", Severity::Info),
     ("style-limits", "Style records past the limits are ignored", Severity::Info),
     ("category-unknown", "Wire category not found; drawn without one", Severity::Info),
     ("category-potential-twice", "Two wire categories are the default for one potential", Severity::Warning),
@@ -201,8 +200,9 @@ fn every_check_kind_is_in_the_table_once_and_keeps_its_words() {
         assert_eq!((k.words(), k.severity()), (*words, *severity), "{name}");
     }
     // 110 at 060, less `thin-junction` (design 072 §4: the junction device is gone) and
-    // `page-type-field` (design 072 §8: a malformed page type value does not read).
-    assert_eq!(KINDS_AT_060.len(), 108);
+    // `page-type-field` (design 072 §8: a malformed page type value does not read) and
+    // `ignored-old-setting` (0.2.3: no compatibility pre-v1, old keys are not checked).
+    assert_eq!(KINDS_AT_060.len(), 107);
 }
 
 /// Brief 060 (R7): each whole-project check source keeps its rows under a key of its own.

@@ -26,9 +26,10 @@ use ecad_model::{Document, FolderId, ObjectRef, PageId, StyleRef};
 use serde_json::{Value, json};
 
 use crate::checks::{Check, Kind, Object};
-use crate::generated::{self, GenKind};
+use crate::generated;
 use crate::outputs::kept::Outputs;
 use crate::styles::page as ptype;
+use ecad_model::GenKind;
 
 /// Most characters of a page number.
 pub const MAX_NUMBER_CHARS: usize = 12;

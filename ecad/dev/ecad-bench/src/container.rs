@@ -1,8 +1,8 @@
 //! Container version 2 timings (brief 021): the v2 columns of `cargo xtask bench`, and the
-//! Zstandard comparison the overseer asked for (`ruzstd` against the `zstd` crate).
+//! Zstandard comparison the overseer asked for (`zstd` levels 1 and 3).
 //!
 //! # Semantics
-//! - **v2 open**: [`DiskProjectV2::open`] from a warm file cache: the latest snapshot and its tail.
+//! - **v2 open**: [`DiskProject::open`] from a warm file cache: the latest snapshot and its tail.
 //! - **v2 save**: one add-wire transaction committed (not timed) and saved: one redb write
 //!   transaction, durable before it returns.
 //! - **v2 crash open**: a child process saves an edit and exits without closing the file (as a
@@ -14,7 +14,7 @@
 use std::path::Path;
 use std::time::Instant;
 
-use ecad_file::disk::DiskProjectV2;
+use ecad_file::disk::DiskProject;
 use ecad_model::{Author, IdAllocator, ObjectRef, Op};
 
 use crate::measure::{HOLDER, median};
@@ -24,7 +24,7 @@ const EDIT_SEED: u64 = 0xED17_0021;
 
 /// What the version 2 file measured, times in milliseconds.
 #[derive(Debug, Clone, PartialEq)]
-pub struct MeasuredV2 {
+pub struct Measured {
     pub bytes: u64,
     pub open_ms: f64,
     pub save_ms: f64,
@@ -56,24 +56,15 @@ pub struct MeasuredV2 {
 /// # Errors
 /// Creating or writing the file failed; nothing is left at `path` then.
 pub fn write(g: &crate::Generated, path: &Path) -> Result<(), String> {
-    use ecad_file::{ProjectV2, Store, schema::DEFAULT_SNAPSHOT_EVERY};
+    use ecad_file::{Project, Store, schema::DEFAULT_SNAPSHOT_EVERY};
     crate::measure::remove(path);
     let written = Store::create(path).map_err(|e| e.to_string()).and_then(|store| {
-        ProjectV2::create(store, g.project, &g.ledger, None, crate::generate::WRITER, DEFAULT_SNAPSHOT_EVERY).map(drop).map_err(|e| e.to_string())
+        Project::create(store, g.project, &g.ledger, None, crate::generate::WRITER, DEFAULT_SNAPSHOT_EVERY).map(drop).map_err(|e| e.to_string())
     });
     written.map_err(|e| {
         crate::measure::remove(path);
         format!("writing the {} {} project to {}: {e}", g.tier.name, g.variant.name(), path.display())
     })
-}
-
-/// Write `tier`'s lean project as a version 2 file at `path`, for timing Verify on it alone:
-/// `ecad-bench --write-v2 large <file>`.
-///
-/// # Errors
-/// Generating or writing failed.
-pub fn write_lean(tier: crate::Tier, path: &Path) -> Result<(), String> {
-    write(&crate::generate(tier, crate::Variant::Lean)?, path)
 }
 
 /// Verify `path` (brief 029): the chain part alone, then the whole Verify, each timed once.
@@ -103,8 +94,8 @@ fn ms(since: Instant) -> f64 {
 }
 
 /// Open `path` as the app's file layer does; refuse a damaged or read-only open.
-pub(crate) fn open(path: &Path) -> Result<ecad_file::disk::OpenedDiskV2, String> {
-    let o = DiskProjectV2::open(path, SEED, HOLDER).map_err(|e| e.to_string())?;
+pub(crate) fn open(path: &Path) -> Result<ecad_file::disk::OpenedDisk, String> {
+    let o = DiskProject::open(path, SEED, HOLDER).map_err(|e| e.to_string())?;
     if let Some(d) = &o.report.damage {
         return Err(format!("{} opened damaged: {d:?}", path.display()));
     }
@@ -119,7 +110,7 @@ pub(crate) fn open(path: &Path) -> Result<ecad_file::disk::OpenedDiskV2, String>
 ///
 /// # Errors
 /// Opening, saving or the child process failed.
-pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredV2, String> {
+pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<Measured, String> {
     let bytes = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?.len();
     let mut open_ms = Vec::with_capacity(runs);
     for _ in 0..runs {
@@ -159,7 +150,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredV2, S
             return Err(format!("the crash child failed ({status})"));
         }
         let t = Instant::now();
-        let o = DiskProjectV2::open(&copy, SEED, HOLDER).map_err(|e| e.to_string())?;
+        let o = DiskProject::open(&copy, SEED, HOLDER).map_err(|e| e.to_string())?;
         crash_ms.push(ms(t));
         if !o.report.repaired && runs > 0 {
             eprintln!("note: the file did not need a repair after the child's exit");
@@ -237,7 +228,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredV2, S
     };
     crate::measure::remove(&copy);
 
-    Ok(MeasuredV2 {
+    Ok(Measured {
         bytes,
         open_ms: median(&mut open_ms),
         save_ms: median(&mut save_ms),
@@ -292,8 +283,7 @@ pub struct Compression {
     pub codecs: Vec<Codec>,
 }
 
-/// Compare `ruzstd` (level Fastest, the only one it implements) with the `zstd` crate at levels 1
-/// and 3 on the rows and chunks of the version 2 file at `path`.
+/// Compare the `zstd` crate at levels 1 and 3 on the rows and chunks of the version 2 file at `path`.
 ///
 /// # Errors
 /// The file cannot be read, or a codec failed.
@@ -325,12 +315,7 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
     let mut codecs = Vec::new();
     type Enc = fn(&[u8]) -> Result<Vec<u8>, String>;
     type Dec = fn(&[u8]) -> Result<Vec<u8>, String>;
-    let all: [(&'static str, Enc, Dec); 3] = [
-        (
-            "ruzstd (Fastest)",
-            |b| Ok(ruzstd::encoding::compress_to_vec(b, ruzstd::encoding::CompressionLevel::Fastest)),
-            |b| ecad_file::pack::decode_ruzstd(b).map_err(|e| e.to_string()),
-        ),
+    let all: [(&'static str, Enc, Dec); 2] = [
         (
             "zstd 1",
             |b| zstd::bulk::compress(b, 1).map_err(|e| e.to_string()),

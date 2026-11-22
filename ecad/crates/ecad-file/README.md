@@ -20,7 +20,7 @@ before it. It has no OS access except through `ecad-store`. Left out for now: li
 their header (stage 3), checkpoints and other codecs.
 
 ## Key types
-`ProjectV2`, `Store`, `disk::DiskProjectV2`, `binding::Binding`, `ReadOnly`,
+`Project`, `Store`, `disk::DiskProject`, `binding::Binding`, `ReadOnly`,
 `definition_hash`.
 
 ## How to test

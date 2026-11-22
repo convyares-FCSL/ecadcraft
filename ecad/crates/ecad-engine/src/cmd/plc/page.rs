@@ -118,12 +118,12 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
     if !places_rack {
         return Ok((None, Vec::new()));
     }
-    let has_page = doc.page_order.iter().any(|pg| crate::generated::kind_of(doc, *pg) == Some(crate::generated::GenKind::PlcRack));
+    let has_page = doc.page_order.iter().any(|pg| crate::generated::kind_of(doc, *pg) == Some(ecad_model::GenKind::PlcRack));
     let other_rack = doc.devices.keys().any(|c| crate::plc::edit::station_of(doc, *c).is_some());
     if has_page || other_rack {
         return Ok((None, Vec::new()));
     }
-    let kind = crate::generated::GenKind::PlcRack;
+    let kind = ecad_model::GenKind::PlcRack;
     let (id, _, mut more) = crate::cmd::sheet::new_page_ops_at(p, kind.title().to_string(), None, None, None)?;
     for op in &mut more {
         if let Op::AddPage { page, .. } = op {

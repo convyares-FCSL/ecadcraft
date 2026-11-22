@@ -86,7 +86,7 @@ impl Default for CablesSource {
 
 impl CablesSource {
     /// Brief 057: row `k`'s rating result.
-    pub fn rating(&self, k: usize) -> Option<&ecad_engine::rating::Rating> {
+    pub fn rating(&self, k: usize) -> Option<&ecad_engine::rating::circuit::Rating> {
         self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_engine::rating::RatedSubject::Cable(*c)))
     }
 

@@ -1,12 +1,14 @@
 //! The Rating section of Project ▸ Wires and Cables (brief 057, design 057 §2 and §9; boards 2.05
 //! and 2.06): the basis, the factors with where each came from, what the conductor carries
 //! against its protective device, and for a cable its volt drop. It reads one kept result
-//! ([`ecad_engine::rating::Rating`], copied by the tab's view) and writes through `rating`.
+//! ([`ecad_engine::rating::circuit::Rating`], copied by the tab's view) and writes through `rating`.
 //!
 //! **Update map.** Nothing of its own: it shows the result the view holds this frame.
 
-use ecad_engine::rating::{self, Basis, RatedSubject, Rating, dataset};
+use ecad_engine::rating::circuit::Rating;
+use ecad_engine::rating::{self, RatedSubject, dataset};
 use ecad_model::Word;
+use ecad_model::wire::Basis;
 use ecad_ui::prim::{self, Tone};
 use ecad_ui::tokens::{line, space, ui_type};
 use eframe::egui::{self, Stroke, pos2, vec2};
@@ -54,7 +56,7 @@ fn subject_key(s: RatedSubject) -> (&'static str, String) {
     }
 }
 
-fn factor<'a>(r: &'a Rating, name: &str) -> Option<&'a rating::Factor> {
+fn factor<'a>(r: &'a Rating, name: &str) -> Option<&'a rating::circuit::Factor> {
     r.factors.iter().find(|f| f.name == name)
 }
 
@@ -63,7 +65,7 @@ fn rows(r: &Rating) -> Vec<Row> {
     let mut v = Vec::new();
     let temp_row = |v: &mut Vec<Row>, name: &'static str, label: &'static str| {
         if let Some(f) = factor(r, name) {
-            let mut x = row(label, format!("\u{d7} {}", rating::fmt_factor(f.factor)), f.input.clone());
+            let mut x = row(label, format!("\u{d7} {}", rating::circuit::fmt_factor(f.factor)), f.input.clone());
             x.tip = format!("{} \u{b7} {}", f.input, f.from);
             if cable {
                 x.edit = Some("ambient");
@@ -82,7 +84,7 @@ fn rows(r: &Rating) -> Vec<Row> {
     let group_row = |v: &mut Vec<Row>| {
         let (name, label, key) = if cable { ("grouping", "Grouping", "grouped") } else { ("bundling", "Bundled", "bundling") };
         if let Some(f) = factor(r, name) {
-            let mut x = row(label, format!("\u{d7} {}", rating::fmt_factor(f.factor)), f.input.clone());
+            let mut x = row(label, format!("\u{d7} {}", rating::circuit::fmt_factor(f.factor)), f.input.clone());
             if f.from.starts_with("not set") {
                 x.note = f.from.clone();
                 x.tone = Some(Tone::Warning);
@@ -138,7 +140,7 @@ fn rows(r: &Rating) -> Vec<Row> {
 }
 
 fn carries(r: &Rating) -> Row {
-    let iz = r.iz.map(|x| format!("{} A", rating::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))).unwrap_or_else(|| "\u{2014}".into());
+    let iz = r.iz.map(|x| format!("{} A", rating::circuit::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))).unwrap_or_else(|| "\u{2014}".into());
     let mut x = row("Carries", iz, "no protective device");
     x.strong = true;
     if let Some(d) = &r.device {
@@ -166,7 +168,7 @@ fn after(r: &Rating) -> Vec<Row> {
         let ok = vd.percent <= vd.limit;
         let mut x = row(
             "Volt drop",
-            format!("{} %", rating::fmt_percent(vd.percent)),
+            format!("{} %", rating::circuit::fmt_percent(vd.percent)),
             format!("{} {} % {}", if ok { "\u{2264}" } else { ">" }, dataset::fmt_num(vd.limit), if ok { "\u{2713}" } else { "\u{2717}" }),
         );
         x.tone = Some(if ok { Tone::Ok } else { Tone::Warning });

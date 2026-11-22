@@ -549,9 +549,25 @@ const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
 pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
     let effects = ecad_model::effect::Effects::of(ops);
     let mut out = BTreeSet::new();
-    let mut moved = false;
+    // The cables on the pages whose book position changes: the book before against the book of
+    // the state after (the ops applied to a copy; an op that does not apply reaches any cable).
+    if ecad_model::book::moves_pages_by(&effects) {
+        let mut positions = ecad_model::book::PositionsNoted::default();
+        for e in &effects {
+            positions.note_before(doc, e);
+        }
+        let mut after = doc.clone();
+        for op in ops {
+            if op.apply(&mut after).is_err() {
+                return None;
+            }
+        }
+        for p in positions.changed(&after) {
+            out.extend(cables_on(doc, p).chain(cables_on(&after, p)));
+        }
+    }
     for e in &effects {
-        if !cables_touched_by(doc, &effects, e, &mut moved, &mut out) {
+        if !cables_touched_by(doc, e, &mut out) {
             return None;
         }
     }
@@ -559,11 +575,10 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
 }
 
 /// One effect of [`cables_touched`]: adds to `out` the cables `effect` reaches, looked up in `doc`
-/// before the transaction `effects`; `false` when it could reach any cable. `moved` notes that the
-/// book positions of `effects` were looked at already (once per transaction).
-pub fn cables_touched_by(
-    doc: &Document, effects: &ecad_model::effect::Effects<'_>, effect: &ecad_model::effect::Effect<'_>, moved: &mut bool, out: &mut BTreeSet<CableId>,
-) -> bool {
+/// before the transaction; `false` when it could reach any cable. The cables of the pages
+/// whose book position changes are not added here: `crate::xref::Watch` adds them after the
+/// commit, comparing the book before with the book after.
+pub fn cables_touched_by(doc: &Document, effect: &ecad_model::effect::Effect<'_>, out: &mut BTreeSet<CableId>) -> bool {
     use ecad_model::ObjectRef;
     use ecad_model::effect::Effect;
     let note = |r: &Representation, out: &mut BTreeSet<CableId>| match r.subject {
@@ -631,9 +646,6 @@ pub fn cables_touched_by(
             if ch.number || ch.sheet || ch.page_type {
                 out.extend(cables_on(doc, *p));
             }
-            if ch.folder {
-                moved_cables(doc, effects, moved, out);
-            }
         }
         // Brief 054 (design 054 §10.2): a page type's sheet, on its pages only.
         Effect::Style { catalogue: ecad_model::StyleCatalogue::Page, .. } => {
@@ -647,7 +659,7 @@ pub fn cables_touched_by(
         // pages whose book position changed may read differently (an unnumbered page's number,
         // the order of a cable's partners); a rename in place or an append moves none.
         Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Project, .. } => {}
-        Effect::Page { .. } | Effect::Folder { .. } => moved_cables(doc, effects, moved, out),
+        Effect::Page { .. } | Effect::Folder { .. } => {}
         Effect::Version { .. } => {}
         // Brief 025 (design 025 §6): a cable op changes that cable's members only, so only its
         // reference ends may be drawn differently. Brief 053: a cable's fields (its type, tag)
@@ -688,22 +700,11 @@ fn route_cables(doc: &Document, id: RouteId, route: &ecad_model::Route, out: &mu
 }
 
 /// The cables with a reference on `page` (through the page index).
-fn cables_on(doc: &Document, page: PageId) -> impl Iterator<Item = CableId> + '_ {
+pub(crate) fn cables_on(doc: &Document, page: PageId) -> impl Iterator<Item = CableId> + '_ {
     doc.representations_on(page).filter(|(_, r)| is_reference(r)).filter_map(|(_, r)| match r.subject {
         Subject::Cable(k) => Some(k),
         _ => None,
     })
-}
-
-/// Add the cables with a reference on a page whose book position `effects` change, once per call
-/// (`done`).
-fn moved_cables(doc: &Document, effects: &ecad_model::effect::Effects<'_>, done: &mut bool, out: &mut BTreeSet<CableId>) {
-    if std::mem::replace(done, true) {
-        return;
-    }
-    for p in ecad_model::book::positions_changed_by(doc, effects) {
-        out.extend(cables_on(doc, p));
-    }
 }
 
 /// Per member of a cable: the conductor, the pages it is routed on, and its end attachments.
