@@ -27,6 +27,8 @@ pub mod undo_session;
 
 // Upstream's loopback control server, unchanged (design 035 §17, 2): the same bounds, token and
 // replies as CADCraft's own. `#[path]` is relative to this file's folder (`src/agent`).
+#[path = "../../../../../apps/cadcraft/src/control_server.rs"]
+mod control_server;
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::mpsc::{Receiver, SyncSender, TryRecvError};

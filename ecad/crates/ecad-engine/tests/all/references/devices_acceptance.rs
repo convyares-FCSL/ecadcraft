@@ -79,10 +79,10 @@ fn fixture(seed: u64) -> X {
 }
 
 /// Every page's drawn reference parts, derived from the document alone.
-fn parts(h: &mut H) -> BTreeMap<PageId, Vec<xref::Part>> {
+fn parts(h: &mut H) -> BTreeMap<PageId, Vec<ecad_electrical::references::devices::Part>> {
     h.p(|p| {
         let doc = p.ledger.document();
-        doc.page_order.iter().map(|pg| (*pg, xref::parts_on_page(doc, *pg))).collect()
+        doc.page_order.iter().map(|pg| (*pg, ecad_engine::references::draw::devices::parts_on_page(doc, *pg))).collect()
     })
 }
 
@@ -111,13 +111,13 @@ fn device_reference_handles(h: &mut H, page: PageId, r: RepresentationId) -> Vec
 }
 
 fn children(h: &mut H, c: DeviceId) -> Vec<RepresentationId> {
-    h.p(|p| xref::device(p.ledger.document(), c).children)
+    h.p(|p| ecad_electrical::references::devices::device(p.ledger.document(), c).children)
 }
 
 fn components_with_head(h: &mut H) -> Vec<DeviceId> {
     h.p(|p| {
         let doc = p.ledger.document();
-        doc.devices.keys().copied().filter(|c| xref::device(doc, *c).head.is_some()).collect()
+        doc.devices.keys().copied().filter(|c| ecad_electrical::references::devices::device(doc, *c).head.is_some()).collect()
     })
 }
 
@@ -142,7 +142,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
     Some(match rng.below(20) {
         0 | 1 => {
             // Move a head symbol.
-            let head = x.h.p(|p| xref::device(p.ledger.document(), dev).head)?;
+            let head = x.h.p(|p| ecad_electrical::references::devices::device(p.ledger.document(), dev).head)?;
             let (_, hs) = item_handles(&mut x.h, head);
             r(&mut x.h, "move", json!({"handles": hs, "delta": d}));
             "move head"
@@ -156,7 +156,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
         }
         4 => {
             // A window round the head and its table.
-            let head = x.h.p(|p| xref::device(p.ledger.document(), dev).head)?;
+            let head = x.h.p(|p| ecad_electrical::references::devices::device(p.ledger.document(), dev).head)?;
             let (page, mut hs) = item_handles(&mut x.h, head);
             hs.extend(device_reference_handles(&mut x.h, page, head));
             r(&mut x.h, "move", json!({"handles": hs, "delta": d}));
@@ -165,21 +165,21 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
         5 => {
             let all: Vec<RepresentationId> = {
                 let mut v = children(&mut x.h, dev);
-                v.extend(x.h.p(|p| xref::device(p.ledger.document(), dev).head));
+                v.extend(x.h.p(|p| ecad_electrical::references::devices::device(p.ledger.document(), dev).head));
                 v
             };
             let one = *rng.pick(&all)?;
             let (page, mut hs) = item_handles(&mut x.h, one);
             hs.extend(device_reference_handles(&mut x.h, page, one));
-            let at = x.h.p(|p| xref::anchor(p.ledger.document(), &p.ledger.document().representations[&one]))?;
+            let at = x.h.p(|p| ecad_electrical::references::devices::anchor(p.ledger.document(), &p.ledger.document().representations[&one]))?;
             r(&mut x.h, "rotate", json!({"handles": hs, "base": [at.x, at.y], "angle": 90.0 * (1 + rng.below(3)) as f64}));
             "rotate symbol+parts"
         }
         6 => {
-            let head = x.h.p(|p| xref::device(p.ledger.document(), dev).head)?;
+            let head = x.h.p(|p| ecad_electrical::references::devices::device(p.ledger.document(), dev).head)?;
             let (page, mut hs) = item_handles(&mut x.h, head);
             hs.extend(device_reference_handles(&mut x.h, page, head));
-            let at = x.h.p(|p| xref::anchor(p.ledger.document(), &p.ledger.document().representations[&head]))?;
+            let at = x.h.p(|p| ecad_electrical::references::devices::anchor(p.ledger.document(), &p.ledger.document().representations[&head]))?;
             r(&mut x.h, "mirror", json!({"handles": hs, "p1": [at.x + 5.0, at.y], "p2": [at.x + 5.0, at.y + 10.0], "erase": true}));
             "mirror head+table"
         }
@@ -262,7 +262,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
             r(
                 &mut x.h,
                 "grip.stretch",
-                json!({"handle": hd.hex(), "index": 2, "to": [doc.representations[&x.coil].items.first().and_then(|_| xref::anchor(&doc, &doc.representations[&x.coil])).map_or(75.0, |a| a.x), 100.0 + 10.0 * rng.below(6) as f64]}),
+                json!({"handle": hd.hex(), "index": 2, "to": [doc.representations[&x.coil].items.first().and_then(|_| ecad_electrical::references::devices::anchor(&doc, &doc.representations[&x.coil])).map_or(75.0, |a| a.x), 100.0 + 10.0 * rng.below(6) as f64]}),
             );
             "stretch A2 wire"
         }
@@ -373,7 +373,7 @@ fn tester_025_branch_switch_merge_and_update_keep_the_index() {
     let m = raw(&mut x.h, "merge", json!({"from": "B"}));
     assert!(m.is_ok(), "{m:?}");
     index_is_a_rebuild(&mut x.h, "after merge");
-    assert!(xref::offer_of(&x.h.doc(), x.k1).is_some());
+    assert!(ecad_electrical::references::devices::offer_of(&x.h.doc(), x.k1).is_some());
     raw(&mut x.h, "u", json!({})).ok();
     raw(&mut x.h, "undomerge", json!({})).ok();
     index_is_a_rebuild(&mut x.h, "after undoing the merge");
@@ -424,7 +424,7 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     // (`auto`) is left out of the settings. (A qsave always writes a new session record, so the
     // file bytes are not compared.)
     let doc = h2.doc();
-    assert!(doc.devices.keys().all(|c| xref::offer_of(&doc, *c).is_none() && !xref::placement_of(&doc, *c).1));
+    assert!(doc.devices.keys().all(|c| ecad_electrical::references::devices::offer_of(&doc, *c).is_none() && !ecad_electrical::references::devices::placement_of(&doc, *c).1));
     let settings = serde_json::to_value(&doc.settings).unwrap();
     assert!(settings.get("contact_mirror").is_none(), "{settings}");
     // With an offer, a moved table and a project default, a second round trip keeps them all.
@@ -444,7 +444,7 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     assert_eq!(h3.p(|p| p.xref().clone()), idx2);
     assert_eq!(parts(&mut h3), parts2);
     assert!(
-        parts2.values().flatten().any(|p| matches!(&p.shape, xref::Shape::Text { value, .. } if value == xref::SPARE_PLACE)),
+        parts2.values().flatten().any(|p| matches!(&p.shape, ecad_electrical::references::devices::Shape::Text { value, .. } if value == ecad_electrical::references::devices::SPARE_PLACE)),
         "the spare row survives"
     );
     close_all(&mut h3.s);
@@ -488,24 +488,24 @@ fn rows(h: &mut H, c: DeviceId) -> Vec<(String, String, String)> {
 #[test]
 fn tester_025_offer_labels() {
     let labels =
-        |t: &str| xref::parse_offer(t).map(|v| v.iter().map(|o| format!("{}/{}{}", o.labels[0], o.labels[1], o.kind.upper())).collect::<Vec<_>>());
+        |t: &str| ecad_electrical::references::devices::parse_offer(t).map(|v| v.iter().map(|o| format!("{}/{}{}", o.labels[0], o.labels[1], o.kind.upper())).collect::<Vec<_>>());
     assert_eq!(labels("3P+2NO+1NC").unwrap(), ["1/2NO", "3/4NO", "5/6NO", "13/14NO", "23/24NO", "31/32NC"]);
     assert_eq!(labels(" 3p , 1no + 1nc ").unwrap(), ["1/2NO", "3/4NO", "5/6NO", "13/14NO", "21/22NC"]);
     assert_eq!(labels("1P+1PNC").unwrap(), ["1/2NO", "3/4NC"]);
     for bad in ["", "+3P", "3P+", "0NO", "33NO", "16NO+16NC+1P", "3PNO", "13/14", "/14 NO", "1/2/3 NO", "99999999999999999999999P"] {
-        assert!(xref::parse_offer(bad).is_err(), "{bad:?} accepted");
+        assert!(ecad_electrical::references::devices::parse_offer(bad).is_err(), "{bad:?} accepted");
     }
-    assert!(xref::parse_offer("32NO").is_ok());
+    assert!(ecad_electrical::references::devices::parse_offer("32NO").is_ok());
 }
 
 /// Bug: an explicit pole written before a counted one gets the same labels, so the part offers
 /// `13/14` twice and the table shows a spare `13/14` beside the drawn one.
 #[test]
 fn tester_025_bug_explicit_then_counted_offer_duplicates_labels() {
-    let o = xref::parse_offer("13/14 NO + 1NO").unwrap();
+    let o = ecad_electrical::references::devices::parse_offer("13/14 NO + 1NO").unwrap();
     let pairs: BTreeSet<_> = o.iter().map(|p| p.labels.clone()).collect();
     assert_eq!(pairs.len(), o.len(), "duplicate labels offered: {o:?}");
-    let o = xref::parse_offer("1/2 P + 3P").unwrap();
+    let o = ecad_electrical::references::devices::parse_offer("1/2 P + 3P").unwrap();
     let pairs: BTreeSet<_> = o.iter().map(|p| p.labels.clone()).collect();
     assert_eq!(pairs.len(), o.len(), "duplicate power labels offered: {o:?}");
 }
@@ -548,7 +548,7 @@ fn tester_025_counts_orphans_and_duplicate_tags() {
     let _ = x.h.run("setprop", json!({"component": k2c.hex(), "key": "tag", "value": tag}));
     index_is_a_rebuild(&mut x.h, "duplicate tag");
     let groups: Vec<_> = x.h.p(|p| p.xref().groups().collect());
-    assert!(groups.contains(&xref::Group::Device(x.k1)) && groups.contains(&xref::Group::Device(k2c)), "{groups:?}");
+    assert!(groups.contains(&ecad_electrical::references::devices::Group::Device(x.k1)) && groups.contains(&ecad_electrical::references::devices::Group::Device(k2c)), "{groups:?}");
 }
 
 // ------------------------------------------------------------------ translate.rs
@@ -571,7 +571,7 @@ fn tester_025_parts_follow_their_owner_and_are_refused_alone() {
         ("move", json!({"handles": [table[3].clone()], "delta": [5, 0]})),
     ] {
         let e = x.h.run(cmd, v).unwrap_err();
-        assert!(e.contains(xref::TABLE_DERIVED), "{cmd}: {e}");
+        assert!(e.contains(ecad_electrical::references::devices::TABLE_DERIVED), "{cmd}: {e}");
     }
     assert_eq!(x.h.head(), head);
     // Rotate the coil with its table selected: one transaction; the table is drawn again at the
@@ -604,14 +604,14 @@ fn tester_025_parts_follow_their_owner_and_are_refused_alone() {
     let text = device_reference_handles(&mut x.h, p105, no);
     assert_eq!(text.len(), 1);
     let e = x.h.run("move", json!({"handles": text, "delta": [5, 0]})).unwrap_err();
-    assert!(e.contains(xref::TEXT_DERIVED), "{e}");
+    assert!(e.contains(ecad_electrical::references::devices::TEXT_DERIVED), "{e}");
     let at0 = parts(&mut x.h)[&p105].iter().find(|p| p.rep == no).map(|p| p.shape.clone());
     let mut sel = no_h;
     sel.extend(text);
     x.h.run("move", json!({"handles": sel, "delta": [10, 0]})).unwrap();
     let at1 = parts(&mut x.h)[&p105].iter().find(|p| p.rep == no).map(|p| p.shape.clone());
     match (at0, at1) {
-        (Some(xref::Shape::Text { at: a, .. }), Some(xref::Shape::Text { at: b, .. })) => {
+        (Some(ecad_electrical::references::devices::Shape::Text { at: a, .. }), Some(ecad_electrical::references::devices::Shape::Text { at: b, .. })) => {
             assert!((b.x - a.x - 10.0).abs() < 1e-9 && (b.y - a.y).abs() < 1e-9)
         }
         o => panic!("{o:?}")}
@@ -648,7 +648,7 @@ fn tester_025_bug_copying_a_table_alone_says_text_not_table() {
         [("copy", json!({"handles": table, "delta": [0, -50]})), ("mirror", json!({"handles": table, "p1": [80, 0], "p2": [80, 10], "erase": false}))]
     {
         let e = x.h.run(cmd, v).unwrap_err();
-        assert!(e.contains(xref::TABLE_DERIVED), "{cmd}: {e}");
+        assert!(e.contains(ecad_electrical::references::devices::TABLE_DERIVED), "{cmd}: {e}");
     }
 }
 

@@ -1,4 +1,4 @@
-mod acceptance;
-mod contracts;
-mod tag_rule;
-mod tag_rule_acceptance;
+pub(crate) mod acceptance;
+pub(crate) mod contracts;
+pub(crate) mod tag_rule;
+pub(crate) mod tag_rule_acceptance;

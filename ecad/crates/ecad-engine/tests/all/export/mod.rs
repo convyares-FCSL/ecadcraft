@@ -1,2 +1,2 @@
-mod print_acceptance;
-mod print_project;
+pub(crate) mod print_acceptance;
+pub(crate) mod print_project;

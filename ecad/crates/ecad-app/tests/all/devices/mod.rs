@@ -1,2 +1,2 @@
-mod numbering;
-mod ui;
+pub(crate) mod numbering;
+pub(crate) mod ui;

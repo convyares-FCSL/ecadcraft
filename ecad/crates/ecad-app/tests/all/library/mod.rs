@@ -1,2 +1,2 @@
-mod symbol_builder;
-mod uiv3;
+pub(crate) mod symbol_builder;
+pub(crate) mod uiv3;

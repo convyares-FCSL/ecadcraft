@@ -22,7 +22,7 @@ impl App {
     pub fn open_reports(&mut self) {
         if self.reports.is_none() {
             let stem = self.report_stem();
-            let mut r = outputs_ui::Reports::default();
+            let mut r = crate::reports::panel::Reports::default();
             r.stem = stem;
             self.reports = Some(r);
         }
@@ -39,14 +39,14 @@ impl App {
             .unwrap_or_default();
         let chosen = folder.and_then(|f| folders.iter().position(|(h, _)| *h == f.hex()));
         let path = format!("{}.pdf", self.report_stem());
-        self.print_book = Some(outputs_ui::PrintBook {
-            scope: if chosen.is_some() { outputs_ui::ScopeKind::Folder } else { outputs_ui::ScopeKind::All },
+        self.print_book = Some(crate::reports::panel::PrintBook {
+            scope: if chosen.is_some() { crate::reports::panel::ScopeKind::Folder } else { crate::reports::panel::ScopeKind::All },
             folders,
             folder: chosen.unwrap_or(0),
             path,
             mono: true,
             lineweights: true,
-            ..outputs_ui::PrintBook::default()
+            ..crate::reports::panel::PrintBook::default()
         });
     }
 
@@ -66,20 +66,20 @@ impl App {
         }
         let out = self.reports.as_mut().filter(|r| !r.hidden).and_then(|r| r.show(ctx));
         match out {
-            Some(outputs_ui::Out::Close) => self.reports = None,
-            Some(outputs_ui::Out::Export(path)) => self.export_report(&path),
-            Some(outputs_ui::Out::Run(line)) => {
+            Some(crate::reports::panel::Out::Close) => self.reports = None,
+            Some(crate::reports::panel::Out::Export(path)) => self.export_report(&path),
+            Some(crate::reports::panel::Out::Run(line)) => {
                 let refusal = self.run_line(&line);
                 if let Some(r) = self.reports.as_mut() {
                     r.ran(refusal);
                 }
             }
-            Some(outputs_ui::Out::GotoAt(page, at)) => self.goto_place(page, at),
+            Some(crate::reports::panel::Out::GotoAt(page, at)) => self.goto_place(page, at),
             // Brief 028: double-clicking a cable shows its cores.
-            Some(outputs_ui::Out::Select(outputs_ui::Tab::Cables, i)) if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) => {
+            Some(crate::reports::panel::Out::Select(crate::reports::panel::Tab::Cables, i)) if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) => {
                 self.show_cores_of_row(i)
             }
-            Some(outputs_ui::Out::Goto(tab, i) | outputs_ui::Out::Select(tab, i)) => self.goto_report_row(tab, i),
+            Some(crate::reports::panel::Out::Goto(tab, i) | crate::reports::panel::Out::Select(tab, i)) => self.goto_report_row(tab, i),
             None => {}
         }
         self.print_window(ctx);
@@ -119,7 +119,7 @@ impl App {
     pub fn show_plan(&mut self, strip: Option<ecad_model::DeviceId>) {
         self.reports_view();
         if let Some(r) = &mut self.reports {
-            r.tab = outputs_ui::Tab::Terminals;
+            r.tab = crate::reports::panel::Tab::Terminals;
             r.strip = strip;
             r.cores_of = None;
             r.invalidate();
@@ -130,7 +130,7 @@ impl App {
     pub fn show_cores(&mut self, cable: ecad_model::CableId) {
         self.reports_view();
         if let Some(r) = &mut self.reports {
-            r.tab = outputs_ui::Tab::Cables;
+            r.tab = crate::reports::panel::Tab::Cables;
             r.cores_of = Some(cable);
             r.invalidate();
         }
@@ -138,7 +138,7 @@ impl App {
 
     /// Go to a Reports row: a BOM row's first device's main symbol, a wire's first route, a
     /// cable's label box (design 024 §6.2), a terminal (brief 028). Nothing is recorded.
-    pub fn goto_report_row(&mut self, tab: outputs_ui::Tab, i: usize) {
+    pub fn goto_report_row(&mut self, tab: crate::reports::panel::Tab, i: usize) {
         enum To {
             Symbol(ecad_model::RepresentationId),
             Place(PageId, ecad_model::Pt),
@@ -152,15 +152,15 @@ impl App {
             .configure(&mut self.cad.session, |p| {
                 let o = p.outputs();
                 match tab {
-                    outputs_ui::Tab::Bom => {
+                    crate::reports::panel::Tab::Bom => {
                         let row = o.bom(group).into_iter().nth(k)?;
                         let c = *row.devices.first()?;
                         o.device(c).and_then(|d| d.goto).map(|(rep, _, _)| To::Symbol(rep))
                     }
-                    outputs_ui::Tab::Wires => o.wires().get(k).and_then(|w| w.go).map(|(pg, at)| To::Place(pg, at)),
-                    outputs_ui::Tab::Cables if cores => None,
-                    outputs_ui::Tab::Cables => o.cables().get(k).and_then(|c| c.go).map(|(pg, at)| To::Place(pg, at)),
-                    outputs_ui::Tab::Terminals => terminal.map(|(pg, at)| To::Place(pg, at)),
+                    crate::reports::panel::Tab::Wires => o.wires().get(k).and_then(|w| w.go).map(|(pg, at)| To::Place(pg, at)),
+                    crate::reports::panel::Tab::Cables if cores => None,
+                    crate::reports::panel::Tab::Cables => o.cables().get(k).and_then(|c| c.go).map(|(pg, at)| To::Place(pg, at)),
+                    crate::reports::panel::Tab::Terminals => terminal.map(|(pg, at)| To::Place(pg, at)),
                 }
             })
             .ok()
@@ -177,13 +177,13 @@ impl App {
     /// The Release badge: counted again only when the kept Checks or report models change.
     pub(crate) fn release_badge(&mut self) -> Option<(String, Option<(usize, usize)>)> {
         let p = self.project.clone()?;
-        p.read(&mut self.cad.session, |p, _| (ecad_electrical::releases::revisions::pending_rev(p.ledger.document()), release_ui::badge(p))).ok()
+        p.read(&mut self.cad.session, |p, _| (ecad_electrical::releases::revisions::pending_rev(p.ledger.document()), crate::history::release_dialog::badge(p))).ok()
     }
 
     /// Open the Release dialog (design 027 §5.1): the pending revision, or `rev` written again.
     pub fn open_release(&mut self, rev: Option<String>) {
         let read_only = self.header().read_only;
-        self.release = Some(release_ui::ReleaseDialog::new(rev, read_only));
+        self.release = Some(crate::history::release_dialog::ReleaseDialog::new(rev, read_only));
         self.refresh_release();
     }
 
@@ -253,34 +253,34 @@ impl App {
         self.refresh_release();
         let answer = self.release.as_mut().and_then(|d| d.show(ctx));
         match answer {
-            Some(release_ui::Out::Run(line)) => {
+            Some(crate::history::release_dialog::Out::Run(line)) => {
                 let e = self.run_line(&line);
                 if let Some(d) = &mut self.release {
                     d.error = e;
                 }
             }
-            Some(release_ui::Out::Release(params)) => {
+            Some(crate::history::release_dialog::Out::Release(params)) => {
                 let _ = self.release_from_dialog(params);
             }
-            Some(release_ui::Out::GoTo(c)) => {
+            Some(crate::history::release_dialog::Out::GoTo(c)) => {
                 let _ = self.goto_check(&c);
             }
-            Some(release_ui::Out::ShowReports) => {
+            Some(crate::history::release_dialog::Out::ShowReports) => {
                 self.reports_view();
                 if let Some(r) = &mut self.reports {
-                    r.tab = outputs_ui::Tab::Bom;
+                    r.tab = crate::reports::panel::Tab::Bom;
                     r.only_flagged = true;
                     r.invalidate();
                 }
             }
-            Some(release_ui::Out::Finalise) => self.open_renumber(true, false, None),
-            Some(release_ui::Out::ShowChecks) => self.panel.tab = project_panel::Tab::Checks,
-            Some(release_ui::Out::SaveAs) => self.request_save_as(),
-            Some(release_ui::Out::WriteIssued(rev)) => {
+            Some(crate::history::release_dialog::Out::Finalise) => self.open_renumber(true, false, None),
+            Some(crate::history::release_dialog::Out::ShowChecks) => self.panel.tab = crate::pages::project_panel::Tab::Checks,
+            Some(crate::history::release_dialog::Out::SaveAs) => self.request_save_as(),
+            Some(crate::history::release_dialog::Out::WriteIssued(rev)) => {
                 self.open_release(Some(rev));
                 self.publish_view(shell::PublishTab::Release);
             }
-            Some(release_ui::Out::Close) => self.release = None,
+            Some(crate::history::release_dialog::Out::Close) => self.release = None,
             None => {}
         }
     }
@@ -306,12 +306,12 @@ impl App {
     fn print_window(&mut self, ctx: &egui::Context) {
         let Some(d) = self.print_book.as_ref().filter(|d| !d.hidden) else { return };
         let scope = match d.scope {
-            outputs_ui::ScopeKind::All => ecad_engine::export::printbook::Scope::All,
-            outputs_ui::ScopeKind::Folder => match d.folders.get(d.folder).and_then(|f| ecad_model::FolderId::parse(&f.0)) {
+            crate::reports::panel::ScopeKind::All => ecad_engine::export::printbook::Scope::All,
+            crate::reports::panel::ScopeKind::Folder => match d.folders.get(d.folder).and_then(|f| ecad_model::FolderId::parse(&f.0)) {
                 Some(f) => ecad_engine::export::printbook::Scope::Folder(f),
                 None => ecad_engine::export::printbook::Scope::All,
             },
-            outputs_ui::ScopeKind::Pages => ecad_engine::export::printbook::Scope::Pages(d.pages.clone()),
+            crate::reports::panel::ScopeKind::Pages => ecad_engine::export::printbook::Scope::Pages(d.pages.clone()),
         };
         if let Some(p) = self.project.clone()
             && let Ok((sheets, unknown, flagged)) = p.configure(&mut self.cad.session, |p| ecad_engine::export::printbook::count(p, &scope))

@@ -1,3 +1,3 @@
-mod sync;
-mod sync_acceptance;
-mod sync_frames;
+pub(crate) mod sync;
+pub(crate) mod sync_acceptance;
+pub(crate) mod sync_frames;

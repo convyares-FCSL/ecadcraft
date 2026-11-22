@@ -60,7 +60,7 @@ impl H {
     pub fn new(seed: u64) -> H {
         ecad_engine::install();
         // Never the developer's own cable-views.json (brief 005 review M4).
-        crate::cables::views::isolate_for_tests();
+        ecad_engine::cables::views::isolate_for_tests();
         let mut s = Session::empty();
         let project = Project::create(&mut s, "Demo", seed).unwrap();
         let mut h = H { s, project, trail: Vec::new() };
@@ -70,9 +70,9 @@ impl H {
         h
     }
 
-    /// Take over a project made by [`crate::dev::test_support::ProjectBuilder`], with its trail started
+    /// Take over a project made by [`ecad_engine::dev::test_support::ProjectBuilder`], with its trail started
     /// at the built document and the harness checks run once.
-    pub fn from_built(b: crate::dev::test_support::Built) -> H {
+    pub fn from_built(b: ecad_engine::dev::test_support::Built) -> H {
         let mut h = H { s: b.s, project: b.project, trail: Vec::new() };
         let d = h.doc();
         h.trail.push(d);
@@ -325,7 +325,7 @@ pub fn tmp_dir(tag: &str) -> PathBuf {
 pub fn reopen(path: &str, seed: u64) -> H {
     // As `H::new`: run alone (as nextest runs every test), nothing else has installed ECAD's commands.
     ecad_engine::install();
-    crate::cables::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
     let mut h = H { s, project, trail: Vec::new() };

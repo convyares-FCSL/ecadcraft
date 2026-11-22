@@ -1,4 +1,4 @@
-mod banner;
-mod bridge;
-mod bridge_acceptance;
-mod ui;
+pub(crate) mod banner;
+pub(crate) mod bridge;
+pub(crate) mod bridge_acceptance;
+pub(crate) mod ui;

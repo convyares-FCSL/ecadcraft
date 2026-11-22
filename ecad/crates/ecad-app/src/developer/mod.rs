@@ -17,7 +17,7 @@ pub mod debugger;
 use ecad_engine::agent::access::Mode;
 use eframe::egui::{self, RichText};
 
-use crate::developer::debugger::{self, Debugger};
+use crate::developer::debugger::Debugger;
 
 /// Accessible label of the section's header (fold / unfold).
 pub const HEADER: &str = "Developer";

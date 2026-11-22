@@ -8,7 +8,7 @@ use crate::pages::project_panel::{doc, rev3_app as new_app};
 use ecad_app::App;
 use ecad_app::shell::state::{LeftTab, ShellState};
 use ecad_app::shell::{layout, left, tool_strip};
-use {ecad_app::devices::panel, ecad_app::history::panel, ecad_app::pages::project_panel};
+use ecad_app::pages::project_panel;
 use eframe::egui::{self, Rect, pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -163,14 +163,14 @@ fn devices_groups_by_location_with_not_on_a_page_yet_first() {
     crate::pages::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[50,50],"tag":"-K1"}"#);
     h.get_by_label(&tool_strip::panel_label(LeftTab::Devices)).click();
     h.run_steps(4);
-    for g in panel::Grouping::ALL {
+    for g in ecad_app::devices::panel::Grouping::ALL {
         assert!(h.query_by_label(&format!("Group by {}", g.label())).is_some(), "{g:?}");
     }
-    assert_eq!(h.state().panel.devices.grouping, panel::Grouping::Location);
+    assert_eq!(h.state().panel.devices.grouping, ecad_app::devices::panel::Grouping::Location);
     assert!(h.query_all_by_label_contains("Device -K").count() > 0, "the device is listed");
     h.get_by_label("Group by Type").click();
     h.run_steps(3);
-    assert_eq!(h.state().panel.devices.grouping, panel::Grouping::Type);
+    assert_eq!(h.state().panel.devices.grouping, ecad_app::devices::panel::Grouping::Type);
     assert!(h.query_by_label_contains("Group -K").is_some(), "grouped by its tag's letter");
 }
 
@@ -201,8 +201,8 @@ fn devices_group_by_their_stored_location_not_their_page() {
 /// command; the line under it says so.
 #[test]
 fn not_on_a_page_yet_says_placing_is_not_available_yet() {
-    assert!(!panel::PLACE_LATER.to_lowercase().contains("drag"));
-    assert!(panel::PLACE_LATER.contains("not available yet"));
+    assert!(!ecad_app::devices::panel::PLACE_LATER.to_lowercase().contains("drag"));
+    assert!(ecad_app::devices::panel::PLACE_LATER.contains("not available yet"));
 }
 
 /// Review finding 5: Changes shows the first few, then "Show n earlier changes", so Versions stays
@@ -216,10 +216,10 @@ fn history_shows_a_few_changes_then_the_rest_on_request() {
     }
     h.get_by_label(&tool_strip::panel_label(LeftTab::History)).click();
     h.run_steps(4);
-    assert_eq!(h.query_all_by_label_contains("Step ").count(), panel::FIRST_CHANGES);
-    h.get_by_label(panel::EARLIER).click();
+    assert_eq!(h.query_all_by_label_contains("Step ").count(), ecad_app::history::panel::FIRST_CHANGES);
+    h.get_by_label(ecad_app::history::panel::EARLIER).click();
     h.run_steps(3);
-    assert!(h.query_all_by_label_contains("Step ").count() > panel::FIRST_CHANGES);
+    assert!(h.query_all_by_label_contains("Step ").count() > ecad_app::history::panel::FIRST_CHANGES);
 }
 
 #[test]
@@ -233,7 +233,7 @@ fn history_shows_the_revision_branches_changes_and_versions() {
     }
     assert!(h.query_by_label("Branch main").is_some());
     assert!(h.query_all_by_label_contains("Step ").count() > 0, "the changes are listed");
-    assert!(h.query_by_label(panel::NAME_THIS).is_some());
+    assert!(h.query_by_label(ecad_app::history::panel::NAME_THIS).is_some());
     // Folding a section hides its rows.
     h.get_by_label("Section Changes").click();
     h.run_steps(3);

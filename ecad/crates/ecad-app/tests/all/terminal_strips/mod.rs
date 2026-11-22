@@ -1,2 +1,2 @@
-mod pages;
-mod ui;
+pub(crate) mod pages;
+pub(crate) mod ui;

@@ -1,2 +1,2 @@
-mod bom;
-mod ui;
+pub(crate) mod bom;
+pub(crate) mod ui;

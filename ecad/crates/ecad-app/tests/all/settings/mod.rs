@@ -1,9 +1,9 @@
-mod functions_locations;
-mod pages;
-mod pages_acceptance;
-mod sheets;
-mod standards;
-mod styles;
-mod styles_acceptance;
-mod text;
-mod wire_numbers;
+pub(crate) mod functions_locations;
+pub(crate) mod pages;
+pub(crate) mod pages_acceptance;
+pub(crate) mod sheets;
+pub(crate) mod standards;
+pub(crate) mod styles;
+pub(crate) mod styles_acceptance;
+pub(crate) mod text;
+pub(crate) mod wire_numbers;

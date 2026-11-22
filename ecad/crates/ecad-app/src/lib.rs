@@ -88,7 +88,7 @@ use ecad_engine::cad::Session;
 use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
 use ecad_engine::history::event_log::EventKind;
 use ecad_model::PageId;
-use crate::eframe::egui::{self, RichText};
+use eframe::egui::{self, RichText};
 use crate::pages::preview::Preview;
 use crate::pages::project_panel::{Header, ProjectPanel};
 use serde_json::json;
@@ -303,32 +303,32 @@ pub struct App {
     /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
     lwdisplay_set: Option<bool>,
     /// The symbol search window (brief 018), opened from the ECAD tab's Find Symbol.
-    pub search: search::SymbolSearch,
+    pub search: crate::library::search::SymbolSearch,
     /// Brief 048: the Library workspace (the browser, or the symbol builder).
     pub library: library::Library,
     /// Brief 024: the Reports window and the Print Book dialog, while open.
-    pub reports: Option<outputs_ui::Reports>,
-    pub print_book: Option<outputs_ui::PrintBook>,
+    pub reports: Option<crate::reports::panel::Reports>,
+    pub print_book: Option<crate::reports::panel::PrintBook>,
     /// Brief 027: the Release dialog.
-    pub release: Option<release_ui::ReleaseDialog>,
+    pub release: Option<crate::history::release_dialog::ReleaseDialog>,
     /// UI rev 3: the Publish workspace (board 4.01).
     pub publish: publish::Publish,
 
     /// Brief 019: the ECAD section of CADCraft's Properties palette, shared with its closure.
-    pub props: sheets_ui::Shared,
+    pub props: crate::settings::sheets::Shared,
     /// What the section's copy was built for: project serial, change count, page, selection.
     props_seen: Option<(u64, u64, Option<PageId>, Vec<Handle>)>,
     /// How many times the section's copy was built (tests: only when it can differ).
     pub props_rebuilds: u64,
     /// The Project Properties and Revisions dialogs, when open.
-    pub project_props: Option<sheets_ui::ProjectProps>,
+    pub project_props: Option<crate::settings::sheets::ProjectProps>,
     /// Brief 042: Settings, a place you visit (its section, the Standards screen, the inspector's rows).
     pub settings: settings::Settings,
-    pub revisions: Option<sheets_ui::Revisions>,
+    pub revisions: Option<crate::settings::sheets::Revisions>,
     /// The merge dialog (brief 020b), when open.
-    pub merge: Option<merge_dialog::MergeDialog>,
+    pub merge: Option<crate::history::merge_dialog::MergeDialog>,
     /// The Renumber dialog (brief 026), also Finalise numbering, when open.
-    pub renumber: Option<renumber_dialog::RenumberDialog>,
+    pub renumber: Option<crate::devices::renumber_dialog::RenumberDialog>,
     /// Brief 026 (design §5.5): the issue line waiting on the provisional question, and its text.
     pub issue_prompt: Option<(String, String)>,
     /// The issue line to run once Finalise numbering is applied (Finalise numbering now).
@@ -437,9 +437,9 @@ impl App {
         let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested))).with_control(cad_rx);
         let mut agent = agent::Agent::from_settings(ecad_engine::cables::views::Settings::from_env());
         agent.set_cad_channel(cad_tx);
-        cad.extra_tool_tabs = vec![tools::tab()];
-        let props: sheets_ui::Shared = Arc::default();
-        cad.owner_properties = Some(sheets_ui::section(Arc::clone(&props)));
+        cad.extra_tool_tabs = vec![crate::commands::tools::tab()];
+        let props: crate::settings::sheets::Shared = Arc::default();
+        cad.owner_properties = Some(crate::settings::sheets::section(Arc::clone(&props)));
         let shell = shell::Shell::new(Arc::clone(&props));
         App {
             cad,
@@ -474,7 +474,7 @@ impl App {
             hover_delay: HOVER_DELAY,
             home: ecad_engine::home(),
             lwdisplay_set: None,
-            search: search::SymbolSearch::default(),
+            search: crate::library::search::SymbolSearch::default(),
             library: library::Library::default(),
             reports: None,
             print_book: None,
@@ -690,9 +690,9 @@ impl App {
     pub fn open_history_at(&mut self, seq: u64) {
         let Some(p) = self.project.clone() else { return };
         let Ok(branch) = p.read(&mut self.cad.session, |p, _| ecad_engine::history::current(p)) else { return };
-        self.panel.tab = project_panel::Tab::History;
+        self.panel.tab = crate::pages::project_panel::Tab::History;
         self.panel.history.steps_open = true;
-        self.panel.history.selected = Some(history_panel::Sel { branch, seq, kind: ecad_file::history::NodeKind::Fork, name: None });
+        self.panel.history.selected = Some(crate::history::panel::Sel { branch, seq, kind: ecad_file::history::NodeKind::Fork, name: None });
     }
 
     /// Bring the Project panel's copy up to date: one change-count comparison per frame, the rows
@@ -707,7 +707,7 @@ impl App {
             return;
         };
         let serial = self.project_serial;
-        let devices_shown = self.panel.tab == project_panel::Tab::Devices || self.lists_shows_devices();
+        let devices_shown = self.panel.tab == crate::pages::project_panel::Tab::Devices || self.lists_shows_devices();
         let selection = if devices_shown { self.cad.session.selection() } else { Vec::new() };
         let panel = &mut self.panel;
         let panel_revision = &mut self.panel_revision;
@@ -718,10 +718,10 @@ impl App {
                 Some(rv) => {
                     if *panel_revision != Some(rv.id) {
                         panel.set_tree(ecad_engine::tree_rows(&rv.doc, |_| false));
-                        panel.revision = Some(rv.bar.clone().unwrap_or_else(|| sheets_ui::revision_bar(&rv.rev, &rv.date)));
+                        panel.revision = Some(rv.bar.clone().unwrap_or_else(|| crate::settings::sheets::revision_bar(&rv.rev, &rv.date)));
                         *panel_revision = Some(rv.id);
                     }
-                    if panel.tab == project_panel::Tab::History {
+                    if panel.tab == crate::pages::project_panel::Tab::History {
                         panel.history.sync(serial, p);
                     }
                     return;
@@ -751,7 +751,7 @@ impl App {
                 panel.devices.follow(p, &selection);
             }
             // The History tab's copy, only while it is shown (brief 020a; its own update map).
-            if panel.tab == project_panel::Tab::History {
+            if panel.tab == crate::pages::project_panel::Tab::History {
                 panel.history.sync(serial, p);
             }
         });

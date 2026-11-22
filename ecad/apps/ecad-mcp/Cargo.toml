@@ -19,5 +19,7 @@ serde_json = { workspace = true }
 [dev-dependencies]
 # Brief 021: tests read a version 2 file's history.
 ecad-file = { workspace = true }
+# The tests name electrical rules the engine used to re-export (0.2.3 structure move).
+ecad-electrical = { workspace = true }
 # The tests name engine types beyond `ecad_engine::cad` (design 065 §3, cut 11); the library does not.
 cadcraft-engine = { path = "../../../crates/engine" }

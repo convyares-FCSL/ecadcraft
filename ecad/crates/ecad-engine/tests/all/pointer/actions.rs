@@ -4,7 +4,7 @@
 use crate::common::{H, id};
 
 use cadcraft_engine::geom::Vec2;
-use ecad_engine::interact::{intent, kind};
+use ecad_engine::pointer::{intent, kind};
 use ecad_electrical::devices::kinds::ObjectKind;
 use ecad_model::{DeviceId, End, PageId, WireId};
 use serde_json::json;

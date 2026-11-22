@@ -1,1 +1,1 @@
-mod setprop_many;
+pub(crate) mod setprop_many;

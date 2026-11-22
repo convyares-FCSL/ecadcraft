@@ -1,3 +1,3 @@
-mod canvas_marks;
-mod forms;
-mod mouse_tools;
+pub(crate) mod canvas_marks;
+pub(crate) mod forms;
+pub(crate) mod mouse_tools;

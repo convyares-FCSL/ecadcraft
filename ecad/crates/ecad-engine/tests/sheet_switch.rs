@@ -58,7 +58,7 @@ fn branching_and_switching_back_with_styles_survives_sheet_switches() {
             let mut dark = false;
             while !stop.load(Ordering::Relaxed) {
                 dark = !dark;
-                ecad_engine::look::set_dark_sheet(dark);
+                ecad_engine::cables::draw::set_dark_sheet(dark);
                 std::thread::yield_now();
             }
         })
@@ -82,7 +82,7 @@ fn branching_and_switching_back_with_styles_survives_sheet_switches() {
     }
     stop.store(true, Ordering::Relaxed);
     let _ = flipper.join();
-    ecad_engine::look::set_dark_sheet(false);
+    ecad_engine::cables::draw::set_dark_sheet(false);
     let _ = std::fs::remove_dir_all(&dir);
     assert!(bad.is_empty(), "pages became unavailable: {bad:#?}");
 }

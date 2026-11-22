@@ -5,7 +5,6 @@ use crate::common::{H, id};
 
 use {ecad_electrical::checks::Kind};
 use ecad_electrical::locations::designations::{self, Aspect};
-use ecad_engine::{devices, locations};
 use ecad_model::{DeviceId, Document, PageId};
 use serde_json::{Value, json};
 
@@ -16,7 +15,7 @@ fn page(h: &mut H, number: &str) -> PageId {
 }
 
 fn texts(d: &Document, p: PageId) -> Vec<String> {
-    devices::texts_on_page(d, p).into_iter().map(|t| t.value).collect()
+    ecad_engine::devices::draw::texts_on_page(d, p).into_iter().map(|t| t.value).collect()
 }
 
 fn set(h: &mut H, c: DeviceId, aspect: &str, value: Value) -> Value {
@@ -24,7 +23,7 @@ fn set(h: &mut H, c: DeviceId, aspect: &str, value: Value) -> Value {
 }
 
 fn code(d: &Document, c: DeviceId) -> Option<String> {
-    locations::resolve(d, c).value
+    ecad_electrical::locations::resolve(d, c).value
 }
 
 /// A coil `-K01` on page 105 and its NO contact on page 110.
@@ -97,7 +96,7 @@ fn connector_halves_have_their_own_locations() {
     set(&mut h, x, "location", json!("+CP1"));
     h.run("setlocation", json!({"component": x.hex(), "type": "plug", "value": "+FIELD"})).unwrap();
     let d = h.doc();
-    let rows = ecad_electrical::connectors::half_rows(&d, x, &mut locations::BoxCache::default());
+    let rows = ecad_electrical::connectors::half_rows(&d, x, &mut ecad_electrical::locations::BoxCache::default());
     let by_side: Vec<(String, Option<String>)> = rows.iter().map(|r| (r.tag.clone(), r.location.value.clone())).collect();
     assert!(by_side.iter().any(|(t, l)| t.ends_with(".S") && l.as_deref() == Some("+CP1")), "{by_side:?}");
     assert!(by_side.iter().any(|(t, l)| t.ends_with(".P") && l.as_deref() == Some("+FIELD")), "{by_side:?}");
@@ -122,7 +121,7 @@ fn a_strip_terminal_keeps_the_strip_location() {
     let t5 = h.run("place", json!({"symbol": "terminal", "at": [200, 150], "device": x.hex()})).unwrap();
     let d = h.doc();
     let r = &d.representations[&id(&t5, "representation")];
-    assert_eq!(locations::rep_location(&d, x, r).value.as_deref(), Some("+CP1"));
+    assert_eq!(ecad_electrical::locations::rep_location(&d, x, r).value.as_deref(), Some("+CP1"));
     let e = h.run("setlocation", json!({"component": x.hex(), "type": "terminal", "value": "+JB1"})).unwrap_err();
     assert!(e.contains("split strip is two strips"), "{e}");
 }
@@ -143,7 +142,7 @@ fn renaming_an_entry_renames_it_everywhere() {
     let d = h.doc();
     assert_eq!(code(&d, k).as_deref(), Some("+CP10"));
     assert!(texts(&d, p110).contains(&"+CP10-K01".to_string()), "{:?}", texts(&d, p110));
-    let labels: Vec<String> = locations::labels_on_page(&d, p110).into_iter().map(|(_, t, _)| t).collect();
+    let labels: Vec<String> = ecad_electrical::locations::labels_on_page(&d, p110).into_iter().map(|(_, t, _)| t).collect();
     assert_eq!(labels, ["+CP10"]);
     h.cmdline("u");
     assert_eq!(code(&h.doc(), k).as_deref(), Some("+CP1"));
@@ -210,7 +209,7 @@ fn missing_and_duplicate_entries_are_listed() {
     }
     d.rebuild_index();
     assert_eq!(code(&d, k), None, "a v0.2.0 code shows ?");
-    assert!(locations::resolve(&d, k).missing());
+    assert!(ecad_electrical::locations::resolve(&d, k).missing());
     let rows = ecad_engine::checks::all(&d, 1e-6);
     assert!(rows.iter().any(|r| r.kind == Kind::DesignationMissing && r.which == "-K01's location is no longer in the list"), "{rows:?}");
     assert!(rows.iter().any(|r| r.kind == Kind::DesignationDuplicate && r.which == "Two functions are called =F1"), "{rows:?}");

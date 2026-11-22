@@ -1,2 +1,2 @@
-mod debugger;
-mod project_builder;
+pub(crate) mod debugger;
+pub(crate) mod project_builder;

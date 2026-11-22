@@ -5,7 +5,8 @@
 //! by the formulas of design 057 §3.
 
 use ecad_electrical::devices::ratings::dataset::{self, Insulation};
-use ecad_electrical::circuits::{self, parse};
+use ecad_electrical::circuits;
+use ecad_electrical::devices::ratings::parse;
 use ecad_model::{CableId, DeviceId, WireId};
 use serde_json::{Value, json};
 

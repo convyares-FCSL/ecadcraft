@@ -1,2 +1,2 @@
-mod project_panel;
-mod uiv3;
+pub(crate) mod project_panel;
+pub(crate) mod uiv3;

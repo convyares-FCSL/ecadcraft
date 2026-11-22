@@ -1,1 +1,1 @@
-mod jobs;
+pub(crate) mod jobs;

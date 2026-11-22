@@ -58,11 +58,11 @@ fn fixture() -> X {
 /// The texts drawn on `page` by brief 025, by representation and part index.
 fn drawn(h: &mut H, page: PageId) -> Vec<(RepresentationId, u32, String)> {
     h.p(|p| {
-        xref::parts_on_page(p.ledger.document(), page)
+        ecad_engine::references::draw::devices::parts_on_page(p.ledger.document(), page)
             .into_iter()
             .filter_map(|part| match part.shape {
-                xref::Shape::Text { value, .. } => Some((part.rep, part.index, value)),
-                xref::Shape::Line(..) => None})
+                ecad_electrical::references::devices::Shape::Text { value, .. } => Some((part.rep, part.index, value)),
+                ecad_electrical::references::devices::Shape::Line(..) => None})
             .collect()
     })
 }
@@ -108,7 +108,7 @@ fn a_contacts_show_the_coil_and_the_coil_shows_its_contacts() {
     // Under the rail the coil's A2 wire meets: T at y = 150 - 4.
     let top = x.h.p(|p| {
         let doc = p.ledger.document();
-        xref::table_top(doc, x.k1, x.coil, xref::Placement::Auto).unwrap()
+        ecad_electrical::references::devices::table_top(doc, x.k1, x.coil, ecad_electrical::references::devices::Placement::Auto).unwrap()
     });
     assert!((top.x - 75.0).abs() < 1e-9 && (top.y - 146.0).abs() < 1e-9, "{top:?}");
     let v = x.h.run("xrefs", json!({"component": x.k1.hex()})).unwrap();
@@ -208,7 +208,7 @@ fn d_moving_hiding_and_following_the_table() {
     assert!(matches!(x.h.p(|p| p.ledger.log().last().unwrap().ops.clone()).as_slice(), [Op::ModifyDevice { id, .. }] if *id == x.k1));
     let top = |h: &mut H| {
         h.p(|p| {
-            xref::table(p.ledger.document(), &mut xref::Places::new(p.ledger.document()), &xref::device(p.ledger.document(), x.k1)).map(|t| t.top)
+            ecad_engine::references::draw::devices::table(p.ledger.document(), &mut ecad_electrical::references::devices::Places::new(p.ledger.document()), &ecad_electrical::references::devices::device(p.ledger.document(), x.k1)).map(|t| t.top)
         })
     };
     assert_eq!(top(&mut x.h), Some(ecad_model::Pt::new(60.0, 120.0)));
@@ -226,7 +226,7 @@ fn d_moving_hiding_and_following_the_table() {
     assert!(contact_text(&mut x.h, x.p105, x.no).is_some());
     // Project default: cleared.
     x.h.run("setprop", json!({"component": x.k1.hex(), "key": "mirror", "value": "Project default (auto)"})).unwrap();
-    assert!(!xref::placement_of(&x.h.doc(), x.k1).1);
+    assert!(!ecad_electrical::references::devices::placement_of(&x.h.doc(), x.k1).1);
     assert!(top(&mut x.h).is_some());
     // A bad value is refused with a way forward.
     let e = x.h.run("setprop", json!({"component": x.k1.hex(), "key": "mirror", "value": "at NaN,1"})).unwrap_err();
@@ -241,7 +241,7 @@ fn f_parent_and_child_mcb_with_an_auxiliary_contact() {
     let mut x = fixture();
     let mcb_place = x.h.p(|p| {
         let doc = p.ledger.document();
-        xref::Places::new(doc).text(x.p105, xref::anchor(doc, &doc.representations[&x.mcb]))
+        ecad_electrical::references::devices::Places::new(doc).text(x.p105, ecad_electrical::references::devices::anchor(doc, &doc.representations[&x.mcb]))
     });
     assert_eq!(contact_text(&mut x.h, x.p105, x.q_nc), Some(mcb_place));
     let r = rows(&mut x.h, x.q1);
@@ -308,11 +308,11 @@ fn drawn_references_cannot_be_edited_alone() {
     let h_text = x.h.p(|p| p.pages[&x.p105].map.xref(x.no, 0).unwrap());
     assert_eq!(x.h.mapped(x.p105, h_text), Some(Mapped::DeviceReference(x.no)));
     let e = x.h.run("move", json!({"handles": [h_text.hex()], "delta": [5, 0]})).unwrap_err();
-    assert!(e.contains(xref::TEXT_DERIVED), "{e}");
+    assert!(e.contains(ecad_electrical::references::devices::TEXT_DERIVED), "{e}");
     x.h.activate(x.p100);
     let bar = x.h.p(|p| p.pages[&x.p100].map.xref(x.coil, 0).unwrap());
     let e = x.h.run("erase", json!({"handles": [bar.hex()]})).unwrap_err();
-    assert!(e.contains(xref::TABLE_DERIVED), "{e}");
+    assert!(e.contains(ecad_electrical::references::devices::TABLE_DERIVED), "{e}");
 }
 
 /// Check J: save and reopen keep the offer and the placement; the project default is written
@@ -342,8 +342,8 @@ fn j_save_and_reopen_keep_contacts_and_mirror() {
     assert_eq!(h2.doc(), live);
     assert_eq!(h2.p(|p| p.xref().clone()), idx, "the index rebuilt on open is the kept one");
     let d = h2.doc();
-    assert_eq!(xref::offer_of(&d, x.k1).map(|(t, _)| t).as_deref(), Some("3P+1NO+1NC"));
-    assert_eq!(xref::placement_of(&d, x.k1), (xref::Placement::Right, true));
+    assert_eq!(ecad_electrical::references::devices::offer_of(&d, x.k1).map(|(t, _)| t).as_deref(), Some("3P+1NO+1NC"));
+    assert_eq!(ecad_electrical::references::devices::placement_of(&d, x.k1), (ecad_electrical::references::devices::Placement::Right, true));
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -41,7 +41,7 @@ fn place(h: &mut H, r: RepresentationId) -> String {
     h.p(|p| {
         let doc = p.ledger.document();
         let rep = &doc.representations[&r];
-        Places::new(doc).text(rep.page, xref::anchor(doc, rep))
+        Places::new(doc).text(rep.page, ecad_electrical::references::devices::anchor(doc, rep))
     })
 }
 
@@ -103,7 +103,7 @@ fn three_arrows_show_each_other_in_book_order() {
     assert!(at.near(Pt::new(300.0, 144.0), 1e-9), "{at:?}");
     // On the index: one continuation group, keyed by the lowest arrow; each shows the others.
     let (g, targets) = f.h.p(|p| (p.xref().member(a), p.xref().targets(a).collect::<BTreeSet<_>>()));
-    assert!(matches!(g, Some((Group::Continuation(_), xref::Class::Arrow))), "{g:?}");
+    assert!(matches!(g, Some((Group::Continuation(_), ecad_electrical::references::devices::Class::Arrow))), "{g:?}");
     assert_eq!(targets, BTreeSet::from([b, c]));
     index_matches(&mut f.h);
     // The page on screen draws it.
@@ -472,15 +472,15 @@ fn xrefs_on_a_name_of(m: usize) {
     assert_eq!(doc.continuations_named("BIG").len(), m);
     let idx = RefIndex::build(&doc);
     let t = std::time::Instant::now();
-    let v = xref::device_references_json(&doc, &idx, None, first, None, None, 2000, 0).unwrap();
+    let v = ecad_electrical::references::devices::device_references_json(&doc, &idx, None, first, None, None, 2000, 0).unwrap();
     assert_eq!(v["references"].as_array().unwrap().len(), m - 1);
     assert!(v.get("next").is_none(), "{}", v["next"]);
-    let v = xref::device_references_json(&doc, &idx, None, None, None, Some(pages[3]), 30, 10).unwrap();
+    let v = ecad_electrical::references::devices::device_references_json(&doc, &idx, None, None, None, Some(pages[3]), 30, 10).unwrap();
     let rows = v["references"].as_array().unwrap();
     assert_eq!(rows.len(), 30);
     assert!(rows.iter().all(|r| r["kind"] == "continuation"));
     assert_eq!(v["next"], json!(40));
-    let v = xref::device_references_json(&doc, &idx, None, None, None, None, 10, m * (m - 1) - 2).unwrap();
+    let v = ecad_electrical::references::devices::device_references_json(&doc, &idx, None, None, None, None, 10, m * (m - 1) - 2).unwrap();
     assert_eq!((v["references"].as_array().unwrap().len(), v.get("next").is_none()), (2, true), "{v}");
     // All m(m−1) rows would take minutes in a debug build for 2,000; the window takes little.
     assert!(t.elapsed().as_secs_f64() < 2.0, "{:?}", t.elapsed());

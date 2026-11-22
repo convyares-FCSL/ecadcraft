@@ -16,7 +16,6 @@ use crate::commands::input::{Bounded, TextOrNumber, nullable};
 use crate::commands::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
 use crate::error::CmdError;
 use crate::circuits::{self, RatedSubject};
-use crate::devices::ratings::{dataset, parse};
 use crate::styles::{self, cable, ratingtable};
 use ecad_model::objects::wire::Basis;
 

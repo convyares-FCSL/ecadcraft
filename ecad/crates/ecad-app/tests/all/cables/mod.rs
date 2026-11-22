@@ -1,8 +1,8 @@
-mod core_rule_acceptance;
-mod draw_acceptance;
-mod manager;
-mod manager_acceptance;
-mod slash;
-mod slash_acceptance;
-mod view;
-mod view_acceptance;
+pub(crate) mod core_rule_acceptance;
+pub(crate) mod draw_acceptance;
+pub(crate) mod manager;
+pub(crate) mod manager_acceptance;
+pub(crate) mod slash;
+pub(crate) mod slash_acceptance;
+pub(crate) mod view;
+pub(crate) mod view_acceptance;

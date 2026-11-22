@@ -1,1 +1,1 @@
-mod rating;
+pub(crate) mod rating;

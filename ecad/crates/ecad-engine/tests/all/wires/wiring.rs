@@ -456,7 +456,7 @@ fn a_wires_properties_show_and_edit_its_net() {
     let b = wire(&mut h, &[(40.0, 0.0), (60.0, 0.0)], json!({}));
     let view = |h: &mut H, w: WireId| {
         let route = h.route_handle(page, w);
-        h.p(|p| properties::view(p, Some(page), &[route]))
+        h.p(|p| props::view(p, Some(page), &[route]))
     };
     let row = |v: &PropsView, key: &str| {
         v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == key).cloned().unwrap_or_else(|| panic!("{key}: {v:?}"))

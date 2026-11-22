@@ -1,8 +1,8 @@
-mod acceptance;
-mod contracts;
-mod defaults;
-mod defaults_api;
-mod text_acceptance;
-mod text_place;
-mod text_show;
-mod text_style;
+pub(crate) mod acceptance;
+pub(crate) mod contracts;
+pub(crate) mod defaults;
+pub(crate) mod defaults_api;
+pub(crate) mod text_acceptance;
+pub(crate) mod text_place;
+pub(crate) mod text_show;
+pub(crate) mod text_style;

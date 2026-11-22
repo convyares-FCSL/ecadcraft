@@ -1,1 +1,1 @@
-mod scope_probe;
+pub(crate) mod scope_probe;

@@ -1,1 +1,1 @@
-mod library;
+pub(crate) mod library;

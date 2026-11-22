@@ -1,3 +1,3 @@
-mod actions;
-mod tools;
-mod uiv3_tools;
+pub(crate) mod actions;
+pub(crate) mod tools;
+pub(crate) mod uiv3_tools;

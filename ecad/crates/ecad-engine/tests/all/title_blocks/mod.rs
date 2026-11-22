@@ -1,1 +1,1 @@
-mod contracts;
+pub(crate) mod contracts;

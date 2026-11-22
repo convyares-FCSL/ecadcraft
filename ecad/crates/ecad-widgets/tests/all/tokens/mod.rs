@@ -1,2 +1,2 @@
-mod contracts;
-mod doc_sync;
+pub(crate) mod contracts;
+pub(crate) mod doc_sync;

@@ -1,7 +1,8 @@
 //! Brief 039 (U3) in the app: the Checks, Devices and Terminals column sets on the one table
 //! (acceptance criteria 3, 4 and 5).
 
-use ecad_app::workspace::{devices, terminals};
+use ecad_app::devices::list as devices;
+use ecad_app::terminal_strips::plan as terminals;
 use {ecad_app::App, ecad_app::reports::panel};
 use ecad_widgets::table::{Align, Changed, TableSource};
 use eframe::egui::{Event, Key, Modifiers};

@@ -162,7 +162,7 @@ pub(crate) fn click(h: &mut Harness<'static, App>, at: Pos2) {
 /// points): one drawn device holding one point per place, committed straight to the ledger.
 /// Returns the points, in the order given.
 pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::ConnectionPointId> {
-    use ecad_model::{Author, Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject, Terminal, ConnectionPointId};
+    use ecad_model::{Author, Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject, ConnectionPoint, ConnectionPointId};
     let p = t.project().unwrap().clone();
     p.configure(&mut t.cad.session, |p| {
         let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
@@ -174,7 +174,7 @@ pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::Conne
             let t: ConnectionPointId = p.ids.fresh();
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                terminal: Terminal { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                terminal: ConnectionPoint { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
             });
             cps.insert(t, Pt::new(*x, *y));
             out.push(t);

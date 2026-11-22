@@ -45,11 +45,11 @@ pub enum ListAction {
     GoTo(ecad_model::PageId, ecad_model::Pt),
     /// Brief 051: say this in the status line (the command line's echo).
     Say(String),
-    /// Brief 051: Lists ▸ PLC's own steps, answered by the view ([`plc::IoView::handle`]).
+    /// Brief 051: Lists ▸ PLC's own steps, answered by the view ([`crate::plc::list::IoView::handle`]).
     Tile(usize),
     Chip(usize),
     Scope(bool),
-    Reveal(plc::IoKey),
+    Reveal(crate::plc::list::IoKey),
     /// Brief 051: show this page at the card's first drawing on it.
     GoToCard(ecad_model::PageId, Option<ecad_model::DeviceId>),
     /// Brief 051: the Check list, filtered to this device.
@@ -70,8 +70,8 @@ pub enum ListAction {
 pub struct Lists<'a> {
     pub checks: &'a mut crate::checks::panel::ChecksPanel,
     pub devices: &'a mut crate::devices::panel::DevicesPanel,
-    pub terminals: &'a mut terminals::TerminalStripPlanView,
-    pub io: &'a mut plc::IoView,
+    pub terminals: &'a mut crate::terminal_strips::plan::TerminalStripPlanView,
+    pub io: &'a mut crate::plc::list::IoView,
 }
 
 /// Draw list view `tab` (one call per view, for U2's slots; design §12 O4). `writable`: the

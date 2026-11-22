@@ -24,8 +24,8 @@ impl App {
             return;
         }
         if self.panel.active == Some(page) {
-            self.panel.note = Some(project_panel::ALREADY_SHOWN.into());
-            self.cad.session.echo(project_panel::ALREADY_SHOWN);
+            self.panel.note = Some(crate::pages::project_panel::ALREADY_SHOWN.into());
+            self.cad.session.echo(crate::pages::project_panel::ALREADY_SHOWN);
             return;
         }
         let mut v = Preview::new(page, None, None);
@@ -84,8 +84,8 @@ impl App {
             return;
         }
         match v.show(ctx) {
-            Some(preview::Action::Close) => self.preview = None,
-            Some(preview::Action::Open(page, view)) => {
+            Some(crate::pages::preview::Action::Close) => self.preview = None,
+            Some(crate::pages::preview::Action::Open(page, view)) => {
                 self.preview = None;
                 if self.show_page(page).is_ok()
                     && let Ok(st) = self.cad.session.state_mut()

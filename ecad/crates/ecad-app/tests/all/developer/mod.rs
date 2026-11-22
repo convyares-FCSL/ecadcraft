@@ -1,2 +1,2 @@
-mod background_checks;
-mod debugger;
+pub(crate) mod background_checks;
+pub(crate) mod debugger;

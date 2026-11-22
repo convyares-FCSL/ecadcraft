@@ -170,7 +170,7 @@ pub struct Shell {
     last_visit: Option<Visit>,
     pub tools: tool_strip::ToolStrip,
     /// Brief 059: the Cable slash tool's cable picker.
-    pub slash_picker: right::slash_picker::Picker,
+    pub slash_picker: crate::inspector::slash_picker::Picker,
     pub settings_open: bool,
     pub publish: PublishTab,
     /// The view Lists shows.
@@ -223,7 +223,7 @@ impl Shell {
             forward: Vec::new(),
             last_visit: None,
             tools: tool_strip::ToolStrip::default(),
-            slash_picker: right::slash_picker::Picker::default(),
+            slash_picker: crate::inspector::slash_picker::Picker::default(),
             settings_open: false,
             publish: PublishTab::default(),
             lists: ListsView::default(),
@@ -381,7 +381,7 @@ impl App {
         match self.shell.state.workspace {
             Workspace::Library if !self.shell.state.text_panel => self.library_panel(ui, slots.right),
             Workspace::Publish if !self.shell.state.text_panel => self.publish_right(ui, slots.right),
-            _ => right::show(self, ui, &slots),
+            _ => crate::inspector::show(self, ui, &slots),
         }
         drawer::show(self, ui, &slots);
         compare::show(self, ui, &slots);

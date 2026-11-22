@@ -1,1 +1,1 @@
-mod pipeline;
+pub(crate) mod pipeline;

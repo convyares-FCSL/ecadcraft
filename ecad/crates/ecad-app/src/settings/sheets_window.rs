@@ -5,16 +5,16 @@ use crate::*;
 impl App {
     /// Open the Project info or Project settings popout: since brief 042, Settings ▸ Project at
     /// that tab, filled from `projectprops {}` (reads only).
-    pub fn open_project_popout(&mut self, popout: sheets_ui::Popout) {
+    pub fn open_project_popout(&mut self, popout: crate::settings::sheets::Popout) {
         self.fill_project_props(popout);
         if self.project_props.is_some() {
             // UI rev 3: Project info, or Pages and sheets for the project's settings.
             let section = match popout {
-                sheets_ui::Popout::Info => settings::Section::Project,
-                sheets_ui::Popout::Settings => settings::Section::Pages,
+                crate::settings::sheets::Popout::Info => settings::Section::Project,
+                crate::settings::sheets::Popout::Settings => settings::Section::Pages,
             };
             // Brief 054: Project settings opens Pages and sheets at the project's own rows.
-            if popout == sheets_ui::Popout::Settings {
+            if popout == crate::settings::sheets::Popout::Settings {
                 self.settings.pages.project_open = true;
             }
             self.open_settings(section);
@@ -27,7 +27,7 @@ impl App {
         let off_main = self.branch_info().filter(|b| !b.release_line).map(|b| b.name);
         match self.run_value("projectprops", json!({})) {
             Ok(v) => {
-                let mut r = sheets_ui::Revisions::from_json(&v, read_only || off_main.is_some());
+                let mut r = crate::settings::sheets::Revisions::from_json(&v, read_only || off_main.is_some());
                 r.off_main = off_main;
                 self.fill_folders(&mut r);
                 self.revisions = Some(r);
@@ -65,7 +65,7 @@ impl App {
         }
         let read_only = self.header().read_only;
         if let Ok(v) = self.run_value("projectprops", json!({})) {
-            let mut fresh = sheets_ui::Revisions::from_json(&v, read_only);
+            let mut fresh = crate::settings::sheets::Revisions::from_json(&v, read_only);
             self.fill_folders(&mut fresh);
             if let Some(d) = &mut self.revisions {
                 d.refresh(fresh);
@@ -156,7 +156,7 @@ impl App {
         for b in buttons {
             match b.as_str() {
                 "revisions" => self.open_revisions(),
-                "more" => self.open_project_popout(sheets_ui::Popout::Info),
+                "more" => self.open_project_popout(crate::settings::sheets::Popout::Info),
                 g => {
                     if let Some(r) = g.strip_prefix("goto:") {
                         let _ = self.run_line(&format!("cablegoto {}", json!({ "reference": r })));
@@ -181,9 +181,9 @@ impl App {
     }
 
     /// Brief 027: the issued rows' release folders, read from disk now.
-    fn fill_folders(&mut self, r: &mut sheets_ui::Revisions) {
+    fn fill_folders(&mut self, r: &mut crate::settings::sheets::Revisions) {
         if let Some(p) = self.project.clone() {
-            let _ = p.read(&mut self.cad.session, |p, _| release_ui::fill_folders(&mut r.issued, p));
+            let _ = p.read(&mut self.cad.session, |p, _| crate::history::release_dialog::fill_folders(&mut r.issued, p));
         }
     }
 
@@ -194,7 +194,7 @@ impl App {
         self.refresh_revisions();
         if let Some(d) = &mut self.revisions {
             match d.show(ctx) {
-                Some(sheets_ui::Out::Run(line)) => {
+                Some(crate::settings::sheets::Out::Run(line)) => {
                     let issuing = line.starts_with("issuerevision");
                     let r = self.run_line(&line);
                     // Brief 026 (design §5.5): provisional items ask first.
@@ -210,7 +210,7 @@ impl App {
                         }
                     }
                 }
-                Some(sheets_ui::Out::Open(rev)) => {
+                Some(crate::settings::sheets::Out::Open(rev)) => {
                     if let Some(e) = self.run_line(&format!("openrevision {}", json!({ "rev": rev })))
                         && let Some(d) = &mut self.revisions
                     {
@@ -218,30 +218,30 @@ impl App {
                     }
                     self.refresh_panel();
                 }
-                Some(sheets_ui::Out::Close) => self.revisions = None,
-                Some(sheets_ui::Out::SwitchToMain) => self.ask_switch("main", "main"),
-                Some(sheets_ui::Out::MergeIntoMain) => {
+                Some(crate::settings::sheets::Out::Close) => self.revisions = None,
+                Some(crate::settings::sheets::Out::SwitchToMain) => self.ask_switch("main", "main"),
+                Some(crate::settings::sheets::Out::MergeIntoMain) => {
                     self.revisions = None;
                     let shown = self.branch_info().map(|b| b.name).unwrap_or_default();
                     self.ask_merge(json!({"from": shown, "into": "main"}));
                 }
-                Some(sheets_ui::Out::Release(rev)) => {
+                Some(crate::settings::sheets::Out::Release(rev)) => {
                     self.open_release(rev);
                     self.publish_view(shell::PublishTab::Release);
                 }
-                Some(sheets_ui::Out::OpenFolder(f)) => {
-                    if let Err(e) = release_ui::open_folder(&f)
+                Some(crate::settings::sheets::Out::OpenFolder(f)) => {
+                    if let Err(e) = crate::history::release_dialog::open_folder(&f)
                         && let Some(d) = &mut self.revisions
                     {
                         d.error = Some(e);
                     }
                 }
-                Some(sheets_ui::Out::OpenRevisions) | None => {}
+                Some(crate::settings::sheets::Out::OpenRevisions) | None => {}
             }
         }
         let question = self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| p.issue_undo_question.clone()).ok().flatten());
         if let Some(q) = question {
-            match sheets_ui::issue_undo(ctx, &q) {
+            match crate::settings::sheets::issue_undo(ctx, &q) {
                 Some(true) => {
                     let _ = self.run_line("undoissue {}");
                 }

@@ -21,7 +21,7 @@ impl App {
             return None;
         }
         if self.command_hint.is_some() {
-            let left = tools::placeholders(text);
+            let left = crate::commands::tools::placeholders(text);
             if !left.is_empty() {
                 let e = format!("Replace the placeholders first: {}", left.join(", "));
                 self.cad.session.echo(e.clone());
@@ -58,7 +58,7 @@ impl App {
     /// # Errors
     /// An unknown tool, or the command's own refusal (also echoed at the command line).
     pub fn tool(&mut self, id: &str) -> Result<(), String> {
-        let Some(tool) = tools::find(id) else {
+        let Some(tool) = crate::commands::tools::find(id) else {
             let e = format!("unknown ECAD tool {id}");
             self.cad.session.echo(e.clone());
             return Err(e);
@@ -67,7 +67,7 @@ impl App {
             self.cad.session.cancel();
         }
         match tool.kind {
-            tools::Kind::Start(command) => {
+            crate::commands::tools::Kind::Start(command) => {
                 self.command.clear();
                 self.command_hint = None;
                 self.focus_drawing = true;
@@ -79,24 +79,24 @@ impl App {
                 r
             }
             // A template waiting in the command field keeps its note and its placeholder check.
-            tools::Kind::Run(line) => match self.run_line(line) {
+            crate::commands::tools::Kind::Run(line) => match self.run_line(line) {
                 None => Ok(()),
                 Some(e) => Err(e),
             },
-            tools::Kind::Search => {
+            crate::commands::tools::Kind::Search => {
                 self.search.toggle();
                 Ok(())
             }
-            tools::Kind::Template => {
+            crate::commands::tools::Kind::Template => {
                 let picked = self.picked();
-                let (line, hint) = tools::template(id, &picked).ok_or_else(|| format!("no template for {id}"))?;
+                let (line, hint) = crate::commands::tools::template(id, &picked).ok_or_else(|| format!("no template for {id}"))?;
                 self.command = line;
                 self.command_hint = Some(hint);
                 self.focus_command = true;
                 self.developer.open = true;
                 Ok(())
             }
-            tools::Kind::App => self.app_tool(id),
+            crate::commands::tools::Kind::App => self.app_tool(id),
         }
     }
 
@@ -139,12 +139,12 @@ impl App {
     }
 
     /// The current selection and the ECAD objects it names (empty off an ECAD page).
-    pub(crate) fn picked(&mut self) -> tools::Picked {
-        let Ok(st) = self.cad.session.state() else { return tools::Picked::default() };
+    pub(crate) fn picked(&mut self) -> crate::commands::tools::Picked {
+        let Ok(st) = self.cad.session.state() else { return crate::commands::tools::Picked::default() };
         let (uid, handles) = (st.uid, st.selection.clone());
-        let Some(p) = self.project.as_ref() else { return tools::Picked { handles, ..Default::default() } };
-        let fallback = tools::Picked { handles: handles.clone(), ..Default::default() };
-        p.read(&mut self.cad.session, |p, _| tools::Picked::from_selection(p, uid, handles)).unwrap_or(fallback)
+        let Some(p) = self.project.as_ref() else { return crate::commands::tools::Picked { handles, ..Default::default() } };
+        let fallback = crate::commands::tools::Picked { handles: handles.clone(), ..Default::default() };
+        p.read(&mut self.cad.session, |p, _| crate::commands::tools::Picked::from_selection(p, uid, handles)).unwrap_or(fallback)
     }
 
     /// Act on every ECAD Tool Sets click waiting since the last frame, each once.
@@ -160,8 +160,8 @@ impl App {
     ///
     /// # Errors
     /// The command's refusal.
-    pub fn start_choice(&mut self, choice: &search::Choice) -> Result<(), String> {
-        self.start_pick(search::Pick::Symbol(choice.symbol))?;
+    pub fn start_choice(&mut self, choice: &crate::library::search::Choice) -> Result<(), String> {
+        self.start_pick(crate::library::search::Pick::Symbol(choice.symbol))?;
         let r = match &choice.device {
             Some(tag) => self
                 .cad
@@ -183,21 +183,21 @@ impl App {
     ///
     /// # Errors
     /// The command's refusal.
-    pub fn start_pick(&mut self, pick: search::Pick) -> Result<(), String> {
+    pub fn start_pick(&mut self, pick: crate::library::search::Pick) -> Result<(), String> {
         if self.cad.session.running.is_some() {
             self.cad.session.cancel();
         }
         // UI rev 3: the picker's chip names the symbol being placed.
         self.shell.tools.placing.symbol = match &pick {
-            search::Pick::Symbol(k) => Some(*k),
+            crate::library::search::Pick::Symbol(k) => Some(*k),
             _ => None,
         };
         let text = match pick {
-            search::Pick::Symbol(k) => k.to_string(),
-            search::Pick::Device(tag) => tag,
-            search::Pick::Project(k) => k,
+            crate::library::search::Pick::Symbol(k) => k.to_string(),
+            crate::library::search::Pick::Device(tag) => tag,
+            crate::library::search::Pick::Project(k) => k,
             // Brief 041: pages and actions are run by the shell, not placed.
-            search::Pick::Page(_) | search::Pick::Action(_) => return Ok(()),
+            crate::library::search::Pick::Page(_) | crate::library::search::Pick::Action(_) => return Ok(()),
         };
         let r = self.cad.session.start("place").and_then(|()| self.cad.session.input(ecad_engine::cad::Input::Text(text))).map_err(|e| e.to_string());
         if let Err(e) = &r {
@@ -292,7 +292,7 @@ impl App {
                 let _ = self.app_tool("ecad.dev.snapshot");
             }
             developer::Action::Debugger(a) => {
-                let close = a == debugger::Action::Close;
+                let close = a == crate::developer::debugger::Action::Close;
                 self.debugger_action(a);
                 if close {
                     self.developer.body = developer::Body::None;
@@ -310,7 +310,7 @@ impl App {
     }
 
     /// Apply a debugger action that needs the project (Refresh, a check).
-    pub fn debugger_action(&mut self, a: debugger::Action) {
+    pub fn debugger_action(&mut self, a: crate::developer::debugger::Action) {
         if let Some(p) = &self.project {
             self.debugger.apply(a, p, &mut self.cad.session);
         }
@@ -318,8 +318,8 @@ impl App {
 
     /// Act on one thing the Project panel asked for. Writes go through the page commands' JSON
     /// forms on the command path, so each is exactly that command's transaction and one undo step.
-    pub fn panel_action(&mut self, a: project_panel::Action) {
-        use project_panel::Action as A;
+    pub fn panel_action(&mut self, a: crate::pages::project_panel::Action) {
+        use crate::pages::project_panel::Action as A;
         self.panel.note = None;
         match a {
             A::Open(page) => {
@@ -370,7 +370,7 @@ impl App {
             }
             A::RenumberPage(page) => {
                 if self.show_page(page).is_ok() {
-                    self.panel.tab = project_panel::Tab::Pages;
+                    self.panel.tab = crate::pages::project_panel::Tab::Pages;
                     self.panel.start_number_edit(page);
                 }
             }
@@ -417,7 +417,7 @@ impl App {
             A::ShowReports => {
                 self.reports_view();
                 if let Some(r) = &mut self.reports {
-                    r.tab = outputs_ui::Tab::Bom;
+                    r.tab = crate::reports::panel::Tab::Bom;
                     r.only_flagged = true;
                     r.invalidate();
                 }
@@ -493,7 +493,7 @@ impl App {
             A::ShowCables => {
                 self.reports_view();
                 if let Some(r) = &mut self.reports {
-                    r.tab = outputs_ui::Tab::Cables;
+                    r.tab = crate::reports::panel::Tab::Cables;
                     r.cores_of = None;
                     r.only_flagged = true;
                     r.invalidate();
@@ -621,8 +621,8 @@ impl App {
                     }
                 }
             }
-            A::ProjectInfo => self.open_project_popout(sheets_ui::Popout::Info),
-            A::ProjectSettings => self.open_project_popout(sheets_ui::Popout::Settings),
+            A::ProjectInfo => self.open_project_popout(crate::settings::sheets::Popout::Info),
+            A::ProjectSettings => self.open_project_popout(crate::settings::sheets::Popout::Settings),
             A::Revisions => self.open_revisions(),
             A::BackToCurrent => {
                 let _ = self.run_line("closerevision {}");
@@ -652,20 +652,20 @@ impl App {
             None => return,
         };
         if unsaved == 0 {
-            self.history_action(history_panel::Do::Run("switchbranch", json!({"branch": branch})));
+            self.history_action(crate::history::panel::Do::Run("switchbranch", json!({"branch": branch})));
             return;
         }
-        self.panel.tab = project_panel::Tab::History;
+        self.panel.tab = crate::pages::project_panel::Tab::History;
         self.panel.history.dialog = Some(if read_only {
-            history_panel::Dialog::SwitchReadOnly
+            crate::history::panel::Dialog::SwitchReadOnly
         } else {
-            history_panel::Dialog::Switch { branch: branch.to_string(), name: name.to_string() }
+            crate::history::panel::Dialog::Switch { branch: branch.to_string(), name: name.to_string() }
         });
     }
 
     /// Act on what the History tab asked for (brief 020a): each write is its command's JSON form.
-    pub fn history_action(&mut self, d: history_panel::Do) {
-        use history_panel::Do;
+    pub fn history_action(&mut self, d: crate::history::panel::Do) {
+        use crate::history::panel::Do;
         match d {
             Do::Agent(a) => self.agent_action(a),
             Do::Run(cmd, params) => {
@@ -684,7 +684,7 @@ impl App {
                 match self.run_click("restore", ask) {
                     Ok(v) => {
                         let question = v["question"].as_str().unwrap_or_default().to_string();
-                        self.panel.history.dialog = Some(history_panel::Dialog::Restore { params, question });
+                        self.panel.history.dialog = Some(crate::history::panel::Dialog::Restore { params, question });
                     }
                     Err(e) => self.panel.history.refused(e),
                 }
@@ -710,7 +710,7 @@ impl App {
                 let into = v["into"].as_str().unwrap_or("main").to_string();
                 let note = (v["update"] != json!(true) && into != shown)
                     .then(|| format!("This switches to {into} (saving \"{shown}\" first) and merges into it."));
-                self.merge = Some(merge_dialog::MergeDialog::new(target, v, note));
+                self.merge = Some(crate::history::merge_dialog::MergeDialog::new(target, v, note));
             }
             Err(e) => self.panel.history.refused(e),
         }
@@ -736,7 +736,7 @@ impl App {
             )
         });
         let Ok((choices, objects, digits, wire_digits)) = read else { return };
-        let mut d = renumber_dialog::RenumberDialog::new(&choices, objects, digits, read_only, finalise);
+        let mut d = crate::devices::renumber_dialog::RenumberDialog::new(&choices, objects, digits, read_only, finalise);
         if wires {
             d = d.for_wires(wire_digits);
         }

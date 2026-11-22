@@ -14,7 +14,7 @@ use cadcraft_engine::doc::EntityKind;
 use {ecad_electrical::checks::Kind};
 use ecad_electrical::locations::designations::{self, Aspect};
 use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
-use ecad_engine::{Persistence, ProjectHandle, generated, locations};
+use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::{AidId, Author, DeviceId, Document, Op, PageId};
 use serde_json::{Value, json};
 
@@ -58,7 +58,7 @@ fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> DeviceId {
 }
 
 fn code(d: &Document, c: DeviceId) -> Option<String> {
-    locations::resolve(d, c).value
+    ecad_electrical::locations::resolve(d, c).value
 }
 
 fn key(d: &Document, a: Aspect, code: &str) -> String {
@@ -155,10 +155,10 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     assert!(!h.p(|p| p.unsaved()), "opening writes nothing");
     // Devices: `?`, flagged as missing.
     assert_eq!(code(&d, k), None);
-    assert!(locations::resolve(&d, k).missing());
-    assert!(locations::resolve_function(&d, k).missing());
+    assert!(ecad_electrical::locations::resolve(&d, k).missing());
+    assert!(ecad_electrical::locations::resolve_function(&d, k).missing());
     // The retired half key is not read (FP4, Q9), and the property is still in the file.
-    let rows = ecad_electrical::connectors::half_rows(&d, x, &mut locations::BoxCache::default());
+    let rows = ecad_electrical::connectors::half_rows(&d, x, &mut ecad_electrical::locations::BoxCache::default());
     assert!(rows.iter().all(|r| r.location.value.is_none()), "half.s.location is not read");
     assert!(d.devices[&x].properties.keys().all(|k| !k.starts_with("half.")), "a half's keys are never in the bag");
     // Checks: the device's two values and the box.
@@ -333,7 +333,7 @@ fn a_rename_redraws_its_users_pages_and_no_other() {
     same_as_built(h, "rename");
     let texts: Vec<String> = h.cfg(|p| {
         let o = p.outputs().clone();
-        generated::parts_of(p.ledger.document(), bom, Some(&o))
+        ecad_engine::pages::generated::parts_of(p.ledger.document(), bom, Some(&o))
             .into_iter()
             .filter_map(|x| match x.kind {
                 EntityKind::Text(t) => Some(t.value),
@@ -542,12 +542,12 @@ fn the_bom_page_flags_its_question_mark_heading() {
     place(&mut h, "coil", (100.0, 150.0)); // no location
     let bom: PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     let doc = h.doc();
-    let parts = generated::parts_of(&doc, bom, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
-    let qs: Vec<_> = parts.iter().filter(|p| matches!(&p.kind, EntityKind::Text(t) if t.value == generated::MISSING)).collect();
+    let parts = ecad_engine::pages::generated::parts_of(&doc, bom, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
+    let qs: Vec<_> = parts.iter().filter(|p| matches!(&p.kind, EntityKind::Text(t) if t.value == ecad_electrical::pages::generated::MISSING)).collect();
     // The heading `?`, the maker `?` and the part number `?`.
     assert!(qs.len() >= 3, "{} `?` texts", qs.len());
-    let plain: Vec<_> = qs.iter().filter(|p| p.aci != Some(generated::FLAGGED_ACI)).collect();
+    let plain: Vec<_> = qs.iter().filter(|p| p.aci != Some(ecad_electrical::pages::generated::FLAGGED_ACI)).collect();
     assert!(plain.is_empty(), "{} `?` drawn unflagged (the `?` location heading)", plain.len());
-    let boxes = parts.iter().filter(|p| p.aci == Some(generated::FLAGGED_ACI) && !matches!(p.kind, EntityKind::Text(_))).count();
+    let boxes = parts.iter().filter(|p| p.aci == Some(ecad_electrical::pages::generated::FLAGGED_ACI) && !matches!(p.kind, EntityKind::Text(_))).count();
     assert!(boxes >= qs.len(), "each `?` has its box ({boxes} boxes for {} marks)", qs.len());
 }

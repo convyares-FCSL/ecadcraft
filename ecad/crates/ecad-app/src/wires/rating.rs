@@ -6,7 +6,8 @@
 //! **Update map.** Nothing of its own: it shows the result the view holds this frame.
 
 use ecad_electrical::circuits::circuit::Rating;
-use ecad_electrical::circuits::{self, RatedSubject, dataset};
+use ecad_electrical::circuits::{self, RatedSubject};
+use ecad_electrical::devices::ratings::dataset;
 use ecad_model::Word;
 use ecad_model::objects::wire::Basis;
 use ecad_widgets::prim::{self, Tone};

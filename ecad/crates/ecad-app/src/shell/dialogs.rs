@@ -23,8 +23,8 @@ impl App {
             p.read(session, |p, _| {
                 let at = Some((serial, p.change_count()));
                 let unchanged = |since: u64| p.device_changes_since(since).is_some_and(|t| t.leaves_search());
-                let rows = finder.rows_for(at, unchanged, || search::rows(Some(p.ledger.document()), &q));
-                let choices = finder.choices_for(at, unchanged, |pick| search::choices(p, pick));
+                let rows = finder.rows_for(at, unchanged, || crate::library::search::rows(Some(p.ledger.document()), &q));
+                let choices = finder.choices_for(at, unchanged, |pick| crate::library::search::choices(p, pick));
                 (rows, choices)
             })
             .ok()
@@ -32,7 +32,7 @@ impl App {
         let (rows, choices) = match read {
             Some(v) => v,
             None => {
-                let rows = finder.rows_for(None, |_| true, || search::rows(None, &q));
+                let rows = finder.rows_for(None, |_| true, || crate::library::search::rows(None, &q));
                 (rows, Vec::new())
             }
         };
@@ -90,7 +90,7 @@ impl App {
     pub(crate) fn renumber_window(&mut self, ctx: &egui::Context) {
         let Some(d) = &mut self.renumber else { return };
         match d.show(ctx) {
-            Some(renumber_dialog::Out::Preview(c, v)) => {
+            Some(crate::devices::renumber_dialog::Out::Preview(c, v)) => {
                 let r = self.run_click(c, v);
                 if let Some(d) = &mut self.renumber {
                     match r {
@@ -102,7 +102,7 @@ impl App {
                     }
                 }
             }
-            Some(renumber_dialog::Out::Apply(c, v)) => match self.run_click(c, v) {
+            Some(crate::devices::renumber_dialog::Out::Apply(c, v)) => match self.run_click(c, v) {
                 Ok(_) => {
                     self.renumber = None;
                     // Finalise numbering now (design §5.5): the issue follows, its own step.
@@ -123,7 +123,7 @@ impl App {
                     }
                 }
             },
-            Some(renumber_dialog::Out::Goto(page, at)) => {
+            Some(crate::devices::renumber_dialog::Out::Goto(page, at)) => {
                 if let Some(page) = u128::from_str_radix(&page, 16).ok().map(PageId)
                     && self.show_page(page).is_ok()
                     && let Ok(st) = self.cad.session.state_mut()
@@ -132,7 +132,7 @@ impl App {
                     let _ = st.set_view(ecad_engine::cad::View { center: ecad_engine::cad::Vec2::new(at[0], at[1]), height, twist: 0.0 });
                 }
             }
-            Some(renumber_dialog::Out::Cancel) => {
+            Some(crate::devices::renumber_dialog::Out::Cancel) => {
                 self.renumber = None;
                 self.issue_after_finalise = None;
             }
@@ -144,7 +144,7 @@ impl App {
     pub(crate) fn merge_windows(&mut self, ctx: &egui::Context) {
         if let Some(d) = &mut self.merge {
             match d.show(ctx) {
-                Some(merge_dialog::Out::Preview(params)) => match self.run_click("merge", params) {
+                Some(crate::history::merge_dialog::Out::Preview(params)) => match self.run_click("merge", params) {
                     Ok(v) => {
                         if let Some(d) = &mut self.merge {
                             d.preview = v;
@@ -157,7 +157,7 @@ impl App {
                         }
                     }
                 },
-                Some(merge_dialog::Out::Merge(params)) => match self.run_click("merge", params) {
+                Some(crate::history::merge_dialog::Out::Merge(params)) => match self.run_click("merge", params) {
                     Ok(_) => {
                         self.merge = None;
                         self.panel.history.done();
@@ -170,7 +170,7 @@ impl App {
                         self.sync_branch();
                     }
                 },
-                Some(merge_dialog::Out::Cancel) => {
+                Some(crate::history::merge_dialog::Out::Cancel) => {
                     // The prepared states are dropped with the dialog.
                     self.merge = None;
                     if let Some(p) = self.project.clone() {
@@ -182,7 +182,7 @@ impl App {
         }
         let question = self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| p.merge_undo_question.clone()).ok().flatten());
         if let Some(q) = question {
-            match merge_dialog::undo_merge(ctx, &q) {
+            match crate::history::merge_dialog::undo_merge(ctx, &q) {
                 Some(true) => {
                     let _ = self.run_line("undomerge {}");
                     self.panel.history.invalidate();

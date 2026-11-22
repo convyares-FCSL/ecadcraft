@@ -411,7 +411,7 @@ mod lane_tests {
     /// leave two lanes' lines swapped; this says which to swap.
     #[test]
     fn lanes_are_in_brief_order() {
-        let briefs: Vec<&str> = LANES.iter().map(|(b, _)| *b).collect();
+        let briefs: Vec<&str> = super::LANES.iter().map(|(b, _)| *b).collect();
         for pair in briefs.windows(2) {
             assert!(pair[0] < pair[1], "LANES: {} must come after {}, once each", pair[0], pair[1]);
         }
