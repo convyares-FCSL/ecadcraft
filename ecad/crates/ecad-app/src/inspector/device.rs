@@ -4,7 +4,7 @@
 //! cable…) it shows that object's properties in the same folding sections.
 
 use ecad_electrical::cables::words::Row;
-use ecad_electrical::properties::{Section, SectionKind};
+use ecad_electrical::properties::{Button, Section, SectionKind};
 use ecad_widgets::tokens::{radius, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 use {ecad_electrical::checks::Object, ecad_electrical::checks::Severity};
@@ -248,7 +248,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
     });
     // Notes and attributes: everything else about the device.
     let rest: Vec<&Row> = s.rows.iter().filter(|r| !PLACED.contains(&r.key.as_str()) && !on_layout_tab(r)).collect();
-    let buttons: Vec<String> = s.buttons.iter().filter(|b| !b.starts_with("refgoto:")).cloned().collect();
+    let buttons: Vec<Button> = s.buttons.iter().filter(|b| !matches!(b, Button::RefGoto { .. })).cloned().collect();
     let n = rest.len() + insp.connector.len();
     let summary = if n == 0 { "none".to_string() } else { n.to_string() };
     w::section(ui, &mut folded, full, "notes", "Notes and attributes", &summary, true, |ui| {

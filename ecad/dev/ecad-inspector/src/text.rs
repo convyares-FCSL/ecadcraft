@@ -58,7 +58,7 @@ pub fn branches(store: &Store) -> Result<String, StoreError> {
             b.head.chain,
             rows,
             match (&b.parent, &b.fork_point) {
-                (Some(p), Some(f)) => format!(", forked from {p} after {} ({})", f.seq, f.chain),
+                (Some(p), Some(f)) => format!(", forked from {} after {} ({})", p.hex(), f.seq, f.chain),
                 _ => ", from the project root".into(),
             }
         ));

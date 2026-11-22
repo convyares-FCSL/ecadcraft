@@ -82,22 +82,7 @@ impl ReportModels {
 
     /// The wire report as a table.
     pub fn wire_table(&self) -> Table {
-        let mut t = Table {
-            headers: vec![
-                "Wire number",
-                "From",
-                "From location",
-                "To",
-                "To location",
-                "Cross-section",
-                "Colour",
-                "Potential",
-                "Category",
-                "Cable",
-                "Page",
-            ],
-            rows: Vec::new(),
-        };
+        let mut t = Table { headers: WireColumn::headers(), rows: Vec::new() };
         for r in self.wires() {
             let style = self.style;
             let end_loc = |e: &EndCell| match (&e.device, &e.location) {
@@ -152,7 +137,7 @@ impl ReportModels {
         if !include_not_drawn {
             rows.retain(|r| r.drawn);
         }
-        let mut t = Table { headers: vec!["Tag", "Type", "Cores", "From location", "To location", "Used", "Spare", "From", "To"], rows: Vec::new() };
+        let mut t = Table { headers: CableBase::headers(), rows: Vec::new() };
         t.headers.extend(cols.iter().map(|c| c.header()));
         for r in rows {
             let why = r.location_reason.clone();
@@ -398,7 +383,7 @@ impl ReportModels {
     /// in row order.
     pub fn core_rows(&self, k: CableId) -> (Table, Vec<crate::terminal_strips::cores::CoreState>) {
         use crate::terminal_strips::cores::CoreState;
-        let mut t = Table { headers: vec!["Core", "Wire number", "From", "To", "State"], rows: Vec::new() };
+        let mut t = Table { headers: CoreColumn::headers(), rows: Vec::new() };
         let mut states = Vec::new();
         let Some(r) = self.cables.get(&k) else { return (t, states) };
         let style = self.style;

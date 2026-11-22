@@ -78,8 +78,8 @@ pub fn sides(p: &Project, from: &str, into: Option<&str>) -> Result<Sides, Strin
     let cur = history::current(p);
     let (tid, trec) = match into {
         Some(t) => history::find_branch(p, t)?,
-        None => match srec.parent.as_deref().and_then(BranchId::parse) {
-            Some(parent) if cur != parent && history::find_branch(p, &cur.hex())?.1.parent.as_deref() == Some(sid.hex().as_str()) => {
+        None => match srec.parent {
+            Some(parent) if cur != parent && history::find_branch(p, &cur.hex())?.1.parent == Some(sid) => {
                 // `from` is the parent of the branch shown: update the branch shown from it.
                 history::find_branch(p, &cur.hex())?
             }
@@ -90,7 +90,7 @@ pub fn sides(p: &Project, from: &str, into: Option<&str>) -> Result<Sides, Strin
     if sid == tid {
         return Err(format!("\"{}\" cannot be merged into itself; pick its parent, or update it from its parent.", srec.name));
     }
-    let child_of = |child: &ecad_file::schema::BranchRecord, parent: BranchId| child.parent.as_deref() == Some(parent.hex().as_str());
+    let child_of = |child: &ecad_file::schema::BranchRecord, parent: BranchId| child.parent == Some(parent);
     let (update, fork) = if child_of(&srec, tid) {
         (false, srec.fork_point.as_ref().map_or(0, |f| f.seq))
     } else if child_of(&trec, sid) {

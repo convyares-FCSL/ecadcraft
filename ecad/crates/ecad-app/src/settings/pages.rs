@@ -380,7 +380,7 @@ fn act(t: &mut App, d: Do) {
             if let Some(v) =
                 run(t, "setstyle", json!({"catalogue": ecad_model::StyleCatalogue::Page, "new": true, "copy_of": from.text(), "name": name}))
             {
-                let id = ["id", "style"].iter().filter_map(|k| v.get(*k).and_then(serde_json::Value::as_str)).find_map(StyleRef::parse);
+                let id = ["id", "style"].iter().find_map(|k| ecad_engine::commands::reply::id::<StyleRef>(&v, k));
                 if let Some(id) = id {
                     t.settings.pages.selected = Some(id);
                 }

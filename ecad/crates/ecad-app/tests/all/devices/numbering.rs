@@ -64,7 +64,7 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
     h.state_mut().tool("ecad.renumber").unwrap();
     h.run_steps(3);
     let d = h.state().renumber.clone().expect("the dialog is open");
-    assert!(d.preview["summary"].as_str().is_some_and(|s| s.contains("to change")), "{}", d.preview);
+    assert!(d.preview.summary.contains("to change"), "{:?}", d.preview);
     for name in [
         "ecad.renumber.kind.devices",
         "ecad.renumber.scope.all",
@@ -79,7 +79,7 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
     h.state_mut().renumber.as_mut().unwrap().start = "2".into();
     let (c, v) = h.state().renumber.as_ref().unwrap().params(true).unwrap();
     let pv = h.state_mut().cad.session.execute(c, &v).unwrap();
-    h.state_mut().renumber.as_mut().unwrap().preview = pv;
+    h.state_mut().renumber.as_mut().unwrap().preview = ecad_electrical::numbering::commands::Preview::from_reply(&pv).unwrap_or_default();
     h.run_steps(3);
     save_shot(&h, &deltas, "026-renumber.png");
     let before = head(&mut h);

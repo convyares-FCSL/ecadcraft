@@ -38,7 +38,7 @@ fn a_branch_forks_owns_its_log_and_leaves_main_unchanged() {
     let fork = f.ledger.head();
     let main_doc = f.ledger.document().clone();
     let (b, rec) = proj.create_branch("Option B", main, fork, Some(7), Some("CVA".into())).unwrap();
-    assert_eq!(rec.parent.as_deref(), Some(main.hex().as_str()));
+    assert_eq!(rec.parent, Some(main));
     assert_eq!(rec.fork_point.as_ref().map(|p| p.seq), Some(fork));
     assert_eq!(rec.status, BranchStatus::Open);
     assert!(!rec.release_line);

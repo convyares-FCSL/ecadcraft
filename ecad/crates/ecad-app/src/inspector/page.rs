@@ -45,7 +45,7 @@ pub struct PageView {
     pub kind: GenKind,
     pub title: String,
     pub number: String,
-    pub type_id: String,
+    pub type_id: ecad_model::StyleRef,
     pub type_name: String,
     pub title_block: String,
     pub blocks: Vec<(Block, bool)>,
@@ -110,7 +110,7 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
             title: doc.pages.get(&page).map(|x| x.title.to_string()).unwrap_or_default(),
             number: book.number(doc, page),
             type_name: ecad_electrical::styles::name(doc, ecad_model::StyleCatalogue::Page, &ty),
-            type_id: ty.text(),
+            type_id: ty.clone(),
             title_block: crate::settings::pages::title_block_words(&sheet),
             blocks: Block::ALL.iter().map(|b| (*b, b.on(doc))).collect(),
             notes: ecad_electrical::pages::frames::project_text(doc, ecad_electrical::pages::front::NOTES_KEY).unwrap_or_default(),
@@ -172,7 +172,7 @@ enum Do {
     Rows(&'static str, String),
     Revisions,
     Front(GenKind, bool),
-    Settings(String),
+    Settings(ecad_model::StyleRef),
 }
 
 /// The tab's body.
@@ -399,7 +399,7 @@ fn act(t: &mut App, v: &PageView, d: Do) {
         }
         Do::Settings(id) => {
             t.open_settings(crate::settings::Section::Pages);
-            t.settings.pages.selected = ecad_model::StyleRef::parse(&id);
+            t.settings.pages.selected = Some(id);
             Ok(())
         }
     };
