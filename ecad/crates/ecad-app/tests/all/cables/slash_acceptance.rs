@@ -244,8 +244,8 @@ fn the_cable_slash_entry_sits_in_wiring_between_disconnect_and_add_to_cable() {
     // (combined order, overseer decision for the trial of 009 + 010).
     assert_eq!(at("ecad.cablecore"), at("ecad.cableview") + 1, "{ids:?}");
     assert_eq!(at("ecad.cablefan"), at("ecad.cablecore") + 1, "{ids:?}");
-    assert_eq!(at("ecad.cableref"), at("ecad.cablefan") + 1, "{ids:?}");
-    assert_eq!(at("ecad.cablecontinue"), at("ecad.cableref") + 1, "{ids:?}");
+    assert_eq!(at("ecad.cablereference"), at("ecad.cablefan") + 1, "{ids:?}");
+    assert_eq!(at("ecad.cablecontinue"), at("ecad.cablereference") + 1, "{ids:?}");
     assert_eq!(at("ecad.cablegoto"), at("ecad.cablecontinue") + 1, "{ids:?}");
     // Brief 016 puts Preview Reference after Go to Reference.
     assert_eq!(at("ecad.cablepreview"), at("ecad.cablegoto") + 1, "{ids:?}");

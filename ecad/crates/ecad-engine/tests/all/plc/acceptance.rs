@@ -160,8 +160,8 @@ pub(crate) fn text_values(h: &mut H, page: PageId) -> Vec<String> {
     // Brief 051 (design 051 §2.6): a framed card's tag and caption are in its frame's name block.
     let d = h.doc();
     v.extend(ecad_engine::plc::draw::card::parts_on_page(&d, page).into_iter().filter_map(|p| match p.shape {
-        ecad_electrical::references::devices::Shape::Text { value, .. } => Some(value),
-        ecad_electrical::references::devices::Shape::Line(..) => None,
+        ecad_electrical::references::devices::table::Shape::Text { value, .. } => Some(value),
+        ecad_electrical::references::devices::table::Shape::Line(..) => None,
     }));
     v
 }

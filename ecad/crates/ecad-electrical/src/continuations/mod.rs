@@ -34,7 +34,10 @@ use ecad_model::connectivity::continuation_key;
 use ecad_model::{Aid, AidId, Document, Form, Op, PageId, Placement, Pt, Representation, RepresentationId, Subject};
 
 use crate::defaults::{self, Scope};
-use crate::references::devices::{Group, HAlign, Part, Places, RefIndex, Shape, VAlign};
+use crate::references::devices::classify::Group;
+use crate::references::devices::index::RefIndex;
+use crate::references::devices::places::Places;
+use crate::references::devices::table::{HAlign, Part, Shape, VAlign};
 use crate::styles::text_style::fonts::TextMetrics;
 use crate::styles::text_style::{TextKind, TextTarget, text_shown, text_style};
 
@@ -243,7 +246,7 @@ pub fn ends_named(doc: &Document, places: &mut Places<'_>, key: &str) -> Vec<End
         .into_iter()
         .filter_map(|rid| {
             let r = doc.representations.get(&rid)?;
-            let (key, text) = match places.sorted(r.page, crate::references::devices::anchor(doc, r)) {
+            let (key, text) = match places.sorted(r.page, crate::references::devices::classify::anchor(doc, r)) {
                 Some((k, t)) => (Some(k), t),
                 None => (None, unlocated.clone()),
             };
@@ -645,7 +648,7 @@ pub fn goto(doc: &Document, source: RepresentationId, target: Option<Representat
     if let Some(t) = target {
         return ends.iter().any(|e| e.rep == t).then_some(t);
     }
-    let at = |e: &End| doc.representations.get(&e.rep).and_then(|r| crate::references::devices::anchor(doc, r));
+    let at = |e: &End| doc.representations.get(&e.rep).and_then(|r| crate::references::devices::classify::anchor(doc, r));
     let i = last.and_then(|(page, p)| ends.iter().position(|e| e.page == page && at(e).is_some_and(|a| a.x == p.x && a.y == p.y)));
     let next = match i {
         Some(i) => ends.get(i.saturating_add(1)).or_else(|| ends.first()),

@@ -77,7 +77,7 @@ fn connected(seed: u64) -> R {
     let k2 = component(&mut h, field, "line 100,-5 110,-5 110,15 100,15 c", [(100.0, 0.0), (100.0, 5.0), (100.0, 10.0)], "K2");
     h.activate(supply);
     let _ = h.s.zoom_extents();
-    h.run("cableref", json!({"cable": c1.hex(), "at": [65, 5]})).unwrap();
+    h.run("cablereference", json!({"cable": c1.hex(), "at": [65, 5]})).unwrap();
     h.activate(field);
     let v = h.run("cablecontinue", json!({"cable": c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
     // Each stub's free end onto K2 (design 072 §4.3: the stubs are routes).

@@ -22,7 +22,7 @@ fn page(h: &mut H, number: &str) -> PageId {
 fn contact_text(h: &mut H, page: PageId, r: RepresentationId) -> Option<String> {
     h.p(|p| {
         ecad_engine::references::draw::devices::parts_on_page(p.ledger.document(), page).into_iter().find_map(|part| match part.shape {
-            ecad_electrical::references::devices::Shape::Text { value, .. } if part.rep == r && part.index == 0 => Some(value),
+            ecad_electrical::references::devices::table::Shape::Text { value, .. } if part.rep == r && part.index == 0 => Some(value),
             _ => None,
         })
     })
@@ -105,7 +105,7 @@ fn a_coil_placed_after_its_contacts_is_the_head() {
     let d = h.doc();
     parts_stored(&d);
     assert_eq!(reps::head(&d, k), Some(coil));
-    assert_eq!(ecad_electrical::references::devices::device(&d, k).head, Some(coil));
+    assert_eq!(ecad_electrical::references::devices::classify::device(&d, k).head, Some(coil));
     assert_eq!(reps::goto(&d, k, None), Some(coil));
     assert_eq!(reps::goto(&d, k, None), Some(coil));
     for c in contacts {
@@ -160,13 +160,16 @@ fn of_two_heads_the_first_in_book_order_is_the_head() {
     d.rebuild_index();
     assert_eq!(reps::heads(&d, k), vec![a, b]);
     assert_eq!(reps::head(&d, k), Some(a));
-    assert_eq!(ecad_electrical::references::devices::device(&d, k).head, Some(a));
-    assert_eq!(ecad_electrical::references::devices::class_in(&d, b).map(|(_, c)| c), Some(ecad_electrical::references::devices::Class::Other));
+    assert_eq!(ecad_electrical::references::devices::classify::device(&d, k).head, Some(a));
+    assert_eq!(
+        ecad_electrical::references::devices::classify::class_in(&d, b).map(|(_, c)| c),
+        Some(ecad_electrical::references::devices::classify::Class::Other)
+    );
     assert_eq!(reps::parent(&d, no), Some(a));
     // Swap the pages: the coil on page 2 is now first in the book.
     d.page_order = vec![p2, p1];
     assert_eq!(reps::head(&d, k), Some(b));
-    assert_eq!(ecad_electrical::references::devices::device(&d, k).head, Some(b));
+    assert_eq!(ecad_electrical::references::devices::classify::device(&d, k).head, Some(b));
     assert_eq!(reps::parent(&d, no), Some(b));
     assert!(reps::children(&d, a).is_empty(), "a second head has no children");
 }
@@ -183,7 +186,7 @@ fn a_pin_only_half_has_no_half_member() {
     let (s, p) = (rep(&s), rep(&p));
     let d = h.doc();
     let classes = connectors::ref_classes(&d, x);
-    assert!(classes.iter().all(|(_, c)| matches!(c, ecad_electrical::references::devices::Class::Pin(_))), "{classes:?}");
+    assert!(classes.iter().all(|(_, c)| matches!(c, ecad_electrical::references::devices::classify::Class::Pin(_))), "{classes:?}");
     let edges = connectors::ref_edges(&d, x, &classes);
     assert!(edges.contains(&(s, p)) && edges.contains(&(p, s)), "{edges:?}");
     assert_eq!(reps::rep_type(&d, &d.representations[&s]), PartRole::Pin);
@@ -220,7 +223,7 @@ fn go_to_and_numbering_share_one_drawing_order() {
     }
     d.rebuild_index();
     assert_eq!(reps::head(&d, q), Some(rep(&c2)));
-    assert_eq!(ecad_electrical::references::devices::device(&d, q).head, Some(rep(&c2)));
+    assert_eq!(ecad_electrical::references::devices::classify::device(&d, q).head, Some(rep(&c2)));
 }
 
 mod acceptance;

@@ -48,7 +48,6 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
     }
     for (id, c) in &doc.cables {
         reserved(&c.properties, WordPlace::Cable(*id), &mut out);
-        flags(&c.properties, WordPlace::Cable(*id), &mut out);
     }
     // Design 072 F5: a starter's prefix names a starter of the catalogue (the key's form is read
     // strictly with the file); a project symbol's prefix names a project symbol the project holds.
@@ -168,6 +167,28 @@ mod tests {
     }
 
     #[test]
+    fn an_old_style_cable_holding_its_tag_fixed_flag_or_description_in_its_bag_is_named() {
+        let mut d = doc();
+        let c = ecad_model::CableId(5);
+        let mut cable = ecad_model::Cable::default();
+        for key in ["tag", "tag_fixed", "description"] {
+            cable.properties.insert(key.into(), "x".into());
+        }
+        d.cables.insert(c, cable);
+        let found = check(&d);
+        let keys: Vec<&str> = found
+            .iter()
+            .filter_map(
+                |f| if let UnknownWord::ReservedKey { place: WordPlace::Cable(k), key } = f { (*k == c).then_some(key.as_str()) } else { None },
+            )
+            .collect();
+        assert_eq!(keys.len(), 3, "{found:?}");
+        for key in ["tag", "tag_fixed", "description"] {
+            assert!(keys.contains(&key), "{key} is named: {keys:?}");
+        }
+    }
+
+    #[test]
     fn a_stored_junction_is_an_unknown_kind() {
         let mut d = doc();
         let j = DeviceId(4);
@@ -205,28 +226,6 @@ mod tests {
         }
         let places: Vec<WordPlace> = check(&d).iter().map(UnknownWord::place).collect();
         assert_eq!(places, [WordPlace::Page(page), WordPlace::Device(c)]);
-    }
-
-    #[test]
-    fn stored_flags_hold_only_yes_or_no() {
-        let mut d = doc();
-        // A cable's bag still holds `tag_fixed` (a device's is a field, design 072 §2.1).
-        let c = ecad_model::CableId(3);
-        d.cables.insert(c, ecad_model::Cable::default());
-        d.display.insert(keys::NUMBERING_PROVISIONAL.as_str().into(), "yes".into());
-        if let Some(cable) = d.cables.get_mut(&c) {
-            cable.properties.insert(keys::TAG_FIXED.as_str().into(), "no".into());
-        }
-        assert!(check(&d).is_empty(), "the written words pass");
-        for typed in ["on", "true", "1", "off", "Yes", " no"] {
-            if let Some(cable) = d.cables.get_mut(&c) {
-                cable.properties.insert(keys::TAG_FIXED.as_str().into(), typed.into());
-            }
-            let found = check(&d);
-            assert_eq!(found.len(), 1, "{typed:?} in a file is refused");
-            let text = found[0].to_string();
-            assert!(text.contains("tag_fixed") && text.contains(&format!("`{typed}`")), "{text}");
-        }
     }
 
     #[test]

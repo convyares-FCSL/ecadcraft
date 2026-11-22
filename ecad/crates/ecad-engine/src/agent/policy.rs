@@ -313,7 +313,7 @@ mod tests {
             assert!(check(id, &json!({"reference": "1"}), false, None).is_ok(), "{id} reads");
             assert!(check(id, &json!({}), false, Some("locked")).is_ok(), "{id} reads a read-only project");
         }
-        for id in ["cableref", "cablecontinue", "cablecore", "cablefan", "renamepage", "movepage"] {
+        for id in ["cablereference", "cablecontinue", "cablecore", "cablefan", "renamepage", "movepage"] {
             assert_eq!(check(id, &none, false, None), Err(WRITES_OFF.into()), "{id} writes");
         }
         for (id, p) in [

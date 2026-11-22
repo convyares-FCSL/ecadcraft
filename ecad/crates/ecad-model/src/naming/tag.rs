@@ -177,12 +177,12 @@ pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
                 }
             }
             crate::Op::CreateCable { cable, .. } | crate::Op::DeleteCable { cable, .. } => {
-                if let Some(t) = cable.properties.get(TAG_KEY) {
+                if let Some(t) = cable.tag() {
                     note(high, t);
                 }
             }
             crate::Op::ModifyCable { before, after, .. } => {
-                for t in before.properties.get(TAG_KEY).into_iter().chain(after.properties.get(TAG_KEY)) {
+                for t in before.tag().into_iter().chain(after.tag()) {
                     note(high, t);
                 }
             }

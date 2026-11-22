@@ -599,9 +599,7 @@ mod fp1 {
     use ecad_model::naming::tag::{HighWater, TAG_RULE};
 
     fn cable(tag: &str) -> Cable {
-        let mut properties = ecad_model::document::doc::Properties::new();
-        properties.insert("tag".into(), tag.into());
-        Cable { properties, cores: Vec::new(), ..Default::default() }
+        Cable { tag: Some(ecad_model::naming::tag::Tag::new(tag).unwrap()), cores: Vec::new(), ..Default::default() }
     }
 
     /// Main creates `-W01` and `-W02` and saves; a branch forked there deletes `-W02`, then 20

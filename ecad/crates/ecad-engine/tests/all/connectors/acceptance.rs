@@ -1119,8 +1119,8 @@ fn r09_cross_references_between_the_halves() {
     let from_s = references.iter().find(|r| s(&r["source"]) == srep.hex()).unwrap_or_else(|| panic!("socket half reference: {v}"));
     assert_eq!(s(&from_s["target_page"]), n102, "{from_s}");
     // 025's style, as the project writes it (design 044 §7: `/102.C4`, or `102-C-4` per project).
-    let want = ecad_electrical::references::devices::Places::new(&d)
-        .text(c.p102, ecad_electrical::references::devices::anchor(&d, &d.representations[&prep]));
+    let want = ecad_electrical::references::devices::places::Places::new(&d)
+        .text(c.p102, ecad_electrical::references::devices::classify::anchor(&d, &d.representations[&prep]));
     assert_eq!(s(&from_s["text"]), want, "025's style: {from_s}");
     let from_p = references.iter().find(|r| s(&r["source"]) == prep.hex()).unwrap_or_else(|| panic!("plug half reference: {v}"));
     assert_eq!(s(&from_p["target_page"]), n101, "{from_p}");
@@ -1149,7 +1149,7 @@ fn r09_cross_references_between_the_halves() {
     let references = v["references"].as_array().cloned().unwrap_or_default();
     assert!(references.iter().any(|r| s(&r["source"]) == srep.hex() && s(&r["target_page"]) == n100), "{v}");
     // The kept index equals a rebuild (verify mode does this on every commit too).
-    let (kept, built) = c.h.cfg(|p| (p.reference().clone(), ecad_electrical::references::devices::RefIndex::build(p.ledger.document())));
+    let (kept, built) = c.h.cfg(|p| (p.reference().clone(), ecad_electrical::references::devices::index::RefIndex::build(p.ledger.document())));
     assert!(kept == built, "kept reference index differs from a rebuild");
 }
 

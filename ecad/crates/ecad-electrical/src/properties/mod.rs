@@ -20,7 +20,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::Word;
 use ecad_model::document::book::{Book, FUNCTION_KEY, LOCATION_KEY, NUMBER_KEY};
-use ecad_model::naming::keys::PropsExt;
 use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, PageId, Subject, WireId};
 
 use crate::cables::words::Row;
@@ -323,50 +322,50 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
 /// (`refgoto:<source>:<target>:<label>` buttons).
 fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
     use crate::references::devices;
-    let offered = devices::contacts_of(doc, c).map(|s| s.to_string()).unwrap_or_default();
-    rows.push(Row::rw(devices::CONTACTS_KEY, "Contacts offered", offered));
-    let dev = devices::device(doc, c);
+    let offered = devices::parse::contacts_of(doc, c).map(|s| s.to_string()).unwrap_or_default();
+    rows.push(Row::rw(devices::parse::CONTACTS_KEY, "Contacts offered", offered));
+    let dev = devices::classify::device(doc, c);
     if dev.head.is_some() {
         let project = doc.settings.contact_mirror.word();
         let default = format!("Project default ({project})");
-        let value = match devices::placement_of(doc, c) {
+        let value = match devices::parse::placement_of(doc, c) {
             (_, false) => default.clone(),
-            (devices::Placement::At(_), true) => "Moved".into(),
+            (devices::parse::Placement::At(_), true) => "Moved".into(),
             (p, true) => {
                 let w = p.word();
                 let mut ch = w.chars();
                 ch.next().map(|f| f.to_uppercase().chain(ch).collect()).unwrap_or_default()
             }
         };
-        let mut r = Row::rw(devices::MIRROR_KEY, "Contact table", value);
+        let mut r = Row::rw(devices::parse::MIRROR_KEY, "Contact table", value);
         r.choices = vec![default, "Auto".into(), "Below".into(), "Right".into(), "Off".into()];
         rows.push(r);
     }
     let Some(sym) = symbol else { return };
-    let mut places = devices::Places::new(doc);
+    let mut places = devices::places::Places::new(doc);
     if dev.head == Some(sym) {
-        let offer = devices::offer_of(doc, c);
-        let list = devices::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
+        let offer = devices::parse::offer_of(doc, c);
+        let list = devices::table::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
         let text: Vec<String> = list
             .iter()
             .map(|r| {
                 let state = match r.state {
-                    devices::State::Drawn => "",
-                    devices::State::Spare => " (spare)",
-                    devices::State::Over => " (beyond the part)",
+                    devices::table::State::Drawn => "",
+                    devices::table::State::Spare => " (spare)",
+                    devices::table::State::Over => " (beyond the part)",
                 };
                 format!("{} {} {}{state}", r.label_pair(), r.kind.upper(), r.place)
             })
             .collect();
         rows.push(Row::ro("contactrows", "Contacts", if text.is_empty() { "none drawn".into() } else { text.join("; ") }));
-        for r in list.iter().filter(|r| r.state != devices::State::Spare) {
+        for r in list.iter().filter(|r| r.state != devices::table::State::Spare) {
             if let Some(t) = r.rep {
                 buttons.push(format!("refgoto:{}:{}:Go to {}", sym.hex(), t.hex(), r.label_pair()));
             }
         }
     } else if dev.children.contains(&sym) {
         let value = match dev.head.and_then(|h| doc.representations.get(&h)) {
-            Some(h) => places.text(h.page, devices::anchor(doc, h)),
+            Some(h) => places.text(h.page, devices::classify::anchor(doc, h)),
             None => "not drawn".into(),
         };
         rows.push(Row::ro("coil", "Coil", value));
@@ -612,13 +611,15 @@ pub fn wire_section(doc: &Document, w: WireId) -> Section {
 pub fn cable_section(doc: &Document, k: CableId) -> Section {
     let cable = doc.cables.get(&k);
     let props = cable.map(|c| &c.properties);
-    let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.text(ecad_model::naming::keys::TAG)).unwrap_or_default().to_string())];
+    let mut rows = vec![Row::rw("tag", "Tag", cable.and_then(|c| c.tag()).unwrap_or_default().to_string())];
     // Brief 026: Fixed beside Tag.
-    rows.push(fixed_row(
-        props.and_then(|p| p.get(ecad_model::naming::tag::TAG_KEY)).map(String::as_str),
-        props.is_some_and(ecad_model::naming::numbering::is_fixed),
+    rows.push(fixed_row(cable.and_then(|c| c.tag()), cable.is_some_and(ecad_model::Cable::is_fixed)));
+    rows.push(Row::rw(
+        ecad_model::objects::devices::DESCRIPTION_KEY,
+        "Description",
+        cable.and_then(|c| c.description()).unwrap_or_default().to_string(),
     ));
-    rows.extend(free_rows(props, &["tag", ecad_model::naming::tag::FIXED_KEY, crate::terminal_strips::CORES_KEY]));
+    rows.extend(free_rows(props, &[crate::terminal_strips::CORES_KEY]));
     // Brief 028 (design 028 §7.2): Cores (its own, else read from the type, shown faint) and the
     // read-only Used / Spare with Show cores.
     let count = crate::terminal_strips::cores::cable_cores(doc, k).unwrap_or_default();

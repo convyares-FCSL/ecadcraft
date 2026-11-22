@@ -7,12 +7,12 @@
 //!   parallel wires share a pair of terminals and each pair is one net; `cables / pages` cables, cable `c`
 //!   taking every wire of pair `c` with core labels `1, 2, …` and a slash across them.
 //! - The first cable of each page except the last is continued on the next page as brief 010's
-//!   `cableref` and `cablecontinue` record it: a reference end on each page (an ordinary drawn
+//!   `cablereference` and `cablecontinue` record it: a reference end on each page (an ordinary drawn
 //!   representation of the cable with role [`ecad_model::Role::Reference`] and one Point item), one stub per
 //!   member on the next page (a route with free ends: cross-page wires form in lane F) and a
 //!   slash there.
 //! - Only existing ops are used, shaped as the commands record them (`place`, `wire`,
-//!   `cableslash`, `newpage`, `cableref`, `cablecontinue`, `move`, `undo`, `redo`; a page rename is
+//!   `cableslash`, `newpage`, `cablereference`, `cablecontinue`, `move`, `undo`, `redo`; a page rename is
 //!   recorded as a page removed and added again, the only way an existing op can rename one).
 //! - **Lean**: one transaction per object. **Churned**: the same final document, each object step
 //!   followed by an undo, a redo and an edit made and reverted (a move or a rename), so the log
@@ -492,7 +492,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             }
         }
 
-        // The previous page's first cable continues here (`cableref` there, `cablecontinue` here).
+        // The previous page's first cable continues here (`cablereference` there, `cablecontinue` here).
         if let Some((from_page, cable, members, at)) = previous.take() {
             let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
             let point = Item { page: from_page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at }) };

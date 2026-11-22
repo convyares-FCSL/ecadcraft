@@ -76,7 +76,7 @@ fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: 
     at.map(|(x, y)| id(&h.run("addconnectionpoint", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap(), "connection_point"))
 }
 
-/// Fixture R up to (not including) `cableref`. `attached`: wires start on K1's terminals (end A
+/// Fixture R up to (not including) `cablereference`. `attached`: wires start on K1's terminals (end A
 /// attached) or start in free space (both ends loose).
 fn fixture(seed: u64, attached: bool) -> R {
     let mut h = H::new(seed);
@@ -101,7 +101,7 @@ fn fixture(seed: u64, attached: bool) -> R {
 
 fn referenced(seed: u64) -> R {
     let mut r = fixture(seed, true);
-    r.h.run("cableref", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
+    r.h.run("cablereference", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
     r
 }
 
@@ -261,7 +261,7 @@ fn ac1_splitting_a_cable_keeps_its_id_members_conductors_and_nets() {
     ];
     for (row, attached, members, want) in rows {
         let mut r = fixture(SEED + 1, attached);
-        r.h.run("cableref", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
+        r.h.run("cablereference", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
         r.h.activate(r.field);
         let before = r.h.doc();
         let head = r.h.head();
@@ -581,7 +581,7 @@ fn ac4_save_close_reopen_and_replay_give_the_same_cable_drawings_and_references(
 // ---------------------------------------------------------------- AC5
 
 /// AC5: `cablegoto` never records, never prompts, opens a closed target page and selects the other
-/// end; it works on a read-only project, where `cableref`/`cablecontinue` are refused (R8).
+/// end; it works on a read-only project, where `cablereference`/`cablecontinue` are refused (R8).
 #[test]
 fn ac5_cablegoto_opens_a_closed_page_and_works_read_only() {
     let dir = TempDir::new("goto");
@@ -626,9 +626,9 @@ fn ac5_cablegoto_opens_a_closed_page_and_works_read_only() {
     // edits in memory only; never a crash, and never the file.
     let file = std::fs::read(&path).unwrap();
     let w = h.run("wire", json!({"points": [[0, 40], [60, 40]]})).is_ok();
-    let cr = h.run("cableref", json!({"cable": references[0].cable.hex(), "at": [80, 5]}));
+    let cr = h.run("cablereference", json!({"cable": references[0].cable.hex(), "at": [80, 5]}));
     if !w {
-        assert!(cr.is_err(), "cableref refused like wire on a read-only project: {cr:?}");
+        assert!(cr.is_err(), "cablereference refused like wire on a read-only project: {cr:?}");
     }
     assert!(h.run("qsave", Value::Null).is_err(), "Save refused read-only");
     assert_eq!(std::fs::read(&path).unwrap(), file, "the other session's file is untouched");
@@ -720,11 +720,11 @@ fn ac6_escape_and_undo_steps_of_the_interactive_forms_write_nothing() {
         r.h.check();
     }
     r.h.activate(r.supply);
-    r.h.s.start("cableref").unwrap();
+    r.h.s.start("cablereference").unwrap();
     click(&mut r.h, 30.0, 7.5);
     let _ = r.h.s.input(Input::Cancel);
     assert!(r.h.s.running.is_none());
-    assert_eq!(r.h.head(), head, "Esc in cableref writes nothing");
+    assert_eq!(r.h.head(), head, "Esc in cablereference writes nothing");
 }
 
 /// AC6: every JSON form, given hostile values in each parameter (and as a whole), either refuses
@@ -770,7 +770,7 @@ fn ac6_hostile_json_values_in_every_parameter_never_panic_or_prompt() {
         json!({"x": 1, "y": 2}),
     ];
     let bases: Vec<(&str, Value)> = vec![
-        ("cableref", json!({"cable": c1, "at": [80, 5]})),
+        ("cablereference", json!({"cable": c1, "at": [80, 5]})),
         ("cablecontinue", json!({"cable": c1, "at": [20, 50], "toward": [40, 50], "members": [r.w[0].hex()]})),
         ("cablegoto", json!({"reference": sref})),
         ("cablereferences", json!({"cable": c1})),
@@ -980,7 +980,7 @@ fn ac6_a_large_cable_continues_in_bounded_time() {
         wires.push(v["conductor"].as_str().unwrap().to_string());
     }
     let c: CableId = id(&h.run("cableadd", json!({"conductors": wires, "tag": "BIG"})).unwrap(), "cable");
-    h.run("cableref", json!({"cable": c.hex(), "at": [65, 5]})).unwrap();
+    h.run("cablereference", json!({"cable": c.hex(), "at": [65, 5]})).unwrap();
     let field: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(field);
     let started = Instant::now();

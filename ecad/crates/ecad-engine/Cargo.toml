@@ -15,7 +15,7 @@ workspace = true
 fault-injection = []
 # `ProjectHandle::apply_ops`, for tests that build objects no command makes yet (brief 010's
 # cable reference ends). Enabled only for tests, through the dev-dependencies below; never in a
-# release or the desktop app (brief 009 review S3). Delete once brief 010's `cableref` is merged.
+# release or the desktop app (brief 009 review S3). Delete once brief 010's `cablereference` is merged.
 test-ops = []
 # `test_support::ProjectBuilder` (brief 062): builds the small projects tests start from, with the same
 # commands a user runs. Enabled only for tests (this crate's own, through the dev-dependencies below);

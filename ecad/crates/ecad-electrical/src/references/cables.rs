@@ -39,7 +39,7 @@ pub const REFERENCE_ACI: u8 = 6;
 pub const ORPHAN_ACI: u8 = 1;
 /// `ecad.ref-stub-spacing` in millimetres: between continued stubs, and from a reference point to
 /// its text.
-pub const STUB_SPACING_MM: f64 = 5.0;
+pub(crate) const STUB_SPACING_MM: f64 = 5.0;
 /// `ecad.ref-size`: the overlay ring on a reference point, in screen pixels (stroke `ecad.bold`).
 pub const RING_PX: f32 = 12.0;
 /// `ecad.bold`, in screen pixels.
@@ -74,7 +74,7 @@ pub fn is_reference(r: &Representation) -> bool {
 }
 
 /// The reference representations of `cable`, in ID order.
-pub fn references_of(doc: &Document, cable: CableId) -> Vec<(RepresentationId, &Representation)> {
+pub(crate) fn references_of(doc: &Document, cable: CableId) -> Vec<(RepresentationId, &Representation)> {
     doc.representations_of(Subject::Cable(cable)).filter(|(_, r)| r.role == ecad_model::Role::Reference).collect()
 }
 
@@ -180,7 +180,7 @@ pub fn marker_text(doc: &Document, reference: RepresentationId) -> Option<(Strin
 ///
 /// Derives only the references of that end's cable (all a reference's text depends on), so a page
 /// with reference ends costs in proportion to their cables, not to the document (brief 014).
-pub fn marker_text_dir(doc: &Document, reference: RepresentationId) -> Option<(String, bool, Pt)> {
+pub(crate) fn marker_text_dir(doc: &Document, reference: RepresentationId) -> Option<(String, bool, Pt)> {
     let Some(Subject::Cable(cable)) = doc.representations.get(&reference).map(|r| r.subject) else { return None };
     cable_references_of(doc, &BTreeSet::from([cable])).into_iter().find(|r| r.reference == reference).map(|r| (r.text, r.orphan, r.text_dir))
 }
@@ -245,47 +245,47 @@ pub fn page_number_words(doc: &Document, page: PageId) -> String {
 }
 
 /// `Cable C1` in messages: its tag, else `8a3f19c0…`.
-pub fn cable_words(doc: &Document, cable: CableId) -> String {
+pub(crate) fn cable_words(doc: &Document, cable: CableId) -> String {
     format!("Cable {}", crate::cables::cable_title(doc, cable))
 }
 
 // ---------------------------------------------------------------- refusals (design 010 §4.4)
 
 /// R1.
-pub fn already_here(doc: &Document, cable: CableId) -> String {
+pub(crate) fn already_here(doc: &Document, cable: CableId) -> String {
     format!("{} already has a reference on this page.", cable_words(doc, cable))
 }
 /// R2.
-pub fn already_continues(doc: &Document, cable: CableId) -> String {
+pub(crate) fn already_continues(doc: &Document, cable: CableId) -> String {
     format!("{} already continues to another page; a cable can have only two references in this version.", cable_words(doc, cable))
 }
 /// R3.
-pub fn no_wires_here(doc: &Document, cable: CableId) -> String {
+pub(crate) fn no_wires_here(doc: &Document, cable: CableId) -> String {
     format!("{} has no wires drawn on this page; draw or continue it here first.", cable_words(doc, cable))
 }
 /// R4.
-pub fn no_reference(doc: &Document, cable: CableId) -> String {
+pub(crate) fn no_reference(doc: &Document, cable: CableId) -> String {
     format!("{} has no reference to continue from; place one with Cable Reference on its page first.", cable_words(doc, cable))
 }
 /// R5.
-pub fn drawn_here(doc: &Document, cable: CableId) -> String {
+pub(crate) fn drawn_here(doc: &Document, cable: CableId) -> String {
     format!("{} is already drawn on this page; continue it on another page.", cable_words(doc, cable))
 }
 /// R6.
-pub fn none_can_continue(doc: &Document, cable: CableId) -> String {
+pub(crate) fn none_can_continue(doc: &Document, cable: CableId) -> String {
     format!(
         "None of cable {}'s wires can continue: each is connected at both ends or already drawn on this page.",
         crate::cables::cable_title(doc, cable)
     )
 }
 /// R9.
-pub fn too_many_members() -> String {
+pub(crate) fn too_many_members() -> String {
     format!("`members` lists more than {} wires", crate::cables::slash::MAX_CABLE_MEMBERS)
 }
 /// `toward` too close to `at`.
-pub const TOWARD_EQUAL: &str = "`toward` must differ from `at`";
+pub(crate) const TOWARD_EQUAL: &str = "`toward` must differ from `at`";
 
-/// The checks `cableref` makes before placing a reference for `cable` on `page` (R1 to R3).
+/// The checks `cablereference` makes before placing a reference for `cable` on `page` (R1 to R3).
 ///
 /// # Errors
 /// `no such cable`, or the refusal's words.
@@ -473,7 +473,7 @@ pub fn plan_continue(
 }
 
 /// The lines echoed after `cablecontinue` (design 010 §4.3).
-pub fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: RepresentationId) -> Vec<String> {
+pub(crate) fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: RepresentationId) -> Vec<String> {
     let references = cable_references(doc);
     let here = references.iter().find(|r| r.reference == this);
     let there = references.iter().find(|r| r.reference == plan.source);
@@ -537,10 +537,10 @@ pub fn linked(doc: &Document) -> BTreeSet<RepresentationId> {
 const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
     &[ecad_model::StyleCatalogue::Text, ecad_model::StyleCatalogue::Wire, ecad_model::StyleCatalogue::Location];
 
-/// The cables whose references, or whose drawing at a reference end on any page, `ops` could
-/// change; `None` when that could be any cable (op kinds a drawing edit does not produce, such as
-/// layer, standard, frame style or settings ops), which means the whole document, as before
-/// brief 014. Worked out on the document before the ops.
+/// Adds to `out` the cables whose references, or whose drawing at a reference end on any page, one
+/// effect could change, looked up in `doc` before the transaction; `false` when it could reach any
+/// cable (op kinds a drawing edit does not produce, such as layer, standard, frame style or
+/// settings ops).
 ///
 /// # Semantics
 /// What a reference says, and how a cable is drawn at its reference ends, depends only on: the
@@ -549,39 +549,10 @@ const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
 /// and the page order and length unit. So a cable is touched when an op changes or removes an item
 /// of a representation of the cable or of one of its members, links, changes or unlinks such a
 /// representation, adds, changes or removes a line of a member or one landing on the cable's named
-/// points, or attaches or detaches a member's end. New items, components, terminals,
+/// points, or attaches or detaches a member's end. New items, components, connection points,
 /// definitions and conductors are not shown or not members yet, so they touch nothing.
-pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
-    let effects = ecad_model::document::effect::Effects::of(ops);
-    let mut out = BTreeSet::new();
-    // The cables on the pages whose book position changes: the book before against the book of
-    // the state after (the ops applied to a copy; an op that does not apply reaches any cable).
-    if ecad_model::document::book::moves_pages_by(&effects) {
-        let mut positions = ecad_model::document::book::PositionsNoted::default();
-        for e in &effects {
-            positions.note_before(doc, e);
-        }
-        let mut after = doc.clone();
-        for op in ops {
-            if op.apply(&mut after).is_err() {
-                return None;
-            }
-        }
-        for p in positions.changed(&after) {
-            out.extend(cables_on(doc, p).chain(cables_on(&after, p)));
-        }
-    }
-    for e in &effects {
-        if !cables_touched_by(doc, e, &mut out) {
-            return None;
-        }
-    }
-    Some(out)
-}
-
-/// One effect of [`cables_touched`]: adds to `out` the cables `effect` reaches, looked up in `doc`
-/// before the transaction; `false` when it could reach any cable. The cables of the pages
-/// whose book position changes are not added here: `crate::references::devices::Watch` adds them after the
+/// The cables of the pages
+/// whose book position changes are not added here: `crate::references::devices::watch::Watch` adds them after the
 /// commit, comparing the book before with the book after.
 pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>, out: &mut BTreeSet<CableId>) -> bool {
     use ecad_model::ObjectRef;
@@ -633,12 +604,12 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         // conductor's cables only, never every cable.
         Effect::Wire { id, .. } | Effect::Prop { object: ObjectRef::Wire(id), .. } => out.extend(doc.cables_of(*id)),
         Effect::Device { id, before: None, .. } if !doc.devices.contains_key(id) => {}
-        // Brief 053: a deleted component has no terminals and no representations left (the
+        // Brief 053: a deleted component has no connection points and no representations left (the
         // model's invariants I8 and I10); removing those is its own effect, so the record itself
         // reaches no reference.
         Effect::Device { after: None, .. } => {}
         Effect::ConnectionPoint { id, before: None, .. } if !doc.connection_points.contains_key(id) => {}
-        // Brief 028: a relabelled terminal reaches only the cables of the wires on it.
+        // Brief 028: a relabelled connection point reaches only the cables of the wires on it.
         Effect::ConnectionPoint { id, .. } => out.extend(doc.ends_at(*id).into_iter().flat_map(|(w, _)| doc.cables_of(w))),
         Effect::Definition { id, before: None, .. } if !doc.definitions.contains_key(id) => {}
         // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
@@ -773,7 +744,7 @@ impl Snapshot {
     /// means every page: a whole-document snapshot with any reference before or after (as before
     /// brief 014). Otherwise, the pages of the references of each covered cable whose references
     /// or member state changed.
-    pub fn pages_changed(&self, after: &Snapshot) -> Option<BTreeSet<PageId>> {
+    pub(crate) fn pages_changed(&self, after: &Snapshot) -> Option<BTreeSet<PageId>> {
         let Some(scope) = &self.scope else {
             if self.references.is_empty() && after.references.is_empty() {
                 return Some(BTreeSet::new());
@@ -842,7 +813,7 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
     Some(lines)
 }
 
-/// `K2:1`: the terminal among `shown` (those on the other end's page) a conductor attaches to.
+/// `K2:1`: the connection point among `shown` (those on the other end's page) a conductor attaches to.
 fn connection_point_on(doc: &Document, shown: &BTreeSet<ecad_model::ConnectionPointId>, c: &ecad_model::Wire) -> Option<String> {
     let t = End::BOTH.into_iter().map(|e| c.end(e)).find(|t| shown.contains(t))?;
     // Brief 044: a connector pin is named by its half (`-X10.S:3`).
@@ -881,7 +852,7 @@ pub fn diagnostics(doc: &Document) -> Vec<String> {
 // ---------------------------------------------------------------- a cable shown on another page
 
 /// The cable whose tag is `typed` (normalised as tags are), if any.
-pub fn cable_tagged(doc: &Document, typed: &str) -> Option<CableId> {
+pub(crate) fn cable_tagged(doc: &Document, typed: &str) -> Option<CableId> {
     let t = ecad_model::naming::tag::normalise(typed, crate::devices::padding(doc)).ok()?;
     doc.cables_tagged(&t).into_iter().next()
 }
@@ -947,7 +918,7 @@ pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed
 }
 
 /// Refused: a slash with `tag` on a page where none of the cable's wires runs (F5).
-pub fn no_wire_here(tag: &str) -> String {
+pub(crate) fn no_wire_here(tag: &str) -> String {
     format!(
         "{tag} has no wire on this page: a slash with its tag shows it where its wires run. Continue it here with Continue cable, or slash these wires with a new tag."
     )
@@ -1044,7 +1015,7 @@ pub fn references_json(doc: &Document, references: &[CableReference]) -> Value {
                 json!({
                     "reference": r.reference.hex(),
                     "cable": r.cable.hex(),
-                    "cable_tag": doc.cables.get(&r.cable).and_then(|c| c.properties.get("tag")),
+                    "cable_tag": doc.cables.get(&r.cable).and_then(|c| c.tag()),
                     "page": r.page.hex(),
                     "page_number": r.page_number,
                     "page_title": doc.pages.get(&r.page).map(|p| p.title.to_string()).unwrap_or_default(),

@@ -35,7 +35,7 @@ fn ops_that_read_no_reference_touch_no_cable() {
     use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
     use ecad_model::{CableId, Device, DeviceId, Op};
     let doc = ecad_model::Document::default();
-    let touched = |ops: Vec<Op>| ecad_electrical::references::cables::cables_touched(&doc, &ops);
+    let touched = |ops: Vec<Op>| crate::common::cables_touched(&doc, &ops);
     let style = |catalogue: ecad_model::StyleCatalogue| Op::SetStyle {
         layer: StyleLayer::Project,
         catalogue,
@@ -68,7 +68,7 @@ fn paired_cable(seed: u64) -> (H, ecad_model::CableId, ecad_model::PageId, ecad_
         h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
     }
     let c1: ecad_model::CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
-    h.run("cableref", json!({"cable": c1.hex(), "at": [65, 5]})).unwrap();
+    h.run("cablereference", json!({"cable": c1.hex(), "at": [65, 5]})).unwrap();
     let field: ecad_model::PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(field);
     h.reference_end(c1, field, (20.0, 5.0));
@@ -93,7 +93,7 @@ fn a_standard_change_retraces_every_cable_reference() {
     let ops = h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
     assert!(ops.iter().any(|op| matches!(op, ecad_model::Op::SetStandard { .. })), "the commit set the standard: {ops:?}");
     let doc = h.doc();
-    assert_eq!(ecad_electrical::references::cables::cables_touched(&doc, &ops), None, "a standard re-traces every cable");
+    assert_eq!(crate::common::cables_touched(&doc, &ops), None, "a standard re-traces every cable");
     let shown: Vec<_> = ecad_electrical::references::cables::markers_on_page(&doc, supply).into_iter().map(|m| m.text).collect();
     let fresh = zone(&doc);
     assert_eq!(shown, fresh.iter().map(|z| z.4.clone()).collect::<Vec<_>>(), "the page shows the fresh zone");

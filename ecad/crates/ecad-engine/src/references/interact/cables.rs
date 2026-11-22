@@ -3,7 +3,6 @@
 //! resolve values; each commit runs the command's JSON form (design 008 §2 rule 3), so the
 //! interactive and JSON forms record identical transactions.
 
-use ecad_model::naming::keys::PropsExt;
 use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::{Entity, EntityKind, Handle};
@@ -77,8 +76,8 @@ fn next_text(doc: &Document, cable: CableId) -> (String, bool) {
 
 // ---------------------------------------------------------------- Cable Reference (§4.1)
 
-/// `cableref`: pick a cable (or take the selected one), then click where it leaves this page.
-pub(crate) fn cableref(s: &Session) -> R<Box<dyn Interactive>> {
+/// `cablereference`: pick a cable (or take the selected one), then click where it leaves this page.
+pub(crate) fn cablereference(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     Ok(Box::new(Safe(CableRef::default())))
 }
@@ -96,7 +95,7 @@ impl CableRef {
     }
 
     fn place(&mut self, s: &mut Session, k: CableId, at: Pt) -> R<Step> {
-        let r = commit(s, "cableref", &json!({"cable": k.hex(), "at": [at.x, at.y]}))?;
+        let r = commit(s, "cablereference", &json!({"cable": k.hex(), "at": [at.x, at.y]}))?;
         let orphan = r.get("orphan").and_then(Value::as_bool).unwrap_or(true);
         let line = read(s, |p, page| {
             let doc = p.ledger.document();
@@ -146,7 +145,7 @@ impl Interactive for CableRef {
     }
     /// Step 0: one selected cable goes straight to the reference point.
     fn begin(&mut self, s: &mut Session) -> R<Step> {
-        safely(s, "cableref", |s| {
+        safely(s, "cablereference", |s| {
             self.asked = true;
             match selected_cables(s).as_slice() {
                 [] => {}
@@ -171,7 +170,7 @@ impl Interactive for CableRef {
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
         paper_guard(s, &i)?;
-        safely(s, "cableref", |s| self.step(s, i))
+        safely(s, "cablereference", |s| self.step(s, i))
     }
     /// Step 2: the ring at the cursor and the text the reference will show.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
@@ -230,12 +229,7 @@ const MAX_LISTED: usize = 20;
 /// or a leading hex prefix of at least 8 digits naming one cable.
 fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, String> {
     let t = typed.trim();
-    let tagged: Vec<CableId> = doc
-        .cables
-        .iter()
-        .filter(|(_, c)| c.properties.text(ecad_model::naming::keys::TAG).is_some_and(|x| x.eq_ignore_ascii_case(t)))
-        .map(|(k, _)| *k)
-        .collect();
+    let tagged: Vec<CableId> = doc.cables.iter().filter(|(_, c)| c.tag().is_some_and(|x| x.eq_ignore_ascii_case(t))).map(|(k, _)| *k).collect();
     let found = if tagged.is_empty() && t.len() >= 8 && t.chars().all(|c| c.is_ascii_hexdigit()) {
         let lower = t.to_ascii_lowercase();
         doc.cables.keys().copied().filter(|k| k.hex().starts_with(&lower)).collect()

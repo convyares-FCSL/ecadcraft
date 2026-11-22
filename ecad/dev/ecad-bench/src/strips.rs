@@ -182,7 +182,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 let mut cable = ecad_model::Cable::default();
                 cable.properties.insert("type".into(), "YSLY-JZ 7G1.5".into());
                 serial += 1;
-                cable.properties.insert("tag".into(), format!("-W9{serial:04}"));
+                cable.tag = ecad_model::naming::tag::Tag::new(&format!("-W9{serial:04}")).ok();
                 cable.cores = two
                     .iter()
                     .map(|(route, landed)| Core { position: CorePosition::Route { route: *route, landed: Some(*landed) }, ..Core::unplaced(None) })

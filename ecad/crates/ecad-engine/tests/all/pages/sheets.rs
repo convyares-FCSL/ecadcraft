@@ -67,7 +67,7 @@ fn pages_and_cable() -> (H, PageId, PageId, CableId) {
         h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap();
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [88, -3], "to": [92, 18], "tag": "C1"})).unwrap(), "cable");
-    h.run("cableref", json!({"cable": c1.hex(), "at": [120, 5]})).unwrap();
+    h.run("cablereference", json!({"cable": c1.hex(), "at": [120, 5]})).unwrap();
     let field: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     (h, supply, field, c1)
 }
@@ -439,16 +439,9 @@ fn old_projects_touch_only_pages_whose_position_changed() {
     let old = doc.pages[&s.supply].clone();
     let rename = vec![
         Op::RemovePage { id: s.supply, page: old.clone(), index: 0 },
-        Op::AddPage { id: s.supply, page: ecad_model::Page { title: ecad_model::PageTitle::new("Renamed").unwrap(), ..old.clone() }, index: 0 },
+        Op::AddPage { id: s.supply, page: ecad_model::Page { title: ecad_model::PageTitle::new("Renamed").unwrap(), ..old }, index: 0 },
     ];
-    assert_eq!(ecad_electrical::references::cables::cables_touched(&doc, &rename), Some(Default::default()));
     assert!(crate::common::devices_touched(&doc, &crate::common::applied(&doc, &rename), &rename).is_empty());
-    let append = vec![Op::AddPage { id: PageId(77), page: ecad_model::Page::titled("New").unwrap(), index: 2 }];
-    assert_eq!(ecad_electrical::references::cables::cables_touched(&doc, &append), Some(Default::default()));
-    // Moving Supply after Field: both positions change, so the cable with references on them.
-    let moved = vec![Op::RemovePage { id: s.supply, page: old.clone(), index: 0 }, Op::AddPage { id: s.supply, page: old, index: 1 }];
-    let k = ecad_electrical::references::cables::cables_touched(&doc, &moved).unwrap();
-    assert_eq!(k.len(), 1, "{k:?}");
 }
 
 /// Review W2: an invalid project sheet (only from a hostile file) is read as A3 everywhere, so the

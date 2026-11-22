@@ -25,7 +25,7 @@ fn table_named(p: &Project, m: Mapped) -> Option<DeviceId> {
         _ => return None,
     };
     let Subject::Device(c) = doc.representations.get(&rep)?.subject else { return None };
-    (ecad_electrical::references::devices::device(doc, c).head == Some(rep)).then_some(c)
+    (ecad_electrical::references::devices::classify::device(doc, c).head == Some(rep)).then_some(c)
 }
 
 /// The reference source and target a mapped object names for Go to Reference (design 025
@@ -41,11 +41,11 @@ pub(crate) fn device_source(p: &Project, map: &crate::project::HandleMap, h: Han
     };
     let (_, class) = p.reference().member(rep)?;
     let target = match (m, class) {
-        (Mapped::DeviceReference(_), ecad_electrical::references::devices::Class::Head) => {
+        (Mapped::DeviceReference(_), ecad_electrical::references::devices::classify::Class::Head) => {
             let (_, i) = map.device_reference_part(h)?;
             let Subject::Device(c) = doc.representations.get(&rep)?.subject else { return None };
-            let dev = ecad_electrical::references::devices::device(doc, c);
-            let mut places = ecad_electrical::references::devices::Places::new(doc);
+            let dev = ecad_electrical::references::devices::classify::device(doc, c);
+            let mut places = ecad_electrical::references::devices::places::Places::new(doc);
             let t = crate::references::draw::devices::table(doc, &mut places, &dev)?;
             let row = t.parts.get(usize::try_from(i).ok()?)?.row;
             row.and_then(|r| t.rows.get(r)).and_then(|r| r.rep)
@@ -155,17 +155,17 @@ impl Interactive for MirrorMove {
         }
         read(s, |p, _| {
             let doc = p.ledger.document();
-            let dev = ecad_electrical::references::devices::device(doc, c);
+            let dev = ecad_electrical::references::devices::classify::device(doc, c);
             let Some(head) = dev.head else { return Ok(Vec::new()) };
-            let mut places = ecad_electrical::references::devices::Places::new(doc);
-            let offer = ecad_electrical::references::devices::offer_of(doc, c);
-            let rows = ecad_electrical::references::devices::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
-            let parts = ecad_electrical::references::devices::table_parts(doc, head, pt(cursor), &rows);
+            let mut places = ecad_electrical::references::devices::places::Places::new(doc);
+            let offer = ecad_electrical::references::devices::parse::offer_of(doc, c);
+            let rows = ecad_electrical::references::devices::table::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
+            let parts = ecad_electrical::references::devices::table::table_parts(doc, head, pt(cursor), &rows);
             Ok(parts
                 .iter()
                 .filter_map(|part| match &part.shape {
-                    ecad_electrical::references::devices::Shape::Line(a, b) => Some(line_kind(*a, *b)),
-                    ecad_electrical::references::devices::Shape::Text { .. } => None,
+                    ecad_electrical::references::devices::table::Shape::Line(a, b) => Some(line_kind(*a, *b)),
+                    ecad_electrical::references::devices::table::Shape::Text { .. } => None,
                 })
                 .collect())
         })

@@ -153,13 +153,7 @@ impl PositionsNoted {
     }
 }
 
-/// Whether `effects` can change book order at all: a page added, removed or moved, a page's folder
-/// changed, a folder effect.
-pub fn moves_pages_by(effects: &crate::document::effect::Effects<'_>) -> bool {
-    effects.iter().any(moves_pages_by_one)
-}
-
-/// Whether one effect can move a page in the book (one effect of [`moves_pages_by`]).
+/// Whether one effect can move a page in the book .
 pub fn moves_pages_by_one(e: &crate::document::effect::Effect<'_>) -> bool {
     use crate::document::effect::Effect;
     match e {

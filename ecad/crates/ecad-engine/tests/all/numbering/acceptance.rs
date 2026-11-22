@@ -58,7 +58,7 @@ fn assert_unique(h: &mut H, step: &str) -> BTreeMap<String, ObjectRef> {
         .devices
         .iter()
         .filter_map(|(c, x)| x.properties.get("tag").map(|t| (t.clone(), ObjectRef::Device(*c))))
-        .chain(doc.cables.iter().filter_map(|(k, x)| x.properties.get("tag").map(|t| (t.clone(), ObjectRef::Cable(*k)))));
+        .chain(doc.cables.iter().filter_map(|(k, x)| x.tag().map(|t| (t.to_string(), ObjectRef::Cable(*k)))));
     for (t, o) in all {
         if let Some(prev) = seen.insert(tag::key(&t), o) {
             panic!("{step}: duplicate tag {t} on {o:?} and {prev:?}");
@@ -431,7 +431,7 @@ fn finalise_follows_the_mark_and_leaves_nothing_provisional() {
         h.run("wire", json!({"points": [[3000, y], [3060, y]], "potential": "24V"})).unwrap();
     }
     let w: CableId = id(&h.run("cableslash", json!({"from": [3020, -3], "to": [3020, 13]})).unwrap(), "cable");
-    let cable_tag = |h: &mut H| h.doc().cables[&w].properties.get("tag").cloned();
+    let cable_tag = |h: &mut H| h.doc().cables[&w].tag().map(str::to_string);
     assert_eq!(cable_tag(&mut h).as_deref(), Some("-W?1"));
     assert!(!provisional_left(&mut h).is_empty());
     let r = h.run("finalise", json!({})).unwrap();
@@ -591,7 +591,7 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
             .map(|(k, t)| {
                 let before = doc.cables[k].clone();
                 let mut after = before.clone();
-                after.properties.insert("tag".into(), (*t).into());
+                after.tag = ecad_model::naming::tag::Tag::new(t).ok();
                 Op::ModifyCable { id: *k, before, after }
             })
             .collect();
@@ -609,7 +609,7 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
     let head = h2.head();
     assert_eq!(h2.doc(), live, "no silent retagging at open");
     for (k, t) in old {
-        assert_eq!(h2.doc().cables[&k].properties.get("tag").map(String::as_str), Some(t));
+        assert_eq!(h2.doc().cables[&k].tag(), Some(t));
     }
     let kinds = h2.p(|p| ecad_engine::checks::all(p.ledger.document(), p.tolerance).iter().map(|r| r.kind.name().to_string()).collect::<Vec<_>>());
     assert!(kinds.iter().any(|k| k == "duplicate-tag"), "{kinds:?}");
@@ -624,11 +624,11 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
     // A new cable continues after every W tag the history held.
     h2.run("wire", json!({"points": [[0, 100], [60, 100]]})).unwrap();
     let k4: CableId = id(&h2.run("cableslash", json!({"from": [20, 97], "to": [20, 103]})).unwrap(), "cable");
-    let t4 = h2.doc().cables[&k4].properties.get("tag").cloned().unwrap_or_default();
+    let t4 = h2.doc().cables[&k4].tag().map(str::to_string).unwrap_or_default();
     assert_eq!(t4, "-W04", "-W01…-W03 were given before the old tags were typed");
     let doc = h2.doc();
     let mut seen = BTreeSet::new();
-    for t in doc.devices.values().filter_map(|c| c.tag()).chain(doc.cables.values().filter_map(|c| c.properties.get("tag").map(String::as_str))) {
+    for t in doc.devices.values().filter_map(|c| c.tag()).chain(doc.cables.values().filter_map(|c| c.tag())) {
         if t != "W0" {
             assert!(seen.insert(tag::key(t)), "duplicate {t}");
         }

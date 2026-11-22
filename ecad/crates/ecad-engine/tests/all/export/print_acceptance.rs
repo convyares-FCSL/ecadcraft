@@ -265,12 +265,12 @@ fn coil_low(seed: u64, at: (f64, f64)) -> (H, PageId, DeviceId) {
 /// The table's drawn parts on `page`: (min x, min y, max x, max y).
 fn table_box(h: &mut H, page: PageId, coil: DeviceId) -> (f64, f64, f64, f64) {
     let doc = h.doc();
-    let head = ecad_electrical::references::devices::device(&doc, coil).head.unwrap();
+    let head = ecad_electrical::references::devices::classify::device(&doc, coil).head.unwrap();
     let mut b = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
     for part in ecad_engine::references::draw::devices::parts_on_page(&doc, page).into_iter().filter(|p| p.rep == head) {
         let ps = match part.shape {
-            ecad_electrical::references::devices::Shape::Line(a, c) => vec![a, c],
-            ecad_electrical::references::devices::Shape::Text { at, .. } => vec![at],
+            ecad_electrical::references::devices::table::Shape::Line(a, c) => vec![a, c],
+            ecad_electrical::references::devices::table::Shape::Text { at, .. } => vec![at],
         };
         for p in ps {
             b = (b.0.min(p.x), b.1.min(p.y), b.2.max(p.x), b.3.max(p.y));
@@ -309,8 +309,8 @@ fn ac5_an_automatic_table_clears_the_title_block() {
     let top = h.p(|p| {
         ecad_engine::references::draw::devices::table(
             p.ledger.document(),
-            &mut ecad_electrical::references::devices::Places::new(p.ledger.document()),
-            &ecad_electrical::references::devices::device(p.ledger.document(), k1),
+            &mut ecad_electrical::references::devices::places::Places::new(p.ledger.document()),
+            &ecad_electrical::references::devices::classify::device(p.ledger.document(), k1),
         )
         .map(|t| t.top)
     });

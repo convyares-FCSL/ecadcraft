@@ -28,7 +28,7 @@ fn project(dir: &TempDir) -> (Client, String) {
     for l in ["1", "2", "3"] {
         c.exec("setprop", json!({"cable": cable["cable"], "key": format!("unused.{l}"), "value": "yes"}));
     }
-    c.exec("cableref", json!({"cable": cable["cable"], "at": [120, 5]}));
+    c.exec("cablereference", json!({"cable": cable["cable"], "at": [120, 5]}));
     c.exec("projectprops", json!({"drawing_number": "D-1001"}));
     c.exec("revision", json!({"description": "First issue", "drawn": "CVA"}));
     c.exec("issuerevision", json!({}));

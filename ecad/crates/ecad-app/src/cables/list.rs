@@ -18,21 +18,21 @@ use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, Ta
 use crate::reports::report::{From, ReportColumns, ReportRows};
 
 pub const CABLE: ColumnId = ColumnId(0);
-pub const TYPE: ColumnId = ColumnId(1);
+pub(crate) const TYPE: ColumnId = ColumnId(1);
 pub const CORES: ColumnId = ColumnId(2);
-pub const LENGTH: ColumnId = ColumnId(3);
+pub(crate) const LENGTH: ColumnId = ColumnId(3);
 pub const FROM: ColumnId = ColumnId(4);
 pub const TO: ColumnId = ColumnId(5);
-pub const GLANDS: ColumnId = ColumnId(6);
-pub const USED: ColumnId = ColumnId(7);
-pub const CHECKS: ColumnId = ColumnId(8);
+pub(crate) const GLANDS: ColumnId = ColumnId(6);
+pub(crate) const USED: ColumnId = ColumnId(7);
+pub(crate) const CHECKS: ColumnId = ColumnId(8);
 
 /// The details pane's split handle (accessible name) and where its size is remembered.
 pub const SPLIT: &str = "ecad.lists.cables.split";
 const SPLIT_KEY: &str = "ecad.lists.cables.details_split";
 
 /// The two views of the selected cable (board 2.06).
-pub const VIEWS: [&str; 2] = ["Cable view", "Cores only"];
+pub(crate) const VIEWS: [&str; 2] = ["Cable view", "Cores only"];
 
 pub fn columns() -> Vec<Column> {
     vec![
@@ -182,14 +182,14 @@ impl TableSource for CablesSource {
 
 pub const CORE: ColumnId = ColumnId(0);
 pub const COLOUR: ColumnId = ColumnId(1);
-pub const CABINET: ColumnId = ColumnId(2);
+pub(crate) const CABINET: ColumnId = ColumnId(2);
 pub const WIRE: ColumnId = ColumnId(3);
 pub const FIELD: ColumnId = ColumnId(4);
 pub const STATUS: ColumnId = ColumnId(5);
 /// Brief 057 (board 2.06): the core size, the wire beyond the field end, and the Not used tick.
 pub const SIZE: ColumnId = ColumnId(6);
-pub const FIELD_WIRE: ColumnId = ColumnId(7);
-pub const UNUSED: ColumnId = ColumnId(8);
+pub(crate) const FIELD_WIRE: ColumnId = ColumnId(7);
+pub(crate) const UNUSED: ColumnId = ColumnId(8);
 /// The Not used tick: a plain toggle in the core table (the column's header names it), the
 /// shared `Cell::Toggle`; its accessible name.
 pub const NOT_USED_TOGGLE: &str = "Toggle";
@@ -419,7 +419,7 @@ impl CablesView {
 
     /// Brief 057: bring the rating copy up to date and patch the Checks cells of the re-checked
     /// cables only.
-    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::Kept) {
+    pub(crate) fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::Kept) {
         match self.source.rating.sync(serial, kept) {
             None => self.table.update(&self.source, Changed::All),
             Some(v) if v.is_empty() => {}
@@ -441,7 +441,7 @@ impl CablesView {
     /// Brief 057: the selected cable's core colours, size, ticks and far-side wires, and each
     /// cable's open cores; read again only when the selection or the project changed (as the
     /// cable copy itself is).
-    pub fn sync_colours(&mut self, doc: &ecad_model::Document, count: u64) {
+    pub(crate) fn sync_colours(&mut self, doc: &ecad_model::Document, count: u64) {
         use ecad_electrical::styles::cable;
         let selected = self.selected().and_then(|k| self.ids.get(k).copied());
         let want = selected.map(|c| (c, count, self.cores_of));
@@ -490,7 +490,7 @@ impl CablesView {
 
     /// Brief 059 (board 2.06): the selected cable's Checks rows (the kept list's rows about it),
     /// read again only when the selection or the project's change count changed.
-    pub fn sync_checks(&mut self, p: &mut ecad_engine::project::Project, count: u64) {
+    pub(crate) fn sync_checks(&mut self, p: &mut ecad_engine::project::Project, count: u64) {
         let selected = self.selected().and_then(|k| self.ids.get(k).copied());
         let want = selected.map(|k| (k, count));
         if want == self.checks_of {
@@ -571,7 +571,7 @@ impl CablesView {
     }
 
     /// The cable table. Returns where to go. A double-click opens the details (brief 057, owner).
-    pub fn show_cables(&mut self, ui: &mut eframe::egui::Ui) -> Option<(ecad_model::PageId, ecad_model::Pt)> {
+    pub(crate) fn show_cables(&mut self, ui: &mut eframe::egui::Ui) -> Option<(ecad_model::PageId, ecad_model::Pt)> {
         let mut go = None;
         for e in self.table.show(ui, &self.source) {
             match e {
@@ -601,7 +601,7 @@ impl CablesView {
 
 /// The Cables tab (board 2.06): the cable table, the selected cable's line and its drawing, then
 /// its cores. Returns where to go.
-pub fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_model::PageId, ecad_model::Pt)> {
+pub(crate) fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_model::PageId, ecad_model::Pt)> {
     use ecad_widgets::tokens::{size, space, ui_type};
     use eframe::egui::{self, vec2};
     let s = ecad_widgets::SHELL;
@@ -672,7 +672,7 @@ pub fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_m
 }
 
 /// Brief 059: a cable not drawn as + Cable's menu lists it: `-W03  H07RN-F 4G1.5 · +CAB1 → +FIELD`.
-pub fn undrawn_line(r: &ecad_electrical::reports::CableRow) -> String {
+pub(crate) fn undrawn_line(r: &ecad_electrical::reports::CableRow) -> String {
     let dash = crate::reports::report::DASH;
     let ends = format!("{} \u{2192} {}", r.planned[0].as_deref().unwrap_or(dash), r.planned[1].as_deref().unwrap_or(dash));
     let tag = r.tag.clone().unwrap_or_default();

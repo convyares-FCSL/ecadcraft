@@ -131,7 +131,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
         }
         let slashed = run(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CCONT_TAG}))?;
         let cable = slashed["cable"].clone();
-        run(&mut s, "cableref", json!({"cable": cable, "at": [X0 + 100.0, y(CORES)]}))?;
+        run(&mut s, "cablereference", json!({"cable": cable, "at": [X0 + 100.0, y(CORES)]}))?;
         let second: PageId = crate_hex(&run(&mut s, "newpage", json!({"title": "bench 032 b"}))?, "page")?;
         run(&mut s, "openpage", json!({"page": second.hex()}))?;
         let mut ccont = Vec::new();

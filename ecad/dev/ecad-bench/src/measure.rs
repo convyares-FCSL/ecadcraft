@@ -877,8 +877,8 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
         step(ledger, b, "nc", (x + 10.0, 60.0), Target::Join(c))?;
         if i % 2 == 0 {
             let before = ledger.document().devices.get(&c).cloned().ok_or("the bench coil is missing")?;
-            let after =
-                ecad_electrical::references::devices::with_contacts(&before, "the bench coil", Some("3P+1NO+1NC")).map_err(|e| e.to_string())?;
+            let after = ecad_electrical::references::devices::parse::with_contacts(&before, "the bench coil", Some("3P+1NO+1NC"))
+                .map_err(|e| e.to_string())?;
             let op = Op::ModifyDevice { id: c, before, after };
             ledger.commit(Author::User, "Bench coils", vec![op]).map_err(|e| e.to_string())?;
         }

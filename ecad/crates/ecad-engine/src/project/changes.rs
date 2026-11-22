@@ -33,7 +33,7 @@ impl Project {
 
     /// The general reference index (brief 025, design 025 §3.3), kept by the views' pipeline
     /// (`ecad_electrical::views::ReferencesView`).
-    pub fn reference(&self) -> &ecad_electrical::references::devices::RefIndex {
+    pub fn reference(&self) -> &ecad_electrical::references::devices::index::RefIndex {
         self.derived.references()
     }
 

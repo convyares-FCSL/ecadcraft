@@ -14,7 +14,7 @@ use ecad_engine::project::Mapped;
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::{DeviceId, ObjectRef, Op, PageId, RepresentationId};
 use serde_json::{Value, json};
-use {ecad_electrical::references::devices::Group, ecad_electrical::references::devices::RefIndex};
+use {ecad_electrical::references::devices::classify::Group, ecad_electrical::references::devices::index::RefIndex};
 
 const SEED: u64 = 25;
 
@@ -62,8 +62,8 @@ fn drawn(h: &mut H, page: PageId) -> Vec<(RepresentationId, u32, String)> {
         ecad_engine::references::draw::devices::parts_on_page(p.ledger.document(), page)
             .into_iter()
             .filter_map(|part| match part.shape {
-                ecad_electrical::references::devices::Shape::Text { value, .. } => Some((part.rep, part.index, value)),
-                ecad_electrical::references::devices::Shape::Line(..) => None,
+                ecad_electrical::references::devices::table::Shape::Text { value, .. } => Some((part.rep, part.index, value)),
+                ecad_electrical::references::devices::table::Shape::Line(..) => None,
             })
             .collect()
     })
@@ -110,7 +110,8 @@ fn a_contacts_show_the_coil_and_the_coil_shows_its_contacts() {
     // Under the rail the coil's A2 wire meets: T at y = 150 - 4.
     let top = x.h.p(|p| {
         let doc = p.ledger.document();
-        ecad_electrical::references::devices::table_top(doc, x.k1, x.coil, ecad_electrical::references::devices::Placement::Auto).unwrap()
+        ecad_electrical::references::devices::table::table_top(doc, x.k1, x.coil, ecad_electrical::references::devices::parse::Placement::Auto)
+            .unwrap()
     });
     assert!((top.x - 75.0).abs() < 1e-9 && (top.y - 146.0).abs() < 1e-9, "{top:?}");
     let v = x.h.run("references", json!({"component": x.k1.hex()})).unwrap();
@@ -212,8 +213,8 @@ fn d_moving_hiding_and_following_the_table() {
         h.p(|p| {
             ecad_engine::references::draw::devices::table(
                 p.ledger.document(),
-                &mut ecad_electrical::references::devices::Places::new(p.ledger.document()),
-                &ecad_electrical::references::devices::device(p.ledger.document(), x.k1),
+                &mut ecad_electrical::references::devices::places::Places::new(p.ledger.document()),
+                &ecad_electrical::references::devices::classify::device(p.ledger.document(), x.k1),
             )
             .map(|t| t.top)
         })
@@ -233,7 +234,7 @@ fn d_moving_hiding_and_following_the_table() {
     assert!(contact_text(&mut x.h, x.p105, x.no).is_some());
     // Project default: cleared.
     x.h.run("setprop", json!({"component": x.k1.hex(), "key": "mirror", "value": "Project default (auto)"})).unwrap();
-    assert!(!ecad_electrical::references::devices::placement_of(&x.h.doc(), x.k1).1);
+    assert!(!ecad_electrical::references::devices::parse::placement_of(&x.h.doc(), x.k1).1);
     assert!(top(&mut x.h).is_some());
     // A bad value is refused with a way forward.
     let e = x.h.run("setprop", json!({"component": x.k1.hex(), "key": "mirror", "value": "at NaN,1"})).unwrap_err();
@@ -248,8 +249,8 @@ fn f_parent_and_child_mcb_with_an_auxiliary_contact() {
     let mut x = fixture();
     let mcb_place = x.h.p(|p| {
         let doc = p.ledger.document();
-        ecad_electrical::references::devices::Places::new(doc)
-            .text(x.p105, ecad_electrical::references::devices::anchor(doc, &doc.representations[&x.mcb]))
+        ecad_electrical::references::devices::places::Places::new(doc)
+            .text(x.p105, ecad_electrical::references::devices::classify::anchor(doc, &doc.representations[&x.mcb]))
     });
     assert_eq!(contact_text(&mut x.h, x.p105, x.q_nc), Some(mcb_place));
     let r = rows(&mut x.h, x.q1);
@@ -316,11 +317,11 @@ fn drawn_references_cannot_be_edited_alone() {
     let h_text = x.h.p(|p| p.pages[&x.p105].map.reference(x.no, 0).unwrap());
     assert_eq!(x.h.mapped(x.p105, h_text), Some(Mapped::DeviceReference(x.no)));
     let e = x.h.run("move", json!({"handles": [h_text.hex()], "delta": [5, 0]})).unwrap_err();
-    assert!(e.contains(ecad_electrical::references::devices::TEXT_DERIVED), "{e}");
+    assert!(e.contains(ecad_electrical::references::devices::read::TEXT_DERIVED), "{e}");
     x.h.activate(x.p100);
     let bar = x.h.p(|p| p.pages[&x.p100].map.reference(x.coil, 0).unwrap());
     let e = x.h.run("erase", json!({"handles": [bar.hex()]})).unwrap_err();
-    assert!(e.contains(ecad_electrical::references::devices::TABLE_DERIVED), "{e}");
+    assert!(e.contains(ecad_electrical::references::devices::read::TABLE_DERIVED), "{e}");
 }
 
 /// Check J: save and reopen keep the offer and the placement; the project default is written
@@ -350,8 +351,11 @@ fn j_save_and_reopen_keep_contacts_and_mirror() {
     assert_eq!(h2.doc(), live);
     assert_eq!(h2.p(|p| p.reference().clone()), idx, "the index rebuilt on open is the kept one");
     let d = h2.doc();
-    assert_eq!(ecad_electrical::references::devices::offer_of(&d, x.k1).map(|(t, _)| t).as_deref(), Some("3P+1NO+1NC"));
-    assert_eq!(ecad_electrical::references::devices::placement_of(&d, x.k1), (ecad_electrical::references::devices::Placement::Right, true));
+    assert_eq!(ecad_electrical::references::devices::parse::offer_of(&d, x.k1).map(|(t, _)| t).as_deref(), Some("3P+1NO+1NC"));
+    assert_eq!(
+        ecad_electrical::references::devices::parse::placement_of(&d, x.k1),
+        (ecad_electrical::references::devices::parse::Placement::Right, true)
+    );
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -398,7 +402,7 @@ fn e_cable_groups_are_kept_on_the_index() {
     h.run("wire", json!({"points": pts(&[(0.0, 55.0), (60.0, 55.0)])})).unwrap();
     let slash = h.run("cableslash", json!({"from": [30, 45], "to": [32, 60]})).unwrap();
     let k: ecad_model::CableId = id(&slash, "cable");
-    h.run("cableref", json!({"cable": k.hex(), "at": [60, 52]})).unwrap();
+    h.run("cablereference", json!({"cable": k.hex(), "at": [60, 52]})).unwrap();
     let p2: PageId = id(&h.run("newpage", json!({"title": "2"})).unwrap(), "page");
     // The other end on page 2, written as `cablecontinue` writes it (`H::reference_end`): a
     // continuation needs wires leaving the page through the reference (lane F step F4).
@@ -408,7 +412,7 @@ fn e_cable_groups_are_kept_on_the_index() {
     assert_eq!(members.len(), 2);
     h.p(|p| p.reference().verify(p.ledger.document())).unwrap();
     let doc = h.doc();
-    let scope = ecad_electrical::references::cables::cables_touched(&doc, &[Op::DeleteCable { id: k, cable: doc.cables[&k].clone() }]);
+    let scope = crate::common::cables_touched(&doc, &[Op::DeleteCable { id: k, cable: doc.cables[&k].clone() }]);
     assert_eq!(scope, Some(BTreeSet::from([k])), "a cable op touches its cable only");
     let v = h.run("references", json!({"cable": k.hex()})).unwrap();
     assert_eq!(v["references"].as_array().unwrap().len(), 2);

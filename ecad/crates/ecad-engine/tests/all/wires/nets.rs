@@ -516,7 +516,7 @@ fn quiet_ends_come_from_the_document() {
         wire(&mut h, &[(0.0, y), (60.0, y)], json!({}));
     }
     let k: ecad_model::CableId = id(&h.run("cableslash", json!({"from": [30, -3], "to": [30, 13]})).unwrap(), "cable");
-    h.run("cableref", json!({"cable": k.hex(), "at": [65, 5]})).unwrap();
+    h.run("cablereference", json!({"cable": k.hex(), "at": [65, 5]})).unwrap();
     // Continued on another page and landed on terminals there: its wires leave page 1 at the
     // reference (brief 010 §6.4).
     let other: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");

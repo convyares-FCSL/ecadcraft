@@ -1178,7 +1178,7 @@ pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMet
         }
     }
     // Brief 025 (design 025 §4.3): drawn beyond the part's offer, ringed at the first such pole.
-    for (which, page, at) in crate::references::devices::count_checks(doc, c) {
+    for (which, page, at) in crate::references::devices::read::count_checks(doc, c) {
         out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Device(c), which, fix: None });
     }
     // Design 072 §2.2: checks read only the typed rating; a note is not a rating.
@@ -1196,7 +1196,7 @@ pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMet
     // Brief 044 (design 044 §6.3): a connector's mating checks.
     out.extend(crate::connectors::checks(doc, c));
     // Brief 033 (design 033 §4.1): a table the user placed over the title block stays there.
-    if let Some((which, page, at)) = crate::references::devices::title_check(doc, c, m) {
+    if let Some((which, page, at)) = crate::references::devices::read::title_check(doc, c, m) {
         out.push(Check {
             kind: Kind::TableOverTitle,
             page: Some(page),
@@ -1285,13 +1285,15 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
     if let [_, second, ..] = heads.as_slice()
         && let Some(r) = doc.representations.get(second)
     {
-        let mut xp = crate::references::devices::Places::new(doc);
-        let wheres: Vec<String> =
-            heads.iter().filter_map(|h| doc.representations.get(h).map(|x| xp.text(x.page, crate::references::devices::anchor(doc, x)))).collect();
+        let mut xp = crate::references::devices::places::Places::new(doc);
+        let wheres: Vec<String> = heads
+            .iter()
+            .filter_map(|h| doc.representations.get(h).map(|x| xp.text(x.page, crate::references::devices::classify::anchor(doc, x))))
+            .collect();
         out.push(Check {
             kind: Kind::TwoHeads,
             page: Some(r.page),
-            at: crate::references::devices::anchor(doc, r),
+            at: crate::references::devices::classify::anchor(doc, r),
             object: Object::Device(c),
             which: format!("{who} has two {}s ({})", crate::devices::tags::head_noun(doc, *second), wheres.join(", ")),
             fix: None,
@@ -1591,8 +1593,7 @@ impl Scope {
                 self.cable_references.insert(*k);
                 // Brief 026: the cable's own rows, and every holder of the tags it had or has.
                 self.cables.insert(*k);
-                let tags: Vec<String> =
-                    before.iter().chain(after.iter()).filter_map(|c| c.properties.get(ecad_model::naming::tag::TAG_KEY).cloned()).collect();
+                let tags: Vec<String> = before.iter().chain(after.iter()).filter_map(|c| c.tag().map(str::to_string)).collect();
                 self.tag_holders(doc, tags.iter().map(String::as_str));
                 // A cable's tag and cores are part of its members' words.
                 if let Some(cable) = doc.cables.get(k) {
@@ -1636,7 +1637,7 @@ impl Scope {
                 // Brief 033 (review of #64, 1): a table the user placed may enter or leave the
                 // title block when the project's sheet changes.
                 if before.sheet != after.sheet {
-                    self.devices.extend(crate::references::devices::placed_tables(doc));
+                    self.devices.extend(crate::references::devices::read::placed_tables(doc));
                 }
                 let (b, a) = (&before.wiring, &after.wiring);
                 if b.scheme != a.scheme || b.digits != a.digits || b.unclassified_prefix != a.unclassified_prefix || b.potentials != a.potentials {

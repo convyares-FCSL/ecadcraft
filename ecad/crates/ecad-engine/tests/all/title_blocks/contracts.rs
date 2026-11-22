@@ -363,8 +363,8 @@ fn fresh_reference_texts(h: &mut H, page: PageId) -> Vec<String> {
     ecad_engine::references::draw::devices::parts_on_page(&doc, page)
         .into_iter()
         .filter_map(|p| match p.shape {
-            ecad_electrical::references::devices::Shape::Text { value, .. } => Some(value),
-            ecad_electrical::references::devices::Shape::Line(..) => None,
+            ecad_electrical::references::devices::table::Shape::Text { value, .. } => Some(value),
+            ecad_electrical::references::devices::table::Shape::Line(..) => None,
         })
         .collect()
 }
@@ -437,14 +437,14 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
         h.run("wire", json!({"points": [[60.0, y], [380.0, y]]})).unwrap();
     }
     let c1: ecad_model::CableId = crate::common::id(&h.run("cableslash", json!({"from": [88, -3], "to": [92, 12], "tag": "C1"})).unwrap(), "cable");
-    h.run("cableref", json!({"cable": c1.hex(), "at": [380, 5]})).unwrap();
+    h.run("cablereference", json!({"cable": c1.hex(), "at": [380, 5]})).unwrap();
     let coil: ecad_model::DeviceId =
         crate::common::id(&h.run("place", json!({"symbol": "coil", "at": [200, 150], "tag": "K1"})).unwrap(), "component");
     let id = new_frame(&mut h, "A2");
     let doc = h.doc();
     let choice = |object| Op::SetProperty { object, key: "print.frame.style".into(), before: None, after: Some(id.clone()) };
     // The project's frame: every cable, every place.
-    assert_eq!(ecad_electrical::references::cables::cables_touched(&doc, &[choice(ObjectRef::Project)]), None);
+    assert_eq!(crate::common::cables_touched(&doc, &[choice(ObjectRef::Project)]), None);
     let ops = [choice(ObjectRef::Project)];
     assert!(devices_touched(&doc, &applied(&doc, &ops), &ops).pages);
     // A page's frame or borrowed block: that page's cables and devices.
@@ -455,7 +455,7 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     };
     let frame = Op::SetProperty { object: ObjectRef::Page(page), key: "print.frame.style".into(), before: None, after: Some(id.clone()) };
     for (key, op) in [("print.frame.style", frame), ("title_block", borrowed)] {
-        assert!(ecad_electrical::references::cables::cables_touched(&doc, std::slice::from_ref(&op)).is_some_and(|s| s.contains(&c1)), "{key}");
+        assert!(crate::common::cables_touched(&doc, std::slice::from_ref(&op)).is_some_and(|s| s.contains(&c1)), "{key}");
         let ops = [op];
         assert!(devices_touched(&doc, &applied(&doc, &ops), &ops).devices.contains(&coil), "{key}");
     }
@@ -471,12 +471,12 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     };
     let mut heavier = rec.clone();
     ecad_electrical::styles::frame::set(frame_of(&mut heavier), "border_weight", Some("0.7")).unwrap();
-    assert_eq!(ecad_electrical::references::cables::cables_touched(&doc, &[set(heavier)]), Some(Default::default()), "a weight moves no reference");
+    assert_eq!(crate::common::cables_touched(&doc, &[set(heavier)]), Some(Default::default()), "a weight moves no reference");
     let mut a1 = rec.clone();
     ecad_electrical::styles::frame::set(frame_of(&mut a1), "sheet", Some("A1")).unwrap();
     let mut used = doc.clone();
     used.display.insert("print.frame.style".into(), id.clone());
-    assert!(ecad_electrical::references::cables::cables_touched(&used, &[set(a1)]).is_some_and(|s| s.contains(&c1)), "its pages' cables");
+    assert!(crate::common::cables_touched(&used, &[set(a1)]).is_some_and(|s| s.contains(&c1)), "its pages' cables");
 }
 
 /// Tester 055 (§12.1 J, §1.3): a title block whose size is past the bounds opens, keeps the

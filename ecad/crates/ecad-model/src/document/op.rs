@@ -350,11 +350,10 @@ impl Op {
 
     /// Set property `key` of cable `id` to `value` within `ops` ([`Op::edit_cable`]).
     pub fn set_cable_property(doc: &Document, ops: &mut Vec<Op>, id: CableId, key: &str, value: Option<String>) {
+        // A tag or description that does not read (too long, a hidden character) is left as it was:
+        // the commands rule it out with the text types first.
         Op::edit_cable(doc, ops, id, |c| {
-            match value {
-                Some(v) => c.properties.insert(key.to_string(), v),
-                None => c.properties.remove(key),
-            };
+            let _ = c.set_value(key, value.as_deref());
         });
     }
 

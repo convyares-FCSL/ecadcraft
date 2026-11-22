@@ -298,7 +298,7 @@ pub const MAX_HOVER_LINES: usize = 12;
 
 /// The width of `text` in the stroke font at height `h` ([`label_height`]), as the cable look
 /// measures it (`draw::font_width` with CADCraft's fonts); 0 when not finite.
-pub fn stroke_label_width(text: &str, h: f64, m: &dyn crate::styles::text_style::fonts::TextMetrics) -> f64 {
+pub(crate) fn stroke_label_width(text: &str, h: f64, m: &dyn crate::styles::text_style::fonts::TextMetrics) -> f64 {
     let w = m.width(m.stroke_font(), text, h);
     if w.is_finite() && w >= 0.0 { w } else { 0.0 }
 }

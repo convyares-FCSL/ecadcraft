@@ -4,7 +4,7 @@
 //! (0,10), wires W0, W5, W10 from there to x = 60, and cable -C01 slashed across them; page 2
 //! `Field` holds K2 with connection points at (100,0), (100,5), (100,10).
 //!
-//! Every new or changed command (`cableref`, `cablecontinue`, `cablegoto`, `cablereferences`,
+//! Every new or changed command (`cablereference`, `cablecontinue`, `cablegoto`, `cablereferences`,
 //! `renamepage`, `movepage`) is driven through its **JSON form** (`Session::execute`) in a table,
 //! checking the result and the transaction, or the absence of one, so the rows can move to the MCP
 //! harness of brief 011 unchanged.
@@ -65,7 +65,7 @@ fn component(h: &mut H, page: PageId, outline: &str, at: [(f64, f64); 3], name: 
     at.map(|(x, y)| id(&h.run("addconnectionpoint", json!({"handle": lines[0].hex(), "at": [x, y]})).unwrap(), "connection_point"))
 }
 
-/// Fixture R up to (not including) `cableref`.
+/// Fixture R up to (not including) `cablereference`.
 fn before_reference() -> R {
     let mut h = H::new(SEED);
     h.s.viewport_px = (1280.0, 800.0);
@@ -91,7 +91,7 @@ fn before_reference() -> R {
 /// Fixture R with the reference on Supply and the continuation on Field (not yet connected).
 fn continued() -> (R, Value) {
     let mut r = before_reference();
-    r.h.run("cableref", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
+    r.h.run("cablereference", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
     r.h.activate(r.field);
     let v = r.h.run("cablecontinue", json!({"cable": r.c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
     (r, v)
@@ -103,7 +103,7 @@ fn continued() -> (R, Value) {
 /// about the two ends' texts, flags and pages, not the wires.
 fn paired() -> R {
     let mut r = before_reference();
-    r.h.run("cableref", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
+    r.h.run("cablereference", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
     let field = r.field;
     r.h.reference_end(r.c1, field, (20.0, 5.0));
     r
@@ -178,7 +178,7 @@ fn shape(ops: &[Op]) -> Vec<String> {
 #[test]
 fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
     let mut r = before_reference();
-    r.h.run("cableref", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
+    r.h.run("cablereference", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
     r.h.activate(r.field);
     let before = r.h.doc();
     let head = r.h.head();
@@ -479,12 +479,12 @@ fn interactive_forms_record_the_json_forms_transactions() {
     let json_continue = shape(&last_ops(&mut j.h));
     let json_ref = {
         let mut r = before_reference();
-        r.h.run("cableref", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
+        r.h.run("cablereference", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
         shape(&last_ops(&mut r.h))
     };
     // Interactive: Cable Reference, click the slash, click 65,5.
     let mut r = before_reference();
-    r.h.s.start("cableref").unwrap();
+    r.h.s.start("cablereference").unwrap();
     assert_eq!(prompt(&r.h), "Select a cable to reference:");
     click(&mut r.h, 30.0, 7.5);
     assert_eq!(prompt(&r.h), "Specify reference point or [Undo]:");
@@ -520,15 +520,20 @@ fn refusals_say_why_and_change_nothing() {
     let lone: WireId = id(&wire_pp(&mut r.h, json!([[0, 40], [60, 40]])).unwrap(), "conductor");
     let c2: CableId = id(&r.h.run("cableadd", json!({"conductors": [lone.hex()], "tag": "C2"})).unwrap(), "cable");
     let cases: Vec<(PageId, &str, Value, &str)> = vec![
-        (r.supply, "cableref", json!({"cable": c1, "at": [70, 0]}), "Cable -C01 already has a reference on this page."),
-        (third, "cableref", json!({"cable": c1, "at": [0, 0]}), "Cable -C01 already has a reference on this page."),
+        (r.supply, "cablereference", json!({"cable": c1, "at": [70, 0]}), "Cable -C01 already has a reference on this page."),
+        (third, "cablereference", json!({"cable": c1, "at": [0, 0]}), "Cable -C01 already has a reference on this page."),
         (
             third,
             "cablecontinue",
             json!({"cable": c1, "at": [0, 0], "toward": [10, 0]}),
             "Cable -C01 already continues to another page; a cable can have only two references in this version.",
         ),
-        (third, "cableref", json!({"cable": c2.hex(), "at": [0, 0]}), "Cable -C02 has no wires drawn on this page; draw or continue it here first."),
+        (
+            third,
+            "cablereference",
+            json!({"cable": c2.hex(), "at": [0, 0]}),
+            "Cable -C02 has no wires drawn on this page; draw or continue it here first.",
+        ),
         (
             third,
             "cablecontinue",
@@ -541,12 +546,12 @@ fn refusals_say_why_and_change_nothing() {
         let head = r.h.head();
         let e = r.h.run(cmd, params.clone()).unwrap_err();
         // R1 on Third reads as R2 when the cable already has its two references elsewhere.
-        assert!(e.contains(want) || (page == third && cmd == "cableref" && e.contains("already continues")), "{cmd} {params}: {e}");
+        assert!(e.contains(want) || (page == third && cmd == "cablereference" && e.contains("already continues")), "{cmd} {params}: {e}");
         assert_eq!(r.h.head(), head, "{cmd}: nothing recorded");
     }
     // R5: continuing on the reference's own page; R6: every wire connected at both ends.
     let mut f = before_reference();
-    f.h.run("cableref", json!({"cable": f.c1.hex(), "at": [65, 5]})).unwrap();
+    f.h.run("cablereference", json!({"cable": f.c1.hex(), "at": [65, 5]})).unwrap();
     let head = f.h.head();
     let e = f.h.run("cablecontinue", json!({"cable": f.c1.hex(), "at": [80, 5], "toward": [90, 5]})).unwrap_err();
     assert!(e.contains("Cable -C01 is already drawn on this page; continue it on another page."), "{e}");
@@ -564,7 +569,7 @@ fn json_forms_of_the_reference_and_page_commands() {
     type Row<'a> = (PageId, &'a str, Value, Result<&'a str, &'a str>, u64);
     let rows: Vec<Row<'_>> = vec![
         (r.supply, "cablereferences", json!({}), Ok(r#"{"references":[]}"#), 0),
-        (r.supply, "cableref", json!({"cable": c1, "at": [65, 5]}), Ok(r#""orphan":true"#), 1),
+        (r.supply, "cablereference", json!({"cable": c1, "at": [65, 5]}), Ok(r#""orphan":true"#), 1),
         (r.supply, "cablereferences", json!({"cable": c1}), Ok(r#""text":"?""#), 0),
         (r.supply, "cablegoto", json!({"reference": "<Supply's reference>"}), Err("this reference has no other end"), 0),
         (r.field, "cablecontinue", json!({"cable": c1, "at": [20, 5], "toward": [40, 5]}), Ok(r#""text":"1/F2""#), 1),
@@ -612,13 +617,13 @@ fn hostile_input_is_refused_in_words() {
     let w0 = r.w[0].hex();
     let many: Vec<String> = (0..10_001).map(|i| format!("{i:x}")).collect();
     let rows: Vec<(&str, Value, &str)> = vec![
-        ("cableref", json!({"at": [0, 0]}), "`cable` (hex id) is required"),
-        ("cableref", json!({"cable": "zz", "at": [0, 0]}), "`cable` must be a hex id"),
-        ("cableref", json!({"cable": "1", "at": [0, 0]}), "no such cable"),
-        ("cableref", json!({"cable": c1}), "`at` (point [x, y]) is required"),
-        ("cableref", json!({"cable": c1, "at": [f64::NAN, 0]}), "`at` must be a point [x, y]"),
-        ("cableref", json!({"cable": c1, "at": [1e13, 0]}), "is not a finite [x,y] point"),
-        ("cableref", json!({"cable": c1, "at": "x"}), "`at` must be a point [x, y]"),
+        ("cablereference", json!({"at": [0, 0]}), "`cable` (hex id) is required"),
+        ("cablereference", json!({"cable": "zz", "at": [0, 0]}), "`cable` must be a hex id"),
+        ("cablereference", json!({"cable": "1", "at": [0, 0]}), "no such cable"),
+        ("cablereference", json!({"cable": c1}), "`at` (point [x, y]) is required"),
+        ("cablereference", json!({"cable": c1, "at": [f64::NAN, 0]}), "`at` must be a point [x, y]"),
+        ("cablereference", json!({"cable": c1, "at": [1e13, 0]}), "is not a finite [x,y] point"),
+        ("cablereference", json!({"cable": c1, "at": "x"}), "`at` must be a point [x, y]"),
         ("cablecontinue", json!({"cable": c1, "at": [0, 0]}), "`toward` (point [x, y]) is required"),
         ("cablecontinue", json!({"cable": c1, "at": [0, 0], "toward": [0, 0]}), "`toward` must differ from `at`"),
         ("cablecontinue", json!({"cable": c1, "at": [0, 0], "toward": [1, 0], "members": "x"}), "`members` must be a list of hex ids, or null"),
@@ -651,7 +656,7 @@ fn hostile_input_is_refused_in_words() {
     }
     // `members` naming a non-member, or a member twice (on a fresh continuation page).
     let mut f = before_reference();
-    f.h.run("cableref", json!({"cable": f.c1.hex(), "at": [65, 5]})).unwrap();
+    f.h.run("cablereference", json!({"cable": f.c1.hex(), "at": [65, 5]})).unwrap();
     f.h.activate(f.field);
     for (members, want) in [(json!([f.c1.hex()]), "is not a member of cable"), (json!([f.w[0].hex(), f.w[0].hex()]), "is listed twice")] {
         let e = f.h.run("cablecontinue", json!({"cable": f.c1.hex(), "at": [20, 5], "toward": [40, 5], "members": members})).unwrap_err();
@@ -999,7 +1004,7 @@ fn vertical_cable(at: [f64; 2]) -> (H, PageId, CableId) {
         wire_pp(&mut h, json!([[x, 0.0], [x, 60.0]])).unwrap();
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [-3, 28], "to": [13, 32], "tag": "C1"})).unwrap(), "cable");
-    h.run("cableref", json!({"cable": c1.hex(), "at": at})).unwrap();
+    h.run("cablereference", json!({"cable": c1.hex(), "at": at})).unwrap();
     (h, page, c1)
 }
 

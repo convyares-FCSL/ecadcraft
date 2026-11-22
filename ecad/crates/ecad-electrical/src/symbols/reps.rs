@@ -228,7 +228,7 @@ pub fn goto_place(doc: &Document, c: DeviceId) -> Option<(ecad_model::PageId, Op
 pub(crate) fn goto_place_in(places: &mut Places<'_>, c: DeviceId) -> Option<(ecad_model::PageId, Option<Pt>)> {
     let doc = places.doc();
     let r = doc.representations.get(&goto_in(places, c, None)?)?;
-    Some((r.page, crate::references::devices::anchor(doc, r)))
+    Some((r.page, crate::references::devices::classify::anchor(doc, r)))
 }
 
 /// The whole-half symbol of connector `c`'s `side`, first in book order: the half's head-like

@@ -759,7 +759,7 @@ pub const ACTIONS: &[Action] = &[
     slot("cable.row", "", Params::App(App::CableRow), "Show row", Icon::ShowRow, &[(K::Cable, S::BottomRight)], ok),
     slot("cable.join", "cablefan", Params::StartAt, "Join", Icon::Junction, &[(K::Cable, S::BottomLeft)], write),
     slot("cable.cores", "cablecore", Params::StartAt, "Core labels", Icon::Number, &[(K::Cable, S::Left)], write),
-    slot("cable.reference", "cableref", Params::StartAt, "Add reference", Icon::GoTo, &[(K::Cable, S::TopLeft)], write),
+    slot("cable.reference", "cablereference", Params::StartAt, "Add reference", Icon::GoTo, &[(K::Cable, S::TopLeft)], write),
     // ---- Text.
     slot("text.edit", "", Params::App(App::EditText), "Edit", Icon::Edit, &[(K::Text, S::Top)], write),
     slot("text.showhide", "showtext", Params::StartAt, "Show or hide", Icon::Eye, &[(K::Text, S::TopRight)], write),
@@ -879,7 +879,7 @@ pub const ACTIONS: &[Action] = &[
     search_only("cable.viewtool", "cableview", Params::Start, "Cable view", Icon::Eye, &["fan", "traditional"]),
     search_only("cable.corestool", "cablecore", Params::Start, "Core label", Icon::Number, &["core", "colour"]),
     search_only("cable.jointool", "cablefan", Params::Start, "Cable join", Icon::Junction, &["fan", "trunk"]),
-    search_only("cable.referencetool", "cableref", Params::Start, "Cable reference", Icon::GoTo, &["other page"]),
+    search_only("cable.referencetool", "cablereference", Params::Start, "Cable reference", Icon::GoTo, &["other page"]),
     search_only("cable.gototool", "cablegoto", Params::Start, "Go to reference", Icon::GoTo, &["other end"]),
     search_only("cable.add", "cableadd", Params::App(App::Template), "Add to cable", Icon::Cable, &["group wires"]),
     search_only("text.showhidetool", "showtext", Params::Start, "Show or hide text", Icon::Eye, &["hide tag"]),

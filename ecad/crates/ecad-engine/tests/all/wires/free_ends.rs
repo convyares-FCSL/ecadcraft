@@ -114,7 +114,7 @@ fn continued(seed: u64) -> Continued {
     let (a, line) = loose_line(&mut h);
     let r = h.run("cableslash", json!({"from": [30, -3], "to": [30, 3], "tag": "C1"})).unwrap();
     let cable: CableId = id(&r, "cable");
-    h.run("cableref", json!({"cable": cable.hex(), "at": [65, 0]})).unwrap();
+    h.run("cablereference", json!({"cable": cable.hex(), "at": [65, 0]})).unwrap();
     let second: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(second);
     let v = h.run("cablecontinue", json!({"cable": cable.hex(), "at": [20, 0], "toward": [40, 0]})).unwrap();

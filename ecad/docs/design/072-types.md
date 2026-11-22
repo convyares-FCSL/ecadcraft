@@ -97,6 +97,7 @@ only.
 | I13 | Function and location lists | `designation.<aspect>.<entry>.*` | `Project.locations`, `functions` (§5.3) |
 | I14 | A strip's jumpers | `link.<n>` range text | `TerminalStrip.links` |
 | I15 | A cable's ends, glands, rating inputs | `end.from.location`, `gland.to`, `rating.*` | `Cable` fields |
+| I15a | A cable's tag, its fixed flag and its description (0.2.3 S1, #2) | `tag`, `tag_fixed`, `description` | `Cable.tag: Option<Tag>`, `Cable.tag_fixed: bool`, `Cable.description: Option<Description>`, as a device's; written on every cable record; a cable record whose bag still holds one of the keys is a read error |
 | I16 | Part lines | `part.<n>.<field>` | `Device.parts` |
 | I17 | Which device text a symbol slot places | `TextSlot.text` words | `SlotText` (§7) |
 | I18 | Title block bindings, unknown items | text kept as written | strict elements (§5.4) |

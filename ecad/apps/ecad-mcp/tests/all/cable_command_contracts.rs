@@ -1,5 +1,5 @@
 //! Brief 011's MCP contract rule applied to the commands briefs 009 and 010 added or changed:
-//! `cablecore`, `cablefan`, `cableref`, `cablecontinue`, `cablegoto`, `cablereferences`, `renamepage` and
+//! `cablecore`, `cablefan`, `cablereference`, `cablecontinue`, `cablegoto`, `cablereferences`, `renamepage` and
 //! `movepage`. Every test drives the server through JSON-RPC lines, in-process.
 //!
 //! - Each is listed by `list_commands` with its parameter docs.
@@ -23,7 +23,7 @@ const AGENT: &str = "cable-agent";
 const SEED: u64 = 0x0E_CAD0_0910;
 
 /// The commands of briefs 009 and 010.
-const COMMANDS: &[&str] = &["cablecore", "cablefan", "cableref", "cablecontinue", "cablegoto", "cablereferences", "renamepage", "movepage"];
+const COMMANDS: &[&str] = &["cablecore", "cablefan", "cablereference", "cablecontinue", "cablegoto", "cablereferences", "renamepage", "movepage"];
 
 struct Client {
     s: EcadMcp,
@@ -198,7 +198,7 @@ fn rows() -> Vec<(&'static str, Value, &'static str, usize)> {
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": null}), "", 1),
         // Brief 010: a reference on Supply (an orphan until continued), then the continuation.
         ("cablereferences", json!({}), r#"{"references":[]}"#, 0),
-        ("cableref", json!({"cable": "<c1>", "at": [65, 5]}), r#""orphan":true"#, 1),
+        ("cablereference", json!({"cable": "<c1>", "at": [65, 5]}), r#""orphan":true"#, 1),
         ("cablereferences", json!({"cable": "<c1>"}), r#""text":"?""#, 0),
         ("newpage", json!({"title": "Field"}), "page", 1),
         ("openpage", json!({"page": "<field>"}), "document", 0),
@@ -325,8 +325,8 @@ fn refusals_through_mcp_say_why_and_change_nothing() {
         ("cablecore", json!({"conductor": "zz", "core": "a"}), "`conductor` must be a hex id"),
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": 1.5}), "`at` as a fraction must be from 0 to 1"),
         ("cablefan", json!({"cable": "<c1>", "at": [1e300, 0]}), "Point out of range."),
-        ("cableref", json!({"cable": "<c1>", "at": [70, 0]}), "Cable -C01 already has a reference on this page."),
-        ("cableref", json!({"cable": "<c1>", "at": [f64::MAX, 0]}), "is not a finite [x,y] point"),
+        ("cablereference", json!({"cable": "<c1>", "at": [70, 0]}), "Cable -C01 already has a reference on this page."),
+        ("cablereference", json!({"cable": "<c1>", "at": [f64::MAX, 0]}), "is not a finite [x,y] point"),
         ("cablecontinue", json!({"cable": "<c1>", "at": [0, 0], "toward": [0, 0]}), "`toward` must differ from `at`"),
         ("cablecontinue", json!({"cable": "<c1>", "at": [80, 5], "toward": [90, 5]}), "Cable -C01 already continues to another page"),
         ("cablegoto", json!({}), "`reference` (hex id) is required"),
@@ -368,7 +368,7 @@ fn with_writes_off_the_changes_are_refused_and_cablereferences_and_cablegoto_onl
     for (cmd, params) in [
         ("cablecore", json!({"cable": "<c1>", "cores": ["L1", "L2", "L3"]})),
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": 0.5})),
-        ("cableref", json!({"cable": "<c1>", "at": [70, 0]})),
+        ("cablereference", json!({"cable": "<c1>", "at": [70, 0]})),
         ("cablecontinue", json!({"cable": "<c1>", "at": [0, 30], "toward": [10, 30]})),
         ("renamepage", json!({"page": "<supply>", "title": "Other"})),
         ("movepage", json!({"page": "<field>", "index": 1})),

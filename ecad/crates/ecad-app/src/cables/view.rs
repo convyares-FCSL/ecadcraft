@@ -57,7 +57,7 @@ pub struct Drawing {
 
 /// The core colour of row `i` labelled `label`: the label itself when it is a colour code, else the
 /// cable type's colour at that place.
-pub fn core_colour(label: &str, i: usize, colours: &[String]) -> Option<String> {
+pub(crate) fn core_colour(label: &str, i: usize, colours: &[String]) -> Option<String> {
     let l = label.trim();
     if l.chars().any(|c| c.is_ascii_alphabetic()) && ecad_engine::cables::draw::colour_code(l).is_some() {
         return Some(l.to_ascii_uppercase());

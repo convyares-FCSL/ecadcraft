@@ -83,7 +83,7 @@ What changed for someone using the app:
 
 11. A cable across two pages (step F4). On page 1 draw lines from a device's points into free
     space toward the right, slash them into cable `-W01` and put its reference at their free
-    ends (`cableref`). Add a page, make it active and continue the cable there (`cablecontinue`,
+    ends (`cablereference`). Add a page, make it active and continue the cable there (`cablecontinue`,
     at the left, toward the right): page 1's lines now end on the reference (no square, no dot)
     and each stub starts on the new reference. Connect each stub's free end to a device point
     on page 2: each core becomes **one wire from page 1's point to page 2's**, in one net, and
