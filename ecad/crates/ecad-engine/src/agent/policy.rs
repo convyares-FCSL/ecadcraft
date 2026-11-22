@@ -14,7 +14,7 @@ use serde_json::Value;
 
 /// Session commands that change nothing in the project or its files, allowed with writes off. A
 /// generic command says so in its declaration instead ([`is_read_command`]).
-pub const READ_COMMANDS: &[&str] = &[
+pub(crate) const READ_COMMANDS: &[&str] = &[
     "ecadinspect",
     "entities",
     "texts",
@@ -169,7 +169,7 @@ pub const NEVER_COMMANDS: &[&str] = &[
 pub const AGENT_ACCESS: &str = "Refused: Agent access is set by the person in the ECAD window. Nothing was changed.";
 
 /// Parameter names that name a file on disk.
-pub const FILE_KEYS: &[&str] = &["path", "file", "patternFile", "template", "folder", "output"];
+pub(crate) const FILE_KEYS: &[&str] = &["path", "file", "patternFile", "template", "folder", "output"];
 
 /// Commands whose `path` parameter is not a file (ARRAYPATH's path is a handle).
 const PATH_IS_NOT_A_FILE: &[&str] = &[
@@ -231,12 +231,12 @@ pub fn never(id: &str) -> String {
 }
 
 /// Said when the project opened read-only (`why` from the file layer).
-pub fn project_read_only(why: &str) -> String {
+pub(crate) fn project_read_only(why: &str) -> String {
     format!("Refused: the project opened read-only ({why}). Nothing was changed.")
 }
 
 /// Said when a parameter names a file.
-pub fn file_key(id: &str, key: &str) -> String {
+pub(crate) fn file_key(id: &str, key: &str) -> String {
     format!(
         "Refused: `{key}` names a file; agents cannot read or write files through {} (save the project with the `save` \
          tool). Nothing was changed.",

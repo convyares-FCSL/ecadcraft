@@ -62,7 +62,7 @@ pub(crate) use crate::wires::interact::{joinwires, renumberwires, wirenumber};
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
 pub const NOT_OWNED: &str = "this page is not owned by an ECAD project";
 /// Refusal while a paper-space layout is shown: ECAD objects live in the page's model space.
-pub const PAPER_SPACE: &str = "Switch to the Model tab to draw ECAD objects.";
+pub(crate) const PAPER_SPACE: &str = "Switch to the Model tab to draw ECAD objects.";
 
 /// Whether the Model tab is shown: not a paper-space layout, nor a viewport of one (where
 /// `Session::space` reports model space but the canvas shows the sheet).

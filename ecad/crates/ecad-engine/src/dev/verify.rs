@@ -98,7 +98,7 @@ pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &Handle
 /// [`verify_page`] for a page projected with cable views (brief 005): the cables in `fan` whose
 /// fan can be drawn on the page must show exactly their fan ([`crate::cables::views::fan_on_page`] with
 /// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
-pub fn verify_page_with(
+pub(crate) fn verify_page_with(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, reports: Option<&ReportModels>,
 ) -> Verification {
     verify_page_shown(doc, page, drawing, map, fan, tol, false, reports)
@@ -107,7 +107,7 @@ pub fn verify_page_with(
 /// [`verify_page_with`] for a page drawn with Show Hidden Text on or off (brief 031, design §5.7):
 /// with it on, the hidden derived texts are expected too, dimmed.
 #[allow(clippy::too_many_arguments)]
-pub fn verify_page_shown(
+pub(crate) fn verify_page_shown(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
     reports: Option<&ReportModels>,
 ) -> Verification {
@@ -117,7 +117,7 @@ pub fn verify_page_shown(
 /// [`verify_page_shown`] for a project whose title block marks a pending revision (brief 033,
 /// overseer ruling 4): the frame is expected with the project's pending flag.
 #[allow(clippy::too_many_arguments)]
-pub fn verify_page_pending(
+pub(crate) fn verify_page_pending(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
     reports: Option<&ReportModels>,
 ) -> Verification {

@@ -90,7 +90,7 @@ const HEAD: usize = 4_096;
 
 /// The meta names this build reads, and what it reads (`summary`).
 const CONTAINER_VERSION: u64 = 2;
-const SCHEMA_VERSION: u64 = 1;
+const SCHEMA_VERSION: u64 = 2;
 const CODEC: &str = "json/1";
 
 /// A `.ecad` file, read-only.

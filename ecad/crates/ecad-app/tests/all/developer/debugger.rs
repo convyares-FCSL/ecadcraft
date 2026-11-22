@@ -174,7 +174,7 @@ is not counted as a change until the project has a file."
     let touching = t.debugger.touching();
     assert!(touching.contains(&3), "{touching:?}");
     t.debugger.select_tx(Some(3));
-    let views: Vec<_> = t.debugger.log()[2].ops.iter().map(ecad_engine::dev::debug::op_view).collect();
+    let views: Vec<_> = t.debugger.log()[2].ops.iter().map(ecad_engine::dev::objects::op_view).collect();
     assert!(views.iter().any(|v| v.name == "AddRoute" && v.before.is_none()), "the route drawn");
     let made = views.iter().find(|v| v.name == "CreateWire").unwrap();
     assert!(made.before.is_none());

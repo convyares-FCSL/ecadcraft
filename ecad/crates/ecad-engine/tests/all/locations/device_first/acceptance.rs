@@ -124,7 +124,13 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, AidId, PageId, Document
         // Design 072 §6.3: a device stores list ids; these name no entry (a removed one).
         let gone = |d: &ecad_model::Device, l: u128, f: Option<u128>| ecad_model::Device {
             location: Some(ecad_model::LocationId(l)),
+            location_state: ecad_model::document::book::PlaceState::Proposed,
             function: f.map(ecad_model::FunctionId).or(d.function),
+            function_state: if f.is_some() || d.function.is_some() {
+                ecad_model::document::book::PlaceState::Proposed
+            } else {
+                ecad_model::document::book::PlaceState::Unset
+            },
             ..d.clone()
         };
         let ops = vec![

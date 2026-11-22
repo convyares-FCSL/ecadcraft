@@ -13,7 +13,7 @@
 //!   `rev.<n>.released`; a save; `release.json`; the rename. A failure before the issue removes
 //!   the staging folder and records nothing; one after it keeps the issue and says how to finish.
 //! - **Writing an issued revision's folder** (`release {rev}`): built from the state after that
-//!   revision's issue transaction (`history::issued_state`), recording nothing; works read-only,
+//!   revision's issue transaction (`history::points::issued_state`), recording nothing; works read-only,
 //!   on a branch and with an agent's writes off.
 //! - **An existing folder** is never overwritten silently: add missing files, replace (the old
 //!   one is moved to `release/replaced/`), or keep both (`Rev B (2)`). Nothing is ever deleted
@@ -835,7 +835,7 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
     };
     match &issued_rev {
         Some(row) => {
-            let (_, _, then) = crate::history::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?;
+            let (_, _, then) = crate::history::points::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?;
             let detached = p.derived().detached(&then);
             let rows = crate::checks::all_with(&then, p.tolerance, detached.reports());
             to_rows(&then, &rows, &mut v);
@@ -949,7 +949,7 @@ pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
 /// # Errors
 /// It is the pending revision, or was never issued: with the way on.
 fn issued_row(p: &Project, rev: &str) -> Result<revisions::Revision, String> {
-    let want = crate::history::read_rev(p, rev).map_err(|e| e.to_string())?;
+    let want = crate::history::points::read_rev(p, rev).map_err(|e| e.to_string())?;
     let doc = p.ledger.document();
     let shown = doc.project.rev_scheme.show(want);
     if let Some(r) = revisions::issued(doc).into_iter().find(|r| r.rev_value == Some(want)) {
@@ -1175,7 +1175,7 @@ pub(crate) fn release_issued(p: &mut Project, params: &Value, rev: &str, progres
     let rev = row.rev().to_string();
     let default = row.released.as_deref().and_then(|v| from_recorded(p, v)).or_else(|| default_folder(p, &rev));
     let target = folder_param(p, params, default)?;
-    let (named, seq, then) = crate::history::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?;
+    let (named, seq, then) = crate::history::points::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?;
     let detached = p.derived().detached(&then);
     let reports = detached.reports();
     let rows = crate::checks::all_with(&then, p.tolerance, reports);

@@ -391,17 +391,17 @@ pub fn typed_commands() -> Vec<input::Typed> {
 }
 
 /// Whether generic command `id` declares that it only reads ([`ecad_electrical::commands::run::Access`]).
-pub fn declared_read(id: &str) -> bool {
+pub(crate) fn declared_read(id: &str) -> bool {
     GENERIC_TYPED.iter().any(|t| t.id == id && t.access == Some(ecad_electrical::commands::run::Access::Reads))
 }
 
 /// The ids of the generic commands that declare that they only read.
-pub fn declared_reads() -> impl Iterator<Item = &'static str> {
+pub(crate) fn declared_reads() -> impl Iterator<Item = &'static str> {
     GENERIC_TYPED.iter().filter(|t| t.access == Some(ecad_electrical::commands::run::Access::Reads)).map(|t| t.id)
 }
 
 /// The parameters of generic command `id` that name a file, as it declares them.
-pub fn declared_file_keys(id: &str) -> impl Iterator<Item = &'static str> {
+pub(crate) fn declared_file_keys(id: &str) -> impl Iterator<Item = &'static str> {
     GENERIC_TYPED.iter().filter(move |t| t.id == id).flat_map(|t| t.files.keys())
 }
 
@@ -432,7 +432,7 @@ pub(crate) fn plain_style(p: &Project) -> Style {
 
 /// The experiment's built-in definition: a two-terminal coil, 10 × 20, terminals A1 (top) and A2
 /// (bottom).
-pub fn builtin_coil() -> Definition {
+pub(crate) fn builtin_coil() -> Definition {
     let r = [(-5.0, -10.0), (5.0, -10.0), (5.0, 10.0), (-5.0, 10.0)];
     Definition {
         bridges: Vec::new(),

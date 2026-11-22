@@ -232,7 +232,7 @@ impl Command for OpenrevisionParams {
             // The project as issued (brief 027 §16): the state after the issue transaction, so the
             // title block, the revision table and the generated Revision list read this revision.
             let rev = row.rev_value.ok_or_else(|| CmdError::refused("That row has no rev."))?;
-            let (named, _, then) = crate::history::issued_state(p, rev).map_err(CmdError::refused)?;
+            let (named, _, then) = crate::history::points::issued_state(p, rev).map_err(CmdError::refused)?;
             let at = named.seq;
             let book = Book::of(&then);
             let pages: Vec<Value> = book

@@ -11,6 +11,7 @@ mod common;
 mod branches_contracts;
 mod branches_tester_contracts;
 mod canonical_contracts;
+mod chunk_key;
 mod container_crash;
 mod container_recovery;
 mod container_v2;

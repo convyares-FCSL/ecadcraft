@@ -14,17 +14,17 @@ use ecad_model::{
 };
 
 /// Layer that carries terminal markers in projected drawings. Reserved: users' edits on it are refused.
-pub const MARKER_LAYER: &str = "ECAD-TERMINALS";
+pub(crate) const MARKER_LAYER: &str = "ECAD-TERMINALS";
 /// Prefix of projected block and group names. Reserved.
-pub const ECAD_PREFIX: &str = "ECAD$";
+pub(crate) const ECAD_PREFIX: &str = "ECAD$";
 
 /// Block name for a definition.
-pub fn block_name(def: DefinitionId) -> String {
+pub(crate) fn block_name(def: DefinitionId) -> String {
     format!("{ECAD_PREFIX}{:032x}", def.0)
 }
 
 /// Definition for a block name, if it is one of ours.
-pub fn definition_of_block(name: &str) -> Option<DefinitionId> {
+pub(crate) fn definition_of_block(name: &str) -> Option<DefinitionId> {
     name.strip_prefix(ECAD_PREFIX).and_then(|h| u128::from_str_radix(h, 16).ok()).map(DefinitionId)
 }
 
@@ -56,7 +56,7 @@ fn color_from(c: cadcraft_engine::doc::color::Color) -> Color {
 }
 
 /// CADCraft common properties for an ECAD style.
-pub fn common_for(style: &Style, layer_name: &str) -> Common {
+pub(crate) fn common_for(style: &Style, layer_name: &str) -> Common {
     Common {
         layer: layer_name.to_string(),
         color: color_to(style.color),
@@ -67,7 +67,7 @@ pub fn common_for(style: &Style, layer_name: &str) -> Common {
 }
 
 /// The CADCraft kind for a primitive.
-pub fn kind_for_primitive(p: &Primitive) -> EntityKind {
+pub(crate) fn kind_for_primitive(p: &Primitive) -> EntityKind {
     match p {
         Primitive::Line { a, b } => EntityKind::Line(Line { a: v3(*a), b: v3(*b) }),
         Primitive::Polyline { vertices, closed } => EntityKind::LwPolyline(LwPolyline {
@@ -101,7 +101,7 @@ pub fn kind_for_primitive(p: &Primitive) -> EntityKind {
 }
 
 /// The engine's horizontal alignment of an ECAD one.
-pub fn engine_halign(h: TextHAlign) -> HAlign {
+pub(crate) fn engine_halign(h: TextHAlign) -> HAlign {
     match h {
         TextHAlign::Left => HAlign::Left,
         TextHAlign::Center => HAlign::Center,
@@ -110,32 +110,12 @@ pub fn engine_halign(h: TextHAlign) -> HAlign {
 }
 
 /// The engine's vertical alignment of an ECAD one.
-pub fn engine_valign(v: TextVAlign) -> VAlign {
+pub(crate) fn engine_valign(v: TextVAlign) -> VAlign {
     match v {
         TextVAlign::Baseline => VAlign::Baseline,
         TextVAlign::Bottom => VAlign::Bottom,
         TextVAlign::Middle => VAlign::Middle,
         TextVAlign::Top => VAlign::Top,
-    }
-}
-
-/// The ECAD horizontal alignment of an engine one: centre and middle are centre, and the
-/// engine's aligned and fit (which ECAD never writes) count as left, as ECAD's text rules read them.
-pub fn model_halign(h: HAlign) -> TextHAlign {
-    match h {
-        HAlign::Center | HAlign::Middle => TextHAlign::Center,
-        HAlign::Right => TextHAlign::Right,
-        HAlign::Left | HAlign::Aligned | HAlign::Fit => TextHAlign::Left,
-    }
-}
-
-/// The ECAD vertical alignment of an engine one.
-pub fn model_valign(v: VAlign) -> TextVAlign {
-    match v {
-        VAlign::Baseline => TextVAlign::Baseline,
-        VAlign::Bottom => TextVAlign::Bottom,
-        VAlign::Middle => TextVAlign::Middle,
-        VAlign::Top => TextVAlign::Top,
     }
 }
 
@@ -156,7 +136,7 @@ fn kind_for_symbol(s: &SymbolInstance) -> EntityKind {
 }
 
 /// The entity for an item, with the given handle.
-pub fn entity_for(doc: &Document, item: &Item, handle: Handle) -> Option<Entity> {
+pub(crate) fn entity_for(doc: &Document, item: &Item, handle: Handle) -> Option<Entity> {
     let layer = doc.layers.get(&item.style.layer)?;
     let mut kind = match &item.kind {
         ItemKind::Primitive(p) => kind_for_primitive(p),
@@ -171,7 +151,7 @@ pub fn entity_for(doc: &Document, item: &Item, handle: Handle) -> Option<Entity>
 }
 
 /// A terminal marker entity.
-pub fn marker_entity(at: Pt, handle: Handle) -> Entity {
+pub(crate) fn marker_entity(at: Pt, handle: Handle) -> Entity {
     Entity { handle, common: Common { layer: MARKER_LAYER.into(), ..Common::default() }, kind: EntityKind::Point(CPoint { p: v3(at), angle: 0.0 }) }
 }
 
@@ -242,7 +222,7 @@ pub const TABLE_REFUSED: &str =
 
 /// Why an entity of `kind` cannot be placed on an ECAD page (design 033 §11.2): each kind has its
 /// own plural phrase, never a name with `s` added ("hatchs", "object of this kinds").
-pub fn not_placeable(kind: &EntityKind) -> String {
+pub(crate) fn not_placeable(kind: &EntityKind) -> String {
     match kind {
         EntityKind::Table(_) => TABLE_REFUSED.into(),
         EntityKind::Hatch(_) => "Hatches can't be placed on ECAD pages yet. Draw the outline with lines.".into(),

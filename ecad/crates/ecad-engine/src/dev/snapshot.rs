@@ -19,7 +19,7 @@ use crate::history::event_log::EventLog;
 /// `ecad-inspect/1` is unchanged. Brief 010 adds three derived entries to `checks`
 /// (`cable_references`, `orphan_references`, `over_referenced_cables`); readers that do not know
 /// them ignore them, so the tag is unchanged.
-pub const SNAPSHOT_FORMAT: &str = "ecad-inspect/2";
+pub(crate) const SNAPSHOT_FORMAT: &str = "ecad-inspect/2";
 
 /// A page as the inspector shows it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

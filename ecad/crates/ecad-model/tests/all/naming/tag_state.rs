@@ -54,3 +54,29 @@ fn a_record_without_the_state_does_not_read() {
     place.as_object_mut().unwrap().remove("location_state");
     assert!(serde_json::from_value::<Device>(place).is_err(), "a record without location_state does not read either");
 }
+
+/// A state that contradicts its value is a named read error, one case per contradiction.
+#[test]
+fn a_state_that_contradicts_its_value_is_refused() {
+    use ecad_model::document::book::PlaceState;
+    use ecad_model::naming::id::{FunctionId, LocationId};
+    use ecad_model::{Author, Cable, CableId, Ledger, ModelError};
+    let create = |device: Device| {
+        let mut l = Ledger::new(1);
+        l.commit(Author::User, "add", vec![Op::CreateDevice { id: DeviceId(1), device }]).map(|_| ())
+    };
+    let refused = |r: Result<(), ModelError>, want: &str| {
+        let e = r.unwrap_err().to_string();
+        assert!(e.contains(want), "{want}: {e}");
+    };
+    refused(create(Device { tag_state: TagState::Fixed, ..Device::default() }), "tag state fixed but no tag");
+    refused(create(Device { tag_state: TagState::Provisional, ..Device::default() }), "tag state provisional but no tag");
+    refused(create(Device { location_state: PlaceState::ByHand, ..Device::default() }), "location state by_hand but no location");
+    refused(create(Device { function_state: PlaceState::Proposed, ..Device::default() }), "function state proposed but no function");
+    refused(create(Device { location: Some(LocationId(1)), ..Device::default() }), "location state is unset");
+    refused(create(Device { function: Some(FunctionId(1)), ..Device::default() }), "function state is unset");
+    let mut l = Ledger::new(1);
+    let cable = Cable { tag_state: TagState::Fixed, ..Cable::default() };
+    let e = l.commit(Author::User, "add", vec![Op::CreateCable { id: CableId(1), cable }]).unwrap_err().to_string();
+    assert!(e.contains("tag state fixed but no tag"), "{e}");
+}
