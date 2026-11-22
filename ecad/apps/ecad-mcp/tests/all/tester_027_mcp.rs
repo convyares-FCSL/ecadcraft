@@ -1,5 +1,5 @@
-//! Tester 027 (release) through MCP: `release {provisional: "finalise"}` records two
-//! transactions as the agent (as `issuerevision` may), a release taken back by the per-call cap
+//! Tester 027 (release) through MCP: `release {provisional: "finalise"}` records one
+//! transaction as the agent (as `issuerevision` does), a release taken back by the per-call cap
 //! leaves the file on disk agreeing with the reply, and `rev` given as odd text with writes off
 
 use std::path::{Path, PathBuf};
@@ -59,10 +59,10 @@ fn versions_on_disk(path: &str) -> Vec<ecad_model::PointName> {
 }
 
 /// AC 2 and AC 6 together: 026's finalise choice through MCP. `issuerevision {provisional:
-/// "finalise"}` may record two transactions in one call (tester 026); `release` with the same
-/// choice records the same two and must be allowed them, as the agent.
+/// "finalise"}` records one transaction in one call (S4); `release` with the same choice records
+/// the same one, as the agent.
 #[test]
-fn release_with_finalise_records_two_transactions_as_the_agent() {
+fn release_with_finalise_records_one_transaction_as_the_agent() {
     let dir = TempDir::new("t027-fin");
     let (mut c, path) = project(&dir, true);
     let before = c.log().len();
@@ -70,7 +70,7 @@ fn release_with_finalise_records_two_transactions_as_the_agent() {
     assert_ne!(r["isError"], json!(true), "{r}");
     let log = c.log();
     let new: Vec<(String, Author)> = log.iter().skip(before).map(|t| (t.label.clone(), t.author.clone())).collect();
-    assert_eq!(new, [("Finalise numbering".to_string(), Author::Agent(AGENT.into())), ("Issue Rev B".to_string(), Author::Agent(AGENT.into()))]);
+    assert_eq!(new, [("Issue Rev B".to_string(), Author::Agent(AGENT.into()))], "Finalise and the issue are one transaction");
     assert!(versions_on_disk(&path).contains(&rev_b()));
 }
 

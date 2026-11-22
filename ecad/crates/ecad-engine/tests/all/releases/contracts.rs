@@ -278,14 +278,13 @@ fn provisional_items_follow_026s_choice() {
         let e = f.h.run("release", json!({})).unwrap_err();
         assert_eq!(e, refusal);
         assert_eq!(f.h.head(), head, "nothing recorded");
-        // `"finalise"` records two transactions (Finalise, then the issue): past the harness's
-        // one-per-command check.
+        // `"finalise"` records Finalise and the issue as one transaction (S4).
         let v = f.h.s.execute("release", &json!({"provisional": way})).unwrap();
         let log: Vec<String> = f.h.p(|p| p.ledger.log().iter().skip(head as usize).map(|t| t.label.clone()).collect());
         match way {
             "finalise" => {
-                assert_eq!(log, ["Finalise numbering", "Issue Rev B"], "{v}");
-                assert_eq!(v["transactions"], json!([head + 1, head + 2]));
+                assert_eq!(log, ["Issue Rev B"], "{v}");
+                assert_eq!(v["transactions"], json!([head + 1]));
             }
             _ => {
                 assert_eq!(log, ["Issue Rev B"], "{v}");
@@ -540,7 +539,7 @@ fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
     assert!(pre["errors"].as_u64().unwrap() >= 1, "an error before Finalise: {pre}");
     let head = f.h.head();
     let v = f.h.s.execute("release", &json!({"provisional": "finalise"})).unwrap();
-    assert_eq!(v["transactions"], json!([head + 1, head + 2]), "{v}");
+    assert_eq!(v["transactions"], json!([head + 1]), "{v}");
     let checks = std::fs::read_to_string(folder(&f, "B").join("D-1001 Rev B checks.csv")).unwrap();
     assert!(!checks.contains("\r\nerror,"), "{checks}");
     assert_eq!(manifest(&folder(&f, "B"))["checks"]["errors"], 0);

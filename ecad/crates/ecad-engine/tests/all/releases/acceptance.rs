@@ -239,6 +239,29 @@ fn a_real_save_failure_keeps_the_issue_and_finishes_the_folder() {
 
 // ---------------------------------------------------------------- AC 2/3: 026's choice
 
+/// S4: `release` with Finalise records Finalise and the issue as ONE transaction (one history
+/// entry), and one undo takes back both: the revision, its point, and the numbering. A release
+/// refused for its fields writes nothing.
+#[test]
+fn release_with_finalise_is_one_transaction_and_one_undo_takes_back_both() {
+    let dir = tmp("fin-undo");
+    let (mut h, _) = project_in(&dir, "D-1001");
+    provisional(&mut h);
+    let before = h.doc();
+    let head = h.head();
+    let v = h.s.execute("release", &json!({"provisional": "finalise"})).unwrap();
+    assert_eq!(h.head(), head + 1, "{v}");
+    let after = h.doc();
+    assert_ne!(after.devices, before.devices, "Finalise numbered the provisional tags");
+    assert_eq!(after.versions.len(), before.versions.len() + 1, "the revision point");
+    assert!(after.project.revisions.iter().any(|r| r.issued));
+    h.s.execute("undoissue", &json!({})).unwrap();
+    let undone = h.doc();
+    assert_eq!(undone.devices, before.devices, "one undo took the numbering back too");
+    assert_eq!(undone.versions, before.versions, "and the revision point");
+    assert_eq!(undone.project.revisions, before.project.revisions, "and the issued row");
+}
+
 /// AC 2: with provisional items, no choice is refused before anything is recorded; `"finalise"`
 /// records Finalise then the issue, and the folder is built from the finalised state (no
 /// provisional row in `checks.csv`, no `?` tag in the BOM).
@@ -253,7 +276,7 @@ fn finalise_then_issue_and_the_folder_shows_the_finalised_tags() {
     assert_eq!(h.head(), head);
     assert!(!dir.join("release").exists());
     let v = h.s.execute("release", &json!({"provisional": "finalise"})).unwrap();
-    assert_eq!(labels_since(&mut h, head), ["Finalise numbering", "Issue Rev B"], "{v}");
+    assert_eq!(labels_since(&mut h, head), ["Issue Rev B"], "Finalise and the issue are one transaction: {v}");
     let out = rel(&dir, "B");
     let checks = std::fs::read_to_string(out.join("D-1001 Rev B checks.csv")).unwrap();
     assert!(!checks.contains("Provisional"), "{checks}");

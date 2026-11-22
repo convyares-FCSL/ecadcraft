@@ -87,11 +87,9 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
 /// transaction before the issue, or issue them as they are).
 pub mod numbering_seam {
     use ecad_electrical::CmdError;
-    use ecad_electrical::numbering::commands::{BeforeIssue, applied_words, finalise_request, plan_for, way_before_issue};
-    use ecad_model::naming::numbering::Plan;
+    use ecad_electrical::numbering::commands::{BeforeIssue, finalise_request, plan_for, way_before_issue};
     use serde_json::Value;
 
-    use crate::access::Pages;
     use crate::commands::opt_typed;
     use crate::project::Project;
     use ecad_electrical::checks::Check;
@@ -130,14 +128,6 @@ pub mod numbering_seam {
         }
     }
 
-    /// Record a planned Finalise numbering.
-    ///
-    /// # Errors
-    /// The commit was refused.
-    pub(crate) fn commit_finalise(p: &mut Project, pg: &mut Pages<'_>, plan: &ecad_model::naming::numbering::Plan) -> Result<(), String> {
-        commit(p, pg, plan).map_err(String::from)
-    }
-
     /// 026's provisional step as `provisional` names it, planned without writing.
     fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue, CmdError> {
         let way = opt_typed(params, "provisional", "\"finalise\" or \"issue\"", Value::as_str)?;
@@ -153,13 +143,6 @@ pub mod numbering_seam {
                 Ok(if plan.ops.is_empty() { BeforeIssue::Go(None) } else { BeforeIssue::Finalise(plan) })
             }
         }
-    }
-
-    /// Record a planned Finalise numbering as its own transaction, and echo its words.
-    fn commit(p: &mut Project, pg: &mut Pages<'_>, plan: &Plan) -> Result<(), CmdError> {
-        p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone())?;
-        pg.echo(applied_words(plan, true));
-        Ok(())
     }
 }
 
@@ -761,7 +744,7 @@ pub(crate) fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Op
             "The project is read-only ({why}), so the pending revision cannot be issued. Issued revisions can still be written out: give rev."
         ));
     }
-    if let Err(e) = crate::pages::commands::sheets::plan_issue(p) {
+    if let Err(e) = crate::pages::commands::sheets::plan_issue(p, &[]) {
         return Some(e.to_string());
     }
     // With Finalise chosen, the errors that count are those of the finalised state, the rows the
@@ -1044,31 +1027,23 @@ pub(crate) fn release_pending(
         ecad_electrical::numbering::commands::BeforeIssue::Go(note) => (None, note),
         ecad_electrical::numbering::commands::BeforeIssue::Finalise(plan) => (Some(plan), None),
     };
-    // The caller's transaction budget (an agent's cap of one per call, two with Finalise): known
-    // before anything reaches the disk, never found out after (tester 027, 3).
-    let needed = 1 + usize::from(finalise.is_some());
+    // The caller's transaction budget (an agent's cap of one per call): known before anything
+    // reaches the disk, never found out after (tester 027, 3). Finalise and the issue are one
+    // transaction (S4), so the need is one either way.
     if let Some(budget) = p.tx_budget
-        && needed > budget
+        && budget < 1
     {
-        return Err(over_budget(needed, budget));
+        return Err(over_budget(1, budget));
     }
     // 3. Build into staging, from the state as it will be issued: Finalise's ops (if any), then
     // the issue's, on the current document.
-    let mut plan = crate::pages::commands::sheets::plan_issue(p)?;
-    if finalise.is_some() {
-        // The issue names the step before it: Finalise, once recorded.
-        plan.head += 1;
-        for op in plan.ops.iter_mut() {
-            if let Op::NameVersion { at, .. } = op {
-                *at = plan.head;
-            }
-        }
-    }
+    let before: Vec<Op> = finalise.iter().flat_map(|f| f.ops.iter().cloned()).collect();
+    let mut plan = crate::pages::commands::sheets::plan_issue(p, &before)?;
     let rev = plan.rev.clone();
     let target = if rev == rev0 { target } else { folder_param(p, params, default_folder(p, &rev))? };
     let staging = partial_of(&target);
     revisions::set_released(&mut plan.ops, plan.n, &recorded(p, &target));
-    let all_ops: Vec<Op> = finalise.iter().flat_map(|f| f.ops.iter().cloned()).chain(plan.ops.iter().cloned()).collect();
+    let all_ops: Vec<Op> = before.iter().chain(plan.ops.iter()).cloned().collect();
     let issued_doc = p.ledger.preview(&all_ops).map_err(|e| e.to_string())?;
     // With Finalise, the lists and the check are those of the finalised state (built on this
     // copy, as for a re-release); otherwise the kept ones (the issue changes no list or check).
@@ -1107,26 +1082,16 @@ pub(crate) fn release_pending(
     if l.folder != target {
         revisions::set_released(&mut plan.ops, plan.n, &recorded(p, &l.folder));
     }
-    // 4. Finalise (when asked), then the issue. An issue that fails takes Finalise back with it.
-    let mut finalise_tx = None;
-    if let Some(f) = &finalise {
-        if let Err(e) = numbering_seam::commit_finalise(p, pg, f) {
-            clear_staging(&staging);
-            return Err(stopped(&e));
-        }
-        finalise_tx = Some(p.ledger.head());
-    }
+    // 4. Finalise (when asked) and the issue: ONE transaction, one history entry, one undo. A
+    // refused issue writes nothing, so there is nothing to take back.
     let issued =
-        injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), plan.ops.clone()).map_err(String::from));
+        injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), all_ops.clone()).map_err(String::from));
     if let Err(e) = issued {
         clear_staging(&staging);
-        if finalise_tx.is_some() {
-            return Err(match p.undo_step(pg) {
-                Ok(()) => format!("Release stopped: {e}. Finalise numbering was undone; nothing was issued or written."),
-                Err(u) => format!("Release stopped: {e}. Finalise numbering stays recorded ({u}); nothing was issued or written. Undo it with u."),
-            });
-        }
         return Err(e);
+    }
+    if let Some(f) = &finalise {
+        pg.echo(ecad_electrical::numbering::commands::applied_words(f, true));
     }
     let tx = p.ledger.head();
     let mut problems: Vec<String> = Vec::new();
@@ -1176,8 +1141,7 @@ pub(crate) fn release_pending(
         message.push_str(pr);
     }
     pg.echo(message.clone());
-    let mut transactions: Vec<u64> = finalise_tx.into_iter().collect();
-    transactions.push(tx);
+    let transactions: Vec<u64> = vec![tx];
     let mut v = json!({
         "rev": rev, "folder": shown(&l.folder), "finished": landed,
         "files": st.files.iter().map(|w| w.json(Some(&l.folder))).collect::<Vec<_>>(),

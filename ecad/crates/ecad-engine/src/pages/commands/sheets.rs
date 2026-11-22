@@ -154,12 +154,13 @@ fn plan_issue_of(p: &Project, before: &[Op], f: &RevisionFields) -> Result<Issue
     rules::plan_issue(&p.ledger, release_line_refusal(p, true), before, f, today)
 }
 
-/// Plan issuing the pending revision with no field writes (Release, brief 027).
+/// Plan issuing the pending revision with no field writes (Release, brief 027), on the state the
+/// ops `before` (Finalise's, or none) leave.
 ///
 /// # Errors
 /// As `issuerevision`, in words.
-pub fn plan_issue(p: &Project) -> Result<IssuePlan, CmdError> {
-    plan_issue_of(p, &[], &revision_fields([None, None, None, None, None, None], None, None))
+pub fn plan_issue(p: &Project, before: &[Op]) -> Result<IssuePlan, CmdError> {
+    plan_issue_of(p, before, &revision_fields([None, None, None, None, None, None], None, None))
 }
 
 /// `issuerevision {rev?, date?, description?, drawn?, checked?, approved?, provisional?}`: issues

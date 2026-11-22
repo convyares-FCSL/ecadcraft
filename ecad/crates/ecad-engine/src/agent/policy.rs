@@ -119,20 +119,6 @@ pub fn reads_only(id: &str, params: &Value) -> bool {
             && params.get("existing").and_then(Value::as_str).is_none_or(|e| e.trim() != "replace"))
 }
 
-/// How many transactions one call of `id` with `params` may record: one
-/// ([`crate::agent::MAX_TRANSACTIONS_PER_CALL`]), except `release {provisional: "finalise"}` of the
-/// pending revision (no `rev`), which records Finalise numbering and then the issue (brief 027,
-/// design §4.4): two. `issuerevision {provisional: "finalise"}` records both in one (S4, #37).
-pub fn transactions_allowed(id: &str, params: &Value) -> usize {
-    let issuing = id == "release" && params.get("rev").is_none_or(Value::is_null);
-    let finalise = issuing
-        && params
-            .get("provisional")
-            .and_then(Value::as_str)
-            .is_some_and(|w| matches!(w.trim().to_ascii_lowercase().as_str(), "finalise" | "finalize"));
-    if finalise { crate::agent::MAX_TRANSACTIONS_PER_CALL + 1 } else { crate::agent::MAX_TRANSACTIONS_PER_CALL }
-}
-
 /// Commands an agent never runs: files, documents and the process. The project is opened by the
 /// person who starts the server; saving is the `save` tool (only with `--write`).
 pub const NEVER_COMMANDS: &[&str] = &[
@@ -347,12 +333,5 @@ mod tests {
         assert!(check("release", &json!({"rev": "A", "existing": "replace"}), true, None).is_ok());
         assert!(check("release", &none, true, None).is_ok());
         assert_eq!(check("release", &json!({"folder": "x"}), true, None), Err(file_key("release", "folder")));
-        // Tester 027, 2: release of the pending revision with Finalise may record two, and no more.
-        let one = crate::agent::MAX_TRANSACTIONS_PER_CALL;
-        assert_eq!(transactions_allowed("release", &json!({"provisional": "finalise"})), one + 1);
-        assert_eq!(transactions_allowed("release", &json!({"provisional": "issue"})), one);
-        assert_eq!(transactions_allowed("release", &json!({})), one);
-        assert_eq!(transactions_allowed("release", &json!({"rev": "A", "provisional": "finalise"})), one);
-        assert_eq!(transactions_allowed("wire", &json!({"provisional": "finalise"})), one);
     }
 }

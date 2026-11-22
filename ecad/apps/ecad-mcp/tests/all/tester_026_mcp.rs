@@ -115,23 +115,11 @@ fn an_edit_after_issue_finalise_in_one_line_is_refused() {
     assert!(doc.wires.is_empty(), "the wire was taken back");
 }
 
-/// Only `issuerevision` with `provisional: "finalise"` gets the second transaction: the same
-/// parameter on other commands, `"issue"`, and other spellings get one.
+/// `issuerevision` with `provisional: "finalise"` records Finalise and the issue as one
+/// transaction by the agent, also through an alias of the command (`release` does the same, see
+/// `tester_027_mcp`).
 #[test]
-fn the_exception_is_only_release_with_finalise() {
-    for (cmd, params) in [
-        ("issuerevision", json!({"provisional": "issue"})),
-        ("finalise", json!({"provisional": "finalise"})),
-        ("renumber", json!({"provisional": "finalise"})),
-        ("numbering", json!({"provisional": true})),
-    ] {
-        assert_eq!(ecad_mcp::policy::transactions_allowed(cmd, &params), ecad_mcp::MAX_TRANSACTIONS_PER_CALL, "{cmd} {params}");
-    }
-    // S4: `issuerevision` records Finalise and the issue in one transaction, so it keeps the cap of one;
-    // `release` still records them as two.
-    assert_eq!(ecad_mcp::policy::transactions_allowed("issuerevision", &json!({"provisional": " Finalize "})), 1);
-    assert_eq!(ecad_mcp::policy::transactions_allowed("release", &json!({"provisional": " Finalize "})), 2);
-    assert_eq!(ecad_mcp::policy::transactions_allowed("issuerevision", &json!({"provisional": true})), 1);
+fn issuerevision_and_release_with_finalise_each_record_one_transaction() {
     // An alias of the command is resolved to its id before the check.
     let (mut c, a, _) = provisional_project();
     let n = c.log().len();

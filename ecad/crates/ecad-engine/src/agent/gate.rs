@@ -182,19 +182,6 @@ fn set_budget(s: &mut Session, p: &ProjectHandle, budget: Option<usize>) -> Resu
     p.configure(s, |p| p.tx_budget = budget)
 }
 
-/// Whether `txs` is exactly a Finalise edit followed by an issue (brief 026, design §5.5).
-fn finalised_then_issued(txs: &[Transaction]) -> bool {
-    match txs {
-        [f, i] => {
-            matches!(f.kind, TxKind::Edit)
-                && f.label == "Finalise numbering"
-                && matches!(i.kind, TxKind::Edit)
-                && ecad_electrical::releases::revisions::issue_in(&i.ops).is_some()
-        }
-        _ => false,
-    }
-}
-
 /// Said when an agent on the bridge would undo or redo a step that is not its own.
 pub fn not_own_step(seq: u64, label: &str) -> String {
     format!("Refused: the last step (#{seq} \"{label}\") is the designer's; an agent undoes only its own steps.")
@@ -288,18 +275,15 @@ pub fn execute(s: &mut Session, p: &ProjectHandle, call: &mut Call<'_>, req: &Va
     // writes files (brief 027's release) refuses up front rather than write what the cap
     // below would take back (tester 027, 3).
     let line_used = *call.line_transactions;
-    let cap = if line_used == 0 { policy::transactions_allowed(&id, &params) } else { MAX_TRANSACTIONS_PER_CALL };
-    set_budget(s, p, Some(cap.saturating_sub(line_used)))?;
+    set_budget(s, p, Some(MAX_TRANSACTIONS_PER_CALL.saturating_sub(line_used)))?;
     let r = s.execute(&given, &params).map_err(|e| e.to_string());
     set_budget(s, p, None)?;
     let name = id.to_ascii_uppercase();
     let new = log_since(s, p, &before).map_err(|e| format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history."))?;
     let used = *call.line_transactions;
-    // Brief 027 (design §4.4): `release {provisional: "finalise"}` records Finalise, then the
-    // issue: two transactions by design (`issuerevision` records both in one, S4).
-    // Only when this call is the line's first write and it really recorded Finalise, then the
-    // issue (reviewer 026, 3); anything else keeps the cap of one.
-    let allowed = if used == 0 && finalised_then_issued(&new) { policy::transactions_allowed(&id, &params) } else { MAX_TRANSACTIONS_PER_CALL };
+    // One call records at most one transaction: `issuerevision` and `release` record Finalise and
+    // the issue together (S4).
+    let allowed = MAX_TRANSACTIONS_PER_CALL;
     if used.saturating_add(new.len()) > allowed {
         let what = if used > 0 {
             format!("this request line had already recorded {used}, and {name} recorded {}", new.len())
