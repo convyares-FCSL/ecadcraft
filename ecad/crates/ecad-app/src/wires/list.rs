@@ -7,7 +7,7 @@
 //! **Update map:** see [`crate::reports::report`]: the copy is taken again only when the report models'
 //! revision changed, and only while the tab is shown.
 
-use ecad_electrical::reports::kept::ReportModels;
+use ecad_electrical::reports::kept::{ReportModels, WireColumn};
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
 
@@ -115,7 +115,7 @@ impl Default for WiresSource {
 impl WiresSource {
     /// Whether row `k`'s number is provisional.
     pub fn provisional(&self, k: usize) -> bool {
-        ecad_model::naming::tag::provisional(&self.rows.text(k, "Wire number")).is_some_and(|(_, n)| n > 0)
+        ecad_model::naming::tag::provisional(&self.rows.text(k, WireColumn::WireNumber.header())).is_some_and(|(_, n)| n > 0)
     }
 
     /// Brief 057: row `k`'s rating result.
@@ -131,22 +131,22 @@ impl ReportColumns for WiresSource {
     fn from(&self, col: ColumnId) -> From {
         match col {
             WIRE => From::Derived,
-            FROM => From::Header("From"),
-            TO => From::Header("To"),
-            COLOUR => From::Header("Colour"),
-            SIZE => From::Header("Cross-section"),
-            CATEGORY => From::Header("Category"),
-            PAGE => From::Header("Page"),
-            POTENTIAL => From::Header("Potential"),
-            CABLE => From::Header("Cable"),
+            FROM => From::Header(WireColumn::From.header()),
+            TO => From::Header(WireColumn::To.header()),
+            COLOUR => From::Header(WireColumn::Colour.header()),
+            SIZE => From::Header(WireColumn::CrossSection.header()),
+            CATEGORY => From::Header(WireColumn::Category.header()),
+            PAGE => From::Header(WireColumn::Page.header()),
+            POTENTIAL => From::Header(WireColumn::Potential.header()),
+            CABLE => From::Header(WireColumn::Cable.header()),
             FERRULES | LENGTH => From::Placeholder,
             _ => From::Derived,
         }
     }
     fn derived(&self, k: usize, col: ColumnId) -> Cell {
         match col {
-            WIRE if self.provisional(k) => Cell::Provisional(self.rows.text(k, "Wire number")),
-            WIRE => self.rows.cell(k, "Wire number"),
+            WIRE if self.provisional(k) => Cell::Provisional(self.rows.text(k, WireColumn::WireNumber.header())),
+            WIRE => self.rows.cell(k, WireColumn::WireNumber.header()),
             ON_PAGE => Cell::Text(self.pages.get(k).cloned().unwrap_or_default()),
             // Brief 057 (design 057 §2.1): the worst rating row in words.
             STATUS if let Some((w, fails)) = self.rating(k).and_then(|r| r.status().map(|w| (w, r.fails()))) => {

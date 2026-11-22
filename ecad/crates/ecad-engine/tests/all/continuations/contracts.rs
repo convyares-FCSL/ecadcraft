@@ -360,7 +360,12 @@ fn the_text_is_derived_and_properties_list_the_other_ends() {
     let s = &view.sections[0];
     let keys: Vec<&str> = s.rows.iter().map(|r| r.key.as_str()).collect();
     assert!(keys.contains(&CAPTION_KEY) && keys.contains(&"otherends"), "{keys:?}");
-    assert_eq!(s.buttons.iter().filter(|b| b.starts_with(&format!("refgoto:{}:", a.hex()))).count(), 2, "{:?}", s.buttons);
+    assert_eq!(
+        s.buttons.iter().filter(|b| matches!(b, ecad_electrical::properties::Button::RefGoto { source, .. } if *source == a)).count(),
+        2,
+        "{:?}",
+        s.buttons
+    );
     assert!(view.deps.contains(&ObjectRef::Page(f.pages[2])), "renumbering 103 refreshes Other ends");
 }
 

@@ -97,7 +97,7 @@ impl App {
                 if let Some(d) = &mut self.renumber {
                     match r {
                         Ok(v) => {
-                            d.preview = v;
+                            d.preview = ecad_electrical::numbering::commands::Preview::from_reply(&v).unwrap_or_default();
                             d.error = None;
                         }
                         Err(e) => d.error = Some(e),
@@ -120,7 +120,7 @@ impl App {
                     if let Some(d) = &mut self.renumber {
                         d.error = Some(e);
                         if let Some(Ok(v)) = fresh {
-                            d.preview = v;
+                            d.preview = ecad_electrical::numbering::commands::Preview::from_reply(&v).unwrap_or_default();
                         }
                     }
                 }

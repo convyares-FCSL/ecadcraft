@@ -302,7 +302,13 @@ fn g_hover_properties_and_go_to() {
     for k in ["contacts", "mirror", "contactrows"] {
         assert!(keys.contains(&k), "{keys:?}");
     }
-    assert!(s.buttons.iter().any(|b| b.starts_with(&format!("refgoto:{}:{}:", x.coil.hex(), x.no.hex()))), "{:?}", s.buttons);
+    assert!(
+        s.buttons
+            .iter()
+            .any(|b| matches!(b, ecad_electrical::properties::Button::RefGoto { source, target, .. } if *source == x.coil && *target == Some(x.no))),
+        "{:?}",
+        s.buttons
+    );
     assert!(view.deps.contains(&ObjectRef::Page(x.p105)), "renumbering 105 refreshes the rows");
     let e = x.h.run("references", json!({"component": "1"})).unwrap_err();
     assert_eq!(e, "no such component");

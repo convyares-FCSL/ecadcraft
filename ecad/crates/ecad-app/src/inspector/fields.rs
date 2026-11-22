@@ -4,7 +4,7 @@
 //! set. Edits go to the copy's `edits`, run by the app after the frame, exactly as before.
 
 use ecad_electrical::cables::words::Row;
-use ecad_electrical::properties::Target;
+use ecad_electrical::properties::{Button, Target};
 use ecad_widgets::tokens::ui_type;
 use eframe::egui::{self, RichText};
 
@@ -115,24 +115,14 @@ fn tag_clash(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, r
     });
 }
 
-/// A section's buttons (`revisions`, `more`, `goto:`, `showplan:`, `showcores:`, `refgoto:`), each
-/// pressed one pushed to the copy's `buttons`.
-pub fn buttons(ui: &mut egui::Ui, sh: &mut PropsShared, list: &[String]) {
+/// A section's buttons, each pressed one pushed to the copy's `buttons`.
+pub fn buttons(ui: &mut egui::Ui, sh: &mut PropsShared, list: &[Button]) {
     if list.is_empty() {
         return;
     }
     ui.horizontal_wrapped(|ui| {
         for b in list {
-            let label = match b.as_str() {
-                "revisions" => "Revisions\u{2026}".to_string(),
-                "more" => "More\u{2026}".to_string(),
-                g if g.starts_with("goto:") => "Go to".to_string(),
-                g if g.starts_with("showplan:") => "Show plan".to_string(),
-                g if g.starts_with("showcores:") => "Show cores".to_string(),
-                g if g.starts_with("refgoto:") => g.splitn(4, ':').nth(3).unwrap_or("Go to").to_string(),
-                other => other.to_string(),
-            };
-            if w::button(ui, &label, false, None).clicked() {
+            if w::button(ui, b.label(), false, None).clicked() {
                 sh.buttons.push(b.clone());
             }
         }

@@ -436,7 +436,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         let props = cx.ledger.document().devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
         let key = ecad_model::connectivity::jumper_bars::key(n);
         if let Some(v) = props.get(&key) {
-            t.notes.push(format!("Deleted link {} {v}.", ecad_electrical::devices::tags::tag_words(cx.ledger.document(), c)));
+            t.notes.push(format!("Deleted jumper bar {} {v}.", ecad_electrical::devices::tags::tag_words(cx.ledger.document(), c)));
         }
         for k in std::iter::once(key.clone()).chain(ecad_electrical::terminal_strips::accessories::FIELDS.iter().map(|f| format!("{key}.{f}"))) {
             if let Some(before) = props.get(&k).cloned() {

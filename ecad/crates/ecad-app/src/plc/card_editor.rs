@@ -216,8 +216,8 @@ pub fn field_line(c: DeviceId, key: &str, value: &str) -> Option<String> {
     Some(match key {
         "tag" => format!("setprop {}", json!({"component": c.hex(), "key": "tag", "value": v, "conflict": "swap"})),
         "description" | "function" | "location" | "maker" | "part_number" => setprop(key),
-        "slot" => format!("plcslot {}", json!({"card": c.hex(), "slot": ecad_electrical::input::plc_slot(v).ok()?})),
-        "start" => format!("plcaddress {}", json!({"card": c.hex(), "start": ecad_electrical::input::plc_start(v).ok()?})),
+        "slot" => format!("plcslot {}", json!({"card": c.hex(), "slot": v})),
+        "start" => format!("plcaddress {}", json!({"card": c.hex(), "start": if v.is_empty() { serde_json::Value::Null } else { json!(v) }})),
         _ => return None,
     })
 }

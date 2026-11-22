@@ -281,7 +281,8 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     assert_eq!(ecad_electrical::input::plc_start("%Q4.0"), Ok(Some(4)));
     assert_eq!(ecad_electrical::input::plc_start("IW64"), Ok(Some(64)));
     assert_eq!(ecad_electrical::input::plc_start(""), Ok(None), "empty unpins");
-    assert!(field_line(a03, "slot", "x").is_none(), "a slot is a number");
+    // The app passes the text; the command refuses what is not a slot.
+    assert!(field_line(a03, "slot", "x").is_some_and(|l| l.contains(r#""slot":"x""#)));
     take(&h, &deltas, "056-card-editor.png");
 }
 

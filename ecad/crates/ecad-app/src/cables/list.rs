@@ -10,7 +10,7 @@
 //! models' revision changed, and only while the tab is shown; the core table also when another
 //! cable is selected.
 
-use ecad_electrical::reports::kept::ReportModels;
+use ecad_electrical::reports::kept::{CableBase, CableColumn, CoreColumn, ReportModels};
 use ecad_electrical::terminal_strips::cores::CoreState;
 use ecad_model::CableId;
 use ecad_widgets::prim::Tone;
@@ -110,9 +110,9 @@ impl ReportColumns for CablesSource {
     }
     fn from(&self, col: ColumnId) -> From {
         match col {
-            CABLE => From::Header("Tag"),
-            TYPE => From::Header("Type"),
-            CORES => From::Header("Cores"),
+            CABLE => From::Header(CableBase::Tag.header()),
+            TYPE => From::Header(CableBase::Type.header()),
+            CORES => From::Header(CableBase::Cores.header()),
             // Brief 059: a cable not drawn shows its planned ends.
             FROM | TO => From::Derived,
             // Brief 059 (059d): each end's gland, `M20, M20`.
@@ -123,7 +123,7 @@ impl ReportColumns for CablesSource {
     fn derived(&self, k: usize, col: ColumnId) -> Cell {
         let r = &self.rows;
         match col {
-            FROM | TO if self.drawn(k) => r.cell(k, if col == FROM { "From" } else { "To" }),
+            FROM | TO if self.drawn(k) => r.cell(k, if col == FROM { CableBase::From } else { CableBase::To }.header()),
             FROM | TO => {
                 let side = usize::from(col == TO);
                 match self.info.get(k).and_then(|i| i.planned.get(side).cloned().flatten()) {
@@ -139,11 +139,11 @@ impl ReportColumns for CablesSource {
                     Cell::Text(format!("{}, {}", a.as_deref().unwrap_or(d), b.as_deref().unwrap_or(d)))
                 }
             },
-            LENGTH => match r.get(k, "Length").filter(|c| !c.text.is_empty()) {
+            LENGTH => match r.get(k, CableColumn::Length.header()).filter(|c| !c.text.is_empty()) {
                 Some(c) => Cell::Text(c.text.clone()),
                 None => Cell::read(crate::reports::report::DASH),
             },
-            USED => Cell::Text(format!("{} of {}", r.text(k, "Used"), r.text(k, "Cores"))),
+            USED => Cell::Text(format!("{} of {}", r.text(k, CableBase::Used.header()), r.text(k, CableBase::Cores.header()))),
             CHECKS => {
                 // Brief 057 (owner rule): open cores are errors, first.
                 if let Some(n) = self.open.get(k).map(Vec::len).filter(|n| *n > 0) {
@@ -218,7 +218,7 @@ pub struct CoresSource {
 impl CoresSource {
     /// Row `k`'s core colour (its label when that is a colour code, else the cable type's).
     pub fn colour(&self, k: usize) -> Option<String> {
-        crate::cables::view::core_colour(&self.rows.text(k, "Core"), k, &self.colours)
+        crate::cables::view::core_colour(&self.rows.text(k, CoreColumn::Core.header()), k, &self.colours)
     }
 
     /// Row `k`'s state against the offer.
@@ -228,13 +228,16 @@ impl CoresSource {
 
     /// Whether row `k`'s core is ticked Not used.
     pub fn is_unused(&self, k: usize) -> bool {
-        self.unused.contains(&self.rows.text(k, "Core"))
+        self.unused.contains(&self.rows.text(k, CoreColumn::Core.header()))
     }
 
     /// Whether row `k`'s core is open (owner rule): not connected at both ends, not ticked.
     pub fn is_open(&self, k: usize) -> bool {
         let r = &self.rows;
-        !self.is_unused(k) && (self.state(k) == Some(CoreState::Spare) || r.text(k, "From").is_empty() || r.text(k, "To").is_empty())
+        !self.is_unused(k)
+            && (self.state(k) == Some(CoreState::Spare)
+                || r.text(k, CoreColumn::From.header()).is_empty()
+                || r.text(k, CoreColumn::To.header()).is_empty())
     }
 }
 
@@ -269,9 +272,9 @@ impl ReportColumns for CoresSource {
     }
     fn from(&self, col: ColumnId) -> From {
         match col {
-            CORE => From::Header("Core"),
-            WIRE => From::Header("Wire number"),
-            FIELD => From::Header("To"),
+            CORE => From::Header(CoreColumn::Core.header()),
+            WIRE => From::Header(CoreColumn::WireNumber.header()),
+            FIELD => From::Header(CoreColumn::To.header()),
             _ => From::Derived,
         }
     }
@@ -284,7 +287,7 @@ impl ReportColumns for CoresSource {
             (SIZE, _) => Cell::Text(format!("{} mm\u{b2}", self.size)),
             // An unwired offered core has no cabinet end (owner rule: it is open, not "spare").
             (CABINET, Some(CoreState::Spare)) => Cell::Empty,
-            (CABINET, _) => Cell::Text(self.rows.text(k, "From")),
+            (CABINET, _) => Cell::Text(self.rows.text(k, CoreColumn::From.header())),
             (FIELD_WIRE, _) => self.field_wires.get(k).filter(|w| !w.is_empty()).map_or(Cell::Empty, |w| Cell::Text(w.clone())),
             (STATUS, _) if self.is_unused(k) => Cell::read("not used"),
             // Brief 059 (design 059 §5.5): an unwired core is "not assigned": read on a cable not
@@ -494,7 +497,8 @@ impl CablesView {
             })
             .unwrap_or_default();
         let rows = c.rows.rows.len();
-        c.field_wires = (0..rows).map(|k| selected.map(|cab| beyond(doc, cab, &c.rows.text(k, "To"))).unwrap_or_default()).collect();
+        c.field_wires =
+            (0..rows).map(|k| selected.map(|cab| beyond(doc, cab, &c.rows.text(k, CoreColumn::To.header()))).unwrap_or_default()).collect();
         self.core_table.update(&self.cores, Changed::All);
     }
 
@@ -530,18 +534,21 @@ impl CablesView {
     /// The selected cable as drawn (board 2.06).
     pub fn drawing(&self, k: usize) -> crate::cables::view::Drawing {
         let rows = &self.source.rows;
-        let words =
-            [rows.text(k, "Type"), rows.text(k, "Length")].into_iter().filter(|w| !w.is_empty() && w != "?").collect::<Vec<_>>().join(" \u{b7} ");
+        let words = [rows.text(k, CableBase::Type.header()), rows.text(k, CableColumn::Length.header())]
+            .into_iter()
+            .filter(|w| !w.is_empty() && w != "?")
+            .collect::<Vec<_>>()
+            .join(" \u{b7} ");
         let c = &self.cores.rows;
         let cores = c
             .keys
             .iter()
             .map(|i| crate::cables::view::Core {
-                label: c.text(*i, "Core"),
+                label: c.text(*i, CoreColumn::Core.header()),
                 colour: self.cores.colour(*i),
-                wire: c.text(*i, "Wire number"),
-                from: if self.cores.state(*i) == Some(CoreState::Spare) { String::new() } else { c.text(*i, "From") },
-                to: c.text(*i, "To"),
+                wire: c.text(*i, CoreColumn::WireNumber.header()),
+                from: if self.cores.state(*i) == Some(CoreState::Spare) { String::new() } else { c.text(*i, CoreColumn::From.header()) },
+                to: c.text(*i, CoreColumn::To.header()),
                 field_wire: self.cores.field_wires.get(*i).cloned().unwrap_or_default(),
                 unused: self.cores.is_unused(*i),
             })
@@ -549,12 +556,12 @@ impl CablesView {
         // Brief 059: a cable not drawn shows its plan at each end.
         let info = self.source.info.get(k).cloned().unwrap_or(RowInfo { drawn: true, ..RowInfo::default() });
         let (from, to) = if info.drawn {
-            (rows.text(k, "From"), rows.text(k, "To"))
+            (rows.text(k, CableBase::From.header()), rows.text(k, CableBase::To.header()))
         } else {
             (info.planned[0].clone().unwrap_or_default(), info.planned[1].clone().unwrap_or_default())
         };
         let glands = [info.glands[0].clone().unwrap_or_default(), info.glands[1].clone().unwrap_or_default()];
-        crate::cables::view::Drawing { tag: rows.text(k, "Tag"), words, from, to, cores, not_drawn: !info.drawn, glands }
+        crate::cables::view::Drawing { tag: rows.text(k, CableBase::Tag.header()), words, from, to, cores, not_drawn: !info.drawn, glands }
     }
 
     /// Forget the copies.
@@ -575,8 +582,8 @@ impl CablesView {
     pub fn counts(&self) -> (usize, usize, usize) {
         let keys = &self.source.rows.keys;
         let flagged = keys.iter().filter(|k| self.source.rows.flag(**k).is_some()).count();
-        let lengths = self.source.rows.headers.contains(&"Length");
-        let no_length = keys.iter().filter(|k| !lengths || self.source.rows.text(**k, "Length").is_empty()).count();
+        let lengths = self.source.rows.headers.contains(&CableColumn::Length.header());
+        let no_length = keys.iter().filter(|k| !lengths || self.source.rows.text(**k, CableColumn::Length.header()).is_empty()).count();
         (keys.len(), flagged, no_length)
     }
 
@@ -601,7 +608,9 @@ impl CablesView {
         for e in self.core_table.show(ui, &self.cores) {
             match e {
                 TableEvent::Export(csv) => crate::workspace::copy_csv(ui, csv),
-                TableEvent::Button { key, col: UNUSED, .. } => tick = Some((self.cores.rows.text(key, "Core"), !self.cores.is_unused(key))),
+                TableEvent::Button { key, col: UNUSED, .. } => {
+                    tick = Some((self.cores.rows.text(key, CoreColumn::Core.header()), !self.cores.is_unused(key)))
+                }
                 _ => {}
             }
         }
@@ -644,8 +653,12 @@ pub(crate) fn show_tab(t: &mut crate::shell::app::App, ui: &mut eframe::egui::Ui
     }
     let Some(k) = v.selected() else { return go };
     let rows = &v.source.rows;
-    let tag = rows.text(k, "Tag");
-    let words = [rows.text(k, "Type"), rows.text(k, "Length")].into_iter().filter(|w| !w.is_empty() && w != "?").collect::<Vec<_>>().join(" \u{b7} ");
+    let tag = rows.text(k, CableBase::Tag.header());
+    let words = [rows.text(k, CableBase::Type.header()), rows.text(k, CableColumn::Length.header())]
+        .into_iter()
+        .filter(|w| !w.is_empty() && w != "?")
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ");
     ui.add_space(space::M);
     ui.horizontal(|ui| {
         ui.add_space(space::L);

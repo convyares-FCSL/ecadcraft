@@ -2,6 +2,7 @@
 
 use crate::shell::app::*;
 use crate::{settings, shell};
+use ecad_electrical::properties::Button;
 use eframe::egui::{self};
 use serde_json::json;
 
@@ -157,27 +158,20 @@ impl App {
             }
         }
         for b in buttons {
-            match b.as_str() {
-                "revisions" => self.open_revisions(),
-                "more" => self.open_project_popout(crate::settings::sheets::Popout::Info),
-                g => {
-                    if let Some(r) = g.strip_prefix("goto:") {
-                        let _ = self.run_line(&format!("cablegoto {}", json!({ "reference": r })));
-                    } else if let Some(c) = g.strip_prefix("showplan:") {
-                        // Brief 028: Reports ▸ Terminals on this strip.
-                        self.show_plan(ecad_model::DeviceId::parse(c));
-                    } else if let Some(k) = g.strip_prefix("showcores:").and_then(ecad_model::CableId::parse) {
-                        self.show_cores(k);
-                    } else if let Some(rest) = g.strip_prefix("refgoto:") {
-                        // Brief 025: a device reference's Go to.
-                        let mut it = rest.splitn(3, ':');
-                        let (source, target) = (it.next().unwrap_or_default(), it.next().unwrap_or_default());
-                        let mut params = json!({ "source": source });
-                        if !target.is_empty() {
-                            params["target"] = json!(target);
-                        }
-                        let _ = self.run_line(&format!("refgoto {params}"));
+            match b {
+                Button::GoTo(r) => {
+                    let _ = self.run_line(&format!("cablegoto {}", json!({ "reference": r.hex() })));
+                }
+                // Brief 028: Reports ▸ Terminal blocks on this strip.
+                Button::ShowPlan(c) => self.show_plan(Some(c)),
+                Button::ShowCores(k) => self.show_cores(k),
+                // Brief 025: a device reference's Go to.
+                Button::RefGoto { source, target, .. } => {
+                    let mut params = json!({ "source": source.hex() });
+                    if let Some(t) = target {
+                        params["target"] = json!(t.hex());
                     }
+                    let _ = self.run_line(&format!("refgoto {params}"));
                 }
             }
         }

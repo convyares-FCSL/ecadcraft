@@ -227,7 +227,7 @@ fn switch_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, save: bool) -
     switch_to(p, pg, id).map_err(CmdError::refused)?;
     let from = match rec.fork_point.as_ref() {
         Some(f) => {
-            let parent = rec.parent.as_deref().and_then(BranchId::parse).unwrap_or_else(|| main_of(p));
+            let parent = rec.parent.unwrap_or_else(|| main_of(p));
             let named = named_points(p, parent).unwrap_or_default();
             match named.iter().find(|n| n.branch == parent && n.seq == f.seq) {
                 Some(n) => format!(" (from {})", n.name),
@@ -266,7 +266,7 @@ fn archive_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str) -> Result<Va
     if id == current(p) {
         // Archiving the branch shown first switches to its parent, saving first; a parent that
         // is not open itself gives main instead, saying so (never a refusal after the save).
-        let parent = rec.parent.as_deref().and_then(BranchId::parse).unwrap_or_else(|| main_of(p));
+        let parent = rec.parent.unwrap_or_else(|| main_of(p));
         let rows = branch_rows(p).map_err(CmdError::refused)?;
         let parent_row = rows.iter().find(|(i, _)| *i == parent).map(|(_, b)| b.clone());
         let (to, why) = match parent_row {

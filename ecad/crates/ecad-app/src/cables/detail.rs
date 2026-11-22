@@ -1,5 +1,6 @@
 //! Project ▸ Cables: the workspace's right panel for the selected cable.
 
+use ecad_electrical::reports::kept::CableBase;
 use ecad_widgets::prim::Tone;
 
 use crate::shell::app::App;
@@ -9,8 +10,8 @@ pub(crate) fn cable(t: &App, k: usize) -> Option<Detail> {
     let r = t.reports.as_ref()?;
     let v = &r.cables;
     let rows = &v.source.rows;
-    let tag = rows.text(k, "Tag");
-    let (from, to) = (rows.text(k, "From"), rows.text(k, "To"));
+    let tag = rows.text(k, CableBase::Tag.header());
+    let (from, to) = (rows.text(k, CableBase::From.header()), rows.text(k, CableBase::To.header()));
     // Brief 059: a cable not drawn has no drawing to flag (no type, no ends yet): its one row is
     // "not in the drawing yet".
     let mut checks: Vec<(String, Tone)> = if v.source.drawn(k) {
@@ -35,7 +36,7 @@ pub(crate) fn cable(t: &App, k: usize) -> Option<Detail> {
         checks.push((format!("{tag} is not in the drawing yet."), Tone::Neutral));
     }
     let subtitle = if drawn {
-        format!("{} to {}", nonempty(&rows.text(k, "From location")), nonempty(&rows.text(k, "To location")))
+        format!("{} to {}", nonempty(&rows.text(k, CableBase::FromLocation.header())), nonempty(&rows.text(k, CableBase::ToLocation.header())))
     } else {
         "not drawn".to_string()
     };

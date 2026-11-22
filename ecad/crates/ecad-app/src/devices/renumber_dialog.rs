@@ -8,6 +8,8 @@
 //! commits (design §11); a refused Apply asks for it again. Words are short (design §10): `Dev`,
 //! `Cbl`, `Wire`, `Sel`, `Prov`, `At`, row marks `→ F = –`.
 
+use ecad_electrical::numbering::commands::{Preview, RowChange};
+use ecad_model::naming::numbering::Kind as RowKind;
 use ecad_widgets::control::{self, Decor, Select, TextEntry};
 use ecad_widgets::dialog::{Dialog, action};
 use ecad_widgets::prim::{self, Checkbox, Kind, Radio, Segmented, Tone};
@@ -87,7 +89,7 @@ pub struct RenumberDialog {
     pub new_tags: bool,
     pub read_only: bool,
     /// The latest preview.
-    pub preview: Value,
+    pub preview: Preview,
     pub error: Option<String>,
 }
 
@@ -110,7 +112,7 @@ impl RenumberDialog {
             digits: digits.to_string(),
             new_tags: false,
             read_only,
-            preview: Value::Null,
+            preview: Preview::default(),
             error: None,
         };
         if finalise {
@@ -143,8 +145,8 @@ impl RenumberDialog {
         let mut v = json!({});
         if preview {
             v["preview"] = json!(true);
-        } else if let Some(n) = self.preview["change_count"].as_u64() {
-            v["based_on"] = json!(n);
+        } else if self.preview != Preview::default() {
+            v["based_on"] = json!(self.preview.change_count);
         }
         if self.finalise {
             return Ok(("finalise", v));
@@ -179,7 +181,7 @@ impl RenumberDialog {
     /// The dialog (design §3).
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
         let title = if self.finalise { "Finalise numbering" } else { "Renumber" };
-        let n = self.preview["changes"].as_u64().unwrap_or(0);
+        let n = self.preview.changes;
         let blocked = if n == 0 { Some("Nothing to change.") } else { self.params(false).is_err().then_some("Fix Start and Digits first.") };
         let read_only = self.read_only;
         let shown = Dialog::new(egui::Id::unique(DIALOG_ID), title, DIALOG_ID).medium().show(
@@ -306,38 +308,35 @@ impl RenumberDialog {
         }
         ui.separator();
         let p = self.preview.clone();
-        prim::body(ui, p["summary"].as_str().unwrap_or_default(), false);
-        let rows: Vec<Value> =
-            p["rows"].as_array().cloned().unwrap_or_default().into_iter().chain(p["skipped"].as_array().cloned().unwrap_or_default()).collect();
+        prim::body(ui, &p.summary, false);
         let all = self.what == What::All || self.finalise;
         let s = ecad_widgets::SHELL;
         let mono = |text: String, ink| RichText::new(text).monospace().color(ecad_widgets::color(ink));
         ui.label(mono(format!("{}{:<8} {:<3}{:<8} {:<10} Desc", if all { "     " } else { "" }, "Old", "", "New", "At"), s.text_3));
+        let total = p.rows.len() + p.skipped.len();
         egui::ScrollArea::vertical().id_salt("ecad.renumber.rows").max_height(ROWS_HEIGHT).auto_shrink([false, true]).show_rows(
             ui,
             ROW_H,
-            rows.len(),
+            total,
             |ui, range| {
                 for i in range {
-                    let Some(r) = rows.get(i) else { continue };
-                    let skipped = r.get("why").is_some_and(|w| !w.is_null()) || r.get("tag").is_some();
-                    let (old, new, mark, at) = if r.get("tag").is_some() {
-                        (r["tag"].as_str().unwrap_or_default().to_string(), String::new(), "–".to_string(), String::new())
-                    } else {
-                        (
-                            r["old"].as_str().unwrap_or_default().to_string(),
-                            r["new"].as_str().unwrap_or_default().to_string(),
-                            r["mark"].as_str().unwrap_or_default().to_string(),
-                            r["at"].as_str().unwrap_or_default().to_string(),
-                        )
+                    // The numbered rows, then the ones left alone.
+                    let (kind, old, new, mark, at, why, skipped, goto) = match p.rows.get(i) {
+                        Some(r) => {
+                            let new = if r.change == RowChange::Skipped { String::new() } else { r.new.clone() };
+                            let goto = r.page.zip(r.point).map(|(page, pt)| Out::Goto(page, pt));
+                            (r.kind, r.old.as_str(), new, r.change.glyph(), r.at.as_str(), r.desc.as_str(), false, goto)
+                        }
+                        None => match p.skipped.get(i - p.rows.len()) {
+                            Some(r) => (r.kind, r.tag.as_str(), String::new(), RowChange::Skipped.glyph(), "", r.why.as_str(), true, None),
+                            None => continue,
+                        },
                     };
-                    let new = if matches!(mark.as_str(), "→" | "F" | "=") { new } else { String::new() };
-                    let why = r["why"].as_str().or_else(|| r["desc"].as_str()).unwrap_or_default();
-                    let kind = match r["kind"].as_str() {
-                        Some("devices") => "Dev  ",
-                        Some("cables") => "Cbl  ",
-                        Some("terminal_blocks") => "Trm  ",
-                        _ => "Wire ",
+                    let kind = match kind {
+                        RowKind::Devices => "Dev  ",
+                        RowKind::Cables => "Cbl  ",
+                        RowKind::TerminalBlocks => "Trm  ",
+                        RowKind::Wires => "Wire ",
                     };
                     let text = format!("{}{old:<8} {mark:<3}{new:<8} {at:<10} {why}", if all { kind } else { "" });
                     // A provisional tag in the provisional colour, as everywhere (design §5).
@@ -345,17 +344,15 @@ impl RenumberDialog {
                     let resp = ui.add(egui::Label::new(mono(text, ink)).sense(egui::Sense::click()));
                     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("ecad.renumber.row.{i}")));
                     if resp.clicked()
-                        && let (Some(page), Some(pt)) = (ecad_engine::commands::reply::id::<ecad_model::PageId>(r, "page"), r["point"].as_array())
+                        && let Some(g) = goto
                     {
-                        let x = pt.first().and_then(Value::as_f64).unwrap_or(0.0);
-                        let y = pt.get(1).and_then(Value::as_f64).unwrap_or(0.0);
-                        out = Some(Out::Goto(page, [x, y]));
+                        out = Some(g);
                     }
                 }
             },
         );
-        if p["more"].as_u64().unwrap_or(0) > 0 {
-            prim::body(ui, &format!("\u{2026} {} more", p["more"]), true);
+        if p.more > 0 {
+            prim::body(ui, &format!("\u{2026} {} more", p.more), true);
         }
         if self.read_only {
             prim::note(ui, "Read-only: preview only.", Tone::Neutral);
