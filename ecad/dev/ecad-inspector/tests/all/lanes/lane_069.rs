@@ -337,6 +337,9 @@ fn every_op_kind_renders_raw_and_readable() {
     }
     let readable_ops: BTreeSet<&str> = readable_ops.iter().map(String::as_str).collect();
     assert_eq!(readable_ops, all, "every op kind renders in Readable");
+    // 0.2.3 structure move: the op names follow the code (no "Terminal" op is left).
+    assert!(readable_ops.contains("AddConnectionPoint") && readable_ops.contains("RemoveConnectionPoint"), "{readable_ops:?}");
+    assert!(!readable_ops.iter().any(|o| o.contains("Terminal")), "{readable_ops:?}");
 
     // The History log: every transaction's record, as the row expand shows it.
     let log = ask(s, json!({"op": "log", "branch": "main", "from": 0, "count": 1000, "detail": true}));

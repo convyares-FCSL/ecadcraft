@@ -157,9 +157,9 @@ function render() {
     </table></div>`;
   }
 
-  const termsOf = (c) => Object.entries(d.terminals).filter(([, t]) => t.component === c);
+  const termsOf = (c) => Object.entries(d.connection_points ?? {}).filter(([, t]) => t.owner?.device === c);
   const match = (hexes) => !q || hexes.some((x) => x.includes(q) || (idx.get(x) && (idx.get(x).label.toLowerCase().includes(q) || idx.get(x).short.includes(q))));
-  h += `<h2>Devices and connection points</h2><div class="wrap"><table><tr><th>Device</th><th>Properties</th><th>Terminals</th><th>Representations</th></tr>`;
+  h += `<h2>Devices and connection points</h2><div class="wrap"><table><tr><th>Device</th><th>Properties</th><th>Connection points</th><th>Representations</th></tr>`;
   for (const [c, comp] of Object.entries(d.devices)) {
     const ts = termsOf(c);
     if (!match([c, ...ts.map(([t]) => t)])) continue;
