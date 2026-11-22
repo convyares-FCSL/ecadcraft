@@ -32,21 +32,46 @@ pub fn read_standard(path: &str) -> Result<ecad_model::Standard, ecad_electrical
     doc.standard.clone().ok_or(ecad_electrical::CmdError::refused(ecad_electrical::styles::commands::styles::NOTHING_TO_COPY))
 }
 
-/// Whether a file or folder exists at `path` (the app asks the engine; it never reads the disk itself).
+/// A `.ecad` path from a resolved one (no `~` left): `.ecad` added when there is no extension.
+///
+/// # Errors
+/// As [`normalize_with`].
+pub fn normalize_resolved(path: &std::path::Path) -> Result<String, PathError> {
+    let text = path.to_str().ok_or_else(|| PathError::NotUnicode(path.display().to_string()))?;
+    normalize_with(text, None)
+}
+
+/// What a Save As target is, before the save asks to replace anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SaveTarget {
+    /// Nothing is there yet.
+    Free,
+    /// The project's own file.
+    Own,
+    /// Another file that exists: saving replaces it.
+    Exists,
+}
+
+/// What `target` is for a project bound to `own` (the app asks the engine; it never reads the disk itself).
 #[must_use]
-pub fn path_exists(path: &std::path::Path) -> bool {
-    path.exists()
+pub fn save_target(target: &std::path::Path, own: Option<&std::path::Path>) -> SaveTarget {
+    if own.is_some_and(|o| same_path(target, o)) {
+        SaveTarget::Own
+    } else if target.exists() {
+        SaveTarget::Exists
+    } else {
+        SaveTarget::Free
+    }
 }
 
 /// Make the default projects folder when `target`'s folder is it and it does not exist yet; no other folder
-/// is made. `default` and `target` are typed paths (`~` is `home`).
+/// is made. Both are resolved paths.
 ///
 /// # Errors
 /// The folder could not be made.
-pub fn ensure_default_folder(target: &str, default: &str, home: Option<&std::path::Path>) -> std::io::Result<()> {
-    if let Some(dir) = std::path::Path::new(target).parent()
-        && let Ok(default) = expand_home(default, home)
-        && same_path(dir, &default)
+pub fn ensure_default_folder(target: &std::path::Path, default: &std::path::Path) -> std::io::Result<()> {
+    if let Some(dir) = target.parent()
+        && same_path(dir, default)
         && !dir.exists()
     {
         std::fs::create_dir_all(dir)?;
@@ -56,6 +81,6 @@ pub fn ensure_default_folder(target: &str, default: &str, home: Option<&std::pat
 
 /// `path` without its extension, as text (a default name for output files).
 #[must_use]
-pub fn without_extension(path: &str) -> String {
-    std::path::Path::new(path).with_extension("").to_string_lossy().into_owned()
+pub fn without_extension(path: &std::path::Path) -> String {
+    path.with_extension("").to_string_lossy().into_owned()
 }

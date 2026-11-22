@@ -144,9 +144,9 @@ impl std::error::Error for LogoError {}
 ///
 /// # Errors
 /// The file cannot be read, or as [`logo`].
-pub fn logo_from_file(path: &str) -> Result<(String, Vec<Primitive>), LogoError> {
-    let bytes = std::fs::read(path).map_err(|e| LogoError(format!("Cannot read {path}: {e}.")))?;
-    let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+pub fn logo_from_file(path: &std::path::Path) -> Result<(String, Vec<Primitive>), LogoError> {
+    let bytes = std::fs::read(path).map_err(|e| LogoError(format!("Cannot read {}: {e}.", path.display())))?;
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     logo(&bytes).map(|prims| (name, prims)).map_err(LogoError)
 }
 

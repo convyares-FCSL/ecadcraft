@@ -11,6 +11,8 @@ use std::sync::OnceLock;
 pub struct Host {
     /// Where Save As suggests saving, as typed (the platform's policy).
     pub default_folder: String,
+    /// The home folder that `~` in a typed path stands for; `None` when the platform has none.
+    pub home: Option<std::path::PathBuf>,
     /// The person's login name; the top bar shows its initials.
     pub user: String,
     /// Open a folder in the system's file manager.
@@ -40,12 +42,28 @@ impl Default for Host {
     fn default() -> Self {
         Host {
             default_folder: "~/ecad-projects".into(),
+            home: None,
             user: String::new(),
             open_folder: no_file_manager,
             now_ms: system_now_ms,
             local_time: utc_time,
         }
     }
+}
+
+/// A typed path as a path: a leading `~` is `home` (a folder literally named `~` is never meant).
+/// The program supplies `home` ([`Host::home`]); nothing is read from the environment here.
+///
+/// # Errors
+/// The path starts with `~` and `home` is `None` ([`ecad_engine::HOME_UNKNOWN`]).
+pub(crate) fn resolve(typed: &str, home: Option<&Path>) -> Result<std::path::PathBuf, String> {
+    let rest = match typed.strip_prefix('~') {
+        Some("") => "",
+        Some(r) if r.starts_with(['/', '\\']) => r.trim_start_matches(['/', '\\']),
+        _ => return Ok(std::path::PathBuf::from(typed)),
+    };
+    let home = home.ok_or_else(|| ecad_engine::HOME_UNKNOWN.to_string())?;
+    Ok(rest.split(['/', '\\']).filter(|c| !c.is_empty()).fold(home.to_path_buf(), |p, c| p.join(c)))
 }
 
 static HOST: OnceLock<Host> = OnceLock::new();

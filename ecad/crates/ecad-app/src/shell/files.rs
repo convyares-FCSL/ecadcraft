@@ -34,7 +34,7 @@ impl App {
         if self.project_open() {
             return Err("an ECAD project is already open; close it first".into());
         }
-        let path = ecad_engine::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
+        let path = self.resolve(path).and_then(|p| ecad_engine::normalize_resolved(&p).map_err(|e| e.to_string()))?;
         let (p, summary) = ProjectHandle::open_file(&mut self.cad.session, &path, session_seed())?;
         self.attach(p);
         for line in summary.lines() {
@@ -87,9 +87,11 @@ impl App {
     /// No project is open, the path is refused, or the save failed (also shown in a dialog).
     pub fn save_as(&mut self, path: &str) -> Result<(), String> {
         self.focus_project()?;
-        let target = ecad_engine::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
-        ecad_engine::ensure_default_folder(&target, &crate::shell::host::host().default_folder, self.home.as_deref())
-            .map_err(|e| format!("{target}: {e}"))?;
+        let target = self.resolve(path).and_then(|p| ecad_engine::normalize_resolved(&p).map_err(|e| e.to_string()))?;
+        // Without a known home the default folder cannot be made; the save goes on and reports what it finds.
+        if let Ok(default) = self.resolve(&crate::shell::host::host().default_folder) {
+            ecad_engine::ensure_default_folder(std::path::Path::new(&target), &default).map_err(|e| format!("{target}: {e}"))?;
+        }
         let r = self.cad.run("saveas", json!({ "path": target })).map(|_| ());
         self.after_logic();
         r
@@ -170,12 +172,11 @@ impl App {
         let r = match d.kind {
             DialogKind::Open => self.open_project(&path).map(|_| ()),
             DialogKind::SaveAs => {
-                let target = ecad_engine::normalize_with(&path, self.home.as_deref()).map(PathBuf::from);
+                let target = self.resolve(&path).and_then(|p| ecad_engine::normalize_resolved(&p).map_err(|e| e.to_string())).map(PathBuf::from);
                 let own = self.status().and_then(|s| s.file.path).map(PathBuf::from);
                 match target {
                     Ok(t)
-                        if ecad_engine::path_exists(&t)
-                            && !own.as_deref().is_some_and(|o| ecad_engine::same_path(&t, o))
+                        if ecad_engine::save_target(&t, own.as_deref()) == ecad_engine::SaveTarget::Exists
                             && d.confirmed_replace.as_deref() != Some(&path) =>
                     {
                         d.confirmed_replace = Some(path.clone());
@@ -296,7 +297,7 @@ impl App {
         let dir = self.snapshots.clone().ok_or("snapshots are not enabled (start with --snapshots <dir>)")?;
         // PowerShell and cmd pass `~` through unexpanded: it is the home folder, never a `~` folder.
         let dir = match dir.to_str() {
-            Some(typed) => ecad_engine::expand_home(typed, self.home.as_deref()).map_err(|e| e.to_string())?,
+            Some(typed) => self.resolve(typed)?,
             None => dir,
         };
         let p = self.project.as_ref().ok_or("there is no project")?;
@@ -376,7 +377,7 @@ impl App {
     pub(crate) fn report_stem(&mut self) -> String {
         let Some(p) = self.project.clone() else { return "project".into() };
         p.read(&mut self.cad.session, |p, _| match &p.path {
-            Some(path) => ecad_engine::without_extension(path),
+            Some(path) => ecad_engine::without_extension(std::path::Path::new(path)),
             None => p.name.clone(),
         })
         .unwrap_or_else(|_| "project".into())
@@ -389,6 +390,14 @@ impl App {
 
     /// A typed output path with `~` expanded.
     pub(crate) fn report_path(&self, path: &str) -> Result<String, String> {
-        ecad_engine::expand_home(path.trim(), self.home.as_deref()).map(|p| p.to_string_lossy().into_owned()).map_err(|e| e.to_string())
+        self.resolve(path.trim()).map(|p| p.to_string_lossy().into_owned())
+    }
+
+    /// A typed path as a path: `~` is [`App::home`].
+    ///
+    /// # Errors
+    /// The path starts with `~` and the home folder is not known.
+    pub(crate) fn resolve(&self, typed: &str) -> Result<PathBuf, String> {
+        crate::shell::host::resolve(typed, self.home.as_deref())
     }
 }

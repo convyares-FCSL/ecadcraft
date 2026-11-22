@@ -222,7 +222,7 @@ pub struct App {
     pub(crate) hover: Option<Vec<String>>,
     /// How long the pointer rests on an object before its description shows, in seconds.
     pub hover_delay: f64,
-    /// The home folder that `~` in typed paths stands for ([`ecad_engine::home`] by default).
+    /// The home folder that `~` in typed paths stands for ([`crate::shell::host::Host::home`] by default).
     pub home: Option<PathBuf>,
     /// The lineweight display the app last set when it opened a project; `None` before the
     /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
@@ -377,7 +377,7 @@ impl App {
             hovered: None,
             hover: None,
             hover_delay: HOVER_DELAY,
-            home: ecad_engine::home(),
+            home: crate::shell::host::host().home.clone(),
             lwdisplay_set: None,
             search: crate::library::search::SymbolSearch::default(),
             library: library::Library::default(),
