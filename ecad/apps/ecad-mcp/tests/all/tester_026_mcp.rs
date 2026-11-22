@@ -309,6 +309,6 @@ fn a_merged_fixed_flag_on_a_provisional_tag_does_not_survive_finalise() {
     c.exec("finalise", json!({}));
     let doc = c.doc();
     let t = tag_of(&doc, &x).unwrap_or_default();
-    let fixed = doc.devices[&DeviceId::parse(&x).unwrap()].tag_fixed.then(|| "yes".to_string());
-    assert!(!tag::is_provisional(&t), "Finalise left {t} (tag_fixed {fixed:?})");
+    let fixed = doc.devices[&DeviceId::parse(&x).unwrap()].is_fixed().then(|| "yes".to_string());
+    assert!(!doc.devices[&DeviceId::parse(&x).unwrap()].is_provisional(), "Finalise left {t} (tag_state {fixed:?})");
 }

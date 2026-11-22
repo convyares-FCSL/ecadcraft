@@ -101,16 +101,21 @@ fn the_tag_is_a_field_not_a_property() {
     let mut bagged = Device::default();
     bagged.properties.insert("tag".into(), "-K01".into());
     assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "a bag holding tag is refused");
-    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: Device::default().with_tag(Some("-K01")) }]).unwrap();
+    l.commit(
+        Author::User,
+        "add",
+        vec![Op::CreateDevice { id: c, device: Device::default().with_tag(Some("-K01"), ecad_model::naming::tag::TagState::Automatic) }],
+    )
+    .unwrap();
     assert_eq!(l.document().components_tagged("K1"), vec![c], "the field is indexed");
     let set = ecad_model::ObjectRef::Device(c);
-    for key in ["tag", "tag_fixed"] {
+    for key in ["tag", "tag_state"] {
         let op = Op::SetProperty { object: set, key: key.into(), before: None, after: Some("yes".into()) };
         assert!(matches!(l.commit(Author::User, "set", vec![op]), Err(ModelError::Precondition(_))), "{key}");
     }
-    let hidden = format!(r#"{{"tag":"-K{}01","tag_fixed":false,"properties":{{}},"definition":null,"device_type":"general"}}"#, '\u{202e}');
+    let hidden = format!(r#"{{"tag":"-K{}01","tag_state":"automatic","properties":{{}},"definition":null,"device_type":"general"}}"#, '\u{202e}');
     assert!(serde_json::from_str::<Device>(&hidden).is_err(), "a bidi character in a tag does not read");
-    assert_eq!(Device::default().with_tag(Some("-K02")).value("tag").as_deref(), Some("-K02"));
+    assert_eq!(Device::default().with_tag(Some("-K02"), ecad_model::naming::tag::TagState::Automatic).value("tag").as_deref(), Some("-K02"));
 }
 
 /// Design 072 §2.1 (step 2b): description, part number, maker, article number and type text are
@@ -150,7 +155,7 @@ fn the_text_fields_are_fields_not_properties() {
     assert_eq!(d.with_text(TextField::Description, Some("  ")).unwrap().description, None);
     let json = serde_json::to_value(&d).unwrap();
     assert_eq!(json["manufacturer"], "Siemens");
-    let hidden = r#"{"tag":null,"tag_fixed":false,"description":"Pu\u202emp","properties":{},"definition":null,"device_type":"general"}"#;
+    let hidden = r#"{"tag":null,"tag_state":"automatic","description":"Pu\u202emp","properties":{},"definition":null,"device_type":"general"}"#;
     assert!(serde_json::from_str::<Device>(hidden).is_err(), "a bidi character in a description does not read");
 }
 
@@ -169,7 +174,7 @@ fn location_and_function_are_fields_with_fixed() {
         assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "{key}: a bag holding it is refused");
     }
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: Device::default() }]).unwrap();
-    for key in ["location", "location_fixed", "function", "function_fixed"] {
+    for key in ["location", "location_state", "function", "function_state"] {
         let op = Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key: key.into(), before: None, after: Some("x".into()) };
         assert!(matches!(l.commit(Author::User, "set", vec![op]), Err(ModelError::Precondition(_))), "{key}");
     }
@@ -178,15 +183,23 @@ fn location_and_function_are_fields_with_fixed() {
     let mut d = Device::default();
     d.set_value("location", Some(&loc.hex())).unwrap();
     d.set_value("function", Some(&FunctionId(0xdef).hex())).unwrap();
-    assert_eq!((d.location, d.location_fixed, d.function, d.function_fixed), (Some(loc), true, Some(FunctionId(0xdef)), true));
+    use ecad_model::document::book::PlaceState;
+    assert_eq!(
+        (d.location, d.location_state, d.function, d.function_state),
+        (Some(loc), PlaceState::ByHand, Some(FunctionId(0xdef)), PlaceState::ByHand)
+    );
     assert!(d.properties.is_empty());
     assert_eq!(d.value("location"), Some(loc.hex()));
-    assert_eq!(d.value("location_fixed").as_deref(), Some("yes"));
-    let unfixed = Device { location_fixed: false, ..d.clone() };
-    assert_eq!(unfixed.value("location_fixed"), None);
+    assert_eq!(d.value("location_state").as_deref(), Some("by_hand"));
+    // A location a box proposed stays proposed until it is set by hand.
+    let proposed = Device { location_state: PlaceState::Proposed, ..d.clone() };
+    assert_eq!(proposed.value("location_state").as_deref(), Some("proposed"));
+    let mut hand = proposed.clone();
+    hand.set_value("location", Some(&loc.hex())).unwrap();
+    assert_eq!(hand.location_state, PlaceState::ByHand, "set by hand takes a proposed location");
     assert!(d.only_place_differs(&Device::default()) && !d.only_text_differs(&Device::default()));
     let json = serde_json::to_value(&d).unwrap();
-    assert_eq!(json["location_fixed"], true);
+    assert_eq!(json["location_state"], "by_hand");
     let read: Device = serde_json::from_value(json).unwrap();
     assert_eq!(read, d, "the fields round-trip");
 }

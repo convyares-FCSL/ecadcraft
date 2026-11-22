@@ -91,13 +91,19 @@ fn a_device_s_location_and_function_are_shown() {
         ..Project::default()
     };
     let before = Device::default();
-    let after = Device { location: Some(loc), location_fixed: true, function: Some(fun), ..before.clone() };
+    let after = Device {
+        location: Some(loc),
+        location_state: ecad_model::document::book::PlaceState::ByHand,
+        function: Some(fun),
+        function_state: ecad_model::document::book::PlaceState::Proposed,
+        ..before.clone()
+    };
     l.commit(Author::User, "list", vec![Op::ModifyProject { before: Project::default(), after: project }]).unwrap();
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: before.clone() }]).unwrap();
     l.commit(Author::User, "place", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
     let path = written(&dir, &l);
     let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
-    for want in ["ModifyDevice", "location", "location_fixed", "function"] {
+    for want in ["ModifyDevice", "location", "location_state", "tag_state", "function"] {
         assert!(log.contains(want), "{want} in the readable log: {log}");
     }
     let f = FileSource::from_path(&path);
@@ -105,7 +111,10 @@ fn a_device_s_location_and_function_are_shown() {
     let s = Some(&f as &dyn Source);
     let rows = ask(s, serde_json::json!({"op": "devices", "detail": true}));
     let text = rows["ok"].to_string();
-    assert!(text.contains("\"location\":\"+CP1\"") && text.contains("\"location_fixed\":true") && text.contains("\"function\":\"=F1\""), "{text}");
+    assert!(
+        text.contains("\"location\":\"+CP1\"") && text.contains("\"location_state\":\"by_hand\"") && text.contains("\"function\":\"=F1\""),
+        "{text}"
+    );
 }
 
 /// Step 3, Connector (A15): a connector's family, pins and half parts show in the readable log.

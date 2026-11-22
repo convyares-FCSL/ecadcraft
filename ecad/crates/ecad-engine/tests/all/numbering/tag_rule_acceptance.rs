@@ -34,8 +34,8 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
         vec![
             Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
-            Op::CreateDevice { id: k1, device: Device::default().with_tag(Some("-K1")) },
-            Op::CreateDevice { id: x1, device: Device::default().with_tag(Some("-X1")) },
+            Op::CreateDevice { id: k1, device: Device::default().with_tag(Some("-K1"), ecad_model::naming::tag::TagState::Automatic) },
+            Op::CreateDevice { id: x1, device: Device::default().with_tag(Some("-X1"), ecad_model::naming::tag::TagState::Automatic) },
             Op::AddConnectionPoint {
                 id: a1,
                 connection_point: ConnectionPoint { owner: k1.into(), label: Some("A1".into()), key: None, accepts: Default::default() },

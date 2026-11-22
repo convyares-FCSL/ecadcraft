@@ -19,7 +19,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
     }
     let style = Style { layer: LayerId(1), color: ecad_model::document::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (rid, c, tag, page, x, y, role) in syms {
-        let comp = Device::default().with_tag(Some(tag));
+        let comp = Device::default().with_tag(Some(tag), ecad_model::naming::tag::TagState::Automatic);
         d.devices.entry(DeviceId(*c)).or_insert(comp);
         let item = ItemId(5000 + rid);
         let pg = d.page_order[*page];

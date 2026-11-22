@@ -54,7 +54,10 @@ fn fixture() -> Fx {
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::EmbedDefinition { id: coil, definition: def("coil", ["A1", "A2"]) },
             Op::EmbedDefinition { id: contact, definition: def("no", ["13", "14"]) },
-            Op::CreateDevice { id: k1, device: Device { definition: Some(coil), ..Device::default() }.with_tag(Some("-K01")) },
+            Op::CreateDevice {
+                id: k1,
+                device: Device { definition: Some(coil), ..Device::default() }.with_tag(Some("-K01"), ecad_model::naming::tag::TagState::Automatic),
+            },
         ],
     )
     .unwrap();
@@ -164,7 +167,11 @@ fn the_tag_index_finds_one_tag_however_it_is_written() {
     }
     assert!(fx.l.document().components_tagged("-K10").is_empty());
     let k1 = fx.l.document().devices[&fx.k1].clone();
-    let rename = |before: &str, after: &str| Op::ModifyDevice { id: fx.k1, before: k1.with_tag(Some(before)), after: k1.with_tag(Some(after)) };
+    let rename = |before: &str, after: &str| Op::ModifyDevice {
+        id: fx.k1,
+        before: k1.with_tag(Some(before), ecad_model::naming::tag::TagState::Automatic),
+        after: k1.with_tag(Some(after), ecad_model::naming::tag::TagState::Automatic),
+    };
     fx.l.commit(Author::User, "Set tag", vec![rename("-K01", "-K05")]).unwrap();
     let doc = fx.l.document();
     assert!(doc.components_tagged("-K1").is_empty());

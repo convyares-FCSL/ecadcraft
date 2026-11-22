@@ -1092,6 +1092,23 @@ mod tests {
         assert_eq!(next_provisional(&d, "W"), "-W1");
     }
 
+    /// S6 (#3): Finalise gives a provisional tag a real number and the state automatic; a fixed one
+    /// is left as it is.
+    #[test]
+    fn finalise_turns_a_provisional_tag_into_an_automatic_one() {
+        let mut d = fixture(&[(1, "-K?3", 0, 50.0, 200.0, false), (2, "-K05", 0, 150.0, 200.0, true)]);
+        d.rebuild_index();
+        assert!(d.devices[&DeviceId(1)].is_provisional());
+        let p = plan(&d, &req(Scope::Provisional), &HighWater::new()).unwrap();
+        for op in &p.ops {
+            op.apply(&mut d).unwrap();
+        }
+        let (one, two) = (&d.devices[&DeviceId(1)], &d.devices[&DeviceId(2)]);
+        assert_eq!(one.tag_state, tag::TagState::Automatic, "{one:?}");
+        assert!(!one.tag().unwrap().contains('?') && one.tag().unwrap() != "-K3", "numbered after the used -K05: {:?}", one.tag());
+        assert_eq!((two.tag(), two.tag_state), (Some("-K05"), tag::TagState::Fixed));
+    }
+
     #[test]
     fn hostile_requests_are_refused() {
         let d = fixture(&[]);

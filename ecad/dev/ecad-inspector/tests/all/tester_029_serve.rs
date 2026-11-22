@@ -440,7 +440,11 @@ fn hostile_text_comes_back_as_plain_json_strings() {
         vec![
             Op::AddPage { id: p1, page: Page::titled(X).unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: X.into() } },
-            Op::CreateDevice { id: k, device: Device { properties: props(&[("note", X)]), ..Device::default() }.with_tag(Some(X)) },
+            Op::CreateDevice {
+                id: k,
+                device: Device { properties: props(&[("note", X)]), ..Device::default() }
+                    .with_tag(Some(X), ecad_model::naming::tag::TagState::Automatic),
+            },
             Op::AddConnectionPoint {
                 id: a,
                 connection_point: ConnectionPoint { owner: k.into(), label: Some(X.into()), key: None, accepts: Default::default() },

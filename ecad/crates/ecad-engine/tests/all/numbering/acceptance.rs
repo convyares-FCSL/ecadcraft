@@ -35,13 +35,13 @@ fn tag_of(h: &mut H, c: DeviceId) -> Option<String> {
 }
 
 fn fixed(h: &mut H, c: DeviceId) -> bool {
-    h.doc().devices.get(&c).is_some_and(|x| x.tag_fixed)
+    h.doc().devices.get(&c).is_some_and(|x| x.is_fixed())
 }
 
 /// The tags of the fixed devices among `cs`.
 fn fixed_tags(h: &mut H, cs: &[DeviceId]) -> BTreeMap<DeviceId, Option<String>> {
     let doc = h.doc();
-    cs.iter().filter_map(|c| doc.devices.get(c).filter(|x| x.tag_fixed).map(|x| (*c, x.tag().map(str::to_string)))).collect()
+    cs.iter().filter_map(|c| doc.devices.get(c).filter(|x| x.is_fixed()).map(|x| (*c, x.tag().map(str::to_string)))).collect()
 }
 
 fn erase_device(h: &mut H, page: PageId, c: DeviceId) {
@@ -441,7 +441,7 @@ fn finalise_follows_the_mark_and_leaves_nothing_provisional() {
         let n = tag::parse(t).map(|x| x.1).unwrap_or(0);
         assert!(n >= 5, "{t}: -K04 was held by a deleted device; finalised tags follow the mark ({tags:?})");
     }
-    assert!(cable_tag(&mut h).is_some_and(|t| !tag::is_provisional(&t)));
+    assert!(h.doc().cables.values().next().is_some_and(|c| c.tag().is_some() && !c.is_provisional()));
     assert_unique(&mut h, "after finalise");
     // A second Finalise changes nothing and records nothing.
     let head = h.head();

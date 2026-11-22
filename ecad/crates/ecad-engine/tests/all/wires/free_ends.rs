@@ -227,7 +227,7 @@ fn a_fixed_device_in_a_box_of_another_location_is_tied_to_multiple_locations() {
     assert!(tied(&mut h).is_empty());
     // Typed: +CP1, fixed. The contact is in +FIELD: one row per placed symbol, one message.
     h.run("setlocation", json!({"component": k.hex(), "aspect": "location", "value": "+CP1"})).unwrap();
-    assert!(h.doc().devices[&k].location_fixed, "typing sets fixed");
+    assert_eq!(h.doc().devices[&k].location_state, ecad_model::document::book::PlaceState::ByHand, "typing sets by hand");
     let rows = tied(&mut h);
     let pages: std::collections::BTreeSet<PageId> = rows.iter().filter_map(|r| r.page).collect();
     assert_eq!(pages, [p105, p110].into_iter().collect(), "{rows:?}");

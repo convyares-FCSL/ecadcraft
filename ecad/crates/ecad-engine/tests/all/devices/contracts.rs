@@ -190,7 +190,7 @@ fn c_renaming_the_tag_updates_every_symbol_in_one_undoable_transaction() {
     let ops = last_ops(&mut f.h);
     // Brief 026: typing a tag fixes it, in the same transaction (one ModifyDevice, design 072).
     assert!(
-        matches!(ops.as_slice(), [Op::ModifyDevice { before, after, .. }] if before.tag() == Some("-K01") && after.tag() == Some("-K05") && after.tag_fixed),
+        matches!(ops.as_slice(), [Op::ModifyDevice { before, after, .. }] if before.tag() == Some("-K01") && after.tag() == Some("-K05") && after.is_fixed()),
         "{ops:?}"
     );
     assert_eq!(f.h.p(|p| p.ledger.log().last().unwrap().label.clone()), "Set tag");

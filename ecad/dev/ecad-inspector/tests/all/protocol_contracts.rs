@@ -103,7 +103,7 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
         (json!({"op": "cables"}), |o| {
             assert_eq!(o["total"], 1);
             assert_eq!(o["rows"][0]["tag"], "-W1");
-            assert_eq!((&o["rows"][0]["tag_fixed"], &o["rows"][0]["description"]), (&json!(false), &json!(null)));
+            assert_eq!((&o["rows"][0]["tag_state"], &o["rows"][0]["description"]), (&json!("automatic"), &json!(null)));
             assert_eq!(o["rows"][0]["members"], json!([{"wire": "101", "core": "1", "purpose": "in use", "colours": null}]));
         }),
         (json!({"op": "branches"}), |o| {
@@ -210,7 +210,7 @@ fn a_cables_tag_fields_show_in_the_readable_and_raw_views() {
         .map(|k| (k.clone(), ask(s, json!({"op": "row", "table": "transactions", "key": k, "form": "readable"})).to_string()))
         .find(|(_, text)| text.contains("CreateCable"))
         .expect("the transaction that creates the cable");
-    for want in ["\"tag\":\"-W1\"", "\"tag_fixed\":false", "\"description\":null"] {
+    for want in ["\"tag\":\"-W1\"", "\"tag_state\":\"automatic\"", "\"description\":null"] {
         assert!(readable.contains(want), "{want} in {readable}");
     }
     assert!(!readable.contains("\"properties\":{\"tag\""), "not in the bag: {readable}");

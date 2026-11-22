@@ -111,7 +111,7 @@ fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
     last_is_agents(&mut c);
     assert_eq!(c.log().last().unwrap().label, "Swap tags");
     assert_eq!((tag_of(&mut c, &k4).as_deref(), tag_of(&mut c, &k2).as_deref()), (Some("-K02"), Some("-K04")));
-    let fixed = |c: &mut Client, k: &str| c.doc().devices[&DeviceId::parse(k).unwrap()].tag_fixed.then(|| "yes".to_string());
+    let fixed = |c: &mut Client, k: &str| c.doc().devices[&DeviceId::parse(k).unwrap()].is_fixed().then(|| "yes".to_string());
     assert_eq!(fixed(&mut c, &k4).as_deref(), Some("yes"));
     // Next: the next free tag, fixed.
     let r = c.exec("setprop", json!({"component": k2, "key": "tag", "value": "-K02", "conflict": "next"}));

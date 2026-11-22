@@ -2492,7 +2492,12 @@ mod tests {
     fn doc_with(tags: &[(u128, &str)]) -> Document {
         let mut d = Document::default();
         for (id, t) in tags {
-            d.devices.insert(DeviceId(*id), Device::default().with_tag(Some(t), tag::TagState::Fixed));
+            // `-K?1` is a provisional tag, stored bare.
+            let device = match t.split_once('?') {
+                Some((a, b)) => Device::default().with_tag(Some(&format!("{a}{b}")), tag::TagState::Provisional),
+                None => Device::default().with_tag(Some(t), tag::TagState::Fixed),
+            };
+            d.devices.insert(DeviceId(*id), device);
         }
         d.rebuild_index();
         d
@@ -2637,7 +2642,7 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert_eq!(doc.devices[&DeviceId(2)].tag().unwrap(), "-K?2");
+        assert_eq!(doc.devices[&DeviceId(2)].tag_shown().unwrap(), "-K?2");
     }
 
     #[test]

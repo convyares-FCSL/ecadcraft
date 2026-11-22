@@ -27,11 +27,11 @@ fn known_words_pass_and_unknown_ones_are_named() {
 }
 
 #[test]
-fn an_old_style_cable_holding_its_tag_fixed_flag_or_description_in_its_bag_is_named() {
+fn an_old_style_cable_holding_its_tag_state_flag_or_description_in_its_bag_is_named() {
     let mut d = doc();
     let c = ecad_model::CableId(5);
     let mut cable = ecad_model::Cable::default();
-    for key in ["tag", "tag_fixed", "description"] {
+    for key in ["tag", "tag_state", "description"] {
         cable.properties.insert(key.into(), "x".into());
     }
     d.cables.insert(c, cable);
@@ -41,7 +41,7 @@ fn an_old_style_cable_holding_its_tag_fixed_flag_or_description_in_its_bag_is_na
         .filter_map(|f| if let UnknownWord::ReservedKey { place: WordPlace::Cable(k), key } = f { (*k == c).then_some(key.as_str()) } else { None })
         .collect();
     assert_eq!(keys.len(), 3, "{found:?}");
-    for key in ["tag", "tag_fixed", "description"] {
+    for key in ["tag", "tag_state", "description"] {
         assert!(keys.contains(&key), "{key} is named: {keys:?}");
     }
 }
