@@ -223,7 +223,7 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     assert!(checks.contains("warning,Orphans,Cable reference with no other end,"), "{checks}");
     assert!(checks.contains("-C01 /?"), "{checks}");
     // What was printed is the state as issued: its title block and revision list read Rev B.
-    let issued = f.h.p(|p| ecad_engine::history::issued_state(p, "B").unwrap().2);
+    let issued = f.h.p(|p| ecad_engine::history::issued_state(p, ecad_model::Rev::Letter(2)).unwrap().2);
     assert_eq!(ecad_electrical::releases::revisions::issued(&issued).first().map(|r| r.rev().to_string()).as_deref(), Some("B"));
     // The Revisions table knows where it went.
     let row = f.h.p(|p| ecad_electrical::releases::revisions::issued(p.ledger.document()).into_iter().next().unwrap());
@@ -278,14 +278,13 @@ fn provisional_items_follow_026s_choice() {
         let e = f.h.run("release", json!({})).unwrap_err();
         assert_eq!(e, refusal);
         assert_eq!(f.h.head(), head, "nothing recorded");
-        // `"finalise"` records two transactions (Finalise, then the issue): past the harness's
-        // one-per-command check.
+        // `"finalise"` records Finalise and the issue as one transaction (S4).
         let v = f.h.s.execute("release", &json!({"provisional": way})).unwrap();
         let log: Vec<String> = f.h.p(|p| p.ledger.log().iter().skip(head as usize).map(|t| t.label.clone()).collect());
         match way {
             "finalise" => {
-                assert_eq!(log, ["Finalise numbering", "Issue Rev B"], "{v}");
-                assert_eq!(v["transactions"], json!([head + 1, head + 2]));
+                assert_eq!(log, ["Issue Rev B"], "{v}");
+                assert_eq!(v["transactions"], json!([head + 1]));
             }
             _ => {
                 assert_eq!(log, ["Issue Rev B"], "{v}");
@@ -540,7 +539,7 @@ fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
     assert!(pre["errors"].as_u64().unwrap() >= 1, "an error before Finalise: {pre}");
     let head = f.h.head();
     let v = f.h.s.execute("release", &json!({"provisional": "finalise"})).unwrap();
-    assert_eq!(v["transactions"], json!([head + 1, head + 2]), "{v}");
+    assert_eq!(v["transactions"], json!([head + 1]), "{v}");
     let checks = std::fs::read_to_string(folder(&f, "B").join("D-1001 Rev B checks.csv")).unwrap();
     assert!(!checks.contains("\r\nerror,"), "{checks}");
     assert_eq!(manifest(&folder(&f, "B"))["checks"]["errors"], 0);

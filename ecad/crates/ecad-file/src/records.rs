@@ -902,14 +902,14 @@ pub enum Op {
         after: ProjectSettings,
     },
     NameVersion {
-        name: String,
+        name: m::PointName,
         at: u64,
         /// A version's description (brief 020, FQ5); left out of the record when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
     },
     UnnameVersion {
-        name: String,
+        name: m::PointName,
         at: u64,
         /// A version's description (brief 020, FQ5); left out of the record when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]

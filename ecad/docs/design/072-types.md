@@ -93,7 +93,7 @@ only.
 | I9 | A continuation and its name | `kind` + `name` properties | `Aid::Continuation` (§6) |
 | I10 | A device's location and function from boxes | box geometry, when asked | stored on the device with `fixed` (§6.3) |
 | I11 | What a page is | `generated`, `strip`, `page.type` words | `PageKind` (§5.1) |
-| I12 | Revision rows and columns | `rev.<n>.<field>`, `revisions.columns` | `Project.revisions` |
+| I12 | Revision rows and columns | `rev.<n>.<field>`, `revisions.columns` | `Project.revisions` (S4: typed `Revision` records, a `Rev` in `Project.rev_scheme`) |
 | I13 | Function and location lists | `designation.<aspect>.<entry>.*` | `Project.locations`, `functions` (§5.3) |
 | I14 | A strip's jumpers | `link.<n>` range text | `TerminalStrip.links` |
 | I15 | A cable's ends, glands, rating inputs | `end.from.location`, `gland.to`, `rating.*` | `Cable` fields |

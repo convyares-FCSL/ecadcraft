@@ -19,7 +19,7 @@ use ecad_model::{Op, Transaction, TxKind};
 use serde_json::{Value, json};
 
 /// Longest version name, in characters (design 020 §2.5.1).
-pub const MAX_VERSION_NAME: usize = 100;
+pub const MAX_VERSION_NAME: usize = ecad_model::document::rev::MAX_VERSION_NAME;
 /// The most lanes drawn; a branch beyond them is drawn in the last lane with `»`.
 pub const MAX_LANES: usize = 6;
 /// Nodes read per page of the graph (design 020 §2.2).
@@ -150,8 +150,10 @@ pub struct Join {
 /// its ancestry (at or before each fork).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Named {
+    /// What it is: a user's version or an issued revision, keyed by kind and name.
+    pub point: ecad_model::PointName,
+    /// How it is shown: the version's text, or `Rev B` as the project's scheme writes it.
     pub name: String,
-    pub revision: bool,
     /// The branch holding the step it names.
     pub branch: BranchId,
     pub seq: u64,
@@ -391,6 +393,18 @@ pub fn layout(g: &Graph) -> Layout {
     Layout { lanes, spans, joins }
 }
 
+impl Named {
+    /// Whether it is an issued revision.
+    pub fn is_revision(&self) -> bool {
+        matches!(self.point, ecad_model::PointName::Revision(_))
+    }
+
+    /// The title of its [`Point`]: `Version "Before change"` or `Rev B`.
+    pub fn title(&self) -> String {
+        if self.is_revision() { self.name.clone() } else { format!("Version \"{}\"", self.name) }
+    }
+}
+
 /// A point named in a command: `{version}`, `{revision}` or `{seq}` (with `branch`, default the
 /// branch shown).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -400,17 +414,6 @@ pub struct Point {
     /// What the point is called (`Version "Before change"`, `Rev B`, `Step 812`).
     pub title: String,
     pub kind: NodeKind,
-}
-
-impl Point {
-    /// The name a version or revision point was given (`Before change`, `Rev B`); none for a step.
-    pub fn title_name(&self) -> Option<String> {
-        match self.kind {
-            NodeKind::Version => self.title.strip_prefix("Version \"").and_then(|t| t.strip_suffix('"')).map(str::to_string),
-            NodeKind::Revision => Some(self.title.clone()),
-            _ => None,
-        }
-    }
 }
 
 /// What a restore would do: its ops, how many objects change, and the pages they are on.

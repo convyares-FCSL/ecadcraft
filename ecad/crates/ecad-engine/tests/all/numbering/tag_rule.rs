@@ -3,7 +3,7 @@
 
 use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
-use ecad_file::schema::{self, BranchId, VersionKind};
+use ecad_file::schema::{self, BranchId, RowKind};
 use ecad_file::{Project, Store};
 use ecad_model::naming::tag::HighWater;
 use ecad_model::*;
@@ -31,7 +31,7 @@ fn a_cable_tag_deleted_before_a_rule_1_snapshot_is_not_handed_out_again() {
     {
         let store = Store::open(&path, true).unwrap();
         let main = BranchId::main_of(PROJECT.0);
-        let rows = store.reader().unwrap().versions(main, VersionKind::Auto).unwrap();
+        let rows = store.reader().unwrap().versions(main, RowKind::Auto).unwrap();
         assert!(!rows.is_empty());
         let mut w = store.writer().unwrap();
         for mut rec in rows {

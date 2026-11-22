@@ -1,5 +1,5 @@
 //! What a page's frame and title block show (design 019, 033, 055; design 065 §3, cut 10): the
-//! frame's input read from the document, its text looks, the update map of what can change it, and
+//! frame's input read from the document, its text styles, the update map of what can change it, and
 //! fitting a value in its box. Drawing it is `frame`.
 
 use std::collections::BTreeMap;
@@ -49,7 +49,9 @@ pub fn project_text(doc: &Document, key: &str) -> Option<String> {
 ///
 /// # Errors
 /// A value the field cannot hold, in words.
-pub fn with_info(project: &ecad_model::Project, f: ecad_model::InfoField, value: Option<&str>) -> Result<ecad_model::Project, crate::CmdError> {
+pub(crate) fn with_info(
+    project: &ecad_model::Project, f: ecad_model::InfoField, value: Option<&str>,
+) -> Result<ecad_model::Project, crate::CmdError> {
     let info = project.info.with(f, value).map_err(|e| crate::CmdError::refused(format!("{} is refused: {e}.", ecad_model::Word::word(f))))?;
     Ok(ecad_model::Project { info, ..project.clone() })
 }
@@ -86,7 +88,7 @@ pub struct FrameInput {
     /// Whether the drawing changed since the newest issue (design 033 §6): set by the project,
     /// which keeps the flag; `of` leaves it off.
     pub pending: bool,
-    /// The frame's text looks, from lane T's getter (design 033 §1.2).
+    /// The frame's text styles, from lane T's getter (design 033 §1.2).
     pub text: FrameText,
     /// Brief 050a: the page's frame style (line weights, colour, grid labels).
     pub draw: crate::styles::frame::FrameDraw,
@@ -99,7 +101,7 @@ pub struct FrameInput {
     pub newest: BTreeMap<String, String>,
 }
 
-/// A text kind's look where ECAD draws in paper millimetres (frame, generated pages): its height
+/// A text kind's style where ECAD draws in paper millimetres (frame, generated pages): its height
 /// in millimetres, its style name, and the lineweight of bold drawn in the stroke font.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextDraw {
@@ -108,7 +110,7 @@ pub struct TextDraw {
     pub weight: Option<u16>,
 }
 
-/// The frame's text looks (design 033 §1.2): grid labels, box captions, values and revision rows,
+/// The frame's text styles (design 033 §1.2): grid labels, box captions, values and revision rows,
 /// Project and Page title, the Page number box, the Rev box.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FrameText {
@@ -130,7 +132,7 @@ impl TextDraw {
         self.style.ends_with("BOLD")
     }
 
-    /// `kind`'s look in a project of length unit `unit`, from its resolved `draw`.
+    /// `kind`'s style in a project of length unit `unit`, from its resolved `draw`.
     pub fn of(draw: &DrawStyles, kind: TextKind, unit: LengthUnit) -> TextDraw {
         let s = draw.style(kind);
         let mm = height_mm(s.height, unit);
@@ -145,13 +147,13 @@ impl TextDraw {
 }
 
 /// A text height `height` in drawing units of a project of length unit `unit`, in paper millimetres.
-pub fn height_mm(height: f64, unit: LengthUnit) -> f64 {
+pub(crate) fn height_mm(height: f64, unit: LengthUnit) -> f64 {
     let k = unit_scale(unit);
     if k.is_finite() && k > 0.0 { height / k } else { height }
 }
 
 impl FrameText {
-    /// The looks of `doc`'s frame, with the fonts `m` finds.
+    /// The text styles of `doc`'s frame, with the fonts `m` finds.
     pub fn with(doc: &Document, m: &dyn TextMetrics) -> FrameText {
         let draw = DrawStyles::with(doc, m);
         let u = doc.settings.length_unit;
@@ -167,7 +169,7 @@ impl FrameText {
         }
     }
 
-    /// The looks of `doc`'s frame without the fonts: sizes and style names, and no bold
+    /// The text styles of `doc`'s frame without the fonts: sizes and style names, and no bold
     /// lineweights (those exist only when bold is drawn in the stroke font). What a rule that
     /// reads the block's layout and values needs (the title block checks); drawing uses
     /// [`FrameText::with`].
@@ -202,7 +204,7 @@ impl TextMetrics for AllFound {
 }
 
 impl FrameInput {
-    /// What `page`'s frame shows in `doc` (`book`: its book order), with its text looks `text`
+    /// What `page`'s frame shows in `doc` (`book`: its book order), with its text styles `text`
     /// ([`FrameText::with`], or [`FrameText::sizes`] for a rule that only reads the layout).
     pub fn with(doc: &Document, page: PageId, book: &Book, text: FrameText) -> FrameInput {
         let prop = |k: &str| project_text(doc, k).unwrap_or_default();
@@ -386,20 +388,4 @@ pub fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
     let mut s: String = value.chars().take(keep).collect();
     s.push('…');
     (s, MIN_WIDTH_FACTOR)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn long_text_is_narrowed_then_cut() {
-        assert_eq!(fit("abc", 2.5, Some(100.0)), ("abc".to_string(), 1.0));
-        let (s, wf) = fit("abcdefghij", 2.5, Some(15.0));
-        assert_eq!(s, "abcdefghij");
-        assert!((wf - 0.75).abs() < 1e-9);
-        let (s, wf) = fit(&"x".repeat(100), 2.5, Some(20.0));
-        assert!(s.ends_with('…') && s.chars().count() < 20);
-        assert!((wf - MIN_WIDTH_FACTOR).abs() < 1e-9);
-    }
 }

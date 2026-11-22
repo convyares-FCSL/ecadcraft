@@ -302,9 +302,6 @@ pub enum FileError {
     /// A ledger that does not continue the file's head.
     #[error("the project's history (base {base}, head {head}) does not continue the file's head {file}")]
     NotContinuing { base: u64, head: u64, file: u64 },
-    /// A revision name longer than a version name may be.
-    #[error("a revision name is too long")]
-    RevisionName,
 }
 
 impl FileError {

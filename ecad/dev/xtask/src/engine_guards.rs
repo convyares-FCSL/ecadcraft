@@ -68,7 +68,7 @@ const ENGINE_TYPES: &[&str] = &["Session", "Project", "Pages", "Self"];
 #[rustfmt::skip]
 const ALLOWED: &[(&str, usize, &str)] = &[
     // The agent gate stays in the engine (brief 074 "What stays").
-    ("crates/ecad-engine/src/agent/gate.rs", 3, "the agent gate: undo step, issue order and the transaction summary it answers with"),
+    ("crates/ecad-engine/src/agent/gate.rs", 2, "the agent gate: undo step, issue order and the transaction summary it answers with"),
     ("crates/ecad-engine/src/agent/tools.rs", 1, "the MCP tools' list paging"),
     // The dev tools stay (brief 074 "What stays").
     ("crates/ecad-engine/src/dev/snapshot.rs", 2, "the snapshot's readable labels and index (carved from ecad-inspect in 0.2.3; a dev view)"),

@@ -44,8 +44,9 @@ pub use crate::document::ledger::{Author, Base, BranchPoint, Check, History, Led
 pub use crate::document::op::{ObjectRef, Op};
 pub use crate::document::page::{GenKind, PageKind, PageTitle};
 pub use crate::document::project::{
-    CustomField, Function, InfoField, ListCode, ListDescription, ListEntry, Location, Project, ProjectInfo, Rev, RevField, RevValue, Revision,
+    CustomField, Function, InfoField, ListCode, ListDescription, ListEntry, Location, Project, ProjectInfo, RevField, RevValue, Revision,
 };
+pub use crate::document::rev::{PointKind, PointName, Rev, RevError, RevPrefix, RevScheme, VersionName};
 pub use crate::document::sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
 pub use crate::error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use crate::geometry::geom::{Placement, Pt};

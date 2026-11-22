@@ -19,8 +19,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     Cable, CableId, ConnectionPoint, ConnectionPointId, Definition, DefinitionId, Device, DeviceId, Document, Folder, FolderId, Item, ItemId, Layer,
-    LayerId, ObjectRef, Op, Page, PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues,
-    Touched, Wire, WireId,
+    LayerId, ObjectRef, Op, Page, PageId, PointName, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard,
+    StyleCatalogues, Touched, Wire, WireId,
 };
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -220,7 +220,8 @@ struct PageChunk {
 struct ProjectChunkRef<'a> {
     page_order: &'a Vec<PageId>,
     settings: &'a ProjectSettings,
-    versions: &'a BTreeMap<String, u64>,
+    #[serde(with = "ecad_model::document::rev::as_points")]
+    versions: &'a BTreeMap<PointName, u64>,
     display: &'a BTreeMap<String, String>,
     /// Design 072 §5.3: left out while empty.
     #[serde(skip_serializing_if = "Project::is_empty")]
@@ -242,7 +243,8 @@ struct ProjectChunkRef<'a> {
 struct ProjectChunk {
     page_order: Vec<PageId>,
     settings: ProjectSettings,
-    versions: BTreeMap<String, u64>,
+    #[serde(with = "ecad_model::document::rev::as_points")]
+    versions: BTreeMap<PointName, u64>,
     display: BTreeMap<String, String>,
     #[serde(default)]
     project: Project,

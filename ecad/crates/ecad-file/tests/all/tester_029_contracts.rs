@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::chain::{self, Hash};
-use ecad_file::schema::{self, BranchId, VersionKind, VersionRecord};
+use ecad_file::schema::{self, BranchId, RowKind, VersionRecord};
 use ecad_file::verify::{verify, verify_chain};
 use ecad_file::{Project, Store};
 use ecad_model::*;
@@ -60,7 +60,9 @@ fn build(name: &str) -> Fx {
         }
     }
     let at = f.ledger.head();
-    f.ledger.commit(Author::User, "Version", vec![Op::NameVersion { name: "Issue T".into(), at, description: None }]).unwrap();
+    f.ledger
+        .commit(Author::User, "Version", vec![Op::NameVersion { name: ecad_model::PointName::version("Issue T").unwrap(), at, description: None }])
+        .unwrap();
     proj.save(&mut f.ledger).unwrap();
     let main = proj.branch();
     let (branch, _) = proj.create_branch(BRANCH, main, at, None, None).unwrap();
@@ -108,7 +110,7 @@ fn log_of(p: &Path, b: BranchId) -> Vec<Transaction> {
 fn snapshots_of(p: &Path, b: BranchId) -> Vec<VersionRecord> {
     let r = store(p).reader().unwrap();
     let mut v = Vec::new();
-    for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
+    for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto] {
         v.extend(r.versions(b, kind).unwrap());
     }
     v.sort_by_key(|v| v.point.seq);
@@ -136,7 +138,7 @@ fn rewrite(p: &Path, b: BranchId, from: u64, txs: &[Transaction]) {
     let mut rec = r.branch(b).unwrap().unwrap();
     rec.head = schema::Point::new(rec.head.seq, &chains[&rec.head.seq]);
     let mut versions = Vec::new();
-    for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto, VersionKind::Merge] {
+    for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto, RowKind::Merge] {
         for mut v in r.versions(b, kind).unwrap() {
             if let Some(h) = chains.get(&v.point.seq) {
                 v.point = schema::Point::new(v.point.seq, h);
@@ -231,7 +233,7 @@ fn reference(p: &Path) -> Vec<String> {
                 continue;
             }
         };
-        for v in r.versions(id, VersionKind::Merge).unwrap() {
+        for v in r.versions(id, RowKind::Merge).unwrap() {
             if chains.get(v.point.seq as usize).map(chain::hex) != Some(v.point.chain.clone()) {
                 out.push(format!("{name}: the merge row at {}: its chain value differs from the log's", v.point.seq));
             }
@@ -359,7 +361,7 @@ fn own_chunk(p: &Path, b: BranchId, other: BranchId) -> Hash {
 
 fn merge_row(p: &Path, b: BranchId, source: BranchId, seq: u64) {
     let rec = VersionRecord {
-        kind: VersionKind::Merge,
+        kind: RowKind::Merge,
         name: schema::auto_name(seq),
         point: schema::Point::new(seq, &[9; 32]),
         chunks: Default::default(),
@@ -378,7 +380,7 @@ fn merge_row(p: &Path, b: BranchId, source: BranchId, seq: u64) {
         tag_rule: None,
     };
     write(p, |w| {
-        let k = schema::version_key(b, VersionKind::Merge, &rec.name);
+        let k = schema::version_key(b, RowKind::Merge, &rec.name);
         w.open_table(schema::VERSIONS).unwrap().insert(k.as_slice(), serde_json::to_vec(&rec).unwrap().as_slice()).unwrap();
     });
 }
@@ -528,7 +530,7 @@ fn a_valid_rewrite_of_a_snapshots_own_transaction_is_caught_at_that_snapshot() {
     // An automatic snapshot whose own transaction is a line.
     let at = snaps
         .iter()
-        .find(|s| s.kind == VersionKind::Auto && matches!(log[(s.point.seq - 1) as usize].ops.as_slice(), [Op::AddItem { .. }]))
+        .find(|s| s.kind == RowKind::Auto && matches!(log[(s.point.seq - 1) as usize].ops.as_slice(), [Op::AddItem { .. }]))
         .cloned()
         .unwrap();
     let i = (at.point.seq - 1) as usize;
@@ -632,7 +634,7 @@ mod fp1 {
         let mut w = store.writer().unwrap();
         let r = store.reader().unwrap();
         for (br, prefix, own) in [(main, Vec::new(), main_log.clone()), (b, main_log[..at as usize].to_vec(), branch_log.clone())] {
-            for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
+            for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto] {
                 for mut rec in r.versions(br, kind).unwrap() {
                     let mut high = HighWater::new();
                     for tx in prefix.iter().chain(own.iter().take(rec.point.seq as usize)) {
@@ -677,7 +679,12 @@ mod fp1 {
         let mut o = Project::open(Store::open(&path, true).unwrap(), 1, WRITER).unwrap();
         let (mut bl, _) = o.project.switch_to(&o.ledger, b, 98).unwrap();
         let at = bl.head();
-        bl.commit(Author::User, "Version", vec![Op::NameVersion { name: "Branch again".into(), at, description: None }]).unwrap();
+        bl.commit(
+            Author::User,
+            "Version",
+            vec![Op::NameVersion { name: ecad_model::PointName::version("Branch again").unwrap(), at, description: None }],
+        )
+        .unwrap();
         o.project.save(&mut bl).unwrap();
         drop(o);
         let snap = snapshots_of(&path, b).into_iter().find(|s| s.name == "Branch again").unwrap();

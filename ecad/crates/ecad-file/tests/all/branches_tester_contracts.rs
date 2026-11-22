@@ -114,7 +114,13 @@ fn branch_round(seed: u64, mode: CrashMode, cut: Option<u64>) -> Result<(u64, &'
         }
         if rng.below(2) == 0 {
             let at = ledger.head();
-            ledger.commit(Author::User, "Version", vec![Op::NameVersion { name: format!("B{at}"), at, description: Some("d".into()) }]).unwrap();
+            ledger
+                .commit(
+                    Author::User,
+                    "Version",
+                    vec![Op::NameVersion { name: ecad_model::PointName::version(&format!("B{at}")).unwrap(), at, description: Some("d".into()) }],
+                )
+                .unwrap();
         }
         let mut next = exp.clone();
         next.branches.insert("B".into(), (BranchStatus::Open, ledger.document().clone()));

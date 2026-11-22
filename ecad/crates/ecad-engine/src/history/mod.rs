@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_file::schema::{BranchId, BranchRecord, BranchStatus, VersionKind};
+use ecad_file::schema::{BranchId, BranchRecord, BranchStatus, RowKind};
 use ecad_model::{Document, Op, Transaction};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -40,6 +40,7 @@ use crate::commands::{on_any_page, on_project};
 use crate::pages::commands::sheets::{RevisionView, next_view_id};
 use crate::project::Project;
 use ecad_electrical::releases::revisions;
+use ecad_model::{PointName, Rev, VersionName};
 
 use ecad_file::history::{
     BranchRow, Graph, MAX_VERSION_NAME, Named, Node, NodeKind, PAGE, Point, RestorePlan, STEPS_PAGE, SessionGroup, Show, author_text, branch_json,
@@ -99,7 +100,7 @@ fn lineage_of(p: &Project, branch: BranchId) -> Result<Vec<(BranchId, Option<u64
 }
 
 /// The version rows (user and revision) of `branch` in the file.
-fn rows(p: &Project, branch: BranchId, kinds: &[VersionKind]) -> Result<Vec<ecad_file::schema::VersionRecord>, String> {
+fn rows(p: &Project, branch: BranchId, kinds: &[RowKind]) -> Result<Vec<ecad_file::schema::VersionRecord>, String> {
     let Some(v) = p.file.project() else { return Ok(Vec::new()) };
     let r = v.store().reader().map_err(|e| e.to_string())?;
     let mut out = Vec::new();
@@ -115,19 +116,16 @@ fn rows(p: &Project, branch: BranchId, kinds: &[VersionKind]) -> Result<Vec<ecad
 /// The file could not be read.
 pub fn named_points(p: &Project, branch: BranchId) -> Result<Vec<Named>, String> {
     let line = lineage_of(p, branch)?;
+    let scheme = &p.ledger.document().project.rev_scheme;
     let mut inherited: Vec<Named> = Vec::new();
     for i in 1..line.len() {
         let (anc, _) = line[i];
         let bound = line.get(i - 1).and_then(|l| l.1).unwrap_or(0);
-        for v in rows(p, anc, &[VersionKind::User, VersionKind::Revision])? {
-            if v.point.seq <= bound {
-                inherited.push(Named {
-                    name: v.name.clone(),
-                    revision: v.kind == VersionKind::Revision,
-                    branch: anc,
-                    seq: v.point.seq,
-                    description: v.description.clone(),
-                });
+        for v in rows(p, anc, &[RowKind::VERSION, RowKind::REVISION])? {
+            if v.point.seq <= bound
+                && let Some(point) = v.named_point()
+            {
+                inherited.push(Named { name: point.label(scheme), point, branch: anc, seq: v.point.seq, description: v.description.clone() });
             }
         }
     }
@@ -135,20 +133,23 @@ pub fn named_points(p: &Project, branch: BranchId) -> Result<Vec<Named>, String>
     if branch == current(p) {
         // The branch shown: from the ledger, so unsaved versions count and undone ones do not.
         let doc = p.ledger.document();
-        let issued: BTreeSet<String> = revisions::issued(doc).into_iter().filter_map(|r| r.issued).collect();
-        let stored: BTreeMap<String, Option<String>> =
-            rows(p, branch, &[VersionKind::User, VersionKind::Revision])?.into_iter().map(|v| (v.name, v.description)).collect();
-        let names: BTreeSet<&String> = inherited.iter().map(|n| &n.name).collect();
-        for (name, at) in &doc.versions {
-            if names.contains(name) {
+        let stored: BTreeMap<PointName, Option<String>> = rows(p, branch, &[RowKind::VERSION, RowKind::REVISION])?
+            .into_iter()
+            .filter_map(|v| v.named_point().map(|k| (k, v.description)))
+            .collect();
+        let names: BTreeSet<&PointName> = inherited.iter().map(|n| &n.point).collect();
+        for (point, at) in &doc.versions {
+            if names.contains(point) {
                 continue;
             }
-            let description = stored.get(name).cloned().flatten().or_else(|| unsaved_description(p, name));
-            own.push(Named { name: name.clone(), revision: issued.contains(name), branch, seq: *at, description });
+            let description = stored.get(point).cloned().flatten().or_else(|| unsaved_description(p, point));
+            own.push(Named { name: point.label(scheme), point: point.clone(), branch, seq: *at, description });
         }
     } else {
-        for v in rows(p, branch, &[VersionKind::User, VersionKind::Revision])? {
-            own.push(Named { name: v.name, revision: v.kind == VersionKind::Revision, branch, seq: v.point.seq, description: v.description });
+        for v in rows(p, branch, &[RowKind::VERSION, RowKind::REVISION])? {
+            if let Some(point) = v.named_point() {
+                own.push(Named { name: point.label(scheme), point, branch, seq: v.point.seq, description: v.description });
+            }
         }
     }
     own.sort_by_key(|n| std::cmp::Reverse(n.seq));
@@ -157,7 +158,7 @@ pub fn named_points(p: &Project, branch: BranchId) -> Result<Vec<Named>, String>
 }
 
 /// The description of an unsaved version, from the step that named it.
-fn unsaved_description(p: &Project, name: &str) -> Option<String> {
+fn unsaved_description(p: &Project, name: &PointName) -> Option<String> {
     p.ledger.log().iter().rev().flat_map(|t| t.ops.iter()).find_map(|op| match op {
         Op::NameVersion { name: n, description, .. } if n == name => description.clone(),
         _ => None,
@@ -287,7 +288,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
                 Node {
                     branch: *id,
                     seq: n.seq,
-                    kind: if n.revision { NodeKind::Revision } else { NodeKind::Version },
+                    kind: if n.is_revision() { NodeKind::Revision } else { NodeKind::Version },
                     label: n.name.clone(),
                     name: Some(n.name),
                     time_ms: None,
@@ -300,7 +301,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
             ));
         }
         if show.autos {
-            for v in rows(p, *id, &[VersionKind::Auto])? {
+            for v in rows(p, *id, &[RowKind::Auto])? {
                 lazy.push((
                     Node {
                         branch: *id,
@@ -474,17 +475,15 @@ pub fn point_at(p: &Project, q: &PointQuery) -> Result<Point, CmdError> {
         let n = named_points(p, branch)
             .map_err(CmdError::refused)?
             .into_iter()
-            .find(|n| !n.revision && n.name.eq_ignore_ascii_case(name.trim()))
+            .find(|n| !n.is_revision() && n.name.eq_ignore_ascii_case(name.trim()))
             .ok_or_else(|| CmdError::refused(format!("There is no version \"{}\" on this branch's line.", name.trim())))?;
-        return Ok(Point { branch: n.branch, seq: n.seq, title: format!("Version \"{}\"", n.name), kind: NodeKind::Version });
+        return Ok(Point { branch: n.branch, seq: n.seq, title: n.title(), kind: NodeKind::Version });
     }
     if let Some(rev) = &q.revision {
-        let want = revisions::version_name(rev.trim().trim_start_matches("Rev ").trim());
-        let n = named_points(p, branch)
-            .map_err(CmdError::refused)?
-            .into_iter()
-            .find(|n| n.revision && n.name.eq_ignore_ascii_case(&want))
-            .ok_or_else(|| CmdError::refused(format!("{want} has not been issued on this branch's line.")))?;
+        let want = read_rev(p, rev).map_err(|e| CmdError::refused(e.to_string()))?;
+        let n = named_points(p, branch).map_err(CmdError::refused)?.into_iter().find(|n| n.point == PointName::Revision(want)).ok_or_else(|| {
+            CmdError::refused(format!("Rev {} has not been issued on this branch's line.", p.ledger.document().project.rev_scheme.show(want)))
+        })?;
         return Ok(Point { branch: n.branch, seq: n.seq, title: n.name, kind: NodeKind::Revision });
     }
     if let Some(seq) = q.seq {
@@ -512,14 +511,34 @@ pub fn state_at(p: &Project, pt: &Point) -> Result<Document, String> {
     }
 }
 
-/// The step that issued revision `name`, whose `NameVersion` names step `at` of `branch`: the
+/// The rev a revision point is (its named point's key), if it is one.
+pub fn point_rev(p: &Project, pt: &Point) -> Option<Rev> {
+    named_points(p, current_or(p, pt.branch))
+        .ok()?
+        .into_iter()
+        .find(|n| n.branch == pt.branch && n.seq == pt.seq && n.title() == pt.title)?
+        .point
+        .rev()
+}
+
+/// A rev typed or sent as text (`B`, `Rev B`, `P03`): read once, here at the input edge, in the
+/// project's scheme. The `Rev ` is how it is shown, not part of it.
+///
+/// # Errors
+/// What is wrong with it, in words.
+pub fn read_rev(p: &Project, text: &str) -> Result<Rev, ecad_model::RevError> {
+    let t = text.trim();
+    let t = t.strip_prefix("Rev ").unwrap_or(t);
+    p.ledger.document().project.rev_scheme.parse(t)
+}
+
+/// The step that issued revision `rev`, whose `NameVersion` names step `at` of `branch`: the
 /// issue transaction itself (`at + 1`, the step after the point it names, design 027 §0), when
 /// that step does issue it.
-pub fn issue_seq(p: &Project, branch: BranchId, at: u64, name: &str) -> Option<u64> {
+pub fn issue_seq(p: &Project, branch: BranchId, at: u64, rev: Rev) -> Option<u64> {
     let seq = at.checked_add(1)?;
     let t = tx_at(p, branch, seq)?;
-    let (rev, _) = revisions::issue_in(&t.ops)?;
-    (revisions::version_name(&rev) == name).then_some(seq)
+    (revisions::issue_in(&t.ops)?.0 == rev).then_some(seq)
 }
 
 /// The project as revision `rev` was issued (design 027 §5.2, §8; brief 019 follow-up): the state
@@ -530,13 +549,12 @@ pub fn issue_seq(p: &Project, branch: BranchId, at: u64, name: &str) -> Option<u
 ///
 /// # Errors
 /// Not issued on this line, or the history could not be read.
-pub fn issued_state(p: &Project, rev: &str) -> Result<(Named, u64, Document), String> {
-    let name = revisions::version_name(rev.trim().trim_start_matches("Rev ").trim());
+pub fn issued_state(p: &Project, rev: Rev) -> Result<(Named, u64, Document), String> {
     let n = named_points(p, current(p))?
         .into_iter()
-        .find(|n| n.revision && n.name.eq_ignore_ascii_case(&name))
-        .ok_or_else(|| format!("{name} has not been issued on this branch's line."))?;
-    if let Some(seq) = issue_seq(p, n.branch, n.seq, &n.name) {
+        .find(|n| n.point == PointName::Revision(rev))
+        .ok_or_else(|| format!("Rev {} has not been issued on this branch's line.", p.ledger.document().project.rev_scheme.show(rev)))?;
+    if let Some(seq) = issue_seq(p, n.branch, n.seq, rev) {
         let pt = Point { branch: n.branch, seq, title: n.name.clone(), kind: NodeKind::Revision };
         let doc = state_at(p, &pt)?;
         return Ok((n, seq, doc));
@@ -544,10 +562,10 @@ pub fn issued_state(p: &Project, rev: &str) -> Result<(Named, u64, Document), St
     let pt = Point { branch: n.branch, seq: n.seq, title: n.name.clone(), kind: NodeKind::Revision };
     let mut then = state_at(p, &pt)?;
     let live = p.ledger.document();
-    let upto = revisions::list(live).into_iter().find(|r| r.issued.as_deref() == Some(n.name.as_str())).map_or(0, |r| r.n);
+    let upto = revisions::list(live).into_iter().find(|r| r.issued && r.rev_value == Some(rev)).map_or(0, |r| r.n);
     // Design 072 §5.3: the issued rows up to it, as they are now.
     let upto = usize::try_from(upto).unwrap_or(usize::MAX);
-    then.project.revisions = live.project.revisions.iter().take(upto).filter(|r| r.issued.is_some()).cloned().collect();
+    then.project.revisions = live.project.revisions.iter().take(upto).filter(|r| r.issued).cloned().collect();
     Ok((n.clone(), n.seq, then))
 }
 
@@ -620,7 +638,7 @@ pub fn plan_restore(p: &Project, pt: &Point) -> Result<RestorePlan, String> {
     let after_revisions = named_points(p, current(p))?
         .into_iter()
         .filter(|n| {
-            n.revision
+            n.is_revision()
                 && (n.branch != pt.branch || n.seq >= pt.seq)
                 && on_current_line(p, &Point { branch: n.branch, seq: n.seq, title: String::new(), kind: NodeKind::Revision }).unwrap_or(false)
         })
@@ -636,7 +654,7 @@ pub fn plan_restore(p: &Project, pt: &Point) -> Result<RestorePlan, String> {
 ///
 /// # Errors
 /// In words.
-pub fn check_version_name(p: &Project, name: &str) -> Result<String, String> {
+pub fn check_version_name(p: &Project, name: &str) -> Result<VersionName, String> {
     let n = name.trim();
     let len = n.chars().count();
     if len == 0 || len > MAX_VERSION_NAME {
@@ -645,22 +663,17 @@ pub fn check_version_name(p: &Project, name: &str) -> Result<String, String> {
     if n.chars().any(char::is_control) {
         return Err("A version name cannot hold control characters.".into());
     }
-    if let Some(rest) = n.strip_prefix("Rev ").or_else(|| n.strip_prefix("rev ")).or_else(|| n.strip_prefix("REV "))
-        && (1..=8).contains(&rest.chars().count())
-        && rest.chars().all(|c| c.is_ascii_alphanumeric())
-    {
-        return Err(format!("\"{n}\" names revisions; issue one from Revisions."));
-    }
+    // Versions and revisions are told apart by kind: a version may be named `B` or `Rev B`.
     let lower = n.to_lowercase();
-    if p.ledger.document().versions.keys().any(|k| k.to_lowercase() == lower) {
+    if p.ledger.document().versions.keys().any(|k| matches!(k, PointName::Version(v) if v.as_str().to_lowercase() == lower)) {
         return Err(format!("There is already a version \"{n}\" on {}.", current_name(p)));
     }
-    Ok(n.to_string())
+    VersionName::new(n).map_err(|e| e.to_string())
 }
 
 /// The New version dialog's default name: `Version <n>`, n = this branch's version count + 1.
 pub fn default_version_name(p: &Project) -> String {
-    let own = named_points(p, current(p)).map(|v| v.iter().filter(|n| !n.revision && n.branch == current(p)).count()).unwrap_or(0);
+    let own = named_points(p, current(p)).map(|v| v.iter().filter(|n| !n.is_revision() && n.branch == current(p)).count()).unwrap_or(0);
     let mut n = own + 1;
     loop {
         let name = format!("Version {n}");
@@ -704,20 +717,18 @@ pub fn point_info(p: &Project, pt: &Point) -> Result<Value, String> {
     // The previous node on this line, for the change summary.
     let named = named_points(p, current_or(p, pt.branch))?;
     let prev = named.iter().filter(|n| n.branch == pt.branch && n.seq < pt.seq).max_by_key(|n| n.seq).cloned();
+    let this = named.iter().find(|n| n.branch == pt.branch && n.seq == pt.seq && n.title() == pt.title);
     let (since, steps) = match &prev {
         Some(n) => (n.name.clone(), pt.seq - n.seq),
         None if pt.branch == main_of(p) => ("the start".to_string(), pt.seq),
         None => ("the branch's start".to_string(), pt.seq),
     };
     let mut summary = vec![format!("{steps} step{}", if steps == 1 { "" } else { "s" })];
-    if let (Some(n), true) = (&prev, matches!(pt.kind, NodeKind::Version | NodeKind::Revision)) {
-        summary.extend(chunk_summary(p, pt, n));
+    if let (Some(n), Some(this), true) = (&prev, this, matches!(pt.kind, NodeKind::Version | NodeKind::Revision)) {
+        summary.extend(chunk_summary(p, this, n));
     }
     let restore = on_current_line(p, pt).unwrap_or(false);
-    let description = named
-        .iter()
-        .find(|n| n.branch == pt.branch && n.seq == pt.seq && Some(&n.name) == pt.title_name().as_ref())
-        .and_then(|n| n.description.clone());
+    let description = this.and_then(|n| n.description.clone());
     Ok(json!({
         "title": pt.title, "kind": pt.kind.word(), "branch": bname, "branch_id": pt.branch.hex(), "seq": pt.seq,
         "line1": first, "line2": when, "summary": format!("Since {since}: {}", summary.join(" · ")),
@@ -732,12 +743,11 @@ fn current_or(p: &Project, b: BranchId) -> BranchId {
 
 /// Pages changed, added and removed between two saved snapshots, from their chunk hashes
 /// (design 020 §2.4): no document is built.
-fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
+fn chunk_summary(p: &Project, this: &Named, prev: &Named) -> Vec<String> {
     let Some(v) = p.file.project() else { return Vec::new() };
     let Ok(r) = v.store().reader() else { return Vec::new() };
-    let find = |b: BranchId, name: &str| [VersionKind::User, VersionKind::Revision].iter().find_map(|k| r.version(b, *k, name).ok().flatten());
-    let (Some(name), Some(a)) = (pt.title_name(), find(prev.branch, &prev.name)) else { return Vec::new() };
-    let Some(b) = find(pt.branch, &name) else { return Vec::new() };
+    let find = |n: &Named| r.version(n.branch, RowKind::of(&n.point), &n.point.key()).ok().flatten();
+    let (Some(a), Some(b)) = (find(prev), find(this)) else { return Vec::new() };
     let pages = |v: &ecad_file::schema::VersionRecord| -> BTreeMap<String, String> {
         v.chunks.iter().filter(|(k, _)| k.starts_with("page:")).map(|(k, h)| (k.clone(), h.clone())).collect()
     };
@@ -978,7 +988,7 @@ impl Command for VersionParams {
             if description.as_ref().is_some_and(|d| d.chars().count() > 1_000 || d.chars().any(|c| c.is_control() && c != '\n')) {
                 return Err(CmdError::refused("A description is at most 1 000 characters."));
             }
-            let ops = vec![Op::NameVersion { name: name.clone(), at: head, description: description.clone() }];
+            let ops = vec![Op::NameVersion { name: PointName::Version(name.clone()), at: head, description: description.clone() }];
             p.apply_edit(pg, "version", &format!("Create version \"{name}\""), ops)?;
             let line = format!("Version \"{name}\" created. Save to keep it.");
             pg.echo(line.clone());
@@ -1031,7 +1041,9 @@ fn show_point(p: &mut Project, q: &PointQuery) -> Result<Value, CmdError> {
     // An issued revision is shown as issued (brief 027 §16): the step after the point it
     // names, so its title block reads it.
     let shown = match pt.kind {
-        NodeKind::Revision => issue_seq(p, pt.branch, pt.seq, &pt.title).map_or_else(|| pt.clone(), |seq| Point { seq, ..pt.clone() }),
+        NodeKind::Revision => {
+            point_rev(p, &pt).and_then(|rev| issue_seq(p, pt.branch, pt.seq, rev)).map_or_else(|| pt.clone(), |seq| Point { seq, ..pt.clone() })
+        }
         _ => pt.clone(),
     };
     let then = state_at(p, &shown).map_err(CmdError::refused)?;

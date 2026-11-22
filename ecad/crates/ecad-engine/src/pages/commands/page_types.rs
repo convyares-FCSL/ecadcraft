@@ -2,7 +2,7 @@
 //! `deletepage`. The rules (folder starts, renumbering, check rows) are [`ecad_electrical::pages::page_types`].
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::pages::commands::page_types`] decide, and the shim brings the outputs up to date, opens
+//! [`ecad_electrical::pages::commands::page_types`] decide, and the shim brings the reports up to date, opens
 //! the page shown, commits the ops, echoes and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};

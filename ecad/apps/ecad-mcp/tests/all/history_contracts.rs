@@ -33,12 +33,11 @@ fn version_restore_and_branches_through_execute_record_the_agents_steps() {
     assert_eq!(last.label, "Create version \"Before change\"");
     assert_eq!(last.author, Author::Agent(AGENT.into()));
     assert!(
-        matches!(&last.ops[..], [Op::NameVersion { name, at, description: Some(d) }] if name == "Before change" && *at == head && d == "one wire")
+        matches!(&last.ops[..], [Op::NameVersion { name, at, description: Some(d) }] if *name == ecad_model::PointName::version("Before change").unwrap() && *at == head && d == "one wire")
     );
     let m = c.refused("execute", json!({"command": "version", "params": {"name": "before CHANGE"}}));
     assert!(m.contains("already a version"), "{m}");
-    let m = c.refused("execute", json!({"command": "version", "params": {"name": "Rev B"}}));
-    assert!(m.contains("names revisions"), "{m}");
+    // S4: versions and revisions are keyed by kind, so there is no refusal of a version spelled `Rev B`.
     // Two more wires, then Restore: one step back to the version's state, undoable.
     c.wire_pp(json!({"points": [[0, 20], [60, 20]]}));
     c.wire_pp(json!({"points": [[0, 40], [60, 40]]}));
@@ -51,7 +50,7 @@ fn version_restore_and_branches_through_execute_record_the_agents_steps() {
     let last = c.log().last().cloned().unwrap();
     assert_eq!(last.label, "Restore \"Before change\"");
     assert_eq!(last.author, Author::Agent(AGENT.into()));
-    assert!(c.doc().versions.contains_key("Before change"), "versions are not restored away");
+    assert!(c.doc().versions.contains_key(&ecad_model::PointName::version("Before change").unwrap()), "versions are not restored away");
     let m = c.refused("execute", json!({"command": "restore", "params": {"version": "Before change"}}));
     assert!(m.contains("already as it was"), "{m}");
     c.exec("u", json!({}));

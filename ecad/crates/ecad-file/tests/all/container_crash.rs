@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::common::{PROJECT, fixture};
-use ecad_file::schema::VersionKind;
+use ecad_file::schema::RowKind;
 use ecad_file::{Project, Store};
 use ecad_model::*;
 use ecad_store::power::{CrashMode, PowerLoss, Rng};
@@ -49,7 +49,9 @@ fn edit(ledger: &mut Ledger, rng: &mut Rng, n: u64, version: bool) {
     if version {
         let at = ledger.head();
         let name = format!("V{at}");
-        ledger.commit(Author::User, "Name", vec![Op::NameVersion { name, at, description: None }]).unwrap();
+        ledger
+            .commit(Author::User, "Name", vec![Op::NameVersion { name: ecad_model::PointName::version(&name).unwrap(), at, description: None }])
+            .unwrap();
     }
 }
 
@@ -335,7 +337,7 @@ fn killed_mid_save_reopens_at_the_last_acknowledged_save() {
         let branch = o.project.project().branch();
         for a in &acks {
             match a {
-                Ack::Version(name, seq) => match r.version(branch, VersionKind::User, name).unwrap() {
+                Ack::Version(name, seq) => match r.version(branch, RowKind::VERSION, name).unwrap() {
                     Some(v) if v.point.seq == *seq => {}
                     other => failures.push(format!("round {round}: acknowledged version {name} is {other:?}")),
                 },

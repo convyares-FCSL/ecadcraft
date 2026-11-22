@@ -239,14 +239,14 @@ pub enum Op {
     },
     /// Bookmark transaction `at` under `name` (§6.1).
     NameVersion {
-        name: String,
+        name: crate::PointName,
         at: u64,
         /// A version's description (brief 020, FQ5); left out of the record when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
     },
     UnnameVersion {
-        name: String,
+        name: crate::PointName,
         at: u64,
         /// A version's description (brief 020, FQ5); left out of the record when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -764,7 +764,7 @@ impl Op {
             }
             Op::NameVersion { name, at, .. } => {
                 if doc.versions.contains_key(name) {
-                    return Err(pre(format!("version name {name:?} is already used")));
+                    return Err(pre(format!("{} {name:?} is already named", kind_word(name))));
                 }
                 doc.versions.insert(name.clone(), *at);
             }
@@ -889,5 +889,13 @@ impl Op {
             Op::AddDeviceLink { .. } => "AddDeviceLink",
             Op::RemoveDeviceLink { .. } => "RemoveDeviceLink",
         }
+    }
+}
+
+/// What a named point is called in a message.
+fn kind_word(name: &crate::PointName) -> &'static str {
+    match name.kind() {
+        crate::PointKind::Version => "version",
+        crate::PointKind::Revision => "revision",
     }
 }

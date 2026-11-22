@@ -44,23 +44,17 @@ pub fn frame_width(spec: &SheetSpec, margins: &Margins) -> f64 {
 
 /// The block of frame style `id` on `spec` with `margins`: its own when it has one, else the
 /// house block computed for the frame's width (built-ins, and own frames without a body).
-pub fn block_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, margins: &Margins, text: &FrameText) -> Block {
+pub(crate) fn block_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, margins: &Margins, text: &FrameText) -> Block {
     match sheet::frame_block(doc, id) {
         Some(l) => Block { frame: id.clone(), layout: Arc::new(l.clone()), builtin: false },
         None => Block { frame: id.clone(), layout: Arc::new(house::house(frame_width(spec, margins), text)), builtin: true },
     }
 }
 
-/// The block `page` shows.
-pub fn page_block(doc: &Document, page: PageId) -> Block {
-    let id = sheet::title_block_style(doc, page);
-    block_of(doc, &id, &sheet::sheet_of(doc, page), &sheet::margins_of(doc, page), &FrameText::sizes(doc))
-}
-
 /// What an op can change of the pages' grids and keep-out strips through their frames (brief 055,
 /// FP4): what the kept references and place indexes must follow (review of #110, 1).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Reach {
+pub(crate) enum Reach {
     /// Not a frame op: the index's own rules apply.
     NotFrame,
     /// A frame op that changes no page's sheet, margins or block height (a weight, a colour, a
@@ -82,15 +76,10 @@ fn geometry(r: Option<&ecad_model::StyleRecord>) -> Option<Geometry> {
     Some((f.sheet, f.margins, h))
 }
 
-/// What `op` reaches through the frames (see [`Reach`]): [`frame_reach_of`] on its effect.
-pub fn frame_reach(doc: &Document, op: &ecad_model::Op) -> Reach {
-    ecad_model::document::effect::Effects::of(std::slice::from_ref(op)).iter().next().map_or(Reach::NotFrame, |e| frame_reach_of(doc, e))
-}
-
 /// What `effect` reaches through the frames (see [`Reach`]). `doc` is the state the effect applies
 /// to or came from; callers that see both states call it with each. Bounded: a frame record's
 /// change walks the pages once.
-pub fn frame_reach_of(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) -> Reach {
+pub(crate) fn frame_reach_of(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) -> Reach {
     use ecad_model::ObjectRef;
     use ecad_model::document::effect::Effect;
     match effect {

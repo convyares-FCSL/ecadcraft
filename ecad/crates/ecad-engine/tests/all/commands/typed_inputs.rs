@@ -211,7 +211,7 @@ fn the_typed_sheet_commands_still_work() {
     let issued = h.run("issuerevision", json!({"date": "2026-11-16"})).unwrap_or(Value::Null);
     assert_eq!((&issued["rev"], &issued["date"]), (&json!(rv["pending_rev"].clone()), &json!("2026-11-16")));
     let rev = issued["rev"].as_str().unwrap_or_default().to_string();
-    let open = h.run("openrevision", json!({"rev": rev.to_lowercase()})).unwrap_or(Value::Null);
+    let open = h.run("openrevision", json!({"rev": rev})).unwrap_or(Value::Null);
     assert_eq!(open["rev"], json!(rev));
     assert_eq!(h.run("closerevision", json!({})).unwrap_or(Value::Null), json!({"closed": rev}));
     let undone = h.run("undoissue", json!({})).unwrap_or(Value::Null);

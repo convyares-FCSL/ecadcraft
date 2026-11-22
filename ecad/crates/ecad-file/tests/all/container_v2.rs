@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use crate::common;
 
 use common::*;
-use ecad_file::schema::{self, BranchId, VersionKind};
+use ecad_file::schema::{self, BranchId, RowKind};
 use ecad_file::{Project, Store, StoreError};
 use ecad_model::*;
 
@@ -127,7 +127,7 @@ fn saves_append_and_snapshots_keep_the_tail_short() {
     // The whole history is still there, row by row.
     let r = o.project.store().reader().unwrap();
     assert_eq!(r.tx_count(o.project.branch()).unwrap(), head);
-    let autos = r.versions(o.project.branch(), VersionKind::Auto).unwrap();
+    let autos = r.versions(o.project.branch(), RowKind::Auto).unwrap();
     assert!(autos.len() >= 3, "{}", autos.len());
     let v = ecad_file::verify::verify(o.project.store());
     assert!(v.ok, "{:#?}", v.lines);
@@ -149,14 +149,14 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     edits(&mut f, 3);
     let at = f.ledger.head();
-    f.commit("Name", vec![Op::NameVersion { name: "Before".into(), at, description: None }]);
+    f.commit("Name", vec![Op::NameVersion { name: ecad_model::PointName::version("Before").unwrap(), at, description: None }]);
     edits(&mut f, 2);
     let at2 = f.ledger.head();
     let row = |issued: bool| ecad_model::Revision {
-        rev: ecad_model::Rev::new("A").ok(),
+        rev: Some(ecad_model::Rev::Letter(1)),
         description: ecad_model::RevValue::new("First issue").ok(),
         drawn: ecad_model::RevValue::new("CV").ok(),
-        issued: issued.then(|| ecad_model::RevValue::new("Rev A").ok()).flatten(),
+        issued,
         ..ecad_model::Revision::default()
     };
     let with = |issued: bool| ecad_model::Project { revisions: vec![row(issued)], ..ecad_model::Project::default() };
@@ -164,19 +164,23 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
     let at3 = f.ledger.head();
     f.commit(
         "Issue",
-        vec![Op::ModifyProject { before: with(false), after: with(true) }, Op::NameVersion { name: "Rev A".into(), at: at3, description: None }],
+        vec![
+            Op::ModifyProject { before: with(false), after: with(true) },
+            Op::NameVersion { name: ecad_model::PointName::Revision(ecad_model::Rev::Letter(1)), at: at3, description: None },
+        ],
     );
     edits(&mut f, 2);
     proj.save(&mut f.ledger).unwrap();
     let r = proj.store().reader().unwrap();
     let b = proj.branch();
-    let v = r.version(b, VersionKind::User, "Before").unwrap().unwrap();
+    let v = r.version(b, RowKind::VERSION, "Before").unwrap().unwrap();
     assert_eq!(v.point.seq, at);
-    let rev = r.version(b, VersionKind::Revision, "Rev A").unwrap().unwrap();
+    let rev = r.version(b, RowKind::REVISION, &ecad_model::Rev::Letter(1).key()).unwrap().unwrap();
     assert_eq!(rev.point.seq, at3);
     let release = rev.release.unwrap();
-    assert_eq!(release.fields.get("rev").map(String::as_str), Some("A"));
-    assert_eq!(release.fields.get("drawn").map(String::as_str), Some("CV"));
+    assert_eq!(release.revision.rev, Some(ecad_model::Rev::Letter(1)));
+    assert_eq!(release.revision.drawn.as_ref().map(|d| d.as_str()), Some("CV"));
+    assert!(release.revision.issued);
     assert!(at2 < at3);
     drop(r);
     drop(proj);
@@ -186,8 +190,8 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
     assert!(v.ok, "{:#?}", v.lines);
     // A version's snapshot is the state at its point.
     let reader = o.project.store().reader().unwrap();
-    for (kind, name, seq) in [(VersionKind::User, "Before", at), (VersionKind::Revision, "Rev A", at3)] {
-        let v = reader.version(o.project.branch(), kind, name).unwrap().unwrap();
+    for (kind, name, seq) in [(RowKind::VERSION, "Before".to_string(), at), (RowKind::REVISION, ecad_model::Rev::Letter(1).key(), at3)] {
+        let v = reader.version(o.project.branch(), kind, &name).unwrap().unwrap();
         let set = ecad_file::chunks::ChunkSet::from_record(&v.chunks).unwrap();
         let bodies = set.chunks.iter().map(|(k, h)| (k.clone(), reader.chunk_body(h).unwrap())).collect::<Vec<_>>();
         let (mut doc, _) = ecad_file::chunks::assemble(&set, bodies).unwrap();

@@ -5,7 +5,7 @@
 
 use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
-use ecad_file::schema::{self, BranchId, VersionKind};
+use ecad_file::schema::{self, BranchId, RowKind};
 use ecad_file::{Project, Store};
 use ecad_model::naming::tag::HighWater;
 use ecad_model::*;
@@ -65,7 +65,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
     {
         let store = Store::open(&path, true).unwrap();
         let main = BranchId::main_of(PROJECT.0);
-        let rows = store.reader().unwrap().versions(main, VersionKind::Auto).unwrap();
+        let rows = store.reader().unwrap().versions(main, RowKind::Auto).unwrap();
         assert!(!rows.is_empty(), "the create wrote a snapshot");
         let mut w = store.writer().unwrap();
         for mut rec in rows {
@@ -98,7 +98,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
     // Opening (and an unsaved edit) did not rewrite the old rows.
     let after = Store::open(&path, false).unwrap();
     let main = BranchId::main_of(PROJECT.0);
-    assert!(after.reader().unwrap().versions(main, VersionKind::Auto).unwrap().iter().all(|v| v.tag_rule.is_none()));
+    assert!(after.reader().unwrap().versions(main, RowKind::Auto).unwrap().iter().all(|v| v.tag_rule.is_none()));
     drop(after);
     let _ = std::fs::remove_dir_all(&dir);
 }

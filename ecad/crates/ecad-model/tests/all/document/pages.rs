@@ -203,9 +203,9 @@ fn a_project_record_is_strict() {
 
 fn row(rev: &str, issued: bool) -> ecad_model::Revision {
     ecad_model::Revision {
-        rev: ecad_model::Rev::new(rev).ok(),
+        rev: ecad_model::RevScheme::default().parse(rev).ok(),
         description: ecad_model::RevValue::new("Issue").ok(),
-        issued: issued.then(|| ecad_model::RevValue::new(&format!("Rev {rev}")).unwrap()),
+        issued,
         ..Default::default()
     }
 }
@@ -215,16 +215,16 @@ fn row(rev: &str, issued: bool) -> ecad_model::Revision {
 #[test]
 fn a_revision_record_is_strict() {
     let bad = [
-        r#"{"rev":"A","colour":"red"}"#,
-        r#"{"rev":"A","custom":{"Bad Name":"x"}}"#,
-        r#"{"rev":"A","custom":{"issued":"x"}}"#,
+        r#"{"rev":{"letter":1},"colour":"red"}"#,
+        r#"{"rev":{"letter":1},"custom":{"Bad Name":"x"}}"#,
+        r#"{"rev":{"letter":1},"custom":{"issued":"x"}}"#,
         r#"{"rev":"ABCDEFGHI"}"#,
         "{\"description\":\"a\u{202E}b\"}",
     ];
     for text in bad {
         assert!(serde_json::from_str::<ecad_model::Revision>(text).is_err(), "{text}");
     }
-    let text = r#"{"rev":"A","date":"2026-11-17","custom":{"ecr":"ECR-1"},"issued":"Rev A","released":"release/Rev A"}"#;
+    let text = r#"{"rev":{"letter":1},"date":"2026-11-17","ecr":"ECR-1","custom":{"validated":"yes"},"issued":true,"released":"release/Rev A"}"#;
     let r: ecad_model::Revision = serde_json::from_str(text).unwrap();
     assert_eq!(serde_json::to_string(&r).unwrap(), text);
 }

@@ -4,7 +4,7 @@
 
 use ecad_file::chain;
 use ecad_file::pack;
-use ecad_file::schema::{BranchId, VersionKind, split_asset_value, split_tx_value};
+use ecad_file::schema::{BranchId, RowKind, split_asset_value, split_tx_value};
 use ecad_file::{Reader, Store, StoreError};
 use serde_json::{Value, json};
 
@@ -120,22 +120,22 @@ pub fn versions(store: &Store) -> Result<String, StoreError> {
     let r = store.reader()?;
     let mut s = String::new();
     for (id, b) in r.branches()? {
-        for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto, VersionKind::Merge] {
+        for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto, RowKind::Merge] {
             for v in r.versions(id, kind)? {
                 if let Some(m) = &v.merge {
                     s.push_str(&format!("{} Merge at {} from {} at {}\n", b.name, v.point.seq, m.source, m.source_head.seq));
                     continue;
                 }
                 s.push_str(&format!(
-                    "{} {:?} {:?} at {} ({} chunks, undo {} / redo {}){}\n",
+                    "{} {} {:?} at {} ({} chunks, undo {} / redo {}){}\n",
                     b.name,
-                    v.kind,
+                    v.kind.name(),
                     v.name,
                     v.point.seq,
                     v.chunks.len(),
                     v.undo.len(),
                     v.redo.len(),
-                    v.release.as_ref().map_or(String::new(), |rel| format!(" release {:?}", rel.fields))
+                    v.release.as_ref().map_or(String::new(), |rel| format!(" release {:?}", rel.revision))
                 ));
             }
         }

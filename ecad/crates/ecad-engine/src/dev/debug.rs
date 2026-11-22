@@ -765,7 +765,7 @@ pub fn read_storage(store: &ecad_file::Store, path: Option<&Path>) -> Result<Sto
     let tables = r.stats().map_err(|e| e.to_string())?;
     let mut versions = Vec::new();
     for (id, b) in r.branches().map_err(|e| e.to_string())? {
-        for kind in [ecad_file::schema::VersionKind::User, ecad_file::schema::VersionKind::Revision, ecad_file::schema::VersionKind::Auto] {
+        for kind in [ecad_file::schema::RowKind::VERSION, ecad_file::schema::RowKind::REVISION, ecad_file::schema::RowKind::Auto] {
             for v in r.versions(id, kind).map_err(|e| e.to_string())? {
                 versions.push((b.name.clone(), format!("{kind:?}"), v.name.clone(), v.point.seq, v.chunks.len()));
             }

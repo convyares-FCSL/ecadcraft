@@ -312,6 +312,7 @@ impl Project {
         {
             let row = ecad_electrical::releases::revisions::list(self.ledger.document()).into_iter().find(|r| r.n == n);
             let date = row.as_ref().map(|r| r.get("date").to_string()).filter(|d| !d.is_empty());
+            let rev = self.ledger.document().project.rev_scheme.show(rev);
             let mut q = crate::pages::commands::sheets::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
             // Brief 027 (design 027 §5.2, Q10): undo never deletes files.
             if row.as_ref().is_some_and(|r| r.released.is_some()) {

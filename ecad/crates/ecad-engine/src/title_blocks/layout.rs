@@ -19,13 +19,13 @@ use ecad_electrical::pages::frames::FrameInput;
 /// `ecad.title-red`: ACI 1, red (a field's Red colour; house style: the status).
 pub const RED_ACI: u8 = 1;
 /// How far a zone tick reaches into the margin, mm.
-pub const TICK_MM: f64 = 3.0;
+pub(crate) const TICK_MM: f64 = 3.0;
 pub use ecad_electrical::title_blocks::INSET_MM;
 /// Gap under a caption before the value area, mm.
-pub const CAPTION_GAP_MM: f64 = 1.5;
+pub(crate) const CAPTION_GAP_MM: f64 = 1.5;
 /// The most of a revision row its text may fill: a fit bound (it keeps a large `TitleValue` style
 /// inside the row), not a text size.
-pub const ROW_FILL: f64 = 0.7;
+pub(crate) const ROW_FILL: f64 = 0.7;
 
 /// Draws in paper millimetres (origin at the paper's bottom-left corner).
 pub struct Pen {
@@ -152,16 +152,16 @@ pub fn border(pen: &mut Pen, input: &FrameInput) {
 
 /// Where a block's bottom-left corner sits on the paper (mm): the frame's bottom-left for a
 /// built-in stretched across the frame, else against the frame's bottom-right corner.
-pub fn block_origin(input: &FrameInput, layout: &TitleBlockLayout) -> (f64, f64) {
+pub(crate) fn block_origin(input: &FrameInput, layout: &TitleBlockLayout) -> (f64, f64) {
     let m: Margins = input.draw.margins;
     let right = f64::from(input.sheet.width) - m.right;
     let w = if layout.size.0.is_finite() { layout.size.0 } else { 0.0 };
     (right - w, m.bottom)
 }
 
-/// The look a block item's text is drawn with: the frame's main style for bold, its value style
+/// The style a block item's text is drawn with: the frame's main style for bold, its value style
 /// otherwise, at the item's size.
-pub fn text_draw(input: &FrameInput, draw: &ItemDraw) -> TextDraw {
+pub(crate) fn text_draw(input: &FrameInput, draw: &ItemDraw) -> TextDraw {
     let base = if draw.bold { input.text.main } else { input.text.value };
     TextDraw { mm: draw.size, style: base.style, weight: if draw.bold { base.weight.or(input.text.bold_weight) } else { None } }
 }

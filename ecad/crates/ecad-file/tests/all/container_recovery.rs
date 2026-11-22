@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use crate::common::*;
-use ecad_file::schema::{self, VersionKind};
+use ecad_file::schema::{self, RowKind};
 use ecad_file::{Project, Store};
 use ecad_model::*;
 use ecad_store::power::{CrashMode, PowerLoss, Rng};
@@ -75,7 +75,9 @@ fn lines(ledger: &mut Ledger, rng: &mut Rng, n: u64) {
 
 fn name_version(ledger: &mut Ledger, name: &str) {
     let at = ledger.head();
-    ledger.commit(Author::User, "Name", vec![Op::NameVersion { name: name.into(), at, description: None }]).unwrap();
+    ledger
+        .commit(Author::User, "Name", vec![Op::NameVersion { name: ecad_model::PointName::version(name).unwrap(), at, description: None }])
+        .unwrap();
 }
 
 /// The durable bytes of a simulated disk (after a clean close nothing is pending).
@@ -173,7 +175,7 @@ fn cut_sweep(seeds: u64, modes: &[CrashMode]) -> (u64, usize) {
                             failures.push(format!("{tag}: the document at {head} is not the saved one"));
                         } else {
                             let r = o.project.store().reader().unwrap();
-                            let v = r.version(o.project.branch(), VersionKind::User, "V").unwrap();
+                            let v = r.version(o.project.branch(), RowKind::VERSION, "V").unwrap();
                             if (head == attempted.0) != v.is_some() {
                                 failures.push(format!("{tag}: version row {:?} at head {head}", v.map(|v| v.point)));
                             }
