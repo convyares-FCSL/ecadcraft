@@ -25,7 +25,6 @@ use serde_json::{Value, json};
 
 use crate::defaults::plc::SafeState;
 use crate::defaults::{self, Scope};
-use crate::plc::channels::first_number;
 use crate::plc::iolist::Target;
 use crate::plc::rack::{self, CardType, RackRef};
 

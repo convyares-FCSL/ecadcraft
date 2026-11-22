@@ -40,7 +40,7 @@ pub(crate) const MAX_PIN: usize = 16;
 /// Most wires one Place Channels line lands on (design 045 §4.5).
 pub const MAX_FENCE: usize = 256;
 /// The highest channel index read from a key (larger keys are not channel points).
-pub(crate) const MAX_INDEX: u32 = 9_999;
+pub const MAX_INDEX: u32 = 9_999;
 
 /// A channel point's key: `.<i>.<role>`; `None` for an index over [`MAX_INDEX`].
 pub fn key(i: u32, role: ChannelRole) -> Option<PointKey> {
@@ -449,7 +449,7 @@ pub(crate) fn ch_key(i: u32, what: &str) -> String {
 }
 
 /// The index and field of a channel key `plc.ch.<i>.text`, `.address`, `.tag` or `.safe`.
-pub(crate) fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
+pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
     let rest = k.strip_prefix(CH_PREFIX)?;
     let (i, what) = rest.split_once('.')?;
     if i.len() > 4 || !ecad_model::naming::words::is_digits(i) {
@@ -573,38 +573,4 @@ fn fmt_mm(v: f64) -> String {
 fn wire_words(doc: &Document, c: ecad_model::CorePosition) -> String {
     let n = crate::cables::slash::position_name(doc, c);
     n.strip_prefix("wire ").map(str::to_string).unwrap_or(n)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn keys_parse_only_their_own_form() {
-        let parse = |k: &str| k.parse::<PointKey>().ok().and_then(|k| k.channel());
-        assert_eq!(parse(".3.in"), Some((3, ChannelRole::In)));
-        assert_eq!(parse(".0.+"), Some((0, ChannelRole::Plus)));
-        assert_eq!(parse(".2.C/Q"), Some((2, ChannelRole::Cq)));
-        for bad in [".3", ".-1.in", ".3.nope", ".99999.in", "3.in", "..in", ".3.in.x", ""] {
-            assert_eq!(parse(bad), None, "{bad}");
-        }
-        assert_eq!(key(3, ChannelRole::In).map(|k| k.to_string()).as_deref(), Some(".3.in"));
-        assert_eq!(key(MAX_INDEX + 1, ChannelRole::In), None);
-        assert_eq!(parse_ch_key("plc.ch.12.text"), Some((12, "text")));
-        assert_eq!(parse_ch_key("plc.ch.x.text"), None);
-        assert_eq!(parse_ch_key("plc.ch.1.other"), None);
-    }
-
-    #[test]
-    fn pin_layouts() {
-        let doc = Document::default();
-        let mut used = BTreeSet::new();
-        assert_eq!(pins_for(&doc, None, CardType::Ai, 4, 0, &[ChannelRole::Plus, ChannelRole::Minus], &mut used), ["1", "5"]);
-        assert_eq!(pins_for(&doc, None, CardType::Ai, 4, 1, &[ChannelRole::Plus, ChannelRole::Minus], &mut used), ["2", "6"]);
-        let mut used = BTreeSet::new();
-        assert_eq!(pins_for(&doc, None, CardType::Di, 16, 3, &[ChannelRole::In], &mut used), ["4"]);
-        // A taken pin moves on to the next free whole number.
-        let mut used: BTreeSet<String> = ["4".to_string()].into();
-        assert_eq!(pins_for(&doc, None, CardType::Di, 16, 3, &[ChannelRole::In], &mut used), ["5"]);
-    }
 }

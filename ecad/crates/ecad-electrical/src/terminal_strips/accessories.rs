@@ -153,7 +153,7 @@ impl Spot {
 }
 
 /// The place a key names, when it is a placement key.
-pub(crate) fn spot_of(key: &str) -> Option<Spot> {
+pub fn spot_of(key: &str) -> Option<Spot> {
     match key {
         START_KEY => Some(Spot::Start),
         END_KEY => Some(Spot::End),
@@ -175,7 +175,7 @@ fn shown(text: &str) -> String {
 ///
 /// # Errors
 /// Empty, longer than [`MAX_LABEL_CHARS`], or with spaces, control characters, `,` or `-`.
-pub(crate) fn check_label(l: &str) -> Result<(), CmdError> {
+pub fn check_label(l: &str) -> Result<(), CmdError> {
     if l.is_empty() || l.chars().count() > MAX_LABEL_CHARS || l.chars().any(|c| c.is_whitespace() || c.is_control() || c == ',') {
         return Err(CmdError::refused(format!(
             "\"{}\" is not a position label. A label has 1 to {MAX_LABEL_CHARS} characters, no spaces or commas.",
@@ -226,7 +226,7 @@ pub(crate) fn items_text(items: &[Acc]) -> String {
 ///
 /// # Errors
 /// [`parse_items`]'s.
-pub(crate) fn acc_value(spot: &Spot, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub fn acc_value(spot: &Spot, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     let items = parse_items(v, spot.is_on())?;
     Ok((!items.is_empty()).then(|| items_text(&items)))
@@ -239,7 +239,7 @@ pub fn project_key(strip_key: &str) -> String {
 }
 
 /// Every strip part key (FP2, FP6), in table order.
-pub(crate) fn part_keys() -> Vec<String> {
+pub fn part_keys() -> Vec<String> {
     let mut v: Vec<String> = PART_ITEMS.iter().flat_map(|i| FIELDS.iter().map(move |f| format!("{i}.{f}"))).collect();
     v.push(PER_CARD_KEY.into());
     v.push(BAR_KEY.into());
@@ -261,7 +261,7 @@ fn is_article_key(key: &str) -> bool {
 }
 
 /// `jumper_bar.<n>.<field>`: the link and the field.
-pub(crate) fn jumper_bar_part_key(key: &str) -> Option<(u32, &str)> {
+pub fn jumper_bar_part_key(key: &str) -> Option<(u32, &str)> {
     let rest = key.strip_prefix(jumper_bars::PREFIX)?;
     let (n, f) = rest.split_once('.')?;
     let n = jumper_bars::jumper_bar_number(&jumper_bars::key(n.parse().ok()?)).filter(|x| x.to_string() == n)?;
@@ -269,7 +269,7 @@ pub(crate) fn jumper_bar_part_key(key: &str) -> Option<(u32, &str)> {
 }
 
 /// The strip key a project key stands for (`strip_jumper_bar` → `jumper.bar`).
-pub(crate) fn strip_key_of_project(key: &str) -> Option<String> {
+pub fn strip_key_of_project(key: &str) -> Option<String> {
     part_keys().into_iter().find(|k| project_key(k) == key)
 }
 
@@ -349,7 +349,7 @@ pub(crate) fn jumper_bar_value(doc: &Document, c: DeviceId, value: Option<&str>)
 ///
 /// # Errors
 /// Fewer than 2 positions.
-pub(crate) fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdError> {
+pub fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdError> {
     // Brief 036: a cross-level link joins levels of one position (`1.1-1.3`).
     if p.crosses_levels() {
         return Ok(p.text());
@@ -1066,32 +1066,5 @@ fn renumber_strip(
             lines.push(format!("{tag}: link {before} \u{2192} {after}"));
             out.push(Op::SetProperty { object: ObjectRef::Device(c), key, before: Some(before), after: Some(after) });
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn places_and_values() {
-        assert_eq!(spot_of("acc.after.4"), Some(Spot::After("4".into())));
-        assert_eq!(spot_of("acc.on.PE1"), Some(Spot::On("PE1".into())));
-        assert_eq!(spot_of("acc.middle"), None);
-        assert_eq!(acc_value(&Spot::End, Some(" End plate , end-stop ")), Ok(Some("end_plate,end_stop".into())));
-        assert_eq!(acc_value(&Spot::Start, Some(" ")), Ok(None));
-        assert!(acc_value(&Spot::Start, Some("plate")).unwrap_err().to_string().contains("Write end_stop, end_plate, partition or strip_label"));
-        assert!(acc_value(&Spot::On("4".into()), Some("partition")).unwrap_err().to_string().contains("Only marker goes on a position"));
-        assert!(acc_value(&Spot::Start, Some("marker")).is_err());
-        assert!(acc_value(&Spot::Start, Some(&"end_stop,".repeat(9))).is_err());
-        assert!(acc_value(&Spot::Start, Some(&"end_stop,".repeat(1000))).is_err());
-        assert_eq!(project_key("end_stop.part_number"), "strip_end_stop_part_number");
-        assert_eq!(strip_key_of_project("strip_jumper_bar").as_deref(), Some("jumper.bar"));
-        assert_eq!(strip_key_of_project("strip_marker_per_card").as_deref(), Some("marker.per_card"));
-        assert!(part_keys().iter().all(|k| project_key(k).len() <= 40));
-        assert_eq!(jumper_bar_part_key("jumper_bar.2.part_number"), Some((2, "part_number")));
-        assert_eq!(jumper_bar_part_key("jumper_bar.02.part_number"), None);
-        assert_eq!(jumper_bar_part_key("jumper_bar.2.colour"), None);
-        assert!(check_label(&"x".repeat(17)).is_err());
     }
 }

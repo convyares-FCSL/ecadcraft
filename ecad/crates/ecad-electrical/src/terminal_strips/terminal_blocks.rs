@@ -117,7 +117,7 @@ const fn level(n: u8) -> PointKey {
 }
 
 /// The catalogue, in offer order (design 036 §2.2). Adding a type is a row here and its starters.
-pub(crate) static TYPES: &[TermType] = &[
+pub static TYPES: &[TermType] = &[
     TermType {
         key: StarterKey::TerminalBlock,
         level_starters: &[],
@@ -280,17 +280,6 @@ pub fn is_level_starter(key: crate::symbols::StarterKey) -> bool {
 
 /// Every new starter key, in catalogue order: per multi-level type its levels then its whole
 /// symbol; then disconnect and fuse.
-#[cfg(test)]
-pub(crate) fn starter_keys() -> Vec<StarterKey> {
-    let mut out = Vec::new();
-    for t in TYPES.iter().filter(|t| !t.legacy()) {
-        if t.multi() {
-            out.extend((1..=t.count()).map(|n| t.starter_key(Some(n))));
-        }
-        out.push(t.key);
-    }
-    out
-}
 
 // ---------------------------------------------------------------- terminals and positions
 
@@ -675,7 +664,7 @@ fn offer_refusal(text: &str) -> CmdError {
 ///
 /// # Errors
 /// Unreadable text, an unknown code, no positions, more than [`crate::terminal_strips::MAX_POSITIONS`].
-pub(crate) fn parse_counts(text: &str) -> Result<Counts, CmdError> {
+pub fn parse_counts(text: &str) -> Result<Counts, CmdError> {
     if text.chars().count() > MAX_OFFER_CHARS {
         return Err(offer_refusal(text));
     }
@@ -723,7 +712,7 @@ pub fn counts_text(c: &Counts) -> String {
 /// The text of a link item for position `p`, level `n` as every ECAD writer writes it: `p` for
 /// level 1 of an undotted position, else `p.n` (a dotted position is always written with its
 /// level, roadmap question 5).
-pub(crate) fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
+pub fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
     match point {
         Some(c) => format!("{p}.{n}{c}"),
         None if n == 1 && !p.contains('.') => p.to_string(),
@@ -733,7 +722,7 @@ pub(crate) fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
 
 /// Canonical link text on level `n` and point `point` for `labels` (plan order) out of `order`:
 /// runs become ranges, each end written with [`jumper_bar_end`] (review 036, 2: the point is kept).
-pub(crate) fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Option<char>) -> String {
+pub fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Option<char>) -> String {
     let base = ecad_model::connectivity::jumper_bars::canonical(labels, order);
     if n == 1 && point.is_none() && !labels.iter().any(|l| l.contains('.')) {
         return base;
@@ -938,55 +927,5 @@ pub fn position_label(doc: &Document, t: ConnectionPointId) -> String {
     match doc.connection_points.get(&t).and_then(|x| x.label.clone()) {
         Some(l) => l,
         None => format!("connection point {}", short(&t.hex())),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn starters_and_codes() {
-        assert_eq!(of_starter(StarterKey::TermlnpeL2).map(|(t, n)| (t.code, n)), Some(("lnpe", Some(2))));
-        assert_eq!(of_starter(StarterKey::Termlnpe).map(|(t, n)| (t.code, n)), Some(("lnpe", None)));
-        assert_eq!(of_starter(StarterKey::Coil), None);
-        assert_eq!(of_starter(StarterKey::Terminalblockfuse).map(|(t, n)| (t.code, n)), Some(("fuse", Some(1))));
-        for t in TYPES {
-            assert_eq!(t.level_starters.len(), if t.multi() { t.levels.len() } else { 0 }, "{}", t.code);
-            for (i, k) in t.level_starters.iter().enumerate() {
-                assert_eq!(t.starter_key(Some(u32::try_from(i).unwrap() + 1)), *k);
-            }
-        }
-        assert_eq!(starter_keys().len(), 20);
-        assert!(is_level_starter(crate::symbols::StarterKey::Term2bL1) && !is_level_starter(crate::symbols::StarterKey::TerminalBlock));
-        assert_eq!(by_word("x2b").map(|t| t.key), Some(StarterKey::Term2b));
-        assert_eq!(by_word("Feedthrough").map(|t| t.key), Some(StarterKey::TerminalBlock));
-    }
-
-    #[test]
-    fn offers_by_type() {
-        let c = parse_counts("12+2PE+4x3").unwrap_or_default();
-        assert_eq!(counts_text(&c), "12+2PE+4x3");
-        assert_eq!(c.iter().sum::<u32>(), 18);
-        assert_eq!(parse_counts("12 + 2pe").map(|c| counts_text(&c)), Ok("12+2PE".into()));
-        assert_eq!(parse_counts("0+2PE").map(|c| counts_text(&c)), Ok("2PE".into()));
-        assert!(parse_counts("6Q3").unwrap_err().to_string().contains("types: PE, x2"));
-        assert!(parse_counts("999x3").is_ok());
-        assert!(parse_counts("1000x2").is_err());
-        assert!(parse_counts("990+10PE").is_err());
-        assert!(parse_counts(&"9".repeat(10_000)).is_err());
-        assert!(parse_counts("").is_err());
-    }
-
-    #[test]
-    fn jumper_bar_ends() {
-        assert_eq!(jumper_bar_end("4", 1, None), "4");
-        assert_eq!(jumper_bar_end("4", 2, None), "4.2");
-        assert_eq!(jumper_bar_end("2.1", 1, None), "2.1.1");
-        let order: Vec<String> = ["1", "2", "3", "4"].iter().map(|s| s.to_string()).collect();
-        let sel: Vec<&String> = order.iter().collect();
-        assert_eq!(jumper_bar_text(&sel, &order, 2, None), "1.2-4.2");
-        assert_eq!(jumper_bar_text(&sel, &order, 1, None), "1-4");
-        assert_eq!(jumper_bar_text(&sel, &order, 1, Some('o')), "1.1o-4.1o", "review 036, 2: the point is kept");
     }
 }
