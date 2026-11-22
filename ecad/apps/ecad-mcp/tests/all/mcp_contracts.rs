@@ -947,7 +947,10 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
     let log = c.log();
     assert_eq!(log.len(), before + 1);
     assert_eq!(log.last().unwrap().author, Author::Agent(AGENT.into()));
-    assert!(!c.doc().versions.contains_key("Rev B") && c.doc().versions.contains_key("Rev A"));
+    assert!(
+        !c.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2)))
+            && c.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1)))
+    );
     // `setprop {components}`: two devices in one transaction, as the agent.
     let a = c.exec("place", json!({"symbol": "coil", "at": [200, 200]}))["component"].clone();
     let b = c.exec("place", json!({"symbol": "coil", "at": [250, 200]}))["component"].clone();

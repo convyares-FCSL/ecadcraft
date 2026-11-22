@@ -14,15 +14,15 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use ecad_model::{Base, Document, History, Ledger, ModelError, Op, ProjectId, Transaction, TxId, TxKind, Word};
+use ecad_model::{Base, Document, History, Ledger, ModelError, Op, PointName, ProjectId, Rev, Transaction, TxId, TxKind};
 use rayon::prelude::*;
 use serde_json::{Value, json};
 
 use super::chunks::{self, ChunkSet, Dirty, ModelMeta};
 use super::pack;
 use super::schema::{
-    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, MAX_NAME, MergeRow, Merged, Point, Release,
-    SNAPSHOT_EVERY_RANGE, STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
+    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, MergeRow, Merged, Point, Release, RowKind,
+    SNAPSHOT_EVERY_RANGE, STACK_CAP, SnapshotRef, VersionRecord, auto_name,
 };
 use super::store::{Reader, Store, StoreError};
 use crate::FileError;
@@ -332,7 +332,7 @@ pub fn lineage(r: &Reader, project: ProjectId, branch: BranchId) -> Result<Linea
 /// The nearest snapshot of `branch` at or before `seq` (an automatic one or a named version).
 fn nearest_snapshot(r: &Reader, branch: BranchId, seq: u64) -> Result<Option<VersionRecord>, FileError> {
     let mut best: Option<VersionRecord> = r.auto_at_or_before(branch, seq)?;
-    for kind in [VersionKind::User, VersionKind::Revision] {
+    for kind in [RowKind::VERSION, RowKind::REVISION] {
         for v in r.versions(branch, kind)? {
             if v.point.seq <= seq && best.as_ref().is_none_or(|b| b.point.seq < v.point.seq) {
                 best = Some(v);
@@ -1118,12 +1118,11 @@ impl Project {
         }
         // Version snapshots, then the head: one forward pass over the log.
         let doc_end = ledger.document();
-        let mut points: Vec<(u64, VersionKind, String)> = Vec::new();
+        let mut points: Vec<(u64, RowKind, String)> = Vec::new();
         for (name, at) in &doc_end.versions {
-            let kind = if revision_of(doc_end, name).is_some() { VersionKind::Revision } else { VersionKind::User };
-            points.push((*at, kind, name.clone()));
+            points.push((*at, RowKind::of(name), name.key()));
         }
-        points.push((ledger.head(), VersionKind::Auto, auto_name(ledger.head())));
+        points.push((ledger.head(), RowKind::Auto, auto_name(ledger.head())));
         points.sort();
         let mut doc = Document::default();
         let mut stacks = StackState::default();
@@ -1154,7 +1153,7 @@ impl Project {
                 saved.chunks_written += usize::from(n > 0);
             }
             let chain = chains.get(at as usize).copied().unwrap_or(seed);
-            let release = (kind == VersionKind::Revision).then(|| revision_of(doc_end, &name)).flatten();
+            let release = Rev::from_key(&name).filter(|_| kind == RowKind::REVISION).and_then(|rev| revision_of(doc_end, rev));
             let rec = stacks.record();
             w.put_version(
                 branch,
@@ -1268,23 +1267,19 @@ impl Project {
             for op in &tx.ops {
                 match op {
                     Op::NameVersion { name, at, description } => {
-                        let kind = if issues(tx, name) { VersionKind::Revision } else { VersionKind::User };
-                        // Replaced if it existed under the other kind.
-                        for k in [VersionKind::User, VersionKind::Revision] {
-                            w.remove_version(self.branch, k, name)?;
-                        }
-                        let release =
-                            if kind == VersionKind::Revision { Some(release_at(ledger, tx, name).map_err(SaveError::Encode)?) } else { None };
+                        let (kind, key) = (RowKind::of(name), name.key());
+                        let release = match name {
+                            PointName::Revision(rev) => Some(release_at(ledger, tx, *rev).map_err(SaveError::Encode)?),
+                            PointName::Version(_) => None,
+                        };
                         let chain = self.chain_at(*at, &chains)?;
-                        self.write_snapshot(&mut w, ledger, &mut snap, &mut cache, *at, chain, kind, name, release, &mut saved)?;
+                        self.write_snapshot(&mut w, ledger, &mut snap, &mut cache, *at, chain, kind, &key, release, &mut saved)?;
                         if let Some(d) = description {
-                            w.describe_version(self.branch, kind, name, d)?;
+                            w.describe_version(self.branch, kind, &key, d)?;
                         }
                     }
                     Op::UnnameVersion { name, .. } => {
-                        for k in [VersionKind::User, VersionKind::Revision] {
-                            w.remove_version(self.branch, k, name)?;
-                        }
+                        w.remove_version(self.branch, RowKind::of(name), &name.key())?;
                     }
                     _ => {}
                 }
@@ -1296,7 +1291,7 @@ impl Project {
         for (seq, row) in &follow.rows {
             match row {
                 Some(row) => w.put_version(self.branch, &merge_record(*seq, self.chain_at(*seq, &chains)?, row))?,
-                None => w.remove_version(self.branch, VersionKind::Merge, &auto_name(*seq))?,
+                None => w.remove_version(self.branch, RowKind::Merge, &auto_name(*seq))?,
             }
         }
         for (source, merged) in &follow.status {
@@ -1321,7 +1316,7 @@ impl Project {
         // parent's state at the fork, which costs more than an open.
         if end.saturating_sub(snap.seq) >= cache.every || (snap.set.is_none() && end > snap.seq) {
             let chain = prev;
-            self.write_snapshot(&mut w, ledger, &mut snap, &mut cache, end, chain, VersionKind::Auto, &auto_name(end), None, &mut saved)?;
+            self.write_snapshot(&mut w, ledger, &mut snap, &mut cache, end, chain, RowKind::Auto, &auto_name(end), None, &mut saved)?;
         }
         // The row as stored now (a rename or archive may have changed it since it was read), with
         // the new head.
@@ -1365,8 +1360,8 @@ impl Project {
             return Ok(out);
         }
         let rows = match w {
-            Some(w) => w.versions(self.branch, VersionKind::Merge)?,
-            None => self.store.reader()?.versions(self.branch, VersionKind::Merge)?,
+            Some(w) => w.versions(self.branch, RowKind::Merge)?,
+            None => self.store.reader()?.versions(self.branch, RowKind::Merge)?,
         };
         let mut live: BTreeMap<u64, MergeRow> = rows.into_iter().filter_map(|v| v.merge.map(|m| (v.point.seq, m))).collect();
         let reopened_before: BTreeMap<u64, BranchId> =
@@ -1483,7 +1478,7 @@ impl Project {
     /// The file could not be read.
     pub fn merge_index(&self, ledger: &Ledger) -> Result<Vec<MergeIndex>, FileError> {
         let mut rows: BTreeMap<u64, MergeRow> =
-            self.store.reader()?.versions(self.branch, VersionKind::Merge)?.into_iter().filter_map(|v| v.merge.map(|m| (v.point.seq, m))).collect();
+            self.store.reader()?.versions(self.branch, RowKind::Merge)?.into_iter().filter_map(|v| v.merge.map(|m| (v.point.seq, m))).collect();
         if ledger.head() > self.head.0 && ledger.base() <= self.head.0 {
             let start = usize::try_from(self.head.0 - ledger.base()).unwrap_or(usize::MAX);
             let pending: Vec<Transaction> = ledger.log().get(start..).unwrap_or_default().to_vec();
@@ -1504,7 +1499,7 @@ impl Project {
     /// The file could not be read.
     pub fn merge_rows(&self, branch: BranchId) -> Result<Vec<MergeIndex>, FileError> {
         let r = self.store.reader()?;
-        let rows = r.versions(branch, VersionKind::Merge)?;
+        let rows = r.versions(branch, RowKind::Merge)?;
         let mut out = Vec::new();
         for v in &rows {
             if let Some(m) = &v.merge {
@@ -1571,7 +1566,7 @@ impl Project {
     /// `snap` when the transactions between them are in memory.
     #[allow(clippy::too_many_arguments)]
     fn write_snapshot(
-        &mut self, w: &mut super::store::Writer, ledger: &mut Ledger, snap: &mut Snap, cache: &mut Cache, at: u64, chain: Hash, kind: VersionKind,
+        &mut self, w: &mut super::store::Writer, ledger: &mut Ledger, snap: &mut Snap, cache: &mut Cache, at: u64, chain: Hash, kind: RowKind,
         name: &str, release: Option<Release>, saved: &mut Saved,
     ) -> Result<(), SaveError> {
         let enc = SaveError::Encode;
@@ -1646,7 +1641,7 @@ impl Project {
         let mut rec = self.rec.clone();
         rec.head = Point::new(seq, &chain);
         w.put_branch(self.branch, &rec)?;
-        for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto, VersionKind::Merge] {
+        for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto, RowKind::Merge] {
             for v in r.versions(self.branch, kind)? {
                 if v.point.seq > seq {
                     w.remove_version(self.branch, kind, &v.name)?;
@@ -2045,7 +2040,6 @@ impl Project {
     }
 }
 
-/// Whether `tx` issues revision `name`: it sets some `rev.<n>.issued` to `name` (brief 019).
 /// The undo and redo stacks at `at`: from `base` (those at `base_seq`, the snapshot opened from)
 /// and the transactions after it in memory. When that pops below what `base` holds, its next
 /// entries are read from `history` (the record's cap at a time, walking back only as far as they
@@ -2091,7 +2085,7 @@ fn stacks_from(history: &dyn History, base: &mut StackState, base_seq: u64, ledg
 /// A merge index row (FQ2) for the step at `seq` with chain value `chain`.
 fn merge_record(seq: u64, chain: Hash, row: &MergeRow) -> VersionRecord {
     VersionRecord {
-        kind: VersionKind::Merge,
+        kind: RowKind::Merge,
         name: auto_name(seq),
         point: Point::new(seq, &chain),
         chunks: BTreeMap::new(),
@@ -2107,35 +2101,17 @@ fn merge_record(seq: u64, chain: Hash, row: &MergeRow) -> VersionRecord {
     }
 }
 
-fn issues(tx: &Transaction, name: &str) -> bool {
-    tx.ops.iter().any(|op| {
-        matches!(op, Op::ModifyProject { before, after }
-        if after.revisions.iter().enumerate().any(|(i, r)| {
-            r.issued.as_ref().is_some_and(|v| v == name) && before.revisions.get(i).is_none_or(|b| b.issued.is_none())
-        }))
-    })
+/// The issued revision row `rev` of `doc`, as release data.
+fn revision_of(doc: &Document, rev: Rev) -> Option<Release> {
+    let row = doc.project.revisions.iter().find(|r| r.issued && r.rev == Some(rev))?;
+    Some(Release { revision: row.clone(), assets: Vec::new() })
 }
 
-/// The revision row (`rev.<n>.*`) whose `issued` is `name`, in `doc`, as release data.
-fn revision_of(doc: &Document, name: &str) -> Option<Release> {
-    let row = doc.project.revisions.iter().find(|r| r.issued.as_ref().is_some_and(|v| v == name))?;
-    let mut fields: BTreeMap<String, String> =
-        <ecad_model::RevField as Word>::ALL.iter().filter_map(|f| row.field(*f).map(|v| (Word::word(*f).to_string(), v.to_string()))).collect();
-    fields.extend(row.custom.iter().map(|(k, v)| (k.as_str().to_string(), v.to_string())));
-    if let Some(r) = &row.released {
-        fields.insert("released".into(), r.to_string());
-    }
-    Some(Release { fields, assets: Vec::new() })
-}
-
-/// The release data of revision `name` as issued by `tx`: the revision row's fields once `tx`
+/// The release data of revision `rev` as issued by `tx`: the revision row once `tx`
 /// applied (fields are never changed after issuing, so the document after `tx` is read).
-fn release_at(ledger: &mut Ledger, tx: &Transaction, name: &str) -> Result<Release, FileError> {
-    if name.len() > MAX_NAME {
-        return Err(FileError::RevisionName);
-    }
+fn release_at(ledger: &mut Ledger, tx: &Transaction, rev: Rev) -> Result<Release, FileError> {
     let undo_after: Vec<Op> = ledger.log().iter().rev().take_while(|t| t.seq > tx.seq).flat_map(|t| t.ops.iter().rev().map(Op::inverse)).collect();
     let release =
-        if undo_after.is_empty() { revision_of(ledger.document(), name) } else { ledger.with_applied(&undo_after, |d| revision_of(d, name))? };
+        if undo_after.is_empty() { revision_of(ledger.document(), rev) } else { ledger.with_applied(&undo_after, |d| revision_of(d, rev))? };
     Ok(release.unwrap_or_default())
 }

@@ -150,7 +150,7 @@ fn on_disk(dir: &TempDir, path: &str) -> (u64, std::time::SystemTime, Vec<String
     let meta = std::fs::metadata(path).unwrap();
     let (s, _) = EcadMcp::open(path, Options { write: false, agent: None }).unwrap();
     let mut r = Client::new(s);
-    let versions: Vec<String> = r.doc().versions.keys().cloned().collect();
+    let versions: Vec<String> = r.doc().versions.keys().map(|k| format!("{k:?}")).collect();
     drop(r);
     let mut files = Vec::new();
     let mut todo = vec![root(dir).join("release")];

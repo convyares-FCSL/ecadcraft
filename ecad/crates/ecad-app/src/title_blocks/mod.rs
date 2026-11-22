@@ -5,7 +5,7 @@
 //! - **Toolbar**: the Library tabs, Select, Line, Text, Field, Logo, Sample, Snap and Frame….
 //! - **Main view**: the block on paper at print size with 20 mm of the frame around it; the
 //!   footer says what Save reaches.
-//! - **Right panel**: the selection's Value, Look and Box; with nothing selected, the block.
+//! - **Right panel**: the selection's Value, Style and Box; with nothing selected, the block.
 //!
 //! The editor works on a **draft** ([`draft`]): nothing is written while editing; **Save** writes
 //! one transaction (`titleblock {id, …, body}`) after the consequence line. Programmatic calls

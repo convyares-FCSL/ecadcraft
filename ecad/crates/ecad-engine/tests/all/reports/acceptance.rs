@@ -904,7 +904,9 @@ fn revision_list_follows_issuerevision_and_undo() {
     // 45 issued revisions: two sheets.
     for i in 0..45 {
         h.run("projectprops", json!({"title": format!("t{i}")})).unwrap();
-        h.run("issuerevision", json!({"rev": format!("R{i}"), "description": "d", "drawn": "CV"})).unwrap();
+        // Letters from CV on: ones the earlier issues in this test did not use.
+        let rev = ecad_model::RevScheme::default().show(ecad_model::Rev::Letter(100 + i));
+        h.run("issuerevision", json!({"rev": rev, "description": "d", "drawn": "CV"})).unwrap();
     }
     let doc = h.doc();
     assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, r, None), 2);

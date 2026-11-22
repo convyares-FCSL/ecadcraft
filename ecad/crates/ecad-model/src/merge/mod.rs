@@ -1045,7 +1045,8 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             }
             Obj::Project => {
                 m.display = merge_props(ctx, obj, "Project", &a.display, &t.display, &s.display, ctx.inp.keep_project_key);
-                m.project = merge_project(ctx, obj, &a.project, &t.project, &s.project);
+                let clash = revision_clash(ctx, obj);
+                m.project = merge_project(ctx, obj, &a.project, &t.project, &s.project, clash);
                 m.device_links =
                     field(ctx, obj, "device_links", "Project · device links".into(), &a.device_links, &t.device_links, &s.device_links, &|x| {
                         format!("{} device links", x.len())
@@ -1060,9 +1061,42 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
     }
 }
 
+/// The revisions both sides issued since the ancestor under one name (S4, #37): the same rev with a
+/// different `at`. Asked as one conflict that names them, never picked; `Some(true)` when the
+/// answer takes the source's revision rows, `Some(false)` for the target's, `None` when there is
+/// no clash. Version names are branch-local history and never come across a merge, so two
+/// branches may each have a version of one name; a revision is project data and does.
+fn revision_clash(ctx: &mut Ctx<'_, '_>, obj: Obj) -> Option<bool> {
+    let (a, t, s) = (ctx.inp.ancestor, ctx.inp.target, ctx.inp.source);
+    let new =
+        |d: &Document, k: &crate::PointName| matches!(k, crate::PointName::Revision(_)) && d.versions.contains_key(k) && !a.versions.contains_key(k);
+    let clashes: Vec<crate::Rev> =
+        t.versions.iter().filter(|(k, at)| new(t, k) && new(s, k) && s.versions.get(*k) != Some(*at)).filter_map(|(k, _)| k.rev()).collect();
+    if clashes.is_empty() {
+        return None;
+    }
+    let scheme = &t.project.rev_scheme;
+    let names = clashes.iter().map(|r| scheme.show(*r)).collect::<Vec<_>>().join(", ");
+    let of = |d: &Document| {
+        let at: Vec<String> = clashes.iter().filter_map(|r| d.versions.get(&crate::PointName::Revision(*r))).map(|n| format!("step {n}")).collect();
+        format!("issued at {}", at.join(", "))
+    };
+    let c = Conflict {
+        id: format!("{}/revision.issued", obj.hex()),
+        kind: ConflictKind::Value,
+        object: obj,
+        what: format!("Revision {names} · issued on both branches"),
+        target: of(t),
+        source: of(s),
+        choices: vec![Choice::Target, Choice::Source],
+        chosen: None,
+    };
+    Some(matches!(ctx.ask(c), Some(Choice::Source)))
+}
+
 /// The project's own data (design 072 §5.3): each list merges entry by entry (an entry changed on
 /// both sides differently is a conflict), the defaults field by field, the revision rows whole.
-fn merge_project(ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate::Project, s: &crate::Project) -> crate::Project {
+fn merge_project(ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate::Project, s: &crate::Project, clash: Option<bool>) -> crate::Project {
     // The info merges field by field, like the project properties it was.
     let mut info = t.info.clone();
     for f in <crate::document::project::InfoField as crate::Word>::ALL {
@@ -1081,12 +1115,15 @@ fn merge_project(ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate:
         function: field(ctx, obj, "function", "Project · function".into(), &a.function, &t.function, &s.function, &|x| {
             x.map_or_else(|| "(none)".to_string(), crate::naming::id::FunctionId::short)
         }),
+        rev_scheme: field(ctx, obj, "rev_scheme", "Project · revision scheme".into(), &a.rev_scheme, &t.rev_scheme, &s.rev_scheme, &|x| x.example()),
         // Revision rows are merged only where the filter allows (never into the release line; an
         // update brings them unchanged), as one unit.
         user_fields: field(ctx, obj, "user_fields", "Project · user fields".into(), &a.user_fields, &t.user_fields, &s.user_fields, &|x| {
             format!("{} user fields", x.len())
         }),
-        revisions: if (ctx.inp.keep_project_key)(crate::document::project::REVISIONS_KEY) {
+        revisions: if let Some(take_source) = clash {
+            if take_source { s.revisions.clone() } else { t.revisions.clone() }
+        } else if (ctx.inp.keep_project_key)(crate::document::project::REVISIONS_KEY) {
             field(ctx, obj, "revisions", "Project · revisions".into(), &a.revisions, &t.revisions, &s.revisions, &|x| {
                 format!("{} revisions", x.len())
             })

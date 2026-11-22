@@ -175,7 +175,7 @@ fn head_of(p: &Project, b: BranchId) -> Result<u64, String> {
 /// (with the nearest revision or version before it, when there is one).
 fn point_text(p: &Project, b: BranchId, seq: u64) -> String {
     let named = history::named_points(p, b).unwrap_or_default();
-    let quoted = |n: &Named| if n.revision { n.name.clone() } else { format!("version \"{}\"", n.name) };
+    let quoted = |n: &Named| if n.is_revision() { n.name.clone() } else { format!("version \"{}\"", n.name) };
     // A version names the step before the one that named it; both are the same state.
     if let Some(n) = named.iter().filter(|n| n.branch == b && (n.seq == seq || n.seq + 1 == seq)).max_by_key(|n| n.seq) {
         return quoted(n);
@@ -234,7 +234,7 @@ pub fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
     // Revisions on the target's line after the ancestor (crossing revisions, §4.2).
     let target_revisions: Vec<(String, u64)> = history::named_points(p, sides.target)?
         .into_iter()
-        .filter(|n| n.revision && n.branch == sides.target)
+        .filter(|n| n.is_revision() && n.branch == sides.target)
         .map(|n| (n.name, n.seq))
         .rev()
         .collect();
@@ -246,7 +246,7 @@ pub fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
         let steps = head_of(p, sides.source)?.saturating_sub(if anc_branch == sides.source { anc_seq } else { sides.fork });
         let mut what: Vec<String> = history::named_points(p, sides.source)?
             .into_iter()
-            .filter(|n| n.revision && n.branch == sides.source && n.seq > if anc_branch == sides.source { anc_seq } else { sides.fork })
+            .filter(|n| n.is_revision() && n.branch == sides.source && n.seq > if anc_branch == sides.source { anc_seq } else { sides.fork })
             .map(|n| n.name)
             .collect();
         what.reverse();

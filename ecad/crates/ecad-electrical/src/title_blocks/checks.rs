@@ -59,7 +59,7 @@ pub fn touches(effect: &Effect<'_>) -> bool {
 
 /// The title block rows as a [`crate::checks::CheckSource`] (brief 060): kept on pages with
 /// checks off.
-pub struct TitleBlockRows;
+pub(crate) struct TitleBlockRows;
 
 impl crate::checks::CheckSource for TitleBlockRows {
     fn key(&self) -> crate::checks::Key {
@@ -173,7 +173,7 @@ fn page_input(doc: &Document, book: &Book, base: &FrameInput, page: PageId) -> F
 }
 
 /// The fields of `inp`'s block whose value is cut, by item index.
-pub fn cut_fields(inp: &FrameInput) -> Vec<usize> {
+pub(crate) fn cut_fields(inp: &FrameInput) -> Vec<usize> {
     let l = &inp.block.layout;
     let (usable, _) = l.usable();
     usable

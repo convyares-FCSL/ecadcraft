@@ -28,7 +28,7 @@ use ecad_model::{Check, Document, Ledger, ProjectId, Transaction, TxId, TxKind};
 
 use super::chunks::{self, ChunkSet};
 use super::project::Lineage;
-use super::schema::{BranchId, BranchRecord, VersionKind, VersionRecord};
+use super::schema::{BranchId, BranchRecord, RowKind, VersionRecord};
 use super::store::{Reader, Store};
 use crate::chain::{self, Hash};
 
@@ -244,7 +244,7 @@ fn chain_branch(
     }
     // Versions: their chain values, and their chunks present and hashing to their keys.
     let mut versions: Vec<VersionRecord> = Vec::new();
-    for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
+    for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto] {
         match r.versions(id, kind) {
             Ok(v) => versions.extend(v),
             Err(e) => rep.fail(format!("{name}: versions: {e}")),
@@ -278,7 +278,7 @@ fn chain_branch(
     }
     // Merge index rows: decodable facts and the log's chain value (part (c) compares them with the
     // merges the replay finds live).
-    let merges = match r.versions(id, VersionKind::Merge) {
+    let merges = match r.versions(id, RowKind::Merge) {
         Ok(rows) => rows,
         Err(e) => {
             rep.fail(format!("{name}: merge rows: {e}"));
@@ -452,13 +452,19 @@ fn replay_branch(
         rep.fail(format!("{name}: the live merge at {at} has no merge row"));
     }
     // Versions named on this branch (those inherited from the parent are its rows).
-    let named: BTreeMap<&String, &u64> = ledger.document().versions.iter().filter(|(k, at)| named_before.get(*k) != Some(*at)).collect();
-    for v in b.versions.iter().filter(|v| v.kind != VersionKind::Auto) {
-        if named.get(&v.name) != Some(&&v.point.seq) {
+    let named: BTreeMap<(RowKind, String), &u64> = ledger
+        .document()
+        .versions
+        .iter()
+        .filter(|(k, at)| named_before.get(*k) != Some(*at))
+        .map(|(k, at)| ((RowKind::of(k), k.key()), at))
+        .collect();
+    for v in b.versions.iter().filter(|v| v.kind != RowKind::Auto) {
+        if named.get(&(v.kind, v.name.clone())) != Some(&&v.point.seq) {
             rep.fail(format!("{name}: version {:?} is not named at {} in the history", v.name, v.point.seq));
         }
     }
-    let rows_named = b.versions.iter().filter(|v| v.kind != VersionKind::Auto).count();
+    let rows_named = b.versions.iter().filter(|v| v.kind != RowKind::Auto).count();
     if rows_named != named.len() {
         rep.fail(format!("{name}: {rows_named} version rows, {} versions named in the history", named.len()));
     }

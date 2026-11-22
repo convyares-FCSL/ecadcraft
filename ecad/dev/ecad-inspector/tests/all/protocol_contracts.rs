@@ -57,8 +57,13 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
             assert_eq!(o["branches"], 2);
         }),
         (json!({"op": "project"}), |o| {
-            assert_eq!(o["revisions"]["1"]["rev"], "A");
-            assert_eq!(o["revisions"]["1"]["issued"], "Rev A");
+            // Raw: the typed record (a rev is a position in the scheme, a date is ISO, issued a flag).
+            assert_eq!(o["revisions"]["1"]["rev"], json!({"letter": 1}));
+            assert_eq!(o["revisions"]["1"]["date"], "2026-11-22");
+            assert_eq!(o["revisions"]["1"]["issued"], true);
+            // Readable: the named points, in words, beside their keys.
+            let points = o["versions"].as_array().unwrap();
+            assert!(points.iter().any(|p| p["kind"] == "Revision" && p["shown"] == "Rev A" && p["name"] == "letter:1"), "{points:#?}");
             assert_eq!(o["counts"]["pages"], 2);
             assert!(o["display"].get("rev.1.rev").is_none(), "revision rows are grouped");
             assert_eq!(o["display"]["note"], "issued", "the project's display bag is shown as `display`");
@@ -123,7 +128,10 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
         }),
         (json!({"op": "versions"}), |o| {
             let rows = o["rows"].as_array().unwrap();
-            assert!(rows.iter().any(|r| r["kind"] == "Revision" && r["name"] == "Rev A" && r["release"]["rev"] == "A"), "{rows:#?}");
+            assert!(
+                rows.iter().any(|r| r["kind"] == "Revision" && r["name"] == "letter:1" && r["release"]["rev"] == json!({"letter": 1})),
+                "{rows:#?}"
+            );
             assert!(rows.iter().any(|r| r["kind"] == "Auto"));
         }),
         (json!({"op": "tables"}), |o| {

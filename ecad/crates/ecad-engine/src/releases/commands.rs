@@ -1,7 +1,7 @@
 //! The release commands (`prerelease`, `release`); the release itself is [`crate::releases::release`].
 //!
 //! Both read their input through a params struct (brief 070), so a parameter that does not read is
-//! refused at the edge in the uniform wording. The release (engine work: the checks, the outputs,
+//! refused at the edge in the uniform wording. The release (engine work: the checks, the reports,
 //! the files it writes) still takes its options as JSON: the shim writes the read parameters back
 //! (`serde_json::to_value`) and hands them over, and the release's own refusals keep their words.
 
@@ -26,7 +26,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .noundo(),
         CommandSpec::new("release", "Release", crate::commands::input::typed::<ReleaseParams>)
             .params(
-                "{rev?: an issued rev to write again (records nothing; default: issue the pending one), folder?, outputs?: [slot], \
+                "{rev?: an issued rev to write again (records nothing; default: issue the pending one), folder?, reports?: [slot], \
 accept?: \"errors\", provisional?: \"finalise\"|\"issue\", existing?: \"add-missing\"|\"replace\"|\"keep-both\", colour?: \"mono\"|\"screen\", \
 lineweights?: bool}",
             )
@@ -62,7 +62,7 @@ impl Command for PrereleaseParams {
     }
 }
 
-/// `release {rev?, folder?, outputs?, accept?, provisional?, existing?, colour?, lineweights?}`:
+/// `release {rev?, folder?, reports?, accept?, provisional?, existing?, colour?, lineweights?}`:
 /// issue the pending revision and write its folder, or write an issued revision's folder again
 /// (`rev`; records nothing).
 #[derive(Deserialize, Serialize, JsonSchema)]

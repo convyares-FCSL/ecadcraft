@@ -16,6 +16,8 @@ use redb::TableDefinition;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use ecad_model::{PointKind, PointName};
+
 use crate::FileError;
 use crate::chain::{self, Hash};
 
@@ -107,14 +109,13 @@ pub fn key_seq(key: &[u8; 24]) -> u64 {
     u64::from_be_bytes(s)
 }
 
-/// What a version row is (overseer, 2026-11-08: an explicit kind, never a name prefix).
+/// What a `versions` row is (overseer, 2026-11-08: an explicit kind, never a name prefix; S4: the
+/// two named kinds are [`PointKind`]s, the same type the document keys its points by).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum VersionKind {
-    /// A named version (`NameVersion`).
-    User,
-    /// An issued revision (brief 019): a named version with release data.
-    Revision,
+pub enum RowKind {
+    /// A named point: a user's version or an issued revision (brief 019: with release data).
+    Point(PointKind),
     /// An automatic snapshot, a loading accelerator only: never shown as a version.
     Auto,
     /// The merge index (brief 020b, FQ2): one row per live merge into the branch, named by its
@@ -122,21 +123,52 @@ pub enum VersionKind {
     Merge,
 }
 
-impl VersionKind {
+impl VersionRecord {
+    /// The named point this row is: its kind and key say which, never the spelling. `None` for an
+    /// automatic snapshot, a merge row, or a key that is no point's.
+    pub fn named_point(&self) -> Option<PointName> {
+        match self.kind {
+            RowKind::Point(k) => PointName::from_row(k, &self.name),
+            RowKind::Auto | RowKind::Merge => None,
+        }
+    }
+}
+
+impl RowKind {
+    /// A user's named version.
+    pub const VERSION: RowKind = RowKind::Point(PointKind::Version);
+    /// An issued revision.
+    pub const REVISION: RowKind = RowKind::Point(PointKind::Revision);
+
     /// The kind byte in a `versions` key.
     pub fn byte(self) -> u8 {
         match self {
-            VersionKind::User => 1,
-            VersionKind::Revision => 2,
-            VersionKind::Auto => 3,
-            VersionKind::Merge => 4,
+            RowKind::Point(PointKind::Version) => 1,
+            RowKind::Point(PointKind::Revision) => 2,
+            RowKind::Auto => 3,
+            RowKind::Merge => 4,
         }
+    }
+
+    /// The kind in words, as the inspector shows it.
+    pub fn name(self) -> &'static str {
+        match self {
+            RowKind::Point(PointKind::Version) => "Version",
+            RowKind::Point(PointKind::Revision) => "Revision",
+            RowKind::Auto => "Auto",
+            RowKind::Merge => "Merge",
+        }
+    }
+
+    /// The row kind of a named point.
+    pub fn of(point: &PointName) -> RowKind {
+        RowKind::Point(point.kind())
     }
 }
 
 /// The `versions` key of `name` of `kind` on `branch`. Automatic snapshots are named by their
 /// `seq` as 20 decimal digits, so key order is `seq` order.
-pub fn version_key(branch: BranchId, kind: VersionKind, name: &str) -> Vec<u8> {
+pub fn version_key(branch: BranchId, kind: RowKind, name: &str) -> Vec<u8> {
     let mut k = branch.0.to_vec();
     k.push(kind.byte());
     k.extend_from_slice(name.as_bytes());
@@ -233,9 +265,9 @@ impl BranchRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Release {
-    /// The revision's fields as issued (`rev`, `date`, `description`, `drawn`, `checked`,
-    /// `approved`), from the project's `rev.<n>.*` properties.
-    pub fields: BTreeMap<String, String>,
+    /// The revision record as issued (rev, date, description, drawn, checked, approved, ecr and
+    /// the project's own columns), typed as in the project.
+    pub revision: ecad_model::Revision,
     /// Asset hashes of the frozen outputs; none exist yet.
     pub assets: Vec<String>,
 }
@@ -245,7 +277,7 @@ pub struct Release {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VersionRecord {
-    pub kind: VersionKind,
+    pub kind: RowKind,
     pub name: String,
     pub point: Point,
     /// Chunk key → chunk hash (64 hex digits) of the state at `point`.
@@ -358,7 +390,7 @@ impl Default for Cache {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SnapshotRef {
-    pub kind: VersionKind,
+    pub kind: RowKind,
     pub name: String,
     pub seq: u64,
 }
@@ -439,7 +471,7 @@ mod tests {
         let keys: Vec<_> = [1u64, 2, 255, 256, 70_000, u64::MAX].iter().map(|s| tx_key(b, *s)).collect();
         assert!(keys.windows(2).all(|w| w[0] < w[1]));
         assert_eq!(key_seq(&tx_key(b, 70_000)), 70_000);
-        assert!(version_key(b, VersionKind::Auto, &auto_name(9)) < version_key(b, VersionKind::Auto, &auto_name(10)));
+        assert!(version_key(b, RowKind::Auto, &auto_name(9)) < version_key(b, RowKind::Auto, &auto_name(10)));
         let v = tx_value(1, &[7; 32], b"body");
         assert_eq!(split_tx_value(&v).unwrap(), (1, [7; 32], &b"body"[..]));
         assert!(split_tx_value(&v[..20]).is_err());

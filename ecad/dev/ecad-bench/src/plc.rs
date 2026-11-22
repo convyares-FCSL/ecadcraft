@@ -80,7 +80,7 @@ fn run(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<serde_js
 }
 
 /// Add the racks and cards (one transaction per rack, straight on the ledger).
-fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
+pub(crate) fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
     project.configure(s, |p| -> Result<(), String> {
         let pages: Vec<PageId> = p.ledger.document().page_order.iter().take(PAGES).copied().collect();
         if pages.is_empty() {

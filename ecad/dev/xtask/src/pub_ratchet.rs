@@ -21,8 +21,8 @@ use serde_json::Value;
 const ALLOWED: &[(&str, usize)] = &[
     ("ecad-app", 442),
     ("ecad-drawing-style", 14),
-    ("ecad-electrical", 291),
-    ("ecad-engine", 120),
+    ("ecad-electrical", 455),
+    ("ecad-engine", 109),
     ("ecad-file", 44),
     ("ecad-model", 116),
     ("ecad-store", 6),

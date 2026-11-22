@@ -15,7 +15,7 @@ use redb::{ReadTransaction, ReadableTable, ReadableTableMetadata, StorageBackend
 
 use super::pack;
 use super::schema::{
-    ASSETS, BRANCHES, BranchId, BranchRecord, CHUNKS, META, META_NAMES, TRANSACTIONS, VERSIONS, VersionKind, VersionRecord, asset_hash, asset_value,
+    ASSETS, BRANCHES, BranchId, BranchRecord, CHUNKS, META, META_NAMES, RowKind, TRANSACTIONS, VERSIONS, VersionRecord, asset_hash, asset_value,
     key_seq, split_tx_value, tx_key, tx_value, version_key,
 };
 use crate::chain::Hash;
@@ -314,7 +314,7 @@ impl Reader {
     ///
     /// # Errors
     /// The engine failed, or the row does not decode.
-    pub fn version(&self, branch: BranchId, kind: VersionKind, name: &str) -> Result<Option<VersionRecord>, StoreError> {
+    pub fn version(&self, branch: BranchId, kind: RowKind, name: &str) -> Result<Option<VersionRecord>, StoreError> {
         let t = self.txn.open_table(VERSIONS).map_err(engine)?;
         let Some(v) = t.get(version_key(branch, kind, name).as_slice()).map_err(engine)? else { return Ok(None) };
         serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("version row: {e}")))
@@ -325,7 +325,7 @@ impl Reader {
     ///
     /// # Errors
     /// As [`Reader::version`].
-    pub fn versions(&self, branch: BranchId, kind: VersionKind) -> Result<Vec<VersionRecord>, StoreError> {
+    pub fn versions(&self, branch: BranchId, kind: RowKind) -> Result<Vec<VersionRecord>, StoreError> {
         let t = self.txn.open_table(VERSIONS).map_err(engine)?;
         let lo = version_key(branch, kind, "");
         let mut hi = branch.0.to_vec();
@@ -344,8 +344,8 @@ impl Reader {
     /// As [`Reader::version`].
     pub fn auto_at_or_before(&self, branch: BranchId, seq: u64) -> Result<Option<VersionRecord>, StoreError> {
         let t = self.txn.open_table(VERSIONS).map_err(engine)?;
-        let lo = version_key(branch, VersionKind::Auto, "");
-        let hi = version_key(branch, VersionKind::Auto, &super::schema::auto_name(seq));
+        let lo = version_key(branch, RowKind::Auto, "");
+        let hi = version_key(branch, RowKind::Auto, &super::schema::auto_name(seq));
         let mut r = t.range(lo.as_slice()..=hi.as_slice()).map_err(engine)?;
         match r.next_back() {
             Some(row) => {
@@ -573,7 +573,7 @@ impl Writer {
     ///
     /// # Errors
     /// The engine failed, or a row does not decode.
-    pub fn versions(&self, branch: BranchId, kind: VersionKind) -> Result<Vec<VersionRecord>, StoreError> {
+    pub fn versions(&self, branch: BranchId, kind: RowKind) -> Result<Vec<VersionRecord>, StoreError> {
         let t = self.txn.open_table(VERSIONS).map_err(engine)?;
         let lo = version_key(branch, kind, "");
         let mut hi = branch.0.to_vec();
@@ -590,7 +590,7 @@ impl Writer {
     ///
     /// # Errors
     /// No such row; the engine failed.
-    pub fn describe_version(&mut self, branch: BranchId, kind: VersionKind, name: &str, description: &str) -> Result<(), StoreError> {
+    pub fn describe_version(&mut self, branch: BranchId, kind: RowKind, name: &str, description: &str) -> Result<(), StoreError> {
         let key = version_key(branch, kind, name);
         let rec = {
             let t = self.txn.open_table(VERSIONS).map_err(engine)?;
@@ -608,7 +608,7 @@ impl Writer {
     ///
     /// # Errors
     /// The engine failed.
-    pub fn remove_version(&mut self, branch: BranchId, kind: VersionKind, name: &str) -> Result<(), StoreError> {
+    pub fn remove_version(&mut self, branch: BranchId, kind: RowKind, name: &str) -> Result<(), StoreError> {
         let mut t = self.txn.open_table(VERSIONS).map_err(engine)?;
         t.remove(version_key(branch, kind, name).as_slice()).map_err(engine)?;
         Ok(())

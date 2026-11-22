@@ -214,12 +214,26 @@ fn connections_are_capped() {
     let (port, _) = start(Some(&rich(&dir, "Main")));
     // Connections that never send a head hold their places.
     let held: Vec<TcpStream> = (0..ecad_inspector::serve::MAX_CONNECTIONS).map(|_| TcpStream::connect(("127.0.0.1", port)).unwrap()).collect();
-    std::thread::sleep(Duration::from_millis(200));
-    let (code, _) = get(port, "/", &format!("127.0.0.1:{port}"));
-    assert_eq!(code, 503);
+    // The server takes the held connections on its own thread: ask until it answers 503, up to a
+    // deadline (never a fixed wait, which a loaded machine overruns).
+    let host = format!("127.0.0.1:{port}");
+    assert_eq!(poll_code(port, &host, |c| c == 503), 503);
     drop(held);
-    std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(get(port, "/", &format!("127.0.0.1:{port}")).0, 403, "served again (403: no token)");
+    // The places free as the server sees the closes: 403 (no token) is "served again".
+    assert_eq!(poll_code(port, &host, |c| c == 403), 403, "served again (403: no token)");
+}
+
+/// Ask `GET /` until the status satisfies `done`, or fail after 20 s with the last status.
+fn poll_code(port: u16, host: &str, done: impl Fn(u16) -> bool) -> u16 {
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        let (code, _) = get(port, "/", host);
+        if done(code) {
+            return code;
+        }
+        assert!(std::time::Instant::now() < deadline, "no matching status within 20 s; last {code}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 /// Reviewer 029: a head that does not arrive within the time limit is answered 408.

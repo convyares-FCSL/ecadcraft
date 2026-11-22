@@ -216,7 +216,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(head(&mut h), before + 3);
     let (label, ops) = crate::pages::project_panel::last_ops(&mut h);
     assert_eq!(label, "Issue Rev A");
-    assert!(ops.iter().any(|o| matches!(o, Op::NameVersion { name, .. } if name == "Rev A")));
+    assert!(ops.iter().any(|o| matches!(o, Op::NameVersion { name, .. } if *name == ecad_model::PointName::Revision(ecad_model::Rev::Letter(1)))));
     h.state_mut().revisions = None;
     // The title block, zoomed.
     let _ = h.state_mut().cad.run("zoom", serde_json::json!({"mode": "window", "p1": [-5, -60], "p2": [405, 20]}));
@@ -248,7 +248,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(head(&mut h), before, "stopped");
     assert!(h.query_by_label("Undo the issue").is_some(), "the question");
     click(&mut h, "Undo the issue");
-    assert!(!doc(&mut h).versions.contains_key("Rev A"));
+    assert!(!doc(&mut h).versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1))));
     let _ = sheets::ISSUE_UNDO_ID;
 }
 

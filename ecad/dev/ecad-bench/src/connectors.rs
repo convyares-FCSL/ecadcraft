@@ -63,7 +63,7 @@ fn wires(s: &mut Session, n: usize, y0: f64) -> Result<(), String> {
 }
 
 /// Add the 200 connectors (design 044 §11.3's population).
-fn populate(s: &mut Session, pages: &[PageId]) -> Result<usize, String> {
+pub(crate) fn populate(s: &mut Session, pages: &[PageId]) -> Result<usize, String> {
     let mut n = 0;
     let page = |i: usize| pages.get(i % pages.len().max(1)).copied();
     for i in 0..100 {

@@ -296,7 +296,12 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
     assert_eq!(s.h.head(), at + 1);
     let (label, ops) = last_ops(&mut s.h);
     assert_eq!(label, "Issue Rev A");
-    assert!(ops.iter().any(|o| matches!(o, Op::NameVersion { name, at: a, .. } if name == "Rev A" && *a == at)), "{ops:?}");
+    assert!(
+        ops.iter().any(
+            |o| matches!(o, Op::NameVersion { name, at: a, .. } if *name == ecad_model::PointName::Revision(ecad_model::Rev::Letter(1)) && *a == at)
+        ),
+        "{ops:?}"
+    );
     let texts = frame_texts(&mut s.h, s.supply);
     assert!(texts.iter().any(|t| t == "A") && texts.iter().any(|t| t == "First issue"), "{texts:?}");
     // An issued row cannot change.
@@ -321,7 +326,7 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
     assert_eq!(s.h.head(), head, "nothing undone");
     assert!(s.h.p(|p| p.issue_undo_question.is_some()));
     s.h.run("undoissue", json!({})).unwrap();
-    assert!(!s.h.doc().versions.contains_key("Rev A"));
+    assert!(!s.h.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1))));
     assert!(frame_texts(&mut s.h, s.supply).iter().any(|t| t == "-"), "no issued revision");
     s.h.check();
 }
@@ -490,7 +495,7 @@ fn every_019_command_redoes_exactly() {
         s.h.run("redo", serde_json::Value::Null).unwrap_or_else(|e| panic!("{cmd} redo: {e}"));
         assert_eq!(s.h.doc(), after, "{cmd}: redo gives the same document");
     }
-    assert!(s.h.doc().versions.contains_key("Rev A"), "redo names Rev A again");
+    assert!(s.h.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1))), "redo names Rev A again");
     assert!(frame_texts(&mut s.h, s.supply).iter().any(|t| t == "P7"), "the title block follows");
     s.h.check();
 }

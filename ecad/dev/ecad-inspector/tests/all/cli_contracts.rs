@@ -51,7 +51,7 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
     let mut l = history();
     let out = written(&dir, &l);
     let o = out.to_str().unwrap();
-    let ten = l.document().versions["Ten"];
+    let ten = l.document().versions[&ecad_model::PointName::version("Ten").unwrap()];
     {
         let opened = Project::open(Store::open(&out, true).unwrap(), 3, "tester").unwrap();
         let mut proj = opened.project;
@@ -69,7 +69,12 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
             bl.commit(Author::User, "LINE", vec![Op::AddItem { id, item: Item { page, style, kind } }]).unwrap();
         }
         let at = bl.head();
-        bl.commit(Author::User, "Name", vec![Op::NameVersion { name: "On B".into(), at, description: Some("why".into()) }]).unwrap();
+        bl.commit(
+            Author::User,
+            "Name",
+            vec![Op::NameVersion { name: ecad_model::PointName::version("On B").unwrap(), at, description: Some("why".into()) }],
+        )
+        .unwrap();
         proj.save(&mut bl).unwrap();
         let (c, _) = proj.create_branch("Deeper", b, 5, None, None).unwrap();
         let (gone, _) = proj.create_branch("Gone", main, 3, None, None).unwrap();
@@ -96,7 +101,7 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
     let log = run(&[o, "log", "Option B", "--last", "2"]).unwrap();
     assert!(log.contains("# 41:") && log.contains("# 40:"), "{log}");
     let versions = run(&[o, "versions"]).unwrap();
-    assert!(versions.contains("Option B User \"On B\" at 40"), "{versions}");
+    assert!(versions.contains("Option B Version \"On B\" at 40"), "{versions}");
     // A second branch named "Gone" (the first is archived, so the name is free): a name is no
     // longer enough, an ID is.
     let ids: Vec<(String, String)> = {

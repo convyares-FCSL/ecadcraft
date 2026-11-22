@@ -49,6 +49,9 @@ pub struct Cx<'a> {
     pub designation_uses: &'a mut Uses,
     /// The derived views (report models are built on demand).
     pub derived: &'a mut Views,
+    /// The name of the branch shown when it is not the release line (none: on the release line, or
+    /// the project is not in a file). Revisions are edited and issued on the release line only.
+    pub off_release_line: Option<String>,
     /// This machine's fonts, to measure text.
     pub metrics: &'static dyn TextMetrics,
     /// The files the command declares ([`Generic::IO`]), read by the engine before it runs: what

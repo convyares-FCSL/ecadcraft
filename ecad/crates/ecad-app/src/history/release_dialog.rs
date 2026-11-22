@@ -168,10 +168,8 @@ impl ReleaseDialog {
             // each on leaving it); an issued row's, read only.
             let editable = self.rev.is_none() && !self.read_only;
             prim::PropertyGrid::new().show(ui, |g| {
-                for (i, (f, label)) in ecad_electrical::releases::revisions::FIELDS
-                    .iter()
-                    .zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"])
-                    .enumerate()
+                for (i, (f, label)) in
+                    ecad_electrical::releases::revisions::SIX.iter().zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"]).enumerate()
                 {
                     let Some(val) = self.fields.get_mut(i) else { continue };
                     let name = format!("ecad.release.{f}");
@@ -202,7 +200,7 @@ impl ReleaseDialog {
             if let Some(w) = &v.warning {
                 ui.horizontal_wrapped(|ui| {
                     prim::note(ui, w, Tone::Warning);
-                    if let Some(last) = w.strip_prefix("Nothing has changed since Rev ").map(|s| s.trim_end_matches('.').to_string())
+                    if let Some(last) = v.since.clone()
                         && ui.add(Button::new(&format!("Write Rev {last}'s folder again")).small()).clicked()
                     {
                         out = Some(Out::WriteIssued(last));

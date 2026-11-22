@@ -128,7 +128,7 @@ fn work(p: &ProjectHandle, s: &mut Session) -> usize {
 
 /// Add the strips, bridges and cables to the open project (one transaction per strip, straight
 /// on the ledger: no page is open on those objects yet).
-fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
+pub(crate) fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
     project.configure(s, |p| -> Result<(), String> {
         let pages: Vec<PageId> = p.ledger.document().page_order.iter().take(STRIPS).copied().collect();
         let style = ecad_model::Style { layer: p.default_layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };

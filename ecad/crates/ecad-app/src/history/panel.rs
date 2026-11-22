@@ -103,7 +103,7 @@ impl Sel {
     pub fn params(&self) -> Value {
         match (self.kind, &self.name) {
             (NodeKind::Version, Some(n)) => json!({"branch": self.branch.hex(), "version": n}),
-            (NodeKind::Revision, Some(n)) => json!({"branch": self.branch.hex(), "revision": n.trim_start_matches("Rev ")}),
+            (NodeKind::Revision, Some(n)) => json!({"branch": self.branch.hex(), "revision": n}),
             _ => json!({"branch": self.branch.hex(), "seq": self.seq}),
         }
     }
@@ -428,7 +428,7 @@ impl HistoryPanel {
                 ui.label(RichText::new(" pending").font(title).color(c(s.text)));
                 if let Some(l) = &last {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let after = format!("after {}, {}", l.label.trim_start_matches("Rev "), history::short_time(l.time_ms, today));
+                        let after = format!("after {}, {}", l.label, history::short_time(l.time_ms, today));
                         ui.label(RichText::new(after).small().color(c(s.text_3)));
                     });
                 }
@@ -446,7 +446,7 @@ impl HistoryPanel {
                 if ui.add(ecad_widgets::prim::Button::new(&release).kind(ecad_widgets::prim::Kind::Primary).small()).clicked() {
                     out.push(Action::Release);
                 }
-                let compare = last.as_ref().map_or_else(|| "Compare".to_string(), |l| format!("Compare with {}", l.label.trim_start_matches("Rev ")));
+                let compare = last.as_ref().map_or_else(|| "Compare".to_string(), |l| format!("Compare with {}", l.label));
                 ui.add(ecad_widgets::prim::Button::new(&compare).small().disabled(COMPARE_LATER));
             });
         });

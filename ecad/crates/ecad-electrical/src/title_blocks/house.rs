@@ -19,16 +19,16 @@ use ecad_model::objects::title_block::{
 use crate::pages::frames::{FrameText, TABLE_ROWS};
 
 /// Widths of the fixed columns, right to left (mm).
-pub const COUNTERS_MM: f64 = 30.0;
-pub const DRAWING_MM: f64 = 90.0;
-pub const PROJECT_MM: f64 = 80.0;
+pub(crate) const COUNTERS_MM: f64 = 30.0;
+pub(crate) const DRAWING_MM: f64 = 90.0;
+pub(crate) const PROJECT_MM: f64 = 80.0;
 /// The Rev box's width (mm): wide enough for 033's `E (draft)` at the Rev size.
-pub const REV_MM: f64 = 25.0;
+pub(crate) const REV_MM: f64 = 25.0;
 /// Heights of the rows, top to bottom (mm).
-pub const TOP_ROW_MM: f64 = 15.0;
-pub const ROW_MM: f64 = 12.5;
+pub(crate) const TOP_ROW_MM: f64 = 15.0;
+pub(crate) const ROW_MM: f64 = 12.5;
 /// Narrowest revision table the house block keeps (mm).
-pub const MIN_TABLE_MM: f64 = 60.0;
+pub(crate) const MIN_TABLE_MM: f64 = 60.0;
 
 fn draw(size: f64, bold: bool, align: Align) -> TextDraw {
     // The text styles keep their own bounds; a block keeps its own (design 055 §1.3).

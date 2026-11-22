@@ -86,7 +86,7 @@ pub const LEGEND_ROWS_KEY: &str = "cover.symbol_legend";
 pub const MAX_ROWS: usize = 64;
 pub const MAX_LABEL_CHARS: usize = 64;
 /// The refusal for rows past the bounds.
-pub const ROWS_TOO_LONG: &str = "A cover table takes up to 64 rows with labels of 64 characters.";
+pub(crate) const ROWS_TOO_LONG: &str = "A cover table takes up to 64 rows with labels of 64 characters.";
 /// Most characters of a row key (a definition ID, a mark word, a colour and cross-section).
 const MAX_KEY_CHARS: usize = 64;
 
@@ -109,7 +109,7 @@ pub struct EditedRow {
 }
 
 /// Read stored rows, within the bounds: malformed lines and the excess are left out.
-pub fn parse_overrides(text: &str) -> Vec<RowOverride> {
+pub(crate) fn parse_overrides(text: &str) -> Vec<RowOverride> {
     text.lines()
         .filter_map(|l| {
             let mut parts = l.splitn(3, '\t');
@@ -806,7 +806,7 @@ pub fn layout(doc: &Document, input: &FrameInput, cover_mm: f64) -> Layout {
 
 /// The cover's rows as a [`crate::checks::CheckSource`] (brief 060): kept on pages with checks
 /// off. No commit scope reaches them: the cover's own update calls `crate::checks::Checks::set_cover`.
-pub struct CoverRows;
+pub(crate) struct CoverRows;
 
 impl crate::checks::CheckSource for CoverRows {
     fn key(&self) -> crate::checks::Key {

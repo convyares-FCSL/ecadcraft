@@ -115,26 +115,17 @@ fn an_edit_after_issue_finalise_in_one_line_is_refused() {
     assert!(doc.wires.is_empty(), "the wire was taken back");
 }
 
-/// Only `issuerevision` with `provisional: "finalise"` gets the second transaction: the same
-/// parameter on other commands, `"issue"`, and other spellings get one.
+/// `issuerevision` with `provisional: "finalise"` records Finalise and the issue as one
+/// transaction by the agent, also through an alias of the command (`release` does the same, see
+/// `tester_027_mcp`).
 #[test]
-fn the_exception_is_only_issuerevision_with_finalise() {
-    for (cmd, params) in [
-        ("issuerevision", json!({"provisional": "issue"})),
-        ("finalise", json!({"provisional": "finalise"})),
-        ("renumber", json!({"provisional": "finalise"})),
-        ("numbering", json!({"provisional": true})),
-    ] {
-        assert_eq!(ecad_mcp::policy::transactions_allowed(cmd, &params), ecad_mcp::MAX_TRANSACTIONS_PER_CALL, "{cmd} {params}");
-    }
-    assert_eq!(ecad_mcp::policy::transactions_allowed("issuerevision", &json!({"provisional": " Finalize "})), 2);
-    assert_eq!(ecad_mcp::policy::transactions_allowed("issuerevision", &json!({"provisional": true})), 1);
+fn issuerevision_and_release_with_finalise_each_record_one_transaction() {
     // An alias of the command is resolved to its id before the check.
     let (mut c, a, _) = provisional_project();
     let n = c.log().len();
     let r = c.call("execute", json!({"command": "ISSUEREVISION", "params": {"provisional": "finalise"}}));
     assert_ne!(r["isError"], json!(true), "{r}");
-    assert_eq!(c.log().len(), n + 2);
+    assert_eq!(c.log().len(), n + 1);
     assert_eq!(tag_of(&c.doc(), &a).as_deref(), Some("-K01"));
 }
 
@@ -154,15 +145,13 @@ fn issue_finalise_that_is_refused_records_nothing_and_without_provisional_record
     let n = c.log().len();
     c.exec("issuerevision", json!({"provisional": "finalise"}));
     assert_eq!(c.log().len(), n + 1, "nothing provisional: the issue alone");
-    // Undo through MCP after the two-transaction form: one step each.
+    // Undo through MCP: Finalise and the issue are one step.
     let b = place(&mut c, "coil", [300.0, 100.0], None);
     revision(&mut c, "B");
     c.exec("issuerevision", json!({"provisional": "finalise"}));
     assert_eq!(tag_of(&c.doc(), &b).as_deref(), Some("-K02"));
     c.exec("undoissue", json!({}));
-    assert_eq!(tag_of(&c.doc(), &b).as_deref(), Some("-K02"), "the first undo takes back the issue only");
-    c.exec("u", json!({}));
-    assert_eq!(tag_of(&c.doc(), &b).as_deref(), Some("-K?1"), "the second takes back Finalise");
+    assert_eq!(tag_of(&c.doc(), &b).as_deref(), Some("-K?1"), "one undo takes back the issue and Finalise together");
 }
 
 // ---------------------------------------------------------------- 4. merge and update from main

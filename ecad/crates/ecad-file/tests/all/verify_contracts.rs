@@ -9,7 +9,7 @@ use std::path::Path;
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::chain::{self, Hash};
-use ecad_file::schema::{self, BranchId, VersionKind, VersionRecord};
+use ecad_file::schema::{self, BranchId, RowKind, VersionRecord};
 use ecad_file::verify::{VerifyReport, verify, verify_chain};
 use ecad_file::{Project, Store};
 use ecad_model::*;
@@ -68,7 +68,9 @@ fn build(name: &str) -> Fixture2 {
         f.ledger.commit(Author::User, "LINE", vec![op]).unwrap();
     }
     let at = f.ledger.head();
-    f.ledger.commit(Author::User, "Version", vec![Op::NameVersion { name: "Issue A".into(), at, description: None }]).unwrap();
+    f.ledger
+        .commit(Author::User, "Version", vec![Op::NameVersion { name: ecad_model::PointName::version("Issue A").unwrap(), at, description: None }])
+        .unwrap();
     proj.save(&mut f.ledger).unwrap();
     let main = proj.branch();
     let (branch, _) = proj.create_branch("Option B", main, at, None, None).unwrap();
@@ -163,13 +165,13 @@ fn reference(p: &Path) -> Vec<String> {
                 continue;
             }
         };
-        for v in r.versions(id, VersionKind::Merge).unwrap() {
+        for v in r.versions(id, RowKind::Merge).unwrap() {
             if chains.get(v.point.seq as usize).map(chain::hex) != Some(v.point.chain.clone()) {
                 out.push(format!("{name}: the merge row at {}: its chain value differs from the log's", v.point.seq));
             }
         }
         let mut versions: Vec<VersionRecord> = Vec::new();
-        for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
+        for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto] {
             versions.extend(r.versions(id, kind).unwrap());
         }
         versions.sort_by_key(|v| v.point.seq);
@@ -269,7 +271,7 @@ fn rewrite_rows(
     rec.head = schema::Point::new(rec.head.seq, &chains[&rec.head.seq]);
     edit(&mut rec);
     let mut versions: Vec<(Vec<u8>, VersionRecord)> = Vec::new();
-    for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto, VersionKind::Merge] {
+    for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto, RowKind::Merge] {
         for mut v in r.versions(branch, kind).unwrap() {
             if let Some(h) = chains.get(&v.point.seq) {
                 v.point = schema::Point::new(v.point.seq, h);
@@ -305,7 +307,7 @@ fn log_of(p: &Path, branch: BranchId) -> Vec<Transaction> {
 fn snapshots_of(p: &Path, branch: BranchId) -> Vec<VersionRecord> {
     let r = store(p).reader().unwrap();
     let mut v = Vec::new();
-    for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
+    for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto] {
         v.extend(r.versions(branch, kind).unwrap());
     }
     v.sort_by_key(|v| v.point.seq);
@@ -402,7 +404,7 @@ fn chunk_not_its_hash(f: &Fixture2) {
 /// A merge row at main's transaction 3 with a chain value the log does not have.
 fn merge_row_chain(f: &Fixture2) {
     let rec = VersionRecord {
-        kind: VersionKind::Merge,
+        kind: RowKind::Merge,
         name: schema::auto_name(3),
         point: schema::Point::new(3, &[7; 32]),
         chunks: Default::default(),
@@ -421,7 +423,7 @@ fn merge_row_chain(f: &Fixture2) {
         tag_rule: None,
     };
     write(&f.path, |w| {
-        let k = schema::version_key(f.main, VersionKind::Merge, &rec.name);
+        let k = schema::version_key(f.main, RowKind::Merge, &rec.name);
         w.open_table(schema::VERSIONS).unwrap().insert(k.as_slice(), serde_json::to_vec(&rec).unwrap().as_slice()).unwrap();
     });
 }
@@ -474,7 +476,7 @@ fn verify_passes_the_clean_fixture_with_one_full_check_per_snapshot_point_and_br
     let mut txs = 0;
     for b in [f.main, f.branch] {
         txs += r.last_seq(b).unwrap().unwrap();
-        for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto] {
+        for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto] {
             for v in r.versions(b, kind).unwrap() {
                 points.insert((b, v.point.seq));
             }

@@ -463,7 +463,8 @@ fn hostile_text_comes_back_as_plain_json_strings() {
     )
     .unwrap();
     let at = l.head();
-    l.commit(Author::User, "Version", vec![Op::NameVersion { name: X.into(), at, description: Some(X.into()) }]).unwrap();
+    l.commit(Author::User, "Version", vec![Op::NameVersion { name: ecad_model::PointName::version(X).unwrap(), at, description: Some(X.into()) }])
+        .unwrap();
     let path = dir.path("escape.v2.ecad");
     let mut proj = Project::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), WRITER, 16).unwrap().0;
     l.mark_persisted(l.head()).unwrap();

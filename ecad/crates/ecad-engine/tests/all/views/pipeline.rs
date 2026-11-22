@@ -88,7 +88,7 @@ fn the_tree_feed_follows_its_update_map() {
         ("page sheet", vec![Op::ModifyPage { id: p, before: page.clone(), after: resheeted }], false),
         ("a page property", vec![Op::SetProperty { object: ObjectRef::Page(p), key: "note".into(), before: None, after: Some("x".into()) }], false),
         ("project info", vec![Op::ModifyProject { before: Default::default(), after: retitled_project.clone() }], false),
-        ("a version named", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }], false),
+        ("a version named", vec![Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None }], false),
         ("nothing", vec![], false),
     ];
     let doc = Document::default();
@@ -410,7 +410,7 @@ fn the_frame_view_follows_its_update_map() {
         ("the sheet setting", vec![Op::SetProjectSettings { before: settings.clone(), after: sheet }], true),
         ("settings unchanged", vec![Op::SetProjectSettings { before: settings.clone(), after: settings }], false),
         ("the project's info", vec![Op::ModifyProject { before: doc.project.clone(), after: info }], true),
-        ("a version named", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }], true),
+        ("a version named", vec![Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None }], true),
         ("a device property", vec![note(ObjectRef::Device(k1))], false),
         ("a free project property", vec![note(ObjectRef::Project)], false),
         ("nothing", vec![], false),

@@ -2,7 +2,7 @@
 //! write or a new frame makes, and the checks a body passes. A title block is a `frame` style
 //! record (050a) with its block as the record's body (FP1). The block's layout and drawing are
 //! [`crate::title_blocks`]'s. The JSON answers (`titleblocks_json`, `block_json`) take the frame
-//! text looks, so the engine crate's shims pass this machine's fonts, commit the ops and answer.
+//! text styles, so the engine crate's shims pass this machine's fonts, commit the ops and answer.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -25,7 +25,7 @@ use crate::title_blocks::{bind, house};
 pub const BUILTIN_READ_ONLY: &str = "Built-in. Duplicate it to make your own (`titleblock {new: {from: \"sheet\", sheet}}`).";
 pub const NOT_A_FRAME: &str = "Name a frame: `id` or `name` (`titleblocks` lists them).";
 /// A blank block's size (mm).
-pub const BLANK_SIZE: (f64, f64) = (180.0, 40.0);
+pub(crate) const BLANK_SIZE: (f64, f64) = (180.0, 40.0);
 
 /// The frame catalogue.
 fn catalogue() -> &'static styles::Catalogue {
@@ -61,7 +61,7 @@ pub fn layer_of(doc: &Document, id: &StyleRef) -> Option<StyleLayer> {
 ///
 /// # Errors
 /// A bound broken (an unknown item kind does not read: design 072 §5.4).
-pub fn check_body(l: TitleBlockLayout) -> Result<TitleBlockLayout, CmdError> {
+pub(crate) fn check_body(l: TitleBlockLayout) -> Result<TitleBlockLayout, CmdError> {
     l.check().map_err(CmdError::refused)?;
     Ok(l)
 }
@@ -82,7 +82,7 @@ pub struct FrameEdit {
 
 /// What a `titleblock` write records: one `SetStyle` (none when nothing changes).
 #[derive(Debug, Clone, PartialEq)]
-pub struct EditPlan {
+pub(crate) struct EditPlan {
     pub ops: Vec<Op>,
     pub label: String,
 }
@@ -93,7 +93,7 @@ pub struct EditPlan {
 /// # Errors
 /// A built-in frame, no such own frame, a field or name that does not read, a name in use, or a
 /// record the catalogue refuses.
-pub fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Result<EditPlan, CmdError> {
+pub(crate) fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Result<EditPlan, CmdError> {
     if id.is_builtin() {
         return Err(CmdError::refused(BUILTIN_READ_ONLY));
     }
@@ -130,7 +130,7 @@ pub fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Result<EditP
 ///
 /// # Errors
 /// A standard layer without a standard, or another word.
-pub fn new_layer(doc: &Document, word: Option<&str>) -> Result<StyleLayer, CmdError> {
+pub(crate) fn new_layer(doc: &Document, word: Option<&str>) -> Result<StyleLayer, CmdError> {
     match word.map(str::trim) {
         None | Some("project") => Ok(StyleLayer::Project),
         Some("standard") if doc.standard.is_some() => Ok(StyleLayer::Standard),
@@ -144,7 +144,7 @@ pub fn new_layer(doc: &Document, word: Option<&str>) -> Result<StyleLayer, CmdEr
 ///
 /// # Errors
 /// No such frame.
-pub fn new_source(doc: &Document, from: Option<&str>) -> Result<Option<StyleRef>, CmdError> {
+pub(crate) fn new_source(doc: &Document, from: Option<&str>) -> Result<Option<StyleRef>, CmdError> {
     let from = from.map(str::trim).unwrap_or("sheet");
     if from.eq_ignore_ascii_case("blank") {
         return Ok(None);
@@ -157,7 +157,7 @@ pub fn new_source(doc: &Document, from: Option<&str>) -> Result<Option<StyleRef>
 ///
 /// # Errors
 /// A name that does not read, or one in use.
-pub fn new_name(doc: &Document, given: Option<&str>, spec: &SheetSpec) -> Result<String, CmdError> {
+pub(crate) fn new_name(doc: &Document, given: Option<&str>, spec: &SheetSpec) -> Result<String, CmdError> {
     let rows = styles::rows(doc, catalogue());
     match given.map(str::trim) {
         Some(n) if is_name(n) => {
@@ -181,7 +181,7 @@ pub fn new_name(doc: &Document, given: Option<&str>, spec: &SheetSpec) -> Result
 
 /// A new own frame (design 055 §4.6).
 #[derive(Debug, Clone, PartialEq)]
-pub struct NewFrame<'a> {
+pub(crate) struct NewFrame<'a> {
     pub name: String,
     pub spec: SheetSpec,
     pub layer: StyleLayer,
@@ -196,7 +196,7 @@ pub struct NewFrame<'a> {
 ///
 /// # Errors
 /// A record the catalogue refuses.
-pub fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>) -> Result<(Vec<Op>, StyleRef), CmdError> {
+pub(crate) fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>) -> Result<(Vec<Op>, StyleRef), CmdError> {
     let cat = catalogue();
     let mut set: Vec<(String, Option<String>)> = Vec::new();
     if let Some(src) = new.source {
@@ -230,7 +230,7 @@ fn margins(doc: &Document, id: &StyleRef) -> Margins {
 }
 
 /// The layout frame `id` draws on `spec`: its own, or the house block for that sheet in `text`'s
-/// looks (the engine passes this machine's fonts).
+/// text styles (the engine passes this machine's fonts).
 pub fn layout_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameText) -> TitleBlockLayout {
     match sheet::frame_block(doc, id) {
         Some(l) => l.clone(),
@@ -240,7 +240,7 @@ pub fn layout_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameTe
 
 /// The project keys `layout` reads beyond the built-in five (design 055 §7: Settings ▸ Project
 /// info lists them).
-pub fn own_keys(layout: &TitleBlockLayout) -> BTreeSet<String> {
+pub(crate) fn own_keys(layout: &TitleBlockLayout) -> BTreeSet<String> {
     let (keys, _) = bind::keys(layout);
     keys.into_iter().filter(|k| !bind::PROJECT_KEYS.contains(&k.as_str())).collect()
 }
@@ -269,7 +269,7 @@ fn row_json(doc: &Document, row: &styles::Row, text: &FrameText) -> Value {
 
 /// The JSON `titleblocks {}` returns: every frame with its sheet, items, users and keys, and the
 /// project keys every frame in use reads.
-pub fn titleblocks_json(doc: &Document, text: &FrameText) -> Value {
+pub(crate) fn titleblocks_json(doc: &Document, text: &FrameText) -> Value {
     let rows: Vec<Value> = styles::rows(doc, &styles::frame::CATALOGUE).iter().map(|r| row_json(doc, r, text)).collect();
     // The project keys every frame in use reads (Settings ▸ Project info).
     let mut keys = BTreeSet::new();
@@ -283,11 +283,11 @@ pub fn titleblocks_json(doc: &Document, text: &FrameText) -> Value {
     json!({"title_blocks": rows, "keys": keys.into_iter().collect::<Vec<_>>()})
 }
 
-/// The JSON `titleblock {id}` returns, built-in blocks laid out in `text`'s looks.
+/// The JSON `titleblock {id}` returns, built-in blocks laid out in `text`'s styles.
 ///
 /// # Errors
 /// `id` is not a frame.
-pub fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameText) -> Result<Value, CmdError> {
+pub(crate) fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameText) -> Result<Value, CmdError> {
     let cat = &styles::frame::CATALOGUE;
     let row = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).ok_or(CmdError::refused(NOT_A_FRAME))?;
     let mut v = crate::styles::commands::styles::style_json(doc, cat, &row, false);
@@ -360,7 +360,7 @@ pub struct TitleblockParams {
 ///
 /// # Errors
 /// A body that does not read as a title block, or fails its check.
-pub fn body_param(v: &Value) -> Result<TitleBlockLayout, CmdError> {
+pub(crate) fn body_param(v: &Value) -> Result<TitleBlockLayout, CmdError> {
     let l: TitleBlockLayout =
         serde_json::from_value(v.clone()).map_err(|e| CmdError::input(format!("The body does not read as a title block: {e}.")))?;
     check_body(l)

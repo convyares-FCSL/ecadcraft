@@ -1,5 +1,5 @@
-//! Tester 027 (release) through MCP: `release {provisional: "finalise"}` records two
-//! transactions as the agent (as `issuerevision` may), a release taken back by the per-call cap
+//! Tester 027 (release) through MCP: `release {provisional: "finalise"}` records one
+//! transaction as the agent (as `issuerevision` does), a release taken back by the per-call cap
 //! leaves the file on disk agreeing with the reply, and `rev` given as odd text with writes off
 
 use std::path::{Path, PathBuf};
@@ -47,17 +47,22 @@ fn is_error(v: &Value) -> bool {
 }
 
 /// The versions named in the file on disk, read by a fresh read-only server.
-fn versions_on_disk(path: &str) -> Vec<String> {
+/// Revision B as a named point.
+fn rev_b() -> ecad_model::PointName {
+    ecad_model::PointName::Revision(ecad_model::Rev::Letter(2))
+}
+
+fn versions_on_disk(path: &str) -> Vec<ecad_model::PointName> {
     let (s, _) = EcadMcp::open(path, Options { write: false, agent: None }).unwrap();
     let mut r = Client::new(s);
     r.doc().versions.keys().cloned().collect()
 }
 
 /// AC 2 and AC 6 together: 026's finalise choice through MCP. `issuerevision {provisional:
-/// "finalise"}` may record two transactions in one call (tester 026); `release` with the same
-/// choice records the same two and must be allowed them, as the agent.
+/// "finalise"}` records one transaction in one call (S4); `release` with the same choice records
+/// the same one, as the agent.
 #[test]
-fn release_with_finalise_records_two_transactions_as_the_agent() {
+fn release_with_finalise_records_one_transaction_as_the_agent() {
     let dir = TempDir::new("t027-fin");
     let (mut c, path) = project(&dir, true);
     let before = c.log().len();
@@ -65,8 +70,8 @@ fn release_with_finalise_records_two_transactions_as_the_agent() {
     assert_ne!(r["isError"], json!(true), "{r}");
     let log = c.log();
     let new: Vec<(String, Author)> = log.iter().skip(before).map(|t| (t.label.clone(), t.author.clone())).collect();
-    assert_eq!(new, [("Finalise numbering".to_string(), Author::Agent(AGENT.into())), ("Issue Rev B".to_string(), Author::Agent(AGENT.into()))]);
-    assert!(versions_on_disk(&path).iter().any(|v| v == "Rev B"));
+    assert_eq!(new, [("Issue Rev B".to_string(), Author::Agent(AGENT.into()))], "Finalise and the issue are one transaction");
+    assert!(versions_on_disk(&path).contains(&rev_b()));
 }
 
 /// Whatever the reply, the file on disk and the release folder agree with what the agent was
@@ -78,8 +83,8 @@ fn a_release_taken_back_by_the_cap_is_not_left_saved_on_disk() {
     let replies = batch(&mut c, vec![exec_call(1, "wire", json!({"points": [[0, 40], [60, 40]]})), exec_call(2, "release", json!({}))]);
     assert!(!is_error(&replies[0]), "{}", replies[0]);
     let taken_back = is_error(&replies[1]);
-    let in_memory = c.doc().versions.contains_key("Rev B");
-    let on_disk = versions_on_disk(&path).iter().any(|v| v == "Rev B");
+    let in_memory = c.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2)));
+    let on_disk = versions_on_disk(&path).contains(&rev_b());
     assert_eq!(in_memory, !taken_back, "{}", replies[1]);
     assert_eq!(on_disk, in_memory, "file on disk vs memory after: {}", replies[1]);
 }
@@ -91,8 +96,8 @@ fn a_release_with_finalise_is_never_left_half_taken_back() {
     let (mut c, path) = project(&dir, true);
     let r = c.call("execute", json!({"command": "release", "params": {"provisional": "finalise"}}));
     let refused = r["isError"] == json!(true);
-    let in_memory = c.doc().versions.contains_key("Rev B");
-    let on_disk = versions_on_disk(&path).iter().any(|v| v == "Rev B");
+    let in_memory = c.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2)));
+    let on_disk = versions_on_disk(&path).contains(&rev_b());
     assert_eq!(in_memory, !refused, "{r}");
     assert_eq!(on_disk, in_memory, "file on disk vs memory: {r}");
 }
@@ -110,9 +115,9 @@ fn with_writes_off_odd_rev_text_records_nothing() {
     for rev in ["", " ", " B ", "b", "B", " a "] {
         let _ = r.call("execute", json!({"command": "release", "params": {"rev": rev}}));
         assert_eq!(r.log(), before, "rev {rev:?}");
-        assert!(!r.doc().versions.contains_key("Rev B"), "rev {rev:?}");
+        assert!(!r.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(2))), "rev {rev:?}");
     }
     // Nothing named Rev B on disk either.
     assert!(!root(&dir).join("release").join("Rev B").exists());
-    assert!(versions_on_disk(&path).iter().all(|v| v != "Rev B"));
+    assert!(!versions_on_disk(&path).contains(&rev_b()));
 }

@@ -28,11 +28,11 @@ use serde_json::{Value, json};
 use crate::commands::{err, on_project};
 
 /// Largest DXF read, in bytes (a guard on hostile input).
-pub const MAX_DXF_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const MAX_DXF_BYTES: usize = 16 * 1024 * 1024;
 /// Deepest block nesting exploded (a guard on cyclic or deep blocks).
 pub const MAX_DEPTH: usize = 8;
 /// Most shapes read before refusing (a guard: reading stops past it).
-pub const MAX_READ: usize = 50_000;
+pub(crate) const MAX_READ: usize = 50_000;
 /// Refusals, in words.
 pub const EMPTY: &str = "The DXF has no drawing in it.";
 
@@ -255,7 +255,7 @@ fn bytes_param(params: &Value) -> Result<Vec<u8>, String> {
 }
 
 /// `titleblockimport {path | dxf, sheet, name?}` or `{id | name, item, path | dxf}`.
-pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+pub(crate) fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let bytes = bytes_param(params).map_err(err)?;
     if params.get("item").is_some() {
         let n = params.get("item").and_then(Value::as_u64).ok_or_else(|| err("`item` is the logo item's number (from 0)."))?;

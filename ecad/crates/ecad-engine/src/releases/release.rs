@@ -51,13 +51,13 @@ use ecad_electrical::releases::release::{errors_refusal, finalising, over_budget
 /// The manifest's file name.
 pub const MANIFEST: &str = "release.json";
 /// The manifest's version (`ecad_release`); a breaking change bumps it.
-pub const MANIFEST_VERSION: u64 = 1;
+pub(crate) const MANIFEST_VERSION: u64 = 1;
 /// The folder that holds release folders, beside the project file.
-pub const RELEASE_DIR: &str = "release";
+pub(crate) const RELEASE_DIR: &str = "release";
 /// Where a replaced folder is moved, inside [`RELEASE_DIR`].
-pub const REPLACED_DIR: &str = "replaced";
+pub(crate) const REPLACED_DIR: &str = "replaced";
 /// The staging folder's suffix.
-pub const PARTIAL: &str = ".partial";
+pub(crate) const PARTIAL: &str = ".partial";
 /// The empty file that marks a staging folder as a release's own (only such a folder is ever
 /// cleared); removed just before the folder is renamed into place.
 pub const STAGING_MARK: &str = ".ecad-release-staging";
@@ -87,11 +87,9 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
 /// transaction before the issue, or issue them as they are).
 pub mod numbering_seam {
     use ecad_electrical::CmdError;
-    use ecad_electrical::numbering::commands::{BeforeIssue, applied_words, finalise_request, plan_for, way_before_issue};
-    use ecad_model::naming::numbering::Plan;
+    use ecad_electrical::numbering::commands::{BeforeIssue, finalise_request, plan_for, way_before_issue};
     use serde_json::Value;
 
-    use crate::access::Pages;
     use crate::commands::opt_typed;
     use crate::project::Project;
     use ecad_electrical::checks::Check;
@@ -118,12 +116,16 @@ pub mod numbering_seam {
         plan_before_issue(p, params).map_err(String::from)
     }
 
-    /// Record a planned Finalise numbering.
+    /// 026's provisional step for `issuerevision`: Finalise's ops (none when there is nothing to
+    /// number) to record in the issue's own transaction, or the note to issue with.
     ///
     /// # Errors
-    /// The commit was refused.
-    pub(crate) fn commit_finalise(p: &mut Project, pg: &mut Pages<'_>, plan: &ecad_model::naming::numbering::Plan) -> Result<(), String> {
-        commit(p, pg, plan).map_err(String::from)
+    /// 026's refusal, or a bad `way`.
+    pub(crate) fn plan_before_issue_of(p: &mut Project, way: Option<&str>) -> Result<(Vec<ecad_model::Op>, Option<String>), CmdError> {
+        match plan_before(p, way)? {
+            BeforeIssue::Go(note) => Ok((Vec::new(), note)),
+            BeforeIssue::Finalise(plan) => Ok((plan.ops, None)),
+        }
     }
 
     /// 026's provisional step as `provisional` names it, planned without writing.
@@ -142,31 +144,12 @@ pub mod numbering_seam {
             }
         }
     }
-
-    /// Record a planned Finalise numbering as its own transaction, and echo its words.
-    fn commit(p: &mut Project, pg: &mut Pages<'_>, plan: &Plan) -> Result<(), CmdError> {
-        p.apply_edit(pg, "finalise", "Finalise numbering", plan.ops.clone())?;
-        pg.echo(applied_words(plan, true));
-        Ok(())
-    }
-
-    /// Before an issue: Finalise numbering as its own transaction when `way` says so (none: the
-    /// note to issue with).
-    ///
-    /// # Errors
-    /// 026's refusal, or the commit's.
-    pub(crate) fn before_issue(p: &mut Project, pg: &mut Pages<'_>, way: Option<&str>) -> Result<Option<String>, CmdError> {
-        match plan_before(p, way)? {
-            BeforeIssue::Go(note) => Ok(note),
-            BeforeIssue::Finalise(plan) => commit(p, pg, &plan).map(|()| None),
-        }
-    }
 }
 
 // ---------------------------------------------------------------- slots (design 027 §7.2)
 
 /// Every slot id `reports` may name.
-pub fn slot_ids() -> Vec<&'static str> {
+pub(crate) fn slot_ids() -> Vec<&'static str> {
     let mut v = vec!["book"];
     v.extend(LISTS.iter().map(|s| s.id));
     v.extend(["checks", "manifest"]);
@@ -292,7 +275,7 @@ fn same_or_below(a: &Path, b: &Path) -> bool {
 ///
 /// # Errors
 /// In words, with the way out.
-pub fn check_target(p: &Project, folder: &Path) -> Result<(), String> {
+pub(crate) fn check_target(p: &Project, folder: &Path) -> Result<(), String> {
     let f = lexical(folder);
     let bad = match project_dir(p) {
         Some(dir) => {
@@ -428,7 +411,7 @@ pub struct Build<'a> {
 ///
 /// # Errors
 /// A projection, plot or write failure, in words.
-pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Staged, String> {
+pub(crate) fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Staged, String> {
     // An old staging folder (a crash, or a folder left to finish) is cleared only when it is one
     // of ours; a folder of that name made by someone else is never deleted.
     if dir.exists() {
@@ -481,7 +464,7 @@ pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -
 
 /// What to do with a folder already there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Existing {
+pub(crate) enum Existing {
     AddMissing,
     Replace,
     KeepBoth,
@@ -516,7 +499,7 @@ pub struct OldFolder {
 }
 
 /// Read `folder`'s manifest, if any.
-pub fn read_old(folder: &Path) -> OldFolder {
+pub(crate) fn read_old(folder: &Path) -> OldFolder {
     let path = folder.join(MANIFEST);
     let small = std::fs::metadata(&path).is_ok_and(|m| m.len() <= MAX_MANIFEST_BYTES);
     let Some(raw) = small.then(|| std::fs::read(&path).ok()).flatten().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else {
@@ -743,7 +726,7 @@ pub fn app() -> String {
 }
 
 /// Now, UTC, `2026-11-12T14:30:05Z` (through `chrono`).
-pub fn now_utc() -> Option<String> {
+pub(crate) fn now_utc() -> Option<String> {
     let ms = crate::project::now_ms()?;
     Some(chrono::DateTime::from_timestamp_millis(i64::try_from(ms).ok()?)?.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
@@ -752,7 +735,7 @@ pub fn now_utc() -> Option<String> {
 
 /// Why the pending revision cannot be released now, with the way out (design 027 §6); `None`
 /// when it can.
-pub fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<String> {
+pub(crate) fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<String> {
     if p.path.is_none() {
         return Some(SAVE_FIRST.into());
     }
@@ -761,7 +744,7 @@ pub fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<St
             "The project is read-only ({why}), so the pending revision cannot be issued. Issued revisions can still be written out: give rev."
         ));
     }
-    if let Err(e) = crate::pages::commands::sheets::plan_issue(p) {
+    if let Err(e) = crate::pages::commands::sheets::plan_issue(p, &[]) {
         return Some(e.to_string());
     }
     // With Finalise chosen, the errors that count are those of the finalised state, the rows the
@@ -785,6 +768,13 @@ fn read_only(p: &Project) -> Option<String> {
 
 /// `Nothing has changed since Rev A.` when every step since the last issue only edited revision
 /// fields (design 027 §6, Q11): a warning, never a refusal ([`ecad_electrical::releases::release::nothing_changed`]).
+pub fn unchanged_since(p: &Project) -> Option<String> {
+    let doc = p.ledger.document();
+    let rev = ecad_electrical::releases::release::unchanged_since(doc, p.ledger.head(), |seq| p.ledger.transaction(seq))?;
+    Some(doc.project.rev_scheme.show(rev))
+}
+
+/// [`unchanged_since`] in words.
 pub fn nothing_changed(p: &Project) -> Option<String> {
     ecad_electrical::releases::release::nothing_changed(p.ledger.document(), p.ledger.head(), |seq| p.ledger.transaction(seq))
 }
@@ -815,6 +805,8 @@ pub struct View {
     /// What `release` would refuse (with `accept` as given).
     pub refusal: Option<String>,
     pub warning: Option<String>,
+    /// The rev nothing has changed since, as shown (the warning's subject).
+    pub since: Option<String>,
     /// The pending revision's fields (`revisions::FIELDS` order).
     pub fields: [String; 6],
     /// The rows as JSON (`checks`' form), for `prerelease`.
@@ -843,13 +835,13 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
     };
     match &issued_rev {
         Some(row) => {
-            let (_, _, then) = crate::history::issued_state(p, row.rev())?;
+            let (_, _, then) = crate::history::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?;
             let detached = p.derived().detached(&then);
             let rows = crate::checks::all_with(&then, p.tolerance, detached.reports());
             to_rows(&then, &rows, &mut v);
             v.rev = row.rev().to_string();
             v.issued = Some(v.rev.clone());
-            v.fields = row.fields.clone();
+            v.fields = row.six();
             v.folder = row.released.as_deref().and_then(|x| from_recorded(p, x)).or_else(|| default_folder(p, &v.rev));
         }
         None => {
@@ -857,10 +849,11 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
             let params = if accept { json!({"accept": "errors"}) } else { json!({}) };
             v.refusal = pending_refusal(p, &rows, &params);
             v.warning = nothing_changed(p);
+            v.since = unchanged_since(p);
             let doc = p.ledger.document();
             to_rows(doc, &rows, &mut v);
             v.rev = revisions::pending_rev(doc);
-            v.fields = revisions::pending(doc).map(|r| r.fields).unwrap_or_default();
+            v.fields = revisions::pending(doc).map(|r| r.six()).unwrap_or_default();
             if v.fields[0].is_empty() {
                 v.fields[0] = v.rev.clone();
             }
@@ -956,15 +949,16 @@ pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
 /// # Errors
 /// It is the pending revision, or was never issued: with the way on.
 fn issued_row(p: &Project, rev: &str) -> Result<revisions::Revision, String> {
-    let rev = rev.trim().trim_start_matches("Rev ").trim();
+    let want = crate::history::read_rev(p, rev).map_err(|e| e.to_string())?;
     let doc = p.ledger.document();
-    if let Some(r) = revisions::issued(doc).into_iter().find(|r| r.rev().eq_ignore_ascii_case(rev)) {
+    let shown = doc.project.rev_scheme.show(want);
+    if let Some(r) = revisions::issued(doc).into_iter().find(|r| r.rev_value == Some(want)) {
         return Ok(r);
     }
-    if revisions::pending_rev(doc).eq_ignore_ascii_case(rev) {
-        return Err(format!("Rev {rev} is not issued yet; release without `rev` to issue it and write its folder."));
+    if revisions::pending(doc).is_some_and(|r| r.rev_value == Some(want)) {
+        return Err(format!("Rev {shown} is not issued yet; release without `rev` to issue it and write its folder."));
     }
-    Err(format!("Rev {rev} has not been issued."))
+    Err(format!("Rev {shown} has not been issued."))
 }
 
 // ---------------------------------------------------------------- release
@@ -1033,31 +1027,23 @@ pub(crate) fn release_pending(
         ecad_electrical::numbering::commands::BeforeIssue::Go(note) => (None, note),
         ecad_electrical::numbering::commands::BeforeIssue::Finalise(plan) => (Some(plan), None),
     };
-    // The caller's transaction budget (an agent's cap of one per call, two with Finalise): known
-    // before anything reaches the disk, never found out after (tester 027, 3).
-    let needed = 1 + usize::from(finalise.is_some());
+    // The caller's transaction budget (an agent's cap of one per call): known before anything
+    // reaches the disk, never found out after (tester 027, 3). Finalise and the issue are one
+    // transaction (S4), so the need is one either way.
     if let Some(budget) = p.tx_budget
-        && needed > budget
+        && budget < 1
     {
-        return Err(over_budget(needed, budget));
+        return Err(over_budget(1, budget));
     }
     // 3. Build into staging, from the state as it will be issued: Finalise's ops (if any), then
     // the issue's, on the current document.
-    let mut plan = crate::pages::commands::sheets::plan_issue(p)?;
-    if finalise.is_some() {
-        // The issue names the step before it: Finalise, once recorded.
-        plan.head += 1;
-        for op in plan.ops.iter_mut() {
-            if let Op::NameVersion { at, .. } = op {
-                *at = plan.head;
-            }
-        }
-    }
+    let before: Vec<Op> = finalise.iter().flat_map(|f| f.ops.iter().cloned()).collect();
+    let mut plan = crate::pages::commands::sheets::plan_issue(p, &before)?;
     let rev = plan.rev.clone();
     let target = if rev == rev0 { target } else { folder_param(p, params, default_folder(p, &rev))? };
     let staging = partial_of(&target);
     revisions::set_released(&mut plan.ops, plan.n, &recorded(p, &target));
-    let all_ops: Vec<Op> = finalise.iter().flat_map(|f| f.ops.iter().cloned()).chain(plan.ops.iter().cloned()).collect();
+    let all_ops: Vec<Op> = before.iter().chain(plan.ops.iter()).cloned().collect();
     let issued_doc = p.ledger.preview(&all_ops).map_err(|e| e.to_string())?;
     // With Finalise, the lists and the check are those of the finalised state (built on this
     // copy, as for a re-release); otherwise the kept ones (the issue changes no list or check).
@@ -1096,26 +1082,16 @@ pub(crate) fn release_pending(
     if l.folder != target {
         revisions::set_released(&mut plan.ops, plan.n, &recorded(p, &l.folder));
     }
-    // 4. Finalise (when asked), then the issue. An issue that fails takes Finalise back with it.
-    let mut finalise_tx = None;
-    if let Some(f) = &finalise {
-        if let Err(e) = numbering_seam::commit_finalise(p, pg, f) {
-            clear_staging(&staging);
-            return Err(stopped(&e));
-        }
-        finalise_tx = Some(p.ledger.head());
-    }
+    // 4. Finalise (when asked) and the issue: ONE transaction, one history entry, one undo. A
+    // refused issue writes nothing, so there is nothing to take back.
     let issued =
-        injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), plan.ops.clone()).map_err(String::from));
+        injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), all_ops.clone()).map_err(String::from));
     if let Err(e) = issued {
         clear_staging(&staging);
-        if finalise_tx.is_some() {
-            return Err(match p.undo_step(pg) {
-                Ok(()) => format!("Release stopped: {e}. Finalise numbering was undone; nothing was issued or written."),
-                Err(u) => format!("Release stopped: {e}. Finalise numbering stays recorded ({u}); nothing was issued or written. Undo it with u."),
-            });
-        }
         return Err(e);
+    }
+    if let Some(f) = &finalise {
+        pg.echo(ecad_electrical::numbering::commands::applied_words(f, true));
     }
     let tx = p.ledger.head();
     let mut problems: Vec<String> = Vec::new();
@@ -1165,8 +1141,7 @@ pub(crate) fn release_pending(
         message.push_str(pr);
     }
     pg.echo(message.clone());
-    let mut transactions: Vec<u64> = finalise_tx.into_iter().collect();
-    transactions.push(tx);
+    let transactions: Vec<u64> = vec![tx];
     let mut v = json!({
         "rev": rev, "folder": shown(&l.folder), "finished": landed,
         "files": st.files.iter().map(|w| w.json(Some(&l.folder))).collect::<Vec<_>>(),
@@ -1192,7 +1167,7 @@ fn write_manifest(dir: &Path, m: &Value) -> Result<(), String> {
 /// # Errors
 /// Not issued, no place for the folder, a write failure (no `.partial` left), or an existing
 /// folder without `existing`.
-pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Value, String> {
+pub(crate) fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Value, String> {
     let chosen = chosen(params)?;
     let existing = Existing::parse(params)?;
     let o = options(p.ledger.document(), params)?;
@@ -1200,7 +1175,7 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
     let rev = row.rev().to_string();
     let default = row.released.as_deref().and_then(|v| from_recorded(p, v)).or_else(|| default_folder(p, &rev));
     let target = folder_param(p, params, default)?;
-    let (named, seq, then) = crate::history::issued_state(p, &rev)?;
+    let (named, seq, then) = crate::history::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?;
     let detached = p.derived().detached(&then);
     let reports = detached.reports();
     let rows = crate::checks::all_with(&then, p.tolerance, reports);
