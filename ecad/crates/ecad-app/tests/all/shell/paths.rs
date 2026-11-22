@@ -159,6 +159,7 @@ fn app_with_home(home: Option<&Path>) -> App {
     ecad_engine::install();
     ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
+    crate::common::save_as_services(&mut t);
     t.home = home.map(Path::to_path_buf);
     t.cad.run("wire", json!({"points": [[0, 0], [40, 0]]})).unwrap();
     t

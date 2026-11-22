@@ -11,7 +11,9 @@ use serde_json::{Value, json};
 fn new_app(snapshots: Option<PathBuf>) -> App {
     ecad_engine::install();
     ecad_engine::cables::views::isolate_for_tests();
-    App::new(snapshots).unwrap()
+    let mut t = App::new(snapshots).unwrap();
+    crate::common::save_as_services(&mut t);
+    t
 }
 
 /// A fresh folder under the system temp folder, removed when dropped.

@@ -11,14 +11,18 @@ Everything about a project goes through `ecad-engine`; this crate is what a pers
 clicks.
 
 ## Contents
-- `lib.rs`: `App`, the application on CADCraft's window.
-- `shell/`: the frame: top bar, left and right panels, status bar, tool strip, keys, layout.
-- `actions`: the one table of actions (menus, buttons and shortcuts are built from it).
-- `canvas/`, `preview`: the page canvas and the read-only preview of another page.
-- Panels and dialogs: `project_panel`, `devices_panel`, `checks_panel`, `history_panel`, `settings/`, `lists/`, `library/`, `outputs_ui`, `publish`, `merge_dialog`, `renumber_dialog`, `text_ui`, `sheets_ui`, `release_ui`.
-- `file_ops`, `folder`: New, Open, Save, Save As and Close, with the Save, Discard, Cancel question.
-- `agent/`: live agent access (off by default; banner with Undo session, Pause and Disconnect).
-- `debugger`, `developer`: the read-only debugger and the Developer section.
+`lib.rs` lists the areas, one line each. The desktop program uses `shell`, `canvas`, `library` and `title_blocks::draft`;
+the other areas are `pub` only for this crate's tests and the agent-bridge tests in ecad-mcp.
+- `shell/`: the frame and the `App` struct (`shell/app.rs`): top bar, panels, status bar, tool strip, keys,
+  layout, file dialogs and the close flow. `shell/host.rs` is what the program supplies (default folder,
+  login name, file manager, clock).
+- `commands/`: the action table, what the app runs, the Tool Sets tab.
+- `inspector/`: the right panel. `canvas/`: the page canvas. `pages/`: the Project panel's page list and previews.
+- `workspace/`, `devices/`, `cables/`, `wires/`, `terminal_strips/`, `plc/`, `checks/`, `reports/`, `publish/`:
+  one screen area each.
+- `title_blocks/`, `library/`: the title-block editor and the symbol library.
+- `history/`, `settings/`, `agent/`, `developer/`: History, Settings, live agent access (off by default),
+  the Developer section and the read-only debugger.
 
 ## Must not depend on
 App rules: Core, Engine and UI kit crates, `cadcraft-ui-egui`, `eframe` and `egui`. Never

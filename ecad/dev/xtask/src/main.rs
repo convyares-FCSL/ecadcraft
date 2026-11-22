@@ -1799,16 +1799,15 @@ mod tests {
                 "ecad-model"
             ]
         );
-        assert_eq!(pick("ecad/crates/ecad-app/src/lib.rs"), ["ecad-app", "ecad-desktop"]);
+        assert_eq!(pick("ecad/crates/ecad-app/src/lib.rs"), ["ecad-app", "ecad-desktop", "ecad-mcp"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
             ["ecad-app", "ecad-bench", "ecad-desktop", "ecad-electrical", "ecad-engine", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store"]
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-app", "ecad-bench", "ecad-desktop", "ecad-engine", "ecad-mcp"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());
-        // The demo's command list is embedded by ecad-mcp; the app's Checks UI test opens the demo
-        // through it (brief 022).
-        assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-app", "ecad-desktop", "ecad-mcp"]);
+        // The demo's command list is embedded by ecad-mcp (#53: the app's tests no longer open it).
+        assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-mcp"]);
         assert_eq!(pick("Cargo.toml").len(), meta["workspace_members"].as_array().map_or(0, Vec::len));
     }
 
@@ -2107,7 +2106,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-app", "cadcraft-engine", Value::Null, 1, "the app on the engine"),
             ("ecad-app", "cadcraft-engine", "dev".into(), 0, "the app's tests on the engine"),
             ("ecad-app", "ecad-desktop", Value::Null, 1, "the app on a program"),
-            ("ecad-app", "ecad-desktop", "dev".into(), 0, "the app's tests on a program"),
+            ("ecad-app", "ecad-desktop", "dev".into(), 1, "the app's tests on a program"),
             ("ecad-app", "cadcraft-ui-egui", Value::Null, 0, "the app on CADCraft's window"),
             ("ecad-desktop", "ecad-app", Value::Null, 0, "a program on the app"),
             ("ecad-mcp", "ecad-cli", Value::Null, 0, "a program on another program"),

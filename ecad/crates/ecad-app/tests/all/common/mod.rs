@@ -10,6 +10,19 @@
 use std::path::PathBuf;
 
 use ecad_app::shell::app::App;
+
+/// What ecad-desktop's services hook does for Save As: CADCraft's file-name request raises the
+/// app's flag, so the app opens its own dialog.
+pub(crate) fn save_as_services(t: &mut App) {
+    let requested = t.save_as_flag();
+    t.cad.services.pick_save = Some(Box::new(move |name: &str| {
+        let ext = std::path::Path::new(name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase());
+        if matches!(ext.as_deref(), None | Some("dwg" | "dxf" | "dwt" | "ecad")) {
+            requested.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        None
+    }));
+}
 use ecad_engine::cables::views::Settings;
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
