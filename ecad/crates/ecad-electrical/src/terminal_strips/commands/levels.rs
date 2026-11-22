@@ -382,7 +382,7 @@ pub(crate) fn plan_toposition(
         lost.push(ecad_model::objects::devices::RATING_KEY.into());
     }
     // Design 072 §2.1: the tag is a field of the device, and goes with it too.
-    if comp.tag.is_some() {
+    if !comp.tag.is_none() {
         lost.push(ecad_model::naming::tag::TAG_KEY.into());
     }
     lost.extend(ecad_model::TextField::ALL.into_iter().filter(|f| comp.text(*f).is_some()).map(|f| f.key().to_string()));

@@ -90,7 +90,7 @@ impl DeviceTouch {
 pub fn device_entry(doc: &Document, c: DeviceId) -> Option<DeviceEntry> {
     let comp = doc.devices.get(&c)?;
     let prefix = match comp.tag() {
-        Some(t) => Some(group_and_number(t, comp.tag_state).0),
+        Some(t) => Some(group_and_number(t, comp.tag.state().unwrap_or_default()).0),
         None if doc.representations_of(Subject::Device(c)).next().is_none() => return None,
         None => None,
     };
@@ -173,7 +173,7 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
         .filter_map(|(_, c)| {
             let d = doc.devices.get(&c)?;
             let t = d.tag()?;
-            let (p, n) = group_and_number(t, d.tag_state);
+            let (p, n) = group_and_number(t, d.tag.state().unwrap_or_default());
             Some(((p, n, t.to_string()), c))
         })
         .collect();
@@ -221,7 +221,7 @@ fn entry(doc: &Document, c: DeviceId, prefix: Option<String>, book: &Book) -> De
         description: devices::tags::description(doc, c),
         properties: PROPERTIES.iter().map(|(k, _)| device.and_then(|d| d.value(k))).collect(),
         symbols: symbols.into_iter().map(|(_, _, s)| s).collect(),
-        tag_state: device.map(|d| d.tag_state).unwrap_or_default(),
+        tag_state: device.and_then(|d| d.tag.state()).unwrap_or_default(),
     }
 }
 

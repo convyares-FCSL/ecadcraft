@@ -784,7 +784,7 @@ pub(crate) fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Cas
                 match object {
                     ObjectRef::Device(c) => {
                         if let Some(d) = doc.devices.get(&c) {
-                            ops.push(Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some(&new), d.tag_state) });
+                            ops.push(Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some(&new), d.tag.state().unwrap_or_default()) });
                         }
                     }
                     ObjectRef::Cable(k) => Op::set_cable_property(doc, &mut ops, k, TAG_KEY, Some(new)),

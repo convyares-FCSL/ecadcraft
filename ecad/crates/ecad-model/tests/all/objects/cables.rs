@@ -27,7 +27,7 @@ fn cable_on_a_wire() -> (Ledger, CableId, WireId, WireId) {
     ops.push(Op::CreateWire { id: w1, wire: Wire::new(NetId(901), ConductorId(902), t[0], t[1]) });
     ops.push(Op::CreateWire { id: w2, wire: Wire::new(NetId(903), ConductorId(904), t[2], t[3]) });
     let mut cable = Cable { cores: vec![Core::on_wire(w1, CoreLabel::new("1").ok())], ..Cable::default() };
-    cable.tag = ecad_model::naming::tag::Tag::new("-W1").ok();
+    cable.tag = ecad_model::naming::tag::TagSlot::of_text(Some("-W1"), Default::default());
     ops.push(Op::CreateCable { id: k, cable });
     l.commit(Author::User, "setup", ops).unwrap();
     (l, k, w1, w2)
@@ -39,7 +39,7 @@ fn modify_cable_changes_fields_and_cores_and_undoes() {
     let before = l.document().cables.get(&k).cloned().unwrap();
     let mut after = before.clone();
     after.shield = Some(Shield::Overall);
-    after.tag = ecad_model::naming::tag::Tag::new("-W7").ok();
+    after.tag = ecad_model::naming::tag::TagSlot::of_text(Some("-W7"), Default::default());
     after.cores = vec![Core::on_wire(w2, CoreLabel::new("1").ok()), Core::unplaced(CoreLabel::new("2").ok())];
     let op = Op::modify_cable(k, &before, after.clone()).unwrap();
     assert!(Op::modify_cable(k, &before, before.clone()).is_none(), "no change, no op");
@@ -94,12 +94,12 @@ fn a_cables_fields_are_never_in_its_properties() {
     assert!(l.commit(Author::User, "bag", vec![Op::ModifyCable { id: k, before, after }]).is_err());
 }
 
-/// S1 (#2): a cable's tag, its fixed flag and its description are fields, as a device's are: a bag
+/// S1 (#2): a cable's tag (with its state) and its description are fields, as a device's are: a bag
 /// holding one is refused, and the typed field reads back through the same `get`/`value` route.
 #[test]
-fn a_cables_tag_state_flag_and_description_are_fields_not_properties() {
+fn a_cables_tag_and_description_are_fields_not_properties() {
     let (mut l, k, _, _) = cable_on_a_wire();
-    for key in ["tag", "tag_state", "description"] {
+    for key in ["tag", "description"] {
         let before = l.document().cables.get(&k).cloned().unwrap();
         let mut after = before.clone();
         after.properties.insert(key.into(), "x".into());
@@ -108,11 +108,14 @@ fn a_cables_tag_state_flag_and_description_are_fields_not_properties() {
     }
     let mut c = Cable::default();
     c.set_value("tag", Some(" -W9 ")).unwrap();
-    c.set_value("tag_state", Some("fixed")).unwrap();
+    c.tag = ecad_model::naming::tag::TagSlot::of_text(c.tag(), ecad_model::naming::tag::TagState::Fixed);
     c.set_value("description", Some("Pump supply")).unwrap();
     c.set_value("length", Some("12 m")).unwrap();
     assert_eq!((c.tag(), c.is_fixed(), c.description()), (Some("-W9"), true, Some("Pump supply")));
-    assert_eq!((c.get("tag"), c.value("tag_state").as_deref(), c.get("description")), (Some("-W9"), Some("fixed"), Some("Pump supply")));
+    assert_eq!(
+        (c.get("tag"), c.tag.state(), c.get("description")),
+        (Some("-W9"), Some(ecad_model::naming::tag::TagState::Fixed), Some("Pump supply"))
+    );
     assert_eq!(c.properties.keys().map(String::as_str).collect::<Vec<_>>(), ["length"], "only the free key is in the bag");
     c.set_value("description", Some("  ")).unwrap();
     assert_eq!(c.description(), None, "blank clears");
@@ -121,13 +124,12 @@ fn a_cables_tag_state_flag_and_description_are_fields_not_properties() {
 
 #[test]
 fn a_cable_reads_strictly() {
-    let good =
-        serde_json::json!({"tag": null, "tag_state": "automatic", "description": null, "properties": {}, "cores": [], "shield": "overall+pairs"});
+    let good = serde_json::json!({"description": null, "properties": {}, "cores": [], "shield": "overall+pairs"});
     let c: Cable = serde_json::from_value(good).unwrap();
     assert_eq!(c.shield, Some(Shield::OverallAndPairs));
     assert!(serde_json::to_value(Cable::default()).unwrap().get("shield").is_none(), "no shield is left out");
     for hostile in [serde_json::json!("tartan"), serde_json::json!(3), serde_json::json!(""), serde_json::json!("overall\u{202e}")] {
-        let v = serde_json::json!({"tag": null, "tag_state": "automatic", "description": null, "properties": {}, "cores": [], "shield": hostile});
+        let v = serde_json::json!({"description": null, "properties": {}, "cores": [], "shield": hostile});
         assert!(serde_json::from_value::<Cable>(v).is_err(), "{hostile} must not read");
     }
 }

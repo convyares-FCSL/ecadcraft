@@ -210,7 +210,7 @@ fn a_cables_tag_fields_show_in_the_readable_and_raw_views() {
         .map(|k| (k.clone(), ask(s, json!({"op": "row", "table": "transactions", "key": k, "form": "readable"})).to_string()))
         .find(|(_, text)| text.contains("CreateCable"))
         .expect("the transaction that creates the cable");
-    for want in ["\"tag\":\"-W1\"", "\"tag_state\":\"automatic\"", "\"description\":null"] {
+    for want in ["\"tag\":{\"state\":\"automatic\",\"tag\":\"-W1\"}", "\"description\":null"] {
         assert!(readable.contains(want), "{want} in {readable}");
     }
     assert!(!readable.contains("\"properties\":{\"tag\""), "not in the bag: {readable}");

@@ -124,9 +124,9 @@ fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
     assert!(!c.doc().devices.contains_key(&DeviceId::parse(&k2).unwrap()));
     // tag_fixed: released and fixed again, each one transaction.
     let n = c.log().len();
-    c.exec("setprop", json!({"component": k4, "key": "tag_state", "value": null}));
+    c.set_tag_state(&json!(k4), "automatic");
     assert_eq!(fixed(&mut c, &k4), None);
-    c.exec("setprop", json!({"component": k4, "key": "tag_state", "value": "fixed"}));
+    c.set_tag_state(&json!(k4), "fixed");
     assert_eq!(c.log().len(), n + 2);
     last_is_agents(&mut c);
 }
@@ -208,7 +208,7 @@ fn writes_are_refused_with_writes_off_and_the_previews_read() {
         ("renumber", json!({})),
         ("finalise", json!({})),
         ("numbering", json!({"provisional": true})),
-        ("setprop", json!({"component": "00000000000000000000000000000001", "key": "tag_state", "value": "fixed"})),
+        ("setprop", json!({"component": "00000000000000000000000000000001", "key": "tag", "value": "{\"state\":\"fixed\",\"tag\":\"-K1\"}"})),
         ("issuerevision", json!({"provisional": "issue"})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));

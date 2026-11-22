@@ -4,7 +4,7 @@
 //! its display choices and defaults-registry values, or refused. A cable is written whole: every
 //! key but its tag and fixed flag (the tag rows' conflicts) builds one `ModifyCable`.
 
-use ecad_model::naming::tag::{STATE_KEY, TAG_KEY};
+use ecad_model::naming::tag::TAG_KEY;
 use ecad_model::naming::words::Word;
 use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{Document, ObjectRef, Op, Wire, WireId};
@@ -43,7 +43,7 @@ pub(crate) static RULES: &[PropRule] = &[
     PropRule { what: "wire display choices and registry values (072 §9.2)", claims: |_, o, _| is_wire(o), build: Build::Value(wire_display) },
     PropRule {
         what: "cable values, cores and Not used (059, 072 D)",
-        claims: |_, o, k| matches!(o, ObjectRef::Cable(_)) && k != TAG_KEY && k != STATE_KEY,
+        claims: |_, o, k| matches!(o, ObjectRef::Cable(_)) && k != TAG_KEY,
         build: Build::Record(cable_value),
     },
 ];

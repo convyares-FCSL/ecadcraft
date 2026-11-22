@@ -58,7 +58,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
             words.push_str(&format!("; this symbol is inside {}", ctx.text()));
         }
     }
-    if loc.key.is_some() || device.function.is_some() {
+    if loc.key.is_some() || !device.function.is_unset() {
         let function = crate::locations::resolve_function(doc, c);
         let function = if function.key.is_some() { function.text() } else { String::new() };
         lines.push(format!("Location: {words}   Function: {function}"));

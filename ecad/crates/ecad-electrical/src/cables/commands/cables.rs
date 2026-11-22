@@ -287,8 +287,8 @@ fn take_fields(mut cable: ecad_model::Cable, state: ecad_model::naming::tag::Tag
     cable.shield = cable.properties.remove(CableField::Shield.key()).and_then(|w| <Shield as Word>::parse(&w));
     cable.cable_type = cable.properties.remove(CableField::CableType.key()).and_then(|v| StyleRef::parse(&v));
     // The tag, its state and the description, likewise (#2).
-    cable.tag = cable.properties.remove(CableField::Tag.key()).and_then(|t| ecad_model::naming::tag::Tag::new(t.trim()).ok());
-    cable.tag_state = if cable.tag.is_some() { state } else { ecad_model::naming::tag::TagState::Automatic };
+    let tag = cable.properties.remove(CableField::Tag.key());
+    cable.tag = ecad_model::naming::tag::TagSlot::of_text(tag.as_deref().map(str::trim), state);
     cable.description = cable
         .properties
         .remove(CableField::Description.key())
@@ -368,7 +368,7 @@ pub(crate) fn edit_ops(
     after.extend(cab.tag().map(|t| (CableField::Tag.key().to_string(), t.to_string())));
     after.extend(cab.description().map(|d| (CableField::Description.key().to_string(), d.to_string())));
     // The tag's state is kept beside the bag, never in it.
-    let mut state = cab.tag_state;
+    let mut state = cab.tag.state().unwrap_or_default();
     let mut changed = Vec::new();
     for (field, v) in set.entries() {
         let value = if field == CableField::Tag {

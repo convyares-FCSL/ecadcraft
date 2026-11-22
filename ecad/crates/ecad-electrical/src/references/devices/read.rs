@@ -212,7 +212,7 @@ pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextMetrics) 
     Ok(json!({
         "component": c.hex(),
         "tag": crate::devices::tags::tag_shown_of(doc, c),
-        "tag_state": doc.devices.get(&c).map(|d| ecad_model::naming::words::Word::word(d.tag_state)),
+        "tag_state": doc.devices.get(&c).and_then(|d| d.tag.state()).map(ecad_model::naming::words::Word::word),
         "offer": stored,
         "head": head.map(|(h, r)| json!({"representation": h.hex(), "page": crate::references::cables::page_number(doc, r.page), "place": places.text(r.page, anchor(doc, r))})),
         "placement": placement.word(),

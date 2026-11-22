@@ -17,7 +17,7 @@ use ecad_model::naming::tag::{HighWater, TAG_RULE, note_ops};
 use ecad_model::*;
 
 fn cable(tag: &str) -> Cable {
-    Cable { tag: Some(ecad_model::naming::tag::Tag::new(tag).unwrap()), cores: Vec::new(), ..Default::default() }
+    Cable { tag: ecad_model::naming::tag::TagSlot::of_text(Some(tag), Default::default()), cores: Vec::new(), ..Default::default() }
 }
 
 /// Cables `-W01` and `-W02`, then `-W02` deleted, then lines: the snapshot (every 16) is after the

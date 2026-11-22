@@ -625,7 +625,7 @@ fn ac12_renumber_keeps_typed_letters() {
     for (c, t) in [(a, "k05"), (b, "k07")] {
         h.run("setprop", json!({"component": c.hex(), "key": "tag", "value": t})).unwrap();
         // Typed tags are fixed (026); free them for renumber.
-        let _ = h.run("setprop", json!({"component": c.hex(), "key": "tag_state", "value": null}));
+        let _ = crate::common::set_tag_state(&mut h, &c.hex(), "automatic");
     }
     assert_eq!([tag(&mut h, a), tag(&mut h, b)], ["k05", "k07"]);
     h.run("renumber", json!({"kind": "devices", "start": 1})).unwrap();

@@ -529,8 +529,7 @@ fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
             .map(|k| {
                 let before = doc.cables[k].clone();
                 let mut after = before.clone();
-                after.tag = ecad_model::naming::tag::Tag::new("-W1").ok();
-                after.tag_state = ecad_model::naming::tag::TagState::Provisional;
+                after.tag = ecad_model::naming::tag::TagSlot::of_text(Some("-W1"), ecad_model::naming::tag::TagState::Provisional);
                 Op::ModifyCable { id: *k, before, after }
             })
             .collect();

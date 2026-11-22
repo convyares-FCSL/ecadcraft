@@ -134,7 +134,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     let cable_op = Op::CreateCable {
         id: cable,
         cable: Cable {
-            tag: ecad_model::naming::tag::Tag::new("-W1").ok(),
+            tag: ecad_model::naming::tag::TagSlot::of_text(Some("-W1"), Default::default()),
             cores: vec![Core::on_wire(w1, ecad_model::CoreLabel::new("1").ok())],
             ..Default::default()
         },

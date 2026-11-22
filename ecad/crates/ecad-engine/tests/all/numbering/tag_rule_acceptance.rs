@@ -13,8 +13,8 @@ use serde_json::json;
 
 const PROJECT: ProjectId = ProjectId(0x0029_7e57_0000_0000_0000_0000_0000_0001);
 
-fn tagged(tag: &str) -> Option<ecad_model::naming::tag::Tag> {
-    ecad_model::naming::tag::Tag::new(tag).ok()
+fn tagged(tag: &str) -> ecad_model::naming::tag::TagSlot {
+    ecad_model::naming::tag::TagSlot::of_text(Some(tag), Default::default())
 }
 
 #[test]

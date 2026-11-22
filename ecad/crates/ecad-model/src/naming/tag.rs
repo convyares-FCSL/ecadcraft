@@ -31,15 +31,10 @@ pub const MAX_TAG_NUMBER: u64 = 999_999_999;
 /// Most digits a project may pad tag numbers to.
 pub const MAX_PADDING: u8 = 6;
 
-/// The `setprop` key of a device's or cable's tag state (S6, #3): `automatic`, `fixed` or
-/// `provisional` ([`TagState`]). Always stored; it replaces the fixed flag (brief 026, FP1).
-pub const STATE_KEY: &str = "tag_state";
-
 crate::word_enum! {
-    /// What the tag of a device or cable is (S6, #3). It is stored beside the tag text, never worked
-    /// out from how the text is spelt: a provisional tag is stored bare (`-K3`) and only drawn with
-    /// its `?` (`-K?3`, [`shown`]); a provisional `-K3` and a real `-K3` are different tags
-    /// ([`Key`]).
+    /// What the tag of a device or cable is (S6, #3): the word of a [`TagSlot`]'s state. A provisional
+    /// tag is stored bare (`-K3`) and only drawn with its `?` (`-K?3`, [`shown`]); a provisional `-K3`
+    /// and a real `-K3` are different tags ([`Key`]).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
     pub enum TagState {
         /// Given by numbering (or a tag no person typed); Renumber may change it.
@@ -56,6 +51,99 @@ impl TagState {
     /// Whether this is [`TagState::Provisional`].
     pub fn is_provisional(self) -> bool {
         self == TagState::Provisional
+    }
+}
+
+/// A device's or cable's tag and what it is, as one field (S6, #3): the state carries the tag, so a
+/// state without a tag cannot be written. A provisional tag holds the bare text (`-K3`); the `?` is
+/// only drawn ([`shown`]).
+///
+/// # Example
+/// ```
+/// use ecad_model::naming::tag::{Tag, TagSlot, TagState};
+/// let slot = TagSlot::new(Tag::new("-K3").ok(), TagState::Provisional);
+/// assert_eq!((slot.tag(), slot.state()), (Some("-K3"), Some(TagState::Provisional)));
+/// assert_eq!(slot.shown().as_deref(), Some("-K?3"));
+/// assert_eq!(TagSlot::new(None, TagState::Fixed), TagSlot::None);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "state", content = "tag", rename_all = "snake_case")]
+pub enum TagSlot {
+    /// No tag: never written (the field is left out), so it has one spelling.
+    #[default]
+    #[serde(skip)]
+    None,
+    /// Given by numbering (or a tag no person typed); Renumber may change it.
+    Automatic(Tag),
+    /// Typed by a person; Renumber and Finalise never change it (brief 026, FP1).
+    Fixed(Tag),
+    /// A placeholder number (`-K?3`) that Finalise turns into an automatic tag; holds the bare tag.
+    Provisional(Tag),
+}
+
+impl TagSlot {
+    /// The slot holding `tag` in `state`; no tag is [`TagSlot::None`] whatever the state.
+    pub fn new(tag: Option<Tag>, state: TagState) -> TagSlot {
+        match (tag, state) {
+            (None, _) => TagSlot::None,
+            (Some(t), TagState::Automatic) => TagSlot::Automatic(t),
+            (Some(t), TagState::Fixed) => TagSlot::Fixed(t),
+            (Some(t), TagState::Provisional) => TagSlot::Provisional(t),
+        }
+    }
+
+    /// The slot holding bare text `text` in `state`; text that is not a valid tag, or `None`, is
+    /// [`TagSlot::None`] (callers rule it out with [`Tag::new`] first).
+    pub fn of_text(text: Option<&str>, state: TagState) -> TagSlot {
+        TagSlot::new(text.and_then(|t| Tag::new(t).ok()), state)
+    }
+
+    /// The bare tag.
+    pub fn text(&self) -> Option<&Tag> {
+        match self {
+            TagSlot::None => None,
+            TagSlot::Automatic(t) | TagSlot::Fixed(t) | TagSlot::Provisional(t) => Some(t),
+        }
+    }
+
+    /// The bare tag as text.
+    pub fn tag(&self) -> Option<&str> {
+        self.text().map(Tag::as_str)
+    }
+
+    /// What the tag is; `None` without a tag.
+    pub fn state(&self) -> Option<TagState> {
+        match self {
+            TagSlot::None => None,
+            TagSlot::Automatic(_) => Some(TagState::Automatic),
+            TagSlot::Fixed(_) => Some(TagState::Fixed),
+            TagSlot::Provisional(_) => Some(TagState::Provisional),
+        }
+    }
+
+    /// Whether there is no tag.
+    pub fn is_none(&self) -> bool {
+        matches!(self, TagSlot::None)
+    }
+
+    /// Whether the tag is fixed (FP1).
+    pub fn is_fixed(&self) -> bool {
+        matches!(self, TagSlot::Fixed(_))
+    }
+
+    /// Whether the tag is provisional.
+    pub fn is_provisional(&self) -> bool {
+        matches!(self, TagSlot::Provisional(_))
+    }
+
+    /// The tag as drawn: a provisional tag with its `?` ([`shown`]).
+    pub fn shown(&self) -> Option<String> {
+        self.tag().map(|t| shown(t, self.state().unwrap_or_default()))
+    }
+
+    /// The tag's identity in the tag indexes.
+    pub fn key(&self) -> Option<Key> {
+        self.tag().map(|t| Key::of(t, self.state().unwrap_or_default()))
     }
 }
 
@@ -147,6 +235,31 @@ pub fn enter(text: &str, style: impl Into<Style>) -> Result<Entry, crate::ParseE
         Some((prefix, n)) => Entry::Tag(Given::new(style.provisional(&prefix, n), TagState::Provisional)),
         None => Entry::Tag(Given::new(t, TagState::Fixed)),
     })
+}
+
+/// Read a stored tag slot given as a value of the `tag` key (S6, #3): its bare tag and its own
+/// state. The tag is written as [`enter`] writes a typed one; a `?` is refused (a provisional tag is
+/// given bare, the `?` is only drawn).
+///
+/// # Errors
+/// As [`normalise`]; a slot with no tag; a bare tag holding a `?`.
+///
+/// # Example
+/// ```
+/// use ecad_model::naming::tag::{enter_slot, Entry, Given, TagSlot, TagState};
+/// let slot = TagSlot::of_text(Some("-K1"), TagState::Automatic);
+/// assert_eq!(enter_slot(&slot, 2u8), Ok(Entry::Tag(Given::new("-K01", TagState::Automatic))));
+/// assert!(enter_slot(&TagSlot::None, 2u8).is_err());
+/// ```
+pub fn enter_slot(slot: &TagSlot, style: impl Into<Style>) -> Result<Entry, crate::ParseError> {
+    let (Some(t), Some(state)) = (slot.tag(), slot.state()) else {
+        return Err(crate::ParseError::invalid(crate::Parsed::Tag, BAD_TAG));
+    };
+    let bare = normalise_any(t, style)?;
+    if bare.contains('?') {
+        return Err(crate::ParseError::invalid(crate::Parsed::Tag, "A provisional tag is given bare (\"-K3\"); its ? is only drawn."));
+    }
+    Ok(Entry::Tag(Given::new(bare, state)))
 }
 
 /// The project property turning provisional tags on (brief 026, FP2): `"yes"`, absent = off.
@@ -246,8 +359,8 @@ pub fn note(high: &mut HighWater, t: &str) {
 }
 
 /// Count the tag an object holds, unless it is provisional.
-fn note_held(high: &mut HighWater, tag: Option<&str>, state: TagState) {
-    if let (Some(t), false) = (tag, state.is_provisional()) {
+fn note_held(high: &mut HighWater, slot: &TagSlot) {
+    if let (Some(t), false) = (slot.tag(), slot.is_provisional()) {
         note(high, t);
     }
 }
@@ -274,18 +387,18 @@ pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
     for op in ops {
         match op {
             crate::Op::CreateDevice { device, .. } | crate::Op::DeleteDevice { device, .. } => {
-                note_held(high, device.tag(), device.tag_state);
+                note_held(high, &device.tag);
             }
             crate::Op::ModifyDevice { before, after, .. } => {
-                note_held(high, before.tag(), before.tag_state);
-                note_held(high, after.tag(), after.tag_state);
+                note_held(high, &before.tag);
+                note_held(high, &after.tag);
             }
             crate::Op::CreateCable { cable, .. } | crate::Op::DeleteCable { cable, .. } => {
-                note_held(high, cable.tag(), cable.tag_state);
+                note_held(high, &cable.tag);
             }
             crate::Op::ModifyCable { before, after, .. } => {
-                note_held(high, before.tag(), before.tag_state);
-                note_held(high, after.tag(), after.tag_state);
+                note_held(high, &before.tag);
+                note_held(high, &after.tag);
             }
             crate::Op::SetProperty { object: crate::ObjectRef::Project, key, before, after }
                 if crate::naming::keys::NUMBERING_HIGH.parse(key).is_some() =>

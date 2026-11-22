@@ -12,7 +12,7 @@ use {ecad_electrical::devices::tags::TagHigh, ecad_electrical::devices::tags::ne
 const PROJECT: ProjectId = ProjectId(0x0029_0000_0000_0000_0000_0000_0000_0007);
 
 fn cable(tag: &str) -> Cable {
-    Cable { tag: ecad_model::naming::tag::Tag::new(tag).ok(), cores: Vec::new(), ..Default::default() }
+    Cable { tag: ecad_model::naming::tag::TagSlot::of_text(Some(tag), Default::default()), cores: Vec::new(), ..Default::default() }
 }
 
 #[test]

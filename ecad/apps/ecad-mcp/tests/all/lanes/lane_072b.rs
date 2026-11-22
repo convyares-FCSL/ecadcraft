@@ -69,7 +69,7 @@ fn setlocation_records_modify_device_with_fixed() {
     assert_eq!(last.author, Author::Agent(AGENT.into()));
     match last.ops.as_slice() {
         [Op::ModifyProject { .. }, Op::ModifyDevice { after, .. }] => {
-            assert!(after.location.is_some() && after.location_state == ecad_model::document::book::PlaceState::ByHand, "{after:?}")
+            assert!(matches!(after.location, ecad_model::document::book::Place::Manual(_)), "{after:?}")
         }
         other => panic!("{other:?}"),
     }

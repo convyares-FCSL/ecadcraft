@@ -191,19 +191,19 @@ pub struct Item {
 #[serde(deny_unknown_fields)]
 pub struct Device {
     /// Design 072 §2.1: validated on read (1 to 40 characters, no hidden character).
-    pub tag: Option<m::naming::tag::Tag>,
-    pub tag_state: m::naming::tag::TagState,
+    #[serde(default, skip_serializing_if = "m::naming::tag::TagSlot::is_none")]
+    pub tag: m::naming::tag::TagSlot,
     /// Design 072 §2.1: the text fields, validated on read.
     pub description: Option<m::objects::devices::Description>,
     pub part_number: Option<m::objects::devices::PartText>,
     pub manufacturer: Option<m::objects::devices::PartText>,
     pub article_number: Option<m::objects::devices::PartText>,
     pub type_text: Option<m::objects::devices::PartText>,
-    /// Design 072 §6.3: ids of the project's lists, and whether each was set by hand.
-    pub location: Option<m::LocationId>,
-    pub location_state: m::document::book::PlaceState,
-    pub function: Option<m::FunctionId>,
-    pub function_state: m::document::book::PlaceState,
+    /// Design 072 §6.3: ids of the project's lists, each with how it came to be.
+    #[serde(default, skip_serializing_if = "m::document::book::Place::is_unset")]
+    pub location: m::document::book::Place<m::LocationId>,
+    #[serde(default, skip_serializing_if = "m::document::book::Place::is_unset")]
+    pub function: m::document::book::Place<m::FunctionId>,
     /// Design 072 §2.2: text that did not read as the group's typed rating.
     pub rating_note: Option<m::objects::devices::RatingNote>,
     pub properties: BTreeMap<String, String>,
@@ -381,8 +381,8 @@ impl From<CorePosition> for m::CorePosition {
 #[serde(deny_unknown_fields)]
 pub struct Cable {
     /// Design 026: validated on read; a cable's tag, as a device's.
-    pub tag: Option<m::naming::tag::Tag>,
-    pub tag_state: m::naming::tag::TagState,
+    #[serde(default, skip_serializing_if = "m::naming::tag::TagSlot::is_none")]
+    pub tag: m::naming::tag::TagSlot,
     pub description: Option<m::objects::devices::Description>,
     pub properties: BTreeMap<String, String>,
     pub cores: Vec<Core>,
@@ -1078,16 +1078,13 @@ impl From<&m::Device> for Device {
     fn from(c: &m::Device) -> Self {
         Device {
             tag: c.tag.clone(),
-            tag_state: c.tag_state,
             description: c.description.clone(),
             part_number: c.part_number.clone(),
             manufacturer: c.manufacturer.clone(),
             article_number: c.article_number.clone(),
             type_text: c.type_text.clone(),
             location: c.location,
-            location_state: c.location_state,
             function: c.function,
-            function_state: c.function_state,
             rating_note: c.rating_note.clone(),
             properties: c.properties.clone(),
             definition: c.definition,
@@ -1184,7 +1181,6 @@ impl From<&m::Cable> for Cable {
     fn from(c: &m::Cable) -> Self {
         Cable {
             tag: c.tag.clone(),
-            tag_state: c.tag_state,
             description: c.description.clone(),
             properties: c.properties.clone(),
             cores: c.cores.iter().map(Into::into).collect(),
@@ -1475,16 +1471,13 @@ impl From<Device> for m::Device {
     fn from(c: Device) -> Self {
         m::Device {
             tag: c.tag,
-            tag_state: c.tag_state,
             description: c.description,
             part_number: c.part_number,
             manufacturer: c.manufacturer,
             article_number: c.article_number,
             type_text: c.type_text,
             location: c.location,
-            location_state: c.location_state,
             function: c.function,
-            function_state: c.function_state,
             rating_note: c.rating_note,
             properties: c.properties,
             definition: c.definition,
@@ -1553,7 +1546,6 @@ impl From<Cable> for m::Cable {
     fn from(c: Cable) -> Self {
         m::Cable {
             tag: c.tag,
-            tag_state: c.tag_state,
             description: c.description,
             properties: c.properties,
             cores: c.cores.into_iter().map(Into::into).collect(),

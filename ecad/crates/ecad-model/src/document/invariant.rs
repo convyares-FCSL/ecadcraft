@@ -596,20 +596,6 @@ impl Document {
         if let Some(k) = c.properties.keys().find(|k| crate::naming::keys::is_reserved_on(crate::naming::keys::Holder::Device, k)) {
             return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
-        // 0.2.3 S6 (#3): a stored state never contradicts its value.
-        if c.tag.is_none() && c.tag_state != crate::naming::tag::TagState::Automatic {
-            return bad(format!("device {id} has tag state {} but no tag", crate::naming::words::Word::word(c.tag_state)));
-        }
-        for (name, has, state) in [("location", c.location.is_some(), c.location_state), ("function", c.function.is_some(), c.function_state)] {
-            use crate::document::book::PlaceState;
-            match (has, state) {
-                (false, PlaceState::ByHand | PlaceState::Proposed) => {
-                    return bad(format!("device {id} has {name} state {} but no {name}", crate::naming::words::Word::word(state)));
-                }
-                (true, PlaceState::Unset) => return bad(format!("device {id} has a {name} but its {name} state is unset")),
-                _ => {}
-            }
-        }
         self.check_user_values(id, c)?;
         if let Some(p) = c.device_type.problem() {
             return bad(format!("device {id}: {p}"));
@@ -749,9 +735,6 @@ impl Document {
         // Design 072 §4.5: a key that became a cable field is never in the cable's bag.
         if let Some(k) = c.properties.keys().find(|k| crate::naming::keys::is_reserved_on(crate::naming::keys::Holder::Cable, k)) {
             return bad(format!("cable {id} holds {k} in its properties; it is a field"));
-        }
-        if c.tag.is_none() && c.tag_state != crate::naming::tag::TagState::Automatic {
-            return bad(format!("cable {id} has tag state {} but no tag", crate::naming::words::Word::word(c.tag_state)));
         }
         let mut seen = BTreeSet::new();
         let mut points = BTreeSet::new();

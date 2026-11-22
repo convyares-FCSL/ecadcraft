@@ -430,18 +430,18 @@ fn merge_props(
 
 /// Merge one field as a whole value.
 #[allow(clippy::too_many_arguments)]
-type TagPair = (Option<tag::Tag>, tag::TagState);
+/// A tag slot as shown in a conflict: the tag as drawn, or `(none)`.
+fn tag_text(v: &tag::TagSlot) -> String {
+    v.shown().unwrap_or_else(|| "(none)".into())
+}
 
-/// A holder's tag and its state, merged as one: the text of one side never takes the state of the
-/// other (S6, #3).
-fn tag_field(
-    ctx: &mut Ctx<'_, '_>, obj: Obj, what: &str, a: (&Option<tag::Tag>, tag::TagState), t: (&Option<tag::Tag>, tag::TagState),
-    s: (&Option<tag::Tag>, tag::TagState),
-) -> TagPair {
-    let own = |p: (&Option<tag::Tag>, tag::TagState)| (p.0.clone(), p.1);
-    field(ctx, obj, tag::TAG_KEY, format!("{what} · tag"), &own(a), &own(t), &own(s), &|v: &TagPair| {
-        v.0.as_ref().map_or_else(|| "(none)".into(), |x| tag::shown(x.as_str(), v.1))
-    })
+/// A location or function as shown in a conflict: its short id, with `(proposed)` when it was.
+fn place_text<I: Copy>(v: &crate::document::book::Place<I>, short: fn(I) -> String) -> String {
+    match v {
+        crate::document::book::Place::Unset => "(none)".to_string(),
+        crate::document::book::Place::Manual(i) => short(*i),
+        crate::document::book::Place::Proposed(i) => format!("{} (proposed)", short(*i)),
+    }
 }
 
 fn field<T: PartialEq + Clone>(ctx: &mut Ctx<'_, '_>, obj: Obj, name: &str, what: String, a: &T, t: &T, s: &T, show: &dyn Fn(&T) -> String) -> T {
@@ -784,10 +784,8 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             Obj::Device(id) => {
                 let v = object(ctx, obj, &what, a.devices.get(&id), t.devices.get(&id), s.devices.get(&id), |ctx, a, t, s| {
                     let texts = merge_props(ctx, obj, &what, &text_bag(a), &text_bag(t), &text_bag(s), &all);
-                    let (tag, tag_state) = tag_field(ctx, obj, &what, (&a.tag, a.tag_state), (&t.tag, t.tag_state), (&s.tag, s.tag_state));
                     let d = Device {
-                        tag,
-                        tag_state,
+                        tag: field(ctx, obj, tag::TAG_KEY, format!("{what} · tag"), &a.tag, &t.tag, &s.tag, &|v| tag_text(v)),
                         location: field(
                             ctx,
                             obj,
@@ -796,17 +794,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                             &a.location,
                             &t.location,
                             &s.location,
-                            &|x| x.map_or_else(|| "(none)".to_string(), crate::naming::id::LocationId::short),
-                        ),
-                        location_state: field(
-                            ctx,
-                            obj,
-                            crate::document::book::LOCATION_STATE_KEY,
-                            format!("{what} · location state"),
-                            &a.location_state,
-                            &t.location_state,
-                            &s.location_state,
-                            &|v| crate::naming::words::Word::word(*v).into(),
+                            &|x| place_text(x, crate::naming::id::LocationId::short),
                         ),
                         function: field(
                             ctx,
@@ -816,17 +804,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                             &a.function,
                             &t.function,
                             &s.function,
-                            &|x| x.map_or_else(|| "(none)".to_string(), crate::naming::id::FunctionId::short),
-                        ),
-                        function_state: field(
-                            ctx,
-                            obj,
-                            crate::document::book::FUNCTION_STATE_KEY,
-                            format!("{what} · function state"),
-                            &a.function_state,
-                            &t.function_state,
-                            &s.function_state,
-                            &|v| crate::naming::words::Word::word(*v).into(),
+                            &|x| place_text(x, crate::naming::id::FunctionId::short),
                         ),
                         properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
                         definition: field(ctx, obj, "definition", format!("{what} · symbol"), &a.definition, &t.definition, &s.definition, &|d| {
@@ -901,51 +879,40 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                 set(&mut m.wires, id, v);
             }
             Obj::Cable(id) => {
-                let v = object(ctx, obj, &what, a.cables.get(&id), t.cables.get(&id), s.cables.get(&id), |ctx, a, t, s| {
-                    let (tag, tag_state) = tag_field(ctx, obj, &what, (&a.tag, a.tag_state), (&t.tag, t.tag_state), (&s.tag, s.tag_state));
-                    Cable {
-                        tag,
-                        tag_state,
-                        description: field(
-                            ctx,
-                            obj,
-                            crate::objects::devices::DESCRIPTION_KEY,
-                            format!("{what} · description"),
-                            &a.description,
-                            &t.description,
-                            &s.description,
-                            &|v| v.as_ref().map_or_else(|| "(none)".into(), |t| t.to_string()),
-                        ),
-                        properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
-                        cores: merge_members(&a.cores, &t.cores, &s.cores),
-                        cable_type: field(
-                            ctx,
-                            obj,
-                            "cable_type",
-                            format!("{what} · cable type"),
-                            &a.cable_type,
-                            &t.cable_type,
-                            &s.cable_type,
-                            &|x| x.as_ref().map_or_else(|| "(none)".to_string(), StyleRef::text),
-                        ),
-                        shield: field(ctx, obj, "shield", format!("{what} · shield"), &a.shield, &t.shield, &s.shield, &|x| {
-                            x.map_or_else(|| "(none)".to_string(), |v| crate::naming::words::Word::word(v).to_string())
-                        }),
-                        rating: field(ctx, obj, "rating", format!("{what} · rating inputs"), &a.rating, &t.rating, &s.rating, &|x| format!("{x:?}")),
-                        load: field(ctx, obj, "load", format!("{what} · load"), &a.load, &t.load, &s.load, &|x| {
-                            x.map_or_else(|| "(none)".to_string(), |v| v.to_string())
-                        }),
-                        protected_by: field(
-                            ctx,
-                            obj,
-                            "protected_by",
-                            format!("{what} · protected by"),
-                            &a.protected_by,
-                            &t.protected_by,
-                            &s.protected_by,
-                            &|x| x.map_or_else(|| "(none)".to_string(), |p| name_of(&docs, Obj::Device(p.device))),
-                        ),
-                    }
+                let v = object(ctx, obj, &what, a.cables.get(&id), t.cables.get(&id), s.cables.get(&id), |ctx, a, t, s| Cable {
+                    tag: field(ctx, obj, tag::TAG_KEY, format!("{what} · tag"), &a.tag, &t.tag, &s.tag, &|v| tag_text(v)),
+                    description: field(
+                        ctx,
+                        obj,
+                        crate::objects::devices::DESCRIPTION_KEY,
+                        format!("{what} · description"),
+                        &a.description,
+                        &t.description,
+                        &s.description,
+                        &|v| v.as_ref().map_or_else(|| "(none)".into(), |t| t.to_string()),
+                    ),
+                    properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
+                    cores: merge_members(&a.cores, &t.cores, &s.cores),
+                    cable_type: field(ctx, obj, "cable_type", format!("{what} · cable type"), &a.cable_type, &t.cable_type, &s.cable_type, &|x| {
+                        x.as_ref().map_or_else(|| "(none)".to_string(), StyleRef::text)
+                    }),
+                    shield: field(ctx, obj, "shield", format!("{what} · shield"), &a.shield, &t.shield, &s.shield, &|x| {
+                        x.map_or_else(|| "(none)".to_string(), |v| crate::naming::words::Word::word(v).to_string())
+                    }),
+                    rating: field(ctx, obj, "rating", format!("{what} · rating inputs"), &a.rating, &t.rating, &s.rating, &|x| format!("{x:?}")),
+                    load: field(ctx, obj, "load", format!("{what} · load"), &a.load, &t.load, &s.load, &|x| {
+                        x.map_or_else(|| "(none)".to_string(), |v| v.to_string())
+                    }),
+                    protected_by: field(
+                        ctx,
+                        obj,
+                        "protected_by",
+                        format!("{what} · protected by"),
+                        &a.protected_by,
+                        &t.protected_by,
+                        &s.protected_by,
+                        &|x| x.map_or_else(|| "(none)".to_string(), |p| name_of(&docs, Obj::Device(p.device))),
+                    ),
                 });
                 set(&mut m.cables, id, v);
             }
@@ -1791,8 +1758,8 @@ impl Holder {
     /// This holder's tag state.
     fn state(self, d: &Document) -> tag::TagState {
         match self {
-            Holder::Device(c) => d.devices.get(&c).map(|x| x.tag_state),
-            Holder::Cable(c) => d.cables.get(&c).map(|x| x.tag_state),
+            Holder::Device(c) => d.devices.get(&c).and_then(|x| x.tag.state()),
+            Holder::Cable(c) => d.cables.get(&c).and_then(|x| x.tag.state()),
         }
         .unwrap_or_default()
     }
@@ -1807,8 +1774,7 @@ impl Holder {
             }
             Holder::Cable(c) => {
                 if let Some(x) = m.cables.get_mut(&c) {
-                    x.tag = tag::Tag::new(&t).ok();
-                    x.tag_state = state;
+                    x.tag = tag::TagSlot::of_text(Some(&t), state);
                 }
             }
         }
@@ -1846,10 +1812,10 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
 fn top_provisional(m: &Document, prefix: &str) -> u64 {
     m.devices
         .values()
-        .map(|c| (c.tag(), c.tag_state))
-        .chain(m.cables.values().map(|c| (c.tag(), c.tag_state)))
-        .filter(|(_, s)| s.is_provisional())
-        .filter_map(|(t, _)| t.and_then(tag::parse))
+        .map(|c| &c.tag)
+        .chain(m.cables.values().map(|c| &c.tag))
+        .filter(|s| s.is_provisional())
+        .filter_map(|s| s.tag().and_then(tag::parse))
         .filter(|(p, _)| p == prefix)
         .map(|(_, n)| n)
         .max()

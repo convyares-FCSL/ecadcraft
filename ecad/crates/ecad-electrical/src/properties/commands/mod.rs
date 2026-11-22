@@ -11,7 +11,7 @@
 pub mod devices;
 pub mod plc;
 pub mod wires;
-use ecad_model::naming::tag::{self, STATE_KEY, TAG_KEY, TagState};
+use ecad_model::naming::tag::{self, TAG_KEY, TagSlot, TagState};
 use ecad_model::{AidId, CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties, Subject, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -51,8 +51,6 @@ pub enum Build {
     /// The tag (design 026 §4, §7): typing one fixes it, `-K?` takes the next provisional one, a
     /// tag another device or cable holds needs a conflict answer ([`plan_tag`]). One object only.
     Tag,
-    /// The tag's state: automatic, fixed or null ([`plan_state`]).
-    State,
     /// A device property (design 018 §6.1): checked; a tag another device holds merges the two
     /// with `merge` ([`plan_device`]).
     Device(Check),
@@ -85,7 +83,6 @@ pub static PROP_RULES: &[PropRule] = &[
         build: Build::Aspect,
     },
     PropRule { what: "tag (design 026)", claims: |_, o, k| k == TAG_KEY && tagged(o), build: Build::Tag },
-    PropRule { what: "tag state (design 026, S6 #3)", claims: |_, o, k| k == STATE_KEY && tagged(o), build: Build::State },
     PropRule { what: "device property (design 018)", claims: |_, o, k| is_device_property(o, k), build: Build::Device(device_value) },
     PropRule {
         what: "wire, junction or continuation (briefs 022, 049)",
@@ -148,9 +145,7 @@ pub fn rule_for(doc: &Document, object: ObjectRef, key: &str) -> &'static PropRu
 pub(crate) fn plan_record(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<Option<Op>, CmdError> {
     match rule_for(doc, object, key).build {
         Build::Record(plan) => plan(doc, object, key, typed),
-        Build::Aspect | Build::Tag | Build::State | Build::Device(_) | Build::Value(_) => {
-            Err(CmdError::input("that property is set through its own rule"))
-        }
+        Build::Aspect | Build::Tag | Build::Device(_) | Build::Value(_) => Err(CmdError::input("that property is set through its own rule")),
     }
 }
 
@@ -289,7 +284,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
         // A device's tag is a device property too: merging into the device that holds it reads it
         // here ([`plan_device`]).
         Build::Tag => device_value,
-        Build::State | Build::Aspect | Build::Record(_) => return Err(CmdError::input("that property is set through its own rule")),
+        Build::Aspect | Build::Record(_) => return Err(CmdError::input("that property is set through its own rule")),
     };
     check(doc, object, key, value)
 }
@@ -352,10 +347,6 @@ pub(crate) fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Optio
         let key = component_key(doc, *c, key);
         let o = ObjectRef::Device(*c);
         match rule_for(doc, o, &key).build {
-            Build::State => {
-                ops.extend(plan_state(doc, o, typed)?.op);
-                continue;
-            }
             Build::Record(plan) => {
                 ops.extend(plan(doc, o, &key, typed)?);
                 continue;
@@ -470,8 +461,8 @@ pub fn conflict(word: Option<&str>, merge: bool) -> Result<Option<Conflict>, Cmd
 fn tag_of(doc: &Document, o: ObjectRef) -> Option<Option<tag::Given>> {
     let held = |t: Option<&str>, s: TagState| t.map(|t| tag::Given::new(t, s));
     match o {
-        ObjectRef::Device(c) => doc.devices.get(&c).map(|d| held(d.tag(), d.tag_state)),
-        ObjectRef::Cable(c) => doc.cables.get(&c).map(|d| held(d.tag(), d.tag_state)),
+        ObjectRef::Device(c) => doc.devices.get(&c).map(|d| held(d.tag(), d.tag.state().unwrap_or_default())),
+        ObjectRef::Cable(c) => doc.cables.get(&c).map(|d| held(d.tag(), d.tag.state().unwrap_or_default())),
         _ => None,
     }
 }
@@ -491,10 +482,7 @@ fn write_tag(doc: &Document, o: ObjectRef, given: Option<tag::Given>) -> Vec<Op>
         }
         ObjectRef::Cable(k) => {
             let mut ops = Vec::new();
-            Op::edit_cable(doc, &mut ops, k, |c| {
-                let _ = c.set_value(TAG_KEY, text);
-                c.tag_state = state;
-            });
+            Op::edit_cable(doc, &mut ops, k, |c| c.tag = TagSlot::of_text(text, state));
             ops
         }
         ObjectRef::Wire(_) | ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => Vec::new(),
@@ -533,14 +521,14 @@ fn taken_words(doc: &Document, tag_high: &TagHigh, o: ObjectRef, given: &tag::Gi
 pub(crate) enum TagSet {
     /// Nothing to change: the tag it has.
     Unchanged(Option<String>),
-    /// The tag cleared (`state` is `None`) or set ("Set tag").
-    Set { ops: Vec<Op>, value: Option<String>, state: Option<TagState> },
+    /// The tag cleared (`slot` is none) or set ("Set tag").
+    Set { ops: Vec<Op>, value: Option<String>, slot: TagSlot },
     /// The two tags exchanged ("Swap tags"); `line` is the echo.
     Swapped { ops: Vec<Op>, value: String, other: ObjectRef, other_value: String, line: String },
     /// Two cables made one: this one's members join `into` ("Merge into …").
     MergedCable { ops: Vec<Op>, into: CableId, tag: String, before: Option<String> },
     /// The next free tag of the prefix taken instead ("Set tag"); `line` is the echo.
-    Next { ops: Vec<Op>, value: String, state: TagState, line: String },
+    Next { ops: Vec<Op>, value: String, slot: TagSlot, line: String },
 }
 
 /// `setprop {component|cable, key: "tag", value, conflict?}` (design 026 §4, §7): the typed text is
@@ -558,7 +546,7 @@ pub(crate) fn plan_tag(
     let before = tag_of(doc, o).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
     let value = match typed.map(str::trim).filter(|v| !v.is_empty()) {
         None => None,
-        Some(v) => Some(match tag::enter(v, crate::defaults::print::tag_style(doc))? {
+        Some(v) => Some(match enter_tag_value(v, crate::defaults::print::tag_style(doc))? {
             tag::Entry::Next(px) => tag::Given::new(tag_high.next_provisional_in(doc, &px), TagState::Provisional),
             tag::Entry::Tag(g) => g,
         }),
@@ -568,9 +556,18 @@ pub(crate) fn plan_tag(
         if ops.is_empty() {
             return Ok(TagSet::Unchanged(None));
         }
-        return Ok(TagSet::Set { ops, value: None, state: None });
+        return Ok(TagSet::Set { ops, value: None, slot: TagSlot::None });
     };
     let t = given.shown();
+    // A provisional tag's state is not changed here, nor is a tag given the state provisional: Finalise
+    // gives it its number, and typing `-K?` makes one.
+    if let Some(now) = &before
+        && now.text == given.text
+        && now.state != given.state
+        && (now.state.is_provisional() || given.state.is_provisional())
+    {
+        return Err(CmdError::refused(PROVISIONAL_FIXED));
+    }
     // Brief 044 (design 044 §5.1): a connector's half tag is not free for another device.
     if !given.state.is_provisional()
         && let Some(Ok((c, Some(side), None))) = crate::connectors::resolve(doc, &given.text)
@@ -583,7 +580,7 @@ pub(crate) fn plan_tag(
         if ops.is_empty() {
             return Ok(TagSet::Unchanged(Some(t)));
         }
-        return Ok(TagSet::Set { ops, value: Some(t), state: Some(given.state) });
+        return Ok(TagSet::Set { ops, value: Some(t), slot: TagSlot::of_text(Some(&given.text), given.state) });
     };
     let same_kind = matches!((o, holder), (ObjectRef::Device(_), Holder::Device(_)) | (ObjectRef::Cable(_), Holder::Cable(_)));
     match conflict {
@@ -625,7 +622,7 @@ pub(crate) fn plan_tag(
             };
             let ops = write_tag(doc, o, Some(next.clone()));
             let line = format!("{} is now {}.", before.map_or_else(|| format!("The {}", noun(o)), |g| g.shown()), next.shown());
-            Ok(TagSet::Next { ops, value: next.shown(), state: next.state, line })
+            Ok(TagSet::Next { ops, value: next.shown(), slot: TagSlot::of_text(Some(&next.text), next.state), line })
         }
     }
 }
@@ -635,44 +632,6 @@ pub(crate) fn plan_tag(
 pub(crate) fn merged_cable_words(doc: &Document, before: Option<&str>, tag: &str, into: CableId) -> String {
     let n = doc.cables.get(&into).map_or(0, |c| c.cores.len());
     format!("{} is now part of {tag} ({}).", before.unwrap_or("The cable"), plural(n, "wire", "wires"))
-}
-
-/// The tag's state ([`plan_state`]).
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct StateSet {
-    /// The state it has now, or is given.
-    pub state: TagState,
-    /// The op, `None` when it already is.
-    pub op: Option<Op>,
-}
-
-/// `setprop {component|cable, key: "tag_state", value: "automatic"|"fixed"|null}` (design 026 §4,
-/// FP1; S6 #3): null is automatic. A provisional tag's state is not set here: Finalise gives it its
-/// number, and typing `-K?` makes one.
-///
-/// # Errors
-/// A value that is not a state word; [`NO_SUCH_OBJECT`]; fixing no tag; any state but its own on a
-/// provisional tag, or `provisional` ([`PROVISIONAL_FIXED`]).
-pub(crate) fn plan_state(doc: &Document, o: ObjectRef, typed: Option<&str>) -> Result<StateSet, CmdError> {
-    use ecad_model::naming::words::Word;
-    let want = match typed.map(str::trim).filter(|v| !v.is_empty()) {
-        None => TagState::Automatic,
-        Some(v) => TagState::parse(v).ok_or_else(|| CmdError::refused(format!("`tag_state` is \"automatic\", \"fixed\" or null, not {v:?}")))?,
-    };
-    let now = tag_of(doc, o).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
-    let Some(now) = now else {
-        return match want {
-            TagState::Fixed => Err(CmdError::refused(format!("This {} has no tag to fix.", noun(o)))),
-            _ => Ok(StateSet { state: TagState::Automatic, op: None }),
-        };
-    };
-    if want == now.state {
-        return Ok(StateSet { state: want, op: None });
-    }
-    if now.state.is_provisional() || want.is_provisional() {
-        return Err(CmdError::refused(PROVISIONAL_FIXED));
-    }
-    Ok(StateSet { state: want, op: write_tag(doc, o, Some(tag::Given::new(now.text, want))).into_iter().next() })
 }
 
 pub fn object_json(o: ObjectRef) -> Value {
@@ -689,7 +648,7 @@ pub fn object_json(o: ObjectRef) -> Value {
 /// `setprop {component|conductor|cable, key, value, conflict?, merge?}` or `{components, key,
 /// value}`: a property of one object, or of several devices in one transaction (not `tag`). A
 /// device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device
-/// or cable holds needs `conflict`. Key `tag_state`: "automatic", "fixed" or null.
+/// or cable holds needs `conflict`. The `tag` value is typed text (fixed; `-K?` provisional) or `{"state": "automatic"|"fixed"|"provisional", "tag": "-K1"}`; null clears it.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetpropParams {
@@ -755,7 +714,7 @@ impl SetpropParams {
 impl Generic for SetpropParams {
     const ID: &'static str = "setprop";
     const TITLE: &'static str = "Set Property";
-    const HELP: &'static str = "{component|conductor|cable: id, key, value: string|null, conflict?: \"swap\"|\"merge\"|\"next\", merge?: bool} | {devices: [id], key, value} (several devices in one transaction; not `tag`) (a device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device or cable holds needs `conflict`; key `tag_state`: \"automatic\", \"fixed\" or null)";
+    const HELP: &'static str = "{component|conductor|cable: id, key, value: string|null, conflict?: \"swap\"|\"merge\"|\"next\", merge?: bool} | {devices: [id], key, value} (several devices in one transaction; not `tag`) (a device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device or cable holds needs `conflict`; `tag` also takes {\"state\": \"automatic\"|\"fixed\"|\"provisional\", \"tag\": \"-K1\"}; null clears it)";
     const STATE: State = State::Conflicts;
 
     fn check(&self) -> Result<(), CmdError> {
@@ -827,18 +786,6 @@ impl Generic for SetpropParams {
                     _ => set_tag(cx, object, typed.as_deref(), conflict),
                 }
             }
-            Build::State => {
-                let done = plan_state(doc, object, typed.as_deref())?;
-                let state = ecad_model::naming::words::Word::word(done.state);
-                Ok(match done.op {
-                    None => Outcome::answer(json!({"changed": false, "tag_state": state})),
-                    Some(op) => Outcome::edit(
-                        if done.state == TagState::Fixed { "Fix tag" } else { "Release tag" },
-                        vec![op],
-                        json!({"changed": true, "tag_state": state}),
-                    ),
-                })
-            }
             Build::Device(_) => match object {
                 ObjectRef::Device(c) => set_device(cx, c, &key, typed.as_deref(), merge),
                 _ => set_value(doc, object, &key, typed.as_deref()),
@@ -899,18 +846,31 @@ fn set_device(cx: &mut Cx<'_>, c: DeviceId, key: &str, typed: Option<&str>, merg
 }
 
 /// The tag of a device or cable (design 026 §4, §7).
+/// A value of the `tag` key (S6, #3): typed text ([`tag::enter`]), or the stored form
+/// `{"state": "automatic"|"fixed"|"provisional", "tag": "-K1"}` ([`TagSlot`]), which names its own state.
+///
+/// # Errors
+/// As [`tag::enter`] and [`tag::enter_slot`]; an object that is not a tag slot.
+pub(crate) fn enter_tag_value(text: &str, style: tag::Style) -> Result<tag::Entry, CmdError> {
+    if !text.trim_start().starts_with('{') {
+        return Ok(tag::enter(text, style)?);
+    }
+    let slot: TagSlot = serde_json::from_str(text).map_err(|e| {
+        CmdError::refused(format!("A tag value is text, or {{\"state\": \"automatic\"|\"fixed\"|\"provisional\", \"tag\": \"-K1\"}} ({e})."))
+    })?;
+    Ok(tag::enter_slot(&slot, style)?)
+}
+
+/// A tag slot as the answers give it: `{"state", "tag"}`, or null for none.
+fn slot_json(slot: &TagSlot) -> Value {
+    if slot.is_none() { Value::Null } else { json!(slot) }
+}
+
 fn set_tag(cx: &mut Cx<'_>, o: ObjectRef, typed: Option<&str>, conflict: Option<Conflict>) -> Result<Outcome, CmdError> {
     cx.tag_high.catch_up(cx.ledger);
     Ok(match plan_tag(cx.doc, cx.tag_high, o, typed, conflict)? {
         TagSet::Unchanged(value) => Outcome::answer(json!({"changed": false, "value": value})),
-        TagSet::Set { ops, value, state } => Outcome::edit(
-            "Set tag",
-            ops,
-            match state {
-                Some(s) => json!({"changed": true, "value": value, "tag_state": ecad_model::naming::words::Word::word(s)}),
-                None => json!({"changed": true, "value": value}),
-            },
-        ),
+        TagSet::Set { ops, value, slot } => Outcome::edit("Set tag", ops, json!({"changed": true, "value": value, "tag": slot_json(&slot)})),
         TagSet::Swapped { ops, value, other, other_value, line } => Outcome::edit(
             "Swap tags",
             ops,
@@ -922,12 +882,9 @@ fn set_tag(cx: &mut Cx<'_>, o: ObjectRef, typed: Option<&str>, conflict: Option<
             json!({"changed": true, "merged": true, "cable": into.hex(), "tag": tag, "message": line})
         })
         .echo_message(),
-        TagSet::Next { ops, value, state, line } => Outcome::edit(
-            "Set tag",
-            ops,
-            json!({"changed": true, "value": value, "tag_state": ecad_model::naming::words::Word::word(state), "message": line}),
-        )
-        .echo(Some(line)),
+        TagSet::Next { ops, value, slot, line } => {
+            { Outcome::edit("Set tag", ops, json!({"changed": true, "value": value, "tag": slot_json(&slot), "message": line})) }.echo(Some(line))
+        }
     })
 }
 

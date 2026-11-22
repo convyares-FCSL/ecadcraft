@@ -161,21 +161,21 @@ fn location_and_function_are_written_as_modify_device() {
     }
     let d = h.doc().devices[&c].clone();
     assert!(
-        d.location_state == ecad_model::document::book::PlaceState::ByHand && d.function_state == ecad_model::document::book::PlaceState::ByHand,
+        matches!(d.location, ecad_model::document::book::Place::Manual(_)) && matches!(d.function, ecad_model::document::book::Place::Manual(_)),
         "{d:?}"
     );
     assert!(!d.properties.contains_key("location") && !d.properties.contains_key("function"), "{d:?}");
     // Clearing clears the flag too.
     h.run("setprop", json!({"component": c.hex(), "key": "function", "value": null})).unwrap();
     let d = h.doc().devices[&c].clone();
-    assert_eq!((d.function, d.function_state), (None, ecad_model::document::book::PlaceState::Unset));
+    assert_eq!(d.function, ecad_model::document::book::Place::Unset);
     // A box drawn around an unset device proposes its value: set, not fixed.
     let other: DeviceId = id(&crate::common::place(&mut h, "lamp", (100.0, 100.0)), "component");
     h.run("locationbox", json!({"location": "+CP2", "corners": [[20, 60], [200, 220]]})).unwrap();
     let o = h.doc().devices[&other].clone();
-    assert!(o.location.is_some() && o.location_state == ecad_model::document::book::PlaceState::Proposed, "{o:?}");
+    assert!(matches!(o.location, ecad_model::document::book::Place::Proposed(_)), "{o:?}");
     // The device typed +CP1 keeps it (fixed) and is asked about, not moved.
-    assert_eq!(h.doc().devices[&c].location_state, ecad_model::document::book::PlaceState::ByHand);
+    assert!(matches!(h.doc().devices[&c].location, ecad_model::document::book::Place::Manual(_)));
     assert_ne!(h.doc().devices[&c].location, o.location);
 }
 

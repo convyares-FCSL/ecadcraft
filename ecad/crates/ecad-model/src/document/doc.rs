@@ -317,11 +317,10 @@ pub struct Item {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Device {
-    /// Its tag (`-K01`), if it has one (design 026; the identity of the device).
-    pub tag: Option<crate::naming::tag::Tag>,
-    /// What the tag is (S6, #3): automatic, fixed (typed, kept by renumbering, design 026 FP1) or
-    /// provisional. Always stored, beside the bare tag text.
-    pub tag_state: crate::naming::tag::TagState,
+    /// Its tag (`-K01`) and what it is (design 026; the identity of the device): automatic, fixed
+    /// (typed, kept by renumbering, FP1) or provisional, or none. One field: the state holds the tag (S6, #3).
+    #[serde(default, skip_serializing_if = "crate::naming::tag::TagSlot::is_none")]
+    pub tag: crate::naming::tag::TagSlot,
     /// What it is for, in words (`setprop` key `description`).
     pub description: Option<crate::objects::devices::Description>,
     /// Its main part's number (`part_number`).
@@ -332,15 +331,14 @@ pub struct Device {
     pub article_number: Option<crate::objects::devices::PartText>,
     /// Its type text (`type`): a terminal strip's type notation reads it.
     pub type_text: Option<crate::objects::devices::PartText>,
-    /// Its location (an entry of the project's list, design 072 §6.3); `None` has none.
-    pub location: Option<crate::naming::id::LocationId>,
-    /// How the location came to be (design 072 §6.3): by hand (typed, or a box drawn around it:
-    /// kept when a box around it changes), proposed (from its page or a box), or unset. Always stored.
-    pub location_state: crate::document::book::PlaceState,
-    /// Its function (an entry of the project's list); `None` has none.
-    pub function: Option<crate::naming::id::FunctionId>,
-    /// How the function came to be, as [`Device::location_state`].
-    pub function_state: crate::document::book::PlaceState,
+    /// Its location (an entry of the project's list, design 072 §6.3) and how it came to be: manual
+    /// (typed, or a box drawn around it: kept when a box around it changes), proposed (from its
+    /// page or a box), or unset. One field: the state holds the entry (S6, #3).
+    #[serde(default, skip_serializing_if = "crate::document::book::Place::is_unset")]
+    pub location: crate::document::book::Place<crate::naming::id::LocationId>,
+    /// Its function (an entry of the project's list), as [`Device::location`].
+    #[serde(default, skip_serializing_if = "crate::document::book::Place::is_unset")]
+    pub function: crate::document::book::Place<crate::naming::id::FunctionId>,
     /// Its rating note: text that did not read as its group's typed rating (design 072 §2.2).
     pub rating_note: Option<crate::objects::devices::RatingNote>,
     pub properties: Properties,
@@ -361,22 +359,22 @@ impl Device {
 
     /// Whether its tag is fixed (FP1).
     pub fn is_fixed(&self) -> bool {
-        self.tag_state == crate::naming::tag::TagState::Fixed
+        self.tag.is_fixed()
     }
 
     /// Whether its tag is provisional.
     pub fn is_provisional(&self) -> bool {
-        self.tag_state.is_provisional()
+        self.tag.is_provisional()
     }
 
     /// Its tag as drawn: a provisional tag with its `?` ([`crate::naming::tag::shown`]).
     pub fn tag_shown(&self) -> Option<String> {
-        self.tag().map(|t| crate::naming::tag::shown(t, self.tag_state))
+        self.tag.shown()
     }
 
     /// Its tag's identity in the tag index.
     pub fn tag_key(&self) -> Option<crate::naming::tag::Key> {
-        self.tag().map(|t| crate::naming::tag::Key::of(t, self.tag_state))
+        self.tag.key()
     }
 
     /// Whether `other` differs in a typed field (anything but the property bag and the
@@ -402,16 +400,10 @@ impl Device {
         bare(self) == bare(other)
     }
 
-    /// Whether `other` differs from this device in its location and function (and their `fixed`
-    /// flags) only: what a view that reads neither can skip.
+    /// Whether `other` differs from this device in its location and function (and how they came to
+    /// be) only: what a view that reads neither can skip.
     pub fn only_place_differs(&self, other: &Device) -> bool {
-        let bare = |d: &Device| Device {
-            location: None,
-            location_state: Default::default(),
-            function: None,
-            function_state: Default::default(),
-            ..d.clone()
-        };
+        let bare = |d: &Device| Device { location: Default::default(), function: Default::default(), ..d.clone() };
         bare(self) == bare(other)
     }
 
@@ -419,11 +411,8 @@ impl Device {
     /// string and routes to the field): a typed field as its stored text, else the property.
     pub fn value(&self, key: &str) -> Option<String> {
         match key {
-            crate::naming::tag::STATE_KEY => Some(crate::naming::words::Word::word(self.tag_state).to_string()),
-            crate::document::book::LOCATION_KEY => self.location.map(crate::naming::id::LocationId::hex),
-            crate::document::book::FUNCTION_KEY => self.function.map(crate::naming::id::FunctionId::hex),
-            crate::document::book::LOCATION_STATE_KEY => Some(crate::naming::words::Word::word(self.location_state).to_string()),
-            crate::document::book::FUNCTION_STATE_KEY => Some(crate::naming::words::Word::word(self.function_state).to_string()),
+            crate::document::book::LOCATION_KEY => self.location.id().map(crate::naming::id::LocationId::hex),
+            crate::document::book::FUNCTION_KEY => self.function.id().map(crate::naming::id::FunctionId::hex),
             _ if crate::objects::devices::Connector::is_key(key) => match &self.device_type {
                 DeviceType::Connector(x) => x.value(key),
                 _ => None,
@@ -513,19 +502,15 @@ impl Device {
     /// # Errors
     /// As [`Device::set_text`].
     pub fn set_value(&mut self, key: &str, value: Option<&str>) -> std::result::Result<(), crate::naming::text::TextError> {
-        // A location or function given as an entry's id (32 hex): set by hand, so fixed.
+        // A location or function given as an entry's id (32 hex): set by hand, so manual.
         let id = || value.and_then(|v| u128::from_str_radix(v.trim(), 16).ok().filter(|_| v.trim().len() == 32));
         match key {
             crate::document::book::LOCATION_KEY => {
-                self.location = id().map(crate::naming::id::LocationId);
-                self.location_state =
-                    if self.location.is_some() { crate::document::book::PlaceState::ByHand } else { crate::document::book::PlaceState::Unset };
+                self.location = crate::document::book::Place::manual(id().map(crate::naming::id::LocationId));
                 return Ok(());
             }
             crate::document::book::FUNCTION_KEY => {
-                self.function = id().map(crate::naming::id::FunctionId);
-                self.function_state =
-                    if self.function.is_some() { crate::document::book::PlaceState::ByHand } else { crate::document::book::PlaceState::Unset };
+                self.function = crate::document::book::Place::manual(id().map(crate::naming::id::FunctionId));
                 return Ok(());
             }
             _ => {}
@@ -544,16 +529,13 @@ impl Device {
 
     /// Its tag as text.
     pub fn tag(&self) -> Option<&str> {
-        self.tag.as_ref().map(|t| t.as_str())
+        self.tag.tag()
     }
 
-    /// This device with bare tag text `tag` in `state` (`None` clears it, and the state is
-    /// automatic; text that is not a valid tag clears it too, which callers rule out with
-    /// [`crate::naming::tag::Tag::new`] first).
+    /// This device with bare tag text `tag` in `state` (`None` clears it; text that is not a valid
+    /// tag clears it too, which callers rule out with [`crate::naming::tag::Tag::new`] first).
     pub fn with_tag(&self, tag: Option<&str>, state: crate::naming::tag::TagState) -> Device {
-        let tag = tag.and_then(|t| crate::naming::tag::Tag::new(t).ok());
-        let state = if tag.is_some() { state } else { crate::naming::tag::TagState::Automatic };
-        Device { tag, tag_state: state, ..self.clone() }
+        Device { tag: crate::naming::tag::TagSlot::of_text(tag, state), ..self.clone() }
     }
 }
 
@@ -848,11 +830,9 @@ pub const CABLE_TYPE_KEY: &str = "cable_type";
 /// A cable groups existing conductors (DOC-04).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Cable {
-    /// Its tag (`-W01`), if it has one (design 026; the identity of the cable).
-    pub tag: Option<crate::naming::tag::Tag>,
-    /// What the tag is (S6, #3): automatic, fixed (typed, kept by renumbering, design 026 FP1) or
-    /// provisional. Always stored, beside the bare tag text.
-    pub tag_state: crate::naming::tag::TagState,
+    /// Its tag (`-W01`) and what it is (design 026; the identity of the cable), as [`Device::tag`].
+    #[serde(default, skip_serializing_if = "crate::naming::tag::TagSlot::is_none")]
+    pub tag: crate::naming::tag::TagSlot,
     /// What it is for, in words (`setprop` key `description`).
     pub description: Option<crate::objects::devices::Description>,
     pub properties: Properties,
@@ -879,7 +859,7 @@ pub struct Cable {
 impl Cable {
     /// Its tag as text.
     pub fn tag(&self) -> Option<&str> {
-        self.tag.as_ref().map(|t| t.as_str())
+        self.tag.tag()
     }
 
     /// Its description as text.
@@ -889,22 +869,22 @@ impl Cable {
 
     /// Whether its tag is fixed (FP1).
     pub fn is_fixed(&self) -> bool {
-        self.tag_state == crate::naming::tag::TagState::Fixed
+        self.tag.is_fixed()
     }
 
     /// Whether its tag is provisional.
     pub fn is_provisional(&self) -> bool {
-        self.tag_state.is_provisional()
+        self.tag.is_provisional()
     }
 
     /// Its tag as drawn: a provisional tag with its `?` ([`crate::naming::tag::shown`]).
     pub fn tag_shown(&self) -> Option<String> {
-        self.tag().map(|t| crate::naming::tag::shown(t, self.tag_state))
+        self.tag.shown()
     }
 
     /// Its tag's identity in the tag index.
     pub fn tag_key(&self) -> Option<crate::naming::tag::Key> {
-        self.tag().map(|t| crate::naming::tag::Key::of(t, self.tag_state))
+        self.tag.key()
     }
 
     /// The text `setprop`'s key `key` names on this cable: its tag, its description, else the
@@ -917,16 +897,14 @@ impl Cable {
         }
     }
 
-    /// The value key `key` names as stored text: [`Cable::get`], and the fixed flag.
+    /// The value key `key` names as stored text ([`Cable::get`]).
     pub fn value(&self, key: &str) -> Option<String> {
-        match key {
-            crate::naming::tag::STATE_KEY => Some(crate::naming::words::Word::word(self.tag_state).to_string()),
-            _ => self.get(key).map(str::to_string),
-        }
+        self.get(key).map(str::to_string)
     }
 
-    /// Set the value key `key` names (`None`, or text blank once trimmed, clears it): the tag, its
-    /// fixed flag (a word), the description, else the property.
+    /// Set the value key `key` names (`None`, or text blank once trimmed, clears it): the tag (as
+    /// [`Cable::tag`] holds it: bare text, kept in the state it has, automatic if it had none), the
+    /// description, else the property.
     ///
     /// # Errors
     /// The [`crate::naming::text::TextError`] of a tag or description that is too long or holds a
@@ -934,9 +912,9 @@ impl Cable {
     pub fn set_value(&mut self, key: &str, value: Option<&str>) -> std::result::Result<(), crate::naming::text::TextError> {
         let trimmed = value.map(str::trim).filter(|v| !v.is_empty());
         match key {
-            crate::naming::tag::TAG_KEY => self.tag = trimmed.map(crate::naming::tag::Tag::new).transpose()?,
-            crate::naming::tag::STATE_KEY => {
-                self.tag_state = trimmed.and_then(<crate::naming::tag::TagState as crate::naming::words::Word>::parse).unwrap_or_default();
+            crate::naming::tag::TAG_KEY => {
+                let state = self.tag.state().unwrap_or_default();
+                self.tag = crate::naming::tag::TagSlot::new(trimmed.map(crate::naming::tag::Tag::new).transpose()?, state);
             }
             crate::objects::devices::DESCRIPTION_KEY => {
                 self.description = trimmed.map(crate::objects::devices::Description::new).transpose()?;

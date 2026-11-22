@@ -21,7 +21,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
-use ecad_model::document::book::{FUNCTION_KEY, LOCATION_KEY, PlaceState};
+use ecad_model::document::book::{FUNCTION_KEY, LOCATION_KEY, Place};
 use ecad_model::{
     Aid, AidId, Device, Document, FunctionId, IdAllocator, Ledger, ListCode, ListDescription, ListEntry, LocationBox, LocationId, ObjectRef, Op,
     Page, Project,
@@ -210,42 +210,32 @@ pub(crate) fn with_page_key(page: &Page, a: Aspect, key: Option<&str>) -> Page {
 /// Device `d`'s own value of aspect `a`, as a key.
 pub fn device_key(d: &Device, a: Aspect) -> Option<String> {
     match a {
-        Aspect::Function => d.function.map(FunctionId::hex),
-        Aspect::Location => d.location.map(LocationId::hex),
-    }
-}
-
-/// How device `d`'s value of aspect `a` came to be (design 072 §6.3).
-pub(crate) fn device_state(d: &Device, a: Aspect) -> PlaceState {
-    match a {
-        Aspect::Function => d.function_state,
-        Aspect::Location => d.location_state,
+        Aspect::Function => d.function.id().map(FunctionId::hex),
+        Aspect::Location => d.location.id().map(LocationId::hex),
     }
 }
 
 /// Whether device `d`'s value of aspect `a` was set by hand.
 pub(crate) fn device_fixed(d: &Device, a: Aspect) -> bool {
-    device_state(d, a) == PlaceState::ByHand
+    match a {
+        Aspect::Function => d.function.is_manual(),
+        Aspect::Location => d.location.is_manual(),
+    }
 }
 
 /// `d` with its value of aspect `a` set to `key` (`None`, or text that is not a key, clears it)
-/// and its state: by hand when `by_hand`, else proposed; unset with the value.
+/// and its state: manual when `by_hand`, else proposed; unset with the value.
 pub(crate) fn with_device_key(d: &Device, a: Aspect, key: Option<&str>, by_hand: bool) -> Device {
     let mut x = d.clone();
     let id = key.and_then(raw);
-    let state = match (id.is_some(), by_hand) {
-        (false, _) => PlaceState::Unset,
-        (true, true) => PlaceState::ByHand,
-        (true, false) => PlaceState::Proposed,
-    };
     match a {
         Aspect::Function => {
-            x.function = id.map(FunctionId);
-            x.function_state = state;
+            let f = id.map(FunctionId);
+            x.function = if by_hand { Place::manual(f) } else { Place::proposed(f) };
         }
         Aspect::Location => {
-            x.location = id.map(LocationId);
-            x.location_state = state;
+            let l = id.map(LocationId);
+            x.location = if by_hand { Place::manual(l) } else { Place::proposed(l) };
         }
     }
     x

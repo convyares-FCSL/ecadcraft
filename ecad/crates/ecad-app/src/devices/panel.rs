@@ -641,13 +641,12 @@ impl DevicesPanel {
         if r.changed() {
             out.push(Action::SetDeviceProperty {
                 component: c,
-                key: ecad_model::naming::tag::STATE_KEY,
-                value: ecad_model::naming::words::Word::word(if fixed {
-                    ecad_model::naming::tag::TagState::Fixed
-                } else {
-                    ecad_model::naming::tag::TagState::Automatic
-                })
-                .into(),
+                key: ecad_model::naming::tag::TAG_KEY,
+                value: serde_json::to_string(&ecad_model::naming::tag::TagSlot::of_text(
+                    e.tag.as_deref(),
+                    if fixed { ecad_model::naming::tag::TagState::Fixed } else { ecad_model::naming::tag::TagState::Automatic },
+                ))
+                .unwrap_or_default(),
                 conflict: None,
             });
         }

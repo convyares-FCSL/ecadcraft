@@ -130,8 +130,8 @@ fn record_and_definition_hashes_are_pinned() {
         // 0.2.3 structure move: ConnectionPoint ops, `connection_points` fields, `jumper_bar` keys.
         // 0.2.3 S1 (#2): a cable's `tag`, `tag_fixed` and `description` are record fields.
         // 0.2.3 S4 (#37): `NameVersion` names a `PointName` (typed rev or version), revision records are typed.
-        // 0.2.3 S6 (#3): `tag_state` and `location_state` / `function_state` replace the fixed flags.
-        ("head", "74a81531d7eba936b6166bcfe0b0e28102e46e9678d859fd425fd984a86add35"),
+        // 0.2.3 S6 (#3): a tag, location and function each carry their state in one field (`tag`, `location`, `function`).
+        ("head", "4b401c60b8f163e69a302cd3a3dc868fb370fe9436df40e439c349d3caee4828"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");

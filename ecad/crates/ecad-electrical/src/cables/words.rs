@@ -334,12 +334,25 @@ pub struct Row {
     /// symbol's context: the code, and where it comes from (`From the box on 105`). Shown as a
     /// **Use +CP1** link that sets it.
     pub proposal: Option<(String, String)>,
+    /// A tag row's state (S6, #3): what its tag is, `None` without a tag or on other rows. Not a
+    /// setprop key: the tag is one value, set through the `tag` key.
+    pub tag_state: Option<ecad_model::naming::tag::TagState>,
 }
 
 impl Row {
     /// A read-only row.
     pub fn ro(key: &str, label: &str, value: String) -> Row {
-        Row { key: key.into(), label: label.into(), value, editable: false, inherited: false, varies: false, choices: Vec::new(), proposal: None }
+        Row {
+            key: key.into(),
+            label: label.into(),
+            value,
+            editable: false,
+            inherited: false,
+            varies: false,
+            choices: Vec::new(),
+            proposal: None,
+            tag_state: None,
+        }
     }
     /// An editable row.
     pub fn rw(key: &str, label: &str, value: String) -> Row {

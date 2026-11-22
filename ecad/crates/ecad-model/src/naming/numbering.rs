@@ -37,7 +37,7 @@ use crate::document::op::{ObjectRef, Op};
 use crate::document::sheet::Grid;
 use crate::geometry::geom::Pt;
 use crate::naming::id::{CableId, ConnectionPointId, DeviceId, FolderId, PageId, WireId};
-use crate::naming::tag::{self, HighWater, TAG_KEY};
+use crate::naming::tag::{self, HighWater};
 
 /// The kind of item a row numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -550,7 +550,7 @@ fn plan_tags(
             object: ObjectRef::Device(*id),
             kind: Kind::Devices,
             tag,
-            state: c.tag_state,
+            state: c.tag.state().unwrap_or_default(),
             fixed: c.is_fixed(),
             anchor: None,
             id: id.0,
@@ -559,7 +559,15 @@ fn plan_tags(
     for (_, k) in doc.tagged_cables() {
         let Some(c) = doc.cables.get(&k) else { continue };
         let tag = c.tag().map(str::to_string);
-        items.push(Tagged { object: ObjectRef::Cable(k), kind: Kind::Cables, tag, state: c.tag_state, fixed: c.is_fixed(), anchor: None, id: k.0 });
+        items.push(Tagged {
+            object: ObjectRef::Cable(k),
+            kind: Kind::Cables,
+            tag,
+            state: c.tag.state().unwrap_or_default(),
+            fixed: c.is_fixed(),
+            anchor: None,
+            id: k.0,
+        });
     }
     let digits = req.digits.unwrap_or_else(|| doc.settings.tag_padding().min(tag::MAX_PADDING));
     let style = tag::Style::of(doc);
@@ -682,10 +690,7 @@ fn plan_tags(
                         }
                     }
                     ObjectRef::Cable(k) => {
-                        Op::edit_cable(doc, ops, k, |c| {
-                            let _ = c.set_value(TAG_KEY, Some(&new));
-                            c.tag_state = tag::TagState::Automatic;
-                        });
+                        Op::edit_cable(doc, ops, k, |c| c.tag = tag::TagSlot::of_text(Some(&new), tag::TagState::Automatic));
                     }
                     ObjectRef::Wire(_) | ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => {}
                 }
@@ -1052,7 +1057,10 @@ mod tests {
             matches!(p.ops.last(), Some(Op::SetProperty { object: ObjectRef::Project, key, after: Some(v), .. }) if key == "numbering.high.K" && v.starts_with("4;"))
         );
         let mut high = HighWater::new();
-        tag::note_ops(&mut high, &[Op::SetProperty { object: ObjectRef::Project, key: TAG_KEY.into(), before: None, after: Some("-K07".into()) }]);
+        tag::note_ops(
+            &mut high,
+            &[Op::SetProperty { object: ObjectRef::Project, key: tag::TAG_KEY.into(), before: None, after: Some("-K07".into()) }],
+        );
         tag::note_ops(&mut high, &p.ops);
         assert_eq!(high.get("K"), Some(&4));
     }
@@ -1104,9 +1112,9 @@ mod tests {
             op.apply(&mut d).unwrap();
         }
         let (one, two) = (&d.devices[&DeviceId(1)], &d.devices[&DeviceId(2)]);
-        assert_eq!(one.tag_state, tag::TagState::Automatic, "{one:?}");
+        assert_eq!(one.tag.state(), Some(tag::TagState::Automatic), "{one:?}");
         assert!(!one.tag().unwrap().contains('?') && one.tag().unwrap() != "-K3", "numbered after the used -K05: {:?}", one.tag());
-        assert_eq!((two.tag(), two.tag_state), (Some("-K05"), tag::TagState::Fixed));
+        assert_eq!((two.tag(), two.tag.state()), (Some("-K05"), Some(tag::TagState::Fixed)));
     }
 
     #[test]

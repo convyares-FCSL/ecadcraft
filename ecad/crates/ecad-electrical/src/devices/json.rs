@@ -130,10 +130,10 @@ pub(crate) fn device_json(doc: &Document, c: DeviceId) -> Value {
         }
     }
     v["representations"] = Value::Array(reps.into_iter().map(|(_, _, x)| x).collect());
-    // Brief 026: the tag as drawn (a provisional one with its `?`), and its state.
-    v["tag"] = json!(comp.tag_shown());
-    v["tag_state"] = json!(ecad_model::naming::words::Word::word(comp.tag_state));
-    v["provisional"] = Value::Bool(comp.is_provisional());
+    // Brief 026, S6 #3: the tag with its state as one value (`{"state","tag"}`, the bare tag), and as drawn
+    // (a provisional one with its `?`).
+    v["tag"] = json!(comp.tag);
+    v["tag_shown"] = json!(comp.tag_shown());
     v
 }
 

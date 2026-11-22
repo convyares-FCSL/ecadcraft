@@ -92,10 +92,8 @@ fn a_device_s_location_and_function_are_shown() {
     };
     let before = Device::default();
     let after = Device {
-        location: Some(loc),
-        location_state: ecad_model::document::book::PlaceState::ByHand,
-        function: Some(fun),
-        function_state: ecad_model::document::book::PlaceState::Proposed,
+        location: ecad_model::document::book::Place::Manual(loc),
+        function: ecad_model::document::book::Place::Proposed(fun),
         ..before.clone()
     };
     l.commit(Author::User, "list", vec![Op::ModifyProject { before: Project::default(), after: project }]).unwrap();
@@ -103,7 +101,7 @@ fn a_device_s_location_and_function_are_shown() {
     l.commit(Author::User, "place", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
     let path = written(&dir, &l);
     let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
-    for want in ["ModifyDevice", "location", "location_state", "tag_state", "function"] {
+    for want in ["ModifyDevice", "\"location\":{\"id\"", "\"state\":\"manual\"", "\"state\":\"proposed\"", "function"] {
         assert!(log.contains(want), "{want} in the readable log: {log}");
     }
     let f = FileSource::from_path(&path);
@@ -112,7 +110,7 @@ fn a_device_s_location_and_function_are_shown() {
     let rows = ask(s, serde_json::json!({"op": "devices", "detail": true}));
     let text = rows["ok"].to_string();
     assert!(
-        text.contains("\"location\":\"+CP1\"") && text.contains("\"location_state\":\"by_hand\"") && text.contains("\"function\":\"=F1\""),
+        text.contains("\"location\":\"+CP1\"") && text.contains("\"location_state\":\"manual\"") && text.contains("\"function\":\"=F1\""),
         "{text}"
     );
 }

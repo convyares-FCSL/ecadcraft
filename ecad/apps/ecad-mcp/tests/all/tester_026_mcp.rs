@@ -298,7 +298,7 @@ fn a_merged_fixed_flag_on_a_provisional_tag_does_not_survive_finalise() {
     let dir = TempDir::new("t026-merge-fixed-prov");
     let (mut c, x) = merge_project(&dir, "fixedprov.ecad");
     c.exec("branch", json!({"name": "Option F"}));
-    c.exec("setprop", json!({"component": x, "key": "tag_state", "value": "fixed"}));
+    c.set_tag_state(&json!(x), "fixed");
     c.exec("switchbranch", json!({"branch": "main", "save": true}));
     c.exec("numbering", json!({"provisional": true}));
     c.exec("setprop", json!({"component": x, "key": "tag", "value": "-K?"}));

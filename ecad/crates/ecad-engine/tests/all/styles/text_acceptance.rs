@@ -811,7 +811,7 @@ fn t7_hidden_text_is_still_data() {
     assert!(drawn_value(&mut f.h, f.page, "-K01").is_empty(), "nothing drawn");
     assert_eq!(reads(&mut f.h), before, "lists, reports and checks unchanged");
     let x = &before["x01"]["devices"];
-    assert!(x.as_array().is_some_and(|a| a.iter().any(|d| d["tag"] == "-X01")), "{x}");
+    assert!(x.as_array().is_some_and(|a| a.iter().any(|d| d["tag_shown"] == "-X01")), "{x}");
     f.h.check();
 }
 

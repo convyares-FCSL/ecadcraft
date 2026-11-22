@@ -222,7 +222,7 @@ fn terminal_block_renumber_with_fixed_and_provisional_strip_tags() {
     t.h.run("renumber", json!({"kind": "terminal_blocks"})).unwrap();
     assert_eq!(t.h.head(), head, "a renumber that changes nothing records nothing");
     // Fixed strip tag.
-    t.h.run("setprop", json!({"component": x1.hex(), "key": "tag_state", "value": "fixed"})).unwrap();
+    crate::common::set_tag_state(&mut t.h, &x1.hex(), "fixed").unwrap();
     t.h.run("renumber", json!({"kind": "terminal_blocks", "start": 21})).unwrap();
     assert_eq!(labels(&mut t.h, &a), ["21", "22", "23", "24"]);
     assert_eq!(labels(&mut t.h, &b), ["21", "22", "23", "24"]);

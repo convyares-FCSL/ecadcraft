@@ -334,6 +334,7 @@ pub(crate) fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::cabl
         varies: false,
         choices,
         proposal: None,
+        tag_state: None,
     };
     if ty.is_rack() {
         let (first, n) = rack::slot_range(doc, c);
@@ -557,6 +558,7 @@ pub(crate) fn channel_rows(
         varies: false,
         choices: Vec::new(),
         proposal: None,
+        tag_state: None,
     };
     rows.push(row(format!("plc.channel#{i}"), "Channel", (i + first).to_string(), false, false));
     let own = edit::module_of(doc, c).and_then(|m| m.channel(i));

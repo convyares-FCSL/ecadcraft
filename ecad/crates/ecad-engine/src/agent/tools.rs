@@ -229,7 +229,7 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
                 .iter()
                 .map(|m| json!({"conductor": m.wire().map(|w| w.hex()), "line": m.route().map(|r| r.hex()), "core": m.label_str(), "spare": m.is_spare()}))
                 .collect();
-            json!({"id": id.hex(), "tag": c.tag_shown(), "tag_state": ecad_model::naming::words::Word::word(c.tag_state), "description": c.description(), "properties": c.properties, "members": members})
+            json!({"id": id.hex(), "tag": c.tag_shown(), "tag_state": c.tag.state().map(ecad_model::naming::words::Word::word), "description": c.description(), "properties": c.properties, "members": members})
         });
         let nets = derive::nets(doc);
         let net_count = nets.len();

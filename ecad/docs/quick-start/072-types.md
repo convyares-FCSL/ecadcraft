@@ -9,7 +9,7 @@ What changed for someone using the app:
   read-only, and the open message names the word, the setting and where it is (the project, a
   page, a device, a wire, a cable, the settings or the standard). The file is kept as it is.
   Save is refused; **Save As** still saves a copy.
-- A yes/no property in a file (`numbering.provisional`, `wire_number_fixed`; a tag's state is `tag_state`: `automatic`, `fixed` or `provisional`) must hold
+- A yes/no property in a file (`numbering.provisional`, `wire_number_fixed`; a tag's state is part of the `tag` field: `{"state": "automatic"|"fixed"|"provisional", "tag": "-K1"}`) must hold
   exactly `yes` or `no`. Commands still accept `true`, `1` and `on` (and `false`, `0`, `off`) as
   you type them, and always write `yes` or `no`.
 - Nothing else changes in how the app looks or behaves.
@@ -129,7 +129,7 @@ A device's location and function are fields that point at the project's lists, e
   flag.
 
 To try it: type a location on a device, then draw a location box around another, unset device;
-open the inspector's devices view: the first shows `"location_state": "by_hand"`, the second `"proposed"` (S6 #3).
+open the inspector's devices view: the first shows `"location_state": "manual"`, the second `"proposed"` (S6 #3; the readable view derives the word from the location's own state).
 Nobody has tried it by hand yet.
 
 ### Lane B, step 3: a connector's own data

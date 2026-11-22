@@ -190,6 +190,9 @@ pub fn device_section(
         };
         let mut r = if key == "tag" && !one { Row::ro(key, label, value) } else { Row::rw(key, label, value) };
         r.varies = varies;
+        if key == "tag" && one {
+            r.tag_state = devices.iter().next().and_then(|c| doc.devices.get(c)).and_then(|d| d.tag.state());
+        }
         // Brief 052 (design 052 §9.1): an unset function or location is `?`, with the selected
         // symbol's context offered as **Use +CP1**. Nothing is inherited.
         if let Some(a) = crate::locations::designations::Aspect::of_property(key) {
@@ -206,11 +209,6 @@ pub fn device_section(
             && let Some(c) = devices.iter().next().copied()
         {
             override_rows(doc, c, &mut rows);
-        }
-        // Brief 026 (design §4, §9): the tag's state beside Tag; read-only for a provisional tag.
-        if key == "tag" && one {
-            let d = devices.iter().next().and_then(|c| doc.devices.get(c));
-            rows.push(state_row(d.and_then(|d| d.tag().map(|_| d.tag_state))));
         }
     }
     let title = if one {
@@ -613,9 +611,9 @@ pub fn wire_section(doc: &Document, w: WireId) -> Section {
 pub fn cable_section(doc: &Document, k: CableId) -> Section {
     let cable = doc.cables.get(&k);
     let props = cable.map(|c| &c.properties);
-    let mut rows = vec![Row::rw("tag", "Tag", cable.and_then(|c| c.tag_shown()).unwrap_or_default())];
-    // Brief 026: the tag's state beside Tag.
-    rows.push(state_row(cable.and_then(|c| c.tag().map(|_| c.tag_state))));
+    let mut tag = Row::rw("tag", "Tag", cable.and_then(|c| c.tag_shown()).unwrap_or_default());
+    tag.tag_state = cable.and_then(|c| c.tag.state());
+    let mut rows = vec![tag];
     rows.push(Row::rw(
         ecad_model::objects::devices::DESCRIPTION_KEY,
         "Description",
@@ -648,21 +646,6 @@ pub fn cable_section(doc: &Document, k: CableId) -> Section {
         note: None,
         buttons: vec![format!("showcores:{}", k.hex())],
     }
-}
-
-/// The tag-state row of a device or cable (brief 026, S6 #3): the state's word, read-only for a
-/// provisional tag or none (the state of a provisional tag is set by Finalise).
-fn state_row(state: Option<ecad_model::naming::tag::TagState>) -> Row {
-    use ecad_model::naming::tag::TagState;
-    use ecad_model::naming::words::Word;
-    let value = state.map(|s| s.word().to_string()).unwrap_or_default();
-    let mut r = if matches!(state, Some(TagState::Automatic | TagState::Fixed)) {
-        Row::rw(ecad_model::naming::tag::STATE_KEY, "Tag state", value)
-    } else {
-        Row::ro(ecad_model::naming::tag::STATE_KEY, "Tag state", value)
-    };
-    r.choices = vec![TagState::Automatic.word().into(), TagState::Fixed.word().into()];
-    r
 }
 
 /// The key a clash box's button edits (`tag#swap`, `tag#merge`, `tag#next`): the tag, with that

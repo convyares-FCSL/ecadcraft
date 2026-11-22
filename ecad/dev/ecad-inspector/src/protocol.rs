@@ -605,12 +605,12 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
             let mut row = json!({
                 "id": id.to_string(),
                 "tag": tag,
-                "tag_state": ecad_model::naming::words::Word::word(c.tag_state),
+                "tag_state": c.tag.state().map(ecad_model::naming::words::Word::word),
                 "duplicate": tag.as_ref().is_some_and(|t| tags.get(t).copied().unwrap_or(0) > 1),
-                "function": c.function.map(|f| function_code(d, f)),
-                "function_state": ecad_model::naming::words::Word::word(c.function_state),
-                "location": c.location.map(|l| location_code(d, l)),
-                "location_state": ecad_model::naming::words::Word::word(c.location_state),
+                "function": c.function.id().map(|f| function_code(d, f)),
+                "function_state": place_word(&c.function),
+                "location": c.location.id().map(|l| location_code(d, l)),
+                "location_state": place_word(&c.location),
                 "definition": c.definition.and_then(|def| d.definitions.get(&def)).map(|def| def.name.clone()),
                 "pages": pages,
                 "points": points,
@@ -741,7 +741,7 @@ fn cables(d: &Document) -> Vec<Value> {
             json!({
                 "id": id.to_string(),
                 "tag": k.tag_shown(),
-                "tag_state": ecad_model::naming::words::Word::word(k.tag_state),
+                "tag_state": k.tag.state().map(ecad_model::naming::words::Word::word),
                 "description": k.description(),
                 "cable_type": k.cable_type.as_ref().map(ecad_model::StyleRef::text),
                 "shield": k.shield.map(ecad_model::naming::words::Word::word),
@@ -957,4 +957,15 @@ fn row(st: &Store, req: &Request) -> Result<Value, Problem> {
     })
     .map_err(engine)?;
     found.ok_or_else(|| Problem::new("not-found", format!("No row of `{table}` has the key {want}."), "List the keys with the `rows` op."))
+}
+
+/// The word of how a location or function came to be, for the readable view: `manual`, `proposed`
+/// or `unset` (derived from the value's own state).
+fn place_word<I>(p: &ecad_model::document::book::Place<I>) -> &'static str {
+    use ecad_model::document::book::Place;
+    match p {
+        Place::Unset => "unset",
+        Place::Manual(_) => "manual",
+        Place::Proposed(_) => "proposed",
+    }
 }

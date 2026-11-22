@@ -56,7 +56,7 @@ pub(crate) fn stored_tag(t: &str) -> Result<tag::Tag, CmdError> {
 /// # Errors
 /// [`tag::BAD_TAG`].
 pub fn with_given(device: ecad_model::Device, given: &tag::Given) -> Result<ecad_model::Device, CmdError> {
-    Ok(ecad_model::Device { tag: Some(stored_tag(&given.text)?), tag_state: given.state, ..device })
+    Ok(ecad_model::Device { tag: tag::TagSlot::new(Some(stored_tag(&given.text)?), given.state), ..device })
 }
 
 /// A new device's description from a symbol's or default's name: `None` when the name is not a

@@ -71,6 +71,14 @@ impl Client {
         r["content"][0]["text"].as_str().unwrap().to_string()
     }
 
+    /// Give device `component` (hex id) the tag state `state`, keeping its bare tag: the `tag` key takes the
+    /// state and the tag as one value (S6, #3).
+    pub(crate) fn set_tag_state(&mut self, component: &Value, state: &str) -> Value {
+        let props = self.exec("deviceprops", json!({"component": component}));
+        let value = json!({"state": state, "tag": props["tag"]["tag"]}).to_string();
+        self.exec("setprop", json!({"component": component, "key": "tag", "value": value}))
+    }
+
     pub(crate) fn exec(&mut self, command: &str, params: Value) -> Value {
         self.ok("execute", json!({"command": command, "params": params}))
     }

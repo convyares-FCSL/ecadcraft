@@ -713,7 +713,7 @@ fn copy_batch(
         let new_comp: DeviceId = cx.ids.fresh();
         // A copied device gets the next tag of its prefix (design 018 §3.3).
         let mut comp = comp;
-        if comp.tag.is_some() {
+        if !comp.tag.is_none() {
             let tag = ecad_electrical::devices::merge::copy_tag(cx.ledger.document(), cx.tags, &comp);
             comp = match tag {
                 Some(g) => comp.with_tag(Some(&g.text), g.state),

@@ -194,8 +194,8 @@ fn oracle_run(seed: u64, steps: usize, strict: bool) {
             8 => {
                 if let Some(c) = pick(&mut rng, &live) {
                     let on = !fixed(&mut h, c);
-                    what = format!("tag_fixed {on} on {:?}", tag_of(&mut h, c));
-                    let _ = h.run("setprop", json!({"component": c.hex(), "key": "tag_state", "value": if on { json!("yes") } else { Value::Null }}));
+                    what = format!("tag fixed {on} on {:?}", tag_of(&mut h, c));
+                    let _ = crate::common::set_tag_state(&mut h, &c.hex(), if on { "fixed" } else { "automatic" });
                 }
             }
             9 => {
@@ -290,7 +290,7 @@ fn three_and_a_deleted_fourth(seed: u64) -> (H, PageId, DeviceId, DeviceId, Devi
 fn scramble(h: &mut H, a: DeviceId, b: DeviceId) {
     let tb = tag_of(h, b).unwrap();
     h.run("setprop", json!({"component": a.hex(), "key": "tag", "value": tb, "conflict": "swap"})).unwrap();
-    h.run("setprop", json!({"component": a.hex(), "key": "tag_state", "value": null})).unwrap();
+    crate::common::set_tag_state(h, &a.hex(), "automatic").unwrap();
 }
 
 /// FP4 and undo: the first renumber writes `numbering.high.K` (no value before). Undoing it gives
@@ -390,7 +390,7 @@ fn renumber_with_a_start_around_fixed_tags_makes_no_duplicate() {
         let at = cell(&mut h, page, col, 1);
         cs.push(coil(&mut h, at, None).unwrap());
     }
-    h.run("setprop", json!({"component": cs[5].hex(), "key": "tag_state", "value": "fixed"})).unwrap();
+    crate::common::set_tag_state(&mut h, &cs[5].hex(), "fixed").unwrap();
     h.run("setprop", json!({"component": cs[0].hex(), "key": "tag", "value": "-K05", "conflict": "swap"})).unwrap();
     h.run("setprop", json!({"component": cs[2].hex(), "key": "tag", "value": "-K1A"})).unwrap();
     let fixed_tags = fixed_tags(&mut h, &cs);
@@ -601,7 +601,7 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
             .map(|(k, t)| {
                 let before = doc.cables[k].clone();
                 let mut after = before.clone();
-                after.tag = ecad_model::naming::tag::Tag::new(t).ok();
+                after.tag = ecad_model::naming::tag::TagSlot::of_text(Some(t), Default::default());
                 Op::ModifyCable { id: *k, before, after }
             })
             .collect();
