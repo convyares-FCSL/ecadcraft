@@ -1,4 +1,4 @@
-//! `plcchannels`, `plcchannel` and placing a channel cell (brief 045, design 045 §4): channels
+//! `plcchannels` and placing a channel cell (brief 045, design 045 §4): channels
 //! on the page. The rules are [`ecad_electrical::plc::channels`].
 
 use cadcraft_engine::Session;
@@ -10,13 +10,13 @@ use serde::Deserialize;
 
 use crate::commands::input::Command;
 use crate::commands::{err, on_project, plain_style};
-use ecad_electrical::commands::input::{Point, TextOrNumber, nullable};
+use ecad_electrical::commands::input::{Point, TextOrNumber};
 use ecad_electrical::plc::channels::*;
 use ecad_electrical::plc::rack::channel_count;
 use ecad_electrical::symbols::Starter;
-use ecad_model::{ConnectionPointId, Placement, Pt};
+use ecad_model::{Placement, Pt};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 /// `place {symbol: <channel symbol>, at, rotation?, mirror?, device?, tag?, channel?}` (design 045
 /// §4.4): joins card `device` (or the card tagged `tag`, or a new card) as its next free channel or
@@ -95,7 +95,7 @@ pub(crate) fn place_channel(
         let proposed = crate::symbols::draw::plan_place(p, &ops, modes, card, page, pl.origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place channel", ops)?;
-        p.last_placed = Some((starter.key.to_string(), card));
+        p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: card });
         let doc = p.ledger.document();
         let first = first_number(doc, card);
         let pins: Vec<String> = cell.connection_points.iter().map(|(_, _, pin, _)| pin.clone()).collect();
@@ -196,7 +196,7 @@ impl Command for PlcchannelsParams {
                 return Ok(json!({"card": c.hex(), "tag": tag, "channels": channels, "message": message}));
             }
             p.apply_edit(pg, "plcchannels", "Place channels", plan.ops)?;
-            p.last_placed = Some((plan.starter.to_string(), c));
+            p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(plan.starter), device: c });
             let k = plan.placed.len();
             let wires = if k == 1 { "1 wire".to_string() } else { format!("{k} wires") };
             let mut first_pins: Vec<String> = plan.pins.clone();
@@ -207,87 +207,6 @@ impl Command for PlcchannelsParams {
             let over = plan.placed.iter().filter(|i| **i >= count).count();
             let message = if over > 0 { format!("{message} {over} beyond its {count} channels: raise its count in Properties.") } else { message };
             Ok(json!({"card": c.hex(), "tag": tag, "channels": channels, "message": message}))
-        })?;
-        if let Some(m) = v.get("message").and_then(Value::as_str) {
-            s.echo(m.to_string());
-        }
-        Ok(v)
-    }
-}
-
-/// `plcchannel {card, channel, text?, address?, tag?, safe?, pins?, move_to?, terminal?}` (design
-/// 045 §4.6): one channel's data in one transaction. `move_to` (a Checks fix) gives the points of
-/// one drawn copy of the channel (`connection_point`, or the last-drawn copy) the channel numbered
-/// `move_to`.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct PlcchannelParams {
-    /// The card: an ID or a tag.
-    card: String,
-    /// The channel number, as shown.
-    #[serde(default)]
-    channel: Option<TextOrNumber>,
-    /// The 0-based channel index (stands for `channel` when that is absent).
-    #[serde(default)]
-    index: Option<TextOrNumber>,
-    /// The channel's description; null clears it.
-    #[serde(default, deserialize_with = "nullable")]
-    text: Option<Option<String>>,
-    /// A typed address; null clears it.
-    #[serde(default, deserialize_with = "nullable")]
-    address: Option<Option<String>>,
-    /// The PLC tag; null clears it.
-    #[serde(default, deserialize_with = "nullable")]
-    tag: Option<Option<String>>,
-    /// The safe state (outputs); null clears it.
-    #[serde(default, deserialize_with = "nullable")]
-    safe: Option<Option<String>>,
-    /// New pins: {role: pin}.
-    #[serde(default, deserialize_with = "nullable")]
-    pins: Option<Option<BTreeMap<String, String>>>,
-    /// Give a drawn copy of the channel this channel number.
-    #[serde(default, deserialize_with = "nullable")]
-    move_to: Option<Option<TextOrNumber>>,
-    /// With `move_to`: a connection point of the copy to move (absent: the last drawn).
-    #[serde(default)]
-    connection_point: Option<ConnectionPointId>,
-}
-
-impl Command for PlcchannelParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let number = |t: Option<TextOrNumber>| t.map(|t| rules::channel_number(&t.text())).transpose().map_err(|e| err(e.to_string()));
-        let channel = number(self.channel)?;
-        // `index` (0-based, Properties ▸ Channel's pin rows) stands for `channel` when that is absent.
-        let index = number(self.index)?;
-        if channel.is_none() && index.is_none() {
-            return Err(err("`channel` (a number as shown) is required"));
-        }
-        let values: Vec<(&'static str, Option<String>)> = [
-            ("text", self.text),
-            ("address", self.address),
-            (ecad_electrical::plc::signals::TAG, self.tag),
-            (ecad_electrical::plc::signals::SAFE, self.safe),
-        ]
-        .into_iter()
-        .filter_map(|(what, v)| v.map(|v| (what, v)))
-        .collect();
-        let input = rules::ChannelInput {
-            channel,
-            index,
-            values,
-            pins: self.pins,
-            move_to: self.move_to.map(|m| m.map(|t| t.text())),
-            connection_point: self.connection_point,
-        };
-        let v = on_project(s, |p, pg, _| {
-            let plan = rules::plan_channel(p.ledger.document(), &self.card, &input)?;
-            let (c, shown) = (plan.card, plan.shown);
-            if plan.ops.is_empty() {
-                return Ok(json!({"card": c.hex(), "channel": shown, "changed": false}));
-            }
-            p.apply_edit(pg, "plcchannel", "Channel data", plan.ops)?;
-            let message = format!("{} channel {shown}: {}.", plan.who, plan.said.join(", "));
-            Ok(json!({"card": c.hex(), "channel": shown, "changed": true, "message": message}))
         })?;
         if let Some(m) = v.get("message").and_then(Value::as_str) {
             s.echo(m.to_string());

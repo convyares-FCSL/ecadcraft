@@ -221,7 +221,7 @@ fn bom_has_one_row_per_device_and_contacts_add_none() {
     join(&mut h, "ssrout", s, [20.0, -60.0]).unwrap();
     place(&mut h, "rcbo2", [0.0, -120.0]);
     place(&mut h, "fusebank6", [60.0, -120.0]);
-    place(&mut h, "fuseterm", [200.0, -120.0]);
+    place(&mut h, "fuseterminalblock", [200.0, -120.0]);
     let v = h.run("bom", json!({})).unwrap();
     let rows: Vec<&Value> = v["rows"].as_array().unwrap().iter().filter(|r| r.get("accessory").is_none()).collect();
     let tags: Vec<String> = rows.iter().map(|r| r["tags"].as_str().unwrap_or_default().to_string()).collect();
@@ -304,7 +304,7 @@ fn a_changed_registered_prefix_is_followed_by_the_next_device() {
     assert_eq!((e["value"].as_str(), e["from"].as_str()), (Some("FB"), Some("project")), "{e}");
     assert_eq!(place(&mut h, "fusebank8", [0.0, -60.0])["tag"], "-FB01");
     // Other symbols keep their built-in.
-    assert_eq!(place(&mut h, "fuseterm", [100.0, 0.0])["tag"], "-F02");
+    assert_eq!(place(&mut h, "fuseterminalblock", [100.0, 0.0])["tag"], "-F02");
     // Back to the built-in.
     h.run("tagsettings", json!({"prefixes": {"fusebank8": null}})).unwrap();
     assert_eq!(entry(&mut h)["from"], "builtin");

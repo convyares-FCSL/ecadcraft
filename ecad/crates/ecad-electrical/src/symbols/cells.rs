@@ -46,7 +46,7 @@ pub(crate) fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static st
         | K::Rcd4
         | K::Ssrin
         | K::Ssrout
-        | K::Fuseterm
+        | K::Fuseterminalblock
         | K::Fusebank4
         | K::Fusebank6
         | K::Fusebank8
@@ -120,7 +120,7 @@ pub(crate) fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static st
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse
+        | K::Terminalblockfuse
         | K::Plcim
         | K::Plcpm
         | K::Plccm => return None,
@@ -199,7 +199,7 @@ pub(super) fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
         | K::Rcd4
         | K::Ssrin
         | K::Ssrout
-        | K::Fuseterm
+        | K::Fuseterminalblock
         | K::Fusebank4
         | K::Fusebank6
         | K::Fusebank8
@@ -273,7 +273,7 @@ pub(super) fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse
+        | K::Terminalblockfuse
         | K::Plcim
         | K::Plcpm
         | K::Plccm => {}

@@ -994,7 +994,7 @@ impl CableSlash {
         read(s, |p, _| {
             let doc = p.ledger.document();
             let tag = ecad_electrical::cables::cable_title(doc, k);
-            Ok(match ecad_electrical::terminal_strips::cable_cores(doc, k).and_then(|c| c.offer) {
+            Ok(match ecad_electrical::terminal_strips::cores::cable_cores(doc, k).and_then(|c| c.offer) {
                 Some(o) if !ecad_electrical::cables::is_drawn(doc, k) => format!("Slash the wires of {tag} ({} cores).", o.len()),
                 _ if !ecad_electrical::cables::is_drawn(doc, k) => format!("Slash the wires of {tag}."),
                 _ => format!("Slash the wires that continue {tag} here."),

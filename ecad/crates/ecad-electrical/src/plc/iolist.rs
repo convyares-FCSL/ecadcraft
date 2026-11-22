@@ -19,9 +19,9 @@ use crate::reports::{Cell, Table};
 /// Said by the release when the project has no card with channels (design 045 §8.3).
 pub const NO_CARDS: &str = "No PLC cards with channels.";
 /// Most targets one row names.
-pub const MAX_TARGETS: usize = 8;
+pub(crate) const MAX_TARGETS: usize = 8;
 /// The fields of a row the PLC manager edits, with the command that writes each.
-pub const EDITABLE: [(&str, &str); 5] =
+pub(crate) const EDITABLE: [(&str, &str); 5] =
     [("address", "plcchannel"), ("pins", "plcchannel"), ("text", "plcchannel"), ("tag", "plcchannel"), ("safe", "plcchannel")];
 
 /// What a channel is wired to: another connection point on its nets.
@@ -310,7 +310,7 @@ pub fn page_lines(doc: &Document, plc: &Plc) -> Vec<(bool, Vec<String>)> {
 }
 
 /// The page's columns with their A3 widths (brief 056, Q9: Tag and Safe; Description narrower).
-pub const PAGE_COLUMNS: [(&str, f64); 11] = [
+pub(crate) const PAGE_COLUMNS: [(&str, f64); 11] = [
     ("Slot", 14.0),
     ("Card", 22.0),
     ("Ch", 12.0),
@@ -324,19 +324,8 @@ pub const PAGE_COLUMNS: [(&str, f64); 11] = [
     ("Place", 52.0),
 ];
 
-/// How many lines the page has, from the model's counts (no rows made): a heading and the
-/// listed channels per card.
-pub fn page_heads(plc: &Plc) -> Vec<Option<String>> {
-    let mut v = Vec::new();
-    for card in cards_in_order(plc) {
-        v.push(Some(card.tag.clone()));
-        v.extend(std::iter::repeat_n(None, indexes(card).len()));
-    }
-    v
-}
-
 /// The release CSV (design 045 §8.3), `None` when no card has channels.
-pub fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
+pub(crate) fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
     let cards = cards_in_order(plc);
     if cards.is_empty() {
         return None;
@@ -393,7 +382,7 @@ pub fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
 
 /// The cards a change of device `d` (its tag) or conductor `w` (its number) touches through their
 /// nets: the cards with a channel point on them.
-pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Option<ecad_model::WireId>) -> Vec<DeviceId> {
+pub(crate) fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Option<ecad_model::WireId>) -> Vec<DeviceId> {
     let conn = doc.connectivity();
     let mut nets = Vec::new();
     if let Some(d) = d {
@@ -421,7 +410,7 @@ pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Optio
 }
 
 /// The cards with a channel point on the nets of terminals `ts`.
-pub fn cards_on_nets_of_connection_points(doc: &Document, plc: &Plc, ts: &[ecad_model::ConnectionPointId]) -> Vec<DeviceId> {
+pub(crate) fn cards_on_nets_of_connection_points(doc: &Document, plc: &Plc, ts: &[ecad_model::ConnectionPointId]) -> Vec<DeviceId> {
     let conn = doc.connectivity();
     let mut out = Vec::new();
     for n in ts.iter().filter_map(|t| conn.net_of_connection_point(*t)) {

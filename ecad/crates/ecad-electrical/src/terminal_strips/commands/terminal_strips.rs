@@ -4,7 +4,7 @@
 //! and returns the ops to commit and what to report; the engine crate's shims read the parameters,
 //! build the reports, commit and answer in JSON.
 
-use crate::terminal_strips::{StripData, TermRow};
+use crate::terminal_strips::strip_model::{StripData, TermRow};
 use ecad_model::geometry::units::Radians;
 use ecad_model::{LevelIo, PointKey};
 use serde_json::{Value, json};
@@ -428,7 +428,7 @@ pub fn plan_bridge(
         return Err(CmdError::NotFound(Noun::TerminalBlock));
     }
     if a == b {
-        return Err(CmdError::refused("Pick two different terminals: a bridge links one terminal to another."));
+        return Err(CmdError::refused("Pick two different terminals: a bridge jumper bars one terminal to another."));
     }
     let (wa, wb) = (connection_point_words(doc, a), connection_point_words(doc, b));
     let (sa, sb) = (terminal_strips::strip_of_connection_point(doc, a), terminal_strips::strip_of_connection_point(doc, b));
@@ -494,7 +494,7 @@ pub fn plan_page(lens: &[usize], after: usize, limit: usize) -> PlanPage {
 }
 
 /// A side cell as JSON: `conductor`, and `target`, `wire` (and outside `cable`, `core`) when known.
-pub fn side_json(c: &terminal_strips::SideCell, outside: bool) -> Value {
+pub(crate) fn side_json(c: &terminal_strips::strip_model::SideCell, outside: bool) -> Value {
     let mut o = serde_json::Map::new();
     put(&mut o, "target", c.target.as_ref());
     put(&mut o, "wire", c.wire.as_ref());
@@ -507,7 +507,7 @@ pub fn side_json(c: &terminal_strips::SideCell, outside: bool) -> Value {
 }
 
 /// [`PLAN_FIELDS`] as JSON: `[{group, key, editable, command?}]`.
-pub fn plan_fields_json() -> Value {
+pub(crate) fn plan_fields_json() -> Value {
     Value::Array(
         PLAN_FIELDS
             .iter()
@@ -558,7 +558,7 @@ pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
 }
 
 /// A gap row as JSON (design 030 §7.2).
-pub fn gap_json(s: &StripData, gap: &str, a: crate::terminal_strips::accessories::Acc) -> Value {
+pub(crate) fn gap_json(s: &StripData, gap: &str, a: crate::terminal_strips::accessories::Acc) -> Value {
     let mut o = serde_json::Map::new();
     o.insert("kind".into(), json!("accessory"));
     o.insert("state".into(), json!("accessory"));
@@ -574,7 +574,7 @@ pub fn gap_json(s: &StripData, gap: &str, a: crate::terminal_strips::accessories
 /// One strip as JSON with plan rows `first..end` of it (`first_row` when it does not start at
 /// 0). With `accessories` (brief 030) every row has `kind`, gap rows are in, terminal rows carry
 /// `marker` and `jumper_bars`, and the strip carries `accessories` and `jumper_bars`; without, 028's rows.
-pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize, end: usize, accessories: bool) -> Value {
+pub(crate) fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize, end: usize, accessories: bool) -> Value {
     let mut o = serde_json::Map::new();
     o.insert("strip".into(), json!(s.component.hex()));
     o.insert("tag".into(), json!(s.tag));
@@ -604,8 +604,8 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
         .unwrap_or_default()
         .iter()
         .map(|item| match item {
-            terminal_strips::PlanItem::Gap { gap, acc } => gap_json(s, gap, *acc),
-            terminal_strips::PlanItem::Term(i, r) => {
+            terminal_strips::strip_model::PlanItem::Gap { gap, acc } => gap_json(s, gap, *acc),
+            terminal_strips::strip_model::PlanItem::Term(i, r) => {
                 let mut v = row_json(r, style);
                 if accessories {
                     v["kind"] = json!("terminal_block");
@@ -660,14 +660,14 @@ pub fn put<T: serde::Serialize>(o: &mut serde_json::Map<String, Value>, key: &st
 /// The terminal plan's fields (design 036 §9): the row model the terminal manager (2.6, the U3
 /// table) and strip pages (1.8) draw. Each is `(group, key, editable, the command that writes it)`;
 /// the groups mirror the strip: `inside` | `strip` | `outside`, and `either` for the row's place.
-pub const PLAN_FIELDS: &[(&str, &str, bool, Option<&str>)] = &[
+pub(crate) const PLAN_FIELDS: &[(&str, &str, bool, Option<&str>)] = &[
     ("inside", "inside[].target", false, None),
     ("inside", "inside[].wire", false, None),
     ("inside", "inside[].conductor", false, None),
-    ("strip", "position", true, Some("termlabel {position}")),
+    ("strip", "position", true, Some("terminalblocklabel {position}")),
     ("strip", "level", false, None),
     ("strip", "level_name", false, None),
-    ("strip", "label", true, Some("termlabel {text}")),
+    ("strip", "label", true, Some("terminalblocklabel {text}")),
     ("strip", "type", false, None),
     ("strip", "type_name", false, None),
     ("strip", "state", false, None),

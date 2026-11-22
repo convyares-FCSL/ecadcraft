@@ -1,7 +1,7 @@
 //! Graphical terminal-strip pages (brief 046, design 046): the `graphic` style of a `connection_points`
 //! generated page. Each strip is drawn as it is wired on the rail: one column per plan row of
-//! [`ecad_electrical::terminal_strips::StripData::plan`], inside conductors up to their targets, outside conductors
-//! down, cable bars and boxes under them, links, bridges, levels and accessories in the band.
+//! [`ecad_electrical::terminal_strips::strip_model::StripData::plan`], inside conductors up to their targets, outside conductors
+//! down, cable bars and boxes under them, jumper bars, bridges, levels and accessories in the band.
 //!
 //! It reads only the kept report models ([`ReportModels`]: the strips, the cable and device rows). It
 //! stores nothing in the document and is never a second model: the table style and this one draw
@@ -22,20 +22,20 @@ use crate::convert::kind_for_primitive;
 use crate::pages::frame::{FrameInput, Part, THIN_WEIGHT, TextDraw};
 use ecad_electrical::reports::kept::ReportModels;
 use ecad_electrical::terminal_strips::accessories::Acc;
-use ecad_electrical::terminal_strips::{SideCell, StripData};
+use ecad_electrical::terminal_strips::strip_model::{SideCell, StripData};
 use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextKind};
 use {ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
 
 /// Guard (design 046 §4.1): at most this many cable bar lanes; further cables share the last.
-pub const MAX_CABLE_LANES: usize = 8;
+pub(crate) const MAX_CABLE_LANES: usize = 8;
 /// Guard (§3.5): conductors drawn as leads on one side of a column; more are counted `+n`.
-pub const MAX_LEADS_PER_SIDE: usize = 2;
+pub(crate) const MAX_LEADS_PER_SIDE: usize = 2;
 /// Guard (§4.2): far devices named under a cable box; more are counted `+n`.
-pub const MAX_FAR_DEVICES: usize = 3;
-/// Lane spacing (`ecad.strip.lane-gap`): links, cable bars.
+pub(crate) const MAX_FAR_DEVICES: usize = 3;
+/// Lane spacing (`ecad.strip.lane-gap`): jumper bars, cable bars.
 const JUMPER_BAR_LANE_MM: f64 = 2.0;
 const CABLE_LANE_MM: f64 = 2.5;
-/// `ecad.link-stub`: a link's continuation past the sheet's first or last column.
+/// `ecad.jumper bar-stub`: a jumper bar's continuation past the sheet's first or last column.
 const JUMPER_BAR_STUB_MM: f64 = 4.0;
 /// Two leads on one side sit this far either side of the column centre (§3.5).
 const LEAD_OFFSET_MM: f64 = 1.5;
@@ -353,9 +353,9 @@ fn tag_box(pen: &mut Pen, s: &StripData, g: &Geometry, fr: &Frame, lk: &Draws) {
     let loc = s.location.clone().unwrap_or_else(|| MISSING.into());
     pen.text((x0 + g.tagbox * 0.62, fr.yc), lk.location, &loc, HAlign::Center, true, room);
     pen.text((x0 + g.tagbox * 0.85, fr.yc), lk.description, &s.counts_text(), HAlign::Center, true, room);
-    // The lanes the band uses: links in its upper half, wire bridges in its lower half.
+    // The lanes the band uses: jumper bars in its upper half, wire bridges in its lower half.
     if !s.acc.jumper_bars.is_empty() {
-        pen.text((x0, y1 + 2.0), lk.description, "links \u{25b8}", HAlign::Left, false, Some(g.tagbox));
+        pen.text((x0, y1 + 2.0), lk.description, "jumper bars \u{25b8}", HAlign::Left, false, Some(g.tagbox));
     }
     if s.rows.iter().any(|r| r.bridge_group.is_some()) {
         pen.text((x0, y0 - 2.0), lk.description, "bridges \u{25b8}", HAlign::Left, false, Some(g.tagbox));
@@ -457,7 +457,7 @@ fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
     }
 }
 
-/// §5.1: links in lanes in the band's upper half, with continuation stubs at the sheet's edges.
+/// §5.1: jumper bars in lanes in the band's upper half, with continuation stubs at the sheet's edges.
 fn jumper_bars(pen: &mut Pen, placed: &[Placed<'_>], s: &StripData, yc: f64) {
     let positions: Vec<usize> = placed.iter().filter_map(|p| if let Col::Term(i, _) = p.col { Some(s.position_index(i)) } else { None }).collect();
     let (Some(lo), Some(hi)) = (positions.iter().min().copied(), positions.iter().max().copied()) else { return };

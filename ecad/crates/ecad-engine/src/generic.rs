@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::commands::input::{parse, schema};
-use ecad_electrical::commands::run::{Answer, Cx, Echo, Generic, Got, Outcome, Pages as Runs, Read as Reads, Slot, State, Unread};
+use ecad_electrical::commands::run::{Answer, Cx, Echo, Generic, Got, LastPlaced, Outcome, Pages as Runs, Read as Reads, Slot, State, Unread};
 use ecad_electrical::symbols::proposals::Conflict;
 use ecad_model::PageId;
 use serde_json::Value;
@@ -46,6 +46,7 @@ enum Held {
     None,
     LastCaption(Option<String>),
     Conflicts(Option<Vec<Conflict>>),
+    LastPlaced(Option<LastPlaced>),
 }
 
 /// Run generic command `P` with `params`.
@@ -112,6 +113,7 @@ fn commit<P: Generic>(
         State::None => Held::None,
         State::LastCaption => Held::LastCaption(proj.last_caption.clone()),
         State::Conflicts => Held::Conflicts(None),
+        State::LastPlaced => Held::LastPlaced(proj.last_placed),
     };
     let change_count = proj.change_count();
     let plain = crate::commands::plain_style(proj);
@@ -120,6 +122,7 @@ fn commit<P: Generic>(
             Held::None => Slot::None,
             Held::LastCaption(c) => Slot::LastCaption(c),
             Held::Conflicts(set) => Slot::Conflicts { waiting: &proj.conflicts, set },
+            Held::LastPlaced(l) => Slot::LastPlaced(l),
         };
         let mut cx = Cx {
             doc: proj.ledger.document(),
@@ -149,6 +152,7 @@ fn commit<P: Generic>(
         Held::LastCaption(c) => proj.last_caption = c,
         Held::Conflicts(None) => {}
         Held::Conflicts(Some(c)) => proj.conflicts = c,
+        Held::LastPlaced(l) => proj.last_placed = l,
     }
     let v = match answer {
         Answer::Now(v) => v,

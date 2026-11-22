@@ -1,7 +1,7 @@
 //! Brief 046 (design 046 §11): graphical terminal-strip pages. Fixture G is built through the
 //! commands' JSON forms: `-X01` at `+CP1` with four feed-through positions on fixture T's wires
 //! (028), one PE and one fuse position drawn, an offer adding spares of every kind, `-W01`
-//! (`YSLY-JZ 7G1.5`) with four cores, `link.1 = 1-4`, a wire bridge 3–4, end stops at both ends, a
+//! (`YSLY-JZ 7G1.5`) with four cores, `jumper_bar.1 = 1-4`, a wire bridge 3–4, end stops at both ends, a
 //! partition after 2 and markers on 1–3.
 
 use std::collections::BTreeSet;
@@ -145,7 +145,7 @@ fn a_graphic_page_draws_the_strip_as_wired() {
     for r in &s.rows {
         assert!(texts(&p).iter().any(|(t, _)| t == &r.shown || t.starts_with(&format!("{} ", r.shown))), "label {} missing", r.shown);
     }
-    for want in ["-X01", "+CP1", "-K01:A2", "-M01:U1", "-W01", "YSLY-JZ 7G1.5", "-M01 Pump", "links \u{25b8}", "bridges \u{25b8}"] {
+    for want in ["-X01", "+CP1", "-K01:A2", "-M01:U1", "-W01", "YSLY-JZ 7G1.5", "-M01 Pump", "jumper bars \u{25b8}", "bridges \u{25b8}"] {
         assert!(has(&p, want), "{want} not drawn: {:?}", texts(&p));
     }
     // Wire numbers, inside and outside, and core labels on -W01's cores.
@@ -180,7 +180,7 @@ fn one_cable_bar_and_one_box_per_cable() {
 }
 
 /// §11 #5: 45 positions run onto a second sheet; no position split; per-strip titles; the book's
-/// Total counts both; a link over the break draws its stub on both sheets.
+/// Total counts both; a jumper bar over the break draws its stub on both sheets.
 #[test]
 fn a_long_strip_runs_onto_a_second_sheet() {
     let mut g = fixture(0x46_03);
@@ -205,7 +205,7 @@ fn a_long_strip_runs_onto_a_second_sheet() {
     let sheets = draw::paginate(&widths, geometry.available(&ecad_model::document::sheet::sheet_of(&doc, page)));
     assert_eq!(sheets.len(), 2);
     assert_eq!(blocks.iter().map(|b| b.1 - b.0).sum::<usize>(), cols.len(), "blocks cover every column");
-    // link.2 (30-45) crosses the break: a stub past the first column of sheet 2 and past the last
+    // jumper_bar.2 (30-45) crosses the break: a stub past the first column of sheet 2 and past the last
     // of sheet 1. Each stub is a 4 mm line ending at a column centre.
     let stubs = p
         .iter()

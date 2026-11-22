@@ -622,7 +622,7 @@ pub fn cable_section(doc: &Document, k: CableId) -> Section {
     rows.extend(free_rows(props, &[crate::terminal_strips::CORES_KEY]));
     // Brief 028 (design 028 §7.2): Cores (its own, else read from the type, shown faint) and the
     // read-only Used / Spare with Show cores.
-    let count = crate::terminal_strips::cable_cores(doc, k).unwrap_or_default();
+    let count = crate::terminal_strips::cores::cable_cores(doc, k).unwrap_or_default();
     let own = props.and_then(|p| p.get(crate::terminal_strips::CORES_KEY)).cloned();
     let mut cores = Row::rw(crate::terminal_strips::CORES_KEY, "Cores", own.clone().unwrap_or_default());
     if own.is_none()

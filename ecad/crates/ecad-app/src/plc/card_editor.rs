@@ -32,15 +32,15 @@ use crate::inspector::widgets as w;
 /// Element names.
 pub const PANEL: &str = "ecad.plc.card.editor";
 /// The greyed catalogue button's reason.
-pub const CATALOGUE_COMES: &str = "The part catalogue comes later.";
+pub(crate) const CATALOGUE_COMES: &str = "The part catalogue comes later.";
 /// The card's symbols read for the Function and Location hints (a card draws a body and channels).
 const MAX_SYMBOLS: usize = 256;
 /// The main part's note in Parts (board 2.03).
-pub const MAIN_PART: &str = "main part";
+pub(crate) const MAIN_PART: &str = "main part";
 /// The Rack choice for a card in no rack.
-pub const NO_RACK: &str = "None";
+pub(crate) const NO_RACK: &str = "None";
 /// The Detailed page note (board 2.03).
-pub const PAGE_NOTE: &str = "A card can be drawn across several pages. Each channel remembers which.";
+pub(crate) const PAGE_NOTE: &str = "A card can be drawn across several pages. Each channel remembers which.";
 
 /// What the editor shows of one card, read from the project.
 #[derive(Debug, Clone, PartialEq, Default)]

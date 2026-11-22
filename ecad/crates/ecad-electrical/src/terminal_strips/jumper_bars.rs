@@ -1,13 +1,13 @@
-//! Link lines (brief 030, design 030 §5.3): the dashed line a strip's link draws through its
+//! Jumper bar lines (brief 030, design 030 §5.3): the dashed line a strip's jumper bar draws through its
 //! terminals on every page that shows them. Derived on every draw of the page, never stored and
-//! never edited as geometry; erasing one deletes its link.
+//! never edited as geometry; erasing one deletes its jumper bar.
 //!
 //! # Semantics
-//! - Through the link's terminals on this page in plan order; between two that are not in one
+//! - Through the jumper bar's terminals on this page in plan order; between two that are not in one
 //!   row or column, an orthogonal dog-leg.
-//! - Lane `k` (from the strip's links, greedy by first position then number, as the plan's) is
+//! - Lane `k` (from the strip's jumper bars, greedy by first position then number, as the plan's) is
 //!   offset `k × 1.5 mm` up for a horizontal row, left for a vertical one.
-//! - Where the link goes on past the first or last terminal shown here, a 4 mm stub in the line's
+//! - Where the jumper bar goes on past the first or last terminal shown here, a 4 mm stub in the line's
 //!   direction; one terminal shown: a stub to the right.
 //!
 //! # Update map
@@ -20,16 +20,15 @@ use std::collections::BTreeMap;
 use ecad_model::connectivity::jumper_bars;
 use ecad_model::{DeviceId, Document, PageId, Pt, Subject};
 
-/// Lane spacing and stub length, in millimetres (`ecad.jumper_bar`, `ecad.link-stub`).
+/// Lane spacing and stub length, in millimetres (`ecad.jumper_bar`, `ecad.jumper bar-stub`).
 pub const LANE_MM: f64 = 1.5;
 pub const STUB_MM: f64 = 4.0;
 /// The layer the lines are drawn on.
 pub const LAYER: &str = "ecad.jumper_bar";
-/// Said when a link line is moved or stretched.
-pub const JUMPER_BAR_DERIVED: &str =
-    "A link line is drawn from its link: select it and use Extend, Shorten, Split or Delete (Jumper), or erase it to delete the link.";
+/// Said when a jumper bar line is moved or stretched.
+pub const JUMPER_BAR_DERIVED: &str = "A jumper bar line is drawn from its jumper bar: select it and use Extend, Shorten, Split or Delete (Jumper), or erase it to delete the jumper bar.";
 
-/// One segment of a link line.
+/// One segment of a jumper bar line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct JumperBarPart {
     pub strip: DeviceId,
@@ -48,7 +47,7 @@ fn stub(p: Pt, toward: Pt, back: bool) -> Pt {
     Pt::new(p.x + dx / len * s, p.y + dy / len * s)
 }
 
-/// The link lines of every strip shown on `page`.
+/// The jumper bar lines of every strip shown on `page`.
 pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
     let mut strips: Vec<DeviceId> = doc
         .representations_on(page)
@@ -75,7 +74,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
                 ((crate::terminal_strips::terminal_blocks::position_label(doc, t), crate::terminal_strips::terminal_blocks::level_of(doc, t).0), at)
             })
             .collect();
-        // Cross-level links (design 036 §5.4): a dog-leg between the levels shown, else stubs.
+        // Cross-level jumper bars (design 036 §5.4): a dog-leg between the levels shown, else stubs.
         for (n, p) in &found {
             for sp in p.spans() {
                 let jumper_bars::Span::Levels { position, lo, hi } = sp else { continue };
@@ -138,7 +137,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
                     seg(knee, *b);
                 }
             }
-            // Continuation stubs where the link goes on beyond what this page shows.
+            // Continuation stubs where the jumper bar goes on beyond what this page shows.
             if shown.len() == 1 {
                 if sel.len() > 1 {
                     let to = if horizontal { Pt::new(fp.x + 1.0, fp.y) } else { Pt::new(fp.x, fp.y + 1.0) };
@@ -157,17 +156,17 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
     out
 }
 
-/// The hover line of a link (§5.3): `-X01 link 1-4 (4 positions, 1 bar JB-10)`.
-pub fn hover(doc: &Document, data: Option<&crate::terminal_strips::StripData>, c: DeviceId, n: u32) -> String {
+/// The hover line of a jumper bar (§5.3): `-X01 jumper bar 1-4 (4 positions, 1 bar JB-10)`.
+pub fn hover(doc: &Document, data: Option<&crate::terminal_strips::strip_model::StripData>, c: DeviceId, n: u32) -> String {
     let tag = crate::devices::tags::tag_words(doc, c);
-    let Some(l) = data.and_then(|d| d.acc.jumper_bars.iter().find(|l| l.n == n)) else { return format!("{tag} link {n}") };
+    let Some(l) = data.and_then(|d| d.acc.jumper_bars.iter().find(|l| l.n == n)) else { return format!("{tag} jumper bar {n}") };
     let bars = if l.bars == 1 { "1 bar".to_string() } else { format!("{} bars", l.bars) };
     let part = l.part_number.clone().map_or_else(String::new, |p| format!(" {p}"));
-    // Brief 036: the level a link runs on (`level N`) when its strip has levels.
+    // Brief 036: the level a jumper bar runs on (`level N`) when its strip has levels.
     let level = match (l.level, data) {
         (Some(n), Some(d)) => d.rows.iter().find(|r| r.level == n && r.ty.multi()).map(|r| format!("level {}, ", r.level_name)),
         (None, _) => Some("levels of one position, ".to_string()),
         _ => None,
     };
-    format!("{tag} link {} ({}{} positions, {bars}{part})", l.text, level.unwrap_or_default(), l.labels.len())
+    format!("{tag} jumper bar {} ({}{} positions, {bars}{part})", l.text, level.unwrap_or_default(), l.labels.len())
 }

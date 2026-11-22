@@ -1,5 +1,5 @@
 //! Brief 030 acceptance (design 030 §12): accessories placed with `accessory`, part data from the
-//! strip and the project, the plan, BOM and Checks rows, renumbering, links made and edited with
+//! strip and the project, the plan, BOM and Checks rows, renumbering, jumper bars made and edited with
 //! `jumper`, and the update maps. Driven through the commands' JSON forms.
 
 use ecad_model::{ConnectionPointId, DeviceId};
@@ -158,7 +158,7 @@ fn placed_accessories_in_the_plan_and_on_the_bom() {
     f.same_as_built();
 }
 
-/// E (FP4, FP7): renumbering moves `acc.after.*`, `acc.on.*` and rewrites links, in the same
+/// E (FP4, FP7): renumbering moves `acc.after.*`, `acc.on.*` and rewrites jumper bars, in the same
 /// transaction; the preview lists them; `u` restores all.
 #[test]
 fn renumbering_moves_accessory_keys_and_jumper_bars() {
@@ -169,7 +169,7 @@ fn renumbering_moves_accessory_keys_and_jumper_bars() {
     let pv = f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all", "start": 3, "preview": true})).unwrap();
     let lines = pv["accessories"].to_string();
     assert!(lines.contains("partition after 4 \u{2192} after 6"), "{pv}");
-    assert!(lines.contains("link 1-4 \u{2192} 3-6"), "{pv}");
+    assert!(lines.contains("jumper bar 1-4 \u{2192} 3-6"), "{pv}");
     let head = f.h.head();
     f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all", "start": 3})).unwrap();
     assert_eq!(f.h.head(), head + 1, "one transaction");
@@ -177,14 +177,14 @@ fn renumbering_moves_accessory_keys_and_jumper_bars() {
     assert_eq!(f.prop("acc.after.4"), None);
     assert_eq!(f.prop("acc.on.4").as_deref(), Some("marker"));
     assert_eq!(f.prop("jumper_bar.1").as_deref(), Some("3-6"));
-    assert!(f.same_net(0, 3) && !f.same_net(0, 4), "the link joins the same terminals");
+    assert!(f.same_net(0, 3) && !f.same_net(0, 4), "the jumper bar joins the same terminals");
     f.same_as_built();
     f.h.cmdline("u");
     assert_eq!(f.prop("acc.after.4").as_deref(), Some("partition"));
     assert_eq!(f.prop("jumper_bar.1").as_deref(), Some("1-4"));
 }
 
-/// F, P: orphans and link checks have working fixes.
+/// F, P: orphans and jumper bar checks have working fixes.
 #[test]
 fn checks_rows_have_working_fixes() {
     let mut f = fixture(0x30_03);
@@ -204,7 +204,7 @@ fn checks_rows_have_working_fixes() {
     assert_eq!(f.h.head(), head + 1, "Move to end is one transaction");
     assert_eq!(f.prop("acc.after.11"), None);
     assert_eq!(f.prop("acc.end").as_deref(), Some("partition"));
-    // P: a link across a partition; split it there.
+    // P: a jumper bar across a partition; split it there.
     f.acc(json!({"at": "4", "add": ["partition"]}));
     f.jumper(json!({"strip": f.strip.hex(), "positions": "3-5"}));
     let v = f.h.run("checks", json!({"kinds": ["jumper-bar-across-partition"]})).unwrap();
@@ -221,7 +221,7 @@ fn checks_rows_have_working_fixes() {
     assert_eq!(f.h.head(), head + 1, "Split is one transaction");
     assert_eq!(f.prop("jumper_bar.1").as_deref(), Some("3-4"));
     assert_eq!(f.prop("jumper_bar.2").as_deref(), Some("5-6"));
-    // A link naming missing positions: drop them.
+    // A jumper bar naming missing positions: drop them.
     f.h.run("setprop", json!({"component": f.strip.hex(), "key": "jumper_bar.3", "value": "7-15"})).unwrap();
     let v = f.h.run("checks", json!({"kinds": ["jumper-bar-orphan"]})).unwrap();
     assert!(v.to_string().contains("names 15, which -X01 does not have"), "{v}");
@@ -230,8 +230,8 @@ fn checks_rows_have_working_fixes() {
     f.same_as_built();
 }
 
-/// L, N, O: links join nets with one wire number in one transaction; extend, shorten, split and
-/// delete are one transaction each; bars per link.
+/// L, N, O: jumper bars join nets with one wire number in one transaction; extend, shorten, split and
+/// delete are one transaction each; bars per jumper bar.
 #[test]
 fn jumper_bars_make_one_net_and_count_bars() {
     let mut f = fixture(0x30_04);
@@ -243,7 +243,7 @@ fn jumper_bars_make_one_net_and_count_bars() {
     assert!(f.same_net(0, 3) && f.same_net(1, 2) && !f.same_net(0, 4));
     assert_eq!(f.number(0), f.number(3), "one wire number");
     let tx = f.h.p(|p| p.ledger.log().last().map(|t| t.ops.len()).unwrap_or(0));
-    assert!(tx > 1, "the numbering pass's ops are in the link's transaction");
+    assert!(tx > 1, "the numbering pass's ops are in the jumper bar's transaction");
     let skip = f.jumper(json!({"strip": f.strip.hex(), "positions": "7, 9, 11", "skip": true}));
     assert_eq!(skip["jumper_bar"], 2);
     let plan = f.plan();
@@ -265,7 +265,7 @@ fn jumper_bars_make_one_net_and_count_bars() {
     f.h.cmdline("u");
     assert_eq!(f.prop("jumper_bar.1").as_deref(), Some("1-4, 6-8"));
     assert_eq!(f.prop("jumper_bar.3"), None);
-    // O: bars. Link 1-12 is 12 positions: 2 bars of 10; jumper.bar 4 → 3.
+    // O: bars. Jumper bar 1-12 is 12 positions: 2 bars of 10; jumper.bar 4 → 3.
     f.h.run("setprop", json!({"component": f.strip.hex(), "key": "jumper_bar.1", "value": "1-12"})).unwrap();
     let bars = |f: &mut F| f.plan()["jumper_bars"].as_array().unwrap().iter().find(|l| l["jumper_bar"] == 1).unwrap()["bars"].clone();
     assert_eq!(bars(&mut f), 2);
@@ -273,9 +273,9 @@ fn jumper_bars_make_one_net_and_count_bars() {
     assert_eq!(bars(&mut f), 3);
     f.h.run("setprop", json!({"component": f.strip.hex(), "key": "jumper_bar.2.part_number", "value": "JB-10-BU"})).unwrap();
     let rows: Vec<Value> = f.bom().into_iter().filter(|r| r["accessory"] == "jumper").collect();
-    assert_eq!(rows.len(), 2, "a link's own part gives its own row: {rows:?}");
+    assert_eq!(rows.len(), 2, "a jumper bar's own part gives its own row: {rows:?}");
     let delete = f.jumper(json!({"jumper_bar": n1, "delete": true}));
-    assert_eq!(delete["message"], "Deleted link -X01 1-12.");
+    assert_eq!(delete["message"], "Deleted jumper bar -X01 1-12.");
     assert!(!f.same_net(0, 3));
     f.same_as_built();
 }
@@ -335,7 +335,7 @@ fn hostile_accessory_and_jumper_bar_values_are_refused_in_words() {
     refused(&mut f, "setprop", json!({"component": s, "key": "jumper_bar.1000", "value": "1-4"}));
     refused(&mut f, "setprop", json!({"component": s, "key": "jumper_bar.1", "value": "4"}));
     refused(&mut f, "jumper", json!({"strip": s, "positions": "4"}));
-    // A link past the strip is kept and listed by Checks.
+    // A jumper bar past the strip is kept and listed by Checks.
     f.h.run("setprop", json!({"component": s, "key": "jumper_bar.1", "value": "1-99999"})).unwrap();
     let v = f.h.run("checks", json!({"kinds": ["jumper-bar-orphan"]})).unwrap();
     assert!(v.to_string().contains("99999"), "{v}");
@@ -361,8 +361,8 @@ fn hostile_accessory_and_jumper_bar_values_are_refused_in_words() {
     f.same_as_built();
 }
 
-/// M: the link line is drawn from the link on the page: through the terminals shown, with a
-/// stub where the link goes on to positions not shown here; a link edit redraws it.
+/// M: the jumper bar line is drawn from the jumper bar on the page: through the terminals shown, with a
+/// stub where the jumper bar goes on to positions not shown here; a jumper bar edit redraws it.
 #[test]
 fn jumper_bar_lines_are_drawn_from_the_jumper_bar() {
     let mut f = fixture(0x30_07);
@@ -379,7 +379,7 @@ fn jumper_bar_lines_are_drawn_from_the_jumper_bar() {
     assert_eq!(two.len(), 2, "5-6 and the stub: {two:?}");
     let x6 = f.h.connection_point_pos(page, f.terms[5]).x;
     assert!(two.iter().any(|s| (s.b.x - (x6 + ecad_electrical::terminal_strips::jumper_bars::STUB_MM)).abs() < 1e-6), "{two:?}");
-    // A skip link over 1-4 runs in lane 1, offset up.
+    // A skip jumper bar over 1-4 runs in lane 1, offset up.
     f.jumper(json!({"strip": f.strip.hex(), "positions": "2, 4", "skip": true}));
     let v = parts(&mut f);
     let y = f.h.connection_point_pos(page, f.terms[1]).y;
@@ -390,8 +390,8 @@ fn jumper_bar_lines_are_drawn_from_the_jumper_bar() {
     assert!(lines.is_some());
 }
 
-/// Review of PR #57, 1: drawn 1, 2 and 5, offer 6, `link.1 = 2-3`; renumbering 5 to 3 must not
-/// let the moved terminal join link 1 silently, and colliding places merge.
+/// Review of PR #57, 1: drawn 1, 2 and 5, offer 6, `jumper_bar.1 = 2-3`; renumbering 5 to 3 must not
+/// let the moved terminal join jumper bar 1 silently, and colliding places merge.
 #[test]
 fn renumbering_onto_a_spare_position_in_a_jumper_bar() {
     let mut h = H::new(0x30_08);
@@ -423,19 +423,19 @@ fn renumbering_onto_a_spare_position_in_a_jumper_bar() {
     f.acc(json!({"at": "5", "items": ["partition"]}));
     let pv = f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all", "preview": true})).unwrap();
     let lines = pv["accessories"].to_string();
-    assert!(lines.contains("link 2-3 removed (3 now drawn by a renumbered terminal)"), "{pv}");
+    assert!(lines.contains("jumper bar 2-3 removed (3 now drawn by a renumbered terminal)"), "{pv}");
     assert!(lines.contains("joined into end_plate,partition"), "{pv}");
     let head = f.h.head();
     f.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "all"})).unwrap();
     assert_eq!(f.h.head(), head + 1, "one transaction");
     assert_eq!(f.h.doc().connection_points[&f.terms[2]].label.as_deref(), Some("3"));
-    assert_eq!(f.prop("jumper_bar.1"), None, "the link is not silently extended to the moved terminal");
+    assert_eq!(f.prop("jumper_bar.1"), None, "the jumper bar is not silently extended to the moved terminal");
     assert!(!f.same_net(1, 2));
     assert_eq!(f.prop("acc.after.3").as_deref(), Some("end_plate,partition"), "merged, nothing lost");
     f.same_as_built();
 }
 
-/// Review of PR #57, 3: both halves keep the link's own part; a side of one position is refused
+/// Review of PR #57, 3: both halves keep the jumper bar's own part; a side of one position is refused
 /// in words.
 #[test]
 fn split_keeps_the_part_and_never_drops_a_side() {

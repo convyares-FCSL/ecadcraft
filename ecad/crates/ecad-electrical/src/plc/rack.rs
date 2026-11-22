@@ -24,11 +24,11 @@ use crate::plc::edit;
 use crate::defaults::{self, Scope};
 
 /// The `setprop` name of a module's station.
-pub const RACK_KEY: &str = "plc.rack";
+pub(crate) const RACK_KEY: &str = "plc.rack";
 /// The `setprop` name of a module's slot.
-pub const SLOT_KEY: &str = "plc.slot";
+pub(crate) const SLOT_KEY: &str = "plc.slot";
 /// The `setprop` name of a module's channel count (design 045 §2.3).
-pub const CHANNELS_KEY: &str = "plc.channels";
+pub(crate) const CHANNELS_KEY: &str = "plc.channels";
 /// The highest slot number.
 pub const MAX_SLOT: u32 = ecad_model::objects::plc::MAX_SLOT as u32;
 /// The most channels a card has.
@@ -176,7 +176,7 @@ impl CardType {
     }
 
     /// The registry entry of its built-in channel count (`plc.<type>.channels`).
-    pub fn channels_entry(self) -> Option<&'static defaults::Entry> {
+    pub(crate) fn channels_entry(self) -> Option<&'static defaults::Entry> {
         defaults::plc::channels_entry(&self.code().to_ascii_lowercase())
     }
 
@@ -200,13 +200,13 @@ impl CardType {
 }
 
 /// A slot number as stored: digits only, 0–[`MAX_SLOT`].
-pub fn parse_slot(text: &str) -> Option<u32> {
+pub(crate) fn parse_slot(text: &str) -> Option<u32> {
     let t = text.trim();
     ecad_model::naming::words::uint(t, MAX_SLOT).filter(|_| t.len() <= 3)
 }
 
 /// A channel count as stored: digits only, 0–[`MAX_CHANNELS`].
-pub fn parse_channels(text: &str) -> Option<u32> {
+pub(crate) fn parse_channels(text: &str) -> Option<u32> {
     let t = text.trim();
     ecad_model::naming::words::uint(t, MAX_CHANNELS).filter(|_| t.len() <= 3)
 }
@@ -232,12 +232,12 @@ pub fn rack_ref(doc: &Document, c: DeviceId) -> RackRef {
 }
 
 /// Card `c`'s slot, when it has one.
-pub fn slot_of(doc: &Document, c: DeviceId) -> Option<u32> {
+pub(crate) fn slot_of(doc: &Document, c: DeviceId) -> Option<u32> {
     edit::module_of(doc, c).and_then(|m| m.slot).map(u32::from)
 }
 
 /// A rack's slot range: its first slot and how many (registry, rack level allowed).
-pub fn slot_range(doc: &Document, rack: DeviceId) -> (u32, u32) {
+pub(crate) fn slot_range(doc: &Document, rack: DeviceId) -> (u32, u32) {
     let at = Scope { component: Some(rack), ..Scope::project() };
     let n = defaults::resolve(doc, &defaults::plc::SLOTS, at).number();
     let first = defaults::resolve(doc, &defaults::plc::SLOT_FIRST, at).word();
@@ -263,14 +263,14 @@ pub fn racks(doc: &Document) -> Vec<DeviceId> {
 
 /// The cards whose module names `rack` (a station or not), with their slots, by slot then tag:
 /// the index's station → modules map (design 072 §3, `PlcRack::modules`).
-pub fn cards_naming(doc: &Document, rack: DeviceId) -> Vec<(DeviceId, Option<u32>)> {
+pub(crate) fn cards_naming(doc: &Document, rack: DeviceId) -> Vec<(DeviceId, Option<u32>)> {
     let mut v: Vec<(DeviceId, Option<u32>)> = doc.plc_modules(rack).map(|c| (c, slot_of(doc, c))).collect();
     v.sort_by_key(|(c, s)| (*s, crate::devices::tags::tag_words(doc, *c)));
     v
 }
 
 /// Which card of `rack` (other than `except`) holds `slot`.
-pub fn holder_of_slot(doc: &Document, rack: DeviceId, slot: u32, except: Option<DeviceId>) -> Option<DeviceId> {
+pub(crate) fn holder_of_slot(doc: &Document, rack: DeviceId, slot: u32, except: Option<DeviceId>) -> Option<DeviceId> {
     cards_naming(doc, rack).into_iter().find(|(c, s)| *s == Some(slot) && Some(*c) != except).map(|(c, _)| c)
 }
 
@@ -282,7 +282,7 @@ pub fn next_free_slot(doc: &Document, rack: DeviceId, except: Option<DeviceId>) 
 }
 
 /// `DI 16`: a card's type and channel count.
-pub fn type_words(doc: &Document, c: DeviceId) -> String {
+pub(crate) fn type_words(doc: &Document, c: DeviceId) -> String {
     match crate::plc::card_type_of(doc, c) {
         Some(t) if t.has_channels() => format!("{} {}", t.code(), channel_count(doc, c)),
         Some(t) => t.code().to_string(),
@@ -291,7 +291,7 @@ pub fn type_words(doc: &Document, c: DeviceId) -> String {
 }
 
 /// The refusal of a taken slot, with the way out (design 045 §2.4).
-pub fn taken_words(doc: &Document, rack: DeviceId, slot: u32, holder: DeviceId) -> String {
+pub(crate) fn taken_words(doc: &Document, rack: DeviceId, slot: u32, holder: DeviceId) -> String {
     // The card's own slot counts as taken: Enter offers a slot it is not in.
     let next = next_free_slot(doc, rack, None).map_or_else(|| "none is free".to_string(), |s| s.to_string());
     format!(
@@ -311,7 +311,7 @@ pub fn put(doc: &Document, ops: &mut Vec<Op>, card: DeviceId, to: Option<(Device
 }
 
 /// The ops putting `card` in `rack` at `slot` (or taking it out with `None`), only what changes.
-pub fn slot_ops(doc: &Document, card: DeviceId, to: Option<(DeviceId, u32)>) -> Vec<Op> {
+pub(crate) fn slot_ops(doc: &Document, card: DeviceId, to: Option<(DeviceId, u32)>) -> Vec<Op> {
     let mut ops = Vec::new();
     put(doc, &mut ops, card, to);
     ops
@@ -319,7 +319,7 @@ pub fn slot_ops(doc: &Document, card: DeviceId, to: Option<(DeviceId, u32)>) -> 
 
 /// What deleting rack `rack` adds (design 045 §2.2, Q1, FP1 condition 2): every card naming it
 /// taken out of its slot, and how many cards that is. Nothing when `rack` is not named by any card.
-pub fn release_cards(doc: &Document, rack: DeviceId) -> (Vec<Op>, usize) {
+pub(crate) fn release_cards(doc: &Document, rack: DeviceId) -> (Vec<Op>, usize) {
     let cards = cards_naming(doc, rack);
     let mut ops = Vec::new();
     for (c, _) in &cards {
@@ -329,7 +329,7 @@ pub fn release_cards(doc: &Document, rack: DeviceId) -> (Vec<Op>, usize) {
 }
 
 /// `6 cards are now in no rack.`
-pub fn released_words(n: usize) -> String {
+pub(crate) fn released_words(n: usize) -> String {
     if n == 1 { "1 card is now in no rack.".into() } else { format!("{n} cards are now in no rack.") }
 }
 
@@ -362,7 +362,7 @@ pub fn rack_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
 ///
 /// # Errors
 /// Nothing of that name, a rack, or a device that is not a PLC card.
-pub fn card_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
+pub(crate) fn card_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
     let c = device_named(doc, t)?;
     match crate::plc::card_type_of(doc, c) {
         Some(t) if t.is_rack() => {
@@ -397,7 +397,7 @@ pub fn default_rack(doc: &Document, card: Option<DeviceId>) -> Result<DeviceId, 
 ///
 /// # Errors
 /// Anything else, in words.
-pub fn slot_number(text: &str) -> Result<u32, CmdError> {
+pub(crate) fn slot_number(text: &str) -> Result<u32, CmdError> {
     parse_slot(text).ok_or_else(|| CmdError::refused(format!("A slot is a whole number from 0 to {MAX_SLOT}.")))
 }
 
@@ -405,7 +405,7 @@ pub fn slot_number(text: &str) -> Result<u32, CmdError> {
 ///
 /// # Errors
 /// The refusals of §2.4: no rack, a taken slot (unless `swap`), a slot outside the rack.
-pub fn plan_slot(doc: &Document, card: DeviceId, rack: Option<DeviceId>, slot: Option<u32>, swap: bool) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn plan_slot(doc: &Document, card: DeviceId, rack: Option<DeviceId>, slot: Option<u32>, swap: bool) -> Result<Vec<Op>, CmdError> {
     let rack = match rack {
         Some(r) => r,
         None => default_rack(doc, Some(card))?,
@@ -507,7 +507,7 @@ pub fn put_new_card(doc: &Document, ops: &mut Vec<Op>, card: DeviceId, rack: Dev
 /// (FP1 condition 2): `into` takes `from`'s station data with its rack body, unless it is a
 /// station already, and `from`'s cards are re-pointed to it (a slot clash then shows as
 /// `slot-twice`, with its fix). Nothing when `from` is not a rack.
-pub fn merge_into(doc: &Document, ops: &mut Vec<Op>, from: DeviceId, into: DeviceId) {
+pub(crate) fn merge_into(doc: &Document, ops: &mut Vec<Op>, from: DeviceId, into: DeviceId) {
     let Some(station) = edit::station_of(doc, from).cloned() else { return };
     // `from`'s representations, its rack body among them, move to `into`, which so becomes the rack
     // (a merge that would give `into` two heads is refused before this).
@@ -519,13 +519,6 @@ pub fn merge_into(doc: &Document, ops: &mut Vec<Op>, from: DeviceId, into: Devic
             edit::module(doc, ops, c, |m| m.rack = Some(into));
         }
     }
-}
-
-/// The ops [`merge_into`] adds to a merge with no other ops.
-pub fn merge_ops(doc: &Document, from: DeviceId, into: DeviceId) -> Vec<Op> {
-    let mut ops = Vec::new();
-    merge_into(doc, &mut ops, from, into);
-    ops
 }
 
 /// The I/O card types a card's type may be changed among (design 056 §5, owner's change of
@@ -541,7 +534,7 @@ pub fn with_article(t: CardType) -> String {
 }
 
 /// What a card type's channels are: `digital outputs`, `analogue inputs`.
-pub fn signal_words(t: CardType) -> &'static str {
+pub(crate) fn signal_words(t: CardType) -> &'static str {
     match t {
         CardType::Di => "digital inputs",
         CardType::Dq => "digital outputs",

@@ -112,10 +112,10 @@ fn hostile_values_are_refused() {
     assert_eq!(parse::ambient("95"), None);
     assert_eq!(parse::bundling("3 bunched"), Some(ecad_model::objects::wire::Bundling::Circuits(3)));
     assert_eq!(parse::percent("25"), None);
-    assert_eq!(ecad_electrical::terminal_strips::notation_size("H07RN-F 4G1.5"), Some(1.5));
-    assert_eq!(ecad_electrical::terminal_strips::notation_size("3x2.5"), Some(2.5));
-    assert_eq!(ecad_electrical::terminal_strips::notation_size("LiYCY 4x2x0.25"), Some(0.25));
-    assert_eq!(ecad_electrical::terminal_strips::notation_size("H07RN-F"), None);
+    assert_eq!(ecad_electrical::terminal_strips::cores::notation_size("H07RN-F 4G1.5"), Some(1.5));
+    assert_eq!(ecad_electrical::terminal_strips::cores::notation_size("3x2.5"), Some(2.5));
+    assert_eq!(ecad_electrical::terminal_strips::cores::notation_size("LiYCY 4x2x0.25"), Some(0.25));
+    assert_eq!(ecad_electrical::terminal_strips::cores::notation_size("H07RN-F"), None);
 }
 
 #[test]
@@ -546,7 +546,7 @@ fn f6_the_trace_bound_is_said_in_words() {
 #[test]
 fn a_strip_fuse_position_protects_its_out_point_only() {
     let mut h = H::new(570);
-    let x = place(&mut h, "termfuse", [100.0, 100.0], "-X05");
+    let x = place(&mut h, "terminalblockfuse", [100.0, 100.0], "-X05");
     let doc = h.doc();
     let page = h.first_page();
     let mut points: Vec<(char, ecad_model::Pt)> = Vec::new();

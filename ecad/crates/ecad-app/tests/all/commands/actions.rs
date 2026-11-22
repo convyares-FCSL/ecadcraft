@@ -100,7 +100,7 @@ const ECAD_COMMANDS: &[&str] = &[
     "pagetexts",
     "defaults",
     "agentaccess",
-    "termlabel",
+    "terminalblocklabel",
     "toposition",
     "setdefault",
     "canvassheet",
