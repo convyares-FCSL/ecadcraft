@@ -333,7 +333,7 @@ pub(crate) fn released_words(n: usize) -> String {
 /// No device of that name ("No device -A9.").
 fn device_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
     let t = t.trim();
-    if let Some(c) = DeviceId::parse(t).filter(|c| t.len() == 32 && doc.devices.contains_key(c)) {
+    if let Some(c) = DeviceId::parse(t).filter(|c| t.len() == 32 && doc.devices().contains_key(c)) {
         return Ok(c);
     }
     let tag = ecad_model::naming::tag::normalise(t, crate::defaults::print::tag_style(doc)).unwrap_or_else(|_| t.to_string());

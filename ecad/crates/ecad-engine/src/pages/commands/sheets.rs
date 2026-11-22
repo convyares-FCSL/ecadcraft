@@ -240,7 +240,7 @@ impl Command for OpenrevisionParams {
                 .iter()
                 .map(|pg| {
                     json!({"page": pg.hex(), "number": book.number(&then, *pg),
-                           "title": then.pages.get(pg).map(|x| x.title.clone())})
+                           "title": then.pages().get(pg).map(|x| x.title.clone())})
                 })
                 .collect();
             let date = row.get("date").to_string();
@@ -280,7 +280,7 @@ impl Command for UndoissueParams {
             let r = p.undo_step(pg);
             p.confirm_issue_undo = false;
             r.map_err(CmdError::refused)?;
-            let rev = p.ledger.document().project.rev_scheme.show(rev);
+            let rev = p.ledger.document().project().rev_scheme.show(rev);
             if p.revision_view.as_ref().is_some_and(|v| v.rev == rev) {
                 p.revision_view = None;
             }

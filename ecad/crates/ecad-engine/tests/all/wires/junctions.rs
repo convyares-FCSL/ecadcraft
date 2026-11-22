@@ -66,7 +66,7 @@ fn a_file_holding_a_junction_opens_read_only() {
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file_read_only(&mut s, &file, 0x72_d9).unwrap();
     let mut h = H { s, project, trail: Vec::new() };
-    let kind = h.cfg(|p| p.ledger.document().devices.get(&DeviceId(0x72_d7)).and_then(|d| d.properties.get(KIND).cloned()));
+    let kind = h.cfg(|p| p.ledger.document().devices().get(&DeviceId(0x72_d7)).and_then(|d| d.properties.get(KIND).cloned()));
     assert_eq!(kind.as_deref(), Some("junction"), "the file is kept as it is");
     close_all(&mut h);
 }
@@ -97,7 +97,7 @@ fn a_tee_draws_a_dot_that_follows_its_line() {
     let v = h.run("wire", json!({"points": pts(&[(mid.x, mid.y + 30.0), (mid.x, mid.y)])})).unwrap();
     let tee: RouteId = id(&v, "route");
     let main = h.route_of(page, w);
-    assert!(matches!(h.doc().routes[&tee].ends[1], RouteEnd::On { route, .. } if route == main), "a T");
+    assert!(matches!(h.doc().routes()[&tee].ends[1], RouteEnd::On { route, .. } if route == main), "a T");
 
     let d = dots(&mut h, page);
     assert_eq!(d.len(), ecad_electrical::wires::TEE_DOT_RADII.len(), "one dot of rings: {d:?}");
@@ -115,7 +115,7 @@ fn a_tee_draws_a_dot_that_follows_its_line() {
 
     // Moved off the wire: the end is free again and the dot goes; undo brings both back.
     h.run("move", json!({"handles": [line.hex()], "delta": [0, 5]})).unwrap();
-    assert_eq!(h.doc().routes[&tee].ends[1], RouteEnd::Free);
+    assert_eq!(h.doc().routes()[&tee].ends[1], RouteEnd::Free);
     assert!(dots(&mut h, page).is_empty());
     h.check();
     h.cmdline("u");
@@ -139,7 +139,7 @@ fn a_tee_end_is_joined_not_open() {
     let uid = h.p(|p| p.pages[&page].uid).expect("the page is open");
     let line = h.line_handle(page, tee);
     let lines = h.p(|p| hover_lines(p, uid, line)).unwrap();
-    let number = h.doc().wires[&w].number_text().map(str::to_string).unwrap_or_default();
+    let number = h.doc().wires()[&w].number_text().map(str::to_string).unwrap_or_default();
     assert!(lines.contains(&format!("End B joins wire {number} (a T).")), "{lines:?}");
     assert!(!lines.iter().any(|l| l.contains("Open end")), "{lines:?}");
 
@@ -188,7 +188,7 @@ fn a_tee_dot_shows_in_the_raster_and_the_print() {
     };
     let (before, printed) = (ink_beside_the_tee(&mut h, page), circles(&mut h));
     let tee: RouteId = id(&h.run("wire", json!({"points": pts(&[(30.0, 30.0), (30.0, 0.0)])})).unwrap(), "route");
-    assert!(h.doc().routes[&tee].ends[1].route().is_some(), "a T");
+    assert!(h.doc().routes()[&tee].ends[1].route().is_some(), "a T");
     let after = ink_beside_the_tee(&mut h, page);
     assert!(after > before + 5, "the dot is drawn: {before} inked pixels before, {after} after");
     assert_eq!(circles(&mut h), printed + ecad_electrical::wires::TEE_DOT_RADII.len(), "the dot prints");

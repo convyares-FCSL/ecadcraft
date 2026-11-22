@@ -22,7 +22,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::document::doc::Primitive;
+use crate::Primitive;
 
 /// Most items in one block. Guard: a hostile file cannot make a block unbounded, and it bounds
 /// the cost of drawing a frame and of the editor's frame.
@@ -80,7 +80,7 @@ impl Rect {
     }
     /// Whether every number is finite and the box is inside `0..=MAX_COORD_MM` with sides of at
     /// least [`MIN_BOX_MM`].
-    pub fn sane(&self) -> bool {
+    pub(crate) fn sane(&self) -> bool {
         [self.x, self.y, self.w, self.h].iter().all(|v| v.is_finite())
             && self.x >= 0.0
             && self.y >= 0.0

@@ -66,7 +66,7 @@ fn channels_on_several_plain_devices_stays_free_text() {
     h.run("setprop", json!({"devices": many, "key": "channels", "value": "8"})).unwrap();
     let d = h.doc();
     for c in &conns {
-        assert_eq!(d.devices[c].properties.get("channels").map(String::as_str), Some("8"));
+        assert_eq!(d.devices()[c].properties.get("channels").map(String::as_str), Some("8"));
     }
 }
 

@@ -274,6 +274,6 @@ fn fp1_merge_preview_names_racks_by_tag() {
     c.exec("merge", json!({"from": "Option R", "choices": {id: "branch"}}));
     let d = c.doc();
     let cid = ecad_model::DeviceId::parse(&card).unwrap();
-    let ecad_model::DeviceType::PlcModule(m) = &d.devices[&cid].device_type else { panic!("a module") };
+    let ecad_model::DeviceType::PlcModule(m) = &d.devices()[&cid].device_type else { panic!("a module") };
     assert_eq!(m.rack.map(|r| r.hex()), Some(a20.clone()));
 }

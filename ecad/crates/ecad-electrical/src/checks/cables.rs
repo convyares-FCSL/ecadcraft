@@ -8,7 +8,7 @@ use super::*;
 pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
     let references = crate::references::cables::references_of(doc, k);
     let [(rid, r)] = references.as_slice() else { return Vec::new() };
-    let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+    let at = r.items.first().and_then(|i| doc.items().get(i)).and_then(|i| match &i.kind {
         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
         _ => None,
     });
@@ -28,7 +28,7 @@ pub(crate) fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -
     // Brief 059 (design 059 §6): a cable not drawn yet has one Info row and no core rows; its
     // planned ends and glands are not checked until it is drawn.
     let drawn = crate::cables::is_drawn(doc, k);
-    if !drawn && doc.cables.contains_key(&k) {
+    if !drawn && doc.cables().contains_key(&k) {
         let name = crate::cables::cable_title(doc, k);
         out.push(Check {
             kind: Kind::CableNotDrawn,
@@ -59,7 +59,7 @@ pub(crate) fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -
             });
         }
     }
-    let Some(cable) = doc.cables.get(&k) else { return out };
+    let Some(cable) = doc.cables().get(&k) else { return out };
     let (Some(key), Some(t)) = (cable.tag_key(), cable.tag_shown()) else { return out };
     if !cable.is_provisional() && doc.cables_with(&key).len() < 2 && doc.components_with(&key).is_empty() {
         return out;
@@ -80,13 +80,13 @@ pub(crate) fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -
 /// landed, and a core whose stored place is not the one its line now gives
 /// ([`ecad_model::connectivity::wire_order::core_position`]). Reads only the cable's own cores and their lines.
 pub(super) fn core_place_checks(doc: &Document, k: ecad_model::CableId, out: &mut Vec<Check>) {
-    let Some(cable) = doc.cables.get(&k) else { return };
+    let Some(cable) = doc.cables().get(&k) else { return };
     let name = crate::cables::cable_title(doc, k);
     for (i, m) in cable.cores.iter().enumerate() {
         let core = m.label_str().map(str::to_string).unwrap_or_else(|| (i + 1).to_string());
         if let ecad_model::CorePosition::Wire(w) = m.position {
             if let Some(now) = wire_core_stale(doc, w) {
-                let (page, at) = if doc.wires.contains_key(&w) { conductor_place(doc, w, None) } else { (None, None) };
+                let (page, at) = if doc.wires().contains_key(&w) { conductor_place(doc, w, None) } else { (None, None) };
                 let which = format!("{name} core {core}: stored on a wire, but {now}.");
                 out.push(Check { kind: Kind::CorePlaceStale, page, at, object: Object::Cable(k), which, fix: None });
             }
@@ -115,7 +115,7 @@ pub(super) fn core_place_checks(doc: &Document, k: ecad_model::CableId, out: &mu
 /// but none of them carries it. `None` when it holds (a wire with no line at its ends, made by a
 /// command that draws none, is not judged).
 pub(super) fn wire_core_stale(doc: &Document, w: WireId) -> Option<&'static str> {
-    let Some(wire) = doc.wires.get(&w) else { return Some("its wire is gone") };
+    let Some(wire) = doc.wires().get(&w) else { return Some("its wire is gone") };
     let mut lines = wire.ends.iter().flat_map(|t| doc.routes_at(*t)).peekable();
     lines.peek()?;
     let carried = lines.any(|r| ecad_model::connectivity::wire_order::wire_of_route(doc, r) == Some(w));
@@ -126,7 +126,7 @@ pub(super) fn wire_core_stale(doc: &Document, w: WireId) -> Option<&'static str>
 pub(super) fn route_points(doc: &Document, route: &ecad_model::Route) -> Vec<ConnectionPointId> {
     let mut out: Vec<ConnectionPointId> = route.points_landed().collect();
     for on in route.ends.iter().filter_map(|e| e.route()) {
-        if let Some(r) = doc.routes.get(&on) {
+        if let Some(r) = doc.routes().get(&on) {
             out.extend(r.points_landed());
         }
     }

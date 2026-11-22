@@ -97,11 +97,11 @@ pub(crate) fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -
                 let (mut devices, mut cables, mut conductors) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
                 for t in list {
                     let n = hex(t, "objects")?;
-                    if doc.devices.contains_key(&DeviceId(n)) {
+                    if doc.devices().contains_key(&DeviceId(n)) {
                         devices.insert(DeviceId(n));
-                    } else if doc.cables.contains_key(&CableId(n)) {
+                    } else if doc.cables().contains_key(&CableId(n)) {
                         cables.insert(CableId(n));
-                    } else if doc.wires.contains_key(&WireId(n)) {
+                    } else if doc.wires().contains_key(&WireId(n)) {
                         conductors.insert(WireId(n));
                     } else {
                         return Err(CmdError::refused(format!("{t} in `objects` is not a device, cable or wire.")));
@@ -124,7 +124,7 @@ pub(crate) fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -
             }
             if let Some(f) = folder {
                 let f = f.ok_or(CmdError::input("`folder` (hex id) is required"))?;
-                if !doc.folders.contains_key(&f) {
+                if !doc.folders().contains_key(&f) {
                     return Err(CmdError::NotFound(Noun::Folder));
                 }
                 return Ok(Scope::Folder(f));
@@ -133,7 +133,7 @@ pub(crate) fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -
                 let a = ps.as_ref().ok_or(CmdError::input("`pages` must be an array of hex ids"))?;
                 let mut set = BTreeSet::new();
                 for p in a.iter().take(MAX_PAGES) {
-                    if !doc.pages.contains_key(p) {
+                    if !doc.pages().contains_key(p) {
                         return Err(CmdError::refused(format!("No page {}.", p.hex())));
                     }
                     set.insert(*p);
@@ -152,7 +152,7 @@ pub(crate) fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -
 /// # Errors
 /// A named strip that is not a terminal strip or one of its terminal blocks.
 pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSet<DeviceId>, CmdError> {
-    let all = || doc.devices.keys().copied().filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some());
+    let all = || doc.devices().keys().copied().filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some());
     Ok(match scope {
         Scope::All | Scope::Folder(_) | Scope::Pages(_) => all().collect(),
         Scope::Prefix(p) => {
@@ -163,7 +163,7 @@ pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSe
             let mut out: BTreeSet<DeviceId> = devices.iter().copied().filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some()).collect();
             for t in named {
                 let n = hex(t, "strips")?;
-                let c = match doc.connection_points.get(&ConnectionPointId(n)) {
+                let c = match doc.connection_points().get(&ConnectionPointId(n)) {
                     Some(t) => t.device(),
                     None => Some(DeviceId(n)),
                 };
@@ -277,7 +277,7 @@ pub fn desc(doc: &Document, o: ObjectRef) -> String {
     match o {
         ObjectRef::Device(c) => crate::devices::tags::description(doc, c),
         ObjectRef::Cable(k) => {
-            let n = doc.cables.get(&k).map_or(0, |c| c.cores.len());
+            let n = doc.cables().get(&k).map_or(0, |c| c.cores.len());
             format!("Cable, {}", plural(n, "wire", "wires"))
         }
         ObjectRef::Wire(w) => {
@@ -424,16 +424,16 @@ pub fn choices(doc: &Document) -> Choices {
             prefixes.insert(p);
         }
     }
-    let potentials = doc.settings.wiring.potentials.iter().filter(|p| p.numbered).map(|p| p.name.clone()).collect();
+    let potentials = doc.settings().wiring.potentials.iter().filter(|p| p.numbered).map(|p| p.name.clone()).collect();
     let mut folders: Vec<(FolderId, String)> = doc
-        .folder_order
+        .folder_order()
         .iter()
         .filter_map(|f| {
             let mut names = Vec::new();
             let mut at = Some(*f);
             for _ in 0..ecad_model::document::book::MAX_FOLDER_DEPTH {
                 let Some(id) = at else { break };
-                let folder = doc.folders.get(&id)?;
+                let folder = doc.folders().get(&id)?;
                 names.push(folder.name.clone());
                 at = folder.parent;
             }
@@ -497,12 +497,12 @@ pub fn provisional_items(doc: &Document) -> Provisional {
     let mut held: Vec<(Option<(String, u64)>, String)> = doc
         .tagged()
         .filter(|(k, _)| k.provisional)
-        .filter_map(|(_, c)| doc.devices.get(&c))
+        .filter_map(|(_, c)| doc.devices().get(&c))
         .map(|d| (d.tag().and_then(tag::parse), d.tag_shown().unwrap_or_default()))
         .chain(
             doc.tagged_cables()
                 .filter(|(k, _)| k.provisional)
-                .filter_map(|(_, k)| doc.cables.get(&k))
+                .filter_map(|(_, k)| doc.cables().get(&k))
                 .map(|c| (c.tag().and_then(tag::parse), c.tag_shown().unwrap_or_default())),
         )
         .collect();
@@ -702,7 +702,7 @@ fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Re
     if how.for_new
         && let Some(d) = req.digits
     {
-        let before = doc.settings.clone();
+        let before = doc.settings().clone();
         let mut after = before.clone();
         if req.kinds.contains(&Kind::Devices) || req.kinds.contains(&Kind::Cables) {
             after.tag_padding = Some(d);
@@ -770,7 +770,7 @@ impl Generic for NumberingParams {
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let read = |doc: &Document| json!({"provisional": numbering::provisional_on(doc), "padding": devices::padding(doc), "cable_prefix": format!("-{}", devices::tags::cable_prefix(doc))});
         let Some(on) = self.provisional else { return Ok(Outcome::answer(read(cx.doc))) };
-        let before = cx.doc.display.get(PROVISIONAL_SETTING).cloned();
+        let before = cx.doc.display().get(PROVISIONAL_SETTING).cloned();
         let after = on.then(|| ecad_model::naming::words::flag_word(true).to_string());
         let ops = match before == after {
             true => Vec::new(),

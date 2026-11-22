@@ -47,30 +47,30 @@ pub(crate) fn is_start(t: &str) -> bool {
 
 /// `folder`'s start number (design 072 §5.2: `Folder.start`), when it has a valid one.
 pub fn start_of(doc: &Document, folder: FolderId) -> Option<String> {
-    doc.folders.get(&folder)?.start.as_ref().map(|s| s.as_str().trim()).filter(|s| is_start(s)).map(str::to_string)
+    doc.folders().get(&folder)?.start.as_ref().map(|s| s.as_str().trim()).filter(|s| is_start(s)).map(str::to_string)
 }
 
 /// The run a page belongs to: the nearest folder above it (its own first) with a start number,
 /// else `None` (the book's run from 1).
 fn run_of(doc: &Document, page: PageId) -> Option<FolderId> {
-    let mut at = book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
+    let mut at = book::folder_of(doc, page).filter(|f| doc.folders().contains_key(f));
     for _ in 0..=MAX_FOLDER_DEPTH {
         let f = at?;
         if start_of(doc, f).is_some() {
             return Some(f);
         }
-        at = doc.folders.get(&f).and_then(|x| x.parent);
+        at = doc.folders().get(&f).and_then(|x| x.parent);
     }
     None
 }
 
 /// Whether `page` is in `folder` or one of its sub-folders.
 fn within(doc: &Document, page: PageId, folder: FolderId) -> bool {
-    let mut at = book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
+    let mut at = book::folder_of(doc, page).filter(|f| doc.folders().contains_key(f));
     for _ in 0..=MAX_FOLDER_DEPTH {
         match at {
             Some(f) if f == folder => return true,
-            Some(f) => at = doc.folders.get(&f).and_then(|x| x.parent),
+            Some(f) => at = doc.folders().get(&f).and_then(|x| x.parent),
             None => return false,
         }
     }
@@ -88,7 +88,7 @@ fn fmt(n: u64, width: usize) -> String {
 
 /// The name of a run for words: the folder's name, or `The book`.
 fn run_name(doc: &Document, run: Option<FolderId>) -> String {
-    run.and_then(|f| doc.folders.get(&f)).map_or_else(|| "the book".to_string(), |f| format!("folder {}", f.name))
+    run.and_then(|f| doc.folders().get(&f)).map_or_else(|| "the book".to_string(), |f| format!("folder {}", f.name))
 }
 
 /// One run's pages in book order, with their sheet counts.
@@ -105,7 +105,7 @@ fn runs(doc: &Document, book: &Book, reports: Option<&ReportModels>) -> Runs {
 /// The numbers each run would give if nothing else were in the way: its span, from its start by
 /// the step, a multi-sheet page taking one number per sheet.
 fn spans(doc: &Document, runs: &Runs) -> BTreeMap<Option<FolderId>, BTreeSet<u64>> {
-    let step = u64::from(doc.settings.page_number_step().max(1));
+    let step = u64::from(doc.settings().page_number_step().max(1));
     runs.iter()
         .map(|(run, pages)| {
             let (mut n, _) = start_value(doc, *run);
@@ -147,7 +147,7 @@ pub(crate) fn overlap_words(doc: &Document, from: Option<FolderId>, into: Option
     if let Some(c) = a.get(..1) {
         a = format!("{}{}", c.to_uppercase(), a.get(1..).unwrap_or_default());
     }
-    let b = into.and_then(|f| doc.folders.get(&f)).map_or_else(|| "the book's".to_string(), |f| format!("{}'s", f.name));
+    let b = into.and_then(|f| doc.folders().get(&f)).map_or_else(|| "the book's".to_string(), |f| format!("{}'s", f.name));
     let width = start_value(doc, into).1;
     format!("{a}'s numbers run into {b} ({}).", fmt(n, width))
 }
@@ -155,7 +155,7 @@ pub(crate) fn overlap_words(doc: &Document, from: Option<FolderId>, into: Option
 /// What [`renumber`] would write: each page whose number changes, with its new number.
 pub fn renumber(doc: &Document, reports: Option<&ReportModels>, scope: Option<FolderId>) -> Vec<(PageId, String)> {
     let book = Book::of(doc);
-    let step = u64::from(doc.settings.page_number_step().max(1));
+    let step = u64::from(doc.settings().page_number_step().max(1));
     let rs = runs(doc, &book, reports);
     let sp = spans(doc, &rs);
     let in_scope = |p: PageId| scope.is_none_or(|f| within(doc, p, f));
@@ -359,7 +359,7 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
     // Design 072 §8: a type record holds typed values only; a value its field does not take
     // does not read, so there is nothing to report about type records here.
     // Folder start numbers that are not 1–6 digits (design 072 §5.2: a page number is stored).
-    for (id, f) in &doc.folders {
+    for (id, f) in doc.folders() {
         if f.start.as_ref().is_some_and(|s| !is_start(s.as_str().trim())) {
             let mut r = row(Kind::FolderStartUnknown, None, format!("Folder {}'s start number is not 1 to 6 digits", f.name));
             r.fix = Some(crate::checks::Fix::Page(PageFix::RemoveStart(*id)));
@@ -380,5 +380,5 @@ fn runs_first_page(doc: &Document, run: Option<FolderId>) -> Option<PageId> {
 
 /// Every folder start number: folder → start, for the Book.
 pub fn starts(doc: &Document) -> BTreeMap<FolderId, String> {
-    doc.folder_order.iter().filter_map(|f| start_of(doc, *f).map(|s| (*f, s))).collect()
+    doc.folder_order().iter().filter_map(|f| start_of(doc, *f).map(|s| (*f, s))).collect()
 }

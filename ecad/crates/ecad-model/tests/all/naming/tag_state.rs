@@ -7,9 +7,11 @@ use ecad_model::{Device, DeviceId, Document, ObjectRef, Op};
 
 fn doc_with(devices: &[(u128, &str, TagState)]) -> Document {
     let mut d = Document::default();
-    for (id, t, state) in devices {
-        d.devices.insert(DeviceId(*id), Device::default().with_tag(Some(t), *state));
-    }
+    d.edit_parts(|parts| {
+        for (id, t, state) in devices {
+            parts.devices.insert(DeviceId(*id), Device::default().with_tag(Some(t), *state));
+        }
+    });
     d.rebuild_index();
     d
 }
@@ -19,8 +21,8 @@ fn a_provisional_k3_and_a_real_k3_are_different_tags() {
     let d = doc_with(&[(1, "-K3", TagState::Provisional), (2, "-K3", TagState::Fixed)]);
     assert_eq!(d.components_tagged("-K3"), vec![DeviceId(2)], "the real tag is held by the real device only");
     assert_eq!(d.components_with(&Key::of("K03", TagState::Provisional)), vec![DeviceId(1)]);
-    assert_eq!(d.devices[&DeviceId(1)].tag_shown().as_deref(), Some("-K?3"), "the ? is drawn, never stored");
-    assert_eq!(d.devices[&DeviceId(2)].tag_shown().as_deref(), Some("-K3"));
+    assert_eq!(d.devices()[&DeviceId(1)].tag_shown().as_deref(), Some("-K?3"), "the ? is drawn, never stored");
+    assert_eq!(d.devices()[&DeviceId(2)].tag_shown().as_deref(), Some("-K3"));
     assert!(d.tag_taken("-K3"));
     let only_provisional = doc_with(&[(1, "-K3", TagState::Provisional)]);
     assert!(!only_provisional.tag_taken("-K3"), "a provisional tag does not take the real one");
@@ -32,10 +34,10 @@ fn a_provisional_tag_does_not_raise_the_high_water_mark() {
     let d = doc_with(&[(1, "-K40", TagState::Provisional)]);
     let mut high = HighWater::new();
     let create = |device: &Device| Op::CreateDevice { id: DeviceId(1), device: device.clone() };
-    tag::note_ops(&mut high, &[create(&d.devices[&DeviceId(1)])]);
+    tag::note_ops(&mut high, &[create(&d.devices()[&DeviceId(1)])]);
     assert_eq!(high.get("K"), None, "a placeholder number is not a number used");
     let real = Device::default().with_tag(Some("-K07"), TagState::Fixed);
-    tag::note_ops(&mut high, &[Op::ModifyDevice { id: DeviceId(1), before: d.devices[&DeviceId(1)].clone(), after: real }]);
+    tag::note_ops(&mut high, &[Op::ModifyDevice { id: DeviceId(1), before: d.devices()[&DeviceId(1)].clone(), after: real }]);
     assert_eq!(high.get("K"), Some(&7));
     let _ = ObjectRef::Project;
 }

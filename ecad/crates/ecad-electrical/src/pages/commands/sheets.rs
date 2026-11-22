@@ -91,26 +91,26 @@ pub fn folder_name(text: &str) -> Result<String, CmdError> {
 /// [`msg::NO_SUCH_FOLDER`].
 pub fn check_folder(doc: &Document, f: Option<FolderId>) -> Result<(), CmdError> {
     match f {
-        Some(f) if !doc.folders.contains_key(&f) => Err(CmdError::refused(msg::NO_SUCH_FOLDER)),
+        Some(f) if !doc.folders().contains_key(&f) => Err(CmdError::refused(msg::NO_SUCH_FOLDER)),
         _ => Ok(()),
     }
 }
 
 /// The folder `f`.
 fn folder(doc: &Document, f: FolderId) -> Result<Folder, CmdError> {
-    doc.folders.get(&f).cloned().ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))
+    doc.folders().get(&f).cloned().ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))
 }
 
 /// The folders whose parent is `parent`, in folder order.
 fn siblings(doc: &Document, parent: Option<FolderId>) -> Vec<FolderId> {
-    doc.folder_order.iter().copied().filter(|f| doc.folders.get(f).is_some_and(|x| x.parent == parent)).collect()
+    doc.folder_order().iter().copied().filter(|f| doc.folders().get(f).is_some_and(|x| x.parent == parent)).collect()
 }
 
 fn check_sibling_name(doc: &Document, parent: Option<FolderId>, name: &str, except: Option<FolderId>) -> Result<(), CmdError> {
     let clash = siblings(doc, parent)
         .into_iter()
         .filter(|f| Some(*f) != except)
-        .any(|f| doc.folders.get(&f).is_some_and(|x| x.name.eq_ignore_ascii_case(name)));
+        .any(|f| doc.folders().get(&f).is_some_and(|x| x.name.eq_ignore_ascii_case(name)));
     if clash {
         return Err(CmdError::refused(format!("There is already a folder \"{name}\" here.")));
     }
@@ -152,7 +152,7 @@ pub(crate) fn new_folder(doc: &Document, ids: &mut IdAllocator, name: &str, pare
         return Err(too_deep());
     }
     let id: FolderId = ids.fresh();
-    let index = doc.folder_order.len();
+    let index = doc.folder_order().len();
     Ok((id, Op::AddFolder { id, folder: Folder::new(name, parent), index }))
 }
 
@@ -173,8 +173,8 @@ pub(crate) fn rename_folder(doc: &Document, f: FolderId, name: &str) -> Result<O
 /// The index in the folder order that puts `folder` at 1-based `index` among `parent`'s other
 /// sub-folders (default last), in the order with `folder` removed.
 fn folder_slot(doc: &Document, folder: FolderId, parent: Option<FolderId>, index: Option<usize>) -> usize {
-    let order: Vec<FolderId> = doc.folder_order.iter().copied().filter(|f| *f != folder).collect();
-    let sibs: Vec<FolderId> = order.iter().copied().filter(|f| doc.folders.get(f).is_some_and(|x| x.parent == parent)).collect();
+    let order: Vec<FolderId> = doc.folder_order().iter().copied().filter(|f| *f != folder).collect();
+    let sibs: Vec<FolderId> = order.iter().copied().filter(|f| doc.folders().get(f).is_some_and(|x| x.parent == parent)).collect();
     let pos = |f: &FolderId| order.iter().position(|x| x == f).unwrap_or(order.len());
     match index.and_then(|i| i.checked_sub(1)).and_then(|i| sibs.get(i)) {
         Some(f) => pos(f),
@@ -197,7 +197,7 @@ pub(crate) fn move_folder(doc: &Document, f: FolderId, parent: Option<FolderId>,
         if x == f {
             return Err(CmdError::refused("A folder cannot go inside itself."));
         }
-        at = doc.folders.get(&x).and_then(|x| x.parent);
+        at = doc.folders().get(&x).and_then(|x| x.parent);
         steps += 1;
         if steps > MAX_FOLDER_DEPTH + 1 {
             break;
@@ -209,7 +209,7 @@ pub(crate) fn move_folder(doc: &Document, f: FolderId, parent: Option<FolderId>,
     if depth_of(doc, parent) + height(doc, f) > MAX_FOLDER_DEPTH {
         return Err(too_deep());
     }
-    let from = doc.folder_order.iter().position(|x| *x == f).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
+    let from = doc.folder_order().iter().position(|x| *x == f).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
     let to = folder_slot(doc, f, parent, index);
     if to == from && parent == old.parent {
         return Ok(Vec::new());
@@ -237,7 +237,7 @@ pub(crate) fn delete_folder(doc: &Document, f: FolderId) -> Result<DeletedFolder
     let mut ops = Vec::new();
     let pages = doc.pages_in_folder(f);
     for page in &pages {
-        if let Some(before) = doc.pages.get(page) {
+        if let Some(before) = doc.pages().get(page) {
             let after = Page { folder: old.parent, ..before.clone() };
             ops.push(Op::ModifyPage { id: *page, before: before.clone(), after });
         }
@@ -250,9 +250,9 @@ pub(crate) fn delete_folder(doc: &Document, f: FolderId) -> Result<DeletedFolder
         let after = Folder { parent: old.parent, ..before.clone() };
         ops.push(Op::ModifyFolder { id: sub, before, after });
     }
-    let index = doc.folder_order.iter().position(|x| *x == f).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
+    let index = doc.folder_order().iter().position(|x| *x == f).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
     ops.push(Op::RemoveFolder { id: f, folder: old.clone(), index });
-    let to = match old.parent.and_then(|x| doc.folders.get(&x)) {
+    let to = match old.parent.and_then(|x| doc.folders().get(&x)) {
         Some(x) => format!("\"{}\"", x.name),
         None => "the top level".into(),
     };
@@ -278,7 +278,7 @@ pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &
     }
     for p in &book.order {
         if Some(*p) != page && book.number(doc, *p).eq_ignore_ascii_case(number) {
-            let title = doc.pages.get(p).map(|x| x.title.as_str()).unwrap_or_default();
+            let title = doc.pages().get(p).map(|x| x.title.as_str()).unwrap_or_default();
             return Err(CmdError::refused(format!("Page {number} already exists (\"{title}\").")));
         }
     }
@@ -298,13 +298,13 @@ pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &
 /// No such folder or page.
 pub(crate) fn move_page_ops(doc: &Document, page: PageId, folder: Option<FolderId>, index: Option<usize>) -> Result<Vec<Op>, CmdError> {
     check_folder(doc, folder)?;
-    let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let old = doc.pages().get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
     let mut ops = Vec::new();
     let now = Page { folder, ..old.clone() };
-    let from = doc.page_order.iter().position(|p| *p == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
-    let order: Vec<PageId> = doc.page_order.iter().copied().filter(|p| *p != page).collect();
+    let from = doc.page_order().iter().position(|p| *p == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let order: Vec<PageId> = doc.page_order().iter().copied().filter(|p| *p != page).collect();
     let in_folder: Vec<PageId> =
-        order.iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f)) == folder).collect();
+        order.iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders().contains_key(f)) == folder).collect();
     let pos = |p: &PageId| order.iter().position(|x| x == p).unwrap_or(order.len());
     let to = match index.and_then(|i| i.checked_sub(1)).and_then(|i| in_folder.get(i)) {
         Some(p) => pos(p),
@@ -381,7 +381,7 @@ pub fn new_page_type(
     {
         return Err(CmdError::refused("That device is not a terminal strip; leave `strip` out to show every strip."));
     }
-    if after.is_some_and(|a| !doc.pages.contains_key(&a)) {
+    if after.is_some_and(|a| !doc.pages().contains_key(&a)) {
         return Err(CmdError::refused("No such page to add after."));
     }
     let page_type = crate::pages::page_types::newpage_type(doc, ty, kind.generated)?;
@@ -431,8 +431,8 @@ pub(crate) struct PageMoved {
 /// A title that does not read ([`page_title`]); no such page.
 pub(crate) fn rename_page(doc: &Document, page: PageId, title: &str) -> Result<PageMoved, CmdError> {
     let title = page_title(title)?;
-    let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
-    let index = doc.page_order.iter().position(|x| *x == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let old = doc.pages().get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let index = doc.page_order().iter().position(|x| *x == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
     if old.title == title {
         return Ok(PageMoved { title: title.to_string(), index: index + 1, ops: Vec::new() });
     }
@@ -448,10 +448,10 @@ pub(crate) fn rename_page(doc: &Document, page: PageId, title: &str) -> Result<P
 /// # Errors
 /// `index` not from 1 to the number of pages; no such page.
 pub(crate) fn move_page_to(doc: &Document, page: PageId, index: Option<usize>) -> Result<PageMoved, CmdError> {
-    let n = doc.page_order.len();
+    let n = doc.page_order().len();
     let to = index.filter(|i| (1..=n).contains(i)).ok_or_else(|| CmdError::input(format!("`index` must be a whole number from 1 to {n}")))?;
-    let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
-    let from = doc.page_order.iter().position(|x| *x == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let old = doc.pages().get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let from = doc.page_order().iter().position(|x| *x == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
     let title = old.title.to_string();
     if from + 1 == to {
         return Ok(PageMoved { title, index: to, ops: Vec::new() });
@@ -511,7 +511,7 @@ fn code_with(doc: &Document, pending: &Pending, a: Aspect, key: &str) -> String 
 pub(crate) fn page_props(
     doc: &Document, ids: &mut IdAllocator, page: PageId, change: &PageChange, reports: Option<&ReportModels>,
 ) -> Result<PropsPlan, CmdError> {
-    let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let old = doc.pages().get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
     let book = Book::of(doc);
     let mut ops = Vec::new();
     // Every change goes into one `ModifyPage`, written after the list entries it names.
@@ -675,16 +675,16 @@ pub struct ProjectChange {
 /// Once a revision is issued the scheme cannot change; nor while the pending row's rev is not a
 /// rev of the new scheme (clear it first).
 fn rev_scheme_op(doc: &Document, ops: &mut [Op], scheme: &ecad_model::RevScheme) -> Result<Option<Op>, CmdError> {
-    if *scheme == doc.project.rev_scheme {
+    if *scheme == doc.project().rev_scheme {
         return Ok(None);
     }
-    if doc.project.revisions.iter().any(|r| r.issued) || doc.versions.keys().any(|k| k.kind() == ecad_model::PointKind::Revision) {
+    if doc.project().revisions.iter().any(|r| r.issued) || doc.versions().keys().any(|k| k.kind() == ecad_model::PointKind::Revision) {
         return Err(CmdError::refused(ecad_model::RevError::SchemeLocked.to_string()));
     }
-    if let Some(rev) = doc.project.revisions.iter().find_map(|r| r.rev).filter(|r| !scheme.admits(*r)) {
+    if let Some(rev) = doc.project().revisions.iter().find_map(|r| r.rev).filter(|r| !scheme.admits(*r)) {
         return Err(CmdError::refused(format!(
             "The pending revision's rev {} is not a rev of the new scheme ({}). Clear it first.",
-            doc.project.rev_scheme.show(rev),
+            doc.project().rev_scheme.show(rev),
             scheme.example()
         )));
     }
@@ -692,8 +692,8 @@ fn rev_scheme_op(doc: &Document, ops: &mut [Op], scheme: &ecad_model::RevScheme)
         after.rev_scheme = scheme.clone();
         return Ok(None);
     }
-    let after = ecad_model::Project { rev_scheme: scheme.clone(), ..doc.project.clone() };
-    Ok(Some(Op::ModifyProject { before: doc.project.clone(), after }))
+    let after = ecad_model::Project { rev_scheme: scheme.clone(), ..doc.project().clone() };
+    Ok(Some(Op::ModifyProject { before: doc.project().clone(), after }))
 }
 
 /// Tag padding and prefixes (`projectprops`' `tag_padding` and `tag_prefixes`, named here by
@@ -758,20 +758,20 @@ pub(crate) fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Cas
     let after = tag::Style { dash: dash.unwrap_or(before.dash), case: case.unwrap_or(before.case), ..before };
     let mut ops = Vec::new();
     if let Some(d) = dash {
-        ops.extend(set(ObjectRef::Project, Some(&doc.display), DASH_KEY, Some(ecad_model::naming::words::flag_word(d).to_string())));
+        ops.extend(set(ObjectRef::Project, Some(doc.display()), DASH_KEY, Some(ecad_model::naming::words::flag_word(d).to_string())));
     }
     if let Some(c) = case {
-        ops.extend(set(ObjectRef::Project, Some(&doc.display), CASE_KEY, Some(ecad_model::Word::word(c).to_string())));
+        ops.extend(set(ObjectRef::Project, Some(doc.display()), CASE_KEY, Some(ecad_model::Word::word(c).to_string())));
     }
     let rewrite = after.dash != before.dash || (after.case == Case::Upper && before.case == Case::Typed);
     let mut n = 0usize;
     if rewrite {
         let mut seen: HashMap<String, String> = HashMap::new();
         let objects = doc
-            .devices
+            .devices()
             .iter()
             .filter_map(|(id, c)| c.tag().map(|t| (ObjectRef::Device(*id), t)))
-            .chain(doc.cables.iter().filter_map(|(id, c)| c.tag().map(|t| (ObjectRef::Cable(*id), t))));
+            .chain(doc.cables().iter().filter_map(|(id, c)| c.tag().map(|t| (ObjectRef::Cable(*id), t))));
         for (object, old) in objects {
             let new = tag::restyle(old, after);
             if let Some(k) = seen.get(&new)
@@ -783,7 +783,7 @@ pub(crate) fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Cas
             if new != old {
                 match object {
                     ObjectRef::Device(c) => {
-                        if let Some(d) = doc.devices.get(&c) {
+                        if let Some(d) = doc.devices().get(&c) {
                             ops.push(Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some(&new), d.tag.state().unwrap_or_default()) });
                         }
                     }
@@ -839,7 +839,7 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
             continue;
         };
         // Design 072 §5.3: the project's own function and location are fields of the project.
-        let old = designations::default_key(&doc.project, a);
+        let old = designations::default_key(doc.project(), a);
         if let Some(key) = after.as_ref().filter(|key| old.as_ref() != Some(*key)) {
             let code = code_with(doc, &pending, a, key);
             let spots = proposals::spots_of_project(doc, a);
@@ -867,18 +867,18 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
             }
             continue;
         }
-        ops.extend(set(ObjectRef::Project, Some(&doc.display), k, v));
+        ops.extend(set(ObjectRef::Project, Some(doc.display()), k, v));
     }
     // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
     if let Some(on) = change.provisional {
         ops.extend(set(
             ObjectRef::Project,
-            Some(&doc.display),
+            Some(doc.display()),
             tag::PROVISIONAL_SETTING,
             on.then(|| ecad_model::naming::words::flag_word(true).to_string()),
         ));
     }
-    let mut settings = doc.settings.clone();
+    let mut settings = doc.settings().clone();
     if let Some(t) = &change.sheet {
         settings.sheet = Some(SheetSpec::parse(t)?);
     }
@@ -909,8 +909,8 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
                 .ok_or(CmdError::refused("`label_height` must be 0.5 to 10 (millimetres)"))?,
         );
     }
-    if settings != doc.settings {
-        ops.push(Op::SetProjectSettings { before: doc.settings.clone(), after: settings });
+    if settings != *doc.settings() {
+        ops.push(Op::SetProjectSettings { before: doc.settings().clone(), after: settings });
     }
     // Brief 033: the revision table's columns and the pending marker.
     if let Some(v) = &change.revision_columns {
@@ -922,12 +922,12 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
                 Some(t.trim().to_string())
             }
         };
-        ops.extend(set(ObjectRef::Project, Some(&doc.display), revisions::COLUMNS_KEY, t));
+        ops.extend(set(ObjectRef::Project, Some(doc.display()), revisions::COLUMNS_KEY, t));
     }
     if let Some(w) = &change.revision_pending {
         let w = Some(w.trim()).filter(|w| ["star", "draft", "off"].contains(w));
         let w = w.ok_or(CmdError::refused("`revision_pending` must be \"star\", \"draft\" or \"off\""))?;
-        ops.extend(set(ObjectRef::Project, Some(&doc.display), revisions::PENDING_KEY, Some(w.to_string())));
+        ops.extend(set(ObjectRef::Project, Some(doc.display()), revisions::PENDING_KEY, Some(w.to_string())));
     }
     if let Some(scheme) = &change.rev_scheme {
         let op = rev_scheme_op(doc, &mut ops, scheme)?;
@@ -966,7 +966,7 @@ pub struct RevisionFields {
 /// that is not a field name.
 pub(crate) fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdError> {
     let n = revisions::pending_n(doc);
-    let mut project = doc.project.clone();
+    let mut project = doc.project().clone();
     let mut given = false;
     for (field, v) in &f.standard {
         given = true;
@@ -1014,7 +1014,7 @@ pub(crate) fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>
     if given && !row_exists && !rev_given && revisions::rows(&project).len() >= n as usize {
         project = revisions::with_field(&project, n, "rev", Some(&revisions::pending_rev(doc)))?;
     }
-    Ok(revisions::modify(&doc.project, project).into_iter().collect())
+    Ok(revisions::modify(doc.project(), project).into_iter().collect())
 }
 
 /// The revision fields given, as the rules take them.
@@ -1086,11 +1086,11 @@ pub fn plan_issue(
     }
     let rev = row.rev().to_string();
     let point = row.rev_value.ok_or_else(|| CmdError::refused(revisions::FILL_FIRST))?;
-    if doc.versions.contains_key(&ecad_model::PointName::Revision(point)) {
+    if doc.versions().contains_key(&ecad_model::PointName::Revision(point)) {
         return Err(CmdError::refused(format!("Rev {rev} was issued before; choose another.")));
     }
     let mut date = row.get("date").to_string();
-    let mut project = doc.project.clone();
+    let mut project = doc.project().clone();
     if date.is_empty() {
         date = today().unwrap_or_default();
         if !date.is_empty() {
@@ -1098,7 +1098,7 @@ pub fn plan_issue(
         }
     }
     project = revisions::with_issued(&project, n)?;
-    ops.extend(revisions::modify(&doc.project, project));
+    ops.extend(revisions::modify(doc.project(), project));
     ops.push(Op::NameVersion { name: ecad_model::PointName::Revision(point), at: head, description: None });
     Ok(IssuePlan { ops, rev, point, n, date, head })
 }
@@ -1108,7 +1108,7 @@ pub fn plan_issue(
 /// # Errors
 /// Not a rev of the scheme, or not issued.
 pub fn issued(doc: &Document, rev: &str) -> Result<Revision, CmdError> {
-    let want = doc.project.rev_scheme.parse(rev).map_err(|e| CmdError::refused(e.to_string()))?;
+    let want = doc.project().rev_scheme.parse(rev).map_err(|e| CmdError::refused(e.to_string()))?;
     revisions::issued(doc).into_iter().find(|r| r.rev_value == Some(want)).ok_or_else(|| CmdError::refused(format!("Rev {rev} has not been issued.")))
 }
 
@@ -1138,7 +1138,7 @@ pub(crate) fn default_number_from(
     // Brief 033: every sheet's number, continuation sheets included, is in use.
     let used: BTreeSet<String> =
         book.order.iter().flat_map(|p| crate::pages::generated::sheet_numbers(doc, book, *p, reports)).map(|n| n.to_ascii_lowercase()).collect();
-    let step = u64::from(doc.settings.page_number_step().max(1));
+    let step = u64::from(doc.settings().page_number_step().max(1));
     let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
     let from_start = start.and_then(|t| t.parse::<u64>().ok().map(|n| (n, t.len())));
     let (mut n, step, width) = match (from_start, digits.as_deref().and_then(|d| d.parse::<u64>().ok().map(|n| (n, d)))) {
@@ -1159,7 +1159,7 @@ pub(crate) fn default_number_from(
 /// Where a new page in `folder` goes in book order: the page before it, and its position.
 pub(crate) fn new_page_place(doc: &Document, book: &Book, folder: Option<FolderId>) -> (Option<PageId>, usize) {
     let in_folder: Vec<PageId> =
-        doc.page_order.iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f)) == folder).collect();
+        doc.page_order().iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders().contains_key(f)) == folder).collect();
     if let Some(last) = in_folder.last() {
         let pos = book.position(*last).unwrap_or(0);
         return (Some(*last), pos + 1);
@@ -1189,11 +1189,11 @@ pub fn new_page_at(
 ) -> Result<(Option<FolderId>, usize, (Option<PageId>, usize)), CmdError> {
     Ok(match after {
         Some(a) => {
-            let i = doc.page_order.iter().position(|x| *x == a).ok_or(CmdError::refused("No such page to add after."))?;
-            let f = book::folder_of(doc, a).filter(|f| doc.folders.contains_key(f));
+            let i = doc.page_order().iter().position(|x| *x == a).ok_or(CmdError::refused("No such page to add after."))?;
+            let f = book::folder_of(doc, a).filter(|f| doc.folders().contains_key(f));
             (f, i + 1, (Some(a), book.position(a).unwrap_or(0) + 1))
         }
-        None => (folder, doc.page_order.len(), new_page_place(doc, book, folder)),
+        None => (folder, doc.page_order().len(), new_page_place(doc, book, folder)),
     })
 }
 
@@ -1201,18 +1201,18 @@ pub fn new_page_at(
 /// folder with a start number takes it; every other page the next after the page before it.
 pub fn next_number(doc: &Document, book: &Book, folder: Option<FolderId>, place: (Option<PageId>, usize), reports: Option<&ReportModels>) -> String {
     let (before, position) = place;
-    let first = before.is_none_or(|b| book::folder_of(doc, b).filter(|f| doc.folders.contains_key(f)) != folder);
+    let first = before.is_none_or(|b| book::folder_of(doc, b).filter(|f| doc.folders().contains_key(f)) != folder);
     let start = folder.filter(|_| first).and_then(|f| crate::pages::page_types::start_of(doc, f));
     default_number_from(doc, book, before, position, reports, start.as_deref())
 }
 
 /// The page's properties as `pageprops` reports them.
 pub(crate) fn page_json(doc: &Document, book: &Book, page: PageId, reports: Option<&ReportModels>) -> Value {
-    let pg = doc.pages.get(&page);
+    let pg = doc.pages().get(&page);
     use crate::locations::designations::{Aspect, default_key, page_key};
     let prop = |k: &str| Aspect::of_property(k).and_then(|a| pg.and_then(|x| page_key(x, a)));
-    let project = |k: &str| Aspect::of_property(k).and_then(|a| default_key(&doc.project, a));
-    let folder = book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
+    let project = |k: &str| Aspect::of_property(k).and_then(|a| default_key(doc.project(), a));
+    let folder = book::folder_of(doc, page).filter(|f| doc.folders().contains_key(f));
     json!({
         "page": page.hex(),
         "number": book.number(doc, page),
@@ -1253,7 +1253,7 @@ pub(crate) fn project_json(doc: &Document) -> Value {
         // Brief 052: the function and location show their codes (design 072 §5.3: fields of the
         // project).
         let v = match crate::locations::designations::Aspect::of_property(k) {
-            Some(a) => crate::locations::designations::default_key(&doc.project, a).map(|v| crate::locations::designations::display(doc, k, &v)),
+            Some(a) => crate::locations::designations::default_key(doc.project(), a).map(|v| crate::locations::designations::display(doc, k, &v)),
             None => crate::pages::frames::project_text(doc, k),
         };
         fields.insert(k.into(), v.map_or(Value::Null, Value::String));
@@ -1263,9 +1263,9 @@ pub(crate) fn project_json(doc: &Document) -> Value {
     let written_free = [ecad_model::InfoField::Site, ecad_model::InfoField::Notes];
     let info = written_free
         .into_iter()
-        .filter_map(|f| doc.project.info.get(f).map(|v| (ecad_model::Word::word(f).to_string(), Value::String(v.to_string()))));
+        .filter_map(|f| doc.project().info.get(f).map(|v| (ecad_model::Word::word(f).to_string(), Value::String(v.to_string()))));
     let free: Map<String, Value> = doc
-        .display
+        .display()
         .iter()
         .filter(|(k, _)| {
             !PROJECT_KEYS.contains(&k.as_str())
@@ -1298,12 +1298,12 @@ pub(crate) fn project_json(doc: &Document) -> Value {
         .collect();
     let mut v = Value::Object(fields);
     v["props"] = Value::Object(free);
-    v["sheet"] = json!(doc.settings.sheet().text());
-    v["sheet_shown"] = json!(doc.settings.sheet().summary());
-    v["page_number_step"] = json!(doc.settings.page_number_step());
-    v["reference_style"] = json!(style_word(doc.settings.reference_style()));
+    v["sheet"] = json!(doc.settings().sheet().text());
+    v["sheet_shown"] = json!(doc.settings().sheet().summary());
+    v["page_number_step"] = json!(doc.settings().page_number_step());
+    v["reference_style"] = json!(style_word(doc.settings().reference_style()));
     // Brief 025 (FP3): where contact tables go by default.
-    v["contact_mirror"] = json!(doc.settings.contact_mirror.word());
+    v["contact_mirror"] = json!(doc.settings().contact_mirror.word());
     v["tag_padding"] = json!(crate::devices::padding(doc));
     // Brief 033: the tag style, the revision columns and the pending marker.
     let style = crate::defaults::print::tag_style(doc);
@@ -1311,16 +1311,16 @@ pub(crate) fn project_json(doc: &Document) -> Value {
     v["tag_case"] = json!(ecad_model::Word::word(style.case));
     let cols = revisions::columns(doc);
     v["revision_columns"] = json!(cols.iter().map(|c| json!({"field": c.field, "header": c.header, "width": c.width})).collect::<Vec<_>>());
-    v["revision_columns_stored"] = json!(doc.display.get(revisions::COLUMNS_KEY));
+    v["revision_columns_stored"] = json!(doc.display().get(revisions::COLUMNS_KEY));
     v["revision_pending"] = json!(match revisions::PendingStyle::of(doc) {
         revisions::PendingStyle::Star => "star",
         revisions::PendingStyle::Draft => "draft",
         revisions::PendingStyle::Off => "off",
     });
-    v["rev_scheme"] = json!(doc.project.rev_scheme);
+    v["rev_scheme"] = json!(doc.project().rev_scheme);
     v["tag_prefixes"] = Value::Object(crate::devices::commands::devices::prefixes_json(doc));
     // Brief 022: the wiring settings the Project settings popout edits.
-    v["colour_style"] = json!(ecad_model::naming::words::Word::word(doc.settings.wiring.colour_style()));
+    v["colour_style"] = json!(ecad_model::naming::words::Word::word(doc.settings().wiring.colour_style()));
     v["label_height"] = json!(wire_label_height(doc));
     // Brief 026: Project settings → Numbering.
     v["provisional"] = json!(ecad_model::naming::numbering::provisional_on(doc));

@@ -390,7 +390,7 @@ impl Generic for WiresettingsParams {
         if change == WireSettingsChange::default() {
             return Ok(Outcome::answer(rules::settings_json(cx.doc)));
         }
-        let before = cx.doc.settings.clone();
+        let before = cx.doc.settings().clone();
         let after = rules::wire_settings(&before, &change)?;
         let ops = if after != before { vec![Op::SetProjectSettings { before, after }] } else { Vec::new() };
         Ok(Outcome::edit_then("Wire settings", ops, rules::settings_json))

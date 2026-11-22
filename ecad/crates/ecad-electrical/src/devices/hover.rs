@@ -24,7 +24,7 @@ pub(crate) const MAX_ALSO: usize = 4;
 ///
 /// `m` measures the page's texts (the C wrapper `hover_lines` passes CADCraft's fonts).
 pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId, m: &dyn TextMetrics) -> Vec<String> {
-    let device = doc.devices.get(&c).cloned().unwrap_or_default();
+    let device = doc.devices().get(&c).cloned().unwrap_or_default();
     let get = |k: &str| device.value(k).unwrap_or_else(|| "?".into());
     let head = match device.tag_shown() {
         // Brief 026 (design §9): `(fixed)` or `(provisional)` after the tag.
@@ -35,7 +35,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
     };
     let mut lines = vec![head, format!("Maker: {}   Part number: {}", get("maker"), get("part_number"))];
     // Brief 044 (design 044 §7, tester D3): a connector half says where its mate is.
-    if let Some(side) = doc.representations.get(&here).and_then(|r| crate::connectors::rep_side(doc, r)) {
+    if let Some(side) = doc.representations().get(&here).and_then(|r| crate::connectors::rep_side(doc, r)) {
         let sides: &[crate::symbols::Side] = match side {
             crate::symbols::Side::Both => &[crate::symbols::Side::Socket, crate::symbols::Side::Plug],
             crate::symbols::Side::Socket => &[crate::symbols::Side::Socket],
@@ -52,7 +52,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
     let mut boxes = crate::locations::BoxCache::default();
     let loc = crate::locations::resolve_with(doc, c, &mut boxes);
     let mut words = loc.shown(doc);
-    if let Some(r) = doc.representations.get(&here) {
+    if let Some(r) = doc.representations().get(&here) {
         let ctx = crate::locations::rep_context(doc, r, &mut boxes);
         if ctx.value.is_some() && ctx.value != loc.value {
             words.push_str(&format!("; this symbol is inside {}", ctx.text()));
@@ -63,7 +63,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
         let function = if function.key.is_some() { function.text() } else { String::new() };
         lines.push(format!("Location: {words}   Function: {function}"));
     }
-    if let Some(r) = doc.representations.get(&here) {
+    if let Some(r) = doc.representations().get(&here) {
         let drawable = rep_definition(doc, r).is_some_and(|(_, pl)| pl.is_valid());
         let cannot = if drawable { "" } else { " (cannot be drawn)" };
         lines.push(format!("This symbol: {}, {}{cannot}", rep_words(doc, c, r), crate::references::cables::page_words(doc, r.page)));
@@ -78,7 +78,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
             lines.push(hidden.join("; "));
         }
     }
-    let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
+    let order: BTreeMap<PageId, usize> = doc.page_order().iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let mut others: Vec<(usize, RepresentationId, String)> = doc
         .representations_of(Subject::Device(c))
         .filter(|(id, _)| *id != here)
@@ -95,7 +95,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
         }
         lines.push(format!("Also: {}", words.join("; ")));
     }
-    if let Some(r) = doc.representations.get(&here) {
+    if let Some(r) = doc.representations().get(&here) {
         let ends: Vec<String> = shown_connection_points(doc, c, r)
             .iter()
             .map(|(t, _)| {

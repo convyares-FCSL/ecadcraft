@@ -51,7 +51,7 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
     let mut l = history();
     let out = written(&dir, &l);
     let o = out.to_str().unwrap();
-    let ten = l.document().versions[&ecad_model::PointName::version("Ten").unwrap()];
+    let ten = l.document().versions()[&ecad_model::PointName::version("Ten").unwrap()];
     {
         let opened = Project::open(Store::open(&out, true).unwrap(), 3, "tester").unwrap();
         let mut proj = opened.project;
@@ -59,8 +59,8 @@ fn ecadinspect_verifies_and_shows_a_file_with_branches() {
         let main = proj.branch();
         let (b, _) = proj.create_branch("Option B", main, ten, None, None).unwrap();
         let (mut bl, _) = proj.switch_to(&l, b, 4).unwrap();
-        let page = bl.document().page_order[0];
-        let layer = *bl.document().layers.keys().next().unwrap();
+        let page = bl.document().page_order()[0];
+        let layer = *bl.document().layers().keys().next().unwrap();
         let mut ids = IdAllocator::seeded(99);
         for i in 0..40 {
             let id: ItemId = ids.fresh();

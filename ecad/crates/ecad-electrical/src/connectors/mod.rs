@@ -61,7 +61,7 @@ pub(crate) const IGNORE_PREFIX: &str = "ignore.";
 
 /// Connector `c`'s own data (its type's), when it is a connector.
 pub fn connector_of(doc: &Document, c: DeviceId) -> Option<&Connector> {
-    doc.devices.get(&c)?.device_type.as_connector()
+    doc.devices().get(&c)?.device_type.as_connector()
 }
 
 /// The ignorable Checks row of `kind`, if it is one.
@@ -182,7 +182,7 @@ pub fn size_of(s: &Starter) -> Option<usize> {
 
 /// The side of terminal `t` when it is a connector pin.
 pub fn side_of(doc: &Document, t: ConnectionPointId) -> Option<Side> {
-    let term = doc.connection_points.get(&t)?;
+    let term = doc.connection_points().get(&t)?;
     let side = Side::of_key(term.key.as_ref()?)?;
     connector_of(doc, term.device()?).is_some_and(|x| x.mating).then_some(side)
 }
@@ -233,21 +233,21 @@ pub fn half_tag(doc: &Document, c: DeviceId, side: Side) -> String {
 /// The half tag a connector pin belongs to (`-X10.S`); `None` for any other terminal.
 pub(crate) fn half_tag_of(doc: &Document, t: ConnectionPointId) -> Option<String> {
     let side = side_of(doc, t)?;
-    let c = doc.connection_points.get(&t)?.device()?;
+    let c = doc.connection_points().get(&t)?.device()?;
     Some(half_tag(doc, c, side))
 }
 
 /// A connector pin's full name, `-X10.S:3`; `None` for any other terminal.
 pub fn pin_name(doc: &Document, t: ConnectionPointId) -> Option<String> {
     let half = half_tag_of(doc, t)?;
-    let label = doc.connection_points.get(&t)?.label.clone()?;
+    let label = doc.connection_points().get(&t)?.label.clone()?;
     Some(format!("{half}:{label}"))
 }
 
 /// Whether a pin pair's plug-side label is hidden (design 044 §5.2: a pin pair shows its pin name
 /// once, beside the socket point).
 pub(crate) fn hides_label(doc: &Document, r: &Representation, t: ConnectionPointId) -> bool {
-    rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.connection_points.get(&t).and_then(|x| x.key.as_ref()) == Some(&PLUG_KEY)
+    rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.connection_points().get(&t).and_then(|x| x.key.as_ref()) == Some(&PLUG_KEY)
 }
 
 /// The run class of a connector symbol for the "once per run" tag rule (design 044 §5.2): one
@@ -272,12 +272,12 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
         None => (text.clone(), None),
     };
     // The connector and side: a tag as is, else a tag followed by the separator and a side name.
-    let found = doc.devices.keys().copied().find_map(|c| {
+    let found = doc.devices().keys().copied().find_map(|c| {
         if !connector_of(doc, c).is_some_and(|x| x.mating) {
             return None;
         }
         // A provisional connector is named with its `?`, which no half name carries.
-        let t = crate::devices::tags::tag_of(doc, c).filter(|_| doc.devices.get(&c).is_some_and(|d| !d.is_provisional()))?;
+        let t = crate::devices::tags::tag_of(doc, c).filter(|_| doc.devices().get(&c).is_some_and(|d| !d.is_provisional()))?;
         if t.eq_ignore_ascii_case(&head) {
             return Some((c, None));
         }
@@ -573,7 +573,7 @@ pub fn next_pin(doc: &Document, c: DeviceId, side: Side, taken: &BTreeSet<(Side,
 
 /// Where a representation is, in words (`101 B3`, the zone's letter first), for refusals.
 pub fn where_words(doc: &Document, rid: RepresentationId) -> String {
-    let Some(r) = doc.representations.get(&rid) else { return String::new() };
+    let Some(r) = doc.representations().get(&rid) else { return String::new() };
     let page = ecad_model::document::book::page_number(doc, r.page);
     match crate::references::devices::classify::anchor(doc, r).and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a)) {
         Some(p) => format!("{page} {}", ecad_model::connectivity::derive::zone_text(&p.column_label, &p.row_label)),
@@ -746,7 +746,7 @@ pub fn land_pin(
     doc: &Document, ids: &mut IdAllocator, on: crate::wires::placing::OnRoute, shown: &[Shown], placement: Placement,
 ) -> Result<crate::connectors::Land, CmdError> {
     let first = shown.first().ok_or(CmdError::refused("The symbol has no connection point."))?;
-    let before = doc.routes.get(&on.route).and_then(|r| r.points.get(on.segment).copied());
+    let before = doc.routes().get(&on.route).and_then(|r| r.points.get(on.segment).copied());
     let (a, b) = match (shown.iter().find(|x| x.side == Side::Socket), shown.iter().find(|x| x.side == Side::Plug)) {
         (Some(s), Some(p)) if shown.len() == 2 => {
             let (ps, pp) = (placement.apply(s.local), placement.apply(p.local));
@@ -945,7 +945,7 @@ pub fn half_rows(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Vec<Half
             maker: half_prop(doc, c, side, "maker"),
             part_number: half_prop(doc, c, side, "part_number"),
             location,
-            goto: doc.representations.get(&main).map(|r| (main, r.page)),
+            goto: doc.representations().get(&main).map(|r| (main, r.page)),
         });
     }
     out
@@ -962,7 +962,7 @@ fn connection_point_at(doc: &Document, t: ConnectionPointId) -> (Option<PageId>,
 }
 
 fn rep_at(doc: &Document, rid: Option<RepresentationId>) -> (Option<PageId>, Option<Pt>) {
-    match rid.and_then(|r| doc.representations.get(&r)) {
+    match rid.and_then(|r| doc.representations().get(&r)) {
         Some(r) => (Some(r.page), crate::references::devices::classify::anchor(doc, r)),
         None => (None, None),
     }
@@ -1126,11 +1126,11 @@ pub fn ref_edges(
         if *side == Side::Both {
             continue;
         }
-        let Some(r) = doc.representations.get(rid) else { continue };
+        let Some(r) = doc.representations().get(rid) else { continue };
         let mut mates: BTreeSet<RepresentationId> = BTreeSet::new();
         let mut here = false;
         for t in r.connection_points.keys() {
-            let Some(x) = doc.connection_points.get(t) else { continue };
+            let Some(x) = doc.connection_points().get(t) else { continue };
             let other = side.other().key();
             for (m, mx) in doc.connection_points_of(c) {
                 if mx.label != x.label || mx.key != other {
@@ -1199,7 +1199,7 @@ impl Index {
     /// The whole index of `doc`: O(components).
     pub fn build(doc: &Document) -> Index {
         let mut idx = Index::default();
-        for c in doc.devices.keys() {
+        for c in doc.devices().keys() {
             idx.set(doc, *c);
         }
         idx
@@ -1227,7 +1227,7 @@ impl Index {
             self.by_page.entry(*p).or_default().insert(c);
         }
         self.pages_of.insert(c, pages);
-        let props = doc.devices.get(&c).map(|x| &x.properties);
+        let props = doc.devices().get(&c).map(|x| &x.properties);
         for k in naming_keys() {
             if !props.is_some_and(|p| p.contains_key(k)) {
                 self.inherits.entry(k).or_default().insert(c);
@@ -1289,7 +1289,7 @@ pub fn plan_land(doc: &Document, ids: &mut IdAllocator, on: OnRoute, t: Connecti
 pub(crate) fn plan_land_ends(
     doc: &Document, ids: &mut IdAllocator, on: OnRoute, first: (RouteEnd, Pt), second: (RouteEnd, Pt),
 ) -> Result<Land, CmdError> {
-    let route = doc.routes.get(&on.route).ok_or(CmdError::NotFound(Noun::Wire))?;
+    let route = doc.routes().get(&on.route).ok_or(CmdError::NotFound(Noun::Wire))?;
     if let Some(x) = strip_connection_point_at(doc, route.page, on.at) {
         return Err(CmdError::refused(format!("{} is already there. Click elsewhere on the wire.", connection_point_words(doc, x))));
     }

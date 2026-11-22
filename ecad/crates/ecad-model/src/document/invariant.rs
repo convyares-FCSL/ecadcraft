@@ -54,13 +54,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::document::doc::{Cable, ConnectionPoint, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Wire};
 use crate::document::effect::{Effect, Effects};
 use crate::document::index::referrers;
 use crate::document::op::{ObjectRef, Op};
 use crate::error::{ModelError, Result};
 use crate::geometry::point::PointKey;
 use crate::naming::id::{CableId, ConnectionPointId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, WireId};
+use crate::{Cable, ConnectionPoint, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Wire};
 
 /// What a transaction created, modified or removed: the input of [`Document::check_touched`].
 ///
@@ -116,7 +116,7 @@ impl Touched {
 
     /// Add what `effect` touches (design 064 §3.1: the invariant check and the derived views share
     /// one classifier).
-    pub fn add_effect(&mut self, effect: &Effect<'_>) {
+    pub(crate) fn add_effect(&mut self, effect: &Effect<'_>) {
         match effect {
             Effect::Page { id, .. } => {
                 self.page_order = true;
@@ -369,7 +369,7 @@ impl Document {
 
         let mut connection_points = touched.connection_points.clone();
         for c in &touched.devices {
-            connection_points.extend(referrers(&ix.component_connection_points, &crate::document::doc::ConnectionPointOwner::Device(*c)));
+            connection_points.extend(referrers(&ix.component_connection_points, &crate::ConnectionPointOwner::Device(*c)));
         }
         for id in &connection_points {
             if let Some(t) = self.connection_points.get(id) {
@@ -561,8 +561,8 @@ impl Document {
     /// I8.
     fn check_connection_point(&self, id: ConnectionPointId, t: &ConnectionPoint) -> Result<()> {
         let device = match t.owner {
-            crate::document::doc::ConnectionPointOwner::Device(d) => d,
-            crate::document::doc::ConnectionPointOwner::Aid(a) => {
+            crate::ConnectionPointOwner::Device(d) => d,
+            crate::ConnectionPointOwner::Aid(a) => {
                 return match self.aids.get(&a) {
                     Some(crate::objects::aid::Aid::Continuation { .. }) => Ok(()),
                     Some(_) => bad(format!("terminal {id} belongs to drawing aid {a}, which is not a continuation")),
@@ -751,17 +751,17 @@ impl Document {
                 }
             }
             match m.position {
-                crate::document::doc::CorePosition::Unplaced => continue,
-                crate::document::doc::CorePosition::Wire(w) if !self.wires.contains_key(&w) => {
+                crate::CorePosition::Unplaced => continue,
+                crate::CorePosition::Wire(w) if !self.wires.contains_key(&w) => {
                     return bad(format!("cable {id} lists missing conductor {w}"));
                 }
-                crate::document::doc::CorePosition::Route { route, .. } if !self.routes.contains_key(&route) => {
+                crate::CorePosition::Route { route, .. } if !self.routes.contains_key(&route) => {
                     return bad(format!("cable {id} has a core on missing route {route}"));
                 }
-                crate::document::doc::CorePosition::Route { landed: Some(t), .. } if !self.has_point(t) => {
+                crate::CorePosition::Route { landed: Some(t), .. } if !self.has_point(t) => {
                     return bad(format!("cable {id} has a core landed at missing point {t}"));
                 }
-                crate::document::doc::CorePosition::Wire(_) | crate::document::doc::CorePosition::Route { .. } => {}
+                crate::CorePosition::Wire(_) | crate::CorePosition::Route { .. } => {}
             }
             if !seen.insert(m.position) {
                 return bad(format!("cable {id} lists {:?} twice", m.position));

@@ -45,7 +45,8 @@ impl CableCore {
                 _ => return Err(CORE_NOT_WIRE.into()),
             };
             let k = doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE)?;
-            let core = doc.cables.get(&k).and_then(|c| c.cores.iter().find(|m| m.wire() == Some(w))).and_then(|m| m.label_str().map(str::to_string));
+            let core =
+                doc.cables().get(&k).and_then(|c| c.cores.iter().find(|m| m.wire() == Some(w))).and_then(|m| m.label_str().map(str::to_string));
             Ok((w, slash::wire_name(doc, w), core))
         })
         .map_err(other)
@@ -124,7 +125,7 @@ impl Interactive for CableCore {
         let Some((w, _, _)) = &self.picked else { return Vec::new() };
         let route = read(s, |p, page| {
             let doc = p.ledger.document();
-            Ok(ecad_electrical::wires::routes::route_of_wire_on(doc, *w, page).and_then(|r| doc.routes.get(&r)).map(|r| r.points.clone()))
+            Ok(ecad_electrical::wires::routes::route_of_wire_on(doc, *w, page).and_then(|r| doc.routes().get(&r)).map(|r| r.points.clone()))
         });
         match route {
             Ok(Some(points)) => {

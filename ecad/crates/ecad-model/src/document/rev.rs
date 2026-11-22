@@ -80,7 +80,7 @@ pub enum RevError {
 
 impl RevScheme {
     /// Whether this is the default scheme (what records leave out).
-    pub fn is_default(&self) -> bool {
+    pub(crate) fn is_default(&self) -> bool {
         *self == RevScheme::default()
     }
 }

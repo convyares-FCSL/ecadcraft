@@ -10,19 +10,33 @@ fn the_pending_rev_follows_the_projects_scheme() {
     let mut doc = Document::default();
     // Letters (the default): A, B ... AA.
     assert_eq!(pending_rev(&doc), "A");
-    doc.project.revisions = vec![issued(Rev::Letter(25)), issued(Rev::Letter(26))];
+    doc.edit_parts(|parts| {
+        parts.project.revisions = vec![issued(Rev::Letter(25)), issued(Rev::Letter(26))];
+    });
     assert_eq!(pending_rev(&doc), "AA");
     // With a dash first issue: dash, A, B ...
-    doc.project.rev_scheme = RevScheme::Letters { dash_first: true };
-    doc.project.revisions.clear();
+    doc.edit_parts(|parts| {
+        parts.project.rev_scheme = RevScheme::Letters { dash_first: true };
+    });
+    doc.edit_parts(|parts| {
+        parts.project.revisions.clear();
+    });
     assert_eq!(pending_rev(&doc), ecad_model::document::rev::DASH);
-    doc.project.revisions = vec![issued(Rev::Initial)];
+    doc.edit_parts(|parts| {
+        parts.project.revisions = vec![issued(Rev::Initial)];
+    });
     assert_eq!(pending_rev(&doc), "A");
     // Numbered: P01, P02 ...
-    doc.project.rev_scheme = RevScheme::Numbered { prefix: RevPrefix::new("P").ok(), width: 2, start: 1 };
-    doc.project.revisions.clear();
+    doc.edit_parts(|parts| {
+        parts.project.rev_scheme = RevScheme::Numbered { prefix: RevPrefix::new("P").ok(), width: 2, start: 1 };
+    });
+    doc.edit_parts(|parts| {
+        parts.project.revisions.clear();
+    });
     assert_eq!(pending_rev(&doc), "P01");
-    doc.project.revisions = vec![issued(Rev::Number(9))];
+    doc.edit_parts(|parts| {
+        parts.project.revisions = vec![issued(Rev::Number(9))];
+    });
     assert_eq!(pending_rev(&doc), "P10");
 }
 
@@ -72,7 +86,9 @@ fn the_column_grammar() {
 fn hostile_settings_read_as_absent() {
     let mut doc = Document::default();
     for v in ["x".repeat(10_000), "rev, ecr@NaN, description".into(), (0..1000).map(|i| format!("f{i}")).collect::<Vec<_>>().join(","), "".into()] {
-        doc.display.insert(COLUMNS_KEY.into(), v);
+        doc.edit_parts(|parts| {
+            parts.display.insert(COLUMNS_KEY.into(), v);
+        });
         let cols = columns(&doc);
         // Brief 055 (FP5): the built-in columns, ECR after Rev.
         assert_eq!(
@@ -82,20 +98,30 @@ fn hostile_settings_read_as_absent() {
         );
     }
     for v in ["", "x", "STAR?"] {
-        doc.display.insert(PENDING_KEY.into(), v.into());
+        doc.edit_parts(|parts| {
+            parts.display.insert(PENDING_KEY.into(), v.into());
+        });
         assert_eq!(PendingStyle::of(&doc), PendingStyle::Star);
     }
-    doc.display.insert("tags.case".into(), "x".into());
-    doc.display.insert("tags.dash".into(), "maybe".into());
-    assert_eq!(ecad_electrical::defaults::print::tag_style(&doc), ecad_model::naming::tag::Style::from(doc.settings.tag_padding()));
+    doc.edit_parts(|parts| {
+        parts.display.insert("tags.case".into(), "x".into());
+    });
+    doc.edit_parts(|parts| {
+        parts.display.insert("tags.dash".into(), "maybe".into());
+    });
+    assert_eq!(ecad_electrical::defaults::print::tag_style(&doc), ecad_model::naming::tag::Style::from(doc.settings().tag_padding()));
 }
 
 #[test]
 fn the_registry_and_ecad_model_read_the_tag_style_alike() {
     let mut doc = Document::default();
     for (dash, case) in [("yes", "upper"), ("no", "typed"), ("NO", "Typed"), ("", "")] {
-        doc.display.insert("tags.dash".into(), dash.into());
-        doc.display.insert("tags.case".into(), case.into());
+        doc.edit_parts(|parts| {
+            parts.display.insert("tags.dash".into(), dash.into());
+        });
+        doc.edit_parts(|parts| {
+            parts.display.insert("tags.case".into(), case.into());
+        });
         assert_eq!(ecad_electrical::defaults::print::tag_style(&doc), ecad_model::naming::tag::Style::of(&doc), "{dash} {case}");
     }
 }

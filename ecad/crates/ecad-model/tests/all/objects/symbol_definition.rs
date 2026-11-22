@@ -3,7 +3,8 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::merge::{self, Inputs, Scope};
+use ecad_model::merge::apply;
+use ecad_model::merge::state::{Inputs, Plan, Scope};
 use ecad_model::{
     Author, ConnectionPointDef, ContentHash, Definition, DefinitionId, Device, DeviceId, Document, Ledger, LibraryId, ObjectRef, Op, Origin, Pt,
     TextSlot,
@@ -44,15 +45,15 @@ fn set(before: Option<DefinitionId>, after: Option<DefinitionId>) -> Op {
 fn set_component_definition_applies_and_undoes() {
     let mut l = base();
     l.commit(Author::User, "edit", vec![set(Some(A), Some(B))]).expect("set");
-    assert_eq!(l.document().devices[&K].definition, Some(B));
+    assert_eq!(l.document().devices()[&K].definition, Some(B));
     assert_eq!(l.document().components_using(B), vec![K], "the index follows");
     assert!(l.document().components_using(A).is_empty());
     l.document().check_index().expect("index");
     l.undo(Author::User).expect("undo");
-    assert_eq!(l.document().devices[&K].definition, Some(A));
+    assert_eq!(l.document().devices()[&K].definition, Some(A));
     assert_eq!(l.document().components_using(A), vec![K]);
     l.redo(Author::User).expect("redo");
-    assert_eq!(l.document().devices[&K].definition, Some(B));
+    assert_eq!(l.document().devices()[&K].definition, Some(B));
 }
 
 #[test]
@@ -65,7 +66,7 @@ fn set_component_definition_keeps_properties() {
     )
     .expect("tag");
     l.commit(Author::User, "edit", vec![set(Some(A), Some(B))]).expect("set");
-    assert_eq!(l.document().devices[&K].get("note"), Some("-K01"));
+    assert_eq!(l.document().devices()[&K].get("note"), Some("-K01"));
 }
 
 #[test]
@@ -83,7 +84,7 @@ fn set_component_definition_checks_its_precondition() {
     let e =
         l.commit(Author::User, "missing", vec![Op::SetDeviceDefinition { id: DeviceId(99), before: None, after: Some(A) }]).unwrap_err().to_string();
     assert!(e.contains("does not exist"), "{e}");
-    assert_eq!(l.document().devices[&K].definition, Some(A), "nothing changed");
+    assert_eq!(l.document().devices()[&K].definition, Some(A), "nothing changed");
     // A definition that is not embedded is refused by the invariants, not applied.
     assert!(l.commit(Author::User, "dangling", vec![set(Some(A), Some(DefinitionId(77)))]).is_err());
 }
@@ -98,7 +99,7 @@ fn diff_records_another_definition_as_one_op() {
     assert_eq!(ops, vec![set(Some(A), Some(B))], "no delete and create");
 }
 
-fn merged(ancestor: &Document, target: &Document, source: &Document, source_ops: &[Op]) -> merge::Plan {
+fn merged(ancestor: &Document, target: &Document, source: &Document, source_ops: &[Op]) -> Plan {
     let mut scope = Scope::default();
     scope.add_ops(source_ops);
     let high = BTreeMap::new();
@@ -114,7 +115,7 @@ fn merged(ancestor: &Document, target: &Document, source: &Document, source_ops:
         edit_rule: &|_, _, v| Ok(v.to_string()),
         join: &|_, _, _| Err("no".into()),
     };
-    merge::plan(&inp, &BTreeMap::new())
+    apply::plan(&inp, &BTreeMap::new())
 }
 
 #[test]
@@ -134,8 +135,8 @@ fn merge_a_property_against_a_definition_change_does_not_conflict() {
     for op in &plan.ops {
         op.apply(&mut m).expect("merged op");
     }
-    assert_eq!(m.devices[&K].definition, Some(B));
-    assert_eq!(m.devices[&K].get("note"), Some("Pump"));
+    assert_eq!(m.devices()[&K].definition, Some(B));
+    assert_eq!(m.devices()[&K].get("note"), Some("Pump"));
 
     // The other way round: the source sets the property, the target the definition.
     let plan = merged(&a, &s, &t, std::slice::from_ref(&tag));

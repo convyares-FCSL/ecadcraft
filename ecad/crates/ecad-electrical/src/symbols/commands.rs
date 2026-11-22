@@ -378,7 +378,7 @@ fn copies_of(doc: &Document, defs: &[DefinitionId]) -> Vec<(ItemId, Representati
             }
         }
     }
-    let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
+    let order: BTreeMap<PageId, usize> = doc.page_order().iter().enumerate().map(|(i, p)| (*p, i)).collect();
     out.sort_by_key(|(i, r, p)| (order.get(p).copied().unwrap_or(usize::MAX), *r, *i));
     out.dedup();
     out
@@ -414,9 +414,9 @@ fn wire_words(doc: &Document, t: ConnectionPointId) -> String {
 
 /// The row of one copy (`item` in `rid`) moving from `old` to `new` (design 048 §6.2).
 fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId, old: &Definition, new: &Definition) -> Option<Row> {
-    let r = doc.representations.get(&rid)?;
+    let r = doc.representations().get(&rid)?;
     let Subject::Device(c) = r.subject else { return None };
-    let placement = match &doc.items.get(&item)?.kind {
+    let placement = match &doc.items().get(&item)?.kind {
         ItemKind::Symbol(s) => s.placement,
         ItemKind::Primitive(_) => return None,
     };
@@ -467,7 +467,7 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
                     let (a, b) = (td.label.clone().unwrap_or_else(|| td.key.to_string()), nd.label.clone().unwrap_or_else(|| nd.key.to_string()));
                     changes.push(format!("label {a} → {b}"));
                     // Rule 3: a relabel that makes two of the device's points share a label.
-                    let term = t.and_then(|t| doc.connection_points.get(&t));
+                    let term = t.and_then(|t| doc.connection_points().get(&t));
                     if term.is_some_and(|x| x.label == td.label)
                         && let Some(nl) = &nd.label
                     {
@@ -509,8 +509,8 @@ pub fn impact(doc: &Document, defs: &[DefinitionId], new: &Definition) -> Vec<Ro
     copies_of(doc, defs)
         .into_iter()
         .filter_map(|(item, rid, _)| {
-            let ItemKind::Symbol(s) = &doc.items.get(&item)?.kind else { return None };
-            let old = doc.definitions.get(&s.definition)?;
+            let ItemKind::Symbol(s) = &doc.items().get(&item)?.kind else { return None };
+            let old = doc.definitions().get(&s.definition)?;
             row(doc, item, rid, s.definition, old, new)
         })
         .collect()
@@ -531,12 +531,12 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
                 crate::references::cables::page_number(doc, row.page)
             )));
         }
-        let item = doc.items.get(&row.item).ok_or(CmdError::refused(GONE))?;
+        let item = doc.items().get(&row.item).ok_or(CmdError::refused(GONE))?;
         let ItemKind::Symbol(inst) = &item.kind else { continue };
-        let old = doc.definitions.get(&inst.definition).ok_or(CmdError::refused("A copy's symbol is gone."))?;
-        let r = doc.representations.get(&row.rep).ok_or(CmdError::refused(GONE))?;
+        let old = doc.definitions().get(&inst.definition).ok_or(CmdError::refused("A copy's symbol is gone."))?;
+        let r = doc.representations().get(&row.rep).ok_or(CmdError::refused(GONE))?;
         let c = row.component;
-        let comp = doc.devices.get(&c).ok_or(CmdError::refused("A copy's device is gone."))?;
+        let comp = doc.devices().get(&c).ok_or(CmdError::refused("A copy's device is gone."))?;
         let mut after = item.clone();
         after.kind = ItemKind::Symbol(SymbolInstance { definition: new_id, placement: inst.placement });
         ops.push(Op::ModifyItem { id: row.item, before: item.clone(), after });
@@ -548,7 +548,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
         let mut cps = r.connection_points.clone();
         for td in &old.connection_points {
             let Some(t) = shown_connection_point(doc, c, r, old, &td.key) else { continue };
-            let term = doc.connection_points.get(&t).ok_or(CmdError::refused("A connection point is gone."))?;
+            let term = doc.connection_points().get(&t).ok_or(CmdError::refused("A connection point is gone."))?;
             match new_keys.get(&td.key) {
                 None => {
                     // Rows with a wired removal clash, so this one is unwired.
@@ -598,7 +598,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
 /// Move the ends of the routes on `page` landing on connection point `t` at `from` to `to` (the
 /// routes' other points stay), gathering several moves of one route in `edits`.
 fn follow(doc: &Document, t: ConnectionPointId, page: PageId, from: Pt, to: Pt, edits: &mut crate::wires::routes::RouteEdits<'_>) {
-    for r in doc.routes_at(t).filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page)).collect::<Vec<_>>() {
+    for r in doc.routes_at(t).filter(|r| doc.routes().get(r).is_some_and(|x| x.page == page)).collect::<Vec<_>>() {
         let Some(route) = edits.get(r) else { continue };
         let n = route.points.len();
         for (i, e) in [(0, route.ends[0]), (n.saturating_sub(1), route.ends[1])] {
@@ -662,7 +662,7 @@ pub(crate) fn plan_new(doc: &Document, ids: &mut IdAllocator, content: &Content,
     refuse_problems(content, &Rules { doc, lineage: None, grid: true })?;
     let derived_from = match from {
         None => None,
-        Some(f) => match doc.definitions.get(&f) {
+        Some(f) => match doc.definitions().get(&f) {
             Some(d) => d.origin.clone().filter(|o| o.library != PROJECT_SYMBOLS),
             None => {
                 let s = symbols::catalogue::STARTERS.iter().find(|s| s.id == f).ok_or(CmdError::refused("No such definition to copy from."))?;
@@ -686,7 +686,7 @@ struct Edit {
 }
 
 fn edit_of(doc: &Document, ids: &mut IdAllocator, edited: DefinitionId, new_lineage: bool) -> Result<Edit, CmdError> {
-    let d = doc.definitions.get(&edited).ok_or(CmdError::NotFound(Noun::Symbol))?;
+    let d = doc.definitions().get(&edited).ok_or(CmdError::NotFound(Noun::Symbol))?;
     match Version::of(edited, d) {
         Some(v) if !new_lineage => {
             let newest = symbols::project::newest(doc, v.lineage).ok_or(CmdError::NotFound(Noun::Symbol))?;
@@ -833,7 +833,7 @@ pub(crate) fn plan_update(
     let lin = match (lineage, &copies) {
         (Some(l), _) => l,
         (None, Some(c)) => {
-            let r = c.first().and_then(|r| doc.representations.get(r)).ok_or(CmdError::refused("Name a placed copy or a lineage."))?;
+            let r = c.first().and_then(|r| doc.representations().get(r)).ok_or(CmdError::refused("Name a placed copy or a lineage."))?;
             let (d, _) = crate::devices::tags::rep_definition(doc, r).ok_or(CmdError::refused("That is not a placed symbol."))?;
             d.origin
                 .as_ref()
@@ -922,7 +922,7 @@ pub fn not_plain(doc: &Document, i: ItemId) -> String {
             Some(c) => format!("Wire {}", wire_number(doc, c)),
             None => "A line".to_string(),
         },
-        Some(Subject::Aid(a)) => match doc.aids.get(&a).map(ecad_model::Aid::kind) {
+        Some(Subject::Aid(a)) => match doc.aids().get(&a).map(ecad_model::Aid::kind) {
             Some(ecad_model::AidKind::Box) => "A location box".to_string(),
             Some(ecad_model::AidKind::Continuation) | None => "A continuation".to_string(),
         },
@@ -968,7 +968,7 @@ pub fn plan_make(
     }
     let mut prims = Vec::new();
     for i in items {
-        match doc.items.get(i).map(|x| &x.kind) {
+        match doc.items().get(i).map(|x| &x.kind) {
             Some(ItemKind::Primitive(pr)) => prims.push(pr.clone()),
             _ => return Err(CmdError::refused("Make symbol takes lines, arcs and text.")),
         }
@@ -990,7 +990,7 @@ pub fn plan_make(
     let mut placed = None;
     if at.replace {
         for i in items {
-            if let Some(it) = doc.items.get(i) {
+            if let Some(it) = doc.items().get(i) {
                 ops.push(Op::RemoveItem { id: *i, item: it.clone() });
             }
         }
@@ -1017,7 +1017,7 @@ pub struct Promoted {
 /// No such device, one that has symbols or no drawing, a drawing that holds more than plain
 /// shapes, or a rule the content breaks.
 pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut content: Content, fallback: Style) -> Result<Promoted, CmdError> {
-    let comp = doc.devices.get(&c).ok_or(CmdError::NotFound(Noun::Device))?.clone();
+    let comp = doc.devices().get(&c).ok_or(CmdError::NotFound(Noun::Device))?.clone();
     let symbols_of: Vec<(RepresentationId, &Representation)> = doc.representations_of(Subject::Device(c)).collect();
     if symbols_of.iter().any(|(_, r)| r.form == Form::Symbol) || comp.definition.is_some() {
         return Err(CmdError::refused("Only a drawn component with no symbols can be made into a symbol."));
@@ -1029,7 +1029,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
         .ok_or(CmdError::refused("That device has no drawing to make a symbol of."))?;
     let mut prims = Vec::new();
     for i in &rep.items {
-        match doc.items.get(i).map(|x| &x.kind) {
+        match doc.items().get(i).map(|x| &x.kind) {
             Some(ItemKind::Primitive(pr)) => prims.push(pr.clone()),
             _ => return Err(CmdError::refused("The drawing holds something that is not a plain shape.")),
         }
@@ -1041,7 +1041,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     let mut rekey: Vec<(ConnectionPointId, PointKey)> = Vec::new();
     let mut used = BTreeSet::new();
     for (n, (t, at)) in rep.connection_points.iter().enumerate() {
-        let term = doc.connection_points.get(t).ok_or(CmdError::refused("A connection point is gone."))?;
+        let term = doc.connection_points().get(t).ok_or(CmdError::refused("A connection point is gone."))?;
         let mut key = term.key.clone().or_else(|| term.label.clone().map(PointKey::Def)).unwrap_or_else(|| PointKey::Def((n + 1).to_string()));
         if !used.insert(key.clone()) {
             key = PointKey::Def(format!("{}", n + 1));
@@ -1066,11 +1066,11 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     refuse_problems(&content, &Rules { doc, lineage: None, grid: false })?;
     let (id, lineage, item, new_rep): (DefinitionId, DefinitionId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let def = version_definition(&content, lineage, 1, None)?;
-    let style = rep.items.first().and_then(|i| doc.items.get(i)).map_or(fallback, |i| i.style.clone());
+    let style = rep.items.first().and_then(|i| doc.items().get(i)).map_or(fallback, |i| i.style.clone());
     let part = def.part_role;
     let mut ops = vec![Op::EmbedDefinition { id, definition: def }, Op::UnlinkRepresentation { id: rid, rep: rep.clone() }];
     for i in &rep.items {
-        if let Some(it) = doc.items.get(i) {
+        if let Some(it) = doc.items().get(i) {
             ops.push(Op::RemoveItem { id: *i, item: it.clone() });
         }
     }
@@ -1098,7 +1098,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     });
     ops.push(Op::SetDeviceDefinition { id: c, before: comp.definition, after: Some(id) });
     for (t, key) in rekey {
-        if let Some(term) = doc.connection_points.get(&t) {
+        if let Some(term) = doc.connection_points().get(&t) {
             ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
             ops.push(Op::AddConnectionPoint { id: t, connection_point: ConnectionPoint { key: Some(key), ..term.clone() } });
         }
@@ -1136,7 +1136,7 @@ pub fn plan_place(
     match (symbols::project::join_of(def), join) {
         (Join::Part, None) => Err(CmdError::refused(format!("{} is part of a device: name the `device` it joins.", def.name))),
         (_, Some(c)) => {
-            if !doc.devices.contains_key(&c) {
+            if !doc.devices().contains_key(&c) {
                 return Err(CmdError::NotFound(Noun::Device));
             }
             // Unlabelled points count by their key.
@@ -1235,7 +1235,7 @@ fn field_value(doc: &Document, key: &str, def: &Definition, field: Field) -> Opt
 pub fn row_json(
     r: &Row, doc: &Document, book: &ecad_model::document::book::Book, places: &mut crate::references::devices::places::Places<'_>,
 ) -> Value {
-    let at = match doc.items.get(&r.item).map(|i| &i.kind) {
+    let at = match doc.items().get(&r.item).map(|i| &i.kind) {
         Some(ecad_model::ItemKind::Symbol(s)) => Some(s.placement.origin),
         _ => None,
     };
@@ -1247,7 +1247,7 @@ pub fn row_json(
 }
 
 pub fn result(doc: &Document, id: DefinitionId) -> Value {
-    let d = doc.definitions.get(&id);
+    let d = doc.definitions().get(&id);
     let o = d.and_then(|d| d.origin.as_ref());
     json!({
         "definition": id.hex(),

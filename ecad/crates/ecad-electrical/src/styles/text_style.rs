@@ -778,7 +778,7 @@ fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles 
                 }
             }
             ecad_model::Subject::Route(_) => {
-                for item in r.items.iter().filter_map(|i| doc.items.get(i)) {
+                for item in r.items.iter().filter_map(|i| doc.items().get(i)) {
                     let pts: Vec<ecad_model::Pt> = match &item.kind {
                         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => vec![*a, *b],
                         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }) => vertices.clone(),
@@ -822,7 +822,7 @@ pub(crate) fn place_blocks(
     // Moved blocks first (§6.4).
     for b in blocks {
         let stored = doc
-            .devices
+            .devices()
             .get(&b.component)
             .and_then(|c| c.properties.get(&format!("{}tag.at", symbol_prefix(b.rep))))
             .and_then(|v| parse_at(v))
@@ -1097,7 +1097,9 @@ mod tests {
             let mut doc = Document::default();
             let body = ecad_model::objects::styles::TextStyle { height: Some(ecad_model::geometry::units::Mm(bad)), ..Default::default() };
             let rec = ecad_model::StyleRecord::new("", ecad_model::objects::styles::StyleBody::Text(body));
-            doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
+            doc.edit_parts(|parts| {
+                parts.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
+            });
             let want = TextStyle { height: 2.5, weight: Weight::Bold, style_name: STYLE_BOLD, colour: None };
             assert_eq!(text_style(&doc, TextKind::Tag), want, "{bad:?}");
         }
@@ -1107,8 +1109,12 @@ mod tests {
     fn old_031_properties_are_ignored() {
         // Brief 050a (FP4): 031's old project keys are not read.
         let mut doc = Document::default();
-        doc.display.insert("text.tag.height".into(), "3".into());
-        doc.display.insert("text.tag.weight".into(), "regular".into());
+        doc.edit_parts(|parts| {
+            parts.display.insert("text.tag.height".into(), "3".into());
+        });
+        doc.edit_parts(|parts| {
+            parts.display.insert("text.tag.weight".into(), "regular".into());
+        });
         assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 2.5, weight: Weight::Bold, style_name: STYLE_BOLD, colour: None });
     }
 
@@ -1121,11 +1127,17 @@ mod tests {
             ..Default::default()
         };
         let rec = ecad_model::StyleRecord::new("", ecad_model::objects::styles::StyleBody::Text(body));
-        doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
+        doc.edit_parts(|parts| {
+            parts.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
+        });
         assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 3.0, weight: Weight::Regular, style_name: STYLE_REGULAR, colour: None });
-        doc.settings.length_unit = LengthUnit::Inch;
+        doc.edit_parts(|parts| {
+            parts.settings.length_unit = LengthUnit::Inch;
+        });
         assert!((text_style(&doc, TextKind::Tag).height - 3.0 / 25.4).abs() < 1e-12);
-        doc.settings.wiring.label_height = Some(2.0);
+        doc.edit_parts(|parts| {
+            parts.settings.wiring.label_height = Some(2.0);
+        });
         assert!((text_style(&doc, TextKind::WireLabel).height - 2.0 / 25.4).abs() < 1e-12);
     }
 
@@ -1135,19 +1147,25 @@ mod tests {
         let page = PageId(1);
         let comp = DeviceId(2);
         let rep = RepresentationId(3);
-        doc.pages.insert(page, Page::titled("p").unwrap());
-        doc.devices.insert(comp, Device::default());
-        doc.representations.insert(
-            rep,
-            Representation {
-                subject: ecad_model::Subject::Device(comp),
-                page,
-                form: ecad_model::Form::Symbol,
-                role: ecad_model::Role::default(),
-                items: Vec::new(),
-                connection_points: Default::default(),
-            },
-        );
+        doc.edit_parts(|parts| {
+            parts.pages.insert(page, Page::titled("p").unwrap());
+        });
+        doc.edit_parts(|parts| {
+            parts.devices.insert(comp, Device::default());
+        });
+        doc.edit_parts(|parts| {
+            parts.representations.insert(
+                rep,
+                Representation {
+                    subject: ecad_model::Subject::Device(comp),
+                    page,
+                    form: ecad_model::Form::Symbol,
+                    role: ecad_model::Role::default(),
+                    items: Vec::new(),
+                    connection_points: Default::default(),
+                },
+            );
+        });
         let plain = TextTarget::symbol(&doc, rep, RunRule::None);
         let strip = TextTarget::symbol(&doc, rep, RunRule::Strip);
         assert_eq!(plain.component, Some(comp));
@@ -1158,19 +1176,31 @@ mod tests {
         assert_eq!(text_shown(&doc, plain, TextKind::ContinuationName), Shown::Off);
         assert_eq!(text_shown(&doc, plain, TextKind::Grid), Shown::On);
         // A project-wide tag rule overrides the run rule; `first` is refused for other kinds.
-        doc.display.insert("text.tag.show".into(), "no".into());
-        doc.display.insert("text.description.show".into(), "first".into());
+        doc.edit_parts(|parts| {
+            parts.display.insert("text.tag.show".into(), "no".into());
+        });
+        doc.edit_parts(|parts| {
+            parts.display.insert("text.description.show".into(), "first".into());
+        });
         assert_eq!(text_shown(&doc, strip, TextKind::Tag), Shown::Off);
         assert_eq!(text_shown(&doc, plain, TextKind::Description), Shown::Off);
-        doc.pages.get_mut(&page).map(|p| p.display.insert("text.tag.show".into(), "yes".into()));
+        doc.edit_parts(|parts| {
+            parts.pages.get_mut(&page).map(|p| p.display.insert("text.tag.show".into(), "yes".into()));
+        });
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
-        doc.devices.get_mut(&comp).map(|c| c.properties.insert("text.tag.show".into(), "no".into()));
+        doc.edit_parts(|parts| {
+            parts.devices.get_mut(&comp).map(|c| c.properties.insert("text.tag.show".into(), "no".into()));
+        });
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::Off);
-        doc.devices.get_mut(&comp).map(|c| c.properties.insert(defaults::symbol_key("text.tag.show", rep), "yes".into()));
+        doc.edit_parts(|parts| {
+            parts.devices.get_mut(&comp).map(|c| c.properties.insert(defaults::symbol_key("text.tag.show", rep), "yes".into()));
+        });
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
         // The project may turn the strip run rule off.
         let mut doc2 = Document::default();
-        doc2.display.insert("text.tag.show.strip".into(), "yes".into());
+        doc2.edit_parts(|parts| {
+            parts.display.insert("text.tag.show.strip".into(), "yes".into());
+        });
         assert_eq!(text_shown(&doc2, TextTarget { run: RunRule::Strip, ..TextTarget::project() }, TextKind::Tag), Shown::On);
     }
 }

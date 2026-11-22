@@ -48,7 +48,7 @@ pub enum ReadOnly {
 }
 
 /// Most unknown words a read-only message names; the rest are counted.
-pub const MAX_WORDS_SHOWN: usize = 3;
+pub(crate) const MAX_WORDS_SHOWN: usize = 3;
 
 /// Added wherever another session is said to be editing a file: the lock of a session that has
 /// just ended (or was killed) can take a moment to be released, notably on Windows.

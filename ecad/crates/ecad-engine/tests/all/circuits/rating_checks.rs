@@ -375,7 +375,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     let b = cab1(&mut f.h);
     let r = f.h.run("rating", json!({"location": "+CAB1", "temperature": 44})).unwrap();
     assert_eq!(r["boxes"], json!(1), "{r}");
-    assert_eq!(f.h.doc().aids[&b].as_box().and_then(|x| x.panel_temperature), Some(ecad_model::geometry::units::Celsius(44.0)));
+    assert_eq!(f.h.doc().aids()[&b].as_box().and_then(|x| x.panel_temperature), Some(ecad_model::geometry::units::Celsius(44.0)));
     let r = ratings(&mut f.h, json!({"wire": f.l2.hex()}));
     let panel = r["factors"].as_array().unwrap().iter().find(|x| x["name"] == "panel").cloned().unwrap();
     // round2(√(26/40)) = round2(0.8062) = 0.81.
@@ -417,7 +417,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     assert!(rows.is_empty(), "{rows:?}");
     f.h.cfg(|p| {
         p.ledger.commit(ecad_model::Author::User, "hostile box temperature", {
-            let before = p.ledger.document().aids[&b].clone();
+            let before = p.ledger.document().aids()[&b].clone();
             let mut after = before.as_box().cloned().unwrap();
             after.panel_temperature = Some(ecad_model::geometry::units::Celsius(95.0));
             vec![ecad_model::Op::ModifyAid { id: b, before, after: ecad_model::Aid::Box(after) }]

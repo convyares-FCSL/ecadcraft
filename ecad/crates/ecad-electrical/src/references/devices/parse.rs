@@ -124,7 +124,7 @@ pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, CmdError> {
 /// The contacts component `c` offers: its typed set ([`crate::devices::traits::Contacts`]); `None` when its
 /// group has no contacts.
 pub(crate) fn contacts_of(doc: &Document, c: DeviceId) -> Option<&ContactSet> {
-    doc.devices.get(&c)?.device_type.as_contacts().map(|x| x.contacts())
+    doc.devices().get(&c)?.device_type.as_contacts().map(|x| x.contacts())
 }
 
 /// What component `c` offers, as written and numbered, when it offers any.
@@ -275,8 +275,8 @@ pub(crate) fn with_table(d: &StoredDevice, who: &str, table: Option<ContactTable
 
 /// Where `c`'s table goes and whether the device says so itself (else the project default).
 pub fn placement_of(doc: &Document, c: DeviceId) -> (Placement, bool) {
-    match doc.devices.get(&c).and_then(|x| x.device_type.as_contacts()).and_then(|x| x.contact_table()) {
+    match doc.devices().get(&c).and_then(|x| x.device_type.as_contacts()).and_then(|x| x.contact_table()) {
         Some(t) => (Placement::of_table(t), true),
-        None => (Placement::of_default(doc.settings.contact_mirror), false),
+        None => (Placement::of_default(doc.settings().contact_mirror), false),
     }
 }

@@ -187,7 +187,7 @@ fn q_plcracks_returns_the_tile_data_and_records_nothing() {
 #[test]
 fn l_make_its_page_draws_every_channel_and_undo_removes_it() {
     let F { mut h, ai, .. } = fixture(5106);
-    let pages = h.doc().page_order.len();
+    let pages = h.doc().page_order().len();
     let head = h.head();
     let v = h.run("plcpage", json!({"card": ai.hex()})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
@@ -197,14 +197,14 @@ fn l_make_its_page_draws_every_channel_and_undo_removes_it() {
     assert!(v["message"].as_str().unwrap().starts_with("Made page "), "{v}");
     let page: PageId = id(&v, "page");
     let d = h.doc();
-    assert_eq!(d.page_order.len(), pages + 1);
-    assert_eq!(d.page_order.iter().position(|p| *p == page), Some(1), "after the rack's last card page");
+    assert_eq!(d.page_order().len(), pages + 1);
+    assert_eq!(d.page_order().iter().position(|p| *p == page), Some(1), "after the rack's last card page");
     assert_eq!(d.representations_on(page).count(), 4);
     // Every channel drawn: refused, and it says where.
     let e = h.run("plcpage", json!({"card": ai.hex()})).unwrap_err();
     assert!(e.starts_with("All 4 channels of -A03 are drawn ("), "{e}");
     h.cmdline("u");
-    assert_eq!(h.doc().page_order.len(), pages);
+    assert_eq!(h.doc().page_order().len(), pages);
     let tile_pages = h.cfg(|p| p.reports().plc.cards.get(&ai).map(|c| c.chans.len()));
     assert_eq!(tile_pages, Some(0), "the channels went with the page");
 }
@@ -262,7 +262,7 @@ fn r_the_page_title_pattern_is_bounded() {
 fn o_the_rack_sheet_draws_a_heading_and_tiles_per_rack() {
     let F { mut h, .. } = fixture(5110);
     let page: PageId = id(&h.run("newpage", json!({"generated": "plcrack"})).unwrap(), "page");
-    assert_eq!(h.doc().pages.get(&page).map(|p| p.title.to_string()).as_deref(), Some("PLC racks"));
+    assert_eq!(h.doc().pages().get(&page).map(|p| p.title.to_string()).as_deref(), Some("PLC racks"));
     assert_eq!(sheets_of(&mut h, page), 1);
     let t = texts(&mut h, page);
     assert!(t.iter().any(|x| x == "-A01 \u{b7} CPU \u{b7} 32 slots, 3 used"), "{t:?}");
@@ -342,7 +342,7 @@ fn a_d_e_one_frame_per_run_with_break_edges_where_the_card_goes_on() {
         .map(|(_, r)| r.items[0])
         .unwrap();
     // Cells' points are at y 200; the body's at its origin + 25; cell 15 ends at x 100 + 15·20 + 10.
-    let item = d.items[&body].clone();
+    let item = d.items()[&body].clone();
     let ecad_model::ItemKind::Symbol(mut s) = item.kind.clone() else { panic!() };
     s.placement.origin = ecad_model::Pt::new(100.0 + 16.0 * 20.0, 200.0 - 25.0);
     let after = ecad_model::Item { kind: ecad_model::ItemKind::Symbol(s), ..item.clone() };
@@ -465,7 +465,7 @@ fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
     let d = h.doc();
     let plc = h.cfg(|p| p.reports().plc.clone());
     let renumbered = |p: PageId, n: &str| {
-        let before = d.pages[&p].clone();
+        let before = d.pages()[&p].clone();
         ecad_model::Op::ModifyPage { id: p, before: before.clone(), after: ecad_model::Page { number: ecad_model::PageNo::parse(n), ..before } }
     };
     let renumber = vec![renumbered(first, "7")];
@@ -476,7 +476,7 @@ fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
         "a page with no PLC symbol"
     );
     let item = h.symbol_item(ai);
-    let it = d.items[&item].clone();
+    let it = d.items()[&item].clone();
     let moved = vec![ecad_model::Op::ModifyItem { id: item, before: it.clone(), after: it }];
     assert!(ecad_electrical::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&moved)));
     // Through the command path: the sheet's text follows the renumber.

@@ -216,18 +216,18 @@ fn a4_save_and_reopen_keep_racks_slots_and_the_rack_reference() {
     let mut h = H { s, project, trail: Vec::new() };
     let d = h.doc();
     for c in &cards {
-        assert_eq!(d.devices.get(c).map(|x| &x.properties), saved.devices.get(c).map(|x| &x.properties), "{c:?}");
+        assert_eq!(d.devices().get(c).map(|x| &x.properties), saved.devices().get(c).map(|x| &x.properties), "{c:?}");
     }
     assert_eq!(rack_of(&mut h, cards[0]), Some(cpu.hex()), "plc.rack round-trips as the rack's ID");
     assert_eq!(prop(&mut h, cards[1], "plc.channels"), Some("32".into()));
     let r = h.run("plcracks", json!({})).unwrap();
     assert_eq!(r["racks"][0]["cards"][1]["channels"], 32);
     // Retag the rack: no card property changes; captions follow.
-    let props: Vec<_> = cards.iter().map(|c| d.devices.get(c).map(|x| x.properties.clone())).collect();
+    let props: Vec<_> = cards.iter().map(|c| d.devices().get(c).map(|x| x.properties.clone())).collect();
     h.run("setprop", json!({"component": cpu.hex(), "key": "tag", "value": "-A10"})).unwrap();
     let d = h.doc();
     for (c, p) in cards.iter().zip(props) {
-        let now = d.devices.get(c).map(|x| x.properties.clone());
+        let now = d.devices().get(c).map(|x| x.properties.clone());
         assert_eq!(now, p, "a retag changes no card property");
     }
     let page = h.first_page();
@@ -306,7 +306,7 @@ fn a6_deleting_a_rack_takes_its_cards_out_in_the_same_transaction() {
     assert_eq!(checks_of(&mut h, "unracked").len(), 1);
     same_as_built(&mut h);
     h.cmdline("u");
-    assert!(h.doc().devices.contains_key(&cpu));
+    assert!(h.doc().devices().contains_key(&cpu));
     for c in &cards {
         assert_eq!(rack_of(&mut h, *c), Some(cpu.hex()), "undo restores both");
     }
@@ -315,7 +315,7 @@ fn a6_deleting_a_rack_takes_its_cards_out_in_the_same_transaction() {
     let page = h.first_page();
     let handles = h.rep_handles(page, cpu);
     h.run("erase", json!({"handles": handles})).unwrap();
-    assert!(!h.doc().devices.contains_key(&cpu));
+    assert!(!h.doc().devices().contains_key(&cpu));
     for c in &cards {
         assert_eq!(rack_of(&mut h, *c), None);
     }
@@ -360,9 +360,9 @@ fn a9_hostile_slots_channels_and_racks_are_refused_in_words() {
 fn fp1_merge_and_diff_words_show_the_racks_tag_never_its_id() {
     let Rack { mut h, cpu, .. } = rack(4511);
     let d = h.doc();
-    assert_eq!(ecad_model::merge::value_words(&[&d], &cpu.hex()), "-A01");
-    assert_eq!(ecad_model::merge::value_words(&[&d], "plain text"), "plain text");
-    assert_eq!(ecad_model::merge::value_words(&[&d], "0123456789abcdef0123456789abcdef"), "0123456789abcdef0123456789abcdef");
+    assert_eq!(ecad_model::merge::state::value_words(&[&d], &cpu.hex()), "-A01");
+    assert_eq!(ecad_model::merge::state::value_words(&[&d], "plain text"), "plain text");
+    assert_eq!(ecad_model::merge::state::value_words(&[&d], "0123456789abcdef0123456789abcdef"), "0123456789abcdef0123456789abcdef");
     // The inspector's Rack row shows the tag.
     let page = h.first_page();
     let a03 = placed_card(&mut h);
@@ -424,7 +424,7 @@ fn a1_place_symbol_asks_rack_and_slot_for_a_card_and_enter_takes_both() {
     assert!(h.s.running.is_none());
     let d = h.doc();
     let slots: Vec<(String, Option<String>, Option<String>)> = d
-        .devices
+        .devices()
         .iter()
         .filter(|(_, c)| c.get("description").is_some_and(|x| x.contains("digital input card")))
         .map(|(id, c)| {

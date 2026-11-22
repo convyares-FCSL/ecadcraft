@@ -73,7 +73,7 @@ pub enum BranchError {
 }
 
 /// Longest branch name, in characters (design 020 §3.1).
-pub const MAX_BRANCH_NAME: usize = 60;
+pub(crate) const MAX_BRANCH_NAME: usize = 60;
 
 /// A branch name checked (design 020 §3.1): trimmed, 1–60 characters, no control characters,
 /// not `main`.
@@ -286,7 +286,7 @@ pub struct Line {
 }
 
 /// A branch and its ancestry up to `main`: element 0 is the branch itself, the last is `main`.
-pub type Lineage = Arc<Vec<Line>>;
+pub(crate) type Lineage = Arc<Vec<Line>>;
 
 /// The most levels of branches on branches read (a crafted file cannot make it loop).
 const MAX_DEPTH: usize = 64;
@@ -1157,7 +1157,7 @@ impl Project {
         // Version snapshots, then the head: one forward pass over the log.
         let doc_end = ledger.document();
         let mut points: Vec<(u64, RowKind, String)> = Vec::new();
-        for (name, at) in &doc_end.versions {
+        for (name, at) in doc_end.versions() {
             points.push((*at, RowKind::of(name), name.key()));
         }
         points.push((ledger.head(), RowKind::Auto, auto_name(ledger.head())));
@@ -1674,7 +1674,7 @@ impl Project {
     ///
     /// # Errors
     /// The engine failed.
-    pub fn write_rescue(&self, w: &mut super::store::Writer, r: &Reader) -> Result<(), SaveError> {
+    pub(crate) fn write_rescue(&self, w: &mut super::store::Writer, r: &Reader) -> Result<(), SaveError> {
         let (seq, chain) = self.head;
         let mut rec = self.rec.clone();
         rec.head = Point::new(seq, &chain);
@@ -2063,7 +2063,7 @@ impl Project {
     }
 
     /// Make the project read-only (another session holds the file's lock).
-    pub fn set_read_only(&mut self, why: String) {
+    pub(crate) fn set_read_only(&mut self, why: String) {
         self.read_only = Some(why);
     }
 
@@ -2141,7 +2141,7 @@ fn merge_record(seq: u64, chain: Hash, row: &MergeRow) -> VersionRecord {
 
 /// The issued revision row `rev` of `doc`, as release data.
 fn revision_of(doc: &Document, rev: Rev) -> Option<Release> {
-    let row = doc.project.revisions.iter().find(|r| r.issued && r.rev == Some(rev))?;
+    let row = doc.project().revisions.iter().find(|r| r.issued && r.rev == Some(rev))?;
     Some(Release { revision: row.clone(), assets: Vec::new() })
 }
 

@@ -124,7 +124,7 @@ fn synth_type(h: &mut H, name: &str, fields: Value) -> String {
 }
 
 fn tag_of(doc: &Document, k: CableId) -> Option<String> {
-    doc.cables.get(&k).and_then(|c| c.tag_shown())
+    doc.cables().get(&k).and_then(|c| c.tag_shown())
 }
 
 // ---------------------------------------------------------------- r1: cablenew
@@ -165,7 +165,7 @@ fn r1_type_cores_length_maker_and_part_come_from_the_type_and_are_overridden_per
     );
     let k = new_cable(&mut h, json!({"cable_type": ty, "length": 12.5}));
     let doc = h.doc();
-    let props = &doc.cables[&k].properties;
+    let props = &doc.cables()[&k].properties;
     assert!(props.get("type").is_some(), "the type's notation fills `type`: {props:?}");
     assert_eq!(cables::cores_shown(&doc, k).map(|c| (c.0, c.1)), Some(("4G".to_string(), Source::Type)));
     assert_eq!(cables::part_value(&doc, k, CableField::Maker), Some(("Synthmaker".into(), Source::Type)));
@@ -186,7 +186,7 @@ fn r1_type_cores_length_maker_and_part_come_from_the_type_and_are_overridden_per
     assert_eq!(cables::part_value(&doc, k, CableField::Maker), Some(("Othermaker".into(), Source::Here)));
     assert_eq!(cables::part_value(&doc, k, CableField::PartNumber), Some(("OTH-7".into(), Source::Here)));
     assert_eq!(cables::shield(&doc, k).map(|s| s.1), Some(Source::Here));
-    assert_eq!(doc.cables[&k].properties.get("type").map(String::as_str), Some("Hand 7G1.5"));
+    assert_eq!(doc.cables()[&k].properties.get("type").map(String::as_str), Some("Hand 7G1.5"));
     // null clears back to the type's value.
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cores": null, "maker": null}})).unwrap();
     let doc = h.doc();
@@ -212,7 +212,7 @@ fn r1_clearing_the_tag_never_leaves_a_cable_without_one() {
     let k = new_cable(&mut h, json!({}));
     let r = h.run("cableedit", json!({"cable": k.hex(), "set": {"tag": null}}));
     let doc = h.doc();
-    assert!(tag_of(&doc, k).is_some_and(|t| !t.trim().is_empty()), "tag null: {r:?}; the cable has no tag now: {:?}", doc.cables[&k].properties);
+    assert!(tag_of(&doc, k).is_some_and(|t| !t.trim().is_empty()), "tag null: {r:?}; the cable has no tag now: {:?}", doc.cables()[&k].properties);
     let r = h.run("cableedit", json!({"cable": k.hex(), "set": {"tag": ""}}));
     let doc = h.doc();
     assert!(tag_of(&doc, k).is_some_and(|t| !t.trim().is_empty()), "tag \"\": {r:?}; the cable has no tag now");
@@ -244,7 +244,7 @@ fn r2_removing_a_drawn_cable_is_refused_with_its_pages_and_an_undrawn_one_is_rem
     // Not drawn: one transaction, one DeleteCable of exactly the cable; undo and redo exact.
     let k = new_cable(&mut h, json!({"cores": "4G", "length": 5, "to": {"location": "+FIELD", "gland": "M20"}, "maker": "Synthmaker"}));
     let before = h.doc();
-    let kept = before.cables[&k].clone();
+    let kept = before.cables()[&k].clone();
     h.run("cableremove", json!({"cable": k.hex()})).unwrap();
     let (label, ops) = last_tx(&mut h);
     assert_eq!(label, "Remove cable");
@@ -256,7 +256,7 @@ fn r2_removing_a_drawn_cable_is_refused_with_its_pages_and_an_undrawn_one_is_rem
         other => panic!("{other:?}"),
     }
     let after = h.doc();
-    assert!(!after.cables.contains_key(&k));
+    assert!(!after.cables().contains_key(&k));
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty(), "its row goes with it");
     h.run("u", json!({})).unwrap();
     assert!(h.doc() == before, "undo restores the document exactly");
@@ -301,7 +301,7 @@ fn r3_reducing_cores_below_those_assigned_is_refused_naming_them() {
     let k = new_cable(&mut h, json!({"cores": "BN,BK,GY,GNYE"}));
     slash_across(&mut h, (-5.0, 25.0), (25.0, 25.0), Some(k)).unwrap();
     let doc = h.doc();
-    let labels: Vec<Option<String>> = doc.cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
+    let labels: Vec<Option<String>> = doc.cables()[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
     // Design 072 §4.5: GNYE, offered and on no line, is stored too.
     assert_eq!(labels, vec![Some("BN".into()), Some("BK".into()), Some("GY".into()), Some("GNYE".into())]);
     // A list without GY, or with too few: refused, naming the cores in use.
@@ -417,7 +417,7 @@ fn r6_assign_follows_the_crossing_order_and_the_core_labels() {
     assert_eq!(r["assigned"], json!(true), "{r}");
     let doc = h.doc();
     let members: Vec<(WireId, Option<String>)> =
-        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
+        doc.cables()[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[2], Some("BN".into())), (ws[1], Some("BK".into())), (ws[0], Some("GY".into()))]);
     // The spare core reads "not assigned".
     let open = checks_of(&mut h, "core-open");
@@ -442,10 +442,10 @@ fn r6_cableadd_onto_a_cable_not_drawn_takes_its_free_cores_in_order() {
     let k = new_cable(&mut h, json!({"cores": "3G"}));
     h.run("cableadd", json!({"conductors": [ws[0].hex(), ws[1].hex()], "cable": k.hex()})).unwrap();
     let doc = h.doc();
-    let labels: Vec<Option<String>> = doc.cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
+    let labels: Vec<Option<String>> = doc.cables()[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
     // Design 072 §4.5: the stored cores 1 and 2 are placed; GNYE stays stored, on no line.
     assert_eq!(labels, vec![Some("1".into()), Some("2".into()), Some("GNYE".into())]);
-    assert_eq!(doc.cables[&k].cores[2].position, ecad_model::CorePosition::Unplaced);
+    assert_eq!(doc.cables()[&k].cores[2].position, ecad_model::CorePosition::Unplaced);
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty());
 }
 
@@ -524,7 +524,7 @@ fn r7_cablenew_refuses_hostile_and_oversized_input_in_bounded_words_writing_noth
                 // Accepted only when what was stored is within bounds.
                 let k: CableId = id(&v, "cable");
                 let doc = h.doc();
-                let props = &doc.cables[&k].properties;
+                let props = &doc.cables()[&k].properties;
                 assert!(
                     props.values().all(|v| v.chars().count() <= 64 && !v.chars().any(char::is_control)),
                     "{:.120}: stored {props:?}",
@@ -565,7 +565,7 @@ fn r7_cableedit_and_cableremove_refuse_hostile_input_in_bounded_words() {
             problems.extend(unbounded(&e, &format!("cableedit {:.60}", set.to_string())));
         } else {
             let doc = h.doc();
-            let props = &doc.cables[&k].properties;
+            let props = &doc.cables()[&k].properties;
             assert!(
                 props.values().all(|v| v.chars().count() <= 64 && !v.chars().any(char::is_control)),
                 "{:.120}: stored {props:?}",
@@ -632,10 +632,10 @@ fn r7_the_command_line_refuses_the_same_input_writing_nothing() {
     h.cmdline(&format!("cableedit {{\"cable\": \"{}\", \"set\": {{\"length\": 7}}}}", k.hex()));
     assert_eq!(h.head(), head + 1);
     // Typed with no parameters at the command line: one cable, no prompt left running.
-    let n = h.doc().cables.len();
+    let n = h.doc().cables().len();
     h.cmdline("cablenew");
     assert!(h.s.running.is_none(), "programmatic calls never prompt");
-    assert_eq!(h.doc().cables.len(), n + 1);
+    assert_eq!(h.doc().cables().len(), n + 1);
 }
 
 #[test]
@@ -658,7 +658,7 @@ fn r7_a_file_with_hostile_cable_values_reads_as_absent_without_a_panic() {
     }
     // Design 072 §4.5: the shield is a typed field, never a property; a word it is not is refused.
     assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "tartan"})).is_err());
-    assert!(!h.doc().cables[&k].properties.contains_key("shield"));
+    assert!(!h.doc().cables()[&k].properties.contains_key("shield"));
     let doc = h.doc();
     assert!(cables::read(&doc, k, CableField::Length).is_none());
     assert!(cables::part_value(&doc, k, CableField::Maker).is_none());
@@ -727,7 +727,7 @@ fn r8_every_command_is_one_transaction_with_exact_undo_and_redo() {
         assert_eq!(h.head(), head + 1, "{cmd}: one transaction");
         states.push(h.doc());
     }
-    assert_eq!(h.doc().cables[&k].cores.iter().filter_map(|m| m.wire()).collect::<Vec<_>>(), ws);
+    assert_eq!(h.doc().cables()[&k].cores.iter().filter_map(|m| m.wire()).collect::<Vec<_>>(), ws);
     // Undo all the way back, each step exact; then redo all, each step exact.
     for i in (0..states.len() - 1).rev() {
         h.run("u", json!({})).unwrap();
@@ -946,7 +946,7 @@ fn f3_the_slash_tool_assigns_a_picked_cable_not_drawn_in_crossing_order() {
     assert_eq!(added, vec![3], "{:?}", ops);
     let doc = h.doc();
     let members: Vec<(WireId, Option<String>)> =
-        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
+        doc.cables()[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[2], Some("BN".into())), (ws[1], Some("BK".into())), (ws[0], Some("GY".into()))]);
     h.run("u", json!({})).unwrap();
     assert!(!cables::is_drawn(&h.doc(), k), "one undo: not drawn again");
@@ -958,16 +958,16 @@ fn f3_the_slash_tool_makes_a_new_cable_with_the_next_free_w_by_default_and_by_ne
     wires(&mut h, 4);
     new_cable(&mut h, json!({"tag": "-W01"}));
     new_cable(&mut h, json!({"tag": "-W02"}));
-    let before: Vec<CableId> = h.doc().cables.keys().copied().collect();
+    let before: Vec<CableId> = h.doc().cables().keys().copied().collect();
     typed(&mut h, &["cableslash", "-5,25", "5,25"]);
     let doc = h.doc();
-    let made: Vec<CableId> = doc.cables.keys().filter(|k| !before.contains(k)).copied().collect();
+    let made: Vec<CableId> = doc.cables().keys().filter(|k| !before.contains(k)).copied().collect();
     assert_eq!(made.len(), 1);
     assert_eq!(tag_of(&doc, made[0]).as_deref(), Some("-W03"), "default: New cable, next free -W");
-    let before: Vec<CableId> = doc.cables.keys().copied().collect();
+    let before: Vec<CableId> = doc.cables().keys().copied().collect();
     typed(&mut h, &["cableslash", "Cable", "New", "15,25", "35,25"]);
     let doc = h.doc();
-    let made: Vec<CableId> = doc.cables.keys().filter(|k| !before.contains(k)).copied().collect();
+    let made: Vec<CableId> = doc.cables().keys().filter(|k| !before.contains(k)).copied().collect();
     assert_eq!(made.len(), 1);
     assert_eq!(tag_of(&doc, made[0]).as_deref(), Some("-W04"));
     // The not-drawn -W01 and -W02 stay not drawn.

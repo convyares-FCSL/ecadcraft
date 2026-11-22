@@ -22,7 +22,7 @@ use crate::objects::styles::StyleRef;
 /// Most characters of a continuation name.
 pub const MAX_NAME: usize = 16;
 /// Most characters of a continuation caption.
-pub const MAX_CAPTION: usize = 80;
+pub(crate) const MAX_CAPTION: usize = 80;
 
 /// A continuation's name (`24V`): the net it carries.
 pub type ContinuationName = Text<MAX_NAME>;

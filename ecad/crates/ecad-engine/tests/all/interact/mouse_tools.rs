@@ -79,7 +79,7 @@ fn connection_point_at(d: &Document, page: PageId, x: f64, y: f64) -> Connection
 /// The route on `page` whose first point is at (x, y) (design 072 §4.3).
 fn route_from(d: &Document, page: PageId, x: f64, y: f64) -> ecad_model::RouteId {
     d.routes_on(page)
-        .find(|r| d.routes[r].points.first().is_some_and(|a| a.near(ecad_model::Pt::new(x, y), 1e-9)))
+        .find(|r| d.routes()[r].points.first().is_some_and(|a| a.near(ecad_model::Pt::new(x, y), 1e-9)))
         .unwrap_or_else(|| panic!("no wire from {x},{y}"))
 }
 
@@ -375,7 +375,7 @@ fn ac2_undo_after_each_finished_form_is_one_step_and_redo_restores_it() {
         if let Some(b) = &before_doc {
             assert!(h.doc() == *b, "{what}: one undo restores the document before the command");
         } else {
-            assert!(h.doc().devices.len() == done.devices.len() - 1, "{what}: the component is undone");
+            assert!(h.doc().devices().len() == done.devices().len() - 1, "{what}: the component is undone");
         }
         h.cmdline("redo");
         assert!(h.doc() == done, "{what}: redo restores it");
@@ -576,7 +576,7 @@ fn the_prompt_names_the_default_connection_point_name_that_is_used() {
     let pg = h.first_page();
     let d = h.doc();
     let t = connection_point_at(&d, pg, 0.0, 10.0);
-    let label = d.connection_points[&t].label.clone().unwrap_or_default();
+    let label = d.connection_points()[&t].label.clone().unwrap_or_default();
     assert_eq!(label, "2", "smallest unused number on that component");
     assert_eq!(
         shown,
@@ -647,7 +647,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()), "replay gives the same state");
     h2.check();
     let pg = h2.first_page();
-    let ends = h2.doc().routes.len();
+    let ends = h2.doc().routes().len();
     start(&mut h2, "wire");
     typed(&mut h2, "0,200");
     let px = h2.s.pixel_size();
@@ -657,9 +657,9 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     click(&mut h2, near);
     assert!(h2.s.running.is_none());
     let d = h2.doc();
-    assert_eq!(d.routes.len(), ends + 1);
+    assert_eq!(d.routes().len(), ends + 1);
     let t1 = connection_point_at(&d, pg, 40.0, 10.0);
-    assert!(d.routes.values().any(|r| r.ends[1] == ecad_model::RouteEnd::Point(t1)));
+    assert!(d.routes().values().any(|r| r.ends[1] == ecad_model::RouteEnd::Point(t1)));
     h2.check();
     while !h2.s.docs.is_empty() {
         h2.s.execute("close", &json!({"index": 0})).unwrap();

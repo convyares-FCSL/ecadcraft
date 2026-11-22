@@ -400,7 +400,7 @@ fn replay_branch(
     if let Some(vs) = at.get(&0) {
         check_point(r, name, 0, vs, &start_doc, &high, &stacks, &mut snapshots, &mut full_checks, &mut lines, &mut info);
     }
-    let named_before = start_doc.versions.clone();
+    let named_before = start_doc.versions().clone();
     let txs = std::mem::take(&mut b.txs);
     let name = &b.rec.name;
     let replayed = Ledger::replay_checked_visit(start_doc, txs, 0, Check::Commit, |tx, doc| {
@@ -454,7 +454,7 @@ fn replay_branch(
     // Versions named on this branch (those inherited from the parent are its rows).
     let named: BTreeMap<(RowKind, String), &u64> = ledger
         .document()
-        .versions
+        .versions()
         .iter()
         .filter(|(k, at)| named_before.get(*k) != Some(*at))
         .map(|(k, at)| ((RowKind::of(k), k.key()), at))
@@ -529,7 +529,7 @@ fn check_point(
 fn first_difference(replayed: &Document, snapshot: &Document) -> String {
     let ops = ecad_model::document::diff::ops_between(replayed, snapshot, &|_| true);
     let Some(op) = ops.first() else {
-        return if replayed.versions != snapshot.versions { "the named versions".into() } else { "the derived index".into() };
+        return if replayed.versions() != snapshot.versions() { "the named versions".into() } else { "the derived index".into() };
     };
     let what = ecad_model::document::diff::objects(std::slice::from_ref(op)).keys().next().map(|(k, id)| format!("{k} {id}")).unwrap_or_default();
     match op {

@@ -490,7 +490,7 @@ impl CablesView {
         c.drawn = selected.is_none_or(|k| ecad_electrical::cables::is_drawn(doc, k));
         c.size = selected.and_then(|k| cable::size(doc, k)).unwrap_or_default();
         c.unused = selected
-            .and_then(|k| doc.cables.get(&k))
+            .and_then(|k| doc.cables().get(&k))
             .map(|x| {
                 // Design 072 §4.5: Not used is the stored core's purpose.
                 x.cores.iter().filter(|m| m.is_spare()).filter_map(|m| m.label_str().map(str::to_string)).collect()
@@ -516,7 +516,7 @@ impl CablesView {
         let rows: Vec<ecad_electrical::checks::Check> =
             p.checks().rows().filter(|c| c.object == ecad_electrical::checks::Object::Cable(k)).cloned().collect();
         let doc = p.ledger.document();
-        let style = doc.settings.reference_style();
+        let style = doc.settings().reference_style();
         let mut rows = ecad_electrical::checks::sort(doc, rows);
         rows.truncate(200);
         self.cable_checks = rows
@@ -709,7 +709,7 @@ pub(crate) fn undrawn_line(r: &ecad_electrical::reports::CableRow) -> String {
 /// `k`'s cores, else empty.
 fn beyond(doc: &ecad_model::Document, k: CableId, at: &str) -> String {
     let Some((tag, label)) = at.trim().rsplit_once(':') else { return String::new() };
-    let members: Vec<ecad_model::WireId> = doc.cables.get(&k).map(|c| c.cores.iter().filter_map(|m| m.wire()).collect()).unwrap_or_default();
+    let members: Vec<ecad_model::WireId> = doc.cables().get(&k).map(|c| c.cores.iter().filter_map(|m| m.wire()).collect()).unwrap_or_default();
     for c in doc.components_tagged(tag) {
         for (t, x) in doc.connection_points_of(c) {
             if x.label.as_deref() != Some(label) {

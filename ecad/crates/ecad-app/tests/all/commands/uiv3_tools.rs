@@ -49,7 +49,7 @@ fn demo(h: &mut H, dir: &std::path::Path) {
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
-    let order = doc(h).page_order.clone();
+    let order = doc(h).page_order().to_vec();
     if let Some(&p) = order.get(1).or(order.first()) {
         h.state_mut().show_page(p).unwrap();
     }

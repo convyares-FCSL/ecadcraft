@@ -47,7 +47,7 @@ impl Caption {
                 .map(|h| {
                     let rep = match map.get(*h) {
                         Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(_, r)| r),
-                        Some(Mapped::Tag(r) | Mapped::Marker(r, _) | Mapped::DeviceReference(r)) => doc.representations.get(&r),
+                        Some(Mapped::Tag(r) | Mapped::Marker(r, _) | Mapped::DeviceReference(r)) => doc.representations().get(&r),
                         _ => None,
                     };
                     match rep.map(|r| r.subject) {

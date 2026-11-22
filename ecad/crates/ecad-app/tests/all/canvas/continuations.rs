@@ -49,7 +49,7 @@ fn continuation_arrows_draw_their_other_ends_and_captions() {
         new_app(),
     );
     h.run_steps(3);
-    let first = doc(&mut h).page_order[0];
+    let first = doc(&mut h).page_order()[0];
     // Two more pages with the other ends of three supply arrows.
     let p2 = page_of(&exec(&mut h, "newpage", json!({"title": "Control"})));
     let p3 = page_of(&exec(&mut h, "newpage", json!({"title": "Reports"})));

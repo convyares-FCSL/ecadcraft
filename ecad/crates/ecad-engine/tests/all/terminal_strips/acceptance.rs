@@ -85,7 +85,7 @@ fn reads(h: &mut H, cable: CableId) -> Value {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items)
+    (d.devices(), d.connection_points(), d.wires(), d.cables(), d.pages(), d.page_order(), d.representations(), d.items())
 }
 
 /// AC 10 (design K): every new property (`connection_points`, `cores`, `part_number.pe`, `maker.pe`, page
@@ -204,7 +204,7 @@ fn undo_and_redo_of_every_strip_write_are_exact() {
 
 fn labels(h: &mut H, terms: &[ConnectionPointId]) -> Vec<String> {
     let d = h.doc();
-    terms.iter().map(|x| d.connection_points[x].label.clone().unwrap_or_default()).collect()
+    terms.iter().map(|x| d.connection_points()[x].label.clone().unwrap_or_default()).collect()
 }
 
 /// AC 3 with 026's tag rules: a fixed strip tag stays and its terminals are still renumbered; a
@@ -227,8 +227,8 @@ fn terminal_block_renumber_with_fixed_and_provisional_strip_tags() {
     assert_eq!(labels(&mut t.h, &a), ["21", "22", "23", "24"]);
     assert_eq!(labels(&mut t.h, &b), ["21", "22", "23", "24"]);
     let d = t.h.doc();
-    assert_eq!(d.devices[&x1].tag(), Some("-X01"));
-    assert!(d.devices[&x1].is_fixed());
+    assert_eq!(d.devices()[&x1].tag(), Some("-X01"));
+    assert!(d.devices()[&x1].is_fixed());
     // One strip by selection; the other keeps its labels.
     t.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "selection", "strips": [x2.hex()]})).unwrap();
     assert_eq!(labels(&mut t.h, &a), ["21", "22", "23", "24"]);
@@ -260,14 +260,14 @@ fn provisional_strip_tags_from_place_terminal_blocks_and_finalise() {
     let v = t.h.run("terminalblocks", json!({"from": [310, 200], "to": [350, 200]})).unwrap();
     let x3: DeviceId = id(&v, "strip");
     let c: Vec<ConnectionPointId> = v["connection_points"].as_array().unwrap().iter().map(|x| id(x, "connection_point")).collect();
-    let tag3 = t.h.doc().devices[&x3].tag_shown().unwrap_or_default();
-    assert!(t.h.doc().devices[&x3].is_provisional(), "a strip placed in provisional mode: {tag3}");
+    let tag3 = t.h.doc().devices()[&x3].tag_shown().unwrap_or_default();
+    assert!(t.h.doc().devices()[&x3].is_provisional(), "a strip placed in provisional mode: {tag3}");
     t.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "selection", "strips": [c[0].hex()], "start": 5})).unwrap();
     assert_eq!(labels(&mut t.h, &c), ["5", "6", "7"]);
     t.h.run("finalise", json!({})).unwrap();
     assert_eq!(labels(&mut t.h, &c), ["5", "6", "7"], "Finalise does not touch terminal labels");
-    let tag3 = t.h.doc().devices[&x3].tag_shown().unwrap_or_default();
-    assert!(!t.h.doc().devices[&x3].is_provisional(), "{tag3}");
+    let tag3 = t.h.doc().devices()[&x3].tag_shown().unwrap_or_default();
+    assert!(!t.h.doc().devices()[&x3].is_provisional(), "{tag3}");
     // Undo the finalise and the renumber, redo both.
     t.h.cmdline("u");
     t.h.cmdline("u");
@@ -294,13 +294,13 @@ fn a_swap_by_renumber_keeps_wires_and_cores() {
     // Exchange their places: 3 right by 50, 4 left by 50 (wires follow).
     t.h.run("move", json!({"handles": [h3.hex()], "delta": [60, 0]})).unwrap();
     t.h.run("move", json!({"handles": [h4.hex()], "delta": [-60, 0]})).unwrap();
-    let members_before = t.h.doc().cables[&t.cable].cores.clone();
+    let members_before = t.h.doc().cables()[&t.cable].cores.clone();
     let ends: Vec<_> = terms.iter().map(|x| t.h.doc().ends_at(*x)).collect();
     t.h.run("renumber", json!({"kind": "terminal_blocks"})).unwrap();
     assert_eq!(labels(&mut t.h, &terms), ["1", "2", "4", "3"]);
     let d = t.h.doc();
     assert_eq!(terms.iter().map(|x| d.ends_at(*x)).collect::<Vec<_>>(), ends, "wires stay attached");
-    assert_eq!(d.cables[&t.cable].cores, members_before, "cores unchanged");
+    assert_eq!(d.cables()[&t.cable].cores, members_before, "cores unchanged");
     let plan = t.h.run("stripplan", json!({})).unwrap();
     let rows = plan["strips"][0]["rows"].as_array().unwrap();
     assert_eq!(rows[2]["connection_point"], json!(terms[3].hex()), "row 3 is the moved connection_point: {plan}");
@@ -398,8 +398,8 @@ fn an_old_project_opens_unchanged_and_shows_its_strips() {
     h.run("saveas", json!({"path": path})).unwrap();
     let d = h.doc();
     for key in ["cores", "terminal_blocks", "part_number.pe", "maker.pe", "strip", "generated"] {
-        assert!(d.devices.values().all(|c| !c.properties.contains_key(key)), "an 018-style project stores no {key}");
-        assert!(d.pages.values().all(|p| !p.display.contains_key(key)), "an 018-style project stores no page {key}");
+        assert!(d.devices().values().all(|c| !c.properties.contains_key(key)), "an 018-style project stores no {key}");
+        assert!(d.pages().values().all(|p| !p.display.contains_key(key)), "an 018-style project stores no page {key}");
     }
     let bytes = std::fs::read(&path).unwrap();
     let head = h.head();

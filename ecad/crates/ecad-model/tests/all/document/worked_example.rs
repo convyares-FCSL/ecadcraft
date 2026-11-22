@@ -115,9 +115,9 @@ fn worked_example_replays_and_undoes() {
         l.commit(Author::User, "Wire", ops).unwrap();
         routes.push((rt, i));
     }
-    assert_eq!(l.document().wires.len(), 2, "the loose route carries no wire yet");
+    assert_eq!(l.document().wires().len(), 2, "the loose route carries no wire yet");
     let (r0, i5) = routes[0];
-    let before = l.document().routes[&r0].clone();
+    let before = l.document().routes()[&r0].clone();
     let after = Route::new(p1, pts(&[(90.0, 15.0), (40.0, 15.0)]), [RouteEnd::Point(us[0]), RouteEnd::Point(ts[0])]);
     l.commit(
         Author::User,
@@ -129,10 +129,10 @@ fn worked_example_replays_and_undoes() {
     )
     .unwrap();
     assert!(mismatches(l.document(), 1e-9).is_empty());
-    let wires: Vec<WireId> = l.document().wires.keys().copied().collect();
+    let wires: Vec<WireId> = l.document().wires().keys().copied().collect();
     assert_eq!(wires.len(), 3);
     for (u, t) in us.iter().zip(&ts) {
-        assert!(l.document().wires.values().any(|w| w.ends.contains(u) && w.ends.contains(t)), "a wire from {u} to {t}");
+        assert!(l.document().wires().values().any(|w| w.ends.contains(u) && w.ends.contains(t)), "a wire from {u} to {t}");
     }
 
     // 4. Cable.
@@ -140,11 +140,11 @@ fn worked_example_replays_and_undoes() {
     let cores = wires.iter().map(|w| Core::on_wire(*w, None)).collect();
     let ops = vec![Op::CreateCable { id: k1, cable: ecad_model::Cable { cores, ..Default::default() } }];
     l.commit(Author::User, "Group as cable", ops).unwrap();
-    let conductors_before: Vec<_> = l.document().wires.clone().into_iter().collect();
+    let conductors_before: Vec<_> = l.document().wires().clone().into_iter().collect();
 
     // 5. Reroute the second route.
     let (r6, i6) = routes[1];
-    let before = l.document().routes[&r6].clone();
+    let before = l.document().routes()[&r6].clone();
     let after = Route { points: pts(&[(90.0, 10.0), (65.0, 25.0), (40.0, 10.0)]), ..before.clone() };
     l.commit(
         Author::User,
@@ -155,7 +155,7 @@ fn worked_example_replays_and_undoes() {
         ],
     )
     .unwrap();
-    assert_eq!(l.document().wires.clone().into_iter().collect::<Vec<_>>(), conductors_before, "a reroute keeps the wires");
+    assert_eq!(l.document().wires().clone().into_iter().collect::<Vec<_>>(), conductors_before, "a reroute keeps the wires");
     let nets_before = nets(l.document());
 
     // 6. Move the component; ends follow.
@@ -169,12 +169,12 @@ fn worked_example_replays_and_undoes() {
     }
     ops.push(Op::ModifyRepresentation { id: r1, before: rep1b.clone(), after: rep1c });
     for (rt, i) in &routes {
-        let before = l.document().items[i].clone();
+        let before = l.document().items()[i].clone();
         let ItemKind::Primitive(p) = &before.kind else { unreachable!() };
         let (_, b) = p.path_ends().unwrap();
         let after = Item { kind: ItemKind::Primitive(p.with_path_end(End::B, Pt::new(b.x, b.y - 5.0)).unwrap()), ..before.clone() };
         ops.push(Op::ModifyItem { id: *i, before, after });
-        let before = l.document().routes[rt].clone();
+        let before = l.document().routes()[rt].clone();
         let mut after = before.clone();
         if let Some(last) = after.points.last_mut() {
             last.y -= 5.0;
@@ -190,10 +190,10 @@ fn worked_example_replays_and_undoes() {
     l.undo(Author::User).unwrap();
     l.undo(Author::User).unwrap();
     l.undo(Author::User).unwrap();
-    assert!(l.document().cables.is_empty());
-    assert_eq!(l.document().wires.clone().into_iter().collect::<Vec<_>>(), conductors_before, "conductor identities untouched");
+    assert!(l.document().cables().is_empty());
+    assert_eq!(l.document().wires().clone().into_iter().collect::<Vec<_>>(), conductors_before, "conductor identities untouched");
     l.redo(Author::User).unwrap();
-    assert!(l.document().cables.contains_key(&k1), "redo recreates the cable with the same ID");
+    assert!(l.document().cables().contains_key(&k1), "redo recreates the cable with the same ID");
     l.redo(Author::User).unwrap();
     l.redo(Author::User).unwrap();
     assert_eq!(l.document(), &after_move);

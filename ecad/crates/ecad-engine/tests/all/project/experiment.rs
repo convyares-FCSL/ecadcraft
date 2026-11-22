@@ -21,8 +21,8 @@ fn scenario_s1_to_s16() {
     h.run("text", json!({"at": [2, 22], "text": "K1", "height": 2.5})).unwrap();
     let lines = h.lines_on(p1);
     assert_eq!(lines.len(), 4, "LINE drew the rectangle");
-    assert_eq!(h.doc().items.len(), 5);
-    assert!(h.doc().representations.is_empty(), "plain geometry has no meaning (DOC-03)");
+    assert_eq!(h.doc().items().len(), 5);
+    assert!(h.doc().representations().is_empty(), "plain geometry has no meaning (DOC-03)");
 
     // S2: convert to a component, add three terminals.
     let r = h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap();
@@ -51,11 +51,11 @@ fn scenario_s1_to_s16() {
     let r2: RouteId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (55.0, -10.0)])})).unwrap(), "route");
     let r3: RouteId = id(&h.run("wire", json!({"points": pts(&[(40.0, 5.0), (50.0, -20.0)])})).unwrap(), "route");
     let doc = h.doc();
-    assert_eq!(doc.wires[&w1].ends, [t1, s1]);
-    assert_eq!(doc.wires.len(), 1, "a line to nowhere is no wire");
-    assert_eq!(doc.routes[&r2].ends, [RouteEnd::Point(t2), RouteEnd::Free]);
-    assert_eq!(doc.routes[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Free]);
-    let ends = |h: &mut H, r: RouteId| h.doc().routes[&r].end_points().unwrap();
+    assert_eq!(doc.wires()[&w1].ends, [t1, s1]);
+    assert_eq!(doc.wires().len(), 1, "a line to nowhere is no wire");
+    assert_eq!(doc.routes()[&r2].ends, [RouteEnd::Point(t2), RouteEnd::Free]);
+    assert_eq!(doc.routes()[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Free]);
+    let ends = |h: &mut H, r: RouteId| h.doc().routes()[&r].end_points().unwrap();
 
     // S5: reroute w1 by a vertex grip (M1).
     let nets_before = nets(&h.doc());
@@ -90,13 +90,13 @@ fn scenario_s1_to_s16() {
     let s2_at = h.connection_point_pos(p1, s2);
     let route = h.line_handle(p1, r3);
     h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [s2_at.x, s2_at.y]})).unwrap();
-    assert_eq!(h.doc().routes[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Point(s2)], "landing on s2 attached it");
+    assert_eq!(h.doc().routes()[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Point(s2)], "landing on s2 attached it");
     assert!(ecad_electrical::wires::routes::wire_between(&h.doc(), t3, s2).is_some(), "and made the wire t3-s2");
     let route = h.line_handle(p1, r3);
     h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [80, -20]})).unwrap();
-    assert_eq!(h.doc().routes[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Free], "dragging into free space detached it");
+    assert_eq!(h.doc().routes()[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Free], "dragging into free space detached it");
     assert!(ecad_electrical::wires::routes::wire_between(&h.doc(), t3, s2).is_none(), "and took the wire away");
-    assert_eq!(h.doc().routes[&r2].ends, [RouteEnd::Point(t2), RouteEnd::Free], "r2 untouched");
+    assert_eq!(h.doc().routes()[&r2].ends, [RouteEnd::Point(t2), RouteEnd::Free], "r2 untouched");
     let route = h.line_handle(p1, r3);
     h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [s2_at.x, s2_at.y]})).unwrap();
     let w3 = ecad_electrical::wires::routes::wire_between(&h.doc(), t3, s2).expect("t3-s2 wired again");
@@ -107,21 +107,21 @@ fn scenario_s1_to_s16() {
     sel.push(h.line_handle(p1, r2).hex());
     h.run("copy", json!({"handles": sel, "delta": [0, -60]})).unwrap();
     let after = h.doc();
-    assert_eq!(after.devices.len(), before.devices.len() + 1);
-    let c1b = *after.devices.keys().find(|c| !before.devices.contains_key(c)).unwrap();
+    assert_eq!(after.devices().len(), before.devices().len() + 1);
+    let c1b = *after.devices().keys().find(|c| !before.devices().contains_key(c)).unwrap();
     let new_terms: Vec<ConnectionPointId> = after.connection_points_of(c1b).map(|(t, _)| t).collect();
     assert_eq!(new_terms.len(), 3);
-    assert!(new_terms.iter().all(|t| !before.connection_points.contains_key(t)), "new terminal IDs");
-    let r2b = *after.routes.keys().find(|r| !before.routes.contains_key(r)).unwrap();
-    let t2b = after.routes[&r2b].ends[0].point().expect("the copied line is attached");
-    assert_eq!(after.connection_points[&t2b].device().unwrap(), c1b, "attached to the copied component, not the original");
+    assert!(new_terms.iter().all(|t| !before.connection_points().contains_key(t)), "new terminal IDs");
+    let r2b = *after.routes().keys().find(|r| !before.routes().contains_key(r)).unwrap();
+    let t2b = after.routes()[&r2b].ends[0].point().expect("the copied line is attached");
+    assert_eq!(after.connection_points()[&t2b].device().unwrap(), c1b, "attached to the copied component, not the original");
     assert!(h.connection_point_pos(p1, t2b).near(Pt::new(40.0, -55.0), 1e-9));
-    assert_eq!(after.routes[&r2b].ends[1], RouteEnd::Free);
-    for k in before.devices.keys() {
-        assert_eq!(before.devices[k], after.devices[k], "originals unchanged");
+    assert_eq!(after.routes()[&r2b].ends[1], RouteEnd::Free);
+    for k in before.devices().keys() {
+        assert_eq!(before.devices()[k], after.devices()[k], "originals unchanged");
     }
-    assert_eq!(before.routes[&r2], after.routes[&r2]);
-    assert_eq!(before.wires, after.wires, "a copied line to nowhere makes no wire");
+    assert_eq!(before.routes()[&r2], after.routes()[&r2]);
+    assert_eq!(before.wires(), after.wires(), "a copied line to nowhere makes no wire");
     // COPYCLIP / PASTECLIP the symbol.
     let sym_item = h.symbol_item(c2);
     let sym = h.handle_of(p1, sym_item);
@@ -130,8 +130,8 @@ fn scenario_s1_to_s16() {
     let before = h.doc();
     h.run("pasteclip", json!({"at": [base.x, base.y - 60.0]})).unwrap();
     let after = h.doc();
-    let c2b = *after.devices.keys().find(|c| !before.devices.contains_key(c)).unwrap();
-    assert_eq!(after.devices[&c2b].definition, after.devices[&c2].definition, "same embedded definition");
+    let c2b = *after.devices().keys().find(|c| !before.devices().contains_key(c)).unwrap();
+    assert_eq!(after.devices()[&c2b].definition, after.devices()[&c2].definition, "same embedded definition");
     let keys_b: Vec<_> = after.connection_points_of(c2b).map(|(_, t)| t.key.clone()).collect();
     assert_eq!(keys_b.len(), 2);
     assert!(keys_b.contains(&Some(ecad_model::PointKey::def("A1"))) && keys_b.contains(&Some(ecad_model::PointKey::def("A2"))));
@@ -142,13 +142,13 @@ fn scenario_s1_to_s16() {
     let route = h.route_handle(p1, w1);
     h.run("erase", json!({"handles": [route.hex()]})).unwrap();
     let doc = h.doc();
-    assert!(!doc.routes.contains_key(&r1), "the line's route is erased with it");
-    assert!(!doc.wires.contains_key(&w1), "t1 and s1 are no longer joined");
+    assert!(!doc.routes().contains_key(&r1), "the line's route is erased with it");
+    assert!(!doc.wires().contains_key(&w1), "t1 and s1 are no longer joined");
     assert_eq!(doc.representations_of(Subject::Route(r1)).count(), 0, "nothing shows it");
     let route = h.line_handle(p1, r2);
     h.run("erase", json!({"handles": [route.hex()]})).unwrap();
     let doc = h.doc();
-    assert!(!doc.routes.contains_key(&r2));
+    assert!(!doc.routes().contains_key(&r2));
     assert_eq!(doc.routes_at(t2).count(), 0);
 
     // S10: a second page; a cable spanning both pages; a non-graphical edit.
@@ -175,9 +175,9 @@ fn scenario_s1_to_s16() {
     h.run("u", Value::Null).unwrap();
     h.run("u", Value::Null).unwrap();
     let doc = h.doc();
-    assert!(!doc.devices[&c1b].properties.contains_key("tag"), "SETPROP undone");
-    assert!(doc.cables.is_empty(), "cable undone");
-    assert!(!doc.wires.contains_key(&w4), "WIRE on page 2 undone");
+    assert!(!doc.devices()[&c1b].properties.contains_key("tag"), "SETPROP undone");
+    assert!(doc.cables().is_empty(), "cable undone");
+    assert!(!doc.wires().contains_key(&w4), "WIRE on page 2 undone");
     // Brief 016 (AC8): the undo of the wire on page 2 brings page 2 to the front, without it.
     assert_eq!(h.p(|p| p.active_page()), Some(p2), "the undo on page 2 brought page 2 to the front");
     assert!(h.pv(|p, pg| pg.entities_of(p, p2)).iter().all(|e| e.handle != w4_route), "page 2 shows the undo");
@@ -185,8 +185,8 @@ fn scenario_s1_to_s16() {
     for _ in 0..3 {
         h.run("redo", Value::Null).unwrap();
     }
-    assert_eq!(h.doc().cables.len(), 1);
-    assert_eq!(id::<ecad_model::CableId>(&cable, "cable"), *h.doc().cables.keys().next().unwrap(), "redo recreates the same cable ID");
+    assert_eq!(h.doc().cables().len(), 1);
+    assert_eq!(id::<ecad_model::CableId>(&cable, "cable"), *h.doc().cables().keys().next().unwrap(), "redo recreates the same cable ID");
 
     // S12: close the page window showing page 2 (the desktop app's `keep_open`: no prompt, the project
     // stays open), then show it again.

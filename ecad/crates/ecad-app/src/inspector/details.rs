@@ -71,14 +71,14 @@ pub fn size_words(s: &ecad_electrical::styles::text_style::TextStyle) -> String 
 pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKind], deps: &mut BTreeSet<ObjectRef>) -> DeviceDetails {
     let mut d = DeviceDetails { component: Some(c), rep: Some(rep), ..DeviceDetails::default() };
     d.tag = ecad_electrical::devices::tags::tag_words(doc, c);
-    d.description = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|t| t.to_string()).unwrap_or_default();
-    d.standard = doc.standard.as_ref().map_or_else(|| "IEC".to_string(), |s| s.header.name.to_string());
+    d.description = doc.devices().get(&c).and_then(|x| x.description.as_ref()).map(|t| t.to_string()).unwrap_or_default();
+    d.standard = doc.standard().map_or_else(|| "IEC".to_string(), |s| s.header.name.to_string());
     let dev = ecad_electrical::references::devices::classify::device(doc, c);
     let mut places = ecad_electrical::references::devices::places::Places::new(doc);
     let place_of = |places: &mut ecad_electrical::references::devices::places::Places<'_>, r: &ecad_model::Representation| {
         places.text(r.page, ecad_electrical::references::devices::classify::anchor(doc, r))
     };
-    if let Some(r) = doc.representations.get(&rep) {
+    if let Some(r) = doc.representations().get(&rep) {
         deps.insert(ObjectRef::Page(r.page));
         d.symbol_name =
             ecad_electrical::devices::tags::rep_definition(doc, r).map_or_else(|| "Drawn symbol".to_string(), |(d, _)| d.name.to_string());
@@ -92,7 +92,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
         let labels = crate::references::drawn::rep_labels(doc, c, r);
         d.symbol_words = if labels.is_empty() { role } else { format!("{role} {}", crate::references::drawn::pins(&labels)) };
         d.place = place_of(&mut places, r);
-        d.placed = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+        d.placed = r.items.first().and_then(|i| doc.items().get(i)).and_then(|i| match &i.kind {
             ecad_model::ItemKind::Symbol(s) if s.placement.origin.is_finite() && s.placement.rotation.is_finite() => Some(Placed {
                 x: s.placement.origin.x,
                 y: s.placement.origin.y,
@@ -128,7 +128,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
         let mut others = Vec::new();
         let mut more = 0usize;
         for o in net.connection_points.iter().filter(|o| **o != t) {
-            let Some(ot) = doc.connection_points.get(o) else { continue };
+            let Some(ot) = doc.connection_points().get(o) else { continue };
             let Some(oc) = ot.device() else { continue };
             deps.insert(ObjectRef::Device(oc));
             // Junctions and other untagged helpers are not named.
@@ -151,6 +151,6 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
 /// The page a symbol is on (for the header of a page).
 pub fn page_words(doc: &Document, page: PageId) -> (String, String) {
     let number = ecad_model::document::book::page_number(doc, page);
-    let title = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
+    let title = doc.pages().get(&page).map(|p| p.title.to_string()).unwrap_or_default();
     (number, title)
 }

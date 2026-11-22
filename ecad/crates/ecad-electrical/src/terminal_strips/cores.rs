@@ -398,7 +398,7 @@ pub fn count_cores(offer: Option<(Vec<String>, OfferSource, String)>, members: &
 
 /// A cable's core count on `doc`.
 pub fn cable_cores(doc: &Document, k: CableId) -> Option<CoreCount> {
-    let cab = doc.cables.get(&k)?;
+    let cab = doc.cables().get(&k)?;
     Some(count_cores(crate::styles::cable::offer(doc, k), &cab.cores))
 }
 
@@ -406,7 +406,7 @@ pub fn cable_cores(doc: &Document, k: CableId) -> Option<CoreCount> {
 /// the first spare core, else (no offer, or none spare) the next number after the highest
 /// numeric label.
 pub fn next_free_label(doc: &Document, k: CableId) -> Option<String> {
-    let cab = doc.cables.get(&k)?;
+    let cab = doc.cables().get(&k)?;
     let count = count_cores(crate::styles::cable::offer(doc, k), &cab.cores);
     if let Some(c) = count.next_free() {
         return Some(c);

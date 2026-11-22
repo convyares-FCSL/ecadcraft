@@ -31,17 +31,17 @@ fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> Result<DeviceId, String> 
 }
 
 fn tag_of(h: &mut H, c: DeviceId) -> Option<String> {
-    h.doc().devices.get(&c).and_then(|x| x.tag_shown())
+    h.doc().devices().get(&c).and_then(|x| x.tag_shown())
 }
 
 fn fixed(h: &mut H, c: DeviceId) -> bool {
-    h.doc().devices.get(&c).is_some_and(|x| x.is_fixed())
+    h.doc().devices().get(&c).is_some_and(|x| x.is_fixed())
 }
 
 /// The tags of the fixed devices among `cs`.
 fn fixed_tags(h: &mut H, cs: &[DeviceId]) -> BTreeMap<DeviceId, Option<String>> {
     let doc = h.doc();
-    cs.iter().filter_map(|c| doc.devices.get(c).filter(|x| x.is_fixed()).map(|x| (*c, x.tag_shown()))).collect()
+    cs.iter().filter_map(|c| doc.devices().get(c).filter(|x| x.is_fixed()).map(|x| (*c, x.tag_shown()))).collect()
 }
 
 fn erase_device(h: &mut H, page: PageId, c: DeviceId) {
@@ -55,10 +55,10 @@ fn assert_unique(h: &mut H, step: &str) -> BTreeMap<String, ObjectRef> {
     let doc = h.doc();
     let mut seen: BTreeMap<String, ObjectRef> = BTreeMap::new();
     let all = doc
-        .devices
+        .devices()
         .iter()
         .filter_map(|(c, x)| x.properties.get("tag").map(|t| (t.clone(), ObjectRef::Device(*c))))
-        .chain(doc.cables.iter().filter_map(|(k, x)| x.tag().map(|t| (t.to_string(), ObjectRef::Cable(*k)))));
+        .chain(doc.cables().iter().filter_map(|(k, x)| x.tag().map(|t| (t.to_string(), ObjectRef::Cable(*k)))));
     for (t, o) in all {
         if let Some(prev) = seen.insert(tag::key(&t), o) {
             panic!("{step}: duplicate tag {t} on {o:?} and {prev:?}");
@@ -69,7 +69,7 @@ fn assert_unique(h: &mut H, step: &str) -> BTreeMap<String, ObjectRef> {
 
 fn k_numbers(h: &mut H) -> BTreeSet<u64> {
     let doc = h.doc();
-    doc.devices.values().filter_map(|c| c.tag()).filter_map(tag::parse).filter(|(p, _)| p == "K").map(|(_, n)| n).collect()
+    doc.devices().values().filter_map(|c| c.tag()).filter_map(tag::parse).filter(|(p, _)| p == "K").map(|(_, n)| n).collect()
 }
 
 /// A small, seeded generator (no dependency).
@@ -139,7 +139,7 @@ fn oracle_run(seed: u64, steps: usize, strict: bool) {
     for step in 0..steps {
         let live: Vec<DeviceId> = {
             let doc = h.doc();
-            used_slots.values().copied().filter(|c| doc.devices.contains_key(c)).collect()
+            used_slots.values().copied().filter(|c| doc.devices().contains_key(c)).collect()
         };
         let pick = |rng: &mut Rng, v: &[DeviceId]| v.get(rng.below(v.len() as u64) as usize).copied();
         let head = h.head();
@@ -214,7 +214,7 @@ fn oracle_run(seed: u64, steps: usize, strict: bool) {
         // Fixed tags of the devices that are still there do not move under Renumber or Next.
         if fixed_must_hold {
             for (c, t) in &fixed_before {
-                if h.doc().devices.contains_key(c) {
+                if h.doc().devices().contains_key(c) {
                     // A Next on the fixed device itself rewrites its own tag (typed).
                     if what.starts_with("setprop") && what.contains(&format!("{t:?}")) {
                         continue;
@@ -431,7 +431,7 @@ fn finalise_follows_the_mark_and_leaves_nothing_provisional() {
         h.run("wire", json!({"points": [[3000, y], [3060, y]], "potential": "24V"})).unwrap();
     }
     let w: CableId = id(&h.run("cableslash", json!({"from": [3020, -3], "to": [3020, 13]})).unwrap(), "cable");
-    let cable_tag = |h: &mut H| h.doc().cables[&w].tag_shown();
+    let cable_tag = |h: &mut H| h.doc().cables()[&w].tag_shown();
     assert_eq!(cable_tag(&mut h).as_deref(), Some("-W?1"));
     assert!(!provisional_left(&mut h).is_empty());
     let r = h.run("finalise", json!({})).unwrap();
@@ -441,7 +441,7 @@ fn finalise_follows_the_mark_and_leaves_nothing_provisional() {
         let n = tag::parse(t).map(|x| x.1).unwrap_or(0);
         assert!(n >= 5, "{t}: -K04 was held by a deleted device; finalised tags follow the mark ({tags:?})");
     }
-    assert!(h.doc().cables.values().next().is_some_and(|c| c.tag().is_some() && !c.is_provisional()));
+    assert!(h.doc().cables().values().next().is_some_and(|c| c.tag().is_some() && !c.is_provisional()));
     assert_unique(&mut h, "after finalise");
     // A second Finalise changes nothing and records nothing.
     let head = h.head();
@@ -526,12 +526,12 @@ fn issue_with_finalise_writes_nothing_when_the_issue_is_refused_and_undoes_in_on
     assert!(ops.len() > 2, "and the Finalise numbering with it: {ops:?}");
     assert_eq!(tag_of(&mut h, k).as_deref(), Some("-K01"));
     let rev_doc = h.p(|p| {
-        let at = p.ledger.document().versions.values().copied().max().unwrap_or(0);
+        let at = p.ledger.document().versions().values().copied().max().unwrap_or(0);
         // The point names the head before the transaction; the issue transaction itself follows it.
         assert_eq!(at, head);
         p.ledger.state_at(at + 1).unwrap()
     });
-    assert_eq!(rev_doc.devices[&k].tag(), Some("-K01"), "the project as issued holds the finalised tag");
+    assert_eq!(rev_doc.devices()[&k].tag(), Some("-K01"), "the project as issued holds the finalised tag");
     // A rev issued before: refused before Finalise writes.
     let at = cell(&mut h, page, 3, 1);
     let k2 = coil(&mut h, at, None).unwrap();
@@ -544,7 +544,7 @@ fn issue_with_finalise_writes_nothing_when_the_issue_is_refused_and_undoes_in_on
     h.run("u", Value::Null).unwrap(); // the coil k2
     h.s.execute("undoissue", &json!({})).unwrap();
     assert_eq!(tag_of(&mut h, k).as_deref(), Some("-K?1"), "undoing the issue takes Finalise with it: one step");
-    assert!(h.p(|p| p.ledger.document().versions.is_empty()), "and the revision point");
+    assert!(h.p(|p| p.ledger.document().versions().is_empty()), "and the revision point");
     h.check();
 }
 
@@ -599,7 +599,7 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
         let ops: Vec<Op> = old
             .iter()
             .map(|(k, t)| {
-                let before = doc.cables[k].clone();
+                let before = doc.cables()[k].clone();
                 let mut after = before.clone();
                 after.tag = ecad_model::naming::tag::TagSlot::of_text(Some(t), Default::default());
                 Op::ModifyCable { id: *k, before, after }
@@ -619,7 +619,7 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
     let head = h2.head();
     assert_eq!(h2.doc(), live, "no silent retagging at open");
     for (k, t) in old {
-        assert_eq!(h2.doc().cables[&k].tag(), Some(t));
+        assert_eq!(h2.doc().cables()[&k].tag(), Some(t));
     }
     let kinds = h2.p(|p| ecad_engine::checks::all(p.ledger.document(), p.tolerance).iter().map(|r| r.kind.name().to_string()).collect::<Vec<_>>());
     assert!(kinds.iter().any(|k| k == "duplicate-tag"), "{kinds:?}");
@@ -634,11 +634,11 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
     // A new cable continues after every W tag the history held.
     h2.run("wire", json!({"points": [[0, 100], [60, 100]]})).unwrap();
     let k4: CableId = id(&h2.run("cableslash", json!({"from": [20, 97], "to": [20, 103]})).unwrap(), "cable");
-    let t4 = h2.doc().cables[&k4].tag_shown().unwrap_or_default();
+    let t4 = h2.doc().cables()[&k4].tag_shown().unwrap_or_default();
     assert_eq!(t4, "-W04", "-W01…-W03 were given before the old tags were typed");
     let doc = h2.doc();
     let mut seen = BTreeSet::new();
-    for t in doc.devices.values().filter_map(|c| c.tag()).chain(doc.cables.values().filter_map(|c| c.tag())) {
+    for t in doc.devices().values().filter_map(|c| c.tag()).chain(doc.cables().values().filter_map(|c| c.tag())) {
         if t != "W0" {
             assert!(seen.insert(tag::key(t)), "duplicate {t}");
         }

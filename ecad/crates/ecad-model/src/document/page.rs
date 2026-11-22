@@ -19,7 +19,7 @@ use crate::naming::text::Text;
 
 /// The old page property naming a terminal plan's one strip; now [`PageKind::TerminalStrip`]
 /// (a reserved key).
-pub const STRIP_KEY: &str = "strip";
+pub(crate) const STRIP_KEY: &str = "strip";
 
 /// Most characters of a page title.
 pub const MAX_PAGE_TITLE: usize = 200;
@@ -60,7 +60,7 @@ impl GenKind {
 
     /// Whether it belongs to the front matter (the Front sheet page type); every other kind is a
     /// report's.
-    pub fn is_front(self) -> bool {
+    pub(crate) fn is_front(self) -> bool {
         match self {
             GenKind::Cover | GenKind::Contents | GenKind::Revisions => true,
             GenKind::BomLocation | GenKind::TerminalBlocks | GenKind::Cables | GenKind::PlcRack | GenKind::IoList => false,

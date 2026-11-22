@@ -405,7 +405,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let mut out = Vec::with_capacity(runs);
     for run in 0..runs {
         let victim = *leaves.get(run * 997 % wires.max(1)).ok_or("no leaf")?;
-        let wire = ledger.document().wires.get(&victim).cloned().ok_or("leaf missing")?;
+        let wire = ledger.document().wires().get(&victim).cloned().ok_or("leaf missing")?;
         let ops = vec![Op::DeleteWire { id: victim, wire }];
         let t = Instant::now();
         let scope = checks.before(ledger.document(), &ops);
@@ -437,7 +437,7 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
         let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x22);
         let tol = 1e-6;
         let mut checks = KeptChecks::new(o.ledger.document(), tol);
-        let page = *o.ledger.document().page_order.first().ok_or("no page")?;
+        let page = *o.ledger.document().page_order().first().ok_or("no page")?;
         let (mut upd, mut cut) = (Vec::with_capacity(runs), Vec::with_capacity(runs));
         // The largest net with a wire in no cable, and that wire.
         let (victim, size) = {
@@ -467,11 +467,11 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
 
             // The victim's route goes (with its drawing); the commit's rewrite deletes its wire.
             let doc = o.ledger.document();
-            let wire = doc.wires.get(&victim).cloned().ok_or("victim missing")?;
+            let wire = doc.wires().get(&victim).cloned().ok_or("victim missing")?;
             let [a, b] = wire.ends;
             let route = doc
                 .routes_at(a)
-                .find(|r| doc.routes.get(r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(b))))
+                .find(|r| doc.routes().get(r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(b))))
                 .ok_or("the victim's route is missing")?;
             let ops = ecad_electrical::wires::routes::remove_route_ops(doc, route);
             let t = Instant::now();
@@ -512,16 +512,19 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
     project
         .read(s, |p, _| -> Result<DrawTarget, &'static str> {
             let doc = p.ledger.document();
-            let page = doc.page_order.first().copied().ok_or("the project has no page")?;
+            let page = doc.page_order().first().copied().ok_or("the project has no page")?;
             let (component, item) = doc
-                .representations
+                .representations()
                 .values()
                 .find_map(|r| {
                     let Subject::Device(c) = r.subject else { return None };
                     let item = *r.items.first()?;
                     let wired = doc.connection_points_of(c).any(|(t, _)| doc.routes_at(t).next().is_some());
-                    (r.page == page && r.form == Form::Symbol && wired && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
-                        .then_some((c, item))
+                    (r.page == page
+                        && r.form == Form::Symbol
+                        && wired
+                        && matches!(doc.items().get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
+                    .then_some((c, item))
                 })
                 .ok_or("page 1 has no component with routes landing on it")?;
             let map = &p.pages.get(&page).ok_or("page 1 is not open")?.map;
@@ -540,7 +543,7 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
                 }
             }
             let shown = ecad_model::connectivity::derive::connection_point_positions(doc, page);
-            let mut others = shown.iter().filter(|(t, _, _)| doc.connection_points.get(t).is_some_and(|x| x.device() != Some(component)));
+            let mut others = shown.iter().filter(|(t, _, _)| doc.connection_points().get(t).is_some_and(|x| x.device() != Some(component)));
             let (_, _, from) = *others.next().ok_or("page 1 has no connection point of another component")?;
             let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6)).ok_or("page 1 has no second connection point of another component")?;
             Ok(DrawTarget { head: p.ledger.head(), symbol, with_wires, from, to })
@@ -706,7 +709,7 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
             run(&mut s, "u", json!({}))?;
             let b_tag: String = project.read(&mut s, |p, _| {
                 ecad_model::DeviceId::parse(&b)
-                    .and_then(|id| p.ledger.document().devices.get(&id))
+                    .and_then(|id| p.ledger.document().devices().get(&id))
                     .and_then(|c| c.tag().map(str::to_string))
                     .unwrap_or_default()
             })?;
@@ -794,12 +797,12 @@ fn device_reference_edits(path: &Path, copy: &Path, runs: usize) -> Result<Devic
         }
         // A coil on page 4 (none of the special pages), its page in front.
         let coil = *coils.get(35).or(coils.last()).ok_or("no coil")?;
-        let page = project.read(&mut s, |p, _| p.ledger.document().representations.get(&coil).map(|r| r.page))?.ok_or("coil missing")?;
+        let page = project.read(&mut s, |p, _| p.ledger.document().representations().get(&coil).map(|r| r.page))?.ok_or("coil missing")?;
         s.execute("openpage", &json!({"page": page.hex()})).map_err(|e| e.to_string())?;
         for run in 0..runs {
             let h = project
                 .read(&mut s, |p, _| {
-                    let item = p.ledger.document().representations.get(&coil)?.items.first().copied()?;
+                    let item = p.ledger.document().representations().get(&coil)?.items.first().copied()?;
                     p.pages.get(&page)?.map.item(item)
                 })?
                 .ok_or("the coil is not drawn")?;
@@ -841,12 +844,12 @@ fn device_reference_edits(path: &Path, copy: &Path, runs: usize) -> Result<Devic
 pub(crate) fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::RepresentationId>, Vec<ecad_model::PageId>), String> {
     use ecad_model::{Color, Op, Placement, Pt, Style};
     use {ecad_electrical::devices::placing::Target, ecad_electrical::devices::placing::plan_place, ecad_electrical::devices::tags::TagHigh};
-    let order = ledger.document().page_order.clone();
+    let order = ledger.document().page_order().to_vec();
     let n = order.len();
     if n == 0 {
         return Err("the cross-reference timings need a page".into());
     }
-    let layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
+    let layer = ledger.document().layers().iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
     // A debug build (the tests) adds fewer coils: the release benchmark adds them all.
     let wanted = if cfg!(debug_assertions) { 40 } else { REFERENCE_COILS };
     let at = |k: usize| order[k % n];
@@ -885,7 +888,7 @@ pub(crate) fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_mod
         step(ledger, b, "no", (x, 60.0), Target::Join(c))?;
         step(ledger, b, "nc", (x + 10.0, 60.0), Target::Join(c))?;
         if i % 2 == 0 {
-            let before = ledger.document().devices.get(&c).cloned().ok_or("the bench coil is missing")?;
+            let before = ledger.document().devices().get(&c).cloned().ok_or("the bench coil is missing")?;
             let after = ecad_electrical::references::devices::parse::with_contacts(&before, "the bench coil", Some("3P+1NO+1NC"))
                 .map_err(|e| e.to_string())?;
             let op = Op::ModifyDevice { id: c, before, after };
@@ -922,7 +925,7 @@ fn sheet_edits(path: &Path, copy: &Path, runs: usize) -> Result<SheetTimes, Stri
             s.execute(cmd, &params).map_err(|e| format!("{cmd}: {e}"))?;
             Ok::<f64, String>(ms(t))
         };
-        let page2 = project.read(&mut s, |p, _| p.ledger.document().page_order.get(1).copied())?;
+        let page2 = project.read(&mut s, |p, _| p.ledger.document().page_order().get(1).copied())?;
         let mut out = SheetTimes::default();
         for i in 0..runs {
             if let Some(p2) = page2 {
@@ -930,7 +933,7 @@ fn sheet_edits(path: &Path, copy: &Path, runs: usize) -> Result<SheetTimes, Stri
             }
             let f = project.read(&mut s, |p, _| {
                 let doc = p.ledger.document();
-                let page = doc.page_order.first().copied();
+                let page = doc.page_order().first().copied();
                 let t = Instant::now();
                 let n = page.map(|pg| {
                     let input = ecad_engine::pages::frame::FrameInput::of(doc, pg, &ecad_model::document::book::Book::of(doc));
@@ -984,7 +987,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
         let mut s = cadcraft_engine::Session::empty();
         let (project, _) =
             ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
-        let order = project.read(&mut s, |p, _| p.ledger.document().page_order.clone())?;
+        let order = project.read(&mut s, |p, _| p.ledger.document().page_order().to_vec())?;
         let first = *order.first().ok_or("the project has no pages")?;
         let pages = spread(&order);
         if pages.is_empty() {

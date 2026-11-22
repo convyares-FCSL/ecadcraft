@@ -38,7 +38,7 @@ fn a_new_device_in_a_box_takes_its_location_in_one_step() {
     assert_eq!(loc(&h.doc(), k).as_deref(), Some("+CP1"));
     assert_eq!(v["location"]["set"][0]["value"], "+CP1", "{v}");
     h.cmdline("u");
-    assert!(!h.doc().devices.contains_key(&k), "one undo removes the device and its location");
+    assert!(!h.doc().devices().contains_key(&k), "one undo removes the device and its location");
     // A device placed outside every box, with no page or project value: no location.
     let (k2, _) = place(&mut h, "coil", [300, 50]);
     assert_eq!(loc(&h.doc(), k2), None);
@@ -65,7 +65,7 @@ fn a_move_into_a_box_proposes_its_location() {
     h.run("move", json!({"handles": [hd.hex()], "delta": [200, 0]})).unwrap();
     assert_eq!(h.head(), head + 2, "the move, then its follow-up");
     assert_eq!(loc(&h.doc(), k).as_deref(), Some("+CP1"));
-    let x = |h: &mut H| match &h.doc().items[&item].kind {
+    let x = |h: &mut H| match &h.doc().items()[&item].kind {
         ecad_model::ItemKind::Symbol(sym) => sym.placement.origin.x,
         ecad_model::ItemKind::Primitive(_) => f64::NAN,
     };

@@ -64,9 +64,10 @@ The layers guard also checks dev-dependencies: no crate depends on a layer above
 ```
 ecad-model/src/
   lib.rs, error.rs, dev.rs (verify mode and test hooks)
-  document/        doc (split, #9), project, page, sheet, book, op, effect, diff, invariant, index,
-                   view (DerivedView protocol), strict, ledger (split)
-  merge/           three-way merge of branches (merge.rs 2,766, #8): state, conflicts, apply
+  document/        doc/ (drawing, device, cable, settings, definition, document; the Document's maps are read
+                   through accessors, built with `from_parts`), project, page, sheet, book, op, effect, diff, invariant, index,
+                   view (DerivedView protocol), strict, ledger/ (types, stacks, journal, open, read, edit)
+  merge/           three-way merge of branches (#8): state, conflicts, rules, apply
   objects/         devices/ (device.rs + device/; ConnectionPoint, TerminalBlock, TerminalStrip types),
                    plc, wire, route, aid, loose_part, title_block, user, role, styles/
   connectivity/    connectivity, jumper_bars (today links.rs), wire_order, wiring, derive

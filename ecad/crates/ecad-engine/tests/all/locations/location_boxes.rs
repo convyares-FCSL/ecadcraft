@@ -23,7 +23,7 @@ fn a_box_draws_in_its_own_style_and_is_its_user() {
     assert_eq!(styles::location::box_draw(&h.doc(), b).linetype, styles::location::linetype("dashed"), "the project's until set");
     h.run("setprop", json!({"aids": [b.hex()], "key": "style", "value": "Field"})).unwrap();
     let d = h.doc();
-    assert_eq!(d.aids[&b].as_box().and_then(|x| x.style.clone()), Some(field.clone()), "stored by ID");
+    assert_eq!(d.aids()[&b].as_box().and_then(|x| x.style.clone()), Some(field.clone()), "stored by ID");
     assert_eq!(styles::location::box_draw(&d, b).linetype, styles::location::linetype("continuous"), "drawn in its own");
     assert_eq!(styles::box_users(&d, StyleCatalogue::Location, &field), vec![b]);
     let c = styles::users(&d, StyleCatalogue::Location, &field);
@@ -35,11 +35,11 @@ fn a_box_draws_in_its_own_style_and_is_its_user() {
     let e = h.run("deletestyle", json!({"catalogue": "location", "id": field.text()})).unwrap_err().to_string();
     assert!(e.contains("1 location box uses Field"), "{e}");
     h.run("deletestyle", json!({"catalogue": "location", "id": field.text(), "replace_with": "box"})).unwrap();
-    assert_eq!(h.doc().aids[&b].as_box().and_then(|x| x.style.clone()), StyleRef::builtin("box"), "moved to the replacement");
+    assert_eq!(h.doc().aids()[&b].as_box().and_then(|x| x.style.clone()), StyleRef::builtin("box"), "moved to the replacement");
 
     // Null clears it; a key a box does not have names `style` among its keys.
     h.run("setprop", json!({"aids": [b.hex()], "key": "style", "value": null})).unwrap();
-    assert_eq!(h.doc().aids[&b].as_box().and_then(|x| x.style.clone()), None);
+    assert_eq!(h.doc().aids()[&b].as_box().and_then(|x| x.style.clone()), None);
     let e = h.run("setprop", json!({"aids": [b.hex()], "key": "colour", "value": "red"})).unwrap_err().to_string();
     assert!(e.contains("A location box has a `function`, a `location`, a `panel_temperature` and a `style`, not `colour`."), "{e}");
     h.check();

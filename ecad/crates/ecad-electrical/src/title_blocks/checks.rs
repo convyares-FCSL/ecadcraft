@@ -126,7 +126,7 @@ fn count(n: usize, one: &str, many: &str) -> String {
 /// `frame-sheet-differs`: pages whose own sheet differs from their frame's.
 fn sheet_rows(doc: &Document) -> Vec<Check> {
     let mut out = Vec::new();
-    for (page, p) in doc.pages.iter().take(MAX_PAGES) {
+    for (page, p) in doc.pages().iter().take(MAX_PAGES) {
         let Some(own) = p.sheet else { continue };
         let Some(framed) = sheet::frame_sheet(doc, *page) else { continue };
         if (own.width, own.height) == (framed.width, framed.height) && own == framed {
@@ -156,7 +156,7 @@ fn sheet_rows(doc: &Document) -> Vec<Check> {
 /// page's own values.
 fn page_input(doc: &Document, book: &Book, base: &FrameInput, page: PageId) -> FrameInput {
     let mut inp = base.clone();
-    inp.page_title = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
+    inp.page_title = doc.pages().get(&page).map(|p| p.title.to_string()).unwrap_or_default();
     inp.page = book.number(doc, page);
     inp.next_page = book.next(page);
     inp.next = inp.next_page.map_or_else(|| "-".to_string(), |n| book.number(doc, n));

@@ -719,7 +719,7 @@ fn device_of(s: &Session, h: cadcraft_engine::doc::Handle) -> Result<DeviceId, S
         let doc = p.ledger.document();
         let rep = match map.get(h) {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(_, r)| r),
-            Some(Mapped::Tag(r) | Mapped::Marker(r, _)) => doc.representations.get(&r),
+            Some(Mapped::Tag(r) | Mapped::Marker(r, _)) => doc.representations().get(&r),
             _ => None,
         };
         match rep.map(|r| r.subject) {
@@ -770,7 +770,7 @@ impl Props {
     fn show(s: &mut Session, c: DeviceId) {
         let lines = read(s, |p, _| {
             let doc = p.ledger.document();
-            let d = doc.devices.get(&c).cloned().unwrap_or_default();
+            let d = doc.devices().get(&c).cloned().unwrap_or_default();
             Ok(ecad_electrical::devices::PROPERTIES
                 .iter()
                 .map(|(k, label)| format!("{label}: {}", d.value(k).unwrap_or_else(|| "?".into())))
@@ -909,7 +909,7 @@ impl Interactive for Props {
         match self.key {
             None => prompt("Enter property to change", Accept::TEXT, &KEYWORDS.iter().map(|(k, _)| *k).collect::<Vec<_>>(), None),
             Some(key) => {
-                let current = read(s, |p, _| Ok(p.ledger.document().devices.get(&c).and_then(|x| x.value(key)))).ok().flatten();
+                let current = read(s, |p, _| Ok(p.ledger.document().devices().get(&c).and_then(|x| x.value(key)))).ok().flatten();
                 let label = ecad_electrical::devices::PROPERTIES.iter().find(|(k, _)| *k == key).map_or(key, |(_, l)| *l);
                 prompt(format!("New {}", label.to_lowercase()), Accept::TEXT, &[], current)
             }

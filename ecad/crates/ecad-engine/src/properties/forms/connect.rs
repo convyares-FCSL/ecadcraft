@@ -49,7 +49,7 @@ fn wire_end(s: &Session, p: Vec2) -> Result<(RouteId, End, Pt, bool), String> {
         };
         let Some((_, rep)) = doc.representation_of_item(i) else { return Err(NOT_WIRE.into()) };
         let Subject::Route(r) = rep.subject else { return Err(NOT_WIRE.into()) };
-        let route = doc.routes.get(&r).ok_or(NOT_WIRE)?;
+        let route = doc.routes().get(&r).ok_or(NOT_WIRE)?;
         let [a, b] = route.end_points().ok_or(NOT_WIRE)?;
         let q = pt(p);
         let (end, at, landed) = if q.dist(a) <= q.dist(b) { (End::A, a, route.ends[0]) } else { (End::B, b, route.ends[1]) };

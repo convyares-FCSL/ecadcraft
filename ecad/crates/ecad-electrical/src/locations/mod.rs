@@ -84,12 +84,12 @@ pub struct LocBox {
 /// A device in the sense of locations and the BOM (design 024 §6.1): a device with a tag (a BOM
 /// item is a loose part, design 072 §6.4).
 pub fn is_device(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(|x| !x.tag.is_none())
+    doc.devices().get(&c).is_some_and(|x| !x.tag.is_none())
 }
 
 /// Location box `a`'s values, when `a` is one.
 pub fn box_values(doc: &Document, a: AidId) -> Option<&LocationBox> {
-    doc.aids.get(&a).and_then(Aid::as_box)
+    doc.aids().get(&a).and_then(Aid::as_box)
 }
 
 /// The box representation `r` (`rid`) stands for, if it is one with a drawable outline.
@@ -100,7 +100,7 @@ pub(crate) fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representati
     }
     let values = box_values(doc, c)?;
     let item = *r.items.first()?;
-    let vertices = match &doc.items.get(&item)?.kind {
+    let vertices = match &doc.items().get(&item)?.kind {
         ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) => vertices.clone(),
         _ => return None,
     };
@@ -208,7 +208,7 @@ pub(crate) fn crosses_itself(v: &[Pt]) -> bool {
 /// A representation's anchor (design 024 §3.1): a symbol's insertion point; for a drawn one its
 /// first connection point, else its first item's first point.
 pub fn anchor(doc: &Document, r: &Representation) -> Option<Pt> {
-    let first = r.items.first().and_then(|i| doc.items.get(i));
+    let first = r.items.first().and_then(|i| doc.items().get(i));
     match r.form {
         Form::Symbol => first.and_then(|i| match &i.kind {
             ItemKind::Symbol(s) => Some(s.placement.origin),
@@ -373,10 +373,10 @@ pub(crate) fn context_in(doc: &Document, a: Aspect, page: PageId, at: Option<Pt>
     {
         return Located::of(doc, a, k, Source::Box { aid: b.aid, page });
     }
-    if let Some(k) = doc.pages.get(&page).and_then(|p| designations::page_key(p, a)) {
+    if let Some(k) = doc.pages().get(&page).and_then(|p| designations::page_key(p, a)) {
         return Located::of(doc, a, &k, Source::Page(page));
     }
-    if let Some(k) = designations::default_key(&doc.project, a) {
+    if let Some(k) = designations::default_key(doc.project(), a) {
         return Located::of(doc, a, &k, Source::Project);
     }
     Located::none()
@@ -454,7 +454,7 @@ pub fn shared_context(doc: &Document, c: DeviceId, a: Aspect) -> Option<String> 
 
 /// Device `c`'s stored value of aspect `a` (design 052 §5.1): its own field, else none.
 pub(crate) fn resolve_in(doc: &Document, c: DeviceId, a: Aspect) -> Located {
-    match doc.devices.get(&c).and_then(|x| designations::device_key(x, a)) {
+    match doc.devices().get(&c).and_then(|x| designations::device_key(x, a)) {
         Some(k) => Located::of(doc, a, &k, Source::Device),
         None => Located::none(),
     }
@@ -500,7 +500,7 @@ pub fn rep_location(doc: &Document, c: DeviceId, r: &Representation) -> Located 
     if crate::terminal_strips::strip_of(doc, c).is_some() {
         return resolve(doc, c);
     }
-    let props = doc.devices.get(&c).map(|x| &x.properties);
+    let props = doc.devices().get(&c).map(|x| &x.properties);
     if let Some(k) = override_key(doc, r).and_then(|key| props.and_then(|p| p.get(&key))) {
         return Located::of(doc, Aspect::Location, k, Source::Override);
     }
@@ -511,7 +511,7 @@ pub fn rep_location(doc: &Document, c: DeviceId, r: &Representation) -> Located 
 /// `location.plug`, else the connector's.
 pub fn half_location(doc: &Document, c: DeviceId, side: crate::symbols::Side) -> Located {
     let key = format!("{LOCATION_KEY}.{}", if side == crate::symbols::Side::Plug { "plug" } else { "socket" });
-    match doc.devices.get(&c).and_then(|x| x.properties.get(&key)) {
+    match doc.devices().get(&c).and_then(|x| x.properties.get(&key)) {
         Some(k) => Located::of(doc, Aspect::Location, k, Source::Override),
         None => resolve(doc, c),
     }
@@ -572,7 +572,7 @@ fn box_style(layer: LayerId) -> Style {
 
 /// The ID of layer [`LAYER`], with the op that adds it when the document has none.
 fn layer_ops(doc: &Document, ids: &mut IdAllocator) -> (LayerId, Vec<Op>) {
-    if let Some((id, _)) = doc.layers.iter().find(|(_, l)| l.name == LAYER) {
+    if let Some((id, _)) = doc.layers().iter().find(|(_, l)| l.name == LAYER) {
         return (*id, Vec::new());
     }
     let id: LayerId = ids.fresh();
@@ -641,7 +641,7 @@ pub(crate) const NO_VALUE: &str = "A box needs a function or a location, such as
 pub(crate) fn plan_box_with(
     doc: &Document, ids: &mut IdAllocator, page: PageId, values: &[(Aspect, &str)], vertices: Vec<Pt>,
 ) -> Result<Planned, CmdError> {
-    if !doc.pages.contains_key(&page) {
+    if !doc.pages().contains_key(&page) {
         return Err(CmdError::refused(crate::msg::NO_SUCH_PAGE));
     }
     check_outline(&vertices)?;
@@ -675,13 +675,13 @@ pub(crate) fn plan_box_with(
 /// # Errors
 /// Not a closed polyline, part of another object, or as [`plan_box_with`].
 pub(crate) fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, values: &[(Aspect, &str)]) -> Result<Planned, CmdError> {
-    let it = doc.items.get(&item).ok_or(CmdError::refused("no such item"))?;
+    let it = doc.items().get(&item).ok_or(CmdError::refused("no such item"))?;
     if let Some((_, r)) = doc.representation_of_item(item) {
         let who = match r.subject {
             Subject::Device(c) => crate::devices::tags::tag_words(doc, c),
             Subject::Wire(_) | Subject::Route(_) => "a wire".into(),
             Subject::Cable(_) => "a cable".into(),
-            Subject::Aid(a) => match doc.aids.get(&a).map(ecad_model::Aid::kind) {
+            Subject::Aid(a) => match doc.aids().get(&a).map(ecad_model::Aid::kind) {
                 Some(ecad_model::AidKind::Box) => "another location box".to_string(),
                 Some(ecad_model::AidKind::Continuation) | None => "a continuation".into(),
             },
@@ -736,8 +736,8 @@ pub(crate) fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
             _ => {}
         }
     }
-    let (props, page) = (props?, page.or_else(|| doc.items.get(&p.item).map(|i| i.page))?);
-    let vertices = vertices.or_else(|| match &doc.items.get(&p.item)?.kind {
+    let (props, page) = (props?, page.or_else(|| doc.items().get(&p.item).map(|i| i.page))?);
+    let vertices = vertices.or_else(|| match &doc.items().get(&p.item)?.kind {
         ItemKind::Primitive(Primitive::Polyline { vertices, .. }) => Some(vertices.clone()),
         _ => None,
     })?;
@@ -807,7 +807,7 @@ pub(crate) fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
         n += 1;
         if b.location_key.is_some()
             && doc
-                .devices
+                .devices()
                 .get(&c)
                 .and_then(|x| designations::device_key(x, Aspect::Location))
                 .is_some_and(|own| Some(&own) != b.location_key.as_ref())

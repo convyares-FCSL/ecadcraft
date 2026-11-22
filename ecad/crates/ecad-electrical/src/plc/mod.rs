@@ -66,13 +66,13 @@ pub enum PlcFix {
 
 /// The type of device `c` as a PLC card or rack, read from its stored type (design 072 §3).
 pub fn card_type_of(doc: &Document, c: DeviceId) -> Option<CardType> {
-    CardType::of_type(&doc.devices.get(&c)?.device_type)
+    CardType::of_type(&doc.devices().get(&c)?.device_type)
 }
 
 /// Every racked card's block, read in one pass (for counting what a change moves).
 pub(crate) fn all_blocks(doc: &Document) -> BTreeMap<DeviceId, address::Block> {
     let racks: BTreeSet<DeviceId> = doc
-        .devices
+        .devices()
         .values()
         .filter_map(|x| match &x.device_type {
             ecad_model::DeviceType::PlcModule(m) => m.rack,
@@ -191,7 +191,7 @@ type Group = DeviceId;
 /// The page of device `c`'s first representation.
 fn first_page(doc: &Document, c: DeviceId) -> Option<PageId> {
     let pages: BTreeSet<PageId> = doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).collect();
-    doc.page_order.iter().find(|p| pages.contains(p)).copied()
+    doc.page_order().iter().find(|p| pages.contains(p)).copied()
 }
 
 /// The extra pages a property change on component `c` redraws (design 045 §11.1): a rack's tag or
@@ -323,7 +323,7 @@ pub fn caption_text(
 /// level, faint when inherited).
 pub(crate) fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::cables::words::Row>) {
     let Some(ty) = card_type_of(doc, c) else { return };
-    let props = doc.devices.get(&c).map(|x| &x.properties);
+    let props = doc.devices().get(&c).map(|x| &x.properties);
     let own = |k: &str| props.and_then(|p| p.get(k)).cloned();
     let row = |key: &str, label: &str, value: String, inherited: bool, choices: Vec<String>| crate::cables::words::Row {
         kind: crate::cables::words::RowKind::Value,
@@ -543,7 +543,7 @@ pub(crate) fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Opti
 pub(crate) fn channel_rows(
     doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::cables::words::Row>,
 ) {
-    let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) else { return };
+    let Some(r) = symbol.and_then(|s| doc.representations().get(&s)) else { return };
     if crate::devices::tags::rep_starter(doc, r).and_then(channels::cell_type).is_none() {
         return;
     }
@@ -572,7 +572,7 @@ pub(crate) fn channel_rows(
     let inherited = typed.is_none();
     rows.push(row(channels::ch_key(i, "address"), "Address", typed.unwrap_or(auto), true, inherited));
     for (t, _) in &shown {
-        if let (Some((_, role)), Some(term)) = (channels::point_of(doc, *t), doc.connection_points.get(t)) {
+        if let (Some((_, role)), Some(term)) = (channels::point_of(doc, *t), doc.connection_points().get(t)) {
             rows.push(row(
                 format!("plc.pin#{i}#{}", ecad_model::Word::word(role)),
                 &format!("Pin {}", ecad_model::Word::word(role)),

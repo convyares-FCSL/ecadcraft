@@ -33,7 +33,7 @@ fn tag_prefixes_by_symbol_and_the_cable_prefix_are_shown_raw_and_readable() {
 
     let dir = TempDir::new("072a2-prefixes");
     let mut l = history();
-    let before = l.document().settings.clone();
+    let before = l.document().settings().clone();
     let mut after = before.clone();
     let px = |t: &str| TagPrefix::typed(t).unwrap();
     after.tag_prefixes.insert(PrefixOf::Starter("coil".into()), px("KA"));

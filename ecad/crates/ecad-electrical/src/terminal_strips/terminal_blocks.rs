@@ -285,16 +285,16 @@ pub fn is_level_starter(key: crate::symbols::StarterKey) -> bool {
 pub(crate) fn type_of_connection_point(doc: &Document, t: ConnectionPointId) -> &'static TermType {
     let from_reps = doc.representations_showing(t).find_map(|(_, r)| crate::devices::tags::rep_starter(doc, r));
     let starter = from_reps.or_else(|| {
-        let c = doc.connection_points.get(&t)?.device()?;
-        let d = doc.devices.get(&c)?.definition?;
-        crate::symbols::catalogue::of_definition(doc.definitions.get(&d)?)
+        let c = doc.connection_points().get(&t)?.device()?;
+        let d = doc.devices().get(&c)?.definition?;
+        crate::symbols::catalogue::of_definition(doc.definitions().get(&d)?)
     });
     starter.and_then(|s| of_starter(s.key)).map_or_else(feedthrough, |(t, _)| t)
 }
 
 /// A terminal's level and point (`.1i` → (1, `i`)); a hostile key is level 1.
 pub fn level_of(doc: &Document, t: ConnectionPointId) -> (u32, Option<char>) {
-    level_of_key(doc.connection_points.get(&t).and_then(|x| x.key.as_ref())).unwrap_or((1, None))
+    level_of_key(doc.connection_points().get(&t).and_then(|x| x.key.as_ref())).unwrap_or((1, None))
 }
 
 /// The registry value of `terminal_block.level.separator` for strip `c`: strip → project → built-in;
@@ -378,11 +378,11 @@ pub fn derived_label(doc: &Document, c: DeviceId, t: &TermType, p: &str, n: u32)
 
 /// The shown label of a strip terminal (design 036 §4.1); `None` for a terminal with no label.
 pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
-    let term = doc.connection_points.get(&t)?;
+    let term = doc.connection_points().get(&t)?;
     let p = term.label.clone()?;
     let (n, _) = level_of(doc, t);
     let c = term.device()?;
-    if let Some(v) = doc.devices.get(&c).and_then(|x| x.properties.get(&label_key(&p, n))) {
+    if let Some(v) = doc.devices().get(&c).and_then(|x| x.properties.get(&label_key(&p, n))) {
         return Some(v.clone());
     }
     if !term.key.as_ref().is_some_and(|k| k.as_def().is_none()) {
@@ -402,7 +402,7 @@ pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
 /// a note for each.
 pub(crate) fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[ConnectionPointId]) -> (Vec<ecad_model::Op>, Vec<String>) {
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
-    let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return (ops, notes) };
+    let Some(props) = doc.devices().get(&c).map(|x| &x.properties) else { return (ops, notes) };
     if dropped.is_empty() || crate::terminal_strips::strip_of(doc, c).is_none() {
         return (ops, notes);
     }
@@ -420,7 +420,7 @@ pub(crate) fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[Connectio
     };
     let mut gone_positions: BTreeSet<String> = BTreeSet::new();
     for t in dropped {
-        let Some(p) = doc.connection_points.get(t).and_then(|x| x.label.clone()) else { continue };
+        let Some(p) = doc.connection_points().get(t).and_then(|x| x.label.clone()) else { continue };
         let n = level_of(doc, *t).0;
         if !left.iter().any(|(l, m)| *l == p && *m == n) {
             remove(label_key(&p, n), &mut ops, &mut notes);
@@ -430,7 +430,7 @@ pub(crate) fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[Connectio
         }
     }
     // Design 072 §2.5: a fuse position's rating is the strip's field; one `ModifyDevice`, first.
-    if let Some(d) = doc.devices.get(&c)
+    if let Some(d) = doc.devices().get(&c)
         && let ecad_model::DeviceType::TerminalStrip(s) = &d.device_type
     {
         let mut strip = s.clone();
@@ -921,7 +921,7 @@ pub fn connection_point_name(doc: &Document, t: ConnectionPointId) -> String {
 /// The stored label of a terminal: a strip terminal's **position** (brief 036), what jumper bars,
 /// accessories and renumbering name. [`connection_point_name`] is what a person sees.
 pub fn position_label(doc: &Document, t: ConnectionPointId) -> String {
-    match doc.connection_points.get(&t).and_then(|x| x.label.clone()) {
+    match doc.connection_points().get(&t).and_then(|x| x.label.clone()) {
         Some(l) => l,
         None => format!("connection point {}", short(&t.hex())),
     }

@@ -258,7 +258,7 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
         name: styles::name(doc, cat.catalogue, id),
         layer,
         fields,
-        has_standard: doc.standard.is_some(),
+        has_standard: doc.standard().is_some(),
         users: (c.explicit + c.implicit, explicit),
     }
 }

@@ -26,7 +26,7 @@ fn project(dir: &TempDir, name: &str) -> (Client, String, String, String) {
 
 fn prop(c: &mut Client, coil: &str, key: &str) -> Option<String> {
     let id = DeviceId::parse(coil).unwrap();
-    c.doc().devices.get(&id).and_then(|x| x.value(key))
+    c.doc().devices().get(&id).and_then(|x| x.value(key))
 }
 
 fn branches(c: &mut Client) -> Vec<Value> {
@@ -52,7 +52,7 @@ fn verify(path: &str) {
 }
 
 fn tags(c: &mut Client) -> Vec<String> {
-    let mut t: Vec<String> = c.doc().devices.values().filter_map(|x| x.tag_shown()).collect();
+    let mut t: Vec<String> = c.doc().devices().values().filter_map(|x| x.tag_shown()).collect();
     t.sort();
     t
 }
@@ -239,7 +239,7 @@ fn a_device_removed_on_main_and_changed_on_the_branch_offers_a_way_through() {
     eprintln!("removed vs changed preview: {pv}");
     let id = DeviceId::parse(&coil).unwrap();
     let tried = every_choice_merges(&mut c, "Option R", &mut |c, _, ch| {
-        let present = c.doc().devices.contains_key(&id);
+        let present = c.doc().devices().contains_key(&id);
         eprintln!("  choice {ch}: device present = {present}");
     });
     assert!(tried >= 2, "keep it removed / keep the device");
@@ -306,7 +306,7 @@ fn a_line_end_attached_differently_on_both_sides_offers_main_or_branch() {
         if id != ends_id {
             return;
         }
-        let end_b = c.doc().routes.get(&rid).unwrap().ends[1];
+        let end_b = c.doc().routes().get(&rid).unwrap().ends[1];
         eprintln!("  choice {ch}: end B = {end_b:?}");
         match ch {
             "main" => assert_eq!(end_b, on_main, "main's connection"),
@@ -319,7 +319,7 @@ fn a_line_end_attached_differently_on_both_sides_offers_main_or_branch() {
     let all: serde_json::Map<String, Value> =
         pv["conflicts"].as_array().unwrap().iter().map(|k| (k["id"].as_str().unwrap().to_string(), json!("branch"))).collect();
     c.exec("merge", json!({"from": "Option W", "choices": all}));
-    assert_eq!(c.doc().routes.get(&rid).unwrap().ends[1], on_branch);
+    assert_eq!(c.doc().routes().get(&rid).unwrap().ends[1], on_branch);
     c.ok("save", json!({}));
     verify(&path);
 }

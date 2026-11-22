@@ -152,8 +152,8 @@ impl RatedSubject {
     /// The wire or cable itself, as a [`Circuit`].
     pub fn circuit(self, doc: &Document) -> Option<&dyn Circuit> {
         match self {
-            RatedSubject::Wire(c) => doc.wires.get(&c).map(|x| x as &dyn Circuit),
-            RatedSubject::Cable(k) => doc.cables.get(&k).map(|x| x as &dyn Circuit),
+            RatedSubject::Wire(c) => doc.wires().get(&c).map(|x| x as &dyn Circuit),
+            RatedSubject::Cable(k) => doc.cables().get(&k).map(|x| x as &dyn Circuit),
         }
     }
 
@@ -165,7 +165,7 @@ impl RatedSubject {
     /// Its words in a row: the wire number (or `wire`), the cable tag.
     pub fn words(self, doc: &Document) -> String {
         match self {
-            RatedSubject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string).unwrap_or_else(|| {
+            RatedSubject::Wire(c) => doc.wires().get(&c).and_then(|x| x.number_text()).map(str::to_string).unwrap_or_else(|| {
                 let conn = doc.connectivity();
                 conn.net_of_conductor(c)
                     .and_then(|n| conn.net(n))

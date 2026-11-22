@@ -152,7 +152,7 @@ pub fn check_overrides(text: &str) -> Result<(), CmdError> {
 
 /// The rows the project stores under `key`.
 pub fn overrides(doc: &Document, key: &str) -> Vec<RowOverride> {
-    doc.display.get(key).map(|t| parse_overrides(t)).unwrap_or_default()
+    doc.display().get(key).map(|t| parse_overrides(t)).unwrap_or_default()
 }
 
 /// The text a block's rows are stored as: every row, its label only when the person changed it.
@@ -298,7 +298,7 @@ pub fn wire_rows(doc: &Document) -> Vec<(WireLine, EditedRow)> {
 fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
     let draws = crate::styles::wire::WireDraws::new(doc);
     let mut used: BTreeSet<StyleRef> = BTreeSet::new();
-    for c in doc.wires.keys() {
+    for c in doc.wires().keys() {
         if let (Some(id), _) = draws.category(doc, *c) {
             used.insert(id);
         }
@@ -370,12 +370,12 @@ pub fn legend_rows(doc: &Document) -> Vec<(Cell, EditedRow)> {
 /// (through the definition index), in definition order, then the marks in use.
 fn generated_cells(doc: &Document) -> Vec<Cell> {
     let mut out: Vec<Cell> = doc
-        .definitions
+        .definitions()
         .iter()
         .filter(|(id, _)| !doc.items_using(**id).is_empty())
         .map(|(id, d)| Cell::Symbol(*id, d.name.chars().take(40).filter(|c| !c.is_control()).collect()))
         .collect();
-    if !doc.cables.is_empty() {
+    if !doc.cables().is_empty() {
         out.push(Cell::Cable);
     }
     if doc.continuation_names().next().is_some() {
@@ -474,8 +474,8 @@ impl CoverNote {
             // A definition in use redrawn or renamed (048's Edit symbol), or a device re-pointed.
             Effect::Definition { id, .. } => !doc.items_using(*id).is_empty(),
             Effect::DeviceDefinition { .. } => true,
-            Effect::Cable { before: None, after: Some(_), .. } => doc.cables.len() == 1,
-            Effect::Cable { before: Some(_), after: None, .. } => doc.cables.is_empty(),
+            Effect::Cable { before: None, after: Some(_), .. } => doc.cables().len() == 1,
+            Effect::Cable { before: Some(_), after: None, .. } => doc.cables().is_empty(),
             Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
                 codes_on() && crate::locations::designations::Aspect::of_property(key.raw).is_some()
             }
@@ -606,7 +606,7 @@ impl Uses {
     pub fn build(doc: &Document) -> Uses {
         let draws = crate::styles::wire::WireDraws::new(doc);
         let mut u = Uses::default();
-        for c in doc.wires.keys() {
+        for c in doc.wires().keys() {
             let k = draws.category(doc, *c).0;
             u.add(*c, k);
         }
@@ -675,7 +675,7 @@ impl Uses {
         }
         let draws = crate::styles::wire::WireDraws::new(doc);
         for c in all {
-            if doc.wires.contains_key(&c) {
+            if doc.wires().contains_key(&c) {
                 let k = draws.category(doc, c).0;
                 self.add(c, k);
             }
@@ -828,7 +828,7 @@ impl crate::checks::CheckSource for CoverRows {
 /// and again only after a change [`touches`] names (the cover is laid out once for it).
 pub fn check_rows(doc: &Document) -> Vec<crate::checks::Check> {
     use crate::checks::{Check, Kind, Object};
-    let cover_page = doc.page_order.iter().copied().find(|p| crate::pages::generated::kind_of(doc, *p) == Some(ecad_model::GenKind::Cover));
+    let cover_page = doc.page_order().iter().copied().find(|p| crate::pages::generated::kind_of(doc, *p) == Some(ecad_model::GenKind::Cover));
     let Some(page) = cover_page else { return Vec::new() };
     let mut out = Vec::new();
     if notes(doc).1 {

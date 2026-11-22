@@ -94,7 +94,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     .unwrap();
     let device = |ids: &mut IdAllocator, tag: &str, points: &[&str]| -> (Vec<Op>, Vec<ConnectionPointId>) {
         let c: DeviceId = ids.fresh();
-        let mut props = ecad_model::document::doc::Properties::new();
+        let mut props = ecad_model::Properties::new();
         props.insert("note".into(), title.into());
         let mut ops = vec![Op::CreateDevice {
             id: c,

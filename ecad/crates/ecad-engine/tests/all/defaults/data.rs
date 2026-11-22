@@ -243,7 +243,7 @@ fn a_project_that_chose_no_height_follows_the_built_in() {
     assert_eq!(defaults::text::WIRE_LABEL_HEIGHT.builtin(), Value::Length(2.5));
     let mut h = project(0x66_b1, None);
     let doc = h.doc();
-    assert_eq!(doc.settings.wiring.label_height, None);
+    assert_eq!(doc.settings().wiring.label_height, None);
     assert_eq!(wire_label_height(&doc), Value::Length(2.5));
     let page = h.first_page();
     let labels = ecad_engine::wires::draw::labels_on_page(&doc, page);
@@ -258,11 +258,11 @@ fn chosen_and_unset_heights_survive_save_and_open() {
         let seed = 0x66_b2 + i as u64;
         let mut h = project(seed, chosen);
         let before = h.doc();
-        assert_eq!(before.settings.wiring.label_height, chosen, "{chosen:?}");
+        assert_eq!(before.settings().wiring.label_height, chosen, "{chosen:?}");
         let want = resolved_all(&before);
         let mut h = save_and_reopen(h, "066 chosen", seed);
         let after = h.doc();
-        assert_eq!(after.settings.wiring.label_height, chosen, "{chosen:?}: kept as chosen or not chosen");
+        assert_eq!(after.settings().wiring.label_height, chosen, "{chosen:?}: kept as chosen or not chosen");
         assert_eq!(resolved_all(&after), want, "{chosen:?}: every entry resolves the same");
         let page = h.first_page();
         let height = chosen.unwrap_or(2.5);
@@ -373,16 +373,16 @@ fn chosen_and_unset_settings_survive_save_and_open() {
     for (i, want) in [chosen, ecad_model::ProjectSettings::default()].into_iter().enumerate() {
         let seed = 0x66_c1 + i as u64;
         let mut h = project(seed, None);
-        let before = h.doc().settings;
+        let before = h.doc().settings().clone();
         if before != want {
             h.project.apply_ops(&mut h.s, "settings", vec![ecad_model::Op::SetProjectSettings { before, after: want.clone() }]).unwrap();
         }
         let resolved = resolved_all(&h.doc());
         let mut h = save_and_reopen(h, "066 settings", seed);
         let doc = h.doc();
-        assert_eq!(doc.settings, want, "{i}: kept as chosen or not chosen");
+        assert_eq!(*doc.settings(), want, "{i}: kept as chosen or not chosen");
         assert_eq!(resolved_all(&doc), resolved, "{i}: every entry resolves the same");
-        assert_eq!((doc.settings.tag_padding(), doc.settings.page_number_step()), (2, 1));
+        assert_eq!((doc.settings().tag_padding(), doc.settings().page_number_step()), (2, 1));
     }
 }
 
@@ -392,11 +392,11 @@ fn chosen_and_unset_settings_survive_save_and_open() {
 fn setdefault_writes_and_clears_a_settings_entry() {
     let mut h = H::new(0x66_c3);
     h.run("setdefault", json!({"key": "tags.padding", "level": "project", "value": "3"})).unwrap();
-    assert_eq!(h.doc().settings.tag_padding, Some(3));
+    assert_eq!(h.doc().settings().tag_padding, Some(3));
     h.run("setdefault", json!({"key": "tags.padding", "level": "project", "reset": true})).unwrap();
-    assert_eq!(h.doc().settings.tag_padding, None);
+    assert_eq!(h.doc().settings().tag_padding, None);
     h.run("setdefault", json!({"key": "print.reference_style", "level": "project", "value": "page-column"})).unwrap();
-    assert_eq!(h.doc().settings.reference_style(), ecad_model::ReferenceStyle::PageColumn);
+    assert_eq!(h.doc().settings().reference_style(), ecad_model::ReferenceStyle::PageColumn);
 }
 
 // ---------------------------------------------------------------- 066d: drawn text reads its style

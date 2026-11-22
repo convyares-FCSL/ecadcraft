@@ -126,8 +126,8 @@ impl Project {
         let (file, ledger, report) = (opened.project, opened.ledger, opened.report);
         let id = file.project_id();
         let tag_high = file.base_tag_high().clone();
-        let default_layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
-        let pages: Vec<PageId> = ledger.document().page_order.clone();
+        let default_layer = ledger.document().layers().iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
+        let pages: Vec<PageId> = ledger.document().page_order().to_vec();
         // A fresh ID stream even when the caller reuses the creation seed.
         let ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
         let baseline = ledger.head();
@@ -238,8 +238,8 @@ impl Project {
         let ledger = o.ledger;
         // Words in values that stay text (design 072 §9.5): read once on open, never per commit.
         o.binding.refuse_unknown_words(ecad_electrical::checks::words_check::check(ledger.document()));
-        let default_layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
-        let pages: Vec<PageId> = ledger.document().page_order.clone();
+        let default_layer = ledger.document().layers().iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
+        let pages: Vec<PageId> = ledger.document().page_order().to_vec();
         // A fresh ID stream for this session, never reissuing the file's IDs.
         let ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
         let baseline = ledger.head();
@@ -260,7 +260,7 @@ impl Project {
         if loaded.unreadable {
             summary.push(crate::cables::views::UNREADABLE.into());
         }
-        let views: BTreeSet<CableId> = loaded.fan.into_iter().filter(|k| ledger.document().cables.contains_key(k)).collect();
+        let views: BTreeSet<CableId> = loaded.fan.into_iter().filter(|k| ledger.document().cables().contains_key(k)).collect();
         let summary = summary.join("\n");
         let derived = views_for(ledger.document());
         let project = Arc::new(Mutex::new(Project {

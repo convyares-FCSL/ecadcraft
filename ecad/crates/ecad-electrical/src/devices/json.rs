@@ -23,7 +23,7 @@ pub fn devices(doc: &Document, query: Option<&str>) -> Vec<DeviceId> {
     let mut v: Vec<(String, u64, String, DeviceId)> = doc
         .tagged()
         .filter_map(|(_, id)| {
-            let t = doc.devices.get(&id)?.tag()?;
+            let t = doc.devices().get(&id)?.tag()?;
             if query.is_some_and(|q| !tag_matches(t, q)) {
                 return None;
             }
@@ -89,8 +89,8 @@ pub(crate) fn devices_json(doc: &Document, query: Option<&str>) -> Value {
 
 /// One device in JSON.
 pub(crate) fn device_json(doc: &Document, c: DeviceId) -> Value {
-    let comp = doc.devices.get(&c).cloned().unwrap_or_default();
-    let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
+    let comp = doc.devices().get(&c).cloned().unwrap_or_default();
+    let order: BTreeMap<PageId, usize> = doc.page_order().iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
     let mut reps: Vec<(usize, RepresentationId, Value)> = doc
         .representations_of(Subject::Device(c))
         .map(|(rid, r)| {
@@ -123,7 +123,7 @@ pub(crate) fn device_json(doc: &Document, c: DeviceId) -> Value {
     v["location_shown"] = loc.value.map_or(Value::Null, Value::String);
     v["location_from"] = json!(loc.source.word());
     for (_, rid, x) in &mut reps {
-        if let Some(r) = doc.representations.get(rid) {
+        if let Some(r) = doc.representations().get(rid) {
             x["context"] = crate::locations::rep_context(doc, r, &mut boxes).value.map_or(Value::Null, Value::String);
             x["location"] = crate::locations::rep_location(doc, c, r).value.map_or(Value::Null, Value::String);
             x["type"] = json!(crate::symbols::reps::rep_type(doc, r).word());

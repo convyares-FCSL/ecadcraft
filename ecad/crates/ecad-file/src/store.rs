@@ -590,7 +590,7 @@ impl Writer {
     ///
     /// # Errors
     /// No such row; the engine failed.
-    pub fn describe_version(&mut self, branch: BranchId, kind: RowKind, name: &str, description: &str) -> Result<(), StoreError> {
+    pub(crate) fn describe_version(&mut self, branch: BranchId, kind: RowKind, name: &str, description: &str) -> Result<(), StoreError> {
         let key = version_key(branch, kind, name);
         let rec = {
             let t = self.txn.open_table(VERSIONS).map_err(engine)?;
@@ -608,7 +608,7 @@ impl Writer {
     ///
     /// # Errors
     /// The engine failed.
-    pub fn remove_version(&mut self, branch: BranchId, kind: RowKind, name: &str) -> Result<(), StoreError> {
+    pub(crate) fn remove_version(&mut self, branch: BranchId, kind: RowKind, name: &str) -> Result<(), StoreError> {
         let mut t = self.txn.open_table(VERSIONS).map_err(engine)?;
         t.remove(version_key(branch, kind, name).as_slice()).map_err(engine)?;
         Ok(())

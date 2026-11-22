@@ -270,8 +270,8 @@ fn fp3_different_styles_values_and_edits_merge_cleanly() {
     assert!(field(&mut c, "frame", "sheet", "border_weight").starts_with("0.7"));
     assert!(styles(&mut c, "location").iter().any(|r| s(&r["id"]) == own));
     let d = c.doc();
-    assert_eq!(d.routes.len(), 1, "main's wire kept");
-    let std = d.standard.as_ref().unwrap();
+    assert_eq!(d.routes().len(), 1, "main's wire kept");
+    let std = d.standard().unwrap();
     assert_eq!(std.values.get("symbol.coil.prefix").map(String::as_str), Some("Q"));
     assert_eq!(std.values.get("wiring.label_rule").map(String::as_str), Some("each"));
     // The same key on both branches: one conflict.
@@ -304,12 +304,12 @@ fn fp3_the_standard_header_is_one_unit() {
     c.exec("branch", json!({"name": "Std"}));
     c.exec("standard", json!({"new": "From branch"}));
     c.exec("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 4}}));
-    let want = c.doc().standard.clone();
+    let want = c.doc().standard().cloned();
     to_main(&mut c);
-    assert!(c.doc().standard.is_none());
+    assert!(c.doc().standard().is_none());
     let r = c.exec("merge", json!({"from": "Std"}));
     assert_eq!(r["merged"], json!(true), "{r}");
-    assert!(c.doc().standard == want, "header, values and records arrive together");
+    assert!(c.doc().standard().cloned() == want, "header, values and records arrive together");
 }
 
 // ---------------------------------------------------------------------------- 050b
@@ -397,7 +397,7 @@ fn b18_category_merges() {
     let r = c.exec("merge", json!({"from": "Option B", "choices": {id: "main"}}));
     assert_eq!(r["merged"], json!(true), "{r}");
     let d = c.doc();
-    let cond = d.wires.iter().find(|(k, _)| k.hex() == w).map(|(_, x)| x.clone()).unwrap();
+    let cond = d.wires().iter().find(|(k, _)| k.hex() == w).map(|(_, x)| x.clone()).unwrap();
     assert_eq!(cond.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("signal"), "the branch's category came");
     assert!(field(&mut c, "wire", "dc24", "colours").contains("RD"));
     assert!(field(&mut c, "wire", "pe", "line_weight").starts_with("0.5"));

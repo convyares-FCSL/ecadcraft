@@ -23,7 +23,7 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
     let mut out = Vec::new();
     designation_checks(places, c, &mut out);
     // Brief 026: a provisional tag, and a tag a cable holds too.
-    if let Some(device) = doc.devices.get(&c)
+    if let Some(device) = doc.devices().get(&c)
         && let (Some(key), Some(t)) = (device.tag_key(), device.tag_shown())
         && (device.is_provisional() || !doc.cables_with(&key).is_empty())
     {
@@ -48,7 +48,7 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
         out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Device(c), which, fix: None });
     }
     // Design 072 §2.2: checks read only the typed rating; a note is not a rating.
-    if let Some(d) = doc.devices.get(&c)
+    if let Some(d) = doc.devices().get(&c)
         && d.has_no_rating()
     {
         let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
@@ -81,7 +81,7 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
 pub(super) fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>) {
     use crate::locations::designations::{self as d, Aspect};
     let doc = places.doc();
-    let Some(comp) = doc.devices.get(&c) else { return };
+    let Some(comp) = doc.devices().get(&c) else { return };
     if !crate::locations::is_device(doc, c) {
         return;
     }
@@ -149,12 +149,12 @@ pub(super) fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut
     }
     let heads = crate::symbols::reps::heads(doc, c);
     if let [_, second, ..] = heads.as_slice()
-        && let Some(r) = doc.representations.get(second)
+        && let Some(r) = doc.representations().get(second)
     {
         let mut xp = crate::references::devices::places::Places::new(doc);
         let wheres: Vec<String> = heads
             .iter()
-            .filter_map(|h| doc.representations.get(h).map(|x| xp.text(x.page, crate::references::devices::classify::anchor(doc, x))))
+            .filter_map(|h| doc.representations().get(h).map(|x| xp.text(x.page, crate::references::devices::classify::anchor(doc, x))))
             .collect();
         out.push(Check {
             kind: Kind::TwoHeads,

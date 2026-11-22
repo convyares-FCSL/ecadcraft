@@ -53,7 +53,7 @@ fn land_words(doc: &Document, t: ConnectionPointId, land: &Land) -> String {
 /// is on no route (or on a route's free end): it is then placed as before.
 pub(crate) fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnRoute> {
     let on = ecad_electrical::wires::placing::route_at(doc, page, at, ON_WIRE, None)?;
-    let route = doc.routes.get(&on.route)?;
+    let route = doc.routes().get(&on.route)?;
     let [first, last] = route.end_points()?;
     for (p, e) in [first, last].into_iter().zip(route.ends) {
         if p.near(on.at, ON_WIRE) && e == RouteEnd::Free {

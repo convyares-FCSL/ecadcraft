@@ -278,7 +278,7 @@ pub(crate) fn preview_text(s: &Session, at: Pt, px: f64, value: String, aci: u8)
 
 /// Where conductor routes on `page` start and end, once per conductor (its first route).
 pub(crate) fn route_ends(doc: &Document, page: PageId) -> Vec<(RouteId, Pt, Pt)> {
-    doc.routes_on(page).filter_map(|r| doc.routes.get(&r).and_then(|x| x.end_points()).map(|[a, b]| (r, a, b))).collect()
+    doc.routes_on(page).filter_map(|r| doc.routes().get(&r).and_then(|x| x.end_points()).map(|[a, b]| (r, a, b))).collect()
 }
 
 /// The marks shown over page drawing `uid` (design 008 §4.1): a ring on every terminal shown, a
@@ -312,7 +312,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     let markers = ecad_electrical::references::cables::markers_on_page(doc, page);
     let quiet = p.pages.get(&page).map(|v| v.map.quiet_ends()).unwrap_or_default();
     for (r, a, b) in route_ends(doc, page) {
-        let Some(route) = doc.routes.get(&r) else { continue };
+        let Some(route) = doc.routes().get(&r) else { continue };
         for (at, landed) in [a, b].into_iter().zip(route.ends) {
             match landed {
                 // An end on a connection point shown on this page: a dot on the point.
@@ -376,7 +376,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             vec![format!("Page {}: change it in the Properties panel", ecad_electrical::references::cables::page_number(doc, page))]
         }
         // A device's tag text or terminal label (brief 018): the device's lens.
-        Mapped::Tag(r) => match doc.representations.get(&r)?.subject {
+        Mapped::Tag(r) => match doc.representations().get(&r)?.subject {
             Subject::Device(c) => with_device_references(doc, c, r, crate::devices::draw::hover_lines(doc, c, r)),
             _ => return None,
         },
@@ -384,11 +384,11 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         // contact's lens with its coil.
         Mapped::DeviceReference(r) => {
             // Brief 049 (design 049 §5.4): an arrow's reference text, bracket or caption.
-            if let Subject::Aid(a) = doc.representations.get(&r)?.subject {
+            if let Subject::Aid(a) = doc.representations().get(&r)?.subject {
                 ecad_electrical::continuations::arrow(doc, r)?;
                 return Some(ecad_electrical::continuations::hover_lines(doc, a, r));
             }
-            let Subject::Device(c) = doc.representations.get(&r)?.subject else { return None };
+            let Subject::Device(c) = doc.representations().get(&r)?.subject else { return None };
             let row = view.map.device_reference_part(h).and_then(|(_, i)| {
                 let dev = ecad_electrical::references::devices::classify::device(doc, c);
                 let mut places = ecad_electrical::references::devices::places::Places::new(doc);
@@ -442,7 +442,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             },
         },
         // A cable reference's named point (design 072 §4.4, F4) is the reference's: its lens.
-        Mapped::Marker(rid, _) if doc.representations.get(&rid).is_some_and(ecad_electrical::references::cables::is_reference) => {
+        Mapped::Marker(rid, _) if doc.representations().get(&rid).is_some_and(ecad_electrical::references::cables::is_reference) => {
             ecad_electrical::references::cables::hover_lines(doc, rid)?
         }
         Mapped::Marker(_, t) => connection_point_lines(doc, t),
@@ -510,10 +510,10 @@ fn with_drawings(doc: &Document, k: CableId, mut lines: Vec<String>) -> Vec<Stri
     if references.is_empty() {
         return lines;
     }
-    let members = doc.cables.get(&k).map(|c| c.cores.as_slice()).unwrap_or_default();
+    let members = doc.cables().get(&k).map(|c| c.cores.as_slice()).unwrap_or_default();
     let member_pages: std::collections::BTreeSet<PageId> = members.iter().flat_map(|m| ecad_electrical::cables::member_pages(doc, m)).collect();
     let mut pages: Vec<PageId> = Vec::new();
-    for p in &doc.page_order {
+    for p in doc.page_order() {
         let drawn = doc.representations_of(Subject::Cable(k)).any(|(_, r)| r.page == *p) || member_pages.contains(p);
         if drawn {
             pages.push(*p);
@@ -545,7 +545,7 @@ fn capped(lines: &mut Vec<String>) {
 }
 
 fn component_lines(doc: &Document, c: DeviceId) -> Vec<String> {
-    let component = doc.devices.get(&c);
+    let component = doc.devices().get(&c);
     let mut lines = vec![format!("Device {}", component.and_then(|x| x.tag_shown()).unwrap_or_else(|| "(no tag)".into())), format!("id {}", c.hex())];
     let connection_points: Vec<(ConnectionPointId, String)> =
         doc.connection_points_of(c).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "(no label)".into()))).collect();
@@ -558,10 +558,10 @@ fn component_lines(doc: &Document, c: DeviceId) -> Vec<String> {
 }
 
 fn connection_point_lines(doc: &Document, t: ConnectionPointId) -> Vec<String> {
-    let term = doc.connection_points.get(&t);
+    let term = doc.connection_points().get(&t);
     let of = term
         .map(|x| {
-            let c = x.device().and_then(|c| doc.devices.get(&c));
+            let c = x.device().and_then(|c| doc.devices().get(&c));
             c.and_then(|c| c.tag_shown()).unwrap_or_else(|| x.owner.subject_hex())
         })
         .unwrap_or_default();
@@ -586,13 +586,13 @@ fn connection_point_lines(doc: &Document, t: ConnectionPointId) -> Vec<String> {
 
 /// The core label of member `w` of cable `k`, when it has one that is not blank, as drawn.
 fn core_of(doc: &Document, k: CableId, w: WireId) -> Option<String> {
-    ecad_electrical::cables::member_core(doc.cables.get(&k)?.cores.iter().find(|m| m.wire() == Some(w))?)
+    ecad_electrical::cables::member_core(doc.cables().get(&k)?.cores.iter().find(|m| m.wire() == Some(w))?)
 }
 
 /// A cable slash (design 004 §7.3, design 009 §8): its tag, ID, designation, type and reference
 /// ends on `page`, and its members in stored order with their cores.
 fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
-    let cable = doc.cables.get(&k);
+    let cable = doc.cables().get(&k);
     let mut lines = vec![format!("Cable {}", cable.and_then(|x| x.tag_shown()).unwrap_or_else(|| "(no tag)".into())), format!("id {}", k.hex())];
     for (key, label) in [("designation", "Designation"), ("type", "Type")] {
         if let Some(v) = cable.and_then(|x| x.properties.get(key)) {
@@ -600,7 +600,7 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
         }
     }
     let references: Vec<String> = doc
-        .representations
+        .representations()
         .iter()
         .filter(|(_, r)| r.page == page && r.subject == Subject::Cable(k) && r.role == ecad_model::Role::Reference)
         .map(|(id, _)| format!("\"{}\"", ecad_electrical::cables::layout::reference_text(doc, *id)))
@@ -629,13 +629,13 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
 /// A wire's lens: wire `w` (the one a clicked line stands for, when it has one) and the open ends
 /// of route `route` (the line clicked, or the wire's line on `page`).
 fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: PageId) -> Vec<String> {
-    let conductor = w.and_then(|w| doc.wires.get(&w));
+    let conductor = w.and_then(|w| doc.wires().get(&w));
     let mut lines = match w {
         Some(w) => vec![format!("Wire {}", conductor.and_then(|x| x.number_text()).unwrap_or("(no number)")), format!("id {}", w.hex())],
         None => vec!["Wire line (no connection points yet)".to_string()],
     };
     if let Some((w, k)) = w.and_then(|w| doc.cables_of(w).first().map(|k| (w, *k))) {
-        let name = match doc.cables.get(&k).and_then(|x| x.tag_shown()) {
+        let name = match doc.cables().get(&k).and_then(|x| x.tag_shown()) {
             Some(t) => t,
             None => format!("{}…", short(&k.hex())),
         };
@@ -647,7 +647,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
     if let Some(c) = conductor {
         for end in End::BOTH {
             let t = c.end(end);
-            lines.push(match doc.connection_points.get(&t) {
+            lines.push(match doc.connection_points().get(&t) {
                 // A continuation (brief 022) is named by what it is.
                 Some(x) if x.owner.aid().is_some() => {
                     let words = ecad_electrical::wires::words::point_words(doc, t);
@@ -659,7 +659,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
                 Some(x) => {
                     let of = x
                         .device()
-                        .and_then(|c| doc.devices.get(&c))
+                        .and_then(|c| doc.devices().get(&c))
                         .and_then(|c| c.tag_shown())
                         .unwrap_or_else(|| short(&x.owner.subject_hex()).to_string());
                     format!("End {end:?}: connection point {} of {of}", connection_point_name(doc, t))
@@ -670,7 +670,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
     }
     // Brief 032 §2.6: an open end of the line lying on another line says so, and how to join them.
     if let Some(r) = route
-        && let Some(line) = doc.routes.get(&r)
+        && let Some(line) = doc.routes().get(&r)
     {
         for ((at, landed), end) in line.end_points().into_iter().flatten().zip(line.ends).zip(End::BOTH) {
             match landed {
@@ -741,7 +741,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(D
     if rep.form != Form::Drawn {
         return Err("connection points of placed symbols come from their definition".into());
     }
-    match doc.items.get(&item).map(|i| &i.kind) {
+    match doc.items().get(&item).map(|i| &i.kind) {
         Some(ItemKind::Primitive(prim)) => Ok((c, prim.clone())),
         _ => Err(NOT_OUTLINE.into()),
     }

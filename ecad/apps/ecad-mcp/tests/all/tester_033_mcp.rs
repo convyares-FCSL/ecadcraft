@@ -118,12 +118,12 @@ fn print_and_project_writes_by_the_agent_then_refused_with_writes_off() {
             }
         }
         let d = c.doc();
-        assert!(d.devices.values().filter_map(|x| x.tag()).all(|t| !t.starts_with('-')), "tags without the dash");
+        assert!(d.devices().values().filter_map(|x| x.tag()).all(|t| !t.starts_with('-')), "tags without the dash");
         // `u` takes back the case setting in one step.
         let n = c.log().len();
         c.exec("u", Value::Null);
         assert_eq!(c.log().len(), n + 1);
-        assert!(!c.doc().display.contains_key("tags.case"));
+        assert!(!c.doc().display().contains_key("tags.case"));
         // Reads record nothing.
         let n = c.log().len();
         let before = json!({

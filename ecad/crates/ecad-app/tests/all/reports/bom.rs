@@ -123,7 +123,7 @@ fn the_inspector_lists_a_devices_part_set() {
             k03.hex()
         ),
     );
-    let rep = doc(&mut h).representations.iter().find(|(_, r)| r.subject == ecad_model::Subject::Device(k03)).map(|(id, _)| *id).unwrap();
+    let rep = doc(&mut h).representations().iter().find(|(_, r)| r.subject == ecad_model::Subject::Device(k03)).map(|(id, _)| *id).unwrap();
     // UI rev 3: the Project workspace's right panel shows its selected row; the inspector of the
     // page's selection is Draw's.
     h.state_mut().set_workspace(ecad_app::shell::Workspace::Draw);
@@ -140,7 +140,7 @@ fn the_inspector_lists_a_devices_part_set() {
     // A device with no part lines has no Parts section.
     let k05 = doc(&mut h).components_tagged("-K05")[0];
     ok(&mut h, &format!(r#"partline {{"component":"{}","line":1,"remove":true}}"#, k05.hex()));
-    let rep = doc(&mut h).representations.iter().find(|(_, r)| r.subject == ecad_model::Subject::Device(k05)).map(|(id, _)| *id).unwrap();
+    let rep = doc(&mut h).representations().iter().find(|(_, r)| r.subject == ecad_model::Subject::Device(k05)).map(|(id, _)| *id).unwrap();
     h.state_mut().goto_symbols(&[rep]).unwrap();
     h.run_steps(4);
     assert!(h.state().settings.inspector.parts.is_empty());

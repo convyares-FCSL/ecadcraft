@@ -18,7 +18,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::document::doc::Properties;
+use crate::Properties;
 use crate::geometry::colour::{ColourWords, ConductorColour};
 use crate::geometry::units::{Amps, Celsius, Mm2, Percent, Volts};
 use crate::naming::id::{ConductorId, ConnectionPointId, DeviceId, NetId};
@@ -142,7 +142,7 @@ impl Wire {
 
     /// Whether `other` differs from it only in values (not in identity or ends): what
     /// [`crate::document::op::Op::ModifyWire`] may change, with the net and the order.
-    pub fn same_wire(&self, other: &Wire) -> bool {
+    pub(crate) fn same_wire(&self, other: &Wire) -> bool {
         self.conductor == other.conductor && self.ends == other.ends
     }
 
@@ -203,7 +203,7 @@ pub enum WireSize {
 }
 
 /// The smallest and largest cross-section stored, in mm².
-pub const MM2_RANGE: std::ops::RangeInclusive<f64> = 0.05..=1000.0;
+pub(crate) const MM2_RANGE: std::ops::RangeInclusive<f64> = 0.05..=1000.0;
 
 impl WireSize {
     /// The size `text` names: `2.5`, `2.5 mm²`, `2.5mm2`, `18 AWG`, `AWG 18`, `4/0 AWG`.
@@ -294,7 +294,7 @@ impl Awg {
     }
 
     /// Gauge `n/0` (1 to 4).
-    pub fn aught(n: u8) -> Option<Awg> {
+    pub(crate) fn aught(n: u8) -> Option<Awg> {
         i8::try_from(n).ok().filter(|g| (1..=4).contains(g)).map(|g| Awg(1 - g))
     }
 
@@ -500,19 +500,19 @@ pub mod bounds {
     /// Iz typed by hand, and a load, in amperes (0 is refused).
     pub const AMPS: RangeInclusive<f64> = 0.0..=6300.0;
     /// A bundling or grouping factor.
-    pub const FACTOR: RangeInclusive<f64> = 0.30..=1.00;
+    pub(crate) const FACTOR: RangeInclusive<f64> = 0.30..=1.00;
     /// A circuit count.
     pub const CIRCUITS: RangeInclusive<u8> = 1..=20;
     /// An ambient temperature, °C.
     pub const AMBIENT: RangeInclusive<f64> = -40.0..=90.0;
     /// A supply voltage.
-    pub const VOLTS: RangeInclusive<f64> = 1.0..=1000.0;
+    pub(crate) const VOLTS: RangeInclusive<f64> = 1.0..=1000.0;
     /// A volt-drop limit, %.
     pub const VD_LIMIT: RangeInclusive<f64> = 0.5..=20.0;
 }
 
 /// Whether `a` is a current within [`bounds::AMPS`] (above 0).
-pub fn amps_ok(a: Amps) -> bool {
+pub(crate) fn amps_ok(a: Amps) -> bool {
     a.0.is_finite() && a.0 > 0.0 && bounds::AMPS.contains(&a.0)
 }
 
@@ -598,7 +598,7 @@ impl CircuitInputs {
     }
 
     /// The first input out of its bounds, in words, or `None`.
-    pub fn out_of_bounds(&self) -> Option<&'static str> {
+    pub(crate) fn out_of_bounds(&self) -> Option<&'static str> {
         let within = |x: Option<f64>, r: &std::ops::RangeInclusive<f64>| x.is_none_or(|x| x.is_finite() && r.contains(&x));
         if !self.manual.is_none_or(amps_ok) {
             return Some("manual");
@@ -649,7 +649,7 @@ struct RawInputs {
 /// A stored rating input out of its bounds: the input's name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("rating input `{0}` is out of its bounds")]
-pub struct OutOfBounds(pub &'static str);
+pub(crate) struct OutOfBounds(pub &'static str);
 
 impl TryFrom<RawInputs> for CircuitInputs {
     type Error = OutOfBounds;

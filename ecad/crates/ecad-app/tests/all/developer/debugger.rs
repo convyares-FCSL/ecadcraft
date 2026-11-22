@@ -66,7 +66,7 @@ fn select_ecad(t: &mut App, pick: impl Fn(&ecad_model::Document) -> Vec<ecad_mod
     let handles = p
         .read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let page = doc.page_order[0];
+            let page = doc.page_order()[0];
             pick(doc).into_iter().filter_map(|i| p.pages[&page].map.item(i)).collect::<Vec<_>>()
         })
         .unwrap();
@@ -136,7 +136,7 @@ is not counted as a change until the project has a file."
     //    transaction created it.
     ok(&mut t, r#"place {"at":[100,0],"rotation":90}"#);
     let symbol =
-        |d: &ecad_model::Document| d.items.iter().filter(|(_, i)| matches!(i.kind, ecad_model::ItemKind::Symbol(_))).map(|(id, _)| *id).collect();
+        |d: &ecad_model::Document| d.items().iter().filter(|(_, i)| matches!(i.kind, ecad_model::ItemKind::Symbol(_))).map(|(id, _)| *id).collect();
     select_ecad(&mut t, symbol);
     frame(&mut t, &ctx);
     let snap = t.debugger.snapshot().unwrap();
@@ -164,8 +164,8 @@ is not counted as a change until the project has a file."
     //    (its two connection points).
     ok(&mut t, r#"wire {"points":[[90,0],[110,0]]}"#);
     let route = |d: &ecad_model::Document| {
-        let (c, _) = d.wires.iter().next().unwrap();
-        vec![ecad_model::connectivity::derive::route_on_page(d, *c, d.page_order[0]).unwrap().0]
+        let (c, _) = d.wires().iter().next().unwrap();
+        vec![ecad_model::connectivity::derive::route_on_page(d, *c, d.page_order()[0]).unwrap().0]
     };
     select_ecad(&mut t, route);
     frame(&mut t, &ctx);
@@ -222,7 +222,7 @@ is not counted as a change until the project has a file."
     // History at seq 2 (before the wire) is rebuilt from the copy; the live project is unchanged.
     t.debugger.show_at(2);
     let h = t.debugger.historical().unwrap();
-    assert!(h.doc.as_ref().unwrap().wires.is_empty());
+    assert!(h.doc.as_ref().unwrap().wires().is_empty());
     let p = t.project().unwrap().clone();
     assert_eq!(p.read(&mut t.cad.session, |p, _| p.ledger.head()).unwrap(), 5);
     every_view(&mut t, &ctx);

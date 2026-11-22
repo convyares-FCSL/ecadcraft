@@ -168,7 +168,7 @@ pub fn plan_place(
             })
         }
         Target::Join(c) => {
-            if !doc.devices.contains_key(&c) {
+            if !doc.devices().contains_key(&c) {
                 return Err(CmdError::NotFound(Noun::Device));
             }
             let labels = join_labels(doc, c, s, &BTreeSet::new())?;
@@ -202,7 +202,7 @@ pub fn plan_place(
             // Design 072 §3: a PLC card's body is its symbol (a card a channel cell made had the
             // cell's), so its points are its symbol's.
             if crate::plc::rack::CardType::of_symbol(s).is_some()
-                && let Some(d) = doc.devices.get(&c)
+                && let Some(d) = doc.devices().get(&c)
                 && matches!(d.device_type, ecad_model::DeviceType::PlcModule(_) | ecad_model::DeviceType::PlcRack(_))
                 && d.definition != Some(definition)
             {

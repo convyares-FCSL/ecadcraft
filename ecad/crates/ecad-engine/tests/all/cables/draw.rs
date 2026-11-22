@@ -78,7 +78,7 @@ fn core(h: &mut H, w: WireId, core: Value) -> Result<Value, String> {
 }
 
 fn cores(h: &mut H, k: CableId) -> Vec<Option<String>> {
-    h.doc().cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect()
+    h.doc().cables()[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect()
 }
 
 fn last_tx(h: &mut H) -> Transaction {
@@ -188,8 +188,10 @@ fn b_json_core_label_is_one_transaction_of_one_modify_cable() {
     let t = last_tx(&mut f.h);
     assert_eq!(t.label, "Core label");
     let mut expect = before.clone();
-    expect.cables.get_mut(&f.c1).unwrap().cores[0].label = ecad_model::CoreLabel::new("1").ok();
-    assert_eq!(t.ops, vec![Op::ModifyCable { id: f.c1, before: before.cables[&f.c1].clone(), after: expect.cables[&f.c1].clone() }]);
+    expect.edit_parts(|parts| {
+        parts.cables.get_mut(&f.c1).unwrap().cores[0].label = ecad_model::CoreLabel::new("1").ok();
+    });
+    assert_eq!(t.ops, vec![Op::ModifyCable { id: f.c1, before: before.cables()[&f.c1].clone(), after: expect.cables()[&f.c1].clone() }]);
     let after = f.h.doc();
     assert_eq!(after, expect, "only the core changed");
     // The same value again: no transaction.
@@ -514,10 +516,10 @@ fn h_one_sided_fan_stops_at_the_reference_end() {
     assert_eq!(lines.first().map(String::as_str), Some("Cable reference  ?"), "{lines:?}");
     // ERASE the reference point: both ends fan again; `u` brings it back.
     f.h.run("erase", json!({"handles": [h_point.hex()]})).unwrap();
-    assert!(!f.h.doc().representations.contains_key(&rep));
+    assert!(!f.h.doc().representations().contains_key(&rep));
     assert_eq!(of_role(&fan_again(&mut f), Role::Spine).len(), 2);
     f.h.run("u", Value::Null).unwrap();
-    assert!(f.h.doc().representations.contains_key(&rep));
+    assert!(f.h.doc().representations().contains_key(&rep));
     assert_eq!(of_role(&fan_again(&mut f), Role::Spine).len(), 1);
     f.h.check();
 }
@@ -576,7 +578,7 @@ fn k_hover_and_trail_show_cores() {
     let route = f.h.route_handle(f.page, f.wires[2]);
     let lines = f.h.p(|p| hover_lines(p, uid, route)).unwrap();
     assert!(lines.iter().any(|l| l == "In cable -C01, core 3"), "{lines:?}");
-    let slash = f.h.doc().representations.values().find(|r| r.subject == Subject::Cable(f.c1)).unwrap().items[0];
+    let slash = f.h.doc().representations().values().find(|r| r.subject == Subject::Cable(f.c1)).unwrap().items[0];
     let h_slash = f.h.handle_of(f.page, slash);
     let lines = f.h.p(|p| hover_lines(p, uid, h_slash)).unwrap();
     for want in ["Designation: MOTOR M1", "Type: 4/C #10", "  W3  core 3", "  W1"] {
@@ -652,28 +654,36 @@ fn m_hostile_geometry_never_panics() {
     let layer = h.p(|p| p.default_layer);
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let item = ItemId::from(77);
-    doc.items.insert(item, Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(f64::NAN, 0.0) }) });
-    doc.representations.insert(
-        RepresentationId::from(78),
-        Representation {
-            subject: Subject::Cable(k),
-            page,
-            form: Form::Drawn,
-            role: ecad_model::Role::Reference,
-            items: vec![item],
-            connection_points: Default::default(),
-        },
-    );
+    doc.edit_parts(|parts| {
+        parts.items.insert(item, Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(f64::NAN, 0.0) }) });
+    });
+    doc.edit_parts(|parts| {
+        parts.representations.insert(
+            RepresentationId::from(78),
+            Representation {
+                subject: Subject::Cable(k),
+                page,
+                form: Form::Drawn,
+                role: ecad_model::Role::Reference,
+                items: vec![item],
+                connection_points: Default::default(),
+            },
+        );
+    });
     let d = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width);
     assert!(d.is_fan());
     let (route, _) = crate::common::wire_line(&doc, wires[3], page).unwrap();
-    doc.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(-1e12, 15.0), b: Pt::new(f64::INFINITY, 15.0) });
+    doc.edit_parts(|parts| {
+        parts.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(-1e12, 15.0), b: Pt::new(f64::INFINITY, 15.0) });
+    });
     let d = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width);
     assert!(!d.is_fan(), "drawn traditional when a value is not finite");
     // Two wires ending at the same point (pitch 0).
     let mut doc = h.doc();
     let (r1, _) = crate::common::wire_line(&doc, wires[1], page).unwrap();
-    doc.items.get_mut(&r1).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(120.0, 0.0) });
+    doc.edit_parts(|parts| {
+        parts.items.get_mut(&r1).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(120.0, 0.0) });
+    });
     let _ = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width);
 }
 
@@ -717,7 +727,7 @@ fn s2_selections_with_core_labels_edit_the_rest() {
         match cmd {
             "move" => {
                 assert_eq!(texts, 3, "{cmd}: labels drawn again at the moved slash");
-                assert!(doc.items.values().all(|i| !matches!(i.kind, ItemKind::Primitive(Primitive::Text { .. }))));
+                assert!(doc.items().values().all(|i| !matches!(i.kind, ItemKind::Primitive(Primitive::Text { .. }))));
             }
             "copy" => assert_eq!(texts, 3, "{cmd}: the copy is no cable; its labels are not copied as text"),
             _ => {
@@ -782,7 +792,7 @@ fn cablefan_moves_the_join_along_the_spine() {
     let r = f.h.run("cablefan", json!({"cable": k, "end": "B", "at": 0.0})).unwrap();
     assert_eq!((r["changed"].as_bool(), f.h.head()), (Some(false), h1));
     // The stored joins are not drawn; the page is consistent; undo and redo; null resets.
-    let anchors = f.h.doc().representations.values().filter(|r| r.role == ecad_model::Role::FanAnchor).count();
+    let anchors = f.h.doc().representations().values().filter(|r| r.role == ecad_model::Role::FanAnchor).count();
     assert_eq!(anchors, 2);
     f.h.check();
     f.h.run("u", Value::Null).unwrap();
@@ -791,7 +801,7 @@ fn cablefan_moves_the_join_along_the_spine() {
     f.h.run("cablefan", json!({"cable": k, "end": "A", "at": null})).unwrap();
     f.h.run("cablefan", json!({"cable": k, "end": "B", "at": null})).unwrap();
     assert!(near(join_of(&fan(&mut f.h, f.page, f.c1), true), Pt::new(22.5, 7.5)));
-    assert_eq!(f.h.doc().representations.len(), before.representations.len(), "both joins removed");
+    assert_eq!(f.h.doc().representations().len(), before.representations().len(), "both joins removed");
     // Works whatever the view (programmatic calls ignore views).
     view(&mut f.h, f.c1, "traditional");
     f.h.run("cablefan", json!({"cable": k, "end": "A", "at": 1.0})).unwrap();

@@ -70,7 +70,7 @@ pub fn target(doc: &Document, cat: &Catalogue, id: Option<&str>, name: Option<&s
 pub fn layer(doc: &Document, word: Option<&str>) -> Result<StyleLayer, CmdError> {
     match word.map(str::trim) {
         None | Some("project") => Ok(StyleLayer::Project),
-        Some("standard") if doc.standard.is_some() => Ok(StyleLayer::Standard),
+        Some("standard") if doc.standard().is_some() => Ok(StyleLayer::Standard),
         Some("standard") => Err(CmdError::refused(STANDARD_FIRST)),
         Some(other) => Err(CmdError::refused(format!("Unknown layer {other:?}: project or standard."))),
     }
@@ -181,12 +181,12 @@ pub fn users_words(users: &[(&'static str, ObjectRef)], boxes: usize) -> String 
 
 fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
     match o {
-        ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
-        ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
-        ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
-        ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.display),
-        ObjectRef::Project => Some(&doc.display),
-        ObjectRef::Standard => doc.standard.as_ref().map(|s| &s.values),
+        ObjectRef::Device(c) => doc.devices().get(&c).map(|x| &x.properties),
+        ObjectRef::Wire(c) => doc.wires().get(&c).map(|x| &x.display),
+        ObjectRef::Cable(c) => doc.cables().get(&c).map(|x| &x.properties),
+        ObjectRef::Page(p) => doc.pages().get(&p).map(|x| &x.display),
+        ObjectRef::Project => Some(doc.display()),
+        ObjectRef::Standard => doc.standard().map(|s| &s.values),
     }
 }
 
@@ -198,7 +198,7 @@ pub(crate) fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: 
         if let ObjectRef::Wire(w) = o
             && key == ecad_model::connectivity::wiring::WIRE_CATEGORY
         {
-            if let Some(before) = doc.wires.get(&w).filter(|x| x.wire_type.as_ref() == Some(id)) {
+            if let Some(before) = doc.wires().get(&w).filter(|x| x.wire_type.as_ref() == Some(id)) {
                 let mut after = before.clone();
                 after.wire_type = Some(to.clone());
                 out.push(Op::ModifyWire { id: w, before: before.clone(), after });
@@ -209,7 +209,7 @@ pub(crate) fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: 
         if let ObjectRef::Cable(k) = o
             && key == styles::cable::CABLE_TYPE
         {
-            if let Some(before) = doc.cables.get(&k).filter(|x| x.cable_type.as_ref() == Some(id)) {
+            if let Some(before) = doc.cables().get(&k).filter(|x| x.cable_type.as_ref() == Some(id)) {
                 let mut after = before.clone();
                 after.cable_type = Some(to.clone());
                 styles::cable::sync_offered_cores(doc, before, &mut after);
@@ -230,7 +230,7 @@ pub(crate) fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: 
     }
     for e in (cat.choices)() {
         put(ObjectRef::Project, e.key);
-        if doc.standard.is_some() {
+        if doc.standard().is_some() {
             put(ObjectRef::Standard, e.key);
         }
     }
@@ -244,7 +244,7 @@ pub(crate) fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: 
 /// Whether the project's or the standard's own choice names `id`.
 fn chosen_by_levels(doc: &Document, cat: &Catalogue, id: &StyleRef) -> bool {
     (cat.choices)().iter().any(|e| {
-        [Some(&doc.display), doc.standard.as_ref().map(|s| &s.values)]
+        [Some(doc.display()), doc.standard().map(|s| &s.values)]
             .into_iter()
             .flatten()
             .any(|p| p.get(e.key).and_then(|v| StyleRef::parse(v)).as_ref() == Some(id))
@@ -294,7 +294,7 @@ fn who_uses(users: &[(&'static str, ObjectRef)], boxes: usize) -> (String, &'sta
 
 /// The header line's counts: the standard's values and styles.
 pub fn standard_counts(doc: &Document) -> (usize, usize) {
-    doc.standard.as_ref().map_or((0, 0), |s| (s.values.len(), s.styles.values().map(|m| m.len()).sum()))
+    doc.standard().map_or((0, 0), |s| (s.values.len(), s.styles.values().map(|m| m.len()).sum()))
 }
 
 /// What a `standard` call does.
@@ -321,7 +321,7 @@ pub(crate) struct StandardPlan {
 /// The ops removing the standard: its values, its records, then its header (so undo restores
 /// them, design 050 §3.1).
 fn clear_standard(doc: &Document) -> Vec<Op> {
-    let Some(s) = &doc.standard else { return Vec::new() };
+    let Some(s) = &doc.standard() else { return Vec::new() };
     let mut ops = Vec::new();
     for (k, v) in &s.values {
         ops.push(Op::SetProperty { object: ObjectRef::Standard, key: k.clone(), before: Some(v.clone()), after: None });
@@ -354,7 +354,7 @@ pub(crate) fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: Stand
     match change {
         StandardChange::New(name) => {
             let name = standard_name(&name)?;
-            if let Some(s) = &doc.standard {
+            if let Some(s) = &doc.standard() {
                 return Err(CmdError::refused(format!(
                     "This project already has a standard ({}). Rename it, or go back to IEC first.",
                     s.header.name
@@ -370,7 +370,7 @@ pub(crate) fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: Stand
         }
         StandardChange::Rename(name) => {
             let name = standard_name(&name)?;
-            let cur = doc.standard.as_ref().ok_or(CmdError::refused(STANDARD_FIRST))?;
+            let cur = doc.standard().ok_or(CmdError::refused(STANDARD_FIRST))?;
             if cur.header.name.as_str() == name {
                 return Ok(None);
             }
@@ -397,7 +397,7 @@ pub(crate) fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: Stand
             plan(ops, label, format!("Copied standard {} ({v} values, {n} styles). Your project values stay.", src.header.name))
         }
         StandardChange::Remove(replace_with) => {
-            let cur = doc.standard.as_ref().ok_or(CmdError::refused(STANDARD_FIRST))?;
+            let cur = doc.standard().ok_or(CmdError::refused(STANDARD_FIRST))?;
             let mut ops = Vec::new();
             // Explicit users of a standard-only own style need a replacement (design 050 §6.1).
             for cat in styles::CATALOGUES {
@@ -637,7 +637,7 @@ pub(crate) fn promote_entry(key: &str) -> Result<&'static Entry, CmdError> {
 /// # Errors
 /// The project uses IEC (built in).
 pub(crate) fn needs_standard(doc: &Document) -> Result<&Standard, CmdError> {
-    doc.standard.as_ref().ok_or(CmdError::refused(STANDARD_FIRST))
+    doc.standard().ok_or(CmdError::refused(STANDARD_FIRST))
 }
 
 /// The ops moving the project's own value of `entry` to the standard, before the project's value
@@ -690,7 +690,7 @@ pub(crate) fn plan_promote_style(doc: &Document, cat: &Catalogue, id: &StyleRef)
 
 /// The standard as `standard {}` returns it (design 050 §6.1).
 pub(crate) fn standard_json(doc: &Document) -> Value {
-    match &doc.standard {
+    match &doc.standard() {
         None => json!({"name": IEC, "id": null}),
         Some(s) => {
             let styles: Map<String, Value> = s.styles.iter().map(|(c, m)| (c.to_string(), json!(m.len()))).collect();

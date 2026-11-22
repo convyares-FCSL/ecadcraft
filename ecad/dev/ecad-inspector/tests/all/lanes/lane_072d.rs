@@ -102,7 +102,7 @@ fn routes_and_their_ops_are_shown_raw_and_readable() {
     use ecad_model::{PageId, Pt, Route, RouteEnd, RouteId};
     let dir = TempDir::new("072d-route");
     let mut l = history();
-    let page: PageId = *l.document().page_order.first().unwrap();
+    let page: PageId = *l.document().page_order().first().unwrap();
     let mut ids = IdAllocator::seeded(73);
     let (r1, r2): (RouteId, RouteId) = (ids.fresh(), ids.fresh());
     let a = Route::new(page, vec![Pt::new(0.0, 0.0), Pt::new(40.0, 0.0)], [RouteEnd::Free, RouteEnd::Free]);
@@ -144,7 +144,7 @@ fn core_positions_are_shown_raw_and_readable() {
     use ecad_model::{Cable, CableId, Core, CorePosition, PageId, Pt, Route, RouteEnd, RouteId};
     let dir = TempDir::new("072d-cores");
     let mut l = history();
-    let page: PageId = *l.document().page_order.first().unwrap();
+    let page: PageId = *l.document().page_order().first().unwrap();
     let mut ids = IdAllocator::seeded(74);
     let (d, t, r, k): (DeviceId, ConnectionPointId, RouteId, CableId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let loose = Route::new(page, vec![Pt::new(0.0, 0.0), Pt::new(40.0, 0.0)], [RouteEnd::Point(t), RouteEnd::Free]);
@@ -191,7 +191,7 @@ fn number_by_and_its_settings_op_are_shown_raw_and_readable() {
     // Design 072 F40 (A15): `wiring.number_by` in the Project view and in the settings op.
     let dir = TempDir::new("072d-number-by");
     let mut l = history();
-    let before = l.document().settings.clone();
+    let before = l.document().settings().clone();
     let mut after = before.clone();
     after.wiring.number_by = ecad_model::connectivity::wiring::NumberBy::Conductor;
     l.commit(Author::User, "number by", vec![Op::SetProjectSettings { before, after }]).unwrap();
@@ -290,11 +290,11 @@ fn cable_reference_points_are_shown_raw_and_readable() {
     use ecad_model::{Cable, CableId, Core, Form, Item, ItemId, ItemKind, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject};
     let dir = TempDir::new("072d-ref-points");
     let mut l = history();
-    let page: PageId = *l.document().page_order.first().unwrap();
+    let page: PageId = *l.document().page_order().first().unwrap();
     let mut ids = IdAllocator::seeded(75);
     let (k, item, rep, point): (CableId, ItemId, RepresentationId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let core = Core { through: vec![point], ..Core::unplaced(ecad_model::CoreLabel::new("1").ok()) };
-    let layer = *l.document().layers.keys().next().unwrap();
+    let layer = *l.document().layers().keys().next().unwrap();
     let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     l.commit(
         Author::User,
@@ -346,7 +346,7 @@ fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
     };
     let dir = TempDir::new("072d-two-slashes");
     let mut l = history();
-    let p1: PageId = *l.document().page_order.first().unwrap();
+    let p1: PageId = *l.document().page_order().first().unwrap();
     let mut ids = IdAllocator::seeded(76);
     let p2: PageId = ids.fresh();
     let (x01, x05): (DeviceId, DeviceId) = (ids.fresh(), ids.fresh());
@@ -356,7 +356,7 @@ fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
     let (w, net, conductor): (WireId, NetId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let k: CableId = ids.fresh();
     let (i1, i2, r1, r2): (ItemId, ItemId, RepresentationId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let layer = *l.document().layers.keys().next().unwrap();
+    let layer = *l.document().layers().keys().next().unwrap();
     let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let point = |owner: ecad_model::ConnectionPointOwner, label: &str| ConnectionPoint {
         owner,
@@ -405,7 +405,7 @@ fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
     l.commit(Author::User, "cableslash", vec![slash(i2, p2), link(r2, p2, i2)]).unwrap();
     let doc = l.document();
     assert_eq!(doc.named_points(ta2).map(|g| g.len()), Some(2), "the pair is one named point group");
-    assert_eq!(doc.cables[&k].cores.len(), 1);
+    assert_eq!(doc.cables()[&k].cores.len(), 1);
     let path = written(&dir, &l);
     let f = FileSource::from_path(&path);
     assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));

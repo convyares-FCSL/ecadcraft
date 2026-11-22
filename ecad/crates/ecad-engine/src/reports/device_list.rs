@@ -11,7 +11,7 @@ use ecad_electrical::devices::device_list::kept;
 /// handles on that page (empty unless that page is the one shown).
 pub fn symbol_target(p: &Project, rep: RepresentationId) -> Option<(PageId, Option<Pt>, Vec<Handle>)> {
     let doc = p.ledger.document();
-    let r = doc.representations.get(&rep)?;
+    let r = doc.representations().get(&rep)?;
     let mut handles = Vec::new();
     if let Some(view) = p.pages.get(&r.page).filter(|v| v.uid.is_some()) {
         handles.extend(r.items.iter().filter_map(|i| view.map.item(*i)));

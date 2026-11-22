@@ -141,11 +141,11 @@ impl Drop for TempDir {
 
 /// The page titled `title` (the first page is renamed `Supply`, later `Source`).
 fn page_titled(doc: &Document, titles: &[&str]) -> Option<PageId> {
-    doc.page_order.iter().copied().find(|p| doc.pages.get(p).is_some_and(|pg| titles.contains(&pg.title.as_str())))
+    doc.page_order().iter().copied().find(|p| doc.pages().get(p).is_some_and(|pg| titles.contains(&pg.title.as_str())))
 }
 
 fn supply(doc: &Document) -> PageId {
-    page_titled(doc, &["Supply", "Source"]).unwrap_or(doc.page_order[0])
+    page_titled(doc, &["Supply", "Source"]).unwrap_or(doc.page_order()[0])
 }
 
 fn field(doc: &Document) -> PageId {
@@ -158,13 +158,13 @@ fn fill(doc: &Document, v: &Value) -> Value {
     match v {
         Value::String(s) => {
             let reference = |page: PageId| cable_references(doc).into_iter().find(|r| r.page == page).expect("a reference").reference.hex();
-            let c1 = || *doc.cables.keys().next().expect("a cable");
+            let c1 = || *doc.cables().keys().next().expect("a cable");
             match s.as_str() {
                 "<supply>" => Value::String(supply(doc).hex()),
                 "<field>" => Value::String(field(doc).hex()),
                 "<c1>" => Value::String(c1().hex()),
                 "<w0>" => {
-                    let core = &doc.cables[&c1()].cores[0];
+                    let core = &doc.cables()[&c1()].cores[0];
                     Value::String(core.wire().map(|w| w.hex()).or(core.route().map(|l| l.hex())).unwrap_or_default())
                 }
                 "<ref supply>" => Value::String(reference(supply(doc))),

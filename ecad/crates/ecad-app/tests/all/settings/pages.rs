@@ -46,7 +46,7 @@ fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
     let mut h = build(new_app(), None);
     ok(&mut h, r#"newpage {"title":"two"}"#);
     let d = doc(&mut h);
-    let (p1, p2) = (d.page_order[0], d.page_order[1]);
+    let (p1, p2) = (d.page_order()[0], d.page_order()[1]);
     ok(&mut h, &format!(r#"openpage {{"page":"{}"}}"#, p1.hex()));
     // Opened from the page well's +: Schematic (the open page's type) is highlighted.
     let before = head(&mut h);
@@ -65,7 +65,7 @@ fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
     click(&mut h, "ecad.newpage.type.network");
     assert_eq!(head(&mut h), before + 1);
     let d = doc(&mut h);
-    let new = d.page_order.iter().copied().find(|p| *p != p1 && *p != p2).unwrap();
+    let new = d.page_order().iter().copied().find(|p| *p != p1 && *p != p2).unwrap();
     let book = ecad_model::document::book::Book::of(&d);
     assert_eq!(book.order, vec![p1, new, p2], "after the open page");
     assert_eq!(ptype::type_of(&d, new).text(), "network");
@@ -75,7 +75,7 @@ fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
     click(&mut h, "ecad.newpage.type.front");
     click(&mut h, "ecad.newpage.kind.cover");
     let d = doc(&mut h);
-    assert!(d.pages.values().any(|p| p.kind.generated_kind() == Some(ecad_model::GenKind::Cover)));
+    assert!(d.pages().values().any(|p| p.kind.generated_kind() == Some(ecad_model::GenKind::Cover)));
 }
 
 /// Brief 054b: the board 1.16 project (a pump station's cover) and the screenshots of design 054
@@ -102,7 +102,7 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
         crate::common::wire_pp(h.state_mut(), &[(40.0, y as f64), (340.0, y as f64)]);
         h.run_steps(2);
         let d = doc(&mut h);
-        let c = d.wires.keys().copied().find(|c| !wires.contains(c)).unwrap();
+        let c = d.wires().keys().copied().find(|c| !wires.contains(c)).unwrap();
         wires.push(c);
         ok(&mut h, &format!(r#"category {{"conductor":"{}","value":"{cat}"}}"#, c.hex()));
     }
@@ -110,7 +110,7 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     for (rev, what) in [("A", "First issue"), ("B", "Customer comments"), ("C", "Released for build")] {
         ok(&mut h, &format!(r#"issuerevision {{"rev":"{rev}","description":"{what}","drawn":"CvA","provisional":"issue"}}"#));
     }
-    let first = doc(&mut h).page_order[0];
+    let first = doc(&mut h).page_order()[0];
     ok(&mut h, &format!(r#"newpage {{"type":"front","generated":"cover","after":"{}"}}"#, first.hex()));
     let cover = active(&mut h).unwrap();
     ok(&mut h, &format!(r#"movepage {{"page":"{}","index":1}}"#, cover.hex()));
@@ -180,11 +180,11 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     let before = head(&mut h);
     click(&mut h, "ecad.page.front.contents");
     assert_eq!(head(&mut h), before + 1);
-    assert!(doc(&mut h).pages.values().any(|p| p.kind.generated_kind() == Some(ecad_model::GenKind::Contents)));
+    assert!(doc(&mut h).pages().values().any(|p| p.kind.generated_kind() == Some(ecad_model::GenKind::Contents)));
     h.run_steps(3);
     click(&mut h, "ecad.page.front.contents");
     assert_eq!(head(&mut h), before + 2);
-    assert!(!doc(&mut h).pages.values().any(|p| p.kind.generated_kind() == Some(ecad_model::GenKind::Contents)));
+    assert!(!doc(&mut h).pages().values().any(|p| p.kind.generated_kind() == Some(ecad_model::GenKind::Contents)));
     // A block toggle: one setdefault.
     click(&mut h, "ecad.page.block.structure_codes");
     assert_eq!(head(&mut h), before + 3);

@@ -26,7 +26,7 @@ fn folder(name: &str, parent: Option<FolderId>) -> Folder {
 
 /// A `ModifyPage` of `page` (as `f` holds it) with `change` applied.
 fn modify(f: &F, page: PageId, change: impl FnOnce(&mut Page)) -> Op {
-    let before = f.ledger.document().pages[&page].clone();
+    let before = f.ledger.document().pages()[&page].clone();
     let mut after = before.clone();
     change(&mut after);
     Op::ModifyPage { id: page, before, after }
@@ -36,7 +36,7 @@ fn modify(f: &F, page: PageId, change: impl FnOnce(&mut Page)) -> Op {
 fn page_and_project_properties_set_and_undo() {
     let mut f = fixture();
     let p = f.pages[0];
-    let before = f.ledger.document().pages[&p].clone();
+    let before = f.ledger.document().pages()[&p].clone();
     let after = ecad_model::Page { number: ecad_model::PageNo::parse("100"), ..before.clone() };
     f.ledger
         .commit(
@@ -55,13 +55,13 @@ fn page_and_project_properties_set_and_undo() {
         )
         .unwrap();
     let doc = f.ledger.document();
-    assert_eq!(doc.pages[&p].number.as_ref().map(ecad_model::PageNo::as_str), Some("100"));
-    assert_eq!(doc.project.info.title.as_ref().map(ecad_model::naming::text::Text::as_str), Some("P7"));
+    assert_eq!(doc.pages()[&p].number.as_ref().map(ecad_model::PageNo::as_str), Some("100"));
+    assert_eq!(doc.project().info.title.as_ref().map(ecad_model::naming::text::Text::as_str), Some("P7"));
     assert_eq!(Book::of(doc).number(doc, p), "100");
     assert_eq!(Book::of(doc).number(doc, f.pages[1]), "2", "unnumbered pages show their position");
     f.ledger.undo(Author::User).unwrap();
-    assert!(f.ledger.document().display.is_empty());
-    assert!(f.ledger.document().pages[&p].number.is_none());
+    assert!(f.ledger.document().display().is_empty());
+    assert!(f.ledger.document().pages()[&p].number.is_none());
     assert!(f.ledger.replay_matches().unwrap());
 }
 

@@ -79,7 +79,7 @@ fn a_moved_tag_follows_its_symbol_and_reset_puts_it_back() {
     assert_eq!((row["moved"].as_bool(), row["justify"].as_str()), (Some(true), Some("LT")));
     assert_eq!((row["at"][0].as_f64(), row["at"][1].as_f64()), (Some(130.0), Some(170.0)));
     // Move the symbol 20 mm: the tag follows.
-    let item = h.doc().representations[&r].items[0];
+    let item = h.doc().representations()[&r].items[0];
     let hd = h.handle_of(page, item);
     h.run("move", json!({"handles": [hd.hex()], "delta": [20, 0]})).unwrap();
     let row = tag_row(&mut h, page, r);
@@ -122,7 +122,7 @@ fn hostile_stored_places_draw_the_automatic_place() {
         let op = ecad_model::Op::SetProperty {
             object: ecad_model::ObjectRef::Device(c),
             key: key.clone(),
-            before: h.doc().devices[&c].properties.get(&key).cloned(),
+            before: h.doc().devices()[&c].properties.get(&key).cloned(),
             after: Some(bad.to_string()),
         };
         h.project.apply_ops(&mut h.s, "hostile", vec![op]).unwrap();
@@ -141,9 +141,9 @@ fn a_tag_stays_upright_when_its_symbol_rotates() {
     let (_, auto) = place(&mut h, "no", [160.0, 150.0]);
     h.run("movetext", json!({"representation": r.hex(), "kind": "tag", "to": [90, 160], "justify": "RT"})).unwrap();
     for rep in [r, auto] {
-        let item = h.doc().representations[&rep].items[0];
+        let item = h.doc().representations()[&rep].items[0];
         let hd = h.handle_of(page, item);
-        let origin = match &h.doc().items[&item].kind {
+        let origin = match &h.doc().items()[&item].kind {
             ecad_model::ItemKind::Symbol(s) => s.placement.origin,
             _ => unreachable!(),
         };
@@ -216,7 +216,9 @@ fn apply_styles_an_entity_like_the_page_does() {
             ..Default::default()
         }),
     );
-    doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(ecad_model::StyleRef::Builtin("grid".into()), rec);
+    doc.edit_parts(|parts| {
+        parts.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(ecad_model::StyleRef::Builtin("grid".into()), rec);
+    });
     ecad_engine::styles::draw::apply(&doc, &mut e, TextKind::Grid);
     let EntityKind::Text(t) = &e.kind else { unreachable!() };
     assert_eq!((t.height, t.style.as_str()), (3.0, "ECAD-GRID"));

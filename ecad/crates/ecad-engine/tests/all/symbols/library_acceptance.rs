@@ -236,7 +236,7 @@ fn term(v: &Value, label: &str) -> ConnectionPointId {
 
 /// Every label of a device's points, sorted.
 fn device_labels(d: &Document, c: DeviceId) -> BTreeSet<String> {
-    d.connection_points.values().filter(|t| t.device() == Some(c)).filter_map(|t| t.label.clone()).collect()
+    d.connection_points().values().filter(|t| t.device() == Some(c)).filter_map(|t| t.label.clone()).collect()
 }
 
 fn set(v: &[&str]) -> BTreeSet<String> {
@@ -244,7 +244,7 @@ fn set(v: &[&str]) -> BTreeSet<String> {
 }
 
 fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
-    h.doc().devices.get(&c).and_then(|x| x.value(key))
+    h.doc().devices().get(&c).and_then(|x| x.value(key))
 }
 
 fn tag(n: usize, prefix: &str) -> String {
@@ -273,7 +273,7 @@ fn net_of(d: &Document, t: ConnectionPointId) -> Option<ecad_model::connectivity
 /// The definitions in `d` whose origin is the starter library's `key`.
 fn embeds_of(d: &Document, key: &str) -> usize {
     let Some(s) = symbols::catalogue::by_key(key) else { return 0 };
-    d.definitions.values().filter(|x| x.origin.as_ref().is_some_and(|o| o.library == STARTER_LIBRARY && o.definition == s.id)).count()
+    d.definitions().values().filter(|x| x.origin.as_ref().is_some_and(|o| o.library == STARTER_LIBRARY && o.definition == s.id)).count()
 }
 
 /// The terminals raised as `Unconnected` in `d`.
@@ -302,7 +302,7 @@ fn setprop(h: &mut H, c: DeviceId, key: &str, value: Value) -> Result<Value, Str
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.connection_points, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.definitions)
+    (d.devices(), d.connection_points(), d.wires(), d.pages(), d.page_order(), d.representations(), d.items(), d.display(), d.definitions())
 }
 
 /// Grid position of the i-th placement, far enough apart that no two symbols touch.
@@ -448,7 +448,7 @@ fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
         for round in 0..2 {
             let at = slot(2 * i + round);
             let head = h.head();
-            let defs = h.doc().definitions.len();
+            let defs = h.doc().definitions().len();
             let v = place(&mut h, &e.key, at);
             assert_eq!(h.head(), head + 1, "{}: one transaction", e.key);
             let n = next.entry(e.prefix).or_insert(0);
@@ -471,7 +471,7 @@ fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
                 assert!(near(got, Pt::new(at.0 + x, at.1 + y)), "{} {label}: at {got:?}", e.key);
             }
             assert_eq!(embeds_of(&d, &e.key), 1, "{} round {round}: embedded once, found by origin", e.key);
-            assert_eq!(d.definitions.len(), defs + usize::from(round == 0), "{} round {round}: a second placement adds no definition", e.key);
+            assert_eq!(d.definitions().len(), defs + usize::from(round == 0), "{} round {round}: a second placement adds no definition", e.key);
         }
     }
 }
@@ -789,7 +789,7 @@ fn j_quiet_spare_points_are_not_flagged() {
 fn k_bom_one_row_per_device() {
     let mut h = fixture_all(0x7034_000e);
     let d = h.doc();
-    let devices: BTreeSet<DeviceId> = d.devices.iter().filter(|(_, c)| c.tag().is_some_and(|t| !t.is_empty())).map(|(id, _)| *id).collect();
+    let devices: BTreeSet<DeviceId> = d.devices().iter().filter(|(_, c)| c.tag().is_some_and(|t| !t.is_empty())).map(|(id, _)| *id).collect();
     let bom = h.run("bom", json!({"limit": 5000})).unwrap();
     let rows = bom["rows"].as_array().unwrap().clone();
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
@@ -804,7 +804,7 @@ fn k_bom_one_row_per_device() {
         }
     }
     for c in &devices {
-        assert_eq!(seen.get(&c.hex()).copied(), Some(1), "{} on one BOM row: {rows:?}", d.devices[c].tag_shown().unwrap_or_default());
+        assert_eq!(seen.get(&c.hex()).copied(), Some(1), "{} on one BOM row: {rows:?}", d.devices()[c].tag_shown().unwrap_or_default());
     }
     assert_eq!(seen.len(), devices.len(), "nothing but devices on the BOM: {seen:?}");
     let qty: u64 = rows.iter().map(|r| r["qty"].as_u64().unwrap_or(0)).sum();
@@ -877,11 +877,11 @@ fn l_save_and_reopen_keeps_everything() {
     assert_eq!(model_parts(&h2.doc()), model_parts(&before));
     assert_eq!(h2.run("bom", json!({"limit": 5000})).unwrap(), bom);
     // Placing again after reopen reuses the embedded definitions (found by origin).
-    let defs = h2.doc().definitions.len();
+    let defs = h2.doc().definitions().len();
     h2.check();
     place(&mut h2, "fusebank6", (100.0, 300.0));
     place(&mut h2, "co", (150.0, 300.0));
-    assert_eq!(h2.doc().definitions.len(), defs, "reused by origin after reopen");
+    assert_eq!(h2.doc().definitions().len(), defs, "reused by origin after reopen");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

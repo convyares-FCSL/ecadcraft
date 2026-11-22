@@ -35,24 +35,24 @@ fn aids_are_added_modified_removed_and_undone() {
         ],
     )
     .unwrap();
-    assert_eq!(l.document().aids.len(), 2);
+    assert_eq!(l.document().aids().len(), 2);
     assert_eq!(l.document().representations_of(Subject::Aid(a)).count(), 1);
 
     let captioned = Aid::Continuation { name: Some(ContinuationName::new("24V").unwrap()), caption: Some(Caption::new("To the PSU").unwrap()) };
     l.commit(Author::User, "caption", vec![Op::ModifyAid { id: a, before: arrow("24V"), after: captioned.clone() }]).unwrap();
-    assert_eq!(l.document().aids.get(&a), Some(&captioned));
+    assert_eq!(l.document().aids().get(&a), Some(&captioned));
     // A stale `before` is refused.
     assert!(l.commit(Author::User, "stale", vec![Op::ModifyAid { id: a, before: arrow("24V"), after: arrow("0V") }]).is_err());
     l.undo(Author::User).unwrap();
-    assert_eq!(l.document().aids.get(&a), Some(&arrow("24V")));
+    assert_eq!(l.document().aids().get(&a), Some(&arrow("24V")));
 
     // An aid a representation still draws cannot go on its own.
     let e = l.commit(Author::User, "erase", vec![Op::DeleteAid { id: a, aid: arrow("24V") }]).unwrap_err();
     assert!(e.to_string().contains("missing subject"), "{e}");
     l.commit(Author::User, "erase", vec![Op::UnlinkRepresentation { id: r, rep }, Op::DeleteAid { id: a, aid: arrow("24V") }]).unwrap();
-    assert_eq!(l.document().aids.keys().copied().collect::<Vec<_>>(), vec![b]);
+    assert_eq!(l.document().aids().keys().copied().collect::<Vec<_>>(), vec![b]);
     l.undo(Author::User).unwrap();
-    assert!(l.document().aids.contains_key(&a));
+    assert!(l.document().aids().contains_key(&a));
     l.document().check_index().unwrap();
 }
 
@@ -123,27 +123,27 @@ fn loose_parts_are_added_modified_removed_and_undone() {
     });
     assert!(t.pages.is_empty() && t.devices.is_empty() && !t.project && !t.page_order);
     l.commit(Author::User, "add", ops).unwrap();
-    assert_eq!(l.document().loose_parts.len(), 2);
-    assert!(l.document().devices.is_empty(), "a loose part is not a device");
+    assert_eq!(l.document().loose_parts().len(), 2);
+    assert!(l.document().devices().is_empty(), "a loose part is not a device");
 
     let mut cut = rail("3.6");
     cut.unit = ItemUnit::Metres;
     cut.location = Some(LocationId(0xc1));
     l.commit(Author::User, "edit", vec![Op::ModifyLoosePart { id: a, before: rail("2"), after: cut.clone() }]).unwrap();
-    assert_eq!(l.document().loose_parts.get(&a), Some(&cut));
+    assert_eq!(l.document().loose_parts().get(&a), Some(&cut));
     // A stale `before` is refused.
     assert!(l.commit(Author::User, "stale", vec![Op::ModifyLoosePart { id: a, before: rail("2"), after: rail("5") }]).is_err());
     // A twice-made one is refused.
     assert!(l.commit(Author::User, "again", vec![Op::CreateLoosePart { id: b, part: rail("1") }]).is_err());
     l.undo(Author::User).unwrap();
-    assert_eq!(l.document().loose_parts.get(&a), Some(&rail("2")));
+    assert_eq!(l.document().loose_parts().get(&a), Some(&rail("2")));
 
     l.commit(Author::User, "erase", vec![Op::DeleteLoosePart { id: a, part: rail("2") }]).unwrap();
-    assert_eq!(l.document().loose_parts.keys().copied().collect::<Vec<_>>(), vec![b]);
+    assert_eq!(l.document().loose_parts().keys().copied().collect::<Vec<_>>(), vec![b]);
     l.undo(Author::User).unwrap();
-    assert!(l.document().loose_parts.contains_key(&a));
+    assert!(l.document().loose_parts().contains_key(&a));
     l.redo(Author::User).unwrap();
-    assert!(!l.document().loose_parts.contains_key(&a));
+    assert!(!l.document().loose_parts().contains_key(&a));
     l.document().check_index().unwrap();
 
     // The diff between two documents records loose part ops.

@@ -68,7 +68,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             }
             None => None,
         };
-        let Some((rid, r)) = rep.and_then(|id| doc.representations.get(&id).map(|r| (id, r))) else {
+        let Some((rid, r)) = rep.and_then(|id| doc.representations().get(&id).map(|r| (id, r))) else {
             out.plain += 1;
             continue;
         };
@@ -119,7 +119,7 @@ pub fn selected_objects(p: &Project, page: PageId, selection: &[Handle]) -> Vec<
 pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsView {
     let doc = p.ledger.document();
     let mut v = PropsView::default();
-    let Some(page) = page.filter(|pg| doc.pages.contains_key(pg)) else { return v };
+    let Some(page) = page.filter(|pg| doc.pages().contains_key(pg)) else { return v };
     if selection.is_empty() {
         // Project-level things are popouts of the Project panel (owner, fix round of 2026-11-08):
         // with nothing selected, Properties shows the page. Its Function and Location show the
@@ -190,7 +190,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         v.deps.insert(ObjectRef::Project);
         // Brief 045: a card's Rack row shows its rack's tag.
         v.deps.extend(k.devices.iter().filter_map(|c| ecad_electrical::plc::props_deps(doc, *c)));
-        if let Some(r) = k.symbol.and_then(|s| doc.representations.get(&s)) {
+        if let Some(r) = k.symbol.and_then(|s| doc.representations().get(&s)) {
             v.deps.insert(ObjectRef::Page(r.page));
         }
         v.sections.push(device_section(doc, p.kept_reports().map(|o| &o.plc), &k.devices, k.symbol));
@@ -228,22 +228,23 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         v.deps.extend(doc.cables_of(*w).into_iter().map(ObjectRef::Cable));
         // From and To name each end's device and connection point: a renamed device, or a
         // connection point added or removed, changes them.
-        let ends = doc.wires.get(w).map(|c| c.ends.to_vec()).unwrap_or_default();
-        v.deps.extend(ends.iter().filter_map(|t| doc.connection_points.get(t)).filter_map(|t| t.device()).map(ObjectRef::Device));
+        let ends = doc.wires().get(w).map(|c| c.ends.to_vec()).unwrap_or_default();
+        v.deps.extend(ends.iter().filter_map(|t| doc.connection_points().get(t)).filter_map(|t| t.device()).map(ObjectRef::Device));
         // Brief 022: the number, potential and Net block read the whole net: its conductors and
         // the devices (junctions and continuations included) at its connection points.
         let conn = doc.connectivity();
         if let Some(net) = conn.net_of_conductor(*w).and_then(|id| conn.net(id)) {
             v.deps.extend(net.wires.iter().map(|c| ObjectRef::Wire(*c)));
-            v.deps
-                .extend(net.connection_points.iter().filter_map(|t| doc.connection_points.get(t)).filter_map(|t| t.device()).map(ObjectRef::Device));
+            v.deps.extend(
+                net.connection_points.iter().filter_map(|t| doc.connection_points().get(t)).filter_map(|t| t.device()).map(ObjectRef::Device),
+            );
         }
         v.sections.push(wire_section(doc, *w));
     } else if let [c] = k.cables.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Cable(*c));
         v.sections.push(cable_section(doc, *c));
     } else if let [r] = k.references.iter().copied().collect::<Vec<_>>().as_slice() {
-        if let Some(Subject::Cable(c)) = doc.representations.get(r).map(|x| x.subject) {
+        if let Some(Subject::Cable(c)) = doc.representations().get(r).map(|x| x.subject) {
             v.deps.insert(ObjectRef::Cable(c));
             // "Other ends" name each partner's page number and its sheet's zones.
             let references = ecad_model::connectivity::derive::cable_references_of(doc, &BTreeSet::from([c]));

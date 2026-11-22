@@ -169,7 +169,7 @@ fn terminalblocklabel_relabels_a_position_and_sets_a_level_label() {
     let v = h.run("terminalblocklabel", json!({"connection_point": t2.hex(), "position": "2.1"})).unwrap();
     assert_eq!(v["message"], "-X01:2 is now -X01:2.1 (2 levels).", "{v}");
     let doc = h.doc();
-    let props = &doc.devices[&x1].properties;
+    let props = &doc.devices()[&x1].properties;
     assert_eq!(props.get("acc.on.2.1").map(String::as_str), Some("marker"), "accessories follow");
     assert_eq!(props.get("jumper_bar.1").map(String::as_str), Some("1.2-3.2"), "the jumper bar names the same positions in plan order");
     let e = h.run("terminalblocklabel", json!({"connection_point": t2.hex(), "position": "3"})).unwrap_err();
@@ -182,7 +182,7 @@ fn terminalblocklabel_relabels_a_position_and_sets_a_level_label() {
     // The separator default reaches the strip (design 036 §13 N): `""` on the project is none.
     let t1 = connection_points(&s1)[0];
     h.run("projectprops", json!({"props": {"terminal_block.level.separator": ""}})).unwrap();
-    assert_eq!(h.doc().display.get("terminal_block.level.separator").map(String::as_str), Some("none"));
+    assert_eq!(h.doc().display().get("terminal_block.level.separator").map(String::as_str), Some("none"));
     assert_eq!(h.p(|p| ecad_engine::interact::connection_point_name(p.ledger.document(), t1)), "1S");
     same_as_built(&mut h);
     // The strip's own value wins.
@@ -214,8 +214,8 @@ fn toposition_turns_a_fuse_terminal_block_into_a_fuse_position() {
     assert_eq!(h.head(), head + 1, "one transaction");
     assert_eq!(v["position"], "4", "{v}");
     let doc = h.doc();
-    assert!(!doc.devices.contains_key(&f5), "-F05 gone");
-    assert_eq!(doc.devices[&x1].value("rating.4").as_deref(), Some("4 A"));
+    assert!(!doc.devices().contains_key(&f5), "-F05 gone");
+    assert_eq!(doc.devices()[&x1].value("rating.4").as_deref(), Some("4 A"));
     let c = doc.connectivity();
     // Design 072 §4.4: the wires now end on the position's points, so they are new wires (the
     // rewrite carries their values); their nets are as before: two, one on each point.
@@ -229,7 +229,7 @@ fn toposition_turns_a_fuse_terminal_block_into_a_fuse_position() {
     same_as_built(&mut h);
     h.check();
     h.run("undo", json!({})).unwrap();
-    assert!(h.doc().devices.contains_key(&f5), "u restores -F05");
+    assert!(h.doc().devices().contains_key(&f5), "u restores -F05");
 }
 
 #[test]
@@ -263,7 +263,7 @@ fn renumber_keeps_028_strips_and_numbers_colliding_keys_by_their_own_symbol() {
     let v = h.run("terminalblocks", json!({"from": [40, 20], "to": [0, 20]})).unwrap();
     let x1: DeviceId = id(&v, "strip");
     let ts = connection_points(&v);
-    let labels = |h: &mut H| ts.iter().map(|t| h.doc().connection_points[t].label.clone().unwrap_or_default()).collect::<Vec<_>>();
+    let labels = |h: &mut H| ts.iter().map(|t| h.doc().connection_points()[t].label.clone().unwrap_or_default()).collect::<Vec<_>>();
     assert_eq!(labels(&mut h), ["1", "2", "3"]);
     // No collision: renumbering numbers in drawing order (left to right), as 028 did.
     h.run("renumber", json!({"kind": "terminal_blocks", "scope": "selection", "strips": [x1.hex()]})).unwrap();
@@ -272,7 +272,7 @@ fn renumber_keeps_028_strips_and_numbers_colliding_keys_by_their_own_symbol() {
     // A collision: the joined terminal at x = 20 keyed `1`, as the first symbol's.
     h.cfg(|p| {
         let doc = p.ledger.document();
-        let before = doc.connection_points[&ts[1]].clone();
+        let before = doc.connection_points()[&ts[1]].clone();
         let mut after = before.clone();
         after.key = Some("1".parse().unwrap());
         let ops = vec![
@@ -301,12 +301,12 @@ fn nothing_is_lost_silently() {
     h.run("terminalblocklabel", json!({"connection_point": t2.hex(), "text": "2S"})).unwrap();
     // Erase position 2's S symbol: its label key goes with it.
     let rep = h.doc().representations_showing(t2).next().map(|(r, _)| r).unwrap();
-    let item = h.doc().representations[&rep].items[0];
+    let item = h.doc().representations()[&rep].items[0];
     let handle = h.handle_of(page, item);
     h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
-    assert_eq!(h.doc().devices[&x1].properties.get("term_label.2.1"), None, "removed with its level");
+    assert_eq!(h.doc().devices()[&x1].properties.get("term_label.2.1"), None, "removed with its level");
     h.run("undo", json!({})).unwrap();
-    assert_eq!(h.doc().devices[&x1].properties.get("term_label.2.1").map(String::as_str), Some("2S"), "u brings it back");
+    assert_eq!(h.doc().devices()[&x1].properties.get("term_label.2.1").map(String::as_str), Some("2S"), "u brings it back");
     same_as_built(&mut h);
     // A fixed wire number on a wire a fuse position splits: the out half's loss is reported.
     let w: WireId = id(&h.wire_pp(&[(100.0, 0.0), (100.0, 80.0)]).unwrap(), "conductor");
@@ -353,13 +353,14 @@ fn relabel_moves_every_position_keyed_property() {
     let head = h.head();
     h.run("terminalblocklabel", json!({"connection_point": t2.hex(), "position": "7"})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
-    let props = h.doc().devices[&x1].properties.clone();
+    let props = h.doc().devices()[&x1].properties.clone();
     for prefix in ecad_electrical::terminal_strips::terminal_blocks::POSITION_KEYED {
         assert_eq!(props.get(&format!("{prefix}{}", suffix(prefix, "2"))), None, "{prefix} left on 2");
         assert_eq!(props.get(&format!("{prefix}{}", suffix(prefix, "7"))).map(String::as_str), Some(value(prefix)), "{prefix} moved to 7");
     }
     assert_eq!(props.get("jumper_bar.1").map(String::as_str), Some("1, 7"));
-    let strip = &h.doc().devices[&x1];
+    let doc = h.doc();
+    let strip = &doc.devices()[&x1];
     assert_eq!((strip.value("rating.2"), strip.value("rating.7").as_deref()), (None, Some("2 A")), "the fuse rating moved to 7");
     same_as_built(&mut h);
 }
@@ -407,7 +408,7 @@ fn relabel_and_renumber_keep_mixed_and_cross_level_jumper_bars() {
             h.run("terminalblocklabel", json!({"strip": x1.hex(), "at": "1", "position": "9"})).unwrap();
             ("9.2, 3", "9.1-9.2, 2-3")
         };
-        let props = h.doc().devices[&x1].properties.clone();
+        let props = h.doc().devices()[&x1].properties.clone();
         assert_eq!(props.get("jumper_bar.1").map(String::as_str), Some(l1), "renumber {via_renumber}: levels kept per span");
         assert_eq!(props.get("jumper_bar.2").map(String::as_str), Some(l2), "renumber {via_renumber}: the range keeps both ends");
         same_as_built(&mut h);
@@ -425,7 +426,7 @@ fn a_jumper_bar_on_out_points_keeps_its_point() {
     let f = h.run("terminalblocks", json!({"type": "FUSE", "from": [0, 40], "to": [40, 40]})).unwrap();
     let x1: DeviceId = id(&f, "strip");
     h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1.1o-3.1o"})).unwrap();
-    assert_eq!(h.doc().devices[&x1].properties.get("jumper_bar.1").map(String::as_str), Some("1.1o-3.1o"));
+    assert_eq!(h.doc().devices()[&x1].properties.get("jumper_bar.1").map(String::as_str), Some("1.1o-3.1o"));
     let s = plan(&mut h, x1);
     let rows = s["rows"].as_array().unwrap();
     let wire = |r: &Value, side: &str| r[side][0]["wire"].as_str().map(str::to_string);

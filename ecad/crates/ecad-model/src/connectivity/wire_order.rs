@@ -29,11 +29,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::document::doc::{Cable, Core, CorePosition, Document, Wire};
 use crate::document::op::Op;
 use crate::geometry::geom::Pt;
 use crate::naming::id::{ConductorId, ConnectionPointId, IdAllocator, NetId, RouteId, WireId};
 use crate::objects::route::RouteEnd;
+use crate::{Cable, Core, CorePosition, Document, Wire};
 
 /// How a new point joins its net.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,7 +56,7 @@ pub struct Order {
 
 impl Order {
     /// An order from stored wires (in `net_order`): the points in the order they first appear.
-    pub fn from_wires(wires: Vec<[ConnectionPointId; 2]>) -> Self {
+    pub(crate) fn from_wires(wires: Vec<[ConnectionPointId; 2]>) -> Self {
         let mut points: Vec<ConnectionPointId> = Vec::new();
         for w in &wires {
             for t in w {
@@ -419,8 +419,9 @@ fn pair(ends: [ConnectionPointId; 2]) -> [ConnectionPointId; 2] {
 struct Rewrite<'a> {
     doc: &'a Document,
     ids: IdAllocator,
-    /// The routes `ops` add or change, in op order: where a new net starts (drawing order).
-    drawn: Vec<RouteId>,
+    /// The routes `ops` add or change, each with the position of its first op: where a new net
+    /// starts (drawing order).
+    drawn: BTreeMap<RouteId, usize>,
     /// The routes `ops` change, with their ends before.
     lifted: Vec<(RouteId, [RouteEnd; 2])>,
 }
@@ -432,13 +433,12 @@ impl<'a> Rewrite<'a> {
         for (kind, id) in crate::document::diff::objects(ops).keys() {
             seed = seed.rotate_left(13) ^ (*id as u64) ^ ((*id >> 64) as u64) ^ (kind.len() as u64);
         }
-        let drawn = ops
-            .iter()
-            .filter_map(|op| match op {
-                Op::AddRoute { id, .. } | Op::ModifyRoute { id, .. } => Some(*id),
-                _ => None,
-            })
-            .collect();
+        let mut drawn = BTreeMap::new();
+        for (at, op) in ops.iter().enumerate() {
+            if let Op::AddRoute { id, .. } | Op::ModifyRoute { id, .. } = op {
+                drawn.entry(*id).or_insert(at);
+            }
+        }
         let lifted = ops
             .iter()
             .filter_map(|op| match op {
@@ -564,15 +564,28 @@ impl<'a> Rewrite<'a> {
         }
         // 3. Which net each old net's id goes to: the one holding most of its points (so most of
         //    its wires once rewritten; ties: the first).
+        // Indexed by point, so each net meets only the components and nets it shares points with
+        // (a scan of every component and net per item would grow with the square of the nets).
+        let mut comp_of: BTreeMap<ConnectionPointId, usize> = BTreeMap::new();
+        for (i, c) in comps.iter().enumerate() {
+            comp_of.extend(c.points.iter().map(|p| (*p, i)));
+        }
+        let mut nets_at: BTreeMap<ConnectionPointId, BTreeSet<NetId>> = BTreeMap::new();
+        for (n, ws) in &old {
+            for (_, w) in ws {
+                for e in w.ends {
+                    nets_at.entry(e).or_default().insert(*n);
+                }
+            }
+        }
         let mut claims: BTreeMap<usize, Vec<(usize, NetId)>> = BTreeMap::new();
         for (n, ws) in &old {
             let points: BTreeSet<ConnectionPointId> = ws.iter().flat_map(|(_, w)| w.ends).collect();
-            let best = comps
-                .iter()
-                .enumerate()
-                .map(|(i, c)| (points.iter().filter(|p| c.points.contains(p)).count(), i))
-                .filter(|(k, _)| *k > 1)
-                .max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+            let mut shared: BTreeMap<usize, usize> = BTreeMap::new();
+            for i in points.iter().filter_map(|p| comp_of.get(p)) {
+                *shared.entry(*i).or_default() += 1;
+            }
+            let best = shared.into_iter().map(|(i, k)| (k, i)).filter(|(k, _)| *k > 1).max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
             if let Some((k, i)) = best {
                 claims.entry(i).or_default().push((k, *n));
             }
@@ -592,7 +605,9 @@ impl<'a> Rewrite<'a> {
             let mut keepers = claims.remove(&i).unwrap_or_default();
             keepers.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
             let keeper = keepers.first().map(|(_, n)| *n);
-            let nets_here: Vec<NetId> = old.iter().filter(|(_, ws)| ws.iter().any(|(_, w)| c.inside(w))).map(|(n, _)| *n).collect();
+            // The old nets with a wire at one of this net's points, in net order.
+            let near: BTreeSet<NetId> = c.points.iter().filter_map(|p| nets_at.get(p)).flatten().copied().collect();
+            let nets_here: Vec<NetId> = near.iter().filter(|n| old.get(*n).is_some_and(|ws| ws.iter().any(|(_, w)| c.inside(w)))).copied().collect();
             // Unchanged: one old net, on exactly these points, every wire inside.
             if let [only] = nets_here[..]
                 && let Some(ws) = old.get(&only)
@@ -625,11 +640,12 @@ impl<'a> Rewrite<'a> {
             let mut pending: Vec<ConnectionPointId> = c.points.iter().copied().filter(|p| !o.has(*p)).collect();
             // A new net starts where its first drawn route starts (drawing order), not at the lower ID.
             if o.points().is_empty()
-                && let Some(first) = self
-                    .drawn
+                && let Some(first) = c
+                    .routes
                     .iter()
-                    .filter(|r| c.routes.contains(r))
-                    .find_map(|r| doc.routes.get(r)?.ends[0].point())
+                    .filter_map(|r| Some((*self.drawn.get(r)?, doc.routes.get(r)?.ends[0].point()?)))
+                    .min_by_key(|(at, _)| *at)
+                    .map(|(_, q)| q)
                     .filter(|q| pending.contains(q))
             {
                 pending.retain(|x| *x != first);
@@ -667,7 +683,8 @@ impl<'a> Rewrite<'a> {
                 }
             }
             // 4. A wire for each of the order's pairs.
-            let pool: Vec<(WireId, &Wire)> = old.values().flatten().filter(|(_, w)| c.inside(w)).map(|(id, w)| (*id, *w)).collect();
+            let near_wires = || near.iter().filter_map(|n| old.get(n)).flatten();
+            let pool: Vec<(WireId, &Wire)> = near_wires().filter(|(_, w)| c.inside(w)).map(|(id, w)| (*id, *w)).collect();
             let mut by_pair: BTreeMap<[ConnectionPointId; 2], (WireId, &Wire)> = BTreeMap::new();
             for (id, w) in &pool {
                 by_pair.entry(pair(w.ends)).or_insert((*id, *w));
@@ -677,8 +694,7 @@ impl<'a> Rewrite<'a> {
             // other in another net now (a wire split across a device's mated points, a fuse): no
             // net keeps those, and the new wires here replace them.
             let mut dropped: Vec<(WireId, &Wire)> = pool.iter().filter(|(_, w)| !wanted.contains(&pair(w.ends))).copied().collect();
-            dropped
-                .extend(old.values().flatten().filter(|(_, w)| !c.inside(w) && w.ends.iter().any(|e| c.points.contains(e))).map(|(id, w)| (*id, *w)));
+            dropped.extend(near_wires().filter(|(_, w)| !c.inside(w) && w.ends.iter().any(|e| c.points.contains(e))).map(|(id, w)| (*id, *w)));
             for (k, ends) in o.wires().iter().enumerate() {
                 let net_order = u16::try_from(k + 1).unwrap_or(u16::MAX);
                 if let Some((id, w)) = by_pair.get(&pair(*ends)) {
@@ -792,19 +808,14 @@ impl<'a> Rewrite<'a> {
             return false;
         };
         let path: Vec<(Pt, Pt)> = route.points.windows(2).map(|w| (w[0], w[1])).collect();
-        doc.representations_of(crate::document::doc::Subject::Cable(cable))
-            .filter(|(_, r)| r.page == route.page)
-            .flat_map(|(_, r)| r.items.iter())
-            .any(|i| {
-                let segs: Vec<(Pt, Pt)> = match doc.items.get(i).map(|x| &x.kind) {
-                    Some(crate::document::doc::ItemKind::Primitive(crate::document::doc::Primitive::Line { a, b })) => vec![(*a, *b)],
-                    Some(crate::document::doc::ItemKind::Primitive(crate::document::doc::Primitive::Polyline { vertices, .. })) => {
-                        vertices.windows(2).map(|w| (w[0], w[1])).collect()
-                    }
-                    _ => Vec::new(),
-                };
-                segs.iter().any(|s| path.iter().any(|p| segments_meet(*s, *p)))
-            })
+        doc.representations_of(crate::Subject::Cable(cable)).filter(|(_, r)| r.page == route.page).flat_map(|(_, r)| r.items.iter()).any(|i| {
+            let segs: Vec<(Pt, Pt)> = match doc.items.get(i).map(|x| &x.kind) {
+                Some(crate::ItemKind::Primitive(crate::Primitive::Line { a, b })) => vec![(*a, *b)],
+                Some(crate::ItemKind::Primitive(crate::Primitive::Polyline { vertices, .. })) => vertices.windows(2).map(|w| (w[0], w[1])).collect(),
+                _ => Vec::new(),
+            };
+            segs.iter().any(|s| path.iter().any(|p| segments_meet(*s, *p)))
+        })
     }
 
     /// The loose line that carried a wire between `ends` (its route now has a free end): one still
@@ -919,7 +930,7 @@ impl<'a> Rewrite<'a> {
 /// The ops clearing every `protected_by` that names a device `ops` deleted (design 072 §4.5,
 /// overseer ruling 2026-11-18), on `doc` as `ops` left it: the same transaction, so one undo
 /// brings them back. Nothing unless `ops` delete a device.
-pub fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
+pub(crate) fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
     let gone: BTreeSet<crate::naming::id::DeviceId> = ops
         .iter()
         .filter_map(|o| if let Op::DeleteDevice { id, .. } = o { Some(*id) } else { None })

@@ -82,7 +82,7 @@ fn move_first(doc: &Document, name: &str, dx: f64) -> Vec<Op> {
     let c = doc.continuations_named(name)[0];
     let (_, r) = doc.representations_of(ecad_model::Subject::Aid(c)).next().unwrap();
     let id = r.items[0];
-    let before = doc.items[&id].clone();
+    let before = doc.items()[&id].clone();
     let mut after = before.clone();
     if let ItemKind::Symbol(s) = &mut after.kind {
         s.placement.origin = Pt::new(s.placement.origin.x + dx, s.placement.origin.y);
@@ -116,7 +116,7 @@ fn applied(doc: &Document, ops: &[Op]) -> Document {
 fn bench_049_continuation_rows() {
     let (n_pages, n_names, big) = counts();
     let mut doc = pages(n_pages);
-    let order = doc.page_order.clone();
+    let order = doc.page_order().to_vec();
     let runs = if cfg!(debug_assertions) { 3 } else { 9 };
     let build_plain = time(runs, || drop(RefIndex::build(&doc)));
     let mut ids = IdAllocator::seeded(0x049);
@@ -156,8 +156,8 @@ fn bench_049_continuation_rows() {
     let c = doc.continuations_named("N3")[1];
     let rename = vec![Op::ModifyAid {
         id: c,
-        before: doc.aids[&c].clone(),
-        after: ecad_electrical::wires::continuation_aid("N4", doc.aids[&c].continuation_caption().map(|t| t.as_str())).unwrap(),
+        before: doc.aids()[&c].clone(),
+        after: ecad_electrical::wires::continuation_aid("N4", doc.aids()[&c].continuation_caption().map(|t| t.as_str())).unwrap(),
     }];
     let after = applied(&doc, &rename);
     let rename20 = time_with(runs, || idx.clone(), |mut i| drop(commit_work(&doc, &after, &mut i, &rename)));

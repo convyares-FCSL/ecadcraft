@@ -173,10 +173,10 @@ fn half_sets_only_that_half_and_undoes_exactly() {
     let before = h.doc();
     h.run("conflicts", json!({"answer": "half"})).unwrap();
     let after = h.doc();
-    let (b, a) = (&before.devices[&x].properties, &after.devices[&x].properties);
+    let (b, a) = (&before.devices()[&x].properties, &after.devices()[&x].properties);
     let changed: Vec<&String> = a.keys().chain(b.keys()).filter(|k| a.get(*k) != b.get(*k)).collect();
     assert_eq!(changed, [&"location.plug".to_string()], "only the plug's location");
-    assert_eq!(before.devices.len(), after.devices.len());
+    assert_eq!(before.devices().len(), after.devices().len());
     undo_to(&mut h, 1, &before, "Half");
 }
 

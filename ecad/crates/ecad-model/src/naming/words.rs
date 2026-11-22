@@ -10,9 +10,9 @@
 #![deny(clippy::wildcard_enum_match_arm)]
 
 /// The words read as yes, in lowercase. [`flag_word`] writes the first.
-pub const YES_WORDS: [&str; 4] = ["yes", "true", "1", "on"];
+pub(crate) const YES_WORDS: [&str; 4] = ["yes", "true", "1", "on"];
 /// The words read as no, in lowercase. [`flag_word`] writes the first.
-pub const NO_WORDS: [&str; 4] = ["no", "false", "0", "off"];
+pub(crate) const NO_WORDS: [&str; 4] = ["no", "false", "0", "off"];
 /// The two words a yes/no value is stored as, yes first: the choices a person picks from.
 pub const FLAG_WORDS: &[&str] = &[YES_WORDS[0], NO_WORDS[0]];
 

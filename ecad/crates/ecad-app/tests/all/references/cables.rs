@@ -99,7 +99,7 @@ fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
     let t = h.state_mut();
     assert!(t.name_box.is_none());
     assert_eq!(head(t), before + 1);
-    assert_eq!(doc(t).pages[&doc(t).page_order[0]].title, "Supply");
+    assert_eq!(doc(t).pages()[&doc(t).page_order()[0]].title, "Supply");
     // New page from the same wheel: the name box with the next number; OK adds it.
     h.get_by_label("Page 1: Supply").click_secondary();
     h.run_steps(3);
@@ -117,7 +117,7 @@ fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
     h.run_steps(3);
     let t = h.state_mut();
     assert_eq!(head(t), before + 2);
-    assert_eq!(doc(t).page_order.len(), 2);
+    assert_eq!(doc(t).page_order().len(), 2);
 }
 
 /// The quick start's click-only path (design 010 §12): reference, continue on a new page, go back.
@@ -175,7 +175,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
     // One page window (brief 016): the same document now shows the other page.
     let p = t.project().unwrap().clone();
     let shown = p.read(&mut t.cad.session, |p, _| p.active_page()).unwrap();
-    assert_eq!(shown, Some(doc(t).page_order[0]), "the other page is current");
+    assert_eq!(shown, Some(doc(t).page_order()[0]), "the other page is current");
     assert_eq!(t.cad.session.selection().len(), 1, "the other end's point is selected");
     assert!(t.cad.session.log.iter().any(|l| l == "Page 1 \"1\", at the other end of cable -C01 (1/F2)."));
 }
@@ -217,11 +217,11 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
         assert!(t.submit_command(&format!(r#"wire {{"points":[[0,{y}],[60,{y}]]}}"#)).is_none());
     }
     assert!(t.submit_command(r#"cableslash {"from":[28,-3],"to":[32,18],"tag":"C1"}"#).is_none());
-    let cable = doc(t).cables.keys().next().copied().unwrap();
+    let cable = doc(t).cables().keys().next().copied().unwrap();
     assert!(t.submit_command(&format!(r#"cablereference {{"cable":"{}","at":[65,5]}}"#, cable.hex())).is_none());
     assert!(t.submit_command(r#"newpage {"title":"Field"}"#).is_none());
     assert!(t.submit_command(&format!(r#"cablecontinue {{"cable":"{}","at":[20,5],"toward":[40,5]}}"#, cable.hex())).is_none());
-    let (page1, page2) = (doc(t).page_order[0], doc(t).page_order[1]);
+    let (page1, page2) = (doc(t).page_order()[0], doc(t).page_order()[1]);
     h.run_steps(3);
     // Erase page 2's end: every drawn object on page 2 except terminal markers.
     let t = h.state_mut();

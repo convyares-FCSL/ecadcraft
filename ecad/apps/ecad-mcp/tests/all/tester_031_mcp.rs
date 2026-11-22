@@ -22,7 +22,7 @@ fn hex(v: &Value, key: &str) -> String {
 fn rep_of(c: &mut Client, placed: &Value) -> String {
     let item = hex(placed, "item");
     let d = c.doc();
-    d.representations.iter().find(|(_, r)| r.items.iter().any(|i| i.hex() == item)).map(|(id, _)| id.hex()).unwrap()
+    d.representations().iter().find(|(_, r)| r.items.iter().any(|i| i.hex() == item)).map(|(id, _)| id.hex()).unwrap()
 }
 
 fn reads(c: &mut Client, page: &str) -> Value {
@@ -45,7 +45,7 @@ fn text_writes_by_the_agent_then_refused_with_writes_off() {
         let k1 = hex(&coil, "component");
         let rep = rep_of(&mut c, &coil);
         let d = c.doc();
-        let page = d.page_order[0].hex();
+        let page = d.page_order()[0].hex();
 
         let writes: Vec<(&str, Value)> = vec![
             ("textstyle", json!({"kind": "tag", "height": 3})),
@@ -121,7 +121,7 @@ fn reads_work_with_writes_off_and_record_nothing() {
     assert!(ts["kinds"].as_array().is_some_and(|k| k.iter().any(|r| r["kind"] == "tag")), "{ts}");
     let d = c.exec("defaults", json!({}));
     assert!(d["defaults"].as_array().is_some_and(|a| !a.is_empty()), "{d}");
-    let page = c.doc().page_order[0].hex();
+    let page = c.doc().page_order()[0].hex();
     let t = c.exec("pagetexts", json!({"page": page}));
     assert_eq!(t["texts"], json!([]), "an empty page: {t}");
     let m = c.refused("execute", json!({"command": "defaults", "params": {"key": "nope"}}));

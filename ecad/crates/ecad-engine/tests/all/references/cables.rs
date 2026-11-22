@@ -118,7 +118,7 @@ fn connected() -> R {
     }
     // Now each core is a wire, from K1 to K2 across the pages: name them W0, W5, W10.
     let doc = r.h.doc();
-    let wires: Vec<WireId> = doc.cables[&r.c1].cores.iter().filter_map(|c| c.wire()).collect();
+    let wires: Vec<WireId> = doc.cables()[&r.c1].cores.iter().filter_map(|c| c.wire()).collect();
     for (i, (w, y)) in wires.iter().zip(["0", "5", "10"]).enumerate() {
         tag(&mut r.h, "conductor", &w.hex(), &format!("W{y}"));
         r.w[i] = *w;
@@ -241,10 +241,10 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
     use ecad_model::Role::{Reference, Route, Slash};
     assert_eq!(roles, vec![(Reference, k), (Route, any), (Route, any), (Route, any), (Slash, k)]);
     let after = r.h.doc();
-    let positions = |d: &Document| d.cables[&r.c1].cores.iter().map(|c| c.position).collect::<Vec<_>>();
+    let positions = |d: &Document| d.cables()[&r.c1].cores.iter().map(|c| c.position).collect::<Vec<_>>();
     assert_eq!(positions(&after), positions(&before), "same cable, same cores where they were");
-    assert!(after.cables[&r.c1].cores.iter().all(|c| c.through.len() == 2), "each core has a point on each reference");
-    assert_eq!(after.wires, before.wires, "no wire until a stub lands on a device point");
+    assert!(after.cables()[&r.c1].cores.iter().all(|c| c.through.len() == 2), "each core has a point on each reference");
+    assert_eq!(after.wires(), before.wires(), "no wire until a stub lands on a device point");
     assert_eq!(nets(&after), nets(&before), "nets unchanged");
     assert_eq!(v["text"], "1/F2");
     assert_eq!(v["partner"], json!(reference_on(&mut r.h, r.supply).hex()));
@@ -326,14 +326,14 @@ fn texts_follow_page_moves_renames_and_point_moves_live() {
     assert_eq!(r.h.head(), head + 2);
     let rid = reference_on(&mut r.h, r.supply);
     let u = uid(&mut r.h, r.supply);
-    let point = r.h.doc().representations[&rid].items[0];
+    let point = r.h.doc().representations()[&rid].items[0];
     let hp = r.h.handle_of(r.supply, point);
     let lines = r.h.p(|p| hover_lines(p, u, hp)).unwrap();
     assert!(lines.iter().any(|l| l.contains("Other end: page 2 \"Field 2\"")), "{lines:?}");
     // Move Field's point to (90,5): Supply's text names column B.
     r.h.activate(r.field);
     let fid = reference_on(&mut r.h, r.field);
-    let fpoint = r.h.doc().representations[&fid].items[0];
+    let fpoint = r.h.doc().representations()[&fid].items[0];
     let fh = r.h.handle_of(r.field, fpoint);
     r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
     assert_eq!(text_of(&mut r.h, r.supply), "2/F2");
@@ -362,7 +362,7 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     // Keep K2's outline: erase only what the continuation drew (stubs, slash, point, text).
     let doc = r.h.doc();
     let keep: Vec<String> = doc
-        .representations
+        .representations()
         .values()
         .filter(|x| x.page == r.field && matches!(x.subject, Subject::Device(_)))
         .flat_map(|x| x.items.iter())
@@ -387,10 +387,10 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     let th = r.h.p(|p| p.pages[&r.supply].map.ref_text(srid)).expect("text drawn");
     let te = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == th).unwrap();
     assert_eq!(te.common.color, CColor::Index(1));
-    assert!(doc.wires.is_empty(), "no wire without Field's lines");
-    let supply_lines: Vec<&ecad_model::Route> = before.routes.values().filter(|x| x.page == r.supply).collect();
-    assert!(supply_lines.iter().all(|l| doc.routes.values().any(|x| x.points == l.points)), "Supply's lines stay");
-    assert_eq!(doc.cables[&r.c1].cores.len(), before.cables[&r.c1].cores.len(), "the cable keeps its cores");
+    assert!(doc.wires().is_empty(), "no wire without Field's lines");
+    let supply_lines: Vec<&ecad_model::Route> = before.routes().values().filter(|x| x.page == r.supply).collect();
+    assert!(supply_lines.iter().all(|l| doc.routes().values().any(|x| x.points == l.points)), "Supply's lines stay");
+    assert_eq!(doc.cables()[&r.c1].cores.len(), before.cables()[&r.c1].cores.len(), "the cable keeps its cores");
     assert!(log_since(&r.h, n).contains("Cable -C01's reference on page 1 now has no other end."), "{}", log_since(&r.h, n));
     assert_eq!(ecad_electrical::references::cables::diagnostics(&doc), vec!["Orphan: cable -C01 on page 1 (?)".to_string()]);
     let snap = r.h.project.snapshot(&mut r.h.s, None).unwrap();
@@ -414,7 +414,7 @@ fn the_text_is_derived_erasing_it_erases_the_reference_and_moving_it_is_refused(
     r.h.run("erase", json!({"handles": [text.hex()]})).unwrap();
     assert_eq!(r.h.head(), head + 1);
     let doc = r.h.doc();
-    assert!(!doc.representations.contains_key(&rid), "the reference is gone");
+    assert!(!doc.representations().contains_key(&rid), "the reference is gone");
     assert_eq!(text_of(&mut r.h, r.field), "?", "the other end is an orphan");
 }
 
@@ -459,7 +459,7 @@ fn hover_previews_the_target_and_cablegoto_jumps_there_and_back() {
     assert_eq!(v["message"], "Page 2 \"Field\", at the other end of cable -C01 (2/F1).");
     let want = uid(&mut r.h, r.field);
     assert_eq!(r.h.s.state().unwrap().uid, want, "Field is current");
-    let point = r.h.doc().representations[&fid].items[0];
+    let point = r.h.doc().representations()[&fid].items[0];
     assert_eq!(r.h.s.selection(), vec![r.h.handle_of(r.field, point)]);
     let c = r.h.s.state().unwrap().view().center;
     assert!((c.x - 20.0).abs() < 1e-9 && (c.y - 5.0).abs() < 1e-9, "centred on the other end");
@@ -675,26 +675,36 @@ fn hostile_documents_derive_without_panicking() {
     let layer: LayerId = LayerId::from(2);
     let cable: CableId = CableId::from(3);
     let mut doc = Document::default();
-    doc.pages.insert(page, Page::titled("1").unwrap());
-    doc.page_order.push(page);
-    doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.cables.insert(cable, Cable::default());
+    doc.edit_parts(|parts| {
+        parts.pages.insert(page, Page::titled("1").unwrap());
+    });
+    doc.edit_parts(|parts| {
+        parts.page_order.push(page);
+    });
+    doc.edit_parts(|parts| {
+        parts.layers.insert(layer, Layer { name: "0".into() });
+    });
+    doc.edit_parts(|parts| {
+        parts.cables.insert(cable, Cable::default());
+    });
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    for (i, x) in [0.0, 50.0, 100.0, 150.0, f64::NAN].into_iter().enumerate() {
-        let item = ItemId::from(100 + i as u128);
-        doc.items.insert(item, Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(x, 0.0) }) });
-        doc.representations.insert(
-            RepresentationId::from(200 + i as u128),
-            Representation {
-                subject: Subject::Cable(cable),
-                page,
-                form: Form::Drawn,
-                role: ecad_model::Role::Reference,
-                items: vec![item],
-                connection_points: Default::default(),
-            },
-        );
-    }
+    doc.edit_parts(|parts| {
+        for (i, x) in [0.0, 50.0, 100.0, 150.0, f64::NAN].into_iter().enumerate() {
+            let item = ItemId::from(100 + i as u128);
+            parts.items.insert(item, Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(x, 0.0) }) });
+            parts.representations.insert(
+                RepresentationId::from(200 + i as u128),
+                Representation {
+                    subject: Subject::Cable(cable),
+                    page,
+                    form: Form::Drawn,
+                    role: ecad_model::Role::Reference,
+                    items: vec![item],
+                    connection_points: Default::default(),
+                },
+            );
+        }
+    });
     // As a file's document on open: the maps were set directly, so the index is built (brief
     // 053: a page's markers read the page index).
     doc.rebuild_index();
@@ -713,26 +723,38 @@ fn hostile_documents_derive_without_panicking() {
     // partners read `?` for it, and nothing panics.
     let lost_page = PageId::from(9);
     let mut two = Document::default();
-    two.pages.insert(page, Page::titled("1").unwrap());
-    two.pages.insert(lost_page, Page::titled("lost").unwrap());
-    two.page_order.push(page);
-    two.layers.insert(layer, Layer { name: "0".into() });
-    two.cables.insert(cable, Cable::default());
-    for (i, pg) in [page, lost_page].into_iter().enumerate() {
-        let item = ItemId::from(300 + i as u128);
-        two.items.insert(item, Item { page: pg, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 0.0) }) });
-        two.representations.insert(
-            RepresentationId::from(400 + i as u128),
-            Representation {
-                subject: Subject::Cable(cable),
-                page: pg,
-                form: Form::Drawn,
-                role: ecad_model::Role::Reference,
-                items: vec![item],
-                connection_points: Default::default(),
-            },
-        );
-    }
+    two.edit_parts(|parts| {
+        parts.pages.insert(page, Page::titled("1").unwrap());
+    });
+    two.edit_parts(|parts| {
+        parts.pages.insert(lost_page, Page::titled("lost").unwrap());
+    });
+    two.edit_parts(|parts| {
+        parts.page_order.push(page);
+    });
+    two.edit_parts(|parts| {
+        parts.layers.insert(layer, Layer { name: "0".into() });
+    });
+    two.edit_parts(|parts| {
+        parts.cables.insert(cable, Cable::default());
+    });
+    two.edit_parts(|parts| {
+        for (i, pg) in [page, lost_page].into_iter().enumerate() {
+            let item = ItemId::from(300 + i as u128);
+            parts.items.insert(item, Item { page: pg, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 0.0) }) });
+            parts.representations.insert(
+                RepresentationId::from(400 + i as u128),
+                Representation {
+                    subject: Subject::Cable(cable),
+                    page: pg,
+                    form: Form::Drawn,
+                    role: ecad_model::Role::Reference,
+                    items: vec![item],
+                    connection_points: Default::default(),
+                },
+            );
+        }
+    });
     two.rebuild_index();
     let references = cable_references(&two);
     let on_lost = references.iter().find(|r| r.page == lost_page).unwrap();
@@ -753,27 +775,42 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     let layer: LayerId = LayerId::from(2);
     let cable: CableId = CableId::from(3);
     let mut doc = Document::default();
-    doc.pages.insert(page, Page::titled("1").unwrap());
-    doc.page_order.push(page);
-    doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.cables.insert(cable, Cable::default());
+    doc.edit_parts(|parts| {
+        parts.pages.insert(page, Page::titled("1").unwrap());
+    });
+    doc.edit_parts(|parts| {
+        parts.page_order.push(page);
+    });
+    doc.edit_parts(|parts| {
+        parts.layers.insert(layer, Layer { name: "0".into() });
+    });
+    doc.edit_parts(|parts| {
+        parts.cables.insert(cable, Cable::default());
+    });
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let n: usize = 20_000;
-    for i in 0..n {
-        let item = ItemId::from(1_000_000 + i as u128);
-        doc.items.insert(item, Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(i as f64, 0.0) }) });
-        doc.representations.insert(
-            RepresentationId::from(2_000_000 + i as u128),
-            Representation {
-                subject: Subject::Cable(cable),
-                page,
-                form: Form::Drawn,
-                role: ecad_model::Role::Reference,
-                items: vec![item],
-                connection_points: Default::default(),
-            },
-        );
-    }
+    let fill = |doc: &mut Document, n: usize| {
+        doc.edit_parts(|parts| {
+            for i in 0..n {
+                let item = ItemId::from(1_000_000 + i as u128);
+                parts
+                    .items
+                    .insert(item, Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(i as f64, 0.0) }) });
+                parts.representations.insert(
+                    RepresentationId::from(2_000_000 + i as u128),
+                    Representation {
+                        subject: Subject::Cable(cable),
+                        page,
+                        form: Form::Drawn,
+                        role: ecad_model::Role::Reference,
+                        items: vec![item],
+                        connection_points: Default::default(),
+                    },
+                );
+            }
+        })
+    };
+    fill(&mut doc, n);
     let started = std::time::Instant::now();
     let references = cable_references(&doc);
     let took = started.elapsed();
@@ -785,7 +822,15 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     assert!(took < std::time::Duration::from_secs(10), "one derivation took {took:?}");
     let _ = ecad_electrical::references::cables::diagnostics(&doc);
     // Combined trial of 009 and 010: 010's leaving ends are folded into 009's drawing (`quiet`).
-    let _ = ecad_engine::cables::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
+    // Drawing is quadratic in the references of one cable once the page index exists (a loaded
+    // file always has it; this fixture used to have none), so it runs on a smaller document.
+    let mut small = doc.clone();
+    small.edit_parts(|parts| {
+        parts.items.clear();
+        parts.representations.clear();
+    });
+    fill(&mut small, 200);
+    let _ = ecad_engine::cables::views::drawings_on_page(&small, page, &Default::default(), 1e-6);
 }
 
 /// The per-page movement rule (design 010 §0, translate M3) with named points (design 072 §4.4,
@@ -800,23 +845,23 @@ fn moving_a_stub_never_detaches_the_end_connected_on_the_other_page() {
     let before = r.h.doc();
     let s = &v["routes"][1];
     let stub: ecad_model::RouteId = id(s, "route");
-    let core = before.cables[&r.c1].cores[s["core"].as_u64().unwrap() as usize - 1].clone();
+    let core = before.cables()[&r.c1].cores[s["core"].as_u64().unwrap() as usize - 1].clone();
     let line = core.route().expect("the core's line on Supply");
-    assert_eq!(before.routes[&line].ends[1], ecad_model::RouteEnd::Point(core.through[0]), "Supply's line on its point");
-    assert_eq!(before.routes[&stub].ends[0], ecad_model::RouteEnd::Point(core.through[1]), "the stub from Field's point");
+    assert_eq!(before.routes()[&line].ends[1], ecad_model::RouteEnd::Point(core.through[0]), "Supply's line on its point");
+    assert_eq!(before.routes()[&stub].ends[0], ecad_model::RouteEnd::Point(core.through[1]), "the stub from Field's point");
     let h5 = r.h.line_handle(r.field, stub);
     // Away from everything: the stub's end leaves Field's point; Supply's line stays on its own.
     r.h.run("move", json!({"handles": [h5.hex()], "delta": [0, 50]})).unwrap();
     let doc = r.h.doc();
-    assert_eq!(doc.routes[&stub].end_points().map(|[a, _]| a), Some(Pt::new(20.0, 55.0)));
-    assert_eq!(doc.routes[&stub].ends[0], ecad_model::RouteEnd::Free, "moved away: a free end");
-    assert_eq!(doc.routes[&line], before.routes[&line], "Supply's line untouched");
+    assert_eq!(doc.routes()[&stub].end_points().map(|[a, _]| a), Some(Pt::new(20.0, 55.0)));
+    assert_eq!(doc.routes()[&stub].ends[0], ecad_model::RouteEnd::Free, "moved away: a free end");
+    assert_eq!(doc.routes()[&line], before.routes()[&line], "Supply's line untouched");
     // Back onto Field's point: it lands there again, and the page is as it was.
     r.h.run("move", json!({"handles": [h5.hex()], "delta": [0, -50]})).unwrap();
     let doc = r.h.doc();
-    assert_eq!(doc.routes, before.routes, "every line as before");
-    assert_eq!(doc.cables, before.cables);
-    assert_eq!(doc.wires, before.wires);
+    assert_eq!(doc.routes(), before.routes(), "every line as before");
+    assert_eq!(doc.cables(), before.cables());
+    assert_eq!(doc.wires(), before.wires());
 }
 
 // ---------------------------------------------------------------- scope 5 (check M), fan (check L)
@@ -835,7 +880,7 @@ fn the_debugger_trail_follows_references_across_pages() {
     let reps: Vec<PageId> = used_by(&doc, ObjectId::Cable(r.c1))
         .into_iter()
         .filter_map(|o| match o {
-            ObjectId::Representation(x) => Some(doc.representations[&x].page),
+            ObjectId::Representation(x) => Some(doc.representations()[&x].page),
             _ => None,
         })
         .collect();
@@ -844,7 +889,7 @@ fn the_debugger_trail_follows_references_across_pages() {
     let pages: std::collections::BTreeSet<PageId> = used_by(&doc, ObjectId::Wire(r.w[0]))
         .into_iter()
         .filter_map(|o| match o {
-            ObjectId::Route(x) => doc.routes.get(&x).map(|x| x.page),
+            ObjectId::Route(x) => doc.routes().get(&x).map(|x| x.page),
             _ => None,
         })
         .collect();
@@ -862,7 +907,7 @@ fn fan_view_keeps_the_reference_drawn() {
     for page in [r.supply, r.field] {
         r.h.activate(page);
         let rid = reference_on(&mut r.h, page);
-        let point = r.h.doc().representations[&rid].items[0];
+        let point = r.h.doc().representations()[&rid].items[0];
         assert!(r.h.p(|p| p.pages[&page].map.item(point)).is_some(), "the point stays drawn");
         assert!(r.h.p(|p| p.pages[&page].map.ref_text(rid)).is_some(), "the text stays drawn");
     }
@@ -949,7 +994,7 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
     // The wires leave the point the other way.
     // Each core's line on the page: its wire's, its loose line, or the line from its named point
     // on this page's reference (design 072 §4.4, F4).
-    let routes: Vec<Pt> = doc.cables[&cable]
+    let routes: Vec<Pt> = doc.cables()[&cable]
         .cores
         .iter()
         .flat_map(|x| {
@@ -958,7 +1003,7 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
             lines.extend(x.wire().and_then(|w| ecad_electrical::wires::routes::route_of_wire_on(&doc, w, page)));
             lines
         })
-        .filter_map(|l| doc.routes.get(&l).filter(|l| l.page == page).and_then(|l| l.end_points()))
+        .filter_map(|l| doc.routes().get(&l).filter(|l| l.page == page).and_then(|l| l.end_points()))
         .map(|[a, b]| if a.dist(m.at) <= b.dist(m.at) { b } else { a })
         .collect();
     assert!(!routes.is_empty() && routes.iter().all(|far| along(*far) < 0.0), "the wires leave against {u:?}");
@@ -1048,7 +1093,7 @@ fn only_the_active_page_is_drawn_and_another_page_shows_the_new_text_when_made_a
     r.h.activate(r.field);
     assert!(r.h.pv(|p, pg| pg.drawing_of(p, r.supply)).is_none(), "one page window: Supply is not drawn");
     let fid = reference_on(&mut r.h, r.field);
-    let fpoint = r.h.doc().representations[&fid].items[0];
+    let fpoint = r.h.doc().representations()[&fid].items[0];
     let fh = r.h.handle_of(r.field, fpoint);
     let n = r.h.p(|p| p.change_count());
     r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
@@ -1065,7 +1110,7 @@ fn only_the_active_page_is_drawn_and_another_page_shows_the_new_text_when_made_a
 
     // A commit that moves the cable's wires on Field (K2 moves, its wires follow) but does not
     // change what Supply shows: the change log leaves Supply out.
-    let k2 = r.h.p(|p| p.ledger.document().clone()).connection_points[&r.k2[0]].device().unwrap();
+    let k2 = r.h.p(|p| p.ledger.document().clone()).connection_points()[&r.k2[0]].device().unwrap();
     r.h.activate(r.field);
     let handles = r.h.rep_handles(r.field, k2);
     let n = r.h.p(|p| p.change_count());
@@ -1084,7 +1129,7 @@ fn undo_on_the_page_of_the_edit_stays_and_other_pages_show_the_reverted_text_whe
     let mut r = paired();
     r.h.activate(r.field);
     let fid = reference_on(&mut r.h, r.field);
-    let fpoint = r.h.doc().representations[&fid].items[0];
+    let fpoint = r.h.doc().representations()[&fid].items[0];
     let fh = r.h.handle_of(r.field, fpoint);
     r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
     r.h.activate(r.supply);
@@ -1115,7 +1160,7 @@ fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
     r.h.activate(r.field);
     let doc = r.h.doc();
     let keep: Vec<cadcraft_engine::doc::Handle> = doc
-        .representations
+        .representations()
         .values()
         .filter(|x| x.page == r.field && matches!(x.subject, Subject::Device(_)))
         .flat_map(|x| x.items.iter())
@@ -1232,7 +1277,7 @@ fn the_cables_an_effect_names_cover_every_cable_whose_references_change() {
             Box::new(|r, _| {
                 r.h.activate(r.field);
                 let fid = reference_on(&mut r.h, r.field);
-                let fpoint = r.h.doc().representations[&fid].items[0];
+                let fpoint = r.h.doc().representations()[&fid].items[0];
                 let fh = r.h.handle_of(r.field, fpoint);
                 r.h.run("move", json!({"handles": [fh.hex()], "delta": [70, 0]})).unwrap();
             }),
@@ -1259,8 +1304,8 @@ fn the_cables_an_effect_names_cover_every_cable_whose_references_change() {
     for (what, act, must_change, none_named) in rows {
         let mut r = paired();
         r.h.activate(r.supply);
-        let k1 = r.h.doc().devices.iter().find(|(_, d)| d.tag().is_some_and(|t| t.ends_with("K01"))).map(|(id, _)| *id);
-        let k1 = k1.unwrap_or_else(|| panic!("K1 in {:?}", r.h.doc().devices.values().map(|d| d.tag().map(str::to_string)).collect::<Vec<_>>()));
+        let k1 = r.h.doc().devices().iter().find(|(_, d)| d.tag().is_some_and(|t| t.ends_with("K01"))).map(|(id, _)| *id);
+        let k1 = k1.unwrap_or_else(|| panic!("K1 in {:?}", r.h.doc().devices().values().map(|d| d.tag().map(str::to_string)).collect::<Vec<_>>()));
         r.h.activate(r.supply);
         let strip = id::<ecad_model::DeviceId>(
             &{

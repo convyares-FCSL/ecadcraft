@@ -206,7 +206,9 @@ impl TextSection {
             return;
         }
         let mut doc = ecad_model::Document::default();
-        doc.display.insert(ecad_electrical::defaults::text::FONT.key.into(), self.font.trim().to_string());
+        doc.edit_parts(|parts| {
+            parts.display.insert(ecad_electrical::defaults::text::FONT.key.into(), self.font.trim().to_string());
+        });
         let f = ecad_engine::styles::draw::Fonts::resolve(&doc);
         self.status = f.status();
         self.warn = !f.is_wanted();

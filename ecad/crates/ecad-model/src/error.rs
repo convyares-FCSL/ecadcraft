@@ -104,7 +104,7 @@ pub enum Parsed {
     Tag,
     /// [`crate::connectivity::wiring::valid_number`].
     WireNumber,
-    /// [`crate::merge::join_cables`].
+    /// [`crate::document::doc::cable::join_cables`].
     CableJoin,
 }
 

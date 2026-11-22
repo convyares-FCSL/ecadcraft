@@ -176,9 +176,9 @@ impl Scope {
                     s.routes.insert(*id);
                 }
                 // New objects; a definition the document lacks cannot be shown by anything in it.
-                Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
-                Op::AddConnectionPoint { id, .. } if !doc.connection_points.contains_key(id) => {}
-                Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
+                Op::CreateDevice { id, .. } if !doc.devices().contains_key(id) => {}
+                Op::AddConnectionPoint { id, .. } if !doc.connection_points().contains_key(id) => {}
+                Op::EmbedDefinition { id, .. } if !doc.definitions().contains_key(id) => {}
                 _ => return Scope::everything(doc),
             }
         }
@@ -189,7 +189,7 @@ impl Scope {
     }
 
     fn everything(doc: &Document) -> Scope {
-        Scope { connection_points: doc.connection_points.keys().copied().collect(), routes: doc.routes.keys().copied().collect() }
+        Scope { connection_points: doc.connection_points().keys().copied().collect(), routes: doc.routes().keys().copied().collect() }
     }
 }
 
@@ -210,8 +210,9 @@ pub(crate) fn landing(doc: &Document, page: PageId, r: RouteId, at: Pt, found: O
     if let Some(t) = found {
         return RouteEnd::Point(t);
     }
-    let interior = route_at(doc, page, at, ON_WIRE, Some(r))
-        .filter(|on| doc.routes.get(&on.route).and_then(Route::end_points).is_some_and(|[f, l]| !f.near(on.at, ON_WIRE) && !l.near(on.at, ON_WIRE)));
+    let interior = route_at(doc, page, at, ON_WIRE, Some(r)).filter(|on| {
+        doc.routes().get(&on.route).and_then(Route::end_points).is_some_and(|[f, l]| !f.near(on.at, ON_WIRE) && !l.near(on.at, ON_WIRE))
+    });
     match interior {
         Some(on) => RouteEnd::On { route: on.route, at },
         None => RouteEnd::Free,
@@ -290,7 +291,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let mut reps: BTreeMap<RepresentationId, Representation> = BTreeMap::new();
     let rep = |reps: &mut BTreeMap<RepresentationId, Representation>, id: RepresentationId, doc: &Document| -> Result<(), String> {
         if let std::collections::btree_map::Entry::Vacant(e) = reps.entry(id) {
-            e.insert(doc.representations.get(&id).cloned().ok_or("representation missing")?);
+            e.insert(doc.representations().get(&id).cloned().ok_or("representation missing")?);
         }
         Ok(())
     };
@@ -394,7 +395,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     for (h, _) in &removed {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
-                let item = cx.ledger.document().items.get(&id).cloned().ok_or("mapped item missing")?;
+                let item = cx.ledger.document().items().get(&id).cloned().ok_or("mapped item missing")?;
                 if let Some((rid, _)) = cx.ledger.document().representation_of_item(id) {
                     linked_removed = true;
                     rep(&mut reps, rid, cx.ledger.document())?;
@@ -433,7 +434,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // Erasing a reference's text erases the reference (design 010 §9): its point goes too, unless
     // it was erased with it, and the emptied representation is removed below.
     for (c, n) in erased_jumper_bars {
-        let props = cx.ledger.document().devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
+        let props = cx.ledger.document().devices().get(&c).map(|x| x.properties.clone()).unwrap_or_default();
         let key = ecad_model::connectivity::jumper_bars::key(n);
         if let Some(v) = props.get(&key) {
             t.notes.push(format!("Deleted jumper bar {} {v}.", ecad_electrical::devices::tags::tag_words(cx.ledger.document(), c)));
@@ -449,7 +450,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         rep(&mut reps, rid, cx.ledger.document())?;
         let items: Vec<ItemId> = reps.get(&rid).map(|r| r.items.clone()).unwrap_or_default();
         for id in items {
-            let item = cx.ledger.document().items.get(&id).cloned().ok_or("mapped item missing")?;
+            let item = cx.ledger.document().items().get(&id).cloned().ok_or("mapped item missing")?;
             t.ops.push(Op::RemoveItem { id, item });
             counts[2] += 1;
             if let Some(h) = cx.map.item(id) {
@@ -467,7 +468,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
                 let item = item_from(cx.ledger.document(), cx.page, new)?;
-                let old = cx.ledger.document().items.get(&id).cloned().ok_or("mapped item missing")?;
+                let old = cx.ledger.document().items().get(&id).cloned().ok_or("mapped item missing")?;
                 if std::mem::discriminant(&item.kind) != std::mem::discriminant(&old.kind) {
                     return Err("an object changed kind; this is not supported on ECAD pages yet".into());
                 }
@@ -556,7 +557,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // its point: with the point erased, the reference goes with them.
     let mut unlinked: Vec<(RepresentationId, Representation)> = Vec::new();
     for (id, r) in reps {
-        let old = cx.ledger.document().representations.get(&id).cloned().ok_or("representation missing")?;
+        let old = cx.ledger.document().representations().get(&id).cloned().ok_or("representation missing")?;
         if r.items.is_empty() && (r.connection_points.is_empty() || r.form == Form::Symbol || matches!(r.subject, Subject::Cable(_))) {
             unlinked.push((id, old.clone()));
             t.ops.push(Op::UnlinkRepresentation { id, rep: old });
@@ -599,7 +600,7 @@ pub(crate) fn route_edit(doc: &Document, id: ItemId, item: &Item) -> Result<Opti
         ItemKind::Primitive(p) => path_vertices(p).ok_or(ROUTE_SHAPE)?,
         ItemKind::Symbol(_) => return Err(ROUTE_SHAPE),
     };
-    let before = doc.routes.get(&r).cloned().ok_or("route missing")?;
+    let before = doc.routes().get(&r).cloned().ok_or("route missing")?;
     if before.points == points {
         return Ok(None);
     }
@@ -634,7 +635,7 @@ pub(crate) fn erase_routes(doc: &Document, unlinked: &[(RepresentationId, Repres
     ops.retain(|op| !matches!(op, Op::ModifyRoute { id, .. } if gone.contains(id)));
     for r in &gone {
         for tee in doc.tees_of(*r).filter(|x| !gone.contains(x)).collect::<Vec<_>>() {
-            let Some(before) = doc.routes.get(&tee) else { continue };
+            let Some(before) = doc.routes().get(&tee) else { continue };
             let mut after = ops
                 .iter()
                 .find_map(|op| match op {
@@ -649,7 +650,7 @@ pub(crate) fn erase_routes(doc: &Document, unlinked: &[(RepresentationId, Repres
         }
     }
     for r in gone {
-        if let Some(route) = doc.routes.get(&r) {
+        if let Some(route) = doc.routes().get(&r) {
             ops.push(Op::RemoveRoute { id: r, route: route.clone() });
         }
     }
@@ -691,7 +692,7 @@ fn copy_batch(
     let mut term_map: BTreeMap<ConnectionPointId, ConnectionPointId> = BTreeMap::new();
 
     // Whole component representations: independent copies.
-    for (rid, r) in sdoc.representations.iter().filter(|(_, r)| r.page == cx.page) {
+    for (rid, r) in sdoc.representations().iter().filter(|(_, r)| r.page == cx.page) {
         let Subject::Device(src_comp) = r.subject else { continue };
         let item_handles: Vec<Handle> = r.items.iter().filter_map(|i| smap.item(*i)).collect();
         let marker_handles: Vec<(ConnectionPointId, Handle)> =
@@ -703,11 +704,11 @@ fn copy_batch(
         if !all_copied || item_handles.is_empty() {
             continue;
         }
-        let comp = sdoc.devices.get(&src_comp).cloned().ok_or("source component missing")?;
+        let comp = sdoc.devices().get(&src_comp).cloned().ok_or("source component missing")?;
         if let Some(def) = comp.definition
-            && !cx.ledger.document().definitions.contains_key(&def)
+            && !cx.ledger.document().definitions().contains_key(&def)
         {
-            let d = sdoc.definitions.get(&def).cloned().ok_or("source definition missing")?;
+            let d = sdoc.definitions().get(&def).cloned().ok_or("source definition missing")?;
             t.ops.push(Op::EmbedDefinition { id: def, definition: d });
         }
         let new_comp: DeviceId = cx.ids.fresh();
@@ -771,13 +772,13 @@ fn copy_batch(
     }
 
     // Whole routes: new routes; ends follow copied connection points, else are resolved later.
-    for (_, r) in sdoc.representations.iter().filter(|(_, r)| r.page == cx.page) {
+    for (_, r) in sdoc.representations().iter().filter(|(_, r)| r.page == cx.page) {
         let Subject::Route(src_r) = r.subject else { continue };
         let handles: Vec<Handle> = r.items.iter().filter_map(|i| smap.item(*i)).collect();
         if handles.is_empty() || handles.len() != r.items.len() || !handles.iter().all(|h| by_source.contains_key(h)) {
             continue;
         }
-        let src = sdoc.routes.get(&src_r).cloned().ok_or("source route missing")?;
+        let src = sdoc.routes().get(&src_r).cloned().ok_or("source route missing")?;
         let new_r: RouteId = cx.ids.fresh();
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();
@@ -862,7 +863,7 @@ fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(RouteId, End)]
     let scope = Scope::of(doc, page, &t.ops);
     let earlier = Earlier {
         positions: scope.connection_points.iter().map(|term| (*term, connection_point_position(doc, page, *term))).collect(),
-        routes: scope.routes.iter().map(|r| (*r, doc.routes.get(r).and_then(Route::end_points))).collect(),
+        routes: scope.routes.iter().map(|r| (*r, doc.routes().get(r).and_then(Route::end_points))).collect(),
     };
     // After the ops, on the live document, rolled back afterwards.
     let moves = preview(cx.ledger, &t.ops, |proposed| moved(proposed, page, tol, &scope, &earlier, fresh_ends))?;
@@ -919,7 +920,7 @@ fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &E
     let mut found = |at: Pt| shown.connection_point_at(at, tol);
     let mut out: Moves = Default::default();
     for r in &candidates {
-        let Some(route) = proposed.routes.get(r).filter(|x| x.page == page) else { continue };
+        let Some(route) = proposed.routes().get(r).filter(|x| x.page == page) else { continue };
         // A route outside the scope's routes kept its points.
         let old_ends = match earlier.routes.get(r) {
             Some(old) => *old,

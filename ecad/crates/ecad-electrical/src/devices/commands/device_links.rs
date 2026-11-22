@@ -34,7 +34,7 @@ pub(crate) const USER_PREFIX: &str = "user.";
 /// A device that is not there, a device linked to itself, or the same link already there.
 pub(crate) fn plan_link(doc: &Document, ids: &mut IdAllocator, kind: LinkKind, a: DeviceId, b: DeviceId) -> Result<(LinkId, Vec<Op>), CmdError> {
     for d in [a, b] {
-        if !doc.devices.contains_key(&d) {
+        if !doc.devices().contains_key(&d) {
             return Err(CmdError::refused(format!("There is no device {d}.")));
         }
     }
@@ -42,7 +42,7 @@ pub(crate) fn plan_link(doc: &Document, ids: &mut IdAllocator, kind: LinkKind, a
         return Err(CmdError::refused("A device cannot be linked to itself."));
     }
     let link = DeviceLink { kind, a, b };
-    if doc.device_links.values().any(|l| l.same_as(&link)) {
+    if doc.device_links().values().any(|l| l.same_as(&link)) {
         return Err(CmdError::refused(format!(
             "{} and {} already have a {} link.",
             crate::devices::tags::tag_words(doc, a),
@@ -59,13 +59,13 @@ pub(crate) fn plan_link(doc: &Document, ids: &mut IdAllocator, kind: LinkKind, a
 /// # Errors
 /// No such link.
 pub(crate) fn plan_unlink(doc: &Document, id: LinkId) -> Result<Vec<Op>, CmdError> {
-    let link = doc.device_links.get(&id).ok_or_else(|| CmdError::refused(format!("There is no device link {id}.")))?;
+    let link = doc.device_links().get(&id).ok_or_else(|| CmdError::refused(format!("There is no device link {id}.")))?;
     Ok(vec![Op::RemoveDeviceLink { id, link: *link }])
 }
 
 /// The `RemoveDeviceLink`s of every link naming device `d`: deleting it goes after them.
 pub(crate) fn unlink_ops(doc: &Document, d: DeviceId) -> Vec<Op> {
-    doc.device_links.iter().filter(|(_, l)| l.names(d)).map(|(id, l)| Op::RemoveDeviceLink { id: *id, link: *l }).collect()
+    doc.device_links().iter().filter(|(_, l)| l.names(d)).map(|(id, l)| Op::RemoveDeviceLink { id: *id, link: *l }).collect()
 }
 
 /// Links naming device `from` re-pointed at `into` (a merge of two devices): each is removed and
@@ -73,8 +73,8 @@ pub(crate) fn unlink_ops(doc: &Document, d: DeviceId) -> Vec<Op> {
 /// link `into` already has.
 pub(crate) fn repoint_ops(doc: &Document, from: DeviceId, into: DeviceId) -> Vec<Op> {
     let mut ops = Vec::new();
-    let mut kept: Vec<DeviceLink> = doc.device_links.values().filter(|l| !l.names(from)).copied().collect();
-    for (id, l) in doc.device_links.iter().filter(|(_, l)| l.names(from)) {
+    let mut kept: Vec<DeviceLink> = doc.device_links().values().filter(|l| !l.names(from)).copied().collect();
+    for (id, l) in doc.device_links().iter().filter(|(_, l)| l.names(from)) {
         ops.push(Op::RemoveDeviceLink { id: *id, link: *l });
         let swap = |d: DeviceId| if d == from { into } else { d };
         let moved = DeviceLink { kind: l.kind, a: swap(l.a), b: swap(l.b) };
@@ -88,7 +88,7 @@ pub(crate) fn repoint_ops(doc: &Document, from: DeviceId, into: DeviceId) -> Vec
 
 /// The project's user field named `name` (ignoring case).
 pub(crate) fn field_named<'a>(doc: &'a Document, name: &str) -> Option<&'a UserFieldDef> {
-    doc.project.user_fields.iter().find(|f| f.name.as_str().eq_ignore_ascii_case(name.trim()))
+    doc.project().user_fields.iter().find(|f| f.name.as_str().eq_ignore_ascii_case(name.trim()))
 }
 
 /// Add user field `name` of `kind`: one `ModifyProject`.
@@ -102,12 +102,12 @@ pub(crate) fn plan_add_field(doc: &Document, ids: &mut IdAllocator, name: &str, 
         return Err(CmdError::refused(format!("The project already has a field \"{}\".", name.as_str())));
     }
     let id: UserFieldId = ids.fresh();
-    let mut after = doc.project.clone();
+    let mut after = doc.project().clone();
     after.user_fields.push(UserFieldDef { id, name, kind });
     if let Some(p) = ecad_model::objects::user::fields_problem(&after.user_fields) {
         return Err(CmdError::refused(format!("Not added: {p}.")));
     }
-    Ok((id, vec![Op::ModifyProject { before: doc.project.clone(), after }]))
+    Ok((id, vec![Op::ModifyProject { before: doc.project().clone(), after }]))
 }
 
 /// Remove user field `name`: a `ModifyDevice` clearing it on each device that has a value, then
@@ -118,15 +118,15 @@ pub(crate) fn plan_add_field(doc: &Document, ids: &mut IdAllocator, name: &str, 
 pub(crate) fn plan_remove_field(doc: &Document, name: &str) -> Result<(Vec<Op>, usize), CmdError> {
     let field = field_named(doc, name).ok_or_else(|| CmdError::refused(format!("The project has no field \"{}\".", name.trim())))?;
     let mut ops = Vec::new();
-    for (id, d) in doc.devices.iter().filter(|(_, d)| d.user.contains_key(&field.id)) {
+    for (id, d) in doc.devices().iter().filter(|(_, d)| d.user.contains_key(&field.id)) {
         let mut after = d.clone();
         after.user.remove(&field.id);
         ops.push(Op::ModifyDevice { id: *id, before: d.clone(), after });
     }
     let cleared = ops.len();
-    let mut after = doc.project.clone();
+    let mut after = doc.project().clone();
     after.user_fields.retain(|f| f.id != field.id);
-    ops.push(Op::ModifyProject { before: doc.project.clone(), after });
+    ops.push(Op::ModifyProject { before: doc.project().clone(), after });
     Ok((ops, cleared))
 }
 
@@ -139,7 +139,7 @@ pub(crate) fn user_value(doc: &Document, o: ObjectRef, key: &str, value: Option<
     let ObjectRef::Device(c) = o else {
         return Err(CmdError::refused("User fields are set on devices."));
     };
-    let d = doc.devices.get(&c).ok_or_else(|| CmdError::refused(format!("There is no device {c}.")))?;
+    let d = doc.devices().get(&c).ok_or_else(|| CmdError::refused(format!("There is no device {c}.")))?;
     let name = key.strip_prefix(USER_PREFIX).unwrap_or(key);
     let field = field_named(doc, name).ok_or_else(|| CmdError::refused(format!("The project has no field \"{name}\"; add it with userfield.")))?;
     let mut after = d.clone();
@@ -158,7 +158,7 @@ pub(crate) fn user_value(doc: &Document, o: ObjectRef, key: &str, value: Option<
 /// Device `d`'s value of field `name` as shown, if it has one.
 pub fn shown_value(doc: &Document, d: DeviceId, name: &str) -> Option<String> {
     let field = field_named(doc, name)?;
-    doc.devices.get(&d)?.user.get(&field.id).map(|v| v.show(&field.kind))
+    doc.devices().get(&d)?.user.get(&field.id).map(|v| v.show(&field.kind))
 }
 
 // ---------------------------------------------------------------------------------------------

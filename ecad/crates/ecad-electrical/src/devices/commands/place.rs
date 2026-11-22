@@ -48,7 +48,7 @@ fn style(doc: &Document) -> Style {
 /// No such device; a connector half's tag (brief 044, tester D5); a tag that does not read.
 pub fn device_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) -> Result<Target, CmdError> {
     match (device, tag) {
-        (Some(c), _) if doc.devices.contains_key(&c) => Ok(Target::Join(c)),
+        (Some(c), _) if doc.devices().contains_key(&c) => Ok(Target::Join(c)),
         (Some(_), _) => Err(CmdError::NotFound(Noun::Device)),
         (None, Some(t)) => {
             if let Some(Ok((c, Some(side), _))) = crate::connectors::resolve(doc, t) {
@@ -101,7 +101,7 @@ pub fn strip_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>)
         ))
     };
     match (device, tag) {
-        (Some(c), _) if !doc.devices.contains_key(&c) => Err(CmdError::NotFound(Noun::Device)),
+        (Some(c), _) if !doc.devices().contains_key(&c) => Err(CmdError::NotFound(Noun::Device)),
         (Some(c), _) if crate::terminal_strips::strip_of(doc, c).is_none() => Err(not_strip(c)),
         (Some(c), _) => Ok((Some(c), None)),
         (None, Some(t)) => {
@@ -124,7 +124,7 @@ pub fn strip_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>)
 /// No such device; a tag that does not read.
 pub fn card_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) -> Result<(Option<DeviceId>, Option<tag::Entry>), CmdError> {
     match (device, tag) {
-        (Some(c), _) if doc.devices.contains_key(&c) => Ok((Some(c), None)),
+        (Some(c), _) if doc.devices().contains_key(&c) => Ok((Some(c), None)),
         (Some(_), _) => Err(CmdError::NotFound(Noun::Device)),
         (None, Some(t)) => {
             let typed = tag::enter(t, style(doc))?;

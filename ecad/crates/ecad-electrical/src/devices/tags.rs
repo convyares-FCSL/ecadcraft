@@ -157,12 +157,12 @@ impl TagHigh {
 
 /// A component's tag as stored.
 pub fn tag_of(doc: &Document, c: DeviceId) -> Option<&str> {
-    doc.devices.get(&c)?.tag()
+    doc.devices().get(&c)?.tag()
 }
 
 /// A component's tag as drawn (a provisional one with its `?`).
 pub fn tag_shown_of(doc: &Document, c: DeviceId) -> Option<String> {
-    doc.devices.get(&c)?.tag_shown()
+    doc.devices().get(&c)?.tag_shown()
 }
 
 /// A component's tag as drawn, or `(no tag)`.
@@ -172,21 +172,21 @@ pub fn tag_words(doc: &Document, c: DeviceId) -> String {
 
 /// The starter symbol a representation shows, when it shows one.
 pub fn rep_starter(doc: &Document, r: &Representation) -> Option<&'static Starter> {
-    let item = doc.items.get(r.items.first()?)?;
+    let item = doc.items().get(r.items.first()?)?;
     let ItemKind::Symbol(inst) = &item.kind else { return None };
-    symbols::catalogue::of_definition(doc.definitions.get(&inst.definition)?)
+    symbols::catalogue::of_definition(doc.definitions().get(&inst.definition)?)
 }
 
 /// The definition a representation's symbol shows.
 pub fn rep_definition<'a>(doc: &'a Document, r: &Representation) -> Option<(&'a Definition, Placement)> {
-    let item = doc.items.get(r.items.first()?)?;
+    let item = doc.items().get(r.items.first()?)?;
     let ItemKind::Symbol(inst) = &item.kind else { return None };
-    Some((doc.definitions.get(&inst.definition)?, inst.placement))
+    Some((doc.definitions().get(&inst.definition)?, inst.placement))
 }
 
 /// A device's description: its `description`, else its first symbol's name, else `no description`.
 pub fn description(doc: &Document, c: DeviceId) -> String {
-    if let Some(d) = doc.devices.get(&c).and_then(|x| x.description.as_ref()) {
+    if let Some(d) = doc.devices().get(&c).and_then(|x| x.description.as_ref()) {
         return d.to_string();
     }
     doc.representations_of(Subject::Device(c))
@@ -197,7 +197,7 @@ pub fn description(doc: &Document, c: DeviceId) -> String {
 /// 1-based page numbers a device is drawn on, in page order, each once.
 pub fn page_numbers(doc: &Document, c: DeviceId) -> Vec<usize> {
     let pages: BTreeSet<PageId> = doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).collect();
-    doc.page_order.iter().enumerate().filter(|(_, p)| pages.contains(p)).map(|(i, _)| i + 1).collect()
+    doc.page_order().iter().enumerate().filter(|(_, p)| pages.contains(p)).map(|(i, _)| i + 1).collect()
 }
 
 /// `pages 1, 2` or `page 1`.
@@ -210,7 +210,7 @@ pub fn pages_words(doc: &Document, c: DeviceId) -> String {
 /// The page of a device's first representation in page order.
 fn first_page(doc: &Document, c: DeviceId) -> Option<PageId> {
     let pages: BTreeSet<PageId> = doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).collect();
-    doc.page_order.iter().find(|p| pages.contains(p)).copied()
+    doc.page_order().iter().find(|p| pages.contains(p)).copied()
 }
 
 /// `-K01 (Contactor / relay coil, page 1 "Supply")`.
@@ -252,7 +252,7 @@ pub(crate) fn tag_holder(doc: &Document, k: &tag::Key, except: Option<ecad_model
 
 /// A cable's tag as drawn.
 pub fn cable_tag_shown_of(doc: &Document, k: ecad_model::CableId) -> Option<String> {
-    doc.cables.get(&k)?.tag_shown()
+    doc.cables().get(&k)?.tag_shown()
 }
 
 /// `-K03 (Contactor / relay coil, 101-C-1)` or `-W01 (cable, 3 wires)`.
@@ -260,7 +260,7 @@ pub(crate) fn holder_words_of(doc: &Document, h: Holder) -> String {
     match h {
         Holder::Device(c) => holder_words(doc, c),
         Holder::Cable(k) => {
-            let n = doc.cables.get(&k).map_or(0, |c| c.cores.len());
+            let n = doc.cables().get(&k).map_or(0, |c| c.cores.len());
             format!("{} (cable, {n} wire{})", cable_tag_shown_of(doc, k).as_deref().unwrap_or("(no tag)"), if n == 1 { "" } else { "s" })
         }
     }
@@ -268,7 +268,7 @@ pub(crate) fn holder_words_of(doc: &Document, h: Holder) -> String {
 
 /// The prefix of new cable tags: the project's `cable_prefix`, else `W` (brief 026, design 072 F5).
 pub fn cable_prefix(doc: &Document) -> String {
-    doc.settings.cable_prefix.as_ref().map_or_else(|| "W".to_string(), |p| p.to_string())
+    doc.settings().cable_prefix.as_ref().map_or_else(|| "W".to_string(), |p| p.to_string())
 }
 
 /// The tag a new cable gets (brief 026, design §6): `typed` as stored (normalised; `-W?` is the next
@@ -317,5 +317,5 @@ pub(super) fn noun(s: &Starter) -> &'static str {
 
 /// The noun of head representation `h`, for "already has a …" and "has two …s".
 pub(crate) fn head_noun(doc: &Document, h: RepresentationId) -> &'static str {
-    doc.representations.get(&h).and_then(|r| rep_starter(doc, r)).map_or("head symbol", noun)
+    doc.representations().get(&h).and_then(|r| rep_starter(doc, r)).map_or("head symbol", noun)
 }

@@ -111,7 +111,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         let doc = p.ledger.document();
         let plc = &p.kept_reports()?.plc;
         let card = plc.cards.get(&c)?;
-        let comp = doc.devices.get(&c)?;
+        let comp = doc.devices().get(&c)?;
         let own = |k: &str| comp.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let page = overview::pages_of(doc, c).first().copied();
         // Brief 052 (design 052 §9.1): function and location are entry keys stored on the device,
@@ -168,7 +168,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
             pinned: plc.blocks.get(&c).is_some_and(|b| b.pinned),
             rule,
             page: page.map(|pg| {
-                (pg, ecad_electrical::references::cables::page_number(doc, pg), doc.pages.get(&pg).map(|x| x.title.to_string()).unwrap_or_default())
+                (pg, ecad_electrical::references::cables::page_number(doc, pg), doc.pages().get(&pg).map(|x| x.title.to_string()).unwrap_or_default())
             }),
             drawn: (drawn, used.len()),
             maker: own("maker").unwrap_or_default(),

@@ -44,7 +44,7 @@ impl Generic for StripplanParams {
         let after = self.after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
         let accessories = self.accessories.unwrap_or(true);
         let doc = cx.doc;
-        let style = doc.settings.reference_style();
+        let style = doc.settings().reference_style();
         let o = cx.derived.reports(doc);
         let shown: Vec<&StripData> = match self.strip {
             Some(c) => vec![o.strips.get(c).ok_or(CmdError::NotFound(Noun::TerminalStrip))?],
@@ -83,7 +83,7 @@ impl Generic for CablecoresParams {
         let o = cx.derived.reports(doc);
         let row = o.cable_row(k).cloned().ok_or(CmdError::refused("no such cable"))?;
         let wire = |w: WireId| o.wire(w).cloned();
-        let style = doc.settings.reference_style();
+        let style = doc.settings().reference_style();
         let o_chain = |i: usize| o.chain_ends(&row, i, style);
         let count = &row.count;
         let member_json = |i: usize, label: Option<String>, state: &str| {

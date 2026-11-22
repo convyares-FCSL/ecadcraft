@@ -25,7 +25,7 @@ fn slashed(h: &mut H) -> (ConnectionPointId, RouteId, CableId) {
 fn a_core_landed_at_one_end_is_reported_until_the_other_end_lands() {
     let mut h = H::new(0x72_dc);
     let (a, route, k) = slashed(&mut h);
-    assert_eq!(h.doc().cables[&k].cores[0].position, CorePosition::Route { route, landed: Some(a) });
+    assert_eq!(h.doc().cables()[&k].cores[0].position, CorePosition::Route { route, landed: Some(a) });
     let found = rows(&mut h, "core-one-end");
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0]["text"], json!("Core landed at one end only"));
@@ -37,7 +37,7 @@ fn a_core_landed_at_one_end_is_reported_until_the_other_end_lands() {
     // The other end lands: the command moves the core onto the wire and the row goes.
     h.points_at(&[(120.0, 0.0)]);
     h.run("wire", json!({"points": [[60, 0], [120, 0]]})).unwrap();
-    assert!(h.doc().cables[&k].cores[0].wire().is_some());
+    assert!(h.doc().cables()[&k].cores[0].wire().is_some());
     assert!(rows(&mut h, "core-one-end").is_empty());
     h.check();
 }
@@ -49,13 +49,13 @@ fn a_stored_place_the_line_no_longer_gives_is_reported_not_changed() {
     // A file made elsewhere: the core says no end has landed, though one has.
     let stale = CorePosition::Route { route, landed: None };
     h.cfg(|p| {
-        let old = p.ledger.document().cables[&k].clone();
+        let old = p.ledger.document().cables()[&k].clone();
         let mut new = old.clone();
         new.cores[0] = Core { position: stale, ..old.cores[0].clone() };
         let ops = vec![Op::ModifyCable { id: k, before: old, after: new }];
         p.ledger.commit(Author::User, "a file made elsewhere", ops).unwrap();
     });
-    assert_eq!(h.doc().cables[&k].cores[0].position, stale, "nothing moved it back");
+    assert_eq!(h.doc().cables()[&k].cores[0].position, stale, "nothing moved it back");
     let found = rows(&mut h, "core-place-stale");
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0]["severity"], json!("error"));
@@ -76,7 +76,8 @@ fn ticking_not_used_stores_the_cores_purpose_not_a_property() {
     assert_eq!(open.len(), 1, "core 2 is offered and on no line: {open:?}");
 
     h.run("setprop", json!({"cable": k.hex(), "key": "unused.2", "value": "yes"})).unwrap();
-    let cab = &h.doc().cables[&k];
+    let doc = h.doc();
+    let cab = &doc.cables()[&k];
     assert!(!cab.properties.keys().any(|key| key.starts_with("unused.")), "nothing stored under the key word");
     let two = cab.cores.iter().find(|m| m.label_str() == Some("2")).expect("core 2 stored");
     assert_eq!((two.purpose, two.position), (Purpose::Spare, CorePosition::Unplaced));
@@ -88,7 +89,7 @@ fn ticking_not_used_stores_the_cores_purpose_not_a_property() {
     let again = h.run("setprop", json!({"cable": k.hex(), "key": "unused.2", "value": "yes"})).unwrap();
     assert_eq!(again["changed"], json!(false));
     h.run("setprop", json!({"cable": k.hex(), "key": "unused.2", "value": null})).unwrap();
-    let two = h.doc().cables[&k].cores.iter().find(|m| m.label_str() == Some("2")).cloned().expect("offered core 2 stays");
+    let two = h.doc().cables()[&k].cores.iter().find(|m| m.label_str() == Some("2")).cloned().expect("offered core 2 stays");
     assert_eq!((two.purpose, two.position), (Purpose::InUse, CorePosition::Unplaced));
     assert_eq!(rows(&mut h, "core-open").len(), 1);
     // A core the cable does not have is refused.

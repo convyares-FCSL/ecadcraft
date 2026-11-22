@@ -136,7 +136,7 @@ fn a_graphic_page_draws_the_strip_as_wired() {
     let mut g = fixture(0x46_01);
     let page = strip_page(&mut g);
     let doc = g.h.doc();
-    assert_eq!(doc.pages[&page].title, draw::TITLE);
+    assert_eq!(doc.pages()[&page].title, draw::TITLE);
     assert_eq!(draw::style_of(&doc, page), draw::Style::Graphic);
     let p = parts(&mut g.h, page);
     let o = reports(&mut g.h);
@@ -192,7 +192,7 @@ fn a_long_strip_runs_onto_a_second_sheet() {
     let doc = g.h.doc();
     assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, page, Some(&o)), 2);
     let before = ecad_electrical::pages::generated::book_sheets_of(&doc, Some(&o));
-    assert_eq!(before, doc.page_order.len() + 1, "Total counts both sheets");
+    assert_eq!(before, doc.page_order().len() + 1, "Total counts both sheets");
     let p = parts(&mut g.h, page);
     // `<page title>: <tag> <description> (i/n)` (design 046 §6.3).
     let titles: Vec<String> = texts(&p).into_iter().map(|(t, _)| t).filter(|t| t.starts_with("Terminal strips: -X01")).collect();
@@ -341,7 +341,9 @@ fn empty_and_hostile_states_draw_without_crashing() {
     let _ = parts(&mut g.h, page);
     // The page's `strip` names a device that is then deleted.
     let mut doc = g.h.doc();
-    doc.devices.remove(&g.x1);
+    doc.edit_parts(|parts| {
+        parts.devices.remove(&g.x1);
+    });
     let p = ecad_engine::pages::generated::parts_of(&doc, page, ecad_engine::project::engine_views().report_models(&doc).as_ref());
     assert!(texts(&p).iter().any(|(t, _)| t == "?"), "a flagged `?`");
 }

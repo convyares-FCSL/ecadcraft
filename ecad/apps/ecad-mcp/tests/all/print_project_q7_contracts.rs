@@ -24,7 +24,7 @@ fn frame_texts(c: &mut Client) -> (Vec<String>, String) {
             let pending = ecad_electrical::releases::revisions::is_pending(&p.ledger);
             assert_eq!(p.pending, pending, "the kept flag is the walk's");
             let doc = p.ledger.document();
-            let page: PageId = doc.page_order[0];
+            let page: PageId = doc.page_order()[0];
             let texts =
                 ecad_engine::pages::generated::parts_of_pending(doc, page, ecad_engine::project::engine_views().report_models(doc).as_ref(), pending)
                     .into_iter()
@@ -159,7 +159,7 @@ fn ac10_revision_columns_and_custom_fields() {
     c.exec("projectprops", json!({"revision_columns": null}));
     let (texts, _) = frame_texts(&mut c);
     assert!(texts.contains(&"Checked".to_string()) && texts.contains(&"ECR-1".to_string()), "{texts:?}");
-    assert_eq!(ecad_electrical::releases::revisions::field_of(&c.doc().project, 1, "ecr").as_deref(), Some("ECR-1"));
+    assert_eq!(ecad_electrical::releases::revisions::field_of(c.doc().project(), 1, "ecr").as_deref(), Some("ECR-1"));
     // The revision list page shows the columns, then Version.
     c.exec("projectprops", json!({"revision_columns": "rev, ecr:ECR, description"}));
     let list = c.exec("newpage", json!({"generated": "revisions"}));
@@ -178,7 +178,7 @@ fn ac10_revision_columns_and_custom_fields() {
 }
 
 fn tags(c: &mut Client) -> Vec<String> {
-    c.doc().devices.values().filter_map(|x| x.tag_shown()).collect()
+    c.doc().devices().values().filter_map(|x| x.tag_shown()).collect()
 }
 
 #[test]
@@ -203,12 +203,12 @@ fn ac11_the_tag_style_rewrites_in_one_undoable_step() {
     // One undo puts the setting and every tag back.
     c.exec("u", json!({}));
     let after_undo = c.doc();
-    assert_eq!(after_undo.display.get("tags.dash"), before.display.get("tags.dash"));
+    assert_eq!(after_undo.display().get("tags.dash"), before.display().get("tags.dash"));
     assert_eq!(tags(&mut c), ["-K01", "-K02", "-K03"]);
     // As typed: nothing rewritten; a tag typed now keeps its case.
     let v = c.exec("projectprops", json!({"tag_case": "typed"}));
     assert_eq!(v["message"], json!("Tags typed from now on keep their case; existing tags are unchanged."));
-    let k1 = *c.doc().devices.keys().next().unwrap();
+    let k1 = *c.doc().devices().keys().next().unwrap();
     c.exec("setprop", json!({"component": k1.hex(), "key": "tag", "value": "M02a"}));
     assert!(tags(&mut c).contains(&"-M02a".to_string()), "{:?}", tags(&mut c));
     // Back to upper case: every tag upper-cased in the same transaction.

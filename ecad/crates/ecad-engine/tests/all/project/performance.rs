@@ -113,7 +113,7 @@ fn a_page_s_markers_equal_those_of_every_reference() {
         assert_eq!(markers, ecad_electrical::references::cables::markers_from(&doc, every.clone(), page));
         let on_page: Vec<_> = every.iter().filter(|r| r.page == page).cloned().collect();
         assert_eq!(ecad_electrical::references::cables::references_on_page(&doc, page), on_page);
-        let items: Vec<_> = doc.items.iter().filter(|(_, i)| i.page == page).map(|(id, _)| *id).collect();
+        let items: Vec<_> = doc.items().iter().filter(|(_, i)| i.page == page).map(|(id, _)| *id).collect();
         assert_eq!(doc.items_on(page).map(|(id, _)| id).collect::<Vec<_>>(), items, "the page index lists the page's items in ID order");
     }
 }

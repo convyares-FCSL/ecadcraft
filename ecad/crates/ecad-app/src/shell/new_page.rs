@@ -109,8 +109,8 @@ impl App {
         let built = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
             let book = Book::of(doc);
-            let after = after.filter(|a| doc.pages.contains_key(a));
-            let folder = folder.filter(|f| doc.folders.contains_key(f));
+            let after = after.filter(|a| doc.pages().contains_key(a));
+            let folder = folder.filter(|f| doc.folders().contains_key(f));
             let (f, _, place) = ecad_electrical::pages::commands::sheets::new_page_at(doc, &book, folder, after).ok()?;
             let number = ecad_electrical::pages::commands::sheets::next_number(doc, &book, f, place, p.kept_reports());
             let rows: Vec<TypeRow> = ptype::ordered(doc)

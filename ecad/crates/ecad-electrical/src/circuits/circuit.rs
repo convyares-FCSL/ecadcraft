@@ -281,7 +281,7 @@ pub fn location_code(doc: &Document, key: &str) -> String {
 
 /// Every location box that sets a temperature (open, reload, first show).
 pub(crate) fn box_temps(doc: &Document) -> BTreeMap<ecad_model::AidId, BoxTemp> {
-    doc.aids.keys().filter_map(|a| box_temp(doc, *a).map(|b| (*a, b))).collect()
+    doc.aids().keys().filter_map(|a| box_temp(doc, *a).map(|b| (*a, b))).collect()
 }
 
 pub(super) fn project_number(doc: &Document, e: &defaults::Entry) -> f64 {
@@ -339,7 +339,7 @@ pub(crate) fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
     if !is_panel_wire(doc, c) {
         return false;
     }
-    let Some(x) = doc.wires.get(&c) else { return false };
+    let Some(x) = doc.wires().get(&c) else { return false };
     if !x.rating.is_empty() || x.load.is_some() || x.protected_by().is_some() {
         return true;
     }
@@ -349,7 +349,7 @@ pub(crate) fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
 
 /// Whether cable `k` is a rated subject (design 057 §7).
 pub(crate) fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool {
-    let Some(x) = doc.cables.get(&k) else { return false };
+    let Some(x) = doc.cables().get(&k) else { return false };
     if !x.rating.is_empty() || x.load.is_some() || x.protected_by().is_some() || cable::of(doc, k).is_some() {
         return true;
     }
@@ -367,9 +367,9 @@ pub fn panel_temperature(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, 
 pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, FactorSource, Vec<String>) {
     let mut best: Option<(f64, FactorSource)> = None;
     let mut locations: Vec<String> = Vec::new();
-    if let Some(x) = doc.wires.get(&c) {
+    if let Some(x) = doc.wires().get(&c) {
         for t in &x.ends {
-            let Some(comp) = doc.connection_points.get(t).and_then(|t| t.device()) else { continue };
+            let Some(comp) = doc.connection_points().get(t).and_then(|t| t.device()) else { continue };
             // Brief 052: the device's stored location is an entry key; boxes match by key, and the
             // row shows the entry's code.
             let Some(loc) = crate::locations::resolve_with(doc, comp, &mut ctx.boxes).key.map(|l| l.trim().to_string()) else { continue };
@@ -726,8 +726,8 @@ pub(super) fn volt_drop_of(
 
 /// Every rated subject of `doc`.
 pub fn subjects(doc: &Document, ctx: &Context) -> Vec<RatedSubject> {
-    let mut v: Vec<RatedSubject> = doc.wires.keys().filter(|c| wire_is_rated(doc, ctx, **c)).map(|c| RatedSubject::Wire(*c)).collect();
-    v.extend(doc.cables.keys().filter(|k| cable_is_rated(doc, ctx, **k)).map(|k| RatedSubject::Cable(*k)));
+    let mut v: Vec<RatedSubject> = doc.wires().keys().filter(|c| wire_is_rated(doc, ctx, **c)).map(|c| RatedSubject::Wire(*c)).collect();
+    v.extend(doc.cables().keys().filter(|k| cable_is_rated(doc, ctx, **k)).map(|k| RatedSubject::Cable(*k)));
     v
 }
 

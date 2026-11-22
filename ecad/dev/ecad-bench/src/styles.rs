@@ -42,7 +42,7 @@ pub struct MeasuredStyles {
 fn densest(project: &ProjectHandle, s: &mut Session) -> Result<(PageId, Option<ecad_model::DeviceId>), String> {
     project.read(s, |p, _| {
         let doc = p.ledger.document();
-        let page = doc.page_order.iter().copied().max_by_key(|pg| doc.representations_on(*pg).count()).unwrap_or(PageId(0));
+        let page = doc.page_order().iter().copied().max_by_key(|pg| doc.representations_on(*pg).count()).unwrap_or(PageId(0));
         let device = doc.representations_on(page).find_map(|(_, r)| match r.subject {
             Subject::Device(c) => Some(c),
             _ => None,

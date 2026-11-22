@@ -26,7 +26,7 @@ fn placed(h: &mut H, params: Value) -> DeviceId {
 }
 
 fn tag(d: &Document, c: DeviceId) -> String {
-    d.devices.get(&c).and_then(|x| x.tag_shown()).unwrap_or_default()
+    d.devices().get(&c).and_then(|x| x.tag_shown()).unwrap_or_default()
 }
 
 /// Every text value derived on `page`, shown or not.
@@ -51,7 +51,7 @@ fn bug_1_an_unlabelled_point_never_prints_its_id_after_a_merge() {
     let ta = tag(&h.doc(), a);
     h.run("setprop", json!({"component": b.hex(), "key": "tag", "value": ta, "merge": true})).unwrap();
     let d = h.doc();
-    assert!(!d.devices.contains_key(&b), "the second earth merged into the first");
+    assert!(!d.devices().contains_key(&b), "the second earth merged into the first");
     for t in page_texts(&mut h, page) {
         assert!(!is_hex_id(&t), "a text prints a 32-digit ID: {t}");
     }

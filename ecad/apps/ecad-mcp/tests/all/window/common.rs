@@ -182,7 +182,7 @@ pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::Conne
     use ecad_model::{Author, ConnectionPoint, ConnectionPointId, Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject};
     let p = t.project().unwrap().clone();
     p.configure(&mut t.cad.session, |p| {
-        let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
+        let page = p.active_page().unwrap_or(p.ledger.document().page_order()[0]);
         let device: DeviceId = p.ids.fresh();
         let mut ops = vec![Op::CreateDevice { id: device, device: Device::default() }];
         let mut cps = std::collections::BTreeMap::new();
@@ -221,7 +221,7 @@ pub(crate) fn wire_pp(t: &mut App, points: &[(f64, f64)]) -> serde_json::Value {
     let shown: Vec<ecad_model::Pt> = p
         .read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let page = p.active_page().unwrap_or(doc.page_order[0]);
+            let page = p.active_page().unwrap_or(doc.page_order()[0]);
             ecad_model::connectivity::derive::connection_point_positions(doc, page).into_iter().map(|(_, _, at)| at).collect()
         })
         .unwrap();
@@ -252,7 +252,7 @@ pub(crate) fn reference_end(t: &mut App, cable: ecad_model::CableId, page: ecad_
             let style = doc
                 .representations_of(Subject::Cable(cable))
                 .filter(|(_, r)| r.role == ecad_model::Role::Reference)
-                .find_map(|(_, r)| r.items.first().and_then(|i| doc.items.get(i)).map(|i| i.style.clone()))
+                .find_map(|(_, r)| r.items.first().and_then(|i| doc.items().get(i)).map(|i| i.style.clone()))
                 .expect("the cable has a reference to pair with");
             let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
             (style, item, rep)

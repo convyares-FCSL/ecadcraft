@@ -15,7 +15,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::document::doc::Properties;
+use crate::Properties;
 use crate::naming::id::{LibraryId, StandardId};
 
 pub mod cable;
@@ -46,7 +46,7 @@ pub const MAX_NAME_CHARS: usize = 64;
 /// The longest stored field value, in characters. Guard: a longer value counts as absent.
 pub const MAX_FIELD_CHARS: usize = 256;
 /// The longest catalogue word or built-in style word, in characters.
-pub const MAX_WORD_CHARS: usize = 32;
+pub(crate) const MAX_WORD_CHARS: usize = 32;
 
 /// Where a style record lives (design 050 §1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -438,7 +438,7 @@ pub fn record<'a>(doc: &'a crate::Document, layer: StyleLayer, catalogue: StyleC
 
 /// The record `layer` holds for `(catalogue, id)`, within [`MAX_STYLES_PER_CATALOGUE`]: past the
 /// bound a record counts as absent (by ID order). The rank costs at most the bound.
-pub fn bounded_record<'a>(doc: &'a crate::Document, layer: StyleLayer, catalogue: StyleCatalogue, id: &StyleRef) -> Option<&'a StyleRecord> {
+pub(crate) fn bounded_record<'a>(doc: &'a crate::Document, layer: StyleLayer, catalogue: StyleCatalogue, id: &StyleRef) -> Option<&'a StyleRecord> {
     let map = layer_of(doc, layer)?.get(&catalogue)?;
     let r = map.get(id)?;
     if map.len() > MAX_STYLES_PER_CATALOGUE && map.range(..id).take(MAX_STYLES_PER_CATALOGUE).count() >= MAX_STYLES_PER_CATALOGUE {

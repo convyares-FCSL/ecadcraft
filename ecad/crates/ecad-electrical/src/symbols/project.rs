@@ -86,7 +86,7 @@ impl<'a> Version<'a> {
 /// Every embedded project-symbol version (a pass over the project's definitions, which are few: the
 /// symbols it uses, not its objects).
 pub(crate) fn project_versions(doc: &Document) -> impl Iterator<Item = Version<'_>> {
-    doc.definitions.iter().filter_map(|(id, d)| Version::of(*id, d))
+    doc.definitions().iter().filter_map(|(id, d)| Version::of(*id, d))
 }
 
 /// The versions of `lineage`, oldest first.
@@ -144,7 +144,7 @@ pub(crate) fn prefix_follow(doc: &Document, ops: &[Op]) -> Option<Op> {
     let lower = |k: &str| k.trim().to_ascii_lowercase();
     let mut after: BTreeSet<String> = project_versions(doc).filter(|v| !removed.contains(&v.id)).filter_map(|v| v.key().map(lower)).collect();
     after.extend(embedded.iter().filter_map(|v| v.key().map(lower)));
-    let before = doc.settings.clone();
+    let before = doc.settings().clone();
     let mut next = before.clone();
     for (of, prefix) in &before.tag_prefixes {
         let PrefixOf::Project(k) = of else { continue };

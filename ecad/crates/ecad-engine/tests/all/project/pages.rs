@@ -12,7 +12,7 @@ fn save_from_either_page_saves_the_whole_project() {
     let (mut h, c1, ..) = small_project(41);
     let p1 = h.first_page();
     h.run("newpage", json!({"title": "2"})).unwrap();
-    let p2 = h.doc().page_order[1];
+    let p2 = h.doc().page_order()[1];
     h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap();
     // Save from page 2 after edits on both pages.
     h.activate(p1);
@@ -43,7 +43,7 @@ fn save_as_updates_the_page_window_path() {
     let (mut h, ..) = small_project(42);
     let p1 = h.first_page();
     h.run("newpage", json!({"title": "2"})).unwrap();
-    let p2 = h.doc().page_order[1];
+    let p2 = h.doc().page_order()[1];
     h.activate(p1);
     h.run("saveas", json!({"path": "first.ecad"})).unwrap();
     let paths = |h: &mut common::H| {
@@ -74,7 +74,7 @@ fn switching_pages_uses_one_window_and_remembers_each_pages_view() {
     let (mut h, ..) = small_project(45);
     let p1 = h.first_page();
     h.run("newpage", json!({"title": "Field"})).unwrap();
-    let p2 = h.doc().page_order[1];
+    let p2 = h.doc().page_order()[1];
     assert_eq!(h.s.docs.len(), 1, "newpage switched the one window");
     assert_eq!(h.p(|p| p.active_page()), Some(p2));
     let uid = h.s.docs[0].uid;
@@ -156,9 +156,9 @@ fn undo_and_redo_bring_the_page_they_change_to_the_front() {
     let (mut h, ..) = small_project(46);
     let supply = h.first_page();
     h.run("newpage", json!({"title": "Field"})).unwrap();
-    let field = h.doc().page_order[1];
+    let field = h.doc().page_order()[1];
     h.run("newpage", json!({"title": "Spare"})).unwrap();
-    let spare = h.doc().page_order[2];
+    let spare = h.doc().page_order()[2];
     h.activate(field);
     let w = h.wire_pp(&[(0.0, 0.0), (30.0, 0.0)]).unwrap();
     let wire: ecad_model::WireId = common::id(&w, "conductor");
@@ -167,7 +167,7 @@ fn undo_and_redo_bring_the_page_they_change_to_the_front() {
     h.activate(spare);
     h.run("u", Value::Null).unwrap();
     assert_eq!(h.p(|p| p.active_page()), Some(field), "Field is brought to the front");
-    assert!(!h.doc().wires.contains_key(&wire));
+    assert!(!h.doc().wires().contains_key(&wire));
     assert!(count(&mut h) < with_wire, "the wire is gone from the page shown");
     assert!(h.s.log.iter().any(|l| l == "Page 2 \"Field\" brought to the front."), "{:?}", h.s.log);
     h.run("redo", Value::Null).unwrap();
@@ -181,14 +181,14 @@ fn undo_and_redo_bring_the_page_they_change_to_the_front() {
     // Undo of a page op: undoing `newpage` Spare while Spare is active shows the page before it.
     let (mut h, ..) = small_project(47);
     h.run("newpage", json!({"title": "Field"})).unwrap();
-    let field = h.doc().page_order[1];
+    let field = h.doc().page_order()[1];
     h.run("newpage", json!({"title": "Spare"})).unwrap();
-    assert_eq!(h.p(|p| p.active_page()), Some(h.doc().page_order[2]));
+    assert_eq!(h.p(|p| p.active_page()), Some(h.doc().page_order()[2]));
     h.run("u", Value::Null).unwrap();
-    assert_eq!(h.doc().page_order.len(), 2);
+    assert_eq!(h.doc().page_order().len(), 2);
     assert_eq!(h.p(|p| p.active_page()), Some(field), "the page before Spare");
     h.run("redo", Value::Null).unwrap();
-    let spare = h.doc().page_order[2];
+    let spare = h.doc().page_order()[2];
     assert_eq!(h.p(|p| p.active_page()), Some(spare), "redo shows the page it adds");
     assert_eq!(h.s.docs.len(), 1, "still one page window");
     h.check();

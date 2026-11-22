@@ -212,7 +212,7 @@ pub(crate) fn active(h: &mut Harness<'static, App>) -> Option<PageId> {
 
 fn titles(h: &mut Harness<'static, App>) -> Vec<String> {
     let d = doc(h);
-    d.page_order.iter().map(|p| d.pages[p].title.to_string()).collect()
+    d.page_order().iter().map(|p| d.pages()[p].title.to_string()).collect()
 }
 
 /// The one page window's title.
@@ -279,23 +279,23 @@ pub(crate) fn row_rect(h: &Harness<'static, App>, label: &str) -> egui::Rect {
 /// Fixture P: Supply (C1 leaving at (65,5), `2/F1`), Field (C1 arriving at (20,5), `1/F2`), Spare.
 pub(crate) fn fixture_p(h: &mut Harness<'static, App>) -> (PageId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
-    let supply = doc(h).page_order[0];
+    let supply = doc(h).page_order()[0];
     ok(h, &format!(r#"renamepage {{"page":"{}","title":"Supply"}}"#, supply.hex()));
     for y in [0, 5, 10] {
         ok(h, &format!(r#"wire {{"points":[[0,{y}],[60,{y}]]}}"#));
     }
     ok(h, r#"cableslash {"from":[28,-3],"to":[32,18],"tag":"C1"}"#);
-    let cable = doc(h).cables.keys().next().copied().unwrap();
+    let cable = doc(h).cables().keys().next().copied().unwrap();
     ok(h, &format!(r#"cablereference {{"cable":"{}","at":[65,5]}}"#, cable.hex()));
     ok(h, r#"newpage {"title":"Field"}"#);
     // C1's other end on Field at (20,5), written as `cablecontinue` writes it but without its stubs:
     // a continuation needs wires leaving the page through the reference, which form only with lane
     // F step F4. The tests on this fixture are about pages and what the two ends say of each other.
-    let field = doc(h).page_order[1];
+    let field = doc(h).page_order()[1];
     crate::common::reference_end(h.state_mut(), cable, field, (20.0, 5.0));
     ok(h, r#"newpage {"title":"Spare"}"#);
     let d = doc(h);
-    (d.page_order[0], d.page_order[1], d.page_order[2])
+    (d.page_order()[0], d.page_order()[1], d.page_order()[2])
 }
 
 pub(crate) fn shots() -> Option<std::path::PathBuf> {
@@ -381,7 +381,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert_eq!(label, "New page");
     assert!(matches!(ops.as_slice(), [Op::AddPage { page, index: 3, .. }] if page.title == "4"), "{ops:?}");
     let new = active(&mut h).unwrap();
-    assert_eq!(new, doc(&mut h).page_order[3], "the new page is shown at once");
+    assert_eq!(new, doc(&mut h).page_order()[3], "the new page is shown at once");
     assert!(h.state().cad.cmd.buffer.is_empty() && h.state().cad.session.running.is_none(), "Enter stayed in the box");
     // `u` removes it (the panel follows), redo brings it back.
     ok(&mut h, "u");
@@ -477,12 +477,12 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
 
     // G (AC8): on Field draw a wire, make Spare active, `u`: Field comes back without the wire.
     click(&mut h, "Page 2: Field (typed)");
-    let items = doc(&mut h).items.len();
+    let items = doc(&mut h).items().len();
     ok(&mut h, r#"wire {"points":[[0,-30],[40,-30]]}"#);
     click(&mut h, "Page 3: Spare");
     ok(&mut h, "u");
     assert_eq!(active(&mut h), Some(field), "Field is brought to the front");
-    assert_eq!(doc(&mut h).items.len(), items, "the wire is gone");
+    assert_eq!(doc(&mut h).items().len(), items, "the wire is gone");
     assert!(h.state().cad.session.log.iter().any(|l| l == "Page 2 \"Field (typed)\" brought to the front."));
     ok(&mut h, "redo");
     assert_eq!(active(&mut h), Some(field), "redo: Field stays");
@@ -491,7 +491,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     let four = active(&mut h);
     ok(&mut h, r#"newpage {"title":"5"}"#);
     ok(&mut h, "u");
-    assert_eq!(doc(&mut h).page_order.len(), 4);
+    assert_eq!(doc(&mut h).page_order().len(), 4);
     assert_eq!(active(&mut h), four, "the page before the removed page");
 
     // E: close the drawing tab: every page still listed, none active; a click shows a page.
@@ -636,7 +636,7 @@ fn five_hundred_pages_cost_only_the_visible_rows() {
     {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
-        let have = p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order.len()).unwrap();
+        let have = p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order().len()).unwrap();
         for i in have..500 {
             assert!(t.submit_command(&format!(r#"newpage {{"title":"P{}"}}"#, i + 1)).is_none());
         }
@@ -659,7 +659,7 @@ fn five_hundred_pages_cost_only_the_visible_rows() {
     h.run_steps(2);
     assert_eq!(h.state().panel.rebuilds, rebuilds, "no rebuild per frame");
     // One rename: one rebuild, timed.
-    let first = doc(&mut h).page_order[0];
+    let first = doc(&mut h).page_order()[0];
     ok(&mut h, &format!(r#"renamepage {{"page":"{}","title":"Renamed"}}"#, first.hex()));
     let t0 = std::time::Instant::now();
     h.run_steps(1);
@@ -670,8 +670,8 @@ fn five_hundred_pages_cost_only_the_visible_rows() {
         h.state().panel.rows_drawn
     );
     // Scroll to page 250 (cursor there, as End/PgDn would) and show it.
-    let p250 = doc(&mut h).page_order[249];
-    let label250 = project_panel::row_label("250", doc(&mut h).pages[&p250].title.as_str());
+    let p250 = doc(&mut h).page_order()[249];
+    let label250 = project_panel::row_label("250", doc(&mut h).pages()[&p250].title.as_str());
     h.state_mut().show_page(p250).unwrap();
     h.run_steps(4);
     assert!(h.query_by_label(&label250).is_some(), "page 250's row is scrolled into view");
@@ -714,7 +714,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     let mut h = build(second, None);
     let before = head(&mut h);
     click(&mut h, "Page 2: Field");
-    let field = doc(&mut h).page_order[1];
+    let field = doc(&mut h).page_order()[1];
     assert_eq!(active(&mut h), Some(field), "switching works");
     // New page and New folder (UI rev 3: Book's footer) are disabled: clicking them does nothing.
     for label in [project_panel::NEW_PAGE, project_panel::NEW_FOLDER] {
@@ -725,7 +725,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     key(&mut h, Key::F2, Modifiers::NONE);
     assert!(h.state().panel.rename.is_none(), "no rename");
     assert_eq!(head(&mut h), before, "nothing recorded");
-    assert_eq!(doc(&mut h).page_order.len(), 2);
+    assert_eq!(doc(&mut h).page_order().len(), 2);
     // Brief 019, check J: every Properties field and dialog field read-only, Issue hidden; a
     // revision can still be reopened (the command reads only).
     assert!(!h.state().props.lock().unwrap().writable, "Properties fields are read-only");
@@ -749,7 +749,7 @@ pub(crate) fn devices_fixture(h: &mut Harness<'static, App>) -> (ecad_model::Dev
     let t = h.state_mut();
     let page1 = {
         let p = t.project().unwrap().clone();
-        p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order[0]).unwrap()
+        p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order()[0]).unwrap()
     };
     let coil = t.cad.run("place", serde_json::json!({"symbol": "coil", "at": [0, 0]})).unwrap();
     let coil = coil["component"].as_str().unwrap().to_string();
@@ -757,7 +757,7 @@ pub(crate) fn devices_fixture(h: &mut Harness<'static, App>) -> (ecad_model::Dev
     t.cad.run("place", serde_json::json!({"symbol": "no", "at": [45, 0], "device": coil})).unwrap();
     let page2 = {
         let p = t.project().unwrap().clone();
-        p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order[1]).unwrap()
+        p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order()[1]).unwrap()
     };
     t.show_page(page1).unwrap();
     h.run_steps(2);
@@ -855,7 +855,7 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     // taken; the merge joins the contact to -K01 in one step.
     ok(&mut h, r#"place {"symbol":"no","at":[0,40]}"#);
     h.run_steps(2);
-    let other = doc(&mut h).devices.keys().copied().find(|c| *c != coil).unwrap();
+    let other = doc(&mut h).devices().keys().copied().find(|c| *c != coil).unwrap();
     let before = head(&mut h);
     h.state_mut().panel_action(project_panel::Action::SetDeviceProperty { component: other, key: "tag", value: "K01".into(), conflict: None });
     h.run_steps(2);

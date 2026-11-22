@@ -154,7 +154,7 @@ pub(crate) fn code_in_project(project: &Project, a: Aspect, key: &str) -> Option
 
 /// Description 1 of entry `key`, if it has one.
 pub fn description_of(doc: &Document, a: Aspect, key: &str) -> Option<String> {
-    entry_by_id(&doc.project, a, raw(key)?)?.description
+    entry_by_id(doc.project(), a, raw(key)?)?.description
 }
 
 /// The keys of the entries of aspect `a` whose code differs between `before` and `after` (added,
@@ -185,7 +185,7 @@ pub fn default_key(project: &Project, a: Aspect) -> Option<String> {
 
 /// Page `page`'s value of aspect `a` as a key: its own, else the project's.
 pub fn inherited_key(doc: &Document, page: ecad_model::PageId, a: Aspect) -> Option<String> {
-    doc.pages.get(&page).and_then(|p| page_key(p, a)).or_else(|| default_key(&doc.project, a))
+    doc.pages().get(&page).and_then(|p| page_key(p, a)).or_else(|| default_key(doc.project(), a))
 }
 
 /// Page `page`'s own value of aspect `a`, as a key.
@@ -351,14 +351,14 @@ pub(crate) fn without_entry(project: &Project, a: Aspect, key: &str) -> Project 
 
 /// Every entry of aspect `a`, in natural order of codes (`+CP2` before `+CP10`). O(entries).
 pub fn entries(doc: &Document, a: Aspect) -> Vec<Entry> {
-    let mut out = listed(&doc.project, a);
+    let mut out = listed(doc.project(), a);
     out.sort_by(|x, y| crate::locations::natural_cmp(&x.code, &y.code).then(x.key.cmp(&y.key)));
     out
 }
 
 /// The code of entry `key`, or `None` when the list has no such entry.
 pub fn code_of(doc: &Document, a: Aspect, key: &str) -> Option<String> {
-    code_in(&doc.project, a, raw(key)?)
+    code_in(doc.project(), a, raw(key)?)
 }
 
 /// The entry `key_or_code` names: a code (starting with the aspect's sign) or a key.
@@ -371,7 +371,7 @@ pub fn find(doc: &Document, a: Aspect, key_or_code: &str) -> Option<Entry> {
     if t.starts_with(a.sign()) {
         return by_code(t);
     }
-    match raw(t).and_then(|id| entry_by_id(&doc.project, a, id)) {
+    match raw(t).and_then(|id| entry_by_id(doc.project(), a, id)) {
         Some(e) => Some(e),
         None => by_code(&format!("{}{t}", a.sign())),
     }
@@ -450,7 +450,7 @@ impl Pending {
         let typed = list_code(&code)?;
         let id: u128 = ids.fresh();
         let key = format!("{id:032x}");
-        let before = self.working.take().unwrap_or_else(|| doc.project.clone());
+        let before = self.working.take().unwrap_or_else(|| doc.project().clone());
         let after = with_new_entry(&before, a, id, typed, None);
         ops.push(Op::ModifyProject { before, after: after.clone() });
         self.working = Some(after);
@@ -468,7 +468,7 @@ impl Pending {
     /// The project as the entries added so far leave it (`doc`'s when none were added): what a
     /// later `ModifyProject` in the same transaction starts from.
     pub fn project<'a>(&'a self, doc: &'a Document) -> &'a Project {
-        self.working.as_ref().unwrap_or(&doc.project)
+        self.working.as_ref().unwrap_or(doc.project())
     }
 
     /// The echo for the entries added: `New location +CP4 added to the project's list.`
@@ -563,16 +563,16 @@ impl Uses {
     /// The index of `doc`, built in one pass over components, pages and the project.
     pub fn of(doc: &Document) -> Uses {
         let mut u = Uses::default();
-        for (c, x) in &doc.devices {
+        for (c, x) in doc.devices() {
             u.device(*c, x, true);
         }
-        for (p, x) in &doc.pages {
+        for (p, x) in doc.pages() {
             u.page(*p, x, true);
         }
-        for (a, x) in &doc.aids {
+        for (a, x) in doc.aids() {
             u.aid(*a, x, true);
         }
-        u.project(&doc.project, true);
+        u.project(doc.project(), true);
         u
     }
 

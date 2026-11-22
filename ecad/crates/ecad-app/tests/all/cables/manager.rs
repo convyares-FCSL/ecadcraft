@@ -59,14 +59,14 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     let dir = std::env::temp_dir().join(format!("ecad-059-ui-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     demo(&mut h, &dir);
-    let before = doc(&mut h).cables.len();
+    let before = doc(&mut h).cables().len();
     // + Cable: a cable at once, selected, its details open, no dialog.
     h.get_by_label(ecad_app::workspace::frame::ADD_NAME).click();
     h.run_steps(8);
     let d = doc(&mut h);
-    assert_eq!(d.cables.len(), before + 1);
+    assert_eq!(d.cables().len(), before + 1);
     let k = selected_cable(&h).expect("the new cable is selected");
-    assert!(d.cables[&k].cores.is_empty());
+    assert!(d.cables()[&k].cores.is_empty());
     assert!(h.state().reports.as_ref().unwrap().cables.details, "its details are open");
     assert!(h.query_all_by_label_contains("not drawn").next().is_some(), "the not drawn badge");
     assert!(h.query_all_by_label_contains("1 not drawn").next().is_some(), "the footer counts it");
@@ -85,7 +85,7 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     h.run_steps(1);
     h.key_press(Key::Enter);
     h.run_steps(6);
-    assert_eq!(doc(&mut h).cables[&k].properties.get("length").map(String::as_str), Some("12"));
+    assert_eq!(doc(&mut h).cables()[&k].properties.get("length").map(String::as_str), Some("12"));
     // A bad value is refused: nothing written, the words shown.
     let n = h.get_by_label("ecad.project.detail.cable.cores");
     n.focus();
@@ -94,7 +94,7 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     h.run_steps(1);
     h.key_press(Key::Enter);
     h.run_steps(6);
-    assert!(!doc(&mut h).cables[&k].properties.contains_key("cores"));
+    assert!(!doc(&mut h).cables()[&k].properties.contains_key("cores"));
     assert!(h.state().reports.as_ref().unwrap().cables.edit.error.is_some(), "the refusal is shown");
     // A planned end and a shield, through the commands the boxes run.
     ok(
@@ -118,10 +118,10 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     // Remove: a cable not drawn goes at once; undo brings it back.
     h.state_mut().cable_ask(k, ecad_app::cables::editor::Ask::Remove);
     h.run_steps(4);
-    assert!(!doc(&mut h).cables.contains_key(&k));
+    assert!(!doc(&mut h).cables().contains_key(&k));
     ok(&mut h, "u");
     h.run_steps(4);
-    assert!(doc(&mut h).cables.contains_key(&k));
+    assert!(doc(&mut h).cables().contains_key(&k));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -138,13 +138,13 @@ fn removing_a_drawn_cable_is_refused_with_a_go_to_per_page() {
     h.state_mut().reports.as_mut().unwrap().cables.table.selection.set([k]);
     h.state_mut().reports.as_mut().unwrap().cables.details = true;
     h.run_steps(8);
-    let head = doc(&mut h).cables.len();
+    let head = doc(&mut h).cables().len();
     // The footer is below the Rating section: scroll it into view first.
     h.get_by_label(ecad_app::cables::editor::REMOVE).scroll_to_me();
     h.run_steps(4);
     h.get_by_label(ecad_app::cables::editor::REMOVE).click();
     h.run_steps(6);
-    assert_eq!(doc(&mut h).cables.len(), head, "nothing removed");
+    assert_eq!(doc(&mut h).cables().len(), head, "nothing removed");
     let refused = h.state().reports.as_ref().unwrap().cables.edit.refused.clone().expect("refused");
     assert!(refused.0.contains("-W01 is drawn on") && refused.0.contains("Delete it on its page."), "{refused:?}");
     assert!(!refused.1.is_empty(), "a Go to per page");
@@ -173,7 +173,7 @@ fn assign_in_the_drawing_starts_the_slash_with_the_cable_picked() {
     ok(&mut h, r#"cablenew {"tag":"-W05","cores":"4G","type":"H07RN-F 4G1.5","from":{"location":"+CAB1"},"to":{"location":"+FIELD"}}"#);
     let d = doc(&mut h);
     let k = d.cables_tagged("-W05")[0];
-    let head = d.cables.len();
+    let head = d.cables().len();
     h.state_mut().assign_in_drawing(k);
     h.run_steps(8);
     assert!(h.state().slash_running(), "Cable slash runs");
@@ -186,6 +186,6 @@ fn assign_in_the_drawing_starts_the_slash_with_the_cable_picked() {
     h.key_press(Key::Escape);
     h.run_steps(4);
     assert!(!h.state().slash_running());
-    assert_eq!(doc(&mut h).cables.len(), head, "Esc writes nothing");
+    assert_eq!(doc(&mut h).cables().len(), head, "Esc writes nothing");
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -38,7 +38,7 @@ pub(crate) fn cabled_wire(doc: &ecad_model::Document, r: ecad_model::RouteId) ->
 pub(crate) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<CableId, &'static str> {
     match m {
         Mapped::Fan(k) => Ok(k),
-        Mapped::RefText(r) => match doc.representations.get(&r).map(|r| r.subject) {
+        Mapped::RefText(r) => match doc.representations().get(&r).map(|r| r.subject) {
             Some(Subject::Cable(k)) => Ok(k),
             _ => Err(NOT_A_CABLE),
         },

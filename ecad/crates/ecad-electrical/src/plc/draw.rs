@@ -210,7 +210,7 @@ fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
     if let Some((caption, true)) = crate::plc::caption(doc, c) {
         out.push((caption, TextKind::PartNumber));
     }
-    let prop = |k: &str| doc.devices.get(&c).and_then(|x| x.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let prop = |k: &str| doc.devices().get(&c).and_then(|x| x.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     for k in ["maker", "part_number"] {
         if let Some(v) = prop(k) {
             out.push((v, TextKind::PartNumber));
@@ -223,7 +223,7 @@ fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
 pub fn type_text(doc: &Document, c: DeviceId) -> String {
     let Some(ty) = crate::plc::card_type_of(doc, c) else { return String::new() };
     let builtin = ty.body().map(crate::symbols::catalogue::starter).map(|s| s.name);
-    let desc = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
+    let desc = doc.devices().get(&c).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
         None if ty.has_channels() => format!("{} {}", ty.code(), rack::channel_count(doc, c)),
@@ -343,7 +343,7 @@ pub const FRAME_DERIVED: &str = "The card's frame is derived; move the card's ce
 /// Whether representation `rid` is a PLC cell or card body (so a derived part mapped to it is a
 /// card frame's: a cell or body has no cross-reference parts of its own).
 pub fn is_frame_rep(doc: &Document, rid: RepresentationId) -> bool {
-    let Some(s) = doc.representations.get(&rid).and_then(|r| crate::devices::tags::rep_starter(doc, r)) else { return false };
+    let Some(s) = doc.representations().get(&rid).and_then(|r| crate::devices::tags::rep_starter(doc, r)) else { return false };
     crate::symbols::cells::cell_shape(s.key).is_some() || CardType::of_symbol(s).is_some_and(|t| !t.is_rack())
 }
 
@@ -421,8 +421,8 @@ pub(crate) fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut V
                 if !seen.insert(w) {
                     continue;
                 }
-                let Some(cond) = doc.wires.get(&w) else { continue };
-                let Some(route) = crate::wires::routes::route_of_wire_on(doc, w, page).and_then(|r| doc.routes.get(&r)).map(|r| &r.points) else {
+                let Some(cond) = doc.wires().get(&w) else { continue };
+                let Some(route) = crate::wires::routes::route_of_wire_on(doc, w, page).and_then(|r| doc.routes().get(&r)).map(|r| &r.points) else {
                     continue;
                 };
                 // A segment that passes well inside a frame (past the top edge it lands on):
@@ -444,11 +444,11 @@ pub(crate) fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut V
                     .find(|x| **x != t)
                     .map(|x| {
                         let name = crate::terminal_strips::terminal_blocks::connection_point_name(doc, *x);
-                        match doc.connection_points.get(x).and_then(|t| t.device()).and_then(|c| crate::devices::tags::tag_of(doc, c)) {
+                        match doc.connection_points().get(x).and_then(|t| t.device()).and_then(|c| crate::devices::tags::tag_of(doc, c)) {
                             Some(_) if !name.contains(':') => {
                                 format!(
                                     "{}:{name}",
-                                    doc.connection_points
+                                    doc.connection_points()
                                         .get(x)
                                         .and_then(|t| t.device())
                                         .map(|c| crate::devices::tags::tag_words(doc, c))

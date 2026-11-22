@@ -44,17 +44,17 @@ pub(crate) fn prop(d: &Document, c: DeviceId, k: &str) -> Option<String> {
 }
 
 pub(crate) fn tag(d: &Document, c: DeviceId) -> String {
-    d.devices.get(&c).and_then(|x| x.tag()).unwrap_or_default().to_string()
+    d.devices().get(&c).and_then(|x| x.tag()).unwrap_or_default().to_string()
 }
 
 /// The component whose tag is `t`.
 pub(crate) fn by_tag(d: &Document, t: &str) -> DeviceId {
-    d.devices.iter().find(|(_, c)| c.tag() == Some(t)).map(|(id, _)| *id).unwrap_or_else(|| panic!("no {t}"))
+    d.devices().iter().find(|(_, c)| c.tag() == Some(t)).map(|(id, _)| *id).unwrap_or_else(|| panic!("no {t}"))
 }
 
 /// A card's channel points: key (`.3.in`) to (label, terminal).
 pub(crate) fn channel_points(d: &Document, card: DeviceId) -> BTreeMap<String, (String, ConnectionPointId)> {
-    d.connection_points
+    d.connection_points()
         .iter()
         .filter(|(_, t)| t.device() == Some(card) && t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
         .map(|(id, t)| (t.key.as_ref().map(ToString::to_string).unwrap_or_default(), (t.label.clone().unwrap_or_default(), *id)))
@@ -89,7 +89,7 @@ pub(crate) fn rows_have_a_way_out(h: &mut H, kind: &str) {
 }
 
 pub(crate) fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.connection_points, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
+    (d.devices(), d.connection_points(), d.wires(), d.pages(), d.page_order(), d.representations(), d.items(), d.display())
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it, `redo` the one after.
@@ -135,7 +135,7 @@ pub(crate) fn read_everything(h: &mut H) {
     h.run("checks", json!({})).unwrap();
     h.run("bom", json!({"limit": 5000})).unwrap();
     h.run("defaults", json!({"group": "PLC"})).unwrap();
-    let pages = h.doc().page_order.clone();
+    let pages = h.doc().page_order().to_vec();
     for p in pages {
         h.run("pagetexts", json!({"page": p.hex()})).unwrap();
     }
@@ -209,14 +209,14 @@ pub(crate) fn raw_setprop(h: &mut H, c: DeviceId, key: &str, value: Option<&str>
         raw(h, vec![crate::common::plc_raw(&d, c, key, value)]);
         return;
     }
-    let before = d.devices.get(&c).and_then(|x| x.properties.get(key).cloned());
+    let before = d.devices().get(&c).and_then(|x| x.properties.get(key).cloned());
     raw(h, vec![Op::SetProperty { object: ObjectRef::Device(c), key: key.into(), before, after: value.map(str::to_string) }]);
 }
 
 /// Relabel or rekey a terminal by hand: Remove + Add.
 pub(crate) fn rekey_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>, new_key: Option<&str>) {
     let d = h.doc();
-    let before = d.connection_points[&t].clone();
+    let before = d.connection_points()[&t].clone();
     let mut after = before.clone();
     if let Some(l) = new_label {
         after.label = Some(l.to_string());

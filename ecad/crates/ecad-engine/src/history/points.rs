@@ -54,7 +54,7 @@ pub(crate) fn point_at(p: &Project, q: &PointQuery) -> Result<Point, CmdError> {
     if let Some(rev) = &q.revision {
         let want = read_rev(p, rev).map_err(|e| CmdError::refused(e.to_string()))?;
         let n = named_points(p, branch).map_err(CmdError::refused)?.into_iter().find(|n| n.point == PointName::Revision(want)).ok_or_else(|| {
-            CmdError::refused(format!("Rev {} has not been issued on this branch's line.", p.ledger.document().project.rev_scheme.show(want)))
+            CmdError::refused(format!("Rev {} has not been issued on this branch's line.", p.ledger.document().project().rev_scheme.show(want)))
         })?;
         return Ok(Point { branch: n.branch, seq: n.seq, title: n.name, kind: NodeKind::Revision });
     }
@@ -101,7 +101,7 @@ pub(crate) fn point_rev(p: &Project, pt: &Point) -> Option<Rev> {
 pub(crate) fn read_rev(p: &Project, text: &str) -> Result<Rev, ecad_model::RevError> {
     let t = text.trim();
     let t = t.strip_prefix("Rev ").unwrap_or(t);
-    p.ledger.document().project.rev_scheme.parse(t)
+    p.ledger.document().project().rev_scheme.parse(t)
 }
 
 /// The step that issued revision `rev`, whose `NameVersion` names step `at` of `branch`: the
@@ -125,7 +125,7 @@ pub fn issued_state(p: &Project, rev: Rev) -> Result<(Named, u64, Document), Str
     let n = named_points(p, current(p))?
         .into_iter()
         .find(|n| n.point == PointName::Revision(rev))
-        .ok_or_else(|| format!("Rev {} has not been issued on this branch's line.", p.ledger.document().project.rev_scheme.show(rev)))?;
+        .ok_or_else(|| format!("Rev {} has not been issued on this branch's line.", p.ledger.document().project().rev_scheme.show(rev)))?;
     if let Some(seq) = issue_seq(p, n.branch, n.seq, rev) {
         let pt = Point { branch: n.branch, seq, title: n.name.clone(), kind: NodeKind::Revision };
         let doc = state_at(p, &pt)?;
@@ -137,7 +137,9 @@ pub fn issued_state(p: &Project, rev: Rev) -> Result<(Named, u64, Document), Str
     let upto = revisions::list(live).into_iter().find(|r| r.issued && r.rev_value == Some(rev)).map_or(0, |r| r.n);
     // Design 072 §5.3: the issued rows up to it, as they are now.
     let upto = usize::try_from(upto).unwrap_or(usize::MAX);
-    then.project.revisions = live.project.revisions.iter().take(upto).filter(|r| r.issued).cloned().collect();
+    then.edit_parts(|parts| {
+        parts.project.revisions = live.project().revisions.iter().take(upto).filter(|r| r.issued).cloned().collect();
+    });
     Ok((n.clone(), n.seq, then))
 }
 
@@ -193,17 +195,17 @@ pub(crate) fn plan_restore(p: &Project, pt: &Point) -> Result<RestorePlan, Strin
     let mut pages = BTreeSet::new();
     for (kind, id) in objects.keys() {
         let page = match *kind {
-            "item" => live.items.get(&ecad_model::ItemId(*id)).or_else(|| then.items.get(&ecad_model::ItemId(*id))).map(|i| i.page),
+            "item" => live.items().get(&ecad_model::ItemId(*id)).or_else(|| then.items().get(&ecad_model::ItemId(*id))).map(|i| i.page),
             "page" => Some(ecad_model::PageId(*id)),
             "representation" => live
-                .representations
+                .representations()
                 .get(&ecad_model::RepresentationId(*id))
-                .or_else(|| then.representations.get(&ecad_model::RepresentationId(*id)))
+                .or_else(|| then.representations().get(&ecad_model::RepresentationId(*id)))
                 .map(|r| r.page),
             _ => None,
         };
         if let Some(pg) = page {
-            let doc = if live.pages.contains_key(&pg) { live } else { &then };
+            let doc = if live.pages().contains_key(&pg) { live } else { &then };
             pages.insert(ecad_electrical::references::cables::page_number(doc, pg));
         }
     }
@@ -410,7 +412,7 @@ fn show_point(p: &mut Project, q: &PointQuery) -> Result<Value, CmdError> {
     let pages: Vec<Value> = book
         .order
         .iter()
-        .map(|pg| json!({"page": pg.hex(), "number": book.number(&then, *pg), "title": then.pages.get(pg).map(|x| x.title.clone())}))
+        .map(|pg| json!({"page": pg.hex(), "number": book.number(&then, *pg), "title": then.pages().get(pg).map(|x| x.title.clone())}))
         .collect();
     let bar = bar_text(p, &pt);
     p.revision_view = Some(RevisionView {

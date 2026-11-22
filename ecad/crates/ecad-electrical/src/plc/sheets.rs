@@ -179,7 +179,7 @@ pub(crate) fn rack_sheets(doc: &Document, page: PageId, plc: &Plc) -> usize {
 /// `-A01 · CPU · <part number> · 32 slots, 6 used`.
 pub fn rack_heading(doc: &Document, plc: &Plc, rack: &crate::plc::RackData) -> String {
     let mut parts = vec![rack.tag.clone(), rack.ty.code().to_string()];
-    if let Some(p) = doc.devices.get(&rack.id).and_then(|x| x.part_number.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty()) {
+    if let Some(p) = doc.devices().get(&rack.id).and_then(|x| x.part_number.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty()) {
         parts.push(p.to_string());
     }
     parts.push(overview::rack_words(plc, rack));

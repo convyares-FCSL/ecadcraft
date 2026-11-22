@@ -45,17 +45,17 @@ fn fence_v(h: &mut H, strip: Option<DeviceId>, ty: &str, level: &str, x0: f64, x
 }
 
 fn label(d: &Document, t: ConnectionPointId) -> String {
-    d.connection_points.get(&t).and_then(|x| x.label.clone()).unwrap_or_default()
+    d.connection_points().get(&t).and_then(|x| x.label.clone()).unwrap_or_default()
 }
 
 fn key(d: &Document, t: ConnectionPointId) -> String {
-    d.connection_points.get(&t).and_then(|x| x.key.as_ref()).map(ToString::to_string).unwrap_or_default()
+    d.connection_points().get(&t).and_then(|x| x.key.as_ref()).map(ToString::to_string).unwrap_or_default()
 }
 
 /// A strip's terminals by position label, then level key.
 fn positions(d: &Document, strip: DeviceId) -> BTreeMap<String, BTreeMap<String, ConnectionPointId>> {
     let mut out: BTreeMap<String, BTreeMap<String, ConnectionPointId>> = BTreeMap::new();
-    for (tid, t) in &d.connection_points {
+    for (tid, t) in d.connection_points() {
         if t.device() == Some(strip) {
             out.entry(t.label.clone().unwrap_or_default()).or_default().insert(t.key.as_ref().map(ToString::to_string).unwrap_or_default(), *tid);
         }
@@ -64,7 +64,7 @@ fn positions(d: &Document, strip: DeviceId) -> BTreeMap<String, BTreeMap<String,
 }
 
 fn prop(h: &mut H, c: DeviceId, k: &str) -> Option<String> {
-    h.doc().devices.get(&c).and_then(|x| x.value(k))
+    h.doc().devices().get(&c).and_then(|x| x.value(k))
 }
 
 fn squash(v: Option<String>) -> Option<String> {
@@ -141,7 +141,7 @@ fn same_as_built_with(h: &mut H, wires: bool) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
+    (d.devices(), d.connection_points(), d.wires(), d.cables(), d.pages(), d.page_order(), d.representations(), d.items(), d.display())
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -203,7 +203,7 @@ fn read_everything(h: &mut H) {
 
 /// The representation (symbol) that shows terminal `t`, and its item.
 fn symbol_of(d: &Document, t: ConnectionPointId) -> Option<(ecad_model::RepresentationId, ecad_model::ItemId, PageId)> {
-    let comp = d.connection_points.get(&t)?.device()?;
+    let comp = d.connection_points().get(&t)?.device()?;
     d.representations_of(Subject::Device(comp))
         .find(|(_, r)| r.connection_points.contains_key(&t))
         .and_then(|(rid, r)| Some((rid, *r.items.first()?, r.page)))
@@ -570,7 +570,7 @@ fn h_toposition_converts_a_fuse_device() {
     let mut m = fixture_m(0x7036_000A);
     let x2 = with_sensor(&mut m);
     let d0 = m.h.doc();
-    let ft: Vec<ConnectionPointId> = d0.connection_points.iter().filter(|(_, t)| t.device() == Some(m.fuse_dev)).map(|(i, _)| *i).collect();
+    let ft: Vec<ConnectionPointId> = d0.connection_points().iter().filter(|(_, t)| t.device() == Some(m.fuse_dev)).map(|(i, _)| *i).collect();
     assert_eq!(ft.len(), 2);
     let conductors_of = |d: &Document, t: ConnectionPointId| -> Vec<ecad_model::WireId> {
         let c = d.connectivity();
@@ -580,7 +580,7 @@ fn h_toposition_converts_a_fuse_device() {
     assert!(!ca.is_empty() && !cb.is_empty());
     let v = step(&mut m.h, "toposition", json!({"device": m.fuse_dev.hex(), "strip": x2.hex()}));
     let d = m.h.doc();
-    assert!(!d.devices.contains_key(&m.fuse_dev), "-F gone: {v}");
+    assert!(!d.devices().contains_key(&m.fuse_dev), "-F gone: {v}");
     let pos = positions(&d, x2);
     let (p, l) = pos.iter().find(|(_, l)| l.contains_key(".1i")).map(|(p, l)| (p.clone(), l.clone())).unwrap_or_else(|| panic!("{pos:?}"));
     assert_eq!(p, "5", "§3.3 new position");
@@ -588,7 +588,7 @@ fn h_toposition_converts_a_fuse_device() {
     // end on the position's points, so they are new wires carrying the old ones' values (design
     // 072 §4.4).
     let numbers = |doc: &Document, ws: &[ecad_model::WireId]| -> Vec<String> {
-        let mut v: Vec<String> = ws.iter().map(|w| format!("{:?}", doc.wires.get(w).map(|x| &x.number))).collect();
+        let mut v: Vec<String> = ws.iter().map(|w| format!("{:?}", doc.wires().get(w).map(|x| &x.number))).collect();
         v.sort();
         v
     };
@@ -603,7 +603,7 @@ fn h_toposition_converts_a_fuse_device() {
     assert!(label.starts_with("-F01 \u{2192} -X") && label.ends_with(":5"), "transaction label `-F05 → -X01:7`: {label}");
     // The device's symbol now draws `terminalblockfuse` and is a symbol of the strip.
     let (rid, _, _) = symbol_of(&d, l[".1i"]).expect("the converted symbol shows the level");
-    assert!(d.representations[&rid].connection_points.contains_key(&l[".1o"]));
+    assert!(d.representations()[&rid].connection_points.contains_key(&l[".1o"]));
     // No fuse-device row left.
     assert!(checks_of(&mut m.h, "fuse-device").is_empty());
     m.h.check();
@@ -620,7 +620,7 @@ fn h_toposition_refusals() {
     let x2 = with_sensor(&mut m);
     let coil: DeviceId = id(&m.h.run("place", json!({"symbol": "coil", "at": [700, 200]})).unwrap(), "component");
     survives(&mut m.h, "toposition", json!({"device": coil.hex(), "strip": x2.hex()}));
-    assert!(m.h.doc().devices.contains_key(&coil));
+    assert!(m.h.doc().devices().contains_key(&coil));
     survives(&mut m.h, "toposition", json!({"device": x2.hex(), "strip": x2.hex()}));
     survives(&mut m.h, "toposition", json!({"device": m.fuse_dev.hex(), "strip": m.fuse_dev.hex()}));
     survives(&mut m.h, "toposition", json!({"device": "zz", "strip": x2.hex()}));
@@ -635,7 +635,7 @@ fn h_toposition_refusals() {
     m2.h.run("place", json!({"symbol": "fuseterminalblock", "at": [800, 200], "device": m2.fuse_dev.hex()})).ok();
     let n = m2.h.doc().representations_of(Subject::Device(m2.fuse_dev)).count();
     if n > 1 {
-        let strip = m2.h.doc().devices.keys().copied().find(|c| *c != m2.fuse_dev && positions(&m2.h.doc(), *c).len() == 4).unwrap();
+        let strip = m2.h.doc().devices().keys().copied().find(|c| *c != m2.fuse_dev && positions(&m2.h.doc(), *c).len() == 4).unwrap();
         refused(&mut m2.h, "toposition", json!({"device": m2.fuse_dev.hex(), "strip": strip.hex()}), "move them first");
     }
 }
@@ -804,7 +804,7 @@ fn k_deleting_a_level_loses_nothing_silently() {
         m.h.run("setprop", json!({"component": x1.hex(), "key": k, "value": v})).unwrap();
     }
     m.h.run("accessory", json!({"strip": x1.hex(), "at": "2", "items": ["partition"]})).unwrap();
-    let props_before: BTreeMap<String, String> = m.h.doc().devices[&x1].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let props_before: BTreeMap<String, String> = m.h.doc().devices()[&x1].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let d = m.h.doc();
     let (_, item, page) = symbol_of(&d, pos["2"][".2"]).unwrap();
     let hnd = m.h.handle_of(page, item);
@@ -812,7 +812,7 @@ fn k_deleting_a_level_loses_nothing_silently() {
     m.h.run("erase", json!({"handles": [hnd.hex()]})).unwrap();
     let d = m.h.doc();
     assert_eq!(label(&d, pos["2"][".1"]), "2", "position keeps its label");
-    let props_after: BTreeMap<String, String> = d.devices[&x1].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let props_after: BTreeMap<String, String> = d.devices()[&x1].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     for k in ["term_label.2.1", "jumper_bar.1", "acc.after.2"] {
         assert_eq!(props_after.get(k), props_before.get(k), "{k} kept");
     }
@@ -839,7 +839,7 @@ fn k_deleting_a_level_loses_nothing_silently() {
 /// Relabel a terminal by hand (a hostile file or a merge): Remove + Add with a new label.
 fn relabel_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>, new_key: Option<&str>) {
     let d = h.doc();
-    let before = d.connection_points[&t].clone();
+    let before = d.connection_points()[&t].clone();
     let mut after = before.clone();
     if let Some(l) = new_label {
         after.label = Some(l.to_string());

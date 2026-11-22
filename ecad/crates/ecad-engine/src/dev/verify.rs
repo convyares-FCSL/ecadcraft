@@ -192,7 +192,7 @@ pub(crate) fn verify_page_pending(
         let mut e = e.clone();
         if map.is_coloured(e.handle)
             && let Some(Mapped::Item(id)) = map.get(e.handle)
-            && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
+            && let Some(own) = doc.items().get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
         {
             e.common.color = own.common.color;
         }
@@ -202,7 +202,7 @@ pub(crate) fn verify_page_pending(
             && doc
                 .representation_of_item(id)
                 .is_some_and(|(_, r)| r.role == ecad_model::Role::LocationBox || matches!(r.subject, ecad_model::Subject::Route(_)))
-            && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
+            && let Some(own) = doc.items().get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
         {
             e.common.color = own.common.color;
             e.common.linetype = own.common.linetype;
@@ -229,14 +229,14 @@ pub(crate) fn verify_page_pending(
         // A reference end's text (brief 010's live text in brief 009's marker): one of the computed
         // parts, mapped to its reference.
         if let Some(Mapped::RefText(r)) = map.get(e.handle) {
-            if !doc.representations.contains_key(&r) {
+            if !doc.representations().contains_key(&r) {
                 problems.push(format!("a reference text is drawn for {r}, which does not exist"));
             }
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
         if let Some(Mapped::Label(c)) = map.get(e.handle) {
-            if !doc.wires.contains_key(&c) {
+            if !doc.wires().contains_key(&c) {
                 problems.push(format!("a label is drawn for {c}, which does not exist"));
             }
             *fan_shown.entry(computed_key(e)).or_default() += 1;
@@ -255,14 +255,14 @@ pub(crate) fn verify_page_pending(
             continue;
         }
         if let Some(Mapped::DeviceReference(r)) = map.get(e.handle) {
-            if !doc.representations.contains_key(&r) {
+            if !doc.representations().contains_key(&r) {
                 problems.push(format!("a cross-reference is drawn for {r}, which does not exist"));
             }
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
         if let Some(Mapped::Tag(r)) = map.get(e.handle) {
-            if !doc.representations.contains_key(&r) {
+            if !doc.representations().contains_key(&r) {
                 problems.push(format!("a tag text is drawn for {r}, which does not exist"));
             }
             *fan_shown.entry(computed_key(e)).or_default() += 1;
@@ -274,7 +274,7 @@ pub(crate) fn verify_page_pending(
         }
     }
     let mut expected: BTreeMap<String, usize> = BTreeMap::new();
-    for item in doc.items.iter().filter(|(id, i)| i.page == page && !hidden.contains(id)).map(|(_, i)| i) {
+    for item in doc.items().iter().filter(|(id, i)| i.page == page && !hidden.contains(id)).map(|(_, i)| i) {
         *expected.entry(serde_json::to_string(item).unwrap_or_default()).or_default() += 1;
     }
     let items: usize = expected.values().sum();
@@ -304,7 +304,7 @@ pub(crate) fn verify_page_pending(
     if map.len() != entities.len() {
         problems.push(format!("{} entities but {} mapped handles", entities.len(), map.len()));
     }
-    for (id, item) in doc.items.iter().filter(|(id, i)| i.page == page && !hidden.contains(id)) {
+    for (id, item) in doc.items().iter().filter(|(id, i)| i.page == page && !hidden.contains(id)) {
         match map.item(*id).and_then(|h| entities.get(&h)) {
             Some(e) if item_from(doc, page, &plain(e)).is_ok_and(|x| x == *item) => {}
             Some(_) => problems.push(format!("item {id} is mapped to an entity that shows something else")),
@@ -315,7 +315,7 @@ pub(crate) fn verify_page_pending(
     // 3. Terminal positions: drawn markers where the connection points are, and symbol terminals
     //    (from the block's markers and the insert) where the definition and placement put them.
     let mut expected_markers = Vec::new();
-    for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page) {
+    for (rid, r) in doc.representations().iter().filter(|(_, r)| r.page == page) {
         match r.form {
             Form::Drawn => {
                 for (t, at) in &r.connection_points {
@@ -330,7 +330,7 @@ pub(crate) fn verify_page_pending(
             Form::Symbol => {
                 let Some(item) = r.items.first() else { continue };
                 let Some(e) = map.item(*item).and_then(|h| entities.get(&h)) else { continue };
-                let Some(ItemKind::Symbol(inst)) = doc.items.get(item).map(|i| &i.kind) else { continue };
+                let Some(ItemKind::Symbol(inst)) = doc.items().get(item).map(|i| &i.kind) else { continue };
                 if !matches!(&e.kind, EntityKind::Insert(i) if i.block == block_name(inst.definition)) {
                     problems.push(format!("symbol of representation {rid} is not an insert of its definition's block"));
                     continue;
@@ -355,7 +355,7 @@ pub(crate) fn verify_page_pending(
 
     // 4. Blocks: one per definition used on the page, with the definition's graphics.
     for (name, b) in drawing.blocks.iter().filter(|(n, _)| n.starts_with(ECAD_PREFIX)) {
-        let Some(def) = crate::convert::definition_of_block(name).and_then(|id| doc.definitions.get(&id)) else {
+        let Some(def) = crate::convert::definition_of_block(name).and_then(|id| doc.definitions().get(&id)) else {
             problems.push(format!("block {name} has no definition in the document"));
             continue;
         };
@@ -374,7 +374,7 @@ pub(crate) fn verify_page_pending(
     let groups: HashMap<&str, BTreeSet<Handle>> =
         drawing.groups.iter().filter(|g| g.name.starts_with(ECAD_PREFIX)).map(|g| (g.name.as_str(), g.members.iter().copied().collect())).collect();
     let mut wanted_groups = 0;
-    for (rid, r) in doc.representations.iter().filter(|(_, r)| r.page == page && r.form == Form::Drawn) {
+    for (rid, r) in doc.representations().iter().filter(|(_, r)| r.page == page && r.form == Form::Drawn) {
         let mut members: BTreeSet<Handle> = r.items.iter().filter_map(|i| map.item(*i)).collect();
         members.extend(r.connection_points.keys().filter_map(|t| map.marker(*rid, *t)));
         if !matches!(r.subject, Subject::Device(_)) || members.len() < 2 {
@@ -406,7 +406,7 @@ pub(crate) fn verify_page_pending(
     drawn_connection_points.extend(entities.values().flat_map(|e| block_connection_points(drawing, e)));
     let shown = ecad_model::connectivity::derive::connection_point_positions(doc, page);
     for rid in doc.routes_on(page) {
-        let Some(c) = doc.routes.get(&rid) else { continue };
+        let Some(c) = doc.routes().get(&rid) else { continue };
         let Some((item, _)) = doc.representations_of(ecad_model::Subject::Route(rid)).find_map(|(_, r)| r.items.first().map(|i| (*i, r))) else {
             continue;
         };

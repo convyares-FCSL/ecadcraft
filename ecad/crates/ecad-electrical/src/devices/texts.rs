@@ -197,13 +197,13 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in connection_point_positions(doc, page) {
         // Brief 044: a pin pair shows its pin name once, beside the socket point.
-        if doc.representations.get(&rid).is_some_and(|r| crate::connectors::hides_label(doc, r, t)) {
+        if doc.representations().get(&rid).is_some_and(|r| crate::connectors::hides_label(doc, r, t)) {
             continue;
         }
         // Brief 044: a connector pin's label on the page is its pin name (`3`), beside its half's
         // tag; elsewhere it is named `-X10.S:3`.
         if crate::connectors::side_of(doc, t).is_some() {
-            if let Some(label) = doc.connection_points.get(&t).and_then(|x| x.label.clone()) {
+            if let Some(label) = doc.connection_points().get(&t).and_then(|x| x.label.clone()) {
                 by_rep.entry(rid).or_default().push((TextOf::ConnectionPoint(t), label, at));
             }
             continue;
@@ -232,7 +232,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     // Brief 050a (design 050 §4.1): a device's own text style for a kind (its
     // `text.<kind>.style`), else `None` (the kind's project style).
     let own = |c: DeviceId, kind: TextKind| -> Option<crate::styles::text_style::OwnStyle> {
-        let props = &doc.devices.get(&c)?.properties;
+        let props = &doc.devices().get(&c)?.properties;
         crate::styles::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), props)
     };
     let height_of = |c: DeviceId, kind: TextKind, project: f64| own(c, kind).map_or(project, |s| s.style.height);
@@ -271,7 +271,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         // Connection point labels keep their fixed rule (or a stored place, §6.4) and are obstacles.
         let labels_shown = shown(TextKind::PointLabel);
         let label_style = text_style(doc, TextKind::PointLabel);
-        let props = doc.devices.get(&c).map(|x| &x.properties);
+        let props = doc.devices().get(&c).map(|x| &x.properties);
         for (of, value, at, height, halign, valign) in texts_for(def, &pl, None, &labels, sizes) {
             let height = height_of(c, kind_of(of), height);
             let (mut at, mut halign, mut valign, mut moved) = (at, halign, valign, false);
@@ -316,7 +316,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         // The tag block (design 031 §6.1): the tag, then the description and part number.
         let Some((lo, hi)) = placed_box(def, &pl) else { continue };
         // Brief 026: a provisional tag is drawn in `ecad.provisional`.
-        let prov = doc.devices.get(&c).is_some_and(ecad_model::Device::is_provisional);
+        let prov = doc.devices().get(&c).is_some_and(ecad_model::Device::is_provisional);
         let mut lines: Vec<(TextOf, String, f64, bool, Option<u8>)> = Vec::new();
         // Brief 044 (design 044 §5.2): a connector symbol shows its half's tag and fields.
         let half = crate::connectors::rep_side(doc, r);
@@ -333,7 +333,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
             let value = match half {
                 Some(side @ (crate::symbols::Side::Socket | crate::symbols::Side::Plug)) => crate::connectors::half_prop(doc, c, side, key),
                 Some(crate::symbols::Side::Both) => None,
-                None => doc.devices.get(&c).and_then(|d| d.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+                None => doc.devices().get(&c).and_then(|d| d.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
             };
             if let Some(v) = value {
                 lines.push((of, v, height_of(c, kind, text_style(doc, kind).height), shown(kind), None));
@@ -407,7 +407,7 @@ fn slot_texts(
     use crate::styles::text_style::fonts::width_in;
     use crate::styles::text_style::{TextKind, text_style};
     use ecad_model::SlotText;
-    let device = doc.devices.get(&c);
+    let device = doc.devices().get(&c);
     let prop = |k: &str| device.and_then(|d| d.value(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let (h, v) = (|a: HAlign| a, |a: VAlign| a);
     let mut out = Vec::new();
@@ -415,7 +415,7 @@ fn slot_texts(
         let (of, kind, value, aci) = match &slot.text {
             SlotText::Tag => {
                 let t = crate::devices::tags::tag_shown_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, &t, boxes));
-                let prov = doc.devices.get(&c).is_some_and(ecad_model::Device::is_provisional);
+                let prov = doc.devices().get(&c).is_some_and(ecad_model::Device::is_provisional);
                 (TextOf::Tag, TextKind::Tag, t, prov.then_some(PROVISIONAL_ACI))
             }
             SlotText::Description => (TextOf::Description, TextKind::Description, prop("description"), None),
@@ -431,7 +431,7 @@ fn slot_texts(
         let style = text_style(doc, kind);
         // Brief 050a: the device's own text style of this kind, font included.
         let own =
-            doc.devices.get(&c).and_then(|x| crate::styles::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
+            doc.devices().get(&c).and_then(|x| crate::styles::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
         let height = match &own {
             Some(o) => o.style.height,
             None if of == TextOf::Tag => sizes.tag,
@@ -461,7 +461,7 @@ fn slot_texts(
 /// `text.<rep>.point_label.<terminal key>.at`, the terminal key being its definition key, else its
 /// label.
 pub(crate) fn point_label_key(doc: &Document, rep: RepresentationId, t: ConnectionPointId) -> String {
-    let term = doc.connection_points.get(&t);
+    let term = doc.connection_points().get(&t);
     let key = term.and_then(|x| x.key.as_ref()).map(ToString::to_string).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
     format!("{}point_label.{key}.at", crate::styles::text_style::symbol_prefix(rep))
 }

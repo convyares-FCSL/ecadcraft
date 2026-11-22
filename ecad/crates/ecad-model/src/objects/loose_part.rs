@@ -22,7 +22,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::doc::Device;
+use crate::Device;
 use crate::naming::id::{FunctionId, LocationId};
 use crate::objects::devices::PartText;
 

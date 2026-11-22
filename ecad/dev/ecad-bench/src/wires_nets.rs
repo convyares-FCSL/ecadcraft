@@ -86,12 +86,14 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
             .read(&mut s, |p, _| -> Result<_, LabelPage> {
                 let doc = p.ledger.document();
                 let (page, routes) =
-                    doc.page_order.iter().map(|pg| (*pg, doc.routes_on(*pg).count())).max_by_key(|(_, n)| *n).ok_or(LabelPage::Empty)?;
+                    doc.page_order().iter().map(|pg| (*pg, doc.routes_on(*pg).count())).max_by_key(|(_, n)| *n).ok_or(LabelPage::Empty)?;
                 if routes == 0 {
                     return Err(LabelPage::Unrouted(page));
                 }
                 let mut each_doc = doc.clone();
-                each_doc.settings.wiring.label_rule = Some(ecad_model::connectivity::wiring::LABEL_RULE_EACH.into());
+                each_doc.edit_parts(|parts| {
+                    parts.settings.wiring.label_rule = Some(ecad_model::connectivity::wiring::LABEL_RULE_EACH.into());
+                });
                 for (rule, d) in [("net", doc), ("each", &each_doc)] {
                     if ecad_engine::wires::draw::labels_on_page(d, page).is_empty() {
                         return Err(LabelPage::Unlabelled { page, routes, rule });

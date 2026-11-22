@@ -6,7 +6,7 @@ use super::*;
 pub fn route_item(doc: &Document, r: RouteId) -> Option<(RepresentationId, ItemId, &Item)> {
     doc.representations_of(Subject::Route(r)).find_map(|(rid, rep)| {
         let id = *rep.items.first()?;
-        Some((rid, id, doc.items.get(&id)?))
+        Some((rid, id, doc.items().get(&id)?))
     })
 }
 
@@ -17,7 +17,7 @@ pub fn route_item(doc: &Document, r: RouteId) -> Option<(RepresentationId, ItemI
 pub fn tees_on_page(doc: &Document, page: PageId) -> Vec<(RouteId, u8, Pt)> {
     let mut out = Vec::new();
     for r in doc.routes_on(page) {
-        let Some(route) = doc.routes.get(&r) else { continue };
+        let Some(route) = doc.routes().get(&r) else { continue };
         for (i, end) in (0u8..).zip(route.ends) {
             if let RouteEnd::On { at, .. } = end
                 && at.is_finite()
@@ -31,7 +31,7 @@ pub fn tees_on_page(doc: &Document, page: PageId) -> Vec<(RouteId, u8, Pt)> {
 
 /// Route `r`'s item, the item and the route's points.
 pub fn route_vertices(doc: &Document, r: RouteId) -> Option<(ItemId, Item, Vec<Pt>)> {
-    let route = doc.routes.get(&r)?;
+    let route = doc.routes().get(&r)?;
     let (_, id, item) = route_item(doc, r)?;
     Some((id, item.clone(), route.points.clone()))
 }
@@ -73,11 +73,11 @@ pub fn remove_route_ops(doc: &Document, r: RouteId) -> Vec<Op> {
         items.extend(rep.items.iter().copied());
     }
     for i in items {
-        if let Some(item) = doc.items.get(&i) {
+        if let Some(item) = doc.items().get(&i) {
             ops.push(Op::RemoveItem { id: i, item: item.clone() });
         }
     }
-    if let Some(route) = doc.routes.get(&r) {
+    if let Some(route) = doc.routes().get(&r) {
         ops.push(Op::RemoveRoute { id: r, route: route.clone() });
     }
     ops
@@ -99,7 +99,7 @@ impl<'a> RouteEdits<'a> {
     /// Route `r` as changed so far, to change further; `None` when there is no such route.
     pub fn get(&mut self, r: RouteId) -> Option<&mut Route> {
         if !self.after.contains_key(&r) {
-            let route = self.doc.routes.get(&r)?.clone();
+            let route = self.doc.routes().get(&r)?.clone();
             self.after.insert(r, route);
         }
         self.after.get_mut(&r)
@@ -163,7 +163,7 @@ impl<'a> RouteEdits<'a> {
     pub fn ops(self) -> Vec<Op> {
         let mut ops = Vec::new();
         for (r, after) in self.after {
-            let Some(before) = self.doc.routes.get(&r) else { continue };
+            let Some(before) = self.doc.routes().get(&r) else { continue };
             if *before == after {
                 continue;
             }
@@ -203,7 +203,7 @@ pub(crate) fn repoint_ops(doc: &Document, map: &BTreeMap<ConnectionPointId, Conn
 pub(crate) fn loose_ends_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Vec<(RouteId, End)> {
     let mut out = Vec::new();
     for r in doc.routes_on(page) {
-        let Some(route) = doc.routes.get(&r) else { continue };
+        let Some(route) = doc.routes().get(&r) else { continue };
         for (end, e) in End::BOTH.into_iter().zip(route.ends) {
             if e == RouteEnd::Free && end_point(doc, r, end).is_some_and(|p| p.near(at, tol)) {
                 out.push((r, end));
@@ -217,7 +217,7 @@ pub(crate) fn loose_ends_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> V
 
 /// The wire between connection points `a` and `b`, if there is one (through the index).
 pub fn wire_between(doc: &Document, a: ConnectionPointId, b: ConnectionPointId) -> Option<WireId> {
-    doc.ends_at(a).into_iter().map(|(w, _)| w).find(|w| doc.wires.get(w).is_some_and(|x| x.ends.contains(&a) && x.ends.contains(&b)))
+    doc.ends_at(a).into_iter().map(|(w, _)| w).find(|w| doc.wires().get(w).is_some_and(|x| x.ends.contains(&a) && x.ends.contains(&b)))
 }
 
 /// A connection point route `r` reaches over routes, the nearest first: its own ends, then the
@@ -230,7 +230,7 @@ fn point_of_route(doc: &Document, r: RouteId) -> Option<ConnectionPointId> {
         if !seen.insert(x) {
             continue;
         }
-        let Some(route) = doc.routes.get(&x) else { continue };
+        let Some(route) = doc.routes().get(&x) else { continue };
         // A named point (a cable reference's, F4) is an aid: no wire ends there.
         if let Some(t) = route.points_landed().find(|t| doc.named_points(*t).is_none()) {
             return Some(t);
@@ -245,29 +245,29 @@ fn point_of_route(doc: &Document, r: RouteId) -> Option<ConnectionPointId> {
 /// points when it runs from one to the other, else the first (in net order) of the wires at the
 /// nearest connection point it reaches. `None` for a route on no net with wires.
 pub fn wire_of_route(doc: &Document, r: RouteId) -> Option<WireId> {
-    let route = doc.routes.get(&r)?;
+    let route = doc.routes().get(&r)?;
     if let [RouteEnd::Point(a), RouteEnd::Point(b)] = route.ends
         && let Some(w) = wire_between(doc, a, b)
     {
         return Some(w);
     }
     let t = point_of_route(doc, r)?;
-    doc.ends_at(t).into_iter().map(|(w, _)| w).filter_map(|w| doc.wires.get(&w).map(|x| (x.net_order, w))).min().map(|(_, w)| w)
+    doc.ends_at(t).into_iter().map(|(w, _)| w).filter_map(|w| doc.wires().get(&w).map(|x| (x.net_order, w))).min().map(|(_, w)| w)
 }
 
 /// The wires route `r` carries: the wire between its two connection points when it runs from one
 /// to the other, else every wire of its net, in net order.
 pub fn wires_of_route(doc: &Document, r: RouteId) -> Vec<WireId> {
-    let Some(route) = doc.routes.get(&r) else { return Vec::new() };
+    let Some(route) = doc.routes().get(&r) else { return Vec::new() };
     if let [RouteEnd::Point(a), RouteEnd::Point(b)] = route.ends
         && let Some(w) = wire_between(doc, a, b)
     {
         return vec![w];
     }
-    let Some(net) = point_of_route(doc, r).and_then(|t| doc.ends_at(t).first().and_then(|(w, _)| doc.wires.get(w)).map(|w| w.net)) else {
+    let Some(net) = point_of_route(doc, r).and_then(|t| doc.ends_at(t).first().and_then(|(w, _)| doc.wires().get(w)).map(|w| w.net)) else {
         return Vec::new();
     };
-    let mut v: Vec<(u16, WireId)> = doc.wires_of_net(net).filter_map(|w| doc.wires.get(&w).map(|x| (x.net_order, w))).collect();
+    let mut v: Vec<(u16, WireId)> = doc.wires_of_net(net).filter_map(|w| doc.wires().get(&w).map(|x| (x.net_order, w))).collect();
     v.sort_unstable();
     v.into_iter().map(|(_, w)| w).collect()
 }
@@ -275,7 +275,7 @@ pub fn wires_of_route(doc: &Document, r: RouteId) -> Vec<WireId> {
 /// The routes drawing wire `w`: those with an end on either of its connection points, in ID
 /// order (through the index).
 pub fn routes_of_wire(doc: &Document, w: WireId) -> Vec<RouteId> {
-    let Some(wire) = doc.wires.get(&w) else { return Vec::new() };
+    let Some(wire) = doc.wires().get(&w) else { return Vec::new() };
     let mut v: Vec<RouteId> = wire.ends.iter().flat_map(|t| doc.routes_at(*t)).collect();
     v.sort_unstable();
     v.dedup();
@@ -285,9 +285,9 @@ pub fn routes_of_wire(doc: &Document, w: WireId) -> Vec<RouteId> {
 /// The route drawing wire `w` on `page`: the one running straight between its two points when
 /// there is one, else the first of [`routes_of_wire`] there.
 pub fn route_of_wire_on(doc: &Document, w: WireId, page: PageId) -> Option<RouteId> {
-    let ends = doc.wires.get(&w)?.ends;
-    let here: Vec<RouteId> = routes_of_wire(doc, w).into_iter().filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page)).collect();
-    let direct = here.iter().copied().find(|r| doc.routes.get(r).is_some_and(|x| ends.iter().all(|t| x.ends.contains(&RouteEnd::Point(*t)))));
+    let ends = doc.wires().get(&w)?.ends;
+    let here: Vec<RouteId> = routes_of_wire(doc, w).into_iter().filter(|r| doc.routes().get(r).is_some_and(|x| x.page == page)).collect();
+    let direct = here.iter().copied().find(|r| doc.routes().get(r).is_some_and(|x| ends.iter().all(|t| x.ends.contains(&RouteEnd::Point(*t)))));
     direct.or_else(|| here.first().copied())
 }
 
@@ -296,7 +296,7 @@ pub fn route_of_wire_on(doc: &Document, w: WireId, page: PageId) -> Option<Route
 pub(crate) fn drawn_ends_at(doc: &Document, t: ConnectionPointId) -> Vec<(PageId, Pt)> {
     let mut out = Vec::new();
     for r in doc.routes_at(t) {
-        let Some(route) = doc.routes.get(&r) else { continue };
+        let Some(route) = doc.routes().get(&r) else { continue };
         for (p, e) in [route.points.first(), route.points.last()].into_iter().zip(route.ends) {
             if let Some(p) = p
                 && e == RouteEnd::Point(t)
@@ -310,5 +310,5 @@ pub(crate) fn drawn_ends_at(doc: &Document, t: ConnectionPointId) -> Vec<(PageId
 
 /// The pages wire `w` is drawn on (see [`routes_of_wire`]).
 pub fn wire_pages(doc: &Document, w: WireId) -> BTreeSet<PageId> {
-    routes_of_wire(doc, w).into_iter().filter_map(|r| doc.routes.get(&r).map(|x| x.page)).collect()
+    routes_of_wire(doc, w).into_iter().filter_map(|r| doc.routes().get(&r).map(|x| x.page)).collect()
 }

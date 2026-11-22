@@ -99,7 +99,7 @@ impl ViewScope for PropsScope {
 
 /// The devices of the connection points `ends`, in `doc`.
 fn devices_at<'a>(doc: &'a Document, ends: impl Iterator<Item = ConnectionPointId> + 'a) -> impl Iterator<Item = ObjectRef> + 'a {
-    ends.filter_map(|t| doc.connection_points.get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device)
+    ends.filter_map(|t| doc.connection_points().get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device)
 }
 
 /// The object a subject's properties are kept on (a route has none, design 072 F31; nor has an

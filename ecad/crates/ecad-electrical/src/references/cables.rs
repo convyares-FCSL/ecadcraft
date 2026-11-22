@@ -57,7 +57,7 @@ pub struct Sizes {
 
 /// The sizes for `doc`'s length unit (millimetre tokens divided by 25.4 in an inch project).
 pub fn sizes(doc: &Document) -> Sizes {
-    let k = match doc.settings.length_unit {
+    let k = match doc.settings().length_unit {
         LengthUnit::Millimetre => 1.0,
         LengthUnit::Inch => 1.0 / 25.4,
     };
@@ -87,7 +87,7 @@ pub fn all(doc: &Document) -> Vec<CableReference> {
 /// text depends on): the cost is that cable's, not the document's. `None` when it is no cable
 /// reference.
 pub fn reference_of(doc: &Document, reference: RepresentationId) -> Option<CableReference> {
-    let Some(Subject::Cable(cable)) = doc.representations.get(&reference).map(|r| r.subject) else { return None };
+    let Some(Subject::Cable(cable)) = doc.representations().get(&reference).map(|r| r.subject) else { return None };
     cable_references_of(doc, &BTreeSet::from([cable])).into_iter().find(|r| r.reference == reference)
 }
 
@@ -189,7 +189,7 @@ pub fn marker_text(doc: &Document, reference: RepresentationId) -> Option<(Strin
 /// Derives only the references of that end's cable (all a reference's text depends on), so a page
 /// with reference ends costs in proportion to their cables, not to the document (brief 014).
 pub(crate) fn marker_text_dir(doc: &Document, reference: RepresentationId) -> Option<(String, bool, Pt)> {
-    let Some(Subject::Cable(cable)) = doc.representations.get(&reference).map(|r| r.subject) else { return None };
+    let Some(Subject::Cable(cable)) = doc.representations().get(&reference).map(|r| r.subject) else { return None };
     cable_references_of(doc, &BTreeSet::from([cable])).into_iter().find(|r| r.reference == reference).map(|r| (r.text, r.orphan, r.text_dir))
 }
 
@@ -230,7 +230,7 @@ fn text_box_holds(m: &Marker, p: Pt, pad: f64, h: f64, metrics: &dyn TextMetrics
 /// The pages (in page order) where `conductor` has a route ([`crate::wires::routes::wire_pages`]).
 pub fn route_pages(doc: &Document, conductor: WireId) -> Vec<PageId> {
     let on = crate::wires::routes::wire_pages(doc, conductor);
-    doc.page_order.iter().copied().filter(|p| on.contains(p)).collect()
+    doc.page_order().iter().copied().filter(|p| on.contains(p)).collect()
 }
 
 /// The number a page is shown with (brief 019): its `number` property, else its position in book
@@ -243,7 +243,7 @@ pub fn page_number(doc: &Document, page: PageId) -> String {
 /// `page 2 "Field"` (or `page ? "Field"` for a page in no order).
 pub fn page_words(doc: &Document, page: PageId) -> String {
     let n = page_number(doc, page);
-    let title = doc.pages.get(&page).map(|p| p.title.as_str()).unwrap_or_default();
+    let title = doc.pages().get(&page).map(|p| p.title.as_str()).unwrap_or_default();
     format!("page {n} \"{title}\"")
 }
 
@@ -298,7 +298,7 @@ pub(crate) const TOWARD_EQUAL: &str = "`toward` must differ from `at`";
 /// # Errors
 /// `no such cable`, or the refusal's words.
 pub fn check_reference(doc: &Document, page: PageId, cable: CableId) -> Result<(), CmdError> {
-    let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
+    let c = doc.cables().get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
     let references = references_of(doc, cable);
     if references.iter().any(|(_, r)| r.page == page) {
         return Err(CmdError::refused(already_here(doc, cable)));
@@ -381,7 +381,7 @@ pub fn plan_continue(
     if at.near(toward, tol) {
         return Err(CmdError::refused(TOWARD_EQUAL));
     }
-    let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
+    let c = doc.cables().get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
     let references = references_of(doc, cable);
     let Some((source, s)) = references.first().map(|(id, r)| (*id, *r)) else { return Err(CmdError::refused(no_reference(doc, cable))) };
     if references.len() >= MAX_REFERENCES_PER_CABLE {
@@ -390,7 +390,7 @@ pub fn plan_continue(
     if s.page == page {
         return Err(CmdError::refused(drawn_here(doc, cable)));
     }
-    let source_at = s.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+    let source_at = s.items.first().and_then(|i| doc.items().get(i)).and_then(|i| match &i.kind {
         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
         _ => None,
     });
@@ -419,7 +419,7 @@ pub fn plan_continue(
     };
     let drawn_on = |i: usize, pg: PageId| match c.cores.get(i).map(|m| m.position) {
         Some(ecad_model::CorePosition::Wire(w)) => crate::wires::routes::wire_pages(doc, w).contains(&pg),
-        Some(ecad_model::CorePosition::Route { route, .. }) => doc.routes.get(&route).is_some_and(|r| r.page == pg),
+        Some(ecad_model::CorePosition::Route { route, .. }) => doc.routes().get(&route).is_some_and(|r| r.page == pg),
         _ => false,
     };
     if !candidates.is_empty() && candidates.iter().all(|(i, _)| drawn_on(*i, page)) {
@@ -434,7 +434,7 @@ pub fn plan_continue(
             skipped.push((h.clone(), Skip::DrawnHere));
             continue;
         }
-        let line = c.cores.get(*i).and_then(|m| m.route()).and_then(|r| Some((r, doc.routes.get(&r)?)));
+        let line = c.cores.get(*i).and_then(|m| m.route()).and_then(|r| Some((r, doc.routes().get(&r)?)));
         let free = line.filter(|(_, r)| r.page == s.page).and_then(|(id, r)| {
             let ends = r.end_points()?;
             let k = (0..2).filter(|k| r.ends[*k] == RouteEnd::Free).min_by(|x, y| {
@@ -617,7 +617,7 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
                 route_cables(doc, *id, r, out);
             }
         }
-        Effect::Wire { id, before: None, .. } if !doc.wires.contains_key(id) => {}
+        Effect::Wire { id, before: None, .. } if !doc.wires().contains_key(id) => {}
         // A wire made again in one transaction: any cable, as before.
         Effect::Wire { before: None, .. } => return Touch::All("a wire made again in one transaction may have been a core of any cable"), // all
         // Brief 032 (a fold deletes the folded wire; numbering writes wire numbers): a
@@ -628,7 +628,7 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         // column or row (`derive::references_from`), never a device, strip or connector name. A
         // removed component's connection points and representations go as effects of their own.
         Effect::Device { .. } => {}
-        Effect::ConnectionPoint { id, before: None, .. } if !doc.connection_points.contains_key(id) => {}
+        Effect::ConnectionPoint { id, before: None, .. } if !doc.connection_points().contains_key(id) => {}
         // Brief 028: a relabelled connection point reaches only the cables of the wires on it.
         Effect::ConnectionPoint { id, .. } => out.extend(doc.ends_at(*id).into_iter().flat_map(|(w, _)| doc.cables_of(w))),
         // A symbol definition, a device's definition or link and a layer are read by no reference
@@ -732,11 +732,11 @@ impl Snapshot {
         if scope.is_some() {
             let with_references: BTreeSet<CableId> = references.iter().map(|r| r.cable).collect();
             for k in with_references {
-                let list = doc.cables.get(&k).map(|c| c.cores.as_slice()).unwrap_or_default();
+                let list = doc.cables().get(&k).map(|c| c.cores.as_slice()).unwrap_or_default();
                 let state: MemberState = list
                     .iter()
                     .map(|m| {
-                        let ends = m.wire().and_then(|w| doc.wires.get(&w)).map(|c| c.ends);
+                        let ends = m.wire().and_then(|w| doc.wires().get(&w)).map(|c| c.ends);
                         (m.position, crate::cables::member_pages(doc, m).into_iter().collect(), ends)
                     })
                     .collect();
@@ -821,12 +821,12 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
             // says `… and N more`.
             let shown: BTreeSet<ecad_model::ConnectionPointId> =
                 ecad_model::connectivity::derive::connection_point_positions(doc, o.page).into_iter().map(|(t, _, _)| t).collect();
-            let members = doc.cables.get(&r.cable).map(|c| c.cores.as_slice()).unwrap_or_default();
+            let members = doc.cables().get(&r.cable).map(|c| c.cores.as_slice()).unwrap_or_default();
             for m in members.iter().filter(|m| crate::cables::member_pages(doc, m).contains(&o.page)) {
                 if lines.len() > crate::cables::words::MAX_HOVER_LINES {
                     break;
                 }
-                let connection_point = m.wire().and_then(|w| doc.wires.get(&w)).and_then(|c| connection_point_on(doc, &shown, c));
+                let connection_point = m.wire().and_then(|w| doc.wires().get(&w)).and_then(|c| connection_point_on(doc, &shown, c));
                 let to = connection_point.unwrap_or_else(|| "(not connected)".into());
                 lines.push(format!("  {} -> {to}", crate::cables::slash::position_name(doc, m.position)));
             }
@@ -842,9 +842,9 @@ fn connection_point_on(doc: &Document, shown: &BTreeSet<ecad_model::ConnectionPo
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return Some(name);
     }
-    let term = doc.connection_points.get(&t)?;
+    let term = doc.connection_points().get(&t)?;
     let c = term.device()?;
-    let comp = doc.devices.get(&c).and_then(|x| x.tag_shown()).unwrap_or_else(|| format!("{}…", c.hex().get(..8).unwrap_or_default()));
+    let comp = doc.devices().get(&c).and_then(|x| x.tag_shown()).unwrap_or_else(|| format!("{}…", c.hex().get(..8).unwrap_or_default()));
     Some(format!("{comp}:{}", crate::terminal_strips::terminal_blocks::connection_point_name(doc, t)))
 }
 
@@ -905,7 +905,7 @@ pub struct Continued {
 /// `cable` already has a slash on this page; none of its wires or lines runs on this page; a
 /// crossed wire or line is not one of its cores.
 pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed: &[CorePosition]) -> Result<Vec<Continued>, CmdError> {
-    let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
+    let c = doc.cables().get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
     let tag = title(doc, cable);
     if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
         return Err(CmdError::refused(format!("{tag} already has a slash on this page.")));
@@ -962,7 +962,7 @@ pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
     }
     let mut ops = Vec::new();
     for (k, pages) in by_cable {
-        let Some(c) = doc.cables.get(&k) else { continue };
+        let Some(c) = doc.cables().get(&k) else { continue };
         let kept = doc.representations_of(Subject::Cable(k)).any(|(id, r)| r.role == ecad_model::Role::Slash && !gone.contains(&id));
         if !kept {
             continue;
@@ -1005,7 +1005,7 @@ fn reference_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
         });
         let lines: BTreeSet<RouteId> = gone.iter().flat_map(|t| doc.routes_at(*t)).filter(|x| !removed.contains(x)).collect();
         for id in lines {
-            let Some(before) = doc.routes.get(&id) else { continue };
+            let Some(before) = doc.routes().get(&id) else { continue };
             let mut after = before.clone();
             for e in &mut after.ends {
                 if e.point().is_some_and(|t| gone.contains(&t)) {
@@ -1037,10 +1037,10 @@ pub fn references_json(doc: &Document, references: &[CableReference]) -> Value {
                 json!({
                     "reference": r.reference.hex(),
                     "cable": r.cable.hex(),
-                    "cable_tag": doc.cables.get(&r.cable).and_then(|c| c.tag_shown()),
+                    "cable_tag": doc.cables().get(&r.cable).and_then(|c| c.tag_shown()),
                     "page": r.page.hex(),
                     "page_number": r.page_number,
-                    "page_title": doc.pages.get(&r.page).map(|p| p.title.to_string()).unwrap_or_default(),
+                    "page_title": doc.pages().get(&r.page).map(|p| p.title.to_string()).unwrap_or_default(),
                     "at": r.at.map(|p| json!([p.x, p.y])),
                     "column": r.column,
                     // Brief 019: the frame's row and labels, and this end's own place.

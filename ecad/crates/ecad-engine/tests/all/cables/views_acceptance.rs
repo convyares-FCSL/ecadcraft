@@ -796,7 +796,7 @@ fn ac3_fans_of_one_two_and_twenty_wires() {
     assert_eq!(tails(&mut h, page, twenty).len(), 40);
     // A fan cable left with one wire is drawn traditional on the page (design 009 §4.1): its
     // route is drawn, no panic.
-    let members: Vec<WireId> = h.doc().cables[&two].cores.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<WireId> = h.doc().cables()[&two].cores.iter().filter_map(|m| m.wire()).collect();
     h.run("ecaddelete", json!({"conductor": members[1].hex()})).unwrap();
     h.check();
     assert_eq!(view_of(&mut h, two), "fan");
@@ -907,7 +907,7 @@ fn ac3_hostile_coordinates_never_panic() {
     eprintln!("tiny wire accepted: {}", tiny.is_ok());
     if let Ok(r) = h.run("cableslash", json!({"from": [20, -1], "to": [20, 5]})) {
         let k: CableId = id(&r, "cable");
-        let n = h.doc().cables[&k].cores.len();
+        let n = h.doc().cables()[&k].cores.len();
         let r = h.run("cableview", json!({"cable": k.hex(), "view": "fan"}));
         h.check();
         eprintln!("tiny-reference cable of {n}: {r:?}, fan paths {:?}", fan_paths(&mut h, page));
@@ -930,11 +930,11 @@ fn ac3_a_fan_that_cannot_be_drawn_stays_traditional_and_says_so() {
     };
     let r = h.run("cableslash", json!({"from": [20, -3], "to": [20, 13]})).unwrap();
     let k: CableId = id(&r, "cable");
-    if h.doc().cables[&k].cores.len() != 3 {
+    if h.doc().cables()[&k].cores.len() != 3 {
         eprintln!("the slash does not take the overflowing wire: {r}; the fallback is not reachable from outside");
         return;
     }
-    assert_eq!(h.doc().cables[&k].cores[1].wire(), Some(id::<WireId>(&huge, "conductor")), "the reference");
+    assert_eq!(h.doc().cables()[&k].cores[1].wire(), Some(id::<WireId>(&huge, "conductor")), "the reference");
     let r = h.run("cableview", json!({"cable": k.hex(), "view": "fan"})).unwrap();
     assert_eq!(r["view"], "fan", "{r}");
     h.check();
@@ -972,7 +972,9 @@ fn ac3_degenerate_reference_routes_fall_back_without_panic() {
     ];
     for (name, prim, fails) in cases {
         let mut d = doc.clone();
-        d.items.get_mut(&item).unwrap().kind = ecad_model::ItemKind::Primitive(prim);
+        d.edit_parts(|parts| {
+            parts.items.get_mut(&item).unwrap().kind = ecad_model::ItemKind::Primitive(prim);
+        });
         let got = std::panic::catch_unwind(|| views::fan_on_page(&d, g.page, g.c1, 1e-6));
         let got = got.unwrap_or_else(|_| panic!("{name}: fan_on_page panicked"));
         match (&got, fails) {
@@ -1009,7 +1011,7 @@ fn ac4_undo_and_redo_act_on_the_last_real_edit() {
     let after_slash = g.h.doc();
     set(&mut g.h, g.c1, "fan");
     g.h.cmdline("u");
-    assert!(!g.h.doc().cables.contains_key(&g.c1), "u took the cableslash");
+    assert!(!g.h.doc().cables().contains_key(&g.c1), "u took the cableslash");
     g.h.cmdline("redo");
     assert_eq!(g.h.doc(), after_slash);
     assert_eq!(view_of(&mut g.h, g.c1), "fan", "still fan after redo");
@@ -1193,8 +1195,8 @@ fn the_fan_follows_route_edits_made_in_traditional_view() {
     let joined = g.h.run("connect", json!({"route": line.hex(), "end": "B", "connection_point": to.hex()}));
     eprintln!("connect: {joined:?}");
     let doc = g.h.doc();
-    assert_eq!(doc.routes[&line].ends[1], ecad_model::RouteEnd::Point(to), "the moved end is on the point");
-    assert_eq!(doc.cables[&g.c1].cores.len(), 3, "the core stays in the cable");
+    assert_eq!(doc.routes()[&line].ends[1], ecad_model::RouteEnd::Point(to), "the moved end is on the point");
+    assert_eq!(doc.cables()[&g.c1].cores.len(), 3, "the core stays in the cable");
     set(&mut g.h, g.c1, "fan");
     let end = Pt::new(60.0, 6.0);
     let paths = fan_paths(&mut g.h, g.page);
@@ -1493,10 +1495,10 @@ fn round2_observation5_view_after_undo_switch_redo() {
     let k1: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18]})).unwrap(), "cable");
     set(&mut h, k1, "fan");
     h.run("u", Value::Null).unwrap();
-    assert!(!h.doc().cables.contains_key(&k1));
+    assert!(!h.doc().cables().contains_key(&k1));
     set(&mut h, k2, "fan");
     h.run("redo", Value::Null).unwrap();
-    assert!(h.doc().cables.contains_key(&k1));
+    assert!(h.doc().cables().contains_key(&k1));
     eprintln!("observation 5: after undo, another switch and redo, the first cable is {}", view_of(&mut h, k1));
     h.check();
 }

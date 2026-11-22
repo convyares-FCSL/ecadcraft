@@ -772,7 +772,7 @@ impl IoView {
         };
         // The book's overview page (design 056 §8).
         self.book_page = doc
-            .page_order
+            .page_order()
             .iter()
             .find(|p| ecad_electrical::pages::generated::kind_of(doc, **p) == Some(ecad_model::GenKind::PlcRack))
             .map(|p| (*p, ecad_electrical::references::cables::page_number(doc, *p)));

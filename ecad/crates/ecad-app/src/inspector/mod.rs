@@ -505,7 +505,7 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         let desc_origin = if own("description") {
             "set here"
         } else if doc
-            .display
+            .display()
             .keys()
             .any(|k| ecad_model::naming::keys::in_area(k, ecad_model::naming::keys::Area::Connector) && k.ends_with(".description"))
         {
@@ -525,10 +525,10 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         out.push(row("location", "Location", h.location.value.clone(), loc_origin, None));
     }
     // A pin symbol: its pin, and where its mate is.
-    let Some(r) = doc.representations.get(&rep) else { return out };
+    let Some(r) = doc.representations().get(&rep) else { return out };
     if ecad_electrical::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Pin {
         let t = r.connection_points.keys().next().copied();
-        let name = t.and_then(|t| doc.connection_points.get(&t)).and_then(|x| x.label.clone()).unwrap_or_default();
+        let name = t.and_then(|t| doc.connection_points().get(&t)).and_then(|x| x.label.clone()).unwrap_or_default();
         out.push(ConnectorRow {
             key: "pin".into(),
             heading: None,
@@ -647,7 +647,7 @@ fn style_row(
             (Some(n), _) => n,
             (None, _) => "None".into(),
         };
-        let own = doc.wires.get(&c).and_then(|x| x.wire_type.as_ref());
+        let own = doc.wires().get(&c).and_then(|x| x.wire_type.as_ref());
         let dangling = own.filter(|t| !styles::exists(doc, cat, t)).map(|_| "Not found: drawn without a category".to_string());
         let _ = r;
         return (value, list, dangling);
@@ -655,8 +655,8 @@ fn style_row(
     let id = styles::chosen(doc, e, scope);
     let list = styles::rows(doc, styles::catalogue(cat)).into_iter().map(|x| (x.id.text(), x.name)).collect();
     let own = match scope.component {
-        Some(c) => doc.devices.get(&c).and_then(|x| x.properties.get(e.key)),
-        None => scope.page.and_then(|p| doc.pages.get(&p)).and_then(|x| x.display.get(e.key)),
+        Some(c) => doc.devices().get(&c).and_then(|x| x.properties.get(e.key)),
+        None => scope.page.and_then(|p| doc.pages().get(&p)).and_then(|x| x.display.get(e.key)),
     };
     let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| format!("Not found: drawn as {}", styles::name(doc, cat, &id)));
     let _ = r;
@@ -704,10 +704,10 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
                 es.extend(k.show_entry());
             }
             let starter = doc
-                .devices
+                .devices()
                 .get(&c)
                 .and_then(|c| c.definition)
-                .and_then(|d| doc.definitions.get(&d))
+                .and_then(|d| doc.definitions().get(&d))
                 .and_then(ecad_electrical::symbols::catalogue::of_definition);
             es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(s.key)));
             (Scope::symbol(doc, rep), es, Some((Level::Object, Target::Symbol(rep))))
@@ -859,7 +859,7 @@ fn what_of(p: &ecad_engine::Project, page: PageId, selection: &[ecad_engine::cad
                 },
                 None => return None,
             },
-            Mapped::Tag(r) | Mapped::Marker(r, _) | Mapped::DeviceReference(r) => match doc.representations.get(&r).map(|x| x.subject) {
+            Mapped::Tag(r) | Mapped::Marker(r, _) | Mapped::DeviceReference(r) => match doc.representations().get(&r).map(|x| x.subject) {
                 Some(Subject::Device(c)) => What::Symbol(c, r),
                 _ => return None,
             },

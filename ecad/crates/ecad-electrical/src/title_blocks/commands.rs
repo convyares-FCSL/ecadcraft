@@ -48,7 +48,7 @@ pub fn frame(doc: &Document, id: Option<&str>, name: Option<&str>) -> Result<Sty
 pub fn sheet(doc: &Document, text: Option<&str>) -> Result<SheetSpec, CmdError> {
     match text.map(str::trim) {
         Some(t) => Ok(SheetSpec::parse(t)?),
-        None => Ok(doc.settings.sheet()),
+        None => Ok(doc.settings().sheet()),
     }
 }
 
@@ -133,7 +133,7 @@ pub(crate) fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Resul
 pub(crate) fn new_layer(doc: &Document, word: Option<&str>) -> Result<StyleLayer, CmdError> {
     match word.map(str::trim) {
         None | Some("project") => Ok(StyleLayer::Project),
-        Some("standard") if doc.standard.is_some() => Ok(StyleLayer::Standard),
+        Some("standard") if doc.standard().is_some() => Ok(StyleLayer::Standard),
         Some("standard") => Err(CmdError::refused(STANDARD_FIRST)),
         Some(other) => Err(CmdError::refused(format!("Unknown layer {other:?}: project or standard."))),
     }
@@ -221,7 +221,7 @@ pub(crate) fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>)
 
 /// The pages whose frame is `id`, or whose title block is borrowed from it.
 pub fn pages_using(doc: &Document, id: &StyleRef) -> Vec<PageId> {
-    doc.page_order.iter().copied().filter(|p| sheet::frame_style(doc, *p) == *id || sheet::title_block_style(doc, *p) == *id).collect()
+    doc.page_order().iter().copied().filter(|p| sheet::frame_style(doc, *p) == *id || sheet::title_block_style(doc, *p) == *id).collect()
 }
 
 /// The margins of frame `id` (its field, else 019's).
@@ -252,7 +252,7 @@ fn frame_sheet_text(doc: &Document, id: &StyleRef) -> String {
 
 /// One row of `titleblocks`.
 fn row_json(doc: &Document, row: &styles::Row, text: &FrameText) -> Value {
-    let spec = sheet::frame_spec(doc, &row.id).unwrap_or(doc.settings.sheet());
+    let spec = sheet::frame_spec(doc, &row.id).unwrap_or(doc.settings().sheet());
     let layout = layout_of(doc, &row.id, &spec, text);
     let keys: Vec<String> = own_keys(&layout).into_iter().collect();
     json!({
@@ -274,7 +274,7 @@ pub(crate) fn titleblocks_json(doc: &Document, text: &FrameText) -> Value {
     // The project keys every frame in use reads (Settings ▸ Project info).
     let mut keys = BTreeSet::new();
     let mut seen = BTreeSet::new();
-    for page in &doc.page_order {
+    for page in doc.page_order() {
         let id = sheet::frame_style(doc, *page);
         if seen.insert(id.text()) {
             keys.extend(own_keys(&layout_of(doc, &id, &sheet::sheet_of(doc, *page), text)));

@@ -24,7 +24,7 @@ use crate::styles::{Catalogue, Field};
 
 /// The input word (and style-choice index key) naming a cable's cable type (FP2); stored in
 /// [`ecad_model::Cable::cable_type`], never as a property.
-pub(crate) const CABLE_TYPE: &str = ecad_model::document::doc::CABLE_TYPE_KEY;
+pub(crate) const CABLE_TYPE: &str = ecad_model::document::doc::cable::CABLE_TYPE_KEY;
 
 fn any_text(_: &str) -> bool {
     true
@@ -125,7 +125,7 @@ pub static CATALOGUE: Catalogue = Catalogue {
 
 /// The cable type cable `k` names, when it names one that exists.
 pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {
-    doc.cables.get(&k)?.cable_type.clone().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Cable, id))
+    doc.cables().get(&k)?.cable_type.clone().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Cable, id))
 }
 
 /// The text of cable type `id`'s field `key`, when set (empty counts as unset).
@@ -139,7 +139,7 @@ pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
 /// Brief 059 (design 059 §2.2): cable `k`'s core offer and where it comes from: its own `cores`,
 /// else its cable type's `cores`, else its `type` notation; `None` when unknown.
 pub fn offer(doc: &Document, k: CableId) -> Option<(Vec<String>, crate::terminal_strips::cores::OfferSource, String)> {
-    offer_of(doc, doc.cables.get(&k)?)
+    offer_of(doc, doc.cables().get(&k)?)
 }
 
 /// [`offer`] for cable `cab` (one about to be written).
@@ -241,13 +241,13 @@ pub fn unused_key(label: &str) -> String {
 /// Whether core `label` of cable `k` is ticked **Not used**: a stored core of that label is
 /// [`ecad_model::Purpose::Spare`].
 pub fn is_unused(doc: &Document, k: CableId, label: &str) -> bool {
-    doc.cables.get(&k).is_some_and(|c| c.cores.iter().any(|m| m.is_spare() && m.label_str() == Some(label)))
+    doc.cables().get(&k).is_some_and(|c| c.cores.iter().any(|m| m.is_spare() && m.label_str() == Some(label)))
 }
 
 /// The cores of cable `k`, by label: its offer (`4G1.5`: 1, 2, 3, GNYE), then each stored core's
 /// label not in it (its place `1`, `2`… when it has none). Read as stored (design 072 §4.5).
 pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
-    let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
+    let Some(cab) = doc.cables().get(&k) else { return Vec::new() };
     let mut out: Vec<String> = offer(doc, k).map(|(o, _, _)| o).unwrap_or_default();
     for (i, m) in cab.cores.iter().enumerate().take(crate::cables::slash::MAX_CABLE_MEMBERS) {
         let l = m.label_str().map(str::trim).filter(|l| !l.is_empty()).map_or_else(|| (i + 1).to_string(), str::to_string);
@@ -279,7 +279,7 @@ pub(crate) fn unused_ops(doc: &Document, k: CableId, key: &str, value: Option<&s
             "Not used names a core of the cable: unused.<core>, the core 1 to {MAX_LABEL_CHARS} characters with no control characters."
         )));
     };
-    let cab = doc.cables.get(&k).ok_or_else(|| CmdError::refused("No cable with that ID."))?;
+    let cab = doc.cables().get(&k).ok_or_else(|| CmdError::refused("No cable with that ID."))?;
     // A core with no label is named by its place (`core_labels`): ticking it labels it so.
     let by_place = label.parse::<usize>().ok().and_then(|n| n.checked_sub(1)).filter(|i| cab.cores.get(*i).is_some_and(|m| m.label.is_none()));
     let stored = cab.cores.iter().position(|m| m.label.as_ref() == Some(&text)).or(by_place.filter(|_| tick));
@@ -331,7 +331,7 @@ impl OpenCore {
 /// The open cores of cable `k` (owner rule): its stored in-use cores on no line, in core order.
 /// Read as stored (design 072 §4.5); bounded by the cable's member bound.
 pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
-    let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
+    let Some(cab) = doc.cables().get(&k) else { return Vec::new() };
     cab.cores
         .iter()
         .take(crate::cables::slash::MAX_CABLE_MEMBERS)
@@ -346,7 +346,7 @@ pub fn size(doc: &Document, k: CableId) -> Option<String> {
         .and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, "size", None))
         .and_then(|r| crate::devices::ratings::parse::cross_section(&r.text()));
     from_type
-        .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| crate::terminal_strips::cores::notation_size(t)))
+        .or_else(|| doc.cables().get(&k).and_then(|x| x.properties.get("type")).and_then(|t| crate::terminal_strips::cores::notation_size(t)))
         .map(crate::devices::ratings::dataset::fmt_num)
 }
 

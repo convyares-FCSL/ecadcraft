@@ -147,7 +147,7 @@ pub fn name_key(tag: &str) -> String {
 /// index, tag). One walk over the project's devices.
 pub(crate) fn tags_of_plc(doc: &Document, plc: Option<DeviceId>) -> Vec<(DeviceId, u32, String)> {
     let mut out = Vec::new();
-    for (id, x) in &doc.devices {
+    for (id, x) in doc.devices() {
         let ecad_model::DeviceType::PlcModule(m) = &x.device_type else { continue };
         let tags: Vec<(u32, String)> = m.channels().into_iter().filter_map(|(i, ch)| ch.tag.as_ref().map(|t| (i, t.to_string()))).collect();
         if tags.is_empty() || plc_of(doc, *id) != plc {
@@ -216,7 +216,7 @@ pub(crate) fn unique_tag(base: &str, taken: &BTreeSet<String>) -> String {
 /// channel drives.
 pub fn is_pass_through(doc: &Document, c: DeviceId) -> bool {
     use ecad_model::DeviceType;
-    doc.devices.get(&c).is_some_and(|d| matches!(d.device_type, DeviceType::TerminalStrip(_) | DeviceType::Connector(_)))
+    doc.devices().get(&c).is_some_and(|d| matches!(d.device_type, DeviceType::TerminalStrip(_) | DeviceType::Connector(_)))
 }
 
 /// What a channel drives (design 056 §4.5), from its row's targets: the targets that are not

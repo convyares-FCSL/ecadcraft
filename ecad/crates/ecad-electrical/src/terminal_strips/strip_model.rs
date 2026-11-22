@@ -363,7 +363,7 @@ impl Strips {
     /// Every strip, from scratch.
     pub fn build(doc: &Document, o: &ReportModels, cx: &PageCx) -> Strips {
         let mut s = Strips::default();
-        for c in doc.devices.keys() {
+        for c in doc.devices().keys() {
             if strip_of(doc, *c).is_some() {
                 s.set(doc, *c, o, cx);
             }
@@ -401,13 +401,13 @@ impl Strips {
         let mut wires: BTreeSet<WireId> = scope.wires.clone();
         for k in scope.cables {
             out.extend(self.by_cable.get(k).into_iter().flatten().copied());
-            if let Some(cab) = doc.cables.get(k) {
+            if let Some(cab) = doc.cables().get(k) {
                 wires.extend(cab.cores.iter().filter_map(|m| m.wire()));
             }
         }
         for w in &wires {
             out.extend(self.by_conductor.get(w).into_iter().flatten().copied());
-            if let Some(cond) = doc.wires.get(w) {
+            if let Some(cond) = doc.wires().get(w) {
                 out.extend(cond.ends.iter().filter_map(|t| strip_of_connection_point(doc, *t)));
             }
         }
@@ -433,7 +433,7 @@ impl Strips {
         let mut changed = false;
         for c in which {
             let Some(old) = self.strips.get(c) else { continue };
-            let Some(strip) = doc.devices.get(c) else { continue };
+            let Some(strip) = doc.devices().get(c) else { continue };
             let mut acc = crate::terminal_strips::accessories::strip_acc(doc, &strip.properties, &old.rows);
             // Brief 036: a project part or description default reaches the type rows too.
             let mut d = old.clone();
@@ -581,10 +581,10 @@ fn leaves_inward(from: Pt, next: Pt) -> bool {
 /// `page`: inside (`true`) or not; `None` when no route lands there on that page. The route
 /// carrying `w` (one running to its other end) is preferred over another route at the point.
 pub(super) fn geometric_inside(doc: &Document, w: WireId, end: End, page: PageId) -> Option<bool> {
-    let wire = doc.wires.get(&w)?;
+    let wire = doc.wires().get(&w)?;
     let t = wire.end(end);
     let far = ecad_model::RouteEnd::Point(wire.end(end.other()));
-    let mut at: Vec<&ecad_model::Route> = doc.routes_at(t).filter_map(|r| doc.routes.get(&r)).filter(|r| r.page == page).collect();
+    let mut at: Vec<&ecad_model::Route> = doc.routes_at(t).filter_map(|r| doc.routes().get(&r)).filter(|r| r.page == page).collect();
     at.sort_by_key(|r| !r.ends.contains(&far));
     at.into_iter().find_map(|r| {
         let v = &r.points;
@@ -596,11 +596,11 @@ pub(super) fn geometric_inside(doc: &Document, w: WireId, end: End, page: PageId
 
 /// The cell of a terminal's conductor's far end, worked out like the wire report's.
 fn far_cell(doc: &Document, o: &ReportModels, w: WireId, far: End, cx: &PageCx) -> (Option<String>, Option<DeviceId>) {
-    let Some(cond) = doc.wires.get(&w) else { return (None, None) };
+    let Some(cond) = doc.wires().get(&w) else { return (None, None) };
     let t = cond.end(far);
-    let comp = doc.connection_points.get(&t).and_then(|x| x.device());
+    let comp = doc.connection_points().get(&t).and_then(|x| x.device());
     let cell = o.end_cell_of(doc, Some(t), None, cx);
-    (cell.text(doc.settings.reference_style()), comp)
+    (cell.text(doc.settings().reference_style()), comp)
 }
 
 fn clean(v: Option<impl AsRef<str>>) -> Option<String> {
@@ -610,7 +610,7 @@ fn clean(v: Option<impl AsRef<str>>) -> Option<String> {
 /// One strip's data on `doc`.
 fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> StripData {
     use crate::terminal_strips::terminal_blocks as tt;
-    let strip = doc.devices.get(&c).cloned().unwrap_or_default();
+    let strip = doc.devices().get(&c).cloned().unwrap_or_default();
     let props = &strip.properties;
     let device = o.device(c);
     let location = match device {
@@ -619,7 +619,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
     };
     let mut d = StripData {
         component: c,
-        tag: doc.devices.get(&c).and_then(|d| d.tag_shown()).unwrap_or_else(|| "?".into()),
+        tag: doc.devices().get(&c).and_then(|d| d.tag_shown()).unwrap_or_else(|| "?".into()),
         location: location.clone(),
         offer: props.get(OFFER_KEY).and_then(|v| parse_offer(v).ok()),
         part_number: clean(strip.part_number.as_ref()),
@@ -676,7 +676,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
     let mut cells = |t: ConnectionPointId, side: Option<bool>, page: Option<PageId>, row: &mut TermRow, d: &mut StripData| {
         for (w, end) in doc.ends_at(t) {
             d.wires.insert(w);
-            let Some(cond) = doc.wires.get(&w) else { continue };
+            let Some(cond) = doc.wires().get(&w) else { continue };
             let far_end = match end {
                 End::A => End::B,
                 End::B => End::A,
@@ -698,11 +698,11 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
             }
             let cable = doc.cables_of(w).into_iter().next().map(|k| {
                 d.cables.insert(k);
-                let tag = doc.cables.get(&k).and_then(|x| clean(x.tag_shown().as_deref()));
+                let tag = doc.cables().get(&k).and_then(|x| clean(x.tag_shown().as_deref()));
                 (k, tag)
             });
             let core =
-                cable.as_ref().and_then(|(k, _)| doc.cables.get(k)?.cores.iter().find(|m| m.wire() == Some(w))?.label_str().map(str::to_string));
+                cable.as_ref().and_then(|(k, _)| doc.cables().get(k)?.cores.iter().find(|m| m.wire() == Some(w))?.label_str().map(str::to_string));
             let cell = SideCell { conductor: w, target, wire: o.wire(w).and_then(|r| r.wire_number.clone()), cable, core, far };
             // §5.2: cable core → outside; far device's location against the strip's; geometry.
             let inside = match side {
@@ -795,7 +795,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
                     Some((rid, pe, at)) => (Some(*rid), *pe, *at),
                     None => (None, false, None),
                 };
-                let page = rid.and_then(|r| doc.representations.get(&r)).map(|r| r.page);
+                let page = rid.and_then(|r| doc.representations().get(&r)).map(|r| r.page);
                 if let Some(p) = page {
                     d.pages.insert(p);
                 }
@@ -982,7 +982,7 @@ fn type_parts(
         }
         let pk = format!("strip_{}_{field}", ty.code);
         inherits.insert(pk.clone());
-        clean(doc.display.get(&pk))
+        clean(doc.display().get(&pk))
     };
     let own_part = clean(strip.get(&type_key(ty, "part_number"))).is_some();
     let part_number = get("part_number");

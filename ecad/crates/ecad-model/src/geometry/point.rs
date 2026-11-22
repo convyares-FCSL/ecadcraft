@@ -17,7 +17,7 @@ use crate::naming::words::{Side, Word};
 pub const MAX_DEF_KEY: usize = 32;
 
 /// Highest PLC channel index a key may name.
-pub const MAX_CHANNEL_INDEX: u16 = 9999;
+pub(crate) const MAX_CHANNEL_INDEX: u16 = 9999;
 
 crate::word_enum! {
     /// A PLC channel point's role (design 045 §4.1), in the order a channel lists its points.

@@ -76,7 +76,7 @@ impl Grid {
 
     pub(super) fn insert(&mut self, doc: &Document, c: RouteId) {
         self.remove(c);
-        let Some(route) = doc.routes.get(&c) else { return };
+        let Some(route) = doc.routes().get(&c) else { return };
         let (page, v) = (route.page, &route.points);
         let mut placed = Placed::default();
         for (i, w) in v.windows(2).enumerate() {

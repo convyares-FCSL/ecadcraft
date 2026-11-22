@@ -7,12 +7,12 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::doc::{Cable, ConnectionPoint, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Wire};
 use crate::document::index::Delta;
 use crate::error::{ModelError, Result};
 use crate::naming::id::{CableId, ConnectionPointId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, WireId};
 use crate::objects::route::Route;
 use crate::objects::styles::{Standard, StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
+use crate::{Cable, ConnectionPoint, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Wire};
 
 /// An object that carries properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

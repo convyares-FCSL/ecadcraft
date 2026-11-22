@@ -21,7 +21,7 @@ fn the_project_s_lists_and_modify_project_are_shown_raw_and_readable() {
     let page: PageId = ids.fresh();
     let mut p = Page::titled("Supply").unwrap();
     p.location = Some(loc);
-    let index = l.document().page_order.len();
+    let index = l.document().page_order().len();
     l.commit(Author::User, "page", vec![Op::AddPage { id: page, page: p, index }]).unwrap();
     let path = written(&dir, &l);
 

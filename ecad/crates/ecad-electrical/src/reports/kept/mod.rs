@@ -373,8 +373,8 @@ impl ReportModels {
     /// Every model, from scratch (open, reload, first show), with text measured in `m`.
     pub fn build_with(doc: &Document, m: &dyn TextMetrics) -> ReportModels {
         let mut o = ReportModels {
-            style: doc.settings.reference_style(),
-            colour_style: doc.settings.wiring.colour_style(),
+            style: doc.settings().reference_style(),
+            colour_style: doc.settings().wiring.colour_style(),
             view: BomView::of(doc),
             ..ReportModels::default()
         };
@@ -383,23 +383,23 @@ impl ReportModels {
             o.set_device(doc, c, &mut cache);
         }
         // Brief 047: items (loose parts, design 072 §6.4: on no page).
-        for id in doc.loose_parts.keys() {
+        for id in doc.loose_parts().keys() {
             o.set_loose(doc, *id);
         }
         let cx = PageCx::of(doc);
-        for w in doc.wires.keys() {
+        for w in doc.wires().keys() {
             o.set_wire(doc, *w, &cx);
         }
-        for k in doc.cables.keys() {
+        for k in doc.cables().keys() {
             o.set_cable(doc, *k);
         }
-        for p in &doc.page_order {
+        for p in doc.page_order() {
             o.set_box_checks(doc, *p);
         }
         o.strips = crate::terminal_strips::strip_model::Strips::build(doc, &o, &cx);
         o.plc = crate::plc::kept::Plc::build_with(doc, m);
         o.strip_pages = crate::terminal_strips::pages::StripPages::build(doc, &o.strips);
-        o.generated = doc.page_order.iter().copied().filter(|p| needs_reports(doc, *p)).collect();
+        o.generated = doc.page_order().iter().copied().filter(|p| needs_reports(doc, *p)).collect();
         static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         o.refresh_continuation(doc);

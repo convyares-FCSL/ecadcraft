@@ -25,7 +25,7 @@ impl RefIndex {
         // One pass in ID order: each member classified once (the first head of a device is its
         // head, as `make` decides), then each group's edges.
         let mut groups: BTreeMap<Group, Vec<(RepresentationId, Class)>> = BTreeMap::new();
-        for (rid, r) in &doc.representations {
+        for (rid, r) in doc.representations() {
             let (g, c) = match r.subject {
                 Subject::Cable(k) if crate::references::cables::is_reference(r) => (Group::Cable(k), Class::End),
                 Subject::Device(c) => match raw_class(doc, r) {
@@ -43,7 +43,7 @@ impl RefIndex {
             idx.insert_group(g, list);
         }
         // Brief 044: connectors' members and edges (design 044 §7).
-        for c in doc.devices.keys() {
+        for c in doc.devices().keys() {
             if crate::connectors::connector_of(doc, *c).is_some_and(|x| x.mating) {
                 idx.insert_connector(doc, *c);
             }
@@ -217,7 +217,7 @@ impl RefIndex {
             }
             // Design 072 §6.2: a continuation's name group.
             Subject::Aid(a) => {
-                let key = doc.aids.get(&a).and_then(ecad_model::Aid::continuation_name).map(|n| ecad_model::connectivity::name_key(n.as_str()));
+                let key = doc.aids().get(&a).and_then(ecad_model::Aid::continuation_name).map(|n| ecad_model::connectivity::name_key(n.as_str()));
                 out.extend(key.filter(|k| !k.is_empty()).and_then(|k| crate::continuations::group_key(doc, &k)));
             }
             Subject::Wire(_) | Subject::Route(_) => {}
@@ -323,7 +323,7 @@ impl RefIndex {
             .iter()
             .filter(|(g, _)| matches!(g, Group::Continuation(_)))
             .flat_map(|(_, m)| m.iter())
-            .filter_map(|r| doc.representations.get(r).map(|x| x.page))
+            .filter_map(|r| doc.representations().get(r).map(|x| x.page))
             .collect()
     }
 
@@ -332,7 +332,7 @@ impl RefIndex {
         self.member
             .iter()
             .filter(|(_, (g, _))| matches!(g, Group::Device(_)))
-            .filter_map(|(r, _)| doc.representations.get(r).map(|x| x.page))
+            .filter_map(|(r, _)| doc.representations().get(r).map(|x| x.page))
             .collect()
     }
 

@@ -114,7 +114,7 @@ impl App {
         let p = self.project.clone().ok_or("No project is open.")?;
         let found = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let d = doc.definitions.get(&def)?;
+            let d = doc.definitions().get(&def)?;
             let newer = symbols::project::Version::of(def, d)
                 .and_then(|v| symbols::project::newest(doc, v.lineage).filter(|n| n.seq > v.seq).map(|n| (n.id, v.seq, n.seq)));
             Some((Content::of(d), d.origin.as_ref().map_or(0, |o| o.library_seq), symbols::project::is_project_symbol(d), newer))
@@ -160,8 +160,8 @@ impl App {
         let p = self.project.clone().ok_or("No project is open.")?;
         let def = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let r = doc.representations.get(&rep)?;
-            r.items.iter().find_map(|i| match doc.items.get(i).map(|x| &x.kind) {
+            let r = doc.representations().get(&rep)?;
+            r.items.iter().find_map(|i| match doc.items().get(i).map(|x| &x.kind) {
                 Some(ItemKind::Symbol(s)) => Some(s.definition),
                 _ => None,
             })
@@ -186,7 +186,7 @@ impl App {
                 let (_, rep) = doc.representations_of(Subject::Device(c)).find(|(_, r)| r.form == Form::Drawn)?;
                 let mut prims = Vec::new();
                 for i in &rep.items {
-                    if let Some(ItemKind::Primitive(pr)) = doc.items.get(i).map(|x| &x.kind) {
+                    if let Some(ItemKind::Primitive(pr)) = doc.items().get(i).map(|x| &x.kind) {
                         prims.push(pr.clone());
                     }
                 }
@@ -196,7 +196,7 @@ impl App {
                     .iter()
                     .enumerate()
                     .filter_map(|(n, (term, at))| {
-                        let tm = doc.connection_points.get(term)?;
+                        let tm = doc.connection_points().get(term)?;
                         Some(ecad_model::ConnectionPointDef {
                             key: tm
                                 .key
@@ -241,7 +241,7 @@ impl App {
             for h in &handles {
                 match view.map.get(*h) {
                     Some(ecad_engine::project::Mapped::Item(i)) if doc.representation_of_item(i).is_none() => {
-                        match doc.items.get(&i).map(|x| &x.kind) {
+                        match doc.items().get(&i).map(|x| &x.kind) {
                             Some(ItemKind::Primitive(pr)) => prims.push(pr.clone()),
                             _ => return Err("Make symbol takes lines, arcs and text.".into()),
                         }
@@ -396,7 +396,7 @@ impl App {
         let found = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
             let (shown, _, _) = ecad_electrical::symbols::graphics::update_available(doc, rep)?;
-            let lineage = symbols::project::Version::of(shown, doc.definitions.get(&shown)?)?.lineage;
+            let lineage = symbols::project::Version::of(shown, doc.definitions().get(&shown)?)?.lineage;
             let newest = symbols::project::newest(doc, lineage)?;
             Some((shown, Content::of(newest.def), newest.def.name.clone()))
         });

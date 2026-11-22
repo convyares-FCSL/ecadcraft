@@ -46,7 +46,7 @@ struct Probe {
 
 fn symbol_handle(h: &mut H) -> String {
     let doc = h.doc();
-    let item = doc.items.iter().find(|(_, i)| matches!(i.kind, ecad_model::ItemKind::Symbol(_))).map(|(id, _)| *id).expect("a placed symbol");
+    let item = doc.items().iter().find(|(_, i)| matches!(i.kind, ecad_model::ItemKind::Symbol(_))).map(|(id, _)| *id).expect("a placed symbol");
     let page = h.first_page();
     h.handle_of(page, item).hex()
 }
@@ -57,7 +57,7 @@ fn wire_handle(h: &mut H, w: WireId) -> String {
 }
 
 fn component_line(h: &mut H) -> String {
-    let c1 = *h.doc().devices.keys().next().unwrap();
+    let c1 = *h.doc().devices().keys().next().unwrap();
     let page = h.first_page();
     h.rep_handles(page, c1)[0].clone()
 }
@@ -262,7 +262,7 @@ fn undo_and_redo_on_an_ecad_page_mixed_with_plain_drawing_walk_the_ledger() {
     assert_eq!(h.doc(), after, "nothing to redo after a new edit");
     h.cmdline("u");
     assert_eq!(h.doc(), trail[n - 2]);
-    assert!(h.doc().wires.contains_key(&w));
+    assert!(h.doc().wires().contains_key(&w));
     h.check();
 }
 
@@ -303,8 +303,8 @@ fn transparent_zoom_and_pan_inside_wire_and_place_leave_one_transaction() {
     for (tool, transparent) in [("wire", "'zoom"), ("wire", "'pan"), ("place", "'zoom"), ("wire", "'redraw")] {
         let (mut h, _, _) = fixture(2360);
         let head = h.head();
-        let lines = h.doc().routes.len();
-        let devices = h.doc().devices.len();
+        let lines = h.doc().routes().len();
+        let devices = h.doc().devices().len();
         h.s.start(tool).unwrap();
         if tool == "wire" {
             h.s.cmdline("0,100").unwrap();
@@ -336,14 +336,14 @@ fn transparent_zoom_and_pan_inside_wire_and_place_leave_one_transaction() {
         let d = h.doc();
         match tool {
             // A line to nowhere is a route without a wire (design 072 §4.3).
-            "wire" => assert_eq!(d.routes.len(), lines + 1, "{tool} {transparent}"),
-            _ => assert_eq!(d.devices.len(), devices + 1, "{tool} {transparent}"),
+            "wire" => assert_eq!(d.routes().len(), lines + 1, "{tool} {transparent}"),
+            _ => assert_eq!(d.devices().len(), devices + 1, "{tool} {transparent}"),
         }
         assert!(h.s.state().unwrap().undo.is_empty());
         h.check();
         h.cmdline("u");
-        assert_eq!(h.doc().routes.len(), lines);
-        assert_eq!(h.doc().devices.len(), devices);
+        assert_eq!(h.doc().routes().len(), lines);
+        assert_eq!(h.doc().devices().len(), devices);
     }
 }
 
@@ -357,7 +357,7 @@ fn autosave_save_now_and_emergency_save_never_write_an_ecad_page() {
     let (mut h, _, _) = fixture(2370);
     // Unsaved edits on two pages.
     h.run("newpage", json!({"title": "2"})).unwrap();
-    let p2 = h.doc().page_order[1];
+    let p2 = h.doc().page_order()[1];
     h.activate(p2);
     h.run("line", json!({"points": pts(&[(0.0, 0.0), (10.0, 0.0)])})).unwrap();
     let page_uids: Vec<u64> = h.s.docs.iter().map(|d| d.uid).collect();

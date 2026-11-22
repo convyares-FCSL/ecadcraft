@@ -142,19 +142,22 @@ fn a_revision_record_round_trips_with_an_iso_date_and_typed_rev() {
 mod merging {
     use super::*;
     use ecad_model::Document;
-    use ecad_model::merge::{self, Choice, Inputs, Scope};
+    use ecad_model::merge::apply;
+    use ecad_model::merge::state::{Choice, Inputs, Plan, Scope};
     use ecad_model::naming::tag::HighWater;
 
     /// A document that issued revision `rev` (described as `what`) at log position `at`.
     fn issued(rev: Rev, at: u64, what: &str) -> Document {
         let mut d = Document::default();
-        d.project.revisions =
-            vec![Revision { rev: Some(rev), description: ecad_model::RevValue::new(what).ok(), issued: true, ..Revision::default() }];
-        d.versions.insert(PointName::Revision(rev), at);
+        d.edit_parts(|parts| {
+            parts.project.revisions =
+                vec![Revision { rev: Some(rev), description: ecad_model::RevValue::new(what).ok(), issued: true, ..Revision::default() }];
+        });
+        d.edit_parts(|parts| parts.versions.insert(PointName::Revision(rev), at));
         d
     }
 
-    fn plan(a: &Document, t: &Document, s: &Document, choices: &BTreeMap<String, Choice>) -> merge::Plan {
+    fn plan(a: &Document, t: &Document, s: &Document, choices: &BTreeMap<String, Choice>) -> Plan {
         let high = HighWater::default();
         let scope = Scope { project: true, ..Scope::default() };
         let inp = Inputs {
@@ -169,7 +172,7 @@ mod merging {
             edit_rule: &|_, _, v| Ok(v.to_string()),
             join: &|_, _, _| Err("no".into()),
         };
-        merge::plan(&inp, choices)
+        apply::plan(&inp, choices)
     }
 
     #[test]
@@ -208,7 +211,7 @@ mod merging {
         // A user version "B" on the branch beside revision B on main: kinds differ, no clash, and
         // main's points are untouched (version names are branch-local history).
         let mut s = Document::default();
-        s.versions.insert(PointName::version("B").unwrap(), 5);
+        s.edit_parts(|parts| parts.versions.insert(PointName::version("B").unwrap(), 5));
         let t = issued(Rev::Letter(2), 3, "b");
         let p = plan(&a, &t, &s, &BTreeMap::new());
         assert!(p.conflicts.is_empty(), "{:?}", p.conflicts.iter().map(|c| &c.what).collect::<Vec<_>>());
@@ -216,8 +219,8 @@ mod merging {
         // The same version name on both branches is two branch-local points: the merge neither
         // picks between them nor carries one across, so each side keeps its own.
         let (mut t, mut s) = (Document::default(), Document::default());
-        t.versions.insert(PointName::version("B").unwrap(), 3);
-        s.versions.insert(PointName::version("B").unwrap(), 5);
+        t.edit_parts(|parts| parts.versions.insert(PointName::version("B").unwrap(), 3));
+        s.edit_parts(|parts| parts.versions.insert(PointName::version("B").unwrap(), 5));
         let p = plan(&a, &t, &s, &BTreeMap::new());
         assert!(p.conflicts.is_empty() && p.ops.is_empty());
     }

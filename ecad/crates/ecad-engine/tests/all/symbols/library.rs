@@ -42,7 +42,7 @@ fn setprop(h: &mut H, c: DeviceId, key: &str, value: Value) -> Result<Value, Str
 }
 
 fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
-    h.doc().devices[&c].value(key)
+    h.doc().devices()[&c].value(key)
 }
 
 fn embeds(ops: &[Op]) -> usize {
@@ -200,7 +200,7 @@ fn ratings_follow_the_rule() {
     let fuse: DeviceId = id(&place(&mut h, "fuse", [80.0, -80.0]), "component");
     h.run("setprop", json!({"devices": [fuse.hex(), q.hex()], "key": "rating", "value": "x"})).unwrap();
     assert_eq!(prop(&mut h, q, "rating").as_deref(), Some("x"));
-    assert!(h.doc().devices[&q].has_no_rating());
+    assert!(h.doc().devices()[&q].has_no_rating());
 }
 
 #[test]
@@ -335,7 +335,7 @@ fn a_fuse_rating_can_be_cleared_after_the_bank_is_erased() {
     let item: ecad_model::ItemId = id(&bank, "item");
     let handle = h.handle_of(page, item);
     h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
-    assert!(h.doc().devices.contains_key(&f), "the fault contact keeps the device");
+    assert!(h.doc().devices().contains_key(&f), "the fault contact keeps the device");
     // Setting is still refused: the device is no longer a fuse bank.
     assert!(setprop(&mut h, f, "rating.3", json!("4A")).is_err());
     // Clearing works, by null and by an empty value.
@@ -398,11 +398,11 @@ fn save_close_and_reopen_keep_the_library_devices() {
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()));
     let all: std::collections::BTreeSet<String> = ecad_electrical::devices::placing::labels_of(&doc, k);
     assert_eq!(all.into_iter().collect::<Vec<_>>(), ["11", "12", "14", "23", "24", "A1", "A2"]);
-    assert_eq!(doc.devices[&f].value("rating.3").as_deref(), Some("2 A"));
-    assert_eq!(doc.devices[&q].value("rating").as_deref(), Some("curve C, 13 A, 30 mA"));
+    assert_eq!(doc.devices()[&f].value("rating.3").as_deref(), Some("2 A"));
+    assert_eq!(doc.devices()[&q].value("rating").as_deref(), Some("curve C, 13 A, 30 mA"));
     // Every embedded definition is still the catalogue's, by origin and content hash.
-    assert_eq!(doc.definitions.len(), 10);
-    for d in doc.definitions.values() {
+    assert_eq!(doc.definitions().len(), 10);
+    for d in doc.definitions().values() {
         let s = symbols::catalogue::of_definition(d).expect("a catalogue symbol");
         assert_eq!(d.origin, s.definition().unwrap().origin, "{}", s.key);
     }

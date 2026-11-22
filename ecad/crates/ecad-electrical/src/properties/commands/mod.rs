@@ -291,9 +291,9 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
 
 fn props_of(doc: &Document, o: ObjectRef) -> Option<&Properties> {
     match o {
-        ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
-        ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
-        ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
+        ObjectRef::Device(c) => doc.devices().get(&c).map(|x| &x.properties),
+        ObjectRef::Wire(c) => doc.wires().get(&c).map(|x| &x.display),
+        ObjectRef::Cable(c) => doc.cables().get(&c).map(|x| &x.properties),
         ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => None,
     }
 }
@@ -316,7 +316,7 @@ pub(crate) fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Op
     let after = value(doc, object, key, typed)?;
     let before = match object {
         // A cable's tag and description are fields: read them as `setprop` does.
-        ObjectRef::Cable(c) => doc.cables.get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?.get(key).map(str::to_string),
+        ObjectRef::Cable(c) => doc.cables().get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?.get(key).map(str::to_string),
         _ => props_of(doc, object).ok_or(CmdError::refused(NO_SUCH_OBJECT))?.get(key).cloned(),
     };
     if before == after {
@@ -343,7 +343,7 @@ pub(crate) fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Optio
     }
     let mut ops = Vec::new();
     for c in cs {
-        let comp = doc.devices.get(c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
+        let comp = doc.devices().get(c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
         let key = component_key(doc, *c, key);
         let o = ObjectRef::Device(*c);
         match rule_for(doc, o, &key).build {
@@ -384,7 +384,7 @@ pub(crate) enum DeviceSet {
 pub(crate) fn plan_device(
     doc: &Document, ids: &mut IdAllocator, tag_high: &TagHigh, c: DeviceId, key: &str, typed: Option<&str>, merge: bool,
 ) -> Result<DeviceSet, CmdError> {
-    let component = doc.devices.get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
+    let component = doc.devices().get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
     let value = value(doc, ObjectRef::Device(c), key, typed)?;
     let before = component.value(key);
     if key == TAG_KEY
@@ -461,8 +461,8 @@ pub fn conflict(word: Option<&str>, merge: bool) -> Result<Option<Conflict>, Cmd
 fn tag_of(doc: &Document, o: ObjectRef) -> Option<Option<tag::Given>> {
     let held = |t: Option<&str>, s: TagState| t.map(|t| tag::Given::new(t, s));
     match o {
-        ObjectRef::Device(c) => doc.devices.get(&c).map(|d| held(d.tag(), d.tag.state().unwrap_or_default())),
-        ObjectRef::Cable(c) => doc.cables.get(&c).map(|d| held(d.tag(), d.tag.state().unwrap_or_default())),
+        ObjectRef::Device(c) => doc.devices().get(&c).map(|d| held(d.tag(), d.tag.state().unwrap_or_default())),
+        ObjectRef::Cable(c) => doc.cables().get(&c).map(|d| held(d.tag(), d.tag.state().unwrap_or_default())),
         _ => None,
     }
 }
@@ -476,7 +476,7 @@ fn write_tag(doc: &Document, o: ObjectRef, given: Option<tag::Given>) -> Vec<Op>
     };
     match o {
         ObjectRef::Device(c) => {
-            let Some(d) = doc.devices.get(&c) else { return Vec::new() };
+            let Some(d) = doc.devices().get(&c) else { return Vec::new() };
             let after = d.with_tag(text, state);
             if after == *d { Vec::new() } else { vec![Op::ModifyDevice { id: c, before: d.clone(), after }] }
         }
@@ -609,7 +609,7 @@ pub(crate) fn plan_tag(
                 )));
             };
             // One join for the merge and for setprop (reviewer 026, 2).
-            let ops = ecad_model::merge::join_cables(doc, from, into)?;
+            let ops = ecad_model::document::doc::cable::join_cables(doc, from, into)?;
             Ok(TagSet::MergedCable { ops, into, tag: t, before: before.map(|g| g.shown()) })
         }
         Some(Conflict::Next) => {
@@ -630,7 +630,7 @@ pub(crate) fn plan_tag(
 /// The echo after two cables became one (with the merged document): `-W2 is now part of -W1
 /// (5 wires).`
 pub(crate) fn merged_cable_words(doc: &Document, before: Option<&str>, tag: &str, into: CableId) -> String {
-    let n = doc.cables.get(&into).map_or(0, |c| c.cores.len());
+    let n = doc.cables().get(&into).map_or(0, |c| c.cores.len());
     format!("{} is now part of {tag} ({}).", before.unwrap_or("The cable"), plural(n, "wire", "wires"))
 }
 
@@ -798,7 +798,7 @@ impl Generic for SetpropParams {
                 let answer = move |doc: &Document| {
                     let mut answer = record_answer(doc, object, &key, changed);
                     if let ObjectRef::Device(c) = object
-                        && let Some(m) = doc.devices.get(&c).and_then(|d| crate::devices::ratings::echo(d, &key))
+                        && let Some(m) = doc.devices().get(&c).and_then(|d| crate::devices::ratings::echo(d, &key))
                     {
                         answer["message"] = json!(m);
                     }
@@ -816,7 +816,7 @@ impl Generic for SetpropParams {
 fn record_answer(doc: &Document, object: ObjectRef, key: &str, changed: bool) -> Value {
     match object {
         ObjectRef::Device(c) => {
-            let value = doc.devices.get(&c).and_then(|d| d.value(key));
+            let value = doc.devices().get(&c).and_then(|d| d.value(key));
             if changed { json!({"changed": true, "value": value, "component": c.hex()}) } else { json!({"changed": false, "value": value}) }
         }
         _ => json!({"changed": changed}),

@@ -10,14 +10,14 @@ use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
 use crate::common::{H, id, pts};
 
 fn number(doc: &Document, c: WireId) -> Option<String> {
-    doc.wires.get(&c)?.number_text().map(str::to_string)
+    doc.wires().get(&c)?.number_text().map(str::to_string)
 }
 
 /// A wire through `points`, first putting a connection point at each end that has none (design
 /// 072: a wire runs between two connection points), as `H::wire_pp` does, with `extra` params.
 fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> WireId {
     let doc = h.doc();
-    let page = h.p(|p| p.active_page()).unwrap_or(doc.page_order[0]);
+    let page = h.p(|p| p.active_page()).unwrap_or(doc.page_order()[0]);
     let shown: Vec<ecad_model::Pt> =
         ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
     let ends: Vec<(f64, f64)> = [points.first(), points.last()]
@@ -72,8 +72,8 @@ fn a_tee_needs_a_junction_and_a_crossing_never_connects() {
     let main_line = h.route_of(page, main);
     let tee = line(&mut h, &[(30.0, 30.0), (30.0, 0.0)], json!({"join": false}));
     let doc = h.doc();
-    assert_eq!(doc.wires.len(), 1, "a T without a landing is not connected");
-    assert_eq!(doc.routes[&tee].ends[1], ecad_model::RouteEnd::Free);
+    assert_eq!(doc.wires().len(), 1, "a T without a landing is not connected");
+    assert_eq!(doc.routes()[&tee].ends[1], ecad_model::RouteEnd::Free);
     let all = ecad_engine::checks::all(&doc, 1e-6);
     let draws: Vec<_> = all.iter().filter(|c| c.kind == Kind::LooksConnected).collect();
     assert_eq!(draws.len(), 1, "{all:?}");
@@ -85,23 +85,23 @@ fn a_tee_needs_a_junction_and_a_crossing_never_connects() {
     assert_eq!(j["how"], "tee", "{j}");
     assert_eq!(h.head(), head + 1);
     let doc = h.doc();
-    assert_eq!(doc.routes[&tee].ends[1].route(), Some(main_line));
-    assert_eq!(doc.wires.len(), 2, "three points, two wires");
-    let nets: std::collections::BTreeSet<_> = doc.wires.values().map(|w| w.net).collect();
+    assert_eq!(doc.routes()[&tee].ends[1].route(), Some(main_line));
+    assert_eq!(doc.wires().len(), 2, "three points, two wires");
+    let nets: std::collections::BTreeSet<_> = doc.wires().values().map(|w| w.net).collect();
     assert_eq!(nets.len(), 1, "one net");
-    let numbers: std::collections::BTreeSet<_> = doc.wires.keys().map(|w| number(&doc, *w)).collect();
+    let numbers: std::collections::BTreeSet<_> = doc.wires().keys().map(|w| number(&doc, *w)).collect();
     assert_eq!(numbers.len(), 1, "one number");
     assert!(ecad_engine::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::LooksConnected));
     // `u` undoes it in one step.
     h.cmdline("u");
-    assert_eq!(h.doc().wires.len(), 1);
+    assert_eq!(h.doc().wires().len(), 1);
     h.cmdline("redo");
     // A crossing: nothing joins.
-    let wires = h.doc().wires.len();
+    let wires = h.doc().wires().len();
     let v = line(&mut h, &[(45.0, 20.0), (45.0, -20.0)], json!({"join": false}));
     let doc = h.doc();
-    assert_eq!(doc.wires.len(), wires);
-    assert!(doc.routes[&v].ends.iter().all(|e| *e == ecad_model::RouteEnd::Free));
+    assert_eq!(doc.wires().len(), wires);
+    assert!(doc.routes()[&v].ends.iter().all(|e| *e == ecad_model::RouteEnd::Free));
 }
 
 /// §15 C: every route shows its label; a net's conductors share the number; the text is never
@@ -153,7 +153,7 @@ fn adding_a_wire_never_renumbers_and_a_fixed_number_survives() {
     let b = wire(&mut h, &[(40.0, 0.0), (60.0, 0.0)], json!({}));
     let numbers = |h: &mut H| {
         let doc = h.doc();
-        doc.wires.keys().map(|c| (*c, number(&doc, *c))).collect::<std::collections::BTreeMap<_, _>>()
+        doc.wires().keys().map(|c| (*c, number(&doc, *c))).collect::<std::collections::BTreeMap<_, _>>()
     };
     let before = numbers(&mut h);
     let c = wire(&mut h, &[(80.0, 0.0), (100.0, 30.0)], json!({}));
@@ -257,7 +257,7 @@ fn each_seeded_fault_appears_once_where_it_is() {
         if let Some(last) = points.last_mut() {
             *last = ecad_model::Pt::new(805.0, 30.0);
         }
-        let route = doc.routes[&r].clone();
+        let route = doc.routes()[&r].clone();
         let after = ecad_model::Item {
             kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices: points.clone(), closed: false }),
             ..before.clone()
@@ -420,12 +420,12 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
     let page = h.first_page();
     h.activate(page);
     let doc = h.doc();
-    let w = *doc.wires.keys().next().unwrap();
+    let w = *doc.wires().keys().next().unwrap();
     h.run("ecaddelete", json!({"conductor": w.hex()})).unwrap();
     compare(&mut h, "delete");
     // An unrelated edit (a device property) changes no row and re-checks no net.
     let before = h.cfg(|p| p.checks().clone());
-    let lamp = h.doc().devices.iter().find(|(_, c)| c.tag().is_some_and(|t| t == "-H02")).map(|(k, _)| *k);
+    let lamp = h.doc().devices().iter().find(|(_, c)| c.tag().is_some_and(|t| t == "-H02")).map(|(k, _)| *k);
     if let Some(lamp) = lamp {
         h.run("setprop", json!({"component": lamp.hex(), "key": "description", "value": "Spare"})).unwrap();
     }

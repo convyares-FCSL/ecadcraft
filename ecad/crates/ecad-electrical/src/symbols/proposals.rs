@@ -264,7 +264,7 @@ pub(crate) fn spots_on_page(doc: &Document, a: Aspect, page: PageId) -> Vec<Spot
 /// Every device symbol whose context for aspect `a` falls back to the project (no box carrying
 /// `a`, no page value): what the project's value proposes for. The one project-wide case.
 pub(crate) fn spots_of_project(doc: &Document, a: Aspect) -> Vec<Spot> {
-    doc.pages
+    doc.pages()
         .iter()
         .filter(|(_, pg)| crate::locations::designations::page_key(pg, a).is_none())
         .flat_map(|(p, _)| spots_on_page(doc, a, *p))
@@ -315,7 +315,7 @@ pub fn before_move(doc: &Document, ops: &[Op]) -> Vec<Moved> {
     let mut cache = locations::BoxCache::default();
     reps.into_iter()
         .filter_map(|rid| {
-            let r = doc.representations.get(&rid)?;
+            let r = doc.representations().get(&rid)?;
             let ecad_model::Subject::Device(c) = r.subject else { return None };
             let before = Aspect::ALL.map(|a| locations::rep_context_in(doc, a, r, &mut cache).key);
             Some(Moved { device: c, rep: rid, before })
@@ -334,7 +334,7 @@ pub fn after_move(doc: &Document, ids: &mut IdAllocator, moved: &[Moved]) -> Res
         let spots: Vec<Spot> = moved
             .iter()
             .filter_map(|m| {
-                let r = doc.representations.get(&m.rep)?;
+                let r = doc.representations().get(&m.rep)?;
                 let now = locations::rep_context_in(doc, a, r, &mut cache).key;
                 (now.is_some() && now != m.before.get(i).cloned().flatten()).then(|| Spot {
                     device: m.device,
@@ -483,7 +483,7 @@ pub fn half_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
         .filter_map(|c| {
             let side = c.half?;
             let key = format!("location.{}", if side == crate::symbols::Side::Plug { "plug" } else { "socket" });
-            let before = doc.devices.get(&c.component)?.properties.get(&key).cloned();
+            let before = doc.devices().get(&c.component)?.properties.get(&key).cloned();
             (before.as_deref() != Some(c.to_key.as_str())).then(|| Op::SetProperty {
                 object: ObjectRef::Device(c.component),
                 key,
@@ -501,7 +501,7 @@ pub(crate) fn still_valid(doc: &Document, conflicts: &[Conflict]) -> Vec<Conflic
     conflicts
         .iter()
         .filter(|c| {
-            let Some(comp) = doc.devices.get(&c.component) else { return false };
+            let Some(comp) = doc.devices().get(&c.component) else { return false };
             designations::code_of(doc, c.aspect, &c.to_key).is_some()
                 && designations::device_key(comp, c.aspect).as_deref() != Some(c.to_key.as_str())
         })

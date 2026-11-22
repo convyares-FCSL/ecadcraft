@@ -90,11 +90,11 @@ impl<'de> Deserialize<'de> for CoreColours {
 }
 
 /// The longest core offer (`4G`, `BN,BK,GY,GN/YE`).
-pub const MAX_OFFER: usize = 256;
+pub(crate) const MAX_OFFER: usize = 256;
 /// The longest gland size.
-pub const MAX_GLAND: usize = 16;
+pub(crate) const MAX_GLAND: usize = 16;
 /// The longest part number, maker or description.
-pub const MAX_PART_TEXT: usize = 64;
+pub(crate) const MAX_PART_TEXT: usize = 64;
 
 /// A cable type: what a standard or a project says about one. `None` inherits.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

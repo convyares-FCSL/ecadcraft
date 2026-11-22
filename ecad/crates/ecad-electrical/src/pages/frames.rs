@@ -40,8 +40,8 @@ pub const TITLE: &str = "title";
 /// property. The one reader of both.
 pub fn project_text(doc: &Document, key: &str) -> Option<String> {
     match <ecad_model::InfoField as ecad_model::Word>::parse(key) {
-        Some(f) => doc.project.info.get(f).map(str::to_string),
-        None => doc.display.get(key).cloned(),
+        Some(f) => doc.project().info.get(f).map(str::to_string),
+        None => doc.display().get(key).cloned(),
     }
 }
 
@@ -156,7 +156,7 @@ impl FrameText {
     /// The text styles of `doc`'s frame, with the fonts `m` finds.
     pub fn with(doc: &Document, m: &dyn TextMetrics) -> FrameText {
         let draw = DrawStyles::with(doc, m);
-        let u = doc.settings.length_unit;
+        let u = doc.settings().length_unit;
         let t = |k| TextDraw::of(&draw, k, u);
         FrameText {
             grid: t(TextKind::Grid),
@@ -233,12 +233,12 @@ impl FrameInput {
             .min(usize::from(ecad_model::objects::title_block::MAX_TABLE_ROWS));
         FrameInput {
             sheet,
-            unit: doc.settings.length_unit,
+            unit: doc.settings().length_unit,
             project_title: prop(TITLE),
             customer: prop(CUSTOMER),
             drawing_number: prop(DRAWING_NUMBER),
             status: prop(STATUS),
-            page_title: doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default(),
+            page_title: doc.pages().get(&page).map(|p| p.title.to_string()).unwrap_or_default(),
             // Brief 052: stored as entry keys of the project's list; the title block shows codes.
             function: crate::locations::designations::shown_text(
                 doc,

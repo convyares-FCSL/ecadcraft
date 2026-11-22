@@ -118,7 +118,7 @@ fn rows(p: &Project, branch: BranchId, kinds: &[RowKind]) -> Result<Vec<ecad_fil
 /// The file could not be read.
 pub fn named_points(p: &Project, branch: BranchId) -> Result<Vec<Named>, String> {
     let line = lineage_of(p, branch)?;
-    let scheme = &p.ledger.document().project.rev_scheme;
+    let scheme = &p.ledger.document().project().rev_scheme;
     let mut inherited: Vec<Named> = Vec::new();
     for i in 1..line.len() {
         let (anc, _) = line[i];
@@ -140,7 +140,7 @@ pub fn named_points(p: &Project, branch: BranchId) -> Result<Vec<Named>, String>
             .filter_map(|v| v.named_point().map(|k| (k, v.description)))
             .collect();
         let names: BTreeSet<&PointName> = inherited.iter().map(|n| &n.point).collect();
-        for (point, at) in &doc.versions {
+        for (point, at) in doc.versions() {
             if names.contains(point) {
                 continue;
             }

@@ -92,7 +92,7 @@ fn a_new_projects_zones_are_numbered_across_and_lettered_down() {
     let (col, row) = p
         .read(&mut h.state_mut().cad.session, |p, _| {
             let doc = p.ledger.document();
-            let page = doc.page_order.first().copied().expect("a page");
+            let page = doc.page_order().first().copied().expect("a page");
             let g = ecad_model::document::sheet::Grid::of(doc, page);
             (g.column_label(5), g.row_label(2))
         })
@@ -128,7 +128,8 @@ fn screenshots_of_boards_1_15_to_1_18() {
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
     let project = h.state().project().cloned();
-    let order = project.and_then(|p| p.read(&mut h.state_mut().cad.session, |p, _| p.ledger.document().page_order.clone()).ok()).unwrap_or_default();
+    let order =
+        project.and_then(|p| p.read(&mut h.state_mut().cad.session, |p, _| p.ledger.document().page_order().to_vec()).ok()).unwrap_or_default();
     let page = order.get(1).or(order.first()).copied();
     let fit = |h: &mut Harness<'static, App>| {
         h.run_steps(6);

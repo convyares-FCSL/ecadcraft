@@ -32,8 +32,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::Document;
 use crate::connectivity::{self, NetData, NetKey, Node, split_number};
-use crate::document::doc::Document;
 use crate::document::op::{ObjectRef, Op};
 use crate::geometry::colour::ColourWords;
 use crate::naming::id::{PageId, WireId};
@@ -344,7 +344,7 @@ pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
 }
 
 /// The first wire of `net` in net order (design 072 §4.4; ties and wires gone: the lower ID).
-pub fn first_wire(doc: &Document, net: &NetData) -> Option<WireId> {
+pub(crate) fn first_wire(doc: &Document, net: &NetData) -> Option<WireId> {
     net.wires.iter().min_by_key(|w| (doc.wires.get(w).map_or(u16::MAX, |x| x.net_order), **w)).copied()
 }
 
@@ -484,7 +484,7 @@ fn carries(net: &NetData, number: &str, fixed: bool) -> bool {
 }
 
 /// The nets a transaction's ops touched, in the state after them (design 022 §11).
-pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<NetKey>) {
+pub(crate) fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<NetKey>) {
     let conn = doc.connectivity();
     let mut nets = BTreeSet::new();
     let mut potential = BTreeSet::new();
@@ -619,7 +619,7 @@ pub fn assign(doc: &Document, ops: &[Op]) -> Vec<Op> {
 }
 
 /// [`assign`] for the nets `touched`.
-pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetKey>, potential_changed: &BTreeSet<NetKey>) -> Vec<Op> {
+pub(crate) fn assign_nets(doc: &Document, touched: &BTreeSet<NetKey>, potential_changed: &BTreeSet<NetKey>) -> Vec<Op> {
     let conn = doc.connectivity();
     let mut order: Vec<(WireId, NetKey)> =
         touched.iter().filter_map(|id| conn.net(*id).and_then(|n| n.first_conductor()).map(|c| (c, *id))).collect();
@@ -808,7 +808,7 @@ pub fn label_with(doc: &Document, c: WireId, cross_section: Option<String>, colo
 
 /// Whether net `id` (showing `number`) is in a number error: two different fixed numbers, or
 /// another net carrying the same number (unless it is an unnumbered potential's shared prefix).
-pub fn number_error(doc: &Document, id: NetKey, net: &NetData, number: &str) -> bool {
+pub(crate) fn number_error(doc: &Document, id: NetKey, net: &NetData, number: &str) -> bool {
     if net.fixed.len() > 1 {
         return true;
     }
@@ -818,7 +818,7 @@ pub fn number_error(doc: &Document, id: NetKey, net: &NetData, number: &str) -> 
 
 /// Numbering per conductor: whether `number` is carried by more than one wire (unless it is an
 /// unnumbered potential's shared prefix).
-pub fn wire_number_error(doc: &Document, number: &str) -> bool {
+pub(crate) fn wire_number_error(doc: &Document, number: &str) -> bool {
     let exempt = doc.settings.wiring.potentials.iter().any(|p| !p.numbered && p.prefix == number);
     !exempt && doc.connectivity().nets_numbered(number).map(|(_, n)| n).sum::<u32>() > 1
 }

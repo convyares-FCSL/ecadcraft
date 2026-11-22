@@ -20,6 +20,7 @@
 //! - [`wiring`]: wire numbers, potentials and conductor labels (brief 022).
 //! - [`words`], [`units`] and [`keys`]: the shared word readers, the unit types and the property
 //!   key list (design 072 §9); [`text`]: validated text; [`colour`]: conductor colours.
+#![warn(unreachable_pub)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod connectivity;
@@ -33,14 +34,18 @@ pub mod objects;
 
 pub use crate::connectivity::{Connectivity, NetData, NetKey, Node};
 pub use crate::document::book::PageNo;
-pub use crate::document::doc::{
-    Accepts, Cable, Color, ConnectionPoint, ConnectionPointDef, ConnectionPointOwner, ContactMirror, ContentHash, Core, CoreLabel, CorePosition,
-    Definition, Device, Document, End, Folder, Form, Item, ItemKind, Join, Layer, LengthUnit, MAX_CORE_LABEL, NotASlotText, Origin, Page, Primitive,
-    ProjectSettings, Properties, Purpose, ReferenceStyle, Representation, SlotText, Style, Subject, SymbolDefault, SymbolDefaultError,
-    SymbolDefaults, SymbolInstance, TextHAlign, TextSlot, TextVAlign, Wire,
+pub use crate::document::doc::Properties;
+pub use crate::document::doc::cable::{Cable, Core, CoreLabel, CorePosition, MAX_CORE_LABEL, Purpose};
+pub use crate::document::doc::definition::{Definition, Join, NotASlotText, SlotText, SymbolDefault, SymbolDefaultError, SymbolDefaults, TextSlot};
+pub use crate::document::doc::device::{Accepts, ConnectionPoint, ConnectionPointDef, ConnectionPointOwner, Device};
+pub use crate::document::doc::document::{Document, DocumentParts};
+pub use crate::document::doc::drawing::{
+    Color, Folder, Form, Item, ItemKind, Layer, Page, Primitive, Representation, Style, Subject, SymbolInstance, TextHAlign, TextVAlign,
 };
+pub use crate::document::doc::settings::{ContactMirror, ContentHash, LengthUnit, Origin, ProjectSettings, ReferenceStyle};
 pub use crate::document::invariant::Touched;
-pub use crate::document::ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
+pub use crate::document::ledger::Ledger;
+pub use crate::document::ledger::types::{Author, Base, BranchPoint, Check, History, StepPoint, Transaction, TxKind};
 pub use crate::document::op::{ObjectRef, Op};
 pub use crate::document::page::{GenKind, PageKind, PageTitle};
 pub use crate::document::project::{
@@ -62,6 +67,7 @@ pub use crate::objects::role::{PartRole, Role};
 pub use crate::objects::route::{Route, RouteEnd};
 pub use crate::objects::styles::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 pub use crate::objects::user::{DeviceLink, LinkKind, UserFieldDef, UserFieldKind, UserValue};
+pub use crate::objects::wire::{End, Wire};
 
 /// Version of the op and document schema. Independent of the product version (proposal §8.1):
 /// it changes only when the meaning or shape of recorded ops changes.

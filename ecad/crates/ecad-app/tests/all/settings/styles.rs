@@ -41,7 +41,7 @@ fn the_header_makes_a_standard_and_the_status_bar_names_it() {
     assert_eq!(head(&mut h), before, "nothing written while typing");
     click(&mut h, standards::HEADER_CONFIRM);
     assert_eq!(head(&mut h), before + 1, "one transaction");
-    assert_eq!(doc(&mut h).standard.map(|s| s.header.name.to_string()).as_deref(), Some("House"));
+    assert_eq!(doc(&mut h).standard().map(|s| s.header.name.to_string()).as_deref(), Some("House"));
     assert_eq!(h.state_mut().standard_words(), "Standard: House");
     assert!(h.query_by_label(standards::BACK_TO_IEC).is_some() && h.query_by_label(standards::RENAME).is_some());
     // Back to IEC says its consequence first, then goes on the confirm.
@@ -49,7 +49,7 @@ fn the_header_makes_a_standard_and_the_status_bar_names_it() {
     assert!(h.query_by_label(standards::HEADER_CONSEQUENCE).is_some());
     assert_eq!(head(&mut h), before + 1, "said, not applied");
     click(&mut h, standards::HEADER_CONFIRM);
-    assert!(doc(&mut h).standard.is_none());
+    assert!(doc(&mut h).standard().is_none());
 }
 
 #[test]
@@ -100,8 +100,8 @@ fn the_inspector_chooses_a_text_style_for_the_device() {
     let mut h = fixture();
     ok(&mut h, r#"setstyle {"catalogue":"text","new":true,"name":"Tag large","fields":{"height":5}}"#);
     let d = doc(&mut h);
-    let rep = *d.representations.keys().next().unwrap();
-    let c = *d.devices.keys().next().unwrap();
+    let rep = *d.representations().keys().next().unwrap();
+    let c = *d.devices().keys().next().unwrap();
     h.state_mut().goto_symbols(&[rep]).unwrap();
     h.run_steps(3);
     let rows = &h.state().settings.inspector.rows;
@@ -121,7 +121,7 @@ fn the_inspector_chooses_a_text_style_for_the_device() {
     );
     h.state_mut().inspector_action(ecad_app::inspector::InspectorAction::Run("text.tag.style", line));
     h.run_steps(3);
-    assert_eq!(doc(&mut h).devices[&c].properties.get("text.tag.style"), Some(&large));
+    assert_eq!(doc(&mut h).devices()[&c].properties.get("text.tag.style"), Some(&large));
     let rows = &h.state().settings.inspector.rows;
     let style = rows.iter().find(|r| r.key == "text.tag.style").unwrap();
     assert_eq!((style.value.as_str(), style.from), ("Tag large", Source::Object));
@@ -179,9 +179,9 @@ fn look_check_screenshots() {
         let p = t.project().unwrap().clone();
         p.read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let page = doc.page_order[0];
+            let page = doc.page_order()[0];
             let w = doc
-                .wires
+                .wires()
                 .keys()
                 .find(|c| ecad_model::connectivity::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("24V")))
                 .copied()

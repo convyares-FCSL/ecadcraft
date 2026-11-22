@@ -128,7 +128,7 @@ pub fn device(doc: &Document, c: DeviceId) -> Device {
     // Brief 054 (design 054 §3.4): the first head on a page with checks and references on.
     let head = crate::symbols::reps::heads(doc, c)
         .into_iter()
-        .find(|h| doc.representations.get(h).is_some_and(|r| ecad_model::document::sheet::page_checks(doc, r.page)));
+        .find(|h| doc.representations().get(h).is_some_and(|r| ecad_model::document::sheet::page_checks(doc, r.page)));
     let mut children = Vec::new();
     let mut poles = Vec::new();
     for (rid, r) in doc.representations_of(Subject::Device(c)) {
@@ -154,7 +154,7 @@ pub fn device(doc: &Document, c: DeviceId) -> Device {
 
 /// The class of member `rid` of its group, as the index keeps it.
 pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)> {
-    let r = doc.representations.get(&rid)?;
+    let r = doc.representations().get(&rid)?;
     // Brief 049: a continuation arrow's symbol.
     if let Some(g) = crate::continuations::group_of_rep(doc, r) {
         return Some((g, Class::Arrow));

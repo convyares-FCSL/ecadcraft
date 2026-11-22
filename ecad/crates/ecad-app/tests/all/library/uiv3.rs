@@ -123,7 +123,7 @@ fn publish_ticks_choose_the_pages_print_book_prints() {
     let books = h.state().publish.books;
     h.run_steps(10);
     assert_eq!(h.state().publish.books, books, "no rebuild at rest");
-    let first = doc(&mut h).page_order[0];
+    let first = doc(&mut h).page_order()[0];
     click(&mut h, &format!("{}.{}.include", ecad_app::publish::PAGE, first.hex()));
     h.run_steps(2);
     let d = h.state().print_book.clone().expect("Print Book's choices");
@@ -148,7 +148,7 @@ fn demo(h: &mut H, dir: &std::path::Path) {
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
-    let order = doc(h).page_order;
+    let order = doc(h).page_order().to_vec();
     if let Some(&p) = order.get(1).or(order.first()) {
         h.state_mut().show_page(p).unwrap();
     }

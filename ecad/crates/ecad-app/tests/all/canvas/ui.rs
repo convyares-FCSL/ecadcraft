@@ -185,7 +185,7 @@ fn screenshots_of_the_canvas() {
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
-    let first = crate::pages::project_panel::doc(&mut h).page_order[0];
+    let first = crate::pages::project_panel::doc(&mut h).page_order()[0];
     h.state_mut().show_page(first).unwrap();
     h.run_steps(3);
     for (y, code) in [(130.0, "GNYE"), (120.0, "BU"), (110.0, "PURPLISH")] {

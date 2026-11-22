@@ -199,7 +199,7 @@ fn project_properties_are_one_transaction() {
     .unwrap();
     assert_eq!(s.h.head(), head + 1);
     let doc = s.h.doc();
-    assert_eq!(doc.display.get("site_contact").map(String::as_str), Some("J. Smith"));
+    assert_eq!(doc.display().get("site_contact").map(String::as_str), Some("J. Smith"));
     let texts = frame_texts(&mut s.h, s.supply);
     for t in ["Panel 7", "FCS-1", "ACME", "Draft"] {
         assert!(texts.iter().any(|x| x == t), "{t} in {texts:?}");
@@ -207,11 +207,11 @@ fn project_properties_are_one_transaction() {
     let e = s.h.run("projectprops", json!({"props": {"title": "x"}})).unwrap_err();
     assert!(e.contains("\"title\" is set above."), "{e}");
     s.h.run("u", Value::Null).unwrap();
-    assert!(s.h.doc().display.is_empty());
+    assert!(s.h.doc().display().is_empty());
     // The sheet and the step are settings; a grid change changes every reference text.
     s.h.run("projectprops", json!({"sheet": "A2", "page_number_step": 5})).unwrap();
     let d = s.h.doc();
-    assert_eq!((d.settings.sheet().width, d.settings.sheet().columns, d.settings.page_number_step()), (594, 12, 5));
+    assert_eq!((d.settings().sheet().width, d.settings().sheet().columns, d.settings().page_number_step()), (594, 12, 5));
     let v = s.h.run("projectprops", json!({})).unwrap();
     assert_eq!(v["sheet"], "A2");
     s.h.check();
@@ -251,12 +251,12 @@ fn folders_nest_and_move_pages_in_one_transaction_each() {
     assert_eq!(s.h.head(), head + 1);
     assert!(v["message"].as_str().unwrap().starts_with("Folder \"Schematic layouts\" deleted"), "{v}");
     let doc = s.h.doc();
-    assert_eq!(doc.folders.get(&inner).unwrap().parent, None);
+    assert_eq!(doc.folders().get(&inner).unwrap().parent, None);
     s.h.run("u", Value::Null).unwrap();
-    assert_eq!(s.h.doc().folders.get(&inner).unwrap().parent, Some(outer));
+    assert_eq!(s.h.doc().folders().get(&inner).unwrap().parent, Some(outer));
     // Rename.
     s.h.run("renamefolder", json!({"folder": inner.hex(), "name": "Spares"})).unwrap();
-    assert_eq!(s.h.doc().folders.get(&inner).unwrap().name, "Spares");
+    assert_eq!(s.h.doc().folders().get(&inner).unwrap().name, "Spares");
     // New pages land in the folder, numbered after the page before them.
     s.h.run("projectprops", json!({"page_number_step": 5})).unwrap();
     let v = s.h.run("newpage", json!({"title": "More", "folder": inner.hex()})).unwrap();
@@ -279,7 +279,7 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
             let doc = s.h.doc();
             ecad_model::connectivity::derive::connection_point_positions(&doc, s.supply)
                 .into_iter()
-                .find(|(t, _, _)| doc.connection_points[t].device().unwrap() == coil)
+                .find(|(t, _, _)| doc.connection_points()[t].device().unwrap() == coil)
                 .unwrap()
                 .2
         })
@@ -309,13 +309,13 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
     assert_eq!(e, "Rev A is issued and cannot change.");
     // Draw a wire after the issue; Rev A shows the project without it.
     s.h.run("wire", json!({"points": [[ends[0].x, ends[0].y], [ends[1].x, ends[1].y]]})).unwrap();
-    let now = s.h.doc().wires.len();
+    let now = s.h.doc().wires().len();
     let head = s.h.head();
     let v = s.h.run("openrevision", json!({"rev": "A"})).unwrap();
     assert_eq!(s.h.head(), head, "opening records nothing");
     assert_eq!(v["at"], json!(at));
     let then = s.h.p(|p| p.revision_view.as_ref().unwrap().doc.clone());
-    assert_eq!(then.wires.len(), now - 1, "Rev A has no wire drawn after it");
+    assert_eq!(then.wires().len(), now - 1, "Rev A has no wire drawn after it");
     s.h.run("closerevision", json!({})).unwrap();
     assert!(s.h.p(|p| p.revision_view.is_none()));
     // Undo the wire, then a plain `u` across the issue stops and asks.
@@ -326,7 +326,7 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
     assert_eq!(s.h.head(), head, "nothing undone");
     assert!(s.h.p(|p| p.issue_undo_question.is_some()));
     s.h.run("undoissue", json!({})).unwrap();
-    assert!(!s.h.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1))));
+    assert!(!s.h.doc().versions().contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1))));
     assert!(frame_texts(&mut s.h, s.supply).iter().any(|t| t == "-"), "no issued revision");
     s.h.check();
 }
@@ -349,7 +349,7 @@ fn save_and_reopen_keep_everything() {
     let reopened = ecad_engine::ProjectHandle::open_from(&mut s2, "Demo", medium, 1).unwrap();
     let doc2 = reopened.read(&mut s2, |p, _| p.ledger.document().clone()).unwrap();
     assert_eq!(doc, doc2);
-    assert_eq!(doc2.pages[&s.field].sheet.map(|s| s.text()).as_deref(), Some("A2"));
+    assert_eq!(doc2.pages()[&s.field].sheet.map(|s| s.text()).as_deref(), Some("A2"));
     let v = s2.execute("openrevision", &json!({"rev": "A"})).unwrap();
     assert_eq!(v["rev"], "A");
 }
@@ -368,7 +368,7 @@ fn an_old_project_shows_positions_and_the_default_sheet() {
     assert!(frame_texts(&mut h, first).iter().any(|t| t == "2"), "Total 2");
     let rows = h.p(|p| p.page_rows());
     assert_eq!(rows.iter().map(|r| r.number.as_str()).collect::<Vec<_>>(), ["1", "2"]);
-    assert_eq!(h.doc().settings.sheet(), ecad_model::SheetSpec::default());
+    assert_eq!(h.doc().settings().sheet(), ecad_model::SheetSpec::default());
 }
 
 /// Check J: a read-only project refuses every write and still opens a revision.
@@ -405,7 +405,7 @@ fn wire_and_reference_properties_follow_the_objects_they_name() {
     let doc = s.h.doc();
     let (_, _, at) = ecad_model::connectivity::derive::connection_point_positions(&doc, s.supply)
         .into_iter()
-        .find(|(t, _, _)| doc.connection_points[t].device().unwrap() == coil)
+        .find(|(t, _, _)| doc.connection_points()[t].device().unwrap() == coil)
         .unwrap();
     let w: WireId = id(&s.h.wire_pp(&[(at.x, at.y), (at.x + 40.0, at.y)]).unwrap(), "conductor");
     let route = s.h.route_handle(s.supply, w);
@@ -441,7 +441,7 @@ fn old_projects_touch_only_pages_whose_position_changed() {
         s.h.run("pageprops", json!({"page": p.hex(), "number": null})).unwrap();
     }
     let doc = s.h.doc();
-    let old = doc.pages[&s.supply].clone();
+    let old = doc.pages()[&s.supply].clone();
     let rename = vec![
         Op::RemovePage { id: s.supply, page: old.clone(), index: 0 },
         Op::AddPage { id: s.supply, page: ecad_model::Page { title: ecad_model::PageTitle::new("Renamed").unwrap(), ..old }, index: 0 },
@@ -454,7 +454,7 @@ fn old_projects_touch_only_pages_whose_position_changed() {
 #[test]
 fn an_invalid_sheet_falls_back_to_a3_everywhere() {
     let mut s = fixture_paired();
-    let before = s.h.doc().settings;
+    let before = s.h.doc().settings().clone();
     let mut after = before.clone();
     after.sheet = Some(ecad_model::SheetSpec { columns: 0, width: 0, ..ecad_model::SheetSpec::default() });
     s.h.project.apply_ops(&mut s.h.s, "hostile", vec![Op::SetProjectSettings { before, after }]).unwrap();
@@ -495,7 +495,7 @@ fn every_019_command_redoes_exactly() {
         s.h.run("redo", serde_json::Value::Null).unwrap_or_else(|e| panic!("{cmd} redo: {e}"));
         assert_eq!(s.h.doc(), after, "{cmd}: redo gives the same document");
     }
-    assert!(s.h.doc().versions.contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1))), "redo names Rev A again");
+    assert!(s.h.doc().versions().contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1))), "redo names Rev A again");
     assert!(frame_texts(&mut s.h, s.supply).iter().any(|t| t == "P7"), "the title block follows");
     s.h.check();
 }

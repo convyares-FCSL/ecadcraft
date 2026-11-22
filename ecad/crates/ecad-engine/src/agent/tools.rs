@@ -202,19 +202,19 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
     let agent = st.agent.to_string();
     st.project.read(st.session, |p, _| {
         let doc = p.ledger.document();
-        let pages = doc.page_order.iter().map(|id| {
+        let pages = doc.page_order().iter().map(|id| {
             json!({
                 "id": id.hex(),
-                "title": doc.pages.get(id).map(|pg| pg.title.clone()),
+                "title": doc.pages().get(id).map(|pg| pg.title.clone()),
                 "open": p.pages.get(id).is_some_and(|v| v.uid.is_some()),
             })
         });
-        let devices = doc.devices.iter().map(|(id, c)| {
+        let devices = doc.devices().iter().map(|(id, c)| {
             let connection_points: Vec<Value> = doc.connection_points_of(*id).map(|(t, term)| json!({"id": t.hex(), "label": term.label})).collect();
             json!({"id": id.hex(), "properties": c.properties, "connection_points": connection_points})
         });
-        let cable_of = |c| doc.cables.iter().find(|(_, k)| k.cores.iter().any(|m| m.wire() == Some(c))).map(|(id, _)| id.hex());
-        let conductors = doc.wires.iter().map(|(id, c)| {
+        let cable_of = |c| doc.cables().iter().find(|(_, k)| k.cores.iter().any(|m| m.wire() == Some(c))).map(|(id, _)| id.hex());
+        let conductors = doc.wires().iter().map(|(id, c)| {
             json!({
                 "id": id.hex(),
                 "values": c.values().into_iter().map(|(k, v)| (k.to_string(), Value::String(v))).collect::<serde_json::Map<_, _>>(),
@@ -223,7 +223,7 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
                 "cable": cable_of(*id),
             })
         });
-        let cables = doc.cables.iter().map(|(id, c)| {
+        let cables = doc.cables().iter().map(|(id, c)| {
             let members: Vec<Value> = c
                 .cores
                 .iter()
@@ -249,10 +249,10 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
             "head": p.ledger.head(),
             "unsaved": p.unsaved(),
             "unsavedTransactions": p.unsaved_transactions(),
-            "pages": listed(pages, doc.page_order.len(), limit),
-            "devices": listed(devices, doc.devices.len(), limit),
-            "conductors": listed(conductors, doc.wires.len(), limit),
-            "cables": listed(cables, doc.cables.len(), limit),
+            "pages": listed(pages, doc.page_order().len(), limit),
+            "devices": listed(devices, doc.devices().len(), limit),
+            "conductors": listed(conductors, doc.wires().len(), limit),
+            "cables": listed(cables, doc.cables().len(), limit),
             "nets": listed(nets, net_count, limit),
         })
     })

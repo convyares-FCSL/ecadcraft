@@ -151,7 +151,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
     // Every route on the page (through the page index): (representation, wire, points).
     let mut routes: Vec<(RepresentationId, WireId, Vec<Pt>)> = Vec::new();
     for r in doc.routes_on(page) {
-        let (Some(route), Some((rid, item, _))) = (doc.routes.get(&r), route_item(doc, r)) else { continue };
+        let (Some(route), Some((rid, item, _))) = (doc.routes().get(&r), route_item(doc, r)) else { continue };
         if hidden.contains(&item) {
             continue;
         }
@@ -208,7 +208,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
     for (i, label) in chosen {
         let Some((rid, c, v)) = routes.get(i) else { continue };
         // Brief 050a: a conductor's own wire label style (height, weight, colour, font).
-        let own = doc.wires.get(c).and_then(|x| {
+        let own = doc.wires().get(c).and_then(|x| {
             let at = crate::defaults::Scope { conductor: Some(*c), ..crate::defaults::Scope::project() };
             crate::styles::text_style::own_style(doc, crate::styles::text_style::TextKind::WireLabel, at, &x.display)
         });

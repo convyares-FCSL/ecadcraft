@@ -546,7 +546,7 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
         p.read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let (v, n) = ecad_electrical::styles::commands::styles::standard_counts(doc);
-            (doc.standard.as_ref().map(|s| s.header.name.to_string()), v, n)
+            (doc.standard().map(|s| s.header.name.to_string()), v, n)
         })
         .ok()
     });

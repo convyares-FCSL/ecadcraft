@@ -45,7 +45,7 @@ fn fixture(seed: u64) -> F {
 fn place(h: &mut H, r: RepresentationId) -> String {
     h.p(|p| {
         let doc = p.ledger.document();
-        let rep = &doc.representations[&r];
+        let rep = &doc.representations()[&r];
         Places::new(doc).text(rep.page, ecad_electrical::references::devices::classify::anchor(doc, rep))
     })
 }
@@ -310,7 +310,7 @@ fn caption_rules_and_wrapping() {
     assert!((2..=3).contains(&lines.len()), "{lines:?}");
     let pc: AidId = id(&v, "aid");
     f.h.run("setprop", json!({"aids": [pc.hex()], "key": CAPTION_KEY, "value": "  "})).unwrap();
-    assert_eq!(f.h.doc().aids[&pc].continuation_caption(), None, "blank removes it");
+    assert_eq!(f.h.doc().aids()[&pc].continuation_caption(), None, "blank removes it");
     // Hostile: 10 000 characters and control characters are refused, never a panic.
     for bad in ["y".repeat(10_000), "A\u{7}B".to_string()] {
         assert!(f.h.run("setprop", json!({"aids": [pc.hex()], "key": CAPTION_KEY, "value": bad})).is_err());

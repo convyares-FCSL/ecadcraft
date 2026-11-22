@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::common::H;
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.connection_points, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display)
+    (d.devices(), d.connection_points(), d.wires(), d.cables(), d.pages(), d.page_order(), d.representations(), d.items(), d.display())
 }
 
 /// Two pages, two tagged coils, a wire between their first connection points and a cable that is
@@ -26,10 +26,10 @@ fn the_builder_makes_pages_devices_a_wire_and_a_cable() {
     let (wire, cable, added) = (b.wires[0], b.cables[0], b.added_pages.clone());
     let mut h = H::from_built(b);
     let doc = h.doc();
-    assert_eq!(doc.page_order.len(), 2);
-    assert_eq!(added, vec![doc.page_order[1]]);
-    assert!(doc.devices.contains_key(&k1) && doc.devices.contains_key(&k2));
-    assert!(doc.wires.contains_key(&wire), "the wire between the coils");
+    assert_eq!(doc.page_order().len(), 2);
+    assert_eq!(added, vec![doc.page_order()[1]]);
+    assert!(doc.devices().contains_key(&k1) && doc.devices().contains_key(&k2));
+    assert!(doc.wires().contains_key(&wire), "the wire between the coils");
     assert!(!ecad_electrical::cables::is_drawn(&doc, cable), "a cable made by `cablenew` is not drawn");
     assert_eq!(doc.representations_of(Subject::Device(k1)).count(), 1);
 }
@@ -59,6 +59,6 @@ fn a_refused_step_names_the_command() {
 fn other_commands_run_in_order_between_the_steps() {
     let b = ProjectBuilder::new(6204).coil("-K1", (50.0, 50.0)).command("newpage", json!({"title": "Extra"})).coil("-K2", (150.0, 50.0)).build();
     let mut h = H::from_built(b);
-    assert_eq!(h.doc().page_order.len(), 2);
-    assert_eq!(h.doc().devices.len(), 2);
+    assert_eq!(h.doc().page_order().len(), 2);
+    assert_eq!(h.doc().devices().len(), 2);
 }

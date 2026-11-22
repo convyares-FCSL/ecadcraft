@@ -14,7 +14,7 @@ const SEED: u64 = 0x72_d7;
 /// Every wire as (net, net_order, {ends}), sorted by net then order.
 fn wires(h: &mut H) -> Vec<(NetId, u16, BTreeSet<ConnectionPointId>)> {
     let doc = h.doc();
-    let mut v: Vec<_> = doc.wires.values().map(|w| (w.net, w.net_order, w.ends.iter().copied().collect())).collect();
+    let mut v: Vec<_> = doc.wires().values().map(|w| (w.net, w.net_order, w.ends.iter().copied().collect())).collect();
     v.sort_by_key(|(n, o, _)| (*n, *o));
     v
 }
@@ -50,9 +50,9 @@ fn p1_wires_follow_drawing_order_point_to_point() {
     assert_eq!(nth(&mut h, 2), pair(a, b));
     assert_eq!(nth(&mut h, 3), pair(c, d));
     let doc = h.doc();
-    let conductors: BTreeSet<_> = doc.wires.values().map(|w| w.conductor).collect();
+    let conductors: BTreeSet<_> = doc.wires().values().map(|w| w.conductor).collect();
     assert_eq!(conductors.len(), 3, "distinct conductor ids");
-    assert!(doc.wires.values().all(|w| w.ends[0] != w.ends[1]));
+    assert!(doc.wires().values().all(|w| w.ends[0] != w.ends[1]));
     h.check();
 }
 
@@ -63,7 +63,7 @@ fn p2_tee_joins_nearer_end_then_far_end_then_nearer_anyway() {
     let mut h = H::new(SEED + 1);
     let p = h.points_at(&[(0.0, 0.0), (100.0, 0.0), (20.0, 40.0), (30.0, -40.0), (40.0, 40.0)]);
     let (a, b, c, d, e) = (p[0], p[1], p[2], p[3], p[4]);
-    let devices = h.doc().devices.len();
+    let devices = h.doc().devices().len();
     wire(&mut h, &[(0.0, 0.0), (100.0, 0.0)]);
     let r = wire(&mut h, &[(20.0, 40.0), (20.0, 0.0)]);
     assert_eq!(r["joined"][0]["how"], json!("on"), "a T: {r}");
@@ -75,7 +75,7 @@ fn p2_tee_joins_nearer_end_then_far_end_then_nearer_anyway() {
     let w = wires(&mut h);
     assert!(w.iter().all(|(n, _, _)| *n == w[0].0), "one net: {w:?}");
     let doc = h.doc();
-    assert_eq!(doc.devices.len(), devices, "no junction device stored");
+    assert_eq!(doc.devices().len(), devices, "no junction device stored");
     h.check();
 }
 
@@ -118,8 +118,8 @@ fn p4_net_ids_follow_join_and_split() {
     wire(&mut h, &[(0.0, 50.0), (50.0, 50.0)]);
     wire(&mut h, &[(50.0, 50.0), (100.0, 50.0)]);
     let doc = h.doc();
-    let small = doc.wires.values().find(|w| w.ends.contains(&p[0])).unwrap().net;
-    let big = doc.wires.values().find(|w| w.ends.contains(&p[4])).unwrap().net;
+    let small = doc.wires().values().find(|w| w.ends.contains(&p[0])).unwrap().net;
+    let big = doc.wires().values().find(|w| w.ends.contains(&p[4])).unwrap().net;
     assert_ne!(small, big);
     let j = id(&wire(&mut h, &[(50.0, 0.0), (50.0, 50.0)]), "route");
     let w = wires(&mut h);
@@ -128,8 +128,8 @@ fn p4_net_ids_follow_join_and_split() {
     let hd = h.line_handle(page, j).hex();
     h.run("erase", json!({"handles": [hd]})).unwrap();
     let doc = h.doc();
-    let nb = doc.wires.values().find(|w| w.ends.contains(&p[4])).unwrap().net;
-    let ns = doc.wires.values().find(|w| w.ends.contains(&p[0])).unwrap().net;
+    let nb = doc.wires().values().find(|w| w.ends.contains(&p[4])).unwrap().net;
+    let ns = doc.wires().values().find(|w| w.ends.contains(&p[0])).unwrap().net;
     assert_eq!(nb, big, "bigger part keeps the id");
     assert_ne!(ns, big, "smaller part gets another id");
     h.check();
@@ -165,13 +165,13 @@ fn p6_save_and_reopen_keep_wires_and_routes() {
     h.run("saveas", json!({"path": path})).unwrap();
     let (w0, r0) = {
         let d = h.doc();
-        (d.wires.clone(), d.routes.clone())
+        (d.wires().clone(), d.routes().clone())
     };
     h.close_all();
     let mut h2 = crate::common::reopen(&path, SEED + 6);
     let d = h2.doc();
-    assert!(d.wires == w0, "wires round trip");
-    assert!(d.routes == r0, "routes round trip");
+    assert!(*d.wires() == w0, "wires round trip");
+    assert!(*d.routes() == r0, "routes round trip");
     h2.check();
     let _ = std::fs::remove_dir_all(dir);
 }

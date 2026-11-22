@@ -237,7 +237,9 @@ fn history_and_checks_work_on_copies_and_leave_the_live_project_alone() {
 
     // A replay check against a document that is not the history's result fails.
     let mut other = snap.doc.clone();
-    other.pages.clear();
+    other.edit_parts(|parts| {
+        parts.pages.clear();
+    });
     assert!(!verify_replay(&panel.log, &other).ok);
     // A history that differs from the file's fails the file check.
     let mut other_log = panel.log.clone();
@@ -328,12 +330,12 @@ fn record_bytes_are_shown_as_text_with_control_bytes_escaped() {
 fn relations_lead_from_a_definition_to_its_instances_and_from_a_connection_point_to_its_wires() {
     let (mut h, c1, c2, w) = small_project(48);
     let doc = h.doc();
-    let def = doc.devices[&c2].definition.unwrap();
+    let def = doc.devices()[&c2].definition.unwrap();
     let users = objects::used_by(&doc, ObjectId::Definition(def));
     assert!(users.contains(&ObjectId::Device(c2)));
     assert!(users.iter().any(|u| matches!(u, ObjectId::Item(_))), "the symbol instance");
-    let t = doc.wires[&w].ends[0];
-    let r = h.route_of(doc.page_order[0], w);
+    let t = doc.wires()[&w].ends[0];
+    let r = h.route_of(doc.page_order()[0], w);
     assert_eq!(objects::used_by(&doc, ObjectId::ConnectionPoint(t)), vec![ObjectId::Wire(w), ObjectId::Route(r)]);
     let of_c1 = objects::used_by(&doc, ObjectId::Device(c1));
     assert!(of_c1.iter().any(|u| matches!(u, ObjectId::ConnectionPoint(_))));

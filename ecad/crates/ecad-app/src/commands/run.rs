@@ -238,10 +238,10 @@ impl App {
             let doc = p.ledger.document();
             let mut out = vec![file, format!("Transaction {} (saved through {}).", p.ledger.head(), p.ledger.persisted())];
             out.push(String::new());
-            out.push(format!("Pages ({}):", doc.page_order.len()));
-            for (i, page) in doc.page_order.iter().enumerate() {
-                let title = doc.pages.get(page).map(|x| x.title.as_str()).unwrap_or_default();
-                let items = doc.items.values().filter(|it| it.page == *page).count();
+            out.push(format!("Pages ({}):", doc.page_order().len()));
+            for (i, page) in doc.page_order().iter().enumerate() {
+                let title = doc.pages().get(page).map(|x| x.title.as_str()).unwrap_or_default();
+                let items = doc.items().values().filter(|it| it.page == *page).count();
                 out.push(format!("  {:>3}  {title}  ({items} items)  {}", i + 1, page.hex()));
             }
             let devices = ecad_electrical::devices::json::devices(doc, None);
@@ -257,19 +257,19 @@ impl App {
                 ));
             }
             out.push(String::new());
-            out.push(format!("Cables ({}):", doc.cables.len()));
-            for (k, cable) in &doc.cables {
+            out.push(format!("Cables ({}):", doc.cables().len()));
+            for (k, cable) in doc.cables() {
                 out.push(format!("  {:<8} {} members  {}", ecad_engine::cables::views::cable_title(doc, *k), cable.cores.len(), k.hex()));
             }
             out.push(String::new());
             out.push(format!(
                 "Counts: {} components, {} connection points, {} conductors, {} items, {} representations, {} definitions.",
-                doc.devices.len(),
-                doc.connection_points.len(),
-                doc.wires.len(),
-                doc.items.len(),
-                doc.representations.len(),
-                doc.definitions.len()
+                doc.devices().len(),
+                doc.connection_points().len(),
+                doc.wires().len(),
+                doc.items().len(),
+                doc.representations().len(),
+                doc.definitions().len()
             ));
             out.join("\n")
         });
@@ -738,7 +738,7 @@ impl App {
                 ecad_electrical::numbering::commands::choices(doc),
                 objects,
                 ecad_electrical::devices::padding(doc),
-                u8::try_from(doc.settings.wiring.digits()).unwrap_or(ecad_model::connectivity::wiring::MAX_DIGITS),
+                u8::try_from(doc.settings().wiring.digits()).unwrap_or(ecad_model::connectivity::wiring::MAX_DIGITS),
             )
         });
         let Ok((choices, objects, digits, wire_digits)) = read else { return };
@@ -904,7 +904,7 @@ impl App {
             .read(&mut self.cad.session, |p, _| {
                 let doc = p.ledger.document();
                 let (_, r) = doc.representations_of(ecad_model::Subject::Cable(cable)).find(|(_, r)| r.role == ecad_model::Role::Slash)?;
-                let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+                let at = r.items.first().and_then(|i| doc.items().get(i)).and_then(|i| match &i.kind {
                     ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => {
                         Some(ecad_model::Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0))
                     }

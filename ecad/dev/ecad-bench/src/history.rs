@@ -175,7 +175,7 @@ fn measure_on(copy: &Path, runs: usize) -> Result<MeasuredHistory, String> {
     }
     // Merge: `runs` branches from Now, each changing 20 devices' descriptions; then main 2 000
     // steps ahead, one of the 20 changed there too.
-    let devices: Vec<String> = p.read(&mut s, |p, _| p.ledger.document().devices.keys().take(21).map(|c| c.hex()).collect())?;
+    let devices: Vec<String> = p.read(&mut s, |p, _| p.ledger.document().devices().keys().take(21).map(|c| c.hex()).collect())?;
     if devices.len() < 21 {
         return Err("the bench project has fewer than 21 devices".into());
     }

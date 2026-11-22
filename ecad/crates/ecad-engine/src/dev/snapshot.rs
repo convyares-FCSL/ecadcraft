@@ -47,11 +47,13 @@ pub struct LiveFacts {
 
 fn label_of(doc: &Document, s: Subject) -> String {
     match s {
-        Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag_shown()).unwrap_or_else(|| "untagged device".into()),
-        Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text().map(|n| format!("wire {n}"))).unwrap_or_else(|| "unnumbered wire".into()),
-        Subject::Cable(c) => doc.cables.get(&c).and_then(|x| x.tag_shown()).unwrap_or_else(|| "untagged cable".into()),
-        Subject::Route(r) => doc.routes.get(&r).map_or_else(|| "line".into(), |x| format!("line on page {}", x.page.short())),
-        Subject::Aid(a) => match doc.aids.get(&a) {
+        Subject::Device(c) => doc.devices().get(&c).and_then(|x| x.tag_shown()).unwrap_or_else(|| "untagged device".into()),
+        Subject::Wire(c) => {
+            doc.wires().get(&c).and_then(|x| x.number_text().map(|n| format!("wire {n}"))).unwrap_or_else(|| "unnumbered wire".into())
+        }
+        Subject::Cable(c) => doc.cables().get(&c).and_then(|x| x.tag_shown()).unwrap_or_else(|| "untagged cable".into()),
+        Subject::Route(r) => doc.routes().get(&r).map_or_else(|| "line".into(), |x| format!("line on page {}", x.page.short())),
+        Subject::Aid(a) => match doc.aids().get(&a) {
             Some(ecad_model::Aid::Continuation { name: Some(n), .. }) => format!("continuation {n}"),
             Some(ecad_model::Aid::Continuation { name: None, .. }) => "unnamed continuation".into(),
             Some(ecad_model::Aid::Box(_)) => "location box".into(),
@@ -66,24 +68,24 @@ fn index(doc: &Document) -> Vec<Value> {
     let mut push = |kind: &str, id: String, short: String, label: String| {
         out.push(json!({"kind": kind, "id": id, "short": short, "label": label}));
     };
-    for (id, p) in &doc.pages {
+    for (id, p) in doc.pages() {
         push("page", format!("{:032x}", id.0), id.short(), p.title.to_string());
     }
-    for id in doc.devices.keys() {
+    for id in doc.devices().keys() {
         push("device", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Device(*id)));
     }
-    for (id, t) in &doc.connection_points {
+    for (id, t) in doc.connection_points() {
         let owner = label_of(doc, t.owner.subject());
         let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| id.short());
         push("connection_point", format!("{:032x}", id.0), id.short(), format!("{owner}:{name}"));
     }
-    for id in doc.wires.keys() {
+    for id in doc.wires().keys() {
         push("wire", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Wire(*id)));
     }
     // A wire's net and its conductor (design 072 §4.2): named after the wire first in the net's
     // order, and after the wire that is the conductor.
     let mut nets: std::collections::BTreeMap<ecad_model::NetId, (u16, String)> = std::collections::BTreeMap::new();
-    for (id, w) in &doc.wires {
+    for (id, w) in doc.wires() {
         let label = label_of(doc, Subject::Wire(*id));
         push("conductor", format!("{:032x}", w.conductor.0), w.conductor.short(), format!("conductor of {label}"));
         let first = nets.entry(w.net).or_insert_with(|| (w.net_order, label.clone()));
@@ -94,25 +96,25 @@ fn index(doc: &Document) -> Vec<Value> {
     for (id, (_, label)) in &nets {
         push("net", format!("{:032x}", id.0), id.short(), format!("net of {label}"));
     }
-    for id in doc.cables.keys() {
+    for id in doc.cables().keys() {
         push("cable", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Cable(*id)));
     }
-    for id in doc.routes.keys() {
+    for id in doc.routes().keys() {
         push("route", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Route(*id)));
     }
-    for id in doc.aids.keys() {
+    for id in doc.aids().keys() {
         push("aid", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Aid(*id)));
     }
-    for (id, p) in &doc.loose_parts {
+    for (id, p) in doc.loose_parts() {
         push("loose_part", format!("{:032x}", id.0), id.short(), format!("loose part {}", p.description));
     }
-    for (id, r) in &doc.representations {
+    for (id, r) in doc.representations() {
         push("representation", format!("{:032x}", id.0), id.short(), format!("{} of {}", r.role, label_of(doc, r.subject)));
     }
-    for (id, d) in &doc.definitions {
+    for (id, d) in doc.definitions() {
         push("definition", format!("{:032x}", id.0), id.short(), d.name.clone());
     }
-    for (id, i) in &doc.items {
+    for (id, i) in doc.items() {
         let what = match &i.kind {
             ecad_model::ItemKind::Primitive(p) => format!("{p:?}").split([' ', '{']).next().unwrap_or("item").to_lowercase(),
             ecad_model::ItemKind::Symbol(_) => "symbol".into(),
@@ -152,14 +154,14 @@ pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog,
     };
     let references = cable_references(doc);
     let pages: Vec<Value> = doc
-        .page_order
+        .page_order()
         .iter()
         .map(|id| {
             let fact = live.and_then(|l| l.pages.iter().find(|p| p.id == *id));
             json!({
                 "id": format!("{:032x}", id.0),
                 "short": id.short(),
-                "title": doc.pages.get(id).map(|p| p.title.to_string()).unwrap_or_default(),
+                "title": doc.pages().get(id).map(|p| p.title.to_string()).unwrap_or_default(),
                 "open": fact.map(|f| f.open),
                 "projection_matches": fact.and_then(|f| f.projection_matches),
                 "mapped_handles": fact.and_then(|f| f.mapped_handles),

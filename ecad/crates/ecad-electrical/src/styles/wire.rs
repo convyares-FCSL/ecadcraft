@@ -360,7 +360,7 @@ impl WireDraws {
     /// The category of conductor `c` and where it came from (design 050 §5.3).
     pub fn category(&self, doc: &Document, c: WireId) -> (Option<StyleRef>, CategoryFrom) {
         let e = &crate::defaults::styles::WIRE_CATEGORY;
-        let own = doc.wires.get(&c).and_then(|x| x.wire_type.clone());
+        let own = doc.wires().get(&c).and_then(|x| x.wire_type.clone());
         if let Some(id) = own.filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
             return (Some(id), CategoryFrom::Own);
         }
@@ -388,7 +388,7 @@ impl WireDraws {
     /// The look of conductor `c` (design 050 §5.3).
     pub fn draw(&self, doc: &Document, c: WireId) -> WireDraw {
         let (category, from) = self.category(doc, c);
-        let wire = doc.wires.get(&c);
+        let wire = doc.wires().get(&c);
         let core = !doc.cables_of(c).is_empty();
         let f = |key: &str| category.as_ref().and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, key, None));
         let from_cat = |key: &str| f(key).and_then(|r| text_of(&r).map(|t| (t, r.from)));

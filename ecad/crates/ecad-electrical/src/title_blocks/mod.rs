@@ -97,7 +97,7 @@ pub(crate) fn frame_reach_of(doc: &Document, effect: &ecad_model::document::effe
                 // A frame made or deleted: a choice naming it starts or stops resolving.
                 (None, _) | (_, None) => Reach::Wide,
                 _ => Reach::Pages(
-                    doc.page_order
+                    doc.page_order()
                         .iter()
                         .copied()
                         .filter(|p| sheet::frame_style(doc, *p) == **id || sheet::title_block_style(doc, *p) == **id)

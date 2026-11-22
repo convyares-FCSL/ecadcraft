@@ -59,8 +59,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPages
         let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, SEED, ecad_engine::cables::views::Settings::none())?;
         let (pages, densest) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            let d = doc.page_order.iter().copied().max_by_key(|pg| doc.representations_on(*pg).count()).unwrap_or(PageId(0));
-            (doc.page_order.clone(), d)
+            let d = doc.page_order().iter().copied().max_by_key(|pg| doc.representations_on(*pg).count()).unwrap_or(PageId(0));
+            (doc.page_order().to_vec(), d)
         })?;
         out.pages = pages.len();
         project.open_page(&mut s, densest)?;

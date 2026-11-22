@@ -47,7 +47,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredText,
         let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let (page, symbols, device) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            let page: Option<PageId> = doc.page_order.iter().copied().max_by_key(|pg| doc.representations_on(*pg).count());
+            let page: Option<PageId> = doc.page_order().iter().copied().max_by_key(|pg| doc.representations_on(*pg).count());
             let page = page.unwrap_or(PageId(0));
             let device = doc.representations_on(page).find_map(|(_, r)| match r.subject {
                 Subject::Device(c) => Some(c),

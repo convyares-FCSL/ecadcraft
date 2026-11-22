@@ -1381,7 +1381,7 @@ impl From<&m::TxKind> for TxKind {
 // record → model
 
 /// A record value the model cannot hold.
-pub type ConvertError = String;
+pub(crate) type ConvertError = String;
 
 /// The `kind`s of things that were devices and are not any more, with the read error of each.
 /// Continuations and location boxes are drawing aids (design 072 §6.2), BOM items loose parts

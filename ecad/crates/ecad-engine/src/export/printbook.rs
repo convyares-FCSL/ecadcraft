@@ -77,7 +77,7 @@ pub fn resolve_with(doc: &Document, scope: &Scope, reports: Option<&ReportModels
     match scope {
         Scope::All => Ok(Resolved { pages: b.order.clone(), ..Resolved::default() }),
         Scope::Folder(f) => {
-            if !doc.folders.contains_key(f) {
+            if !doc.folders().contains_key(f) {
                 return Err("no such folder".into());
             }
             let mut set = BTreeSet::new();

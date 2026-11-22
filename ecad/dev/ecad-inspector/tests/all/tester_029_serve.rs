@@ -428,7 +428,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
         (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let (w, c): (WireId, CableId) = (ids.fresh(), ids.fresh());
     let props = |pairs: &[(&str, &str)]| {
-        let mut p = ecad_model::document::doc::Properties::new();
+        let mut p = ecad_model::Properties::new();
         for (k, v) in pairs {
             p.insert((*k).into(), (*v).into());
         }

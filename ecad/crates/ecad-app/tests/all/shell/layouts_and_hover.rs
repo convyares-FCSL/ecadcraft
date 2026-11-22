@@ -125,10 +125,10 @@ mod hover_and_marks {
         ok(h, r#"place {"at":[100,60],"mirror":true}"#);
         ok(h, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
         let d = doc(h);
-        let page = d.page_order[0];
+        let page = d.page_order()[0];
         ecad_model::connectivity::derive::connection_point_positions(&d, page)
             .into_iter()
-            .map(|(t, _, p)| (d.connection_points[&t].label.clone().unwrap_or_default(), p.x, p.y))
+            .map(|(t, _, p)| (d.connection_points()[&t].label.clone().unwrap_or_default(), p.x, p.y))
             .collect()
     }
 
@@ -287,9 +287,9 @@ mod hover_and_marks {
         to_layout(&mut h, "Model");
         // Where did a wire clicked on the paper sheet go? Report it, then check the project is sound.
         let d = doc(&mut h);
-        let page = d.page_order[0];
+        let page = d.page_order()[0];
         let routes: Vec<String> =
-            d.wires.keys().filter_map(|c| ecad_model::connectivity::derive::route_on_page(&d, *c, page)).map(|(_, r)| format!("{r:?}")).collect();
+            d.wires().keys().filter_map(|c| ecad_model::connectivity::derive::route_on_page(&d, *c, page)).map(|(_, r)| format!("{r:?}")).collect();
         let paper: usize = h.state().cad.session.doc().unwrap().layouts.iter().map(|l| l.entities.len()).sum();
         eprintln!("wire in paper space: head {} -> {after}; routes {routes:?}; paper {paper}", before.0);
         let t = h.state_mut();
@@ -537,10 +537,10 @@ mod layout_refusals {
         assert!(running(&h).is_none());
         assert_eq!(head(&mut h), before.0 + 1, "one wire");
         let d = doc(&mut h);
-        let page = d.page_order[0];
+        let page = d.page_order()[0];
         // The line drawn (its ends are free, so it is a route with no wire, design 072).
         let new_route = d
-            .routes
+            .routes()
             .values()
             .filter(|r| r.page == page)
             .filter_map(|r| Some((*r.points.first()?, *r.points.last()?)))

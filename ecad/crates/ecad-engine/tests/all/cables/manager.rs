@@ -122,7 +122,7 @@ fn cableedit_sets_fields_in_one_transaction_and_refuses_bad_values() {
     }
     // One undo step.
     h.run("u", json!({})).unwrap();
-    assert!(!h.doc().cables[&k].properties.contains_key("length"));
+    assert!(!h.doc().cables()[&k].properties.contains_key("length"));
 }
 
 #[test]
@@ -149,12 +149,12 @@ fn a_cable_type_fills_type_only_when_empty_or_its_own() {
     let b = h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth B", "fields": {"cores": "7G", "size": "2.5"}})).unwrap();
     let k = new_cable(&mut h, json!({}));
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": a["id"]}})).unwrap();
-    assert_eq!(h.doc().cables[&k].properties.get("type").map(String::as_str), Some("4G1.5"));
+    assert_eq!(h.doc().cables()[&k].properties.get("type").map(String::as_str), Some("4G1.5"));
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": b["id"]}})).unwrap();
-    assert_eq!(h.doc().cables[&k].properties.get("type").map(String::as_str), Some("7G2.5"), "came from the old type");
+    assert_eq!(h.doc().cables()[&k].properties.get("type").map(String::as_str), Some("7G2.5"), "came from the old type");
     h.run("cableedit", json!({"cable": k.hex(), "set": {"type": "Hand typed"}})).unwrap();
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": a["id"]}})).unwrap();
-    assert_eq!(h.doc().cables[&k].properties.get("type").map(String::as_str), Some("Hand typed"), "a hand-typed type stays");
+    assert_eq!(h.doc().cables()[&k].properties.get("type").map(String::as_str), Some("Hand typed"), "a hand-typed type stays");
     // The cable type's cores are the offer (design 059 §2.2).
     let doc = h.doc();
     assert_eq!(cables::cores_shown(&doc, k).map(|c| c.0).as_deref(), Some("4G"));
@@ -169,7 +169,7 @@ fn cableremove_deletes_a_cable_not_drawn_and_refuses_a_drawn_one() {
     assert_eq!(label, "Remove cable");
     assert!(matches!(ops.as_slice(), [Op::DeleteCable { .. }]));
     h.run("u", json!({})).unwrap();
-    assert!(h.doc().cables.contains_key(&k), "undo restores it");
+    assert!(h.doc().cables().contains_key(&k), "undo restores it");
     wires(&mut h, 2);
     let w: CableId = id(&slash(&mut h, None).unwrap(), "cable");
     let head = h.head();
@@ -197,7 +197,7 @@ fn slashing_onto_a_cable_not_drawn_assigns_its_cores_in_order() {
     assert_eq!(label, "Cable slash");
     let doc = h.doc();
     let members: Vec<(WireId, Option<String>)> =
-        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
+        doc.cables()[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into())), (ws[2], Some("3".into()))]);
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty());
     let open = checks_of(&mut h, "core-open");
@@ -217,7 +217,7 @@ fn slashing_more_wires_than_free_cores_is_refused() {
     assert!(e.contains("-W01 has 3 free cores (1, 2, GNYE); the slash crosses 5 wires"), "{e}");
     assert_eq!(h.head(), head);
     // cableadd onto it takes the same rule.
-    let ws: Vec<String> = h.doc().wires.keys().map(|c| c.hex()).collect();
+    let ws: Vec<String> = h.doc().wires().keys().map(|c| c.hex()).collect();
     let e = h.run("cableadd", json!({"conductors": ws, "cable": k.hex()})).unwrap_err();
     assert!(e.contains("free cores"), "{e}");
     assert_eq!(h.head(), head);
@@ -300,9 +300,9 @@ fn a_cable_not_drawn_survives_join_and_the_report_lists_it() {
     wires(&mut h, 1);
     let w: CableId = id(&slash(&mut h, None).unwrap(), "cable");
     let doc2 = h.doc();
-    let ops = ecad_model::merge::join_cables(&doc2, k, w).unwrap();
+    let ops = ecad_model::document::doc::cable::join_cables(&doc2, k, w).unwrap();
     assert!(matches!(ops.last(), Some(Op::DeleteCable { id, .. }) if *id == k));
-    assert!(doc.cables[&k].cores.is_empty());
+    assert!(doc.cables()[&k].cores.is_empty());
 }
 
 #[test]
@@ -341,9 +341,9 @@ fn the_slash_tool_picks_a_cable_by_its_cable_keyword() {
     h.cmdline("500,25");
     let doc = h.doc();
     let members: Vec<(WireId, Option<String>)> =
-        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
+        doc.cables()[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into()))]);
-    assert_eq!(doc.cables.len(), 1, "no new cable");
+    assert_eq!(doc.cables().len(), 1, "no new cable");
     // `New` (the default) makes a new cable with the next free tag.
     wires_at(&mut h, 600.0, 2);
     h.cmdline("cableslash");
@@ -351,7 +351,7 @@ fn the_slash_tool_picks_a_cable_by_its_cable_keyword() {
     h.cmdline("");
     h.cmdline("595,25");
     h.cmdline("620,25");
-    assert_eq!(h.doc().cables.len(), 2);
+    assert_eq!(h.doc().cables().len(), 2);
 }
 
 /// Two wires at `x0`, `x0 + 10`.

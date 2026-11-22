@@ -29,9 +29,9 @@ use crate::naming::text::Text;
 /// Most characters of a list code (with its sign) and of a tag.
 pub const MAX_CODE: usize = 16;
 /// Most characters of one description of a list entry.
-pub const MAX_LIST_DESCRIPTION: usize = 128;
+pub(crate) const MAX_LIST_DESCRIPTION: usize = 128;
 /// Most descriptions one entry holds.
-pub const MAX_DESCRIPTIONS: usize = 8;
+pub(crate) const MAX_DESCRIPTIONS: usize = 8;
 
 /// A list code (`+CP1`, `=F1`) or tag.
 pub type ListCode = Text<MAX_CODE>;
@@ -128,7 +128,7 @@ impl Project {
     }
 
     /// The user field `id`, if the project defines it.
-    pub fn user_field(&self, id: crate::naming::id::UserFieldId) -> Option<&crate::objects::user::UserFieldDef> {
+    pub(crate) fn user_field(&self, id: crate::naming::id::UserFieldId) -> Option<&crate::objects::user::UserFieldDef> {
         self.user_fields.iter().find(|f| f.id == id)
     }
 }
@@ -178,11 +178,11 @@ fn list_problem<I: Copy + Ord + std::fmt::Display>(list: &[ListEntry<I>], sign: 
 // ---------------------------------------------------------------- revisions (design 072 §5.3)
 
 /// Most characters of a revision field's value.
-pub const MAX_REV_VALUE: usize = 200;
+pub(crate) const MAX_REV_VALUE: usize = 200;
 /// Most characters of a custom revision field's name.
-pub const MAX_REV_FIELD: usize = 20;
+pub(crate) const MAX_REV_FIELD: usize = 20;
 /// Most characters of a release folder as recorded.
-pub const MAX_RELEASED: usize = 1000;
+pub(crate) const MAX_RELEASED: usize = 1000;
 /// Most revisions a project holds (a bound on hostile files).
 pub const MAX_REVISIONS: usize = 10_000;
 
@@ -319,7 +319,7 @@ impl Revision {
 // ---------------------------------------------------------------- project info (design 072 §5.3)
 
 /// Most characters of a one-line project info field.
-pub const MAX_INFO: usize = 200;
+pub(crate) const MAX_INFO: usize = 200;
 /// Most notes on the cover, and characters of one note.
 pub const MAX_NOTES: usize = 40;
 pub const MAX_NOTE_CHARS: usize = 400;

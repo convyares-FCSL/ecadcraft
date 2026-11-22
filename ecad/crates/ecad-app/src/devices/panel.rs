@@ -217,7 +217,7 @@ impl DevicesPanel {
             let rep = match map.get(*h) {
                 Some(ecad_engine::project::Mapped::Item(id)) => doc.representation_of_item(id).map(|(_, r)| r.subject),
                 Some(ecad_engine::project::Mapped::Tag(rep) | ecad_engine::project::Mapped::Marker(rep, _)) => {
-                    doc.representations.get(&rep).map(|r| r.subject)
+                    doc.representations().get(&rep).map(|r| r.subject)
                 }
                 _ => None,
             };

@@ -111,16 +111,16 @@ impl P {
     }
 
     fn delete(&mut self, w: WireId) {
-        let wire = self.doc().wires.get(&w).unwrap().clone();
+        let wire = self.doc().wires().get(&w).unwrap().clone();
         self.commit(vec![Op::DeleteWire { id: w, wire }]);
     }
 
     fn number(&self, w: WireId) -> Option<String> {
-        self.doc().wires.get(&w)?.number_text().map(str::to_string)
+        self.doc().wires().get(&w)?.number_text().map(str::to_string)
     }
 
     fn fixed(&self, w: WireId) -> bool {
-        self.doc().wires.get(&w).is_some_and(Wire::number_fixed)
+        self.doc().wires().get(&w).is_some_and(Wire::number_fixed)
     }
 
     fn same_net(&self, a: WireId, b: WireId) -> bool {
@@ -129,7 +129,7 @@ impl P {
     }
 
     fn set(&mut self, w: WireId, key: &str, value: Option<&str>) {
-        let before = self.doc().wires.get(&w).unwrap().clone();
+        let before = self.doc().wires().get(&w).unwrap().clone();
         let mut after = before.clone();
         put(&mut after, key, value);
         self.commit(vec![Op::ModifyWire { id: w, before, after }]);
@@ -314,7 +314,7 @@ fn settings_changes_never_renumber_until_renumber_wires() {
     let mut p = P::new();
     let a = p.free_props(&[("potential", "24V")]);
     assert_eq!(p.number(a).as_deref(), Some("24V-01"));
-    let before = p.doc().settings.clone();
+    let before = p.doc().settings().clone();
     let mut after = before.clone();
     after.wiring.scheme = Scheme::Page;
     after.wiring.digits = Some(3);
@@ -360,7 +360,7 @@ fn undo_restores_numbers_exactly_and_the_pass_is_one_transaction_with_the_edit()
     assert_eq!(p.ledger.head(), head + 1, "the wire and its number are one transaction");
     assert_eq!(p.number(b).as_deref(), Some("02"));
     p.ledger.undo(Author::User).unwrap();
-    assert!(!p.doc().wires.contains_key(&b));
+    assert!(!p.doc().wires().contains_key(&b));
     p.ledger.redo(Author::User).unwrap();
     assert_eq!(p.number(b).as_deref(), Some("02"));
     assert_eq!(p.number(a).as_deref(), Some("01"));
@@ -374,7 +374,7 @@ fn a_refused_transaction_leaves_nets_as_they_were() {
     let a = p.wire(k[0], k[1]);
     let before = Connectivity::build(p.doc());
     // The second op fails its precondition: the first (a delete) is rolled back.
-    let wire = p.doc().wires[&a].clone();
+    let wire = p.doc().wires()[&a].clone();
     let bad = vec![Op::DeleteWire { id: a, wire: wire.clone() }, Op::DeleteWire { id: a, wire }];
     assert!(p.try_commit(bad).is_err());
     assert_eq!(p.doc().connectivity().differs_from(&before), None);
@@ -407,10 +407,10 @@ fn random_ops(seed: u64, steps: usize) {
     let names = ["24V", "0V", "L1"];
     for step in 0..steps {
         let doc = p.doc();
-        let connection_points: Vec<ConnectionPointId> = doc.connection_points.keys().copied().collect();
-        let conductors: Vec<WireId> = doc.wires.keys().copied().collect();
-        let comps: Vec<DeviceId> = doc.devices.keys().copied().collect();
-        let aids: Vec<AidId> = doc.aids.keys().copied().collect();
+        let connection_points: Vec<ConnectionPointId> = doc.connection_points().keys().copied().collect();
+        let conductors: Vec<WireId> = doc.wires().keys().copied().collect();
+        let comps: Vec<DeviceId> = doc.devices().keys().copied().collect();
+        let aids: Vec<AidId> = doc.aids().keys().copied().collect();
         let pick_t = |i: usize| connection_points.get(i % connection_points.len().max(1)).copied();
         match next(10) {
             0 | 1 => {
@@ -438,7 +438,7 @@ fn random_ops(seed: u64, steps: usize) {
             6 if !conductors.is_empty() => {
                 // Move one end: the wire between other points is another wire (Delete + Create).
                 let w = conductors[next(conductors.len())];
-                let old = p.doc().wires.get(&w).unwrap().clone();
+                let old = p.doc().wires().get(&w).unwrap().clone();
                 let end = next(2);
                 let to = if next(3) == 0 { p.point() } else { pick_t(next(101)).unwrap_or_else(|| p.point()) };
                 let mut ends = old.ends;
@@ -452,7 +452,7 @@ fn random_ops(seed: u64, steps: usize) {
             7 if !aids.is_empty() => {
                 // Rename a continuation.
                 let a = aids[next(aids.len())];
-                let before = p.doc().aids.get(&a).unwrap().clone();
+                let before = p.doc().aids().get(&a).unwrap().clone();
                 let after = Aid::Continuation { name: Some(ContinuationName::new(names[next(names.len())]).unwrap()), caption: None };
                 if before != after {
                     p.commit(vec![Op::ModifyAid { id: a, before, after }]);
@@ -465,7 +465,7 @@ fn random_ops(seed: u64, steps: usize) {
                 let ts: Vec<(ConnectionPointId, ConnectionPoint)> = doc.connection_points_of(c).map(|(t, x)| (t, x.clone())).collect();
                 if ts.iter().all(|(t, _)| doc.ends_at(*t).is_empty()) {
                     let mut ops: Vec<Op> = ts.into_iter().map(|(id, connection_point)| Op::RemoveConnectionPoint { id, connection_point }).collect();
-                    ops.push(Op::DeleteDevice { id: c, device: doc.devices.get(&c).unwrap().clone() });
+                    ops.push(Op::DeleteDevice { id: c, device: doc.devices().get(&c).unwrap().clone() });
                     p.commit(ops);
                 }
             }
@@ -498,7 +498,7 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
     let (c, k) = p.device(2);
     p.wire(k[0], k[1]);
     let before = p.doc().connectivity().clone();
-    let d = p.doc().devices[&c].clone();
+    let d = p.doc().devices()[&c].clone();
     let tag = Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some("-K1"), ecad_model::naming::tag::TagState::Automatic) };
     let page: PageId = p.ids.fresh();
     let ops = vec![tag, Op::AddPage { id: page, page: Page::titled("2").unwrap(), index: 1 }];
@@ -519,7 +519,7 @@ fn links_join_connection_points_by_label_and_number_in_the_same_transaction() {
     let w: Vec<WireId> = t.iter().map(|x| p.loose(*x)).collect();
     assert!(!p.same_net(w[0], w[3]));
     let set = |p: &mut P, key: &str, value: Option<&str>| {
-        let before = p.doc().devices.get(&strip).unwrap().properties.get(key).cloned();
+        let before = p.doc().devices().get(&strip).unwrap().properties.get(key).cloned();
         p.commit(vec![Op::SetProperty { object: ObjectRef::Device(strip), key: key.into(), before, after: value.map(Into::into) }]);
     };
     set(&mut p, "jumper_bar.1", Some("1-4"));
@@ -537,7 +537,7 @@ fn links_join_connection_points_by_label_and_number_in_the_same_transaction() {
     assert_ne!(p.number(w[0]), p.number(w[2]));
     p.check();
     // Relabelling 1 as 9 (Remove + Add of the same ID, as the planner does) takes it out of 1-2.
-    let old = p.doc().connection_points.get(&t[0]).unwrap().clone();
+    let old = p.doc().connection_points().get(&t[0]).unwrap().clone();
     let mut new = old.clone();
     new.label = Some("9".into());
     p.commit(vec![Op::RemoveConnectionPoint { id: t[0], connection_point: old }, Op::AddConnectionPoint { id: t[0], connection_point: new }]);
@@ -564,7 +564,7 @@ fn a_999_terminal_strip_with_long_links_builds_quickly() {
     let (strip, t) = p.device(999);
     let skip: Vec<String> = (1..=999).step_by(2).map(|n| n.to_string()).collect();
     let set = |p: &mut P, key: &str, value: &str| {
-        let before = p.doc().devices.get(&strip).unwrap().properties.get(key).cloned();
+        let before = p.doc().devices().get(&strip).unwrap().properties.get(key).cloned();
         p.commit(vec![Op::SetProperty { object: ObjectRef::Device(strip), key: key.into(), before, after: Some(value.into()) }]);
     };
     set(&mut p, "jumper_bar.1", &skip.join(", "));

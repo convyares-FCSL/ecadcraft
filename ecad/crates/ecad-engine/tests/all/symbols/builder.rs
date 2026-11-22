@@ -83,7 +83,7 @@ fn row_2_place_makes_a_device_with_its_prefix_description_and_points() {
     assert_eq!(v["tag"], "-B01");
     let c: DeviceId = id(&v, "component");
     let d = h.doc();
-    let comp = &d.devices[&c];
+    let comp = &d.devices()[&c];
     assert_eq!(comp.get("description"), Some("Float switch"));
     assert_eq!(comp.value("rating").as_deref(), Some("24 V"));
     let labels: Vec<(String, String)> =
@@ -152,7 +152,7 @@ fn row_4_family_entries_resolve_and_a_project_override_wins() {
     assert_eq!(place(&mut h, 100.0, 100.0)["tag"], "-S01");
     h.run("setdefault", json!({"key": "symbol.float1.description", "value": "Level switch"})).unwrap();
     let c: DeviceId = id(&place(&mut h, 150.0, 100.0), "component");
-    assert_eq!(h.doc().devices[&c].get("description"), Some("Level switch"));
+    assert_eq!(h.doc().devices()[&c].get("description"), Some("Level switch"));
     let v = h.run("defaults", json!({"key": "symbol.float1.description"})).unwrap();
     assert_eq!(v["defaults"][0]["from"], "project");
     assert!(h.run("setdefault", json!({"key": "symbol.float1.join", "value": "part"})).unwrap_err().contains("symbol's own"));
@@ -231,7 +231,7 @@ fn row_6_a_moved_wired_point_takes_its_wire_end_and_keeps_ids() {
     // Undo puts everything back.
     h.cmdline("u");
     let d = h.doc();
-    assert!(d.definitions.contains_key(&def));
+    assert!(d.definitions().contains_key(&def));
     assert_eq!(h.connection_point_pos(page, t2), ecad_model::Pt::new(100.0, 95.0));
 }
 
@@ -242,7 +242,7 @@ fn row_7_relabels_follow_unless_set_by_hand() {
     let d = h.doc();
     let t = term(&d, copies[2].0, "1");
     // Relabel copy 3's point 1 by hand (036's pattern).
-    let term3 = d.connection_points[&t].clone();
+    let term3 = d.connection_points()[&t].clone();
     h.cfg(|p| {
         let ops = vec![
             Op::RemoveConnectionPoint { id: t, connection_point: term3.clone() },
@@ -253,8 +253,8 @@ fn row_7_relabels_follow_unless_set_by_hand() {
     let relabelled = json!([{"key": "1", "label": "1", "at": [0, 5]}, {"key": "2", "label": "BU", "at": [0, -5]}]);
     h.run("symboledit", float(json!({"definition": def.hex(), "points": relabelled, "update": "all"}))).unwrap();
     let d = h.doc();
-    assert_eq!(d.connection_points[&term(&d, copies[0].0, "1")].label.as_deref(), Some("1"));
-    assert_eq!(d.connection_points[&t].label.as_deref(), Some("X"), "set by hand, kept");
+    assert_eq!(d.connection_points()[&term(&d, copies[0].0, "1")].label.as_deref(), Some("1"));
+    assert_eq!(d.connection_points()[&t].label.as_deref(), Some("X"), "set by hand, kept");
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn row_8_editing_a_built_in_makes_a_project_copy() {
     let rep: RepresentationId = id(&coil, "representation");
     let d = h.doc();
     let (def_id, coil_def) = d
-        .definitions
+        .definitions()
         .iter()
         .find(|(_, x)| symbols::catalogue::of_definition(x).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
         .map(|(i, x)| (*i, x.clone()))
@@ -278,11 +278,11 @@ fn row_8_editing_a_built_in_makes_a_project_copy() {
     let v = h.run("symboledit", p.clone()).unwrap();
     assert_eq!(v["updated"], 0, "placed built-ins are left unless asked");
     let d = h.doc();
-    let new = &d.definitions[&id::<DefinitionId>(&v, "definition")];
+    let new = &d.definitions()[&id::<DefinitionId>(&v, "definition")];
     assert_eq!(new.derived_from.as_ref(), coil_def.origin.as_ref());
-    assert_eq!(d.definitions[&def_id], coil_def, "the built-in is unchanged");
-    let item = d.representations[&rep].items[0];
-    assert!(matches!(&d.items[&item].kind, ecad_model::ItemKind::Symbol(s) if s.definition == def_id), "the placed coil still shows the built-in");
+    assert_eq!(d.definitions()[&def_id], coil_def, "the built-in is unchanged");
+    let item = d.representations()[&rep].items[0];
+    assert!(matches!(&d.items()[&item].kind, ecad_model::ItemKind::Symbol(s) if s.definition == def_id), "the placed coil still shows the built-in");
     // The kind follows the starter (a coil, not a fixed device of its own).
     assert_eq!(symbols::catalogue::kind_of_definition(new), symbols::catalogue::by_key("coil").map(|s| s.kind));
 }
@@ -366,7 +366,7 @@ fn row_12_promotion_keeps_ids_and_wires() {
         assert!(d.ends_at(*t).iter().any(|(x, _)| x == w), "wire still attached");
     }
     let rep: RepresentationId = id(&v, "representation");
-    assert_eq!(d.representations[&rep].form, ecad_model::Form::Symbol);
+    assert_eq!(d.representations()[&rep].form, ecad_model::Form::Symbol);
     let ops = last_ops(&mut h);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::SetDeviceDefinition { .. })).count(), 1);
     assert!(!ops.iter().any(|o| matches!(o, Op::DeleteDevice { .. })));
@@ -380,10 +380,10 @@ fn row_13_state_before_the_edit_still_has_v1() {
     let at = h.head();
     let moved = json!([{"key": "1", "label": "BN", "at": [0, 10]}, {"key": "2", "label": "BU", "at": [0, -5]}]);
     h.run("symboledit", float(json!({"definition": def.hex(), "points": moved, "update": "all"}))).unwrap();
-    assert!(!h.doc().definitions.contains_key(&def), "v1 removed when nothing uses it");
+    assert!(!h.doc().definitions().contains_key(&def), "v1 removed when nothing uses it");
     let log = h.p(|p| p.ledger.full_log().unwrap());
     let old = ecad_model::Ledger::replay(log[..at as usize].to_vec(), 0).unwrap();
-    assert!(old.document().definitions.contains_key(&def), "history keeps it");
+    assert!(old.document().definitions().contains_key(&def), "history keeps it");
 }
 
 #[test]
@@ -486,7 +486,7 @@ fn update_all_marks_only_the_pages_with_copies_and_so_do_undo_and_redo() {
     let wider = json!({"kind": "polyline", "vertices": [[-5, -7.5], [5, -7.5], [5, 7.5], [-5, 7.5]], "closed": true});
     let touched = marked(&mut h, "symboledit", float(json!({"definition": v1.hex(), "graphics": [wider], "update": "all"})));
     let both: std::collections::BTreeSet<PageId> = [a, b].into_iter().collect();
-    assert!(!h.doc().definitions.contains_key(&v1), "v1 removed in the update (FP8)");
+    assert!(!h.doc().definitions().contains_key(&v1), "v1 removed in the update (FP8)");
     assert_eq!(touched.as_ref(), Some(&both), "Update all marks the two pages with copies");
     assert_eq!(marked(&mut h, "undo", Value::Null).as_ref(), Some(&both), "undo");
     assert_eq!(marked(&mut h, "redo", Value::Null).as_ref(), Some(&both), "redo");

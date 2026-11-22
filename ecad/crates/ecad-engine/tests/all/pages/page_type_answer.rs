@@ -18,11 +18,11 @@ fn a_pages_type_is_the_same_through_the_registry_and_page_type_of() {
     for ty in [wide.clone(), StyleRef::Builtin("network".into())] {
         h.run("setdefault", json!({"key": "page.type", "level": "page", "page": page.hex(), "value": ty.text()})).unwrap();
         let doc = h.doc();
-        assert_eq!(doc.pages[&page].page_type.as_ref(), Some(&ty));
+        assert_eq!(doc.pages()[&page].page_type.as_ref(), Some(&ty));
         let r = defaults::resolve(&doc, &defaults::pages::PAGE_TYPE, Scope::page(page));
         assert_eq!(r.from, Source::Page, "{ty:?}");
         assert_eq!(r.value.style(), Some(ty.clone()), "the registry reads the page's own type");
-        assert_eq!(ecad_model::document::sheet::page_type_of(&doc, &doc.pages[&page]), ty, "page_type_of agrees");
+        assert_eq!(ecad_model::document::sheet::page_type_of(&doc, &doc.pages()[&page]), ty, "page_type_of agrees");
         let chain = defaults::chain(&doc, &defaults::pages::PAGE_TYPE, Scope::page(page));
         assert!(chain.iter().any(|(s, v)| *s == Source::Page && v.and_then(|v| v.style()) == Some(ty.clone())), "{chain:?}");
     }

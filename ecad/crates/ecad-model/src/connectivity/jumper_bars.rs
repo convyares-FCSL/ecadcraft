@@ -21,10 +21,10 @@
 
 use std::cmp::Ordering;
 
-use crate::document::doc::{Document, Properties};
 use crate::error::{ParseError, Parsed};
 use crate::geometry::point::{LevelIo, PointKey};
 use crate::naming::id::{ConnectionPointId, DeviceId};
+use crate::{Document, Properties};
 
 /// What every link key starts with.
 pub const PREFIX: &str = "jumper_bar.";
@@ -38,7 +38,7 @@ pub const MAX_LABEL_CHARS: usize = 16;
 pub const MAX_TEXT_CHARS: usize = 20_000;
 
 /// The highest level number a link or a level key may name.
-pub const MAX_LEVEL: u32 = 99;
+pub(crate) const MAX_LEVEL: u32 = 99;
 
 /// A terminal's level from its key (brief 036, FP2): `.2` → (2, none), `.1i` → (1, `i`). Any key
 /// that does not start with `.` is level 1 of a one-level position; a dotted key that does not
@@ -371,7 +371,7 @@ pub struct Matcher {
 }
 
 /// A label's natural sort key ([`natural_key`]).
-pub type NaturalKey = Vec<(u8, u128, String)>;
+pub(crate) type NaturalKey = Vec<(u8, u128, String)>;
 
 /// Whether an item's point names a terminal's point: an item without a point names every one-point
 /// level and the in point of a two-point level.
@@ -428,7 +428,7 @@ impl Matcher {
     }
 
     /// [`Matcher::matches_level`] for a terminal: its label and its key's level.
-    pub fn matches_connection_point(&self, t: &crate::document::doc::ConnectionPoint) -> bool {
+    pub(crate) fn matches_connection_point(&self, t: &crate::ConnectionPoint) -> bool {
         let Some(l) = t.label.as_deref() else { return false };
         let Some((n, p)) = level_of_key(t.key.as_ref()) else { return false };
         self.matches_level(l, n, p)
@@ -466,7 +466,7 @@ pub fn linked(doc: &Document, t: ConnectionPointId) -> Vec<ConnectionPointId> {
 }
 
 /// The terminals of `component` a link value names (unreadable: none).
-pub fn connection_points_named(doc: &Document, component: DeviceId, value: Option<&str>) -> Vec<ConnectionPointId> {
+pub(crate) fn connection_points_named(doc: &Document, component: DeviceId, value: Option<&str>) -> Vec<ConnectionPointId> {
     let Some(p) = value.and_then(|v| parse(v).ok()) else { return Vec::new() };
     let m = Matcher::of(&p);
     doc.connection_points_of(component).filter(|(_, x)| m.matches_connection_point(x)).map(|(id, _)| id).collect()

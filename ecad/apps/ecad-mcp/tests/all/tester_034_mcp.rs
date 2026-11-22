@@ -118,11 +118,11 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
                 let tag = format!("-{prefix}{:02}", *k);
                 assert_eq!(v["tag"], json!(tag), "{key}: {v}");
                 assert_eq!(&labels(&v), want, "{key}: labels");
-                let device = c.doc().devices[&cid(&v)].clone();
+                let device = c.doc().devices()[&cid(&v)].clone();
                 // Brief 044 (design 044 §4.6): a connector half's device is described `Connector`.
                 let want = if matches!(s.kind, ecad_electrical::symbols::Kind::ConnectorHalf { .. }) { "Connector" } else { s.name };
                 assert_eq!(device.get("description"), Some(want), "{key}: default description");
-                assert_eq!(c.doc().devices[&cid(&v)].tag(), Some(tag.as_str()), "{key}: tag");
+                assert_eq!(c.doc().devices()[&cid(&v)].tag(), Some(tag.as_str()), "{key}: tag");
                 if round == 0 && key == "fusebank8" {
                     fb = Some(cid(&v));
                 }
@@ -132,7 +132,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
             }
         }
         let (fb, rcbo) = (fb.unwrap(), rcbo.unwrap());
-        let fb_tag = c.doc().devices[&fb].tag_shown().unwrap();
+        let fb_tag = c.doc().devices()[&fb].tag_shown().unwrap();
 
         // §12 item 2: change-over join, each by the agent.
         let kv = c.exec("place", json!({"symbol": "coil", "at": [0, 2000]}));
@@ -189,7 +189,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
     let mut c = Client::new(s);
     assert!(!c.s.writes());
     let log = c.log();
-    let defs = c.doc().definitions.len();
+    let defs = c.doc().definitions().len();
     for (cmd, params) in [
         ("place", json!({"symbol": "fusebank8", "at": [0, 3000]})),
         ("place", json!({"symbol": "dsub25s", "at": [0, 3000]})),
@@ -201,7 +201,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
         assert_eq!(m, policy::WRITES_OFF, "{cmd} {params}");
     }
     assert_eq!(c.log(), log, "nothing recorded with writes off");
-    assert_eq!(c.doc().definitions.len(), defs);
+    assert_eq!(c.doc().definitions().len(), defs);
     // Reads still work.
     let v = c.exec("symbols", json!({"query": "protection"}));
     assert!(v["symbols"].as_array().unwrap().iter().any(|s| s["key"] == "fusebank8"), "{v}");

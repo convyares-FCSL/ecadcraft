@@ -114,7 +114,7 @@ fn trace(h: &mut H, cmd: &str, params: serde_json::Value) -> String {
     let r = h.s.execute(cmd, &params).map_err(|e| e.to_string());
     let editing = h.s.state().is_ok_and(|st| st.block_edit.is_some());
     let labels: Vec<String> = h.p(|p| p.ledger.log().iter().skip(head as usize).map(|t| format!("{} ({} ops)", t.label, t.ops.len())).collect());
-    let items = h.doc().items.len();
+    let items = h.doc().items().len();
     let entities = h.s.doc().map(|d| d.model.len()).unwrap_or(0);
     format!(
         "{cmd}: {r:?}; head {head} -> {} {labels:?}; items {items}; drawing entities {entities}; editor open {editing}; engine steps {}",
@@ -144,10 +144,10 @@ fn block_editor_on_the_current_drawing_is_recorded_or_refused() {
 #[test]
 fn block_editor_opening_on_an_owned_page_does_not_delete_its_items() {
     let mut h = fixture();
-    let items = h.doc().items.len();
+    let items = h.doc().items().len();
     let step = trace(&mut h, "bedit", json!({"name": "TESTBLK", "create": true}));
     println!("{step}");
-    assert_eq!(h.doc().items.len(), items, "opening the Block Editor changed the ECAD document\n  {step}");
+    assert_eq!(h.doc().items().len(), items, "opening the Block Editor changed the ECAD document\n  {step}");
     let _ = h.s.execute("bclose", &json!({"save": false}));
 }
 

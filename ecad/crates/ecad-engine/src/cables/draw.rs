@@ -178,7 +178,7 @@ pub fn coloured_routes(
         if map.is_some() && handle.is_none() {
             continue;
         }
-        let Some(ItemKind::Primitive(prim)) = doc.items.get(item).map(|i| &i.kind) else { continue };
+        let Some(ItemKind::Primitive(prim)) = doc.items().get(item).map(|i| &i.kind) else { continue };
         let Some(points) = ecad_electrical::wires::labels::path_vertices(prim) else { continue };
         if points.len() < 2 || !points.iter().all(|q| q.x.is_finite() && q.y.is_finite()) {
             continue;
@@ -224,8 +224,8 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
     map.tag_text_handles()
         .filter(|h| {
             let Some((rep, ecad_electrical::devices::texts::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
-            let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
-            doc.devices.get(&c).is_some_and(ecad_model::Device::is_provisional)
+            let Some(Subject::Device(c)) = doc.representations().get(&rep).map(|r| r.subject) else { return false };
+            doc.devices().get(&c).is_some_and(ecad_model::Device::is_provisional)
         })
         .collect()
 }

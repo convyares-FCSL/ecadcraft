@@ -112,7 +112,7 @@ fn an_unknown_parameter_is_refused() {
     let mut h = H::new(7002);
     let e = h.run("wire", json!({"points": [[0, 0], [9, 0]], "colour": "RD"})).err().unwrap_or_default();
     assert_eq!(e, "`colour` is not a parameter of this command; it takes `category`, `join`, `points`, `potential`");
-    assert!(h.doc().wires.is_empty(), "nothing was drawn");
+    assert!(h.doc().wires().is_empty(), "nothing was drawn");
 }
 
 /// The typed commands still work: a wire, its net, a fixed number and a released one.
@@ -928,7 +928,7 @@ fn the_typed_cable_manager_commands_still_work() {
     let edit = h.run("cableedit", json!({"cable": "-W01", "set": {"maker": "Lapp", "length": null}})).unwrap_or_else(|e| json!(e));
     assert_eq!((&edit["cable"], &edit["written"], &edit["changed"]), (&k, &json!(true), &json!(["maker", "length"])), "{edit}");
     let doc = h.doc();
-    let cable = doc.cables.values().next().map(|c| c.properties.clone()).unwrap_or_default();
+    let cable = doc.cables().values().next().map(|c| c.properties.clone()).unwrap_or_default();
     assert_eq!(cable.get("maker").map(String::as_str), Some("Lapp"), "{cable:?}");
     let gone = h.run("cableremove", json!({"cable": k})).unwrap_or_else(|e| json!(e));
     assert_eq!(gone["removed"], json!(true), "{gone}");

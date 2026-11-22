@@ -94,7 +94,7 @@ fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, colours: Option<&ecad_mo
 
 /// A definition's graphics fitted into the box `cell` (paper millimetres, centred).
 fn symbol(d: &mut Draw, doc: &Document, def: DefinitionId, cell: R) {
-    let Some(def) = doc.definitions.get(&def) else { return };
+    let Some(def) = doc.definitions().get(&def) else { return };
     let mut lo = (f64::INFINITY, f64::INFINITY);
     let mut hi = (f64::NEG_INFINITY, f64::NEG_INFINITY);
     let mut grow = |p: Pt, r: f64| {

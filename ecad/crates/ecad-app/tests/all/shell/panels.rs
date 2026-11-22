@@ -96,11 +96,11 @@ fn book(h: &mut Harness<'static, App>) -> Vec<ecad_model::PageId> {
         "Cable list",
         "Parts list",
     ];
-    while doc(h).page_order.len() < titles.len() {
-        let n = doc(h).page_order.len();
+    while doc(h).page_order().len() < titles.len() {
+        let n = doc(h).page_order().len();
         run(h, "newpage", serde_json::json!({"title": titles.get(n).copied().unwrap_or("Page")}));
     }
-    let order = doc(h).page_order.clone();
+    let order = doc(h).page_order().to_vec();
     for (p, title) in order.iter().zip(titles) {
         run(h, "renamepage", serde_json::json!({"page": p.hex(), "title": title}));
     }

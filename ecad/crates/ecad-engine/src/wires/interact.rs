@@ -27,7 +27,7 @@ fn wire_under(s: &Session, p: Vec2) -> R<(WireId, Pt, String)> {
 fn highlight(s: &Session, w: WireId) -> Vec<Entity> {
     let route = read(s, |p, page| {
         let doc = p.ledger.document();
-        Ok(ecad_electrical::wires::routes::route_of_wire_on(doc, w, page).and_then(|r| doc.routes.get(&r)).map(|r| r.points.clone()))
+        Ok(ecad_electrical::wires::routes::route_of_wire_on(doc, w, page).and_then(|r| doc.routes().get(&r)).map(|r| r.points.clone()))
     });
     match route {
         Ok(Some(points)) => {

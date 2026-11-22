@@ -66,7 +66,7 @@ fn component_and_coil(h: &mut Harness<'static, App>) {
     assert_eq!(h.state().cad.session.selection().len(), 4, "the four lines are selected");
     button(h, tools::TAB);
     button(h, "Convert to Device");
-    assert_eq!(doc(h).devices.len(), 1);
+    assert_eq!(doc(h).devices().len(), 1);
     button(h, "Add Connection Point");
     assert_eq!(prompt(h), "Specify point for connection point 1 on a component or [Name]:");
     type_enter(h, "40,10");
@@ -112,11 +112,11 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
     assert!(h.state().cad.session.running.is_none(), "a click on a terminal finishes the wire");
     // The result: the quick-start's structure (IDs aside), drawn by clicks.
     let d = doc(&mut h);
-    assert_eq!(d.devices.len(), 2);
-    assert_eq!(d.wires.len(), 1);
-    let page = d.page_order[0];
+    assert_eq!(d.devices().len(), 2);
+    assert_eq!(d.wires().len(), 1);
+    let page = d.page_order()[0];
     let drawn = d
-        .representations
+        .representations()
         .values()
         .find_map(|r| match (r.form, r.subject) {
             (Form::Drawn, Subject::Device(c)) => Some((c, r)),
@@ -124,13 +124,13 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
         })
         .unwrap();
     let mut connection_points: Vec<(String, Pt)> =
-        drawn.1.connection_points.iter().map(|(t, p)| (d.connection_points[t].label.clone().unwrap_or_default(), *p)).collect();
+        drawn.1.connection_points.iter().map(|(t, p)| (d.connection_points()[t].label.clone().unwrap_or_default(), *p)).collect();
     connection_points.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(connection_points, vec![("1".into(), Pt::new(40.0, 10.0)), ("2".into(), Pt::new(0.0, 10.0))]);
-    let c = d.wires.values().next().unwrap();
-    let ends: Vec<String> = End::BOTH.iter().map(|e| d.connection_points[&c.end(*e)].label.clone().unwrap_or_default()).collect();
+    let c = d.wires().values().next().unwrap();
+    let ends: Vec<String> = End::BOTH.iter().map(|e| d.connection_points()[&c.end(*e)].label.clone().unwrap_or_default()).collect();
     assert_eq!(ends, ["1", "A1"], "both ends attached: to terminal 1 and to the coil's A1");
-    let vertices = d.routes.values().find(|r| r.page == page).unwrap().points.clone();
+    let vertices = d.routes().values().find(|r| r.page == page).unwrap().points.clone();
     let expected = [(40.0, 10.0), (70.0, 10.0), (70.0, 0.0), (90.0, 0.0)];
     assert_eq!(vertices.len(), 4);
     // Bends are where the clicks were (to screen precision); ends are the terminals' points.
@@ -163,8 +163,8 @@ fn esc_drops_a_wire_being_drawn_and_u_undoes_the_last_connection_point() {
     // One undo takes back the last object only: the coil.
     type_enter(&mut h, "u");
     let d = doc(&mut h);
-    assert_eq!(d.devices.len(), 1, "the coil is undone");
-    assert_eq!(d.connection_points.len(), 2, "the terminals stay");
+    assert_eq!(d.devices().len(), 1, "the coil is undone");
+    assert_eq!(d.connection_points().len(), 2, "the terminals stay");
 }
 
 #[test]

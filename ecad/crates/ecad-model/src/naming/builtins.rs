@@ -15,7 +15,7 @@
 
 use std::sync::OnceLock;
 
-use crate::document::doc::ReferenceStyle;
+use crate::ReferenceStyle;
 use crate::document::sheet::SheetSpec;
 use crate::geometry::colour::ColourWords;
 use crate::naming::words::Word as _;

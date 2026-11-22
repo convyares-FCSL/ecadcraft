@@ -163,7 +163,7 @@ impl App {
         };
         p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let version = edited.and_then(|id| doc.definitions.get(&id).map(|d| (id, d)));
+            let version = edited.and_then(|id| doc.definitions().get(&id).map(|d| (id, d)));
             let lineage = version.and_then(|(id, d)| symbols::project::Version::of(id, d)).map(|v| v.lineage);
             let missing = draft.missing(doc, lineage);
             let mut accepted = draft.clone();

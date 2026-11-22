@@ -136,7 +136,7 @@ fn an_undo_of_several_steps_in_one_call_is_refused_and_leaves_the_project_as_it_
     let r = c.exec_raw("undo", json!({"count": 3}));
     assert_eq!(r["isError"], json!(true), "more than one transaction in one call is refused: {r}");
     let labels: Vec<String> = c.log().iter().map(|t| format!("{} {:?}", t.label, t.kind)).collect();
-    assert_eq!(c.doc().routes.len(), 3, "the refused call must not leave wires undone: {r}\nlog: {labels:?}");
+    assert_eq!(c.doc().routes().len(), 3, "the refused call must not leave wires undone: {r}\nlog: {labels:?}");
     assert_eq!(c.doc(), before, "the project is as before the refused call");
 }
 
@@ -147,7 +147,7 @@ fn a_redo_of_several_steps_in_one_call_is_refused_and_leaves_the_project_as_it_w
     c.exec("u", json!({}));
     c.exec("u", json!({}));
     let before = c.doc();
-    assert_eq!(before.routes.len(), 1);
+    assert_eq!(before.routes().len(), 1);
     let r = c.exec_raw("redo", json!({"count": 2}));
     assert_eq!(r["isError"], json!(true), "{r}");
     assert_eq!(c.doc(), before, "the project is as before the refused call");
@@ -161,7 +161,7 @@ fn u_and_redo_are_one_step_each_and_the_agents() {
     let all_three: Document = c.doc();
     let r = c.exec("u", json!({}));
     assert_eq!(r["ecadTransactions"].as_array().map(Vec::len), Some(1), "{r}");
-    assert_eq!(c.doc().routes.len(), 2);
+    assert_eq!(c.doc().routes().len(), 2);
     let r = c.exec("redo", json!({}));
     assert_eq!(r["ecadTransactions"].as_array().map(Vec::len), Some(1), "{r}");
     assert_eq!(c.doc(), all_three);
@@ -257,7 +257,7 @@ fn a_batch_over_the_cap_is_taken_back_by_kind_and_spares_the_persons_work() {
     let msg = r[1]["result"]["content"][0]["text"].as_str().unwrap_or_default().to_string();
     assert!(msg.contains("taken back") && msg.contains("as before"), "a truthful message: {msg}");
     let with_w0 = c.doc();
-    assert_eq!(with_w0.routes.len(), only_person.routes.len() + 1, "{msg}");
+    assert_eq!(with_w0.routes().len(), only_person.routes().len() + 1, "{msg}");
 
     // Undo then undo: the second undo is redone.
     let r = batch(&mut c, &[("u", json!({})), ("u", json!({}))]);
@@ -279,7 +279,7 @@ fn a_batch_over_the_cap_is_taken_back_by_kind_and_spares_the_persons_work() {
     let r = batch(&mut c, &calls);
     assert!(!is_err(&r[0]));
     assert!(r[1..].iter().all(is_err), "{r:?}");
-    assert_eq!(c.doc().routes.len(), only_person.routes.len() + 1);
+    assert_eq!(c.doc().routes().len(), only_person.routes().len() + 1);
 
     // A batch of reads and refusals records nothing beyond its one write.
     let before = c.log().len();
@@ -291,8 +291,8 @@ fn a_batch_over_the_cap_is_taken_back_by_kind_and_spares_the_persons_work() {
     let log = c.log();
     assert_eq!(&log[..person.len()], &person[..], "earlier history is append-only and unchanged");
     let doc = c.doc();
-    for id in only_person.wires.keys() {
-        assert!(doc.wires.contains_key(id), "the person's wire survives every rollback");
+    for id in only_person.wires().keys() {
+        assert!(doc.wires().contains_key(id), "the person's wire survives every rollback");
     }
     // Each new line starts a fresh call: a single write after a refused batch is accepted.
     let r = c.exec_raw("wire", json!({"points": [[0, 70], [60, 70]]}));
@@ -482,8 +482,8 @@ fn saving_in_a_folder_with_spaces_and_reopening_without_ecad_mcp_shows_the_agent
         assert_eq!(t.author, Author::Agent(AGENT.into()), "seq {} {}", t.seq, t.label);
     }
     let doc = p.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
-    assert_eq!(doc.routes.len(), 3);
-    assert_eq!(doc.cables.len(), 1);
+    assert_eq!(doc.routes().len(), 3);
+    assert_eq!(doc.cables().len(), 1);
 }
 
 #[test]

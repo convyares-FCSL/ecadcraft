@@ -69,7 +69,7 @@ fn row_both_makes_one_connector_with_two_halves_in_one_transaction() {
     assert_eq!(embeds, vec![2, 2]);
     // `u` removes it all.
     h.cmdline("u");
-    assert!(!h.doc().devices.contains_key(&c));
+    assert!(!h.doc().devices().contains_key(&c));
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn pin_pairs_across_wires_split_them_and_keep_one_net() {
     assert_eq!(h.head(), before + 1);
     let c: DeviceId = id(&v, "component");
     let d = h.doc();
-    assert_eq!(d.devices[&c].value("pins").as_deref(), Some("4"));
+    assert_eq!(d.devices()[&c].value("pins").as_deref(), Some("4"));
     assert_eq!(v["split"].as_array().map(Vec::len), Some(3));
     for (i, n) in ["1", "2", "3"].iter().enumerate() {
         let (s, p) = (pin(&d, c, ".s", n), pin(&d, c, ".p", n));
@@ -123,7 +123,7 @@ fn pin_pairs_across_wires_split_them_and_keep_one_net() {
         // place of `w[i]`.
         let part = |key: &str| ecad_electrical::wires::routes::wire_of_route(&d, id(&v["split"][i], key));
         let (kept, new) = (part("route"), part("new"));
-        assert!(kept.is_some() && new.is_some() && !d.wires.contains_key(&w[i]), "{v}");
+        assert!(kept.is_some() && new.is_some() && !d.wires().contains_key(&w[i]), "{v}");
         let net_of = |x: Option<WireId>| x.and_then(|x| d.connectivity().net_of_conductor(x));
         assert_eq!(net_of(kept), net_of(new));
         assert_eq!(net_of(kept), net(&d, s));
@@ -278,13 +278,13 @@ fn pinlabel_renames_a_pin_on_both_halves() {
     h.run("pinlabel", json!({"device": c.hex(), "pin": "3", "to": "PE"})).unwrap();
     assert_eq!(h.head(), before + 1);
     let d = h.doc();
-    assert_eq!(d.connection_points[&s3].label.as_deref(), Some("PE"));
-    assert_eq!(d.connection_points[&p3].label.as_deref(), Some("PE"));
+    assert_eq!(d.connection_points()[&s3].label.as_deref(), Some("PE"));
+    assert_eq!(d.connection_points()[&p3].label.as_deref(), Some("PE"));
     assert_eq!(net(&d, s3), net(&d, p3), "still mated");
     let e = h.run("pinlabel", json!({"device": c.hex(), "pin": "PE", "to": "4"})).unwrap_err();
     assert!(e.contains("already has a pin 4"), "{e}");
     h.cmdline("u");
-    assert_eq!(h.doc().connection_points[&s3].label.as_deref(), Some("3"));
+    assert_eq!(h.doc().connection_points()[&s3].label.as_deref(), Some("3"));
 }
 
 #[test]
@@ -347,7 +347,7 @@ fn version_one_halves_stay_separate_and_new_ones_embed_version_two() {
     let d = h.doc();
     assert!(connectors::connector_of(&d, c).is_some_and(|x| x.mating));
     assert_eq!(
-        d.definitions
+        d.definitions()
             .values()
             .filter(|x| symbols::catalogue::of_definition(x).is_some_and(|y| y.key == ecad_electrical::symbols::StarterKey::Socket4))
             .count(),
@@ -387,7 +387,7 @@ fn a_half_location_is_its_override_else_the_connector_not_its_page() {
     let plug_context = |h: &mut H| {
         let d = h.doc();
         let r = ecad_electrical::symbols::reps::goto(&d, c, Some(Side::Plug)).unwrap();
-        ecad_electrical::locations::rep_context(&d, &d.representations[&r], &mut ecad_electrical::locations::BoxCache::default()).value
+        ecad_electrical::locations::rep_context(&d, &d.representations()[&r], &mut ecad_electrical::locations::BoxCache::default()).value
     };
     // Brief 052d: `keep`, so the connector is not given the proposal (that is the outputs tests').
     h.run("pageprops", json!({"location": "+FIELD", "proposal": "keep"})).unwrap();
@@ -460,14 +460,14 @@ fn a_typed_pin_list_is_kept_in_order() {
         .run("connector", json!({"halves": "socket", "pins": 4, "names": ["L", "N", "PE", "SH"], "layout": "pins", "line": [[90, 200], [125, 200]]}))
         .unwrap();
     let c: DeviceId = id(&v, "component");
-    assert_eq!(h.doc().devices[&c].value("pin_names").as_deref(), Some("L,N,PE,SH"));
+    assert_eq!(h.doc().devices()[&c].value("pin_names").as_deref(), Some("L,N,PE,SH"));
     let v = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [200, 50]})).unwrap();
     assert_eq!(v["connection_points"][0]["pin"], "PE", "the next listed name, never lost");
     h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [220, 50]})).unwrap();
     let e = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [240, 50]})).unwrap_err();
     assert!(e.contains("(L, N, PE, SH)"), "names in pin order: {e}");
     h.run("pinlabel", json!({"device": c.hex(), "pin": "SH", "to": "S"})).unwrap();
-    assert_eq!(h.doc().devices[&c].value("pin_names").as_deref(), Some("L,N,PE,S"));
+    assert_eq!(h.doc().devices()[&c].value("pin_names").as_deref(), Some("L,N,PE,S"));
 }
 
 /// Fix round 1: Ignore and Place mates on the Checks rows; Ctrl+K's device search finds a typed
@@ -503,7 +503,7 @@ fn pin_names_and_ignore_keys_round_trip() {
     let path = dir.join("roundtrip.ecad").display().to_string();
     h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
-    let before = h.doc().devices[&c].clone();
+    let before = h.doc().devices()[&c].clone();
     while !h.s.docs.is_empty() {
         h.s.execute("close", &json!({"index": 0})).unwrap();
     }
@@ -511,7 +511,7 @@ fn pin_names_and_ignore_keys_round_trip() {
     let mut s = cadcraft_engine::Session::empty();
     let (project, _) = ecad_engine::ProjectHandle::open_file(&mut s, &path, 4426).unwrap();
     let doc = project.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
-    let after = &doc.devices[&c];
+    let after = &doc.devices()[&c];
     assert_eq!(after.device_type, before.device_type);
     assert_eq!(after.value("ignore.connector-family").as_deref(), Some("yes"));
     assert_eq!(connectors::pin_names(&doc, c), Some(["A", "B", "C", "D", "E", "F", "G", "H", "J"].map(String::from).to_vec()));
@@ -543,5 +543,5 @@ fn part_lines_go_under_their_half() {
     let plug = at(&|r: &Value| r["tags"].as_str().is_some_and(|t| t == format!("{tag}.P"))).unwrap_or_else(|| panic!("{nested:?}"));
     let crimp = at(&|r: &Value| r["part_number"] == "CRIMP-1").unwrap_or_else(|| panic!("{nested:?}"));
     assert_eq!(crimp, plug + 1, "the line follows the plug half's row: {nested:?}");
-    assert_eq!(h.p(|p| p.ledger.document().devices[&c].properties.get("part.1.half").cloned()).as_deref(), Some("p"));
+    assert_eq!(h.p(|p| p.ledger.document().devices()[&c].properties.get("part.1.half").cloned()).as_deref(), Some("p"));
 }

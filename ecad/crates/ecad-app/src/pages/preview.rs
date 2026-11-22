@@ -116,7 +116,7 @@ impl Preview {
                 self.title = format!(
                     "{name} · page {}: {}",
                     ecad_electrical::references::cables::page_number(&doc, page),
-                    doc.pages.get(&page).map(|x| x.title.as_str()).unwrap_or_default()
+                    doc.pages().get(&page).map(|x| x.title.as_str()).unwrap_or_default()
                 );
                 match ecad_engine::pages::preview::preview_drawing_of(&doc, page, tol) {
                     Ok(d) => {
@@ -138,13 +138,13 @@ impl Preview {
         let read = project.read(s, |p, _| {
             let count = p.change_count();
             let doc = p.ledger.document();
-            if !doc.pages.contains_key(&page) {
+            if !doc.pages().contains_key(&page) {
                 return None;
             }
             let title = format!(
                 "page {}: {}",
                 ecad_electrical::references::cables::page_number(doc, page),
-                doc.pages.get(&page).map(|x| x.title.as_str()).unwrap_or_default()
+                doc.pages().get(&page).map(|x| x.title.as_str()).unwrap_or_default()
             );
             let stale = match since {
                 None => true,

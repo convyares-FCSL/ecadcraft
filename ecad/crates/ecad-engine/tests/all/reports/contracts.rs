@@ -23,7 +23,7 @@ fn loc(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
 /// project, or none.
 fn ctx(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
     let r = ecad_electrical::symbols::reps::goto(doc, c, None).unwrap();
-    let l = ecad_electrical::locations::rep_context(doc, &doc.representations[&r], &mut ecad_electrical::locations::BoxCache::default());
+    let l = ecad_electrical::locations::rep_context(doc, &doc.representations()[&r], &mut ecad_electrical::locations::BoxCache::default());
     (l.value, l.source.word())
 }
 
@@ -113,7 +113,7 @@ fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
     assert_eq!(loc(&doc, x), (s("+JB1"), "device"));
     assert_eq!(ctx(&doc, m), (s("+JB1"), "box"));
     let rm = ecad_electrical::symbols::reps::goto(&doc, m, None).unwrap();
-    let l = ecad_electrical::locations::rep_context(&doc, &doc.representations[&rm], &mut ecad_electrical::locations::BoxCache::default());
+    let l = ecad_electrical::locations::rep_context(&doc, &doc.representations()[&rm], &mut ecad_electrical::locations::BoxCache::default());
     assert_eq!(l.source, Source::Box { aid: boxc, page });
     assert!(l.shown(&doc).contains("from box on 1"), "{}", l.shown(&doc));
     same_as_built(&mut h);
@@ -154,7 +154,7 @@ fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
     let hd = h.handle_of(page, item);
     h.run("erase", json!({"handles": [hd.hex()]})).unwrap();
     let doc = h.doc();
-    assert!(!doc.aids.contains_key(&boxc), "the box goes with its outline");
+    assert!(!doc.aids().contains_key(&boxc), "the box goes with its outline");
     assert_eq!(ctx(&doc, x), (s("+FIELD"), "page"));
     same_as_built(&mut h);
 }
@@ -168,18 +168,19 @@ fn a_box_needs_room_and_a_closed_polyline() {
     let e = h.run("locationbox", json!({"location": "+A", "corners": [[0, 0], [50, 50]], "points": [[0, 0]]})).unwrap_err();
     assert!(e.contains("exactly one"), "{e}");
     // An existing closed polyline becomes a box; an open one is refused.
-    let new_item = |h: &mut H, before: &std::collections::BTreeSet<ecad_model::ItemId>| *h.doc().items.keys().find(|i| !before.contains(i)).unwrap();
-    let before: std::collections::BTreeSet<_> = h.doc().items.keys().copied().collect();
+    let new_item =
+        |h: &mut H, before: &std::collections::BTreeSet<ecad_model::ItemId>| *h.doc().items().keys().find(|i| !before.contains(i)).unwrap();
+    let before: std::collections::BTreeSet<_> = h.doc().items().keys().copied().collect();
     h.run("pline", json!({"vertices": pts(&[(0.0, 0.0), (60.0, 0.0), (60.0, 40.0), (0.0, 40.0)]), "closed": true})).unwrap();
     let item = new_item(&mut h, &before);
     let made = h.run("locationbox", json!({"location": "+JB9", "item": item.hex()})).unwrap();
     let doc = h.doc();
-    assert_eq!(doc.items[&item].style.linetype, "DASHED");
-    assert!(doc.aids.contains_key(&id::<ecad_model::AidId>(&made, "aid")));
+    assert_eq!(doc.items()[&item].style.linetype, "DASHED");
+    assert!(doc.aids().contains_key(&id::<ecad_model::AidId>(&made, "aid")));
     // The same outline again: it belongs to a box now.
     let e = h.run("locationbox", json!({"location": "+JB8", "item": item.hex()})).unwrap_err();
     assert!(e.contains("belongs to another location box"), "{e}");
-    let before: std::collections::BTreeSet<_> = h.doc().items.keys().copied().collect();
+    let before: std::collections::BTreeSet<_> = h.doc().items().keys().copied().collect();
     h.run("pline", json!({"vertices": pts(&[(100.0, 0.0), (160.0, 0.0), (160.0, 40.0)])})).unwrap();
     let open = new_item(&mut h, &before);
     let e = h.run("locationbox", json!({"location": "+JB7", "item": open.hex()})).unwrap_err();
@@ -295,7 +296,7 @@ fn generated_pages_follow_the_project_and_print() {
     assert_eq!(h.head(), head + 1);
     let bom_page: PageId = id(&r, "page");
     let doc = h.doc();
-    assert_eq!(doc.pages[&bom_page].title, "BOM by location");
+    assert_eq!(doc.pages()[&bom_page].title, "BOM by location");
     let e = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap_err();
     assert!(e.contains("is generated (BOM by location)") && e.contains("add one after it with +"), "{e}");
     let e = h.run("pageprops", json!({"generated": "cover"})).unwrap_err();

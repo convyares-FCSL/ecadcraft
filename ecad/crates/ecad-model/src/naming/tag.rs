@@ -268,13 +268,13 @@ pub const PROVISIONAL_SETTING: &str = "numbering.provisional";
 /// `was` the mark it replaced and `generation` one more than the reset it overwrites (tester 026:
 /// the generation tells a reset, which raises it, from its undo, which lowers it, so an undone
 /// reset never counts as a new one; it also makes every reset a change, even to the same `n`).
-pub fn reset_value(n: u64, was: u64, generation: u64) -> String {
+pub(crate) fn reset_value(n: u64, was: u64, generation: u64) -> String {
     format!("{n};{was};{generation}")
 }
 
 /// A stored reset value read back: `(n, was, generation)`. A plain number (written before the
 /// generation existed) reads as `(n, 0, 0)`.
-pub fn parse_reset(v: &str) -> Option<(u64, u64, u64)> {
+pub(crate) fn parse_reset(v: &str) -> Option<(u64, u64, u64)> {
     let mut parts = v.trim().split(';');
     let n = parts.next()?.trim().parse::<u64>().ok()?;
     let (was, generation) = match (parts.next(), parts.next(), parts.next()) {
@@ -545,7 +545,7 @@ pub fn format(prefix: &str, n: u64, style: impl Into<Style>) -> String {
 
 /// The letters of a tag in the usual form as they were typed (`k05` → `k`), for renumbering a
 /// tag under [`Case::Typed`] (design 033 §8.3); `None` for any other tag.
-pub fn typed_prefix(tag: &str) -> Option<&str> {
+pub(crate) fn typed_prefix(tag: &str) -> Option<&str> {
     parse(tag)?;
     let t = tag.trim();
     let t = t.strip_prefix('-').unwrap_or(t);

@@ -85,7 +85,7 @@ impl PageCx {
 /// Where conductor `w`'s two ends are drawn: each at the first (in book order) route end landing
 /// on its connection point.
 pub fn end_points(doc: &Document, w: WireId, cx: &PageCx) -> [Option<(PageId, Pt)>; 2] {
-    let Some(wire) = doc.wires.get(&w) else { return [None, None] };
+    let Some(wire) = doc.wires().get(&w) else { return [None, None] };
     wire.ends.map(|t| crate::wires::routes::drawn_ends_at(doc, t).into_iter().min_by_key(|(p, _)| cx.pos(*p)))
 }
 
@@ -515,7 +515,7 @@ impl Scope {
     fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
         match s {
             Subject::Aid(a) => {
-                if doc.aids.get(&a).is_some_and(|x| x.as_box().is_some()) {
+                if doc.aids().get(&a).is_some_and(|x| x.as_box().is_some()) {
                     self.pages.insert(page);
                 }
             }
@@ -530,7 +530,7 @@ impl Scope {
             }
             // A route's drawing: the wires at the points it lands on (where their ends are drawn).
             Subject::Route(r) => {
-                if let Some(route) = doc.routes.get(&r) {
+                if let Some(route) = doc.routes().get(&r) {
                     for t in route.points_landed() {
                         self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                     }
@@ -742,12 +742,12 @@ impl Scope {
         self.wires.extend(mates);
         // Brief 052 (design 052 §8.2a): the users of a renamed entry, the one wide case.
         if !self.renamed.is_empty() {
-            for (c, x) in &doc.devices {
+            for (c, x) in doc.devices() {
                 if crate::locations::designations::device_keys(x).iter().any(|(_, v)| self.renamed.contains(v)) {
                     self.devices.insert(*c);
                 }
             }
-            for (id, p) in &doc.loose_parts {
+            for (id, p) in doc.loose_parts() {
                 if p.location.is_some_and(|l| self.renamed.contains(&l.hex())) {
                     self.loose.insert(*id);
                 }
@@ -876,7 +876,7 @@ fn group_halves<'a>(rows: impl Iterator<Item = &'a BomRow>, group: Group) -> Vec
 }
 
 fn needs_reports(doc: &Document, page: PageId) -> bool {
-    doc.page_order.contains(&page) && crate::pages::generated::kind_of(doc, page).is_some_and(ecad_model::GenKind::needs_reports)
+    doc.page_order().contains(&page) && crate::pages::generated::kind_of(doc, page).is_some_and(ecad_model::GenKind::needs_reports)
 }
 
 /// A cable end as the schedule shows it: `+CP1 -X01` (design 028 §6.3).

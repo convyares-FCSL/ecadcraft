@@ -13,11 +13,11 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
         End::A => End::B,
         End::B => End::A,
     };
-    let Some(t) = doc.wires.get(&w).map(|c| c.end(far)) else { return ("loose".into(), None) };
-    if let Some(a) = doc.connection_points.get(&t).and_then(|x| x.owner.aid()) {
+    let Some(t) = doc.wires().get(&w).map(|c| c.end(far)) else { return ("loose".into(), None) };
+    if let Some(a) = doc.connection_points().get(&t).and_then(|x| x.owner.aid()) {
         return (format!("{} >", crate::continuations::display_name(doc, a)), None);
     }
-    let Some(c) = doc.connection_points.get(&t).and_then(|x| x.device()) else { return ("loose".into(), None) };
+    let Some(c) = doc.connection_points().get(&t).and_then(|x| x.device()) else { return ("loose".into(), None) };
     (crate::terminal_strips::connection_point_words(doc, t), Some(c))
 }
 
@@ -26,7 +26,7 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
 /// `bridged to 4`, then the strip's positions.
 pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
     let mut lines = Vec::new();
-    let Some(r) = doc.representations.get(&here) else { return lines };
+    let Some(r) = doc.representations().get(&here) else { return lines };
     let pe = rep_is_pe(doc, r);
     let location = crate::locations::resolve(doc, c).value;
     let number = |w: WireId| ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
@@ -48,7 +48,7 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
         lines.push(format!("{}  {kind}  {}", crate::terminal_strips::connection_point_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
         let mut bridged = Vec::new();
         for (w, end) in doc.ends_at(t) {
-            let far_t = doc.wires.get(&w).map(|x| {
+            let far_t = doc.wires().get(&w).map(|x| {
                 x.end(match end {
                     End::A => End::B,
                     End::B => End::A,
@@ -72,7 +72,7 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
             match cable {
                 Some(k) => {
                     let core = doc
-                        .cables
+                        .cables()
                         .get(&k)
                         .and_then(|x| x.cores.iter().find(|m| m.wire() == Some(w)))
                         .and_then(|m| m.label_str().map(str::to_string))
@@ -102,7 +102,7 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
 
 /// A cable's hover line: `-W01  7G1.5: 5 used, 2 spare (6, GNYE)`; `None` with no offer.
 pub fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
-    let cab = doc.cables.get(&k)?;
+    let cab = doc.cables().get(&k)?;
     let count = count_cores(crate::styles::cable::offer(doc, k), &cab.cores);
     let named = cab.properties.get("type").cloned().or_else(|| count.offer_text.clone())?;
     count.offer.as_ref()?;

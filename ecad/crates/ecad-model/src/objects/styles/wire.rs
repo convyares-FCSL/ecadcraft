@@ -145,9 +145,9 @@ impl<'de> Deserialize<'de> for LineColour {
 }
 
 /// The longest potential name.
-pub const MAX_POTENTIAL: usize = 24;
+pub(crate) const MAX_POTENTIAL: usize = 24;
 /// The longest part number, maker or description.
-pub const MAX_PART_TEXT: usize = 64;
+pub(crate) const MAX_PART_TEXT: usize = 64;
 
 /// A conductor's datasheet rating (brief 057, design 057 §4.4): shared by wire types and cable
 /// types.

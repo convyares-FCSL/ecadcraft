@@ -43,7 +43,7 @@ fn rid(v: &Value) -> RouteId {
 }
 
 fn conductors(doc: &Document) -> Vec<WireId> {
-    doc.wires.keys().copied().collect()
+    doc.wires().keys().copied().collect()
 }
 
 fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetKey> {
@@ -51,7 +51,7 @@ fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetKey> {
 }
 
 fn vertices(doc: &Document, r: RouteId) -> Vec<Pt> {
-    doc.routes.get(&r).map(|x| x.points.clone()).unwrap_or_default()
+    doc.routes().get(&r).map(|x| x.points.clone()).unwrap_or_default()
 }
 
 /// The points of wire `c`'s line on `page`.
@@ -119,8 +119,8 @@ fn t01_end_to_end_is_one_conductor_one_net() {
     assert_eq!(b["joined"][0]["how"], "merged", "{b}");
     assert_eq!(b["joined"][0]["route"], json!(first.hex()), "{b}");
     let doc = h.doc();
-    assert_eq!(doc.routes.keys().copied().collect::<Vec<_>>(), vec![first], "one route");
-    assert_eq!(doc.routes[&first].ends, [RouteEnd::Point(t1), RouteEnd::Point(t2)]);
+    assert_eq!(doc.routes().keys().copied().collect::<Vec<_>>(), vec![first], "one route");
+    assert_eq!(doc.routes()[&first].ends, [RouteEnd::Point(t1), RouteEnd::Point(t2)]);
     let w = cid(&b);
     assert_eq!(conductors(&doc), vec![w], "one wire");
     let nets = h.run("nets", json!({})).unwrap();
@@ -143,7 +143,7 @@ fn t02_collinear_join_drops_the_middle_vertex() {
     let b = wire(&mut h, &[(50.0, 0.0), (80.0, 0.0)], json!({}));
     assert_eq!(rid(&b), a);
     let doc = h.doc();
-    assert_eq!(doc.routes.len(), 1);
+    assert_eq!(doc.routes().len(), 1);
     assert!(same_pts(&vertices(&doc, a), &[(0.0, 0.0), (80.0, 0.0)]), "{:?}", vertices(&doc, a));
 }
 
@@ -155,13 +155,13 @@ fn t02b_ending_on_a_start_merges_and_keeps_end_letters() {
     let (_, t, tp) = connection_point(&mut h, (0.0, 0.0), "X1");
     // C runs from the terminal (end A on it) to a free end B at (50, 0).
     let c = rid(&wire(&mut h, &[(tp.x, tp.y), (50.0, 0.0)], json!({})));
-    assert_eq!(h.doc().routes[&c].ends[0], RouteEnd::Point(t));
+    assert_eq!(h.doc().routes()[&c].ends[0], RouteEnd::Point(t));
     // W ends on C's free end B.
     let w = wire(&mut h, &[(50.0, -30.0), (50.0, 0.0)], json!({}));
     assert_eq!(rid(&w), c, "{w}");
     let doc = h.doc();
-    assert_eq!(doc.routes.len(), 1);
-    assert_eq!(doc.routes[&c].ends[0], RouteEnd::Point(t), "C keeps its end A on the terminal");
+    assert_eq!(doc.routes().len(), 1);
+    assert_eq!(doc.routes()[&c].ends[0], RouteEnd::Point(t), "C keeps its end A on the terminal");
     let v = vertices(&doc, c);
     assert!(v.first().is_some_and(|p| p.near(tp, 1e-6)), "end A stays at the connection_point: {v:?}");
     assert!(v.last().is_some_and(|p| p.near(Pt::new(50.0, -30.0), 1e-6)), "end B moved to W's far end: {v:?}");
@@ -182,13 +182,13 @@ fn t03_both_ends_fold_into_one_wire() {
     assert_eq!(rid(&b), a, "the survivor is the route at W's end A: {b}");
     assert_eq!(b["removed"], json!([c.hex()]), "{b}");
     let doc = h.doc();
-    assert_eq!(doc.routes.keys().copied().collect::<Vec<_>>(), vec![a]);
-    assert!(!doc.routes.contains_key(&c), "the folded route no longer exists");
-    let ends = doc.routes[&a].ends;
+    assert_eq!(doc.routes().keys().copied().collect::<Vec<_>>(), vec![a]);
+    assert!(!doc.routes().contains_key(&c), "the folded route no longer exists");
+    let ends = doc.routes()[&a].ends;
     assert!(ends.contains(&RouteEnd::Point(t1)) && ends.contains(&RouteEnd::Point(t2)), "{ends:?}");
     assert!(ecad_electrical::wires::routes::wire_between(&doc, t1, t2).is_some(), "the wire t1-t2");
     assert_eq!(doc.representations_of(Subject::Route(c)).count(), 0, "its drawing is gone");
-    assert!(before.routes.contains_key(&c));
+    assert!(before.routes().contains_key(&c));
     undo_is_one_step(&mut h, &before);
 }
 
@@ -268,10 +268,10 @@ fn t07_three_ends_meet_at_one_junction() {
     assert_eq!(r["created"], json!(true), "{r}");
     assert!(r["joined"].as_array().is_some_and(|j| j.iter().any(|e| e["how"] == "on")), "{r}");
     let doc = h.doc();
-    assert_eq!(doc.routes.len(), 3);
-    assert!(doc.devices.is_empty(), "no junction component");
-    let landed = doc.routes.values().flat_map(|x| x.ends).filter(|e| e.route().is_some_and(|x| x == a || x == b)).count();
-    assert!(landed >= 1, "the free ends land on a route there: {:?}", doc.routes);
+    assert_eq!(doc.routes().len(), 3);
+    assert!(doc.devices().is_empty(), "no junction component");
+    let landed = doc.routes().values().flat_map(|x| x.ends).filter(|e| e.route().is_some_and(|x| x == a || x == b)).count();
+    assert!(landed >= 1, "the free ends land on a route there: {:?}", doc.routes());
     undo_is_one_step(&mut h, &before);
 }
 
@@ -286,8 +286,8 @@ fn t08_reverse_tee_splits_the_new_wire() {
     assert_eq!(tees.len(), 1, "{r}");
     assert_eq!(tees[0]["at"], json!([30.0, -10.0]), "{r}");
     let doc = h.doc();
-    assert_eq!(doc.routes.len(), 2, "C and the new line, unsplit");
-    assert_eq!(doc.routes[&c].ends[1].route(), Some(rid(&r)), "C lands on the new line");
+    assert_eq!(doc.routes().len(), 2, "C and the new line, unsplit");
+    assert_eq!(doc.routes()[&c].ends[1].route(), Some(rid(&r)), "C lands on the new line");
     undo_is_one_step(&mut h, &before);
 }
 
@@ -304,9 +304,9 @@ fn t09_join_false_and_junction_false_and_their_disagreement() {
         let b = wire(&mut h, &[(50.0, 0.0), (p2.x, p2.y)], json!({key: false}));
         assert_eq!(b["created"], json!(true), "{key}: {b}");
         let doc = h.doc();
-        assert_eq!(doc.routes.len(), 2, "{key}");
+        assert_eq!(doc.routes().len(), 2, "{key}");
         assert_ne!(a, rid(&b), "{key}");
-        assert!(doc.wires.is_empty(), "{key}: two lines each from one point carry no wire");
+        assert!(doc.wires().is_empty(), "{key}: two lines each from one point carry no wire");
         let draws = checks(&mut h, &["looks-connected"]);
         assert_eq!(draws.len(), 1, "{key}: {draws:?}");
         assert_eq!(draws[0]["at"], json!([50.0, 0.0]), "{key}");
@@ -341,7 +341,7 @@ fn t11_joinwires_repairs_and_refuses_nothing_to_join() {
     assert_eq!(r["at"], json!([50.0, 0.0]), "{r}");
     assert_eq!(last_tx(&mut h).label, "Join wires");
     let doc = h.doc();
-    assert_eq!(doc.routes.keys().copied().collect::<Vec<_>>(), vec![survivor]);
+    assert_eq!(doc.routes().keys().copied().collect::<Vec<_>>(), vec![survivor]);
     assert!(same_pts(&vertices(&doc, survivor), &[(0.0, 0.0), (50.0, 0.0), (50.0, -20.0)]));
     assert!(checks(&mut h, &["looks-connected"]).is_empty());
     undo_is_one_step(&mut h, &before);
@@ -355,7 +355,7 @@ fn t11_joinwires_repairs_and_refuses_nothing_to_join() {
     let tee = rid(&wire(&mut h, &[(30.0, 130.0), (30.0, 100.0)], json!({"join": false})));
     let r = h.run("joinwires", json!({"at": [30, 100]})).unwrap();
     assert_eq!(r["how"], "tee", "{r}");
-    assert_eq!(h.doc().routes[&tee].ends[1].route(), Some(on), "{r}");
+    assert_eq!(h.doc().routes()[&tee].ends[1].route(), Some(on), "{r}");
 }
 
 /// Owner Q9 and brief "not in scope": an older file with ends that meet is not rewritten on open;
@@ -375,10 +375,10 @@ fn t11b_a_file_with_ends_that_meet_opens_unchanged() {
     drop(h);
     let mut h2 = reopen(&path, 0x7032_0013);
     assert_eq!(h2.head(), head, "open writes nothing");
-    assert_eq!(h2.doc().routes, doc.routes, "routes unchanged");
+    assert_eq!(h2.doc().routes(), doc.routes(), "routes unchanged");
     assert_eq!(checks(&mut h2, &["looks-connected"]).len(), 1);
     h2.run("joinwires", json!({"at": [50, 0]})).unwrap();
-    assert_eq!(h2.doc().routes.len(), 1);
+    assert_eq!(h2.doc().routes().len(), 1);
     h2.close_all();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
@@ -435,7 +435,7 @@ fn w04(seed: u64) -> W04 {
         continuation(&mut h, (tp.x, 40.0), &format!("A{}", i + 1), 180.0);
         w.push(cid(&wire(&mut h, &[(tp.x, 40.0), (tp.x, tp.y)], json!({}))));
     }
-    let members: Vec<WireId> = h.doc().cables[&cable].cores.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<WireId> = h.doc().cables()[&cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members, w, "fixture: each core moved onto its wire");
     W04 { h, p1, p2, cable, w }
 }
@@ -476,8 +476,8 @@ fn t14_cablecontinue_on_cores_connected_at_both_ends_is_refused() {
 fn t13_a_cable_continued_on_a_second_page() {
     let mut f = w04(0x7032_0130);
     let doc = f.h.doc();
-    let labels: Vec<Option<String>> = doc.cables[&f.cable].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
-    let cables_before = doc.cables.len();
+    let labels: Vec<Option<String>> = doc.cables()[&f.cable].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
+    let cables_before = doc.cables().len();
     // Offer exactly three cores, the page-1 labels (or 1,2,3 when the slash gave none).
     let offer: Vec<String> = labels.iter().enumerate().map(|(i, l)| l.clone().unwrap_or_else(|| (i + 1).to_string())).collect();
     f.h.run("setprop", json!({"cable": f.cable.hex(), "key": "cores", "value": offer.join(",")})).unwrap();
@@ -485,7 +485,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     // set on the devices (a box would only propose).
     let doc = f.h.doc();
     let tagged = |pre: &str| -> Vec<String> {
-        doc.devices
+        doc.devices()
             .keys()
             .filter(|c| ecad_electrical::devices::tags::tag_of(&doc, **c).is_some_and(|t| t.to_string().starts_with(pre)))
             .map(|c| c.hex())
@@ -513,8 +513,8 @@ fn t13_a_cable_continued_on_a_second_page() {
     assert!(!tx.ops.iter().any(|o| matches!(o, Op::ModifyCable { .. })), "no new member: {:?}", tx.ops);
     assert!(tx.ops.iter().any(|o| matches!(o, Op::LinkRepresentation { .. })));
     let doc = f.h.doc();
-    assert_eq!(doc.cables.len(), cables_before, "one cable");
-    let k = &doc.cables[&f.cable];
+    assert_eq!(doc.cables().len(), cables_before, "one cable");
+    let k = &doc.cables()[&f.cable];
     assert_eq!(k.cores.len(), 3);
     for (i, w) in f.w.iter().enumerate() {
         let m = k.cores.iter().find(|m| m.wire() == Some(*w)).expect("member");
@@ -549,13 +549,13 @@ fn t13_a_cable_continued_on_a_second_page() {
     // Erasing the page-2 slash removes that representation; the members stay (they run on page 1).
     let doc = f.h.doc();
     let (rep, _) = slash_reps(&doc, f.cable).into_iter().find(|(_, p)| *p == f.p2).unwrap();
-    let item = doc.representations[&rep].items[0];
+    let item = doc.representations()[&rep].items[0];
     f.h.activate(f.p2);
     let handle = f.h.handle_of(f.p2, item);
     f.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     let doc = f.h.doc();
-    assert!(doc.cables.contains_key(&f.cable), "the cable stays");
-    let members: Vec<_> = doc.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
+    assert!(doc.cables().contains_key(&f.cable), "the cable stays");
+    let members: Vec<_> = doc.cables()[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members, f.w, "the three members stay");
     assert_eq!(slash_reps(&doc, f.cable).len(), 1);
     same_reports_as_built(&mut f.h);
@@ -563,12 +563,12 @@ fn t13_a_cable_continued_on_a_second_page() {
     // "deletes the cable", which is not what `6729c8f1` does).
     f.h.activate(f.p1);
     let (rep, _) = slash_reps(&doc, f.cable)[0];
-    let item = doc.representations[&rep].items[0];
+    let item = doc.representations()[&rep].items[0];
     let handle = f.h.handle_of(f.p1, item);
     f.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     let d = f.h.doc();
     assert!(slash_reps(&d, f.cable).is_empty());
-    let members: Vec<_> = d.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<_> = d.cables()[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members, f.w, "the cable and its members stay");
 }
 
@@ -578,7 +578,7 @@ fn t13b_continue_by_cable_id() {
     let mut f = w04(0x7032_0131);
     let r = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "cable": f.cable.hex()})).unwrap();
     assert_eq!(r["continued"], json!(true), "{r}");
-    assert_eq!(f.h.doc().cables[&f.cable].cores.len(), 3, "F5: no new member");
+    assert_eq!(f.h.doc().cables()[&f.cable].cores.len(), 3, "F5: no new member");
 }
 
 /// §3.3 refusals, each tested; nothing written.
@@ -609,8 +609,8 @@ fn t13c_continue_refusals() {
     // A wire on from a core's terminal is not the core.
     let mut f = w04(0x7032_0134);
     let doc = f.h.doc();
-    let x51 = doc.wires[&f.w[0]].ends.iter().copied().find(|t| {
-        ecad_electrical::devices::tags::tag_of(&doc, doc.connection_points[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5"))
+    let x51 = doc.wires()[&f.w[0]].ends.iter().copied().find(|t| {
+        ecad_electrical::devices::tags::tag_of(&doc, doc.connection_points()[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5"))
     });
     let tp = x51.map(|t| f.h.connection_point_pos(f.p2, t)).expect("X51's point");
     f.h.points_at(&[(tp.x, tp.y + 40.0)]);
@@ -691,7 +691,7 @@ fn bus(seed: u64) -> (H, PageId, Vec<WireId>) {
 
 fn routes_on(doc: &Document, page: PageId) -> Vec<(WireId, f64)> {
     let mut v = Vec::new();
-    for c in doc.wires.keys() {
+    for c in doc.wires().keys() {
         let pts = wire_vertices(doc, *c, page);
         if pts.len() >= 2 {
             let longest = pts.windows(2).map(|w| ((w[1].x - w[0].x).powi(2) + (w[1].y - w[0].y).powi(2)).sqrt()).fold(0.0, f64::max);
@@ -823,7 +823,7 @@ fn t17b_update_map_follows_continuation_names() {
     let doc = f.h.doc();
     // Rename page 2's A2 to Z9: core 2's wire goes; the core stays on its lines.
     let a2 = doc
-        .aids
+        .aids()
         .iter()
         .find(|(a, x)| {
             x.continuation_name().map(|n| n.as_str()) == Some("A2") && doc.representations_of(Subject::Aid(**a)).any(|(_, r)| r.page == f.p2)
@@ -833,13 +833,13 @@ fn t17b_update_map_follows_continuation_names() {
     f.h.run("setprop", json!({"aids": [a2.hex()], "key": "name", "value": "Z9"})).unwrap();
     same_reports_as_built(&mut f.h);
     let doc = f.h.doc();
-    assert!(!doc.wires.contains_key(&f.w[1]));
-    assert!(matches!(doc.cables[&f.cable].cores[1].position, ecad_model::CorePosition::Route { .. }), "{:?}", doc.cables[&f.cable].cores);
+    assert!(!doc.wires().contains_key(&f.w[1]));
+    assert!(matches!(doc.cables()[&f.cable].cores[1].position, ecad_model::CorePosition::Route { .. }), "{:?}", doc.cables()[&f.cable].cores);
     let cc = f.h.run("cablecores", json!({"cable": f.cable.hex()})).unwrap();
     assert_eq!(cc["used"], 3, "the core on its lines is used: {cc}");
     f.h.cmdline("u");
     same_reports_as_built(&mut f.h);
-    assert_eq!(f.h.doc().cables[&f.cable].cores[1].wire(), Some(f.w[1]));
+    assert_eq!(f.h.doc().cables()[&f.cable].cores[1].wire(), Some(f.w[1]));
     let cc = f.h.run("cablecores", json!({"cable": f.cable.hex()})).unwrap();
     assert_eq!(cc["used"], 3, "{cc}");
     let _ = f.p1;
@@ -871,7 +871,9 @@ fn t16_label_settings_round_trip_and_default_when_absent() {
     let back: ecad_model::connectivity::wiring::WiringSettings = serde_json::from_value(v).unwrap();
     assert_eq!((back.label_rule.as_deref(), back.label_min_length), (None, None));
     let mut doc = ecad_model::Document::default();
-    doc.settings.wiring = back;
+    doc.edit_parts(|parts| {
+        parts.settings.wiring = back;
+    });
     assert_eq!(ecad_electrical::wires::label_rule::label_rule_word(&doc), "net");
     assert_eq!(ecad_electrical::wires::label_rule::label_min_length(&doc), 0.0);
 }
@@ -935,7 +937,7 @@ fn t18_wire_tool_join_keyword() {
     typed(&mut h, "50,-20");
     typed(&mut h, "");
     h.check();
-    assert_eq!(h.doc().routes.len(), 2, "join off: two lines");
+    assert_eq!(h.doc().routes().len(), 2, "join off: two lines");
     // A new tool session starts with joining on.
     h.s.start("wire").unwrap();
     assert!(!prompt(&h).contains("(join off)"), "{}", prompt(&h));
@@ -944,7 +946,7 @@ fn t18_wire_tool_join_keyword() {
     typed(&mut h, "0,30");
     typed(&mut h, "");
     h.check();
-    assert_eq!(h.doc().routes.len(), 2, "the new line merged into the first one");
+    assert_eq!(h.doc().routes().len(), 2, "the new line merged into the first one");
     // J, J turns it back on, with the echo.
     h.s.start("wire").unwrap();
     typed(&mut h, "J");

@@ -137,7 +137,7 @@ fn kind_for_symbol(s: &SymbolInstance) -> EntityKind {
 
 /// The entity for an item, with the given handle.
 pub(crate) fn entity_for(doc: &Document, item: &Item, handle: Handle) -> Option<Entity> {
-    let layer = doc.layers.get(&item.style.layer)?;
+    let layer = doc.layers().get(&item.style.layer)?;
     let mut kind = match &item.kind {
         ItemKind::Primitive(p) => kind_for_primitive(p),
         ItemKind::Symbol(s) => kind_for_symbol(s),
@@ -252,7 +252,7 @@ pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, Strin
         return Err(crate::cables::views::LAYER_RESERVED.into());
     }
     let layer: LayerId = doc
-        .layers
+        .layers()
         .iter()
         .find(|(_, l)| l.name == e.common.layer)
         .map(|(id, _)| *id)

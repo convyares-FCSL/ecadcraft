@@ -135,7 +135,7 @@ impl App {
     fn show_page_window(&mut self) -> Result<u64, String> {
         let p = self.project.clone().ok_or("no ECAD project is open")?;
         let page = p
-            .read(&mut self.cad.session, |p, _| p.active_page().or(self.panel.active).or_else(|| p.ledger.document().page_order.first().copied()))?
+            .read(&mut self.cad.session, |p, _| p.active_page().or(self.panel.active).or_else(|| p.ledger.document().page_order().first().copied()))?
             .ok_or("the project has no pages")?;
         p.open_page(&mut self.cad.session, page)
     }

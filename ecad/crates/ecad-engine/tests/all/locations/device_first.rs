@@ -30,7 +30,7 @@ fn contact_text(h: &mut H, page: PageId, r: RepresentationId) -> Option<String> 
 
 fn parts_stored(d: &Document) {
     let not_parts: Vec<_> =
-        d.representations.iter().filter(|(_, r)| matches!(r.subject, Subject::Device(_)) && r.role.part().is_none()).map(|(id, _)| *id).collect();
+        d.representations().iter().filter(|(_, r)| matches!(r.subject, Subject::Device(_)) && r.role.part().is_none()).map(|(id, _)| *id).collect();
     assert!(not_parts.is_empty(), "every device symbol stores its part: {not_parts:?}");
 }
 
@@ -53,10 +53,10 @@ fn every_symbol_stores_its_part() {
     h.run("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [50, 50]})).unwrap();
     let d = h.doc();
     parts_stored(&d);
-    assert_eq!(d.representations[&rep(&coil)].role, Role::Part(PartRole::Head));
-    assert_eq!(d.representations[&rep(&no)].role, Role::Part(PartRole::Contact));
-    assert_eq!(reps::rep_type(&d, &d.representations[&rep(&coil)]), PartRole::Head);
-    assert_eq!(reps::rep_type(&d, &d.representations[&rep(&no)]), PartRole::Contact);
+    assert_eq!(d.representations()[&rep(&coil)].role, Role::Part(PartRole::Head));
+    assert_eq!(d.representations()[&rep(&no)].role, Role::Part(PartRole::Contact));
+    assert_eq!(reps::rep_type(&d, &d.representations()[&rep(&coil)]), PartRole::Head);
+    assert_eq!(reps::rep_type(&d, &d.representations()[&rep(&no)]), PartRole::Contact);
 }
 
 /// §3.1: the type is the part the definition declares, never order.
@@ -76,7 +76,7 @@ fn types_follow_the_definition() {
         let v = h.run("place", json!({"symbol": symbol, "at": [20.0 + 30.0 * i as f64, 100.0]}));
         let Ok(v) = v else { continue };
         let d = h.doc();
-        let r = &d.representations[&rep(&v)];
+        let r = &d.representations()[&rep(&v)];
         assert_eq!(reps::rep_type(&d, r), want, "{symbol}");
         assert_eq!(reps::view(&d, r), View::Schematic);
         assert_eq!(<PartRole as ecad_model::Word>::parse(ecad_model::Word::word(want)), Some(want));
@@ -135,7 +135,7 @@ fn renumber_orders_a_device_by_its_head() {
     h.run("place", json!({"symbol": "coil", "at": [50, 150], "device": x.hex()})).unwrap();
     h.run("renumber", json!({"kind": "devices", "scope": "all", "start": 1})).unwrap();
     let d = h.doc();
-    let tag = |c: DeviceId| d.devices[&c].tag_shown().unwrap_or_default();
+    let tag = |c: DeviceId| d.devices()[&c].tag_shown().unwrap_or_default();
     assert_eq!(tag(y), "-K01", "Y's coil is on page 1");
     assert_eq!(tag(x), "-K02", "X is numbered by its coil on page 2, not its contact on page 1");
 }
@@ -154,9 +154,11 @@ fn of_two_heads_the_first_in_book_order_is_the_head() {
     let (a, b) = (rep(&a), rep(&b));
     let mut d = h.doc();
     // Give the second coil to device k, as an edited file or a branch merge could.
-    if let Some(r) = d.representations.get_mut(&b) {
-        r.subject = Subject::Device(k);
-    }
+    d.edit_parts(|parts| {
+        if let Some(r) = parts.representations.get_mut(&b) {
+            r.subject = Subject::Device(k);
+        }
+    });
     d.rebuild_index();
     assert_eq!(reps::heads(&d, k), vec![a, b]);
     assert_eq!(reps::head(&d, k), Some(a));
@@ -167,7 +169,9 @@ fn of_two_heads_the_first_in_book_order_is_the_head() {
     );
     assert_eq!(reps::parent(&d, no), Some(a));
     // Swap the pages: the coil on page 2 is now first in the book.
-    d.page_order = vec![p2, p1];
+    d.edit_parts(|parts| {
+        parts.page_order = vec![p2, p1];
+    });
     assert_eq!(reps::head(&d, k), Some(b));
     assert_eq!(ecad_electrical::references::devices::classify::device(&d, k).head, Some(b));
     assert_eq!(reps::parent(&d, no), Some(b));
@@ -189,7 +193,7 @@ fn a_pin_only_half_has_no_half_member() {
     assert!(classes.iter().all(|(_, c)| matches!(c, ecad_electrical::references::devices::classify::Class::Pin(_))), "{classes:?}");
     let edges = connectors::ref_edges(&d, x, &classes);
     assert!(edges.contains(&(s, p)) && edges.contains(&(p, s)), "{edges:?}");
-    assert_eq!(reps::rep_type(&d, &d.representations[&s]), PartRole::Pin);
+    assert_eq!(reps::rep_type(&d, &d.representations()[&s]), PartRole::Pin);
     assert_eq!(reps::siblings(&d, s), vec![p], "the mate first");
     assert_eq!(reps::half_anchor(&d, x, ecad_electrical::symbols::Side::Socket), None);
     assert_eq!(connectors::half_goto(&d, x, ecad_electrical::symbols::Side::Plug), Some(p));
@@ -218,9 +222,11 @@ fn go_to_and_numbering_share_one_drawing_order() {
     let q: DeviceId = id(&c1, "component");
     let c2 = h.run("place", json!({"symbol": "coil", "at": [50, 100]})).unwrap();
     let mut d = h.doc();
-    if let Some(r) = d.representations.get_mut(&rep(&c2)) {
-        r.subject = Subject::Device(q);
-    }
+    d.edit_parts(|parts| {
+        if let Some(r) = parts.representations.get_mut(&rep(&c2)) {
+            r.subject = Subject::Device(q);
+        }
+    });
     d.rebuild_index();
     assert_eq!(reps::head(&d, q), Some(rep(&c2)));
     assert_eq!(ecad_electrical::references::devices::classify::device(&d, q).head, Some(rep(&c2)));

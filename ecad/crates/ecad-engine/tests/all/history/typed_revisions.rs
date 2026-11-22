@@ -14,7 +14,7 @@ fn b_points() -> (PointName, PointName) {
 
 /// The two points `B` the document holds, with where each is.
 fn points(h: &mut crate::common::H) -> std::collections::BTreeMap<PointName, u64> {
-    h.doc().versions
+    h.doc().versions().clone()
 }
 
 #[test]

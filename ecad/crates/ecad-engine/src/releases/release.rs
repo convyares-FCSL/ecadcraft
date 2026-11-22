@@ -777,7 +777,7 @@ fn read_only(p: &Project) -> Option<String> {
 pub fn unchanged_since(p: &Project) -> Option<String> {
     let doc = p.ledger.document();
     let rev = ecad_electrical::releases::release::unchanged_since(doc, p.ledger.head(), |seq| p.ledger.transaction(seq))?;
-    Some(doc.project.rev_scheme.show(rev))
+    Some(doc.project().rev_scheme.show(rev))
 }
 
 /// [`unchanged_since`] in words.
@@ -957,7 +957,7 @@ pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
 fn issued_row(p: &Project, rev: &str) -> Result<revisions::Revision, String> {
     let want = crate::history::points::read_rev(p, rev).map_err(|e| e.to_string())?;
     let doc = p.ledger.document();
-    let shown = doc.project.rev_scheme.show(want);
+    let shown = doc.project().rev_scheme.show(want);
     if let Some(r) = revisions::issued(doc).into_iter().find(|r| r.rev_value == Some(want)) {
         return Ok(r);
     }
@@ -978,7 +978,7 @@ fn options(doc: &ecad_model::Document, params: &Value) -> Result<Options, String
 
 /// The tags of the cables shown fan (the manifest's `cable_views`).
 fn fan_tags(doc: &Document, fan: &BTreeSet<ecad_model::CableId>) -> Vec<String> {
-    fan.iter().filter(|k| doc.cables.contains_key(k)).map(|k| ecad_electrical::cables::cable_title(doc, *k)).collect()
+    fan.iter().filter(|k| doc.cables().contains_key(k)).map(|k| ecad_electrical::cables::cable_title(doc, *k)).collect()
 }
 
 /// The words of a finished release.

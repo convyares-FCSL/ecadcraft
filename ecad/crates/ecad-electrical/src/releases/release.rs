@@ -182,7 +182,7 @@ pub fn provisional_count(rows: &[Check]) -> usize {
 /// the ledger; it stops at the first other step.
 pub fn unchanged_since<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option<&'a Transaction>) -> Option<ecad_model::Rev> {
     let last = crate::releases::revisions::issued(doc).into_iter().next()?;
-    let at = *doc.versions.get(&ecad_model::PointName::Revision(last.rev_value?))?;
+    let at = *doc.versions().get(&ecad_model::PointName::Revision(last.rev_value?))?;
     let only_revisions = |t: &Transaction| {
         t.ops.iter().all(|o| match o {
             Op::ModifyProject { before, after } => {
@@ -205,7 +205,7 @@ pub fn unchanged_since<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option
 /// [`unchanged_since`] in words: `Nothing has changed since Rev A.`
 pub fn nothing_changed<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option<&'a Transaction>) -> Option<String> {
     let rev = unchanged_since(doc, head, tx)?;
-    Some(format!("Nothing has changed since Rev {}.", doc.project.rev_scheme.show(rev)))
+    Some(format!("Nothing has changed since Rev {}.", doc.project().rev_scheme.show(rev)))
 }
 
 // ---------------------------------------------------------------- slots (design 027 §7.2)
@@ -265,10 +265,10 @@ fn io_list(doc: &Document, o: &crate::reports::kept::ReportModels) -> Option<Tab
 /// brief 028's lists only when the project has strips or cables.
 pub fn slot_gives(slot: &Slot, doc: &Document) -> bool {
     match slot.id {
-        "terminal-block-plan" => doc.devices.keys().any(|c| crate::terminal_strips::strip_of(doc, *c).is_some()),
-        "cable-schedule" => !doc.cables.is_empty(),
-        "io-list" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some_and(|t| t.has_channels())),
-        "plc-racks" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some()),
+        "terminal-block-plan" => doc.devices().keys().any(|c| crate::terminal_strips::strip_of(doc, *c).is_some()),
+        "cable-schedule" => !doc.cables().is_empty(),
+        "io-list" => doc.devices().keys().any(|c| crate::plc::card_type_of(doc, *c).is_some_and(|t| t.has_channels())),
+        "plc-racks" => doc.devices().keys().any(|c| crate::plc::card_type_of(doc, *c).is_some()),
         _ => slot.missing_why.is_empty(),
     }
 }

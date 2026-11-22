@@ -65,7 +65,7 @@ impl StripAccessory {
                 let doc_items = read(s, |p, _| {
                     let doc = p.ledger.document();
                     let key = if gap { format!("{}{at}", ecad_electrical::terminal_strips::accessories::AFTER_PREFIX) } else { format!("acc.{at}") };
-                    Ok(doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned())
+                    Ok(doc.devices().get(&c).and_then(|x| x.properties.get(&key)).cloned())
                 })
                 .ok()
                 .flatten();
@@ -207,7 +207,7 @@ impl Jumper {
                             let doc = p.ledger.document();
                             let tag = ecad_electrical::devices::tags::tag_words(doc, c);
                             let order = ecad_electrical::terminal_strips::accessories::positions(doc, c);
-                            let n = doc.devices.get(&c).and_then(|x| {
+                            let n = doc.devices().get(&c).and_then(|x| {
                                 ecad_model::connectivity::jumper_bars::of(&x.properties)
                                     .into_iter()
                                     .find(|(_, p)| p.select(&order).contains(&&label))

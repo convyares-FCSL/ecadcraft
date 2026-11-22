@@ -67,8 +67,8 @@ impl Command for PlcpageParams {
             let title = title(doc, pc.card, pc.ty);
             let mut new_page = Page::new(ecad_electrical::pages::commands::sheets::page_title(&title)?);
             new_page.number = ecad_model::PageNo::parse(&number);
-            new_page.folder = before.and_then(|b| book::folder_of(doc, b)).filter(|f| doc.folders.contains_key(f));
-            let index = before.and_then(|b| doc.page_order.iter().position(|x| *x == b)).map_or(doc.page_order.len(), |i| i + 1);
+            new_page.folder = before.and_then(|b| book::folder_of(doc, b)).filter(|f| doc.folders().contains_key(f));
+            let index = before.and_then(|b| doc.page_order().iter().position(|x| *x == b)).map_or(doc.page_order().len(), |i| i + 1);
             let id: PageId = p.ids.fresh();
             let mut ops = vec![Op::AddPage { id, page: new_page, index }];
             let style = plain_style(p);
@@ -103,7 +103,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
     use ecad_model::{ItemKind, Op};
     let doc = p.ledger.document();
     let is_rack_def = |d: ecad_model::DefinitionId| {
-        let def = doc.definitions.get(&d).or_else(|| {
+        let def = doc.definitions().get(&d).or_else(|| {
             ops.iter().find_map(|op| match op {
                 Op::EmbedDefinition { id, definition } if *id == d => Some(definition),
                 _ => None,
@@ -120,8 +120,8 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
     if !places_rack {
         return Ok((None, Vec::new()));
     }
-    let has_page = doc.page_order.iter().any(|pg| ecad_electrical::pages::generated::kind_of(doc, *pg) == Some(ecad_model::GenKind::PlcRack));
-    let other_rack = doc.devices.keys().any(|c| ecad_electrical::plc::edit::station_of(doc, *c).is_some());
+    let has_page = doc.page_order().iter().any(|pg| ecad_electrical::pages::generated::kind_of(doc, *pg) == Some(ecad_model::GenKind::PlcRack));
+    let other_rack = doc.devices().keys().any(|c| ecad_electrical::plc::edit::station_of(doc, *c).is_some());
     if has_page || other_rack {
         return Ok((None, Vec::new()));
     }

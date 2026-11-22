@@ -69,7 +69,7 @@ fn sets(ops: &[Op], key: &str) -> bool {
 }
 
 fn tag(h: &mut H, c: DeviceId) -> String {
-    h.doc().devices[&c].tag_shown().unwrap_or_default()
+    h.doc().devices()[&c].tag_shown().unwrap_or_default()
 }
 
 /// A refusal: `cmd` fails and the head does not move.
@@ -415,7 +415,7 @@ fn ac7_continuation_sheets_are_numbered_in_sequence() {
 fn ac8_continuation_numbers_are_taken_and_a_clash_is_a_warning() {
     let mut h = H::new(0x33_08);
     let (plan, n) = long_plan(&mut h, "400");
-    let title = h.doc().pages[&plan].title.clone();
+    let title = h.doc().pages()[&plan].title.clone();
     let e = refused(&mut h, "newpage", json!({"title": "X", "number": "401"}));
     assert_eq!(e, format!("Number 401 is sheet 2 of page 400 ({title})."));
     let other: PageId = id(&h.run("newpage", json!({"title": "Other"})).unwrap(), "page");
@@ -427,7 +427,7 @@ fn ac8_continuation_numbers_are_taken_and_a_clash_is_a_warning() {
     // A page right after the last sheet, then the plan grows onto it.
     let next = (400 + n).to_string();
     h.run("pageprops", json!({"page": other.hex(), "number": next})).unwrap();
-    let strip = h.doc().devices.iter().find(|(_, c)| c.properties.contains_key("terminal_blocks")).map(|(k, _)| *k).unwrap();
+    let strip = h.doc().devices().iter().find(|(_, c)| c.properties.contains_key("terminal_blocks")).map(|(k, _)| *k).unwrap();
     h.run("setprop", json!({"component": strip.hex(), "key": "terminal_blocks", "value": "200"})).unwrap();
     let checks = h.run("checks", json!({})).unwrap().to_string();
     let doc = h.doc();
@@ -487,13 +487,13 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
     assert!(has(&mut h, "A") && !has(&mut h, "A*") && !has(&mut h, "B (draft)"));
     h.run("projectprops", json!({"revision_pending": "star"})).unwrap();
     assert!(has(&mut h, "A*"));
-    assert_eq!(h.doc().display.get("revisions.pending").map(String::as_str), Some("star"), "FP3 key");
+    assert_eq!(h.doc().display().get("revisions.pending").map(String::as_str), Some("star"), "FP3 key");
     // Save and reopen: the same state, computed on open.
     h.run("qsave", Value::Null).unwrap();
     let medium = h.p(|p| p.store.bytes());
     let mut s2 = cadcraft_engine::Session::empty();
     let r = ecad_engine::ProjectHandle::open_from(&mut s2, "Demo", medium, 1).unwrap();
-    let first = r.read(&mut s2, |p, _| p.ledger.document().page_order[0]).unwrap();
+    let first = r.read(&mut s2, |p, _| p.ledger.document().page_order()[0]).unwrap();
     r.open_page(&mut s2, first).unwrap();
     let texts: Vec<String> = r
         .read(&mut s2, |p, pg| pg.frame_entities_of(p, first))
@@ -530,7 +530,7 @@ fn ac10_revision_columns_and_custom_fields() {
     assert_eq!(label, "Project properties");
     assert!(sets(&ops, "revisions.columns"), "{ops:?}");
     h.run("revision", json!({"fields": {"ecr": "ECR-1"}})).unwrap();
-    assert_eq!(ecad_electrical::releases::revisions::field_of(&h.doc().project, 1, "ecr").as_deref(), Some("ECR-1"));
+    assert_eq!(ecad_electrical::releases::revisions::field_of(h.doc().project(), 1, "ecr").as_deref(), Some("ECR-1"));
     issue(&mut h, "First issue", "2026-11-10");
     let texts = frame_texts(&mut h, page);
     assert!(texts.iter().any(|t| t == "ECR") && texts.iter().any(|t| t == "ECR-1"), "{texts:?}");
@@ -556,7 +556,7 @@ fn ac10_revision_columns_and_custom_fields() {
     h.run("projectprops", json!({"revision_columns": "rev@100, date@100, description, drawn@100"})).unwrap();
     // A field removed from the columns keeps its stored value.
     h.run("projectprops", json!({"revision_columns": null})).unwrap();
-    assert_eq!(ecad_electrical::releases::revisions::field_of(&h.doc().project, 1, "ecr").as_deref(), Some("ECR-1"));
+    assert_eq!(ecad_electrical::releases::revisions::field_of(h.doc().project(), 1, "ecr").as_deref(), Some("ECR-1"));
     h.activate(page);
     let texts = frame_texts(&mut h, page);
     // Brief 055 (FP5): the built-in columns now hold ECR, so its value shows again.
@@ -586,8 +586,8 @@ fn ac11_tag_style_rewrites_in_one_undoable_step() {
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::ModifyDevice { before, after, .. } if before.tag != after.tag)).count(), 3);
     h.run("u", Value::Null).unwrap();
     let after_undo = h.doc();
-    assert_eq!(after_undo.devices, before.devices, "undo restores every tag");
-    assert_eq!(after_undo.display, before.display, "and the setting");
+    assert_eq!(after_undo.devices(), before.devices(), "undo restores every tag");
+    assert_eq!(after_undo.display(), before.display(), "and the setting");
     h.run("redo", Value::Null).unwrap();
     // Case: typed from now on; existing tags unchanged.
     let v = h.run("projectprops", json!({"tag_case": "typed"})).unwrap();
@@ -600,7 +600,7 @@ fn ac11_tag_style_rewrites_in_one_undoable_step() {
     assert!(
         e.is_err()
             || tag(&mut h, k1) != "K01"
-            || h.doc().devices.values().filter(|c| c.tag().is_some_and(|t| t.eq_ignore_ascii_case("k01"))).count() == 1,
+            || h.doc().devices().values().filter(|c| c.tag().is_some_and(|t| t.eq_ignore_ascii_case("k01"))).count() == 1,
         "conflict rules unchanged"
     );
     // Dash yes with typed case.
@@ -673,7 +673,7 @@ fn ac14_a_project_without_033_settings_looks_as_before() {
     let (doc2, unsaved) = r.read(&mut s2, |p, _| (p.ledger.document().clone(), p.ledger.is_unsaved())).unwrap();
     assert_eq!(doc2, doc);
     assert!(!unsaved, "opening writes nothing");
-    assert!(!doc2.display.keys().any(|k| k.starts_with("tags.") || k.starts_with("revisions.")), "no 033 key appears by itself");
+    assert!(!doc2.display().keys().any(|k| k.starts_with("tags.") || k.starts_with("revisions.")), "no 033 key appears by itself");
 }
 
 /// AC14 after the build: the old project above shows the pending marker only by the pending rule
@@ -686,7 +686,7 @@ fn ac14_an_old_project_shows_the_marker_only_by_the_pending_rule() {
     assert!(!frame_texts(&mut h, page).iter().any(|t| t == "A*"));
     h.run("wire", json!({"points": pts(&[(10.0, 30.0), (60.0, 30.0)])})).unwrap();
     assert!(frame_texts(&mut h, page).iter().any(|t| t == "A*"));
-    assert!(!h.doc().display.keys().any(|k| k.starts_with("tags.") || k.starts_with("revisions.")));
+    assert!(!h.doc().display().keys().any(|k| k.starts_with("tags.") || k.starts_with("revisions.")));
 }
 
 // ------------------------------------------------------------------------------------ AC15

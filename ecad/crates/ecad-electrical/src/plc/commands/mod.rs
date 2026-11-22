@@ -153,7 +153,7 @@ pub(crate) fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, 
             continue;
         }
         for item in &r.items {
-            let Some(before) = doc.items.get(item).cloned() else { continue };
+            let Some(before) = doc.items().get(item).cloned() else { continue };
             let ecad_model::ItemKind::Symbol(sym) = &before.kind else { continue };
             old_defs.insert(sym.definition);
             let after = ecad_model::Item {
@@ -170,7 +170,7 @@ pub(crate) fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, 
             to.noun()
         )));
     }
-    let comp = doc.devices.get(&c).ok_or(CmdError::NotFound(ecad_model::Noun::Device))?;
+    let comp = doc.devices().get(&c).ok_or(CmdError::NotFound(ecad_model::Noun::Device))?;
     if let Some(d) = comp.definition.filter(|d| old_defs.contains(d)) {
         ops.push(Op::SetDeviceDefinition { id: c, before: Some(d), after: Some(def) });
     }
@@ -269,7 +269,7 @@ pub(crate) struct AddressPlan {
 pub(crate) fn plan_address(doc: &Document, input: &AddressInput) -> Result<AddressPlan, CmdError> {
     let mut ops = Vec::new();
     let set = |ops: &mut Vec<Op>, c: DeviceId, key: &str, after: Option<String>| {
-        let before = doc.devices.get(&c).and_then(|x| x.properties.get(key)).cloned();
+        let before = doc.devices().get(&c).and_then(|x| x.properties.get(key)).cloned();
         if before != after {
             ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: key.into(), before, after });
         }
@@ -646,7 +646,7 @@ pub(crate) fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> 
             }
             labels.remove(old);
             labels.insert(pin.to_string());
-            let term = doc.connection_points.get(tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
+            let term = doc.connection_points().get(tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
             let after = ConnectionPoint { label: Some(pin.to_string()), ..term.clone() };
             ops.push(Op::RemoveConnectionPoint { id: *tid, connection_point: term });
             ops.push(Op::AddConnectionPoint { id: *tid, connection_point: after });
@@ -669,7 +669,7 @@ pub(crate) fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> 
         }
         .ok_or(CmdError::refused("That channel has no drawn copy to move."))?;
         for tid in copy {
-            let term = doc.connection_points.get(&tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
+            let term = doc.connection_points().get(&tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
             let role = point_of(doc, tid).map(|x| x.1).ok_or(CmdError::refused("Not a channel point."))?;
             let key = crate::plc::channels::key(j, role).ok_or(CmdError::refused("Not a channel point."))?;
             let after = ConnectionPoint { key: Some(key), ..term.clone() };
@@ -802,7 +802,7 @@ pub fn plan_page_contents(
     let (card, ty) = (pc.card, pc.ty);
     // The drawing area, in model units.
     let spec = ecad_model::document::sheet::sheet_of(doc, id);
-    let k = ecad_model::document::sheet::unit_scale(doc.settings.length_unit);
+    let k = ecad_model::document::sheet::unit_scale(doc.settings().length_unit);
     // Brief 055 (FP4): the frame's margins and its block's height.
     let m = ecad_model::document::sheet::margins_of(doc, id);
     let (l, b, r, t) = (

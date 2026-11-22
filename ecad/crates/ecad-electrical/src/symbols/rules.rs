@@ -71,7 +71,7 @@ pub(crate) fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<
 /// (only the rated outputs are), so the head symbol is still read for its labels.
 pub(crate) fn bank_labels(doc: &Document, c: ecad_model::DeviceId) -> Vec<String> {
     use ecad_model::objects::devices::{DeviceType, Protection};
-    if !doc.devices.get(&c).is_some_and(|d| matches!(d.device_type, DeviceType::Protection(Protection::FuseBank(_)))) {
+    if !doc.devices().get(&c).is_some_and(|d| matches!(d.device_type, DeviceType::Protection(Protection::FuseBank(_)))) {
         return Vec::new();
     }
     doc.representations_of(Subject::Device(c))

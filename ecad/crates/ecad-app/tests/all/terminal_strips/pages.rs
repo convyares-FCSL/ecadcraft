@@ -93,13 +93,13 @@ fn new_page_terminal_strips_makes_and_opens_a_graphic_page() {
     );
     h.run_steps(3);
     let x1 = fixture_g(&mut h);
-    let pages = doc(&mut h).page_order.len();
+    let pages = doc(&mut h).page_order().len();
     h.state_mut().panel_action(project_panel::Action::NewStripPage);
     h.run_steps(4);
     let d = doc(&mut h);
-    assert_eq!(d.page_order.len(), pages + 1, "one new page");
-    let page: PageId = *d.page_order.last().unwrap();
-    assert_eq!(d.pages[&page].title, ecad_engine::terminal_strips::draw::TITLE);
+    assert_eq!(d.page_order().len(), pages + 1, "one new page");
+    let page: PageId = *d.page_order().last().unwrap();
+    assert_eq!(d.pages()[&page].title, ecad_engine::terminal_strips::draw::TITLE);
     assert!(ecad_engine::terminal_strips::draw::is_graphic(&d, page));
     let Some(out) = shots() else { return };
     let _ = std::fs::create_dir_all(&out);

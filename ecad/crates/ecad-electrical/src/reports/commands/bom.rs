@@ -79,7 +79,7 @@ pub(crate) fn partline_targets(doc: &Document, component: Option<DeviceId>, devi
         return Err(CmdError::input("`devices` is empty"));
     }
     for c in &cs {
-        if !doc.devices.contains_key(c) {
+        if !doc.devices().contains_key(c) {
             return Err(CmdError::refused(format!("No component {}.", c.hex())));
         }
         if !takes_lines(doc, *c) {
@@ -116,7 +116,7 @@ pub(crate) fn plan_partline(doc: &Document, cs: &[DeviceId], change: PartlineCha
             }
             let lines: Vec<LineFields> = lines.into_iter().map(sorted).collect();
             for c in cs {
-                let props = doc.devices.get(c).map(|x| &x.properties).ok_or_else(no_component)?;
+                let props = doc.devices().get(c).map(|x| &x.properties).ok_or_else(no_component)?;
                 let mut used = used_lines(props);
                 let mut ns = Vec::new();
                 for fields in &lines {
@@ -152,7 +152,7 @@ pub(crate) fn plan_partline(doc: &Document, cs: &[DeviceId], change: PartlineCha
             let n = n.ok_or_else(|| CmdError::input(format!("`line` (1 to {MAX_LINES}) is required with `set` or `remove`, or give `add`")))?;
             let set = set.map(sorted);
             for c in cs {
-                let props = doc.devices.get(c).map(|x| &x.properties).ok_or_else(no_component)?;
+                let props = doc.devices().get(c).map(|x| &x.properties).ok_or_else(no_component)?;
                 if !used_lines(props).contains(&n) {
                     return Err(CmdError::refused(format!("{} has no part line {n}.", crate::devices::tags::tag_words(doc, *c))));
                 }
@@ -277,7 +277,7 @@ fn with_fields(doc: &Document, ids: &mut IdAllocator, mut p: LoosePart, fields: 
 pub(crate) fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -> Result<ItemPlan, CmdError> {
     match change {
         ItemChange::Edit { item, delete, set } => {
-            let part = doc.loose_parts.get(&item).ok_or_else(|| CmdError::refused(format!("{} is not an item.", item.hex())))?;
+            let part = doc.loose_parts().get(&item).ok_or_else(|| CmdError::refused(format!("{} is not an item.", item.hex())))?;
             if delete {
                 let words = item_words(doc, part);
                 let ops = vec![Op::DeleteLoosePart { id: item, part: part.clone() }];
@@ -299,7 +299,7 @@ pub(crate) fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemCh
                 }
                 _ => return Err(CmdError::refused(ITEM_NEEDS_DESCRIPTION)),
             };
-            let items = doc.loose_parts.len();
+            let items = doc.loose_parts().len();
             if items >= MAX_ITEMS {
                 return Err(CmdError::refused(format!("This project has {items} items, the most a project holds.")));
             }
@@ -352,7 +352,7 @@ pub(crate) fn plan_article(doc: &Document, part_number: &str, maker: Option<&str
         *counts.entry(t.what()).or_default() += 1;
         let (object, key) = match t {
             ArticleTarget::Item(id) => {
-                let Some(p) = doc.loose_parts.get(id) else { continue };
+                let Some(p) = doc.loose_parts().get(id) else { continue };
                 let typed = LoosePart { article_number: part_text(ARTICLE_KEY, after.as_deref())?, ..p.clone() };
                 if typed != *p {
                     ops.push(Op::ModifyLoosePart { id: *id, before: p.clone(), after: typed });
@@ -364,7 +364,7 @@ pub(crate) fn plan_article(doc: &Document, part_number: &str, maker: Option<&str
         // A device's main article number is its field (lane 072 B): one `ModifyDevice`, first.
         if let ObjectRef::Device(c) = object
             && let Some(f) = TextField::of_key(key)
-            && let Some(d) = doc.devices.get(c)
+            && let Some(d) = doc.devices().get(c)
         {
             let typed = crate::properties::commands::devices::with_text(d, f, after.as_deref())?;
             if typed != *d {
@@ -373,8 +373,8 @@ pub(crate) fn plan_article(doc: &Document, part_number: &str, maker: Option<&str
             continue;
         }
         let before = match object {
-            ObjectRef::Device(c) => doc.devices.get(c).and_then(|x| x.properties.get(key)).cloned(),
-            _ => doc.display.get(key).cloned(),
+            ObjectRef::Device(c) => doc.devices().get(c).and_then(|x| x.properties.get(key)).cloned(),
+            _ => doc.display().get(key).cloned(),
         };
         if before != after {
             ops.push(Op::SetProperty { object: *object, key: key.clone(), before, after: after.clone() });

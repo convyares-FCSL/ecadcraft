@@ -93,14 +93,14 @@ fn a_connection_point_on_a_wire_splits_it_and_undo_restores_it() {
     let x1: DeviceId = id(&v, "component");
     let term: ConnectionPointId = id(&v["connection_points"][0], "connection_point");
     let doc = t.h.doc();
-    assert_eq!(doc.routes[&kept].ends[1], RouteEnd::Point(term));
-    assert_eq!(doc.routes[&new].ends[0], RouteEnd::Point(term));
+    assert_eq!(doc.routes()[&kept].ends[1], RouteEnd::Point(term));
+    assert_eq!(doc.routes()[&new].ends[0], RouteEnd::Point(term));
     // One net (design 072 §4.4): the wire's two points and the terminal.
-    let [a, b] = before.wires[&t.wires[0]].ends;
-    let nets: std::collections::BTreeSet<_> = [a, b, term].iter().flat_map(|x| doc.ends_at(*x)).map(|(w, _)| doc.wires[&w].net).collect();
+    let [a, b] = before.wires()[&t.wires[0]].ends;
+    let nets: std::collections::BTreeSet<_> = [a, b, term].iter().flat_map(|x| doc.ends_at(*x)).map(|(w, _)| doc.wires()[&w].net).collect();
     assert_eq!(nets.len(), 1, "one net");
     // The cable keeps a member on the net (design 072 §4.4: the rewrite keeps memberships).
-    assert!(!doc.cables[&t.cable].cores.is_empty());
+    assert!(!doc.cables()[&t.cable].cores.is_empty());
     assert_eq!(t.h.p(|p| p.ledger.log().last().unwrap().label.clone()), "Place terminal block");
     same_as_built(&mut t.h);
     let plan = strip_plan(&mut t.h);
@@ -112,8 +112,8 @@ fn a_connection_point_on_a_wire_splits_it_and_undo_restores_it() {
     assert_eq!(row["inside"][0]["wire"], row["outside"][0]["wire"], "one wire number");
     t.h.cmdline("u");
     let after = t.h.doc();
-    assert_eq!(after.wires, before.wires);
-    assert!(!after.devices.contains_key(&x1));
+    assert_eq!(after.wires(), before.wires());
+    assert!(!after.devices().contains_key(&x1));
     same_as_built(&mut t.h);
     // Refusals with a way forward.
     let e = t.h.run("place", json!({"symbol": "terminal_block", "at": [100, 210]})).unwrap_err();
@@ -145,7 +145,7 @@ fn place_terminal_blocks_bridges_cores_and_the_plan() {
     for (i, x) in v["connection_points"].as_array().unwrap().iter().enumerate() {
         // `new` is the route from the terminal on (design 072 §4.3); the wire it carries.
         let new = ecad_electrical::wires::routes::wire_of_route(&doc, id(x, "new"));
-        assert!(new.is_some() && doc.cables[&t.cable].cores.iter().any(|m| m.wire() == new), "member {i}");
+        assert!(new.is_some() && doc.cables()[&t.cable].cores.iter().any(|m| m.wire() == new), "member {i}");
     }
     same_as_built(&mut t.h);
     // C: a bridge between 3 and 4.
@@ -186,7 +186,7 @@ fn place_terminal_blocks_bridges_cores_and_the_plan() {
     let w5: WireId = id(&w5, "conductor");
     t.h.run("cableadd", json!({"cable": t.cable.hex(), "conductors": [w5.hex()]})).unwrap();
     let doc = t.h.doc();
-    assert_eq!(doc.cables[&t.cable].cores.iter().find(|m| m.wire() == Some(w5)).unwrap().label_str(), Some("5"));
+    assert_eq!(doc.cables()[&t.cable].cores.iter().find(|m| m.wire() == Some(w5)).unwrap().label_str(), Some("5"));
     let cores = t.h.run("cablecores", json!({"cable": t.cable.hex()})).unwrap();
     assert_eq!(cores["offer"], "7G");
     assert_eq!(cores["source"], "type");
@@ -232,7 +232,7 @@ fn setting_a_field_device_to_the_strip_location_flips_only_its_rows() {
     t.h.run("setlocation", json!({"component": h1.hex(), "value": "+FIELD"})).unwrap();
     // A wire from a point in +CP1 at (330, 200) to the lamp's X1 (340, 70).
     let top = t.h.points_at(&[(330.0, 200.0)])[0];
-    let top_device = t.h.doc().connection_points[&top].device().unwrap();
+    let top_device = t.h.doc().connection_points()[&top].device().unwrap();
     t.h.run("setlocation", json!({"component": top_device.hex(), "value": "+CP1"})).unwrap();
     let k = t.h.wire_pp(&[(330.0, 200.0), (330.0, 70.0), (340.0, 70.0)]).unwrap();
     let _w: WireId = id(&k, "conductor");
@@ -276,7 +276,7 @@ fn the_offer_gives_spares_and_the_bom_counts_per_terminal_block_type() {
     // Brief 036 (FP1): the refusal names the type codes too.
     assert!(e.contains("\"12X\" is not a terminal count. Write 12, 12+2PE or 12+4x3"), "{e}");
     t.h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "12 + 2pe"})).unwrap();
-    assert_eq!(t.h.doc().devices[&x1].properties["terminal_blocks"], "12+2PE");
+    assert_eq!(t.h.doc().devices()[&x1].properties["terminal_blocks"], "12+2PE");
     t.h.run("place", json!({"symbol": "terminal_block_pe", "at": [360, 250], "device": x1.hex()})).unwrap();
     same_as_built(&mut t.h);
     let bom = t.h.run("bom", json!({})).unwrap();
@@ -408,7 +408,7 @@ fn relabelling_wired_connection_points_by_remove_and_add_needs_no_new_op() {
     let (t3, t4) = (terms[2], terms[3]);
     let doc = t.h.doc();
     let relabel = |t: ConnectionPointId, to: &str| {
-        let before = doc.connection_points[&t].clone();
+        let before = doc.connection_points()[&t].clone();
         let mut after = before.clone();
         after.label = Some(to.into());
         [Op::RemoveConnectionPoint { id: t, connection_point: before }, Op::AddConnectionPoint { id: t, connection_point: after }]
@@ -419,18 +419,18 @@ fn relabelling_wired_connection_points_by_remove_and_add_needs_no_new_op() {
     let ends_before: Vec<_> = doc.ends_at(t3).into_iter().chain(doc.ends_at(t4)).collect();
     t.h.cfg(|p| p.ledger.commit(Author::User, "swap labels", ops.clone())).unwrap();
     let d = t.h.doc();
-    assert_eq!(d.connection_points[&t3].label.as_deref(), Some("4"));
-    assert_eq!(d.connection_points[&t4].label.as_deref(), Some("3"));
+    assert_eq!(d.connection_points()[&t3].label.as_deref(), Some("4"));
+    assert_eq!(d.connection_points()[&t4].label.as_deref(), Some("3"));
     let ends_after: Vec<_> = d.ends_at(t3).into_iter().chain(d.ends_at(t4)).collect();
     assert_eq!(ends_before, ends_after, "the wires stay attached");
     let inverse: Vec<Op> = ops.iter().rev().map(Op::inverse).collect();
     t.h.cfg(|p| p.ledger.commit(Author::User, "undo swap", inverse)).unwrap();
-    assert_eq!(t.h.doc().connection_points, doc.connection_points);
+    assert_eq!(t.h.doc().connection_points(), doc.connection_points());
     // Once more, alone: the routes landing on it stay on it (design 072 §4.3).
     let ops: Vec<Op> = relabel(t3, "9").into();
     t.h.cfg(|p| p.ledger.commit(Author::User, "relabel", ops)).unwrap();
     let d = t.h.doc();
-    assert_eq!(d.connection_points[&t3].label.as_deref(), Some("9"));
+    assert_eq!(d.connection_points()[&t3].label.as_deref(), Some("9"));
     assert_eq!(d.ends_at(t3), doc.ends_at(t3));
     let built =
         Strips::build(&d, &ReportModels::build_with(&d, &ecad_engine::styles::draw::EngineMetrics), &ecad_electrical::reports::PageCx::of(&d));
@@ -455,7 +455,7 @@ fn hostile_strip_and_core_input_is_refused_with_a_way_forward() {
     assert!(e.contains("not a terminal strip"), "{e}");
     // Two terminals with one label (a hostile file): an Error row with Renumber.
     let doc = t.h.doc();
-    let before = doc.connection_points[&terms[1]].clone();
+    let before = doc.connection_points()[&terms[1]].clone();
     let mut after = before.clone();
     after.label = Some("1".into());
     t.h.cfg(|p| {
@@ -521,7 +521,7 @@ fn renumbering_terminal_blocks_follows_drawing_order() {
     assert_eq!(t.h.head(), head + 1, "one transaction");
     assert_eq!(r["connection_points"], 4, "{r}");
     let d = t.h.doc();
-    let label = |x: ConnectionPointId| d.connection_points[&x].label.clone().unwrap();
+    let label = |x: ConnectionPointId| d.connection_points()[&x].label.clone().unwrap();
     assert_eq!([label(terms[3]), label(terms[0]), label(terms[1]), label(terms[2])], ["1", "2", "3", "4"]);
     let after: Vec<_> = terms.iter().map(|x| d.ends_at(*x)).collect();
     assert_eq!(ends, after, "the wires stay attached");
@@ -534,7 +534,7 @@ fn renumbering_terminal_blocks_follows_drawing_order() {
     let out = plan["strips"][0]["rows"][0]["outside"].as_array().cloned().unwrap_or_default();
     assert!(out.iter().any(|c| c["target"] == "-S01:13" && c["cable"] == "-W01"), "{plan}");
     t.h.cmdline("u");
-    assert_eq!(t.h.doc().connection_points[&terms[3]].label.as_deref(), Some("4"));
+    assert_eq!(t.h.doc().connection_points()[&terms[3]].label.as_deref(), Some("4"));
     same_as_built(&mut t.h);
     // The Checks fix's form: one strip by `strips`.
     let r = t.h.run("renumber", json!({"kind": "terminal_blocks", "scope": "selection", "strips": [terms[0].hex()], "start": 11})).unwrap();
@@ -608,7 +608,7 @@ fn json_forms_leave_absent_keys_out_and_page_inside_a_strip() {
     assert!(cores.get("offer").is_none() && cores.get("spare").is_none(), "{cores}");
     // On a coil, `connection_points` is ordinary free text.
     t.h.run("setprop", json!({"component": t.k1.hex(), "key": "terminal_blocks", "value": "see sheet 4"})).unwrap();
-    assert_eq!(t.h.doc().devices[&t.k1].properties["terminal_blocks"], "see sheet 4");
+    assert_eq!(t.h.doc().devices()[&t.k1].properties["terminal_blocks"], "see sheet 4");
     let e = t.h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "see sheet 4"})).unwrap_err();
     assert!(e.contains("is not a terminal count"), "{e}");
 }

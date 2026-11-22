@@ -253,7 +253,7 @@ fn park(h: &mut Harness<'static, App>) {
 fn zoom_e(h: &mut Harness<'static, App>) {
     let page = current_page(h);
     let d = doc(h);
-    let field = d.page_order.get(1) == Some(&page);
+    let field = d.page_order().get(1) == Some(&page);
     let window = if field { r#"line {"points":[[5,-15],[115,25]]}"# } else { r#"line {"points":[[-15,-15],[85,25]]}"# };
     ok(h, window);
     assert!(h.state_mut().zoom_to_drawing(), "zoom to the drawing");
@@ -274,14 +274,14 @@ fn reference_point(h: &mut Harness<'static, App>, page: PageId) -> cadcraft_engi
 /// Tag every untagged component on `page` (`name`) and every untagged wire there by its first y.
 fn tag_page(h: &mut Harness<'static, App>, page: PageId, name: &str) {
     let d = doc(h);
-    let comps: Vec<_> = d.devices.iter().filter(|(_, c)| !c.properties.contains_key("tag")).map(|(k, _)| *k).collect();
+    let comps: Vec<_> = d.devices().iter().filter(|(_, c)| !c.properties.contains_key("tag")).map(|(k, _)| *k).collect();
     for c in comps {
         let on_page = d.representations_of(ecad_model::Subject::Device(c)).any(|(_, r)| r.page == page);
         if on_page {
             ok(h, &format!(r#"setprop {{"component":"{}","key":"tag","value":"{name}"}}"#, c.hex()));
         }
     }
-    let wires: Vec<_> = d.wires.iter().filter(|(_, c)| c.number.is_none()).map(|(k, _)| *k).collect();
+    let wires: Vec<_> = d.wires().iter().filter(|(_, c)| c.number.is_none()).map(|(k, _)| *k).collect();
     for w in wires {
         if let Some((a, _)) = ecad_model::connectivity::derive::route_on_page(&d, w, page).and_then(|(_, p)| p.path_ends()) {
             ok(h, &format!(r#"wirenumber {{"conductor":"{}","value":"W{}"}}"#, w.hex(), a.y));
@@ -364,11 +364,11 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     // K2's points (the reference's named points are shown on Field too).
     let k2: Vec<_> = ecad_model::connectivity::derive::connection_point_positions(&d, field)
         .into_iter()
-        .filter(|(t, _, _)| d.connection_points.contains_key(t))
+        .filter(|(t, _, _)| d.connection_points().contains_key(t))
         .map(|(t, _, p)| (t, p))
         .collect();
     let stubs: Vec<_> = d
-        .routes
+        .routes()
         .iter()
         .filter(|(_, r)| r.page == field && r.ends[1] == ecad_model::RouteEnd::Free)
         .filter_map(|(id, r)| Some((*id, *r.points.last()?)))
@@ -379,8 +379,8 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
         ok(&mut h, &format!(r#"connect {{"route":"{}","end":"B","connection_point":"{}"}}"#, route.hex(), t.hex()));
     }
     let d = doc(&mut h);
-    let cable = *d.cables.keys().next().unwrap();
-    assert_eq!(d.cables[&cable].cores.iter().filter_map(|m| m.wire()).count(), 3, "a wire per core, K1 to K2");
+    let cable = *d.cables().keys().next().unwrap();
+    assert_eq!(d.cables()[&cable].cores.iter().filter_map(|m| m.wire()).count(), 3, "a wire per core, K1 to K2");
     zoom_e(&mut h);
     assert_eq!(shown_text(&mut h), "1/F2");
     park(&mut h);

@@ -222,7 +222,7 @@ fn d_moving_hiding_and_following_the_table() {
     assert_eq!(top(&mut x.h), Some(ecad_model::Pt::new(60.0, 120.0)));
     // Moving the coil moves the table with it.
     let coil_handle = x.h.p(|p| {
-        let item = p.ledger.document().representations[&x.coil].items[0];
+        let item = p.ledger.document().representations()[&x.coil].items[0];
         p.pages[&x.p100].map.item(item).unwrap()
     });
     x.h.run("move", json!({"handles": [coil_handle.hex()], "delta": [10, 0]})).unwrap();
@@ -250,7 +250,7 @@ fn f_parent_and_child_mcb_with_an_auxiliary_contact() {
     let mcb_place = x.h.p(|p| {
         let doc = p.ledger.document();
         ecad_electrical::references::devices::places::Places::new(doc)
-            .text(x.p105, ecad_electrical::references::devices::classify::anchor(doc, &doc.representations[&x.mcb]))
+            .text(x.p105, ecad_electrical::references::devices::classify::anchor(doc, &doc.representations()[&x.mcb]))
     });
     assert_eq!(contact_text(&mut x.h, x.p105, x.q_nc), Some(mcb_place));
     let r = rows(&mut x.h, x.q1);
@@ -293,7 +293,7 @@ fn g_hover_properties_and_go_to() {
     // Properties: the coil's section has the offer, the table and its rows with Go to buttons.
     x.h.activate(x.p100);
     let sel = x.h.p(|p| {
-        let item = p.ledger.document().representations[&x.coil].items[0];
+        let item = p.ledger.document().representations()[&x.coil].items[0];
         vec![p.pages[&x.p100].map.item(item).unwrap()]
     });
     let view = x.h.p(|p| ecad_engine::properties::props::view(p, Some(x.p100), &sel));
@@ -340,7 +340,7 @@ fn j_save_and_reopen_keep_contacts_and_mirror() {
     let v = x.h.run("projectprops", json!({})).unwrap();
     assert_eq!(v["contact_mirror"], "auto");
     x.h.run("projectprops", json!({"contact_mirror": "off"})).unwrap();
-    assert_eq!(x.h.doc().settings.contact_mirror, ecad_model::ContactMirror::Off);
+    assert_eq!(x.h.doc().settings().contact_mirror, ecad_model::ContactMirror::Off);
     let e = x.h.run("projectprops", json!({"contact_mirror": "sideways"})).unwrap_err();
     assert!(e.contains("contact_mirror"), "{e}");
     let dir = std::env::temp_dir().join(format!("ecad-025-{}-{}", std::process::id(), ecad_store::disk::unique()));
@@ -377,7 +377,7 @@ fn k_hostile_values() {
     }
     // A hostile file cannot store them: they are typed fields, never in a bag, and a bad typed
     // value is refused by the model (design 072 §9.4).
-    let before = x.h.doc().devices[&x.k1].clone();
+    let before = x.h.doc().devices()[&x.k1].clone();
     let mut bagged = before.clone();
     bagged.properties.insert("contacts".into(), "3X".into());
     let ops = vec![Op::ModifyDevice { id: x.k1, before: before.clone(), after: bagged }];
@@ -418,7 +418,7 @@ fn e_cable_groups_are_kept_on_the_index() {
     assert_eq!(members.len(), 2);
     h.p(|p| p.reference().verify(p.ledger.document())).unwrap();
     let doc = h.doc();
-    let scope = crate::common::cables_touched(&doc, &[Op::DeleteCable { id: k, cable: doc.cables[&k].clone() }]);
+    let scope = crate::common::cables_touched(&doc, &[Op::DeleteCable { id: k, cable: doc.cables()[&k].clone() }]);
     assert_eq!(scope, Some(BTreeSet::from([k])), "a cable op touches its cable only");
     let v = h.run("references", json!({"cable": k.hex()})).unwrap();
     assert_eq!(v["references"].as_array().unwrap().len(), 2);

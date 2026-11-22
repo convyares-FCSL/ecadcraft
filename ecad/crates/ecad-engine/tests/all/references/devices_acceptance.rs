@@ -83,7 +83,7 @@ fn fixture(seed: u64) -> X {
 fn parts(h: &mut H) -> BTreeMap<PageId, Vec<ecad_electrical::references::devices::table::Part>> {
     h.p(|p| {
         let doc = p.ledger.document();
-        doc.page_order.iter().map(|pg| (*pg, ecad_engine::references::draw::devices::parts_on_page(doc, *pg))).collect()
+        doc.page_order().iter().map(|pg| (*pg, ecad_engine::references::draw::devices::parts_on_page(doc, *pg))).collect()
     })
 }
 
@@ -99,7 +99,7 @@ fn index_is_a_rebuild(h: &mut H, what: &str) {
 /// The handles of representation `r`'s items on its (active) page.
 fn item_handles(h: &mut H, r: RepresentationId) -> (PageId, Vec<String>) {
     let doc = h.doc();
-    let Some(x) = doc.representations.get(&r) else { return (doc.page_order[0], Vec::new()) };
+    let Some(x) = doc.representations().get(&r) else { return (doc.page_order()[0], Vec::new()) };
     let page = x.page;
     h.activate(page);
     let hs = h.p(|p| x.items.iter().filter_map(|i| p.pages[&page].map.item(*i)).map(|hd| hd.hex()).collect());
@@ -118,7 +118,7 @@ fn children(h: &mut H, c: DeviceId) -> Vec<RepresentationId> {
 fn components_with_head(h: &mut H) -> Vec<DeviceId> {
     h.p(|p| {
         let doc = p.ledger.document();
-        doc.devices.keys().copied().filter(|c| ecad_electrical::references::devices::classify::device(doc, *c).head.is_some()).collect()
+        doc.devices().keys().copied().filter(|c| ecad_electrical::references::devices::classify::device(doc, *c).head.is_some()).collect()
     })
 }
 
@@ -173,7 +173,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
             let (page, mut hs) = item_handles(&mut x.h, one);
             hs.extend(device_reference_handles(&mut x.h, page, one));
             let at =
-                x.h.p(|p| ecad_electrical::references::devices::classify::anchor(p.ledger.document(), &p.ledger.document().representations[&one]))?;
+                x.h.p(|p| ecad_electrical::references::devices::classify::anchor(p.ledger.document(), &p.ledger.document().representations()[&one]))?;
             r(&mut x.h, "rotate", json!({"handles": hs, "base": [at.x, at.y], "angle": 90.0 * (1 + rng.below(3)) as f64}));
             "rotate symbol+parts"
         }
@@ -181,8 +181,9 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
             let head = x.h.p(|p| ecad_electrical::references::devices::classify::device(p.ledger.document(), dev).head)?;
             let (page, mut hs) = item_handles(&mut x.h, head);
             hs.extend(device_reference_handles(&mut x.h, page, head));
-            let at =
-                x.h.p(|p| ecad_electrical::references::devices::classify::anchor(p.ledger.document(), &p.ledger.document().representations[&head]))?;
+            let at = x
+                .h
+                .p(|p| ecad_electrical::references::devices::classify::anchor(p.ledger.document(), &p.ledger.document().representations()[&head]))?;
             r(&mut x.h, "mirror", json!({"handles": hs, "p1": [at.x + 5.0, at.y], "p2": [at.x + 5.0, at.y + 10.0], "erase": true}));
             "mirror head+table"
         }
@@ -257,7 +258,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
         }
         16 => {
             // The coil's A2 wire: the auto table follows its run.
-            let page = x.h.p(|p| p.ledger.document().representations.get(&x.coil).map(|r| r.page))?;
+            let page = x.h.p(|p| p.ledger.document().representations().get(&x.coil).map(|r| r.page))?;
             x.h.activate(page);
             let doc = x.h.doc();
             let (item, _) = crate::common::wire_line(&doc, x.a2, page)?;
@@ -265,7 +266,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
             r(
                 &mut x.h,
                 "grip.stretch",
-                json!({"handle": hd.hex(), "index": 2, "to": [doc.representations[&x.coil].items.first().and_then(|_| ecad_electrical::references::devices::classify::anchor(&doc, &doc.representations[&x.coil])).map_or(75.0, |a| a.x), 100.0 + 10.0 * rng.below(6) as f64]}),
+                json!({"handle": hd.hex(), "index": 2, "to": [doc.representations()[&x.coil].items.first().and_then(|_| ecad_electrical::references::devices::classify::anchor(&doc, &doc.representations()[&x.coil])).map_or(75.0, |a| a.x), 100.0 + 10.0 * rng.below(6) as f64]}),
             );
             "stretch A2 wire"
         }
@@ -427,9 +428,9 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     // (`auto`) is left out of the settings. (A qsave always writes a new session record, so the
     // file bytes are not compared.)
     let doc = h2.doc();
-    assert!(doc.devices.keys().all(|c| ecad_electrical::references::devices::parse::offer_of(&doc, *c).is_none()
+    assert!(doc.devices().keys().all(|c| ecad_electrical::references::devices::parse::offer_of(&doc, *c).is_none()
         && !ecad_electrical::references::devices::parse::placement_of(&doc, *c).1));
-    let settings = serde_json::to_value(&doc.settings).unwrap();
+    let settings = serde_json::to_value(doc.settings()).unwrap();
     assert!(settings.get("contact_mirror").is_none(), "{settings}");
     // With an offer, a moved table and a project default, a second round trip keeps them all.
     h2.cfg(|p| p.persistence = Persistence::File);
@@ -467,7 +468,7 @@ fn tester_025_old_v1_golden_opens_with_an_index_and_no_transaction() {
     let mut h = H { s, project, trail: Vec::new() };
     index_is_a_rebuild(&mut h, "golden");
     let log_len = h.p(|p| p.ledger.log().len());
-    let pages = h.doc().page_order.clone();
+    let pages = h.doc().page_order().to_vec();
     for p in pages {
         h.activate(p);
         h.check();
@@ -550,7 +551,7 @@ fn tester_025_counts_orphans_and_duplicate_tags() {
     assert!(!device_reference_handles(&mut x.h, p105, rep(&k2)).is_empty(), "a table of spares");
     // Duplicate tags: give -K2 the tag of -K1 (merge refused or asked): the two devices stay
     // apart in the index.
-    let tag = x.h.doc().devices[&x.k1].tag_shown().unwrap_or_default();
+    let tag = x.h.doc().devices()[&x.k1].tag_shown().unwrap_or_default();
     let _ = x.h.run("setprop", json!({"component": k2c.hex(), "key": "tag", "value": tag}));
     index_is_a_rebuild(&mut x.h, "duplicate tag");
     let groups: Vec<_> = x.h.p(|p| p.reference().groups().collect());
@@ -609,7 +610,7 @@ fn tester_025_parts_follow_their_owner_and_are_refused_alone() {
     index_is_a_rebuild(&mut x.h, "mirror copy");
     // A contact's text alone is refused; with its contact it moves with it.
     let p105 = x.pages[1];
-    let no = children(&mut x.h, x.k1).into_iter().find(|r| x.h.doc().representations[r].page == p105).unwrap();
+    let no = children(&mut x.h, x.k1).into_iter().find(|r| x.h.doc().representations()[r].page == p105).unwrap();
     let (_, no_h) = item_handles(&mut x.h, no);
     let text = device_reference_handles(&mut x.h, p105, no);
     assert_eq!(text.len(), 1);
@@ -642,7 +643,7 @@ fn tester_025_bug_moving_a_coil_records_fidelity_mismatches() {
     let (_, hs) = item_handles(&mut x.h, x.coil);
     x.h.run("move", json!({"handles": hs, "delta": [10, 0]})).unwrap();
     let p105 = x.pages[1];
-    let no = children(&mut x.h, x.k1).into_iter().find(|r| x.h.doc().representations[r].page == p105).unwrap();
+    let no = children(&mut x.h, x.k1).into_iter().find(|r| x.h.doc().representations()[r].page == p105).unwrap();
     let (_, hs) = item_handles(&mut x.h, no);
     x.h.run("move", json!({"handles": hs, "delta": [10, 0]})).unwrap();
     let m: Vec<_> = x.h.p(|p| p.events.events().filter(|e| e.kind == EventKind::FidelityMismatch).cloned().collect());

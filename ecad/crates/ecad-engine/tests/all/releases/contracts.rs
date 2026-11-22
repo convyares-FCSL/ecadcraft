@@ -232,7 +232,7 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     let e = f.h.run("u", Value::Null).unwrap_err();
     assert!(e.contains("Undo the issue? This removes the release mark. Its release folder stays on disk."), "{e}");
     f.h.run("undoissue", json!({})).unwrap();
-    assert!(!ecad_electrical::releases::revisions::field_of(&f.h.doc().project, 2, "released").is_some());
+    assert!(!ecad_electrical::releases::revisions::field_of(f.h.doc().project(), 2, "released").is_some());
     assert!(out.join("release.json").exists());
     let _ = std::fs::remove_dir_all(&f.dir);
 }
@@ -442,7 +442,7 @@ fn reopening_a_revision_shows_it_in_its_title_block() {
         let doc = f.h.p(|p| p.revision_view.as_ref().unwrap().doc.clone());
         let shown = ecad_electrical::releases::revisions::issued(&doc);
         assert_eq!(shown.iter().map(|r| r.rev().to_string()).collect::<Vec<_>>(), ["B", "A"], "{cmd}");
-        assert_eq!(doc.wires.len() + 1, f.h.doc().wires.len(), "{cmd}: as it was");
+        assert_eq!(doc.wires().len() + 1, f.h.doc().wires().len(), "{cmd}: as it was");
         let frame = ecad_engine::pages::frame::FrameInput::of(&doc, f.supply, &ecad_model::document::book::Book::of(&doc));
         assert_eq!(frame.rev, "B", "{cmd}");
         assert_eq!(frame.revisions.first().map(|r| r[0].as_str()), Some("B"), "{cmd}");
@@ -469,8 +469,8 @@ fn a_release_never_lands_on_the_project_or_a_foreign_folder() {
         // Write FP1 past the commands, as a hostile file could hold it.
         f.h.cfg(|p| {
             let doc = p.ledger.document();
-            let after = ecad_electrical::releases::revisions::with_field(&doc.project, 1, "released", Some(v)).unwrap();
-            let ops: Vec<Op> = ecad_electrical::releases::revisions::modify(&doc.project, after).into_iter().collect();
+            let after = ecad_electrical::releases::revisions::with_field(doc.project(), 1, "released", Some(v)).unwrap();
+            let ops: Vec<Op> = ecad_electrical::releases::revisions::modify(doc.project(), after).into_iter().collect();
             if !ops.is_empty() {
                 p.ledger.commit(ecad_model::Author::User, "hostile", ops).unwrap();
             }
@@ -527,7 +527,7 @@ fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
         let ops: Vec<Op> = [c1, c2]
             .iter()
             .map(|k| {
-                let before = doc.cables[k].clone();
+                let before = doc.cables()[k].clone();
                 let mut after = before.clone();
                 after.tag = ecad_model::naming::tag::TagSlot::of_text(Some("-W1"), ecad_model::naming::tag::TagState::Provisional);
                 Op::ModifyCable { id: *k, before, after }

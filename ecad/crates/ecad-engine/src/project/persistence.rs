@@ -157,11 +157,11 @@ impl Project {
         let seed = session_seed();
         let window = self.window();
         let doc = ledger.document();
-        let target = self.active.filter(|p| doc.pages.contains_key(p)).or_else(|| ecad_model::document::book::Book::of(doc).order.first().copied());
+        let target = self.active.filter(|p| doc.pages().contains_key(p)).or_else(|| ecad_model::document::book::Book::of(doc).order.first().copied());
         self.ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
         self.baseline = ledger.head();
-        let pages: Vec<PageId> = doc.page_order.clone();
-        let cables: BTreeSet<CableId> = doc.cables.keys().copied().collect();
+        let pages: Vec<PageId> = doc.page_order().to_vec();
+        let cables: BTreeSet<CableId> = doc.cables().keys().copied().collect();
         self.ledger = ledger;
         self.derived.rebuild(self.ledger.document());
         self.tag_high = ecad_electrical::devices::tags::TagHigh::starting_at(tag_high);
@@ -208,7 +208,7 @@ impl Project {
                     views.insert(old, PageView { uid: Some(uid), ..PageView::default() });
                     self.pages = views;
                     self.open_page(pg, t)?;
-                    if !self.ledger.document().pages.contains_key(&old) {
+                    if !self.ledger.document().pages().contains_key(&old) {
                         self.pages.remove(&old);
                     }
                 }

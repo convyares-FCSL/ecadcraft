@@ -62,7 +62,7 @@ fn every_starter_symbol_on_one_page() {
         ok(&mut h, &format!(r#"place {{"symbol":"{}","at":[{x},{y}]}}"#, s.key));
     }
     let d = doc(&mut h);
-    assert_eq!(d.devices.len(), 19);
+    assert_eq!(d.devices().len(), 19);
     zoom(&mut h);
     save(&h, &deltas, "018-symbols-all.png");
 }

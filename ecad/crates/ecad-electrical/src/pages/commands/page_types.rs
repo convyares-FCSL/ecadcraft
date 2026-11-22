@@ -53,7 +53,7 @@ pub(crate) struct FolderStart {
 /// # Errors
 /// No such folder (a start key whose folder is gone may only be cleared).
 pub(crate) fn plan_folderprops(doc: &Document, folder: FolderId, start: Option<Option<String>>) -> Result<FolderStart, CmdError> {
-    let old = doc.folders.get(&folder).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
+    let old = doc.folders().get(&folder).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
     let before = old.start.as_ref().map(|s| s.as_str().to_string());
     let write = match start {
         None => None,
@@ -87,7 +87,7 @@ pub(crate) fn start_words(name: &str, after: Option<&str>) -> String {
 /// No such folder.
 pub(crate) fn folder_scope(doc: &Document, folder: Option<FolderId>) -> Result<Option<FolderId>, CmdError> {
     match folder {
-        Some(f) if !doc.folders.contains_key(&f) => Err(CmdError::refused(msg::NO_SUCH_FOLDER)),
+        Some(f) if !doc.folders().contains_key(&f) => Err(CmdError::refused(msg::NO_SUCH_FOLDER)),
         f => Ok(f),
     }
 }
@@ -111,7 +111,7 @@ pub(crate) fn plan_renumber(doc: &Document, reports: Option<&ReportModels>, scop
     let ops = pages
         .iter()
         .filter_map(|(page, n)| {
-            let before = doc.pages.get(page)?;
+            let before = doc.pages().get(page)?;
             let after = ecad_model::Page { number: ecad_model::PageNo::parse(n), ..before.clone() };
             (after != *before).then(|| Op::ModifyPage { id: *page, before: before.clone(), after })
         })
@@ -143,34 +143,34 @@ pub fn plan_deletepage(doc: &Document, pages: &[PageId], active: PageId) -> Resu
     }
     let set: BTreeSet<PageId> = pages.iter().copied().collect();
     for page in &set {
-        if !doc.pages.contains_key(page) {
+        if !doc.pages().contains_key(page) {
             return Err(CmdError::refused(msg::NO_SUCH_PAGE));
         }
         if crate::pages::generated::kind_of(doc, *page).is_none() || doc.representations_on(*page).next().is_some() {
             return Err(CmdError::refused(DRAWN_PAGE));
         }
     }
-    let remaining: Vec<PageId> = doc.page_order.iter().copied().filter(|p| !set.contains(p)).collect();
+    let remaining: Vec<PageId> = doc.page_order().iter().copied().filter(|p| !set.contains(p)).collect();
     if remaining.is_empty() {
         return Err(CmdError::refused("A project keeps at least one page."));
     }
     // Remove from the back so each index is the page's place when its op is applied (and undo,
     // reversed, puts them back in order).
-    let mut placed: Vec<(usize, PageId)> = doc.page_order.iter().enumerate().filter(|(_, p)| set.contains(p)).map(|(i, p)| (i, *p)).collect();
+    let mut placed: Vec<(usize, PageId)> = doc.page_order().iter().enumerate().filter(|(_, p)| set.contains(p)).map(|(i, p)| (i, *p)).collect();
     placed.sort_by_key(|p| std::cmp::Reverse(p.0));
     let mut ops = Vec::new();
     let mut words = Vec::new();
     let book = Book::of(doc);
     for (index, page) in &placed {
-        let Some(x) = doc.pages.get(page) else { continue };
+        let Some(x) = doc.pages().get(page) else { continue };
         words.push(format!("{} ({})", x.title, book.number(doc, *page)));
         ops.push(Op::RemovePage { id: *page, page: x.clone(), index: *index });
     }
     words.reverse();
     // The page shown moves to the page before it when it goes (design 016 §4.3).
     let show = if set.contains(&active) {
-        let at = doc.page_order.iter().position(|p| *p == active).unwrap_or(0);
-        let earlier = doc.page_order.get(..at).unwrap_or_default().iter().rev().find(|p| !set.contains(p)).copied();
+        let at = doc.page_order().iter().position(|p| *p == active).unwrap_or(0);
+        let earlier = doc.page_order().get(..at).unwrap_or_default().iter().rev().find(|p| !set.contains(p)).copied();
         earlier.or(remaining.first().copied())
     } else {
         None

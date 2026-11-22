@@ -7,7 +7,7 @@ pub(crate) const MAX_POINTS_SHOWN: usize = 6;
 
 /// A connection point in words: `-K01:A1`; a continuation `→24V`.
 pub fn point_words(doc: &Document, t: ConnectionPointId) -> String {
-    let Some(term) = doc.connection_points.get(&t) else { return "?".into() };
+    let Some(term) = doc.connection_points().get(&t) else { return "?".into() };
     if let Some(a) = term.owner.aid() {
         return format!("\u{2192}{}", crate::continuations::display_name(doc, a));
     }
@@ -24,7 +24,7 @@ pub fn net_points(doc: &Document, net: &ecad_model::NetData) -> Vec<String> {
     let mut v: Vec<String> = net
         .connection_points
         .iter()
-        .filter(|t| doc.connection_points.get(t).is_none_or(|x| x.owner.aid().is_none()))
+        .filter(|t| doc.connection_points().get(t).is_none_or(|x| x.owner.aid().is_none()))
         .map(|t| point_words(doc, *t))
         .collect();
     v.sort();
@@ -59,7 +59,7 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     let mut lines = Vec::new();
     let conn = doc.connectivity();
     let Some(net) = conn.net_of_conductor(w).and_then(|id| conn.net(id)) else { return lines };
-    if !doc.wires.contains_key(&w) {
+    if !doc.wires().contains_key(&w) {
         return lines;
     }
     let number = ecad_model::connectivity::wiring::net_number(doc, net).unwrap_or_else(|| "? (no number yet)".into());
@@ -72,7 +72,7 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     }
     // Brief 050b: the wire's own values, else its category's (named).
     let draw = crate::styles::wire::wire_draw(doc, w);
-    let w = &doc.settings.wiring;
+    let w = &doc.settings().wiring;
     let cat = draw.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let shown = |key: &str, v: &Option<(String, crate::defaults::Source)>| {
         let text = |v: &str| if key == ecad_model::connectivity::wiring::COLOUR { w.colour(v) } else { v.to_string() };

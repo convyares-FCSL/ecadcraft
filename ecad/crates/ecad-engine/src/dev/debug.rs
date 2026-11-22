@@ -442,14 +442,14 @@ impl Project {
             .collect();
         let doc = self.ledger.document();
         let pages = doc
-            .page_order
+            .page_order()
             .iter()
             .map(|p| {
                 let view = self.pages.get(p);
                 let open = view.and_then(|v| v.uid).filter(|u| pg.doc(*u).is_some());
                 PageRow {
                     id: *p,
-                    title: doc.pages.get(p).map(|x| x.title.to_string()).unwrap_or_default(),
+                    title: doc.pages().get(p).map(|x| x.title.to_string()).unwrap_or_default(),
                     uid: open,
                     mapped: view.filter(|_| open.is_some()).map(|v| v.map.len()),
                     map_consistent: view.filter(|_| open.is_some()).map(|v| v.map.is_consistent()),

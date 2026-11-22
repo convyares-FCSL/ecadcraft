@@ -164,7 +164,7 @@ fn conductor_at(h: &mut H, component: DeviceId, label: &str) -> WireId {
         .find(|(_, t)| t.label.as_deref() == Some(label) || t.key.as_ref().map(ToString::to_string).as_deref() == Some(label))
         .map(|(i, _)| i)
         .unwrap_or_else(|| panic!("no pin {label}"));
-    d.wires.iter().find(|(_, c)| c.ends.contains(&t)).map(|(i, _)| *i).unwrap_or_else(|| panic!("no conductor at {label}"))
+    d.wires().iter().find(|(_, c)| c.ends.contains(&t)).map(|(i, _)| *i).unwrap_or_else(|| panic!("no conductor at {label}"))
 }
 
 /// Board 2.05's shape, made up: location +CAB1 over the panel; -Q01 (mcb1, pins 1 above, 2
@@ -208,7 +208,7 @@ fn box_temp(h: &mut H, cab: ecad_model::AidId, v: &str) {
         return;
     }
     let Some(t) = v.trim().parse::<f64>().ok().filter(|t| t.is_finite()) else { return };
-    let before = h.doc().aids[&cab].clone();
+    let before = h.doc().aids()[&cab].clone();
     let mut after = before.as_box().cloned().unwrap();
     after.panel_temperature = Some(ecad_model::geometry::units::Celsius(t));
     h.cfg(|p| {
@@ -496,8 +496,8 @@ fn m01_manual_basis_and_its_hostile_values() {
     // null clears; absent keys are untouched.
     h.run("rating", json!({"wire": wire.hex(), "manual": null})).unwrap();
     let d = h.doc();
-    assert!(d.wires.get(&wire).is_some_and(|c| c.rating.manual.is_none()));
-    assert!(d.wires.get(&wire).is_some_and(|c| c.rating.basis == Some(ecad_model::objects::wire::Basis::Manual)));
+    assert!(d.wires().get(&wire).is_some_and(|c| c.rating.manual.is_none()));
+    assert!(d.wires().get(&wire).is_some_and(|c| c.rating.basis == Some(ecad_model::objects::wire::Basis::Manual)));
 }
 
 /// Check 8: Manual Iz 3.5, -Q01 4 A, load 3 → `rating-under` only (3 ≤ 4: no load-over).
@@ -1075,7 +1075,7 @@ fn f01_a_location_temperature_can_be_set() {
     assert_eq!(h.head(), head + 1);
     h.run("setprop", json!({"aids": [cab.hex()], "key": "panel_temperature", "value": "45"})).unwrap();
     assert_eq!(h.head(), head + 2);
-    assert_eq!(h.doc().aids[&cab].as_box().and_then(|b| b.panel_temperature), Some(ecad_model::geometry::units::Celsius(45.0)));
+    assert_eq!(h.doc().aids()[&cab].as_box().and_then(|b| b.panel_temperature), Some(ecad_model::geometry::units::Celsius(45.0)));
 }
 
 /// The trace crosses connector pin pairs (§4.2): three pairs between -Q01 and the lamp.

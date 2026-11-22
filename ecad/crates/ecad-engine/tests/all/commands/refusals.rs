@@ -123,8 +123,8 @@ fn connecting_to_a_deleted_connection_point_fails_cleanly() {
     let r = h.run("connect", json!({"route": route.hex(), "end": "A", "connection_point": t.hex()}));
     assert!(r.is_err());
     unchanged(&mut h, &b, "connect to a deleted terminal");
-    assert_eq!(h.doc().routes[&route].ends[0], ecad_model::RouteEnd::Free, "deleting the component let the line's end go explicitly");
-    assert!(!h.doc().wires.contains_key(&w), "and its wire with it");
+    assert_eq!(h.doc().routes()[&route].ends[0], ecad_model::RouteEnd::Free, "deleting the component let the line's end go explicitly");
+    assert!(!h.doc().wires().contains_key(&w), "and its wire with it");
 }
 
 #[cfg(feature = "fault-injection")]
@@ -213,7 +213,7 @@ fn closing_flow_prompts_for_the_project_not_for_page_tabs() {
     assert!(app.close_prompt().is_none(), "the page window closes without a prompt");
     assert!(app.session.docs.is_empty());
     assert!(h.project.is_attached(&app.session) && app.session.has_unsaved_work());
-    let first = h.project.read(&mut app.session, |p, _| p.ledger.document().page_order[0]).unwrap();
+    let first = h.project.read(&mut app.session, |p, _| p.ledger.document().page_order()[0]).unwrap();
     h.project.open_page(&mut app.session, first).unwrap();
     assert_eq!(app.session.docs.len(), 1);
     // Without it, closing the page window closes the project: prompt; a failed save keeps it open.
@@ -243,8 +243,8 @@ fn reopening_with_the_creation_seed_never_reissues_ids() {
     s.execute("newpage", &json!({"title": "3"})).unwrap();
     s.execute("wire", &json!({"points": [[0, 0], [10, 0]]})).unwrap();
     let after = reopened.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
-    assert_eq!(after.pages.len(), before.pages.len() + 1, "a new page, not a duplicate of an existing ID");
-    assert!(before.pages.keys().all(|p| after.pages.contains_key(p)));
+    assert_eq!(after.pages().len(), before.pages().len() + 1, "a new page, not a duplicate of an existing ID");
+    assert!(before.pages().keys().all(|p| after.pages().contains_key(p)));
 }
 
 #[test]

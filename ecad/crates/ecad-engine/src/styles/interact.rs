@@ -53,7 +53,7 @@ impl ShowText {
             let map = &p.pages.get(&page).ok_or(PICK_A_TEXT)?.map;
             let texts = || crate::devices::draw::all_texts_on_page(doc, page);
             if let Some((rep, of)) = map.tag_text_of(h) {
-                let r = doc.representations.get(&rep).ok_or(PICK_A_TEXT)?;
+                let r = doc.representations().get(&rep).ok_or(PICK_A_TEXT)?;
                 let component = match r.subject {
                     Subject::Device(c) => Some(c),
                     _ => None,
@@ -71,8 +71,10 @@ impl ShowText {
                         _ => Err(PICK_A_TEXT.into()),
                     },
                     None => {
-                        let free =
-                            doc.items.get(&i).is_some_and(|x| matches!(x.kind, ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text { .. })));
+                        let free = doc
+                            .items()
+                            .get(&i)
+                            .is_some_and(|x| matches!(x.kind, ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text { .. })));
                         Err(if free { FREE_TEXT } else { PICK_A_TEXT }.into())
                     }
                 },
@@ -216,7 +218,7 @@ impl MoveText {
             let map = &p.pages.get(&page).ok_or(PICK_TO_MOVE)?.map;
             match map.tag_text_of(h) {
                 Some((rep, of)) => {
-                    let r = doc.representations.get(&rep).ok_or(PICK_TO_MOVE)?;
+                    let r = doc.representations().get(&rep).ok_or(PICK_TO_MOVE)?;
                     if r.form != Form::Symbol {
                         return Err(PICK_TO_MOVE.into());
                     }

@@ -5,10 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::document::book::Book;
-use crate::document::doc::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
 use crate::document::sheet::Grid;
 use crate::geometry::geom::Pt;
 use crate::naming::id::{CableId, ConnectionPointId, ItemId, PageId, RepresentationId, RouteId, WireId};
+use crate::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
 
 /// Where each terminal sits on one page, from drawn connection points and symbol placements.
 ///
@@ -51,7 +51,7 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(ConnectionPointId, Pt)> 
     if let Subject::Cable(_) = r.subject {
         return r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
     }
-    let owner: crate::document::doc::ConnectionPointOwner = match r.subject {
+    let owner: crate::ConnectionPointOwner = match r.subject {
         Subject::Device(d) => d.into(),
         Subject::Aid(a) => a.into(),
         _ => return Vec::new(),
@@ -236,7 +236,7 @@ pub const MAX_REFERENCES_PER_CABLE: usize = 2;
 
 /// Most member routes on a page whose direction is averaged to place one reference text: enough
 /// for any real cable, and a bound on the work per reference.
-pub const MAX_DIRECTION_SAMPLES: usize = 1_000;
+pub(crate) const MAX_DIRECTION_SAMPLES: usize = 1_000;
 
 /// The text that names a place on a sheet in `style` (owner answer Q1, 2026-11-08; UI round 2
 /// and rev 3): `105/B3`, `105-B-3` or `/105.3`; `?` (`/?`) when the place cannot be located.
@@ -381,7 +381,7 @@ pub fn route_ends_by_page(doc: &Document) -> BTreeMap<(WireId, PageId), (Pt, Pt)
 
 /// The end points of `conductor`'s route on `page` (as [`route_on_page`] and
 /// [`route_ends_by_page`] pick it), found through the wire's points.
-pub fn route_ends_on(doc: &Document, conductor: WireId, page: PageId) -> Option<(Pt, Pt)> {
+pub(crate) fn route_ends_on(doc: &Document, conductor: WireId, page: PageId) -> Option<(Pt, Pt)> {
     route_on_page(doc, conductor, page).and_then(|(_, p)| p.path_ends())
 }
 
@@ -439,9 +439,9 @@ fn references_from(doc: &Document, references: Vec<(RepresentationId, &Represent
                 // route here, else the loose line it sits on.
                 let through = m.through.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|x| doc.routes.get(&x)).find_map(line);
                 through.or_else(|| match m.position {
-                    crate::document::doc::CorePosition::Wire(w) => *routes.entry((w, r.page)).or_insert_with(|| route_ends_on(doc, w, r.page)),
-                    crate::document::doc::CorePosition::Route { route, .. } => doc.routes.get(&route).and_then(line),
-                    crate::document::doc::CorePosition::Unplaced => None,
+                    crate::CorePosition::Wire(w) => *routes.entry((w, r.page)).or_insert_with(|| route_ends_on(doc, w, r.page)),
+                    crate::CorePosition::Route { route, .. } => doc.routes.get(&route).and_then(line),
+                    crate::CorePosition::Unplaced => None,
                 })
             })
             .collect();

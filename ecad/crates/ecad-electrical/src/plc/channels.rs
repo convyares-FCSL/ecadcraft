@@ -50,7 +50,7 @@ pub fn key(i: u32, role: ChannelRole) -> Option<PointKey> {
 
 /// The channel and role of terminal `t` of a card; `None` for a point that is not a channel's.
 pub(crate) fn point_of(doc: &Document, t: ConnectionPointId) -> Option<(u32, ChannelRole)> {
-    let (i, role) = doc.connection_points.get(&t)?.key.as_ref()?.channel()?;
+    let (i, role) = doc.connection_points().get(&t)?.key.as_ref()?.channel()?;
     Some((u32::from(i), role))
 }
 
@@ -105,7 +105,7 @@ fn drawn_words(doc: &Document, t: ConnectionPointId) -> String {
     let Some((_, r)) = doc.representations_showing(t).next() else { return "no page".into() };
     let at = crate::devices::tags::rep_definition(doc, r).map(|(_, pl)| pl.origin);
     match at.and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a)) {
-        Some(p) => p.text(doc.settings.reference_style()),
+        Some(p) => p.text(doc.settings().reference_style()),
         None => crate::references::cables::page_number_words(doc, r.page),
     }
 }
@@ -358,7 +358,7 @@ pub(crate) fn landing_role(s: &Starter) -> Option<ChannelRole> {
 /// route reaches further below than above. A cell on such a wire is turned 180°, its frame and
 /// texts above its points and clear of the wire, as Make Card Page draws outputs.
 fn runs_down(doc: &Document, m: &crate::cables::slash::Crossing) -> bool {
-    let Some(v) = doc.routes.get(&m.route).map(|r| &r.points) else { return false };
+    let Some(v) = doc.routes().get(&m.route).map(|r| &r.points) else { return false };
     let up = v.iter().map(|p| p.y - m.at.y).fold(0.0, f64::max);
     let down = v.iter().map(|p| m.at.y - p.y).fold(0.0, f64::max);
     down > up + 1e-6
@@ -418,7 +418,7 @@ pub fn landings(doc: &Document, s: &Starter, members: &[crate::cables::slash::Cr
 pub(crate) fn land_cell(
     doc: &Document, ids: &mut IdAllocator, on: crate::wires::placing::OnRoute, t: ConnectionPointId,
 ) -> Result<Vec<Op>, CmdError> {
-    let route = doc.routes.get(&on.route).ok_or(CmdError::NotFound(ecad_model::Noun::Wire))?;
+    let route = doc.routes().get(&on.route).ok_or(CmdError::NotFound(ecad_model::Noun::Wire))?;
     let (a_free, b_free) = (route.ends[0] == ecad_model::RouteEnd::Free, route.ends[1] == ecad_model::RouteEnd::Free);
     if a_free == b_free || doc.tees_of(on.route).next().is_some() {
         return Ok(crate::connectors::plan_land(doc, ids, on, t)?.ops);

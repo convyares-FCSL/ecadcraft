@@ -20,9 +20,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::doc::{Document, LengthUnit};
 use crate::naming::id::PageId;
 use crate::objects::styles::{StyleCatalogue, StyleLayer, StyleRef};
+use crate::{Document, LengthUnit};
 
 /// The page property holding a page's own sheet spec (text, [`SheetSpec::parse`]).
 pub const SHEET_KEY: &str = "sheet";
@@ -30,7 +30,7 @@ pub const SHEET_KEY: &str = "sheet";
 /// Margins in millimetres: left, right and bottom (design 019 §3.1).
 pub const MARGIN_MM: f64 = 10.0;
 /// The top margin, in millimetres, where the column labels sit.
-pub const TOP_MARGIN_MM: f64 = 7.0;
+pub(crate) const TOP_MARGIN_MM: f64 = 7.0;
 /// Height of the title block under the drawing area, in millimetres.
 pub const TITLE_BLOCK_MM: f64 = 40.0;
 
@@ -247,7 +247,7 @@ pub const FRAME_STYLE_KEY: &str = "print.frame.style";
 /// The frame style catalogue.
 pub const FRAME_CATALOGUE: StyleCatalogue = StyleCatalogue::Frame;
 /// The built-in frame style's word.
-pub const BUILTIN_FRAME: &str = "sheet";
+pub(crate) const BUILTIN_FRAME: &str = "sheet";
 /// The frame field holding the sheet a frame is drawn for (design 055 §1.4).
 pub const FRAME_SHEET_FIELD: &str = "sheet";
 /// The frame field holding its margins, `l,r,b,t` in millimetres.
@@ -257,7 +257,7 @@ pub const MAX_MARGIN_MM: f64 = 50.0;
 
 /// Whether `id` names a frame style in `doc`: the built-in, or a record of the project or the
 /// standard (within [`crate::objects::styles::MAX_STYLES_PER_CATALOGUE`]).
-pub fn frame_exists(doc: &Document, id: &StyleRef) -> bool {
+pub(crate) fn frame_exists(doc: &Document, id: &StyleRef) -> bool {
     matches!(id, StyleRef::Builtin(w) if w == BUILTIN_FRAME)
         || crate::objects::styles::bounded_record(doc, StyleLayer::Project, FRAME_CATALOGUE, id).is_some()
         || crate::objects::styles::bounded_record(doc, StyleLayer::Standard, FRAME_CATALOGUE, id).is_some()
@@ -304,7 +304,7 @@ pub fn page_type_title_block(doc: &Document, page: PageId) -> Option<StyleRef> {
 /// The built-in page types that draw no zones (design 054 §2.2).
 const ZONELESS_TYPES: [&str; 4] = ["front", "panel", "report", "plain"];
 /// The built-in page type with checks and references off (design 054 §3.4).
-pub const PLAIN_TYPE: &str = "plain";
+pub(crate) const PLAIN_TYPE: &str = "plain";
 
 /// Whether page type `id` has **Checks and references** on (design 054 §3.4): its record's
 /// `checks` field, else the built-in's (Plain off, the others on).
@@ -345,7 +345,7 @@ pub fn page_type_zones(doc: &Document, page: PageId) -> Option<bool> {
 
 /// Brief 055 (overseer ruling 2026-11-14): the page property naming a frame style whose title
 /// block the page borrows (the border stays its frame's).
-pub const TITLE_BLOCK_KEY: &str = "title_block";
+pub(crate) const TITLE_BLOCK_KEY: &str = "title_block";
 
 /// The frame style `page` uses (design 050 §2.4): the page's own `print.frame.style`, else its
 /// page type's frame, else the project's, else the standard's, else the built-in, each only when
@@ -463,11 +463,11 @@ pub fn own_sheet(doc: &Document, page: PageId) -> SheetSpec {
 /// [`crate::Page::page_type`]), and the registry entry's key.
 pub const PAGE_TYPE_KEY: &str = "page.type";
 /// The style catalogue of page types (brief 054, FP1).
-pub const PAGE_CATALOGUE: StyleCatalogue = StyleCatalogue::Page;
+pub(crate) const PAGE_CATALOGUE: StyleCatalogue = StyleCatalogue::Page;
 /// The old page property of a generated page's kind; now [`crate::Page::kind`] (a reserved key).
-pub const GENERATED_KEY: &str = "generated";
+pub(crate) const GENERATED_KEY: &str = "generated";
 /// The six built-in page types (design 054 §2.2), in table order.
-pub const BUILTIN_PAGE_TYPES: [&str; 7] = ["front", "schematic", "network", "singleline", "panel", "report", "plain"];
+pub(crate) const BUILTIN_PAGE_TYPES: [&str; 7] = ["front", "schematic", "network", "singleline", "panel", "report", "plain"];
 /// The value a type's `sheet` field holds to take the project's sheet.
 pub const PROJECT_SHEET: &str = "project";
 
@@ -620,7 +620,7 @@ impl Grid {
     }
 
     /// Height of the frame (all rows, title-block area included), in drawing units.
-    pub fn area_height(&self) -> f64 {
+    pub(crate) fn area_height(&self) -> f64 {
         (f64::from(self.spec.height) - self.margins.bottom - self.margins.top) * self.k
     }
 

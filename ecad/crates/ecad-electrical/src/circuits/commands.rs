@@ -33,7 +33,7 @@ pub const PAGE: usize = 200;
 /// No panel wire by that number or ID.
 pub fn wires(doc: &Document, text: &str) -> Result<Vec<WireId>, CmdError> {
     let t = text.trim();
-    if let Some(c) = WireId::parse(t).filter(|c| doc.wires.contains_key(c)) {
+    if let Some(c) = WireId::parse(t).filter(|c| doc.wires().contains_key(c)) {
         return Ok(vec![c]);
     }
     let conn = doc.connectivity();
@@ -56,7 +56,7 @@ pub fn wires(doc: &Document, text: &str) -> Result<Vec<WireId>, CmdError> {
 /// No cable by that tag or ID.
 pub fn cable_named(doc: &Document, text: &str) -> Result<CableId, CmdError> {
     let t = text.trim();
-    if let Some(k) = CableId::parse(t).filter(|k| doc.cables.contains_key(k)) {
+    if let Some(k) = CableId::parse(t).filter(|k| doc.cables().contains_key(k)) {
         return Ok(k);
     }
     doc.cables_tagged(t).into_iter().next().ok_or_else(|| CmdError::refused(format!("No cable {:?}.", t.chars().take(32).collect::<String>())))
@@ -174,7 +174,7 @@ pub(crate) fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Ve
     for s in &subjects {
         match s {
             RatedSubject::Wire(c) => {
-                let Some(w) = doc.wires.get(c) else { continue };
+                let Some(w) = doc.wires().get(c) else { continue };
                 let mut after = w.clone();
                 for (key, _, value) in &sets {
                     set_wire(doc, &mut after, key, value.as_deref());
@@ -184,7 +184,7 @@ pub(crate) fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Ve
                 }
             }
             RatedSubject::Cable(k) => {
-                let Some(cab) = doc.cables.get(k) else { continue };
+                let Some(cab) = doc.cables().get(k) else { continue };
                 let mut after = cab.clone();
                 for (key, _, value) in &sets {
                     set_cable(doc, &mut after, key, value.as_deref());
@@ -301,7 +301,7 @@ pub(crate) fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>)
     let boxes: Vec<ecad_model::AidId> = match &entry {
         None => Vec::new(),
         Some(e) => doc
-            .aids
+            .aids()
             .iter()
             .filter(|(_, x)| {
                 x.as_box()
@@ -401,7 +401,7 @@ pub(crate) fn check_table(w: &TableWrite) -> Result<crate::devices::ratings::dat
 /// refuses.
 pub(crate) fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Result<TablePlan, CmdError> {
     let data = check_table(w)?;
-    if w.layer == StyleLayer::Standard && doc.standard.is_none() {
+    if w.layer == StyleLayer::Standard && doc.standard().is_none() {
         return Err(CmdError::refused(crate::styles::commands::styles::STANDARD_FIRST));
     }
     let cat = &ratingtable::CATALOGUE;

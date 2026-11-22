@@ -187,7 +187,7 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
     // Each route on the page (the page index), in the colour of the wire it stands for.
     for route in doc.routes_on(page) {
         let (Some(points), Some((rep, _, _)), Some(c)) = (
-            doc.routes.get(&route).map(|x| x.points.clone()),
+            doc.routes().get(&route).map(|x| x.points.clone()),
             crate::wires::routes::route_item(doc, route),
             crate::wires::routes::wire_of_route(doc, route),
         ) else {

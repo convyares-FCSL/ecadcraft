@@ -69,10 +69,10 @@ pub(crate) struct NetView {
 /// The net `net` as shown.
 pub(crate) fn net_view(doc: &Document, net: &NetData) -> NetView {
     let pot = wiring::net_potential(doc, net);
-    let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
+    let order: BTreeMap<PageId, usize> = doc.page_order().iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
     let mut pages: BTreeMap<usize, (String, Option<String>)> = BTreeMap::new();
     for c in &net.wires {
-        for r in wires::routes::routes_of_wire(doc, *c).into_iter().filter_map(|r| doc.routes.get(&r)) {
+        for r in wires::routes::routes_of_wire(doc, *c).into_iter().filter_map(|r| doc.routes().get(&r)) {
             let Some(n) = order.get(&r.page) else { continue };
             let col = r.points.first().and_then(|a| wiring::place(doc, r.page, *a)).map(|p| p.column_label);
             let slot = pages.entry(*n).or_insert_with(|| (ecad_model::document::book::page_number(doc, r.page), None));
@@ -84,13 +84,13 @@ pub(crate) fn net_view(doc: &Document, net: &NetData) -> NetView {
     let points = net
         .connection_points
         .iter()
-        .filter(|t| doc.connection_points.get(t).is_none_or(|x| x.owner.aid().is_none()))
+        .filter(|t| doc.connection_points().get(t).is_none_or(|x| x.owner.aid().is_none()))
         .map(|t| (*t, wires::words::point_words(doc, *t)))
         .collect();
     let continuations = net
         .connection_points
         .iter()
-        .filter_map(|t| doc.connection_points.get(t))
+        .filter_map(|t| doc.connection_points().get(t))
         .filter_map(|x| x.owner.aid())
         .filter_map(|a| crate::continuations::continuation(doc, a).map(|(n, _)| n.unwrap_or_default().to_string()))
         .collect();
@@ -187,7 +187,7 @@ pub(crate) fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> 
     let mut ids: Vec<NetKey> = if q.choice.is_given() {
         if let Some(n) = &q.choice.number { conn.nets_numbered(n.trim()).map(|(id, _)| id).collect() } else { vec![chosen_net(doc, &q.choice)?] }
     } else if let Some(pg) = q.page {
-        if !doc.pages.contains_key(&pg) {
+        if !doc.pages().contains_key(&pg) {
             return Err(CmdError::refused(format!("page {pg} does not exist")));
         }
         let mut set = BTreeSet::new();
@@ -218,9 +218,9 @@ pub(crate) fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> 
 fn where_words(doc: &Document, net: &NetData) -> String {
     let point = wires::words::net_points(doc, net).into_iter().next();
     let place = net.first_conductor().and_then(|c| {
-        wires::routes::routes_of_wire(doc, c).into_iter().filter_map(|r| doc.routes.get(&r)).find_map(|r| {
+        wires::routes::routes_of_wire(doc, c).into_iter().filter_map(|r| doc.routes().get(&r)).find_map(|r| {
             let a = *r.points.first()?;
-            Some(wiring::place(doc, r.page, a)?.text(doc.settings.reference_style()))
+            Some(wiring::place(doc, r.page, a)?.text(doc.settings().reference_style()))
         })
     });
     [point, place].into_iter().flatten().collect::<Vec<_>>().join(", ")
@@ -279,7 +279,7 @@ fn merge_sense(doc: &Document, a: &NetData, b: &NetData) -> Result<(), Unmergeab
 fn open_end(doc: &Document, net: &NetData) -> Option<(RouteId, End, PageId, Pt, Pt)> {
     for c in &net.wires {
         for r in wires::routes::routes_of_wire(doc, *c) {
-            let Some(route) = doc.routes.get(&r) else { continue };
+            let Some(route) = doc.routes().get(&r) else { continue };
             let v = &route.points;
             for (end, e) in End::BOTH.into_iter().zip(route.ends) {
                 if e != RouteEnd::Free {
@@ -372,7 +372,7 @@ pub(crate) fn wirenumber(
     };
     let v = v.to_string();
     let conn = doc.connectivity();
-    let exempt = doc.settings.wiring.potentials.iter().any(|x| !x.numbered && x.prefix == v);
+    let exempt = doc.settings().wiring.potentials.iter().any(|x| !x.numbered && x.prefix == v);
     let others: Vec<NetKey> = if exempt { Vec::new() } else { conn.nets_numbered(&v).map(|(n, _)| n).filter(|n| *n != id).collect() };
     let Some(other_id) = others.first().copied() else {
         let ops = wiring::write_ops(doc, &net, &v, true);
@@ -443,7 +443,7 @@ pub fn potential(doc: &Document, c: WireId, value: Option<&str>) -> Result<(Vec<
     let value = value.map(Text::new).transpose().map_err(|e| CmdError::refused(format!("Potential: {e}")))?;
     let mut ops = Vec::new();
     for w in &net.wires {
-        let Some(before) = doc.wires.get(w) else { continue };
+        let Some(before) = doc.wires().get(w) else { continue };
         if before.potential != value {
             let after = Wire { potential: value.clone(), ..before.clone() };
             ops.push(Op::ModifyWire { id: *w, before: before.clone(), after });
@@ -472,7 +472,7 @@ pub(crate) fn category_ops(doc: &Document, conductors: &[WireId], value: Option<
     let mut ops = Vec::new();
     let mut kept: Option<String> = None;
     for c in conductors {
-        let cond = doc.wires.get(c).ok_or(CmdError::NotFound(Noun::Wire))?;
+        let cond = doc.wires().get(c).ok_or(CmdError::NotFound(Noun::Wire))?;
         let mut after = cond.clone();
         after.wire_type = value.cloned();
         if let Some(p) = &pot {
@@ -761,7 +761,7 @@ pub(crate) fn net_json(n: &NetView) -> Value {
 
 /// The project's wiring settings as `wiresettings` shows them (the label rule as resolved).
 pub(crate) fn settings_json(doc: &Document) -> Value {
-    let w = &doc.settings.wiring;
+    let w = &doc.settings().wiring;
     json!({
         "scheme": w.scheme.name(),
         "colour_style": ecad_model::naming::words::Word::word(w.colour_style()),

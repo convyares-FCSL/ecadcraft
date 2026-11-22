@@ -15,7 +15,7 @@ use std::ops::{Add, AddAssign, Mul, Neg, Sub, SubAssign};
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::doc::LengthUnit;
+use crate::LengthUnit;
 
 /// Declares one transparent unit newtype with its `Display` suffix.
 macro_rules! unit {

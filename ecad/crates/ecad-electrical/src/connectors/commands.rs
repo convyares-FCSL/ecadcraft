@@ -30,7 +30,7 @@ pub fn device(doc: &Document, device: Option<&str>) -> Result<Option<DeviceId>, 
     let Some(t) = device else { return Ok(None) };
     let t = t.trim();
     if let Ok(n) = u128::from_str_radix(t, 16)
-        && doc.devices.contains_key(&DeviceId::from(n))
+        && doc.devices().contains_key(&DeviceId::from(n))
     {
         return Ok(Some(DeviceId::from(n)));
     }
@@ -46,7 +46,7 @@ pub fn device(doc: &Document, device: Option<&str>) -> Result<Option<DeviceId>, 
 /// No such page.
 pub fn page(doc: &Document, page: Option<PageId>, active: PageId) -> Result<PageId, CmdError> {
     match page {
-        Some(p) if doc.pages.contains_key(&p) => Ok(p),
+        Some(p) if doc.pages().contains_key(&p) => Ok(p),
         Some(_) => Err(CmdError::NotFound(Noun::Page)),
         None => Ok(active),
     }
@@ -302,7 +302,7 @@ pub fn echo(doc: &Document, c: &Connector) -> String {
 
 /// A point on route `r`: the middle of its longest segment.
 fn route_point(doc: &Document, r: RouteId) -> Option<Pt> {
-    let v = &doc.routes.get(&r)?.points;
+    let v = &doc.routes().get(&r)?.points;
     let mut best: Option<(f64, Pt)> = None;
     for pair in v.windows(2) {
         let (Some(a), Some(b)) = (pair.first(), pair.get(1)) else { continue };
@@ -417,7 +417,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
 
 /// The rotation of a pin symbol on a route segment: its points along the route.
 pub fn along_wire(doc: &Document, on: &crate::wires::placing::OnRoute) -> Radians {
-    let Some(v) = doc.routes.get(&on.route).map(|r| &r.points) else { return Radians(0.0) };
+    let Some(v) = doc.routes().get(&on.route).map(|r| &r.points) else { return Radians(0.0) };
     match (v.get(on.segment), v.get(on.segment + 1)) {
         (Some(a), Some(b)) if (b.x - a.x).abs() > (b.y - a.y).abs() => Radians(std::f64::consts::FRAC_PI_2),
         _ => Radians(0.0),
@@ -580,7 +580,7 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
     let to = to.trim().to_string();
     let (c, old) = match (connection_point, device(doc, dev.as_deref())?) {
         (Some(t), _) => {
-            let x = doc.connection_points.get(&t).ok_or(CmdError::NotFound(Noun::ConnectionPoint))?;
+            let x = doc.connection_points().get(&t).ok_or(CmdError::NotFound(Noun::ConnectionPoint))?;
             (x.device().ok_or(CmdError::NotFound(Noun::ConnectionPoint))?, x.label.clone().ok_or(CmdError::refused("That pin has no name."))?)
         }
         (None, Some(c)) => (c, pin.map(|p| p.trim().to_string()).ok_or(CmdError::input("`pin` (the pin's current name) is required with `device`"))?),
@@ -597,7 +597,7 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
     if to.eq_ignore_ascii_case("next") {
         let t = connection_point.ok_or(CmdError::input("`to: \"next\"` moves one drawn pin: give its `connection_point`"))?;
         let side = cn::side_of(doc, t).ok_or(CmdError::refused("That is not a connector pin."))?;
-        let x = doc.connection_points.get(&t).ok_or(CmdError::NotFound(Noun::ConnectionPoint))?.clone();
+        let x = doc.connection_points().get(&t).ok_or(CmdError::NotFound(Noun::ConnectionPoint))?.clone();
         // The pin itself is not free for itself: drawn once more on this side.
         let next = cn::next_pin(doc, c, side, &BTreeSet::new())?;
         let after = ConnectionPoint { label: Some(next.clone()), ..x.clone() };

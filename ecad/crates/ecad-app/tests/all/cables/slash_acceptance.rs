@@ -306,14 +306,14 @@ fn ac9_cable_slash(out: Option<std::path::PathBuf>) {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert!(h.state().cad.session.running.is_none(), "the command ends");
     let d = doc(&mut h);
-    assert_eq!(d.cables.len(), 1);
-    let k = d.cables.values().next().unwrap();
+    assert_eq!(d.cables().len(), 1);
+    let k = d.cables().values().next().unwrap();
     assert_eq!(k.cores.len(), 3, "W0, W5, W10");
     let ys: Vec<f64> = k
         .cores
         .iter()
         // Fixture F's lines end free: each core sits on its line (design 072), no wire yet.
-        .map(|m| d.routes[&m.route().unwrap()].points[0].y)
+        .map(|m| d.routes()[&m.route().unwrap()].points[0].y)
         .collect();
     assert_eq!(ys, vec![0.0, 5.0, 10.0], "crossing order");
     // Design §7.3 / check M: hovering the slash lists the cable's wires in order; hovering writes

@@ -54,12 +54,12 @@ fn strip_of(doc: &Document, strip: Option<DeviceId>, connection_point: Option<Co
     let (c, label) = match (strip, connection_point) {
         (Some(c), _) => (c, None),
         (None, Some(t)) => {
-            let term = doc.connection_points.get(&t).ok_or(CmdError::NotFound(Noun::TerminalBlock))?;
+            let term = doc.connection_points().get(&t).ok_or(CmdError::NotFound(Noun::TerminalBlock))?;
             (term.device().ok_or(CmdError::NotFound(Noun::TerminalBlock))?, Some(crate::terminal_strips::terminal_blocks::position_label(doc, t)))
         }
         (None, None) => return Err(CmdError::input("`strip` or `connection_point` (hex id) is required")),
     };
-    if !doc.devices.contains_key(&c) {
+    if !doc.devices().contains_key(&c) {
         return Err(CmdError::NotFound(Noun::Strip));
     }
     if crate::terminal_strips::strip_of(doc, c).is_none() {
@@ -95,7 +95,7 @@ fn item_list(given: Option<&Option<Words>>, on: bool) -> Result<Option<Vec<Acc>>
 }
 
 fn read_items(doc: &Document, c: DeviceId, key: &str, on: bool) -> Vec<Acc> {
-    doc.devices.get(&c).and_then(|x| x.properties.get(key)).and_then(|v| acc::parse_items(v, on).ok()).unwrap_or_default()
+    doc.devices().get(&c).and_then(|x| x.properties.get(key)).and_then(|v| acc::parse_items(v, on).ok()).unwrap_or_default()
 }
 
 fn plural(a: Acc, n: usize) -> String {
@@ -207,7 +207,7 @@ pub(crate) fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Ac
             return Err(CmdError::refused(format!("A place holds at most {} accessories.", acc::MAX_ITEMS)));
         }
         let after = (!list.is_empty()).then(|| acc::items_text(&list));
-        let before = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+        let before = doc.devices().get(&c).and_then(|x| x.properties.get(&key)).cloned();
         keys.push((key.clone(), list));
         if before != after {
             ops.push(Op::SetProperty { object: ObjectRef::Device(c), key, before, after });
@@ -222,7 +222,7 @@ pub(crate) fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Ac
         if keys.iter().any(|(x, _)| x == k) {
             continue;
         }
-        if let Some(before) = doc.devices.get(&c).and_then(|x| x.properties.get(k)).cloned() {
+        if let Some(before) = doc.devices().get(&c).and_then(|x| x.properties.get(k)).cloned() {
             ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: k.clone(), before: Some(before), after: None });
         }
     }
@@ -291,7 +291,7 @@ fn labels_of(text: &str, order: &[String]) -> Result<Vec<String>, CmdError> {
 
 /// The next free jumper bar number on a strip.
 fn next_jumper_bar(doc: &Document, c: DeviceId) -> Option<u32> {
-    let props = &doc.devices.get(&c)?.properties;
+    let props = &doc.devices().get(&c)?.properties;
     let high = props
         .range(jumper_bars::PREFIX.to_string()..)
         .take_while(|(k, _)| k.starts_with(jumper_bars::PREFIX))
@@ -306,7 +306,7 @@ fn next_jumper_bar(doc: &Document, c: DeviceId) -> Option<u32> {
 }
 
 fn set_op(doc: &Document, c: DeviceId, key: String, after: Option<String>) -> Option<Op> {
-    let before = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+    let before = doc.devices().get(&c).and_then(|x| x.properties.get(&key)).cloned();
     (before != after).then_some(Op::SetProperty { object: ObjectRef::Device(c), key, before, after })
 }
 
@@ -389,7 +389,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
         let n = l.n.and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=jumper_bars::MAX_JUMPER_BAR).contains(n));
         let n = n.ok_or(CmdError::input("`jumper_bar.n` must be a whole number from 1 to 999"))?;
         let key = jumper_bars::key(n);
-        let cur_text = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
+        let cur_text = doc.devices().get(&c).and_then(|x| x.properties.get(&key)).cloned();
         let cur_text = cur_text.ok_or_else(|| CmdError::refused(format!("{} has no jumper bar {n}.", strip_words(doc, c))))?;
         let order = acc::positions(doc, c);
         let parsed = jumper_bars::parse(&cur_text).unwrap_or_default();
@@ -467,7 +467,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
         let picks = &input.connection_points;
         let c = match (input.strip, picks.first()) {
             (Some(c), _) => c,
-            (None, Some(t)) => doc.connection_points.get(t).and_then(|x| x.device()).ok_or(CmdError::NotFound(Noun::TerminalBlock))?,
+            (None, Some(t)) => doc.connection_points().get(t).and_then(|x| x.device()).ok_or(CmdError::NotFound(Noun::TerminalBlock))?,
             (None, None) => return Err(CmdError::input("`strip` with `positions`, or `connection_points`, is required")),
         };
         let (c, _) = strip_of(doc, Some(c), None)?;
@@ -503,7 +503,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
             if !cross_levels.is_empty() {
                 return Err(CmdError::refused("A jumper bar between levels of one position ends there; Enter to finish."));
             }
-            let term = doc.connection_points.get(t).ok_or(CmdError::NotFound(Noun::TerminalBlock))?;
+            let term = doc.connection_points().get(t).ok_or(CmdError::NotFound(Noun::TerminalBlock))?;
             if term.device() != Some(c) {
                 return Err(CmdError::refused(format!(
                     "{} is on another strip; a jumper bar stays on one strip. Pick a terminal of {}.",
@@ -576,7 +576,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
         ops.extend(set_op(doc, c, jumper_bars::key(*m), Some(t.clone())));
         // Both halves keep the jumper bar's own part (review of PR #57, 3).
         for f in acc::FIELDS {
-            let own = doc.devices.get(&c).and_then(|x| x.properties.get(&format!("{}.{f}", jumper_bars::key(n)))).cloned();
+            let own = doc.devices().get(&c).and_then(|x| x.properties.get(&format!("{}.{f}", jumper_bars::key(n)))).cloned();
             if own.is_some() {
                 ops.extend(set_op(doc, c, format!("{}.{f}", jumper_bars::key(*m)), own));
             }
@@ -752,7 +752,7 @@ edit: {jumper_bar: {strip: id, n}, add?: \"5,6\", remove?: \"5\", positions?: te
         let changed = !done.ops.is_empty();
         let (message, split) = (done.message, done.split);
         let answer = move |doc: &Document, views: &mut Views| {
-            let positions = doc.devices.get(&c).and_then(|x| x.properties.get(&jumper_bars::key(n))).cloned();
+            let positions = doc.devices().get(&c).and_then(|x| x.properties.get(&jumper_bars::key(n))).cloned();
             let bars = views.reports(doc).strips.get(c).and_then(|d| d.acc.jumper_bars.iter().find(|l| l.n == n)).map_or(0, |l| l.bars);
             let mut v = json!({"strip": c.hex(), "jumper_bar": n, "positions": positions, "bars": bars, "changed": changed, "message": message});
             if let Some((m, t)) = split {

@@ -35,7 +35,7 @@ pub struct Jump {
 pub fn goto(
     doc: &Document, idx: &RefIndex, source: RepresentationId, target: Option<RepresentationId>, ring: Option<(PageId, Pt)>,
 ) -> Result<Jump, CmdError> {
-    let r = doc.representations.get(&source).ok_or(CmdError::refused("no such reference"))?;
+    let r = doc.representations().get(&source).ok_or(CmdError::refused("no such reference"))?;
     let arrow = matches!(idx.member(source), Some((devices::classify::Group::Continuation(_), _)));
     let none = match r.subject {
         // Brief 049: a lonely continuation arrow.
@@ -43,7 +43,7 @@ pub fn goto(
         Subject::Device(_) => "This symbol shows no reference: its device has no coil or no contacts.",
         Subject::Cable(_) => "this reference has no other end",
         Subject::Wire(_) | Subject::Route(_) => "That is not a reference.",
-        Subject::Aid(a) => match doc.aids.get(&a).map(ecad_model::Aid::kind) {
+        Subject::Aid(a) => match doc.aids().get(&a).map(ecad_model::Aid::kind) {
             Some(ecad_model::AidKind::Continuation) => "This continuation has no other end.",
             Some(ecad_model::AidKind::Box) | None => "That is not a reference.",
         },
@@ -54,10 +54,10 @@ pub fn goto(
     let t = if arrow { crate::continuations::goto(doc, source, target, ring) } else { devices::read::goto_target(doc, idx, source, target) };
     let t = t.ok_or(CmdError::refused(none))?;
     const LOST: &str = "the other end cannot be located";
-    let tr = doc.representations.get(&t).ok_or(CmdError::refused(LOST))?;
+    let tr = doc.representations().get(&t).ok_or(CmdError::refused(LOST))?;
     let at = devices::classify::anchor(doc, tr)
         .or_else(|| {
-            tr.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
+            tr.items.first().and_then(|i| doc.items().get(i)).and_then(|i| match &i.kind {
                 ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
                 _ => None,
             })
@@ -72,7 +72,7 @@ pub fn goto(
         },
         Subject::Cable(k) => format!("the other end of cable {}", crate::cables::cable_title(doc, k)),
         Subject::Wire(_) | Subject::Route(_) => "the reference".into(),
-        Subject::Aid(a) => match doc.aids.get(&a) {
+        Subject::Aid(a) => match doc.aids().get(&a) {
             Some(ecad_model::Aid::Continuation { name, .. }) => format!("continuation {}", name.as_ref().map_or("", |n| n.as_str())),
             Some(ecad_model::Aid::Box(_)) | None => "the reference".into(),
         },
@@ -98,10 +98,10 @@ pub(crate) fn mirror_for(doc: &Document, c: DeviceId, at: Option<Pt>, placement:
             let dev = devices::classify::device(doc, c);
             let head = dev
                 .head
-                .and_then(|h| doc.representations.get(&h))
+                .and_then(|h| doc.representations().get(&h))
                 .ok_or(CmdError::refused("This device has no coil (or other head symbol) to put a table under."))?;
             let origin = devices::classify::anchor(doc, head).ok_or(CmdError::refused("This device's coil cannot be located."))?;
-            let k = match doc.settings.length_unit {
+            let k = match doc.settings().length_unit {
                 ecad_model::LengthUnit::Millimetre => 1.0,
                 ecad_model::LengthUnit::Inch => 25.4,
             };
@@ -120,7 +120,7 @@ pub(crate) fn mirror_for(doc: &Document, c: DeviceId, at: Option<Pt>, placement:
     Ok(match placement {
         // The project default is `auto` unless the project says otherwise: `auto` writes `auto`
         // only when the project's default differs.
-        Placement::Auto if doc.settings.contact_mirror == ecad_model::ContactMirror::Auto => None,
+        Placement::Auto if doc.settings().contact_mirror == ecad_model::ContactMirror::Auto => None,
         p => Some(p.word()),
     })
 }
@@ -142,7 +142,7 @@ pub struct Mirrored {
 /// # Errors
 /// No such component, or [`mirror_for`]'s refusals.
 pub(crate) fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: Option<&str>) -> Result<Mirrored, CmdError> {
-    let comp = doc.devices.get(&c).ok_or(CmdError::refused("no such component"))?;
+    let comp = doc.devices().get(&c).ok_or(CmdError::refused("no such component"))?;
     let after = mirror_for(doc, c, at, placement)?;
     let before = comp.device_type.as_contacts().and_then(|x| x.contact_table()).map(|t| Placement::of_table(t).word());
     if before == after {

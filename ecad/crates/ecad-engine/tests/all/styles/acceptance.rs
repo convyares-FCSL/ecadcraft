@@ -136,7 +136,7 @@ pub(crate) fn inject(h: &mut H, ops: Vec<Op>) {
 
 pub(crate) fn reproject(h: &mut H) {
     let page = h.first_page();
-    let other = match h.doc().page_order.get(1).copied() {
+    let other = match h.doc().page_order().get(1).copied() {
         Some(p) => p,
         None => id(&h.run("newpage", json!({"title": "Other"})).unwrap(), "page"),
     };
@@ -298,7 +298,7 @@ fn a01_new_project_is_iec_with_twenty_builtin_text_styles_at_031_sizes() {
     let v = h.run("standard", json!({})).unwrap();
     assert_eq!((s(&v["name"]), v["id"].clone()), ("IEC (built in)".to_string(), Value::Null), "{v}");
     let d = h.doc();
-    assert!(d.standard.is_none() && d.styles.is_empty(), "FP1/FP2: nothing stored for a new project");
+    assert!(d.standard().is_none() && d.styles().is_empty(), "FP1/FP2: nothing stored for a new project");
     let rows = styles(&mut h, "text");
     assert_eq!(rows.len(), 23, "{rows:?}");
     for (word, height, weight) in BUILTIN_TEXT {
@@ -543,7 +543,7 @@ fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
         ("print.colour", "sepia".to_string()),
     ] {
         let e = defaults::find(key).unwrap();
-        let before = h.doc().standard.as_ref().and_then(|s| s.values.get(key).cloned());
+        let before = h.doc().standard().and_then(|s| s.values.get(key).cloned());
         inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Standard, key: key.into(), before, after: Some(value.clone()) }]);
         let d = h.doc();
         let r = defaults::resolve(&d, e, Scope::project());
@@ -583,7 +583,7 @@ fn ids_a_dangling_reference_falls_through_and_is_reported() {
     // A box's own style is its aid's field (design 072 §6.2).
     let b: ecad_model::AidId = id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[80, 80], [140, 140]]})).unwrap(), "aid");
     let ghost = format!("#{}", "a".repeat(32));
-    let before = h.doc().aids[&b].clone();
+    let before = h.doc().aids()[&b].clone();
     let mut boxed = before.as_box().cloned().unwrap();
     boxed.style = ecad_model::StyleRef::parse(&ghost);
     inject(
@@ -671,12 +671,12 @@ fn a03_textstyle_writes_the_kinds_style_record() {
     let row = v["kinds"].as_array().and_then(|a| a.iter().find(|k| k["kind"] == json!("tag")).cloned()).unwrap_or_default();
     assert_eq!(s(&row["style"]), "tag", "{v}");
     assert!(op_names(&tx).contains(&"SetStyle"), "{:?}", op_names(&tx));
-    assert!(!h.doc().display.contains_key("text.tag.height"), "FP4: no old property written");
+    assert!(!h.doc().display().contains_key("text.tag.height"), "FP4: no old property written");
     let r = style_row(&mut h, "text", "tag");
     assert!(near(field_num(&r, "height"), 3.0) && field(&r, "height").1 == "project", "the project record: {r}");
     let (_, tx) = one_tx(&mut h, "textstyle", json!({"kind": "wire_label", "height": 2}));
     assert!(op_names(&tx).contains(&"SetProjectSettings"), "the wire label height stays in settings.wiring: {:?}", op_names(&tx));
-    assert!(h.doc().settings.wiring.label_height.is_some_and(|x| near(x, 2.0)));
+    assert!(h.doc().settings().wiring.label_height.is_some_and(|x| near(x, 2.0)));
     let r = style_row(&mut h, "text", "wire_label");
     assert!(near(field_num(&r, "height"), 2.0) && field(&r, "height").1 == "project", "read as the project field: {r}");
 }
@@ -728,7 +728,7 @@ fn a04_own_style_object_choice_and_delete_with_a_replacement() {
     let names = op_names(&tx);
     assert!(names.contains(&"SetStyle") && names.contains(&"SetProperty"), "{names:?}");
     let d = h.doc();
-    assert_eq!(d.devices[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"), "the user moved to the replacement");
+    assert_eq!(d.devices()[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"), "the user moved to the replacement");
     assert!(near(ecad_electrical::styles::text_style::text_style_at(&d, TextKind::Tag, at(k1)).height, 2.5), "K1 is back to normal");
     assert!(styles(&mut h, "text").iter().all(|r| s(&r["id"]) != large));
     undo(&mut h);
@@ -748,7 +748,7 @@ fn ids_rename_keeps_the_id_and_the_users() {
     assert_eq!(op_names(&tx), ["SetStyle"], "a rename touches no user");
     let r = style_row(&mut h, "text", &large);
     assert_eq!(s(&r["name"]), "Tag huge");
-    assert_eq!(h.doc().devices[&k].properties.get("text.tag.style"), Some(&large));
+    assert_eq!(h.doc().devices()[&k].properties.get("text.tag.style"), Some(&large));
     // Built-in IDs are words; an own style's ID is the same after save and reopen.
     let dir = tmp_dir("ids");
     let mut h = save_and_reopen(h, &dir, "ids.ecad", 0x50a_0403);
@@ -770,10 +770,10 @@ fn a05_promote_a_style_and_a_value() {
     h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k.hex(), "value": large})).unwrap();
     refused(&mut h, "promote", json!({"catalogue": "text", "id": large}));
     h.run("standard", json!({"new": "House"})).unwrap();
-    let props = h.doc().devices[&k].properties.clone();
+    let props = h.doc().devices()[&k].properties.clone();
     let (_, tx) = one_tx(&mut h, "promote", json!({"catalogue": "text", "id": large}));
     assert_eq!(op_names(&tx), ["SetStyle", "SetStyle"], "project Some→None, then standard None→Some");
-    assert_eq!(h.doc().devices[&k].properties, props, "no reference changes");
+    assert_eq!(h.doc().devices()[&k].properties, props, "no reference changes");
     let r = style_row(&mut h, "text", &large);
     assert_eq!(s(&r["layer"]), "standard");
     assert!(near(field_num(&r, "height"), 5.0) && field(&r, "height").1 == "standard");
@@ -822,7 +822,7 @@ fn a06_a_standard_is_taken_by_copy_and_keeps_its_id() {
     );
     a.run("setstyle", json!({"catalogue": "location", "id": "box", "layer": "standard", "fields": {"line_type": "continuous"}})).unwrap();
     let a_std = a.run("standard", json!({})).unwrap();
-    let a_doc_std = a.doc().standard.clone();
+    let a_doc_std = a.doc().standard().cloned();
     let path_a = save_as(&mut a, &dir, "Panel Std (A).ecad");
     a.close_all();
     drop(a);
@@ -838,7 +838,7 @@ fn a06_a_standard_is_taken_by_copy_and_keeps_its_id() {
     let (_, _tx) = one_tx(&mut b, "standard", json!({"from": path_a}));
     let r = b.run("standard", json!({})).unwrap();
     assert_eq!((r["id"].clone(), r["name"].clone()), (a_std["id"].clone(), a_std["name"].clone()), "same StandardId and name");
-    assert!(b.doc().standard == a_doc_std, "header, values and styles copied");
+    assert!(b.doc().standard().cloned() == a_doc_std, "header, values and styles copied");
     assert_eq!(s(&style_row(&mut b, "text", &own)["layer"]), "standard");
     assert_eq!(hash(&path_a), before, "the first file is unchanged on disk");
     // Replacing an existing standard; the project's own values stay.
@@ -875,13 +875,13 @@ fn a06_back_to_iec_is_one_transaction_and_undo_restores_it() {
     );
     assert!(v.to_string().contains('1') && v.to_string().contains('2'), "the result says how many values and styles went: {v}");
     let d = h.doc();
-    assert!(d.standard.is_none());
-    assert_eq!(d.devices[&k].properties.get("text.tag.style").map(String::as_str), Some("tag"));
+    assert!(d.standard().is_none());
+    assert_eq!(d.devices()[&k].properties.get("text.tag.style").map(String::as_str), Some("tag"));
     assert_eq!(s(&h.run("standard", json!({})).unwrap()["name"]), "IEC (built in)");
     undo(&mut h);
     assert!(h.doc() == before, "undo restores the standard, its values, its records and the user");
     redo(&mut h);
-    assert!(h.doc().standard.is_none());
+    assert!(h.doc().standard().is_none());
 }
 
 /// §6.1: `new` is refused when a standard exists; `name` renames it; names are 1–64 characters.
@@ -1003,11 +1003,11 @@ fn fp3_a_standard_layer_record_without_a_standard_is_refused_by_apply() {
     // Directly removing the standard while records exist: the invariant `no Standard layer records
     // without a standard` holds, whichever way apply resolves it (refuse, or remove them too).
     let mut d = h.doc();
-    let header = d.standard.as_ref().map(|s| s.header.clone());
+    let header = d.standard().map(|s| s.header.clone());
     let first = h.p(|p| p.ledger.log().iter().find(|t| t.ops.iter().any(|o| o.name() == "SetStandard")).cloned()).unwrap();
     let remove = first.ops.iter().find(|o| o.name() == "SetStandard").unwrap().inverse();
     match remove.apply(&mut d) {
-        Ok(()) => assert!(d.check().is_ok() && d.standard.is_none(), "removed with everything it held"),
+        Ok(()) => assert!(d.check().is_ok() && d.standard().is_none(), "removed with everything it held"),
         Err(_) => assert!(header.is_some(), "or refused while it holds records"),
     }
 }

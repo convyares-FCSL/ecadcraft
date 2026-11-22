@@ -84,9 +84,9 @@ fn modify_device_changes_the_type_and_undoes() {
     assert_eq!(op.name(), "ModifyDevice");
     assert_eq!(op.inverse(), Op::ModifyDevice { id: c, before: after.clone(), after: before.clone() });
     l.commit(Author::User, "retype", vec![op]).unwrap();
-    assert_eq!(l.document().devices[&c], after);
+    assert_eq!(l.document().devices()[&c], after);
     l.undo(Author::User).unwrap();
-    assert_eq!(l.document().devices[&c], before);
+    assert_eq!(l.document().devices()[&c], before);
     let wrong = Op::ModifyDevice { id: c, before: after.clone(), after: before };
     assert!(matches!(l.commit(Author::User, "stale", vec![wrong]), Err(ModelError::Precondition(_))));
 }
@@ -830,7 +830,7 @@ fn device_links_join_two_devices_once() {
     l.commit(Author::User, "devices", make).unwrap();
     let link = DeviceLink { kind: LinkKind::MechanicalInterlock, a, b };
     l.commit(Author::User, "link", vec![Op::AddDeviceLink { id: l1, link }]).unwrap();
-    assert_eq!(l.document().device_links.get(&l1), Some(&link));
+    assert_eq!(l.document().device_links().get(&l1), Some(&link));
     // The same pair, either way round, with the same kind: refused; a link to itself: refused.
     let back = DeviceLink { kind: LinkKind::MechanicalInterlock, a: b, b: a };
     assert!(l.commit(Author::User, "again", vec![Op::AddDeviceLink { id: l2, link: back }]).is_err());
@@ -843,11 +843,11 @@ fn device_links_join_two_devices_once() {
         Err(ModelError::Precondition(_))
     ));
     let doc = l.document().clone();
-    let unlink: Vec<Op> = doc.device_links.iter().map(|(id, k)| Op::RemoveDeviceLink { id: *id, link: *k }).collect();
+    let unlink: Vec<Op> = doc.device_links().iter().map(|(id, k)| Op::RemoveDeviceLink { id: *id, link: *k }).collect();
     let mut ops = unlink;
     ops.push(Op::DeleteDevice { id: a, device: Device::default() });
     l.commit(Author::User, "delete", ops).unwrap();
-    assert!(l.document().device_links.is_empty());
+    assert!(l.document().device_links().is_empty());
     l.undo(Author::User).unwrap();
     assert_eq!(l.document(), &doc, "undo brings the links back");
     let json = serde_json::to_string(&doc).unwrap();

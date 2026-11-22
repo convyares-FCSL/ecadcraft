@@ -78,15 +78,15 @@ fn one_exact(h: &mut H, label: &str, act: impl FnOnce(&mut H)) -> Document {
 fn t1_plus_cable_edit_and_remove_are_one_transaction_each_with_exact_undo() {
     let mut h = harness();
     let dir = demo(&mut h, "tx");
-    let before: Vec<CableId> = doc(&mut h).cables.keys().copied().collect();
+    let before: Vec<CableId> = doc(&mut h).cables().keys().copied().collect();
     let after = one_exact(&mut h, "Create cable", |h| {
         h.get_by_label(ecad_app::workspace::frame::ADD_NAME).click();
         h.run_steps(8);
         let made = h.state().reports.as_ref().and_then(|r| r.cables.selected().and_then(|i| r.cables.ids.get(i).copied()));
         assert!(made.is_some_and(|k| !before.contains(&k)), "the new cable is selected at once");
     });
-    let k = *after.cables.keys().find(|k| !before.contains(k)).expect("a new cable");
-    assert!(after.cables[&k].cores.is_empty(), "not drawn");
+    let k = *after.cables().keys().find(|k| !before.contains(k)).expect("a new cable");
+    assert!(after.cables()[&k].cores.is_empty(), "not drawn");
     one_exact(&mut h, "Edit cable", |h| h.state_mut().cable_ask(k, Ask::Edit(CableField::Length, json!({"length": 12}))));
     one_exact(&mut h, "Edit cable", |h| {
         h.state_mut().cable_ask(k, Ask::Edit(CableField::Gland(ecad_electrical::cables::Side::To), json!({"to": {"gland": "M20"}})))
@@ -98,7 +98,7 @@ fn t1_plus_cable_edit_and_remove_are_one_transaction_each_with_exact_undo() {
     assert_eq!(head(&mut h), n);
     assert!(h.state().reports.as_ref().unwrap().cables.edit.error.is_some());
     let gone = one_exact(&mut h, "Remove cable", |h| h.state_mut().cable_ask(k, Ask::Remove));
-    assert!(!gone.cables.contains_key(&k));
+    assert!(!gone.cables().contains_key(&k));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
