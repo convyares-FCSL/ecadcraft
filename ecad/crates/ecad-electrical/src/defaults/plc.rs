@@ -18,7 +18,7 @@
 
 use ecad_model::ProjectSettings;
 
-use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
 ecad_model::word_enum! {
     /// The number of a card's first channel.
@@ -38,7 +38,7 @@ ecad_model::word_enum! {
         Channel,
     }
 }
-use ecad_model::plc::AddressStyle;
+use ecad_model::objects::plc::AddressStyle;
 ecad_model::word_enum! {
     /// How a card is drawn on its page.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -457,7 +457,7 @@ pub static ENTRIES: &[&Entry] = &[
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::defaults::*;
 
     #[test]
     fn caption_patterns_name_only_rack_and_slot() {

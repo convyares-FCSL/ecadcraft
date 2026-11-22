@@ -3,11 +3,11 @@
 //! Function and Location it will take, and what the click changes. Read only: the picker and the
 //! tool do the placing ([`crate::shell::placing`]); nothing here writes or reads the project.
 
-use ecad_engine::symbols;
-use ecad_ui::tokens::{space, ui_type};
+use ecad_electrical::symbols;
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Sense, Stroke, pos2, vec2};
 
-use super::widgets as w;
+use crate::inspector::widgets as w;
 use crate::App;
 use crate::shell::placing::{Shown, tag_in};
 
@@ -87,7 +87,7 @@ pub fn of(t: &App) -> Option<Placing> {
 }
 
 /// The body: Identity, Parts and What this click changes.
-pub fn show(ui: &mut egui::Ui, cx: &mut super::Cx<'_>, p: &Placing, standard: &str) {
+pub fn show(ui: &mut egui::Ui, cx: &mut crate::inspector::Cx<'_>, p: &Placing, standard: &str) {
     let full = cx.full;
     // The page's Function and Location, which the new device takes.
     let page = cx.sh.view.sections.iter().find(|s| s.kind == "page");
@@ -126,7 +126,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut super::Cx<'_>, p: &Placing, standard: &s
     });
     if device && !p.joins {
         w::section(ui, &mut folded, full, "placing-parts", "Parts", "none yet", false, |ui| {
-            w::button(ui, "From catalogue", false, Some(super::device::NOT_YET));
+            w::button(ui, "From catalogue", false, Some(crate::inspector::device::NOT_YET));
             ui.add(egui::Label::new(w::rich(ui, "Contacts offered follow the part set you choose.", ui_type::SMALL, w::text_3())).wrap());
         });
     }
@@ -157,8 +157,8 @@ fn boxed(ui: &mut egui::Ui, label: &str, value: &str, hint: &str, name: &str) {
                 egui::Rect::from_min_size(pos2(rect.right() - space::S - g.size().x - 12.0, rect.center().y - 10.0), vec2(g.size().x + 12.0, 20.0));
             p.rect_stroke(
                 pill,
-                ecad_ui::style::corner(ecad_ui::tokens::radius::pill(pill.height())),
-                Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(ecad_ui::SHELL.line_strong)),
+                ecad_widgets::style::corner(ecad_widgets::tokens::radius::pill(pill.height())),
+                Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(ecad_widgets::SHELL.line_strong)),
                 egui::StrokeKind::Inside,
             );
             p.galley(pill.center() - g.size() / 2.0, g, w::text_3());
@@ -168,19 +168,19 @@ fn boxed(ui: &mut egui::Ui, label: &str, value: &str, hint: &str, name: &str) {
 
 /// One line of What this click changes: a tick, a ring (stays free) or a warning, then the words.
 fn change_line(ui: &mut egui::Ui, mark: &str, words: &str) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     ui.add_space(space::XS);
     let top = ui.cursor().top();
     let at = pos2(ui.cursor().left() + 8.0, top + 9.0);
     let p = ui.painter();
     match mark {
         "ok" => {
-            let c = ecad_ui::color(s.ok);
+            let c = ecad_widgets::color(s.ok);
             p.line_segment([at + vec2(-4.5, 0.0), at + vec2(-1.5, 3.0)], Stroke::new(1.6, c));
             p.line_segment([at + vec2(-1.5, 3.0), at + vec2(4.5, -3.5)], Stroke::new(1.6, c));
         }
         "free" => {
-            p.circle_stroke(at, 4.5, Stroke::new(1.6, ecad_ui::color(s.connect)));
+            p.circle_stroke(at, 4.5, Stroke::new(1.6, ecad_widgets::color(s.connect)));
         }
         _ => w::severity_mark(p, at, ecad_engine::checks::Severity::Warning),
     }
@@ -196,7 +196,7 @@ fn change_line(ui: &mut egui::Ui, mark: &str, words: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::inspector::*;
 
     #[test]
     fn a_new_coil_says_what_the_click_adds_and_leaves() {

@@ -4,8 +4,8 @@
 
 use crate::common::{H, id};
 
-use ecad_engine::reps::{self, PartRole, View};
-use ecad_engine::{connectors, xref};
+use ecad_electrical::symbols::reps::{self, PartRole, View};
+use {ecad_electrical::connectors, ecad_engine::xref};
 use ecad_model::{DeviceId, Document, PageId, RepresentationId, Role, Subject};
 use serde_json::{Value, json};
 
@@ -188,8 +188,8 @@ fn a_pin_only_half_has_no_half_member() {
     assert!(edges.contains(&(s, p)) && edges.contains(&(p, s)), "{edges:?}");
     assert_eq!(reps::rep_type(&d, &d.representations[&s]), PartRole::Pin);
     assert_eq!(reps::siblings(&d, s), vec![p], "the mate first");
-    assert_eq!(reps::half_anchor(&d, x, ecad_engine::symbols::Side::Socket), None);
-    assert_eq!(connectors::half_goto(&d, x, ecad_engine::symbols::Side::Plug), Some(p));
+    assert_eq!(reps::half_anchor(&d, x, ecad_electrical::symbols::Side::Socket), None);
+    assert_eq!(connectors::half_goto(&d, x, ecad_electrical::symbols::Side::Plug), Some(p));
     let _ = (p1, p2);
 }
 
@@ -205,9 +205,9 @@ fn go_to_and_numbering_share_one_drawing_order() {
     let d = h.doc();
     assert_eq!(reps::head(&d, k), None, "two contacts, no head");
     assert_eq!(reps::goto(&d, k, None), Some(b), "B is in the first zone column");
-    let anchor = ecad_model::numbering::rep_anchor(&d, Subject::Device(k)).map(|(p, _)| p);
+    let anchor = ecad_model::naming::numbering::rep_anchor(&d, Subject::Device(k)).map(|(p, _)| p);
     assert_eq!(reps::goto_place(&d, k).map(|(p, _)| p), anchor);
-    let mut places = ecad_model::numbering::Places::new(&d);
+    let mut places = ecad_model::naming::numbering::Places::new(&d);
     assert_eq!(reps::goto_in(&mut places, k, None), Some(b), "a shared Places gives the same answer");
     assert_eq!(reps::goto(&d, k, None), Some(b));
     // Two heads on one page: the head is the one numbering would anchor at.
@@ -223,7 +223,7 @@ fn go_to_and_numbering_share_one_drawing_order() {
     assert_eq!(xref::device(&d, q).head, Some(rep(&c2)));
 }
 
+mod acceptance;
+mod proposals_acceptance;
 mod proposed;
 mod stored;
-mod tester;
-mod tester_d;

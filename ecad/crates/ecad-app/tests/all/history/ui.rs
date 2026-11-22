@@ -7,15 +7,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::history_panel::{self, Dialog, Do};
-use ecad_app::project_panel;
+use ecad_app::history::panel::{self, Dialog, Do};
+use ecad_app::pages::project_panel;
 use eframe::egui::{self, Key};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
-use crate::checks_ui::demo_file;
-use crate::mouse_tester::{Deltas, doc, harness_with, ok, shot};
+use crate::checks::ui::demo_file;
+use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, ok, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -35,7 +35,7 @@ fn save(h: &H, deltas: &Deltas, name: &str) {
 
 fn click(h: &mut H, label: &str) {
     // UI rev 3: the panels' tabs are reached through the strip and the inspector.
-    crate::project_panel::click(h, label);
+    crate::pages::project_panel::click(h, label);
 }
 
 /// Replace the text of the field labelled `label`.
@@ -68,11 +68,11 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     assert_eq!(ecad_app::window_title(h.state_mut().branch_info().as_ref()), ecad_app::TITLE, "one branch: the title is as before");
 
     // A: the History tab, New version through its dialog.
-    click(&mut h, history_panel::HISTORY_TAB);
+    click(&mut h, panel::HISTORY_TAB);
     assert_eq!(h.state().panel.tab, project_panel::Tab::History);
     let kinds: Vec<_> = h.state().panel.history.graph().nodes.iter().map(|n| n.kind).collect();
     assert!(kinds.contains(&ecad_file::history::NodeKind::Now) && kinds.contains(&ecad_file::history::NodeKind::Root), "{kinds:?}");
-    click(&mut h, history_panel::NAME_THIS);
+    click(&mut h, panel::NAME_THIS);
     assert!(matches!(h.state().panel.history.dialog, Some(Dialog::NewVersion { .. })));
     type_into(&mut h, "ecad.newversion.name", "Before change");
     click(&mut h, "ecad.newversion.ok");

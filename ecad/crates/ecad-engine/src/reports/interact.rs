@@ -5,16 +5,16 @@
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use serde_json::{Map, Value, json};
 
-use super::can_start;
-use super::forms::{R, Safe, commit, other, safely};
+use crate::interact::can_start;
+use crate::properties::forms::{R, Safe, commit, other, safely};
 
 /// `bomitem`: the prompts of design 047 §6.1.
 pub(crate) fn bomitem(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    let (metres, location) = super::read(s, |p, _| {
+    let (metres, location) = crate::interact::read(s, |p, _| {
         let doc = p.ledger.document();
-        let stored = crate::designations::default_key(&doc.project, crate::designations::Aspect::Location);
-        Ok((crate::bom::item_unit_metres(doc), crate::designations::shown(doc, crate::designations::Aspect::Location, stored.as_deref())))
+        let stored = ecad_electrical::locations::designations::default_key(&doc.project, ecad_electrical::locations::designations::Aspect::Location);
+        Ok((ecad_electrical::reports::bom::item_unit_metres(doc), ecad_electrical::locations::designations::shown(doc, ecad_electrical::locations::designations::Aspect::Location, stored.as_deref())))
     })
     .unwrap_or((false, None));
     Ok(Box::new(Safe(BomItem { step: 0, fields: Map::new(), metres, location })))
@@ -34,16 +34,16 @@ impl BomItem {
     fn take(&mut self, s: &mut Session, text: Option<String>) -> R<Step> {
         let t = text.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
         match (self.step, t) {
-            (0, None) => return Err(other(crate::bom::ITEM_NEEDS_DESCRIPTION)),
+            (0, None) => return Err(other(ecad_electrical::reports::bom::ITEM_NEEDS_DESCRIPTION)),
             (0, Some(d)) => {
-                use ecad_model::loose_part::{LooseDescription, MAX_DESCRIPTION};
+                use ecad_model::objects::loose_part::{LooseDescription, MAX_DESCRIPTION};
                 LooseDescription::new(&d)
                     .map_err(|_| other(format!("`description` is one line of at most {MAX_DESCRIPTION} characters, with no hidden characters.")))?;
                 self.fields.insert("description".into(), json!(d));
             }
             (1, Some(q)) => {
                 // Checked when the unit is known; a count of pieces must be whole.
-                crate::bom::parse_qty(&q, true).map_err(other)?;
+                ecad_electrical::reports::bom::parse_qty(&q, true).map_err(other)?;
                 self.fields.insert("qty".into(), json!(q));
             }
             (2, Some(u)) => {
@@ -69,7 +69,7 @@ impl BomItem {
         if self.step == 2 {
             self.fields.insert("unit".into(), json!(if self.metres { "m" } else { "pcs" }));
             if let Some(q) = self.fields.get("qty").and_then(Value::as_str) {
-                crate::bom::parse_qty(q, self.metres).map_err(|e| {
+                ecad_electrical::reports::bom::parse_qty(q, self.metres).map_err(|e| {
                     self.step = 1;
                     other(e)
                 })?;

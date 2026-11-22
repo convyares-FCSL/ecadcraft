@@ -67,7 +67,7 @@ fn tag(d: &Document, c: DeviceId) -> String {
 
 fn name(h: &mut H, t: ConnectionPointId) -> String {
     let d = h.doc();
-    ecad_engine::connectors::pin_name(&d, t).unwrap_or_else(|| ecad_engine::interact::connection_point_name(&d, t))
+    ecad_electrical::connectors::pin_name(&d, t).unwrap_or_else(|| ecad_engine::interact::connection_point_name(&d, t))
 }
 
 fn net(h: &mut H, t: ConnectionPointId) -> Option<ecad_model::NetKey> {
@@ -94,7 +94,7 @@ fn drops(h: &mut H, xs: &[f64]) -> Vec<WireId> {
 
 /// Where `t` is shown on `page`, if it is.
 fn shown_at(d: &Document, page: PageId, t: ConnectionPointId) -> Option<Pt> {
-    ecad_model::derive::connection_point_positions(d, page).into_iter().find(|(x, _, _)| *x == t).map(|(_, _, p)| p)
+    ecad_model::connectivity::derive::connection_point_positions(d, page).into_iter().find(|(x, _, _)| *x == t).map(|(_, _, p)| p)
 }
 
 /// A wire from pin `t` (on `page`) 20 mm away from its half's body: up from a socket pin, down
@@ -228,7 +228,7 @@ fn read_everything(h: &mut H) {
     let _ = ecad_engine::checks::all(&d, 1e-6);
     for t in d.terminals.keys() {
         let _ = ecad_engine::interact::connection_point_name(&d, *t);
-        let _ = ecad_engine::terminal_types::shown_label(&d, *t);
+        let _ = ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, *t);
     }
     same_as_built(h);
 }
@@ -245,7 +245,7 @@ fn rep_of(d: &Document, t: ConnectionPointId) -> RepresentationId {
 }
 
 fn page_no(d: &Document, p: PageId) -> String {
-    ecad_model::book::page_number(d, p)
+    ecad_model::document::book::page_number(d, p)
 }
 
 /// Save the ledger as it is (also after raw commits) and open it as a user would.
@@ -332,7 +332,7 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
     let embeds: Vec<&ecad_model::Definition> =
         ops.iter().filter_map(|o| if let Op::EmbedDefinition { definition, .. } = o { Some(definition) } else { None }).collect();
     assert_eq!(embeds.len(), 2, "one EmbedDefinition per new half definition: {ops:?}");
-    for (k, def) in ["socket4", "plug4"].map(|k| (k, ecad_engine::symbols::by_key(k).expect(k))) {
+    for (k, def) in ["socket4", "plug4"].map(|k| (k, ecad_electrical::symbols::by_key(k).expect(k))) {
         let built = def.definition().expect(k);
         let o = built.origin.as_ref().expect("starter origin");
         assert_eq!(o.library_seq, 2, "{k}: version 2 (FP3)");
@@ -882,10 +882,10 @@ fn fp6_a_connector_pin_never_shows_a_strip_level_label() {
         for ((k, l), t) in pins(&d, x) {
             let side = if k == ".s" { "S" } else { "P" };
             let want = format!("{tg}.{side}:{l}");
-            assert_eq!(ecad_engine::terminal_types::shown_label(&d, t).as_deref(), Some(want.as_str()), "shown_label of {want}");
+            assert_eq!(ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, t).as_deref(), Some(want.as_str()), "shown_label of {want}");
             assert_eq!(ecad_engine::interact::connection_point_name(&d, t), want);
         }
-        assert!(ecad_engine::strips::strip_of(&d, x).is_none(), "{tg} is not a strip");
+        assert!(ecad_electrical::terminal_strips::strip_of(&d, x).is_none(), "{tg} is not a strip");
     }
     let plan = c.h.run("stripplan", json!({"limit": 5000})).unwrap();
     let strips = plan["strips"].as_array().cloned().unwrap_or_default();
@@ -1072,12 +1072,12 @@ fn r08_a_half_location_is_its_override_else_the_connector() {
     assert_eq!(s(&bom_rows(&mut c.h, "-X01.S")[0]["location"]), "", "nothing typed: no location");
     assert_eq!(s(&bom_rows(&mut c.h, "-X01.P")[0]["location"]), "");
     let d = c.h.doc();
-    let proposed = |side: ecad_engine::symbols::Side| {
-        let r = ecad_engine::reps::goto(&d, x, Some(side)).unwrap();
+    let proposed = |side: ecad_electrical::symbols::Side| {
+        let r = ecad_electrical::symbols::reps::goto(&d, x, Some(side)).unwrap();
         ecad_engine::locations::rep_context(&d, &d.representations[&r], &mut ecad_engine::locations::BoxCache::default()).value
     };
-    assert_eq!(proposed(ecad_engine::symbols::Side::Socket).as_deref(), Some("+FIELD"), "the box on 101 proposes");
-    assert_eq!(proposed(ecad_engine::symbols::Side::Plug).as_deref(), Some("+CP1"), "the box on 102 proposes");
+    assert_eq!(proposed(ecad_electrical::symbols::Side::Socket).as_deref(), Some("+FIELD"), "the box on 101 proposes");
+    assert_eq!(proposed(ecad_electrical::symbols::Side::Plug).as_deref(), Some("+CP1"), "the box on 102 proposes");
     step(&mut c.h, "setprop", json!({"component": x.hex(), "key": "location", "value": "+JB1"}));
     assert_eq!(s(&bom_rows(&mut c.h, "-X01.S")[0]["location"]), "+JB1");
     assert_eq!(s(&bom_rows(&mut c.h, "-X01.P")[0]["location"]), "+JB1");
@@ -1256,13 +1256,13 @@ fn bulkheads_stay_one_piece() {
         assert!(d.connection_points_of(b).count() > 0, "{fam}");
         for (t, x) in d.connection_points_of(b) {
             assert!(!matches!(x.key.as_ref().map(ToString::to_string).as_deref(), Some(".s" | ".p")), "{fam}: no side keys");
-            assert!(ecad_engine::connectors::pin_name(&d, t).is_none(), "{fam}: a bulkhead pin has no half name");
+            assert!(ecad_electrical::connectors::pin_name(&d, t).is_none(), "{fam}: a bulkhead pin has no half name");
             let n = ecad_engine::interact::connection_point_name(&d, t);
             assert!(!n.contains(".S") && !n.contains(".P"), "{fam}: bulkhead pin {bt}:{n}");
         }
         assert_eq!(bom_rows(&mut c.h, &bt).len(), 1, "{fam}: one BOM row");
         // The 034 definition, unchanged: version 1, no bridges, still `Fixed`.
-        let st = ecad_engine::symbols::by_key(fam).unwrap();
+        let st = ecad_electrical::symbols::by_key(fam).unwrap();
         let def = st.definition().unwrap();
         assert!(def.bridges.is_empty(), "{fam}: no bridges");
         assert_eq!(def.origin.as_ref().map(|o| o.library_seq), Some(1), "{fam}: version unchanged");
@@ -1285,7 +1285,7 @@ fn fp3_starter_definitions_are_versioned() {
     ];
     let mut ids = std::collections::BTreeSet::new();
     for k in halves {
-        let st = ecad_engine::symbols::by_key(k).unwrap_or_else(|| panic!("{k}"));
+        let st = ecad_electrical::symbols::by_key(k).unwrap_or_else(|| panic!("{k}"));
         let d = st.definition().unwrap();
         let o = d.origin.as_ref().unwrap();
         assert_eq!(o.library_seq, 2, "{k}");
@@ -1300,7 +1300,7 @@ fn fp3_starter_definitions_are_versioned() {
         assert_eq!(keys, want.iter().map(String::as_str).collect::<Vec<_>>(), "{k}");
     }
     for (k, keys) in [("pinpair", &[".s", ".p"][..]), ("pins", &[".s"][..]), ("pinp", &[".p"][..])] {
-        let st = ecad_engine::symbols::by_key(k).unwrap_or_else(|| panic!("{k} starter"));
+        let st = ecad_electrical::symbols::by_key(k).unwrap_or_else(|| panic!("{k} starter"));
         assert_eq!(st.prefix(), "X", "{k}");
         let d = st.definition().unwrap();
         let got: Vec<String> = d.terminals.iter().map(|t| t.key.to_string()).collect();
@@ -1312,7 +1312,7 @@ fn fp3_starter_definitions_are_versioned() {
         assert!(ids.insert(d.origin.as_ref().unwrap().definition), "{k}: unique ID");
     }
     for alias in ["pin pair", "mated pin", "socket pin", "plug pin", "male pin", "female pin"] {
-        assert!(!ecad_engine::symbols::search(alias).is_empty(), "search {alias:?}");
+        assert!(!ecad_electrical::symbols::search(alias).is_empty(), "search {alias:?}");
     }
 }
 
@@ -1321,7 +1321,7 @@ fn fp3_starter_definitions_are_versioned() {
 #[test]
 fn fp2_a_bridge_to_an_unknown_key_is_refused() {
     let mut h = H::new(0x7044_00b0);
-    let mut bad = ecad_engine::symbols::by_key("socket4").unwrap().definition().unwrap().clone();
+    let mut bad = ecad_electrical::symbols::by_key("socket4").unwrap().definition().unwrap().clone();
     bad.origin = None;
     bad.name = "hand made".into();
     assert!(".x".parse::<ecad_model::PointKey>().is_err(), ".x is no key at all");
@@ -1331,18 +1331,18 @@ fn fp2_a_bridge_to_an_unknown_key_is_refused() {
     let r = h.cfg(|p| p.ledger.commit(Author::User, "hand-made", vec![Op::EmbedDefinition { id, definition: bad }]));
     assert!(r.is_err(), "a bridge to .in is refused");
     assert_eq!(h.head(), head);
-    let mut ok = ecad_engine::symbols::by_key("plug4").unwrap().definition().unwrap().clone();
+    let mut ok = ecad_electrical::symbols::by_key("plug4").unwrap().definition().unwrap().clone();
     ok.name = "copy".into();
     let id2 = DefinitionId::from(0x7044_00b0_u128 << 64 | 2);
     h.cfg(|p| p.ledger.commit(Author::User, "copy", vec![Op::EmbedDefinition { id: id2, definition: ok }])).expect("a .s/.p bridge is accepted");
     // Every starter still embeds and places.
     let page = h.first_page();
     h.activate(page);
-    for (i, st) in ecad_engine::symbols::STARTERS.iter().enumerate() {
+    for (i, st) in ecad_electrical::symbols::STARTERS.iter().enumerate() {
         let x = 20.0 + 30.0 * (i % 12) as f64;
         let y = 40.0 + 40.0 * (i / 12) as f64;
         let mut params = json!({"symbol": st.key, "at": [x, y]});
-        if st.key == ecad_engine::symbols::StarterKey::Continuation {
+        if st.key == ecad_electrical::symbols::StarterKey::Continuation {
             params["name"] = json!("24V");
         }
         h.run("place", params).unwrap_or_else(|e| panic!("{}: {e}", st.key));
@@ -1513,7 +1513,7 @@ fn r13_old_version_1_halves_stay_separate() {
     let mut ops = Vec::new();
     let mut v1 = Vec::new();
     for (i, k) in ["socket4", "plug4"].iter().enumerate() {
-        let mut d = ecad_engine::symbols::by_key(k).unwrap().definition().unwrap().clone();
+        let mut d = ecad_electrical::symbols::by_key(k).unwrap().definition().unwrap().clone();
         d.bridges.clear();
         let o = d.origin.clone().unwrap();
         d.origin = None;
@@ -1542,13 +1542,13 @@ fn r13_old_version_1_halves_stay_separate() {
     let x: DeviceId = id(&h.run("place", json!({"symbol": "socket4", "at": [200, 100]})).unwrap(), "component");
     let d = h.doc();
     assert_eq!(d.definitions.len(), n + 1, "version 2 embedded beside version 1");
-    let sid = ecad_engine::symbols::by_key("socket4").unwrap().definition().unwrap().origin.as_ref().unwrap().definition;
+    let sid = ecad_electrical::symbols::by_key("socket4").unwrap().definition().unwrap().origin.as_ref().unwrap().definition;
     let seqs: std::collections::BTreeSet<u64> =
         d.definitions.values().filter_map(|x| x.origin.as_ref()).filter(|o| o.definition == sid).map(|o| o.library_seq).collect();
     assert_eq!(seqs, [1, 2].into_iter().collect(), "both versions");
     assert!(d.connection_points_of(x).all(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".s")), "the new half has side keys");
     assert_eq!(
-        ecad_engine::symbols::embedded(&d, ecad_engine::symbols::by_key("socket4").unwrap()).map(|i| d.definitions[&i]
+        ecad_electrical::symbols::embedded(&d, ecad_electrical::symbols::by_key("socket4").unwrap()).map(|i| d.definitions[&i]
             .origin
             .as_ref()
             .unwrap()

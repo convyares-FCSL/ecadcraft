@@ -1,4 +1,4 @@
-//! The release commands (`prerelease`, `release`); the release itself is [`crate::release`].
+//! The release commands (`prerelease`, `release`); the release itself is [`crate::releases::release`].
 //!
 //! Both read their input through a params struct (brief 070), so a parameter that does not read is
 //! refused at the edge in the uniform wording. The release (engine work: the checks, the outputs,
@@ -11,9 +11,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{err, on_any_page, on_project};
-use crate::release::{prerelease, release_issued, release_pending};
+use crate::commands::input::{Command, Typed};
+use crate::commands::{err, on_any_page, on_project};
+use crate::releases::release::{prerelease, release_issued, release_pending};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<PrereleaseParams>("prerelease"), Typed::of::<ReleaseParams>("release")];
@@ -21,10 +21,10 @@ pub const TYPED: &[Typed] = &[Typed::of::<PrereleaseParams>("prerelease"), Typed
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("prerelease", "Pre-release Check", crate::cmd::input::typed::<PrereleaseParams>)
+        CommandSpec::new("prerelease", "Pre-release Check", crate::commands::input::typed::<PrereleaseParams>)
             .params("{rev?: an issued rev (default the pending one), limit?: rows per group (50, max 2000)} (read only)")
             .noundo(),
-        CommandSpec::new("release", "Release", crate::cmd::input::typed::<ReleaseParams>)
+        CommandSpec::new("release", "Release", crate::commands::input::typed::<ReleaseParams>)
             .params(
                 "{rev?: an issued rev to write again (records nothing; default: issue the pending one), folder?, outputs?: [slot], \
 accept?: \"errors\", provisional?: \"finalise\"|\"issue\", existing?: \"add-missing\"|\"replace\"|\"keep-both\", colour?: \"mono\"|\"screen\", \

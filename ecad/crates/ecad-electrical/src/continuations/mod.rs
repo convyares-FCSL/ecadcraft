@@ -17,15 +17,16 @@
 //!
 //! # Update map (design 049 §8)
 //! [`names_named`] says which names a commit's ops touch (arrows created, deleted, renamed,
-//! captioned, moved, linked or unlinked, their definitions); `xref::Watch` compares what those
+//! captioned, moved, linked or unlinked, their definitions); `devices::Watch` compares what those
 //! names show (`shown`) before and after, page by page, so only pages whose texts or runs changed
 //! are redrawn. A renumbered or re-sheeted page adds the names with an arrow on it ([`names_on`]);
 //! page order changes add those on the pages whose position changed; the reference style, sheet,
 //! length unit and this area's keys ([`is_wide_key`]) redraw every page with an arrow. Every other
 //! op names nothing.
 //!
-//! Excludes: commands (`ecad_engine::cmd::continuation`), the arrow's name text (`crate::wires`), checks.
+//! Excludes: commands (`ecad_engine::commands::continuation`), the arrow's name text (`crate::wires`), checks.
 
+pub mod commands;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
@@ -33,9 +34,9 @@ use ecad_model::connectivity::continuation_key;
 use ecad_model::{Aid, AidId, Document, Form, Op, PageId, Placement, Pt, Representation, RepresentationId, Subject};
 
 use crate::defaults::{self, Scope};
-use crate::text_style::fonts::TextMetrics;
-use crate::text_style::{TextKind, TextTarget, text_shown, text_style};
-use crate::xref::{Group, HAlign, Part, Places, RefIndex, Shape, VAlign};
+use crate::styles::text_style::fonts::TextMetrics;
+use crate::styles::text_style::{TextKind, TextTarget, text_shown, text_style};
+use crate::references::devices::{Group, HAlign, Part, Places, RefIndex, Shape, VAlign};
 
 /// The `setprop` key of a continuation's name (design 072 §6.2).
 pub const NAME_KEY: &str = "name";
@@ -237,12 +238,12 @@ pub struct End {
 /// O(m log m).
 pub fn ends_named(doc: &Document, places: &mut Places<'_>, key: &str) -> Vec<End> {
     let Some((_, members)) = group_named(doc, key) else { return Vec::new() };
-    let unlocated = ecad_model::derive::unlocated(doc.settings.reference_style()).to_string();
+    let unlocated = ecad_model::connectivity::derive::unlocated(doc.settings.reference_style()).to_string();
     let mut out: Vec<End> = members
         .into_iter()
         .filter_map(|rid| {
             let r = doc.representations.get(&rid)?;
-            let (key, text) = match places.sorted(r.page, crate::xref::anchor(doc, r)) {
+            let (key, text) = match places.sorted(r.page, crate::references::devices::anchor(doc, r)) {
                 Some((k, t)) => (Some(k), t),
                 None => (None, unlocated.clone()),
             };
@@ -286,7 +287,7 @@ struct Cache<'m> {
     settings: Settings,
     ends: BTreeMap<String, Vec<End>>,
     /// The text styles and fonts, resolved on the first measurement (only caption runs measure).
-    look: Option<crate::text_style::fonts::Look>,
+    look: Option<crate::styles::text_style::fonts::Look>,
     /// What measures the texts.
     m: &'m dyn TextMetrics,
 }
@@ -299,8 +300,8 @@ impl<'m> Cache<'m> {
     /// The width of `value` in `kind`'s style, with the fonts resolved once per derivation.
     fn width(&mut self, doc: &Document, kind: TextKind, value: &str) -> f64 {
         let m = self.m;
-        let look = self.look.get_or_insert_with(|| crate::text_style::fonts::Look::with(doc, m));
-        crate::text_style::fonts::width_in(look.fonts_for(kind), look.style(kind), value, m)
+        let look = self.look.get_or_insert_with(|| crate::styles::text_style::fonts::Look::with(doc, m));
+        crate::styles::text_style::fonts::width_in(look.fonts_for(kind), look.style(kind), value, m)
     }
 
     fn ends(&mut self, doc: &Document, places: &mut Places<'_>, key: &str) -> &[End] {
@@ -427,7 +428,7 @@ fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, cap
         part(BRACKET_INDEX + 1, Shape::Line(a, back(a))),
         part(BRACKET_INDEX + 2, Shape::Line(b, back(b))),
     ];
-    if text_shown(doc, TextTarget::page(page), TextKind::ContinuationCaption) == crate::text_style::Shown::Off {
+    if text_shown(doc, TextTarget::page(page), TextKind::ContinuationCaption) == crate::styles::text_style::Shown::Off {
         return out;
     }
     let lines = wrap(doc, cache, caption, (hi - lo).max(s.min_wrap));
@@ -513,7 +514,7 @@ pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<
 /// the state before and after the ops).
 pub fn names_named(doc: &Document, ops: &[Op]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    for e in &ecad_model::effect::Effects::of(ops) {
+    for e in &ecad_model::document::effect::Effects::of(ops) {
         names_named_by(doc, e, &mut out);
     }
     out
@@ -521,8 +522,8 @@ pub fn names_named(doc: &Document, ops: &[Op]) -> BTreeSet<String> {
 
 /// One effect of [`names_named`]: adds to `out` the continuation names `effect` could change the
 /// texts or runs of, looked up in `doc`.
-pub fn names_named_by(doc: &Document, effect: &ecad_model::effect::Effect<'_>, out: &mut BTreeSet<String>) {
-    use ecad_model::effect::Effect;
+pub fn names_named_by(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>, out: &mut BTreeSet<String>) {
+    use ecad_model::document::effect::Effect;
     let rep = |out: &mut BTreeSet<String>, r: &Representation| {
         if let Subject::Aid(a) = r.subject {
             out.extend(name_of(doc, a));
@@ -592,7 +593,7 @@ pub fn is_wide_key(key: &str) -> bool {
 /// Brief 050a: whether a change of text style `id` redraws every page with an arrow: it is the
 /// style the reference or the caption text uses.
 pub fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: &ecad_model::StyleRef) -> bool {
-    use crate::text_style::{TextKind, style_of};
+    use crate::styles::text_style::{TextKind, style_of};
     let at = crate::defaults::Scope::project();
     catalogue == ecad_model::StyleCatalogue::Text
         && (*id == style_of(doc, TextKind::Reference, at) || *id == style_of(doc, TextKind::ContinuationCaption, at))
@@ -644,7 +645,7 @@ pub fn goto(doc: &Document, source: RepresentationId, target: Option<Representat
     if let Some(t) = target {
         return ends.iter().any(|e| e.rep == t).then_some(t);
     }
-    let at = |e: &End| doc.representations.get(&e.rep).and_then(|r| crate::xref::anchor(doc, r));
+    let at = |e: &End| doc.representations.get(&e.rep).and_then(|r| crate::references::devices::anchor(doc, r));
     let i = last.and_then(|(page, p)| ends.iter().position(|e| e.page == page && at(e).is_some_and(|a| a.x == p.x && a.y == p.y)));
     let next = match i {
         Some(i) => ends.get(i.saturating_add(1)).or_else(|| ends.first()),
@@ -655,7 +656,7 @@ pub fn goto(doc: &Document, source: RepresentationId, target: Option<Representat
 
 /// One other end in words: `102-C-2  page 102 "Supply"`.
 pub fn end_words(doc: &Document, e: &End) -> String {
-    format!("{}  {}", e.text, crate::references::page_words(doc, e.page))
+    format!("{}  {}", e.text, crate::references::cables::page_words(doc, e.page))
 }
 
 /// Hover lines for arrow `rep` of continuation `c` (design 049 §5.4).
@@ -688,8 +689,8 @@ pub fn arrows_among(doc: &Document, cs: &[AidId]) -> (Vec<AidId>, usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ecad_model::units::{Degrees, Radians};
+    use crate::*;
+    use ecad_model::geometry::units::{Degrees, Radians};
 
     #[test]
     fn the_caption_rule() {

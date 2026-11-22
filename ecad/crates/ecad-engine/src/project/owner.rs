@@ -1,6 +1,6 @@
 //! The project as the engine's document owner: drawing commits, undo and redo.
 
-use super::*;
+use crate::project::*;
 
 /// Commands refused on ECAD pages before they start (owner decision, 2026-10-31, brief 007): the
 /// Block Editor and in-place reference editing swap or rewrite the page drawing and its blocks
@@ -54,15 +54,15 @@ impl DocumentOwner for Project {
         }
         if view.unavailable {
             self.restore(pg, c.uid, page);
-            return Verdict::Refuse(crate::cmd::UNAVAILABLE.into());
+            return Verdict::Refuse(crate::commands::UNAVAILABLE.into());
         }
         // OOPS brings back only the plain drawing the last erase on this page removed (brief 023).
         if c.command == "oops" && !self.oops.allows(c.uid, page, &last, &now) {
             self.restore(pg, c.uid, page);
-            self.events.record(EventKind::Refused, Some(c.command), head, Some(page), crate::oops::REFUSED);
-            return Verdict::Refuse(crate::oops::REFUSED.into());
+            self.events.record(EventKind::Refused, Some(c.command), head, Some(page), crate::translate::oops::REFUSED);
+            return Verdict::Refuse(crate::translate::oops::REFUSED.into());
         }
-        let stash = crate::oops::STASH_COMMANDS.contains(&c.command);
+        let stash = crate::translate::oops::STASH_COMMANDS.contains(&c.command);
         self.tag_high.catch_up(&self.ledger);
         let t = translate::translate(&mut translate::Ctx {
             tags: &mut self.tag_high,
@@ -112,10 +112,10 @@ impl DocumentOwner for Project {
             return Verdict::Refuse(m);
         }
         // Brief 052d (design 052 §5.4): the moved device symbols' contexts before the move.
-        let moved = crate::proposals::before_move(self.ledger.document(), &t.ops);
+        let moved = ecad_electrical::symbols::proposals::before_move(self.ledger.document(), &t.ops);
         let pending = self.derived.begin(self.ledger.document(), &t.ops);
         // The numbering pass (brief 022) extends the same transaction.
-        if let Err(e) = self.ledger.commit_extended(self.author.clone(), &label, t.ops, now_ms(), ecad_model::wiring::assign) {
+        if let Err(e) = self.ledger.commit_extended(self.author.clone(), &label, t.ops, now_ms(), ecad_model::connectivity::wiring::assign) {
             self.restore(pg, c.uid, page);
             let m = format!("not recorded: {e}");
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
@@ -227,7 +227,7 @@ impl DocumentOwner for Project {
         let doc = self.ledger.document();
         let dragged: BTreeSet<Handle> = drag.handles.iter().copied().collect();
         let mut moved: HashMap<ConnectionPointId, Pt> = HashMap::new();
-        for (t, rep, at) in ecad_model::derive::connection_point_positions(doc, page) {
+        for (t, rep, at) in ecad_model::connectivity::derive::connection_point_positions(doc, page) {
             let carried = match doc.representations.get(&rep).map(|r| r.form) {
                 Some(Form::Drawn) => view.map.marker(rep, t).is_some_and(|h| dragged.contains(&h)),
                 Some(Form::Symbol) => {
@@ -307,12 +307,12 @@ impl Project {
         let order_before = self.ledger.document().page_order.clone();
         // Undoing an issued revision stops and asks first (owner answer Q7).
         if undo
-            && let Some((rev, n)) = crate::revisions::issue_in(&crate::revisions::inverse(&ops))
+            && let Some((rev, n)) = ecad_electrical::releases::revisions::issue_in(&ecad_electrical::releases::revisions::inverse(&ops))
             && !std::mem::take(&mut self.confirm_issue_undo)
         {
-            let row = crate::revisions::list(self.ledger.document()).into_iter().find(|r| r.n == n);
+            let row = ecad_electrical::releases::revisions::list(self.ledger.document()).into_iter().find(|r| r.n == n);
             let date = row.as_ref().map(|r| r.get("date").to_string()).filter(|d| !d.is_empty());
-            let mut q = crate::cmd::sheet::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
+            let mut q = crate::pages::commands::sheets::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
             // Brief 027 (design 027 §5.2, Q10): undo never deletes files.
             if row.as_ref().is_some_and(|r| r.released.is_some()) {
                 q.push_str(" Its release folder stays on disk.");
@@ -324,7 +324,7 @@ impl Project {
         // Undoing a merge stops and asks first (design 020 §4.3).
         if undo
             && !std::mem::take(&mut self.confirm_merge_undo)
-            && let Some(q) = crate::merging::undo_question(self)
+            && let Some(q) = crate::history::merging::undo_question(self)
         {
             self.merge_undo_question = Some(q.clone());
             return Err(EngineError::Other(format!("{} Use Undo Merge (`undomerge`) to confirm.", q.replace('\n', " "))));
@@ -349,22 +349,22 @@ impl Project {
     /// Brief 052d (design 052 §5.4, Q3): after a move, the moved symbols whose context changed
     /// propose it. Unset devices take it in one follow-up transaction (`u` undoes it first, then
     /// the move); devices with another value wait in [`Project::conflicts`] (Leave by default).
-    fn move_follow_up(&mut self, pg: &mut Pages<'_>, moved: &[crate::proposals::Moved], label: &str) {
+    fn move_follow_up(&mut self, pg: &mut Pages<'_>, moved: &[ecad_electrical::symbols::proposals::Moved], label: &str) {
         if moved.is_empty() {
             return;
         }
         let doc = self.ledger.document();
-        let planned = match crate::proposals::after_move(doc, &mut self.ids, moved) {
+        let planned = match ecad_electrical::symbols::proposals::after_move(doc, &mut self.ids, moved) {
             Ok(p) => p,
             Err(e) => {
                 pg.echo(e);
                 return;
             }
         };
-        let words = crate::proposals::conflict_words(doc, &planned.conflicts);
+        let words = ecad_electrical::symbols::proposals::conflict_words(doc, &planned.conflicts);
         let conflicts = planned.conflicts.clone();
         if !planned.ops.is_empty() {
-            let follow = crate::proposals::follow_up_label(&planned);
+            let follow = ecad_electrical::symbols::proposals::follow_up_label(&planned);
             let set: Vec<String> = planned.set.iter().map(|(c, _, v)| format!("{} is now in {v}", crate::devices::tag_words(doc, *c))).collect();
             match self.apply_edit(pg, "move", &follow, planned.ops) {
                 Ok(_) => pg.echo(format!("{label}; {}.", set.join("; "))),

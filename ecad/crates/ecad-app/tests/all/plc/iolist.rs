@@ -3,9 +3,9 @@
 //! nothing.
 
 use cadcraft_engine::Session;
-use ecad_app::lists::plc::IoView;
+use ecad_app::plc::list::IoView;
 use ecad_engine::{Project, ProjectHandle};
-use ecad_ui::table::TableSource;
+use ecad_widgets::table::TableSource;
 use serde_json::json;
 
 fn run(s: &mut Session, cmd: &str, params: serde_json::Value) -> serde_json::Value {

@@ -15,14 +15,14 @@ use ecad_model::merge::Obj;
 /// The property's own refusal, or an empty value.
 pub fn edit_rule(doc: &Document, obj: Obj, key: &str, value: &str) -> Result<String, CmdError> {
     let checked = match obj {
-        Obj::Device(c) if crate::cmd::prop::is_device_property(ecad_model::ObjectRef::Device(c), key) => {
+        Obj::Device(c) if crate::properties::commands::is_device_property(ecad_model::ObjectRef::Device(c), key) => {
             crate::devices::property_value(doc, key, Some(value))?
         }
-        Obj::Wire(c) => match crate::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Wire(c), key, Some(value))? {
+        Obj::Wire(c) => match crate::wires::commands::wires::setprop_rule(doc, ecad_model::ObjectRef::Wire(c), key, Some(value))? {
             Some(v) => v,
             None => crate::devices::property_value(doc, "", Some(value))?,
         },
-        Obj::Cable(c) => match crate::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Cable(c), key, Some(value))? {
+        Obj::Cable(c) => match crate::wires::commands::wires::setprop_rule(doc, ecad_model::ObjectRef::Cable(c), key, Some(value))? {
             Some(v) => v,
             None => crate::devices::property_value(doc, "", Some(value))?,
         },

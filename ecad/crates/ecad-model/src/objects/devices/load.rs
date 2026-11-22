@@ -15,7 +15,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::units::Watts;
+use crate::geometry::units::Watts;
 
 /// The largest rated power of a load, in watts (100 MW).
 pub const MAX_POWER_WATTS: f64 = 100_000_000.0;
@@ -24,8 +24,8 @@ pub const MAX_POWER_WATTS: f64 = 100_000_000.0;
 ///
 /// # Example
 /// ```
-/// use ecad_model::device::Load;
-/// use ecad_model::units::Watts;
+/// use crate::objects::devices::Load;
+/// use crate::geometry::units::Watts;
 /// assert_eq!(Load { rated_power: Some(Watts(3000.0)) }.to_string(), "3 kW");
 /// assert_eq!(Load { rated_power: Some(Watts(5.0)) }.to_string(), "5 W");
 /// assert_eq!(serde_json::to_string(&Load { rated_power: Some(Watts(5.0)) }).unwrap(), r#"{"rated_power":5.0}"#);

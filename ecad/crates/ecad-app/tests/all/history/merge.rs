@@ -8,13 +8,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::history_panel;
+use ecad_app::history::panel;
 use ecad_file::history::NodeKind;
 use egui_kittest::Harness;
 use serde_json::json;
 
-use crate::checks_ui::demo_file;
-use crate::mouse_tester::{Deltas, doc, harness_with, ok, shot};
+use crate::checks::ui::demo_file;
+use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, ok, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -28,7 +28,7 @@ fn save_shot(h: &H, deltas: &Deltas, name: &str) {
 
 fn click(h: &mut H, label: &str) {
     // UI rev 3: the panels' tabs are reached through the strip and the inspector.
-    crate::project_panel::click(h, label);
+    crate::pages::project_panel::click(h, label);
 }
 
 fn last_label(h: &mut H) -> String {
@@ -53,7 +53,7 @@ fn the_branch_bar_merges_into_main_through_the_dialog_and_undo_asks_first() {
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
-    click(&mut h, history_panel::HISTORY_TAB);
+    click(&mut h, panel::HISTORY_TAB);
     let (k1, _) = doc(&mut h).devices.iter().find(|(_, c)| c.tag().is_some_and(|t| t == "-K01")).map(|(k, c)| (*k, c.clone())).unwrap();
     // A branch changes -K01's description; main changes it too (a conflict).
     ok(&mut h, r#"branch {"name":"Option B"}"#);

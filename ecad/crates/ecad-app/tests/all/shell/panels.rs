@@ -4,11 +4,11 @@
 //! sections, the page well's hover preview, and the screenshots for the side-by-side.
 
 use crate::common::{self, Opts};
-use crate::project_panel::{doc, rev3_app as new_app};
+use crate::pages::project_panel::{doc, rev3_app as new_app};
 use ecad_app::App;
 use ecad_app::shell::state::{LeftTab, ShellState};
 use ecad_app::shell::{layout, left, tool_strip};
-use ecad_app::{devices_panel, history_panel, project_panel};
+use {ecad_app::devices::panel, ecad_app::history::panel, ecad_app::pages::project_panel};
 use eframe::egui::{self, Rect, pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -160,17 +160,17 @@ fn book_ticks_pages_apart_from_the_open_one_and_moves_them_to_a_group() {
 #[test]
 fn devices_groups_by_location_with_not_on_a_page_yet_first() {
     let mut h = harness();
-    crate::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[50,50],"tag":"-K1"}"#);
+    crate::pages::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[50,50],"tag":"-K1"}"#);
     h.get_by_label(&tool_strip::panel_label(LeftTab::Devices)).click();
     h.run_steps(4);
-    for g in devices_panel::Grouping::ALL {
+    for g in panel::Grouping::ALL {
         assert!(h.query_by_label(&format!("Group by {}", g.label())).is_some(), "{g:?}");
     }
-    assert_eq!(h.state().panel.devices.grouping, devices_panel::Grouping::Location);
+    assert_eq!(h.state().panel.devices.grouping, panel::Grouping::Location);
     assert!(h.query_all_by_label_contains("Device -K").count() > 0, "the device is listed");
     h.get_by_label("Group by Type").click();
     h.run_steps(3);
-    assert_eq!(h.state().panel.devices.grouping, devices_panel::Grouping::Type);
+    assert_eq!(h.state().panel.devices.grouping, panel::Grouping::Type);
     assert!(h.query_by_label_contains("Group -K").is_some(), "grouped by its tag's letter");
 }
 
@@ -180,19 +180,19 @@ fn devices_groups_by_location_with_not_on_a_page_yet_first() {
 #[test]
 fn devices_group_by_their_stored_location_not_their_page() {
     let mut h = harness();
-    crate::project_panel::ok(&mut h, r#"pageprops {"location":"+CAB1"}"#);
-    crate::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[50,50],"tag":"-K1","location":"keep"}"#);
+    crate::pages::project_panel::ok(&mut h, r#"pageprops {"location":"+CAB1"}"#);
+    crate::pages::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[50,50],"tag":"-K1","location":"keep"}"#);
     h.get_by_label(&tool_strip::panel_label(LeftTab::Devices)).click();
     h.run_steps(4);
     assert!(h.query_by_label_contains("Group No location").is_some(), "unset: the page only proposes");
-    let d = crate::project_panel::doc(&mut h);
+    let d = crate::pages::project_panel::doc(&mut h);
     let k = d.components_tagged("-K1")[0];
-    crate::project_panel::ok(&mut h, &format!(r#"setlocation {{"component":"{}","value":"+CAB1"}}"#, k.hex()));
+    crate::pages::project_panel::ok(&mut h, &format!(r#"setlocation {{"component":"{}","value":"+CAB1"}}"#, k.hex()));
     h.run_steps(4);
     assert!(h.query_by_label_contains("Group +CAB1").is_some(), "grouped under its stored location");
     assert!(h.query_by_label_contains("Group No location").is_none());
     // A device placed on the page takes its proposal.
-    crate::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[90,50],"tag":"-K2"}"#);
+    crate::pages::project_panel::ok(&mut h, r#"place {"symbol":"coil","at":[90,50],"tag":"-K2"}"#);
     h.run_steps(4);
     assert!(h.query_by_label_contains("Group No location").is_none(), "the new device took +CAB1");
 }
@@ -201,8 +201,8 @@ fn devices_group_by_their_stored_location_not_their_page() {
 /// command; the line under it says so.
 #[test]
 fn not_on_a_page_yet_says_placing_is_not_available_yet() {
-    assert!(!devices_panel::PLACE_LATER.to_lowercase().contains("drag"));
-    assert!(devices_panel::PLACE_LATER.contains("not available yet"));
+    assert!(!panel::PLACE_LATER.to_lowercase().contains("drag"));
+    assert!(panel::PLACE_LATER.contains("not available yet"));
 }
 
 /// Review finding 5: Changes shows the first few, then "Show n earlier changes", so Versions stays
@@ -212,20 +212,20 @@ fn history_shows_a_few_changes_then_the_rest_on_request() {
     let mut h = harness();
     for i in 0..12 {
         let y = 150 + 10 * i;
-        crate::project_panel::ok(&mut h, &format!(r#"wire {{"points":[[0,{y}],[30,{y}]]}}"#));
+        crate::pages::project_panel::ok(&mut h, &format!(r#"wire {{"points":[[0,{y}],[30,{y}]]}}"#));
     }
     h.get_by_label(&tool_strip::panel_label(LeftTab::History)).click();
     h.run_steps(4);
-    assert_eq!(h.query_all_by_label_contains("Step ").count(), history_panel::FIRST_CHANGES);
-    h.get_by_label(history_panel::EARLIER).click();
+    assert_eq!(h.query_all_by_label_contains("Step ").count(), panel::FIRST_CHANGES);
+    h.get_by_label(panel::EARLIER).click();
     h.run_steps(3);
-    assert!(h.query_all_by_label_contains("Step ").count() > history_panel::FIRST_CHANGES);
+    assert!(h.query_all_by_label_contains("Step ").count() > panel::FIRST_CHANGES);
 }
 
 #[test]
 fn history_shows_the_revision_branches_changes_and_versions() {
     let mut h = harness();
-    crate::project_panel::ok(&mut h, r#"wire {"points":[[0,150],[30,150]]}"#);
+    crate::pages::project_panel::ok(&mut h, r#"wire {"points":[[0,150],[30,150]]}"#);
     h.get_by_label(&tool_strip::panel_label(LeftTab::History)).click();
     h.run_steps(4);
     for s in ["Section Branches", "Section Changes", "Section Versions"] {
@@ -233,7 +233,7 @@ fn history_shows_the_revision_branches_changes_and_versions() {
     }
     assert!(h.query_by_label("Branch main").is_some());
     assert!(h.query_all_by_label_contains("Step ").count() > 0, "the changes are listed");
-    assert!(h.query_by_label(history_panel::NAME_THIS).is_some());
+    assert!(h.query_by_label(panel::NAME_THIS).is_some());
     // Folding a section hides its rows.
     h.get_by_label("Section Changes").click();
     h.run_steps(3);
@@ -258,13 +258,13 @@ fn hovering_a_page_in_the_well_shows_its_preview() {
 /// folder and a wgpu adapter exists; nothing is asserted about the pictures).
 #[test]
 fn screenshots_of_boards_1_02_to_1_08() {
-    let Some(out) = crate::project_panel::shots() else { return };
+    let Some(out) = crate::pages::project_panel::shots() else { return };
     ecad_app::canvas::register_sheet_faces();
     let dir = std::env::temp_dir().join(format!("ecad-uiv3a-shots-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = crate::checks_ui::demo_file(&dir);
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
-    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
+    let path = crate::checks::ui::demo_file(&dir);
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
+    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone())).build_ui_state(
         |ui, t: &mut App| {
             let r = ui.ctx().content_rect();
             ui.scope_builder(eframe::egui::UiBuilder::new().max_rect(r), |ui| {
@@ -286,7 +286,7 @@ fn screenshots_of_boards_1_02_to_1_08() {
     let shot = |h: &mut Harness<'static, App>, name: &str| {
         h.state_mut().fit_sheet();
         h.run_steps(4);
-        let _ = crate::mouse_tester::shot(h, &deltas, &out.join(name));
+        let _ = crate::canvas::mouse_acceptance::shot(h, &deltas, &out.join(name));
     };
     // 1.02: Book pinned, two pages ticked.
     h.state_mut().set_left_tab(LeftTab::Pages);
@@ -297,7 +297,7 @@ fn screenshots_of_boards_1_02_to_1_08() {
     // 1.03: Devices floating.
     h.state_mut().set_left_tab(LeftTab::Devices);
     h.run_steps(4);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-A-1.03-ours.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-A-1.03-ours.png"));
     // 1.04: History pinned.
     h.state_mut().set_left_tab(LeftTab::History);
     h.state_mut().toggle_pin();
@@ -316,6 +316,6 @@ fn screenshots_of_boards_1_02_to_1_08() {
     let at = h.get_by_label("Page 5").rect().center();
     h.event(egui::Event::PointerMoved(at));
     h.run_steps(4);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-A-1.08-ours.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-A-1.08-ours.png"));
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -1,6 +1,6 @@
 //! Settings ▸ Standards as column sets on U3's table (brief 042, screen e): every default of the
 //! registry with its value and an origin badge. Brief 050a: the style catalogues (text styles
-//! among them, one row per style, not per kind) are [`crate::lists::style_catalogues`].
+//! among them, one row per style, not per kind) are [`crate::settings::style_catalogues`].
 //!
 //! **Update map.** The rows show the project's values (resolved at project scope), so only a
 //! commit that touched the project (a project property, or the settings, which the change feed
@@ -9,10 +9,10 @@
 //! patched and tinted. Any other commit: nothing. A full rebuild only on first show or a new
 //! project.
 
-use ecad_engine::defaults::{self, Entry, Source};
+use ecad_electrical::defaults::{self, Entry, Source};
 use ecad_model::Document;
-use ecad_ui::prim::Tone;
-use ecad_ui::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
+use ecad_widgets::prim::Tone;
+use ecad_widgets::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
 
 pub const SETTING: ColumnId = ColumnId(0);
 pub const GROUP: ColumnId = ColumnId(1);

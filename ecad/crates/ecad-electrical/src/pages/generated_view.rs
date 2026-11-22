@@ -1,18 +1,18 @@
 //! The generated pages' view (design 064 §4.1, `GeneratedView`): which generated pages a commit
 //! redraws, by kind, through one exhaustive match ([`changed`], design 064 §4.2). It keeps the
-//! wire categories in use while the book has a cover ([`crate::front::Uses`]).
+//! wire categories in use while the book has a cover ([`crate::pages::front::Uses`]).
 //!
 //! # Update map
 //! After the commit, each effect of the transaction read on the document after it:
-//! - Contents: every effect of `crate::generated::touched_by` for the kind (a page added, removed,
+//! - Contents: every effect of `crate::pages::generated::touched_by` for the kind (a page added, removed,
 //!   moved, retitled, renumbered or refiled; a folder).
-//! - Revisions: every effect of `crate::generated::touched_by` for the kind (a project property,
+//! - Revisions: every effect of `crate::pages::generated::touched_by` for the kind (a project property,
 //!   a version, the revision rows or the project's info).
-//! - Cover, while the book had one: the effects of [`crate::front::CoverNote`] (its own map), and
-//!   of [`crate::front::UsesNote`] when they change the set of wire categories in use. A cover
+//! - Cover, while the book had one: the effects of [`crate::pages::front::CoverNote`] (its own map), and
+//!   of [`crate::pages::front::UsesNote`] when they change the set of wire categories in use. A cover
 //!   that comes with the transaction is drawn, and its categories are read then.
 //! - The report kinds (BOM, terminals, cables, I/O list, rack) follow their models: their pages
-//!   come from [`super::ReportsView`]'s outcome.
+//!   come from [`crate::views::ReportsView`]'s outcome.
 //! - Every other effect changes nothing.
 //!
 //! The pages of each changed kind are read from the page order only when some kind changed. The
@@ -20,13 +20,13 @@
 //! page added, removed or moved, reports the cover's Checks rows ([`GeneratedView::take_cover`]).
 //! Before the commit it notes nothing. Open, reload and branch switch forget the categories.
 
-use ecad_model::effect::{AreaSet, Effect};
-use ecad_model::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
+use ecad_model::document::effect::{AreaSet, Effect};
+use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, GenKind, PageId};
 
-use super::Inputs;
-use crate::front::{CoverNote, Uses, UsesNote};
-use crate::generated::{kind_of, touched_by};
+use crate::views::Inputs;
+use crate::pages::front::{CoverNote, Uses, UsesNote};
+use crate::pages::generated::{kind_of, touched_by};
 
 /// The generated pages' view.
 #[derive(Debug, Default)]

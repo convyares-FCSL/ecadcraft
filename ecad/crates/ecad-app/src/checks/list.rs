@@ -11,10 +11,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
 use ecad_engine::checks::{Fix, Kind, Severity};
-use ecad_ui::prim::Tone;
-use ecad_ui::table::{Align, Cell, Changed, Column, ColumnId, TableSource, Width};
+use ecad_widgets::prim::Tone;
+use ecad_widgets::table::{Align, Cell, Changed, Column, ColumnId, TableSource, Width};
 
-use crate::checks_panel::{self as cp, Row};
+use crate::checks::panel::{self as cp, Row};
 
 /// A row's identity: a hash of what the check says, and which of identical rows it is.
 pub type CheckKey = (u64, u32);
@@ -52,8 +52,8 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::NumberThem => cp::NUMBER_THEM,
         Fix::Finalise => cp::FINALISE,
         Fix::UseContext(..) => cp::USE_CONTEXT,
-        Fix::SetDesignation(_, ecad_engine::designations::Aspect::Location) => cp::SET_LOCATION,
-        Fix::SetDesignation(_, ecad_engine::designations::Aspect::Function) => cp::SET_FUNCTION,
+        Fix::SetDesignation(_, ecad_electrical::locations::designations::Aspect::Location) => cp::SET_LOCATION,
+        Fix::SetDesignation(_, ecad_electrical::locations::designations::Aspect::Function) => cp::SET_FUNCTION,
         Fix::ShowDesignations => cp::SHOW_IN_SETTINGS,
         Fix::ShowReports | Fix::ShowCables => cp::SHOW,
         Fix::OpenStandards(_) => cp::GO_TO_STANDARDS,
@@ -92,7 +92,7 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::EditTitleBlock(..) => cp::EDIT_BLOCK,
         Fix::ClearPageSheet(_) => cp::CLEAR_PAGE_SHEET,
         // Brief 059: the pairs are in `cable_manager::pair`.
-        Fix::AssignCable(_) | Fix::UseDrawing(..) | Fix::ShowCableField(..) => crate::lists::cable_manager::single(f),
+        Fix::AssignCable(_) | Fix::UseDrawing(..) | Fix::ShowCableField(..) => crate::cables::manager::single(f),
     }]
 }
 

@@ -1,6 +1,6 @@
 //! The rules of the cross-reference commands (brief 025, design 025 §4.4, §5.3, §5.4): where
 //! `refgoto` goes, and the `mirror` value `mirrormove` writes. The listings (`xrefs`,
-//! `contacts`) are [`crate::xref`]'s own; the engine crate's shims open pages and answer in JSON.
+//! `contacts`) are [`crate::references::devices`]'s own; the engine crate's shims open pages and answer in JSON.
 
 use ecad_model::{CableId, DeviceId, Document, ItemId, Op, PageId, Pt, RepresentationId, Subject};
 
@@ -8,11 +8,11 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::cmd::input::Point;
-use crate::cmd::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::input::Point;
+use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
-use crate::traits::DeviceKind;
-use crate::xref::{self, Placement, RefIndex};
+use crate::devices::traits::DeviceKind;
+use crate::references::devices::{self, Placement, RefIndex};
 
 /// Where `refgoto` goes: the page, the point to centre, the item to select, and the words.
 #[derive(Debug, Clone, PartialEq)]
@@ -34,7 +34,7 @@ pub fn goto(
     doc: &Document, idx: &RefIndex, source: RepresentationId, target: Option<RepresentationId>, ring: Option<(PageId, Pt)>,
 ) -> Result<Jump, CmdError> {
     let r = doc.representations.get(&source).ok_or(CmdError::refused("no such reference"))?;
-    let arrow = matches!(idx.member(source), Some((xref::Group::Continuation(_), _)));
+    let arrow = matches!(idx.member(source), Some((devices::Group::Continuation(_), _)));
     let none = match r.subject {
         // Brief 049: a lonely continuation arrow.
         Subject::Device(_) if arrow || crate::continuations::arrow(doc, source).is_some() => "This continuation has no other end.",
@@ -49,11 +49,11 @@ pub fn goto(
     if idx.member(source).is_none() {
         return Err(CmdError::refused(none));
     }
-    let t = if arrow { crate::continuations::goto(doc, source, target, ring) } else { xref::goto_target(doc, idx, source, target) };
+    let t = if arrow { crate::continuations::goto(doc, source, target, ring) } else { devices::goto_target(doc, idx, source, target) };
     let t = t.ok_or(CmdError::refused(none))?;
     const LOST: &str = "the other end cannot be located";
     let tr = doc.representations.get(&t).ok_or(CmdError::refused(LOST))?;
-    let at = xref::anchor(doc, tr)
+    let at = devices::anchor(doc, tr)
         .or_else(|| {
             tr.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
                 ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
@@ -61,10 +61,10 @@ pub fn goto(
             })
         })
         .ok_or(CmdError::refused(LOST))?;
-    let mut places = xref::Places::new(doc);
+    let mut places = devices::Places::new(doc);
     let place = places.text(tr.page, Some(at));
     let what = match tr.subject {
-        Subject::Device(c) => match xref::device(doc, c).head {
+        Subject::Device(c) => match devices::device(doc, c).head {
             Some(h) if h == t => format!("{}'s coil", crate::devices::tag_words(doc, c)),
             _ => format!("{}'s contact", crate::devices::tag_words(doc, c)),
         },
@@ -75,7 +75,7 @@ pub fn goto(
             Some(ecad_model::Aid::Box(_)) | None => "the reference".into(),
         },
     };
-    let message = format!("{}, {what} ({place}).", crate::references::page_words(doc, tr.page).replacen("page", "Page", 1));
+    let message = format!("{}, {what} ({place}).", crate::references::cables::page_words(doc, tr.page).replacen("page", "Page", 1));
     Ok(Jump { page: tr.page, at, item: tr.items.first().copied(), target: t, message })
 }
 
@@ -88,24 +88,24 @@ pub fn mirror_for(doc: &Document, c: DeviceId, at: Option<Pt>, placement: Option
     let placement = match (at, placement) {
         (Some(_), Some(_)) => return Err(CmdError::input("give `at` or `placement`, not both")),
         (None, None) => return Err(CmdError::input("`at` ([x, y]) or `placement` (auto, below, right, off) is required")),
-        (None, Some(w)) => match xref::parse_mirror(w)? {
+        (None, Some(w)) => match devices::parse_mirror(w)? {
             Placement::At(_) => return Err(CmdError::refused("`placement` must be auto, below, right or off; use `at` for a point")),
             p => p,
         },
         (Some(p), None) => {
-            let dev = xref::device(doc, c);
+            let dev = devices::device(doc, c);
             let head = dev
                 .head
                 .and_then(|h| doc.representations.get(&h))
                 .ok_or(CmdError::refused("This device has no coil (or other head symbol) to put a table under."))?;
-            let origin = xref::anchor(doc, head).ok_or(CmdError::refused("This device's coil cannot be located."))?;
+            let origin = devices::anchor(doc, head).ok_or(CmdError::refused("This device's coil cannot be located."))?;
             let k = match doc.settings.length_unit {
                 ecad_model::LengthUnit::Millimetre => 1.0,
                 ecad_model::LengthUnit::Inch => 25.4,
             };
             let d = Pt::new((p.x - origin.x) * k, (p.y - origin.y) * k);
-            if !(d.x.abs() <= xref::MAX_OFFSET_MM && d.y.abs() <= xref::MAX_OFFSET_MM) {
-                return Err(CmdError::refused(format!("Put the table within {} mm of its coil.", xref::MAX_OFFSET_MM)));
+            if !(d.x.abs() <= devices::MAX_OFFSET_MM && d.y.abs() <= devices::MAX_OFFSET_MM) {
+                return Err(CmdError::refused(format!("Put the table within {} mm of its coil.", devices::MAX_OFFSET_MM)));
             }
             Placement::At(d)
         }
@@ -149,13 +149,13 @@ pub fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: O
     };
     let message = format!("{}'s contact table {words}.", crate::devices::tag_words(doc, c));
     let who = crate::devices::tag_words(doc, c);
-    let table = xref::table_of_typed(after.as_deref())?;
-    let ops = vec![Op::ModifyDevice { id: c, before: comp.clone(), after: xref::with_table(comp, &who, table)? }];
+    let table = devices::table_of_typed(after.as_deref())?;
+    let ops = vec![Op::ModifyDevice { id: c, before: comp.clone(), after: devices::with_table(comp, &who, table)? }];
     Ok(Mirrored { ops, mirror: after, message })
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run). `refgoto` opens a page, zooms and selects, and stays
+// The commands (generic: crate::commands::run). `refgoto` opens a page, zooms and selects, and stays
 // the engine's.
 
 /// Rows one `xrefs` answers by default.
@@ -225,7 +225,7 @@ impl Generic for DeviceReferencesParams {
         let limit = self.limit.map_or(DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(MAX_LIMIT).clamp(1, MAX_LIMIT));
         let after = self.after.map_or(Ok(0), |n| usize::try_from(n).map_err(|_| CmdError::refused("`after` must be a number")))?;
         let doc = cx.doc;
-        let v = xref::device_references_json(doc, cx.derived.refs(), self.component, self.aid, self.cable, self.page, limit, after)?;
+        let v = devices::device_references_json(doc, cx.derived.refs(), self.component, self.aid, self.cable, self.page, limit, after)?;
         Ok(Outcome::answer(v))
     }
 }
@@ -238,7 +238,7 @@ impl Generic for ContactsParams {
     const ACCESS: Access = Access::Reads;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        Ok(Outcome::answer(xref::contacts_json_measured(cx.doc, self.component, cx.metrics)?))
+        Ok(Outcome::answer(devices::contacts_json_measured(cx.doc, self.component, cx.metrics)?))
     }
 }
 

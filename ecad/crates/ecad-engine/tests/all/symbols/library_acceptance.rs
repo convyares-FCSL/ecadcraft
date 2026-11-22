@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_engine::Persistence;
 use ecad_engine::checks::{self, Object};
-use ecad_engine::symbols::{self, STARTER_LIBRARY, STARTERS};
+use ecad_electrical::symbols::{self, STARTER_LIBRARY, STARTERS};
 use ecad_model::{DeviceId, Document, Pt, ConnectionPointId, Word};
 use serde_json::{Value, json};
 
@@ -376,7 +376,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         .filter(|k| {
             !OLD.iter().any(|o| o.0 == k.word())
                 && !cat.iter().any(|e| e.key == k.word())
-                && !ecad_engine::terminal_types::is_level_starter(*k)
+                && !ecad_electrical::terminal_strips::terminal_blocks::is_level_starter(*k)
                 && !BRIEF_045.contains(&k.word())
         })
         // Brief 044's connector pins (design 044 §3.2).
@@ -462,7 +462,7 @@ fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
             let want = if symbols::by_key(&e.key).and_then(|s| s.side()).is_some() { "Connector" } else { name.as_str() };
             assert_eq!(prop(&mut h, c, "description").as_deref(), Some(want), "{}: default description", e.key);
             let d = h.doc();
-            let shown = ecad_model::derive::connection_point_positions(&d, page);
+            let shown = ecad_model::connectivity::derive::connection_point_positions(&d, page);
             for (label, x, y) in &e.points {
                 let t = term(&v, label);
                 let got = shown.iter().find(|(x, _, _)| *x == t).map(|(_, _, p)| *p).unwrap_or_else(|| panic!("{} {label} not shown", e.key));

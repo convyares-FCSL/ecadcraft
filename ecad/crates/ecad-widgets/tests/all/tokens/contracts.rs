@@ -1,6 +1,6 @@
 //! Contracts of the token table (brief 037, acceptance criterion 1).
 
-use ecad_tokens::{Color, GRAPHITE};
+use {ecad_widgets::tokens::Color, ecad_widgets::tokens::GRAPHITE};
 
 /// Every stated text colour reaches 4.5:1 on its background, and the spec's quoted ratios hold.
 #[test]
@@ -13,7 +13,7 @@ fn every_text_colour_meets_4_5_to_1_on_its_background() {
     // Spec §4: text-3 on raised 4.6:1, white on accent 4.9:1 (to the spec's rounding).
     let text_3 = GRAPHITE.text_3.contrast(GRAPHITE.raised);
     assert!(text_3 >= 4.5 && (text_3 - 4.6).abs() < 0.05, "text_3 on raised {text_3:.2}");
-    let white = ecad_tokens::WHITE.contrast(GRAPHITE.accent);
+    let white = ecad_widgets::tokens::WHITE.contrast(GRAPHITE.accent);
     assert!((white - 4.9).abs() < 0.05, "white on accent {white:.2}");
     // The pairs left out are left out for a reason: text_3 would fail on hover and active.
     assert!(GRAPHITE.text_3.contrast(GRAPHITE.hover) < 4.5);
@@ -25,7 +25,7 @@ fn every_text_colour_meets_4_5_to_1_on_its_background() {
 /// accent and the white ink on it, which are the same in both.
 #[test]
 fn the_light_shell_meets_4_5_to_1_on_its_backgrounds() {
-    let light = ecad_tokens::LIGHT;
+    let light = ecad_widgets::tokens::LIGHT;
     let failing: Vec<String> = light
         .text_pairs()
         .iter()
@@ -45,5 +45,5 @@ fn colours_spell_and_scale() {
     assert_eq!(GRAPHITE.accent_soft.to_token(), "#2F6BE0 at 18 %");
     assert_eq!(GRAPHITE.accent_soft.a, 46);
     assert_eq!(Color::hex(0x123456).at_percent(200).a, 255);
-    assert_eq!(ecad_tokens::shadow::COLOR.to_token(), "#000000 at 45 %");
+    assert_eq!(ecad_widgets::tokens::shadow::COLOR.to_token(), "#000000 at 45 %");
 }

@@ -6,12 +6,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::{outputs_ui, project_panel};
+use {ecad_app::reports::panel, ecad_app::pages::project_panel};
 use ecad_engine::checks::Kind;
 use ecad_model::Subject;
 use egui_kittest::Harness;
 
-use crate::mouse_tester::{Deltas, doc, harness_with, ok, shot};
+use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, ok, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -80,7 +80,7 @@ fn terminal_strips_in_the_app() {
     h.state_mut().show_plan(Some(x1));
     h.run_steps(4);
     let r = h.state().reports.as_ref().unwrap();
-    assert_eq!(r.tab, outputs_ui::Tab::Terminals);
+    assert_eq!(r.tab, panel::Tab::Terminals);
     let t = r.table().clone();
     assert_eq!(t.rows.len(), 9, "four drawn, five spare (8+1PE is 9 positions)");
     assert_eq!(t.rows[0][1].text, "-K01:A2");
@@ -108,14 +108,14 @@ fn terminal_strips_in_the_app() {
         .keys()
         .filter(|c| ecad_engine::locations::is_device(&d, **c))
         .filter_map(|c| {
-            let r = &d.representations[&ecad_engine::reps::goto(&d, *c, None)?];
+            let r = &d.representations[&ecad_electrical::symbols::reps::goto(&d, *c, None)?];
             ecad_engine::locations::rep_context(&d, r, &mut ecad_engine::locations::BoxCache::default()).value.map(|v| (*c, v))
         })
         .collect();
     for (c, v) in proposals {
         ok(&mut h, &format!(r#"setlocation {{"component":"{}","value":"{v}"}}"#, c.hex()));
     }
-    h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Cables;
+    h.state_mut().reports.as_mut().unwrap().tab = panel::Tab::Cables;
     h.run_steps(4);
     let t = h.state().reports.as_ref().unwrap().table().clone();
     let row: Vec<String> = t.rows[0].iter().map(|c| c.text.clone()).collect();

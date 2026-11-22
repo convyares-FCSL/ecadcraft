@@ -13,12 +13,12 @@
 //! Every row is [`size::CONTROL`] high and its box [`size::CONTROL_SMALL`], centred, so rows of
 //! either panel share one pitch.
 
-use ecad_tokens::{Icon, line, radius, size, space, ui_type};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Rangef, Rect, Response, Sense, Stroke, Ui, pos2, vec2};
 
 use crate::prim::Tone;
 use crate::style::corner;
-use crate::{color, fonts};
+use {crate::color, crate::fonts};
 
 /// A section's header, as wide as the panel: `˅ Title ........ summary`. Returns its response,
 /// sensing clicks; the caller keeps whether it is open and gives it its accessible name.

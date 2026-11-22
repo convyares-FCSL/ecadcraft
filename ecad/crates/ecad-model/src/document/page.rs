@@ -14,8 +14,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::id::DeviceId;
-use crate::text::Text;
+use crate::naming::id::DeviceId;
+use crate::naming::text::Text;
 
 /// The old page property naming a terminal plan's one strip; now [`PageKind::TerminalStrip`]
 /// (a reserved key).

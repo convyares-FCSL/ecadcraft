@@ -2,7 +2,7 @@
 //! list of commands not converted yet), with its typed run function and a JSON Schema; input
 //! refusals use one uniform wording; rule refusals keep their words.
 
-use ecad_engine::cmd::{schema_of, specs, typed_commands};
+use ecad_engine::commands::{schema_of, specs, typed_commands};
 use serde_json::{Value, json};
 
 use crate::common::H;
@@ -306,19 +306,19 @@ fn the_text_commands_refuse_input_uniformly() {
 #[test]
 fn the_text_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("textstyle", json!({"kind": "tag", "height": 11}), ecad_electrical::cmd::text::BAD_HEIGHT),
-        ("textstyle", json!({"height": 3}), ecad_electrical::cmd::text::NEEDS_KIND),
-        ("textstyle", json!({"kinds": [{"height": 3}]}), ecad_electrical::cmd::text::NEEDS_KIND),
-        ("textstyle", json!({"font": ""}), ecad_electrical::cmd::text::BAD_FONT),
-        ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_electrical::cmd::text::BAD_SHOW),
+        ("textstyle", json!({"kind": "tag", "height": 11}), ecad_electrical::styles::commands::text::BAD_HEIGHT),
+        ("textstyle", json!({"height": 3}), ecad_electrical::styles::commands::text::NEEDS_KIND),
+        ("textstyle", json!({"kinds": [{"height": 3}]}), ecad_electrical::styles::commands::text::NEEDS_KIND),
+        ("textstyle", json!({"font": ""}), ecad_electrical::styles::commands::text::BAD_FONT),
+        ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_electrical::styles::commands::text::BAD_SHOW),
         (
             "showtext",
             json!({"kind": "tag", "show": "on", "page": "1", "component": "2"}),
             "Name at most one of representation, component, conductor and page.",
         ),
         ("showtext", json!({"kind": "tag", "show": "on", "page": "1"}), "No page 00000000000000000000000000000001."),
-        ("movetext", json!({"representation": "1"}), ecad_electrical::cmd::text::BAD_POINT),
-        ("movetext", json!({"representation": "1", "to": [1, 2], "justify": "XX"}), ecad_electrical::cmd::text::BAD_JUSTIFY),
+        ("movetext", json!({"representation": "1"}), ecad_electrical::styles::commands::text::BAD_POINT),
+        ("movetext", json!({"representation": "1", "to": [1, 2], "justify": "XX"}), ecad_electrical::styles::commands::text::BAD_JUSTIFY),
         ("movetext", json!({"representation": "1", "to": [1, 2]}), "No representation 00000000000000000000000000000001."),
         ("pagetexts", json!({"page": "1"}), "No page 00000000000000000000000000000001."),
         ("defaults", json!({"key": "no.such"}), "No default \"no.such\"."),
@@ -380,7 +380,7 @@ fn the_style_commands_refuse_input_uniformly() {
 /// Rule refusals of the style commands keep their words.
 #[test]
 fn the_style_commands_keep_their_rule_words() {
-    use ecad_electrical::cmd::style::{BUILTIN_KEPT, NEEDS_NAME, STANDARD_FIRST, STYLE_NEEDS_NAME};
+    use ecad_electrical::styles::commands::styles::{BUILTIN_KEPT, NEEDS_NAME, STANDARD_FIRST, STYLE_NEEDS_NAME};
     let rows: &[(&str, Value, &str)] = &[
         ("standard", json!({"name": "S"}), STANDARD_FIRST),
         ("standard", json!({"remove": true}), STANDARD_FIRST),
@@ -1517,11 +1517,11 @@ fn setdefault_refuses_input_uniformly_and_keeps_its_rule_words() {
     let rules: &[(Value, &str)] = &[
         (json!({"key": "text.nope", "value": 3}), "No default \"text.nope\"."),
         (json!({"key": "text.run.gap", "level": "sideways", "value": 3}), "Unknown level \"sideways\". Levels: standard, project, page, object."),
-        (json!({"key": "text.run.gap"}), ecad_electrical::cmd::default::NEEDS_VALUE),
+        (json!({"key": "text.run.gap"}), ecad_electrical::styles::commands::defaults::NEEDS_VALUE),
         (json!({"key": "text.run.gap", "value": 3, "reset": true}), "Give either `value` or `reset: true`, not both."),
         (json!({"key": "text.run.gap", "value": 101}), "`text.run.gap` is a length from 0 to 100 mm."),
-        (json!({"key": "text.tag.show", "level": "object", "value": "off"}), ecad_electrical::cmd::default::NEEDS_OBJECT),
-        (json!({"key": "text.run.gap", "level": "standard", "value": 3}), ecad_electrical::cmd::default::STANDARD_READ_ONLY),
+        (json!({"key": "text.tag.show", "level": "object", "value": "off"}), ecad_electrical::styles::commands::defaults::NEEDS_OBJECT),
+        (json!({"key": "text.run.gap", "level": "standard", "value": 3}), ecad_electrical::styles::commands::defaults::STANDARD_READ_ONLY),
         (json!({"key": "symbol.coil.prefix", "value": "K1"}), "A prefix is 1 to"),
     ];
     for (params, says) in rules {
@@ -1590,7 +1590,7 @@ fn setprop_keeps_its_rule_words() {
     let b = crate::common::place(&mut h, "coil", (200.0, 100.0))["component"].clone();
     let tag_b = h.run("deviceprops", json!({"component": b})).unwrap_or_default()["tag"].clone();
     let rows: &[(Value, &str)] = &[
-        (json!({"component": a, "key": "text.tag.show", "value": "off"}), ecad_electrical::text_style::RESERVED_KEY),
+        (json!({"component": a, "key": "text.tag.show", "value": "off"}), ecad_electrical::styles::text_style::RESERVED_KEY),
         (json!({"devices": [a, b], "key": "tag", "value": "-K9"}), "Tags are one per device."),
         (json!({"component": a, "key": "tag_fixed", "value": "maybe"}), "`tag_fixed` is \"yes\" or null, not \"maybe\""),
         (
@@ -1634,7 +1634,7 @@ fn the_typed_setprop_still_works() {
 /// device and on several walks the same row, so both give the same refusal.
 #[test]
 fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
-    use ecad_electrical::cmd::prop::{PROP_RULES, rule_for};
+    use ecad_electrical::properties::commands::{PROP_RULES, rule_for};
     use ecad_model::{DeviceId, ObjectRef};
     let mut h = H::new(7074);
     let coil = crate::common::place(&mut h, "coil", (100.0, 100.0))["component"].clone();
@@ -1672,7 +1672,7 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
         assert!(single.is_some(), "{what}: {key} {value} is refused");
         assert_eq!(single, many, "{what}: one and several differ");
     }
-    let lanes = ecad_electrical::cmd::props::LANES.iter().flat_map(|(_, rows)| rows.iter());
+    let lanes = ecad_electrical::commands::props::LANES.iter().flat_map(|(_, rows)| rows.iter());
     let all: Vec<&str> = PROP_RULES.iter().chain(lanes).map(|r| r.what).collect();
     for (what, ..) in rows {
         assert!(all.contains(what), "{what}");
@@ -1824,8 +1824,8 @@ fn setdefault_of_a_family_entry_keeps_its_rule_words() {
     let made = h.run("symbolnew", float_switch(json!({}))).unwrap_or(Value::Null);
     assert_eq!(made["key"], json!("float1"), "{made}");
     let rules: &[(Value, &str)] = &[
-        (json!({"key": "symbol.float1.prefix"}), ecad_electrical::cmd::default::NEEDS_VALUE),
-        (json!({"key": "symbol.float1.prefix", "value": 3}), ecad_electrical::cmd::default::NEEDS_VALUE),
+        (json!({"key": "symbol.float1.prefix"}), ecad_electrical::styles::commands::defaults::NEEDS_VALUE),
+        (json!({"key": "symbol.float1.prefix", "value": 3}), ecad_electrical::styles::commands::defaults::NEEDS_VALUE),
         (json!({"key": "symbol.float1.prefix", "value": "KA", "reset": true}), "Give either `value` or `reset: true`, not both."),
         (
             json!({"key": "symbol.float1.prefix", "value": "KA", "level": "page"}),

@@ -1,8 +1,8 @@
 //! Brief 041 (U4b): the action table over the existing commands (moved here from ecad-engine
 //! with the table, design 065 §3 cut 13).
 
-use ecad_app::actions::{self, ACTIONS, Key, ObjectKind, PROGRAMMATIC_ONLY, Params, SHELL_KEYS, Slot, ToolGroup};
-use ecad_ui::tokens::Icon;
+use ecad_app::commands::actions::{self, ACTIONS, Key, ObjectKind, PROGRAMMATIC_ONLY, Params, SHELL_KEYS, Slot, ToolGroup};
+use ecad_widgets::tokens::Icon;
 use std::collections::{BTreeSet, HashSet};
 
 /// ECAD's command ids before this lane (the registry MCP's `list_commands` reads): the lane adds
@@ -171,7 +171,7 @@ const ECAD_COMMANDS: &[&str] = &[
 ];
 
 fn ecad_ids() -> BTreeSet<String> {
-    ecad_engine::cmd::specs().iter().map(|s| s.id.to_string()).collect()
+    ecad_engine::commands::specs().iter().map(|s| s.id.to_string()).collect()
 }
 
 #[test]
@@ -299,7 +299,7 @@ fn search_finds_actions_by_label_and_words_but_not_undo() {
 /// its search words; the device wheel and the terminal wheel gain §9.3's slots.
 #[test]
 fn place_connector_action_row() {
-    use ecad_app::actions::{self, ACTIONS, ToolGroup};
+    use ecad_app::commands::actions::{self, ACTIONS, ToolGroup};
     let a = ACTIONS.iter().find(|a| a.id == "place.connector").expect("place.connector");
     assert_eq!(a.command, "connector");
     assert_eq!(a.label, "Connector");

@@ -8,10 +8,10 @@
 //! commits (design §11); a refused Apply asks for it again. Words are short (design §10): `Dev`,
 //! `Cbl`, `Wire`, `Sel`, `Prov`, `At`, row marks `→ F = –`.
 
-use ecad_ui::control::{self, Decor, Select, TextEntry};
-use ecad_ui::dialog::{Dialog, action};
-use ecad_ui::prim::{self, Checkbox, Kind, Radio, Segmented, Tone};
-use ecad_ui::tokens::{size, space};
+use ecad_widgets::control::{self, Decor, Select, TextEntry};
+use ecad_widgets::dialog::{Dialog, action};
+use ecad_widgets::prim::{self, Checkbox, Kind, Radio, Segmented, Tone};
+use ecad_widgets::tokens::{size, space};
 use eframe::egui::{self, RichText};
 use serde_json::{Value, json};
 
@@ -92,9 +92,9 @@ pub struct RenumberDialog {
 }
 
 impl RenumberDialog {
-    /// A dialog with `choices` (from `ecad_electrical::cmd::numbering::choices`), the selection's objects and the
+    /// A dialog with `choices` (from `ecad_electrical::numbering::commands::choices`), the selection's objects and the
     /// project's digits.
-    pub fn new(choices: &ecad_electrical::cmd::numbering::Choices, selection: Vec<String>, digits: u8, read_only: bool, finalise: bool) -> Self {
+    pub fn new(choices: &ecad_electrical::numbering::commands::Choices, selection: Vec<String>, digits: u8, read_only: bool, finalise: bool) -> Self {
         let mut d = RenumberDialog {
             what: if finalise { What::All } else { What::Devices },
             which: if finalise { Which::Provisional } else { Which::All },
@@ -305,8 +305,8 @@ impl RenumberDialog {
         let rows: Vec<Value> =
             p["rows"].as_array().cloned().unwrap_or_default().into_iter().chain(p["skipped"].as_array().cloned().unwrap_or_default()).collect();
         let all = self.what == What::All || self.finalise;
-        let s = ecad_ui::SHELL;
-        let mono = |text: String, ink| RichText::new(text).monospace().color(ecad_ui::color(ink));
+        let s = ecad_widgets::SHELL;
+        let mono = |text: String, ink| RichText::new(text).monospace().color(ecad_widgets::color(ink));
         ui.label(mono(format!("{}{:<8} {:<3}{:<8} {:<10} Desc", if all { "     " } else { "" }, "Old", "", "New", "At"), s.text_3));
         egui::ScrollArea::vertical().id_salt("ecad.renumber.rows").max_height(ROWS_HEIGHT).auto_shrink([false, true]).show_rows(
             ui,

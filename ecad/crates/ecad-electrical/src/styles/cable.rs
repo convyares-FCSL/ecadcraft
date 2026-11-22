@@ -10,21 +10,21 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use ecad_model::style::cable::{CoreColours, CoreScheme};
-use ecad_model::style::{CableType, StyleLayer};
-use ecad_model::units::{Amps, Celsius, Mm};
-use ecad_model::wire::{Colours, WireSize};
+use ecad_model::objects::styles::cable::{CoreColours, CoreScheme};
+use ecad_model::objects::styles::{CableType, StyleLayer};
+use ecad_model::geometry::units::{Amps, Celsius, Mm};
+use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{CableId, Document, StyleRef, Word};
 use serde::Deserialize;
 
-use super::{Catalogue, Field};
+use crate::styles::{Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Slot, Value};
-use crate::rating::fields;
+use crate::circuits::fields;
 
 /// The input word (and style-choice index key) naming a cable's cable type (FP2); stored in
 /// [`ecad_model::Cable::cable_type`], never as a property.
-pub const CABLE_TYPE: &str = ecad_model::doc::CABLE_TYPE_KEY;
+pub const CABLE_TYPE: &str = ecad_model::document::doc::CABLE_TYPE_KEY;
 
 fn any_text(_: &str) -> bool {
     true
@@ -86,7 +86,7 @@ pub const MAX_GLAND_CHARS: usize = 16;
 pub const SHIELDS: [&str; 4] = ["none", "overall", "pairs", "overall+pairs"];
 
 fn is_offer(s: &str) -> bool {
-    crate::strips::parse_cores(s).is_ok()
+    crate::terminal_strips::parse_cores(s).is_ok()
 }
 
 fn is_shield(s: &str) -> bool {
@@ -94,9 +94,9 @@ fn is_shield(s: &str) -> bool {
 }
 
 /// A gland size: 1 to [`MAX_GLAND_CHARS`] characters, with no control or invisible (bidi,
-/// zero-width) characters (`ecad_model::text::check`, tester 059 f4).
+/// zero-width) characters (`ecad_model::naming::text::check`, tester 059 f4).
 pub fn is_gland(s: &str) -> bool {
-    ecad_model::text::check(s, MAX_GLAND_CHARS).is_ok()
+    ecad_model::naming::text::check(s, MAX_GLAND_CHARS).is_ok()
 }
 
 /// An outer diameter: a number of millimetres from 1 to 200.
@@ -125,35 +125,35 @@ pub static CATALOGUE: Catalogue = Catalogue {
 
 /// The cable type cable `k` names, when it names one that exists.
 pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {
-    doc.cables.get(&k)?.cable_type.clone().filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Cable, id))
+    doc.cables.get(&k)?.cable_type.clone().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Cable, id))
 }
 
 /// The text of cable type `id`'s field `key`, when set (empty counts as unset).
 pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
-    super::field_of(doc, ecad_model::StyleCatalogue::Cable, id, key, None).map(|r| r.text()).map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+    crate::styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, key, None).map(|r| r.text()).map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
 }
 
 /// Brief 059 (design 059 §2.2): cable `k`'s core offer and where it comes from: its own `cores`,
 /// else its cable type's `cores`, else its `type` notation; `None` when unknown.
-pub fn offer(doc: &Document, k: CableId) -> Option<(Vec<String>, crate::strips::OfferSource, String)> {
+pub fn offer(doc: &Document, k: CableId) -> Option<(Vec<String>, crate::terminal_strips::OfferSource, String)> {
     offer_of(doc, doc.cables.get(&k)?)
 }
 
 /// [`offer`] for cable `cab` (one about to be written).
-pub fn offer_of(doc: &Document, cab: &ecad_model::Cable) -> Option<(Vec<String>, crate::strips::OfferSource, String)> {
+pub fn offer_of(doc: &Document, cab: &ecad_model::Cable) -> Option<(Vec<String>, crate::terminal_strips::OfferSource, String)> {
     let props = &cab.properties;
-    if let Some(v) = props.get(crate::strips::CORES_KEY).map(|v| v.trim()).filter(|v| !v.is_empty())
-        && let Ok(c) = crate::strips::parse_cores(v)
+    if let Some(v) = props.get(crate::terminal_strips::CORES_KEY).map(|v| v.trim()).filter(|v| !v.is_empty())
+        && let Ok(c) = crate::terminal_strips::parse_cores(v)
     {
-        return Some((c, crate::strips::OfferSource::Cores, v.to_string()));
+        return Some((c, crate::terminal_strips::OfferSource::Cores, v.to_string()));
     }
-    let ty = cab.cable_type.as_ref().filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Cable, id));
+    let ty = cab.cable_type.as_ref().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Cable, id));
     if let Some(v) = ty.as_ref().and_then(|id| type_text(doc, id, TYPE_CORES))
-        && let Ok(c) = crate::strips::parse_cores(&v)
+        && let Ok(c) = crate::terminal_strips::parse_cores(&v)
     {
-        return Some((c, crate::strips::OfferSource::Cores, v));
+        return Some((c, crate::terminal_strips::OfferSource::Cores, v));
     }
-    crate::strips::cable_offer(props)
+    crate::terminal_strips::cable_offer(props)
 }
 
 /// Store the cores `after`'s offer names (design 072 §4.5, a write rule): every offered core no
@@ -180,7 +180,7 @@ pub fn sync_offered_cores(doc: &Document, before: &ecad_model::Cable, after: &mu
         }
     }
     for l in &new {
-        if after.cores.len() >= crate::slash::MAX_CABLE_MEMBERS {
+        if after.cores.len() >= crate::cables::slash::MAX_CABLE_MEMBERS {
             break;
         }
         let has = after.cores.iter().any(|m| m.label_str().is_some_and(|x| x.trim().eq_ignore_ascii_case(l)));
@@ -211,7 +211,7 @@ pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
     let own = |get: &dyn Fn(&CableType) -> bool| -> Option<&CableType> {
         [StyleLayer::Project, StyleLayer::Standard]
             .into_iter()
-            .filter_map(|l| super::record(doc, l, ecad_model::StyleCatalogue::Cable, &id).and_then(|r| r.body.cable()))
+            .filter_map(|l| crate::styles::record(doc, l, ecad_model::StyleCatalogue::Cable, &id).and_then(|r| r.body.cable()))
             .find(|t| get(t))
     };
     if let Some(list) = own(&|t| t.core_colours.is_some()).and_then(|t| t.core_colours.as_ref()) {
@@ -246,7 +246,7 @@ pub fn is_unused(doc: &Document, k: CableId, label: &str) -> bool {
 pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
     let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
     let mut out: Vec<String> = offer(doc, k).map(|(o, _, _)| o).unwrap_or_default();
-    for (i, m) in cab.cores.iter().enumerate().take(crate::slash::MAX_CABLE_MEMBERS) {
+    for (i, m) in cab.cores.iter().enumerate().take(crate::cables::slash::MAX_CABLE_MEMBERS) {
         let l = m.label_str().map(str::trim).filter(|l| !l.is_empty()).map_or_else(|| (i + 1).to_string(), str::to_string);
         if !out.iter().any(|o| o.eq_ignore_ascii_case(&l)) {
             out.push(l);
@@ -269,7 +269,7 @@ pub fn unused_ops(doc: &Document, k: CableId, key: &str, value: Option<&str>) ->
     let label = key.strip_prefix(UNUSED_PREFIX).unwrap_or_default();
     let tick = match value.map(str::trim) {
         None | Some("") => false,
-        Some(v) => ecad_model::words::flag(v).ok_or_else(|| CmdError::refused("Not used is yes or no (or null to clear it)."))?,
+        Some(v) => ecad_model::naming::words::flag(v).ok_or_else(|| CmdError::refused("Not used is yes or no (or null to clear it)."))?,
     };
     let Ok(text) = CoreLabel::new(label).map_err(|_| ()).and_then(|t| if t.as_str() == label { Ok(t) } else { Err(()) }) else {
         return Err(CmdError::refused(format!(
@@ -324,7 +324,7 @@ pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
     let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
     cab.cores
         .iter()
-        .take(crate::slash::MAX_CABLE_MEMBERS)
+        .take(crate::cables::slash::MAX_CABLE_MEMBERS)
         .filter(|m| m.position == ecad_model::CorePosition::Unplaced && !m.is_spare())
         .filter_map(|m| m.label_str().map(|l| OpenCore { label: l.to_string() }))
         .collect()
@@ -366,8 +366,8 @@ pub fn get<'a>(t: &'a CableType, key: &str) -> Option<Value<'a>> {
     }
 }
 
-fn text_of<const N: usize>(key: &str, v: &str) -> Result<ecad_model::text::Text<N>, CmdError> {
-    ecad_model::text::Text::new(v).map_err(|e| CmdError::refused(format!("{key}: {e}")))
+fn text_of<const N: usize>(key: &str, v: &str) -> Result<ecad_model::naming::text::Text<N>, CmdError> {
+    ecad_model::naming::text::Text::new(v).map_err(|e| CmdError::refused(format!("{key}: {e}")))
 }
 
 /// Set (`Some`) or clear (`None`) field `key` of `t` from its text, as the `style` command
@@ -399,7 +399,7 @@ pub fn set(t: &mut CableType, key: &str, value: Option<&str>) -> Result<(), CmdE
         ("material", Some(v)) => r.material = Some(Word::parse(v).ok_or_else(|| bad("cu"))?),
         ("max_temperature", Some(v)) => r.max_temperature = Some(Celsius(number(v)?)),
         ("conductor_class", Some(v)) => r.conductor_class = Some(Word::parse(v).ok_or_else(|| bad("1, 2, 5 or 6"))?),
-        ("rated_current", Some(v)) => r.rated_current = Some(Amps(crate::rating::parse::current(v).ok_or_else(|| bad("a current"))?)),
+        ("rated_current", Some(v)) => r.rated_current = Some(Amps(crate::devices::ratings::parse::current(v).ok_or_else(|| bad("a current"))?)),
         ("rated_at", Some(v)) => r.rated_at = Some(Celsius(number(v)?)),
         (CORE_COLOURS, Some(v)) => t.core_colours = Some(CoreColours::parse(v).ok_or_else(|| bad("a list of core colours"))?),
         (CORE_SCHEME, Some(v)) => t.core_scheme = Some(Word::parse(v).ok_or_else(|| bad(&<CoreScheme as Word>::WORDS.join(", ")))?),
@@ -407,7 +407,7 @@ pub fn set(t: &mut CableType, key: &str, value: Option<&str>) -> Result<(), CmdE
         ("maker", Some(v)) => t.maker = Some(text_of(key, v)?),
         ("description", Some(v)) => t.description = Some(text_of(key, v)?),
         (TYPE_CORES, Some(v)) => {
-            crate::strips::parse_cores(v)?;
+            crate::terminal_strips::parse_cores(v)?;
             t.cores = Some(text_of(key, v)?);
         }
         (TYPE_SHIELD, Some(v)) => t.shield = Some(Word::parse(v).ok_or_else(|| bad(&SHIELDS.join(", ")))?),
@@ -496,7 +496,7 @@ fn offer_has_earth(text: &str) -> bool {
 
 #[cfg(test)]
 mod scheme_tests {
-    use super::*;
+    use crate::styles::*;
 
     fn codes(v: Option<Vec<Colours>>) -> Vec<String> {
         v.unwrap_or_default().iter().map(ToString::to_string).collect()

@@ -3,7 +3,7 @@
 //! # Semantics
 //! - A device's **location** (IEC 81346 `+` aspect) and **function** (`=`) are what is stored on
 //!   it: its `location` and `function` properties, each an entry key of the project's list
-//!   ([`crate::designations`]). Unset means none, shown `?`. Nothing is inherited from boxes,
+//!   ([`crate::locations::designations`]). Unset means none, shown `?`. Nothing is inherited from boxes,
 //!   pages or the project (design 052 §5.1, FP2): those only **propose** ([`context_in`]).
 //! - A representation's location ([`rep_location`], §5.2): a strip's for every position and level;
 //!   else the device's override `location.<type>` (`socket`/`plug` for connector halves); else the
@@ -22,20 +22,22 @@
 //! # Update map (design 024 §9)
 //! Every function here reads one page's boxes and the representations asked about, never the
 //! whole project. Callers decide when to ask: the page drawing on every draw of the active page
-//! (tag prefixes and box labels), [`crate::outputs`] for the devices a change could move.
+//! (tag prefixes and box labels), [`crate::reports`] for the devices a change could move.
 //!
 //! This module records nothing; [`plan_box`] and [`plan_from_item`] only build ops.
 
+pub mod commands;
+pub mod designations;
 use std::collections::BTreeMap;
 
 use crate::CmdError;
-use ecad_model::book::LOCATION_KEY;
+use ecad_model::document::book::LOCATION_KEY;
 use ecad_model::{
     Aid, AidId, Color, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, LocationBox, Op, PageId, Primitive, Pt,
     Representation, RepresentationId, Style, Subject,
 };
 
-use crate::designations::{self, Aspect};
+use crate::locations::designations::{self, Aspect};
 
 /// A location box's panel temperature key (`setprop {aids}`, design 072 §6.2).
 pub const PANEL_TEMPERATURE_KEY: &str = "panel_temperature";
@@ -326,8 +328,8 @@ impl Located {
     /// `(from box on 105)`, `(from page 105)`, `(project)`; empty for an own value or none.
     pub fn from_words(&self, doc: &Document) -> String {
         match self.source {
-            Source::Box { page, .. } => format!("(from box on {})", ecad_model::book::page_number(doc, page)),
-            Source::Page(p) => format!("(from page {})", ecad_model::book::page_number(doc, p)),
+            Source::Box { page, .. } => format!("(from box on {})", ecad_model::document::book::page_number(doc, page)),
+            Source::Page(p) => format!("(from page {})", ecad_model::document::book::page_number(doc, p)),
             Source::Project => "(project)".into(),
             Source::Device | Source::Override | Source::None => String::new(),
         }
@@ -452,7 +454,7 @@ pub fn override_key(doc: &Document, r: &Representation) -> Option<String> {
     if let Some(side) = crate::connectors::rep_side(doc, r) {
         return Some(format!("{LOCATION_KEY}.{}", if side == Side::Plug { "plug" } else { "socket" }));
     }
-    let t = crate::reps::rep_type(doc, r);
+    let t = crate::symbols::reps::rep_type(doc, r);
     (t != ecad_model::PartRole::Head).then(|| format!("{LOCATION_KEY}.{}", ecad_model::Word::word(t)))
 }
 
@@ -465,7 +467,7 @@ pub fn override_type_ok(t: &str) -> bool {
 /// Representation `r`'s location (design 052 §5.2), first match wins: a strip's own (a strip has
 /// no overrides); the device's override for `r`'s type; the device's; none.
 pub fn rep_location(doc: &Document, c: DeviceId, r: &Representation) -> Located {
-    if crate::strips::strip_of(doc, c).is_some() {
+    if crate::terminal_strips::strip_of(doc, c).is_some() {
         return resolve(doc, c);
     }
     let props = doc.devices.get(&c).map(|x| &x.properties);
@@ -535,7 +537,7 @@ pub const FUNCTION_LINETYPE: &str = "DASHDOT";
 
 /// The style of a box outline on layer `layer`.
 fn box_style(layer: LayerId) -> Style {
-    Style { layer, color: Color::ByLayer, linetype: LINETYPE.into(), lineweight: crate::words::WIRE_WEIGHT as i16 }
+    Style { layer, color: Color::ByLayer, linetype: LINETYPE.into(), lineweight: crate::cables::words::WIRE_WEIGHT as i16 }
 }
 
 /// The ID of layer [`LAYER`], with the op that adds it when the document has none.
@@ -854,7 +856,7 @@ pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<(RepresentationId, St
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     fn sq(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<Pt> {
         vec![Pt::new(x0, y0), Pt::new(x1, y0), Pt::new(x1, y1), Pt::new(x0, y1)]

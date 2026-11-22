@@ -79,7 +79,7 @@ fn lnpe_fences_fill_positions_and_label_each_level() {
     assert_eq!((x_rows[0]["qty"].as_u64(), x_rows[0]["description"].as_str()), (Some(3), Some("L/N/PE terminal")));
     // Hover and words show the shown label.
     let t = terminals(&n)[1];
-    assert_eq!(h.p(|p| ecad_electrical::strips::connection_point_words(p.ledger.document(), t)), "-X01:2.N");
+    assert_eq!(h.p(|p| ecad_electrical::terminal_strips::connection_point_words(p.ledger.document(), t)), "-X01:2.N");
     same_as_built(&mut h);
     // `u` undoes the last fence only.
     h.run("undo", json!({})).unwrap();
@@ -328,17 +328,17 @@ fn relabel_moves_every_position_keyed_property() {
     let f = fence(&mut h, None, "FUSE", "1", 20.0);
     let x1: DeviceId = id(&f, "strip");
     let t2 = terminals(&f)[1];
-    let suffix = |prefix: &str, p: &str| if prefix == ecad_engine::terminal_types::LABEL_PREFIX { format!("{p}.1") } else { p.to_string() };
+    let suffix = |prefix: &str, p: &str| if prefix == ecad_electrical::terminal_strips::terminal_blocks::LABEL_PREFIX { format!("{p}.1") } else { p.to_string() };
     let value = |prefix: &str| {
-        if prefix == ecad_engine::accessories::AFTER_PREFIX {
+        if prefix == ecad_electrical::terminal_strips::accessories::AFTER_PREFIX {
             "partition"
-        } else if prefix == ecad_engine::accessories::ON_PREFIX {
+        } else if prefix == ecad_electrical::terminal_strips::accessories::ON_PREFIX {
             "marker"
         } else {
             "2A"
         }
     };
-    for prefix in ecad_engine::terminal_types::POSITION_KEYED {
+    for prefix in ecad_electrical::terminal_strips::terminal_blocks::POSITION_KEYED {
         h.run("setprop", json!({"component": x1.hex(), "key": format!("{prefix}{}", suffix(prefix, "2")), "value": value(prefix)})).unwrap();
     }
     // Design 072 §2.5: a fuse position's rating is the strip's field and moves too.
@@ -348,7 +348,7 @@ fn relabel_moves_every_position_keyed_property() {
     h.run("termlabel", json!({"terminal": t2.hex(), "position": "7"})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
     let props = h.doc().devices[&x1].properties.clone();
-    for prefix in ecad_engine::terminal_types::POSITION_KEYED {
+    for prefix in ecad_electrical::terminal_strips::terminal_blocks::POSITION_KEYED {
         assert_eq!(props.get(&format!("{prefix}{}", suffix(prefix, "2"))), None, "{prefix} left on 2");
         assert_eq!(props.get(&format!("{prefix}{}", suffix(prefix, "7"))).map(String::as_str), Some(value(prefix)), "{prefix} moved to 7");
     }

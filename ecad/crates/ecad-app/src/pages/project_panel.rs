@@ -41,7 +41,7 @@ pub fn pick_label(number: &str) -> String {
 }
 /// A page number as Book shows it: a plain number padded to two digits (`2` → `02`).
 pub fn padded(number: &str) -> String {
-    if number.len() < 2 && ecad_model::words::is_digits(number) { format!("{number:0>2}") } else { number.to_string() }
+    if number.len() < 2 && ecad_model::naming::words::is_digits(number) { format!("{number:0>2}") } else { number.to_string() }
 }
 /// `text` cut with `…` to `width` in `font` (the panels' rows).
 pub fn cut_text(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32) -> String {
@@ -189,9 +189,9 @@ pub enum Action {
     /// Preview this page of the revision opened read-only.
     RevisionPage(PageId),
     /// Brief 020a: something the History tab asked for.
-    History(crate::history_panel::Do),
+    History(crate::history::panel::Do),
     /// Brief 052: Checks' **Use it**: the one context a device's symbols share (`setlocation`).
-    UseContext(ecad_model::DeviceId, ecad_engine::designations::Aspect),
+    UseContext(ecad_model::DeviceId, ecad_electrical::locations::designations::Aspect),
     /// Brief 052: Checks' **Set location** / **Set function**: select the device's symbol, so the
     /// inspector shows its row.
     GoToDevice(ecad_model::DeviceId),
@@ -234,7 +234,7 @@ pub enum Action {
     /// Split link / Remove partition, Drop missing positions / Delete link).
     AccessoryFix(ecad_engine::checks::Fix, usize),
     /// Brief 044: Place ▸ Connector on this connector's lacking side, pin by pin.
-    PlaceMates(ecad_model::DeviceId, ecad_engine::symbols::Side),
+    PlaceMates(ecad_model::DeviceId, ecad_electrical::symbols::Side),
     /// Brief 041: a page row's right-click opens its wheel here (screen point).
     PageWheel(PageId, egui::Pos2),
     /// UI rev 3 (board 1.03): the Devices panel's Project →, Project ▸ Device list.
@@ -333,11 +333,11 @@ pub struct ProjectPanel {
     /// Pages or Devices.
     pub tab: Tab,
     /// The Devices tab.
-    pub devices: crate::devices_panel::DevicesPanel,
+    pub devices: crate::devices::panel::DevicesPanel,
     /// The Checks tab (brief 022).
-    pub checks: crate::checks_panel::ChecksPanel,
+    pub checks: crate::checks::panel::ChecksPanel,
     /// The History tab (brief 020a).
-    pub history: crate::history_panel::HistoryPanel,
+    pub history: crate::history::panel::HistoryPanel,
     /// The copy of the project's pages.
     rows: Vec<PageRow>,
     /// The project change count the copy was taken at, and which project (its pointer value).
@@ -580,7 +580,7 @@ impl ProjectPanel {
         let panel_rect = ui.max_rect();
         let writable = header.name.is_some() && !header.read_only;
         if header.name.is_none() {
-            ecad_ui::prim::read_value(ui, "No project open.");
+            ecad_widgets::prim::read_value(ui, "No project open.");
             self.rows_drawn = 0;
             return out;
         }
@@ -598,14 +598,14 @@ impl ProjectPanel {
                         .on_hover_text(format!("Bring this branch's changes into {parent}: a preview first, then one step on {parent}"))
                         .accessible_name("ecad.project.branch.merge");
                     if merge.clicked() {
-                        out.push(Action::History(crate::history_panel::Do::AskMerge(serde_json::json!({"from": branch, "into": parent}))));
+                        out.push(Action::History(crate::history::panel::Do::AskMerge(serde_json::json!({"from": branch, "into": parent}))));
                     }
                     let update = ui
                         .add_enabled(can, egui::Button::new(RichText::new(format!("Update from {parent}…")).small()))
                         .on_hover_text(format!("Bring {parent}'s changes into this branch: a preview first, then one step here"))
                         .accessible_name("ecad.project.branch.update");
                     if update.clicked() {
-                        out.push(Action::History(crate::history_panel::Do::AskMerge(serde_json::json!({"from": parent, "into": branch}))));
+                        out.push(Action::History(crate::history::panel::Do::AskMerge(serde_json::json!({"from": parent, "into": branch}))));
                     }
                 });
             });
@@ -652,7 +652,7 @@ impl ProjectPanel {
 
         // Find a page (board 1.02).
         let before = self.find.clone();
-        ecad_ui::prim::Field::new(&mut self.find, ecad_ui::prim::FieldKind::Search, FIND).placeholder(FIND).show(ui);
+        ecad_widgets::prim::Field::new(&mut self.find, ecad_widgets::prim::FieldKind::Search, FIND).placeholder(FIND).show(ui);
         if self.find != before {
             self.relayout();
         }
@@ -880,15 +880,15 @@ impl ProjectPanel {
         }
         let x = rect.left() + (depth.saturating_sub(1)) as f32 * INDENT + 2.0;
         let y = rect.center().y;
-        let ink = |c| ecad_ui::color(c);
-        let s = ecad_ui::SHELL;
+        let ink = |c| ecad_widgets::color(c);
+        let s = ecad_widgets::SHELL;
         let chev = Rect::from_min_size(pos2(x, y - 5.0), vec2(10.0, 10.0));
         let folded = self.folded.contains(&id);
-        ecad_ui::icons::paint(&p, chev, if folded { ecad_ui::tokens::Icon::ChevronRight } else { ecad_ui::tokens::Icon::ChevronDown }, ink(s.text_3));
+        ecad_widgets::icons::paint(&p, chev, if folded { ecad_widgets::tokens::Icon::ChevronRight } else { ecad_widgets::tokens::Icon::ChevronDown }, ink(s.text_3));
         // UI rev 3 (board 1.02): a group is a folder icon, its name, its page count and a +.
         let folder = Rect::from_min_size(pos2(chev.right() + 6.0, y - 7.0), vec2(14.0, 14.0));
-        ecad_ui::icons::paint(&p, folder, ecad_ui::tokens::Icon::Folder, ink(s.text_3));
-        let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY_EMPHASIS);
+        ecad_widgets::icons::paint(&p, folder, ecad_widgets::tokens::Icon::Folder, ink(s.text_3));
+        let font = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::BODY_EMPHASIS);
         if self.folder_rename.as_ref().is_some_and(|r| r.of == id) {
             let field = Rect::from_min_max(pos2(folder.right() + 6.0, rect.top() + 4.0), pos2(rect.right() - 4.0, rect.bottom() - 4.0));
             self.folder_field(ui, field, out);
@@ -904,7 +904,7 @@ impl ProjectPanel {
             pos2(add.left() - 8.0, y),
             egui::Align2::RIGHT_CENTER,
             pages.to_string(),
-            crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
+            crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::SMALL),
             ink(s.text_3),
         );
         // Brief 054: the folder's start number, grey after its name (`Schematic  100`).
@@ -918,13 +918,13 @@ impl ProjectPanel {
                 pos2(named.right() + 10.0, y),
                 egui::Align2::LEFT_CENTER,
                 n,
-                crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
+                crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::SMALL),
                 ink(s.text_3),
             );
         }
         // The +: a new page in this group (added after the row, so it takes the click first).
         let add_label = add_in_label(name);
-        if crate::shell::bar::icon_button(ui, add, ecad_ui::tokens::Icon::Plus, &add_label, 12.0, writable).clicked() {
+        if crate::shell::bar::icon_button(ui, add, ecad_widgets::tokens::Icon::Plus, &add_label, 12.0, writable).clicked() {
             out.push(Action::NewPageIn(Some(id)));
             return;
         }
@@ -1024,7 +1024,7 @@ impl ProjectPanel {
     #[allow(clippy::too_many_arguments)]
     fn row(&mut self, ui: &mut egui::Ui, rect: Rect, resp: egui::Response, i: usize, row: &PageRow, writable: bool, out: &mut Vec<Action>) {
         let t = crate::shell::left::colours();
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         let active = self.active == Some(row.id);
         let picked = self.picked.contains(&row.id);
         let label = row_label(&row.number, &row.title);
@@ -1035,10 +1035,10 @@ impl ProjectPanel {
         let p = ui.painter_at(full);
         let dragging = self.drag.is_some_and(|d| d.page == row.id);
         if active {
-            p.rect_filled(full, 0.0, ecad_ui::color(s.accent_soft));
+            p.rect_filled(full, 0.0, ecad_widgets::color(s.accent_soft));
             p.rect_filled(Rect::from_min_size(full.min, vec2(3.0, full.height())), 0.0, t.accent);
         } else if picked {
-            p.rect_filled(full, 0.0, ecad_ui::color(if resp.hovered() { s.hover } else { s.raised }));
+            p.rect_filled(full, 0.0, ecad_widgets::color(if resp.hovered() { s.hover } else { s.raised }));
         } else if resp.hovered() {
             p.rect_filled(full, 0.0, t.chrome);
         }
@@ -1049,7 +1049,7 @@ impl ProjectPanel {
         let y = rect.center().y;
         // The checkbox: ticks the page for the footer's actions.
         let check = Rect::from_center_size(pos2(rect.left() + 10.0, y), vec2(14.0, 14.0));
-        crate::shell::glyphs::checkbox(&p, check, picked, t.accent, ecad_ui::color(s.line_strong), ecad_ui::color(s.text_3).gamma_multiply(0.6));
+        crate::shell::glyphs::checkbox(&p, check, picked, t.accent, ecad_widgets::color(s.line_strong), ecad_widgets::color(s.text_3).gamma_multiply(0.6));
         let mut x = check.right() + 8.0;
         if self.thumbnails {
             let thumb = Rect::from_min_size(pos2(x, y - 13.0), vec2(38.0, 26.0));
@@ -1057,13 +1057,13 @@ impl ProjectPanel {
             crate::shell::glyphs::thumbnail(
                 &p,
                 thumb,
-                ecad_ui::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER),
-                ecad_ui::color(ecad_drawing_style::sheet::THUMBNAIL_INK),
+                ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER),
+                ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_INK),
                 outline,
             );
             x = thumb.right() + 8.0;
         }
-        let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);
+        let font = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::BODY);
         // Two pages shown with one number (only from old data): the number in `ecad.orphan`.
         let number_colour = if row.duplicate {
             t.error
@@ -1164,9 +1164,9 @@ impl ProjectPanel {
     /// Move to group, Duplicate and Delete; otherwise New page (and its kinds) and New group.
     fn footer(&mut self, ui: &mut egui::Ui, r: Rect, writable: bool, top: f32, out: &mut Vec<Action>) {
         let t = crate::shell::left::colours();
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         let area = Rect::from_min_max(pos2(r.left() - 8.0, top.max(r.top())), pos2(r.right() + 8.0, r.bottom()));
-        ui.painter().hline(area.x_range(), area.top() + 0.5, Stroke::new(1.0, ecad_ui::color(s.line)));
+        ui.painter().hline(area.x_range(), area.top() + 0.5, Stroke::new(1.0, ecad_widgets::color(s.line)));
         let inner = area.shrink2(vec2(8.0, 6.0));
         // Pages no longer in the book drop out of the ticks.
         if !self.picked.is_empty() {
@@ -1178,7 +1178,7 @@ impl ProjectPanel {
             ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
             if self.picked.is_empty() {
                 ui.horizontal(|ui| {
-                    let new_page = ecad_ui::prim::Button::new(NEW_PAGE).small();
+                    let new_page = ecad_widgets::prim::Button::new(NEW_PAGE).small();
                     let new_page = match read_only {
                         Some(why) => new_page.disabled(why),
                         None => new_page,
@@ -1188,7 +1188,7 @@ impl ProjectPanel {
                         out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
                     }
                     self.kinds_menu(ui, writable, out);
-                    let new_group = ecad_ui::prim::Button::new(NEW_FOLDER).kind(ecad_ui::prim::Kind::Quiet).small();
+                    let new_group = ecad_widgets::prim::Button::new(NEW_FOLDER).kind(ecad_widgets::prim::Kind::Quiet).small();
                     let new_group = match read_only {
                         Some(why) => new_group.disabled(why),
                         None => new_group,
@@ -1205,7 +1205,7 @@ impl ProjectPanel {
                 let words = format!("{n} page{} selected", if n == 1 { "" } else { "s" });
                 ui.label(RichText::new(words).color(t.text));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(ecad_ui::prim::Button::new(CLEAR_PICKED).kind(ecad_ui::prim::Kind::Quiet).small()).clicked() {
+                    if ui.add(ecad_widgets::prim::Button::new(CLEAR_PICKED).kind(ecad_widgets::prim::Kind::Quiet).small()).clicked() {
                         self.picked.clear();
                     }
                 });
@@ -1236,16 +1236,16 @@ impl ProjectPanel {
                     .response
                     .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, MOVE_TO_GROUP));
                 });
-                ui.add(ecad_ui::prim::Button::new(DUPLICATE).small().disabled(NOT_YET));
+                ui.add(ecad_widgets::prim::Button::new(DUPLICATE).small().disabled(NOT_YET));
                 // Brief 054 (design 054 §8.3): Delete takes generated pages only.
                 let generated = picked.iter().all(|p| self.generated.contains(p));
-                let del = ecad_ui::prim::IconButton::new(ecad_ui::tokens::Icon::Delete, DELETE_PAGES);
+                let del = ecad_widgets::prim::IconButton::new(ecad_widgets::tokens::Icon::Delete, DELETE_PAGES);
                 let del = if !writable {
                     del.disabled(READ_ONLY)
                 } else if generated {
                     del
                 } else {
-                    del.disabled(ecad_engine::page_types::DRAWN_PAGE)
+                    del.disabled(ecad_electrical::pages::page_types::DRAWN_PAGE)
                 };
                 if ui.add(del).clicked() && writable && generated {
                     out.push(Action::DeletePages(picked.clone()));
@@ -1271,7 +1271,7 @@ impl ProjectPanel {
                     }
                     // Brief 046 (design 046 §8.1): Terminal strips after Terminal plan.
                     if k == ecad_model::GenKind::Terminals {
-                        let b = ui.button(ecad_engine::strip_page::TITLE).on_hover_text("ecad.project.newpage.terminals-graphic");
+                        let b = ui.button(ecad_engine::terminal_strips::draw::TITLE).on_hover_text("ecad.project.newpage.terminals-graphic");
                         if b.clicked() {
                             out.push(Action::NewStripPage);
                             ui.close();

@@ -3,7 +3,7 @@
 //! carries it; a slash places the stored core, never a second one of its label. The shield is the
 //! cable's field, not a property.
 
-use ecad_model::style::cable::Shield;
+use ecad_model::objects::styles::cable::Shield;
 use ecad_model::{CableId, CorePosition, ObjectRef, Op, Purpose, WireId};
 use serde_json::json;
 

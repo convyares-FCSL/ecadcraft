@@ -2,9 +2,9 @@
 //!
 //! Every default a v0.15 lane adds (a size, a weight, a show rule, a gap…) is **one entry** here.
 //! Code that needs the value asks [`resolve`] (or a typed reader over it, such as
-//! [`crate::text_style::text_style`]); it never writes the number where it is used. The read-only
+//! [`crate::styles::text_style::text_style`]); it never writes the number where it is used. The read-only
 //! `defaults` command and Settings ▸ Standards (brief 042) list the entries; `setdefault`
-//! (`ecad_engine::cmd::default`) writes them at a level.
+//! (`ecad_engine::commands::default`) writes them at a level.
 //!
 //! Each lane owns one file and appends to its own `ENTRIES` slice: `text.rs` (lane T, 031),
 //! `wires.rs` (W, 032), `print.rs` (P, 033), `symbols.rs` (S, 034). [`all`] chains them and does
@@ -27,9 +27,9 @@ pub use data::{DefaultsError, Slot};
 use ecad_model::{DeviceId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject, WireId};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): the words of
-/// [`ecad_model::keys::Area::REGISTRY`], in its order (design 064 §3.3). Keys already approved
+/// [`ecad_model::naming::keys::Area::REGISTRY`], in its order (design 064 §3.3). Keys already approved
 /// before the registry keep their names; the key-rule test reads this one list.
-pub const AREAS: &[&str] = <ecad_model::keys::Area as ecad_model::Word>::WORDS.split_at(ecad_model::keys::Area::REGISTRY.len()).0;
+pub const AREAS: &[&str] = <ecad_model::naming::keys::Area as ecad_model::Word>::WORDS.split_at(ecad_model::naming::keys::Area::REGISTRY.len()).0;
 
 pub mod bom;
 pub mod connectors;
@@ -80,7 +80,7 @@ pub enum Kind {
     /// One of these words (compared without case; the registered spelling is returned).
     Choice(&'static [&'static str]),
     /// A switch (design 072 F4): stored as exactly `yes` or `no`; typed as any word
-    /// [`ecad_model::words::flag`] reads.
+    /// [`ecad_model::naming::words::flag`] reads.
     Flag,
     /// Free text of 1 to this many characters, no control characters.
     Text { max_chars: usize },
@@ -109,17 +109,17 @@ pub enum Value<'a> {
     /// (design 072 §5.1): held as the ID, so a value read from a typed field needs no stored text.
     OwnStyle(u128),
     /// A typed style field's wire size (design 072 §8): a wire type's `size`.
-    Size(ecad_model::wire::WireSize),
+    Size(ecad_model::objects::wire::WireSize),
     /// A typed style field's ordered colours (design 072 §8): a wire type's `colours`.
-    Colours(&'a ecad_model::wire::Colours),
+    Colours(&'a ecad_model::objects::wire::Colours),
     /// A typed style field's colour (design 072 §8): a text, location or frame style's.
-    Colour(ecad_model::style::StyleColour),
+    Colour(ecad_model::objects::styles::StyleColour),
     /// A typed style field's sheet (design 072 §8): a page type's or a frame style's own sheet.
-    Sheet(ecad_model::sheet::SheetSpec),
+    Sheet(ecad_model::document::sheet::SheetSpec),
     /// A typed style field's margins (design 072 §8): a frame style's.
-    Margins(ecad_model::sheet::Margins),
+    Margins(ecad_model::document::sheet::Margins),
     /// A typed style field's core colours (design 072 §8): a cable type's.
-    CoreColours(&'a ecad_model::style::cable::CoreColours),
+    CoreColours(&'a ecad_model::objects::styles::cable::CoreColours),
 }
 
 impl Value<'_> {
@@ -292,7 +292,7 @@ impl Resolved<'_> {
     pub fn word(&self) -> &'static str {
         match self.value {
             Value::Choice(w) => w,
-            Value::Flag(b) => ecad_model::words::flag_word(b),
+            Value::Flag(b) => ecad_model::naming::words::flag_word(b),
             _ => "",
         }
     }
@@ -302,14 +302,14 @@ impl Resolved<'_> {
         match self.value {
             Value::Length(x) | Value::Number(x) => format!("{x}"),
             Value::Choice(w) => w.to_string(),
-            Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
+            Value::Flag(b) => ecad_model::naming::words::flag_word(b).to_string(),
             Value::Text(t) => t.to_string(),
             Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
             Value::Size(s) => s.to_string(),
             Value::Colours(c) => c.to_string(),
             Value::Colour(c) => c.to_string(),
             Value::Sheet(s) => s.text(),
-            Value::Margins(m) => ecad_model::sheet::margins_text(&m),
+            Value::Margins(m) => ecad_model::document::sheet::margins_text(&m),
             Value::CoreColours(c) => c.to_string(),
         }
     }
@@ -324,7 +324,7 @@ impl Entry {
     }
 
     /// Parse a typed value for this entry ([`parse_input`]): a flag in any of
-    /// [`ecad_model::words::flag`]'s words, everything else as [`Entry::parse`].
+    /// [`ecad_model::naming::words::flag`]'s words, everything else as [`Entry::parse`].
     pub fn parse_input<'a>(&self, typed: &'a str) -> Option<Value<'a>> {
         parse_input(self.kind, typed)
     }
@@ -402,7 +402,7 @@ pub fn parse_value(kind: Kind, stored: &str) -> Option<Value<'_>> {
         Kind::Number { min, max } => number_in(s, min, max).map(Value::Number),
         Kind::Choice(words) => words.iter().find(|w| w.eq_ignore_ascii_case(s)).map(|w| Value::Choice(w)),
         // Stored strictly: the written words only, as they are (F4).
-        Kind::Flag => [true, false].into_iter().find(|b| ecad_model::words::flag_word(*b) == stored).map(Value::Flag),
+        Kind::Flag => [true, false].into_iter().find(|b| ecad_model::naming::words::flag_word(*b) == stored).map(Value::Flag),
         Kind::Text { max_chars } => plain_text(s, max_chars).then_some(Value::Text(s)),
         Kind::Parsed { max_chars, parse } => (plain_text(s, max_chars) && parse(s)).then_some(Value::Text(s)),
         Kind::Style(_) => match ecad_model::StyleRef::parse(s)? {
@@ -413,14 +413,14 @@ pub fn parse_value(kind: Kind, stored: &str) -> Option<Value<'_>> {
 }
 
 /// Parse a value typed in a command or a box: a [`Kind::Flag`] in any of
-/// [`ecad_model::words::flag`]'s words (stored as `yes`/`no`); a choice whose words include `yes`
+/// [`ecad_model::naming::words::flag`]'s words (stored as `yes`/`no`); a choice whose words include `yes`
 /// and `no` (a text's Shown: `yes`, `no`, `first`) takes those the same way; any other kind as
 /// [`parse_value`].
 pub fn parse_input(kind: Kind, typed: &str) -> Option<Value<'_>> {
     match kind {
-        Kind::Flag => ecad_model::words::flag(typed).map(Value::Flag),
+        Kind::Flag => ecad_model::naming::words::flag(typed).map(Value::Flag),
         Kind::Choice(words) => parse_value(kind, typed).or_else(|| {
-            let w = ecad_model::words::flag_word(ecad_model::words::flag(typed)?);
+            let w = ecad_model::naming::words::flag_word(ecad_model::naming::words::flag(typed)?);
             words.contains(&w).then_some(Value::Choice(w))
         }),
         _ => parse_value(kind, typed),
@@ -525,11 +525,11 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
 }
 
 /// `entry`'s value stored on `page`: its display bag, or for the page type the page's field
-/// (design 072 §5.1), read with the same rule as `ecad_model::sheet::page_type_of` (a type that
+/// (design 072 §5.1), read with the same rule as `ecad_model::document::sheet::page_type_of` (a type that
 /// does not exist reads as absent), so the two never disagree.
 fn page_value<'a>(doc: &Document, entry: &Entry, page: &'a ecad_model::Page) -> Option<Value<'a>> {
-    if entry.key == ecad_model::sheet::PAGE_TYPE_KEY {
-        return page.page_type.as_ref().filter(|id| ecad_model::sheet::page_type_exists(doc, id)).map(Value::of_style);
+    if entry.key == ecad_model::document::sheet::PAGE_TYPE_KEY {
+        return page.page_type.as_ref().filter(|id| ecad_model::document::sheet::page_type_exists(doc, id)).map(Value::of_style);
     }
     page.display.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
 }
@@ -537,7 +537,7 @@ fn page_value<'a>(doc: &Document, entry: &Entry, page: &'a ecad_model::Page) -> 
 /// `entry`'s value stored on wire `w`: its display bag, or for the wire type its field (design
 /// 072 §4.6); a type that does not exist reads as absent.
 fn wire_value<'a>(doc: &Document, entry: &Entry, w: &'a ecad_model::Wire) -> Option<Value<'a>> {
-    if entry.key == ecad_model::wiring::WIRE_CATEGORY {
+    if entry.key == ecad_model::connectivity::wiring::WIRE_CATEGORY {
         return w.wire_type.as_ref().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Wire, id)).map(Value::of_style);
     }
     w.display.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
@@ -637,7 +637,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
     use ecad_model::{Device, Page};
 
     fn key_ok(key: &str) -> bool {
@@ -749,7 +749,7 @@ mod tests {
 
 #[cfg(test)]
 mod kind_tests {
-    use super::*;
+    use crate::*;
 
     /// Design 072 A2: each choice declared as a word enum keeps the words, in the order, of the
     /// list it replaced (the first word is the entry's fallback).
@@ -769,7 +769,7 @@ mod kind_tests {
             ("print.continuation_numbers", &["sequence"]),
             ("print.missing_mark", &["boxed"]),
             ("print.contact_table_fallback", &["right_then_lift"]),
-            (crate::revisions::PENDING_KEY, &["star", "draft", "off"]),
+            (crate::releases::revisions::PENDING_KEY, &["star", "draft", "off"]),
             ("print.colour", &["mono", "colour"]),
             ("rating.system", &["ac1", "ac3", "dc"]),
             ("terminal.plan.style", &["table", "graphic"]),
@@ -780,11 +780,11 @@ mod kind_tests {
             assert!(matches!(e.map(|e| e.kind), Some(Kind::Choice(w)) if w == *want), "{key}");
         }
         assert_eq!(<crate::styles::frame::BlockAt as ecad_model::Word>::WORDS, ["bottom_full", "bottom_right"]);
-        assert_eq!(<crate::text_style::Weight as ecad_model::Word>::WORDS, ["regular", "bold"]);
+        assert_eq!(<crate::styles::text_style::Weight as ecad_model::Word>::WORDS, ["regular", "bold"]);
         assert_eq!(<crate::styles::wire::LineType as ecad_model::Word>::WORDS, ["continuous", "dashed", "dashdot"]);
         assert_eq!(<crate::styles::wire::RouteLabels as ecad_model::Word>::WORDS, ["project", "net", "each", "none"]);
-        assert_eq!(<ecad_model::style::wire::ConductorClass as ecad_model::Word>::WORDS, ["1", "2", "5", "6"]);
-        assert_eq!(<ecad_model::style::wire::Material as ecad_model::Word>::WORDS, ["cu"]);
+        assert_eq!(<ecad_model::objects::styles::wire::ConductorClass as ecad_model::Word>::WORDS, ["1", "2", "5", "6"]);
+        assert_eq!(<ecad_model::objects::styles::wire::Material as ecad_model::Word>::WORDS, ["cu"]);
     }
 
     fn prefix(s: &str) -> bool {

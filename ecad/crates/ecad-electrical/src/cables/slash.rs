@@ -24,7 +24,7 @@
 //! This module stores nothing and has no notion of cores or numbering: the order is the member
 //! order and nothing else.
 
-use ecad_model::keys::PropsExt;
+use ecad_model::naming::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, CorePosition, Document, ItemId, ItemKind, PageId, Primitive, Pt, RouteId, Subject, WireId};
@@ -157,7 +157,7 @@ fn routes(doc: &Document, page: PageId) -> BTreeMap<ItemId, (RouteId, CorePositi
     let mut out = BTreeMap::new();
     for r in doc.routes_on(page) {
         if let Some((_, item, _)) = crate::wires::route_item(doc, r) {
-            out.insert(item, (r, ecad_model::wire_order::core_position(doc, r)));
+            out.insert(item, (r, ecad_model::connectivity::wire_order::core_position(doc, r)));
         }
     }
     out
@@ -410,7 +410,7 @@ pub fn position_name(doc: &Document, p: CorePosition) -> String {
 
 /// A cable's name: its `tag` property, else `cable <first 8 hex>…`.
 pub fn cable_name(doc: &Document, k: CableId) -> String {
-    match doc.cables.get(&k).and_then(|x| x.properties.text(ecad_model::keys::TAG)) {
+    match doc.cables.get(&k).and_then(|x| x.properties.text(ecad_model::naming::keys::TAG)) {
         Some(t) => t.to_string(),
         None => format!("cable {}…", short(&k.hex())),
     }
@@ -479,7 +479,7 @@ pub fn already_in_cable(doc: &Document, blocked: &[(CorePosition, CableId)], tai
 
 /// `cable C1` for a tagged cable, else `cable 8a3f19c0…`.
 fn cable_label(doc: &Document, k: CableId) -> String {
-    match doc.cables.get(&k).and_then(|x| x.properties.text(ecad_model::keys::TAG)) {
+    match doc.cables.get(&k).and_then(|x| x.properties.text(ecad_model::naming::keys::TAG)) {
         Some(t) => format!("cable {t}"),
         None => cable_name(doc, k),
     }

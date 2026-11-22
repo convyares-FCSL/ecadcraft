@@ -8,11 +8,11 @@
 //! - Ortho: 90° only (ortho), 45° steps (polar tracking at 45°), or free.
 
 use ecad_engine::cad::Settings;
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 use serde_json::{Value, json};
 
-use super::bar;
+use crate::shell::bar;
 
 /// Accessible labels of the popouts.
 pub const SNAP: &str = "Snap settings";
@@ -88,7 +88,7 @@ pub fn popout(ui: &mut egui::Ui, command: &str, s: &Settings, button: Rect) -> (
         _ => (ORTHO, 1),
     };
     let height = (rows as f32) * ROW + space::M * 2.0;
-    let (out, rect) = super::tool_strip::popover(ui, title, button, vec2(WIDTH, height), |ui, rect| {
+    let (out, rect) = crate::shell::tool_strip::popover(ui, title, button, vec2(WIDTH, height), |ui, rect| {
         let mut out = Vec::new();
         let inner = rect.shrink2(vec2(space::L, space::M));
         let mut y = inner.top();
@@ -100,7 +100,7 @@ pub fn popout(ui: &mut egui::Ui, command: &str, s: &Settings, button: Rect) -> (
                 egui::Align2::LEFT_CENTER,
                 label,
                 bar::font(ui, ui_type::SMALL),
-                ecad_ui::color(ecad_ui::SHELL.text_2),
+                ecad_widgets::color(ecad_widgets::SHELL.text_2),
             );
             let field = Rect::from_min_max(pos2(r.left() + LABEL_W, r.top() + 2.0), pos2(r.right(), r.bottom() - 2.0));
             ui.scope_builder(egui::UiBuilder::new().max_rect(field).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
@@ -109,10 +109,10 @@ pub fn popout(ui: &mut egui::Ui, command: &str, s: &Settings, button: Rect) -> (
             });
         };
         let head = |ui: &mut egui::Ui, text: &str, on: bool, out: &mut Vec<(&'static str, Value)>, cmd: &'static str| {
-            if ecad_ui::prim::Chip::new(if on { "On" } else { "Off" }).selected(on).show(ui).response.clicked() {
+            if ecad_widgets::prim::Chip::new(if on { "On" } else { "Off" }).selected(on).show(ui).response.clicked() {
                 out.push((cmd, json!({"on": !on})));
             }
-            ecad_ui::prim::read_value(ui, text);
+            ecad_widgets::prim::read_value(ui, text);
         };
         match command {
             "snap" => {
@@ -120,13 +120,13 @@ pub fn popout(ui: &mut egui::Ui, command: &str, s: &Settings, button: Rect) -> (
                 row(ui, "Spacing", &mut |ui| {
                     for v in SNAP_STEPS {
                         let on = (s.snapunit.x - v).abs() < 1e-9;
-                        if ecad_ui::prim::Chip::new(&mm(v)).selected(on).show(ui).response.clicked() {
+                        if ecad_widgets::prim::Chip::new(&mm(v)).selected(on).show(ui).response.clicked() {
                             out.push(("dsettings", json!({"snapunit": [v, v]})));
                         }
                     }
                 });
                 row(ui, "Points", &mut |ui| {
-                    ui.add(ecad_ui::prim::Button::new("Connection points").small().disabled(ALWAYS_POINTS));
+                    ui.add(ecad_widgets::prim::Button::new("Connection points").small().disabled(ALWAYS_POINTS));
                 });
             }
             "grid" => {
@@ -135,18 +135,18 @@ pub fn popout(ui: &mut egui::Ui, command: &str, s: &Settings, button: Rect) -> (
                 row(ui, "Spacing", &mut |ui| {
                     for v in GRID_STEPS {
                         let on = (unit - v).abs() < 1e-9;
-                        if ecad_ui::prim::Chip::new(&mm(v)).selected(on).show(ui).response.clicked() {
+                        if ecad_widgets::prim::Chip::new(&mm(v)).selected(on).show(ui).response.clicked() {
                             out.push(("dsettings", json!({"gridunit": [v, v]})));
                         }
                     }
                 });
                 row(ui, "Style", &mut |ui| {
-                    ecad_ui::prim::Chip::new("Dots").selected(true).show(ui);
-                    ui.add(ecad_ui::prim::Button::new("Lines").small().disabled(ONE_STYLE));
+                    ecad_widgets::prim::Chip::new("Dots").selected(true).show(ui);
+                    ui.add(ecad_widgets::prim::Button::new("Lines").small().disabled(ONE_STYLE));
                 });
                 row(ui, "Major lines", &mut |ui| {
                     for m in MAJOR_STEPS {
-                        if ecad_ui::prim::Chip::new(&format!("every {m}")).selected(s.gridmajor == m).show(ui).response.clicked() {
+                        if ecad_widgets::prim::Chip::new(&format!("every {m}")).selected(s.gridmajor == m).show(ui).response.clicked() {
                             out.push(("dsettings", json!({"gridmajor": m})));
                         }
                     }
@@ -156,7 +156,7 @@ pub fn popout(ui: &mut egui::Ui, command: &str, s: &Settings, button: Rect) -> (
                 let now = ortho(s);
                 row(ui, "Angles", &mut |ui| {
                     for (o, text) in [(Ortho::Right, "90° only"), (Ortho::Steps45, "45° steps"), (Ortho::Free, "Free")] {
-                        if ecad_ui::prim::Chip::new(text).selected(now == o).show(ui).response.clicked() && now != o {
+                        if ecad_widgets::prim::Chip::new(text).selected(now == o).show(ui).response.clicked() && now != o {
                             out.extend(set_ortho(o));
                         }
                     }
@@ -181,7 +181,7 @@ fn mm(v: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::shell::*;
 
     #[test]
     fn ortho_reads_and_sets_its_three_ways() {

@@ -15,5 +15,5 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     if on != t.shell.state.cad_chrome {
         t.set_cad_chrome(on);
     }
-    ecad_ui::prim::read_value(ui, "The ECAD command field, the debugger and Inspect Project are in the Commands panel (Ctrl+/).");
+    ecad_widgets::prim::read_value(ui, "The ECAD command field, the debugger and Inspect Project are in the Commands panel (Ctrl+/).");
 }

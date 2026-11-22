@@ -1,6 +1,6 @@
 //! Lane 072 B (design 072 §2, §7, §14): the device and its type.
 
-use ecad_model::device::{DeviceGroup, DeviceType};
+use ecad_model::objects::devices::{DeviceGroup, DeviceType};
 use ecad_model::{Author, Definition, Device, DeviceId, IdAllocator, Ledger, ModelError, Op, Word};
 
 /// A2: every group's word, and every type with its data, round-trips; the words are the stored
@@ -196,11 +196,11 @@ fn location_and_function_are_fields_with_fixed() {
 /// never in a device's bag and `setprop`'s keys read them.
 #[test]
 fn a_connector_s_data_is_its_type_s() {
-    use ecad_model::device::{Connector, ConnectorCheck, ConnectorFamily, PinCount, PinName};
+    use ecad_model::objects::devices::{Connector, ConnectorCheck, ConnectorFamily, PinCount, PinName};
     let mut x = Connector::of_family(ConnectorFamily::Dsub);
     x.pins = PinCount::new(9);
     x.pin_names = ["L", "N", "PE"].map(|n| PinName::new(n).unwrap()).to_vec();
-    x.plug.part_number = Some(ecad_model::device::PartText::new("PLG-9").unwrap());
+    x.plug.part_number = Some(ecad_model::objects::devices::PartText::new("PLG-9").unwrap());
     x.ignored.insert(ConnectorCheck::Family);
     let d = Device { device_type: DeviceType::Connector(Box::new(x.clone())), ..Device::default() };
     let json = serde_json::to_value(&d.device_type).unwrap();
@@ -242,7 +242,7 @@ fn a_connector_s_data_is_its_type_s() {
 /// written only when set; a one-piece connector leaves it out.
 #[test]
 fn a_connector_s_mating_is_stored() {
-    use ecad_model::device::{Connector, ConnectorFamily};
+    use ecad_model::objects::devices::{Connector, ConnectorFamily};
     let one_piece = DeviceType::Connector(Box::new(Connector::of_family(ConnectorFamily::Rj45)));
     assert_eq!(serde_json::to_value(&one_piece).unwrap(), serde_json::json!({"connector": {"family": "rj45"}}));
     let mating = DeviceType::Connector(Box::new(Connector { mating: true, ..Connector::of_family(ConnectorFamily::M12) }));
@@ -256,8 +256,8 @@ fn a_connector_s_mating_is_stored() {
 /// per kind, shown from them; the note is separate; a bad value or a rating in a bag is refused.
 #[test]
 fn a_protective_device_s_rating_is_typed() {
-    use ecad_model::device::{Breaker, Fuse, FuseBank, Protection, RatingNote, TripCurve};
-    use ecad_model::units::{Amps, KiloAmps};
+    use ecad_model::objects::devices::{Breaker, Fuse, FuseBank, Protection, RatingNote, TripCurve};
+    use ecad_model::geometry::units::{Amps, KiloAmps};
     let mcb = Protection::Mcb(Breaker {
         rated_current: Some(Amps(16.0)),
         curve: Some(TripCurve::B),
@@ -316,8 +316,8 @@ fn a_protective_device_s_rating_is_typed() {
 /// rating; a bad value is refused.
 #[test]
 fn a_switching_device_s_rating_is_typed() {
-    use ecad_model::device::{Control, Operator, OperatorKind, RatingNote, Switching};
-    use ecad_model::units::{Amps, Current, RatedVoltage, Volts, Watts};
+    use ecad_model::objects::devices::{Control, Operator, OperatorKind, RatingNote, Switching};
+    use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Volts, Watts};
     let k = Switching {
         operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: Some(Watts(3.0)) }),
         ac3_current: Some(Amps(9.0)),
@@ -368,8 +368,8 @@ fn a_switching_device_s_rating_is_typed() {
 /// rating; a supply on a contact, or out of range, is refused.
 #[test]
 fn a_sensor_s_rating_is_typed() {
-    use ecad_model::device::{Output, RatingNote, Sensing, Sensor};
-    use ecad_model::units::{Current, RatedVoltage, Volts};
+    use ecad_model::objects::devices::{Output, RatingNote, Sensing, Sensor};
+    use ecad_model::geometry::units::{Current, RatedVoltage, Volts};
     let v24 = RatedVoltage { volts: Volts(24.0), current: Current::Dc };
     let b = Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: Some(v24), ..Sensor::default() };
     let d = Device { device_type: DeviceType::Sensor(b), ..Device::default() };
@@ -419,8 +419,8 @@ fn a_sensor_s_rating_is_typed() {
 /// out of range, or a `rating.<p>` left in the strip's properties is refused.
 #[test]
 fn a_strip_s_fuse_position_ratings_are_typed() {
-    use ecad_model::device::{Fuse, FuseClass, PositionLabel, TerminalStrip};
-    use ecad_model::units::Amps;
+    use ecad_model::objects::devices::{Fuse, FuseClass, PositionLabel, TerminalStrip};
+    use ecad_model::geometry::units::Amps;
     let mut s = TerminalStrip::default();
     s.fuses.insert(PositionLabel::new("3").unwrap(), Fuse { rated_current: Some(Amps(6.3)), class: Some(FuseClass::T), breaking: None });
     let d = Device { device_type: DeviceType::TerminalStrip(s.clone()), ..Device::default() };
@@ -458,8 +458,8 @@ fn a_strip_s_fuse_position_ratings_are_typed() {
 /// refused.
 #[test]
 fn a_motor_s_rating_is_typed() {
-    use ecad_model::device::{Motor, Phases, RatingNote, Starting};
-    use ecad_model::units::{Amps, Percent, Watts};
+    use ecad_model::objects::devices::{Motor, Phases, RatingNote, Starting};
+    use ecad_model::geometry::units::{Amps, Percent, Watts};
     let m = Motor {
         rated_power: Some(Watts(7500.0)),
         rated_current: Some(Amps(15.2)),
@@ -513,8 +513,8 @@ fn a_motor_s_rating_is_typed() {
 /// from it; a load without it has no rating; a power out of range is refused.
 #[test]
 fn a_load_s_rating_is_typed() {
-    use ecad_model::device::{Load, RatingNote};
-    use ecad_model::units::Watts;
+    use ecad_model::objects::devices::{Load, RatingNote};
+    use ecad_model::geometry::units::Watts;
     let d = Device { device_type: DeviceType::Load(Load { rated_power: Some(Watts(3000.0)) }), ..Device::default() };
     let json = serde_json::to_value(&d.device_type).unwrap();
     assert_eq!(json, serde_json::json!({"load": {"rated_power": 3000.0}}));
@@ -547,8 +547,8 @@ fn a_load_s_rating_is_typed() {
 /// them has no rating; a value out of range is refused.
 #[test]
 fn an_indicator_s_rating_is_typed() {
-    use ecad_model::device::{Indicator, IndicatorColour, RatingNote, SignalType};
-    use ecad_model::units::{Current, RatedVoltage, Volts, Watts};
+    use ecad_model::objects::devices::{Indicator, IndicatorColour, RatingNote, SignalType};
+    use ecad_model::geometry::units::{Current, RatedVoltage, Volts, Watts};
     let i = Indicator {
         colour: Some(IndicatorColour::Red),
         rated_voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }),
@@ -601,8 +601,8 @@ fn an_indicator_s_rating_is_typed() {
 /// one with none of them has no rating; a value out of range is refused.
 #[test]
 fn a_power_supply_s_rating_is_typed() {
-    use ecad_model::device::{PowerSupply, Psu, RatingNote, Transformer};
-    use ecad_model::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, Watts};
+    use ecad_model::objects::devices::{PowerSupply, Psu, RatingNote, Transformer};
+    use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, Watts};
     let v = |volts, current| Some(RatedVoltage { volts: Volts(volts), current });
     let psu = Psu { input: v(230.0, Current::Ac), output: v(24.0, Current::Dc), output_current: Some(Amps(5.0)), output_power: Some(Watts(120.0)) };
     let d = Device { device_type: DeviceType::PowerSupply(PowerSupply::Psu(psu)), ..Device::default() };
@@ -657,7 +657,7 @@ fn a_power_supply_s_rating_is_typed() {
 /// is a rating; a bad set or offset is refused; `contacts` and `mirror` never sit in a bag.
 #[test]
 fn contacts_and_the_contact_table_are_typed() {
-    use ecad_model::device::{
+    use ecad_model::objects::devices::{
         Breaker, ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable, OperatorKind, PoleKind, Protection, Switching,
     };
     let n = |n| ContactPoles::Count(std::num::NonZeroU8::new(n).unwrap());
@@ -747,7 +747,7 @@ fn roles_are_stored_as_words_and_an_unknown_word_is_refused() {
 /// invariant breach.
 #[test]
 fn user_values_name_a_defined_field_of_its_kind() {
-    use ecad_model::text::Text;
+    use ecad_model::naming::text::Text;
     use ecad_model::{Project, UserFieldDef, UserFieldId, UserFieldKind, UserValue};
     let mut l = Ledger::new(31);
     let mut ids = IdAllocator::seeded(31);

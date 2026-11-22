@@ -11,7 +11,7 @@ use ecad_engine::text_style::{Shown, TextKind};
 /// The section's element name.
 pub const SECTION_ID: &str = "ecad.projectsettings.text";
 /// The height refusal under a field (design 031 §4.1).
-pub const BAD_HEIGHT: &str = ecad_electrical::cmd::text::BAD_HEIGHT;
+pub const BAD_HEIGHT: &str = ecad_electrical::styles::commands::text::BAD_HEIGHT;
 
 /// One row: a kind's fields as shown and as they were.
 #[derive(Debug, Clone, PartialEq)]
@@ -147,11 +147,11 @@ impl TextSection {
         if self.rows.iter().any(|r| valid_height(&r.height).is_none()) {
             return Some(BAD_HEIGHT);
         }
-        if self.rows.iter().any(|r| !r.font.trim().is_empty() && ecad_engine::defaults::text::FONT.parse(&r.font).is_none()) {
-            return Some(ecad_electrical::cmd::text::BAD_FONT);
+        if self.rows.iter().any(|r| !r.font.trim().is_empty() && ecad_electrical::defaults::text::FONT.parse(&r.font).is_none()) {
+            return Some(ecad_electrical::styles::commands::text::BAD_FONT);
         }
-        if ecad_engine::defaults::text::FONT.parse(&self.font).is_none() {
-            return Some(ecad_electrical::cmd::text::BAD_FONT);
+        if ecad_electrical::defaults::text::FONT.parse(&self.font).is_none() {
+            return Some(ecad_electrical::styles::commands::text::BAD_FONT);
         }
         None
     }
@@ -211,7 +211,7 @@ impl TextSection {
             return;
         }
         let mut doc = ecad_model::Document::default();
-        doc.display.insert(ecad_engine::defaults::text::FONT.key.into(), self.font.trim().to_string());
+        doc.display.insert(ecad_electrical::defaults::text::FONT.key.into(), self.font.trim().to_string());
         let f = ecad_engine::text_style::Fonts::resolve(&doc);
         self.status = f.status();
         self.warn = !f.is_wanted();
@@ -288,12 +288,12 @@ const MAX_FAMILIES: usize = 400;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     fn read() -> TextSection {
         let doc = ecad_model::Document::default();
         let fonts = ecad_engine::text_style::Fonts::resolve(&doc);
-        TextSection::from_json(&ecad_electrical::cmd::text::textstyle_json(&doc, &fonts, false))
+        TextSection::from_json(&ecad_electrical::styles::commands::text::textstyle_json(&doc, &fonts, false))
     }
 
     #[test]

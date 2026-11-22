@@ -1,12 +1,12 @@
 //! Field: the one input look (spec §5, "What you set and what is read"). A value set here looks
-//! like this; a value read from the drawing is [`super::read_value`] instead.
+//! like this; a value read from the drawing is [`crate::prim::read_value`] instead.
 
-use ecad_tokens::{Icon, line, radius, size, space, ui_type};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Align2, Frame, Rect, Response, RichText, Role, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, WidgetInfo, pos2, vec2};
 
-use super::{Look, accessible};
+use crate::prim::{Look, accessible};
 use crate::style::corner;
-use crate::{color, fonts, icons};
+use {crate::color, crate::fonts, crate::icons};
 
 /// What a field holds.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

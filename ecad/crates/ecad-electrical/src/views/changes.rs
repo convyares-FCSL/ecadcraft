@@ -5,10 +5,10 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::view::PageSet;
+use ecad_model::document::view::PageSet;
 use ecad_model::{ObjectRef, PageId};
 
-use crate::device_list::DeviceTouch;
+use crate::devices::device_list::DeviceTouch;
 
 /// What one commit changed, merged from every kept view's outcome in a fixed order.
 #[derive(Debug, Clone, PartialEq)]

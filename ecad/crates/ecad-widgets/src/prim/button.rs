@@ -1,11 +1,11 @@
 //! Button and icon button.
 
-use ecad_tokens::{Icon, line, radius, size, space, ui_type};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Response, Role, Sense, Stroke, StrokeKind, Ui, Widget, WidgetInfo, vec2};
 
-use super::{Look, accessible, galley};
+use crate::prim::{Look, accessible, galley};
 use crate::style::corner;
-use crate::{color, icons};
+use {crate::color, crate::icons};
 
 /// A button's kind.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -26,7 +26,7 @@ pub enum Kind {
 /// # Example
 /// ```
 /// # egui::__run_test_ui(|ui| {
-/// use ecad_ui::prim::{Button, Kind};
+/// use crate::prim::{Button, Kind};
 /// if ui.add(Button::new("Save").kind(Kind::Primary)).clicked() { /* save */ }
 /// ui.add(Button::new("Release").disabled("Nothing changed since revision B"));
 /// # });

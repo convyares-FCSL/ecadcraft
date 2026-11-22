@@ -17,22 +17,12 @@
 //! redraw) is ecad-engine's `Project::apply_changes`.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-mod changes;
-mod checks;
-mod connectors;
-mod devices;
-mod frame;
-mod generated;
-mod outputs;
-mod pages;
-mod props;
-mod refs;
-mod tree;
+pub(crate) mod changes;
 
 use std::sync::Arc;
 
-use ecad_model::effect::{Effect, Effects};
-use ecad_model::view::{DerivedView, NoteCx, Outcome, Phase};
+use ecad_model::document::effect::{Effect, Effects};
+use ecad_model::document::view::{DerivedView, NoteCx, Outcome, Phase};
 use ecad_model::{Document, Op};
 
 pub use changes::Changes;
@@ -47,7 +37,7 @@ pub use props::{PropsFeed, PropsScope};
 pub use refs::{RefsScope, RefsView};
 pub use tree::{TreeFeed, TreeScope};
 
-use crate::text_style::fonts::TextMetrics;
+use crate::styles::text_style::fonts::TextMetrics;
 
 /// What the engine supplies to the views (design 064 §5.2): the text metrics, and any later
 /// engine-made input. ecad-engine fills it in.
@@ -130,7 +120,7 @@ pub struct Detached {
 
 impl Detached {
     /// The report models of that state.
-    pub fn outputs(&self) -> &crate::outputs::kept::ReportModels {
+    pub fn outputs(&self) -> &crate::reports::kept::ReportModels {
         self.outputs.model()
     }
 
@@ -196,7 +186,7 @@ impl Views {
     }
 
     /// The kept reference index (design 025 §3.3).
-    pub fn refs(&self) -> &crate::xref::RefIndex {
+    pub fn refs(&self) -> &crate::references::devices::RefIndex {
         self.refs.index()
     }
 
@@ -211,13 +201,13 @@ impl Views {
     }
 
     /// The report models, built on their first show (design 024 §8.1) and kept after that.
-    pub fn outputs(&mut self, doc: &Document) -> &crate::outputs::kept::ReportModels {
+    pub fn outputs(&mut self, doc: &Document) -> &crate::reports::kept::ReportModels {
         let metrics = &*self.inputs.metrics;
         self.outputs.get_or_build(|| ReportsView::build(doc, metrics)).model()
     }
 
     /// The report models, if shown once.
-    pub fn kept_reports(&self) -> Option<&crate::outputs::kept::ReportModels> {
+    pub fn kept_reports(&self) -> Option<&crate::reports::kept::ReportModels> {
         self.outputs.get().map(ReportsView::model)
     }
 
@@ -331,7 +321,7 @@ impl Views {
         changes.devices = self.devices.take();
         merge(&mut changes, self.props.update(after, props, &inputs));
         changes.props = self.props.take();
-        if ecad_model::ledger::verify_mode() {
+        if ecad_model::document::ledger::verify_mode() {
             changes.problems.extend(self.verify(after));
         }
         changes
@@ -365,11 +355,11 @@ impl Views {
     }
 
     /// The report models of another state `doc`, worked out from scratch, when it has a page drawn
-    /// from them ([`crate::generated::has_bom_page`]); `None` otherwise. For drawing a state the
+    /// from them ([`crate::pages::generated::has_bom_page`]); `None` otherwise. For drawing a state the
     /// project does not keep (debugger, verification, a revision, tests): the project passes its
     /// kept models instead.
-    pub fn report_models(&self, doc: &Document) -> Option<crate::outputs::kept::ReportModels> {
-        crate::generated::has_bom_page(doc).then(|| ReportsView::build(doc, &*self.inputs.metrics).into_model())
+    pub fn report_models(&self, doc: &Document) -> Option<crate::reports::kept::ReportModels> {
+        crate::pages::generated::has_bom_page(doc).then(|| ReportsView::build(doc, &*self.inputs.metrics).into_model())
     }
 }
 

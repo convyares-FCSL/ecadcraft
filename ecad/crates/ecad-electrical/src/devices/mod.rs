@@ -1,7 +1,7 @@
 //! Devices and tags (brief 018, design 018).
 //!
 //! A *device* is a component with a tag. By the concept spec a tag is an identity: the same tag
-//! anywhere means the same device ([`ecad_model::tag`]). A device may be drawn by several symbols
+//! anywhere means the same device ([`ecad_model::naming::tag`]). A device may be drawn by several symbols
 //! (a coil and its contacts), each a symbol representation; the first is its own definition's,
 //! the others carry their terminal positions as connection points in their definition's local
 //! frame (I14 as relaxed, decision 2026-11-08).
@@ -17,12 +17,18 @@
 //!
 //! This module builds ops and words; it commits nothing and holds no UI.
 
+pub mod commands;
+pub mod device_list;
+pub mod kinds;
+pub mod ratings;
+pub mod traits;
+pub(crate) mod view;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::Word;
-use ecad_model::derive::connection_point_positions;
-use ecad_model::tag::{self, TAG_KEY};
+use ecad_model::connectivity::derive::connection_point_positions;
+use ecad_model::naming::tag::{self, TAG_KEY};
 use ecad_model::{
     Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt,
     Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, ConnectionPointId,
@@ -40,8 +46,8 @@ pub fn stored_tag(t: &str) -> Result<tag::Tag, CmdError> {
 
 /// A new device's description from a symbol's or default's name: `None` when the name is not a
 /// valid description (blank, too long, a hidden character).
-pub fn description_of(name: &str) -> Option<ecad_model::device::Description> {
-    ecad_model::device::Description::new(name).ok()
+pub fn description_of(name: &str) -> Option<ecad_model::objects::devices::Description> {
+    ecad_model::objects::devices::Description::new(name).ok()
 }
 
 /// Device `id` as the planned `ops` (not committed) leave it on `doc`: created, modified or
@@ -117,14 +123,14 @@ pub fn retype(c: DeviceId, device: &Device, definition: DefinitionId, declared: 
 use serde_json::{Value, json};
 
 use crate::symbols::{self, Kind, STARTERS, Starter, StarterKey as K};
-use crate::text_style::fonts::TextMetrics;
+use crate::styles::text_style::fonts::TextMetrics;
 
 /// Reserved layer of tag texts and terminal labels (design 018 §2.4).
 pub const TAG_LAYER: &str = "ECAD-TAGS";
 /// `ecad.provisional` (design 026 §10): ACI 30, orange, for provisional tags and wire numbers.
 pub const PROVISIONAL_ACI: u8 = 30;
 /// Most letters in a tag prefix a project may set.
-pub const MAX_PREFIX_LETTERS: usize = ecad_model::prefix::MAX_PREFIX_LETTERS;
+pub const MAX_PREFIX_LETTERS: usize = ecad_model::naming::prefix::MAX_PREFIX_LETTERS;
 /// Refusal of an edit of a derived tag text or terminal label.
 pub const TAG_DERIVED: &str = "The tag text is derived: change the tag with Device Properties, or move it with Move Text.";
 /// Most characters in a property value (design 018 §6.1).
@@ -143,7 +149,7 @@ pub const PROPERTIES: [(&str, &str); 6] = [
 ];
 
 /// How many digits this project pads tag numbers to (its `tag_padding` setting, at most
-/// [`ecad_model::tag::MAX_PADDING`]).
+/// [`ecad_model::naming::tag::MAX_PADDING`]).
 pub fn padding(doc: &Document) -> u8 {
     doc.settings.tag_padding().min(tag::MAX_PADDING)
 }
@@ -151,17 +157,17 @@ pub fn padding(doc: &Document) -> u8 {
 /// A prefix as a project may set it: 1 to [`MAX_PREFIX_LETTERS`] ASCII letters, with or without a
 /// leading `-`; stored in upper case without the `-`.
 pub fn valid_prefix(text: &str) -> Option<String> {
-    ecad_model::prefix::TagPrefix::typed(text).map(|p| p.to_string())
+    ecad_model::naming::prefix::TagPrefix::typed(text).map(|p| p.to_string())
 }
 
 /// Set (with `None` remove) the project's prefix of symbol `of` in `s` (design 072 F5): a
 /// starter's own built-in prefix, or text that is not a prefix, is stored as none.
-pub fn set_symbol_prefix(s: &mut ecad_model::ProjectSettings, of: ecad_model::prefix::PrefixOf, prefix: Option<&str>) {
+pub fn set_symbol_prefix(s: &mut ecad_model::ProjectSettings, of: ecad_model::naming::prefix::PrefixOf, prefix: Option<&str>) {
     let builtin = match &of {
-        ecad_model::prefix::PrefixOf::Starter(w) => crate::symbols::by_key(w).map(|x| x.prefix()),
-        ecad_model::prefix::PrefixOf::Project(_) => None,
+        ecad_model::naming::prefix::PrefixOf::Starter(w) => crate::symbols::by_key(w).map(|x| x.prefix()),
+        ecad_model::naming::prefix::PrefixOf::Project(_) => None,
     };
-    match prefix.and_then(ecad_model::prefix::TagPrefix::typed) {
+    match prefix.and_then(ecad_model::naming::prefix::TagPrefix::typed) {
         Some(p) if builtin != Some(p.as_str()) => {
             s.tag_prefixes.insert(of, p);
         }
@@ -241,14 +247,14 @@ impl TagHigh {
     /// # Errors
     /// As [`TagHigh::next`].
     pub fn next_auto_in(&mut self, doc: &Document, prefix: &str) -> Result<String, CmdError> {
-        if ecad_model::numbering::provisional_on(doc) { Ok(self.next_provisional_in(doc, prefix)) } else { self.next_in(doc, prefix) }
+        if ecad_model::naming::numbering::provisional_on(doc) { Ok(self.next_provisional_in(doc, prefix)) } else { self.next_in(doc, prefix) }
     }
 
     /// The next provisional tag of `prefix` (`-K?3`): the highest provisional number in use, or
     /// given out in this edit, + 1. Counts as given.
     pub fn next_provisional_in(&mut self, doc: &Document, prefix: &str) -> String {
         let p = prefix.trim_start_matches('-').to_ascii_uppercase();
-        let in_use = tag::provisional(&ecad_model::numbering::next_provisional(doc, &p)).map_or(1, |(_, n)| n);
+        let in_use = tag::provisional(&ecad_model::naming::numbering::next_provisional(doc, &p)).map_or(1, |(_, n)| n);
         let n = in_use.max(self.prov.get(&p).map_or(0, |g| g.saturating_add(1)));
         self.prov.insert(p.clone(), n);
         crate::defaults::print::tag_style(doc).provisional(&p, n)
@@ -259,7 +265,7 @@ impl TagHigh {
     /// # Errors
     /// As [`TagHigh::next`].
     pub fn peek_auto(&self, doc: &Document, prefix: &str) -> Result<String, CmdError> {
-        if ecad_model::numbering::provisional_on(doc) { Ok(ecad_model::numbering::next_provisional(doc, prefix)) } else { self.peek(doc, prefix) }
+        if ecad_model::naming::numbering::provisional_on(doc) { Ok(ecad_model::naming::numbering::next_provisional(doc, prefix)) } else { self.peek(doc, prefix) }
     }
 
     /// The next automatic tag for `prefix`: its highest number + 1, skipping (boundedly) any tag a
@@ -365,7 +371,7 @@ fn first_page(doc: &Document, c: DeviceId) -> Option<PageId> {
 
 /// `-K01 (Contactor / relay coil, page 1 "Supply")`.
 pub fn holder_words(doc: &Document, c: DeviceId) -> String {
-    let page = first_page(doc, c).map(|p| format!(", {}", crate::references::page_words(doc, p))).unwrap_or_default();
+    let page = first_page(doc, c).map(|p| format!(", {}", crate::references::cables::page_words(doc, p))).unwrap_or_default();
     format!("{} ({}{page})", tag_words(doc, c), description(doc, c))
 }
 
@@ -493,7 +499,7 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
     match s.kind {
         Kind::Contact { make } => {
             // Brief 025 (owner answer Q4): the part's next free offered contact of this kind.
-            if let Some(labels) = crate::xref::offer_labels(doc, c, make, &used) {
+            if let Some(labels) = crate::references::devices::offer_labels(doc, c, make, &used) {
                 return Ok(labels);
             }
             // Brief 034: the digit rule lives in the catalogue (a fuse bank's outputs are not contacts).
@@ -515,7 +521,7 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
         ))),
         Kind::Fixed { exclusive } => {
             // Design 052 §3.4: the device's head by type, whichever symbol was placed first.
-            if exclusive && let Some(h) = crate::reps::head(doc, c) {
+            if exclusive && let Some(h) = crate::symbols::reps::head(doc, c) {
                 return Err(CmdError::refused(format!("{who} already has a {}.", head_noun(doc, h))));
             }
             let labels = s.labels();
@@ -724,7 +730,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     let mut new_connection_point: BTreeMap<ConnectionPointId, ConnectionPointId> = BTreeMap::new();
     let mut ops_add = Vec::new();
     let mut ops_reps = Vec::new();
-    let mut exclusive_taken = crate::reps::head(doc, into).is_some();
+    let mut exclusive_taken = crate::symbols::reps::head(doc, into).is_some();
     let who = tag_words(doc, into);
     // `into`'s point names, unlabelled points by their key (review of #92, 1).
     let into_labels: BTreeSet<String> = doc.connection_points_of(into).map(|(t, _)| label_of(doc, t)).collect();
@@ -831,8 +837,8 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     }
     let into_props = doc.devices.get(&into).map(|c| &c.properties);
     for (old, new) in renamed {
-        for (key, value) in crate::text_style::symbol_text_keys(&from_c.properties, old) {
-            let moved = crate::text_style::rename_symbol_key(&key, old, new);
+        for (key, value) in crate::styles::text_style::symbol_text_keys(&from_c.properties, old) {
+            let moved = crate::styles::text_style::rename_symbol_key(&key, old, new);
             let before = into_props.and_then(|p| p.get(&moved)).cloned();
             if before.as_ref() != Some(&value) {
                 ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Device(into), key: moved, before, after: Some(value) });
@@ -843,7 +849,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     // which takes its rack body (or already is a rack); otherwise they leave it, in this transaction.
     crate::plc::rack::merge_into(doc, &mut ops, from, into);
     // Design 072 §2.6: its links move to `into`.
-    ops.extend(crate::cmd::device_link::repoint_ops(doc, from, into));
+    ops.extend(crate::devices::commands::device_links::repoint_ops(doc, from, into));
     ops.push(Op::DeleteDevice { id: from, device: from_c });
     Ok(ops)
 }
@@ -918,22 +924,22 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             let (released, n) =
                 if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released);
-            ops.extend(crate::cmd::device_link::unlink_ops(doc, c));
+            ops.extend(crate::devices::commands::device_links::unlink_ops(doc, c));
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             if n > 0 {
                 notes.push(format!("Deleted {who}; {}", crate::plc::rack::released_words(n)));
             }
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
-            notes.extend(crate::rating::trace::cleared_words(doc, c).map(|w| format!("{who}: {w}")));
+            notes.extend(crate::circuits::trace::cleared_words(doc, c).map(|w| format!("{who}: {w}")));
         } else {
             // Brief 036 (review M1): a level's own label and a fuse position's rating go with
             // the last terminal of their level or position, never left to come back later.
-            let (key_ops, key_notes) = crate::terminal_types::orphaned_key_ops(doc, c, &drop);
+            let (key_ops, key_notes) = crate::terminal_strips::terminal_blocks::orphaned_key_ops(doc, c, &drop);
             ops.extend(key_ops);
             notes.extend(key_notes);
             // Brief 031 (FP5): an erased symbol's own text keys go with it.
             for (rid, _) in &reps {
-                for (key, value) in crate::text_style::symbol_text_keys(&component.properties, *rid) {
+                for (key, value) in crate::styles::text_style::symbol_text_keys(&component.properties, *rid) {
                     ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, before: Some(value), after: None });
                 }
             }
@@ -943,7 +949,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
                 notes.push(format!(
                     "Removed {who}'s {name} {} ({}); {who} is still shown on {}.",
                     labels.join("/"),
-                    crate::references::page_number_words(doc, r.page),
+                    crate::references::cables::page_number_words(doc, r.page),
                     shown_pages_words(doc, &remaining)
                 ));
             }
@@ -1009,7 +1015,7 @@ pub struct DerivedText {
     pub aci: Option<u8>,
     /// Brief 050a: the object's own text style (its `text.<kind>.style`), drawn instead of the
     /// kind's project style; `None` for the kind's.
-    pub own: Option<crate::text_style::OwnStyle>,
+    pub own: Option<crate::styles::text_style::OwnStyle>,
 }
 
 /// The page box of a placed definition.
@@ -1043,7 +1049,7 @@ pub struct TagSizes {
 impl TagSizes {
     /// The sizes of `doc`.
     pub fn of(doc: &Document) -> TagSizes {
-        use crate::text_style::{TextKind, text_style};
+        use crate::styles::text_style::{TextKind, text_style};
         let tag = text_style(doc, TextKind::Tag).height;
         let factor = crate::defaults::resolve(doc, &crate::defaults::text::TAG_GAP, crate::defaults::Scope::project()).number();
         TagSizes { tag, label: text_style(doc, TextKind::PointLabel).height, gap: factor * tag }
@@ -1051,8 +1057,8 @@ impl TagSizes {
 }
 
 /// The kind of text (design 031 §3.1) a derived text is.
-pub fn kind_of(of: TextOf) -> crate::text_style::TextKind {
-    use crate::text_style::TextKind;
+pub fn kind_of(of: TextOf) -> crate::styles::text_style::TextKind {
+    use crate::styles::text_style::TextKind;
     match of {
         TextOf::Tag => TextKind::Tag,
         TextOf::Terminal(_) => TextKind::PointLabel,
@@ -1135,8 +1141,8 @@ pub fn text_passes(page: PageId) -> u64 {
 }
 
 /// The run rule of a symbol (design 031 §5.3), from its starter kind.
-pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRule {
-    use crate::text_style::RunRule;
+pub fn run_rule(doc: &Document, r: &Representation) -> crate::styles::text_style::RunRule {
+    use crate::styles::text_style::RunRule;
     // Brief 044 (design 044 §5.2): a connector's pins show their half's tag once per run.
     if crate::connectors::rep_half(doc, r).is_some_and(crate::connectors::is_pin_starter) {
         return RunRule::Strip;
@@ -1158,8 +1164,8 @@ pub fn run_rule(doc: &Document, r: &Representation) -> crate::text_style::RunRul
 /// `all_texts_on_page` and `all_texts_on_page_with` pass CADCraft's fonts).
 pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>, m: &dyn TextMetrics) -> Vec<PageText> {
     TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
-    use crate::text_style::fonts::width_in;
-    use crate::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style};
+    use crate::styles::text_style::fonts::width_in;
+    use crate::styles::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in connection_point_positions(doc, page) {
         // Brief 044: a pin pair shows its pin name once, beside the socket point.
@@ -1175,15 +1181,15 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
             continue;
         }
         // Brief 036: a strip level shows its shown label (`1.L`), not its position.
-        if let Some(label) = crate::terminal_types::shown_label(doc, t) {
+        if let Some(label) = crate::terminal_strips::terminal_blocks::shown_label(doc, t) {
             by_rep.entry(rid).or_default().push((TextOf::Terminal(t), label, at));
         }
     }
     let mut out = Vec::new();
     let sizes = TagSizes::of(doc);
-    let look = crate::text_style::fonts::Look::with(doc, m);
+    let look = crate::styles::text_style::fonts::Look::with(doc, m);
     let pitch = crate::defaults::resolve(doc, &crate::defaults::text::LINE_PITCH, crate::defaults::Scope::project()).number();
-    let firsts = crate::text_style::run_firsts(doc, page);
+    let firsts = crate::styles::text_style::run_firsts(doc, page);
     // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
     let mut boxes = crate::locations::BoxCache::default();
     // Brief 045: the racks' address blocks, worked out once per draw.
@@ -1194,12 +1200,12 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         lines: Vec<(TextOf, String, f64, bool, Option<u8>)>,
     }
     let mut pending: Vec<Pending> = Vec::new();
-    let mut fixed: Vec<crate::text_style::TextBox> = Vec::new();
+    let mut fixed: Vec<crate::styles::text_style::TextBox> = Vec::new();
     // Brief 050a (design 050 §4.1): a device's own text style for a kind (its
     // `text.<kind>.style`), else `None` (the kind's project style).
-    let own = |c: DeviceId, kind: TextKind| -> Option<crate::text_style::OwnStyle> {
+    let own = |c: DeviceId, kind: TextKind| -> Option<crate::styles::text_style::OwnStyle> {
         let props = &doc.devices.get(&c)?.properties;
-        crate::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), props)
+        crate::styles::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), props)
     };
     let height_of = |c: DeviceId, kind: TextKind, project: f64| own(c, kind).map_or(project, |s| s.style.height);
     for (rid, r) in doc.representations_on(page) {
@@ -1244,15 +1250,15 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
             if let TextOf::Terminal(t) = of
                 && let Some((p, h, v)) = props
                     .and_then(|p| p.get(&point_label_key(doc, rid, t)))
-                    .and_then(|s| crate::text_style::parse_at(s))
+                    .and_then(|s| crate::styles::text_style::parse_at(s))
                     .map(|(p, h, v)| (pl.apply(p), h, v))
                     .filter(|(p, _, _)| p.is_finite())
             {
                 (at, halign, valign, moved) = (p, h, v, true);
             }
             if labels_shown {
-                let w = width_in(look.fonts_for(TextKind::PointLabel), crate::text_style::TextStyle { height, ..label_style }, &value, m);
-                fixed.push(crate::text_style::text_box(w, height, at, halign, valign));
+                let w = width_in(look.fonts_for(TextKind::PointLabel), crate::styles::text_style::TextStyle { height, ..label_style }, &value, m);
+                fixed.push(crate::styles::text_style::text_box(w, height, at, halign, valign));
             }
             out.push(PageText {
                 text: DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None, own: own(c, kind_of(of)) },
@@ -1263,7 +1269,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         }
         // Brief 051 (design 051 §2.6): a framed PLC cell or body has its tag and caption in its
         // frame's name block, not beside it.
-        let framed = crate::plc::look::framed(doc, c, rid, r);
+        let framed = crate::plc::draw::framed(doc, c, rid, r);
         // Brief 045 (design 045 §7.2): a card body's caption at its anchor, under the body.
         if !framed && let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
             out.push(text);
@@ -1315,13 +1321,13 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         let sized: Vec<&(TextOf, String, f64, bool, Option<u8>)> = lines.iter().filter(|l| l.3 || !any).collect();
         let w = sized
             .iter()
-            .map(|l| width_in(look.fonts_for(kind_of(l.0)), crate::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1, m))
+            .map(|l| width_in(look.fonts_for(kind_of(l.0)), crate::styles::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1, m))
             .fold(0.0, f64::max);
         // Line tops are `text.line_pitch` × each line's height apart.
         let h = sized.iter().map(|l| pitch * l.2).sum::<f64>() - sized.last().map_or(0.0, |l| (pitch - 1.0) * l.2);
         pending.push(Pending { block: Block { rep: rid, component: c, lo, hi, vertical: vertical(&pl), placement: pl, w, h }, lines });
     }
-    let placed = crate::text_style::place_blocks(
+    let placed = crate::styles::text_style::place_blocks(
         doc,
         page,
         &pending.iter().filter(|p| p.lines.iter().any(|l| l.3)).map(|p| p.block.clone()).collect::<Vec<_>>(),
@@ -1331,8 +1337,8 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         let place = placed.get(&p.block.rep).copied().unwrap_or_else(|| {
             // Nothing shown: the first candidate, for Show Hidden Text only.
             let gap = sizes.gap;
-            let (rect, halign) = crate::text_style::candidates(p.block.lo, p.block.hi, p.block.vertical, p.block.w, p.block.h, gap)[0];
-            crate::text_style::BlockPlace { rect, halign, moved: false, overlaps: false }
+            let (rect, halign) = crate::styles::text_style::candidates(p.block.lo, p.block.hi, p.block.vertical, p.block.w, p.block.h, gap)[0];
+            crate::styles::text_style::BlockPlace { rect, halign, moved: false, overlaps: false }
         });
         let mut top = place.rect.1.y;
         for (of, value, height, shown, aci) in p.lines {
@@ -1365,11 +1371,11 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
 #[allow(clippy::too_many_arguments)]
 fn slot_texts(
     doc: &Document, c: DeviceId, rid: RepresentationId, r: &Representation, def: &Definition, pl: &Placement, sizes: TagSizes,
-    shown: &dyn Fn(crate::text_style::TextKind) -> bool, boxes: &mut crate::locations::BoxCache, look: &crate::text_style::fonts::Look,
+    shown: &dyn Fn(crate::styles::text_style::TextKind) -> bool, boxes: &mut crate::locations::BoxCache, look: &crate::styles::text_style::fonts::Look,
     m: &dyn TextMetrics, fixed: &mut Vec<(Pt, Pt)>,
 ) -> Vec<PageText> {
-    use crate::text_style::fonts::width_in;
-    use crate::text_style::{TextKind, text_style};
+    use crate::styles::text_style::fonts::width_in;
+    use crate::styles::text_style::{TextKind, text_style};
     use ecad_model::SlotText;
     let device = doc.devices.get(&c);
     let prop = |k: &str| device.and_then(|d| d.value(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
@@ -1394,7 +1400,7 @@ fn slot_texts(
         let Some(value) = value else { continue };
         let style = text_style(doc, kind);
         // Brief 050a: the device's own text style of this kind, font included.
-        let own = doc.devices.get(&c).and_then(|x| crate::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
+        let own = doc.devices.get(&c).and_then(|x| crate::styles::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
         let height = match &own {
             Some(o) => o.style.height,
             None if of == TextOf::Tag => sizes.tag,
@@ -1407,8 +1413,8 @@ fn slot_texts(
         }
         let (ha, va) = (h(slot.h), v(slot.v));
         if on {
-            let w = width_in(look.fonts_for(kind), crate::text_style::TextStyle { height, ..style }, &value, m);
-            fixed.push(crate::text_style::text_box(w, height, at, ha, va));
+            let w = width_in(look.fonts_for(kind), crate::styles::text_style::TextStyle { height, ..style }, &value, m);
+            fixed.push(crate::styles::text_style::text_box(w, height, at, ha, va));
         }
         out.push(PageText {
             text: DerivedText { rep: rid, of, value, at, height, halign: ha, valign: va, aci, own },
@@ -1426,7 +1432,7 @@ fn slot_texts(
 pub fn point_label_key(doc: &Document, rep: RepresentationId, t: ConnectionPointId) -> String {
     let term = doc.terminals.get(&t);
     let key = term.and_then(|x| x.key.as_ref()).map(ToString::to_string).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
-    format!("{}point_label.{key}.at", crate::text_style::symbol_prefix(rep))
+    format!("{}point_label.{key}.at", crate::styles::text_style::symbol_prefix(rep))
 }
 
 // ---------------------------------------------------------------- JSON (§8)
@@ -1540,8 +1546,8 @@ pub fn device_json(doc: &Document, c: DeviceId) -> Value {
     for (key, _) in PROPERTIES {
         // Brief 052: a function or location shows its code; its stored key is `<key>_key`.
         let stored = comp.value(key);
-        v[key] = stored.as_ref().map_or(Value::Null, |x| Value::String(crate::designations::display(doc, key, x)));
-        if crate::designations::Aspect::of_property(key).is_some() {
+        v[key] = stored.as_ref().map_or(Value::Null, |x| Value::String(crate::locations::designations::display(doc, key, x)));
+        if crate::locations::designations::Aspect::of_property(key).is_some() {
             v[format!("{key}_key")] = stored.map_or(Value::Null, Value::String);
         }
     }
@@ -1555,7 +1561,7 @@ pub fn device_json(doc: &Document, c: DeviceId) -> Value {
         if let Some(r) = doc.representations.get(rid) {
             x["context"] = crate::locations::rep_context(doc, r, &mut boxes).value.map_or(Value::Null, Value::String);
             x["location"] = crate::locations::rep_location(doc, c, r).value.map_or(Value::Null, Value::String);
-            x["type"] = json!(crate::reps::rep_type(doc, r).word());
+            x["type"] = json!(crate::symbols::reps::rep_type(doc, r).word());
         }
     }
     v["representations"] = Value::Array(reps.into_iter().map(|(_, _, x)| x).collect());
@@ -1574,7 +1580,7 @@ pub fn starter(key: &str) -> Result<&'static Starter, CmdError> {
 }
 
 /// A device property value as stored (design 018 §6.1): trimmed; `location` with a leading `+`,
-/// `function` with a leading `=`; empty clears it. Tags go through [`ecad_model::tag::normalise`].
+/// `function` with a leading `=`; empty clears it. Tags go through [`ecad_model::naming::tag::normalise`].
 ///
 /// # Errors
 /// T6: too long or a control character.
@@ -1642,8 +1648,8 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
         lines.extend(sides.iter().filter_map(|s| crate::connectors::hover_words(doc, c, *s)));
     }
     // Brief 028 (design 028 §7.1): a terminal's sides and its strip's positions.
-    if crate::strips::strip_of(doc, c).is_some() {
-        lines.extend(crate::strips::connection_point_hover(doc, c, here));
+    if crate::terminal_strips::strip_of(doc, c).is_some() {
+        lines.extend(crate::terminal_strips::connection_point_hover(doc, c, here));
     }
     // Brief 024 (design 024 §3.3): the location shown, where it comes from, and this symbol's own
     // context when it differs.
@@ -1664,7 +1670,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
     if let Some(r) = doc.representations.get(&here) {
         let drawable = rep_definition(doc, r).is_some_and(|(_, pl)| pl.is_valid());
         let cannot = if drawable { "" } else { " (cannot be drawn)" };
-        lines.push(format!("This symbol: {}, {}{cannot}", rep_words(doc, c, r), crate::references::page_words(doc, r.page)));
+        lines.push(format!("This symbol: {}, {}{cannot}", rep_words(doc, c, r), crate::references::cables::page_words(doc, r.page)));
         // Brief 031 (design §5.4): a tag hidden here is still data; the lens names it. (Descriptions
         // and part numbers are hidden by default, so naming them would add a line to every lens.)
         let hidden: Vec<String> = all_texts_measured(doc, r.page, None, m)
@@ -1682,7 +1688,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
         .filter(|(id, _)| *id != here)
         .map(|(id, r)| {
             let n = order.get(&r.page).copied().unwrap_or(usize::MAX);
-            (n, id, format!("{} {}", rep_words(doc, c, r), crate::references::page_words(doc, r.page)))
+            (n, id, format!("{} {}", rep_words(doc, c, r), crate::references::cables::page_words(doc, r.page)))
         })
         .collect();
     others.sort_by_key(|(n, id, _)| (*n, *id));
@@ -1699,7 +1705,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
             .map(|(t, _)| {
                 let label = label_of(doc, *t);
                 match doc.ends_at(*t).first() {
-                    Some((w, _)) => format!("{label} -> {}", crate::slash::wire_name(doc, *w)),
+                    Some((w, _)) => format!("{label} -> {}", crate::cables::slash::wire_name(doc, *w)),
                     None => format!("{label} (not connected)"),
                 }
             })
@@ -1713,6 +1719,6 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
 }
 
 /// The kind a derived text is; a box label (not a symbol's text) is a location label.
-pub fn derived_text_kind(of: TextOf, symbol: bool) -> crate::text_style::TextKind {
-    if symbol { kind_of(of) } else { crate::text_style::TextKind::LocationLabel }
+pub fn derived_text_kind(of: TextOf, symbol: bool) -> crate::styles::text_style::TextKind {
+    if symbol { kind_of(of) } else { crate::styles::text_style::TextKind::LocationLabel }
 }

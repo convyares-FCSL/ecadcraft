@@ -4,13 +4,13 @@
 //! that one undo takes back.
 
 use ecad_app::App;
-use ecad_app::project_panel::Action;
+use ecad_app::pages::project_panel::Action;
 use ecad_engine::checks::{Fix, Kind, Object};
 use eframe::egui::{self, vec2};
 use egui_kittest::Harness;
 
-use crate::mouse_tester::{Collect, Deltas};
-use crate::project_panel::{doc, head, ok, rev3_app as new_app};
+use crate::canvas::mouse_acceptance::{Collect, Deltas};
+use crate::pages::project_panel::{doc, head, ok, rev3_app as new_app};
 
 type H = Harness<'static, App>;
 
@@ -41,7 +41,7 @@ fn core_fixes_go_to_the_cable_and_tick_not_used_in_one_transaction() {
     let mut h = harness();
     let dir = std::env::temp_dir().join(format!("t057 core fixes {}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = crate::checks_ui::demo_file(&dir);
+    let path = crate::checks::ui::demo_file(&dir);
     h.state_mut().close_project();
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
@@ -63,8 +63,8 @@ fn core_fixes_go_to_the_cable_and_tick_not_used_in_one_transaction() {
     let row = core_rows(&mut h).into_iter().find(|c| c.object == Object::Cable(w90)).expect("a core-open row for -W90");
     let fix = row.fix.unwrap();
     let Fix::CoreOpen(_, i) = fix else { panic!("{fix:?}") };
-    let open = ecad_engine::styles::cable::open_cores(&d, w90).into_iter().nth(usize::from(i)).unwrap();
-    let want_at = ecad_model::numbering::rep_anchor(&d, ecad_model::Subject::Cable(w90)).map(|(_, a)| a);
+    let open = ecad_electrical::styles::cable::open_cores(&d, w90).into_iter().nth(usize::from(i)).unwrap();
+    let want_at = ecad_model::naming::numbering::rep_anchor(&d, ecad_model::Subject::Cable(w90)).map(|(_, a)| a);
     // Go to the cable, from another page.
     h.state_mut().show_page(first).unwrap();
     h.run_steps(2);

@@ -15,7 +15,7 @@
 //! - every other change: nothing.
 //!
 //! - Merge into the parent and Update from the parent (brief 020b) open the merge dialog
-//!   ([`crate::merge_dialog`]); merges are rows of the graph with a join from the source's line.
+//!   ([`crate::history::merge_dialog`]); merges are rows of the graph with a join from the source's line.
 //! - The graph reads one page of rows; scrolling to its end reads the next page.
 //! - F2 (or double-click on the Branch list's name) renames the branch shown; a Now row's
 //!   right-click offers switch, merge, update, rename and archive.
@@ -35,7 +35,7 @@ use serde_json::{Value, json};
 
 use crate::agent::BannerAction;
 use crate::agent::last_write::LiveSession;
-use crate::project_panel::{Action, ROW_H};
+use crate::pages::project_panel::{Action, ROW_H};
 
 /// Accessible names (brief 043): a session group's row (`history.session: claude · 14 changes ·
 /// 20:31–20:44`), its Undo session button, and an author chip (`history.author: You`).
@@ -362,10 +362,10 @@ impl HistoryPanel {
     /// The panel's contents (UI rev 3, board 1.04), top to bottom: the pending revision, the agent
     /// while one is connected, Branches, Changes and Versions, each folding, then a short footer.
     /// `writable`: a project that can be changed; `read_only`: its file cannot be written.
-    pub fn show(&mut self, ui: &mut egui::Ui, writable: bool, read_only: bool, header: &crate::project_panel::Header) -> Vec<Action> {
+    pub fn show(&mut self, ui: &mut egui::Ui, writable: bool, read_only: bool, header: &crate::pages::project_panel::Header) -> Vec<Action> {
         let mut out = Vec::new();
         let (next_version, next_branch, unsaved, cur_name, has_file) = self.defaults.clone();
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         let r = ui.max_rect();
         // F2 renames the branch shown (design §3.2).
         let f2 = ui.input(|i| i.key_pressed(egui::Key::F2)) && self.dialog.is_none();
@@ -377,7 +377,7 @@ impl HistoryPanel {
         }
         if let Some(n) = self.note.clone() {
             ui.horizontal_wrapped(|ui| {
-                ui.label(RichText::new(n).small().color(ecad_ui::color(s.text_2)));
+                ui.label(RichText::new(n).small().color(ecad_widgets::color(s.text_2)));
                 if !has_file && ui.small_button("Save As…").clicked() {
                     out.push(Action::History(Do::SaveAs));
                 }
@@ -399,9 +399,9 @@ impl HistoryPanel {
         self.rows_drawn = drawn;
         // The footer.
         let foot = egui::Rect::from_min_max(pos2(r.left() - 8.0, (r.bottom() - footer_h).max(r.top())), pos2(r.right() + 8.0, r.bottom()));
-        ui.painter().hline(foot.x_range(), foot.top() + 0.5, Stroke::new(1.0, ecad_ui::color(s.line)));
+        ui.painter().hline(foot.x_range(), foot.top() + 0.5, Stroke::new(1.0, ecad_widgets::color(s.line)));
         crate::shell::in_rect(ui, foot.shrink2(vec2(10.0, 5.0)), "ecad.history.footer", |ui| {
-            ui.add(egui::Label::new(RichText::new(FOOTER).small().color(ecad_ui::color(s.text_3))).wrap());
+            ui.add(egui::Label::new(RichText::new(FOOTER).small().color(ecad_widgets::color(s.text_3))).wrap());
         });
         self.dialogs(ui, unsaved, &cur_name, &mut out);
         out
@@ -409,9 +409,9 @@ impl HistoryPanel {
 
     /// The pending revision: `Rev D* pending`, after which revision, the checks' verdict, Release
     /// and Compare (a placeholder until Compare comes).
-    fn revision_card(&mut self, ui: &mut egui::Ui, header: &crate::project_panel::Header, out: &mut Vec<Action>) {
-        let s = ecad_ui::SHELL;
-        let c = ecad_ui::color;
+    fn revision_card(&mut self, ui: &mut egui::Ui, header: &crate::pages::project_panel::Header, out: &mut Vec<Action>) {
+        let s = ecad_widgets::SHELL;
+        let c = ecad_widgets::color;
         let last = self.graph.nodes.iter().find(|n| n.kind == NodeKind::Revision).cloned();
         let today = now_ms();
         egui::Frame::NONE.inner_margin(egui::Margin { left: 4, right: 4, top: 6, bottom: 10 }).show(ui, |ui| {
@@ -422,7 +422,7 @@ impl HistoryPanel {
             };
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                let title = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::TITLE);
+                let title = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::TITLE);
                 ui.label(RichText::new("Rev ").font(title.clone()).color(c(s.text)));
                 ui.label(RichText::new(format!("{rev}*")).font(title.clone()).color(c(s.provisional)));
                 ui.label(RichText::new(" pending").font(title).color(c(s.text)));
@@ -443,11 +443,11 @@ impl HistoryPanel {
             ui.add_space(2.0);
             ui.horizontal(|ui| {
                 let release = format!("Release {rev}\u{2026}");
-                if ui.add(ecad_ui::prim::Button::new(&release).kind(ecad_ui::prim::Kind::Primary).small()).clicked() {
+                if ui.add(ecad_widgets::prim::Button::new(&release).kind(ecad_widgets::prim::Kind::Primary).small()).clicked() {
                     out.push(Action::Release);
                 }
                 let compare = last.as_ref().map_or_else(|| "Compare".to_string(), |l| format!("Compare with {}", l.label.trim_start_matches("Rev ")));
-                ui.add(ecad_ui::prim::Button::new(&compare).small().disabled(COMPARE_LATER));
+                ui.add(ecad_widgets::prim::Button::new(&compare).small().disabled(COMPARE_LATER));
             });
         });
         separator(ui);
@@ -457,8 +457,8 @@ impl HistoryPanel {
     /// branch of its own): who, where, how many changes; Pause or Resume, and disconnect.
     fn agent_card(&mut self, ui: &mut egui::Ui, cur_name: &str, out: &mut Vec<Action>) {
         let Some(a) = self.agent.clone() else { return };
-        let s = ecad_ui::SHELL;
-        let c = ecad_ui::color;
+        let s = ecad_widgets::SHELL;
+        let c = ecad_widgets::color;
         let lime = c(s.agent);
         let shown = egui::Frame::NONE.fill(lime.gamma_multiply(0.08)).inner_margin(egui::Margin::symmetric(6, 8)).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 4.0;
@@ -479,11 +479,11 @@ impl HistoryPanel {
             });
             ui.horizontal(|ui| {
                 let (label, act) = if a.paused { ("Resume", BannerAction::Resume) } else { ("Pause", BannerAction::Pause) };
-                if ui.add(ecad_ui::prim::Button::new(label).small()).clicked() {
+                if ui.add(ecad_widgets::prim::Button::new(label).small()).clicked() {
                     out.push(Action::History(Do::Agent(act)));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(ecad_ui::prim::IconButton::new(ecad_ui::tokens::Icon::Close, AGENT_DISCONNECT)).clicked() {
+                    if ui.add(ecad_widgets::prim::IconButton::new(ecad_widgets::tokens::Icon::Close, AGENT_DISCONNECT)).clicked() {
                         out.push(Action::History(Do::Agent(BannerAction::Disconnect)));
                     }
                 });
@@ -499,7 +499,7 @@ impl HistoryPanel {
     fn section(&mut self, ui: &mut egui::Ui, key: &'static str, title: &str, action: Option<(&str, bool)>) -> (bool, bool) {
         let mut open = !self.folded.contains(key);
         let name = format!("Section {title}");
-        let mut header = ecad_ui::prim::SectionHeader::new(&mut open, title).name(&name);
+        let mut header = ecad_widgets::prim::SectionHeader::new(&mut open, title).name(&name);
         if let Some((label, enabled)) = action {
             header = header.action(label, enabled);
         }
@@ -540,8 +540,8 @@ impl HistoryPanel {
             separator(ui);
             return 0;
         }
-        let s = ecad_ui::SHELL;
-        let c = ecad_ui::color;
+        let s = ecad_widgets::SHELL;
+        let c = ecad_widgets::color;
         let mut rows = self.graph.branches.clone();
         rows.sort_by_key(|b| (!b.current, b.status != BranchStatus::Open, b.fork.is_some()));
         let mut menu: Option<Action> = None;
@@ -564,8 +564,8 @@ impl HistoryPanel {
             };
             p.line_segment([pos2(rect.left() + 10.0, y - 7.0), pos2(rect.left() + 10.0, y + 7.0)], Stroke::new(2.0, lane));
             p.circle_filled(pos2(rect.left() + 10.0, y - 7.0), 2.0, lane);
-            let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);
-            let small = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL);
+            let font = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::BODY);
+            let small = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::SMALL);
             let ink = if live { c(s.text) } else { c(s.text_3) };
             let name = p.text(pos2(rect.left() + 24.0, y), egui::Align2::LEFT_CENTER, &b.name, font.clone(), ink);
             let sub = if b.current {
@@ -634,7 +634,7 @@ impl HistoryPanel {
             ui.add_space(20.0);
             ui.spacing_mut().item_spacing.x = 2.0;
             for (name, on) in [("All", true), (cur_name, false), ("This page", false)] {
-                let w = crate::shell::bar::text_width(ui, name, ecad_ui::tokens::ui_type::SMALL) + 14.0;
+                let w = crate::shell::bar::text_width(ui, name, ecad_widgets::tokens::ui_type::SMALL) + 14.0;
                 let (r, _) = ui.allocate_exact_size(vec2(w, 22.0), Sense::hover());
                 let label = format!("Changes: {name}");
                 let enabled = on;
@@ -645,7 +645,7 @@ impl HistoryPanel {
                     r.center(),
                     egui::Align2::CENTER_CENTER,
                     name,
-                    crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
+                    crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::SMALL),
                     crate::shell::bar::ink(on, false, enabled),
                 );
             }
@@ -714,7 +714,7 @@ impl HistoryPanel {
         let bottom = ui.cursor().top();
         if bottom > top {
             let x = ui.max_rect().left() + 10.0;
-            ui.painter().line_segment([pos2(x, top), pos2(x, bottom)], Stroke::new(2.0, ecad_ui::color(ecad_ui::SHELL.accent).gamma_multiply(0.7)));
+            ui.painter().line_segment([pos2(x, top), pos2(x, bottom)], Stroke::new(2.0, ecad_widgets::color(ecad_widgets::SHELL.accent).gamma_multiply(0.7)));
         }
         // Show the rows already read first; past them, read the next page.
         let more_to_read = self.steps.len() as u64 >= STEPS_PAGE * (self.steps_more + 1);
@@ -722,7 +722,7 @@ impl HistoryPanel {
             let text = if hidden > 0 { format!("Show {hidden} earlier change{}", if hidden == 1 { "" } else { "s" }) } else { EARLIER.to_string() };
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
-                let b = ui.add(egui::Label::new(RichText::new(text).color(ecad_ui::color(ecad_ui::SHELL.accent_text))).sense(Sense::click()));
+                let b = ui.add(egui::Label::new(RichText::new(text).color(ecad_widgets::color(ecad_widgets::SHELL.accent_text))).sense(Sense::click()));
                 b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, EARLIER));
                 if b.clicked() {
                     if hidden > 0 {
@@ -736,7 +736,7 @@ impl HistoryPanel {
         if self.steps.is_empty() {
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
-                ui.label(RichText::new("No changes yet.").small().color(ecad_ui::color(ecad_ui::SHELL.text_3)));
+                ui.label(RichText::new("No changes yet.").small().color(ecad_widgets::color(ecad_widgets::SHELL.text_3)));
             });
         }
         separator(ui);
@@ -746,8 +746,8 @@ impl HistoryPanel {
     /// One change: the line's dot, the author's chip, what it did, and when on which branch.
     /// Returns whether it was clicked.
     fn step_row(&self, ui: &mut egui::Ui, sel: &Sel, r: &StepRow, branch: &str) -> bool {
-        let s = ecad_ui::SHELL;
-        let c = ecad_ui::color;
+        let s = ecad_widgets::SHELL;
+        let c = ecad_widgets::color;
         let picked = self.selected.as_ref().is_some_and(|x| x.branch == sel.branch && x.seq == r.seq && x.kind == NodeKind::Fork);
         let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 46.0), Sense::click());
         let p = ui.painter_at(rect);
@@ -766,7 +766,7 @@ impl HistoryPanel {
         match &r.agent {
             Some(_) => {
                 p.rect_filled(chip_r, 5.0, c(s.agent));
-                let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL);
+                let font = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::SMALL);
                 p.text(chip_r.center(), egui::Align2::CENTER_CENTER, "AI", font, c(s.ai_ink));
             }
             None => {
@@ -778,10 +778,10 @@ impl HistoryPanel {
         let chip = ui.interact(chip_r, ui.scope_id().with(("ecad.history.author", r.seq)), Sense::hover());
         chip.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{AUTHOR}: {name}")));
         let x = chip_r.right() + 8.0;
-        let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);
-        let small = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL);
+        let font = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::BODY);
+        let small = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::SMALL);
         let room = (rect.right() - x - 4.0).max(0.0);
-        let label = crate::project_panel::cut_text(ui, &r.label, &font, room);
+        let label = crate::pages::project_panel::cut_text(ui, &r.label, &font, room);
         p.text(pos2(x, rect.top() + 14.0), egui::Align2::LEFT_CENTER, label, font, c(s.text));
         let when = format!("{} \u{b7} {branch}", r.time);
         p.text(pos2(x, rect.top() + 32.0), egui::Align2::LEFT_CENTER, when, small, c(s.text_3));
@@ -798,8 +798,8 @@ impl HistoryPanel {
         if !open {
             return 0;
         }
-        let s = ecad_ui::SHELL;
-        let c = ecad_ui::color;
+        let s = ecad_widgets::SHELL;
+        let c = ecad_widgets::color;
         let nodes: Vec<Node> = self.graph.nodes.iter().filter(|n| matches!(n.kind, NodeKind::Version | NodeKind::Revision)).cloned().collect();
         let today = now_ms();
         let mut drawn = 0;
@@ -815,15 +815,15 @@ impl HistoryPanel {
                 p.rect_filled(rect, 0.0, c(s.hover));
             }
             p.circle_filled(pos2(rect.left() + 10.0, rect.top() + 15.0), 3.5, c(s.accent_text));
-            let font = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);
-            let small = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL);
+            let font = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::BODY);
+            let small = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::SMALL);
             let title = match n.kind {
                 NodeKind::Revision => format!("{}, released", n.label),
                 _ => n.label.clone(),
             };
             let cmp = egui::Rect::from_min_max(pos2(rect.right() - 66.0, rect.top() + 6.0), pos2(rect.right() - 2.0, rect.top() + 26.0));
             let room = (cmp.left() - rect.left() - 28.0).max(0.0);
-            let title = crate::project_panel::cut_text(ui, &title, &font, room);
+            let title = crate::pages::project_panel::cut_text(ui, &title, &font, room);
             p.text(pos2(rect.left() + 22.0, rect.top() + 15.0), egui::Align2::LEFT_CENTER, title, font.clone(), c(s.text));
             let mut when = history::short_time(n.time_ms, today);
             if n.kind == NodeKind::Revision {
@@ -883,7 +883,7 @@ impl HistoryPanel {
     fn point_actions(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<Action>) {
         let Some((sel, v)) = self.details.clone() else { return };
         if let Some(e) = v.get("error").and_then(Value::as_str) {
-            ui.label(RichText::new(e).small().color(ecad_ui::color(ecad_ui::SHELL.text_2)));
+            ui.label(RichText::new(e).small().color(ecad_widgets::color(ecad_widgets::SHELL.text_2)));
             return;
         }
         let title = v.get("title").and_then(Value::as_str).unwrap_or_default().to_string();
@@ -893,12 +893,12 @@ impl HistoryPanel {
         ui.horizontal_wrapped(|ui| {
             ui.add_space(28.0);
             ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
-            if ui.add(ecad_ui::prim::Button::new("Show").small()).accessible_name("ecad.history.show").clicked() {
+            if ui.add(ecad_widgets::prim::Button::new("Show").small()).accessible_name("ecad.history.show").clicked() {
                 out.push(Action::History(Do::ShowPoint(sel.params())));
             }
             if writable
                 && self.defaults.4
-                && ui.add(ecad_ui::prim::Button::new("Branch from here…").small()).accessible_name("ecad.history.branchfrom").clicked()
+                && ui.add(ecad_widgets::prim::Button::new("Branch from here…").small()).accessible_name("ecad.history.branchfrom").clicked()
             {
                 let from_text = format!("{} · {}", branch_row.as_ref().map_or("main", |b| b.name.as_str()), title);
                 self.dialog = Some(Dialog::NewBranch { name: self.defaults.1.clone(), from: sel.params(), from_text, switch: true, error: None });
@@ -906,11 +906,11 @@ impl HistoryPanel {
             if writable
                 && restore_here
                 && sel.kind != NodeKind::Now
-                && ui.add(ecad_ui::prim::Button::new("Restore…").small()).accessible_name("ecad.history.restore").clicked()
+                && ui.add(ecad_widgets::prim::Button::new("Restore…").small()).accessible_name("ecad.history.restore").clicked()
             {
                 out.push(Action::History(Do::AskRestore(sel.params())));
             }
-            if closed && writable && ui.add(ecad_ui::prim::Button::new("Reopen branch").small()).accessible_name("ecad.history.reopen").clicked() {
+            if closed && writable && ui.add(ecad_widgets::prim::Button::new("Reopen branch").small()).accessible_name("ecad.history.reopen").clicked() {
                 let name = branch_row.as_ref().map(|b| b.name.clone()).unwrap_or_default();
                 match self.free_name(sel.branch, &name) {
                     // Another open branch has its name: offer the next free one (never a dead end).
@@ -1012,8 +1012,8 @@ impl HistoryPanel {
     }
 
     fn dialogs(&mut self, ui: &mut egui::Ui, unsaved: u64, cur_name: &str, out: &mut Vec<Action>) {
-        use ecad_ui::control::TextEntry;
-        use ecad_ui::prim::{self, Kind, Tone};
+        use ecad_widgets::control::TextEntry;
+        use ecad_widgets::prim::{self, Kind, Tone};
         let Some(d) = self.dialog.clone() else { return };
         let ctx = ui.ctx().clone();
         let mut next = d.clone();
@@ -1032,7 +1032,7 @@ impl HistoryPanel {
             Dialog::Archive { branch, .. } => self.graph.branches.iter().any(|b| b.current && b.id.hex() == *branch),
             _ => false,
         };
-        let shown = ecad_ui::dialog::Dialog::new(egui::Id::unique(id), title, id).small().show(
+        let shown = ecad_widgets::dialog::Dialog::new(egui::Id::unique(id), title, id).small().show(
             &ctx,
             |ui| {
                 let error = |ui: &mut egui::Ui, e: &Option<String>| {
@@ -1052,7 +1052,7 @@ impl HistoryPanel {
                     Dialog::NewBranch { name, from_text, switch, error: e, .. } => {
                         prim::PropertyGrid::new().show(ui, |g| {
                             g.row("Name", |ui| TextEntry::new(name, "ecad.newbranch.name").show(ui));
-                            g.row("From", |ui| ecad_ui::control::read_text(ui, from_text, Default::default(), "ecad.newbranch.from"));
+                            g.row("From", |ui| ecad_widgets::control::read_text(ui, from_text, Default::default(), "ecad.newbranch.from"));
                         });
                         prim::Checkbox::new(switch, "Switch to the new branch").show(ui).accessible_name("ecad.newbranch.switch");
                         if unsaved > 0 {
@@ -1091,8 +1091,8 @@ impl HistoryPanel {
             },
             |ui| {
                 // Laid right to left: the primary first.
-                let ok = ecad_ui::dialog::action(ui, ok_label, Kind::Primary, &format!("{id}.ok"), None).clicked();
-                let cancel = ecad_ui::dialog::action(ui, "Cancel", Kind::Secondary, &format!("{id}.cancel"), None).clicked();
+                let ok = ecad_widgets::dialog::action(ui, ok_label, Kind::Primary, &format!("{id}.ok"), None).clicked();
+                let cancel = ecad_widgets::dialog::action(ui, "Cancel", Kind::Secondary, &format!("{id}.cancel"), None).clicked();
                 (ok, cancel)
             },
         );
@@ -1173,15 +1173,15 @@ fn changes_merges(t: &ecad_model::Transaction) -> bool {
 /// `history.author: <name>`.
 fn author_pill(ui: &mut egui::Ui, agent: Option<&str>) {
     let name = author_chip(agent);
-    let tone = if agent.is_some() { ecad_ui::prim::Tone::Agent } else { ecad_ui::prim::Tone::Neutral };
-    let r = ecad_ui::prim::pill(ui, name, tone);
+    let tone = if agent.is_some() { ecad_widgets::prim::Tone::Agent } else { ecad_widgets::prim::Tone::Neutral };
+    let r = ecad_widgets::prim::pill(ui, name, tone);
     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{AUTHOR}: {name}")));
 }
 
 /// A session group's row: chevron, the agent's chip, `14 changes · 20:31–20:44`, and Undo session
 /// while `live`. Returns (expand or collapse clicked, Undo session clicked).
 fn group_row(ui: &mut egui::Ui, g: &SessionGroup, open: bool, live: bool) -> (bool, bool) {
-    let shell = ecad_ui::SHELL;
+    let shell = ecad_widgets::SHELL;
     let text = history::group_text(g);
     let agent = match &g.author {
         ecad_model::Author::Agent(n) => n.clone(),
@@ -1190,14 +1190,14 @@ fn group_row(ui: &mut egui::Ui, g: &SessionGroup, open: bool, live: bool) -> (bo
     let rest = text.strip_prefix(agent.as_str()).map_or(text.as_str(), |r| r.trim_start_matches(" \u{b7} ")).to_string();
     let mut undo = false;
     let row = ui.horizontal(|ui| {
-        let chevron = if open { ecad_ui::Icon::ChevronDown } else { ecad_ui::Icon::ChevronRight };
-        let (icon, _) = ui.allocate_exact_size(vec2(ecad_ui::tokens::size::ICON, ecad_ui::tokens::size::ICON), Sense::hover());
-        ecad_ui::icons::paint(ui.painter(), icon, chevron, ecad_ui::color(shell.text_2));
+        let chevron = if open { ecad_widgets::Icon::ChevronDown } else { ecad_widgets::Icon::ChevronRight };
+        let (icon, _) = ui.allocate_exact_size(vec2(ecad_widgets::tokens::size::ICON, ecad_widgets::tokens::size::ICON), Sense::hover());
+        ecad_widgets::icons::paint(ui.painter(), icon, chevron, ecad_widgets::color(shell.text_2));
         author_pill(ui, Some(&agent));
-        ui.label(RichText::new(rest).small().color(ecad_ui::color(shell.text_2)));
+        ui.label(RichText::new(rest).small().color(ecad_widgets::color(shell.text_2)));
         let end = ui.min_rect().right();
         if live {
-            let b = ui.add(ecad_ui::prim::Button::new("Undo session").kind(ecad_ui::prim::Kind::Danger).small());
+            let b = ui.add(ecad_widgets::prim::Button::new("Undo session").kind(ecad_widgets::prim::Kind::Danger).small());
             b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, UNDO_SESSION));
             undo = b.clicked();
         }
@@ -1242,7 +1242,7 @@ impl crate::App {
 fn separator(ui: &mut egui::Ui) {
     let r = ui.max_rect();
     let y = ui.cursor().top() + 0.5;
-    ui.painter().hline(r.x_range(), y, Stroke::new(1.0, ecad_ui::color(ecad_ui::SHELL.line)));
+    ui.painter().hline(r.x_range(), y, Stroke::new(1.0, ecad_widgets::color(ecad_widgets::SHELL.line)));
     ui.add_space(1.0);
 }
 
@@ -1250,7 +1250,7 @@ fn separator(ui: &mut egui::Ui) {
 fn chip(ui: &mut egui::Ui, text: &str, fill: Color32, ink: Color32) {
     let (r, _) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::hover());
     ui.painter().rect_filled(r, 5.0, fill);
-    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, text, crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL), ink);
+    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, text, crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::SMALL), ink);
 }
 
 /// Now, in milliseconds since 1970 (for the short times).

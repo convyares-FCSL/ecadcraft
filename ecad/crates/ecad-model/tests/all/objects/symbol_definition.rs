@@ -88,7 +88,7 @@ fn diff_records_another_definition_as_one_op() {
     let from = l.document().clone();
     let mut to = from.clone();
     set(Some(A), Some(B)).apply(&mut to).expect("apply");
-    let ops = ecad_model::diff::ops_between(&from, &to, &|_| true);
+    let ops = ecad_model::document::diff::ops_between(&from, &to, &|_| true);
     assert_eq!(ops, vec![set(Some(A), Some(B))], "no delete and create");
 }
 
@@ -167,7 +167,7 @@ fn slot(text: &str, x: f64) -> TextSlot {
         at: Pt::new(x, 0.0),
         h: Default::default(),
         v: Default::default(),
-        rotation: ecad_model::units::Radians(0.0),
+        rotation: ecad_model::geometry::units::Radians(0.0),
     }
 }
 
@@ -190,7 +190,7 @@ fn invariant_i7_covers_slots_defaults_and_derived_from() {
         ("a NaN slot", |d| d.texts = vec![slot("tag", f64::NAN)], Some("non-finite")),
         (
             "an infinite rotation",
-            |d| d.texts = vec![TextSlot { rotation: ecad_model::units::Radians(f64::INFINITY), ..slot("tag", 0.0) }],
+            |d| d.texts = vec![TextSlot { rotation: ecad_model::geometry::units::Radians(f64::INFINITY), ..slot("tag", 0.0) }],
             Some("non-finite"),
         ),
         ("two tag slots", |d| d.texts = vec![slot("tag", 0.0), slot("tag", 1.0)], Some("two slots")),
@@ -198,8 +198,8 @@ fn invariant_i7_covers_slots_defaults_and_derived_from() {
             "known defaults",
             |d| {
                 d.defaults = ecad_model::SymbolDefaults {
-                    key: Some(ecad_model::text::Text::new("f1").unwrap()),
-                    prefix: Some(ecad_model::text::Text::new("B").unwrap()),
+                    key: Some(ecad_model::naming::text::Text::new("f1").unwrap()),
+                    prefix: Some(ecad_model::naming::text::Text::new("B").unwrap()),
                     join: Some(ecad_model::Join::Device),
                     ..Default::default()
                 }

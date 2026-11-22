@@ -2,8 +2,8 @@
 //! modules in them, and the kept `Plc` model the commands, Checks and lists read.
 //!
 //! # Semantics
-//! - A rack is a device whose stored type is a station ([`ecad_model::plc::PlcRack`]), a card one
-//!   whose type is a module ([`ecad_model::plc::PlcModule`]); a module's station, slot, channel
+//! - A rack is a device whose stored type is a station ([`ecad_model::objects::plc::PlcRack`]), a card one
+//!   whose type is a module ([`ecad_model::objects::plc::PlcModule`]); a module's station, slot, channel
 //!   groups and channels are its fields. Every change is a `ModifyDevice` ([`edit`]).
 //! - The model is kept with the report models: built on first show (`Plc::build`) and built again
 //!   from scratch after every commit (3.9 ms on the large project, under the ~5 ms bar; no update
@@ -13,11 +13,12 @@
 
 pub mod address;
 pub mod channels;
+pub mod commands;
+pub mod draw;
 pub mod edit;
 pub mod exchange;
 pub mod iolist;
 pub mod kept;
-pub mod look;
 pub mod overview;
 pub mod rack;
 pub mod sheets;
@@ -26,7 +27,7 @@ pub mod tagtable;
 pub mod types;
 
 use crate::CmdError;
-use ecad_model::units::Degrees;
+use ecad_model::geometry::units::Degrees;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{DeviceId, Document, ObjectRef, PageId, Subject};
@@ -196,7 +197,7 @@ fn first_page(doc: &Document, c: DeviceId) -> Option<PageId> {
 /// The extra pages a property change on component `c` redraws (design 045 §11.1): a rack's tag or
 /// slot range shows in its cards' captions.
 pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, key: &str, after: Option<&str>) -> Vec<PageId> {
-    if !(key == ecad_model::tag::TAG_KEY || key.starts_with("plc.")) {
+    if !(key == ecad_model::naming::tag::TAG_KEY || key.starts_with("plc.")) {
         return Vec::new();
     }
     // A rack's cards from the kept index (review of #84, 3); a walk only without the models.
@@ -211,7 +212,7 @@ pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, key:
         return pages_of(c);
     }
     // A card's own text or typed address shows on its own cells only.
-    if key == ecad_model::tag::TAG_KEY || key.starts_with(channels::CH_PREFIX) {
+    if key == ecad_model::naming::tag::TAG_KEY || key.starts_with(channels::CH_PREFIX) {
         return Vec::new();
     }
     let mut out = Vec::new();
@@ -294,7 +295,7 @@ pub fn caption_text(
         return None;
     }
     // Brief 066d: one kind for height and style, the one `TextOf::Caption` draws in.
-    let height = crate::text_style::text_style(doc, crate::devices::kind_of(crate::devices::TextOf::Caption)).height;
+    let height = crate::styles::text_style::text_style(doc, crate::devices::kind_of(crate::devices::TextOf::Caption)).height;
     Some(crate::devices::PageText {
         text: crate::devices::DerivedText {
             rep,
@@ -318,11 +319,11 @@ pub fn caption_text(
 /// Properties ▸ Card and ▸ Rack rows of device `c` (design 045 §2.6): a card's Rack (its tag,
 /// never the ID: FP1), Slot and Channels; a rack's Slots and First slot (registry values at object
 /// level, faint when inherited).
-pub fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::words::Row>) {
+pub fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::cables::words::Row>) {
     let Some(ty) = card_type_of(doc, c) else { return };
     let props = doc.devices.get(&c).map(|x| &x.properties);
     let own = |k: &str| props.and_then(|p| p.get(k)).cloned();
-    let row = |key: &str, label: &str, value: String, inherited: bool, choices: Vec<String>| crate::words::Row {
+    let row = |key: &str, label: &str, value: String, inherited: bool, choices: Vec<String>| crate::cables::words::Row {
         key: key.into(),
         label: label.into(),
         value,
@@ -455,10 +456,10 @@ pub fn channel_texts(
     };
     let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).choice() == Some(crate::defaults::plc::CardRotation::Quarter);
     let anchors = crate::symbols::anchors(s);
-    let label = crate::text_style::text_style(doc, crate::text_style::TextKind::PointLabel).height;
+    let label = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::PointLabel).height;
     // Brief 051 (design 051 §5): the two text styles of their own.
-    let addr_h = crate::text_style::text_style(doc, crate::text_style::TextKind::Address).height;
-    let desc_h = crate::text_style::text_style(doc, crate::text_style::TextKind::ChannelText).height;
+    let addr_h = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Address).height;
+    let desc_h = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::ChannelText).height;
     // Brief 051 (design 051 §2.7): a cell at 180° keeps its texts upright and in their bands.
     let upside = pl.rotation.is_finite() && (Degrees::from(pl.rotation).0.rem_euclid(360.0) - 180.0).abs() < 0.5;
     let mut out = Vec::new();
@@ -519,7 +520,7 @@ pub fn channel_texts(
 
 /// The value rule of the registry's object-level `plc.*` entries written with `setprop` (design
 /// 045 §4.6), called where 034's is. A module's and station's own fields are the `setprop` rows of
-/// `crate::cmd::props::c`. `None`: not a registry entry of this brief.
+/// `crate::properties::commands::plc`. `None`: not a registry entry of this brief.
 pub fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     let entry = crate::defaults::find(key).filter(|e| e.key.starts_with("plc."))?;
     let v = value.map(str::trim).filter(|v| !v.is_empty());
@@ -536,7 +537,7 @@ pub fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Option<&str
 /// Properties ▸ Channel rows of a channel symbol (design 045 §4.7): the channel (read), its
 /// description and typed address (placeholder: the automatic one), and one pin per role.
 pub fn channel_rows(
-    doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::words::Row>,
+    doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::cables::words::Row>,
 ) {
     let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) else { return };
     if crate::devices::rep_starter(doc, r).and_then(channels::cell_type).is_none() {
@@ -545,7 +546,7 @@ pub fn channel_rows(
     let shown = crate::devices::shown_connection_points(doc, c, r);
     let Some(i) = shown.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return };
     let first = channels::first_number(doc, c);
-    let row = |key: String, label: &str, value: String, editable: bool, inherited: bool| crate::words::Row {
+    let row = |key: String, label: &str, value: String, editable: bool, inherited: bool| crate::cables::words::Row {
         key,
         label: label.into(),
         value,

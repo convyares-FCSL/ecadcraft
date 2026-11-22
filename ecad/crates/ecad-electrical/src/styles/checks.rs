@@ -10,21 +10,21 @@
 //! The rows are worked out on open, reload or first show, and again only after an effect
 //! [`touches`] names: a style record or the standard, a style choice on any object (a wire's or a
 //! cable's type included, a location box's own style), or what the page type and folder
-//! rows read (`crate::page_types::touches_checks`: a page added, removed, renumbered, moved to
+//! rows read (`crate::pages::page_types::touches_checks`: a page added, removed, renumbered, moved to
 //! another folder or given another type, a folder, the page number step). Every other effect leaves them. Working them out reads the
 //! style-choice index (explicit choices only), the location boxes' own styles, the project's
 //! properties and the style records.
 
-use ecad_model::effect::Effect;
-use ecad_model::style::{MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleLayer, StyleRef, is_choice_key, is_name};
+use ecad_model::document::effect::Effect;
+use ecad_model::objects::styles::{MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleLayer, StyleRef, is_choice_key, is_name};
 use ecad_model::{Document, ObjectRef, Properties};
 
 use crate::checks::{Check, Fix, Kind, Object};
 
 /// Whether `effect` can change the style rows: its own rows ([`touches_own`]) or the page type and
-/// folder rows they include ([`crate::page_types::touches_checks`], brief 054).
+/// folder rows they include ([`crate::pages::page_types::touches_checks`], brief 054).
 pub fn touches(effect: &Effect<'_>) -> bool {
-    touches_own(effect) || crate::page_types::touches_checks(effect)
+    touches_own(effect) || crate::pages::page_types::touches_checks(effect)
 }
 
 /// Whether `effect` can change the style rows other than the page type and folder rows.
@@ -71,7 +71,7 @@ fn touches_own(effect: &Effect<'_>) -> bool {
 fn catalogue_of(key: &str) -> Option<ecad_model::StyleCatalogue> {
     match key {
         "location.style" => Some(ecad_model::StyleCatalogue::Location),
-        super::cable::CABLE_TYPE => Some(ecad_model::StyleCatalogue::Cable),
+        crate::styles::cable::CABLE_TYPE => Some(ecad_model::StyleCatalogue::Cable),
         "print.frame.style" => Some(ecad_model::StyleCatalogue::Frame),
         k if k.starts_with("text.") && k.ends_with(".style") => Some(ecad_model::StyleCatalogue::Text),
         _ => None,
@@ -118,7 +118,7 @@ impl crate::checks::CheckSource for StyleRows {
 pub fn rows(doc: &Document) -> Vec<Check> {
     let mut out = Vec::new();
     // One drawing order for the rows' go-to places: the book is built at most once.
-    let mut places = ecad_model::numbering::Places::new(doc);
+    let mut places = ecad_model::naming::numbering::Places::new(doc);
     // Brief 066 (design 066 §7): a built-in default that failed to load. Never in a tested build.
     if let Some(first) = crate::defaults::data::builtin_problems().first() {
         out.push(Check {
@@ -131,8 +131,8 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         });
     }
     // 050b: two categories default for one potential.
-    for (pot, ids) in &super::wire::WireLooks::new(doc).twice {
-        let names: Vec<String> = ids.iter().map(|id| super::name(doc, ecad_model::StyleCatalogue::Wire, id)).collect();
+    for (pot, ids) in &crate::styles::wire::WireLooks::new(doc).twice {
+        let names: Vec<String> = ids.iter().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id)).collect();
         let shown = doc.settings.wiring.potential(pot).map_or_else(|| pot.clone(), |p| p.name.clone());
         out.push(Check {
             kind: Kind::CategoryPotentialTwice,
@@ -144,9 +144,9 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         });
     }
     // 050b: a category on the BOM (a part number) with no allowance.
-    for row in super::rows(doc, &super::wire::CATALOGUE) {
-        let f = |k: &str| super::field_of(doc, ecad_model::StyleCatalogue::Wire, &row.id, k, None);
-        let has_part = f("part_number").is_some_and(|r| super::wire::filled(&r).is_some());
+    for row in crate::styles::rows(doc, &crate::styles::wire::CATALOGUE) {
+        let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, &row.id, k, None);
+        let has_part = f("part_number").is_some_and(|r| crate::styles::wire::filled(&r).is_some());
         if has_part && f("allowance").is_some_and(|r| r.number() <= 0.0) {
             out.push(Check {
                 kind: Kind::WireAllowance,
@@ -160,17 +160,17 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     }
     // Dangling choices held by objects (through the index).
     for (value, key, o) in doc.style_choices() {
-        if key == ecad_model::wiring::WIRE_CATEGORY {
+        if key == ecad_model::connectivity::wiring::WIRE_CATEGORY {
             if let ObjectRef::Wire(c) = o
                 && dangling(doc, ecad_model::StyleCatalogue::Wire, value)
             {
-                let page = ecad_model::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Wire(c)).map(|(p, _)| p);
+                let page = ecad_model::naming::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Wire(c)).map(|(p, _)| p);
                 out.push(Check { kind: Kind::CategoryUnknown, page, at: None, object: Object::Wire(c), which: String::new(), fix: None });
             }
             continue;
         }
-        // Brief 054: a page's own type has its own row (`crate::page_types::check_rows`).
-        if key == ecad_model::sheet::PAGE_TYPE_KEY {
+        // Brief 054: a page's own type has its own row (`crate::pages::page_types::check_rows`).
+        if key == ecad_model::document::sheet::PAGE_TYPE_KEY {
             continue;
         }
         let Some(cat) = catalogue_of(key) else { continue };
@@ -179,14 +179,14 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         }
         let (object, page, whose) = match o {
             ObjectRef::Device(c) => {
-                let page = crate::reps::goto_place_in(&mut places, c).map(|(p, _)| p);
+                let page = crate::symbols::reps::goto_place_in(&mut places, c).map(|(p, _)| p);
                 (Object::Device(c), page, crate::devices::tag_words(doc, c))
             }
             ObjectRef::Wire(c) => {
-                let page = ecad_model::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Wire(c)).map(|(p, _)| p);
+                let page = ecad_model::naming::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Wire(c)).map(|(p, _)| p);
                 (Object::Wire(c), page, "Wire".to_string())
             }
-            ObjectRef::Page(p) => (Object::None, Some(p), format!("Page {}", ecad_model::book::page_number(doc, p))),
+            ObjectRef::Page(p) => (Object::None, Some(p), format!("Page {}", ecad_model::document::book::page_number(doc, p))),
             ObjectRef::Cable(k) => (Object::Cable(k), None, crate::cables::cable_title(doc, k)),
             _ => continue,
         };
@@ -226,7 +226,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     let mut past = 0usize;
     let mut cats: Vec<ecad_model::StyleCatalogue> = Vec::new();
     for layer in [StyleLayer::Standard, StyleLayer::Project] {
-        let Some(layer_cats) = ecad_model::style::layer_of(doc, layer) else { continue };
+        let Some(layer_cats) = ecad_model::objects::styles::layer_of(doc, layer) else { continue };
         for (cat, styles) in layer_cats {
             let mut bad = styles.len().saturating_sub(MAX_STYLES_PER_CATALOGUE);
             for r in styles.values().take(MAX_STYLES_PER_CATALOGUE) {
@@ -243,7 +243,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         }
     }
     // Brief 054 (design 054 §9): page types and folder start numbers.
-    out.extend(crate::page_types::check_rows(doc));
+    out.extend(crate::pages::page_types::check_rows(doc));
     if past > 0 {
         let first = cats.first().copied().unwrap_or(ecad_model::StyleCatalogue::Text);
         out.push(Check {

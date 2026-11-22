@@ -2,11 +2,11 @@
 //! one `setstyle` per control and lists the six types; the + Page picker adds a typed page after
 //! the open one, Esc writes nothing, and Panel layout is disabled.
 
-use crate::project_panel::{active, build, click, doc, head, new_app, ok};
+use crate::pages::project_panel::{active, build, click, doc, head, new_app, ok};
 
 use ecad_app::settings::{Section, pages};
 use ecad_app::shell::new_page;
-use ecad_engine::styles::page as ptype;
+use ecad_electrical::styles::page as ptype;
 use ecad_model::StyleRef;
 use eframe::egui::Key;
 use egui_kittest::kittest::Queryable;
@@ -66,7 +66,7 @@ fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
     assert_eq!(head(&mut h), before + 1);
     let d = doc(&mut h);
     let new = d.page_order.iter().copied().find(|p| *p != p1 && *p != p2).unwrap();
-    let book = ecad_model::book::Book::of(&d);
+    let book = ecad_model::document::book::Book::of(&d);
     assert_eq!(book.order, vec![p1, new, p2], "after the open page");
     assert_eq!(ptype::type_of(&d, new).text(), "network");
     assert_eq!(active(&mut h), Some(new), "the new page is shown");
@@ -84,7 +84,7 @@ fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
 /// and `054-pages-and-sheets.png` (Panel layout selected) beside board 5.02.
 #[test]
 fn the_cover_and_its_page_tab_with_the_board_screenshots() {
-    use crate::project_panel::{Deltas, take};
+    use crate::pages::project_panel::{Deltas, take};
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = build(new_app(), Some(deltas.clone()));
     h.set_size(eframe::egui::vec2(1920.0, 1080.0));
@@ -122,9 +122,9 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     // The Page tab: the block rows with Edit…, the generated pages and the sheet from the type.
     assert!(h.query_by_label("ecad.page.block.notes").is_some(), "the Page tab on the cover");
     assert!(h.query_by_label("ecad.page.front.contents").is_some());
-    assert!(h.query_by_label(ecad_app::shell::right::page::NOTES).is_none(), "no inline notes box (owner, fix round)");
+    assert!(h.query_by_label(ecad_app::inspector::page::NOTES).is_none(), "no inline notes box (owner, fix round)");
     // The rail's first button names what the panel shows (owner, review of 054): a page here.
-    assert_eq!(ecad_app::shell::right::shows_word(h.state_mut()), "Page");
+    assert_eq!(ecad_app::inspector::shows_word(h.state_mut()), "Page");
     take(&h, &deltas, "054-cover.png");
     // The font check at 100 % (96 px to 25.4 mm): the notes and the wire colours, top left.
     ok(&mut h, "zoom c 160,215 230");
@@ -152,7 +152,7 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     h.run_steps(2);
     click(&mut h, ecad_app::shell::table_editor::SAVE);
     assert_eq!(head(&mut h), before + 1, "Save is one transaction");
-    let notes = ecad_engine::frames::project_text(&doc(&mut h), "cover.notes").unwrap_or_default();
+    let notes = ecad_electrical::pages::frames::project_text(&doc(&mut h), "cover.notes").unwrap_or_default();
     assert!(notes.starts_with("Line colours") && notes.ends_with("Fifth note"), "{notes}");
     ok(&mut h, "u");
     // The symbol legend's editor: generated rows, hide and relabel.

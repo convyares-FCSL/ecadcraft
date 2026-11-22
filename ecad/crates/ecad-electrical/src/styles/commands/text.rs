@@ -17,7 +17,7 @@ use ecad_model::{
 use crate::defaults::{self, Scope};
 use crate::devices::{self, TextOf};
 use crate::error::CmdError;
-use crate::text_style::{self, Shown, TextKind, kind_words};
+use crate::styles::text_style::{self, Shown, TextKind, kind_words};
 
 /// Refusals (design 031 §10.1).
 pub const BAD_HEIGHT: &str = "A text height is 0.5 to 10 mm.";
@@ -225,7 +225,7 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut Style
 /// One project-level `SetStyle` per style whose record changes (brief 050a).
 fn style_ops(doc: &Document, style: &StyleFields, ops: &mut Vec<Op>) {
     for (id, fields) in style {
-        let before = ecad_model::style::record(doc, StyleLayer::Project, ecad_model::StyleCatalogue::Text, id).cloned();
+        let before = ecad_model::objects::styles::record(doc, StyleLayer::Project, ecad_model::StyleCatalogue::Text, id).cloned();
         let Ok(rec) = crate::styles::with_fields(ecad_model::StyleCatalogue::Text, before.as_ref(), None, fields) else { continue };
         let after = (rec.name.is_some() || !rec.body.is_empty() || !id.is_builtin()).then_some(rec);
         if after != before {
@@ -541,11 +541,11 @@ pub fn plan_move(
 /// changed}`. Heights are cap heights (brief 040, owner answer 9): CADCraft draws a text's height
 /// as the height of its capitals, so `height` 2.5 is 2.5 mm from baseline to the top of a `K`.
 /// `fonts` is the project's font resolved on this machine.
-pub fn textstyle_json(doc: &Document, fonts: &crate::text_style::fonts::Fonts, changed: bool) -> Value {
+pub fn textstyle_json(doc: &Document, fonts: &crate::styles::text_style::fonts::Fonts, changed: bool) -> Value {
     let kinds: Vec<Value> = TextKind::ALL
         .iter()
         .map(|k| {
-            let id = crate::text_style::style_of(doc, *k, Scope::project());
+            let id = crate::styles::text_style::style_of(doc, *k, Scope::project());
             let f = |key: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, key, None);
             let h = f("height").unwrap_or(Resolved { value: defaults::Value::Length(2.5), from: Source::Builtin });
             let w = f("weight").unwrap_or(Resolved { value: defaults::Value::Choice("regular"), from: Source::Builtin });
@@ -561,7 +561,7 @@ pub fn textstyle_json(doc: &Document, fonts: &crate::text_style::fonts::Fonts, c
                 "height": h.number(),
                 "weight": w.word(),
                 "colour": colour,
-                "font": crate::text_style::kind_font(doc, *k),
+                "font": crate::styles::text_style::kind_font(doc, *k),
                 "show": sh.map(|r| r.word()),
                 "default": default,
                 "builtin": {
@@ -587,14 +587,14 @@ pub fn value_json(r: &Resolved<'_>) -> Value {
     match r.value {
         defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
         defaults::Value::Choice(w) => json!(w),
-        defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
+        defaults::Value::Flag(b) => json!(ecad_model::naming::words::flag_word(b)),
         defaults::Value::Text(t) => json!(t),
         defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
         defaults::Value::Size(s) => json!(s.to_string()),
         defaults::Value::Colours(c) => json!(c.to_string()),
         defaults::Value::Colour(c) => json!(c.to_string()),
         defaults::Value::Sheet(s) => json!(s.text()),
-        defaults::Value::Margins(m) => json!(ecad_model::sheet::margins_text(&m)),
+        defaults::Value::Margins(m) => json!(ecad_model::document::sheet::margins_text(&m)),
         defaults::Value::CoreColours(c) => json!(c.to_string()),
     }
 }

@@ -17,15 +17,15 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::book::Book;
-use ecad_model::effect::Effect;
-use ecad_model::sheet;
-use ecad_model::style::StyleLayer;
-use ecad_model::title_block::BlockItem;
+use ecad_model::document::book::Book;
+use ecad_model::document::effect::Effect;
+use ecad_model::document::sheet;
+use ecad_model::objects::styles::StyleLayer;
+use ecad_model::objects::title_block::BlockItem;
 use ecad_model::{Document, ObjectRef, PageId};
 
 use crate::checks::{Check, Fix, Kind, Object};
-use crate::frames::FrameInput;
+use crate::pages::frames::FrameInput;
 
 /// Most pages the cut check reads (a guard on a hostile file; the check stays bounded).
 pub const MAX_PAGES: usize = 10_000;
@@ -88,9 +88,9 @@ pub fn rows(doc: &Document) -> Vec<Check> {
 fn unknown_rows(doc: &Document) -> Vec<Check> {
     let mut out = Vec::new();
     for layer in [StyleLayer::Project, StyleLayer::Standard] {
-        let Some(cats) = ecad_model::style::layer_of(doc, layer) else { continue };
+        let Some(cats) = ecad_model::objects::styles::layer_of(doc, layer) else { continue };
         for (cat, records) in cats {
-            for (id, r) in records.iter().take(ecad_model::style::MAX_STYLES_PER_CATALOGUE) {
+            for (id, r) in records.iter().take(ecad_model::objects::styles::MAX_STYLES_PER_CATALOGUE) {
                 // Only a frame style's body holds a title block (design 072 §8).
                 let Some(l) = r.title_block() else { continue };
                 let name = crate::styles::name(doc, *cat, id);
@@ -99,8 +99,8 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
                 if !l.size_ok() {
                     let which = format!(
                         "{name}'s title block size is out of bounds (1 to {} mm wide, 1 to {} mm high); its pages keep the built-in's 40 mm strip.",
-                        ecad_model::title_block::MAX_COORD_MM,
-                        ecad_model::title_block::MAX_BLOCK_HEIGHT_MM
+                        ecad_model::objects::title_block::MAX_COORD_MM,
+                        ecad_model::objects::title_block::MAX_BLOCK_HEIGHT_MM
                     );
                     out.push(Check { kind: Kind::TitleBindingUnknown, page: None, at: None, object: Object::None, which, fix: None });
                 }
@@ -135,10 +135,10 @@ fn sheet_rows(doc: &Document) -> Vec<Check> {
         let id = sheet::frame_style(doc, *page);
         let which = format!(
             "Page {} is {}, but its frame {} is {}; the frame wins.",
-            ecad_model::book::page_number(doc, *page),
-            super::sheet_name(&own),
+            ecad_model::document::book::page_number(doc, *page),
+            crate::title_blocks::sheet_name(&own),
             crate::styles::name(doc, sheet::FRAME_CATALOGUE, &id),
-            super::sheet_name(&framed)
+            crate::title_blocks::sheet_name(&framed)
         );
         out.push(Check {
             kind: Kind::FrameSheetDiffers,
@@ -162,11 +162,11 @@ fn page_input(doc: &Document, book: &Book, base: &FrameInput, page: PageId) -> F
     inp.next = inp.next_page.map_or_else(|| "-".to_string(), |n| book.number(doc, n));
     // Brief 052: stored as entry keys of the project's list; shown as codes.
     // Design 072 §5.3: the page's own id, else the project's.
-    let shown = |a: crate::designations::Aspect| {
-        crate::designations::inherited_key(doc, page, a).map(|k| crate::designations::display(doc, a.property(), &k)).unwrap_or_default()
+    let shown = |a: crate::locations::designations::Aspect| {
+        crate::locations::designations::inherited_key(doc, page, a).map(|k| crate::locations::designations::display(doc, a.property(), &k)).unwrap_or_default()
     };
-    inp.function = shown(crate::designations::Aspect::Function);
-    inp.location = shown(crate::designations::Aspect::Location);
+    inp.function = shown(crate::locations::designations::Aspect::Function);
+    inp.location = shown(crate::locations::designations::Aspect::Location);
     inp
 }
 
@@ -178,8 +178,8 @@ pub fn cut_fields(inp: &FrameInput) -> Vec<usize> {
         .into_iter()
         .filter(|i| match l.items.get(*i) {
             Some(BlockItem::Field { at, bind, look, if_empty, .. }) => {
-                let v = super::bind::shown(super::bind::value(inp, bind), if_empty);
-                let (shown, _) = crate::frames::fit(&v, look.size, Some(at.w - 2.0 * super::INSET_MM));
+                let v = crate::title_blocks::bind::shown(crate::title_blocks::bind::value(inp, bind), if_empty);
+                let (shown, _) = crate::pages::frames::fit(&v, look.size, Some(at.w - 2.0 * crate::title_blocks::INSET_MM));
                 !v.is_empty() && shown.ends_with('…') && !v.ends_with('…')
             }
             _ => false,
@@ -197,12 +197,12 @@ fn cut_rows(doc: &Document) -> Vec<Check> {
         let id = sheet::title_block_style(doc, *page);
         // One input per frame, borrowed block and sheet.
         let key = (format!("{} {}", sheet::frame_style(doc, *page).text(), id.text()), sheet::sheet_of(doc, *page).text());
-        let base = bases.entry(key).or_insert_with(|| FrameInput::with(doc, *page, &book, crate::frames::FrameText::sizes(doc)));
+        let base = bases.entry(key).or_insert_with(|| FrameInput::with(doc, *page, &book, crate::pages::frames::FrameText::sizes(doc)));
         let mut inp = page_input(doc, &book, base, *page);
         inp.total = base.total.clone();
         for i in cut_fields(&inp) {
             let name = match inp.block.layout.items.get(i) {
-                Some(BlockItem::Field { bind, label, .. }) => label.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| super::bind::name(bind)),
+                Some(BlockItem::Field { bind, label, .. }) => label.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| crate::title_blocks::bind::name(bind)),
                 _ => continue,
             };
             let e = cut.entry((id.text(), i)).or_insert((*page, 0, name));

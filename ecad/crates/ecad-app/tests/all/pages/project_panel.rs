@@ -9,9 +9,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use ecad_app::project_panel::{self, ROW_H};
+use ecad_app::pages::project_panel::{self, ROW_H};
 use ecad_app::shell::LeftTab;
-use ecad_app::{App, tools};
+use {ecad_app::App, ecad_app::commands::tools};
 use ecad_model::{Op, PageId};
 use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
@@ -167,7 +167,7 @@ pub(crate) fn new_app() -> App {
 /// The app as it starts (UI rev 3, board 1.01: both sides closed).
 pub(crate) fn rev3_app() -> App {
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     t.hover_delay = 0.0;
     t
@@ -228,7 +228,7 @@ pub(crate) fn click(h: &mut Harness<'static, App>, label: &str) {
     let tab = match label {
         project_panel::PAGES_TAB => Some(LeftTab::Pages),
         project_panel::DEVICES_TAB => Some(LeftTab::Devices),
-        ecad_app::history_panel::HISTORY_TAB => Some(LeftTab::History),
+        ecad_app::history::panel::HISTORY_TAB => Some(LeftTab::History),
         _ => None,
     };
     if let Some(tab) = tab {
@@ -239,11 +239,11 @@ pub(crate) fn click(h: &mut Harness<'static, App>, label: &str) {
         } else if s.left.collapsed || s.left.tab != tab {
             h.get_by_label(&ecad_app::shell::tool_strip::panel_label(tab)).click();
         }
-    } else if label == ecad_app::checks_panel::CHECKS_TAB {
+    } else if label == ecad_app::checks::panel::CHECKS_TAB {
         // The rail's Checks button opens it (pressed while open on Checks it would close).
         let s = h.state().shell_state();
         if s.right_collapsed || s.right_tab != ecad_app::shell::RightTab::Checks {
-            h.get_by_label(&ecad_app::shell::right::rail_label(ecad_app::shell::RightTab::Checks)).click();
+            h.get_by_label(&ecad_app::inspector::rail_label(ecad_app::shell::RightTab::Checks)).click();
         }
     } else {
         h.get_by_label(label).click();
@@ -331,7 +331,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     }
     assert_eq!(h.state().cad.session.docs.len(), 1, "exactly one ECAD file tab after clicking every row");
     click(&mut h, "Page 1: Supply");
-    let shown = h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).count();
+    let shown = h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).count();
     assert!(shown > 3, "the page window shows Supply's items ({shown})");
 
     // J: after a row click, Down, Down, Enter makes row 3 active; typing then reaches the
@@ -367,7 +367,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     {
         // Brief 041: the slot inside the wheel (the Pages tab has a New page button too).
         let c = h.state().shell.tools.wheel.as_ref().map(|w| w.widget.center).expect("the row's wheel");
-        h.get_all_by_label("New page").find(|n| (n.rect().center() - c).length() <= ecad_ui::tokens::wheel::OUTER_RADIUS).expect("its slot").click();
+        h.get_all_by_label("New page").find(|n| (n.rect().center() - c).length() <= ecad_widgets::tokens::wheel::OUTER_RADIUS).expect("its slot").click();
     }
     h.run_steps(3);
     assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "the row wheel's New page too");
@@ -554,7 +554,7 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
     assert_eq!(active(&mut h), Some(supply), "the active page stays");
     assert_eq!(h.state().cad.session.selection(), vec![point], "the selection stays");
     assert_eq!(head(&mut h), before, "nothing recorded");
-    assert!(h.query_by_label(ecad_app::preview::OPEN_PAGE).is_some());
+    assert!(h.query_by_label(ecad_app::pages::preview::OPEN_PAGE).is_some());
     h.run_steps(20); // the window's fade-in
     let shot_img = take(&h, &deltas, "016-preview-ref.png");
     if let (Some(img), Some(rect)) = (&shot_img, h.state().preview.as_ref().and_then(|v| v.image_rect)) {
@@ -600,7 +600,7 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
     assert_eq!(h.state().preview.as_ref().unwrap().draws, draws, "never redrawn per frame");
 
     // Open page makes Field active with the preview's view and closes it.
-    click(&mut h, ecad_app::preview::OPEN_PAGE);
+    click(&mut h, ecad_app::pages::preview::OPEN_PAGE);
     assert_eq!(active(&mut h), Some(field));
     assert!(h.state().preview.is_none());
     // The panel's Preview on a row, and Space on it again closes; the active page says so.
@@ -703,7 +703,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     let mut first = new_app();
     assert!(first.submit_command(r#"newpage {"title":"Field"}"#).is_none());
     first.save_as(&path).unwrap();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut second = App::with_file(None, &path).unwrap();
     second.dismiss_notice();
     open_panels(&mut second);
@@ -726,7 +726,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     // Brief 019, check J: every Properties field and dialog field read-only, Issue hidden; a
     // revision can still be reopened (the command reads only).
     assert!(!h.state().props.lock().unwrap().writable, "Properties fields are read-only");
-    h.state_mut().open_project_popout(ecad_app::sheets_ui::Popout::Info);
+    h.state_mut().open_project_popout(ecad_app::settings::sheets::Popout::Info);
     assert!(h.state().project_props.as_ref().is_some_and(|d| d.read_only), "Project Properties read-only");
     h.state_mut().project_props = None;
     h.state_mut().open_revisions();
@@ -779,9 +779,9 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
     assert_eq!(h.state().panel.devices.selected, Some(coil));
     // Brief 039: the row is a table row; its Pages cell lists both symbols and goes to the first.
     let pages = {
-        use ecad_ui::table::TableSource;
+        use ecad_widgets::table::TableSource;
         let d = &h.state().panel.devices;
-        d.source.cell(coil, ecad_app::lists::devices::PAGES).text().into_owned()
+        d.source.cell(coil, ecad_app::devices::list::PAGES).text().into_owned()
     };
     assert_eq!(pages, "1/F1, 2/F1");
     let before = head(&mut h);
@@ -935,7 +935,7 @@ fn page_rows_and_find_symbol_are_read_only_when_their_inputs_change() {
         let s = &mut h.state_mut().search;
         s.open = true;
         s.query = "k".into();
-        s.picked = Some(ecad_app::search::Pick::Symbol(ecad_engine::symbols::StarterKey::No));
+        s.picked = Some(ecad_app::library::search::Pick::Symbol(ecad_electrical::symbols::StarterKey::No));
     }
     h.run_steps(3);
     let count = |h: &Harness<'static, App>| (h.state().panel.rebuilds, h.state().search.rebuilds);

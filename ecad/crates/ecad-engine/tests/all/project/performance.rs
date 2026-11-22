@@ -32,7 +32,7 @@ fn a_bom_page_lays_its_table_out_once_per_draw() {
 /// may come to carry sheets, so they still reach every cable.
 #[test]
 fn ops_that_read_no_reference_touch_no_cable() {
-    use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
+    use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
     use ecad_model::{CableId, Device, DeviceId, Op};
     let doc = ecad_model::Document::default();
     let touched = |ops: Vec<Op>| ecad_engine::references::cables_touched(&doc, &ops);

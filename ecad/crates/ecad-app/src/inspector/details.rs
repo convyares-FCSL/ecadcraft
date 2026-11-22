@@ -128,12 +128,12 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             ecad_model::ItemKind::Symbol(s) if s.placement.origin.is_finite() && s.placement.rotation.is_finite() => Some(Placed {
                 x: s.placement.origin.x,
                 y: s.placement.origin.y,
-                rotation: ecad_model::units::Degrees::from(s.placement.rotation).0.rem_euclid(360.0),
+                rotation: ecad_model::geometry::units::Degrees::from(s.placement.rotation).0.rem_euclid(360.0),
                 mirror: s.placement.mirror,
             }),
             _ => None,
         });
-        let scope = ecad_engine::defaults::Scope::symbol(doc, rep);
+        let scope = ecad_electrical::defaults::Scope::symbol(doc, rep);
         d.sizes = kinds.iter().map(|k| (*k, size_words(&ecad_engine::text_style::text_style_at(doc, *k, scope)))).collect();
     }
     // Where it is drawn: the coil (or the symbol) first, then each contact the part offers.
@@ -180,7 +180,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             continue;
         };
         deps.extend(net.wires.iter().take(MAX_ROWS).map(|w| ObjectRef::Wire(*w)));
-        let wire = match ecad_model::wiring::net_number(doc, net) {
+        let wire = match ecad_model::connectivity::wiring::net_number(doc, net) {
             Some(n) => format!("wire {n}"),
             None if net.wires.is_empty() => "not connected".into(),
             None => "wire".into(),
@@ -210,7 +210,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
 
 /// The page a symbol is on (for the header of a page).
 pub fn page_words(doc: &Document, page: PageId) -> (String, String) {
-    let number = ecad_model::book::page_number(doc, page);
+    let number = ecad_model::document::book::page_number(doc, page);
     let title = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
     (number, title)
 }

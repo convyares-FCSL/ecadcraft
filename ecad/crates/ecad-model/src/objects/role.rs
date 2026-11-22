@@ -8,10 +8,10 @@
 //! - Every role is stored as one word (`head`, `contact`, `route`, `box`, `fan-anchor`…); an
 //!   unknown word is a read error.
 //!
-//! Excludes: which representation is a device's head or child (`ecad_electrical::reps`), and a
+//! Excludes: which representation is a device's head or child (`ecad_electrical::symbols::reps`), and a
 //! channel point's role ([`crate::ChannelRole`]).
 
-use crate::words::Word;
+use crate::naming::words::Word;
 
 crate::word_enum! {
     /// A symbol's part in its device: stored, set from the declaring symbol when it is placed.
@@ -165,7 +165,7 @@ impl serde::Serialize for Role {
 impl<'de> serde::Deserialize<'de> for Role {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = String::deserialize(d)?;
-        Role::parse(&text).ok_or_else(|| <D::Error as serde::de::Error>::custom(crate::words::unknown_word_message(&text, "Role", Role::WORDS)))
+        Role::parse(&text).ok_or_else(|| <D::Error as serde::de::Error>::custom(crate::naming::words::unknown_word_message(&text, "Role", Role::WORDS)))
     }
 }
 
@@ -173,7 +173,7 @@ crate::__word_schema!(Role);
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn every_role_reads_back_its_own_word() {

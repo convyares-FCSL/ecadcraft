@@ -352,7 +352,7 @@ fn the_text_is_derived_and_properties_list_the_other_ends() {
     assert!(e.contains(TEXT_DERIVED), "{e}");
     let item = f.h.subject_item(Subject::Aid(a_c));
     let sel = vec![f.h.handle_of(f.pages[0], item)];
-    let view = f.h.p(|p| ecad_engine::props::view(p, Some(f.pages[0]), &sel));
+    let view = f.h.p(|p| ecad_engine::properties::props::view(p, Some(f.pages[0]), &sel));
     let s = &view.sections[0];
     let keys: Vec<&str> = s.rows.iter().map(|r| r.key.as_str()).collect();
     assert!(keys.contains(&CAPTION_KEY) && keys.contains(&"otherends"), "{keys:?}");
@@ -368,8 +368,8 @@ fn registry_defaults_apply() {
     let t = text_of(&mut f.h, f.pages[0], f.arrows[0].1).unwrap();
     assert!(t.ends_with(" +1") && t.split(' ').count() == 2, "{t}");
     // Brief 050a: the caption is a built-in text style, 2.5 mm regular.
-    let entry = ecad_engine::defaults::find("text.continuation_caption.style").unwrap();
-    assert_eq!(entry.builtin(), ecad_engine::defaults::Value::Text("continuation_caption"));
+    let entry = ecad_electrical::defaults::find("text.continuation_caption.style").unwrap();
+    assert_eq!(entry.builtin(), ecad_electrical::defaults::Value::Text("continuation_caption"));
     let s = f.h.run("styles", json!({"catalogue": "text"})).unwrap();
     let row = s["styles"].as_array().unwrap().iter().find(|r| r["id"] == "continuation_caption").cloned();
     assert!(row.is_some_and(|r| r["fields"]["height"]["value"] == 2.5 && r["fields"]["weight"]["value"] == "regular"), "{s}");
@@ -451,7 +451,7 @@ fn xrefs_on_a_name_of(m: usize) {
     let style = Style { layer: LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let starter = ecad_engine::wires::continuation_starter();
     let aid = ecad_engine::wires::continuation_aid("BIG", None).unwrap();
-    let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
+    let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 };
     let t = ecad_engine::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, aid).unwrap();
     ledger.commit(ecad_model::Author::User, "first", t.ops.clone()).unwrap();
     // The other arrows: the first one's ops with fresh IDs, place and page, in one transaction
@@ -525,6 +525,6 @@ fn a_page_with_arrows_verifies() {
         let d = pg.drawing_of(p, f.pages[0]).unwrap().clone();
         (p.ledger.document().clone(), d, p.pages[&f.pages[0]].map.clone())
     });
-    let v = ecad_engine::verify::verify_page(&doc, f.pages[0], &d, &map, ecad_engine::project::engine_views().report_models(&doc).as_ref());
+    let v = ecad_engine::dev::verify::verify_page(&doc, f.pages[0], &d, &map, ecad_engine::project::engine_views().report_models(&doc).as_ref());
     assert!(v.ok(), "{:?}", v.problems);
 }

@@ -156,7 +156,7 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
 /// tests and in release; [`Check::Full`] runs the full check after every transaction.
 #[test]
 fn replay_checked_runs_exactly_the_check_asked_for_in_any_build() {
-    assert!(ecad_model::ledger::verify_mode(), "this test build is in verify mode");
+    assert!(ecad_model::document::ledger::verify_mode(), "this test build is in verify mode");
     let mut l = Ledger::new(9);
     l.commit(Author::User, "p", vec![Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 }]).unwrap();
     // On a valid start both agree.

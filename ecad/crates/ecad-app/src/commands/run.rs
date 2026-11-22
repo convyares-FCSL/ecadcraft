@@ -255,7 +255,7 @@ impl App {
             out.push(String::new());
             out.push(format!("Cables ({}):", doc.cables.len()));
             for (k, cable) in &doc.cables {
-                out.push(format!("  {:<8} {} members  {}", ecad_engine::views::cable_title(doc, *k), cable.cores.len(), k.hex()));
+                out.push(format!("  {:<8} {} members  {}", ecad_engine::cables::views::cable_title(doc, *k), cable.cores.len(), k.hex()));
             }
             out.push(String::new());
             out.push(format!(
@@ -408,7 +408,7 @@ impl App {
                 let rep = self
                     .project
                     .clone()
-                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_engine::reps::goto(p.ledger.document(), c, None)).ok().flatten());
+                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_electrical::symbols::reps::goto(p.ledger.document(), c, None)).ok().flatten());
                 if let Some(rep) = rep {
                     let _ = self.goto_symbol(rep);
                 }
@@ -427,7 +427,7 @@ impl App {
                 let value = self.project.clone().and_then(|p| {
                     p.read(&mut self.cad.session, |p, _| {
                         // Brief 036: every type at least its drawn positions.
-                        ecad_engine::strips::offer_drawn_value(p.ledger.document(), c)
+                        ecad_electrical::terminal_strips::offer_drawn_value(p.ledger.document(), c)
                     })
                     .ok()
                 });
@@ -443,7 +443,7 @@ impl App {
                 let label = self.project.clone().and_then(|p| {
                     p.read(&mut self.cad.session, |p, _| {
                         let doc = p.ledger.document();
-                        doc.cables_of(w).first().and_then(|k| ecad_engine::strips::next_free_label(doc, *k))
+                        doc.cables_of(w).first().and_then(|k| ecad_electrical::terminal_strips::next_free_label(doc, *k))
                     })
                     .ok()
                     .flatten()
@@ -461,7 +461,7 @@ impl App {
                     p.read(&mut self.cad.session, |p, _| ecad_engine::devices::tag_of(p.ledger.document(), c).map(str::to_string)).ok().flatten()
                 });
                 if let Some(tag) = tag {
-                    let half = if side == ecad_engine::symbols::Side::Socket { "Socket" } else { "Plug" };
+                    let half = if side == ecad_electrical::symbols::Side::Socket { "Socket" } else { "Plug" };
                     for line in ["connector", tag.as_str(), half, "Pins"] {
                         if self.run_line(line).is_some() {
                             break;
@@ -727,12 +727,12 @@ impl App {
         };
         let read = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let objects = uid.and_then(|u| p.page_of(u)).map(|pg| ecad_engine::props::selected_objects(p, pg, &handles)).unwrap_or_default();
+            let objects = uid.and_then(|u| p.page_of(u)).map(|pg| ecad_engine::properties::props::selected_objects(p, pg, &handles)).unwrap_or_default();
             (
-                ecad_electrical::cmd::numbering::choices(doc),
+                ecad_electrical::numbering::commands::choices(doc),
                 objects,
                 ecad_engine::devices::padding(doc),
-                u8::try_from(doc.settings.wiring.digits()).unwrap_or(ecad_model::wiring::MAX_DIGITS),
+                u8::try_from(doc.settings.wiring.digits()).unwrap_or(ecad_model::connectivity::wiring::MAX_DIGITS),
             )
         });
         let Ok((choices, objects, digits, wire_digits)) = read else { return };
@@ -755,7 +755,7 @@ impl App {
     /// The provisional question before an issue (brief 026, design §5.5), for the refused `line`.
     pub(crate) fn ask_issue_provisional(&mut self, line: String) {
         let Some(p) = self.project.clone() else { return };
-        let items = p.read(&mut self.cad.session, |p, _| ecad_electrical::cmd::numbering::provisional_items(p.ledger.document()));
+        let items = p.read(&mut self.cad.session, |p, _| ecad_electrical::numbering::commands::provisional_items(p.ledger.document()));
         if let Ok(items) = items {
             self.issue_prompt = Some((line, format!("{}:\n{}", items.words(), items.list_line())));
         }

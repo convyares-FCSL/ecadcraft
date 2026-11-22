@@ -6,7 +6,7 @@
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle, Space};
 use ecad_engine::{Mapped, PagesRef, Project, ProjectHandle};
-use ecad_model::derive::mismatches;
+use ecad_model::connectivity::derive::mismatches;
 use ecad_model::{DeviceId, Document, ItemKind, PageId, Pt, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -23,8 +23,8 @@ pub fn applied(doc: &Document, ops: &[ecad_model::Op]) -> Document {
 /// What `ops`, taking `before` to `after`, could change in the Devices list: the Devices feed's
 /// touch through the views' pipeline (design 064 §4.1).
 pub fn devices_touched(before: &Document, after: &Document, ops: &[ecad_model::Op]) -> ecad_engine::device_list::DeviceTouch {
-    let metrics = std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth);
-    let mut views = ecad_electrical::derived::Views::new(ecad_electrical::derived::EngineInputs { metrics });
+    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FixedWidth);
+    let mut views = ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { metrics });
     let pending = views.begin(before, ops);
     views.finish(after, ops, pending).devices
 }
@@ -34,8 +34,8 @@ pub fn devices_touched(before: &Document, after: &Document, ops: &[ecad_model::O
 pub fn props_touched(
     before: &Document, after: &Document, before_ops: &[ecad_model::Op], tx_ops: &[ecad_model::Op],
 ) -> Option<std::collections::BTreeSet<ecad_model::ObjectRef>> {
-    let metrics = std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth);
-    let mut views = ecad_electrical::derived::Views::new(ecad_electrical::derived::EngineInputs { metrics });
+    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FixedWidth);
+    let mut views = ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { metrics });
     let pending = views.begin(before, before_ops);
     views.finish(after, tx_ops, pending).props
 }
@@ -60,7 +60,7 @@ impl H {
     pub fn new(seed: u64) -> H {
         ecad_engine::install();
         // Never the developer's own cable-views.json (brief 005 review M4).
-        ecad_engine::views::isolate_for_tests();
+        crate::cables::views::isolate_for_tests();
         let mut s = Session::empty();
         let project = Project::create(&mut s, "Demo", seed).unwrap();
         let mut h = H { s, project, trail: Vec::new() };
@@ -70,9 +70,9 @@ impl H {
         h
     }
 
-    /// Take over a project made by [`ecad_engine::test_support::ProjectBuilder`], with its trail started
+    /// Take over a project made by [`crate::dev::test_support::ProjectBuilder`], with its trail started
     /// at the built document and the harness checks run once.
-    pub fn from_built(b: ecad_engine::test_support::Built) -> H {
+    pub fn from_built(b: crate::dev::test_support::Built) -> H {
         let mut h = H { s: b.s, project: b.project, trail: Vec::new() };
         let d = h.doc();
         h.trail.push(d);
@@ -216,7 +216,7 @@ impl H {
     }
 
     pub fn connection_point_pos(&mut self, page: PageId, t: ConnectionPointId) -> Pt {
-        ecad_model::derive::connection_point_positions(&self.doc(), page).into_iter().find(|(x, _, _)| *x == t).map(|(_, _, p)| p).expect("terminal shown")
+        ecad_model::connectivity::derive::connection_point_positions(&self.doc(), page).into_iter().find(|(x, _, _)| *x == t).map(|(_, _, p)| p).expect("terminal shown")
     }
 
     pub fn lines_on(&mut self, page: PageId) -> Vec<Handle> {
@@ -325,7 +325,7 @@ pub fn tmp_dir(tag: &str) -> PathBuf {
 pub fn reopen(path: &str, seed: u64) -> H {
     // As `H::new`: run alone (as nextest runs every test), nothing else has installed ECAD's commands.
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    crate::cables::views::isolate_for_tests();
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file(&mut s, path, seed).unwrap();
     let mut h = H { s, project, trail: Vec::new() };
@@ -377,7 +377,7 @@ impl H {
     pub fn wire_pp(&mut self, points: &[(f64, f64)]) -> Result<Value, String> {
         let doc = self.doc();
         let page = self.p(|p| p.active_page()).unwrap_or(doc.page_order[0]);
-        let shown: Vec<Pt> = ecad_model::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
+        let shown: Vec<Pt> = ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
         let ends: Vec<(f64, f64)> = [points.first(), points.last()]
             .into_iter()
             .flatten()
@@ -451,7 +451,7 @@ pub fn small_project(seed: u64) -> (H, DeviceId, DeviceId, WireId) {
     // Wire to the rotated symbol's first terminal, wherever the placement puts it.
     let doc = h.doc();
     let (rid, _) = doc.representations_of(ecad_model::Subject::Device(c2)).next().unwrap();
-    let to = ecad_model::derive::connection_point_positions(&doc, first).into_iter().find(|(_, r, _)| *r == rid).unwrap().2;
+    let to = ecad_model::connectivity::derive::connection_point_positions(&doc, first).into_iter().find(|(_, r, _)| *r == rid).unwrap().2;
     let w: WireId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (to.x, to.y)])})).unwrap(), "conductor");
     assert!(doc.wires.is_empty());
     assert!(h.doc().wires.contains_key(&w), "the wire between the two points");
@@ -568,10 +568,10 @@ pub fn plc_raw(doc: &Document, c: DeviceId, k: &str, value: Option<&str>) -> eca
             let (i, what) = rest.split_once('.').unwrap();
             let v = value.map(str::to_string);
             m.edit_channel(i.parse().unwrap(), |ch| match what {
-                "text" => ch.text = v.as_deref().map(|t| ecad_model::text::Text::new(t).unwrap()),
-                "address" => ch.address = v.as_deref().map(|t| ecad_model::text::Text::new(t).unwrap()),
-                "tag" => ch.tag = v.as_deref().map(|t| ecad_model::text::Text::new(t).unwrap()),
-                "safe" => ch.safe = v.as_deref().map(|t| ecad_model::plc::SafeState::parse(t).unwrap()),
+                "text" => ch.text = v.as_deref().map(|t| ecad_model::naming::text::Text::new(t).unwrap()),
+                "address" => ch.address = v.as_deref().map(|t| ecad_model::naming::text::Text::new(t).unwrap()),
+                "tag" => ch.tag = v.as_deref().map(|t| ecad_model::naming::text::Text::new(t).unwrap()),
+                "safe" => ch.safe = v.as_deref().map(|t| ecad_model::objects::plc::SafeState::parse(t).unwrap()),
                 other => panic!("no channel field {other}"),
             });
         }
@@ -580,7 +580,7 @@ pub fn plc_raw(doc: &Document, c: DeviceId, k: &str, value: Option<&str>) -> eca
 }
 
 /// Device `c`'s station data (design 072 §3); panics when it is not a station.
-pub fn plc_station(doc: &Document, c: DeviceId) -> ecad_model::plc::PlcRack {
+pub fn plc_station(doc: &Document, c: DeviceId) -> ecad_model::objects::plc::PlcRack {
     match &doc.devices[&c].device_type {
         ecad_model::DeviceType::PlcRack(r) => r.clone(),
         other => panic!("{c:?} is not a station: {other:?}"),

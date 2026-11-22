@@ -11,8 +11,8 @@ use eframe::egui::{self, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{Collect, Deltas};
-use crate::project_panel::{doc, ok, rev3_app as new_app};
+use crate::canvas::mouse_acceptance::{Collect, Deltas};
+use crate::pages::project_panel::{doc, ok, rev3_app as new_app};
 
 type H = Harness<'static, App>;
 
@@ -46,7 +46,7 @@ fn show(h: &mut H, v: ListsView) {
 /// from Q01:2 bundled 0.80; -W01 on the synthetic table, method E, 35 °C, 3 grouped, 12 m,
 /// protected by Q01.
 fn rated(h: &mut H, dir: &std::path::Path) -> (ecad_model::WireId, ecad_model::CableId) {
-    let path = crate::checks_ui::demo_file(dir);
+    let path = crate::checks::ui::demo_file(dir);
     h.state_mut().close_project();
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
@@ -71,7 +71,7 @@ fn rated(h: &mut H, dir: &std::path::Path) -> (ecad_model::WireId, ecad_model::C
     ok(h, &format!(r#"rating {{"wire":"{}","bundling":"0.80"}}"#, wire.hex()));
     ok(h, &format!(r#"ratingtable {{"name":"Test (synthetic)","source":"made up for tests","csv":"{SYNTHETIC}"}}"#));
     let d = doc(h);
-    let table = ecad_engine::styles::rows(&d, &ecad_engine::styles::ratingtable::CATALOGUE)[0].id.text();
+    let table = ecad_electrical::styles::rows(&d, &ecad_electrical::styles::ratingtable::CATALOGUE)[0].id.text();
     ok(h, &format!(r#"setdefault {{"key":"rating.table","level":"project","value":"{table}"}}"#));
     ok(h, &format!(r#"setprop {{"cable":"{}","key":"length","value":"12 m"}}"#, w01.hex()));
     ok(h, &format!(r#"setprop {{"cable":"{}","key":"type","value":"H07RN-F 4G1.5"}}"#, w01.hex()));
@@ -96,8 +96,8 @@ fn the_rating_sections_show_boards_2_05_and_2_06() {
     assert!(h.query_by_label_contains("Panel: \u{d7} 0.87 40 \u{b0}C").is_some(), "Panel row");
     assert!(h.query_by_label_contains("Bundled: \u{d7} 0.80").is_some(), "Bundled row");
     assert!(h.query_by_label_contains("Carries: 18.8 A").is_some(), "Carries row");
-    if let Some(out) = crate::project_panel::shots() {
-        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-2.05.png"));
+    if let Some(out) = crate::pages::project_panel::shots() {
+        let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("057-2.05.png"));
     }
     // 2.06: the cable, its Rating section after Part.
     show(&mut h, ListsView::Cables);
@@ -107,8 +107,8 @@ fn the_rating_sections_show_boards_2_05_and_2_06() {
     assert!(h.query_by_label_contains("Table: 20 A 1.5 mm\u{b2} \u{b7} E \u{b7} Test (synthetic)").is_some(), "Table row");
     assert!(h.query_by_label_contains("Carries: 16.9 A").is_some(), "Carries row");
     assert!(h.query_by_label_contains("Volt drop: 0.2 %").is_some(), "Volt drop row");
-    if let Some(out) = crate::project_panel::shots() {
-        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-2.06.png"));
+    if let Some(out) = crate::pages::project_panel::shots() {
+        let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("057-2.06.png"));
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -124,7 +124,7 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     let (_, w01) = rated(&mut h, &dir);
     ok(&mut h, r#"setstyle {"catalogue":"cable","new":true,"name":"H07RN-F 4G1.5","fields":{"size":"1.5","core_colours":"BN,BK,GY,GNYE"}}"#);
     let d = doc(&mut h);
-    let ty = ecad_engine::styles::rows(&d, &ecad_engine::styles::cable::CATALOGUE)[0].id.text();
+    let ty = ecad_electrical::styles::rows(&d, &ecad_electrical::styles::cable::CATALOGUE)[0].id.text();
     ok(&mut h, &format!(r#"rating {{"cable":"{}","cable_type":"{ty}"}}"#, w01.hex()));
     show(&mut h, ListsView::Cables);
     let k = h.state().reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();
@@ -132,10 +132,10 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     h.run_steps(8);
     // Owner: a plain list until Details opens the selected cable below it.
     assert!(h.query_by_label_contains("drawn end to end").is_none(), "a plain list");
-    if let Some(out) = crate::project_panel::shots() {
-        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v2-list.png"));
+    if let Some(out) = crate::pages::project_panel::shots() {
+        let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("057-cable-view-v2-list.png"));
     }
-    h.get_by_label(ecad_app::lists::workspace::DETAILS).click();
+    h.get_by_label(ecad_app::workspace::frame::DETAILS).click();
     h.run_steps(8);
     assert!(h.query_by_label_contains("-W01 drawn end to end, 4 cores").is_some(), "the drawing");
     let r = h.state().reports.as_ref().unwrap();
@@ -153,23 +153,23 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     // v3: the row's fixes and the panel's buttons, the shared splitter.
     let fix = doc_checks(&mut h).into_iter().find(|c| c.kind == ecad_engine::checks::Kind::CoreOpen).and_then(|c| c.fix);
     assert_eq!(fix, Some(ecad_engine::checks::Fix::CoreOpen(w01, 0)));
-    assert!(h.query_by_label(ecad_app::checks_panel::GO_TO_OPEN_END).is_some(), "the panel's Go to the open end");
-    assert!(h.query_by_label(ecad_app::lists::cables::SPLIT).is_some(), "the splitter");
-    if let Some(out) = crate::project_panel::shots() {
-        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v3.png"));
+    assert!(h.query_by_label(ecad_app::checks::panel::GO_TO_OPEN_END).is_some(), "the panel's Go to the open end");
+    assert!(h.query_by_label(ecad_app::cables::list::SPLIT).is_some(), "the splitter");
+    if let Some(out) = crate::pages::project_panel::shots() {
+        let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("057-cable-view-v3.png"));
     }
-    if let Some(out) = crate::project_panel::shots() {
-        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v2-open.png"));
+    if let Some(out) = crate::pages::project_panel::shots() {
+        let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("057-cable-view-v2-open.png"));
     }
     // The GNYE row is the last of the four.
-    h.get_all_by_label(ecad_app::lists::cables::NOT_USED_TOGGLE).last().unwrap().click();
+    h.get_all_by_label(ecad_app::cables::list::NOT_USED_TOGGLE).last().unwrap().click();
     h.run_steps(6);
     assert!(h.state().reports.as_ref().unwrap().cables.cores.is_unused(gnye), "ticked");
     assert_eq!(open_rows(&mut h), 0, "a ticked core is no error");
     let d = doc(&mut h);
     assert!(d.cables[&w01].cores.iter().any(|m| m.label_str() == Some("GNYE") && m.is_spare()), "the core is stored Spare");
-    if let Some(out) = crate::project_panel::shots() {
-        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v2-ticked.png"));
+    if let Some(out) = crate::pages::project_panel::shots() {
+        let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("057-cable-view-v2-ticked.png"));
     }
     ok(&mut h, "u");
     assert_eq!(open_rows(&mut h), 1, "one undo takes the tick back");

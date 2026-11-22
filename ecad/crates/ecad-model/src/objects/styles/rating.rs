@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::text::{LongText, Text};
+use crate::naming::text::{LongText, Text};
 
 /// The longest source text.
 pub const MAX_SOURCE: usize = 200;

@@ -15,8 +15,8 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::doc::Properties;
-use crate::id::{LibraryId, StandardId};
+use crate::document::doc::Properties;
+use crate::naming::id::{LibraryId, StandardId};
 
 pub mod cable;
 pub mod frame;
@@ -90,7 +90,7 @@ crate::word_enum! {
 impl fmt::Display for StyleCatalogue {
     /// Its stored word.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(crate::words::Word::word(*self))
+        f.write_str(crate::naming::words::Word::word(*self))
     }
 }
 
@@ -203,7 +203,7 @@ pub struct StyleRecord {
 }
 
 /// A style or standard name: 1–64 characters, one line, no hidden character (design 072 §9.4).
-pub type StyleName = crate::text::Text<MAX_NAME_CHARS>;
+pub type StyleName = crate::naming::text::Text<MAX_NAME_CHARS>;
 
 impl StyleRecord {
     /// A record with `name` (none when empty or not a valid name) and `body`.
@@ -227,7 +227,7 @@ impl StyleRecord {
     }
 
     /// Its title block, if it is a frame style holding one.
-    pub fn title_block(&self) -> Option<&crate::title_block::TitleBlockLayout> {
+    pub fn title_block(&self) -> Option<&crate::objects::title_block::TitleBlockLayout> {
         match &self.body {
             StyleBody::Frame(f) => f.title_block.as_ref(),
             StyleBody::Cable(_)
@@ -473,7 +473,7 @@ pub(crate) fn put(cats: &mut StyleCatalogues, catalogue: StyleCatalogue, id: &St
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn style_refs_parse_and_print() {

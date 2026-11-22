@@ -4,7 +4,7 @@
 use crate::common;
 
 use common::small_project;
-use ecad_inspect::EventKind;
+use ecad_engine::history::event_log::EventKind;
 use serde_json::{Value, json};
 
 #[test]

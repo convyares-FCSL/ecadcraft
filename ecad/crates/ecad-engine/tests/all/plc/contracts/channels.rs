@@ -7,7 +7,7 @@ use ecad_engine::plc::PlcFix;
 use ecad_model::{Author, DeviceId, Op, Subject, Terminal, ConnectionPointId};
 use serde_json::{Value, json};
 
-use super::{checks_of, place, placed, prop, same_as_built};
+use crate::plc::contracts::{checks_of, place, placed, prop, same_as_built};
 use crate::common::{H, id, pts};
 
 /// Fixture P, reduced (design 045 §13): a CPU `-A01` with DI `-A02` (slot 1), DI `-A03` (2), AI

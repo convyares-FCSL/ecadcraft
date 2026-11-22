@@ -10,25 +10,25 @@
 //!   180°, at 40 %); a row wider than the drawing area wraps into further rows [`ROW_PITCH_MM`]
 //!   apart.
 //!
-//! The rules are [`ecad_electrical::cmd::plc`]; this shim numbers the page (from the kept outputs)
+//! The rules are [`ecad_electrical::plc::commands`]; this shim numbers the page (from the kept outputs)
 //! and commits.
 //!
 //! Excludes: placing anything on an existing page (that is `plcchannels`).
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::plc as rules;
-pub use ecad_electrical::cmd::plc::{LEFT_MM, ROW_PITCH_MM, title};
-use ecad_model::book::{self, Book};
+use ecad_electrical::plc::commands as rules;
+pub use ecad_electrical::plc::commands::{LEFT_MM, ROW_PITCH_MM, title};
+use ecad_model::document::book::{self, Book};
 use ecad_model::{Op, Page, PageId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, typed};
-use crate::cmd::{on_any_page, plain_style};
+use crate::commands::input::{Command, typed};
+use crate::commands::{on_any_page, plain_style};
 use crate::plc::channels::first_number;
-use ecad_electrical::cmd::input::TextOrNumber;
+use ecad_electrical::commands::input::TextOrNumber;
 
 /// Brief 051's commands: `plcpage`.
 pub fn specs() -> Vec<CommandSpec> {
@@ -63,9 +63,9 @@ impl Command for PlcpageParams {
             let before = rules::after_page(doc, &book, pc.card, after.as_deref())?;
             let outputs = p.kept_reports();
             let position = before.and_then(|b| book.position(b)).map_or(book.order.len() + 1, |x| x + 1);
-            let number = ecad_electrical::cmd::sheet::default_number(doc, &book, before, position, outputs);
+            let number = ecad_electrical::pages::commands::sheets::default_number(doc, &book, before, position, outputs);
             let title = title(doc, pc.card, pc.ty);
-            let mut new_page = Page::new(ecad_electrical::cmd::sheet::page_title(&title)?);
+            let mut new_page = Page::new(ecad_electrical::pages::commands::sheets::page_title(&title)?);
             new_page.number = ecad_model::PageNo::parse(&number);
             new_page.folder = before.and_then(|b| book::folder_of(doc, b)).filter(|f| doc.folders.contains_key(f));
             let index = before.and_then(|b| doc.page_order.iter().position(|x| *x == b)).map_or(doc.page_order.len(), |i| i + 1);
@@ -109,7 +109,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
                 _ => None,
             })
         });
-        def.and_then(crate::symbols::of_definition).and_then(crate::plc::rack::CardType::of_symbol).is_some_and(crate::plc::rack::CardType::is_rack)
+        def.and_then(ecad_electrical::symbols::of_definition).and_then(crate::plc::rack::CardType::of_symbol).is_some_and(crate::plc::rack::CardType::is_rack)
     };
     let places_rack = ops.iter().any(|op| match op {
         Op::AddItem { item, .. } => matches!(&item.kind, ItemKind::Symbol(s) if is_rack_def(s.definition)),
@@ -124,7 +124,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
         return Ok((None, Vec::new()));
     }
     let kind = ecad_model::GenKind::PlcRack;
-    let (id, _, mut more) = crate::cmd::sheet::new_page_ops_at(p, kind.title().to_string(), None, None, None)?;
+    let (id, _, mut more) = crate::pages::commands::sheets::new_page_ops_at(p, kind.title().to_string(), None, None, None)?;
     for op in &mut more {
         if let Op::AddPage { page, .. } = op {
             page.kind = ecad_model::PageKind::generated(kind);

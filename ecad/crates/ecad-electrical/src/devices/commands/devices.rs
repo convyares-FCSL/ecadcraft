@@ -34,7 +34,7 @@ pub struct TagSettings {
 /// A padding out of range, an unknown symbol, a prefix that is not 1 to
 /// [`devices::MAX_PREFIX_LETTERS`] letters.
 pub fn tag_settings(padding: Option<u64>, prefixes: impl IntoIterator<Item = (String, Option<String>)>) -> Result<TagSettings, CmdError> {
-    let max = ecad_model::tag::MAX_PADDING;
+    let max = ecad_model::naming::tag::MAX_PADDING;
     let padding = match padding {
         None => None,
         Some(n) => Some(
@@ -66,7 +66,7 @@ pub fn apply_tag_settings(after: &mut ProjectSettings, settings: TagSettings) {
         after.tag_padding = Some(n);
     }
     for (k, v) in settings.prefixes {
-        crate::devices::set_symbol_prefix(after, ecad_model::prefix::PrefixOf::Starter(k.into()), v.as_deref());
+        crate::devices::set_symbol_prefix(after, ecad_model::naming::prefix::PrefixOf::Starter(k.into()), v.as_deref());
     }
 }
 
@@ -182,11 +182,11 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
             let (released_ops, released) =
                 if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released_ops);
-            ops.extend(super::device_link::unlink_ops(doc, c));
+            ops.extend(crate::devices::commands::device_links::unlink_ops(doc, c));
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             let mut message =
                 (released > 0).then(|| format!("Deleted {}; {}", devices::tag_words(doc, c), crate::plc::rack::released_words(released)));
-            if let Some(cleared) = crate::rating::trace::cleared_words(doc, c) {
+            if let Some(cleared) = crate::circuits::trace::cleared_words(doc, c) {
                 message = Some(format!("{}; {cleared}", message.unwrap_or_else(|| format!("Deleted {}", devices::tag_words(doc, c)))));
             }
             Ok(Deleted { ops, released, kept: None, message })

@@ -8,13 +8,13 @@
 
 use cadcraft_engine::doc::{EntityKind, HAlign, Text, VAlign};
 use cadcraft_engine::geom::Vec3;
-use ecad_model::sheet::{Grid, Margins};
-use ecad_model::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect, TextDraw as ItemDraw, TitleBlockLayout};
+use ecad_model::document::sheet::{Grid, Margins};
+use ecad_model::objects::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect, TextDraw as ItemDraw, TitleBlockLayout};
 use ecad_model::{LengthUnit, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::frame::{LABEL_ACI, LAYER, Part, TextDraw};
-use crate::frames::FrameInput;
+use crate::pages::frame::{LABEL_ACI, LAYER, Part, TextDraw};
+use ecad_electrical::pages::frames::FrameInput;
 
 /// `ecad.title-red`: ACI 1, red (a field's Red colour; house style: the status).
 pub const RED_ACI: u8 = 1;
@@ -61,7 +61,7 @@ impl Pen {
         if value.is_empty() || !(look.mm.is_finite() && look.mm > 0.0) {
             return false;
         }
-        let (shown, wf) = crate::frames::fit(value, look.mm, room);
+        let (shown, wf) = ecad_electrical::pages::frames::fit(value, look.mm, room);
         let cut = shown.ends_with('…') && !value.ends_with('…');
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
@@ -105,7 +105,7 @@ pub struct Drawn {
 pub fn border(pen: &mut Pen, input: &FrameInput) {
     let s = input.sheet;
     let m = input.look.margins;
-    let grid = Grid::with_layout(s, LengthUnit::Millimetre, m, ecad_model::sheet::Corner::TopLeft);
+    let grid = Grid::with_layout(s, LengthUnit::Millimetre, m, ecad_model::document::sheet::Corner::TopLeft);
     let (w, h) = (f64::from(s.width), f64::from(s.height));
     let (l, r, b, t) = (m.left, w - m.right, m.bottom, h - m.top);
     let (border, inner) = (input.look.border, input.look.inner);
@@ -237,7 +237,7 @@ fn rev_table(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), row
         return;
     }
     let rh = r.h / n as f64;
-    let (widths, _) = crate::revisions::widths(&input.rev_columns, r.w);
+    let (widths, _) = ecad_electrical::releases::revisions::widths(&input.rev_columns, r.w);
     let mut xs = vec![0.0];
     for w in &widths {
         let last = xs.last().copied().unwrap_or(0.0);
@@ -278,7 +278,7 @@ fn rev_table(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), row
 
 /// A logo fitted into its box keeping its proportions, centred (design 055 §6).
 fn logo(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), prims: &[Primitive]) {
-    let Some((lo, hi)) = ecad_model::geom::extents(prims) else { return };
+    let Some((lo, hi)) = ecad_model::geometry::geom::extents(prims) else { return };
     let (w, h) = (hi.x - lo.x, hi.y - lo.y);
     let s = match (w > 1e-9, h > 1e-9) {
         (true, true) => (r.w / w).min(r.h / h),
@@ -291,7 +291,7 @@ fn logo(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), prims: &
     }
     let to = Pt::new(origin.0 + pen.dx + r.x + (r.w - w * s) / 2.0, origin.1 + r.y + (r.h - h * s) / 2.0);
     for p in prims {
-        let q = ecad_model::geom::place(p, lo, s, to, pen.k);
+        let q = ecad_model::geometry::geom::place(p, lo, s, to, pen.k);
         pen.prim(&q, input.look.inner);
     }
 }

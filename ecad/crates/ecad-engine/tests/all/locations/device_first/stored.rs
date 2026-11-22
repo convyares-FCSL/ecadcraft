@@ -4,7 +4,7 @@
 use crate::common::{H, id};
 
 use ecad_engine::checks::{self, Kind};
-use ecad_engine::designations::{self, Aspect};
+use ecad_electrical::locations::designations::{self, Aspect};
 use ecad_engine::{devices, locations};
 use ecad_model::{DeviceId, Document, PageId};
 use serde_json::{Value, json};
@@ -97,7 +97,7 @@ fn connector_halves_have_their_own_locations() {
     set(&mut h, x, "location", json!("+CP1"));
     h.run("setlocation", json!({"component": x.hex(), "type": "plug", "value": "+FIELD"})).unwrap();
     let d = h.doc();
-    let rows = ecad_engine::connectors::half_rows(&d, x, &mut locations::BoxCache::default());
+    let rows = ecad_electrical::connectors::half_rows(&d, x, &mut locations::BoxCache::default());
     let by_side: Vec<(String, Option<String>)> = rows.iter().map(|r| (r.tag.clone(), r.location.value.clone())).collect();
     assert!(by_side.iter().any(|(t, l)| t.ends_with(".S") && l.as_deref() == Some("+CP1")), "{by_side:?}");
     assert!(by_side.iter().any(|(t, l)| t.ends_with(".P") && l.as_deref() == Some("+FIELD")), "{by_side:?}");

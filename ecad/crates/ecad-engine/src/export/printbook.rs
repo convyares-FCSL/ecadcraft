@@ -20,7 +20,7 @@ use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::{Drawing, EntityStore, color::Color};
 use cadcraft_engine::geom::{Mat3, Vec2};
-use ecad_model::book::{self, Book};
+use ecad_model::document::book::{self, Book};
 use ecad_model::{CableId, Document, FolderId, PageId, Pt};
 use serde_json::{Value, json};
 
@@ -186,7 +186,7 @@ pub fn build_in(
     for page in pages {
         let parts = crate::generated::parts_of_pending(doc, *page, outputs, pending);
         // Brief 040: a print is on white paper: wire colours for the paper sheet.
-        let (d, map) = crate::look::with_paper(|| project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts))?;
+        let (d, map) = crate::cables::draw::with_paper(|| project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts))?;
         for l in &d.layers {
             if scratch.layer(&l.name).is_none() {
                 scratch.layers.push(l.clone());
@@ -354,14 +354,14 @@ pub fn print(
     let (scratch, sheets) = build_in(doc, pages, fan, tol, outputs, o.pending, !o.mono)?;
     let mut done = Printed { sheets: sheets.len(), ..Printed::default() };
     // Design 033 §6.2: nobody prints a pending book by mistake.
-    done.notes.extend(crate::revisions::pending_note(doc, o.pending));
+    done.notes.extend(ecad_electrical::releases::revisions::pending_note(doc, o.pending));
     let generated: BTreeSet<PageId> = pages.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some()).collect();
     done.generated = sheets.iter().filter(|s| generated.contains(&s.page)).count();
     done.flagged = crate::generated::flagged(doc, &generated, outputs);
     let mut noted = BTreeSet::new();
     for s in sheets.iter().filter(|s| !s.exact) {
         if noted.insert(s.page) {
-            let spec = ecad_model::sheet::sheet_of(doc, s.page);
+            let spec = ecad_model::document::sheet::sheet_of(doc, s.page);
             done.notes.push(format!("Page {} ({} x {}) is printed fitted on {}.", book::page_number(doc, s.page), spec.width, spec.height, s.paper));
         }
     }
@@ -402,7 +402,7 @@ pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
     p.refresh_pending();
     let doc = p.ledger.document();
     let mut out = resolve_with(doc, scope, p.kept_reports()).map(|r| r.notes).unwrap_or_default();
-    out.extend(crate::revisions::pending_note(doc, p.pending));
+    out.extend(ecad_electrical::releases::revisions::pending_note(doc, p.pending));
     out
 }
 
@@ -431,7 +431,7 @@ pub fn install_io() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn papers_are_the_smallest_iso_a_that_fits() {

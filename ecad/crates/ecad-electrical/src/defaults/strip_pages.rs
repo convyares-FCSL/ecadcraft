@@ -5,7 +5,7 @@
 //! by key. Guards (most cable lanes, leads per side, far devices) are constants in
 //! `crate::strip_page`, not entries.
 
-use super::{Entry, Kind, Level, ProjectSource, Slot};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 
 ecad_model::word_enum! {
     /// How a terminal strip page draws its strip.

@@ -20,7 +20,7 @@ pub const MAX_SYMBOL_KEY: usize = 16;
 ///
 /// # Example
 /// ```
-/// use ecad_model::prefix::TagPrefix;
+/// use crate::naming::prefix::TagPrefix;
 /// assert_eq!(TagPrefix::typed(" -ka ").map(|p| p.to_string()), Some("KA".to_string()));
 /// assert!(TagPrefix::typed("K1").is_none());
 /// ```
@@ -63,7 +63,7 @@ impl<'de> Deserialize<'de> for TagPrefix {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = String::deserialize(d)?;
         TagPrefix::stored(&text).ok_or_else(|| {
-            serde::de::Error::custom(format!("tag prefix `{}` is not 1 to {MAX_PREFIX_LETTERS} upper-case letters", crate::text::clip(&text, 24)))
+            serde::de::Error::custom(format!("tag prefix `{}` is not 1 to {MAX_PREFIX_LETTERS} upper-case letters", crate::naming::text::clip(&text, 24)))
         })
     }
 }
@@ -77,7 +77,7 @@ impl<'de> Deserialize<'de> for TagPrefix {
 ///
 /// # Example
 /// ```
-/// use ecad_model::prefix::PrefixOf;
+/// use crate::naming::prefix::PrefixOf;
 /// let p = PrefixOf::parse("project:valve-x").unwrap();
 /// assert_eq!(p, PrefixOf::Project("valve-x".into()));
 /// assert_eq!(PrefixOf::Starter("coil".into()).to_string(), "starter:coil");
@@ -137,7 +137,7 @@ impl<'de> Deserialize<'de> for PrefixOf {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = String::deserialize(d)?;
         PrefixOf::parse(&text)
-            .ok_or_else(|| serde::de::Error::custom(format!("prefix key `{}` is not starter:<word> or project:<key>", crate::text::clip(&text, 40))))
+            .ok_or_else(|| serde::de::Error::custom(format!("prefix key `{}` is not starter:<word> or project:<key>", crate::naming::text::clip(&text, 40))))
     }
 }
 
@@ -146,7 +146,7 @@ mod schema {
 
     use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 
-    impl JsonSchema for super::TagPrefix {
+    impl JsonSchema for crate::TagPrefix {
         fn schema_name() -> Cow<'static, str> {
             "TagPrefix".into()
         }
@@ -155,7 +155,7 @@ mod schema {
         }
     }
 
-    impl JsonSchema for super::PrefixOf {
+    impl JsonSchema for crate::PrefixOf {
         fn schema_name() -> Cow<'static, str> {
             "PrefixOf".into()
         }
@@ -167,7 +167,7 @@ mod schema {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn prefixes_and_keys_read_only_their_stored_forms() {

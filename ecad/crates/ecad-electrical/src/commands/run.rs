@@ -3,7 +3,7 @@
 //!
 //! A generic command is a declaration: a `#[derive(Deserialize, JsonSchema)]` params struct that
 //! implements [`Generic`], with what it touches as data: its pages, its access, its files, its own
-//! state. The engine's one runner reads the parameters ([`crate::cmd::input`]),
+//! state. The engine's one runner reads the parameters ([`crate::commands::input`]),
 //! takes the project, gives the command a [`Cx`], commits its [`Edit`] as one transaction under its
 //! id, echoes its message and answers with its JSON. Its MCP schema is the params struct's.
 //!
@@ -17,11 +17,11 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::CmdError;
-use crate::derived::Views;
-use crate::designations::Uses;
+use crate::views::Views;
+use crate::locations::designations::Uses;
 use crate::devices::TagHigh;
-use crate::proposals::Conflict;
-use crate::text_style::fonts::TextMetrics;
+use crate::symbols::proposals::Conflict;
+use crate::styles::text_style::fonts::TextMetrics;
 
 /// What every generic command may read and change: the document, new ids and the state several
 /// commands share. The document changes only through the [`Edit`] it returns. State a few commands

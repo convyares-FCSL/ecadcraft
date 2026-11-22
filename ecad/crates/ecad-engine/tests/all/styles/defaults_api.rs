@@ -1,7 +1,7 @@
 //! Tester 031: the shared getter and the defaults registry through their Rust API (design 031
 //! §3.3, §3.5; brief AC 1 and AC 7). Written from the design before the implementation existed.
 
-use ecad_engine::defaults::{self, Scope};
+use ecad_electrical::defaults::{self, Scope};
 use ecad_engine::text_style::{self, TextKind, TextStyle, Weight};
 use ecad_model::{Author, Document, ObjectRef, Op};
 
@@ -37,8 +37,8 @@ fn doc_with(props: &[(&str, &str)]) -> Document {
             Some((kind, field)) => {
                 records.entry(kind.to_string()).or_insert_with(|| ecad_model::StyleRecord::empty(ecad_model::StyleCatalogue::Text));
                 // Design 072 §8: a value the field does not take cannot be stored; it stays absent.
-                if let Some(ecad_model::style::StyleBody::Text(t)) = records.get_mut(kind).map(|r| &mut r.body) {
-                    let _ = ecad_engine::styles::text::set(t, field, Some(v));
+                if let Some(ecad_model::objects::styles::StyleBody::Text(t)) = records.get_mut(kind).map(|r| &mut r.body) {
+                    let _ = ecad_electrical::styles::text::set(t, field, Some(v));
                 }
             }
             None => ops.push(Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) }),

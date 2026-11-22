@@ -9,8 +9,8 @@
 //! whole table (`Changed::All`): the models do not say which rows a change touched.
 
 use ecad_engine::outputs;
-use ecad_ui::prim::Tone;
-use ecad_ui::table::{Cell, Column, ColumnId};
+use ecad_widgets::prim::Tone;
+use ecad_widgets::table::{Cell, Column, ColumnId};
 
 /// What a column shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

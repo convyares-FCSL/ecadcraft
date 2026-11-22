@@ -1,6 +1,6 @@
 //! Every icon paints inside its rect with 1.5 px strokes (brief 037, acceptance criterion 2).
 
-use ecad_tokens::{Icon, line};
+use {ecad_widgets::tokens::Icon, ecad_widgets::tokens::line};
 use egui::{Color32, Rect, Shape, pos2, vec2};
 
 /// The stroke widths of `shape`'s outlines (none for a filled dot).
@@ -20,7 +20,7 @@ fn every_icon_paints_inside_its_rect_with_the_icon_stroke() {
     for side in [16.0, 20.0, 12.0] {
         let rect = Rect::from_min_size(pos2(100.0, 50.0), vec2(side, side));
         for icon in Icon::ALL {
-            let shapes = ecad_ui::icons::shapes(rect, icon, Color32::WHITE);
+            let shapes = ecad_widgets::icons::shapes(rect, icon, Color32::WHITE);
             assert!(!shapes.is_empty(), "{icon:?} paints");
             let mut w = Vec::new();
             for s in &shapes {
@@ -39,7 +39,7 @@ fn every_icon_paints_inside_its_rect_with_the_icon_stroke() {
 fn icons_fit_a_wide_rect() {
     let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(40.0, 16.0));
     for icon in Icon::ALL {
-        for s in ecad_ui::icons::shapes(rect, icon, Color32::WHITE) {
+        for s in ecad_widgets::icons::shapes(rect, icon, Color32::WHITE) {
             let b = s.visual_bounding_rect();
             assert!(b.left() >= 12.0 - 0.01 && b.right() <= 28.0 + 0.01, "{icon:?}: {b:?}");
         }

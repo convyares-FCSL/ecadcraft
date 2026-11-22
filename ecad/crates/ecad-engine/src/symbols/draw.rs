@@ -1,12 +1,12 @@
 //! The engine side of placement proposals (design 052 §5.3; design 065 §3, cut 6): planning one
 //! for a placement in a live project, and keeping its conflicts waiting there afterwards. The
-//! rules are [`crate::proposals`].
+//! rules are [`ecad_electrical::symbols::proposals`].
 
 use ecad_model::{DeviceId, PageId, Pt};
 use serde_json::Value;
 
-use crate::designations::{Aspect, Pending};
-use crate::proposals::*;
+use ecad_electrical::locations::designations::{Aspect, Pending};
+use ecad_electrical::symbols::proposals::*;
 
 /// Plan a placement's proposal (design 052 §5.3) for the symbol of device `c` at `at` on `page`,
 /// with the `function` and `location` modes the place gave (function first). `half`: the side a
@@ -18,13 +18,13 @@ use crate::proposals::*;
 /// A mode or a typed code that is not valid.
 pub(crate) fn plan_place(
     p: &mut crate::project::Project, base: &[ecad_model::Op], mut modes: [Mode; 2], c: DeviceId, page: PageId, at: Pt,
-    half: Option<crate::symbols::Side>,
+    half: Option<ecad_electrical::symbols::Side>,
 ) -> Result<Planned, String> {
     let half_mode = modes[1] == Mode::Half;
     if half_mode {
         modes[1] = Mode::Propose;
     }
-    let half = half.filter(|s| *s != crate::symbols::Side::Both);
+    let half = half.filter(|s| *s != ecad_electrical::symbols::Side::Both);
     let spot = Spot { device: c, page, at: Some(at) };
     let mut pending = Pending::default();
     let mut planned = plan(p.ledger.document(), base, &mut p.ids, &[spot], &modes, &[], &mut pending)?;

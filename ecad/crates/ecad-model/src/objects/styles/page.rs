@@ -1,14 +1,14 @@
 //! Page types (brief 054, design 054 §2, design 072 §8): the `page` catalogue's typed record.
 //!
-//! What a type brings to its pages is resolved in `crate::sheet` (sheet, frame, zones, checks)
+//! What a type brings to its pages is resolved in `crate::document::sheet` (sheet, frame, zones, checks)
 //! and `ecad-electrical` (`styles::page`).
 
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::StyleRef;
-use crate::sheet::{PROJECT_SHEET, SheetSpec};
+use crate::objects::styles::StyleRef;
+use crate::document::sheet::{PROJECT_SHEET, SheetSpec};
 
 crate::word_enum! {
     /// Which generated kinds a type's pages may be.
@@ -144,7 +144,7 @@ pub struct PageType {
 impl PageType {
     /// The fields it sets, as `(key, stored text)`, in field order.
     pub fn entries(&self) -> Vec<(&'static str, String)> {
-        let flag = |b: bool| crate::words::flag_word(b).to_string();
+        let flag = |b: bool| crate::naming::words::flag_word(b).to_string();
         let mut out = Vec::new();
         if let Some(v) = &self.sheet {
             out.push(("sheet", v.text()));
@@ -162,7 +162,7 @@ impl PageType {
             out.push(("checks", flag(v)));
         }
         if let Some(v) = self.holds {
-            out.push(("holds", crate::words::Word::word(v).to_string()));
+            out.push(("holds", crate::naming::words::Word::word(v).to_string()));
         }
         out
     }

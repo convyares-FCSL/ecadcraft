@@ -10,9 +10,9 @@
 
 use crate::shell::Hosted;
 use ecad_engine::outputs::{BomView, Group, Table};
-use ecad_ui::control::{Select, TextEntry, Toggle};
-use ecad_ui::prim::{self, Button, Checkbox, Kind, Radio, SearchField, Tone};
-use ecad_ui::tokens::{size, space};
+use ecad_widgets::control::{Select, TextEntry, Toggle};
+use ecad_widgets::prim::{self, Button, Checkbox, Kind, Radio, SearchField, Tone};
+use ecad_widgets::tokens::{size, space};
 use eframe::egui::{self, Sense, pos2, vec2};
 
 /// The tabs.
@@ -131,18 +131,18 @@ pub struct Reports {
     /// The project folder and name, for the export path's default.
     pub stem: String,
     /// Brief 039: the Terminals tab as the one table's terminal manager.
-    pub terminals: crate::lists::terminals::TerminalStripPlanView,
+    pub terminals: crate::terminal_strips::plan::TerminalStripPlanView,
     /// Brief 045c and 051: Lists ▸ PLC, kept in step while it is shown.
-    pub io: crate::lists::plc::IoView,
+    pub io: crate::plc::list::IoView,
     pub io_shown: bool,
     /// UI rev 3 (boards 2.04, 2.05): Project ▸ Wires and Cables, kept in step while shown.
-    pub wires: crate::lists::wires::WiresView,
-    pub cables: crate::lists::cables::CablesView,
+    pub wires: crate::wires::list::WiresView,
+    pub cables: crate::cables::list::CablesView,
     pub wires_shown: bool,
     pub cables_shown: bool,
     /// UI rev 3 (board 2.06): Project ▸ Reports' list of reports; the window is its preview,
     /// shown without its own tab row.
-    pub list: crate::lists::reports::ReportsList,
+    pub list: crate::reports::list::ReportsList,
     pub preview: bool,
     /// UI rev 3: the Project tabs' counts (terminals, PLC channels, wires, cables), from kept
     /// counts, taken with the Reports tab counts.
@@ -315,7 +315,7 @@ impl Reports {
             ui.menu_button("Columns \u{25be}", |ui| {
                 let mut article = self.view.article;
                 if Checkbox::new(&mut article, "Article number").show(ui).accessible_name(COLUMN_ARTICLE).changed() {
-                    let v = ecad_model::words::flag_word(article);
+                    let v = ecad_model::naming::words::flag_word(article);
                     *out = Some(Out::Run(format!("setdefault {}", serde_json::json!({"key": "bom.column.article", "level": "project", "value": v}))));
                     ui.close();
                 }
@@ -344,7 +344,7 @@ impl Reports {
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
         let mut out = None;
         let mut open = true;
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         egui::Window::new("REPORTS")
             .id(egui::Id::unique("ecad.reports"))
             .default_size(vec2(size::DIALOG_M * 1.6, size::DIALOG_M * 0.85))
@@ -466,8 +466,8 @@ impl Reports {
                 if self.tab == Tab::Terminals {
                     for a in self.terminals.show(ui, true) {
                         out = Some(match a {
-                            crate::lists::ListAction::Run(line) => Out::Run(line),
-                            crate::lists::ListAction::GoTo(pg, at) => Out::GotoAt(pg, at),
+                            crate::workspace::ListAction::Run(line) => Out::Run(line),
+                            crate::workspace::ListAction::GoTo(pg, at) => Out::GotoAt(pg, at),
                             _ => continue,
                         });
                     }
@@ -498,7 +498,7 @@ impl Reports {
                         egui::Align2::LEFT_CENTER,
                         format!("{h}{arrow}"),
                         font.clone(),
-                        ecad_ui::color(s.text_2),
+                        ecad_widgets::color(s.text_2),
                     );
                     if resp.clicked() {
                         self.sort = match self.sort {
@@ -525,13 +525,13 @@ impl Reports {
                             let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), Sense::click());
                             let p = ui.painter_at(rect);
                             if resp.hovered() {
-                                p.rect_filled(rect, 0.0, ecad_ui::color(s.hover));
+                                p.rect_filled(rect, 0.0, ecad_widgets::color(s.hover));
                             }
                             let mut x = rect.left();
                             let mut tip: Vec<String> = Vec::new();
                             for (col, c) in row.iter().enumerate() {
                                 let w = widths.get(col).copied().unwrap_or(80.0);
-                                let colour = ecad_ui::color(if c.flag.is_some() { s.warning } else { s.text });
+                                let colour = ecad_widgets::color(if c.flag.is_some() { s.warning } else { s.text });
                                 let text = cut(&c.text, w);
                                 p.text(pos2(x + 2.0, rect.center().y), egui::Align2::LEFT_CENTER, text, font.clone(), colour);
                                 if let Some(f) = &c.flag {
@@ -737,10 +737,10 @@ impl PrintBook {
                 };
                 ui.add_space(space::S);
                 ui.allocate_ui_with_layout(vec2(ui.available_width(), size::CONTROL), egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ecad_ui::dialog::action(ui, "Print", Kind::Primary, "ecad.printbook.print", blocked).clicked() {
+                    if ecad_widgets::dialog::action(ui, "Print", Kind::Primary, "ecad.printbook.print", blocked).clicked() {
                         out = Some(true);
                     }
-                    if ecad_ui::dialog::action(ui, "Cancel", Kind::Secondary, "ecad.printbook.cancel", None).clicked() {
+                    if ecad_widgets::dialog::action(ui, "Cancel", Kind::Secondary, "ecad.printbook.cancel", None).clicked() {
                         out = Some(false);
                     }
                 });

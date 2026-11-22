@@ -13,7 +13,7 @@ use egui_kittest::Harness;
 use serde_json::{Value, json};
 
 use crate::common::{self, Opts};
-use crate::project_panel::{click, new_app};
+use crate::pages::project_panel::{click, new_app};
 
 fn harness() -> Harness<'static, App> {
     common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).app(new_app()))
@@ -50,11 +50,11 @@ fn painted_text(h: &Harness<'static, App>, needle: &str) -> bool {
 #[test]
 fn the_page_is_paper_without_viewcube_ucs_icon_label_or_grid_and_dark_is_one_command_away() {
     let mut h = harness();
-    let paper = ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet);
+    let paper = ecad_widgets::color(ecad_drawing_style::sheet::PAPER.sheet);
     {
         let t = h.state();
         assert_eq!(t.cad.options.model_background, Some(paper), "#F6F4EF");
-        assert_eq!(t.cad.options.selection_color, Some(ecad_ui::color(ecad_drawing_style::sheet::PAPER.selection)));
+        assert_eq!(t.cad.options.selection_color, Some(ecad_widgets::color(ecad_drawing_style::sheet::PAPER.selection)));
         assert!(!t.cad.ui.show_viewcube && !t.cad.ui.show_ucs_icon, "no ViewCube, no UCS icon");
         assert!(!t.cad.session.settings.gridmode, "CADCraft's grid off: ECAD paints the dots");
     }
@@ -67,7 +67,7 @@ fn the_page_is_paper_without_viewcube_ucs_icon_label_or_grid_and_dark_is_one_com
     click(&mut h, "Run");
     h.run_steps(2);
     assert_eq!(h.state().shell_state().sheet, Sheet::Dark);
-    assert_eq!(h.state().cad.options.model_background, Some(ecad_ui::color(ecad_drawing_style::sheet::DARK.sheet)));
+    assert_eq!(h.state().cad.options.model_background, Some(ecad_widgets::color(ecad_drawing_style::sheet::DARK.sheet)));
     let stored = h.state().shell_state().to_stored();
     assert_eq!(ShellState::from_stored(Some(&stored)).0.sheet, Sheet::Dark, "kept with the shell state");
     assert_eq!(ShellState::from_stored(Some("{}")).0.sheet, Sheet::Paper, "paper by default");
@@ -167,13 +167,13 @@ fn a_new_page_first_opens_with_its_sheet_fitted() {
 /// It registers the sheet font, as the app does at start, so run it on its own.
 #[test]
 fn screenshots_of_the_canvas() {
-    let Some(out) = crate::project_panel::shots() else { return };
+    let Some(out) = crate::pages::project_panel::shots() else { return };
     canvas::register_sheet_faces();
     let dir = std::env::temp_dir().join(format!("ecad-040-shots-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = crate::checks_ui::demo_file(&dir);
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
-    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
+    let path = crate::checks::ui::demo_file(&dir);
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
+    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone())).build_ui_state(
         |ui, t: &mut App| {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
@@ -185,7 +185,7 @@ fn screenshots_of_the_canvas() {
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
-    let first = crate::project_panel::doc(&mut h).page_order[0];
+    let first = crate::pages::project_panel::doc(&mut h).page_order[0];
     h.state_mut().show_page(first).unwrap();
     h.run_steps(3);
     for (y, code) in [(130.0, "GNYE"), (120.0, "BU"), (110.0, "PURPLISH")] {
@@ -196,10 +196,10 @@ fn screenshots_of_the_canvas() {
     exec(&mut h, "wire", json!({"points": [[160.0, 145.0], [160.0, 130.0]], "join": false}));
     h.state_mut().zoom_to_drawing();
     h.run_steps(5);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("040-paper.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("040-paper.png"));
     h.state_mut().sheet_command("ui.sheet dark");
     h.run_steps(5);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("040-dark.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("040-dark.png"));
     h.state_mut().sheet_command("ui.sheet paper");
     h.run_steps(3);
     // A device's coil selected: its contacts on the page get dashed outlines.
@@ -217,10 +217,10 @@ fn screenshots_of_the_canvas() {
         .unwrap_or_default();
     h.state_mut().cad.session.set_selection(pick);
     h.run_steps(5);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("040-related.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("040-related.png"));
     // The page at its first-open zoom.
     exec(&mut h, "newpage", json!({"title": "Fresh"}));
     exec(&mut h, "place", json!({"symbol": "coil", "at": [60, 200]}));
     h.run_steps(5);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("040-first-open.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("040-first-open.png"));
 }

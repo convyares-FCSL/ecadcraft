@@ -13,10 +13,10 @@
 //! ("Before saving") and Compare take a drawer under the canvas while one is shown; rev 3 has no
 //! drawer otherwise (Checks are the inspector's tab).
 
-use ecad_ui::tokens::size;
+use ecad_widgets::tokens::size;
 use eframe::egui::{Rect, pos2, vec2};
 
-use super::state::{LeftTab, ShellState, Workspace};
+use crate::shell::state::{LeftTab, ShellState, Workspace};
 
 /// The panel slot's default width (Book, Devices), its drag range, and History's default.
 pub const LEFT_W: f32 = 248.0;
@@ -163,7 +163,7 @@ fn split(view: Rect, state: &ShellState) -> (Rect, Option<Rect>, Option<Rect>) {
     if room < 2.0 * HALF_MIN {
         return (view, None, None);
     }
-    let ratio = if c.ratio.is_finite() { c.ratio } else { super::state::COMPANION_RATIO };
+    let ratio = if c.ratio.is_finite() { c.ratio } else { crate::shell::state::COMPANION_RATIO };
     let first = (room * ratio).clamp(HALF_MIN, room - HALF_MIN);
     let main = Rect::from_min_size(view.min, vec2(first, view.height()));
     let handle = Rect::from_min_size(pos2(main.right(), view.top()), vec2(SPLIT_HANDLE, view.height()));

@@ -11,9 +11,9 @@
 
 use std::collections::BTreeSet;
 
-use crate::doc::Document;
-use crate::effect::{AreaSet, Effect, Effects};
-use crate::id::PageId;
+use crate::document::doc::Document;
+use crate::document::effect::{AreaSet, Effect, Effects};
+use crate::naming::id::PageId;
 
 /// Which side of the commit a [`NoteCx`] reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

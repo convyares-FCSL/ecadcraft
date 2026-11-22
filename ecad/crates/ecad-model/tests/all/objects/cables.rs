@@ -4,7 +4,7 @@
 //! became a cable field (its shield, a core's Not used) and the offer key `cores` are never
 //! written into the cable's properties.
 
-use ecad_model::style::cable::Shield;
+use ecad_model::objects::styles::cable::Shield;
 use ecad_model::{
     Author, Cable, CableId, ConductorId, Core, CoreLabel, CorePosition, IdAllocator, Ledger, NetId, ObjectRef, Op, Purpose, Terminal, ConnectionPointId,
     Wire, WireId,

@@ -4,14 +4,14 @@
 //! Coordinates: the block's own millimetres, from its bottom-left corner, y up ([`View`]).
 
 use ecad_engine::title_block::bind;
-use ecad_model::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect as BRect, TextDraw, TitleBlockLayout};
+use ecad_model::objects::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect as BRect, TextDraw, TitleBlockLayout};
 use ecad_model::{Primitive, Pt};
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Shape, Stroke, pos2, vec2};
 
-use super::draft::{self, Draft};
-use super::list::{Drops, PALETTE};
-use super::{Act, DxfAsk, Editor, Sample, Tool};
+use crate::title_blocks::draft::{self, Draft};
+use crate::title_blocks::list::{Drops, PALETTE};
+use crate::title_blocks::{Act, DxfAsk, Editor, Sample, Tool};
 use crate::library::browser;
 use crate::shell::bar;
 
@@ -25,8 +25,8 @@ pub const AROUND_MM: f64 = 20.0;
 /// A handle's half size (px).
 const HANDLE: f32 = 4.0;
 
-fn c32(c: ecad_ui::tokens::Color) -> Color32 {
-    ecad_ui::color(c)
+fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+    ecad_widgets::color(c)
 }
 
 /// Block millimetres to the screen.
@@ -135,7 +135,7 @@ pub fn snap_point(p: (f64, f64), l: &TitleBlockLayout, on: bool) -> ((f64, f64),
     for q in [(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)] {
         consider(q);
     }
-    for i in l.items.iter().take(ecad_model::title_block::MAX_ITEMS) {
+    for i in l.items.iter().take(ecad_model::objects::title_block::MAX_ITEMS) {
         match i {
             BlockItem::Line { a, b, .. } => {
                 consider(*a);
@@ -216,7 +216,7 @@ fn set_rect(item: &mut BlockItem, r: BRect) {
 
 /// The text shown for a field: the sample value, or its binding's name in grey.
 pub fn field_text(
-    sample: Option<&Sample>, on: bool, b: &ecad_model::title_block::Binding, if_empty: &ecad_model::title_block::IfEmpty,
+    sample: Option<&Sample>, on: bool, b: &ecad_model::objects::title_block::Binding, if_empty: &ecad_model::objects::title_block::IfEmpty,
 ) -> (String, bool) {
     match sample.filter(|_| on) {
         Some(s) => (bind::shown(s.value(b), if_empty), false),
@@ -230,7 +230,7 @@ fn paint_text(p: &egui::Painter, v: View, r: &BRect, top_gap: f64, value: &str, 
         return false;
     }
     let room = r.w - 2.0;
-    let (shown, wf) = ecad_engine::frame::fit(value, look.size, Some(room));
+    let (shown, wf) = ecad_engine::pages::frame::fit(value, look.size, Some(room));
     let cut = shown.ends_with('…') && !value.ends_with('…');
     let px = (look.size as f32 * v.k / 0.72).max(4.0);
     let y = r.y + (r.h - top_gap).max(0.0) / 2.0;
@@ -241,11 +241,11 @@ fn paint_text(p: &egui::Painter, v: View, r: &BRect, top_gap: f64, value: &str, 
     };
     // Bold in the UI's emphasis face, at the drawing's size (fonts come through ecad-ui).
     let font = if look.bold {
-        let mut f = ecad_ui::fonts::font(p.ctx(), ui_type::BODY_EMPHASIS);
+        let mut f = ecad_widgets::fonts::font(p.ctx(), ui_type::BODY_EMPHASIS);
         f.size = px * wf as f32;
         f
     } else {
-        ecad_ui::style::ui_font(px * wf as f32)
+        ecad_widgets::style::ui_font(px * wf as f32)
     };
     p.text(v.at(x, y), align, shown, font, ink);
     cut
@@ -260,7 +260,7 @@ fn dashed_rect(p: &egui::Painter, r: Rect, stroke: Stroke) {
 #[allow(clippy::too_many_arguments)]
 fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sample_on: bool, sheet: &ecad_drawing_style::Sheet, marks: bool) {
     let p = ui.painter();
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let ink = c32(sheet.ink);
     let ink2 = c32(sheet.ink_2);
     let red = c32(sheet.error);
@@ -284,7 +284,7 @@ fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sampl
                 let mut gap = 0.0;
                 if let Some(l) = label.as_deref().filter(|l| !l.is_empty()) {
                     let px = (1.8 * v.k / 0.72).max(4.0);
-                    p.text(v.at(at.x + 1.0, at.top() - 1.0), Align2::LEFT_TOP, l, ecad_ui::style::ui_font(px), ink2);
+                    p.text(v.at(at.x + 1.0, at.top() - 1.0), Align2::LEFT_TOP, l, ecad_widgets::style::ui_font(px), ink2);
                     gap = 1.8 + 1.5;
                 }
                 let (value, name) = field_text(sample, sample_on, b, if_empty);
@@ -304,7 +304,7 @@ fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sampl
                 if prims.is_empty() {
                     if marks {
                         dashed_rect(p, r.shrink(1.0), Stroke::new(1.0, accent));
-                        p.text(r.center(), Align2::CENTER_CENTER, "Logo", ecad_ui::style::ui_font(13.0), accent);
+                        p.text(r.center(), Align2::CENTER_CENTER, "Logo", ecad_widgets::style::ui_font(13.0), accent);
                     }
                 } else {
                     paint_logo(p, v, at, prims, ink);
@@ -340,7 +340,7 @@ fn paint_table(p: &egui::Painter, v: View, at: &BRect, rows: u8, header: bool, n
         p.line_segment([v.at(at.x, y), v.at(at.right(), y)], thin);
     }
     let cols = sample.map(|s| s.input.rev_columns.clone()).unwrap_or_default();
-    let (widths, _) = ecad_engine::revisions::widths(&cols, at.w);
+    let (widths, _) = ecad_electrical::releases::revisions::widths(&cols, at.w);
     let mut x = at.x;
     let px = (1.8 * v.k / 0.72).max(4.0);
     let vpx = ((rh * 0.55).min(2.5) as f32 * v.k / 0.72).max(4.0);
@@ -349,7 +349,7 @@ fn paint_table(p: &egui::Painter, v: View, at: &BRect, rows: u8, header: bool, n
             p.line_segment([v.at(x, at.y), v.at(x, at.top())], thin);
         }
         if header {
-            p.text(v.at(x + 1.0, at.top() - 1.0), Align2::LEFT_TOP, &c.header, ecad_ui::style::ui_font(px), ink2);
+            p.text(v.at(x + 1.0, at.top() - 1.0), Align2::LEFT_TOP, &c.header, ecad_widgets::style::ui_font(px), ink2);
         }
         if let Some(s) = sample {
             for (k, rev) in s.input.revisions.iter().take(usize::from(rows)).enumerate() {
@@ -359,8 +359,8 @@ fn paint_table(p: &egui::Painter, v: View, at: &BRect, rows: u8, header: bool, n
                 };
                 let y = at.top() - rh * (row + usize::from(header)) as f64 - rh / 2.0;
                 if let Some(val) = rev.get(i) {
-                    let (shown, _) = ecad_engine::frame::fit(val, 2.5, Some(w - 2.0));
-                    p.text(v.at(x + 1.0, y), Align2::LEFT_CENTER, shown, ecad_ui::style::ui_font(vpx), ink);
+                    let (shown, _) = ecad_engine::pages::frame::fit(val, 2.5, Some(w - 2.0));
+                    p.text(v.at(x + 1.0, y), Align2::LEFT_CENTER, shown, ecad_widgets::style::ui_font(vpx), ink);
                 }
             }
         }
@@ -369,7 +369,7 @@ fn paint_table(p: &egui::Painter, v: View, at: &BRect, rows: u8, header: bool, n
 }
 
 fn paint_logo(p: &egui::Painter, v: View, at: &BRect, prims: &[Primitive], ink: Color32) {
-    let Some((lo, hi)) = ecad_model::geom::extents(prims) else { return };
+    let Some((lo, hi)) = ecad_model::geometry::geom::extents(prims) else { return };
     let (w, h) = (hi.x - lo.x, hi.y - lo.y);
     let s = match (w > 1e-9, h > 1e-9) {
         (true, true) => (at.w / w).min(at.h / h),
@@ -381,7 +381,7 @@ fn paint_logo(p: &egui::Painter, v: View, at: &BRect, prims: &[Primitive], ink: 
     let oy = at.y + (at.h - h * s) / 2.0;
     let q = |pt: &Pt| v.at(ox + (pt.x - lo.x) * s, oy + (pt.y - lo.y) * s);
     let st = Stroke::new(1.0, ink);
-    for prim in prims.iter().take(ecad_model::title_block::MAX_LOGO_PRIMS) {
+    for prim in prims.iter().take(ecad_model::objects::title_block::MAX_LOGO_PRIMS) {
         match prim {
             Primitive::Line { a, b } => {
                 p.line_segment([q(a), q(b)], st);
@@ -408,7 +408,7 @@ fn paint_logo(p: &egui::Painter, v: View, at: &BRect, prims: &[Primitive], ink: 
                 p.add(Shape::line(pts, st));
             }
             Primitive::Text { at: t, height, value, .. } => {
-                p.text(q(t), Align2::LEFT_BOTTOM, value, ecad_ui::style::ui_font(((height * s) as f32 * v.k / 0.72).max(3.0)), ink);
+                p.text(q(t), Align2::LEFT_BOTTOM, value, ecad_widgets::style::ui_font(((height * s) as f32 * v.k / 0.72).max(3.0)), ink);
             }
             Primitive::Point { .. } => {}
         }
@@ -428,23 +428,23 @@ fn tag_of(item: &BlockItem) -> String {
 
 /// Draw the canvas and handle the tools; returns what the window must do.
 pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing_style::Sheet, writable: bool) -> Vec<Act> {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let mut acts = Vec::new();
-    let body = Rect::from_min_max(pos2(main.left() + super::list::LIST_W, main.top() + browser::TABS_H), main.max);
+    let body = Rect::from_min_max(pos2(main.left() + crate::title_blocks::list::LIST_W, main.top() + browser::TABS_H), main.max);
     let footer = Rect::from_min_max(pos2(body.left(), body.bottom() - FOOTER_H), body.max);
     let area = Rect::from_min_max(body.min, pos2(body.right(), footer.top()));
     ui.painter().rect_filled(footer, 0.0, c32(s.panel));
     ui.painter().hline(footer.x_range(), footer.top() + 0.5, Stroke::new(1.0, c32(s.line)));
-    bar::text_at(ui, footer.left() + space::M, footer.center().y, super::FOOTER, ui_type::SMALL, c32(s.text_3));
+    bar::text_at(ui, footer.left() + space::M, footer.center().y, crate::title_blocks::FOOTER, ui_type::SMALL, c32(s.text_3));
     let used = ed.open_row().map_or(0, |r| r.pages);
     let used = if used == 1 { "Used by 1 page".to_string() } else { format!("Used by {used} pages") };
     let f = bar::font(ui, ui_type::SMALL);
     let resp = ui.interact(
         Rect::from_min_size(footer.right_top() - vec2(160.0, 0.0), vec2(160.0, FOOTER_H)),
-        egui::Id::unique(super::USED_BY),
+        egui::Id::unique(crate::title_blocks::USED_BY),
         Sense::hover(),
     );
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, super::USED_BY));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, crate::title_blocks::USED_BY));
     ui.painter().text(pos2(footer.right() - space::M, footer.center().y), Align2::RIGHT_CENTER, used, f, c32(s.text_3));
 
     let sample_data = ed.sample_data.clone();
@@ -470,10 +470,10 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
     for x in [w * 0.15, w * 0.55] {
         p.line_segment([v.at(x, -4.0), v.at(x + 6.0, -4.0)], Stroke::new(1.0, c32(sheet.ink_2)));
     }
-    p.text(pos2(paper.center().x, paper.bottom() + 14.0), Align2::CENTER_CENTER, super::CAPTION, bar::font(ui, ui_type::SMALL), c32(s.text_3));
+    p.text(pos2(paper.center().x, paper.bottom() + 14.0), Align2::CENTER_CENTER, crate::title_blocks::CAPTION, bar::font(ui, ui_type::SMALL), c32(s.text_3));
     paint_items(ui, v, d, sample_data.as_ref(), ed.sample, sheet, true);
     if d.now.layout.items.is_empty() {
-        p.text(v.at(w / 2.0, h / 2.0), Align2::CENTER_CENTER, super::EMPTY_HINT, bar::font(ui, ui_type::BODY), c32(s.text_3));
+        p.text(v.at(w / 2.0, h / 2.0), Align2::CENTER_CENTER, crate::title_blocks::EMPTY_HINT, bar::font(ui, ui_type::BODY), c32(s.text_3));
     }
     // Selection: solid outline and handles; one item's name tag above it.
     let accent = c32(s.accent);
@@ -523,12 +523,12 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
             ui.horizontal_centered(|ui| {
                 ui.label(egui::RichText::new(format!("{name} was changed meanwhile.")).color(c32(s.warning)));
                 let r = ui.small_button("Reload");
-                r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, super::RELOAD));
+                r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, crate::title_blocks::RELOAD));
                 if r.clicked() {
                     acts.push(Act::Discard);
                 }
                 let k = ui.small_button("Keep mine");
-                k.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, super::KEEP));
+                k.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, crate::title_blocks::KEEP));
                 if k.clicked() {
                     ed.meanwhile = false;
                 }
@@ -544,7 +544,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
         ui.painter().rect(pop, 6.0, c32(s.raised), Stroke::new(1.0, c32(s.line)), egui::StrokeKind::Inside);
         ui.scope_builder(egui::UiBuilder::new().max_rect(pop.shrink(space::S)), |ui| {
             ui.label(egui::RichText::new("A DXF drawing for the logo").small().color(c32(s.text_2)));
-            ecad_ui::control::TextEntry::new(&mut ask.path, LOGO_PATH).placeholder("C:\\logos\\company.dxf").show(ui);
+            ecad_widgets::control::TextEntry::new(&mut ask.path, LOGO_PATH).placeholder("C:\\logos\\company.dxf").show(ui);
             if let Some(e) = &ask.error {
                 ui.label(egui::RichText::new(e).small().color(c32(s.error)));
             }
@@ -590,7 +590,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
         if let Some(choice) = pick {
             ed.canvas.field_menu = None;
             if let (Some(b), Some(d)) = (choice, ed.draft.as_mut())
-                && let Ok(bind) = ecad_model::title_block::Binding::parse(b)
+                && let Ok(bind) = ecad_model::objects::title_block::Binding::parse(b)
             {
                 let label = PALETTE
                     .iter()
@@ -608,9 +608,9 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
     // Input.
     let Some(d) = ed.draft.as_mut() else { return acts };
     let read_only = d.builtin;
-    let resp = ui.interact(area, egui::Id::unique(super::CANVAS).with("input"), Sense::click_and_drag());
+    let resp = ui.interact(area, egui::Id::unique(crate::title_blocks::CANVAS).with("input"), Sense::click_and_drag());
     // Tester 055 (§5): the canvas is named for the UI tests.
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Canvas, true, super::CANVAS));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Canvas, true, crate::title_blocks::CANVAS));
     let pointer = ui.input(|i| i.pointer.interact_pos().or(i.pointer.hover_pos()));
     let mm = pointer.map(|p| v.mm(p));
     let shift = ui.input(|i| i.modifiers.shift);
@@ -625,7 +625,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
             let ghost = Rect::from_min_size(pt, vec2(sw as f32 * k, sh as f32 * k));
             let p = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("tb.ghost")));
             dashed_rect(&p, ghost, Stroke::new(1.5, accent));
-            p.text(ghost.left_top() + vec2(4.0, 4.0), Align2::LEFT_TOP, row.label, ecad_ui::style::ui_font(12.0), accent);
+            p.text(ghost.left_top() + vec2(4.0, 4.0), Align2::LEFT_TOP, row.label, ecad_widgets::style::ui_font(12.0), accent);
         }
         if ui.input(|i| i.pointer.any_released()) {
             ed.canvas.palette = None;
@@ -634,7 +634,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
                     let (top_left, _) = snap_point(q, &d.now.layout, ed.snap);
                     drop_row(ed, row, top_left, &mut acts);
                 } else {
-                    ed.notice = Some(super::DROP_ON_BLOCK.into());
+                    ed.notice = Some(crate::title_blocks::DROP_ON_BLOCK.into());
                 }
             }
         }
@@ -883,7 +883,7 @@ fn fmt(v: f64) -> String {
 }
 
 /// Drop palette row `row` with its top-left at `at` (mm).
-fn drop_row(ed_state: &mut Editor, row: &super::list::PaletteRow, at: (f64, f64), acts: &mut Vec<Act>) {
+fn drop_row(ed_state: &mut Editor, row: &crate::title_blocks::list::PaletteRow, at: (f64, f64), acts: &mut Vec<Act>) {
     match row.drops {
         Drops::ProjectField => ed_state.project_key = Some(String::new()),
         Drops::Logo => ed_state.tool = Tool::Logo,

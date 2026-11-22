@@ -4,12 +4,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::effect::{Effect, Effects};
+use ecad_model::document::effect::{Effect, Effects};
 use ecad_model::{DeviceId, Document, ObjectRef};
 use serde_json::{Value, json};
 
-use super::*;
-use crate::text_style::fonts::TextMetrics;
+use crate::plc::*;
+use crate::styles::text_style::fonts::TextMetrics;
 
 /// What one commit's effects name for the I/O rows (a renamed target, a renumbered wire), noted
 /// effect by effect ([`Plc::note`]); the model itself is rebuilt.
@@ -155,7 +155,7 @@ impl Plc {
                 out.extend(iolist::cards_on_nets_of_terminals(doc, self, &ts));
             }
             // A strip link joins its positions' nets.
-            Effect::Prop { object: ObjectRef::Device(c), key, .. } if ecad_model::links::jumper_bar_number(key.raw).is_some() => {
+            Effect::Prop { object: ObjectRef::Device(c), key, .. } if ecad_model::connectivity::jumper_bars::jumper_bar_number(key.raw).is_some() => {
                 out.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
             }
             Effect::Device { .. }
@@ -360,8 +360,8 @@ impl Plc {
         let place = |rid: ecad_model::RepresentationId| -> String {
             let Some(r) = doc.representations.get(&rid) else { return "?".into() };
             let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin);
-            at.and_then(|a| ecad_model::wiring::place(doc, r.page, a))
-                .map_or_else(|| crate::references::page_number_words(doc, r.page), |p| p.text(doc.settings.reference_style()))
+            at.and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a))
+                .map_or_else(|| crate::references::cables::page_number_words(doc, r.page), |p| p.text(doc.settings.reference_style()))
         };
         let mut highest: Option<u32> = None;
         for (i, ch) in &card.chans {

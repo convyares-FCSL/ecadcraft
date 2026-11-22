@@ -1,6 +1,6 @@
 //! The Pages list and tree rows, and which ops change the tree.
 
-use super::*;
+use crate::project::*;
 
 /// A page and, when it is the active page, the engine document showing it (the project's one
 /// page window, brief 016: exactly one page is shown and editable at a time).
@@ -47,7 +47,7 @@ pub enum TreeRow {
 
 /// The Pages tree of `doc` (see [`Project::tree_rows`]); `unavailable` says which pages failed.
 pub fn tree_rows(doc: &Document, unavailable: impl Fn(PageId) -> bool) -> Vec<TreeRow> {
-    use ecad_model::book::{Book, Node};
+    use ecad_model::document::book::{Book, Node};
     let book = Book::of(doc);
     let numbers: Vec<(PageId, String)> = book.order.iter().map(|p| (*p, book.number(doc, *p))).collect();
     let mut seen: HashMap<String, usize> = HashMap::new();
@@ -57,13 +57,13 @@ pub fn tree_rows(doc: &Document, unavailable: impl Fn(PageId) -> bool) -> Vec<Tr
     // Pages per folder, all levels: count each page up its folder chain.
     let mut counts: HashMap<ecad_model::FolderId, usize> = HashMap::new();
     for p in &book.order {
-        let mut at = ecad_model::book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
+        let mut at = ecad_model::document::book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
         let mut steps = 0;
         while let Some(f) = at {
             *counts.entry(f).or_default() += 1;
             at = doc.folders.get(&f).and_then(|x| x.parent);
             steps += 1;
-            if steps > ecad_model::book::MAX_FOLDER_DEPTH {
+            if steps > ecad_model::document::book::MAX_FOLDER_DEPTH {
                 break;
             }
         }
@@ -88,7 +88,7 @@ pub fn tree_rows(doc: &Document, unavailable: impl Fn(PageId) -> bool) -> Vec<Tr
                     title: doc.pages.get(id).map(|p| p.title.to_string()).unwrap_or_default(),
                     unavailable: unavailable(*id),
                     depth: *depth,
-                    folder: ecad_model::book::folder_of(doc, *id).filter(|f| doc.folders.contains_key(f)),
+                    folder: ecad_model::document::book::folder_of(doc, *id).filter(|f| doc.folders.contains_key(f)),
                 })
             }
         })

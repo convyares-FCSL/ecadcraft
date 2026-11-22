@@ -1,13 +1,13 @@
 //! The kept Devices list (see [`super`]): refreshed from a change count and the devices each change
-//! touched. ecad-engine's `crate::device_list::DeviceList` wraps it, reading them from its
+//! touched. ecad-engine's `crate::devices::device_list::DeviceList` wraps it, reading them from its
 //! project.
 
 use ecad_model::Document;
 
-use super::*;
+use crate::devices::device_list::*;
 
 /// The Devices tab's list kept up to date (owner, 2026-11-08): every device, built whole once (on
-/// open, reload or first show), then refreshed only for the devices each change touched (`crate::derived::DevicesFeed`, through
+/// open, reload or first show), then refreshed only for the devices each change touched (`crate::views::DevicesFeed`, through
 /// the project's change log), and renumbered when pages moved. A change that touches no
 /// device does nothing.
 #[derive(Debug, Clone, Default)]

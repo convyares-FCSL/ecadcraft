@@ -1,7 +1,7 @@
 //! Transactions and the append-only history (proposal §6).
 //!
 //! A transaction applies in place with a rollback journal and is checked only where it touched
-//! the document ([`crate::invariant`]), so its cost follows the size of the change: on every
+//! the document ([`crate::document::invariant`]), so its cost follows the size of the change: on every
 //! commit, undo and redo, and per transaction when a file is replayed on open.
 
 use std::collections::BTreeMap;
@@ -9,11 +9,11 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::doc::Document;
+use crate::document::doc::Document;
 use crate::error::{ModelError, Result};
-use crate::id::{IdAllocator, TxId};
-use crate::invariant::Touched;
-use crate::op::Op;
+use crate::naming::id::{IdAllocator, TxId};
+use crate::document::invariant::Touched;
+use crate::document::op::Op;
 
 /// Who made a transaction (FILE-07).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -447,13 +447,13 @@ impl<'a> Journal<'a> {
             #[cfg(test)]
             hooks::maybe_panic(*applied);
             if let Err(e) = op.apply_unsettled(doc, true) {
-                crate::op::settle(doc);
+                crate::document::op::settle(doc);
                 return Err(e);
             }
             touched.add(op);
             *applied += 1;
         }
-        crate::op::settle(doc);
+        crate::document::op::settle(doc);
         #[cfg(test)]
         hooks::maybe_panic(*applied);
         Ok(())
@@ -486,7 +486,7 @@ impl<'a> Journal<'a> {
                 break;
             }
         }
-        crate::op::settle(self.doc);
+        crate::document::op::settle(self.doc);
         let failed = failed?;
         let repaired = match self.history.map(restore) {
             Some(Some(doc)) => {
@@ -581,18 +581,18 @@ fn apply_tx_extended(
     let mut more = Vec::new();
     let applied = journal.apply_rest(&mut touched).and_then(|()| {
         // Design 072 §4.4: the wires of every net whose points changed, in the same transaction.
-        let mut wires = crate::wire_order::rewrite(journal.doc, ops);
+        let mut wires = crate::connectivity::wire_order::rewrite(journal.doc, ops);
         if !wires.is_empty() {
             journal.extend(wires.clone(), &mut touched)?;
         }
         // The cores on the routes changed move with them (owner ruling, 2026-11-18).
-        let cores = crate::wire_order::cores(journal.doc, ops);
+        let cores = crate::connectivity::wire_order::cores(journal.doc, ops);
         if !cores.is_empty() {
             journal.extend(cores.clone(), &mut touched)?;
             wires.extend(cores);
         }
         // A deleted device's `protected_by`s are cleared (overseer ruling, 2026-11-18).
-        let unprotected = crate::wire_order::unprotect(journal.doc, ops);
+        let unprotected = crate::connectivity::wire_order::unprotect(journal.doc, ops);
         if !unprotected.is_empty() {
             journal.extend(unprotected.clone(), &mut touched)?;
             wires.extend(unprotected);
@@ -635,9 +635,9 @@ fn applied_then_reverted<R>(
     let mut touched = Touched::default();
     // As a commit does (design 072 §4.4): the wires of the nets whose points changed follow.
     let applied = journal.apply_rest(&mut touched).and_then(|()| {
-        let wires = crate::wire_order::rewrite(journal.doc, ops);
+        let wires = crate::connectivity::wire_order::rewrite(journal.doc, ops);
         journal.extend(wires, &mut touched)?;
-        let cores = crate::wire_order::cores(journal.doc, ops);
+        let cores = crate::connectivity::wire_order::cores(journal.doc, ops);
         journal.extend(cores, &mut touched)
     });
     let (checked, disagreement) = match applied {
@@ -1166,7 +1166,7 @@ impl Ledger {
     }
 
     /// [`Ledger::commit_at`] with a pass that extends the transaction (brief 022's numbering
-    /// pass): after `ops` are applied, the wire rewrite ([`crate::wire_order::rewrite`], every
+    /// pass): after `ops` are applied, the wire rewrite ([`crate::connectivity::wire_order::rewrite`], every
     /// edit) and then `extend` see the document as they left it (no copy) and return more ops,
     /// recorded in the same transaction after `ops`, so one undo undoes all.
     ///
@@ -1400,9 +1400,9 @@ impl Ledger {
 mod tests {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    use super::*;
-    use crate::doc::{Cable, Core, Device, End, Layer, Page, Terminal, Wire};
-    use crate::id::{CableId, ConductorId, DeviceId, LayerId, NetId, PageId, ConnectionPointId, WireId};
+    use crate::*;
+    use crate::document::doc::{Cable, Core, Device, End, Layer, Page, Terminal, Wire};
+    use crate::naming::id::{CableId, ConductorId, DeviceId, LayerId, NetId, PageId, ConnectionPointId, WireId};
 
     fn json(doc: &Document) -> String {
         serde_json::to_string(doc).unwrap()

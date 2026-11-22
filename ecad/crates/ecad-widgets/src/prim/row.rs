@@ -1,10 +1,10 @@
 //! Row, and the set-versus-read pair: [`read_value`] for a value read from the drawing,
 //! [`provisional`] for a provisional value.
 
-use ecad_tokens::{line, size, space, ui_type};
+use {crate::tokens::line, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{CursorIcon, InnerResponse, Layout, Rect, Response, Role, Sense, Stroke, Ui, UiBuilder, WidgetInfo, pos2, vec2};
 
-use super::{Look, accessible, galley};
+use crate::prim::{Look, accessible, galley};
 use crate::color;
 
 /// The kind of a row, which sets its height.
@@ -68,7 +68,7 @@ pub fn row<R>(ui: &mut Ui, spec: RowSpec, label: &str, add_contents: impl FnOnce
         let tint = spec.tint.clamp(0.0, 1.0);
         if tint > 0.0 {
             let a = (f32::from(s.accent_soft.a) * tint).round().clamp(0.0, 255.0) as u8;
-            p.rect_filled(rect, 0.0, color(ecad_tokens::Color { a, ..s.accent_soft }));
+            p.rect_filled(rect, 0.0, color(crate::tokens::Color { a, ..s.accent_soft }));
         }
         p.line_segment(
             [pos2(rect.left(), rect.bottom() - 0.5), pos2(rect.right(), rect.bottom() - 0.5)],

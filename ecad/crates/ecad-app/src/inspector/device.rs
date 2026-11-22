@@ -3,14 +3,14 @@
 //! one-line summary. With anything other than one device selected (nothing: the page; a wire, a
 //! cable…) it shows that object's properties in the same folding sections.
 
-use ecad_electrical::props::Section;
-use ecad_electrical::words::Row;
+use ecad_electrical::properties::Section;
+use ecad_electrical::cables::words::Row;
 use ecad_engine::checks::{Object, Severity};
-use ecad_ui::tokens::{radius, space, ui_type};
+use ecad_widgets::tokens::{radius, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 
-use super::widgets as w;
-use super::{Cx, InspectorAction, fields};
+use crate::inspector::widgets as w;
+use crate::inspector::{Cx, InspectorAction, fields};
 
 /// Accessible names.
 pub const OWN_CHECKS: &str = "ecad.inspector.own-checks";
@@ -45,7 +45,7 @@ pub fn on_layout_tab(row: &Row) -> bool {
 }
 
 /// The device's own checks: about it or one of its connection points.
-pub fn own_checks<'r>(cx: &Cx<'r>) -> Vec<&'r crate::checks_panel::Row> {
+pub fn own_checks<'r>(cx: &Cx<'r>) -> Vec<&'r crate::checks::panel::Row> {
     let Some(d) = &cx.insp.device else { return Vec::new() };
     let Some(c) = d.component else { return Vec::new() };
     cx.checks
@@ -150,10 +150,10 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
         w::status_pill(ui, true, &format!("No checks on {}", d.tag), "only this device's own", OWN_CHECKS);
     } else {
         let e = own.iter().filter(|r| r.check.severity() == Severity::Error).count();
-        let words = super::checks_tab::count_words(e, own.len().saturating_sub(e));
+        let words = crate::inspector::checks_tab::count_words(e, own.len().saturating_sub(e));
         w::status_pill(ui, false, &format!("{words} on {}", d.tag), "only this device's own", OWN_CHECKS);
         for r in own {
-            super::checks_tab::card(ui, r, cx.fixes, &mut cx.panel_out);
+            crate::inspector::checks_tab::card(ui, r, cx.fixes, &mut cx.panel_out);
         }
     }
     ui.add_space(space::XS);
@@ -166,7 +166,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
     let summary = if d.description.is_empty() { d.tag.clone() } else { format!("{} \u{b7} {}", d.tag, d.description) };
     let mut folded = std::mem::take(&mut insp.folded);
     w::section(ui, &mut folded, full, "identity", "Identity", &summary, false, |ui| {
-        let fixed = find(s, ecad_model::tag::FIXED_KEY).and_then(|r| ecad_model::words::flag(&r.value)) == Some(true);
+        let fixed = find(s, ecad_model::naming::tag::FIXED_KEY).and_then(|r| ecad_model::naming::words::flag(&r.value)) == Some(true);
         for (key, label) in [("tag", "Tag"), ("function", "Function"), ("location", "Location"), ("description", "Description")] {
             let Some(row) = find(s, key) else { continue };
             let hint = match key {
@@ -208,7 +208,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
                 }
             })
             .response
-            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, super::PARTS));
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, crate::inspector::PARTS));
         }
         for (key, label) in [("maker", "Maker"), ("part_number", "Part number")] {
             if let Some(row) = find(s, key) {
@@ -246,8 +246,8 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
     });
     // Notes and attributes: everything else about the device.
     let rest: Vec<&Row> =
-        s.rows.iter().filter(|r| !PLACED.contains(&r.key.as_str()) && !on_layout_tab(r) && r.key != ecad_model::tag::FIXED_KEY).collect();
-    let fixed = find(s, ecad_model::tag::FIXED_KEY);
+        s.rows.iter().filter(|r| !PLACED.contains(&r.key.as_str()) && !on_layout_tab(r) && r.key != ecad_model::naming::tag::FIXED_KEY).collect();
+    let fixed = find(s, ecad_model::naming::tag::FIXED_KEY);
     let buttons: Vec<String> = s.buttons.iter().filter(|b| !b.starts_with("refgoto:")).cloned().collect();
     let n = rest.len() + insp.connector.len();
     let summary = if n == 0 { "none".to_string() } else { n.to_string() };
@@ -279,15 +279,15 @@ pub fn parts_summary(lines: usize, maker: Option<&str>, part_number: Option<&str
 
 /// A part line as a card: a dot (blue for the main part), its words, its maker and number, and
 /// the quantity in a box.
-pub(crate) fn part_card(ui: &mut egui::Ui, p: &ecad_engine::bom::PartSetRow) {
-    let s = ecad_ui::SHELL;
+pub(crate) fn part_card(ui: &mut egui::Ui, p: &ecad_electrical::reports::bom::PartSetRow) {
+    let s = ecad_widgets::SHELL;
     let width = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 46.0), Sense::hover());
-    let name = format!("{}.row.{}", super::PARTS, p.n);
+    let name = format!("{}.row.{}", crate::inspector::PARTS, p.n);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &name));
     let painter = ui.painter();
-    painter.rect_filled(rect, ecad_ui::style::corner(radius::INSET_CARD), ecad_ui::color(s.raised));
-    let dot = if p.n == 0 { ecad_ui::color(s.accent_text) } else { w::text_3() };
+    painter.rect_filled(rect, ecad_widgets::style::corner(radius::INSET_CARD), ecad_widgets::color(s.raised));
+    let dot = if p.n == 0 { ecad_widgets::color(s.accent_text) } else { w::text_3() };
     painter.circle_filled(pos2(rect.left() + 13.0, rect.top() + 15.0), 3.5, dot);
     let title = p.description.clone().or_else(|| p.part_number.clone()).unwrap_or_else(|| "Part".into());
     painter.text(
@@ -305,7 +305,7 @@ pub(crate) fn part_card(ui: &mut egui::Ui, p: &ecad_engine::bom::PartSetRow) {
     if let Some(n) = &p.note {
         second.push(n.clone());
     }
-    let colour = if p.part_number.is_none() { ecad_ui::color(s.warning) } else { w::text_2() };
+    let colour = if p.part_number.is_none() { ecad_widgets::color(s.warning) } else { w::text_2() };
     painter.text(
         pos2(rect.left() + 26.0, rect.top() + 33.0),
         egui::Align2::LEFT_CENTER,
@@ -316,8 +316,8 @@ pub(crate) fn part_card(ui: &mut egui::Ui, p: &ecad_engine::bom::PartSetRow) {
     let q = Rect::from_center_size(pos2(rect.right() - 20.0, rect.top() + 15.0), vec2(24.0, 22.0));
     painter.rect_stroke(
         q,
-        ecad_ui::style::corner(radius::BADGE),
-        egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line_strong)),
+        ecad_widgets::style::corner(radius::BADGE),
+        egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line_strong)),
         egui::StrokeKind::Inside,
     );
     painter.text(q.center(), egui::Align2::CENTER_CENTER, &p.qty, w::font(ui, ui_type::BODY), w::text());
@@ -325,8 +325,8 @@ pub(crate) fn part_card(ui: &mut egui::Ui, p: &ecad_engine::bom::PartSetRow) {
 }
 
 /// A row of "Where it is drawn"; returns the symbol to go to when clicked.
-fn drawn_row(ui: &mut egui::Ui, r: &super::details::DrawnRow, i: usize) -> Option<ecad_model::RepresentationId> {
-    let s = ecad_ui::SHELL;
+fn drawn_row(ui: &mut egui::Ui, r: &crate::inspector::details::DrawnRow, i: usize) -> Option<ecad_model::RepresentationId> {
+    let s = ecad_widgets::SHELL;
     let width = ui.available_width();
     let sense = if r.rep.is_some() { Sense::click() } else { Sense::hover() };
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 26.0), sense);
@@ -334,9 +334,9 @@ fn drawn_row(ui: &mut egui::Ui, r: &super::details::DrawnRow, i: usize) -> Optio
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, r.rep.is_some(), &name));
     let p = ui.painter();
     if r.this {
-        p.rect_filled(rect, ecad_ui::style::corner(radius::ROW), ecad_ui::color(s.accent_soft));
+        p.rect_filled(rect, ecad_widgets::style::corner(radius::ROW), ecad_widgets::color(s.accent_soft));
     } else if resp.hovered() && r.rep.is_some() {
-        p.rect_filled(rect, ecad_ui::style::corner(radius::ROW), ecad_ui::color(s.hover));
+        p.rect_filled(rect, ecad_widgets::style::corner(radius::ROW), ecad_widgets::color(s.hover));
     }
     let spare = r.place.is_empty();
     let ink = if spare { w::text_3() } else { w::text() };
@@ -353,7 +353,7 @@ fn drawn_row(ui: &mut egui::Ui, r: &super::details::DrawnRow, i: usize) -> Optio
     if resp.clicked() { r.rep } else { None }
 }
 
-fn connection_row(ui: &mut egui::Ui, c: &super::details::ConnRow, i: usize) {
+fn connection_row(ui: &mut egui::Ui, c: &crate::inspector::details::ConnRow, i: usize) {
     let width = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 26.0), Sense::hover());
     let name = format!("{CONNECTION_ROW}.{i}");
@@ -385,7 +385,7 @@ fn connection_row(ui: &mut egui::Ui, c: &super::details::ConnRow, i: usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::parts_summary;
+    use crate::inspector::parts_summary;
 
     /// Review of #91, 3: a device with only its main part has a part.
     #[test]

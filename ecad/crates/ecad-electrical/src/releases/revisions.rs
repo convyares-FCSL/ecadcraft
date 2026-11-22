@@ -10,23 +10,23 @@
 //!   and `NameVersion { "Rev <rev>", head }` in one transaction, so `Ledger::state_at(at)` reopens the
 //!   project exactly as it was issued.
 //!
-//! This module reads and plans; the commands commit (`ecad_engine::cmd::sheet`).
+//! This module reads and plans; the commands commit (`ecad_engine::pages::commands::sheets`).
 
 use crate::CmdError;
-use ecad_model::book::MAX_FOLDER_DEPTH;
+use ecad_model::document::book::MAX_FOLDER_DEPTH;
 use ecad_model::{Document, FolderId, ObjectRef, Op, Project, RevField, RevValue, Word};
 
 /// The editable fields of a revision, in table order.
 pub const FIELDS: [&str; 6] = ["rev", "date", "description", "drawn", "checked", "approved"];
 /// The old key prefix of revision properties (reserved on the project).
-pub const PREFIX: &str = ecad_model::project::REVISIONS_KEY;
+pub const PREFIX: &str = ecad_model::document::project::REVISIONS_KEY;
 /// The field set by issuing.
 pub const ISSUED: &str = "issued";
 /// The field set by issuing through a release (brief 027, FP1): the release folder, relative to
 /// the project file's folder (absolute on another drive). Unknown to older builds, which skip it.
 pub const RELEASED: &str = "released";
 /// Most revisions a project may hold (a bound on hostile files).
-pub const MAX_REVISIONS: usize = ecad_model::project::MAX_REVISIONS;
+pub const MAX_REVISIONS: usize = ecad_model::document::project::MAX_REVISIONS;
 /// Rev text: 1 to 8 characters `0-9 A-Z a-z`.
 pub const MAX_REV_CHARS: usize = 8;
 /// The fields issuing needs (owner answer Q7).
@@ -99,7 +99,7 @@ pub fn with_field(project: &Project, n: u32, field: &str, value: Option<&str>) -
         row.issued = value.map(text).transpose()?;
     } else if field == RELEASED {
         row.released =
-            value.map(|v| ecad_model::text::Text::new(v).map_err(|e| CmdError::refused(format!("That folder is refused: {e}.")))).transpose()?;
+            value.map(|v| ecad_model::naming::text::Text::new(v).map_err(|e| CmdError::refused(format!("That folder is refused: {e}.")))).transpose()?;
     } else if field == "rev" {
         row.rev = value.map(|v| ecad_model::Rev::new(v).map_err(|e| CmdError::refused(format!("\"{v}\" is not a rev: {e}.")))).transpose()?;
     } else if let Some(f) = RevField::parse(field) {
@@ -140,7 +140,7 @@ pub fn modify(before: &Project, after: Project) -> Option<Op> {
 pub fn set_released(ops: &mut [Op], n: u32, folder: &str) {
     let Some(Op::ModifyProject { after, .. }) = ops.iter_mut().rev().find(|o| matches!(o, Op::ModifyProject { .. })) else { return };
     let i = usize::try_from(n).ok().and_then(|n| n.checked_sub(1));
-    if let (Some(row), Ok(t)) = (i.and_then(|i| after.revisions.get_mut(i)), ecad_model::text::Text::new(folder)) {
+    if let (Some(row), Ok(t)) = (i.and_then(|i| after.revisions.get_mut(i)), ecad_model::naming::text::Text::new(folder)) {
         row.released = Some(t);
     }
 }
@@ -546,7 +546,7 @@ pub fn folder_path(doc: &Document, folder: Option<FolderId>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn next_revs() {
@@ -597,7 +597,7 @@ mod tests {
         }
         doc.display.insert("tags.case".into(), "x".into());
         doc.display.insert("tags.dash".into(), "maybe".into());
-        assert_eq!(crate::defaults::print::tag_style(&doc), ecad_model::tag::Style::from(doc.settings.tag_padding()));
+        assert_eq!(crate::defaults::print::tag_style(&doc), ecad_model::naming::tag::Style::from(doc.settings.tag_padding()));
     }
 
     #[test]
@@ -606,7 +606,7 @@ mod tests {
         for (dash, case) in [("yes", "upper"), ("no", "typed"), ("NO", "Typed"), ("", "")] {
             doc.display.insert("tags.dash".into(), dash.into());
             doc.display.insert("tags.case".into(), case.into());
-            assert_eq!(crate::defaults::print::tag_style(&doc), ecad_model::tag::Style::of(&doc), "{dash} {case}");
+            assert_eq!(crate::defaults::print::tag_style(&doc), ecad_model::naming::tag::Style::of(&doc), "{dash} {case}");
         }
     }
 

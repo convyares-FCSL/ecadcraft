@@ -6,16 +6,16 @@
 use crate::common::{self, Opts};
 use cadcraft_engine::doc::{EntityKind, Handle};
 use ecad_app::App;
-use ecad_app::tools::{self, Kind, TOOLS};
+use ecad_app::commands::tools::{self, Kind, TOOLS};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 fn new_app() -> App {
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
-    crate::project_panel::open_panels(&mut t);
+    crate::pages::project_panel::open_panels(&mut t);
     t
 }
 
@@ -42,7 +42,7 @@ fn rectangle(t: &mut App) -> Vec<Handle> {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
         .filter(|e| matches!(e.kind, EntityKind::Line(_)))
         .map(|e| e.handle)
         .collect()
@@ -52,7 +52,7 @@ fn rectangle(t: &mut App) -> Vec<Handle> {
 fn the_group_lists_only_implemented_commands_with_namespaced_ids() {
     // Run alone (as nextest runs every test), nothing else has installed ECAD's commands.
     ecad_engine::install();
-    let specs = ecad_engine::cmd::specs();
+    let specs = ecad_engine::commands::specs();
     let ids: Vec<&str> = specs.iter().map(|s| s.id).collect();
     let mut seen = std::collections::BTreeSet::new();
     for t in TOOLS {
@@ -195,7 +195,7 @@ fn templates_take_ids_from_the_selection() {
     let d = doc(&mut t);
     let (cid, _) = d.wires.iter().next().unwrap();
     let page = d.page_order[0];
-    let (item, _) = ecad_model::derive::route_on_page(&d, *cid, page).unwrap();
+    let (item, _) = ecad_model::connectivity::derive::route_on_page(&d, *cid, page).unwrap();
     let p = t.project().unwrap().clone();
     let h = p.read(&mut t.cad.session, |p, _| p.pages[&page].map.item(item).unwrap()).unwrap();
     t.cad.session.set_selection(vec![h]);
@@ -219,7 +219,7 @@ fn a_read_only_project_is_treated_as_the_typed_command_treats_it() {
     let mut first = new_app();
     first.save_as(&path).unwrap();
     // A second window: the same file opens read-only.
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut second = App::with_file(None, &path).unwrap();
     assert!(second.status().unwrap().file.read_only.is_some());
     second.tool("ecad.inspect").unwrap();

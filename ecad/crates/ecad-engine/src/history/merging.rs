@@ -32,8 +32,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::access::Pages;
-use crate::cmd::input::{Command, Typed, typed};
-use crate::cmd::{on_any_page, on_project};
+use crate::commands::input::{Command, Typed, typed};
+use crate::commands::{on_any_page, on_project};
 use crate::history;
 use crate::project::Project;
 use ecad_file::history::{Named, NodeKind, Point, status_word};
@@ -134,7 +134,7 @@ pub struct Prepared {
     /// (Locked to try a plan's ops on it, which are always reverted.)
     target_doc: Option<std::sync::Mutex<Document>>,
     scope: Scope,
-    high: ecad_model::tag::HighWater,
+    high: ecad_model::naming::tag::HighWater,
     /// The target's last step touching each object (for "changed in Rev B").
     target_last: BTreeMap<Obj, u64>,
     /// The target's revisions on its own line: name and step.
@@ -220,7 +220,7 @@ pub fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
             let hi = to.min(at.saturating_add(4_095));
             for tx in history::txs(p, b, at, hi)? {
                 scope.add_ops(&tx.ops);
-                ecad_model::tag::note_ops(&mut high, &tx.ops);
+                ecad_model::naming::tag::note_ops(&mut high, &tx.ops);
                 if b == sides.target {
                     for o in merge::objects_of(&tx.ops) {
                         target_last.insert(o, tx.seq);
@@ -310,7 +310,7 @@ fn join_and(v: &[String]) -> String {
 /// target's stays, so its mark is never lowered, and the merge's own tag ops raise it to every
 /// tag brought in (reviewer 026, 4: no conflict row for them either).
 fn keeps(update: bool) -> impl Fn(&str) -> bool {
-    move |k: &str| !k.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) && (update || !k.starts_with("rev."))
+    move |k: &str| !k.starts_with(ecad_model::naming::tag::HIGH_RESET_PREFIX) && (update || !k.starts_with("rev."))
 }
 
 /// Plan the prepared merge with `choices` (nothing is written). The plan's ops are then tried
@@ -330,7 +330,7 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             Some(d) => d,
             None => p.ledger.document(),
         };
-        let rule = |obj: Obj, key: &str, v: &str| ecad_electrical::cmd::merge::edit_rule(target, obj, key, v).map_err(String::from);
+        let rule = |obj: Obj, key: &str, v: &str| ecad_electrical::merge::edit_rule(target, obj, key, v).map_err(String::from);
         // Brief 026, Make them one: 018's device merge, with fresh IDs from the project.
         let ids = std::cell::RefCell::new(&mut p.ids);
         let join = |d: &Document, from: ecad_model::DeviceId, into: ecad_model::DeviceId| {
@@ -359,8 +359,8 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             if let Some(sid) = ecad_model::StyleRef::parse(id).filter(ecad_model::StyleRef::is_builtin)
                 && let Some(cat) = <ecad_model::StyleCatalogue as ecad_model::Word>::parse(cat)
             {
-                let name = crate::styles::name(target, cat, &sid);
-                c.what = format!("{} \"{name}\" · changed on both", crate::styles::catalogue(cat).one);
+                let name = ecad_electrical::styles::name(target, cat, &sid);
+                c.what = format!("{} \"{name}\" · changed on both", ecad_electrical::styles::catalogue(cat).one);
             }
         }
         plan
@@ -512,7 +512,7 @@ pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
     let pt = s.parent_is_target();
     let docs = [&*prep.source_doc, &*prep.ancestor_doc];
     let pages: Vec<String> =
-        plan.pages.iter().map(|p| ecad_model::book::stored_number(&prep.source_doc, *p).map_or_else(|| p.short(), str::to_string)).collect();
+        plan.pages.iter().map(|p| ecad_model::document::book::stored_number(&prep.source_doc, *p).map_or_else(|| p.short(), str::to_string)).collect();
     let n = plan.changes.len();
     let mut counts =
         format!("{n} change{} from {}", if n == 1 { "" } else { "s" }, if s.update { s.source_name.clone() } else { "the branch".into() });
@@ -549,7 +549,7 @@ pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
         "crossing": prep.crossing, "header": prep.header, "counts": counts,
         "changes": plan.changes.iter().map(|c| json!({
             "sign": c.sign.to_string(), "text": c.text,
-            "page": c.page.map(|p| ecad_model::book::stored_number(&prep.source_doc, p).map_or_else(|| p.short(), str::to_string)),
+            "page": c.page.map(|p| ecad_model::document::book::stored_number(&prep.source_doc, p).map_or_else(|| p.short(), str::to_string)),
         })).collect::<Vec<_>>(),
         "conflicts": conflicts, "unanswered": plan.unanswered, "ops": plan.ops.len(),
         "nothing": plan.changes.is_empty() && plan.conflicts.is_empty(),
@@ -787,7 +787,7 @@ pub fn undo_question(p: &Project) -> Option<String> {
     let top = p.ledger.undo_top()?;
     // Counted as the preview counts: devices, wires, cables, pages, folders and the project (a
     // symbol and its drawing are shown through what they depict).
-    let n = ecad_model::diff::objects(&top.ops).keys().filter(|(k, _)| !matches!(*k, "item" | "representation" | "terminal")).count();
+    let n = ecad_model::document::diff::objects(&top.ops).keys().filter(|(k, _)| !matches!(*k, "item" | "representation" | "terminal")).count();
     let changes = format!("{n} change{}", if n == 1 { "" } else { "s" });
     let label = top.label.clone();
     if let Some(rest) = label.strip_prefix("Update from ") {

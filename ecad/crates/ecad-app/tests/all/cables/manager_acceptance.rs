@@ -4,7 +4,7 @@
 //! then not-drawn cables, then drawn ones. Headless on the demo project.
 
 use ecad_app::App;
-use ecad_app::lists::cable_editor::Ask;
+use ecad_app::cables::editor::Ask;
 use ecad_app::shell::ListsView;
 use ecad_app::shell::state::Workspace;
 use ecad_electrical::cables::CableField;
@@ -14,8 +14,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
-use crate::mouse_tester::{Collect, Deltas};
-use crate::project_panel::{doc, head, ok, rev3_app as new_app};
+use crate::canvas::mouse_acceptance::{Collect, Deltas};
+use crate::pages::project_panel::{doc, head, ok, rev3_app as new_app};
 
 type H = Harness<'static, App>;
 
@@ -39,7 +39,7 @@ fn harness() -> H {
 fn demo(h: &mut H, tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("ecad-059t-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = crate::checks_ui::demo_file(&dir);
+    let path = crate::checks::ui::demo_file(&dir);
     h.state_mut().close_project();
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
@@ -80,7 +80,7 @@ fn t1_plus_cable_edit_and_remove_are_one_transaction_each_with_exact_undo() {
     let dir = demo(&mut h, "tx");
     let before: Vec<CableId> = doc(&mut h).cables.keys().copied().collect();
     let after = one_exact(&mut h, "Create cable", |h| {
-        h.get_by_label(ecad_app::lists::workspace::ADD_NAME).click();
+        h.get_by_label(ecad_app::workspace::frame::ADD_NAME).click();
         h.run_steps(8);
         let made = h.state().reports.as_ref().and_then(|r| r.cables.selected().and_then(|i| r.cables.ids.get(i).copied()));
         assert!(made.is_some_and(|k| !before.contains(&k)), "the new cable is selected at once");
@@ -137,7 +137,7 @@ fn t3_the_slash_picker_lists_new_cable_then_not_drawn_then_drawn() {
     h.run_steps(8);
     assert!(h.state().slash_running());
     let p = h.state().shell.slash_picker.clone();
-    assert_eq!(p.labels.first().map(String::as_str), Some(ecad_app::shell::right::slash_picker::NEW_CABLE));
+    assert_eq!(p.labels.first().map(String::as_str), Some(ecad_app::inspector::slash_picker::NEW_CABLE));
     let first_drawn = p.items.iter().position(|i| i.drawn).unwrap_or(p.items.len());
     assert!(p.items[..first_drawn].iter().all(|i| !i.drawn) && p.items[first_drawn..].iter().all(|i| i.drawn), "not drawn first: {:?}", p.labels);
     let tags: Vec<&str> = p.items[..first_drawn].iter().map(|i| i.tag.as_str()).collect();

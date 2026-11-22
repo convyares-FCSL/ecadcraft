@@ -178,14 +178,14 @@ fn a_connector_half_answers_half() {
     assert_eq!(h.head(), head + 1);
     let d = h.doc();
     assert_eq!(loc(&d, x).as_deref(), Some("+CP1"), "the connector keeps its location");
-    assert_eq!(locations::half_location(&d, x, ecad_engine::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
+    assert_eq!(locations::half_location(&d, x, ecad_electrical::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
     // JSON: the half answered in the place's own transaction.
     let v = h.run("place", json!({"symbol": "pins", "at": [320, 40]})).unwrap();
     let y: DeviceId = id(&v, "component");
     h.run("setlocation", json!({"component": y.hex(), "value": "+CP1"})).unwrap();
     h.run("place", json!({"symbol": "pinp", "device": y.hex(), "at": [75, 140], "location": "half"})).unwrap();
     let d = h.doc();
-    assert_eq!(locations::half_location(&d, y, ecad_engine::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
+    assert_eq!(locations::half_location(&d, y, ecad_electrical::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
     assert_eq!(loc(&d, y).as_deref(), Some("+CP1"));
 }
 

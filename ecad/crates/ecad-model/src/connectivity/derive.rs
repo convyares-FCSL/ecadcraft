@@ -4,11 +4,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::book::Book;
-use crate::doc::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
-use crate::geom::Pt;
-use crate::id::{CableId, ItemId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
-use crate::sheet::Grid;
+use crate::document::book::Book;
+use crate::document::doc::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
+use crate::geometry::geom::Pt;
+use crate::naming::id::{CableId, ItemId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
+use crate::document::sheet::Grid;
 
 /// Where each terminal sits on one page, from drawn connection points and symbol placements.
 ///
@@ -51,7 +51,7 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(ConnectionPointId, Pt)> 
     if let Subject::Cable(_) = r.subject {
         return r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
     }
-    let owner: crate::doc::ConnectionPointOwner = match r.subject {
+    let owner: crate::document::doc::ConnectionPointOwner = match r.subject {
         Subject::Device(d) => d.into(),
         Subject::Aid(a) => a.into(),
         _ => return Vec::new(),
@@ -79,15 +79,15 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(ConnectionPointId, Pt)> 
 }
 
 /// The route of a conductor on a page: the first route there that carries it
-/// ([`crate::wire_order::wire_of_route`], design 072 §4: routes draw, wires run between their
+/// ([`crate::connectivity::wire_order::wire_of_route`], design 072 §4: routes draw, wires run between their
 /// connection points), found through the wire's points, and its drawing's first item path.
-pub fn route_on_page(doc: &Document, conductor: WireId, page: PageId) -> Option<(crate::id::ItemId, Primitive)> {
+pub fn route_on_page(doc: &Document, conductor: WireId, page: PageId) -> Option<(crate::naming::id::ItemId, Primitive)> {
     let wire = doc.wires.get(&conductor)?;
-    let routes: BTreeSet<crate::id::RouteId> = wire
+    let routes: BTreeSet<crate::naming::id::RouteId> = wire
         .ends
         .iter()
         .flat_map(|t| doc.routes_at(*t))
-        .filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page) && crate::wire_order::wire_of_route(doc, *r) == Some(conductor))
+        .filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page) && crate::connectivity::wire_order::wire_of_route(doc, *r) == Some(conductor))
         .collect();
     routes.into_iter().find_map(|r| route_drawing(doc, r, page))
 }
@@ -111,7 +111,7 @@ pub fn wire_start(doc: &Document, w: WireId) -> Option<(PageId, Pt)> {
 }
 
 /// The first item path of route `r`'s drawing on `page`.
-fn route_drawing(doc: &Document, r: crate::id::RouteId, page: PageId) -> Option<(crate::id::ItemId, Primitive)> {
+fn route_drawing(doc: &Document, r: crate::naming::id::RouteId, page: PageId) -> Option<(crate::naming::id::ItemId, Primitive)> {
     doc.representations_of(Subject::Route(r)).filter(|(_, rep)| rep.page == page).find_map(|(_, rep)| {
         let id = *rep.items.first()?;
         match &doc.items.get(&id)?.kind {
@@ -306,7 +306,7 @@ pub fn place_on(grid: &Grid, page_label: &str, at: Pt) -> Option<Place> {
 ///
 /// # Semantics
 /// Nothing here is stored: the page number is the page's `number` property or its book position
-/// ([`crate::book`]), the column and row come from the page's sheet ([`crate::sheet`]), the
+/// ([`crate::document::book`]), the column and row come from the page's sheet ([`crate::document::sheet`]), the
 /// partners are the cable's other references, and the text names the partners in the project's
 /// reference style. All of it changes when pages are renumbered, reordered or moved between
 /// folders, or a reference point moves, with no transaction of its own.
@@ -432,7 +432,7 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
             continue;
         }
         let members = doc.cables.get(&cable).map(|c| c.cores.as_slice()).unwrap_or_default();
-        let line = |route: &crate::route::Route| route.end_points().filter(|_| route.page == r.page).map(|[a, b]| (a, b));
+        let line = |route: &crate::objects::route::Route| route.end_points().filter(|_| route.page == r.page).map(|[a, b]| (a, b));
         let ends: Vec<(Pt, Pt)> = members
             .iter()
             .filter_map(|m| {
@@ -440,9 +440,9 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
                 // route here, else the loose line it sits on.
                 let through = m.through.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|x| doc.routes.get(&x)).find_map(line);
                 through.or_else(|| match m.position {
-                    crate::doc::CorePosition::Wire(w) => *routes.entry((w, r.page)).or_insert_with(|| route_ends_on(doc, w, r.page)),
-                    crate::doc::CorePosition::Route { route, .. } => doc.routes.get(&route).and_then(line),
-                    crate::doc::CorePosition::Unplaced => None,
+                    crate::document::doc::CorePosition::Wire(w) => *routes.entry((w, r.page)).or_insert_with(|| route_ends_on(doc, w, r.page)),
+                    crate::document::doc::CorePosition::Route { route, .. } => doc.routes.get(&route).and_then(line),
+                    crate::document::doc::CorePosition::Unplaced => None,
                 })
             })
             .collect();

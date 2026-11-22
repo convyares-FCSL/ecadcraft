@@ -36,7 +36,7 @@ fn style_entity(e: &mut cadcraft_engine::doc::Entity, s: TextStyle, bold_linewei
         t.style = s.style_name.to_string();
     }
     // Brief 050a: a style's colour (ink otherwise; a mono print prints ink regardless).
-    if let Some(rgb) = s.colour.and_then(|c| crate::look::text_colour_rgb(c, crate::look::projection_sheet())) {
+    if let Some(rgb) = s.colour.and_then(|c| crate::cables::draw::text_colour_rgb(c, crate::cables::draw::projection_sheet())) {
         e.common.color = cadcraft_engine::doc::color::Color::True(rgb);
     }
     if let (Weight::Bold, Some(lw)) = (s.weight, bold_lineweight) {

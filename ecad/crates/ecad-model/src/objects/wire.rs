@@ -18,13 +18,13 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::colour::{ColourWords, ConductorColour};
-use crate::doc::Properties;
-use crate::id::{ConductorId, DeviceId, NetId, ConnectionPointId};
-use crate::style::StyleRef;
-use crate::text::Text;
-use crate::units::{Amps, Celsius, Mm2, Percent, Volts};
-use crate::words::{is_digits, uint};
+use crate::geometry::colour::{ColourWords, ConductorColour};
+use crate::document::doc::Properties;
+use crate::naming::id::{ConductorId, DeviceId, NetId, ConnectionPointId};
+use crate::objects::styles::StyleRef;
+use crate::naming::text::Text;
+use crate::geometry::units::{Amps, Celsius, Mm2, Percent, Volts};
+use crate::naming::words::{is_digits, uint};
 
 /// Most characters of a wire number, a potential, a size or a colour list as typed.
 pub const MAX_VALUE_CHARS: usize = 24;
@@ -141,7 +141,7 @@ impl Wire {
     }
 
     /// Whether `other` differs from it only in values (not in identity or ends): what
-    /// [`crate::op::Op::ModifyWire`] may change, with the net and the order.
+    /// [`crate::document::op::Op::ModifyWire`] may change, with the net and the order.
     pub fn same_wire(&self, other: &Wire) -> bool {
         self.conductor == other.conductor && self.ends == other.ends
     }
@@ -210,7 +210,7 @@ impl WireSize {
     ///
     /// # Example
     /// ```
-    /// use ecad_model::wire::WireSize;
+    /// use crate::objects::wire::WireSize;
     /// assert_eq!(WireSize::parse("2.5 mm²").map(|s| s.to_string()), Some("2.5".into()));
     /// assert_eq!(WireSize::parse("awg18").map(|s| s.to_string()), Some("18 AWG".into()));
     /// assert_eq!(WireSize::parse("2/0 AWG").map(|s| s.to_string()), Some("2/0 AWG".into()));
@@ -335,7 +335,7 @@ impl Colours {
     ///
     /// # Example
     /// ```
-    /// use ecad_model::wire::Colours;
+    /// use crate::objects::wire::Colours;
     /// assert_eq!(Colours::parse("GNYE").map(|c| c.to_string()), Some("GN/YE".into()));
     /// assert_eq!(Colours::parse("green / yellow").map(|c| c.to_string()), Some("GN/YE".into()));
     /// assert_eq!(Colours::parse("blu").map(|c| c.to_string()), Some("BU".into()));
@@ -577,7 +577,7 @@ impl CircuitInputs {
 
     /// The inputs it sets, in words (`("rating basis", "manual")`), in a fixed order.
     pub fn values(&self) -> Vec<(&'static str, String)> {
-        use crate::words::Word;
+        use crate::naming::words::Word;
         let mut out = Vec::new();
         out.extend(self.basis.map(|b| ("rating basis", b.word().to_string())));
         out.extend(self.manual.map(|a| ("rating manual", a.to_string())));

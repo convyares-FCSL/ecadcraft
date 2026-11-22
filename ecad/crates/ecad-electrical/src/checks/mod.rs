@@ -29,19 +29,21 @@
 //!
 //! This module reads the document; it changes nothing.
 
-use ecad_model::numbering::Places;
+use ecad_model::naming::numbering::Places;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::name_key;
-use ecad_model::effect::Effect;
-use ecad_model::wiring;
+use ecad_model::document::effect::Effect;
+use ecad_model::connectivity::wiring;
 use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
-use crate::text_style::fonts::TextMetrics;
+use crate::styles::text_style::fonts::TextMetrics;
 use crate::wires::{self, ON_WIRE};
 
 pub mod kept;
+pub(crate) mod view;
+pub mod words_check;
 
 /// The grid cell size of the geometric checks, in millimetres.
 pub const GRID_MM: f64 = 10.0;
@@ -395,9 +397,9 @@ pub enum Fix {
     Finalise,
     /// Brief 052 (design 052 §6): **Use +CP1**: set the device's value of the aspect to the one
     /// context all its symbols share (`setlocation`).
-    UseContext(DeviceId, crate::designations::Aspect),
+    UseContext(DeviceId, crate::locations::designations::Aspect),
     /// Brief 052: **Set location** / **Set function**: the inspector's row of that device or box.
-    SetDesignation(DeviceId, crate::designations::Aspect),
+    SetDesignation(DeviceId, crate::locations::designations::Aspect),
     /// Brief 052: **Show in Settings**: Settings ▸ Project info ▸ Functions and locations.
     ShowDesignations,
     /// Brief 024: open Reports on the BOM tab with Only ? on.
@@ -451,24 +453,24 @@ pub enum Fix {
     IgnoreConnector(DeviceId, Kind),
     /// Brief 047: **Use A-0110 for all**: the most common article number of the part of line
     /// `n` of the device, or of the item (`article`).
-    UseArticle(crate::outputs::Owner, u8),
+    UseArticle(crate::reports::Owner, u8),
     /// Brief 047: **Remove 9**: drop the names line `n`'s `for` lists that the device lacks
     /// (`partline set for`).
     DropMissingFor(DeviceId, u8),
     /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
     OpenStandards(ecad_model::StyleCatalogue),
     /// Brief 054 (design 054 §9): a page type or folder start row's fix.
-    Page(crate::page_types::PageFix),
+    Page(crate::pages::page_types::PageFix),
     /// Brief 057: **Show rating**: select the subject in Project ▸ Wires or Cables, Rating unfolded.
-    ShowRating(crate::rating::RatedSubject),
+    ShowRating(crate::circuits::RatedSubject),
     /// Brief 057: **Use 2.5 mm²**: the conductor's own `cross_section`.
     UseSize(WireId, f64),
     /// Brief 057: **Change cable type…** filtered to this size (mm²).
     PickCableType(CableId, f64),
     /// Brief 057: **Use Datasheet** (`rating {basis}`).
-    SetBasis(crate::rating::RatedSubject, ecad_model::wire::Basis),
+    SetBasis(crate::circuits::RatedSubject, ecad_model::objects::wire::Basis),
     /// Brief 057: **Clear Protected by**.
-    ClearProtectedBy(crate::rating::RatedSubject),
+    ClearProtectedBy(crate::circuits::RatedSubject),
     /// Brief 057: **Choose a table**, **Set project bundling**: Settings ▸ Standards ▸ Defaults at Rating.
     ChooseRatingTable,
     /// Brief 057: **Show** the rated wires (Project ▸ Wires).
@@ -547,7 +549,7 @@ impl Check {
                 self.which.clone()
             }
             // Brief 057: every rating row says its own sentence.
-            k if crate::rating::is_rating_kind(k) && !self.which.is_empty() => self.which.clone(),
+            k if crate::circuits::is_rating_kind(k) && !self.which.is_empty() => self.which.clone(),
             _ => self.kind.words().to_string(),
         }
     }
@@ -556,9 +558,9 @@ impl Check {
     /// number alone when it has no point; empty when it has no page.
     pub fn locator(&self, doc: &Document) -> String {
         let Some(page) = self.page else { return String::new() };
-        match self.at.and_then(|a| ecad_model::wiring::place(doc, page, a)) {
+        match self.at.and_then(|a| ecad_model::connectivity::wiring::place(doc, page, a)) {
             Some(p) => p.text(doc.settings.reference_style()),
-            None => ecad_model::book::page_number(doc, page),
+            None => ecad_model::document::book::page_number(doc, page),
         }
     }
 
@@ -580,11 +582,11 @@ impl Check {
             Object::Cable(k) => json!({"cable": k.hex()}),
             Object::None => Value::Null,
         };
-        let place = self.page.zip(self.at).and_then(|(p, a)| ecad_model::wiring::place(doc, p, a));
+        let place = self.page.zip(self.at).and_then(|(p, a)| ecad_model::connectivity::wiring::place(doc, p, a));
         json!({
             "kind": self.kind.name(),
             "severity": self.severity().name(),
-            "page": self.page.map(|p| ecad_model::book::page_number(doc, p)),
+            "page": self.page.map(|p| ecad_model::document::book::page_number(doc, p)),
             "column": place.as_ref().map(|p| p.column_label.clone()),
             "row": place.as_ref().map(|p| p.row_label.clone()),
             "at": self.at.map(|a| [a.x, a.y]),
@@ -626,7 +628,7 @@ pub enum Key {
     /// Brief 054b: the cover's rows (legend cut, notes cut), refreshed when the cover changes.
     Cover,
     /// Brief 057: a rated subject's own rows.
-    Rating(crate::rating::RatedSubject),
+    Rating(crate::circuits::RatedSubject),
     /// Brief 057: the count rows, unread devices and the rating table's own rows.
     RatingSummary,
     /// Brief 052: the project's list of functions and locations (duplicate codes).
@@ -654,7 +656,7 @@ pub trait CheckSource: Sync {
 
 /// The whole-project sources, in the order `Checks::build` asks them.
 pub const PROJECT_SOURCES: [&dyn CheckSource; 4] =
-    [&crate::styles::checks::StyleRows, &crate::front::CoverRows, &DesignationRows, &crate::title_block::checks::TitleBlockRows];
+    [&crate::styles::checks::StyleRows, &crate::pages::front::CoverRows, &DesignationRows, &crate::title_blocks::checks::TitleBlockRows];
 
 /// Brief 052: the project's list of functions and locations ([`designation_rows`]).
 pub struct DesignationRows;
@@ -869,7 +871,7 @@ fn terminal_place(doc: &Document, t: ConnectionPointId) -> (Option<PageId>, Opti
     let Some(owner) = doc.terminals.get(&t).map(|x| x.owner.subject()) else { return (None, None) };
     for page in &doc.page_order {
         let shown = doc.representations_of(owner).any(|(_, r)| r.page == *page);
-        if shown && let Some(at) = ecad_model::derive::connection_point_position(doc, *page, t) {
+        if shown && let Some(at) = ecad_model::connectivity::derive::connection_point_position(doc, *page, t) {
             return (Some(*page), Some(at));
         }
     }
@@ -885,7 +887,7 @@ fn conductor_words(doc: &Document, c: WireId) -> String {
             .and_then(|x| x.cores.iter().find(|m| m.wire() == Some(c)))
             .and_then(|m| m.label_str().map(str::to_string))
             .unwrap_or_default();
-        return format!("{} {core}", crate::references::cable_words(doc, *k)).trim().to_string();
+        return format!("{} {core}", crate::references::cables::cable_words(doc, *k)).trim().to_string();
     }
     let conn = doc.connectivity();
     conn.net_of_conductor(c).and_then(|id| conn.net(id)).map(|n| net_words(doc, n)).unwrap_or_default()
@@ -1023,7 +1025,7 @@ pub fn route_checks(doc: &Document, r: RouteId, grid: &Grid, tol: f64) -> Vec<Ch
     // Drawn away: an end on a connection point that is not where the point is on this page.
     for (at, e) in [v.first(), v.last()].into_iter().zip(route.ends) {
         let (Some(t), Some(at)) = (e.point(), at) else { continue };
-        if let Some(tp) = ecad_model::derive::connection_point_position(doc, page, t)
+        if let Some(tp) = ecad_model::connectivity::derive::connection_point_position(doc, page, t)
             && !tp.near(*at, tol.max(1e-6))
         {
             out.push(Check { kind: Kind::DrawnAway, page: Some(page), at: Some(*at), object: Object::Route(r), which: which.clone(), fix: None });
@@ -1040,16 +1042,16 @@ pub fn conductor_checks(doc: &Document, c: WireId) -> Vec<Check> {
     }
     let which = conductor_words(doc, c);
     // Brief 040: a colour code the app cannot draw is drawn in ink and listed as information.
-    if let Some(code) = crate::words::conductor_colour(doc, c).filter(|code| code.list().len() > 2) {
+    if let Some(code) = crate::cables::words::conductor_colour(doc, c).filter(|code| code.list().len() > 2) {
         let (page, at) = conductor_place(doc, c, None);
         out.push(Check { kind: Kind::UnknownColour, page, at, object: Object::Wire(c), which: format!("{which} {code}"), fix: None });
     }
     out
 }
 
-/// The checks of `page` as a whole: brief 040's dash budget ([`crate::words::dash_budget`]).
+/// The checks of `page` as a whole: brief 040's dash budget ([`crate::cables::words::dash_budget`]).
 pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
-    let left = crate::words::dash_budget(doc, page).left_out;
+    let left = crate::cables::words::dash_budget(doc, page).left_out;
     if left.is_empty() {
         return Vec::new();
     }
@@ -1079,7 +1081,7 @@ fn is_quiet_point(doc: &Document, t: ConnectionPointId) -> bool {
 pub fn connection_point_checks(doc: &Document, t: ConnectionPointId) -> Vec<Check> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
     let mut out = Vec::new();
-    let (wired, takes) = (doc.ends_at(t).len(), ecad_model::wire_order::accepts(doc, t));
+    let (wired, takes) = (doc.ends_at(t).len(), ecad_model::connectivity::wire_order::accepts(doc, t));
     if wired > takes {
         let (page, at) = terminal_place(doc, t);
         let which = format!("{} takes {takes} conductors; {wired} are connected", wires::point_words(doc, t));
@@ -1121,7 +1123,7 @@ pub fn aid_checks(doc: &Document, a: ecad_model::AidId) -> Vec<Check> {
 
 /// Box `a`'s rows: a stored function or location naming no entry. The row points at its outline.
 fn box_checks(doc: &Document, a: ecad_model::AidId, b: &ecad_model::LocationBox) -> Vec<Check> {
-    use crate::designations::{self as d, Aspect};
+    use crate::locations::designations::{self as d, Aspect};
     let (page, at) = doc.representations_of(Subject::Aid(a)).next().map_or((None, None), |(_, r)| (Some(r.page), crate::locations::anchor(doc, r)));
     Aspect::ALL
         .into_iter()
@@ -1150,11 +1152,11 @@ pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMet
     designation_checks(places, c, &mut out);
     // Brief 026: a provisional tag, and a tag a cable holds too.
     if let Some(t) = crate::devices::tag_of(doc, c)
-        && (ecad_model::tag::is_provisional(t) || !doc.cables_tagged(t).is_empty())
+        && (ecad_model::naming::tag::is_provisional(t) || !doc.cables_tagged(t).is_empty())
     {
         // Located only when there is a row to show (a build visits every device).
-        let (page, at) = crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
-        if ecad_model::tag::is_provisional(t) {
+        let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
+        if ecad_model::naming::tag::is_provisional(t) {
             out.push(Check { kind: Kind::ProvisionalTag, page, at, object: Object::Device(c), which: t.to_string(), fix: Some(Fix::Finalise) });
         }
         if !doc.cables_tagged(t).is_empty() {
@@ -1169,14 +1171,14 @@ pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMet
         }
     }
     // Brief 025 (design 025 §4.3): drawn beyond the part's offer, ringed at the first such pole.
-    for (which, page, at) in crate::xref::count_checks(doc, c) {
+    for (which, page, at) in crate::references::devices::count_checks(doc, c) {
         out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Device(c), which, fix: None });
     }
     // Design 072 §2.2: checks read only the typed rating; a note is not a rating.
     if let Some(d) = doc.devices.get(&c)
         && d.has_no_rating()
     {
-        let (page, at) = crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
+        let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
         let tag = crate::devices::tag_words(doc, c);
         let which = match &d.rating_note {
             Some(n) => format!("{tag} has no rating ('{n}' is a note)"),
@@ -1187,7 +1189,7 @@ pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMet
     // Brief 044 (design 044 §6.3): a connector's mating checks.
     out.extend(crate::connectors::checks(doc, c));
     // Brief 033 (design 033 §4.1): a table the user placed over the title block stays there.
-    if let Some((which, page, at)) = crate::xref::title_check(doc, c, m) {
+    if let Some((which, page, at)) = crate::references::devices::title_check(doc, c, m) {
         out.push(Check {
             kind: Kind::TableOverTitle,
             page: Some(page),
@@ -1204,14 +1206,14 @@ pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMet
 /// (devices and boxes); for a device, a value none of its symbols' contexts has, and two heads.
 /// O(its representations and their pages' boxes).
 fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>) {
-    use crate::designations::{self as d, Aspect};
+    use crate::locations::designations::{self as d, Aspect};
     let doc = places.doc();
     let Some(comp) = doc.devices.get(&c) else { return };
     if !crate::locations::is_device(doc, c) {
         return;
     }
     let who = crate::devices::tag_words(doc, c);
-    let (page, at) = crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
+    let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
     for (k, v) in d::device_keys(comp) {
         let Some(a) = Aspect::of_property(&k) else { continue };
         if d::code_of(doc, a, &v).is_none() {
@@ -1272,17 +1274,17 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
             });
         }
     }
-    let heads = crate::reps::heads(doc, c);
+    let heads = crate::symbols::reps::heads(doc, c);
     if let [_, second, ..] = heads.as_slice()
         && let Some(r) = doc.representations.get(second)
     {
-        let mut xp = crate::xref::Places::new(doc);
+        let mut xp = crate::references::devices::Places::new(doc);
         let wheres: Vec<String> =
-            heads.iter().filter_map(|h| doc.representations.get(h).map(|x| xp.text(x.page, crate::xref::anchor(doc, x)))).collect();
+            heads.iter().filter_map(|h| doc.representations.get(h).map(|x| xp.text(x.page, crate::references::devices::anchor(doc, x)))).collect();
         out.push(Check {
             kind: Kind::TwoHeads,
             page: Some(r.page),
-            at: crate::xref::anchor(doc, r),
+            at: crate::references::devices::anchor(doc, r),
             object: Object::Device(c),
             which: format!("{who} has two {}s ({})", crate::devices::head_noun(doc, *second), wheres.join(", ")),
             fix: None,
@@ -1292,7 +1294,7 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
 
 /// The rows of the project's list (design 052 §6): two entries of one aspect sharing a code.
 pub fn designation_rows(doc: &Document) -> Vec<Check> {
-    use crate::designations::{self as d, Aspect};
+    use crate::locations::designations::{self as d, Aspect};
     let mut out = Vec::new();
     for a in Aspect::ALL {
         let mut seen: BTreeMap<String, usize> = BTreeMap::new();
@@ -1318,7 +1320,7 @@ pub fn designation_rows(doc: &Document) -> Vec<Check> {
 /// The checks of cable `k`'s reference ends (brief 027, design 027 §4.2): a cable with exactly one
 /// reference end has an orphan (`/?`). Reads that cable's representations only.
 pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
-    let refs = crate::references::references_of(doc, k);
+    let refs = crate::references::cables::references_of(doc, k);
     let [(rid, r)] = refs.as_slice() else { return Vec::new() };
     let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
@@ -1356,7 +1358,7 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
     // Brief 057 (owner rule, board 2.06): every core is connected at both ends or ticked Not used.
     let open = if drawn { crate::styles::cable::open_cores(doc, k) } else { Vec::new() };
     if !open.is_empty() {
-        let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let (page, at) = ecad_model::naming::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         let name = crate::cables::cable_title(doc, k);
         for (i, o) in open.into_iter().enumerate() {
             // Brief 059 (design 059 §6): an unwired core is "not assigned".
@@ -1372,11 +1374,11 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
         }
     }
     let Some(t) = crate::devices::cable_tag_of(doc, k) else { return out };
-    if !ecad_model::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
+    if !ecad_model::naming::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
         return out;
     }
-    let (page, at) = ecad_model::numbering::rep_anchor_in(places, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
-    if ecad_model::tag::is_provisional(t) {
+    let (page, at) = ecad_model::naming::numbering::rep_anchor_in(places, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+    if ecad_model::naming::tag::is_provisional(t) {
         out.push(Check { kind: Kind::ProvisionalTag, page, at, object: Object::Cable(k), which: t.to_string(), fix: Some(Fix::Finalise) });
     }
     if doc.cables_tagged(t).len() > 1 {
@@ -1389,7 +1391,7 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
 
 /// The rows of cable `k`'s cores on lines (owner rule, 2026-11-18): a core whose line has one end
 /// landed, and a core whose stored place is not the one its line now gives
-/// ([`ecad_model::wire_order::core_position`]). Reads only the cable's own cores and their lines.
+/// ([`ecad_model::connectivity::wire_order::core_position`]). Reads only the cable's own cores and their lines.
 fn core_place_checks(doc: &Document, k: ecad_model::CableId, out: &mut Vec<Check>) {
     let Some(cable) = doc.cables.get(&k) else { return };
     let name = crate::cables::cable_title(doc, k);
@@ -1405,7 +1407,7 @@ fn core_place_checks(doc: &Document, k: ecad_model::CableId, out: &mut Vec<Check
         }
         let ecad_model::CorePosition::Route { route, landed } = m.position else { continue };
         let (page, at) = route_place(doc, route, None);
-        let found = ecad_model::wire_order::core_position(doc, route);
+        let found = ecad_model::connectivity::wire_order::core_position(doc, route);
         if found != m.position {
             let now = match found {
                 ecad_model::CorePosition::Wire(_) => "its line now carries a wire".to_string(),
@@ -1429,7 +1431,7 @@ fn wire_core_stale(doc: &Document, w: WireId) -> Option<&'static str> {
     let Some(wire) = doc.wires.get(&w) else { return Some("its wire is gone") };
     let mut lines = wire.ends.iter().flat_map(|t| doc.routes_at(*t)).peekable();
     lines.peek()?;
-    let carried = lines.any(|r| ecad_model::wire_order::wire_of_route(doc, r) == Some(w));
+    let carried = lines.any(|r| ecad_model::connectivity::wire_order::wire_of_route(doc, r) == Some(w));
     (!carried).then_some("no line carries that wire now")
 }
 
@@ -1468,10 +1470,10 @@ pub struct Scope {
     /// Brief 050a: the style rows (`crate::styles::checks::touches`).
     pub(crate) styles: bool,
     /// Brief 057: what the ops reach of the rating results.
-    rating: crate::rating::Touch,
+    rating: crate::circuits::Touch,
     /// Brief 052: the list's rows (an entry's code changed, added or removed).
     pub(crate) designations: bool,
-    /// Brief 055: the title block rows (`crate::title_block::checks::touches`).
+    /// Brief 055: the title block rows (`crate::title_blocks::checks::touches`).
     pub(crate) title_blocks: bool,
 }
 
@@ -1497,10 +1499,10 @@ impl Scope {
         };
         self.rating.note(doc, effect);
         self.styles |= crate::styles::checks::touches(effect);
-        self.title_blocks |= crate::title_block::checks::touches(effect);
+        self.title_blocks |= crate::title_blocks::checks::touches(effect);
         // Brief 054: the set of pages with checks off may change (then everything is checked
         // again).
-        self.all |= crate::page_types::checks_changed(doc, effect);
+        self.all |= crate::pages::page_types::checks_changed(doc, effect);
         match effect {
             Effect::Wire { id, before: Some(before), after: Some(after) } => {
                 node(self, Node::Wire(*id));
@@ -1554,12 +1556,12 @@ impl Scope {
             }
             Effect::Prop { object: ObjectRef::Device(c), key, before, after } => {
                 let key = key.raw;
-                if key == ecad_model::tag::TAG_KEY {
+                if key == ecad_model::naming::tag::TAG_KEY {
                     self.tag_holders(doc, [before, after].into_iter().flatten().copied());
                 }
                 // Brief 059 (design 059 §8): a device's location or function is where the
                 // cables at its points are drawn (`cable-end-off-plan`).
-                if crate::designations::Aspect::of_property(key).is_some() {
+                if crate::locations::designations::Aspect::of_property(key).is_some() {
                     for (t, _) in doc.connection_points_of(*c) {
                         for (w, _) in doc.ends_at(t) {
                             self.cables.extend(doc.cables_of(w));
@@ -1583,7 +1585,7 @@ impl Scope {
                 // Brief 026: the cable's own rows, and every holder of the tags it had or has.
                 self.cables.insert(*k);
                 let tags: Vec<String> =
-                    before.iter().chain(after.iter()).filter_map(|c| c.properties.get(ecad_model::tag::TAG_KEY).cloned()).collect();
+                    before.iter().chain(after.iter()).filter_map(|c| c.properties.get(ecad_model::naming::tag::TAG_KEY).cloned()).collect();
                 self.tag_holders(doc, tags.iter().map(String::as_str));
                 // A cable's tag and cores are part of its members' words.
                 if let Some(cable) = doc.cables.get(k) {
@@ -1627,7 +1629,7 @@ impl Scope {
                 // Brief 033 (review of #64, 1): a table the user placed may enter or leave the
                 // title block when the project's sheet changes.
                 if before.sheet != after.sheet {
-                    self.devices.extend(crate::xref::placed_tables(doc));
+                    self.devices.extend(crate::references::devices::placed_tables(doc));
                 }
                 let (b, a) = (&before.wiring, &after.wiring);
                 if b.scheme != a.scheme || b.digits != a.digits || b.unclassified_prefix != a.unclassified_prefix || b.potentials != a.potentials {
@@ -1695,7 +1697,7 @@ impl Scope {
             // Brief 052 (design 052 §6): the project's default context for every device (rare);
             // the list's codes for the objects storing that entry, and the duplicate rows.
             Effect::Project { before, after } => {
-                use crate::designations::{Aspect, changed_codes, default_key};
+                use crate::locations::designations::{Aspect, changed_codes, default_key};
                 for a in Aspect::ALL {
                     if default_key(before, a) != default_key(after, a) {
                         self.relocate = true;
@@ -1710,12 +1712,12 @@ impl Scope {
                         // Brief 059: the cables planning an end there (their rows name its code).
                         self.cables.extend(crate::cables::planning(doc, entry));
                         for (c, x) in &doc.devices {
-                            if crate::designations::device_keys(x).iter().any(|(_, v)| v == entry) {
+                            if crate::locations::designations::device_keys(x).iter().any(|(_, v)| v == entry) {
                                 self.devices.insert(*c);
                             }
                         }
                         for (b, x) in &doc.aids {
-                            if x.as_box().is_some_and(|x| crate::designations::box_key(x, a).as_deref() == Some(entry.as_str())) {
+                            if x.as_box().is_some_and(|x| crate::locations::designations::box_key(x, a).as_deref() == Some(entry.as_str())) {
                                 self.aids.insert(*b);
                             }
                         }
@@ -1829,7 +1831,7 @@ pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
 
 /// Every check of the project with the report models already kept, measuring text with `m`
 /// (ecad-engine's `crate::checks::all` and `crate::checks::all_with` pass CADCraft's fonts).
-pub fn all_measured(doc: &Document, tol: f64, outputs: &crate::outputs::kept::ReportModels, m: &dyn TextMetrics) -> Vec<Check> {
+pub fn all_measured(doc: &Document, tol: f64, outputs: &crate::reports::kept::ReportModels, m: &dyn TextMetrics) -> Vec<Check> {
     let mut rows: Vec<Check> = kept::Checks::build_with(doc, tol, m).rows().cloned().collect();
     rows.extend(outputs.checks());
     sort(doc, rows)

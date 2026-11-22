@@ -289,7 +289,7 @@ fn g_hover_properties_and_go_to() {
         let item = p.ledger.document().representations[&x.coil].items[0];
         vec![p.pages[&x.p100].map.item(item).unwrap()]
     });
-    let view = x.h.p(|p| ecad_engine::props::view(p, Some(x.p100), &sel));
+    let view = x.h.p(|p| ecad_engine::properties::props::view(p, Some(x.p100), &sel));
     let s = &view.sections[0];
     let keys: Vec<&str> = s.rows.iter().map(|r| r.key.as_str()).collect();
     for k in ["contacts", "mirror", "contactrows"] {
@@ -368,7 +368,7 @@ fn k_hostile_values() {
     assert!(x.h.project.apply_ops(&mut x.h.s, "hostile", ops).is_err());
     let mut far = before.clone();
     if let ecad_model::DeviceType::Switching(k) = &mut far.device_type {
-        k.contact_table = Some(ecad_model::device::ContactTable::At { dx: f64::INFINITY, dy: 0.0 });
+        k.contact_table = Some(ecad_model::objects::devices::ContactTable::At { dx: f64::INFINITY, dy: 0.0 });
     }
     assert!(x.h.project.apply_ops(&mut x.h.s, "hostile", vec![Op::ModifyDevice { id: x.k1, before, after: far }]).is_err());
     assert_eq!(rows(&mut x.h, x.k1).len(), 5);
@@ -417,9 +417,9 @@ fn e_cable_groups_are_kept_on_the_index() {
 /// succeeds, nothing panics, and the next commit finds nothing wrong.
 #[test]
 fn a_stale_index_is_reported_and_rebuilt() {
-    use ecad_inspect::EventKind;
+    use ecad_engine::history::event_log::EventKind;
     let mut x = fixture();
-    x.h.cfg(|p| *p.views_mut().references_view_mut() = ecad_electrical::derived::RefsView::default());
+    x.h.cfg(|p| *p.views_mut().references_view_mut() = ecad_electrical::views::RefsView::default());
     let head = x.h.head();
     x.h.run("setprop", json!({"component": x.k1.hex(), "key": "contacts", "value": "3P+2NO+2NC"})).unwrap();
     assert_eq!(x.h.head(), head + 1);

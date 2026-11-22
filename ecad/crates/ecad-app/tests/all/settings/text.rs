@@ -6,11 +6,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::project_panel;
+use ecad_app::pages::project_panel;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{Deltas, doc, harness_with, head, ok, shot};
+use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, head, ok, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -34,7 +34,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
     h.state_mut().set_cad_chrome(false);
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
-    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
         let t = d.text.as_mut().expect("the Text section");
@@ -60,7 +60,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
     assert!(!doc(&mut h).display.contains_key("text.tag.height"));
 
     // An out-of-range height keeps OK disabled: nothing is written.
-    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     h.state_mut().project_props.as_mut().unwrap().text.as_mut().unwrap().rows[0].height = "11".into();
     h.run_steps(2);
     assert!(h.state().project_props.as_ref().unwrap().line().is_err());

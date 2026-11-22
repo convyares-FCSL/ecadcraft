@@ -21,12 +21,12 @@ use std::path::Path;
 use ecad_engine::ProjectHandle;
 use ecad_engine::background::{At, Jobs};
 use ecad_engine::cad::Session;
-use ecad_engine::debug::{self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve};
+use ecad_engine::dev::debug::{self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve};
 use ecad_model::{Author, Document, ProjectId, Transaction};
-use ecad_ui::control::{Select, TextEntry};
-use ecad_ui::prim::{self, Button, IconButton, Kind, ListRow, SectionHeader, Tone};
-use ecad_ui::tokens::{radius, size, space};
-use ecad_ui::{Icon, SHELL, color};
+use ecad_widgets::control::{Select, TextEntry};
+use ecad_widgets::prim::{self, Button, IconButton, Kind, ListRow, SectionHeader, Tone};
+use ecad_widgets::tokens::{radius, size, space};
+use {ecad_widgets::Icon, ecad_widgets::SHELL, ecad_widgets::color};
 use eframe::egui::{self, RichText};
 
 /// The ECAD Dev Debugger button's hover text.
@@ -1019,12 +1019,12 @@ fn mono(ui: &mut egui::Ui, text: String) -> egui::Response {
 /// A hairline between parts of the panel, across its width.
 fn rule(ui: &mut egui::Ui) {
     let full = ui.max_rect().x_range();
-    ecad_ui::panel::rule(ui, full);
+    ecad_widgets::panel::rule(ui, full);
 }
 
 /// The inset card a rebuilt state or a branch is shown in.
 fn card() -> egui::Frame {
-    egui::Frame::new().fill(color(SHELL.raised)).corner_radius(ecad_ui::style::corner(radius::INSET_CARD)).inner_margin(space::M)
+    egui::Frame::new().fill(color(SHELL.raised)).corner_radius(ecad_widgets::style::corner(radius::INSET_CARD)).inner_margin(space::M)
 }
 
 /// A folding section (closed at first), its open state kept under `id`; `add` draws its body.

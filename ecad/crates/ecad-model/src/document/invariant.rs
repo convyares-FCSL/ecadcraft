@@ -48,19 +48,19 @@
 //! The ledger also runs the full check, and compares the kept index with a rebuilt one, after
 //! every transaction with the `verify-invariants` cargo feature (on for every `cargo test`
 //! through dev-dependencies), when `ECAD_VERIFY_INVARIANTS=1`, and in the debugger's Verify replay,, and treats
-//! any disagreement as a bug ([`crate::ledger`]).
+//! any disagreement as a bug ([`crate::document::ledger`]).
 //!
 //! This module changes nothing: it only reads the document.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{Cable, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal, Wire};
-use crate::effect::{Effect, Effects};
+use crate::document::doc::{Cable, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal, Wire};
+use crate::document::effect::{Effect, Effects};
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
-use crate::index::referrers;
-use crate::op::{ObjectRef, Op};
-use crate::point::PointKey;
+use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
+use crate::document::index::referrers;
+use crate::document::op::{ObjectRef, Op};
+use crate::geometry::point::PointKey;
 
 /// What a transaction created, modified or removed: the input of [`Document::check_touched`].
 ///
@@ -82,9 +82,9 @@ pub struct Touched {
     /// Routes drawn, removed or changed (design 072 F31).
     pub routes: BTreeSet<RouteId>,
     /// Drawing aids made, removed or changed (design 072 §6.2).
-    pub aids: BTreeSet<crate::id::AidId>,
+    pub aids: BTreeSet<crate::naming::id::AidId>,
     /// Loose parts made, removed or changed (design 072 §6.4).
-    pub loose_parts: BTreeSet<crate::id::LoosePartId>,
+    pub loose_parts: BTreeSet<crate::naming::id::LoosePartId>,
     pub definitions: BTreeSet<DefinitionId>,
     /// A folder was added or removed, so the folder order changed.
     pub folder_order: bool,
@@ -202,7 +202,7 @@ fn bad(m: String) -> Result<()> {
 }
 
 impl Document {
-    /// Verify every invariant (I1 to I18 in [`crate::invariant`]).
+    /// Verify every invariant (I1 to I18 in [`crate::document::invariant`]).
     ///
     /// # Errors
     /// [`ModelError::Invariant`] naming the first violation found.
@@ -256,11 +256,11 @@ impl Document {
     }
 
     /// I22 (design 072 §5.3): the location and function lists are well formed
-    /// ([`crate::project::Project::problem`]). A page or the project naming an id with no entry
+    /// ([`crate::document::project::Project::problem`]). A page or the project naming an id with no entry
     /// is not a breach: it shows `?`.
     ///
     /// I25: a drawing aid is well formed.
-    fn check_aid(&self, id: crate::id::AidId, a: &crate::aid::Aid) -> Result<()> {
+    fn check_aid(&self, id: crate::naming::id::AidId, a: &crate::objects::aid::Aid) -> Result<()> {
         match a.problem() {
             Some(e) => bad(format!("aid {id}: {e}")),
             None => Ok(()),
@@ -268,7 +268,7 @@ impl Document {
     }
 
     /// I26: a loose part is well formed (design 072 §6.4).
-    fn check_loose_part(&self, id: crate::id::LoosePartId, p: &crate::loose_part::LoosePart) -> Result<()> {
+    fn check_loose_part(&self, id: crate::naming::id::LoosePartId, p: &crate::objects::loose_part::LoosePart) -> Result<()> {
         match p.problem() {
             Some(e) => bad(format!("loose part {id}: {e}")),
             None => Ok(()),
@@ -333,7 +333,7 @@ impl Document {
     ///
     /// # Semantics
     /// Checks the same predicates as [`Document::check`], for the touched objects and the objects
-    /// that depend on them (the table in [`crate::invariant`]). When the state before the change
+    /// that depend on them (the table in [`crate::document::invariant`]). When the state before the change
     /// was valid, it passes exactly when [`Document::check`] passes; the error it reports may name
     /// a different violation when there are several.
     ///
@@ -369,7 +369,7 @@ impl Document {
 
         let mut terminals = touched.terminals.clone();
         for c in &touched.devices {
-            terminals.extend(referrers(&ix.component_connection_points, &crate::doc::ConnectionPointOwner::Device(*c)));
+            terminals.extend(referrers(&ix.component_connection_points, &crate::document::doc::ConnectionPointOwner::Device(*c)));
         }
         for id in &terminals {
             if let Some(t) = self.terminals.get(id) {
@@ -516,8 +516,8 @@ impl Document {
 
     /// I20.
     fn check_folder(&self, id: FolderId) -> Result<()> {
-        if crate::book::folder_depth(self, id).is_none() {
-            return bad(format!("folder {id} has a missing parent, is inside itself or nests more than {} deep", crate::book::MAX_FOLDER_DEPTH));
+        if crate::document::book::folder_depth(self, id).is_none() {
+            return bad(format!("folder {id} has a missing parent, is inside itself or nests more than {} deep", crate::document::book::MAX_FOLDER_DEPTH));
         }
         Ok(())
     }
@@ -558,10 +558,10 @@ impl Document {
     /// I8.
     fn check_connection_point(&self, id: ConnectionPointId, t: &Terminal) -> Result<()> {
         let device = match t.owner {
-            crate::doc::ConnectionPointOwner::Device(d) => d,
-            crate::doc::ConnectionPointOwner::Aid(a) => {
+            crate::document::doc::ConnectionPointOwner::Device(d) => d,
+            crate::document::doc::ConnectionPointOwner::Aid(a) => {
                 return match self.aids.get(&a) {
-                    Some(crate::aid::Aid::Continuation { .. }) => Ok(()),
+                    Some(crate::objects::aid::Aid::Continuation { .. }) => Ok(()),
                     Some(_) => bad(format!("terminal {id} belongs to drawing aid {a}, which is not a continuation")),
                     None => bad(format!("terminal {id} belongs to a missing drawing aid")),
                 };
@@ -573,7 +573,7 @@ impl Document {
         // Design 072 §3: a PLC module's point is a channel's (`.3.in`) or one of its own symbol's
         // (`L+`). Any other definition key (an old `I1.3`) is unknown: nothing reads a channel
         // out of its text.
-        if let crate::device::DeviceType::PlcModule(_) = &c.device_type
+        if let crate::objects::devices::DeviceType::PlcModule(_) = &c.device_type
             && let Some(crate::PointKey::Def(k)) = &t.key
             && !c.definition.and_then(|d| self.definitions.get(&d)).is_some_and(|d| d.terminals.iter().any(|td| td.key.as_def() == Some(k)))
         {
@@ -590,7 +590,7 @@ impl Document {
             return bad(format!("device {id} uses a missing definition"));
         }
         // Design 072 §2.1: a key that became a device field is never in the device's bag.
-        if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Device, k)) {
+        if let Some(k) = c.properties.keys().find(|k| crate::naming::keys::is_reserved_on(crate::naming::keys::Holder::Device, k)) {
             return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
         self.check_user_values(id, c)?;
@@ -599,8 +599,8 @@ impl Document {
         }
         // Design 072 §2.2 and §2.5: a protective device's ratings (a fuse bank's per output) and a
         // strip's fuse position ratings are fields.
-        if let crate::device::DeviceType::Protection(_) | crate::device::DeviceType::TerminalStrip(_) = &c.device_type
-            && let Some(k) = c.properties.keys().find(|k| k.starts_with(crate::device::RATING_OF_PREFIX))
+        if let crate::objects::devices::DeviceType::Protection(_) | crate::objects::devices::DeviceType::TerminalStrip(_) = &c.device_type
+            && let Some(k) = c.properties.keys().find(|k| k.starts_with(crate::objects::devices::RATING_OF_PREFIX))
         {
             return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
@@ -609,7 +609,7 @@ impl Document {
 
     /// I23: a route is well formed, on an existing page, and lands on existing connection points
     /// and on existing routes of its own page.
-    fn check_route(&self, id: RouteId, r: &crate::route::Route) -> Result<()> {
+    fn check_route(&self, id: RouteId, r: &crate::objects::route::Route) -> Result<()> {
         if let Err(e) = r.check(id) {
             return bad(format!("route {id}: {e}"));
         }
@@ -618,13 +618,13 @@ impl Document {
         }
         for e in r.ends {
             match e {
-                crate::route::RouteEnd::Point(t) if !self.has_point(t) => {
+                crate::objects::route::RouteEnd::Point(t) if !self.has_point(t) => {
                     return bad(format!("route {id} lands on a missing connection point {t}"));
                 }
-                crate::route::RouteEnd::On { route, .. } if self.routes.get(&route).is_none_or(|o| o.page != r.page) => {
+                crate::objects::route::RouteEnd::On { route, .. } if self.routes.get(&route).is_none_or(|o| o.page != r.page) => {
                     return bad(format!("route {id} lands on route {route}, which is not on its page"));
                 }
-                crate::route::RouteEnd::Point(_) | crate::route::RouteEnd::On { .. } | crate::route::RouteEnd::Free => {}
+                crate::objects::route::RouteEnd::Point(_) | crate::objects::route::RouteEnd::On { .. } | crate::objects::route::RouteEnd::Free => {}
             }
         }
         Ok(())
@@ -677,7 +677,7 @@ impl Document {
                         }
                     }
                     // A continuation's arrow (design 072 §6.2): an aid has no definition of its own.
-                    Subject::Aid(a) if matches!(self.aids.get(&a), Some(crate::aid::Aid::Continuation { .. })) => {}
+                    Subject::Aid(a) if matches!(self.aids.get(&a), Some(crate::objects::aid::Aid::Continuation { .. })) => {}
                     _ => return bad(format!("symbol representation {id} must depict a component or a continuation")),
                 }
             }
@@ -730,7 +730,7 @@ impl Document {
     /// I18.
     fn check_cable(&self, id: CableId, c: &Cable) -> Result<()> {
         // Design 072 §4.5: a key that became a cable field is never in the cable's bag.
-        if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Cable, k)) {
+        if let Some(k) = c.properties.keys().find(|k| crate::naming::keys::is_reserved_on(crate::naming::keys::Holder::Cable, k)) {
             return bad(format!("cable {id} holds {k} in its properties; it is a field"));
         }
         let mut seen = BTreeSet::new();
@@ -748,17 +748,17 @@ impl Document {
                 }
             }
             match m.position {
-                crate::doc::CorePosition::Unplaced => continue,
-                crate::doc::CorePosition::Wire(w) if !self.wires.contains_key(&w) => {
+                crate::document::doc::CorePosition::Unplaced => continue,
+                crate::document::doc::CorePosition::Wire(w) if !self.wires.contains_key(&w) => {
                     return bad(format!("cable {id} lists missing conductor {w}"));
                 }
-                crate::doc::CorePosition::Route { route, .. } if !self.routes.contains_key(&route) => {
+                crate::document::doc::CorePosition::Route { route, .. } if !self.routes.contains_key(&route) => {
                     return bad(format!("cable {id} has a core on missing route {route}"));
                 }
-                crate::doc::CorePosition::Route { landed: Some(t), .. } if !self.has_point(t) => {
+                crate::document::doc::CorePosition::Route { landed: Some(t), .. } if !self.has_point(t) => {
                     return bad(format!("cable {id} has a core landed at missing point {t}"));
                 }
-                crate::doc::CorePosition::Wire(_) | crate::doc::CorePosition::Route { .. } => {}
+                crate::document::doc::CorePosition::Wire(_) | crate::document::doc::CorePosition::Route { .. } => {}
             }
             if !seen.insert(m.position) {
                 return bad(format!("cable {id} lists {:?} twice", m.position));
@@ -805,5 +805,5 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
 /// 044, FP2): a connector side key (`.s`, `.p`) or a strip level key (`.1`, `.2`, `.1i`, brief
 /// 036). A bridge may name these; any other key it names must be one of the definition's own.
 pub fn is_placement_key(k: &PointKey) -> bool {
-    matches!(k, PointKey::Side(_)) || (matches!(k, PointKey::Level { .. }) && crate::links::level_of_key(Some(k)).is_some())
+    matches!(k, PointKey::Side(_)) || (matches!(k, PointKey::Level { .. }) && crate::connectivity::jumper_bars::level_of_key(Some(k)).is_some())
 }

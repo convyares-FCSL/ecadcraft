@@ -4,20 +4,20 @@
 //! to the cable manager (brief 2.7), not built yet, and show a dash. A provisional wire number
 //! is marked. Nothing here is set: a wire is changed on its page.
 //!
-//! **Update map:** see [`super::report`]: the copy is taken again only when the report models'
+//! **Update map:** see [`crate::reports::report`]: the copy is taken again only when the report models'
 //! revision changed, and only while the tab is shown.
 
 use ecad_engine::outputs::kept::ReportModels;
-use ecad_ui::prim::Tone;
-use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
+use ecad_widgets::prim::Tone;
+use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
 
-use super::report::{From, ReportColumns, ReportRows};
+use crate::reports::report::{From, ReportColumns, ReportRows};
 
 /// Brief 057: a copy of the kept rating results (`Checks::rating`), patched by subject: at the
 /// next epoch only the subjects the update re-checked are copied again (design 057 §10).
 #[derive(Debug, Default)]
 pub struct RatingCopy {
-    pub results: std::collections::BTreeMap<ecad_engine::rating::RatedSubject, ecad_engine::rating::circuit::Rating>,
+    pub results: std::collections::BTreeMap<ecad_electrical::circuits::RatedSubject, ecad_electrical::circuits::circuit::Rating>,
     seen: Option<(u64, u64)>,
     /// Full copies and patches (tests: the update map).
     pub copies: u64,
@@ -28,7 +28,7 @@ pub struct RatingCopy {
 
 impl RatingCopy {
     /// Bring the copy up to date. Returns the subjects copied again, or `None` for a full copy.
-    pub fn sync(&mut self, serial: u64, kept: &ecad_engine::rating::Kept) -> Option<Vec<ecad_engine::rating::RatedSubject>> {
+    pub fn sync(&mut self, serial: u64, kept: &ecad_electrical::circuits::Kept) -> Option<Vec<ecad_electrical::circuits::RatedSubject>> {
         if self.methods != kept.methods {
             self.methods = kept.methods.clone();
         }
@@ -118,12 +118,12 @@ pub fn page_of(place: &str) -> String {
 impl WiresSource {
     /// Whether row `k`'s number is provisional.
     pub fn provisional(&self, k: usize) -> bool {
-        ecad_model::tag::is_provisional(&self.rows.text(k, "Wire number"))
+        ecad_model::naming::tag::is_provisional(&self.rows.text(k, "Wire number"))
     }
 
     /// Brief 057: row `k`'s rating result.
-    pub fn rating(&self, k: usize) -> Option<&ecad_engine::rating::circuit::Rating> {
-        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_engine::rating::RatedSubject::Wire(*c)))
+    pub fn rating(&self, k: usize) -> Option<&ecad_electrical::circuits::circuit::Rating> {
+        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_electrical::circuits::RatedSubject::Wire(*c)))
     }
 }
 
@@ -178,7 +178,7 @@ impl TableSource for WiresSource {
         key < self.rows.rows.len()
     }
     fn cell(&self, key: usize, col: ColumnId) -> Cell {
-        super::report::cell(self, key, col)
+        crate::reports::report::cell(self, key, col)
     }
 }
 
@@ -227,7 +227,7 @@ impl WiresView {
 
     /// Brief 057: bring the rating copy up to date and patch the Status cells of the re-checked
     /// wires only.
-    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_engine::rating::Kept) {
+    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::Kept) {
         match self.source.rating.sync(serial, kept) {
             None => self.table.update(&self.source, Changed::All),
             Some(v) if v.is_empty() => {}
@@ -237,7 +237,7 @@ impl WiresView {
                     .ids
                     .iter()
                     .enumerate()
-                    .filter(|(_, c)| v.contains(&ecad_engine::rating::RatedSubject::Wire(**c)))
+                    .filter(|(_, c)| v.contains(&ecad_electrical::circuits::RatedSubject::Wire(**c)))
                     .map(|(k, _)| k)
                     .collect();
                 if !rows.is_empty() {
@@ -288,7 +288,7 @@ impl WiresView {
         for e in self.table.show(ui, &self.source) {
             match e {
                 TableEvent::GoTo { key, .. } | TableEvent::Open(key) => go = self.gos.get(key).copied().flatten(),
-                TableEvent::Export(csv) => super::copy_csv(ui, csv),
+                TableEvent::Export(csv) => crate::workspace::copy_csv(ui, csv),
                 _ => {}
             }
         }

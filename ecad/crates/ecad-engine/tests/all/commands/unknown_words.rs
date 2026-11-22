@@ -119,7 +119,7 @@ fn a_project_symbol_with_its_own_prefix_opens_writable() {
     let (project, summary) = ProjectHandle::open_file(&mut s, &saved, 0x72_a9).unwrap();
     assert!(!summary.contains("read-only"), "{summary}");
     let mut h = H { s, project, trail: Vec::new() };
-    let float = h.cfg(|p| ecad_engine::defaults::symbols::project_prefix(p.ledger.document(), "float1"));
+    let float = h.cfg(|p| ecad_electrical::defaults::symbols::project_prefix(p.ledger.document(), "float1"));
     assert_eq!(float, "BL");
 }
 
@@ -137,5 +137,5 @@ fn a_slot_rotation_is_given_in_degrees_and_stored_in_radians() {
     });
     h.run("symbolnew", symbol).unwrap();
     let turns = h.cfg(|p| p.ledger.document().definitions.values().flat_map(|d| d.texts.iter().map(|t| t.rotation)).collect::<Vec<_>>());
-    assert_eq!(turns, [ecad_model::units::Radians(std::f64::consts::FRAC_PI_2)]);
+    assert_eq!(turns, [ecad_model::geometry::units::Radians(std::f64::consts::FRAC_PI_2)]);
 }

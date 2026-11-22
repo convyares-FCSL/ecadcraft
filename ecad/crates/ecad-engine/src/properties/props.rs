@@ -1,12 +1,12 @@
 //! The selection half of the ECAD section of CADCraft's Properties palette (brief 019, design 019
 //! §8): which devices, wires, cables and references the drawing's selected handles stand for, and
-//! the view built from them by [`ecad_electrical::props`], which holds the sections, their update
+//! the view built from them by [`ecad_electrical::properties`], which holds the sections, their update
 //! map and the edit lines.
 
 use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::Handle;
-use ecad_electrical::props::{
+use ecad_electrical::properties::{
     PropsView, Section, box_section, cable_section, device_section, link_section, page_section, reference_section, wire_section,
 };
 use ecad_model::{CableId, DeviceId, ObjectRef, PageId, Subject, WireId};
@@ -196,7 +196,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         v.sections.push(device_section(doc, p.kept_reports().map(|o| &o.plc), &k.devices, k.symbol));
     } else if !k.boxes.is_empty() {
         // Design 072 §6.2: an aid has no `ObjectRef`, so an aid op rebuilds the view
-        // (`ecad_electrical::derived::props`). Devices inside and codes: its page and the list.
+        // (`ecad_electrical::properties::view`). Devices inside and codes: its page and the list.
         v.deps.insert(ObjectRef::Project);
         for b in &k.boxes {
             v.deps.extend(doc.representations_of(Subject::Aid(*b)).map(|(_, r)| ObjectRef::Page(r.page)));
@@ -214,7 +214,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         }
     } else if !k.aids.is_empty() {
         // Design 072 §6.2: an aid has no `ObjectRef`, so an aid op rebuilds the view
-        // (`ecad_electrical::derived::props`); brief 049: the Other ends row names its partners'
+        // (`ecad_electrical::properties::view`); brief 049: the Other ends row names its partners'
         // places, on their pages.
         for a in &k.aids {
             let partners = crate::continuations::name_of(doc, *a).map(|n| doc.continuations_named(&n)).unwrap_or_default();
@@ -222,7 +222,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
                 v.deps.extend(doc.representations_of(Subject::Aid(o)).map(|(_, r)| ObjectRef::Page(r.page)));
             }
         }
-        v.sections.push(ecad_electrical::props::continuation_section(doc, &k.aids, k.aid_symbol));
+        v.sections.push(ecad_electrical::properties::continuation_section(doc, &k.aids, k.aid_symbol));
     } else if let [w] = k.wires.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Wire(*w));
         v.deps.extend(doc.cables_of(*w).into_iter().map(ObjectRef::Cable));
@@ -245,7 +245,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         if let Some(Subject::Cable(c)) = doc.representations.get(r).map(|x| x.subject) {
             v.deps.insert(ObjectRef::Cable(c));
             // "Other ends" name each partner's page number and its sheet's zones.
-            let refs = ecad_model::derive::cable_references_of(doc, &BTreeSet::from([c]));
+            let refs = ecad_model::connectivity::derive::cable_references_of(doc, &BTreeSet::from([c]));
             v.deps.extend(refs.iter().map(|x| ObjectRef::Page(x.page)));
         }
         v.deps.insert(ObjectRef::Page(page));

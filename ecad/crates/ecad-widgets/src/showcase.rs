@@ -2,13 +2,13 @@
 //! the shell colours and the type ramp, for screenshots beside the spec's Tokens board. The desktop app
 //! hosts it as a hidden developer page, `ui.primitives`.
 
-use ecad_tokens::{Icon, space, ui_type};
+use {crate::tokens::Icon, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Rect, RichText, ScrollArea, Sense, Ui, vec2};
 
 use crate::prim::{
     Button, Chip, Field, FieldKind, IconButton, Kind, Look, RowKind, RowSpec, Segmented, Tone, badge, keycap, pill, provisional, read_value, row,
 };
-use crate::{color, fonts};
+use {crate::color, crate::fonts};
 
 /// The page's accessible name and id.
 pub const PAGE: &str = "ui.primitives";
@@ -72,7 +72,7 @@ pub fn show(ui: &mut Ui, state: &mut Showcase) {
             ui.horizontal_wrapped(|ui| {
                 for (name, c) in s.rows() {
                     let (rect, r) = ui.allocate_exact_size(vec2(36.0, 24.0), Sense::hover());
-                    ui.painter().rect_filled(rect, crate::style::corner(ecad_tokens::radius::CHIP), color(c));
+                    ui.painter().rect_filled(rect, crate::style::corner(crate::tokens::radius::CHIP), color(c));
                     r.on_hover_text(name);
                 }
             });

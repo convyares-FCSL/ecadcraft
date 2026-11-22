@@ -2,8 +2,8 @@
 //! `CreateAid`, `ModifyAid` and `DeleteAid` change them, undo inverts them, a representation may
 //! draw one, and a stored aid in any other form is a read error.
 
-use ecad_model::aid::{Aid, Caption, ContinuationName, LocationBox};
-use ecad_model::units::Celsius;
+use ecad_model::objects::aid::{Aid, Caption, ContinuationName, LocationBox};
+use ecad_model::geometry::units::Celsius;
 use ecad_model::{AidId, Author, Form, IdAllocator, Ledger, Op, Page, PageId, Representation, RepresentationId, Role, Subject};
 
 fn arrow(name: &str) -> Aid {
@@ -94,21 +94,21 @@ fn the_diff_between_two_documents_records_aid_ops() {
     l.commit(Author::User, "add", vec![Op::CreateAid { id: a, aid: arrow("L1") }]).unwrap();
     let after = l.document().clone();
     let keep = |_: &str| true;
-    assert_eq!(ecad_model::diff::ops_between(&before, &after, &keep), vec![Op::CreateAid { id: a, aid: arrow("L1") }]);
-    assert_eq!(ecad_model::diff::ops_between(&after, &before, &keep), vec![Op::DeleteAid { id: a, aid: arrow("L1") }]);
+    assert_eq!(ecad_model::document::diff::ops_between(&before, &after, &keep), vec![Op::CreateAid { id: a, aid: arrow("L1") }]);
+    assert_eq!(ecad_model::document::diff::ops_between(&after, &before, &keep), vec![Op::DeleteAid { id: a, aid: arrow("L1") }]);
 }
 
 // ---------------------------------------------------------------- F2a: loose parts (§6.4)
 
-fn rail(qty: &str) -> ecad_model::loose_part::LoosePart {
-    use ecad_model::loose_part::LooseDescription as Description;
-    use ecad_model::loose_part::{LoosePart, Qty};
+fn rail(qty: &str) -> ecad_model::objects::loose_part::LoosePart {
+    use ecad_model::objects::loose_part::LooseDescription as Description;
+    use ecad_model::objects::loose_part::{LoosePart, Qty};
     LoosePart::new(Description::new("DIN rail 35 mm").unwrap(), Qty::parse(qty).unwrap())
 }
 
 #[test]
 fn loose_parts_are_added_modified_removed_and_undone() {
-    use ecad_model::loose_part::{ItemUnit, Qty};
+    use ecad_model::objects::loose_part::{ItemUnit, Qty};
     use ecad_model::{LocationId, LoosePartId, Touched};
     let mut ids = IdAllocator::seeded(0x72fa);
     let mut l = Ledger::new(0x72fa);
@@ -150,7 +150,7 @@ fn loose_parts_are_added_modified_removed_and_undone() {
     let before = l.document().clone();
     l.commit(Author::User, "more", vec![Op::CreateLoosePart { id: a, part: rail("4") }]).unwrap();
     let keep = |_: &str| true;
-    assert_eq!(ecad_model::diff::ops_between(&before, l.document(), &keep), vec![Op::CreateLoosePart { id: a, part: rail("4") }]);
+    assert_eq!(ecad_model::document::diff::ops_between(&before, l.document(), &keep), vec![Op::CreateLoosePart { id: a, part: rail("4") }]);
     assert_eq!(Op::CreateLoosePart { id: a, part: rail("4") }.inverse(), Op::DeleteLoosePart { id: a, part: rail("4") });
     let q = Qty::parse("4").unwrap();
     assert_eq!(q, Qty(4000));
@@ -158,7 +158,7 @@ fn loose_parts_are_added_modified_removed_and_undone() {
 
 #[test]
 fn a_loose_part_is_well_formed_and_read_strictly() {
-    use ecad_model::loose_part::{ItemUnit, LoosePart, Qty};
+    use ecad_model::objects::loose_part::{ItemUnit, LoosePart, Qty};
     use ecad_model::{LocationId, LoosePartId};
     let mut ids = IdAllocator::seeded(0x72fb);
     let mut l = Ledger::new(0x72fb);

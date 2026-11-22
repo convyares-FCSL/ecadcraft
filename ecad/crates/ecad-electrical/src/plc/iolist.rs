@@ -4,17 +4,17 @@
 //! # Semantics
 //! - Order: racks by tag, their cards by slot, then cards in no rack by tag; channels by index.
 //!   A card lists its channels `0..count` and any channel drawn or described beyond them.
-//! - Rows are derived from the kept `super::Plc` model and the document at the moment they are
+//! - Rows are derived from the kept `crate::plc::Plc` model and the document at the moment they are
 //!   asked for; the page, the list and `iolist` callers redraw only when the model says a card
-//!   changed (`super::Plc::rows_changed`).
+//!   changed (`crate::plc::Plc::rows_changed`).
 //! - `editable` names the fields the PLC manager (2.8) will edit, and the command that writes each.
 
 use ecad_model::{DeviceId, Document, PageId, Pt};
 use serde_json::{Value, json};
 
-use super::rack::RackRef;
-use super::{CardData, channels, kept::Plc, state_word};
-use crate::outputs::{Cell, Table};
+use crate::plc::rack::RackRef;
+use crate::plc::{CardData, channels, kept::Plc, state_word};
+use crate::reports::{Cell, Table};
 
 /// Said by the release when the project has no card with channels (design 045 §8.3).
 pub const NO_CARDS: &str = "No PLC cards with channels.";
@@ -67,7 +67,7 @@ pub struct Row {
     pub safe: Option<String>,
     pub safe_default: Option<String>,
     /// The Test column (design 056 §4.6), from the Tests brief; always `None` in 056.
-    pub test: super::signals::TestState,
+    pub test: crate::plc::signals::TestState,
 }
 
 impl Row {
@@ -90,9 +90,9 @@ impl Row {
 pub(crate) fn rep_place(doc: &Document, r: &ecad_model::Representation) -> (Option<String>, Option<Pt>) {
     let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin).or_else(|| r.connection_points.values().next().copied());
     let place = at
-        .and_then(|a| ecad_model::wiring::place(doc, r.page, a))
+        .and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a))
         .map(|p| p.text(doc.settings.reference_style()))
-        .or_else(|| Some(crate::references::page_number_words(doc, r.page)));
+        .or_else(|| Some(crate::references::cables::page_number_words(doc, r.page)));
     (place, at)
 }
 
@@ -121,11 +121,11 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
         _ => None,
     };
     let mut out = Vec::new();
-    let safe_default = super::signals::safe_default(doc, card.id, card.ty);
+    let safe_default = crate::plc::signals::safe_default(doc, card.id, card.ty);
     for i in indexes(card) {
         let ch = card.chans.get(&i);
         let (address, typed) = plc.address_of(doc, card.id, i);
-        let address_out = (card.ty == super::rack::CardType::Iol).then(|| plc.automatic(doc, card.id, i, true)).flatten();
+        let address_out = (card.ty == crate::plc::rack::CardType::Iol).then(|| plc.automatic(doc, card.id, i, true)).flatten();
         let pins: Vec<(ecad_model::ChannelRole, String)> = ch.map(|c| c.points.iter().map(|(r, _, p)| (*r, p.clone())).collect()).unwrap_or_default();
         let (place, page, at) = match ch.and_then(|c| c.cells.first()).and_then(|(rid, _, _)| doc.representations.get(rid)) {
             Some(r) => {
@@ -139,7 +139,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
         for (_, t, _) in ch.map(|c| c.points.as_slice()).unwrap_or_default() {
             let Some(net) = conn.net_of_connection_point(*t).and_then(|n| conn.net(n)) else { continue };
             if wire.is_none() {
-                wire = ecad_model::wiring::net_number(doc, net);
+                wire = ecad_model::connectivity::wiring::net_number(doc, net);
             }
             for o in &net.terminals {
                 let Some(term) = doc.terminals.get(o) else { continue };
@@ -152,7 +152,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
                 };
                 // Brief 056: pass-throughs and end devices are capped apart, so terminals never
                 // crowd out what the channel drives.
-                let through = super::signals::is_pass_through(doc, device);
+                let through = crate::plc::signals::is_pass_through(doc, device);
                 if targets.iter().filter(|t: &&Target| t.through == through).count() >= MAX_TARGETS {
                     continue;
                 }
@@ -161,7 +161,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
                 let at = shown.and_then(|(_, r)| r.connection_points.get(o).copied()).or(at);
                 targets.push(Target {
                     device: crate::devices::tag_words(doc, device),
-                    point: crate::terminal_types::connection_point_name(doc, *o),
+                    point: crate::terminal_strips::terminal_blocks::connection_point_name(doc, *o),
                     place: place.unwrap_or_default(),
                     through,
                     page: shown.map(|(_, r)| r.page),
@@ -191,7 +191,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
             safe: ch.and_then(|c| c.safe.clone()).filter(|_| safe_default.is_some()),
             safe_default: safe_default.clone(),
             tag,
-            test: super::signals::TestState::None,
+            test: crate::plc::signals::TestState::None,
             drawn: ch.is_some_and(|c| !c.points.is_empty()),
             place,
             page,
@@ -250,7 +250,7 @@ pub fn row_json(r: &Row) -> Value {
         "plc_tag": r.tag,
         "safe": r.safe_shown().map(|(s, _)| s),
         "safe_default": r.safe_shown().is_some_and(|(_, d)| d),
-        "drives": super::signals::drives(&r.targets).0.iter().map(|t| json!({"device": t.device, "point": t.point, "place": t.place})).collect::<Vec<_>>(),
+        "drives": crate::plc::signals::drives(&r.targets).0.iter().map(|t| json!({"device": t.device, "point": t.point, "place": t.place})).collect::<Vec<_>>(),
         "test": r.test.json(),
         "editable": EDITABLE.iter().map(|(f, c)| json!({"field": f, "command": c})).collect::<Vec<_>>(),
     })
@@ -297,7 +297,7 @@ pub fn page_lines(doc: &Document, plc: &Plc) -> Vec<(bool, Vec<String>)> {
                     // Brief 056 (Q9): the tag and the safe state.
                     r.tag.clone().unwrap_or_default(),
                     desc,
-                    r.safe_shown().map(|(s, _)| super::signals::safe_words(s)).unwrap_or_default(),
+                    r.safe_shown().map(|(s, _)| crate::plc::signals::safe_words(s)).unwrap_or_default(),
                     pins_words(&r.pins),
                     targets_words(&r.targets),
                     r.wire.clone().unwrap_or_default(),

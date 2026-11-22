@@ -34,7 +34,7 @@ pub const TOOL_LABEL: f32 = 10.0;
 pub const PAGE_WELL: f32 = 880.0;
 /// Icon button outside the tool strip (design §3.3): the default control height.
 pub const ICON_BUTTON: f32 = 28.0;
-/// Icon grid: icons are drawn on a 16 px grid ([`crate::line::ICON_STROKE_PX`]).
+/// Icon grid: icons are drawn on a 16 px grid ([`crate::tokens::line::ICON_STROKE_PX`]).
 pub const ICON: f32 = 16.0;
 /// The label column of a panel's value rows (inspector and Project panel, UI rev 4 boards 2.03,
 /// 2.05, 2.06).

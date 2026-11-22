@@ -4,10 +4,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::StyleRef;
-use super::text::StyleColour;
-use super::wire::LineType;
-use crate::units::Mm;
+use crate::objects::styles::StyleRef;
+use crate::objects::styles::text::StyleColour;
+use crate::objects::styles::wire::LineType;
+use crate::geometry::units::Mm;
 
 /// A location box style: what a standard or a project says about one. `None` inherits.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -32,7 +32,7 @@ impl LocationStyle {
     pub fn entries(&self) -> Vec<(&'static str, String)> {
         let mut out = Vec::new();
         if let Some(v) = self.line_type {
-            out.push(("line_type", crate::words::Word::word(v).to_string()));
+            out.push(("line_type", crate::naming::words::Word::word(v).to_string()));
         }
         if let Some(v) = self.line_weight {
             out.push(("line_weight", v.0.to_string()));

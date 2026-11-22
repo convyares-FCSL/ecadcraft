@@ -1,8 +1,8 @@
 //! Lane 072 B (design 072 §2.3, acceptance A7 and A8): a device's type comes from its symbol and
 //! agrees with what today's predicates say it is.
 
-use ecad_engine::symbols::{STARTERS, StarterKey};
-use ecad_model::device::DeviceGroup;
+use ecad_electrical::symbols::{STARTERS, StarterKey};
+use ecad_model::objects::devices::DeviceGroup;
 use ecad_model::{DeviceId, Document, Word};
 use serde_json::json;
 
@@ -15,13 +15,13 @@ use crate::common::{H, id};
 /// independent are the PLC card body; lane F replaced the `kind` predicates (continuation, box,
 /// item) with `Aid` and `LoosePart`, which are not devices.
 fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
-    use ecad_engine::{connectors, plc, strips};
-    if strips::fuse_terminal_block_of(doc, c).is_some() {
+    use {ecad_electrical::connectors, ecad_engine::plc, ecad_electrical::terminal_strips};
+    if terminal_strips::fuse_terminal_block_of(doc, c).is_some() {
         // The owner's answer (design 072 §2.2): a fuse terminal device is Protection; a fuse
         // position in a strip (`termfuse`) is the strip's.
         return Some(DeviceGroup::Protection);
     }
-    if strips::strip_of(doc, c).is_some() {
+    if terminal_strips::strip_of(doc, c).is_some() {
         return Some(DeviceGroup::TerminalStrip);
     }
     if connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
@@ -90,7 +90,7 @@ fn the_symbol_declares_the_type_and_joining_keeps_it() {
 /// renames it and its old version goes; a prefix naming no project symbol is a read error.
 #[test]
 fn a_project_prefix_follows_a_renamed_symbol_key() {
-    use ecad_model::prefix::PrefixOf;
+    use ecad_model::naming::prefix::PrefixOf;
     let mut h = H::new(0x72_b9);
     let shape = json!({"kind": "polyline", "vertices": [[-2.5, -7.5], [2.5, -7.5], [2.5, 7.5], [-2.5, 7.5]], "closed": true});
     let symbol = |key: &str| {
@@ -111,7 +111,7 @@ fn a_project_prefix_follows_a_renamed_symbol_key() {
     assert!(!prefixes.contains_key(&PrefixOf::Project("float1".into())), "{prefixes:?}");
     assert_eq!(prefixes.get(&PrefixOf::Project("float2".into())).map(|p| p.to_string()), Some("S".into()));
     // Nothing names a project symbol that is not there: the open check finds nothing.
-    assert!(ecad_electrical::words_check::check(&h.doc()).is_empty());
+    assert!(ecad_electrical::checks::words_check::check(&h.doc()).is_empty());
 }
 
 /// Step 2b (design 072 §2.1): a device's description, part number, maker, article number and type
@@ -181,7 +181,7 @@ fn location_and_function_are_written_as_modify_device() {
 #[test]
 fn connector_fields_are_written_as_modify_device() {
     use ecad_model::Op;
-    use ecad_model::device::{ConnectorCheck, ConnectorFamily, DeviceType};
+    use ecad_model::objects::devices::{ConnectorCheck, ConnectorFamily, DeviceType};
     let mut h = H::new(7204);
     let c: DeviceId = id(&crate::common::place(&mut h, "dsub9s", (100.0, 100.0)), "component");
     let family = |h: &mut H| match &h.doc().devices[&c].device_type {
@@ -222,7 +222,7 @@ fn connector_fields_are_written_as_modify_device() {
 #[test]
 fn a_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::device::{DeviceType, Protection, TripCurve};
+    use ecad_model::objects::devices::{DeviceType, Protection, TripCurve};
     let mut h = H::new(7205);
     let q: DeviceId = id(&crate::common::place(&mut h, "mcb1", (100.0, 100.0)), "component");
     let r = h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "B16"})).unwrap();
@@ -259,8 +259,8 @@ fn a_rating_is_read_into_typed_fields() {
 #[test]
 fn a_switching_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::device::{DeviceType, OperatorKind};
-    use ecad_model::units::Current;
+    use ecad_model::objects::devices::{DeviceType, OperatorKind};
+    use ecad_model::geometry::units::Current;
     let mut h = H::new(7206);
     let k: DeviceId = id(&crate::common::place(&mut h, "coil", (100.0, 100.0)), "component");
     let kind = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
@@ -307,8 +307,8 @@ fn a_switching_rating_is_read_into_typed_fields() {
 #[test]
 fn a_sensor_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::device::{DeviceType, Output, Sensing};
-    use ecad_model::units::Current;
+    use ecad_model::objects::devices::{DeviceType, Output, Sensing};
+    use ecad_model::geometry::units::Current;
     let mut h = H::new(7207);
     let kind = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
         DeviceType::Sensor(s) => Some((s.sensing, s.output)),
@@ -361,7 +361,7 @@ fn a_sensor_rating_is_read_into_typed_fields() {
 #[test]
 fn a_strip_fuse_position_rating_is_typed() {
     use ecad_model::Op;
-    use ecad_model::device::{DeviceType, FuseClass};
+    use ecad_model::objects::devices::{DeviceType, FuseClass};
     let mut h = H::new(7209);
     for i in 1..=3 {
         let x = 10.0 * f64::from(i);
@@ -406,8 +406,8 @@ fn a_strip_fuse_position_rating_is_typed() {
 #[test]
 fn a_motor_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::device::{DeviceType, Phases, Starting};
-    use ecad_model::units::{Amps, Watts};
+    use ecad_model::objects::devices::{DeviceType, Phases, Starting};
+    use ecad_model::geometry::units::{Amps, Watts};
     let mut h = H::new(7209);
     let phases = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
         DeviceType::Motor(m) => Some(m.phases),
@@ -447,8 +447,8 @@ fn a_motor_rating_is_read_into_typed_fields() {
 #[test]
 fn a_load_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::device::{DeviceType, Load};
-    use ecad_model::units::Watts;
+    use ecad_model::objects::devices::{DeviceType, Load};
+    use ecad_model::geometry::units::Watts;
     let mut h = H::new(7210);
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let v: DeviceId = id(&crate::common::place(&mut h, "valve", (200.0, 100.0)), "component");
@@ -483,8 +483,8 @@ fn a_load_rating_is_read_into_typed_fields() {
 #[test]
 fn an_indicator_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::device::{DeviceType, Indicator, IndicatorColour, SignalType};
-    use ecad_model::units::{Current, RatedVoltage, Volts, Watts};
+    use ecad_model::objects::devices::{DeviceType, Indicator, IndicatorColour, SignalType};
+    use ecad_model::geometry::units::{Current, RatedVoltage, Volts, Watts};
     let mut h = H::new(7211);
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let p: DeviceId = id(&crate::common::place(&mut h, "lamp", (100.0, 100.0)), "component");
@@ -524,8 +524,8 @@ fn an_indicator_rating_is_read_into_typed_fields() {
 #[test]
 fn a_power_supply_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::device::{DeviceType, PowerSupply, Psu, Transformer};
-    use ecad_model::units::{Amps, Current, RatedVoltage, VoltAmps, Volts};
+    use ecad_model::objects::devices::{DeviceType, PowerSupply, Psu, Transformer};
+    use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts};
     let mut h = H::new(7212);
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let p: DeviceId = id(&crate::common::place(&mut h, "psu", (100.0, 100.0)), "component");
@@ -561,7 +561,7 @@ fn a_power_supply_rating_is_read_into_typed_fields() {
 /// is Connector-typed and one piece; a pin's side follows the stored field, not the symbol.
 #[test]
 fn a_connector_s_mating_is_stored_by_its_starter() {
-    use ecad_engine::connectors;
+    use ecad_electrical::connectors;
     use ecad_model::DeviceType;
     let mut h = H::new(0x72_b9);
     let mut placed = Vec::new();

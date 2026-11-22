@@ -6,7 +6,7 @@
 //! - A **position** is the strip terminals that share one position label (`Terminal.label`); each
 //!   is one **level**, read from its key: `.n` (one point), `.ni`/`.no` (two-point levels: in and
 //!   out). A key that does not start with `.` is level 1 of a one-level position, exactly as before
-//!   this brief ([`ecad_model::links::level_of_key`]).
+//!   this brief ([`ecad_model::connectivity::jumper_bars::level_of_key`]).
 //! - A position's **type** is read from the starter of the symbols that draw it; the first drawn
 //!   level (lowest terminal ID) decides when they differ (`position-mixed`).
 //! - The **shown label** of level n of position p is the strip property `term_label.<p>.<n>`, else
@@ -19,7 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::links::{level_of_key, natural_key};
+use ecad_model::connectivity::jumper_bars::{level_of_key, natural_key};
 use ecad_model::{DeviceId, Document, LevelIo, PointKey, Primitive, Pt, Subject, ConnectionPointDef, ConnectionPointId};
 
 use crate::CmdError;
@@ -28,15 +28,15 @@ use crate::symbols::StarterKey;
 /// The strip property prefix of a level's own label (FP4): `term_label.<p>.<n>`.
 pub const LABEL_PREFIX: &str = "term_label.";
 /// The `setprop` key prefix of a fuse position's rating (FP5): `rating.<p>`. The rating is the
-/// strip's typed field ([`ecad_model::device::TerminalStrip::fuses`], design 072 §2.5), not a
+/// strip's typed field ([`ecad_model::objects::devices::TerminalStrip::fuses`], design 072 §2.5), not a
 /// property.
-pub const RATING_PREFIX: &str = ecad_model::device::RATING_OF_PREFIX;
+pub const RATING_PREFIX: &str = ecad_model::objects::devices::RATING_OF_PREFIX;
 /// Every strip property keyed by a position label (review M1): what renumbering and `termlabel`
 /// move with a position, in one list, so a prefix added later is never left behind. `acc.after.`
 /// and `acc.on.` are brief 030's placements, `term_label.` this brief's; `link.` values name
-/// positions inside and are rewritten, not moved ([`crate::accessories::renumber_ops`]). A fuse
+/// positions inside and are rewritten, not moved ([`crate::terminal_strips::accessories::renumber_ops`]). A fuse
 /// position's rating is the strip's field and moves with [`moved_fuses`].
-pub const POSITION_KEYED: &[&str] = &[crate::accessories::AFTER_PREFIX, crate::accessories::ON_PREFIX, LABEL_PREFIX];
+pub const POSITION_KEYED: &[&str] = &[crate::terminal_strips::accessories::AFTER_PREFIX, crate::terminal_strips::accessories::ON_PREFIX, LABEL_PREFIX];
 
 /// Most characters of a position label (`termlabel {position}`).
 pub const MAX_POSITION_CHARS: usize = 16;
@@ -104,7 +104,7 @@ impl TermType {
 
     /// Whether it is 028's feed-through or PE terminal (one level, old keys).
     pub fn legacy(&self) -> bool {
-        self.key == StarterKey::Terminal || self.key == crate::strips::PE_KEY
+        self.key == StarterKey::Terminal || self.key == crate::terminal_strips::PE_KEY
     }
 }
 
@@ -361,7 +361,7 @@ pub fn moved_fuses(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> (e
     let mut fuses = BTreeMap::new();
     for (l, f) in &s.fuses {
         let label = match map.get(l.as_str()) {
-            Some(n) => match ecad_model::device::PositionLabel::new(n) {
+            Some(n) => match ecad_model::objects::devices::PositionLabel::new(n) {
                 Ok(nl) => {
                     lines.push(format!("rating {} → {}", rating_key(l.as_str()), rating_key(nl.as_str())));
                     nl
@@ -376,7 +376,7 @@ pub fn moved_fuses(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> (e
         };
         fuses.insert(label, f.clone());
     }
-    let strip = ecad_model::device::TerminalStrip { fuses };
+    let strip = ecad_model::objects::devices::TerminalStrip { fuses };
     (ecad_model::Device { device_type: ecad_model::DeviceType::TerminalStrip(strip), ..d.clone() }, lines)
 }
 
@@ -402,7 +402,7 @@ pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
     }
     // Brief 044 (FP6): only a strip's `.`-keys are levels; a connector pin (`.s`, `.p`) is named
     // by its half (`-X10.S:3`, design 044 §0).
-    if crate::strips::strip_of(doc, c).is_none() {
+    if crate::terminal_strips::strip_of(doc, c).is_none() {
         return Some(crate::connectors::pin_name(doc, t).unwrap_or(p));
     }
     Some(derived_label(doc, c, type_of_connection_point(doc, t), &p, n))
@@ -415,7 +415,7 @@ pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
 pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[ConnectionPointId]) -> (Vec<ecad_model::Op>, Vec<String>) {
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
     let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return (ops, notes) };
-    if dropped.is_empty() || crate::strips::strip_of(doc, c).is_none() {
+    if dropped.is_empty() || crate::terminal_strips::strip_of(doc, c).is_none() {
         return (ops, notes);
     }
     let gone: BTreeSet<ConnectionPointId> = dropped.iter().copied().collect();
@@ -608,7 +608,7 @@ impl Chooser {
                             .get(&n)
                             .and_then(|v| v.first())
                             .and_then(|x| doc.representations_showing(*x).next())
-                            .map_or_else(String::new, |(_, r)| format!(" on {}", crate::references::page_words(doc, r.page)));
+                            .map_or_else(String::new, |(_, r)| format!(" on {}", crate::references::cables::page_words(doc, r.page)));
                         return Err(CmdError::refused(format!(
                             "{tag}:{name} is a {} and its level {lvl} is drawn{where_}. Pick another position, or Enter for the next free one.",
                             t.name.to_lowercase()
@@ -672,7 +672,7 @@ fn offer_refusal(text: &str) -> CmdError {
 /// feed-through, spaces ignored.
 ///
 /// # Errors
-/// Unreadable text, an unknown code, no positions, more than [`crate::strips::MAX_POSITIONS`].
+/// Unreadable text, an unknown code, no positions, more than [`crate::terminal_strips::MAX_POSITIONS`].
 pub fn parse_counts(text: &str) -> Result<Counts, CmdError> {
     if text.chars().count() > MAX_OFFER_CHARS {
         return Err(offer_refusal(text));
@@ -696,8 +696,8 @@ pub fn parse_counts(text: &str) -> Result<Counts, CmdError> {
     if total == 0 {
         return Err(CmdError::refused("A strip offers at least 1 position. Write 12, 12+2PE or 12+4x3; empty clears it."));
     }
-    if total > crate::strips::MAX_POSITIONS {
-        return Err(CmdError::refused(format!("A strip offers at most {} positions, of every type together.", crate::strips::MAX_POSITIONS)));
+    if total > crate::terminal_strips::MAX_POSITIONS {
+        return Err(CmdError::refused(format!("A strip offers at most {} positions, of every type together.", crate::terminal_strips::MAX_POSITIONS)));
     }
     Ok(counts)
 }
@@ -729,7 +729,7 @@ pub fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
 /// Canonical link text on level `n` and point `point` for `labels` (plan order) out of `order`:
 /// runs become ranges, each end written with [`jumper_bar_end`] (review 036, 2: the point is kept).
 pub fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Option<char>) -> String {
-    let base = ecad_model::links::canonical(labels, order);
+    let base = ecad_model::connectivity::jumper_bars::canonical(labels, order);
     if n == 1 && point.is_none() && !labels.iter().any(|l| l.contains('.')) {
         return base;
     }
@@ -769,14 +769,14 @@ pub fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Opti
 /// whose name no type of its position has, is left as typed. A name containing `-` (the sensor
 /// terminal's `-`) is written by its number.
 pub fn jumper_bar_names_to_numbers(doc: &Document, c: DeviceId, text: &str) -> String {
-    if text.chars().count() > ecad_model::links::MAX_TEXT_CHARS {
+    if text.chars().count() > ecad_model::connectivity::jumper_bars::MAX_TEXT_CHARS {
         return text.to_string();
     }
     let ps = positions(doc, c);
     let end = |e: &str| -> String {
         let e = e.trim();
         let Some((pos, tail)) = e.rsplit_once('.') else { return e.to_string() };
-        if ecad_model::links::split_level(e).is_ok_and(|(_, l)| l.is_some()) {
+        if ecad_model::connectivity::jumper_bars::split_level(e).is_ok_and(|(_, l)| l.is_some()) {
             return e.to_string();
         }
         let Some(p) = ps.iter().find(|p| p.label == pos) else { return e.to_string() };
@@ -797,16 +797,16 @@ pub fn jumper_bar_names_to_numbers(doc: &Document, c: DeviceId, text: &str) -> S
 /// When link value `text` on strip `c` names an end like `2.1` while a position labelled `2.1`
 /// exists (§5.1, Q5): `Link -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.`
 pub fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> Option<String> {
-    let p = ecad_model::links::parse(text).ok()?;
+    let p = ecad_model::connectivity::jumper_bars::parse(text).ok()?;
     let labels: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     let mut words = Vec::new();
     for item in &p.0 {
         let ends: Vec<&String> = match item {
-            ecad_model::links::Item::One(x) => vec![x],
-            ecad_model::links::Item::Range(a, b) => vec![a, b],
+            ecad_model::connectivity::jumper_bars::Item::One(x) => vec![x],
+            ecad_model::connectivity::jumper_bars::Item::Range(a, b) => vec![a, b],
         };
         for e in ends {
-            let Ok((pos, Some((n, _)))) = ecad_model::links::split_level(e) else { continue };
+            let Ok((pos, Some((n, _)))) = ecad_model::connectivity::jumper_bars::split_level(e) else { continue };
             if labels.contains(e.as_str()) {
                 words.push(format!("{e} (position {pos}, level {n}); position {e} is written {}", jumper_bar_end(e, 1, None)));
             }
@@ -921,7 +921,7 @@ pub fn short(hex: &str) -> &str {
 /// A terminal's name: its label, or `terminal <first 8 hex digits>`.
 pub fn connection_point_name(doc: &Document, t: ConnectionPointId) -> String {
     // Brief 036 (design 036 §4.1): a strip level's shown label (`1.L`, or its own label).
-    match crate::terminal_types::shown_label(doc, t) {
+    match crate::terminal_strips::terminal_blocks::shown_label(doc, t) {
         Some(l) => l,
         None => format!("connection point {}", short(&t.hex())),
     }
@@ -938,7 +938,7 @@ pub fn position_label(doc: &Document, t: ConnectionPointId) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn starters_and_codes() {

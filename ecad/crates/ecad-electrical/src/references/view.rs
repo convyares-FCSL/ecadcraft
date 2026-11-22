@@ -1,13 +1,13 @@
 //! The references view (design 064 §4.1, `RefsView`): the kept reference index
-//! ([`crate::xref::RefIndex`]), and per commit the pages whose references changed (cable
+//! ([`crate::references::devices::RefIndex`]), and per commit the pages whose references changed (cable
 //! references, contact texts and mirror tables, connector halves and pins, continuation arrows)
 //! and the line about references left without another end.
 //!
 //! # Update map
-//! Its scope is a [`crate::xref::Watch`] (design 025 §6, the table in [`crate::xref`]). Before the
+//! Its scope is a [`crate::references::devices::Watch`] (design 025 §6, the table in [`crate::references::devices`]). Before the
 //! commit, for the ops given to `begin`, each effect looked up on the document before them; after
 //! it, for the transaction as recorded, on the document after:
-//! - The cables (before only, [`crate::references::cables_touched_by`]): a reference
+//! - The cables (before only, [`crate::references::cables::cables_touched_by`]): a reference
 //!   representation or item, a member's route, wire or connection point, a cable, a page's
 //!   number, sheet, type or book position, a page type's sheet, a frame's grid; every cable for
 //!   the effects no drawing edit makes (a layer, a standard, a project record, other settings).
@@ -23,7 +23,7 @@
 //!   default: every page with a device member (the wide case); the continuation text settings:
 //!   every page with an arrow.
 //! - The index: the groups the effects name are made again
-//!   ([`crate::xref::RefIndex::groups_named_by`]); a page type's checks switched on or off makes it
+//!   ([`crate::references::devices::RefIndex::groups_named_by`]); a page type's checks switched on or off makes it
 //!   again whole (the scope's `is_all`, after the commit only).
 //! - Every other effect changes nothing.
 //!
@@ -33,13 +33,13 @@
 //! build ([`RefsView::check`]). Open, reload and branch switch build it whole
 //! ([`RefsView::build`]).
 
-use ecad_model::effect::{AreaSet, Effect};
-use ecad_model::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
+use ecad_model::document::effect::{AreaSet, Effect};
+use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, Op};
 
-use super::Inputs;
-use crate::text_style::fonts::TextMetrics;
-use crate::xref::{RefIndex, Shown, Watch};
+use crate::views::Inputs;
+use crate::styles::text_style::fonts::TextMetrics;
+use crate::references::devices::{RefIndex, Shown, Watch};
 
 /// The references view: the kept index and what the last commit derived.
 #[derive(Debug, Default)]
@@ -94,11 +94,11 @@ impl RefsView {
     /// Before and after a transaction of `ops` on `before`, giving `after` (tests and benches
     /// that have no pipeline): the same notes and update as the pipeline's.
     pub fn commit(&mut self, before: &Document, after: &Document, ops: &[Op], inputs: &Inputs<'_>) -> Outcome {
-        let effects = ecad_model::effect::Effects::of(ops);
+        let effects = ecad_model::document::effect::Effects::of(ops);
         let mut scope = RefsScope::default();
-        super::note_view::<_, Inputs<'_>>(self, &NoteCx { doc: before, phase: Phase::Before, effects: &effects }, &mut scope);
+        crate::views::note_view::<_, Inputs<'_>>(self, &NoteCx { doc: before, phase: Phase::Before, effects: &effects }, &mut scope);
         self.take(before, &mut scope, &*inputs.engine.metrics);
-        super::note_view::<_, Inputs<'_>>(self, &NoteCx { doc: after, phase: Phase::After, effects: &effects }, &mut scope);
+        crate::views::note_view::<_, Inputs<'_>>(self, &NoteCx { doc: after, phase: Phase::After, effects: &effects }, &mut scope);
         self.update(after, scope, inputs)
     }
 }

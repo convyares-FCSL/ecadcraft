@@ -87,7 +87,7 @@ impl Insulation {
         if t.eq_ignore_ascii_case("xlpe") {
             return Some(Insulation::Xlpe);
         }
-        if t.len() <= 3 && ecad_model::words::is_digits(t) {
+        if t.len() <= 3 && ecad_model::naming::words::is_digits(t) {
             return t.parse::<u16>().ok().filter(|n| (50..=250).contains(n)).and_then(|n| Insulation::of_max(f64::from(n)));
         }
         None

@@ -15,7 +15,7 @@
 //! Brief 056 (design 056 §3, §4, board 2.03): the rack heading line, the tiles' kind words, the
 //! card header with the PLC chip, **Compare**, **Export tags** and **→ Page**, the signal columns
 //! `Ch, Address, Tag, Description, Type, Safe, Drives, Page, PLC, Test`, free channels folded
-//! after the first of a run, and Import tags with its preview ([`super::plc_compare`]). Each row
+//! after the first of a run, and Import tags with its preview ([`crate::workspace::plc_compare`]). Each row
 //! carries its sync state from the kept index (`Plc::sync`); the same update map patches it.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -25,11 +25,11 @@ use ecad_engine::plc::iolist::{self, Row};
 use ecad_engine::plc::overview::{self, Chip, Square, Tile, TileKind};
 use ecad_engine::plc::signals;
 use ecad_model::{DeviceId, Document, PageId};
-use ecad_ui::table::strip::{self, Link, Mark, StripEvent, Tone};
-use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
+use ecad_widgets::table::strip::{self, Link, Mark, StripEvent, Tone};
+use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
 use serde_json::json;
 
-use super::ListAction;
+use crate::workspace::ListAction;
 
 /// A row: its card and channel index.
 pub type IoKey = (DeviceId, u32);
@@ -536,7 +536,7 @@ pub struct IoView {
     /// Lay the rows out again (free channels unfolded).
     reorder: bool,
     /// Brief 056: the card editor's fields, and its folded sections (the right panel).
-    pub card_editor: super::card_editor::State,
+    pub card_editor: crate::plc::card_editor::State,
     pub card_folded: BTreeSet<String>,
 }
 
@@ -777,7 +777,7 @@ impl IoView {
     /// model (words only; no rows made).
     fn after_sync(&mut self, doc: &Document, o: &ReportModels) {
         let plc = &o.plc;
-        self.project_name = ecad_engine::frames::project_text(doc, ecad_engine::frame::TITLE)
+        self.project_name = ecad_electrical::pages::frames::project_text(doc, ecad_engine::pages::frame::TITLE)
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| "Project".into());
@@ -913,37 +913,37 @@ impl IoView {
     pub fn show(&mut self, ui: &mut eframe::egui::Ui) -> Vec<ListAction> {
         use eframe::egui;
         let mut out = Vec::new();
-        let s = ecad_ui::SHELL;
-        let ty = ecad_ui::tokens::ui_type::BODY;
-        let small = ecad_ui::tokens::ui_type::SMALL;
+        let s = ecad_widgets::SHELL;
+        let ty = ecad_widgets::tokens::ui_type::BODY;
+        let small = ecad_widgets::tokens::ui_type::SMALL;
         // Brief 056 (design 056 §3.1): `Rack 1  -A01 to -A06 · 6 of 7 slots used · …`, the legend
         // and Add a rack at the right; the chips when there is more than one rack.
-        ui.add_space(ecad_ui::tokens::space::M);
+        ui.add_space(ecad_widgets::tokens::space::M);
         ui.horizontal(|ui| {
-            ui.add_space(ecad_ui::tokens::space::M);
+            ui.add_space(ecad_widgets::tokens::space::M);
             if self.chips.len() > 1 {
                 let words: Vec<String> = self.chips.iter().map(Chip::words).collect();
                 let labels: Vec<&str> = words.iter().map(String::as_str).collect();
                 let mut i = self.chip;
-                ecad_ui::prim::segmented(ui, &mut i, &labels);
+                ecad_widgets::prim::segmented(ui, &mut i, &labels);
                 if i != self.chip {
                     out.push(ListAction::Chip(i));
                 }
-                ui.add_space(ecad_ui::tokens::space::M);
+                ui.add_space(ecad_widgets::tokens::space::M);
             }
-            let title = ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE);
-            ui.label(egui::RichText::new(&self.rack_title).font(title).color(ecad_ui::color(s.text)));
-            ui.label(egui::RichText::new(&self.rack_line).size(ty.size).color(ecad_ui::color(s.text_2)));
+            let title = ecad_widgets::fonts::font(ui.ctx(), ecad_widgets::tokens::ui_type::TITLE);
+            ui.label(egui::RichText::new(&self.rack_title).font(title).color(ecad_widgets::color(s.text)));
+            ui.label(egui::RichText::new(&self.rack_line).size(ty.size).color(ecad_widgets::color(s.text_2)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(ecad_ui::tokens::space::M);
+                ui.add_space(ecad_widgets::tokens::space::M);
                 let add = ui.push_id(ADD_RACK, |ui| {
-                    ui.add_enabled_ui(self.source.writable, |ui| ecad_ui::prim::button(ui, "Add a rack", ecad_ui::prim::Kind::Secondary)).inner
+                    ui.add_enabled_ui(self.source.writable, |ui| ecad_widgets::prim::button(ui, "Add a rack", ecad_widgets::prim::Kind::Secondary)).inner
                 });
                 if add.inner.on_disabled_hover_text(WRITES_OFF).clicked() {
                     out.push(ListAction::AddRack);
                 }
                 if !self.tiles.is_empty() {
-                    ui.add_space(ecad_ui::tokens::space::M);
+                    ui.add_space(ecad_widgets::tokens::space::M);
                     // The legend's own width, laid left to right at the right edge.
                     let w = 300.0_f32.min(ui.available_width());
                     ui.allocate_ui_with_layout(egui::vec2(w, ui.available_height()), egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -952,9 +952,9 @@ impl IoView {
                 }
             });
         });
-        ui.add_space(ecad_ui::tokens::space::S);
+        ui.add_space(ecad_widgets::tokens::space::S);
         if self.tiles.is_empty() {
-            ui.label(egui::RichText::new(NO_CARDS).color(ecad_ui::color(s.text_3)));
+            ui.label(egui::RichText::new(NO_CARDS).color(ecad_widgets::color(s.text_3)));
         } else {
             let events = strip::show(ui, egui::Id::unique(STRIP), &self.strip, self.selected);
             for e in events {
@@ -986,34 +986,34 @@ impl IoView {
                 }
             }
         }
-        ui.add_space(ecad_ui::tokens::space::M);
+        ui.add_space(ecad_widgets::tokens::space::M);
         let r = ui.available_rect_before_wrap();
-        ui.painter().hline(r.x_range(), r.top(), eframe::egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
-        ui.add_space(ecad_ui::tokens::space::S);
+        ui.painter().hline(r.x_range(), r.top(), eframe::egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
+        ui.add_space(ecad_widgets::tokens::space::S);
         // The card header (design 056 §4.1).
         ui.push_id(CARD_HEAD, |ui| {
             ui.horizontal(|ui| {
-                ui.add_space(ecad_ui::tokens::space::M);
+                ui.add_space(ecad_widgets::tokens::space::M);
                 if let Some(h) = &self.head {
-                    let strong = ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::BODY_EMPHASIS);
-                    ui.label(egui::RichText::new(&h.title).font(strong).color(ecad_ui::color(s.text)));
-                    ui.label(egui::RichText::new(&h.words).size(ty.size).color(ecad_ui::color(s.text_2)));
+                    let strong = ecad_widgets::fonts::font(ui.ctx(), ecad_widgets::tokens::ui_type::BODY_EMPHASIS);
+                    ui.label(egui::RichText::new(&h.title).font(strong).color(ecad_widgets::color(s.text)));
+                    ui.label(egui::RichText::new(&h.words).size(ty.size).color(ecad_widgets::color(s.text_2)));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_space(ecad_ui::tokens::space::M);
+                    ui.add_space(ecad_widgets::tokens::space::M);
                     let Some(h) = self.head.clone() else { return };
                     if let Some((pg, n)) = &h.page {
                         let go =
-                            ui.push_id(GO_PAGE, |ui| ecad_ui::prim::button(ui, &format!("\u{2192} Page {n}"), ecad_ui::prim::Kind::Secondary)).inner;
+                            ui.push_id(GO_PAGE, |ui| ecad_widgets::prim::button(ui, &format!("\u{2192} Page {n}"), ecad_widgets::prim::Kind::Secondary)).inner;
                         if go.clicked() {
                             out.push(ListAction::GoToCard(*pg, h.card));
                         }
                     }
-                    let ex = ui.push_id(EXPORT_TAGS, |ui| ecad_ui::prim::button(ui, "Export tags", ecad_ui::prim::Kind::Secondary)).inner;
+                    let ex = ui.push_id(EXPORT_TAGS, |ui| ecad_widgets::prim::button(ui, "Export tags", ecad_widgets::prim::Kind::Secondary)).inner;
                     if ex.clicked() {
                         out.push(ListAction::ExportTags);
                     }
-                    ui.add_space(ecad_ui::tokens::space::S);
+                    ui.add_space(ecad_widgets::tokens::space::S);
                     if let Some(c) = h.card {
                         ui.push_id(MAKE_TAGS, |ui| {
                             ui.menu_button("\u{2026}", |ui| {
@@ -1026,7 +1026,7 @@ impl IoView {
                         });
                     }
                     let mut i = usize::from(self.all_cards);
-                    ui.push_id(SCOPE, |ui| ecad_ui::prim::segmented(ui, &mut i, &[THIS_CARD, ALL_CARDS]));
+                    ui.push_id(SCOPE, |ui| ecad_widgets::prim::segmented(ui, &mut i, &[THIS_CARD, ALL_CARDS]));
                     if (i == 1) != self.all_cards {
                         out.push(ListAction::Scope(i == 1));
                     }
@@ -1037,33 +1037,33 @@ impl IoView {
         if let Some(row) = self.path_row.as_mut() {
             let mut close = false;
             ui.horizontal(|ui| {
-                ui.add_space(ecad_ui::tokens::space::M);
+                ui.add_space(ecad_widgets::tokens::space::M);
                 let label = match row.kind {
                     PathKind::Import => "Fill tags and descriptions from",
                     PathKind::Export { .. } => "Save the tag table as",
                 };
-                ui.label(egui::RichText::new(label).size(ty.size).color(ecad_ui::color(s.text_2)));
+                ui.label(egui::RichText::new(label).size(ty.size).color(ecad_widgets::color(s.text_2)));
                 // Three label columns wide: room for a path, in the components' sizes.
-                ecad_ui::control::TextEntry::new(&mut row.path, "Tag table file")
+                ecad_widgets::control::TextEntry::new(&mut row.path, "Tag table file")
                     .placeholder("Tag table file")
-                    .width(3.0 * ecad_ui::tokens::size::LABEL_COLUMN)
+                    .width(3.0 * ecad_widgets::tokens::size::LABEL_COLUMN)
                     .show(ui);
                 let ok = match &mut row.kind {
-                    PathKind::Import => ecad_ui::prim::button(ui, "Import", ecad_ui::prim::Kind::Primary).clicked(),
+                    PathKind::Import => ecad_widgets::prim::button(ui, "Import", ecad_widgets::prim::Kind::Primary).clicked(),
                     PathKind::Export { all, .. } => {
-                        ecad_ui::control::Toggle::new(all, "All racks").show(ui);
-                        ui.label(egui::RichText::new("All racks").size(ty.size).color(ecad_ui::color(s.text_2)));
-                        ecad_ui::prim::button(ui, "Export", ecad_ui::prim::Kind::Primary).clicked()
+                        ecad_widgets::control::Toggle::new(all, "All racks").show(ui);
+                        ui.label(egui::RichText::new("All racks").size(ty.size).color(ecad_widgets::color(s.text_2)));
+                        ecad_widgets::prim::button(ui, "Export", ecad_widgets::prim::Kind::Primary).clicked()
                     }
                 };
-                if ecad_ui::prim::button(ui, "Cancel", ecad_ui::prim::Kind::Quiet).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                if ecad_widgets::prim::button(ui, "Cancel", ecad_widgets::prim::Kind::Quiet).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     close = true;
                 }
                 if ok && !row.path.trim().is_empty() {
                     out.push(ListAction::PathOk);
                 }
                 if let Some(e) = &row.error {
-                    ui.label(egui::RichText::new(e).size(small.size).color(ecad_ui::color(s.error)));
+                    ui.label(egui::RichText::new(e).size(small.size).color(ecad_widgets::color(s.error)));
                 }
             });
             if close {
@@ -1075,7 +1075,7 @@ impl IoView {
         // sits under the last one (board 2.03); else it takes the room left.
         let events = if folded > 0 {
             let rows = self.source.keys().len() as f32 + 1.0;
-            let h = (rows * TABLE_ROW_PX + ecad_ui::tokens::space::M).min((ui.available_height() - 2.0 * TABLE_ROW_PX).max(TABLE_ROW_PX));
+            let h = (rows * TABLE_ROW_PX + ecad_widgets::tokens::space::M).min((ui.available_height() - 2.0 * TABLE_ROW_PX).max(TABLE_ROW_PX));
             ui.allocate_ui(egui::vec2(ui.available_width(), h), |ui| {
                 ui.set_max_height(h);
                 self.table.show(ui, &self.source)
@@ -1109,17 +1109,17 @@ impl IoView {
                         self.selected = Some(i);
                     }
                 }
-                TableEvent::Export(csv) => super::copy_csv(ui, csv),
+                TableEvent::Export(csv) => crate::workspace::copy_csv(ui, csv),
                 TableEvent::Commit { .. } | TableEvent::Selected(_) | TableEvent::Button { .. } => {}
             }
         }
         // `6 more free channels.` (design 056 §4.2): a click unfolds them.
         if folded > 0 {
             ui.horizontal(|ui| {
-                ui.add_space(ecad_ui::tokens::space::M);
+                ui.add_space(ecad_widgets::tokens::space::M);
                 let words = if folded == 1 { "1 more free channel.".to_string() } else { format!("{folded} more free channels.") };
                 let r = ui.push_id(MORE_FREE, |ui| {
-                    ui.add(egui::Label::new(egui::RichText::new(words).size(ty.size).color(ecad_ui::color(s.text_3))).sense(egui::Sense::click()))
+                    ui.add(egui::Label::new(egui::RichText::new(words).size(ty.size).color(ecad_widgets::color(s.text_3))).sense(egui::Sense::click()))
                 });
                 if r.inner.clicked() {
                     out.push(ListAction::Unfold);
@@ -1141,7 +1141,7 @@ impl IoView {
                 }
                 // The card's symbols selected on its first page: the inspector shows the card.
                 let reps = self.symbols.get(i).cloned().unwrap_or_default();
-                (changed && !reps.is_empty()).then_some(ListAction::Panel(crate::project_panel::Action::GotoSymbols(reps)))
+                (changed && !reps.is_empty()).then_some(ListAction::Panel(crate::pages::project_panel::Action::GotoSymbols(reps)))
             }
             ListAction::Chip(i) => {
                 self.choose_chip(i);

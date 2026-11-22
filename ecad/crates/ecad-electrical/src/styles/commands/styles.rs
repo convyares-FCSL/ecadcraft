@@ -9,10 +9,10 @@ use serde::Deserialize;
 use serde_json::{Map, Number, Value, json};
 use std::collections::BTreeMap;
 
-use ecad_model::style::{BasedOn, MAX_STYLES_PER_CATALOGUE, StyleName, is_name};
+use ecad_model::objects::styles::{BasedOn, MAX_STYLES_PER_CATALOGUE, StyleName, is_name};
 use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleLayer, StyleRef};
 
-use crate::cmd::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
+use crate::commands::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
 use crate::defaults::{self, Entry, Kind};
 use crate::error::CmdError;
 use crate::styles::{self, Catalogue, Layer};
@@ -26,7 +26,7 @@ pub const NOTHING_TO_COPY: &str = "That project uses IEC (built in); nothing to 
 /// The words of IEC (built in), the standard of a project without one.
 pub const IEC: &str = "IEC (built in)";
 /// Most fields one `setstyle` call sets (a guard on hostile input: the record's own bound).
-pub const MAX_FIELDS_PER_CALL: usize = ecad_model::style::MAX_FIELDS_PER_STYLE;
+pub const MAX_FIELDS_PER_CALL: usize = ecad_model::objects::styles::MAX_FIELDS_PER_STYLE;
 
 // ---------------------------------------------------------------------------------------------
 // Parameters
@@ -129,14 +129,14 @@ fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Optio
     Ok(Some(match parsed {
         defaults::Value::Length(x) | defaults::Value::Number(x) => format!("{x}"),
         defaults::Value::Choice(w) => w.to_string(),
-        defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
+        defaults::Value::Flag(b) => ecad_model::naming::words::flag_word(b).to_string(),
         defaults::Value::Text(t) => t.to_string(),
         defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
         defaults::Value::Size(s) => s.to_string(),
         defaults::Value::Colours(c) => c.to_string(),
         defaults::Value::Colour(c) => c.to_string(),
         defaults::Value::Sheet(s) => s.text(),
-        defaults::Value::Margins(m) => ecad_model::sheet::margins_text(&m),
+        defaults::Value::Margins(m) => ecad_model::document::sheet::margins_text(&m),
         defaults::Value::CoreColours(c) => c.to_string(),
     }))
 }
@@ -199,7 +199,7 @@ pub fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleR
     let mut put = |o: ObjectRef, key: &str| {
         // Design 072 §4.6: a wire's own type is its field.
         if let ObjectRef::Wire(w) = o
-            && key == ecad_model::wiring::WIRE_CATEGORY
+            && key == ecad_model::connectivity::wiring::WIRE_CATEGORY
         {
             if let Some(before) = doc.wires.get(&w).filter(|x| x.wire_type.as_ref() == Some(id)) {
                 let mut after = before.clone();
@@ -239,7 +239,7 @@ pub fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleR
     }
     // Brief 050a: a location box's own style is its field (design 072 §6.2).
     for a in styles::box_users(doc, cat.catalogue, id) {
-        out.extend(super::continuation::box_op(doc, a, |b| b.style = Some(to.clone())));
+        out.extend(crate::continuations::commands::box_op(doc, a, |b| b.style = Some(to.clone())));
     }
     out
 }
@@ -617,7 +617,7 @@ pub fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace_with: 
         ops.extend(rewrite_users(doc, cat, &id, &to));
     }
     for l in [StyleLayer::Project, StyleLayer::Standard] {
-        if let Some(r) = ecad_model::style::record(doc, l, cat.catalogue, &id) {
+        if let Some(r) = ecad_model::objects::styles::record(doc, l, cat.catalogue, &id) {
             ops.push(Op::SetStyle { layer: l, catalogue: cat.catalogue, id: id.clone(), before: Some(r.clone()), after: None });
         }
     }
@@ -741,20 +741,20 @@ pub fn value_json(r: &defaults::Resolved<'_>) -> Value {
     match r.value {
         defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
         defaults::Value::Choice(w) => json!(w),
-        defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
+        defaults::Value::Flag(b) => json!(ecad_model::naming::words::flag_word(b)),
         defaults::Value::Text(t) => json!(t),
         defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
         defaults::Value::Size(s) => json!(s.to_string()),
         defaults::Value::Colours(c) => json!(c.to_string()),
         defaults::Value::Colour(c) => json!(c.to_string()),
         defaults::Value::Sheet(s) => json!(s.text()),
-        defaults::Value::Margins(m) => json!(ecad_model::sheet::margins_text(&m)),
+        defaults::Value::Margins(m) => json!(ecad_model::document::sheet::margins_text(&m)),
         defaults::Value::CoreColours(c) => json!(c.to_string()),
     }
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run; design 050 §6)
+// The commands (generic: crate::commands::run; design 050 §6)
 
 /// `styles {catalogue?, users?}` (read only): every style, catalogue by catalogue; records of
 /// catalogues this build does not know are listed apart (a newer file opens in an older build).
@@ -1013,10 +1013,10 @@ impl Generic for PromoteParams {
             let entry = promote_entry(key)?;
             needs_standard(doc)?;
             if !entry.allows(defaults::Level::Standard) {
-                return Err(CmdError::refused(super::default::level_refused(entry, defaults::Level::Standard)));
+                return Err(CmdError::refused(crate::styles::commands::defaults::level_refused(entry, defaults::Level::Standard)));
             }
             let (mut ops, text) = promote_value(doc, entry)?;
-            ops.extend(super::default::ops(doc, entry, defaults::Level::Project, super::default::Target::Project, None)?);
+            ops.extend(crate::styles::commands::defaults::ops(doc, entry, defaults::Level::Project, crate::styles::commands::defaults::Target::Project, None)?);
             return Ok(Outcome::edit(format!("Promote {}", entry.label), ops, json!({"changed": true, "key": entry.key, "value": text})));
         }
         let cat = required_catalogue(self.catalogue.as_deref())?;

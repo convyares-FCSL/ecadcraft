@@ -20,8 +20,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::device::load::load_power;
-use crate::units::{RatedVoltage, Watts};
+use crate::objects::devices::load::load_power;
+use crate::geometry::units::{RatedVoltage, Watts};
 
 /// The largest power of an indicator, in watts.
 pub const MAX_POWER_WATTS: f64 = 10_000.0;
@@ -33,8 +33,8 @@ pub const MAX_VOLTS: f64 = 1000.0;
 ///
 /// # Example
 /// ```
-/// use ecad_model::device::{Indicator, IndicatorColour, SignalType};
-/// use ecad_model::units::{Current, RatedVoltage, Volts, Watts};
+/// use crate::objects::devices::{Indicator, IndicatorColour, SignalType};
+/// use crate::geometry::units::{Current, RatedVoltage, Volts, Watts};
 /// let v = RatedVoltage { volts: Volts(24.0), current: Current::Dc };
 /// let i = Indicator { colour: Some(IndicatorColour::Red), rated_voltage: Some(v), power: Some(Watts(2.0)), ..Indicator::empty(SignalType::Flashing) };
 /// assert_eq!(i.to_string(), "red, flashing, 24 V DC, 2 W");

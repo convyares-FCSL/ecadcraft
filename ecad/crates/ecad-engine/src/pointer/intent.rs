@@ -12,7 +12,7 @@ use cadcraft_engine::Session;
 use cadcraft_engine::geom::Vec2;
 use ecad_model::{Document, PageId, Subject, ConnectionPointId};
 
-use super::{capture, pick, pixel, read, route_ends};
+use crate::interact::{capture, pick, pixel, read, route_ends};
 use crate::project::{Mapped, Project};
 
 /// The sentence for tool `command` with the cursor at `cursor` on the active page.
@@ -36,7 +36,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
             Some(c) => {
                 let mut s = format!("joins {}", point_words(doc, c.terminal));
                 if let Some(w) = wire_ending_at(doc, page, c.at, aperture) {
-                    s.push_str(&format!(" to {}", super::kind::wire_words(doc, w)));
+                    s.push_str(&format!(" to {}", crate::pointer::kind::wire_words(doc, w)));
                 }
                 Some(s)
             }
@@ -45,7 +45,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
                 let Some(Mapped::Item(i)) = p.pages.get(&page)?.map.get(h) else { return None };
                 match doc.representation_of_item(i)?.1.subject {
                     Subject::Route(r) => {
-                        let words = crate::wires::wire_of_route(doc, r).map_or_else(|| "the wire line".into(), |w| super::kind::wire_words(doc, w));
+                        let words = crate::wires::wire_of_route(doc, r).map_or_else(|| "the wire line".into(), |w| crate::pointer::kind::wire_words(doc, w));
                         Some(format!("joins {words} (a T)"))
                     }
                     _ => None,
@@ -59,13 +59,13 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
 
 /// `A1 of -K01` (a device's connection point), or the terminal's name (`-X01:3`).
 fn point_words(doc: &Document, t: ConnectionPointId) -> String {
-    let name = super::connection_point_name(doc, t);
+    let name = crate::interact::connection_point_name(doc, t);
     // Brief 044: a connector pin is named by its half (`-X10.S:3`).
-    if let Some(n) = crate::connectors::pin_name(doc, t) {
+    if let Some(n) = ecad_electrical::connectors::pin_name(doc, t) {
         return n;
     }
     match doc.terminals.get(&t).and_then(|x| x.device()) {
-        Some(c) if crate::strips::strip_of(doc, c).is_some() => format!("{}:{name}", crate::devices::tag_words(doc, c)),
+        Some(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => format!("{}:{name}", crate::devices::tag_words(doc, c)),
         Some(c) => match crate::devices::tag_of(doc, c) {
             Some(tag) => format!("{name} of {tag}"),
             None => name,

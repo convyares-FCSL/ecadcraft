@@ -1,11 +1,11 @@
 //! The app's modal questions: the close question, the file dialog, the issue question, Renumber,
 //! merge, and the symbol search window.
 
-use crate::file_ops::in_default_folder;
-use crate::run::with_param;
+use crate::shell::files::in_default_folder;
+use crate::commands::run::with_param;
 use crate::*;
-use ecad_ui::dialog::{Dialog, action};
-use ecad_ui::prim::{self, Kind, Tone};
+use ecad_widgets::dialog::{Dialog, action};
+use ecad_widgets::prim::{self, Kind, Tone};
 
 impl App {
     /// The symbol search window (brief 018): its rows and second step are read from the project
@@ -274,7 +274,7 @@ impl App {
             ctx,
             |ui| {
                 prim::body(ui, &hint, true);
-                let field = ecad_ui::control::TextEntry::new(&mut d.path, "ecad.file.path").show(ui);
+                let field = ecad_widgets::control::TextEntry::new(&mut d.path, "ecad.file.path").show(ui);
                 // Enter ends the text field's input (it gives up focus): checked before focus is
                 // requested, which would otherwise cancel that.
                 if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {

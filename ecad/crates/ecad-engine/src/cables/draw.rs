@@ -3,19 +3,19 @@
 //! ([`marker_box`]), and the canvas: the sheet in use, coloured routes and painted marks.
 //!
 //! The fan, the marker and the core labels themselves are computed over the document in
-//! [`ecad_electrical::cable_look`], with [`font_width`] passed in to measure text.
+//! [`ecad_electrical::cables::layout`], with [`font_width`] passed in to measure text.
 //!
 //! This module records nothing in the document.
 
 use ecad_model::{Document, ItemKind, PageId, Pt, Subject, WireId};
 
-pub use crate::words::{
+pub use ecad_electrical::cables::words::{
     CODE_COLOURS, DashBudget, MAX_CODE_CHARS, MAX_CORE_CHARS, MAX_DASHES, MAX_PAGE_DASHES, colour_code, conductor_colour, conductor_colour_in,
     dash_budget, dash_count, dash_segments, shorten, wire_colours,
 };
-pub use crate::words::{FlagShape, FlagSide, WIRE_WEIGHT, flag_shape, label_height};
+pub use ecad_electrical::cables::words::{FlagShape, FlagSide, WIRE_WEIGHT, flag_shape, label_height};
 /// The representation role of a cable's reference end: brief 010's, one definition for both briefs.
-pub use ecad_model::derive::MAX_REFERENCES_PER_CABLE;
+pub use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
 /// The width of `text` per unit of text height in the drafting font CADCraft draws text with (0
 /// for anything that does not measure): multiply by the height it is drawn at.
 pub fn font_width(text: &str) -> f64 {
@@ -27,7 +27,7 @@ pub fn font_width(text: &str) -> f64 {
 /// reference end at `at` showing `text` with its flag on `side`: what a pick of the marker hits
 /// (brief 010's pick-first rule). It follows the flag to whichever side it is drawn.
 pub fn marker_box(at: Pt, text: &str, side: FlagSide, h: f64) -> (Pt, Pt) {
-    crate::words::flag_box(at, font_width(&shorten(text, 64)) * h, side, h)
+    ecad_electrical::cables::words::flag_box(at, font_width(&shorten(text, 64)) * h, side, h)
 }
 
 // ---------------------------------------------------------------- the canvas (brief 040)
@@ -102,12 +102,12 @@ pub fn pick_routes(p: &crate::Project, page: PageId, selection: &[cadcraft_engin
 }
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[crate::cmd::input::Typed] = &[crate::cmd::input::Typed::of::<CanvassheetParams>("canvassheet")];
+pub const TYPED: &[crate::commands::input::Typed] = &[crate::commands::input::Typed::of::<CanvassheetParams>("canvassheet")];
 
 /// The commands this module adds.
 pub fn specs() -> Vec<cadcraft_engine::CommandSpec> {
     vec![
-        cadcraft_engine::CommandSpec::new("canvassheet", "Canvas Sheet", crate::cmd::input::typed::<CanvassheetParams>)
+        cadcraft_engine::CommandSpec::new("canvassheet", "Canvas Sheet", crate::commands::input::typed::<CanvassheetParams>)
             .params("{dark: bool} (display only: the sheet the page is drawn on)")
             .noundo(),
     ]
@@ -122,13 +122,13 @@ pub(crate) struct CanvassheetParams {
     dark: bool,
 }
 
-impl crate::cmd::input::Command for CanvassheetParams {
+impl crate::commands::input::Command for CanvassheetParams {
     fn run(self, s: &mut cadcraft_engine::Session) -> cadcraft_engine::Result<serde_json::Value> {
         let dark = self.dark;
         let changed = DARK_SHEET.swap(dark, std::sync::atomic::Ordering::Relaxed) != dark;
         if changed {
             // The open page only: there is one page window, and a page is projected afresh when shown.
-            let _ = crate::cmd::on_any_page(s, |p, pg| {
+            let _ = crate::commands::on_any_page(s, |p, pg| {
                 p.redraw_window(pg, Some("canvassheet"));
                 Ok(())
             });
@@ -165,7 +165,7 @@ pub fn coloured_routes(
     doc: &Document, page: PageId, map: Option<&crate::project::HandleMap>, sheet: &ecad_drawing_style::Sheet,
 ) -> Vec<ColouredRoute> {
     let mut out = Vec::new();
-    let looks = crate::styles::wire::WireLooks::new(doc);
+    let looks = ecad_electrical::styles::wire::WireLooks::new(doc);
     for (rep, r) in doc.representations_on(page) {
         let Subject::Route(x) = r.subject else { continue };
         if r.form != ecad_model::Form::Drawn {
@@ -225,7 +225,7 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
         .filter(|h| {
             let Some((rep, crate::devices::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
             let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
-            crate::devices::tag_of(doc, c).is_some_and(ecad_model::tag::is_provisional)
+            crate::devices::tag_of(doc, c).is_some_and(ecad_model::naming::tag::is_provisional)
         })
         .collect()
 }
@@ -237,7 +237,7 @@ pub fn text_colour_rgb(c: crate::text_style::TextColour, sheet: &ecad_drawing_st
         crate::text_style::TextColour::Rgb(r, g, b) => Some(cadcraft_engine::doc::color::Rgb(r, g, b)),
         crate::text_style::TextColour::Code(i) => {
             let dark = sheet.sheet == ecad_drawing_style::sheet::DARK.sheet;
-            crate::words::CODE_COLOURS.get(i).map(|(_, paper, on_dark)| rgb(if dark { *on_dark } else { *paper }))
+            ecad_electrical::cables::words::CODE_COLOURS.get(i).map(|(_, paper, on_dark)| rgb(if dark { *on_dark } else { *paper }))
         }
     }
 }
@@ -248,16 +248,16 @@ pub fn colour_rgb(value: &str, sheet: &ecad_drawing_style::Sheet) -> Option<cadc
     if t.eq_ignore_ascii_case("none") {
         return None;
     }
-    if let Some((r, g, b)) = crate::styles::hex_rgb(t) {
+    if let Some((r, g, b)) = ecad_electrical::styles::hex_rgb(t) {
         return Some(cadcraft_engine::doc::color::Rgb(r, g, b));
     }
-    let w = crate::words::wire_colours(&ecad_model::wire::Colours::parse(t)?, sheet)?;
-    Some(crate::look::rgb(w.solid))
+    let w = ecad_electrical::cables::words::wire_colours(&ecad_model::objects::wire::Colours::parse(t)?, sheet)?;
+    Some(crate::cables::draw::rgb(w.solid))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn shortening_counts_characters_and_hides_controls() {

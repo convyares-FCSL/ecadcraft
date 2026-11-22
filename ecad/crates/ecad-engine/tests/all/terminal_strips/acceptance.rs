@@ -7,7 +7,7 @@
 
 use ecad_engine::Persistence;
 use ecad_engine::outputs::{Group, kept::ReportModels};
-use ecad_model::{CableId, DeviceId, Document, PageId, ConnectionPointId, WireId, tag};
+use {ecad_model::CableId, ecad_model::DeviceId, ecad_model::Document, ecad_model::PageId, ecad_model::ConnectionPointId, ecad_model::WireId, ecad_model::naming::tag};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};

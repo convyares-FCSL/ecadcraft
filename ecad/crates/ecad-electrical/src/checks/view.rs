@@ -12,13 +12,13 @@
 //! Every other effect changes nothing. Until first show the view is not kept and notes nothing.
 
 use ecad_model::Document;
-use ecad_model::effect::{AreaSet, Effect};
-use ecad_model::view::{DerivedView, NoteCx, Outcome, ViewScope};
+use ecad_model::document::effect::{AreaSet, Effect};
+use ecad_model::document::view::{DerivedView, NoteCx, Outcome, ViewScope};
 
-use super::Inputs;
+use crate::views::Inputs;
 use crate::checks::Scope;
 use crate::checks::kept::Checks;
-use crate::text_style::fonts::TextMetrics;
+use crate::styles::text_style::fonts::TextMetrics;
 
 /// The kept Checks list, with the tolerance it was built with.
 #[derive(Debug)]

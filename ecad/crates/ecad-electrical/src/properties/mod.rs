@@ -6,7 +6,7 @@
 //! # Update map (design 019 §9, `ecad/CLAUDE.md` "Derived views")
 //! A [`PropsView`] names the objects its rows read ([`PropsView::deps`]). It is rebuilt when the
 //! selection or the active page changes, and after a change whose Properties-feed set
-//! ([`crate::derived::PropsFeed`]) meets those
+//! ([`crate::views::PropsFeed`]) meets those
 //! objects (or that could touch anything, `None`); every other change leaves it as it is. A build
 //! reads the selected objects, their pages and the project's properties only: O(selected).
 //!
@@ -14,14 +14,16 @@
 //! which builds the view from them), and excludes editing several kinds at once, cable members and
 //! cores (read only here), and free project properties (Project Properties holds them).
 
+pub mod commands;
+pub(crate) mod view;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::Word;
-use ecad_model::book::{Book, FUNCTION_KEY, LOCATION_KEY, NUMBER_KEY};
-use ecad_model::keys::PropsExt;
+use ecad_model::document::book::{Book, FUNCTION_KEY, LOCATION_KEY, NUMBER_KEY};
+use ecad_model::naming::keys::PropsExt;
 use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, PageId, Subject, WireId};
 
-use crate::words::Row;
+use crate::cables::words::Row;
 
 /// What a row edits, as the command that writes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +61,7 @@ pub struct PropsView {
 /// The Sheet combo's choices for a page: the project's sheet, then the presets.
 pub fn sheet_choices(doc: &Document) -> Vec<String> {
     let mut out = vec![format!("Project ({})", doc.settings.sheet().summary())];
-    out.extend(ecad_model::sheet::PRESETS.iter().map(|p| p.0.to_string()));
+    out.extend(ecad_model::document::sheet::PRESETS.iter().map(|p| p.0.to_string()));
     out
 }
 
@@ -69,18 +71,18 @@ pub fn page_section(doc: &Document, page: PageId) -> Section {
     let number = book.number(doc, page);
     let mut rows =
         vec![Row::rw(NUMBER_KEY, "Number", number.clone()), Row::rw("title", "Title", pg.map(|x| x.title.to_string()).unwrap_or_default())];
-    let folder = ecad_model::book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
-    let path = crate::revisions::folder_path(doc, folder);
+    let folder = ecad_model::document::book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
+    let path = crate::releases::revisions::folder_path(doc, folder);
     rows.push(Row::ro("folder", "Folder", if path.is_empty() { "(top level)".into() } else { path }));
     for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {
         // Brief 052: stored as entry keys, shown as codes (design 072 §5.3: page and project fields).
-        let shown = |v: Option<String>| v.map(|v| crate::designations::display(doc, key, &v));
-        let a = crate::designations::Aspect::of_property(key);
-        let own = a.and_then(|a| pg.and_then(|x| crate::designations::page_key(x, a)));
+        let shown = |v: Option<String>| v.map(|v| crate::locations::designations::display(doc, key, &v));
+        let a = crate::locations::designations::Aspect::of_property(key);
+        let own = a.and_then(|a| pg.and_then(|x| crate::locations::designations::page_key(x, a)));
         let mut r = match shown(own) {
             Some(v) => Row::rw(key, label, v),
             None => {
-                let inherited = shown(a.and_then(|a| crate::designations::default_key(&doc.project, a)));
+                let inherited = shown(a.and_then(|a| crate::locations::designations::default_key(&doc.project, a)));
                 let mut r = Row::rw(key, label, inherited.as_ref().map(|v| format!("{v} (project)")).unwrap_or_default());
                 r.inherited = inherited.is_some();
                 r
@@ -90,7 +92,7 @@ pub fn page_section(doc: &Document, page: PageId) -> Section {
         rows.push(r);
     }
     let mut sheet = Row::rw(
-        ecad_model::sheet::SHEET_KEY,
+        ecad_model::document::sheet::SHEET_KEY,
         "Sheet",
         match pg.and_then(|x| x.sheet) {
             Some(t) => t.text(),
@@ -106,8 +108,8 @@ pub fn page_section(doc: &Document, page: PageId) -> Section {
 
 /// The codes of `key`'s aspect in the project's list, offered as completions (design 052 §9.1).
 fn codes(doc: &Document, key: &str) -> Vec<String> {
-    crate::designations::Aspect::of_property(key)
-        .map(|a| crate::designations::entries(doc, a).into_iter().map(|e| e.code).collect())
+    crate::locations::designations::Aspect::of_property(key)
+        .map(|a| crate::locations::designations::entries(doc, a).into_iter().map(|e| e.code).collect())
         .unwrap_or_default()
 }
 
@@ -115,7 +117,7 @@ fn codes(doc: &Document, key: &str) -> Vec<String> {
 /// be empty), Panel temperature and Style (editable; unset shows the project's, faint), Vertices
 /// and Devices inside.
 pub fn box_section(doc: &Document, b: ecad_model::AidId) -> Section {
-    use crate::designations::{self as d, Aspect};
+    use crate::locations::designations::{self as d, Aspect};
     let shape = doc.representations_of(Subject::Aid(b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r));
     let values = crate::locations::box_values(doc, b);
     let shown = |a: Aspect| values.and_then(|x| d::box_key(x, a)).map(|k| d::display(doc, a.property(), &k)).unwrap_or_default();
@@ -150,10 +152,10 @@ fn box_temperature_row(doc: &Document, values: Option<&ecad_model::LocationBox>)
     let key = crate::locations::PANEL_TEMPERATURE_KEY;
     let label = "Panel temperature (\u{b0}C)";
     match values.and_then(|x| x.panel_temperature) {
-        Some(t) => Row::rw(key, label, crate::rating::dataset::fmt_num(t.0)),
+        Some(t) => Row::rw(key, label, crate::devices::ratings::dataset::fmt_num(t.0)),
         None => {
             let project = crate::defaults::resolve(doc, &crate::defaults::rating::PANEL_TEMPERATURE, crate::defaults::Scope::project()).number();
-            Row { inherited: true, ..Row::rw(key, label, crate::rating::dataset::fmt_num(project)) }
+            Row { inherited: true, ..Row::rw(key, label, crate::devices::ratings::dataset::fmt_num(project)) }
         }
     }
 }
@@ -183,13 +185,13 @@ pub fn device_section(
             "*varies*".into()
         } else {
             // Brief 052: a function or location shows its code (`?` for a key with no entry).
-            values.into_iter().next().flatten().map(|v| crate::designations::display(doc, key, &v)).unwrap_or_default()
+            values.into_iter().next().flatten().map(|v| crate::locations::designations::display(doc, key, &v)).unwrap_or_default()
         };
         let mut r = if key == "tag" && !one { Row::ro(key, label, value) } else { Row::rw(key, label, value) };
         r.varies = varies;
         // Brief 052 (design 052 §9.1): an unset function or location is `?`, with the selected
         // symbol's context offered as **Use +CP1**. Nothing is inherited.
-        if let Some(a) = crate::designations::Aspect::of_property(key) {
+        if let Some(a) = crate::locations::designations::Aspect::of_property(key) {
             r.choices = codes(doc, key);
             if !varies && r.value.is_empty() {
                 r.proposal = proposal(doc, a, symbol);
@@ -221,7 +223,7 @@ pub fn device_section(
             } else {
                 r.connection_points.keys().copied().collect()
             };
-            let labels: Vec<String> = shown.iter().map(|t| crate::terminal_types::connection_point_name(doc, *t)).collect();
+            let labels: Vec<String> = shown.iter().map(|t| crate::terminal_strips::terminal_blocks::connection_point_name(doc, *t)).collect();
             let mut this = name;
             if !labels.is_empty() {
                 this.push(' ');
@@ -229,9 +231,9 @@ pub fn device_section(
             }
             rows.push(Row::ro("symbol", "This symbol", this));
             // Brief 052 (design 052 §3.5): the symbol's type, from its definition.
-            rows.push(Row::ro("rep_type", "Symbol", crate::reps::rep_type(doc, r).word().to_string()));
+            rows.push(Row::ro("rep_type", "Symbol", crate::symbols::reps::rep_type(doc, r).word().to_string()));
             let book = Book::of(doc);
-            let grid = ecad_model::sheet::Grid::of(doc, r.page);
+            let grid = ecad_model::document::sheet::Grid::of(doc, r.page);
             let at = r
                 .items
                 .first()
@@ -242,7 +244,7 @@ pub fn device_section(
                 })
                 .or_else(|| r.connection_points.values().next().copied());
             let place = at
-                .and_then(|p| ecad_model::derive::place_on(&grid, &book.number(doc, r.page), p))
+                .and_then(|p| ecad_model::connectivity::derive::place_on(&grid, &book.number(doc, r.page), p))
                 .map_or_else(|| "?".into(), |pl| pl.text(doc.settings.reference_style()));
             rows.push(Row::ro("where", "Where", place));
         }
@@ -260,7 +262,7 @@ pub fn device_section(
     let mut buttons = Vec::new();
     match (one, devices.iter().next().copied()) {
         // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
-        (true, Some(c)) if crate::strips::strip_of(doc, c).is_some() => strip_rows(doc, c, &mut rows, &mut buttons),
+        (true, Some(c)) if crate::terminal_strips::strip_of(doc, c).is_some() => strip_rows(doc, c, &mut rows, &mut buttons),
         (true, Some(c)) => {
             device_reference_rows(doc, c, symbol, &mut rows, &mut buttons);
             // Brief 045 (design 045 §2.6): Properties ▸ Card and ▸ Rack.
@@ -280,13 +282,13 @@ pub fn device_section(
 }
 
 /// The proposal for an unset aspect `a`: the selected symbol's context (design 052 §9.1).
-fn proposal(doc: &Document, a: crate::designations::Aspect, symbol: Option<ecad_model::RepresentationId>) -> Option<(String, String)> {
+fn proposal(doc: &Document, a: crate::locations::designations::Aspect, symbol: Option<ecad_model::RepresentationId>) -> Option<(String, String)> {
     let r = symbol.and_then(|s| doc.representations.get(&s))?;
     let ctx = crate::locations::rep_context_in(doc, a, r, &mut crate::locations::BoxCache::default());
     let code = ctx.value?;
     let from = match ctx.source {
-        crate::locations::Source::Box { page, .. } => format!("From the box on {}", ecad_model::book::page_number(doc, page)),
-        crate::locations::Source::Page(p) => format!("From page {}", ecad_model::book::page_number(doc, p)),
+        crate::locations::Source::Box { page, .. } => format!("From the box on {}", ecad_model::document::book::page_number(doc, page)),
+        crate::locations::Source::Page(p) => format!("From page {}", ecad_model::document::book::page_number(doc, p)),
         _ => "From the project".to_string(),
     };
     Some((code, from))
@@ -300,7 +302,7 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
     let device = crate::locations::resolve(doc, c).value.unwrap_or_else(|| "?".into());
     let mut row = |key: &str, label: &str| {
         let mut r = match props.and_then(|p| p.get(key)) {
-            Some(v) => Row::rw(key, label, crate::designations::display(doc, key, v)),
+            Some(v) => Row::rw(key, label, crate::locations::designations::display(doc, key, v)),
             None => Row { inherited: true, ..Row::rw(key, label, format!("{device} (device)")) },
         };
         r.choices = codes(doc, LOCATION_KEY);
@@ -309,8 +311,8 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
     if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
         row("location.socket", "Location (socket)");
         row("location.plug", "Location (plug)");
-    } else if crate::strips::strip_of(doc, c).is_none()
-        && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::reps::rep_type(doc, r) == ecad_model::PartRole::Terminal)
+    } else if crate::terminal_strips::strip_of(doc, c).is_none()
+        && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Terminal)
     {
         row("location.terminal", "Terminals in");
     }
@@ -320,51 +322,51 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
 /// and read-only Coil (a contact selected) or Contacts (its coil selected), each with Go to
 /// (`refgoto:<source>:<target>:<label>` buttons).
 fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
-    use crate::xref;
-    let offered = xref::contacts_of(doc, c).map(|s| s.to_string()).unwrap_or_default();
-    rows.push(Row::rw(xref::CONTACTS_KEY, "Contacts offered", offered));
-    let dev = xref::device(doc, c);
+    use crate::references::devices;
+    let offered = devices::contacts_of(doc, c).map(|s| s.to_string()).unwrap_or_default();
+    rows.push(Row::rw(devices::CONTACTS_KEY, "Contacts offered", offered));
+    let dev = devices::device(doc, c);
     if dev.head.is_some() {
         let project = doc.settings.contact_mirror.word();
         let default = format!("Project default ({project})");
-        let value = match xref::placement_of(doc, c) {
+        let value = match devices::placement_of(doc, c) {
             (_, false) => default.clone(),
-            (xref::Placement::At(_), true) => "Moved".into(),
+            (devices::Placement::At(_), true) => "Moved".into(),
             (p, true) => {
                 let w = p.word();
                 let mut ch = w.chars();
                 ch.next().map(|f| f.to_uppercase().chain(ch).collect()).unwrap_or_default()
             }
         };
-        let mut r = Row::rw(xref::MIRROR_KEY, "Contact table", value);
+        let mut r = Row::rw(devices::MIRROR_KEY, "Contact table", value);
         r.choices = vec![default, "Auto".into(), "Below".into(), "Right".into(), "Off".into()];
         rows.push(r);
     }
     let Some(sym) = symbol else { return };
-    let mut places = xref::Places::new(doc);
+    let mut places = devices::Places::new(doc);
     if dev.head == Some(sym) {
-        let offer = xref::offer_of(doc, c);
-        let list = xref::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
+        let offer = devices::offer_of(doc, c);
+        let list = devices::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
         let text: Vec<String> = list
             .iter()
             .map(|r| {
                 let state = match r.state {
-                    xref::State::Drawn => "",
-                    xref::State::Spare => " (spare)",
-                    xref::State::Over => " (beyond the part)",
+                    devices::State::Drawn => "",
+                    devices::State::Spare => " (spare)",
+                    devices::State::Over => " (beyond the part)",
                 };
                 format!("{} {} {}{state}", r.label_pair(), r.kind.upper(), r.place)
             })
             .collect();
         rows.push(Row::ro("contactrows", "Contacts", if text.is_empty() { "none drawn".into() } else { text.join("; ") }));
-        for r in list.iter().filter(|r| r.state != xref::State::Spare) {
+        for r in list.iter().filter(|r| r.state != devices::State::Spare) {
             if let Some(t) = r.rep {
                 buttons.push(format!("refgoto:{}:{}:Go to {}", sym.hex(), t.hex(), r.label_pair()));
             }
         }
     } else if dev.children.contains(&sym) {
         let value = match dev.head.and_then(|h| doc.representations.get(&h)) {
-            Some(h) => places.text(h.page, xref::anchor(doc, h)),
+            Some(h) => places.text(h.page, devices::anchor(doc, h)),
             None => "not drawn".into(),
         };
         rows.push(Row::ro("coil", "Coil", value));
@@ -422,12 +424,12 @@ fn continuation_rows(
 /// Brief 028's rows of a strip (design 028 §7.2): Terminals offered, the read-only counts with
 /// **Show plan** (`showplan:<strip>`), and the PE terminals' part number and maker.
 fn strip_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
-    use crate::strips;
+    use crate::terminal_strips;
     let props = doc.devices.get(&c).map(|x| &x.properties);
     let get = |k: &str| props.and_then(|p| p.get(k)).cloned().unwrap_or_default();
-    rows.push(Row::rw(strips::OFFER_KEY, "Terminals offered", get(strips::OFFER_KEY)));
-    let drawn = strips::drawn_connection_points(doc, c).len();
-    let value = match strips::offer_of(doc, c) {
+    rows.push(Row::rw(terminal_strips::OFFER_KEY, "Terminals offered", get(terminal_strips::OFFER_KEY)));
+    let drawn = terminal_strips::drawn_connection_points(doc, c).len();
+    let value = match terminal_strips::offer_of(doc, c) {
         Some(o) => {
             let labels: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
             let spare = (1..=o.positions).filter(|n| !labels.contains(&n.to_string())).count();
@@ -436,19 +438,19 @@ fn strip_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>, buttons: &mut Ve
         None => format!("{drawn} drawn"),
     };
     rows.push(Row::ro("terminalcounts", "Terminals", value));
-    rows.push(Row::rw(strips::PE_PART_KEY, "PE part number", get(strips::PE_PART_KEY)));
-    rows.push(Row::rw(strips::PE_MAKER_KEY, "PE maker", get(strips::PE_MAKER_KEY)));
+    rows.push(Row::rw(terminal_strips::PE_PART_KEY, "PE part number", get(terminal_strips::PE_PART_KEY)));
+    rows.push(Row::rw(terminal_strips::PE_MAKER_KEY, "PE maker", get(terminal_strips::PE_MAKER_KEY)));
     // Brief 030 (design 030 §2.5): what is placed, and the parts (the project's value shown
     // faint where the strip has none).
     rows.push(Row::ro("acc.placed", "Accessories placed", placed_words(props)));
-    for item in crate::accessories::PART_ITEMS {
+    for item in crate::terminal_strips::accessories::PART_ITEMS {
         let words = item.replace('_', " ");
         for (field, label) in [("part_number", "part number"), ("maker", "maker")] {
             rows.push(part_row(doc, props, &format!("{item}.{field}"), &format!("{words} {label}")));
         }
     }
-    rows.push(part_row(doc, props, crate::accessories::PER_CARD_KEY, "markers per card"));
-    rows.push(part_row(doc, props, crate::accessories::BAR_KEY, "jumper bar size"));
+    rows.push(part_row(doc, props, crate::terminal_strips::accessories::PER_CARD_KEY, "markers per card"));
+    rows.push(part_row(doc, props, crate::terminal_strips::accessories::BAR_KEY, "jumper bar size"));
     buttons.push(format!("showplan:{}", c.hex()));
 }
 
@@ -462,7 +464,7 @@ fn part_row(doc: &Document, props: Option<&ecad_model::Properties>, key: &str, l
     match own {
         Some(v) => Row::rw(key, &label, v),
         None => {
-            let from = doc.display.get(&crate::accessories::project_key(key)).cloned().unwrap_or_default();
+            let from = doc.display.get(&crate::terminal_strips::accessories::project_key(key)).cloned().unwrap_or_default();
             Row { inherited: !from.is_empty(), ..Row::rw(key, &label, from) }
         }
     }
@@ -473,13 +475,13 @@ fn placed_words(props: Option<&ecad_model::Properties>) -> String {
     let Some(props) = props else { return String::new() };
     let mut parts = Vec::new();
     let mut markers = 0;
-    for (k, v) in props.range(crate::accessories::ACC_PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(crate::accessories::ACC_PREFIX)) {
-        match crate::accessories::spot_of(k) {
-            Some(crate::accessories::Spot::On(_)) => markers += 1,
+    for (k, v) in props.range(crate::terminal_strips::accessories::ACC_PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(crate::terminal_strips::accessories::ACC_PREFIX)) {
+        match crate::terminal_strips::accessories::spot_of(k) {
+            Some(crate::terminal_strips::accessories::Spot::On(_)) => markers += 1,
             Some(s) => {
                 let at = match &s {
-                    crate::accessories::Spot::Start => "start".to_string(),
-                    crate::accessories::Spot::End => "end".to_string(),
+                    crate::terminal_strips::accessories::Spot::Start => "start".to_string(),
+                    crate::terminal_strips::accessories::Spot::End => "end".to_string(),
                     other => format!("after {}", other.gap()),
                 };
                 parts.push(format!("{at}: {}", v.replace(',', ", ").replace('_', " ")));
@@ -508,7 +510,7 @@ fn free_rows(props: Option<&ecad_model::Properties>, skip: &[&str]) -> Vec<Row> 
 /// Brief 022's rows of the wire section (design 022 §9): Wire number, Fixed, Potential,
 /// Cross-section, Colour, and the read-only Net block.
 fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
-    use ecad_model::wiring;
+    use ecad_model::connectivity::wiring;
     let conn = doc.connectivity();
     let Some(net) = conn.net_of_conductor(w).and_then(|id| conn.net(id)) else { return (Vec::new(), Vec::new()) };
     let pot = wiring::net_potential(doc, net);
@@ -536,14 +538,14 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     let own_size = wire.and_then(|x| x.size).map(|s| s.to_string());
     let own_colours = wire.and_then(|x| x.colours.as_ref()).map(|c| c.shown(doc.settings.wiring.colour_style()));
     let rows = [
-        (crate::cmd::props::d::SIZE, "Cross-section", own_size, &cs_default),
-        (crate::cmd::props::d::COLOURS, "Colour", own_colours, &colour_default),
+        (crate::properties::commands::wires::SIZE, "Cross-section", own_size, &cs_default),
+        (crate::properties::commands::wires::COLOURS, "Colour", own_colours, &colour_default),
     ];
     for (key, label, stored, default) in rows {
-        let shown = |v: &str| if key == crate::cmd::props::d::COLOURS { doc.settings.wiring.colour(v) } else { v.to_string() };
+        let shown = |v: &str| if key == crate::properties::commands::wires::COLOURS { doc.settings.wiring.colour(v) } else { v.to_string() };
         let mut row = Row::rw(key, label, stored.clone().unwrap_or_default());
-        if key == crate::cmd::props::d::COLOURS {
-            row.choices = ecad_model::colour::ConductorColour::ALL.iter().map(|c| c.shown(doc.settings.wiring.colour_style()).to_string()).collect();
+        if key == crate::properties::commands::wires::COLOURS {
+            row.choices = ecad_model::geometry::colour::ConductorColour::ALL.iter().map(|c| c.shown(doc.settings.wiring.colour_style()).to_string()).collect();
         }
         if stored.is_none()
             && let (Some(d), Some(n)) = (default, &cat_name)
@@ -558,7 +560,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     let drawn: BTreeSet<PageId> = net.wires.iter().flat_map(|c| crate::wires::wire_pages(doc, *c)).collect();
     for page in &doc.page_order {
         if drawn.contains(page) && seen.insert(*page) {
-            pages.push(ecad_model::book::page_number(doc, *page));
+            pages.push(ecad_model::document::book::page_number(doc, *page));
         }
     }
     let points = crate::wires::net_points(doc, net);
@@ -606,15 +608,15 @@ pub fn wire_section(doc: &Document, w: WireId) -> Section {
 pub fn cable_section(doc: &Document, k: CableId) -> Section {
     let cable = doc.cables.get(&k);
     let props = cable.map(|c| &c.properties);
-    let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.text(ecad_model::keys::TAG)).unwrap_or_default().to_string())];
+    let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.text(ecad_model::naming::keys::TAG)).unwrap_or_default().to_string())];
     // Brief 026: Fixed beside Tag.
-    rows.push(fixed_row(props.and_then(|p| p.get(ecad_model::tag::TAG_KEY)).map(String::as_str), props.is_some_and(ecad_model::numbering::is_fixed)));
-    rows.extend(free_rows(props, &["tag", ecad_model::tag::FIXED_KEY, crate::strips::CORES_KEY]));
+    rows.push(fixed_row(props.and_then(|p| p.get(ecad_model::naming::tag::TAG_KEY)).map(String::as_str), props.is_some_and(ecad_model::naming::numbering::is_fixed)));
+    rows.extend(free_rows(props, &["tag", ecad_model::naming::tag::FIXED_KEY, crate::terminal_strips::CORES_KEY]));
     // Brief 028 (design 028 §7.2): Cores (its own, else read from the type, shown faint) and the
     // read-only Used / Spare with Show cores.
-    let count = crate::strips::cable_cores(doc, k).unwrap_or_default();
-    let own = props.and_then(|p| p.get(crate::strips::CORES_KEY)).cloned();
-    let mut cores = Row::rw(crate::strips::CORES_KEY, "Cores", own.clone().unwrap_or_default());
+    let count = crate::terminal_strips::cable_cores(doc, k).unwrap_or_default();
+    let own = props.and_then(|p| p.get(crate::terminal_strips::CORES_KEY)).cloned();
+    let mut cores = Row::rw(crate::terminal_strips::CORES_KEY, "Cores", own.clone().unwrap_or_default());
     if own.is_none()
         && let Some(t) = &count.offer_text
     {
@@ -642,10 +644,10 @@ pub fn cable_section(doc: &Document, k: CableId) -> Section {
 /// or none.
 fn fixed_row(t: Option<&str>, fixed: bool) -> Row {
     let value = if fixed { "yes" } else { "no" }.to_string();
-    let mut r = if t.is_some_and(|t| !ecad_model::tag::is_provisional(t)) {
-        Row::rw(ecad_model::tag::FIXED_KEY, "Fixed", value)
+    let mut r = if t.is_some_and(|t| !ecad_model::naming::tag::is_provisional(t)) {
+        Row::rw(ecad_model::naming::tag::FIXED_KEY, "Fixed", value)
     } else {
-        Row::ro(ecad_model::tag::FIXED_KEY, "Fixed", value)
+        Row::ro(ecad_model::naming::tag::FIXED_KEY, "Fixed", value)
     };
     r.choices = vec!["yes".into(), "no".into()];
     r
@@ -654,7 +656,7 @@ fn fixed_row(t: Option<&str>, fixed: bool) -> Row {
 /// The key a clash box's button edits (`tag#swap`, `tag#merge`, `tag#next`): the tag, with that
 /// way forward (brief 026, design §7).
 pub fn conflict_key(way: &str) -> String {
-    format!("{}#{way}", ecad_model::tag::TAG_KEY)
+    format!("{}#{way}", ecad_model::naming::tag::TAG_KEY)
 }
 
 pub fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Section {
@@ -668,7 +670,7 @@ pub fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Sec
             buttons: Vec::new(),
         };
     };
-    let refs = ecad_model::derive::cable_references_of(doc, &BTreeSet::from([k]));
+    let refs = ecad_model::connectivity::derive::cable_references_of(doc, &BTreeSet::from([k]));
     let this = refs.iter().find(|x| x.reference == r);
     let others: Vec<String> = refs.iter().filter(|x| x.reference != r).map(|x| x.locator()).collect();
     let rows = vec![
@@ -691,14 +693,14 @@ enum TextsAt {
 
 /// The words a Texts row shows for a stored visibility.
 fn shown_words(w: &str) -> &'static str {
-    <crate::text_style::Shown as ecad_model::Word>::parse(w).unwrap_or_default().label()
+    <crate::styles::text_style::Shown as ecad_model::Word>::parse(w).unwrap_or_default().label()
 }
 
 /// The Texts rows of a device, a symbol or a page: one per kind of §5.1, `Default (…)` when the
 /// level has no value of its own. Row keys are `text.<kind>.show` (device, page) and
 /// `text.<rep>.<kind>.show` (symbol); [`edit_line`] writes them with `showtext`.
 fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
-    use crate::text_style::TextKind;
+    use crate::styles::text_style::TextKind;
     let kinds: &[TextKind] = match at {
         TextsAt::Page(_) => &[TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber, TextKind::ContinuationName],
         _ => &[TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber],
@@ -729,7 +731,7 @@ fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
         let own = own.filter(|v| entry.parse(v).is_some());
         let default = format!("Default ({})", shown_words(inherited).to_ascii_lowercase());
         let value = own.as_deref().map_or_else(|| default.clone(), |w| shown_words(w).to_string());
-        let label = format!("{group}: {}", crate::text_style::kind_words(*kind));
+        let label = format!("{group}: {}", crate::styles::text_style::kind_words(*kind));
         let mut r = Row::rw(&key, &label, value);
         r.inherited = own.is_none();
         r.choices = vec![default, "Shown".into(), "Hidden".into()];
@@ -747,8 +749,8 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
         Some((rep, kind)) if rep.len() == 32 => (ecad_model::RepresentationId::parse(rep), kind),
         _ => (None, rest),
     };
-    <crate::text_style::TextKind as ecad_model::Word>::parse(kind)?;
-    let show = value.and_then(crate::text_style::Shown::from_input).map_or(serde_json::Value::Null, |s| serde_json::json!(s.word()));
+    <crate::styles::text_style::TextKind as ecad_model::Word>::parse(kind)?;
+    let show = value.and_then(crate::styles::text_style::Shown::from_input).map_or(serde_json::Value::Null, |s| serde_json::json!(s.word()));
     let mut j = serde_json::json!({"kind": kind, "show": show});
     match (rep, target) {
         (Some(r), _) => j["representation"] = r.hex().into(),
@@ -786,12 +788,12 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         j["conflict"] = way.into();
         return format!("setprop {j}");
     }
-    let v = if key == ecad_model::tag::FIXED_KEY && value.and_then(ecad_model::words::flag) == Some(false) { serde_json::Value::Null } else { v };
+    let v = if key == ecad_model::naming::tag::FIXED_KEY && value.and_then(ecad_model::naming::words::flag) == Some(false) { serde_json::Value::Null } else { v };
     let j = match target {
         Target::Page(p) => {
             let mut m = serde_json::Map::new();
             m.insert("page".into(), p.hex().into());
-            let v = if key == ecad_model::sheet::SHEET_KEY && value.is_some_and(|s| s.starts_with("Project (") || s.eq_ignore_ascii_case("project")) {
+            let v = if key == ecad_model::document::sheet::SHEET_KEY && value.is_some_and(|s| s.starts_with("Project (") || s.eq_ignore_ascii_case("project")) {
                 serde_json::Value::Null
             } else {
                 v
@@ -808,12 +810,12 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         Target::Devices(cs) => ("setprop", serde_json::json!({"devices": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v})),
         Target::Aids(cs) => ("setprop", serde_json::json!({"aids": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v})),
         // Brief 022: the number and the potential belong to the whole net.
-        Target::Wire(w) if key == ecad_model::wiring::WIRE_NUMBER_KEY => ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v})),
+        Target::Wire(w) if key == ecad_model::connectivity::wiring::WIRE_NUMBER_KEY => ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v})),
         Target::Wire(w) if key == ecad_model::connectivity::WIRE_NUMBER_FIXED => {
-            let fixed = value.and_then(ecad_model::words::flag) == Some(true);
+            let fixed = value.and_then(ecad_model::naming::words::flag) == Some(true);
             ("wirenumber", serde_json::json!({"conductor": w.hex(), "fixed": fixed}))
         }
-        Target::Wire(w) if key == ecad_model::wiring::POTENTIAL_KEY => {
+        Target::Wire(w) if key == ecad_model::connectivity::wiring::POTENTIAL_KEY => {
             let v = value
                 .map(|s| s.trim().trim_end_matches("(continuation)").trim().to_string())
                 .filter(|s| !s.is_empty())
@@ -830,7 +832,7 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
 /// A link line's section (brief 030): its positions, part and the bars it needs (`bars`, from the
 /// strips' report model, when kept).
 pub fn link_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usize>) -> Section {
-    let key = ecad_model::links::key(n);
+    let key = ecad_model::connectivity::jumper_bars::key(n);
     let props = doc.devices.get(&c).map(|x| &x.properties);
     let get = |k: &str| props.and_then(|p| p.get(k)).cloned().unwrap_or_default();
     let rows = vec![

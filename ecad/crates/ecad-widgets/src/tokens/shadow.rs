@@ -1,6 +1,6 @@
 //! The one shadow style (spec §4): popovers and the sheet only.
 
-use crate::{BLACK, Color};
+use {crate::tokens::BLACK, crate::tokens::Color};
 
 /// Horizontal offset, px.
 pub const OFFSET_X: f32 = 0.0;

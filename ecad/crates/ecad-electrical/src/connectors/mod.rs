@@ -14,9 +14,11 @@
 //!   device it was (design 044 §3.1).
 //!
 //! Everything here reads the document; the planners return ops and change nothing. Excludes: the
-//! commands themselves (`ecad_engine::cmd::connector`), BOM rows (`outputs.rs` reads [`half_rows`]),
+//! commands themselves (`ecad_engine::connectors::commands`), BOM rows (`outputs.rs` reads [`half_rows`]),
 //! and reference texts (`xref.rs` reads [`ref_classes`]).
 
+pub mod commands;
+pub(crate) mod view;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
@@ -26,13 +28,13 @@ use ecad_model::{
 
 use ecad_model::Noun;
 use ecad_model::Word;
-use ecad_model::device::{Connector, ConnectorCheck, DeviceType, HalfPart};
+use ecad_model::objects::devices::{Connector, ConnectorCheck, DeviceType, HalfPart};
 
 use crate::CmdError;
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 use crate::defaults::{self, Scope};
 use crate::locations::{BoxCache, Located};
-use crate::strips::{self, connection_point_words};
+use crate::terminal_strips::{self, connection_point_words};
 use crate::symbols::{self, Kind, PLUG_KEY, Side, Starter, StarterKey};
 use crate::wires::{ON_WIRE, OnRoute};
 
@@ -80,7 +82,7 @@ pub const PIN_KEYS: [StarterKey; 3] = [StarterKey::Pinpair, StarterKey::Pins, St
 
 // ---------------------------------------------------------------- families (design 044 §1)
 
-use ecad_model::device::ConnectorFamily;
+use ecad_model::objects::devices::ConnectorFamily;
 
 /// What a family's halves come in (design 044 §1): its sizes, its bulkhead and its whole-half
 /// starters.
@@ -574,9 +576,9 @@ pub fn next_pin(doc: &Document, c: DeviceId, side: Side, taken: &BTreeSet<(Side,
 /// Where a representation is, in words (`101 B3`, the zone's letter first), for refusals.
 pub fn where_words(doc: &Document, rid: RepresentationId) -> String {
     let Some(r) = doc.representations.get(&rid) else { return String::new() };
-    let page = ecad_model::book::page_number(doc, r.page);
-    match crate::xref::anchor(doc, r).and_then(|a| ecad_model::wiring::place(doc, r.page, a)) {
-        Some(p) => format!("{page} {}", ecad_model::derive::zone_text(&p.column_label, &p.row_label)),
+    let page = ecad_model::document::book::page_number(doc, r.page);
+    match crate::references::devices::anchor(doc, r).and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a)) {
+        Some(p) => format!("{page} {}", ecad_model::connectivity::derive::zone_text(&p.column_label, &p.row_label)),
         None => page,
     }
 }
@@ -594,11 +596,11 @@ pub fn side_symbols(doc: &Document, c: DeviceId, side: Side) -> Vec<Representati
     v.into_iter().map(|(_, r)| r).collect()
 }
 
-/// Where go-to lands for half `side` ([`crate::reps::goto`], design 052 §4): its whole-half
+/// Where go-to lands for half `side` ([`crate::symbols::reps::goto`], design 052 §4): its whole-half
 /// symbol, else its first pin symbol in book order, then top-left; `None` when the half is not
 /// drawn. Display only: it decides nothing about the half.
 pub fn half_goto(doc: &Document, c: DeviceId, side: Side) -> Option<RepresentationId> {
-    crate::reps::goto(doc, c, Some(side))
+    crate::symbols::reps::goto(doc, c, Some(side))
 }
 
 /// The family of half `side`: its whole-half symbol's, else the connector's definition's (a
@@ -677,9 +679,9 @@ pub fn create_ops(
 ) -> Result<(DeviceId, String), CmdError> {
     let doc = ledger.document();
     let tag = match tag {
-        Some(t) if ecad_model::tag::provisional(&t).is_some_and(|(_, n)| n == 0) => {
+        Some(t) if ecad_model::naming::tag::provisional(&t).is_some_and(|(_, n)| n == 0) => {
             high.catch_up(ledger);
-            high.next_provisional_in(doc, &ecad_model::tag::provisional(&t).map(|x| x.0).unwrap_or_default())
+            high.next_provisional_in(doc, &ecad_model::naming::tag::provisional(&t).map(|x| x.0).unwrap_or_default())
         }
         Some(t) => t,
         None => high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?,
@@ -688,7 +690,7 @@ pub fn create_ops(
     let description = defaults::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text();
     let mut device_type = starter.device_type();
     if let DeviceType::Connector(x) = &mut device_type {
-        x.pins = pins.and_then(|n| u8::try_from(n).ok()).and_then(ecad_model::device::PinCount::new);
+        x.pins = pins.and_then(|n| u8::try_from(n).ok()).and_then(ecad_model::objects::devices::PinCount::new);
         x.pin_names = typed_names(names.unwrap_or_default())?;
     }
     ops.push(Op::CreateDevice {
@@ -835,14 +837,14 @@ pub fn half_field<'a>(h: &'a HalfPart, field: &str) -> Option<&'a str> {
 ///
 /// # Errors
 /// As [`check_list`].
-pub fn typed_names(names: &[String]) -> Result<Vec<ecad_model::device::PinName>, CmdError> {
+pub fn typed_names(names: &[String]) -> Result<Vec<ecad_model::objects::devices::PinName>, CmdError> {
     check_list(names)?;
-    names.iter().map(|n| ecad_model::device::PinName::new(n).map_err(|e| CmdError::refused(format!("Pin name {n}: {e}")))).collect()
+    names.iter().map(|n| ecad_model::objects::devices::PinName::new(n).map_err(|e| CmdError::refused(format!("Pin name {n}: {e}")))).collect()
 }
 
 /// Whether `key` is one of a connector's own fields' `setprop` keys: `pins`, `pin_names`,
 /// `half.<s|p>.<field>`, `ignore.<row>`. (The retired `half.<s|p>.location` is the location
-/// override `location.socket` / `location.plug`: [`crate::cmd::location::aspect_property`].)
+/// override `location.socket` / `location.plug`: [`crate::locations::commands::locations::aspect_property`].)
 pub fn is_field_key(key: &str) -> bool {
     key == PINS_KEY || key == PIN_NAMES_KEY || (key.starts_with(HALF_PREFIX) && !key.ends_with(".location")) || key.starts_with(IGNORE_PREFIX)
 }
@@ -865,8 +867,8 @@ pub fn with_field(d: &Device, tag: &str, key: &str, value: Option<&str>) -> Resu
             Some(v) => Some(
                 v.parse::<u8>()
                     .ok()
-                    .filter(|n| (1..=ecad_model::device::MAX_PINS).contains(n))
-                    .and_then(ecad_model::device::PinCount::new)
+                    .filter(|n| (1..=ecad_model::objects::devices::MAX_PINS).contains(n))
+                    .and_then(ecad_model::objects::devices::PinCount::new)
                     .ok_or_else(|| CmdError::refused(format!("`pins` is a whole number from 1 to {MAX_PINS}.")))?,
             ),
         };
@@ -888,9 +890,9 @@ pub fn with_field(d: &Device, tag: &str, key: &str, value: Option<&str>) -> Resu
         let h = x.half_mut(plug);
         let text = |max: usize| CmdError::refused(format!("`{key}` is one line of at most {max} characters, with no control or hidden characters."));
         match field {
-            "description" => h.description = value.map(ecad_model::device::Description::new).transpose().map_err(|_| text(256))?,
-            "maker" => h.manufacturer = value.map(ecad_model::device::PartText::new).transpose().map_err(|_| text(64))?,
-            "part_number" => h.part_number = value.map(ecad_model::device::PartText::new).transpose().map_err(|_| text(64))?,
+            "description" => h.description = value.map(ecad_model::objects::devices::Description::new).transpose().map_err(|_| text(256))?,
+            "maker" => h.manufacturer = value.map(ecad_model::objects::devices::PartText::new).transpose().map_err(|_| text(64))?,
+            "part_number" => h.part_number = value.map(ecad_model::objects::devices::PartText::new).transpose().map_err(|_| text(64))?,
             _ => {
                 return Err(CmdError::refused(format!("A half's field is one of {}: half.{letter}.description.", HALF_FIELDS.join(", "))));
             }
@@ -903,7 +905,7 @@ pub fn with_field(d: &Device, tag: &str, key: &str, value: Option<&str>) -> Resu
         })?;
         let on = match value {
             None => false,
-            Some(v) => ecad_model::words::flag(v).ok_or_else(|| CmdError::refused(format!("`{key}` is yes or no.")))?,
+            Some(v) => ecad_model::naming::words::flag(v).ok_or_else(|| CmdError::refused(format!("`{key}` is yes or no.")))?,
         };
         if on {
             x.ignored.insert(k);
@@ -980,14 +982,14 @@ pub fn half_rows(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Vec<Half
 /// Where terminal `t` is drawn: the page and anchor of the first symbol showing it.
 fn connection_point_at(doc: &Document, t: ConnectionPointId) -> (Option<PageId>, Option<Pt>, Option<RepresentationId>) {
     match doc.representations_showing(t).next() {
-        Some((rid, r)) => (Some(r.page), crate::xref::anchor(doc, r), Some(rid)),
+        Some((rid, r)) => (Some(r.page), crate::references::devices::anchor(doc, r), Some(rid)),
         None => (None, None, None),
     }
 }
 
 fn rep_at(doc: &Document, rid: Option<RepresentationId>) -> (Option<PageId>, Option<Pt>) {
     match rid.and_then(|r| doc.representations.get(&r)) {
-        Some(r) => (Some(r.page), crate::xref::anchor(doc, r)),
+        Some(r) => (Some(r.page), crate::references::devices::anchor(doc, r)),
         None => (None, None),
     }
 }
@@ -1110,16 +1112,16 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
 // ---------------------------------------------------------------- references (design 044 §7)
 
 /// The reference members of connector `c` (design 044 §7, design 052 §3.4): each half's
-/// whole-half symbol ([`crate::reps::half_anchor`]) is a half of that side, every other connector
+/// whole-half symbol ([`crate::symbols::reps::half_anchor`]) is a half of that side, every other connector
 /// symbol a pin of its side (a pin pair: `Both`). A pin-only half has no half member: its pins
 /// keep their mate edges.
-pub fn ref_classes(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, crate::xref::Class)> {
-    use crate::xref::Class;
+pub fn ref_classes(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, crate::references::devices::Class)> {
+    use crate::references::devices::Class;
     if !connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
     }
     let halves: BTreeMap<RepresentationId, Side> =
-        [Side::Socket, Side::Plug].into_iter().filter_map(|s| crate::reps::half_anchor(doc, c, s).map(|r| (r, s))).collect();
+        [Side::Socket, Side::Plug].into_iter().filter_map(|s| crate::symbols::reps::half_anchor(doc, c, s).map(|r| (r, s))).collect();
     doc.representations_of(Subject::Device(c))
         .filter_map(|(rid, r)| {
             let side = rep_side(doc, r)?;
@@ -1133,8 +1135,8 @@ pub fn ref_classes(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, crate:
 
 /// The edges between connector `c`'s members (design 044 §7): each half's whole-half symbol shows
 /// the other half's, and a pin whose mate is drawn only on other pages shows those.
-pub fn ref_edges(doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::xref::Class)]) -> Vec<(RepresentationId, RepresentationId)> {
-    use crate::xref::Class;
+pub fn ref_edges(doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::references::devices::Class)]) -> Vec<(RepresentationId, RepresentationId)> {
+    use crate::references::devices::Class;
     let mut out = Vec::new();
     let half = |want: Side| list.iter().find(|(_, k)| *k == Class::Half(want)).map(|(r, _)| *r);
     if let (Some(a), Some(b)) = (half(Side::Socket), half(Side::Plug))
@@ -1285,7 +1287,7 @@ impl Index {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn families_name_their_halves() {
@@ -1375,7 +1377,7 @@ pub fn strip_connection_point_at(doc: &Document, page: PageId, at: Pt) -> Option
     // Each terminal symbol shows its own connection point: O(representations on the page).
     doc.representations_on(page).find_map(|(_, r)| {
         let Subject::Device(c) = r.subject else { return None };
-        strips::strip_of(doc, c)?;
+        terminal_strips::strip_of(doc, c)?;
         let placement = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl);
         crate::devices::shown_connection_points(doc, c, r).into_iter().find_map(|(t, p)| {
             let p = match (r.form, placement) {

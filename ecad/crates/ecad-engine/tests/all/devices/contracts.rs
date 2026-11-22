@@ -7,7 +7,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_engine::devices::{self, TextOf};
-use ecad_engine::symbols::{self, STARTERS};
+use ecad_electrical::symbols::{self, STARTERS};
 use ecad_model::{DeviceId, ItemId, Op, PageId, Subject, ConnectionPointId};
 use serde_json::{Value, json};
 
@@ -114,10 +114,10 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
         want.len(),
         STARTERS
             .iter()
-            .filter(|s| s.kind != ecad_engine::symbols::Kind::Tagless
-                && s.family == ecad_engine::symbols::Family::Basic
+            .filter(|s| s.kind != ecad_electrical::symbols::Kind::Tagless
+                && s.family == ecad_electrical::symbols::Family::Basic
                 // Brief 036's level starters join strips as positions (`levels_contracts`).
-                && !ecad_engine::terminal_types::is_level_starter(s.key))
+                && !ecad_electrical::terminal_strips::terminal_blocks::is_level_starter(s.key))
             .count()
     );
     for (i, (key, t)) in want.iter().enumerate() {
@@ -140,7 +140,7 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
     let doc = h.doc();
     let devices: Vec<_> = STARTERS
         .iter()
-        .filter(|s| s.kind != symbols::Kind::Tagless && s.family == symbols::Family::Basic && !ecad_engine::terminal_types::is_level_starter(s.key))
+        .filter(|s| s.kind != symbols::Kind::Tagless && s.family == symbols::Family::Basic && !ecad_electrical::terminal_strips::terminal_blocks::is_level_starter(s.key))
         .collect();
     assert_eq!(doc.definitions.len(), devices.len());
     for s in devices.iter().copied() {

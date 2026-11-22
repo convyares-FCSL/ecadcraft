@@ -1,6 +1,6 @@
 //! The four workspaces (spec §2).
 
-use super::Pen;
+use crate::icons::Pen;
 
 /// Draw: a page with a wire on it.
 pub fn draw(p: &mut Pen) {

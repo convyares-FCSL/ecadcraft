@@ -5,18 +5,18 @@
 //! `ECAD_TESTER_SHOTS` names a folder.
 
 use ecad_app::App;
-use ecad_app::lists::ListAction;
-use ecad_app::lists::plc::{self, IoView};
+use ecad_app::workspace::ListAction;
+use ecad_app::plc::list::{self, IoView};
 use ecad_app::shell::{ListsView, Workspace};
 use ecad_model::DeviceId;
-use ecad_ui::table::TableSource;
+use ecad_widgets::table::TableSource;
 use eframe::egui;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
-use crate::mouse_tester::{Collect, Deltas};
-use crate::project_panel::{doc, head, new_app, ok, take};
+use crate::canvas::mouse_acceptance::{Collect, Deltas};
+use crate::pages::project_panel::{doc, head, new_app, ok, take};
 
 type H = Harness<'static, App>;
 
@@ -134,10 +134,10 @@ fn a_b_g_project_plc_is_the_signal_list_of_board_2_03() {
     assert_eq!(v.source.folded, 6, "the first free channel shows, six fold");
     assert!(h.query_by_label("6 more free channels.").is_some());
     let r2 = v.source.row((a03, 2)).unwrap();
-    assert!(plc::edit_line(r2, plc::TAG, "Valve_In").is_some_and(|l| l.contains(r#""tag":"Valve_In""#)));
-    assert!(plc::edit_line(r2, plc::SAFE, "On").is_some_and(|l| l.contains(r#""safe":"On""#)));
+    assert!(list::edit_line(r2, list::TAG, "Valve_In").is_some_and(|l| l.contains(r#""tag":"Valve_In""#)));
+    assert!(list::edit_line(r2, list::SAFE, "On").is_some_and(|l| l.contains(r#""safe":"On""#)));
     let r9 = v.source.row((a03, 9)).unwrap();
-    assert_eq!(plc::edit_line(r9, plc::TAG, plc::FREE), None, "the placeholder is not a tag");
+    assert_eq!(list::edit_line(r9, list::TAG, list::FREE), None, "the placeholder is not a tag");
     assert!(h.query_by_label("ecad.plc.card.editor.tag").is_some(), "the right panel edits the card");
 
     // G: Import an I/O list fills tags and descriptions, one transaction.
@@ -209,7 +209,7 @@ fn run_path(h: &mut H, a: ListAction, path: &std::path::Path) {
 
 #[test]
 fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
-    use ecad_app::lists::card_editor::{field_line, start_byte};
+    use ecad_app::plc::card_editor::{field_line, start_byte};
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas.clone());
     p56(&mut h);
@@ -222,7 +222,7 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     }
     // Board 2.03's Parts: the main part (what the card is, maker and part number, `main part`),
     // then the front connector, each with its quantity; Function and Location with their source.
-    let info = ecad_app::lists::card_editor::info(h.state_mut(), 2).unwrap();
+    let info = ecad_app::plc::card_editor::info(h.state_mut(), 2).unwrap();
     let rows: Vec<_> = info.parts.iter().map(|r| (r.description.clone().unwrap_or_default(), r.qty.clone(), r.note.clone())).collect();
     assert_eq!(
         rows,
@@ -233,7 +233,7 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     );
     assert_eq!(info.function, ("=CTRL".to_string(), "from page"));
     assert_eq!(info.location, ("+CAB1".to_string(), "from box"));
-    assert!(ecad_app::lists::card_editor::part_rows(Vec::new(), None, None, "Output card".into()).is_empty(), "none yet only with no part");
+    assert!(ecad_app::plc::card_editor::part_rows(Vec::new(), None, None, "Output card".into()).is_empty(), "none yet only with no part");
     // The commands the fields run, each one transaction.
     let before = head_of(&mut h);
     for (key, value) in [("description", "Outputs, pumps"), ("maker", "Acme"), ("part_number", "DQ16-R-2B"), ("slot", "7")] {
@@ -250,7 +250,7 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
         &mut h,
         &format!("partline {}", json!({"component": a03.hex(), "add": {"description": "Front connector, 20-pin, screw", "part_number": "FC-20-S"}})),
     );
-    let parts = ecad_engine::bom::part_set(&doc(&mut h), a03);
+    let parts = ecad_electrical::reports::bom::part_set(&doc(&mut h), a03);
     assert_eq!(parts.len(), 3, "the main part and the two accessories: {parts:?}");
     // The type: picking one shows the confirm step, which says what happens to the signals.
     use ecad_engine::plc::rack::CardType;
@@ -313,7 +313,7 @@ fn i_export_tags_writes_the_rack_and_changes_nothing() {
 
 #[test]
 fn m_the_rack_sheet_prints_the_new_tile_lines() {
-    let Some(_) = crate::project_panel::shots() else { return };
+    let Some(_) = crate::pages::project_panel::shots() else { return };
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas.clone());
     p56(&mut h);

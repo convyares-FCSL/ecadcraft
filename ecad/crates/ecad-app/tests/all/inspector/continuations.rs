@@ -4,7 +4,7 @@
 
 use ecad_model::Subject;
 
-use crate::mouse_tester::{doc, harness_with, ok};
+use crate::canvas::mouse_acceptance::{doc, harness_with, ok};
 
 fn row(h: &mut egui_kittest::Harness<'static, ecad_app::App>, key: &str) -> Option<String> {
     let props = h.state().props.lock().unwrap();

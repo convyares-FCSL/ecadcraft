@@ -7,12 +7,12 @@
 //! - [`Checkbox`] and [`Radio`]: a choice ticked in a box, one of a few in circles.
 //! - [`SearchField`]: the search box with its lens.
 
-use ecad_tokens::{line, radius, size, space, ui_type};
+use {crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Rect, Response, Role, Sense, Stroke, StrokeKind, Ui, WidgetInfo, pos2, vec2};
 
-use super::{Field, FieldKind, Look, RowKind, RowSpec, Tone, accessible, galley};
+use crate::prim::{Field, FieldKind, Look, RowKind, RowSpec, Tone, accessible, galley};
 use crate::style::corner;
-use crate::{color, fonts};
+use {crate::color, crate::fonts};
 
 /// A folding section's header, as wide as the panel: `˅ Title ........ summary`. A click folds
 /// or unfolds it (`open` is flipped); its accessible name is the title unless [`Self::name`]
@@ -22,7 +22,7 @@ use crate::{color, fonts};
 /// ```
 /// # egui::__run_test_ui(|ui| {
 /// let mut open = true;
-/// ecad_ui::prim::SectionHeader::new(&mut open, "Rating").summary("18.8 A ≥ 4 A").show(ui);
+/// crate::prim::SectionHeader::new(&mut open, "Rating").summary("18.8 A ≥ 4 A").show(ui);
 /// if open { /* the section's rows */ }
 /// # });
 /// ```
@@ -76,7 +76,7 @@ impl<'a> SectionHeader<'a> {
         let mut action = false;
         if let Some((label, enabled)) = self.action {
             // Over the header's right end, registered after it so it takes its own clicks.
-            let mut b = super::Button::new(label).kind(super::Kind::Quiet).small();
+            let mut b = crate::prim::Button::new(label).kind(crate::prim::Kind::Quiet).small();
             if !enabled {
                 b = b.disabled("Not available here");
             }
@@ -105,9 +105,9 @@ pub fn property_row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R)
 /// ```
 /// # egui::__run_test_ui(|ui| {
 /// let mut name = String::from("main");
-/// ecad_ui::prim::PropertyGrid::new().show(ui, |g| {
-///     g.row("Name", |ui| ecad_ui::control::TextEntry::new(&mut name, "Name").show(ui));
-///     g.row("Made", |ui| ecad_ui::control::read_text(ui, "today", Default::default(), "Made"));
+/// crate::prim::PropertyGrid::new().show(ui, |g| {
+///     g.row("Name", |ui| crate::control::TextEntry::new(&mut name, "Name").show(ui));
+///     g.row("Made", |ui| crate::control::read_text(ui, "today", Default::default(), "Made"));
 /// });
 /// # });
 /// ```
@@ -188,7 +188,7 @@ impl<'a> ListRow<'a> {
         let spec = RowSpec { kind: RowKind::List, selected: self.selected, tint: 0.0, look: self.look };
         let ink = if self.dim { s.text_2 } else { s.text };
         let text = self.text;
-        super::row(ui, spec, self.name.unwrap_or(text), |ui| {
+        crate::prim::row(ui, spec, self.name.unwrap_or(text), |ui| {
             let g = galley(ui, text, ui_type::BODY);
             let (r, _) = ui.allocate_exact_size(g.size(), Sense::hover());
             ui.painter().galley(r.min, g, color(ink));
@@ -202,7 +202,7 @@ impl<'a> ListRow<'a> {
 }
 
 /// A line of text in a type style and colour, wrapped to the width available.
-fn text(ui: &mut Ui, text: &str, style: ui_type::TypeStyle, ink: ecad_tokens::Color) -> Response {
+fn text(ui: &mut Ui, text: &str, style: ui_type::TypeStyle, ink: crate::tokens::Color) -> Response {
     ui.add(egui::Label::new(egui::RichText::new(text).font(fonts::font(ui.ctx(), style)).color(color(ink))).wrap())
 }
 
@@ -299,7 +299,7 @@ impl<'a> Checkbox<'a> {
 
 /// One of a few choices in circles, with its label; the caller keeps which is chosen. A click
 /// returns `clicked`. For two to six short choices side by side, prefer
-/// [`super::Segmented`]; a radio list is for choices that each need a sentence.
+/// [`crate::prim::Segmented`]; a radio list is for choices that each need a sentence.
 #[derive(Debug, Clone, Copy)]
 pub struct Radio<'a> {
     on: bool,

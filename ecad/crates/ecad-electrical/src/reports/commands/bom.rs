@@ -1,22 +1,22 @@
 //! The rules of the BOM commands (brief 047, design 047 §7): which devices `partline` writes to and
 //! the lines it adds, sets or removes; the item `bomitem` adds, edits or deletes; the article
-//! numbers `article` writes. The part line, item and article rules themselves are [`crate::bom`];
+//! numbers `article` writes. The part line, item and article rules themselves are [`crate::reports::bom`];
 //! the engine crate's shims commit the ops and answer in JSON.
 
 use std::collections::BTreeMap;
 
-use ecad_model::loose_part::{ItemUnit, LooseDescription, LoosePart, MAX_DESCRIPTION, Qty};
+use ecad_model::objects::loose_part::{ItemUnit, LooseDescription, LoosePart, MAX_DESCRIPTION, Qty};
 use ecad_model::{DeviceId, Document, IdAllocator, LocationId, LoosePartId, ObjectRef, Op, TextField};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::bom::*;
-use crate::cmd::input::{Bounded, OrNull, TextOrNumber, nullable};
-use crate::cmd::run::{Cx, Generic, Outcome};
-use crate::designations::{Aspect, Pending};
+use crate::reports::bom::*;
+use crate::commands::input::{Bounded, OrNull, TextOrNumber, nullable};
+use crate::commands::run::{Cx, Generic, Outcome};
+use crate::locations::designations::{Aspect, Pending};
 use crate::error::CmdError;
-use ecad_model::text::TextError;
+use ecad_model::naming::text::TextError;
 
 // ---------------------------------------------------------------------------------------------
 // partline
@@ -229,8 +229,8 @@ fn text_refusal(key: &str, max: usize, e: TextError) -> CmdError {
 }
 
 /// A part text (part number, maker, article number): `None` clears it.
-fn part_text(key: &str, t: Option<&str>) -> Result<Option<ecad_model::device::PartText>, CmdError> {
-    t.map(|t| ecad_model::device::PartText::new(t).map_err(|e| text_refusal(key, MAX_ARTICLE_CHARS, e))).transpose()
+fn part_text(key: &str, t: Option<&str>) -> Result<Option<ecad_model::objects::devices::PartText>, CmdError> {
+    t.map(|t| ecad_model::objects::devices::PartText::new(t).map_err(|e| text_refusal(key, MAX_ARTICLE_CHARS, e))).transpose()
 }
 
 /// Item `p` with `fields` written, each checked, in [`ITEM_FIELDS`] order (unit before qty). A
@@ -252,7 +252,7 @@ fn with_fields(doc: &Document, ids: &mut IdAllocator, mut p: LoosePart, fields: 
                 p.location = match t {
                     Some(t) => {
                         let k = pending.store(doc, ids, Aspect::Location, t, ops)?;
-                        Some(crate::designations::raw(&k).map(LocationId).ok_or(CmdError::refused("That location is not in the list."))?)
+                        Some(crate::locations::designations::raw(&k).map(LocationId).ok_or(CmdError::refused("That location is not in the list."))?)
                     }
                     None => None,
                 }
@@ -366,7 +366,7 @@ pub fn plan_article(doc: &Document, part_number: &str, maker: Option<&str>, arti
             && let Some(f) = TextField::of_key(key)
             && let Some(d) = doc.devices.get(c)
         {
-            let typed = super::props::b::with_text(d, f, after.as_deref())?;
+            let typed = crate::properties::commands::devices::with_text(d, f, after.as_deref())?;
             if typed != *d {
                 ops.insert(0, Op::ModifyDevice { id: *c, before: d.clone(), after: typed });
             }
@@ -394,7 +394,7 @@ pub fn plan_article(doc: &Document, part_number: &str, maker: Option<&str>, arti
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// A field as typed: absent (unchanged), null (cleared) or a value.
 type FieldValue = Option<Option<TextOrNumber>>;

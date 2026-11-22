@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-pub use crate::cables::cable_title;
+pub use ecad_electrical::cables::cable_title;
 use ecad_model::{CableId, Document, PageId, ProjectId};
 use serde_json::{Map, Value, json};
 
@@ -110,7 +110,7 @@ pub enum FanOnPage {
 }
 
 /// A cable's fan on one page (brief 009's look).
-pub type Fan = ecad_electrical::cable_look::CableDrawing;
+pub type Fan = ecad_electrical::cables::layout::CableDrawing;
 
 /// The fan of `cable` on `page` (design 009 §4), measured with the drafting font. Bounded by the
 /// members and their route points; never panics.
@@ -125,10 +125,10 @@ pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Fa
     if !routed {
         return FanOnPage::Nothing;
     }
-    let d = ecad_electrical::cable_look::cable_on_page(doc, page, cable, true, tol, &crate::look::font_width);
+    let d = ecad_electrical::cables::layout::cable_on_page(doc, page, cable, true, tol, &crate::cables::draw::font_width);
     match d.state {
-        ecad_electrical::cable_look::FanState::Drawn => FanOnPage::Drawn(d),
-        ecad_electrical::cable_look::FanState::TooFew => FanOnPage::TooFew,
+        ecad_electrical::cables::layout::FanState::Drawn => FanOnPage::Drawn(d),
+        ecad_electrical::cables::layout::FanState::TooFew => FanOnPage::TooFew,
         _ => FanOnPage::Failed,
     }
 }
@@ -137,8 +137,8 @@ pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Fa
 /// can be drawn, and core labels and reference ends for every cable, by cable.
 pub fn drawings_on_page(
     doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64,
-) -> BTreeMap<CableId, ecad_electrical::cable_look::CableDrawing> {
-    ecad_electrical::cable_look::cables_on_page(doc, page, fan, tol, &crate::look::font_width)
+) -> BTreeMap<CableId, ecad_electrical::cables::layout::CableDrawing> {
+    ecad_electrical::cables::layout::cables_on_page(doc, page, fan, tol, &crate::cables::draw::font_width)
 }
 
 // ---------------------------------------------------------------- remembering (design §7)

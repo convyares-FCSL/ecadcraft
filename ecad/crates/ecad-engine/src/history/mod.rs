@@ -8,19 +8,21 @@
 //! - A point is shown on a copy, from its nearest snapshot (the branch's own or its ancestry's)
 //!   and at most the snapshot interval of steps; nothing is recorded.
 //! - Restore is one ordinary transaction labelled `Restore "…"` (FQ6) whose ops are the
-//!   difference between the live state and the point's ([`ecad_model::diff`]), so they scale with
+//!   difference between the live state and the point's ([`ecad_model::document::diff`]), so they scale with
 //!   what differs; versions and revision fields are never restored (they are history, not
 //!   design).
 //! - Branch actions are written to the file at once (owner answer 4, FQ8), after saving the
 //!   branch shown (owner answer 3, "Save and switch").
 //!
-//! - Merges (brief 020b, [`crate::merging`]) are rows of their own, read from the merge index
+//! - Merges (brief 020b, [`crate::history::merging`]) are rows of their own, read from the merge index
 //!   (FQ2), drawn as joins from the source's line.
 //! - The graph reads one page of rows ([`PAGE`]) and the next on request (`limit`); each row
 //!   reads its step's time and author only when it comes into the page.
 //! - The graph's model (rows, lanes, session groups, time text, JSON rows) is
 //!   [`ecad_file::history`]; this module reads the project and the local zone for it.
 
+pub mod event_log;
+pub mod merging;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -33,11 +35,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::access::Pages;
-use crate::cmd::input::{Command, Typed, typed};
-use crate::cmd::sheet::{RevisionView, next_view_id};
-use crate::cmd::{on_any_page, on_project};
+use crate::commands::input::{Command, Typed, typed};
+use crate::pages::commands::sheets::{RevisionView, next_view_id};
+use crate::commands::{on_any_page, on_project};
 use crate::project::Project;
-use crate::revisions;
+use ecad_electrical::releases::revisions;
 
 use ecad_file::history::{
     BranchRow, Graph, MAX_VERSION_NAME, Named, Node, NodeKind, PAGE, Point, RestorePlan, STEPS_PAGE, SessionGroup, Show, author_text, branch_json,
@@ -596,8 +598,8 @@ pub fn plan_restore(p: &Project, pt: &Point) -> Result<RestorePlan, String> {
     }
     let live = p.ledger.document();
     let then = restore_target(p, pt)?;
-    let ops = ecad_model::diff::ops_between(live, &then, &restores_key);
-    let objects = ecad_model::diff::objects(&ops);
+    let ops = ecad_model::document::diff::ops_between(live, &then, &restores_key);
+    let objects = ecad_model::document::diff::objects(&ops);
     let mut pages = BTreeSet::new();
     for (kind, id) in objects.keys() {
         let page = match *kind {
@@ -1033,7 +1035,7 @@ fn show_point(p: &mut Project, q: &PointQuery) -> Result<Value, CmdError> {
         _ => pt.clone(),
     };
     let then = state_at(p, &shown).map_err(CmdError::refused)?;
-    let book = ecad_model::book::Book::of(&then);
+    let book = ecad_model::document::book::Book::of(&then);
     let pages: Vec<Value> = book
         .order
         .iter()
@@ -1492,7 +1494,7 @@ fn reopen_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, name: Option<
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn times_read_in_the_local_zone() {

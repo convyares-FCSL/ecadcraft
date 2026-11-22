@@ -7,8 +7,8 @@ use ecad_model::Word;
 use ecad_model::{DeviceId, Form, PageId, RepresentationId, Subject};
 use serde_json::json;
 
-use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use super::{OUT_OF_RANGE, can_start, in_range, pick, read};
+use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
+use crate::interact::{OUT_OF_RANGE, can_start, in_range, pick, read};
 use crate::devices::TextOf;
 use crate::project::Mapped;
 use crate::text_style::TextKind;
@@ -84,10 +84,10 @@ impl ShowText {
     fn change(&self, s: &mut Session, picked: Picked) -> R<Step> {
         let (rep, component, page, kind, show) = match picked {
             Picked::Text { rep, of, component, symbol, shown, page } => {
-                (rep, component, page, crate::devices::derived_text_kind(of, symbol), ecad_model::words::flag_word(!shown))
+                (rep, component, page, crate::devices::derived_text_kind(of, symbol), ecad_model::naming::words::flag_word(!shown))
             }
             Picked::Symbol { tag_hidden: false, .. } => return Err(other(NOTHING_HIDDEN)),
-            Picked::Symbol { rep, component, page, .. } => (rep, Some(component), page, TextKind::Tag, ecad_model::words::flag_word(true)),
+            Picked::Symbol { rep, component, page, .. } => (rep, Some(component), page, TextKind::Tag, ecad_model::naming::words::flag_word(true)),
         };
         let mut params = json!({"kind": kind.word(), "show": show});
         match (self.level, component) {
@@ -129,7 +129,7 @@ impl ShowText {
 
 /// The echo after a change (design 031 §5.5): `Tag -X01 hidden on this symbol.`…
 fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show: &str, component: Option<DeviceId>) -> String {
-    let what = crate::cmd::text::kind_words(kind);
+    let what = crate::styles::commands::kind_words(kind);
     let mut what = what.to_string();
     if let Some(first) = what.get(..1) {
         what = format!("{}{}", first.to_ascii_uppercase(), what.get(1..).unwrap_or_default());
@@ -155,7 +155,7 @@ fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show:
         _ => "in the project".to_string(),
     };
     let mut line = format!("{subject} {done} {place}.");
-    let strip = component.is_some_and(|c| crate::strips::strip_of(doc, c).is_some());
+    let strip = component.is_some_and(|c| ecad_electrical::terminal_strips::strip_of(doc, c).is_some());
     if level == "device" && kind == TextKind::Tag && strip {
         line.push_str(" Strip tags show once per run unless you set a symbol.");
     }
@@ -276,7 +276,7 @@ impl MoveText {
                 let w = k.trim().to_ascii_lowercase();
                 if self.asking_justify {
                     if crate::text_style::parse_justify(&w).is_none() {
-                        return Err(other(crate::cmd::text::BAD_JUSTIFY));
+                        return Err(other(crate::styles::commands::BAD_JUSTIFY));
                     }
                     self.justify = Some(w.to_ascii_uppercase());
                     self.asking_justify = false;

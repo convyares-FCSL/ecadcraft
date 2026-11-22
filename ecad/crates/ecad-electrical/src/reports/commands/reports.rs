@@ -9,12 +9,12 @@ use std::collections::BTreeSet;
 use ecad_model::{Document, IdAllocator, ItemId, Op, PageId, Pt};
 use serde_json::{Value, json};
 
-use crate::designations::{Aspect, Pending};
+use crate::locations::designations::{Aspect, Pending};
 use crate::error::CmdError;
 use crate::locations;
-use crate::outputs::kept::ReportModels;
-use crate::outputs::{self, Group, Table};
-use crate::proposals::{self, Mode};
+use crate::reports::kept::ReportModels;
+use crate::reports::{self, Group, Table};
+use crate::symbols::proposals::{self, Mode};
 
 /// A rectangle's four corners from two opposite ones.
 pub fn rectangle(a: Pt, b: Pt) -> Vec<Pt> {
@@ -189,11 +189,11 @@ pub struct Paging {
 }
 
 impl Paging {
-    /// The paging a report call asks for: `limit` clamped to 1..=[`outputs::MAX_LIMIT`]
-    /// (default [`outputs::DEFAULT_LIMIT`]), `after` 0 and `excel_safe` true by default.
+    /// The paging a report call asks for: `limit` clamped to 1..=[`reports::MAX_LIMIT`]
+    /// (default [`reports::DEFAULT_LIMIT`]), `after` 0 and `excel_safe` true by default.
     pub fn of(limit: Option<u64>, after: Option<u64>, excel_safe: Option<bool>, path: Option<String>) -> Paging {
         Paging {
-            limit: limit.map_or(outputs::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, outputs::MAX_LIMIT),
+            limit: limit.map_or(reports::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, reports::MAX_LIMIT),
             after: after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX)),
             excel_safe: excel_safe.unwrap_or(true),
             path,
@@ -221,8 +221,8 @@ pub fn bom_ids_json(o: &ReportModels, group: Group, nested: bool) -> Vec<Value> 
                 .map(|e| {
                     // Design 072 §6.4: an item is a loose part, named by its own id.
                     let mut x = match e.owner {
-                        crate::outputs::Owner::Device(c) => json!({"component": c.hex(), "line": e.line}),
-                        crate::outputs::Owner::Loose(l) => json!({"item": l.hex()}),
+                        crate::reports::Owner::Device(c) => json!({"component": c.hex(), "line": e.line}),
+                        crate::reports::Owner::Loose(l) => json!({"item": l.hex()}),
                     };
                     if !e.subs.is_empty() || !e.missing.is_empty() {
                         x["sub"] = json!(e.subs);

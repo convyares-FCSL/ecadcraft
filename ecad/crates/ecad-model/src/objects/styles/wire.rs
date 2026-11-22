@@ -12,10 +12,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::colour::ConductorColour;
-use crate::text::Text;
-use crate::units::{Amps, Celsius, Metres, Mm};
-use crate::wire::{Colours, WireSize};
+use crate::geometry::colour::ConductorColour;
+use crate::naming::text::Text;
+use crate::geometry::units::{Amps, Celsius, Metres, Mm};
+use crate::objects::wire::{Colours, WireSize};
 
 crate::word_enum! {
     /// How a wire type's line (and a location box's outline) is drawn.
@@ -225,11 +225,11 @@ impl WireType {
         put("potential", self.potential.as_ref().map(ToString::to_string));
         put("size", self.size.map(|v| v.to_string()));
         put("colours", self.colours.as_ref().map(ToString::to_string));
-        put("insulation", self.insulation.map(|v| crate::words::Word::word(v).to_string()));
+        put("insulation", self.insulation.map(|v| crate::naming::words::Word::word(v).to_string()));
         put("line_colour", self.line_colour.map(|v| v.word().to_string()));
-        put("line_type", self.line_type.map(|v| crate::words::Word::word(v).to_string()));
+        put("line_type", self.line_type.map(|v| crate::naming::words::Word::word(v).to_string()));
         put("line_weight", self.line_weight.map(|v| v.0.to_string()));
-        put("label_rule", self.label_rule.map(|v| crate::words::Word::word(v).to_string()));
+        put("label_rule", self.label_rule.map(|v| crate::naming::words::Word::word(v).to_string()));
         put("part_number", self.part_number.as_ref().map(ToString::to_string));
         put("maker", self.maker.as_ref().map(ToString::to_string));
         put("description", self.description.as_ref().map(ToString::to_string));
@@ -237,8 +237,8 @@ impl WireType {
         put("rated_current", r.rated_current.map(|v| v.0.to_string()));
         put("rated_at", r.rated_at.map(|v| v.0.to_string()));
         put("max_temperature", r.max_temperature.map(|v| v.0.to_string()));
-        put("material", r.material.map(|v| crate::words::Word::word(v).to_string()));
-        put("conductor_class", r.conductor_class.map(|v| crate::words::Word::word(v).to_string()));
+        put("material", r.material.map(|v| crate::naming::words::Word::word(v).to_string()));
+        put("conductor_class", r.conductor_class.map(|v| crate::naming::words::Word::word(v).to_string()));
         out
     }
 }

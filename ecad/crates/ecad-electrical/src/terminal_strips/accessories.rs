@@ -9,19 +9,19 @@
 //!   stored canonical (`end_plate,end_stop`), at most [`MAX_ITEMS`]. Nothing is placed by a rule.
 //! - Part data (FP2, FP3, FP6): the strip's `<item>.<field>` first, then the project's
 //!   `strip_<item>_<field>` ([`project_key`]), then unknown.
-//! - Links (FP5): `link.<n>` ([`ecad_model::links`]); bars per link `ceil(span / bar)`, bar from
+//! - Links (FP5): `link.<n>` ([`ecad_model::connectivity::jumper_bars`]); bars per link `ceil(span / bar)`, bar from
 //!   `jumper.bar`, else `strip_jumper_bar`, else [`DEFAULT_BAR`].
 //! - Nothing here refuses because of a check; orphans and crossings are Checks rows (§8).
 //!
-//! This module excludes drawing (`link_lines`) and commands (`ecad_engine::cmd::terminal`).
+//! This module excludes drawing (`link_lines`) and commands (`ecad_engine::terminal_strips::commands`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::links::{self, Positions};
+use ecad_model::connectivity::jumper_bars::{self, Positions};
 use ecad_model::{DeviceId, Document, ObjectRef, Op, Properties};
 
 use crate::CmdError;
-use crate::strips::TermRow;
+use crate::terminal_strips::TermRow;
 
 /// What every placement key starts with.
 pub const ACC_PREFIX: &str = "acc.";
@@ -44,7 +44,7 @@ pub const DEFAULT_BAR: usize = 10;
 /// The items with part data (FP2, FP6).
 pub const PART_ITEMS: [&str; 7] = ["end_stop", "end_plate", "end_plate_pe", "partition", "marker", "strip_label", "jumper"];
 /// A part's fields (brief 047, design 047 §5: and its article number).
-pub const FIELDS: [&str; 4] = ["part_number", "maker", "description", crate::bom::ARTICLE_KEY];
+pub const FIELDS: [&str; 4] = ["part_number", "maker", "description", crate::reports::bom::ARTICLE_KEY];
 
 /// An accessory placed on a strip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -257,14 +257,14 @@ pub fn is_part_key(key: &str) -> bool {
 /// Whether a strip part key is an article number (`end_stop.article_number`,
 /// `link.3.article_number`): checked as 047's article numbers are.
 fn is_article_key(key: &str) -> bool {
-    key.rsplit_once('.').is_some_and(|(_, f)| f == crate::bom::ARTICLE_KEY)
+    key.rsplit_once('.').is_some_and(|(_, f)| f == crate::reports::bom::ARTICLE_KEY)
 }
 
 /// `link.<n>.<field>`: the link and the field.
 pub fn jumper_bar_part_key(key: &str) -> Option<(u32, &str)> {
-    let rest = key.strip_prefix(links::PREFIX)?;
+    let rest = key.strip_prefix(jumper_bars::PREFIX)?;
     let (n, f) = rest.split_once('.')?;
-    let n = links::jumper_bar_number(&links::key(n.parse().ok()?)).filter(|x| x.to_string() == n)?;
+    let n = jumper_bars::jumper_bar_number(&jumper_bars::key(n.parse().ok()?)).filter(|x| x.to_string() == n)?;
     FIELDS.contains(&f).then_some((n, f))
 }
 
@@ -287,7 +287,7 @@ fn whole(key: &str, value: &str, lo: u32, hi: u32, what: &str) -> Result<String,
 pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if is_article_key(strip_key) {
-        return crate::bom::article_value(Some(v));
+        return crate::reports::bom::article_value(Some(v));
     }
     match strip_key {
         PER_CARD_KEY => whole(strip_key, v, 1, MAX_PER_CARD, "a card size").map(Some),
@@ -300,33 +300,33 @@ pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Resul
 pub fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     // Brief 047 (design 047 §5): a terminal type's article number, checked as every other.
     if is_type_article_project_key(key) {
-        return Some(crate::bom::article_value(value));
+        return Some(crate::reports::bom::article_value(value));
     }
     let sk = strip_key_of_project(key)?;
     Some(part_value(doc, &sk, value))
 }
 
 /// Whether `key` is a strip's own terminal type article number, `article_number.<code>` (design
-/// 047 §5; feed-through's `article_number` is 047's own key, checked by [`crate::bom::setprop_rule`]).
+/// 047 §5; feed-through's `article_number` is 047's own key, checked by [`crate::reports::bom::setprop_rule`]).
 fn is_type_article_key(key: &str) -> bool {
-    key.strip_prefix(crate::bom::ARTICLE_KEY).and_then(|r| r.strip_prefix('.')).is_some_and(|code| crate::terminal_types::by_code(code).is_some())
+    key.strip_prefix(crate::reports::bom::ARTICLE_KEY).and_then(|r| r.strip_prefix('.')).is_some_and(|code| crate::terminal_strips::terminal_blocks::by_code(code).is_some())
 }
 
 /// Whether `key` is a project terminal type article number, `strip_<code>_article_number`.
 fn is_type_article_project_key(key: &str) -> bool {
     key.strip_prefix("strip_")
-        .and_then(|r| r.strip_suffix(&format!("_{}", crate::bom::ARTICLE_KEY)))
-        .is_some_and(|code| crate::terminal_types::by_code(code).is_some())
+        .and_then(|r| r.strip_suffix(&format!("_{}", crate::reports::bom::ARTICLE_KEY)))
+        .is_some_and(|code| crate::terminal_strips::terminal_blocks::by_code(code).is_some())
 }
 
 /// Every position label of strip `c` in plan order: drawn labels and the offer's positions.
 pub fn positions(doc: &Document, c: DeviceId) -> Vec<String> {
     let mut labels: BTreeSet<String> =
-        crate::strips::drawn_connection_points(doc, c).into_iter().map(|(t, _, _)| crate::terminal_types::position_label(doc, t)).collect();
-    if let Some(o) = crate::strips::offer_of(doc, c) {
+        crate::terminal_strips::drawn_connection_points(doc, c).into_iter().map(|(t, _, _)| crate::terminal_strips::terminal_blocks::position_label(doc, t)).collect();
+    if let Some(o) = crate::terminal_strips::offer_of(doc, c) {
         labels.extend((1..=o.positions).map(|n| n.to_string()));
     }
-    links::plan_order(labels)
+    jumper_bars::plan_order(labels)
 }
 
 /// A link value as stored: canonical (`1, 2, 3, 4` → `1-4`) when every label it names is a
@@ -336,7 +336,7 @@ pub fn positions(doc: &Document, c: DeviceId) -> Vec<String> {
 /// Unreadable text, or fewer than 2 positions.
 pub fn jumper_bar_value(doc: &Document, c: DeviceId, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
-    let p = links::parse(v)?;
+    let p = jumper_bars::parse(v)?;
     let order = positions(doc, c);
     Ok(Some(jumper_bar_text(&p, &order)?))
 }
@@ -358,7 +358,7 @@ pub fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdErr
     // Brief 036: a link on one level keeps its level (`1.2-8.2`); a cross-level link, or one
     // whose items name different levels, stays as written.
     Ok(match (missing.is_empty(), p.crosses_levels(), p.level(), p.point()) {
-        (true, false, Some(n), Some(pt)) => crate::terminal_types::jumper_bar_text(&sel, order, n, pt),
+        (true, false, Some(n), Some(pt)) => crate::terminal_strips::terminal_blocks::jumper_bar_text(&sel, order, n, pt),
         _ => p.text(),
     })
 }
@@ -366,12 +366,12 @@ pub fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdErr
 /// A link value without the items written as `drop` (brief 036: **Drop missing levels**); empty
 /// when nothing is left.
 pub fn drop_items(text: &str, drop: &[String]) -> String {
-    let Ok(p) = links::parse(text) else { return text.to_string() };
+    let Ok(p) = jumper_bars::parse(text) else { return text.to_string() };
     let kept: Vec<String> =
         p.0.iter()
             .map(|i| match i {
-                links::Item::One(x) => x.clone(),
-                links::Item::Range(a, b) => format!("{a}-{b}"),
+                jumper_bars::Item::One(x) => x.clone(),
+                jumper_bars::Item::Range(a, b) => format!("{a}-{b}"),
             })
             .filter(|x| !drop.contains(x))
             .collect();
@@ -384,7 +384,7 @@ pub fn drop_items(text: &str, drop: &[String]) -> String {
 /// # Errors
 /// A placement or link key on a device that is not a strip, and every refusal of the value.
 pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
-    let strip = crate::strips::strip_of(doc, c).is_some();
+    let strip = crate::terminal_strips::strip_of(doc, c).is_some();
     let not_strip = || CmdError::refused(format!("{} is not a terminal strip. Pick a terminal of the strip.", crate::devices::tag_words(doc, c)));
     if key.starts_with(ACC_PREFIX) {
         if !strip {
@@ -398,15 +398,15 @@ pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>)
         }
         return acc_value(&spot, value).map(Some);
     }
-    if links::jumper_bar_number(key).is_some() {
+    if jumper_bars::jumper_bar_number(key).is_some() {
         if !strip {
             return Err(not_strip());
         }
         // Brief 036 (§5.1): level names typed (`1.N-3.N`) are stored as numbers.
-        let named = value.map(|v| crate::terminal_types::jumper_bar_names_to_numbers(doc, c, v));
+        let named = value.map(|v| crate::terminal_strips::terminal_blocks::jumper_bar_names_to_numbers(doc, c, v));
         return jumper_bar_value(doc, c, named.as_deref()).map(Some);
     }
-    if key.starts_with(links::PREFIX) {
+    if key.starts_with(jumper_bars::PREFIX) {
         if !strip {
             return Err(not_strip());
         }
@@ -414,7 +414,7 @@ pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>)
             return Err(CmdError::refused(format!("\"{}\" is not a link key. Write link.<n> (1 to 999) or link.<n>.part_number.", shown(key))));
         }
         if is_article_key(key) {
-            return crate::bom::article_value(value).map(Some);
+            return crate::reports::bom::article_value(value).map(Some);
         }
         return crate::devices::property_value(doc, "part_number", value).map(Some);
     }
@@ -422,7 +422,7 @@ pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>)
         return part_value(doc, key, value).map(Some);
     }
     if strip && is_type_article_key(key) {
-        return crate::bom::article_value(value).map(Some);
+        return crate::reports::bom::article_value(value).map(Some);
     }
     Ok(None)
 }
@@ -599,7 +599,7 @@ impl Parts<'_> {
     fn part(&mut self, item: &str) -> Part {
         let own_part = self.own(&format!("{item}.part_number")).is_some();
         let pn = self.get(&format!("{item}.part_number"));
-        let article_key = format!("{item}.{}", crate::bom::ARTICLE_KEY);
+        let article_key = format!("{item}.{}", crate::reports::bom::ARTICLE_KEY);
         // Brief 047 (design 047 §5): the article number comes from the level the part number came
         // from, so a strip's own part never shows the project's article number.
         let article = if own_part || pn.is_none() { self.own(&article_key) } else { self.get(&article_key) };
@@ -667,20 +667,20 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
         a.after.iter().filter(|(_, v)| v.contains(&Acc::Partition)).filter_map(|(l, _)| index.get(l.as_str()).copied()).collect();
     let mut lanes: Vec<usize> = Vec::new();
     let mut found: Vec<(u32, Positions, String)> = Vec::new();
-    for (k, v) in props.range(links::PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(links::PREFIX)) {
-        let Some(n) = links::jumper_bar_number(k) else { continue };
-        if let Ok(p) = links::parse(v) {
+    for (k, v) in props.range(jumper_bars::PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(jumper_bars::PREFIX)) {
+        let Some(n) = jumper_bars::jumper_bar_number(k) else { continue };
+        if let Ok(p) = jumper_bars::parse(v) {
             found.push((n, p, v.clone()));
         }
     }
     let mut infos: Vec<JumperBarInfo> = Vec::new();
-    let keys: Vec<Vec<(u8, u128, String)>> = if found.is_empty() { Vec::new() } else { order.iter().map(|l| links::natural_key(l)).collect() };
+    let keys: Vec<Vec<(u8, u128, String)>> = if found.is_empty() { Vec::new() } else { order.iter().map(|l| jumper_bars::natural_key(l)).collect() };
     for (n, p, text) in found {
         // Brief 036: a link runs on one level (positions without it are skipped); a cross-level
         // link joins levels of one position and is one bridge.
         let cross = p.spans().into_iter().find_map(|sp| match sp {
-            links::Span::Levels { lo, hi, .. } => Some((lo, hi)),
-            links::Span::Positions { .. } => None,
+            jumper_bars::Span::Levels { lo, hi, .. } => Some((lo, hi)),
+            jumper_bars::Span::Positions { .. } => None,
         });
         let level = if cross.is_some() { None } else { Some(p.level().unwrap_or(1)) };
         let labels: Vec<String> = p
@@ -704,8 +704,8 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
             }
         };
         let crosses = partitions.iter().filter(|i| **i >= first && **i < last).filter_map(|i| order.get(*i).cloned()).collect();
-        let own = |f: &str| props.get(&format!("{}.{f}", links::key(n))).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
-        let (pn, mk, ds, ar) = (own("part_number"), own("maker"), own("description"), own(crate::bom::ARTICLE_KEY));
+        let own = |f: &str| props.get(&format!("{}.{f}", jumper_bars::key(n))).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let (pn, mk, ds, ar) = (own("part_number"), own("maker"), own("description"), own(crate::reports::bom::ARTICLE_KEY));
         let (part_number, maker, description, article_number) = match pn {
             Some(pn) => (Some(pn), mk, ds, ar),
             None => parts.part("jumper"),
@@ -907,7 +907,7 @@ pub fn relabels(ops: &[Op]) -> BTreeMap<DeviceId, BTreeMap<String, String>> {
 fn renumber_strip(
     doc: &Document, c: DeviceId, base: Option<&ecad_model::Device>, map: &BTreeMap<String, String>, out: &mut Vec<Op>, lines: &mut Vec<String>,
 ) {
-    if crate::strips::strip_of(doc, c).is_none() {
+    if crate::terminal_strips::strip_of(doc, c).is_none() {
         return;
     }
     let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return };
@@ -956,11 +956,11 @@ fn renumber_strip(
     }
     // Brief 036 (FP7): a level's own label moves with its position. The rest of the
     // position-keyed list (`acc.*` above, with its merge rule).
-    for prefix in crate::terminal_types::POSITION_KEYED.iter().copied().filter(|p| !p.starts_with(ACC_PREFIX)) {
+    for prefix in crate::terminal_strips::terminal_blocks::POSITION_KEYED.iter().copied().filter(|p| !p.starts_with(ACC_PREFIX)) {
         for (k, v) in props.range(prefix.to_string()..).take_while(|(k, _)| k.starts_with(prefix)) {
             let Some(rest) = k.strip_prefix(prefix) else { continue };
             // `term_label.<p>.<n>`: the position is all but the last part; `rating.<p>`: all of it.
-            let (pos, tail) = if prefix == crate::terminal_types::LABEL_PREFIX {
+            let (pos, tail) = if prefix == crate::terminal_strips::terminal_blocks::LABEL_PREFIX {
                 match rest.rsplit_once('.') {
                     Some((pos, n)) => (pos, format!(".{n}")),
                     None => continue,
@@ -978,8 +978,8 @@ fn renumber_strip(
     }
     // Design 072 §2.5: a fuse position's rating (the strip's field) moves with its position; one
     // `ModifyDevice` on the strip as the plan leaves it, before its property ops.
-    if let Some(d) = base.filter(|d| crate::terminal_types::fuses_move(d, map)) {
-        let (after, moves) = crate::terminal_types::moved_fuses(d, map);
+    if let Some(d) = base.filter(|d| crate::terminal_strips::terminal_blocks::fuses_move(d, map)) {
+        let (after, moves) = crate::terminal_strips::terminal_blocks::moved_fuses(d, map);
         lines.extend(moves.into_iter().map(|m| format!("{tag}: {m}")));
         if after != *d {
             out.push(Op::ModifyDevice { id: c, before: d.clone(), after });
@@ -994,15 +994,15 @@ fn renumber_strip(
     // Links: labels rewritten, re-collapsed in the new plan order.
     let old_order = positions(doc, c);
     let mut new_order: Vec<String> = old_order.iter().map(|l| moved(l)).collect();
-    new_order.sort_by_key(|l| links::natural_key(l));
+    new_order.sort_by_key(|l| jumper_bars::natural_key(l));
     new_order.dedup();
     // Spare positions a relabelled terminal now takes (review of PR #57, 1): a link naming
     // one would silently join that terminal's net, so the position leaves the link.
     let drawn_before: BTreeSet<String> =
-        crate::strips::drawn_connection_points(doc, c).into_iter().map(|(t, _, _)| crate::terminal_types::position_label(doc, t)).collect();
+        crate::terminal_strips::drawn_connection_points(doc, c).into_iter().map(|(t, _, _)| crate::terminal_strips::terminal_blocks::position_label(doc, t)).collect();
     let taken: BTreeSet<&String> = map.values().filter(|l| !drawn_before.contains(*l)).collect();
-    for (n, p) in links::of(props) {
-        let key = links::key(n);
+    for (n, p) in jumper_bars::of(props) {
+        let key = jumper_bars::key(n);
         let Some(before) = props.get(&key).cloned() else { continue };
         // Brief 036 (review 036, 1): a link that is not on one level and one point (a
         // cross-level link, items on different levels or points) is rewritten span by span,
@@ -1011,19 +1011,19 @@ fn renumber_strip(
             let mut parts: Vec<String> = Vec::new();
             for (item, sp) in p.0.iter().zip(p.spans()) {
                 match sp {
-                    links::Span::Levels { position, lo, hi } => {
+                    jumper_bars::Span::Levels { position, lo, hi } => {
                         let q = moved(&position);
                         // A cross-level link names both levels (`1.1-1.3`).
                         parts.push(format!("{q}.{lo}-{q}.{hi}"));
                     }
-                    links::Span::Positions { level, point, .. } => {
-                        let one = links::Positions(vec![item.clone()]);
+                    jumper_bars::Span::Positions { level, point, .. } => {
+                        let one = jumper_bars::Positions(vec![item.clone()]);
                         let mut sel: Vec<String> = one.select(&old_order).into_iter().map(|l| moved(l)).collect();
                         sel.extend(one.missing(&old_order));
                         let mut refs: Vec<&String> = sel.iter().collect();
-                        refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
+                        refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), jumper_bars::natural_key(l)));
                         refs.dedup();
-                        parts.push(crate::terminal_types::jumper_bar_text(&refs, &new_order, level, point));
+                        parts.push(crate::terminal_strips::terminal_blocks::jumper_bar_text(&refs, &new_order, level, point));
                     }
                 }
             }
@@ -1053,9 +1053,9 @@ fn renumber_strip(
             lines.push(format!("{tag}: link {before} leaves {why}"));
         }
         let mut refs: Vec<&String> = labels.iter().collect();
-        refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
+        refs.sort_by_key(|l| (new_order.iter().position(|o| o == *l).unwrap_or(usize::MAX), jumper_bars::natural_key(l)));
         refs.dedup();
-        let after = crate::terminal_types::jumper_bar_text(&refs, &new_order, level, point);
+        let after = crate::terminal_strips::terminal_blocks::jumper_bar_text(&refs, &new_order, level, point);
         if after != before {
             lines.push(format!("{tag}: link {before} \u{2192} {after}"));
             out.push(Op::SetProperty { object: ObjectRef::Device(c), key, before: Some(before), after: Some(after) });
@@ -1065,7 +1065,7 @@ fn renumber_strip(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn places_and_values() {

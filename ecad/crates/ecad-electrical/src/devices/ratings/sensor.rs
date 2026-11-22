@@ -11,11 +11,11 @@
 //! PLC channel.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ecad_model::device::Sensor;
-use ecad_model::device::sensor::MAX_SUPPLY_VOLTS;
-use ecad_model::units::{Current, RatedVoltage, Volts};
+use ecad_model::objects::devices::Sensor;
+use ecad_model::objects::devices::sensor::MAX_SUPPLY_VOLTS;
+use ecad_model::geometry::units::{Current, RatedVoltage, Volts};
 
-use super::{MAX_CHARS, Read};
+use crate::devices::ratings::{MAX_CHARS, Read};
 
 /// One read piece of a supply.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,7 +37,7 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
     }
     let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
     let (num, unit) = lower.split_at(split);
-    let x = crate::rating::parse::decimal(num)?;
+    let x = crate::devices::ratings::parse::decimal(num)?;
     match unit {
         "" => Some(vec![Tok::Bare(x)]),
         "v" => Some(vec![Tok::Volts(x)]),
@@ -75,8 +75,8 @@ fn tokens(text: &str) -> Option<Vec<Tok>> {
 ///
 /// # Example
 /// ```
-/// use ecad_electrical::rating::reader::{Read, read_sensor};
-/// use ecad_model::device::{Output, Sensing, Sensor};
+/// use crate::devices::ratings::{Read, read_sensor};
+/// use ecad_model::objects::devices::{Output, Sensing, Sensor};
 /// let prox = Sensor::empty(Sensing::Proximity, Output::Pnp);
 /// let Read::Rating(b) = read_sensor(&prox, "24VDC") else { panic!() };
 /// assert_eq!(b.to_string(), "24 V DC");
@@ -128,8 +128,8 @@ pub fn read_sensor(sensor: &Sensor, text: &str) -> Read<Sensor> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ecad_model::device::{Output, Sensing};
+    use crate::devices::ratings::*;
+    use ecad_model::objects::devices::{Output, Sensing};
 
     fn shown(sensor: &Sensor, text: &str) -> String {
         match read_sensor(sensor, text) {

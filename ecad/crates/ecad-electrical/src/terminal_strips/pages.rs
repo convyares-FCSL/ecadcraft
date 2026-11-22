@@ -15,18 +15,18 @@
 //! (`by_far`). The project's `terminal.plan.style` sets `style_changed`.
 //!
 //! A page's own style (`SetProperty(Page P, terminal.plan.style)`) is P's own property, which
-//! [`crate::frames::touches`] already redraws; its sheet count reads the kept counts.
+//! [`crate::pages::frames::touches`] already redraws; its sheet count reads the kept counts.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::effect::{Effect, Effects};
-use ecad_model::sheet::{MARGIN_MM, SheetSpec};
+use ecad_model::document::effect::{Effect, Effects};
+use ecad_model::document::sheet::{MARGIN_MM, SheetSpec};
 use ecad_model::{CableId, DeviceId, Document, ObjectRef, PageId};
 
-use crate::accessories::Acc;
+use crate::terminal_strips::accessories::Acc;
 use crate::defaults::strip_pages as entries;
-use crate::outputs::kept::ReportModels;
-use crate::strips::{PlanItem, StripData, Strips, TermRow};
+use crate::reports::kept::ReportModels;
+use crate::terminal_strips::{PlanItem, StripData, Strips, TermRow};
 
 /// Gap between the tag box and the first column.
 pub const TAG_GAP_MM: f64 = 2.0;
@@ -54,7 +54,7 @@ pub fn style_of(doc: &Document, page: PageId) -> Style {
 
 /// Whether `page` is a `terminals` page drawn in the graphic style.
 pub fn is_graphic(doc: &Document, page: PageId) -> bool {
-    crate::generated::kind_of(doc, page) == Some(ecad_model::GenKind::Terminals) && style_of(doc, page) == Style::Graphic
+    crate::pages::generated::kind_of(doc, page) == Some(ecad_model::GenKind::Terminals) && style_of(doc, page) == Style::Graphic
 }
 
 /// The strip layout lengths (design 046 §7.2), paper millimetres.
@@ -384,7 +384,7 @@ impl StripPages {
 
 /// The column width of `page`'s sheet.
 pub fn page_avail(doc: &Document, page: PageId, o: &ReportModels) -> f64 {
-    o.strip_pages.geometry.available(&ecad_model::sheet::sheet_of(doc, page))
+    o.strip_pages.geometry.available(&ecad_model::document::sheet::sheet_of(doc, page))
 }
 
 /// How many sheets a graphic `terminals` page needs: each strip from a new sheet, its kept
@@ -392,7 +392,7 @@ pub fn page_avail(doc: &Document, page: PageId, o: &ReportModels) -> f64 {
 pub fn sheets(doc: &Document, page: PageId, o: &ReportModels) -> usize {
     let sp = &o.strip_pages;
     let avail = page_avail(doc, page, o);
-    let n = match crate::generated::strip_of(doc, page) {
+    let n = match crate::pages::generated::strip_of(doc, page) {
         Some(c) => sp.sheets_of(c, avail),
         None if (avail - sp.avail).abs() < 1e-9 => sp.sheets_total,
         None => o.strips.strips.keys().map(|c| sp.sheets_of(*c, avail)).sum(),
@@ -405,7 +405,7 @@ pub fn sheets(doc: &Document, page: PageId, o: &ReportModels) -> usize {
 #[allow(clippy::result_unit_err)]
 pub fn sheet_at<'o>(doc: &Document, page: PageId, o: &'o ReportModels, i: usize) -> Result<Option<(&'o StripData, usize, usize)>, ()> {
     let avail = page_avail(doc, page, o);
-    let shown: Vec<&StripData> = match crate::generated::strip_of(doc, page) {
+    let shown: Vec<&StripData> = match crate::pages::generated::strip_of(doc, page) {
         Some(c) => match o.strips.get(c) {
             Some(s) => vec![s],
             None => return Err(()),

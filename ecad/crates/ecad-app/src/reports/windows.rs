@@ -34,7 +34,7 @@ impl App {
         let folders = p
             .read(&mut self.cad.session, |p, _| {
                 let doc = p.ledger.document();
-                doc.folders.keys().map(|f| (f.hex(), ecad_electrical::revisions::folder_path(doc, Some(*f)))).collect::<Vec<_>>()
+                doc.folders.keys().map(|f| (f.hex(), ecad_electrical::releases::revisions::folder_path(doc, Some(*f)))).collect::<Vec<_>>()
             })
             .unwrap_or_default();
         let chosen = folder.and_then(|f| folders.iter().position(|(h, _)| *h == f.hex()));
@@ -93,7 +93,7 @@ impl App {
         let t = r.shown_table();
         let flagged = t.flagged();
         let text = ecad_engine::outputs::csv(&t, true);
-        match path.and_then(|path| ecad_engine::printbook::write_file(&path, text.as_bytes()).map(|()| path)) {
+        match path.and_then(|path| ecad_engine::export::printbook::write_file(&path, text.as_bytes()).map(|()| path)) {
             Ok(path) => {
                 let marked = if flagged == 1 { "1 cell marked ?".to_string() } else { format!("{flagged} cells marked ?") };
                 let m = format!("Wrote {} rows to {path} ({marked}).", t.rows.len());
@@ -177,7 +177,7 @@ impl App {
     /// The Release badge: counted again only when the kept Checks or report models change.
     pub(crate) fn release_badge(&mut self) -> Option<(String, Option<(usize, usize)>)> {
         let p = self.project.clone()?;
-        p.read(&mut self.cad.session, |p, _| (ecad_engine::revisions::pending_rev(p.ledger.document()), release_ui::badge(p))).ok()
+        p.read(&mut self.cad.session, |p, _| (ecad_electrical::releases::revisions::pending_rev(p.ledger.document()), release_ui::badge(p))).ok()
     }
 
     /// Open the Release dialog (design 027 §5.1): the pending revision, or `rev` written again.
@@ -195,12 +195,12 @@ impl App {
         let r = p.configure(&mut self.cad.session, |p| {
             // An issued revision's view is built once (its state never changes); the pending one
             // again only when what it shows can differ (`release::dialog_key`).
-            if key.is_some() && (rev.is_some() || key == ecad_engine::release::dialog_key(p, accept)) {
+            if key.is_some() && (rev.is_some() || key == ecad_engine::releases::release::dialog_key(p, accept)) {
                 return Ok(None);
             }
-            let v = ecad_engine::release::view(p, rev.as_deref(), accept, ecad_electrical::release::MAX_ROWS)?;
+            let v = ecad_engine::releases::release::view(p, rev.as_deref(), accept, ecad_electrical::releases::release::MAX_ROWS)?;
             // The kept lists exist now: the key is read after the view built them.
-            let k = if rev.is_some() { 0 } else { ecad_engine::release::dialog_key(p, accept).unwrap_or(0) };
+            let k = if rev.is_some() { 0 } else { ecad_engine::releases::release::dialog_key(p, accept).unwrap_or(0) };
             Ok::<_, String>(Some((v, k)))
         });
         match r {
@@ -306,15 +306,15 @@ impl App {
     fn print_window(&mut self, ctx: &egui::Context) {
         let Some(d) = self.print_book.as_ref().filter(|d| !d.hidden) else { return };
         let scope = match d.scope {
-            outputs_ui::ScopeKind::All => ecad_engine::printbook::Scope::All,
+            outputs_ui::ScopeKind::All => ecad_engine::export::printbook::Scope::All,
             outputs_ui::ScopeKind::Folder => match d.folders.get(d.folder).and_then(|f| ecad_model::FolderId::parse(&f.0)) {
-                Some(f) => ecad_engine::printbook::Scope::Folder(f),
-                None => ecad_engine::printbook::Scope::All,
+                Some(f) => ecad_engine::export::printbook::Scope::Folder(f),
+                None => ecad_engine::export::printbook::Scope::All,
             },
-            outputs_ui::ScopeKind::Pages => ecad_engine::printbook::Scope::Pages(d.pages.clone()),
+            outputs_ui::ScopeKind::Pages => ecad_engine::export::printbook::Scope::Pages(d.pages.clone()),
         };
         if let Some(p) = self.project.clone()
-            && let Ok((sheets, unknown, flagged)) = p.configure(&mut self.cad.session, |p| ecad_engine::printbook::count(p, &scope))
+            && let Ok((sheets, unknown, flagged)) = p.configure(&mut self.cad.session, |p| ecad_engine::export::printbook::count(p, &scope))
             && let Some(d) = &mut self.print_book
         {
             d.sheets = sheets;
@@ -322,7 +322,7 @@ impl App {
             d.flagged = flagged;
         }
         if let Some(p) = self.project.clone()
-            && let Ok(notes) = p.configure(&mut self.cad.session, |p| ecad_engine::printbook::notes(p, &scope))
+            && let Ok(notes) = p.configure(&mut self.cad.session, |p| ecad_engine::export::printbook::notes(p, &scope))
             && let Some(d) = &mut self.print_book
         {
             d.notes = notes;

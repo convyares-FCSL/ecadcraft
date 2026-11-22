@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 
-use ecad_tokens::Color;
+use crate::tokens::Color;
 
 use crate::prim::Tone;
 
@@ -131,7 +131,7 @@ pub enum Cell {
     /// Colour swatches (a wire's colours).
     Swatch(Vec<Color>),
     /// On or off, drawn as [`crate::control::Toggle`]: a click reports
-    /// [`super::TableEvent::Button`] with index 0 (brief 057: a core's Not used).
+    /// [`crate::table::TableEvent::Button`] with index 0 (brief 057: a core's Not used).
     Toggle(bool),
     /// A colour code with its bar (board 2.06's core colours: a short bar, then `BN`); a
     /// two-colour code has two bars.
@@ -140,7 +140,7 @@ pub enum Cell {
     Badge(String, Tone),
     /// Link lanes.
     Lanes(LaneCell),
-    /// Action buttons (a check's fixes): a click reports [`super::TableEvent::Button`] with the
+    /// Action buttons (a check's fixes): a click reports [`crate::table::TableEvent::Button`] with the
     /// button's index.
     Buttons(Vec<String>),
     Empty,

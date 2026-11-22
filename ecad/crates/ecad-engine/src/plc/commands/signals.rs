@@ -2,12 +2,12 @@
 //! [`crate::plc::signals`].
 
 use cadcraft_engine::Session;
-use ecad_electrical::cmd::plc as rules;
+use ecad_electrical::plc::commands as rules;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::cmd::input::Command;
-use crate::cmd::on_project;
+use crate::commands::input::Command;
+use crate::commands::on_project;
 use crate::plc::signals::*;
 use serde_json::{Value, json};
 

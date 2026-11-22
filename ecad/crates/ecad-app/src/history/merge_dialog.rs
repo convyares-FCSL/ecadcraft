@@ -11,10 +11,10 @@
 
 use std::collections::BTreeMap;
 
-use ecad_ui::control::TextEntry;
-use ecad_ui::dialog::{Dialog, action};
-use ecad_ui::prim::{self, Button, Checkbox, Kind, Radio, Tone};
-use ecad_ui::tokens::{size, space};
+use ecad_widgets::control::TextEntry;
+use ecad_widgets::dialog::{Dialog, action};
+use ecad_widgets::prim::{self, Button, Checkbox, Kind, Radio, Tone};
+use ecad_widgets::tokens::{size, space};
 use eframe::egui;
 use serde_json::{Value, json};
 

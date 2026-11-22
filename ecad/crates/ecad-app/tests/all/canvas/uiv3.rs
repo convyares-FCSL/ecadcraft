@@ -11,7 +11,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use crate::common::{self, Opts};
-use crate::project_panel::new_app;
+use crate::pages::project_panel::new_app;
 
 fn harness() -> Harness<'static, App> {
     common::harness(Opts::new().size(1920.0, 1080.0).chrome(false).app(new_app()))
@@ -25,29 +25,29 @@ fn background(h: &Harness<'static, App>) -> Option<eframe::egui::Color32> {
 fn the_light_switch_turns_the_shell_light_and_is_remembered() {
     let mut h = harness();
     assert_eq!(h.state().shell_state().theme, Theme::Dark, "dark by default");
-    assert_eq!(ecad_ui::theme(), ecad_ui::Theme::Dark);
-    assert_eq!(ecad_ui::SHELL.panel, ecad_ui::tokens::GRAPHITE.panel);
+    assert_eq!(ecad_widgets::theme(), ecad_widgets::Theme::Dark);
+    assert_eq!(ecad_widgets::SHELL.panel, ecad_widgets::tokens::GRAPHITE.panel);
     h.get_by_label(top_bar::THEME_LIGHT).click();
     h.run_steps(3);
     assert_eq!(h.state().shell_state().theme, Theme::Light);
-    assert_eq!(ecad_ui::theme(), ecad_ui::Theme::Light);
-    assert_eq!(ecad_ui::SHELL.panel, ecad_ui::tokens::LIGHT.panel, "the shell reads the light set");
+    assert_eq!(ecad_widgets::theme(), ecad_widgets::Theme::Light);
+    assert_eq!(ecad_widgets::SHELL.panel, ecad_widgets::tokens::LIGHT.panel, "the shell reads the light set");
     assert!(!h.ctx.style_of(eframe::egui::Theme::Dark).visuals.dark_mode, "egui's own widgets follow");
-    assert_eq!(h.ctx.style_of(eframe::egui::Theme::Dark).visuals.panel_fill, ecad_ui::color(ecad_ui::tokens::LIGHT.panel));
+    assert_eq!(h.ctx.style_of(eframe::egui::Theme::Dark).visuals.panel_fill, ecad_widgets::color(ecad_widgets::tokens::LIGHT.panel));
     let stored = h.state().shell_state().to_stored();
     assert_eq!(ShellState::from_stored(Some(&stored)).0.theme, Theme::Light, "kept with the shell state");
     assert_eq!(ShellState::from_stored(Some("{}")).0.theme, Theme::Dark);
     h.get_by_label(top_bar::THEME_DARK).click();
     h.run_steps(3);
-    assert_eq!(ecad_ui::SHELL.panel, ecad_ui::tokens::GRAPHITE.panel);
+    assert_eq!(ecad_widgets::SHELL.panel, ecad_widgets::tokens::GRAPHITE.panel);
     assert!(h.ctx.style_of(eframe::egui::Theme::Dark).visuals.dark_mode);
 }
 
 #[test]
 fn the_sheet_colour_menu_offers_paper_follow_and_dark_and_follow_follows_the_theme() {
     let mut h = harness();
-    let paper = Some(ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet));
-    let dark = Some(ecad_ui::color(ecad_drawing_style::sheet::DARK.sheet));
+    let paper = Some(ecad_widgets::color(ecad_drawing_style::sheet::PAPER.sheet));
+    let dark = Some(ecad_widgets::color(ecad_drawing_style::sheet::DARK.sheet));
     assert_eq!(background(&h), paper, "paper by default");
     h.get_by_label(status_bar::SHEET_COLOUR).click();
     h.run_steps(2);
@@ -93,7 +93,7 @@ fn a_new_projects_zones_are_numbered_across_and_lettered_down() {
         .read(&mut h.state_mut().cad.session, |p, _| {
             let doc = p.ledger.document();
             let page = doc.page_order.first().copied().expect("a page");
-            let g = ecad_model::sheet::Grid::of(doc, page);
+            let g = ecad_model::document::sheet::Grid::of(doc, page);
             (g.column_label(5), g.row_label(2))
         })
         .expect("read");
@@ -105,13 +105,13 @@ fn a_new_projects_zones_are_numbered_across_and_lettered_down() {
 /// pictures).
 #[test]
 fn screenshots_of_boards_1_15_to_1_18() {
-    let Some(out) = crate::project_panel::shots() else { return };
+    let Some(out) = crate::pages::project_panel::shots() else { return };
     ecad_app::canvas::register_sheet_faces();
     let dir = std::env::temp_dir().join(format!("ecad-uiv3d-shots-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = crate::checks_ui::demo_file(&dir);
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
-    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
+    let path = crate::checks::ui::demo_file(&dir);
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
+    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone())).build_ui_state(
         |ui, t: &mut App| {
             let r = ui.ctx().content_rect();
             ui.scope_builder(eframe::egui::UiBuilder::new().max_rect(r), |ui| {
@@ -144,7 +144,7 @@ fn screenshots_of_boards_1_15_to_1_18() {
     h.state_mut().shell.state.left.collapsed = false;
     h.state_mut().open_inspector(RightTab::Device);
     fit(&mut h);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-D-1.17-ours.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-D-1.17-ours.png"));
     // 1.18: full dark, the sheet following the theme, the sheet colour menu open.
     h.state_mut().shell.state.theme = Theme::Dark;
     h.state_mut().shell.state.sheet = Sheet::Follow;
@@ -152,7 +152,7 @@ fn screenshots_of_boards_1_15_to_1_18() {
     fit(&mut h);
     h.get_by_label(status_bar::SHEET_COLOUR).click();
     h.run_steps(4);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-D-1.18-ours.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-D-1.18-ours.png"));
     h.key_press(eframe::egui::Key::Escape);
     h.run_steps(2);
     // 1.15: the parts list page, its lines listed under each device, Book open.
@@ -167,14 +167,14 @@ fn screenshots_of_boards_1_15_to_1_18() {
         }
     }
     fit(&mut h);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-D-1.15-ours.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-D-1.15-ours.png"));
     // 1.16: the Compare layout, opened from History.
     if let Some(p) = page {
         h.state_mut().show_page(p).unwrap();
     }
     h.state_mut().open_compare();
     fit(&mut h);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-D-1.16-ours.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-D-1.16-ours.png"));
     let _ = std::fs::remove_dir_all(&dir);
 }
 

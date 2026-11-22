@@ -1,25 +1,25 @@
 //! The rules of brief 055's commands (design 055 §9): which frame `titleblock` names, the record a
 //! write or a new frame makes, and the checks a body passes. A title block is a `frame` style
 //! record (050a) with its block as the record's body (FP1). The block's layout and drawing are
-//! [`crate::title_block`]'s. The JSON answers (`titleblocks_json`, `block_json`) take the frame
+//! [`crate::title_blocks`]'s. The JSON answers (`titleblocks_json`, `block_json`) take the frame
 //! text looks, so the engine crate's shims pass this machine's fonts, commit the ops and answer.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::sheet::{self, FRAME_CATALOGUE, FRAME_SHEET_FIELD, Margins, SheetSpec};
-use ecad_model::style::{StyleBody, StyleLayer, StyleRef, is_name};
-use ecad_model::title_block::TitleBlockLayout;
+use ecad_model::document::sheet::{self, FRAME_CATALOGUE, FRAME_SHEET_FIELD, Margins, SheetSpec};
+use ecad_model::objects::styles::{StyleBody, StyleLayer, StyleRef, is_name};
+use ecad_model::objects::title_block::TitleBlockLayout;
 use ecad_model::{Document, IdAllocator, Op, PageId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::run::{Access, Cx, Generic, Outcome};
-use crate::cmd::style::{FieldInput, FieldParam, STANDARD_FIRST, STYLE_NEEDS_NAME, field_inputs, fields};
+use crate::commands::run::{Access, Cx, Generic, Outcome};
+use crate::styles::commands::styles::{FieldInput, FieldParam, STANDARD_FIRST, STYLE_NEEDS_NAME, field_inputs, fields};
 use crate::error::CmdError;
-use crate::frames::FrameText;
+use crate::pages::frames::FrameText;
 use crate::styles;
-use crate::title_block::{bind, house};
+use crate::title_blocks::{bind, house};
 
 /// Refusals, in words.
 pub const BUILTIN_READ_ONLY: &str = "Built-in. Duplicate it to make your own (`titleblock {new: {from: \"sheet\", sheet}}`).";
@@ -234,7 +234,7 @@ fn margins(doc: &Document, id: &StyleRef) -> Margins {
 pub fn layout_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameText) -> TitleBlockLayout {
     match sheet::frame_block(doc, id) {
         Some(l) => l.clone(),
-        None => house::house(crate::title_block::frame_width(spec, &margins(doc, id)), text),
+        None => house::house(crate::title_blocks::frame_width(spec, &margins(doc, id)), text),
     }
 }
 
@@ -290,7 +290,7 @@ pub fn titleblocks_json(doc: &Document, text: &FrameText) -> Value {
 pub fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameText) -> Result<Value, CmdError> {
     let cat = &styles::frame::CATALOGUE;
     let row = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).ok_or(CmdError::refused(NOT_A_FRAME))?;
-    let mut v = crate::cmd::style::style_json(doc, cat, &row, false);
+    let mut v = crate::styles::commands::styles::style_json(doc, cat, &row, false);
     let layout = layout_of(doc, id, spec, text);
     v["builtin"] = json!(row.layer == styles::Layer::Builtin);
     v["body"] = serde_json::to_value(&layout).map_err(|e| CmdError::refused(e.to_string()))?;
@@ -300,7 +300,7 @@ pub fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameT
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run; design 055 §9). `titleblockimport` reads a DXF with
+// The commands (generic: crate::commands::run; design 055 §9). `titleblockimport` reads a DXF with
 // CADCraft's reader and stays the engine's.
 
 /// `titleblocks {}` (read only): every frame with its sheet, items, users and keys.

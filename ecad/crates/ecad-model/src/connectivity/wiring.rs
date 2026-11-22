@@ -32,13 +32,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::colour::ColourWords;
+use crate::geometry::colour::ColourWords;
 use crate::connectivity::{self, NetData, NetKey, Node, split_number};
-use crate::doc::Document;
-use crate::id::{PageId, WireId};
-use crate::op::{ObjectRef, Op};
-use crate::text::Text;
-use crate::wire::{Colours, WireNumber};
+use crate::document::doc::Document;
+use crate::naming::id::{PageId, WireId};
+use crate::document::op::{ObjectRef, Op};
+use crate::naming::text::Text;
+use crate::objects::wire::{Colours, WireNumber};
 
 pub use crate::connectivity::{POTENTIAL as POTENTIAL_KEY, WIRE_NUMBER as WIRE_NUMBER_KEY};
 
@@ -97,7 +97,7 @@ pub struct PotentialDef {
 }
 
 /// The defaults-registry key choosing the wire type (brief 050b, FP5) for the project or the
-/// standard. A wire's own type is its field [`crate::wire::Wire::wire_type`] (design 072 §4.6).
+/// standard. A wire's own type is its field [`crate::objects::wire::Wire::wire_type`] (design 072 §4.6).
 pub const WIRE_CATEGORY: &str = "wire.category";
 
 /// A colour as labels write it in `words`: a known colour (any form, any case) in those words;
@@ -178,7 +178,7 @@ pub const LABEL_MIN_LENGTHS: std::ops::RangeInclusive<f64> = 0.0..=100.0;
 pub const LABEL_HEIGHTS: std::ops::RangeInclusive<f64> = 0.5..=10.0;
 
 /// The words of the colour setting ([`ColourWords`]): `code2`, `code3`, `name`.
-pub const COLOUR_STYLE_WORDS: &[&str] = <ColourWords as crate::words::Word>::WORDS;
+pub const COLOUR_STYLE_WORDS: &[&str] = <ColourWords as crate::naming::words::Word>::WORDS;
 /// The most digits a sequence is padded to.
 pub const MAX_DIGITS: u8 = 6;
 
@@ -235,14 +235,14 @@ impl WiringSettings {
         self.potentials.iter().find(|p| p.name.eq_ignore_ascii_case(n))
     }
 
-    /// The colour style: the project's choice, else the built-in ([`crate::builtins`]).
+    /// The colour style: the project's choice, else the built-in ([`crate::naming::builtins`]).
     pub fn colour_style(&self) -> ColourWords {
-        self.colour_style.unwrap_or_else(|| crate::builtins::builtins().colour_style)
+        self.colour_style.unwrap_or_else(|| crate::naming::builtins::builtins().colour_style)
     }
 
     /// Digits clamped to 1..=[`MAX_DIGITS`]: the project's choice, else the built-in.
     pub fn digits(&self) -> usize {
-        usize::from(self.digits.unwrap_or_else(|| crate::builtins::builtins().wire_digits).clamp(1, MAX_DIGITS))
+        usize::from(self.digits.unwrap_or_else(|| crate::naming::builtins::builtins().wire_digits).clamp(1, MAX_DIGITS))
     }
 }
 
@@ -321,25 +321,25 @@ fn has_prefix(doc: &Document, number: &str, prefix: &str) -> bool {
 }
 
 /// Where `at` lies on `page` (brief 019): the page's shown number and its frame's column and row.
-pub fn place(doc: &Document, page: PageId, at: crate::geom::Pt) -> Option<crate::derive::Place> {
-    let grid = crate::sheet::Grid::of(doc, page);
-    crate::derive::place_on(&grid, &crate::book::page_number(doc, page), at)
+pub fn place(doc: &Document, page: PageId, at: crate::geometry::geom::Pt) -> Option<crate::connectivity::derive::Place> {
+    let grid = crate::document::sheet::Grid::of(doc, page);
+    crate::connectivity::derive::place_on(&grid, &crate::document::book::page_number(doc, page), at)
 }
 
 /// Where a net is, for the page schemes: the shown page number and the frame column label of
-/// where its first wire in net order starts ([`crate::derive::wire_start`]; `1` and the first
+/// where its first wire in net order starts ([`crate::connectivity::derive::wire_start`]; `1` and the first
 /// column's label when it has none).
 pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
     let first_column = |page: Option<PageId>| match page {
-        Some(p) => crate::sheet::Grid::of(doc, p).column_label(1),
+        Some(p) => crate::document::sheet::Grid::of(doc, p).column_label(1),
         None => doc.settings.sheet().column_labels.label(1),
     };
-    let Some((page, at)) = first_wire(doc, net).and_then(|w| crate::derive::wire_start(doc, w)) else {
+    let Some((page, at)) = first_wire(doc, net).and_then(|w| crate::connectivity::derive::wire_start(doc, w)) else {
         return ("1".to_string(), first_column(None));
     };
     match place(doc, page, at) {
         Some(p) => (p.page, p.column_label),
-        None => (crate::book::page_number(doc, page), first_column(Some(page))),
+        None => (crate::document::book::page_number(doc, page), first_column(Some(page))),
     }
 }
 
@@ -355,14 +355,14 @@ pub fn units<'a>(doc: &Document, net: &'a NetData) -> Vec<Cow<'a, NetData>> {
     if doc.settings.wiring.number_by == NumberBy::Net || net.wires.len() < 2 {
         return vec![Cow::Borrowed(net)];
     }
-    let mut wires: Vec<(u16, WireId, &crate::wire::Wire)> =
+    let mut wires: Vec<(u16, WireId, &crate::objects::wire::Wire)> =
         net.wires.iter().filter_map(|id| doc.wires.get(id).map(|w| (w.net_order, *id, w))).collect();
     wires.sort_by_key(|x| (x.0, x.1));
     wires.into_iter().map(|(_, id, w)| Cow::Owned(unit_of(net, id, w))).collect()
 }
 
 /// Wire `id` alone as a numbering group of `net`.
-fn unit_of(net: &NetData, id: WireId, w: &crate::wire::Wire) -> NetData {
+fn unit_of(net: &NetData, id: WireId, w: &crate::objects::wire::Wire) -> NetData {
     let mut u = NetData {
         terminals: w.ends.iter().copied().collect(),
         wires: [id].into_iter().collect(),
@@ -550,9 +550,9 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             }
             // Brief 030 (FP7): a link edit touches the nets of its old and new terminals, so the
             // numbering pass merges or splits their numbers in the same transaction.
-            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if crate::links::jumper_bar_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() => {
                 for v in [before, after] {
-                    for t in crate::links::terminals_named(doc, *c, v.as_deref()) {
+                    for t in crate::connectivity::jumper_bars::terminals_named(doc, *c, v.as_deref()) {
                         add(Node::Terminal(t), &mut nets);
                     }
                 }
@@ -624,7 +624,7 @@ pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetKey>, potential_changed
     order.sort();
     let mut alloc = Allocator::default();
     let mut out = Vec::new();
-    let off = crate::sheet::checks_off_pages(doc);
+    let off = crate::document::sheet::checks_off_pages(doc);
     for (_, id) in order {
         let Some(net) = conn.net(id) else { continue };
         // Brief 054 (design 054 §3.4): a net drawn only on Plain pages is not numbered.
@@ -643,7 +643,7 @@ pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetKey>, potential_changed
 }
 
 /// Whether every route of `net`'s conductors is on a page of `pages` (and it has one).
-fn only_on(doc: &Document, net: &NetData, pages: &std::collections::BTreeSet<crate::id::PageId>) -> bool {
+fn only_on(doc: &Document, net: &NetData, pages: &std::collections::BTreeSet<crate::naming::id::PageId>) -> bool {
     let mut any = false;
     // A wire is drawn by the routes at its ends (design 072 §4.3).
     for c in &net.wires {
@@ -675,7 +675,7 @@ fn decide(doc: &Document, id: NetKey, net: &NetData, potential_changed: bool, al
     }
     // Brief 026: with provisional tags on, a new net stays unnumbered (`24V-?`) until Finalise.
     let Some(winner) = best_number(&net.numbers) else {
-        if crate::numbering::provisional_on(doc) {
+        if crate::naming::numbering::provisional_on(doc) {
             return None;
         }
         return Some((alloc.next(doc, net, &pot), false));
@@ -693,18 +693,18 @@ fn decide(doc: &Document, id: NetKey, net: &NetData, potential_changed: bool, al
 
 /// Renumber Wires (design 022 §5.2, design 026 §2): every net with no number (`all == false`),
 /// or every automatic number (`all == true`), in drawing order (page in book order, column, row,
-/// then top to bottom and left to right; [`crate::numbering`]). Fixed numbers never change.
+/// then top to bottom and left to right; [`crate::naming::numbering`]). Fixed numbers never change.
 pub fn renumber(doc: &Document, all: bool) -> Vec<Op> {
-    let scope = if all { crate::numbering::Scope::All } else { crate::numbering::Scope::Provisional };
-    let req = crate::numbering::Request {
-        kinds: [crate::numbering::Kind::Wires].into_iter().collect(),
+    let scope = if all { crate::naming::numbering::Scope::All } else { crate::naming::numbering::Scope::Provisional };
+    let req = crate::naming::numbering::Request {
+        kinds: [crate::naming::numbering::Kind::Wires].into_iter().collect(),
         scope,
         start: None,
         digits: None,
         strips: Default::default(),
         positions: Default::default(),
     };
-    crate::numbering::plan(doc, &req, &crate::tag::HighWater::new()).map(|p| p.ops).unwrap_or_default()
+    crate::naming::numbering::plan(doc, &req, &crate::naming::tag::HighWater::new()).map(|p| p.ops).unwrap_or_default()
 }
 
 pub(crate) fn unnumbered(doc: &Document, c: WireId) -> bool {
@@ -780,7 +780,7 @@ pub fn label_with(doc: &Document, c: WireId, cross_section: Option<String>, colo
     let net = conn.net_of_conductor(c).and_then(|id| conn.net(id).map(|n| (id, n)));
     let number = wire_number(doc, c);
     // Brief 026: with provisional tags on, an unnumbered net shows its prefix and `?` (`24V-?`).
-    let provisional = number.is_none() && crate::numbering::provisional_on(doc);
+    let provisional = number.is_none() && crate::naming::numbering::provisional_on(doc);
     let unnumbered = match net {
         Some((_, n)) if provisional => {
             let pot = net_potential(doc, n);
@@ -853,7 +853,7 @@ pub fn sequence_of(number: &str) -> Option<(&str, u64)> {
 
 #[cfg(test)]
 mod uiv3_tests {
-    use super::page_column_scope;
+    use crate::page_column_scope;
 
     /// Review of PR #96, finding 1: numbered columns are separated from the page number.
     #[test]

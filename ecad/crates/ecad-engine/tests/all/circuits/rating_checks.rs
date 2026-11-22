@@ -4,8 +4,8 @@
 //! arithmetic; none is a value from a standard (owner, Q11). The expected numbers follow from them
 //! by the formulas of design 057 §3.
 
-use ecad_engine::rating::dataset::{self, Insulation};
-use ecad_engine::rating::{self, parse};
+use ecad_electrical::devices::ratings::dataset::{self, Insulation};
+use ecad_electrical::circuits::{self, parse};
 use ecad_model::{CableId, DeviceId, WireId};
 use serde_json::{Value, json};
 
@@ -109,12 +109,12 @@ fn hostile_values_are_refused() {
     assert_eq!(parse::cross_section("2.5 mm\u{b2}"), Some(2.5));
     assert_eq!(parse::cross_section("18 AWG"), None);
     assert_eq!(parse::ambient("95"), None);
-    assert_eq!(parse::bundling("3 bunched"), Some(ecad_model::wire::Bundling::Circuits(3)));
+    assert_eq!(parse::bundling("3 bunched"), Some(ecad_model::objects::wire::Bundling::Circuits(3)));
     assert_eq!(parse::percent("25"), None);
-    assert_eq!(ecad_engine::strips::notation_size("H07RN-F 4G1.5"), Some(1.5));
-    assert_eq!(ecad_engine::strips::notation_size("3x2.5"), Some(2.5));
-    assert_eq!(ecad_engine::strips::notation_size("LiYCY 4x2x0.25"), Some(0.25));
-    assert_eq!(ecad_engine::strips::notation_size("H07RN-F"), None);
+    assert_eq!(ecad_electrical::terminal_strips::notation_size("H07RN-F 4G1.5"), Some(1.5));
+    assert_eq!(ecad_electrical::terminal_strips::notation_size("3x2.5"), Some(2.5));
+    assert_eq!(ecad_electrical::terminal_strips::notation_size("LiYCY 4x2x0.25"), Some(0.25));
+    assert_eq!(ecad_electrical::terminal_strips::notation_size("H07RN-F"), None);
 }
 
 #[test]
@@ -144,22 +144,22 @@ fn c15_a_table_reads_round_trips_and_refuses_bad_rows() {
 #[test]
 fn the_formulas_give_the_worked_numbers() {
     // §11 check 1: round2(√(30/40)) = 0.87; 27 × 0.87 × 0.80 = 18.792 → 18.8.
-    let k = rating::circuit::k_temp(70.0, 30.0, 40.0, true).unwrap();
+    let k = circuits::circuit::k_temp(70.0, 30.0, 40.0, true).unwrap();
     assert_eq!(k, 0.87);
     assert!((27.0 * k * 0.80 - 18.792).abs() < 1e-9);
-    assert_eq!(rating::circuit::fmt_amps(27.0 * k * 0.80, Some(4.0)), "18.8");
+    assert_eq!(circuits::circuit::fmt_amps(27.0 * k * 0.80, Some(4.0)), "18.8");
     // §11 check 9: the cap.
-    assert_eq!(rating::circuit::k_temp(70.0, 30.0, 25.0, true), Some(1.0));
-    assert_eq!(rating::circuit::k_temp(70.0, 30.0, 70.0, true), None);
+    assert_eq!(circuits::circuit::k_temp(70.0, 30.0, 25.0, true), Some(1.0));
+    assert_eq!(circuits::circuit::k_temp(70.0, 30.0, 70.0, true), None);
     // §11 check 4: 10.0 Ω/km, 4 A, 12 m, 400 V, ac3 → 0.9948 V, 0.249 %.
-    let (v, p) = rating::circuit::volt_drop(10.0, 70.0, true, 4.0, 12.0, 400.0).unwrap();
+    let (v, p) = circuits::circuit::volt_drop(10.0, 70.0, true, 4.0, 12.0, 400.0).unwrap();
     assert!((v - 0.9948).abs() < 1e-3 && (p - 0.2487).abs() < 1e-3, "{v} {p}");
-    assert_eq!(rating::circuit::fmt_percent(p), "0.2");
+    assert_eq!(circuits::circuit::fmt_percent(p), "0.2");
     // §11 check 5: 20.0 Ω/km, 0.5 A, 60 m, 24 V dc → 1.4358 V, 5.98 %.
-    let (v, p) = rating::circuit::volt_drop(20.0, 70.0, false, 0.5, 60.0, 24.0).unwrap();
+    let (v, p) = circuits::circuit::volt_drop(20.0, 70.0, false, 0.5, 60.0, 24.0).unwrap();
     assert!((v - 1.4358).abs() < 1e-3 && (p - 5.98).abs() < 1e-2, "{v} {p}");
-    assert_eq!(rating::circuit::fmt_percent(p), "6.0");
-    assert_eq!(rating::circuit::fmt_amps(4.04, Some(4.0)), "4.04");
+    assert_eq!(circuits::circuit::fmt_percent(p), "6.0");
+    assert_eq!(circuits::circuit::fmt_amps(4.04, Some(4.0)), "4.04");
 }
 
 // ------------------------------------------------------------------------------- checks
@@ -324,11 +324,11 @@ fn c15_import_refuses_whole_and_bad_rows_in_a_file_are_counted() {
 
 #[test]
 fn c18_no_values_shipped() {
-    assert!(ecad_engine::styles::ratingtable::CATALOGUE.builtins.is_empty());
-    assert!(ecad_engine::styles::cable::CATALOGUE.builtins.is_empty());
+    assert!(ecad_electrical::styles::ratingtable::CATALOGUE.builtins.is_empty());
+    assert!(ecad_electrical::styles::cable::CATALOGUE.builtins.is_empty());
     let h = &mut H::new(1);
     let doc = h.doc();
-    assert_eq!(ecad_engine::styles::ratingtable::chosen(&doc), None);
+    assert_eq!(ecad_electrical::styles::ratingtable::chosen(&doc), None);
     // No source file of any ECAD crate, app or tool outside `tests/` holds a table row (review of
     // #108: every crate, not only this one).
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
@@ -378,19 +378,19 @@ fn c16_update_map_rechecks_only_what_a_device_protects() {
     rate_category(&mut f.h);
     f.h.run("rating", json!({"wire": f.l2.hex(), "bundling": "0.8"})).unwrap();
     let doc = f.h.doc();
-    let mut k = rating::Kept::build(&doc);
+    let mut k = circuits::Kept::build(&doc);
     let before = doc.clone();
     setprop(&mut f.h, "component", f.q01.hex(), "rating", json!("C20"));
     let after = f.h.doc();
     let ops: Vec<ecad_model::Op> = f.h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
-    let mut touch = rating::Touch::default();
+    let mut touch = circuits::Touch::default();
     touch.collect(&before, &ops);
     touch.collect(&after, &ops);
     let changed = k.update(&after, &touch);
     assert_eq!(changed.len(), k.protected_by(f.q01), "{changed:?}");
     assert_eq!(k.retraced, 0);
     // An unrelated op re-checks nothing.
-    let mut none = rating::Touch::default();
+    let mut none = circuits::Touch::default();
     none.collect(&after, &[]);
     assert!(k.update(&after, &none).is_empty());
 }
@@ -410,8 +410,8 @@ fn padded(len: usize) -> String {
 
 #[test]
 fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
-    use ecad_engine::styles::ratingtable;
-    use ecad_model::style::StyleRef;
+    use ecad_electrical::styles::ratingtable;
+    use ecad_model::objects::styles::StyleRef;
     let cap = dataset::MAX_BYTES;
     let mut f = fixture();
     // At the cap: written, read back, used.
@@ -430,10 +430,10 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
     assert_eq!(f.h.head(), head);
     // One over in a file made elsewhere: the record does not read (design 072 §8, strict); the
     // project opens read-only, so the rows are never used.
-    let too_long = ecad_model::text::LongText::<{ ecad_model::style::rating::MAX_ROWS }>::new(&padded(cap + 2));
+    let too_long = ecad_model::naming::text::LongText::<{ ecad_model::objects::styles::rating::MAX_ROWS }>::new(&padded(cap + 2));
     assert!(too_long.is_err());
     let doc = f.h.doc();
-    let _ = rating::Kept::build(&doc);
+    let _ = circuits::Kept::build(&doc);
 }
 
 // ------------------------------------------------------------------------------- fix round
@@ -451,7 +451,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     let b = cab1(&mut f.h);
     let r = f.h.run("rating", json!({"location": "+CAB1", "temperature": 44})).unwrap();
     assert_eq!(r["boxes"], json!(1), "{r}");
-    assert_eq!(f.h.doc().aids[&b].as_box().and_then(|x| x.panel_temperature), Some(ecad_model::units::Celsius(44.0)));
+    assert_eq!(f.h.doc().aids[&b].as_box().and_then(|x| x.panel_temperature), Some(ecad_model::geometry::units::Celsius(44.0)));
     let r = ratings(&mut f.h, json!({"wire": f.l2.hex()}));
     let panel = r["factors"].as_array().unwrap().iter().find(|x| x["name"] == "panel").cloned().unwrap();
     // round2(√(26/40)) = round2(0.8062) = 0.81.
@@ -464,29 +464,29 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     assert_eq!(f.h.head(), head);
     // D1: the change re-checks the wires at +CAB1 only, with no re-trace.
     let before = f.h.doc();
-    let mut k = rating::Kept::build(&before);
+    let mut k = circuits::Kept::build(&before);
     f.h.run("rating", json!({"location": "+CAB1", "temperature": 45})).unwrap();
     let after = f.h.doc();
     let ops: Vec<ecad_model::Op> = f.h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
-    let mut touch = rating::Touch::default();
+    let mut touch = circuits::Touch::default();
     touch.collect(&before, &ops);
     touch.collect(&after, &ops);
     assert!(!touch.all_results);
     let changed = k.update(&after, &touch);
-    assert_eq!(changed.into_iter().collect::<Vec<_>>(), vec![rating::RatedSubject::Wire(f.l2)]);
+    assert_eq!(changed.into_iter().collect::<Vec<_>>(), vec![circuits::RatedSubject::Wire(f.l2)]);
     assert_eq!(k.retraced, 0);
     // A device's own location reaches its wires only.
-    let mut k = rating::Kept::build(&after);
+    let mut k = circuits::Kept::build(&after);
     setprop(&mut f.h, "component", f.q01.hex(), "location", json!("+CAB2"));
     let later = f.h.doc();
     let ops: Vec<ecad_model::Op> = f.h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
-    let mut touch = rating::Touch::default();
+    let mut touch = circuits::Touch::default();
     touch.collect(&after, &ops);
     touch.collect(&later, &ops);
     assert!(!touch.all_results);
     let on_q01: Vec<WireId> = later.connection_points_of(f.q01).flat_map(|(t, _)| later.ends_at(t)).map(|(w, _)| w).collect();
     for s in k.update(&later, &touch) {
-        assert!(matches!(s, rating::RatedSubject::Wire(c) if on_q01.contains(&c)), "{s:?}");
+        assert!(matches!(s, circuits::RatedSubject::Wire(c) if on_q01.contains(&c)), "{s:?}");
     }
     // A box temperature a file holds out of range: a row, not silence.
     let rows = checks_of(&mut f.h, "rating-bad-value");
@@ -495,7 +495,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
         p.ledger.commit(ecad_model::Author::User, "hostile box temperature", {
             let before = p.ledger.document().aids[&b].clone();
             let mut after = before.as_box().cloned().unwrap();
-            after.panel_temperature = Some(ecad_model::units::Celsius(95.0));
+            after.panel_temperature = Some(ecad_model::geometry::units::Celsius(95.0));
             vec![ecad_model::Op::ModifyAid { id: b, before, after: ecad_model::Aid::Box(after) }]
         })
     })
@@ -535,9 +535,9 @@ fn f6_the_trace_bound_is_said_in_words() {
     let mut f = fixture();
     rate_category(&mut f.h);
     let doc = f.h.doc();
-    let mut r = rating::circuit::rating_of(&doc, rating::RatedSubject::Wire(f.l2));
-    r.issues = vec![rating::Issue::NoDevice(true)];
-    let rows = rating::rows(&doc, &r);
+    let mut r = circuits::circuit::rating_of(&doc, circuits::RatedSubject::Wire(f.l2));
+    r.issues = vec![circuits::Issue::NoDevice(true)];
+    let rows = circuits::rows(&doc, &r);
     assert_eq!(rows.len(), 1);
     assert!(rows[0].which.ends_with("trace stopped after 64 nets; set Protected by"), "{}", rows[0].which);
 }
@@ -550,8 +550,8 @@ fn a_strip_fuse_position_protects_its_out_point_only() {
     let page = h.first_page();
     let mut points: Vec<(char, ecad_model::Pt)> = Vec::new();
     for (t, _) in doc.connection_points_of(x) {
-        let side = ecad_engine::terminal_types::level_of(&doc, t).1;
-        if let (Some(c), Some(at)) = (side, ecad_model::derive::connection_point_position(&doc, page, t)) {
+        let side = ecad_electrical::terminal_strips::terminal_blocks::level_of(&doc, t).1;
+        if let (Some(c), Some(at)) = (side, ecad_model::connectivity::derive::connection_point_position(&doc, page, t)) {
             points.push((c, at));
         }
     }

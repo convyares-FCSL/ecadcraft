@@ -38,11 +38,11 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::effect::{AreaSet, Effect, Effects};
-use ecad_model::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
+use ecad_model::document::effect::{AreaSet, Effect, Effects};
+use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{DefinitionId, Document, ItemKind, ObjectRef, Op, PageId, Subject};
 
-use super::Inputs;
+use crate::views::Inputs;
 
 /// The drawn pages' feed.
 #[derive(Debug, Default)]
@@ -138,17 +138,17 @@ fn unused_after(doc: &Document, id: DefinitionId, effects: &Effects<'_>) -> bool
 
 /// Whether a project property write of `key` is drawn on no page (`false`: on every page).
 fn project_key_drawn_nowhere(key: &str) -> bool {
-    key.starts_with(ecad_model::tag::HIGH_RESET_PREFIX)
+    key.starts_with(ecad_model::naming::tag::HIGH_RESET_PREFIX)
         // Brief 044 (design 044 §11.1): a connector default's pages come from `ConnectorsView`.
         || key.starts_with("connector.")
         // Brief 030: strip accessory defaults (the plan page is a generated page, kept by its own rule).
-        || crate::accessories::strip_key_of_project(key).is_some()
+        || crate::terminal_strips::accessories::strip_key_of_project(key).is_some()
 }
 
 /// Brief 052 (design 052 §8.2a): what a change of the project's data redraws, read in `doc`
 /// before it.
-fn project_pages(doc: &Document, before: &ecad_model::project::Project, after: &ecad_model::project::Project, out: &mut PageSet) {
-    use crate::designations::{Aspect, changed_codes, default_key, page_key};
+fn project_pages(doc: &Document, before: &ecad_model::document::project::Project, after: &ecad_model::document::project::Project, out: &mut PageSet) {
+    use crate::locations::designations::{Aspect, changed_codes, default_key, page_key};
     // Design 072 §5.3: the info and the revision rows are drawn in every page's frame.
     if before.info != after.info || before.revisions != after.revisions {
         *out = PageSet::All;
@@ -166,7 +166,7 @@ fn project_pages(doc: &Document, before: &ecad_model::project::Project, after: &
                 return;
             }
             for (c, x) in &doc.devices {
-                if crate::designations::device_keys(x).iter().any(|(_, v)| *v == entry) {
+                if crate::locations::designations::device_keys(x).iter().any(|(_, v)| *v == entry) {
                     extend(out, subject_pages(doc, Subject::Device(*c)));
                 }
             }
@@ -232,7 +232,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
             out.insert(*p);
             // The page before it in book order shows its number in its Next box.
             if ch.number {
-                let book = ecad_model::book::Book::of(doc);
+                let book = ecad_model::document::book::Book::of(doc);
                 if let Some(prev) = book.position(*p).and_then(|i| i.checked_sub(2)).and_then(|i| book.order.get(i)) {
                     out.insert(*prev);
                 }
@@ -252,7 +252,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         Effect::Device { id: c, before: Some(b), after: Some(a) } => {
             extend(out, subject_pages(doc, Subject::Device(*c)));
             if b.tag != a.tag {
-                extend(out, crate::plc::pages_touched(doc, None, *c, ecad_model::tag::TAG_KEY, a.tag()));
+                extend(out, crate::plc::pages_touched(doc, None, *c, ecad_model::naming::tag::TAG_KEY, a.tag()));
             }
             if crate::plc::is_plc(b) || crate::plc::is_plc(a) {
                 extend(out, crate::plc::pages_modified(doc, None, *c, b, a));

@@ -4,7 +4,7 @@
 //! engine is a CADCraft document whose drawing is a projection of the ECAD document; the
 //! [`HandleMap`] relates its handles to ECAD IDs and lives only in the session (proposal §13).
 
-use crate::draw::text_style::DrawApply as _;
+use crate::styles::draw::DrawApply as _;
 use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, Weak};
@@ -15,7 +15,8 @@ use cadcraft_engine::{EngineError, Session};
 
 use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_electrical::CmdError;
-use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
+use crate::dev::snapshot::{LiveFacts, PageInfo};
+use crate::history::event_log::{EventKind, EventLog};
 use ecad_model::{
     Author, CableId, DeviceId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId, ProjectId,
     ProjectSettings, Pt, RepresentationId, Subject, ConnectionPointId, WireId,
@@ -26,7 +27,7 @@ use serde_json::{Value, json};
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
 use crate::outputs::kept::ReportModels;
 use crate::translate;
-pub use crate::views::View;
+pub use crate::cables::views::View;
 
 mod changes;
 mod handle_map;
@@ -82,9 +83,9 @@ pub struct Project {
     /// dimmed. A session display state like `views`: never in the ledger or the file, not
     /// undoable, never printed. Off when a project is opened.
     pub show_hidden_text: bool,
-    /// Where this user's cable views are remembered ([`crate::views::Settings`]).
-    pub settings: crate::views::Settings,
-    /// Whether [`crate::views::NOT_REMEMBERED`] was said in this session.
+    /// Where this user's cable views are remembered ([`crate::cables::views::Settings`]).
+    pub settings: crate::cables::views::Settings,
+    /// Whether [`crate::cables::views::NOT_REMEMBERED`] was said in this session.
     pub(crate) said_not_remembered: bool,
     /// Who the project's edits, undos and redos are recorded as (FILE-07): [`Author::User`] by
     /// default, `Author::Agent(<client name>)` when an agent drives the session (brief 011). A
@@ -106,15 +107,15 @@ pub struct Project {
     pub(crate) tag_high: crate::devices::TagHigh,
     /// Brief 052 (design 052 §5.9): the use index of the project's list of functions and
     /// locations, read from the log as it grows; rebuilt on a branch switch.
-    pub(crate) designation_uses: crate::designations::Uses,
+    pub(crate) designation_uses: ecad_electrical::locations::designations::Uses,
     /// Brief 052d (design 052 §5.5): the devices whose stored value differs from what the last
     /// placement, move or box proposed, waiting for Move or Leave (Leave by default; any other
     /// edit leaves them).
-    pub conflicts: Vec<crate::proposals::Conflict>,
+    pub conflicts: Vec<ecad_electrical::symbols::proposals::Conflict>,
     /// Bumped whenever a page row could differ ([`Project::page_list_version`]).
     page_list_version: u64,
-    /// What OOPS may bring back on each page document (brief 023, [`crate::oops`]).
-    oops: crate::oops::Records,
+    /// What OOPS may bring back on each page document (brief 023, [`crate::translate::oops`]).
+    oops: crate::translate::oops::Records,
     /// What the last placement in this session placed (symbol key, device), for the prompts'
     /// defaults (design 018 §5.3).
     pub(crate) last_placed: Option<(String, DeviceId)>,
@@ -135,8 +136,8 @@ pub struct Project {
     /// next change. Display only, never recorded.
     pub goto_ring: Option<(PageId, Pt, crate::checks::Severity)>,
     /// The active page's frame as last drawn (brief 019): page and parts. What it showed is the
-    /// frame view's (`ecad_electrical::derived::FrameView`), whose update map sets `frame_stale`.
-    frame: Option<(PageId, Arc<Vec<crate::frame::Part>>)>,
+    /// frame view's (`ecad_electrical::views::FrameView`), whose update map sets `frame_stale`.
+    frame: Option<(PageId, Arc<Vec<crate::pages::frame::Part>>)>,
     /// An effect of the frame's update map was committed since the frame was drawn.
     frame_stale: bool,
     /// Brief 054b: the wire categories in use, kept while the project has a cover.
@@ -150,7 +151,7 @@ pub struct Project {
     /// ([`Project::refresh_page`]; tests: a commit that touched another page projects nothing).
     pub projections: u64,
     /// The revision opened read-only (design 019 §7.3): session only, never recorded.
-    pub revision_view: Option<crate::cmd::sheet::RevisionView>,
+    pub revision_view: Option<crate::pages::commands::sheets::RevisionView>,
     /// How many transactions the command now running may record, when its caller caps them (an
     /// agent's call through MCP); `None` for no cap. Commands that write files check it before
     /// they write (brief 027's release), so nothing reaches the disk that the cap would take back.
@@ -167,16 +168,16 @@ pub struct Project {
     pub merge_undo_question: Option<String>,
     /// The merge last prepared (its states and scope), kept while nothing it read changes
     /// (brief 020b).
-    pub merge_cache: Option<Arc<crate::merging::Prepared>>,
+    pub merge_cache: Option<Arc<crate::history::merging::Prepared>>,
     /// Counts branch actions (create, rename, switch, archive, reopen), however they were run:
     /// what shows the branch (title, bar, Revisions, History) refreshes when it moves (brief 020a).
     branch_gen: u64,
     /// Every derived view, updated by the one commit pipeline (design 064 §5).
-    pub(crate) derived: ecad_electrical::derived::Views,
+    pub(crate) derived: ecad_electrical::views::Views,
 }
 
 /// The derived views of `doc`, built with this engine's inputs (design 064 §5.2).
-pub(crate) fn views_for(doc: &Document) -> ecad_electrical::derived::Views {
+pub(crate) fn views_for(doc: &Document) -> ecad_electrical::views::Views {
     let mut views = engine_views();
     views.rebuild(doc);
     views
@@ -185,13 +186,13 @@ pub(crate) fn views_for(doc: &Document) -> ecad_electrical::derived::Views {
 /// The derived views with this engine's inputs, none built yet: for [`Views::detached`] where no
 /// project is at hand.
 ///
-/// [`Views::detached`]: ecad_electrical::derived::Views::detached
-pub fn engine_views() -> ecad_electrical::derived::Views {
-    ecad_electrical::derived::Views::new(ecad_electrical::derived::EngineInputs { metrics: Arc::new(crate::draw::text_style::EngineMetrics) })
+/// [`Views::detached`]: ecad_electrical::views::Views::detached
+pub fn engine_views() -> ecad_electrical::views::Views {
+    ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { metrics: Arc::new(crate::styles::draw::EngineMetrics) })
 }
 
 /// A new project's first page: titled and numbered `1`.
-fn first_page() -> Result<Page, ecad_model::text::TextError> {
+fn first_page() -> Result<Page, ecad_model::naming::text::TextError> {
     let mut p = Page::titled("1")?;
     p.number = ecad_model::PageNo::parse("1");
     Ok(p)
@@ -227,8 +228,8 @@ pub fn session_seed() -> u64 {
 
 /// The reserved layer of cable fan views (`ecad.cable`, plots).
 fn cables_layer() -> CLayer {
-    let mut l = CLayer::new(crate::views::LAYER);
-    l.color = cadcraft_engine::doc::color::Color::Index(crate::views::CABLE_ACI);
+    let mut l = CLayer::new(crate::cables::views::LAYER);
+    l.color = cadcraft_engine::doc::color::Color::Index(crate::cables::views::CABLE_ACI);
     l
 }
 
@@ -237,9 +238,9 @@ fn cables_layer() -> CLayer {
 /// lineweight, bends, tails and frames the wire lineweight, text the layer's. A text takes its
 /// height and style from `look` (brief 031): a reference end's text is a reference, every other
 /// one cable text.
-pub(crate) fn part_entity(look: &crate::text_style::Look, part: &ecad_electrical::cable_look::Part, handle: Handle) -> Entity {
+pub(crate) fn part_entity(look: &crate::text_style::Look, part: &ecad_electrical::cables::layout::Part, handle: Handle) -> Entity {
     use crate::text_style::TextKind;
-    use ecad_electrical::cable_look::{Role, Shape, Weight};
+    use ecad_electrical::cables::layout::{Role, Shape, Weight};
     let text_kind = if part.role == Role::ReferenceText { TextKind::Reference } else { TextKind::CableText };
     use ecad_model::Primitive;
     let kind = match &part.shape {
@@ -254,19 +255,19 @@ pub(crate) fn part_entity(look: &crate::text_style::Look, part: &ecad_electrical
         Shape::Text { at, rotation, value } => kind_for_primitive(&Primitive::Text {
             at: *at,
             height: look.style(text_kind).height,
-            rotation: ecad_model::units::Radians(*rotation),
+            rotation: ecad_model::geometry::units::Radians(*rotation),
             value: value.clone(),
             halign: Default::default(),
             valign: Default::default(),
         }),
     };
     let lineweight = match part.weight {
-        Weight::Cable => Lineweight::Mm100(ecad_electrical::cable_look::CABLE_WEIGHT),
-        Weight::Wire => Lineweight::Mm100(crate::look::WIRE_WEIGHT),
+        Weight::Cable => Lineweight::Mm100(ecad_electrical::cables::layout::CABLE_WEIGHT),
+        Weight::Wire => Lineweight::Mm100(crate::cables::draw::WIRE_WEIGHT),
         Weight::Text => Lineweight::ByLayer,
     };
     let color = part.color.map_or(cadcraft_engine::doc::color::Color::ByLayer, cadcraft_engine::doc::color::Color::Index);
-    let mut e = Entity { handle, common: Common { layer: crate::views::LAYER.into(), lineweight, color, ..Common::default() }, kind };
+    let mut e = Entity { handle, common: Common { layer: crate::cables::views::LAYER.into(), lineweight, color, ..Common::default() }, kind };
     if matches!(part.shape, Shape::Text { .. }) {
         look.apply(&mut e, text_kind);
     }
@@ -284,8 +285,8 @@ pub(crate) fn device_reference_entity(look: &crate::text_style::Look, part: &cra
                 value,
                 *at,
                 *height,
-                crate::draw::xref::engine_halign(*halign),
-                crate::draw::xref::engine_valign(*valign),
+                crate::references::draw::devices::engine_halign(*halign),
+                crate::references::draw::devices::engine_valign(*valign),
                 handle,
                 crate::devices::TAG_LAYER,
             );
@@ -304,7 +305,7 @@ pub(crate) fn device_reference_entity(look: &crate::text_style::Look, part: &cra
         },
     };
     if part.bar {
-        e.common.lineweight = Lineweight::Mm100(crate::look::WIRE_WEIGHT);
+        e.common.lineweight = Lineweight::Mm100(crate::cables::draw::WIRE_WEIGHT);
     }
     if let Some(aci) = part.aci {
         e.common.color = cadcraft_engine::doc::color::Color::Index(aci);
@@ -313,13 +314,13 @@ pub(crate) fn device_reference_entity(look: &crate::text_style::Look, part: &cra
 }
 
 /// One link line segment (brief 030) as a dashed hairline on the links layer.
-pub(crate) fn link_entity(part: &crate::link_lines::JumperBarPart, handle: Handle) -> Entity {
+pub(crate) fn link_entity(part: &ecad_electrical::terminal_strips::jumper_bars::JumperBarPart, handle: Handle) -> Entity {
     Entity {
         handle,
         common: Common {
-            layer: crate::link_lines::LAYER.into(),
+            layer: ecad_electrical::terminal_strips::jumper_bars::LAYER.into(),
             linetype: crate::locations::LINETYPE.into(),
-            lineweight: Lineweight::Mm100(crate::look::WIRE_WEIGHT),
+            lineweight: Lineweight::Mm100(crate::cables::draw::WIRE_WEIGHT),
             ..Common::default()
         },
         kind: kind_for_primitive(&ecad_model::Primitive::Line { a: part.a, b: part.b }),
@@ -337,7 +338,7 @@ pub(crate) fn base_drawing() -> Drawing {
     // The starter symbols' terminals lie on a 5 mm grid (design 018 §4, `ecad.symbol-grid`): snap
     // and grid spacing of an ECAD page follow it.
     let grid =
-        cadcraft_engine::doc::HVal::Point(cadcraft_engine::geom::Vec3::new(crate::symbols::SYMBOL_GRID_MM, crate::symbols::SYMBOL_GRID_MM, 0.0));
+        cadcraft_engine::doc::HVal::Point(cadcraft_engine::geom::Vec3::new(ecad_electrical::symbols::SYMBOL_GRID_MM, ecad_electrical::symbols::SYMBOL_GRID_MM, 0.0));
     d.header.set("SNAPUNIT", grid.clone());
     d.header.set("GRIDUNIT", grid);
     d
@@ -386,8 +387,8 @@ pub fn project_page(
 }
 
 /// [`project_page`] with cable views (brief 005): each cable in `fan` whose fan can be drawn on
-/// the page is shown as its fan ([`crate::views::fan_on_page`], with tolerance `tol`) on layer
-/// [`crate::views::LAYER`] instead of its member routes and slashes. Everything else is projected
+/// the page is shown as its fan ([`crate::cables::views::fan_on_page`], with tolerance `tol`) on layer
+/// [`crate::cables::views::LAYER`] instead of its member routes and slashes. Everything else is projected
 /// exactly as by [`project_page`]. Both draw each cable reference's derived text on that layer
 /// too ([`crate::references::markers_on_page`], brief 010).
 ///
@@ -405,7 +406,7 @@ pub fn project_page_with(
 /// # Errors
 /// As [`project_page`].
 pub fn project_page_framed(
-    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::pages::frame::Part],
 ) -> Result<(Drawing, HandleMap), String> {
     project_page_shown(doc, page, base, prev, fan, tol, frame, false)
 }
@@ -443,7 +444,7 @@ pub fn project_page_pending(
 /// As [`project_page`].
 #[allow(clippy::too_many_arguments)]
 pub fn project_page_shown(
-    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::pages::frame::Part],
     hidden_text: bool,
 ) -> Result<(Drawing, HandleMap), String> {
     project_page_kept(doc, page, base, prev, fan, tol, frame, hidden_text, None)
@@ -455,7 +456,7 @@ pub fn project_page_shown(
 /// As [`project_page`].
 #[allow(clippy::too_many_arguments)]
 pub fn project_page_kept(
-    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::frame::Part],
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::pages::frame::Part],
     hidden_text: bool, plc: Option<&crate::plc::kept::Plc>,
 ) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
@@ -469,7 +470,7 @@ pub fn project_page_kept(
         l.plot = false;
         d.layers.push(l);
     }
-    if d.layer(crate::views::LAYER).is_none() {
+    if d.layer(crate::cables::views::LAYER).is_none() {
         d.layers.push(cables_layer());
     }
     if d.layer(crate::devices::TAG_LAYER).is_none() {
@@ -480,12 +481,12 @@ pub fn project_page_kept(
         l.color = cadcraft_engine::doc::color::Color::Index(crate::wires::LABEL_ACI);
         d.layers.push(l);
     }
-    if d.layer(crate::frame::LAYER).is_none() {
-        d.layers.push(crate::frame::layer());
+    if d.layer(crate::pages::frame::LAYER).is_none() {
+        d.layers.push(crate::pages::frame::layer());
     }
     crate::locations::add_linetype(&mut d);
-    if d.layer(crate::link_lines::LAYER).is_none() {
-        d.layers.push(CLayer::new(crate::link_lines::LAYER));
+    if d.layer(ecad_electrical::terminal_strips::jumper_bars::LAYER).is_none() {
+        d.layers.push(CLayer::new(ecad_electrical::terminal_strips::jumper_bars::LAYER));
     }
     if d.layer(crate::generated::LAYER).is_none() {
         let mut l = CLayer::new(crate::generated::LAYER);
@@ -522,7 +523,7 @@ pub fn project_page_kept(
         }
         d.blocks.insert(name, Arc::new(b));
     }
-    let fans = crate::views::drawings_on_page(doc, page, fan, tol);
+    let fans = crate::cables::views::drawings_on_page(doc, page, fan, tol);
     let hidden: BTreeSet<ecad_model::ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut map = HandleMap::default();
     let mut ents: Vec<Entity> = Vec::new();
@@ -533,9 +534,9 @@ pub fn project_page_kept(
         map.insert_item(id, h);
     }
     // Brief 040: wires and cores in their colours, two-colour ones with dashes (wires.rs).
-    crate::draw::wires::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
+    crate::wires::draw::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
     // Brief 050b: wire routes in their category's line type and weight.
-    crate::draw::wires::style_routes(doc, page, &mut ents, |i| map.item(i));
+    crate::wires::draw::style_routes(doc, page, &mut ents, |i| map.item(i));
     // Brief 050a: location box outlines in their location style.
     crate::locations::style_boxes(doc, page, &mut ents, |i| map.item(i));
     let mut groups = Vec::new();
@@ -558,7 +559,7 @@ pub fn project_page_kept(
         for (i, part) in f.parts.iter().enumerate() {
             // A reference end's text (brief 009's look, brief 010's live text) is mapped to its
             // reference, so hover, Go to Reference and erasing it act on the reference.
-            if part.role == ecad_electrical::cable_look::Role::ReferenceText
+            if part.role == ecad_electrical::cables::layout::Role::ReferenceText
                 && let Some(r) = part.reference
             {
                 let h = prev.ref_text(r).unwrap_or_else(|| d.new_handle());
@@ -612,7 +613,7 @@ pub fn project_page_kept(
     }
     // Link lines (brief 030): derived on every draw, never stored.
     let mut seen: BTreeMap<(DeviceId, u32), u32> = BTreeMap::new();
-    for part in crate::link_lines::parts_on_page(doc, page) {
+    for part in ecad_electrical::terminal_strips::jumper_bars::parts_on_page(doc, page) {
         let i = seen.entry((part.strip, part.n)).or_default();
         let h = prev.link(part.strip, part.n, *i).unwrap_or_else(|| d.new_handle());
         ents.push(link_entity(&part, h));
@@ -666,11 +667,11 @@ pub fn project_page_kept(
     // The sheet frame and title block (brief 019): derived, never stored, and drawn first so
     // everything else lies on top of it (picks find the drawing, not the frame).
     // Brief 050a: the frame style's line colour, on the frame's own lines (ink otherwise).
-    let frame_rgb = crate::frame::line_colour(doc, page);
+    let frame_rgb = crate::pages::frame::line_colour(doc, page);
     for (i, part) in frame.iter().enumerate() {
         let index = u32::try_from(i).map_err(|_| "the frame has too many parts")?;
         let h = prev.frame_part(index).unwrap_or_else(|| d.new_handle());
-        store.push(crate::frame::styled_entity(part, h, frame_rgb));
+        store.push(crate::pages::frame::styled_entity(part, h, frame_rgb));
         map.insert_frame(index, h);
     }
     for e in ents {
@@ -697,7 +698,7 @@ impl Project {
     }
 
     /// The frame parts of `page`, from the kept copy when nothing it shows can have changed.
-    fn frame_parts(&mut self, page: PageId) -> Arc<Vec<crate::frame::Part>> {
+    fn frame_parts(&mut self, page: PageId) -> Arc<Vec<crate::pages::frame::Part>> {
         if let Some((p, parts)) = &self.frame
             && *p == page
             && !self.frame_stale
@@ -806,7 +807,7 @@ impl Project {
     /// Project info, design 052 §9.4). Catches the use index up first.
     pub fn designation_rows(&mut self) -> serde_json::Value {
         self.designation_uses.catch_up(&self.ledger);
-        ecad_electrical::cmd::designation::rows(self.ledger.document(), &self.designation_uses, None)
+        ecad_electrical::locations::commands::designations::rows(self.ledger.document(), &self.designation_uses, None)
     }
 
     pub fn open_pages(&self) -> usize {
@@ -863,7 +864,7 @@ impl Project {
     /// Work out the pending flag again (design 033 §6.3): O(1) on an ordinary edit, the walk
     /// stops at the first decisive transaction. A flip redraws the frame.
     pub(crate) fn refresh_pending(&mut self) {
-        let now = crate::revisions::is_pending(&self.ledger);
+        let now = ecad_electrical::releases::revisions::is_pending(&self.ledger);
         if self.pending_known && now != self.pending {
             self.frame_stale = true;
         }
@@ -954,7 +955,7 @@ impl Project {
     }
 
     /// The report models, built whole on their first show (design 024 §8.1) and kept after that
-    /// by the views' pipeline (`ecad_electrical::derived::ReportsView`).
+    /// by the views' pipeline (`ecad_electrical::views::ReportsView`).
     pub fn outputs(&mut self) -> &crate::outputs::kept::ReportModels {
         self.derived.outputs(self.ledger.document())
     }
@@ -970,7 +971,7 @@ impl Project {
     }
 
     /// The Checks list, built whole on its first show (design 022 §8) and kept after that by the
-    /// views' pipeline (`ecad_electrical::derived::ChecksView`).
+    /// views' pipeline (`ecad_electrical::views::ChecksView`).
     pub fn checks(&mut self) -> &crate::checks::kept::Checks {
         self.derived.checks(self.ledger.document(), self.tolerance)
     }
@@ -1034,10 +1035,10 @@ impl Project {
     /// A JSON snapshot (live when `at` is `None`).
     ///
     /// # Errors
-    /// See [`ecad_inspect::snapshot`].
+    /// See [`crate::dev::snapshot::snapshot`].
     pub fn snapshot(&self, pg: &PagesRef<'_>, at: Option<u64>) -> Result<Value, String> {
         let facts = self.live_facts(pg);
-        ecad_inspect::snapshot(&self.name, &self.ledger, at, &self.events, at.is_none().then_some(&facts)).map_err(|e| e.to_string())
+        crate::dev::snapshot::snapshot(&self.name, &self.ledger, at, &self.events, at.is_none().then_some(&facts)).map_err(|e| e.to_string())
     }
 
     /// Positions of attached route ends that follow the dragged terminals (drag preview, M2).

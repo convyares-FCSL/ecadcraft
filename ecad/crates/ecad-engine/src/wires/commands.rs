@@ -4,24 +4,24 @@
 //! runs the numbering pass; reads change nothing.
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::cmd::wire`] decide, and the shim commits the ops and answers in JSON.
+//! [`ecad_electrical::wires::commands::wires`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::wire::{self as rules, Conflict, NetChoice, Numbered, PotentialRow, WireSettingsChange, Wires};
-use ecad_model::units::{Degrees, Radians};
-use ecad_model::wiring;
+use ecad_electrical::wires::commands::wires::{self as rules, Conflict, NetChoice, Numbered, PotentialRow, WireSettingsChange, Wires};
+use ecad_model::geometry::units::{Degrees, Radians};
+use ecad_model::connectivity::wiring;
 use ecad_model::{PageId, Placement, Pt, ConnectionPointId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{MAX_HANDLES, MAX_WIRE_POINTS, err, on_any_page, on_project, plain_style};
+use crate::commands::input::{Command, Typed};
+use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, err, on_any_page, on_project, plain_style};
 use crate::project::Project;
-use crate::symbols::Starter;
+use ecad_electrical::symbols::Starter;
 use crate::wires;
-use ecad_electrical::cmd::input::{Bounded, Point, nullable};
+use ecad_electrical::commands::input::{Bounded, Point, nullable};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -579,13 +579,13 @@ pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
 
 /// `place {symbol: "continuation", at, rotation?, mirror?, name, caption?}`: a continuation, a
 /// drawing aid (design 022 §3.2, design 072 §6.2), part of `place`
-/// ([`crate::cmd::device::PlaceParams`]). Answers its `aid`.
+/// ([`crate::devices::commands::PlaceParams`]). Answers its `aid`.
 pub(crate) fn place_tagless(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
+    s: &mut Session, params: &crate::devices::commands::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let joins = params.device.is_some() || params.tag.is_some();
     let (name, caption) =
-        ecad_electrical::cmd::place::tagless(starter, joins, params.name.as_deref(), params.caption.as_deref()).map_err(|e| err(e.to_string()))?;
+        ecad_electrical::devices::commands::place::tagless(starter, joins, params.name.as_deref(), params.caption.as_deref()).map_err(|e| err(e.to_string()))?;
     on_project(s, |p, pg, page| {
         let style = plain_style(p);
         let doc = p.ledger.document();

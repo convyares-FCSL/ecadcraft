@@ -1,8 +1,8 @@
 //! Small geometry value types owned by the model (no CADCraft types, principle P10), and geometry
 //! over primitives: the nearest point on one, their extents, and moving or scaling one.
 
-use crate::doc::Primitive;
-use crate::units::Radians;
+use crate::document::doc::Primitive;
+use crate::geometry::units::Radians;
 use serde::{Deserialize, Serialize};
 
 /// A point on a page, in drawing units.

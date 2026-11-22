@@ -6,8 +6,8 @@ use crate::common;
 
 use common::{H, hex, id, pts};
 use ecad_engine::ProjectHandle;
-use ecad_inspect::EventKind;
-use ecad_model::derive::nets;
+use ecad_engine::history::event_log::EventKind;
+use ecad_model::connectivity::derive::nets;
 use ecad_model::{DeviceId, Document, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 

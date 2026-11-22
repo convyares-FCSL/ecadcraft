@@ -10,11 +10,11 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::effect::{AreaSet, Effect};
-use ecad_model::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
+use ecad_model::document::effect::{AreaSet, Effect};
+use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, ObjectRef};
 
-use super::Inputs;
+use crate::views::Inputs;
 use crate::connectors::Index;
 
 /// The connector index view.

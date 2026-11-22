@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use cadcraft_engine::Session;
-use ecad_engine::release::{self, Step};
+use ecad_engine::releases::release::{self, Step};
 use ecad_engine::{Persistence, ProjectHandle};
 use serde_json::{Value, json};
 
@@ -24,7 +24,7 @@ fn tmp(name: &str) -> PathBuf {
 /// loose wires, cable C1 with an orphan reference end, drawing number `D-1001`, Rev A issued,
 /// Rev B pending.
 fn project_in(dir: &Path, drawing_number: &str) -> (H, String) {
-    ecad_engine::printbook::install_io();
+    ecad_engine::export::printbook::install_io();
     let mut h = H::new(0x0E27_0001);
     for y in [0.0, 5.0, 10.0] {
         h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap();
@@ -324,7 +324,7 @@ fn fp1_follows_undo_redo_and_survives_save_and_reopen() {
     let (mut h, path) = project_in(&dir, "D-1001");
     h.run("release", json!({})).unwrap();
     let out = rel(&dir, "B");
-    let released = |h: &mut H| ecad_engine::revisions::field_of(&h.doc().project, 2, "released");
+    let released = |h: &mut H| ecad_electrical::releases::revisions::field_of(&h.doc().project, 2, "released");
     assert_eq!(released(&mut h).as_deref(), Some("release/Rev B"));
     h.run("undoissue", json!({})).unwrap();
     assert!(released(&mut h).is_none());
@@ -346,8 +346,8 @@ fn fp1_follows_undo_redo_and_survives_save_and_reopen() {
     let (project, _) = ProjectHandle::open_file(&mut s, &path, 271).unwrap();
     let mut h2 = H { s, project, trail: Vec::new() };
     let doc = h2.doc();
-    assert_eq!(ecad_engine::revisions::field_of(&doc.project, 2, "released").as_deref(), Some("release/Rev B"));
-    let row = ecad_engine::revisions::issued(&doc).into_iter().next().unwrap();
+    assert_eq!(ecad_electrical::releases::revisions::field_of(&doc.project, 2, "released").as_deref(), Some("release/Rev B"));
+    let row = ecad_electrical::releases::revisions::issued(&doc).into_iter().next().unwrap();
     assert_eq!((row.rev().to_string(), row.released.as_deref()), ("B".to_string(), Some("release/Rev B")));
     // Reopened: the issued revision's check reads its folder, and it is written again with
     // nothing recorded.
@@ -437,7 +437,7 @@ fn spaces_and_long_paths() {
     let longest = names(&out).iter().map(|n| out.join(n).to_string_lossy().len()).max().unwrap();
     assert!(longest > 260, "{longest}");
     hashes_match(&out);
-    assert_eq!(ecad_engine::revisions::field_of(&h.doc().project, 2, "released").as_deref(), Some("release/Rev B"));
+    assert_eq!(ecad_electrical::releases::revisions::field_of(&h.doc().project, 2, "released").as_deref(), Some("release/Rev B"));
     let v = h.run("release", json!({"rev": "B", "existing": "keep-both"})).unwrap();
     assert!(v["folder"].as_str().unwrap().ends_with("Rev B (2)"), "{v}");
     drop(h);

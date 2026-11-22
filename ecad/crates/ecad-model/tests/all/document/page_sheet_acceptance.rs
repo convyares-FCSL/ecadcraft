@@ -1,4 +1,4 @@
-//! Tester 054 in the model (FP3, design 054 §3.1 and §11): `ecad_model::sheet::sheet_of` reads the
+//! Tester 054 in the model (FP3, design 054 §3.1 and §11): `ecad_model::document::sheet::sheet_of` reads the
 //! page type's stored `sheet`: the page's own `sheet` → the type's project record → the type's
 //! standard record (each only when it parses and is within limits) → `settings.sheet()` → A3. The
 //! type is the page's `page.type`, else derived from `generated` by the fixed six-word table
@@ -6,14 +6,14 @@
 //! Old documents (no record) resolve exactly as before. Replay and the inverse of every op give the
 //! same sheets. Written from brief and design 054 before the implementation.
 
-use ecad_model::sheet::{SheetSpec, sheet_of};
-use ecad_model::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
+use ecad_model::document::sheet::{SheetSpec, sheet_of};
+use ecad_model::objects::styles::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{Author, IdAllocator, Ledger, Op, Page, PageId, StandardId, Word};
 
 fn rec(fields: &[(&str, &str)]) -> StyleRecord {
     // A page type's fields, as a file holds them.
     let body: serde_json::Map<String, serde_json::Value> = fields.iter().map(|(k, v)| (k.to_string(), serde_json::json!(v))).collect();
-    StyleRecord::new("", ecad_model::style::StyleBody::Page(serde_json::from_value(serde_json::Value::Object(body)).unwrap()))
+    StyleRecord::new("", ecad_model::objects::styles::StyleBody::Page(serde_json::from_value(serde_json::Value::Object(body)).unwrap()))
 }
 
 fn set_type(layer: StyleLayer, id: StyleRef, before: Option<StyleRecord>, after: Option<StyleRecord>) -> Op {
@@ -109,7 +109,7 @@ fn fp3_page_type_property_and_own_types() {
                 StyleLayer::Project,
                 own.clone(),
                 None,
-                Some(StyleRecord { name: ecad_model::style::StyleName::new("Wide").ok(), ..rec(&[("sheet", "A0"), ("holds", "none")]) }),
+                Some(StyleRecord { name: ecad_model::objects::styles::StyleName::new("Wide").ok(), ..rec(&[("sheet", "A0"), ("holds", "none")]) }),
             ),
             set_type(StyleLayer::Project, b("network"), None, Some(rec(&[("sheet", "A2")]))),
             set_page(&l, p[0], "page.type", &own.text()),
@@ -130,8 +130,8 @@ fn fp3_project_then_standard_record_and_malformed_values_fall_through() {
     let (mut l, p) = fixture();
     let header = StandardHeader {
         id: StandardId(0x54),
-        name: ecad_model::style::StyleName::new("House").unwrap(),
-        based_on: ecad_model::style::BasedOn::Iec,
+        name: ecad_model::objects::styles::StyleName::new("House").unwrap(),
+        based_on: ecad_model::objects::styles::BasedOn::Iec,
         origin: None,
     };
     l.commit(
@@ -151,7 +151,7 @@ fn fp3_project_then_standard_record_and_malformed_values_fall_through() {
     let long = "x".repeat(10_000);
     for bad in ["A0 999x999", "A9", long.as_str(), "", "1e308x1e308"] {
         let v = serde_json::json!({ "sheet": bad });
-        assert!(serde_json::from_value::<ecad_model::style::PageType>(v).is_err(), "{bad:.20}");
+        assert!(serde_json::from_value::<ecad_model::objects::styles::PageType>(v).is_err(), "{bad:.20}");
     }
     // A valid sheet in the record, never above the limits of 019.
     let s = sheet_of(l.document(), p[0]);

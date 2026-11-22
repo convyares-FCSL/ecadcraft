@@ -4,7 +4,7 @@
 //! device's properties are edited in place through `setprop` (brief 018's rules, its merge offer
 //! included).
 //!
-//! Brief 039: the rows are the one table's Devices column set ([`crate::lists::devices`]): tag and
+//! Brief 039: the rows are the one table's Devices column set ([`crate::devices::list`]): tag and
 //! description edit in place (the same `setprop`), the list is patched with the devices a change
 //! touched, and selecting symbols on the page selects their rows. This tab is its host until the
 //! shell (U2) places it.
@@ -18,8 +18,8 @@ use ecad_engine::devices::PROPERTIES;
 use ecad_model::DeviceId;
 use eframe::egui::{self, Rect, RichText, Stroke, pos2, vec2};
 
-use crate::lists::devices::{self as dl, DevicesSource, NOT_PLACED};
-use crate::project_panel::Action;
+use crate::devices::list::{self as dl, DevicesSource, NOT_PLACED};
+use crate::pages::project_panel::Action;
 
 /// Accessible label of the filter field.
 pub const FILTER: &str = "Filter Devices";
@@ -120,7 +120,7 @@ pub struct DevicesPanel {
     pub list: ecad_engine::device_list::DeviceList,
     /// Brief 039: the rows as a table source, and the table.
     pub source: DevicesSource,
-    pub table: ecad_ui::table::Table<DeviceId>,
+    pub table: ecad_widgets::table::Table<DeviceId>,
     /// The (project serial, change count) the table was brought up to.
     seen: Option<(u64, u64)>,
     /// The page selection last followed (handles), so the table follows only a new one.
@@ -146,7 +146,7 @@ pub struct DevicesPanel {
 
 impl Default for DevicesPanel {
     fn default() -> Self {
-        let mut table = ecad_ui::table::Table::new("ecad.devices", "Devices");
+        let mut table = ecad_widgets::table::Table::new("ecad.devices", "Devices");
         table.empty = "No devices yet.";
         Self {
             filter: String::new(),
@@ -178,7 +178,7 @@ impl DevicesPanel {
 
     /// Bring the list and the table up to date: the list through
     /// [`ecad_engine::device_list::DeviceList::sync`] (built whole once, then only the devices a
-    /// change touched), the table by the update map of [`crate::lists::devices`].
+    /// change touched), the table by the update map of [`crate::devices::list`].
     pub fn sync(&mut self, serial: u64, p: &ecad_engine::Project) {
         let count = p.change_count();
         if self.seen == Some((serial, count)) && self.table.built() {
@@ -192,9 +192,9 @@ impl DevicesPanel {
         self.list.sync(serial, p);
         let doc = p.ledger.document();
         match &changed {
-            ecad_ui::table::Changed::All => self.source.build(doc, &self.list.entries),
-            ecad_ui::table::Changed::Keys(_) => self.source.patch(doc, &self.list.entries, &touched),
-            ecad_ui::table::Changed::Nothing => {}
+            ecad_widgets::table::Changed::All => self.source.build(doc, &self.list.entries),
+            ecad_widgets::table::Changed::Keys(_) => self.source.patch(doc, &self.list.entries, &touched),
+            ecad_widgets::table::Changed::Nothing => {}
         }
         self.table.update(&self.source, changed);
         if self.selected.is_some_and(|c| !self.source.contains_key(c)) {
@@ -213,7 +213,7 @@ impl DevicesPanel {
         let doc = p.ledger.document();
         let Some(map) = p.active_page().and_then(|pg| p.pages.get(&pg)).map(|v| &v.map) else { return };
         let mut devices: Vec<DeviceId> = Vec::new();
-        for h in handles.iter().take(ecad_engine::props::MAX_LOOKED_AT) {
+        for h in handles.iter().take(ecad_engine::properties::props::MAX_LOOKED_AT) {
             let rep = match map.get(*h) {
                 Some(ecad_engine::project::Mapped::Item(id)) => doc.representation_of_item(id).map(|(_, r)| r.subject),
                 Some(ecad_engine::project::Mapped::Tag(rep) | ecad_engine::project::Mapped::Marker(rep, _)) => {
@@ -247,17 +247,17 @@ impl DevicesPanel {
     /// at once. A click on a device shows its first symbol's page and selects its symbols there.
     pub fn show_panel(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
         let mut out = Vec::new();
-        let s = ecad_ui::SHELL;
-        let c = ecad_ui::color;
+        let s = ecad_widgets::SHELL;
+        let c = ecad_widgets::color;
         let r = ui.max_rect();
-        ecad_ui::prim::Field::new(&mut self.filter, ecad_ui::prim::FieldKind::Search, FILTER).placeholder(FIND).show(ui);
+        ecad_widgets::prim::Field::new(&mut self.filter, ecad_widgets::prim::FieldKind::Search, FILTER).placeholder(FIND).show(ui);
         ui.add_space(6.0);
         let mut g = self.grouping.index();
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             for (i, grouping) in Grouping::ALL.iter().enumerate() {
                 let on = g == i;
-                let w = crate::shell::bar::text_width(ui, grouping.label(), ecad_ui::tokens::ui_type::BODY) + 16.0;
+                let w = crate::shell::bar::text_width(ui, grouping.label(), ecad_widgets::tokens::ui_type::BODY) + 16.0;
                 let (rect, _) = ui.allocate_exact_size(vec2(w, 24.0), egui::Sense::hover());
                 if crate::shell::bar::text_button(ui, rect, grouping.label(), &format!("Group by {}", grouping.label()), on, false).clicked() {
                     g = i;
@@ -292,14 +292,14 @@ impl DevicesPanel {
                     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), DEVICE_ROW_H), egui::Sense::click_and_drag());
                     let p = ui.painter_at(rect);
                     let y = rect.center().y;
-                    let body = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY);
-                    let bold = crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::BODY_EMPHASIS);
+                    let body = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::BODY);
+                    let bold = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::BODY_EMPHASIS);
                     match line {
                         Line::Group { key, name, count, unplaced } => {
                             let folded = self.folded.contains(key);
                             let chev = Rect::from_center_size(pos2(rect.left() + 8.0, y), vec2(10.0, 10.0));
-                            let icon = if folded { ecad_ui::tokens::Icon::ChevronRight } else { ecad_ui::tokens::Icon::ChevronDown };
-                            ecad_ui::icons::paint(&p, chev, icon, c(s.text_3));
+                            let icon = if folded { ecad_widgets::tokens::Icon::ChevronRight } else { ecad_widgets::tokens::Icon::ChevronDown };
+                            ecad_widgets::icons::paint(&p, chev, icon, c(s.text_3));
                             let ink = if *unplaced { c(s.accent_text) } else { c(s.text_2) };
                             p.text(pos2(rect.left() + 20.0, y), egui::Align2::LEFT_CENTER, name, bold, ink);
                             let n = if *unplaced { c(s.accent_text) } else { c(s.text_3) };
@@ -330,7 +330,7 @@ impl DevicesPanel {
                             let pr = p.text(pos2(rect.right() - 6.0, y), egui::Align2::RIGHT_CENTER, &place, body.clone(), c(s.text_3));
                             let dx = x + 52.0;
                             let room = (pr.left() - dx - 6.0).max(0.0);
-                            let desc = crate::project_panel::cut_text(ui, &e.description, &body, room);
+                            let desc = crate::pages::project_panel::cut_text(ui, &e.description, &body, room);
                             p.text(pos2(dx, y), egui::Align2::LEFT_CENTER, desc, body, c(s.text_2));
                             let label = device_label(e);
                             resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, picked, &label));
@@ -351,7 +351,7 @@ impl DevicesPanel {
                                 pos2(rect.left() + 20.0, y),
                                 egui::Align2::LEFT_CENTER,
                                 PLACE_LATER,
-                                crate::shell::bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
+                                crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::SMALL),
                                 c(s.text_3),
                             );
                         }
@@ -389,7 +389,7 @@ impl DevicesPanel {
                 let _ = writable;
                 let w = (ui.available_width() - 84.0).max(40.0);
                 ui.add_sized(vec2(w, 30.0), egui::Label::new(RichText::new(FOOTER).small().color(c(s.text_3))).wrap());
-                if ui.add(ecad_ui::prim::Button::new(PROJECT).small()).clicked() {
+                if ui.add(ecad_widgets::prim::Button::new(PROJECT).small()).clicked() {
                     out.push(Action::ProjectDevices);
                 }
             });
@@ -457,7 +457,7 @@ impl DevicesPanel {
     /// device, then the next free tag.
     fn clash_box(&mut self, ui: &mut egui::Ui, out: &mut Vec<Action>) {
         let Some((msg, offer)) = self.error.clone() else { return };
-        let (text, accent) = (ecad_ui::color(ecad_ui::SHELL.text), ecad_ui::color(ecad_ui::SHELL.accent));
+        let (text, accent) = (ecad_widgets::color(ecad_widgets::SHELL.text), ecad_widgets::color(ecad_widgets::SHELL.accent));
         ui.add(egui::Label::new(RichText::new(&msg).small().color(ui.visuals().warn_fg_color)).wrap());
         if let Some((target, tag)) = offer {
             let (same_kind, next) = self.clash.as_ref().map_or((false, None), |k| (k.same_kind, k.next.clone()));
@@ -500,7 +500,7 @@ impl DevicesPanel {
         });
         // The selected device's properties, at the bottom of the tab.
         let editor_h = if self.selected.is_some() { 6.0 * 24.0 + 40.0 } else { 0.0 } + if self.error.is_some() { 60.0 } else { 0.0 };
-        let list_h = (ui.available_height() - editor_h).max(ecad_ui::tokens::size::ROW_TABLE * 4.0);
+        let list_h = (ui.available_height() - editor_h).max(ecad_widgets::tokens::size::ROW_TABLE * 4.0);
         let acts = ui
             .allocate_ui(vec2(ui.available_width(), list_h), |ui| {
                 ui.set_min_height(list_h);
@@ -527,7 +527,7 @@ impl DevicesPanel {
     /// The table alone, with or without its toolbar (UI rev 3: Project ▸ Devices draws the
     /// filter in the workspace's head). Returns the actions asked for.
     pub fn show_table(&mut self, ui: &mut egui::Ui, writable: bool, toolbar: bool) -> Vec<Action> {
-        use ecad_ui::table::TableEvent;
+        use ecad_widgets::table::TableEvent;
         let mut out = Vec::new();
         self.table.toolbar = toolbar;
         self.table.query = self.filter.clone();
@@ -568,14 +568,14 @@ impl DevicesPanel {
                         out.push(Action::SetDeviceProperty { component: key, key: k, value, conflict: None });
                     }
                 }
-                TableEvent::Export(csv) => crate::lists::copy_csv(ui, csv),
+                TableEvent::Export(csv) => crate::workspace::copy_csv(ui, csv),
                 TableEvent::Button { .. } => {}
             }
         }
         out
     }
 
-    /// The selected device's six properties, each a text entry (`ecad_ui::control::TextEntry`); Enter or
+    /// The selected device's six properties, each a text entry (`ecad_widgets::control::TextEntry`); Enter or
     /// leaving a changed field runs `setprop`, Esc puts it back. `caption` heads it with a rule and
     /// "DEVICE <tag>" (beside the table); the Project panel's section header names it instead.
     fn editor(&mut self, ui: &mut egui::Ui, c: DeviceId, writable: bool, caption: bool, out: &mut Vec<Action>) {
@@ -584,14 +584,14 @@ impl DevicesPanel {
             return;
         };
         let (line, dim, text, accent) = (
-            ecad_ui::color(ecad_ui::SHELL.line),
-            ecad_ui::color(ecad_ui::SHELL.text_2),
-            ecad_ui::color(ecad_ui::SHELL.text),
-            ecad_ui::color(ecad_ui::SHELL.accent),
+            ecad_widgets::color(ecad_widgets::SHELL.line),
+            ecad_widgets::color(ecad_widgets::SHELL.text_2),
+            ecad_widgets::color(ecad_widgets::SHELL.text),
+            ecad_widgets::color(ecad_widgets::SHELL.accent),
         );
         if caption {
             ui.add_space(4.0);
-            ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, line));
+            ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, line));
             ui.add_space(4.0);
             ui.label(RichText::new(format!("DEVICE {}", e.tag.as_deref().unwrap_or("(no tag)"))).small().strong().color(dim));
         }
@@ -627,7 +627,7 @@ impl DevicesPanel {
             }
         }
         // Brief 026 (design §4): the Fixed box beside the tag; greyed for a provisional tag.
-        let provisional = e.tag.as_deref().is_some_and(ecad_model::tag::is_provisional);
+        let provisional = e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional);
         let mut fixed = e.fixed;
         let can = writable && e.tag.is_some() && !provisional;
         let r = ui.add_enabled(can, egui::Checkbox::new(&mut fixed, RichText::new("Fixed").small())).accessible_name("ecad.props.tagfixed");
@@ -657,8 +657,8 @@ impl DevicesPanel {
             let label = format!("{name} field");
             let field = ui
                 .add_enabled_ui(writable, |ui| {
-                    ecad_ui::control::row(ui, name, |ui| {
-                        ecad_ui::control::TextEntry::new(&mut text, &label)
+                    ecad_widgets::control::row(ui, name, |ui| {
+                        ecad_widgets::control::TextEntry::new(&mut text, &label)
                             .id(egui::Id::unique(("ecad.devices.prop", *key)))
                             .placeholder(&placeholder)
                             .hint(hint)

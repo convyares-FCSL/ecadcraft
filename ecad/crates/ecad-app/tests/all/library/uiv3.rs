@@ -6,21 +6,21 @@ use ecad_app::App;
 use ecad_app::library::browser;
 use ecad_app::library::draft::Picked;
 use ecad_app::shell::Workspace;
-use ecad_engine::symbols;
+use ecad_electrical::symbols;
 use ecad_model::Subject;
 use eframe::egui::vec2;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
 
-use crate::project_panel::{doc, rev3_app};
+use crate::pages::project_panel::{doc, rev3_app};
 
 type H = Harness<'static, App>;
 
 /// The whole window as the app's root `Ui` (the harness keeps an 8 px margin round its own).
-fn window(deltas: Option<crate::mouse_tester::Deltas>) -> H {
+fn window(deltas: Option<crate::canvas::mouse_acceptance::Deltas>) -> H {
     let mut b = Harness::builder().with_size(vec2(1920.0, 1080.0)).with_step_dt(1.0 / 60.0);
     if let Some(d) = deltas {
-        b = b.renderer(crate::mouse_tester::Collect(d));
+        b = b.renderer(crate::canvas::mouse_acceptance::Collect(d));
     }
     let mut h = b.build_ui_state(
         |ui, t: &mut App| {
@@ -127,11 +127,11 @@ fn publish_ticks_choose_the_pages_print_book_prints() {
     click(&mut h, &format!("{}.{}.include", ecad_app::publish::PAGE, first.hex()));
     h.run_steps(2);
     let d = h.state().print_book.clone().expect("Print Book's choices");
-    assert_eq!(d.scope, ecad_app::outputs_ui::ScopeKind::Pages);
+    assert_eq!(d.scope, ecad_app::reports::panel::ScopeKind::Pages);
     assert!(d.sheets < all, "{} of {all}", d.sheets);
     assert_eq!(h.state().publish.books, books + 1, "one rebuild for the tick");
     click(&mut h, ecad_app::publish::SELECT_ALL);
-    assert_eq!(h.state().print_book.as_ref().map(|d| d.scope), Some(ecad_app::outputs_ui::ScopeKind::All));
+    assert_eq!(h.state().print_book.as_ref().map(|d| d.scope), Some(ecad_app::reports::panel::ScopeKind::All));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -143,7 +143,7 @@ fn run(h: &mut H, cmd: &str, params: Value) -> Value {
 
 /// The demo project open on its second page.
 fn demo(h: &mut H, dir: &std::path::Path) {
-    let path = crate::checks_ui::demo_file(dir);
+    let path = crate::checks::ui::demo_file(dir);
     h.state_mut().close_project();
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
@@ -181,21 +181,21 @@ fn three_copies(h: &mut H) -> Vec<ecad_model::RepresentationId> {
 /// Boards 3.01–3.04, 4.01, 5.01 and 5.02 at 1920 × 1080, as `uiv3-F-<board>-ours.png`.
 #[test]
 fn screenshots_of_section_f() {
-    let Some(out) = crate::project_panel::shots() else { return };
+    let Some(out) = crate::pages::project_panel::shots() else { return };
     ecad_app::canvas::register_sheet_faces();
     let dir = std::env::temp_dir().join(format!("ecad-uiv3f-shots-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
     let mut h = window(Some(deltas.clone()));
     let shot = |h: &H, board: &str| {
-        let _ = crate::mouse_tester::shot(h, &deltas, &out.join(format!("uiv3-F-{board}-ours.png")));
+        let _ = crate::canvas::mouse_acceptance::shot(h, &deltas, &out.join(format!("uiv3-F-{board}-ours.png")));
     };
     demo(&mut h, &dir);
 
     // 3.01: Library ▸ Symbols, a tile selected.
     h.state_mut().set_workspace(Workspace::Library);
     h.run_steps(3);
-    h.state_mut().library.browser.selected = Some(browser::Tile::Builtin(ecad_engine::symbols::StarterKey::Coil));
+    h.state_mut().library.browser.selected = Some(browser::Tile::Builtin(ecad_electrical::symbols::StarterKey::Coil));
     h.state_mut().open_inspector(ecad_app::shell::RightTab::Device);
     h.run_steps(4);
     shot(&h, "3.01");

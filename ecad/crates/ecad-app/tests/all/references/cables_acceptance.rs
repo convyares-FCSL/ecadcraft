@@ -15,9 +15,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::common::{self, Opts, Tmp, click, pointer_to};
-use crate::mouse_tester::Deltas;
+use crate::canvas::mouse_acceptance::Deltas;
 use cadcraft_engine::geom::Vec2;
-use ecad_app::{App, tools};
+use {ecad_app::App, ecad_app::commands::tools};
 use ecad_model::{Document, PageId};
 use eframe::egui::{self, Key, Pos2};
 use egui_kittest::Harness;
@@ -53,7 +53,7 @@ fn ok(h: &mut Harness<'static, App>, line: &str) {
 fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
     let t = h.state_mut();
     let before: Vec<_> =
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle).collect();
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -62,7 +62,7 @@ fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
         .map(|e| e.handle)
         .filter(|x| !before.contains(x))
         .map(|x| x.hex())
@@ -283,7 +283,7 @@ fn tag_page(h: &mut Harness<'static, App>, page: PageId, name: &str) {
     }
     let wires: Vec<_> = d.wires.iter().filter(|(_, c)| c.number.is_none()).map(|(k, _)| *k).collect();
     for w in wires {
-        if let Some((a, _)) = ecad_model::derive::route_on_page(&d, w, page).and_then(|(_, p)| p.path_ends()) {
+        if let Some((a, _)) = ecad_model::connectivity::derive::route_on_page(&d, w, page).and_then(|(_, p)| p.path_ends()) {
             ok(h, &format!(r#"wirenumber {{"conductor":"{}","value":"W{}"}}"#, w.hex(), a.y));
         }
     }
@@ -362,7 +362,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     // wire until they land on K2.
     let d = doc(&mut h);
     // K2's points (the reference's named points are shown on Field too).
-    let k2: Vec<_> = ecad_model::derive::connection_point_positions(&d, field)
+    let k2: Vec<_> = ecad_model::connectivity::derive::connection_point_positions(&d, field)
         .into_iter()
         .filter(|(t, _, _)| d.terminals.contains_key(t))
         .map(|(t, _, p)| (t, p))

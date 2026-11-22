@@ -4,17 +4,17 @@
 //! follows (the dialog's copy is taken again only when the kept Checks or the project change).
 //!
 //! Everything it does goes through the commands' JSON forms: `revision` for a field, `release`
-//! to release; the engine's [`ecad_engine::release::View`] is what it shows.
+//! to release; the engine's [`ecad_engine::releases::release::View`] is what it shows.
 
 use std::collections::BTreeSet;
 
-use ecad_electrical::release::Group;
+use ecad_electrical::releases::release::Group;
 use ecad_engine::checks::{Check, Severity};
-use ecad_engine::release::View;
-use ecad_ui::control::TextEntry;
-use ecad_ui::dialog::action;
-use ecad_ui::prim::{self, Button, Kind, Tone};
-use ecad_ui::tokens::{size, space};
+use ecad_engine::releases::release::View;
+use ecad_widgets::control::TextEntry;
+use ecad_widgets::dialog::action;
+use ecad_widgets::prim::{self, Button, Kind, Tone};
+use ecad_widgets::tokens::{size, space};
 use eframe::egui::{self, RichText};
 use serde_json::{Map, Value, json};
 
@@ -129,7 +129,7 @@ impl ReleaseDialog {
             return None;
         }
         if [0, 2, 3].iter().any(|i| self.fields.get(*i).is_none_or(|f| f.trim().is_empty())) {
-            return Some(ecad_engine::revisions::FILL_FIRST.into());
+            return Some(ecad_electrical::releases::revisions::FILL_FIRST.into());
         }
         if v.errors > 0 && !self.accept {
             let n = if v.errors == 1 { "1 error".to_string() } else { format!("{} errors", v.errors) };
@@ -169,7 +169,7 @@ impl ReleaseDialog {
             let editable = self.rev.is_none() && !self.read_only;
             prim::PropertyGrid::new().show(ui, |g| {
                 for (i, (f, label)) in
-                    ecad_engine::revisions::FIELDS.iter().zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"]).enumerate()
+                    ecad_electrical::releases::revisions::FIELDS.iter().zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"]).enumerate()
                 {
                     let Some(val) = self.fields.get_mut(i) else { continue };
                     let name = format!("ecad.release.{f}");
@@ -240,7 +240,7 @@ impl ReleaseDialog {
                     }
                     for (i, (c, place)) in rows.iter().take(ROWS_SHOWN).enumerate() {
                         let text = format!("{} {:<34} {:<9} {}", c.severity().glyph(), c.kind.words(), place, c.which);
-                        let ink = ecad_ui::color(Self::tone(c.severity()).text());
+                        let ink = ecad_widgets::color(Self::tone(c.severity()).text());
                         let r = ui
                             .add(egui::Label::new(RichText::new(text).monospace().color(ink)).sense(egui::Sense::click()))
                             .on_hover_cursor(egui::CursorIcon::PointingHand);
@@ -302,7 +302,7 @@ impl ReleaseDialog {
                     out = Some(Out::Close);
                 }
                 if self.rev.is_none()
-                    && v.refusal.as_deref() == Some(ecad_electrical::release::SAVE_FIRST)
+                    && v.refusal.as_deref() == Some(ecad_electrical::releases::release::SAVE_FIRST)
                     && action(ui, "Save As\u{2026}", Kind::Secondary, "ecad.release.saveas", None).clicked()
                 {
                     out = Some(Out::SaveAs);
@@ -335,10 +335,10 @@ pub fn open_folder(folder: &std::path::Path) -> Result<(), String> {
 }
 
 /// The folders of issued rows, resolved against the project, and whether each exists.
-pub fn fill_folders(rows: &mut [crate::sheets_ui::RevRow], p: &ecad_engine::Project) {
+pub fn fill_folders(rows: &mut [crate::settings::sheets::RevRow], p: &ecad_engine::Project) {
     for r in rows {
-        r.folder = r.released.as_deref().and_then(|v| ecad_engine::release::from_recorded(p, v));
-        r.folder_exists = r.folder.as_deref().is_some_and(|f| f.join(ecad_engine::release::MANIFEST).exists());
+        r.folder = r.released.as_deref().and_then(|v| ecad_engine::releases::release::from_recorded(p, v));
+        r.folder_exists = r.folder.as_deref().is_some_and(|f| f.join(ecad_engine::releases::release::MANIFEST).exists());
     }
 }
 

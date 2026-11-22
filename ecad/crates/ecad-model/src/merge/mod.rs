@@ -17,7 +17,7 @@
 //! - Nothing is preselected (owner answer 7): an unanswered conflict leaves the target's side in
 //!   the provisional result and is listed in [`Plan::unanswered`]; [`Plan::ops`] is empty until
 //!   every conflict has a choice. Never a dead end: every conflict offers at least two choices.
-//! - The result is ordinary ops from the target's state ([`crate::diff::ops_between_in`]) over
+//! - The result is ordinary ops from the target's state ([`crate::document::diff::ops_between_in`]) over
 //!   the scope and what the rules added to it.
 //! - Version names are the target's (they are branch-local history); project properties are
 //!   merged only where `keep_project_key` allows (revision fields are never merged into the
@@ -35,16 +35,16 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::diff;
-use crate::doc::{
+use crate::document::diff;
+use crate::document::doc::{
     Cable, Core, CorePosition, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Terminal, Wire,
 };
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
-use crate::invariant::Touched;
-use crate::op::{ObjectRef, Op};
-use crate::route::{Route, RouteEnd};
-use crate::style::{Standard, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
-use crate::tag::{self, HighWater};
+use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
+use crate::document::invariant::Touched;
+use crate::document::op::{ObjectRef, Op};
+use crate::objects::route::{Route, RouteEnd};
+use crate::objects::styles::{Standard, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
+use crate::naming::tag::{self, HighWater};
 
 /// An object a merge compares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -62,9 +62,9 @@ pub enum Obj {
     /// A route (design 072 F31).
     Route(RouteId),
     /// A drawing aid (design 072 §6.2).
-    Aid(crate::id::AidId),
+    Aid(crate::naming::id::AidId),
     /// A loose part (design 072 §6.4).
-    LoosePart(crate::id::LoosePartId),
+    LoosePart(crate::naming::id::LoosePartId),
     Project,
 }
 
@@ -462,7 +462,7 @@ fn merge_device_type(
     match (a, t, s) {
         (T::PlcModule(a), T::PlcModule(t), T::PlcModule(s)) => {
             let rack_name = |r: &Option<DeviceId>| r.map_or_else(|| "no rack".into(), |r| name_of(docs, Obj::Device(r)));
-            T::PlcModule(crate::plc::PlcModule {
+            T::PlcModule(crate::objects::plc::PlcModule {
                 rack: field(ctx, obj, "plc.rack", format!("{what} · rack"), &a.rack, &t.rack, &s.rack, &rack_name),
                 slot: field(ctx, obj, "plc.slot", format!("{what} · slot"), &a.slot, &t.slot, &s.slot, &|x| words(&|| x.map(|n| n.to_string()))),
                 function: field(ctx, obj, "plc.function", format!("{what} · function and channels"), &a.function, &t.function, &s.function, &|f| {
@@ -479,7 +479,7 @@ fn merge_device_type(
                 }),
             })
         }
-        (T::PlcRack(a), T::PlcRack(t), T::PlcRack(s)) => T::PlcRack(crate::plc::PlcRack {
+        (T::PlcRack(a), T::PlcRack(t), T::PlcRack(s)) => T::PlcRack(crate::objects::plc::PlcRack {
             network: field(ctx, obj, "plc.network", format!("{what} · network"), &a.network, &t.network, &s.network, &|x| {
                 words(&|| x.as_ref().map(ToString::to_string))
             }),
@@ -549,10 +549,10 @@ fn object<T: PartialEq + Clone>(
 }
 
 /// The object that owns a connection point.
-fn owner_obj(owner: crate::doc::ConnectionPointOwner) -> Obj {
+fn owner_obj(owner: crate::document::doc::ConnectionPointOwner) -> Obj {
     match owner {
-        crate::doc::ConnectionPointOwner::Device(c) => Obj::Device(c),
-        crate::doc::ConnectionPointOwner::Aid(a) => Obj::Aid(a),
+        crate::document::doc::ConnectionPointOwner::Device(c) => Obj::Device(c),
+        crate::document::doc::ConnectionPointOwner::Aid(a) => Obj::Aid(a),
     }
 }
 
@@ -562,7 +562,7 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
     let page_of = |p: PageId| {
         docs.iter()
             .find(|d| d.pages.contains_key(&p))
-            .map_or_else(|| p.short(), |d| format!("Page {}", crate::book::stored_number(d, p).map_or_else(|| p.short(), str::to_string)))
+            .map_or_else(|| p.short(), |d| format!("Page {}", crate::document::book::stored_number(d, p).map_or_else(|| p.short(), str::to_string)))
     };
     match obj {
         Obj::Device(c) => tag_of(c),
@@ -570,8 +570,8 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
             Some(term) => format!(
                 "{}:{}",
                 match term.owner {
-                    crate::doc::ConnectionPointOwner::Device(c) => tag_of(c),
-                    crate::doc::ConnectionPointOwner::Aid(a) => a.short(),
+                    crate::document::doc::ConnectionPointOwner::Device(c) => tag_of(c),
+                    crate::document::doc::ConnectionPointOwner::Aid(a) => a.short(),
                 },
                 term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short())
             ),
@@ -590,9 +590,9 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
             None => format!("Line {}", r.short()),
         },
         Obj::Aid(x) => match docs.iter().find_map(|d| d.aids.get(&x)) {
-            Some(crate::aid::Aid::Continuation { name: Some(n), .. }) => format!("Continuation {n}"),
-            Some(crate::aid::Aid::Continuation { name: None, .. }) => format!("Continuation {}", x.short()),
-            Some(crate::aid::Aid::Box(_)) | None => format!("Box {}", x.short()),
+            Some(crate::objects::aid::Aid::Continuation { name: Some(n), .. }) => format!("Continuation {n}"),
+            Some(crate::objects::aid::Aid::Continuation { name: None, .. }) => format!("Continuation {}", x.short()),
+            Some(crate::objects::aid::Aid::Box(_)) | None => format!("Box {}", x.short()),
         },
         Obj::LoosePart(x) => match docs.iter().find_map(|d| d.loose_parts.get(&x)) {
             Some(p) => format!("Loose part \"{}\"", p.description),
@@ -775,47 +775,47 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                             v.as_ref().map_or_else(|| "(none)".into(), |t| t.to_string())
                         }),
                         tag_fixed: field(ctx, obj, tag::FIXED_KEY, format!("{what} · tag fixed"), &a.tag_fixed, &t.tag_fixed, &s.tag_fixed, &|v| {
-                            crate::words::flag_word(*v).into()
+                            crate::naming::words::flag_word(*v).into()
                         }),
                         location: field(
                             ctx,
                             obj,
-                            crate::book::LOCATION_KEY,
+                            crate::document::book::LOCATION_KEY,
                             format!("{what} · location"),
                             &a.location,
                             &t.location,
                             &s.location,
-                            &|x| x.map_or_else(|| "(none)".to_string(), crate::id::LocationId::short),
+                            &|x| x.map_or_else(|| "(none)".to_string(), crate::naming::id::LocationId::short),
                         ),
                         location_fixed: field(
                             ctx,
                             obj,
-                            crate::book::LOCATION_FIXED_KEY,
+                            crate::document::book::LOCATION_FIXED_KEY,
                             format!("{what} · location fixed"),
                             &a.location_fixed,
                             &t.location_fixed,
                             &s.location_fixed,
-                            &|v| crate::words::flag_word(*v).into(),
+                            &|v| crate::naming::words::flag_word(*v).into(),
                         ),
                         function: field(
                             ctx,
                             obj,
-                            crate::book::FUNCTION_KEY,
+                            crate::document::book::FUNCTION_KEY,
                             format!("{what} · function"),
                             &a.function,
                             &t.function,
                             &s.function,
-                            &|x| x.map_or_else(|| "(none)".to_string(), crate::id::FunctionId::short),
+                            &|x| x.map_or_else(|| "(none)".to_string(), crate::naming::id::FunctionId::short),
                         ),
                         function_fixed: field(
                             ctx,
                             obj,
-                            crate::book::FUNCTION_FIXED_KEY,
+                            crate::document::book::FUNCTION_FIXED_KEY,
                             format!("{what} · function fixed"),
                             &a.function_fixed,
                             &t.function_fixed,
                             &s.function_fixed,
-                            &|v| crate::words::flag_word(*v).into(),
+                            &|v| crate::naming::words::flag_word(*v).into(),
                         ),
                         properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
                         definition: field(ctx, obj, "definition", format!("{what} · symbol"), &a.definition, &t.definition, &s.definition, &|d| {
@@ -897,7 +897,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                         x.as_ref().map_or_else(|| "(none)".to_string(), StyleRef::text)
                     }),
                     shield: field(ctx, obj, "shield", format!("{what} · shield"), &a.shield, &t.shield, &s.shield, &|x| {
-                        x.map_or_else(|| "(none)".to_string(), |v| crate::words::Word::word(v).to_string())
+                        x.map_or_else(|| "(none)".to_string(), |v| crate::naming::words::Word::word(v).to_string())
                     }),
                     rating: field(ctx, obj, "rating", format!("{what} · rating inputs"), &a.rating, &t.rating, &s.rating, &|x| format!("{x:?}")),
                     load: field(ctx, obj, "load", format!("{what} · load"), &a.load, &t.load, &s.load, &|x| {
@@ -965,10 +965,10 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                         &|x| shown_value(x.as_ref()),
                     ),
                     location: field(ctx, obj, "location", format!("{what} · location"), &a.location, &t.location, &s.location, &|x| {
-                        x.map_or_else(|| "(project's)".to_string(), crate::id::LocationId::short)
+                        x.map_or_else(|| "(project's)".to_string(), crate::naming::id::LocationId::short)
                     }),
                     function: field(ctx, obj, "function", format!("{what} · function"), &a.function, &t.function, &s.function, &|x| {
-                        x.map_or_else(|| "(project's)".to_string(), crate::id::FunctionId::short)
+                        x.map_or_else(|| "(project's)".to_string(), crate::naming::id::FunctionId::short)
                     }),
                     display: merge_props(ctx, obj, &what, &a.display, &t.display, &s.display, &all),
                 });
@@ -1040,7 +1040,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
 fn merge_project(ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate::Project, s: &crate::Project) -> crate::Project {
     // The info merges field by field, like the project properties it was.
     let mut info = t.info.clone();
-    for f in <crate::project::InfoField as crate::Word>::ALL {
+    for f in <crate::document::project::InfoField as crate::Word>::ALL {
         let get = |p: &crate::Project| p.info.get(*f).map(str::to_string);
         let what = format!("Project · {}", crate::Word::word(*f));
         let v = field(ctx, obj, crate::Word::word(*f), what, &get(a), &get(t), &get(s), &|x| shown_value(x.as_ref()));
@@ -1051,17 +1051,17 @@ fn merge_project(ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate:
         locations: merge_list(ctx, obj, "location", &a.locations, &t.locations, &s.locations),
         functions: merge_list(ctx, obj, "function", &a.functions, &t.functions, &s.functions),
         location: field(ctx, obj, "location", "Project · location".into(), &a.location, &t.location, &s.location, &|x| {
-            x.map_or_else(|| "(none)".to_string(), crate::id::LocationId::short)
+            x.map_or_else(|| "(none)".to_string(), crate::naming::id::LocationId::short)
         }),
         function: field(ctx, obj, "function", "Project · function".into(), &a.function, &t.function, &s.function, &|x| {
-            x.map_or_else(|| "(none)".to_string(), crate::id::FunctionId::short)
+            x.map_or_else(|| "(none)".to_string(), crate::naming::id::FunctionId::short)
         }),
         // Revision rows are merged only where the filter allows (never into the release line; an
         // update brings them unchanged), as one unit.
         user_fields: field(ctx, obj, "user_fields", "Project · user fields".into(), &a.user_fields, &t.user_fields, &s.user_fields, &|x| {
             format!("{} user fields", x.len())
         }),
-        revisions: if (ctx.inp.keep_project_key)(crate::project::REVISIONS_KEY) {
+        revisions: if (ctx.inp.keep_project_key)(crate::document::project::REVISIONS_KEY) {
             field(ctx, obj, "revisions", "Project · revisions".into(), &a.revisions, &t.revisions, &s.revisions, &|x| {
                 format!("{} revisions", x.len())
             })
@@ -1148,8 +1148,8 @@ fn merge_standard(ctx: &mut Ctx<'_, '_>, m: &mut Document, obj: Obj) {
 }
 
 /// A style record's name in texts: `Text style "Tag large"` (`Wire category "24 V DC"`).
-pub fn style_words(catalogue: crate::style::StyleCatalogue, id: &StyleRef, record: Option<&StyleRecord>) -> String {
-    use crate::style::StyleCatalogue as C;
+pub fn style_words(catalogue: crate::objects::styles::StyleCatalogue, id: &StyleRef, record: Option<&StyleRecord>) -> String {
+    use crate::objects::styles::StyleCatalogue as C;
     let kind = match catalogue {
         C::Text => "Text style",
         C::Location => "Location box style",
@@ -1166,7 +1166,7 @@ pub fn style_words(catalogue: crate::style::StyleCatalogue, id: &StyleRef, recor
 /// Merge one layer's style records, each record whole.
 fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogues, t: &StyleCatalogues, s: &StyleCatalogues) -> StyleCatalogues {
     let mut out = t.clone();
-    let cats: BTreeSet<crate::style::StyleCatalogue> = a.keys().chain(t.keys()).chain(s.keys()).copied().collect();
+    let cats: BTreeSet<crate::objects::styles::StyleCatalogue> = a.keys().chain(t.keys()).chain(s.keys()).copied().collect();
     for cat in cats {
         let get = |c: &'_ StyleCatalogues| c.get(&cat).cloned().unwrap_or_default();
         let (ra, rt, rs) = (get(a), get(t), get(s));
@@ -1200,7 +1200,7 @@ fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogu
                     }
                 }
             };
-            crate::style::put(&mut out, cat, id, v.as_ref());
+            crate::objects::styles::put(&mut out, cat, id, v.as_ref());
         }
     }
     out
@@ -1210,7 +1210,7 @@ fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogu
 fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
     let id = u128::from_str_radix(hex, 16).ok()?;
     docs.iter().find_map(|d| {
-        use crate::id::*;
+        use crate::naming::id::*;
         [
             Obj::Device(DeviceId(id)),
             Obj::Terminal(ConnectionPointId(id)),
@@ -1445,7 +1445,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
             }
         }
         Obj::Page(p) => {
-            if let Some(f) = crate::book::folder_of(m, p) {
+            if let Some(f) = crate::document::book::folder_of(m, p) {
                 out.push((Obj::Folder(f), Use::PageFolder));
             }
         }
@@ -1516,7 +1516,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
         }
         Obj::Folder(f) => {
             all.extend(m.folders.iter().filter(|(_, x)| x.parent == Some(f)).map(|(k, _)| Obj::Folder(*k)));
-            all.extend(m.pages.keys().filter(|p| crate::book::folder_of(m, **p) == Some(f)).map(|k| Obj::Page(*k)));
+            all.extend(m.pages.keys().filter(|p| crate::document::book::folder_of(m, **p) == Some(f)).map(|k| Obj::Page(*k)));
         }
     }
     all
@@ -1932,7 +1932,7 @@ pub fn join_cables(doc: &Document, from: CableId, into: CableId) -> Result<Vec<O
     ops.extend(Op::modify_cable(into, b, joined));
     for (rid, r) in doc.representations_of(Subject::Cable(from)) {
         ops.push(Op::UnlinkRepresentation { id: rid, rep: r.clone() });
-        ops.push(Op::LinkRepresentation { id: rid, rep: crate::doc::Representation { subject: Subject::Cable(into), ..r.clone() } });
+        ops.push(Op::LinkRepresentation { id: rid, rep: crate::document::doc::Representation { subject: Subject::Cable(into), ..r.clone() } });
     }
     ops.push(Op::DeleteCable { id: from, cable: empty });
     Ok(ops)
@@ -1957,15 +1957,15 @@ fn next_number(n: &str, taken: &BTreeSet<String>, step: u32) -> String {
 fn resolve_page_numbers(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>) -> BTreeSet<Obj> {
     let (t, s) = (ctx.inp.target, ctx.inp.source);
     let mut out = BTreeSet::new();
-    let mut taken: BTreeSet<String> = m.pages.keys().filter_map(|p| crate::book::stored_number(m, *p)).map(str::to_string).collect();
+    let mut taken: BTreeSet<String> = m.pages.keys().filter_map(|p| crate::document::book::stored_number(m, *p)).map(str::to_string).collect();
     let step = m.settings.page_number_step();
     let ours: Vec<PageId> = objects.iter().filter_map(|o| if let Obj::Page(p) = o { Some(*p) } else { None }).collect();
     for p in ours {
-        let Some(num) = crate::book::stored_number(m, p).map(str::to_string) else { continue };
-        if crate::book::stored_number(t, p) == Some(num.as_str()) {
+        let Some(num) = crate::document::book::stored_number(m, p).map(str::to_string) else { continue };
+        if crate::document::book::stored_number(t, p) == Some(num.as_str()) {
             continue;
         }
-        let Some(other) = m.pages.keys().copied().find(|q| *q != p && crate::book::stored_number(m, *q) == Some(num.as_str())) else { continue };
+        let Some(other) = m.pages.keys().copied().find(|q| *q != p && crate::document::book::stored_number(m, *q) == Some(num.as_str())) else { continue };
         let fresh = next_number(&num, &taken, step);
         let c = Conflict {
             id: format!("rule/page/{num}"),
@@ -1977,7 +1977,7 @@ fn resolve_page_numbers(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTree
             choices: vec![Choice::RenumberSource, Choice::RenumberTarget],
             chosen: None,
         };
-        let src_is_p = s.pages.contains_key(&p) && !t.pages.contains_key(&p) || crate::book::stored_number(s, p) == Some(num.as_str());
+        let src_is_p = s.pages.contains_key(&p) && !t.pages.contains_key(&p) || crate::document::book::stored_number(s, p) == Some(num.as_str());
         let which = match ctx.ask(c) {
             Some(Choice::RenumberSource) => Some(if src_is_p { p } else { other }),
             Some(Choice::RenumberTarget) => Some(if src_is_p { other } else { p }),
@@ -1986,7 +1986,7 @@ fn resolve_page_numbers(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTree
         if let Some(q) = which
             && let Some(page) = m.pages.get_mut(&q)
         {
-            page.number = crate::book::PageNo::parse(&fresh);
+            page.number = crate::document::book::PageNo::parse(&fresh);
             taken.insert(fresh);
             out.insert(Obj::Page(q));
         }
@@ -2114,12 +2114,12 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
             }),
             Obj::Wire(c) => d.wires.get(&c).map(|x| {
                 let mut p = x.display.clone();
-                p.extend(x.wire_type.as_ref().map(|t| (crate::wiring::WIRE_CATEGORY.to_string(), t.text())));
+                p.extend(x.wire_type.as_ref().map(|t| (crate::connectivity::wiring::WIRE_CATEGORY.to_string(), t.text())));
                 p
             }),
             Obj::Cable(c) => d.cables.get(&c).map(|x| {
                 let mut p = x.properties.clone();
-                p.extend(x.cable_type.as_ref().map(|t| (crate::doc::CABLE_TYPE_KEY.to_string(), t.text())));
+                p.extend(x.cable_type.as_ref().map(|t| (crate::document::doc::CABLE_TYPE_KEY.to_string(), t.text())));
                 p
             }),
             Obj::Page(p) => d.pages.get(&p).map(|x| x.display.clone()),
@@ -2399,8 +2399,8 @@ pub fn kind_word(k: ConflictKind) -> &'static str {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use super::*;
-    use crate::id::{ConductorId, NetId};
+    use crate::*;
+    use crate::naming::id::{ConductorId, NetId};
 
     fn doc_with(tags: &[(u128, &str)]) -> Document {
         let mut d = Document::default();
@@ -2454,7 +2454,7 @@ mod tests {
         t.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("remark".into(), "16 A".into());
         let mut s = a.clone();
         s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("remark".into(), "20 A".into());
-        s.devices.get_mut(&DeviceId(2)).unwrap().description = crate::device::Description::new("Pump").ok();
+        s.devices.get_mut(&DeviceId(2)).unwrap().description = crate::objects::devices::Description::new("Pump").ok();
         let scope = scope_of(&[1, 2]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         assert_eq!(p.conflicts.len(), 1);
@@ -2522,7 +2522,7 @@ mod tests {
         let mut t2 = doc_with(&[(1, "-K05")]);
         let mut s2 = doc_with(&[(2, "-K05")]);
         for (d, id) in [(&mut t2, 1), (&mut s2, 2)] {
-            d.devices.get_mut(&DeviceId(id)).unwrap().description = crate::device::Description::new("coil").ok();
+            d.devices.get_mut(&DeviceId(id)).unwrap().description = crate::objects::devices::Description::new("coil").ok();
         }
         let p = run(&a, &t2, &s2, &scope, &BTreeMap::new());
         let c = p.conflicts.iter().find(|c| c.kind == ConflictKind::Tag).unwrap();
@@ -2558,7 +2558,7 @@ mod tests {
         let a = doc_with(&[(1, "-K01")]);
         let t = doc_with(&[]);
         let mut s = a.clone();
-        s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::device::Description::new("x").ok();
+        s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::objects::devices::Description::new("x").ok();
         let scope = scope_of(&[1]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         assert_eq!(p.conflicts[0].kind, ConflictKind::Removed);
@@ -2635,7 +2635,7 @@ mod tests {
         device(&mut a, 1, "-K01", &[11, 12]);
         let t = Document::default();
         let mut s = a.clone();
-        s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::device::Description::new("Pump").ok();
+        s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::objects::devices::Description::new("Pump").ok();
         let scope = scope_all(&[Obj::Device(DeviceId(1)), Obj::Terminal(ConnectionPointId(11)), Obj::Terminal(ConnectionPointId(12))]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         let k = p.conflicts.iter().find(|c| c.kind == ConflictKind::Removed).unwrap();
@@ -2713,7 +2713,7 @@ mod tests {
     fn a_page_number_added_on_both_is_renumbered_either_way() {
         let page = |n: &str| {
             let mut p = Page::titled("x").unwrap();
-            p.number = crate::book::PageNo::parse(n);
+            p.number = crate::document::book::PageNo::parse(n);
             p
         };
         let a = Document::default();
@@ -2729,7 +2729,7 @@ mod tests {
         let id = p.conflicts.iter().find(|c| c.kind == ConflictKind::PageNumber).map(|c| c.id.clone()).unwrap();
         for (c, renumbered) in [(Choice::RenumberSource, PageId(2)), (Choice::RenumberTarget, PageId(1))] {
             let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, c)));
-            assert_eq!(doc.pages[&renumbered].number.as_ref().map(crate::book::PageNo::as_str), Some("6"));
+            assert_eq!(doc.pages[&renumbered].number.as_ref().map(crate::document::book::PageNo::as_str), Some("6"));
             assert_eq!(doc.page_order.len(), 2);
         }
     }
@@ -2757,7 +2757,7 @@ mod tests {
     fn an_answer_for_a_conflict_not_raised_is_reported_as_ignored() {
         let a = doc_with(&[(1, "-K01")]);
         let mut s = a.clone();
-        s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::device::Description::new("Pump").ok();
+        s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::objects::devices::Description::new("Pump").ok();
         let p = run(&a, &a, &s, &scope_of(&[1]), &one(&format!("{}/prop.rating", DeviceId(1).hex()), Choice::Source));
         assert_eq!(p.ignored.len(), 1, "{:?}", p.ignored);
         assert!(p.ignored[0].starts_with("-K01"), "{:?}", p.ignored);

@@ -3,19 +3,19 @@
 //! experiments' `convertcomponent` and `addterminal`.
 //!
 //! The interactive forms ([`crate::interact`]) commit through exactly these. `place` is a thin shim
-//! (brief 070): [`PlaceParams`] reads the JSON, the rules in [`ecad_electrical::cmd::place`] say
+//! (brief 070): [`PlaceParams`] reads the JSON, the rules in [`ecad_electrical::devices::commands::place`] say
 //! which device a symbol joins, each form's planner builds the ops, and the shim commits and
 //! answers in JSON.
 
-use ecad_model::units::{Degrees, Radians};
+use ecad_model::geometry::units::{Degrees, Radians};
 use std::collections::BTreeMap;
 
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{EngineError, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::device::{self as device_rules, Doomed};
-use ecad_electrical::cmd::place as rules;
-use ecad_electrical::proposals::Mode;
+use ecad_electrical::devices::commands::devices::{self as device_rules, Doomed};
+use ecad_electrical::devices::commands::place as rules;
+use ecad_electrical::symbols::proposals::Mode;
 use ecad_model::{
     CableId, Color, DefinitionId, Device, DeviceId, Form, Item, ItemId, ItemKind, Noun, Op, Placement, Representation, RepresentationId, Style,
     Subject, SymbolInstance, Terminal, ConnectionPointId, WireId,
@@ -24,12 +24,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{MAX_HANDLES, on_any_page, on_project, plain_style};
+use crate::commands::input::{Command, Typed};
+use crate::commands::{MAX_HANDLES, on_any_page, on_project, plain_style};
 use crate::devices;
 use crate::project::{Mapped, Project};
-use crate::views;
-use ecad_electrical::cmd::input::{Bounded, Point, TextOrNumber, nullable};
+use crate::cables::views;
+use ecad_electrical::commands::input::{Bounded, Point, TextOrNumber, nullable};
 
 fn err(m: impl Into<String>) -> EngineError {
     EngineError::Other(m.into())
@@ -148,7 +148,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
     // Brief 048: a project symbol's key places its newest version.
     let starter = match devices::starter(&key) {
         Ok(st) => st,
-        Err(e) => return crate::cmd::symbol::place_project_key(s, &params, &key)?.ok_or_else(|| err(e)),
+        Err(e) => return crate::symbols::commands::place_project_key(s, &params, &key)?.ok_or_else(|| err(e)),
     };
     let at = params.at.0;
     if !(at.is_finite() && at.x.abs() <= crate::interact::MAX_COORD && at.y.abs() <= crate::interact::MAX_COORD) {
@@ -157,20 +157,20 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
     let degrees = params.rotation.unwrap_or_default();
     let mirror = params.mirror.unwrap_or(false);
     // Brief 022: a junction or continuation is a tagless component of its own.
-    if starter.kind == crate::symbols::Kind::Tagless {
-        return crate::cmd::wire::place_tagless(s, &params, starter, at, degrees, mirror);
+    if starter.kind == ecad_electrical::symbols::Kind::Tagless {
+        return crate::wires::commands::place_tagless(s, &params, starter, at, degrees, mirror);
     }
     // Brief 036: a level, a whole terminal, a disconnect or fuse terminal joins a strip as a position.
-    if crate::terminal_types::is_level_starter(starter.key) {
-        return crate::cmd::terminal::place_level(s, &params, starter, at, degrees, mirror);
+    if ecad_electrical::terminal_strips::terminal_blocks::is_level_starter(starter.key) {
+        return crate::terminal_strips::commands::place_level(s, &params, starter, at, degrees, mirror);
     }
     // Brief 045 (design 045 §4.4): a channel symbol joins a card as a channel.
     if crate::plc::channels::cell_type(starter).is_some() {
-        return crate::cmd::plc::channels::place_channel(s, &params, starter, at, degrees, mirror);
+        return crate::plc::commands::channels::place_channel(s, &params, starter, at, degrees, mirror);
     }
     // Brief 044: a connector half or pin makes or joins a connector (design 044 §3.3).
-    if let crate::symbols::Kind::ConnectorHalf { .. } = starter.kind {
-        return crate::cmd::connector::place_half(s, &params, starter, at, degrees, mirror);
+    if let ecad_electrical::symbols::Kind::ConnectorHalf { .. } = starter.kind {
+        return crate::connectors::commands::place_half(s, &params, starter, at, degrees, mirror);
     }
     let device = params.device_id()?;
     rules::one_of(device.is_some(), params.tag.is_some(), "device").map_err(|e| err(e.to_string()))?;
@@ -182,13 +182,13 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         let doc = p.ledger.document();
         let target = rules::device_target(doc, device, tag.as_deref())?;
         // Brief 028 (design 028 §3.1): a terminal clicked on a wire lands on it, splitting it.
-        let landing = (starter.kind == crate::symbols::Kind::Terminal).then(|| crate::cmd::terminal::landing_point(doc, page, at)).flatten();
+        let landing = (starter.kind == ecad_electrical::symbols::Kind::Terminal).then(|| crate::terminal_strips::commands::landing_point(doc, page, at)).flatten();
         let origin = landing.map_or(at, |on| on.at);
         let placement = Placement { origin, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let style = style(p);
         // Brief 025 (design 025 §4.3): a joined contact takes its part's next free offered labels.
         let offer_slot = match (&target, starter.kind) {
-            (devices::Target::Join(c), crate::symbols::Kind::Contact { make }) => {
+            (devices::Target::Join(c), ecad_electrical::symbols::Kind::Contact { make }) => {
                 crate::xref::offer_labels(doc, *c, make, &devices::labels_of(doc, *c)).is_some()
             }
             _ => false,
@@ -196,7 +196,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         let mut plan = devices::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
         let land = match (landing, plan.terminals.first()) {
             (Some(on), Some((_, _, t))) => {
-                let land = crate::connectors::plan_land(p.ledger.document(), &mut p.ids, on, *t)?;
+                let land = ecad_electrical::connectors::plan_land(p.ledger.document(), &mut p.ids, on, *t)?;
                 plan.ops.extend(land.ops.clone());
                 Some((*t, land))
             }
@@ -216,14 +216,14 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         };
         // Brief 052d (design 052 §5.3): the context here proposes a function and a location; an
         // unset device takes it in this transaction, a device with another value is asked about.
-        let proposed = crate::draw::proposals::plan_place(p, &plan.ops, modes, plan.component, page, origin, None).map_err(CmdError::refused)?;
+        let proposed = crate::symbols::draw::plan_place(p, &plan.ops, modes, plan.component, page, origin, None).map_err(CmdError::refused)?;
         plan.ops.extend(proposed.ops.iter().cloned());
         let label = if land.is_some() { "Place terminal".to_string() } else { plan.label.clone() };
         p.apply_edit(pg, "place", &label, plan.ops.clone())?;
         p.last_placed = Some((starter.key.to_string(), plan.component));
         let doc = p.ledger.document();
-        let landed = land.map(|(t, l)| crate::cmd::terminal::land_result(doc, t, &l));
-        if let (true, crate::symbols::Kind::Contact { make }) = (plan.joined, starter.kind) {
+        let landed = land.map(|(t, l)| crate::terminal_strips::commands::land_result(doc, t, &l));
+        if let (true, ecad_electrical::symbols::Kind::Contact { make }) = (plan.joined, starter.kind) {
             let labels: Vec<String> = plan.terminals.iter().map(|(_, l, _)| l.clone()).collect();
             if let Some(line) = crate::xref::over_line(doc, plan.component, &labels, make) {
                 pg.echo(line);
@@ -241,7 +241,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             "pages": devices::page_numbers(doc, plan.component),
             "terminals": plan.terminals.iter().map(|(k, l, t)| json!({"key": k, "label": l, "terminal": t.hex()})).collect::<Vec<_>>(),
         });
-        crate::draw::proposals::finish_place(p, pg, plan.component, plan.joined, &proposed, &mut v);
+        crate::symbols::draw::finish_place(p, pg, plan.component, plan.joined, &proposed, &mut v);
         let doc = p.ledger.document();
         if let Some((t, (r, slot))) = card_slot {
             let message = format!("Placed {} ({}) in {} slot {slot}.", plan.tag, t.noun(), devices::tag_words(doc, r));
@@ -270,7 +270,7 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
     let wanted = params.definition;
     on_project(s, |p, pg, page| {
         let doc = p.ledger.document();
-        let coil = crate::cmd::builtin_coil();
+        let coil = crate::commands::builtin_coil();
         let mut ops = Vec::new();
         let (def_id, def) = match wanted {
             Some(d) => (d, doc.definitions.get(&d).cloned().ok_or(CmdError::refused("no such definition"))?),

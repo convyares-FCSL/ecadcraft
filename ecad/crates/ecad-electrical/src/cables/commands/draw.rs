@@ -14,7 +14,7 @@ use ecad_model::{
 
 use crate::devices::TagHigh;
 use crate::error::CmdError;
-use crate::slash::{self, Crossings, MAX_CABLE_MEMBERS};
+use crate::cables::slash::{self, Crossings, MAX_CABLE_MEMBERS};
 
 /// No conductor with the ID given.
 const NO_CONDUCTOR: &str = "no such conductor";
@@ -59,7 +59,7 @@ pub fn slash_target(doc: &Document, existing: Option<CableId>, tag: Option<&str>
     let k = match existing {
         Some(k) if doc.cables.contains_key(&k) => Some(k),
         Some(_) => return Err(CmdError::refused(NO_CABLE)),
-        None => tag.and_then(|t| crate::references::cable_tagged(doc, t)),
+        None => tag.and_then(|t| crate::references::cables::cable_tagged(doc, t)),
     };
     Ok(match k {
         Some(k) if !crate::cables::is_drawn(doc, k) => SlashTarget::Assign(k),
@@ -97,7 +97,7 @@ pub fn slash_new(
     let mut c = ecad_model::Cable::default();
     // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
     let t = crate::devices::new_cable_tag(ledger, high, tag)?;
-    c.properties.insert(ecad_model::tag::TAG_KEY.into(), t);
+    c.properties.insert(ecad_model::naming::tag::TAG_KEY.into(), t);
     c.cores = found.members.iter().map(|m| Core { position: m.position, ..Core::unplaced(None) }).collect();
     let mut ops = vec![Op::CreateCable { id: cable, cable: c }];
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });
@@ -150,12 +150,12 @@ pub fn plan_slash_assign(
 ) -> Result<SlashAssign, CmdError> {
     let blocked: Vec<(CorePosition, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, c)| (m.position, c)).collect();
     if !blocked.is_empty() {
-        return Err(crate::cmd::cable::already_in_cable(slash::already_in_cable(doc, &blocked, "Nothing was changed.")));
+        return Err(crate::cables::commands::cables::already_in_cable(slash::already_in_cable(doc, &blocked, "Nothing was changed.")));
     }
     if found.members.len() > MAX_CABLE_MEMBERS {
-        return Err(crate::cmd::cable::too_many());
+        return Err(crate::cables::commands::cables::too_many());
     }
-    let cores = crate::cmd::cable::assign_cores(doc, k, found.members.len())?;
+    let cores = crate::cables::commands::cables::assign_cores(doc, k, found.members.len())?;
     let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     let mut ops = Vec::new();
     // Design 072 §4.5: each crossed line takes its core, the stored unplaced one of that label.
@@ -216,10 +216,10 @@ pub fn add_to_cable(
     if let Some(k) = existing
         && !crate::cables::is_drawn(doc, k)
     {
-        crate::cmd::cable::assign_cores(doc, k, conductors.len())?;
+        crate::cables::commands::cables::assign_cores(doc, k, conductors.len())?;
     }
     let mut spare: VecDeque<String> =
-        existing.and_then(|k| crate::strips::cable_cores(doc, k)).map(|c| c.spare.into_iter().collect()).unwrap_or_default();
+        existing.and_then(|k| crate::terminal_strips::cable_cores(doc, k)).map(|c| c.spare.into_iter().collect()).unwrap_or_default();
     let (cable, before, mut after) = match existing.and_then(|c| doc.cables.get(&c).map(|x| (c, x))) {
         Some((c, x)) => (c, Some(x), x.clone()),
         None => {
@@ -227,7 +227,7 @@ pub fn add_to_cable(
             let mut cable = ecad_model::Cable::default();
             // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
             let t = crate::devices::new_cable_tag(ledger, high, tag)?;
-            cable.properties.insert(ecad_model::tag::TAG_KEY.into(), t);
+            cable.properties.insert(ecad_model::naming::tag::TAG_KEY.into(), t);
             (c, None, cable)
         }
     };
@@ -248,7 +248,7 @@ pub fn add_to_cable(
 /// # Errors
 /// A label with a control character, or too long.
 fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::strips::core_label(text)
+    crate::terminal_strips::core_label(text)
 }
 
 /// Core `index` of `cable` relabelled `new` (design 009 §5.3).

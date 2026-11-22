@@ -5,16 +5,16 @@
 //! preview. Screenshots `uiv3-E-2.0N-ours.png` when `ECAD_TESTER_SHOTS` names a folder.
 
 use ecad_app::App;
-use ecad_app::lists::workspace;
+use ecad_app::workspace::frame;
 use ecad_app::shell::state::{RightTab, Workspace};
 use ecad_app::shell::{ListsView, Slots};
-use ecad_ui::table::TableSource;
+use ecad_widgets::table::TableSource;
 use eframe::egui::{self, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
-use crate::mouse_tester::{Collect, Deltas};
-use crate::project_panel::{doc, ok, rev3_app as new_app};
+use crate::canvas::mouse_acceptance::{Collect, Deltas};
+use crate::pages::project_panel::{doc, ok, rev3_app as new_app};
 
 type H = Harness<'static, App>;
 
@@ -37,7 +37,7 @@ fn harness(deltas: Deltas) -> H {
 
 /// The demo project, plus a PLC rack on a page of its own (051's fixture P51 in short).
 fn project(h: &mut H, dir: &std::path::Path) {
-    let path = crate::checks_ui::demo_file(dir);
+    let path = crate::checks::ui::demo_file(dir);
     h.state_mut().close_project();
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
@@ -75,7 +75,7 @@ fn slots(h: &H) -> Slots {
 
 #[test]
 fn the_tabs_are_in_the_strips_order_with_one_head_and_foot() {
-    assert_eq!(workspace::tab_labels(), ["Devices", "Terminals", "PLC", "Wires", "Cables", "Reports"]);
+    assert_eq!(frame::tab_labels(), ["Devices", "Terminals", "PLC", "Wires", "Cables", "Reports"]);
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas);
     let dir = std::env::temp_dir().join(format!("ecad-uiv3e-tabs-{}", std::process::id()));
@@ -84,7 +84,7 @@ fn the_tabs_are_in_the_strips_order_with_one_head_and_foot() {
     show(&mut h, ListsView::Devices);
     let main = slots(&h).main;
     // Each tab is a button in the head, and clicking it shows its view.
-    for v in workspace::TABS {
+    for v in frame::TABS {
         let tab = h.get_by_label(v.label());
         assert!(main.contains(tab.rect().center()), "{} in the head", v.label());
         tab.click();
@@ -93,14 +93,14 @@ fn the_tabs_are_in_the_strips_order_with_one_head_and_foot() {
     }
     // The head's actions: Export and Open beside the page on a table tab; Import greyed.
     show(&mut h, ListsView::Cables);
-    assert!(h.query_by_label(workspace::EXPORT).is_some());
-    assert!(h.query_by_label(workspace::OPEN_BESIDE).is_some());
-    assert!(h.query_by_label(workspace::IMPORT).is_some());
-    h.get_by_label(workspace::OPEN_BESIDE).click();
+    assert!(h.query_by_label(frame::EXPORT).is_some());
+    assert!(h.query_by_label(frame::OPEN_BESIDE).is_some());
+    assert!(h.query_by_label(frame::IMPORT).is_some());
+    h.get_by_label(frame::OPEN_BESIDE).click();
     h.run_steps(4);
     assert!(h.state().shell.state.companion.is_some(), "the page opens beside the table");
     assert!(slots(&h).companion.is_some());
-    h.get_by_label(workspace::CLOSE_BESIDE).click();
+    h.get_by_label(frame::CLOSE_BESIDE).click();
     h.run_steps(4);
     assert!(h.state().shell.state.companion.is_none());
     // The counts come from the models: the demo's wires and cables.
@@ -125,7 +125,7 @@ fn a_selected_row_opens_the_right_panel_on_it() {
     assert!(!h.state().shell.state.right_collapsed, "the panel opened");
     assert_eq!(h.state().shell.state.right_tab, RightTab::Device);
     assert!(h.query_by_label_contains(&format!("Number: {number}")).is_some(), "the wire's number in the panel");
-    let ferrules = format!("Ferrules: {}", ecad_app::lists::report::DASH);
+    let ferrules = format!("Ferrules: {}", ecad_app::reports::report::DASH);
     assert!(h.query_by_label(&ferrules).is_some(), "its ends, greyed until the cable manager");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -139,19 +139,19 @@ fn wires_group_by_potential_and_the_terminal_plan_by_strip() {
     project(&mut h, &dir);
     show(&mut h, ListsView::Wires);
     let w = &h.state().reports.as_ref().unwrap().wires;
-    assert_eq!(w.table.view.group_by(), Some(ecad_app::lists::wires::POTENTIAL));
-    assert!(w.table.view.rows().iter().any(|r| matches!(r, ecad_ui::table::Row::Group { .. })), "potential groups");
+    assert_eq!(w.table.view.group_by(), Some(ecad_app::wires::list::POTENTIAL));
+    assert!(w.table.view.rows().iter().any(|r| matches!(r, ecad_widgets::table::Row::Group { .. })), "potential groups");
     show(&mut h, ListsView::Terminals);
     let t = &h.state().reports.as_ref().unwrap().terminals;
-    assert_eq!(t.table.view.group_by(), Some(ecad_app::lists::terminals::STRIP));
+    assert_eq!(t.table.view.group_by(), Some(ecad_app::terminal_strips::plan::STRIP));
     assert_eq!(t.table.bands.len(), 3, "inside | the strip | outside");
-    assert!(!ecad_app::lists::terminals::columns().iter().any(|c| c.id == ecad_app::lists::terminals::STRIP), "the strip is a group");
+    assert!(!ecad_app::terminal_strips::plan::columns().iter().any(|c| c.id == ecad_app::terminal_strips::plan::STRIP), "the strip is a group");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn the_plc_cards_are_at_the_boards_scale() {
-    use ecad_ui::table::strip;
+    use ecad_widgets::table::strip;
     assert_eq!((strip::TILE_WIDTH, strip::MARK, strip::MARK_GAP), (196.0, 13.0, 4.0));
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas);
@@ -173,7 +173,7 @@ fn the_plc_cards_are_at_the_boards_scale() {
 /// names a folder and a wgpu adapter exists; nothing is asserted about the pictures).
 #[test]
 fn screenshots_of_boards_2_01_to_2_06() {
-    let Some(out) = crate::project_panel::shots() else { return };
+    let Some(out) = crate::pages::project_panel::shots() else { return };
     ecad_app::canvas::register_sheet_faces();
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas.clone());
@@ -181,7 +181,7 @@ fn screenshots_of_boards_2_01_to_2_06() {
     std::fs::create_dir_all(&dir).unwrap();
     project(&mut h, &dir);
     let shot = |h: &H, name: &str| {
-        let _ = crate::mouse_tester::shot(h, &deltas, &out.join(name));
+        let _ = crate::canvas::mouse_acceptance::shot(h, &deltas, &out.join(name));
     };
     // 2.01: a device with a part.
     show(&mut h, ListsView::Devices);

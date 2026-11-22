@@ -2,7 +2,7 @@
 //! only where it means something.
 
 use ecad_model::LengthUnit;
-use ecad_model::units::{Amps, Current, Degrees, Mm, Mm2, Radians, RatedVoltage, Volts};
+use ecad_model::geometry::units::{Amps, Current, Degrees, Mm, Mm2, Radians, RatedVoltage, Volts};
 
 #[test]
 fn units_store_as_bare_numbers() -> Result<(), serde_json::Error> {

@@ -4,7 +4,7 @@
 //!
 //! The checks drive `style {catalogue: "wire"}`, `category`, `wire {category}`, `potential`,
 //! `wiresettings`, `setprop`, `bom`, `wirelist`, `checks` and read the document, the page drawing
-//! (`wires::labels_on_page`, `look::coloured_routes`, the route's entity) and the prints. The one
+//! (`wires::labels_on_page`, `draw::coloured_routes`, the route's entity) and the prints. The one
 //! new Rust name used is the design's `styles::wire::wire_draw` (§5.3).
 //!
 //! Each test name starts with the §12 check (`b11`…`b18`) or the focus item it checks.
@@ -12,11 +12,11 @@
 use cadcraft_engine::doc::color::Color;
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_drawing_style::sheet::PAPER;
-use ecad_engine::{look, printbook, wires};
+use {ecad_engine::cables::draw, ecad_engine::export::printbook, ecad_engine::wires};
 use ecad_model::{Op, PageId, WireId};
 use serde_json::{Value, json};
 
-use super::tester_050a_style::{
+use crate::styles::acceptance::{
     checks_all, checks_of, code_colour, decoded_ops, field, field_num, field_text, find_obj_mut, inject, inverses_restore, last_tx_json, num, one_tx,
     op_names, own_id, records_round_trip, redo, refused, rows_of, s, save_and_reopen, style_row, styles, undo,
 };
@@ -58,8 +58,8 @@ fn label(h: &mut H, page: PageId, c: WireId) -> Option<String> {
 /// The colour `c`'s route is drawn in on screen (`None`: ink).
 fn route_colour(h: &mut H, page: PageId, c: WireId) -> Option<Color> {
     let doc = h.doc();
-    let routes = h.p(|p| look::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER));
-    routes.iter().find(|r| r.conductor == c).map(|r| Color::True(super::tester_050a_style::rgb(r.colours.solid)))
+    let routes = h.p(|p| draw::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER));
+    routes.iter().find(|r| r.conductor == c).map(|r| Color::True(crate::styles::acceptance::rgb(r.colours.solid)))
 }
 
 fn route_entity(h: &mut H, page: PageId, c: WireId) -> std::sync::Arc<cadcraft_engine::doc::Entity> {
@@ -87,7 +87,7 @@ fn bom(h: &mut H) -> Vec<Value> {
 }
 
 fn draw_category(h: &mut H, c: WireId) -> Option<String> {
-    ecad_engine::styles::wire::wire_draw(&h.doc(), c).category.map(|r| r.to_string())
+    ecad_electrical::styles::wire::wire_draw(&h.doc(), c).category.map(|r| r.to_string())
 }
 
 // ------------------------------------------------------------------ b11: the built-ins
@@ -119,8 +119,8 @@ fn b11_twelve_built_in_wire_types_and_a_24v_wire_is_dc24() {
             part_numbers.push((id, format!("part_number {pn:?}")));
         }
     }
-    let e = ecad_engine::defaults::find("wire.category").expect("the choice entry");
-    use ecad_engine::defaults::Level;
+    let e = ecad_electrical::defaults::find("wire.category").expect("the choice entry");
+    use ecad_electrical::defaults::Level;
     assert!(e.allows(Level::Standard) && e.allows(Level::Project) && e.allows(Level::Object) && !e.allows(Level::Page), "S P O");
 
     let page = h.first_page();
@@ -338,8 +338,8 @@ fn b14_two_defaults_for_one_potential() {
 }
 
 fn reproject_twice(h: &mut H) {
-    super::tester_050a_style::reproject(h);
-    super::tester_050a_style::reproject(h);
+    crate::styles::acceptance::reproject(h);
+    crate::styles::acceptance::reproject(h);
 }
 
 // ------------------------------------------------------------------------ b15: the BOM
@@ -429,7 +429,7 @@ fn b17_mono_prints_ink_and_colour_prints_line_colours() {
     let lines = |m: &cadcraft_engine::doc::Drawing| {
         m.model
             .iter()
-            .filter(|e| matches!(e.kind, EntityKind::LwPolyline(_) | EntityKind::Line(_)) && e.common.layer != ecad_engine::frame::LAYER)
+            .filter(|e| matches!(e.kind, EntityKind::LwPolyline(_) | EntityKind::Line(_)) && e.common.layer != ecad_engine::pages::frame::LAYER)
             .cloned()
             .collect::<Vec<_>>()
     };

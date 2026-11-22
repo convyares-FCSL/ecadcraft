@@ -2,8 +2,8 @@
 //! slots and their reason, a slot's short list, and cancelling.
 
 use crate::common::harness;
-use ecad_tokens::{Icon, wheel as wt};
-use ecad_ui::wheel::{self, Event, SlotSpec, Wheel, slot_at, slot_center};
+use {ecad_widgets::tokens::Icon, ecad_widgets::tokens::wheel as wt};
+use ecad_widgets::wheel::{self, Event, SlotSpec, Wheel, slot_at, slot_center};
 use egui::{Modifiers, PointerButton, Pos2, pos2, vec2};
 use egui_kittest::kittest::Queryable;
 

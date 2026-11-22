@@ -17,15 +17,15 @@
 //!   and RCBOs (their auxiliaries) and switching sensors. Their offer is a typed [`ContactSet`].
 //!
 //! This module excludes the circuit side (the rating checks' `Circuit`, lane D), trip curves,
-//! numbering an offer's poles (`crate::xref`), connection points (`Connects`, step 4) and PLC addresses (lane C).
+//! numbering an offer's poles (`crate::references::devices`), connection points (`Connects`, step 4) and PLC addresses (lane C).
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use ecad_model::DeviceType;
-use ecad_model::device::{
+use ecad_model::objects::devices::{
     Breaker, ContactSet, ContactTable, Indicator, IndicatorColour, Motor, Output, Phases, PowerSupply, Protection, ProtectionKind, Rcbo, Rcd,
     Sensing, Sensor, SignalType, Switching,
 };
-use ecad_model::units::{Amps, Current, RatedVoltage, Watts};
+use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Watts};
 
 /// A device that supplies a circuit: a power supply or a transformer.
 pub trait Supply {
@@ -82,10 +82,10 @@ pub trait Signals {
 ///
 /// # Example
 /// ```
-/// use ecad_electrical::traits::{DeviceKind, Supply};
+/// use crate::devices::traits::{DeviceKind, Supply};
 /// use ecad_model::DeviceType;
-/// use ecad_model::device::{PowerSupply, Psu};
-/// use ecad_model::units::{Amps, Current, RatedVoltage, Volts, Watts};
+/// use ecad_model::objects::devices::{PowerSupply, Psu};
+/// use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Volts, Watts};
 /// let dc24 = RatedVoltage { volts: Volts(24.0), current: Current::Dc };
 /// let t = DeviceType::PowerSupply(PowerSupply::Psu(Psu { output: Some(dc24), output_current: Some(Amps(5.0)), ..Psu::default() }));
 /// assert_eq!(t.as_supply().and_then(|s| s.available_power()), Some(Watts(120.0)));
@@ -305,7 +305,7 @@ fn demand(power: Option<Watts>, current: Option<Amps>, at: RatedVoltage) -> Opti
     (power.is_some() || current.is_some()).then_some(Demand { power, current })
 }
 
-impl Load for ecad_model::device::Load {
+impl Load for ecad_model::objects::devices::Load {
     fn demand(&self, at: RatedVoltage) -> Option<Demand> {
         demand(self.rated_power, None, at)
     }
@@ -378,9 +378,9 @@ impl Signals for Indicator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ecad_model::device::{Control, Operator, Psu, Transformer};
-    use ecad_model::units::{Percent, VoltAmps, Volts};
+    use crate::*;
+    use ecad_model::objects::devices::{Control, Operator, Psu, Transformer};
+    use ecad_model::geometry::units::{Percent, VoltAmps, Volts};
 
     fn v(volts: f64, current: Current) -> RatedVoltage {
         RatedVoltage { volts: Volts(volts), current }

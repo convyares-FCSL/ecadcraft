@@ -6,17 +6,17 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::links::{self, Positions};
+use ecad_model::connectivity::jumper_bars::{self, Positions};
 use ecad_model::{DeviceId, Document, Noun, ObjectRef, Op, ConnectionPointId};
 
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::accessories::{self as acc, Acc, Spot};
-use crate::cmd::input::{Bounded, nullable};
-use crate::cmd::run::{Cx, Generic, Outcome};
-use crate::derived::Views;
+use crate::terminal_strips::accessories::{self as acc, Acc, Spot};
+use crate::commands::input::{Bounded, nullable};
+use crate::commands::run::{Cx, Generic, Outcome};
+use crate::views::Views;
 use crate::error::CmdError;
 
 /// Most places one `accessory` call writes.
@@ -55,14 +55,14 @@ fn strip_of(doc: &Document, strip: Option<DeviceId>, terminal: Option<Connection
         (Some(c), _) => (c, None),
         (None, Some(t)) => {
             let term = doc.terminals.get(&t).ok_or(CmdError::NotFound(Noun::TerminalDevice))?;
-            (term.device().ok_or(CmdError::NotFound(Noun::TerminalDevice))?, Some(crate::terminal_types::position_label(doc, t)))
+            (term.device().ok_or(CmdError::NotFound(Noun::TerminalDevice))?, Some(crate::terminal_strips::terminal_blocks::position_label(doc, t)))
         }
         (None, None) => return Err(CmdError::input("`strip` or `terminal` (hex id) is required")),
     };
     if !doc.devices.contains_key(&c) {
         return Err(CmdError::NotFound(Noun::Strip));
     }
-    if crate::strips::strip_of(doc, c).is_none() {
+    if crate::terminal_strips::strip_of(doc, c).is_none() {
         return Err(CmdError::refused(format!("{} is not a terminal strip. Pick a terminal of the strip.", strip_words(doc, c))));
     }
     Ok((c, label))
@@ -279,30 +279,30 @@ fn jumper_bar_labels(p: &Positions, order: &[String]) -> Vec<String> {
 /// Canonical link text on `level` (brief 036: `1.2-8.2`; level 1 as 030 wrote it).
 fn canonical_of(labels: &[String], order: &[String], level: u32, point: Option<char>) -> String {
     let mut sorted: Vec<&String> = labels.iter().collect();
-    sorted.sort_by_key(|l| (order.iter().position(|o| o == *l).unwrap_or(usize::MAX), links::natural_key(l)));
+    sorted.sort_by_key(|l| (order.iter().position(|o| o == *l).unwrap_or(usize::MAX), jumper_bars::natural_key(l)));
     sorted.dedup();
-    crate::terminal_types::jumper_bar_text(&sorted, order, level, point)
+    crate::terminal_strips::terminal_blocks::jumper_bar_text(&sorted, order, level, point)
 }
 
 /// Labels from a text (`5,6` or `5-8`).
 fn labels_of(text: &str, order: &[String]) -> Result<Vec<String>, CmdError> {
-    Ok(jumper_bar_labels(&links::parse(text)?, order))
+    Ok(jumper_bar_labels(&jumper_bars::parse(text)?, order))
 }
 
 /// The next free link number on a strip.
 fn next_jumper_bar(doc: &Document, c: DeviceId) -> Option<u32> {
     let props = &doc.devices.get(&c)?.properties;
     let high = props
-        .range(links::PREFIX.to_string()..)
-        .take_while(|(k, _)| k.starts_with(links::PREFIX))
+        .range(jumper_bars::PREFIX.to_string()..)
+        .take_while(|(k, _)| k.starts_with(jumper_bars::PREFIX))
         .filter_map(|(k, _)| {
-            let rest = k.strip_prefix(links::PREFIX)?;
+            let rest = k.strip_prefix(jumper_bars::PREFIX)?;
             rest.split('.').next()?.parse::<u32>().ok()
         })
-        .filter(|n| *n <= links::MAX_JUMPER_BAR)
+        .filter(|n| *n <= jumper_bars::MAX_JUMPER_BAR)
         .max()
         .unwrap_or(0);
-    (high < links::MAX_JUMPER_BAR).then_some(high + 1)
+    (high < jumper_bars::MAX_JUMPER_BAR).then_some(high + 1)
 }
 
 fn set_op(doc: &Document, c: DeviceId, key: String, after: Option<String>) -> Option<Op> {
@@ -312,9 +312,9 @@ fn set_op(doc: &Document, c: DeviceId, key: String, after: Option<String>) -> Op
 
 /// The ops clearing a link and its own part keys.
 fn delete_ops(doc: &Document, c: DeviceId, n: u32) -> Vec<Op> {
-    let mut ops: Vec<Op> = set_op(doc, c, links::key(n), None).into_iter().collect();
+    let mut ops: Vec<Op> = set_op(doc, c, jumper_bars::key(n), None).into_iter().collect();
     for f in acc::FIELDS {
-        ops.extend(set_op(doc, c, format!("{}.{f}", links::key(n)), None));
+        ops.extend(set_op(doc, c, format!("{}.{f}", jumper_bars::key(n)), None));
     }
     ops
 }
@@ -386,13 +386,13 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
     let (c, n, before_text, labels, label, extra) = if let Some(l) = &input.link {
         let c = l.strip.ok_or(CmdError::input("`strip` (hex id) is required"))?;
         let (c, _) = strip_of(doc, Some(c), None)?;
-        let n = l.n.and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=links::MAX_JUMPER_BAR).contains(n));
+        let n = l.n.and_then(|n| u32::try_from(n).ok()).filter(|n| (1..=jumper_bars::MAX_JUMPER_BAR).contains(n));
         let n = n.ok_or(CmdError::input("`link.n` must be a whole number from 1 to 999"))?;
-        let key = links::key(n);
+        let key = jumper_bars::key(n);
         let cur_text = doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned();
         let cur_text = cur_text.ok_or_else(|| CmdError::refused(format!("{} has no link {n}.", strip_words(doc, c))))?;
         let order = acc::positions(doc, c);
-        let parsed = links::parse(&cur_text).unwrap_or_default();
+        let parsed = jumper_bars::parse(&cur_text).unwrap_or_default();
         level = parsed.level().unwrap_or(1);
         point = parsed.point().flatten();
         let cur = jumper_bar_labels(&parsed, &order);
@@ -477,12 +477,12 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
         // The first pick fixes the level; another level of the same position makes a
         // cross-level link; another level elsewhere is refused.
         if let Some(t) = picks.first() {
-            level = crate::terminal_types::level_of(doc, *t).0;
+            level = crate::terminal_strips::terminal_blocks::level_of(doc, *t).0;
         }
         let mut cross_levels: Vec<u32> = Vec::new();
         for t in picks {
-            let (lv, _) = crate::terminal_types::level_of(doc, *t);
-            let pos = crate::terminal_types::position_label(doc, *t);
+            let (lv, _) = crate::terminal_strips::terminal_blocks::level_of(doc, *t);
+            let pos = crate::terminal_strips::terminal_blocks::position_label(doc, *t);
             if lv != level {
                 if prev.as_deref() == Some(pos.as_str()) && labels.len() == 1 {
                     if cross_levels.is_empty() {
@@ -491,13 +491,13 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
                     cross_levels.push(lv);
                     continue;
                 }
-                let ty = crate::terminal_types::type_of_connection_point(doc, *t);
+                let ty = crate::terminal_strips::terminal_blocks::type_of_connection_point(doc, *t);
                 return Err(CmdError::refused(format!(
                     "{} is on level {}; this link is on level {}. Pick level {} terminals, or Enter to finish.",
-                    crate::strips::connection_point_words(doc, *t),
-                    crate::terminal_types::level_name(doc, c, ty, lv),
-                    crate::terminal_types::level_name(doc, c, ty, level),
-                    crate::terminal_types::level_name(doc, c, ty, level)
+                    crate::terminal_strips::connection_point_words(doc, *t),
+                    crate::terminal_strips::terminal_blocks::level_name(doc, c, ty, lv),
+                    crate::terminal_strips::terminal_blocks::level_name(doc, c, ty, level),
+                    crate::terminal_strips::terminal_blocks::level_name(doc, c, ty, level)
                 )));
             }
             if !cross_levels.is_empty() {
@@ -507,11 +507,11 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
             if term.device() != Some(c) {
                 return Err(CmdError::refused(format!(
                     "{} is on another strip; a link stays on one strip. Pick a terminal of {}.",
-                    crate::strips::connection_point_words(doc, *t),
+                    crate::terminal_strips::connection_point_words(doc, *t),
                     strip_words(doc, c)
                 )));
             }
-            let l = crate::terminal_types::position_label(doc, *t);
+            let l = crate::terminal_strips::terminal_blocks::position_label(doc, *t);
             let add = match (&prev, input.skip) {
                 (Some(a), false) => range_between(&order, a, &l),
                 _ => vec![l.clone()],
@@ -526,7 +526,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
         if let Some(v) = &input.positions {
             // Tester 036 (c): typed positions keep their level and point (`1.3-4.3`); a typed
             // cross-level link is kept as written.
-            let typed = links::parse(v)?;
+            let typed = jumper_bars::parse(v)?;
             if picks.is_empty() {
                 if typed.crosses_levels() {
                     cross = Some(typed.text());
@@ -555,7 +555,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
     let tag = strip_words(doc, c);
     let mut ops = Vec::new();
     let text = if let Some(t) = cross.clone() {
-        ops.extend(set_op(doc, c, links::key(n), Some(t.clone())));
+        ops.extend(set_op(doc, c, jumper_bars::key(n), Some(t.clone())));
         Some(t)
     } else if labels.len() < 2 {
         if before_text.is_none() {
@@ -565,7 +565,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
         None
     } else {
         let t = canonical_of(&labels, &order, level, point);
-        ops.extend(set_op(doc, c, links::key(n), Some(t.clone())));
+        ops.extend(set_op(doc, c, jumper_bars::key(n), Some(t.clone())));
         Some(t)
     };
     let mut extra_text = None;
@@ -573,12 +573,12 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
         && rest.len() >= 2
     {
         let t = canonical_of(rest, &order, level, point);
-        ops.extend(set_op(doc, c, links::key(*m), Some(t.clone())));
+        ops.extend(set_op(doc, c, jumper_bars::key(*m), Some(t.clone())));
         // Both halves keep the link's own part (review of PR #57, 3).
         for f in acc::FIELDS {
-            let own = doc.devices.get(&c).and_then(|x| x.properties.get(&format!("{}.{f}", links::key(n)))).cloned();
+            let own = doc.devices.get(&c).and_then(|x| x.properties.get(&format!("{}.{f}", jumper_bars::key(n)))).cloned();
             if own.is_some() {
-                ops.extend(set_op(doc, c, format!("{}.{f}", links::key(*m)), own));
+                ops.extend(set_op(doc, c, format!("{}.{f}", jumper_bars::key(*m)), own));
             }
         }
         extra_text = Some((*m, t));
@@ -598,7 +598,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// Words written as one text or as a list.
 #[derive(Deserialize, JsonSchema)]
@@ -752,7 +752,7 @@ edit: {link: {strip: id, n}, add?: \"5,6\", remove?: \"5\", positions?: text, sp
         let changed = !done.ops.is_empty();
         let (message, split) = (done.message, done.split);
         let answer = move |doc: &Document, views: &mut Views| {
-            let positions = doc.devices.get(&c).and_then(|x| x.properties.get(&links::key(n))).cloned();
+            let positions = doc.devices.get(&c).and_then(|x| x.properties.get(&jumper_bars::key(n))).cloned();
             let bars = views.outputs(doc).strips.get(c).and_then(|d| d.acc.links.iter().find(|l| l.n == n)).map_or(0, |l| l.bars);
             let mut v = json!({"strip": c.hex(), "link": n, "positions": positions, "bars": bars, "changed": changed, "message": message});
             if let Some((m, t)) = split {

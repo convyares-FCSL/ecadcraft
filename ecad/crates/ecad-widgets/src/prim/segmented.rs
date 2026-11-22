@@ -12,12 +12,12 @@
 //! - **Disabled** (inside a disabled `Ui`, `add_enabled_ui(false, …)`): drawn as read-only and
 //!   faded by egui's disabled opacity.
 
-use ecad_tokens::{line, radius, size, space, ui_type};
+use {crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Rect, Response, Role, Sense, Stroke, StrokeKind, Ui, Widget, WidgetInfo, pos2, vec2};
 
-use super::{Look, accessible, galley};
+use crate::prim::{Look, accessible, galley};
 use crate::style::corner;
-use crate::{Theme, color};
+use {crate::Theme, crate::color};
 
 /// A segmented control over `items`, the selected index in `selected`. Each segment is a radio
 /// button labelled with its text; the response reports `changed` when the selection changes.

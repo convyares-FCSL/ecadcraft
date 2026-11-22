@@ -22,9 +22,9 @@
 //!
 //! This module is data and pure functions: no UI toolkit, no project reads.
 
-use ecad_ui::Icon;
+use ecad_widgets::Icon;
 
-use ecad_engine::interact::kind::Target;
+use ecad_engine::pointer::kind::Target;
 
 /// A wheel slot, clockwise from the top (spec §5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -494,7 +494,7 @@ const fn slot(
 
 use ObjectKind as K;
 use Slot as S;
-pub use ecad_engine::kinds::ObjectKind;
+pub use ecad_electrical::devices::kinds::ObjectKind;
 
 /// Every action, in table order.
 pub const ACTIONS: &[Action] = &[

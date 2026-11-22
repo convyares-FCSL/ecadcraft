@@ -6,15 +6,15 @@
 //! Esc and the cross close it; a click on the dimmed page does not, so a stray click never loses
 //! what was typed. The dialog's accessible role is `Dialog`, named by the caller.
 
-use ecad_tokens::{Icon, line, radius, size, space, ui_type};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Align, Context, Frame, Id, Key, Layout, Margin, Modifiers, Stroke, Ui, vec2};
 
 use crate::prim::Kind;
 use crate::style::{corner, shadow};
-use crate::{SHELL, color, fonts};
+use {crate::SHELL, crate::color, crate::fonts};
 
 /// The page behind a dialog: dimmed, black at 45 % (the shadow's colour).
-pub const SCRIM: ecad_tokens::Color = ecad_tokens::shadow::COLOR;
+pub const SCRIM: crate::tokens::Color = crate::tokens::shadow::COLOR;
 
 /// A dialog's frame and layout. [`Dialog::show`] draws it and says whether it was closed.
 #[derive(Debug, Clone, Copy)]
@@ -42,8 +42,8 @@ pub struct Shown<B, F> {
 /// # Example
 /// ```
 /// # egui::__run_test_ui(|ui| {
-/// use ecad_ui::dialog::action;
-/// use ecad_ui::prim::Kind;
+/// use crate::dialog::action;
+/// use crate::prim::Kind;
 /// let ok = action(ui, "Merge", Kind::Primary, "ecad.merge.ok", Some("Choose for 2 conflicts first")).clicked();
 /// let cancel = action(ui, "Cancel", Kind::Secondary, "ecad.merge.cancel", None).clicked();
 /// # let _ = (ok, cancel);

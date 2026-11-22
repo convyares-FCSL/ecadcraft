@@ -10,9 +10,9 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::colour::{ConductorColour, Rgb};
-use crate::text::Text;
-use crate::units::Mm;
+use crate::geometry::colour::{ConductorColour, Rgb};
+use crate::naming::text::Text;
+use crate::geometry::units::Mm;
 
 crate::word_enum! {
     /// A text weight.
@@ -147,7 +147,7 @@ impl TextStyle {
             out.push(("height", v.0.to_string()));
         }
         if let Some(v) = self.weight {
-            out.push(("weight", crate::words::Word::word(v).to_string()));
+            out.push(("weight", crate::naming::words::Word::word(v).to_string()));
         }
         if let Some(v) = self.colour {
             out.push(("colour", v.to_string()));

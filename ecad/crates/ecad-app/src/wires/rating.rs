@@ -1,16 +1,16 @@
 //! The Rating section of Project ▸ Wires and Cables (brief 057, design 057 §2 and §9; boards 2.05
 //! and 2.06): the basis, the factors with where each came from, what the conductor carries
 //! against its protective device, and for a cable its volt drop. It reads one kept result
-//! ([`ecad_engine::rating::circuit::Rating`], copied by the tab's view) and writes through `rating`.
+//! ([`ecad_electrical::circuits::circuit::Rating`], copied by the tab's view) and writes through `rating`.
 //!
 //! **Update map.** Nothing of its own: it shows the result the view holds this frame.
 
-use ecad_engine::rating::circuit::Rating;
-use ecad_engine::rating::{self, RatedSubject, dataset};
+use ecad_electrical::circuits::circuit::Rating;
+use ecad_electrical::circuits::{self, RatedSubject, dataset};
 use ecad_model::Word;
-use ecad_model::wire::Basis;
-use ecad_ui::prim::{self, Tone};
-use ecad_ui::tokens::{line, space, ui_type};
+use ecad_model::objects::wire::Basis;
+use ecad_widgets::prim::{self, Tone};
+use ecad_widgets::tokens::{line, space, ui_type};
 use eframe::egui::{self, Stroke, pos2, vec2};
 use serde_json::{Value, json};
 
@@ -56,7 +56,7 @@ fn subject_key(s: RatedSubject) -> (&'static str, String) {
     }
 }
 
-fn factor<'a>(r: &'a Rating, name: &str) -> Option<&'a rating::circuit::Factor> {
+fn factor<'a>(r: &'a Rating, name: &str) -> Option<&'a circuits::circuit::Factor> {
     r.factors.iter().find(|f| f.name == name)
 }
 
@@ -65,7 +65,7 @@ fn rows(r: &Rating) -> Vec<Row> {
     let mut v = Vec::new();
     let temp_row = |v: &mut Vec<Row>, name: &'static str, label: &'static str| {
         if let Some(f) = factor(r, name) {
-            let mut x = row(label, format!("\u{d7} {}", rating::circuit::fmt_factor(f.factor)), f.input.clone());
+            let mut x = row(label, format!("\u{d7} {}", circuits::circuit::fmt_factor(f.factor)), f.input.clone());
             x.tip = format!("{} \u{b7} {}", f.input, f.from);
             if cable {
                 x.edit = Some("ambient");
@@ -84,7 +84,7 @@ fn rows(r: &Rating) -> Vec<Row> {
     let group_row = |v: &mut Vec<Row>| {
         let (name, label, key) = if cable { ("grouping", "Grouping", "grouped") } else { ("bundling", "Bundled", "bundling") };
         if let Some(f) = factor(r, name) {
-            let mut x = row(label, format!("\u{d7} {}", rating::circuit::fmt_factor(f.factor)), f.input.clone());
+            let mut x = row(label, format!("\u{d7} {}", circuits::circuit::fmt_factor(f.factor)), f.input.clone());
             if f.from.starts_with("not set") {
                 x.note = f.from.clone();
                 x.tone = Some(Tone::Warning);
@@ -140,7 +140,7 @@ fn rows(r: &Rating) -> Vec<Row> {
 }
 
 fn carries(r: &Rating) -> Row {
-    let iz = r.iz.map(|x| format!("{} A", rating::circuit::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))).unwrap_or_else(|| "\u{2014}".into());
+    let iz = r.iz.map(|x| format!("{} A", circuits::circuit::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))).unwrap_or_else(|| "\u{2014}".into());
     let mut x = row("Carries", iz, "no protective device");
     x.strong = true;
     if let Some(d) = &r.device {
@@ -168,7 +168,7 @@ fn after(r: &Rating) -> Vec<Row> {
         let ok = vd.percent <= vd.limit;
         let mut x = row(
             "Volt drop",
-            format!("{} %", rating::circuit::fmt_percent(vd.percent)),
+            format!("{} %", circuits::circuit::fmt_percent(vd.percent)),
             format!("{} {} % {}", if ok { "\u{2264}" } else { ">" }, dataset::fmt_num(vd.limit), if ok { "\u{2713}" } else { "\u{2717}" }),
         );
         x.tone = Some(if ok { Tone::Ok } else { Tone::Warning });
@@ -179,7 +179,7 @@ fn after(r: &Rating) -> Vec<Row> {
     let cable = matches!(r.subject, RatedSubject::Cable(_));
     if let Some(l) = r.load {
         let mut x =
-            row("Load", format!("{} A", dataset::fmt_num(l.amps)), if l.from == rating::load::LoadFrom::Typed { "typed" } else { "from Power" });
+            row("Load", format!("{} A", dataset::fmt_num(l.amps)), if l.from == circuits::load::LoadFrom::Typed { "typed" } else { "from Power" });
         x.edit = Some("load");
         v.push(x);
     } else if cable {
@@ -195,7 +195,7 @@ const BASIS_WORDS: [&str; 3] = ["Datasheet", "Table", "Manual"];
 
 /// Draw the section's body. Returns the `rating` calls asked for.
 pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let r = &p.rating;
     let cable = matches!(r.subject, RatedSubject::Cable(_));
     let (what, id) = subject_key(r.subject);
@@ -226,8 +226,8 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
         let words: Vec<String> = p.methods.iter().map(|m| format!("{m} \u{b7} {}", dataset::method_words(m))).collect();
         let options: Vec<&str> = words.iter().map(String::as_str).collect();
         let mut chosen = p.methods.iter().position(|m| *m == current).unwrap_or(usize::MAX);
-        ecad_ui::control::row(ui, "Method", |ui| {
-            if ecad_ui::control::Select::new(&mut chosen, &options, "ecad.project.detail.rating.method").read_only(!p.writable).show(ui).changed()
+        ecad_widgets::control::row(ui, "Method", |ui| {
+            if ecad_widgets::control::Select::new(&mut chosen, &options, "ecad.project.detail.rating.method").read_only(!p.writable).show(ui).changed()
                 && let Some(m) = p.methods.get(chosen).filter(|m| **m != current)
             {
                 out.push(("rating", json!({what: id, "method": m})));
@@ -243,7 +243,7 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
             _ if cable => "No rating data. Set Rated in the cable type, or choose Manual.",
             _ => "No rating data. Set Rated in the category, or choose Manual.",
         };
-        ui.add(egui::Label::new(egui::RichText::new(msg).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_3))).wrap());
+        ui.add(egui::Label::new(egui::RichText::new(msg).size(ui_type::SMALL.size).color(ecad_widgets::color(s.text_3))).wrap());
     }
     for x in &body {
         if let Some(call) = value_row(ui, x, &id, what, p.writable) {
@@ -252,7 +252,7 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
     }
     // A rule, then what it carries against its device.
     let (rr, _) = ui.allocate_exact_size(vec2(ui.available_width(), space::S), egui::Sense::hover());
-    ui.painter().hline(rr.x_range(), rr.center().y, Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    ui.painter().hline(rr.x_range(), rr.center().y, Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     let _ = value_row(ui, &carries(r), &id, what, p.writable);
     for x in after(r) {
         if let Some(call) = value_row(ui, &x, &id, what, p.writable) {
@@ -326,14 +326,14 @@ impl crate::App {
 pub(crate) fn catalogue_ui(
     t: &mut crate::App, ui: &mut egui::Ui, writable: bool, word: ecad_model::StyleCatalogue, focus: Option<ecad_model::StyleRef>,
 ) -> bool {
-    use ecad_engine::styles::ratingtable;
-    let s = ecad_ui::SHELL;
+    use ecad_electrical::styles::ratingtable;
+    let s = ecad_widgets::SHELL;
     if word == ecad_model::StyleCatalogue::RatingTable {
         ui.add(
             egui::Label::new(
                 egui::RichText::new("Enter only values you are licensed to use. ECAD ships no standard's tables.")
                     .size(ui_type::SMALL.size)
-                    .color(ecad_ui::color(s.text_3)),
+                    .color(ecad_widgets::color(s.text_3)),
             )
             .wrap(),
         );
@@ -345,9 +345,9 @@ pub(crate) fn catalogue_ui(
     let Some(id) = focus else {
         let mut name: String = ui.data(|d| d.get_temp(new_id)).unwrap_or_default();
         let one = if word == ecad_model::StyleCatalogue::RatingTable { "rating table" } else { "cable type" };
-        ui.label(egui::RichText::new(format!("Choose a {one}, or make one.")).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_2)));
+        ui.label(egui::RichText::new(format!("Choose a {one}, or make one.")).size(ui_type::SMALL.size).color(ecad_widgets::color(s.text_2)));
         ui.horizontal(|ui| {
-            ecad_ui::control::TextEntry::new(&mut name, "Name").placeholder("Name").read_only(!writable).width(180.0).show(ui);
+            ecad_widgets::control::TextEntry::new(&mut name, "Name").placeholder("Name").read_only(!writable).width(180.0).show(ui);
             let new = format!("New {one}");
             let button = if writable && !name.trim().is_empty() {
                 prim::Button::new(&new).small()
@@ -385,7 +385,7 @@ pub(crate) fn catalogue_ui(
             table
         }
     };
-    ui.label(egui::RichText::new(&table.name).size(ui_type::BODY_EMPHASIS.size).color(ecad_ui::color(s.text)));
+    ui.label(egui::RichText::new(&table.name).size(ui_type::BODY_EMPHASIS.size).color(ecad_widgets::color(s.text)));
     ui.label(
         egui::RichText::new(format!(
             "{} row{} \u{b7} source: {}",
@@ -394,10 +394,10 @@ pub(crate) fn catalogue_ui(
             if table.source.is_empty() { "not given" } else { table.source.as_str() }
         ))
         .size(ui_type::SMALL.size)
-        .color(ecad_ui::color(s.text_2)),
+        .color(ecad_widgets::color(s.text_2)),
     );
     if let Some(odd) = table.data.odd() {
-        ui.label(egui::RichText::new(odd).size(ui_type::SMALL.size).color(ecad_ui::color(s.warning)));
+        ui.label(egui::RichText::new(odd).size(ui_type::SMALL.size).color(ecad_widgets::color(s.warning)));
     }
     ui.add_space(space::S);
     // The rows, as CSV, editable (Apply writes them; a bad row refuses the whole text).
@@ -413,7 +413,7 @@ pub(crate) fn catalogue_ui(
         }
     };
     if let Ok(mut g) = buf.lock() {
-        ui.add_enabled_ui(writable, |ui| ecad_ui::control::TextArea::new(&mut g, "ecad.standards.ratingtable.rows").rows(12).show(ui));
+        ui.add_enabled_ui(writable, |ui| ecad_widgets::control::TextArea::new(&mut g, "ecad.standards.ratingtable.rows").rows(12).show(ui));
     }
     let path_id = egui::Id::unique(("ecad.standards.ratingtable.path", id.text()));
     let mut path: String = ui.data(|d| d.get_temp(path_id)).unwrap_or_default();
@@ -430,7 +430,7 @@ pub(crate) fn catalogue_ui(
         }
     });
     ui.horizontal(|ui| {
-        ecad_ui::control::TextEntry::new(&mut path, "CSV file path").placeholder("CSV file path").width(200.0).show(ui);
+        ecad_widgets::control::TextEntry::new(&mut path, "CSV file path").placeholder("CSV file path").width(200.0).show(ui);
         let has = !path.trim().is_empty();
         let import = if writable && has {
             prim::Button::new("Import CSV\u{2026}").small()
@@ -455,7 +455,7 @@ pub(crate) fn catalogue_ui(
 fn show_msg(ui: &mut egui::Ui, id: egui::Id, msg: Option<String>) {
     match msg {
         Some(m) => {
-            ui.add(egui::Label::new(egui::RichText::new(&m).size(ui_type::SMALL.size).color(ecad_ui::color(ecad_ui::SHELL.error))).wrap());
+            ui.add(egui::Label::new(egui::RichText::new(&m).size(ui_type::SMALL.size).color(ecad_widgets::color(ecad_widgets::SHELL.error))).wrap());
             ui.data_mut(|d| d.insert_temp(id, m));
         }
         None => ui.data_mut(|d| d.remove::<String>(id)),
@@ -469,19 +469,19 @@ const VALUE_W: f32 = 84.0;
 const BASIS_LABEL_W: f32 = 64.0;
 
 fn label_w(ui: &mut egui::Ui, text: &str, w: f32) {
-    let s = ecad_ui::SHELL;
-    let (rect, _) = ui.allocate_exact_size(vec2(w, ecad_ui::tokens::size::CONTROL), egui::Sense::hover());
+    let s = ecad_widgets::SHELL;
+    let (rect, _) = ui.allocate_exact_size(vec2(w, ecad_widgets::tokens::size::CONTROL), egui::Sense::hover());
     ui.painter().text(
         pos2(rect.left(), rect.center().y),
         egui::Align2::LEFT_CENTER,
         text,
-        ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL),
-        ecad_ui::color(s.text_2),
+        ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL),
+        ecad_widgets::color(s.text_2),
     );
 }
 
-fn tone_colour(t: Tone) -> ecad_ui::tokens::Color {
-    let s = ecad_ui::SHELL;
+fn tone_colour(t: Tone) -> ecad_widgets::tokens::Color {
+    let s = ecad_widgets::SHELL;
     match t {
         Tone::Ok => s.ok,
         Tone::Error => s.error,
@@ -492,21 +492,21 @@ fn tone_colour(t: Tone) -> ecad_ui::tokens::Color {
 
 /// One value row; an editable row's note is an input (Enter applies). Returns a `rating` call.
 fn value_row(ui: &mut egui::Ui, x: &Row, id: &str, what: &'static str, writable: bool) -> Option<(&'static str, Value)> {
-    let s = ecad_ui::SHELL;
-    let h = ecad_ui::tokens::size::CONTROL;
+    let s = ecad_widgets::SHELL;
+    let h = ecad_widgets::tokens::size::CONTROL;
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), h), egui::Sense::hover());
-    let small = ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL);
-    let body = ecad_ui::fonts::font(ui.ctx(), if x.strong { ui_type::BODY_EMPHASIS } else { ui_type::BODY });
+    let small = ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL);
+    let body = ecad_widgets::fonts::font(ui.ctx(), if x.strong { ui_type::BODY_EMPHASIS } else { ui_type::BODY });
     let p = ui.painter();
-    let label_font = if x.strong { ecad_ui::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS) } else { small.clone() };
+    let label_font = if x.strong { ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS) } else { small.clone() };
     p.text(
         pos2(rect.left(), rect.center().y),
         egui::Align2::LEFT_CENTER,
         x.label,
         label_font,
-        ecad_ui::color(if x.strong { s.text } else { s.text_2 }),
+        ecad_widgets::color(if x.strong { s.text } else { s.text_2 }),
     );
-    p.text(pos2(rect.left() + LABEL_W, rect.center().y), egui::Align2::LEFT_CENTER, &x.value, body, ecad_ui::color(s.text));
+    p.text(pos2(rect.left() + LABEL_W, rect.center().y), egui::Align2::LEFT_CENTER, &x.value, body, ecad_widgets::color(s.text));
     let note_x = rect.left() + LABEL_W + VALUE_W;
     let name = format!("{SECTION}.{}", x.label.to_ascii_lowercase().replace(' ', "_"));
     let info = format!("{}: {} {}", x.label, x.value, x.note);
@@ -522,7 +522,7 @@ fn value_row(ui: &mut egui::Ui, x: &Row, id: &str, what: &'static str, writable:
             let edit_name = format!("{SECTION}.{key}");
             let edit = ui
                 .scope_builder(egui::UiBuilder::new().max_rect(note_rect), |ui| {
-                    ecad_ui::control::TextEntry::new(&mut text, &edit_name).id(buf_id.with("entry")).width(note_rect.width()).show(ui)
+                    ecad_widgets::control::TextEntry::new(&mut text, &edit_name).id(buf_id.with("entry")).width(note_rect.width()).show(ui)
                 })
                 .inner;
             if edit.changed() {
@@ -536,12 +536,12 @@ fn value_row(ui: &mut egui::Ui, x: &Row, id: &str, what: &'static str, writable:
                     call = Some(match (key, &x.loc) {
                         // A typed °C goes to the location, or to the project when the wire has none.
                         ("panel", Some(loc)) => {
-                            ("rating", json!({"location": loc, "temperature": ecad_engine::rating::parse::ambient(t).map_or(v, |n| json!(n))}))
+                            ("rating", json!({"location": loc, "temperature": ecad_electrical::devices::ratings::parse::ambient(t).map_or(v, |n| json!(n))}))
                         }
                         ("panel", None) if clear => ("setdefault", json!({"key": "rating.panel_temperature", "level": "project", "reset": true})),
                         ("panel", None) => (
                             "setdefault",
-                            json!({"key": "rating.panel_temperature", "level": "project", "value": ecad_engine::rating::parse::ambient(t).map_or(v, |n| json!(n.to_string()))}),
+                            json!({"key": "rating.panel_temperature", "level": "project", "value": ecad_electrical::devices::ratings::parse::ambient(t).map_or(v, |n| json!(n.to_string()))}),
                         ),
                         _ => ("rating", json!({what: id, key: v})),
                     });
@@ -553,8 +553,8 @@ fn value_row(ui: &mut egui::Ui, x: &Row, id: &str, what: &'static str, writable:
             }
         }
         None => {
-            let colour = ecad_ui::color(x.tone.map_or(s.text_3, tone_colour));
-            let g = ecad_ui::table::cells::fitted(ui, &x.note, ui_type::SMALL, colour, (rect.right() - note_x).max(0.0));
+            let colour = ecad_widgets::color(x.tone.map_or(s.text_3, tone_colour));
+            let g = ecad_widgets::table::cells::fitted(ui, &x.note, ui_type::SMALL, colour, (rect.right() - note_x).max(0.0));
             ui.painter().galley(pos2(note_x, rect.center().y - g.size().y / 2.0), g, colour);
             if !x.tip.is_empty() {
                 resp.on_hover_text(&x.tip);

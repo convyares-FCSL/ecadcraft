@@ -2,7 +2,7 @@
 //! toggles, the light/dark switch, help, and the bottom bar's page well and view group. Each is
 //! original and drawn here on the 16 px grid.
 
-use super::Pen;
+use crate::icons::Pen;
 
 /// Book: an open book, two pages meeting at the spine.
 pub fn book(p: &mut Pen) {

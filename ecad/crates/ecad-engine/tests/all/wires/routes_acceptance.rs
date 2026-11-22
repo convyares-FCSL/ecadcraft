@@ -151,7 +151,7 @@ fn p5_a_tee_onto_another_potential_is_refused() {
 #[test]
 fn p6_save_and_reopen_keep_wires_and_routes() {
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut s = cadcraft_engine::Session::empty();
     let project = ecad_engine::Project::create_with(&mut s, "P6", SEED + 5, ecad_engine::Persistence::File).unwrap();
     let mut h = H { s, project, trail: Vec::new() };

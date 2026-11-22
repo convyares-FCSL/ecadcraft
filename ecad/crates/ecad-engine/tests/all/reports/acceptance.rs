@@ -78,7 +78,7 @@ fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> DeviceId {
 /// What device `c`'s go-to symbol's context proposes (design 052 §5.3): a box, the page, the
 /// project, or none.
 fn context(doc: &Document, c: DeviceId) -> locations::Located {
-    let r = ecad_engine::reps::goto(doc, c, None).unwrap();
+    let r = ecad_electrical::symbols::reps::goto(doc, c, None).unwrap();
     locations::rep_context(doc, &doc.representations[&r], &mut locations::BoxCache::default())
 }
 
@@ -882,7 +882,7 @@ fn contents_follow_pages_and_overflow() {
     h.run("movepage", json!({"page": p.hex(), "index": 1})).unwrap();
     let doc = h.doc();
     let t = texts(&doc, c);
-    let order: Vec<String> = ecad_model::book::Book::of(&doc).order.iter().map(|x| doc.pages[x].title.to_string()).collect();
+    let order: Vec<String> = ecad_model::document::book::Book::of(&doc).order.iter().map(|x| doc.pages[x].title.to_string()).collect();
     let table = t.iter().position(|x| x == "Folder").map_or(&t[..], |i| &t[i..]);
     let shown: Vec<String> = table.iter().filter(|x| order.contains(x)).cloned().collect();
     assert_eq!(shown, order, "contents order vs book order");
@@ -1107,7 +1107,7 @@ fn merging_a_branch_with_a_box_edited_on_both_sides() {
     assert_eq!(b.len(), 1, "one box after the merge");
     assert!(b[0].vertices.len() >= 3);
     for c in [k1, k2] {
-        let want = locations::innermost(&b, locations::anchor(&doc, &doc.representations[&ecad_engine::reps::goto(&doc, c, None).unwrap()]).unwrap())
+        let want = locations::innermost(&b, locations::anchor(&doc, &doc.representations[&ecad_electrical::symbols::reps::goto(&doc, c, None).unwrap()]).unwrap())
             .and_then(|x| x.location.clone());
         assert_eq!(context(&doc, c).value, want, "{c:?}");
         let stored = locations::resolve(&doc, c).value;
@@ -1140,7 +1140,7 @@ fn merging_a_branch_with_a_box_edited_on_both_sides() {
 /// one base64 PDF with one page per sheet.
 #[test]
 fn printbook_of_more_than_ten_pages_returns_one_pdf_with_every_sheet() {
-    ecad_engine::printbook::install_io();
+    ecad_engine::export::printbook::install_io();
     let mut h = H::new(0x24_7601);
     h.run("projectprops", json!({"title": "Big", "location": "+CP1"})).unwrap();
     for g in ["cover", "contents", "revisions", "bom-location"] {

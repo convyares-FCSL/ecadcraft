@@ -157,7 +157,7 @@ fn a_tee_end_is_joined_not_open() {
 /// Ink in the page's raster (the preview rasteriser, hairlines) in a box beside the point (30, 0):
 /// 0.25 to 0.6 mm right of and above it, clear of a line along x = 30 and one along y = 0.
 fn ink_beside_the_tee(h: &mut H, page: PageId) -> usize {
-    use ecad_engine::preview::{PreviewView, preview_drawing, rasterise};
+    use ecad_engine::pages::preview::{PreviewView, preview_drawing, rasterise};
     let drawing = h.p(|p| preview_drawing(p, page)).unwrap();
     // 200 px over 4 mm: 50 px per mm, (30, 0) at pixel (100, 100), y up.
     let view = PreviewView { center: Pt::new(30.0, 0.0), height: 4.0 };
@@ -183,7 +183,7 @@ fn a_tee_dot_shows_in_the_raster_and_the_print() {
     h.run("wire", json!({"points": pts(&[(0.0, 0.0), (60.0, 0.0)])})).unwrap();
     let circles = |h: &mut H| {
         let doc = h.doc();
-        let (d, _) = ecad_engine::printbook::build_in(&doc, &[page], &Default::default(), 0.01, None, false, false).unwrap();
+        let (d, _) = ecad_engine::export::printbook::build_in(&doc, &[page], &Default::default(), 0.01, None, false, false).unwrap();
         d.model.iter().filter(|e| matches!(e.kind, EntityKind::Circle(_))).count()
     };
     let (before, printed) = (ink_beside_the_tee(&mut h, page), circles(&mut h));

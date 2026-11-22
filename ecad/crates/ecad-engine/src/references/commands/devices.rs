@@ -1,24 +1,24 @@
 //! `refgoto` (brief 025, design 025 §5.3): opens the place a reference shows, so it is the
 //! engine's; its interactive form is in [`crate::interact`]. The other cross-reference commands
-//! are generic ([`ecad_electrical::cmd::xref`]).
+//! are generic ([`ecad_electrical::references::commands::devices`]).
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::xref as rules;
+use ecad_electrical::references::commands::devices as rules;
 use ecad_model::RepresentationId;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::on_any_page;
+use crate::commands::input::{Command, Typed};
+use crate::commands::on_any_page;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<RefgotoParams>("refgoto")];
 
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("refgoto", "Go to Reference", crate::cmd::input::typed::<RefgotoParams>)
+        CommandSpec::new("refgoto", "Go to Reference", crate::commands::input::typed::<RefgotoParams>)
             .params("{source: id, target?: id} (a cable reference end, a contact, a coil or a continuation arrow: opens the place it shows; records nothing)")
             .noundo(),
     ]

@@ -7,12 +7,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::outputs_ui;
-use ecad_app::project_panel;
+use ecad_app::reports::panel;
+use ecad_app::pages::project_panel;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{Deltas, doc, harness_with, head, ok, shot};
+use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, head, ok, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -63,8 +63,8 @@ fn columns_menu_writes_the_article_column_and_nested_layout() {
     assert_eq!((aux[1].text.as_str(), aux[2].text.as_str()), ("3", "-K03, -K04, -K05"));
     // Columns ▸ Article number: one transaction, the column appears.
     let n = head(&mut h);
-    click(&mut h, outputs_ui::COLUMNS);
-    click(&mut h, outputs_ui::COLUMN_ARTICLE);
+    click(&mut h, panel::COLUMNS);
+    click(&mut h, panel::COLUMN_ARTICLE);
     h.run_steps(3);
     assert_eq!(head(&mut h), n + 1, "one transaction");
     ok(&mut h, r#"article {"part_number":"AB-1NO","article_number":"A-0110"}"#);
@@ -74,8 +74,8 @@ fn columns_menu_writes_the_article_column_and_nested_layout() {
     assert_eq!(t.rows.iter().find(|r| r[5].text == "AB-1NO").unwrap()[6].text, "A-0110");
     save(&h, &deltas, "047-reports-article.png");
     // Columns ▸ Lines under devices: each device's line under it.
-    click(&mut h, outputs_ui::COLUMNS);
-    click(&mut h, outputs_ui::COLUMN_NESTED);
+    click(&mut h, panel::COLUMNS);
+    click(&mut h, panel::COLUMN_NESTED);
     h.run_steps(3);
     let t = table(&h);
     let lines = t.rows.iter().filter(|r| r[3].text.contains("\u{21b3} Aux block 1NO")).count();
@@ -87,7 +87,7 @@ fn columns_menu_writes_the_article_column_and_nested_layout() {
 fn add_item_prompts_on_the_command_line_and_the_row_reads_metres() {
     let mut h = fixture(None);
     let n = head(&mut h);
-    click(&mut h, outputs_ui::ADD_ITEM);
+    click(&mut h, panel::ADD_ITEM);
     for line in ["DIN rail 35x7.5", "2", "Metres", "", "", ""] {
         let e = h.state_mut().submit_command(line);
         assert!(e.is_none(), "{line}: {e:?}");
@@ -101,7 +101,7 @@ fn add_item_prompts_on_the_command_line_and_the_row_reads_metres() {
     // Its row: no page; the CSV export has a Unit column and a plain Qty.
     // A row's label is its first two cells.
     click(&mut h, "+CP1: 2 m");
-    assert_eq!(h.state().reports.as_ref().unwrap().note.as_deref(), Some(outputs_ui::ITEM_NO_PAGE));
+    assert_eq!(h.state().reports.as_ref().unwrap().note.as_deref(), Some(panel::ITEM_NO_PAGE));
     let csv = h.state().reports.as_ref().unwrap().shown_table();
     assert_eq!(&csv.headers[..4], ["Location", "Qty", "Unit", "Tags"]);
     let row = csv.rows.iter().find(|r| r[4].text == "DIN rail 35x7.5").unwrap();
@@ -134,7 +134,7 @@ fn the_inspector_lists_a_devices_part_set() {
     assert_eq!(parts[0].part_number.as_deref(), Some("CT-9A"));
     assert_eq!(parts[2].note.as_deref(), Some("kit Starter set"));
     assert_eq!(parts[3].part_number, None, "shown as ?");
-    assert!(h.query_by_label(ecad_app::shell::right::PARTS).is_some());
+    assert!(h.query_by_label(ecad_app::inspector::PARTS).is_some());
     assert!(h.query_by_label("ecad.inspector.parts.row.3").is_some());
     save(&h, &deltas, "047-inspector-parts.png");
     // A device with no part lines has no Parts section.
@@ -144,5 +144,5 @@ fn the_inspector_lists_a_devices_part_set() {
     h.state_mut().goto_symbols(&[rep]).unwrap();
     h.run_steps(4);
     assert!(h.state().settings.inspector.parts.is_empty());
-    assert!(h.query_by_label(ecad_app::shell::right::PARTS).is_none());
+    assert!(h.query_by_label(ecad_app::inspector::PARTS).is_none());
 }

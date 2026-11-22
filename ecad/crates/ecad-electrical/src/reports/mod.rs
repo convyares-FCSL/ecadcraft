@@ -35,15 +35,18 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::effect::{Effect, Effects};
+use ecad_model::document::effect::{Effect, Effects};
 use ecad_model::{CableId, DeviceId, Document, LoosePartId, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, WireId};
 use serde_json::{Value, json};
 
-use crate::bom::{self, Qty};
+use crate::reports::bom::{self, Qty};
 use crate::checks::{Check, Fix, Kind, Object};
 use crate::locations::{self, BoxCache, Located};
 
+pub mod bom;
+pub mod commands;
 pub mod kept;
+pub(crate) mod view;
 
 /// Default and largest `limit` of `bom`, `wirelist`, `cablelist`.
 pub const DEFAULT_LIMIT: usize = 500;
@@ -61,15 +64,15 @@ pub struct PageCx {
 
 impl PageCx {
     pub fn of(doc: &Document) -> PageCx {
-        let b = ecad_model::book::Book::of(doc);
+        let b = ecad_model::document::book::Book::of(doc);
         PageCx { pages: b.order.iter().enumerate().map(|(i, p)| (*p, (i, b.number(doc, *p)))).collect() }
     }
     fn pos(&self, p: PageId) -> usize {
         self.pages.get(&p).map_or(usize::MAX, |x| x.0)
     }
-    fn place(&self, doc: &Document, p: PageId, at: Pt) -> Option<ecad_model::derive::Place> {
+    fn place(&self, doc: &Document, p: PageId, at: Pt) -> Option<ecad_model::connectivity::derive::Place> {
         let number = self.pages.get(&p)?.1.as_str();
-        ecad_model::derive::place_on(&ecad_model::sheet::Grid::of(doc, p), number, at)
+        ecad_model::connectivity::derive::place_on(&ecad_model::document::sheet::Grid::of(doc, p), number, at)
     }
 
     /// The number page `p` is shown with (brief 028: a terminal's Place, with its grid kept by
@@ -100,14 +103,14 @@ pub struct DeviceRow {
     pub location: Located,
     /// Its stored function (brief 052).
     pub function: Located,
-    /// Where go-to lands ([`crate::reps::goto`]: its head, else its first symbol in drawing
+    /// Where go-to lands ([`crate::symbols::reps::goto`]: its head, else its first symbol in drawing
     /// order): the symbol, its page and its anchor. Display only: it is in no scope.
     pub goto: Option<(RepresentationId, PageId, Option<Pt>)>,
 }
 
 /// Sort key of a tag: prefix, number, text.
 fn tag_key(t: &str) -> (String, u64, String) {
-    let (p, n) = ecad_model::tag::parse(t).unwrap_or_else(|| (ecad_model::tag::key(t), 0));
+    let (p, n) = ecad_model::naming::tag::parse(t).unwrap_or_else(|| (ecad_model::naming::tag::key(t), 0));
     (p, n, t.to_string())
 }
 
@@ -276,7 +279,7 @@ pub struct WireRow {
     pub part: Option<(String, Option<String>, Option<String>, f64)>,
     pub cable: String,
     /// Where its first route's midpoint is; the table writes it in the reference style.
-    pub page: Option<ecad_model::derive::Place>,
+    pub page: Option<ecad_model::connectivity::derive::Place>,
     /// Where to go: the midpoint of its first route.
     pub go: Option<(PageId, Pt)>,
 }
@@ -297,7 +300,7 @@ pub struct CableRow {
     pub designation: Option<String>,
     pub go: Option<(PageId, Pt)>,
     /// Brief 028: how its members meet its core offer (design 028 §6.2).
-    pub count: crate::strips::CoreCount,
+    pub count: crate::terminal_strips::CoreCount,
     /// The first member of each core chain (design 032 §3.2; one member per chain without
     /// continuations), in member order, for the over and twice go-tos.
     pub members: Vec<WireId>,
@@ -577,7 +580,7 @@ impl Scope {
                 self.loose.insert(*id);
             }
             Effect::Project { before, after } => {
-                use crate::designations::{Aspect, changed_codes, default_key};
+                use crate::locations::designations::{Aspect, changed_codes, default_key};
                 // Brief 047: an item without its own location shows the project's.
                 if default_key(before, Aspect::Location) != default_key(after, Aspect::Location) {
                     self.project_location = true;
@@ -595,7 +598,7 @@ impl Scope {
             Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
                 let key = key.raw;
                 // Brief 050b: the project's or standard's wire category reaches every wire row.
-                if key == ecad_model::wiring::WIRE_CATEGORY {
+                if key == ecad_model::connectivity::wiring::WIRE_CATEGORY {
                     self.all_wires = true;
                 }
                 // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
@@ -666,7 +669,7 @@ impl Scope {
                 }
             }
             Effect::Settings { before, after } => {
-                let rows = |w: &ecad_model::wiring::WiringSettings| -> BTreeMap<String, ecad_model::wiring::PotentialDef> {
+                let rows = |w: &ecad_model::connectivity::wiring::WiringSettings| -> BTreeMap<String, ecad_model::connectivity::wiring::PotentialDef> {
                     w.potentials.iter().map(|p| (p.name.trim().to_lowercase(), p.clone())).collect()
                 };
                 let (a, b) = (rows(&before.wiring), rows(&after.wiring));
@@ -709,8 +712,8 @@ impl Scope {
     pub fn note_after(&mut self, doc: &Document, effect: &Effect<'_>) {
         let Effect::Prop { object: ObjectRef::Device(c), key, .. } = effect else { return };
         let key = key.raw;
-        let position = key.strip_prefix(crate::terminal_types::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
-        if (position.is_some() || crate::defaults::terminals::is_label_key(key)) && crate::strips::strip_of(doc, *c).is_some() {
+        let position = key.strip_prefix(crate::terminal_strips::terminal_blocks::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
+        if (position.is_some() || crate::defaults::terminals::is_label_key(key)) && crate::terminal_strips::strip_of(doc, *c).is_some() {
             for (t, x) in doc.connection_points_of(*c) {
                 if position.is_none_or(|p| x.label.as_deref() == Some(p)) {
                     self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
@@ -738,7 +741,7 @@ impl Scope {
         // Brief 052 (design 052 §8.2a): the users of a renamed entry, the one wide case.
         if !self.renamed.is_empty() {
             for (c, x) in &doc.devices {
-                if crate::designations::device_keys(x).iter().any(|(_, v)| self.renamed.contains(v)) {
+                if crate::locations::designations::device_keys(x).iter().any(|(_, v)| self.renamed.contains(v)) {
                     self.devices.insert(*c);
                 }
             }
@@ -871,7 +874,7 @@ fn group_halves<'a>(rows: impl Iterator<Item = &'a BomRow>, group: Group) -> Vec
 }
 
 fn needs_reports(doc: &Document, page: PageId) -> bool {
-    doc.page_order.contains(&page) && crate::generated::kind_of(doc, page).is_some_and(ecad_model::GenKind::needs_reports)
+    doc.page_order.contains(&page) && crate::pages::generated::kind_of(doc, page).is_some_and(ecad_model::GenKind::needs_reports)
 }
 
 /// A cable end as the schedule shows it: `+CP1 -X01` (design 028 §6.3).
@@ -959,7 +962,7 @@ pub fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
 }
 
 /// Whether the position before gap `gap` of strip `s` is PE (the end gap: the last position).
-pub fn gap_pe(s: &crate::strips::StripData, gap: &str) -> bool {
+pub fn gap_pe(s: &crate::terminal_strips::StripData, gap: &str) -> bool {
     match gap {
         "start" => false,
         "end" => s.rows.last().is_some_and(|r| r.pe),
@@ -970,12 +973,12 @@ pub fn gap_pe(s: &crate::strips::StripData, gap: &str) -> bool {
 /// Brief 030's Checks rows of one strip (design 030 §8): orphan places, links across partitions,
 /// links naming missing positions. The go-to is the strip's last terminal, or the link's first
 /// drawn terminal.
-pub fn accessory_checks(s: &crate::strips::StripData) -> Vec<Check> {
+pub fn accessory_checks(s: &crate::terminal_strips::StripData) -> Vec<Check> {
     let mut out = Vec::new();
     let last = s.highest().and_then(|r| r.go);
-    let obj = |r: Option<&crate::strips::TermRow>| r.and_then(|r| r.terminal).map_or(Object::Device(s.component), Object::Terminal);
+    let obj = |r: Option<&crate::terminal_strips::TermRow>| r.and_then(|r| r.terminal).map_or(Object::Device(s.component), Object::Terminal);
     for (i, (key, items)) in s.acc.orphans.iter().enumerate() {
-        let spot = crate::accessories::spot_of(key);
+        let spot = crate::terminal_strips::accessories::spot_of(key);
         let label = spot.as_ref().and_then(|x| x.label()).unwrap_or("?");
         let words: Vec<&str> = items.iter().map(|a| a.words()).collect();
         let how = if spot.as_ref().is_some_and(|x| x.is_on()) { "on" } else { "after" };
@@ -1026,7 +1029,7 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
         Fix::AccessoryOrphan(c, i) => {
             let Some((key, items)) = o.strips.get(c).and_then(|s| s.acc.orphans.get(usize::from(i))) else { return Vec::new() };
             let mut out = Vec::new();
-            if !key.starts_with(crate::accessories::ON_PREFIX) {
+            if !key.starts_with(crate::terminal_strips::accessories::ON_PREFIX) {
                 let words: Vec<&str> = items.iter().map(|a| a.key()).collect();
                 out.push(("Move to end".to_string(), "accessory", json!({"strip": c.hex(), "at": "end", "add": words, "clear": [key]})));
             }
@@ -1055,9 +1058,9 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
         Fix::MoveToNewPosition(t) => vec![("Move to new position".to_string(), "termlabel", json!({"terminal": t.hex(), "move_to": "new"}))],
         Fix::LevelMissing(c, n) => {
             let Some(s) = o.strips.get(c) else { return Vec::new() };
-            let key = ecad_model::links::key(u32::from(n));
+            let key = ecad_model::connectivity::jumper_bars::key(u32::from(n));
             let kept = s.level_missing.iter().find(|(m, _)| *m == u32::from(n)).map(|(_, items)| items.clone()).unwrap_or_default();
-            let after = s.acc.links.iter().find(|l| l.n == u32::from(n)).map(|l| crate::accessories::drop_items(&l.text, &kept));
+            let after = s.acc.links.iter().find(|l| l.n == u32::from(n)).map(|l| crate::terminal_strips::accessories::drop_items(&l.text, &kept));
             let mut out = Vec::new();
             if let Some(v) = after {
                 let v = if v.is_empty() { serde_json::Value::Null } else { json!(v) };
@@ -1110,7 +1113,7 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn csv_is_excel_safe_and_quoted() {

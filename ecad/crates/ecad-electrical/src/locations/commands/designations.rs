@@ -1,17 +1,17 @@
 //! The rules of the commands of the project's list of functions and locations (brief 052, design
 //! 052 §5.9): adding, renaming and describing, merging and removing entries. Each function reads
 //! the document (and the use index, [`Uses`], caught up by the caller) and returns the ops to
-//! commit and what to report. The commands are generic ([`crate::cmd::run`]).
+//! commit and what to report. The commands are generic ([`crate::commands::run`]).
 
 use ecad_model::{Document, IdAllocator, ListDescription, ObjectRef, Op};
 
-use crate::designations::{self, Aspect, Entry, Uses};
+use crate::locations::designations::{self, Aspect, Entry, Uses};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::nullable;
-use crate::cmd::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::input::nullable;
+use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
 
 /// The aspect `word` names: "function" or "location" (also `f`, `l`, `=`, `+`).
@@ -263,7 +263,7 @@ pub fn plan_remove(doc: &Document, uses: &Uses, a: Aspect, key: Option<&str>, co
 }
 
 /// Whether the transactions after the first `seen` of `ledger`'s log could change the designation
-/// rows (`ecad_engine::cmd::designation::rows`): an op on the list, on a `function` /
+/// rows (`ecad_engine::commands::designation::rows`): an op on the list, on a `function` /
 /// `location` / `location.<type>` value, or a component or page created or deleted (design 052
 /// §8.2a, the Settings card's update map).
 pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
@@ -289,7 +289,7 @@ pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// The list with its counts, as `designations` answers (`only`: one aspect), for the command and
 /// for Settings ▸ Project info (design 052 §9.4). `uses` must be caught up.

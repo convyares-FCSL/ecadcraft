@@ -13,7 +13,7 @@
 
 use ecad_model::{Device, DeviceId, DeviceType, Document, ObjectRef, Op};
 
-use ecad_model::plc::{PlcModule, PlcRack};
+use ecad_model::objects::plc::{PlcModule, PlcRack};
 
 /// Whether `op` changes device `c`'s record.
 fn changes(op: &Op, c: DeviceId) -> bool {

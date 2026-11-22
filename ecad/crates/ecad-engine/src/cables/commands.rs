@@ -1,28 +1,28 @@
 //! The drawn cable commands (briefs 004, 005, 009, 032): `cableslash`, `cableadd`, `cablecore`,
 //! `cablefan` and `cableview`. The interactive forms ([`crate::interact`]) commit through these.
-//! `cableview` records nothing: a cable's view is presentation only ([`crate::views`]).
+//! `cableview` records nothing: a cable's view is presentation only ([`crate::cables::views`]).
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::cmd::cable_draw`] decide, and the shim commits the ops and answers in JSON.
+//! [`ecad_electrical::cables::commands::draw`] decide, and the shim commits the ops and answers in JSON.
 //! `cablefan` and `cableview` stay here whole: the fan's spine is measured with the engine's
-//! fonts ([`crate::look`]), and a view is the session's.
+//! fonts ([`crate::cables::draw`]), and a view is the session's.
 
 use std::collections::BTreeMap;
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::cable_draw::{self as rules, SlashTarget};
+use ecad_electrical::cables::commands::draw::{self as rules, SlashTarget};
 use ecad_model::{CableId, Form, Item, ItemId, ItemKind, Op, Primitive, Pt, Representation, RepresentationId, Subject, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{err, on_any_page, on_project, plain_style};
-use crate::slash::MAX_CABLE_MEMBERS;
-use crate::views::{self, View};
-use ecad_electrical::cable_look::{FanEnd, MarkerEnd};
-use ecad_electrical::cmd::input::{Bounded, OrNull, Point, nullable};
+use crate::commands::input::{Command, Typed};
+use crate::commands::{err, on_any_page, on_project, plain_style};
+use ecad_electrical::cables::slash::MAX_CABLE_MEMBERS;
+use crate::cables::views::{self, View};
+use ecad_electrical::cables::layout::{FanEnd, MarkerEnd};
+use ecad_electrical::commands::input::{Bounded, OrNull, Point, nullable};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -64,7 +64,7 @@ impl Command for CableslashParams {
             match rules::slash_target(doc, self.cable, self.tag.as_deref())? {
                 SlashTarget::Assign(k) => run_slash_assign(p, pg, page, k, from, to, &found),
                 SlashTarget::Continue(k) => {
-                    Ok(crate::draw::references::run_slash_continue(p, pg, page, k, from, to, &found).map_err(CmdError::refused)?)
+                    Ok(crate::references::draw::cables::run_slash_continue(p, pg, page, k, from, to, &found).map_err(CmdError::refused)?)
                 }
                 SlashTarget::New => {
                     let style = plain_style(p);
@@ -224,7 +224,7 @@ impl Command for CablefanParams {
                 return Err(CmdError::refused("no such cable"));
             }
             let title = views::cable_title(doc, cable);
-            let ends = ecad_electrical::cable_look::fan_ends(doc, page, cable, p.tolerance, &crate::look::font_width);
+            let ends = ecad_electrical::cables::layout::fan_ends(doc, page, cable, p.tolerance, &crate::cables::draw::font_width);
             if ends.is_empty() {
                 return Err(CmdError::refused(format!("Cable {title} has no fanned end on this page.")));
             }
@@ -349,7 +349,7 @@ impl Command for CableviewParams {
             }
             let current = p.view_of(k);
             let target = view.unwrap_or_else(|| current.toggled());
-            if target == View::Fan && current != View::Fan && !ecad_electrical::cable_look::offers_fan(doc, k) {
+            if target == View::Fan && current != View::Fan && !ecad_electrical::cables::layout::offers_fan(doc, k) {
                 return Err(CmdError::refused(format!("Cable {} {}", views::cable_title(doc, k), views::ONE_WIRE)));
             }
             let (changed, stored) = p.set_view(pg, k, target);
@@ -381,24 +381,24 @@ impl Command for CableviewParams {
 // The assign rule (design 059 §4.3, FD5)
 
 /// `cableslash` onto cable `k` that is not drawn (FD5): commits
-/// [`ecad_electrical::cmd::cable_draw::plan_slash_assign`]'s ops as one transaction, `Cable slash`.
+/// [`ecad_electrical::cables::commands::draw::plan_slash_assign`]'s ops as one transaction, `Cable slash`.
 ///
 /// # Errors
 /// A wire already in a cable, more wires than free cores, too many members; nothing is written.
 pub(crate) fn run_slash_assign(
     p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, page: ecad_model::PageId, k: CableId, from: ecad_model::Pt,
-    to: ecad_model::Pt, found: &crate::slash::Crossings,
+    to: ecad_model::Pt, found: &ecad_electrical::cables::slash::Crossings,
 ) -> Result<Value, CmdError> {
-    let style = crate::cmd::plain_style(p);
-    let plan = ecad_electrical::cmd::cable_draw::plan_slash_assign(p.ledger.document(), &mut p.ids, page, style, k, from, to, found)?;
+    let style = crate::commands::plain_style(p);
+    let plan = ecad_electrical::cables::commands::draw::plan_slash_assign(p.ledger.document(), &mut p.ids, page, style, k, from, to, found)?;
     p.apply_edit(pg, "cableslash", "Cable slash", plan.ops)?;
     Ok(json!({
         "cable": k.hex(),
         "item": plan.item.hex(),
         "representation": plan.rep.hex(),
         "assigned": true,
-        "conductors": ecad_electrical::cmd::cable_draw::crossing_wires(&found.members),
-        "lines": ecad_electrical::cmd::cable_draw::crossing_lines(&found.members),
+        "conductors": ecad_electrical::cables::commands::draw::crossing_wires(&found.members),
+        "lines": ecad_electrical::cables::commands::draw::crossing_lines(&found.members),
         "cores": plan.cores,
         "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
         "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),

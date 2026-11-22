@@ -1,16 +1,16 @@
 //! The Checks tab (UI rev 3, board 1.07): This page or Project; each check as a card with its fix
 //! button and a go-to arrow; on This page, the checks on other pages follow under "Elsewhere in
-//! the project". The rows are the Checks copy ([`crate::checks_panel::ChecksPanel`]), kept from
+//! the project". The rows are the Checks copy ([`crate::checks::panel::ChecksPanel`]), kept from
 //! each change; the bottom bar's counter opens this tab. The full table is Project ▸ Check list.
 
 use ecad_engine::checks::Severity;
 use ecad_model::PageId;
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 
-use super::widgets as w;
-use crate::checks_panel::{ChecksPanel, Row};
-use crate::project_panel::Action;
+use crate::inspector::widgets as w;
+use crate::checks::panel::{ChecksPanel, Row};
+use crate::pages::project_panel::Action;
 
 /// Accessible names.
 pub const SCOPE: &str = "ecad.inspector.checks.scope";
@@ -78,7 +78,7 @@ pub fn card(ui: &mut egui::Ui, r: &Row, writable: bool, out: &mut Vec<Action>) {
             .inner
         })
         .inner;
-    let label = crate::checks_panel::row_label(r);
+    let label = crate::checks::panel::row_label(r);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
     if resp.on_hover_text("Show it on the page").clicked() {
         out.push(Action::GotoCheck(Box::new(r.check.clone())));
@@ -87,7 +87,7 @@ pub fn card(ui: &mut egui::Ui, r: &Row, writable: bool, out: &mut Vec<Action>) {
     ui.horizontal(|ui| {
         ui.add_space(26.0);
         if let Some(f) = r.check.fix {
-            for (k, name) in crate::lists::checks::fix_names(f).into_iter().enumerate() {
+            for (k, name) in crate::checks::list::fix_names(f).into_iter().enumerate() {
                 let why = (!writable).then_some("The project is read-only.");
                 if w::button(ui, name, k == 0, why).clicked()
                     && let Some(a) = ChecksPanel::fix(r, f, k)
@@ -100,7 +100,7 @@ pub fn card(ui: &mut egui::Ui, r: &Row, writable: bool, out: &mut Vec<Action>) {
         let (rect, go) = ui.allocate_exact_size(vec2(28.0, 24.0), Sense::click());
         go.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, GO_TO));
         if go.hovered() {
-            ui.painter().rect_filled(rect, ecad_ui::style::corner(ecad_ui::tokens::radius::ROW), ecad_ui::color(ecad_ui::SHELL.hover));
+            ui.painter().rect_filled(rect, ecad_widgets::style::corner(ecad_widgets::tokens::radius::ROW), ecad_widgets::color(ecad_widgets::SHELL.hover));
         }
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "\u{2192}", w::font(ui, ui_type::TITLE), w::text_2());
         if go.on_hover_text("Go to it").clicked() {
@@ -112,21 +112,21 @@ pub fn card(ui: &mut egui::Ui, r: &Row, writable: bool, out: &mut Vec<Action>) {
 
 /// A line under "Elsewhere in the project": a dot, the words, and where at the right.
 fn elsewhere_line(ui: &mut egui::Ui, r: &Row) -> bool {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let width = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 26.0), Sense::click());
-    let label = crate::checks_panel::row_label(r);
+    let label = crate::checks::panel::row_label(r);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
     let p = ui.painter();
     if resp.hovered() {
-        p.rect_filled(rect, ecad_ui::style::corner(ecad_ui::tokens::radius::ROW), ecad_ui::color(s.hover));
+        p.rect_filled(rect, ecad_widgets::style::corner(ecad_widgets::tokens::radius::ROW), ecad_widgets::color(s.hover));
     }
     let colour = match r.check.severity() {
         Severity::Error => s.error,
         Severity::Warning => s.warning,
         Severity::Info => s.text_3,
     };
-    p.circle_filled(pos2(rect.left() + 6.0, rect.center().y), 4.0, ecad_ui::color(colour));
+    p.circle_filled(pos2(rect.left() + 6.0, rect.center().y), 4.0, ecad_widgets::color(colour));
     let mut words = r.check.what();
     if !r.check.which.is_empty() && !words.contains(&r.check.which) {
         words = format!("{} \u{b7} {words}", r.check.which);
@@ -167,7 +167,7 @@ pub fn show(ui: &mut egui::Ui, panel: &mut ChecksPanel, project_scope: &mut bool
         egui::ScrollArea::vertical().id_salt("ecad.inspector.checks.scroll").auto_shrink([false, false]).show(ui, |ui| {
             if here.is_empty() {
                 ui.add_space(space::M);
-                let words = if *project_scope { crate::checks_panel::NO_PROBLEMS } else { "No problems on this page." };
+                let words = if *project_scope { crate::checks::panel::NO_PROBLEMS } else { "No problems on this page." };
                 ui.label(w::rich(ui, words, ui_type::BODY, w::text_2()));
                 ui.add_space(space::M);
             }
@@ -199,7 +199,7 @@ pub fn show(ui: &mut egui::Ui, panel: &mut ChecksPanel, project_scope: &mut bool
     });
     // The footer: what checks do, and which kinds are shown.
     let foot = Rect::from_min_max(pos2(body.left(), body.bottom() - footer_h), body.max);
-    ui.painter().hline(full, foot.top() + 0.5, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, w::line()));
+    ui.painter().hline(full, foot.top() + 0.5, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, w::line()));
     ui.scope_builder(egui::UiBuilder::new().max_rect(foot.shrink2(vec2(0.0, space::S))), |ui| {
         ui.add(egui::Label::new(w::rich(ui, FOOTER, ui_type::SMALL, w::text_3())).wrap());
         ui.horizontal(|ui| {

@@ -36,7 +36,7 @@ pub(crate) mod text_tools;
 mod wiring_forms;
 mod xrefs;
 
-use ecad_model::keys::PropsExt;
+use ecad_model::naming::keys::PropsExt;
 use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::color::Color as CColor;
@@ -44,16 +44,16 @@ use cadcraft_engine::doc::{Circle, Entity, EntityKind, Handle, Line, Text};
 use cadcraft_engine::ext::{Mark, MarkShape};
 use cadcraft_engine::geom::{Vec2, Vec3};
 use cadcraft_engine::{EngineError, Session};
-use ecad_model::derive::connection_point_positions;
+use ecad_model::connectivity::derive::connection_point_positions;
 use ecad_model::{CableId, DeviceId, Document, End, Form, ItemKind, PageId, Primitive, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
 
 use crate::access::{owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
-use crate::terminal_types::short;
-pub use crate::terminal_types::{position_label, connection_point_name};
+use ecad_electrical::terminal_strips::terminal_blocks::short;
+pub use ecad_electrical::terminal_strips::terminal_blocks::{position_label, connection_point_name};
 use crate::translate::connection_point_at;
-use crate::views::{FanOnPage, View, fan_on_page};
-pub use crate::words::{MAX_COORD, MAX_HOVER_LINES, OUT_OF_RANGE};
+use crate::cables::views::{FanOnPage, View, fan_on_page};
+pub use ecad_electrical::cables::words::{MAX_COORD, MAX_HOVER_LINES, OUT_OF_RANGE};
 
 pub(crate) use accessories::{accessory, jumper};
 pub(crate) use bom_item::bomitem;
@@ -118,7 +118,7 @@ pub(crate) fn read<R>(s: &Session, f: impl FnOnce(&Project, PageId) -> Result<R,
     let p = guard.as_any_mut().downcast_mut::<Project>().ok_or(NOT_OWNED)?;
     let page = p.page_of(uid).ok_or(NOT_OWNED)?;
     if p.pages.get(&page).is_some_and(|v| v.unavailable) {
-        return Err(crate::cmd::UNAVAILABLE.into());
+        return Err(crate::commands::UNAVAILABLE.into());
     }
     f(p, page)
 }
@@ -155,7 +155,7 @@ pub(crate) fn pick(s: &Session, p: Vec2) -> Option<Handle> {
     // The sheet frame (brief 019) is not an object to pick. It is drawn behind everything else, so
     // it is only picked where nothing else is.
     let d = s.doc().ok()?;
-    let frame = |h: Handle| d.entity(h).is_some_and(|e| e.common.layer == crate::frame::LAYER);
+    let frame = |h: Handle| d.entity(h).is_some_and(|e| e.common.layer == crate::pages::frame::LAYER);
     if !frame(h) {
         return Some(h);
     }
@@ -303,8 +303,8 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     if p.pages.get(&page).is_none_or(|v| v.unavailable) {
         return Vec::new();
     }
-    let sheet = crate::look::sheet();
-    let colour = |m: ecad_drawing_style::Meaning| crate::look::rgb(sheet.color(m));
+    let sheet = crate::cables::draw::sheet();
+    let colour = |m: ecad_drawing_style::Meaning| crate::cables::draw::rgb(sheet.color(m));
     let doc = p.ledger.document();
     let positions = connection_point_positions(doc, page);
     let ring = colour(ecad_drawing_style::Meaning::ConnectionPoint);
@@ -343,7 +343,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     let cable = colour(ecad_drawing_style::Meaning::Cable);
     let map = p.pages.get(&page).map(|v| &v.map);
     let shown = |i| map.is_some_and(|m| m.item(i).is_some());
-    out.extend(crate::slash::member_crossing_points_where(doc, page, p.tolerance, shown).into_iter().map(|at| Mark {
+    out.extend(ecad_electrical::cables::slash::member_crossing_points_where(doc, page, p.tolerance, shown).into_iter().map(|at| Mark {
         at: v2(at),
         shape: MarkShape::Dot,
         size: CROSSING_PX,
@@ -370,7 +370,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
 }
 
 fn tag(props: &ecad_model::Properties) -> Option<&str> {
-    props.text(ecad_model::keys::TAG)
+    props.text(ecad_model::naming::keys::TAG)
 }
 
 /// What hovering drawing object `h` on page drawing `uid` shows (design §4.3): its name or ID and
@@ -408,7 +408,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 t.parts.get(usize::try_from(i).ok()?)?.row
             });
             match row {
-                Some(i) => crate::xref::row_lines(doc, c, i, &crate::draw::text_style::EngineMetrics)?,
+                Some(i) => crate::xref::row_lines(doc, c, i, &crate::styles::draw::EngineMetrics)?,
                 None if crate::xref::device(doc, c).head == Some(r) => crate::xref::head_lines(doc, c, r),
                 None => with_device_references(doc, c, r, crate::devices::hover_lines(doc, c, r)),
             }
@@ -418,7 +418,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         // A T's dot (lane 072 D): the lens of the line that ends there.
         Mapped::Tee(r) => wire_lines(doc, crate::wires::wire_of_route(doc, r), Some(r), page),
         // A link line (brief 030, design 030 §5.3).
-        Mapped::Link(c, n) => vec![crate::link_lines::hover(doc, p.kept_reports().and_then(|o| o.strips.get(c)), c, n)],
+        Mapped::Link(c, n) => vec![ecad_electrical::terminal_strips::jumper_bars::hover(doc, p.kept_reports().and_then(|o| o.strips.get(c)), c, n)],
         Mapped::Item(i) => match doc.representation_of_item(i)? {
             (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
             (rid, r) => match r.subject {
@@ -454,13 +454,13 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             let fan = view.map.is_fan(k);
             let mut lines = with_view(cable_lines(doc, page, k), if fan { "View: fan" } else { "View: traditional" });
             if fan {
-                let d = ecad_electrical::cable_look::cable_on_page(doc, page, k, true, p.tolerance, &crate::look::font_width);
-                lines.extend(d.at_reference.iter().map(|w| format!("{} is attached at the reference end.", crate::slash::wire_name(doc, *w))));
+                let d = ecad_electrical::cables::layout::cable_on_page(doc, page, k, true, p.tolerance, &crate::cables::draw::font_width);
+                lines.extend(d.at_reference.iter().map(|w| format!("{} is attached at the reference end.", ecad_electrical::cables::slash::wire_name(doc, *w))));
             }
             // A tail, bend or label names its core second (design 009 §8).
             if let Some(w) = view.map.core_of(h) {
                 let core = core_of(doc, k, w).unwrap_or_else(|| "none".into());
-                lines.insert(1.min(lines.len()), format!("Core: {core} ({})", crate::slash::wire_name(doc, w)));
+                lines.insert(1.min(lines.len()), format!("Core: {core} ({})", ecad_electrical::cables::slash::wire_name(doc, w)));
             }
             with_drawings(doc, k, lines)
         }
@@ -511,7 +511,7 @@ fn with_drawings(doc: &Document, k: CableId, mut lines: Vec<String>) -> Vec<Stri
         return lines;
     }
     let members = doc.cables.get(&k).map(|c| c.cores.as_slice()).unwrap_or_default();
-    let member_pages: std::collections::BTreeSet<PageId> = members.iter().flat_map(|m| crate::cables::member_pages(doc, m)).collect();
+    let member_pages: std::collections::BTreeSet<PageId> = members.iter().flat_map(|m| ecad_electrical::cables::member_pages(doc, m)).collect();
     let mut pages: Vec<PageId> = Vec::new();
     for p in &doc.page_order {
         let drawn = doc.representations_of(Subject::Cable(k)).any(|(_, r)| r.page == *p) || member_pages.contains(p);
@@ -569,7 +569,7 @@ fn terminal_lines(doc: &Document, t: ConnectionPointId) -> Vec<String> {
         // Brief 044 (tester D3): a connector pin by its half (`-X10.S:3`).
         format!(
             "Connection point {}",
-            crate::connectors::pin_name(doc, t).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| "(no label)".into())
+            ecad_electrical::connectors::pin_name(doc, t).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| "(no label)".into())
         ),
         format!("of component {of}"),
         format!("id {}", t.hex()),
@@ -596,20 +596,20 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     let mut lines = vec![format!("Cable {}", cable.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")), format!("id {}", k.hex())];
     for (key, label) in [("designation", "Designation"), ("type", "Type")] {
         if let Some(v) = cable.and_then(|x| x.properties.get(key)) {
-            lines.push(format!("{label}: {}", crate::words::shorten(v, 64)));
+            lines.push(format!("{label}: {}", ecad_electrical::cables::words::shorten(v, 64)));
         }
     }
     let refs: Vec<String> = doc
         .representations
         .iter()
         .filter(|(_, r)| r.page == page && r.subject == Subject::Cable(k) && r.role == ecad_model::Role::Reference)
-        .map(|(id, _)| format!("\"{}\"", ecad_electrical::cable_look::reference_text(doc, *id)))
+        .map(|(id, _)| format!("\"{}\"", ecad_electrical::cables::layout::reference_text(doc, *id)))
         .collect();
     if !refs.is_empty() {
         lines.push(format!("References here: {}", refs.join(", ")));
     }
     // Brief 028 (design 028 §7.1): the core count.
-    if let Some(line) = crate::strips::cable_hover(doc, k) {
+    if let Some(line) = ecad_electrical::terminal_strips::cable_hover(doc, k) {
         lines.insert(1, line);
     }
     let members = cable.map(|x| x.cores.as_slice()).unwrap_or_default();
@@ -619,8 +619,8 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
         // The stored member order, nothing more (owner answer Q2).
         lines.push(format!("Wires: {}", members.len()));
         lines.extend(members.iter().map(|m| match ecad_electrical::cables::member_core(m) {
-            Some(c) => format!("  {}  core {c}", crate::slash::position_name(doc, m.position)),
-            None => format!("  {}", crate::slash::position_name(doc, m.position)),
+            Some(c) => format!("  {}  core {c}", ecad_electrical::cables::slash::position_name(doc, m.position)),
+            None => format!("  {}", ecad_electrical::cables::slash::position_name(doc, m.position)),
         }));
     }
     lines
@@ -677,7 +677,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
                 // A T (design 072 §4.4) is joined, not open: it names the line it lands on.
                 RouteEnd::On { route: on, .. } => {
                     let joined = match crate::wires::wire_of_route(doc, on) {
-                        Some(w) => format!("wire {}", ecad_model::wiring::wire_number(doc, w).unwrap_or_else(|| "(no number)".into())),
+                        Some(w) => format!("wire {}", ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| "(no number)".into())),
                         None => "a line with no wire yet".into(),
                     };
                     lines.push(format!("End {end:?} joins {joined} (a T)."));
@@ -685,7 +685,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
                 RouteEnd::Free => {
                     if let Some(on) = crate::wires::route_at(doc, page, at, crate::wires::ON_WIRE, Some(r)) {
                         let number = crate::wires::wire_of_route(doc, on.route)
-                            .and_then(|w| ecad_model::wiring::wire_number(doc, w))
+                            .and_then(|w| ecad_model::connectivity::wiring::wire_number(doc, w))
                             .unwrap_or_else(|| "?".into());
                         lines.push(format!("Open end: looks connected to {number}; Join Wires joins them."));
                     }
@@ -727,9 +727,9 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(D
     let item = match map.get(h) {
         Some(Mapped::Item(i)) => i,
         Some(Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Label(_) | Mapped::DeviceReference(_)) => return Err(NOT_OUTLINE.into()),
-        Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
-        Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
-        Some(Mapped::Link(..)) => return Err(crate::link_lines::LINK_DERIVED.into()),
+        Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(map, k).into()),
+        Some(Mapped::Frame(_)) => return Err(crate::pages::frame::DERIVED.into()),
+        Some(Mapped::Link(..)) => return Err(ecad_electrical::terminal_strips::jumper_bars::LINK_DERIVED.into()),
         Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),
     };

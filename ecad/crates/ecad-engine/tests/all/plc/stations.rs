@@ -1,7 +1,7 @@
 //! Lane 072 C (design 072 §3; acceptance A9, A11, A19): PLC stations with a CPU or coupler head,
 //! modules with a typed function and attributes, and their channels, stored and edited as fields.
 
-use ecad_model::plc::{AddressStyle, Communication, ModuleFunction, NetAddress, PlcModule, PlcRack, Protocol, RackHead, Signal, SystemKind};
+use ecad_model::objects::plc::{AddressStyle, Communication, ModuleFunction, NetAddress, PlcModule, PlcRack, Protocol, RackHead, Signal, SystemKind};
 use ecad_model::{DeviceId, DeviceType, Document};
 use serde_json::json;
 
@@ -112,7 +112,7 @@ fn setprop_writes_the_fields() {
     let s = station(&doc, cpu);
     assert_eq!(s.network.as_ref().map(|t| t.as_str()), Some("Line 1"));
     assert_eq!(s.address, NetAddress::parse("192.168.0.10"));
-    assert_eq!(s.head, RackHead::Cpu { family: ecad_model::text::Text::new("S7-1500").ok() });
+    assert_eq!(s.head, RackHead::Cpu { family: ecad_model::naming::text::Text::new("S7-1500").ok() });
     assert_eq!(s.address_style, Some(AddressStyle::Iec));
     // The bag holds none of them.
     assert!(

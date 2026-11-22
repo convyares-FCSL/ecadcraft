@@ -2,7 +2,7 @@
 //! 1.17). The person picks one with the top bar's light/dark switch; neither follows the operating
 //! system's setting.
 
-use crate::{Color, WHITE};
+use {crate::tokens::Color, crate::tokens::WHITE};
 
 /// The shell's colours. Field names are the spec's token names (`line-strong` → `line_strong`).
 #[derive(Clone, Copy, Debug, PartialEq)]

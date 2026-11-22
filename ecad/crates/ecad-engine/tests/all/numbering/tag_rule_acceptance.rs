@@ -7,14 +7,14 @@ use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
 use ecad_file::schema::{self, BranchId, VersionKind};
 use ecad_file::{Project, Store};
-use ecad_model::tag::HighWater;
+use ecad_model::naming::tag::HighWater;
 use ecad_model::*;
 use serde_json::json;
 
 const PROJECT: ProjectId = ProjectId(0x0029_7e57_0000_0000_0000_0000_0000_0001);
 
-fn tagged(tag: &str) -> ecad_model::doc::Properties {
-    let mut p = ecad_model::doc::Properties::new();
+fn tagged(tag: &str) -> ecad_model::document::doc::Properties {
+    let mut p = ecad_model::document::doc::Properties::new();
     p.insert("tag".into(), tag.into());
     p
 }
@@ -82,7 +82,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
         w.commit().unwrap();
     }
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut s = cadcraft_engine::Session::empty();
     let (project, _) = ecad_engine::ProjectHandle::open_file(&mut s, &path.display().to_string(), 5).unwrap();
     let r = s.execute("cableadd", &json!({"conductors": [wire.hex()]})).unwrap();

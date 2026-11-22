@@ -6,34 +6,34 @@
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeSet, HashMap};
 
-use ecad_model::book::{self, Book, FUNCTION_KEY, LOCATION_KEY, MAX_FOLDER_DEPTH, PageNo};
-use ecad_model::page::{PageKind, PageTitle};
-use ecad_model::sheet::SheetSpec;
-use ecad_model::tag::{self, CASE_KEY, Case, DASH_KEY, TAG_KEY};
+use ecad_model::document::book::{self, Book, FUNCTION_KEY, LOCATION_KEY, MAX_FOLDER_DEPTH, PageNo};
+use ecad_model::document::page::{PageKind, PageTitle};
+use ecad_model::document::sheet::SheetSpec;
+use ecad_model::naming::tag::{self, CASE_KEY, Case, DASH_KEY, TAG_KEY};
 use ecad_model::{
     DeviceId, Document, Folder, FolderId, IdAllocator, Ledger, ObjectRef, Op, Page, PageId, ProjectSettings, Properties, ReferenceStyle, StyleRef,
 };
 
 use crate::defaults::strip_pages;
-use crate::designations::{self, Aspect, Pending};
+use crate::locations::designations::{self, Aspect, Pending};
 use crate::error::{CmdError, msg};
-use crate::frames::{CUSTOMER, DRAWING_NUMBER, STATUS, TITLE};
-use crate::outputs::kept::ReportModels;
-use crate::page_types::MAX_NUMBER_CHARS;
-use crate::proposals::{self, Mode, Planned};
-use crate::revisions::{self, FIELDS, Revision};
+use crate::pages::frames::{CUSTOMER, DRAWING_NUMBER, STATUS, TITLE};
+use crate::reports::kept::ReportModels;
+use crate::pages::page_types::MAX_NUMBER_CHARS;
+use crate::symbols::proposals::{self, Mode, Planned};
+use crate::releases::revisions::{self, FIELDS, Revision};
 use ecad_model::GenKind;
 
 /// Most characters of a folder name.
 pub const MAX_FOLDER_NAME: usize = 100;
 /// Most characters in a page title.
-pub const MAX_PAGE_TITLE: usize = ecad_model::page::MAX_PAGE_TITLE;
+pub const MAX_PAGE_TITLE: usize = ecad_model::document::page::MAX_PAGE_TITLE;
 /// The project property keys the dialog and the title block use, in order.
 pub const PROJECT_KEYS: [&str; 6] = [TITLE, DRAWING_NUMBER, CUSTOMER, STATUS, FUNCTION_KEY, LOCATION_KEY];
 /// Most characters of a free property key.
 pub const MAX_KEY_CHARS: usize = 40;
 /// The page-number step's range.
-pub const MAX_STEP: u32 = ecad_model::builtins::MAX_PAGE_NUMBER_STEP;
+pub const MAX_STEP: u32 = ecad_model::naming::builtins::MAX_PAGE_NUMBER_STEP;
 
 /// A `SetProperty` of `key` on `object` (whose properties are `props`) to `after`, when it changes.
 fn set(object: ObjectRef, props: Option<&Properties>, key: &str, after: Option<String>) -> Option<Op> {
@@ -282,10 +282,10 @@ pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &
             return Err(CmdError::refused(format!("Page {number} already exists (\"{title}\").")));
         }
     }
-    if let Some((owner, i)) = crate::generated::continuation_of(doc, book, number, outputs)
+    if let Some((owner, i)) = crate::pages::generated::continuation_of(doc, book, number, outputs)
         && Some(owner) != page
     {
-        return Err(CmdError::refused(crate::generated::continuation_taken(doc, number, owner, i)));
+        return Err(CmdError::refused(crate::pages::generated::continuation_taken(doc, number, owner, i)));
     }
     Ok(())
 }
@@ -377,14 +377,14 @@ pub fn new_page_type(
     doc: &Document, kind: &NewPageKind, after: Option<PageId>, ty: Option<&str>,
 ) -> Result<(Option<StyleRef>, Option<String>), CmdError> {
     if let Some(c) = kind.strip
-        && crate::strips::strip_of(doc, c).is_none()
+        && crate::terminal_strips::strip_of(doc, c).is_none()
     {
         return Err(CmdError::refused("That device is not a terminal strip; leave `strip` out to show every strip."));
     }
     if after.is_some_and(|a| !doc.pages.contains_key(&a)) {
         return Err(CmdError::refused("No such page to add after."));
     }
-    let page_type = crate::page_types::newpage_type(doc, ty, kind.generated)?;
+    let page_type = crate::pages::page_types::newpage_type(doc, ty, kind.generated)?;
     // A page with no kind is titled after its type (design 054 §4.2).
     let title = match (&page_type, kind.generated) {
         (Some(t), None) => Some(crate::styles::name(doc, ecad_model::StyleCatalogue::Page, t)),
@@ -573,14 +573,14 @@ pub fn page_props(
 /// A key written by another command, a reserved key, or not 1 to 40 characters a-z, 0-9 or _.
 pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
     // Brief 052: the project's list of functions and locations changes through its commands.
-    if ecad_model::keys::is_reserved_on(ecad_model::keys::Holder::Project, key) && key.starts_with("designation.") {
+    if ecad_model::naming::keys::is_reserved_on(ecad_model::naming::keys::Holder::Project, key) && key.starts_with("designation.") {
         return Err(CmdError::refused(
             "Functions and locations are changed with `designationadd`, `designationedit`, `designationmerge` and `designationremove`.",
         ));
     }
     // Brief 031 (§10.6): `text.` keys are written by the text commands only.
-    if crate::text_style::is_reserved_key(key) {
-        return Err(CmdError::refused(crate::text_style::RESERVED_KEY));
+    if crate::styles::text_style::is_reserved_key(key) {
+        return Err(CmdError::refused(crate::styles::text_style::RESERVED_KEY));
     }
     if let Some(rest) = key.strip_prefix(revisions::PREFIX) {
         let n = rest.split('.').next().and_then(|n| n.parse::<u32>().ok());
@@ -604,7 +604,7 @@ pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
         return Ok(());
     }
     // Brief 054 (FP4, design 054 §8.1a): the cover's notes and its table editor rows.
-    if key == crate::front::NOTES_KEY || key == crate::front::WIRE_ROWS_KEY || key == crate::front::LEGEND_ROWS_KEY {
+    if key == crate::pages::front::NOTES_KEY || key == crate::pages::front::WIRE_ROWS_KEY || key == crate::pages::front::LEGEND_ROWS_KEY {
         return Ok(());
     }
     let n = key.chars().count();
@@ -618,20 +618,20 @@ pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
 fn free_value(doc: &Document, key: &str, v: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(t) = v else { return Ok(None) };
     // Brief 054 (FP4, design 054 §6.4): the cover's notes, one per line, bounded.
-    if key == crate::front::NOTES_KEY {
+    if key == crate::pages::front::NOTES_KEY {
         let lines: Vec<&str> = t.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
-        if lines.len() > crate::front::MAX_NOTES || lines.iter().any(|l| l.chars().count() > crate::front::MAX_NOTE_CHARS) {
-            return Err(CmdError::refused(crate::front::NOTES_TOO_LONG));
+        if lines.len() > crate::pages::front::MAX_NOTES || lines.iter().any(|l| l.chars().count() > crate::pages::front::MAX_NOTE_CHARS) {
+            return Err(CmdError::refused(crate::pages::front::NOTES_TOO_LONG));
         }
         return Ok((!lines.is_empty()).then(|| lines.join("\n")));
     }
     // Brief 054 (design 054 §8.1a): the cover's table editor rows.
-    if key == crate::front::WIRE_ROWS_KEY || key == crate::front::LEGEND_ROWS_KEY {
-        crate::front::check_overrides(t)?;
+    if key == crate::pages::front::WIRE_ROWS_KEY || key == crate::pages::front::LEGEND_ROWS_KEY {
+        crate::pages::front::check_overrides(t)?;
         return Ok((!t.trim().is_empty()).then(|| t.trim_end().to_string()));
     }
     // Brief 030 (FP3, FP6): strip accessory defaults are checked like the strip's.
-    Ok(match crate::accessories::project_rule(doc, key, Some(t)) {
+    Ok(match crate::terminal_strips::accessories::project_rule(doc, key, Some(t)) {
         Some(r) => r?,
         // Brief 036: the registry's terminal defaults (`""` on the separator is none).
         None => match crate::defaults::terminals::setprop_value(key, Some(t)) {
@@ -699,7 +699,7 @@ pub fn tag_settings(
         settings.tag_padding = Some(n);
     }
     for (k, v) in changes {
-        crate::devices::set_symbol_prefix(settings, ecad_model::prefix::PrefixOf::Starter(k.into()), v.as_deref());
+        crate::devices::set_symbol_prefix(settings, ecad_model::naming::prefix::PrefixOf::Starter(k.into()), v.as_deref());
     }
     Ok(())
 }
@@ -728,7 +728,7 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> 
     let after = tag::Style { dash: dash.unwrap_or(before.dash), case: case.unwrap_or(before.case), ..before };
     let mut ops = Vec::new();
     if let Some(d) = dash {
-        ops.extend(set(ObjectRef::Project, Some(&doc.display), DASH_KEY, Some(ecad_model::words::flag_word(d).to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.display), DASH_KEY, Some(ecad_model::naming::words::flag_word(d).to_string())));
     }
     if let Some(c) = case {
         ops.extend(set(ObjectRef::Project, Some(&doc.display), CASE_KEY, Some(ecad_model::Word::word(c).to_string())));
@@ -801,7 +801,7 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
             let f =
                 <ecad_model::InfoField as ecad_model::Word>::parse(k).ok_or_else(|| CmdError::refused(format!("\"{k}\" is not a project field.")))?;
             let before = pending.project(doc).clone();
-            let now = crate::frames::with_info(&before, f, after.as_deref())?;
+            let now = crate::pages::frames::with_info(&before, f, after.as_deref())?;
             if now != before {
                 ops.push(Op::ModifyProject { before, after: now.clone() });
                 pending.set_project(now);
@@ -830,7 +830,7 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         // Design 072 §5.3: the site and the cover's notes are the project's info.
         if let Some(f) = <ecad_model::InfoField as ecad_model::Word>::parse(k) {
             let before = pending.project(doc).clone();
-            let now = crate::frames::with_info(&before, f, v.as_deref())?;
+            let now = crate::pages::frames::with_info(&before, f, v.as_deref())?;
             if now != before {
                 ops.push(Op::ModifyProject { before, after: now.clone() });
                 pending.set_project(now);
@@ -841,7 +841,7 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     }
     // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
     if let Some(on) = change.provisional {
-        ops.extend(set(ObjectRef::Project, Some(&doc.display), tag::PROVISIONAL_SETTING, on.then(|| ecad_model::words::flag_word(true).to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.display), tag::PROVISIONAL_SETTING, on.then(|| ecad_model::naming::words::flag_word(true).to_string())));
     }
     let mut settings = doc.settings.clone();
     if let Some(t) = &change.sheet {
@@ -862,14 +862,14 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     tag_settings(&mut settings, "tag_padding", change.tag_padding, &change.tag_prefixes)?;
     // Brief 022 fix round: how label colours are written, and the label height.
     if let Some(w) = &change.colour_style {
-        settings.wiring.colour_style = Some(<ecad_model::colour::ColourWords as ecad_model::words::Word>::parse(w).ok_or(CmdError::refused(
+        settings.wiring.colour_style = Some(<ecad_model::geometry::colour::ColourWords as ecad_model::naming::words::Word>::parse(w).ok_or(CmdError::refused(
             "`colour_style` must be \"code2\" (BN, BU, GN/YE), \"code3\" (BRN, BLU, GRN/YEL) or \"name\" (Brown, Blue, Green/Yellow)",
         ))?);
     }
     if let Some(h) = change.label_height {
         settings.wiring.label_height = Some(
             Some(h)
-                .filter(|x| ecad_model::wiring::LABEL_HEIGHTS.contains(x))
+                .filter(|x| ecad_model::connectivity::wiring::LABEL_HEIGHTS.contains(x))
                 .ok_or(CmdError::refused("`label_height` must be 0.5 to 10 (millimetres)"))?,
         );
     }
@@ -1070,7 +1070,7 @@ pub fn default_number_from(
 ) -> String {
     // Brief 033: every sheet's number, continuation sheets included, is in use.
     let used: BTreeSet<String> =
-        book.order.iter().flat_map(|p| crate::generated::sheet_numbers(doc, book, *p, outputs)).map(|n| n.to_ascii_lowercase()).collect();
+        book.order.iter().flat_map(|p| crate::pages::generated::sheet_numbers(doc, book, *p, outputs)).map(|n| n.to_ascii_lowercase()).collect();
     let step = u64::from(doc.settings.page_number_step().max(1));
     let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
     let from_start = start.and_then(|t| t.parse::<u64>().ok().map(|n| (n, t.len())));
@@ -1135,14 +1135,14 @@ pub fn new_page_at(
 pub fn next_number(doc: &Document, book: &Book, folder: Option<FolderId>, place: (Option<PageId>, usize), outputs: Option<&ReportModels>) -> String {
     let (before, position) = place;
     let first = before.is_none_or(|b| book::folder_of(doc, b).filter(|f| doc.folders.contains_key(f)) != folder);
-    let start = folder.filter(|_| first).and_then(|f| crate::page_types::start_of(doc, f));
+    let start = folder.filter(|_| first).and_then(|f| crate::pages::page_types::start_of(doc, f));
     default_number_from(doc, book, before, position, outputs, start.as_deref())
 }
 
 /// The page's properties as `pageprops` reports them.
 pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&ReportModels>) -> Value {
     let pg = doc.pages.get(&page);
-    use crate::designations::{Aspect, default_key, page_key};
+    use crate::locations::designations::{Aspect, default_key, page_key};
     let prop = |k: &str| Aspect::of_property(k).and_then(|a| pg.and_then(|x| page_key(x, a)));
     let project = |k: &str| Aspect::of_property(k).and_then(|a| default_key(&doc.project, a));
     let folder = book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
@@ -1153,21 +1153,21 @@ pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&Rep
         "position": book.position(page),
         "title": pg.map(|x| x.title.as_str()),
         // Brief 052: stored as entry keys of the project's list, shown as codes.
-        "function": prop(FUNCTION_KEY).map(|v| crate::designations::display(doc, FUNCTION_KEY, &v)),
-        "location": prop(LOCATION_KEY).map(|v| crate::designations::display(doc, LOCATION_KEY, &v)),
+        "function": prop(FUNCTION_KEY).map(|v| crate::locations::designations::display(doc, FUNCTION_KEY, &v)),
+        "location": prop(LOCATION_KEY).map(|v| crate::locations::designations::display(doc, LOCATION_KEY, &v)),
         "function_key": prop(FUNCTION_KEY),
         "location_key": prop(LOCATION_KEY),
-        "function_shown": prop(FUNCTION_KEY).or_else(|| project(FUNCTION_KEY)).map(|v| crate::designations::display(doc, FUNCTION_KEY, &v)),
-        "location_shown": prop(LOCATION_KEY).or_else(|| project(LOCATION_KEY)).map(|v| crate::designations::display(doc, LOCATION_KEY, &v)),
+        "function_shown": prop(FUNCTION_KEY).or_else(|| project(FUNCTION_KEY)).map(|v| crate::locations::designations::display(doc, FUNCTION_KEY, &v)),
+        "location_shown": prop(LOCATION_KEY).or_else(|| project(LOCATION_KEY)).map(|v| crate::locations::designations::display(doc, LOCATION_KEY, &v)),
         "sheet": pg.and_then(|x| x.sheet).map(|s| s.text()),
-        "sheet_shown": ecad_model::sheet::sheet_of(doc, page).summary(),
+        "sheet_shown": ecad_model::document::sheet::sheet_of(doc, page).summary(),
         "folder": folder.map(FolderId::hex),
-        "folder_path": crate::revisions::folder_path(doc, folder),
+        "folder_path": crate::releases::revisions::folder_path(doc, folder),
         "generated": pg.and_then(|x| x.kind.generated_kind()).map(ecad_model::Word::word),
         // Brief 054: the page's type, resolved (design 054 §2.3).
         "type": crate::styles::page::type_of(doc, page).text(),
-        "sheets": crate::generated::sheets_of(doc, page, outputs),
-        "sheet_numbers": crate::generated::sheet_numbers(doc, book, page, outputs),
+        "sheets": crate::pages::generated::sheets_of(doc, page, outputs),
+        "sheet_numbers": crate::pages::generated::sheet_numbers(doc, book, page, outputs),
     })
 }
 
@@ -1185,9 +1185,9 @@ pub fn project_json(doc: &Document) -> Value {
     for k in PROJECT_KEYS {
         // Brief 052: the function and location show their codes (design 072 §5.3: fields of the
         // project).
-        let v = match crate::designations::Aspect::of_property(k) {
-            Some(a) => crate::designations::default_key(&doc.project, a).map(|v| crate::designations::display(doc, k, &v)),
-            None => crate::frames::project_text(doc, k),
+        let v = match crate::locations::designations::Aspect::of_property(k) {
+            Some(a) => crate::locations::designations::default_key(&doc.project, a).map(|v| crate::locations::designations::display(doc, k, &v)),
+            None => crate::pages::frames::project_text(doc, k),
         };
         fields.insert(k.into(), v.map_or(Value::Null, Value::String));
     }
@@ -1250,12 +1250,12 @@ pub fn project_json(doc: &Document) -> Value {
         revisions::PendingStyle::Draft => "draft",
         revisions::PendingStyle::Off => "off",
     });
-    v["tag_prefixes"] = Value::Object(crate::cmd::device::prefixes_json(doc));
+    v["tag_prefixes"] = Value::Object(crate::devices::commands::devices::prefixes_json(doc));
     // Brief 022: the wiring settings the Project settings popout edits.
-    v["colour_style"] = json!(ecad_model::words::Word::word(doc.settings.wiring.colour_style()));
+    v["colour_style"] = json!(ecad_model::naming::words::Word::word(doc.settings.wiring.colour_style()));
     v["label_height"] = json!(wire_label_height(doc));
     // Brief 026: Project settings → Numbering.
-    v["provisional"] = json!(ecad_model::numbering::provisional_on(doc));
+    v["provisional"] = json!(ecad_model::naming::numbering::provisional_on(doc));
     v["revisions"] = Value::Array(revs);
     v["pending_rev"] = json!(revisions::pending_rev(doc));
     v

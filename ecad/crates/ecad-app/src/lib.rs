@@ -51,36 +51,30 @@
 //! unverified.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
-pub mod actions;
 pub mod agent;
+pub mod cables;
 pub mod canvas;
-pub mod checks_panel;
-pub mod debugger;
+pub mod checks;
+pub mod commands;
 pub mod developer;
-pub mod devices_panel;
-pub mod history_panel;
-pub mod library;
-pub mod lists;
-pub mod merge_dialog;
-pub mod outputs_ui;
-pub mod preview;
-pub mod project_panel;
-pub mod publish;
-pub mod release_ui;
-pub mod renumber_dialog;
-pub mod search;
-pub mod settings;
-pub mod sheets_ui;
-pub mod shell;
-pub mod text_ui;
-pub mod tools;
-
-mod file_ops;
+pub mod devices;
 mod folder;
-mod run;
-mod windows;
+pub mod history;
+pub mod inspector;
+pub mod library;
+pub mod pages;
+pub mod plc;
+pub mod publish;
+pub mod reports;
+pub mod settings;
+pub mod shell;
+pub mod terminal_strips;
+pub mod title_blocks;
+pub mod wires;
+pub mod workspace;
 
-pub use folder::{BANNER, DEFAULT_FOLDER};
+
+pub use crate::folder::{BANNER, DEFAULT_FOLDER};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -88,15 +82,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use cadcraft_ui_egui::closing::{Choice, Closing};
 use cadcraft_ui_egui::{CadApp, Services};
-use debugger::Debugger;
+use crate::developer::debugger::Debugger;
 use ecad_engine::cad::Handle;
 use ecad_engine::cad::Session;
 use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
-use ecad_inspect::EventKind;
+use ecad_engine::history::event_log::EventKind;
 use ecad_model::PageId;
-use eframe::egui::{self, RichText};
-use preview::Preview;
-use project_panel::{Header, ProjectPanel};
+use crate::eframe::egui::{self, RichText};
+use crate::pages::preview::Preview;
+use crate::pages::project_panel::{Header, ProjectPanel};
 use serde_json::json;
 
 /// The start-up marks [`App::start`] sets as it goes; ecad-desktop's start-up timing implements
@@ -241,7 +235,7 @@ pub fn window_title(info: Option<&BranchInfo>) -> String {
 }
 
 /// What ECAD's style depends on: CADCraft re-applies its own fonts and style when one changes.
-type EcadStyleKey = (&'static str, cadcraft_ui_egui::theme::ThemePref, Option<egui::Theme>, ecad_ui::Theme);
+type EcadStyleKey = (&'static str, cadcraft_ui_egui::theme::ThemePref, Option<egui::Theme>, ecad_widgets::Theme);
 
 /// The harness state around CADCraft's [`CadApp`].
 pub struct App {
@@ -441,7 +435,7 @@ impl App {
         // the allowlisted reads; the port's requests never reach it directly.
         let (cad_tx, cad_rx) = std::sync::mpsc::sync_channel(64);
         let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested))).with_control(cad_rx);
-        let mut agent = agent::Agent::from_settings(ecad_engine::views::Settings::from_env());
+        let mut agent = agent::Agent::from_settings(ecad_engine::cables::views::Settings::from_env());
         agent.set_cad_channel(cad_tx);
         cad.extra_tool_tabs = vec![tools::tab()];
         let props: sheets_ui::Shared = Arc::default();
@@ -575,7 +569,7 @@ impl App {
     pub fn zoom_to_drawing(&mut self) -> bool {
         let Ok(d) = self.cad.session.doc() else { return false };
         let mut b = ecad_engine::cad::Bounds2::default();
-        for e in d.model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER) {
+        for e in d.model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER) {
             b = b.union(&ecad_engine::cad::entity_bounds(d, e, 0));
         }
         if b.is_empty() {
@@ -594,10 +588,10 @@ impl App {
         if sel == self.frame_checked {
             return;
         }
-        let only_frame = ecad_engine::frame::drop_from_selection(&mut self.cad.session);
+        let only_frame = ecad_engine::pages::frame::drop_from_selection(&mut self.cad.session);
         self.frame_checked = self.cad.session.selection();
         if only_frame {
-            self.cad.session.echo(ecad_engine::frame::DERIVED);
+            self.cad.session.echo(ecad_engine::pages::frame::DERIVED);
         }
     }
 
@@ -663,18 +657,18 @@ impl App {
     /// is applied again in the next pass, once ECAD's font families exist.
     fn ecad_style(&mut self, ctx: &egui::Context) {
         // UI rev 3 (boards 1.17, 1.18): the person's light or dark interface, read by every
-        // `ecad_ui::SHELL` colour drawn on this thread from here on.
+        // `ecad_widgets::SHELL` colour drawn on this thread from here on.
         let theme = self.shell.state.theme.ui();
-        ecad_ui::set_theme(theme);
+        ecad_widgets::set_theme(theme);
         let key = (self.cad.language(), self.cad.ui.theme, ctx.system_theme(), theme);
         if self.ecad_style != Some(key) {
-            ecad_ui::fonts::install(ctx, cadcraft_ui_egui::theme::font_definitions(key.0));
-            ecad_ui::style::apply(ctx);
+            ecad_widgets::fonts::install(ctx, cadcraft_ui_egui::theme::font_definitions(key.0));
+            ecad_widgets::style::apply(ctx);
             self.ecad_style = Some(key);
             self.ecad_style_again = true;
             ctx.request_repaint();
         } else if std::mem::take(&mut self.ecad_style_again) {
-            ecad_ui::style::apply(ctx);
+            ecad_widgets::style::apply(ctx);
         }
     }
 
@@ -745,7 +739,7 @@ impl App {
             // Brief 054: folder start numbers and the generated pages, when anything changed.
             if panel.starts_at != Some(p.change_count()) {
                 let doc = p.ledger.document();
-                panel.starts = ecad_engine::page_types::starts(doc);
+                panel.starts = ecad_electrical::pages::page_types::starts(doc);
                 panel.generated = doc.page_order.iter().copied().filter(|pg| ecad_engine::generated::kind_of(doc, *pg).is_some()).collect();
                 panel.starts_at = Some(p.change_count());
             }

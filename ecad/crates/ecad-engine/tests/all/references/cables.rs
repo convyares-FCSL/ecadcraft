@@ -21,7 +21,7 @@ use common::{H, id};
 use ecad_engine::interact::{hover_lines, overlay_marks};
 use ecad_engine::references::markers_on_page;
 use ecad_engine::{Mapped, ProjectHandle};
-use ecad_model::derive::{cable_references, nets};
+use ecad_model::connectivity::derive::{cable_references, nets};
 use ecad_model::{
     Cable, CableId, Color, Core, Document, Form, Item, ItemId, ItemKind, Layer, LayerId, Op, Page, PageId, Primitive, Pt, Representation,
     RepresentationId, Style, Subject, ConnectionPointId, WireId,
@@ -381,8 +381,8 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     r.h.activate(r.supply);
     let su = uid(&mut r.h, r.supply);
     assert!(r.h.p(|p| overlay_marks(p, su)).into_iter().all(|m| m.at != Vec2::new(65.0, 5.0)), "no ring mark");
-    let painted = r.h.p(|p| ecad_engine::look::painted_marks(p, su));
-    assert!(painted.contains(&ecad_engine::look::Painted::Error(ecad_model::Pt::new(65.0, 5.0))), "{painted:?}");
+    let painted = r.h.p(|p| ecad_engine::cables::draw::painted_marks(p, su));
+    assert!(painted.contains(&ecad_engine::cables::draw::Painted::Error(ecad_model::Pt::new(65.0, 5.0))), "{painted:?}");
     let srid = reference_on(&mut r.h, r.supply);
     let th = r.h.p(|p| p.pages[&r.supply].map.ref_text(srid)).expect("text drawn");
     let te = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == th).unwrap();
@@ -701,7 +701,7 @@ fn hostile_documents_derive_without_panicking() {
     assert!(markers_on_page(&doc, page).len() == 4, "an end that cannot be located is not drawn");
     let lines = ecad_engine::references::diagnostics(&doc);
     assert!(lines.iter().any(|l| l.contains("has 5 references; only two are supported.")), "{lines:?}");
-    let snap_refs = ecad_inspect::over_referenced(&refs);
+    let snap_refs = ecad_electrical::references::cables::over_referenced(&refs);
     assert_eq!(snap_refs, vec![cable]);
 
     // A reference on a page that is in no page order (only from a hostile file): it and its
@@ -780,7 +780,7 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     assert!(took < std::time::Duration::from_secs(10), "one derivation took {took:?}");
     let _ = ecad_engine::references::diagnostics(&doc);
     // Combined trial of 009 and 010: 010's leaving ends are folded into 009's drawing (`quiet`).
-    let _ = ecad_engine::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
+    let _ = ecad_engine::cables::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
 }
 
 /// The per-page movement rule (design 010 §0, translate M3) with named points (design 072 §4.4,
@@ -820,7 +820,7 @@ fn moving_a_stub_never_detaches_the_end_connected_on_the_other_page() {
 /// representations by page; a conductor its route on each page.
 #[test]
 fn the_debugger_trail_follows_references_across_pages() {
-    use ecad_engine::debug::{ObjectId, used_by};
+    use ecad_engine::dev::debug::{ObjectId, used_by};
     let mut r = connected();
     let doc = r.h.doc();
     let s = reference_on(&mut r.h, r.supply);
@@ -869,7 +869,7 @@ fn fan_view_keeps_the_reference_drawn() {
 #[ignore = "slow: ten-thousand-wire cable, about 7 s"]
 fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
     use ecad_model::Author;
-    let n = ecad_engine::slash::MAX_CABLE_MEMBERS;
+    let n = ecad_electrical::cables::slash::MAX_CABLE_MEMBERS;
     let mut h = H::new(SEED + 7);
     let supply = h.first_page();
     let ops = h.cfg(|p| {
@@ -917,9 +917,9 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
 
 /// The drawn flag outline and text anchor of `page`'s reference end of `cable` (traditional view).
 fn drawn_flag(h: &mut H, page: PageId, cable: CableId) -> (Vec<Pt>, Pt) {
-    use ecad_electrical::cable_look::{Role, Shape};
+    use ecad_electrical::cables::layout::{Role, Shape};
     let doc = h.doc();
-    let drawings = ecad_engine::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
+    let drawings = ecad_engine::cables::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
     let d = drawings.get(&cable).expect("the cable is drawn");
     let flag = d.parts.iter().find_map(|p| match (&p.role, &p.shape) {
         (Role::Flag, Shape::Path { points, .. }) => Some(points.clone()),
@@ -959,7 +959,7 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
 
     let (flag, text_at) = drawn_flag(h, page, cable);
     let hh = hh();
-    let w = ecad_engine::look::font_width(&m.text) * hh;
+    let w = ecad_engine::cables::draw::font_width(&m.text) * hh;
     for p in &flag {
         assert!(along(*p) >= -0.5 * hh - 1e-9, "flag point {p:?} reaches back into the wires ({u:?})");
     }
@@ -1153,5 +1153,5 @@ fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
 /// The cable look's text height in a project with the built-in styles (brief 066d: the
 /// `CableText` text style's).
 fn hh() -> f64 {
-    ecad_engine::look::label_height(&ecad_model::Document::default())
+    ecad_engine::cables::draw::label_height(&ecad_model::Document::default())
 }

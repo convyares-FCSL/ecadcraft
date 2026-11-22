@@ -3,7 +3,7 @@
 //! radial wheel (1.14). Behaviour is today's; these check the layout the boards ask for, and write
 //! the screenshots for the side-by-side with the boards.
 
-use crate::project_panel::{doc, rev3_app as new_app};
+use crate::pages::project_panel::{doc, rev3_app as new_app};
 use ecad_app::App;
 use ecad_app::shell::state::RightTab;
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2, vec2};
@@ -24,7 +24,7 @@ fn hover(h: &mut H, at: Pos2) {
 }
 
 /// The whole window at 1920 × 1080 as the app's root `Ui`, with a renderer for screenshots.
-fn window(deltas: Option<crate::mouse_tester::Deltas>) -> H {
+fn window(deltas: Option<crate::canvas::mouse_acceptance::Deltas>) -> H {
     let b = Harness::builder().with_size(vec2(1920.0, 1080.0));
     let app = |ui: &mut egui::Ui, t: &mut App| {
         let r = ui.ctx().content_rect();
@@ -35,7 +35,7 @@ fn window(deltas: Option<crate::mouse_tester::Deltas>) -> H {
         });
     };
     let mut h = match deltas {
-        Some(d) => b.renderer(crate::mouse_tester::Collect(d)).build_ui_state(app, new_app()),
+        Some(d) => b.renderer(crate::canvas::mouse_acceptance::Collect(d)).build_ui_state(app, new_app()),
         None => b.build_ui_state(app, new_app()),
     };
     h.run_steps(5);
@@ -44,7 +44,7 @@ fn window(deltas: Option<crate::mouse_tester::Deltas>) -> H {
 
 /// The demo project open on its second page, fitted, with the inspector open on Device.
 fn demo(h: &mut H, dir: &std::path::Path) {
-    let path = crate::checks_ui::demo_file(dir);
+    let path = crate::checks::ui::demo_file(dir);
     h.state_mut().close_project();
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
@@ -83,7 +83,7 @@ const LAMP: Pos2 = Pos2::new(396.0, 813.0);
 
 #[test]
 fn every_group_has_a_flyout_with_the_boards_items_and_placeholders_stay_greyed() {
-    use ecad_app::actions::{Enabled, ToolGroup};
+    use ecad_app::commands::actions::{Enabled, ToolGroup};
     let labels = |g: ToolGroup| g.tools().iter().map(|a| a.label).collect::<Vec<_>>();
     assert_eq!(
         labels(ToolGroup::Terminal),
@@ -93,7 +93,7 @@ fn every_group_has_a_flyout_with_the_boards_items_and_placeholders_stay_greyed()
     assert_eq!(labels(ToolGroup::Plc), ["Rack overview", "Detail page…", "Card…", "Channel…"]);
     assert_eq!(labels(ToolGroup::Location), ["Location box", "Function box", "Function and location box", "Device or PLC outline"]);
     assert_eq!(labels(ToolGroup::Wire), ["Wire", "Bridge", "Continuation"]);
-    let cx = ecad_app::actions::Context { target: None, writable: true };
+    let cx = ecad_app::commands::actions::Context { target: None, writable: true };
     let greyed: Vec<&str> =
         ToolGroup::ALL.iter().flat_map(|g| g.tools()).filter(|a| matches!((a.enabled)(&cx), Enabled::Greyed { .. })).map(|a| a.id).collect();
     // Brief 052d: Function box is a tool now.
@@ -130,7 +130,7 @@ fn placing_opens_the_picker_then_folds_it_to_a_chip_that_p_reopens() {
     let mut h = window(None);
     demo(&mut h, &dir);
     // Device ▸ Symbol asks for a symbol: the picker is open, on Symbol.
-    h.state_mut().start_tool(ecad_app::actions::find("place.symbol").unwrap());
+    h.state_mut().start_tool(ecad_app::commands::actions::find("place.symbol").unwrap());
     h.run_steps(3);
     assert_eq!(h.state().picker_shown(), Shown::Open);
     assert!(h.query_by_label(placing::PICKER).is_some());
@@ -162,7 +162,7 @@ fn the_connector_maker_lays_out_044s_questions_and_its_chips_answer_them() {
     let dir = temp("maker");
     let mut h = window(None);
     demo(&mut h, &dir);
-    h.state_mut().start_tool(ecad_app::actions::find("place.connector").unwrap());
+    h.state_mut().start_tool(ecad_app::commands::actions::find("place.connector").unwrap());
     h.run_steps(3);
     assert!(h.query_by_label(connector::MAKER).is_some());
     for (title, _) in connector::SECTIONS {
@@ -187,7 +187,7 @@ fn the_connector_maker_lays_out_044s_questions_and_its_chips_answer_them() {
 
 #[test]
 fn the_wheel_is_about_190_px_with_icon_slots_that_name_themselves() {
-    let across = 2.0 * ecad_ui::tokens::wheel::OUTER_RADIUS;
+    let across = 2.0 * ecad_widgets::tokens::wheel::OUTER_RADIUS;
     assert!((180.0..=200.0).contains(&across), "{across}");
     let dir = temp("wheel");
     let mut h = window(None);
@@ -195,14 +195,14 @@ fn the_wheel_is_about_190_px_with_icon_slots_that_name_themselves() {
     pointer(&mut h, LAMP, PointerButton::Secondary, true);
     pointer(&mut h, LAMP, PointerButton::Secondary, false);
     let t = h.state().wheel_target().cloned().expect("the device wheel");
-    assert_eq!(t.kind, ecad_app::actions::ObjectKind::Device);
+    assert_eq!(t.kind, ecad_app::commands::actions::ObjectKind::Device);
     // Fixed slots: go-to at the right, its row at the bottom right, delete at the bottom.
     let slot = |h: &H, i: usize| h.state().shell.tools.wheel.as_ref().and_then(|w| w.slots[i]).map(|a| a.id);
     assert_eq!(slot(&h, 2), Some("device.goto"));
     assert_eq!(slot(&h, 3), Some("device.row"));
     assert_eq!(slot(&h, 4), Some("device.delete"));
     // The slot under the cursor names itself in a tooltip; the slots carry no text of their own.
-    let top = ecad_ui::wheel::slot_center(LAMP, 0);
+    let top = ecad_widgets::wheel::slot_center(LAMP, 0);
     hover(&mut h, top);
     let label = h.state().shell.tools.wheel.as_ref().and_then(|w| w.specs[0].clone()).map(|s| s.label).unwrap();
     assert_eq!(h.get_all_by_label(&label).count(), 1, "named once: by its tooltip, which is not painted text on the ring");
@@ -237,14 +237,14 @@ fn the_ortho_popout_sets_90_degrees_45_degree_steps_or_free() {
 /// pictures).
 #[test]
 fn screenshots_of_boards_1_09_to_1_14() {
-    let Some(out) = crate::project_panel::shots() else { return };
+    let Some(out) = crate::pages::project_panel::shots() else { return };
     ecad_app::canvas::register_sheet_faces();
     let dir = temp("shots");
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
     let mut h = window(Some(deltas.clone()));
     demo(&mut h, &dir);
     let shot = |h: &H, name: &str| {
-        let _ = crate::mouse_tester::shot(h, &deltas, &out.join(name));
+        let _ = crate::canvas::mouse_acceptance::shot(h, &deltas, &out.join(name));
     };
 
     // 1.09 and 1.10: the Location and Terminal flyouts.
@@ -255,7 +255,7 @@ fn screenshots_of_boards_1_09_to_1_14() {
     }
 
     // 1.11 and 1.12: placing a contactor coil, the picker folded and then open.
-    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_engine::symbols::StarterKey::Coil)).unwrap();
+    h.state_mut().start_pick(ecad_app::library::search::Pick::Symbol(ecad_electrical::symbols::StarterKey::Coil)).unwrap();
     h.run_steps(3);
     hover(&mut h, Pos2::new(1200.0, 380.0));
     shot(&h, "uiv3-C-1.11-ours.png");
@@ -267,7 +267,7 @@ fn screenshots_of_boards_1_09_to_1_14() {
     h.run_steps(3);
 
     // 1.13: the connector maker, at its Type question.
-    h.state_mut().start_tool(ecad_app::actions::find("place.connector").unwrap());
+    h.state_mut().start_tool(ecad_app::commands::actions::find("place.connector").unwrap());
     h.run_steps(3);
     for k in ["New", "Both"] {
         let _ = h.state_mut().cad.session.input(cadcraft_engine::Input::Keyword(k.into()));
@@ -281,7 +281,7 @@ fn screenshots_of_boards_1_09_to_1_14() {
     // 1.14: the wheel over a device, its top slot under the cursor.
     pointer(&mut h, LAMP, PointerButton::Secondary, true);
     pointer(&mut h, LAMP, PointerButton::Secondary, false);
-    hover(&mut h, ecad_ui::wheel::slot_center(LAMP, 0));
+    hover(&mut h, ecad_widgets::wheel::slot_center(LAMP, 0));
     shot(&h, "uiv3-C-1.14-ours.png");
     // And the Ortho popout.
     h.key_press(eframe::egui::Key::Escape);
@@ -311,7 +311,7 @@ fn p_does_not_open_the_picker_while_a_tag_is_being_typed() {
     let dir = temp("ptag");
     let mut h = window(None);
     demo(&mut h, &dir);
-    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_engine::symbols::StarterKey::Lamp)).unwrap();
+    h.state_mut().start_pick(ecad_app::library::search::Pick::Symbol(ecad_electrical::symbols::StarterKey::Lamp)).unwrap();
     h.run_steps(3);
     h.state_mut().cad.session.input(cadcraft_engine::Input::Keyword("Tag".into())).unwrap();
     h.run_steps(2);
@@ -331,10 +331,10 @@ fn the_chip_names_a_symbol_typed_at_the_command_line() {
     let dir = temp("typedsym");
     let mut h = window(None);
     demo(&mut h, &dir);
-    h.state_mut().start_tool(ecad_app::actions::find("place.symbol").unwrap());
+    h.state_mut().start_tool(ecad_app::commands::actions::find("place.symbol").unwrap());
     h.run_steps(3);
     type_answer(&mut h, "lamp");
-    assert_eq!(h.state().shell.tools.placing.symbol, Some(ecad_engine::symbols::StarterKey::Lamp));
+    assert_eq!(h.state().shell.tools.placing.symbol, Some(ecad_electrical::symbols::StarterKey::Lamp));
     let chip = h.state().shell.tools.chip_text.clone();
     assert!(chip.starts_with("Indicator lamp as -"), "{chip}");
     h.state_mut().cad.session.cancel();
@@ -349,7 +349,7 @@ fn the_maker_records_answers_typed_at_the_command_line() {
     let dir = temp("makertyped");
     let mut h = window(None);
     demo(&mut h, &dir);
-    h.state_mut().start_tool(ecad_app::actions::find("place.connector").unwrap());
+    h.state_mut().start_tool(ecad_app::commands::actions::find("place.connector").unwrap());
     h.run_steps(3);
     h.state_mut().cad.session.input(cadcraft_engine::Input::Keyword("New".into())).unwrap();
     h.run_steps(2);
@@ -366,12 +366,12 @@ fn the_maker_records_answers_typed_at_the_command_line() {
 /// Review of #94, finding 4: one group lights for a tool two groups list (Bridge).
 #[test]
 fn one_group_lights_for_a_tool_in_two_groups() {
-    use ecad_app::actions::ToolGroup;
+    use ecad_app::commands::actions::ToolGroup;
     let gi = |g: ToolGroup| ecad_app::shell::tool_strip::GROUPS.iter().position(|x| x.group == g);
     let dir = temp("lit");
     let mut h = window(None);
     demo(&mut h, &dir);
-    h.state_mut().start_tool(ecad_app::actions::find("terminal.link").unwrap());
+    h.state_mut().start_tool(ecad_app::commands::actions::find("terminal.link").unwrap());
     h.run_steps(2);
     assert_eq!(h.state().lit_group(), gi(ToolGroup::Terminal));
     h.state_mut().cad.session.cancel();

@@ -10,8 +10,8 @@
 //! (`Project::conflicts`, a short list kept by the proposing commands and cleared by any other
 //! edit); it reads nothing else of the project.
 
-use ecad_ui::prim::{self, Tone};
-use ecad_ui::tokens::space;
+use ecad_widgets::prim::{self, Tone};
+use ecad_widgets::tokens::space;
 use eframe::egui::{self, Rect};
 use serde_json::json;
 
@@ -79,7 +79,7 @@ impl App {
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) && self.cad.session.running.is_none() {
             ask = Some(format!("conflicts {}", json!({"answer": "leave"})));
         }
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         let devices: std::collections::BTreeSet<_> = rows.iter().map(|r| r.0).collect();
         let n = devices.len();
         let head =
@@ -90,10 +90,10 @@ impl App {
             .fixed_pos(egui::pos2(rect.left() + space::XXL, rect.top() + space::L + 48.0))
             .show(ui.ctx(), |ui| {
                 egui::Frame::new()
-                    .fill(ecad_ui::color(s.panel))
-                    .stroke(egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line_strong)))
-                    .corner_radius(ecad_ui::style::corner(ecad_ui::tokens::radius::POPOVER))
-                    .shadow(ecad_ui::style::shadow())
+                    .fill(ecad_widgets::color(s.panel))
+                    .stroke(egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line_strong)))
+                    .corner_radius(ecad_widgets::style::corner(ecad_widgets::tokens::radius::POPOVER))
+                    .shadow(ecad_widgets::style::shadow())
                     .inner_margin(egui::Margin::symmetric(space::L as i8, space::S as i8))
                     .show(ui, |ui| {
                         ui.scope(|ui| {
@@ -150,7 +150,7 @@ impl App {
                 let colour =
                     if Some(*c) == chosen { ecad_drawing_style::sheet::PAPER.warning } else { ecad_drawing_style::sheet::PAPER.wire_end_attached };
                 let at = xf.to_screen(ecad_engine::cad::Vec2::new(a.x, a.y));
-                painter.circle_stroke(at, r, egui::Stroke::new(2.0, ecad_ui::color(colour)));
+                painter.circle_stroke(at, r, egui::Stroke::new(2.0, ecad_widgets::color(colour)));
             }
         }
         if let Some(cmd) = ask {

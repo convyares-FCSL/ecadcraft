@@ -17,13 +17,13 @@
 //!   **spare** and **over** (§6.2).
 //! - Nothing here is refused because of a check; it is flagged (§8).
 //! - **Brief 036:** a strip's rows are its **levels**, grouped by position in plan order
-//!   ([`crate::terminal_types::positions`]); a position whose type has more levels than are drawn
+//!   ([`crate::terminal_strips::terminal_blocks::positions`]); a position whose type has more levels than are drawn
 //!   shows them as **free** rows; spare positions come per type from the offer (`12+2PE+4x3`), each
 //!   with its type's levels. Counts (`drawn`, `spare`) and BOM quantities are in positions.
 //!
 //! # Update map (design 028 §11.1)
-//! [`Strips`] lives inside `crate::outputs::kept::ReportModels` and is updated with it from the same
-//! [`crate::outputs::Scope`], after the device, wire and cable rows:
+//! [`Strips`] lives inside `crate::reports::kept::ReportModels` and is updated with it from the same
+//! [`crate::reports::Scope`], after the device, wire and cable rows:
 //!
 //! | In scope (from the ops) | Recomputed |
 //! | --- | --- |
@@ -40,16 +40,20 @@
 //!
 //! A full build happens only with the report models: open, reload, first show.
 
+pub mod accessories;
+pub mod commands;
+pub mod jumper_bars;
 pub mod pages;
+pub mod terminal_blocks;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::derive::Place;
+use ecad_model::connectivity::derive::Place;
 use ecad_model::{CableId, Core, DeviceId, Document, End, PageId, Pt, RepresentationId, Subject, ConnectionPointId, WireId};
 
 use crate::CmdError;
-use crate::outputs::PageCx;
-use crate::outputs::kept::ReportModels;
+use crate::reports::PageCx;
+use crate::reports::kept::ReportModels;
 
 /// The strip property that offers positions (FP1).
 pub const OFFER_KEY: &str = "terminals";
@@ -70,7 +74,7 @@ pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::Termi
 // ---------------------------------------------------------------- strips and terminals
 
 /// Strip `c`'s own data (its type's, design 072 §2.2), when it is a terminal strip.
-pub fn strip_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::device::TerminalStrip> {
+pub fn strip_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::objects::devices::TerminalStrip> {
     doc.devices.get(&c)?.device_type.as_strip()
 }
 
@@ -145,19 +149,19 @@ pub struct Offer {
     pub positions: u32,
     /// How many of them are PE.
     pub pe: u32,
-    /// Positions per type, in [`crate::terminal_types::TYPES`] order.
-    pub counts: crate::terminal_types::Counts,
+    /// Positions per type, in [`crate::terminal_strips::terminal_blocks::TYPES`] order.
+    pub counts: crate::terminal_strips::terminal_blocks::Counts,
 }
 
 impl Offer {
     /// As stored: `12`, `12+2PE`, `12+2PE+4x3` (catalogue order).
     pub fn text(self) -> String {
-        crate::terminal_types::counts_text(&self.counts)
+        crate::terminal_strips::terminal_blocks::counts_text(&self.counts)
     }
 
     /// Positions offered of type `t`.
-    pub fn of(&self, t: &crate::terminal_types::TermType) -> u32 {
-        self.counts.get(crate::terminal_types::index_of(t)).copied().unwrap_or(0)
+    pub fn of(&self, t: &crate::terminal_strips::terminal_blocks::TermType) -> u32 {
+        self.counts.get(crate::terminal_strips::terminal_blocks::index_of(t)).copied().unwrap_or(0)
     }
 }
 
@@ -168,7 +172,7 @@ impl Offer {
 /// Unreadable text, an unknown code, no positions, or more than [`MAX_POSITIONS`] in all, in
 /// words with the way forward.
 pub fn parse_offer(text: &str) -> Result<Offer, CmdError> {
-    let counts = crate::terminal_types::parse_counts(text)?;
+    let counts = crate::terminal_strips::terminal_blocks::parse_counts(text)?;
     let positions = counts.iter().fold(0u32, |a, b| a.saturating_add(*b));
     Ok(Offer { positions, pe: counts.get(1).copied().unwrap_or(0), counts })
 }
@@ -187,7 +191,7 @@ pub fn offer_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
 /// The offer Checks' **Offer drawn** writes (design 028 §8, brief 036 §7.1): every type at
 /// least its drawn positions; with no type codes, 028's rule (every drawn terminal, PE kept).
 pub fn offer_drawn_value(doc: &Document, c: DeviceId) -> String {
-    use crate::terminal_types as tt;
+    use crate::terminal_strips::terminal_blocks as tt;
     let ps = tt::positions(doc, c);
     let mut drawn: tt::Counts = [0; tt::TYPE_COUNT];
     for p in &ps {
@@ -396,7 +400,7 @@ pub fn notation_size(kind: &str) -> Option<f64> {
                         j = e;
                         continue;
                     }
-                    return crate::rating::parse::cross_section(&s);
+                    return crate::devices::ratings::parse::cross_section(&s);
                 }
                 _ => break,
             }
@@ -414,7 +418,7 @@ pub fn notation_size(kind: &str) -> Option<f64> {
 /// Unreadable text, no cores, more than [`MAX_CORES`], an empty or repeated list entry.
 pub fn parse_cores(text: &str) -> Result<Vec<String>, CmdError> {
     let t = text.trim();
-    if t.chars().count() > MAX_CORES * (crate::words::MAX_CORE_CHARS + 1) {
+    if t.chars().count() > MAX_CORES * (crate::cables::words::MAX_CORE_CHARS + 1) {
         return Err(CmdError::refused(format!("A cable offers at most {MAX_CORES} cores.")));
     }
     let upper = t.to_ascii_uppercase();
@@ -422,7 +426,7 @@ pub fn parse_cores(text: &str) -> Result<Vec<String>, CmdError> {
         Some((i, c @ ('G' | 'X'))) => (upper.get(..i).unwrap_or(""), Some(c)),
         _ => (upper.as_str(), None),
     };
-    if ecad_model::words::is_digits(digits) {
+    if ecad_model::naming::words::is_digits(digits) {
         let n: usize = digits.parse().map_err(|_| CmdError::refused(format!("A cable offers at most {MAX_CORES} cores.")))?;
         if n == 0 {
             return Err(CmdError::refused("A cable offers at least 1 core. Write 7, 7G or 5X; empty clears it."));
@@ -443,7 +447,7 @@ pub fn parse_cores(text: &str) -> Result<Vec<String>, CmdError> {
     }
     let mut out: Vec<String> = Vec::new();
     for part in t.split(',') {
-        let label = crate::strips::core_label(Some(part))
+        let label = crate::terminal_strips::core_label(Some(part))
             .map_err(|e| CmdError::refused(format!("{e} {}", cores_refusal(text))))?
             .ok_or_else(|| cores_refusal(text))?;
         if out.iter().any(|x| x.eq_ignore_ascii_case(&label)) {
@@ -631,7 +635,7 @@ pub struct TermRow {
     pub level: u32,
     pub level_name: String,
     /// The position's type (§2.2).
-    pub ty: &'static crate::terminal_types::TermType,
+    pub ty: &'static crate::terminal_strips::terminal_blocks::TermType,
     /// A level of a drawn position that no symbol draws.
     pub free: bool,
     pub pe: bool,
@@ -669,7 +673,7 @@ impl TermRow {
         self.ty.breaks
     }
 
-    fn blank(label: String, ty: &'static crate::terminal_types::TermType, level: u32, level_name: String) -> TermRow {
+    fn blank(label: String, ty: &'static crate::terminal_strips::terminal_blocks::TermType, level: u32, level_name: String) -> TermRow {
         TermRow {
             terminal: None,
             out: None,
@@ -695,7 +699,7 @@ impl TermRow {
 /// One terminal type on a strip: positions drawn and spare, and its BOM part data (§7.2).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeCount {
-    pub ty: &'static crate::terminal_types::TermType,
+    pub ty: &'static crate::terminal_strips::terminal_blocks::TermType,
     pub drawn: usize,
     pub spare: usize,
     pub part_number: Option<String>,
@@ -751,7 +755,7 @@ pub struct StripData {
     pub sheets: usize,
     pub bom_rows: usize,
     /// Brief 030: the accessories placed and the links (design 030 §7, §11.1).
-    pub acc: crate::accessories::StripAcc,
+    pub acc: crate::terminal_strips::accessories::StripAcc,
     /// What this strip's rows read, for the update map.
     wires: BTreeSet<WireId>,
     far: BTreeSet<DeviceId>,
@@ -799,7 +803,7 @@ impl StripData {
     }
 
     /// The highest drawn row of type `t`.
-    pub fn highest_of(&self, t: &crate::terminal_types::TermType) -> Option<&TermRow> {
+    pub fn highest_of(&self, t: &crate::terminal_strips::terminal_blocks::TermType) -> Option<&TermRow> {
         self.rows.iter().rev().find(|r| r.terminal.is_some() && r.ty == t)
     }
 
@@ -827,7 +831,7 @@ impl StripData {
     /// by its `acc.after` items, then `acc.end`'s items. With `accessories` off, 028's rows only.
     pub fn plan(&self, accessories: bool) -> Vec<PlanItem<'_>> {
         let mut out = Vec::with_capacity(self.rows.len() + self.acc.gap_rows());
-        fn gap<'a>(out: &mut Vec<PlanItem<'a>>, on: bool, g: &'a str, items: &[crate::accessories::Acc]) {
+        fn gap<'a>(out: &mut Vec<PlanItem<'a>>, on: bool, g: &'a str, items: &[crate::terminal_strips::accessories::Acc]) {
             if on {
                 out.extend(items.iter().map(|a| PlanItem::Gap { gap: g, acc: *a }));
             }
@@ -847,7 +851,7 @@ impl StripData {
     /// The links through plan row `i`: (link, whether its level of its position is one the link
     /// names). Brief 036: a link runs on its own level; a cross-level link only through the
     /// levels of its position.
-    pub fn jumper_bars_at(&self, i: usize) -> Vec<(&crate::accessories::JumperBarInfo, bool)> {
+    pub fn jumper_bars_at(&self, i: usize) -> Vec<(&crate::terminal_strips::accessories::JumperBarInfo, bool)> {
         let Some(r) = self.rows.get(i) else { return Vec::new() };
         let pi = self.position_index(i);
         self.acc
@@ -884,7 +888,7 @@ impl StripData {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PlanItem<'a> {
     /// An accessory in a gap: `start`, `end` or the label it follows.
-    Gap { gap: &'a str, acc: crate::accessories::Acc },
+    Gap { gap: &'a str, acc: crate::terminal_strips::accessories::Acc },
     /// A position (its index in [`StripData::rows`]).
     Term(usize, &'a TermRow),
 }
@@ -1024,7 +1028,7 @@ impl Strips {
         for c in which {
             let Some(old) = self.strips.get(c) else { continue };
             let Some(strip) = doc.devices.get(c) else { continue };
-            let mut acc = crate::accessories::strip_acc(doc, &strip.properties, &old.rows);
+            let mut acc = crate::terminal_strips::accessories::strip_acc(doc, &strip.properties, &old.rows);
             // Brief 036: a project part or description default reaches the type rows too.
             let mut d = old.clone();
             acc.inherits.extend(d.refresh_types(doc, strip));
@@ -1199,7 +1203,7 @@ fn clean(v: Option<impl AsRef<str>>) -> Option<String> {
 
 /// One strip's data on `doc`.
 fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> StripData {
-    use crate::terminal_types as tt;
+    use crate::terminal_strips::terminal_blocks as tt;
     let strip = doc.devices.get(&c).cloned().unwrap_or_default();
     let props = &strip.properties;
     let device = o.device(c);
@@ -1231,7 +1235,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         mixed_types: BTreeMap::new(),
         sheets: 1,
         bom_rows: 0,
-        acc: crate::accessories::StripAcc::default(),
+        acc: crate::terminal_strips::accessories::StripAcc::default(),
         wires: BTreeSet::new(),
         far: BTreeSet::new(),
         pages: BTreeSet::new(),
@@ -1240,7 +1244,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
     let drawn = drawn_at(doc, c);
     let shown_at: BTreeMap<ConnectionPointId, (RepresentationId, bool, Option<Pt>)> = drawn.iter().map(|(t, rid, pe, at)| (*t, (*rid, *pe, *at))).collect();
     let mine: BTreeSet<ConnectionPointId> = doc.connection_points_of(c).map(|(t, _)| t).collect();
-    let mut grids: BTreeMap<PageId, ecad_model::sheet::Grid> = BTreeMap::new();
+    let mut grids: BTreeMap<PageId, ecad_model::document::sheet::Grid> = BTreeMap::new();
     let mut rows: Vec<TermRow> = Vec::new();
     // Bridges, for groups: union of terminals joined by a bridge.
     let mut parent: BTreeMap<ConnectionPointId, ConnectionPointId> = mine.iter().map(|t| (*t, *t)).collect();
@@ -1398,11 +1402,11 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
                 row.internal_bridge = ty
                     .bridges
                     .iter()
-                    .position(|g| g.iter().any(|key| ecad_model::links::level_of_key(Some(key)).is_some_and(|(m, _)| m == n)))
+                    .position(|g| g.iter().any(|key| ecad_model::connectivity::jumper_bars::level_of_key(Some(key)).is_some_and(|(m, _)| m == n)))
                     .map(|i| i + 1);
                 row.place = page.zip(at).and_then(|(p, a)| {
-                    let grid = grids.entry(p).or_insert_with(|| ecad_model::sheet::Grid::of(doc, p));
-                    ecad_model::derive::place_on(grid, cx.number(p)?, a)
+                    let grid = grids.entry(p).or_insert_with(|| ecad_model::document::sheet::Grid::of(doc, p));
+                    ecad_model::connectivity::derive::place_on(grid, cx.number(p)?, a)
                 });
                 row.go = page.zip(at);
                 if ty.breaks {
@@ -1502,7 +1506,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         }
         d.spare = spare_by_type.iter().sum();
         d.spare_pe = spare_by_type.get(1).copied().unwrap_or(0);
-        rows.sort_by_cached_key(|r| (crate::xref::natural_key(&r.label), r.level, r.terminal));
+        rows.sort_by_cached_key(|r| (crate::references::devices::natural_key(&r.label), r.level, r.terminal));
     }
     // Part data per type (§7.2): strip, then project, then the registry's description.
     for (i, ty) in tt::TYPES.iter().enumerate() {
@@ -1523,21 +1527,21 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
     // Links naming levels their positions lack (`level-missing`, §8).
     let count_of: BTreeMap<&str, u32> = positions.iter().map(|p| (p.label.as_str(), p.ty.count())).collect();
     let order: Vec<String> = positions.iter().map(|p| p.label.clone()).collect();
-    for (n, p) in ecad_model::links::of(props) {
+    for (n, p) in ecad_model::connectivity::jumper_bars::of(props) {
         let mut items = Vec::new();
         for item in &p.0 {
             let Some(sp) = item.span() else { continue };
             let missing = match &sp {
-                ecad_model::links::Span::Levels { position, hi, .. } => count_of.get(position.as_str()).is_some_and(|c| hi > c),
-                ecad_model::links::Span::Positions { level, .. } => {
-                    let one = ecad_model::links::Positions(vec![item.clone()]);
+                ecad_model::connectivity::jumper_bars::Span::Levels { position, hi, .. } => count_of.get(position.as_str()).is_some_and(|c| hi > c),
+                ecad_model::connectivity::jumper_bars::Span::Positions { level, .. } => {
+                    let one = ecad_model::connectivity::jumper_bars::Positions(vec![item.clone()]);
                     one.select(&order).iter().any(|l| count_of.get(l.as_str()).is_some_and(|c| level > c))
                 }
             };
             if missing {
                 items.push(match item {
-                    ecad_model::links::Item::One(x) => x.clone(),
-                    ecad_model::links::Item::Range(a, b) => format!("{a}-{b}"),
+                    ecad_model::connectivity::jumper_bars::Item::One(x) => x.clone(),
+                    ecad_model::connectivity::jumper_bars::Item::Range(a, b) => format!("{a}-{b}"),
                 });
             }
         }
@@ -1546,7 +1550,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         }
     }
     d.rows = rows;
-    d.acc = crate::accessories::strip_acc(doc, props, &d.rows);
+    d.acc = crate::terminal_strips::accessories::strip_acc(doc, props, &d.rows);
     d.acc.inherits.extend(inherits);
     d.finish();
     d
@@ -1554,7 +1558,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
 
 /// The strip key of a type's part field (§7.2): feed-through keeps `part_number`, `maker`; every
 /// other type `<field>.<code>` (`part_number.lnpe`; 028's `part_number.pe` is this rule).
-pub fn type_key(t: &crate::terminal_types::TermType, field: &str) -> String {
+pub fn type_key(t: &crate::terminal_strips::terminal_blocks::TermType, field: &str) -> String {
     if t.code == "ft" { field.to_string() } else { format!("{field}.{}", t.code) }
 }
 
@@ -1562,7 +1566,7 @@ pub fn type_key(t: &crate::terminal_types::TermType, field: &str) -> String {
 /// `strip_<code>_<field>` (recorded in `inherits`), else the registry's description. A
 /// feed-through's part is the strip's own fields ([`type_key`] is then the field's key).
 fn type_parts(
-    doc: &Document, strip: &ecad_model::Device, ty: &'static crate::terminal_types::TermType, drawn: usize, spare: usize,
+    doc: &Document, strip: &ecad_model::Device, ty: &'static crate::terminal_strips::terminal_blocks::TermType, drawn: usize, spare: usize,
     inherits: &mut BTreeSet<String>,
 ) -> TypeCount {
     let mut get = |field: &str| -> Option<String> {
@@ -1578,7 +1582,7 @@ fn type_parts(
     let maker = get("maker");
     // Brief 047 (design 047 §5): a strip's own part number never shows the project's article number.
     let article_number =
-        if own_part || part_number.is_none() { clean(strip.get(&type_key(ty, crate::bom::ARTICLE_KEY))) } else { get(crate::bom::ARTICLE_KEY) };
+        if own_part || part_number.is_none() { clean(strip.get(&type_key(ty, crate::reports::bom::ARTICLE_KEY))) } else { get(crate::reports::bom::ARTICLE_KEY) };
     let own_description = get("description").or_else(|| if ty.code == "ft" { clean(strip.description.as_ref()) } else { None });
     let description = own_description.unwrap_or_else(|| {
         let e = crate::defaults::terminals::description_entry(ty.code);
@@ -1593,7 +1597,7 @@ fn type_parts(
 impl StripData {
     /// Its kept sheet and BOM row counts, from its rows and accessories.
     fn finish(&mut self) {
-        self.sheets = (plan_lines(self) - 1).div_ceil(crate::generated::rows_per_sheet() - 1).max(1);
+        self.sheets = (plan_lines(self) - 1).div_ceil(crate::pages::generated::rows_per_sheet() - 1).max(1);
         self.bom_rows = self.types.iter().filter(|t| t.qty() > 0).count() + self.acc.bom.len();
     }
 
@@ -1620,7 +1624,7 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
         return (format!("{} >", crate::continuations::display_name(doc, a)), None);
     }
     let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return ("loose".into(), None) };
-    (crate::strips::connection_point_words(doc, t), Some(c))
+    (crate::terminal_strips::connection_point_words(doc, t), Some(c))
 }
 
 /// The hover lines of a terminal symbol `here` of strip `c` (design 028 §7.1), from the document
@@ -1631,19 +1635,19 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
     let Some(r) = doc.representations.get(&here) else { return lines };
     let pe = rep_is_pe(doc, r);
     let location = crate::locations::resolve(doc, c).value;
-    let number = |w: WireId| ecad_model::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
+    let number = |w: WireId| ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
     let mine: BTreeSet<ConnectionPointId> = doc.connection_points_of(c).map(|(t, _)| t).collect();
     for (t, _) in crate::devices::shown_connection_points(doc, c, r) {
         // Brief 036: the type, and the level of a multi-level position.
-        let ty = crate::terminal_types::type_of_connection_point(doc, t);
+        let ty = crate::terminal_strips::terminal_blocks::type_of_connection_point(doc, t);
         let kind = if ty.multi() {
-            format!("{} level {}", ty.word, crate::terminal_types::level_name(doc, c, ty, crate::terminal_types::level_of(doc, t).0))
+            format!("{} level {}", ty.word, crate::terminal_strips::terminal_blocks::level_name(doc, c, ty, crate::terminal_strips::terminal_blocks::level_of(doc, t).0))
         } else if pe {
             "PE".to_string()
         } else {
             ty.word.to_string()
         };
-        lines.push(format!("{}  {kind}  {}", crate::strips::connection_point_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
+        lines.push(format!("{}  {kind}  {}", crate::terminal_strips::connection_point_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
         let mut bridged = Vec::new();
         for (w, end) in doc.ends_at(t) {
             let far_t = doc.wires.get(&w).map(|x| {
@@ -1653,7 +1657,7 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
                 })
             });
             if let Some(o) = far_t.filter(|o| *o != t && mine.contains(o)) {
-                bridged.push(crate::terminal_types::connection_point_name(doc, o));
+                bridged.push(crate::terminal_strips::terminal_blocks::connection_point_name(doc, o));
                 continue;
             }
             let (target, far) = far_words(doc, w, end);
@@ -1675,7 +1679,7 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
                         .and_then(|x| x.cores.iter().find(|m| m.wire() == Some(w)))
                         .and_then(|m| m.label_str().map(str::to_string))
                         .unwrap_or_else(|| "?".into());
-                    lines.push(format!("outside  {} core {core} \u{2192} {target}", crate::slash::cable_name(doc, k)));
+                    lines.push(format!("outside  {} core {core} \u{2192} {target}", crate::cables::slash::cable_name(doc, k)));
                 }
                 None => lines.push(format!("{}  {target}  {}", if inside { "inside" } else { "outside" }, number(w))),
             }
@@ -1706,7 +1710,7 @@ pub fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
     count.offer.as_ref()?;
     let spare = if count.spare.is_empty() { "0 spare".to_string() } else { format!("{} spare ({})", count.spare.len(), count.spare.join(", ")) };
     let over = if count.over.is_empty() { String::new() } else { format!(", {} over", count.over.len()) };
-    Some(format!("{}  {named}: {} used, {spare}{over}", crate::slash::cable_name(doc, k), count.used()))
+    Some(format!("{}  {named}: {} used, {spare}{over}", crate::cables::slash::cable_name(doc, k), count.used()))
 }
 
 /// The rows a generated `terminals` sheet needs for `strip` (`None`: every strip): one heading per
@@ -1718,14 +1722,14 @@ pub fn plan_lines(s: &StripData) -> usize {
 /// A core label as given (design 009 §5.4): trimmed; empty or only spaces clears it (`None`).
 ///
 /// # Errors
-/// Longer than [`crate::words::MAX_CORE_CHARS`] characters, or a control character, in words.
+/// Longer than [`crate::cables::words::MAX_CORE_CHARS`] characters, or a control character, in words.
 pub fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
     if t.chars().any(char::is_control) {
         return Err(CmdError::refused("A core label cannot contain control characters."));
     }
-    if t.chars().count() > crate::words::MAX_CORE_CHARS {
-        return Err(CmdError::refused(format!("A core label can be at most {} characters.", crate::words::MAX_CORE_CHARS)));
+    if t.chars().count() > crate::cables::words::MAX_CORE_CHARS {
+        return Err(CmdError::refused(format!("A core label can be at most {} characters.", crate::cables::words::MAX_CORE_CHARS)));
     }
     Ok(Some(t.to_string()))
 }
@@ -1738,12 +1742,12 @@ pub fn connection_point_words(doc: &Document, t: ConnectionPointId) -> String {
         return name;
     }
     let tag = c.and_then(|c| crate::devices::tag_of(doc, c)).unwrap_or("?");
-    format!("{tag}:{}", crate::terminal_types::connection_point_name(doc, t))
+    format!("{tag}:{}", crate::terminal_strips::terminal_blocks::connection_point_name(doc, t))
 }
 
 /// Fuse terminal device `c`'s fuse (brief 034's `fuseterm`): its stored
-/// [`ecad_model::device::Protection::FuseTerminalBlock`] (design 072 §2.2).
-pub fn fuse_terminal_block_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::device::Fuse> {
+/// [`ecad_model::objects::devices::Protection::FuseTerminalBlock`] (design 072 §2.2).
+pub fn fuse_terminal_block_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::objects::devices::Fuse> {
     doc.devices.get(&c)?.device_type.as_protection()?.as_fuse_terminal_block()
 }
 
@@ -1762,7 +1766,7 @@ pub fn first_of_label(s: &StripData, r: &TermRow) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn offers_read_and_refuse_with_a_way_forward() {

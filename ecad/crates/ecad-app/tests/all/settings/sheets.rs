@@ -7,10 +7,10 @@
 //! `019-props-device.png`, `019-projectinfo.png`, `019-projectsettings.png`, `019-revisions.png`,
 //! `019-rev-open.png`.
 
-use crate::project_panel::{Deltas, active, build, click, doc, fixture_p, head, new_app, ok, take};
+use crate::pages::project_panel::{Deltas, active, build, click, doc, fixture_p, head, new_app, ok, take};
 
-use ecad_app::project_panel::{self, Action};
-use ecad_app::{App, sheets_ui};
+use ecad_app::pages::project_panel::{self, Action};
+use {ecad_app::App, ecad_app::settings::sheets};
 use ecad_model::{FolderId, Op};
 use eframe::egui::{self, Key};
 use egui_kittest::Harness;
@@ -42,7 +42,7 @@ fn type_focused(h: &mut Harness<'static, App>, text: &str) {
 }
 
 fn last_label(h: &mut Harness<'static, App>) -> String {
-    crate::project_panel::last_ops(h).0
+    crate::pages::project_panel::last_ops(h).0
 }
 
 /// The Properties palette is shown with the ECAD section on top of it.
@@ -99,7 +99,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(h.state().panel.rebuilds, tree_builds, "a line does not rebuild the tree");
 
     // Project Properties: one transaction; Cancel writes nothing.
-    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
+    crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
     assert!(h.state().project_props.is_some());
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
@@ -114,16 +114,16 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     click(&mut h, "ecad.projectprops.ok");
     assert_eq!(head(&mut h), before + 1, "OK is one transaction");
     assert!(h.state().project_props.is_none());
-    assert_eq!(ecad_engine::frames::project_text(&doc(&mut h), "customer").as_deref(), Some("ACME"));
-    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
+    assert_eq!(ecad_electrical::pages::frames::project_text(&doc(&mut h), "customer").as_deref(), Some("ACME"));
+    crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
     click(&mut h, "ecad.projectprops.cancel");
     assert_eq!(head(&mut h), before + 1, "Cancel writes nothing");
 
     // Project settings: the reference style and the tag digits in one transaction; `u` undoes both.
-    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
-        assert_eq!(d.popout, sheets_ui::Popout::Settings);
+        assert_eq!(d.popout, sheets::Popout::Settings);
         d.style = "page-column".into();
         d.padding = "3".into();
     }
@@ -169,7 +169,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     ok(&mut h, r#"place {"symbol":"coil","at":[200,100]}"#);
     let sym = {
         let t = h.state_mut();
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).last().unwrap().handle
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).last().unwrap().handle
     };
     let _ = sym;
     let coil_items: Vec<_> = {
@@ -200,7 +200,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     // Revisions (the panel's Revisions popout): the pending row, Issue Rev A (asks first), the
     // title block, Reopen Rev A.
     let p = h.state().project().unwrap().clone();
-    crate::project_panel::project_menu(&mut h, project_panel::REVISIONS);
+    crate::pages::project_panel::project_menu(&mut h, project_panel::REVISIONS);
     {
         let r = h.state_mut().revisions.as_mut().unwrap();
         assert_eq!(r.pending[0], "A");
@@ -214,7 +214,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     click(&mut h, "ecad.revisions.issue");
     click(&mut h, "Issue");
     assert_eq!(head(&mut h), before + 3);
-    let (label, ops) = crate::project_panel::last_ops(&mut h);
+    let (label, ops) = crate::pages::project_panel::last_ops(&mut h);
     assert_eq!(label, "Issue Rev A");
     assert!(ops.iter().any(|o| matches!(o, Op::NameVersion { name, .. } if name == "Rev A")));
     h.state_mut().revisions = None;
@@ -249,7 +249,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert!(h.query_by_label("Undo the issue").is_some(), "the question");
     click(&mut h, "Undo the issue");
     assert!(!doc(&mut h).versions.contains_key("Rev A"));
-    let _ = sheets_ui::ISSUE_UNDO_ID;
+    let _ = sheets::ISSUE_UNDO_ID;
 }
 
 /// The demo project (`cargo xtask demo <file>`) on its A3 sheets, for the owner's look: run with
@@ -259,7 +259,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
 fn the_demo_on_its_sheets() {
     let Some(file) = std::env::var_os("ECAD_DEMO_FILE") else { return };
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::with_file(None, &file.to_string_lossy()).unwrap();
     t.dismiss_notice();
     let deltas: Deltas = Default::default();
@@ -279,7 +279,7 @@ fn the_demo_on_its_sheets() {
 fn the_revisions_dialog_follows_undo_and_redo() {
     let mut h = build(new_app(), None);
     let _ = fixture_p(&mut h);
-    crate::project_panel::project_menu(&mut h, project_panel::REVISIONS);
+    crate::pages::project_panel::project_menu(&mut h, project_panel::REVISIONS);
     ok(&mut h, r#"revision {"description":"First issue","drawn":"CVA"}"#);
     ok(&mut h, "issuerevision {}");
     h.run_steps(2);

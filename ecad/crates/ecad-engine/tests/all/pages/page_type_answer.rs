@@ -1,8 +1,8 @@
 //! Brief 072 lane E (design 072 §5.1): one answer for a page's type. The registry's page-level
-//! read of `page.type` and `ecad_model::sheet::page_type_of` read the same field with the same
+//! read of `page.type` and `ecad_model::document::sheet::page_type_of` read the same field with the same
 //! rule, for a built-in type and for a project-defined one.
 
-use ecad_engine::defaults::{self, Scope, Source};
+use ecad_electrical::defaults::{self, Scope, Source};
 use ecad_model::StyleRef;
 use serde_json::json;
 
@@ -22,7 +22,7 @@ fn a_pages_type_is_the_same_through_the_registry_and_page_type_of() {
         let r = defaults::resolve(&doc, &defaults::pages::PAGE_TYPE, Scope::page(page));
         assert_eq!(r.from, Source::Page, "{ty:?}");
         assert_eq!(r.value.style(), Some(ty.clone()), "the registry reads the page's own type");
-        assert_eq!(ecad_model::sheet::page_type_of(&doc, &doc.pages[&page]), ty, "page_type_of agrees");
+        assert_eq!(ecad_model::document::sheet::page_type_of(&doc, &doc.pages[&page]), ty, "page_type_of agrees");
         let chain = defaults::chain(&doc, &defaults::pages::PAGE_TYPE, Scope::page(page));
         assert!(chain.iter().any(|(s, v)| *s == Source::Page && v.and_then(|v| v.style()) == Some(ty.clone())), "{chain:?}");
     }
@@ -33,14 +33,14 @@ fn a_pages_type_is_the_same_through_the_registry_and_page_type_of() {
 /// codes; renaming the entry renames what the block shows.
 #[test]
 fn a_pages_location_and_the_projects_function_show_in_the_title_block() {
-    use ecad_engine::frames::{FrameInput, FrameText};
+    use ecad_electrical::pages::frames::{FrameInput, FrameText};
     let mut h = H::new(0x72e2);
     let page = h.first_page();
     h.run("pageprops", json!({"page": page.hex(), "location": "+CP7", "proposal": "keep"})).unwrap();
     h.run("projectprops", json!({"function": "=F1", "proposal": "keep"})).unwrap();
     let frame = |h: &mut H| {
         let doc = h.doc();
-        let book = ecad_model::book::Book::of(&doc);
+        let book = ecad_model::document::book::Book::of(&doc);
         let inp = FrameInput::with(&doc, page, &book, FrameText::sizes(&doc));
         (inp.location, inp.function)
     };

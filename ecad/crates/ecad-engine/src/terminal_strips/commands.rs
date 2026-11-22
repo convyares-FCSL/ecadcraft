@@ -6,29 +6,29 @@
 //! nothing.
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::cmd::terminal`] decide, and the shim commits the ops and answers in JSON.
+//! [`ecad_electrical::terminal_strips::commands::terminal_strips`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::terminal::{self as rules, Bridge, TerminalBlocksInput};
-pub use ecad_electrical::cmd::terminal::{
+use ecad_electrical::terminal_strips::commands::terminal_strips::{self as rules, Bridge, TerminalBlocksInput};
+pub use ecad_electrical::terminal_strips::commands::terminal_strips::{
     BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, plan_fence, plan_fence_typed, staple,
 };
-use ecad_model::units::{Degrees, Radians};
+use ecad_model::geometry::units::{Degrees, Radians};
 use ecad_model::{CableId, DeviceId, Document, Noun, Op, PageId, Placement, Pt, RouteEnd, RouteId, Style, ConnectionPointId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{err, on_any_page, on_project, plain_style};
-pub use crate::connectors::strip_connection_point_at;
-pub use crate::connectors::{Land, plan_land};
-use crate::strips::StripData;
-pub use crate::strips::connection_point_words;
-use crate::terminal_types as tt;
+use crate::commands::input::{Command, Typed};
+use crate::commands::{err, on_any_page, on_project, plain_style};
+pub use ecad_electrical::connectors::strip_connection_point_at;
+pub use ecad_electrical::connectors::{Land, plan_land};
+use ecad_electrical::terminal_strips::StripData;
+pub use ecad_electrical::terminal_strips::connection_point_words;
+use ecad_electrical::terminal_strips::terminal_blocks as tt;
 use crate::wires::{ON_WIRE, OnRoute};
-use ecad_electrical::cmd::input::Point;
+use ecad_electrical::commands::input::Point;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -41,25 +41,25 @@ pub const TYPED: &[Typed] = &[
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("terminals", "Place Terminals", crate::cmd::input::typed::<TerminalBlocksParams>)
+        CommandSpec::new("terminals", "Place Terminals", crate::commands::input::typed::<TerminalBlocksParams>)
             .params(
                 "{strip?: id (null or absent: a new strip), pe?: bool, type?: Feedthrough|PE|x2|x2B|x3|LNPE|SEN|DIS|FUSE, level?: name, number \
 or All, position?: label, from: [x,y], to: [x,y]} (one terminal, or one level, on each wire the line crosses; a level fills the next \
 position of its type that lacks it; at most 200)",
             )
-            .interactive(crate::interact::terminals)
+            .interactive(crate::terminal_strips::interact::terminal_blocks)
             .noundo(),
-        CommandSpec::new("bridge", "Draw Bridge", crate::cmd::input::typed::<BridgeParams>)
+        CommandSpec::new("bridge", "Draw Bridge", crate::commands::input::typed::<BridgeParams>)
             .params("{from: terminal id, to: terminal id} (a wire between two terminals; of one strip it is a bridge)")
             .interactive(crate::interact::bridge)
             .noundo(),
-        CommandSpec::new("stripplan", "Terminal Plan", crate::cmd::input::typed::<StripplanParams>)
+        CommandSpec::new("stripplan", "Terminal Plan", crate::commands::input::typed::<StripplanParams>)
             .params(
                 "{strip?: id, limit?: rows (500, max 5000), after?: row index, accessories?: bool (true: gap rows, markers and links)} \
 (every strip's terminals, drawn and spare; read only)",
             )
             .noundo(),
-        CommandSpec::new("cablecores", "Cable Cores", crate::cmd::input::typed::<CablecoresParams>)
+        CommandSpec::new("cablecores", "Cable Cores", crate::commands::input::typed::<CablecoresParams>)
             .params("{cable: id} (the cable's offered cores, used, spare and over; read only)")
             .noundo(),
     ]
@@ -156,7 +156,7 @@ impl Command for TerminalBlocksParams {
             let f = done.fence;
             // The wire numbers on the crossed lines before: a half that ends up in another net (a
             // fuse position) does not keep its number (design 072 §4.4), which is said.
-            let before: Vec<Option<ecad_model::wire::WireNumber>> = f
+            let before: Vec<Option<ecad_model::objects::wire::WireNumber>> = f
                 .placed
                 .iter()
                 .map(|(_, _, r, _)| {
@@ -199,8 +199,8 @@ impl Command for TerminalBlocksParams {
 /// The halves of crossed lines that no longer carry the number their line's wire carried before
 /// (`before`, by placed terminal): each half's wire and the number it lost.
 fn dropped_numbers(
-    doc: &Document, placed: &[(ConnectionPointId, String, RouteId, RouteId)], before: &[Option<ecad_model::wire::WireNumber>],
-) -> Vec<(WireId, ecad_model::wire::WireNumber)> {
+    doc: &Document, placed: &[(ConnectionPointId, String, RouteId, RouteId)], before: &[Option<ecad_model::objects::wire::WireNumber>],
+) -> Vec<(WireId, ecad_model::objects::wire::WireNumber)> {
     let mut out = Vec::new();
     for ((_, _, r, n), was) in placed.iter().zip(before) {
         let Some(was) = was else { continue };
@@ -216,7 +216,7 @@ fn dropped_numbers(
 
 /// The net number of conductor `w`, else its name.
 fn wire_words(doc: &Document, w: WireId) -> String {
-    ecad_model::wiring::wire_number(doc, w).unwrap_or_else(|| crate::slash::wire_name(doc, w))
+    ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| ecad_electrical::cables::slash::wire_name(doc, w))
 }
 
 /// The words for the wire route `r` carries ([`crate::wires::wire_of_route`]), `?` for none.
@@ -229,18 +229,18 @@ fn route_words(doc: &Document, r: RouteId) -> String {
 /// (or the strip tagged `tag`, or a new strip) at the next position of its type that lacks its
 /// level, or at `position`; on a wire it lands there. One transaction.
 pub(crate) fn place_level(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: Degrees, mirror: bool,
+    s: &mut Session, params: &crate::devices::commands::PlaceParams, starter: &'static ecad_electrical::symbols::Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let (ty, level) = tt::of_starter(starter.key).ok_or_else(|| err("That symbol is not a terminal level."))?;
     let device = params.device_id()?;
     let tag = params.tag.clone();
     let position = params.position.clone();
-    ecad_electrical::cmd::place::one_of(device.is_some(), tag.is_some(), "strip").map_err(|e| err(e.to_string()))?;
+    ecad_electrical::devices::commands::place::one_of(device.is_some(), tag.is_some(), "strip").map_err(|e| err(e.to_string()))?;
     let modes = params.modes()?;
     let v = on_project(s, |p, pg, page| {
         let style = plain_style(p);
         let doc = p.ledger.document();
-        let (strip, new_tag) = ecad_electrical::cmd::place::strip_target(doc, device, tag.as_deref())?;
+        let (strip, new_tag) = ecad_electrical::devices::commands::place::strip_target(doc, device, tag.as_deref())?;
         let mut ops = Vec::new();
         let def = definition_for(doc, &mut p.ids, starter, &mut ops)?;
         let mut chooser = tt::Chooser::new(doc, strip);
@@ -278,7 +278,7 @@ pub(crate) fn place_level(
             ops.extend(l.ops.clone());
         }
         // Brief 052d (design 052 §5.3): the place proposes for the strip.
-        let proposed = crate::draw::proposals::plan_place(p, &ops, modes, c, page, origin, None).map_err(CmdError::refused)?;
+        let proposed = crate::symbols::draw::plan_place(p, &ops, modes, c, page, origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place terminal level", ops)?;
         p.last_placed = Some((starter.key.to_string(), c));
@@ -309,13 +309,13 @@ pub(crate) fn place_level(
             "tag": tag_text,
             "position": position,
             "joined": strip.is_some(),
-            "terminals": shown.iter().map(|(k, t, _)| json!({"key": k, "label": crate::terminal_types::connection_point_name(doc, *t), "terminal": t.hex()})).collect::<Vec<_>>(),
+            "terminals": shown.iter().map(|(k, t, _)| json!({"key": k, "label": ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(doc, *t), "terminal": t.hex()})).collect::<Vec<_>>(),
             "message": message,
         });
         if let Some(l) = &land {
             v["split"] = json!({"route": l.route.hex(), "new": l.new.hex()});
         }
-        crate::draw::proposals::finish_place(p, pg, c, strip.is_some(), &proposed, &mut v);
+        crate::symbols::draw::finish_place(p, pg, c, strip.is_some(), &proposed, &mut v);
         Ok(v)
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {

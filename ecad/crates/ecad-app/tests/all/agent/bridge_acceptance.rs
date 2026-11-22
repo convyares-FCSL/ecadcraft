@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
-use ecad_engine::views::Settings;
+use ecad_engine::cables::views::Settings;
 use ecad_model::{Author, Transaction, TxKind};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 
 use ecad_app::App;
 
-use crate::mouse_tester::harness_with;
+use crate::canvas::mouse_acceptance::harness_with;
 
 type H = Harness<'static, App>;
 
@@ -128,7 +128,7 @@ impl Live {
 
     /// The lines drawn (the tests' lines end free: routes that carry no wire, design 072).
     fn wires(&mut self) -> usize {
-        crate::mouse_tester::doc(&mut self.h).routes.len()
+        crate::canvas::mouse_acceptance::doc(&mut self.h).routes.len()
     }
 
     /// The project's author and transaction budget now (the frame invariant, §5.2).

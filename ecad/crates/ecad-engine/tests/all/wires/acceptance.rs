@@ -868,9 +868,9 @@ fn t16_label_settings_round_trip_and_default_when_absent() {
     let _ = std::fs::remove_dir_all(&dir);
     // Serde: unset, the two fields are left out (brief 066, F2) and read back unset, which
     // resolves as the built-ins `net` and 0.
-    let v = serde_json::to_value(ecad_model::wiring::WiringSettings::default()).unwrap();
+    let v = serde_json::to_value(ecad_model::connectivity::wiring::WiringSettings::default()).unwrap();
     assert!(v.get("label_rule").is_none() && v.get("label_min_length").is_none(), "{v}");
-    let back: ecad_model::wiring::WiringSettings = serde_json::from_value(v).unwrap();
+    let back: ecad_model::connectivity::wiring::WiringSettings = serde_json::from_value(v).unwrap();
     assert_eq!((back.label_rule.as_deref(), back.label_min_length), (None, None));
     let mut doc = ecad_model::Document::default();
     doc.settings.wiring = back;

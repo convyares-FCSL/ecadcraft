@@ -3,7 +3,7 @@
 
 use ecad_model::{Document, PageId};
 
-use crate::draw::text_style::EngineMetrics;
+use crate::styles::draw::EngineMetrics;
 use crate::xref::Part;
 
 /// Every frame part on `page` (design 051 §2.6): [`crate::plc::look::parts_on_page_measured`].

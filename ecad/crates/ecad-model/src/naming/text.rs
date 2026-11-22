@@ -2,7 +2,7 @@
 //! or [`LongText<N>`] (line breaks allowed), never as a raw `String`.
 //!
 //! A value is trimmed, 1 to `N` characters, and holds no control, hidden or bidi character
-//! ([`crate::words::is_hidden`]). Deserialisation is strict: a file value that is not already in
+//! ([`crate::naming::words::is_hidden`]). Deserialisation is strict: a file value that is not already in
 //! that form is a read error, so the project opens read-only (design 072 §9.5). Commands build
 //! values with `new`, which trims and refuses with [`TextError`]'s words.
 //!
@@ -14,7 +14,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::words::is_hidden;
+use crate::naming::words::is_hidden;
 
 /// Why a text was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -165,7 +165,7 @@ text_type!(
     ///
     /// # Example
     /// ```
-    /// use ecad_model::text::{Text, TextError};
+    /// use crate::naming::text::{Text, TextError};
     /// assert_eq!(Text::<8>::new("  Motor ").map(|t| t.to_string()), Ok("Motor".into()));
     /// assert_eq!(Text::<3>::new("Motor"), Err(TextError::TooLong { max: 3 }));
     /// assert_eq!(Text::<8>::new("a\u{202E}b"), Err(TextError::Hidden { at: 1, char: '\u{202E}' }));

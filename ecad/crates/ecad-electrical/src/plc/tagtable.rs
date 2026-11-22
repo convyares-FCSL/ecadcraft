@@ -58,7 +58,7 @@ pub struct Caps {
 
 impl Default for Caps {
     fn default() -> Self {
-        Caps { bytes: MAX_BYTES, rows: MAX_ROWS, name: super::signals::MAX_TAG, comment: MAX_COMMENT }
+        Caps { bytes: MAX_BYTES, rows: MAX_ROWS, name: crate::plc::signals::MAX_TAG, comment: MAX_COMMENT }
     }
 }
 
@@ -138,7 +138,7 @@ pub trait TagFormat: Sync {
     /// Whether the format can hold this name (design 056 §7.4); a name it cannot is left out of an
     /// export and counted.
     fn name_ok(&self, name: &str) -> bool {
-        !name.is_empty() && name.chars().count() <= super::signals::MAX_TAG && !name.chars().any(char::is_control)
+        !name.is_empty() && name.chars().count() <= crate::plc::signals::MAX_TAG && !name.chars().any(char::is_control)
     }
 }
 
@@ -456,8 +456,8 @@ pub fn normalise(raw: &str) -> Address {
         // `AB…`, `IN…`, anything else after I/Q/E/A: not an I/O address.
         _ => return Address::NotIo,
     };
-    let digits = |t: &str| t.len() <= 6 && ecad_model::words::is_digits(t);
-    let max = super::address::MAX_BYTE;
+    let digits = |t: &str| t.len() <= 6 && ecad_model::naming::words::is_digits(t);
+    let max = crate::plc::address::MAX_BYTE;
     if size.is_empty() {
         let Some((byte, bit)) = num.split_once('.') else { return Address::Bad };
         if !digits(byte) || bit.len() != 1 || !digits(bit) {
@@ -509,7 +509,7 @@ pub fn order(a: &str) -> (char, u8, u32, u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::plc::*;
 
     #[test]
     fn addresses_normalise() {

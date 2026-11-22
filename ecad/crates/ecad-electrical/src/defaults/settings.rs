@@ -1,15 +1,15 @@
 //! Brief 066c's entries (design 066 §2.2, F3): project settings with a built-in.
 //!
 //! The settings' built-ins live only in ecad-model's data (`ecad-model/defaults/settings.toml`;
-//! owner, 2026-11-16): the registry reads them through `ecad_model::builtins::get`, never a copy. Their project level is the
+//! owner, 2026-11-16): the registry reads them through `ecad_model::naming::builtins::get`, never a copy. Their project level is the
 //! settings field, absent when the project chose none. They have no standard level: ecad-model
 //! reads the project's choice or the built-in, never the standard. The project sheet's built-in
 //! (`page.sheet`) is ecad-model's alone: a sheet is structured, not one value.
 
 use ecad_model::ProjectSettings;
-use ecad_model::builtins as mb;
+use ecad_model::naming::builtins as mb;
 
-use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
 const P: &[Level] = &[Level::Project];
 
@@ -22,7 +22,7 @@ fn wire_digits(s: &ProjectSettings) -> Option<Value<'_>> {
 }
 
 fn colour_style(s: &ProjectSettings) -> Option<Value<'_>> {
-    s.wiring.colour_style.map(|c| Value::Choice(ecad_model::words::Word::word(c)))
+    s.wiring.colour_style.map(|c| Value::Choice(ecad_model::naming::words::Word::word(c)))
 }
 
 fn page_number_step(s: &ProjectSettings) -> Option<Value<'_>> {
@@ -39,7 +39,7 @@ pub static TAG_PADDING: Entry = Entry {
     label: "Tag number digits",
     group: "Tags",
     brief: "018",
-    kind: Kind::Number { min: 1.0, max: ecad_model::tag::MAX_PADDING as f64 },
+    kind: Kind::Number { min: 1.0, max: ecad_model::naming::tag::MAX_PADDING as f64 },
     slot: Slot::new(),
     levels: P,
     project: ProjectSource::Settings(tag_padding),
@@ -51,7 +51,7 @@ pub static WIRE_DIGITS: Entry = Entry {
     label: "Wire number digits",
     group: "Wire numbers",
     brief: "022",
-    kind: Kind::Number { min: 1.0, max: ecad_model::wiring::MAX_DIGITS as f64 },
+    kind: Kind::Number { min: 1.0, max: ecad_model::connectivity::wiring::MAX_DIGITS as f64 },
     slot: Slot::new(),
     levels: P,
     project: ProjectSource::Settings(wire_digits),
@@ -63,7 +63,7 @@ pub static COLOUR_STYLE: Entry = Entry {
     label: "Wire colour codes",
     group: "Wire labels",
     brief: "022",
-    kind: Kind::Choice(ecad_model::wiring::COLOUR_STYLE_WORDS),
+    kind: Kind::Choice(ecad_model::connectivity::wiring::COLOUR_STYLE_WORDS),
     slot: Slot::new(),
     levels: P,
     project: ProjectSource::Settings(colour_style),

@@ -256,7 +256,7 @@ impl TextOrNumber {
 }
 
 /// The schema of a parameter that must be given and may be `null`: `T`, or null. Use it as
-/// `#[schemars(required, with = "crate::cmd::input::OrNull<T>")]` on a [`nullable`] field (schemars drops the null of
+/// `#[schemars(required, with = "crate::commands::input::OrNull<T>")]` on a [`nullable`] field (schemars drops the null of
 /// a required `Option`).
 pub struct OrNull<T>(std::marker::PhantomData<T>);
 
@@ -287,7 +287,7 @@ pub fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::commands::*;
     use ecad_model::WireId;
     use serde_json::json;
 

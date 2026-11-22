@@ -9,8 +9,8 @@ use eframe::egui::{self, Key, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{Collect, Deltas};
-use crate::project_panel::{doc, ok, rev3_app as new_app};
+use crate::canvas::mouse_acceptance::{Collect, Deltas};
+use crate::pages::project_panel::{doc, ok, rev3_app as new_app};
 
 type H = Harness<'static, App>;
 
@@ -31,7 +31,7 @@ fn harness(deltas: Deltas) -> H {
 }
 
 fn demo(h: &mut H, dir: &std::path::Path) {
-    let path = crate::checks_ui::demo_file(dir);
+    let path = crate::checks::ui::demo_file(dir);
     h.state_mut().close_project();
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
@@ -47,8 +47,8 @@ fn selected_cable(h: &H) -> Option<ecad_model::CableId> {
 }
 
 fn shot(h: &H, deltas: &Deltas, name: &str) {
-    if let Some(out) = crate::project_panel::shots() {
-        let _ = crate::mouse_tester::shot(h, deltas, &out.join(name));
+    if let Some(out) = crate::pages::project_panel::shots() {
+        let _ = crate::canvas::mouse_acceptance::shot(h, deltas, &out.join(name));
     }
 }
 
@@ -61,7 +61,7 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     demo(&mut h, &dir);
     let before = doc(&mut h).cables.len();
     // + Cable: a cable at once, selected, its details open, no dialog.
-    h.get_by_label(ecad_app::lists::workspace::ADD_NAME).click();
+    h.get_by_label(ecad_app::workspace::frame::ADD_NAME).click();
     h.run_steps(8);
     let d = doc(&mut h);
     assert_eq!(d.cables.len(), before + 1);
@@ -73,8 +73,8 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     assert!(h.query_by_label("ecad.project.detail.cable.tag").is_some(), "the Tag box");
     // Owner review of the side-by-sides: the rail says Cable; Cable | Checks tabs; the Rating
     // section is shown with its note when there is nothing to rate.
-    assert_eq!(ecad_app::shell::right::shows_word(h.state_mut()), "Cable");
-    assert!(h.query_all_by_label_contains(ecad_app::lists::detail::CABLE_TABS).next().is_some(), "the Cable / Checks tabs");
+    assert_eq!(ecad_app::inspector::shows_word(h.state_mut()), "Cable");
+    assert!(h.query_all_by_label_contains(ecad_app::workspace::detail::CABLE_TABS).next().is_some(), "the Cable / Checks tabs");
     assert!(h.query_all_by_label_contains("Set a cable type to rate").next().is_some(), "the Rating note");
     assert!(h.query_all_by_label_contains("ecad.project.detail.cable.drawn").next().is_some(), "Not drawn yet");
     // Typing a length commits one cableedit on Enter.
@@ -108,15 +108,15 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     assert!(h.query_all_by_label_contains("+FIELD (planned)").next().is_some(), "the list shows the planned end");
     shot(&h, &deltas, "059-undrawn-details.png");
     // The chevron's menu: New cable, then the cables not drawn.
-    h.get_by_label(ecad_app::lists::workspace::ADD_MENU).click();
+    h.get_by_label(ecad_app::workspace::frame::ADD_MENU).click();
     h.run_steps(4);
-    assert!(h.query_all_by_label_contains(ecad_app::lists::cables::NEW_CABLE).next().is_some());
-    assert!(h.query_all_by_label_contains(ecad_app::lists::cables::ASSIGN_HEADER).next().is_some());
+    assert!(h.query_all_by_label_contains(ecad_app::cables::list::NEW_CABLE).next().is_some());
+    assert!(h.query_all_by_label_contains(ecad_app::cables::list::ASSIGN_HEADER).next().is_some());
     shot(&h, &deltas, "059-list.png");
     h.key_press(Key::Escape);
     h.run_steps(3);
     // Remove: a cable not drawn goes at once; undo brings it back.
-    h.state_mut().cable_ask(k, ecad_app::lists::cable_editor::Ask::Remove);
+    h.state_mut().cable_ask(k, ecad_app::cables::editor::Ask::Remove);
     h.run_steps(4);
     assert!(!doc(&mut h).cables.contains_key(&k));
     ok(&mut h, "u");
@@ -140,9 +140,9 @@ fn removing_a_drawn_cable_is_refused_with_a_go_to_per_page() {
     h.run_steps(8);
     let head = doc(&mut h).cables.len();
     // The footer is below the Rating section: scroll it into view first.
-    h.get_by_label(ecad_app::lists::cable_editor::REMOVE).scroll_to_me();
+    h.get_by_label(ecad_app::cables::editor::REMOVE).scroll_to_me();
     h.run_steps(4);
-    h.get_by_label(ecad_app::lists::cable_editor::REMOVE).click();
+    h.get_by_label(ecad_app::cables::editor::REMOVE).click();
     h.run_steps(6);
     assert_eq!(doc(&mut h).cables.len(), head, "nothing removed");
     let refused = h.state().reports.as_ref().unwrap().cables.edit.refused.clone().expect("refused");
@@ -178,10 +178,10 @@ fn assign_in_the_drawing_starts_the_slash_with_the_cable_picked() {
     h.run_steps(8);
     assert!(h.state().slash_running(), "Cable slash runs");
     let p = h.state().shell.slash_picker.clone();
-    assert_eq!(p.labels.first().map(String::as_str), Some(ecad_app::shell::right::slash_picker::NEW_CABLE));
+    assert_eq!(p.labels.first().map(String::as_str), Some(ecad_app::inspector::slash_picker::NEW_CABLE));
     assert!(p.labels.iter().any(|l| l.contains("Not drawn: -W05")), "{:?}", p.labels);
     assert_eq!(p.items.get(p.picked.wrapping_sub(1)).map(|i| i.cable), Some(k), "-W05 is picked");
-    assert!(h.query_by_label(ecad_app::shell::right::slash_picker::NAME).is_some(), "the picker is shown");
+    assert!(h.query_by_label(ecad_app::inspector::slash_picker::NAME).is_some(), "the picker is shown");
     shot(&h, &deltas, "059-slash-picker.png");
     h.key_press(Key::Escape);
     h.run_steps(4);

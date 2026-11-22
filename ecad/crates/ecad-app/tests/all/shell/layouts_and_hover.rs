@@ -7,7 +7,7 @@ mod hover_and_marks {
     //! priority, paper-space marks and layout switching while a form runs.
 
     use cadcraft_engine::geom::Vec2;
-    use ecad_app::{App, tools};
+    use {ecad_app::App, ecad_app::commands::tools};
     use ecad_model::Document;
     use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
     use egui_kittest::Harness;
@@ -16,7 +16,7 @@ mod hover_and_marks {
 
     fn harness() -> Harness<'static, App> {
         ecad_engine::install();
-        ecad_engine::views::isolate_for_tests();
+        ecad_engine::cables::views::isolate_for_tests();
         let mut t = App::new(None).unwrap();
         t.hover_delay = 0.0;
         let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
@@ -107,13 +107,13 @@ mod hover_and_marks {
     fn scene(h: &mut Harness<'static, App>) -> Vec<(String, f64, f64)> {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
         let model: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().cloned().collect();
-        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle.hex()).collect();
+        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle.hex()).collect();
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let edge = |x: f64| {
             model
                 .iter()
                 .find(|e| {
-                    e.common.layer != ecad_engine::frame::LAYER
+                    e.common.layer != ecad_engine::pages::frame::LAYER
                         && matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == x && l.b.x == x)
                 })
                 .map(|e| e.handle.hex())
@@ -126,7 +126,7 @@ mod hover_and_marks {
         ok(h, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
         let d = doc(h);
         let page = d.page_order[0];
-        ecad_model::derive::connection_point_positions(&d, page)
+        ecad_model::connectivity::derive::connection_point_positions(&d, page)
             .into_iter()
             .map(|(t, _, p)| (d.terminals[&t].label.clone().unwrap_or_default(), p.x, p.y))
             .collect()
@@ -289,7 +289,7 @@ mod hover_and_marks {
         let d = doc(&mut h);
         let page = d.page_order[0];
         let routes: Vec<String> =
-            d.wires.keys().filter_map(|c| ecad_model::derive::route_on_page(&d, *c, page)).map(|(_, r)| format!("{r:?}")).collect();
+            d.wires.keys().filter_map(|c| ecad_model::connectivity::derive::route_on_page(&d, *c, page)).map(|(_, r)| format!("{r:?}")).collect();
         let paper: usize = h.state().cad.session.doc().unwrap().layouts.iter().map(|l| l.entities.len()).sum();
         eprintln!("wire in paper space: head {} -> {after}; routes {routes:?}; paper {paper}", before.0);
         let t = h.state_mut();
@@ -306,7 +306,7 @@ mod layout_refusals {
     //! points and picks without a crash; Esc and undo stay clean afterwards.
 
     use cadcraft_engine::geom::Vec2;
-    use ecad_app::{App, tools};
+    use {ecad_app::App, ecad_app::commands::tools};
     use ecad_model::Document;
     use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
     use egui_kittest::Harness;
@@ -317,7 +317,7 @@ mod layout_refusals {
 
     fn harness() -> Harness<'static, App> {
         ecad_engine::install();
-        ecad_engine::views::isolate_for_tests();
+        ecad_engine::cables::views::isolate_for_tests();
         let mut t = App::new(None).unwrap();
         t.hover_delay = 0.0;
         let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
@@ -408,12 +408,12 @@ mod layout_refusals {
     fn scene(h: &mut Harness<'static, App>) {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
         let model: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().cloned().collect();
-        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle.hex()).collect();
+        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle.hex()).collect();
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let right = model
             .iter()
             .find(|e| {
-                e.common.layer != ecad_engine::frame::LAYER
+                e.common.layer != ecad_engine::pages::frame::LAYER
                     && matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0)
             })
             .map(|e| e.handle.hex())
@@ -459,7 +459,7 @@ mod layout_refusals {
             esc(&mut h);
         }
         let all: Vec<_> =
-            h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle).collect();
+            h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect();
         h.state_mut().cad.session.set_selection(all);
         button(&mut h, "Convert to Device");
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));

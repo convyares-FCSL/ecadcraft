@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 fn new_app(snapshots: Option<PathBuf>) -> App {
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     App::new(snapshots).unwrap()
 }
 
@@ -295,7 +295,7 @@ fn open_reopens_a_saved_project_with_its_history() {
     t.confirm_dialog();
     assert!(t.dialog().unwrap().2.unwrap_or_default().contains("could not open"));
     // Starting the app with a file that cannot be opened starts a new project and says why.
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let t2 = App::with_file(None, &junk).unwrap();
     assert!(t2.project_open());
     assert!(t2.notice().unwrap_or_default().contains("could not be opened"));
@@ -308,7 +308,7 @@ fn a_second_window_on_the_same_file_is_read_only() {
     let mut first = new_app(None);
     edit(&mut first);
     save_via_dialog(&mut first, &path);
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut second = App::with_file(None, &path).unwrap();
     assert!(second.notice().unwrap_or_default().contains("read-only"), "{:?}", second.notice());
     assert!(second.status().unwrap().file.read_only.is_some());
@@ -397,7 +397,7 @@ fn the_quick_start_runs_headless() {
     };
     // 1. Draw a rectangle and convert it into a component with a terminal.
     ok(&mut t, "line 0,0 40,0 40,20 0,20 c");
-    let lines: Vec<_> = t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle).collect();
+    let lines: Vec<_> = t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect();
     assert_eq!(lines.len(), 4);
     t.cad.session.set_selection(lines.clone());
     ok(&mut t, "convertcomponent");
@@ -408,7 +408,7 @@ fn the_quick_start_runs_headless() {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
         .find(|e| matches!(&e.kind, EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0))
         .map(|e| e.handle)
         .unwrap();
@@ -434,9 +434,9 @@ fn the_quick_start_runs_headless() {
         moved.push(p.read(&mut t.cad.session, |p, _| p.pages[&page].map.marker(rid, *term).unwrap().hex()).unwrap());
     }
     ok(&mut t, &format!("move {{\"handles\":{},\"delta\":[0,-5]}}", serde_json::to_string(&moved).unwrap()));
-    let route_start = |d: &ecad_model::Document| ecad_model::derive::route_on_page(d, cid, page).unwrap().1.path_ends().unwrap();
+    let route_start = |d: &ecad_model::Document| ecad_model::connectivity::derive::route_on_page(d, cid, page).unwrap().1.path_ends().unwrap();
     assert_eq!(route_start(&doc(&mut t)).0, ecad_model::Pt::new(40.0, 5.0), "the wire end followed the terminal");
-    assert!(ecad_model::derive::mismatches(&doc(&mut t), 1e-9).is_empty());
+    assert!(ecad_model::connectivity::derive::mismatches(&doc(&mut t), 1e-9).is_empty());
     // 5. Undo/redo.
     let before = doc(&mut t);
     for _ in 0..3 {
@@ -466,7 +466,7 @@ fn the_quick_start_runs_headless() {
     // The line, not counting the sheet frame (brief 019); its ends are free, so it carries no
     // wire and shows no label (design 072).
     assert_eq!(
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).count(),
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).count(),
         1,
         "page 2's wire is drawn again"
     );
@@ -495,7 +495,7 @@ fn the_quick_start_runs_headless() {
     assert_eq!(doc(&mut t), saved);
     let reopened = t.project().unwrap().clone();
     assert_eq!(reopened.read(&mut t.cad.session, |p, _| p.ledger.full_log().unwrap()).unwrap(), history);
-    assert!(ecad_model::derive::mismatches(&doc(&mut t), 1e-9).is_empty(), "still connected");
+    assert!(ecad_model::connectivity::derive::mismatches(&doc(&mut t), 1e-9).is_empty(), "still connected");
     // The component ID noted before saving still names the component.
     ok(&mut t, &format!("setprop {{\"component\":\"{}\",\"key\":\"tag\",\"value\":\"-K1\"}}", component.hex()));
     assert!(t.submit_command(r#"setprop {"component":"0123456789abcdef0123456789abcdef","key":"tag","value":"x"}"#).is_some());
@@ -518,7 +518,7 @@ fn the_command_field_keeps_trailing_enters() {
     assert!(t.cad.session.running.is_some(), "LINE waits for its next point");
     assert!(t.submit_command("").is_none());
     assert!(t.cad.session.running.is_none(), "an empty line is Enter");
-    assert_eq!(t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).count(), 2);
+    assert_eq!(t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).count(), 2);
     assert!(t.submit_command("   ").is_none(), "blank with nothing running does nothing");
 }
 

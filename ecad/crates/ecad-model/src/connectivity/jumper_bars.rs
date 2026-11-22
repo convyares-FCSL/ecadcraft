@@ -21,10 +21,10 @@
 
 use std::cmp::Ordering;
 
-use crate::doc::{Document, Properties};
+use crate::document::doc::{Document, Properties};
 use crate::error::{ParseError, Parsed};
-use crate::id::{DeviceId, ConnectionPointId};
-use crate::point::{LevelIo, PointKey};
+use crate::naming::id::{DeviceId, ConnectionPointId};
+use crate::geometry::point::{LevelIo, PointKey};
 
 /// What every link key starts with.
 pub const PREFIX: &str = "link.";
@@ -60,7 +60,7 @@ fn level_text(k: &str) -> Option<(u32, Option<char>)> {
         Some(c @ ('i' | 'o')) => (k.get(..k.len() - 1)?, Some(c)),
         _ => (k, None),
     };
-    if digits.len() > 2 || !crate::words::is_digits(digits) {
+    if digits.len() > 2 || !crate::naming::words::is_digits(digits) {
         return None;
     }
     let n: u32 = digits.parse().ok()?;
@@ -76,7 +76,7 @@ pub struct BadLevel;
 pub fn split_level(end: &str) -> Result<(&str, Option<(u32, Option<char>)>), BadLevel> {
     let Some((pos, tail)) = end.rsplit_once('.') else { return Ok((end, None)) };
     let core = tail.strip_suffix(['i', 'o']).unwrap_or(tail);
-    if pos.is_empty() || !crate::words::is_digits(core) {
+    if pos.is_empty() || !crate::naming::words::is_digits(core) {
         return Ok((end, None));
     }
     level_text(tail).map(|l| (pos, Some(l))).ok_or(BadLevel)
@@ -116,7 +116,7 @@ fn cmp_labels(a: &str, b: &str) -> Ordering {
 /// The link number of `key` when it is a link key (`link.3` → 3).
 pub fn jumper_bar_number(key: &str) -> Option<u32> {
     let n = key.strip_prefix(PREFIX)?;
-    crate::words::uint_canonical(n, MAX_JUMPER_BAR).filter(|n| *n >= 1)
+    crate::naming::words::uint_canonical(n, MAX_JUMPER_BAR).filter(|n| *n >= 1)
 }
 
 /// The link key of number `n`.
@@ -428,7 +428,7 @@ impl Matcher {
     }
 
     /// [`Matcher::matches_level`] for a terminal: its label and its key's level.
-    pub fn matches_connection_point(&self, t: &crate::doc::ConnectionPoint) -> bool {
+    pub fn matches_connection_point(&self, t: &crate::document::doc::ConnectionPoint) -> bool {
         let Some(l) = t.label.as_deref() else { return false };
         let Some((n, p)) = level_of_key(t.key.as_ref()) else { return false };
         self.matches_level(l, n, p)
@@ -474,7 +474,7 @@ pub fn terminals_named(doc: &Document, component: DeviceId, value: Option<&str>)
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn keys_and_values() {

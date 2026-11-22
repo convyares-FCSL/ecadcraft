@@ -7,10 +7,10 @@
 use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::EntityKind;
-use ecad_engine::frame::Part;
+use ecad_engine::pages::frame::Part;
 use ecad_engine::generated;
 use ecad_engine::outputs::kept::ReportModels;
-use ecad_engine::strip_page::{self, StripPages};
+use ecad_engine::terminal_strips::draw::{self, StripPages};
 use ecad_model::{CableId, DeviceId, PageId, ConnectionPointId};
 use serde_json::{Value, json};
 
@@ -137,8 +137,8 @@ fn a_graphic_page_draws_the_strip_as_wired() {
     let mut g = fixture(0x46_01);
     let page = strip_page(&mut g);
     let doc = g.h.doc();
-    assert_eq!(doc.pages[&page].title, strip_page::TITLE);
-    assert_eq!(strip_page::style_of(&doc, page), strip_page::Style::Graphic);
+    assert_eq!(doc.pages[&page].title, draw::TITLE);
+    assert_eq!(draw::style_of(&doc, page), draw::Style::Graphic);
     let p = parts(&mut g.h, page);
     let o = outputs(&mut g.h);
     let s = o.strips.get(g.x1).unwrap();
@@ -173,7 +173,7 @@ fn one_cable_bar_and_one_box_per_cable() {
     let mut g = fixture(0x46_02);
     let page = strip_page(&mut g);
     let p = parts(&mut g.h, page);
-    let heavy = p.iter().filter(|x| matches!(x.kind, EntityKind::Line(_)) && x.weight == Some(ecad_electrical::cable_look::CABLE_WEIGHT * 2)).count();
+    let heavy = p.iter().filter(|x| matches!(x.kind, EntityKind::Line(_)) && x.weight == Some(ecad_electrical::cables::layout::CABLE_WEIGHT * 2)).count();
     assert_eq!(heavy, 1, "one cable bar");
     assert_eq!(texts(&p).iter().filter(|(t, _)| t == "-W01").count(), 1, "one cable box");
     let _ = (g.cable, g.m1, g.schematic);
@@ -199,10 +199,10 @@ fn a_long_strip_runs_onto_a_second_sheet() {
     assert!(titles.len() == 2 && titles[0].ends_with(" (1/2)") && titles[1].ends_with(" (2/2)"), "{titles:?}");
     // No position split: every position's levels are on one sheet (the layout is by block).
     let strip = o.strips.get(g.x1).unwrap();
-    let geometry = strip_page::Geometry::of(&doc);
-    let (cols, blocks) = strip_page::columns(strip, &geometry);
+    let geometry = draw::Geometry::of(&doc);
+    let (cols, blocks) = draw::columns(strip, &geometry);
     let widths: Vec<f64> = blocks.iter().map(|b| b.2).collect();
-    let sheets = strip_page::paginate(&widths, geometry.available(&ecad_model::sheet::sheet_of(&doc, page)));
+    let sheets = draw::paginate(&widths, geometry.available(&ecad_model::document::sheet::sheet_of(&doc, page)));
     assert_eq!(sheets.len(), 2);
     assert_eq!(blocks.iter().map(|b| b.1 - b.0).sum::<usize>(), cols.len(), "blocks cover every column");
     // link.2 (30-45) crosses the break: a stub past the first column of sheet 2 and past the last
@@ -322,7 +322,7 @@ fn an_old_terminals_page_still_draws_the_table() {
     let mut g = fixture(0x46_09);
     let page: PageId = id(&g.h.run("newpage", json!({"generated": "terminals"})).unwrap(), "page");
     let doc = g.h.doc();
-    assert_eq!(strip_page::style_of(&doc, page), strip_page::Style::Table);
+    assert_eq!(draw::style_of(&doc, page), draw::Style::Table);
     assert!(has(&parts(&mut g.h, page), "Inside target"));
 }
 
@@ -331,7 +331,7 @@ fn an_old_terminals_page_still_draws_the_table() {
 fn empty_and_hostile_states_draw_without_crashing() {
     let mut h = H::new(0x46_0a);
     let page: PageId = id(&h.run("newpage", json!({"generated": "terminals", "style": "graphic"})).unwrap(), "page");
-    assert!(has(&parts(&mut h, page), strip_page::NO_STRIPS));
+    assert!(has(&parts(&mut h, page), draw::NO_STRIPS));
     let mut g = fixture(0x46_0b);
     g.h.run("setprop", json!({"component": g.x1.hex(), "key": "terminals", "value": "999"})).unwrap();
     let page = strip_page(&mut g);
@@ -349,10 +349,10 @@ fn empty_and_hostile_states_draw_without_crashing() {
 /// Paging never splits a block and puts a block wider than the sheet on a sheet of its own.
 #[test]
 fn paginate_keeps_blocks_whole() {
-    assert_eq!(strip_page::paginate(&[], 100.0), vec![(0, 0)]);
-    assert_eq!(strip_page::paginate(&[40.0, 40.0, 40.0], 100.0), vec![(0, 2), (2, 3)]);
-    assert_eq!(strip_page::paginate(&[150.0, 10.0], 100.0), vec![(0, 1), (1, 2)]);
-    assert_eq!(strip_page::paginate(&[f64::NAN, 10.0], 100.0).len(), 1);
+    assert_eq!(draw::paginate(&[], 100.0), vec![(0, 0)]);
+    assert_eq!(draw::paginate(&[40.0, 40.0, 40.0], 100.0), vec![(0, 2), (2, 3)]);
+    assert_eq!(draw::paginate(&[150.0, 10.0], 100.0), vec![(0, 1), (1, 2)]);
+    assert_eq!(draw::paginate(&[f64::NAN, 10.0], 100.0).len(), 1);
 }
 
 /// Review of 046, finding 1: a style switch changes a page's sheet count on the document alone;

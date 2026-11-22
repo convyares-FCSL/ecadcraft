@@ -3,10 +3,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::doc::{Device, Form, Item, ItemKind, Page, Representation, Style, SymbolInstance};
-use ecad_model::id::{DefinitionId, DeviceId, ItemId, LayerId, PageId, RepresentationId};
-use ecad_model::numbering::{self, Kind, Request, Scope};
-use ecad_model::tag::HighWater;
+use ecad_model::document::doc::{Device, Form, Item, ItemKind, Page, Representation, Style, SymbolInstance};
+use ecad_model::naming::id::{DefinitionId, DeviceId, ItemId, LayerId, PageId, RepresentationId};
+use ecad_model::naming::numbering::{self, Kind, Request, Scope};
+use ecad_model::naming::tag::HighWater;
 use ecad_model::{Document, Placement, Pt, Subject};
 
 /// Two pages. Each symbol: (representation, device, tag, page, x, y, role).
@@ -17,7 +17,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
         d.pages.insert(p, Page::titled(format!("P{i}")).unwrap());
         d.page_order.push(p);
     }
-    let style = Style { layer: LayerId(1), color: ecad_model::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+    let style = Style { layer: LayerId(1), color: ecad_model::document::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (rid, c, tag, page, x, y, role) in syms {
         let comp = Device::default().with_tag(Some(tag));
         d.devices.entry(DeviceId(*c)).or_insert(comp);
@@ -25,7 +25,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
         let pg = d.page_order[*page];
         let kind = ItemKind::Symbol(SymbolInstance {
             definition: DefinitionId(9),
-            placement: Placement { origin: Pt::new(*x, *y), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 },
+            placement: Placement { origin: Pt::new(*x, *y), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 },
         });
         d.items.insert(item, Item { page: pg, style: style.clone(), kind });
         let rep = Representation {

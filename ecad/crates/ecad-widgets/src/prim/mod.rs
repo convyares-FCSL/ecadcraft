@@ -13,12 +13,12 @@
 //! A primitive's [`Look`] can be forced (hover, pressed, focus) so the showcase and screenshots
 //! show every state without a pointer; ordinary code leaves it at [`Look::Auto`].
 
-mod button;
-mod field;
+pub(crate) mod button;
+pub(crate) mod field;
 pub mod kit;
-mod label;
-mod row;
-mod segmented;
+pub(crate) mod label;
+pub(crate) mod row;
+pub(crate) mod segmented;
 
 pub use button::{Button, IconButton, Kind, button, icon_button};
 pub use field::{Field, FieldKind, field};
@@ -29,8 +29,8 @@ pub use label::{Chip, ChipResponse, badge, chip, keycap, pill};
 pub use row::{RowKind, RowSpec, provisional, read_value, row};
 pub use segmented::{Segmented, SegmentedResponse, segmented};
 
-use ecad_tokens::Color;
-use ecad_tokens::ui_type::TypeStyle;
+use crate::tokens::Color;
+use crate::tokens::ui_type::TypeStyle;
 use egui::{Color32, Galley, Response, Ui, WidgetInfo};
 use std::sync::Arc;
 
@@ -101,7 +101,7 @@ impl Tone {
     pub fn ground(self) -> Color {
         match self {
             Tone::Neutral => crate::SHELL.raised,
-            t => t.text().at_percent(ecad_tokens::shell::SOFT_PERCENT),
+            t => t.text().at_percent(crate::tokens::shell::SOFT_PERCENT),
         }
     }
 

@@ -1,13 +1,13 @@
 //! The egui style from the tokens: both themes alike, the Graphite colours, the shadow.
 
-use ecad_tokens::GRAPHITE;
-use ecad_ui::color;
+use ecad_widgets::tokens::GRAPHITE;
+use ecad_widgets::color;
 use egui::Theme;
 
 #[test]
 fn both_egui_themes_get_the_graphite_shell() {
     let ctx = egui::Context::default();
-    ecad_ui::style::apply(&ctx);
+    ecad_widgets::style::apply(&ctx);
     for theme in [Theme::Dark, Theme::Light] {
         let v = ctx.style_of(theme).visuals.clone();
         assert_eq!(v.panel_fill, color(GRAPHITE.panel), "{theme:?}");
@@ -17,7 +17,7 @@ fn both_egui_themes_get_the_graphite_shell() {
         assert_eq!(v.text_edit_bg_color, Some(color(GRAPHITE.raised)));
         assert_eq!(v.window_shadow.offset, [0, 8]);
         assert_eq!(v.window_shadow.blur, 24);
-        assert_eq!(v.text_cursor.stroke.width, ecad_tokens::line::FOCUS_RING_PX);
+        assert_eq!(v.text_cursor.stroke.width, ecad_widgets::tokens::line::FOCUS_RING_PX);
     }
     assert!(ctx.style_of(Theme::Dark).visuals == ctx.style_of(Theme::Light).visuals, "one appearance");
 }

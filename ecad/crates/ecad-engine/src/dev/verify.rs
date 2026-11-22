@@ -94,7 +94,7 @@ pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &Handle
 }
 
 /// [`verify_page`] for a page projected with cable views (brief 005): the cables in `fan` whose
-/// fan can be drawn on the page must show exactly their fan ([`crate::views::fan_on_page`] with
+/// fan can be drawn on the page must show exactly their fan ([`crate::cables::views::fan_on_page`] with
 /// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
 pub fn verify_page_with(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&ReportModels>,
@@ -119,7 +119,7 @@ pub fn verify_page_pending(
     outputs: Option<&ReportModels>,
 ) -> Verification {
     let mut v = Verification::default();
-    let fans = crate::views::drawings_on_page(doc, page, fan, tol);
+    let fans = crate::cables::views::drawings_on_page(doc, page, fan, tol);
     let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
@@ -154,7 +154,7 @@ pub fn verify_page_pending(
         *fan_expected.entry(computed_key(&crate::project::device_reference_entity(&look, &part, Handle(0)))).or_default() += 1;
     }
     // Link lines (brief 030), derived the same way.
-    for part in crate::link_lines::parts_on_page(doc, page) {
+    for part in ecad_electrical::terminal_strips::jumper_bars::parts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::project::link_entity(&part, Handle(0)))).or_default() += 1;
     }
     // Location box labels (brief 024), derived the same way.
@@ -167,20 +167,20 @@ pub fn verify_page_pending(
     }
     // The sheet frame (brief 019), derived like the cable parts.
     // Generated pages and Total in sheets (brief 024) come from the same function.
-    let frame_rgb = crate::frame::line_colour(doc, page);
+    let frame_rgb = crate::pages::frame::line_colour(doc, page);
     for part in crate::generated::parts_of_pending(doc, page, outputs, pending) {
-        *fan_expected.entry(computed_key(&crate::frame::styled_entity(&part, Handle(0), frame_rgb))).or_default() += 1;
+        *fan_expected.entry(computed_key(&crate::pages::frame::styled_entity(&part, Handle(0), frame_rgb))).or_default() += 1;
     }
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
     // Brief 040: a two-colour wire's dashes, derived from its route like the labels.
-    let budget = crate::words::dash_budget(doc, page);
-    for r in crate::look::coloured_routes(doc, page, Some(map), crate::look::projection_sheet()) {
+    let budget = ecad_electrical::cables::words::dash_budget(doc, page);
+    for r in crate::cables::draw::coloured_routes(doc, page, Some(map), crate::cables::draw::projection_sheet()) {
         if !budget.dashed.contains(&r.rep) {
             continue;
         }
         let Some(route) = r.handle.and_then(|h| entities.get(&h)) else { continue };
-        for e in crate::draw::wires::route_dashes(&r, &route.common) {
+        for e in crate::wires::draw::route_dashes(&r, &route.common) {
             *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }
@@ -217,8 +217,8 @@ pub fn verify_page_pending(
             continue;
         }
         if let Some(Mapped::Fan(_)) = map.get(e.handle) {
-            if e.common.layer != crate::views::LAYER {
-                problems.push(format!("a fan line is not on layer {}", crate::views::LAYER));
+            if e.common.layer != crate::cables::views::LAYER {
+                problems.push(format!("a fan line is not on layer {}", crate::cables::views::LAYER));
             }
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
@@ -333,7 +333,7 @@ pub fn verify_page_pending(
                     continue;
                 }
                 let want: Vec<Pt> =
-                    ecad_model::derive::connection_point_positions(doc, page).into_iter().filter(|(_, rep, _)| rep == rid).map(|(_, _, p)| p).collect();
+                    ecad_model::connectivity::derive::connection_point_positions(doc, page).into_iter().filter(|(_, rep, _)| rep == rid).map(|(_, _, p)| p).collect();
                 let got = block_terminals(drawing, e);
                 v.terminals += want.len();
                 // The block shows every terminal of the definition; the component may use a subset.
@@ -398,7 +398,7 @@ pub fn verify_page_pending(
     //    terminal position read from the drawing (markers and symbol blocks), not from the document.
     let mut drawn_connection_points: Vec<Pt> = entities.values().filter_map(|e| marker_position(e)).collect();
     drawn_connection_points.extend(entities.values().flat_map(|e| block_terminals(drawing, e)));
-    let shown = ecad_model::derive::connection_point_positions(doc, page);
+    let shown = ecad_model::connectivity::derive::connection_point_positions(doc, page);
     for rid in doc.routes_on(page) {
         let Some(c) = doc.routes.get(&rid) else { continue };
         let Some((item, _)) = doc.representations_of(ecad_model::Subject::Route(rid)).find_map(|(_, r)| r.items.first().map(|i| (*i, r))) else {

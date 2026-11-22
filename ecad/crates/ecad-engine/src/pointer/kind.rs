@@ -15,8 +15,8 @@ use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use ecad_model::{CableId, DeviceId, Document, End, PageId, RepresentationId, RouteId, Subject, ConnectionPointId, WireId};
 
-use super::{capture, pick, pixel, pt, read, route_ends, connection_point_name};
-use crate::kinds::ObjectKind;
+use crate::interact::{capture, pick, pixel, pt, read, route_ends, connection_point_name};
+use ecad_electrical::devices::kinds::ObjectKind;
 use crate::project::{Mapped, Project};
 
 /// The object a wheel was opened on.
@@ -110,7 +110,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         return t;
     }
     let c = pt(cursor);
-    let ok_aperture = aperture.is_finite() && aperture > 0.0 && super::in_range(cursor);
+    let ok_aperture = aperture.is_finite() && aperture > 0.0 && crate::interact::in_range(cursor);
     // A cable reference end (its point or text) wins over the wire running into it.
     if ok_aperture && let Some(r) = crate::references::reference_at(doc, page, c, aperture) {
         return reference(doc, map, page, t, r);
@@ -143,7 +143,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     // A terminal strip's terminal within the aperture.
     if ok_aperture
         && let Some(cap) = capture(p, page, cursor, aperture)
-        && let Some(strip) = crate::strips::strip_of_connection_point(doc, cap.terminal)
+        && let Some(strip) = ecad_electrical::terminal_strips::strip_of_connection_point(doc, cap.terminal)
     {
         return terminal(p, page, t, strip, Some(cap.terminal));
     }
@@ -193,7 +193,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.handles = vec![h];
         }
         Some(Mapped::Link(strip, _)) => return terminal(p, page, t, strip, None),
-        Some(Mapped::Marker(rep, term)) => match crate::strips::strip_of_connection_point(doc, term) {
+        Some(Mapped::Marker(rep, term)) => match ecad_electrical::terminal_strips::strip_of_connection_point(doc, term) {
             Some(strip) => return terminal(p, page, t, strip, Some(term)),
             None => {
                 if let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) {
@@ -204,7 +204,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         Some(Mapped::Item(i)) => match doc.representation_of_item(i) {
             Some((rid, r)) if crate::references::is_reference(r) => return reference(doc, map, page, t, rid),
             Some((rid, r)) => match r.subject {
-                Subject::Device(c) if crate::strips::strip_of(doc, c).is_some() => return terminal(p, page, t, c, None),
+                Subject::Device(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => return terminal(p, page, t, c, None),
                 Subject::Device(c) => return device(p, page, t, c, Some(rid)),
                 Subject::Wire(w) => {
                     t.kind = ObjectKind::Wire;
@@ -265,7 +265,7 @@ fn terminal(p: &Project, page: PageId, mut t: Target, strip: DeviceId, term: Opt
     let tag = crate::devices::tag_words(doc, strip);
     t.name = match term {
         // Brief 044: a connector pin is named by its half (`-X10.S:3`).
-        Some(x) => crate::connectors::pin_name(doc, x).unwrap_or_else(|| format!("{tag}:{}", connection_point_name(doc, x))),
+        Some(x) => ecad_electrical::connectors::pin_name(doc, x).unwrap_or_else(|| format!("{tag}:{}", connection_point_name(doc, x))),
         None => tag,
     };
     let map = p.pages.get(&page).map(|v| &v.map);
@@ -314,8 +314,8 @@ fn reference(doc: &Document, map: &crate::project::HandleMap, page: PageId, mut 
 
 /// A wire as a person names it: `wire 01` (its net's number), else its tag or short ID.
 pub fn wire_words(doc: &Document, w: WireId) -> String {
-    match ecad_model::wiring::wire_number(doc, w) {
+    match ecad_model::connectivity::wiring::wire_number(doc, w) {
         Some(n) => format!("wire {n}"),
-        None => crate::slash::wire_name(doc, w),
+        None => ecad_electrical::cables::slash::wire_name(doc, w),
     }
 }

@@ -13,8 +13,8 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{ItemId, ItemKind, Primitive, Pt, Subject};
 use serde_json::json;
 
-use super::forms::{R, Safe, commit, other, paper_guard, safely};
-use super::{ATTACHED_ACI, OUT_OF_RANGE, can_start, in_range, pick_radius, preview_entity, pt, read};
+use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
+use crate::interact::{ATTACHED_ACI, OUT_OF_RANGE, can_start, in_range, pick_radius, preview_entity, pt, read};
 use crate::convert::kind_for_primitive;
 
 /// The drawing mode kept for the session (rectangle unless Polyline was chosen).
@@ -33,7 +33,7 @@ fn last(a: Aspect) -> &'static Mutex<Option<String>> {
 /// `ecad.check-warning`.
 const WARNING_ACI: u8 = 2;
 
-use crate::designations::Aspect;
+use ecad_electrical::locations::designations::Aspect;
 
 /// `locationbox`: the click-based form.
 pub(crate) fn locationbox(s: &Session) -> R<Box<dyn Interactive>> {
@@ -50,11 +50,11 @@ fn start(s: &Session, aspect: Aspect) -> R<Box<dyn Interactive>> {
     let page_default = read(s, |p, page| {
         let doc = p.ledger.document();
         // Brief 052: a stored entry key, shown by its code.
-        let stored = crate::designations::inherited_key(doc, page, aspect);
-        Ok(crate::designations::shown(doc, aspect, stored.as_deref()))
+        let stored = ecad_electrical::locations::designations::inherited_key(doc, page, aspect);
+        Ok(ecad_electrical::locations::designations::shown(doc, aspect, stored.as_deref()))
     })
     .unwrap_or(None);
-    let fallback = crate::designations::example(aspect).to_string();
+    let fallback = ecad_electrical::locations::designations::example(aspect).to_string();
     let default = last(aspect).lock().ok().and_then(|g| g.clone()).or(page_default).unwrap_or(fallback);
     Ok(Box::new(Safe(LocationBox { aspect, default, location: None, mode: Mode::Start, points: Vec::new(), anchors: Vec::new() })))
 }
@@ -89,10 +89,10 @@ impl LocationBox {
                     if !crate::locations::is_device(doc, c) {
                         return None;
                     }
-                    let own = crate::designations::shown(
+                    let own = ecad_electrical::locations::designations::shown(
                         doc,
                         self.aspect,
-                        doc.devices.get(&c).and_then(|x| crate::designations::device_key(x, self.aspect)).as_deref(),
+                        doc.devices.get(&c).and_then(|x| ecad_electrical::locations::designations::device_key(x, self.aspect)).as_deref(),
                     );
                     Some((crate::locations::anchor(doc, r)?, own))
                 })
@@ -103,7 +103,7 @@ impl LocationBox {
 
     fn outline(&self, cursor: Option<Pt>) -> Vec<Pt> {
         match (self.mode, self.points.as_slice(), cursor) {
-            (Mode::Rectangle, [a], Some(c)) => crate::cmd::output::rectangle(*a, c),
+            (Mode::Rectangle, [a], Some(c)) => crate::reports::commands::rectangle(*a, c),
             (Mode::Polyline, pts, c) => {
                 let mut v = pts.to_vec();
                 v.extend(c);
@@ -268,7 +268,7 @@ fn outline_at(doc: &ecad_model::Document, page: ecad_model::PageId, at: Pt, tol:
                 let n = vertices.len();
                 let segs = if *closed { n } else { n.saturating_sub(1) };
                 let d = (0..segs)
-                    .filter_map(|k| Some(at.dist(ecad_model::geom::nearest_on_segment(at, *vertices.get(k)?, *vertices.get((k + 1) % n)?))))
+                    .filter_map(|k| Some(at.dist(ecad_model::geometry::geom::nearest_on_segment(at, *vertices.get(k)?, *vertices.get((k + 1) % n)?))))
                     .fold(f64::INFINITY, f64::min);
                 (d <= tol).then_some((d, *id))
             }

@@ -10,11 +10,11 @@
 use std::path::PathBuf;
 
 use ecad_app::App;
-use ecad_engine::views::Settings;
+use ecad_engine::cables::views::Settings;
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
 
-use crate::mouse_tester::{Collect, Deltas};
+use crate::canvas::mouse_acceptance::{Collect, Deltas};
 
 /// Where a harness's app keeps remembered cable views.
 pub(crate) enum Views {
@@ -85,7 +85,7 @@ impl Opts {
 /// A kittest harness around an app, run for five frames.
 pub(crate) fn harness(opts: Opts) -> Harness<'static, App> {
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut t = match opts.app {
         Some(t) => t,
         None => {
@@ -95,7 +95,7 @@ pub(crate) fn harness(opts: Opts) -> Harness<'static, App> {
         }
     };
     if opts.panels {
-        crate::project_panel::open_panels(&mut t);
+        crate::pages::project_panel::open_panels(&mut t);
     }
     match opts.views {
         Views::Untouched => {}
@@ -205,7 +205,7 @@ pub(crate) fn wire_pp(t: &mut App, points: &[(f64, f64)]) -> serde_json::Value {
         .read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let page = p.active_page().unwrap_or(doc.page_order[0]);
-            ecad_model::derive::connection_point_positions(doc, page).into_iter().map(|(_, _, at)| at).collect()
+            ecad_model::connectivity::derive::connection_point_positions(doc, page).into_iter().map(|(_, _, at)| at).collect()
         })
         .unwrap();
     let ends: Vec<(f64, f64)> = [points.first(), points.last()]

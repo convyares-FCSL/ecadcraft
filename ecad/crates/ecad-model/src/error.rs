@@ -94,15 +94,15 @@ impl std::fmt::Display for Noun {
 /// Which of the model's public readers refused (see [`ParseError::Invalid`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Parsed {
-    /// [`crate::links::parse`].
+    /// [`crate::connectivity::jumper_bars::parse`].
     Link,
-    /// [`crate::numbering::plan`].
+    /// [`crate::naming::numbering::plan`].
     Numbering,
     /// [`crate::SheetSpec::parse`] and [`crate::SheetSpec::check`].
     Sheet,
-    /// [`crate::tag::normalise`].
+    /// [`crate::naming::tag::normalise`].
     Tag,
-    /// [`crate::wiring::valid_number`].
+    /// [`crate::connectivity::wiring::valid_number`].
     WireNumber,
     /// [`crate::merge::join_cables`].
     CableJoin,

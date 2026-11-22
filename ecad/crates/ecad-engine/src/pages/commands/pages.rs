@@ -2,20 +2,20 @@
 //! and `movepage`, and `ecadinspect` (a read-only snapshot).
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::cmd::sheet`] decide, and the shim commits the ops and answers in JSON.
+//! [`ecad_electrical::pages::commands::sheets`] decide, and the shim commits the ops and answers in JSON.
 //! Opening a page is the session's.
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::sheet as rules;
+use ecad_electrical::pages::commands::sheets as rules;
 use ecad_model::{DeviceId, FolderId, PageId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{err, on_any_page, on_project};
-use ecad_electrical::cmd::input::nullable;
+use crate::commands::input::{Command, Typed};
+use crate::commands::{err, on_any_page, on_project};
+use ecad_electrical::commands::input::nullable;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -69,13 +69,13 @@ impl Command for NewpageParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let kind = rules::new_page_kind(self.generated.as_deref(), self.style.as_deref(), self.strip).map_err(|e| err(e.to_string()))?;
         let default_title = match (kind.generated, kind.style.as_deref()) {
-            (Some(ecad_model::GenKind::Terminals), Some(crate::defaults::strip_pages::GRAPHIC)) => crate::strip_page::TITLE,
+            (Some(ecad_model::GenKind::Terminals), Some(ecad_electrical::defaults::strip_pages::GRAPHIC)) => crate::terminal_strips::draw::TITLE,
             (g, _) => g.map_or("new", |g| g.title()),
         };
         let (page, number) = on_project(s, |p, pg, _| {
             let (page_type, type_title) = rules::new_page_type(p.ledger.document(), &kind, self.after, self.ty.as_deref())?;
             let title = self.title.or(type_title).unwrap_or_else(|| default_title.to_string());
-            let (id, number, mut ops) = crate::cmd::sheet::new_page_ops_at(p, title, self.number, self.folder, self.after)?;
+            let (id, number, mut ops) = crate::pages::commands::sheets::new_page_ops_at(p, title, self.number, self.folder, self.after)?;
             rules::stamp_new_page(&mut ops, &kind, page_type.as_ref());
             p.apply_edit(pg, "newpage", "New page", ops)?;
             p.pages.entry(id).or_default();

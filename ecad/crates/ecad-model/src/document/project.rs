@@ -22,8 +22,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::Word;
-use crate::id::{FunctionId, LocationId};
-use crate::text::Text;
+use crate::naming::id::{FunctionId, LocationId};
+use crate::naming::text::Text;
 
 /// Most characters of a list code (with its sign) and of a tag.
 pub const MAX_CODE: usize = 16;
@@ -91,7 +91,7 @@ pub struct Project {
     pub revisions: Vec<Revision>,
     /// The project-defined user fields (design 072 §2.8), in the order they were made.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub user_fields: Vec<crate::user::UserFieldDef>,
+    pub user_fields: Vec<crate::objects::user::UserFieldDef>,
 }
 
 /// The project-property key a `keep_project_key` filter (Restore, merge) is asked about for the
@@ -120,11 +120,11 @@ impl Project {
         list_problem(&self.locations, '+', "location")
             .or_else(|| list_problem(&self.functions, '=', "function"))
             .or_else(|| revisions_problem(&self.revisions))
-            .or_else(|| crate::user::fields_problem(&self.user_fields))
+            .or_else(|| crate::objects::user::fields_problem(&self.user_fields))
     }
 
     /// The user field `id`, if the project defines it.
-    pub fn user_field(&self, id: crate::id::UserFieldId) -> Option<&crate::user::UserFieldDef> {
+    pub fn user_field(&self, id: crate::naming::id::UserFieldId) -> Option<&crate::objects::user::UserFieldDef> {
         self.user_fields.iter().find(|f| f.id == id)
     }
 }
@@ -289,7 +289,7 @@ pub const MAX_NOTE_CHARS: usize = 400;
 /// A one-line project info field.
 pub type InfoText = Text<MAX_INFO>;
 /// The cover's notes: one per line.
-pub type Notes = crate::text::LongText<{ MAX_NOTES * (MAX_NOTE_CHARS + 1) }>;
+pub type Notes = crate::naming::text::LongText<{ MAX_NOTES * (MAX_NOTE_CHARS + 1) }>;
 
 crate::word_enum! {
     /// A field of [`ProjectInfo`], by the project property it was (`title`, `cover.notes`).
@@ -340,7 +340,7 @@ impl ProjectInfo {
             InfoField::Customer => self.customer.as_ref().map(Text::as_str),
             InfoField::Site => self.site.as_ref().map(Text::as_str),
             InfoField::Status => self.status.as_ref().map(Text::as_str),
-            InfoField::Notes => self.notes.as_ref().map(crate::text::LongText::as_str),
+            InfoField::Notes => self.notes.as_ref().map(crate::naming::text::LongText::as_str),
         }
     }
 
@@ -348,7 +348,7 @@ impl ProjectInfo {
     ///
     /// # Errors
     /// Why the text was refused.
-    pub fn with(&self, f: InfoField, value: Option<&str>) -> Result<ProjectInfo, crate::text::TextError> {
+    pub fn with(&self, f: InfoField, value: Option<&str>) -> Result<ProjectInfo, crate::naming::text::TextError> {
         let mut out = self.clone();
         let v = value.map(str::trim).filter(|v| !v.is_empty());
         let line = |v: Option<&str>| v.map(InfoText::new).transpose();

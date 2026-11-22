@@ -12,7 +12,7 @@
 
 use ecad_model::{Document, ProjectSettings};
 
-use super::{Entry, Kind, Level, ProjectSource, Scope, Slot, Value};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Scope, Slot, Value};
 
 const GROUP: &str = "Tag prefixes";
 const BRIEF: &str = "034";
@@ -58,7 +58,7 @@ macro_rules! prefixes {
                 $(crate::symbols::StarterKey::$var => Some(&$name),)*
                 // Brief 036: the multi-level terminal starters register theirs as `terminal.<key>.prefix`.
                 // Brief 045: its new starters register theirs as `plc.<key>.prefix`.
-                _ => super::terminals::prefix_entry(key).or_else(|| super::plc::prefix_entry(key)),
+                _ => crate::defaults::terminals::prefix_entry(key).or_else(|| crate::defaults::plc::prefix_entry(key)),
             }
         }
     };
@@ -165,12 +165,12 @@ pub static POINT_GRID: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// Brief 048's entries (listed in [`super::all`]).
+/// Brief 048's entries (listed in [`crate::defaults::all`]).
 pub static BUILDER_ENTRIES: &[&Entry] = &[&POINT_GRID];
 
 /// The point grid of `doc`, millimetres.
 pub fn point_grid(doc: &Document) -> f64 {
-    super::resolve(doc, &POINT_GRID, Scope::project()).number()
+    crate::defaults::resolve(doc, &POINT_GRID, Scope::project()).number()
 }
 
 // ---------------------------------------------------------------- family entries (brief 048, FP6)
@@ -290,11 +290,11 @@ pub fn family_property(symbol: &str, field: Field) -> Option<String> {
 }
 
 /// The value of `symbol`'s `field` and where it came from (design 048 §7.1): the project's
-/// override, else the definition's own value of a project symbol ([`Source::Definition`](super::Source::Definition)),
+/// override, else the definition's own value of a project symbol ([`Source::Definition`](crate::defaults::Source::Definition)),
 /// else a starter's built-in (its prefix, its name as description). `None` when nothing gives one.
 /// A hostile stored value counts as absent.
-pub fn resolve_for(doc: &Document, symbol: &str, field: Field) -> Option<(String, super::Source)> {
-    project_value(doc, symbol, field).map(|v| (v, super::Source::Project)).or_else(|| own_value(doc, symbol, field))
+pub fn resolve_for(doc: &Document, symbol: &str, field: Field) -> Option<(String, crate::defaults::Source)> {
+    project_value(doc, symbol, field).map(|v| (v, crate::defaults::Source::Project)).or_else(|| own_value(doc, symbol, field))
 }
 
 /// The project's override of `symbol`'s `field`, if it holds a valid one.
@@ -320,12 +320,12 @@ pub fn definition_value(d: &ecad_model::Definition, field: Field) -> Option<Stri
 
 /// `symbol`'s own value of `field`, without the project's override: a starter's built-in, or a
 /// project symbol's definition value.
-pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, super::Source)> {
+pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, crate::defaults::Source)> {
     let ok = |v: &str| field.accepts(v).then(|| v.trim().to_string());
     if let Some(s) = crate::symbols::by_key(symbol) {
         return match field {
-            Field::Prefix => prefix_entry(s.key).map(|e| (builtin_prefix(e).to_string(), super::Source::Builtin)).filter(|(p, _)| !p.is_empty()),
-            Field::Description => Some((s.name.to_string(), super::Source::Builtin)),
+            Field::Prefix => prefix_entry(s.key).map(|e| (builtin_prefix(e).to_string(), crate::defaults::Source::Builtin)).filter(|(p, _)| !p.is_empty()),
+            Field::Description => Some((s.name.to_string(), crate::defaults::Source::Builtin)),
             Field::Rating | Field::Join => None,
         };
     }
@@ -336,7 +336,7 @@ pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, 
         Field::Description => v.def.defaults.description.as_ref().map(|t| t.as_str()).and_then(ok),
         Field::Rating => v.def.defaults.rating.as_ref().map(|t| t.as_str()).and_then(ok),
     };
-    own.map(|x| (x, super::Source::Definition))
+    own.map(|x| (x, crate::defaults::Source::Definition))
 }
 
 /// The tag prefix a new device of project symbol `key` gets (brief 048): the project's override,
@@ -352,7 +352,7 @@ pub fn prefix(doc: &Document, key: crate::symbols::StarterKey) -> String {
     let Some(entry) = prefix_entry(key) else {
         return resolve_for(doc, ecad_model::Word::word(key), Field::Prefix).map(|(p, _)| p).unwrap_or_default();
     };
-    let resolved = super::resolve(doc, entry, Scope::project()).text();
+    let resolved = crate::defaults::resolve(doc, entry, Scope::project()).text();
     crate::devices::valid_prefix(&resolved).unwrap_or_else(|| builtin_prefix(entry).to_string())
 }
 
@@ -366,7 +366,7 @@ pub fn builtin_prefix(entry: &Entry) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::defaults::*;
     use crate::symbols::{Kind as SymbolKind, STARTERS};
 
     #[test]
@@ -376,8 +376,8 @@ mod tests {
             assert_eq!(e.is_some(), s.kind != SymbolKind::Tagless, "{}", s.key);
             // Brief 036 (overseer ruling): its starters' prefixes are in the `terminal` area.
             // Brief 045: its new starters' prefixes are in the `plc` area.
-            let plc = super::super::plc::prefix_entry(s.key).is_some();
-            let area = if crate::terminal_types::is_level_starter(s.key) {
+            let plc = crate::plc::prefix_entry(s.key).is_some();
+            let area = if crate::terminal_strips::terminal_blocks::is_level_starter(s.key) {
                 "terminal"
             } else if plc {
                 "plc"
@@ -387,8 +387,8 @@ mod tests {
             if let Some(e) = e {
                 assert_eq!(e.key, format!("{area}.{}.prefix", s.key));
                 let list = match area {
-                    "terminal" => super::super::terminals::ENTRIES,
-                    "plc" => super::super::plc::ENTRIES,
+                    "terminal" => crate::terminals::ENTRIES,
+                    "plc" => crate::plc::ENTRIES,
                     _ => ENTRIES,
                 };
                 assert!(list.iter().any(|x| std::ptr::eq(*x, e)), "{}", s.key);
@@ -399,20 +399,20 @@ mod tests {
             STARTERS
                 .iter()
                 .filter(|s| s.kind != SymbolKind::Tagless
-                    && !crate::terminal_types::is_level_starter(s.key)
-                    && super::super::plc::prefix_entry(s.key).is_none())
+                    && !crate::terminal_strips::terminal_blocks::is_level_starter(s.key)
+                    && crate::plc::prefix_entry(s.key).is_none())
                 .count()
         );
     }
 
     #[test]
     fn the_project_level_is_tag_prefixes_and_hostile_values_fall_back() {
-        use ecad_model::prefix::{PrefixOf, TagPrefix};
+        use ecad_model::naming::prefix::{PrefixOf, TagPrefix};
         let mut doc = Document::default();
         assert_eq!(prefix(&doc, crate::symbols::StarterKey::Fusebank8), "F");
         doc.settings.tag_prefixes.insert(PrefixOf::Starter("fusebank8".into()), TagPrefix::typed("FB").unwrap());
         assert_eq!(prefix(&doc, crate::symbols::StarterKey::Fusebank8), "FB");
-        assert_eq!(super::super::resolve(&doc, &FUSEBANK8, Scope::project()).from, super::super::Source::Project);
+        assert_eq!(crate::resolve(&doc, &FUSEBANK8, Scope::project()).from, crate::Source::Project);
         // A project property of the same key is never read: one project path.
         doc.settings.tag_prefixes.clear();
         doc.display.insert("symbol.fusebank8.prefix".into(), "ZZ".into());

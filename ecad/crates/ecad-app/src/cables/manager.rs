@@ -6,7 +6,7 @@
 
 use ecad_electrical::cables::{self, Side};
 use ecad_engine::checks::{Check, Fix, Kind, Object};
-use ecad_engine::designations::Aspect;
+use ecad_electrical::locations::designations::Aspect;
 use serde_json::json;
 
 /// **Assign in the drawing…** (the `cable-not-drawn` fix's first button).
@@ -21,7 +21,7 @@ pub const SET_GLAND: &str = "Set gland";
 /// The two buttons of a 059 fix, when it has two.
 pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
     match f {
-        Fix::AssignCable(_) => Some([ASSIGN_IN_DRAWING, crate::checks_panel::REMOVE]),
+        Fix::AssignCable(_) => Some([ASSIGN_IN_DRAWING, crate::checks::panel::REMOVE]),
         Fix::UseDrawing(..) => Some([USE_THE_DRAWING, GO_TO_END]),
         _ => None,
     }
@@ -31,7 +31,7 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
 pub fn single(f: Fix) -> &'static str {
     match f {
         Fix::ShowCableField(_, cables::CableField::Gland(_)) => SET_GLAND,
-        _ => crate::checks_panel::SHOW,
+        _ => crate::checks::panel::SHOW,
     }
 }
 
@@ -63,12 +63,12 @@ impl crate::App {
             (Fix::UseDrawing(cable, _), _) => {
                 let Some(p) = self.project.clone() else { return };
                 let at =
-                    p.read(&mut self.cad.session, |p, _| ecad_model::numbering::rep_anchor(p.ledger.document(), ecad_model::Subject::Cable(cable)));
+                    p.read(&mut self.cad.session, |p, _| ecad_model::naming::numbering::rep_anchor(p.ledger.document(), ecad_model::Subject::Cable(cable)));
                 let (page, at) = at.ok().flatten().map_or((None, None), |(p, a)| (Some(p), Some(a)));
                 let check = Check { kind: Kind::CableEndOffPlan, page, at, object: Object::Cable(cable), which: String::new(), fix: None };
-                self.panel_action(crate::project_panel::Action::GotoCheck(Box::new(check)));
+                self.panel_action(crate::pages::project_panel::Action::GotoCheck(Box::new(check)));
             }
-            (Fix::ShowCableField(cable, _), _) => self.show_rating(ecad_engine::rating::RatedSubject::Cable(cable)),
+            (Fix::ShowCableField(cable, _), _) => self.show_rating(ecad_electrical::circuits::RatedSubject::Cable(cable)),
             _ => {}
         }
     }
@@ -82,8 +82,8 @@ impl crate::App {
             let doc = p.ledger.document();
             let plan = cables::planned(doc, cable, Side::From, Aspect::Location)?;
             doc.page_order.iter().copied().find(|pg| {
-                let key = doc.pages.get(pg).and_then(|x| ecad_engine::designations::page_key(x, Aspect::Location));
-                ecad_engine::designations::shown(doc, Aspect::Location, key.as_deref()).is_some_and(|c| c.eq_ignore_ascii_case(&plan))
+                let key = doc.pages.get(pg).and_then(|x| ecad_electrical::locations::designations::page_key(x, Aspect::Location));
+                ecad_electrical::locations::designations::shown(doc, Aspect::Location, key.as_deref()).is_some_and(|c| c.eq_ignore_ascii_case(&plan))
             })
         });
         self.set_workspace(crate::shell::Workspace::Draw);
@@ -92,7 +92,7 @@ impl crate::App {
         }
         // The slash tool with the cable already picked: the same `Cable` keyword the command
         // line takes; the tool says `Slash the wires of -W03 (4 cores).`
-        let tag = p.read(&mut self.cad.session, |p, _| ecad_engine::views::cable_title(p.ledger.document(), cable));
+        let tag = p.read(&mut self.cad.session, |p, _| ecad_engine::cables::views::cable_title(p.ledger.document(), cable));
         let Ok(tag) = tag else { return };
         self.focus_drawing = true;
         if let Err(e) = self.cad.session.start("cableslash") {
@@ -101,7 +101,7 @@ impl crate::App {
         }
         let _ = self.cad.session.input(ecad_engine::cad::Input::Keyword("Cable".into()));
         match self.cad.session.input(ecad_engine::cad::Input::Text(tag)) {
-            Ok(_) => self.shell.slash_picker = crate::shell::right::slash_picker::Picker { want: Some(cable), ..Default::default() },
+            Ok(_) => self.shell.slash_picker = crate::inspector::slash_picker::Picker { want: Some(cable), ..Default::default() },
             Err(e) => self.cad.session.echo(e.to_string()),
         }
     }

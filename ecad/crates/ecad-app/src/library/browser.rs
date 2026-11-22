@@ -11,9 +11,9 @@
 
 use std::collections::BTreeSet;
 
-use ecad_engine::symbols::{self, Family, Starter};
+use ecad_electrical::symbols::{self, Family, Starter};
 use ecad_model::{Definition, DefinitionId, Document, Primitive, Pt};
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
 
 use crate::shell::bar;
@@ -84,7 +84,7 @@ impl LibraryTab {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tile {
     Project(DefinitionId),
-    Builtin(ecad_engine::symbols::StarterKey),
+    Builtin(ecad_electrical::symbols::StarterKey),
     Draft(u64),
 }
 
@@ -173,7 +173,7 @@ fn family_index(f: Family) -> u8 {
 
 impl Listing {
     /// Read the listing from `doc` (`None`: no project, built-ins only) and the drafts.
-    pub fn read(doc: Option<&Document>, drafts: &[super::Draft]) -> Self {
+    pub fn read(doc: Option<&Document>, drafts: &[crate::library::Draft]) -> Self {
         let mut entries = Vec::new();
         if let Some(doc) = doc {
             for v in symbols::project_symbols(doc) {
@@ -289,8 +289,8 @@ pub enum Act {
     Forget(u64),
 }
 
-fn c32(c: ecad_ui::tokens::Color) -> Color32 {
-    ecad_ui::color(c)
+fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+    ecad_widgets::color(c)
 }
 
 /// Draw definition `d` fitted in `rect` in `ink`; `marks`: its points and slots too (hover).
@@ -317,10 +317,10 @@ pub fn paint_symbol(p: &egui::Painter, rect: Rect, d: &Definition, ink: Color32,
                 p.circle_stroke(at(*center), (*radius * s) as f32, st);
             }
             Primitive::Arc { center, radius, start, end } => {
-                p.add(egui::Shape::line(super::builder::arc_points(*center, *radius, *start, *end).into_iter().map(at).collect(), st));
+                p.add(egui::Shape::line(crate::library::builder::arc_points(*center, *radius, *start, *end).into_iter().map(at).collect(), st));
             }
             Primitive::Text { at: a, height, value, .. } => {
-                p.text(at(*a), Align2::LEFT_BOTTOM, value, ecad_ui::style::ui_font(((*height * s) as f32 * 1.25).clamp(5.0, 14.0)), ink);
+                p.text(at(*a), Align2::LEFT_BOTTOM, value, ecad_widgets::style::ui_font(((*height * s) as f32 * 1.25).clamp(5.0, 14.0)), ink);
             }
             Primitive::Point { at: a } => {
                 p.circle_filled(at(*a), 1.5, ink);
@@ -330,15 +330,15 @@ pub fn paint_symbol(p: &egui::Painter, rect: Rect, d: &Definition, ink: Color32,
     if let Some((ring, slot)) = marks {
         for t in &d.terminals {
             p.circle_stroke(at(t.at), 3.5, Stroke::new(1.25, ring));
-            p.text(at(t.at) + vec2(5.0, -5.0), Align2::LEFT_BOTTOM, &t.key, ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::MICRO.size), ring);
+            p.text(at(t.at) + vec2(5.0, -5.0), Align2::LEFT_BOTTOM, &t.key, ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::MICRO.size), ring);
         }
         for sl in &d.texts {
             p.circle_filled(at(sl.at), 2.0, slot);
             p.text(
                 at(sl.at) + vec2(4.0, 0.0),
                 Align2::LEFT_CENTER,
-                super::draft::slot_label(&sl.text.word()),
-                ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::MICRO.size),
+                crate::library::draft::slot_label(&sl.text.word()),
+                ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::MICRO.size),
                 slot,
             );
         }
@@ -347,7 +347,7 @@ pub fn paint_symbol(p: &egui::Painter, rect: Rect, d: &Definition, ink: Color32,
 
 /// A chip in the filter row: on (accent), off, or greyed with its reason.
 fn chip(ui: &mut egui::Ui, text: &str, on: bool, enabled: bool, reason: &str) -> bool {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let font = bar::font(ui, ui_type::SMALL);
     let w = bar::text_width(ui, text, ui_type::SMALL) + 2.0 * space::S;
     let (r, resp) = ui.allocate_exact_size(vec2(w, 22.0), if enabled { Sense::click() } else { Sense::hover() });
@@ -359,7 +359,7 @@ fn chip(ui: &mut egui::Ui, text: &str, on: bool, enabled: bool, reason: &str) ->
         Some(s.raised)
     };
     if let Some(f) = fill {
-        ui.painter().rect_filled(r, ecad_ui::style::corner(4.0), c32(f));
+        ui.painter().rect_filled(r, ecad_widgets::style::corner(4.0), c32(f));
     }
     let ink = if on {
         s.accent_text
@@ -379,12 +379,12 @@ fn chip(ui: &mut egui::Ui, text: &str, on: bool, enabled: bool, reason: &str) ->
 }
 
 fn filter_label(ui: &mut egui::Ui, text: &str) {
-    ui.label(egui::RichText::new(text).font(bar::font(ui, ui_type::SMALL)).color(c32(ecad_ui::SHELL.text_3)));
+    ui.label(egui::RichText::new(text).font(bar::font(ui, ui_type::SMALL)).color(c32(ecad_widgets::SHELL.text_3)));
 }
 
 fn divider(ui: &mut egui::Ui) {
     let (r, _) = ui.allocate_exact_size(vec2(space::M, 18.0), Sense::hover());
-    ui.painter().vline(r.center().x, r.y_range(), Stroke::new(1.0, c32(ecad_ui::SHELL.line)));
+    ui.painter().vline(r.center().x, r.y_range(), Stroke::new(1.0, c32(ecad_widgets::SHELL.line)));
 }
 
 /// The Library's tabs, one pill (also the title block editor's toolbar, brief 055).
@@ -414,8 +414,8 @@ pub fn tabs(ui: &mut egui::Ui, b: &mut Browser, list: &Listing) {
 
 /// The browser in the main view.
 pub fn show(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, sheet: &ecad_drawing_style::Sheet) -> Vec<Act> {
-    let s = ecad_ui::SHELL;
-    let line = Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, c32(s.line));
+    let s = ecad_widgets::SHELL;
+    let line = Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, c32(s.line));
     let mut acts = Vec::new();
     ui.painter().rect_filled(main, 0.0, c32(s.bg));
 
@@ -428,18 +428,18 @@ pub fn show(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, shee
         ui.horizontal_centered(|ui| {
             tabs(ui, b, list);
             ui.add_space(space::M);
-            let f = ecad_ui::prim::Field::new(&mut b.query, ecad_ui::prim::FieldKind::Search, SEARCH)
+            let f = ecad_widgets::prim::Field::new(&mut b.query, ecad_widgets::prim::FieldKind::Search, SEARCH)
                 .placeholder("Find a symbol by name, tag letter or pin")
                 .width(420.0)
                 .show(ui);
             let _ = f;
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let n = ui.add(ecad_ui::prim::Button::new("+  New symbol").kind(ecad_ui::prim::Kind::Primary).small());
+                let n = ui.add(ecad_widgets::prim::Button::new("+  New symbol").kind(ecad_widgets::prim::Kind::Primary).small());
                 n.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, NEW));
                 if n.clicked() {
                     acts.push(Act::New);
                 }
-                ui.add(ecad_ui::prim::Button::new("Open an .ecadlib").small().disabled("Shared libraries come later"));
+                ui.add(ecad_widgets::prim::Button::new("Open an .ecadlib").small().disabled("Shared libraries come later"));
             });
         });
     });
@@ -595,7 +595,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, shee
             ui.horizontal_centered(|ui| {
                 ui.label(format!("Placed next: {name}")).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, PLACED_NEXT));
                 if let Some(t) = b.selected {
-                    let r = ui.add(ecad_ui::prim::Button::new("Place").kind(ecad_ui::prim::Kind::Primary).small());
+                    let r = ui.add(ecad_widgets::prim::Button::new("Place").kind(ecad_widgets::prim::Kind::Primary).small());
                     if r.clicked() {
                         acts.push(Act::Place(t));
                     }
@@ -608,7 +608,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, shee
 
 /// One tile: the symbol on paper, its name and its source; hover names its points and slots.
 fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_style::Sheet, acts: &mut Vec<Act>) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let (r, resp) = ui.allocate_exact_size(vec2(TILE_W, TILE_H), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, b.selected == Some(e.tile), e.tile.name()));
     let p = ui.painter_at(r);
@@ -635,7 +635,7 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_styl
         let marks = resp.hovered().then(|| (c32(sheet.connection_point), c32(sheet.placement_preview)));
         paint_symbol(&p, pic.shrink(10.0), d, c32(sheet.ink), marks);
     }
-    let name = p.layout(e.name.clone(), ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::BODY.size), c32(s.text), r.width() - 20.0);
+    let name = p.layout(e.name.clone(), ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::BODY.size), c32(s.text), r.width() - 20.0);
     let name_h = name.size().y.min(36.0);
     p.with_clip_rect(Rect::from_min_size(pos2(r.left() + 10.0, pic.bottom() + 6.0), vec2(r.width() - 20.0, 36.0))).galley(
         pos2(r.left() + 10.0, pic.bottom() + 6.0),
@@ -651,7 +651,7 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_styl
         pos2(r.left() + 10.0, (pic.bottom() + 10.0 + name_h).max(r.bottom() - 22.0)),
         Align2::LEFT_TOP,
         src,
-        ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::CAPTION.size),
+        ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::CAPTION.size),
         c32(tone),
     );
     if resp.clicked() {
@@ -670,14 +670,14 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_styl
             let n = keys.len();
             ui.label(
                 egui::RichText::new(format!("{n} connection {}: {}", if n == 1 { "point" } else { "points" }, keys.join(", ")))
-                    .color(c32(ecad_ui::SHELL.connect)),
+                    .color(c32(ecad_widgets::SHELL.connect)),
             );
             if !d.texts.is_empty() {
-                let slots: Vec<String> = d.texts.iter().map(|sl| super::draft::slot_label(&sl.text.word()).to_string()).collect();
+                let slots: Vec<String> = d.texts.iter().map(|sl| crate::library::draft::slot_label(&sl.text.word()).to_string()).collect();
                 ui.label(format!("{} text {}: {}", slots.len(), if slots.len() == 1 { "slot" } else { "slots" }, slots.join(", ")));
             }
             if let Some(px) = e.prefix {
-                ui.label(egui::RichText::new(format!("Tag letter {}", px.trim_start_matches('-'))).color(c32(ecad_ui::SHELL.text_2)));
+                ui.label(egui::RichText::new(format!("Tag letter {}", px.trim_start_matches('-'))).color(c32(ecad_widgets::SHELL.text_2)));
             }
         });
     }
@@ -685,7 +685,7 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_styl
 
 /// The selected symbol in the right panel (board 3.01's right panel).
 pub fn details(ui: &mut egui::Ui, b: &Browser, list: &Listing, writable: bool, page: Option<&str>) -> Vec<Act> {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let mut acts = Vec::new();
     let Some(e) = b.selected.and_then(|t| list.get(t)) else {
         ui.add_space(space::L);
@@ -710,7 +710,7 @@ pub fn details(ui: &mut egui::Ui, b: &Browser, list: &Listing, writable: bool, p
             Tile::Project(_) => ("project", ""),
             Tile::Draft(_) => ("draft", "not saved"),
         };
-        ecad_ui::prim::pill(ui, pill, ecad_ui::prim::Tone::Neutral);
+        ecad_widgets::prim::pill(ui, pill, ecad_widgets::prim::Tone::Neutral);
         if !rest.is_empty() {
             ui.label(egui::RichText::new(rest).small().color(c32(s.text_2)));
         }
@@ -748,7 +748,7 @@ pub fn details(ui: &mut egui::Ui, b: &Browser, list: &Listing, writable: bool, p
         if let Some(d) = &e.def {
             let keys: Vec<String> = d.terminals.iter().map(|t| t.key.to_string()).collect();
             kv(ui, "Connects at", &if keys.is_empty() { "none".to_string() } else { keys.join(", ") });
-            let slots: Vec<String> = d.texts.iter().map(|sl| super::draft::slot_label(&sl.text.word()).to_string()).collect();
+            let slots: Vec<String> = d.texts.iter().map(|sl| crate::library::draft::slot_label(&sl.text.word()).to_string()).collect();
             kv(ui, "Text slots", &if slots.is_empty() { "none".to_string() } else { slots.join(", ") });
         }
         if let Some(v) = &e.versions {
@@ -768,12 +768,12 @@ pub fn details(ui: &mut egui::Ui, b: &Browser, list: &Listing, writable: bool, p
     ui.add_space(space::M);
     ui.horizontal(|ui| match e.tile {
         Tile::Draft(n) => {
-            let r = ui.add(ecad_ui::prim::Button::new("Resume").kind(ecad_ui::prim::Kind::Primary).small());
+            let r = ui.add(ecad_widgets::prim::Button::new("Resume").kind(ecad_widgets::prim::Kind::Primary).small());
             r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, RESUME));
             if r.clicked() {
                 acts.push(Act::Resume(n));
             }
-            let f = ui.add(ecad_ui::prim::Button::new("Discard").kind(ecad_ui::prim::Kind::Danger).small());
+            let f = ui.add(ecad_widgets::prim::Button::new("Discard").kind(ecad_widgets::prim::Kind::Danger).small());
             f.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, FORGET));
             if f.clicked() {
                 acts.push(Act::Forget(n));
@@ -781,13 +781,13 @@ pub fn details(ui: &mut egui::Ui, b: &Browser, list: &Listing, writable: bool, p
         }
         t => {
             let words = page.map_or_else(|| "Place".to_string(), |p| format!("Place on page {p}"));
-            let r = ui.add(ecad_ui::prim::Button::new(&words).kind(ecad_ui::prim::Kind::Primary).small());
+            let r = ui.add(ecad_widgets::prim::Button::new(&words).kind(ecad_widgets::prim::Kind::Primary).small());
             r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, PLACE));
             if r.clicked() {
                 acts.push(Act::Place(t));
             }
             let label = if matches!(t, Tile::Builtin(_)) { "Edit a copy" } else { "Edit symbol" };
-            let r = ui.add(ecad_ui::prim::Button::new(label).small());
+            let r = ui.add(ecad_widgets::prim::Button::new(label).small());
             r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, EDIT));
             if r.clicked() {
                 acts.push(Act::Edit(t));

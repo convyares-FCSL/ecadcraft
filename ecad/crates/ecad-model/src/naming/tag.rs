@@ -20,7 +20,7 @@ pub const MAX_TAG_CHARS: usize = 40;
 
 /// A device's tag as stored (design 072 §2.1): validated text of 1 to [`MAX_TAG_CHARS`]
 /// characters.
-pub type Tag = crate::text::Text<MAX_TAG_CHARS>;
+pub type Tag = crate::naming::text::Text<MAX_TAG_CHARS>;
 
 /// Most digits in a tag's number (larger numbers are compared as text).
 pub const MAX_TAG_DIGITS: usize = 9;
@@ -76,9 +76,9 @@ pub const BAD_TAG: &str = "A tag is 1 to 40 printable characters, for example -K
 ///
 /// # Example
 /// ```
-/// assert_eq!(ecad_model::tag::parse("-k01"), Some(("K".to_string(), 1)));
-/// assert_eq!(ecad_model::tag::parse("TB12"), Some(("TB".to_string(), 12)));
-/// assert_eq!(ecad_model::tag::parse("-K1A"), None);
+/// assert_eq!(crate::naming::tag::parse("-k01"), Some(("K".to_string(), 1)));
+/// assert_eq!(crate::naming::tag::parse("TB12"), Some(("TB".to_string(), 12)));
+/// assert_eq!(crate::naming::tag::parse("-K1A"), None);
 /// ```
 pub fn parse(tag: &str) -> Option<(String, u64)> {
     let t = tag.trim();
@@ -88,7 +88,7 @@ pub fn parse(tag: &str) -> Option<(String, u64)> {
     if letters.is_empty() || digits.is_empty() || digits.len() > MAX_TAG_DIGITS {
         return None;
     }
-    if !crate::words::is_digits(digits) {
+    if !crate::naming::words::is_digits(digits) {
         return None;
     }
     let n = digits.parse::<u64>().ok()?;
@@ -101,9 +101,9 @@ pub fn parse(tag: &str) -> Option<(String, u64)> {
 ///
 /// # Example
 /// ```
-/// assert_eq!(ecad_model::tag::provisional("-k?3"), Some(("K".to_string(), 3)));
-/// assert_eq!(ecad_model::tag::provisional("-W?"), Some(("W".to_string(), 0)));
-/// assert_eq!(ecad_model::tag::provisional("-K03"), None);
+/// assert_eq!(crate::naming::tag::provisional("-k?3"), Some(("K".to_string(), 3)));
+/// assert_eq!(crate::naming::tag::provisional("-W?"), Some(("W".to_string(), 0)));
+/// assert_eq!(crate::naming::tag::provisional("-K03"), None);
 /// ```
 pub fn provisional(tag: &str) -> Option<(String, u64)> {
     let t = tag.trim();
@@ -112,7 +112,7 @@ pub fn provisional(tag: &str) -> Option<(String, u64)> {
     if letters.is_empty() || !letters.bytes().all(|b| b.is_ascii_alphabetic()) || digits.len() > MAX_TAG_DIGITS {
         return None;
     }
-    if !digits.is_empty() && !crate::words::is_digits(digits) {
+    if !digits.is_empty() && !crate::naming::words::is_digits(digits) {
         return None;
     }
     let n = if digits.is_empty() { 0 } else { digits.parse::<u64>().ok()? };
@@ -224,7 +224,7 @@ pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
 ///
 /// # Example
 /// ```
-/// use ecad_model::tag::key;
+/// use crate::naming::tag::key;
 /// assert_eq!(key("-K1"), key("k01"));
 /// assert_ne!(key("-K1"), key("-K10"));
 /// ```
@@ -242,10 +242,10 @@ pub fn key(tag: &str) -> String {
 pub const DASH_KEY: &str = "tags.dash";
 /// The project property of the tag style's case (brief 033, FP1): `upper` or `typed`.
 pub const CASE_KEY: &str = "tags.case";
-/// The values of [`DASH_KEY`]; its built-in is data ([`crate::builtins`], brief 066).
+/// The values of [`DASH_KEY`]; its built-in is data ([`crate::naming::builtins`], brief 066).
 pub const DASH_WORDS: &[&str] = &["yes", "no"];
 /// The values of [`CASE_KEY`]; its built-in is data.
-pub const CASE_WORDS: &[&str] = <Case as crate::words::Word>::WORDS;
+pub const CASE_WORDS: &[&str] = <Case as crate::naming::words::Word>::WORDS;
 
 crate::word_enum! {
     /// The case tags are written in (brief 033, project property `tags.case`).
@@ -281,14 +281,14 @@ impl Style {
     /// (a [`Case`] word) read as the defaults registry reads them: a value that is not one of the
     /// words is the built-in. `ecad-electrical` registers the same keys and defaults.
     pub fn of(doc: &crate::Document) -> Style {
-        let b = crate::builtins::builtins();
+        let b = crate::naming::builtins::builtins();
         let stored = |key: &str| doc.display.get(key).map(String::as_str);
-        let builtin_dash = crate::words::flag(b.tag_dash).unwrap_or(true);
-        let builtin_case = <Case as crate::words::Word>::parse(b.tag_case).unwrap_or_default();
+        let builtin_dash = crate::naming::words::flag(b.tag_dash).unwrap_or(true);
+        let builtin_case = <Case as crate::naming::words::Word>::parse(b.tag_case).unwrap_or_default();
         Style {
             padding: doc.settings.tag_padding().min(MAX_PADDING),
-            dash: stored(DASH_KEY).and_then(crate::words::flag).unwrap_or(builtin_dash),
-            case: stored(CASE_KEY).and_then(<Case as crate::words::Word>::parse).unwrap_or(builtin_case),
+            dash: stored(DASH_KEY).and_then(crate::naming::words::flag).unwrap_or(builtin_dash),
+            case: stored(CASE_KEY).and_then(<Case as crate::naming::words::Word>::parse).unwrap_or(builtin_case),
         }
     }
 
@@ -316,10 +316,10 @@ impl Style {
 ///
 /// # Example
 /// ```
-/// use ecad_model::tag::{Case, Style};
-/// assert_eq!(ecad_model::tag::format("K", 1, 2), "-K01");
-/// assert_eq!(ecad_model::tag::format("k", 123, 2), "-K123");
-/// assert_eq!(ecad_model::tag::format("k", 5, Style { padding: 2, dash: false, case: Case::Typed }), "k05");
+/// use crate::naming::tag::{Case, Style};
+/// assert_eq!(crate::naming::tag::format("K", 1, 2), "-K01");
+/// assert_eq!(crate::naming::tag::format("k", 123, 2), "-K123");
+/// assert_eq!(crate::naming::tag::format("k", 5, Style { padding: 2, dash: false, case: Case::Typed }), "k05");
 /// ```
 pub fn format(prefix: &str, n: u64, style: impl Into<Style>) -> String {
     let style = style.into();
@@ -387,7 +387,7 @@ pub fn normalise(text: &str, style: impl Into<Style>) -> Result<String, crate::P
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn same_tag_table() {

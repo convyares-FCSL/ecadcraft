@@ -7,7 +7,7 @@
 //! - A quantity ([`Qty`]) is kept in thousandths and written as a decimal text (`"3.6"`): more
 //!   than 0, at most 9 999, at most three decimals, read only in the form it is written in. A count of pieces is whole; a length in metres
 //!   need not be.
-//! - Loose parts are kept in `Document.loose_parts` by [`crate::id::LoosePartId`], made, changed
+//! - Loose parts are kept in `Document.loose_parts` by [`crate::naming::id::LoosePartId`], made, changed
 //!   and removed by `CreateLoosePart`, `ModifyLoosePart` and `DeleteLoosePart` (the whole part
 //!   recorded), as drawing aids are.
 //!
@@ -22,16 +22,16 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::device::PartText;
-use crate::doc::Device;
-use crate::id::{FunctionId, LocationId};
+use crate::objects::devices::PartText;
+use crate::document::doc::Device;
+use crate::naming::id::{FunctionId, LocationId};
 
 /// The most characters a loose part's description has (design 072 §6.4).
 pub const MAX_DESCRIPTION: usize = 200;
 
 /// A loose part's description: one line, 1 to [`MAX_DESCRIPTION`] characters. Longer text is
 /// refused, never cut.
-pub type LooseDescription = crate::text::Text<MAX_DESCRIPTION>;
+pub type LooseDescription = crate::naming::text::Text<MAX_DESCRIPTION>;
 
 /// The largest quantity, in thousandths (9 999): keeps sums far from overflow.
 pub const MAX_QTY_MILLI: u64 = 9_999_000;
@@ -59,7 +59,7 @@ impl ItemUnit {
 ///
 /// # Example
 /// ```
-/// use ecad_model::loose_part::Qty;
+/// use crate::objects::loose_part::Qty;
 /// let q = Qty::parse("3.6").unwrap();
 /// assert_eq!(q, Qty(3600));
 /// assert_eq!(serde_json::to_string(&q).unwrap(), r#""3.6""#);
@@ -82,7 +82,7 @@ impl Qty {
     pub fn parse(text: &str) -> Option<Qty> {
         let t = text.trim();
         let (w, frac) = t.split_once('.').unwrap_or((t, ""));
-        let digits_or_none = |t: &str| t.is_empty() || crate::words::is_digits(t);
+        let digits_or_none = |t: &str| t.is_empty() || crate::naming::words::is_digits(t);
         if (w.is_empty() && frac.is_empty()) || w.len() > 6 || frac.len() > 3 || !digits_or_none(w) || !digits_or_none(frac) {
             return None;
         }
@@ -134,7 +134,7 @@ impl<'de> Deserialize<'de> for Qty {
 ///
 /// # Example
 /// ```
-/// use ecad_model::loose_part::{LooseDescription, LoosePart, Qty};
+/// use crate::objects::loose_part::{LooseDescription, LoosePart, Qty};
 /// let p = LoosePart::new(LooseDescription::new("DIN rail").unwrap(), Qty(2000));
 /// assert_eq!(serde_json::to_string(&p).unwrap(), r#"{"description":"DIN rail","qty":"2"}"#);
 /// assert!(serde_json::from_str::<LoosePart>(r#"{"description":"x","qty":"1","colour":"red"}"#).is_err());
@@ -221,7 +221,7 @@ pub struct BomLine {
 ///
 /// # Example
 /// ```
-/// use ecad_model::loose_part::{Bom, LooseDescription, LoosePart, Qty};
+/// use crate::objects::loose_part::{Bom, LooseDescription, LoosePart, Qty};
 /// let p = LoosePart::new(LooseDescription::new("Cable ties").unwrap(), Qty(100_000));
 /// let lines = p.bom_lines();
 /// assert_eq!((lines.len(), lines[0].qty), (1, Qty(100_000)));
@@ -231,7 +231,7 @@ pub trait Bom {
     fn bom_lines(&self) -> Vec<BomLine>;
 }
 
-fn text<const N: usize>(t: &Option<crate::text::Text<N>>) -> Option<String> {
+fn text<const N: usize>(t: &Option<crate::naming::text::Text<N>>) -> Option<String> {
     t.as_ref().map(|t| t.as_str().to_string())
 }
 

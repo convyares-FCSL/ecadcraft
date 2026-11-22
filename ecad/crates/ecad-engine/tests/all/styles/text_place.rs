@@ -211,8 +211,8 @@ fn apply_styles_an_entity_like_the_page_does() {
     // Brief 050a: a kind's own font is its text style's `font`.
     let rec = ecad_model::StyleRecord::new(
         "",
-        ecad_model::style::StyleBody::Text(ecad_model::style::TextStyle {
-            font: ecad_model::style::text::Font::parse("Kind Font 031"),
+        ecad_model::objects::styles::StyleBody::Text(ecad_model::objects::styles::TextStyle {
+            font: ecad_model::objects::styles::text::Font::parse("Kind Font 031"),
             ..Default::default()
         }),
     );

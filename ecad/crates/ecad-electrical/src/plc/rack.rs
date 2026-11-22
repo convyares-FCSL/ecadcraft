@@ -2,8 +2,8 @@
 //! station and slot, and the commands `plcslot` and `plcracks`.
 //!
 //! # Semantics
-//! - A **rack** (a station) is a device whose stored type is [`ecad_model::plc::PlcRack`]; a
-//!   **card** (a module) one whose type is [`ecad_model::plc::PlcModule`].
+//! - A **rack** (a station) is a device whose stored type is [`ecad_model::objects::plc::PlcRack`]; a
+//!   **card** (a module) one whose type is [`ecad_model::objects::plc::PlcModule`].
 //! - A card is in a slot when its module names a station (`rack`, by ID) and a slot (0–999).
 //!   Everything shown names the rack by its **tag**; only the file holds the ID, so retagging or
 //!   renumbering a rack changes nothing on its cards.
@@ -19,7 +19,7 @@ use std::collections::BTreeSet;
 use crate::symbols::StarterKey;
 use ecad_model::{ChannelRole, DeviceId, Document, Op};
 
-use super::edit;
+use crate::plc::edit;
 
 use crate::defaults::{self, Scope};
 
@@ -30,9 +30,9 @@ pub const SLOT_KEY: &str = "plc.slot";
 /// The `setprop` name of a module's channel count (design 045 §2.3).
 pub const CHANNELS_KEY: &str = "plc.channels";
 /// The highest slot number.
-pub const MAX_SLOT: u32 = ecad_model::plc::MAX_SLOT as u32;
+pub const MAX_SLOT: u32 = ecad_model::objects::plc::MAX_SLOT as u32;
 /// The most channels a card has.
-pub const MAX_CHANNELS: u32 = ecad_model::plc::MAX_CHANNELS as u32;
+pub const MAX_CHANNELS: u32 = ecad_model::objects::plc::MAX_CHANNELS as u32;
 
 /// A card type (design 045 §3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -202,13 +202,13 @@ impl CardType {
 /// A slot number as stored: digits only, 0–[`MAX_SLOT`].
 pub fn parse_slot(text: &str) -> Option<u32> {
     let t = text.trim();
-    ecad_model::words::uint(t, MAX_SLOT).filter(|_| t.len() <= 3)
+    ecad_model::naming::words::uint(t, MAX_SLOT).filter(|_| t.len() <= 3)
 }
 
 /// A channel count as stored: digits only, 0–[`MAX_CHANNELS`].
 pub fn parse_channels(text: &str) -> Option<u32> {
     let t = text.trim();
-    ecad_model::words::uint(t, MAX_CHANNELS).filter(|_| t.len() <= 3)
+    ecad_model::naming::words::uint(t, MAX_CHANNELS).filter(|_| t.len() <= 3)
 }
 
 /// What a module's station names.
@@ -248,7 +248,7 @@ pub fn slot_range(doc: &Document, rack: DeviceId) -> (u32, u32) {
 
 /// Card `c`'s channel count, over all its channel groups.
 pub fn channel_count(doc: &Document, c: DeviceId) -> u32 {
-    edit::module_of(doc, c).map_or(0, ecad_model::plc::PlcModule::channel_count)
+    edit::module_of(doc, c).map_or(0, ecad_model::objects::plc::PlcModule::channel_count)
 }
 
 /// The racks of the project, by tag (the order every list uses). Reads every component's head;
@@ -342,7 +342,7 @@ fn device_named(doc: &Document, t: &str) -> Result<DeviceId, CmdError> {
     if let Some(c) = DeviceId::parse(t).filter(|c| t.len() == 32 && doc.devices.contains_key(c)) {
         return Ok(c);
     }
-    let tag = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc)).unwrap_or_else(|_| t.to_string());
+    let tag = ecad_model::naming::tag::normalise(t, crate::defaults::print::tag_style(doc)).unwrap_or_else(|_| t.to_string());
     doc.components_tagged(&tag).first().copied().ok_or_else(|| CmdError::refused(format!("No device {tag}.")))
 }
 

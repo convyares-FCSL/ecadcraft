@@ -6,14 +6,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::{checks_panel, project_panel};
+use {ecad_app::checks::panel, ecad_app::pages::project_panel};
 use ecad_engine::checks::Kind;
 use ecad_model::PageId;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 use crate::common::pointer_to;
-use crate::mouse_tester::{Deltas, doc, harness_with, ok, screen, shot};
+use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, ok, screen, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -71,7 +71,7 @@ fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
 
 fn click(h: &mut H, label: &str) {
     // UI rev 3: the panels' tabs are reached through the strip and the inspector.
-    crate::project_panel::click(h, label);
+    crate::pages::project_panel::click(h, label);
 }
 
 #[test]
@@ -140,12 +140,12 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
                 .wires
                 .iter()
                 .find(|(c, _)| {
-                    ecad_model::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("0V-01"))
-                        && ecad_model::derive::route_on_page(doc, **c, p2).is_some()
+                    ecad_model::connectivity::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("0V-01"))
+                        && ecad_model::connectivity::derive::route_on_page(doc, **c, p2).is_some()
                 })
                 .map(|(c, _)| *c)
                 .unwrap();
-            let (item, _) = ecad_model::derive::route_on_page(doc, w, p2).unwrap();
+            let (item, _) = ecad_model::connectivity::derive::route_on_page(doc, w, p2).unwrap();
             p.pages[&p2].map.item(item).unwrap()
         })
         .unwrap()
@@ -161,7 +161,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     h.run_steps(2);
 
     // The Checks tab: -M01:PE, a click goes to page 3, centres it, selects the motor, rings PE.
-    click(&mut h, checks_panel::CHECKS_TAB);
+    click(&mut h, panel::CHECKS_TAB);
     // UI rev 3: Checks is the inspector's tab; the whole list is Project ▸ Check list.
     assert_eq!(h.state().shell_state().right_tab, ecad_app::shell::RightTab::Checks);
     h.state_mut().set_workspace(ecad_app::shell::Workspace::Lists);
@@ -185,7 +185,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     assert!(rows.iter().any(|r| r.check.kind == Kind::NoPartNumber), "{rows:?}");
     let pe = rows.iter().find(|r| r.check.which == "-M01:PE").unwrap().clone();
     assert_eq!(pe.locator, "3/E3");
-    click(&mut h, &checks_panel::row_label(&pe));
+    click(&mut h, &panel::row_label(&pe));
     assert_eq!(h.state().panel.active, Some(p3));
     assert!(!h.state().cad.session.selection().is_empty(), "the motor is selected");
     let ring = {
@@ -204,7 +204,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     h.key_press(eframe::egui::Key::Escape);
     h.run_steps(3);
     assert_eq!(ring_of(&mut h), None, "Esc clears the ring");
-    click(&mut h, &checks_panel::row_label(&pe));
+    click(&mut h, &panel::row_label(&pe));
     assert!(ring_of(&mut h).is_some());
     // Brief 038: the page is shown in Draw (Lists ▸ Check list went to the row).
     h.state_mut().set_workspace(ecad_app::shell::Workspace::Draw);
@@ -221,7 +221,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     // Back to Lists ▸ Check list for the rows.
     h.state_mut().set_workspace(ecad_app::shell::Workspace::Lists);
     h.run_steps(3);
-    click(&mut h, &checks_panel::row_label(&pe));
+    click(&mut h, &panel::row_label(&pe));
 
     // A T not joined on a new page: its row, then Join (design 072: the line's end lands on the
     // other line, a T; no junction device).
@@ -232,12 +232,12 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     h.run_steps(3);
     let rows = h.state().panel.checks.rows().to_vec();
     let tee = rows.iter().find(|r| r.check.kind == Kind::LooksConnected).expect("a looks-connected row").clone();
-    click(&mut h, &checks_panel::row_label(&tee));
+    click(&mut h, &panel::row_label(&tee));
     save(&h, &deltas, "022-tee.png");
     // Brief 032: the row's Join (a menu item is called Join too: the Checks button comes first).
-    let before = h.query_all_by_label(checks_panel::JOIN).count();
+    let before = h.query_all_by_label(panel::JOIN).count();
     assert!(before >= 1);
-    if let Some(n) = h.query_all_by_label(checks_panel::JOIN).next() {
+    if let Some(n) = h.query_all_by_label(panel::JOIN).next() {
         n.click();
     }
     h.run_steps(3);
@@ -265,7 +265,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
 
     // Project settings popout, Wires (owner, 2026-11-09): colours code3, label height 2.5;
     // one transaction, labels follow, `u` takes both back.
-    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
         let d = h.state_mut().project_props.as_mut().unwrap();
         assert_eq!((d.colour_style.as_str(), d.label_height.as_str()), ("code2", "2.5"));
@@ -277,21 +277,21 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     h.run_steps(3);
     click(&mut h, "ecad.projectsettings.colours.code3");
     save(&h, &deltas, "022-wire-settings.png");
-    let before = crate::mouse_tester::head(&mut h);
+    let before = crate::canvas::mouse_acceptance::head(&mut h);
     click(&mut h, "ecad.projectprops.ok");
-    assert_eq!(crate::mouse_tester::head(&mut h), before + 1, "one transaction");
+    assert_eq!(crate::canvas::mouse_acceptance::head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert_eq!(d.settings.wiring.colour_style(), ecad_model::colour::ColourWords::Code3);
+    assert_eq!(d.settings.wiring.colour_style(), ecad_model::geometry::colour::ColourWords::Code3);
     assert!(d.settings.wiring.label_height.is_some_and(|x| (x - 3.0).abs() < 1e-9));
     let labels = ecad_engine::wires::labels_on_page(&d, p2);
     assert!(labels.iter().any(|l| l.text == "24V-04 0.5 BLU") && labels.iter().all(|l| (l.height - 3.0).abs() < 1e-9));
     ok(&mut h, "u");
     let d = doc(&mut h);
-    assert_eq!(d.settings.wiring.colour_style(), ecad_model::colour::ColourWords::Code2);
+    assert_eq!(d.settings.wiring.colour_style(), ecad_model::geometry::colour::ColourWords::Code2);
 
     // Brief 032 §12 item 20: the label rule rows by element name; Every wire and 10 mm run one
     // `wiresettings` line.
-    crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
+    crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     h.get_by_label("ecad.projectsettings.label_rule.each").scroll_to_me();
     h.run_steps(3);
     assert!(h.query_by_label("ecad.projectsettings.label_rule.net").is_some());
@@ -301,9 +301,9 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     assert!(h.query_by_label("ecad.projectsettings.label_min_length").is_some());
     let line = h.state().project_props.as_ref().unwrap().line().unwrap().unwrap();
     assert_eq!(line, r#"wiresettings {"label_min_length":10.0,"label_rule":"each"}"#);
-    let before = crate::mouse_tester::head(&mut h);
+    let before = crate::canvas::mouse_acceptance::head(&mut h);
     click(&mut h, "ecad.projectprops.ok");
-    assert_eq!(crate::mouse_tester::head(&mut h), before + 1, "one transaction");
+    assert_eq!(crate::canvas::mouse_acceptance::head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
     assert_eq!(d.settings.wiring.label_rule.as_deref(), Some("each"));
     assert!(d.settings.wiring.label_min_length.is_some_and(|x| (x - 10.0).abs() < 1e-9));

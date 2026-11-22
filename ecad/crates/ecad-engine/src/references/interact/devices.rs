@@ -8,8 +8,8 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{DeviceId, RepresentationId, Subject};
 use serde_json::{Value, json};
 
-use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use super::{OUT_OF_RANGE, can_start, in_range, line_kind, pick, pt, read};
+use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
+use crate::interact::{OUT_OF_RANGE, can_start, in_range, line_kind, pick, pt, read};
 use crate::project::{Mapped, Project};
 use crate::xref;
 
@@ -131,7 +131,7 @@ impl Interactive for MirrorMove {
     fn begin(&mut self, s: &mut Session) -> R<Step> {
         safely(s, "mirrormove", |s| {
             let found: std::collections::BTreeSet<DeviceId> =
-                s.selection().iter().take(crate::cmd::MAX_HANDLES).filter_map(|h| Self::choose(s, *h).ok()).collect();
+                s.selection().iter().take(crate::commands::MAX_HANDLES).filter_map(|h| Self::choose(s, *h).ok()).collect();
             if found.len() == 1 {
                 self.device = found.into_iter().next();
             }

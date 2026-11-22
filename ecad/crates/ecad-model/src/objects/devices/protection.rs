@@ -18,7 +18,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::units::{Amps, KiloAmps, MilliAmps};
+use crate::geometry::units::{Amps, KiloAmps, MilliAmps};
 
 /// The largest rated current a protective device takes, in amperes.
 pub const MAX_AMPS: f64 = 6300.0;
@@ -33,8 +33,8 @@ pub const MAX_OUTPUT: u8 = 99;
 ///
 /// # Example
 /// ```
-/// use ecad_model::device::{Breaker, Protection, TripCurve};
-/// use ecad_model::units::Amps;
+/// use crate::objects::devices::{Breaker, Protection, TripCurve};
+/// use crate::geometry::units::Amps;
 /// let p = Protection::Mcb(Breaker { rated_current: Some(Amps(16.0)), curve: Some(TripCurve::B), ..Breaker::default() });
 /// assert_eq!(p.to_string(), "curve B, 16 A");
 /// assert_eq!(serde_json::to_string(&p).unwrap(), r#"{"mcb":{"rated_current":16.0,"curve":"b"}}"#);
@@ -137,7 +137,7 @@ impl Protection {
     }
 
     /// Its auxiliary contacts, when its kind has them (a breaker, an RCD, an RCBO).
-    pub fn contacts(&self) -> Option<&super::ContactSet> {
+    pub fn contacts(&self) -> Option<&crate::objects::devices::ContactSet> {
         match self {
             Protection::Mcb(b) => Some(&b.contacts),
             Protection::Rcd(r) => Some(&r.contacts),
@@ -147,7 +147,7 @@ impl Protection {
     }
 
     /// Its auxiliary contacts, to change, when its kind has them.
-    pub fn contacts_mut(&mut self) -> Option<&mut super::ContactSet> {
+    pub fn contacts_mut(&mut self) -> Option<&mut crate::objects::devices::ContactSet> {
         match self {
             Protection::Mcb(b) => Some(&mut b.contacts),
             Protection::Rcd(r) => Some(&mut r.contacts),
@@ -190,7 +190,7 @@ impl Protection {
         if bad {
             return Some(format!("a rating value of a {} is out of range", self.kind().label()));
         }
-        self.contacts().and_then(super::ContactSet::problem)
+        self.contacts().and_then(crate::objects::devices::ContactSet::problem)
     }
 }
 
@@ -252,7 +252,7 @@ pub struct Breaker {
     pub poles: Option<Poles>,
     /// Its auxiliary contacts (design 025 FP1).
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
-    pub contacts: super::ContactSet,
+    pub contacts: crate::objects::devices::ContactSet,
 }
 
 impl fmt::Display for Breaker {
@@ -273,7 +273,7 @@ pub struct Rcd {
     pub poles: Option<Poles>,
     /// Its auxiliary contacts (design 025 FP1).
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
-    pub contacts: super::ContactSet,
+    pub contacts: crate::objects::devices::ContactSet,
 }
 
 impl fmt::Display for Rcd {
@@ -298,7 +298,7 @@ pub struct Rcbo {
     pub poles: Option<Poles>,
     /// Its auxiliary contacts (design 025 FP1).
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
-    pub contacts: super::ContactSet,
+    pub contacts: crate::objects::devices::ContactSet,
 }
 
 impl fmt::Display for Rcbo {

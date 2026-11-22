@@ -4,17 +4,17 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::diff::ops_between;
+use ecad_model::document::diff::ops_between;
 use ecad_model::merge::{self, Choice, Inputs, Scope};
-use ecad_model::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
-use ecad_model::tag::HighWater;
+use ecad_model::objects::styles::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
+use ecad_model::naming::tag::HighWater;
 use ecad_model::{Author, Device, DeviceId, Document, Ledger, ObjectRef, Op, StandardId};
 
 fn header(name: &str) -> StandardHeader {
     StandardHeader {
         id: StandardId(0x50),
-        name: ecad_model::style::StyleName::new(name).unwrap(),
-        based_on: ecad_model::style::BasedOn::Iec,
+        name: ecad_model::objects::styles::StyleName::new(name).unwrap(),
+        based_on: ecad_model::objects::styles::BasedOn::Iec,
         origin: None,
     }
 }
@@ -23,7 +23,7 @@ fn rec(name: &str, fields: &[(&str, &str)]) -> StyleRecord {
     // A text style's fields, as a file holds them (numbers as numbers).
     let body: serde_json::Map<String, serde_json::Value> =
         fields.iter().map(|(k, v)| (k.to_string(), v.parse::<f64>().map_or_else(|_| serde_json::json!(v), |x| serde_json::json!(x)))).collect();
-    StyleRecord::new(name, ecad_model::style::StyleBody::Text(serde_json::from_value(serde_json::Value::Object(body)).unwrap()))
+    StyleRecord::new(name, ecad_model::objects::styles::StyleBody::Text(serde_json::from_value(serde_json::Value::Object(body)).unwrap()))
 }
 
 fn tag() -> StyleRef {

@@ -1,9 +1,9 @@
 //! Brief 066 (design 066 §8): built-in defaults are data. The files are complete and valid, the
 //! loader refuses hostile files without a panic, and the values read are the data's.
 
-use ecad_engine::defaults::data::{self, DefaultsError, MAX_LISTED, load};
-use ecad_engine::defaults::{self, Kind, Value};
-use ecad_engine::styles;
+use ecad_electrical::defaults::data::{self, DefaultsError, MAX_LISTED, load};
+use ecad_electrical::defaults::{self, Kind, Value};
+use ecad_electrical::styles;
 
 /// The built-in files load with no problem: every entry and style field has a value, every key
 /// is known, every value is valid for its kind.
@@ -46,7 +46,7 @@ fn the_data_holds_the_values_the_code_held() {
         (&text::RUN_GAP, Value::Length(15.0)),
         (&wires::WIRING_LABEL_RULE, Value::Choice("net")),
         (&wires::WIRING_LABEL_MIN_LENGTH, Value::Length(0.0)),
-        (&symbols::POINT_GRID, Value::Length(ecad_engine::symbols::POINT_GRID_MM)),
+        (&symbols::POINT_GRID, Value::Length(ecad_electrical::symbols::POINT_GRID_MM)),
         (&strip_pages::PITCH, Value::Length(9.0)),
         (&plc::CHANNELS_DI, Value::Number(16.0)),
         (&connectors::SEPARATOR, Value::Text(".")),
@@ -198,7 +198,7 @@ fn a_tested_build_reports_no_damaged_defaults() {
 // ---------------------------------------------------------------- 066b: the saved-file rule (F2)
 
 use ecad_engine::Persistence;
-use ecad_engine::defaults::{Scope, resolve};
+use ecad_electrical::defaults::{Scope, resolve};
 use ecad_model::Document;
 use serde_json::json;
 
@@ -278,14 +278,14 @@ fn the_record_writes_only_chosen_values() {
     let cases: [(Option<f64>, Option<&str>, Option<f64>); 3] =
         [(None, None, None), (Some(2.5), Some("net"), Some(0.0)), (Some(1.6), Some("each"), Some(10.0))];
     for (height, rule, min) in cases {
-        let mut w = ecad_model::wiring::WiringSettings::default();
+        let mut w = ecad_model::connectivity::wiring::WiringSettings::default();
         (w.label_height, w.label_rule, w.label_min_length) = (height, rule.map(str::to_string), min);
         let v = serde_json::to_value(ecad_file::records::WiringSettings::from(&w)).unwrap();
         for (key, present) in [("label_height", height.is_some()), ("label_rule", rule.is_some()), ("label_min_length", min.is_some())] {
             assert_eq!(v.get(key).is_some(), present, "{key} in {v}");
         }
         let back: ecad_file::records::WiringSettings = serde_json::from_value(v).unwrap();
-        assert_eq!(ecad_model::wiring::WiringSettings::from(back), w);
+        assert_eq!(ecad_model::connectivity::wiring::WiringSettings::from(back), w);
     }
 }
 
@@ -324,7 +324,7 @@ fn a_project_reads_the_same_whatever_company_files_the_machine_holds() {
 /// crate's files, and every registry entry takes its built-in from exactly one of them.
 #[test]
 fn every_built_in_lives_in_exactly_one_place() {
-    let model = ecad_model::builtins::KEYS;
+    let model = ecad_model::naming::builtins::KEYS;
     let files: Vec<_> = data::FILES.iter().map(|(name, text)| (*name, load(name, text))).collect();
     // ecad-model's own test checks its file holds exactly `KEYS`.
     for key in model {
@@ -334,16 +334,16 @@ fn every_built_in_lives_in_exactly_one_place() {
     }
     for e in data::entries() {
         let in_files = files.iter().filter(|(_, f)| f.names(e.key)).count();
-        let in_model = usize::from(ecad_model::builtins::get(e.key).is_some());
+        let in_model = usize::from(ecad_model::naming::builtins::get(e.key).is_some());
         assert_eq!(in_files + in_model, 1, "{}: built-in in {in_files} file(s) and {in_model} model key(s)", e.key);
     }
     // Every model key but the structured sheet is a registry entry reading it.
-    for key in model.iter().filter(|k| **k != ecad_model::builtins::SHEET) {
+    for key in model.iter().filter(|k| **k != ecad_model::naming::builtins::SHEET) {
         let e = defaults::find(key).unwrap_or_else(|| panic!("{key} has no entry"));
         assert!(data::in_model(e.key) && e.accepts(&e.builtin()), "{key}");
     }
     // And they are today's values: nothing moves.
-    let b = ecad_model::builtins::builtins();
+    let b = ecad_model::naming::builtins::builtins();
     assert_eq!((b.tag_padding, b.wire_digits, b.page_number_step), (2, 2, 1));
     assert_eq!(b.sheet, ecad_model::SheetSpec::default());
 }
@@ -367,7 +367,7 @@ fn chosen_and_unset_settings_survive_save_and_open() {
         ..Default::default()
     };
     chosen.wiring.digits = Some(2);
-    chosen.wiring.colour_style = Some(ecad_model::colour::ColourWords::Code2);
+    chosen.wiring.colour_style = Some(ecad_model::geometry::colour::ColourWords::Code2);
     for (i, want) in [chosen, ecad_model::ProjectSettings::default()].into_iter().enumerate() {
         let seed = 0x66_c1 + i as u64;
         let mut h = project(seed, None);
@@ -440,13 +440,13 @@ fn contact_cross_references_follow_the_reference_style() {
 #[test]
 fn the_cable_look_follows_the_cable_text_style() {
     let mut h = H::new(0x66_d2);
-    let before = ecad_engine::look::label_height(&h.doc());
+    let before = ecad_engine::cables::draw::label_height(&h.doc());
     assert!((before - 1.6).abs() < 1e-9, "{before}");
     h.run("setstyle", json!({"catalogue": "text", "id": "cable_text", "fields": {"height": 3.0}})).unwrap();
     let doc = h.doc();
-    assert!((ecad_engine::look::label_height(&doc) - 3.0).abs() < 1e-9);
+    assert!((ecad_engine::cables::draw::label_height(&doc) - 3.0).abs() < 1e-9);
     // A reference flag is laid out around text of that height: its rectangle is two heights tall.
-    let f = ecad_engine::look::flag_shape(ecad_model::Pt::new(0.0, 0.0), 10.0, ecad_engine::look::FlagSide::Right, 3.0);
+    let f = ecad_engine::cables::draw::flag_shape(ecad_model::Pt::new(0.0, 0.0), 10.0, ecad_engine::cables::draw::FlagSide::Right, 3.0);
     assert!((f.hi.y - f.lo.y - 6.0).abs() < 1e-9, "{:?} {:?}", f.lo, f.hi);
 }
 

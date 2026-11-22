@@ -13,13 +13,13 @@
 //! This module excludes the protection reader (its parent) and the demand calculation.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ecad_model::colour::ConductorColour;
-use ecad_model::device::indicator::{MAX_POWER_WATTS, MAX_VOLTS};
-use ecad_model::device::{Indicator, IndicatorColour, SignalType};
-use ecad_model::units::{Current, RatedVoltage, Volts, Watts};
+use ecad_model::geometry::colour::ConductorColour;
+use ecad_model::objects::devices::indicator::{MAX_POWER_WATTS, MAX_VOLTS};
+use ecad_model::objects::devices::{Indicator, IndicatorColour, SignalType};
+use ecad_model::geometry::units::{Current, RatedVoltage, Volts, Watts};
 
-use super::load::pieces;
-use super::{MAX_CHARS, Read};
+use crate::devices::ratings::load::pieces;
+use crate::devices::ratings::{MAX_CHARS, Read};
 
 /// One read piece of an indicator rating.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -63,7 +63,7 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
     }
     let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
     let (num, unit) = lower.split_at(split);
-    unit_tokens(crate::rating::parse::decimal(num)?, unit)
+    unit_tokens(crate::devices::ratings::parse::decimal(num)?, unit)
 }
 
 /// The pieces of `text`, or `None` when a piece is no rating word.
@@ -147,8 +147,8 @@ fn indicator_colour(c: ConductorColour) -> Option<IndicatorColour> {
 ///
 /// # Example
 /// ```
-/// use ecad_electrical::rating::reader::{Read, read_indicator};
-/// use ecad_model::device::{Indicator, SignalType};
+/// use crate::devices::ratings::{Read, read_indicator};
+/// use ecad_model::objects::devices::{Indicator, SignalType};
 /// let lamp = Indicator::empty(SignalType::Steady);
 /// let Read::Rating(r) = read_indicator(&lamp, "RD 24VDC 2W") else { panic!() };
 /// assert_eq!(r.to_string(), "red, 24 V DC, 2 W");
@@ -199,7 +199,7 @@ fn build(indicator: &Indicator, f: &Found) -> Result<Indicator, Read<Indicator>>
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::devices::ratings::*;
 
     fn shown_on(signal: SignalType, text: &str) -> String {
         match read_indicator(&Indicator::empty(signal), text) {

@@ -3,25 +3,25 @@
 //! resolve values; each commit runs the command's JSON form (design 008 §2 rule 3), so the
 //! interactive and JSON forms record identical transactions.
 
-use ecad_model::keys::PropsExt;
+use ecad_model::naming::keys::PropsExt;
 use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::{Entity, EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::derive::CableReference;
+use ecad_model::connectivity::derive::CableReference;
 use ecad_model::{CableId, Document, Op, PageId, Pt, RepresentationId};
 use serde_json::{Value, json};
 
-use super::forms::{NOTHING_THERE, R, Safe, cable_named, commit, not_a_point, other, paper_guard, safely};
-use super::{OUT_OF_RANGE, can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read, ring_kind, v2};
+use crate::properties::forms::{NOTHING_THERE, R, Safe, cable_named, commit, not_a_point, other, paper_guard, safely};
+use crate::interact::{OUT_OF_RANGE, can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read, ring_kind, v2};
 use crate::project::{Mapped, Project};
 use crate::references::{self as refs, ORPHAN_ACI, REFERENCE_ACI};
 
 /// The ring of a reference in a preview, in screen pixels (`ecad.ref-size`).
 const RING: f64 = refs::RING_PX as f64;
 /// `ecad.attach-preview` (ACI 3) for the preview text that says what will happen.
-const PREVIEW_ACI: u8 = super::ATTACHED_ACI;
+const PREVIEW_ACI: u8 = crate::interact::ATTACHED_ACI;
 /// `ecad.preview-text` height in screen pixels.
 const PREVIEW_TEXT_PX: f64 = 12.0;
 
@@ -34,7 +34,7 @@ fn selected_cables(s: &Session) -> Vec<CableId> {
         let mut seen = BTreeSet::new();
         Ok(sel
             .iter()
-            .take(crate::cmd::MAX_HANDLES)
+            .take(crate::commands::MAX_HANDLES)
             .filter_map(|h| map.get(*h).and_then(|m| cable_named(doc, m).ok()))
             .filter(|k| seen.insert(*k))
             .collect())
@@ -98,7 +98,7 @@ impl CableRef {
         let orphan = r.get("orphan").and_then(Value::as_bool).unwrap_or(true);
         let line = read(s, |p, page| {
             let doc = p.ledger.document();
-            Ok(format!("Reference for cable {} placed on {}.", crate::cables::cable_title(doc, k), refs::page_number_words(doc, page)))
+            Ok(format!("Reference for cable {} placed on {}.", ecad_electrical::cables::cable_title(doc, k), refs::page_number_words(doc, page)))
         })
         .unwrap_or_else(|_| "Reference placed.".into());
         s.echo(line);
@@ -114,7 +114,7 @@ impl CableRef {
             (Input::Point(p), None) => {
                 let h = pick(s, p).ok_or_else(|| other(NOTHING_THERE))?;
                 let k = read(s, |proj, page| {
-                    let m = proj.pages.get(&page).and_then(|v| v.map.get(h)).ok_or(super::forms::NOT_A_CABLE)?;
+                    let m = proj.pages.get(&page).and_then(|v| v.map.get(h)).ok_or(crate::properties::forms::NOT_A_CABLE)?;
                     cable_named(proj.ledger.document(), m).map_err(str::to_string)
                 })
                 .map_err(other)?;
@@ -214,7 +214,7 @@ fn latest_orphan(p: &Project) -> Option<(CableId, String)> {
         Some(id) => orphans.iter().find(|r| r.reference == id),
         None => orphans.last(),
     }?;
-    Some((r.cable, crate::cables::cable_title(doc, r.cable)))
+    Some((r.cable, ecad_electrical::cables::cable_title(doc, r.cable)))
 }
 
 /// Most orphan references `List` shows.
@@ -227,7 +227,7 @@ fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, String> {
     let tagged: Vec<CableId> = doc
         .cables
         .iter()
-        .filter(|(_, c)| c.properties.text(ecad_model::keys::TAG).is_some_and(|x| x.eq_ignore_ascii_case(t)))
+        .filter(|(_, c)| c.properties.text(ecad_model::naming::keys::TAG).is_some_and(|x| x.eq_ignore_ascii_case(t)))
         .map(|(k, _)| *k)
         .collect();
     let found = if tagged.is_empty() && t.len() >= 8 && t.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -259,10 +259,10 @@ impl Continue {
                 .map(|r| {
                     format!(
                         "{} on {} ({}): {}",
-                        crate::cables::cable_title(doc, r.cable),
+                        ecad_electrical::cables::cable_title(doc, r.cable),
                         refs::page_number_words(doc, r.page),
                         r.locator(),
-                        crate::slash::wires(r.wires_here)
+                        ecad_electrical::cables::slash::wires(r.wires_here)
                     )
                 })
                 .collect();
@@ -377,7 +377,7 @@ impl Interactive for Continue {
     /// Step 3: the stubs and the slash as they will be drawn.
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         let (Some(k), Some(at)) = (self.cable, self.at) else { return Vec::new() };
-        if !super::model_space(s) || !in_range(cursor) {
+        if !crate::interact::model_space(s) || !in_range(cursor) {
             return Vec::new();
         }
         let Some(plan) = Self::plan(s, k, at, pt(cursor)) else { return vec![line_kind(at, pt(cursor))] };
@@ -451,7 +451,7 @@ impl Goto {
                 let orphan = refs::all(p.ledger.document()).iter().find(|x| x.reference == r).is_none_or(|x| x.orphan);
                 return Ok(Found::Cable(r, orphan));
             }
-            let (r, t) = super::xrefs::device_source(p, &view.map, h).ok_or(NOT_A_REFERENCE)?;
+            let (r, t) = crate::references::interact::devices::device_source(p, &view.map, h).ok_or(NOT_A_REFERENCE)?;
             Ok(Found::Device(r, t))
         })
     }
@@ -460,7 +460,7 @@ impl Goto {
         match f {
             Found::Cable(_, true) => Err(other(ORPHAN)),
             Found::Cable(r, false) => Self::jump(s, r),
-            Found::Device(r, t) => super::xrefs::jump(s, r, t),
+            Found::Device(r, t) => crate::references::interact::devices::jump(s, r, t),
         }
     }
 
@@ -513,7 +513,7 @@ impl Interactive for Goto {
     fn begin(&mut self, s: &mut Session) -> R<Step> {
         safely(s, "cablegoto", |s| {
             let sel = s.selection();
-            let found: BTreeSet<Found> = sel.iter().take(crate::cmd::MAX_HANDLES).filter_map(|h| Self::named(s, *h).ok()).collect();
+            let found: BTreeSet<Found> = sel.iter().take(crate::commands::MAX_HANDLES).filter_map(|h| Self::named(s, *h).ok()).collect();
             match found.iter().next() {
                 Some(Found::Cable(r, false)) if found.len() == 1 => Self::jump(s, *r),
                 Some(Found::Cable(_, true)) if found.len() == 1 => {

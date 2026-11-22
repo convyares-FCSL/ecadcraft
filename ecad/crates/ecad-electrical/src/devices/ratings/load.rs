@@ -10,11 +10,11 @@
 //! This module excludes the protection reader (its parent) and the demand calculation.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ecad_model::device::Load;
-use ecad_model::device::load::MAX_POWER_WATTS;
-use ecad_model::units::Watts;
+use ecad_model::objects::devices::Load;
+use ecad_model::objects::devices::load::MAX_POWER_WATTS;
+use ecad_model::geometry::units::Watts;
 
-use super::{MAX_CHARS, Read};
+use crate::devices::ratings::{MAX_CHARS, Read};
 
 /// One read piece of a power rating.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,7 +40,7 @@ fn unit_token(x: f64, unit: &str) -> Option<PowerTok> {
 pub(super) fn power_piece(lower: &str) -> Option<PowerTok> {
     let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
     let (num, unit) = lower.split_at(split);
-    unit_token(crate::rating::parse::decimal(num)?, unit)
+    unit_token(crate::devices::ratings::parse::decimal(num)?, unit)
 }
 
 /// A unit after a bare number (`3 kW`): the joined token.
@@ -102,7 +102,7 @@ pub(super) fn one_power(toks: &[PowerTok], group: &str, example: &str) -> Result
 ///
 /// # Example
 /// ```
-/// use ecad_electrical::rating::reader::{Read, read_load};
+/// use crate::devices::ratings::{Read, read_load};
 /// let Read::Rating(r) = read_load("3kW") else { panic!() };
 /// assert_eq!(r.to_string(), "3 kW");
 /// assert!(matches!(read_load("3"), Read::Ask(_)));
@@ -135,7 +135,7 @@ pub fn read_load(text: &str) -> Read<Load> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::devices::ratings::*;
 
     fn shown(text: &str) -> String {
         match read_load(text) {

@@ -3,12 +3,12 @@
 //! its connection points and text slots as rows; what it still needs before it can be placed,
 //! with a button for each; Save, Save as new, Cancel.
 
-use ecad_model::units::Degrees;
-use ecad_ui::tokens::space;
+use ecad_model::geometry::units::Degrees;
+use ecad_widgets::tokens::space;
 use eframe::egui::{self, Color32, RichText};
 
-use super::builder::{Builder, Tool};
-use super::draft::{self, Missing, Picked, Source};
+use crate::library::builder::{Builder, Tool};
+use crate::library::draft::{self, Missing, Picked, Source};
 
 /// Element names (design 048 §3.1).
 pub const DETAILS: &str = "library.details";
@@ -59,16 +59,16 @@ pub enum Act {
     Standards(String),
 }
 
-fn c32(c: ecad_ui::tokens::Color) -> Color32 {
-    ecad_ui::color(c)
+fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+    ecad_widgets::color(c)
 }
 
 /// A section's title (UI rev 3: a hairline, then the title in the panel's text).
 fn section(ui: &mut egui::Ui, title: &str) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     ui.add_space(space::M);
     let (r, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
-    ui.painter().hline(r.x_range(), r.center().y, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, c32(s.line)));
+    ui.painter().hline(r.x_range(), r.center().y, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, c32(s.line)));
     ui.add_space(space::S);
     ui.label(RichText::new(title).strong().color(c32(s.text)));
     ui.add_space(space::XS);
@@ -76,7 +76,7 @@ fn section(ui: &mut egui::Ui, title: &str) {
 
 /// One labelled text field; focused when the Missing list asked for it.
 fn field(ui: &mut egui::Ui, b: &mut Builder, label: &str, name: &'static str, which: usize, hint: &str, read_only: bool) {
-    ui.label(RichText::new(label).small().color(c32(ecad_ui::SHELL.text_2)));
+    ui.label(RichText::new(label).small().color(c32(ecad_widgets::SHELL.text_2)));
     let d = &mut b.draft;
     let text = match which {
         0 => &mut d.name,
@@ -95,7 +95,7 @@ fn field(ui: &mut egui::Ui, b: &mut Builder, label: &str, name: &'static str, wh
 
 /// The checklist row `text` (screen g's "Before it can be placed"): done or to do, with a button.
 fn need(ui: &mut egui::Ui, done: bool, text: &str, pill: &str, item: &str, button: Option<&str>) -> bool {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let mut clicked = false;
     let r = ui.horizontal(|ui| {
         // A tick or a warning triangle, drawn (the UI font has no tick).
@@ -115,11 +115,11 @@ fn need(ui: &mut egui::Ui, done: bool, text: &str, pill: &str, item: &str, butto
         ui.label(RichText::new(text).small().color(if done { c32(s.text) } else { c32(s.warning) }));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if let Some(b) = button.filter(|_| !done) {
-                let r = ui.add(ecad_ui::prim::Button::new(b).small());
+                let r = ui.add(ecad_widgets::prim::Button::new(b).small());
                 r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("library.details.missing.{item}")));
                 clicked = r.clicked();
             }
-            ecad_ui::prim::pill(ui, pill, if done { ecad_ui::prim::Tone::Ok } else { ecad_ui::prim::Tone::Warning });
+            ecad_widgets::prim::pill(ui, pill, if done { ecad_widgets::prim::Tone::Ok } else { ecad_widgets::prim::Tone::Warning });
         });
     });
     r.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("library.details.need.{item}")));
@@ -128,7 +128,7 @@ fn need(ui: &mut egui::Ui, done: bool, text: &str, pill: &str, item: &str, butto
 
 /// Draw Details for the builder `b`.
 pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let mut acts = Vec::new();
     let fixed = b.draft.fixed_drawing();
     // The panel's title (rev 3): what is being made.
@@ -137,7 +137,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         Source::Make { .. } | Source::Promote { .. } => "Make symbol from selection".to_string(),
         Source::Edit { .. } => b.draft.shown_name().to_string(),
     };
-    ui.label(RichText::new(title).font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE)).color(c32(s.text)));
+    ui.label(RichText::new(title).font(ecad_widgets::fonts::font(ui.ctx(), ecad_widgets::tokens::ui_type::TITLE)).color(c32(s.text)));
     if matches!(b.draft.source, Source::Edit { builtin: true, .. }) {
         egui::Frame::new().fill(c32(s.accent_soft)).inner_margin(space::S).corner_radius(4.0).show(ui, |ui| {
             ui.label(RichText::new(BUILTIN_BANNER).small()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, BANNER));
@@ -156,7 +156,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
 
     section(ui, "Defaults");
     let mut join = usize::from(b.draft.part);
-    let r = ui.horizontal(|ui| ecad_ui::prim::segmented(ui, &mut join, &["A device of its own", "Part of a device"])).inner;
+    let r = ui.horizontal(|ui| ecad_widgets::prim::segmented(ui, &mut join, &["A device of its own", "Part of a device"])).inner;
     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, JOIN));
     b.draft.part = join == 1;
     for (label, name, which, hint, key) in [
@@ -167,7 +167,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         field(ui, b, label, name, which, hint, false);
         if let Some((_, v)) = info.overrides.iter().find(|(k, _)| *k == key) {
             ui.horizontal(|ui| {
-                ecad_ui::prim::badge(ui, format!("Project overrides this: {v}"), ecad_ui::prim::Tone::Neutral);
+                ecad_widgets::prim::badge(ui, format!("Project overrides this: {v}"), ecad_widgets::prim::Tone::Neutral);
                 if ui.small_button("Go to Standards").clicked() {
                     acts.push(Act::Standards(key.to_string()));
                 }
@@ -194,7 +194,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
                 b.draft.set_label(i, &label);
             }
             ui.label(RichText::new(format!("{}, {}", draft::fmt_mm(p.at.x), draft::fmt_mm(p.at.y))).small().color(c32(s.text_3)));
-            if !fixed && ui.add(ecad_ui::prim::IconButton::new(ecad_ui::tokens::Icon::Delete, "Remove the point")).clicked() {
+            if !fixed && ui.add(ecad_widgets::prim::IconButton::new(ecad_widgets::tokens::Icon::Delete, "Remove the point")).clicked() {
                 delete = Some(Picked::Point(i));
             }
         });
@@ -215,7 +215,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
             }
             let turn = if sl.rotation.0.abs() > 1e-9 { format!(", {}°", Degrees::from(sl.rotation).0.round()) } else { String::new() };
             ui.label(RichText::new(format!("{}, {}{turn}", draft::fmt_mm(sl.at.x), draft::fmt_mm(sl.at.y))).small().color(c32(s.text_3)));
-            if ui.add(ecad_ui::prim::IconButton::new(ecad_ui::tokens::Icon::Delete, "Remove the slot")).clicked() {
+            if ui.add(ecad_widgets::prim::IconButton::new(ecad_widgets::tokens::Icon::Delete, "Remove the slot")).clicked() {
                 delete = Some(Picked::Slot(i));
             }
         });
@@ -244,10 +244,10 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
                     ui.label(RichText::new(line).small().color(c32(s.text_2)));
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(ecad_ui::prim::Button::new("Skip").kind(ecad_ui::prim::Kind::Quiet).small()).clicked() {
+                    if ui.add(ecad_widgets::prim::Button::new("Skip").kind(ecad_widgets::prim::Kind::Quiet).small()).clicked() {
                         act = Some((i, false));
                     }
-                    if ui.add(ecad_ui::prim::Button::new("Accept").small()).clicked() {
+                    if ui.add(ecad_widgets::prim::Button::new("Accept").small()).clicked() {
                         act = Some((i, true));
                     }
                 });
@@ -263,7 +263,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
             Some((i, false)) => b.draft.delete(Picked::Offer(i)),
             None => {}
         }
-        let r = ui.add(ecad_ui::prim::Button::new("Accept all").small());
+        let r = ui.add(ecad_widgets::prim::Button::new("Accept all").small());
         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, ACCEPT_ALL));
         if r.clicked()
             && let Err(e) = b.draft.accept_all()
@@ -323,12 +323,12 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
     if b.ask_discard {
         ui.label(format!("Discard the draft of {}?", b.draft.shown_name()));
         ui.horizontal(|ui| {
-            let d = ui.add(ecad_ui::prim::Button::new("Discard").kind(ecad_ui::prim::Kind::Danger).small());
+            let d = ui.add(ecad_widgets::prim::Button::new("Discard").kind(ecad_widgets::prim::Kind::Danger).small());
             d.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, DISCARD));
             if d.clicked() {
                 acts.push(Act::Close(true));
             }
-            let k = ui.add(ecad_ui::prim::Button::new("Keep").kind(ecad_ui::prim::Kind::Quiet).small());
+            let k = ui.add(ecad_widgets::prim::Button::new("Keep").kind(ecad_widgets::prim::Kind::Quiet).small());
             k.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, KEEP));
             if k.clicked() {
                 b.ask_discard = false;
@@ -353,7 +353,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         } else {
             "Save to project"
         };
-        let mut save = ecad_ui::prim::Button::new(label).kind(ecad_ui::prim::Kind::Primary);
+        let mut save = ecad_widgets::prim::Button::new(label).kind(ecad_widgets::prim::Kind::Primary);
         if let Some(w) = &why {
             save = save.disabled(w);
         }
@@ -367,7 +367,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
             acts.push(Act::Save);
         }
         if edit {
-            let mut as_new = ecad_ui::prim::Button::new("Save as new").kind(ecad_ui::prim::Kind::Quiet);
+            let mut as_new = ecad_widgets::prim::Button::new("Save as new").kind(ecad_widgets::prim::Kind::Quiet);
             if let Some(w) = &why {
                 as_new = as_new.disabled(w);
             }
@@ -377,7 +377,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
                 acts.push(Act::SaveAsNew);
             }
         }
-        let c = ui.add(ecad_ui::prim::Button::new("Cancel").kind(ecad_ui::prim::Kind::Quiet));
+        let c = ui.add(ecad_widgets::prim::Button::new("Cancel").kind(ecad_widgets::prim::Kind::Quiet));
         c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, CANCEL));
         if c.clicked() {
             if b.draft.changed() {

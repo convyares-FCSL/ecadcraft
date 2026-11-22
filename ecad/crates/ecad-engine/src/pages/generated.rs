@@ -3,12 +3,12 @@
 
 use cadcraft_engine::doc::{EntityKind, HAlign, Text, VAlign};
 use cadcraft_engine::geom::Vec3;
-use ecad_model::book::Book;
-use ecad_model::sheet::unit_scale;
+use ecad_model::document::book::Book;
+use ecad_model::document::sheet::unit_scale;
 use ecad_model::{Document, GenKind, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextDraw};
+use crate::pages::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextDraw};
 use crate::generated::*;
 use crate::outputs::kept::ReportModels;
 use crate::text_style::{Look, TextKind};
@@ -52,7 +52,7 @@ impl Draw {
             return;
         }
         let height = look.mm;
-        let (shown, wf) = crate::frame::fit(value, height, room);
+        let (shown, wf) = crate::pages::frame::fit(value, height, room);
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
         let kind = EntityKind::Text(Text {
@@ -79,11 +79,11 @@ pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, look: TextDraw) -> V
     if !(k.is_finite() && k > 0.0) || !lo.is_finite() || !hi.is_finite() {
         return Vec::new();
     }
-    let inset_mm = crate::defaults::resolve(doc, &crate::defaults::print::MISSING_BOX_INSET, crate::defaults::Scope::project()).number();
+    let inset_mm = ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::print::MISSING_BOX_INSET, ecad_electrical::defaults::Scope::project()).number();
     let mut d = Draw { k, x0: 0.0, out: Vec::new() };
     let (x0, y0, x1, y1) = (lo.x.min(hi.x) / k, lo.y.min(hi.y) / k, lo.x.max(hi.x) / k, lo.y.max(hi.y) / k);
     let inset = inset_mm.max(0.0).min((x1 - x0) / 4.0).min((y1 - y0) / 4.0);
-    d.rect((x0 + inset, y0 + inset), (x1 - inset, y1 - inset), crate::look::WIRE_WEIGHT, Some(FLAGGED_ACI));
+    d.rect((x0 + inset, y0 + inset), (x1 - inset, y1 - inset), crate::cables::draw::WIRE_WEIGHT, Some(FLAGGED_ACI));
     d.text((x0 + inset + 1.0, (y0 + y1) / 2.0), look, MISSING, HAlign::Left, Some(FLAGGED_ACI), Some(x1 - x0 - 2.0 * inset - 1.0));
     d.out
 }
@@ -105,17 +105,17 @@ fn content(
         return crate::front::cover(doc, input, x0).0;
     }
     // Brief 046: a graphic terminal plan draws its strip sheet.
-    if kind == GenKind::Terminals && crate::strips::pages::style_of(doc, page) == crate::strips::pages::Style::Graphic {
-        return outputs.map_or_else(Vec::new, |o| crate::strip_page::content(doc, page, input, i, x0, o));
+    if kind == GenKind::Terminals && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic {
+        return outputs.map_or_else(Vec::new, |o| crate::terminal_strips::draw::content(doc, page, input, i, x0, o));
     }
     // Brief 051 (design 051 §4): the I/O list as ruled tables per card, the rack overview as tiles.
     if matches!(kind, GenKind::IoList | GenKind::PlcRack) {
         let a = crate::plc::sheets::Area { l, b, r, t, scale: (r - l) / A3_AREA };
         let plc = outputs.map(|o| &o.plc);
         if kind == GenKind::IoList {
-            crate::draw::plc::sheets::io_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
+            crate::plc::draw::sheets::io_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
         } else {
-            crate::draw::plc::sheets::rack_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
+            crate::plc::draw::sheets::rack_sheet(doc, plc, &mut d, &looks, input.unit, a, i);
         }
         return d.out;
     }
@@ -217,11 +217,11 @@ fn content(
 /// generated one side by side. `input` is the page's frame input with Total already counting
 /// sheets.
 pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Option<&ReportModels>, total: usize) -> Vec<Part> {
-    let Some(kind) = kind_of(doc, page) else { return crate::frame::parts(input) };
+    let Some(kind) = kind_of(doc, page) else { return crate::pages::frame::parts(input) };
     let n = sheets_of(doc, page, outputs);
     let width = f64::from(input.sheet.width) + SHEET_GAP;
     // Brief 046 (design 046 §6.3): a graphic page titles each sheet by its strip.
-    let graphic = (kind == GenKind::Terminals && crate::strips::pages::style_of(doc, page) == crate::strips::pages::Style::Graphic)
+    let graphic = (kind == GenKind::Terminals && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic)
         .then_some(outputs)
         .flatten();
     let mut out = Vec::new();
@@ -229,7 +229,7 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
     for i in 0..n {
         let mut inp = input.clone();
         if let Some(o) = graphic {
-            if let Some(t) = crate::strips::pages::sheet_title(doc, page, o, i) {
+            if let Some(t) = ecad_electrical::terminal_strips::pages::sheet_title(doc, page, o, i) {
                 inp.page_title = format!("{}: {t}", input.page_title);
             }
         } else if n > 1 {
@@ -243,7 +243,7 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
             }
         }
         let x0 = width * i as f64;
-        let mut frame = crate::frame::parts(&inp);
+        let mut frame = crate::pages::frame::parts(&inp);
         if x0 != 0.0 {
             let m = cadcraft_engine::geom::Mat3::translate(cadcraft_engine::geom::Vec2::new(x0 * unit_scale(input.unit), 0.0));
             for p in &mut frame {
@@ -265,7 +265,7 @@ pub fn input_of(doc: &Document, page: PageId, outputs: Option<&ReportModels>) ->
 }
 
 /// Every frame and content part of `page`, the pages drawn from the report models with
-/// `outputs` (the project's kept models, or [`ecad_electrical::derived::Views::report_models`] for a state
+/// `outputs` (the project's kept models, or [`ecad_electrical::views::Views::report_models`] for a state
 /// it does not keep).
 /// Without them those pages are drawn empty, one sheet each.
 pub fn parts_of(doc: &Document, page: PageId, outputs: Option<&ReportModels>) -> Vec<Part> {

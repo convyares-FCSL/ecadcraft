@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::title_block::{BlockItem, Rect, TitleBlockLayout};
+use ecad_model::objects::title_block::{BlockItem, Rect, TitleBlockLayout};
 use serde::{Deserialize, Serialize};
 
 /// The eframe storage key of the editor's drafts.
@@ -215,8 +215,8 @@ impl Drafts {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ecad_model::title_block::LineWeight;
+    use crate::title_blocks::*;
+    use ecad_model::objects::title_block::LineWeight;
 
     fn state() -> State {
         State { name: "A3".into(), fields: BTreeMap::new(), layout: TitleBlockLayout::blank(180.0, 40.0) }

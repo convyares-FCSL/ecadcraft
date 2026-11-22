@@ -1,14 +1,14 @@
 //! Brief 039 (U3) in the app: the Checks, Devices and Terminals column sets on the one table
 //! (acceptance criteria 3, 4 and 5).
 
-use ecad_app::lists::{devices, terminals};
-use ecad_app::{App, outputs_ui};
-use ecad_ui::table::{Align, Changed, TableSource};
+use ecad_app::workspace::{devices, terminals};
+use {ecad_app::App, ecad_app::reports::panel};
+use ecad_widgets::table::{Align, Changed, TableSource};
 use eframe::egui::{Event, Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::project_panel::{Deltas, active, build, click, devices_fixture, doc, head, key, new_app, ok, take};
+use crate::pages::project_panel::{Deltas, active, build, click, devices_fixture, doc, head, key, new_app, ok, take};
 
 type H = Harness<'static, App>;
 
@@ -144,12 +144,12 @@ fn checks_table_shows_the_checks_rows() {
     let mut h = build(new_app(), Some(deltas.clone()));
     devices_fixture(&mut h);
     ok(&mut h, r#"wire {"points":[[0,60],[40,60]]}"#);
-    click(&mut h, ecad_app::checks_panel::CHECKS_TAB);
+    click(&mut h, ecad_app::checks::panel::CHECKS_TAB);
     h.run_steps(2);
     let c = &h.state().panel.checks;
     assert!(!c.rows().is_empty());
     let shown: Vec<String> = c.table.view.visible_keys().iter().map(|k| c.source.row_label(*k)).collect();
-    let rows: Vec<String> = c.rows().iter().map(ecad_app::checks_panel::row_label).collect();
+    let rows: Vec<String> = c.rows().iter().map(ecad_app::checks::panel::row_label).collect();
     assert_eq!(shown, rows);
     // A commit that adds a check patches it in: no rebuild.
     let builds = c.table.view.builds;
@@ -181,7 +181,7 @@ fn terminals_table_edits_a_label_in_one_transaction() {
     h.state_mut().show_plan(Some(x1));
     h.run_steps(4);
     let r = h.state().reports.as_ref().unwrap();
-    assert_eq!(r.tab, outputs_ui::Tab::Terminals);
+    assert_eq!(r.tab, panel::Tab::Terminals);
     let v = &r.terminals;
     let keys = v.table.view.visible_keys();
     assert_eq!(keys.len(), 2, "two drawn terminals, one row each");
@@ -210,7 +210,7 @@ fn terminals_table_edits_a_label_in_one_transaction() {
     let before = head(&mut h);
     edit(&mut h, "Edit Label", "L1");
     assert_eq!(head(&mut h), before + 1, "one transaction: {:?}", h.state().reports.as_ref().unwrap().terminals.table.refusal);
-    let (label, _) = crate::project_panel::last_ops(&mut h);
+    let (label, _) = crate::pages::project_panel::last_ops(&mut h);
     assert_eq!(label, "Terminal label", "termlabel's transaction");
     h.run_steps(3);
     let v = &h.state().reports.as_ref().unwrap().terminals;

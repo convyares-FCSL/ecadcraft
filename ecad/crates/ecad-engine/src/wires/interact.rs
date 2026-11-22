@@ -7,8 +7,8 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{Pt, WireId};
 use serde_json::{Value, json};
 
-use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use super::{ATTACHED_ACI, OUT_OF_RANGE, can_start, in_range, pick_radius, preview_entity, pt, read};
+use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
+use crate::interact::{ATTACHED_ACI, OUT_OF_RANGE, can_start, in_range, pick_radius, preview_entity, pt, read};
 
 /// The wire under a click (within the pick radius), and its number.
 fn wire_under(s: &Session, p: Vec2) -> R<(WireId, Pt, String)> {
@@ -17,7 +17,7 @@ fn wire_under(s: &Session, p: Vec2) -> R<(WireId, Pt, String)> {
         let doc = proj.ledger.document();
         let on = crate::wires::route_at(doc, page, pt(p), tol, None).ok_or("Nothing there. Click a wire.")?;
         let w = crate::wires::wire_of_route(doc, on.route).ok_or("That line joins no connection points yet. Click a wire.")?;
-        let number = ecad_model::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
+        let number = ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
         Ok((w, on.at, number))
     })
     .map_err(other)

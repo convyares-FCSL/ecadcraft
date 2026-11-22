@@ -22,8 +22,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::device::load::load_power;
-use crate::units::{Amps, Current, RatedVoltage, VoltAmps, Watts};
+use crate::objects::devices::load::load_power;
+use crate::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Watts};
 
 /// The largest input or output voltage, in volts (low voltage).
 pub const MAX_VOLTS: f64 = 1000.0;
@@ -39,8 +39,8 @@ pub const MAX_VOLT_AMPS: f64 = 10_000_000.0;
 ///
 /// # Example
 /// ```
-/// use ecad_model::device::{PowerSupply, Psu, Transformer};
-/// use ecad_model::units::{Amps, Current, RatedVoltage, VoltAmps, Volts};
+/// use crate::objects::devices::{PowerSupply, Psu, Transformer};
+/// use crate::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts};
 /// let dc24 = RatedVoltage { volts: Volts(24.0), current: Current::Dc };
 /// let psu = PowerSupply::Psu(Psu { output: Some(dc24), output_current: Some(Amps(5.0)), ..Psu::default() });
 /// assert_eq!(psu.to_string(), "24 V DC, 5 A");

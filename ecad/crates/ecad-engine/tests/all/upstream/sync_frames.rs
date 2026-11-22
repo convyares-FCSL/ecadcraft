@@ -9,7 +9,7 @@ use crate::common;
 
 use cadcraft_engine::doc::{Handle, Space};
 use common::{H, pts, small_project};
-use ecad_inspect::EventKind;
+use ecad_engine::history::event_log::EventKind;
 use ecad_model::{PageId, TxKind, WireId};
 use serde_json::{Value, json};
 

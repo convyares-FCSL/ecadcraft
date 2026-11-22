@@ -6,8 +6,8 @@
 
 use crate::common::{H, id};
 
-use ecad_electrical::cmd::default::{self as default_cmds, Target};
-use ecad_engine::defaults::{self, Entry, Kind, Level, Scope, Source};
+use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
+use ecad_electrical::defaults::{self, Entry, Kind, Level, Scope, Source};
 use ecad_model::{DeviceId, PageId, RepresentationId};
 use serde_json::{Value, json};
 
@@ -19,7 +19,7 @@ fn other_value(e: &Entry) -> Option<String> {
     let candidates: Vec<String> = match e.kind {
         Kind::Length { min, max } | Kind::Number { min, max } => vec![format!("{max}"), format!("{min}")],
         Kind::Choice(words) => words.iter().map(|w| w.to_string()).collect(),
-        Kind::Flag => ecad_model::words::FLAG_WORDS.iter().map(|w| w.to_string()).collect(),
+        Kind::Flag => ecad_model::naming::words::FLAG_WORDS.iter().map(|w| w.to_string()).collect(),
         Kind::Text { .. } | Kind::Parsed { .. } => {
             [
                 "ZZ",
@@ -42,7 +42,7 @@ fn other_value(e: &Entry) -> Option<String> {
             .collect()
         }
         // Brief 050a: a style choice takes another built-in style of its catalogue.
-        Kind::Style(cat) => ecad_engine::styles::catalogue(cat).builtins.iter().map(|b| b.id.to_string()).collect(),
+        Kind::Style(cat) => ecad_electrical::styles::catalogue(cat).builtins.iter().map(|b| b.id.to_string()).collect(),
     };
     candidates.into_iter().find(|c| e.parse(c).is_some() && !c.eq_ignore_ascii_case(&builtin))
 }
@@ -104,11 +104,11 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
             // A one-word choice, or a style choice whose catalogue has one built-in style (050a):
             // only its built-in exists.
             // Brief 057: a catalogue with no built-in styles (rating tables) has none to choose.
-            let single = |c: ecad_model::StyleCatalogue| ecad_engine::styles::catalogue(c).builtins.len() <= 1;
+            let single = |c: ecad_model::StyleCatalogue| ecad_electrical::styles::catalogue(c).builtins.len() <= 1;
             assert!(matches!(e.kind, Kind::Choice(w) if w.len() == 1) || matches!(e.kind, Kind::Style(c) if single(c)), "{}: no test value", e.key);
             continue;
         };
-        let stored = ecad_electrical::cmd::default::json_stored_text(e, &json!(value)).unwrap_or_else(|m| panic!("{}: {m}", e.key));
+        let stored = ecad_electrical::styles::commands::defaults::json_stored_text(e, &json!(value)).unwrap_or_else(|m| panic!("{}: {m}", e.key));
         for (level, target, scope, source) in targets(page, c, rep, &doc) {
             let base = defaults::resolve(&doc, e, scope);
             let ops = default_cmds::ops(&doc, e, level, target, Some(stored.clone()));

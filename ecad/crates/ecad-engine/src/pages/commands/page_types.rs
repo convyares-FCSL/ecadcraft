@@ -1,20 +1,20 @@
 //! The page type and folder commands (brief 054, design 054): `folderprops`, `renumberpages` and
-//! `deletepage`. The rules (folder starts, renumbering, check rows) are [`crate::page_types`].
+//! `deletepage`. The rules (folder starts, renumbering, check rows) are [`ecad_electrical::pages::page_types`].
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::cmd::page_type`] decide, and the shim brings the outputs up to date, opens
+//! [`ecad_electrical::pages::commands::page_types`] decide, and the shim brings the outputs up to date, opens
 //! the page shown, commits the ops, echoes and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_electrical::cmd::page_type::{self as rules, MAX_PAGES};
+use ecad_electrical::pages::commands::page_types::{self as rules, MAX_PAGES};
 use ecad_model::PageId;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{err, on_project};
-use ecad_electrical::cmd::input::Bounded;
+use crate::commands::input::{Command, Typed};
+use crate::commands::{err, on_project};
+use ecad_electrical::commands::input::Bounded;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<DeletepageParams>("deletepage")];
@@ -22,7 +22,7 @@ pub const TYPED: &[Typed] = &[Typed::of::<DeletepageParams>("deletepage")];
 /// The commands this module adds (registered in [`crate::lanes`]).
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("deletepage", "Delete Page", crate::cmd::input::typed::<DeletepageParams>)
+        CommandSpec::new("deletepage", "Delete Page", crate::commands::input::typed::<DeletepageParams>)
             .params("{page: id} or {pages: [id]} (generated pages only: a cover, a contents, a report…; one transaction)")
             .noundo(),
     ]

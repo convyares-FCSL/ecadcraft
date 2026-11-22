@@ -8,21 +8,21 @@
 //! returns, echo its message and answer. The agent gate reads the same declaration
 //! ([`Typed::access`], [`Typed::files`]).
 //!
-//! Excludes: commands that need the session (their shims in [`crate::cmd`], [`super::input`]).
+//! Excludes: commands that need the session (their shims in [`crate::commands`], [`crate::commands::input`]).
 
 use std::collections::BTreeMap;
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::input::{parse, schema};
-use ecad_electrical::cmd::run::{Answer, Cx, Echo, Generic, Got, Outcome, Pages as Runs, Read as Reads, Slot, State, Unread};
-use ecad_electrical::proposals::Conflict;
+use ecad_electrical::commands::input::{parse, schema};
+use ecad_electrical::commands::run::{Answer, Cx, Echo, Generic, Got, Outcome, Pages as Runs, Read as Reads, Slot, State, Unread};
+use ecad_electrical::symbols::proposals::Conflict;
 use ecad_model::PageId;
 use serde_json::Value;
 
 use crate::access::Pages;
-use crate::cmd::input::Typed;
-use crate::cmd::{UNAVAILABLE, err, on_any_page, on_project};
+use crate::commands::input::Typed;
+use crate::commands::{UNAVAILABLE, err, on_any_page, on_project};
 use crate::project::Project;
 
 /// The registration of generic command `P`.
@@ -114,7 +114,7 @@ fn commit<P: Generic>(
         State::Conflicts => Held::Conflicts(None),
     };
     let change_count = proj.change_count();
-    let plain = crate::cmd::plain_style(proj);
+    let plain = crate::commands::plain_style(proj);
     let Outcome { edit, answer, writes, echo } = {
         let state = match &mut held {
             Held::None => Slot::None,

@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use ecad_tokens::ui_type::TypeStyle;
+use crate::tokens::ui_type::TypeStyle;
 use egui::{FontData, FontDefinitions, FontFamily, FontId};
 
 /// The interface family: IBM Plex Sans Regular, then the host's fallbacks.

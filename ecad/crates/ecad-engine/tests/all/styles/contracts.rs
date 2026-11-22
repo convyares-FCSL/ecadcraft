@@ -6,10 +6,10 @@ use crate::common::{H, id};
 
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::doc::color::Color;
-use ecad_engine::defaults::{self, Scope, Source};
-use ecad_engine::styles;
+use ecad_electrical::defaults::{self, Scope, Source};
+use ecad_electrical::styles;
 use ecad_engine::text_style::{TextKind, text_style};
-use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
+use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{DeviceId, ObjectRef, Op, PageId};
 use serde_json::json;
 
@@ -92,9 +92,9 @@ fn a_text_style_change_restyles_every_tag_in_one_transaction() {
     // Mono print prints ink; a colour print keeps the tag's colour.
     let doc = h.doc();
     let fan = Default::default();
-    let (mono, _) = ecad_engine::printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
+    let (mono, _) = ecad_engine::export::printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
     assert!(mono.model.iter().all(|e| !matches!(e.common.color, Color::True(_))), "mono is ink");
-    let (colour, _) = ecad_engine::printbook::build_in(&doc, &[page], &fan, 0.01, None, false, true).unwrap();
+    let (colour, _) = ecad_engine::export::printbook::build_in(&doc, &[page], &fan, 0.01, None, false, true).unwrap();
     assert!(
         colour.model.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value.starts_with("-K")) && matches!(e.common.color, Color::True(_)))
     );
@@ -197,7 +197,7 @@ fn a_location_style_restyles_boxes_and_a_page_frame_style_one_page() {
     // The page still verifies (a reopened page is not unavailable).
     let ok = h.pv(|p, pg| {
         let d = pg.drawing_of(p, page).unwrap();
-        ecad_engine::verify::verify_page(
+        ecad_engine::dev::verify::verify_page(
             p.ledger.document(),
             page,
             &d,
@@ -218,7 +218,7 @@ fn a_location_style_restyles_boxes_and_a_page_frame_style_one_page() {
     assert_eq!(styles::frame::frame_draw(&doc, page).border, 100);
     assert!(!styles::frame::frame_draw(&doc, page).grid_labels);
     assert_eq!(styles::frame::frame_draw(&doc, p2).border, 50);
-    let parts = ecad_engine::frame::parts(&ecad_engine::frame::FrameInput::of(&doc, page, &ecad_model::book::Book::of(&doc)));
+    let parts = ecad_engine::pages::frame::parts(&ecad_engine::pages::frame::FrameInput::of(&doc, page, &ecad_model::document::book::Book::of(&doc)));
     assert!(parts.iter().any(|p| p.weight == Some(100)));
 }
 
@@ -254,7 +254,7 @@ fn a_style_change_marks_only_the_pages_of_its_users() {
         before: None,
         after: Some(StyleRecord::new(
             "",
-            ecad_model::style::StyleBody::Text(ecad_model::style::TextStyle { height: Some(ecad_model::units::Mm(4.0)), ..Default::default() }),
+            ecad_model::objects::styles::StyleBody::Text(ecad_model::objects::styles::TextStyle { height: Some(ecad_model::geometry::units::Mm(4.0)), ..Default::default() }),
         )),
     };
     // Nobody uses it: no page.
@@ -283,7 +283,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
                 catalogue: ecad_model::StyleCatalogue::Text,
                 id: StyleRef::Own(i + 1),
                 before: None,
-                after: Some(StyleRecord::new(format!("S{i}"), ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Text))),
+                after: Some(StyleRecord::new(format!("S{i}"), ecad_model::objects::styles::StyleBody::empty(ecad_model::StyleCatalogue::Text))),
             });
         }
         // Design 072 §8: a record holds only its catalogue's fields; a long name is still possible.
@@ -292,7 +292,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
             catalogue: ecad_model::StyleCatalogue::Location,
             id: StyleRef::Own(9),
             before: None,
-            after: Some(StyleRecord::new(long.clone(), ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Location))),
+            after: Some(StyleRecord::new(long.clone(), ecad_model::objects::styles::StyleBody::empty(ecad_model::StyleCatalogue::Location))),
         });
         ops.push(Op::SetProperty {
             object: ObjectRef::Device(k1),
@@ -305,7 +305,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
     });
     let doc = h.doc();
     let cat = styles::catalogue(ecad_model::StyleCatalogue::Text);
-    assert!(styles::rows(&doc, cat).len() <= 23 + ecad_model::style::MAX_STYLES_PER_CATALOGUE);
+    assert!(styles::rows(&doc, cat).len() <= 23 + ecad_model::objects::styles::MAX_STYLES_PER_CATALOGUE);
     let rows = ecad_engine::checks::all(&doc, 0.01);
     assert!(rows.iter().any(|c| c.kind == ecad_engine::checks::Kind::StyleLimits));
     assert!(rows.iter().filter(|c| c.kind == ecad_engine::checks::Kind::StyleUnknown).count() >= 2);
@@ -313,7 +313,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
     assert!(name.chars().count() <= 64);
     // It draws (the page projected from the document, as a print does) and the reads answer.
     let fan = Default::default();
-    let (d, _) = ecad_engine::printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
+    let (d, _) = ecad_engine::export::printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
     assert!(!d.model.is_empty());
     assert_eq!(text_style(&doc, TextKind::Tag).height, 2.5);
 }
@@ -344,13 +344,13 @@ fn a_24v_wire_takes_the_24_v_dc_category() {
     let label = label_of(&mut h, page, w).unwrap();
     assert!(label.ends_with(" 0.5 BU") && label.starts_with("24V-"), "{label}");
     let doc = h.doc();
-    assert_eq!(ecad_engine::look::conductor_colour(&doc, w).map(|c| c.to_string()).as_deref(), Some("BU"), "drawn blue (line colour: wire)");
+    assert_eq!(ecad_engine::cables::draw::conductor_colour(&doc, w).map(|c| c.to_string()).as_deref(), Some("BU"), "drawn blue (line colour: wire)");
     let rows = h.run("wirelist", json!({})).unwrap();
     assert!(rows.to_string().contains("24 V DC"), "{rows}");
     // A power wire is drawn in ink, heavier.
     let l = wire(&mut h, 170.0, Some("L1"));
     let doc = h.doc();
-    assert_eq!(ecad_engine::look::conductor_colour(&doc, l), None, "power in ink");
+    assert_eq!(ecad_engine::cables::draw::conductor_colour(&doc, l), None, "power in ink");
     assert!((styles::wire::wire_draw(&doc, l).line_weight - 0.6).abs() < 1e-9);
 }
 
@@ -362,14 +362,14 @@ fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
     h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": "WH"})).unwrap();
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD"}})).unwrap();
     let doc = h.doc();
-    assert_eq!(ecad_engine::look::conductor_colour(&doc, a).map(|c| c.to_string()).as_deref(), Some("RD"));
-    assert_eq!(ecad_engine::look::conductor_colour(&doc, b).map(|c| c.to_string()).as_deref(), Some("WH"), "its own colour stays");
+    assert_eq!(ecad_engine::cables::draw::conductor_colour(&doc, a).map(|c| c.to_string()).as_deref(), Some("RD"));
+    assert_eq!(ecad_engine::cables::draw::conductor_colour(&doc, b).map(|c| c.to_string()).as_deref(), Some("WH"), "its own colour stays");
     assert!(label_of(&mut h, page, a).unwrap().ends_with(" RD"));
     let look = styles::wire::wire_draw(&doc, b);
     assert_eq!(look.colour.map(|c| c.1), Some(Source::Object), "overridden");
     // Reset: it follows the category again.
     h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": null})).unwrap();
-    assert_eq!(ecad_engine::look::conductor_colour(&h.doc(), b).map(|c| c.to_string()).as_deref(), Some("RD"));
+    assert_eq!(ecad_engine::cables::draw::conductor_colour(&h.doc(), b).map(|c| c.to_string()).as_deref(), Some("RD"));
 }
 
 #[test]
@@ -382,7 +382,7 @@ fn choosing_a_category_sets_a_missing_potential_and_keeps_another() {
     let doc = h.doc();
     assert_eq!(styles::wire::wire_draw(&doc, a).category, Some(StyleRef::Builtin("signal".into())));
     let net = doc.connectivity().net_of_conductor(a).and_then(|n| doc.connectivity().net(n)).unwrap();
-    assert_eq!(ecad_model::wiring::net_potential(&doc, net).name.as_deref(), Some("24V"), "the net keeps 24V");
+    assert_eq!(ecad_model::connectivity::wiring::net_potential(&doc, net).name.as_deref(), Some("24V"), "the net keeps 24V");
     assert!(v["message"].is_null(), "signal names no potential: {v}");
     // A wire with no potential: the category's potential comes with it, in one transaction.
     let b = wire(&mut h, 170.0, None);
@@ -391,7 +391,7 @@ fn choosing_a_category_sets_a_missing_potential_and_keeps_another() {
     assert_eq!(h.head(), before + 1);
     let doc = h.doc();
     let net = doc.connectivity().net_of_conductor(b).and_then(|n| doc.connectivity().net(n)).unwrap();
-    assert_eq!(ecad_model::wiring::net_potential(&doc, net).name.as_deref(), Some("24V"));
+    assert_eq!(ecad_model::connectivity::wiring::net_potential(&doc, net).name.as_deref(), Some("24V"));
     // A net with another potential keeps it, and says so.
     let v = h.run("category", json!({"conductor": a.hex(), "value": "Power L1"})).unwrap();
     assert_eq!(v["message"], json!("Category set; the net keeps potential 24V."));
@@ -440,9 +440,9 @@ fn mono_prints_wires_in_ink_and_colour_prints_their_line_colours() {
     wire(&mut h, 170.0, Some("L1"));
     let doc = h.doc();
     let fan = Default::default();
-    let (mono, _) = ecad_engine::printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
+    let (mono, _) = ecad_engine::export::printbook::build_pending(&doc, &[page], &fan, 0.01, None, false).unwrap();
     assert!(mono.model.iter().all(|e| !matches!(e.common.color, Color::True(_))));
-    let (colour, _) = ecad_engine::printbook::build_in(&doc, &[page], &fan, 0.01, None, false, true).unwrap();
+    let (colour, _) = ecad_engine::export::printbook::build_in(&doc, &[page], &fan, 0.01, None, false, true).unwrap();
     assert_eq!(colour.model.iter().filter(|e| matches!(e.common.color, Color::True(_))).count(), 1, "only the 24V wire (power is ink)");
     // The heavier power line prints in mono too (weight is not colour).
     assert!(mono.model.iter().any(|e| e.common.lineweight == cadcraft_engine::doc::Lineweight::Mm100(60)));

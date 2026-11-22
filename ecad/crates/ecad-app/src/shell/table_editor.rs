@@ -6,7 +6,7 @@
 //! The editor writes nothing itself: [`TableEditor::show`] returns [`Outcome::Save`] and the caller
 //! turns the rows into one command (one transaction, one `u`). Esc and Cancel write nothing.
 
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Key, vec2};
 
 use crate::shell::bar;
@@ -88,13 +88,13 @@ impl TableEditor {
 
     /// Draw it and answer the person's clicks and keys.
     pub fn show(&mut self, ctx: &egui::Context, check: impl Fn(&[Row]) -> Result<(), String>) -> Outcome {
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         let checked = check(&self.rows);
         let edit = self.caps.edit && self.writable;
         let (caps, writable) = (self.caps, self.writable);
         let why = checked.as_ref().err().cloned().or_else(|| self.error.clone());
         let title = self.title.clone();
-        let shown = ecad_ui::dialog::Dialog::new(egui::Id::unique(EDITOR), &title, EDITOR).width(560.0).show(
+        let shown = ecad_widgets::dialog::Dialog::new(egui::Id::unique(EDITOR), &title, EDITOR).width(560.0).show(
             ctx,
             |ui| {
                 let mut out = None;
@@ -111,16 +111,16 @@ impl TableEditor {
                                 egui::Align2::CENTER_CENTER,
                                 format!("{}", i + 1),
                                 bar::font(ui, ui_type::SMALL),
-                                ecad_ui::color(s.text_3),
+                                ecad_widgets::color(s.text_3),
                             );
                             if self.caps.hide {
                                 let name = format!("ecad.table.shown.{i}");
-                                ecad_ui::control::Toggle::new(&mut r.shown, &name).read_only(!self.writable).show(ui);
+                                ecad_widgets::control::Toggle::new(&mut r.shown, &name).read_only(!self.writable).show(ui);
                             }
                             // Right to left: the buttons at the end, then the entry takes the rest,
                             // so the rows never widen the window.
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                let quiet = |t| ecad_ui::prim::Button::new(t).kind(ecad_ui::prim::Kind::Quiet).small();
+                                let quiet = |t| ecad_widgets::prim::Button::new(t).kind(ecad_widgets::prim::Kind::Quiet).small();
                                 if self.caps.add_remove && self.writable && ui.add(quiet("\u{d7}")).on_hover_text("Remove").clicked() {
                                     remove = Some(i);
                                 }
@@ -134,18 +134,18 @@ impl TableEditor {
                                 }
                                 let name = format!("ecad.table.row.{i}");
                                 if edit {
-                                    ecad_ui::control::TextEntry::new(&mut r.text, &name).show(ui);
+                                    ecad_widgets::control::TextEntry::new(&mut r.text, &name).show(ui);
                                 } else {
-                                    ecad_ui::control::read_text(ui, &r.text, ecad_ui::control::Decor::default(), &name);
+                                    ecad_widgets::control::read_text(ui, &r.text, ecad_widgets::control::Decor::default(), &name);
                                 }
                             });
                         });
                         if !r.generated.is_empty() && r.text != r.generated {
-                            ui.label(egui::RichText::new(format!("generated: {}", r.generated)).small().color(ecad_ui::color(s.text_3)));
+                            ui.label(egui::RichText::new(format!("generated: {}", r.generated)).small().color(ecad_widgets::color(s.text_3)));
                         }
                     }
                     if self.rows.is_empty() {
-                        ui.label(egui::RichText::new("Nothing yet.").color(ecad_ui::color(s.text_3)));
+                        ui.label(egui::RichText::new("Nothing yet.").color(ecad_widgets::color(s.text_3)));
                     }
                 });
                 if let Some((a, b)) = swap {
@@ -159,14 +159,14 @@ impl TableEditor {
                 ui.add_space(space::S);
                 ui.horizontal(|ui| {
                     if self.caps.add_remove && self.writable {
-                        let b = ui.add_enabled(self.rows.len() < self.max_rows, ecad_ui::prim::Button::new("+ Row").small());
+                        let b = ui.add_enabled(self.rows.len() < self.max_rows, ecad_widgets::prim::Button::new("+ Row").small());
                         b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, ADD));
                         if b.clicked() {
                             self.rows.push(Row { shown: true, ..Row::default() });
                         }
                     }
                     if let Some(words) = self.link {
-                        let b = ecad_ui::control::link(ui, words);
+                        let b = ecad_widgets::control::link(ui, words);
                         b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, LINK));
                         if b.clicked() {
                             out = Some(Outcome::Link);
@@ -174,7 +174,7 @@ impl TableEditor {
                     }
                 });
                 if let Some(e) = &why {
-                    ui.label(egui::RichText::new(e).small().color(ecad_ui::color(s.error)));
+                    ui.label(egui::RichText::new(e).small().color(ecad_widgets::color(s.error)));
                 }
                 out
             },
@@ -183,13 +183,13 @@ impl TableEditor {
                 let read_only = caps == Caps::READ;
                 if !read_only {
                     let can = writable && checked.is_ok();
-                    let b = ui.add_enabled(can, ecad_ui::prim::Button::new("Save").kind(ecad_ui::prim::Kind::Primary).small());
+                    let b = ui.add_enabled(can, ecad_widgets::prim::Button::new("Save").kind(ecad_widgets::prim::Kind::Primary).small());
                     b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, can, SAVE));
                     if b.clicked() || (can && ui.input(|i| i.modifiers.command && i.key_pressed(Key::Enter))) {
                         out = Some(Outcome::Save);
                     }
                 }
-                let c = ui.add(ecad_ui::prim::Button::new(if read_only { "Close" } else { "Cancel" }).small());
+                let c = ui.add(ecad_widgets::prim::Button::new(if read_only { "Close" } else { "Cancel" }).small());
                 c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, CANCEL));
                 if c.clicked() {
                     out = Some(Outcome::Cancel);

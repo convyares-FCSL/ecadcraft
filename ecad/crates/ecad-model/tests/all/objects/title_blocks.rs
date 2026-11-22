@@ -1,21 +1,21 @@
 //! Brief 055 (design 055 §1.3, §2, FP1, FP4): title block bounds, a page's sheet and margins
 //! through its frame, and the frame record as one merge unit.
 
-use ecad_model::sheet::{self, Margins, SheetSpec};
-use ecad_model::style::frame::{FrameMargins, FrameSheet};
-use ecad_model::style::{FrameStyle, StyleBody};
-use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-use ecad_model::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, TextDraw, TitleBlockLayout};
+use ecad_model::document::sheet::{self, Margins, SheetSpec};
+use ecad_model::objects::styles::frame::{FrameMargins, FrameSheet};
+use ecad_model::objects::styles::{FrameStyle, StyleBody};
+use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
+use ecad_model::objects::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, TextDraw, TitleBlockLayout};
 use std::collections::BTreeMap;
 
 use ecad_model::merge::{self, Inputs, Scope};
-use ecad_model::tag::HighWater;
+use ecad_model::naming::tag::HighWater;
 use ecad_model::{Author, Document, Ledger, Op, PageId, Primitive, Pt};
 
 fn field(x: f64) -> BlockItem {
     BlockItem::Field {
         at: Rect::new(x, 1.0, 10.0, 5.0),
-        bind: Binding::Page(ecad_model::title_block::PageField::Number),
+        bind: Binding::Page(ecad_model::objects::title_block::PageField::Number),
         label: None,
         look: TextDraw::default(),
         if_empty: Default::default(),

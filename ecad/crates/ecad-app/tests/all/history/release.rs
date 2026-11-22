@@ -11,8 +11,8 @@ use std::sync::Arc;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::checks_ui::demo_file;
-use crate::mouse_tester::{Deltas, harness_with, head, ok, shot};
+use crate::checks::ui::demo_file;
+use crate::canvas::mouse_acceptance::{Deltas, harness_with, head, ok, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -31,7 +31,7 @@ fn click(h: &mut H, label: &str) {
 
 #[test]
 fn the_release_dialog_checks_releases_and_asks_before_replacing() {
-    ecad_engine::printbook::install_io();
+    ecad_engine::export::printbook::install_io();
     let dir = std::env::temp_dir().join(format!("ecad-027-ui-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -46,7 +46,7 @@ fn the_release_dialog_checks_releases_and_asks_before_replacing() {
     ok(&mut h, r#"projectprops {"drawing_number": "D-1001"}"#);
     // Brief 057 (owner rule): the demo's unwired GNYE core is an error until ticked Not used; this
     // test is the release dialog's, so it is ticked here.
-    let w01 = crate::project_panel::doc(&mut h).cables_tagged("-W01")[0];
+    let w01 = crate::pages::project_panel::doc(&mut h).cables_tagged("-W01")[0];
     ok(&mut h, &format!(r#"setprop {{"cable": "{}", "key": "unused.GNYE", "value": "yes"}}"#, w01.hex()));
 
     // Publish ▸ Release opens the dialog (UI rev 3: the bottom bar's revision opens History, and
@@ -60,7 +60,7 @@ fn the_release_dialog_checks_releases_and_asks_before_replacing() {
     assert!(h.state().release.is_some(), "the dialog is open");
     let d = h.state().release.clone().unwrap();
     assert_eq!(d.view.as_ref().unwrap().rev, "A");
-    assert_eq!(d.blocked().as_deref(), Some(ecad_engine::revisions::FILL_FIRST));
+    assert_eq!(d.blocked().as_deref(), Some(ecad_electrical::releases::revisions::FILL_FIRST));
     assert!(h.query_by_label("ecad.release.go").is_some());
     assert!(
         h.query_by_label("ecad.release.group.open-ends").is_some() || h.query_by_label("ecad.release.group.parts").is_some(),

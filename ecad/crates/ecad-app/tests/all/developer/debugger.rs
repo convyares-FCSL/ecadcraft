@@ -6,9 +6,9 @@ use std::path::PathBuf;
 
 use cadcraft_engine::Session;
 use ecad_app::App;
-use ecad_app::debugger::{Action, CheckKind, View, saved_summary};
+use ecad_app::developer::debugger::{Action, CheckKind, View, saved_summary};
 use ecad_engine::BUSY;
-use ecad_engine::debug::{ObjectId, RecordState};
+use ecad_engine::dev::debug::{ObjectId, RecordState};
 use serde_json::Value;
 
 struct TempDir(PathBuf);
@@ -32,9 +32,9 @@ impl Drop for TempDir {
 
 fn new_app() -> App {
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
-    crate::project_panel::open_panels(&mut t);
+    crate::pages::project_panel::open_panels(&mut t);
     t
 }
 
@@ -165,7 +165,7 @@ is not counted as a change until the project has a file."
     ok(&mut t, r#"wire {"points":[[90,0],[110,0]]}"#);
     let route = |d: &ecad_model::Document| {
         let (c, _) = d.wires.iter().next().unwrap();
-        vec![ecad_model::derive::route_on_page(d, *c, d.page_order[0]).unwrap().0]
+        vec![ecad_model::connectivity::derive::route_on_page(d, *c, d.page_order[0]).unwrap().0]
     };
     select_ecad(&mut t, route);
     frame(&mut t, &ctx);
@@ -174,7 +174,7 @@ is not counted as a change until the project has a file."
     let touching = t.debugger.touching();
     assert!(touching.contains(&3), "{touching:?}");
     t.debugger.select_tx(Some(3));
-    let views: Vec<_> = t.debugger.log()[2].ops.iter().map(ecad_engine::debug::op_view).collect();
+    let views: Vec<_> = t.debugger.log()[2].ops.iter().map(ecad_engine::dev::debug::op_view).collect();
     assert!(views.iter().any(|v| v.name == "AddRoute" && v.before.is_none()), "the route drawn");
     let made = views.iter().find(|v| v.name == "CreateWire").unwrap();
     assert!(made.before.is_none());

@@ -21,17 +21,19 @@ use ecad_model::Device;
 
 use crate::error::CmdError;
 use ecad_model::Word;
-use ecad_model::device::protection::{MAX_AMPS, MAX_BREAKING_KA, MAX_RESIDUAL_MA};
-use ecad_model::device::{Breaker, Fuse, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
-use ecad_model::device::{DeviceType, Load, RatingNote};
-use ecad_model::units::{Amps, KiloAmps, MilliAmps};
+use ecad_model::objects::devices::protection::{MAX_AMPS, MAX_BREAKING_KA, MAX_RESIDUAL_MA};
+use ecad_model::objects::devices::{Breaker, Fuse, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
+use ecad_model::objects::devices::{DeviceType, Load, RatingNote};
+use ecad_model::geometry::units::{Amps, KiloAmps, MilliAmps};
 
-mod indicator;
-mod load;
-mod motor;
-mod power_supply;
-mod sensor;
-mod switching;
+pub mod dataset;
+pub(crate) mod indicator;
+pub(crate) mod load;
+pub(crate) mod motor;
+pub mod parse;
+pub(crate) mod power_supply;
+pub(crate) mod sensor;
+pub(crate) mod switching;
 pub use indicator::read_indicator;
 pub use load::read_load;
 pub use motor::read_motor;
@@ -40,7 +42,7 @@ pub use sensor::read_sensor;
 pub use switching::read_switching;
 
 /// Most characters of a typed rating (the note's bound).
-pub const MAX_CHARS: usize = ecad_model::device::RatingNote::MAX;
+pub const MAX_CHARS: usize = ecad_model::objects::devices::RatingNote::MAX;
 
 /// What a rating text reads as.
 #[derive(Debug, Clone, PartialEq)]
@@ -135,7 +137,7 @@ fn piece_tokens(piece: &str, lower: &str) -> Option<Vec<Tok>> {
 fn number_token(piece: &str) -> Option<Tok> {
     let split = piece.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == ',')).unwrap_or(piece.len());
     let (num, unit) = piece.split_at(split);
-    let x = super::parse::decimal(num)?;
+    let x = crate::devices::ratings::parse::decimal(num)?;
     match unit.to_ascii_lowercase().as_str() {
         "" => Some(Tok::Bare(x)),
         "a" => Some(Tok::Amps(x)),
@@ -204,8 +206,8 @@ fn milli(x: f64) -> Result<MilliAmps, Problem> {
 ///
 /// # Example
 /// ```
-/// use ecad_electrical::rating::reader::{Read, read_protection};
-/// use ecad_model::device::ProtectionKind;
+/// use crate::devices::ratings::{Read, read_protection};
+/// use ecad_model::objects::devices::ProtectionKind;
 /// let Read::Rating(p) = read_protection(ProtectionKind::Mcb, "B16") else { panic!() };
 /// assert_eq!(p.to_string(), "curve B, 16 A");
 /// assert!(matches!(read_protection(ProtectionKind::Mcb, "16"), Read::Ask(_)));
@@ -412,13 +414,13 @@ pub fn rated(t: &DeviceType, who: &str, text: Option<&str>) -> Result<(DeviceTyp
     }
 }
 
-fn note_refusal(e: &ecad_model::text::TextError) -> String {
+fn note_refusal(e: &ecad_model::naming::text::TextError) -> String {
     match e {
-        ecad_model::text::TextError::TooLong { .. } => format!("A rating is at most {MAX_CHARS} characters."),
-        ecad_model::text::TextError::Hidden { .. } | ecad_model::text::TextError::Lines => {
+        ecad_model::naming::text::TextError::TooLong { .. } => format!("A rating is at most {MAX_CHARS} characters."),
+        ecad_model::naming::text::TextError::Hidden { .. } | ecad_model::naming::text::TextError::Lines => {
             "A rating is one line with no control or hidden characters.".into()
         }
-        ecad_model::text::TextError::Empty => "A rating is not empty.".into(),
+        ecad_model::naming::text::TextError::Empty => "A rating is not empty.".into(),
     }
 }
 
@@ -428,7 +430,7 @@ fn note_refusal(e: &ecad_model::text::TextError) -> String {
 /// # Errors
 /// [`rated`]'s.
 pub fn with_rating(d: &Device, who: &str, text: Option<&str>) -> Result<Device, CmdError> {
-    use crate::traits::DeviceKind;
+    use crate::devices::traits::DeviceKind;
     let (mut device_type, rating_note) = rated(&d.device_type, who, text)?;
     if let (Some(old), Some(new)) = (d.device_type.as_contacts(), device_type.as_contacts_mut()) {
         *new.contacts_mut() = old.contacts().clone();
@@ -502,7 +504,7 @@ pub fn with_position_rating(
         None => strip.fuses.retain(|l, _| l.as_str() != p),
         Some(t) => {
             let not_fuse = || format!("{who}:{shown}{more} is not a fuse position; rating.<position> is the rating of a fuse position.");
-            let label = ecad_model::device::PositionLabel::new(p).ok().filter(|_| fuse_positions.contains(p));
+            let label = ecad_model::objects::devices::PositionLabel::new(p).ok().filter(|_| fuse_positions.contains(p));
             let label = label.ok_or_else(|| CmdError::refused(not_fuse()))?;
             let unread = || CmdError::refused(format!("{who}:{label}'s rating '{t}' is not a fuse rating; write it as 4 A or 6.3 A T."));
             match read_fuse(t) {
@@ -522,7 +524,7 @@ pub fn with_position_rating(
 /// What a command that set `key` on `d` says it read: `Read: curve B, 16 A.`, or that the text
 /// was kept as a note; `None` for any other key, or nothing set.
 pub fn echo(d: &Device, key: &str) -> Option<String> {
-    if key == ecad_model::device::RATING_KEY {
+    if key == ecad_model::objects::devices::RATING_KEY {
         if let Some(r) = d.device_type.rating() {
             return Some(format!("Read: {r}."));
         }
@@ -534,12 +536,12 @@ pub fn echo(d: &Device, key: &str) -> Option<String> {
             }
         });
     }
-    key.strip_prefix(ecad_model::device::RATING_OF_PREFIX).and(d.value(key)).map(|r| format!("Read: {r}."))
+    key.strip_prefix(ecad_model::objects::devices::RATING_OF_PREFIX).and(d.value(key)).map(|r| format!("Read: {r}."))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::circuits::*;
     use ProtectionKind as K;
 
     fn shown(kind: K, text: &str) -> String {

@@ -7,7 +7,7 @@ use ecad_engine::plc::sheets::{self, Seg};
 use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
-use super::plc_contracts::placed;
+use crate::plc::contracts::placed;
 use crate::common::{H, id, pts};
 
 /// A CPU with a DI card in slot 1 wired to eight lamps through a fence, an AI card in slot 2 and a
@@ -338,7 +338,7 @@ fn a_d_e_one_frame_per_run_with_break_edges_where_the_card_goes_on() {
     let d = h.doc();
     let body = d
         .representations_of(ecad_model::Subject::Device(di))
-        .find(|(_, r)| ecad_engine::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_engine::symbols::StarterKey::Plcdi))
+        .find(|(_, r)| ecad_engine::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Plcdi))
         .map(|(_, r)| r.items[0])
         .unwrap();
     // Cells' points are at y 200; the body's at its origin + 25; cell 15 ends at x 100 + 15·20 + 10.
@@ -446,8 +446,8 @@ fn review_2_the_frame_stands_for_the_card() {
         .expect("the name block's tag");
     let handle = h.p(|p| p.pages.get(&page).and_then(|v| v.map.xref(part.rep, part.index))).expect("mapped");
     let u = h.s.state().unwrap().uid;
-    let t = h.p(|p| ecad_engine::interact::kind::classify(p, u, cadcraft_engine::geom::Vec2::new(0.0, 0.0), 0.5, Some(handle), &[], false));
-    assert_eq!(t.kind, ecad_engine::kinds::ObjectKind::Device, "{t:?}");
+    let t = h.p(|p| ecad_engine::pointer::kind::classify(p, u, cadcraft_engine::geom::Vec2::new(0.0, 0.0), 0.5, Some(handle), &[], false));
+    assert_eq!(t.kind, ecad_electrical::devices::kinds::ObjectKind::Device, "{t:?}");
     assert_eq!(t.component, Some(di));
     let words = ecad_engine::xref::refusal(&d, Some(ecad_engine::project::Mapped::DeviceReference(part.rep)));
     assert_eq!(words, ecad_engine::plc::look::FRAME_DERIVED);
@@ -466,13 +466,13 @@ fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
         ecad_model::Op::ModifyPage { id: p, before: before.clone(), after: ecad_model::Page { number: ecad_model::PageNo::parse(n), ..before } }
     };
     let renumber = vec![renumbered(first, "7")];
-    assert!(ecad_engine::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::effect::Effects::of(&renumber)));
+    assert!(ecad_engine::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&renumber)));
     let empty = vec![renumbered(sheet, "9")];
-    assert!(!ecad_engine::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::effect::Effects::of(&empty)), "a page with no PLC symbol");
+    assert!(!ecad_engine::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&empty)), "a page with no PLC symbol");
     let item = h.symbol_item(ai);
     let it = d.items[&item].clone();
     let moved = vec![ecad_model::Op::ModifyItem { id: item, before: it.clone(), after: it }];
-    assert!(ecad_engine::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::effect::Effects::of(&moved)));
+    assert!(ecad_engine::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&moved)));
     // Through the command path: the sheet's text follows the renumber.
     h.run("pageprops", json!({"page": first.hex(), "number": "7"})).unwrap();
     let t = texts(&mut h, sheet);
@@ -517,7 +517,7 @@ fn h_a_large_address_style_raises_plc_text_wide() {
 /// O: the PLC racks list in the release, and its missing reason without PLC cards.
 #[test]
 fn o_the_release_lists_the_racks_or_says_why_not() {
-    let slot = ecad_electrical::release::LISTS.iter().find(|s| s.id == "plc-racks").expect("a plc-racks slot");
+    let slot = ecad_electrical::releases::release::LISTS.iter().find(|s| s.id == "plc-racks").expect("a plc-racks slot");
     assert_eq!((slot.suffix, slot.missing_why), (" PLC racks.csv", "No PLC racks."));
     let F { mut h, .. } = fixture(5150);
     let d = h.doc();

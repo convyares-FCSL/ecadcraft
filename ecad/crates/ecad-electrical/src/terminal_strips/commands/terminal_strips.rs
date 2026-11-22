@@ -4,8 +4,8 @@
 //! and returns the ops to commit and what to report; the engine crate's shims read the parameters,
 //! build the reports, commit and answer in JSON.
 
-use crate::strips::{StripData, TermRow};
-use ecad_model::units::Radians;
+use crate::terminal_strips::{StripData, TermRow};
+use ecad_model::geometry::units::Radians;
 use ecad_model::{LevelIo, PointKey};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -18,8 +18,8 @@ use ecad_model::{
 use crate::connectors::{Land, plan_land, plan_land_ends, strip_connection_point_at};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
-use crate::strips::{self, connection_point_words};
-use crate::terminal_types as tt;
+use crate::terminal_strips::{self, connection_point_words};
+use crate::terminal_strips::terminal_blocks as tt;
 use crate::wires::OnRoute;
 
 /// Most wires one Place Terminals line lands on (design 028 §3.2).
@@ -118,14 +118,14 @@ pub fn plan_fence_typed(
     to: Pt, tol: f64,
 ) -> Result<Fence, CmdError> {
     let doc = ledger.document();
-    let found = crate::slash::crossings(doc, page, from, to, tol);
+    let found = crate::cables::slash::crossings(doc, page, from, to, tol);
     if found.members.len() > MAX_FENCE {
         return Err(CmdError::refused(format!("That line crosses {} wires; at most {MAX_FENCE} at once. Draw a shorter line.", found.members.len())));
     }
     let legacy = kind.ty.legacy();
     let starter = crate::symbols::starter(kind.ty.starter_key(kind.level));
     if let Some(c) = strip
-        && strips::strip_of(doc, c).is_none()
+        && terminal_strips::strip_of(doc, c).is_none()
     {
         return Err(CmdError::refused("That device is not a terminal strip. Press Enter for a new strip, or type the tag of one (-X01)."));
     }
@@ -172,7 +172,7 @@ pub fn plan_fence_typed(
     };
     let mut placed = Vec::new();
     let mut named = kind.position.clone();
-    let on_wire = |e: CmdError, c: ecad_model::CorePosition| CmdError::refused(format!("{e} ({})", crate::slash::position_name(doc, c)));
+    let on_wire = |e: CmdError, c: ecad_model::CorePosition| CmdError::refused(format!("{e} ({})", crate::cables::slash::position_name(doc, c)));
     for m in crossings {
         let on = crate::wires::on_route_of(doc, m.route, m.at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
         if legacy {
@@ -424,14 +424,14 @@ pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: S
         return Err(CmdError::refused("Pick two different terminals: a bridge links one terminal to another."));
     }
     let (wa, wb) = (connection_point_words(doc, a), connection_point_words(doc, b));
-    let (sa, sb) = (strips::strip_of_connection_point(doc, a), strips::strip_of_connection_point(doc, b));
+    let (sa, sb) = (terminal_strips::strip_of_connection_point(doc, a), terminal_strips::strip_of_connection_point(doc, b));
     let same = sa.is_some() && sa == sb;
     if let Some(w) = crate::wires::wire_between(doc, a, b) {
         return Ok(Bridge::Already { conductor: w, same, message: format!("{wa} and {wb} are already bridged.") });
     }
     let pos = |t: ConnectionPointId| {
         doc.representations_of(doc.terminals.get(&t)?.owner.subject())
-            .find_map(|(_, r)| (r.page == page).then(|| ecad_model::derive::connection_point_position(doc, page, t)).flatten())
+            .find_map(|(_, r)| (r.page == page).then(|| ecad_model::connectivity::derive::connection_point_position(doc, page, t)).flatten())
     };
     let (Some(pa), Some(pb)) = (pos(a), pos(b)) else {
         return Err(CmdError::refused(format!(
@@ -487,7 +487,7 @@ pub fn plan_page(lens: &[usize], after: usize, limit: usize) -> PlanPage {
 }
 
 /// A side cell as JSON: `conductor`, and `target`, `wire` (and outside `cable`, `core`) when known.
-pub fn side_json(c: &strips::SideCell, outside: bool) -> Value {
+pub fn side_json(c: &terminal_strips::SideCell, outside: bool) -> Value {
     let mut o = serde_json::Map::new();
     put(&mut o, "target", c.target.as_ref());
     put(&mut o, "wire", c.wire.as_ref());
@@ -551,13 +551,13 @@ pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
 }
 
 /// A gap row as JSON (design 030 §7.2).
-pub fn gap_json(s: &StripData, gap: &str, a: crate::accessories::Acc) -> Value {
+pub fn gap_json(s: &StripData, gap: &str, a: crate::terminal_strips::accessories::Acc) -> Value {
     let mut o = serde_json::Map::new();
     o.insert("kind".into(), json!("accessory"));
     o.insert("state".into(), json!("accessory"));
     o.insert("accessory".into(), json!(a.key()));
     o.insert("gap".into(), json!(gap));
-    put(&mut o, "part_number", s.acc.gap_part(a, crate::outputs::gap_pe(s, gap)));
+    put(&mut o, "part_number", s.acc.gap_part(a, crate::reports::gap_pe(s, gap)));
     put(&mut o, "maker", s.acc.makers.get(a.key()));
     o.insert("terminal".into(), Value::Null);
     o.insert("label".into(), Value::Null);
@@ -597,8 +597,8 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
         .unwrap_or_default()
         .iter()
         .map(|item| match item {
-            strips::PlanItem::Gap { gap, acc } => gap_json(s, gap, *acc),
-            strips::PlanItem::Term(i, r) => {
+            terminal_strips::PlanItem::Gap { gap, acc } => gap_json(s, gap, *acc),
+            terminal_strips::PlanItem::Term(i, r) => {
                 let mut v = row_json(r, style);
                 if accessories {
                     v["kind"] = json!("terminal");
@@ -614,7 +614,7 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
     o.insert("rows".into(), Value::Array(rows));
     if accessories {
         let counts: serde_json::Map<String, Value> =
-            crate::accessories::Acc::ALL.iter().map(|a| (a.key().to_string(), json!(s.acc.count(*a)))).collect();
+            crate::terminal_strips::accessories::Acc::ALL.iter().map(|a| (a.key().to_string(), json!(s.acc.count(*a)))).collect();
         o.insert("accessories".into(), Value::Object(counts));
         let links: Vec<Value> = s
             .acc

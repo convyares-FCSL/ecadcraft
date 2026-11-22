@@ -36,11 +36,9 @@
 //! This module reads the document; it changes nothing.
 
 pub mod circuit;
-pub mod dataset;
+pub mod commands;
 pub mod load;
-pub mod parse;
 pub mod protection;
-pub mod reader;
 pub mod trace;
 
 use circuit::{
@@ -50,7 +48,7 @@ use circuit::{
 use protection::{Device, device_of};
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::wire::CircuitInputs;
+use ecad_model::objects::wire::CircuitInputs;
 use ecad_model::{CableId, DeviceId, Document, NetKey, ObjectRef, Op, StyleRef, WireId, Word};
 
 use crate::defaults::{self, Scope};
@@ -70,11 +68,11 @@ pub mod fields {
     use crate::styles::Field;
 
     fn is_current(s: &str) -> bool {
-        super::parse::current(s).is_some()
+        crate::parse::current(s).is_some()
     }
 
     fn is_size(s: &str) -> bool {
-        super::parse::cross_section(s).is_some()
+        crate::parse::cross_section(s).is_some()
     }
 
     pub const RATED_CURRENT: Field = Field {
@@ -94,11 +92,11 @@ pub mod fields {
         over: None,
     };
     pub const MATERIAL: Field =
-        Field { key: "material", label: "Material", kind: Kind::Choice(<super::Material as ecad_model::Word>::WORDS), slot: Slot::new(), over: None };
+        Field { key: "material", label: "Material", kind: Kind::Choice(<crate::Material as ecad_model::Word>::WORDS), slot: Slot::new(), over: None };
     pub const CONDUCTOR_CLASS: Field = Field {
         key: "conductor_class",
         label: "Conductor class",
-        kind: Kind::Choice(<super::ConductorClass as ecad_model::Word>::WORDS),
+        kind: Kind::Choice(<crate::ConductorClass as ecad_model::Word>::WORDS),
         slot: Slot::new(),
         over: None,
     };
@@ -113,13 +111,13 @@ pub mod fields {
 
 /// A refusal of a wire category or cable type record whose reference temperature is not below its
 /// maximum (design 057 §3.1); `None` for every other record.
-pub fn check_style(catalogue: ecad_model::StyleCatalogue, r: &ecad_model::style::StyleRecord) -> Option<String> {
+pub fn check_style(catalogue: ecad_model::StyleCatalogue, r: &ecad_model::objects::styles::StyleRecord) -> Option<String> {
     if catalogue != wire::CATALOGUE.catalogue && catalogue != ecad_model::StyleCatalogue::Cable {
         return None;
     }
     let rating = match &r.body {
-        ecad_model::style::StyleBody::Wire(w) => &w.rating,
-        ecad_model::style::StyleBody::Cable(c) => &c.rating,
+        ecad_model::objects::styles::StyleBody::Wire(w) => &w.rating,
+        ecad_model::objects::styles::StyleBody::Cable(c) => &c.rating,
         _ => return None,
     };
     let (at, max) = (rating.rated_at.map_or(30.0, |c| c.0), rating.max_temperature.map_or(70.0, |c| c.0));
@@ -161,7 +159,7 @@ impl RatedSubject {
                 let conn = doc.connectivity();
                 conn.net_of_conductor(c)
                     .and_then(|n| conn.net(n))
-                    .and_then(|n| ecad_model::wiring::net_number(doc, n))
+                    .and_then(|n| ecad_model::connectivity::wiring::net_number(doc, n))
                     .unwrap_or_else(|| "wire".into())
             }),
             RatedSubject::Cable(k) => crate::cables::cable_title(doc, k),
@@ -186,14 +184,14 @@ pub trait Circuit {
     /// Its free-text type (`4G2.5`), read for a size when it has no cable type.
     fn type_text(&self) -> Option<&str>;
     /// The device it names as its protection, over the trace's.
-    fn protected_by(&self) -> Option<ecad_model::wire::ProtectedBy>;
+    fn protected_by(&self) -> Option<ecad_model::objects::wire::ProtectedBy>;
 }
 
 fn named<'a>(p: &'a ecad_model::Properties, key: &str) -> Option<&'a str> {
     p.get(key).map(String::as_str).filter(|v| !v.trim().is_empty())
 }
 
-impl Circuit for ecad_model::wire::Wire {
+impl Circuit for ecad_model::objects::wire::Wire {
     fn inputs(&self) -> &CircuitInputs {
         &self.rating
     }
@@ -206,7 +204,7 @@ impl Circuit for ecad_model::wire::Wire {
     fn type_text(&self) -> Option<&str> {
         named(&self.display, "type")
     }
-    fn protected_by(&self) -> Option<ecad_model::wire::ProtectedBy> {
+    fn protected_by(&self) -> Option<ecad_model::objects::wire::ProtectedBy> {
         self.protected_by
     }
 }
@@ -224,12 +222,12 @@ impl Circuit for ecad_model::Cable {
     fn type_text(&self) -> Option<&str> {
         named(&self.properties, "type")
     }
-    fn protected_by(&self) -> Option<ecad_model::wire::ProtectedBy> {
+    fn protected_by(&self) -> Option<ecad_model::objects::wire::ProtectedBy> {
         self.protected_by
     }
 }
 
-use ecad_model::wire::Basis;
+use ecad_model::objects::wire::Basis;
 
 /// Property keys (FP1, FP2, FP6).
 pub const BASIS: &str = "rating.basis";
@@ -311,14 +309,14 @@ pub struct Touch {
 impl Touch {
     /// Add what `ops` reach in `doc`: [`Touch::note`] for each of their effects.
     pub fn collect(&mut self, doc: &Document, ops: &[Op]) {
-        for effect in &ecad_model::effect::Effects::of(ops) {
+        for effect in &ecad_model::document::effect::Effects::of(ops) {
             self.note(doc, effect);
         }
     }
 
     /// Add what one effect reaches, looked up in `doc` (call once on the state before, once after).
-    pub fn note(&mut self, doc: &Document, effect: &ecad_model::effect::Effect<'_>) {
-        use ecad_model::effect::Effect;
+    pub fn note(&mut self, doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) {
+        use ecad_model::document::effect::Effect;
         let conn = doc.connectivity();
         let net_of_connection_point = |t: ecad_model::ConnectionPointId, s: &mut Touch| {
             if let Some(n) = conn.net_of(&ecad_model::Node::Terminal(t)) {
@@ -355,7 +353,7 @@ impl Touch {
             }
             Effect::Prop { object: ObjectRef::Device(c), key, .. } => {
                 let key = key.raw;
-                if crate::symbols::is_rating_key(key) || key == ecad_model::tag::TAG_KEY {
+                if crate::symbols::is_rating_key(key) || key == ecad_model::naming::tag::TAG_KEY {
                     self.devices.insert(*c);
                 } else if key.starts_with("link.") {
                     for (t, _) in doc.connection_points_of(*c) {
@@ -374,7 +372,7 @@ impl Touch {
             // Brief 052: a location entry's code changed (or the entry came or went): the rows
             // naming it are worded again.
             Effect::Project { before, after } => {
-                self.locations.extend(crate::designations::changed_codes(before, after, crate::designations::Aspect::Location));
+                self.locations.extend(crate::locations::designations::changed_codes(before, after, crate::locations::designations::Aspect::Location));
             }
             Effect::Style { catalogue, id, .. } => {
                 if *catalogue == ecad_model::StyleCatalogue::RatingTable {
@@ -402,14 +400,14 @@ impl Touch {
             Effect::Aid { id, before: None, after: Some(aid) } | Effect::Aid { id, before: Some(aid), after: None } => {
                 if let Some(b) = aid.as_box() {
                     self.boxes.insert(*id);
-                    self.locations.extend(crate::designations::box_key(b, crate::designations::Aspect::Location));
+                    self.locations.extend(crate::locations::designations::box_key(b, crate::locations::designations::Aspect::Location));
                     self.box_pages(doc, *id);
                 }
             }
             // Design 072 §6.2: a box's temperature reaches the wires at its location; its new
             // location the wires at both locations and those of the devices on its pages.
             Effect::Aid { id, before, after } => {
-                let loc = |a: &ecad_model::Aid| a.as_box().and_then(|b| crate::designations::box_key(b, crate::designations::Aspect::Location));
+                let loc = |a: &ecad_model::Aid| a.as_box().and_then(|b| crate::locations::designations::box_key(b, crate::locations::designations::Aspect::Location));
                 if before.iter().chain(after.iter()).any(|a| a.as_box().is_some()) {
                     self.boxes.insert(*id);
                     let (b, a) = (before.and_then(loc), after.and_then(loc));
@@ -840,7 +838,7 @@ fn table_issues(ctx: &Context) -> Vec<Issue> {
 impl Touch {
     fn box_locations(&mut self, doc: &Document, a: ecad_model::AidId) {
         self.locations
-            .extend(crate::locations::box_values(doc, a).and_then(|x| crate::designations::box_key(x, crate::designations::Aspect::Location)));
+            .extend(crate::locations::box_values(doc, a).and_then(|x| crate::locations::designations::box_key(x, crate::locations::designations::Aspect::Location)));
     }
 
     fn box_pages(&mut self, doc: &Document, a: ecad_model::AidId) {
@@ -865,7 +863,7 @@ impl Touch {
 
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 
-use ecad_model::style::wire::{ConductorClass, Material};
+use ecad_model::objects::styles::wire::{ConductorClass, Material};
 
 /// Whether `k` is one of lane 057's kinds.
 pub fn is_rating_kind(k: CheckKind) -> bool {
@@ -880,7 +878,7 @@ fn place(doc: &Document, s: RatedSubject) -> (Option<ecad_model::PageId>, Option
             (p, a, Object::Wire(c))
         }
         RatedSubject::Cable(k) => {
-            let (p, a) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+            let (p, a) = ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
             (p, a, Object::Cable(k))
         }
     }
@@ -1022,7 +1020,7 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
     }
     for (c, text) in k.unread() {
         let tag = crate::devices::tag_words(doc, c);
-        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Device(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let (page, at) = ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Device(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {
             kind: CheckKind::RatingDeviceUnread,
             page,
@@ -1035,7 +1033,7 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
     for (c, loc, v) in k.bad_boxes() {
         // Brief 052: the box stores an entry key; the row names the entry's code.
         let loc = if loc.is_empty() { String::new() } else { location_code(doc, loc) };
-        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Aid(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let (page, at) = ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Aid(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {
             kind: CheckKind::RatingBadValue,
             page,

@@ -5,21 +5,21 @@
 
 use std::path::PathBuf;
 
-use ecad_app::history_panel;
+use ecad_app::history::panel;
 use ecad_file::history::NodeKind;
 use eframe::egui;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
 
-use crate::checks_ui::demo_file;
-use crate::mouse_tester::{doc, harness_with, ok};
+use crate::checks::ui::demo_file;
+use crate::canvas::mouse_acceptance::{doc, harness_with, ok};
 
 type H = Harness<'static, ecad_app::App>;
 
 fn click(h: &mut H, label: &str) {
     // UI rev 3: the panels' tabs are reached through the strip and the inspector.
-    crate::project_panel::click(h, label);
+    crate::pages::project_panel::click(h, label);
 }
 
 fn exists(h: &H, label: &str) -> bool {
@@ -68,7 +68,7 @@ fn opened(tag: &str) -> (H, PathBuf, ecad_model::DeviceId) {
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
-    click(&mut h, history_panel::HISTORY_TAB);
+    click(&mut h, panel::HISTORY_TAB);
     let k1 = doc(&mut h).devices.iter().find(|(_, c)| c.tag().is_some_and(|t| t == "-K01")).map(|(k, _)| *k).unwrap();
     (h, dir, k1)
 }
@@ -237,7 +237,7 @@ fn now_row_right_click_f2_rename_and_graph_paging() {
         });
         h.run_steps(1);
     }
-    h.get_by_label(ecad_app::history_panel::OLDER).click();
+    h.get_by_label(ecad_app::history::panel::OLDER).click();
     h.run_steps(4);
     let g = h.state().panel.history.graph().clone();
     eprintln!("paging after scroll: {} rows, more = {}", g.nodes.len(), g.more);

@@ -14,7 +14,7 @@
 //! shown, an action runs on the selection or starts its tool ([`SymbolSearch::ran`]).
 
 use ecad_engine::devices;
-use ecad_engine::symbols;
+use ecad_electrical::symbols;
 use ecad_model::{DeviceId, Document, Subject};
 use eframe::egui;
 
@@ -35,7 +35,7 @@ pub const MAX_ROWS: usize = 10;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pick {
     /// Place Symbol with this starter symbol.
-    Symbol(ecad_engine::symbols::StarterKey),
+    Symbol(ecad_electrical::symbols::StarterKey),
     /// Place Symbol adding a symbol to the device with this tag.
     Device(String),
     /// Brief 041: show this page.
@@ -74,7 +74,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
             out.push(Row { text: format!("{:<6} {:<26}  (page)", p.number, clip(&p.title, 26)), pick: Pick::Page(p.id) });
         }
     }
-    for a in crate::actions::search(&q, MAX_ACTIONS) {
+    for a in crate::commands::actions::search(&q, MAX_ACTIONS) {
         let key = a.key.map(|k| format!(" {}", k.words())).unwrap_or_default();
         out.push(Row { text: format!("{:<33}{key}  (action)", a.label), pick: Pick::Action(a.id) });
     }
@@ -128,7 +128,7 @@ fn clip(t: &str, n: usize) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Choice {
     pub text: String,
-    pub symbol: ecad_engine::symbols::StarterKey,
+    pub symbol: ecad_electrical::symbols::StarterKey,
     pub device: Option<String>,
 }
 
@@ -153,7 +153,7 @@ pub fn choices(p: &ecad_engine::Project, pick: &Pick) -> Vec<Choice> {
                 .filter_map(|c| {
                     let labels = devices::join_labels(doc, c, s, &none).ok()?;
                     let tag = devices::tag_words(doc, c);
-                    let own = ecad_model::tag::parse(&tag).is_some_and(|(px, _)| px == prefix);
+                    let own = ecad_model::naming::tag::parse(&tag).is_some_and(|(px, _)| px == prefix);
                     let main = doc
                         .representations_of(Subject::Device(c))
                         .filter_map(|(_, r)| devices::rep_starter(doc, r))
@@ -172,7 +172,7 @@ pub fn choices(p: &ecad_engine::Project, pick: &Pick) -> Vec<Choice> {
         }
         Pick::Device(tag) => {
             let Some(c) = devices::holder_of(doc, tag, None) else { return Vec::new() };
-            let own = ecad_model::tag::parse(tag).map(|(px, _)| px).unwrap_or_default();
+            let own = ecad_model::naming::tag::parse(tag).map(|(px, _)| px).unwrap_or_default();
             let mut found: Vec<(u8, Choice)> = symbols::STARTERS
                 .iter()
                 .filter_map(|s| {
@@ -383,8 +383,8 @@ impl SymbolSearch {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ecad_engine::symbols::StarterKey as K;
+    use crate::*;
+    use ecad_electrical::symbols::StarterKey as K;
 
     #[test]
     fn rows_without_a_project_list_symbols() {

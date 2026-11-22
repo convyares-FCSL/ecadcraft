@@ -5,8 +5,8 @@
 //! - A [`ContactSet`] is the offer as its person wrote it, one [`ContactEntry`] per entry: a count
 //!   of poles (`3P`, `1NO`) or one pole with its own labels (`13/14 NO`). An empty set offers
 //!   nothing. [`fmt::Display`] writes it in the offer grammar (`3P+1NO+13/14 NC`).
-//! - Switching ([`super::Switching`]), protection with auxiliaries ([`super::Breaker`],
-//!   [`super::Rcd`], [`super::Rcbo`]) and sensors ([`super::Sensor`]) carry one.
+//! - Switching ([`crate::objects::devices::Switching`]), protection with auxiliaries ([`crate::objects::devices::Breaker`],
+//!   [`crate::objects::devices::Rcd`], [`crate::objects::devices::Rcbo`]) and sensors ([`crate::objects::devices::Sensor`]) carry one.
 //! - A [`ContactTable`] says where a switching device's contact table goes; none takes the
 //!   project's default.
 //!
@@ -27,7 +27,7 @@ pub const MAX_LABEL_CHARS: usize = 16;
 pub const MAX_OFFSET_MM: f64 = 2_000.0;
 
 /// One label of an explicit pole (`13`, `L1`).
-pub type ContactLabel = crate::text::Text<MAX_LABEL_CHARS>;
+pub type ContactLabel = crate::naming::text::Text<MAX_LABEL_CHARS>;
 
 crate::word_enum! {
     /// Normally open or normally closed.
@@ -104,7 +104,7 @@ impl fmt::Display for ContactEntry {
 ///
 /// # Example
 /// ```
-/// use ecad_model::device::{ContactEntry, ContactPoles, ContactSet, PoleKind};
+/// use crate::objects::devices::{ContactEntry, ContactPoles, ContactSet, PoleKind};
 /// let n = |n| ContactPoles::Count(std::num::NonZeroU8::new(n).unwrap());
 /// let s = ContactSet::new(vec![
 ///     ContactEntry { poles: n(3), kind: PoleKind::No, power: true },

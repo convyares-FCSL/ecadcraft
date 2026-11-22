@@ -16,9 +16,9 @@
 //!   than one page.
 //!
 //! Excludes: locations (`crate::locations`), the reference rule's poles and texts
-//! (`crate::xref`), and anything stored. This module only reads.
+//! (`crate::references::devices`), and anything stored. This module only reads.
 
-use ecad_model::numbering::{Order, Places};
+use ecad_model::naming::numbering::{Order, Places};
 use ecad_model::{DeviceId, Document, Pt, Representation, RepresentationId, Subject};
 
 use crate::symbols::{Kind, Side};
@@ -67,7 +67,7 @@ pub fn view(_doc: &Document, _r: &Representation) -> View {
     View::Schematic
 }
 
-/// [`PartRole::numbering_rank`] of `r`: the rank hook `ecad_model::numbering::plan_ranked` takes
+/// [`PartRole::numbering_rank`] of `r`: the rank hook `ecad_model::naming::numbering::plan_ranked` takes
 /// (design 052 FP6).
 pub fn numbering_rank(doc: &Document, r: &Representation) -> u8 {
     rep_type(doc, r).numbering_rank()
@@ -75,7 +75,7 @@ pub fn numbering_rank(doc: &Document, r: &Representation) -> u8 {
 
 // ---------------------------------------------------------------- order
 
-/// `reps` in drawing order ([`ecad_model::numbering::Order`]: book position, zone column, zone
+/// `reps` in drawing order ([`ecad_model::naming::numbering::Order`]: book position, zone column, zone
 /// row, then top-left; no anchor last), then ID: the same order numbering uses (design 052 §3.4).
 /// The book is built only when they lie on more than one page.
 pub fn in_book_order(doc: &Document, reps: Vec<(RepresentationId, &Representation)>) -> Vec<RepresentationId> {
@@ -230,7 +230,7 @@ pub fn goto_place(doc: &Document, c: DeviceId) -> Option<(ecad_model::PageId, Op
 pub fn goto_place_in(places: &mut Places<'_>, c: DeviceId) -> Option<(ecad_model::PageId, Option<Pt>)> {
     let doc = places.doc();
     let r = doc.representations.get(&goto_in(places, c, None)?)?;
-    Some((r.page, crate::xref::anchor(doc, r)))
+    Some((r.page, crate::references::devices::anchor(doc, r)))
 }
 
 /// The whole-half symbol of connector `c`'s `side`, first in book order: the half's head-like

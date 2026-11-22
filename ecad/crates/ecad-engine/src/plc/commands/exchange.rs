@@ -6,8 +6,8 @@ use ecad_electrical::CmdError;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::cmd::input::Command;
-use crate::cmd::{err, on_any_page, on_project};
+use crate::commands::input::Command;
+use crate::commands::{err, on_any_page, on_project};
 use crate::plc::exchange::*;
 use crate::plc::tagtable::{self, Read, TagFormat};
 use serde_json::{Value, json};
@@ -221,10 +221,10 @@ impl Command for PlcexportParams {
 
 /// The commands of brief 056.
 pub fn specs() -> Vec<cadcraft_engine::CommandSpec> {
-    use crate::cmd::input::typed;
+    use crate::commands::input::typed;
     use cadcraft_engine::CommandSpec;
     vec![
-        CommandSpec::new("plcmaketags", "Make PLC Tags", typed::<super::signals::PlcmaketagsParams>)
+        CommandSpec::new("plcmaketags", "Make PLC Tags", typed::<crate::plc::commands::signals::PlcmaketagsParams>)
             .params("{card: id or tag} or {rack: id or tag} (fill the empty tags of used and reserved channels from their descriptions)")
             .noundo(),
         CommandSpec::new("plcexport", "Export PLC Tags", typed::<PlcexportParams>)
@@ -237,7 +237,7 @@ what?: both|tags|descriptions} (sets the tags and descriptions of the channels a
 dry_run writes nothing)",
             )
             .noundo(),
-        CommandSpec::new("plccardtype", "Card Type", typed::<super::rack::PlccardtypeParams>)
+        CommandSpec::new("plccardtype", "Card Type", typed::<crate::plc::commands::rack::PlccardtypeParams>)
             .params("{card: id or tag, type: DI|DQ|AI|AO|RTD|IOL} (changes what an I/O card is: its body symbol, one transaction)")
             .noundo(),
     ]

@@ -19,8 +19,8 @@
 
 use std::fmt;
 
-use crate::doc::Properties;
-use crate::words::{self, Word};
+use crate::document::doc::Properties;
+use crate::naming::words::{self, Word};
 
 /// A property key the program reads or writes, named once in [`KEYS`] (or built by a
 /// [`Family`]).
@@ -208,33 +208,33 @@ impl Family {
 }
 
 /// A device's description (a cable's until lane D).
-pub const DESCRIPTION: PropKey = PropKey(crate::device::DESCRIPTION_KEY);
+pub const DESCRIPTION: PropKey = PropKey(crate::objects::devices::DESCRIPTION_KEY);
 /// A device's part number.
-pub const PART_NUMBER: PropKey = PropKey(crate::device::PART_NUMBER_KEY);
+pub const PART_NUMBER: PropKey = PropKey(crate::objects::devices::PART_NUMBER_KEY);
 /// A device's maker.
-pub const MAKER: PropKey = PropKey(crate::device::MAKER_KEY);
+pub const MAKER: PropKey = PropKey(crate::objects::devices::MAKER_KEY);
 /// A device's article number.
-pub const ARTICLE_NUMBER: PropKey = PropKey(crate::device::ARTICLE_KEY);
+pub const ARTICLE_NUMBER: PropKey = PropKey(crate::objects::devices::ARTICLE_KEY);
 /// A device's type text (a cable's until lane D).
-pub const TYPE_TEXT: PropKey = PropKey(crate::device::TYPE_KEY);
+pub const TYPE_TEXT: PropKey = PropKey(crate::objects::devices::TYPE_KEY);
 /// A device's or cable's tag.
-pub const TAG: PropKey = PropKey(crate::tag::TAG_KEY);
+pub const TAG: PropKey = PropKey(crate::naming::tag::TAG_KEY);
 /// Whether a device's or cable's tag is fixed (yes/no).
-pub const TAG_FIXED: PropKey = PropKey(crate::tag::FIXED_KEY);
+pub const TAG_FIXED: PropKey = PropKey(crate::naming::tag::FIXED_KEY);
 /// Whether the project gives provisional tags (yes/no).
-pub const NUMBERING_PROVISIONAL: PropKey = PropKey(crate::tag::PROVISIONAL_SETTING);
+pub const NUMBERING_PROVISIONAL: PropKey = PropKey(crate::naming::tag::PROVISIONAL_SETTING);
 /// A wire's number.
 pub const WIRE_NUMBER: PropKey = PropKey(crate::connectivity::WIRE_NUMBER);
 /// Whether a wire's number is fixed (yes/no).
 pub const WIRE_NUMBER_FIXED: PropKey = PropKey(crate::connectivity::WIRE_NUMBER_FIXED);
 /// The `=` function code of a page or the project.
-pub const FUNCTION: PropKey = PropKey(crate::book::FUNCTION_KEY);
+pub const FUNCTION: PropKey = PropKey(crate::document::book::FUNCTION_KEY);
 /// The `+` location code of a page or the project.
-pub const LOCATION: PropKey = PropKey(crate::book::LOCATION_KEY);
+pub const LOCATION: PropKey = PropKey(crate::document::book::LOCATION_KEY);
 /// Whether a device's location was set by hand (yes/no).
-pub const LOCATION_FIXED: PropKey = PropKey(crate::book::LOCATION_FIXED_KEY);
+pub const LOCATION_FIXED: PropKey = PropKey(crate::document::book::LOCATION_FIXED_KEY);
 /// Whether a device's function was set by hand (yes/no).
-pub const FUNCTION_FIXED: PropKey = PropKey(crate::book::FUNCTION_FIXED_KEY);
+pub const FUNCTION_FIXED: PropKey = PropKey(crate::document::book::FUNCTION_FIXED_KEY);
 
 /// The fixed keys the program stores outside the defaults registry. One key per line; lanes add or
 /// remove lines.
@@ -261,13 +261,13 @@ pub const FAMILIES: &[Family] = &[
 #[rustfmt::skip]
 pub const RESERVED: &[PropKey] = &[
     // Lane 072 E: a page's fields (design 072 §5.1).
-    PropKey(crate::book::NUMBER_KEY),
-    PropKey(crate::book::FOLDER_KEY),
-    PropKey(crate::sheet::SHEET_KEY),
-    PropKey(crate::sheet::TITLE_BLOCK_KEY),
-    PropKey(crate::sheet::GENERATED_KEY),
-    PropKey(crate::page::STRIP_KEY),
-    PropKey(crate::sheet::PAGE_TYPE_KEY),
+    PropKey(crate::document::book::NUMBER_KEY),
+    PropKey(crate::document::book::FOLDER_KEY),
+    PropKey(crate::document::sheet::SHEET_KEY),
+    PropKey(crate::document::sheet::TITLE_BLOCK_KEY),
+    PropKey(crate::document::sheet::GENERATED_KEY),
+    PropKey(crate::document::page::STRIP_KEY),
+    PropKey(crate::document::sheet::PAGE_TYPE_KEY),
     // Lane D: a wire's number and its fixed flag are `Wire.number` (design 072 §4.2).
     WIRE_NUMBER,
     WIRE_NUMBER_FIXED,
@@ -299,9 +299,9 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
     (Holder::Project, PropKey("status")),
     (Holder::Project, PropKey("cover.notes")),
     // Lane 072 D: a wire's own type is `Wire.wire_type` (design 072 §4.6, F36).
-    (Holder::Wire, PropKey(crate::wiring::WIRE_CATEGORY)),
+    (Holder::Wire, PropKey(crate::connectivity::wiring::WIRE_CATEGORY)),
     // Lane 072 D: a cable's type is `Cable.cable_type` (design 072 §4.5).
-    (Holder::Cable, PropKey(crate::doc::CABLE_TYPE_KEY)),
+    (Holder::Cable, PropKey(crate::document::doc::CABLE_TYPE_KEY)),
     // Lane 072 D: a cable's own shield (design 072 §4.5).
     (Holder::Cable, PropKey("shield")),
     // Lane 072 D: a cable's design current is its field (design 072 §4.5).
@@ -312,7 +312,7 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
 /// lists (`designation.l.<id>.code`), revision rows (`rev.<n>.<field>`) and folders, design 072 §5.3.
 pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[
     (Holder::Project, "designation."),
-    (Holder::Project, crate::project::REVISIONS_KEY),
+    (Holder::Project, crate::document::project::REVISIONS_KEY),
     (Holder::Project, "folder."),
     // Lane 072 B: a connector's halves and ignored rows are fields of its type (design 072 §2.2).
     (Holder::Device, "half."),
@@ -356,7 +356,7 @@ pub const PINS: PropKey = PropKey("pins");
 /// A connector's typed pin names.
 pub const PIN_NAMES: PropKey = PropKey("pin_names");
 /// A device's rating (lane 072 B: its group's typed fields, or its note; design 072 §2.2).
-pub const RATING: PropKey = PropKey(crate::device::RATING_KEY);
+pub const RATING: PropKey = PropKey(crate::objects::devices::RATING_KEY);
 
 /// Keys that became fields of [`crate::Device`] (design 072 §2.1) while other holders still keep
 /// them in their bags (a cable's `tag` until lane D): a device's bag holding one is a read error,

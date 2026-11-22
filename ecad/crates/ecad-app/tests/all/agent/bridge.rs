@@ -28,7 +28,7 @@ pub(crate) fn free_port() -> u16 {
 /// An app with agent access on (Read and change) at a free port, its listener started.
 pub(crate) fn live_app() -> (H, u16) {
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     let port = free_port();
     t.agent.control_flag(port);
@@ -426,7 +426,7 @@ fn headless_until_a_window_answers_then_bridged_and_headless_sticks_after_a_chan
     drop((tx, rx));
     // The window opens before anything was recorded headless: the next call is bridged.
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     t.agent.control_flag(port);
     let mut h: H = Harness::builder().build_ui_state(
@@ -449,7 +449,7 @@ fn headless_until_a_window_answers_then_bridged_and_headless_sticks_after_a_chan
     assert_ne!(r["result"]["isError"], json!(true), "{r}");
     assert_eq!(b.mode(), "headless");
     h.state_mut().agent = {
-        let mut ag = agent::Agent::from_settings(ecad_engine::views::Settings::none());
+        let mut ag = agent::Agent::from_settings(ecad_engine::cables::views::Settings::none());
         ag.control_flag(port2);
         ag
     };
@@ -465,7 +465,7 @@ fn with_no_preference_and_no_control_flag_nothing_listens() {
     ecad_engine::install();
     let dir = std::env::temp_dir().join(format!("ecad-035-off-{}", std::process::id()));
     let mut t = App::new(None).unwrap();
-    t.agent.use_settings(ecad_engine::views::Settings::at(&dir));
+    t.agent.use_settings(ecad_engine::cables::views::Settings::at(&dir));
     let mut h: H = Harness::builder().build_ui_state(
         |ui, t: &mut App| {
             t.logic(&ui.ctx().clone());
@@ -555,7 +555,7 @@ fn a_headless_read_leaves_the_file_for_the_window_and_the_bridged_write_is_recor
     assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains("\"path\""), "a headless read: {r}");
     // The person opens the same file in the window, writable.
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::with_file(None, &path).unwrap();
     assert!(t.notice().is_none(), "{:?}", t.notice());
     assert_eq!(t.status().unwrap().file.read_only, None, "the window has the file writable");

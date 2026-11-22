@@ -21,12 +21,12 @@
 //! Every box is [`size::CONTROL_SMALL`] high, centred in a [`size::CONTROL`] row, so rows of
 //! mixed components line up.
 
-use ecad_tokens::{Color, Icon, line, radius, size, space, ui_type};
+use {crate::tokens::Color, crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{CursorIcon, Rect, Response, RichText, Role, Sense, Stroke, StrokeKind, TextEdit, Ui, WidgetInfo, pos2, vec2};
 
 use crate::prim::{Look, accessible};
 use crate::style::corner;
-use crate::{color, fonts, icons};
+use {crate::color, crate::fonts, crate::icons};
 
 /// What a value is shown with besides its text.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -562,7 +562,7 @@ impl<'a> Toggle<'a> {
             let hovered = enabled && self.look.hovered(&r);
             let ground = match (on, enabled) {
                 (true, true) => s.accent,
-                (true, false) => s.accent.at_percent(ecad_tokens::shell::SOFT_PERCENT * 3),
+                (true, false) => s.accent.at_percent(crate::tokens::shell::SOFT_PERCENT * 3),
                 (false, _) if hovered => s.line_strong,
                 (false, _) => s.active,
             };

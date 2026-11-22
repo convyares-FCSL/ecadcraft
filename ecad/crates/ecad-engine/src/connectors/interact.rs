@@ -8,14 +8,14 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{DeviceId, Pt, Word};
 use serde_json::{Value, json};
 
-use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use super::{
+use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
+use crate::interact::{
     ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
 };
-use crate::connectors::{self as cn, FamilyRules};
-use crate::defaults::{self, Scope};
-use crate::symbols::Side;
-use ecad_model::device::ConnectorFamily;
+use ecad_electrical::connectors::{self as cn, FamilyRules};
+use ecad_electrical::defaults::{self, Scope};
+use ecad_electrical::symbols::Side;
+use ecad_model::objects::devices::ConnectorFamily;
 
 /// `connector`: which connector, halves, type, pins, pin names, then how to draw it.
 pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
@@ -129,7 +129,7 @@ impl PlaceConnector {
         }
         let found = read(s, |p, _| {
             let doc = p.ledger.document();
-            let tag = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc))?;
+            let tag = ecad_model::naming::tag::normalise(t, ecad_electrical::defaults::print::tag_style(doc))?;
             let c = crate::devices::holder_of(doc, &tag, None)
                 .ok_or_else(|| format!("No device {tag}. Type a connector's tag, or Enter for a new one."))?;
             if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
@@ -282,7 +282,7 @@ impl PlaceConnector {
         let a = self.first?;
         read(s, |p, page| {
             let doc = p.ledger.document();
-            let found = crate::slash::crossings(doc, page, a, cursor, p.tolerance);
+            let found = ecad_electrical::cables::slash::crossings(doc, page, a, cursor, p.tolerance);
             let n = found.members.len();
             if n == 0 {
                 return Ok(Some(("-> no wires".to_string(), true)));
@@ -290,7 +290,7 @@ impl PlaceConnector {
             if n > cn::MAX_PINS {
                 return Ok(Some((format!("-> refused: {n} wires, at most {}", cn::MAX_PINS), true)));
             }
-            let names: Vec<String> = found.members.iter().take(6).map(|m| crate::slash::position_name(doc, m.position)).collect();
+            let names: Vec<String> = found.members.iter().take(6).map(|m| ecad_electrical::cables::slash::position_name(doc, m.position)).collect();
             let who = if new { tag.clone() } else { format!("{tag} (next free pins)") };
             Ok(Some((
                 format!(
@@ -312,7 +312,7 @@ impl PlaceConnector {
                 Ok(Step::Continue)
             }
             (Stage::Device, Input::Keyword(k) | Input::Text(k)) => self.choose_device(s, &k),
-            (Stage::Halves, Input::Enter) => self.choose_halves(crate::symbols::side_word(self.halves)),
+            (Stage::Halves, Input::Enter) => self.choose_halves(ecad_electrical::symbols::side_word(self.halves)),
             (Stage::Halves, Input::Keyword(k) | Input::Text(k)) => self.choose_halves(&k),
             (Stage::Type, Input::Enter) => self.choose_type(self.family.word()),
             (Stage::Type, Input::Keyword(k) | Input::Text(k)) => self.choose_type(&k),
@@ -374,7 +374,7 @@ impl Interactive for PlaceConnector {
         };
         match self.stage {
             Stage::Device => with("Connector", &["New"], self.next.clone()),
-            Stage::Halves => with("Halves", HALF_WORDS, crate::symbols::side_word(self.halves).to_string()),
+            Stage::Halves => with("Halves", HALF_WORDS, ecad_electrical::symbols::side_word(self.halves).to_string()),
             Stage::Type => with("Type", TYPE_WORDS, self.family.keyword().to_string()),
             Stage::Pins => {
                 let sizes: Vec<String> = self.family.sizes().iter().map(ToString::to_string).collect();
@@ -406,7 +406,7 @@ impl Interactive for PlaceConnector {
     }
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         match self.first {
-            Some(a) if super::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
+            Some(a) if crate::interact::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
             _ => Vec::new(),
         }
     }
@@ -418,7 +418,7 @@ impl Interactive for PlaceConnector {
         let Some(px) = pixel(s) else { return Vec::new() };
         let mut out = Vec::new();
         if let Some(a) = self.first
-            && let Ok(found) = read(s, |p, page| Ok(crate::slash::crossings(p.ledger.document(), page, a, pt(cursor), p.tolerance)))
+            && let Ok(found) = read(s, |p, page| Ok(ecad_electrical::cables::slash::crossings(p.ledger.document(), page, a, pt(cursor), p.tolerance)))
         {
             for m in found.members.iter().take(cn::MAX_PINS) {
                 out.push(preview_entity(s, ring_kind(m.at, RING_PX, px), ATTACHED_ACI));

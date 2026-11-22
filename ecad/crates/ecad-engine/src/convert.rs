@@ -8,7 +8,7 @@ use cadcraft_engine::doc::{
     Arc as CArc, Circle, Common, Entity, EntityKind, HAlign, Handle, Insert, Line, Lineweight, LwPolyline, Point as CPoint, Text, VAlign,
 };
 use cadcraft_engine::geom::{PolyVertex, Vec2, Vec3};
-use ecad_model::units::Radians;
+use ecad_model::geometry::units::Radians;
 use ecad_model::{
     Color, DefinitionId, Document, Item, ItemKind, LayerId, PageId, Placement, Primitive, Pt, Style, SymbolInstance, TextHAlign, TextVAlign,
 };
@@ -268,8 +268,8 @@ pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, Strin
     if e.common.layer == MARKER_LAYER {
         return Err(format!("the {MARKER_LAYER} layer is reserved for connection point markers"));
     }
-    if e.common.layer == crate::views::LAYER {
-        return Err(crate::views::LAYER_RESERVED.into());
+    if e.common.layer == crate::cables::views::LAYER {
+        return Err(crate::cables::views::LAYER_RESERVED.into());
     }
     let layer: LayerId = doc
         .layers

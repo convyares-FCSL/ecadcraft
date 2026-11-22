@@ -13,13 +13,13 @@
 //! This module has no UI and records nothing.
 
 use cadcraft_engine::doc::{Common, Entity, EntityKind, Handle, Lineweight, color::Color};
-use ecad_model::book::Book;
-use ecad_model::sheet::unit_scale;
+use ecad_model::document::book::Book;
+use ecad_model::document::sheet::unit_scale;
 use ecad_model::{Document, PageId};
 
-use crate::draw::text_style::EngineMetrics;
-use crate::frames;
-pub use crate::frames::{
+use crate::styles::draw::EngineMetrics;
+use ecad_electrical::pages::frames;
+pub use ecad_electrical::pages::frames::{
     CUSTOMER, DERIVED, DRAWING_NUMBER, FRAME_ACI, FRAME_WEIGHT, LABEL_ACI, LAYER, STATUS, TABLE_ROWS, THIN_WEIGHT, TITLE, TextDraw, fit, touches,
 };
 
@@ -78,7 +78,7 @@ pub fn entity(part: &Part, handle: Handle) -> Entity {
 
 /// Brief 050a: the frame style's line colour of `page` as drawn, or `None` for ink.
 pub fn line_colour(doc: &Document, page: PageId) -> Option<cadcraft_engine::doc::color::Rgb> {
-    crate::look::colour_rgb(&crate::styles::frame::frame_draw(doc, page).colour, crate::look::projection_sheet())
+    crate::cables::draw::colour_rgb(&ecad_electrical::styles::frame::frame_draw(doc, page).colour, crate::cables::draw::projection_sheet())
 }
 
 /// [`entity`] in the frame style's line colour `rgb` (brief 050a): the frame's own lines take it;
@@ -126,8 +126,8 @@ pub fn drawn(input: &frames::FrameInput) -> (Vec<Part>, crate::title_block::layo
     layout::border(&mut pen, input);
     let l = &input.block.layout;
     let origin = match input.look.block {
-        crate::styles::frame::BlockAt::BottomFull => (input.look.margins.left, input.look.margins.bottom),
-        crate::styles::frame::BlockAt::BottomRight => layout::block_origin(input, l),
+        ecad_electrical::styles::frame::BlockAt::BottomFull => (input.look.margins.left, input.look.margins.bottom),
+        ecad_electrical::styles::frame::BlockAt::BottomRight => layout::block_origin(input, l),
     };
     let d = layout::block(&mut pen, input, l, origin);
     (pen.out, d)

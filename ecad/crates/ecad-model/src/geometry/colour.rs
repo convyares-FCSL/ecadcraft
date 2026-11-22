@@ -108,7 +108,7 @@ impl ConductorColour {
     ///
     /// # Example
     /// ```
-    /// use ecad_model::colour::ConductorColour;
+    /// use crate::geometry::colour::ConductorColour;
     /// assert_eq!(ConductorColour::parse("bu"), Some(ConductorColour::Blue));
     /// assert_eq!(ConductorColour::parse(" BLU "), Some(ConductorColour::Blue));
     /// assert_eq!(ConductorColour::parse("blue"), Some(ConductorColour::Blue));
@@ -142,7 +142,7 @@ impl<'de> Deserialize<'de> for ConductorColour {
         let text = String::deserialize(d)?;
         ConductorColour::parse(&text).ok_or_else(|| {
             let codes: Vec<&str> = ConductorColour::ALL.iter().map(|c| c.forms().code2.as_str()).collect();
-            serde::de::Error::custom(crate::words::unknown_word_message(&text, "ConductorColour", &codes))
+            serde::de::Error::custom(crate::naming::words::unknown_word_message(&text, "ConductorColour", &codes))
         })
     }
 }

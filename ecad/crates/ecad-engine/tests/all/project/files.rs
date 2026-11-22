@@ -278,7 +278,7 @@ fn a_justified_text_saves_and_reopens_aligned() {
     let plain = serde_json::to_string(&ecad_model::Primitive::Text {
         at: Pt::new(0.0, 0.0),
         height: 1.0,
-        rotation: ecad_model::units::Radians(0.0),
+        rotation: ecad_model::geometry::units::Radians(0.0),
         value: "a".into(),
         halign: Default::default(),
         valign: Default::default(),

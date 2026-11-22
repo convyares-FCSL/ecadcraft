@@ -15,20 +15,20 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use super::protection::{Fuse, Protection};
+use crate::objects::devices::protection::{Fuse, Protection};
 
 /// Most characters of a position label that holds a fuse rating (`termlabel`'s bound).
 pub const MAX_POSITION: usize = 16;
 
 /// A strip position's label (`1`, `PE1`).
-pub type PositionLabel = crate::text::Text<MAX_POSITION>;
+pub type PositionLabel = crate::naming::text::Text<MAX_POSITION>;
 
 /// A strip of DIN-rail terminals (group 8, design 072 §2.5).
 ///
 /// # Example
 /// ```
-/// use ecad_model::device::{Fuse, PositionLabel, TerminalStrip};
-/// use ecad_model::units::Amps;
+/// use crate::objects::devices::{Fuse, PositionLabel, TerminalStrip};
+/// use crate::geometry::units::Amps;
 /// let mut s = TerminalStrip::default();
 /// s.fuses.insert(PositionLabel::new("3").unwrap(), Fuse { rated_current: Some(Amps(4.0)), ..Fuse::default() });
 /// assert_eq!(s.fuse_rating("3").as_deref(), Some("4 A"));

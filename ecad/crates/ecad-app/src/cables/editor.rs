@@ -5,22 +5,22 @@
 //! restores; a refusal shows the box invalid with the words under it, and nothing is written.
 //!
 //! **Update map.** The copy ([`Copy`]) is read with the cable copy's colours, when the selection
-//! or the project's change count changed ([`super::cables::CablesView::sync_colours`]); never per
+//! or the project's change count changed ([`crate::cables::list::CablesView::sync_colours`]); never per
 //! frame.
 
 use std::collections::BTreeMap;
 
 use ecad_electrical::cables::{self, CableField, Side, Source};
-use ecad_model::style::cable::Shield;
-use ecad_model::words::Word;
+use ecad_model::objects::styles::cable::Shield;
+use ecad_model::naming::words::Word;
 use ecad_model::{CableId, Document, PageId};
-use ecad_ui::control::{self, Select, TextEntry};
-use ecad_ui::panel;
-use ecad_ui::prim::{self, Tone};
+use ecad_widgets::control::{self, Select, TextEntry};
+use ecad_widgets::panel;
+use ecad_widgets::prim::{self, Tone};
 use eframe::egui;
 use serde_json::json;
 
-use super::cable_manager::ASSIGN_IN_DRAWING;
+use crate::cables::manager::ASSIGN_IN_DRAWING;
 
 /// The shield segments, in [`Shield::ALL`] order.
 pub const SHIELDS: [&str; 4] = ["None", "Overall", "Pairs", "Both"];
@@ -65,8 +65,8 @@ pub struct Copy {
 
 /// Read cable `k`'s editor copy.
 pub fn copy(doc: &Document, k: CableId) -> Copy {
-    use ecad_engine::designations::{self, Aspect};
-    let mut c = Copy { cable: Some(k), tag: ecad_engine::views::cable_title(doc, k), drawn: cables::is_drawn(doc, k), ..Copy::default() };
+    use ecad_electrical::locations::designations::{self, Aspect};
+    let mut c = Copy { cable: Some(k), tag: ecad_engine::cables::views::cable_title(doc, k), drawn: cables::is_drawn(doc, k), ..Copy::default() };
     c.values.insert(CableField::Tag, (c.tag.clone(), ""));
     if let Some(v) = cables::read(doc, k, CableField::Type) {
         c.values.insert(CableField::Type, (v, Source::Here.hint()));
@@ -87,9 +87,9 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
             c.values.insert(CableField::Gland(side), (g, s.hint()));
         }
     }
-    let catalogue = ecad_engine::styles::catalogue(ecad_model::StyleCatalogue::Cable);
-    c.types = ecad_engine::styles::rows(doc, catalogue).into_iter().map(|r| (r.id.text(), r.name)).collect();
-    let own_type = ecad_engine::styles::cable::of(doc, k).map(|id| id.text());
+    let catalogue = ecad_electrical::styles::catalogue(ecad_model::StyleCatalogue::Cable);
+    c.types = ecad_electrical::styles::rows(doc, catalogue).into_iter().map(|r| (r.id.text(), r.name)).collect();
+    let own_type = ecad_electrical::styles::cable::of(doc, k).map(|id| id.text());
     c.type_index = own_type.and_then(|t| c.types.iter().position(|(id, _)| *id == t)).map_or(0, |i| i + 1);
     c.locations = designations::entries(doc, Aspect::Location).into_iter().map(|e| e.code).collect();
     c.functions = designations::entries(doc, Aspect::Function).into_iter().map(|e| e.code).collect();
@@ -108,18 +108,18 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
         _ => "",
     };
     let members = doc.cables.get(&k).map_or(0, |x| x.cores.len());
-    c.cores_line = match ecad_engine::strips::cable_cores(doc, k).and_then(|n| n.offer) {
+    c.cores_line = match ecad_electrical::terminal_strips::cable_cores(doc, k).and_then(|n| n.offer) {
         Some(o) => format!("{} \u{b7} {members} assigned", o.len()),
         None => format!("{members} assigned"),
     };
-    c.next_offer = ecad_electrical::cmd::cable::next_offer(doc, k);
+    c.next_offer = ecad_electrical::cables::commands::cables::next_offer(doc, k);
     c.pages = cables::drawn_pages(doc, k);
     for o in cables::off_plan(doc, k) {
         if let Some(slot) = c.off_plan.get_mut(usize::from(o.side == Side::To)) {
             *slot = cables::plan_words(doc, k, o.side).map(|p| format!("planned {p}"));
         }
     }
-    let plan = |s: Side| cables::plan_words(doc, k, s).unwrap_or_else(|| super::report::DASH.to_string());
+    let plan = |s: Side| cables::plan_words(doc, k, s).unwrap_or_else(|| crate::reports::report::DASH.to_string());
     c.runs = format!("{} \u{2192} {}", plan(Side::From), plan(Side::To));
     c
 }
@@ -217,7 +217,7 @@ fn plan(ui: &mut egui::Ui, ed: &Editor, field: CableField, label: &str, name: &s
         CableField::EndLocation(_) => &ed.copy.locations,
         _ => &ed.copy.functions,
     };
-    let mut opts: Vec<&str> = vec![super::report::DASH];
+    let mut opts: Vec<&str> = vec![crate::reports::report::DASH];
     opts.extend(list.iter().map(String::as_str));
     let mut at = ed.copy.plans.get(&field).copied().unwrap_or(0);
     let before = at;
@@ -229,7 +229,7 @@ fn plan(ui: &mut egui::Ui, ed: &Editor, field: CableField, label: &str, name: &s
 }
 
 fn nonempty(s: &str) -> String {
-    if s.trim().is_empty() || s == "?" { super::report::DASH.into() } else { s.to_string() }
+    if s.trim().is_empty() || s == "?" { crate::reports::report::DASH.into() } else { s.to_string() }
 }
 
 /// The JSON value choosing cable type item `i` of the Select (`0`: none).
@@ -244,7 +244,7 @@ pub fn show(
     ui: &mut egui::Ui, ed: &mut Editor, ends: [String; 2], writable: bool, rule: &dyn Fn(&mut egui::Ui), middle: &mut dyn FnMut(&mut egui::Ui),
 ) -> Vec<Ask> {
     let mut out = Vec::new();
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     // Identity.
     panel::section_header(ui, true, "Identity", "set here");
     entry(ui, ed, CableField::Tag, "Tag", "ecad.project.detail.cable.tag", writable, &mut out);
@@ -269,7 +269,7 @@ pub fn show(
     control::row(ui, "Shield", |ui| {
         prim::Segmented::new(&mut sh, &SHIELDS).read_only(!writable).name("ecad.project.detail.cable.shield").show(ui);
         if !hint.is_empty() {
-            ui.label(egui::RichText::new(hint).size(ecad_ui::tokens::ui_type::SMALL.size).color(ecad_ui::color(s.text_3)));
+            ui.label(egui::RichText::new(hint).size(ecad_widgets::tokens::ui_type::SMALL.size).color(ecad_widgets::color(s.text_3)));
         }
     });
     if sh != ed.copy.shield
@@ -301,7 +301,7 @@ pub fn show(
                 "ecad.project.detail.cable.end.to.location",
             ),
         };
-        let drawn = if ed.copy.drawn { nonempty(ends.get(i).map_or("", String::as_str)) } else { super::report::DASH.to_string() };
+        let drawn = if ed.copy.drawn { nonempty(ends.get(i).map_or("", String::as_str)) } else { crate::reports::report::DASH.to_string() };
         let warn = ed.copy.off_plan.get(i).cloned().flatten().unwrap_or_default();
         control::row(ui, label, |ui| control::read_text(ui, &drawn, control::Decor { hint: &warn, ..control::Decor::default() }, name));
         plan(ui, ed, CableField::EndFunction(side), "Function", f, writable, &mut out);
@@ -382,7 +382,7 @@ impl crate::App {
                     r.cables.edit.refused = None;
                 }
                 let Some(p) = self.project.clone() else { return };
-                let check = p.read(&mut self.cad.session, |p, _| ecad_electrical::cmd::cable::drawn(p.ledger.document(), k));
+                let check = p.read(&mut self.cad.session, |p, _| ecad_electrical::cables::commands::cables::drawn(p.ledger.document(), k));
                 match check {
                     Ok(Some(d)) => {
                         if let Some(r) = self.reports.as_mut() {

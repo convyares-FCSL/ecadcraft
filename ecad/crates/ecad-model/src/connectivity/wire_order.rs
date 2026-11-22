@@ -29,11 +29,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{Cable, Core, CorePosition, Document, Wire};
-use crate::geom::Pt;
-use crate::id::{ConductorId, IdAllocator, NetId, RouteId, ConnectionPointId, WireId};
-use crate::op::Op;
-use crate::route::RouteEnd;
+use crate::document::doc::{Cable, Core, CorePosition, Document, Wire};
+use crate::geometry::geom::Pt;
+use crate::naming::id::{ConductorId, IdAllocator, NetId, RouteId, ConnectionPointId, WireId};
+use crate::document::op::Op;
+use crate::objects::route::RouteEnd;
 
 /// How a new point joins its net.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -292,7 +292,7 @@ pub fn cores(doc: &Document, ops: &[Op]) -> Vec<Op> {
     routes.extend(partners);
     // Each cable once, with every core on any of the routes: indices then stay right.
     let after: BTreeMap<RouteId, CorePosition> = routes.iter().map(|r| (*r, core_position(doc, *r))).collect();
-    let cables: BTreeSet<crate::id::CableId> = routes.iter().flat_map(|r| doc.cables_on_route(*r)).collect();
+    let cables: BTreeSet<crate::naming::id::CableId> = routes.iter().flat_map(|r| doc.cables_on_route(*r)).collect();
     let mut out = Vec::new();
     for cable in cables {
         let Some(c) = doc.cables.get(&cable) else { continue };
@@ -336,14 +336,14 @@ struct Seeds {
 
 impl Seeds {
     /// Continuation `id` as `aid` (before or after an op): its own points and its partners'.
-    fn continuation(&mut self, doc: &Document, id: crate::id::AidId, aid: &crate::aid::Aid) {
-        if !matches!(aid, crate::aid::Aid::Continuation { .. }) {
+    fn continuation(&mut self, doc: &Document, id: crate::naming::id::AidId, aid: &crate::objects::aid::Aid) {
+        if !matches!(aid, crate::objects::aid::Aid::Continuation { .. }) {
             return;
         }
         self.points.extend(doc.continuation_points(id, aid));
     }
 
-    fn route(&mut self, doc: &Document, id: RouteId, r: &crate::route::Route) {
+    fn route(&mut self, doc: &Document, id: RouteId, r: &crate::objects::route::Route) {
         if doc.routes.contains_key(&id) {
             self.routes.insert(id);
         }
@@ -429,7 +429,7 @@ impl<'a> Rewrite<'a> {
     fn new(doc: &'a Document, ops: &[Op]) -> Self {
         // Fresh IDs from the transaction's own content: replay reads them back from the log.
         let mut seed: u64 = 0x0072_D5EE_D0F0_0072;
-        for (kind, id) in crate::diff::objects(ops).keys() {
+        for (kind, id) in crate::document::diff::objects(ops).keys() {
             seed = seed.rotate_left(13) ^ (*id as u64) ^ ((*id >> 64) as u64) ^ (kind.len() as u64);
         }
         let drawn = ops
@@ -722,9 +722,9 @@ impl<'a> Rewrite<'a> {
         }
         // 5. Every other wire of the nets touched goes; a cable member's place in its cable goes to
         //    the wire made in its place, else it stays unplaced or goes (`Core::off_line`).
-        let mut moved_in: BTreeSet<(crate::id::CableId, WireId)> = BTreeSet::new();
+        let mut moved_in: BTreeSet<(crate::naming::id::CableId, WireId)> = BTreeSet::new();
         // Per cable: (index, member, where it goes), applied together so indices stay right.
-        let mut per_cable: BTreeMap<crate::id::CableId, Vec<(usize, Core, Option<CorePosition>)>> = BTreeMap::new();
+        let mut per_cable: BTreeMap<crate::naming::id::CableId, Vec<(usize, Core, Option<CorePosition>)>> = BTreeMap::new();
         for ws in old.values() {
             for (id, w) in ws {
                 if kept.contains(id) {
@@ -781,7 +781,7 @@ impl<'a> Rewrite<'a> {
 
     /// Whether a slash of `cable` (a line of one of its drawings) crosses the route running
     /// straight between points `ends` (one route from one to the other, on the slash's page).
-    fn slash_crosses(&self, cable: crate::id::CableId, ends: [ConnectionPointId; 2]) -> bool {
+    fn slash_crosses(&self, cable: crate::naming::id::CableId, ends: [ConnectionPointId; 2]) -> bool {
         let doc = self.doc;
         let [a, b] = ends;
         let Some(route) = doc
@@ -792,10 +792,10 @@ impl<'a> Rewrite<'a> {
             return false;
         };
         let path: Vec<(Pt, Pt)> = route.points.windows(2).map(|w| (w[0], w[1])).collect();
-        doc.representations_of(crate::doc::Subject::Cable(cable)).filter(|(_, r)| r.page == route.page).flat_map(|(_, r)| r.items.iter()).any(|i| {
+        doc.representations_of(crate::document::doc::Subject::Cable(cable)).filter(|(_, r)| r.page == route.page).flat_map(|(_, r)| r.items.iter()).any(|i| {
             let segs: Vec<(Pt, Pt)> = match doc.items.get(i).map(|x| &x.kind) {
-                Some(crate::doc::ItemKind::Primitive(crate::doc::Primitive::Line { a, b })) => vec![(*a, *b)],
-                Some(crate::doc::ItemKind::Primitive(crate::doc::Primitive::Polyline { vertices, .. })) => {
+                Some(crate::document::doc::ItemKind::Primitive(crate::document::doc::Primitive::Line { a, b })) => vec![(*a, *b)],
+                Some(crate::document::doc::ItemKind::Primitive(crate::document::doc::Primitive::Polyline { vertices, .. })) => {
                     vertices.windows(2).map(|w| (w[0], w[1])).collect()
                 }
                 _ => Vec::new(),
@@ -895,7 +895,7 @@ impl<'a> Rewrite<'a> {
 
     /// The join of a route landing at `at` on route `h`: from the nearer end of the wire `h`
     /// carries, else from its one point in the order.
-    fn on_route(&self, o: &Order, h: RouteId, at: crate::geom::Pt) -> Option<Join> {
+    fn on_route(&self, o: &Order, h: RouteId, at: crate::geometry::geom::Pt) -> Option<Join> {
         let hr = self.doc.routes.get(&h)?;
         let a = hr.ends[0].point().filter(|t| o.has(*t));
         let b = hr.ends[1].point().filter(|t| o.has(*t));
@@ -917,7 +917,7 @@ impl<'a> Rewrite<'a> {
 /// overseer ruling 2026-11-18), on `doc` as `ops` left it: the same transaction, so one undo
 /// brings them back. Nothing unless `ops` delete a device.
 pub fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
-    let gone: BTreeSet<crate::id::DeviceId> = ops
+    let gone: BTreeSet<crate::naming::id::DeviceId> = ops
         .iter()
         .filter_map(|o| if let Op::DeleteDevice { id, .. } = o { Some(*id) } else { None })
         .filter(|d| !doc.devices.contains_key(d))
@@ -925,7 +925,7 @@ pub fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
     if gone.is_empty() {
         return Vec::new();
     }
-    let hit = |p: Option<crate::wire::ProtectedBy>| p.is_some_and(|p| gone.contains(&p.device));
+    let hit = |p: Option<crate::objects::wire::ProtectedBy>| p.is_some_and(|p| gone.contains(&p.device));
     let mut out = Vec::new();
     for (id, w) in &doc.wires {
         if hit(w.protected_by) {
@@ -942,7 +942,7 @@ pub fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     fn t(n: u128) -> ConnectionPointId {
         ConnectionPointId(n)

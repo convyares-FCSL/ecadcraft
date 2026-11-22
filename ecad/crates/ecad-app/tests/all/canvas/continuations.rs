@@ -11,7 +11,7 @@ use eframe::egui::vec2;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
 
-use crate::project_panel::{doc, new_app, shots};
+use crate::pages::project_panel::{doc, new_app, shots};
 
 type H = Harness<'static, App>;
 
@@ -40,8 +40,8 @@ fn page_of(v: &Value) -> PageId {
 #[test]
 #[ignore = "slow: a 1920×1080 app with three pages, about 4 s; run by name for the screenshots"]
 fn continuation_arrows_draw_their_other_ends_and_captions() {
-    let deltas: crate::mouse_tester::Deltas = Arc::default();
-    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
+    let deltas: crate::canvas::mouse_acceptance::Deltas = Arc::default();
+    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone())).build_ui_state(
         |ui, t: &mut App| {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
@@ -77,13 +77,13 @@ fn continuation_arrows_draw_their_other_ends_and_captions() {
     let Some(out) = shots() else { return };
     let _ = std::fs::create_dir_all(&out);
     view(&mut h, 80.0, 105.0, 135.0, 160.0);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("049-run.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("049-run.png"));
     view(&mut h, 95.0, 125.0, 105.0, 155.0);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("049-reference.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("049-reference.png"));
     h.state_mut().sheet_command("ui.sheet dark");
     h.run_steps(4);
     view(&mut h, 80.0, 105.0, 135.0, 160.0);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("049-run-dark.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("049-run-dark.png"));
     h.state_mut().sheet_command("ui.sheet paper");
     h.run_steps(2);
     // The L1 arrow deleted and placed again 45 mm to the right with the same caption: two
@@ -94,5 +94,5 @@ fn continuation_arrows_draw_their_other_ends_and_captions() {
     let d = doc(&mut h);
     assert_eq!(ecad_engine::xref::parts_on_page(&d, first).iter().filter(|p| p.index == 1).count(), 2, "two brackets");
     view(&mut h, 80.0, 105.0, 175.0, 160.0);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("049-split.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("049-split.png"));
 }

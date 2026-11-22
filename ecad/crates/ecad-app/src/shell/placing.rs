@@ -4,25 +4,25 @@
 //! - **Open** while the tool asks for a symbol (Device ▸ Symbol, or the chip's Change): the
 //!   Symbol | Connector switch, a search, the matching symbols as tiles, a note pointing to the
 //!   Library, and, once a symbol is chosen, what it can be placed as (a new device with the next
-//!   free tag, or another symbol of a device that takes it; [`crate::search::choices`]).
+//!   free tag, or another symbol of a device that takes it; [`crate::library::search::choices`]).
 //! - **Folded** to a chip once a symbol is chosen and the tool asks for the point: the symbol,
 //!   "as -K02", Change (P) and search. P or the chip opens it again.
 //!
 //! Choosing runs what Find symbol always ran ([`App::start_pick`], [`App::start_choice`]);
 //! Connector starts Device ▸ Connector, whose questions the connector maker shows
-//! ([`super::connector`]).
+//! ([`crate::shell::connector`]).
 //!
 //! Update map: the tiles come from the built-in table (no project read); the second step is read
 //! from the project when the symbol or the project's change count moved.
 
-use ecad_engine::symbols;
-use ecad_ui::prim;
-use ecad_ui::tokens::{Icon, line, radius, space, ui_type};
+use ecad_electrical::symbols;
+use ecad_widgets::prim;
+use ecad_widgets::tokens::{Icon, line, radius, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use super::bar;
+use crate::shell::bar;
 use crate::App;
-use crate::search::{Choice, Pick};
+use crate::library::search::{Choice, Pick};
 
 /// Accessible labels.
 pub const PICKER: &str = "Symbol picker";
@@ -44,7 +44,7 @@ const TILE_H: f32 = 104.0;
 #[derive(Debug, Clone, Default)]
 pub struct State {
     /// The symbol chosen for the running Place Symbol, when the window knows it.
-    pub symbol: Option<ecad_engine::symbols::StarterKey>,
+    pub symbol: Option<ecad_electrical::symbols::StarterKey>,
     /// The person opened the picker while the tool asks for a point (Change, P, the chip).
     pub open: bool,
     /// The panel's search text, and whether the field takes the keyboard next frame.
@@ -94,7 +94,7 @@ impl App {
     /// folded while it asks for anything else, nothing when it is not running.
     pub fn picker_shown(&self) -> Shown {
         let placing = self.cad.session.running.as_ref().is_some_and(|r| r.id.eq_ignore_ascii_case("place"));
-        if !placing || self.shell.state.workspace != super::Workspace::Draw || self.shell.state.cad_chrome {
+        if !placing || self.shell.state.workspace != crate::shell::Workspace::Draw || self.shell.state.cad_chrome {
             return Shown::Nothing;
         }
         let asks_symbol =
@@ -140,7 +140,7 @@ impl App {
         // P opens the picker, unless the prompt takes the letter as text (a tag such as -P02).
         let p_key = ui.ctx().input(|i| i.key_pressed(egui::Key::P) && i.modifiers.is_none())
             && ui.ctx().memory(|m| m.focused().is_none())
-            && !super::keys::prompt_takes(self, 'P');
+            && !crate::shell::keys::prompt_takes(self, 'P');
         match shown {
             Shown::Chip => {
                 if self.chip(ui, at) || p_key {
@@ -154,7 +154,7 @@ impl App {
 
     /// The folded chip: the symbol, "as -K02", Change (P) and search. True when clicked.
     fn chip(&mut self, ui: &mut egui::Ui, at: egui::Pos2) -> bool {
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         let sym = self.shell.tools.placing.symbol.map(symbols::starter);
         let tag = self.cad.session.current_prompt().and_then(|p| tag_in(&p.message));
         let name = sym.map_or("Symbol", |x| x.name);
@@ -174,9 +174,9 @@ impl App {
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
                         ui.label(
-                            egui::RichText::new(name).font(ecad_ui::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS)).color(ecad_ui::color(s.text)),
+                            egui::RichText::new(name).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS)).color(ecad_widgets::color(s.text)),
                         );
-                        ui.label(egui::RichText::new(&as_words).font(ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL)).color(ecad_ui::color(s.text_2)));
+                        ui.label(egui::RichText::new(&as_words).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL)).color(ecad_widgets::color(s.text_2)));
                     });
                     ui.separator();
                     let change = ui.add(prim::Button::new("Change").kind(prim::Kind::Quiet).small());
@@ -194,7 +194,7 @@ impl App {
 
     /// The open picker (board 1.12).
     fn picker(&mut self, ui: &mut egui::Ui, at: egui::Pos2, canvas: Rect) {
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         let q = self.shell.tools.placing.query.clone();
         let found = symbols::search(q.trim());
         let total = symbols::STARTERS.len();
@@ -249,8 +249,8 @@ impl App {
                         ui.add(
                             egui::Label::new(
                                 egui::RichText::new("This panel places by search. For categories, filters and previews:")
-                                    .font(ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL))
-                                    .color(ecad_ui::color(s.text_2)),
+                                    .font(ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL))
+                                    .color(ecad_widgets::color(s.text_2)),
                             )
                             .wrap(),
                         )
@@ -264,7 +264,7 @@ impl App {
                     ui.separator();
                     ui.horizontal(|ui| {
                         ui.label(
-                            egui::RichText::new(sym.name).font(ecad_ui::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS)).color(ecad_ui::color(s.text)),
+                            egui::RichText::new(sym.name).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS)).color(ecad_widgets::color(s.text)),
                         );
                         prim::read_value(ui, &format!("tag letter {} · {}", sym.prefix(), sym.labels().join(", ")));
                     });
@@ -272,7 +272,7 @@ impl App {
                         if ui
                             .radio(
                                 i == 0 && c.device.is_none(),
-                                egui::RichText::new(c.text.trim()).font(ecad_ui::fonts::font(ui.ctx(), ui_type::BODY)),
+                                egui::RichText::new(c.text.trim()).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY)),
                             )
                             .clicked()
                         {
@@ -283,13 +283,13 @@ impl App {
             });
         });
         self.shell.tools.panel_right = Some(area.response.rect.right());
-        if connector && let Some(a) = crate::actions::find("place.connector") {
+        if connector && let Some(a) = crate::commands::actions::find("place.connector") {
             self.shell.tools.placing = State::default();
             self.start_tool(a);
             return;
         }
         if browse {
-            self.set_workspace(super::Workspace::Library);
+            self.set_workspace(crate::shell::Workspace::Library);
             return;
         }
         if let Some(k) = pick {
@@ -313,7 +313,7 @@ impl App {
         {
             return v.clone();
         }
-        let v = p.read(&mut self.cad.session, |p, _| crate::search::choices(p, &Pick::Symbol(key))).unwrap_or_default();
+        let v = p.read(&mut self.cad.session, |p, _| crate::library::search::choices(p, &Pick::Symbol(key))).unwrap_or_default();
         self.shell.tools.placing.reads += 1;
         self.shell.tools.placing.choices = Some(((key, count), v.clone()));
         v
@@ -322,12 +322,12 @@ impl App {
 
 /// The frame of the chip and the picker: the board's floating panel.
 pub(crate) fn popover_frame() -> egui::Frame {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     egui::Frame::new()
-        .fill(ecad_ui::color(s.panel))
-        .stroke(egui::Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line_strong)))
-        .corner_radius(ecad_ui::style::corner(radius::POPOVER))
-        .shadow(ecad_ui::style::shadow())
+        .fill(ecad_widgets::color(s.panel))
+        .stroke(egui::Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line_strong)))
+        .corner_radius(ecad_widgets::style::corner(radius::POPOVER))
+        .shadow(ecad_widgets::style::shadow())
         .inner_margin(egui::Margin::same(space::L as i8))
 }
 
@@ -340,15 +340,15 @@ pub(crate) fn tabs(ui: &mut egui::Ui, symbol: bool) -> bool {
         for (label, on) in [(SYMBOL_TAB, symbol), (CONNECTOR_TAB, !symbol)] {
             let (r, resp) = ui.allocate_exact_size(vec2(w, 28.0), egui::Sense::click());
             resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, label));
-            let s = ecad_ui::SHELL;
+            let s = ecad_widgets::SHELL;
             let fill = if on { s.raised } else { s.bg };
-            ui.painter().rect_filled(r, ecad_ui::style::corner(radius::BUTTON), ecad_ui::color(fill));
+            ui.painter().rect_filled(r, ecad_widgets::style::corner(radius::BUTTON), ecad_widgets::color(fill));
             ui.painter().text(
                 r.center(),
                 egui::Align2::CENTER_CENTER,
                 label,
                 bar::font(ui, ui_type::BODY),
-                ecad_ui::color(if on { s.text } else { s.text_2 }),
+                ecad_widgets::color(if on { s.text } else { s.text_2 }),
             );
             other |= resp.clicked() && !on;
         }
@@ -359,16 +359,16 @@ pub(crate) fn tabs(ui: &mut egui::Ui, symbol: bool) -> bool {
 
 /// A symbol drawn in `r` on a light tile (the sheet's paper), or a plain tile.
 fn thumb(ui: &egui::Ui, r: Rect, sym: Option<&symbols::Starter>) {
-    let paper = ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet);
-    ui.painter().rect_filled(r, ecad_ui::style::corner(radius::CHIP), paper);
+    let paper = ecad_widgets::color(ecad_drawing_style::sheet::PAPER.sheet);
+    ui.painter().rect_filled(r, ecad_widgets::style::corner(radius::CHIP), paper);
     if let Some(d) = sym.and_then(|s| s.definition().ok()) {
-        crate::library::browser::paint_symbol(ui.painter(), r.shrink(space::XS), d, ecad_ui::color(ecad_drawing_style::sheet::PAPER.ink), None);
+        crate::library::browser::paint_symbol(ui.painter(), r.shrink(space::XS), d, ecad_widgets::color(ecad_drawing_style::sheet::PAPER.ink), None);
     }
 }
 
 /// One tile: the symbol, its name and where it comes from.
 fn tile(ui: &mut egui::Ui, sym: &symbols::Starter, w: f32, on: bool) -> egui::Response {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let (r, resp) = ui.allocate_exact_size(vec2(w, TILE_H), egui::Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, sym.name));
     let fill = if on {
@@ -381,28 +381,28 @@ fn tile(ui: &mut egui::Ui, sym: &symbols::Starter, w: f32, on: bool) -> egui::Re
     let stroke = if on { s.accent } else { s.line };
     ui.painter().rect(
         r,
-        ecad_ui::style::corner(radius::TILE),
-        ecad_ui::color(fill),
-        egui::Stroke::new(1.0, ecad_ui::color(stroke)),
+        ecad_widgets::style::corner(radius::TILE),
+        ecad_widgets::color(fill),
+        egui::Stroke::new(1.0, ecad_widgets::color(stroke)),
         egui::StrokeKind::Inside,
     );
     thumb(ui, Rect::from_min_size(r.min + vec2(space::XS, space::XS), vec2(w - 2.0 * space::XS, 56.0)), Some(sym));
-    let text = ui.painter().layout(sym.name.to_string(), bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text), w - 2.0 * space::XS);
+    let text = ui.painter().layout(sym.name.to_string(), bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.text), w - 2.0 * space::XS);
     let y = r.top() + 62.0;
-    ui.painter().galley(pos2(r.center().x - text.size().x / 2.0, y), text.clone(), ecad_ui::color(s.text));
+    ui.painter().galley(pos2(r.center().x - text.size().x / 2.0, y), text.clone(), ecad_widgets::color(s.text));
     ui.painter().text(
         pos2(r.center().x, (y + text.size().y + 8.0).min(r.bottom() - 7.0)),
         egui::Align2::CENTER_CENTER,
         "IEC built-in",
         bar::font(ui, ui_type::CAPTION),
-        ecad_ui::color(s.text_3),
+        ecad_widgets::color(s.text_3),
     );
     resp
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::shell::*;
 
     #[test]
     fn the_chip_reads_the_tag_the_prompt_names() {

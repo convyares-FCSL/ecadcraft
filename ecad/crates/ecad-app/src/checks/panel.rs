@@ -5,7 +5,7 @@
 //! The rows are a copy of [`ecad_engine::checks::kept::Checks`], which the project builds whole on the
 //! tab's first show and then keeps from each transaction's ops; the copy is taken again only when
 //! that list's revision moved (or the project or the Show filter changed). Live: no refresh button.
-//! Brief 039: the rows are drawn by the one table ([`crate::lists::checks`]), patched with the rows
+//! Brief 039: the rows are drawn by the one table ([`crate::checks::list`]), patched with the rows
 //! that appeared or went; this tab is its host until the shell (U2) places it.
 
 use std::collections::BTreeSet;
@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use ecad_engine::checks::{Check, Fix, Kind, Severity};
 use eframe::egui::{self, RichText};
 
-use crate::project_panel::Action;
+use crate::pages::project_panel::Action;
 
 /// Accessible label of the tab.
 pub const CHECKS_TAB: &str = "Checks";
@@ -82,7 +82,7 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
         Fix::JumperBarOrphan(..) => Some([DROP_MISSING, DELETE_LINK]),
         Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_LINK]),
         Fix::CoreOpen(..) => Some([TICK_NOT_USED, GO_TO_OPEN_END]),
-        Fix::AssignCable(_) | Fix::UseDrawing(..) => crate::lists::cable_manager::pair(f),
+        Fix::AssignCable(_) | Fix::UseDrawing(..) => crate::cables::manager::pair(f),
         Fix::Plc(_, ecad_engine::plc::PlcFix::RackMissing) => Some([PUT_IN_RACK, TAKE_OUT_OF_RACK]),
         Fix::Plc(_, ecad_engine::plc::PlcFix::SlotRange) => Some([RAISE_SLOTS, MOVE_TO_FREE_SLOT]),
         _ => None,
@@ -128,15 +128,15 @@ pub struct ChecksPanel {
     /// The project cannot be written: no fix buttons.
     pub read_only: bool,
     /// Brief 039: the rows as a table source, and the table.
-    pub source: crate::lists::checks::ChecksSource,
-    pub table: ecad_ui::table::Table<crate::lists::checks::CheckKey>,
+    pub source: crate::checks::list::ChecksSource,
+    pub table: ecad_widgets::table::Table<crate::checks::list::CheckKey>,
     /// What the last copy did to the table (tests).
-    pub last_change: Option<ecad_ui::table::Changed<crate::lists::checks::CheckKey>>,
+    pub last_change: Option<ecad_widgets::table::Changed<crate::checks::list::CheckKey>>,
 }
 
 impl Default for ChecksPanel {
     fn default() -> Self {
-        let mut table = ecad_ui::table::Table::new("ecad.checks", "Checks");
+        let mut table = ecad_widgets::table::Table::new("ecad.checks", "Checks");
         table.empty = NO_PROBLEMS;
         Self {
             rows: Vec::new(),
@@ -205,7 +205,7 @@ impl ChecksPanel {
         // appeared or went are patched.
         let same_view = self.seen.as_ref().is_some_and(|(s, _, h)| *s == serial && *h == hidden);
         let changed = self.source.set(&rows);
-        let changed = if same_view { changed } else { ecad_ui::table::Changed::All };
+        let changed = if same_view { changed } else { ecad_widgets::table::Changed::All };
         self.table.update(&self.source, changed.clone());
         self.last_change = Some(changed);
         self.rows = rows;
@@ -293,9 +293,9 @@ impl ChecksPanel {
     /// The tab's contents: the Show filter and counts, then the table. Returns the actions asked
     /// for.
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
-        use ecad_ui::table::TableEvent;
+        use ecad_widgets::table::TableEvent;
         let mut out = Vec::new();
-        let dim = ecad_ui::color(ecad_ui::SHELL.text_2);
+        let dim = ecad_widgets::color(ecad_widgets::SHELL.text_2);
         ui.horizontal(|ui| {
             let label = if self.hidden.is_empty() { "All kinds" } else { "Some kinds" };
             ui.label(RichText::new("Show:").small());
@@ -318,11 +318,11 @@ impl ChecksPanel {
         let fixes = writable && !self.read_only;
         if self.source.fixes != fixes {
             self.source.fixes = fixes;
-            self.table.update(&self.source, ecad_ui::table::Changed::All);
+            self.table.update(&self.source, ecad_widgets::table::Changed::All);
         }
         let events = self.table.show(ui, &self.source);
         self.rows_drawn = self.table.rows_drawn;
-        let index = |k: crate::lists::checks::CheckKey| self.source.row(k).and_then(|r| self.rows.iter().position(|x| x == r));
+        let index = |k: crate::checks::list::CheckKey| self.source.row(k).and_then(|r| self.rows.iter().position(|x| x == r));
         for e in events {
             match e {
                 // One row clicked (or reached with the arrows): show it (design 022 §8).
@@ -346,7 +346,7 @@ impl ChecksPanel {
                         out.extend(Self::fix(r, f, k));
                     }
                 }
-                TableEvent::Export(csv) => crate::lists::copy_csv(ui, csv),
+                TableEvent::Export(csv) => crate::workspace::copy_csv(ui, csv),
                 TableEvent::Selected(_) | TableEvent::Commit { .. } => {}
             }
         }

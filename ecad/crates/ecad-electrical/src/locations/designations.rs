@@ -16,12 +16,12 @@
 //!   ops (never a rescan on an ordinary commit) and rebuilt on open and branch switch.
 //!
 //! Excludes: proposals and contexts (`crate::locations`), the commands
-//! (`ecad_engine::cmd::designation`, `ecad_engine::cmd::location`). This module reads and plans ops only.
+//! (`ecad_engine::commands::designation`, `ecad_engine::commands::location`). This module reads and plans ops only.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
-use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
+use ecad_model::document::book::{FUNCTION_KEY, LOCATION_KEY};
 use ecad_model::{
     Aid, AidId, Device, Document, FunctionId, IdAllocator, Ledger, ListCode, ListDescription, ListEntry, LocationBox, LocationId, ObjectRef, Op,
     Page, Project,
@@ -283,7 +283,7 @@ pub fn with_default_key(project: &Project, a: Aspect, key: Option<&str>) -> Proj
 /// A code as typed, checked against the list's text bounds.
 ///
 /// # Errors
-/// Longer than [`ecad_model::project::MAX_CODE`] or with a hidden character.
+/// Longer than [`ecad_model::document::project::MAX_CODE`] or with a hidden character.
 pub fn list_code(code: &str) -> Result<ListCode, CmdError> {
     ListCode::new(code).map_err(|e| CmdError::refused(format!("\"{code}\" is not a code: {e}.")))
 }

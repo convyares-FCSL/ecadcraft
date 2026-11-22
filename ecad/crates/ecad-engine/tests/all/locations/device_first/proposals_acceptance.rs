@@ -312,8 +312,8 @@ fn hostile_proposal_parameters_are_refused() {
 #[test]
 fn the_title_block_shows_codes_and_follows_a_rename() {
     use cadcraft_engine::doc::EntityKind;
-    use ecad_engine::frame::{self, FrameInput};
-    use ecad_model::book::Book;
+    use ecad_engine::pages::frame::{self, FrameInput};
+    use ecad_model::document::book::Book;
     let texts = |h: &mut H, page: PageId| -> Vec<String> {
         let doc = h.doc();
         frame::parts(&FrameInput::of(&doc, page, &Book::of(&doc)))

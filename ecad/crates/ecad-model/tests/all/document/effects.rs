@@ -1,9 +1,9 @@
 //! Lane 064 (design 064 §10): the one classifier of ops, `Effects::of`.
 
-use ecad_model::effect::{Effect, EffectKind, Effects};
+use ecad_model::document::effect::{Effect, EffectKind, Effects};
 use ecad_model::{ObjectRef, Op};
 
-use crate::incremental_contracts::{all_ops, applicable, base};
+use crate::document::incremental::{all_ops, applicable, base};
 
 /// The kind of effect each op gives (design 064 §3.2).
 fn expected(op: &Op) -> EffectKind {

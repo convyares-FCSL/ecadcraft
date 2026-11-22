@@ -15,10 +15,10 @@
 
 use std::sync::OnceLock;
 
-use crate::colour::ColourWords;
-use crate::doc::ReferenceStyle;
-use crate::sheet::SheetSpec;
-use crate::words::Word as _;
+use crate::geometry::colour::ColourWords;
+use crate::document::doc::ReferenceStyle;
+use crate::document::sheet::SheetSpec;
+use crate::naming::words::Word as _;
 
 /// The embedded data file.
 pub const SETTINGS: &str = include_str!("../defaults/settings.toml");
@@ -41,7 +41,7 @@ pub const REFERENCE_STYLE: &str = "print.reference_style";
 /// Every key [`SETTINGS`] holds. These live only here (owner, 2026-11-16: what the lower crate
 /// needs goes in the lower crate); the registry's entries for them read [`get`].
 pub const KEYS: &[&str] =
-    &[TAG_PADDING, crate::tag::DASH_KEY, crate::tag::CASE_KEY, WIRE_DIGITS, COLOUR_STYLE, PAGE_NUMBER_STEP, SHEET, REFERENCE_STYLE];
+    &[TAG_PADDING, crate::naming::tag::DASH_KEY, crate::naming::tag::CASE_KEY, WIRE_DIGITS, COLOUR_STYLE, PAGE_NUMBER_STEP, SHEET, REFERENCE_STYLE];
 
 /// A built-in value of [`KEYS`], as the registry reads it.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,8 +60,8 @@ pub fn get(key: &str) -> Option<BuiltinValue> {
         PAGE_NUMBER_STEP => BuiltinValue::Number(f64::from(b.page_number_step)),
         COLOUR_STYLE => BuiltinValue::Word(b.colour_style.word()),
         REFERENCE_STYLE => BuiltinValue::Word(b.reference_style.word()),
-        k if k == crate::tag::DASH_KEY => BuiltinValue::Word(b.tag_dash),
-        k if k == crate::tag::CASE_KEY => BuiltinValue::Word(b.tag_case),
+        k if k == crate::naming::tag::DASH_KEY => BuiltinValue::Word(b.tag_dash),
+        k if k == crate::naming::tag::CASE_KEY => BuiltinValue::Word(b.tag_case),
         _ => return None,
     })
 }
@@ -73,9 +73,9 @@ pub const MAX_PAGE_NUMBER_STEP: u32 = 1000;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Builtins {
     pub tag_padding: u8,
-    /// A word of [`crate::tag::DASH_WORDS`].
+    /// A word of [`crate::naming::tag::DASH_WORDS`].
     pub tag_dash: &'static str,
-    /// A word of [`crate::tag::CASE_WORDS`].
+    /// A word of [`crate::naming::tag::CASE_WORDS`].
     pub tag_case: &'static str,
     pub wire_digits: u8,
     pub colour_style: ColourWords,
@@ -100,11 +100,11 @@ pub fn load(text: &str) -> Builtins {
         |key: &str, words: &'static [&'static str]| get(key).and_then(toml::Value::as_str).and_then(|s| words.iter().copied().find(|w| *w == s));
     let small = |key: &str, max: u8| int(key, 1, i64::from(max)).and_then(|n| u8::try_from(n).ok()).unwrap_or(1);
     Builtins {
-        tag_padding: small(TAG_PADDING, crate::tag::MAX_PADDING),
-        tag_dash: word(crate::tag::DASH_KEY, crate::tag::DASH_WORDS).unwrap_or(crate::tag::DASH_WORDS[0]),
-        tag_case: word(crate::tag::CASE_KEY, crate::tag::CASE_WORDS).unwrap_or(crate::tag::CASE_WORDS[0]),
-        wire_digits: small(WIRE_DIGITS, crate::wiring::MAX_DIGITS),
-        colour_style: word(COLOUR_STYLE, crate::wiring::COLOUR_STYLE_WORDS).and_then(<ColourWords as crate::words::Word>::parse).unwrap_or_default(),
+        tag_padding: small(TAG_PADDING, crate::naming::tag::MAX_PADDING),
+        tag_dash: word(crate::naming::tag::DASH_KEY, crate::naming::tag::DASH_WORDS).unwrap_or(crate::naming::tag::DASH_WORDS[0]),
+        tag_case: word(crate::naming::tag::CASE_KEY, crate::naming::tag::CASE_WORDS).unwrap_or(crate::naming::tag::CASE_WORDS[0]),
+        wire_digits: small(WIRE_DIGITS, crate::connectivity::wiring::MAX_DIGITS),
+        colour_style: word(COLOUR_STYLE, crate::connectivity::wiring::COLOUR_STYLE_WORDS).and_then(<ColourWords as crate::naming::words::Word>::parse).unwrap_or_default(),
         page_number_step: int(PAGE_NUMBER_STEP, 1, i64::from(MAX_PAGE_NUMBER_STEP)).and_then(|n| u32::try_from(n).ok()).unwrap_or(1),
         sheet: get(SHEET).and_then(toml::Value::as_str).and_then(|s| SheetSpec::parse(s).ok()).unwrap_or_default(),
         reference_style: word(REFERENCE_STYLE, ReferenceStyle::WORDS).and_then(ReferenceStyle::parse).unwrap_or(ReferenceStyle::PageZone),
@@ -113,7 +113,7 @@ pub fn load(text: &str) -> Builtins {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn the_built_ins_are_today_s_values() {

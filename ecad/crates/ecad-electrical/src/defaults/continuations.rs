@@ -3,7 +3,7 @@
 //! Read them through [`crate::continuations`], not by key. The caption text's size, weight, font
 //! and visibility are lane T's text kind `continuation_caption` (`defaults/text.rs`).
 
-use super::{Entry, Kind, Level, ProjectSource, Slot};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 
 const GROUP: &str = "Continuations";
 const BRIEF: &str = "049";

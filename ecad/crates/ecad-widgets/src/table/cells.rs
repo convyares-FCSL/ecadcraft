@@ -1,20 +1,20 @@
 //! Drawing one cell from its [`Cell`]: set values look like fields, read values are grey text
 //! (a go-to when they have a target), provisional values use the provisional look (spec §5).
 
-use ecad_tokens::{line, radius, space, ui_type};
+use {crate::tokens::line, crate::tokens::radius, crate::tokens::space, crate::tokens::ui_type};
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{Color32, Galley, Rect, Stroke, StrokeKind, Ui, pos2, vec2};
 use std::sync::Arc;
 
-use super::source::{Align, Cell, LaneCell};
+use crate::table::source::{Align, Cell, LaneCell};
 use crate::style::corner;
-use crate::{color, fonts, prim};
+use {crate::color, crate::fonts, crate::prim};
 
 /// Distance between two link lanes.
 pub const LANE_STEP: f32 = 8.0;
 
 /// `text` on one line, cut with an ellipsis to `width`.
-pub fn fitted(ui: &Ui, text: &str, style: ecad_tokens::ui_type::TypeStyle, ink: Color32, width: f32) -> Arc<Galley> {
+pub fn fitted(ui: &Ui, text: &str, style: crate::tokens::ui_type::TypeStyle, ink: Color32, width: f32) -> Arc<Galley> {
     let font_id = fonts::font(ui.ctx(), style);
     let mut job = LayoutJob::single_section(text.to_string(), TextFormat { font_id, color: ink, ..Default::default() });
     job.wrap = TextWrapping { max_width: width.max(0.0), max_rows: 1, break_anywhere: true, overflow_character: Some('\u{2026}') };

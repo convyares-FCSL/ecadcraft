@@ -1,14 +1,14 @@
 //! The kept Checks list (see [`super`]'s update map). The rules that measure text (a table over
 //! the title block) take the sheet font metrics, [`TextMetrics`]; ecad-engine's
-//! `crate::derived::ChecksView` keeps it, measuring with the engine's fonts.
+//! `crate::views::ChecksView` keeps it, measuring with the engine's fonts.
 
 use std::collections::BTreeSet;
 
-use ecad_model::numbering::Places;
+use ecad_model::naming::numbering::Places;
 use ecad_model::{Document, NetKey, PageId};
 
-use super::*;
-use crate::text_style::fonts::TextMetrics;
+use crate::checks::*;
+use crate::styles::text_style::fonts::TextMetrics;
 
 /// The kept Checks list (see the module docs).
 #[derive(Debug, Clone, Default)]
@@ -30,13 +30,13 @@ pub struct Checks {
     /// Brief 054: the pages whose type has checks and references off.
     off: BTreeSet<PageId>,
     /// Brief 057: the kept rating results and their indexes (design 057 §10).
-    pub rating: crate::rating::Kept,
+    pub rating: crate::circuits::Kept,
 }
 
 impl Checks {
     /// The whole list, computed from scratch (open, reload, first show).
     pub fn build_with(doc: &Document, tol: f64, m: &dyn TextMetrics) -> Self {
-        let mut ch = Checks { off: ecad_model::sheet::checks_off_pages(doc), ..Checks::default() };
+        let mut ch = Checks { off: ecad_model::document::sheet::checks_off_pages(doc), ..Checks::default() };
         for r in doc.routes.keys() {
             ch.grid.insert(doc, *r);
         }
@@ -77,21 +77,21 @@ impl Checks {
             ch.set(s.key(), s.checks(doc));
         }
         // Brief 057.
-        ch.rating = crate::rating::Kept::build(doc);
-        let rows: Vec<(crate::rating::RatedSubject, Vec<Check>)> =
-            ch.rating.results.values().map(|r| (r.subject, crate::rating::rows(doc, r))).collect();
+        ch.rating = crate::circuits::Kept::build(doc);
+        let rows: Vec<(crate::circuits::RatedSubject, Vec<Check>)> =
+            ch.rating.results.values().map(|r| (r.subject, crate::circuits::rows(doc, r))).collect();
         for (s, v) in rows {
             ch.set(Key::Rating(s), v);
         }
-        ch.set(Key::RatingSummary, crate::rating::summary_rows(doc, &ch.rating));
-        ch.provisional = ecad_model::numbering::provisional_on(doc);
+        ch.set(Key::RatingSummary, crate::circuits::summary_rows(doc, &ch.rating));
+        ch.provisional = ecad_model::naming::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
     }
 
     /// Brief 054b: work out the cover's rows again (after a change the cover's map names).
     pub fn set_cover(&mut self, doc: &Document) {
-        self.set(Key::Cover, crate::front::CoverRows.checks(doc));
+        self.set(Key::Cover, crate::pages::front::CoverRows.checks(doc));
         self.revision += 1;
     }
 
@@ -173,7 +173,7 @@ impl Checks {
 
     /// Re-check the subjects in `scope` on `doc`, the state after the commit. `scope` holds what
     /// each of the commit's effects names on the state before and on the state after
-    /// ([`Scope::note`]; `crate::derived::ChecksView` notes them).
+    /// ([`Scope::note`]; `crate::views::ChecksView` notes them).
     pub fn update(&mut self, doc: &Document, mut scope: Scope, tol: f64, m: &dyn TextMetrics) {
         if scope.all {
             *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build_with(doc, tol, m) };
@@ -265,17 +265,17 @@ impl Checks {
         let touched = self.rating.update(doc, &scope.rating);
         if !touched.is_empty() || scope.rating.any() {
             for s in touched {
-                let rows = self.rating.results.get(&s).map(|r| crate::rating::rows(doc, r)).unwrap_or_default();
+                let rows = self.rating.results.get(&s).map(|r| crate::circuits::rows(doc, r)).unwrap_or_default();
                 self.set(Key::Rating(s), rows);
             }
-            self.set(Key::RatingSummary, crate::rating::summary_rows(doc, &self.rating));
+            self.set(Key::RatingSummary, crate::circuits::summary_rows(doc, &self.rating));
         }
         for s in PROJECT_SOURCES {
             if s.touched(&scope) {
                 self.set(s.key(), s.checks(doc));
             }
         }
-        self.provisional = ecad_model::numbering::provisional_on(doc);
+        self.provisional = ecad_model::naming::numbering::provisional_on(doc);
         self.set_unnumbered();
         self.revision += 1;
     }

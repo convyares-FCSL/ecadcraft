@@ -3,11 +3,11 @@
 //! hostile bodies.
 
 use cadcraft_engine::doc::EntityKind;
-use ecad_engine::frame::{self, FrameInput};
+use ecad_engine::pages::frame::{self, FrameInput};
 use ecad_engine::title_block::{dxf, house};
-use ecad_model::book::Book;
-use ecad_model::sheet::{self, SheetSpec};
-use ecad_model::title_block::{Binding, BlockItem, IfEmpty, Rect, TextDraw, TitleBlockLayout};
+use ecad_model::document::book::Book;
+use ecad_model::document::sheet::{self, SheetSpec};
+use ecad_model::objects::title_block::{Binding, BlockItem, IfEmpty, Rect, TextDraw, TitleBlockLayout};
 use ecad_model::{PageId, Primitive, Pt};
 use serde_json::{Value, json};
 
@@ -225,7 +225,7 @@ fn hostile_bodies_draw_and_are_refused_by_commands() {
     let mut input = FrameInput::of(&doc, page, &Book::of(&doc));
     let field = |x: f64| BlockItem::Field {
         at: Rect::new(x, 1.0, 10.0, 5.0),
-        bind: Binding::Print(ecad_model::title_block::PrintField::Sheet),
+        bind: Binding::Print(ecad_model::objects::title_block::PrintField::Sheet),
         label: Some("é".repeat(10_000)),
         look: TextDraw::default(),
         if_empty: IfEmpty::Text("t".repeat(100)),
@@ -241,7 +241,7 @@ fn hostile_bodies_draw_and_are_refused_by_commands() {
     assert!(l.check().is_err());
     input.block.layout = std::sync::Arc::new(l);
     let (_, drawn) = frame::drawn(&input);
-    assert!(drawn.skipped >= 10_000 - ecad_model::title_block::MAX_ITEMS, "{drawn:?}");
+    assert!(drawn.skipped >= 10_000 - ecad_model::objects::title_block::MAX_ITEMS, "{drawn:?}");
     // The commands refuse in words; nothing is written.
     let id = new_frame(&mut h, "A3");
     let head = h.head();
@@ -409,14 +409,14 @@ fn a_standard_switch_redraws_the_frame() {
     let page = PageId(0);
     let a = ecad_model::StandardHeader {
         id: ecad_model::StandardId(1),
-        name: ecad_model::style::StyleName::new("A").unwrap(),
-        based_on: ecad_model::style::BasedOn::Iec,
+        name: ecad_model::objects::styles::StyleName::new("A").unwrap(),
+        based_on: ecad_model::objects::styles::BasedOn::Iec,
         origin: None,
     };
     let b = ecad_model::StandardHeader {
         id: ecad_model::StandardId(2),
-        name: ecad_model::style::StyleName::new("B").unwrap(),
-        based_on: ecad_model::style::BasedOn::Iec,
+        name: ecad_model::objects::styles::StyleName::new("B").unwrap(),
+        based_on: ecad_model::objects::styles::BasedOn::Iec,
         origin: None,
     };
     let doc = ecad_model::Document::default();
@@ -471,10 +471,10 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
         after: Some(after),
     };
     let mut heavier = rec.clone();
-    ecad_engine::styles::frame::set(frame_of(&mut heavier), "border_weight", Some("0.7")).unwrap();
+    ecad_electrical::styles::frame::set(frame_of(&mut heavier), "border_weight", Some("0.7")).unwrap();
     assert_eq!(references::cables_touched(&doc, &[set(heavier)]), Some(Default::default()), "a weight moves no reference");
     let mut a1 = rec.clone();
-    ecad_engine::styles::frame::set(frame_of(&mut a1), "sheet", Some("A1")).unwrap();
+    ecad_electrical::styles::frame::set(frame_of(&mut a1), "sheet", Some("A1")).unwrap();
     let mut used = doc.clone();
     used.display.insert("print.frame.style".into(), id.clone());
     assert!(references::cables_touched(&used, &[set(a1)]).is_some_and(|s| s.contains(&c1)), "its pages' cables");
@@ -488,16 +488,16 @@ fn an_out_of_bounds_block_size_is_reported() {
     let title_block = Some(TitleBlockLayout { size: (1e308, 1e308), items: Vec::new() });
     let rec = ecad_model::StyleRecord::new(
         "Huge",
-        ecad_model::style::StyleBody::Frame(ecad_model::style::FrameStyle { title_block, ..Default::default() }),
+        ecad_model::objects::styles::StyleBody::Frame(ecad_model::objects::styles::FrameStyle { title_block, ..Default::default() }),
     );
     doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(ecad_model::StyleRef::Own(5), rec);
     let rows = ecad_engine::title_block::checks::rows(&doc);
     assert!(rows.iter().any(|r| r.which.contains("Huge's title block size is out of bounds")), "{rows:?}");
 }
 
-fn frame_of(r: &mut ecad_model::StyleRecord) -> &mut ecad_model::style::FrameStyle {
+fn frame_of(r: &mut ecad_model::StyleRecord) -> &mut ecad_model::objects::styles::FrameStyle {
     match &mut r.body {
-        ecad_model::style::StyleBody::Frame(f) => f,
+        ecad_model::objects::styles::StyleBody::Frame(f) => f,
         other => panic!("not a frame: {other:?}"),
     }
 }

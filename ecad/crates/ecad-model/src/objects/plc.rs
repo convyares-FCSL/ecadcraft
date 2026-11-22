@@ -24,8 +24,8 @@ use std::fmt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::DeviceId;
-use crate::text::Text;
-use crate::units::RatedVoltage;
+use crate::naming::text::Text;
+use crate::geometry::units::RatedVoltage;
 
 /// The highest slot number.
 pub const MAX_SLOT: u16 = 999;
@@ -52,7 +52,7 @@ pub type PlcTag = Text<128>;
 ///
 /// # Example
 /// ```
-/// use ecad_model::plc::{PlcRack, RackHead, Protocol};
+/// use crate::objects::plc::{PlcRack, RackHead, Protocol};
 /// let s = PlcRack { head: RackHead::Coupler { protocol: Protocol::Ethercat }, ..PlcRack::default() };
 /// assert_eq!(serde_json::to_string(&s).unwrap(), r#"{"head":{"coupler":{"protocol":"ethercat"}}}"#);
 /// ```
@@ -118,7 +118,7 @@ impl NetAddress {
     ///
     /// # Example
     /// ```
-    /// use ecad_model::plc::NetAddress;
+    /// use crate::objects::plc::NetAddress;
     /// assert_eq!(NetAddress::parse("3"), Some(NetAddress::Node(3)));
     /// assert!(matches!(NetAddress::parse("192.168.0.10"), Some(NetAddress::Ip(_))));
     /// assert_eq!(NetAddress::parse("3a"), None);
@@ -128,7 +128,7 @@ impl NetAddress {
         if t.contains('.') {
             return t.parse::<core::net::Ipv4Addr>().ok().map(NetAddress::Ip);
         }
-        crate::words::uint(t, u32::from(MAX_NODE)).filter(|_| t.len() <= 5).and_then(|n| u16::try_from(n).ok()).map(NetAddress::Node)
+        crate::naming::words::uint(t, u32::from(MAX_NODE)).filter(|_| t.len() <= 5).and_then(|n| u16::try_from(n).ok()).map(NetAddress::Node)
     }
 }
 
@@ -221,7 +221,7 @@ crate::word_enum! {
 ///
 /// # Example
 /// ```
-/// use ecad_model::plc::{ChannelGroup, ModuleFunction, PlcModule, Signal};
+/// use crate::objects::plc::{ChannelGroup, ModuleFunction, PlcModule, Signal};
 /// let m = PlcModule::new(ModuleFunction::DigitalIn(ChannelGroup::new(Signal::Dc24v, 16)));
 /// assert_eq!(m.channel_count(), 16);
 /// assert_eq!(serde_json::to_string(&m).unwrap(), r#"{"function":{"digital_in":{"signal":"dc24v","count":16}}}"#);
@@ -559,7 +559,7 @@ impl Channel {
 ///
 /// # Example
 /// ```
-/// use ecad_model::plc::SafeState;
+/// use crate::objects::plc::SafeState;
 /// assert_eq!(SafeState::parse("Hold"), Some(SafeState::Hold));
 /// assert_eq!(SafeState::parse("4 mA").map(|s| s.to_string()), Some("4 mA".to_string()));
 /// ```
@@ -674,7 +674,7 @@ impl crate::Document {
     /// The modules naming station `rack` (whether or not it is a station now), in ID order: the
     /// index's station → modules map, never a walk of the project.
     pub fn plc_modules(&self, rack: DeviceId) -> impl Iterator<Item = DeviceId> + '_ {
-        crate::index::referrers(&self.index.station_modules, &rack)
+        crate::document::index::referrers(&self.index.station_modules, &rack)
     }
 }
 

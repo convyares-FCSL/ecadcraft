@@ -5,7 +5,7 @@
 use cadcraft_engine::doc::HAlign;
 use ecad_model::{Document, LengthUnit};
 
-use crate::frame::{LABEL_ACI, THIN_WEIGHT, TextDraw};
+use crate::pages::frame::{LABEL_ACI, THIN_WEIGHT, TextDraw};
 use crate::generated::{Draw, row_mm};
 use crate::plc::overview::{self, Square, Tile, TileKind};
 use crate::plc::sheets::*;
@@ -23,7 +23,7 @@ pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &
     };
     let sheets = io_pack(plc);
     let Some(segs) = sheets.get(i) else { return };
-    let spare = crate::defaults::resolve(doc, &crate::defaults::plc::SPARE_TEXT, crate::defaults::Scope::project()).text();
+    let spare = ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::plc::SPARE_TEXT, ecad_electrical::defaults::Scope::project()).text();
     let widths: Vec<f64> = IO_COLUMNS.iter().map(|(_, w)| w * a.scale).collect();
     let total: f64 = widths.iter().sum();
     let mut y = a.t;

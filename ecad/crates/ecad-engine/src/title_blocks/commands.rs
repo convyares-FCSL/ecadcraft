@@ -1,18 +1,18 @@
 //! `titleblockimport` (brief 055, design 055 §9): a new frame from a DXF, or a logo into a title
 //! block's item. It reads the DXF with CADCraft's reader ([`crate::title_block::dxf`]), so it is the
-//! engine's; the other title block commands are generic ([`ecad_electrical::cmd::title_block`]).
+//! engine's; the other title block commands are generic ([`ecad_electrical::title_blocks::commands`]).
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::title_block as rules;
+use ecad_electrical::title_blocks::commands as rules;
 use ecad_model::Document;
-use ecad_model::style::StyleRef;
+use ecad_model::objects::styles::StyleRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::cmd::err;
-use crate::cmd::input::{Command, Typed};
+use crate::commands::err;
+use crate::commands::input::{Command, Typed};
 
 /// The command of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<TitleblockimportParams>("titleblockimport")];
@@ -20,7 +20,7 @@ pub const TYPED: &[Typed] = &[Typed::of::<TitleblockimportParams>("titleblockimp
 /// The command of this module.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("titleblockimport", "Import Title Block", crate::cmd::input::typed::<TitleblockimportParams>)
+        CommandSpec::new("titleblockimport", "Import Title Block", crate::commands::input::typed::<TitleblockimportParams>)
             .params("{path | dxf, sheet, name?} (a new frame from a DXF) | {id | name, item, path | dxf} (a logo into item); one transaction")
             .noundo(),
     ]

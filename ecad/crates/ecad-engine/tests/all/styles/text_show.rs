@@ -203,12 +203,12 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     let no_rep: RepresentationId = h
         .doc()
         .representations_of(Subject::Device(c))
-        .find(|(_, r)| devices::rep_starter(&h.doc(), r).is_some_and(|s| s.key == ecad_engine::symbols::StarterKey::No))
+        .find(|(_, r)| devices::rep_starter(&h.doc(), r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::No))
         .map(|(r, _)| r)
         .unwrap();
     let _ = n;
     h.run("showtext", json!({"kind": "tag", "show": "off", "representation": no_rep.hex()})).unwrap();
-    let key = ecad_engine::defaults::symbol_key("text.tag.show", no_rep);
+    let key = ecad_electrical::defaults::symbol_key("text.tag.show", no_rep);
     assert!(h.doc().devices[&c].properties.contains_key(&key));
     // Erase the contact: its key goes in the same transaction.
     let page = h.first_page();
@@ -246,7 +246,7 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     let coil = reps
         .iter()
         .copied()
-        .find(|r| devices::rep_starter(&h.doc(), &h.doc().representations[r]).is_some_and(|s| s.key == ecad_engine::symbols::StarterKey::Coil))
+        .find(|r| devices::rep_starter(&h.doc(), &h.doc().representations[r]).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
         .unwrap();
     let other = reps.iter().copied().find(|r| *r != coil).unwrap();
     h.run("showtext", json!({"kind": "tag", "show": "off", "representation": coil.hex()})).unwrap();
@@ -270,7 +270,7 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     let keys: Vec<&String> = props.keys().filter(|k| k.starts_with("text.")).collect();
     let new_hex = new_rep.hex();
     assert!(keys.iter().all(|k| k.contains(&new_hex)), "only the new symbol's keys: {keys:?}");
-    assert_eq!(props.get(&ecad_engine::defaults::symbol_key("text.tag.show", new_rep)).map(String::as_str), Some("no"));
+    assert_eq!(props.get(&ecad_electrical::defaults::symbol_key("text.tag.show", new_rep)).map(String::as_str), Some("no"));
     assert!(props.contains_key(&format!("text.{new_hex}.tag.at")), "{keys:?}");
     assert_eq!(keys.len(), 2, "{keys:?}");
     h.check();

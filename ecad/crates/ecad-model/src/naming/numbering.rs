@@ -29,15 +29,15 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use crate::book::Book;
+use crate::document::book::Book;
 use crate::connectivity::{NetData, NetKey, split_number};
-use crate::doc::{Document, ItemKind, Primitive, Representation, Subject};
-use crate::geom::Pt;
-use crate::id::{CableId, DeviceId, FolderId, PageId, ConnectionPointId, WireId};
-use crate::op::{ObjectRef, Op};
-use crate::sheet::Grid;
-use crate::tag::{self, FIXED_KEY, HIGH_RESET_PREFIX, HighWater, TAG_KEY};
-use crate::wiring;
+use crate::document::doc::{Document, ItemKind, Primitive, Representation, Subject};
+use crate::geometry::geom::Pt;
+use crate::naming::id::{CableId, DeviceId, FolderId, PageId, ConnectionPointId, WireId};
+use crate::document::op::{ObjectRef, Op};
+use crate::document::sheet::Grid;
+use crate::naming::tag::{self, FIXED_KEY, HIGH_RESET_PREFIX, HighWater, TAG_KEY};
+use crate::connectivity::wiring;
 
 /// The kind of item a row numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -316,7 +316,7 @@ impl<'a> Places<'a> {
         let label = self.book().number(doc, page);
         let style = self.doc.settings.reference_style();
         let g = self.grid(page);
-        crate::derive::place_on(g, &label, at).map_or(label, |p| p.text(style))
+        crate::connectivity::derive::place_on(g, &label, at).map_or(label, |p| p.text(style))
     }
 
     /// The anchor of a representation: its symbol's origin, its path's midpoint, its point.
@@ -364,10 +364,10 @@ impl<'a> Places<'a> {
     }
 
     /// The anchor of a net (or of one wire, numbering per conductor): where its first wire in net
-    /// order starts ([`crate::derive::wire_start`]).
+    /// order starts ([`crate::connectivity::derive::wire_start`]).
     fn net_anchor(&mut self, net: &NetData) -> Option<(PageId, Pt, Order)> {
         let first = wiring::first_wire(self.doc, net)?;
-        let (page, at) = crate::derive::wire_start(self.doc, first)?;
+        let (page, at) = crate::connectivity::derive::wire_start(self.doc, first)?;
         let o = self.order(page, at);
         Some((page, at, o))
     }
@@ -378,7 +378,7 @@ impl<'a> Places<'a> {
         let mut todo = vec![(folder, 1usize)];
         let mut seen = BTreeSet::new();
         while let Some((f, depth)) = todo.pop() {
-            if depth > crate::book::MAX_FOLDER_DEPTH || !seen.insert(f) {
+            if depth > crate::document::book::MAX_FOLDER_DEPTH || !seen.insert(f) {
                 continue;
             }
             out.extend(self.doc.pages_in_folder(f));
@@ -405,15 +405,15 @@ pub fn rep_anchor_in(places: &mut Places<'_>, subject: Subject) -> Option<(PageI
 
 /// Whether a project has provisional tags on (FP2).
 pub fn provisional_on(doc: &Document) -> bool {
-    use crate::keys::PropsExt;
-    doc.display.flag(crate::keys::NUMBERING_PROVISIONAL) == Some(true)
+    use crate::naming::keys::PropsExt;
+    doc.display.flag(crate::naming::keys::NUMBERING_PROVISIONAL) == Some(true)
 }
 
 /// Whether a device or cable with these properties is fixed (FP1). A provisional tag never
 /// counts as fixed (overseer ruling, tester 026 bug 2): Finalise numbers it whatever the flag says.
-pub fn is_fixed(props: &crate::doc::Properties) -> bool {
-    use crate::keys::PropsExt;
-    props.flag(crate::keys::TAG_FIXED) == Some(true) && !props.text(crate::keys::TAG).is_some_and(tag::is_provisional)
+pub fn is_fixed(props: &crate::document::doc::Properties) -> bool {
+    use crate::naming::keys::PropsExt;
+    props.flag(crate::naming::keys::TAG_FIXED) == Some(true) && !props.text(crate::naming::keys::TAG).is_some_and(tag::is_provisional)
 }
 
 /// The next provisional tag of `prefix` (`-K?3`): the highest provisional number of that prefix
@@ -439,7 +439,7 @@ pub fn highest_in_use(doc: &Document, prefix: &str) -> u64 {
 }
 
 /// The fixed flag stored on a provisional tag, which does not count (see [`is_fixed`]).
-fn stale_flag(props: &crate::doc::Properties) -> Option<String> {
+fn stale_flag(props: &crate::document::doc::Properties) -> Option<String> {
     props.get(TAG_KEY).filter(|t| tag::is_provisional(t)).and(props.get(FIXED_KEY)).cloned()
 }
 
@@ -509,7 +509,7 @@ pub fn plan_ranked(doc: &Document, req: &Request, high: &HighWater, rank: Rank<'
     }
     // Brief 054 (design 054 §3.4): what is anchored on a page with checks and references off is
     // not numbered.
-    let off = crate::sheet::checks_off_pages(doc);
+    let off = crate::document::sheet::checks_off_pages(doc);
     if !off.is_empty() {
         let conn = doc.connectivity();
         let mut dropped: BTreeSet<ObjectRef> = BTreeSet::new();
@@ -563,7 +563,7 @@ fn plan_tags(
             kind: Kind::Devices,
             tag,
             fixed: c.is_fixed(),
-            stale_flag: (c.tag_fixed && !c.is_fixed()).then(|| crate::words::flag_word(true).to_string()),
+            stale_flag: (c.tag_fixed && !c.is_fixed()).then(|| crate::naming::words::flag_word(true).to_string()),
             anchor: None,
             id: id.0,
         });
@@ -747,7 +747,7 @@ fn plan_terminal_blocks(doc: &Document, req: &Request, places: &mut Places<'_>, 
         for (_, r) in doc.representations_of(Subject::Device(*strip)) {
             let Some(at) = places.rep_point(r) else { continue };
             let shown: Vec<ConnectionPointId> = if r.connection_points.is_empty() {
-                let keys: BTreeSet<&crate::point::PointKey> = match doc.items.get(r.items.first().unwrap_or(&crate::id::ItemId(0))).map(|i| &i.kind) {
+                let keys: BTreeSet<&crate::geometry::point::PointKey> = match doc.items.get(r.items.first().unwrap_or(&crate::naming::id::ItemId(0))).map(|i| &i.kind) {
                     Some(ItemKind::Symbol(s)) => {
                         doc.definitions.get(&s.definition).map(|d| d.terminals.iter().map(|t| &t.key).collect()).unwrap_or_default()
                     }
@@ -979,10 +979,10 @@ pub fn object_id(o: ObjectRef) -> u128 {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use super::*;
-    use crate::doc::{Device, Form, Item, Page, Style, SymbolInstance};
-    use crate::geom::Placement;
-    use crate::id::{DefinitionId, ItemId, LayerId, RepresentationId};
+    use crate::*;
+    use crate::document::doc::{Device, Form, Item, Page, Style, SymbolInstance};
+    use crate::geometry::geom::Placement;
+    use crate::naming::id::{DefinitionId, ItemId, LayerId, RepresentationId};
 
     /// Three pages; each device a symbol at (x, y) on its page.
     fn fixture(devs: &[(u128, &str, usize, f64, f64, bool)]) -> Document {
@@ -992,7 +992,7 @@ mod tests {
             d.pages.insert(p, Page::titled(format!("P{i}")).unwrap());
             d.page_order.push(p);
         }
-        let style = Style { layer: LayerId(1), color: crate::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+        let style = Style { layer: LayerId(1), color: crate::document::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         for (id, t, page, x, y, fixed) in devs {
             let mut c = Device::default().with_tag(Some(t));
             c.tag_fixed = *fixed;
@@ -1006,7 +1006,7 @@ mod tests {
                     style: style.clone(),
                     kind: ItemKind::Symbol(SymbolInstance {
                         definition: DefinitionId(9),
-                        placement: Placement { origin: Pt::new(*x, *y), rotation: crate::units::Radians(0.0), mirror: false, scale: 1.0 },
+                        placement: Placement { origin: Pt::new(*x, *y), rotation: crate::geometry::units::Radians(0.0), mirror: false, scale: 1.0 },
                     }),
                 },
             );

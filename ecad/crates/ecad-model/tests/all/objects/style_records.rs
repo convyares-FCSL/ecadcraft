@@ -2,15 +2,15 @@
 //! body of their own catalogue. A wire type reads and writes its typed fields, refuses an unknown
 //! field or a value in a form it does not store, and cannot be filed under another catalogue.
 
-use ecad_model::style::wire::{Insulation, LineColour};
-use ecad_model::style::{StyleBody, WireType};
-use ecad_model::units::Mm;
-use ecad_model::wire::{Colours, WireSize};
+use ecad_model::objects::styles::wire::{Insulation, LineColour};
+use ecad_model::objects::styles::{StyleBody, WireType};
+use ecad_model::geometry::units::Mm;
+use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{Author, Ledger, Op, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 fn earth() -> WireType {
     WireType {
-        potential: Some(ecad_model::text::Text::new("PE").unwrap()),
+        potential: Some(ecad_model::naming::text::Text::new("PE").unwrap()),
         size: WireSize::parse("6"),
         colours: Colours::parse("GN/YE"),
         insulation: Some(Insulation::Pvc),
@@ -67,7 +67,7 @@ fn a_record_is_filed_only_under_its_own_catalogue() {
     };
     assert!(l.commit(Author::User, "wrong", vec![set(StyleCatalogue::Text)]).is_err(), "a wire type is no text style");
     l.commit(Author::User, "right", vec![set(StyleCatalogue::Wire)]).unwrap();
-    let r = ecad_model::style::record(l.document(), StyleLayer::Project, StyleCatalogue::Wire, &id).unwrap();
+    let r = ecad_model::objects::styles::record(l.document(), StyleLayer::Project, StyleCatalogue::Wire, &id).unwrap();
     assert_eq!(r.body.wire().and_then(|w| w.insulation), Some(Insulation::Pvc));
 }
 
@@ -75,8 +75,8 @@ fn a_record_is_filed_only_under_its_own_catalogue() {
 /// form does not read.
 #[test]
 fn a_text_style_reads_its_typed_fields_only() {
-    use ecad_model::style::TextStyle;
-    use ecad_model::style::text::{Font, StyleColour, Weight};
+    use ecad_model::objects::styles::TextStyle;
+    use ecad_model::objects::styles::text::{Font, StyleColour, Weight};
     let t = TextStyle { font: Font::parse("Plex"), height: Some(Mm(3.5)), weight: Some(Weight::Bold), colour: StyleColour::parse("#C62828") };
     let v = serde_json::to_value(StyleRecord::new("Big", StyleBody::Text(t.clone()))).unwrap();
     assert_eq!(v["body"]["text"], serde_json::json!({"font": "Plex", "height": 3.5, "weight": "bold", "colour": "#c62828"}));
@@ -98,9 +98,9 @@ fn a_text_style_reads_its_typed_fields_only() {
 /// Location styles (design 072 §8): typed line, colours and label style; strict read.
 #[test]
 fn a_location_style_reads_its_typed_fields_only() {
-    use ecad_model::style::LocationStyle;
-    use ecad_model::style::text::StyleColour;
-    use ecad_model::style::wire::LineType;
+    use ecad_model::objects::styles::LocationStyle;
+    use ecad_model::objects::styles::text::StyleColour;
+    use ecad_model::objects::styles::wire::LineType;
     let l = LocationStyle {
         line_type: Some(LineType::Dashdot),
         line_weight: Some(Mm(0.5)),
@@ -121,8 +121,8 @@ fn a_location_style_reads_its_typed_fields_only() {
 /// Rating tables (design 072 §8): the source is one line, the rows validated text; strict read.
 #[test]
 fn a_rating_table_reads_its_typed_fields_only() {
-    use ecad_model::style::RatingTable;
-    use ecad_model::text::{LongText, Text};
+    use ecad_model::objects::styles::RatingTable;
+    use ecad_model::naming::text::{LongText, Text};
     let t = RatingTable { source: Text::new("made up").ok(), rows: LongText::new("kind,a\ncapacity,1").ok() };
     let v = serde_json::to_value(StyleRecord::new("T1", StyleBody::RatingTable(t.clone()))).unwrap();
     assert_eq!(serde_json::from_value::<StyleRecord>(v.clone()).unwrap().body, StyleBody::RatingTable(t));
@@ -136,8 +136,8 @@ fn a_rating_table_reads_its_typed_fields_only() {
 /// Page types (design 072 §8): typed sheet, frame, title block, switches and holds; strict read.
 #[test]
 fn a_page_type_reads_its_typed_fields_only() {
-    use ecad_model::style::PageType;
-    use ecad_model::style::page::{Holds, TypeBlock, TypeFrame, TypeSheet};
+    use ecad_model::objects::styles::PageType;
+    use ecad_model::objects::styles::page::{Holds, TypeBlock, TypeFrame, TypeSheet};
     let t = PageType {
         sheet: TypeSheet::parse("A2"),
         frame: TypeFrame::parse("project"),
@@ -160,15 +160,15 @@ fn a_page_type_reads_its_typed_fields_only() {
 /// block; strict read.
 #[test]
 fn a_frame_style_reads_its_typed_fields_only() {
-    use ecad_model::style::FrameStyle;
-    use ecad_model::style::frame::{BlockAt, FrameMargins, FrameSheet};
+    use ecad_model::objects::styles::FrameStyle;
+    use ecad_model::objects::styles::frame::{BlockAt, FrameMargins, FrameSheet};
     let f = FrameStyle {
         border_weight: Some(Mm(0.7)),
         grid_labels: Some(false),
         sheet: FrameSheet::parse("page"),
-        margins: ecad_model::sheet::parse_margins("15,10,12,8").map(FrameMargins),
+        margins: ecad_model::document::sheet::parse_margins("15,10,12,8").map(FrameMargins),
         block: Some(BlockAt::BottomRight),
-        title_block: Some(ecad_model::title_block::TitleBlockLayout::blank(180.0, 40.0)),
+        title_block: Some(ecad_model::objects::title_block::TitleBlockLayout::blank(180.0, 40.0)),
         ..FrameStyle::default()
     };
     let v = serde_json::to_value(StyleRecord::new("A2", StyleBody::Frame(f.clone()))).unwrap();
@@ -190,13 +190,13 @@ fn a_frame_style_reads_its_typed_fields_only() {
 /// shield, gland and diameter; strict read.
 #[test]
 fn a_cable_type_reads_its_typed_fields_only() {
-    use ecad_model::style::CableType;
-    use ecad_model::style::cable::{CoreColours, CoreScheme, Shield};
+    use ecad_model::objects::styles::CableType;
+    use ecad_model::objects::styles::cable::{CoreColours, CoreScheme, Shield};
     let c = CableType {
         size: WireSize::parse("1.5"),
         core_colours: CoreColours::parse("BN,BK,GY,GNYE"),
         core_scheme: Some(CoreScheme::Harmonised),
-        cores: ecad_model::text::Text::new("4G").ok(),
+        cores: ecad_model::naming::text::Text::new("4G").ok(),
         shield: Some(Shield::OverallAndPairs),
         outer_diameter: Some(Mm(9.5)),
         ..CableType::default()

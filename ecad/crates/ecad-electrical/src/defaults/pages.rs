@@ -1,7 +1,7 @@
 //! Brief 054's registry entries (design 054 §2.3, §6.4, FP5): a page's type (page level only)
 //! and the cover's block toggles (standard and project).
 
-use super::{Entry, Kind, Level, ProjectSource, Slot};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 
 const GROUP: &str = "Pages";
 const BRIEF: &str = "054";

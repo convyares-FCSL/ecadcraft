@@ -22,80 +22,45 @@
 //!   key list (design 072 §9); [`text`]: validated text; [`colour`]: conductor colours.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
-pub mod aid;
-pub mod book;
-pub mod builtins;
-pub mod colour;
 pub mod connectivity;
-pub mod derive;
 mod dev;
-pub mod device;
-pub mod diff;
-pub mod doc;
-pub mod effect;
+pub mod document;
 pub mod error;
-pub mod geom;
-pub mod id;
-mod index;
-pub mod invariant;
-pub mod keys;
-pub mod ledger;
-pub mod links;
-pub mod loose_part;
+pub mod geometry;
 pub mod merge;
-pub mod numbering;
-pub mod op;
-pub mod page;
-pub mod plc;
-pub mod point;
-pub mod prefix;
-pub mod project;
-pub mod role;
-pub mod route;
-pub mod sheet;
-pub mod strict;
-pub mod style;
-pub mod tag;
-pub mod text;
-pub mod title_block;
-pub mod units;
-pub mod user;
-pub mod view;
-pub mod wire;
-pub mod wire_order;
-pub mod wiring;
-pub mod words;
+pub mod naming;
+pub mod objects;
 
-pub use aid::{Aid, AidKind, LocationBox};
-pub use book::PageNo;
-pub use connectivity::{Connectivity, NetData, NetKey, Node};
-pub use device::{DeviceGroup, DeviceType, TextField};
-pub use doc::{
+pub use crate::objects::aid::{Aid, AidKind, LocationBox};
+pub use crate::document::book::PageNo;
+pub use crate::connectivity::{Connectivity, NetData, NetKey, Node};
+pub use crate::objects::devices::{DeviceGroup, DeviceType, TextField};
+pub use crate::document::doc::{
     Accepts, Cable, Color, ContactMirror, ContentHash, Core, CoreLabel, CorePosition, Definition, Device, Document, End, Folder, Form, Item,
     ItemKind, Join, Layer, LengthUnit, MAX_CORE_LABEL, NotASlotText, Origin, Page, Primitive, ProjectSettings, Properties, Purpose, ReferenceStyle,
     Representation, SlotText, Style, Subject, SymbolDefault, SymbolDefaultError, SymbolDefaults, SymbolInstance, ConnectionPoint, ConnectionPointDef,
     ConnectionPointOwner, TextHAlign, TextSlot, TextVAlign, Wire,
 };
-pub use error::{ModelError, Noun, ParseError, Parsed, Result};
-pub use geom::{Placement, Pt};
-pub use id::{
+pub use crate::error::{ModelError, Noun, ParseError, Parsed, Result};
+pub use crate::geometry::geom::{Placement, Pt};
+pub use crate::naming::id::{
     AidId, CableId, ConductorId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LinkId, LocationId,
     LoosePartId, NetId, PageId, ProjectId, RepresentationId, RouteId, StandardId, ConnectionPointId, TxId, UserFieldId, WireId,
 };
-pub use invariant::Touched;
-pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
-pub use op::{ObjectRef, Op};
-pub use page::{GenKind, PageKind, PageTitle};
-pub use point::{ChannelRole, LevelIo, PointKey};
-pub use project::{
+pub use crate::document::invariant::Touched;
+pub use crate::document::ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
+pub use crate::document::op::{ObjectRef, Op};
+pub use crate::document::page::{GenKind, PageKind, PageTitle};
+pub use crate::geometry::point::{ChannelRole, LevelIo, PointKey};
+pub use crate::document::project::{
     CustomField, Function, InfoField, ListCode, ListDescription, ListEntry, Location, Project, ProjectInfo, Rev, RevField, RevValue, Revision,
 };
-pub use role::{PartRole, Role};
-pub use route::{Route, RouteEnd};
-pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
-pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
-pub use user::{DeviceLink, LinkKind, UserFieldDef, UserFieldKind, UserValue};
-pub use words::{Side, Word};
+pub use crate::objects::role::{PartRole, Role};
+pub use crate::objects::route::{Route, RouteEnd};
+pub use crate::document::sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
+pub use crate::objects::styles::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
+pub use crate::objects::user::{DeviceLink, LinkKind, UserFieldDef, UserFieldKind, UserValue};
+pub use crate::naming::words::{Side, Word};
 
 /// Version of the op and document schema. Independent of the product version (proposal §8.1):
 /// it changes only when the meaning or shape of recorded ops changes.

@@ -7,13 +7,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::checks_panel;
+use ecad_app::checks::panel;
 use ecad_model::PageId;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
 
-use crate::mouse_tester::{Deltas, harness_with, shot};
+use crate::canvas::mouse_acceptance::{Deltas, harness_with, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -123,7 +123,7 @@ fn the_coil_table_the_contact_texts_properties_and_checks() {
     h.run_steps(2);
 
     // The Checks tab: one too-many-contacts row; a click goes to page 105.
-    crate::project_panel::click(&mut h, checks_panel::CHECKS_TAB);
+    crate::pages::project_panel::click(&mut h, panel::CHECKS_TAB);
     // UI rev 3: Checks is the inspector's tab; the whole list is Project ▸ Check list.
     assert_eq!(h.state().shell_state().right_tab, ecad_app::shell::RightTab::Checks);
     h.state_mut().set_workspace(ecad_app::shell::Workspace::Lists);
@@ -131,7 +131,7 @@ fn the_coil_table_the_contact_texts_properties_and_checks() {
     h.run_steps(3);
     let rows = h.state().panel.checks.rows().to_vec();
     let row = rows.iter().find(|r| r.check.kind == ecad_engine::checks::Kind::TooManyContacts).expect("the too-many-contacts row").clone();
-    h.get_by_label(&checks_panel::row_label(&row)).click();
+    h.get_by_label(&panel::row_label(&row)).click();
     h.run_steps(3);
     assert_eq!(h.state().panel.active.map(|p| p.hex()), Some(p105));
     save(&h, &deltas, "025-checks.png");

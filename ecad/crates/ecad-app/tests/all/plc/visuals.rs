@@ -4,16 +4,16 @@
 //! Screenshot `051-lists-plc.png` when `ECAD_TESTER_SHOTS` names a folder.
 
 use ecad_app::App;
-use ecad_app::lists::plc::{self, IoView};
+use ecad_app::plc::list::{self, IoView};
 use ecad_app::shell::{ListsView, Workspace};
 use ecad_model::DeviceId;
-use ecad_ui::table::TableSource;
+use ecad_widgets::table::TableSource;
 use eframe::egui;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{Collect, Deltas};
-use crate::project_panel::{doc, head, new_app, ok, take};
+use crate::canvas::mouse_acceptance::{Collect, Deltas};
+use crate::pages::project_panel::{doc, head, new_app, ok, take};
 
 type H = Harness<'static, App>;
 
@@ -85,8 +85,8 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
     assert_eq!(v.source.columns().len(), 9);
     // Squares: in use, reserved, a check.
     let dq_tile = &v.strip[2];
-    assert_eq!(dq_tile.marks.iter().filter(|m| **m == ecad_ui::table::strip::Mark::Soft).count(), 3);
-    assert_eq!(v.strip[1].marks[3], ecad_ui::table::strip::Mark::Alert);
+    assert_eq!(dq_tile.marks.iter().filter(|m| **m == ecad_widgets::table::strip::Mark::Soft).count(), 3);
+    assert_eq!(v.strip[1].marks[3], ecad_widgets::table::strip::Mark::Alert);
     assert!(h.query_by_label("ecad.plc.tile.2.makepage").is_some(), "DQ has no channel drawn");
     // Brief 056: the first rack brought the rack page (page 2), so the AI card's page is 3.
     assert!(h.query_by_label("ecad.plc.tile.3.page.3").is_some(), "AI on page 3");
@@ -108,7 +108,7 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
     {
         let t = h.state_mut();
         let io = &mut t.reports.as_mut().unwrap().io;
-        io.table.cursor_col = Some(plc::TEXT);
+        io.table.cursor_col = Some(list::TEXT);
         // Brief 056: channel 8 is the first free channel shown (9 to 15 are folded).
         io.table.selection.click((di, 8));
     }
@@ -119,12 +119,12 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
     assert_eq!(v.source.row((di, 8)).and_then(|r| r.text.clone()).as_deref(), Some("Spare sensor"));
     assert_eq!(v.strip_builds, builds, "no strip rebuild");
     assert!(v.tiles_patched > patched, "the DI tile patched");
-    assert_eq!(v.strip[1].marks[8], ecad_ui::table::strip::Mark::Soft);
+    assert_eq!(v.strip[1].marks[8], ecad_widgets::table::strip::Mark::Soft);
     // Too long: refused on the cell, nothing written.
     let before = head(&mut h);
     {
         let io = &mut h.state_mut().reports.as_mut().unwrap().io;
-        io.table.cursor_col = Some(plc::TEXT);
+        io.table.cursor_col = Some(list::TEXT);
         // Channel 9 is now the first free channel shown.
         io.table.selection.click((di, 9));
     }
@@ -190,19 +190,19 @@ fn edit_lines_follow_the_column() {
     };
     let one = row(vec![(ecad_model::ChannelRole::In, "4".into())]);
     let two = row(vec![(ecad_model::ChannelRole::Plus, "1".into()), (ecad_model::ChannelRole::Minus, "5".into())]);
-    let cases: Vec<(&Row, ecad_ui::table::ColumnId, &str, Option<&str>)> = vec![
-        (&one, plc::TEXT, "Pump", Some(r#""text":"Pump""#)),
-        (&one, plc::TEXT, "  ", Some(r#""text":null"#)),
-        (&one, plc::ADDRESS, "I9.9*", Some(r#""address":"I9.9""#)),
-        (&one, plc::ADDRESS, "", Some(r#""address":null"#)),
-        (&one, plc::PINS, "7", Some(r#""pins":{"in":"7"}"#)),
-        (&two, plc::PINS, "+:2 -:6", Some(r#""pins":{"+":"2","-":"6"}"#)),
-        (&two, plc::PINS, "2", None),
-        (&two, plc::PINS, "x:2", None),
-        (&one, plc::STATE, "used", None),
+    let cases: Vec<(&Row, ecad_widgets::table::ColumnId, &str, Option<&str>)> = vec![
+        (&one, list::TEXT, "Pump", Some(r#""text":"Pump""#)),
+        (&one, list::TEXT, "  ", Some(r#""text":null"#)),
+        (&one, list::ADDRESS, "I9.9*", Some(r#""address":"I9.9""#)),
+        (&one, list::ADDRESS, "", Some(r#""address":null"#)),
+        (&one, list::PINS, "7", Some(r#""pins":{"in":"7"}"#)),
+        (&two, list::PINS, "+:2 -:6", Some(r#""pins":{"+":"2","-":"6"}"#)),
+        (&two, list::PINS, "2", None),
+        (&two, list::PINS, "x:2", None),
+        (&one, list::STATE, "used", None),
     ];
     for (r, col, value, want) in cases {
-        let line = plc::edit_line(r, col, value);
+        let line = list::edit_line(r, col, value);
         match want {
             Some(w) => assert!(line.as_deref().is_some_and(|l| l.starts_with("plcchannel ") && l.contains(w)), "{value}: {line:?}"),
             None => assert!(line.is_none(), "{value}: {line:?}"),
@@ -217,14 +217,14 @@ fn edit(h: &mut H, label: &str, text: &str) {
     let id = view(h).table.id();
     h.ctx.memory_mut(|m| m.request_focus(id));
     h.run_steps(1);
-    crate::project_panel::key(h, Key::Enter, Modifiers::NONE);
+    crate::pages::project_panel::key(h, Key::Enter, Modifiers::NONE);
     let field = h.get_by_label(label);
     field.focus();
     h.run_steps(1);
     h.event(Event::Key { key: Key::A, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
     h.event(Event::Text(text.into()));
     h.run_steps(1);
-    crate::project_panel::key(h, Key::Enter, Modifiers::NONE);
+    crate::pages::project_panel::key(h, Key::Enter, Modifiers::NONE);
     h.run_steps(2);
 }
 
@@ -233,7 +233,7 @@ fn edit(h: &mut H, label: &str, text: &str) {
 /// `051-rack-sheet.png`.
 #[test]
 fn screenshots_of_the_io_and_rack_sheets() {
-    let Some(_) = crate::project_panel::shots() else { return };
+    let Some(_) = crate::pages::project_panel::shots() else { return };
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas.clone());
     fixture(&mut h);
@@ -261,7 +261,7 @@ fn screenshots_of_the_io_and_rack_sheets() {
 /// (the DQ card's own page, at 180°).
 #[test]
 fn screenshots_of_the_cards_on_the_page() {
-    let Some(_) = crate::project_panel::shots() else { return };
+    let Some(_) = crate::pages::project_panel::shots() else { return };
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas.clone());
     fixture(&mut h);

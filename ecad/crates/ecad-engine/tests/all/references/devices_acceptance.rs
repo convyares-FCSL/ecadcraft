@@ -24,7 +24,7 @@ use crate::common::close_all;
 use cadcraft_engine::Session;
 use ecad_engine::xref::{self, RefIndex};
 use ecad_engine::{Persistence, ProjectHandle};
-use ecad_inspect::EventKind;
+use ecad_engine::history::event_log::EventKind;
 use ecad_model::{DeviceId, PageId, RepresentationId, WireId};
 use serde_json::{Value, json};
 

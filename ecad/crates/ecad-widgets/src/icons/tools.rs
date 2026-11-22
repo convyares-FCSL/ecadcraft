@@ -1,6 +1,6 @@
 //! The seven tool groups of the Draw workspace (spec §2). Tool icons echo the schematic.
 
-use super::Pen;
+use crate::icons::Pen;
 
 /// Select: an arrow pointer.
 pub fn select(p: &mut Pen) {

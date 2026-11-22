@@ -10,7 +10,7 @@ use ecad_app::developer;
 use eframe::egui::{self, FontFamily, TextStyle};
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{Collect, Deltas, harness_with, shot};
+use crate::canvas::mouse_acceptance::{Collect, Deltas, harness_with, shot};
 
 #[test]
 fn the_app_uses_ecad_fonts_and_shows_the_primitives_page() {
@@ -23,14 +23,14 @@ fn the_app_uses_ecad_fonts_and_shows_the_primitives_page() {
     let (ui_chain, sheet_chain, proportional) = ctx.fonts(|f| {
         let d = f.definitions();
         let chain = |name: &str| d.families.get(&FontFamily::Name(name.into())).cloned().unwrap_or_default();
-        (chain(ecad_ui::fonts::UI), chain(ecad_ui::fonts::SHEET), d.families.get(&FontFamily::Proportional).cloned().unwrap_or_default())
+        (chain(ecad_widgets::fonts::UI), chain(ecad_widgets::fonts::SHEET), d.families.get(&FontFamily::Proportional).cloned().unwrap_or_default())
     });
     assert_eq!(ui_chain.first().map(String::as_str), Some("ecad-ibm-plex-sans-400"));
     assert_eq!(sheet_chain.first().map(String::as_str), Some("ecad-barlow-semi-condensed-400"));
     assert_eq!(proportional.first().map(String::as_str), Some("ecad-ibm-plex-sans-400"));
     let body = ctx.global_style().text_styles.get(&TextStyle::Body).cloned();
-    assert_eq!(body.map(|f| f.family), Some(FontFamily::Name(ecad_ui::fonts::UI.into())));
-    assert_eq!(ctx.global_style().visuals.panel_fill, ecad_ui::color(ecad_ui::SHELL.panel));
+    assert_eq!(body.map(|f| f.family), Some(FontFamily::Name(ecad_widgets::fonts::UI.into())));
+    assert_eq!(ctx.global_style().visuals.panel_fill, ecad_widgets::color(ecad_widgets::SHELL.panel));
     // The page: Developer ▸ ui.primitives.
     // Brief 038: the Developer section is the Text panel's Commands tab (Ctrl+/).
     h.state_mut().toggle_text_panel();
@@ -61,14 +61,14 @@ fn the_showcase_screenshot_for_the_owner() {
     let deltas: Deltas = Arc::default();
     let mut first = true;
     let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1100.0, 1500.0)).renderer(Collect(deltas.clone())).build_ui_state(
-        move |ui, s: &mut ecad_ui::showcase::Showcase| {
+        move |ui, s: &mut ecad_widgets::showcase::Showcase| {
             if std::mem::take(&mut first) {
-                ecad_ui::fonts::install(ui.ctx(), cadcraft_ui_egui::theme::font_definitions("en"));
+                ecad_widgets::fonts::install(ui.ctx(), cadcraft_ui_egui::theme::font_definitions("en"));
             }
-            ecad_ui::style::apply(ui.ctx());
-            ecad_ui::showcase::show(ui, s);
+            ecad_widgets::style::apply(ui.ctx());
+            ecad_widgets::showcase::show(ui, s);
         },
-        ecad_ui::showcase::Showcase::default(),
+        ecad_widgets::showcase::Showcase::default(),
     );
     h.run_steps(4);
     let path = std::path::PathBuf::from(dir).join("037-showcase.png");
@@ -77,27 +77,27 @@ fn the_showcase_screenshot_for_the_owner() {
     }
 }
 
-/// The value components' gallery (`ecad_ui::showcase::components`, style guide
+/// The value components' gallery (`ecad_widgets::showcase::components`, style guide
 /// `docs/design/components.md`): every component is there in every state, on Graphite and on the
 /// light shell, and an editable value answers as an input while a read value does not. Writes
 /// `components-dark.png` and `components-light.png` to `$ECAD_TESTER_SHOTS` when it names a folder.
 #[test]
 fn the_component_gallery_shows_every_component_in_both_themes() {
-    for (theme, name) in [(ecad_ui::Theme::Dark, "components-dark.png"), (ecad_ui::Theme::Light, "components-light.png")] {
+    for (theme, name) in [(ecad_widgets::Theme::Dark, "components-dark.png"), (ecad_widgets::Theme::Light, "components-light.png")] {
         let deltas: Deltas = Arc::default();
         let mut first = true;
         let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1460.0, 1200.0)).renderer(Collect(deltas.clone())).build_ui_state(
-            move |ui, s: &mut ecad_ui::showcase::Showcase| {
+            move |ui, s: &mut ecad_widgets::showcase::Showcase| {
                 if std::mem::take(&mut first) {
-                    ecad_ui::fonts::install(ui.ctx(), cadcraft_ui_egui::theme::font_definitions("en"));
+                    ecad_widgets::fonts::install(ui.ctx(), cadcraft_ui_egui::theme::font_definitions("en"));
                 }
-                ecad_ui::set_theme(theme);
-                ecad_ui::style::apply(ui.ctx());
-                egui::Frame::NONE.fill(ecad_ui::color(ecad_ui::SHELL.panel)).inner_margin(ecad_ui::tokens::space::PANEL_PADDING).show(ui, |ui| {
-                    ecad_ui::showcase::components(ui, s);
+                ecad_widgets::set_theme(theme);
+                ecad_widgets::style::apply(ui.ctx());
+                egui::Frame::NONE.fill(ecad_widgets::color(ecad_widgets::SHELL.panel)).inner_margin(ecad_widgets::tokens::space::PANEL_PADDING).show(ui, |ui| {
+                    ecad_widgets::showcase::components(ui, s);
                 });
             },
-            ecad_ui::showcase::Showcase::default(),
+            ecad_widgets::showcase::Showcase::default(),
         );
         h.run_steps(4);
         for label in ["Text entry", "Number with unit", "Selector", "Colour", "Value with hint", "Read value", "Toggle", "\u{2192} 2/C1"] {
@@ -114,5 +114,5 @@ fn the_component_gallery_shows_every_component_in_both_themes() {
             eprintln!("no wgpu adapter: {name} skipped");
         }
     }
-    ecad_ui::set_theme(ecad_ui::Theme::Dark);
+    ecad_widgets::set_theme(ecad_widgets::Theme::Dark);
 }

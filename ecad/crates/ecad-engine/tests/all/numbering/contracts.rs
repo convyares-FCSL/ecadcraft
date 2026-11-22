@@ -9,7 +9,7 @@ use cadcraft_engine::Session;
 use common::{H, id};
 use ecad_engine::devices::{self, PROVISIONAL_ACI, TextOf};
 use ecad_engine::{Persistence, ProjectHandle};
-use ecad_model::sheet::Grid;
+use ecad_model::document::sheet::Grid;
 use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
@@ -116,7 +116,7 @@ fn e_provisional_tags_are_drawn_orange_listed_in_checks_and_finalised() {
     f.h.points_at(&[(400.0, 20.0), (440.0, 20.0)]);
     let w = f.h.run("wire", json!({"points": [[400, 20], [440, 20]], "potential": "24V"})).unwrap();
     let w: ecad_model::WireId = id(&w, "conductor");
-    let label = f.h.p(|p| ecad_model::wiring::label(p.ledger.document(), w)).unwrap();
+    let label = f.h.p(|p| ecad_model::connectivity::wiring::label(p.ledger.document(), w)).unwrap();
     assert!(label.text.starts_with("24V-?") && label.provisional, "{label:?}");
     // Checks: the provisional row, kept from the ops (equal to a fresh build).
     let kinds = |h: &mut H| {
@@ -136,7 +136,7 @@ fn e_provisional_tags_are_drawn_orange_listed_in_checks_and_finalised() {
     assert_eq!(kept, fresh);
     f.h.run("finalise", json!({})).unwrap();
     assert_eq!(tag(&mut f.h, k), "-K08", "after the highest in use");
-    let label = f.h.p(|p| ecad_model::wiring::label(p.ledger.document(), w)).unwrap();
+    let label = f.h.p(|p| ecad_model::connectivity::wiring::label(p.ledger.document(), w)).unwrap();
     assert!(!label.text.contains('?'), "{label:?}");
     let kept = kinds(&mut f.h);
     assert!(!kept.iter().any(|k| k.starts_with("provisional")), "{kept:?}");
@@ -161,7 +161,7 @@ fn h_save_and_reopen_keep_tags_fixed_flags_the_setting_and_the_high_water_mark()
     let (project, _) = ProjectHandle::open_file(&mut s, &path, 78).unwrap();
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.doc(), live);
-    assert!(ecad_model::numbering::provisional_on(&h2.doc()));
+    assert!(ecad_model::naming::numbering::provisional_on(&h2.doc()));
     assert!(h2.doc().devices[&f.k03].tag_fixed);
     // The reset mark survives: the next real tag follows the renumbered set.
     h2.run("numbering", json!({"provisional": false})).unwrap();

@@ -7,11 +7,11 @@
 //! **Update map.** The list is fixed (it reads nothing); the preview is the Reports window, which
 //! keeps its own (design 024 §6.2).
 
-use ecad_ui::prim::Tone;
-use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
+use ecad_widgets::prim::Tone;
+use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
 use eframe::egui;
 
-use crate::outputs_ui::Tab;
+use crate::reports::panel::Tab;
 
 /// One report: its name, what it reads, how it is grouped and sorted, what else it exports, and
 /// the Reports tab that previews it (`None`: the PLC tab is its preview).
@@ -29,12 +29,12 @@ pub const REPORTS: [Report; 5] = [
     Report { name: "Parts list", reads: "Devices, part sets", grouped: "Location or part", exports: "CSV", tab: Some(Tab::Bom) },
     Report { name: "Terminal plans", reads: "Terminals, cables", grouped: "Strip, then position", exports: "CSV", tab: Some(Tab::Terminals) },
     Report { name: "Cable list", reads: "Cables, cores", grouped: "Cable tag", exports: "CSV", tab: Some(Tab::Cables) },
-    Report { name: "PLC rack overview", reads: "PLC cards, channels", grouped: "Rack, then slot", exports: super::report::DASH, tab: None },
+    Report { name: "PLC rack overview", reads: "PLC cards, channels", grouped: "Rack, then slot", exports: crate::reports::report::DASH, tab: None },
     Report { name: "Wire list", reads: "Wires", grouped: "Wire number", exports: "CSV", tab: Some(Tab::Wires) },
 ];
 
 /// The list's height (its header and rows) and the preview's line under it, px.
-pub const LIST_H: f32 = 6.0 * ecad_ui::tokens::size::ROW_TABLE + ecad_ui::tokens::space::XS + PREVIEW_LINE;
+pub const LIST_H: f32 = 6.0 * ecad_widgets::tokens::size::ROW_TABLE + ecad_widgets::tokens::space::XS + PREVIEW_LINE;
 pub const PREVIEW_LINE: f32 = 40.0;
 /// The preview line's words for the PLC overview.
 pub const PLC_PREVIEW: &str = "The rack overview is Project \u{25b8} PLC: open it there.";
@@ -87,7 +87,7 @@ impl TableSource for ListSource {
             GROUPED => Cell::read(r.grouped),
             EXPORTS => Cell::read(r.exports),
             GENERATED => Cell::Badge("on demand".into(), Tone::Neutral),
-            _ => Cell::read(super::report::DASH),
+            _ => Cell::read(crate::reports::report::DASH),
         }
     }
 }
@@ -122,10 +122,10 @@ impl ReportsList {
 }
 
 /// The Reports tab: the list, then the preview's line; the preview itself is the Reports window,
-/// hosted under it ([`super::workspace::reports_preview`]).
+/// hosted under it ([`crate::workspace::frame::reports_preview`]).
 pub fn show(t: &mut crate::App, ui: &mut egui::Ui) {
-    use ecad_ui::tokens::{size, space, ui_type};
-    let s = ecad_ui::SHELL;
+    use ecad_widgets::tokens::{size, space, ui_type};
+    let s = ecad_widgets::SHELL;
     let Some(r) = t.reports.as_mut() else { return };
     let list_h = 6.0 * size::ROW_TABLE + space::XS;
     let mut open_plc = false;
@@ -161,19 +161,19 @@ pub fn show(t: &mut crate::App, ui: &mut egui::Ui) {
     let picked = r.list.selected().copied();
     // The preview's line.
     let (line, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), PREVIEW_LINE), egui::Sense::hover());
-    super::super::shell::in_rect(ui, line.shrink2(egui::vec2(space::L, 0.0)), "ecad.project.reports.line", |ui| {
+    crate::shell::in_rect(ui, line.shrink2(egui::vec2(space::L, 0.0)), "ecad.project.reports.line", |ui| {
         ui.horizontal_centered(|ui| {
             let name = picked.map_or("", |p| p.name);
-            ui.label(egui::RichText::new(name).font(ecad_ui::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS)).color(ecad_ui::color(s.text)));
+            ui.label(egui::RichText::new(name).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS)).color(ecad_widgets::color(s.text)));
             let words = if picked.is_some_and(|p| p.tab.is_none()) { PLC_PREVIEW } else { "\u{b7} preview" };
-            ui.label(egui::RichText::new(words).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_2)));
+            ui.label(egui::RichText::new(words).size(ui_type::SMALL.size).color(ecad_widgets::color(s.text_2)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add(ecad_ui::prim::Button::new("Open its page").small().disabled(super::workspace::REPORTS_COME));
+                ui.add(ecad_widgets::prim::Button::new("Open its page").small().disabled(crate::workspace::frame::REPORTS_COME));
                 let mut i = 0;
-                ui.add_enabled_ui(false, |ui| ecad_ui::prim::segmented(ui, &mut i, &["As a table", "On the sheet"]))
+                ui.add_enabled_ui(false, |ui| ecad_widgets::prim::segmented(ui, &mut i, &["As a table", "On the sheet"]))
                     .response
-                    .on_disabled_hover_text(super::workspace::REPORTS_COME);
-                if picked.is_some_and(|p| p.tab.is_none()) && ui.add(ecad_ui::prim::Button::new("Open Project \u{25b8} PLC").small()).clicked() {
+                    .on_disabled_hover_text(crate::workspace::frame::REPORTS_COME);
+                if picked.is_some_and(|p| p.tab.is_none()) && ui.add(ecad_widgets::prim::Button::new("Open Project \u{25b8} PLC").small()).clicked() {
                     open_plc = true;
                 }
             });

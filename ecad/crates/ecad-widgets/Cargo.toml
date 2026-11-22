@@ -1,6 +1,6 @@
 [package]
-name = "ecad-ui"
-description = "ECAD's interface kit: the egui style from ecad-tokens, the embedded fonts, the primitives and the icon painters (brief 037)"
+name = "ecad-widgets"
+description = "ECAD's widgets: the screen tokens, the egui style built from them, the embedded fonts, the primitives and the icon painters; no ECAD knowledge"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,12 +9,11 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
-# UiKit (ecad xtask layers): egui, ecad-tokens and ecad-drawing-style only; no `cadcraft-*` crate
+# UiKit (ecad xtask layers): egui and ecad-drawing-style only; no `cadcraft-*` crate
 # and no other ECAD crate, so the widgets stay swappable and test without wgpu.
 # `egui_extras` draws the table's virtualised rows (U3, brief 039). The drawing style gives the
 # sheet font and the sheet colours the gallery shows (design 065 §1.1).
 [dependencies]
-ecad-tokens = { path = "../ecad-tokens" }
 ecad-drawing-style = { workspace = true }
 egui = { version = "0.37", default-features = false }
 egui_extras = { version = "0.37", default-features = false }

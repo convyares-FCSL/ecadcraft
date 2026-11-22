@@ -13,17 +13,17 @@
 //! - Pages and folders keep the longest run already in the target's order; only the others move.
 //! - Named versions are never touched (they are history). `keep_project_key` says which project
 //!   properties are compared (Restore leaves the revision rows as they are now: the filter is
-//!   asked about [`crate::project::REVISIONS_KEY`]).
+//!   asked about [`crate::document::project::REVISIONS_KEY`]).
 //!
 //! Excluded: version names; the derived index and nets (rebuilt by applying the ops).
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{Document, Properties, Wire};
-use crate::id::{FolderId, PageId};
-use crate::invariant::Touched;
-use crate::op::{ObjectRef, Op};
-use crate::style::{StyleCatalogue, StyleCatalogues, StyleLayer, StyleRef};
+use crate::document::doc::{Document, Properties, Wire};
+use crate::naming::id::{FolderId, PageId};
+use crate::document::invariant::Touched;
+use crate::document::op::{ObjectRef, Op};
+use crate::objects::styles::{StyleCatalogue, StyleCatalogues, StyleLayer, StyleRef};
 
 /// `SetProperty` ops turning `a` into `b` on `object`, for the keys `keep` accepts.
 fn props(object: ObjectRef, a: &Properties, b: &Properties, keep: &dyn Fn(&str) -> bool, out: &mut Vec<Op>) {
@@ -296,7 +296,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         props(ObjectRef::Project, &from.display, &to.display, keep_project_key, &mut changes);
         // Revision rows are history: kept as they are now unless the filter accepts them.
         let mut target = to.project.clone();
-        if !keep_project_key(crate::project::REVISIONS_KEY) {
+        if !keep_project_key(crate::document::project::REVISIONS_KEY) {
             target.revisions = from.project.revisions.clone();
         }
         if from.project != target {

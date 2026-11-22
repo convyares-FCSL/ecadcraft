@@ -15,11 +15,11 @@
 //!   034's entries. A strip's tag comes from the starter that made it; later levels join it and
 //!   take no prefix of their own.
 //!
-//! Types, codes, level counts and bridges are catalogue code ([`crate::terminal_types`]).
+//! Types, codes, level counts and bridges are catalogue code ([`crate::terminal_strips::terminal_blocks`]).
 
 use ecad_model::ProjectSettings;
 
-use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
 use crate::CmdError;
 
@@ -46,7 +46,7 @@ fn names_ok(t: &str, n: usize) -> bool {
     let mut seen = std::collections::BTreeSet::new();
     parts.len() == n
         && parts.iter().enumerate().all(|(i, p)| {
-            let digits = ecad_model::words::is_digits(p);
+            let digits = ecad_model::naming::words::is_digits(p);
             !p.is_empty()
                 && p.chars().count() <= 6
                 && !p.chars().any(|c| c == '.' || c == ',' || c.is_whitespace() || c.is_control())
@@ -214,7 +214,7 @@ descriptions! {
 }
 
 /// Whether `key` is one of this file's keys a strip may hold (the separator, level names): what
-/// [`crate::strips`]'s update map watches on a strip and on the project.
+/// [`crate::terminal_strips`]'s update map watches on a strip and on the project.
 pub fn is_label_key(key: &str) -> bool {
     key == SEPARATOR.key || (key.starts_with("terminal.") && key.ends_with(".levels"))
 }
@@ -225,7 +225,7 @@ pub fn is_label_key(key: &str) -> bool {
 /// # Errors
 /// A value the entry does not accept, in words.
 pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
-    let e = super::find(key).filter(|e| e.key.starts_with("terminal."))?;
+    let e = crate::defaults::find(key).filter(|e| e.key.starts_with("terminal."))?;
     Some(match value {
         None => Ok(None),
         Some(v) if v.trim().is_empty() && e.key == SEPARATOR.key => Ok(Some(NO_SEPARATOR.into())),
@@ -246,8 +246,8 @@ a name of digits only must be its level's number (so 1.2 in a link is always lev
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::terminal_types::TYPES;
+    use crate::defaults::*;
+    use crate::terminal_strips::terminal_blocks::TYPES;
 
     #[test]
     fn every_type_has_its_entries() {

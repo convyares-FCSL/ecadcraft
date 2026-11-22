@@ -1,7 +1,7 @@
 //! The rules of brief 010's cable reference commands (design 010 §2, §7): `cableref` (a reference
 //! end), `cablecontinue` (the cable's second drawing) and `cablegoto` (the other end). Each reads
 //! the document and returns the ops to commit and what to report; the derivations themselves are
-//! [`crate::references`].
+//! [`crate::references::cables`].
 //!
 //! Excludes: opening pages and moving the view (`cablegoto`'s engine half), the interactive forms
 //! and the JSON.
@@ -16,10 +16,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::Point;
-use crate::cmd::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::input::Point;
+use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
-use crate::references::{self, Plan};
+use crate::references::cables::{self, Plan};
 
 /// A new reference end: its Point item and its representation.
 #[derive(Debug, Clone, PartialEq)]
@@ -55,7 +55,7 @@ fn reference_ops(ids: &mut IdAllocator, page: PageId, style: Style, cable: Cable
 /// No such cable; the cable already has a reference here, already has two, or has no wire drawn
 /// here (R1 to R3).
 pub fn reference(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, cable: CableId, at: Pt) -> Result<Referenced, CmdError> {
-    references::check_reference(doc, page, cable)?;
+    cables::check_reference(doc, page, cable)?;
     Ok(reference_ops(ids, page, style, cable, at))
 }
 
@@ -100,11 +100,11 @@ pub struct Continued {
 pub fn continue_cable(
     doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, cable: CableId, members: Option<&[WireId]>, at: Pt, toward: Pt, tol: f64,
 ) -> Result<Continued, CmdError> {
-    if members.is_some_and(|m| m.len() > crate::slash::MAX_CABLE_MEMBERS) {
-        return Err(CmdError::refused(references::too_many_members()));
+    if members.is_some_and(|m| m.len() > crate::cables::slash::MAX_CABLE_MEMBERS) {
+        return Err(CmdError::refused(cables::too_many_members()));
     }
-    let plan = references::plan_continue(doc, page, cable, members, at, toward, tol)?;
-    let source = doc.representations.get(&plan.source).ok_or(CmdError::refused(references::no_reference(doc, cable)))?;
+    let plan = cables::plan_continue(doc, page, cable, members, at, toward, tol)?;
+    let source = doc.representations.get(&plan.source).ok_or(CmdError::refused(cables::no_reference(doc, cable)))?;
     let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
     let mut reference = reference_ops(ids, page, style.clone(), cable, at);
     let mut source_after = source.clone();
@@ -177,7 +177,7 @@ pub struct OtherEnd {
 pub fn other_end(doc: &Document, reference: RepresentationId) -> Result<OtherEnd, CmdError> {
     const NO_OTHER: &str = "this reference has no other end";
     const NOT_LOCATED: &str = "the other end cannot be located";
-    let refs = references::all(doc);
+    let refs = cables::all(doc);
     let here = refs.iter().find(|r| r.reference == reference).ok_or(CmdError::refused("no such reference"))?;
     let other = here.partner().ok_or(CmdError::refused(NO_OTHER))?;
     let there = refs.iter().find(|r| r.reference == other).ok_or(CmdError::refused(NO_OTHER))?;
@@ -185,7 +185,7 @@ pub fn other_end(doc: &Document, reference: RepresentationId) -> Result<OtherEnd
     let at = there.at.ok_or(CmdError::refused(NOT_LOCATED))?;
     let message = format!(
         "{}, at the other end of cable {} ({}).",
-        references::page_words(doc, there.page).replacen("page", "Page", 1),
+        cables::page_words(doc, there.page).replacen("page", "Page", 1),
         crate::cables::cable_title(doc, there.cable),
         there.locator()
     );
@@ -193,12 +193,12 @@ pub fn other_end(doc: &Document, reference: RepresentationId) -> Result<OtherEnd
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run). `cablegoto` opens a page, zooms and selects, and
+// The commands (generic: crate::commands::run). `cablegoto` opens a page, zooms and selects, and
 // stays the engine's.
 
 /// A reference's text, whether it is an orphan, and its partner, as `doc` shows them.
 fn reference_fields(doc: &Document, reference: RepresentationId) -> (Value, bool, Value) {
-    match references::all(doc).into_iter().find(|r| r.reference == reference) {
+    match cables::all(doc).into_iter().find(|r| r.reference == reference) {
         Some(r) => (Value::String(r.text.clone()), r.orphan, r.partner().map_or(Value::Null, |p| Value::String(p.hex()))),
         None => (Value::String("/?".into()), true, Value::Null),
     }
@@ -253,11 +253,11 @@ impl Generic for CablerefParams {
     const HELP: &'static str = "{cable: id, at: [x,y]} (a reference end of the cable on this page)";
 
     fn check(&self) -> Result<(), CmdError> {
-        self.at.within(crate::words::MAX_COORD, "at").map(|_| ())
+        self.at.within(crate::cables::words::MAX_COORD, "at").map(|_| ())
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let at = self.at.within(crate::words::MAX_COORD, "at")?;
+        let at = self.at.within(crate::cables::words::MAX_COORD, "at")?;
         let page = cx.page.ok_or(CmdError::refused("page view not found"))?;
         let done = reference(cx.doc, cx.ids, page, cx.plain.clone(), self.cable, at)?;
         let (rep, item) = (done.rep, done.item);
@@ -281,13 +281,13 @@ impl Generic for CablecontinueParams {
     const HELP: &'static str = "{cable: id, at: [x,y], toward: [x,y], members?: [conductor id]} (the cable's second drawing)";
 
     fn check(&self) -> Result<(), CmdError> {
-        self.at.within(crate::words::MAX_COORD, "at")?;
-        self.toward.within(crate::words::MAX_COORD, "toward").map(|_| ())
+        self.at.within(crate::cables::words::MAX_COORD, "at")?;
+        self.toward.within(crate::cables::words::MAX_COORD, "toward").map(|_| ())
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let at = self.at.within(crate::words::MAX_COORD, "at")?;
-        let toward = self.toward.within(crate::words::MAX_COORD, "toward")?;
+        let at = self.at.within(crate::cables::words::MAX_COORD, "at")?;
+        let toward = self.toward.within(crate::cables::words::MAX_COORD, "toward")?;
         let page = cx.page.ok_or(CmdError::refused("page view not found"))?;
         let done = continue_cable(cx.doc, cx.ids, page, cx.plain.clone(), self.cable, self.members.as_deref(), at, toward, cx.tolerance)?;
         let rep = done.reference.rep;
@@ -319,7 +319,7 @@ impl Generic for CablecontinueParams {
                 "skipped": skipped,
                 "text": text,
                 "partner": partner,
-                "messages": references::continued_lines(doc, page, &plan, rep),
+                "messages": cables::continued_lines(doc, page, &plan, rep),
             })
         }))
     }
@@ -339,7 +339,7 @@ impl Generic for CablerefsParams {
         {
             return Err(CmdError::refused("no such cable"));
         }
-        let refs: Vec<_> = references::all(doc).into_iter().filter(|r| self.cable.is_none_or(|k| r.cable == k)).collect();
-        Ok(Outcome::answer(json!({ "references": ecad_inspect::references_json(doc, &refs) })))
+        let refs: Vec<_> = cables::all(doc).into_iter().filter(|r| self.cable.is_none_or(|k| r.cable == k)).collect();
+        Ok(Outcome::answer(json!({ "references": crate::references::cables::references_json(doc, &refs) })))
     }
 }

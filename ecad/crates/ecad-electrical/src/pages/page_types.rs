@@ -4,7 +4,7 @@
 //! # Semantics
 //! - A folder's **start number** is the project property `folder.<folder id>.start` (FP7): 1 to 6
 //!   digits, leading zeros setting the width. Setting it renumbers nothing. The first page added
-//!   to a folder with one takes it (`ecad_engine::cmd::sheet::new_page_ops_at`).
+//!   to a folder with one takes it (`ecad_engine::pages::commands::sheets::new_page_ops_at`).
 //! - **Renumber pages** walks the book order. Each page belongs to the **run** of the nearest
 //!   folder above it with a start number, else the book's run from `1`; each run numbers its pages
 //!   in book order from its start by the project's step. A number given in this renumber, a
@@ -21,13 +21,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
-use ecad_model::book::{self, Book, MAX_FOLDER_DEPTH};
+use ecad_model::document::book::{self, Book, MAX_FOLDER_DEPTH};
 use ecad_model::{Document, FolderId, ObjectRef, PageId, StyleRef};
 use serde_json::{Value, json};
 
 use crate::checks::{Check, Kind, Object};
-use crate::generated;
-use crate::outputs::kept::ReportModels;
+use crate::pages::generated;
+use crate::reports::kept::ReportModels;
 use crate::styles::page as ptype;
 use ecad_model::GenKind;
 
@@ -42,7 +42,7 @@ pub const BAD_START: &str = "A start number is 1 to 6 digits.";
 pub const DRAWN_PAGE: &str = "Deleting a drawn page comes later; move its content first.";
 /// Whether `t` is a start number: 1 to 6 ASCII digits.
 pub fn is_start(t: &str) -> bool {
-    t.len() <= MAX_START_DIGITS && ecad_model::words::is_digits(t)
+    t.len() <= MAX_START_DIGITS && ecad_model::naming::words::is_digits(t)
 }
 
 /// `folder`'s start number (design 072 §5.2: `Folder.start`), when it has a valid one.
@@ -253,7 +253,7 @@ impl PageFix {
     pub fn command(self) -> (&'static str, Value) {
         match self {
             PageFix::UseDerived(p) => {
-                ("setdefault", json!({"key": ecad_model::sheet::PAGE_TYPE_KEY, "level": "page", "page": p.hex(), "reset": true}))
+                ("setdefault", json!({"key": ecad_model::document::sheet::PAGE_TYPE_KEY, "level": "page", "page": p.hex(), "reset": true}))
             }
             PageFix::RemoveStart(f) => ("folderprops", json!({"folder": f.hex(), "start": null})),
         }
@@ -269,9 +269,9 @@ impl PageFix {
 /// Whether `effect` changes which pages have checks and references off (design 054 §3.4): a
 /// page's type moved to or from such a type, such a page added or removed, a type record whose
 /// `checks` changed. Looked up in `doc` (call it on the state before and after).
-pub fn checks_changed(doc: &Document, effect: &ecad_model::effect::Effect<'_>) -> bool {
-    use ecad_model::effect::Effect;
-    let off = |page: &ecad_model::Page| !ecad_model::sheet::type_checks(doc, &ecad_model::sheet::page_type_of(doc, page));
+pub fn checks_changed(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) -> bool {
+    use ecad_model::document::effect::Effect;
+    let off = |page: &ecad_model::Page| !ecad_model::document::sheet::type_checks(doc, &ecad_model::document::sheet::page_type_of(doc, page));
     match effect {
         Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. } => {
             b.page_type != a.page_type && (off(b) || off(a))
@@ -306,8 +306,8 @@ pub fn checks_changed(doc: &Document, effect: &ecad_model::effect::Effect<'_>) -
 }
 
 /// Whether `effect` can change [`check_rows`].
-pub fn touches_checks(effect: &ecad_model::effect::Effect<'_>) -> bool {
-    use ecad_model::effect::Effect;
+pub fn touches_checks(effect: &ecad_model::document::effect::Effect<'_>) -> bool {
+    use ecad_model::document::effect::Effect;
     match effect {
         Effect::Page { before: Some(before), after: Some(after), index_before: None, index_after: None, .. } => {
             before.folder != after.folder || before.number != after.number || before.page_type != after.page_type
@@ -343,11 +343,11 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
     let row = |kind, page, which: String| Check { kind, page, at: None, object: Object::None, which, fix: None };
     // A `page.type` naming no type, through the style-choice index (explicit choices only).
     for (value, key, o) in doc.style_choices() {
-        if key != ecad_model::sheet::PAGE_TYPE_KEY {
+        if key != ecad_model::document::sheet::PAGE_TYPE_KEY {
             continue;
         }
         let ObjectRef::Page(p) = o else { continue };
-        if StyleRef::parse(value).is_some_and(|id| ecad_model::sheet::page_type_exists(doc, &id)) {
+        if StyleRef::parse(value).is_some_and(|id| ecad_model::document::sheet::page_type_exists(doc, &id)) {
             continue;
         }
         let used = crate::styles::name(doc, ecad_model::StyleCatalogue::Page, &ptype::type_of(doc, p));

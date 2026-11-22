@@ -5,10 +5,10 @@
 
 use std::collections::BTreeSet;
 
-use crate::project_panel::{active, click, doc, head, new_app, ok};
+use crate::pages::project_panel::{active, click, doc, head, new_app, ok};
 use ecad_app::shell::state::{Companion, LeftTab, PageView, ShellState, Views, Workspace};
 use ecad_app::shell::{layout, layout::Slots, tool_strip, top_bar};
-use ecad_app::{App, developer, project_panel, tools};
+use {ecad_app::App, ecad_app::developer, ecad_app::pages::project_panel, ecad_app::commands::tools};
 use eframe::egui::{Event, Key, Modifiers, Rect, pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -121,7 +121,7 @@ fn workspaces_left_tabs_and_the_text_panel() {
     }
     // Lists hosts Reports; Library its browser (brief 048); Publish Release and Print Book.
     keys(&mut h, Modifiers::COMMAND, Key::Num2);
-    assert!(h.query_by_label(ecad_app::devices_panel::FILTER).is_some(), "Lists ▸ Device list");
+    assert!(h.query_by_label(ecad_app::devices::panel::FILTER).is_some(), "Lists ▸ Device list");
     keys(&mut h, Modifiers::COMMAND, Key::Num3);
     assert!(h.query_by_label(ecad_app::library::browser::NEW).is_some(), "Library ▸ the browser");
     keys(&mut h, Modifiers::COMMAND, Key::Num4);
@@ -131,8 +131,8 @@ fn workspaces_left_tabs_and_the_text_panel() {
     // Each left tab shows today's content.
     assert!(h.query_by_label("Page 1: 1").is_some(), "Pages");
     click(&mut h, project_panel::DEVICES_TAB);
-    assert!(h.query_by_label(ecad_app::devices_panel::FILTER).is_some(), "Devices");
-    click(&mut h, ecad_app::history_panel::HISTORY_TAB);
+    assert!(h.query_by_label(ecad_app::devices::panel::FILTER).is_some(), "Devices");
+    click(&mut h, ecad_app::history::panel::HISTORY_TAB);
     assert_eq!(h.state().shell_state().left.tab, LeftTab::History);
     click(&mut h, project_panel::PAGES_TAB);
 
@@ -241,7 +241,7 @@ fn nothing_from_the_old_panels_is_lost() {
         let label = tool_strip::panel_label(tab);
         assert!(h.query_by_label(&label).is_some(), "panel: {label}");
     }
-    let checks = ecad_app::shell::right::rail_label(ecad_app::shell::RightTab::Checks);
+    let checks = ecad_app::inspector::rail_label(ecad_app::shell::RightTab::Checks);
     assert!(h.query_by_label(&checks).is_some(), "the inspector's Checks tab");
     assert!(h.query_by_label_contains(top_bar::CHECKS_PILL).is_some() && h.query_by_label_contains(top_bar::AGENT_PILL).is_some());
     // The Developer fold: the Text panel's Commands tab.
@@ -322,12 +322,12 @@ fn a_page_changed_elsewhere_gets_a_dot_without_a_rebuild_and_views_are_kept_per_
 /// exists; nothing is asserted about the pictures).
 #[test]
 fn screenshots_of_the_four_workspaces() {
-    let Some(out) = crate::project_panel::shots() else { return };
+    let Some(out) = crate::pages::project_panel::shots() else { return };
     let dir = std::env::temp_dir().join(format!("ecad-038-shots-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = crate::checks_ui::demo_file(&dir);
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
-    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
+    let path = crate::checks::ui::demo_file(&dir);
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
+    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone())).build_ui_state(
         |ui, t: &mut App| {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
@@ -347,24 +347,24 @@ fn screenshots_of_the_four_workspaces() {
     for (w, name) in [(Workspace::Draw, "draw"), (Workspace::Lists, "lists"), (Workspace::Library, "library"), (Workspace::Publish, "publish")] {
         h.state_mut().set_workspace(w);
         h.run_steps(6);
-        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join(format!("038-{name}.png")));
+        let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join(format!("038-{name}.png")));
     }
     // The flyout, the Text panel and the developer switch.
     h.state_mut().set_workspace(Workspace::Draw);
     h.run_steps(3);
     h.get_by_label(tool_strip::GROUPS[1].label).hover();
     h.run_steps(3);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("038-flyout.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("038-flyout.png"));
     let centre = h.state().shell.slots.map(|s| s.main.center()).unwrap_or_default();
     h.event(Event::PointerMoved(centre));
     h.run_steps(3);
     h.state_mut().toggle_text_panel();
     h.run_steps(3);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("038-text-panel.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("038-text-panel.png"));
     h.state_mut().toggle_text_panel();
     h.state_mut().set_cad_chrome(true);
     h.run_steps(6);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("038-developer.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("038-developer.png"));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -387,7 +387,7 @@ fn delete_erases_the_selection() {
             .unwrap()
             .model
             .iter()
-            .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
+            .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
             .map(|e| e.handle)
             .collect::<Vec<_>>()
     };
@@ -441,12 +441,12 @@ fn a_go_to_keeps_its_view_on_a_page_seen_before() {
 #[test]
 fn hover_tooltips_stay_off_hosted_views() {
     let mut h = shell_harness();
-    crate::project_panel::fixture_p(&mut h);
+    crate::pages::project_panel::fixture_p(&mut h);
     let supply = doc(&mut h).page_order[0];
     h.state_mut().show_page(supply).unwrap();
     h.run_steps(3);
     let reference_end = |h: &mut Harness<'static, App>| {
-        let at = crate::mouse_tester::screen(h, 65.0, 5.0);
+        let at = crate::canvas::mouse_acceptance::screen(h, 65.0, 5.0);
         crate::common::pointer_to(h, at);
         h.run_steps(3);
         h.state().hover_lines().map(<[String]>::to_vec)
@@ -470,12 +470,12 @@ fn lists_shows_the_device_list_at_the_main_views_width() {
     keys(&mut h, Modifiers::COMMAND, Key::Num2);
     assert_eq!(h.state().shell.lists, ecad_app::shell::ListsView::Devices);
     let main = h.state().shell.slots.unwrap().main;
-    let filters: Vec<Rect> = h.query_all_by_label(ecad_app::devices_panel::FILTER).map(|n| n.rect()).collect();
+    let filters: Vec<Rect> = h.query_all_by_label(ecad_app::devices::panel::FILTER).map(|n| n.rect()).collect();
     assert_eq!(filters.len(), 1, "one Devices view");
     assert!(filters.iter().all(|r| main.contains(r.center())), "in the main view");
     assert!(h.state().shell.slots.unwrap().panel.is_none(), "UI rev 3: Project has no panel slot");
     assert!(h.state().reports.as_ref().is_some_and(|r| r.hidden), "Reports is not drawn over it");
     h.get_by_label(ecad_app::shell::LISTS_TERMINAL_STRIPS).click();
     h.run_steps(3);
-    assert_eq!(h.state().reports.as_ref().map(|r| r.tab), Some(ecad_app::outputs_ui::Tab::Terminals));
+    assert_eq!(h.state().reports.as_ref().map(|r| r.tab), Some(ecad_app::reports::panel::Tab::Terminals));
 }

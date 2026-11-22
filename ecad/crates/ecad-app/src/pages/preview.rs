@@ -16,7 +16,7 @@ use cadcraft_ui_egui::icons::{self, Icon};
 use cadcraft_ui_egui::theme::Tokens;
 use ecad_engine::ProjectHandle;
 use ecad_engine::cad::Drawing;
-use ecad_engine::preview::{PREVIEW_SPAN_MM, PreviewView, preview_drawing, rasterise};
+use ecad_engine::pages::preview::{PREVIEW_SPAN_MM, PreviewView, preview_drawing, rasterise};
 use ecad_model::{PageId, Pt};
 use eframe::egui::{self, Color32, Rect, RichText, Sense, Stroke, pos2, vec2};
 
@@ -118,7 +118,7 @@ impl Preview {
                     ecad_engine::references::page_number(&doc, page),
                     doc.pages.get(&page).map(|x| x.title.as_str()).unwrap_or_default()
                 );
-                match ecad_engine::preview::preview_drawing_of(&doc, page, tol) {
+                match ecad_engine::pages::preview::preview_drawing_of(&doc, page, tol) {
                     Ok(d) => {
                         if self.view.height <= 0.0 {
                             self.view = PreviewView::extents(&d, self.size[0], self.size[1]);

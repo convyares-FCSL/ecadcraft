@@ -4,24 +4,24 @@
 //! change nothing and run with writes off.
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::cmd::text`] decide, and the shim commits the ops and answers in JSON.
+//! [`ecad_electrical::styles::commands::text`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_electrical::cmd::text::{self as rules, KindRow, ShowLevel, ShowTarget, TextStyleInput};
+use ecad_electrical::styles::commands::text::{self as rules, KindRow, ShowLevel, ShowTarget, TextStyleInput};
 use ecad_model::Word;
 use ecad_model::{DeviceId, Document, PageId, RepresentationId, ConnectionPointId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::err;
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{on_any_page, on_project};
-use crate::defaults::{self};
+use crate::commands::err;
+use crate::commands::input::{Command, Typed};
+use crate::commands::{on_any_page, on_project};
+use ecad_electrical::defaults::{self};
 pub use crate::text_style::kind_words;
 use crate::text_style::{Fonts, TextKind};
-use ecad_electrical::cmd::input::{Bounded, Point, nullable};
-pub use ecad_electrical::cmd::text::{BAD_FONT, BAD_HEIGHT, BAD_JUSTIFY, BAD_POINT, BAD_SHOW, BAD_WEIGHT, NEEDS_KIND, NEEDS_CONNECTION_POINT};
+use ecad_electrical::commands::input::{Bounded, Point, nullable};
+pub use ecad_electrical::styles::commands::text::{BAD_FONT, BAD_HEIGHT, BAD_JUSTIFY, BAD_POINT, BAD_SHOW, BAD_WEIGHT, NEEDS_KIND, NEEDS_CONNECTION_POINT};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -33,36 +33,36 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<DefaultsParams>("defaults"),
 ];
 
-/// The commands of this module, appended to the registry by [`crate::cmd::specs`].
+/// The commands of this module, appended to the registry by [`crate::commands::specs`].
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("textstyle", "Text Styles", crate::cmd::input::typed::<TextstyleParams>)
+        CommandSpec::new("textstyle", "Text Styles", crate::commands::input::typed::<TextstyleParams>)
             .params(
                 "{font?: string|null, kind?: word, height?: number|null (cap height, mm, 0.5-10), weight?: \"regular\"|\"bold\"|null, \
 show?: \"on\"|\"off\"|\"first\"|null} (no fields: read only; all given fields are one transaction; null: back to the default)",
             )
             .noundo(),
-        CommandSpec::new("showtext", "Show/Hide Text", crate::cmd::input::typed::<ShowtextParams>)
+        CommandSpec::new("showtext", "Show/Hide Text", crate::commands::input::typed::<ShowtextParams>)
             .params(
                 "{kind: word, show: \"on\"|\"off\"|\"first\"|null, representation?: id | component?: id | conductor?: id | page?: id} \
 (at most one target; none = the project; null: inherit)",
             )
-            .interactive(crate::interact::text_tools::showtext)
+            .interactive(crate::styles::interact::showtext)
             .noundo(),
-        CommandSpec::new("movetext", "Move Text", crate::cmd::input::typed::<MovetextParams>)
+        CommandSpec::new("movetext", "Move Text", crate::commands::input::typed::<MovetextParams>)
             .params(
                 "{representation: id, kind?: \"tag\"|\"point_label\", terminal?: id, to: [x,y], justify?: \"RT\"…} or {representation, kind?, terminal?, reset: true} \
 (to is a page point; stored in the symbol's frame)",
             )
-            .interactive(crate::interact::text_tools::movetext)
+            .interactive(crate::styles::interact::movetext)
             .noundo(),
-        CommandSpec::new("hiddentext", "Show Hidden Text", crate::cmd::input::typed::<HiddentextParams>)
+        CommandSpec::new("hiddentext", "Show Hidden Text", crate::commands::input::typed::<HiddentextParams>)
             .params("{on?: bool} (display only; no field toggles)")
             .noundo(),
-        CommandSpec::new("pagetexts", "Page Texts", crate::cmd::input::typed::<PagetextsParams>)
+        CommandSpec::new("pagetexts", "Page Texts", crate::commands::input::typed::<PagetextsParams>)
             .params("{page?: id} (every derived text on the page, hidden ones too; read only)")
             .noundo(),
-        CommandSpec::new("defaults", "Defaults", crate::cmd::input::typed::<DefaultsParams>)
+        CommandSpec::new("defaults", "Defaults", crate::commands::input::typed::<DefaultsParams>)
             .params("{group?: string, key?: string, page?: id, component?: id, representation?: id} (read only)")
             .noundo(),
     ]

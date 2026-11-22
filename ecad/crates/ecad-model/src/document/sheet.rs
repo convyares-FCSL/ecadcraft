@@ -20,9 +20,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::doc::{Document, LengthUnit};
-use crate::id::PageId;
-use crate::style::{StyleCatalogue, StyleLayer, StyleRef};
+use crate::document::doc::{Document, LengthUnit};
+use crate::naming::id::PageId;
+use crate::objects::styles::{StyleCatalogue, StyleLayer, StyleRef};
 
 /// The page property holding a page's own sheet spec (text, [`SheetSpec::parse`]).
 pub const SHEET_KEY: &str = "sheet";
@@ -256,11 +256,11 @@ pub const FRAME_MARGINS_FIELD: &str = "margins";
 pub const MAX_MARGIN_MM: f64 = 50.0;
 
 /// Whether `id` names a frame style in `doc`: the built-in, or a record of the project or the
-/// standard (within [`crate::style::MAX_STYLES_PER_CATALOGUE`]).
+/// standard (within [`crate::objects::styles::MAX_STYLES_PER_CATALOGUE`]).
 pub fn frame_exists(doc: &Document, id: &StyleRef) -> bool {
     matches!(id, StyleRef::Builtin(w) if w == BUILTIN_FRAME)
-        || crate::style::bounded_record(doc, StyleLayer::Project, FRAME_CATALOGUE, id).is_some()
-        || crate::style::bounded_record(doc, StyleLayer::Standard, FRAME_CATALOGUE, id).is_some()
+        || crate::objects::styles::bounded_record(doc, StyleLayer::Project, FRAME_CATALOGUE, id).is_some()
+        || crate::objects::styles::bounded_record(doc, StyleLayer::Standard, FRAME_CATALOGUE, id).is_some()
 }
 
 // --- Page-type steps (brief 054, overseer ruling 2026-11-14): the page type's sheet, frame,
@@ -273,7 +273,7 @@ fn type_of_page(doc: &Document, page: PageId) -> Option<StyleRef> {
 }
 
 /// Page type `id`'s value read by `get`: the project's record, else the standard's.
-fn type_value<T>(doc: &Document, id: &StyleRef, get: impl Fn(&crate::style::PageType) -> Option<T>) -> Option<T> {
+fn type_value<T>(doc: &Document, id: &StyleRef, get: impl Fn(&crate::objects::styles::PageType) -> Option<T>) -> Option<T> {
     [StyleLayer::Project, StyleLayer::Standard].into_iter().find_map(|l| type_record(doc, l, id).and_then(|r| r.body.page()).and_then(&get))
 }
 
@@ -286,8 +286,8 @@ pub fn page_type_sheet(doc: &Document, page: PageId) -> Option<SheetSpec> {
 pub fn page_type_frame(doc: &Document, page: PageId) -> Option<StyleRef> {
     let id = type_of_page(doc, page)?;
     match type_value(doc, &id, |t| t.frame.clone())? {
-        crate::style::page::TypeFrame::Style(f) => Some(f).filter(|f| frame_exists(doc, f)),
-        crate::style::page::TypeFrame::Project => None,
+        crate::objects::styles::page::TypeFrame::Style(f) => Some(f).filter(|f| frame_exists(doc, f)),
+        crate::objects::styles::page::TypeFrame::Project => None,
     }
 }
 
@@ -296,8 +296,8 @@ pub fn page_type_frame(doc: &Document, page: PageId) -> Option<StyleRef> {
 pub fn page_type_title_block(doc: &Document, page: PageId) -> Option<StyleRef> {
     let id = type_of_page(doc, page)?;
     match type_value(doc, &id, |t| t.title_block.clone())? {
-        crate::style::page::TypeBlock::Style(f) => Some(f).filter(|f| frame_exists(doc, f)),
-        crate::style::page::TypeBlock::Frame => None,
+        crate::objects::styles::page::TypeBlock::Style(f) => Some(f).filter(|f| frame_exists(doc, f)),
+        crate::objects::styles::page::TypeBlock::Frame => None,
     }
 }
 
@@ -325,8 +325,8 @@ pub fn checks_off_pages(doc: &Document) -> std::collections::BTreeSet<PageId> {
 
 /// Whether `ops` can change which pages have checks and references off: a page's type or kind, a
 /// page added, a page type record.
-pub fn checks_pages_touched(ops: &[crate::op::Op]) -> bool {
-    use crate::op::Op;
+pub fn checks_pages_touched(ops: &[crate::document::op::Op]) -> bool {
+    use crate::document::op::Op;
     ops.iter().any(|op| match op {
         Op::ModifyPage { before, after, .. } => before.page_type != after.page_type,
         Op::AddPage { page, .. } => page.page_type.is_some(),
@@ -372,17 +372,17 @@ pub fn title_block_style(doc: &Document, page: PageId) -> StyleRef {
 
 /// Frame style `id`'s value read by `get`: the project's record, else the standard's (within the
 /// bound).
-fn frame_value<T>(doc: &Document, id: &StyleRef, get: impl Fn(&crate::style::FrameStyle) -> Option<T>) -> Option<T> {
+fn frame_value<T>(doc: &Document, id: &StyleRef, get: impl Fn(&crate::objects::styles::FrameStyle) -> Option<T>) -> Option<T> {
     [StyleLayer::Project, StyleLayer::Standard]
         .into_iter()
-        .find_map(|l| crate::style::bounded_record(doc, l, FRAME_CATALOGUE, id).and_then(|r| r.body.frame()).and_then(&get))
+        .find_map(|l| crate::objects::styles::bounded_record(doc, l, FRAME_CATALOGUE, id).and_then(|r| r.body.frame()).and_then(&get))
 }
 
 /// The sheet frame style `id` is drawn for, when it names one (`None` for the page's own).
 pub fn frame_spec(doc: &Document, id: &StyleRef) -> Option<SheetSpec> {
     match frame_value(doc, id, |f| f.sheet)? {
-        crate::style::frame::FrameSheet::Sheet(s) => Some(s),
-        crate::style::frame::FrameSheet::Page => None,
+        crate::objects::styles::frame::FrameSheet::Sheet(s) => Some(s),
+        crate::objects::styles::frame::FrameSheet::Page => None,
     }
 }
 
@@ -393,13 +393,13 @@ pub fn frame_margins(doc: &Document, id: &StyleRef) -> Option<Margins> {
 
 /// Frame style `id`'s title block: the project's record's body, else the standard's. `None` for
 /// the built-in (its block is computed for the page's sheet) and for a frame without a body.
-pub fn frame_block<'a>(doc: &'a Document, id: &StyleRef) -> Option<&'a crate::title_block::TitleBlockLayout> {
+pub fn frame_block<'a>(doc: &'a Document, id: &StyleRef) -> Option<&'a crate::objects::title_block::TitleBlockLayout> {
     if id.is_builtin() {
         return None;
     }
     [StyleLayer::Project, StyleLayer::Standard]
         .into_iter()
-        .find_map(|l| crate::style::bounded_record(doc, l, FRAME_CATALOGUE, id).and_then(|r| r.title_block()))
+        .find_map(|l| crate::objects::styles::bounded_record(doc, l, FRAME_CATALOGUE, id).and_then(|r| r.title_block()))
 }
 
 /// The sheet a frame field value names, when it reads and keeps the limits; empty is none.
@@ -492,17 +492,17 @@ pub fn page_type_of(doc: &Document, page: &crate::Page) -> crate::StyleRef {
 /// Whether `id` names a page type: a built-in one, or a record (within the bound) in the project
 /// or the standard.
 pub fn page_type_exists(doc: &Document, id: &crate::StyleRef) -> bool {
-    use crate::style::StyleLayer;
+    use crate::objects::styles::StyleLayer;
     matches!(id, crate::StyleRef::Builtin(w) if BUILTIN_PAGE_TYPES.contains(&w.as_str()))
         || type_record(doc, StyleLayer::Project, id).is_some()
         || type_record(doc, StyleLayer::Standard, id).is_some()
 }
 
 /// The record `layer` holds for page type `id`, within the style bound
-/// ([`crate::style::MAX_STYLES_PER_CATALOGUE`] in ID order, as `ecad-engine` reads them).
-fn type_record<'a>(doc: &'a Document, layer: crate::style::StyleLayer, id: &crate::StyleRef) -> Option<&'a crate::style::StyleRecord> {
-    use crate::style::MAX_STYLES_PER_CATALOGUE;
-    let map = crate::style::layer_of(doc, layer)?.get(&PAGE_CATALOGUE)?;
+/// ([`crate::objects::styles::MAX_STYLES_PER_CATALOGUE`] in ID order, as `ecad-engine` reads them).
+fn type_record<'a>(doc: &'a Document, layer: crate::objects::styles::StyleLayer, id: &crate::StyleRef) -> Option<&'a crate::objects::styles::StyleRecord> {
+    use crate::objects::styles::MAX_STYLES_PER_CATALOGUE;
+    let map = crate::objects::styles::layer_of(doc, layer)?.get(&PAGE_CATALOGUE)?;
     let r = map.get(id)?;
     if map.len() > MAX_STYLES_PER_CATALOGUE && map.range(..id).take(MAX_STYLES_PER_CATALOGUE).count() >= MAX_STYLES_PER_CATALOGUE {
         return None;
@@ -515,8 +515,8 @@ fn type_record<'a>(doc: &'a Document, layer: crate::style::StyleLayer, id: &crat
 /// the type takes the project's sheet (`project`, every built-in's value).
 pub fn type_sheet(doc: &Document, id: &crate::StyleRef) -> Option<SheetSpec> {
     match type_value(doc, id, |t| t.sheet)? {
-        crate::style::page::TypeSheet::Sheet(s) => Some(s),
-        crate::style::page::TypeSheet::Project => None,
+        crate::objects::styles::page::TypeSheet::Sheet(s) => Some(s),
+        crate::objects::styles::page::TypeSheet::Project => None,
     }
 }
 
@@ -668,7 +668,7 @@ fn index_of(v: f64, size: f64, count: u32) -> Option<u32> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn specs_read_and_write_back() {

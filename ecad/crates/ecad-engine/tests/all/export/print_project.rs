@@ -52,7 +52,7 @@ fn a_missing_value_prints_black_in_screen_colours() {
     let (mut h, bom) = bom_with_missing();
     let doc = h.doc();
     let outputs = ReportModels::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
-    let (scratch, _) = ecad_engine::printbook::build(&doc, &[bom], &BTreeSet::new(), 1e-6, Some(&outputs)).unwrap();
+    let (scratch, _) = ecad_engine::export::printbook::build(&doc, &[bom], &BTreeSet::new(), 1e-6, Some(&outputs)).unwrap();
     let generated: Vec<_> = scratch.model.iter().filter(|e| e.common.layer == LAYER).collect();
     assert!(
         generated.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == MISSING) && e.common.color == Color::Index(FLAGGED_PRINT_ACI))

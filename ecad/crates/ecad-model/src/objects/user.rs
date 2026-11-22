@@ -15,8 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::id::{DeviceId, UserFieldId};
-use crate::text::Text;
+use crate::naming::id::{DeviceId, UserFieldId};
+use crate::naming::text::Text;
 
 /// Most characters of a user field's name.
 pub const MAX_FIELD_NAME: usize = 32;
@@ -82,7 +82,7 @@ pub struct UserFieldDef {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum UserValueError {
     #[error("{0}")]
-    Text(crate::text::TextError),
+    Text(crate::naming::text::TextError),
     #[error("\"{0}\" is not a number")]
     NotANumber(String),
     #[error("\"{0}\" is not yes or no")]
@@ -128,7 +128,7 @@ impl UserValue {
                     _ => Err(UserValueError::NotANumber(t.to_string())),
                 }
             }
-            UserFieldKind::Flag => crate::words::flag(t).map(UserValue::Flag).ok_or_else(|| UserValueError::NotAFlag(t.to_string())),
+            UserFieldKind::Flag => crate::naming::words::flag(t).map(UserValue::Flag).ok_or_else(|| UserValueError::NotAFlag(t.to_string())),
             UserFieldKind::Choice { options } => {
                 options.iter().find(|o| o.as_str().eq_ignore_ascii_case(t)).map(|o| UserValue::Choice(o.clone())).ok_or_else(|| {
                     let list: Vec<&str> = options.iter().map(|o| o.as_str()).collect();
@@ -143,7 +143,7 @@ impl UserValue {
         match self {
             UserValue::Text(t) => t.as_str().to_string(),
             UserValue::Choice(c) => c.as_str().to_string(),
-            UserValue::Flag(b) => crate::words::flag_word(*b).to_string(),
+            UserValue::Flag(b) => crate::naming::words::flag_word(*b).to_string(),
             UserValue::Number(n) => match kind {
                 UserFieldKind::Number { unit: Some(u) } => format!("{n} {}", u.as_str()),
                 UserFieldKind::Number { unit: None } | UserFieldKind::Text | UserFieldKind::Flag | UserFieldKind::Choice { .. } => n.to_string(),

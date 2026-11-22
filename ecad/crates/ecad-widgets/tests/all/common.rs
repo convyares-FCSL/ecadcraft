@@ -9,9 +9,9 @@ pub fn harness<'a, S>(mut app: impl FnMut(&mut egui::Ui, &mut S) + 'a, state: S)
     let mut h = Harness::builder().with_size(egui::vec2(900.0, 700.0)).build_ui_state(
         move |ui, s| {
             if std::mem::take(&mut first) {
-                ecad_ui::fonts::install(ui.ctx(), egui::FontDefinitions::default());
+                ecad_widgets::fonts::install(ui.ctx(), egui::FontDefinitions::default());
             }
-            ecad_ui::style::apply(ui.ctx());
+            ecad_widgets::style::apply(ui.ctx());
             app(ui, s);
         },
         state,

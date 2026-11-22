@@ -13,14 +13,14 @@
 //! commit: nothing. A full build only on first show or another project. Used by is asked for the
 //! selected row once per change count, never per frame.
 
-use ecad_engine::defaults::{self, Source};
-use ecad_engine::styles::{self, Catalogue, Layer};
+use ecad_electrical::defaults::{self, Source};
+use ecad_electrical::styles::{self, Catalogue, Layer};
 use ecad_model::{Document, StyleRef};
-use ecad_ui::prim::Tone;
-use ecad_ui::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
+use ecad_widgets::prim::Tone;
+use ecad_widgets::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
 use eframe::egui::{self, RichText};
 
-use crate::lists::standards::{number_text, source_tone, source_word};
+use crate::settings::standards_list::{number_text, source_tone, source_word};
 
 /// Accessible names (design 050 §9).
 pub const DETAIL: &str = "ecad.standards.style";
@@ -251,7 +251,7 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
         .collect();
     let c = styles::users(doc, cat.catalogue, id);
     let boxes = styles::box_users(doc, cat.catalogue, id).len();
-    let explicit = ecad_electrical::cmd::style::users_words(&styles::explicit_users(doc, cat.catalogue, id), boxes);
+    let explicit = ecad_electrical::styles::commands::styles::users_words(&styles::explicit_users(doc, cat.catalogue, id), boxes);
     let layer = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).map_or(Layer::Project, |r| r.layer);
     Detail {
         id: id.clone(),
@@ -325,7 +325,7 @@ pub fn show_detail(
     }
     ui.label(RichText::new(&d.name).strong()).on_hover_text(d.id.text());
     ui.label(RichText::new(format!("{} · {}", cat.one, d.layer.badge())).small());
-    ui.add_space(ecad_ui::tokens::space::S);
+    ui.add_space(ecad_widgets::tokens::space::S);
     if d.has_standard {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Change at").small());
@@ -387,7 +387,7 @@ pub fn show_detail(
             ui.end_row();
         }
     });
-    ui.add_space(ecad_ui::tokens::space::S);
+    ui.add_space(ecad_widgets::tokens::space::S);
     ui.label(RichText::new(format!("Used by {} ({})", d.users.0, if d.users.1.is_empty() { "none of their own" } else { &d.users.1 })).small());
     // New style from this, Rename, Delete…, Promote.
     ui.horizontal_wrapped(|ui| {

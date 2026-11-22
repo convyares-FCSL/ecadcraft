@@ -9,8 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use cadcraft_engine::Session;
 use common::{H, id};
 use ecad_engine::{Persistence, ProjectHandle};
-use ecad_model::sheet::Grid;
-use ecad_model::{Author, CableId, DeviceId, ObjectRef, Op, PageId, tag};
+use ecad_model::document::sheet::Grid;
+use {ecad_model::Author, ecad_model::CableId, ecad_model::DeviceId, ecad_model::ObjectRef, ecad_model::Op, ecad_model::PageId, ecad_model::naming::tag};
 use serde_json::{Value, json};
 
 fn cell(h: &mut H, page: PageId, col: u32, row: u32) -> [f64; 2] {
@@ -404,8 +404,8 @@ fn renumber_with_a_start_around_fixed_tags_makes_no_duplicate() {
 
 // ---------------------------------------------------------------- 2. provisional tags
 
-fn provisional_left(h: &mut H) -> ecad_electrical::cmd::numbering::Provisional {
-    h.p(|p| ecad_electrical::cmd::numbering::provisional_items(p.ledger.document()))
+fn provisional_left(h: &mut H) -> ecad_electrical::numbering::commands::Provisional {
+    h.p(|p| ecad_electrical::numbering::commands::provisional_items(p.ledger.document()))
 }
 
 /// Finalise follows the high-water mark, not only the highest tag in use: with `-K04` deleted,
@@ -556,7 +556,7 @@ fn a_pre_026_golden_project_opens_unchanged() {
     let before = h.doc();
     assert!(!h.p(|p| p.ledger.is_unsaved()), "opening an old file changes nothing");
     assert!(provisional_left(&mut h).is_empty());
-    assert!(!ecad_model::numbering::provisional_on(&before));
+    assert!(!ecad_model::naming::numbering::provisional_on(&before));
     h.run("numbering", json!({})).unwrap();
     h.run("renumber", json!({"kind": "all", "preview": true})).unwrap();
     assert_eq!(h.head(), head);

@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::links;
+use ecad_model::connectivity::jumper_bars;
 use ecad_model::{DeviceId, Document, PageId, Pt, Subject};
 
 /// Lane spacing and stub length, in millimetres (`ecad.link`, `ecad.link-stub`).
@@ -62,21 +62,21 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
     let mut out = Vec::new();
     for c in strips {
         let Some(comp) = doc.devices.get(&c) else { continue };
-        let found = links::of(&comp.properties);
-        if found.is_empty() || crate::strips::strip_of(doc, c).is_none() {
+        let found = jumper_bars::of(&comp.properties);
+        if found.is_empty() || crate::terminal_strips::strip_of(doc, c).is_none() {
             continue;
         }
-        let order = crate::accessories::positions(doc, c);
+        let order = crate::terminal_strips::accessories::positions(doc, c);
         // Brief 036: each level's symbols; the in point stands for a two-point level.
-        let here: BTreeMap<(String, u32), Pt> = crate::strips::drawn_points(doc, c)
+        let here: BTreeMap<(String, u32), Pt> = crate::terminal_strips::drawn_points(doc, c)
             .into_iter()
-            .filter(|(t, _, p, _)| *p == page && crate::terminal_types::level_of(doc, *t).1 != Some('o'))
-            .map(|(t, _, _, at)| ((crate::terminal_types::position_label(doc, t), crate::terminal_types::level_of(doc, t).0), at))
+            .filter(|(t, _, p, _)| *p == page && crate::terminal_strips::terminal_blocks::level_of(doc, *t).1 != Some('o'))
+            .map(|(t, _, _, at)| ((crate::terminal_strips::terminal_blocks::position_label(doc, t), crate::terminal_strips::terminal_blocks::level_of(doc, t).0), at))
             .collect();
         // Cross-level links (design 036 §5.4): a dog-leg between the levels shown, else stubs.
         for (n, p) in &found {
             for sp in p.spans() {
-                let links::Span::Levels { position, lo, hi } = sp else { continue };
+                let jumper_bars::Span::Levels { position, lo, hi } = sp else { continue };
                 let pts: Vec<Pt> = (lo..=hi).filter_map(|l| here.get(&(position.clone(), l)).copied()).collect();
                 if pts.len() >= 2 {
                     for w in pts.windows(2) {
@@ -156,7 +156,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
 }
 
 /// The hover line of a link (§5.3): `-X01 link 1-4 (4 positions, 1 bar JB-10)`.
-pub fn hover(doc: &Document, data: Option<&crate::strips::StripData>, c: DeviceId, n: u32) -> String {
+pub fn hover(doc: &Document, data: Option<&crate::terminal_strips::StripData>, c: DeviceId, n: u32) -> String {
     let tag = crate::devices::tag_words(doc, c);
     let Some(l) = data.and_then(|d| d.acc.links.iter().find(|l| l.n == n)) else { return format!("{tag} link {n}") };
     let bars = if l.bars == 1 { "1 bar".to_string() } else { format!("{} bars", l.bars) };

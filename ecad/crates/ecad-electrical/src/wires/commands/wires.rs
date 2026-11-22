@@ -2,12 +2,12 @@
 //! numbers, potentials and categories, the wiring settings, joins and the wire itself.
 //! Each function reads the document and returns the ops to commit and what to report.
 
-use ecad_model::units::Radians;
+use ecad_model::geometry::units::Radians;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::text::Text;
-use ecad_model::wiring::{self, Scheme};
+use ecad_model::naming::text::Text;
+use ecad_model::connectivity::wiring::{self, Scheme};
 use ecad_model::{
     Document, End, IdAllocator, Ledger, NetData, NetKey, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, RouteEnd, RouteId, Style,
     StyleRef, ConnectionPointId, Wire, WireId,
@@ -75,7 +75,7 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
         for r in wires::routes_of_wire(doc, *c).into_iter().filter_map(|r| doc.routes.get(&r)) {
             let Some(n) = order.get(&r.page) else { continue };
             let col = r.points.first().and_then(|a| wiring::place(doc, r.page, *a)).map(|p| p.column_label);
-            let slot = pages.entry(*n).or_insert_with(|| (ecad_model::book::page_number(doc, r.page), None));
+            let slot = pages.entry(*n).or_insert_with(|| (ecad_model::document::book::page_number(doc, r.page), None));
             if slot.1.is_none() {
                 slot.1 = col;
             }
@@ -582,7 +582,7 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
         w.digits = Some(d as u8);
     }
     if let Some(c) = &change.colour_style {
-        w.colour_style = Some(<ecad_model::colour::ColourWords as ecad_model::words::Word>::parse(c).ok_or(CmdError::input(
+        w.colour_style = Some(<ecad_model::geometry::colour::ColourWords as ecad_model::naming::words::Word>::parse(c).ok_or(CmdError::input(
             "`colour_style` must be \"code2\" (BN, BU, GN/YE), \"code3\" (BRN, BLU, GRN/YEL) or \"name\" (Brown, Blue, Green/Yellow)",
         ))?);
     }
@@ -699,7 +699,7 @@ pub fn join_wires(doc: &Document, page: PageId, at: Pt, quiet: &[Pt], max_points
 /// given, on the wires the drawn route carries.
 ///
 /// # Semantics
-/// With a category, the commit's wire rewrite (`ecad_model::wire_order::rewrite`) is run here on
+/// With a category, the commit's wire rewrite (`ecad_model::connectivity::wire_order::rewrite`) is run here on
 /// the preview and its ops are part of the plan, so the category can be set on the wires it makes;
 /// the commit's own rewrite then finds nothing left to do.
 ///
@@ -711,7 +711,7 @@ pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>,
     if let Some(c) = category {
         let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, c)?;
         let drawn = ledger.preview(&plan.ops)?;
-        let rewritten = ecad_model::wire_order::rewrite(&drawn, &plan.ops);
+        let rewritten = ecad_model::connectivity::wire_order::rewrite(&drawn, &plan.ops);
         let after = if rewritten.is_empty() { drawn } else { ledger.preview(&[plan.ops.clone(), rewritten.clone()].concat())? };
         plan.ops.extend(rewritten);
         let carried = wires::wires_of_route(&after, plan.route);
@@ -760,8 +760,8 @@ pub fn settings_json(doc: &Document) -> Value {
     let w = &doc.settings.wiring;
     json!({
         "scheme": w.scheme.name(),
-        "colour_style": ecad_model::words::Word::word(w.colour_style()),
-        "label_height": crate::cmd::sheet::wire_label_height(doc),
+        "colour_style": ecad_model::naming::words::Word::word(w.colour_style()),
+        "label_height": crate::pages::commands::sheets::wire_label_height(doc),
         "label_rule": wires::label_rule_word(doc),
         "label_min_length": wires::label_min_length(doc),
         "digits": w.digits(),

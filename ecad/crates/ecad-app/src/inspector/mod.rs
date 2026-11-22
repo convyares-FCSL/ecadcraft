@@ -22,23 +22,23 @@
 //!
 //! Every titled section folds to a one-line summary ([`widgets::section`]). Grey text is read from
 //! the drawing; an input box is something you set here. The rows come from the ECAD properties
-//! copy ([`crate::sheets_ui::PropsShared`], design 019; edits go through its commands as before)
-//! and from this inspector's own copy. The Text panel opens over it ([`super::text_panel`]).
+//! copy ([`crate::settings::sheets::PropsShared`], design 019; edits go through its commands as before)
+//! and from this inspector's own copy. The Text panel opens over it ([`crate::shell::text_panel`]).
 //!
 //! **Update map** (the inspector's rows): rebuilt on a new selection or page, or after a change
 //! that touched the selected object, its pages, its nets, the page or the project
 //! (`props_changes_since`); every other commit leaves them.
 
-mod checks_tab;
-mod details;
+pub(crate) mod checks_tab;
+pub(crate) mod details;
 pub(crate) mod device;
-mod fields;
-mod layout_tab;
-/// Brief 054b: the Page tab on a generated page.
+pub(crate) mod fields;
+pub(crate) mod layout_tab;
 pub mod page;
-mod placing_view;
+pub(crate) mod placing_view;
 pub mod slash_picker;
 pub(crate) mod widgets;
+/// Brief 054b: the Page tab on a generated page.
 
 pub use checks_tab::{ELSEWHERE, GO_TO, SCOPE};
 pub use details::{ConnRow, DeviceDetails, DrawnRow};
@@ -49,16 +49,16 @@ pub use widgets::section_name;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_electrical::cmd::default::{self as default_cmds, Target};
-use ecad_engine::defaults::{self, Entry, Kind, Level, Scope, Source};
+use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
+use ecad_electrical::defaults::{self, Entry, Kind, Level, Scope, Source};
 use ecad_engine::project::Mapped;
 use ecad_engine::text_style::TextKind;
 use ecad_model::{ObjectRef, PageId, RepresentationId, Subject};
-use ecad_ui::tokens::{Icon, size, space, ui_type};
+use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, RichText, pos2, vec2};
 
-use super::Slots;
-use super::state::RightTab;
+use crate::shell::Slots;
+use crate::shell::state::RightTab;
 use crate::App;
 
 /// Accessible labels.
@@ -100,27 +100,27 @@ impl App {
     /// The header's Row button: Project ▸ Devices with the device's row selected.
     pub fn show_device_row(&mut self, c: ecad_model::DeviceId) {
         self.panel.devices.selected = Some(c);
-        self.shell.lists = super::ListsView::Devices;
-        self.set_workspace(super::Workspace::Lists);
+        self.shell.lists = crate::shell::ListsView::Devices;
+        self.set_workspace(crate::shell::Workspace::Lists);
     }
 }
 
 /// What a tab body draws from (split borrows of the app).
 pub struct Cx<'a> {
-    pub sh: &'a mut crate::sheets_ui::PropsShared,
+    pub sh: &'a mut crate::settings::sheets::PropsShared,
     pub insp: &'a mut Inspector,
-    pub checks: &'a [crate::checks_panel::Row],
+    pub checks: &'a [crate::checks::panel::Row],
     pub writable: bool,
     /// A check's fix may run (writable, and no old revision shown).
     pub fixes: bool,
     /// The panel's full width (for the rules between sections).
     pub full: egui::Rangef,
     /// What a check card asked for (the Checks tab's actions).
-    pub panel_out: Vec<crate::project_panel::Action>,
+    pub panel_out: Vec<crate::pages::project_panel::Action>,
 }
 
 /// The header's words for what is selected.
-fn head_words(insp: &Inspector, sh: &crate::sheets_ui::PropsShared) -> (String, String, Option<ecad_model::DeviceId>) {
+fn head_words(insp: &Inspector, sh: &crate::settings::sheets::PropsShared) -> (String, String, Option<ecad_model::DeviceId>) {
     if let Some(d) = &insp.device {
         let sub: Vec<&str> = [d.description.as_str(), d.symbol_words.as_str(), d.place.as_str()].into_iter().filter(|s| !s.is_empty()).collect();
         return (d.tag.clone(), sub.join(" \u{b7} "), d.component);
@@ -136,29 +136,29 @@ fn head_words(insp: &Inspector, sh: &crate::sheets_ui::PropsShared) -> (String, 
 
 /// Draw the right panel (or its rail, or the Text panel over it).
 pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     // The rail, always shown at the right edge (the strip's mirror).
-    super::fill(ui, slots.rail, s.panel);
-    ui.painter().vline(slots.rail.left() + 0.5, slots.rail.y_range(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    crate::shell::fill(ui, slots.rail, s.panel);
+    ui.painter().vline(slots.rail.left() + 0.5, slots.rail.y_range(), egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     rail(t, ui, slots.rail, !slots.right_rail);
     if slots.right_rail {
         return;
     }
     let rect = slots.right;
-    super::fill(ui, rect, s.panel);
-    ui.painter().vline(rect.left() + 0.5, rect.y_range(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    crate::shell::fill(ui, rect, s.panel);
+    ui.painter().vline(rect.left() + 0.5, rect.y_range(), egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     if t.shell.state.text_panel {
-        super::text_panel::show(t, ui, rect);
+        crate::shell::text_panel::show(t, ui, rect);
         return;
     }
     // Brief 048: the Library's right panel holds a symbol's details (design 048 §3.1, §8.1).
-    if t.shell.state.workspace == super::Workspace::Library {
+    if t.shell.state.workspace == crate::shell::Workspace::Library {
         let head = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
-        let collapse = super::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.right.head", |ui| {
+        let collapse = crate::shell::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.right.head", |ui| {
             ui.horizontal_centered(|ui| {
-                ui.label(egui::RichText::new(LIBRARY_TITLE).font(ecad_ui::fonts::font(ui.ctx(), ui_type::TITLE)).color(ecad_ui::color(s.text)));
+                ui.label(egui::RichText::new(LIBRARY_TITLE).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::TITLE)).color(ecad_widgets::color(s.text)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add(ecad_ui::prim::IconButton::new(Icon::Collapse, COLLAPSE)).on_hover_text("Collapse (])").clicked()
+                    ui.add(ecad_widgets::prim::IconButton::new(Icon::Collapse, COLLAPSE)).on_hover_text("Collapse (])").clicked()
                 })
                 .inner
             })
@@ -168,19 +168,19 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
             t.shell.state.right_collapsed = true;
         }
         let body = Rect::from_min_max(pos2(rect.left() + space::L, head.bottom()), pos2(rect.right() - space::M, rect.bottom()));
-        super::in_rect(ui, body, crate::library::details::DETAILS, |ui| {
+        crate::shell::in_rect(ui, body, crate::library::details::DETAILS, |ui| {
             egui::ScrollArea::vertical().id_salt("library.details.scroll").auto_shrink([false, false]).show(ui, |ui| t.library_right(ui));
         });
         return;
     }
     // UI rev 3, Project workspace (boards 2.01–2.06): the selected row with its own head, its
     // properties and its own checks (`lists::detail`); the Checks tab stays the check list.
-    if t.shell.state.workspace == super::Workspace::Lists && t.shell.state.right_tab != RightTab::Checks {
+    if t.shell.state.workspace == crate::shell::Workspace::Lists && t.shell.state.right_tab != RightTab::Checks {
         // The inspector keeps following the page's selection meanwhile.
         if t.project_open() {
             sync(t);
         }
-        crate::lists::detail::show(t, ui, rect);
+        crate::workspace::detail::show(t, ui, rect);
         return;
     }
     if t.project_open() {
@@ -233,8 +233,8 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
     };
     let accent = placing.is_some();
     let (collapse, row) =
-        super::in_rect(ui, head.shrink2(vec2(space::L, space::S)), "ecad.shell.right.head", |ui| header(ui, &title, &sub, device.is_some(), accent));
-    ui.painter().hline(rect.x_range(), head.bottom() - 0.5, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+        crate::shell::in_rect(ui, head.shrink2(vec2(space::L, space::S)), "ecad.shell.right.head", |ui| header(ui, &title, &sub, device.is_some(), accent));
+    ui.painter().hline(rect.x_range(), head.bottom() - 0.5, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     let body = Rect::from_min_max(pos2(rect.left() + space::L, head.bottom()), pos2(rect.right() - space::L, rect.bottom()));
     let full = rect.x_range();
     let mut acts = Vec::new();
@@ -242,7 +242,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
     match t.shell.state.right_tab {
         _ if generated.is_some() => {
             if let Some(v) = &generated {
-                super::in_rect(ui, body, "ecad.shell.right.page", |ui| {
+                crate::shell::in_rect(ui, body, "ecad.shell.right.page", |ui| {
                     egui::ScrollArea::vertical().id_salt("ecad.shell.right.page.scroll").auto_shrink([false, false]).show(ui, |ui| {
                         page::show(t, ui, v, writable, full);
                         ui.add_space(space::XL);
@@ -253,12 +253,12 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
         RightTab::Checks => {
             if t.project_open() && t.lists_shows_checks() {
                 // Project ▸ Check list shows the same rows: one place at a time.
-                super::in_rect(ui, body, "ecad.shell.right.checks", |ui| ecad_ui::prim::read_value(ui, super::CHECKS_IN_LISTS));
+                crate::shell::in_rect(ui, body, "ecad.shell.right.checks", |ui| ecad_widgets::prim::read_value(ui, crate::shell::CHECKS_IN_LISTS));
             } else if t.project_open() {
                 let page = t.panel.active;
                 let insp = &mut t.settings.inspector;
                 let panel = &mut t.panel.checks;
-                panel_acts = super::in_rect(ui, body, "ecad.shell.right.checks", |ui| {
+                panel_acts = crate::shell::in_rect(ui, body, "ecad.shell.right.checks", |ui| {
                     checks_tab::show(ui, panel, &mut insp.checks_project, page, fixes, body)
                 });
             }
@@ -266,7 +266,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
         tab => {
             let mut cx =
                 Cx { sh: &mut sh, insp: &mut t.settings.inspector, checks: t.panel.checks.rows(), writable, fixes, full, panel_out: Vec::new() };
-            super::in_rect(ui, body, "ecad.shell.right.body", |ui| {
+            crate::shell::in_rect(ui, body, "ecad.shell.right.body", |ui| {
                 egui::ScrollArea::vertical().id_salt(("ecad.shell.right.scroll", tab.label())).auto_shrink([false, false]).show(ui, |ui| {
                     if let Some(p) = &placing {
                         placing_view::show(ui, &mut cx, p, &standard);
@@ -311,7 +311,7 @@ fn header(ui: &mut egui::Ui, title: &str, sub: &str, row: bool, accent: bool) ->
         let text_w = (ui.available_width() - right_w).max(60.0);
         ui.vertical(|ui| {
             ui.set_width(text_w);
-            let ink = if accent { ecad_ui::color(ecad_ui::SHELL.accent_text) } else { widgets::text() };
+            let ink = if accent { ecad_widgets::color(ecad_widgets::SHELL.accent_text) } else { widgets::text() };
             ui.add(egui::Label::new(widgets::rich(ui, title, ui_type::TITLE, ink)).truncate())
                 .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, HEAD_TITLE));
             if !sub.is_empty() {
@@ -320,9 +320,9 @@ fn header(ui: &mut egui::Ui, title: &str, sub: &str, row: bool, accent: bool) ->
             }
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-            out.0 = ui.add(ecad_ui::prim::IconButton::new(Icon::Collapse, COLLAPSE)).on_hover_text("Collapse (])").clicked();
+            out.0 = ui.add(ecad_widgets::prim::IconButton::new(Icon::Collapse, COLLAPSE)).on_hover_text("Collapse (])").clicked();
             if row {
-                let b = ui.add(ecad_ui::prim::Button::new(ROW).small()).on_hover_text("Open its row in Project \u{25b8} Devices");
+                let b = ui.add(ecad_widgets::prim::Button::new(ROW).small()).on_hover_text("Open its row in Project \u{25b8} Devices");
                 out.1 = b.clicked();
             }
         });
@@ -366,34 +366,34 @@ pub fn shows_word(t: &mut App) -> &'static str {
 /// The collapsed rail: one labelled button per tab, each with a ‹ mark; Checks carries a dot
 /// when there are problems. A press expands the panel on that tab.
 fn rail(t: &mut App, ui: &mut egui::Ui, rect: Rect, open: bool) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let problems = t.checks_count().0 > 0;
     let x = rect.center().x - size::TOOL_BUTTON_W / 2.0;
     let mut y = rect.top() + space::S;
     let mut pick = None;
-    let label_style = ecad_ui::tokens::ui_type::TypeStyle { size: size::TOOL_LABEL, line: 12.0, weight: 400 };
+    let label_style = ecad_widgets::tokens::ui_type::TypeStyle { size: size::TOOL_LABEL, line: 12.0, weight: 400 };
     for tab in RightTab::ALL {
         let r = Rect::from_min_size(pos2(x, y), vec2(size::TOOL_BUTTON_W, size::TOOL_BUTTON));
         y += size::TOOL_BUTTON + 2.0;
         // Lit while the inspector is open on it, as the strip's open panel button.
         let on = open && tab == t.shell.state.right_tab;
-        let resp = super::bar::hit(ui, r, &rail_label(tab), on, false, true);
-        let ink = if resp.hovered() || on { ecad_ui::color(s.text) } else { ecad_ui::color(s.text_2) };
+        let resp = crate::shell::bar::hit(ui, r, &rail_label(tab), on, false, true);
+        let ink = if resp.hovered() || on { ecad_widgets::color(s.text) } else { ecad_widgets::color(s.text_2) };
         let icon = match tab {
             RightTab::Device => Icon::Place,
             RightTab::Layout => Icon::Rotate,
             RightTab::Checks => Icon::Checks,
         };
         let icon_rect = Rect::from_center_size(pos2(r.center().x, r.top() + 6.0 + size::TOOL_ICON / 2.0), vec2(size::TOOL_ICON, size::TOOL_ICON));
-        ecad_ui::icons::paint(ui.painter(), icon_rect, icon, if on { ecad_ui::color(s.accent_text) } else { ink });
+        ecad_widgets::icons::paint(ui.painter(), icon_rect, icon, if on { ecad_widgets::color(s.accent_text) } else { ink });
         let word = if tab == RightTab::Device { shows_word(t) } else { tab.label() };
-        ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), egui::Align2::CENTER_CENTER, word, super::bar::font(ui, label_style), ink);
+        ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), egui::Align2::CENTER_CENTER, word, crate::shell::bar::font(ui, label_style), ink);
         let mark = Rect::from_center_size(pos2(r.left() + 4.0, icon_rect.center().y), vec2(8.0, 8.0));
         // ‹ opens towards the canvas; › while open (the strip's marks, mirrored).
         let chevron = if on { Icon::ChevronRight } else { Icon::ChevronLeft };
-        ecad_ui::icons::paint(ui.painter(), mark, chevron, ecad_ui::color(s.text_3));
+        ecad_widgets::icons::paint(ui.painter(), mark, chevron, ecad_widgets::color(s.text_3));
         if tab == RightTab::Checks && problems {
-            ui.painter().circle_filled(pos2(icon_rect.right() + 2.0, icon_rect.top() + 1.0), 3.5, ecad_ui::color(s.error));
+            ui.painter().circle_filled(pos2(icon_rect.right() + 2.0, icon_rect.top() + 1.0), 3.5, ecad_widgets::color(s.error));
         }
         if resp.clicked() {
             pick = Some(tab);
@@ -471,8 +471,8 @@ pub struct ConnectorRow {
 /// The connector rows for symbol `rep` of `c` (design 044 §9.4): Pins, each drawn half's
 /// Description, Maker, Part number and Location, and for a pin symbol its Pin and Mate.
 fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: RepresentationId) -> Vec<ConnectorRow> {
-    use ecad_engine::connectors as cn;
-    use ecad_engine::symbols::Side;
+    use ecad_electrical::connectors as cn;
+    use ecad_electrical::symbols::Side;
     if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
     }
@@ -591,7 +591,7 @@ pub struct Inspector {
     pub rebuilds: u64,
     /// Brief 047 (design 047 §6.2): the selected device's part set, read only; empty when it has
     /// no part lines.
-    pub parts: Vec<ecad_engine::bom::PartSetRow>,
+    pub parts: Vec<ecad_electrical::reports::bom::PartSetRow>,
     /// Brief 048: "update available" for the selected symbol.
     pub symbol_update: Option<SymbolUpdate>,
     /// UI rev 3: what the Device and Layout tabs show about one selected device.
@@ -617,7 +617,7 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
             Shown::On => "Shown on the page".into(),
         };
     }
-    crate::lists::standards::value_text(e, r)
+    crate::settings::standards_list::value_text(e, r)
 }
 
 /// A style choice's row (brief 050a): the chosen style's name, the catalogue's styles, and the
@@ -625,9 +625,9 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
 fn style_row(
     doc: &ecad_model::Document, e: &Entry, cat: ecad_model::StyleCatalogue, scope: Scope, r: &defaults::Resolved<'_>,
 ) -> (String, Vec<(String, String)>, Option<String>) {
-    use ecad_engine::styles;
+    use ecad_electrical::styles;
     // Brief 050b (design 050 §7.5): a wire's category with where it comes from.
-    if e.key == ecad_model::wiring::WIRE_CATEGORY
+    if e.key == ecad_model::connectivity::wiring::WIRE_CATEGORY
         && let Some(c) = scope.conductor
     {
         let looks = styles::wire::WireLooks::new(doc);
@@ -664,7 +664,7 @@ struct Built {
     deps: BTreeSet<ObjectRef>,
     placements: Vec<RepresentationId>,
     connector: Vec<ConnectorRow>,
-    parts: Vec<ecad_engine::bom::PartSetRow>,
+    parts: Vec<ecad_electrical::reports::bom::PartSetRow>,
     update: Option<SymbolUpdate>,
     device: Option<DeviceDetails>,
     page_words: Option<(String, String)>,
@@ -698,7 +698,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
                 es.extend(k.show_entry());
             }
             let starter =
-                doc.devices.get(&c).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)).and_then(ecad_engine::symbols::of_definition);
+                doc.devices.get(&c).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)).and_then(ecad_electrical::symbols::of_definition);
             es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(s.key)));
             (Scope::symbol(doc, rep), es, Some((Level::Object, Target::Symbol(rep))))
         }
@@ -734,7 +734,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
                 here: target.filter(|(l, _)| e.allows(*l)),
                 choices: match e.kind {
                     Kind::Choice(w) => w,
-                    Kind::Flag => ecad_model::words::FLAG_WORDS,
+                    Kind::Flag => ecad_model::naming::words::FLAG_WORDS,
                     _ => &[],
                 },
                 styles,
@@ -752,7 +752,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
     };
     // Brief 047: the part set reads the device's own properties (already a dependency).
     let parts = match what {
-        What::Symbol(c, _) => ecad_engine::bom::part_set(doc, c),
+        What::Symbol(c, _) => ecad_electrical::reports::bom::part_set(doc, c),
         _ => Vec::new(),
     };
     let update = match what {
@@ -885,7 +885,7 @@ impl Inspector {
                         }
                     }
                     let badge =
-                        ecad_ui::prim::badge(ui, crate::lists::standards::source_word(row.from), crate::lists::standards::source_tone(row.from));
+                        ecad_widgets::prim::badge(ui, crate::settings::standards_list::source_word(row.from), crate::settings::standards_list::source_tone(row.from));
                     let b = ui.interact(badge.rect, egui::Id::unique(("ecad.origin", row.key)), egui::Sense::click());
                     b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("ecad.origin.{}", row.key)));
                     if b.on_hover_text("Where this value comes from: open Standards").clicked() {
@@ -913,7 +913,7 @@ impl Inspector {
                     if let Some(id) = pick {
                         // Brief 050b: a wire's category runs `category` (it may set the potential).
                         let line = match target {
-                            Target::Wire(c) if row.key == ecad_model::wiring::WIRE_CATEGORY => {
+                            Target::Wire(c) if row.key == ecad_model::connectivity::wiring::WIRE_CATEGORY => {
                                 format!("category {}", serde_json::json!({"conductor": c.hex(), "value": id}))
                             }
                             _ => default_cmds::line(row.key, level, target, Some(&id)),
@@ -980,7 +980,7 @@ impl Inspector {
             return;
         }
         ui.add_space(space::M);
-        ecad_ui::prim::read_value(ui, "HALVES").widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.props.connector"));
+        ecad_widgets::prim::read_value(ui, "HALVES").widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.props.connector"));
         let weak = ui.visuals().weak_text_color();
         for row in &self.connector {
             if let Some(h) = &row.heading {
@@ -990,7 +990,7 @@ impl Inspector {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(row.label).small().color(weak));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ecad_ui::prim::badge(ui, row.origin, ecad_ui::prim::Tone::Neutral);
+                    ecad_widgets::prim::badge(ui, row.origin, ecad_widgets::prim::Tone::Neutral);
                 });
             });
             let name = format!("ecad.props.connector.{}", row.key);

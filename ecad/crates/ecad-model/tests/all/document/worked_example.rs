@@ -1,6 +1,6 @@
 //! The proposal's worked example (§7) as an executable scenario, at the model level.
 
-use ecad_model::derive::{mismatches, nets};
+use ecad_model::connectivity::derive::{mismatches, nets};
 use ecad_model::{
     Author, Color, Core, Device, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page, Primitive, Pt, Representation, Route, RouteEnd,
     Style, Subject, Terminal, ConnectionPointId, WireId,

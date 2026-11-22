@@ -8,7 +8,7 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 
-use super::source::{Cell, ColumnId, TableSource};
+use crate::table::source::{Cell, ColumnId, TableSource};
 
 /// Sort direction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

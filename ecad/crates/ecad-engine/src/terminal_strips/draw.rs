@@ -1,13 +1,13 @@
 //! Graphical terminal-strip pages (brief 046, design 046): the `graphic` style of a `terminals`
 //! generated page. Each strip is drawn as it is wired on the rail: one column per plan row of
-//! [`crate::strips::StripData::plan`], inside conductors up to their targets, outside conductors
+//! [`ecad_electrical::terminal_strips::StripData::plan`], inside conductors up to their targets, outside conductors
 //! down, cable bars and boxes under them, links, bridges, levels and accessories in the band.
 //!
 //! It reads only the kept report models ([`ReportModels`]: the strips, the cable and device rows). It
 //! stores nothing in the document and is never a second model: the table style and this one draw
 //! the same rows. It does not draw panels, click-through or colour per text role (design 046 §15).
 //!
-//! The kept layout data, the style and the sheets are [`crate::strips::pages`]'s; this module
+//! The kept layout data, the style and the sheets are [`ecad_electrical::terminal_strips::pages`]'s; this module
 //! draws.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,15 +15,15 @@ use std::f64::consts::FRAC_PI_2;
 
 use cadcraft_engine::doc::{EntityKind, HAlign, Text, VAlign};
 use cadcraft_engine::geom::Vec3;
-use ecad_model::sheet::unit_scale;
+use ecad_model::document::sheet::unit_scale;
 use ecad_model::{CableId, DeviceId, Document, PageId, Primitive, Pt};
 
-use crate::accessories::Acc;
+use ecad_electrical::terminal_strips::accessories::Acc;
 use crate::convert::kind_for_primitive;
-use crate::frame::{FrameInput, Part, THIN_WEIGHT, TextDraw};
+use crate::pages::frame::{FrameInput, Part, THIN_WEIGHT, TextDraw};
 use crate::generated::{LAYER, MISSING};
 use crate::outputs::kept::ReportModels;
-use crate::strips::{SideCell, StripData};
+use ecad_electrical::terminal_strips::{SideCell, StripData};
 use crate::text_style::{Look, TextKind};
 
 /// Guard (design 046 §4.1): at most this many cable bar lanes; further cables share the last.
@@ -134,7 +134,7 @@ impl Pen {
         if value.is_empty() {
             return;
         }
-        let (shown, wf) = crate::frame::fit(value, look.mm, room);
+        let (shown, wf) = crate::pages::frame::fit(value, look.mm, room);
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
         let kind = EntityKind::Text(Text {
@@ -282,7 +282,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
         match p.col {
             Col::Gap(acc) => gap(pen, acc, p, g, yc, s, lk),
             Col::Term(_, r) => {
-                let up = crate::strips::raise(r);
+                let up = ecad_electrical::terminal_strips::raise(r);
                 let (bot, top) = (yc - half + up, yc + half + up);
                 let cx = p.cx();
                 if r.spare() {
@@ -316,7 +316,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
                         pen.line((cx, y1 - 2.0), (cx, y1));
                     }
                 }
-                if s.acc.markers.contains(&r.label) && crate::strips::first_of_label(s, r) {
+                if s.acc.markers.contains(&r.label) && ecad_electrical::terminal_strips::first_of_label(s, r) {
                     pen.rect((cx - 1.5, top), (cx + 1.5, top + 1.5));
                 }
                 if r.free {
@@ -432,7 +432,7 @@ fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
                 .get(i..e)
                 .unwrap_or_default()
                 .iter()
-                .filter_map(|p| if let Col::Term(_, x) = p.col { Some(crate::strips::raise(x)) } else { None })
+                .filter_map(|p| if let Col::Term(_, x) = p.col { Some(ecad_electrical::terminal_strips::raise(x)) } else { None })
                 .fold(0.0, f64::max);
             pen.rect((a.x - 0.5, yc - half - 0.8), (z.x + z.w + 0.5, yc + half + top + 0.8));
             // Internal bridges: levels of one group joined near the bottom.
@@ -449,7 +449,7 @@ fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
                     && xs.len() > 1
                 {
                     let y = yc - half + 1.5 + k as f64 * 1.0;
-                    pen.line_w((*a, y), (*z, y), ecad_electrical::cable_look::CABLE_WEIGHT);
+                    pen.line_w((*a, y), (*z, y), ecad_electrical::cables::layout::CABLE_WEIGHT);
                 }
             }
         }
@@ -572,7 +572,7 @@ fn cables(
         .collect();
     for ((k, a, b, tag, far), lane) in order.iter().zip(&lanes) {
         let y = bar0 - *lane as f64 * CABLE_LANE_MM;
-        pen.line_w((*a - 1.0, y), (*b + 1.0, y), ecad_electrical::cable_look::CABLE_WEIGHT.saturating_mul(2));
+        pen.line_w((*a - 1.0, y), (*b + 1.0, y), ecad_electrical::cables::layout::CABLE_WEIGHT.saturating_mul(2));
         // The box under the bar's first lead, joined to the bar.
         let (bx0, bx1) = (a - BOX_W_MM / 2.0, a + BOX_W_MM / 2.0);
         pen.line((*a, y), (*a, box_top));
@@ -617,4 +617,4 @@ fn cables(
         }
     }
 }
-pub use crate::strips::pages::*;
+pub use ecad_electrical::terminal_strips::pages::*;

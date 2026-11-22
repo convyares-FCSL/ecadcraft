@@ -15,13 +15,13 @@
 //!   `ModifyLoosePart` and `DeleteLoosePart`.
 //!
 //! Excluded: the parts catalogue and kits from it (2.3); counts derived from the drawing; the
-//! BOM model itself, which is [`crate::outputs`].
+//! BOM model itself, which is [`crate::reports`].
 
 use crate::CmdError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use ecad_model::loose_part::LoosePart;
+use ecad_model::objects::loose_part::LoosePart;
 use ecad_model::{DeviceId, Document, LoosePartId, ObjectRef, Op, Properties, Subject};
 use serde_json::{Value, json};
 
@@ -30,7 +30,7 @@ use crate::defaults::{self, Scope};
 /// The prefix of a part line's keys.
 pub const PART_PREFIX: &str = "part.";
 /// The article number of a device's main part, an item, or (with a prefix) a line or strip part.
-pub const ARTICLE_KEY: &str = ecad_model::device::ARTICLE_KEY;
+pub const ARTICLE_KEY: &str = ecad_model::objects::devices::ARTICLE_KEY;
 /// An item's quantity and unit (a line's are `part.<n>.qty`, `part.<n>.unit`).
 pub const QTY_KEY: &str = "qty";
 pub const UNIT_KEY: &str = "unit";
@@ -56,7 +56,7 @@ pub const MAX_KIT_CHARS: usize = 64;
 /// Most characters of one sub-item name in `for` (a strip label or a fuse number).
 pub const MAX_SUB_CHARS: usize = 12;
 /// Most components `partline {components}` and `article` touch in one call.
-pub const MAX_COMPONENTS: usize = crate::words::MAX_HANDLES;
+pub const MAX_COMPONENTS: usize = crate::cables::words::MAX_HANDLES;
 
 /// Refusals, in words.
 pub const ITEM_NEEDS_DESCRIPTION: &str = "An item needs a description.";
@@ -115,7 +115,7 @@ pub fn parse_part_key(key: &str) -> Option<Result<(u8, Field), CmdError>> {
         CmdError::refused(format!("\"{shown}\" is not a part line key. Write part.<n>.<field>, n 1 to {MAX_LINES}, field one of {}.", field_words()))
     };
     let Some((n, f)) = rest.split_once('.') else { return Some(Err(bad())) };
-    let n = ecad_model::words::uint_canonical(n, u32::from(MAX_LINES)).filter(|n| *n >= 1).and_then(|n| u8::try_from(n).ok());
+    let n = ecad_model::naming::words::uint_canonical(n, u32::from(MAX_LINES)).filter(|n| *n >= 1).and_then(|n| u8::try_from(n).ok());
     match (n, Field::parse(f)) {
         (Some(n), Some(f)) => Some(Ok((n, f))),
         _ => Some(Err(bad())),
@@ -184,7 +184,7 @@ pub fn parse_qty(text: &str, metres: bool) -> Result<Qty, CmdError> {
     let more = if t.chars().count() > 20 { "…" } else { "" };
     let bad = || CmdError::refused(format!("\"{shown}{more}\" is not a quantity. Write a number greater than 0, at most 9999, like 2 or 3.6."));
     let (w, frac) = t.split_once('.').unwrap_or((t, ""));
-    let digits_or_none = |t: &str| t.is_empty() || ecad_model::words::is_digits(t);
+    let digits_or_none = |t: &str| t.is_empty() || ecad_model::naming::words::is_digits(t);
     if w.is_empty() && frac.is_empty() || w.len() > 6 || !digits_or_none(w) || !digits_or_none(frac) {
         return Err(bad());
     }
@@ -275,13 +275,13 @@ fn head(doc: &Document, c: DeviceId) -> Option<&'static crate::symbols::Starter>
 
 /// What `for` may name on `c`.
 pub fn sub_items(doc: &Document, c: DeviceId) -> Subs {
-    if crate::strips::strip_of(doc, c).is_some() {
-        let ps = crate::terminal_types::positions(doc, c);
+    if crate::terminal_strips::strip_of(doc, c).is_some() {
+        let ps = crate::terminal_strips::terminal_blocks::positions(doc, c);
         let fuses = ps.iter().filter(|p| p.ty.code == "fuse").map(|p| p.label.clone()).collect();
         return Subs::Positions { all: ps.into_iter().map(|p| p.label).collect(), fuses };
     }
     match head(doc, c).filter(|s| crate::symbols::is_fuse_bank(s)) {
-        Some(bank) => Subs::Fuses(bank.labels().into_iter().filter(|l| ecad_model::words::is_digits(l)).collect()),
+        Some(bank) => Subs::Fuses(bank.labels().into_iter().filter(|l| ecad_model::naming::words::is_digits(l)).collect()),
         None => Subs::None,
     }
 }
@@ -378,8 +378,8 @@ fn check_for(doc: &Document, c: DeviceId, text: &str) -> Result<Option<String>, 
 pub fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
     let mut out = Vec::new();
     let mut lines = Vec::new();
-    for (c, map) in crate::accessories::relabels(ops) {
-        if crate::strips::strip_of(doc, c).is_none() {
+    for (c, map) in crate::terminal_strips::accessories::relabels(ops) {
+        if crate::terminal_strips::strip_of(doc, c).is_none() {
             continue;
         }
         let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { continue };
@@ -633,7 +633,7 @@ fn field_value(doc: &Document, c: DeviceId, f: Field, value: Option<&str>, metre
 
 /// Whether the BOM shows its Article number column (`bom.column.article`).
 pub fn article_column(doc: &Document) -> bool {
-    ecad_model::words::flag(defaults::resolve(doc, &defaults::bom::COLUMN_ARTICLE, Scope::project()).word()) == Some(true)
+    ecad_model::naming::words::flag(defaults::resolve(doc, &defaults::bom::COLUMN_ARTICLE, Scope::project()).word()) == Some(true)
 }
 
 /// Whether part lines are listed under their device (`bom.lines = nested`).
@@ -643,7 +643,7 @@ pub fn lines_nested(doc: &Document) -> bool {
 
 /// Whether a new item's unit is metres (`bom.item.unit = m`).
 pub fn item_unit_metres(doc: &Document) -> bool {
-    use ecad_model::loose_part::ItemUnit;
+    use ecad_model::objects::loose_part::ItemUnit;
     defaults::resolve(doc, &defaults::bom::ITEM_UNIT, Scope::project()).choice::<ItemUnit>() == Some(ItemUnit::Metres)
 }
 
@@ -676,9 +676,9 @@ pub fn line_ops(doc: &Document, c: DeviceId, n: u8, fields: &[(Field, Option<Str
 
 /// `Slotted trunking 50x75, 3.6 m in +CP1` (brief 052: the location's code from the list).
 pub fn item_words(doc: &Document, item: &LoosePart) -> String {
-    let unit = if item.unit == ecad_model::loose_part::ItemUnit::Metres { " m" } else { "" };
+    let unit = if item.unit == ecad_model::objects::loose_part::ItemUnit::Metres { " m" } else { "" };
     let (d, q) = (item.description.as_str(), item.qty);
-    match item.location.map(|l| crate::designations::display(doc, "location", &l.hex())) {
+    match item.location.map(|l| crate::locations::designations::display(doc, "location", &l.hex())) {
         Some(l) => format!("{d}, {q}{unit} in {l}"),
         None => format!("{d}, {q}{unit}"),
     }
@@ -726,8 +726,8 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<Art
             continue;
         }
         let maker_ok = |k: &str| maker.is_none_or(|m| same(comp.get(k), m));
-        let strip = crate::strips::strip_of(doc, *c).is_some();
-        if same(comp.part_number.as_ref(), pn) && maker_ok(ecad_model::device::MAKER_KEY) && !strip {
+        let strip = crate::terminal_strips::strip_of(doc, *c).is_some();
+        if same(comp.part_number.as_ref(), pn) && maker_ok(ecad_model::objects::devices::MAKER_KEY) && !strip {
             out.push(ArticleTarget::Key(ObjectRef::Device(*c), ARTICLE_KEY.to_string(), "device"));
         }
         if strip {
@@ -759,21 +759,21 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<Art
 /// of each terminal type (036 §7.2), each accessory (030 §4) and each link's own part (030 §5.6,
 /// which has no project default of its own).
 fn strip_slots(props: &Properties) -> Vec<(String, String, String, Option<String>)> {
-    let mut v: Vec<(String, String, String, Option<String>)> = crate::terminal_types::TYPES
+    let mut v: Vec<(String, String, String, Option<String>)> = crate::terminal_strips::terminal_blocks::TYPES
         .iter()
         .map(|t| {
-            let k = |f: &str| crate::strips::type_key(t, f);
+            let k = |f: &str| crate::terminal_strips::type_key(t, f);
             (k("part_number"), k("maker"), k(ARTICLE_KEY), Some(format!("strip_{}_maker", t.code)))
         })
         .collect();
     let item_keys = |pre: &str| (format!("{pre}.part_number"), format!("{pre}.maker"), format!("{pre}.{ARTICLE_KEY}"));
-    v.extend(crate::accessories::PART_ITEMS.iter().map(|i| {
+    v.extend(crate::terminal_strips::accessories::PART_ITEMS.iter().map(|i| {
         let (p, m, a) = item_keys(i);
-        let pm = crate::accessories::project_key(&m);
+        let pm = crate::terminal_strips::accessories::project_key(&m);
         (p, m, a, Some(pm))
     }));
-    v.extend(ecad_model::links::of(props).into_iter().map(|(n, _)| {
-        let (p, m, a) = item_keys(&ecad_model::links::key(n));
+    v.extend(ecad_model::connectivity::jumper_bars::of(props).into_iter().map(|(n, _)| {
+        let (p, m, a) = item_keys(&ecad_model::connectivity::jumper_bars::key(n));
         (p, m, a, None)
     }));
     v
@@ -782,13 +782,13 @@ fn strip_slots(props: &Properties) -> Vec<(String, String, String, Option<String
 /// The project's strip part slots: (part number key, maker key, article key), terminal types as
 /// `strip_<code>_*` and accessories as `strip_<item>_*`.
 fn project_strip_slots() -> Vec<(String, String, String)> {
-    let mut v: Vec<(String, String, String)> = crate::terminal_types::TYPES
+    let mut v: Vec<(String, String, String)> = crate::terminal_strips::terminal_blocks::TYPES
         .iter()
         .map(|t| (format!("strip_{}_part_number", t.code), format!("strip_{}_maker", t.code), format!("strip_{}_{ARTICLE_KEY}", t.code)))
         .collect();
-    let pk = crate::accessories::project_key;
+    let pk = crate::terminal_strips::accessories::project_key;
     v.extend(
-        crate::accessories::PART_ITEMS
+        crate::terminal_strips::accessories::PART_ITEMS
             .iter()
             .map(|i| (pk(&format!("{i}.part_number")), pk(&format!("{i}.maker")), pk(&format!("{i}.{ARTICLE_KEY}")))),
     );
@@ -797,7 +797,7 @@ fn project_strip_slots() -> Vec<(String, String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn quantities_parse_and_print() {

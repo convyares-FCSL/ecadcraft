@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use ecad_engine::checks::Kind;
-use ecad_engine::release::{self, Step};
+use ecad_engine::releases::release::{self, Step};
 use ecad_model::{CableId, Op, PageId};
 use serde_json::{Value, json};
 
@@ -31,7 +31,7 @@ struct F {
 /// one reference end on Supply (an orphan until continued), an issued Rev A, a pending Rev B
 /// (`Terminals added`, drawn `CVA`), and a project file in a folder of its own.
 fn fixture(name: &str) -> F {
-    ecad_engine::printbook::install_io();
+    ecad_engine::export::printbook::install_io();
     let mut h = H::new(0x0270);
     let supply = h.first_page();
     h.run("renamepage", json!({"page": supply.hex(), "title": "Supply"})).unwrap();
@@ -147,15 +147,15 @@ fn prerelease_groups_the_check_and_records_nothing() {
     assert!(group("errors").is_null());
     assert_eq!(v["writes"][0]["file"], "D-1001 Rev B.pdf");
     assert!(v["writes"].as_array().unwrap().iter().any(|w| w["file"] == "D-1001 Rev B checks.csv"));
-    assert_eq!(v["not_included"][0], json!({"slot": "terminal-plan", "why": ecad_electrical::release::NO_STRIPS}));
+    assert_eq!(v["not_included"][0], json!({"slot": "terminal-plan", "why": ecad_electrical::releases::release::NO_STRIPS}));
     assert_eq!(v["folder"], json!(folder(&f, "B").to_string_lossy()));
     assert_eq!(v["exists"], false);
     // Each refusal is said up front: never saved, a needed field empty, read-only.
     f.h.cfg(|p| p.path = None);
-    assert_eq!(f.h.run("prerelease", json!({})).unwrap()["refusal"], ecad_electrical::release::SAVE_FIRST);
+    assert_eq!(f.h.run("prerelease", json!({})).unwrap()["refusal"], ecad_electrical::releases::release::SAVE_FIRST);
     f.h.cfg(|p| p.path = Some("x/demo.ecad".into()));
     f.h.run("revision", json!({"drawn": null})).unwrap();
-    assert_eq!(f.h.run("prerelease", json!({})).unwrap()["refusal"], ecad_engine::revisions::FILL_FIRST);
+    assert_eq!(f.h.run("prerelease", json!({})).unwrap()["refusal"], ecad_electrical::releases::revisions::FILL_FIRST);
     let _ = std::fs::remove_dir_all(&f.dir);
 }
 
@@ -194,7 +194,7 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     assert_eq!(label, "Issue Rev B");
     assert!(
         ops.iter().any(|o| matches!(o, Op::ModifyProject { after, .. }
-        if ecad_engine::revisions::field_of(after, 2, "released").as_deref() == Some("release/Rev B"))),
+        if ecad_electrical::releases::revisions::field_of(after, 2, "released").as_deref() == Some("release/Rev B"))),
         "{ops:?}"
     );
     assert!(f.h.p(|p| !p.unsaved()), "saved");
@@ -224,15 +224,15 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     assert!(checks.contains("-C01 /?"), "{checks}");
     // What was printed is the state as issued: its title block and revision list read Rev B.
     let issued = f.h.p(|p| ecad_engine::history::issued_state(p, "B").unwrap().2);
-    assert_eq!(ecad_engine::revisions::issued(&issued).first().map(|r| r.rev().to_string()).as_deref(), Some("B"));
+    assert_eq!(ecad_electrical::releases::revisions::issued(&issued).first().map(|r| r.rev().to_string()).as_deref(), Some("B"));
     // The Revisions table knows where it went.
-    let row = f.h.p(|p| ecad_engine::revisions::issued(p.ledger.document()).into_iter().next().unwrap());
+    let row = f.h.p(|p| ecad_electrical::releases::revisions::issued(p.ledger.document()).into_iter().next().unwrap());
     assert_eq!(row.released.as_deref(), Some("release/Rev B"));
     // Undo asks first, saying the folder stays; it removes the issue with FP1's key, not the folder.
     let e = f.h.run("u", Value::Null).unwrap_err();
     assert!(e.contains("Undo the issue? This removes the release mark. Its release folder stays on disk."), "{e}");
     f.h.run("undoissue", json!({})).unwrap();
-    assert!(!ecad_engine::revisions::field_of(&f.h.doc().project, 2, "released").is_some());
+    assert!(!ecad_electrical::releases::revisions::field_of(&f.h.doc().project, 2, "released").is_some());
     assert!(out.join("release.json").exists());
     let _ = std::fs::remove_dir_all(&f.dir);
 }
@@ -441,10 +441,10 @@ fn reopening_a_revision_shows_it_in_its_title_block() {
     for (cmd, params) in [("openrevision", json!({"rev": "B"})), ("showpoint", json!({"revision": "B"}))] {
         f.h.run(cmd, params).unwrap();
         let doc = f.h.p(|p| p.revision_view.as_ref().unwrap().doc.clone());
-        let shown = ecad_engine::revisions::issued(&doc);
+        let shown = ecad_electrical::releases::revisions::issued(&doc);
         assert_eq!(shown.iter().map(|r| r.rev().to_string()).collect::<Vec<_>>(), ["B", "A"], "{cmd}");
         assert_eq!(doc.wires.len() + 1, f.h.doc().wires.len(), "{cmd}: as it was");
-        let frame = ecad_engine::frame::FrameInput::of(&doc, f.supply, &ecad_model::book::Book::of(&doc));
+        let frame = ecad_engine::pages::frame::FrameInput::of(&doc, f.supply, &ecad_model::document::book::Book::of(&doc));
         assert_eq!(frame.rev, "B", "{cmd}");
         assert_eq!(frame.revisions.first().map(|r| r[0].as_str()), Some("B"), "{cmd}");
         f.h.run("closerevision", json!({})).unwrap();
@@ -470,8 +470,8 @@ fn a_release_never_lands_on_the_project_or_a_foreign_folder() {
         // Write FP1 past the commands, as a hostile file could hold it.
         f.h.cfg(|p| {
             let doc = p.ledger.document();
-            let after = ecad_engine::revisions::with_field(&doc.project, 1, "released", Some(v)).unwrap();
-            let ops: Vec<Op> = ecad_engine::revisions::modify(&doc.project, after).into_iter().collect();
+            let after = ecad_electrical::releases::revisions::with_field(&doc.project, 1, "released", Some(v)).unwrap();
+            let ops: Vec<Op> = ecad_electrical::releases::revisions::modify(&doc.project, after).into_iter().collect();
             if !ops.is_empty() {
                 p.ledger.commit(ecad_model::Author::User, "hostile", ops).unwrap();
             }

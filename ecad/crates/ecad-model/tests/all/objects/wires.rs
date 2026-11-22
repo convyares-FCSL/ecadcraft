@@ -3,9 +3,9 @@
 //! changes a wire's values, is its own inverse and never moves its ends, and every edit of the
 //! routes rewrites the wires of the nets whose points changed, in the same transaction.
 
-use ecad_model::text::Text;
-use ecad_model::units::Amps;
-use ecad_model::wire::{Basis, Bundling, CircuitInputs, Colours, InstallMethod, SupplySystem, WireNumber, WireSize};
+use ecad_model::naming::text::Text;
+use ecad_model::geometry::units::Amps;
+use ecad_model::objects::wire::{Basis, Bundling, CircuitInputs, Colours, InstallMethod, SupplySystem, WireNumber, WireSize};
 use ecad_model::{Author, ConductorId, IdAllocator, Ledger, NetId, Op, ConnectionPointId, Wire, WireId, Word};
 
 #[test]
@@ -58,8 +58,8 @@ fn colours_are_ordered_lists_stored_by_two_letter_code() {
         assert_eq!(Colours::parse(typed).map(|c| c.to_string()).as_deref(), *want, "{typed:?}");
     }
     let gy = Colours::parse("GN/YE").unwrap();
-    assert_eq!(gy.shown(ecad_model::colour::ColourWords::Code3), "GRN/YEL");
-    assert_eq!(gy.shown(ecad_model::colour::ColourWords::Name), "Green/Yellow");
+    assert_eq!(gy.shown(ecad_model::geometry::colour::ColourWords::Code3), "GRN/YEL");
+    assert_eq!(gy.shown(ecad_model::geometry::colour::ColourWords::Name), "Green/Yellow");
     assert_eq!(serde_json::from_str::<Colours>("\"GN/YE\"").unwrap(), gy);
     for not_stored in ["\"GNYE\"", "\"gn/ye\"", "\"green\"", "\"XX\""] {
         assert!(serde_json::from_str::<Colours>(not_stored).is_err(), "{not_stored} is not the stored form");
@@ -485,13 +485,13 @@ fn numbers(l: &Ledger) -> Vec<Option<String>> {
     v.into_iter().map(|x| x.2).collect()
 }
 
-/// One edit as the app commits it: with the numbering pass ([`ecad_model::wiring::assign`]).
+/// One edit as the app commits it: with the numbering pass ([`ecad_model::connectivity::wiring::assign`]).
 fn edit(l: &mut Ledger, label: &str, ops: Vec<Op>) {
-    l.commit_extended(Author::User, label, ops, None, ecad_model::wiring::assign).unwrap();
+    l.commit_extended(Author::User, label, ops, None, ecad_model::connectivity::wiring::assign).unwrap();
 }
 
 /// `l`'s project settings with `wiring.number_by` set to `by`, as one edit.
-fn number_by(l: &mut Ledger, by: ecad_model::wiring::NumberBy) {
+fn number_by(l: &mut Ledger, by: ecad_model::connectivity::wiring::NumberBy) {
     let before = l.document().settings.clone();
     let mut after = before.clone();
     after.wiring.number_by = by;
@@ -501,7 +501,7 @@ fn number_by(l: &mut Ledger, by: ecad_model::wiring::NumberBy) {
 #[test]
 fn number_by_switches_every_shown_number_between_net_and_conductor_in_one_edit() {
     use ecad_model::RouteEnd;
-    use ecad_model::wiring::{self, NumberBy};
+    use ecad_model::connectivity::wiring::{self, NumberBy};
     let mut ids = IdAllocator::seeded(43);
     let mut l = Ledger::new(43);
     let (p, a, b) = page_with_points(&mut l, &mut ids);
@@ -607,7 +607,7 @@ fn a_point_accepting_more_than_two_fans_out_and_one_accepting_two_chains() {
         let third = if want_far { [b, d] } else { [a, d] };
         assert_eq!(w, want(vec![(net, 1, [a, b]), (net, 2, [a, c]), (net, 3, third)]), "accepts {n}");
         let doc = l.document();
-        assert_eq!(ecad_model::wire_order::accepts(doc, a), n as usize);
+        assert_eq!(ecad_model::connectivity::wire_order::accepts(doc, a), n as usize);
         assert!(doc.ends_at(a).len() <= n as usize, "never more than it accepts here");
     }
 }

@@ -222,23 +222,23 @@ pub enum Act {
     Close,
 }
 
-fn c32(c: ecad_ui::tokens::Color) -> Color32 {
-    ecad_ui::color(c)
+fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+    ecad_widgets::color(c)
 }
 
 /// The review's body in the drawer.
 pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
-    let shell = ecad_ui::SHELL;
+    let shell = ecad_widgets::SHELL;
     let mut acts = Vec::new();
     // UI rev 3 (board 3.04): "Before saving", what the edit reaches, and the choice with Save at
     // the right of the same line.
     ui.horizontal(|ui| {
         let title = if r.compare { "Compare" } else { "Before saving" };
-        ui.label(RichText::new(title).font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE)).color(c32(shell.text)));
+        ui.label(RichText::new(title).font(ecad_widgets::fonts::font(ui.ctx(), ecad_widgets::tokens::ui_type::TITLE)).color(c32(shell.text)));
         ui.label(RichText::new(r.header()).color(c32(shell.text_2))).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, HEADER));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if r.compare {
-                let c = ui.add(ecad_ui::prim::Button::new("Close").kind(ecad_ui::prim::Kind::Quiet).small());
+                let c = ui.add(ecad_widgets::prim::Button::new("Close").kind(ecad_widgets::prim::Kind::Quiet).small());
                 c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, CLOSE));
                 if c.clicked() {
                     acts.push(Act::Close);
@@ -248,7 +248,7 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
             }
         });
     });
-    ui.add_space(ecad_ui::tokens::space::S);
+    ui.add_space(ecad_widgets::tokens::space::S);
     if let Some(e) = &r.refusal {
         ui.label(RichText::new(e).color(c32(shell.error)).small()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, REFUSAL));
     }
@@ -310,7 +310,7 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
                 };
                 ui.label(RichText::new(text).small().color(if updated { ok } else { warn }));
                 if r.compare && row.clash.is_none() && writable {
-                    let u = ui.add(ecad_ui::prim::Button::new("Update").small());
+                    let u = ui.add(ecad_widgets::prim::Button::new("Update").small());
                     u.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, UPDATE));
                     if u.clicked() {
                         acts.push(Act::Update(row.rep.clone()));
@@ -326,7 +326,7 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
         } else {
             "A placed symbol that is not updated keeps the old version and says \"update available\" until you update it or keep it."
         };
-        ui.label(RichText::new(note).small().color(c32(ecad_ui::SHELL.text_3)));
+        ui.label(RichText::new(note).small().color(c32(ecad_widgets::SHELL.text_3)));
     }
     acts
 }
@@ -341,7 +341,7 @@ fn choice_row(ui: &mut egui::Ui, r: &mut Review, writable: bool, acts: &mut Vec<
         Choice::Selected => format!("Save and update {picked}"),
         Choice::New => "Save as a new symbol".to_string(),
     };
-    let mut save = ecad_ui::prim::Button::new(&words).kind(ecad_ui::prim::Kind::Primary).small();
+    let mut save = ecad_widgets::prim::Button::new(&words).kind(ecad_widgets::prim::Kind::Primary).small();
     if let Some(w) = &why {
         save = save.disabled(w);
     }
@@ -350,19 +350,19 @@ fn choice_row(ui: &mut egui::Ui, r: &mut Review, writable: bool, acts: &mut Vec<
     if sv.clicked() && why.is_none() {
         acts.push(Act::Save);
     }
-    let back = ui.add(ecad_ui::prim::Button::new("Back to the drawing").kind(ecad_ui::prim::Kind::Quiet).small());
+    let back = ui.add(ecad_widgets::prim::Button::new("Back to the drawing").kind(ecad_widgets::prim::Kind::Quiet).small());
     back.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, BACK));
     if back.clicked() {
         acts.push(Act::Back);
     }
-    ui.add_space(ecad_ui::tokens::space::M);
+    ui.add_space(ecad_widgets::tokens::space::M);
     for (c, label) in [
         (Choice::New, "Save as a new symbol".to_string()),
         (Choice::Selected, format!("Update selected, {picked}")),
         (Choice::All, format!("Update all {n}")),
     ] {
         let off = c == Choice::All && r.clashes() > 0;
-        let resp = ui.add_enabled_ui(!off, |ui| ecad_ui::prim::Chip::new(&label).selected(r.choice == c).show(ui).response).inner;
+        let resp = ui.add_enabled_ui(!off, |ui| ecad_widgets::prim::Chip::new(&label).selected(r.choice == c).show(ui).response).inner;
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, !off, r.choice == c, format!("{BODY}.choice.{}", c.word())));
         if resp.clicked() && !off {
             r.choice = c;
@@ -372,7 +372,7 @@ fn choice_row(ui: &mut egui::Ui, r: &mut Review, writable: bool, acts: &mut Vec<
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::library::*;
 
     fn impact() -> Value {
         json!({"name": "Coil", "version": 4, "copies": 3, "pages": 2, "clashes": 1, "rows": [

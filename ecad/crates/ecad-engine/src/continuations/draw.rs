@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{Document, PageId};
 
-use crate::draw::text_style::EngineMetrics;
+use crate::styles::draw::EngineMetrics;
 use crate::xref::{Part, Places};
 
 /// The parts drawn on `page`: each arrow's reference text and each caption run, laid out with
@@ -25,8 +25,8 @@ pub fn shown(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>) 
 /// labels and references are; the bracket and caption stay ByLayer (ink). Other parts unchanged.
 pub fn colour(doc: &Document, part: &Part, e: &mut cadcraft_engine::doc::Entity) {
     if part.index == crate::continuations::REF_INDEX && crate::continuations::arrow(doc, part.rep).is_some() {
-        let ink2 = crate::look::projection_sheet().color(ecad_drawing_style::Meaning::Ink2);
-        e.common.color = cadcraft_engine::doc::color::Color::True(crate::look::rgb(ink2));
+        let ink2 = crate::cables::draw::projection_sheet().color(ecad_drawing_style::Meaning::Ink2);
+        e.common.color = cadcraft_engine::doc::color::Color::True(crate::cables::draw::rgb(ink2));
     }
 }
 
@@ -68,7 +68,7 @@ mod tests {
             crate::devices::TAG_LAYER,
         );
         // Brief 066d: and in the Reference text style, as every reference text.
-        crate::draw::text_style::DrawApply::apply(&look.0, &mut before, crate::text_style::TextKind::Reference);
+        crate::styles::draw::DrawApply::apply(&look.0, &mut before, crate::text_style::TextKind::Reference);
         assert_eq!(format!("{:?}", crate::project::device_reference_entity(&look, &part, h)), format!("{before:?}"));
     }
 }

@@ -2,12 +2,12 @@
 //! its label; a disabled button reports its reason; a field shows the 2 px `accent_text` focus
 //! ring; `read_value` has no frame and is clickable.
 
-use ecad_tokens::{GRAPHITE, Icon, line};
-use ecad_ui::color;
-use ecad_ui::prim::{
+use {ecad_widgets::tokens::GRAPHITE, ecad_widgets::tokens::Icon, ecad_widgets::tokens::line};
+use ecad_widgets::color;
+use ecad_widgets::prim::{
     Button, Chip, Field, FieldKind, IconButton, Kind, Look, RowKind, RowSpec, Segmented, Tone, badge, keycap, pill, provisional, read_value, row,
 };
-use ecad_ui::showcase::{self, Showcase};
+use ecad_widgets::showcase::{self, Showcase};
 use egui::accesskit::{Role, Toggled};
 use egui_kittest::kittest::{NodeT, Queryable};
 
@@ -188,13 +188,13 @@ fn primitives_take_their_sizes_from_the_tokens() {
     let h = harness(
         |ui, _: &mut ()| {
             let r = row(ui, RowSpec { kind: RowKind::Group, ..Default::default() }, "Group", |_| ());
-            assert_eq!(r.response.rect.height(), ecad_tokens::size::ROW_GROUP);
+            assert_eq!(r.response.rect.height(), ecad_widgets::tokens::size::ROW_GROUP);
             let b = ui.add(Button::new("Ok"));
-            assert_eq!(b.rect.height(), ecad_tokens::size::CONTROL);
+            assert_eq!(b.rect.height(), ecad_widgets::tokens::size::CONTROL);
             let i = ui.add(IconButton::new(Icon::Wire, "Wire").tool());
-            assert_eq!(i.rect.size(), egui::vec2(ecad_tokens::size::TOOL_BUTTON, ecad_tokens::size::TOOL_BUTTON));
+            assert_eq!(i.rect.size(), egui::vec2(ecad_widgets::tokens::size::TOOL_BUTTON, ecad_widgets::tokens::size::TOOL_BUTTON));
             let i = ui.add(IconButton::new(Icon::Close, "Close").look(Look::Hover));
-            assert_eq!(i.rect.width(), ecad_tokens::size::ICON_BUTTON);
+            assert_eq!(i.rect.width(), ecad_widgets::tokens::size::ICON_BUTTON);
             pill(ui, "Saved", Tone::Ok);
             badge(ui, 3, Tone::Error);
             keycap(ui, "Ctrl++");

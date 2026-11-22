@@ -15,11 +15,11 @@
 //! This module excludes the protection reader (its parent) and the calculations from the rating.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ecad_model::device::motor::{MAX_CURRENT_AMPS, MAX_POWER_WATTS};
-use ecad_model::device::{Motor, Starting};
-use ecad_model::units::{Amps, Percent, Watts};
+use ecad_model::objects::devices::motor::{MAX_CURRENT_AMPS, MAX_POWER_WATTS};
+use ecad_model::objects::devices::{Motor, Starting};
+use ecad_model::geometry::units::{Amps, Percent, Watts};
 
-use super::{MAX_CHARS, Read};
+use crate::devices::ratings::{MAX_CHARS, Read};
 
 /// One read piece of a motor rating.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -65,7 +65,7 @@ fn piece_token(lower: &str) -> Option<Tok> {
     }
     let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
     let (num, unit) = lower.split_at(split);
-    unit_token(crate::rating::parse::decimal(num)?, unit)
+    unit_token(crate::devices::ratings::parse::decimal(num)?, unit)
 }
 
 /// The pieces of `text`, or `None` when a piece is no rating word.
@@ -164,8 +164,8 @@ fn within(x: f64, max: f64, what: &str, unit: &str) -> Result<f64, Read<Motor>> 
 ///
 /// # Example
 /// ```
-/// use ecad_electrical::rating::reader::{Read, read_motor};
-/// use ecad_model::device::{Motor, Phases};
+/// use crate::devices::ratings::{Read, read_motor};
+/// use ecad_model::objects::devices::{Motor, Phases};
 /// let m = Motor::empty(Phases::Three);
 /// let Read::Rating(r) = read_motor(&m, "7,5kW 15.2A DOL") else { panic!() };
 /// assert_eq!(r.to_string(), "7.5 kW, 15.2 A, DOL");
@@ -211,8 +211,8 @@ fn build(motor: &Motor, f: &Found) -> Result<Motor, Read<Motor>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ecad_model::device::Phases;
+    use crate::devices::ratings::*;
+    use ecad_model::objects::devices::Phases;
 
     fn shown(text: &str) -> String {
         match read_motor(&Motor::empty(Phases::Three), text) {

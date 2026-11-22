@@ -58,12 +58,12 @@ impl Sheet {
     /// The three choices, in the menu's order.
     pub const ALL: [Sheet; 3] = [Sheet::Paper, Sheet::Follow, Sheet::Dark];
 
-    /// Whether the page is drawn dark in the interface theme in use ([`ecad_ui::theme`]).
+    /// Whether the page is drawn dark in the interface theme in use ([`ecad_widgets::theme`]).
     pub fn is_dark(self) -> bool {
         match self {
             Sheet::Paper => false,
             Sheet::Dark => true,
-            Sheet::Follow => ecad_ui::theme() == ecad_ui::Theme::Dark,
+            Sheet::Follow => ecad_widgets::theme() == ecad_widgets::Theme::Dark,
         }
     }
 
@@ -107,7 +107,7 @@ type Key = (u64, u64, Option<ecad_model::PageId>, Vec<Handle>, bool);
 pub struct PageData {
     /// The sheet frames (one per sheet window).
     pub frames: Vec<(ecad_model::Pt, ecad_model::Pt)>,
-    pub painted: Vec<ecad_engine::look::Painted>,
+    pub painted: Vec<ecad_engine::cables::draw::Painted>,
     /// Provisional tag texts: their handles (bounds read from the drawing when painted).
     pub provisional: Vec<Handle>,
     pub related: Related,
@@ -164,10 +164,10 @@ pub fn paint(t: &mut App, ui: &mut egui::Ui, page_rect: Option<Rect>) {
 fn apply_preferences(t: &mut App) {
     let sheet = t.shell.state.sheet;
     let tokens = sheet.tokens();
-    t.cad.options.model_background = Some(ecad_ui::color(tokens.sheet));
-    t.cad.options.selection_color = Some(ecad_ui::color(tokens.selection));
+    t.cad.options.model_background = Some(ecad_widgets::color(tokens.sheet));
+    t.cad.options.selection_color = Some(ecad_widgets::color(tokens.selection));
     // The projection draws wire colours for the sheet in use: tell it, and redraw, on a change.
-    if (ecad_engine::look::sheet().sheet == ecad_drawing_style::sheet::DARK.sheet) != sheet.is_dark() {
+    if (ecad_engine::cables::draw::sheet().sheet == ecad_drawing_style::sheet::DARK.sheet) != sheet.is_dark() {
         let _ = t.cad.session.execute("canvassheet", &serde_json::json!({ "dark": sheet.is_dark() }));
     }
     let chrome = t.shell.state.cad_chrome;
@@ -197,11 +197,11 @@ fn refresh(t: &mut App, st: &mut State) -> bool {
     let read = p.read(&mut t.cad.session, |p, _| {
         let Some(page) = p.page_of(uid) else { return (PageData::default(), None) };
         let doc = p.ledger.document();
-        let pick = ecad_engine::look::pick_routes(p, page, &selection);
+        let pick = ecad_engine::cables::draw::pick_routes(p, page, &selection);
         let data = PageData {
             frames: ecad_engine::generated::sheet_windows_of(doc, page, p.kept_reports()),
-            painted: ecad_engine::look::painted_marks(p, uid),
-            provisional: ecad_engine::look::provisional_tag_handles(p, page),
+            painted: ecad_engine::cables::draw::painted_marks(p, uid),
+            provisional: ecad_engine::cables::draw::provisional_tag_handles(p, page),
             related: related(p, page, &selection),
             tag_height: ecad_engine::text_style::text_style(doc, ecad_engine::text_style::TextKind::Tag).height,
         };

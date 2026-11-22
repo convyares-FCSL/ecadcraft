@@ -18,8 +18,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::units::RatedVoltage;
-use crate::words::Word;
+use crate::geometry::units::RatedVoltage;
+use crate::naming::words::Word;
 
 /// The largest supply voltage of a sensor, in volts.
 pub const MAX_SUPPLY_VOLTS: f64 = 1000.0;
@@ -28,8 +28,8 @@ pub const MAX_SUPPLY_VOLTS: f64 = 1000.0;
 ///
 /// # Example
 /// ```
-/// use ecad_model::device::{Output, Sensing, Sensor};
-/// use ecad_model::units::{Current, RatedVoltage, Volts};
+/// use crate::objects::devices::{Output, Sensing, Sensor};
+/// use crate::geometry::units::{Current, RatedVoltage, Volts};
 /// let b = Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), ..Sensor::default() };
 /// assert_eq!(b.to_string(), "24 V DC");
 /// assert_eq!(
@@ -47,7 +47,7 @@ pub struct Sensor {
     pub supply: Option<RatedVoltage>,
     /// The contacts a switching sensor offers (limit, pressure and float switches).
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
-    pub contacts: super::ContactSet,
+    pub contacts: crate::objects::devices::ContactSet,
 }
 
 crate::word_enum! {
@@ -108,7 +108,7 @@ impl Sensing {
 impl Sensor {
     /// A sensor sensing `sensing` with `output`, with nothing rated.
     pub fn empty(sensing: Sensing, output: Output) -> Sensor {
-        Sensor { sensing, output, supply: None, contacts: super::ContactSet::default() }
+        Sensor { sensing, output, supply: None, contacts: crate::objects::devices::ContactSet::default() }
     }
 
     /// The same sensor with nothing rated (its contacts kept).

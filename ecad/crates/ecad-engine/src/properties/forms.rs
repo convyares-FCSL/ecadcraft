@@ -11,15 +11,15 @@ use cadcraft_engine::{Accept, EngineError, Input, Interactive, Prompt, Session, 
 use ecad_model::{CableId, DeviceId, End, Primitive, Pt, RouteId, Subject, WireId};
 use serde_json::{Value, json};
 
-use super::{
+use crate::interact::{
     ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, can_start, capture_at, capture_preview,
     drawn_component, from_cursor, in_range, line_kind, next_connection_point_name, pick, pixel, preview_entity, preview_text, pt, read, ring_kind,
     connection_point_for, connection_point_name, v2, valid_name,
 };
-use crate::cmd::{MAX_HANDLES, MAX_WIRE_POINTS, on_project};
+use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, on_project};
 use crate::project::Mapped;
-use crate::slash;
-use crate::views::View;
+use ecad_electrical::cables::slash;
+use crate::cables::views::View;
 
 pub(super) type R<T> = cadcraft_engine::Result<T>;
 
@@ -110,8 +110,8 @@ pub(super) fn commit(s: &mut Session, id: &str, params: &Value) -> R<Value> {
 /// Points and picks are refused while a paper-space layout is shown (the user switched layouts
 /// while the form ran): ECAD objects are drawn in the page's model space only.
 pub(super) fn paper_guard(s: &Session, i: &Input) -> R<()> {
-    if matches!(i, Input::Point(_) | Input::Pick(_)) && !super::model_space(s) {
-        return Err(other(super::PAPER_SPACE));
+    if matches!(i, Input::Point(_) | Input::Pick(_)) && !crate::interact::model_space(s) {
+        return Err(other(crate::interact::PAPER_SPACE));
     }
     Ok(())
 }
@@ -191,7 +191,7 @@ impl AddConnectionPoint {
         let px = pixel(s).unwrap_or(0.0);
         read(s, |proj, page| {
             let (c, prim) = drawn_component(proj, page, h)?;
-            let at = match ecad_model::geom::nearest_on(&prim, pt(p)) {
+            let at = match ecad_model::geometry::geom::nearest_on(&prim, pt(p)) {
                 Some(q) if clicked && q.dist(pt(p)) > px * 1e-6 && in_range(v2(q)) => q,
                 _ => pt(p),
             };
@@ -212,7 +212,7 @@ impl AddConnectionPoint {
                         self.naming = false;
                         Ok(Step::Continue)
                     }
-                    None => Err(other(super::BAD_NAME)),
+                    None => Err(other(crate::interact::BAD_NAME)),
                 },
                 _ => Ok(Step::Continue),
             };
@@ -278,7 +278,7 @@ impl Interactive for AddConnectionPoint {
 
 // ---------------------------------------------------------------- Place Symbol (§6)
 
-// Brief 018 replaced the experiment's coil-only form with `super::devices::place`.
+// Brief 018 replaced the experiment's coil-only form with `crate::devices::interact::place`.
 
 // ---------------------------------------------------------------- Wire (§7)
 
@@ -287,7 +287,7 @@ impl Interactive for AddConnectionPoint {
 pub(crate) fn wire(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     // Brief 032 §2.4: joining starts on (the registered default) every time the tool starts.
-    let join = read(s, |p, _| Ok(ecad_electrical::cmd::wire::join_by_default(p.ledger.document()))).map_err(other)?;
+    let join = read(s, |p, _| Ok(ecad_electrical::wires::commands::wires::join_by_default(p.ledger.document()))).map_err(other)?;
     Ok(Box::new(Safe(Wire { join, ..Wire::default() })))
 }
 
@@ -308,7 +308,7 @@ struct Wire {
 
 /// The page's quiet ends (cable reference ends): never joined.
 fn quiet_on(p: &crate::project::Project, page: ecad_model::PageId) -> Vec<Pt> {
-    crate::cmd::wire::quiet_ends(p, page)
+    crate::wires::commands::quiet_ends(p, page)
 }
 
 /// The Wire tool's potential for this session (`None`: auto).
@@ -319,7 +319,7 @@ fn wire_potential(s: &Session) -> Option<String> {
 impl Wire {
     /// The open end of another wire within the pick radius of `p` (design 032 §2.4).
     fn open_end(&self, s: &Session, p: Vec2) -> Option<Pt> {
-        let tol = super::pick_radius(s).unwrap_or(crate::wires::ON_WIRE).max(crate::wires::ON_WIRE);
+        let tol = crate::interact::pick_radius(s).unwrap_or(crate::wires::ON_WIRE).max(crate::wires::ON_WIRE);
         read(s, |proj, page| Ok(crate::wires::open_end_near(proj.ledger.document(), page, pt(p), tol, &quiet_on(proj, page)))).ok().flatten()
     }
 
@@ -396,9 +396,9 @@ impl Wire {
                 s.echo("New wires: category auto (from their potential).");
                 return Ok(Step::Continue);
             }
-            let id = read(s, |p, _| crate::styles::find(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &choice).map_err(String::from))
+            let id = read(s, |p, _| ecad_electrical::styles::find(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &choice).map_err(String::from))
                 .map_err(other)?;
-            let name = read(s, |p, _| Ok(crate::styles::name(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &id))).unwrap_or_default();
+            let name = read(s, |p, _| Ok(ecad_electrical::styles::name(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &id))).unwrap_or_default();
             self.category = Some(id.text());
             s.echo(format!("New wires: category {name}."));
             return Ok(Step::Continue);
@@ -423,7 +423,7 @@ impl Wire {
             let value = if choice.eq_ignore_ascii_case("auto") || choice.is_empty() {
                 None
             } else {
-                Some(ecad_model::wiring::valid_text("potential", Some(&choice)).map_err(other)?.unwrap_or_default())
+                Some(ecad_model::connectivity::wiring::valid_text("potential", Some(&choice)).map_err(other)?.unwrap_or_default())
             };
             on_project(s, |p, _, _| {
                 // A table name is written as the table spells it.
@@ -504,7 +504,7 @@ impl Interactive for Wire {
         if self.asking_category {
             let names = read(s, |p, _| {
                 let doc = p.ledger.document();
-                Ok(crate::styles::rows(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire))
+                Ok(ecad_electrical::styles::rows(doc, ecad_electrical::styles::catalogue(ecad_model::StyleCatalogue::Wire))
                     .into_iter()
                     .map(|r| r.name)
                     .collect::<Vec<_>>())
@@ -515,7 +515,7 @@ impl Interactive for Wire {
             return p;
         }
         if self.asking_potential {
-            let names = read(s, |p, _| Ok(crate::cmd::wire::potential_choices(p))).unwrap_or_default();
+            let names = read(s, |p, _| Ok(crate::wires::commands::potential_choices(p))).unwrap_or_default();
             let mut p = Prompt::new(format!("Potential for new wires [{}]", names.join("/")), Accept::TEXT);
             p.default = Some(wire_potential(s).unwrap_or_else(|| "auto".into()));
             return p;
@@ -538,7 +538,7 @@ impl Interactive for Wire {
     }
     /// The wire so far, and the rubber band to the cursor (or to the terminal it captures).
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
-        if !super::model_space(s) {
+        if !crate::interact::model_space(s) {
             return Vec::new();
         }
         let mut out: Vec<EntityKind> = self.points.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect();
@@ -562,7 +562,7 @@ impl Interactive for Wire {
             && in_range(cursor)
             && let Some(px) = pixel(s)
         {
-            let tol = super::pick_radius(s).unwrap_or(crate::wires::ON_WIRE).max(crate::wires::ON_WIRE);
+            let tol = crate::interact::pick_radius(s).unwrap_or(crate::wires::ON_WIRE).max(crate::wires::ON_WIRE);
             let potential = wire_potential(s);
             let seen = read(s, |p, page| {
                 let doc = p.ledger.document();
@@ -617,7 +617,7 @@ fn wire_end(s: &Session, p: Vec2) -> Result<(RouteId, End, Pt, bool), String> {
         let i = match map.and_then(|m| m.get(h)) {
             Some(Mapped::Item(i)) => i,
             Some(Mapped::Fan(k)) => {
-                return Err(map.map_or(crate::views::FAN_REFUSED, |m| crate::views::refusal(m, k)).into());
+                return Err(map.map_or(crate::cables::views::FAN_REFUSED, |m| crate::cables::views::refusal(m, k)).into());
             }
             _ => return Err(NOT_WIRE.into()),
         };
@@ -681,7 +681,7 @@ impl Interactive for Link {
     }
     /// Connect: the rubber band from the chosen end to the cursor or the captured terminal.
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
-        if !super::model_space(s) {
+        if !crate::interact::model_space(s) {
             return Vec::new();
         }
         match self.end {
@@ -909,9 +909,9 @@ impl CableSlash {
             // Brief 059 (design 059 §5.6): onto a cable not drawn, the cores the wires get, in
             // order, so the order is seen before the commit; more wires than free cores is refused.
             let (text, refused) = match cable {
-                Some(k) if !refused && doc.cables.contains_key(&k) && !crate::cables::is_drawn(doc, k) => {
-                    let tag = crate::cables::cable_title(doc, k);
-                    match ecad_electrical::cmd::cable::assign_cores(doc, k, n) {
+                Some(k) if !refused && doc.cables.contains_key(&k) && !ecad_electrical::cables::is_drawn(doc, k) => {
+                    let tag = ecad_electrical::cables::cable_title(doc, k);
+                    match ecad_electrical::cables::commands::cables::assign_cores(doc, k, n) {
                         Ok(cores) => {
                             let labels: Vec<String> = cores.into_iter().flatten().collect();
                             (format!("{text} onto {tag} ({})", labels.join(", ")), false)
@@ -919,7 +919,7 @@ impl CableSlash {
                         Err(e) => (format!("-> refused: {e}"), true),
                     }
                 }
-                Some(k) if !refused && doc.cables.contains_key(&k) => (format!("{text}, continuing {}", crate::cables::cable_title(doc, k)), false),
+                Some(k) if !refused && doc.cables.contains_key(&k) => (format!("{text}, continuing {}", ecad_electrical::cables::cable_title(doc, k)), false),
                 _ => (text, refused),
             };
             let (mut join, mut block) = (Vec::new(), Vec::new());
@@ -958,7 +958,7 @@ impl CableSlash {
             let members: Vec<ecad_model::CorePosition> = members
                 .iter()
                 .map(|c| ecad_model::CorePosition::Wire(WireId::from(*c)))
-                .chain(loose.iter().map(|r| ecad_model::wire_order::core_position(doc, (*r).into())))
+                .chain(loose.iter().map(|r| ecad_model::connectivity::wire_order::core_position(doc, (*r).into())))
                 .collect();
             Ok(slash::created_lines(doc, cable.into(), &members, ignored, touched))
         })
@@ -974,9 +974,9 @@ impl CableSlash {
     fn pick(s: &Session, text: &str) -> R<CableId> {
         read(s, |p, page| {
             let doc = p.ledger.document();
-            let k = ecad_electrical::cmd::cable::cable_named(doc, text).map_err(|e| e.to_string())?;
+            let k = ecad_electrical::cables::commands::cables::cable_named(doc, text).map_err(|e| e.to_string())?;
             if doc.representations_of(Subject::Cable(k)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
-                return Err(format!("{} already has a slash on this page.", crate::cables::cable_title(doc, k)));
+                return Err(format!("{} already has a slash on this page.", ecad_electrical::cables::cable_title(doc, k)));
             }
             Ok(k)
         })
@@ -987,10 +987,10 @@ impl CableSlash {
     fn picked_words(s: &Session, k: CableId) -> String {
         read(s, |p, _| {
             let doc = p.ledger.document();
-            let tag = crate::cables::cable_title(doc, k);
-            Ok(match crate::strips::cable_cores(doc, k).and_then(|c| c.offer) {
-                Some(o) if !crate::cables::is_drawn(doc, k) => format!("Slash the wires of {tag} ({} cores).", o.len()),
-                _ if !crate::cables::is_drawn(doc, k) => format!("Slash the wires of {tag}."),
+            let tag = ecad_electrical::cables::cable_title(doc, k);
+            Ok(match ecad_electrical::terminal_strips::cable_cores(doc, k).and_then(|c| c.offer) {
+                Some(o) if !ecad_electrical::cables::is_drawn(doc, k) => format!("Slash the wires of {tag} ({} cores).", o.len()),
+                _ if !ecad_electrical::cables::is_drawn(doc, k) => format!("Slash the wires of {tag}."),
                 _ => format!("Slash the wires that continue {tag} here."),
             })
         })
@@ -1075,7 +1075,7 @@ impl Interactive for CableSlash {
     /// The rubber band from the first point to the cursor.
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         match self.first {
-            Some(a) if super::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
+            Some(a) if crate::interact::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
             _ => Vec::new(),
         }
     }
@@ -1153,7 +1153,7 @@ impl CableView {
         }
         let r = commit(s, "cableview", &params)?;
         let shown = r.get("view").and_then(Value::as_str).and_then(View::parse).unwrap_or(View::Traditional);
-        let mut line = read(s, |p, _| Ok(ecad_electrical::cable_look::switched(p.ledger.document(), cable, shown.name())))
+        let mut line = read(s, |p, _| Ok(ecad_electrical::cables::layout::switched(p.ledger.document(), cable, shown.name())))
             .unwrap_or_else(|_| format!("Cable {}… now shown in {} view.", short_hex(cable), shown.name()));
         if let Some(reason) = r.get("reason").and_then(Value::as_str) {
             line.pop();
@@ -1178,8 +1178,8 @@ impl CableView {
                 if let Some(k) = map.get(*h).and_then(|m| cable_named(doc, m).ok())
                     && seen.insert(k)
                 {
-                    let one_wire = !ecad_electrical::cable_look::offers_fan(doc, k);
-                    out.push((k, p.view_of(k), one_wire, crate::cables::cable_title(doc, k)));
+                    let one_wire = !ecad_electrical::cables::layout::offers_fan(doc, k);
+                    out.push((k, p.view_of(k), one_wire, ecad_electrical::cables::cable_title(doc, k)));
                 }
             }
             Ok(out)
@@ -1193,7 +1193,7 @@ impl CableView {
         let (mut switched, mut other_lines) = (Vec::new(), Vec::new());
         for (k, current, one_wire, title) in found {
             if target == View::Fan && current != View::Fan && one_wire {
-                other_lines.push(format!("Cable {title} {}", crate::views::ONE_WIRE));
+                other_lines.push(format!("Cable {title} {}", crate::cables::views::ONE_WIRE));
                 continue;
             }
             match Self::switch(s, k, Some(target)) {
@@ -1231,11 +1231,11 @@ impl CableView {
                     let m = proj.pages.get(&page).and_then(|v| v.map.get(h)).ok_or(NOT_A_CABLE)?;
                     let doc = proj.ledger.document();
                     let k = cable_named(doc, m)?;
-                    Ok((k, proj.view_of(k), !ecad_electrical::cable_look::offers_fan(doc, k), crate::cables::cable_title(doc, k)))
+                    Ok((k, proj.view_of(k), !ecad_electrical::cables::layout::offers_fan(doc, k), ecad_electrical::cables::cable_title(doc, k)))
                 })
                 .map_err(other)?;
                 if current == View::Traditional && one_wire {
-                    return Err(other(format!("Cable {title} {}", crate::views::ONE_WIRE)));
+                    return Err(other(format!("Cable {title} {}", crate::cables::views::ONE_WIRE)));
                 }
                 let line = Self::switch(s, k, None)?;
                 s.echo(line);
@@ -1325,7 +1325,7 @@ impl CableCore {
                 };
                 let cable = read(s, |p, _| {
                     let doc = p.ledger.document();
-                    Ok(doc.cables_of(w).first().map(|k| crate::cables::cable_title(doc, *k)).unwrap_or_default())
+                    Ok(doc.cables_of(w).first().map(|k| ecad_electrical::cables::cable_title(doc, *k)).unwrap_or_default())
                 })
                 .unwrap_or_default();
                 match r.get("core").and_then(Value::as_str) {
@@ -1401,7 +1401,7 @@ pub(crate) fn cablefan(s: &Session) -> R<Box<dyn Interactive>> {
 /// The cable end picked (cable, end name, its spine) while the join point is asked for.
 #[derive(Default)]
 struct CableFan {
-    picked: Option<(CableId, &'static str, ecad_electrical::cable_look::Spine)>,
+    picked: Option<(CableId, &'static str, ecad_electrical::cables::layout::Spine)>,
 }
 
 const JOIN_NOTHING: &str = "Nothing there. Click a cable shown as a fan.";
@@ -1410,24 +1410,24 @@ const JOIN_NOT_FAN: &str = "That is not a cable shown as a fan.";
 impl CableFan {
     /// The fanned end a click names: a computed part of a fan-view cable, the end whose spine is
     /// nearest the click.
-    fn end_at(s: &Session, h: Handle, at: Pt) -> R<(CableId, &'static str, ecad_electrical::cable_look::Spine)> {
+    fn end_at(s: &Session, h: Handle, at: Pt) -> R<(CableId, &'static str, ecad_electrical::cables::layout::Spine)> {
         read(s, |p, page| {
             let map = &p.pages.get(&page).ok_or(JOIN_NOT_FAN)?.map;
             let k = match map.get(h) {
                 Some(Mapped::Fan(k)) if map.is_fan(k) => k,
                 _ => return Err(JOIN_NOT_FAN.into()),
             };
-            let ends = ecad_electrical::cable_look::fan_ends(p.ledger.document(), page, k, p.tolerance, &crate::look::font_width);
-            let d = |f: &ecad_electrical::cable_look::FanEnd| f.spine.join_for(at).map_or(f64::INFINITY, |j| j.dist(at));
+            let ends = ecad_electrical::cables::layout::fan_ends(p.ledger.document(), page, k, p.tolerance, &crate::cables::draw::font_width);
+            let d = |f: &ecad_electrical::cables::layout::FanEnd| f.spine.join_for(at).map_or(f64::INFINITY, |j| j.dist(at));
             let fe = ends.iter().min_by(|a, b| d(a).total_cmp(&d(b))).ok_or(JOIN_NOT_FAN)?;
-            Ok((k, if fe.end == ecad_electrical::cable_look::MarkerEnd::A { "A" } else { "B" }, fe.spine))
+            Ok((k, if fe.end == ecad_electrical::cables::layout::MarkerEnd::A { "A" } else { "B" }, fe.spine))
         })
         .map_err(other)
     }
 
     fn commit_join(s: &mut Session, cable: CableId, end: &str, at: Value) -> R<Step> {
         let r = commit(s, "cablefan", &json!({"cable": cable.hex(), "end": end, "at": at}))?;
-        let title = read(s, |p, _| Ok(crate::cables::cable_title(p.ledger.document(), cable))).unwrap_or_default();
+        let title = read(s, |p, _| Ok(ecad_electrical::cables::cable_title(p.ledger.document(), cable))).unwrap_or_default();
         match r.get("at").and_then(Value::as_array) {
             Some(a) => s.echo(format!(
                 "Cable {title} now joins end {end} at {}, {}.",

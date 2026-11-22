@@ -83,8 +83,8 @@ impl LeftTab {
     pub fn label(self) -> &'static str {
         match self {
             LeftTab::Pages => BOOK,
-            LeftTab::Devices => crate::project_panel::DEVICES_TAB,
-            LeftTab::History => crate::history_panel::HISTORY_TAB,
+            LeftTab::Devices => crate::pages::project_panel::DEVICES_TAB,
+            LeftTab::History => crate::history::panel::HISTORY_TAB,
         }
     }
 }
@@ -123,7 +123,7 @@ impl Default for LeftState {
         LeftState {
             tab: LeftTab::Pages,
             collapsed: true,
-            width_per_tab: LeftTab::ALL.map(super::layout::default_width),
+            width_per_tab: LeftTab::ALL.map(crate::shell::layout::default_width),
             pinned: Some(LeftTab::Pages),
             book_view: BookView::Thumbnails,
         }
@@ -184,10 +184,10 @@ pub enum Theme {
 
 impl Theme {
     /// The interface kit's theme.
-    pub fn ui(self) -> ecad_ui::Theme {
+    pub fn ui(self) -> ecad_widgets::Theme {
         match self {
-            Theme::Dark => ecad_ui::Theme::Dark,
-            Theme::Light => ecad_ui::Theme::Light,
+            Theme::Dark => ecad_widgets::Theme::Dark,
+            Theme::Light => ecad_widgets::Theme::Light,
         }
     }
 }

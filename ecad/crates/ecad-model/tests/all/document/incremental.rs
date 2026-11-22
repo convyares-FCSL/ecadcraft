@@ -102,14 +102,14 @@ pub(crate) struct Base {
     aid_v: ecad_model::Aid,
     /// A loose part (design 072 §6.4).
     loose: ecad_model::LoosePartId,
-    loose_v: ecad_model::loose_part::LoosePart,
+    loose_v: ecad_model::objects::loose_part::LoosePart,
 }
 
 /// `qty` pieces of a loose part.
-fn loose_part(qty: u64) -> ecad_model::loose_part::LoosePart {
-    ecad_model::loose_part::LoosePart::new(
-        ecad_model::loose_part::LooseDescription::new("DIN rail").unwrap(),
-        ecad_model::loose_part::Qty(qty * 1000),
+fn loose_part(qty: u64) -> ecad_model::objects::loose_part::LoosePart {
+    ecad_model::objects::loose_part::LoosePart::new(
+        ecad_model::objects::loose_part::LooseDescription::new("DIN rail").unwrap(),
+        ecad_model::objects::loose_part::Qty(qty * 1000),
     )
 }
 
@@ -257,14 +257,14 @@ pub(crate) fn base() -> Base {
 fn header(b: &mut Base) -> StandardHeader {
     StandardHeader {
         id: b.ids.fresh(),
-        name: ecad_model::style::StyleName::new("S").unwrap(),
-        based_on: ecad_model::style::BasedOn::Iec,
+        name: ecad_model::objects::styles::StyleName::new("S").unwrap(),
+        based_on: ecad_model::objects::styles::BasedOn::Iec,
         origin: None,
     }
 }
 
 fn record() -> StyleRecord {
-    StyleRecord::new("Thin", ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Wire))
+    StyleRecord::new("Thin", ecad_model::objects::styles::StyleBody::empty(ecad_model::StyleCatalogue::Wire))
 }
 
 fn bytes(doc: &Document) -> Vec<u8> {
@@ -301,7 +301,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::ModifyWire {
             id: b.wire2,
             before: b.wire2_v.clone(),
-            after: Wire { size: ecad_model::wire::WireSize::parse("2.5"), ..b.wire2_v.clone() },
+            after: Wire { size: ecad_model::objects::wire::WireSize::parse("2.5"), ..b.wire2_v.clone() },
         },
         Op::AddRoute { id: b.ids.fresh(), route: ecad_model::Route { ends: [ecad_model::RouteEnd::Free; 2], ..b.route_v.clone() } },
         Op::ModifyRoute {
@@ -346,7 +346,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::ModifyAid {
             id: b.aid,
             before: b.aid_v.clone(),
-            after: ecad_model::Aid::Box(ecad_model::LocationBox { panel_temperature: Some(ecad_model::units::Celsius(40.0)), ..Default::default() }),
+            after: ecad_model::Aid::Box(ecad_model::LocationBox { panel_temperature: Some(ecad_model::geometry::units::Celsius(40.0)), ..Default::default() }),
         },
         Op::DeleteAid { id: b.aid, aid: b.aid_v.clone() },
         Op::CreateLoosePart { id: b.ids.fresh(), part: loose_part(1) },
@@ -451,7 +451,7 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::CreateAid {
             id: b.ids.fresh(),
             aid: ecad_model::Aid::Box(ecad_model::LocationBox {
-                panel_temperature: Some(ecad_model::units::Celsius(f64::NAN)),
+                panel_temperature: Some(ecad_model::geometry::units::Celsius(f64::NAN)),
                 ..Default::default()
             }),
         },
@@ -970,7 +970,7 @@ impl Gen {
                     let after = if self.rng.chance(10) {
                         Wire { ends: [current.ends[1], current.ends[0]], ..current }
                     } else {
-                        Wire { size: ecad_model::wire::WireSize::parse(if self.rng.chance(50) { "2.5" } else { "1.5" }), ..current }
+                        Wire { size: ecad_model::objects::wire::WireSize::parse(if self.rng.chance(50) { "2.5" } else { "1.5" }), ..current }
                     };
                     Op::ModifyWire { id, before, after }
                 }
@@ -1112,7 +1112,7 @@ fn sequence(seed: u64, tally: &mut Tally) {
         // The ledger's wire rewrite (design 072 §4.4) extends the transaction as a commit does.
         let mut all = ops.clone();
         if applies {
-            for op in ecad_model::wire_order::rewrite(&scratch, &ops) {
+            for op in ecad_model::connectivity::wire_order::rewrite(&scratch, &ops) {
                 applies = op.apply(&mut scratch).is_ok();
                 all.push(op);
                 if !applies {
@@ -1121,7 +1121,7 @@ fn sequence(seed: u64, tally: &mut Tally) {
             }
         }
         if applies {
-            for op in ecad_model::wire_order::cores(&scratch, &ops) {
+            for op in ecad_model::connectivity::wire_order::cores(&scratch, &ops) {
                 applies = op.apply(&mut scratch).is_ok();
                 all.push(op);
                 if !applies {
@@ -1311,7 +1311,7 @@ fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged(
     b.ledger.document().check_index().unwrap();
 }
 
-/// Brief 020a, Restore: the ops [`ecad_model::diff::ops_between`] gives turn the live document
+/// Brief 020a, Restore: the ops [`ecad_model::document::diff::ops_between`] gives turn the live document
 /// into the state at any earlier point exactly as undoing every step after it does (versions
 /// aside, which Restore never touches), and they commit as an ordinary transaction.
 #[test]
@@ -1349,7 +1349,7 @@ fn a_state_diff_restores_exactly_what_undoing_the_steps_after_the_point_restores
                 .take_while(|t| t.seq > k)
                 .flat_map(|t| t.ops.iter().rev().filter(|o| !matches!(o, Op::NameVersion { .. } | Op::UnnameVersion { .. })).map(Op::inverse))
                 .collect();
-            let diff = ecad_model::diff::ops_between(&live, &target, &|_| true);
+            let diff = ecad_model::document::diff::ops_between(&live, &target, &|_| true);
             let by_walk = ledger.preview(&walk).unwrap_or_else(|e| panic!("seed {seed} k {k}: walk {e}"));
             let by_diff = ledger.preview(&diff).unwrap_or_else(|e| panic!("seed {seed} k {k}: diff {e}: {diff:#?}"));
             assert_eq!(by_diff, by_walk, "seed {seed} k {k}");
@@ -1371,7 +1371,7 @@ fn a_state_diff_restores_exactly_what_undoing_the_steps_after_the_point_restores
     assert!(points > 500, "{points} points restored");
 }
 
-/// Brief 020b (reviewer finding 10): the scoped diff [`ecad_model::diff::ops_between_in`] over a
+/// Brief 020b (reviewer finding 10): the scoped diff [`ecad_model::document::diff::ops_between_in`] over a
 /// scope that covers every difference (what the steps between the two states touched) gives the
 /// same ops as the whole-document diff, and they turn one state into the other.
 #[test]
@@ -1407,8 +1407,8 @@ fn a_scoped_state_diff_equals_the_whole_diff_when_the_scope_covers_every_differe
             for t in log.iter().filter(|t| t.seq > k) {
                 scope.add_ops(&t.ops);
             }
-            let whole = ecad_model::diff::ops_between(&live, &target, &|_| true);
-            let scoped = ecad_model::diff::ops_between_in(&live, &target, &|_| true, Some(&scope.touched), scope.project);
+            let whole = ecad_model::document::diff::ops_between(&live, &target, &|_| true);
+            let scoped = ecad_model::document::diff::ops_between_in(&live, &target, &|_| true, Some(&scope.touched), scope.project);
             assert_eq!(scoped, whole, "seed {seed} k {k}");
             let mut want = target.clone();
             want.versions = live.versions.clone();

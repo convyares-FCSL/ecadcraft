@@ -13,7 +13,7 @@
 //!   Properties and Devices (048c); the page's selection and every JSON form.
 
 use ecad_model::PointKey;
-use ecad_model::units::Radians;
+use ecad_model::geometry::units::Radians;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -240,7 +240,7 @@ pub fn problems(c: &Content, rules: &Rules<'_>) -> Vec<String> {
     }
     // Design 072 §2.2: a default rating reads as the declared group's (ambiguous text is asked).
     if let Some(r) = c.defaults.rating.as_ref().map(|t| t.as_str())
-        && let Err(m) = crate::rating::reader::rated(&c.device_type, "The symbol", Some(r))
+        && let Err(m) = crate::devices::ratings::rated(&c.device_type, "The symbol", Some(r))
     {
         out.push(m.to_string());
     }
@@ -397,7 +397,7 @@ fn mm(d: f64) -> String {
 
 /// A wire as people read it: its net's number (`24V-05`), else its tag, else its short ID.
 fn wire_number(doc: &Document, c: WireId) -> String {
-    ecad_model::wiring::wire_number(doc, c).unwrap_or_else(|| crate::slash::wire_name(doc, c))
+    ecad_model::connectivity::wiring::wire_number(doc, c).unwrap_or_else(|| crate::cables::slash::wire_name(doc, c))
 }
 
 fn wire_words(doc: &Document, t: ConnectionPointId) -> String {
@@ -447,7 +447,7 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
                             // Rule 2: onto another point or wire end of the page.
                             let to = placement.apply(nd.at);
                             let spots = page_spots.get_or_insert_with(|| {
-                                ecad_model::derive::connection_point_positions(doc, r.page).into_iter().map(|(t, _, p)| (t, p)).collect()
+                                ecad_model::connectivity::derive::connection_point_positions(doc, r.page).into_iter().map(|(t, _, p)| (t, p)).collect()
                             });
                             let ends = crate::wires::loose_ends_at(doc, r.page, to, TOL);
                             if spots.iter().any(|(o, p)| *o != t && p.near(to, TOL)) || !ends.is_empty() {
@@ -519,7 +519,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
     let mut moved_routes = crate::wires::RouteEdits::new(doc);
     for row in rows {
         if let Some(clash) = &row.clash {
-            return Err(CmdError::refused(format!("{} (p. {}) would clash: {clash}", row.tag, crate::references::page_number(doc, row.page))));
+            return Err(CmdError::refused(format!("{} (p. {}) would clash: {clash}", row.tag, crate::references::cables::page_number(doc, row.page))));
         }
         let item = doc.items.get(&row.item).ok_or(CmdError::refused(GONE))?;
         let ItemKind::Symbol(inst) = &item.kind else { continue };
@@ -776,7 +776,7 @@ pub fn plan_edit(
             let clashing: Vec<&&Row> = take.iter().filter(|r| r.clash.is_some()).collect();
             if !clashing.is_empty() {
                 let names: Vec<String> =
-                    clashing.iter().take(8).map(|r| format!("{} (p. {})", r.tag, crate::references::page_number(doc, r.page))).collect();
+                    clashing.iter().take(8).map(|r| format!("{} (p. {})", r.tag, crate::references::cables::page_number(doc, r.page))).collect();
                 return Err(CmdError::refused(format!(
                     "{} placed {} would clash: {}. Use update \"selected\" or move their wires.",
                     clashing.len(),
@@ -903,7 +903,7 @@ pub fn not_plain(doc: &Document, i: ItemId) -> String {
     let what = match doc.representation_of_item(i).map(|(_, r)| r.subject) {
         Some(Subject::Wire(c)) => format!("Wire {}", wire_number(doc, c)),
         Some(Subject::Device(c)) => crate::devices::tag_words(doc, c),
-        Some(Subject::Cable(k)) => crate::references::cable_words(doc, k),
+        Some(Subject::Cable(k)) => crate::references::cables::cable_words(doc, k),
         // Design 072: a line names the wire it carries; a loose line carries none.
         Some(Subject::Route(r)) => match crate::wires::wire_of_route(doc, r) {
             Some(c) => format!("Wire {}", wire_number(doc, c)),
@@ -1169,8 +1169,8 @@ pub fn plan_place(
             // Design 072 §2.2: the default rating is read by the group's reader; text it cannot
             // read (ambiguous since it was saved) is kept as the note, never guessed.
             let rating = field_value(doc, &key, def, Field::Rating);
-            let (device_type, rating_note) = crate::rating::reader::rated(&def.device_type, &tag, rating.as_deref())
-                .unwrap_or_else(|_| (def.device_type.clone(), rating.as_deref().and_then(|r| ecad_model::device::RatingNote::new(r).ok())));
+            let (device_type, rating_note) = crate::devices::ratings::rated(&def.device_type, &tag, rating.as_deref())
+                .unwrap_or_else(|_| (def.device_type.clone(), rating.as_deref().and_then(|r| ecad_model::objects::devices::RatingNote::new(r).ok())));
             ops.push(Op::CreateDevice {
                 id: c,
                 device: Device {
@@ -1216,7 +1216,7 @@ fn field_value(doc: &Document, key: &str, def: &Definition, field: Field) -> Opt
 /// The row of a copy as data; `book` is the project's page book, built once per listing (a page's
 /// number alone walks the book); `places` gives the copy's place (`2-D-4`, in the project's
 /// reference style, design 048 §6.1's page and zone).
-pub fn row_json(r: &Row, doc: &Document, book: &ecad_model::book::Book, places: &mut crate::xref::Places<'_>) -> Value {
+pub fn row_json(r: &Row, doc: &Document, book: &ecad_model::document::book::Book, places: &mut crate::references::devices::Places<'_>) -> Value {
     let at = match doc.items.get(&r.item).map(|i| &i.kind) {
         Some(ecad_model::ItemKind::Symbol(s)) => Some(s.placement.origin),
         _ => None,

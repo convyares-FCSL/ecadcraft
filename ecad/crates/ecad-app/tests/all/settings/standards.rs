@@ -10,12 +10,12 @@ use std::sync::Arc;
 
 use ecad_app::settings::{Section, standards};
 use ecad_app::shell::{Workspace, status_bar, top_bar};
-use ecad_engine::defaults::{self, Scope, Source};
+use ecad_electrical::defaults::{self, Scope, Source};
 use eframe::egui::Key;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{Deltas, doc, harness_with, head, ok, shot};
+use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, head, ok, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -54,7 +54,7 @@ fn settings_opens_from_the_menu_the_status_bar_and_a_badge_and_esc_returns() {
     let sel = selection(&h);
     assert!(!sel.is_empty(), "the coil is selected");
     let ws = h.state().shell.state.workspace;
-    let page = crate::project_panel::active(&mut h);
+    let page = crate::pages::project_panel::active(&mut h);
 
     // Project menu ▸ Settings.
     click(&mut h, top_bar::PROJECT_MENU);
@@ -67,7 +67,7 @@ fn settings_opens_from_the_menu_the_status_bar_and_a_badge_and_esc_returns() {
     h.key_press(Key::Escape);
     h.run_steps(3);
     assert!(!h.state().shell.settings_open, "Esc closes Settings");
-    assert_eq!((h.state().shell.state.workspace, crate::project_panel::active(&mut h), selection(&h)), (ws, page, sel.clone()));
+    assert_eq!((h.state().shell.state.workspace, crate::pages::project_panel::active(&mut h), selection(&h)), (ws, page, sel.clone()));
 
     // The status bar's standard opens Standards.
     h.state_mut().settings.section = Section::Developer;
@@ -107,7 +107,7 @@ fn standards_lists_every_default_says_the_consequence_first_and_resets() {
     h.state_mut().open_standards(Some("symbol.coil.prefix"));
     h.run_steps(3);
     let v = &h.state().settings.standards;
-    assert_eq!(ecad_ui::table::TableSource::keys(&v.defaults).len(), defaults::all().count(), "one row per default");
+    assert_eq!(ecad_widgets::table::TableSource::keys(&v.defaults).len(), defaults::all().count(), "one row per default");
     assert!(h.query_by_label(standards::STANDARD_LINE).is_some());
     // The chain: built-in and the standard; the built-in in use.
     assert!(h.query_by_label("ecad.standards.chain.builtin").is_some());
@@ -173,13 +173,13 @@ fn the_inspector_sets_a_symbols_tag_shown_and_resets_it() {
     let (mut h, rep) = fixture(None);
     let before = head(&mut h);
     // The row's list sets it on this symbol (one `setdefault`); Reset takes it off.
-    let line = ecad_electrical::cmd::default::line(
+    let line = ecad_electrical::styles::commands::defaults::line(
         "text.tag.show",
         defaults::Level::Object,
-        ecad_electrical::cmd::default::Target::Symbol(rep),
+        ecad_electrical::styles::commands::defaults::Target::Symbol(rep),
         Some("off"),
     );
-    h.state_mut().inspector_action(ecad_app::shell::right::InspectorAction::Run("text.tag.show", line));
+    h.state_mut().inspector_action(ecad_app::inspector::InspectorAction::Run("text.tag.show", line));
     h.run_steps(3);
     assert_eq!(head(&mut h), before + 1);
     let row = h.state().settings.inspector.rows.iter().find(|r| r.key == "text.tag.show").cloned().unwrap();

@@ -25,8 +25,8 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::cmd::input::TextOrNumber;
-use crate::cmd::run::{Cx, Generic, Outcome};
+use crate::commands::input::TextOrNumber;
+use crate::commands::run::{Cx, Generic, Outcome};
 use crate::defaults::Scope;
 use crate::error::CmdError;
 
@@ -84,12 +84,12 @@ pub fn stored_text(entry: &Entry, typed: &str) -> Result<String, CmdError> {
     Ok(match parsed {
         defaults::Value::Length(x) | defaults::Value::Number(x) => format!("{x}"),
         defaults::Value::Choice(w) => w.to_string(),
-        defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
+        defaults::Value::Flag(b) => ecad_model::naming::words::flag_word(b).to_string(),
         defaults::Value::Size(s) => s.to_string(),
         defaults::Value::Colours(c) => c.to_string(),
         defaults::Value::Colour(c) => c.to_string(),
         defaults::Value::Sheet(s) => s.text(),
-        defaults::Value::Margins(m) => ecad_model::sheet::margins_text(&m),
+        defaults::Value::Margins(m) => ecad_model::document::sheet::margins_text(&m),
         defaults::Value::CoreColours(c) => c.to_string(),
         defaults::Value::Text(t) => t.trim().to_string(),
         defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
@@ -128,7 +128,7 @@ fn starter_key(entry: &Entry) -> Option<&'static str> {
 /// Set (or with `None` remove) starter `key`'s tag prefix in `s`, as Tag Settings writes it: the
 /// starter's own prefix is stored as none.
 pub fn set_tag_prefix(s: &mut ProjectSettings, key: &str, prefix: Option<&str>) {
-    crate::devices::set_symbol_prefix(s, ecad_model::prefix::PrefixOf::Starter(key.into()), prefix);
+    crate::devices::set_symbol_prefix(s, ecad_model::naming::prefix::PrefixOf::Starter(key.into()), prefix);
 }
 
 /// Write `value` (`None`: remove) into the project setting behind a [`ProjectSource::Settings`]
@@ -152,7 +152,7 @@ pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>
         k if k == defaults::settings::WIRE_DIGITS.key => s.wiring.digits = whole(value)?.map(small),
         k if k == defaults::settings::PAGE_NUMBER_STEP.key => s.page_number_step = whole(value)?,
         k if k == defaults::settings::COLOUR_STYLE.key => {
-            s.wiring.colour_style = value.and_then(<ecad_model::colour::ColourWords as ecad_model::words::Word>::parse)
+            s.wiring.colour_style = value.and_then(<ecad_model::geometry::colour::ColourWords as ecad_model::naming::words::Word>::parse)
         }
         k if k == defaults::settings::REFERENCE_STYLE.key => s.reference_style = value.and_then(ecad_model::ReferenceStyle::parse),
         _ => match starter_key(entry) {
@@ -201,7 +201,7 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
             }
         },
         // Design 072 §5.1: a page's type is its field, changed with `ModifyPage`.
-        (Level::Page, Target::Page(pg)) if entry.key == ecad_model::sheet::PAGE_TYPE_KEY => {
+        (Level::Page, Target::Page(pg)) if entry.key == ecad_model::document::sheet::PAGE_TYPE_KEY => {
             let before = doc.pages.get(&pg).ok_or(CmdError::NotFound(Noun::Object))?;
             let mut after = before.clone();
             after.page_type = match value.as_deref() {
@@ -220,7 +220,7 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
         }
         (Level::Object, Target::Device(c)) => property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), entry.key.to_string()),
         // Design 072 §4.6: a wire's own type is its field, changed with `ModifyWire`.
-        (Level::Object, Target::Wire(c)) if entry.key == ecad_model::wiring::WIRE_CATEGORY => {
+        (Level::Object, Target::Wire(c)) if entry.key == ecad_model::connectivity::wiring::WIRE_CATEGORY => {
             let before = doc.wires.get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
             let mut after = before.clone();
             after.wire_type = match value.as_deref() {
@@ -314,7 +314,7 @@ pub fn ops_for(doc: &Document, entry: &Entry, level: Level, target: Target, chos
     if let (Target::Page(pg), Some(v)) = (target, value.as_deref())
         && entry.key == defaults::pages::PAGE_TYPE.key
     {
-        crate::page_types::newpage_type(doc, Some(v), crate::generated::kind_of(doc, pg))?;
+        crate::pages::page_types::newpage_type(doc, Some(v), crate::pages::generated::kind_of(doc, pg))?;
     }
     ops(doc, entry, level, target, value)
 }
@@ -367,7 +367,7 @@ pub fn plan_family(doc: &Document, key: &str, level: Option<&str>, value: Option
         Field::Prefix => {
             let before = doc.settings.clone();
             let mut after = before.clone();
-            let of = ecad_model::prefix::PrefixOf::Project(symbol.as_str().into());
+            let of = ecad_model::naming::prefix::PrefixOf::Project(symbol.as_str().into());
             crate::devices::set_symbol_prefix(&mut after, of, value.as_deref());
             if after == before { Vec::new() } else { vec![Op::SetProjectSettings { before, after }] }
         }
@@ -412,7 +412,7 @@ pub fn line(key: &str, level: Level, target: Target, value: Option<&str>) -> Str
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// `setdefault {key, level, page?, component?, conductor?, representation?, value | reset: true}`:
 /// writes a default at that level (page: the page shown if not given); one transaction.
@@ -496,7 +496,7 @@ impl Generic for SetdefaultParams {
                 Target::Wire(c) => Scope { conductor: Some(c), ..Scope::project() },
                 Target::Symbol(r) => Scope::symbol(doc, r),
             };
-            let mut v = crate::cmd::text::entry_json(doc, entry, at);
+            let mut v = crate::styles::commands::text::entry_json(doc, entry, at);
             v["changed"] = json!(changed);
             v
         }))

@@ -1,8 +1,8 @@
 //! A1 (design 072 §14): `Text<N>` and `LongText<N>` refuse every hidden and bidi character, and
 //! keep to their length and line rules.
 
-use ecad_model::text::{LongText, Text, TextError};
-use ecad_model::words::{HIDDEN_RANGES, is_hidden};
+use ecad_model::naming::text::{LongText, Text, TextError};
+use ecad_model::naming::words::{HIDDEN_RANGES, is_hidden};
 
 #[test]
 fn every_hidden_character_is_refused() {

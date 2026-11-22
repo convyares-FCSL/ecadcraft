@@ -5,13 +5,13 @@
 
 use std::sync::Arc;
 
-use ecad_app::{App, project_panel};
+use {ecad_app::App, ecad_app::pages::project_panel};
 use ecad_model::{DeviceId, PageId};
 use eframe::egui::vec2;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
 
-use crate::project_panel::{doc, new_app, shots};
+use crate::pages::project_panel::{doc, new_app, shots};
 
 type H = Harness<'static, App>;
 
@@ -83,8 +83,8 @@ fn fixture_g(h: &mut H) -> DeviceId {
 
 #[test]
 fn new_page_terminal_strips_makes_and_opens_a_graphic_page() {
-    let deltas: crate::mouse_tester::Deltas = Arc::default();
-    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
+    let deltas: crate::canvas::mouse_acceptance::Deltas = Arc::default();
+    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone())).build_ui_state(
         |ui, t: &mut App| {
             t.logic(&ui.ctx().clone());
             t.ui(ui);
@@ -99,25 +99,25 @@ fn new_page_terminal_strips_makes_and_opens_a_graphic_page() {
     let d = doc(&mut h);
     assert_eq!(d.page_order.len(), pages + 1, "one new page");
     let page: PageId = *d.page_order.last().unwrap();
-    assert_eq!(d.pages[&page].title, ecad_engine::strip_page::TITLE);
-    assert!(ecad_engine::strip_page::is_graphic(&d, page));
+    assert_eq!(d.pages[&page].title, ecad_engine::terminal_strips::draw::TITLE);
+    assert!(ecad_engine::terminal_strips::draw::is_graphic(&d, page));
     let Some(out) = shots() else { return };
     let _ = std::fs::create_dir_all(&out);
     view(&mut h, 0.0, 0.0, 420.0, 297.0);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("046-strip-page.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("046-strip-page.png"));
     h.state_mut().sheet_command("ui.sheet dark");
     h.run_steps(4);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("046-strip-page-dark.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("046-strip-page-dark.png"));
     h.state_mut().sheet_command("ui.sheet paper");
     h.run_steps(2);
     // A detail: the cable box and the far device.
     view(&mut h, 20.0, 60.0, 150.0, 200.0);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("046-strip-detail.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("046-strip-detail.png"));
     // A 45-position strip's second sheet, with a link over the break.
     exec(&mut h, "setprop", json!({"component": x1.hex(), "key": "terminals", "value": "45"}));
     exec(&mut h, "setprop", json!({"component": x1.hex(), "key": "link.2", "value": "30-45"}));
     view(&mut h, 470.0, 0.0, 890.0, 297.0);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("046-strip-sheet2.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("046-strip-sheet2.png"));
     view(&mut h, 0.0, 0.0, 420.0, 297.0);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("046-strip-sheet1.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("046-strip-sheet1.png"));
 }

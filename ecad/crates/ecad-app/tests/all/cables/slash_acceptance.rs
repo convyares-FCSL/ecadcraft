@@ -14,9 +14,9 @@
 use std::sync::Arc;
 
 use crate::common::{self, Opts, click, pointer_to};
-use crate::mouse_tester::Deltas;
+use crate::canvas::mouse_acceptance::Deltas;
 use cadcraft_engine::geom::Vec2;
-use ecad_app::{App, tools};
+use {ecad_app::App, ecad_app::commands::tools};
 use ecad_model::Document;
 use eframe::egui::{self, Key, Pos2};
 use egui_kittest::Harness;

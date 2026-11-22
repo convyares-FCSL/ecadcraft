@@ -3,14 +3,14 @@
 //! Discard, Duplicate for… and Delete….
 
 use ecad_engine::title_block::bind;
-use ecad_model::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, LineWeight, Newest, SIZES, TextDraw};
-use ecad_ui::tokens::space;
+use ecad_model::objects::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, LineWeight, Newest, SIZES, TextDraw};
+use ecad_widgets::tokens::space;
 use eframe::egui::{self, Color32, RichText};
 use serde_json::json;
 
-use super::draft::{Draft, snap};
-use super::list::{Drops, PALETTE};
-use super::{Act, Editor};
+use crate::title_blocks::draft::{Draft, snap};
+use crate::title_blocks::list::{Drops, PALETTE};
+use crate::title_blocks::{Act, Editor};
 
 /// Element names (design 055 §5).
 pub const SOURCE: &str = "library.tb.inspector.value.source";
@@ -39,12 +39,12 @@ pub const DUPLICATE: &str = "library.tb.block.duplicate";
 pub const DELETE: &str = "library.tb.block.delete";
 pub const CONSEQUENCE: &str = "library.tb.block.consequence";
 
-fn c32(c: ecad_ui::tokens::Color) -> Color32 {
-    ecad_ui::color(c)
+fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+    ecad_widgets::color(c)
 }
 
 fn grey(ui: &mut egui::Ui, t: &str) {
-    ui.label(RichText::new(t).small().color(c32(ecad_ui::SHELL.text_3)));
+    ui.label(RichText::new(t).small().color(c32(ecad_widgets::SHELL.text_3)));
 }
 
 fn named(r: egui::Response, name: &str) -> egui::Response {
@@ -59,9 +59,9 @@ fn section(ui: &mut egui::Ui, title: &str, summary: &str, body: impl FnOnce(&mut
     let open = state.is_open();
     state
         .show_header(ui, |ui| {
-            ui.label(RichText::new(title).strong().color(c32(ecad_ui::SHELL.text)));
+            ui.label(RichText::new(title).strong().color(c32(ecad_widgets::SHELL.text)));
             if !open {
-                ui.label(RichText::new(summary).small().color(c32(ecad_ui::SHELL.text_3)));
+                ui.label(RichText::new(summary).small().color(c32(ecad_widgets::SHELL.text_3)));
             }
         })
         .body(body);
@@ -93,7 +93,7 @@ fn sources() -> Vec<(&'static str, Vec<(&'static str, String)>)> {
 
 /// Draw the panel; returns what the window must do.
 pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let mut acts = Vec::new();
     let pages = ed.open_row().map_or(0, |r| r.pages);
     let layer = ed.open_row().map(|r| r.layer);
@@ -101,7 +101,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
     let sample_on = ed.sample;
     let edit_text = ed.canvas.edit_text.take();
     let Some(d) = ed.draft.as_mut() else {
-        ui.label(RichText::new("Title blocks").font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::TITLE)));
+        ui.label(RichText::new("Title blocks").font(ecad_widgets::fonts::font(ui.ctx(), ecad_widgets::tokens::ui_type::TITLE)));
         grey(ui, "Pick a title block on the left.");
         return acts;
     };
@@ -122,11 +122,11 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
         BlockItem::Logo { name, .. } => (if name.is_empty() { "Logo".to_string() } else { name.clone() }, "Logo"),
     };
     let title = if sel.len() > 1 { format!("{} items", sel.len()) } else { title };
-    ui.label(RichText::new(title).font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::OBJECT)).color(c32(s.text)));
+    ui.label(RichText::new(title).font(ecad_widgets::fonts::font(ui.ctx(), ecad_widgets::tokens::ui_type::OBJECT)).color(c32(s.text)));
     grey(ui, &format!("{kind} · {}", d.now.name));
     if read_only {
         egui::Frame::new().fill(c32(s.accent_soft)).inner_margin(space::S).corner_radius(4.0).show(ui, |ui| {
-            ui.label(RichText::new(super::BUILTIN_NOTE).small());
+            ui.label(RichText::new(crate::title_blocks::BUILTIN_NOTE).small());
         });
     }
     ui.add_enabled_ui(!read_only, |ui| {
@@ -150,7 +150,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     let options: Vec<&str> = labels.iter().map(String::as_str).collect();
                     let current = format!("{} ▸ {}", capital(bind::chip(b)), bind::name(b));
                     let mut i = binds.iter().position(|x| *x == b.text()).unwrap_or(usize::MAX);
-                    let r = ecad_ui::control::Select::new(&mut i, &options, SOURCE).placeholder(&current).show(ui);
+                    let r = ecad_widgets::control::Select::new(&mut i, &options, SOURCE).placeholder(&current).show(ui);
                     if r.changed() {
                         // The entry after the palette's bindings asks for a project key of one's own.
                         pick = match binds.get(i) {
@@ -191,7 +191,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                         IfEmpty::Missing => 2,
                         IfEmpty::Text(_) => 3,
                     };
-                    let r = ecad_ui::prim::segmented(ui, &mut i, &["Blank", "Dash", "?", "Text…"]);
+                    let r = ecad_widgets::prim::segmented(ui, &mut i, &["Blank", "Dash", "?", "Text…"]);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, IFEMPTY));
                     let now = match i {
                         0 => IfEmpty::Blank,
@@ -212,8 +212,8 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                 });
                 if let IfEmpty::Text(t) = if_empty {
                     let mut text = t.clone();
-                    let r = ecad_ui::control::TextEntry::new(&mut text, IFEMPTY_TEXT).placeholder("n/a").show(ui);
-                    limit(&mut text, ecad_model::title_block::MAX_IF_EMPTY_TEXT);
+                    let r = ecad_widgets::control::TextEntry::new(&mut text, IFEMPTY_TEXT).placeholder("n/a").show(ui);
+                    limit(&mut text, ecad_model::objects::title_block::MAX_IF_EMPTY_TEXT);
                     if r.changed() {
                         set_fields(d, &sel, |it| {
                             if let BlockItem::Field { if_empty: x, .. } = it {
@@ -234,8 +234,8 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                 if let BlockItem::Text { text, .. } = &item {
                     ui.label(RichText::new("Text").small().color(c32(s.text_2)));
                     let mut t = text.clone();
-                    let r = ecad_ui::control::TextEntry::new(&mut t, TEXT).show(ui);
-                    limit(&mut t, ecad_model::title_block::MAX_BODY_TEXT);
+                    let r = ecad_widgets::control::TextEntry::new(&mut t, TEXT).show(ui);
+                    limit(&mut t, ecad_model::objects::title_block::MAX_BODY_TEXT);
                     if edit_text == Some(first) {
                         r.request_focus();
                     }
@@ -257,8 +257,8 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                         let r = ui.checkbox(&mut on, "Label");
                         r.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, on, LABEL));
                         let mut text = label.clone().unwrap_or_default();
-                        let t = ui.add_enabled_ui(on, |ui| ecad_ui::control::TextEntry::new(&mut text, LABEL_TEXT).show(ui)).inner;
-                        limit(&mut text, ecad_model::title_block::MAX_BODY_TEXT);
+                        let t = ui.add_enabled_ui(on, |ui| ecad_widgets::control::TextEntry::new(&mut text, LABEL_TEXT).show(ui)).inner;
+                        limit(&mut text, ecad_model::objects::title_block::MAX_BODY_TEXT);
                         if r.changed() || t.changed() {
                             let new = on.then(|| text.clone());
                             set_fields(d, &sel, |it| {
@@ -274,7 +274,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     let labels: Vec<String> = SIZES.iter().map(|v| format!("{v}")).collect();
                     let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
                     let mut i = SIZES.iter().position(|v| (v - look.size).abs() < 1e-9).unwrap_or(usize::MAX);
-                    let r = ecad_ui::prim::segmented(ui, &mut i, &refs);
+                    let r = ecad_widgets::prim::segmented(ui, &mut i, &refs);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, SIZE));
                     if let Some(v) = SIZES.get(i).filter(|v| (**v - look.size).abs() > 1e-9) {
                         set_draw(d, &sel, |l| l.size = *v);
@@ -295,7 +295,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                         Align::Centre => 1,
                         Align::Right => 2,
                     };
-                    let r = ecad_ui::prim::segmented(ui, &mut i, &["Left", "Centre", "Right"]);
+                    let r = ecad_widgets::prim::segmented(ui, &mut i, &["Left", "Centre", "Right"]);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, ALIGN));
                     let a = [Align::Left, Align::Centre, Align::Right].get(i).copied().unwrap_or_default();
                     if a != look.align {
@@ -305,7 +305,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Colour").small().color(c32(s.text_2)));
                     let mut i = usize::from(look.colour == Ink::Red);
-                    let r = ecad_ui::prim::segmented(ui, &mut i, &["Ink", "Red"]);
+                    let r = ecad_widgets::prim::segmented(ui, &mut i, &["Ink", "Red"]);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, COLOUR));
                     let c = if i == 1 { Ink::Red } else { Ink::Ink };
                     if c != look.colour {
@@ -331,7 +331,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                 let mut wi = usize::from(*weight == LineWeight::Thick);
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Weight").small().color(c32(s.text_2)));
-                    let r = ecad_ui::prim::segmented(ui, &mut wi, &["Thin", "Thick"]);
+                    let r = ecad_widgets::prim::segmented(ui, &mut wi, &["Thin", "Thick"]);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, WEIGHT));
                 });
                 let nw = if wi == 1 { LineWeight::Thick } else { LineWeight::Thin };
@@ -357,7 +357,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     num(ui, &mut v[3], BOX[3]);
                 });
                 let (bw, bh) = d.now.layout.size;
-                let nr = ecad_model::title_block::Rect::new(v[0], v[1], v[2].max(0.5), v[3].max(0.5));
+                let nr = ecad_model::objects::title_block::Rect::new(v[0], v[1], v[2].max(0.5), v[3].max(0.5));
                 if nr != r {
                     if nr.x < 0.0 || nr.y < 0.0 || nr.right() > bw + 1e-9 || nr.top() > bh + 1e-9 {
                         ui.label(RichText::new(format!("Keep it inside the block ({} × {} mm).", fmt(bw), fmt(bh))).small().color(c32(s.warning)));
@@ -369,7 +369,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                                 if *i == first {
                                     set_rect(x, nr);
                                 } else {
-                                    super::draft::move_item(x, dx, dy);
+                                    crate::title_blocks::draft::move_item(x, dx, dy);
                                 }
                             }
                         }
@@ -379,14 +379,14 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     let (mut rws, mut hd, mut nw) = (*rows, *header, usize::from(*newest == Newest::Bottom));
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Rows").small().color(c32(s.text_2)));
-                        let r = ui.add(egui::DragValue::new(&mut rws).range(1..=ecad_model::title_block::MAX_TABLE_ROWS));
+                        let r = ui.add(egui::DragValue::new(&mut rws).range(1..=ecad_model::objects::title_block::MAX_TABLE_ROWS));
                         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::SpinButton, true, ROWS));
                         let h = ui.checkbox(&mut hd, "Header");
                         h.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, hd, HEADER));
                     });
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Newest").small().color(c32(s.text_2)));
-                        let r = ecad_ui::prim::segmented(ui, &mut nw, &["Top", "Bottom"]);
+                        let r = ecad_widgets::prim::segmented(ui, &mut nw, &["Top", "Bottom"]);
                         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, NEWEST));
                     });
                     let cols = sample
@@ -406,7 +406,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     let rp = ui.small_button("Replace…");
                     named(rp.clone(), "library.tb.inspector.logo.replace");
                     if rp.clicked() {
-                        ed.dxf = Some(super::DxfAsk { logo_at: Some(r), ..super::DxfAsk::default() });
+                        ed.dxf = Some(crate::title_blocks::DxfAsk { logo_at: Some(r), ..crate::title_blocks::DxfAsk::default() });
                     }
                     grey(ui, &format!("{} shapes", prims.len()));
                 }
@@ -439,7 +439,7 @@ fn num(ui: &mut egui::Ui, v: &mut f64, name: &str) {
     *v = snap(*v, false);
 }
 
-fn set_rect(item: &mut BlockItem, r: ecad_model::title_block::Rect) {
+fn set_rect(item: &mut BlockItem, r: ecad_model::objects::title_block::Rect) {
     match item {
         BlockItem::Text { at, .. } | BlockItem::Field { at, .. } | BlockItem::RevTable { at, .. } | BlockItem::Logo { at, .. } => *at = r,
         BlockItem::Line { .. } => {}
@@ -481,7 +481,7 @@ pub fn make_field(d: &mut Draft, i: usize) {
         .take(bind::MAX_KEY_CHARS)
         .collect();
     let key = if key.is_empty() { "field".to_string() } else { key };
-    let Some(key) = ecad_model::title_block::ProjectKey::new(&key) else { return };
+    let Some(key) = ecad_model::objects::title_block::ProjectKey::new(&key) else { return };
     if let Some(x) = d.now.layout.items.get_mut(i) {
         *x = BlockItem::Field { at, bind: Binding::Project(key), label: Some(text), look, if_empty: IfEmpty::Blank };
     }
@@ -490,11 +490,11 @@ pub fn make_field(d: &mut Draft, i: usize) {
 /// The block's panel, with nothing selected.
 #[allow(clippy::too_many_arguments)]
 fn block_panel(
-    ui: &mut egui::Ui, d: &mut Draft, acts: &mut Vec<Act>, writable: bool, pages: usize, layer: Option<ecad_engine::styles::Layer>,
+    ui: &mut egui::Ui, d: &mut Draft, acts: &mut Vec<Act>, writable: bool, pages: usize, layer: Option<ecad_electrical::styles::Layer>,
     notice: &Option<String>, ask_discard: &mut bool,
 ) {
-    let s = ecad_ui::SHELL;
-    ui.label(RichText::new(&d.now.name).font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::OBJECT)).color(c32(s.text)));
+    let s = ecad_widgets::SHELL;
+    ui.label(RichText::new(&d.now.name).font(ecad_widgets::fonts::font(ui.ctx(), ecad_widgets::tokens::ui_type::OBJECT)).color(c32(s.text)));
     let outside = d.outside().len();
     let line = if outside > 0 {
         format!("{outside} item{} outside the block", if outside == 1 { " is" } else { "s are" })
@@ -504,7 +504,7 @@ fn block_panel(
     ui.label(RichText::new(line).small().color(if outside > 0 { c32(s.warning) } else { c32(s.text_3) }));
     if d.builtin {
         egui::Frame::new().fill(c32(s.accent_soft)).inner_margin(space::S).corner_radius(4.0).show(ui, |ui| {
-            ui.label(RichText::new(super::BUILTIN_NOTE).small());
+            ui.label(RichText::new(crate::title_blocks::BUILTIN_NOTE).small());
         });
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new("Duplicate for").small());
@@ -529,7 +529,7 @@ fn block_panel(
         ui.label(RichText::new(&consequence).color(c32(s.text))).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, CONSEQUENCE));
     }
     ui.horizontal(|ui| {
-        let save = ui.add(super::list::gate(ecad_ui::prim::Button::new("Save").kind(ecad_ui::prim::Kind::Primary).small(), writable && changed));
+        let save = ui.add(crate::title_blocks::list::gate(ecad_widgets::prim::Button::new("Save").kind(ecad_widgets::prim::Kind::Primary).small(), writable && changed));
         save.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable && changed, SAVE));
         if save.clicked() && writable && changed {
             acts.push(Act::Save);
@@ -541,7 +541,7 @@ fn block_panel(
         }
     });
     if !writable {
-        ui.label(RichText::new(super::WRITES_OFF).small().color(c32(s.text_3)));
+        ui.label(RichText::new(crate::title_blocks::WRITES_OFF).small().color(c32(s.text_3)));
     }
     if *ask_discard {
         ui.horizontal(|ui| {
@@ -560,9 +560,9 @@ fn block_panel(
     ui.add_space(space::M);
     ui.label(RichText::new("Name").small().color(c32(s.text_2)));
     let mut name = d.now.name.clone();
-    let r = ecad_ui::control::TextEntry::new(&mut name, NAME).show(ui);
-    limit(&mut name, ecad_model::style::MAX_NAME_CHARS);
-    if r.changed() && ecad_model::style::is_name(&name) {
+    let r = ecad_widgets::control::TextEntry::new(&mut name, NAME).show(ui);
+    limit(&mut name, ecad_model::objects::styles::MAX_NAME_CHARS);
+    if r.changed() && ecad_model::objects::styles::is_name(&name) {
         d.now.name = name;
     }
     let sheet = d.now.fields.get("sheet").cloned().unwrap_or_default();
@@ -580,7 +580,7 @@ fn block_panel(
         }
     });
     let layer_word = match layer {
-        Some(ecad_engine::styles::Layer::Standard) => "Standard",
+        Some(ecad_electrical::styles::Layer::Standard) => "Standard",
         _ => "Project",
     };
     ui.horizontal(|ui| {

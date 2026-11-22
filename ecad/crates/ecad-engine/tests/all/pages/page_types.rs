@@ -2,9 +2,9 @@
 //! numbers, Renumber pages, `deletepage`, and their Checks rows.
 
 use ecad_engine::checks::Kind;
-use ecad_engine::styles::page as ptype;
-use ecad_model::book::{Book, NUMBER_KEY};
-use ecad_model::sheet::sheet_of;
+use ecad_electrical::styles::page as ptype;
+use ecad_model::document::book::{Book, NUMBER_KEY};
+use ecad_model::document::sheet::sheet_of;
 use ecad_model::{FolderId, PageId, StyleRef};
 use serde_json::{Value, json};
 
@@ -153,7 +153,7 @@ fn zones_off_draws_no_ticks_or_labels() {
     // A3: 7 + 5 inner ticks top and bottom, left and right (24), and 8 + 6 labels on both sides (28).
     assert_eq!(with - without, 24 + 28, "{with} {without}");
     let d = h.doc();
-    assert!(ecad_model::wiring::place(&d, p1, ecad_model::Pt::new(100.0, 100.0)).is_some(), "references keep their zones");
+    assert!(ecad_model::connectivity::wiring::place(&d, p1, ecad_model::Pt::new(100.0, 100.0)).is_some(), "references keep their zones");
 }
 
 #[test]
@@ -215,7 +215,7 @@ fn folder_start_numbers_are_checked_and_go_with_their_folder() {
     h.run("folderprops", json!({"folder": f.hex(), "start": "300"})).unwrap();
     assert_eq!(h.run("folderprops", json!({"folder": f.hex()})).unwrap()["start"], "300");
     // Design 072 §5.2: the start is the folder's own field, so it goes with the folder.
-    let start = |h: &mut H| ecad_engine::page_types::start_of(&h.doc(), f);
+    let start = |h: &mut H| ecad_electrical::pages::page_types::start_of(&h.doc(), f);
     let head = h.head();
     h.run("deletefolder", json!({"folder": f.hex()})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
@@ -233,7 +233,7 @@ fn deletepage_removes_generated_pages_only_and_undo_restores_them() {
     let rev = page(&mut h, json!({"generated": "revisions"}));
     let (title, num) = (h.doc().pages[&rev].title.clone(), number(&mut h, rev));
     let e = h.run("deletepage", json!({"page": first.hex()})).unwrap_err();
-    assert!(e.contains(ecad_engine::page_types::DRAWN_PAGE), "{e}");
+    assert!(e.contains(ecad_electrical::pages::page_types::DRAWN_PAGE), "{e}");
     let head = h.head();
     let r = h.run("deletepage", json!({"page": rev.hex()})).unwrap();
     assert!(r["message"].as_str().unwrap_or_default().starts_with("Removed "), "{r}");
@@ -281,7 +281,7 @@ fn cover_notes_are_written_one_per_line_and_bounded() {
     let head = h.head();
     h.run("projectprops", json!({"props": {"cover.notes": "a\n\n b \n"}})).unwrap();
     assert_eq!(h.head(), head + 1);
-    assert_eq!(ecad_engine::frames::project_text(&h.doc(), "cover.notes").as_deref(), Some("a\nb"));
+    assert_eq!(ecad_electrical::pages::frames::project_text(&h.doc(), "cover.notes").as_deref(), Some("a\nb"));
     let many: Vec<String> = (0..41).map(|i| format!("note {i}")).collect();
     let e = h.run("projectprops", json!({"props": {"cover.notes": many.join("\n")}})).unwrap_err();
     assert!(e.contains("The cover takes up to 40 notes of 400 characters."), "{e}");
@@ -363,11 +363,11 @@ fn wire_colour_lines_merge_equal_categories() {
     let l = ecad_engine::front::WireLine {
         names: vec!["L1".into(), "L2".into(), "L3".into()],
         cross_section: "2.5".into(),
-        colour: ecad_model::wire::Colours::parse("BK"),
+        colour: ecad_model::objects::wire::Colours::parse("BK"),
         label: None,
     };
     assert_eq!(l.text(), "L1, L2, L3 · 2.5 mm² · black");
-    let gnye = ecad_model::wire::Colours::parse("GNYE").expect("GNYE");
+    let gnye = ecad_model::objects::wire::Colours::parse("GNYE").expect("GNYE");
     assert_eq!(ecad_engine::front::colour_words(&gnye), "green / yellow");
 }
 
@@ -440,7 +440,7 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     assert_eq!(ty(&mut h, plain), "plain");
     let d = h.doc();
     assert!(!ptype::draw_of(&d, &StyleRef::Builtin("plain".into())).checks);
-    assert!(!ecad_model::sheet::page_checks(&d, plain));
+    assert!(!ecad_model::document::sheet::page_checks(&d, plain));
     let before_numbered = numbered(&mut h);
     h.wire_pp(&[(0.0, 40.0), (60.0, 40.0)]).unwrap();
     assert_eq!(on_page(&mut h, plain), 0, "no Checks row on a Plain page");

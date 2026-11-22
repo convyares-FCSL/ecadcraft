@@ -4,10 +4,10 @@
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 
-use ecad_model::colour::ColourWords;
-use ecad_model::keys::Area;
+use ecad_model::geometry::colour::ColourWords;
+use ecad_model::naming::keys::Area;
 // ecad-model's own schemars, through its `schema` feature (only the Engine depends on it).
-use ecad_model::words::__schemars as schemars;
+use ecad_model::naming::words::__schemars as schemars;
 use ecad_model::{Side, StyleCatalogue, Word};
 use serde::Serialize;
 use serde::de::DeserializeOwned;

@@ -49,7 +49,7 @@ pub enum Kind {
     Template,
     /// Handled by the app itself (no command).
     App,
-    /// Open or close the symbol search window (brief 018, [`crate::search`]).
+    /// Open or close the symbol search window (brief 018, [`crate::library::search`]).
     Search,
 }
 
@@ -64,7 +64,7 @@ pub struct Tool {
     pub kind: Kind,
 }
 
-/// The buttons, in panel order. Only commands that exist (`ecad_engine::cmd::specs`).
+/// The buttons, in panel order. Only commands that exist (`ecad_engine::commands::specs`).
 pub const TOOLS: &[Tool] = &[
     Tool {
         id: "ecad.findsymbol",
@@ -360,7 +360,7 @@ pub fn command_of(t: &Tool) -> Option<&'static str> {
             "ecad.renumberwires" => "renumberwires",
             "ecad.finalise" => "finalise",
             // Preview Reference is the reference wheel's Preview (an action with no command).
-            "ecad.cablepreview" => return crate::actions::find("reference.preview").map(|_| "reference.preview"),
+            "ecad.cablepreview" => return crate::commands::actions::find("reference.preview").map(|_| "reference.preview"),
             _ => return None,
         },
     })
@@ -368,7 +368,7 @@ pub fn command_of(t: &Tool) -> Option<&'static str> {
 
 /// Whether an action covers the button (brief 041): its command, or Preview Reference's action.
 pub fn covered(t: &Tool) -> bool {
-    command_of(t).is_some_and(|c| crate::actions::covers(c) || crate::actions::find(c).is_some())
+    command_of(t).is_some_and(|c| crate::commands::actions::covers(c) || crate::commands::actions::find(c).is_some())
 }
 
 /// The tools of the Project panel's Developer section, in order; Export Inspector Snapshot only

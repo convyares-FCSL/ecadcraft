@@ -1,8 +1,8 @@
 //! The circuit side of the rating checks (design 072 lane D; brief 057): a subject's Iz, its
 //! factors and volt drop, worked out from the wire or cable, its table and its load. The
-//! protective device it is checked against is [`super::protection`]'s.
+//! protective device it is checked against is [`crate::circuits::protection`]'s.
 
-use super::*;
+use crate::circuits::*;
 /// Round half up to `dp` decimals.
 pub fn half_up(x: f64, dp: i32) -> f64 {
     let m = 10f64.powi(dp);
@@ -217,14 +217,14 @@ pub enum Temp {
 pub fn box_temp(doc: &Document, a: ecad_model::AidId) -> Option<BoxTemp> {
     let x = crate::locations::box_values(doc, a)?;
     let t = x.panel_temperature?.0;
-    let location = crate::designations::box_key(x, crate::designations::Aspect::Location).unwrap_or_default();
+    let location = crate::locations::designations::box_key(x, crate::locations::designations::Aspect::Location).unwrap_or_default();
     let temp = if t.is_finite() && (-40.0..=90.0).contains(&t) { Temp::Read(t) } else { Temp::Unread(format!("{t}").chars().take(32).collect()) };
     Some(BoxTemp { location, temp })
 }
 
 /// The code of location entry `key` (brief 052), or the key itself when the list has no entry.
 pub fn location_code(doc: &Document, key: &str) -> String {
-    crate::designations::code_of(doc, crate::designations::Aspect::Location, key).unwrap_or_else(|| key.to_string())
+    crate::locations::designations::code_of(doc, crate::locations::designations::Aspect::Location, key).unwrap_or_else(|| key.to_string())
 }
 
 /// Every location box that sets a temperature (open, reload, first show).
@@ -292,7 +292,7 @@ pub fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool {
     if !x.rating.is_empty() || x.load.is_some() || x.protected_by().is_some() || cable::of(doc, k).is_some() {
         return true;
     }
-    ctx.table.is_some() && x.type_text().and_then(crate::strips::notation_size).is_some()
+    ctx.table.is_some() && x.type_text().and_then(crate::terminal_strips::notation_size).is_some()
 }
 
 /// The panel temperature of a wire (design 057 §4.4): the hottest of its ends' locations, else
@@ -360,7 +360,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                 .as_ref()
                 .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, "size", None))
                 .and_then(|r| parse::cross_section(&r.text()));
-            let size = from_type.or_else(|| circuit.and_then(|c| c.type_text()).and_then(crate::strips::notation_size));
+            let size = from_type.or_else(|| circuit.and_then(|c| c.type_text()).and_then(crate::terminal_strips::notation_size));
             (sh, size, ty.is_none())
         }
     };
@@ -392,7 +392,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     let mut rated = None;
     // Grouping input: a wire's bundling, a cable's grouped count.
     let bundling = if is_cable {
-        inp.grouped.map(|n| (ecad_model::wire::Bundling::Circuits(n), "set here".to_string()))
+        inp.grouped.map(|n| (ecad_model::objects::wire::Bundling::Circuits(n), "set here".to_string()))
     } else {
         match inp.bundling {
             Some(b) => Some((b, "set here".to_string())),
@@ -408,12 +408,12 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     let loaded: u8 = if system == "ac3" { 3 } else { 2 };
     let grouping_factor = |data: Option<&Dataset>, issues: &mut Vec<Issue>, factors: &mut Vec<Factor>| -> Option<f64> {
         match &bundling {
-            Some((ecad_model::wire::Bundling::Factor(f), from)) => {
+            Some((ecad_model::objects::wire::Bundling::Factor(f), from)) => {
                 let k = round2(*f);
                 factors.push(Factor { name: if is_cable { "grouping" } else { "bundling" }, factor: k, input: fmt_factor(k), from: from.clone() });
                 Some(k)
             }
-            Some((ecad_model::wire::Bundling::Circuits(n), from)) => {
+            Some((ecad_model::objects::wire::Bundling::Circuits(n), from)) => {
                 let Some(d) = data else {
                     issues.push(Issue::NoTable(format!("{n} circuits need a rating table's grouping factor; no rating table chosen")));
                     return None;

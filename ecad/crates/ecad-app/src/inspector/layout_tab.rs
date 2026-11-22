@@ -4,14 +4,14 @@
 //! under a coil, and Line and colour (folded). For anything else it shows the defaults that apply
 //! to what is selected (brief 042), folded the same way.
 
-use ecad_electrical::cmd::default as default_cmds;
-use ecad_engine::defaults::Source;
+use ecad_electrical::styles::commands::defaults as default_cmds;
+use ecad_electrical::defaults::Source;
 use ecad_engine::text_style::TextKind;
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Sense, pos2, vec2};
 
-use super::widgets as w;
-use super::{Cx, InspectorAction, fields};
+use crate::inspector::widgets as w;
+use crate::inspector::{Cx, InspectorAction, fields};
 
 /// Accessible names.
 pub const ROTATION: &str = "ecad.inspector.layout.rotation";
@@ -68,13 +68,13 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
         w::read(ui, "Variant", &d.symbol_name, "ecad.inspector.layout.variant").on_hover_text("Other variants: not available yet");
         w::row(ui, "Lock", |ui| {
             let mut locked = false;
-            ecad_ui::control::Toggle::new(&mut locked, "ecad.inspector.layout.lock").read_only(true).show(ui).on_hover_text(super::device::NOT_YET);
+            ecad_widgets::control::Toggle::new(&mut locked, "ecad.inspector.layout.lock").read_only(true).show(ui).on_hover_text(crate::inspector::device::NOT_YET);
             ui.label(w::rich(ui, "can be moved and joined", ui_type::SMALL, w::text_2()));
         });
     });
     // Text on the sheet.
     let insp = &mut *cx.insp;
-    let text_rows: Vec<(TextKind, Option<usize>, Option<usize>)> = super::SYMBOL_KINDS
+    let text_rows: Vec<(TextKind, Option<usize>, Option<usize>)> = crate::inspector::SYMBOL_KINDS
         .iter()
         .map(|k| {
             let style = insp.rows.iter().position(|r| r.key == k.style_entry().key);
@@ -108,7 +108,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
                 let mut inner: std::collections::BTreeSet<String> = ui.data(|m| m.get_temp(id)).unwrap_or_default();
                 w::section(ui, &mut inner, full, "texts-all", &format!("Every symbol of {}", d.tag), &summary, true, |ui| {
                     for row in device_texts {
-                        fields::prop(ui, cx.sh, &s.target, s.kind, row, &super::device::text_label(&row.label), "");
+                        fields::prop(ui, cx.sh, &s.target, s.kind, row, &crate::inspector::device::text_label(&row.label), "");
                     }
                 });
                 ui.data_mut(|m| m.insert_temp(id, inner));
@@ -164,7 +164,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
             {
                 cx.sh.edits.push((t.clone(), row.key.clone(), None));
             }
-            w::row(ui, "Rows", |ui| w::segmented(ui, &["Used only", "All contacts"], Some(1), false, CONTACT_ROWS, super::device::NOT_YET));
+            w::row(ui, "Rows", |ui| w::segmented(ui, &["Used only", "All contacts"], Some(1), false, CONTACT_ROWS, crate::inspector::device::NOT_YET));
             ui.add(
                 egui::Label::new(w::rich(
                     ui,
@@ -175,7 +175,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
                 .wrap(),
             );
             if let Some(e) = cx.sh.errors.get(&row.key) {
-                ui.label(w::rich(ui, e, ui_type::SMALL, ecad_ui::color(ecad_ui::SHELL.error)));
+                ui.label(w::rich(ui, e, ui_type::SMALL, ecad_widgets::color(ecad_widgets::SHELL.error)));
             }
         });
     }
@@ -187,7 +187,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
     cx.sh.view = view;
 }
 
-impl super::Inspector {
+impl crate::inspector::Inspector {
     /// One row of Text on the sheet: the slot (a click opens Standards at its style), whether it
     /// shows, where (from the symbol), its size (a list of the styles), and Reset when set here.
     #[allow(clippy::too_many_arguments)]
@@ -205,7 +205,7 @@ impl super::Inspector {
             if let Some(s) = &style_row {
                 let name = format!("ecad.origin.{}", s.key);
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
-                let from = crate::lists::standards::source_word(s.from);
+                let from = crate::settings::standards_list::source_word(s.from);
                 if resp.on_hover_text(format!("Style from {from}: open Standards")).clicked() {
                     out.push(InspectorAction::Standards(s.key));
                 }
@@ -215,12 +215,12 @@ impl super::Inspector {
             let on = show_row.as_ref().is_none_or(|s| s.value != "Hidden");
             let can = writable && show_row.as_ref().is_some_and(|s| s.here.is_some());
             let b = egui::Rect::from_center_size(pos2(r.left() + 9.0, r.center().y), vec2(16.0, 16.0));
-            let shell = ecad_ui::SHELL;
+            let shell = ecad_widgets::SHELL;
             if on {
                 ui.painter().rect_filled(
                     b,
-                    ecad_ui::style::corner(ecad_ui::tokens::radius::CHECK),
-                    ecad_ui::color(if can { shell.accent } else { shell.text_3 }),
+                    ecad_widgets::style::corner(ecad_widgets::tokens::radius::CHECK),
+                    ecad_widgets::color(if can { shell.accent } else { shell.text_3 }),
                 );
                 let c = egui::Color32::WHITE;
                 ui.painter().line_segment([b.center() + vec2(-4.0, 0.0), b.center() + vec2(-1.0, 3.0)], egui::Stroke::new(1.6, c));
@@ -228,7 +228,7 @@ impl super::Inspector {
             } else {
                 ui.painter().rect_stroke(
                     b,
-                    ecad_ui::style::corner(ecad_ui::tokens::radius::CHECK),
+                    ecad_widgets::style::corner(ecad_widgets::tokens::radius::CHECK),
                     egui::Stroke::new(1.2, w::text_2()),
                     egui::StrokeKind::Inside,
                 );
@@ -241,7 +241,7 @@ impl super::Inspector {
                     && resp.clicked()
                     && let Some((level, target)) = s.here
                 {
-                    out.push(InspectorAction::Run(s.key, default_cmds::line(s.key, level, target, Some(ecad_model::words::flag_word(!on)))));
+                    out.push(InspectorAction::Run(s.key, default_cmds::line(s.key, level, target, Some(ecad_model::naming::words::flag_word(!on)))));
                 }
             }
             // Where: as the symbol places it (grey: read from the drawing).
@@ -254,7 +254,7 @@ impl super::Inspector {
             } else {
                 "As drawn"
             };
-            ui.painter().rect_filled(r.shrink2(vec2(2.0, 0.0)), ecad_ui::style::corner(ecad_ui::tokens::radius::SEGMENT), w::raised());
+            ui.painter().rect_filled(r.shrink2(vec2(2.0, 0.0)), ecad_widgets::style::corner(ecad_widgets::tokens::radius::SEGMENT), w::raised());
             ui.painter().text(
                 pos2(r.left() + 10.0, r.center().y),
                 egui::Align2::LEFT_CENTER,
@@ -311,10 +311,10 @@ impl super::Inspector {
                 });
             }
             if let Some(d) = &r.dangling {
-                ui.label(w::rich(ui, d, ui_type::SMALL, ecad_ui::color(ecad_ui::SHELL.warning)));
+                ui.label(w::rich(ui, d, ui_type::SMALL, ecad_widgets::color(ecad_widgets::SHELL.warning)));
             }
             if let Some(e) = self.errors.get(r.key) {
-                ui.label(w::rich(ui, e, ui_type::SMALL, ecad_ui::color(ecad_ui::SHELL.error)));
+                ui.label(w::rich(ui, e, ui_type::SMALL, ecad_widgets::color(ecad_widgets::SHELL.error)));
             }
         }
     }

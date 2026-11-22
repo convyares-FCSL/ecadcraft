@@ -6,8 +6,8 @@ use ecad_electrical::CmdError;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::cmd::input::Command;
-use crate::cmd::on_any_page;
+use crate::commands::input::Command;
+use crate::commands::on_any_page;
 use crate::plc::iolist::*;
 use crate::plc::rack::{RackRef, card_named, rack_named};
 use serde_json::{Value, json};

@@ -23,10 +23,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed, typed};
-use crate::cmd::{err, on_any_page};
+use crate::commands::input::{Command, Typed, typed};
+use crate::commands::{err, on_any_page};
 use crate::project::Project;
-use crate::views::Settings;
+use crate::cables::views::Settings;
 
 /// The preference file's name in the settings folder.
 pub const FILE_NAME: &str = "agent-access.json";
@@ -238,7 +238,7 @@ impl Command for AgentaccessParams {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::agent::*;
 
     #[test]
     fn the_file_round_trips_and_anything_unusable_reads_as_off() {

@@ -3,10 +3,10 @@
 //! text (reported): `Starter::quiet` is a `Quiet` enum read through `is_quiet`, `changeover_labels`
 //! takes a set, and the prefix is `Starter::prefix()`, read from the defaults registry.
 
-use ecad_engine::symbols::{self, Anchor, Family, HAlign, Kind, STARTERS, TextRole, VAlign};
+use ecad_electrical::symbols::{self, Anchor, Family, HAlign, Kind, STARTERS, TextRole, VAlign};
 use ecad_model::Word;
 
-use crate::tester_034_library::catalogue;
+use crate::symbols::library_acceptance::catalogue;
 
 fn s(key: &str) -> &'static symbols::Starter {
     symbols::by_key(key).unwrap_or_else(|| panic!("{key} missing"))
@@ -104,7 +104,7 @@ fn quiet_lists() {
     // Brief 044's pins are quiet like 034's connector bodies (design 044 §3.2).
     for st in STARTERS.iter().filter(|s| !matches!(s.key.word(), "pinpair" | "pins" | "pinp")) {
         // Brief 045's starters are design 045's.
-        if crate::tester_034_library::BRIEF_045.contains(&st.key.word()) {
+        if crate::symbols::library_acceptance::BRIEF_045.contains(&st.key.word()) {
             continue;
         }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
@@ -121,7 +121,7 @@ fn quiet_lists() {
 /// built-in value; a project value changes what resolves; a hostile stored value falls back.
 #[test]
 fn prefixes_are_registered_defaults() {
-    use ecad_engine::defaults;
+    use ecad_electrical::defaults;
     for e in catalogue() {
         let entry =
             defaults::symbols::prefix_entry(ecad_model::Word::parse(&e.key).unwrap()).unwrap_or_else(|| panic!("{}: no registry entry", e.key));
@@ -131,14 +131,14 @@ fn prefixes_are_registered_defaults() {
         assert_eq!(s(&e.key).prefix(), e.prefix, "{}: Starter::prefix reads the registry", e.key);
     }
     let mut doc = ecad_model::Document::default();
-    assert_eq!(defaults::symbols::prefix(&doc, ecad_engine::symbols::StarterKey::Valve), "MB");
-    let valve = ecad_model::prefix::PrefixOf::Starter("valve".into());
-    doc.settings.tag_prefixes.insert(valve, ecad_model::prefix::TagPrefix::typed("Y").unwrap());
-    assert_eq!(defaults::symbols::prefix(&doc, ecad_engine::symbols::StarterKey::Valve), "Y");
-    assert_eq!(defaults::symbols::prefix(&doc, ecad_engine::symbols::StarterKey::Valve2), "MB", "only that key");
+    assert_eq!(defaults::symbols::prefix(&doc, ecad_electrical::symbols::StarterKey::Valve), "MB");
+    let valve = ecad_model::naming::prefix::PrefixOf::Starter("valve".into());
+    doc.settings.tag_prefixes.insert(valve, ecad_model::naming::prefix::TagPrefix::typed("Y").unwrap());
+    assert_eq!(defaults::symbols::prefix(&doc, ecad_electrical::symbols::StarterKey::Valve), "Y");
+    assert_eq!(defaults::symbols::prefix(&doc, ecad_electrical::symbols::StarterKey::Valve2), "MB", "only that key");
     // Design 072 F5: a bad prefix cannot be held at all (the file read refuses it).
     for bad in ["", "1", "K\u{0}", "TOOLONGPREFIXX", "\u{1F642}"] {
-        assert!(ecad_model::prefix::TagPrefix::typed(bad).is_none(), "{bad:?} refused");
+        assert!(ecad_model::naming::prefix::TagPrefix::typed(bad).is_none(), "{bad:?} refused");
     }
     // Brief 057's `rating.` area (FP5) holds project defaults of the rating checks, not a default
     // device rating: exactly these keys are excepted; the 034 ruling holds for everything else.
@@ -183,7 +183,7 @@ fn anchors() {
         // Brief 044's pins (design 044 §3.2) show their half's tag only; brief 045's channel cells
         // have design 045 §7.1's anchors (`plc_contracts`).
         if matches!(st.key.word(), "pinpair" | "pins" | "pinp")
-            || (crate::tester_034_library::BRIEF_045.contains(&st.key.word()) && st.key.word().starts_with("ch"))
+            || (crate::symbols::library_acceptance::BRIEF_045.contains(&st.key.word()) && st.key.word().starts_with("ch"))
         {
             continue;
         }

@@ -19,8 +19,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::device::switching::motor_power;
-use crate::units::{Amps, Percent, Watts};
+use crate::objects::devices::switching::motor_power;
+use crate::geometry::units::{Amps, Percent, Watts};
 
 /// The largest rated power of a motor, in watts (100 MW).
 pub const MAX_POWER_WATTS: f64 = 100_000_000.0;
@@ -31,8 +31,8 @@ pub const MAX_CURRENT_AMPS: f64 = 10_000.0;
 ///
 /// # Example
 /// ```
-/// use ecad_model::device::{Motor, Phases, Starting};
-/// use ecad_model::units::{Amps, Watts};
+/// use crate::objects::devices::{Motor, Phases, Starting};
+/// use crate::geometry::units::{Amps, Watts};
 /// let m = Motor { rated_power: Some(Watts(7500.0)), rated_current: Some(Amps(15.2)), starting: Some(Starting::StarDelta), ..Motor::empty(Phases::Three) };
 /// assert_eq!(m.to_string(), "7.5 kW, 15.2 A, star-delta");
 /// assert_eq!(

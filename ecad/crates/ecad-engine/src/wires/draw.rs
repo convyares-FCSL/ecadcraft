@@ -6,7 +6,7 @@ use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign, Handle, Text, VAl
 use cadcraft_engine::geom::Vec3;
 use ecad_model::{Document, Form, ItemId, PageId, Pt, Subject};
 
-use crate::draw::text_style::{EngineMetrics, DrawApply as _};
+use crate::styles::draw::{EngineMetrics, DrawApply as _};
 use crate::wires::{DASH_LAYER, LABEL_LAYER, WireLabel};
 
 /// [`labels_on_page`] without the routes whose items are `hidden` (a cable drawn as a fan: its
@@ -19,15 +19,15 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
 /// Brief 040: draw the page's wires and cores in their colour codes (spec §4): the route entity
 /// takes the first colour, and a two-colour code adds the second colour's 2 mm on / 2 mm off
 /// dashes over it on [`DASH_LAYER`], mapped to the conductor like its label (picking a dash
-/// picks the wire, [`crate::look::pick_routes`]). Colours are those of the sheet the page is
-/// projected for ([`crate::look::projection_sheet`]). An unknown code leaves the route in ink.
+/// picks the wire, [`crate::cables::draw::pick_routes`]). Colours are those of the sheet the page is
+/// projected for ([`crate::cables::draw::projection_sheet`]). An unknown code leaves the route in ink.
 /// Derived on every projection of the page, never stored.
 pub(crate) fn colour_routes(
     doc: &Document, page: PageId, d: &mut cadcraft_engine::doc::Drawing, ents: &mut Vec<Entity>, map: &mut crate::project::HandleMap,
     prev: &crate::project::HandleMap,
 ) {
     use cadcraft_engine::doc::color::Color;
-    let routes = crate::look::coloured_routes(doc, page, Some(map), crate::look::projection_sheet());
+    let routes = crate::cables::draw::coloured_routes(doc, page, Some(map), crate::cables::draw::projection_sheet());
     if routes.is_empty() {
         return;
     }
@@ -36,12 +36,12 @@ pub(crate) fn colour_routes(
     }
     let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     // The page's dash budget: past it a two-colour wire keeps its first colour only (Checks says).
-    let budget = crate::words::dash_budget(doc, page);
+    let budget = ecad_electrical::cables::words::dash_budget(doc, page);
     let mut dashes = Vec::new();
     for r in routes {
         let Some(route) = r.handle else { continue };
         let Some(e) = index.get(&route).and_then(|i| ents.get_mut(*i)) else { continue };
-        e.common.color = Color::True(crate::look::rgb(r.colours.solid));
+        e.common.color = Color::True(crate::cables::draw::rgb(r.colours.solid));
         map.insert_coloured(route);
         if !budget.dashed.contains(&r.rep) {
             continue;
@@ -61,7 +61,7 @@ pub(crate) fn colour_routes(
 /// weight where these differ from the built-in (continuous, 0.25 mm), on screen and in print (a
 /// mono print keeps them: they are not colour). `item_handle` finds a route item's entity.
 pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], item_handle: impl Fn(ItemId) -> Option<Handle>) {
-    let looks = crate::styles::wire::WireLooks::new(doc);
+    let looks = ecad_electrical::styles::wire::WireLooks::new(doc);
     let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     for (_, r) in doc.representations_on(page) {
         let Subject::Route(x) = r.subject else { continue };
@@ -72,12 +72,12 @@ pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], it
         let Some(c) = crate::wires::wire_of_route(doc, x) else { continue };
         let look = looks.look(doc, c);
         let weight = (look.line_weight * 100.0).round().clamp(0.0, 211.0) as u16;
-        if look.line_type == "continuous" && weight == crate::look::WIRE_WEIGHT {
+        if look.line_type == "continuous" && weight == crate::cables::draw::WIRE_WEIGHT {
             continue;
         }
         let Some(e) = r.items.first().and_then(|i| item_handle(*i)).and_then(|h| index.get(&h)).and_then(|i| ents.get_mut(*i)) else { continue };
         if look.line_type != "continuous" {
-            e.common.linetype = crate::styles::wire::linetype(look.line_type).into();
+            e.common.linetype = ecad_electrical::styles::wire::linetype(look.line_type).into();
         }
         e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(weight);
     }
@@ -85,13 +85,13 @@ pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], it
 
 /// The dash entities of a two-colour route (handles unset): the second colour's 2 mm on / 2 mm
 /// off lines on [`DASH_LAYER`], with the route entity's `common` otherwise (its lineweight).
-/// None for a one-colour route. Also what the page check expects ([`crate::verify`]).
-pub(crate) fn route_dashes(r: &crate::look::ColouredRoute, route: &Common) -> Vec<Entity> {
+/// None for a one-colour route. Also what the page check expects ([`crate::dev::verify`]).
+pub(crate) fn route_dashes(r: &crate::cables::draw::ColouredRoute, route: &Common) -> Vec<Entity> {
     use cadcraft_engine::doc::color::Color;
     let Some(second) = r.colours.dashes else { return Vec::new() };
     let (on, off) = (f64::from(ecad_drawing_style::wire::DASH_ON_MM), f64::from(ecad_drawing_style::wire::DASH_OFF_MM));
-    let common = Common { layer: DASH_LAYER.into(), color: Color::True(crate::look::rgb(second)), ..route.clone() };
-    crate::words::dash_segments(&r.points, on, off)
+    let common = Common { layer: DASH_LAYER.into(), color: Color::True(crate::cables::draw::rgb(second)), ..route.clone() };
+    ecad_electrical::cables::words::dash_segments(&r.points, on, off)
         .into_iter()
         .map(|(a, b)| Entity {
             handle: Handle::default(),
@@ -154,5 +154,5 @@ pub fn quiet_ends_of(doc: &Document, page: PageId, fan: &std::collections::BTree
     if crate::references::markers_on_page(doc, page).is_empty() {
         return Vec::new();
     }
-    crate::views::drawings_on_page(doc, page, fan, tol).into_values().flat_map(|d| d.quiet).collect()
+    crate::cables::views::drawings_on_page(doc, page, fan, tol).into_values().flat_map(|d| d.quiet).collect()
 }

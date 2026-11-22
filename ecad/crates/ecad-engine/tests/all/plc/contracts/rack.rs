@@ -6,7 +6,7 @@ use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::{Author, DeviceId, Op};
 use serde_json::{Value, json};
 
-use super::{checks_of, place, placed, prop, same_as_built, tag};
+use crate::plc::contracts::{checks_of, place, placed, prop, same_as_built, tag};
 use crate::common::{H, id};
 
 /// A CPU and six cards (fixture P's rack, design 045 §13 A): `plccm`, `plcdi`, `plcdi`, `plcai`,
@@ -368,11 +368,11 @@ fn fp1_merge_and_diff_words_show_the_racks_tag_never_its_id() {
     let a03 = placed_card(&mut h);
     let item = h.symbol_item(a03);
     let handle = h.handle_of(page, item);
-    let v = h.pv(|p, _| ecad_engine::props::view(p, Some(page), &[handle]));
+    let v = h.pv(|p, _| ecad_engine::properties::props::view(p, Some(page), &[handle]));
     let row = v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == "plc.rack").cloned().expect("a Rack row");
     assert_eq!(row.value, "-A01");
     assert!(row.choices.contains(&"-A01".to_string()) && row.choices.contains(&"None".to_string()));
-    let line = ecad_electrical::props::edit_line(&ecad_electrical::props::Target::Devices(vec![a03]), "plc.rack", Some("None"));
+    let line = ecad_electrical::properties::edit_line(&ecad_electrical::properties::Target::Devices(vec![a03]), "plc.rack", Some("None"));
     assert!(line.starts_with("plcslot ") && line.contains("\"rack\":null"), "{line}");
 }
 

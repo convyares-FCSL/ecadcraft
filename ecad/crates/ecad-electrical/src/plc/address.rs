@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 
 use ecad_model::{DeviceId, Document};
 
-use super::rack::{self, CardType, Direction, RackRef};
+use crate::plc::rack::{self, CardType, Direction, RackRef};
 use crate::defaults::{self, Scope};
 
 /// The `setprop` name of a module's pinned start byte (FP3).
@@ -25,9 +25,9 @@ pub const START_KEY: &str = "plc.addr.start";
 /// The `setprop` name of a module's own block size in bytes (FP3).
 pub const SIZE_KEY: &str = "plc.addr.size";
 /// The highest byte an address may use.
-pub const MAX_BYTE: u32 = ecad_model::plc::MAX_BYTE;
+pub const MAX_BYTE: u32 = ecad_model::objects::plc::MAX_BYTE;
 /// The largest block size a card may set.
-pub const MAX_SIZE: u32 = ecad_model::plc::MAX_SIZE;
+pub const MAX_SIZE: u32 = ecad_model::objects::plc::MAX_SIZE;
 
 /// An address style (design 045 §5.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +43,7 @@ pub enum Style {
 impl Style {
     /// Rack `r`'s style: the station's own, else the project's `plc.address.style`.
     pub fn of(doc: &Document, r: DeviceId) -> Style {
-        if let Some(s) = super::edit::station_of(doc, r).and_then(|x| x.address_style) {
+        if let Some(s) = crate::plc::edit::station_of(doc, r).and_then(|x| x.address_style) {
             return Style::of_stored(s);
         }
         match defaults::resolve(doc, &defaults::plc::ADDRESS_STYLE, Scope::project()).word() {
@@ -56,8 +56,8 @@ impl Style {
     }
 
     /// The style a station stores.
-    pub fn of_stored(s: ecad_model::plc::AddressStyle) -> Style {
-        use ecad_model::plc::AddressStyle as A;
+    pub fn of_stored(s: ecad_model::objects::plc::AddressStyle) -> Style {
+        use ecad_model::objects::plc::AddressStyle as A;
         match s {
             A::ByteBit => Style::ByteBit,
             A::Iec => Style::Iec,
@@ -68,8 +68,8 @@ impl Style {
     }
 
     /// The style as a station stores it.
-    pub fn stored(self) -> ecad_model::plc::AddressStyle {
-        use ecad_model::plc::AddressStyle as A;
+    pub fn stored(self) -> ecad_model::objects::plc::AddressStyle {
+        use ecad_model::objects::plc::AddressStyle as A;
         match self {
             Style::ByteBit => A::ByteBit,
             Style::Iec => A::Iec,
@@ -97,7 +97,7 @@ impl Style {
 
 /// A card's pinned start, when set.
 pub fn pinned(doc: &Document, c: DeviceId) -> Option<u32> {
-    super::edit::module_of(doc, c).and_then(|m| m.address.start).filter(|n| *n <= MAX_BYTE)
+    crate::plc::edit::module_of(doc, c).and_then(|m| m.address.start).filter(|n| *n <= MAX_BYTE)
 }
 
 /// The bytes one analogue or IO-Link channel of card `c` takes.
@@ -110,7 +110,7 @@ pub fn word_size(doc: &Document, c: DeviceId, ty: CardType) -> u32 {
 
 /// Card `c`'s (input, output) block size in bytes for `n` channels (design 045 §5.1).
 pub fn sizes(doc: &Document, c: DeviceId, ty: CardType, n: u32) -> (u32, u32) {
-    let own = super::edit::module_of(doc, c).and_then(|m| m.address.size).filter(|s| (1..=MAX_SIZE).contains(s));
+    let own = crate::plc::edit::module_of(doc, c).and_then(|m| m.address.size).filter(|s| (1..=MAX_SIZE).contains(s));
     let digital = n.div_ceil(8);
     let word = word_size(doc, c, ty).saturating_mul(n);
     let (i, o) = match ty {
@@ -223,7 +223,7 @@ pub fn block_words(style: Style, output: bool, (start, size): (u32, u32)) -> Str
 /// The address of channel `i` of card `c` as shown: the typed one (`typed: true`), else the
 /// automatic input address (an output card's output address).
 pub fn shown(doc: &Document, c: DeviceId, i: u32, auto: Option<String>) -> (Option<String>, bool) {
-    let typed = super::edit::module_of(doc, c).and_then(|m| m.channel(i)).and_then(|x| x.address.as_ref()).map(ToString::to_string);
+    let typed = crate::plc::edit::module_of(doc, c).and_then(|m| m.channel(i)).and_then(|x| x.address.as_ref()).map(ToString::to_string);
     match typed {
         Some(t) => (Some(t), true),
         None => (auto, false),
@@ -233,12 +233,12 @@ pub fn shown(doc: &Document, c: DeviceId, i: u32, auto: Option<String>) -> (Opti
 /// The members of rack `r` read straight from the document (texts and commands, which have no
 /// kept model): its cards with a slot, in slot order.
 pub fn members_of(doc: &Document, r: DeviceId) -> Vec<Member> {
-    let Some(station) = super::edit::station_of(doc, r) else { return Vec::new() };
+    let Some(station) = crate::plc::edit::station_of(doc, r) else { return Vec::new() };
     station
         .modules(doc, r)
         .into_iter()
         .filter_map(|(c, s)| {
-            let ty = super::card_type_of(doc, c)?;
+            let ty = crate::plc::card_type_of(doc, c)?;
             (!ty.is_rack()).then_some((c, ty, rack::channel_count(doc, c), s?))
         })
         .collect()
@@ -251,9 +251,9 @@ pub trait Addressed {
     fn address_block(&self, doc: &Document, id: DeviceId) -> Option<Block>;
 }
 
-impl Addressed for ecad_model::plc::PlcModule {
+impl Addressed for ecad_model::objects::plc::PlcModule {
     fn address_block(&self, doc: &Document, id: DeviceId) -> Option<Block> {
-        let r = self.rack.filter(|r| super::edit::station_of(doc, *r).is_some())?;
+        let r = self.rack.filter(|r| crate::plc::edit::station_of(doc, *r).is_some())?;
         self.slot?;
         blocks(doc, r, &members_of(doc, r)).get(&id).copied()
     }
@@ -267,7 +267,7 @@ pub trait Station {
     fn io_count(&self, doc: &Document, id: DeviceId) -> (u32, u32);
 }
 
-impl Station for ecad_model::plc::PlcRack {
+impl Station for ecad_model::objects::plc::PlcRack {
     fn modules(&self, doc: &Document, id: DeviceId) -> Vec<(DeviceId, Option<u32>)> {
         rack::cards_naming(doc, id)
     }
@@ -275,7 +275,7 @@ impl Station for ecad_model::plc::PlcRack {
     fn io_count(&self, doc: &Document, id: DeviceId) -> (u32, u32) {
         let mut io = (0u32, 0u32);
         for (c, _) in self.modules(doc, id) {
-            let (Some(ty), n) = (super::card_type_of(doc, c), rack::channel_count(doc, c)) else { continue };
+            let (Some(ty), n) = (crate::plc::card_type_of(doc, c), rack::channel_count(doc, c)) else { continue };
             match ty.direction() {
                 Direction::Input => io.0 = io.0.saturating_add(n),
                 Direction::Output => io.1 = io.1.saturating_add(n),
@@ -298,10 +298,10 @@ pub fn shows_output(ty: CardType) -> bool {
 /// Card `c`'s automatic address of channel `i` (input; and output for IO-Link), worked out from the
 /// document (texts, commands).
 pub fn of_channel(
-    doc: &Document, c: DeviceId, i: u32, kept: Option<&super::kept::Plc>, cache: &mut BTreeMap<DeviceId, BTreeMap<DeviceId, Block>>,
+    doc: &Document, c: DeviceId, i: u32, kept: Option<&crate::plc::kept::Plc>, cache: &mut BTreeMap<DeviceId, BTreeMap<DeviceId, Block>>,
 ) -> (Option<String>, Option<String>) {
     let (RackRef::Rack(r), Some(slot)) = (rack::rack_ref(doc, c), rack::slot_of(doc, c)) else { return (None, None) };
-    let Some(ty) = super::card_type_of(doc, c) else { return (None, None) };
+    let Some(ty) = crate::plc::card_type_of(doc, c) else { return (None, None) };
     // The kept model's blocks when there is one (review of #84, 3); a walk otherwise, once per rack.
     let b = match kept {
         Some(p) => p.blocks.get(&c).copied(),
@@ -310,7 +310,7 @@ pub fn of_channel(
     let Some(b) = b else { return (None, None) };
     let b = &b;
     let style = Style::of(doc, r);
-    let shown_no = i.saturating_add(super::channels::first_number(doc, c));
+    let shown_no = i.saturating_add(crate::plc::channels::first_number(doc, c));
     let word = word_size(doc, c, ty);
     let main = automatic(style, ty, b, slot, i, shown_no, word, shows_output(ty));
     let second = (ty == CardType::Iol).then(|| automatic(style, ty, b, slot, i, shown_no, word, true)).flatten();
@@ -324,7 +324,7 @@ pub fn snapshot(doc: &Document, r: DeviceId) -> BTreeMap<DeviceId, Block> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::plc::*;
 
     #[test]
     fn formats_follow_design_045_table_5_2() {

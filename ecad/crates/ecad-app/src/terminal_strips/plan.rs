@@ -14,12 +14,12 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_engine::outputs::kept::ReportModels;
-use ecad_engine::strips::{PlanItem, SideCell, StripData, TermRow};
+use ecad_electrical::terminal_strips::{PlanItem, SideCell, StripData, TermRow};
 use ecad_model::DeviceId;
-use ecad_ui::table::{Align, Cell, Changed, Column, ColumnId, Lane, LaneCell, Table, TableEvent, TableSource, Width};
+use ecad_widgets::table::{Align, Cell, Changed, Column, ColumnId, Lane, LaneCell, Table, TableEvent, TableSource, Width};
 use serde_json::json;
 
-use super::ListAction;
+use crate::workspace::ListAction;
 
 /// A row: its strip and its place in the strip's plan.
 pub type TermKey = (DeviceId, u32);
@@ -61,8 +61,8 @@ pub fn columns() -> Vec<Column> {
 }
 
 /// The band captions over the plan's three parts (board 2.02).
-pub fn bands() -> Vec<ecad_ui::table::Band> {
-    use ecad_ui::table::Band;
+pub fn bands() -> Vec<ecad_widgets::table::Band> {
+    use ecad_widgets::table::Band;
     vec![
         Band { caption: "Inside \u{b7} panel side \u{b7} read from the drawing", first: PLACE, last: JUMPER_BARS },
         Band { caption: "The strip \u{b7} what you set", first: POSITION, last: RATING },
@@ -113,7 +113,7 @@ fn plan_rows(s: &StripData, accessories: bool, style: ecad_model::ReferenceStyle
     for item in s.plan(accessories) {
         match item {
             PlanItem::Gap { acc, .. } => {
-                let words = if acc == ecad_engine::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
+                let words = if acc == ecad_electrical::terminal_strips::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
                 out.push(PlanRow::Gap { tag: s.tag.clone(), mark: acc.mark().to_string(), words });
             }
             PlanItem::Term(i, r) => {
@@ -363,7 +363,7 @@ impl TerminalStripPlanView {
                         out.push(ListAction::GoTo(pg, at));
                     }
                 }
-                TableEvent::Export(csv) => super::copy_csv(ui, csv),
+                TableEvent::Export(csv) => crate::workspace::copy_csv(ui, csv),
                 TableEvent::Commit { .. } | TableEvent::Selected(_) | TableEvent::Button { .. } => {}
             }
         }

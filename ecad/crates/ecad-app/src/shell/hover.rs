@@ -105,7 +105,7 @@ impl App {
         let t = shell::left::colours();
         egui::Area::new(egui::Id::unique(HOVER_ID))
             .order(egui::Order::Tooltip)
-            .fixed_pos(pointer + egui::Vec2::splat(ecad_ui::tokens::space::XL))
+            .fixed_pos(pointer + egui::Vec2::splat(ecad_widgets::tokens::space::XL))
             .constrain(true)
             .interactable(false)
             .show(ctx, |ui| {

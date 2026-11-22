@@ -1,7 +1,7 @@
 //! The shell's keys (spec §5, "Keyboard that remains"): the tool group keys V D T W C (UI rev 3
 //! keeps a key only where a group of 041's survives), `]` (collapse or expand the inspector),
 //! Ctrl+1–4, Ctrl+K, Ctrl+/, PgUp/PgDn, F, Alt+Left/Right and Esc; and, from the action table
-//! (brief 041, [`crate::actions`]), Del, F2, R, X, Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+Z and
+//! (brief 041, [`crate::commands::actions`]), Del, F2, R, X, Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+Z and
 //! Ctrl+Y. Undo and redo are keys only (owner answer 8).
 //!
 //! The keys are taken before CADCraft's drawing reads the frame's input, so Ctrl+1 opens no
@@ -9,10 +9,10 @@
 //! pointer is over the main view and no text field has the keyboard (and never while a command
 //! prompts: its keywords are typed letters).
 
-use crate::actions::{self, Key as ActionKey};
+use crate::commands::actions::{self, Key as ActionKey};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 
-use super::{Slots, Workspace};
+use crate::shell::{Slots, Workspace};
 use crate::App;
 
 /// The egui key and modifiers of an action key.
@@ -85,7 +85,7 @@ pub fn handle(t: &mut App, ctx: &egui::Context, slots: &Slots) {
     if prompting {
         // Pressed again while its group's tool prompts: the next tool of the group, unless the
         // prompt takes that letter (typed text, or a keyword starting with it).
-        for (gi, g) in super::tool_strip::GROUPS.iter().enumerate() {
+        for (gi, g) in crate::shell::tool_strip::GROUPS.iter().enumerate() {
             let Some((letter, key)) = g.key else { continue };
             if t.group_tool_running(gi) && !prompt_takes(t, letter) && take(Modifiers::NONE, key) {
                 ctx.input_mut(|i| i.events.retain(|e| !matches!(e, egui::Event::Text(x) if x.eq_ignore_ascii_case(&letter.to_string()))));
@@ -93,7 +93,7 @@ pub fn handle(t: &mut App, ctx: &egui::Context, slots: &Slots) {
             }
         }
     } else {
-        for g in super::tool_strip::GROUPS.iter() {
+        for g in crate::shell::tool_strip::GROUPS.iter() {
             if let Some((letter, key)) = g.key
                 && take(Modifiers::NONE, key)
             {

@@ -71,11 +71,11 @@ impl App {
             NameBoxKind::Rename(_) => "Rename page",
         };
         let mut enter = false;
-        let shown = ecad_ui::dialog::Dialog::new(egui::Id::unique("ecad.page_name_box"), heading, "ecad.page_name_box").small().show(
+        let shown = ecad_widgets::dialog::Dialog::new(egui::Id::unique("ecad.page_name_box"), heading, "ecad.page_name_box").small().show(
             ctx,
             |ui| {
                 let id = egui::Id::unique("ecad.page_name_box.field");
-                let field = ecad_ui::control::TextEntry::new(&mut b.text, NAME_BOX_FIELD).id(id).show(ui);
+                let field = ecad_widgets::control::TextEntry::new(&mut b.text, NAME_BOX_FIELD).id(id).show(ui);
                 if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     enter = true;
                 } else if !b.focused {
@@ -88,13 +88,13 @@ impl App {
                     }
                 }
                 if let Some(e) = &b.error {
-                    ecad_ui::prim::note(ui, e, ecad_ui::prim::Tone::Error);
+                    ecad_widgets::prim::note(ui, e, ecad_widgets::prim::Tone::Error);
                 }
             },
             |ui| {
-                use ecad_ui::prim::Kind;
-                let ok = ecad_ui::dialog::action(ui, "OK", Kind::Primary, "OK", None).clicked();
-                let cancel = ecad_ui::dialog::action(ui, "Cancel", Kind::Secondary, "Cancel", None).clicked();
+                use ecad_widgets::prim::Kind;
+                let ok = ecad_widgets::dialog::action(ui, "OK", Kind::Primary, "OK", None).clicked();
+                let cancel = ecad_widgets::dialog::action(ui, "Cancel", Kind::Secondary, "Cancel", None).clicked();
                 (ok, cancel)
             },
         );

@@ -1,7 +1,7 @@
 //! The rules of brief 059's cable manager (design 059 §4): `cablenew` and `cableedit` (every value
 //! checked first; any refusal writes nothing), `cableremove` (refused for a drawn cable), and the
 //! assign rule a slash onto a cable not drawn follows. The three commands are generic
-//! ([`crate::cmd::run`]).
+//! ([`crate::commands::run`]).
 //!
 //! # Semantics
 //! - Every refusal is a [`CmdError`] whose words are design 059 §9's, every echoed value clipped
@@ -12,7 +12,7 @@
 
 use std::collections::{BTreeSet, VecDeque};
 
-use ecad_model::words::Word;
+use ecad_model::naming::words::Word;
 use ecad_model::{CableId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Properties, StyleRef, Subject};
 
 use crate::cables::{
@@ -22,13 +22,13 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::cmd::input::{TextOrNumber, nullable};
-use crate::cmd::run::{Cx, Generic, Outcome};
-use crate::designations::{self, Aspect};
+use crate::commands::input::{TextOrNumber, nullable};
+use crate::commands::run::{Cx, Generic, Outcome};
+use crate::locations::designations::{self, Aspect};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
 use crate::styles::{self, cable};
-use ecad_model::style::cable::Shield;
+use ecad_model::objects::styles::cable::Shield;
 
 /// Why a value is refused.
 #[derive(Debug, Clone, PartialEq)]
@@ -82,7 +82,7 @@ pub fn bad_value(field: CableField, value: &str, reason: &BadReason) -> CmdError
             format!("{}: {}", field.label(), clip_quoted(&why.replace(value, &shown)))
         }
         (CableField::Tag, BadReason::Empty) => "A cable always has a tag. Type a new tag (such as -W05) instead of clearing it.".to_string(),
-        (_, BadReason::NotAWord) if ecad_model::text::has_hidden(value) => {
+        (_, BadReason::NotAWord) if ecad_model::naming::text::has_hidden(value) => {
             format!("{} holds a control or invisible character; type it again without one.", field.label())
         }
         (CableField::CableType, BadReason::UnknownEntry) => format!("No cable type {shown:?} in this project's standards."),
@@ -162,7 +162,7 @@ fn as_text(field: CableField, v: Option<&str>) -> Result<Option<String>, CmdErro
         None => Ok(None),
         Some(s) if s.trim().is_empty() => Ok(None),
         // Tester 059a: no control or invisible character in any value (a planned code, a maker…).
-        Some(s) if ecad_model::text::has_hidden(s) => Err(bad_value(field, s, &BadReason::NotAWord)),
+        Some(s) if ecad_model::naming::text::has_hidden(s) => Err(bad_value(field, s, &BadReason::NotAWord)),
         Some(s) => Ok(Some(s.trim().to_string())),
     }
 }
@@ -184,19 +184,19 @@ fn checked(
             None => Err(bad(BadReason::NotANumber)),
         },
         CableField::Gland(_) if t.chars().count() > cable::MAX_GLAND_CHARS => Err(bad(BadReason::TooLong(cable::MAX_GLAND_CHARS))),
-        CableField::Gland(_) if !cable::is_gland(&t) || ecad_model::text::has_hidden(&t) => Err(bad(BadReason::NotAWord)),
+        CableField::Gland(_) if !cable::is_gland(&t) || ecad_model::naming::text::has_hidden(&t) => Err(bad(BadReason::NotAWord)),
         CableField::Gland(_) => Ok(Some(t)),
         CableField::Shield => <Shield as Word>::parse(&t).map(|s| Some(s.word().to_string())).ok_or_else(|| bad(BadReason::NotAWord)),
         CableField::Maker | CableField::PartNumber | CableField::Description | CableField::Type => {
             if t.chars().count() > MAX_TEXT {
                 return Err(bad(BadReason::TooLong(MAX_TEXT)));
             }
-            if ecad_model::text::has_hidden(&t) {
+            if ecad_model::naming::text::has_hidden(&t) {
                 return Err(bad(BadReason::NotAWord));
             }
             Ok(Some(t))
         }
-        CableField::Cores => crate::strips::cores_value(Some(&t)).map_err(|e| bad(BadReason::BadOffer(e.to_string()))),
+        CableField::Cores => crate::terminal_strips::cores_value(Some(&t)).map_err(|e| bad(BadReason::BadOffer(e.to_string()))),
         CableField::CableType => {
             styles::find(doc, ecad_model::StyleCatalogue::Cable, &t).map(|id| Some(id.text())).map_err(|_| bad(BadReason::UnknownEntry))
         }
@@ -214,7 +214,7 @@ pub fn cable_named(doc: &Document, text: &str) -> Result<CableId, CmdError> {
     if let Some(k) = CableId::parse(t).filter(|k| doc.cables.contains_key(k)) {
         return Ok(k);
     }
-    crate::references::cable_tagged(doc, t).ok_or_else(|| no_cable(&t.chars().take(32).collect::<String>()))
+    crate::references::cables::cable_tagged(doc, t).ok_or_else(|| no_cable(&t.chars().take(32).collect::<String>()))
 }
 
 /// Whether core `m` is on a line: a stored unplaced core (design 072 §4.5) is offered, not in use.
@@ -239,7 +239,7 @@ fn check_offer(doc: &Document, k: CableId, next: &ecad_model::Cable) -> Result<(
     // Counted as the offer's write would leave the cores (unlabelled ones take free labels).
     let mut synced = next.clone();
     cable::sync_offered_cores(doc, cab, &mut synced);
-    let count = crate::strips::count_cores(Some((offer.clone(), crate::strips::OfferSource::Cores, text.clone())), &synced.cores);
+    let count = crate::terminal_strips::count_cores(Some((offer.clone(), crate::terminal_strips::OfferSource::Cores, text.clone())), &synced.cores);
     if count.over.is_empty() {
         return Ok(());
     }
@@ -256,8 +256,8 @@ fn check_offer(doc: &Document, k: CableId, next: &ecad_model::Cable) -> Result<(
 
 /// The refusal when another device or cable holds `typed`.
 fn refuse_taken(doc: &Document, typed: &str, except: Option<CableId>) -> Result<(), CmdError> {
-    let Ok(t) = ecad_model::tag::normalise(typed, crate::defaults::print::tag_style(doc)) else { return Ok(()) };
-    if ecad_model::tag::provisional(&t).is_some() {
+    let Ok(t) = ecad_model::naming::tag::normalise(typed, crate::defaults::print::tag_style(doc)) else { return Ok(()) };
+    if ecad_model::naming::tag::provisional(&t).is_some() {
         return Ok(());
     }
     match crate::devices::tag_holder(doc, &t, except.map(ObjectRef::Cable)) {
@@ -353,10 +353,10 @@ pub fn edit_ops(
                 // Tester 059a, rule 1: clearing the tag would leave the cable without one.
                 None => return Err(bad_value(field, "", &BadReason::Empty)),
                 Some(t) => {
-                    let n = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))
+                    let n = ecad_model::naming::tag::normalise(&t, crate::defaults::print::tag_style(doc))
                         .map_err(|e| bad_value(field, &t, &BadReason::BadOffer(e.to_string())))?;
                     refuse_taken(doc, &n, Some(k))?;
-                    match ecad_model::tag::provisional(&n) {
+                    match ecad_model::naming::tag::provisional(&n) {
                         Some((px, 0)) => Some(tag_high.next_provisional_in(doc, &px)),
                         _ => Some(n),
                     }
@@ -390,10 +390,10 @@ pub fn edit_ops(
     check_offer(doc, k, &take_fields(ecad_model::Cable { properties: after.clone(), ..cab.clone() }))?;
     // A typed tag is fixed (026), as Set property on `tag` makes it.
     if set.tag.is_some() {
-        let fixed = after.get(CableField::Tag.key()).is_some_and(|t| !ecad_model::tag::is_provisional(t));
+        let fixed = after.get(CableField::Tag.key()).is_some_and(|t| !ecad_model::naming::tag::is_provisional(t));
         match fixed {
-            true => after.insert(ecad_model::tag::FIXED_KEY.into(), ecad_model::words::flag_word(true).to_string()),
-            false => after.remove(ecad_model::tag::FIXED_KEY),
+            true => after.insert(ecad_model::naming::tag::FIXED_KEY.into(), ecad_model::naming::words::flag_word(true).to_string()),
+            false => after.remove(ecad_model::naming::tag::FIXED_KEY),
         };
     }
     let mut cable = take_fields(ecad_model::Cable { properties: after, ..cab.clone() });
@@ -443,7 +443,7 @@ pub fn check_remove(doc: &Document, k: CableId) -> Result<(), CmdError> {
 /// # Errors
 /// No such cable, or the offer has fewer free cores than `n` (Q6).
 pub fn assign_cores(doc: &Document, k: CableId, n: usize) -> Result<Vec<Option<String>>, CmdError> {
-    let Some(count) = crate::strips::cable_cores(doc, k) else { return Err(no_cable(&k.hex())) };
+    let Some(count) = crate::terminal_strips::cable_cores(doc, k) else { return Err(no_cable(&k.hex())) };
     if count.offer.is_none() {
         let start = doc.cables.get(&k).map_or(0, |c| c.cores.len());
         return Ok((0..n).map(|i| Some((start + i + 1).to_string())).collect());
@@ -469,7 +469,7 @@ pub fn already_in_cable(words: String) -> CmdError {
 
 /// The refusal of a slash crossing more than the most members a cable takes.
 pub fn too_many() -> CmdError {
-    said(crate::slash::too_many())
+    said(crate::cables::slash::too_many())
 }
 
 /// Board 2.06's **Add a core** (design 059 §3): cable `k`'s offer plus one core (`4G` → `5G`,
@@ -538,7 +538,7 @@ pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run; design 059 §4.1, §4.2)
+// The commands (generic: crate::commands::run; design 059 §4.1, §4.2)
 
 /// An end's plan and gland.
 #[derive(Debug, Default, Deserialize, JsonSchema)]

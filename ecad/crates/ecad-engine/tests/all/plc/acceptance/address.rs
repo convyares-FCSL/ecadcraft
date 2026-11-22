@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
-use super::*;
+use crate::plc::acceptance::*;
 
 /// Fixture P with check F's fence on `-A03` and every channel of every card drawn (rest), so each
 /// card's addresses are on a page.
@@ -121,7 +121,7 @@ fn i_each_address_style() {
     assert!(!t.iter().any(|x| x.starts_with("I:") || x.starts_with("%I") || x == "I0.0"), "style none: typed addresses only");
     // Design 072 §3: the style is the station's own field.
     let st = crate::common::plc_station(&p.h.doc(), p.rack).address_style;
-    assert_eq!(st, Some(ecad_model::plc::AddressStyle::None));
+    assert_eq!(st, Some(ecad_model::objects::plc::AddressStyle::None));
     p.h.check();
 }
 

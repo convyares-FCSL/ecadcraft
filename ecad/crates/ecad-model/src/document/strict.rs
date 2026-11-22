@@ -13,7 +13,7 @@
 
 use std::fmt;
 
-use crate::id::{CableId, DeviceId, PageId, WireId};
+use crate::naming::id::{CableId, DeviceId, PageId, WireId};
 
 /// Where a stored word was found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -60,7 +60,7 @@ pub enum UnknownWord {
         /// The words the setting allows.
         allowed: Vec<&'static str>,
     },
-    /// A property bag holds `key`, which became a struct field ([`crate::keys::RESERVED`]).
+    /// A property bag holds `key`, which became a struct field ([`crate::naming::keys::RESERVED`]).
     ReservedKey { place: WordPlace, key: String },
     /// The file's `meta` table holds a name this build does not read (pre-v1: no forward
     /// compatibility, so it is not ignored). Its place is [`WordPlace::File`].

@@ -19,7 +19,7 @@ use ecad_model::{Document, Op, Transaction};
 use serde_json::Value;
 
 use crate::checks::{Check, Severity};
-use crate::outputs::{Cell, Table};
+use crate::reports::{Cell, Table};
 
 /// Most characters of a file stem.
 pub const MAX_STEM: usize = 80;
@@ -119,7 +119,7 @@ pub fn clean_stem(raw: &str) -> String {
 
 /// `Rev B`.
 pub fn folder_name(rev: &str) -> String {
-    crate::revisions::version_name(rev)
+    crate::releases::revisions::version_name(rev)
 }
 
 /// `checks.csv` (design 027 §7.2): `Severity, Group, Kind, Where, What, Accepted`.
@@ -181,7 +181,7 @@ pub fn provisional_count(rows: &[Check]) -> usize {
 /// edited revision fields (design 027 §6, Q11): a warning, never a refusal. `tx` reads a step of
 /// the ledger; it stops at the first other step.
 pub fn nothing_changed<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option<&'a Transaction>) -> Option<String> {
-    let last = crate::revisions::issued(doc).into_iter().next()?;
+    let last = crate::releases::revisions::issued(doc).into_iter().next()?;
     let name = last.issued.clone()?;
     let at = *doc.versions.get(&name)?;
     let only_revisions = |t: &Transaction| {
@@ -211,25 +211,25 @@ pub struct Slot {
     /// After `<stem> Rev B`.
     pub suffix: &'static str,
     /// The table, or `None` with [`Slot::missing_why`] when the project gives none.
-    pub build: fn(&Document, &crate::outputs::kept::ReportModels) -> Option<Table>,
+    pub build: fn(&Document, &crate::reports::kept::ReportModels) -> Option<Table>,
     pub missing_why: &'static str,
 }
 
-fn bom(_: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
-    Some(o.bom_table(crate::outputs::Group::Location))
+fn bom(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
+    Some(o.bom_table(crate::reports::Group::Location))
 }
-fn wires(_: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
+fn wires(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     Some(o.wire_table())
 }
-fn cables(_: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
+fn cables(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     Some(o.cable_table())
 }
 /// Brief 028's terminal plan, when the project has strips.
-fn terminal_plan(_: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
+fn terminal_plan(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     (!o.strips.is_empty()).then(|| o.terminal_plan_csv())
 }
 /// Brief 028's cable schedule, when the project has cables.
-fn cable_schedule(_: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
+fn cable_schedule(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     (o.cable_count() > 0).then(|| o.cable_schedule_csv())
 }
 
@@ -247,12 +247,12 @@ pub const LISTS: [Slot; 7] = [
 ];
 
 /// Brief 051's PLC racks list, when the project has a rack or a card.
-fn plc_racks(doc: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
+fn plc_racks(doc: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     crate::plc::sheets::rack_csv(doc, &o.plc)
 }
 
 /// Brief 045's I/O list, when the project has a card with channels.
-fn io_list(doc: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Table> {
+fn io_list(doc: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     crate::plc::iolist::csv_table(doc, &o.plc)
 }
 
@@ -260,7 +260,7 @@ fn io_list(doc: &Document, o: &crate::outputs::kept::ReportModels) -> Option<Tab
 /// brief 028's lists only when the project has strips or cables.
 pub fn slot_gives(slot: &Slot, doc: &Document) -> bool {
     match slot.id {
-        "terminal-plan" => doc.devices.keys().any(|c| crate::strips::strip_of(doc, *c).is_some()),
+        "terminal-plan" => doc.devices.keys().any(|c| crate::terminal_strips::strip_of(doc, *c).is_some()),
         "cable-schedule" => !doc.cables.is_empty(),
         "io-list" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some_and(|t| t.has_channels())),
         "plc-racks" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some()),

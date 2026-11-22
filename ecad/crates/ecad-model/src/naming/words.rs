@@ -27,7 +27,7 @@ pub const MAX_UINT_DIGITS: usize = 10;
 ///
 /// # Example
 /// ```
-/// use ecad_model::words::flag;
+/// use crate::naming::words::flag;
 /// assert_eq!(flag(" Yes "), Some(true));
 /// assert_eq!(flag("off"), Some(false));
 /// assert_eq!(flag("y"), None);
@@ -61,7 +61,7 @@ pub fn is_digits(text: &str) -> bool {
 ///
 /// # Example
 /// ```
-/// use ecad_model::words::uint;
+/// use crate::naming::words::uint;
 /// assert_eq!(uint(" 07 ", 99), Some(7));
 /// assert_eq!(uint("100", 99), None);
 /// assert_eq!(uint("+1", 99), None);
@@ -76,7 +76,7 @@ pub fn uint(text: &str, max: u32) -> Option<u32> {
 ///
 /// # Example
 /// ```
-/// use ecad_model::words::uint_canonical;
+/// use crate::naming::words::uint_canonical;
 /// assert_eq!(uint_canonical("12", 99), Some(12));
 /// assert_eq!(uint_canonical("0", 99), Some(0));
 /// assert_eq!(uint_canonical("012", 99), None);
@@ -178,7 +178,7 @@ pub use serde as __serde;
 ///
 /// # Example
 /// ```
-/// use ecad_model::words::Word;
+/// use crate::naming::words::Word;
 /// ecad_model::word_enum! {
 ///     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 ///     pub enum Corner {
@@ -207,7 +207,7 @@ macro_rules! word_enum {
             $( $(#[$vmeta])* $variant ),*
         }
 
-        impl $crate::words::Word for $name {
+        impl $crate::naming::words::Word for $name {
             const ALL: &'static [Self] = <Self as ::strum::VariantArray>::VARIANTS;
             const WORDS: &'static [&'static str] = <Self as ::strum::VariantNames>::VARIANTS;
 
@@ -220,20 +220,20 @@ macro_rules! word_enum {
             }
         }
 
-        impl $crate::words::__serde::Serialize for $name {
-            fn serialize<S: $crate::words::__serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-                s.serialize_str($crate::words::Word::word(*self))
+        impl $crate::naming::words::__serde::Serialize for $name {
+            fn serialize<S: $crate::naming::words::__serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+                s.serialize_str($crate::naming::words::Word::word(*self))
             }
         }
 
-        impl<'de> $crate::words::__serde::Deserialize<'de> for $name {
-            fn deserialize<D: $crate::words::__serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-                let text = <::std::string::String as $crate::words::__serde::Deserialize>::deserialize(d)?;
-                <Self as $crate::words::Word>::parse(&text).ok_or_else(|| {
-                    <D::Error as $crate::words::__serde::de::Error>::custom($crate::words::unknown_word_message(
+        impl<'de> $crate::naming::words::__serde::Deserialize<'de> for $name {
+            fn deserialize<D: $crate::naming::words::__serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+                let text = <::std::string::String as $crate::naming::words::__serde::Deserialize>::deserialize(d)?;
+                <Self as $crate::naming::words::Word>::parse(&text).ok_or_else(|| {
+                    <D::Error as $crate::naming::words::__serde::de::Error>::custom($crate::naming::words::unknown_word_message(
                         &text,
                         stringify!($name),
-                        <Self as $crate::words::Word>::WORDS,
+                        <Self as $crate::naming::words::Word>::WORDS,
                     ))
                 })
             }
@@ -248,7 +248,7 @@ macro_rules! word_enum {
 #[macro_export]
 macro_rules! __word_schema {
     ($name:ident) => {
-        impl $crate::words::__schemars::JsonSchema for $name {
+        impl $crate::naming::words::__schemars::JsonSchema for $name {
             fn inline_schema() -> bool {
                 true
             }
@@ -257,10 +257,10 @@ macro_rules! __word_schema {
                 stringify!($name).into()
             }
 
-            fn json_schema(_: &mut $crate::words::__schemars::SchemaGenerator) -> $crate::words::__schemars::Schema {
-                $crate::words::__schemars::json_schema!({
+            fn json_schema(_: &mut $crate::naming::words::__schemars::SchemaGenerator) -> $crate::naming::words::__schemars::Schema {
+                $crate::naming::words::__schemars::json_schema!({
                     "type": "string",
-                    "enum": <$name as $crate::words::Word>::WORDS,
+                    "enum": <$name as $crate::naming::words::Word>::WORDS,
                 })
             }
         }

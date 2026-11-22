@@ -28,11 +28,11 @@ pub use source::{Align, Cell, Changed, Column, ColumnId, ColumnKind, Editor, Lan
 pub use tint::{TINT_SECONDS, TintMap};
 pub use view_model::{Dir, Row, ViewModel, natural_cmp};
 
-use ecad_tokens::{Icon, line, size, space, ui_type};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Id, Key, Modifiers, Rect, Response, Role, Sense, Stroke, Ui, WidgetInfo, pos2, vec2};
 
 use crate::prim::{self, Chip, Field, FieldKind, Kind};
-use crate::{color, icons};
+use {crate::color, crate::icons};
 
 /// What a table reports to its owner.
 #[derive(Clone, Debug, PartialEq)]
@@ -542,7 +542,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                                 let tint = self.tint.level(k, c.id, now);
                                 if tint > 0.0 {
                                     let a = (f32::from(s.accent_soft.a) * tint).round().clamp(0.0, 255.0) as u8;
-                                    p.rect_filled(rect, 0.0, color(ecad_tokens::Color { a, ..s.accent_soft }));
+                                    p.rect_filled(rect, 0.0, color(crate::tokens::Color { a, ..s.accent_soft }));
                                 }
                                 p.line_segment(
                                     [pos2(rect.left(), rect.bottom() - 0.5), pos2(rect.right(), rect.bottom() - 0.5)],

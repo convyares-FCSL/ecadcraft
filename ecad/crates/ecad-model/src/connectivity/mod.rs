@@ -7,7 +7,7 @@
 //!    every other continuation with the same name key ([`name_key`]): the name group is a node;
 //! 3. a definition's bridges ([`crate::Definition::bridges`]) join a component's terminals whose
 //!    keys are in one group;
-//! 4. a component's links (`link.<n>` properties, [`crate::links`], brief 030) join its terminals
+//! 4. a component's links (`link.<n>` properties, [`crate::connectivity::jumper_bars`], brief 030) join its terminals
 //!    whose labels the link names;
 //! 5. a route (design 072 F31) joins the connection points its ends land on and the routes it
 //!    lands on (a T): the route is a node.
@@ -32,16 +32,20 @@
 //!   ([`NetData`]), and project-wide, which nets carry each number ([`Connectivity::nets_numbered`])
 //!   and the highest sequence used per number prefix ([`Connectivity::next_in`]).
 //! - Net keys ([`NetKey`]) are not stable across a rebuild: compare nets by their members. A
-//!   wire stores its net's stable [`crate::id::NetId`] (design 072 F39).
+//!   wire stores its net's stable [`crate::naming::id::NetId`] (design 072 F39).
 //!
 //! This module reads the document and its indexes; it holds no I/O.
 
+pub mod derive;
+pub mod jumper_bars;
+pub mod wire_order;
+pub mod wiring;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
-use crate::doc::{Document, Wire};
-use crate::id::{RouteId, ConnectionPointId, WireId};
-use crate::op::{ObjectRef, Op};
-use crate::point::PointKey;
+use crate::document::doc::{Document, Wire};
+use crate::naming::id::{RouteId, ConnectionPointId, WireId};
+use crate::document::op::{ObjectRef, Op};
+use crate::geometry::point::PointKey;
 
 /// Wire property: the wire number its net carries (design 022 §5.1).
 pub const WIRE_NUMBER: &str = "wire_number";
@@ -56,7 +60,7 @@ pub fn name_key(name: &str) -> String {
 }
 
 /// The name key of a drawing aid, when it is a named continuation (design 072 §6.2).
-pub fn continuation_key(aid: &crate::aid::Aid) -> Option<String> {
+pub fn continuation_key(aid: &crate::objects::aid::Aid) -> Option<String> {
     let k = name_key(aid.continuation_name()?.as_str());
     (!k.is_empty()).then_some(k)
 }
@@ -85,7 +89,7 @@ pub enum Node {
 }
 
 /// A net's key in one [`Connectivity`] (not stable across rebuilds; the stored, stable id is
-/// [`crate::id::NetId`]).
+/// [`crate::naming::id::NetId`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NetKey(pub u64);
 
@@ -267,7 +271,7 @@ fn degree(doc: &Document, node: &Node) -> usize {
 fn neighbors(doc: &Document, node: &Node) -> Vec<Node> {
     let mut out = neighbors_base(doc, node);
     if let Node::Terminal(t) = node {
-        out.extend(crate::links::linked(doc, *t).into_iter().map(Node::Terminal));
+        out.extend(crate::connectivity::jumper_bars::linked(doc, *t).into_iter().map(Node::Terminal));
     }
     out
 }
@@ -286,7 +290,7 @@ fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
             if let Some(k) = name_of_connection_point(doc, *t) {
                 out.push(Node::Name(k));
             }
-            out.extend(crate::index::referrers(&doc.index.connection_point_routes, t).map(Node::Route));
+            out.extend(crate::document::index::referrers(&doc.index.connection_point_routes, t).map(Node::Route));
             out.extend(bridged(doc, *t).into_iter().map(Node::Terminal));
         }
         Node::Wire(c) => {
@@ -307,13 +311,13 @@ fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
             if let Some(route) = doc.routes.get(r) {
                 for e in route.ends {
                     match e {
-                        crate::route::RouteEnd::Point(t) if doc.terminals.contains_key(&t) => out.push(Node::Terminal(t)),
-                        crate::route::RouteEnd::On { route: o, .. } if doc.routes.contains_key(&o) => out.push(Node::Route(o)),
-                        crate::route::RouteEnd::Point(_) | crate::route::RouteEnd::On { .. } | crate::route::RouteEnd::Free => {}
+                        crate::objects::route::RouteEnd::Point(t) if doc.terminals.contains_key(&t) => out.push(Node::Terminal(t)),
+                        crate::objects::route::RouteEnd::On { route: o, .. } if doc.routes.contains_key(&o) => out.push(Node::Route(o)),
+                        crate::objects::route::RouteEnd::Point(_) | crate::objects::route::RouteEnd::On { .. } | crate::objects::route::RouteEnd::Free => {}
                     }
                 }
             }
-            out.extend(crate::index::referrers(&doc.index.route_tees, r).map(Node::Route));
+            out.extend(crate::document::index::referrers(&doc.index.route_tees, r).map(Node::Route));
         }
     }
     out
@@ -333,8 +337,8 @@ impl Connectivity {
         // Link edges, worked out once per component with links (a chain per link).
         let mut link_edges: HashMap<ConnectionPointId, Vec<ConnectionPointId>> = HashMap::new();
         for (id, comp) in &doc.devices {
-            for (_, p) in crate::links::of(&comp.properties) {
-                let m = crate::links::Matcher::of(&p);
+            for (_, p) in crate::connectivity::jumper_bars::of(&comp.properties) {
+                let m = crate::connectivity::jumper_bars::Matcher::of(&p);
                 let members: Vec<ConnectionPointId> = doc.connection_points_of(*id).filter(|(_, x)| m.matches_connection_point(x)).map(|(t, _)| t).collect();
                 for w in members.windows(2) {
                     if let (Some(a), Some(b)) = (w.first(), w.get(1)) {
@@ -588,7 +592,7 @@ impl Connectivity {
     /// Brief 044 (tester D1): when the definition cannot be read (the symbol's item was removed
     /// earlier in the transaction, before its representation is unlinked), every `.`-key point
     /// counts: a wider cut is only extra search, a missed one leaves mated pins joined.
-    pub(crate) fn bridged_shown(doc: &Document, r: &crate::doc::Representation) -> Vec<ConnectionPointId> {
+    pub(crate) fn bridged_shown(doc: &Document, r: &crate::document::doc::Representation) -> Vec<ConnectionPointId> {
         if doc.rep_definition(r).is_some_and(|d| d.bridges.is_empty()) {
             return Vec::new();
         }
@@ -600,7 +604,7 @@ impl Connectivity {
     }
 
     /// The terminals of `component` (present ones).
-    fn connection_points_of(doc: &Document, owner: impl Into<crate::doc::ConnectionPointOwner>) -> Vec<Node> {
+    fn connection_points_of(doc: &Document, owner: impl Into<crate::document::doc::ConnectionPointOwner>) -> Vec<Node> {
         doc.connection_points_of(owner).map(|(t, _)| Node::Terminal(t)).collect()
     }
 
@@ -685,8 +689,8 @@ impl Connectivity {
                 }
             }
             // Brief 030: the terminals a link joined are on the sides of a cut.
-            Op::SetProperty { object: ObjectRef::Device(id), key, before, .. } if crate::links::jumper_bar_number(key).is_some() => {
-                for t in crate::links::terminals_named(doc, *id, before.as_deref()) {
+            Op::SetProperty { object: ObjectRef::Device(id), key, before, .. } if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() => {
+                for t in crate::connectivity::jumper_bars::terminals_named(doc, *id, before.as_deref()) {
                     self.cut(&Node::Terminal(t));
                 }
             }
@@ -750,8 +754,8 @@ impl Connectivity {
                     }
                 }
             }
-            Op::SetProperty { object: ObjectRef::Device(id), key, after, .. } if crate::links::jumper_bar_number(key).is_some() => {
-                for t in crate::links::terminals_named(doc, *id, after.as_deref()) {
+            Op::SetProperty { object: ObjectRef::Device(id), key, after, .. } if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() => {
+                for t in crate::connectivity::jumper_bars::terminals_named(doc, *id, after.as_deref()) {
                     self.ensure(doc, Node::Terminal(t));
                 }
             }

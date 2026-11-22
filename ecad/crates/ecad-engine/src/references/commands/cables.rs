@@ -1,17 +1,17 @@
 //! `cablegoto` (brief 010, design 010 §4.5, §7.3): opens the other end's page and moves the view
 //! there, so it is the engine's; its interactive form is in [`crate::interact`]. The other cable
-//! reference commands are generic ([`ecad_electrical::cmd::reference`]).
+//! reference commands are generic ([`ecad_electrical::references::commands::cables`]).
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::reference as rules;
+use ecad_electrical::references::commands::cables as rules;
 use ecad_model::RepresentationId;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::on_any_page;
+use crate::commands::input::{Command, Typed};
+use crate::commands::on_any_page;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<CablegotoParams>("cablegoto")];

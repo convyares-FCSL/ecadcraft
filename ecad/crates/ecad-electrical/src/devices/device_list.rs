@@ -9,7 +9,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::book::Book;
+use ecad_model::document::book::Book;
 
 use ecad_model::{DeviceId, Document, ItemKind, PageId, Pt, RepresentationId, Subject};
 
@@ -22,7 +22,7 @@ pub mod kept;
 pub struct SymbolEntry {
     pub rep: RepresentationId,
     pub page: PageId,
-    /// The page's number as shown ([`crate::references::page_number`]).
+    /// The page's number as shown ([`crate::references::cables::page_number`]).
     pub page_number: String,
     /// Its frame column and row (brief 019), when it can be located.
     pub column: Option<u32>,
@@ -119,8 +119,8 @@ pub fn renumber(doc: &Document, entries: &mut [DeviceEntry]) {
 /// One symbol row: its book position (for sorting) and the row.
 fn symbol_entry(doc: &Document, book: &Book, rid: RepresentationId, r: &ecad_model::Representation, name: String) -> (usize, SymbolEntry) {
     let page_number = book.number(doc, r.page);
-    let grid = ecad_model::sheet::Grid::of(doc, r.page);
-    let place = position(doc, r).and_then(|p| ecad_model::derive::place_on(&grid, &page_number, p));
+    let grid = ecad_model::document::sheet::Grid::of(doc, r.page);
+    let place = position(doc, r).and_then(|p| ecad_model::connectivity::derive::place_on(&grid, &page_number, p));
     let style = doc.settings.reference_style();
     let n = book.position(r.page).unwrap_or(usize::MAX);
     (
@@ -131,7 +131,7 @@ fn symbol_entry(doc: &Document, book: &Book, rid: RepresentationId, r: &ecad_mod
             page_number,
             column: place.as_ref().map(|p| p.column),
             row: place.as_ref().map(|p| p.row),
-            place: place.map_or_else(|| ecad_model::derive::unlocated(style).to_string(), |p| p.text(style)),
+            place: place.map_or_else(|| ecad_model::connectivity::derive::unlocated(style).to_string(), |p| p.text(style)),
             name,
             update: crate::symbols::update_available(doc, rid).is_some(),
         },
@@ -187,10 +187,10 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
 /// A tag's group (its prefix, or the whole tag when it has none) and its place in the group: its
 /// number; a provisional tag after every numbered one of its prefix (brief 026, design §9).
 pub fn group_and_number(t: &str) -> (String, u64) {
-    match (ecad_model::tag::parse(t), ecad_model::tag::provisional(t)) {
+    match (ecad_model::naming::tag::parse(t), ecad_model::naming::tag::provisional(t)) {
         (Some((p, n)), _) => (p, n),
-        (None, Some((p, n))) => (p, ecad_model::tag::MAX_TAG_NUMBER.saturating_add(n)),
-        _ => (ecad_model::tag::key(t), 0),
+        (None, Some((p, n))) => (p, ecad_model::naming::tag::MAX_TAG_NUMBER.saturating_add(n)),
+        _ => (ecad_model::naming::tag::key(t), 0),
     }
 }
 

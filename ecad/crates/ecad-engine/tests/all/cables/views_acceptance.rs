@@ -27,7 +27,7 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_engine::interact::{hover_lines, overlay_marks};
-use ecad_engine::views::{self, FAN_REFUSED, Settings};
+use ecad_engine::cables::views::{self, FAN_REFUSED, Settings};
 use ecad_engine::{Persistence, Project, ProjectHandle};
 use ecad_model::{CableId, ItemId, PageId, Pt, Transaction, WireId};
 use serde_json::{Value, json};
@@ -169,9 +169,9 @@ fn tails(h: &mut H, page: PageId, k: CableId) -> Vec<Vec<Pt>> {
     let views::FanOnPage::Drawn(f) = views::fan_on_page(&doc, page, k, 1e-6) else { return Vec::new() };
     f.parts
         .iter()
-        .filter(|p| p.role == ecad_electrical::cable_look::Role::Tail)
+        .filter(|p| p.role == ecad_electrical::cables::layout::Role::Tail)
         .filter_map(|p| match &p.shape {
-            ecad_electrical::cable_look::Shape::Path { points, .. } => Some(points.clone()),
+            ecad_electrical::cables::layout::Shape::Path { points, .. } => Some(points.clone()),
             _ => None,
         })
         .collect()
@@ -216,7 +216,7 @@ fn snap(h: &mut H) -> Snap {
         log: h.p(|p| p.ledger.full_log().unwrap()),
         head: h.head(),
         ids: h.p(|p| format!("{:?}", p.ids)),
-        nets: format!("{:?}", ecad_model::derive::nets(&doc)),
+        nets: format!("{:?}", ecad_model::connectivity::derive::nets(&doc)),
         change_count: h.p(|p| p.unsaved_transactions()),
         unsaved: h.p(|p| p.unsaved()),
         tabs: (0..h.s.docs.len()).map(|i| h.s.doc_unsaved(i)).collect(),
@@ -831,7 +831,7 @@ fn ac3_fan_lengths_are_capped_at_forty_percent() {
         assert!((tail[0].y - tail[1].y).abs() < 1e-9, "horizontal: {tail:?}");
         // At least tail-min; the core level with the join leaves the spine straight, so its tail
         // also runs the bend radius (owner request of 2026-11-07).
-        assert!(tail[0].dist(tail[1]) >= ecad_electrical::cable_look::TAIL_MIN - 1e-9, "{tail:?}");
+        assert!(tail[0].dist(tail[1]) >= ecad_electrical::cables::layout::TAIL_MIN - 1e-9, "{tail:?}");
     }
     h.check();
 }
@@ -939,7 +939,7 @@ fn ac3_a_fan_that_cannot_be_drawn_stays_traditional_and_says_so() {
     assert_eq!(r["view"], "fan", "{r}");
     h.check();
     assert!(fan_paths(&mut h, page).is_empty(), "drawn traditional on this page");
-    let item = ecad_engine::slash::slashes_of(&h.doc(), page, k)[0].0;
+    let item = ecad_electrical::cables::slash::slashes_of(&h.doc(), page, k)[0].0;
     let handle = h.handle_of(page, item);
     let uid = h.p(|p| p.pages[&page].uid).unwrap();
     let lines = h.p(|p| hover_lines(p, uid, handle)).unwrap_or_default();
@@ -1443,7 +1443,7 @@ fn round2_m5_selection_with_a_failure_carries_on() {
     let slash_handles = |h: &mut H| -> Vec<Handle> {
         let doc = h.doc();
         let page = h.first_page();
-        let items: Vec<ItemId> = cables.iter().flat_map(|k| ecad_engine::slash::slashes_of(&doc, page, *k).into_iter().map(|x| x.0)).collect();
+        let items: Vec<ItemId> = cables.iter().flat_map(|k| ecad_electrical::cables::slash::slashes_of(&doc, page, *k).into_iter().map(|x| x.0)).collect();
         items.into_iter().filter_map(|i| h.p(|p| p.pages[&page].map.item(i))).collect()
     };
     let before = snap(&mut g.h);

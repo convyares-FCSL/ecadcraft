@@ -1,7 +1,7 @@
 //! The rules of brief 052's commands (design 052 §5.5–§5.9): what `setlocation`, `setfunction`
 //! (and `setprop` of an aspect property) write, the proposals a box's new value makes for the
 //! devices inside, and what `conflicts` moves. A typed code is stored as its entry's key in the
-//! project's list ([`crate::designations`]); an unknown code adds its entry in the same
+//! project's list ([`crate::locations::designations`]); an unknown code adds its entry in the same
 //! transaction. The engine crate's shims commit the ops, keep the waiting conflicts and answer in
 //! JSON.
 
@@ -12,12 +12,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, OrNull, nullable};
-use crate::cmd::run::{Cx, Generic, Outcome, Pages, Slot, State};
-use crate::designations::{self, Aspect};
+use crate::commands::input::{Bounded, OrNull, nullable};
+use crate::commands::run::{Cx, Generic, Outcome, Pages, Slot, State};
+use crate::locations::designations::{self, Aspect};
 use crate::error::CmdError;
-use crate::proposals::{self, Conflict};
-use crate::words::MAX_HANDLES;
+use crate::symbols::proposals::{self, Conflict};
+use crate::cables::words::MAX_HANDLES;
 
 /// Most components one `setlocation` names (tester 052: a list over it is refused before any
 /// work).
@@ -130,7 +130,7 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &
     let key = stored_key(doc, ids, a, text, &mut pending, &mut out)?;
     for c in objects {
         let comp = doc.devices.get(c).ok_or(CmdError::refused("no such device"))?;
-        if prop != a.property() && crate::strips::strip_of(doc, *c).is_some() {
+        if prop != a.property() && crate::terminal_strips::strip_of(doc, *c).is_some() {
             return Err(CmdError::refused(
                 "A strip's positions and levels are where the strip is; set the strip's location (a split strip is two strips).",
             ));
@@ -330,7 +330,7 @@ pub fn plan_move(doc: &Document, waiting: &[Conflict], pick: &Pick) -> MovePlan 
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// A planned set of aspect `a` as the outcome: committed when it changes anything, with its
 /// proposals, the words for the entries added and the devices asked about, which wait as the

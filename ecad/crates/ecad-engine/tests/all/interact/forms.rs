@@ -80,7 +80,7 @@ fn line_at(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) -> Handle {
 
 fn rectangle(h: &mut H) -> Vec<Handle> {
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
-    h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle).collect()
+    h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect()
 }
 
 fn page(h: &mut H) -> PageId {
@@ -88,7 +88,7 @@ fn page(h: &mut H) -> PageId {
 }
 
 fn connection_point_at(d: &Document, page: PageId, x: f64, y: f64) -> ConnectionPointId {
-    ecad_model::derive::connection_point_positions(d, page)
+    ecad_model::connectivity::derive::connection_point_positions(d, page)
         .into_iter()
         .find(|(_, _, p)| p.near(ecad_model::Pt::new(x, y), 1e-9))
         .map(|(t, _, _)| t)
@@ -177,7 +177,7 @@ fn scene(h: &mut H, by_prompts: bool) {
     } else {
         // The coil's A1 is where its rotated placement puts it (90, 0 up to rounding).
         let d = h.doc();
-        let a1 = ecad_model::derive::connection_point_positions(&d, pg)
+        let a1 = ecad_model::connectivity::derive::connection_point_positions(&d, pg)
             .into_iter()
             .find(|(_, _, p)| p.near(ecad_model::Pt::new(90.0, 0.0), 1e-9))
             .map(|(_, _, p)| p)
@@ -317,7 +317,7 @@ fn esc_at_every_prompt_drops_only_the_pending_input_and_undo_takes_one_object() 
         ("convert after picks", |h, _| {
             start(h, "convertcomponent");
             let all: Vec<Handle> =
-                h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle).collect();
+                h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect();
             h.s.input(Input::Pick(all)).unwrap();
         }),
         ("terminal name pending", |h, _| {
@@ -425,7 +425,7 @@ fn capture_is_within_the_aperture_only_and_the_preview_says_so_first() {
         let end = d.routes[&r].end_points().unwrap()[1];
         if attaches {
             let t = d.routes[&r].ends[1].point().unwrap();
-            let at = ecad_model::derive::connection_point_positions(&d, page(&mut h)).into_iter().find(|x| x.0 == t).unwrap().2;
+            let at = ecad_model::connectivity::derive::connection_point_positions(&d, page(&mut h)).into_iter().find(|x| x.0 == t).unwrap().2;
             assert_eq!(end, at, "the end is the terminal's point exactly");
         }
         // After the commit the end shows a dot when attached, a square when loose.
@@ -617,18 +617,18 @@ fn default_terminal_names_are_the_smallest_unused_number() {
 fn a_click_lands_on_the_outline_nearest_the_cursor() {
     use ecad_model::{Primitive, Pt};
     let line = Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(10.0, 0.0) };
-    assert_eq!(ecad_model::geom::nearest_on(&line, Pt::new(4.0, 1.0)), Some(Pt::new(4.0, 0.0)));
-    assert_eq!(ecad_model::geom::nearest_on(&line, Pt::new(-4.0, 1.0)), Some(Pt::new(0.0, 0.0)));
+    assert_eq!(ecad_model::geometry::geom::nearest_on(&line, Pt::new(4.0, 1.0)), Some(Pt::new(4.0, 0.0)));
+    assert_eq!(ecad_model::geometry::geom::nearest_on(&line, Pt::new(-4.0, 1.0)), Some(Pt::new(0.0, 0.0)));
     let square = Primitive::Polyline { vertices: vec![Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), Pt::new(10.0, 10.0), Pt::new(0.0, 10.0)], closed: true };
-    assert_eq!(ecad_model::geom::nearest_on(&square, Pt::new(-1.0, 5.0)), Some(Pt::new(0.0, 5.0)), "the closing side");
+    assert_eq!(ecad_model::geometry::geom::nearest_on(&square, Pt::new(-1.0, 5.0)), Some(Pt::new(0.0, 5.0)), "the closing side");
     let circle = Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 5.0 };
-    assert_eq!(ecad_model::geom::nearest_on(&circle, Pt::new(0.0, 7.0)), Some(Pt::new(0.0, 5.0)));
-    assert_eq!(ecad_model::geom::nearest_on(&circle, Pt::new(0.0, 0.0)), None, "the centre has no nearest point");
+    assert_eq!(ecad_model::geometry::geom::nearest_on(&circle, Pt::new(0.0, 7.0)), Some(Pt::new(0.0, 5.0)));
+    assert_eq!(ecad_model::geometry::geom::nearest_on(&circle, Pt::new(0.0, 0.0)), None, "the centre has no nearest point");
     let arc = Primitive::Arc { center: Pt::new(0.0, 0.0), radius: 5.0, start: 0.0, end: std::f64::consts::FRAC_PI_2 };
-    let q = ecad_model::geom::nearest_on(&arc, Pt::new(-6.0, -1.0)).unwrap();
+    let q = ecad_model::geometry::geom::nearest_on(&arc, Pt::new(-6.0, -1.0)).unwrap();
     assert!(q.near(Pt::new(0.0, 5.0), 1e-9) || q.near(Pt::new(5.0, 0.0), 1e-9), "an end of the arc: {q:?}");
     let hostile = Primitive::Line { a: Pt::new(f64::MAX, 0.0), b: Pt::new(-f64::MAX, 0.0) };
-    let _ = ecad_model::geom::nearest_on(&hostile, Pt::new(0.0, 1.0));
+    let _ = ecad_model::geometry::geom::nearest_on(&hostile, Pt::new(0.0, 1.0));
     assert_eq!(interact::valid_name("  K1 "), Some("K1".into()));
     assert_eq!(interact::valid_name(""), None);
     assert_eq!(interact::valid_name(&"x".repeat(65)), None);

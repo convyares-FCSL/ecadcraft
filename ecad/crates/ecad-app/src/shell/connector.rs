@@ -11,8 +11,8 @@
 use std::collections::BTreeMap;
 
 use ecad_engine::cad::Input;
-use ecad_ui::prim;
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::prim;
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, vec2};
 
 use crate::App;
@@ -81,7 +81,7 @@ pub fn section_of(label: &str) -> Option<usize> {
 impl App {
     /// Whether the connector maker shows: Device ▸ Connector runs in Draw.
     pub fn maker_shown(&self) -> bool {
-        self.shell.state.workspace == super::Workspace::Draw
+        self.shell.state.workspace == crate::shell::Workspace::Draw
             && !self.shell.state.cad_chrome
             && self.cad.session.running.as_ref().is_some_and(|r| r.id.eq_ignore_ascii_case("connector"))
     }
@@ -126,13 +126,13 @@ impl App {
         let max_h = (canvas.height() - 2.0 * space::M).max(240.0);
         let area =
             egui::Area::new(egui::Id::unique("ecad.shell.connector.maker")).order(egui::Order::Foreground).fixed_pos(at).show(ui.ctx(), |ui| {
-                super::placing::popover_frame().show(ui, |ui| {
-                    ui.set_width(super::placing::WIDTH - 2.0 * space::L);
-                    ui.set_max_width(super::placing::WIDTH - 2.0 * space::L);
+                crate::shell::placing::popover_frame().show(ui, |ui| {
+                    ui.set_width(crate::shell::placing::WIDTH - 2.0 * space::L);
+                    ui.set_max_width(crate::shell::placing::WIDTH - 2.0 * space::L);
                     ui.set_max_height(max_h);
                     let r = ui.label("");
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Window, true, MAKER));
-                    symbol = super::placing::tabs(ui, false);
+                    symbol = crate::shell::placing::tabs(ui, false);
                     ui.add_space(space::S);
                     for (i, (title, prompts)) in SECTIONS.iter().enumerate() {
                         let summary = summary(i, prompts, &answers, open == Some(i));
@@ -149,8 +149,8 @@ impl App {
                                             vec2(72.0, 20.0),
                                             egui::Label::new(
                                                 egui::RichText::new(family)
-                                                    .font(ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL))
-                                                    .color(ecad_ui::color(ecad_ui::SHELL.text_2)),
+                                                    .font(ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL))
+                                                    .color(ecad_widgets::color(ecad_widgets::SHELL.text_2)),
                                             ),
                                         );
                                         chips(ui, variants, &keywords, default.as_deref(), &mut send);
@@ -206,12 +206,12 @@ impl App {
                     row(ui, "Description", "Set it in the inspector after placing");
                     row(ui, "Halves", &halves_words(&t, answers.get("Halves").map(String::as_str)));
                     ui.horizontal(|ui| {
-                        ui.allocate_ui(vec2(super::placing::WIDTH - 2.0 * space::L - 120.0, 32.0), |ui| {
+                        ui.allocate_ui(vec2(crate::shell::placing::WIDTH - 2.0 * space::L - 120.0, 32.0), |ui| {
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new("One device with two halves; each half keeps its own location and parts.")
-                                        .font(ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL))
-                                        .color(ecad_ui::color(ecad_ui::SHELL.text_2)),
+                                        .font(ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL))
+                                        .color(ecad_widgets::color(ecad_widgets::SHELL.text_2)),
                                 )
                                 .wrap(),
                             )
@@ -221,7 +221,7 @@ impl App {
                 });
             });
         self.shell.tools.panel_right = Some(area.response.rect.right());
-        if symbol && let Some(a) = crate::actions::find("place.symbol") {
+        if symbol && let Some(a) = crate::commands::actions::find("place.symbol") {
             self.start_tool(a);
             return;
         }
@@ -270,7 +270,7 @@ fn words(k: &str) -> String {
 /// A section's header: a fold mark, its title and its summary at the right.
 fn header(ui: &mut egui::Ui, title: &str, summary: &str, open: bool) {
     ui.add_space(space::XS);
-    let h = ecad_ui::panel::section_header(ui, open, title, summary);
+    let h = ecad_widgets::panel::section_header(ui, open, title, summary);
     h.widget_info(|| egui::WidgetInfo::selected(egui::Role::Heading, true, open, title));
     ui.add_space(space::XS);
 }
@@ -300,7 +300,7 @@ fn row(ui: &mut egui::Ui, label: &str, value: &str) {
         ui.add_sized(
             vec2(80.0, 22.0),
             egui::Label::new(
-                egui::RichText::new(label).font(ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL)).color(ecad_ui::color(ecad_ui::SHELL.text_2)),
+                egui::RichText::new(label).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL)).color(ecad_widgets::color(ecad_widgets::SHELL.text_2)),
             ),
         );
         prim::read_value(ui, value);
@@ -309,7 +309,7 @@ fn row(ui: &mut egui::Ui, label: &str, value: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::shell::*;
 
     #[test]
     fn every_prompt_of_the_form_has_a_section() {

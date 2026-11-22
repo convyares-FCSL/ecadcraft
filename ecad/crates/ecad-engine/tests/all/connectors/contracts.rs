@@ -2,8 +2,8 @@
 //! 12, 13), the registry, the F1 guard and the versioned starters. The tester's acceptance tests
 //! are separate.
 
-use ecad_engine::connectors;
-use ecad_engine::symbols::{self, Side};
+use ecad_electrical::connectors;
+use ecad_electrical::symbols::{self, Side};
 use ecad_model::{DeviceId, Document, PageId, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
@@ -320,7 +320,7 @@ fn a_connector_pin_is_never_read_as_a_strip_level() {
     let d = h.doc();
     let t = pin(&d, c, ".s", "2");
     let tag = ecad_engine::devices::tag_words(&d, c);
-    assert_eq!(ecad_engine::terminal_types::shown_label(&d, t), Some(format!("{tag}.S:2")));
+    assert_eq!(ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, t), Some(format!("{tag}.S:2")));
     assert_eq!(ecad_engine::interact::connection_point_name(&d, t), format!("{tag}.S:2"));
 }
 
@@ -347,7 +347,7 @@ fn version_one_halves_stay_separate_and_new_ones_embed_version_two() {
     let d = h.doc();
     assert!(connectors::connector_of(&d, c).is_some_and(|x| x.mating));
     assert_eq!(
-        d.definitions.values().filter(|x| symbols::of_definition(x).is_some_and(|y| y.key == ecad_engine::symbols::StarterKey::Socket4)).count(),
+        d.definitions.values().filter(|x| symbols::of_definition(x).is_some_and(|y| y.key == ecad_electrical::symbols::StarterKey::Socket4)).count(),
         2
     );
 }
@@ -383,7 +383,7 @@ fn a_half_location_is_its_override_else_the_connector_not_its_page() {
     };
     let plug_context = |h: &mut H| {
         let d = h.doc();
-        let r = ecad_engine::reps::goto(&d, c, Some(Side::Plug)).unwrap();
+        let r = ecad_electrical::symbols::reps::goto(&d, c, Some(Side::Plug)).unwrap();
         ecad_engine::locations::rep_context(&d, &d.representations[&r], &mut ecad_engine::locations::BoxCache::default()).value
     };
     // Brief 052d: `keep`, so the connector is not given the proposal (that is the outputs tests').
@@ -430,7 +430,7 @@ fn the_connector_index_equals_a_rebuild_after_each_commit() {
     let a: DeviceId = id(&row(&mut h, json!({})), "component");
     let b: DeviceId = id(&row(&mut h, json!({"at": [50, 150]})), "component");
     h.run("setprop", json!({"component": b.hex(), "key": "connector.side.socket", "value": "F"})).unwrap();
-    let key = ecad_engine::defaults::connectors::SIDE_SOCKET.key;
+    let key = ecad_electrical::defaults::connectors::SIDE_SOCKET.key;
     let inh = h.p(|p| p.connectors().inheriting(key));
     assert!(inh.contains(&a) && !inh.contains(&b), "{inh:?}");
     h.wire_pp(&[(300.0, 300.0), (350.0, 300.0)]).unwrap();

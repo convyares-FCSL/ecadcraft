@@ -5,7 +5,7 @@ use cadcraft_engine::Input;
 use ecad_model::{DeviceId, Op};
 use serde_json::json;
 
-use super::*;
+use crate::plc::acceptance::*;
 use crate::common::id;
 
 // ------------------------------------------------------------------------------- A (AC 1)
@@ -210,7 +210,7 @@ fn c_rack_missing_from_a_hand_made_file() {
     let d = p.h.doc();
     let gone = c["-A06"];
     let mut was = d.devices[&gone].clone();
-    was.device_type = ecad_model::DeviceType::PlcRack(ecad_model::plc::PlcRack::default());
+    was.device_type = ecad_model::DeviceType::PlcRack(ecad_model::objects::plc::PlcRack::default());
     raw(&mut p.h, vec![ecad_model::Op::ModifyDevice { id: gone, before: d.devices[&gone].clone(), after: was }]);
     raw_setprop(&mut p.h, c["-A05"], "plc.rack", Some(&gone.hex()));
     let d = p.h.doc();
@@ -363,7 +363,7 @@ fn fp1_inspector_shows_the_rack_tag() {
     let item = p.h.symbol_item(c["-A04"]);
     let handle = p.h.handle_of(p.cpu_page, item);
     let page = p.cpu_page;
-    let view = p.h.p(|pr| ecad_engine::props::view(pr, Some(page), &[handle]));
+    let view = p.h.p(|pr| ecad_engine::properties::props::view(pr, Some(page), &[handle]));
     let rows: Vec<_> = view.sections.iter().flat_map(|s| s.rows.iter().map(move |r| (s.title.clone(), r.clone()))).collect();
     for (_, r) in &rows {
         assert!(!r.value.to_lowercase().contains(&hex.to_lowercase()), "the inspector shows hex: {r:?}");
@@ -379,7 +379,7 @@ fn fp1_inspector_shows_the_rack_tag() {
     // The rack body: Properties ▸ Rack.
     let item = p.h.symbol_item(p.rack);
     let handle = p.h.handle_of(page, item);
-    let view = p.h.p(|pr| ecad_engine::props::view(pr, Some(page), &[handle]));
+    let view = p.h.p(|pr| ecad_engine::properties::props::view(pr, Some(page), &[handle]));
     let rack: Vec<_> = view.sections.iter().flat_map(|s| s.rows.iter()).collect();
     for l in ["Slots", "First slot"] {
         assert!(rack.iter().any(|r| r.label == l), "{l}: {rack:?}");

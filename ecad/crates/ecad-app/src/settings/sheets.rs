@@ -13,13 +13,13 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use ecad_electrical::props::{PropsView, Target};
-use ecad_electrical::words::Row;
+use ecad_electrical::properties::{PropsView, Target};
+use ecad_electrical::cables::words::Row;
 use ecad_model::SheetSpec;
-use ecad_ui::control::{self, Decor, Select, TextEntry};
-use ecad_ui::dialog::{Dialog, action};
-use ecad_ui::prim::{self, Button, Checkbox, IconButton, Kind, Radio, Segmented, Tone};
-use ecad_ui::tokens::{Icon, size, space};
+use ecad_widgets::control::{self, Decor, Select, TextEntry};
+use ecad_widgets::dialog::{Dialog, action};
+use ecad_widgets::prim::{self, Button, Checkbox, IconButton, Kind, Radio, Segmented, Tone};
+use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui;
 use serde_json::{Map, Value, json};
 
@@ -110,9 +110,9 @@ pub struct ProjectProps {
     tag_dash_orig: bool,
     /// Brief 033 (design 033 §8.1): tags written with a leading `-`.
     pub tag_dash: bool,
-    tag_case_orig: ecad_model::tag::Case,
+    tag_case_orig: ecad_model::naming::tag::Case,
     /// How tags are cased (`tags.case`).
-    pub tag_case: ecad_model::tag::Case,
+    pub tag_case: ecad_model::naming::tag::Case,
     pending_orig: String,
     /// Brief 033 (design 033 §6.2): `star`, `draft` or `off`.
     pub pending: String,
@@ -120,7 +120,7 @@ pub struct ProjectProps {
     /// Brief 033 (design 033 §7.1): the revision columns as written.
     pub rev_columns: String,
     /// Brief 031: the Text section (Project settings only), filled from `textstyle {}`.
-    pub text: Option<crate::text_ui::TextSection>,
+    pub text: Option<crate::settings::text_styles::TextSection>,
     /// Brief 032 §4.4: the wire label rows (Project settings only), filled from `wiresettings {}`.
     pub labels: Option<WireLabels>,
     pub read_only: bool,
@@ -181,7 +181,7 @@ impl ProjectProps {
         let mirror = v.get("contact_mirror").and_then(Value::as_str).unwrap_or("auto").to_string();
         let padding = v.get("tag_padding").and_then(Value::as_u64).unwrap_or(2).to_string();
         let tag_case =
-            v.get("tag_case").and_then(Value::as_str).and_then(<ecad_model::tag::Case as ecad_model::words::Word>::parse).unwrap_or_default();
+            v.get("tag_case").and_then(Value::as_str).and_then(<ecad_model::naming::tag::Case as ecad_model::naming::words::Word>::parse).unwrap_or_default();
         let colour_style = v.get("colour_style").and_then(Value::as_str).unwrap_or("code2").to_string();
         let label_height = v.get("label_height").and_then(Value::as_f64).map_or_else(String::new, |h| h.to_string());
         let prefixes: Vec<(String, String)> = v
@@ -317,7 +317,7 @@ impl ProjectProps {
         if self.rev_columns.trim() != self.rev_columns_orig.trim() {
             let t = self.rev_columns.trim();
             if !t.is_empty() {
-                ecad_engine::revisions::parse_columns(t)?;
+                ecad_electrical::releases::revisions::parse_columns(t)?;
             }
             m.insert("revision_columns".into(), if t.is_empty() { Value::Null } else { Value::String(t.to_string()) });
         }
@@ -327,7 +327,7 @@ impl ProjectProps {
                 .trim()
                 .parse()
                 .ok()
-                .filter(|h| ecad_model::wiring::LABEL_HEIGHTS.contains(h))
+                .filter(|h| ecad_model::connectivity::wiring::LABEL_HEIGHTS.contains(h))
                 .ok_or_else(|| "Label height is 0.5 to 10 mm.".to_string())?;
             m.insert("label_height".into(), json!(h));
         }
@@ -389,8 +389,8 @@ impl ProjectProps {
                 if text_only {
                     // Brief 031 (design §4.1): text styles.
                     if let Some(t) = &mut self.text {
-                        let s = ecad_ui::SHELL;
-                        t.show(ui, ro, ecad_ui::color(s.warning), ecad_ui::color(s.error));
+                        let s = ecad_widgets::SHELL;
+                        t.show(ui, ro, ecad_widgets::color(s.warning), ecad_widgets::color(s.error));
                     }
                 } else if info {
                     self.info_body(ui, ro);
@@ -432,7 +432,7 @@ impl ProjectProps {
                         TextEntry::new(v, &name).read_only(ro).width(FIELD_W).show(ui).on_hover_text("Any text; or pick one");
                         ui.add_enabled_ui(!ro, |ui| {
                             ui.menu_button("\u{25be}", |ui| {
-                                for s in ecad_engine::cmd::sheet::STATUS_SUGGESTIONS {
+                                for s in ecad_engine::pages::commands::sheets::STATUS_SUGGESTIONS {
                                     if ui.add(Button::new(s).kind(Kind::Quiet).small()).clicked() {
                                         *v = s.to_string();
                                         ui.close();
@@ -541,7 +541,7 @@ impl ProjectProps {
                 g.row("Digits", |ui| TextEntry::new(&mut self.padding, "ecad.projectsettings.padding").width(SHORT_W).show(ui));
                 // Brief 033 (design 033 §8.1): the leading - and the case, a writing rule.
                 g.row("Case", |ui| {
-                    use ecad_model::tag::Case;
+                    use ecad_model::naming::tag::Case;
                     let mut k = usize::from(self.tag_case == Case::Typed);
                     if Segmented::new(&mut k, &["Upper case", "As typed"]).name("ecad.project.props.tag_case").show(ui).clicked.is_some() {
                         self.tag_case = if k == 1 { Case::Typed } else { Case::Upper };
@@ -551,7 +551,7 @@ impl ProjectProps {
                 let case = self.tag_case;
                 let pad = self.padding.trim().parse::<u8>().unwrap_or(2);
                 let example =
-                    ecad_model::tag::normalise("k5", ecad_model::tag::Style { padding: pad, dash: self.tag_dash, case }).unwrap_or_default();
+                    ecad_model::naming::tag::normalise("k5", ecad_model::naming::tag::Style { padding: pad, dash: self.tag_dash, case }).unwrap_or_default();
                 g.row("Example", |ui| {
                     control::read_text(ui, &format!("k5 is written {example}"), Decor::default(), "ecad.project.props.tag_example")
                 });
@@ -591,7 +591,7 @@ impl ProjectProps {
             });
             let t = self.rev_columns.trim();
             if !t.is_empty()
-                && let Err(e) = ecad_engine::revisions::parse_columns(t)
+                && let Err(e) = ecad_electrical::releases::revisions::parse_columns(t)
             {
                 prim::note(ui, &e.to_string(), Tone::Error);
             }
@@ -682,7 +682,7 @@ impl Revisions {
             .into_iter()
             .flatten()
             .filter_map(|c| Some((c["field"].as_str()?.to_string(), c["header"].as_str()?.to_string())))
-            .filter(|(f, _)| !ecad_engine::revisions::FIELDS.contains(&f.as_str()))
+            .filter(|(f, _)| !ecad_electrical::releases::revisions::FIELDS.contains(&f.as_str()))
             .collect();
         let rows: Vec<RevRow> = v
             .get("revisions")
@@ -690,7 +690,7 @@ impl Revisions {
             .into_iter()
             .flatten()
             .map(|r| RevRow {
-                fields: ecad_engine::revisions::FIELDS.map(|f| r[f].as_str().unwrap_or_default().to_string()),
+                fields: ecad_electrical::releases::revisions::FIELDS.map(|f| r[f].as_str().unwrap_or_default().to_string()),
                 extra: custom.iter().map(|(f, _)| r[f.as_str()].as_str().unwrap_or_default().to_string()).collect(),
                 issued: !r["issued"].is_null(),
                 released: r.get("released").and_then(Value::as_str).map(str::to_string),
@@ -775,7 +775,7 @@ impl Revisions {
                     ui.label("");
                     ui.end_row();
                     if !self.read_only {
-                        for (i, f) in ecad_engine::revisions::FIELDS.iter().enumerate() {
+                        for (i, f) in ecad_electrical::releases::revisions::FIELDS.iter().enumerate() {
                             let Some(v) = self.pending.get_mut(i) else { continue };
                             let w = match *f {
                                 "description" => FIELD_W * 0.8,
@@ -865,7 +865,7 @@ impl Revisions {
                             self.confirming = false;
                             // Fields still being typed go with the issue (one transaction).
                             let mut m = Map::new();
-                            for (i, f) in ecad_engine::revisions::FIELDS.iter().enumerate() {
+                            for (i, f) in ecad_electrical::releases::revisions::FIELDS.iter().enumerate() {
                                 if let (Some(v), Some(o)) = (self.pending.get(i), self.orig.get(i))
                                     && v != o
                                     && !v.trim().is_empty()
@@ -887,7 +887,7 @@ impl Revisions {
                     }
                     if !self.read_only {
                         let rev = self.pending[0].clone();
-                        let why = (!self.can_issue()).then_some(ecad_engine::revisions::FILL_FIRST);
+                        let why = (!self.can_issue()).then_some(ecad_electrical::releases::revisions::FILL_FIRST);
                         // Brief 027: issue and write the folder in one step (design 027 §3, Q1).
                         let r = action(ui, &format!("Release Rev {rev}\u{2026}"), Kind::Primary, "ecad.revisions.release", why);
                         let r = if why.is_none() { r.on_hover_text("Check, issue and write the release folder") } else { r };
@@ -1063,20 +1063,20 @@ fn prop_row(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
             let typed = typed.trim().to_string();
             let next = e.split("\"next\" (use ").nth(1).and_then(|r| r.split(')').next()).map(str::to_string);
             let same_kind = e.contains("\"swap\"");
-            let noun = if matches!(tg, ecad_electrical::props::Target::Cable(_)) { "cable" } else { "device" };
+            let noun = if matches!(tg, ecad_electrical::properties::Target::Cable(_)) { "cable" } else { "device" };
             ui.horizontal(|ui| {
                 if same_kind {
                     if ui.add(Button::new("Swap").kind(Kind::Primary).small()).accessible_name("ecad.tagclash.swap").clicked() {
-                        sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("swap"), Some(typed.clone())));
+                        sh.edits.push((tg.clone(), ecad_electrical::properties::conflict_key("swap"), Some(typed.clone())));
                     }
                     let same = format!("Make it the same {noun}");
                     if ui.add(Button::new(&same).small()).accessible_name("ecad.tagclash.merge").clicked() {
-                        sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("merge"), Some(typed.clone())));
+                        sh.edits.push((tg.clone(), ecad_electrical::properties::conflict_key("merge"), Some(typed.clone())));
                     }
                 }
                 let label = next.as_deref().map_or_else(|| "Use the next free".to_string(), |n| format!("Use {n}"));
                 if ui.add(Button::new(&label).small()).accessible_name("ecad.tagclash.next").clicked() {
-                    sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("next"), Some(typed.clone())));
+                    sh.edits.push((tg.clone(), ecad_electrical::properties::conflict_key("next"), Some(typed.clone())));
                 }
             });
         }
@@ -1090,7 +1090,7 @@ pub fn revision_bar(rev: &str, date: &str) -> String {
 
 // ---------------------------------------------------------------- wire labels (brief 032 §4.4)
 
-use ecad_model::wiring::NumberBy;
+use ecad_model::connectivity::wiring::NumberBy;
 
 /// The Project Settings rows of the wire label rule: one label per net per page or every wire, and
 /// the shortest labelled wire (only with every wire); and what one wire number counts (design 072
@@ -1111,7 +1111,7 @@ pub struct WireLabels {
 impl WireLabels {
     /// From `wiresettings {}`.
     pub fn from_json(v: &Value) -> Self {
-        let rule = v.get("label_rule").and_then(Value::as_str).unwrap_or(ecad_model::wiring::LABEL_RULE_NET).to_string();
+        let rule = v.get("label_rule").and_then(Value::as_str).unwrap_or(ecad_model::connectivity::wiring::LABEL_RULE_NET).to_string();
         let min = v.get("label_min_length").and_then(Value::as_f64).map_or_else(String::new, |v| v.to_string());
         let by = v.get("number_by").and_then(Value::as_str).unwrap_or(ecad_model::Word::word(NumberBy::Net)).to_string();
         WireLabels { rule_orig: rule.clone(), rule, min_orig: min.clone(), min_length: min, number_by_orig: by.clone(), number_by: by }
@@ -1132,7 +1132,7 @@ impl WireLabels {
                 .trim()
                 .parse()
                 .ok()
-                .filter(|x| ecad_model::wiring::LABEL_MIN_LENGTHS.contains(x))
+                .filter(|x| ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.contains(x))
                 .ok_or_else(|| "Shortest labelled wire is 0 to 100 mm.".to_string())?;
             m.insert("label_min_length".into(), json!(v));
         }
@@ -1146,15 +1146,15 @@ impl WireLabels {
         prim::PropertyGrid::new().show(ui, |g| {
             g.row("Labels", |ui| {
                 for (word, shown, name) in [
-                    (ecad_model::wiring::LABEL_RULE_NET, "One per net per page", "ecad.projectsettings.label_rule.net"),
-                    (ecad_model::wiring::LABEL_RULE_EACH, "Every wire", "ecad.projectsettings.label_rule.each"),
+                    (ecad_model::connectivity::wiring::LABEL_RULE_NET, "One per net per page", "ecad.projectsettings.label_rule.net"),
+                    (ecad_model::connectivity::wiring::LABEL_RULE_EACH, "Every wire", "ecad.projectsettings.label_rule.each"),
                 ] {
                     if Radio::new(self.rule == word, shown).show(ui).accessible_name(name).clicked() {
                         self.rule = word.to_string();
                     }
                 }
             });
-            let each = self.rule == ecad_model::wiring::LABEL_RULE_EACH;
+            let each = self.rule == ecad_model::connectivity::wiring::LABEL_RULE_EACH;
             g.row("Shortest wire", |ui| {
                 ui.add_enabled_ui(each, |ui| {
                     TextEntry::new(&mut self.min_length, "ecad.projectsettings.label_min_length").number("mm").width(SHORT_W * 1.5).show(ui);

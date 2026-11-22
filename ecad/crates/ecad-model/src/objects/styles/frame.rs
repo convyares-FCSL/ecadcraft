@@ -2,16 +2,16 @@
 //! its title block.
 //!
 //! How a frame is drawn is `ecad-electrical`'s (`styles::frame`); which frame a page uses, its
-//! sheet and margins are resolved in `crate::sheet`.
+//! sheet and margins are resolved in `crate::document::sheet`.
 
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::text::StyleColour;
-use crate::sheet::{Margins, SheetSpec, margins_text, parse_frame_sheet, parse_margins};
-use crate::title_block::TitleBlockLayout;
-use crate::units::Mm;
+use crate::objects::styles::text::StyleColour;
+use crate::document::sheet::{Margins, SheetSpec, margins_text, parse_frame_sheet, parse_margins};
+use crate::objects::title_block::TitleBlockLayout;
+use crate::geometry::units::Mm;
 
 crate::word_enum! {
     /// Where a frame's block sits (design 055 §1.4).
@@ -114,7 +114,7 @@ impl FrameStyle {
     /// The fields it sets, as `(key, stored text)`, in field order (the title block is not a
     /// field: it is edited in the title block editor).
     pub fn entries(&self) -> Vec<(&'static str, String)> {
-        let flag = |b: bool| crate::words::flag_word(b).to_string();
+        let flag = |b: bool| crate::naming::words::flag_word(b).to_string();
         let mut out = Vec::new();
         if let Some(v) = self.border_weight {
             out.push(("border_weight", v.0.to_string()));
@@ -138,7 +138,7 @@ impl FrameStyle {
             out.push(("centre_marks", flag(v)));
         }
         if let Some(v) = self.block {
-            out.push(("block", crate::words::Word::word(v).to_string()));
+            out.push(("block", crate::naming::words::Word::word(v).to_string()));
         }
         out
     }

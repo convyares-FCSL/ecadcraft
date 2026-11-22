@@ -9,10 +9,10 @@
 //! Tokens (design 051 §8, `ecad.plc.*` used generically here): tile width [`TILE_WIDTH`], mark
 //! [`MARK`], gap [`MARK_GAP`].
 
-use ecad_tokens::{line, radius, space, ui_type};
+use {crate::tokens::line, crate::tokens::radius, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Id, Rect, Role, Sense, Stroke, StrokeKind, Ui, WidgetInfo, pos2, vec2};
 
-use super::cells;
+use crate::table::cells;
 use crate::color;
 use crate::style::corner;
 

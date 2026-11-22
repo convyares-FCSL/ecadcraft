@@ -25,7 +25,7 @@ use common::{H, id};
 use ecad_engine::interact::{hover_lines, overlay_marks};
 use ecad_engine::references::{diagnostics, markers_on_page, plan_continue};
 use ecad_engine::{HandleMap, Persistence, ProjectHandle, project_page};
-use ecad_model::derive::{cable_references, nets};
+use ecad_model::connectivity::derive::{cable_references, nets};
 use ecad_model::{
     CableId, Core, Document, Form, Item, ItemId, ItemKind, Op, Page, PageId, Primitive, Pt, Representation, RepresentationId, Subject, ConnectionPointId,
     WireId,
@@ -332,7 +332,7 @@ fn ac1_splitting_a_cable_keeps_its_id_members_conductors_and_nets() {
 fn ac1_two_page_cable_has_the_nets_of_the_one_page_circuit() {
     let mut r = connected(SEED + 2);
     let two = nets(&r.h.doc());
-    let shape = |n: &[ecad_model::derive::Net]| {
+    let shape = |n: &[ecad_model::connectivity::derive::Net]| {
         let mut v: Vec<(usize, usize)> = n.iter().filter(|x| !x.wires.is_empty()).map(|x| (x.wires.len(), x.terminals.len())).collect();
         v.sort();
         v
@@ -460,8 +460,8 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     // Brief 040: an orphan is the painted error disc, not a ring in another colour.
     assert!(ring(&mut r.h, r.supply).is_empty(), "no linked ring");
     let su = uid(&mut r.h, r.supply);
-    let painted = r.h.p(|p| ecad_engine::look::painted_marks(p, su));
-    assert!(painted.iter().any(|m| matches!(m, ecad_engine::look::Painted::Error(_))), "{painted:?}");
+    let painted = r.h.p(|p| ecad_engine::cables::draw::painted_marks(p, su));
+    assert!(painted.iter().any(|m| matches!(m, ecad_engine::cables::draw::Painted::Error(_))), "{painted:?}");
     let sid = ref_on(&mut r.h, r.supply).unwrap();
     let text = r.h.p(|p| p.pages[&r.supply].map.ref_text(sid)).unwrap();
     let e = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == text).unwrap();
@@ -936,7 +936,7 @@ fn ac6_hostile_documents_never_panic() {
             for p in &pages {
                 let _ = markers_on_page(&doc, *p);
                 // Combined trial of 009 and 010: 010's leaving ends are folded into 009's drawing.
-                let _ = ecad_engine::views::drawings_on_page(&doc, *p, &Default::default(), 1e-6);
+                let _ = ecad_engine::cables::views::drawings_on_page(&doc, *p, &Default::default(), 1e-6);
                 let _ = project_page(
                     &doc,
                     *p,
@@ -951,8 +951,8 @@ fn ac6_hostile_documents_never_panic() {
             for r in refs.iter().take(50) {
                 let _ = ecad_engine::references::hover_lines(&doc, r.reference);
             }
-            let _ = ecad_inspect::references_json(&doc, &refs);
-            let _ = ecad_inspect::over_referenced(&refs);
+            let _ = ecad_electrical::references::cables::references_json(&doc, &refs);
+            let _ = ecad_electrical::references::cables::over_referenced(&refs);
             refs.len()
         }));
         assert!(result.is_ok(), "{row}: panicked");
@@ -1020,7 +1020,7 @@ fn copying_reference_drawings_never_makes_a_third_reference() {
         let doc = r.h.doc();
         let refs = cable_references(&doc);
         assert_eq!(refs.len(), before, "{row}: COPY {res:?} changed the number of references: {refs:#?}");
-        assert!(ecad_inspect::over_referenced(&refs).is_empty(), "{row}: over-referenced after COPY");
+        assert!(ecad_electrical::references::cables::over_referenced(&refs).is_empty(), "{row}: over-referenced after COPY");
     }
     // The text: refused as derived.
     let mut r = connected(SEED + 17);

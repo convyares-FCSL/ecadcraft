@@ -4,9 +4,9 @@
 //! fitted with a 24 px margin, and the screenshots for the side-by-side with the board.
 
 use crate::common::{self, Opts};
-use crate::project_panel::{doc, rev3_app as new_app};
+use crate::pages::project_panel::{doc, rev3_app as new_app};
 use ecad_app::App;
-use ecad_app::actions::ToolGroup;
+use ecad_app::commands::actions::ToolGroup;
 use ecad_app::shell::state::{LeftTab, RightTab, ShellState, Workspace};
 use ecad_app::shell::{layout, right, status_bar, tool_strip, top_bar};
 use eframe::egui::{Rect, pos2, vec2};
@@ -82,8 +82,8 @@ fn the_strip_is_in_the_specs_order_with_five_keys() {
     assert_eq!(panels, ["Book", "Devices", "History"]);
     let toggles: Vec<&str> = tool_strip::TOGGLES.iter().map(|t| t.0).collect();
     assert_eq!(toggles, ["Snap", "Grid", "Ortho"]);
-    assert_eq!((ecad_ui::tokens::size::TOOL_BUTTON_W, ecad_ui::tokens::size::TOOL_BUTTON), (54.0, 44.0));
-    assert_eq!((ecad_ui::tokens::size::TOOL_ICON, ecad_ui::tokens::size::TOOL_LABEL), (18.0, 10.0));
+    assert_eq!((ecad_widgets::tokens::size::TOOL_BUTTON_W, ecad_widgets::tokens::size::TOOL_BUTTON), (54.0, 44.0));
+    assert_eq!((ecad_widgets::tokens::size::TOOL_ICON, ecad_widgets::tokens::size::TOOL_LABEL), (18.0, 10.0));
 }
 
 fn harness() -> Harness<'static, App> {
@@ -142,7 +142,7 @@ fn a_page_first_opens_with_the_sheet_fitted_24_px_inside_the_canvas() {
     let xf = h.state().cad.canvas.xf.unwrap();
     let d = h.state().cad.session.doc().unwrap();
     let mut b = cadcraft_engine::geom::Bounds2::default();
-    for e in d.model.iter().filter(|e| e.common.layer == ecad_engine::frame::LAYER) {
+    for e in d.model.iter().filter(|e| e.common.layer == ecad_engine::pages::frame::LAYER) {
         b = b.union(&cadcraft_engine::doc::entity_bounds(d, e, 0));
     }
     assert!(!b.is_empty(), "the page has a frame");
@@ -215,7 +215,7 @@ fn the_page_well_opens_the_shown_pages_group_and_folds_the_others() {
         h.run_steps(2);
     }
     let t = h.state().wheel_target().cloned().expect("the page wheel");
-    assert_eq!(t.kind, ecad_app::actions::ObjectKind::PageRow);
+    assert_eq!(t.kind, ecad_app::commands::actions::ObjectKind::PageRow);
     assert_eq!(t.page, Some(order[4]));
 }
 
@@ -224,14 +224,14 @@ fn the_page_well_opens_the_shown_pages_group_and_folds_the_others() {
 /// demo project with a page open in the well.
 #[test]
 fn screenshots_of_board_1_01() {
-    let Some(out) = crate::project_panel::shots() else { return };
+    let Some(out) = crate::pages::project_panel::shots() else { return };
     ecad_app::canvas::register_sheet_faces();
     let dir = std::env::temp_dir().join(format!("ecad-uiv3-shots-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = crate::checks_ui::demo_file(&dir);
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
+    let path = crate::checks::ui::demo_file(&dir);
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
     // The whole window, as the app's root `Ui` (the harness keeps an 8 px margin round its own).
-    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
+    let mut h = Harness::builder().with_size(vec2(1920.0, 1080.0)).renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone())).build_ui_state(
         |ui, t: &mut App| {
             let r = ui.ctx().content_rect();
             ui.scope_builder(eframe::egui::UiBuilder::new().max_rect(r), |ui| {
@@ -243,7 +243,7 @@ fn screenshots_of_board_1_01() {
         new_app(),
     );
     h.run_steps(6);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-1.01-start.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-1.01-start.png"));
     h.state_mut().close_project();
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
@@ -255,12 +255,12 @@ fn screenshots_of_board_1_01() {
     h.run_steps(8);
     h.state_mut().fit_sheet();
     h.run_steps(4);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-1.01-ours.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-1.01-ours.png"));
     // Round 2: the inspector open beside its rail, on Device.
     h.state_mut().open_inspector(RightTab::Device);
     h.run_steps(4);
     h.state_mut().fit_sheet();
     h.run_steps(4);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-1.01-r2-right.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-1.01-r2-right.png"));
     let _ = std::fs::remove_dir_all(&dir);
 }

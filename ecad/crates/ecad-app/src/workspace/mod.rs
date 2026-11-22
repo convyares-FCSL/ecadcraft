@@ -1,5 +1,5 @@
 //! The column sets on `ecad-ui`'s one table (brief 039, design `ui-architecture.md` §6.3): each
-//! manager is a [`ecad_ui::table::TableSource`] over a kept model plus the table's state, never a
+//! manager is a [`ecad_widgets::table::TableSource`] over a kept model plus the table's state, never a
 //! panel of its own.
 //!
 //! - [`checks`]: Checks (read-mostly): severity, message, object, page (a go-to) and fixes.
@@ -13,31 +13,16 @@
 //!   actions, each tab's body and the foot; [`detail`]: its right panel, the selected item.
 //!
 //! The Project workspace ([`workspace`]) places each view; the Project panel's Checks and Devices
-//! tabs ([`crate::checks_panel`], [`crate::devices_panel`]) and Reports ▸ Terminals
-//! ([`crate::outputs_ui`]) call the same views.
+//! tabs ([`crate::checks::panel`], [`crate::devices::panel`]) and Reports ▸ Terminals
+//! ([`crate::reports::panel`]) call the same views.
 //!
 //! Each view keeps an update map (design §8): a full rebuild only on first show, reload or a feed
 //! that rolled over; otherwise only the keys a commit touched are patched.
 
-pub mod cable_editor;
-pub mod cable_manager;
-pub mod cable_view;
-pub mod cables;
-pub mod card_editor;
-pub mod checks;
 pub mod detail;
-pub mod devices;
-pub mod plc;
-pub mod rating;
-pub mod report;
-pub mod reports;
-pub mod standards;
-pub mod style_catalogues;
-pub mod terminals;
-pub mod wires;
-pub mod workspace;
+pub mod frame;
 
-use crate::project_panel::Action;
+use crate::pages::project_panel::Action;
 
 /// The list views (Lists ▸ …).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,8 +68,8 @@ pub enum ListAction {
 /// The views' state, for the shell's slots.
 #[derive(Debug)]
 pub struct Lists<'a> {
-    pub checks: &'a mut crate::checks_panel::ChecksPanel,
-    pub devices: &'a mut crate::devices_panel::DevicesPanel,
+    pub checks: &'a mut crate::checks::panel::ChecksPanel,
+    pub devices: &'a mut crate::devices::panel::DevicesPanel,
     pub terminals: &'a mut terminals::TerminalStripPlanView,
     pub io: &'a mut plc::IoView,
 }

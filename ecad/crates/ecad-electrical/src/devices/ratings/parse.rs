@@ -88,7 +88,7 @@ pub fn ambient(text: &str) -> Option<f64> {
     temperature(text, -40.0, 90.0)
 }
 
-use ecad_model::wire::Bundling;
+use ecad_model::objects::wire::Bundling;
 
 /// Read a bundling input (design 057 §2.1): a factor 0.30–1.00, or a circuit count 1–20 written
 /// `3 bunched` (or `3 circuits`); the stored type is the model's [`Bundling`].
@@ -106,7 +106,7 @@ pub fn bundling(text: &str) -> Option<Bundling> {
 /// A circuit count 1–20 (`rating.grouped`).
 pub fn count(text: &str) -> Option<u32> {
     let t = bounded(text, MAX_CHARS)?;
-    if !ecad_model::words::is_digits(t) {
+    if !ecad_model::naming::words::is_digits(t) {
         return None;
     }
     t.parse::<u32>().ok().filter(|n| (1..=20).contains(n))
@@ -184,7 +184,7 @@ pub fn amps(text: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::circuits::*;
 
     #[test]
     fn device_ratings_read_as_the_design_says() {

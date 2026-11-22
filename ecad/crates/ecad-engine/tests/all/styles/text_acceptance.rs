@@ -205,7 +205,7 @@ fn strip_at(h: &mut H, xs: &[f64], y: f64, strip: Option<DeviceId>) -> (DeviceId
 /// The symbol representation of strip terminal `t` on `page`.
 fn rep_of_connection_point(h: &mut H, page: PageId, t: ConnectionPointId) -> RepresentationId {
     let doc = h.doc();
-    ecad_model::derive::connection_point_positions(&doc, page).into_iter().find(|(x, _, _)| *x == t).map(|(_, r, _)| r).expect("terminal drawn")
+    ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().find(|(x, _, _)| *x == t).map(|(_, r, _)| r).expect("terminal drawn")
 }
 
 fn click(h: &mut H, at: (f64, f64)) -> cadcraft_engine::Result<()> {
@@ -389,8 +389,8 @@ fn t2_textstyle_reads_the_defaults_of_every_kind() {
         assert_eq!(k["default"], json!(true), "{kind}: {k}");
     }
     // FP6 made it 1.6; brief 066 moved it to data and made it 2.5.
-    let builtin = ecad_engine::defaults::text::WIRE_LABEL_HEIGHT.builtin();
-    assert_eq!(builtin, ecad_engine::defaults::Value::Length(2.5), "066: wire label built-in 2.5");
+    let builtin = ecad_electrical::defaults::text::WIRE_LABEL_HEIGHT.builtin();
+    assert_eq!(builtin, ecad_electrical::defaults::Value::Length(2.5), "066: wire label built-in 2.5");
     let s = serde_json::to_value(&h.doc().settings).unwrap();
     assert!(s.pointer("/wiring/label_height").is_none(), "a new project chooses no height (066, F2): {s}");
 }
@@ -823,7 +823,7 @@ fn t8_print_has_no_hidden_text() {
     let k1: DeviceId = id(&k, "component");
     one_tx(&mut h, "showtext", json!({"kind": "tag", "show": "off", "component": k1.hex()}));
     let doc = h.doc();
-    let (d, _) = ecad_engine::printbook::build(&doc, &[page], &BTreeSet::new(), 1e-6, None).unwrap();
+    let (d, _) = ecad_engine::export::printbook::build(&doc, &[page], &BTreeSet::new(), 1e-6, None).unwrap();
     let values: Vec<String> = d
         .model
         .iter()
@@ -836,7 +836,7 @@ fn t8_print_has_no_hidden_text() {
     assert_eq!(values.iter().filter(|v| *v == "-K01").count(), 0, "{values:?}");
     assert!(d.model.iter().all(|e| e.common.layer != "ECAD-HIDDEN-TEXT"), "no hidden-text layer in print");
     // The PDF itself builds.
-    ecad_engine::printbook::install_io();
+    ecad_engine::export::printbook::install_io();
     let v = h.run("printbook", json!({})).unwrap();
     assert!(v["files"][0]["data"].as_str().is_some_and(|s| s.starts_with("JVBER")), "{}", v["message"]);
 }
@@ -1403,7 +1403,7 @@ fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
             "key rule: {key}"
         );
         // The registry's own list of areas (it admits `wiring.` for lane W's keys, 032).
-        assert!(ecad_engine::defaults::AREAS.contains(&parts[0]), "area first: {key}");
+        assert!(ecad_electrical::defaults::AREAS.contains(&parts[0]), "area first: {key}");
         for f in ["label", "group", "brief", "kind", "builtin", "levels", "value", "from"] {
             assert!(r.get(f).is_some(), "{key} has {f}: {r}");
         }

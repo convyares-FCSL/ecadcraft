@@ -5,11 +5,11 @@
 use std::collections::BTreeMap;
 
 use ecad_model::GridLabels;
-use ecad_model::sheet::{Margins, PRESETS, SheetSpec, margins_text, parse_frame_sheet, parse_margins};
-use ecad_ui::tokens::space;
+use ecad_model::document::sheet::{Margins, PRESETS, SheetSpec, margins_text, parse_frame_sheet, parse_margins};
+use ecad_widgets::tokens::space;
 use eframe::egui::{self, Color32, Rect, RichText, Stroke, pos2, vec2};
 
-use super::Editor;
+use crate::title_blocks::Editor;
 
 /// Element names (design 055 §5).
 pub const SHEET: &str = "library.tb.frame.sheet";
@@ -49,8 +49,8 @@ impl FrameEdit {
             own: spec.is_none(),
             spec: spec.unwrap_or_default(),
             margins: parse_margins(f("margins")).unwrap_or_default(),
-            labels: ecad_model::words::flag(f("grid_labels")) != Some(false),
-            centre: ecad_model::words::flag(f("centre_marks")) != Some(false),
+            labels: ecad_model::naming::words::flag(f("grid_labels")) != Some(false),
+            centre: ecad_model::naming::words::flag(f("centre_marks")) != Some(false),
             border: f("border_weight").parse().unwrap_or(0.5),
             inner: f("inner_weight").parse().unwrap_or(0.25),
             colour: if f("line_colour").is_empty() { "none".into() } else { f("line_colour").into() },
@@ -62,21 +62,21 @@ impl FrameEdit {
         let n = |v: f64| if v.fract() == 0.0 { format!("{v:.0}") } else { format!("{v}") };
         fields.insert("sheet".into(), if self.own { "page".into() } else { self.spec.text() });
         fields.insert("margins".into(), margins_text(&self.margins));
-        fields.insert("grid_labels".into(), ecad_model::words::flag_word(self.labels).into());
-        fields.insert("centre_marks".into(), ecad_model::words::flag_word(self.centre).into());
+        fields.insert("grid_labels".into(), ecad_model::naming::words::flag_word(self.labels).into());
+        fields.insert("centre_marks".into(), ecad_model::naming::words::flag_word(self.centre).into());
         fields.insert("border_weight".into(), n(self.border));
         fields.insert("inner_weight".into(), n(self.inner));
         fields.insert("line_colour".into(), self.colour.clone());
     }
 }
 
-fn c32(c: ecad_ui::tokens::Color) -> Color32 {
-    ecad_ui::color(c)
+fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+    ecad_widgets::color(c)
 }
 
 fn labels(ui: &mut egui::Ui, v: &mut GridLabels, name: &str) {
     let mut i = usize::from(*v == GridLabels::Letters);
-    let r = ecad_ui::prim::segmented(ui, &mut i, &["1 2 3", "A B C"]);
+    let r = ecad_widgets::prim::segmented(ui, &mut i, &["1 2 3", "A B C"]);
     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, name));
     *v = if i == 1 { GridLabels::Letters } else { GridLabels::Numbers };
 }
@@ -84,7 +84,7 @@ fn labels(ui: &mut egui::Ui, v: &mut GridLabels, name: &str) {
 /// Draw the popover under `button`; Apply writes into the draft.
 pub fn show(ctx: &egui::Context, ed: &mut Editor) {
     let Some(edit) = ed.frame.as_mut() else { return };
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let at = ed.canvas.frame_button.map_or(pos2(400.0, 120.0), |r| pos2(r.right() - 380.0, r.bottom() + 6.0));
     let mut apply = false;
     let mut close = false;
@@ -101,7 +101,7 @@ pub fn show(ctx: &egui::Context, ed: &mut Editor) {
                     } else {
                         PRESETS.iter().position(|p| p.1 == edit.spec.width && p.2 == edit.spec.height).map_or(5, |i| i + 1)
                     };
-                    let r = ecad_ui::prim::segmented(ui, &mut i, &["Page's own", "A3", "A2", "A1", "A0", "W × H"]);
+                    let r = ecad_widgets::prim::segmented(ui, &mut i, &["Page's own", "A3", "A2", "A1", "A0", "W × H"]);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, SHEET));
                     edit.own = i == 0;
                     if let Some(p) = PRESETS.get(i.wrapping_sub(1)).filter(|p| (p.1, p.2) != (edit.spec.width, edit.spec.height))
@@ -114,13 +114,13 @@ pub fn show(ctx: &egui::Context, ed: &mut Editor) {
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::DragValue::new(&mut edit.spec.width)
-                                .range(ecad_model::sheet::MIN_WIDTH_MM..=ecad_model::sheet::MAX_WIDTH_MM)
+                                .range(ecad_model::document::sheet::MIN_WIDTH_MM..=ecad_model::document::sheet::MAX_WIDTH_MM)
                                 .suffix(" mm"),
                         );
                         ui.label("×");
                         ui.add(
                             egui::DragValue::new(&mut edit.spec.height)
-                                .range(ecad_model::sheet::MIN_HEIGHT_MM..=ecad_model::sheet::MAX_HEIGHT_MM)
+                                .range(ecad_model::document::sheet::MIN_HEIGHT_MM..=ecad_model::document::sheet::MAX_HEIGHT_MM)
                                 .suffix(" mm"),
                         );
                         grey(ui, "landscape");
@@ -136,17 +136,17 @@ pub fn show(ctx: &egui::Context, ed: &mut Editor) {
                         (&mut m.top, MARGINS[3], "T"),
                     ] {
                         ui.label(RichText::new(word).small());
-                        let r = ui.add(egui::DragValue::new(v).range(0.0..=ecad_model::sheet::MAX_MARGIN_MM).speed(0.5));
+                        let r = ui.add(egui::DragValue::new(v).range(0.0..=ecad_model::document::sheet::MAX_MARGIN_MM).speed(0.5));
                         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::SpinButton, true, name));
                     }
                 });
                 if !edit.own {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Zones").small().color(c32(s.text_2)));
-                        let c = ui.add(egui::DragValue::new(&mut edit.spec.columns).range(1..=ecad_model::sheet::MAX_GRID));
+                        let c = ui.add(egui::DragValue::new(&mut edit.spec.columns).range(1..=ecad_model::document::sheet::MAX_GRID));
                         c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::SpinButton, true, COLUMNS));
                         ui.label("×");
-                        let r = ui.add(egui::DragValue::new(&mut edit.spec.rows).range(1..=ecad_model::sheet::MAX_GRID));
+                        let r = ui.add(egui::DragValue::new(&mut edit.spec.rows).range(1..=ecad_model::document::sheet::MAX_GRID));
                         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::SpinButton, true, ROWS));
                     });
                     ui.horizontal(|ui| {
@@ -173,7 +173,7 @@ pub fn show(ctx: &egui::Context, ed: &mut Editor) {
                 });
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Colour").small().color(c32(s.text_2)));
-                    ecad_ui::control::TextEntry::new(&mut edit.colour, COLOUR).placeholder("none, RD, #333333").width(90.0).show(ui);
+                    ecad_widgets::control::TextEntry::new(&mut edit.colour, COLOUR).placeholder("none, RD, #333333").width(90.0).show(ui);
                 });
             });
             // The preview: the whole sheet with the block in place.
@@ -205,7 +205,7 @@ pub fn show(ctx: &egui::Context, ed: &mut Editor) {
 }
 
 fn grey(ui: &mut egui::Ui, t: &str) {
-    ui.label(RichText::new(t).small().color(c32(ecad_ui::SHELL.text_3)));
+    ui.label(RichText::new(t).small().color(c32(ecad_widgets::SHELL.text_3)));
 }
 
 /// A thumbnail of the sheet: paper, frame, zones, the block at the bottom-right.
@@ -216,8 +216,8 @@ fn preview(ui: &egui::Ui, r: Rect, e: &FrameEdit, block: Option<(f64, f64)>) {
     let paper = Rect::from_center_size(r.center(), vec2(w as f32 * k, h as f32 * k));
     let p = ui.painter();
     // The thumbnail is drawn on paper, in ink (the sheet tokens).
-    let ink = ecad_ui::color(ecad_drawing_style::sheet::PAPER.ink);
-    p.rect_filled(paper, 0.0, ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet));
+    let ink = ecad_widgets::color(ecad_drawing_style::sheet::PAPER.ink);
+    p.rect_filled(paper, 0.0, ecad_widgets::color(ecad_drawing_style::sheet::PAPER.sheet));
     let m = e.margins;
     let frame = Rect::from_min_max(paper.min + vec2(m.left as f32 * k, m.top as f32 * k), paper.max - vec2(m.right as f32 * k, m.bottom as f32 * k));
     p.rect_stroke(frame, 0.0, Stroke::new(1.0, ink), egui::StrokeKind::Middle);

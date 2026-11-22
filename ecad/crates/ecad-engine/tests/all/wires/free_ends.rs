@@ -52,7 +52,7 @@ fn a_line_into_free_space_has_no_wire_and_a_no_wire_yet_row() {
     let row = &rows[0];
     assert_eq!(row["object"], json!({"route": route.hex()}));
     assert_eq!(row["text"], json!("Line not connected at both ends: no wire yet"));
-    assert_eq!(row["page"], json!(ecad_model::book::page_number(&doc, page)), "names the page");
+    assert_eq!(row["page"], json!(ecad_model::document::book::page_number(&doc, page)), "names the page");
     assert_eq!(row["at"], json!([60.0, 0.0]), "at the free end");
     h.check();
 }
@@ -285,7 +285,7 @@ fn a_wire_runs_through_a_continuation_pair_from_device_point_to_device_point() {
     assert_eq!(doc.named_points(t2).map(|g| g.len()), Some(2), "the pair's two points");
     assert!(doc.ends_at(t2).is_empty(), "no wire ends at a continuation");
     let w: WireId = *doc.wires.keys().next().unwrap();
-    assert!(ecad_model::derive::route_on_page(&doc, w, p1).is_some() && ecad_model::derive::route_on_page(&doc, w, p2).is_some());
+    assert!(ecad_model::connectivity::derive::route_on_page(&doc, w, p1).is_some() && ecad_model::connectivity::derive::route_on_page(&doc, w, p2).is_some());
     h.check();
 }
 

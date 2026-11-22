@@ -2,9 +2,9 @@
 //! folder.
 //!
 //! # Semantics
-//! - **Pre-release check** ([`check_rows`], [`grouped`](ecad_electrical::release::grouped)): the kept Checks of the state to be
+//! - **Pre-release check** ([`check_rows`], [`grouped`](ecad_electrical::releases::release::grouped)): the kept Checks of the state to be
 //!   issued (the project's own kept list and report models: opening it never rescans the
-//!   project), grouped for a release by [`GROUPS`](ecad_electrical::release::GROUPS) (a view: kinds keep their severities). A kind
+//!   project), grouped for a release by [`GROUPS`](ecad_electrical::releases::release::GROUPS) (a view: kinds keep their severities). A kind
 //!   not in the table lands in **Other**.
 //! - **Release of the pending revision** ([`run_release`]), in this order so a failure leaves
 //!   nothing half-done (design 027 §5.2): refusals (each with its way out); 026's finalise (behind
@@ -18,7 +18,7 @@
 //! - **An existing folder** is never overwritten silently: add missing files, replace (the old
 //!   one is moved to `release/replaced/`), or keep both (`Rev B (2)`). Nothing is ever deleted
 //!   but this module's own staging folder.
-//! - **Slots** (`ecad_electrical::release::LISTS`): the generated lists as a table; brief 028 fills `terminal-plan` and
+//! - **Slots** (`ecad_electrical::releases::release::LISTS`): the generated lists as a table; brief 028 fills `terminal-plan` and
 //!   `cable-schedule` (its terminal plan and cable schedule, columns named by its JSON keys).
 //!
 //! # Update map (design 027 §11.1)
@@ -37,17 +37,17 @@ use serde_json::{Map, Value, json};
 
 use crate::access::Pages;
 use crate::checks::{self, Check};
-use crate::cmd::opt_typed;
+use crate::commands::opt_typed;
 use crate::outputs;
 use crate::outputs::kept::ReportModels;
-use crate::printbook::{self, Options};
+use crate::export::printbook::{self, Options};
 use crate::project::Project;
-use crate::revisions;
+use ecad_electrical::releases::revisions;
 
-use ecad_electrical::release::{
+use ecad_electrical::releases::release::{
     DEFAULT_ROWS, Group, LISTS, MAX_ROWS, SAVE_FIRST, checks_table, clean_stem, counts, folder_name, grouped, slot_gives,
 };
-use ecad_electrical::release::{errors_refusal, finalising, over_budget, stopped};
+use ecad_electrical::releases::release::{errors_refusal, finalising, over_budget, stopped};
 
 /// The manifest's file name.
 pub const MANIFEST: &str = "release.json";
@@ -88,13 +88,13 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
 /// transaction before the issue, or issue them as they are).
 pub mod numbering_seam {
     use ecad_electrical::CmdError;
-    use ecad_electrical::cmd::numbering::{BeforeIssue, applied_words, finalise_request, plan_for, way_before_issue};
-    use ecad_model::numbering::Plan;
+    use ecad_electrical::numbering::commands::{BeforeIssue, applied_words, finalise_request, plan_for, way_before_issue};
+    use ecad_model::naming::numbering::Plan;
     use serde_json::Value;
 
     use crate::access::Pages;
     use crate::checks::Check;
-    use crate::cmd::opt_typed;
+    use crate::commands::opt_typed;
     use crate::project::Project;
 
     /// What `release` would refuse for provisional items without a choice (026's words), if any.
@@ -102,7 +102,7 @@ pub mod numbering_seam {
         if params.get("provisional").is_some_and(|v| !v.is_null()) {
             return None;
         }
-        let items = ecad_electrical::cmd::numbering::provisional_items(p.ledger.document());
+        let items = ecad_electrical::numbering::commands::provisional_items(p.ledger.document());
         (!items.is_empty()).then(|| {
             format!(
                 "{}. Give provisional: \"finalise\" (number them first, in one transaction before the issue) or \"issue\" (issue as they are).",
@@ -115,7 +115,7 @@ pub mod numbering_seam {
     ///
     /// # Errors
     /// 026's refusal or a bad `provisional`.
-    pub fn plan(p: &mut Project, params: &Value) -> Result<ecad_electrical::cmd::numbering::BeforeIssue, String> {
+    pub fn plan(p: &mut Project, params: &Value) -> Result<ecad_electrical::numbering::commands::BeforeIssue, String> {
         plan_before_issue(p, params).map_err(String::from)
     }
 
@@ -123,7 +123,7 @@ pub mod numbering_seam {
     ///
     /// # Errors
     /// The commit was refused.
-    pub(crate) fn commit_finalise(p: &mut Project, pg: &mut Pages<'_>, plan: &ecad_model::numbering::Plan) -> Result<(), String> {
+    pub(crate) fn commit_finalise(p: &mut Project, pg: &mut Pages<'_>, plan: &ecad_model::naming::numbering::Plan) -> Result<(), String> {
         commit(p, pg, plan).map_err(String::from)
     }
 
@@ -200,10 +200,10 @@ fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
 // ---------------------------------------------------------------- names and places (§7.1)
 
 /// The file stem: the drawing number, else the project file's name, else the project's name;
-/// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`](ecad_electrical::release::MAX_STEM) characters.
+/// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`](ecad_electrical::releases::release::MAX_STEM) characters.
 pub fn stem(p: &Project) -> String {
     let doc = p.ledger.document();
-    let raw = crate::frames::project_text(doc, crate::frame::DRAWING_NUMBER)
+    let raw = ecad_electrical::pages::frames::project_text(doc, crate::pages::frame::DRAWING_NUMBER)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .or_else(|| p.path.as_deref().and_then(|x| Path::new(x).file_stem()).map(|s| s.to_string_lossy().into_owned()))
@@ -706,7 +706,7 @@ pub struct Issued {
 pub fn manifest(
     doc: &Document, row: &revisions::Revision, issued: &Issued, b: &Build<'_>, st: &Staged, rows: &[Check], fan_tags: &[String],
 ) -> Value {
-    let prop = |k: &str| crate::frames::project_text(doc, k).unwrap_or_default();
+    let prop = |k: &str| ecad_electrical::pages::frames::project_text(doc, k).unwrap_or_default();
     let (e, w, i) = counts(rows);
     let mut iss = json!({"branch": issued.branch, "transaction": issued.transaction, "point": issued.point});
     if let Some(c) = &issued.chain {
@@ -716,8 +716,8 @@ pub fn manifest(
     json!({
         "ecad_release": MANIFEST_VERSION,
         "project": b.stem.clone(),
-        "drawing_number": prop(crate::frame::DRAWING_NUMBER),
-        "title": prop(crate::frame::TITLE),
+        "drawing_number": prop(crate::pages::frame::DRAWING_NUMBER),
+        "title": prop(crate::pages::frame::TITLE),
         "rev": row.rev(),
         "date": row.get("date"),
         "description": row.get("description"),
@@ -764,7 +764,7 @@ pub fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<St
             "The project is read-only ({why}), so the pending revision cannot be issued. Issued revisions can still be written out: give rev."
         ));
     }
-    if let Err(e) = crate::cmd::sheet::plan_issue(p) {
+    if let Err(e) = crate::pages::commands::sheets::plan_issue(p) {
         return Some(e.to_string());
     }
     // With Finalise chosen, the errors that count are those of the finalised state, the rows the
@@ -787,9 +787,9 @@ fn read_only(p: &Project) -> Option<String> {
 }
 
 /// `Nothing has changed since Rev A.` when every step since the last issue only edited revision
-/// fields (design 027 §6, Q11): a warning, never a refusal ([`ecad_electrical::release::nothing_changed`]).
+/// fields (design 027 §6, Q11): a warning, never a refusal ([`ecad_electrical::releases::release::nothing_changed`]).
 pub fn nothing_changed(p: &Project) -> Option<String> {
-    ecad_electrical::release::nothing_changed(p.ledger.document(), p.ledger.head(), |seq| p.ledger.transaction(seq))
+    ecad_electrical::releases::release::nothing_changed(p.ledger.document(), p.ledger.head(), |seq| p.ledger.transaction(seq))
 }
 
 // ---------------------------------------------------------------- prerelease
@@ -842,7 +842,7 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
             }
         }
         (v.errors, v.warnings, v.info) = counts(rows);
-        v.provisional = ecad_electrical::release::provisional_count(rows);
+        v.provisional = ecad_electrical::releases::release::provisional_count(rows);
     };
     match &issued_rev {
         Some(row) => {
@@ -952,7 +952,7 @@ pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
     (checks.changed, outputs.checks_key(), accept).hash(&mut h);
     revisions::pending(doc).map(|r| r.fields).hash(&mut h);
     revisions::issued(doc).len().hash(&mut h);
-    (&p.path, read_only(p), crate::cmd::sheet::release_line_refusal(p, true), nothing_changed(p)).hash(&mut h);
+    (&p.path, read_only(p), crate::pages::commands::sheets::release_line_refusal(p, true), nothing_changed(p)).hash(&mut h);
     Some(h.finish())
 }
 
@@ -976,14 +976,14 @@ fn issued_row(p: &Project, rev: &str) -> Result<revisions::Revision, String> {
 
 fn options(doc: &ecad_model::Document, params: &Value) -> Result<Options, String> {
     // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by default).
-    let mono = crate::defaults::print::mono_param(doc, params)?;
+    let mono = ecad_electrical::defaults::print::mono_param(doc, params)?;
     let lineweights = opt_typed(params, "lineweights", "true or false", Value::as_bool)?.unwrap_or(true);
     Ok(Options { mono, lineweights, pending: false })
 }
 
 /// The tags of the cables shown fan (the manifest's `cable_views`).
 fn fan_tags(doc: &Document, fan: &BTreeSet<ecad_model::CableId>) -> Vec<String> {
-    fan.iter().filter(|k| doc.cables.contains_key(k)).map(|k| crate::cables::cable_title(doc, *k)).collect()
+    fan.iter().filter(|k| doc.cables.contains_key(k)).map(|k| ecad_electrical::cables::cable_title(doc, *k)).collect()
 }
 
 /// The words of a finished release.
@@ -1035,8 +1035,8 @@ pub(crate) fn release_pending(
     // 2. 026's finalise, when asked: planned now, recorded only with the issue (step 4), so a
     // release that stops before the issue records nothing at all (tester 027, 1).
     let (finalise, note) = match numbering_seam::plan(p, params)? {
-        ecad_electrical::cmd::numbering::BeforeIssue::Go(note) => (None, note),
-        ecad_electrical::cmd::numbering::BeforeIssue::Finalise(plan) => (Some(plan), None),
+        ecad_electrical::numbering::commands::BeforeIssue::Go(note) => (None, note),
+        ecad_electrical::numbering::commands::BeforeIssue::Finalise(plan) => (Some(plan), None),
     };
     // The caller's transaction budget (an agent's cap of one per call, two with Finalise): known
     // before anything reaches the disk, never found out after (tester 027, 3).
@@ -1048,7 +1048,7 @@ pub(crate) fn release_pending(
     }
     // 3. Build into staging, from the state as it will be issued: Finalise's ops (if any), then
     // the issue's, on the current document.
-    let mut plan = crate::cmd::sheet::plan_issue(p)?;
+    let mut plan = crate::pages::commands::sheets::plan_issue(p)?;
     if finalise.is_some() {
         // The issue names the step before it: Finalise, once recorded.
         plan.head += 1;

@@ -1,22 +1,22 @@
 //! The rules of the page type and folder commands (brief 054, design 054): a folder's start number
 //! (`folderprops`), the page numbers `renumberpages` writes, and which generated pages
-//! `deletepage` removes. The numbering rules themselves are [`crate::page_types`]; the engine
+//! `deletepage` removes. The numbering rules themselves are [`crate::pages::page_types`]; the engine
 //! crate's shims bring the outputs up to date, open the page shown, commit the ops and answer in
 //! JSON.
 
 use std::collections::BTreeSet;
 
-use ecad_model::book::Book;
+use ecad_model::document::book::Book;
 use ecad_model::{Document, Folder, FolderId, Op, PageId, PageNo};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::nullable;
-use crate::cmd::run::{Cx, Generic, Outcome};
+use crate::commands::input::nullable;
+use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::{CmdError, msg};
-use crate::outputs::kept::ReportModels;
-use crate::page_types::*;
+use crate::reports::kept::ReportModels;
+use crate::pages::page_types::*;
 
 /// Most pages one `deletepage` names.
 pub const MAX_PAGES: usize = 1_000;
@@ -146,7 +146,7 @@ pub fn plan_deletepage(doc: &Document, pages: &[PageId], active: PageId) -> Resu
         if !doc.pages.contains_key(page) {
             return Err(CmdError::refused(msg::NO_SUCH_PAGE));
         }
-        if crate::generated::kind_of(doc, *page).is_none() || doc.representations_on(*page).next().is_some() {
+        if crate::pages::generated::kind_of(doc, *page).is_none() || doc.representations_on(*page).next().is_some() {
             return Err(CmdError::refused(DRAWN_PAGE));
         }
     }
@@ -179,7 +179,7 @@ pub fn plan_deletepage(doc: &Document, pages: &[PageId], active: PageId) -> Resu
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run). `deletepage` closes the page's view and stays the
+// The commands (generic: crate::commands::run). `deletepage` closes the page's view and stays the
 // engine's.
 
 /// `folderprops {folder, start?}`: a folder's start number (1 to 6 digits, leading zeros set the
@@ -246,7 +246,7 @@ impl Generic for RenumberpagesParams {
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let doc = cx.doc;
         let scope = folder_scope(doc, self.folder)?;
-        if crate::generated::has_bom_page(doc) {
+        if crate::pages::generated::has_bom_page(doc) {
             cx.derived.outputs(doc);
         }
         let plan = plan_renumber(doc, cx.derived.kept_reports(), scope);

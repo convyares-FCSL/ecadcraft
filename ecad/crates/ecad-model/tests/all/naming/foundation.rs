@@ -1,9 +1,9 @@
 //! Lane 072 A1 (design 072 §9, §14): the foundation types.
 
-mod colour_contracts;
-mod keys_contracts;
-mod places_contracts;
-mod text_contracts;
-mod units_contracts;
-mod words_contracts;
+mod colour;
+mod keys;
+mod places;
+mod text;
+mod units;
+mod words;
 mod words_round_trip;

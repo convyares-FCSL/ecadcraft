@@ -9,14 +9,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::{checks_panel, project_panel};
+use {ecad_app::checks::panel, ecad_app::pages::project_panel};
 use ecad_model::DeviceId;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
-use crate::checks_ui::demo_file;
-use crate::mouse_tester::{Deltas, doc, harness_with, ok, shot};
+use crate::checks::ui::demo_file;
+use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, ok, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -30,7 +30,7 @@ fn save_shot(h: &H, deltas: &Deltas, name: &str) {
 
 fn click(h: &mut H, label: &str) {
     // UI rev 3: the panels' tabs are reached through the strip and the inspector.
-    crate::project_panel::click(h, label);
+    crate::pages::project_panel::click(h, label);
 }
 
 fn head(h: &mut H) -> u64 {
@@ -117,9 +117,9 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
     h.run_steps(3);
     assert!(doc(&mut h).devices.values().any(|c| c.tag().is_some_and(|t| t == "-K?1")));
     save_shot(&h, &deltas, "026-provisional.png");
-    click(&mut h, checks_panel::CHECKS_TAB);
+    click(&mut h, panel::CHECKS_TAB);
     h.run_steps(3);
-    assert!(h.query_all_by_label(checks_panel::FINALISE).count() >= 2, "Finalise on the provisional rows");
+    assert!(h.query_all_by_label(panel::FINALISE).count() >= 2, "Finalise on the provisional rows");
     save_shot(&h, &deltas, "026-checks.png");
 
     // Issue Revision with provisional items: the prompt, then Finalise numbering now.

@@ -7,7 +7,7 @@
 //! - A person draws routes ([`ecad_model::Route`]); each is drawn by one polyline item whose
 //!   vertices are the route's points. A T is a route end on another route (`RouteEnd::On`):
 //!   there are no junction components. The wires come from the commit's rewrite pass
-//!   (`ecad_model::wire_order::rewrite`); the planners here write routes.
+//!   (`ecad_model::connectivity::wire_order::rewrite`); the planners here write routes.
 //! - A continuation is a tagless component made from the starter definition `continuation`
 //!   (FP4), with one connection point keyed `1`.
 //! - Labels use the project's label height and colour style (wiring settings) and are placed so
@@ -30,6 +30,7 @@
 //!
 //! This module reads the document and plans ops; it commits nothing itself.
 
+pub mod commands;
 use crate::CmdError;
 use ecad_model::Noun;
 use std::collections::BTreeMap;
@@ -43,7 +44,7 @@ use ecad_model::{
 
 use crate::devices::{DerivedText, TextOf};
 use crate::symbols::{self, Starter};
-use crate::text_style::fonts::TextMetrics;
+use crate::styles::text_style::fonts::TextMetrics;
 
 /// The reserved layer of conductor labels (derived, plotted), like 009's `ECAD-CABLES`.
 pub const LABEL_LAYER: &str = "ECAD-WIRE-LABELS";
@@ -90,9 +91,9 @@ pub fn continuation_starter() -> &'static Starter {
 /// # Errors
 /// [`NAME_RULE`], or the caption rule ([`crate::continuations::CAPTION_RULE`]).
 pub fn continuation_aid(name: &str, caption: Option<&str>) -> Result<Aid, CmdError> {
-    let name = ecad_model::aid::ContinuationName::new(&valid_name(name)?).map_err(|_| CmdError::refused(NAME_RULE))?;
+    let name = ecad_model::objects::aid::ContinuationName::new(&valid_name(name)?).map_err(|_| CmdError::refused(NAME_RULE))?;
     let caption = match crate::continuations::caption_text(caption)? {
-        Some(c) => Some(ecad_model::aid::Caption::new(&c).map_err(|_| CmdError::refused(crate::continuations::CAPTION_RULE))?),
+        Some(c) => Some(ecad_model::objects::aid::Caption::new(&c).map_err(|_| CmdError::refused(crate::continuations::CAPTION_RULE))?),
         None => None,
     };
     Ok(Aid::Continuation { name: Some(name), caption })
@@ -133,7 +134,7 @@ pub struct WireLabel {
     pub width: f64,
     /// Brief 050a: the conductor's own wire label style (its `text.wire_label.style`), else the
     /// project's.
-    pub own: Option<crate::text_style::OwnStyle>,
+    pub own: Option<crate::styles::text_style::OwnStyle>,
 }
 
 /// The vertices of a route path.
@@ -265,8 +266,8 @@ fn candidates(a: Pt, b: Pt, w: f64, h: f64) -> Vec<Pt> {
 /// page; failing that, the first place clear of labels; failing that, the first place.
 pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>, m: &dyn TextMetrics) -> Vec<WireLabel> {
     // Brief 032 §4.3: the wire label height, weight and width through lane T's text styles.
-    let style = crate::text_style::text_style(doc, crate::text_style::TextKind::WireLabel);
-    let fonts = crate::text_style::fonts::Fonts::resolve_with(doc, m);
+    let style = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::WireLabel);
+    let fonts = crate::styles::text_style::fonts::Fonts::resolve_with(doc, m);
     let h = style.height;
     // Every route on the page (through the page index): (representation, wire, points).
     let mut routes: Vec<(RepresentationId, WireId, Vec<Pt>)> = Vec::new();
@@ -283,7 +284,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
     // getter hides is left out, so its net's next route takes the label).
     let conn = doc.connectivity();
     let mut routes_in: Vec<LabelCandidate> = Vec::new();
-    let mut texts: Vec<(usize, ecad_model::wiring::Label)> = Vec::new();
+    let mut texts: Vec<(usize, ecad_model::connectivity::wiring::Label)> = Vec::new();
     // Brief 050b (design 050 §5.5): each wire's category gives its label's cross-section and
     // colour and its label rule.
     let looks = crate::styles::wire::WireLooks::new(doc);
@@ -294,11 +295,11 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         if look.label_rule == "none" {
             continue;
         }
-        let Some(label) = ecad_model::wiring::label_with(doc, *c, look.cross_section.map(|x| x.0), look.colour.map(|x| x.0.to_string())) else {
+        let Some(label) = ecad_model::connectivity::wiring::label_with(doc, *c, look.cross_section.map(|x| x.0), look.colour.map(|x| x.0.to_string())) else {
             continue;
         };
-        let target = crate::text_style::TextTarget::conductor(*c, Some(page));
-        if crate::text_style::text_shown(doc, target, crate::text_style::TextKind::WireLabel) == crate::text_style::Shown::Off {
+        let target = crate::styles::text_style::TextTarget::conductor(*c, Some(page));
+        if crate::styles::text_style::text_shown(doc, target, crate::styles::text_style::TextKind::WireLabel) == crate::styles::text_style::Shown::Off {
             continue;
         }
         routes_in.push(LabelCandidate { rep: *rid, conductor: *c, net: conn.net_of_conductor(*c), text: label.text.clone(), longest: a.dist(b) });
@@ -312,14 +313,14 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         let keep: Vec<usize> = (0..routes_in.len()).filter(|k| rules.get(*k) == Some(rule)).collect();
         let subset: Vec<LabelCandidate> = keep.iter().filter_map(|k| routes_in.get(*k).cloned()).collect();
         let r = match rule.as_str() {
-            ecad_model::wiring::LABEL_RULE_EACH => LabelRule::Each(label_min_length(doc)),
-            ecad_model::wiring::LABEL_RULE_NET => LabelRule::Net,
+            ecad_model::connectivity::wiring::LABEL_RULE_EACH => LabelRule::Each(label_min_length(doc)),
+            ecad_model::connectivity::wiring::LABEL_RULE_NET => LabelRule::Net,
             _ => project_rule,
         };
         chosen_ix.extend(labelled(&subset, r).into_iter().filter_map(|j| keep.get(j).copied()));
     }
     chosen_ix.sort_unstable();
-    let chosen: Vec<(usize, ecad_model::wiring::Label)> = chosen_ix.into_iter().filter_map(|k| texts.get(k).cloned()).collect();
+    let chosen: Vec<(usize, ecad_model::connectivity::wiring::Label)> = chosen_ix.into_iter().filter_map(|k| texts.get(k).cloned()).collect();
     let mut placed: Vec<Bbox> = Vec::new();
     let mut out = Vec::new();
     for (i, label) in chosen {
@@ -327,7 +328,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         // Brief 050a: a conductor's own wire label style (height, weight, colour, font).
         let own = doc.wires.get(c).and_then(|x| {
             let at = crate::defaults::Scope { conductor: Some(*c), ..crate::defaults::Scope::project() };
-            crate::text_style::own_style(doc, crate::text_style::TextKind::WireLabel, at, &x.display)
+            crate::styles::text_style::own_style(doc, crate::styles::text_style::TextKind::WireLabel, at, &x.display)
         });
         let h = own.as_ref().map_or(h, |o| o.style.height);
         let Some((a, b)) = longest_segment(v) else { continue };
@@ -337,10 +338,10 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         }
         let w = match &own {
             Some(o) => {
-                let f = o.family.as_ref().map_or_else(|| fonts.clone(), |fam| crate::text_style::fonts::Fonts::for_family_with(doc, fam.clone(), m));
-                crate::text_style::fonts::width_in(&f, o.style, &label.text, m)
+                let f = o.family.as_ref().map_or_else(|| fonts.clone(), |fam| crate::styles::text_style::fonts::Fonts::for_family_with(doc, fam.clone(), m));
+                crate::styles::text_style::fonts::width_in(&f, o.style, &label.text, m)
             }
-            None => crate::text_style::fonts::width_in(&fonts, style, &label.text, m),
+            None => crate::styles::text_style::fonts::width_in(&fonts, style, &label.text, m),
         };
         let w = if w.is_finite() && w > 0.0 { w } else { label.text.chars().count() as f64 * h * 0.8 };
         let others = || routes.iter().filter(|(r, _, _)| r != rid).flat_map(|(_, _, v)| v.windows(2));
@@ -393,7 +394,7 @@ pub fn continuation_texts(doc: &Document, a: AidId, rep: RepresentationId, pl: &
         of: TextOf::Name,
         value: name,
         at,
-        height: crate::text_style::text_style(doc, crate::devices::kind_of(TextOf::Name)).height,
+        height: crate::styles::text_style::text_style(doc, crate::devices::kind_of(TextOf::Name)).height,
         halign: ecad_model::TextHAlign::Left,
         valign: ecad_model::TextVAlign::Bottom,
         aci: None,
@@ -935,7 +936,7 @@ pub fn first_words(words: &[String], max: usize) -> String {
 
 /// The net line of a wire's hover lens (design 022 §7): `Net 24V-04 · 3 wires · -S02:14, …`.
 pub fn net_line(doc: &Document, net: &ecad_model::NetData) -> String {
-    let number = ecad_model::wiring::net_number(doc, net).unwrap_or_else(|| "?".into());
+    let number = ecad_model::connectivity::wiring::net_number(doc, net).unwrap_or_else(|| "?".into());
     let n = net.wires.len();
     let wires = if n == 1 { "1 wire".to_string() } else { format!("{n} wires") };
     let points = net_points(doc, net);
@@ -955,10 +956,10 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     if !doc.wires.contains_key(&w) {
         return lines;
     }
-    let number = ecad_model::wiring::net_number(doc, net).unwrap_or_else(|| "? (no number yet)".into());
-    let fixed = if ecad_model::wiring::net_fixed(net) { " (fixed)" } else { "" };
+    let number = ecad_model::connectivity::wiring::net_number(doc, net).unwrap_or_else(|| "? (no number yet)".into());
+    let fixed = if ecad_model::connectivity::wiring::net_fixed(net) { " (fixed)" } else { "" };
     lines.push(format!("Wire number {number}{fixed}"));
-    let pot = ecad_model::wiring::net_potential(doc, net);
+    let pot = ecad_model::connectivity::wiring::net_potential(doc, net);
     if let Some(p) = &pot.name {
         let from = if pot.from_continuation { " (continuation)" } else { "" };
         lines.push(format!("Potential {p}{from}"));
@@ -968,7 +969,7 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     let w = &doc.settings.wiring;
     let cat = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let shown = |key: &str, v: &Option<(String, crate::defaults::Source)>| {
-        let text = |v: &str| if key == ecad_model::wiring::COLOUR { w.colour(v) } else { v.to_string() };
+        let text = |v: &str| if key == ecad_model::connectivity::wiring::COLOUR { w.colour(v) } else { v.to_string() };
         match (v, &cat) {
             (Some((v, crate::defaults::Source::Object)), _) => Some(text(v)),
             (Some((v, _)), Some(n)) => Some(format!("{} ({n})", text(v))),
@@ -977,10 +978,10 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
         }
     };
     let mut values = Vec::new();
-    if let Some(v) = shown(ecad_model::wiring::CROSS_SECTION, &look.cross_section) {
+    if let Some(v) = shown(ecad_model::connectivity::wiring::CROSS_SECTION, &look.cross_section) {
         values.push(format!("Cross-section {v}"));
     }
-    if let Some(v) = shown(ecad_model::wiring::COLOUR, &look.colour_text()) {
+    if let Some(v) = shown(ecad_model::connectivity::wiring::COLOUR, &look.colour_text()) {
         values.push(format!("Colour {v}"));
     }
     if !values.is_empty() {
@@ -1113,7 +1114,7 @@ fn route_net(doc: &Document, r: RouteId) -> Option<&ecad_model::NetData> {
 /// Refuse joining route `r` with a new line of potential `potential` (design 032 §2.2).
 fn merge_potential(doc: &Document, r: RouteId, potential: Option<&str>) -> Result<(), CmdError> {
     let Some(net) = route_net(doc, r) else { return Ok(()) };
-    let theirs = ecad_model::wiring::net_potential(doc, net).name;
+    let theirs = ecad_model::connectivity::wiring::net_potential(doc, net).name;
     if let (Some(x), Some(y)) = (theirs.as_deref(), potential)
         && !x.eq_ignore_ascii_case(y)
     {
@@ -1131,14 +1132,14 @@ pub fn join_sense(doc: &Document, a: RouteId, b: RouteId) -> Result<(), CmdError
     if ka == kb {
         return Ok(());
     }
-    let (px, py) = (ecad_model::wiring::net_potential(doc, x).name, ecad_model::wiring::net_potential(doc, y).name);
+    let (px, py) = (ecad_model::connectivity::wiring::net_potential(doc, x).name, ecad_model::connectivity::wiring::net_potential(doc, y).name);
     if let (Some(px), Some(py)) = (&px, &py)
         && !px.eq_ignore_ascii_case(py)
     {
         return Err(CmdError::refused(format!("That wire carries {px} and this one {py}; joining them would short them. {JOIN_WAY_OUT}")));
     }
-    if ecad_model::wiring::net_fixed(x) && ecad_model::wiring::net_fixed(y) {
-        let (fx, fy) = (ecad_model::wiring::net_number(doc, x).unwrap_or_default(), ecad_model::wiring::net_number(doc, y).unwrap_or_default());
+    if ecad_model::connectivity::wiring::net_fixed(x) && ecad_model::connectivity::wiring::net_fixed(y) {
+        let (fx, fy) = (ecad_model::connectivity::wiring::net_number(doc, x).unwrap_or_default(), ecad_model::connectivity::wiring::net_number(doc, y).unwrap_or_default());
         if fx != fy {
             return Err(CmdError::refused(format!("Both wires have fixed numbers of their own ({fx} and {fy}). {JOIN_WAY_OUT}")));
         }
@@ -1149,7 +1150,7 @@ pub fn join_sense(doc: &Document, a: RouteId, b: RouteId) -> Result<(), CmdError
 /// Whether a wire's net has a fixed number.
 pub fn has_fixed_number(doc: &Document, c: WireId) -> bool {
     let conn = doc.connectivity();
-    conn.net_of_conductor(c).and_then(|n| conn.net(n)).is_some_and(ecad_model::wiring::net_fixed)
+    conn.net_of_conductor(c).and_then(|n| conn.net(n)).is_some_and(ecad_model::connectivity::wiring::net_fixed)
 }
 
 /// The point at end `e` of route `r`.
@@ -1427,7 +1428,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
     {
         let (id, net, conductor): (WireId, NetId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
         let mut w = Wire::new(net, conductor, *a, *b);
-        w.potential = ecad_model::text::Text::new(v).ok();
+        w.potential = ecad_model::naming::text::Text::new(v).ok();
         ops.push(Op::CreateWire { id, wire: w });
         wire = Some(id);
     }
@@ -1510,7 +1511,7 @@ pub fn join_preview(doc: &Document, page: PageId, at: Pt, quiet: &[Pt], potentia
     match m {
         Meets::Free | Meets::Point(_) => None,
         Meets::Merge { route, .. } => {
-            let theirs = route_net(doc, route).and_then(|n| ecad_model::wiring::net_potential(doc, n).name);
+            let theirs = route_net(doc, route).and_then(|n| ecad_model::connectivity::wiring::net_potential(doc, n).name);
             match (theirs, potential) {
                 (Some(x), Some(y)) if !x.eq_ignore_ascii_case(y) => Some((p, format!("{x} \u{2260} {y}"), true)),
                 _ => Some((p, "join".into(), false)),
@@ -1681,10 +1682,10 @@ pub fn label_min_length(doc: &Document) -> f64 {
 
 /// The project's label rule (design 032 §4.1).
 pub fn label_rule(doc: &Document) -> LabelRule {
-    if label_rule_word(doc) == ecad_model::wiring::LABEL_RULE_EACH { LabelRule::Each(label_min_length(doc)) } else { LabelRule::Net }
+    if label_rule_word(doc) == ecad_model::connectivity::wiring::LABEL_RULE_EACH { LabelRule::Each(label_min_length(doc)) } else { LabelRule::Net }
 }
 
-/// The first terminal of `shown` (as `ecad_model::derive::connection_point_positions` lists them) within
+/// The first terminal of `shown` (as `ecad_model::connectivity::derive::connection_point_positions` lists them) within
 /// `tol` of `at`.
 pub fn first_near(shown: &[(ConnectionPointId, RepresentationId, Pt)], at: Pt, tol: f64) -> Option<ConnectionPointId> {
     shown.iter().find(|(_, _, p)| p.near(at, tol)).map(|(t, _, _)| *t)
@@ -1705,13 +1706,13 @@ impl<'a> ShownOnce<'a> {
 
     pub fn connection_point_at(&mut self, at: Pt, tol: f64) -> Option<ConnectionPointId> {
         let (doc, page) = (self.doc, self.page);
-        first_near(self.shown.get_or_insert_with(|| ecad_model::derive::connection_point_positions(doc, page)), at, tol)
+        first_near(self.shown.get_or_insert_with(|| ecad_model::connectivity::derive::connection_point_positions(doc, page)), at, tol)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
     use ecad_model::{Color, Layer, LayerId, Page};
 
     /// A document with one page and one layer, and the style to draw on it.

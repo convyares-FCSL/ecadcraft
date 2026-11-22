@@ -11,11 +11,11 @@
 //! This module excludes the protection reader (its parent) and the contacts a device offers.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ecad_model::device::switching::{MAX_AC3_AMPS, MAX_AC3_WATTS, MAX_CONTROL_VOLTS, MAX_CONTROL_WATTS};
-use ecad_model::device::{Control, Operator, OperatorKind, Switching};
-use ecad_model::units::{Amps, Current, RatedVoltage, Volts, Watts};
+use ecad_model::objects::devices::switching::{MAX_AC3_AMPS, MAX_AC3_WATTS, MAX_CONTROL_VOLTS, MAX_CONTROL_WATTS};
+use ecad_model::objects::devices::{Control, Operator, OperatorKind, Switching};
+use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Volts, Watts};
 
-use super::{MAX_CHARS, Read};
+use crate::devices::ratings::{MAX_CHARS, Read};
 
 /// One read piece of a switching rating.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -54,7 +54,7 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
     }
     let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
     let (num, unit) = lower.split_at(split);
-    let x = crate::rating::parse::decimal(num)?;
+    let x = crate::devices::ratings::parse::decimal(num)?;
     // A voltage with its kind run on: `24vdc`, `230vac`.
     for (suffix, current) in [("vac", Current::Ac), ("vdc", Current::Dc)] {
         if unit == suffix {
@@ -142,8 +142,8 @@ fn within(x: f64, max: f64, what: &str, unit: &str) -> Result<f64, Read<Switchin
 ///
 /// # Example
 /// ```
-/// use ecad_electrical::rating::reader::{Read, read_switching};
-/// use ecad_model::device::OperatorKind;
+/// use crate::devices::ratings::{Read, read_switching};
+/// use ecad_model::objects::devices::OperatorKind;
 /// let Read::Rating(k) = read_switching(OperatorKind::Coil, "24VDC AC-3 9A") else { panic!() };
 /// assert_eq!(k.to_string(), "coil 24 V DC, AC-3 9 A");
 /// assert!(matches!(read_switching(OperatorKind::Coil, "24 V"), Read::Ask(_)));
@@ -211,7 +211,7 @@ fn build(kind: OperatorKind, f: &Found) -> Result<Switching, Read<Switching>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::devices::ratings::*;
     use OperatorKind as K;
 
     fn shown(kind: K, text: &str) -> String {

@@ -4,7 +4,7 @@
 
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{doc, harness_with, head, ok};
+use crate::canvas::mouse_acceptance::{doc, harness_with, head, ok};
 
 #[test]
 fn wire_numbers_one_per_wire_from_project_settings_in_one_transaction() {
@@ -20,18 +20,18 @@ fn wire_numbers_one_per_wire_from_project_settings_in_one_transaction() {
     let per_net = numbers(&doc(&mut h));
     assert!(per_net.len() == 2 && per_net[0].is_some() && per_net[0] == per_net[1], "{per_net:?}");
 
-    crate::project_panel::project_menu(&mut h, ecad_app::project_panel::PROJECT_SETTINGS);
+    crate::pages::project_panel::project_menu(&mut h, ecad_app::pages::project_panel::PROJECT_SETTINGS);
     h.get_by_label("ecad.projectsettings.number_by.conductor").scroll_to_me();
     h.run_steps(3);
     assert!(h.query_by_label("ecad.projectsettings.number_by.net").is_some());
-    crate::project_panel::click(&mut h, "ecad.projectsettings.number_by.conductor");
+    crate::pages::project_panel::click(&mut h, "ecad.projectsettings.number_by.conductor");
     let line = h.state().project_props.as_ref().unwrap().line().unwrap().unwrap();
     assert_eq!(line, r#"wiresettings {"number_by":"conductor"}"#);
     let before = head(&mut h);
-    crate::project_panel::click(&mut h, "ecad.projectprops.ok");
+    crate::pages::project_panel::click(&mut h, "ecad.projectprops.ok");
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert_eq!(d.settings.wiring.number_by, ecad_model::wiring::NumberBy::Conductor);
+    assert_eq!(d.settings.wiring.number_by, ecad_model::connectivity::wiring::NumberBy::Conductor);
     let per_wire = numbers(&d);
     assert_eq!(per_wire[0], per_net[0], "the first wire keeps the number");
     assert!(per_wire[1].is_some() && per_wire[1] != per_wire[0], "{per_wire:?}");

@@ -233,7 +233,7 @@ fn fuse_inserts_count_per_fuse_and_uncovered_fuses_are_checked() {
     // -F01's other five, and -X05's fuse positions.
     let x05_fuses = f.h.p(|p| {
         let d = p.ledger.document();
-        ecad_engine::terminal_types::positions(d, f.x05).iter().filter(|p| p.ty.code == "fuse").count()
+        ecad_electrical::terminal_strips::terminal_blocks::positions(d, f.x05).iter().filter(|p| p.ty.code == "fuse").count()
     });
     assert_eq!(x05_fuses, 3, "fixture: three fuse positions");
     assert_eq!(c.len(), 1);
@@ -656,7 +656,7 @@ fn an_item_value_that_does_not_parse_is_checked() {
     let item: ecad_model::LoosePartId = id(&f.h.run("bomitem", json!({"description": "Cable tray", "qty": 2})).unwrap(), "item");
     let refused = f.h.cfg(|p| {
         let before = p.ledger.document().loose_parts[&item].clone();
-        let after = ecad_model::loose_part::LoosePart { qty: ecad_model::loose_part::Qty(3600), ..before.clone() };
+        let after = ecad_model::objects::loose_part::LoosePart { qty: ecad_model::objects::loose_part::Qty(3600), ..before.clone() };
         p.ledger.commit(ecad_model::Author::User, "a merge", vec![ecad_model::Op::ModifyLoosePart { id: item, before, after }]).is_err()
     });
     assert!(refused, "3.6 pieces is not committed");

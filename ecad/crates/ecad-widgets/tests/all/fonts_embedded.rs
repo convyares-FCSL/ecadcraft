@@ -1,7 +1,7 @@
 //! The embedded faces (brief 037, acceptance criterion 6): the `ui` and `sheet` families are
 //! registered with the embedded faces, and the fonts README's hashes match the committed files.
 
-use ecad_ui::fonts::{self, FACES, LICENCES};
+use ecad_widgets::fonts::{self, FACES, LICENCES};
 use egui::{FontDefinitions, FontFamily};
 use sha2::{Digest, Sha256};
 
@@ -61,7 +61,7 @@ fn ui_and_sheet_families_are_registered_with_the_embedded_faces() {
 fn installed_fonts_reach_the_text_styles() {
     let ctx = egui::Context::default();
     let pass = |ctx: &egui::Context| {
-        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| ecad_ui::style::apply(ui.ctx()));
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| ecad_widgets::style::apply(ui.ctx()));
         out.textures_delta.clear();
     };
     pass(&ctx);
@@ -74,7 +74,7 @@ fn installed_fonts_reach_the_text_styles() {
     assert!(ctx.fonts(|f| f.definitions().families.contains_key(&FontFamily::Name(fonts::SHEET.into()))));
     let body = ctx.global_style().text_styles[&egui::TextStyle::Body].clone();
     assert_eq!(body.family, FontFamily::Name(fonts::UI.into()));
-    assert_eq!(body.size, ecad_tokens::ui_type::BODY.size);
+    assert_eq!(body.size, ecad_widgets::tokens::ui_type::BODY.size);
     let heading = ctx.global_style().text_styles[&egui::TextStyle::Heading].clone();
     assert_eq!(heading.family, FontFamily::Name(fonts::UI_SEMIBOLD.into()));
 }

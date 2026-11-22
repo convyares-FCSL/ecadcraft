@@ -3,14 +3,14 @@
 //! [`TextMetrics`]; the project keeps them in its `derived::ReportsView`, which passes the
 //! engine's metrics.
 
-use ecad_model::effect::Effect;
-use ecad_model::keys::PropsExt;
+use ecad_model::document::effect::Effect;
+use ecad_model::naming::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, DeviceId, Document, End, LoosePartId, ObjectRef, PageId, Pt, Subject, ConnectionPointId, WireId};
 
-use super::*;
-use crate::text_style::fonts::TextMetrics;
+use crate::reports::*;
+use crate::styles::text_style::fonts::TextMetrics;
 
 /// The kept report models (see the module docs).
 #[derive(Debug, Clone, Default)]
@@ -54,7 +54,7 @@ pub struct ReportModels {
     loc_rows: BTreeMap<LocKey, usize>,
     /// The styles the tables write codes and places in.
     style: ecad_model::ReferenceStyle,
-    colour_style: ecad_model::colour::ColourWords,
+    colour_style: ecad_model::geometry::colour::ColourWords,
     /// Location box checks by page.
     box_checks: BTreeMap<PageId, Vec<Check>>,
     no_part_number: usize,
@@ -62,11 +62,11 @@ pub struct ReportModels {
     /// Brief 052: devices with no function (one count row when some device has one).
     no_function: usize,
     /// Brief 028: the terminal strips (design 028 §11.1).
-    pub strips: crate::strips::Strips,
+    pub strips: crate::terminal_strips::Strips,
     /// Brief 045: the PLC racks and cards (design 045 §11.1).
     pub plc: crate::plc::kept::Plc,
     /// Brief 046: the graphic strip pages' kept layout and indexes (design 046 §9).
-    pub strip_pages: crate::strips::pages::StripPages,
+    pub strip_pages: crate::terminal_strips::pages::StripPages,
     /// Brief 028: whether the last update changed a cable row (what a shown cable schedule page
     /// depends on; tester 028, defect 2).
     pub last_cables_changed: bool,
@@ -123,14 +123,14 @@ pub struct Noted {
     /// The PLC model's touch.
     plc: crate::plc::kept::Touch,
     /// What the strip pages' indexes are read for.
-    strips: crate::strips::pages::Named,
+    strips: crate::terminal_strips::pages::Named,
     /// A page number or a sheet count can move ([`ReportModels::moves_page_number`]).
     numbers: bool,
     /// Pages added, removed or moved ([`ReportModels::placed_page`]).
     placed: Vec<PageId>,
     /// The pages whose book position changes (the strips on them): the book before, compared
     /// with the state after.
-    positions: ecad_model::book::PositionsNoted,
+    positions: ecad_model::document::book::PositionsNoted,
 }
 
 /// [`Noted`] without the strip pages' names, for the row update.
@@ -139,7 +139,7 @@ struct Rows {
     late: Scope,
     plc: crate::plc::kept::Touch,
     placed: Vec<PageId>,
-    positions: ecad_model::book::PositionsNoted,
+    positions: ecad_model::document::book::PositionsNoted,
 }
 
 impl ReportModels {
@@ -169,9 +169,9 @@ impl ReportModels {
         for p in &doc.page_order {
             o.set_box_checks(doc, *p);
         }
-        o.strips = crate::strips::Strips::build(doc, &o, &cx);
+        o.strips = crate::terminal_strips::Strips::build(doc, &o, &cx);
         o.plc = crate::plc::kept::Plc::build_with(doc, m);
-        o.strip_pages = crate::strips::pages::StripPages::build(doc, &o.strips);
+        o.strip_pages = crate::terminal_strips::pages::StripPages::build(doc, &o.strips);
         o.generated = doc.page_order.iter().copied().filter(|p| needs_reports(doc, *p)).collect();
         static BUILDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         o.build_id = BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -181,7 +181,7 @@ impl ReportModels {
 
     /// Work out the `continuation-clash` rows (design 033 §5.3).
     fn refresh_continuation(&mut self, doc: &Document) {
-        let rows = crate::generated::continuation_checks(doc, Some(&*self));
+        let rows = crate::pages::generated::continuation_checks(doc, Some(&*self));
         self.continuation_builds += 1;
         if rows != self.continuation {
             self.continuation = rows;
@@ -191,13 +191,13 @@ impl ReportModels {
 
     /// The sheet count of each kept generated page (BOM, terminal plan, cable schedule).
     fn generated_sheets(&self, doc: &Document) -> Vec<(PageId, usize)> {
-        self.generated.iter().map(|p| (*p, crate::generated::sheets_of(doc, *p, Some(self)))).collect()
+        self.generated.iter().map(|p| (*p, crate::pages::generated::sheets_of(doc, *p, Some(self)))).collect()
     }
 
     /// Whether `effect` can move a page number or a contents or revision list sheet count: a page
     /// added, removed or renumbered, a page's kind, or an issue.
-    pub fn moves_page_number(effect: &ecad_model::effect::Effect<'_>) -> bool {
-        use ecad_model::effect::Effect;
+    pub fn moves_page_number(effect: &ecad_model::document::effect::Effect<'_>) -> bool {
+        use ecad_model::document::effect::Effect;
         let style = crate::defaults::strip_pages::STYLE.key;
         match effect {
             // Brief 046 (review): a page's style or sheet changes its sheet count on the document
@@ -208,7 +208,7 @@ impl ReportModels {
             // Added, removed, or both (a move).
             Effect::Page { .. } => true,
             Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard, key, .. } => key.raw == style,
-            Effect::Project { before, after } => crate::revisions::issue_changed(before, after),
+            Effect::Project { before, after } => crate::releases::revisions::issue_changed(before, after),
             Effect::Settings { before, after } => before.sheet != after.sheet,
             Effect::Prop { .. }
             | Effect::Layer { .. }
@@ -233,8 +233,8 @@ impl ReportModels {
 
     /// The page `effect` adds, removes or moves (a page changed in place states no index): whether
     /// it is drawn from these models is read again on the state after.
-    pub fn placed_page(effect: &ecad_model::effect::Effect<'_>) -> Option<PageId> {
-        use ecad_model::effect::Effect;
+    pub fn placed_page(effect: &ecad_model::document::effect::Effect<'_>) -> Option<PageId> {
+        use ecad_model::document::effect::Effect;
         match effect {
             Effect::Page { id, index_before, index_after, .. } if index_before.is_some() || index_after.is_some() => Some(*id),
             Effect::Page { .. }
@@ -297,7 +297,7 @@ impl ReportModels {
     }
 
     /// The strips sorted by tag (counted in [`ReportModels::sorts`]).
-    pub fn sorted_strips(&self) -> Vec<&crate::strips::StripData> {
+    pub fn sorted_strips(&self) -> Vec<&crate::terminal_strips::StripData> {
         self.sorts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.strips.sorted()
     }
@@ -449,7 +449,7 @@ impl ReportModels {
         let mut strips = std::mem::take(&mut self.strips);
         let which = strips.touched(
             doc,
-            &crate::strips::StripScope {
+            &crate::terminal_strips::StripScope {
                 devices: &scope.devices,
                 wires: &scope.wires,
                 cables: &scope.cables,
@@ -486,7 +486,7 @@ impl ReportModels {
     /// Verify mode (brief 028, design 028 §11.4): the kept strips against a rebuild on `doc`; a
     /// difference is put right and described (a bug, for the event log).
     pub fn verify_strips_with(&mut self, doc: &Document) -> Option<String> {
-        let built = crate::strips::Strips::build(doc, self, &PageCx::of(doc));
+        let built = crate::terminal_strips::Strips::build(doc, self, &PageCx::of(doc));
         // Brief 046: the graphic pages' kept data is built from the kept strips after every
         // commit (no update map), so it follows them.
         if self.strips.same_as(&built) {
@@ -496,7 +496,7 @@ impl ReportModels {
         self.strips = built;
         self.strips.last_work = work;
         // The page layout follows the rebuilt strips (review of 046, finding 2).
-        self.strip_pages.adopt(crate::strips::pages::StripPages::build(doc, &self.strips));
+        self.strip_pages.adopt(crate::terminal_strips::pages::StripPages::build(doc, &self.strips));
         Some("the terminal strip model was out of step; rebuilt".to_string())
     }
 
@@ -632,7 +632,7 @@ impl ReportModels {
         // its first drawn half), with that half's tag and location.
         let halves = crate::connectors::half_rows(doc, c, &mut BoxCache::default());
         // Sub-items only where `for` can name some or fuses can be uncovered.
-        let fuseterm = crate::strips::fuse_terminal_block_of(doc, c).is_some();
+        let fuseterm = crate::terminal_strips::fuse_terminal_block_of(doc, c).is_some();
         let subs = if fuseterm { bom::Subs::None } else { bom::sub_items(doc, c) };
         let mut covered: BTreeSet<&str> = BTreeSet::new();
         let mut inserts = 0;
@@ -681,10 +681,10 @@ impl ReportModels {
     }
 
     /// Brief 047: an item's entry and location (its own, else the project's; design 047 §3). An
-    /// item is a loose part (design 072 §6.4), read through [`ecad_model::loose_part::Bom`].
+    /// item is a loose part (design 072 §6.4), read through [`ecad_model::objects::loose_part::Bom`].
     fn set_loose(&mut self, doc: &Document, id: LoosePartId) {
-        use crate::designations::{Aspect, code_of, default_key};
-        use ecad_model::loose_part::{Bom, ItemUnit};
+        use crate::locations::designations::{Aspect, code_of, default_key};
+        use ecad_model::objects::loose_part::{Bom, ItemUnit};
         self.remove_entries(Owner::Loose(id));
         let Some(p) = doc.loose_parts.get(&id) else { return };
         // Brief 052: stored values are entry keys of the project's list; shown by their codes.
@@ -724,13 +724,13 @@ impl ReportModels {
         self.remove_device(c);
         self.remove_entries(Owner::Device(c));
         // Review of PR #57, 4: a link key on a device that is not a strip.
-        let misplaced = crate::strips::strip_of(doc, c).is_none()
-            && doc.devices.get(&c).is_some_and(|x| x.properties.keys().any(|k| ecad_model::links::jumper_bar_number(k).is_some()));
+        let misplaced = crate::terminal_strips::strip_of(doc, c).is_none()
+            && doc.devices.get(&c).is_some_and(|x| x.properties.keys().any(|k| ecad_model::connectivity::jumper_bars::jumper_bar_number(k).is_some()));
         if misplaced {
             let keys = doc
                 .devices
                 .get(&c)
-                .map(|x| x.properties.keys().filter(|k| ecad_model::links::jumper_bar_number(k).is_some()).cloned().collect())
+                .map(|x| x.properties.keys().filter(|k| ecad_model::connectivity::jumper_bars::jumper_bar_number(k).is_some()).cloned().collect())
                 .unwrap_or_default();
             self.link_keys.insert(c, keys);
             self.links_off_strip.insert(c);
@@ -746,7 +746,7 @@ impl ReportModels {
         }
         let Some(comp) = doc.devices.get(&c) else { return };
         let location = locations::resolve_with(doc, c, cache);
-        let goto = crate::reps::goto(doc, c, None).and_then(|rid| doc.representations.get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
+        let goto = crate::symbols::reps::goto(doc, c, None).and_then(|rid| doc.representations.get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
         let row = DeviceRow {
             component: c,
             tag: comp.tag().unwrap_or_default().to_string(),
@@ -767,7 +767,7 @@ impl ReportModels {
         }
         // Brief 028 (Q13): a strip has one BOM row per terminal type, from the strip model; its
         // part lines are entries like a device's (brief 047).
-        let main = (crate::strips::strip_of(doc, c).is_none() && !connector).then(|| Entry {
+        let main = (crate::terminal_strips::strip_of(doc, c).is_none() && !connector).then(|| Entry {
             owner: Owner::Device(c),
             line: 0,
             tag: row.tag.clone(),
@@ -804,7 +804,7 @@ impl ReportModels {
         let Some(c) = term.device() else { return EndCell { order, ..EndCell::default() } };
         {
             {
-                let label = crate::terminal_types::connection_point_name(doc, t);
+                let label = crate::terminal_strips::terminal_blocks::connection_point_name(doc, t);
                 let device = self.devices.get(&c);
                 let tag = device.map(|d| d.tag.clone()).or_else(|| crate::devices::tag_of(doc, c).map(str::to_string)).unwrap_or_else(|| "?".into());
                 // Brief 044: a connector pin's end is named by its half (`-X10.S:3`).
@@ -836,7 +836,7 @@ impl ReportModels {
         let Some(cond) = doc.wires.get(&w) else { return };
         // Where its ends are drawn (book order), and the middle of the first segment of the first
         // route landing on its first point.
-        let [a_at, b_at] = crate::outputs::end_points(doc, w, cx);
+        let [a_at, b_at] = crate::reports::end_points(doc, w, cx);
         let mid = crate::wires::routes_of_wire(doc, w).into_iter().filter_map(|r| doc.routes.get(&r)).min_by_key(|r| cx.pos(r.page)).and_then(|r| {
             let (Some(a), Some(b)) = (r.points.first(), r.points.get(1).or(r.points.first())) else { return None };
             Some((r.page, Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
@@ -848,7 +848,7 @@ impl ReportModels {
         let [from, to] = ends;
         let conn = doc.connectivity();
         let net = conn.net_of_conductor(w).and_then(|id| conn.net(id));
-        let pot = net.map(|n| ecad_model::wiring::net_potential(doc, n));
+        let pot = net.map(|n| ecad_model::connectivity::wiring::net_potential(doc, n));
         // Brief 050b: the wire's category gives what the wire has none of its own.
         let look = crate::styles::wire::wire_draw(doc, w);
         let cross_section = look.cross_section.as_ref().map(|v| v.0.clone());
@@ -871,7 +871,7 @@ impl ReportModels {
             .into_iter()
             .filter_map(|k| {
                 let cab = doc.cables.get(&k)?;
-                let tag = cab.properties.text(ecad_model::keys::TAG).map(str::to_string).unwrap_or_else(|| "?".into());
+                let tag = cab.properties.text(ecad_model::naming::keys::TAG).map(str::to_string).unwrap_or_else(|| "?".into());
                 let i = cab.cores.iter().position(|m| m.wire() == Some(w))?;
                 let core = cab.cores.get(i).and_then(|m| m.label_str().map(str::to_string)).unwrap_or_else(|| (i + 1).to_string());
                 Some(format!("{tag} core {core}"))
@@ -879,7 +879,7 @@ impl ReportModels {
             .collect::<Vec<_>>()
             .join(", ");
         // Brief 028 (design 028 §9.2): a wire between two terminals of one strip is a bridge.
-        let cable = match crate::strips::bridge_of(doc, w) {
+        let cable = match crate::terminal_strips::bridge_of(doc, w) {
             Some(strip) if cable.is_empty() => format!("Bridge {}", crate::devices::tag_of(doc, strip).unwrap_or("?")),
             _ => cable,
         };
@@ -890,7 +890,7 @@ impl ReportModels {
             w,
             WireRow {
                 conductor: w,
-                wire_number: ecad_model::wiring::wire_number(doc, w),
+                wire_number: ecad_model::connectivity::wiring::wire_number(doc, w),
                 from,
                 to,
                 cross_section,
@@ -999,7 +999,7 @@ impl ReportModels {
                 designation: p("designation"),
                 go,
                 // The chains' heads, then the stored cores with no wire (spare or on a loose line).
-                count: crate::strips::count_cores(
+                count: crate::terminal_strips::count_cores(
                     crate::styles::cable::offer(doc, k),
                     &heads.iter().cloned().chain(cab.cores.iter().filter(|m| m.wire().is_none()).cloned()).collect::<Vec<_>>(),
                 ),
@@ -1013,8 +1013,8 @@ impl ReportModels {
                 glands: crate::cables::Side::BOTH.map(|side| crate::cables::gland(doc, k, side).map(|(g, _)| g)),
                 shield: crate::cables::shield(doc, k)
                     .map(|(w, _)| w)
-                    .filter(|w| *w != ecad_model::style::cable::Shield::None)
-                    .map(|w| ecad_model::words::Word::word(w).to_string()),
+                    .filter(|w| *w != ecad_model::objects::styles::cable::Shield::None)
+                    .map(|w| ecad_model::naming::words::Word::word(w).to_string()),
             },
         );
     }
@@ -1160,7 +1160,7 @@ impl ReportModels {
             for (n, items) in &s.level_missing {
                 let go = s.rows.iter().find(|r| r.go.is_some()).and_then(|r| r.go);
                 let first = items.first().cloned().unwrap_or_default();
-                let pos = ecad_model::links::split_level(&first).map(|(p, _)| p.to_string()).unwrap_or_default();
+                let pos = ecad_model::connectivity::jumper_bars::split_level(&first).map(|(p, _)| p.to_string()).unwrap_or_default();
                 let levels = s.rows.iter().filter(|r| r.label == pos).count();
                 out.push(Check {
                     kind: Kind::LevelMissing,
@@ -1366,7 +1366,7 @@ impl ReportModels {
     /// How many sheets the BOM-by-location page needs (design 024 §8.2): from the rows per
     /// location only (O(locations)), never the BOM rows themselves.
     pub fn bom_sheets(&self) -> usize {
-        let per = crate::generated::rows_per_sheet();
+        let per = crate::pages::generated::rows_per_sheet();
         let (mut sheets, mut used) = (1, 0);
         // Brief 028: the strips' rows per location, kept with them (O(locations), never the rows).
         // Brief 047: the nested layout's counts are kept too (main rows, then each part line).
@@ -1426,7 +1426,7 @@ impl ReportModels {
 
     /// A strip's BOM rows (design 028 §9.1, Q13; brief 036 §7.2): one row per terminal type, Qty
     /// in positions (a three-level terminal is one part), in catalogue order.
-    fn strip_bom(&self, s: &crate::strips::StripData, location: Option<String>) -> Vec<BomRow> {
+    fn strip_bom(&self, s: &crate::terminal_strips::StripData, location: Option<String>) -> Vec<BomRow> {
         let mut out = Vec::new();
         for t in &s.types {
             if t.qty() == 0 {
@@ -1577,7 +1577,7 @@ impl ReportModels {
                 let what = [
                     Some(description.unwrap_or_else(|| "Wire".into())),
                     (!cs.is_empty()).then_some(cs),
-                    (!colour.is_empty()).then(|| ecad_model::wiring::colour_text(self.colour_style, &colour)),
+                    (!colour.is_empty()).then(|| ecad_model::connectivity::wiring::colour_text(self.colour_style, &colour)),
                 ]
                 .into_iter()
                 .flatten()
@@ -1843,7 +1843,7 @@ impl ReportModels {
                 end_loc(&r.to),
                 // Brief 050b (design 050 §5.6): the wire's own value or its category's.
                 Cell::opt(&r.cross_section, || "No cross-section, and its category gives none.".into()),
-                Cell::opt(&r.colour.as_deref().map(|c| ecad_model::wiring::colour_text(self.colour_style, c)), || {
+                Cell::opt(&r.colour.as_deref().map(|c| ecad_model::connectivity::wiring::colour_text(self.colour_style, c)), || {
                     "No colour, and its category gives none.".into()
                 }),
                 Cell::ok(r.potential.clone().unwrap_or_default()),
@@ -1956,18 +1956,18 @@ impl ReportModels {
             rows: Vec::new(),
         };
         let mut go = Vec::new();
-        let strips: Vec<&crate::strips::StripData> = match strip {
+        let strips: Vec<&crate::terminal_strips::StripData> = match strip {
             Some(c) => self.strips.get(c).into_iter().collect(),
             None => self.strips.sorted(),
         };
         for s in strips {
             for item in s.plan(accessories) {
                 let (ri, r) = match item {
-                    crate::strips::PlanItem::Term(i, r) => (i, r),
-                    crate::strips::PlanItem::Gap { gap, acc } => {
+                    crate::terminal_strips::PlanItem::Term(i, r) => (i, r),
+                    crate::terminal_strips::PlanItem::Gap { gap, acc } => {
                         let pe_before = gap_pe(s, gap);
                         let words =
-                            if acc == crate::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
+                            if acc == crate::terminal_strips::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
                         let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok(words), Cell::default(), Cell::ok(acc.mark())];
                         row.extend(std::iter::repeat_n(Cell::default(), 5));
                         row.push(Cell::opt(&s.acc.gap_part(acc, pe_before).cloned(), || "No part number for this accessory.".into()));
@@ -1991,7 +1991,7 @@ impl ReportModels {
                 let lines = r.inside.len().max(r.outside.len()).max(1);
                 for i in 0..lines {
                     let (inside, outside) = (r.inside.get(i), r.outside.get(i));
-                    let side = |c: Option<&crate::strips::SideCell>, f: fn(&crate::strips::SideCell) -> Option<String>, why: &str| match c {
+                    let side = |c: Option<&crate::terminal_strips::SideCell>, f: fn(&crate::terminal_strips::SideCell) -> Option<String>, why: &str| match c {
                         None => Cell::default(),
                         Some(c) => Cell::opt(&f(c), || why.to_string()),
                     };
@@ -2053,8 +2053,8 @@ impl ReportModels {
         for s in self.strips.sorted() {
             for item in s.plan(true) {
                 let r = match item {
-                    crate::strips::PlanItem::Term(_, r) => r,
-                    crate::strips::PlanItem::Gap { gap, acc } => {
+                    crate::terminal_strips::PlanItem::Term(_, r) => r,
+                    crate::terminal_strips::PlanItem::Gap { gap, acc } => {
                         let mut row =
                             vec![Cell::ok(s.tag.clone()), opt(s.location.as_ref()), Cell::ok(s.offer.map(|o| o.text()).unwrap_or_default())];
                         row.extend([Cell::default(), Cell::default(), Cell::ok("accessory")]);

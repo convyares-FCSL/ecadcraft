@@ -9,8 +9,8 @@ use cadcraft_engine::ext::MarkShape;
 use ecad_drawing_style::sheet::PAPER;
 use ecad_engine::checks::Kind;
 use ecad_engine::interact::overlay_marks;
-use ecad_engine::look::{self, Painted};
-use ecad_engine::printbook;
+use ecad_engine::cables::draw::{self, Painted};
+use ecad_engine::export::printbook;
 use ecad_model::{Pt, WireId};
 use serde_json::json;
 
@@ -23,7 +23,7 @@ fn rgb(c: ecad_drawing_style::Color) -> Rgb {
 #[test]
 fn colour_codes_are_one_or_two_colours() {
     let one = |c: &str| {
-        look::colour_code(c).map(|(a, b)| (look::CODE_COLOURS[a].0.forms().code2.as_str(), b.map(|i| look::CODE_COLOURS[i].0.forms().code2.as_str())))
+        draw::colour_code(c).map(|(a, b)| (draw::CODE_COLOURS[a].0.forms().code2.as_str(), b.map(|i| draw::CODE_COLOURS[i].0.forms().code2.as_str())))
     };
     for (code, want) in [
         ("BU", Some(("BU", None))),
@@ -42,22 +42,22 @@ fn colour_codes_are_one_or_two_colours() {
     ] {
         assert_eq!(one(code), want, "{code}");
     }
-    let gnye = look::wire_colours(&ecad_model::wire::Colours::parse("GNYE").unwrap(), &PAPER).unwrap();
+    let gnye = draw::wire_colours(&ecad_model::objects::wire::Colours::parse("GNYE").unwrap(), &PAPER).unwrap();
     assert_eq!(
         (gnye.solid, gnye.dashes),
         (ecad_drawing_style::wire::PE.paper.solid, ecad_drawing_style::wire::PE.paper.dashes),
         "GNYE is the PE look"
     );
     assert_eq!(
-        look::wire_colours(&ecad_model::wire::Colours::parse("BU").unwrap(), &PAPER).map(|w| w.solid),
+        draw::wire_colours(&ecad_model::objects::wire::Colours::parse("BU").unwrap(), &PAPER).map(|w| w.solid),
         Some(ecad_drawing_style::wire::DC_24V.paper.solid)
     );
-    assert_eq!(look::wire_colours(&ecad_model::wire::Colours::parse("BK").unwrap(), &PAPER).map(|w| w.solid), Some(PAPER.ink), "black is ink");
+    assert_eq!(draw::wire_colours(&ecad_model::objects::wire::Colours::parse("BK").unwrap(), &PAPER).map(|w| w.solid), Some(PAPER.ink), "black is ink");
 }
 
 #[test]
 fn dashes_are_two_on_two_off_round_corners() {
-    let d = look::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(5.0, 0.0), Pt::new(5.0, 5.0)], 2.0, 2.0);
+    let d = draw::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(5.0, 0.0), Pt::new(5.0, 5.0)], 2.0, 2.0);
     let near = |a: Pt, b: Pt| a.dist(b) < 1e-9;
     let want = [
         (Pt::new(0.0, 0.0), Pt::new(2.0, 0.0)),
@@ -70,9 +70,9 @@ fn dashes_are_two_on_two_off_round_corners() {
     for ((a, b), (c, e)) in d.iter().zip(want) {
         assert!(near(*a, c) && near(*b, e), "{d:?}");
     }
-    assert!(look::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(1e12, 0.0)], 2.0, 2.0).len() <= look::MAX_DASHES, "bounded");
-    assert!(look::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(5.0, 0.0)], 0.0, 2.0).is_empty());
-    assert!(look::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(f64::NAN, 0.0)], 2.0, 2.0).is_empty());
+    assert!(draw::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(1e12, 0.0)], 2.0, 2.0).len() <= draw::MAX_DASHES, "bounded");
+    assert!(draw::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(5.0, 0.0)], 0.0, 2.0).is_empty());
+    assert!(draw::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(f64::NAN, 0.0)], 2.0, 2.0).is_empty());
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     let (mut h, w) = colour_page(0x40_0002, "GNYE");
     let page = h.first_page();
     let doc = h.doc();
-    let routes = h.p(|p| look::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER));
+    let routes = h.p(|p| draw::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER));
     let r = routes.iter().find(|r| r.conductor == w).expect("the GNYE wire is coloured");
     assert_eq!((r.colours.solid, r.colours.dashes), (ecad_drawing_style::wire::PE.paper.solid, ecad_drawing_style::wire::PE.paper.dashes));
     assert!(r.handle.is_some(), "drawn on the page");
@@ -119,13 +119,13 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     assert!(dashes.len() >= 10 && dashes.iter().all(|e| e.common.color == yellow), "{} dashes", dashes.len());
     let dash = dashes[0].handle;
     assert_eq!(h.mapped(page, dash), Some(ecad_engine::project::Mapped::Label(w)));
-    assert_eq!(h.p(|p| look::pick_routes(p, page, &[dash])), Some(vec![route]));
-    assert_eq!(h.p(|p| look::pick_routes(p, page, &[route])), None);
+    assert_eq!(h.p(|p| draw::pick_routes(p, page, &[dash])), Some(vec![route]));
+    assert_eq!(h.p(|p| draw::pick_routes(p, page, &[route])), None);
     // The recovery check (a page rebuilt from the document) accepts the coloured route and its
     // dashes: it failed before `verify` knew them, so an opened project's page was unavailable.
     let v = h.pv(|p, pg| {
         let d = pg.drawing_of(p, page).unwrap();
-        ecad_engine::verify::verify_page(
+        ecad_engine::dev::verify::verify_page(
             p.ledger.document(),
             page,
             &d,
@@ -148,9 +148,9 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     assert!(mono.model.iter().all(|e| e.common.color != green), "the route prints in ink");
     let label = mono.model.iter().any(|e| matches!(&e.kind, EntityKind::Text(t) if t.value.contains("GN/YE")));
     assert!(label, "the mono print's wire label says GN/YE");
-    assert!(ecad_engine::defaults::print::mono(&doc), "print.colour is mono by default");
-    assert_eq!(ecad_engine::defaults::print::mono_param(&doc, &json!({"colour": "colour"})), Ok(false));
-    assert!(ecad_engine::defaults::print::mono_param(&doc, &json!({"colour": "sepia"})).is_err());
+    assert!(ecad_electrical::defaults::print::mono(&doc), "print.colour is mono by default");
+    assert_eq!(ecad_electrical::defaults::print::mono_param(&doc, &json!({"colour": "colour"})), Ok(false));
+    assert!(ecad_electrical::defaults::print::mono_param(&doc, &json!({"colour": "sepia"})).is_err());
     // No information check for a known code.
     assert!(!ecad_engine::checks::all(&doc, 0.01).iter().any(|c| c.kind == Kind::UnknownColour));
 }
@@ -181,7 +181,7 @@ fn overlay_never_prints() {
     for s in [MarkShape::Ring, MarkShape::Dot, MarkShape::Square] {
         assert!(marks.iter().any(|m| m.shape == s), "a {s:?} is shown");
     }
-    assert!(h.p(|p| look::painted_marks(p, uid)).iter().any(|m| matches!(m, Painted::Warning(_))), "a warning is shown");
+    assert!(h.p(|p| draw::painted_marks(p, uid)).iter().any(|m| matches!(m, Painted::Warning(_))), "a warning is shown");
     let overlay: Vec<Rgb> = [
         PAPER.grid,
         PAPER.connection_point,
@@ -205,9 +205,9 @@ fn overlay_never_prints() {
             }
         }
     }
-    let drawing = h.p(|p| ecad_engine::preview::preview_drawing(p, page)).unwrap();
-    let view = ecad_engine::preview::PreviewView::extents(&drawing, 600, 400);
-    let img = ecad_engine::preview::rasterise(&drawing, view, 600, 400, [255, 255, 255], 2.0).unwrap();
+    let drawing = h.p(|p| ecad_engine::pages::preview::preview_drawing(p, page)).unwrap();
+    let view = ecad_engine::pages::preview::PreviewView::extents(&drawing, 600, 400);
+    let img = ecad_engine::pages::preview::rasterise(&drawing, view, 600, 400, [255, 255, 255], 2.0).unwrap();
     let px = img.rgba.chunks(4).filter(|c| c.len() >= 3).map(|c| Rgb(c[0], c[1], c[2]));
     let found: Vec<Rgb> = px.filter(|c| overlay.contains(c)).take(3).collect();
     assert!(found.is_empty(), "overlay colours in the raster export: {found:?}");
@@ -243,7 +243,7 @@ fn a_tag_is_its_height_from_baseline_to_cap_in_the_sheet_font() {
 
 /// Fix round of PR #80, 1: a hostile page asking for millions of dashes (a 100 km two-colour wire,
 /// and more two-colour wires than the page budget covers) draws at most
-/// [`look::MAX_PAGE_DASHES`] dashes, the wires left out keep their first colour, nothing panics,
+/// [`draw::MAX_PAGE_DASHES`] dashes, the wires left out keep their first colour, nothing panics,
 /// and Checks has one row for the page; it goes when the colours do.
 #[test]
 fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
@@ -261,12 +261,12 @@ fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
         h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": "GNYE"})).unwrap();
     }
     let doc = h.doc();
-    let budget = look::dash_budget(&doc, page);
+    let budget = draw::dash_budget(&doc, page);
     assert_eq!((budget.dashed.len(), budget.left_out.len()), (5, 2), "{budget:?}");
     assert!(budget.left_out.contains(wires.last().unwrap()), "the 100 km wire is left out");
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
     let dashes = ents.iter().filter(|e| e.common.layer == ecad_engine::wires::DASH_LAYER).count();
-    assert!(dashes > 0 && dashes <= look::MAX_PAGE_DASHES, "{dashes} dashes");
+    assert!(dashes > 0 && dashes <= draw::MAX_PAGE_DASHES, "{dashes} dashes");
     // Every wire still has its first colour.
     let green = Color::True(rgb(ecad_drawing_style::wire::PE.paper.solid));
     let handles: Vec<_> = wires.iter().map(|w| h.route_handle(page, *w)).collect();

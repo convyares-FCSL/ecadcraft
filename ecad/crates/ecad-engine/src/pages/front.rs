@@ -6,7 +6,7 @@ use cadcraft_engine::geom::Vec3;
 use ecad_model::{DefinitionId, Document, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::frame::{FrameInput, LABEL_ACI, Part, TextDraw};
+use crate::pages::frame::{FrameInput, LABEL_ACI, Part, TextDraw};
 use crate::front::*;
 use crate::generated::{Draw, LAYER};
 use crate::text_style::{Look, TextKind};
@@ -17,7 +17,7 @@ const OVERLAY: &str = crate::convert::MARKER_LAYER;
 /// 5): block titles, body text, column heads, the customer line. The factors are `[layout]` data in
 /// `pages.toml`.
 fn cover_factor(key: &str) -> f64 {
-    crate::defaults::data::layout(key)
+    ecad_electrical::defaults::data::layout(key)
 }
 /// `ecad.front.derived` and `ecad.front.typed` in ACI (blue, orange).
 const DERIVED_ACI: u8 = 5;
@@ -42,7 +42,7 @@ fn outline(d: &mut Draw, r: R, aci: u8, caption: &str, look: TextDraw) {
             let s1 = ((i as f64 * (dash + gap) + dash) / len).min(1.0);
             let p = |s: f64| (a.0 + (z.0 - a.0) * s, a.1 + (z.1 - a.1) * s);
             let kind = kind_for_primitive(&Primitive::Line { a: d.p(p(s0).0, p(s0).1), b: d.p(p(s1).0, p(s1).1) });
-            d.out.push(Part { kind, weight: Some(crate::frame::THIN_WEIGHT), aci: Some(aci), layer: OVERLAY });
+            d.out.push(Part { kind, weight: Some(crate::pages::frame::THIN_WEIGHT), aci: Some(aci), layer: OVERLAY });
         }
     };
     seg((l, t), (rr, t));
@@ -69,9 +69,9 @@ fn title(d: &mut Draw, r: R, text: &str, look: TextDraw, s: f64) -> f64 {
 }
 
 /// A filled swatch (the insulation colour) with a thin ink outline; two colours as halves.
-fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, colours: Option<&ecad_model::wire::Colours>) {
-    let rgb = |c: ecad_model::colour::ConductorColour| {
-        let c = crate::look::rgb(crate::words::drawn(c, &ecad_drawing_style::sheet::PAPER));
+fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, colours: Option<&ecad_model::objects::wire::Colours>) {
+    let rgb = |c: ecad_model::geometry::colour::ConductorColour| {
+        let c = crate::cables::draw::rgb(ecad_electrical::cables::words::drawn(c, &ecad_drawing_style::sheet::PAPER));
         Some(cadcraft_engine::doc::color::nearest_aci(c))
     };
     let fill = |d: &mut Draw, x0: f64, x1: f64, aci: Option<u8>| {
@@ -89,7 +89,7 @@ fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, colours: Option<&ecad_mo
         Some([a]) => fill(d, at.0, at.0 + w, rgb(*a)),
         _ => {}
     }
-    d.rect((at.0, at.1 - h / 2.0), (at.0 + w, at.1 + h / 2.0), crate::look::WIRE_WEIGHT, None);
+    d.rect((at.0, at.1 - h / 2.0), (at.0 + w, at.1 + h / 2.0), crate::cables::draw::WIRE_WEIGHT, None);
 }
 
 /// A definition's graphics fitted into the box `cell` (paper millimetres, centred).
@@ -143,7 +143,7 @@ fn symbol(d: &mut Draw, doc: &Document, def: DefinitionId, cell: R) {
             }
             _ => continue,
         };
-        d.out.push(Part { kind: kind_for_primitive(&mapped), weight: Some(crate::frame::THIN_WEIGHT), aci: None, layer: LAYER });
+        d.out.push(Part { kind: kind_for_primitive(&mapped), weight: Some(crate::pages::frame::THIN_WEIGHT), aci: None, layer: LAYER });
     }
 }
 
@@ -169,7 +169,7 @@ fn mark(d: &mut Draw, cell: &Cell, r: R) {
 /// The cover's content inside the frame `input` (paper millimetres, sheet origin at `x0`), and how
 /// the legend fitted.
 pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendFit) {
-    let k = ecad_model::sheet::unit_scale(input.unit);
+    let k = ecad_model::document::sheet::unit_scale(input.unit);
     let mut d = Draw { k, x0, out: Vec::new() };
     let looks = Look::new(doc);
     let look = |kind| TextDraw::of(&looks, kind, input.unit);
@@ -205,13 +205,13 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     let small = sized("front.cover.body");
     let caption = sized("front.cover.column_head");
     let on = |b: Block| b.on(doc);
-    let prop = |k: &str| crate::frames::project_text(doc, k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let prop = |k: &str| ecad_electrical::pages::frames::project_text(doc, k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
 
     // Heading and customer line, centred.
-    let title_text = prop(crate::frames::TITLE).unwrap_or_default();
-    let heading = crate::defaults::resolve(doc, &crate::defaults::pages::HEADING, crate::defaults::Scope::project()).text();
+    let title_text = prop(ecad_electrical::pages::frames::TITLE).unwrap_or_default();
+    let heading = ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::pages::HEADING, ecad_electrical::defaults::Scope::project()).text();
     let heading = heading.trim();
-    let heading = if heading.eq_ignore_ascii_case(crate::defaults::pages::NO_HEADING) { "" } else { heading };
+    let heading = if heading.eq_ignore_ascii_case(ecad_electrical::defaults::pages::NO_HEADING) { "" } else { heading };
     let line = match (title_text.is_empty(), heading.is_empty()) {
         (false, false) => format!("{title_text} · {heading}"),
         (false, true) => title_text,
@@ -220,7 +220,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     let mid = (l + r) / 2.0;
     d.text((mid, heading_y), cover_draw, &line, HAlign::Center, None, Some(r - l));
     if on(Block::CustomerSite) {
-        let cs: Vec<String> = [prop(crate::frames::CUSTOMER), prop("site")].into_iter().flatten().collect();
+        let cs: Vec<String> = [prop(ecad_electrical::pages::frames::CUSTOMER), prop("site")].into_iter().flatten().collect();
         if !cs.is_empty() {
             d.text((mid, customer_y), sized("front.cover.customer"), &cs.join(" · "), HAlign::Center, Some(LABEL_ACI), Some(r - l));
         }

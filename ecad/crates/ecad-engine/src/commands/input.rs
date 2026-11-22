@@ -1,18 +1,18 @@
 //! A session command's typed input (brief 070): a params struct read with
-//! [`ecad_electrical::cmd::input::parse`] that runs with the session ([`Command`]).
+//! [`ecad_electrical::commands::input::parse`] that runs with the session ([`Command`]).
 //!
-//! Excludes: reading the parameters ([`ecad_electrical::cmd::input`]) and generic commands
-//! ([`crate::cmd::generic`]).
+//! Excludes: reading the parameters ([`ecad_electrical::commands::input`]) and generic commands
+//! ([`crate::generic`]).
 
 use cadcraft_engine::Session;
 use cadcraft_engine::cmd::Run;
-use ecad_electrical::cmd::input::{parse, schema};
-use ecad_electrical::cmd::run::{Access, Io};
+use ecad_electrical::commands::input::{parse, schema};
+use ecad_electrical::commands::run::{Access, Io};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::cmd::err;
+use crate::commands::err;
 
 /// A command with a typed input that needs the session.
 pub(crate) trait Command: DeserializeOwned + JsonSchema {

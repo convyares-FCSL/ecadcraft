@@ -6,26 +6,26 @@
 
 use cadcraft_engine::doc::Handle;
 use ecad_app::App;
-use ecad_app::actions::{self, ObjectKind, Slot};
+use ecad_app::commands::actions::{self, ObjectKind, Slot};
 use ecad_app::library::builder::{self, Tool};
 use ecad_app::library::draft::Picked;
 use ecad_app::library::{browser, details, review};
 use ecad_app::shell::Workspace;
-use ecad_engine::symbols;
+use ecad_electrical::symbols;
 use ecad_model::{DeviceId, Pt, RepresentationId, Subject};
 use eframe::egui::{Event, Key, Modifiers, PointerButton, Pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use serde_json::{Value, json};
 
-use crate::project_panel::{doc, head, new_app};
+use crate::pages::project_panel::{doc, head, new_app};
 
 type H = Harness<'static, App>;
 
-fn shell(deltas: Option<crate::mouse_tester::Deltas>) -> H {
+fn shell(deltas: Option<crate::canvas::mouse_acceptance::Deltas>) -> H {
     let mut b = Harness::builder().with_size(vec2(1920.0, 1080.0)).with_step_dt(1.0 / 60.0);
     if let Some(d) = deltas {
-        b = b.renderer(crate::mouse_tester::Collect(d));
+        b = b.renderer(crate::canvas::mouse_acceptance::Collect(d));
     }
     let mut h = b.build_ui_state(
         |ui, t: &mut App| {
@@ -173,8 +173,8 @@ fn a_drawn_symbol_saves_as_version_1_and_the_browser_selects_it() {
     assert!(h.query_by_label(&browser::Tile::Project(v.lineage).name()).is_some(), "its tile");
     assert!(h.query_by_label(browser::PLACED_NEXT).is_some(), "Placed next");
     // It places from Ctrl+K's search too.
-    let (rows, _, _) = ecad_app::search::rows(Some(&d), "float");
-    assert!(rows.iter().any(|r| r.pick == ecad_app::search::Pick::Project("float1".into())));
+    let (rows, _, _) = ecad_app::library::search::rows(Some(&d), "float");
+    assert!(rows.iter().any(|r| r.pick == ecad_app::library::search::Pick::Project("float1".into())));
 }
 
 /// Three float switches, the first wired on point 2.
@@ -237,7 +237,7 @@ fn the_device_wheel_offers_edit_symbol_and_a_drawn_device_make_symbol() {
     assert_eq!(w[Slot::TopLeft.index()].map(|a| a.id), Some("symbol.edit"));
     assert_eq!(actions::wheel(ObjectKind::Mixed)[Slot::Right.index()].map(|a| a.id), Some("symbol.make"));
     assert_eq!(actions::wheel(ObjectKind::Mixed)[Slot::TopLeft.index()].map(|a| a.id), Some("edit.mirror"), "Mirror keeps the selection wheel");
-    let mut t = ecad_engine::interact::kind::Target::new(ObjectKind::Device, [0.0, 0.0], "-A01");
+    let mut t = ecad_engine::pointer::kind::Target::new(ObjectKind::Device, [0.0, 0.0], "-A01");
     t.drawn = true;
     assert_eq!(actions::wheel_for(&t)[Slot::TopLeft.index()].map(|a| a.id), Some("symbol.make"));
 }
@@ -300,7 +300,7 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
     }
     let w = crate::common::wire_pp(h.state_mut(), &[(100.0, 100.0), (100.0, 80.0)]);
     h.run_steps(2);
-    let mut t = ecad_engine::interact::kind::Target::new(ObjectKind::Device, [100.0, 100.0], "component");
+    let mut t = ecad_engine::pointer::kind::Target::new(ObjectKind::Device, [100.0, 100.0], "component");
     t.component = Some(c);
     t.drawn = true;
     h.state_mut().make_symbol(Some(&t)).unwrap();
@@ -330,7 +330,7 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
 #[test]
 fn editing_a_built_in_from_the_browser_saves_a_copy_that_remembers_it() {
     let mut h = shell(None);
-    h.state_mut().edit_starter(ecad_engine::symbols::StarterKey::Coil).unwrap();
+    h.state_mut().edit_starter(ecad_electrical::symbols::StarterKey::Coil).unwrap();
     h.run_steps(3);
     let main = h.state().shell.slots.unwrap().main;
     h.event(Event::PointerMoved(main.center()));
@@ -384,7 +384,7 @@ fn make_symbol_on_a_wire_refuses_naming_it() {
     let d = doc(&mut h);
     let c = ecad_model::WireId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
     let page = d.page_order[0];
-    let route = ecad_model::derive::route_on_page(&d, c, page).unwrap().0;
+    let route = ecad_model::connectivity::derive::route_on_page(&d, c, page).unwrap().0;
     let handle = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
@@ -432,11 +432,11 @@ fn update_from_properties_and_compare_show_the_copy_in_the_drawer() {
 /// k. Nothing is asserted about the pictures.
 #[test]
 fn screenshots_for_the_owner() {
-    let Some(out) = crate::project_panel::shots() else { return };
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
+    let Some(out) = crate::pages::project_panel::shots() else { return };
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
     let mut h = shell(Some(deltas.clone()));
     let shot = |h: &H, name: &str| {
-        let _ = crate::mouse_tester::shot(h, &deltas, &out.join(name));
+        let _ = crate::canvas::mouse_acceptance::shot(h, &deltas, &out.join(name));
     };
     h.state_mut().new_symbol();
     h.run_steps(4);

@@ -1,20 +1,20 @@
 //! The rules of brief 026's `renumber` (design 026 §3, §13; brief 028 §9.5 for terminals): what a
-//! renumber covers, read from its typed input into an [`ecad_model::numbering::Request`]. The plan
-//! itself is [`ecad_model::numbering`]'s; the engine crate's shim plans it against the project's
+//! renumber covers, read from its typed input into an [`ecad_model::naming::numbering::Request`]. The plan
+//! itself is [`ecad_model::naming::numbering`]'s; the engine crate's shim plans it against the project's
 //! tag marks, commits and answers in JSON.
 
 use std::collections::BTreeSet;
 
-use ecad_model::numbering::{self, Kind, Mark, Plan, Request, Scope};
-use ecad_model::tag;
-use ecad_model::tag::PROVISIONAL_SETTING;
+use ecad_model::naming::numbering::{self, Kind, Mark, Plan, Request, Scope};
+use ecad_model::naming::tag;
+use ecad_model::naming::tag::PROVISIONAL_SETTING;
 use ecad_model::{CableId, DeviceId, Document, FolderId, Ledger, Noun, ObjectRef, Op, PageId, ConnectionPointId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::nullable;
-use crate::cmd::run::{Cx, Generic, Outcome, Pages};
+use crate::commands::input::nullable;
+use crate::commands::run::{Cx, Generic, Outcome, Pages};
 use crate::devices::{self, TagHigh};
 use crate::error::CmdError;
 
@@ -149,22 +149,22 @@ pub fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -> Resul
 /// # Errors
 /// A named strip that is not a terminal strip or one of its terminals.
 pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSet<DeviceId>, CmdError> {
-    let all = || doc.devices.keys().copied().filter(|c| crate::strips::strip_of(doc, *c).is_some());
+    let all = || doc.devices.keys().copied().filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some());
     Ok(match scope {
         Scope::All | Scope::Folder(_) | Scope::Pages(_) => all().collect(),
         Scope::Prefix(p) => {
             let p = p.trim_start_matches('-').to_ascii_uppercase();
-            all().filter(|c| crate::devices::tag_of(doc, *c).and_then(ecad_model::tag::parse).is_some_and(|(q, _)| q == p)).collect()
+            all().filter(|c| crate::devices::tag_of(doc, *c).and_then(ecad_model::naming::tag::parse).is_some_and(|(q, _)| q == p)).collect()
         }
         Scope::Selection { devices, .. } => {
-            let mut out: BTreeSet<DeviceId> = devices.iter().copied().filter(|c| crate::strips::strip_of(doc, *c).is_some()).collect();
+            let mut out: BTreeSet<DeviceId> = devices.iter().copied().filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some()).collect();
             for t in named {
                 let n = hex(t, "strips")?;
                 let c = match doc.terminals.get(&ConnectionPointId(n)) {
                     Some(t) => t.device(),
                     None => Some(DeviceId(n)),
                 };
-                let Some(c) = c.filter(|c| crate::strips::strip_of(doc, *c).is_some()) else {
+                let Some(c) = c.filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some()) else {
                     return Err(CmdError::refused(format!("{t} in `strips` is not a terminal strip or one of its terminals.")));
                 };
                 out.insert(c);
@@ -194,7 +194,7 @@ pub fn request(doc: &Document, input: &RenumberInput, max_named: usize) -> Resul
         BTreeSet::new()
     };
     // Brief 036 (FP8c): each strip's positions, numbered as groups.
-    let positions = strips.iter().map(|c| (*c, crate::terminal_types::position_groups(doc, *c))).collect();
+    let positions = strips.iter().map(|c| (*c, crate::terminal_strips::terminal_blocks::position_groups(doc, *c))).collect();
     Ok(Request { kinds, scope, start: input.start, digits, strips, positions })
 }
 
@@ -279,7 +279,7 @@ pub fn desc(doc: &Document, o: ObjectRef) -> String {
         }
         ObjectRef::Wire(w) => {
             let conn = doc.connectivity();
-            conn.net_of_conductor(w).and_then(|id| conn.net(id)).and_then(|n| ecad_model::wiring::net_potential(doc, n).name).unwrap_or_default()
+            conn.net_of_conductor(w).and_then(|id| conn.net(id)).and_then(|n| ecad_model::connectivity::wiring::net_potential(doc, n).name).unwrap_or_default()
         }
         _ => String::new(),
     }
@@ -345,7 +345,7 @@ pub fn choices(doc: &Document) -> Choices {
         .filter_map(|f| {
             let mut names = Vec::new();
             let mut at = Some(*f);
-            for _ in 0..ecad_model::book::MAX_FOLDER_DEPTH {
+            for _ in 0..ecad_model::document::book::MAX_FOLDER_DEPTH {
                 let Some(id) = at else { break };
                 let folder = doc.folders.get(&id)?;
                 names.push(folder.name.clone());
@@ -422,7 +422,7 @@ pub fn provisional_items(doc: &Document) -> Provisional {
         if n.wires.is_empty() || !n.numbers.is_empty() {
             continue;
         }
-        let pot = ecad_model::wiring::net_potential(doc, n);
+        let pot = ecad_model::connectivity::wiring::net_potential(doc, n);
         if !pot.numbered {
             continue;
         }
@@ -471,7 +471,7 @@ pub fn way_before_issue(doc: &Document, way: Option<&str>) -> Result<Option<Opti
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// The refusal of an Apply whose preview the project has moved past.
 pub const STALE: &str = "The project changed since the preview; check the new list and Apply again.";
@@ -565,7 +565,7 @@ pub struct NumberingParams {
 pub fn plan_for(ledger: &Ledger, tag_high: &mut TagHigh, req: &Request) -> Result<Plan, CmdError> {
     tag_high.catch_up(ledger);
     let doc = ledger.document();
-    numbering::plan_ranked(doc, req, tag_high.marks(), &|r| crate::reps::numbering_rank(doc, r)).map_err(CmdError::from)
+    numbering::plan_ranked(doc, req, tag_high.marks(), &|r| crate::symbols::reps::numbering_rank(doc, r)).map_err(CmdError::from)
 }
 
 /// What a numbering is asked to do besides planning.
@@ -581,15 +581,15 @@ fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Re
     let finalise = input.is_none();
     let req = match input {
         None => finalise_request(),
-        Some(i) => request(cx.doc, i, crate::words::MAX_HANDLES)?,
+        Some(i) => request(cx.doc, i, crate::cables::words::MAX_HANDLES)?,
     };
     let plan = plan_for(cx.ledger, cx.tag_high, &req)?;
     let doc = cx.doc;
     let count = cx.change_count;
     // Brief 030 (FP4, FP7): accessories and links follow their relabelled terminals.
-    let (mut acc_ops, mut acc_lines) = crate::accessories::renumber_ops(doc, &plan.ops);
+    let (mut acc_ops, mut acc_lines) = crate::terminal_strips::accessories::renumber_ops(doc, &plan.ops);
     // Brief 047 (design 047 §2.3): a strip's part lines keep naming the positions they serve.
-    let (for_ops, for_lines) = crate::bom::renumber_for_ops(doc, &plan.ops);
+    let (for_ops, for_lines) = crate::reports::bom::renumber_for_ops(doc, &plan.ops);
     acc_ops.extend(for_ops);
     acc_lines.extend(for_lines);
     if how.preview {
@@ -676,7 +676,7 @@ impl Generic for NumberingParams {
         let read = |doc: &Document| json!({"provisional": numbering::provisional_on(doc), "padding": devices::padding(doc), "cable_prefix": format!("-{}", devices::cable_prefix(doc))});
         let Some(on) = self.provisional else { return Ok(Outcome::answer(read(cx.doc))) };
         let before = cx.doc.display.get(PROVISIONAL_SETTING).cloned();
-        let after = on.then(|| ecad_model::words::flag_word(true).to_string());
+        let after = on.then(|| ecad_model::naming::words::flag_word(true).to_string());
         let ops = match before == after {
             true => Vec::new(),
             false => vec![Op::SetProperty { object: ObjectRef::Project, key: PROVISIONAL_SETTING.into(), before, after }],

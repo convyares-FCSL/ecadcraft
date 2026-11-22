@@ -9,14 +9,14 @@
 //! The text sizes are the frame's text styles (`FrameText`), so Standards ▸ Text styles still
 //! changes them on the built-in.
 
-use ecad_model::project::{InfoField, RevField};
-use ecad_model::sheet::TITLE_BLOCK_MM;
-use ecad_model::title_block::{
+use ecad_model::document::project::{InfoField, RevField};
+use ecad_model::document::sheet::TITLE_BLOCK_MM;
+use ecad_model::objects::title_block::{
     Align, Binding, BlockItem, IfEmpty, Ink, LineWeight, MAX_TEXT_MM, MIN_TEXT_MM, Newest, PageField, PrintField, ProjectKey, Rect, RevisionColumn,
     TextDraw, TitleBlockLayout,
 };
 
-use crate::frames::{FrameText, TABLE_ROWS};
+use crate::pages::frames::{FrameText, TABLE_ROWS};
 
 /// Widths of the fixed columns, right to left (mm).
 pub const COUNTERS_MM: f64 = 30.0;

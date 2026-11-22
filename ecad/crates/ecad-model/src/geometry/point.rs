@@ -11,7 +11,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::words::{Side, Word};
+use crate::naming::words::{Side, Word};
 
 /// Most characters in a definition key.
 pub const MAX_DEF_KEY: usize = 32;
@@ -82,7 +82,7 @@ impl LevelIo {
 ///
 /// # Example
 /// ```
-/// use ecad_model::point::{ChannelRole, PointKey};
+/// use crate::geometry::point::{ChannelRole, PointKey};
 /// let k = PointKey::parse(".3.in").unwrap();
 /// assert_eq!(k, PointKey::Channel { index: 3, role: ChannelRole::In });
 /// assert_eq!(k.to_string(), ".3.in");
@@ -129,7 +129,7 @@ impl PointKey {
     /// `.` form that is none of the structured ones (`.x`, `.0`, `.3.nope`, `.99999.in`).
     pub fn parse(text: &str) -> Result<PointKey, PointKeyError> {
         let bad = || PointKeyError(format!("`{text}` is not a connection point key"));
-        if text.is_empty() || crate::text::has_hidden(text) {
+        if text.is_empty() || crate::naming::text::has_hidden(text) {
             return Err(bad());
         }
         let Some(rest) = text.strip_prefix('.') else {
@@ -205,7 +205,7 @@ impl PointKey {
 
 /// Up to four ASCII digits as a number.
 fn digits(s: &str) -> Option<u32> {
-    if s.is_empty() || s.len() > 4 || !crate::words::is_digits(s) {
+    if s.is_empty() || s.len() > 4 || !crate::naming::words::is_digits(s) {
         return None;
     }
     s.parse().ok()
@@ -276,7 +276,7 @@ impl schemars::JsonSchema for PointKey {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn every_form_reads_back_as_written() {

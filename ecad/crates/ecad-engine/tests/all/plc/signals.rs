@@ -317,7 +317,7 @@ fn m_the_first_rack_brings_the_rack_page_into_the_book() {
         let pg = d.page_order.iter().copied().find(|p| ecad_engine::generated::kind_of(&d, *p) == Some(ecad_model::GenKind::PlcRack));
         let page = &d.pages[&pg.unwrap()];
         assert!(page.page_type.is_none());
-        assert_eq!(ecad_model::sheet::page_type_of(&d, page), ecad_model::StyleRef::Builtin("report".into()));
+        assert_eq!(ecad_model::document::sheet::page_type_of(&d, page), ecad_model::StyleRef::Builtin("report".into()));
     }
     line(&mut h, r#"place {"symbol":"plcdq","at":[70,250]}"#).unwrap();
     line(&mut h, r#"place {"symbol":"plccpu","at":[30,350]}"#).unwrap();

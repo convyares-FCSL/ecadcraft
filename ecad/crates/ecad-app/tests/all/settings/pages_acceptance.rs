@@ -12,7 +12,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 use serde_json::{Value, json};
 
-use crate::project_panel::{doc, head, new_app};
+use crate::pages::project_panel::{doc, head, new_app};
 
 type H = Harness<'static, App>;
 
@@ -54,7 +54,7 @@ fn key(h: &mut H, k: Key) {
 
 fn number_of(h: &mut H, page: ecad_model::PageId) -> String {
     let d = doc(h);
-    ecad_model::book::Book::of(&d).number(&d, page)
+    ecad_model::document::book::Book::of(&d).number(&d, page)
 }
 
 /// A project whose open page is numbered 101 (pages 100, 101, 103).
@@ -89,7 +89,7 @@ fn ac14_the_picker_adds_102_right_after_101() {
     key(&mut h, Key::Enter);
     assert_eq!(head(&mut h), head0 + 1, "one transaction");
     let d = doc(&mut h);
-    let b = ecad_model::book::Book::of(&d);
+    let b = ecad_model::document::book::Book::of(&d);
     let at = b.order.iter().position(|p| *p == p101).unwrap();
     let new = b.order[at + 1];
     assert_eq!(number_of(&mut h, new), "102", "right after 101 with the next available number");

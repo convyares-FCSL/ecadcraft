@@ -4,13 +4,13 @@
 use std::time::Duration;
 
 use ecad_app::App;
-use ecad_app::debugger::{Action, CheckKind};
+use ecad_app::developer::debugger::{Action, CheckKind};
 
 const WAIT: Duration = Duration::from_secs(30);
 
 fn new_app() -> App {
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     App::new(None).unwrap()
 }
 

@@ -5,20 +5,20 @@
 //! dialog. The builder (048b) saves through these JSON forms.
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::cmd::symbol`] (content, impact, updates, promotion) decide, and the shim
+//! [`ecad_electrical::symbols::commands`] (content, impact, updates, promotion) decide, and the shim
 //! finds the selection on the page, commits the ops and answers in JSON.
 //!
 //! Not here: the builder's drawing, drafts and the review drawer (048b); "update available" in
 //! Properties and Devices (048c).
 
-use ecad_model::units::{Degrees, Radians};
+use ecad_model::geometry::units::{Degrees, Radians};
 use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::symbol::{self as rules, ContentInput, MakeAt, PointInput, SlotInput, Update};
-pub use ecad_electrical::cmd::symbol::{
+use ecad_electrical::symbols::commands::{self as rules, ContentInput, MakeAt, PointInput, SlotInput, Update};
+pub use ecad_electrical::symbols::commands::{
     Content, MAX_COPIES, MAX_EXTENT, MAX_NAME, MAX_POINTS, MAX_SHAPES, MAX_SLOTS, Rules, grid_origin, not_plain, problems, shifted,
 };
 use ecad_model::{DefinitionId, DeviceId, PageId, Placement, RepresentationId, TextHAlign, TextVAlign};
@@ -26,13 +26,13 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{MAX_HANDLES, err, on_project, plain_style};
+use crate::commands::input::{Command, Typed};
+use crate::commands::{MAX_HANDLES, err, on_project, plain_style};
 use crate::project::Mapped;
-use crate::symbols;
-pub use crate::symbols::POINT_GRID_MM;
-pub use crate::symbols::update_available;
-use ecad_electrical::cmd::input::{Bounded, Point};
+use ecad_electrical::symbols;
+pub use ecad_electrical::symbols::POINT_GRID_MM;
+pub use ecad_electrical::symbols::update_available;
+use ecad_electrical::commands::input::{Bounded, Point};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -46,7 +46,7 @@ pub const TYPED: &[Typed] = &[
 /// The commands this module adds (registered in `lanes.rs`).
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("symbolnew", "New Symbol", crate::cmd::input::typed::<NewParams>)
+        CommandSpec::new("symbolnew", "New Symbol", crate::commands::input::typed::<NewParams>)
             .params(
                 "{name, key, graphics: [{kind: line|polyline|arc|circle|text|point, …} as in the file record], points: [{key, label?, at: [x,y]}], \
 slots?: [{text: tag|description|rating|rating.<label>|part_number|maker|article_number|function|location, at: [x,y], h?: left|center|right, \
@@ -54,20 +54,20 @@ v?: baseline|bottom|middle|top, rotation?: degrees}], defaults?: {prefix, descri
 bridges?: [[key…]], from?: definition id} (design 048 §9.1: embeds version 1 of a project symbol; one transaction)",
             )
             .noundo(),
-        CommandSpec::new("symboledit", "Edit Symbol", crate::cmd::input::typed::<EditParams>)
+        CommandSpec::new("symboledit", "Edit Symbol", crate::commands::input::typed::<EditParams>)
             .params(
                 "{definition: id of the version edited, …content as symbolnew…, update: all|selected|none|new, copies?: [representation id], \
 builtins?: bool} (design 048 §9.2: a new version, and the chosen placed copies updated, in one transaction)",
             )
             .noundo(),
-        CommandSpec::new("symbolimpact", "Symbol Impact", crate::cmd::input::typed::<ImpactParams>).params(
+        CommandSpec::new("symbolimpact", "Symbol Impact", crate::commands::input::typed::<ImpactParams>).params(
             "{definition: id, …content as symbolnew…, builtins?: bool} (read only: every placed copy with what an update changes there and \
 whether it clashes, design 048 §6.2)",
         ),
-        CommandSpec::new("symbolupdate", "Update Symbol", crate::cmd::input::typed::<UpdateParams>)
+        CommandSpec::new("symbolupdate", "Update Symbol", crate::commands::input::typed::<UpdateParams>)
             .params("{copies: [representation id] | lineage: id, to?: definition id (default: the newest)} (refused when a copy would clash)")
             .noundo(),
-        CommandSpec::new("makesymbol", "Make Symbol", crate::cmd::input::typed::<MakeParams>)
+        CommandSpec::new("makesymbol", "Make Symbol", crate::commands::input::typed::<MakeParams>)
             .params(
                 "{handles?: [hex] (default: the selection) | component: id, name, key, points?: [{key, label?, at: [x,y] on the page}], \
 slots?: [… at on the page], defaults?, replace?: bool (default true), graphics?: the drawing as edited in the builder, in the symbol's frame (points and slots then in that frame too), at?: [x,y] the page point of its origin} (design 048 §9.5: a symbol from plain geometry, or a drawn \
@@ -314,7 +314,7 @@ impl Command for ImpactParams {
             let doc = p.ledger.document();
             let i = rules::plan_impact(doc, &p.ids, self.definition, &content, builtins)?;
             let pages: BTreeSet<PageId> = i.rows.iter().map(|r| r.page).collect();
-            let book = ecad_model::book::Book::of(doc);
+            let book = ecad_model::document::book::Book::of(doc);
             let mut places = crate::xref::Places::new(doc);
             let rows_json: Vec<Value> = i.rows.iter().map(|r| rules::row_json(r, doc, &book, &mut places)).collect();
             Ok(json!({
@@ -528,7 +528,7 @@ impl Command for MakeParams {
 
 /// `place {symbol: <project key>, at, rotation?, mirror?, device?, tag?}` (design 048 §5.1): the
 /// newest version of that project symbol. `None` when `key` names no project symbol.
-pub(crate) fn place_project_key(s: &mut Session, params: &crate::cmd::device::PlaceParams, key: &str) -> cadcraft_engine::Result<Option<Value>> {
+pub(crate) fn place_project_key(s: &mut Session, params: &crate::devices::commands::PlaceParams, key: &str) -> cadcraft_engine::Result<Option<Value>> {
     let at = params.at.0;
     if !(at.x.abs() <= crate::interact::MAX_COORD && at.y.abs() <= crate::interact::MAX_COORD) {
         return Err(err(crate::interact::OUT_OF_RANGE));
@@ -538,7 +538,7 @@ pub(crate) fn place_project_key(s: &mut Session, params: &crate::cmd::device::Pl
     let device = params.device_id()?;
     // Pack re-run, bug 2: a typed tag names the new device, as for a built-in symbol.
     let tag = params.tag.clone();
-    ecad_electrical::cmd::place::one_of(device.is_some(), tag.is_some(), "device").map_err(|e| err(e.to_string()))?;
+    ecad_electrical::devices::commands::place::one_of(device.is_some(), tag.is_some(), "device").map_err(|e| err(e.to_string()))?;
     let modes = params.modes()?;
     let key = key.to_string();
     on_project(s, |p, pg, page| {
@@ -547,13 +547,13 @@ pub(crate) fn place_project_key(s: &mut Session, params: &crate::cmd::device::Pl
         let (id, def) = (v.id, v.def.clone());
         // A typed tag a device already holds is that device (a tag is an identity), as `place`
         // does for built-in symbols; devices and cables share one namespace (brief 026).
-        let (device, tag) = ecad_electrical::cmd::place::project_target(doc, device, tag.as_deref())?;
+        let (device, tag) = ecad_electrical::devices::commands::place::project_target(doc, device, tag.as_deref())?;
         let pl = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let style = plain_style(p);
         let mut plan = rules::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, id, &def, pl, device, tag)?;
         let label = if device.is_some() { format!("Add symbol to {}", plan.tag) } else { "Place symbol".to_string() };
         // Brief 052d (design 052 §5.3): the place proposes.
-        let proposed = crate::draw::proposals::plan_place(p, &plan.ops, modes, plan.component, page, at, None).map_err(CmdError::refused)?;
+        let proposed = crate::symbols::draw::plan_place(p, &plan.ops, modes, plan.component, page, at, None).map_err(CmdError::refused)?;
         plan.ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, plan.ops)?;
         let doc = p.ledger.document();
@@ -562,7 +562,7 @@ pub(crate) fn place_project_key(s: &mut Session, params: &crate::cmd::device::Pl
             "component": plan.component.hex(), "representation": plan.representation.hex(), "definition": id.hex(),
             "tag": plan.tag, "joined": device.is_some(), "terminals": terminals,
         });
-        crate::draw::proposals::finish_place(p, pg, plan.component, device.is_some(), &proposed, &mut v);
+        crate::symbols::draw::finish_place(p, pg, plan.component, device.is_some(), &proposed, &mut v);
         Ok(Some(v))
     })
 }

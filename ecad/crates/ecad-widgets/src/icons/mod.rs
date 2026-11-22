@@ -1,5 +1,5 @@
 //! The shell's icons (design §3.4), drawn in code from lines, arcs and circles on a 16 px grid
-//! with a 1.5 px stroke (`ecad_tokens::line::ICON_STROKE_PX`). One function per icon, in
+//! with a 1.5 px stroke (`crate::tokens::line::ICON_STROKE_PX`). One function per icon, in
 //! [`tools`], [`workspaces`] and [`shell`]. Each icon is original and drawn here; none is traced
 //! from any product, and CADCraft's icon set is not reused (the two evolve apart).
 //!
@@ -11,7 +11,7 @@ pub mod shell;
 pub mod tools;
 pub mod workspaces;
 
-use ecad_tokens::{Icon, line, size};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::size};
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, pos2};
 
 /// Paint `icon` in `rect` (any size; the 16 px grid is scaled to the shorter side and centred).

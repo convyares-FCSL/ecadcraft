@@ -6,7 +6,7 @@
 //! `disconnect`, `cableslash`, `cableview` and `cablecore` also have click-based interactive forms
 //! ([`crate::interact`], briefs 008, 004, 005 and 009), started by a bare command name, a menu or a
 //! tool button; they commit through these JSON forms. `cableview` records nothing: a cable's
-//! view is presentation only ([`crate::views`]).
+//! view is presentation only ([`crate::cables::views`]).
 //! Brief 010 adds `cableref`, `cablecontinue` and `cablegoto` (with interactive forms),
 //! `cablerefs` (read only), `renamepage` and `movepage` ([`crate::references`]).
 //! Programmatic calls (`Session::execute`, `name {json}`) always run the JSON form and never
@@ -15,24 +15,7 @@
 //! This module is the registry and the shared helpers; each area's commands are in `cmd/<area>`
 //! (lane 067 step 11; `cmd/plc/` has the PLC commands).
 
-pub(crate) mod cable_draw;
-pub mod connector;
-pub(crate) mod device;
-pub(crate) mod generic;
 pub mod input;
-pub mod output;
-pub(crate) mod page;
-pub mod page_type;
-pub mod plc;
-pub(crate) mod reference;
-pub mod release;
-pub mod sheet;
-pub mod symbol;
-pub mod terminal;
-pub mod text;
-pub mod title_block;
-pub mod wire;
-pub(crate) mod xref;
 
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;
@@ -42,31 +25,31 @@ use serde_json::Value;
 use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
-pub use crate::strips::core_label;
-use ecad_electrical::cmd::{
+pub use ecad_electrical::terminal_strips::core_label;
+use ecad_electrical::commands::{
     accessory, bom, cable, connect, continuation, default, designation, device_link, level, location, numbering, prop, rating, style,
 };
 
-/// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
+/// The commands this crate adds. Lanes in flight register theirs in [`LANES`], not here;
 /// their lines move here at the phase-end tidy-up.
 pub fn specs() -> Vec<CommandSpec> {
     let mut v = base_specs();
     v.extend(generic_specs());
-    v.extend(crate::cmd::sheet::specs());
+    v.extend(crate::pages::commands::sheets::specs());
     v.extend(crate::history::specs());
-    v.extend(crate::merging::specs());
-    v.extend(crate::cmd::xref::specs());
-    v.extend(crate::cmd::output::specs());
-    v.extend(crate::cmd::terminal::specs());
-    v.extend(crate::cmd::release::specs());
-    v.extend(crate::cmd::text::specs());
+    v.extend(crate::history::merging::specs());
+    v.extend(crate::references::commands::devices::specs());
+    v.extend(crate::reports::commands::specs());
+    v.extend(crate::terminal_strips::commands::specs());
+    v.extend(crate::releases::commands::specs());
+    v.extend(crate::styles::commands::specs());
     v.extend(crate::agent::access::specs());
-    v.extend(crate::look::specs());
-    v.extend(crate::cmd::connector::specs());
-    v.extend(crate::cmd::plc::specs());
-    v.extend(crate::cmd::symbol::specs());
-    v.extend(crate::cmd::plc::page::specs());
-    for (_, lane) in crate::lanes::LANES {
+    v.extend(crate::cables::draw::specs());
+    v.extend(crate::connectors::commands::specs());
+    v.extend(crate::plc::commands::specs());
+    v.extend(crate::symbols::commands::specs());
+    v.extend(crate::plc::commands::page::specs());
+    for (_, lane) in LANES {
         v.extend(lane());
     }
     v
@@ -101,8 +84,8 @@ fn generic_specs() -> Vec<CommandSpec> {
         generic::spec::<style::SetstyleParams>(),
         generic::spec::<style::DeletestyleParams>(),
         generic::spec::<style::PromoteParams>(),
-        generic::spec::<ecad_electrical::cmd::title_block::TitleblocksParams>(),
-        generic::spec::<ecad_electrical::cmd::title_block::TitleblockParams>(),
+        generic::spec::<ecad_electrical::title_blocks::commands::TitleblocksParams>(),
+        generic::spec::<ecad_electrical::title_blocks::commands::TitleblockParams>(),
         generic::spec::<bom::PartlineParams>(),
         generic::spec::<bom::BomitemParams>().interactive(interact::bomitem),
         generic::spec::<bom::ArticleParams>(),
@@ -114,14 +97,14 @@ fn generic_specs() -> Vec<CommandSpec> {
         generic::spec::<numbering::RenumberParams>(),
         generic::spec::<numbering::FinaliseParams>(),
         generic::spec::<numbering::NumberingParams>(),
-        generic::spec::<ecad_electrical::cmd::page_type::FolderpropsParams>(),
-        generic::spec::<ecad_electrical::cmd::page_type::RenumberpagesParams>(),
-        generic::spec::<ecad_electrical::cmd::xref::DeviceReferencesParams>(),
-        generic::spec::<ecad_electrical::cmd::xref::ContactsParams>(),
-        generic::spec::<ecad_electrical::cmd::xref::MirrormoveParams>().interactive(interact::mirrormove),
-        generic::spec::<ecad_electrical::cmd::reference::CablerefParams>().interactive(interact::cableref),
-        generic::spec::<ecad_electrical::cmd::reference::CablecontinueParams>().interactive(interact::cablecontinue),
-        generic::spec::<ecad_electrical::cmd::reference::CablerefsParams>(),
+        generic::spec::<ecad_electrical::pages::commands::page_types::FolderpropsParams>(),
+        generic::spec::<ecad_electrical::pages::commands::page_types::RenumberpagesParams>(),
+        generic::spec::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
+        generic::spec::<ecad_electrical::references::commands::devices::ContactsParams>(),
+        generic::spec::<ecad_electrical::references::commands::devices::MirrormoveParams>().interactive(interact::mirrormove),
+        generic::spec::<ecad_electrical::references::commands::cables::CablerefParams>().interactive(interact::cableref),
+        generic::spec::<ecad_electrical::references::commands::cables::CablecontinueParams>().interactive(interact::cablecontinue),
+        generic::spec::<ecad_electrical::references::commands::cables::CablerefsParams>(),
     ]
 }
 
@@ -153,8 +136,8 @@ const GENERIC_TYPED: &[input::Typed] = &[
     generic::typed::<style::SetstyleParams>(),
     generic::typed::<style::DeletestyleParams>(),
     generic::typed::<style::PromoteParams>(),
-    generic::typed::<ecad_electrical::cmd::title_block::TitleblocksParams>(),
-    generic::typed::<ecad_electrical::cmd::title_block::TitleblockParams>(),
+    generic::typed::<ecad_electrical::title_blocks::commands::TitleblocksParams>(),
+    generic::typed::<ecad_electrical::title_blocks::commands::TitleblockParams>(),
     generic::typed::<bom::PartlineParams>(),
     generic::typed::<bom::BomitemParams>(),
     generic::typed::<bom::ArticleParams>(),
@@ -166,31 +149,31 @@ const GENERIC_TYPED: &[input::Typed] = &[
     generic::typed::<numbering::RenumberParams>(),
     generic::typed::<numbering::FinaliseParams>(),
     generic::typed::<numbering::NumberingParams>(),
-    generic::typed::<ecad_electrical::cmd::page_type::FolderpropsParams>(),
-    generic::typed::<ecad_electrical::cmd::page_type::RenumberpagesParams>(),
-    generic::typed::<ecad_electrical::cmd::xref::DeviceReferencesParams>(),
-    generic::typed::<ecad_electrical::cmd::xref::ContactsParams>(),
-    generic::typed::<ecad_electrical::cmd::xref::MirrormoveParams>(),
-    generic::typed::<ecad_electrical::cmd::reference::CablerefParams>(),
-    generic::typed::<ecad_electrical::cmd::reference::CablecontinueParams>(),
-    generic::typed::<ecad_electrical::cmd::reference::CablerefsParams>(),
+    generic::typed::<ecad_electrical::pages::commands::page_types::FolderpropsParams>(),
+    generic::typed::<ecad_electrical::pages::commands::page_types::RenumberpagesParams>(),
+    generic::typed::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
+    generic::typed::<ecad_electrical::references::commands::devices::ContactsParams>(),
+    generic::typed::<ecad_electrical::references::commands::devices::MirrormoveParams>(),
+    generic::typed::<ecad_electrical::references::commands::cables::CablerefParams>(),
+    generic::typed::<ecad_electrical::references::commands::cables::CablecontinueParams>(),
+    generic::typed::<ecad_electrical::references::commands::cables::CablerefsParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
     vec![
         // Brief 050b (design 050 §6.9).
-        CommandSpec::new("category", "Wire Category", crate::cmd::input::typed::<crate::cmd::wire::CategoryParams>)
+        CommandSpec::new("category", "Wire Category", crate::commands::input::typed::<crate::wires::commands::CategoryParams>)
             .params("{conductor: id | net: id (a conductor of the net) | conductors: [id], value: category id or name | null} (one transaction)")
             .noundo(),
-        CommandSpec::new("convertcomponent", "Convert to Device", crate::cmd::input::typed::<crate::cmd::device::ConvertcomponentParams>)
+        CommandSpec::new("convertcomponent", "Convert to Device", crate::commands::input::typed::<crate::devices::commands::ConvertcomponentParams>)
             .params("{handles?: [hex]} (default: selection)")
             .interactive(interact::convert)
             .noundo(),
-        CommandSpec::new("addterminal", "Add Connection Point", crate::cmd::input::typed::<crate::cmd::device::AddConnectionPointParams>)
+        CommandSpec::new("addterminal", "Add Connection Point", crate::commands::input::typed::<crate::devices::commands::AddConnectionPointParams>)
             .params("{handle: hex (an item of the component), at: [x,y], label?}")
             .interactive(interact::addterminal)
             .noundo(),
-        CommandSpec::new("wire", "Wire", crate::cmd::input::typed::<crate::cmd::wire::WireParams>)
+        CommandSpec::new("wire", "Wire", crate::commands::input::typed::<crate::wires::commands::WireParams>)
             .params(
                 "{points: [[x,y], …], potential?: string, join?: bool (true)} (ends on connection points attach; an end on another wire's open end joins it into one line, an end on a line's middle lands there (a T); open ends lying on the new line land on it)",
             )
@@ -198,103 +181,103 @@ fn base_specs() -> Vec<CommandSpec> {
             .noundo(),
         generic::spec::<connect::ConnectParams>().interactive(interact::connect),
         generic::spec::<connect::DisconnectParams>().interactive(interact::disconnect),
-        CommandSpec::new("cableslash", "Cable Slash", crate::cmd::input::typed::<crate::cmd::cable_draw::CableslashParams>)
+        CommandSpec::new("cableslash", "Cable Slash", crate::commands::input::typed::<crate::cables::commands::CableslashParams>)
             .params("{from: [x,y], to: [x,y], tag?} (the wires the slash crosses become one cable)")
             .interactive(interact::cableslash)
             .noundo(),
-        CommandSpec::new("cableview", "Cable View", crate::cmd::input::typed::<crate::cmd::cable_draw::CableviewParams>)
+        CommandSpec::new("cableview", "Cable View", crate::commands::input::typed::<crate::cables::commands::CableviewParams>)
             .params("{cable?: id, view?: \"traditional\"|\"fan\"} (no cable: every cable's view; presentation only)")
             .interactive(interact::cableview)
             .noundo(),
-        CommandSpec::new("cablecore", "Core Label", crate::cmd::input::typed::<crate::cmd::cable_draw::CablecoreParams>)
+        CommandSpec::new("cablecore", "Core Label", crate::commands::input::typed::<crate::cables::commands::CablecoreParams>)
             .params(
                 "{conductor: id, core: string|null} | {cable: id, cores: [string|null, …]} (null, empty or spaces clear)",
             )
             .interactive(interact::cablecore)
             .noundo(),
-        CommandSpec::new("cablefan", "Cable Join", crate::cmd::input::typed::<crate::cmd::cable_draw::CablefanParams>)
+        CommandSpec::new("cablefan", "Cable Join", crate::commands::input::typed::<crate::cables::commands::CablefanParams>)
             .params(
                 "{cable: id, end?: \"A\"|\"B\", at: [x,y] | fraction 0..1 | null} (where the trunk joins a fanned \
 end's spine; null: the middle)",
             )
             .interactive(interact::cablefan)
             .noundo(),
-        CommandSpec::new("cablegoto", "Go to Reference", crate::cmd::input::typed::<crate::cmd::reference::CablegotoParams>)
+        CommandSpec::new("cablegoto", "Go to Reference", crate::commands::input::typed::<crate::references::commands::cables::CablegotoParams>)
             .params("{reference: id} (opens the other end's page; records nothing)")
             .interactive(interact::cablegoto)
             .noundo(),
-        CommandSpec::new("ecaddelete", "Delete Electrical Object", crate::cmd::input::typed::<crate::cmd::device::EcaddeleteParams>)
+        CommandSpec::new("ecaddelete", "Delete Electrical Object", crate::commands::input::typed::<crate::devices::commands::EcaddeleteParams>)
             .params("{conductor: id} | {component: id} | {cable: id}")
             .noundo(),
-        CommandSpec::new("cableadd", "Add to Cable", crate::cmd::input::typed::<crate::cmd::cable_draw::CableaddParams>)
+        CommandSpec::new("cableadd", "Add to Cable", crate::commands::input::typed::<crate::cables::commands::CableaddParams>)
             .params("{cable?: id, conductors: [id], tag?}")
             .noundo(),
-        CommandSpec::new("place", "Place Symbol", crate::cmd::input::typed::<crate::cmd::device::PlaceParams>)
+        CommandSpec::new("place", "Place Symbol", crate::commands::input::typed::<crate::devices::commands::PlaceParams>)
             .params(
                 "{at: [x,y], rotation?: degrees, mirror?: bool, symbol?: key, definition?: id, device?: id, tag?} (`symbol`: a starter symbol, see `symbols`; `device` adds it to that device; `tag` names a new one, or adds it to the device that has that tag)",
             )
             .interactive(interact::place)
             .noundo(),
-        CommandSpec::new("symbols", "Find Symbol", crate::cmd::input::typed::<crate::cmd::device::SymbolsParams>)
+        CommandSpec::new("symbols", "Find Symbol", crate::commands::input::typed::<crate::devices::commands::SymbolsParams>)
             .params("{query?} (starter symbols and devices matching it; read only)")
             .noundo(),
-        CommandSpec::new("devices", "List Devices", crate::cmd::input::typed::<crate::cmd::device::DevicesParams>)
+        CommandSpec::new("devices", "List Devices", crate::commands::input::typed::<crate::devices::commands::DevicesParams>)
             .params("{tag?} (devices whose tag starts with it; read only)")
             .noundo(),
-        CommandSpec::new("tagsettings", "Tag Settings", crate::cmd::input::typed::<crate::cmd::device::TagsettingsParams>)
+        CommandSpec::new("tagsettings", "Tag Settings", crate::commands::input::typed::<crate::devices::commands::TagsettingsParams>)
             .params(
                 "{padding?: 1..6, prefixes?: {symbol: prefix|null}} (automatic tags: digits, and this project's prefix per starter symbol; no parameters lists them)",
             )
             .noundo(),
-        CommandSpec::new("deviceprops", "Device Properties", crate::cmd::input::typed::<crate::cmd::device::DevicepropsParams>)
+        CommandSpec::new("deviceprops", "Device Properties", crate::commands::input::typed::<crate::devices::commands::DevicepropsParams>)
             .params("{component: id} (a device's properties; read only; interactive: change them)")
             .interactive(interact::deviceprops)
             .noundo(),
-        CommandSpec::new("devicedelete", "Delete Device", crate::cmd::input::typed::<crate::cmd::device::DevicedeleteParams>)
+        CommandSpec::new("devicedelete", "Delete Device", crate::commands::input::typed::<crate::devices::commands::DevicedeleteParams>)
             .params("{component: id} (deletes the device with every symbol, as `ecaddelete`)")
             .interactive(interact::devicedelete)
             .noundo(),
-        CommandSpec::new("nets", "List Nets", crate::cmd::input::typed::<crate::cmd::wire::NetsParams>)
+        CommandSpec::new("nets", "List Nets", crate::commands::input::typed::<crate::wires::commands::NetsParams>)
             .params("{page?: id, number?, conductor?: id, terminal?: id, all?: bool, limit?: n (200, max 2000), after?: cursor} (read only)")
             .noundo(),
-        CommandSpec::new("net", "Show Net", crate::cmd::input::typed::<crate::cmd::wire::NetParams>)
+        CommandSpec::new("net", "Show Net", crate::commands::input::typed::<crate::wires::commands::NetParams>)
             .params("{conductor: id} | {terminal: id} | {number} (read only)")
             .noundo(),
-        CommandSpec::new("wirenumber", "Fix Wire Number", crate::cmd::input::typed::<crate::cmd::wire::WirenumberParams>)
+        CommandSpec::new("wirenumber", "Fix Wire Number", crate::commands::input::typed::<crate::wires::commands::WirenumberParams>)
             .params(
                 "{conductor: id | number, value: string|null, conflict?: \"swap\"|\"another\"|\"merge\"} | {conductor: id, fixed: bool} (fixes the net's number; null or fixed false releases it; a number another net uses needs `conflict`)",
             )
             .interactive(interact::wirenumber)
             .noundo(),
-        CommandSpec::new("potential", "Set Potential", crate::cmd::input::typed::<crate::cmd::wire::PotentialParams>)
+        CommandSpec::new("potential", "Set Potential", crate::commands::input::typed::<crate::wires::commands::PotentialParams>)
             .params("{conductor: id, value: string|null} (the potential of the whole net)")
             .noundo(),
-        CommandSpec::new("wiresettings", "Wire Settings", crate::cmd::input::typed::<crate::cmd::wire::WiresettingsParams>)
+        CommandSpec::new("wiresettings", "Wire Settings", crate::commands::input::typed::<crate::wires::commands::WiresettingsParams>)
             .params(
                 "{scheme?: \"potential\"|\"page\"|\"page-column\", digits?: 1..6, unclassified_prefix?, potentials?: [{name, prefix, numbered}] (colours and cross-sections: wire categories), colour_style?: \"code2\"|\"code3\"|\"name\", label_height?: mm} (no parameters reads; colours are IEC 60757 codes by default, free text allowed)",
             )
             .noundo(),
-        CommandSpec::new("renumberwires", "Renumber Wires", crate::cmd::input::typed::<crate::cmd::wire::RenumberwiresParams>)
+        CommandSpec::new("renumberwires", "Renumber Wires", crate::commands::input::typed::<crate::wires::commands::RenumberwiresParams>)
             .params("{scope?: \"unnumbered\"|\"all\"} (fixed numbers never change)")
             .interactive(interact::renumberwires)
             .noundo(),
-        CommandSpec::new("checks", "Checks", crate::cmd::input::typed::<crate::cmd::wire::ChecksParams>)
+        CommandSpec::new("checks", "Checks", crate::commands::input::typed::<crate::wires::commands::ChecksParams>)
             .params("{kinds?: [kind], limit?: n (200, max 2000), after?: n} (read only)")
             .noundo(),
-        CommandSpec::new("newpage", "New Page", crate::cmd::input::typed::<crate::cmd::page::NewpageParams>)
+        CommandSpec::new("newpage", "New Page", crate::commands::input::typed::<crate::pages::commands::pages::NewpageParams>)
             .params(
                 "{title?, number?, folder?: id, after?: page id, type?: page type, generated?: kind, strip?: id, style?: \"table\"|\"graphic\"} (after: right after that page, in its folder; type: \"schematic\", \"network\", \"front\"… (front and report need generated); number: default the next after the page before it, or a folder's start number for its first page; generated: \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" (strip: one strip; style: the terminal plan's style) or \"cables\")",
             )
             .noundo(),
-        CommandSpec::new("openpage", "Open Page", crate::cmd::input::typed::<crate::cmd::page::OpenpageParams>).params("{page: id}").noundo(),
-        CommandSpec::new("renamepage", "Rename Page", crate::cmd::input::typed::<crate::cmd::page::RenamepageParams>).params("{page: id, title}").noundo(),
-        CommandSpec::new("movepage", "Move Page", crate::cmd::input::typed::<crate::cmd::page::MovepageParams>)
+        CommandSpec::new("openpage", "Open Page", crate::commands::input::typed::<crate::pages::commands::pages::OpenpageParams>).params("{page: id}").noundo(),
+        CommandSpec::new("renamepage", "Rename Page", crate::commands::input::typed::<crate::pages::commands::pages::RenamepageParams>).params("{page: id, title}").noundo(),
+        CommandSpec::new("movepage", "Move Page", crate::commands::input::typed::<crate::pages::commands::pages::MovepageParams>)
             .params("{page: id, index: n} (1 = first) | {page: id, folder: id|null, index?: n} (into a folder, 1 = first of its pages)")
             .noundo(),
-        CommandSpec::new("ecadinspect", "Inspect Project", crate::cmd::input::typed::<crate::cmd::page::EcadinspectParams>)
+        CommandSpec::new("ecadinspect", "Inspect Project", crate::commands::input::typed::<crate::pages::commands::pages::EcadinspectParams>)
             .params("{seq?: n} (read-only snapshot)")
             .noundo(),
-        CommandSpec::new("joinwires", "Join Wires", crate::cmd::input::typed::<crate::cmd::wire::JoinwiresParams>)
+        CommandSpec::new("joinwires", "Join Wires", crate::commands::input::typed::<crate::wires::commands::JoinwiresParams>)
             .params("{at: [x,y]} (two open ends there become one line; open ends on a line's middle, or three or more ends, land on one line there (a T))")
             .interactive(interact::joinwires)
             .noundo(),
@@ -335,38 +318,38 @@ pub(crate) fn on_any_page<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mut 
 pub fn typed_commands() -> Vec<input::Typed> {
     [
         GENERIC_TYPED,
-        crate::cmd::wire::TYPED,
-        crate::cmd::sheet::TYPED,
-        crate::cmd::output::TYPED,
-        crate::cmd::text::TYPED,
-        crate::cmd::symbol::TYPED,
-        crate::cmd::xref::TYPED,
-        crate::cmd::terminal::TYPED,
-        crate::cmd::plc::TYPED,
-        crate::cmd::title_block::TYPED,
-        crate::cmd::page_type::TYPED,
-        crate::cmd::connector::TYPED,
-        crate::cmd::release::TYPED,
-        crate::cmd::device::TYPED,
-        crate::cmd::cable_draw::TYPED,
-        crate::cmd::reference::TYPED,
-        crate::cmd::page::TYPED,
+        crate::wires::commands::TYPED,
+        crate::pages::commands::sheets::TYPED,
+        crate::reports::commands::TYPED,
+        crate::styles::commands::TYPED,
+        crate::symbols::commands::TYPED,
+        crate::references::commands::devices::TYPED,
+        crate::terminal_strips::commands::TYPED,
+        crate::plc::commands::TYPED,
+        crate::title_blocks::commands::TYPED,
+        crate::pages::commands::page_types::TYPED,
+        crate::connectors::commands::TYPED,
+        crate::releases::commands::TYPED,
+        crate::devices::commands::TYPED,
+        crate::cables::commands::TYPED,
+        crate::references::commands::cables::TYPED,
+        crate::pages::commands::pages::TYPED,
         crate::history::TYPED,
-        crate::merging::TYPED,
+        crate::history::merging::TYPED,
         crate::agent::access::TYPED,
-        crate::look::TYPED,
+        crate::cables::draw::TYPED,
     ]
     .concat()
 }
 
-/// Whether generic command `id` declares that it only reads ([`ecad_electrical::cmd::run::Access`]).
+/// Whether generic command `id` declares that it only reads ([`ecad_electrical::commands::run::Access`]).
 pub fn declared_read(id: &str) -> bool {
-    GENERIC_TYPED.iter().any(|t| t.id == id && t.access == Some(ecad_electrical::cmd::run::Access::Reads))
+    GENERIC_TYPED.iter().any(|t| t.id == id && t.access == Some(ecad_electrical::commands::run::Access::Reads))
 }
 
 /// The ids of the generic commands that declare that they only read.
 pub fn declared_reads() -> impl Iterator<Item = &'static str> {
-    GENERIC_TYPED.iter().filter(|t| t.access == Some(ecad_electrical::cmd::run::Access::Reads)).map(|t| t.id)
+    GENERIC_TYPED.iter().filter(|t| t.access == Some(ecad_electrical::commands::run::Access::Reads)).map(|t| t.id)
 }
 
 /// The parameters of generic command `id` that name a file, as it declares them.
@@ -391,9 +374,9 @@ pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn
 }
 
 /// Most points one WIRE accepts: a route's own bound (design 072 §4.3).
-pub(crate) const MAX_WIRE_POINTS: usize = ecad_model::route::MAX_POINTS;
+pub(crate) const MAX_WIRE_POINTS: usize = ecad_model::objects::route::MAX_POINTS;
 
-pub(crate) use crate::words::MAX_HANDLES;
+pub(crate) use ecad_electrical::cables::words::MAX_HANDLES;
 
 pub(crate) fn plain_style(p: &Project) -> Style {
     Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
@@ -422,18 +405,25 @@ mod lane_tests {
     /// leave two lanes' lines swapped; this says which to swap.
     #[test]
     fn lanes_are_in_brief_order() {
-        let briefs: Vec<&str> = crate::lanes::LANES.iter().map(|(b, _)| *b).collect();
+        let briefs: Vec<&str> = LANES.iter().map(|(b, _)| *b).collect();
         for pair in briefs.windows(2) {
-            assert!(pair[0] < pair[1], "crate::lanes::LANES: {} must come after {}, once each", pair[0], pair[1]);
+            assert!(pair[0] < pair[1], "LANES: {} must come after {}, once each", pair[0], pair[1]);
         }
     }
 
-    /// Every ECAD command id is registered once, so the order of the lists in [`super::specs`]
+    /// Every ECAD command id is registered once, so the order of the lists in [`crate::specs`]
     /// never decides which command a name finds (lookups take the first match).
     #[test]
     fn command_ids_are_unique() {
         let mut seen = std::collections::BTreeSet::new();
-        let twice: Vec<&str> = super::specs().iter().map(|c| c.id).filter(|id| !seen.insert(*id)).collect();
+        let twice: Vec<&str> = crate::specs().iter().map(|c| c.id).filter(|id| !seen.insert(*id)).collect();
         assert!(twice.is_empty(), "registered more than once: {twice:?}");
     }
 }
+
+pub(crate) const LANES: &[(&str, fn() -> Vec<CommandSpec>)] = &[
+    // ("NNN", crate::<module>::specs), one line per lane, below this one.
+    ("054", crate::pages::commands::page_types::specs),
+    ("055", crate::title_blocks::commands::specs),
+    ("056", crate::plc::commands::exchange::specs),
+];

@@ -3,8 +3,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::aid::ContinuationName;
-use ecad_model::wiring::{self, Scheme};
+use ecad_model::objects::aid::ContinuationName;
+use ecad_model::connectivity::wiring::{self, Scheme};
 use ecad_model::{
     Aid, AidId, Author, Connectivity, Definition, DefinitionId, Device, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, Page, PageId,
     Terminal, ConnectionPointDef, ConnectionPointId, Wire, WireId,
@@ -583,8 +583,8 @@ fn a_999_terminal_strip_with_long_links_builds_quickly() {
 /// Set a wire's value by its old property name (the tests' own words): `wire_number`,
 /// `wire_number_fixed`, `potential`.
 fn put(w: &mut Wire, key: &str, value: Option<&str>) {
-    use ecad_model::text::Text;
-    use ecad_model::wire::WireNumber;
+    use ecad_model::naming::text::Text;
+    use ecad_model::objects::wire::WireNumber;
     match key {
         "wire_number" => {
             let fixed = w.number_fixed();

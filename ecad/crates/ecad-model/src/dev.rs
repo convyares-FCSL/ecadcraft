@@ -7,16 +7,16 @@
 //! in through [`set_verify_invariants`]: Core reads no environment, design 065 §3.1), and in
 //! [`Ledger::replay_verified`] (the
 //! debugger's **Verify replay**). App builds, debug or release, take the fast path. The file's
-//! Verify never uses it: it replays with [`crate::ledger::Check::Commit`].
+//! Verify never uses it: it replays with [`crate::document::ledger::Check::Commit`].
 //!
 //! This module is the only place in the crate where the `verify-invariants` feature is read
 //! (`cargo xtask layers` enforces it).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::doc::Document;
+use crate::document::doc::Document;
 use crate::error::Result;
-use crate::ledger::{Ledger, Transaction};
+use crate::document::ledger::{Ledger, Transaction};
 
 /// The run-time switch, set by the program ([`set_verify_invariants`]).
 static SWITCH: AtomicBool = AtomicBool::new(false);
@@ -33,8 +33,8 @@ pub fn set_verify_invariants(on: bool) {
 /// # Example
 /// ```
 /// use std::ffi::OsStr;
-/// assert!(ecad_model::ledger::verify_switch_on(Some(OsStr::new("1"))));
-/// assert!(!ecad_model::ledger::verify_switch_on(Some(OsStr::new("0"))));
+/// assert!(crate::document::ledger::verify_switch_on(Some(OsStr::new("1"))));
+/// assert!(!crate::document::ledger::verify_switch_on(Some(OsStr::new("0"))));
 /// ```
 pub fn switch_on(value: Option<&std::ffi::OsStr>) -> bool {
     value.is_some_and(|v| v == "1")

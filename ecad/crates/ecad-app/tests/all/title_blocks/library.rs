@@ -8,12 +8,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::library::title_blocks::{self, inspector, list};
-use ecad_model::title_block::BlockItem;
+use ecad_app::title_blocks::{self, inspector, list};
+use ecad_model::objects::title_block::BlockItem;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::mouse_tester::{Deltas, harness_with, head, ok, shot};
+use crate::canvas::mouse_acceptance::{Deltas, harness_with, head, ok, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -36,7 +36,7 @@ fn fixture(deltas: Option<Deltas>) -> H {
         &mut h,
         r#"projectprops {"title":"Pump station PS-04","drawing_number":"PS04-E-002","customer":"Northfield Water","status":"WIP","function":"PUMP","location":"CAB1"}"#,
     );
-    let page = crate::mouse_tester::doc(&mut h).page_order[0].hex();
+    let page = crate::canvas::mouse_acceptance::doc(&mut h).page_order[0].hex();
     ok(&mut h, &format!(r#"renamepage {{"page":"{page}","title":"Motor control"}}"#));
     h
 }

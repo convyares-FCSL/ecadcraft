@@ -6,17 +6,17 @@
 //!
 //! Project info shows the fields that exist today (title, drawing number, customer, status, the
 //! default function and location, the project's list of functions and locations (brief 052c,
-//! [`super::designations`]), and the free properties). People and approval, where each title
+//! [`crate::settings::designations`]), and the free properties). People and approval, where each title
 //! block field is filled from, the
 //! customer logo, revision letters and the project's language and units are placeholders: they
 //! have no data yet.
 
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use super::{card, dashed_rect, later_row, row};
+use crate::settings::{card, dashed_rect, later_row, row};
 use crate::App;
-use crate::sheets_ui::{Out, Part, Popout};
+use crate::settings::sheets::{Out, Part, Popout};
 use crate::shell::bar;
 
 /// Pages and sheets' two tabs.
@@ -30,13 +30,13 @@ pub const CANCEL: &str = "ecad.projectprops.cancel";
 pub const TITLE_BLOCK: &str = "settings.project.title_block";
 
 fn grey(text: &str) -> egui::RichText {
-    egui::RichText::new(text).color(ecad_ui::color(ecad_ui::SHELL.text_2))
+    egui::RichText::new(text).color(ecad_widgets::color(ecad_widgets::SHELL.text_2))
 }
 
 /// Settings ▸ Project info.
 pub fn show(t: &mut App, ui: &mut egui::Ui) {
     if !t.project_open() {
-        ecad_ui::prim::read_value(ui, NO_PROJECT);
+        ecad_widgets::prim::read_value(ui, NO_PROJECT);
         return;
     }
     if t.project_props.as_ref().is_none_or(|d| d.popout != Popout::Info) {
@@ -46,8 +46,8 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     let page = t.panel.active.and_then(|a| t.panel.rows().iter().find(|r| r.id == a)).map(|r| (r.number.clone(), r.title.clone()));
     let pages = t.panel.rows().len();
     // Brief 052c: the project's list, read again only after a commit that could change it.
-    let designation_rows = super::designations::rows(t, ui.ctx());
-    let mut designation_ask: super::designations::Ask = None;
+    let designation_rows = crate::settings::designations::rows(t, ui.ctx());
+    let mut designation_ask: crate::settings::designations::Ask = None;
     let sheet = match t.shell.state.sheet {
         crate::canvas::Sheet::Paper => "Paper",
         crate::canvas::Sheet::Follow => "Follow the theme",
@@ -63,7 +63,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     let left_w = ((body.width() - gap) * 0.5).floor();
     let left = Rect::from_min_max(body.min, pos2(body.left() + left_w, body.bottom()));
     let right = Rect::from_min_max(pos2(left.right() + gap, body.top()), body.max);
-    super::in_rect(ui, left, "settings.project.left", |ui| {
+    crate::settings::in_rect(ui, left, "settings.project.left", |ui| {
         egui::ScrollArea::vertical().id_salt("settings.project.left.scroll").auto_shrink([false, false]).show(ui, |ui| {
             card(
                 ui,
@@ -82,7 +82,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
                     later_row(ui, "Customer reference", "Optional, prints on the cover sheet");
                     if !d.others.is_empty() || !ro {
                         ui.add_space(space::S);
-                        ecad_ui::prim::read_value(ui, "Other properties");
+                        ecad_widgets::prim::read_value(ui, "Other properties");
                         let mut remove = None;
                         for (i, (k, v)) in d.others.iter_mut().enumerate() {
                             ui.horizontal(|ui| {
@@ -96,7 +96,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
                         if let Some(i) = remove {
                             d.others.remove(i);
                         }
-                        if !ro && ui.add(ecad_ui::prim::Button::new("+ Property").small()).clicked() {
+                        if !ro && ui.add(ecad_widgets::prim::Button::new("+ Property").small()).clicked() {
                             d.others.push((String::new(), String::new()));
                         }
                     }
@@ -127,9 +127,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
                             r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, !ro, format!("ecad.projectprops.{k}")));
                         });
                     }
-                    ui.label(egui::RichText::new("The defaults for new pages.").small().color(ecad_ui::color(ecad_ui::SHELL.text_3)));
+                    ui.label(egui::RichText::new("The defaults for new pages.").small().color(ecad_widgets::color(ecad_widgets::SHELL.text_3)));
                     ui.add_space(space::S);
-                    designation_ask = super::designations::body(ui, &designation_rows, ro);
+                    designation_ask = crate::settings::designations::body(ui, &designation_rows, ro);
                 },
             );
         });
@@ -140,7 +140,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     let location = d.fields.get("location").cloned().unwrap_or_default();
     let revision = d.revision.clone();
     let mut revisions = false;
-    super::in_rect(ui, right, "settings.project.right", |ui| {
+    crate::settings::in_rect(ui, right, "settings.project.right", |ui| {
         egui::ScrollArea::vertical().id_salt("settings.project.right.scroll").auto_shrink([false, false]).show(ui, |ui| {
             card(
                 ui,
@@ -165,13 +165,13 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
                 ui,
                 "Revisions",
                 |ui| {
-                    revisions = ui.add(ecad_ui::prim::Button::new("Revisions…").small()).clicked();
+                    revisions = ui.add(ecad_widgets::prim::Button::new("Revisions…").small()).clicked();
                 },
                 |ui| {
                     row(ui, "Current", |ui| ui.label(grey(revision.trim_start_matches("Current: "))));
                     later_row(ui, "Revision letters", "A, B, C · 01, 02, 03 · P1, P2 then A");
                     ui.label(
-                        egui::RichText::new("The pending mark is set in Pages and sheets.").small().color(ecad_ui::color(ecad_ui::SHELL.text_3)),
+                        egui::RichText::new("The pending mark is set in Pages and sheets.").small().color(ecad_widgets::color(ecad_widgets::SHELL.text_3)),
                     );
                 },
             );
@@ -191,21 +191,21 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     });
     // The foot: Save and Cancel, as the popout's OK and Cancel.
     let foot = Rect::from_min_max(pos2(full.left(), full.bottom() - foot_h), full.max);
-    super::in_rect(ui, foot, "settings.project.foot", |ui| {
+    crate::settings::in_rect(ui, foot, "settings.project.foot", |ui| {
         ui.add_space(space::S);
         ui.horizontal(|ui| {
             if let Some(e) = &d.error {
-                ui.label(egui::RichText::new(e).small().color(ecad_ui::color(ecad_ui::SHELL.error)));
+                ui.label(egui::RichText::new(e).small().color(ecad_widgets::color(ecad_widgets::SHELL.error)));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let c = ui.add(ecad_ui::prim::Button::new("Cancel").small());
+                let c = ui.add(ecad_widgets::prim::Button::new("Cancel").small());
                 c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, CANCEL));
                 if c.clicked() {
                     out = Some(Out::Close);
                 }
                 if !ro {
                     let line = d.line();
-                    let ok = ui.add_enabled(line.is_ok(), ecad_ui::prim::Button::new("Save").kind(ecad_ui::prim::Kind::Primary).small());
+                    let ok = ui.add_enabled(line.is_ok(), ecad_widgets::prim::Button::new("Save").kind(ecad_widgets::prim::Kind::Primary).small());
                     ok.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, line.is_ok(), OK));
                     if ok.clicked() {
                         out = Some(match line {
@@ -236,9 +236,9 @@ fn title_block(ui: &mut egui::Ui, top: &[(&str, &str)], bottom: &[(&str, &str)])
     let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 172.0), egui::Sense::hover());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, TITLE_BLOCK));
     let p = ui.painter();
-    p.rect_filled(r, 0.0, ecad_ui::color(sheet.sheet));
-    let ink = ecad_ui::color(sheet.ink);
-    let dim = ecad_ui::color(sheet.ink_2);
+    p.rect_filled(r, 0.0, ecad_widgets::color(sheet.sheet));
+    let ink = ecad_widgets::color(sheet.ink);
+    let dim = ecad_widgets::color(sheet.ink_2);
     let st = egui::Stroke::new(1.0, ink);
     p.rect_stroke(r, 0.0, st, egui::StrokeKind::Inside);
     let mid = r.top() + r.height() * 0.5;
@@ -261,7 +261,7 @@ fn title_block(ui: &mut egui::Ui, top: &[(&str, &str)], bottom: &[(&str, &str)])
                     pos2(x + space::M, y1 - space::M),
                     egui::Align2::LEFT_BOTTOM,
                     *value,
-                    ecad_ui::style::ui_font(big),
+                    ecad_widgets::style::ui_font(big),
                     ink,
                 );
             }
@@ -275,21 +275,21 @@ fn title_block(ui: &mut egui::Ui, top: &[(&str, &str)], bottom: &[(&str, &str)])
 /// Settings ▸ Pages and sheets: the Project settings popout (sheet, references, tags, revisions,
 /// numbering, wires) on its first tab, 031's text styles on the second.
 pub fn pages(t: &mut App, ui: &mut egui::Ui) {
-    let text = t.settings.section == super::Section::TextStyles;
+    let text = t.settings.section == crate::settings::Section::TextStyles;
     let mut i = usize::from(text);
-    ecad_ui::prim::segmented(ui, &mut i, &TABS);
+    ecad_widgets::prim::segmented(ui, &mut i, &TABS);
     if i != usize::from(text) {
-        t.settings.section = if i == 1 { super::Section::TextStyles } else { super::Section::Pages };
+        t.settings.section = if i == 1 { crate::settings::Section::TextStyles } else { crate::settings::Section::Pages };
     }
     ui.add_space(space::M);
     // Brief 054 (design 054 §5): the page type table; rev 3's sheet and numbering rows are folded
     // under it.
     if !text {
-        super::pages::show(t, ui);
+        crate::settings::pages::show(t, ui);
         return;
     }
     ui.set_max_width(900.0);
-    ecad_ui::prim::read_value(ui, "Each kind of text: its height, weight and font, and whether it is shown. Also listed in Standards.");
+    ecad_widgets::prim::read_value(ui, "Each kind of text: its height, weight and font, and whether it is shown. Also listed in Standards.");
     ui.add_space(space::S);
     body(t, ui, Popout::Settings, Part::Text);
 }
@@ -297,7 +297,7 @@ pub fn pages(t: &mut App, ui: &mut egui::Ui) {
 /// The copy of `popout` drawn as `part`, filled first if there is none of that popout.
 pub fn body(t: &mut App, ui: &mut egui::Ui, popout: Popout, part: Part) {
     if !t.project_open() {
-        ecad_ui::prim::read_value(ui, NO_PROJECT);
+        ecad_widgets::prim::read_value(ui, NO_PROJECT);
         return;
     }
     if t.project_props.as_ref().is_none_or(|d| d.popout != popout) {
@@ -315,12 +315,12 @@ impl App {
         let read_only = self.header().read_only;
         match self.run_value("projectprops", serde_json::json!({})) {
             Ok(v) => {
-                let mut d = crate::sheets_ui::ProjectProps::from_json(&v, read_only, popout);
+                let mut d = crate::settings::sheets::ProjectProps::from_json(&v, read_only, popout);
                 if popout == Popout::Settings {
                     // Brief 031: the Text section reads `textstyle {}`; brief 032 §4.4: the wire
                     // label rows read `wiresettings {}` (reads only).
-                    d.text = self.run_value("textstyle", serde_json::json!({})).ok().map(|t| crate::text_ui::TextSection::from_json(&t));
-                    d.labels = self.run_value("wiresettings", serde_json::json!({})).ok().map(|w| crate::sheets_ui::WireLabels::from_json(&w));
+                    d.text = self.run_value("textstyle", serde_json::json!({})).ok().map(|t| crate::settings::text_styles::TextSection::from_json(&t));
+                    d.labels = self.run_value("wiresettings", serde_json::json!({})).ok().map(|w| crate::settings::sheets::WireLabels::from_json(&w));
                 }
                 self.project_props = Some(d);
             }

@@ -4,12 +4,12 @@
 //! its display choices and defaults-registry values, or refused. A cable is written whole: every
 //! key but its tag and fixed flag (the tag rows' conflicts) builds one `ModifyCable`.
 
-use ecad_model::tag::{FIXED_KEY, TAG_KEY};
-use ecad_model::wire::{Colours, WireSize};
-use ecad_model::words::Word;
+use ecad_model::naming::tag::{FIXED_KEY, TAG_KEY};
+use ecad_model::objects::wire::{Colours, WireSize};
+use ecad_model::naming::words::Word;
 use ecad_model::{Document, ObjectRef, Op, Wire, WireId};
 
-use super::super::prop::{Build, PropRule};
+use crate::properties::commands::{Build, PropRule};
 use crate::defaults::{self, Level};
 use crate::error::{CmdError, msg};
 
@@ -26,7 +26,7 @@ pub fn no_such_key(key: &str) -> CmdError {
     ))
 }
 
-/// This lane's rows, asked before [`super::super::prop::PROP_RULES`].
+/// This lane's rows, asked before [`crate::properties::commands::PROP_RULES`].
 pub static RULES: &[PropRule] = &[
     PropRule { what: "wire number and potential (brief 022)", claims: |_, o, k| is_wire(o) && is_net_key(k), build: Build::Value(net_key) },
     PropRule { what: "wire size and colours (072 D)", claims: |_, o, k| is_wire(o) && (k == SIZE || k == COLOURS), build: Build::Record(wire_value) },
@@ -37,7 +37,7 @@ pub static RULES: &[PropRule] = &[
     },
     PropRule {
         what: "wire type (072 §4.6)",
-        claims: |_, o, k| is_wire(o) && k == ecad_model::wiring::WIRE_CATEGORY,
+        claims: |_, o, k| is_wire(o) && k == ecad_model::connectivity::wiring::WIRE_CATEGORY,
         build: Build::Record(wire_type),
     },
     PropRule { what: "wire display choices and registry values (072 §9.2)", claims: |_, o, _| is_wire(o), build: Build::Value(wire_display) },
@@ -53,19 +53,19 @@ pub static RULES: &[PropRule] = &[
 /// key is stored as typed.
 ///
 /// # Errors
-/// A cable that is not there; a bad offer; a shield that is not a word of [`ecad_model::style::cable::Shield`];
+/// A cable that is not there; a bad offer; a shield that is not a word of [`ecad_model::objects::styles::cable::Shield`];
 /// an `unused.` key naming no core.
 pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
-    let ObjectRef::Cable(k) = o else { return Err(CmdError::refused(super::super::prop::NO_SUCH_OBJECT)) };
-    let cab = doc.cables.get(&k).ok_or(CmdError::refused(super::super::prop::NO_SUCH_OBJECT))?;
+    let ObjectRef::Cable(k) = o else { return Err(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT)) };
+    let cab = doc.cables.get(&k).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
     if key.starts_with(crate::styles::cable::UNUSED_PREFIX) {
         return Ok(crate::styles::cable::unused_ops(doc, k, key, value)?.into_iter().next());
     }
     let value = value.map(str::trim).filter(|v| !v.is_empty());
     let mut after = cab.clone();
     if let Some(r) = cable_rating_key(key) {
-        let checked = value.map(|v| super::super::rating::check_value(doc, r, v)).transpose()?;
-        super::super::rating::set_cable(doc, &mut after, r, checked.as_deref());
+        let checked = value.map(|v| crate::circuits::commands::check_value(doc, r, v)).transpose()?;
+        crate::circuits::commands::set_cable(doc, &mut after, r, checked.as_deref());
         return Ok(Op::modify_cable(k, cab, after));
     }
     // Design 072 §4.5: the cable type is a field; its cores follow it. A type's name or ID; an ID
@@ -86,18 +86,18 @@ pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
     if key == crate::cables::CableField::Shield.key() {
         after.shield = match value {
             None => None,
-            Some(v) => Some(<ecad_model::style::cable::Shield as Word>::parse(v).ok_or_else(|| {
+            Some(v) => Some(<ecad_model::objects::styles::cable::Shield as Word>::parse(v).ok_or_else(|| {
                 CmdError::refused(format!("{:?} is not a shield: give none, overall, pairs or overall+pairs.", crate::cables::clip(v)))
             })?),
         };
         return Ok(Op::modify_cable(k, cab, after));
     }
-    let stored = if key == crate::strips::CORES_KEY { crate::strips::cores_value(value)? } else { value.map(str::to_string) };
+    let stored = if key == crate::terminal_strips::CORES_KEY { crate::terminal_strips::cores_value(value)? } else { value.map(str::to_string) };
     match stored {
         Some(v) => after.properties.insert(key.to_string(), v),
         None => after.properties.remove(key),
     };
-    if key == crate::strips::CORES_KEY || key == crate::cables::CableField::Type.key() {
+    if key == crate::terminal_strips::CORES_KEY || key == crate::cables::CableField::Type.key() {
         crate::styles::cable::sync_offered_cores(doc, cab, &mut after);
     }
     Ok(Op::modify_cable(k, cab, after))
@@ -106,7 +106,7 @@ pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
 /// The `rating` key a `setprop` key on a cable names: `load`, or a rating input by its stored key
 /// (`rating.basis`), `protected_by`; the cable type has its own row (its cores follow it).
 fn cable_rating_key(key: &str) -> Option<&'static str> {
-    super::super::rating::KEYS.iter().find(|r| r.3 && r.1 == key && r.0 != "cable_type").map(|r| r.0)
+    crate::circuits::commands::KEYS.iter().find(|r| r.3 && r.1 == key && r.0 != "cable_type").map(|r| r.0)
 }
 
 fn is_wire(o: ObjectRef) -> bool {
@@ -114,24 +114,24 @@ fn is_wire(o: ObjectRef) -> bool {
 }
 
 fn is_net_key(k: &str) -> bool {
-    k == ecad_model::wiring::WIRE_NUMBER_KEY || k == ecad_model::connectivity::WIRE_NUMBER_FIXED || k == ecad_model::wiring::POTENTIAL_KEY
+    k == ecad_model::connectivity::wiring::WIRE_NUMBER_KEY || k == ecad_model::connectivity::WIRE_NUMBER_FIXED || k == ecad_model::connectivity::wiring::POTENTIAL_KEY
 }
 
 fn net_key(_: &Document, _: ObjectRef, key: &str, _: Option<&str>) -> Result<Option<String>, CmdError> {
-    Err(CmdError::refused(if key == ecad_model::wiring::POTENTIAL_KEY { msg::USE_POTENTIAL } else { msg::USE_WIRENUMBER }))
+    Err(CmdError::refused(if key == ecad_model::connectivity::wiring::POTENTIAL_KEY { msg::USE_POTENTIAL } else { msg::USE_WIRENUMBER }))
 }
 
 /// The `rating` key a `setprop` key on a wire names: `basis` or `rating.basis`, `load`,
 /// `protected_by`.
 fn rating_key(key: &str) -> Option<&'static str> {
     let k = key.strip_prefix("rating.").unwrap_or(key);
-    super::super::rating::KEYS.iter().find(|r| r.0 == k && r.2).map(|r| r.0)
+    crate::circuits::commands::KEYS.iter().find(|r| r.0 == k && r.2).map(|r| r.0)
 }
 
 fn wire_of(doc: &Document, o: ObjectRef) -> Result<(WireId, &Wire), CmdError> {
     match o {
-        ObjectRef::Wire(c) => doc.wires.get(&c).map(|w| (c, w)).ok_or(CmdError::refused(super::super::prop::NO_SUCH_OBJECT)),
-        _ => Err(CmdError::refused(super::super::prop::NO_SUCH_OBJECT)),
+        ObjectRef::Wire(c) => doc.wires.get(&c).map(|w| (c, w)).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT)),
+        _ => Err(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT)),
     }
 }
 
@@ -189,16 +189,16 @@ pub fn wire_type(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> 
 /// A wire's rating input, checked as `rating` checks it.
 ///
 /// # Errors
-/// The value's range, in words ([`super::super::rating::check_value`]).
+/// The value's range, in words ([`crate::circuits::commands::check_value`]).
 pub fn wire_rating(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, w) = wire_of(doc, o)?;
     let key = rating_key(key).ok_or_else(|| no_such_key(key))?;
     let checked = match value.map(str::trim).filter(|v| !v.is_empty()) {
         None => None,
-        Some(v) => Some(super::super::rating::check_value(doc, key, v)?),
+        Some(v) => Some(crate::circuits::commands::check_value(doc, key, v)?),
     };
     let mut after = w.clone();
-    super::super::rating::set_wire(doc, &mut after, key, checked.as_deref());
+    crate::circuits::commands::set_wire(doc, &mut after, key, checked.as_deref());
     Ok(modify(c, w, after))
 }
 

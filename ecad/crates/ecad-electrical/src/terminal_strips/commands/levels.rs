@@ -1,7 +1,7 @@
 //! The rules of brief 036's commands (design 036 §3.5, §4.2): `termlabel` (relabel a position, set
 //! or clear one level's own label, move a level to another position) and `toposition` (turn a brief
 //! 034 fuse terminal device into a fuse position of a strip). Each function reads the document and
-//! returns the ops to commit and what to report; both commands are generic ([`crate::cmd::run`]).
+//! returns the ops to commit and what to report; both commands are generic ([`crate::commands::run`]).
 
 use std::collections::BTreeMap;
 
@@ -14,10 +14,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::cmd::input::nullable;
-use crate::cmd::run::{Cx, Generic, Outcome};
+use crate::commands::input::nullable;
+use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
-use crate::terminal_types as tt;
+use crate::terminal_strips::terminal_blocks as tt;
 
 // ---------------------------------------------------------------- termlabel (§4.2)
 
@@ -110,7 +110,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         }
         (None, None) => return Err(CmdError::input("`terminal` or `strip` (hex id) is required")),
     };
-    if crate::strips::strip_of(doc, c).is_none() {
+    if crate::terminal_strips::strip_of(doc, c).is_none() {
         return Err(CmdError::refused("That device is not a terminal strip."));
     }
     let tag = crate::devices::tag_words(doc, c);
@@ -158,7 +158,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         }
         let ts: Vec<ConnectionPointId> = here.terminals().collect();
         let rel = relabel_ops(doc, &ts, q);
-        let (follow, fl) = crate::accessories::renumber_ops(doc, &rel);
+        let (follow, fl) = crate::terminal_strips::accessories::renumber_ops(doc, &rel);
         ops.extend(rel);
         ops.extend(follow);
         lines.extend(fl);
@@ -234,10 +234,10 @@ pub fn plan_toposition(
 ) -> Result<ToPosition, CmdError> {
     let comp = doc.devices.get(&device).ok_or(CmdError::NotFound(Noun::Device))?;
     let tag = crate::devices::tag_words(doc, device);
-    if crate::strips::strip_of(doc, device).is_some() {
+    if crate::terminal_strips::strip_of(doc, device).is_some() {
         return Err(CmdError::refused(format!("{tag} is a terminal strip, not a fuse terminal device.")));
     }
-    if crate::strips::fuse_terminal_block_of(doc, device).is_none() {
+    if crate::terminal_strips::fuse_terminal_block_of(doc, device).is_none() {
         return Err(CmdError::refused(format!(
             "{tag} is not a fuse terminal device. Make strip position turns a fuse terminal (fuseterm) into a strip position."
         )));
@@ -264,7 +264,7 @@ pub fn plan_toposition(
             if c == device {
                 return Err(CmdError::refused(format!("{tag} cannot become a position of itself. Name a terminal strip.")));
             }
-            if crate::strips::strip_of(doc, c).is_none() {
+            if crate::terminal_strips::strip_of(doc, c).is_none() {
                 return Err(CmdError::refused(format!("{} is not a terminal strip.", crate::devices::tag_words(doc, c))));
             }
             c
@@ -274,12 +274,12 @@ pub fn plan_toposition(
             let strips: std::collections::BTreeSet<DeviceId> = doc
                 .representations_on(page)
                 .filter_map(|(_, r)| match r.subject {
-                    Subject::Device(c) if crate::strips::strip_of(doc, c).is_some() => Some(c),
+                    Subject::Device(c) if crate::terminal_strips::strip_of(doc, c).is_some() => Some(c),
                     _ => None,
                 })
                 .collect();
             for c in strips {
-                for (_, _, pg, at) in crate::strips::drawn_points(doc, c) {
+                for (_, _, pg, at) in crate::terminal_strips::drawn_points(doc, c) {
                     let d = at.dist(here);
                     if pg == page && d.is_finite() && best.is_none_or(|(b, _)| d < b) {
                         best = Some((d, c));
@@ -293,7 +293,7 @@ pub fn plan_toposition(
     let starter = crate::devices::starter("termfuse")?;
     let ty = tt::by_code("fuse").ok_or(CmdError::refused("no fuse type"))?;
     let mut ops = Vec::new();
-    let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
+    let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
     let mut chooser = tt::Chooser::new(doc, Some(strip));
     let pos = chooser.choose(doc, Some(strip), ty, Some(1), position)?;
     let (tin, tout): (ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh());
@@ -362,14 +362,14 @@ pub fn plan_toposition(
     // Design 072 §2.2 and §2.5: the fuse's typed rating becomes the position's. A note is no fuse
     // rating and a position has no note: it goes with the device and is listed.
     let typed = match &comp.device_type {
-        ecad_model::DeviceType::Protection(ecad_model::device::Protection::Fuse(f) | ecad_model::device::Protection::FuseTerminalBlock(f))
-            if *f != ecad_model::device::Fuse::default() =>
+        ecad_model::DeviceType::Protection(ecad_model::objects::devices::Protection::Fuse(f) | ecad_model::objects::devices::Protection::FuseTerminalBlock(f))
+            if *f != ecad_model::objects::devices::Fuse::default() =>
         {
             Some(f)
         }
         _ => None,
     };
-    let label = ecad_model::device::PositionLabel::new(&pos).ok();
+    let label = ecad_model::objects::devices::PositionLabel::new(&pos).ok();
     let sd = doc.devices.get(&strip);
     if let (Some(f), Some(label), Some(sd)) = (typed, label, sd)
         && let ecad_model::DeviceType::TerminalStrip(s) = &sd.device_type
@@ -379,28 +379,28 @@ pub fn plan_toposition(
         let after = ecad_model::Device { device_type: ecad_model::DeviceType::TerminalStrip(s), ..sd.clone() };
         ops.push(Op::ModifyDevice { id: strip, before: sd.clone(), after });
     } else if comp.rating_shown().is_some() {
-        lost.push(ecad_model::device::RATING_KEY.into());
+        lost.push(ecad_model::objects::devices::RATING_KEY.into());
     }
     // Design 072 §2.1: the tag is a field of the device, and goes with it too.
     if comp.tag.is_some() {
-        lost.push(ecad_model::tag::TAG_KEY.into());
+        lost.push(ecad_model::naming::tag::TAG_KEY.into());
     }
     lost.extend(ecad_model::TextField::ALL.into_iter().filter(|f| comp.text(*f).is_some()).map(|f| f.key().to_string()));
     lost.sort();
-    let strip_part = doc.devices.get(&strip).and_then(|x| x.properties.get(&crate::strips::type_key(ty, "part_number"))).cloned();
+    let strip_part = doc.devices.get(&strip).and_then(|x| x.properties.get(&crate::terminal_strips::type_key(ty, "part_number"))).cloned();
     let note = match (comp.part_number.as_ref().map(|t| t.to_string()), &strip_part) {
         (Some(a), Some(b)) if a != *b => {
             Some(format!("{tag}'s part {a} differs from {stag}'s fuse terminal part {b}; set {stag}'s part if {a} is right."))
         }
         _ => None,
     };
-    ops.extend(crate::cmd::device_link::unlink_ops(doc, device));
+    ops.extend(crate::devices::commands::device_links::unlink_ops(doc, device));
     ops.push(Op::DeleteDevice { id: device, device: comp.clone() });
     Ok(ToPosition { ops, strip, position: pos.clone(), lost, note, label: format!("{tag} \u{2192} {stag}:{pos}") })
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// Where a level moves.
 #[derive(Deserialize, Clone, Copy, JsonSchema)]

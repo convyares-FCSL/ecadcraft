@@ -2,10 +2,10 @@
 
 use std::collections::BTreeSet;
 
-use ecad_engine::{connectors, defaults};
+use {ecad_electrical::connectors, ecad_electrical::defaults};
 use ecad_model::Word;
-use ecad_model::keys::{self, Area};
-use ecad_model::view::PageSet;
+use ecad_model::naming::keys::{self, Area};
+use ecad_model::document::view::PageSet;
 use ecad_model::{DeviceId, Document, ObjectRef, Op, PageId};
 
 /// C3: every fixed key and every defaults entry classifies to an area other than `Free`, and the
@@ -49,20 +49,20 @@ fn areas_cover_the_keys() {
 /// through `Views::begin` and `finish` (both phases).
 #[test]
 fn the_tree_feed_follows_its_update_map() {
-    use ecad_electrical::derived::{EngineInputs, Views};
+    use ecad_electrical::views::{EngineInputs, Views};
     use ecad_model::{Document, Folder, FolderId, ObjectRef, Op, Page, PageId, PageNo, Properties};
     let page = Page::titled("1").unwrap();
-    let retitled = Page { title: ecad_model::page::PageTitle::new("2").unwrap(), ..page.clone() };
+    let retitled = Page { title: ecad_model::document::page::PageTitle::new("2").unwrap(), ..page.clone() };
     let renumbered = Page { number: PageNo::parse("9"), ..page.clone() };
     let refiled = Page { folder: Some(FolderId(4)), ..page.clone() };
     let mut display = Properties::new();
     display.insert("text.tag.height".into(), "3".into());
     let restyled = Page { display, ..page.clone() };
-    let rekinded = Page { kind: ecad_model::page::PageKind::TerminalStrip { strip: ecad_model::DeviceId(9) }, ..page.clone() };
+    let rekinded = Page { kind: ecad_model::document::page::PageKind::TerminalStrip { strip: ecad_model::DeviceId(9) }, ..page.clone() };
     let resheeted = Page { sheet: ecad_model::SheetSpec::parse("A3").ok(), ..page.clone() };
     let (p, f) = (PageId(1), FolderId(4));
-    let mut retitled_project = ecad_model::project::Project::default();
-    retitled_project.info.title = ecad_model::project::InfoText::new("Plant").ok();
+    let mut retitled_project = ecad_model::document::project::Project::default();
+    retitled_project.info.title = ecad_model::document::project::InfoText::new("Plant").ok();
     let folder = Folder { name: "A".into(), parent: None, start: None };
     let cases: Vec<(&str, Vec<Op>, bool)> = vec![
         ("page added", vec![Op::AddPage { id: p, page: page.clone(), index: 0 }], true),
@@ -93,7 +93,7 @@ fn the_tree_feed_follows_its_update_map() {
     ];
     let doc = Document::default();
     for (what, ops, want) in cases {
-        let mut views = Views::new(EngineInputs { metrics: std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth) });
+        let mut views = Views::new(EngineInputs { metrics: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FixedWidth) });
         let pending = views.begin(&doc, &ops);
         let changes = views.finish(&doc, &ops, pending);
         assert_eq!(changes.list, want, "{what}");
@@ -104,7 +104,7 @@ fn the_tree_feed_follows_its_update_map() {
 /// through the tree feed; an edit that leaves the tree alone does not.
 #[test]
 fn the_tree_feed_reaches_the_change_log() {
-    let b = ecad_engine::test_support::ProjectBuilder::new(64).page().coil("K1", (20.0, 20.0)).build();
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(64).page().coil("K1", (20.0, 20.0)).build();
     let page = b.added_pages[0];
     let k1 = b.device("K1");
     let mut h = crate::common::H::from_built(b);
@@ -122,7 +122,7 @@ fn the_tree_feed_reaches_the_change_log() {
 fn the_devices_feed_follows_its_update_map() {
     use crate::common::{applied, devices_touched};
     use ecad_model::{ObjectRef, Op, Page, PageId, PageNo};
-    let b = ecad_engine::test_support::ProjectBuilder::new(641).page().page().coil("K1", (20.0, 20.0)).build();
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(641).page().page().coil("K1", (20.0, 20.0)).build();
     let (first, second) = (b.added_pages[0], b.added_pages[1]);
     let k1 = b.device("K1");
     let mut h = crate::common::H::from_built(b);
@@ -132,10 +132,10 @@ fn the_devices_feed_follows_its_update_map() {
     let index = |p: PageId| doc.page_order.iter().position(|x| *x == p).unwrap();
     let page = |p: PageId| doc.pages[&p].clone();
     let renumbered = Page { number: PageNo::parse("9"), ..page(second) };
-    let retitled = Page { title: ecad_model::page::PageTitle::new("Other").unwrap(), ..page(first) };
+    let retitled = Page { title: ecad_model::document::page::PageTitle::new("Other").unwrap(), ..page(first) };
     let settings = doc.settings.clone();
     let mut info = doc.project.clone();
-    info.info.title = ecad_model::project::InfoText::new("Plant").ok();
+    info.info.title = ecad_model::document::project::InfoText::new("Plant").ok();
     let note = |object| Op::SetProperty { object, key: "note".into(), before: None, after: Some("x".into()) };
     let new_page = PageId(9_999);
     // (what, ops, the devices it names, `pages`, `settings`)
@@ -174,7 +174,7 @@ fn the_devices_feed_follows_its_update_map() {
 /// now through the Devices feed; a page retitled does not.
 #[test]
 fn the_devices_feed_reaches_the_change_log() {
-    let b = ecad_engine::test_support::ProjectBuilder::new(642).page().coil("K1", (20.0, 20.0)).build();
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(642).page().coil("K1", (20.0, 20.0)).build();
     let page = b.added_pages[0];
     let k1 = b.device("K1");
     let mut h = crate::common::H::from_built(b);
@@ -195,15 +195,15 @@ fn the_devices_feed_reaches_the_change_log() {
 fn the_props_feed_follows_its_update_map() {
     use crate::common::{applied, props_touched};
     use ecad_model::Page;
-    let b = ecad_engine::test_support::ProjectBuilder::new(643).page().coil("K1", (20.0, 20.0)).build();
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(643).page().coil("K1", (20.0, 20.0)).build();
     let page = b.added_pages[0];
     let k1 = b.device("K1");
     let mut h = crate::common::H::from_built(b);
     let doc = h.doc();
-    let retitled = Page { title: ecad_model::page::PageTitle::new("Other").unwrap(), ..doc.pages[&page].clone() };
+    let retitled = Page { title: ecad_model::document::page::PageTitle::new("Other").unwrap(), ..doc.pages[&page].clone() };
     let settings = doc.settings.clone();
     let mut info = doc.project.clone();
-    info.info.title = ecad_model::project::InfoText::new("Plant").ok();
+    info.info.title = ecad_model::document::project::InfoText::new("Plant").ok();
     let note = |object| Op::SetProperty { object, key: "note".into(), before: None, after: Some("x".into()) };
     let set = |o: &[ObjectRef]| Some(o.iter().copied().collect::<BTreeSet<_>>());
     let cases: Vec<(&str, Vec<Op>, Option<BTreeSet<ObjectRef>>)> = vec![
@@ -225,7 +225,7 @@ fn the_props_feed_follows_its_update_map() {
 #[test]
 fn the_props_feed_reads_the_extension() {
     use crate::common::{applied, props_touched};
-    let b = ecad_engine::test_support::ProjectBuilder::new(644).page().coil("K1", (20.0, 20.0)).coil("K2", (80.0, 20.0)).wire("K1", "K2").build();
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(644).page().coil("K1", (20.0, 20.0)).coil("K2", (80.0, 20.0)).wire("K1", "K2").build();
     let page = b.added_pages[0];
     let (k1, k2) = (b.device("K1"), b.device("K2"));
     let mut h = crate::common::H::from_built(b);
@@ -249,7 +249,7 @@ fn the_props_feed_reads_the_extension() {
 /// the feed.
 #[test]
 fn the_props_feed_reaches_the_change_log() {
-    let b = ecad_engine::test_support::ProjectBuilder::new(645).page().coil("K1", (20.0, 20.0)).build();
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(645).page().coil("K1", (20.0, 20.0)).build();
     let k1 = b.device("K1");
     let mut h = crate::common::H::from_built(b);
     let n = h.p(|p| p.change_count());
@@ -276,7 +276,7 @@ fn the_connectors_view_follows_the_document() {
     let a = row(&mut h, [50, 50]);
     let b = row(&mut h, [50, 150]);
     h.run("setprop", json!({"component": b.hex(), "key": "connector.side.socket", "value": "F"})).unwrap();
-    let side = ecad_engine::defaults::connectors::SIDE_SOCKET.key;
+    let side = ecad_electrical::defaults::connectors::SIDE_SOCKET.key;
     h.run("setdefault", json!({"key": side, "value": "B"})).unwrap();
     h.run("setdefault", json!({"key": "connector.description", "value": "Plug"})).unwrap();
     h.run("setprop", json!({"component": a.hex(), "key": "half.s.maker", "value": "ACME"})).unwrap();
@@ -288,17 +288,17 @@ fn the_connectors_view_follows_the_document() {
     h.cmdline("r");
     h.cmdline("r");
     let log = h.p(|p| p.ledger.log().to_vec());
-    let metrics = std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth);
-    let mut views = ecad_electrical::derived::Views::new(ecad_electrical::derived::EngineInputs { metrics });
+    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FixedWidth);
+    let mut views = ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { metrics });
     let mut doc = Document::default();
     views.rebuild(&doc);
     // The view on its own, for its pages: the pipeline's `Changes.pages` holds every view's.
-    let mut alone = ecad_electrical::derived::ConnectorsView::build(&doc);
+    let mut alone = ecad_electrical::views::ConnectorsView::build(&doc);
     let mut named = 0;
     for tx in &log {
-        use ecad_electrical::derived::{Inputs, note_view};
-        use ecad_model::view::{DerivedView, NoteCx, Phase};
-        let effects = ecad_model::effect::Effects::of(&tx.ops);
+        use ecad_electrical::views::{Inputs, note_view};
+        use ecad_model::document::view::{DerivedView, NoteCx, Phase};
+        let effects = ecad_model::document::effect::Effects::of(&tx.ops);
         let mut scope = Default::default();
         note_view::<_, Inputs<'_>>(&alone, &NoteCx { doc: &doc, phase: Phase::Before, effects: &effects }, &mut scope);
         let pending = views.begin(&doc, &tx.ops);
@@ -338,10 +338,10 @@ fn the_connectors_view_reaches_the_change_log() {
     let page = h.first_page();
     assert!(h.p(|p| p.connectors().len()) == 1);
     let n = h.p(|p| p.change_count());
-    h.run("setdefault", json!({"key": ecad_engine::defaults::connectors::SIDE_SOCKET.key, "value": "B"})).unwrap();
+    h.run("setdefault", json!({"key": ecad_electrical::defaults::connectors::SIDE_SOCKET.key, "value": "B"})).unwrap();
     let pages = h.p(|p| p.changes_since(n));
     assert!(pages.as_ref().is_some_and(|p| p.contains(&page)), "the inheriting connector's page, not every page: {pages:?}");
-    let inh = h.p(|p| p.connectors().inheriting(ecad_engine::defaults::connectors::SIDE_SOCKET.key));
+    let inh = h.p(|p| p.connectors().inheriting(ecad_electrical::defaults::connectors::SIDE_SOCKET.key));
     assert!(inh.contains(&a));
 }
 
@@ -351,11 +351,11 @@ fn the_connectors_view_reaches_the_change_log() {
 /// again after every commit (no update map since 0.2.3), so only the reference index is reported.
 #[test]
 fn a_view_out_of_step_is_reported_and_rebuilt() {
-    use ecad_inspect::EventKind;
+    use ecad_engine::history::event_log::EventKind;
     use serde_json::json;
     let mut h = crate::common::H::new(6453);
     h.run("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [50, 50]})).unwrap();
-    assert!(ecad_model::ledger::verify_mode(), "tests run in verify mode");
+    assert!(ecad_model::document::ledger::verify_mode(), "tests run in verify mode");
     h.cfg(|p| p.views_mut().rebuild(&Document::default()));
     assert!(h.p(|p| p.connectors().is_empty()), "the kept index is out of step");
     assert!(h.p(|p| p.xref().verify(p.ledger.document()).is_err()), "the kept reference index is out of step");
@@ -375,16 +375,16 @@ fn a_view_out_of_step_is_reported_and_rebuilt() {
 /// of three pages stale, through `Views::begin` and `finish`; with no frame shown, none does.
 #[test]
 fn the_frame_view_follows_its_update_map() {
-    use ecad_electrical::derived::{EngineInputs, Views};
-    use ecad_electrical::frames::{FrameInput, FrameText};
+    use ecad_electrical::views::{EngineInputs, Views};
+    use ecad_electrical::pages::frames::{FrameInput, FrameText};
     use ecad_model::{Page, PageTitle};
-    let b = ecad_engine::test_support::ProjectBuilder::new(644).page().page().page().coil("K1", (20.0, 20.0)).build();
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(644).page().page().page().coil("K1", (20.0, 20.0)).build();
     let (first, second, third) = (b.added_pages[0], b.added_pages[1], b.added_pages[2]);
     let k1 = b.device("K1");
     let mut h = crate::common::H::from_built(b);
     let doc = h.doc();
-    let metrics = ecad_electrical::text_style::fonts::FixedWidth;
-    let input = FrameInput::with(&doc, first, &ecad_model::book::Book::of(&doc), FrameText::with(&doc, &metrics));
+    let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
+    let input = FrameInput::with(&doc, first, &ecad_model::document::book::Book::of(&doc), FrameText::with(&doc, &metrics));
     let index = |p: PageId| doc.page_order.iter().position(|x| *x == p).unwrap();
     let page = |p: PageId| doc.pages[&p].clone();
     let retitle = |p: PageId| Op::ModifyPage { id: p, before: page(p), after: Page { title: PageTitle::new("Other").unwrap(), ..page(p) } };
@@ -393,7 +393,7 @@ fn the_frame_view_follows_its_update_map() {
     let mut sheet = settings.clone();
     sheet.sheet = ecad_model::SheetSpec::parse("A2").ok();
     let mut info = doc.project.clone();
-    info.info.title = ecad_model::project::InfoText::new("Plant").ok();
+    info.info.title = ecad_model::document::project::InfoText::new("Plant").ok();
     let moved =
         |p: PageId, to: usize| vec![Op::RemovePage { id: p, page: page(p), index: index(p) }, Op::AddPage { id: p, page: page(p), index: to }];
     let folder = ecad_model::Folder { name: "A".into(), parent: None, start: None };
@@ -414,7 +414,7 @@ fn the_frame_view_follows_its_update_map() {
         ("a free project property", vec![note(ObjectRef::Project)], false),
         ("nothing", vec![], false),
     ];
-    let metrics = std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth);
+    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FixedWidth);
     for (what, ops, want) in cases {
         let after = crate::common::applied(&doc, &ops);
         let mut views = Views::new(EngineInputs { metrics: metrics.clone() });
@@ -428,10 +428,10 @@ fn the_frame_view_follows_its_update_map() {
 
 /// Whether `ops` make the frame of `page` (as `doc` shows it) stale, through `Views`.
 fn frame_stale_after(doc: &Document, page: PageId, ops: &[Op]) -> bool {
-    use ecad_electrical::derived::{EngineInputs, Views};
-    use ecad_electrical::frames::{FrameInput, FrameText};
-    let metrics = ecad_electrical::text_style::fonts::FixedWidth;
-    let input = FrameInput::with(doc, page, &ecad_model::book::Book::of(doc), FrameText::with(doc, &metrics));
+    use ecad_electrical::views::{EngineInputs, Views};
+    use ecad_electrical::pages::frames::{FrameInput, FrameText};
+    let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
+    let input = FrameInput::with(doc, page, &ecad_model::document::book::Book::of(doc), FrameText::with(doc, &metrics));
     let mut views = Views::new(EngineInputs { metrics: std::sync::Arc::new(metrics) });
     views.frame_mut().show(page, input);
     let after = crate::common::applied(doc, ops);
@@ -445,7 +445,7 @@ fn frame_stale_after(doc: &Document, page: PageId, ops: &[Op]) -> bool {
 fn the_frame_view_follows_the_rest_of_its_map() {
     use ecad_model::{Page, PageNo, PageTitle, StandardHeader, StandardId, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
     use serde_json::json;
-    let b = ecad_engine::test_support::ProjectBuilder::new(645).page().page().page().build();
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(645).page().page().page().build();
     let (first, second, third) = (b.added_pages[0], b.added_pages[1], b.added_pages[2]);
     let mut h = crate::common::H::from_built(b);
     let contents: PageId = crate::common::id(&h.run("newpage", json!({"generated": "contents"})).unwrap(), "page");
@@ -464,8 +464,8 @@ fn the_frame_view_follows_the_rest_of_its_map() {
     let current = doc.standard.as_ref().map(|s| s.header.clone());
     let other = Some(StandardHeader {
         id: StandardId(99),
-        name: ecad_model::style::StyleName::new("S").unwrap(),
-        based_on: ecad_model::style::BasedOn::Iec,
+        name: ecad_model::objects::styles::StyleName::new("S").unwrap(),
+        based_on: ecad_model::objects::styles::BasedOn::Iec,
         origin: None,
     });
     let note = Op::SetProperty { object: ObjectRef::Project, key: "note".into(), before: None, after: Some("x".into()) };
@@ -491,14 +491,14 @@ fn the_frame_view_follows_the_rest_of_its_map() {
 /// nothing into the next commit; nothing is set before `finish`.
 #[test]
 fn a_dropped_pending_leaves_the_frame_alone() {
-    use ecad_electrical::derived::{EngineInputs, Views};
-    use ecad_electrical::frames::{FrameInput, FrameText};
-    let b = ecad_engine::test_support::ProjectBuilder::new(646).page().build();
+    use ecad_electrical::views::{EngineInputs, Views};
+    use ecad_electrical::pages::frames::{FrameInput, FrameText};
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(646).page().build();
     let page = b.added_pages[0];
     let mut h = crate::common::H::from_built(b);
     let doc = h.doc();
-    let metrics = ecad_electrical::text_style::fonts::FixedWidth;
-    let input = FrameInput::with(&doc, page, &ecad_model::book::Book::of(&doc), FrameText::with(&doc, &metrics));
+    let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
+    let input = FrameInput::with(&doc, page, &ecad_model::document::book::Book::of(&doc), FrameText::with(&doc, &metrics));
     let mut views = Views::new(EngineInputs { metrics: std::sync::Arc::new(metrics) });
     views.frame_mut().show(page, input);
     let touching = [Op::SetProperty { object: ObjectRef::Page(page), key: "note".into(), before: None, after: Some("x".into()) }];
@@ -512,7 +512,7 @@ fn a_dropped_pending_leaves_the_frame_alone() {
 /// representations and the numbering pass's wire numbers only).
 #[test]
 fn a_drawing_commit_runs_the_frame_map_and_leaves_the_frame() {
-    let b = ecad_engine::test_support::ProjectBuilder::new(647).page().build();
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(647).page().build();
     let mut h = crate::common::H::from_built(b);
     let builds = h.p(|p| p.frame_builds);
     let head = h.head();
@@ -526,7 +526,7 @@ fn a_drawing_commit_runs_the_frame_map_and_leaves_the_frame() {
 /// reaches the frame's map.
 #[test]
 fn a_refused_commit_leaves_the_frame_and_its_flag() {
-    let b = ecad_engine::test_support::ProjectBuilder::new(648).page().build();
+    let b = ecad_engine::dev::test_support::ProjectBuilder::new(648).page().build();
     let mut h = crate::common::H::from_built(b);
     let page = h.first_page();
     h.activate(page);
@@ -539,7 +539,7 @@ fn a_refused_commit_leaves_the_frame_and_its_flag() {
     let project = h.doc().project.clone();
     let titled = |t: &str| {
         let mut p = project.clone();
-        p.info.title = ecad_model::project::InfoText::new(t).ok();
+        p.info.title = ecad_model::document::project::InfoText::new(t).ok();
         p
     };
     // The project's title is not "Stale", so the ledger refuses the op at commit.

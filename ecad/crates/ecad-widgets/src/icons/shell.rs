@@ -1,7 +1,7 @@
 //! The shell's own icons: search, checks, agent, history, pages, devices, collapse, close,
 //! chevrons.
 
-use super::Pen;
+use crate::icons::Pen;
 
 /// Search: a lens.
 pub fn search(p: &mut Pen) {

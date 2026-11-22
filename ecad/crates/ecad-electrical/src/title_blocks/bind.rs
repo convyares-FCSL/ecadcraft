@@ -13,21 +13,21 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::Document;
-use ecad_model::project::RevField;
-use ecad_model::title_block::{Binding, IfEmpty, PageField, PrintField, RevisionColumn, TitleBlockLayout};
+use ecad_model::document::project::RevField;
+use ecad_model::objects::title_block::{Binding, IfEmpty, PageField, PrintField, RevisionColumn, TitleBlockLayout};
 
-use crate::frames::FrameInput;
+use crate::pages::frames::FrameInput;
 
 /// The project keys the palette names (design 055 §4.3).
 pub const PROJECT_KEYS: [&str; 5] = ["title", "customer", "drawing_number", "status", "company"];
 /// Longest free project key, in characters (design 055 §4.3: `a-z 0-9 _`, 1–32).
-pub const MAX_KEY_CHARS: usize = ecad_model::title_block::MAX_PROJECT_KEY;
+pub const MAX_KEY_CHARS: usize = ecad_model::objects::title_block::MAX_PROJECT_KEY;
 /// The missing mark (033's `?`).
 pub const MISSING: &str = "?";
 
 /// Whether `key` is a project key a field may name: 1–32 characters of `a-z 0-9 _ .`.
 pub fn is_project_key(key: &str) -> bool {
-    ecad_model::title_block::ProjectKey::new(key).is_some()
+    ecad_model::objects::title_block::ProjectKey::new(key).is_some()
 }
 
 /// The project keys and the revision fields `layout`'s fields read.
@@ -57,11 +57,11 @@ pub fn read(doc: &Document, layout: &TitleBlockLayout) -> (BTreeMap<String, Stri
     let project = pk
         .into_iter()
         .map(|k| {
-            let v = crate::frames::project_text(doc, &k).map(|v| crate::designations::display(doc, &k, &v)).unwrap_or_default();
+            let v = crate::pages::frames::project_text(doc, &k).map(|v| crate::locations::designations::display(doc, &k, &v)).unwrap_or_default();
             (k, v)
         })
         .collect();
-    let newest = if rk.is_empty() { None } else { crate::revisions::issued(doc).into_iter().next() };
+    let newest = if rk.is_empty() { None } else { crate::releases::revisions::issued(doc).into_iter().next() };
     let revision = rk.into_iter().map(|k| (k.clone(), newest.as_ref().map(|r| r.get(&k).to_string()).unwrap_or_default())).collect();
     (project, revision)
 }
@@ -80,7 +80,7 @@ pub fn value(input: &FrameInput, b: &Binding) -> String {
         },
         Binding::Revision(RevisionColumn::Field(RevField::Rev)) => input.rev.clone(),
         Binding::Revision(c) => input.newest.get(c.word()).cloned().unwrap_or_default(),
-        Binding::Print(PrintField::Sheet) => super::sheet_name(&input.sheet),
+        Binding::Print(PrintField::Sheet) => crate::title_blocks::sheet_name(&input.sheet),
     }
 }
 

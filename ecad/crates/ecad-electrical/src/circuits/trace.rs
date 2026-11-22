@@ -19,8 +19,8 @@ use std::collections::BTreeSet;
 
 use ecad_model::{DeviceId, Document, NetKey, Node, Subject, ConnectionPointId};
 
-use super::RatedSubject;
-use ecad_model::device::ProtectionKind;
+use crate::circuits::RatedSubject;
+use ecad_model::objects::devices::ProtectionKind;
 
 /// Most nets one subject's trace visits (design 057 §4.2).
 pub const MAX_TRACE_NETS: usize = 64;
@@ -66,7 +66,7 @@ pub fn load_side(kind: ProtectionKind, label: &str) -> bool {
 
 /// The kind of device `c` when it is an overcurrent protective device (design 072 §2.4).
 fn overcurrent_kind(doc: &Document, c: DeviceId) -> Option<ProtectionKind> {
-    use crate::traits::Protects;
+    use crate::devices::traits::Protects;
     let ecad_model::DeviceType::Protection(p) = &doc.devices.get(&c)?.device_type else { return None };
     p.overcurrent().then(|| p.kind())
 }
@@ -74,7 +74,7 @@ fn overcurrent_kind(doc: &Document, c: DeviceId) -> Option<ProtectionKind> {
 /// Whether device `c` is an overcurrent protective device: its typed kind (design 072 §2.4), never
 /// its symbols.
 pub fn is_protective_component(doc: &Document, c: DeviceId) -> bool {
-    use crate::traits::DeviceKind;
+    use crate::devices::traits::DeviceKind;
     doc.devices.get(&c).and_then(|d| d.device_type.as_protects()).is_some_and(|p| p.overcurrent())
 }
 
@@ -93,7 +93,7 @@ pub fn pair(label: &str) -> Option<String> {
     }
     let up = t.to_ascii_uppercase();
     for (a, b) in [("L", "T"), ("T", "L")] {
-        if let Some(d) = up.strip_prefix(a).filter(|d| d.len() == 1 && ecad_model::words::is_digits(d)) {
+        if let Some(d) = up.strip_prefix(a).filter(|d| d.len() == 1 && ecad_model::naming::words::is_digits(d)) {
             return Some(format!("{b}{d}"));
         }
     }
@@ -108,7 +108,7 @@ pub fn pair(label: &str) -> Option<String> {
 /// never its starters): a device with a contact (contacts, change-overs, power contacts), a
 /// solid-state relay with its output, and an RCD.
 fn crossed(doc: &Document, c: DeviceId) -> bool {
-    use ecad_model::device::Operator;
+    use ecad_model::objects::devices::Operator;
     use ecad_model::{DeviceType, PartRole, Role};
     let has = |p: PartRole| doc.representations_of(Subject::Device(c)).any(|(_, r)| r.role == Role::Part(p));
     match doc.devices.get(&c).map(|d| &d.device_type) {
@@ -132,14 +132,14 @@ fn step(doc: &Document, t: ConnectionPointId) -> Step {
     let Some(c) = term.device() else { return Step::Stop };
     let label = term.label.clone().unwrap_or_default();
     // A strip: the other terminals of this position and level; a fuse position protects.
-    if crate::strips::strip_of(doc, c).is_some() {
-        for p in crate::terminal_types::positions(doc, c) {
+    if crate::terminal_strips::strip_of(doc, c).is_some() {
+        for p in crate::terminal_strips::terminal_blocks::positions(doc, c) {
             if let Some(ts) = p.levels.values().find(|ts| ts.contains(&t)) {
                 // Review of #108: a fuse position protects only what is on its out point (`.no`); its
                 // in point (supply side) or an old one-point drawing stops the trace, so a supply-side
                 // wire is never passed against it.
                 if p.ty.code == "fuse" {
-                    if crate::terminal_types::level_of(doc, t).1 == Some('o') {
+                    if crate::terminal_strips::terminal_blocks::level_of(doc, t).1 == Some('o') {
                         return Step::Found(c, Some(p.label.clone()));
                     }
                     return Step::Stop;
@@ -261,10 +261,10 @@ pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
     };
     let c = doc.components_tagged(&tag).into_iter().next()?;
     if let Some(f) = &fuse {
-        let has = crate::terminal_types::positions(doc, c).iter().any(|p| &p.label == f && p.ty.code == "fuse")
+        let has = crate::terminal_strips::terminal_blocks::positions(doc, c).iter().any(|p| &p.label == f && p.ty.code == "fuse")
             || doc.connection_points_of(c).any(|(_, x)| x.label.as_deref() == Some(f.as_str()))
                 && doc.devices.get(&c).is_some_and(
-                    |d| matches!(&d.device_type, ecad_model::DeviceType::Protection(p) if p.kind() == ecad_model::device::ProtectionKind::FuseBank),
+                    |d| matches!(&d.device_type, ecad_model::DeviceType::Protection(p) if p.kind() == ecad_model::objects::devices::ProtectionKind::FuseBank),
                 );
         if !has {
             return None;
@@ -275,18 +275,18 @@ pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
 
 /// The device `text` names (`-Q01`, `-F01:3`) as stored: the device and its numbered position.
 /// `None` when it names nothing or the position is not a number 1 to 255.
-pub fn protected_by(doc: &Document, text: &str) -> Option<ecad_model::wire::ProtectedBy> {
+pub fn protected_by(doc: &Document, text: &str) -> Option<ecad_model::objects::wire::ProtectedBy> {
     let (device, fuse) = named(doc, text)?;
     let position = match fuse {
         None => None,
         Some(f) => Some(f.trim().parse::<u8>().ok().filter(|n| *n > 0)?),
     };
-    Some(ecad_model::wire::ProtectedBy { device, position })
+    Some(ecad_model::objects::wire::ProtectedBy { device, position })
 }
 
 /// How many wires and cables name device `c` as their protection: the ones deleting it clears.
 pub fn protected_count(doc: &Document, c: DeviceId) -> (usize, usize) {
-    let names = |p: Option<ecad_model::wire::ProtectedBy>| p.is_some_and(|p| p.device == c);
+    let names = |p: Option<ecad_model::objects::wire::ProtectedBy>| p.is_some_and(|p| p.device == c);
     (doc.wires.values().filter(|w| names(w.protected_by)).count(), doc.cables.values().filter(|k| names(k.protected_by)).count())
 }
 
@@ -302,7 +302,7 @@ pub fn cleared_words(doc: &Document, c: DeviceId) -> Option<String> {
 /// The rating of a device (or its fuse) as shown: its typed rating, else its note (design 072
 /// §2.2); a strip's fuse position: its typed fuse rating.
 pub fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
-    let key = fuse.map_or_else(|| ecad_model::device::RATING_KEY.to_string(), |f| format!("{}{f}", ecad_model::device::RATING_OF_PREFIX));
+    let key = fuse.map_or_else(|| ecad_model::objects::devices::RATING_KEY.to_string(), |f| format!("{}{f}", ecad_model::objects::devices::RATING_OF_PREFIX));
     doc.devices.get(&c).and_then(|d| d.value(&key)).map(|v| v.chars().take(64).collect()).unwrap_or_default()
 }
 

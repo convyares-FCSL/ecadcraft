@@ -3,7 +3,7 @@
 //! the impact and its clashes, updates that keep IDs and move wire ends, edited built-ins, saving
 //! unchanged content, `makesymbol` and promotion, superseded versions and hostile input.
 
-use ecad_engine::symbols::{self, PROJECT_SYMBOLS};
+use ecad_electrical::symbols::{self, PROJECT_SYMBOLS};
 use ecad_model::{DefinitionId, DeviceId, Document, Op, PageId, RepresentationId, ConnectionPointId, WireId};
 use serde_json::{Value, json};
 
@@ -263,7 +263,7 @@ fn row_8_editing_a_built_in_makes_a_project_copy() {
     let (def_id, coil_def) = d
         .definitions
         .iter()
-        .find(|(_, x)| symbols::of_definition(x).is_some_and(|s| s.key == ecad_engine::symbols::StarterKey::Coil))
+        .find(|(_, x)| symbols::of_definition(x).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
         .map(|(i, x)| (*i, x.clone()))
         .unwrap();
     let mut p = json!({"definition": def_id.hex(), "name": "Coil, mine", "key": "mycoil", "update": "all",
@@ -428,7 +428,7 @@ fn update_available_reaches_the_devices_list_through_its_update_map() {
     // The list's and the properties' update maps name the device for the new version.
     let touched = crate::common::devices_touched(&before, &h.doc(), &ops);
     assert!(format!("{touched:?}").contains(&format!("{a:?}")), "{touched:?}");
-    let props = ecad_engine::derived::PropsFeed::touched_by(&before, &ops).unwrap();
+    let props = ecad_electrical::views::PropsFeed::touched_by(&before, &ops).unwrap();
     assert!(props.contains(&ecad_model::ObjectRef::Device(a)));
     assert!(entry(&h.doc()).symbols[0].update, "update available");
 }

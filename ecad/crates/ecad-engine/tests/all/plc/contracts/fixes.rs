@@ -5,7 +5,7 @@
 use ecad_model::{DeviceId, PageId, Subject};
 use serde_json::{Value, json};
 
-use super::{placed, prop};
+use crate::plc::contracts::{placed, prop};
 use crate::common::{H, id};
 
 fn rack_of(h: &mut H, c: DeviceId) -> Option<String> {
@@ -24,7 +24,7 @@ fn rack_and_contact(seed: u64) -> (H, DeviceId, Vec<DeviceId>, DeviceId) {
 #[test]
 fn fp1_merging_a_rack_by_tag_re_points_its_cards_in_the_same_transaction() {
     let (mut h, cpu, cards, k) = rack_and_contact(4581);
-    let ktag = super::tag(&mut h, k);
+    let ktag = crate::plc::contracts::tag(&mut h, k);
     let before = h.head();
     h.run("setprop", json!({"component": cpu.hex(), "key": "tag", "value": ktag, "merge": true})).unwrap();
     assert_eq!(h.head(), before + 1, "one transaction");
@@ -33,10 +33,10 @@ fn fp1_merging_a_rack_by_tag_re_points_its_cards_in_the_same_transaction() {
     for c in &cards {
         assert_eq!(rack_of(&mut h, *c), Some(k.hex()), "re-pointed to the device that took the rack body");
     }
-    assert!(super::checks_of(&mut h, "rack-missing").is_empty());
+    assert!(crate::plc::contracts::checks_of(&mut h, "rack-missing").is_empty());
     let r = h.run("plcracks", json!({})).unwrap();
     assert_eq!(r["racks"][0]["tag"], json!(ktag));
-    super::same_as_built(&mut h);
+    crate::plc::contracts::same_as_built(&mut h);
     h.cmdline("u");
     for c in &cards {
         assert_eq!(rack_of(&mut h, *c), Some(cpu.hex()), "undo puts both back");
@@ -91,7 +91,7 @@ fn targets(h: &mut H) -> Vec<String> {
 #[test]
 fn review_2_renumbering_a_strip_patches_the_cards_io_rows() {
     let (mut h, di, strip, _page) = wired_through_a_strip(4583);
-    let stag = super::tag(&mut h, strip);
+    let stag = crate::plc::contracts::tag(&mut h, strip);
     assert!(targets(&mut h).contains(&format!("{stag}:1")), "{:?}", targets(&mut h));
     h.cfg(|p| {
         p.outputs();
@@ -153,7 +153,7 @@ fn review_3_kept_model_paths_walk_no_project() {
         .and_then(|(_, r)| r.items.first().copied())
         .expect("a cell");
     let handle = h.handle_of(page, cell);
-    let v = h.pv(|p, _| ecad_engine::props::view(p, Some(page), &[handle]));
+    let v = h.pv(|p, _| ecad_engine::properties::props::view(p, Some(page), &[handle]));
     let row = v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.label == "Address").cloned().expect("an Address row");
     assert!(row.value.starts_with("I0."), "{}", row.value);
     // A station's modules come from the index (design 072 §3): no walk to count.

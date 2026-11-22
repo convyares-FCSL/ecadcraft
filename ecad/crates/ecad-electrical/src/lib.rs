@@ -17,48 +17,30 @@
 //! [`text_style::fonts::TextMetrics`], which the caller supplies.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
-pub use error::{CmdError, msg};
+pub use crate::error::{CmdError, msg};
 
-pub mod accessories;
-pub mod bom;
-pub mod cable_look;
 pub mod cables;
 pub mod checks;
-pub mod cmd;
-
+pub mod circuits;
+pub mod commands;
 pub mod connectors;
 pub mod continuations;
 pub mod defaults;
-pub mod derived;
-pub mod designations;
-pub mod device_list;
 pub mod devices;
 pub mod error;
-pub mod frames;
-pub mod front;
-pub mod generated;
-pub mod kinds;
-pub mod link_lines;
 pub mod locations;
-pub mod outputs;
-pub mod page_types;
+pub mod merge;
+pub mod numbering;
+pub mod pages;
 pub mod plc;
-pub mod proposals;
-pub mod props;
-pub mod rating;
+pub mod properties;
 pub mod references;
-pub mod release;
-pub mod reps;
-pub mod revisions;
-pub mod slash;
-pub mod strips;
+pub mod releases;
+pub mod reports;
 pub mod styles;
 pub mod symbols;
-pub mod terminal_types;
-pub mod text_style;
-pub mod title_block;
-pub mod traits;
+pub mod terminal_strips;
+pub mod title_blocks;
+pub mod views;
 pub mod wires;
-pub mod words;
-pub mod words_check;
-pub mod xref;
+

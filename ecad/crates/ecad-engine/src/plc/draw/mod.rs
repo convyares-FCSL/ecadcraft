@@ -1,12 +1,12 @@
 //! The engine side of the PLC model (design 065 §3): the card frames' text measured in CADCraft's
 //! fonts, and the PLC sheets drawn.
 
-pub mod look;
+pub mod card;
 pub mod sheets;
 
 use ecad_model::{Document, Op};
 
-use crate::draw::text_style::EngineMetrics;
+use crate::styles::draw::EngineMetrics;
 use crate::plc::kept;
 
 /// The kept PLC model ([`kept::Plc`]) with text measured in CADCraft's fonts.
@@ -36,6 +36,6 @@ impl Plc {
     /// Bring the model in line with `ops`: [`kept::Plc::update_with`]. Returns whether anything
     /// changed.
     pub fn update(&mut self, doc: &Document, ops: &[Op]) -> bool {
-        self.0.update_with(doc, &ecad_model::effect::Effects::of(ops), &EngineMetrics)
+        self.0.update_with(doc, &ecad_model::document::effect::Effects::of(ops), &EngineMetrics)
     }
 }

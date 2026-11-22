@@ -4,7 +4,7 @@
 use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
-use super::{placed, prop};
+use crate::plc::contracts::{placed, prop};
 use crate::common::{H, id};
 
 /// A CPU, a DI card wired to eight lamps through a fence, an AI card and a DQ card.
@@ -99,7 +99,7 @@ fn o_the_generated_page_heads_each_card_and_marks_typed_addresses() {
 #[test]
 fn p_the_release_csv_and_its_missing_reason() {
     let F { mut h, .. } = fixture(4543);
-    let slot = ecad_electrical::release::LISTS.iter().find(|s| s.id == "io-list").expect("an io-list slot");
+    let slot = ecad_electrical::releases::release::LISTS.iter().find(|s| s.id == "io-list").expect("an io-list slot");
     assert_eq!(slot.suffix, " IO list.csv");
     let d = h.doc();
     let t = h.cfg(|p| (slot.build)(&d, p.outputs())).expect("a table");

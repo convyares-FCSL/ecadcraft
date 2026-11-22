@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_tokens::{Icon, line, radius, shadow, size, space, ui_type, wheel};
+use {ecad_widgets::tokens::Icon, ecad_widgets::tokens::line, ecad_widgets::tokens::radius, ecad_widgets::tokens::shadow, ecad_widgets::tokens::size, ecad_widgets::tokens::space, ecad_widgets::tokens::ui_type, ecad_widgets::tokens::wheel};
 
 const DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/design/tokens.md"));
 
@@ -56,11 +56,11 @@ fn constants() -> BTreeMap<String, Vec<String>> {
         assert!(m.insert(name.clone(), cells).is_none(), "constant {name} listed twice");
     };
     // UI rev 3: each shell token's Graphite value, then its light value (board 1.17).
-    for ((name, c), (_, l)) in ecad_tokens::GRAPHITE.rows().into_iter().zip(ecad_tokens::LIGHT.rows()) {
+    for ((name, c), (_, l)) in ecad_widgets::tokens::GRAPHITE.rows().into_iter().zip(ecad_widgets::tokens::LIGHT.rows()) {
         put(name.into(), vec![c.to_token(), l.to_token()]);
     }
-    put("shell.soft".into(), vec![format!("{} %", ecad_tokens::shell::SOFT_PERCENT)]);
-    put("shell.light_soft".into(), vec![format!("{} %", ecad_tokens::shell::LIGHT_SOFT_PERCENT)]);
+    put("shell.soft".into(), vec![format!("{} %", ecad_widgets::tokens::shell::SOFT_PERCENT)]);
+    put("shell.light_soft".into(), vec![format!("{} %", ecad_widgets::tokens::shell::LIGHT_SOFT_PERCENT)]);
     for (name, s) in ui_type::ALL {
         put(name.into(), vec![format!("{} / {} px", s.size, s.line), s.weight.to_string()]);
     }

@@ -5,7 +5,7 @@
 
 use crate::common::{self, Opts, click, pointer_to};
 use cadcraft_engine::geom::Vec2;
-use ecad_app::{App, HOVER_ID, tools};
+use {ecad_app::App, ecad_app::HOVER_ID, ecad_app::commands::tools};
 use ecad_model::{Document, End, Form, Pt, Subject};
 use eframe::egui::{self, Event, Key, Pos2};
 use egui_kittest::Harness;
@@ -138,7 +138,7 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
         let tol = if i == 0 || i == 3 { 1e-9 } else { 1e-3 };
         assert!(v.near(Pt::new(x, y), tol), "{v:?} is {x},{y}");
     }
-    assert!(ecad_model::derive::mismatches(&d, 1e-9).is_empty());
+    assert!(ecad_model::connectivity::derive::mismatches(&d, 1e-9).is_empty());
     // The overlay: three terminal rings, two attached-end dots, no loose ends.
     let marks = h.state().cad.session.owner_overlay();
     let count = |s| marks.iter().filter(|m| m.shape == s).count();

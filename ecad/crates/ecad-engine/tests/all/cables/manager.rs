@@ -71,7 +71,7 @@ fn cablenew_makes_a_cable_that_is_not_drawn_in_one_transaction() {
     let c = checks::cable_checks(&doc, k).into_iter().find(|c| c.kind == checks::Kind::CableNotDrawn).unwrap();
     assert_eq!(c.severity(), Severity::Info);
     assert_eq!(c.release_severity(), Severity::Warning);
-    assert_eq!(ecad_electrical::release::counts(&[c]), (0, 1, 0));
+    assert_eq!(ecad_electrical::releases::release::counts(&[c]), (0, 1, 0));
     // The cable's row in the report says not drawn.
     let drawn = h.p(|p| p.kept_reports().and_then(|o| o.cable_row(k)).map(|r| r.drawn));
     assert!(drawn != Some(true));
@@ -103,9 +103,9 @@ fn cableedit_sets_fields_in_one_transaction_and_refuses_bad_values() {
     assert_eq!(on_cable, 1, "{ops:?}");
     assert!(!ops.iter().any(|o| matches!(o, Op::SetProperty { object: ecad_model::ObjectRef::Cable(_), .. })), "{ops:?}");
     let doc = h.doc();
-    assert_eq!(cables::planned(&doc, k, Side::To, ecad_engine::designations::Aspect::Location).as_deref(), Some("+FIELD"));
+    assert_eq!(cables::planned(&doc, k, Side::To, ecad_electrical::locations::designations::Aspect::Location).as_deref(), Some("+FIELD"));
     assert_eq!(cables::gland(&doc, k, Side::To).map(|g| g.0).as_deref(), Some("M20"));
-    assert_eq!(cables::shield(&doc, k).map(|s| s.0), Some(ecad_model::style::cable::Shield::Overall));
+    assert_eq!(cables::shield(&doc, k).map(|s| s.0), Some(ecad_model::objects::styles::cable::Shield::Overall));
     let head = h.head();
     for (set, words) in [
         (json!({"length": "x"}), "Length must be a number of metres"),
@@ -177,8 +177,8 @@ fn cableremove_deletes_a_cable_not_drawn_and_refuses_a_drawn_one() {
     assert_eq!(h.head(), head);
     let doc = h.doc();
     let page = h.first_page();
-    match ecad_electrical::cmd::cable::drawn(&doc, w) {
-        Some(ecad_electrical::cmd::cable::Drawn { pages, .. }) => assert_eq!(pages.first().map(|p| p.0), Some(page)),
+    match ecad_electrical::cables::commands::cables::drawn(&doc, w) {
+        Some(ecad_electrical::cables::commands::cables::Drawn { pages, .. }) => assert_eq!(pages.first().map(|p| p.0), Some(page)),
         other => panic!("{other:?}"),
     }
     let e = h.run("cableremove", json!({"cable": w.hex(), "drawn": "unassign"})).unwrap_err();
@@ -243,7 +243,7 @@ fn a_drawn_cable_end_off_its_plan_warns_for_that_end_only() {
     h.run("setlocation", json!({"component": b.hex(), "value": "+JB1"})).unwrap();
     let doc = h.doc();
     let page = h.first_page();
-    let tp = ecad_model::derive::connection_point_positions(&doc, page);
+    let tp = ecad_model::connectivity::derive::connection_point_positions(&doc, page);
     let pos = |c: ecad_model::DeviceId| {
         let (rid, _) = doc.representations_of(ecad_model::Subject::Device(c)).next().unwrap();
         tp.iter().find(|(_, r, _)| *r == rid).unwrap().2
@@ -373,7 +373,7 @@ fn the_picker_lists_cables_not_drawn_first_and_leaves_out_those_slashed_here() {
     let page = h.first_page();
     h.run("setprop", json!({"page": page.hex(), "key": "location", "value": "+CAB1"})).ok();
     let doc = h.doc();
-    let items = ecad_electrical::cmd::cable::picker(&doc, page);
+    let items = ecad_electrical::cables::commands::cables::picker(&doc, page);
     let order: Vec<CableId> = items.iter().map(|i| i.cable).collect();
     assert!(!order.contains(&drawn), "slashed on this page: absent");
     assert_eq!(order.len(), 2);

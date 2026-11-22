@@ -4,9 +4,9 @@
 //! screenshots for the side-by-side with the boards (written only when `ECAD_TESTER_SHOTS` names a
 //! folder and a wgpu adapter exists).
 
-use crate::project_panel::{doc, rev3_app as new_app};
+use crate::pages::project_panel::{doc, rev3_app as new_app};
 use ecad_app::App;
-use ecad_app::shell::right;
+use ecad_app::inspector;
 use ecad_app::shell::state::RightTab;
 use ecad_model::{RepresentationId, Subject};
 use eframe::egui::{self, vec2};
@@ -18,15 +18,15 @@ type H = Harness<'static, App>;
 /// One demo project open at a time: the demo's copies are one project to the store's lock.
 static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-fn harness(deltas: Option<crate::mouse_tester::Deltas>) -> (H, std::path::PathBuf, std::sync::MutexGuard<'static, ()>) {
+fn harness(deltas: Option<crate::canvas::mouse_acceptance::Deltas>) -> (H, std::path::PathBuf, std::sync::MutexGuard<'static, ()>) {
     let guard = ONE_AT_A_TIME.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     ecad_app::canvas::register_sheet_faces();
     let dir = std::env::temp_dir().join(format!("ecad-uiv3-b-{}-{}", std::process::id(), rand_suffix()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = crate::checks_ui::demo_file(&dir);
+    let path = crate::checks::ui::demo_file(&dir);
     let mut b = Harness::builder().with_size(vec2(1920.0, 1080.0));
     if let Some(d) = deltas {
-        b = b.renderer(crate::mouse_tester::Collect(d));
+        b = b.renderer(crate::canvas::mouse_acceptance::Collect(d));
     }
     // The whole window, as the app's root `Ui` (the harness keeps an 8 px margin round its own).
     let mut h = b.build_ui_state(
@@ -58,7 +58,7 @@ fn coil(h: &mut H) -> RepresentationId {
     let d = doc(h);
     let k1 = d.devices.iter().find(|(_, c)| c.tag().is_some_and(|t| t.ends_with("K01"))).map(|(id, _)| *id).expect("-K01");
     d.representations_of(Subject::Device(k1))
-        .find(|(_, r)| ecad_engine::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_engine::symbols::StarterKey::Coil))
+        .find(|(_, r)| ecad_engine::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
         .map(|(id, _)| id)
         .expect("its coil")
 }
@@ -79,12 +79,12 @@ fn the_device_tab_has_the_boards_header_status_and_folding_sections() {
     assert_eq!(d.description, "Pump contactor");
     assert!(d.symbol_words.starts_with("coil"), "{}", d.symbol_words);
     // Header: the tag, then its words, a Row button and collapse.
-    assert!(h.query_by_label(right::HEAD_TITLE).is_some() && h.query_by_label(right::HEAD_SUB).is_some());
-    assert!(h.query_by_label(right::ROW).is_some() && h.query_by_label(right::COLLAPSE).is_some());
+    assert!(h.query_by_label(inspector::HEAD_TITLE).is_some() && h.query_by_label(inspector::HEAD_SUB).is_some());
+    assert!(h.query_by_label(inspector::ROW).is_some() && h.query_by_label(inspector::COLLAPSE).is_some());
     // The status of its own checks, then the five sections in the boards' order.
-    assert!(h.query_by_label(right::OWN_CHECKS).is_some());
+    assert!(h.query_by_label(inspector::OWN_CHECKS).is_some());
     let ys: Vec<f32> =
-        ["identity", "parts", "drawn", "connections", "notes"].iter().map(|id| h.get_by_label(&right::section_name(id)).rect().top()).collect();
+        ["identity", "parts", "drawn", "connections", "notes"].iter().map(|id| h.get_by_label(&inspector::section_name(id)).rect().top()).collect();
     assert!(ys.windows(2).all(|w| w[0] < w[1]), "in order: {ys:?}");
     // Where it is drawn: the coil first (this symbol), then its contacts.
     assert!(d.drawn.first().is_some_and(|r| r.this && r.pins.starts_with("Coil")), "{:?}", d.drawn);
@@ -94,20 +94,20 @@ fn the_device_tab_has_the_boards_header_status_and_folding_sections() {
     // Description is set here (an input); Notes and attributes starts folded.
     assert!(h.query_by_label("ecad.props.device.description").is_some());
     // A folded section shows only its summary: Identity folded hides its fields.
-    h.get_by_label(&right::section_name("identity")).click();
+    h.get_by_label(&inspector::section_name("identity")).click();
     h.run_steps(3);
     assert!(h.query_by_label("ecad.props.device.description").is_none(), "folded");
-    h.get_by_label(&right::section_name("identity")).click();
+    h.get_by_label(&inspector::section_name("identity")).click();
     h.run_steps(3);
     assert!(h.query_by_label("ecad.props.device.description").is_some(), "open again");
     // A row of Where it is drawn goes to that symbol.
     let contact = d.drawn.iter().position(|r| !r.this && r.rep.is_some()).expect("a drawn contact");
-    h.get_by_label(&format!("{}.{contact}", right::DRAWN_ROW)).click();
+    h.get_by_label(&format!("{}.{contact}", inspector::DRAWN_ROW)).click();
     h.run_steps(4);
     let now = h.state().settings.inspector.device.clone().expect("still a device");
     assert_eq!(now.rep, d.drawn[contact].rep, "the contact is selected");
     // Row opens the device's row in Project ▸ Devices.
-    h.get_by_label(right::ROW).click();
+    h.get_by_label(inspector::ROW).click();
     h.run_steps(3);
     assert_eq!(h.state().shell_state().workspace, ecad_app::shell::Workspace::Lists);
     assert_eq!(h.state().panel.devices.selected, d.component);
@@ -119,10 +119,10 @@ fn the_layout_tab_reads_the_placement_and_sets_the_texts_and_contact_table() {
     let (mut h, dir, _one) = harness(None);
     select_coil(&mut h, RightTab::Layout);
     for id in ["placement", "texts", "contacts", "line"] {
-        assert!(h.query_by_label(&right::section_name(id)).is_some(), "{id}");
+        assert!(h.query_by_label(&inspector::section_name(id)).is_some(), "{id}");
     }
     // Rotation is read from the drawing (not set here).
-    let rot_name = format!("{}.0\u{b0}", right::ROTATION);
+    let rot_name = format!("{}.0\u{b0}", inspector::ROTATION);
     let rot = h.get_by_label(&rot_name);
     let n = rot.accesskit_node();
     assert!(
@@ -145,7 +145,7 @@ fn the_layout_tab_reads_the_placement_and_sets_the_texts_and_contact_table() {
     let row = h.state().settings.inspector.rows.iter().find(|r| r.key == "text.tag.show").cloned().unwrap();
     assert_ne!(row.value, "Hidden");
     // The contact table under the coil: Right sets it on the device.
-    h.get_by_label(&format!("{}.right", ecad_app::shell::right::CONTACT_TABLE)).click();
+    h.get_by_label(&format!("{}.right", ecad_app::inspector::CONTACT_TABLE)).click();
     h.run_steps(4);
     let k1 = h.state().settings.inspector.device.as_ref().and_then(|d| d.component).unwrap();
     assert_eq!(ecad_engine::xref::placement_of(&doc(&mut h), k1), (ecad_engine::xref::Placement::Right, true));
@@ -156,26 +156,26 @@ fn the_layout_tab_reads_the_placement_and_sets_the_texts_and_contact_table() {
 fn the_checks_tab_switches_between_this_page_and_the_project() {
     let (mut h, dir, _one) = harness(None);
     select_coil(&mut h, RightTab::Checks);
-    assert!(h.query_by_label(&format!("{}.this page", right::SCOPE)).is_some());
+    assert!(h.query_by_label(&format!("{}.this page", inspector::SCOPE)).is_some());
     let rows = h.state().panel.checks.rows().to_vec();
     assert!(!rows.is_empty(), "the demo has checks");
     let page = h.state().panel.active;
     // This page: the cards of this page's checks, the rest under Elsewhere.
     for r in &rows {
-        let label = ecad_app::checks_panel::row_label(r);
+        let label = ecad_app::checks::panel::row_label(r);
         // `query_all`: until lane F step F4 the demo's three -W01 lines ending loose at its reference
         // give three cards with the same words.
         assert!(h.query_all_by_label(&label).next().is_some(), "{label} (on this page: {})", r.check.page == page);
     }
     if rows.iter().any(|r| r.check.page != page) {
-        assert!(h.query_by_label(right::ELSEWHERE).is_some());
+        assert!(h.query_by_label(inspector::ELSEWHERE).is_some());
     }
-    h.get_by_label(&format!("{}.project", right::SCOPE)).click();
+    h.get_by_label(&format!("{}.project", inspector::SCOPE)).click();
     h.run_steps(3);
     assert!(h.state().settings.inspector.checks_project);
-    assert!(h.query_by_label(right::ELSEWHERE).is_none(), "Project lists every check as a card");
+    assert!(h.query_by_label(inspector::ELSEWHERE).is_none(), "Project lists every check as a card");
     // A card's go-to shows its check.
-    h.get_by_label(&ecad_app::checks_panel::row_label(&rows[0])).click();
+    h.get_by_label(&ecad_app::checks::panel::row_label(&rows[0])).click();
     h.run_steps(3);
     if rows[0].check.page.is_some() {
         assert_eq!(h.state().panel.active, rows[0].check.page);
@@ -187,8 +187,8 @@ fn the_checks_tab_switches_between_this_page_and_the_project() {
 /// pictures.
 #[test]
 fn screenshots_of_boards_1_05_to_1_07() {
-    let Some(out) = crate::project_panel::shots() else { return };
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
+    let Some(out) = crate::pages::project_panel::shots() else { return };
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
     let (mut h, dir, _one) = harness(Some(deltas.clone()));
     select_coil(&mut h, RightTab::Device);
     h.state_mut().fit_sheet();
@@ -198,16 +198,16 @@ fn screenshots_of_boards_1_05_to_1_07() {
     {
         h.state_mut().open_inspector(tab);
         h.run_steps(6);
-        let _ = crate::mouse_tester::shot(&h, &deltas, &out.join(name));
+        let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join(name));
     }
     // 1.11: placing a contactor coil, the picker folded.
     h.state_mut().cad.session.set_selection(Vec::new());
     h.state_mut().open_inspector(RightTab::Device);
-    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_engine::symbols::StarterKey::Coil)).unwrap();
+    h.state_mut().start_pick(ecad_app::library::search::Pick::Symbol(ecad_electrical::symbols::StarterKey::Coil)).unwrap();
     h.run_steps(4);
     h.event(egui::Event::PointerMoved(egui::pos2(1100.0, 420.0)));
     h.run_steps(4);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-B-1.11-ours.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-B-1.11-ours.png"));
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
     h.key_press(egui::Key::Escape);
@@ -216,7 +216,7 @@ fn screenshots_of_boards_1_05_to_1_07() {
     h.state_mut().cad.session.set_selection(Vec::new());
     h.state_mut().open_inspector(RightTab::Device);
     h.run_steps(6);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("uiv3-B-nothing-selected-ours.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-B-nothing-selected-ours.png"));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -226,20 +226,20 @@ fn screenshots_of_boards_1_05_to_1_07() {
 fn placing_a_coil_shows_the_device_about_to_be_placed() {
     let (mut h, dir, _one) = harness(None);
     h.state_mut().open_inspector(RightTab::Device);
-    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_engine::symbols::StarterKey::Coil)).unwrap();
+    h.state_mut().start_pick(ecad_app::library::search::Pick::Symbol(ecad_electrical::symbols::StarterKey::Coil)).unwrap();
     h.run_steps(4);
     assert_eq!(h.state().picker_shown(), ecad_app::shell::placing::Shown::Chip);
-    let sub = h.query_by_label(right::HEAD_SUB).is_some();
+    let sub = h.query_by_label(inspector::HEAD_SUB).is_some();
     assert!(sub, "the symbol and 'not placed yet'");
-    assert!(h.query_by_label(right::CHANGES).is_some(), "what this click changes");
+    assert!(h.query_by_label(inspector::CHANGES).is_some(), "what this click changes");
     assert!(h.query_by_label("ecad.inspector.placing.tag").is_some());
-    assert!(h.query_by_label(right::ROW).is_none(), "nothing to open a row of yet");
+    assert!(h.query_by_label(inspector::ROW).is_none(), "nothing to open a row of yet");
     // Esc ends the tool: the inspector goes back to the selection.
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
     h.key_press(egui::Key::Escape);
     h.run_steps(3);
-    assert!(h.query_by_label(right::CHANGES).is_none());
+    assert!(h.query_by_label(inspector::CHANGES).is_none());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -253,7 +253,7 @@ fn check_fixes_are_off_while_an_old_revision_is_shown() {
     h.run_steps(3);
     let rows = h.state().panel.checks.rows().to_vec();
     let fixable = rows.iter().find_map(|r| r.check.fix).expect("the demo has a check with a fix");
-    let name = ecad_app::lists::checks::fix_names(fixable).first().copied().unwrap();
+    let name = ecad_app::checks::list::fix_names(fixable).first().copied().unwrap();
     assert!(!h.get_all_by_label(name).next().unwrap().accesskit_node().is_disabled(), "live: the fix runs");
     h.state_mut().panel.revision = Some("Rev A, 2026-11-14: read-only".into());
     h.run_steps(3);

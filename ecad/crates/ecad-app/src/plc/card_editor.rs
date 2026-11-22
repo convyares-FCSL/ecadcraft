@@ -24,10 +24,10 @@ use ecad_model::{DeviceId, PageId};
 use eframe::egui::{self, Rect, vec2};
 use serde_json::json;
 
-use ecad_ui::control::{Decor, Select, TextEntry, ValueBox, read_text};
+use ecad_widgets::control::{Decor, Select, TextEntry, ValueBox, read_text};
 
 use crate::App;
-use crate::shell::right::widgets as w;
+use crate::inspector::widgets as w;
 
 /// Element names.
 pub const PANEL: &str = "ecad.plc.card.editor";
@@ -67,7 +67,7 @@ pub struct Info {
     pub drawn: (usize, usize),
     pub maker: String,
     pub part_number: String,
-    pub parts: Vec<ecad_engine::bom::PartSetRow>,
+    pub parts: Vec<ecad_electrical::reports::bom::PartSetRow>,
 }
 
 /// The editor's state: field buffers by key (`(model value, text)`), the accessory form, a refusal.
@@ -120,7 +120,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         // (a box first), else `set here`.
         let symbols: Vec<_> = doc.representations_of(ecad_model::Subject::Device(c)).map(|(_, r)| r).take(MAX_SYMBOLS).collect();
         let mut boxes = ecad_engine::locations::BoxCache::default();
-        let mut aspect = |a: ecad_engine::designations::Aspect, l: ecad_engine::locations::Located| -> (String, &'static str) {
+        let mut aspect = |a: ecad_electrical::locations::designations::Aspect, l: ecad_engine::locations::Located| -> (String, &'static str) {
             let mut hint = "set here";
             for r in &symbols {
                 let x = ecad_engine::locations::rep_context_in(doc, a, r, &mut boxes);
@@ -137,8 +137,8 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
                 None => (String::new(), ""),
             }
         };
-        let function = aspect(ecad_engine::designations::Aspect::Function, ecad_engine::locations::resolve_function(doc, c));
-        let location = aspect(ecad_engine::designations::Aspect::Location, ecad_engine::locations::resolve(doc, c));
+        let function = aspect(ecad_electrical::locations::designations::Aspect::Function, ecad_engine::locations::resolve_function(doc, c));
+        let location = aspect(ecad_electrical::locations::designations::Aspect::Location, ecad_engine::locations::resolve(doc, c));
         let (rack, rule) = match card.rack {
             RackRef::Rack(r) => (
                 plc.racks.get(&r).map(|x| x.tag.clone()),
@@ -159,7 +159,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         let slot_words = card.slot.map(|s| format!(", slot {s}")).unwrap_or_default();
         let kind = overview::kind_words(doc, card);
         let ty_name = overview::type_name(card.ty);
-        let parts = part_rows(ecad_engine::bom::part_set(doc, c), own("maker"), own("part_number"), format!("{ty_name}, {kind}"));
+        let parts = part_rows(ecad_electrical::reports::bom::part_set(doc, c), own("maker"), own("part_number"), format!("{ty_name}, {kind}"));
         Some(Info {
             card: Some(c),
             tag: card.tag.clone(),
@@ -201,12 +201,12 @@ fn source_hint(source: Option<&ecad_engine::locations::Source>) -> &'static str 
 /// maker and part number, `main part`), then each accessory line, every quantity as `×1`. Empty
 /// only when the card has no part at all (no maker, no part number, no lines).
 pub fn part_rows(
-    set: Vec<ecad_engine::bom::PartSetRow>, maker: Option<String>, part_number: Option<String>, what: String,
-) -> Vec<ecad_engine::bom::PartSetRow> {
+    set: Vec<ecad_electrical::reports::bom::PartSetRow>, maker: Option<String>, part_number: Option<String>, what: String,
+) -> Vec<ecad_electrical::reports::bom::PartSetRow> {
     if set.is_empty() && maker.is_none() && part_number.is_none() {
         return Vec::new();
     }
-    let main = ecad_engine::bom::PartSetRow {
+    let main = ecad_electrical::reports::bom::PartSetRow {
         n: 0,
         qty: "1".into(),
         maker,
@@ -302,7 +302,7 @@ fn error_line(ui: &mut egui::Ui, st: &State, key: &str) {
     if let Some((k, m)) = &st.error
         && *k == key
     {
-        ui.label(w::rich(ui, m, ecad_ui::tokens::ui_type::SMALL, ecad_ui::color(ecad_ui::SHELL.error)));
+        ui.label(w::rich(ui, m, ecad_widgets::tokens::ui_type::SMALL, ecad_widgets::color(ecad_widgets::SHELL.error)));
     }
 }
 
@@ -332,11 +332,11 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
     }
     let mut lines: Vec<(&'static str, String)> = Vec::new();
     let mut go: Option<PageId> = None;
-    crate::shell::in_rect(ui, rect.shrink2(vec2(ecad_ui::tokens::space::L, ecad_ui::tokens::space::M)), PANEL, |ui| {
+    crate::shell::in_rect(ui, rect.shrink2(vec2(ecad_widgets::tokens::space::L, ecad_widgets::tokens::space::M)), PANEL, |ui| {
         egui::ScrollArea::vertical().id_salt("ecad.plc.card.scroll").auto_shrink([false, false]).show(ui, |ui| {
             let full = ui.max_rect().x_range();
-            ui.label(w::rich(ui, &info.tag, ecad_ui::tokens::ui_type::OBJECT, w::text()));
-            ui.label(w::rich(ui, &info.subtitle, ecad_ui::tokens::ui_type::SMALL, w::text_2()));
+            ui.label(w::rich(ui, &info.tag, ecad_widgets::tokens::ui_type::OBJECT, w::text()));
+            ui.label(w::rich(ui, &info.subtitle, ecad_widgets::tokens::ui_type::SMALL, w::text_2()));
             // Identity (board 2.03, with the owner's editable type, ID, rack and slot).
             w::section(ui, &mut folded, full, "plc.identity", "Identity", "", false, |ui| {
                 let types: Vec<&str> = IO_TYPES.iter().map(|t| t.code()).collect();
@@ -344,7 +344,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
                 let shown = st.pending_type.and_then(|p| IO_TYPES.iter().position(|t| *t == p)).or(at);
                 w::row(ui, "Type", |ui| {
                     if at.is_some() {
-                        let why = if writable { "" } else { super::plc::WRITES_OFF };
+                        let why = if writable { "" } else { crate::plc::list::WRITES_OFF };
                         if let Some(k) = w::segmented(ui, &types, shown, writable, &format!("{PANEL}.type"), why)
                             && let Some(to) = IO_TYPES.get(k)
                         {
@@ -363,7 +363,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
                         ecad_engine::plc::rack::with_article(to),
                         ecad_engine::plc::rack::change_words(from, to)
                     );
-                    ui.add(egui::Label::new(w::rich(ui, words, ecad_ui::tokens::ui_type::SMALL, w::text_2())).wrap());
+                    ui.add(egui::Label::new(w::rich(ui, words, ecad_widgets::tokens::ui_type::SMALL, w::text_2())).wrap());
                     let (yes, no) = ui
                         .horizontal(|ui| {
                             let yes = ui.push_id(format!("{PANEL}.type.confirm"), |ui| w::button(ui, "Change type", true, None)).inner.clicked();
@@ -378,7 +378,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
                     }
                 }
                 if let Some(("type", m)) = st.error.as_ref().map(|(k, m)| (*k, m)) {
-                    ui.label(w::rich(ui, m, ecad_ui::tokens::ui_type::SMALL, ecad_ui::color(ecad_ui::SHELL.error)));
+                    ui.label(w::rich(ui, m, ecad_widgets::tokens::ui_type::SMALL, ecad_widgets::color(ecad_widgets::SHELL.error)));
                 }
                 field(ui, &mut st, &mut lines, c, writable, "tag", "ID", "-A03", "");
                 field(ui, &mut st, &mut lines, c, writable, "description", "Description", "What the card is for", "");
@@ -416,27 +416,27 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
                         let (d, u) = info.drawn;
                         // A page with no title of its own shows its number once.
                         let head = if title.trim().is_empty() || title.trim() == n.as_str() { n.clone() } else { format!("{n} \u{b7} {title}") };
-                        ui.label(w::rich(ui, format!("{head} \u{b7} {d} of {u} channels drawn"), ecad_ui::tokens::ui_type::BODY, w::text()));
+                        ui.label(w::rich(ui, format!("{head} \u{b7} {d} of {u} channels drawn"), ecad_widgets::tokens::ui_type::BODY, w::text()));
                         ui.horizontal(|ui| {
                             if w::button(ui, &format!("\u{2192} Go to page {n}"), false, None).clicked() {
                                 go = Some(*pg);
                             }
                             if u > d {
                                 let words = if u - d == 1 { "Draw the missing channel" } else { "Draw the missing channels" };
-                                if w::button(ui, words, false, (!writable).then_some(super::plc::WRITES_OFF)).clicked() {
+                                if w::button(ui, words, false, (!writable).then_some(crate::plc::list::WRITES_OFF)).clicked() {
                                     lines.push(("page", format!("plcchannels {}", json!({"card": c.hex(), "rest": true}))));
                                 }
                             }
                         });
                     }
                     None => {
-                        ui.label(w::rich(ui, "Not drawn yet.", ecad_ui::tokens::ui_type::BODY, w::text_2()));
-                        if w::button(ui, "Make its page", false, (!writable).then_some(super::plc::WRITES_OFF)).clicked() {
+                        ui.label(w::rich(ui, "Not drawn yet.", ecad_widgets::tokens::ui_type::BODY, w::text_2()));
+                        if w::button(ui, "Make its page", false, (!writable).then_some(crate::plc::list::WRITES_OFF)).clicked() {
                             lines.push(("page", format!("plcpage {}", json!({"card": c.hex()}))));
                         }
                     }
                 }
-                ui.add(egui::Label::new(w::rich(ui, PAGE_NOTE, ecad_ui::tokens::ui_type::SMALL, w::text_3())).wrap());
+                ui.add(egui::Label::new(w::rich(ui, PAGE_NOTE, ecad_widgets::tokens::ui_type::SMALL, w::text_3())).wrap());
             });
             // Parts, with the accessories (board 2.03; brief 047's part lines).
             let summary = match info.parts.len() {
@@ -446,7 +446,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
             };
             w::section(ui, &mut folded, full, "plc.parts", "Parts", &summary, false, |ui| {
                 for p in &info.parts {
-                    crate::shell::right::device::part_card(ui, p);
+                    crate::inspector::device::part_card(ui, p);
                 }
                 field(ui, &mut st, &mut lines, c, writable, "maker", "Maker", "", "main part");
                 field(ui, &mut st, &mut lines, c, writable, "part_number", "Part number", "", "main part");
@@ -473,14 +473,14 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
                     }
                 } else {
                     ui.horizontal(|ui| {
-                        if w::button(ui, "+ Accessory", false, (!writable).then_some(super::plc::WRITES_OFF)).clicked() {
+                        if w::button(ui, "+ Accessory", false, (!writable).then_some(crate::plc::list::WRITES_OFF)).clicked() {
                             st.accessory = Some(Default::default());
                         }
                         w::button(ui, "From catalogue", false, Some(CATALOGUE_COMES));
                     });
                 }
                 if let Some(("accessory", m)) = st.error.as_ref().map(|(k, m)| (*k, m)) {
-                    ui.label(w::rich(ui, m, ecad_ui::tokens::ui_type::SMALL, ecad_ui::color(ecad_ui::SHELL.error)));
+                    ui.label(w::rich(ui, m, ecad_widgets::tokens::ui_type::SMALL, ecad_widgets::color(ecad_widgets::SHELL.error)));
                 }
             });
         });
@@ -501,6 +501,6 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
         r.io.card_folded = folded;
     }
     if let Some(pg) = go {
-        t.plc_action(super::ListAction::GoToCard(pg, Some(c)));
+        t.plc_action(crate::workspace::ListAction::GoToCard(pg, Some(c)));
     }
 }

@@ -3,24 +3,27 @@
 //! change. `setprop` on one object and on several devices (`devices`) both walk it
 //! ([`rule_for`]), so the two paths cannot drift apart.
 //!
-//! `setprop` itself is a generic command ([`crate::cmd::run`]); a function or location goes
-//! through [`super::location`]'s set, as `setlocation` does.
+//! `setprop` itself is a generic command ([`crate::commands::run`]); a function or location goes
+//! through [`crate::locations::commands::locations`]'s set, as `setlocation` does.
 //!
-//! Excludes: the function and location codes themselves ([`super::location`]).
+//! Excludes: the function and location codes themselves ([`crate::locations::commands::locations`]).
 
-use ecad_model::tag::{self, FIXED_KEY, TAG_KEY};
+pub mod devices;
+pub mod plc;
+pub mod wires;
+use ecad_model::naming::tag::{self, FIXED_KEY, TAG_KEY};
 use ecad_model::{AidId, CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties, Subject, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::location::{self, MAX_DEVICES};
-use crate::cmd::input::{Bounded, OrNull, nullable};
-use crate::cmd::run::{Cx, Generic, Outcome, State};
-use crate::designations::Aspect;
+use crate::locations::commands::locations::{self, MAX_DEVICES};
+use crate::commands::input::{Bounded, OrNull, nullable};
+use crate::commands::run::{Cx, Generic, Outcome, State};
+use crate::locations::designations::Aspect;
 use crate::devices::{self, Holder, TagHigh};
 use crate::error::CmdError;
-use crate::words::MAX_HANDLES;
+use crate::cables::words::MAX_HANDLES;
 
 /// The refusal of `tag` on several devices at once.
 pub const ONE_TAG_PER_DEVICE: &str = "Tags are one per device.";
@@ -41,8 +44,8 @@ pub type Plan = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<Op
 /// How a row of [`PROP_RULES`] builds the change.
 #[derive(Clone, Copy)]
 pub enum Build {
-    /// A function or location code of the project's list (brief 052): [`super::location::plan_set`],
-    /// for all the devices at once. It claims by key alone ([`super::location::aspect_property`]).
+    /// A function or location code of the project's list (brief 052): [`crate::locations::commands::locations::plan_set`],
+    /// for all the devices at once. It claims by key alone ([`crate::locations::commands::locations::aspect_property`]).
     Aspect,
     /// The tag (design 026 §4, §7): typing one fixes it, `-K?` takes the next provisional one, a
     /// tag another device or cable holds needs a conflict answer ([`plan_tag`]). One object only.
@@ -77,7 +80,7 @@ const FREE_TEXT: PropRule = PropRule { what: "free text", claims: |_, _, _| true
 pub static PROP_RULES: &[PropRule] = &[
     PropRule {
         what: "function or location (brief 052)",
-        claims: |_, o, k| is_component(o) && super::location::aspect_property(k).is_some(),
+        claims: |_, o, k| is_component(o) && crate::locations::commands::locations::aspect_property(k).is_some(),
         build: Build::Aspect,
     },
     PropRule { what: "tag (design 026)", claims: |_, o, k| k == TAG_KEY && tagged(o), build: Build::Tag },
@@ -85,17 +88,17 @@ pub static PROP_RULES: &[PropRule] = &[
     PropRule { what: "device property (design 018)", claims: |_, o, k| is_device_property(o, k), build: Build::Device(device_value) },
     PropRule {
         what: "wire, junction or continuation (briefs 022, 049)",
-        claims: |doc, o, k| !matches!(super::wire::setprop_rule(doc, o, k, None), Ok(None)),
+        claims: |doc, o, k| !matches!(crate::wires::commands::wires::setprop_rule(doc, o, k, None), Ok(None)),
         build: Build::Value(wire_value),
     },
     PropRule {
         what: "strip offer (brief 028)",
-        claims: |doc, o, k| k == crate::strips::OFFER_KEY && strip(doc, o).is_some(),
+        claims: |doc, o, k| k == crate::terminal_strips::OFFER_KEY && strip(doc, o).is_some(),
         build: Build::Value(offer_value),
     },
     PropRule {
         what: "PE row part (brief 028)",
-        claims: |_, o, k| is_component(o) && (k == crate::strips::PE_PART_KEY || k == crate::strips::PE_MAKER_KEY),
+        claims: |_, o, k| is_component(o) && (k == crate::terminal_strips::PE_PART_KEY || k == crate::terminal_strips::PE_MAKER_KEY),
         build: Build::Value(pe_value),
     },
     PropRule {
@@ -110,7 +113,7 @@ pub static PROP_RULES: &[PropRule] = &[
     },
     PropRule {
         what: "level label (brief 036)",
-        claims: |doc, o, k| k.starts_with(crate::terminal_types::LABEL_PREFIX) && strip(doc, o).is_some(),
+        claims: |doc, o, k| k.starts_with(crate::terminal_strips::terminal_blocks::LABEL_PREFIX) && strip(doc, o).is_some(),
         build: Build::Value(level_label_value),
     },
     PropRule {
@@ -121,7 +124,7 @@ pub static PROP_RULES: &[PropRule] = &[
     PropRule { what: "rating (brief 034)", claims: |_, o, k| is_component(o) && crate::symbols::is_rating_key(k), build: Build::Value(rating_value) },
     PropRule {
         what: "parts and items (brief 047)",
-        claims: |_, o, k| component(o).is_some() && crate::bom::is_bom_key(k),
+        claims: |_, o, k| component(o).is_some() && crate::reports::bom::is_bom_key(k),
         build: Build::Value(bom_value),
     },
     PropRule { what: "strip accessories, or free text (brief 030)", claims: |_, o, _| is_component(o), build: Build::Value(accessory_value) },
@@ -130,7 +133,7 @@ pub static PROP_RULES: &[PropRule] = &[
 
 /// The row of [`PROP_RULES`] that decides `key` on `object`.
 pub fn rule_for(doc: &Document, object: ObjectRef, key: &str) -> &'static PropRule {
-    super::props::LANES.iter().flat_map(|(_, rows)| rows.iter()).chain(PROP_RULES).find(|r| (r.claims)(doc, object, key)).unwrap_or(&FREE_TEXT)
+    LANES.iter().flat_map(|(_, rows)| rows.iter()).chain(PROP_RULES).find(|r| (r.claims)(doc, object, key)).unwrap_or(&FREE_TEXT)
 }
 
 /// `setprop` of a `Record` row on one object: its `Modify*` op, `None` when unchanged.
@@ -158,7 +161,7 @@ fn component(o: ObjectRef) -> Option<DeviceId> {
 }
 
 fn strip(doc: &Document, o: ObjectRef) -> Option<DeviceId> {
-    component(o).filter(|c| crate::strips::strip_of(doc, *c).is_some())
+    component(o).filter(|c| crate::terminal_strips::strip_of(doc, *c).is_some())
 }
 
 /// Whether `o` takes a tag: a device or a cable.
@@ -180,11 +183,11 @@ fn device_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) ->
 }
 
 fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    Ok(super::wire::setprop_rule(doc, o, key, value)?.unwrap_or_else(|| value.map(str::to_string)))
+    Ok(crate::wires::commands::wires::setprop_rule(doc, o, key, value)?.unwrap_or_else(|| value.map(str::to_string)))
 }
 
 fn offer_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::strips::offer_value(value)
+    crate::terminal_strips::offer_value(value)
 }
 
 fn pe_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
@@ -206,7 +209,7 @@ fn terminal_default_value(_: &Document, _: ObjectRef, key: &str, value: Option<&
 }
 
 fn level_label_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    use crate::terminal_types::MAX_LABEL_CHARS;
+    use crate::terminal_strips::terminal_blocks::MAX_LABEL_CHARS;
     match value.map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(None),
         Some(v) if v.chars().count() > MAX_LABEL_CHARS || v.chars().any(char::is_control) => {
@@ -229,14 +232,14 @@ fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) ->
 
 fn bom_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match component(o) {
-        Some(c) => crate::bom::setprop_rule(doc, c, key, value),
+        Some(c) => crate::reports::bom::setprop_rule(doc, c, key, value),
         None => Ok(value.map(str::to_string)),
     }
 }
 
 fn accessory_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let rule = match component(o) {
-        Some(c) => crate::accessories::setprop_rule(doc, c, key, value)?,
+        Some(c) => crate::terminal_strips::accessories::setprop_rule(doc, c, key, value)?,
         None => None,
     };
     Ok(rule.unwrap_or_else(|| value.map(str::to_string)))
@@ -248,10 +251,10 @@ fn accessory_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
 /// (brief 031, §10.6).
 ///
 /// # Errors
-/// [`crate::text_style::RESERVED_KEY`].
+/// [`crate::styles::text_style::RESERVED_KEY`].
 pub fn reserved(key: &str) -> Result<(), CmdError> {
-    match crate::text_style::is_reserved_key(key) {
-        true => Err(CmdError::refused(crate::text_style::RESERVED_KEY)),
+    match crate::styles::text_style::is_reserved_key(key) {
+        true => Err(CmdError::refused(crate::styles::text_style::RESERVED_KEY)),
         false => Ok(()),
     }
 }
@@ -274,7 +277,7 @@ pub fn component_key(doc: &Document, c: DeviceId, key: &str) -> String {
 ///
 /// # Errors
 /// The rule's refusal; a key decided by an `Aspect` or `Fixed` row is refused (those build their
-/// change in [`plan_fixed`] and [`super::location::plan_set`]).
+/// change in [`plan_fixed`] and [`crate::locations::commands::locations::plan_set`]).
 pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let check = match rule_for(doc, object, key).build {
         Build::Device(f) | Build::Value(f) => f,
@@ -316,8 +319,8 @@ pub fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&s
         return Ok(ValueSet { op: None, note: None });
     }
     let note = match (object, &after) {
-        (ObjectRef::Device(c), Some(_)) if ecad_model::links::jumper_bar_number(key).is_some() => {
-            typed.and_then(|v| crate::terminal_types::dotted_position_words(doc, c, v))
+        (ObjectRef::Device(c), Some(_)) if ecad_model::connectivity::jumper_bars::jumper_bar_number(key).is_some() => {
+            typed.and_then(|v| crate::terminal_strips::terminal_blocks::dotted_position_words(doc, c, v))
         }
         _ => None,
     };
@@ -456,17 +459,17 @@ fn tag_of(doc: &Document, o: ObjectRef) -> Option<(Option<String>, bool)> {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).map(|d| (d.tag().map(str::to_string), d.tag_fixed)),
         ObjectRef::Cable(_) => {
-            props_of(doc, o).map(|p| (p.get(TAG_KEY).cloned(), ecad_model::keys::PropsExt::flag(p, ecad_model::keys::TAG_FIXED) == Some(true)))
+            props_of(doc, o).map(|p| (p.get(TAG_KEY).cloned(), ecad_model::naming::keys::PropsExt::flag(p, ecad_model::naming::keys::TAG_FIXED) == Some(true)))
         }
         _ => None,
     }
 }
 
-/// Whether `o`'s tag counts as fixed ([`ecad_model::numbering::is_fixed`]).
+/// Whether `o`'s tag counts as fixed ([`ecad_model::naming::numbering::is_fixed`]).
 fn fixed_of(doc: &Document, o: ObjectRef) -> bool {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).is_some_and(ecad_model::Device::is_fixed),
-        _ => props_of(doc, o).is_some_and(ecad_model::numbering::is_fixed),
+        _ => props_of(doc, o).is_some_and(ecad_model::naming::numbering::is_fixed),
     }
 }
 
@@ -482,7 +485,7 @@ fn write_tag(doc: &Document, o: ObjectRef, tag: Option<String>, fixed: bool) -> 
         ObjectRef::Cable(k) => {
             let mut ops = Vec::new();
             Op::set_cable_property(doc, &mut ops, k, TAG_KEY, tag);
-            Op::set_cable_property(doc, &mut ops, k, FIXED_KEY, fixed.then(|| ecad_model::words::flag_word(true).to_string()));
+            Op::set_cable_property(doc, &mut ops, k, FIXED_KEY, fixed.then(|| ecad_model::naming::words::flag_word(true).to_string()));
             ops
         }
         ObjectRef::Wire(_) | ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => Vec::new(),
@@ -642,7 +645,7 @@ pub fn plan_fixed(doc: &Document, o: ObjectRef, typed: Option<&str>) -> Result<F
     let on = match typed.map(str::trim) {
         None => false,
         Some("") => false,
-        Some(v) => ecad_model::words::flag(v).ok_or_else(|| CmdError::refused(format!("`tag_fixed` is \"yes\" or null, not {v:?}")))?,
+        Some(v) => ecad_model::naming::words::flag(v).ok_or_else(|| CmdError::refused(format!("`tag_fixed` is \"yes\" or null, not {v:?}")))?,
     };
     let (tag_now, _) = tag_of(doc, o).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
     if on {
@@ -664,7 +667,7 @@ pub fn object_json(o: ObjectRef) -> Value {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The command (generic: crate::cmd::run)
+// The command (generic: crate::commands::run)
 
 /// `setprop {component|conductor|cable, key, value, conflict?, merge?}` or `{components, key,
 /// value}`: a property of one object, or of several devices in one transaction (not `tag`). A
@@ -707,8 +710,8 @@ pub struct SetpropParams {
 fn location_objects(component: Option<DeviceId>, devices: Option<&[DeviceId]>) -> Result<Vec<DeviceId>, CmdError> {
     match devices {
         Some(cs) if cs.len() > MAX_DEVICES => Err(CmdError::refused(format!("at most {MAX_DEVICES} entries in `devices` per call"))),
-        Some(cs) => location::objects(None, Some(cs.to_vec())),
-        None => location::objects(component, None),
+        Some(cs) => locations::objects(None, Some(cs.to_vec())),
+        None => locations::objects(component, None),
     }
 }
 
@@ -728,7 +731,7 @@ fn one_object(p: &SetpropParams) -> Result<ObjectRef, CmdError> {
 impl SetpropParams {
     /// Whether this sets a function or location on devices (brief 052).
     fn sets_location(&self) -> bool {
-        (self.component.is_some() || self.devices.is_some()) && location::aspect_property(&self.key).is_some()
+        (self.component.is_some() || self.devices.is_some()) && locations::aspect_property(&self.key).is_some()
     }
 }
 
@@ -757,12 +760,12 @@ impl Generic for SetpropParams {
         // Brief 052 (design 052 §5.9): a function or location (PROP_RULES' first row, which claims by
         // key alone) is stored as an entry key of the project's list, for all the devices at once.
         if (self.component.is_some() || self.devices.is_some())
-            && let Some(prop) = location::aspect_property(&key)
+            && let Some(prop) = locations::aspect_property(&key)
         {
             let objects = location_objects(self.component, self.devices.as_ref().map(|c| c.0.as_slice()))?;
-            let a = location::aspect_of(&prop)?;
-            let plan = location::plan_set(cx.doc, cx.ids, &objects, &prop, typed.as_deref())?;
-            return Ok(location::set_outcome(cx.doc, a, plan, "devices", &mut cx.state));
+            let a = locations::aspect_of(&prop)?;
+            let plan = locations::plan_set(cx.doc, cx.ids, &objects, &prop, typed.as_deref())?;
+            return Ok(locations::set_outcome(cx.doc, a, plan, "devices", &mut cx.state));
         }
         // Drawing aids (design 072 §6.2), one transaction: a continuation's name or caption; a
         // location box's function or location (with its proposals, as `setlocation`) or panel
@@ -771,10 +774,10 @@ impl Generic for SetpropParams {
             if let Some(a) = Aspect::of_property(&key)
                 && aids.0.iter().all(|x| crate::locations::box_values(cx.doc, *x).is_some())
             {
-                let plan = location::plan_box_set(cx.doc, cx.ids, &aids.0, a, typed.as_deref())?;
-                return Ok(location::set_outcome(cx.doc, a, plan, "aids", &mut cx.state));
+                let plan = locations::plan_box_set(cx.doc, cx.ids, &aids.0, a, typed.as_deref())?;
+                return Ok(locations::set_outcome(cx.doc, a, plan, "aids", &mut cx.state));
             }
-            let ops = crate::cmd::continuation::plan_aid_prop(cx.doc, cx.ids, &aids.0, &key, typed.as_deref())?;
+            let ops = crate::continuations::commands::plan_aid_prop(cx.doc, cx.ids, &aids.0, &key, typed.as_deref())?;
             let n = ops.len();
             return Ok(match n {
                 0 => Outcome::answer(json!({"changed": false})),
@@ -826,7 +829,7 @@ impl Generic for SetpropParams {
                 let answer = move |doc: &Document| {
                     let mut answer = record_answer(doc, object, &key, changed);
                     if let ObjectRef::Device(c) = object
-                        && let Some(m) = doc.devices.get(&c).and_then(|d| crate::rating::reader::echo(d, &key))
+                        && let Some(m) = doc.devices.get(&c).and_then(|d| crate::devices::ratings::echo(d, &key))
                     {
                         answer["message"] = json!(m);
                     }
@@ -902,3 +905,6 @@ fn set_tag(cx: &mut Cx<'_>, o: ObjectRef, typed: Option<&str>, conflict: Option<
         }
     })
 }
+
+/// The `setprop` rows of each object kind, checked before [`PROP_RULES`].
+pub static LANES: &[(&str, &[PropRule])] = &[("072b", devices::RULES), ("072c", plc::RULES), ("072d", wires::RULES)];

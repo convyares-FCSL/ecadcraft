@@ -1,27 +1,27 @@
 //! The document's objects and their relationships (proposal §3 and §4).
 //!
 //! Stored intent (components, terminals, conductors, cables, definitions) and drawing content
-//! (pages, layers, items, representations) live here. Derived results do not (see [`crate::derive`]).
+//! (pages, layers, items, representations) live here. Derived results do not (see [`crate::connectivity::derive`]).
 
 use std::collections::BTreeMap;
 
-use crate::index::{Index, referrers};
+use crate::document::index::{Index, referrers};
 
 use serde::{Deserialize, Serialize};
 
-use crate::book::PageNo;
-use crate::device::DeviceType;
+use crate::document::book::PageNo;
+use crate::objects::devices::DeviceType;
 use crate::error::{ModelError, Result};
-use crate::geom::{Placement, Pt};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
-use crate::page::{PageKind, PageTitle};
-use crate::point::PointKey;
-use crate::role::{PartRole, Role};
-use crate::sheet::SheetSpec;
-use crate::style::StyleRef;
-use crate::text::Text;
-use crate::units::Radians;
-pub use crate::wire::{End, Wire};
+use crate::geometry::geom::{Placement, Pt};
+use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
+use crate::document::page::{PageKind, PageTitle};
+use crate::geometry::point::PointKey;
+use crate::objects::role::{PartRole, Role};
+use crate::document::sheet::SheetSpec;
+use crate::objects::styles::StyleRef;
+use crate::naming::text::Text;
+use crate::geometry::units::Radians;
+pub use crate::objects::wire::{End, Wire};
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
 /// confirmed empty value.
@@ -59,10 +59,10 @@ pub struct Page {
     pub title_block: Option<StyleRef>,
     /// Its location (an entry of the project's list); `None` takes the project's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub location: Option<crate::id::LocationId>,
+    pub location: Option<crate::naming::id::LocationId>,
     /// Its function (an entry of the project's list); `None` takes the project's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub function: Option<crate::id::FunctionId>,
+    pub function: Option<crate::naming::id::FunctionId>,
     /// Presentation choices and registry values at page level.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub display: Properties,
@@ -112,7 +112,7 @@ impl Page {
     ///
     /// # Errors
     /// Why the title was refused.
-    pub fn titled(title: impl AsRef<str>) -> std::result::Result<Self, crate::text::TextError> {
+    pub fn titled(title: impl AsRef<str>) -> std::result::Result<Self, crate::naming::text::TextError> {
         PageTitle::new(title.as_ref()).map(Page::new)
     }
 }
@@ -316,30 +316,30 @@ pub struct Item {
 #[serde(deny_unknown_fields)]
 pub struct Device {
     /// Its tag (`-K01`), if it has one (design 026; the identity of the device).
-    pub tag: Option<crate::tag::Tag>,
+    pub tag: Option<crate::naming::tag::Tag>,
     /// Whether the tag was typed and is kept by renumbering (design 026 FP1).
     pub tag_fixed: bool,
     /// What it is for, in words (`setprop` key `description`).
-    pub description: Option<crate::device::Description>,
+    pub description: Option<crate::objects::devices::Description>,
     /// Its main part's number (`part_number`).
-    pub part_number: Option<crate::device::PartText>,
+    pub part_number: Option<crate::objects::devices::PartText>,
     /// Its main part's maker (`maker`).
-    pub manufacturer: Option<crate::device::PartText>,
+    pub manufacturer: Option<crate::objects::devices::PartText>,
     /// Its main part's article number (`article_number`).
-    pub article_number: Option<crate::device::PartText>,
+    pub article_number: Option<crate::objects::devices::PartText>,
     /// Its type text (`type`): a terminal strip's type notation reads it.
-    pub type_text: Option<crate::device::PartText>,
+    pub type_text: Option<crate::objects::devices::PartText>,
     /// Its location (an entry of the project's list, design 072 §6.3); `None` has none.
-    pub location: Option<crate::id::LocationId>,
+    pub location: Option<crate::naming::id::LocationId>,
     /// Whether the location was set by hand (typed, or a box drawn around it) and is kept when a
     /// box around it changes; `false` when it came from its page or a box (design 072 §6.3).
     pub location_fixed: bool,
     /// Its function (an entry of the project's list); `None` has none.
-    pub function: Option<crate::id::FunctionId>,
+    pub function: Option<crate::naming::id::FunctionId>,
     /// Whether the function was set by hand, as [`Device::location_fixed`].
     pub function_fixed: bool,
     /// Its rating note: text that did not read as its group's typed rating (design 072 §2.2).
-    pub rating_note: Option<crate::device::RatingNote>,
+    pub rating_note: Option<crate::objects::devices::RatingNote>,
     pub properties: Properties,
     /// The embedded definition its symbol representations use, if any.
     pub definition: Option<DefinitionId>,
@@ -347,7 +347,7 @@ pub struct Device {
     pub device_type: DeviceType,
     /// Its values of the project's user fields, by field (design 072 §2.8); left out while empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub user: BTreeMap<crate::id::UserFieldId, crate::user::UserValue>,
+    pub user: BTreeMap<crate::naming::id::UserFieldId, crate::objects::user::UserValue>,
 }
 
 impl Device {
@@ -359,7 +359,7 @@ impl Device {
     /// Whether its tag is fixed (FP1): flagged, and not provisional (a provisional tag never
     /// counts as fixed, overseer ruling, tester 026 bug 2).
     pub fn is_fixed(&self) -> bool {
-        self.tag_fixed && !self.tag().is_some_and(crate::tag::is_provisional)
+        self.tag_fixed && !self.tag().is_some_and(crate::naming::tag::is_provisional)
     }
 
     /// Whether `other` differs in a typed field (anything but the property bag and the
@@ -396,18 +396,18 @@ impl Device {
     /// string and routes to the field): a typed field as its stored text, else the property.
     pub fn value(&self, key: &str) -> Option<String> {
         match key {
-            crate::tag::FIXED_KEY => self.tag_fixed.then(|| crate::words::flag_word(true).to_string()),
-            crate::book::LOCATION_KEY => self.location.map(crate::id::LocationId::hex),
-            crate::book::FUNCTION_KEY => self.function.map(crate::id::FunctionId::hex),
-            crate::book::LOCATION_FIXED_KEY => self.location_fixed.then(|| crate::words::flag_word(true).to_string()),
-            crate::book::FUNCTION_FIXED_KEY => self.function_fixed.then(|| crate::words::flag_word(true).to_string()),
-            _ if crate::device::Connector::is_key(key) => match &self.device_type {
+            crate::naming::tag::FIXED_KEY => self.tag_fixed.then(|| crate::naming::words::flag_word(true).to_string()),
+            crate::document::book::LOCATION_KEY => self.location.map(crate::naming::id::LocationId::hex),
+            crate::document::book::FUNCTION_KEY => self.function.map(crate::naming::id::FunctionId::hex),
+            crate::document::book::LOCATION_FIXED_KEY => self.location_fixed.then(|| crate::naming::words::flag_word(true).to_string()),
+            crate::document::book::FUNCTION_FIXED_KEY => self.function_fixed.then(|| crate::naming::words::flag_word(true).to_string()),
+            _ if crate::objects::devices::Connector::is_key(key) => match &self.device_type {
                 DeviceType::Connector(x) => x.value(key),
                 _ => None,
             },
-            crate::device::RATING_KEY => self.rating_shown(),
-            _ => match (&self.device_type, key.strip_prefix(crate::device::RATING_OF_PREFIX)) {
-                (DeviceType::Protection(crate::device::Protection::FuseBank(b)), Some(n)) => {
+            crate::objects::devices::RATING_KEY => self.rating_shown(),
+            _ => match (&self.device_type, key.strip_prefix(crate::objects::devices::RATING_OF_PREFIX)) {
+                (DeviceType::Protection(crate::objects::devices::Protection::FuseBank(b)), Some(n)) => {
                     let n = n.parse::<u8>().ok()?;
                     b.outputs.get(&n).map(ToString::to_string).filter(|t| !t.is_empty())
                 }
@@ -432,7 +432,7 @@ impl Device {
     /// The text `setprop`'s key `key` names on this device: its tag, a text field
     /// ([`crate::TextField`]), else the property. (The tag's fixed flag is not text: [`Device::value`].)
     pub fn get(&self, key: &str) -> Option<&str> {
-        if key == crate::tag::TAG_KEY {
+        if key == crate::naming::tag::TAG_KEY {
             return self.tag();
         }
         match crate::TextField::of_key(key) {
@@ -456,10 +456,10 @@ impl Device {
     /// Set its text field `f` to `value` (`None`, or text that is blank once trimmed, clears it).
     ///
     /// # Errors
-    /// The [`crate::text::TextError`] of a value that is too long or holds a hidden character.
-    pub fn set_text(&mut self, f: crate::TextField, value: Option<&str>) -> std::result::Result<(), crate::text::TextError> {
+    /// The [`crate::naming::text::TextError`] of a value that is too long or holds a hidden character.
+    pub fn set_text(&mut self, f: crate::TextField, value: Option<&str>) -> std::result::Result<(), crate::naming::text::TextError> {
         use crate::TextField as F;
-        use crate::device::{Description, PartText};
+        use crate::objects::devices::{Description, PartText};
         let value = value.map(str::trim).filter(|v| !v.is_empty());
         let part = |v: Option<&str>| v.map(PartText::new).transpose();
         match f {
@@ -476,7 +476,7 @@ impl Device {
     ///
     /// # Errors
     /// As [`Device::set_text`].
-    pub fn with_text(&self, f: crate::TextField, value: Option<&str>) -> std::result::Result<Device, crate::text::TextError> {
+    pub fn with_text(&self, f: crate::TextField, value: Option<&str>) -> std::result::Result<Device, crate::naming::text::TextError> {
         let mut d = self.clone();
         d.set_text(f, value)?;
         Ok(d)
@@ -489,17 +489,17 @@ impl Device {
     ///
     /// # Errors
     /// As [`Device::set_text`].
-    pub fn set_value(&mut self, key: &str, value: Option<&str>) -> std::result::Result<(), crate::text::TextError> {
+    pub fn set_value(&mut self, key: &str, value: Option<&str>) -> std::result::Result<(), crate::naming::text::TextError> {
         // A location or function given as an entry's id (32 hex): set by hand, so fixed.
         let id = || value.and_then(|v| u128::from_str_radix(v.trim(), 16).ok().filter(|_| v.trim().len() == 32));
         match key {
-            crate::book::LOCATION_KEY => {
-                self.location = id().map(crate::id::LocationId);
+            crate::document::book::LOCATION_KEY => {
+                self.location = id().map(crate::naming::id::LocationId);
                 self.location_fixed = self.location.is_some();
                 return Ok(());
             }
-            crate::book::FUNCTION_KEY => {
-                self.function = id().map(crate::id::FunctionId);
+            crate::document::book::FUNCTION_KEY => {
+                self.function = id().map(crate::naming::id::FunctionId);
                 self.function_fixed = self.function.is_some();
                 return Ok(());
             }
@@ -523,9 +523,9 @@ impl Device {
     }
 
     /// This device with tag `tag` (`None` clears it; text that is not a valid tag clears it too,
-    /// which callers rule out with [`crate::tag::Tag::new`] first).
+    /// which callers rule out with [`crate::naming::tag::Tag::new`] first).
     pub fn with_tag(&self, tag: Option<&str>) -> Device {
-        Device { tag: tag.and_then(|t| crate::tag::Tag::new(t).ok()), ..self.clone() }
+        Device { tag: tag.and_then(|t| crate::naming::tag::Tag::new(t).ok()), ..self.clone() }
     }
 }
 
@@ -586,7 +586,7 @@ impl<'de> Deserialize<'de> for Accepts {
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionPointOwner {
     Device(DeviceId),
-    Aid(crate::id::AidId),
+    Aid(crate::naming::id::AidId),
 }
 
 impl From<DeviceId> for ConnectionPointOwner {
@@ -595,8 +595,8 @@ impl From<DeviceId> for ConnectionPointOwner {
     }
 }
 
-impl From<crate::id::AidId> for ConnectionPointOwner {
-    fn from(a: crate::id::AidId) -> Self {
+impl From<crate::naming::id::AidId> for ConnectionPointOwner {
+    fn from(a: crate::naming::id::AidId) -> Self {
         Self::Aid(a)
     }
 }
@@ -611,7 +611,7 @@ impl ConnectionPointOwner {
     }
 
     /// The drawing aid it belongs to, if an aid owns it.
-    pub fn aid(self) -> Option<crate::id::AidId> {
+    pub fn aid(self) -> Option<crate::naming::id::AidId> {
         match self {
             Self::Aid(a) => Some(a),
             Self::Device(_) => None,
@@ -664,7 +664,7 @@ pub enum Subject {
     /// A route's drawing (design 072 F31).
     Route(RouteId),
     /// A drawing aid's drawing (design 072 §6.2).
-    Aid(crate::id::AidId),
+    Aid(crate::naming::id::AidId),
 }
 
 /// The two representation forms (proposal §4.1).
@@ -746,7 +746,7 @@ pub enum Purpose {
 pub const MAX_CORE_LABEL: usize = 32;
 
 /// A core's label: `1`, `BN`, `GNYE`.
-pub type CoreLabel = crate::text::Text<MAX_CORE_LABEL>;
+pub type CoreLabel = crate::naming::text::Text<MAX_CORE_LABEL>;
 
 /// One core of a cable (design 072 §4.5): the cable's cores are its whole core set, so a core the
 /// cable offers but no line carries yet is stored, [`CorePosition::Unplaced`].
@@ -758,7 +758,7 @@ pub type CoreLabel = crate::text::Text<MAX_CORE_LABEL>;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Core {
     pub label: Option<CoreLabel>,
-    pub colours: Option<crate::wire::Colours>,
+    pub colours: Option<crate::objects::wire::Colours>,
     pub purpose: Purpose,
     pub position: CorePosition,
     /// The core's named points on the cable's references (design 072 §4.4, F4): one connection
@@ -826,19 +826,19 @@ pub struct Cable {
     /// Its cable type (a style of catalogue `cable`, design 072 §4.5): what its size, colours and
     /// shield come from when it has none of its own. A reference to no type is kept (a check row).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cable_type: Option<crate::style::StyleRef>,
+    pub cable_type: Option<crate::objects::styles::StyleRef>,
     /// The cable's own shield; `None` takes its cable type's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shield: Option<crate::style::cable::Shield>,
+    pub shield: Option<crate::objects::styles::cable::Shield>,
     /// The cable's own rating inputs (design 057 §6.1, 072 §4.5); each overrides the project's.
     #[serde(default, skip_serializing_if = "crate::wire::CircuitInputs::is_empty")]
-    pub rating: crate::wire::CircuitInputs,
+    pub rating: crate::objects::wire::CircuitInputs,
     /// The design current typed for the cable (`load`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub load: Option<crate::units::Amps>,
+    pub load: Option<crate::geometry::units::Amps>,
     /// The device named as its protection (`rating {protected_by}`), over the trace's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub protected_by: Option<crate::wire::ProtectedBy>,
+    pub protected_by: Option<crate::objects::wire::ProtectedBy>,
 }
 
 /// SHA-256 of a definition's canonical form (proposal §20.10), as 64 lower-case hex digits.
@@ -907,25 +907,25 @@ pub struct ProjectSettings {
     pub length_unit: LengthUnit,
     /// How many digits automatic tag numbers are padded to (brief 018), when the project chose
     /// (brief 066, F3: `None` follows the built-in, [`ProjectSettings::tag_padding`]). Values
-    /// above [`crate::tag::MAX_PADDING`] count as that maximum.
+    /// above [`crate::naming::tag::MAX_PADDING`] count as that maximum.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag_padding: Option<u8>,
     /// The project's own tag prefix per symbol (`starter:coil → KA`, `project:valve-x → YV`),
     /// overriding a starter's built-in IEC 81346 default or a project symbol's own (design 072 F5).
     /// Empty by default.
-    pub tag_prefixes: BTreeMap<crate::prefix::PrefixOf, crate::prefix::TagPrefix>,
+    pub tag_prefixes: BTreeMap<crate::naming::prefix::PrefixOf, crate::naming::prefix::TagPrefix>,
     /// The prefix of new cable tags, when the project chose one (brief 026; design 072 F5: no
     /// longer a `tag_prefixes` entry). `None` follows the built-in `W`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cable_prefix: Option<crate::prefix::TagPrefix>,
+    pub cable_prefix: Option<crate::naming::prefix::TagPrefix>,
     /// How wires are numbered and what each potential defaults to (brief 022, FP1). Left out of
     /// the file while it holds [`WiringSettings::default`].
-    pub wiring: crate::wiring::WiringSettings,
+    pub wiring: crate::connectivity::wiring::WiringSettings,
     /// The project's sheet: size and grid of every page's frame unless a page sets its own
     /// (brief 019, decision FP2), when the project chose one (brief 066, F3: `None` follows the
     /// built-in, [`ProjectSettings::sheet`]).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sheet: Option<crate::sheet::SheetSpec>,
+    pub sheet: Option<crate::document::sheet::SheetSpec>,
     /// What a new page's number adds to the number before it (design 019 §6.1), when the project
     /// chose (brief 066, F3: [`ProjectSettings::page_number_step`]).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -982,7 +982,7 @@ impl ContactMirror {
 
 /// How a cross-reference names a page and a place on it (owner answer Q1, 2026-11-08; UI round 2
 /// and rev 3: `2/B5`). The zone's letter comes first whichever axis is lettered
-/// ([`crate::derive::place_text`]). Other styles (US) come later.
+/// ([`crate::connectivity::derive::place_text`]). Other styles (US) come later.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ReferenceStyle {
     /// `105-B-3`: page number, then the zone, letter first.
@@ -1016,33 +1016,33 @@ impl ReferenceStyle {
 
 impl ProjectSettings {
     /// The project's own prefix for starter `word` (design 072 F5).
-    pub fn starter_prefix(&self, word: &str) -> Option<&crate::prefix::TagPrefix> {
-        self.tag_prefixes.get(&crate::prefix::PrefixOf::Starter(word.into()))
+    pub fn starter_prefix(&self, word: &str) -> Option<&crate::naming::prefix::TagPrefix> {
+        self.tag_prefixes.get(&crate::naming::prefix::PrefixOf::Starter(word.into()))
     }
 
     /// The project's own prefix for project symbol `key` (design 072 F5).
-    pub fn project_prefix(&self, key: &str) -> Option<&crate::prefix::TagPrefix> {
-        self.tag_prefixes.get(&crate::prefix::PrefixOf::Project(key.into()))
+    pub fn project_prefix(&self, key: &str) -> Option<&crate::naming::prefix::TagPrefix> {
+        self.tag_prefixes.get(&crate::naming::prefix::PrefixOf::Project(key.into()))
     }
 
-    /// The tag padding: the project's choice, else the built-in ([`crate::builtins`]).
+    /// The tag padding: the project's choice, else the built-in ([`crate::naming::builtins`]).
     pub fn tag_padding(&self) -> u8 {
-        self.tag_padding.unwrap_or_else(|| crate::builtins::builtins().tag_padding)
+        self.tag_padding.unwrap_or_else(|| crate::naming::builtins::builtins().tag_padding)
     }
 
     /// The project sheet: the project's choice when it is within the limits, else the built-in.
-    pub fn sheet(&self) -> crate::sheet::SheetSpec {
-        self.sheet.filter(|s| s.check().is_ok()).unwrap_or(crate::builtins::builtins().sheet)
+    pub fn sheet(&self) -> crate::document::sheet::SheetSpec {
+        self.sheet.filter(|s| s.check().is_ok()).unwrap_or(crate::naming::builtins::builtins().sheet)
     }
 
     /// The page number step, at least 1: the project's choice, else the built-in.
     pub fn page_number_step(&self) -> u32 {
-        self.page_number_step.unwrap_or_else(|| crate::builtins::builtins().page_number_step).max(1)
+        self.page_number_step.unwrap_or_else(|| crate::naming::builtins::builtins().page_number_step).max(1)
     }
 
     /// The reference style: the project's choice, else the built-in.
     pub fn reference_style(&self) -> ReferenceStyle {
-        self.reference_style.unwrap_or_else(|| crate::builtins::builtins().reference_style)
+        self.reference_style.unwrap_or_else(|| crate::naming::builtins::builtins().reference_style)
     }
 }
 
@@ -1204,7 +1204,7 @@ pub enum SymbolDefaultError {
     Join,
     /// A text value that is too long or holds a hidden character.
     #[error("The symbol's {which}: {error}.")]
-    Text { which: &'static str, error: crate::text::TextError },
+    Text { which: &'static str, error: crate::naming::text::TextError },
 }
 
 /// One of a symbol's own default values (design 072 §7), by name.
@@ -1362,7 +1362,7 @@ pub struct Definition {
     /// group is on one net. Empty for almost every definition, and then left out of the file so
     /// existing content hashes do not change. A bridge may name a key the placement writes rather
     /// than one of the definition's own (brief 044, FP2: a connector half bridges the side keys
-    /// `.s` and `.p`; [`crate::invariant::is_placement_key`]).
+    /// `.s` and `.p`; [`crate::document::invariant::is_placement_key`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<Vec<PointKey>>,
     /// Where the device texts of a placed copy go (brief 048, FP1). Empty for the starters, whose
@@ -1400,8 +1400,8 @@ impl Definition {
 /// # Semantics
 /// Maps are ordered by ID so iteration, serialisation and comparison are deterministic.
 /// [`Document::check`] verifies every invariant and [`Document::check_touched`] those a change
-/// could have affected; [`crate::ledger::Ledger`] runs the scoped check after each transaction so
-/// an invalid state is never committed (see [`crate::invariant`]).
+/// could have affected; [`crate::document::ledger::Ledger`] runs the scoped check after each transaction so
+/// an invalid state is never committed (see [`crate::document::invariant`]).
 ///
 /// The document also keeps reverse indexes (the private `index` module) for queries such as
 /// [`Document::cables_of`]. They are derived: not serialised, not compared by `==`, and kept up
@@ -1420,16 +1420,16 @@ pub struct Document {
     pub wires: BTreeMap<WireId, Wire>,
     pub cables: BTreeMap<CableId, Cable>,
     /// The lines drawn on pages (design 072 F31).
-    pub routes: BTreeMap<RouteId, crate::route::Route>,
+    pub routes: BTreeMap<RouteId, crate::objects::route::Route>,
     /// The drawing aids: continuations and location boxes (design 072 §6.2).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub aids: BTreeMap<crate::id::AidId, crate::aid::Aid>,
+    pub aids: BTreeMap<crate::naming::id::AidId, crate::objects::aid::Aid>,
     /// The loose parts: panel-only material on the BOM (design 072 §6.4).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub loose_parts: BTreeMap<crate::id::LoosePartId, crate::loose_part::LoosePart>,
+    pub loose_parts: BTreeMap<crate::naming::id::LoosePartId, crate::objects::loose_part::LoosePart>,
     /// The typed links between devices (design 072 §2.6).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub device_links: BTreeMap<crate::id::LinkId, crate::user::DeviceLink>,
+    pub device_links: BTreeMap<crate::naming::id::LinkId, crate::objects::user::DeviceLink>,
     pub definitions: BTreeMap<DefinitionId, Definition>,
     pub settings: ProjectSettings,
     /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
@@ -1440,7 +1440,7 @@ pub struct Document {
     pub display: Properties,
     /// The project's own data: the location and function lists (design 072 §5.3).
     #[serde(skip_serializing_if = "crate::project::Project::is_empty")]
-    pub project: crate::project::Project,
+    pub project: crate::document::project::Project,
     /// Folders of pages (brief 019, decision FP3).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub folders: BTreeMap<FolderId, Folder>,
@@ -1449,10 +1449,10 @@ pub struct Document {
     pub folder_order: Vec<FolderId>,
     /// The project's standard (brief 050a, FP1); `None` is IEC (built in).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub standard: Option<crate::style::Standard>,
+    pub standard: Option<crate::objects::styles::Standard>,
     /// The project layer of style records (brief 050a, FP2).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub styles: crate::style::StyleCatalogues,
+    pub styles: crate::objects::styles::StyleCatalogues,
     /// Derived reverse indexes; never serialised.
     #[serde(skip)]
     pub(crate) index: Index,
@@ -1474,28 +1474,28 @@ struct DocumentData {
     wires: BTreeMap<WireId, Wire>,
     cables: BTreeMap<CableId, Cable>,
     #[serde(default)]
-    routes: BTreeMap<RouteId, crate::route::Route>,
+    routes: BTreeMap<RouteId, crate::objects::route::Route>,
     #[serde(default)]
-    aids: BTreeMap<crate::id::AidId, crate::aid::Aid>,
+    aids: BTreeMap<crate::naming::id::AidId, crate::objects::aid::Aid>,
     #[serde(default)]
-    loose_parts: BTreeMap<crate::id::LoosePartId, crate::loose_part::LoosePart>,
+    loose_parts: BTreeMap<crate::naming::id::LoosePartId, crate::objects::loose_part::LoosePart>,
     #[serde(default)]
-    device_links: BTreeMap<crate::id::LinkId, crate::user::DeviceLink>,
+    device_links: BTreeMap<crate::naming::id::LinkId, crate::objects::user::DeviceLink>,
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
     #[serde(default)]
     display: Properties,
     #[serde(default)]
-    project: crate::project::Project,
+    project: crate::document::project::Project,
     #[serde(default)]
     folders: BTreeMap<FolderId, Folder>,
     #[serde(default)]
     folder_order: Vec<FolderId>,
     #[serde(default)]
-    standard: Option<crate::style::Standard>,
+    standard: Option<crate::objects::styles::Standard>,
     #[serde(default)]
-    styles: crate::style::StyleCatalogues,
+    styles: crate::objects::styles::StyleCatalogues,
 }
 
 impl From<DocumentData> for Document {
@@ -1649,12 +1649,12 @@ impl Document {
 
     /// Continuations (drawing aids) whose name has the key `key`
     /// ([`crate::connectivity::name_key`]), in ID order, through the name index.
-    pub fn continuations_named(&self, key: &str) -> Vec<crate::id::AidId> {
+    pub fn continuations_named(&self, key: &str) -> Vec<crate::naming::id::AidId> {
         referrers(&self.index.continuations, &key.to_string()).collect()
     }
 
     /// Every continuation name key and its continuations, through the name index.
-    pub fn continuation_names(&self) -> impl Iterator<Item = (&str, crate::id::AidId)> {
+    pub fn continuation_names(&self) -> impl Iterator<Item = (&str, crate::naming::id::AidId)> {
         self.index.continuations.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
     }
 
@@ -1720,32 +1720,32 @@ impl Document {
     }
 
     /// The wires of net `net`, in ID order, through the index.
-    pub fn wires_of_net(&self, net: crate::id::NetId) -> impl Iterator<Item = WireId> + '_ {
+    pub fn wires_of_net(&self, net: crate::naming::id::NetId) -> impl Iterator<Item = WireId> + '_ {
         referrers(&self.index.net_wires, &net)
     }
 
     /// The routes with an end on connection point `t`, in ID order, through the index.
-    pub fn routes_at(&self, t: ConnectionPointId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+    pub fn routes_at(&self, t: ConnectionPointId) -> impl Iterator<Item = crate::naming::id::RouteId> + '_ {
         referrers(&self.index.connection_point_routes, &t)
     }
 
     /// The routes ending on the middle of route `r` (its T-joins), in ID order, through the index.
-    pub fn tees_of(&self, r: crate::id::RouteId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+    pub fn tees_of(&self, r: crate::naming::id::RouteId) -> impl Iterator<Item = crate::naming::id::RouteId> + '_ {
         referrers(&self.index.route_tees, &r)
     }
 
     /// The routes drawn on page `page`, in ID order, through the index.
-    pub fn routes_on(&self, page: PageId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+    pub fn routes_on(&self, page: PageId) -> impl Iterator<Item = crate::naming::id::RouteId> + '_ {
         referrers(&self.index.page_routes, &page)
     }
 
-    /// Components whose tag is the same tag as `tag` (equal [`crate::tag::key`]), in ID order,
+    /// Components whose tag is the same tag as `tag` (equal [`crate::naming::tag::key`]), in ID order,
     /// through the tag index: the cost does not grow with the project.
     pub fn components_tagged(&self, tag: &str) -> Vec<DeviceId> {
-        referrers(&self.index.tags, &crate::tag::key(tag)).collect()
+        referrers(&self.index.tags, &crate::naming::tag::key(tag)).collect()
     }
 
-    /// Every tagged component through the tag index (brief 018), by tag key ([`crate::tag::key`]),
+    /// Every tagged component through the tag index (brief 018), by tag key ([`crate::naming::tag::key`]),
     /// then ID: no scan of the components.
     pub fn tagged(&self) -> impl Iterator<Item = (&str, DeviceId)> {
         self.index.tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
@@ -1753,7 +1753,7 @@ impl Document {
 
     /// Cables whose tag is the same tag as `tag` (brief 026), in ID order, through the tag index.
     pub fn cables_tagged(&self, tag: &str) -> Vec<CableId> {
-        referrers(&self.index.cable_tags, &crate::tag::key(tag)).collect()
+        referrers(&self.index.cable_tags, &crate::naming::tag::key(tag)).collect()
     }
 
     /// Every tagged cable through the tag index (brief 026), by tag key, then ID.
@@ -1774,7 +1774,7 @@ impl Document {
 
     /// Whether a device or a cable holds `tag` (brief 026: one namespace).
     pub fn tag_taken(&self, tag: &str) -> bool {
-        let k = crate::tag::key(tag);
+        let k = crate::naming::tag::key(tag);
         self.index.tags.get(&k).is_some_and(|m| !m.is_empty()) || self.index.cable_tags.get(&k).is_some_and(|m| !m.is_empty())
     }
 
@@ -1790,19 +1790,19 @@ impl Document {
 
     /// Objects whose own style choice `key` names the stored style ID `value` (brief 050a, the
     /// style's explicit users), in order, through the index: no scan of the project.
-    pub fn style_users(&self, key: &str, value: &str) -> impl Iterator<Item = crate::op::ObjectRef> + '_ {
+    pub fn style_users(&self, key: &str, value: &str) -> impl Iterator<Item = crate::document::op::ObjectRef> + '_ {
         referrers(&self.index.style_users, &(value.trim().to_string(), key.to_string()))
     }
 
     /// Every style choice an object holds, through the index (brief 050a): (stored style ID,
     /// choice key, object), by ID then key.
-    pub fn style_choices(&self) -> impl Iterator<Item = (&str, &str, crate::op::ObjectRef)> + '_ {
+    pub fn style_choices(&self) -> impl Iterator<Item = (&str, &str, crate::document::op::ObjectRef)> + '_ {
         self.index.style_users.iter().flat_map(|((v, k), objs)| objs.keys().map(move |o| (v.as_str(), k.as_str(), *o)))
     }
 
     /// Every (stored style ID, choice key) with at least one explicit user, and its users, from
     /// `value` on (brief 050a), through the index.
-    pub fn style_users_of(&self, value: &str) -> impl Iterator<Item = (&str, crate::op::ObjectRef)> + '_ {
+    pub fn style_users_of(&self, value: &str) -> impl Iterator<Item = (&str, crate::document::op::ObjectRef)> + '_ {
         let v = value.trim().to_string();
         self.index
             .style_users
@@ -1849,7 +1849,7 @@ impl Document {
 
     /// The points of continuation `id` (as `aid`, before or after an edit) and of its partners by
     /// name, in ID order.
-    pub fn continuation_points(&self, id: crate::id::AidId, aid: &crate::aid::Aid) -> Vec<ConnectionPointId> {
+    pub fn continuation_points(&self, id: crate::naming::id::AidId, aid: &crate::objects::aid::Aid) -> Vec<ConnectionPointId> {
         let aids = match crate::connectivity::continuation_key(aid) {
             Some(k) => self.continuations_named(&k),
             None => Vec::new(),

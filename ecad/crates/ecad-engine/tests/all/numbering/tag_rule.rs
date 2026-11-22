@@ -6,13 +6,13 @@ use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
 use ecad_file::schema::{self, BranchId, VersionKind};
 use ecad_file::{Project, Store};
-use ecad_model::tag::HighWater;
+use ecad_model::naming::tag::HighWater;
 use ecad_model::*;
 
 const PROJECT: ProjectId = ProjectId(0x0029_0000_0000_0000_0000_0000_0000_0007);
 
 fn cable(tag: &str) -> Cable {
-    let mut properties = ecad_model::doc::Properties::new();
+    let mut properties = ecad_model::document::doc::Properties::new();
     properties.insert("tag".into(), tag.into());
     Cable { properties, cores: Vec::new(), ..Default::default() }
 }

@@ -5,8 +5,8 @@
 
 use crate::common::{self, Opts, click};
 use cadcraft_engine::geom::Vec2;
-use ecad_app::{App, tools};
-use ecad_engine::views::{self};
+use {ecad_app::App, ecad_app::commands::tools};
+use ecad_engine::cables::views::{self};
 use eframe::egui::{Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -31,7 +31,7 @@ fn unsaved(h: &mut Harness<'static, App>) -> u64 {
 fn fan_lines(h: &mut Harness<'static, App>) -> usize {
     let t = h.state_mut();
     let d = t.cad.session.doc().unwrap();
-    d.model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).filter(|e| e.common.layer == views::LAYER).count()
+    d.model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).filter(|e| e.common.layer == views::LAYER).count()
 }
 
 fn views_of(h: &mut Harness<'static, App>) -> Value {
@@ -51,7 +51,7 @@ fn prompt(h: &Harness<'static, App>) -> String {
 fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
     let t = h.state_mut();
     let before: Vec<_> =
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle).collect();
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -60,7 +60,7 @@ fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
         .map(|e| e.handle)
         .filter(|x| !before.contains(x))
         .map(|x| x.hex())

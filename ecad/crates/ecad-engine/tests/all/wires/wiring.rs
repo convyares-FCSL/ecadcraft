@@ -18,7 +18,7 @@ fn number(doc: &Document, c: WireId) -> Option<String> {
 fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> WireId {
     let doc = h.doc();
     let page = h.p(|p| p.active_page()).unwrap_or(doc.page_order[0]);
-    let shown: Vec<ecad_model::Pt> = ecad_model::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
+    let shown: Vec<ecad_model::Pt> = ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
     let ends: Vec<(f64, f64)> = [points.first(), points.last()]
         .into_iter()
         .flatten()
@@ -441,8 +441,8 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
 /// the view depends on the whole net, so a change elsewhere on it reaches it.
 #[test]
 fn a_wires_properties_show_and_edit_its_net() {
-    use ecad_electrical::props::{PropsView, edit_line};
-    use ecad_engine::props;
+    use ecad_electrical::properties::{PropsView, edit_line};
+    use ecad_engine::properties::props;
     let mut h = H::new(0x22_07);
     let page = h.first_page();
     h.run("place", json!({"symbol": "continuation", "at": [0, 0], "name": "24V"})).unwrap();
@@ -456,7 +456,7 @@ fn a_wires_properties_show_and_edit_its_net() {
     let b = wire(&mut h, &[(40.0, 0.0), (60.0, 0.0)], json!({}));
     let view = |h: &mut H, w: WireId| {
         let route = h.route_handle(page, w);
-        h.p(|p| props::view(p, Some(page), &[route]))
+        h.p(|p| properties::view(p, Some(page), &[route]))
     };
     let row = |v: &PropsView, key: &str| {
         v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == key).cloned().unwrap_or_else(|| panic!("{key}: {v:?}"))
@@ -547,8 +547,8 @@ fn labels_are_small_and_never_touch() {
     let doc = h.doc();
     let labels = wires::labels_on_page(&doc, page);
     assert_eq!(labels.len(), 10);
-    let builtin = ecad_engine::defaults::text::WIRE_LABEL_HEIGHT.builtin();
-    assert!(labels.iter().all(|l| ecad_engine::defaults::Value::Length(l.height) == builtin));
+    let builtin = ecad_electrical::defaults::text::WIRE_LABEL_HEIGHT.builtin();
+    assert!(labels.iter().all(|l| ecad_electrical::defaults::Value::Length(l.height) == builtin));
     for (i, x) in labels.iter().enumerate() {
         for y in labels.iter().skip(i + 1) {
             let (p, q) = (wires::label_box(x), wires::label_box(y));

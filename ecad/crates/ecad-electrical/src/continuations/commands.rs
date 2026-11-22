@@ -2,7 +2,7 @@
 //! of continuation arrows, one `ModifyAid` per arrow whose caption changes; and `setprop {aids}`
 //! (design 072 §6.2): a continuation's `name` or `caption`, a location box's `function`,
 //! `location`, `panel_temperature` or `style`. `contcaption` is a generic command
-//! ([`crate::cmd::run`]); its interactive form (select arrows, type the caption) is the engine's.
+//! ([`crate::commands::run`]); its interactive form (select arrows, type the caption) is the engine's.
 
 use std::collections::BTreeSet;
 
@@ -13,8 +13,8 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::cmd::input::{Bounded, nullable};
-use crate::cmd::run::{Cx, Generic, Outcome, Slot, State};
+use crate::commands::input::{Bounded, nullable};
+use crate::commands::run::{Cx, Generic, Outcome, Slot, State};
 use crate::error::CmdError;
 
 /// Most arrows one `contcaption` names.
@@ -74,7 +74,7 @@ pub fn plan_contcaption(doc: &Document, arrows: &[AidId], caption: Option<&str>)
 /// The `ModifyAid` giving continuation `a` the checked caption `caption`; `None` when it has it.
 fn caption_op(doc: &Document, a: AidId, caption: Option<&str>) -> Result<Option<Op>, CmdError> {
     let Some(before @ Aid::Continuation { name, .. }) = doc.aids.get(&a) else { return Err(CmdError::refused(k::NO_SUCH_ARROW)) };
-    let caption = caption.map(ecad_model::aid::Caption::new).transpose().map_err(|_| CmdError::refused(k::CAPTION_RULE))?;
+    let caption = caption.map(ecad_model::objects::aid::Caption::new).transpose().map_err(|_| CmdError::refused(k::CAPTION_RULE))?;
     let after = Aid::Continuation { name: name.clone(), caption };
     Ok((*before != after).then(|| Op::ModifyAid { id: a, before: before.clone(), after }))
 }
@@ -99,7 +99,7 @@ fn box_keys(key: &str) -> CmdError {
 
 /// `setprop {aids, key, value}` (design 072 §6.2), one `ModifyAid` per aid that changes: a
 /// continuation's `name` (checked, required) or `caption` (checked; `None` removes it); a location
-/// box's `function` or `location` (a code, as [`crate::cmd::location::plan_box_set`], without its
+/// box's `function` or `location` (a code, as [`crate::locations::commands::locations::plan_box_set`], without its
 /// proposals), `panel_temperature` (−40 to 90 °C; `None` clears it) or `style` (a location style by
 /// name or ID; `None` or empty clears it: the project's).
 ///
@@ -110,11 +110,11 @@ pub fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], key:
     if aids.is_empty() {
         return Err(CmdError::refused("Name at least one continuation arrow or location box in `aids`."));
     }
-    if let Some(a) = crate::designations::Aspect::of_property(key) {
+    if let Some(a) = crate::locations::designations::Aspect::of_property(key) {
         if aids.iter().any(|a| matches!(doc.aids.get(a), Some(Aid::Continuation { .. }))) {
             return Err(continuation_keys(key));
         }
-        return Ok(crate::cmd::location::plan_box_set(doc, ids, aids, a, value)?.ops);
+        return Ok(crate::locations::commands::locations::plan_box_set(doc, ids, aids, a, value)?.ops);
     }
     let mut ops = Vec::new();
     let mut seen = BTreeSet::new();
@@ -122,7 +122,7 @@ pub fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], key:
         match doc.aids.get(a) {
             None => return Err(CmdError::refused("That is not a continuation arrow or a location box.")),
             Some(Aid::Box(_)) if key == crate::locations::PANEL_TEMPERATURE_KEY => {
-                let temp = value.filter(|v| !v.trim().is_empty()).map(crate::cmd::rating::panel_temperature).transpose()?;
+                let temp = value.filter(|v| !v.trim().is_empty()).map(crate::circuits::commands::panel_temperature).transpose()?;
                 ops.extend(box_op(doc, *a, |b| b.panel_temperature = temp));
                 continue;
             }
@@ -161,7 +161,7 @@ fn continuation_keys(key: &str) -> CmdError {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// `contcaption {continuations, caption}` (design 049 §5.1): sets (or with null removes) the
 /// arrows' caption, one transaction.

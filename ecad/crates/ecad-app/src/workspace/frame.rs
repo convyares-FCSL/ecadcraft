@@ -3,7 +3,7 @@
 //! Terminals, PLC | Wires, Cables | Reports), each a full-width table under one head (the tabs
 //! with their counts at the left; filter, Import, Export and "Open beside the page" at the right)
 //! and over one foot (what the colours mean, and the tab's counts). The right panel shows only the
-//! selected item ([`super::detail`]).
+//! selected item ([`crate::workspace::detail`]).
 //!
 //! UI only: every view is an existing one (039's tables, 051's PLC, 024's reports) laid out to the
 //! boards. What is not built yet is a placeholder that says so: Import (no importer), the cable
@@ -13,8 +13,8 @@
 //! taken with Reports' tab counts, only when the report models' revision changed. The workspace
 //! itself reads nothing from the project.
 
-use ecad_ui::prim;
-use ecad_ui::tokens::{line, radius, space, ui_type};
+use ecad_widgets::prim;
+use ecad_widgets::tokens::{line, radius, space, ui_type};
 use eframe::egui::{self, Rect, Role, Sense, Stroke, StrokeKind, WidgetInfo, pos2, vec2};
 
 use crate::App;
@@ -66,15 +66,15 @@ pub fn layout(main: Rect) -> (Rect, Rect, Rect) {
 /// Where the Reports tab hosts today's Reports window: its preview, under the list of reports.
 pub fn reports_preview(main: Rect) -> Rect {
     let (_, body, _) = layout(main);
-    let top = (body.top() + super::reports::LIST_H).min(body.bottom());
+    let top = (body.top() + crate::reports::list::LIST_H).min(body.bottom());
     Rect::from_min_max(pos2(body.left(), top), body.max)
 }
 
 /// The tab strip: each tab's name and count, the selected one raised; returns the tab clicked.
 fn tab_strip(ui: &mut egui::Ui, shown: ListsView, counts: &[(ListsView, Option<usize>)]) -> Option<ListsView> {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let mut clicked = None;
-    let font = ecad_ui::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS);
+    let font = ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS);
     // Lay the tabs out first, to draw the frame round them.
     let pad = space::L;
     let mut items = Vec::new();
@@ -84,7 +84,7 @@ fn tab_strip(ui: &mut egui::Ui, shown: ListsView, counts: &[(ListsView, Option<u
             Some(n) => format!("{} {n}", v.label()),
             None => v.label().to_string(),
         };
-        let g = ui.painter().layout_no_wrap(text, font.clone(), ecad_ui::color(s.text));
+        let g = ui.painter().layout_no_wrap(text, font.clone(), ecad_widgets::color(s.text));
         items.push((v, g));
     }
     let gap = space::XS;
@@ -92,7 +92,7 @@ fn tab_strip(ui: &mut egui::Ui, shown: ListsView, counts: &[(ListsView, Option<u
     let w: f32 = items.iter().map(|(_, g)| g.size().x + 2.0 * pad).sum::<f32>() + gap * (TABS.len() as f32 - 1.0) + dividers + 2.0 * space::XS;
     let (frame, _) = ui.allocate_exact_size(vec2(w, TAB_H + 2.0 * space::XS), Sense::hover());
     let p = ui.painter().clone();
-    p.rect_stroke(frame, ecad_ui::style::corner(radius::BUTTON), Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)), StrokeKind::Inside);
+    p.rect_stroke(frame, ecad_widgets::style::corner(radius::BUTTON), Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)), StrokeKind::Inside);
     let mut x = frame.left() + space::XS;
     for (v, g) in items {
         let r = Rect::from_min_size(pos2(x, frame.top() + space::XS), vec2(g.size().x + 2.0 * pad, TAB_H));
@@ -107,17 +107,17 @@ fn tab_strip(ui: &mut egui::Ui, shown: ListsView, counts: &[(ListsView, Option<u
             None
         };
         if let Some(c) = ground {
-            p.rect_filled(r, ecad_ui::style::corner(radius::CHIP), ecad_ui::color(c));
+            p.rect_filled(r, ecad_widgets::style::corner(radius::CHIP), ecad_widgets::color(c));
         }
         let ink = if on { s.text } else { s.text_2 };
-        p.galley(pos2(r.left() + pad, r.center().y - g.size().y / 2.0), g, ecad_ui::color(ink));
+        p.galley(pos2(r.left() + pad, r.center().y - g.size().y / 2.0), g, ecad_widgets::color(ink));
         if resp.clicked() {
             clicked = Some(v);
         }
         x = r.right() + gap;
         if matches!(v, ListsView::Plc | ListsView::Cables) {
             let dx = x + space::M / 2.0 - gap / 2.0;
-            p.vline(dx, frame.y_range().shrink(space::M), Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line_strong)));
+            p.vline(dx, frame.y_range().shrink(space::M), Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line_strong)));
             x += space::M + line::HAIRLINE_PX;
         }
     }
@@ -137,26 +137,26 @@ fn button(ui: &mut egui::Ui, label: &str) -> bool {
 /// The foot: the legend at the left (an input box is set here; grey text is read), the tab's
 /// counts at the right, a warning in its tone.
 fn foot(ui: &mut egui::Ui, legend: bool, read: &str, counts: &[(String, prim::Tone)]) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     ui.horizontal_centered(|ui| {
         ui.add_space(space::L);
         if legend {
             let (r, _) = ui.allocate_exact_size(vec2(44.0, 20.0), Sense::hover());
             let p = ui.painter();
-            p.rect_filled(r, ecad_ui::style::corner(radius::CHIP), ecad_ui::color(s.raised));
-            p.rect_stroke(r, ecad_ui::style::corner(radius::CHIP), Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line_strong)), StrokeKind::Inside);
-            p.text(r.center(), egui::Align2::CENTER_CENTER, "input", ecad_ui::fonts::font(ui.ctx(), ui_type::SMALL), ecad_ui::color(s.text));
-            ui.label(egui::RichText::new(LEGEND_INPUT).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_2)));
+            p.rect_filled(r, ecad_widgets::style::corner(radius::CHIP), ecad_widgets::color(s.raised));
+            p.rect_stroke(r, ecad_widgets::style::corner(radius::CHIP), Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line_strong)), StrokeKind::Inside);
+            p.text(r.center(), egui::Align2::CENTER_CENTER, "input", ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL), ecad_widgets::color(s.text));
+            ui.label(egui::RichText::new(LEGEND_INPUT).size(ui_type::SMALL.size).color(ecad_widgets::color(s.text_2)));
             ui.add_space(space::L);
         }
-        ui.label(egui::RichText::new("grey text").size(ui_type::SMALL.size).color(ecad_ui::color(s.text_3)));
-        ui.label(egui::RichText::new(read).size(ui_type::SMALL.size).color(ecad_ui::color(s.text_2)));
+        ui.label(egui::RichText::new("grey text").size(ui_type::SMALL.size).color(ecad_widgets::color(s.text_3)));
+        ui.label(egui::RichText::new(read).size(ui_type::SMALL.size).color(ecad_widgets::color(s.text_2)));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(space::L);
             for (i, (text, tone)) in counts.iter().enumerate().rev() {
                 let ink = if *tone == prim::Tone::Neutral { s.text_2 } else { tone.text() };
                 let sep = if i == 0 { "" } else { " \u{b7} " };
-                ui.label(egui::RichText::new(format!("{sep}{text}")).size(ui_type::SMALL.size).color(ecad_ui::color(ink)));
+                ui.label(egui::RichText::new(format!("{sep}{text}")).size(ui_type::SMALL.size).color(ecad_widgets::color(ink)));
             }
         });
     });
@@ -188,17 +188,17 @@ impl App {
             (ListsView::Plc, t.map(|c| c[1])),
             (ListsView::Wires, t.map(|c| c[2])),
             (ListsView::Cables, t.map(|c| c[3])),
-            (ListsView::Reports, Some(super::reports::REPORTS.len())),
+            (ListsView::Reports, Some(crate::reports::list::REPORTS.len())),
         ]
     }
 
     /// The Project workspace in `main` (UI rev 3, boards 2.01–2.06).
     pub(crate) fn project_view(&mut self, ui: &mut egui::Ui, main: Rect) {
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         let (head, body, foot_r) = layout(main);
-        ui.painter().rect_filled(main, 0.0, ecad_ui::color(s.bg));
-        ui.painter().hline(head.x_range(), head.bottom() - 0.5, Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)));
-        ui.painter().hline(foot_r.x_range(), foot_r.top() + 0.5, Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)));
+        ui.painter().rect_filled(main, 0.0, ecad_widgets::color(s.bg));
+        ui.painter().hline(head.x_range(), head.bottom() - 0.5, Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)));
+        ui.painter().hline(foot_r.x_range(), foot_r.top() + 0.5, Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)));
         let open = self.project_open();
         if open {
             // The views below read Reports' kept models.
@@ -209,8 +209,8 @@ impl App {
             r.io_shown = tab == ListsView::Plc;
             r.wires_shown = tab == ListsView::Wires;
             r.cables_shown = tab == ListsView::Cables;
-            if tab == ListsView::Terminals && (r.tab != crate::outputs_ui::Tab::Terminals || r.strip.is_some()) {
-                r.tab = crate::outputs_ui::Tab::Terminals;
+            if tab == ListsView::Terminals && (r.tab != crate::reports::panel::Tab::Terminals || r.strip.is_some()) {
+                r.tab = crate::reports::panel::Tab::Terminals;
                 r.strip = None;
                 r.invalidate();
             }
@@ -272,13 +272,13 @@ impl App {
                 }
             }
             ListsView::Cables => {
-                let go = in_rect(ui, body_in, "ecad.project.cables", |ui| super::cables::show_tab(self, ui));
+                let go = in_rect(ui, body_in, "ecad.project.cables", |ui| crate::cables::list::show_tab(self, ui));
                 if let Some((pg, at)) = go {
                     self.goto_place(pg, at);
                 }
             }
             ListsView::Reports => {
-                in_rect(ui, body_in, "ecad.project.reports", |ui| super::reports::show(self, ui));
+                in_rect(ui, body_in, "ecad.project.reports", |ui| crate::reports::list::show(self, ui));
             }
         }
         // Selecting a row opens the right panel on it (boards 2.01–2.06 always show it).
@@ -294,7 +294,7 @@ impl App {
 
     /// Whether the selected row changed since the last frame (the right panel then opens on it).
     fn project_selection_changed(&mut self) -> bool {
-        let now = super::detail::selected_key(self);
+        let now = crate::workspace::detail::selected_key(self);
         let changed = now.is_some() && now != self.shell.project_selected;
         self.shell.project_selected = now;
         changed
@@ -325,8 +325,8 @@ impl App {
             ListsView::Devices => placeholder(ui, IMPORT_LIST, IMPORT_COMES),
             ListsView::Plc => {
                 let writable = self.project_writable();
-                let b = ui.add_enabled_ui(writable, |ui| ecad_ui::prim::button(ui, IMPORT_IO, ecad_ui::prim::Kind::Secondary)).inner;
-                if b.on_disabled_hover_text(super::plc::WRITES_OFF).clicked() {
+                let b = ui.add_enabled_ui(writable, |ui| ecad_widgets::prim::button(ui, IMPORT_IO, ecad_widgets::prim::Kind::Secondary)).inner;
+                if b.on_disabled_hover_text(crate::plc::list::WRITES_OFF).clicked() {
                     out.push(HeadAction::ImportTags);
                 }
             }
@@ -345,7 +345,7 @@ impl App {
         match tab {
             ListsView::Devices => {
                 let d = &mut self.panel.devices;
-                prim::Field::new(&mut d.filter, prim::FieldKind::Search, crate::devices_panel::FILTER)
+                prim::Field::new(&mut d.filter, prim::FieldKind::Search, crate::devices::panel::FILTER)
                     .placeholder(placeholder_text)
                     .width(w)
                     .show(ui);
@@ -369,7 +369,7 @@ impl App {
                             r.wires.table.filter_field(ui, placeholder_text, w);
                             ui.add_space(space::S);
                             let mut g = r.wires.group;
-                            prim::segmented(ui, &mut g, &super::wires::GROUPS);
+                            prim::segmented(ui, &mut g, &crate::wires::list::GROUPS);
                             if g != r.wires.group {
                                 r.wires.set_group(g);
                             }
@@ -405,7 +405,7 @@ impl App {
             }
             HeadAction::ImportTags => {
                 if let Some(r) = self.reports.as_mut() {
-                    let _ = r.io.handle(super::ListAction::ImportTags);
+                    let _ = r.io.handle(crate::workspace::ListAction::ImportTags);
                 }
             }
             HeadAction::Export => {
@@ -438,25 +438,25 @@ impl App {
     }
 
     /// What a list view asks for (Terminals and PLC).
-    fn list_actions(&mut self, acts: Vec<super::ListAction>) {
+    fn list_actions(&mut self, acts: Vec<crate::workspace::ListAction>) {
         for a in acts {
             match a {
-                super::ListAction::Panel(a) => self.panel_action(a),
-                super::ListAction::Run(line) => {
+                crate::workspace::ListAction::Panel(a) => self.panel_action(a),
+                crate::workspace::ListAction::Run(line) => {
                     let refusal = self.run_line(&line);
                     if let Some(r) = self.reports.as_mut() {
                         r.ran(refusal);
                     }
                 }
-                super::ListAction::GoTo(page, at) => self.goto_place(page, at),
+                crate::workspace::ListAction::GoTo(page, at) => self.goto_place(page, at),
                 other => self.plc_action(other),
             }
         }
     }
 
     /// Brief 051: what Project ▸ PLC asks the app for (design 051 §3.4, §3.5).
-    pub fn plc_action(&mut self, a: super::ListAction) {
-        use super::ListAction;
+    pub fn plc_action(&mut self, a: crate::workspace::ListAction) {
+        use crate::workspace::ListAction;
         match a {
             ListAction::Say(t) => self.cad.session.echo(t),
             ListAction::GoToCard(page, card) => {
@@ -591,7 +591,7 @@ pub const ADD_MENU: &str = "ecad.lists.cables.add.menu";
 /// **New cable**, then `Assign in the drawing` and the cables not drawn. Laid out right to left,
 /// so the chevron comes first.
 fn add_cable(ui: &mut egui::Ui, undrawn: &[(ecad_model::CableId, String)], writable: bool) -> Vec<HeadAction> {
-    use super::cables::{ADD, ASSIGN_HEADER, NEW_CABLE};
+    use crate::cables::list::{ADD, ASSIGN_HEADER, NEW_CABLE};
     let mut out = Vec::new();
     let why = "This project cannot be changed here (a release, or writes off).";
     let b =
@@ -604,7 +604,7 @@ fn add_cable(ui: &mut egui::Ui, undrawn: &[(ecad_model::CableId, String)], writa
         }
         if !undrawn.is_empty() {
             ui.separator();
-            ui.label(egui::RichText::new(ASSIGN_HEADER).small().color(ecad_ui::color(ecad_ui::SHELL.text_3)));
+            ui.label(egui::RichText::new(ASSIGN_HEADER).small().color(ecad_widgets::color(ecad_widgets::SHELL.text_3)));
             for (k, line) in undrawn {
                 if ui.selectable_label(false, line).clicked() {
                     out.push(HeadAction::Assign(*k));

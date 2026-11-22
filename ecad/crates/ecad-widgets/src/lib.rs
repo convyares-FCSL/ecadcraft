@@ -31,19 +31,20 @@ pub mod showcase;
 pub mod splitter;
 pub mod style;
 pub mod table;
+pub mod tokens;
 pub mod wheel;
 
 pub use ecad_tokens as tokens;
-pub use ecad_tokens::Icon;
+pub use crate::tokens::Icon;
 
 /// An `ecad-tokens` colour as egui's.
 ///
 /// # Example
 /// ```
-/// let c = ecad_ui::color(ecad_tokens::GRAPHITE.accent_soft);
-/// assert_eq!(c.a(), ecad_tokens::GRAPHITE.accent_soft.a);
+/// let c = crate::color(crate::tokens::GRAPHITE.accent_soft);
+/// assert_eq!(c.a(), crate::tokens::GRAPHITE.accent_soft.a);
 /// ```
-pub fn color(c: ecad_tokens::Color) -> egui::Color32 {
+pub fn color(c: crate::tokens::Color) -> egui::Color32 {
     egui::Color32::from_rgba_unmultiplied(c.r, c.g, c.b, c.a)
 }
 
@@ -64,10 +65,10 @@ pub enum Theme {
 
 impl Theme {
     /// The shell colour set of this theme.
-    pub const fn shell(self) -> &'static ecad_tokens::Shell {
+    pub const fn shell(self) -> &'static crate::tokens::Shell {
         match self {
-            Theme::Dark => &ecad_tokens::GRAPHITE,
-            Theme::Light => &ecad_tokens::LIGHT,
+            Theme::Dark => &crate::tokens::GRAPHITE,
+            Theme::Light => &crate::tokens::LIGHT,
         }
     }
 }
@@ -94,18 +95,18 @@ pub fn theme() -> Theme {
 ///
 /// # Example
 /// ```
-/// ecad_ui::set_theme(ecad_ui::Theme::Light);
-/// assert_eq!(ecad_ui::SHELL.panel, ecad_tokens::LIGHT.panel);
-/// ecad_ui::set_theme(ecad_ui::Theme::Dark);
-/// assert_eq!(ecad_ui::SHELL.panel, ecad_tokens::GRAPHITE.panel);
+/// crate::set_theme(crate::Theme::Light);
+/// assert_eq!(crate::SHELL.panel, crate::tokens::LIGHT.panel);
+/// crate::set_theme(crate::Theme::Dark);
+/// assert_eq!(crate::SHELL.panel, crate::tokens::GRAPHITE.panel);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CurrentShell;
 
 impl std::ops::Deref for CurrentShell {
-    type Target = ecad_tokens::Shell;
+    type Target = crate::tokens::Shell;
 
-    fn deref(&self) -> &ecad_tokens::Shell {
+    fn deref(&self) -> &crate::tokens::Shell {
         theme().shell()
     }
 }

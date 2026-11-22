@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::keys::{Area, FAMILIES, KEYS, PropKey, PropsExt, RESERVED, area_of, family_of, is_reserved, spec};
+use ecad_model::naming::keys::{Area, FAMILIES, KEYS, PropKey, PropsExt, RESERVED, area_of, family_of, is_reserved, spec};
 use ecad_model::{Properties, Word};
 
 #[test]

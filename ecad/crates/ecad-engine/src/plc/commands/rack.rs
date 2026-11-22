@@ -1,17 +1,17 @@
 //! `plcslot`, `plcracks` and `plccardtype` (brief 045, design 045 §3): cards in racks. The rules
-//! are [`crate::plc::rack`] and [`ecad_electrical::cmd::plc`].
+//! are [`crate::plc::rack`] and [`ecad_electrical::plc::commands`].
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::plc::{self as rules, RackChoice};
+use ecad_electrical::plc::commands::{self as rules, RackChoice};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::Command;
-use crate::cmd::{err, on_any_page, on_project};
+use crate::commands::input::Command;
+use crate::commands::{err, on_any_page, on_project};
 use crate::plc::rack::*;
-use ecad_electrical::cmd::input::{TextOrNumber, nullable};
+use ecad_electrical::commands::input::{TextOrNumber, nullable};
 
 /// `plcslot {card, rack?, slot?, swap?}` (design 045 §2.5): put a card in a slot, move it, swap it
 /// with the card there (`swap: true`), or take it out (`rack: null`). One transaction.

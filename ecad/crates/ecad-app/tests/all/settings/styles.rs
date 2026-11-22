@@ -4,14 +4,14 @@
 //! one transaction, patching one row (no rebuild); the inspector's Style row lists the text styles
 //! and chooses one for the device; the status bar names the standard.
 
-use ecad_app::lists::style_catalogues as sc;
+use ecad_app::settings::style_catalogues as sc;
 use ecad_app::settings::standards;
-use ecad_engine::defaults::Source;
+use ecad_electrical::defaults::Source;
 use ecad_model::StyleRef;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
-use crate::mouse_tester::{doc, harness_with, head, ok};
+use crate::canvas::mouse_acceptance::{doc, harness_with, head, ok};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -65,7 +65,7 @@ fn a_style_field_applies_in_one_transaction_and_patches_one_row() {
     assert_eq!(v.catalogue, 1);
     let (text, _) = &v.cats[0];
     let tag = text.key_of(&StyleRef::Builtin("tag".into())).unwrap();
-    let rows = ecad_ui::table::TableSource::keys(text).len();
+    let rows = ecad_widgets::table::TableSource::keys(text).len();
     assert_eq!(rows, 23, "one row per text style (051 adds two)");
     h.state_mut().settings.standards.style_focus = Some(tag);
     h.run_steps(3);
@@ -113,13 +113,13 @@ fn the_inspector_chooses_a_text_style_for_the_device() {
     h.run_steps(3);
     assert!(h.query_by_label("ecad.inspector.style.text.tag.style").is_some());
     let large = style.styles.iter().find(|(_, n)| n == "Tag large").unwrap().0.clone();
-    let line = ecad_electrical::cmd::default::line(
+    let line = ecad_electrical::styles::commands::defaults::line(
         "text.tag.style",
-        ecad_engine::defaults::Level::Object,
-        ecad_electrical::cmd::default::Target::Device(c),
+        ecad_electrical::defaults::Level::Object,
+        ecad_electrical::styles::commands::defaults::Target::Device(c),
         Some(&large),
     );
-    h.state_mut().inspector_action(ecad_app::shell::right::InspectorAction::Run("text.tag.style", line));
+    h.state_mut().inspector_action(ecad_app::inspector::InspectorAction::Run("text.tag.style", line));
     h.run_steps(3);
     assert_eq!(doc(&mut h).devices[&c].properties.get("text.tag.style"), Some(&large));
     let rows = &h.state().settings.inspector.rows;
@@ -136,7 +136,7 @@ fn the_inspector_chooses_a_text_style_for_the_device() {
 #[ignore = "slow: a 1920×1080 app and two prints; run by name for the screenshots"]
 fn look_check_screenshots() {
     use std::sync::Arc;
-    let deltas: crate::mouse_tester::Deltas = Arc::default();
+    let deltas: crate::canvas::mouse_acceptance::Deltas = Arc::default();
     let mut h = harness_with(Some(deltas.clone()));
     h.state_mut().set_cad_chrome(false);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
@@ -149,7 +149,7 @@ fn look_check_screenshots() {
     let save = |h: &H, name: &str| {
         if let Some(dir) = &out
             && std::fs::create_dir_all(dir).is_ok()
-            && crate::mouse_tester::shot(h, &deltas, &dir.join(name)).is_none()
+            && crate::canvas::mouse_acceptance::shot(h, &deltas, &dir.join(name)).is_none()
         {
             eprintln!("no wgpu adapter: {name} skipped");
         }
@@ -180,8 +180,8 @@ fn look_check_screenshots() {
         p.read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let page = doc.page_order[0];
-            let w = doc.wires.keys().find(|c| ecad_model::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("24V"))).copied().unwrap();
-            let (item, _) = ecad_model::derive::route_on_page(doc, w, page).unwrap();
+            let w = doc.wires.keys().find(|c| ecad_model::connectivity::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("24V"))).copied().unwrap();
+            let (item, _) = ecad_model::connectivity::derive::route_on_page(doc, w, page).unwrap();
             p.pages[&page].map.item(item).unwrap()
         })
         .unwrap()
@@ -195,7 +195,7 @@ fn look_check_screenshots() {
 
     // One page printed mono and in colour.
     if let Some(dir) = &out {
-        ecad_engine::printbook::install_io();
+        ecad_engine::export::printbook::install_io();
         for (word, file) in [("mono", "050-print-mono.pdf"), ("colour", "050-print-colour.pdf")] {
             let path = dir.join(file).to_string_lossy().into_owned();
             let r = h.state_mut().cad.session.execute("printbook", &serde_json::json!({"scope": {"pages": "1"}, "path": path, "colour": word}));

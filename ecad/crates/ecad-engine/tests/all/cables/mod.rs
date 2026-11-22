@@ -1,0 +1,10 @@
+mod cores;
+mod draw;
+mod draw_acceptance;
+mod manager;
+mod manager_acceptance;
+mod records;
+mod slash;
+mod slash_acceptance;
+mod views;
+mod views_acceptance;

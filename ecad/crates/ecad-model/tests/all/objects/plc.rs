@@ -2,12 +2,12 @@
 //! strictly, and the keys they replaced are reserved.
 
 use ecad_model::Word;
-use ecad_model::keys::{Holder, is_reserved_on};
-use ecad_model::plc::{
+use ecad_model::naming::keys::{Holder, is_reserved_on};
+use ecad_model::objects::plc::{
     AddressStyle, Channel, ChannelGroup, CommLink, CommRole, Communication, IoLinkMaster, ModuleFunction, NetAddress, PlcModule, PlcRack, Protocol,
     RackHead, SafeState, Signal,
 };
-use ecad_model::text::Text;
+use ecad_model::naming::text::Text;
 use ecad_model::{DeviceId, DeviceType};
 
 fn round_trip(t: &DeviceType) {
@@ -44,7 +44,7 @@ fn stations_and_modules_round_trip() {
     round_trip(&DeviceType::PlcModule(PlcModule::new(ModuleFunction::Communication(Communication::Link(CommLink {
         protocol: Protocol::ModbusTcp,
         role: CommRole::Gateway,
-        ports: vec![ecad_model::plc::Port { name: Text::new("X1").ok() }],
+        ports: vec![ecad_model::objects::plc::Port { name: Text::new("X1").ok() }],
     })))));
     for w in Signal::WORDS.iter().chain(Protocol::WORDS).chain(AddressStyle::WORDS) {
         assert!(!w.is_empty());
@@ -89,7 +89,7 @@ fn channels_number_across_groups() {
     assert_eq!(m.channels().into_iter().map(|(i, _)| i).collect::<Vec<_>>(), [5]);
     assert!(m.edit_channel(5, |c| c.text = None));
     assert!(m.channels().is_empty());
-    let mut none = PlcModule::new(ModuleFunction::Drive(ecad_model::plc::Drive { kind: ecad_model::plc::DriveKind::Servo, axes: 2 }));
+    let mut none = PlcModule::new(ModuleFunction::Drive(ecad_model::objects::plc::Drive { kind: ecad_model::objects::plc::DriveKind::Servo, axes: 2 }));
     assert!(!none.edit_channel(0, |c| c.text = Text::new("x").ok()));
 }
 

@@ -2,7 +2,7 @@
 //! as its aid's field. It draws in it, counts as the style's user, moves with a deleted style's
 //! replacement, and `setlocation` on a box names it as a box.
 
-use ecad_engine::styles;
+use ecad_electrical::styles;
 use ecad_model::{AidId, StyleCatalogue, StyleRef};
 use serde_json::json;
 

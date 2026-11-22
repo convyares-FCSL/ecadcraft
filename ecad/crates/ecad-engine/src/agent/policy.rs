@@ -110,12 +110,12 @@ const READ_WITH_DRY_RUN: &[&str] = &["plcimport"];
 /// Whether command `id` only reads, whatever its parameters: a session command in
 /// [`READ_COMMANDS`], or a generic command that declares it.
 pub fn is_read_command(id: &str) -> bool {
-    READ_COMMANDS.contains(&id) || crate::cmd::declared_read(id)
+    READ_COMMANDS.contains(&id) || crate::commands::declared_read(id)
 }
 
 /// Every command that only reads, whatever its parameters ([`is_read_command`]).
 pub fn read_commands() -> Vec<&'static str> {
-    READ_COMMANDS.iter().copied().chain(crate::cmd::declared_reads()).collect()
+    READ_COMMANDS.iter().copied().chain(crate::commands::declared_reads()).collect()
 }
 
 /// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`],
@@ -284,7 +284,7 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
     {
         return Err(file_key(id, k));
     }
-    if let Some(k) = crate::cmd::declared_file_keys(id).find(|k| params.get(*k).is_some_and(|v| !v.is_null())) {
+    if let Some(k) = crate::commands::declared_file_keys(id).find(|k| params.get(*k).is_some_and(|v| !v.is_null())) {
         return Err(file_key(id, k));
     }
     if NEVER_COMMANDS.contains(&id) {
@@ -310,7 +310,7 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::agent::*;
     use serde_json::json;
 
     #[test]

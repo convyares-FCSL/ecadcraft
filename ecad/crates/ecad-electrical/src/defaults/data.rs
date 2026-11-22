@@ -28,7 +28,7 @@ use std::sync::OnceLock;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
 
-use super::{Entry, Kind, Value};
+use crate::defaults::{Entry, Kind, Value};
 use crate::styles::{self, Builtin as BuiltinStyle, Catalogue, Field};
 
 /// The largest file [`load`] parses (design 066 §7): a guard, not a preference.
@@ -69,10 +69,10 @@ pub static LAYOUT: &[(&str, Kind)] = &[
     ("front.cover.customer", Kind::Number { min: 0.05, max: 1.0 }),
 ];
 
-/// Whether ecad-model holds `key`'s built-in (`ecad_model::builtins::KEYS`; owner, 2026-11-16:
+/// Whether ecad-model holds `key`'s built-in (`ecad_model::naming::builtins::KEYS`; owner, 2026-11-16:
 /// what the lower crate needs lives only in the lower crate). This crate's files never name it.
 pub fn in_model(key: &str) -> bool {
-    ecad_model::builtins::KEYS.contains(&key)
+    ecad_model::naming::builtins::KEYS.contains(&key)
 }
 
 /// A problem with a defaults file. Each names the file and, where it has one, the byte span the
@@ -213,9 +213,9 @@ pub fn load<'i>(file: &str, text: &'i str) -> Loaded<'i> {
 }
 
 /// Every entry with a built-in value: the registry's, and the wire label height, which is the
-/// project field of the `wire_label` text style and not listed by [`super::all`].
+/// project field of the `wire_label` text style and not listed by [`crate::defaults::all`].
 pub fn entries() -> impl Iterator<Item = &'static Entry> {
-    super::all().chain(std::iter::once(&super::text::WIRE_LABEL_HEIGHT))
+    crate::defaults::all().chain(std::iter::once(&crate::defaults::text::WIRE_LABEL_HEIGHT))
 }
 
 fn find(key: &str) -> Option<&'static Entry> {
@@ -346,7 +346,7 @@ fn convert<'a>(kind: Kind, v: &'a DeValue<'_>, empty: bool) -> Result<Value<'a>,
                 return Ok(Value::Text(""));
             }
             // A built-in is written exactly; a stored project value is trimmed, a data value is not.
-            match super::parse_value(kind, s) {
+            match crate::defaults::parse_value(kind, s) {
                 Some(Value::Text(t)) if t.len() == s.len() => Ok(Value::Text(t)),
                 Some(v @ (Value::Choice(_) | Value::Flag(_))) if s.trim() == s => Ok(v),
                 _ => Err(Fault::OutOfRange),
@@ -384,12 +384,12 @@ pub(crate) fn builtin_value(entry: &Entry) -> Value<'static> {
 
 /// ecad-model's built-in of `entry`, valid for its kind.
 fn model_value(entry: &Entry) -> Option<Value<'static>> {
-    use ecad_model::builtins::BuiltinValue;
-    let v = match (entry.kind, ecad_model::builtins::get(entry.key)?) {
+    use ecad_model::naming::builtins::BuiltinValue;
+    let v = match (entry.kind, ecad_model::naming::builtins::get(entry.key)?) {
         (Kind::Number { .. }, BuiltinValue::Number(x)) => Value::Number(x),
         (Kind::Length { .. }, BuiltinValue::Number(x)) => Value::Length(x),
         (Kind::Choice(words), BuiltinValue::Word(w)) => Value::Choice(words.iter().copied().find(|x| *x == w)?),
-        (Kind::Flag, BuiltinValue::Word(w)) => super::parse_value(Kind::Flag, w)?,
+        (Kind::Flag, BuiltinValue::Word(w)) => crate::defaults::parse_value(Kind::Flag, w)?,
         _ => return None,
     };
     entry.accepts(&v).then_some(v)
@@ -438,7 +438,7 @@ pub(crate) fn style_values(b: &BuiltinStyle) -> Vec<(&'static str, Value<'static
         .collect();
     if cat.catalogue == styles::text::CATALOGUE.catalogue && b.id == "wire_label" {
         out.retain(|(k, _)| *k != "height");
-        out.push(("height", super::text::WIRE_LABEL_HEIGHT.builtin()));
+        out.push(("height", crate::defaults::text::WIRE_LABEL_HEIGHT.builtin()));
     }
     out
 }
@@ -453,7 +453,7 @@ pub fn builtin_problems() -> &'static [DefaultsError] {
         for e in entries() {
             let found = if in_model(e.key) { model_value(e).is_some() } else { files.iter().any(|f| f.has(e.key)) };
             if !found {
-                let file = if in_model(e.key) { ecad_model::builtins::FILE } else { area_file(e.key) };
+                let file = if in_model(e.key) { ecad_model::naming::builtins::FILE } else { area_file(e.key) };
                 out.push(DefaultsError::Missing { file: file.to_string(), key: e.key.to_string() });
             }
         }

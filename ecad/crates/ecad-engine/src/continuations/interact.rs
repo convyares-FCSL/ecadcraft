@@ -9,8 +9,8 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{AidId, Subject};
 use serde_json::json;
 
-use super::forms::{R, Safe, commit, other, paper_guard, safely};
-use super::{OUT_OF_RANGE, can_start, in_range, pick, read};
+use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
+use crate::interact::{OUT_OF_RANGE, can_start, in_range, pick, read};
 use crate::project::Mapped;
 
 const NONE_SELECTED: &str = "No continuation arrows selected.";
@@ -43,7 +43,7 @@ impl Caption {
             let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Ok(Vec::new()) };
             Ok(hs
                 .iter()
-                .take(crate::cmd::MAX_HANDLES)
+                .take(crate::commands::MAX_HANDLES)
                 .map(|h| {
                     let rep = match map.get(*h) {
                         Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(_, r)| r),

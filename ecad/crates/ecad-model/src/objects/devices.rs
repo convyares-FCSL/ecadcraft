@@ -13,7 +13,7 @@
 //!
 //! This module holds the stored data only. The calculations on it (supply, load, protection,
 //! switching…) are traits in `ecad-electrical`, implemented on these types (design 072 Part I);
-//! the PLC groups' data is in [`crate::plc`].
+//! the PLC groups' data is in [`crate::objects::plc`].
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use serde::{Deserialize, Serialize};
@@ -65,7 +65,7 @@ impl DeviceGroup {
 ///
 /// # Example
 /// ```
-/// use ecad_model::device::{DeviceGroup, DeviceType, Protection};
+/// use crate::objects::devices::{DeviceGroup, DeviceType, Protection};
 /// let t = DeviceType::Protection(Protection::default());
 /// assert_eq!(t.group(), DeviceGroup::Protection);
 /// assert_eq!(serde_json::to_string(&t).unwrap(), r#"{"protection":{"fuse":{}}}"#);
@@ -262,30 +262,30 @@ impl DeviceType {
 }
 
 pub mod contacts;
+pub mod indicator;
+pub mod load;
+pub mod motor;
+pub mod power_supply;
+pub mod protection;
+pub mod sensor;
+pub mod switching;
+pub mod terminal_strip;
 pub use contacts::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable, PoleKind};
 
-pub mod power_supply;
 pub use power_supply::{PowerSupply, Psu, Transformer};
 
-pub mod protection;
 pub use protection::{Breaker, Fuse, FuseBank, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
 
-pub mod switching;
 pub use switching::{Control, Operator, OperatorKind, Switching};
 
-pub mod sensor;
 pub use sensor::{Output, Sensing, Sensor};
 
-pub mod motor;
 pub use motor::{Motor, Phases, Starting};
 
-pub mod load;
 pub use load::Load;
 
-pub mod indicator;
 pub use indicator::{Indicator, IndicatorColour, SignalType};
 
-pub mod terminal_strip;
 pub use terminal_strip::{PositionLabel, TerminalStrip};
 
 /// A connector: its family, pins and the part of each half (group 9, design 072 §2.2, design 044).
@@ -366,8 +366,8 @@ impl Connector {
             };
             return t.map(str::to_string);
         }
-        let row = <ConnectorCheck as crate::words::Word>::parse(key.strip_prefix("ignore.")?)?;
-        self.ignored.contains(&row).then(|| crate::words::flag_word(true).to_string())
+        let row = <ConnectorCheck as crate::naming::words::Word>::parse(key.strip_prefix("ignore.")?)?;
+        self.ignored.contains(&row).then(|| crate::naming::words::flag_word(true).to_string())
     }
 
     /// Why it is not well formed, if it is not: a pin count out of range, too many pin names, or a
@@ -396,7 +396,7 @@ pub const MAX_PINS: u8 = 64;
 /// Most characters of a pin name.
 pub const MAX_PIN_NAME: usize = 8;
 /// A pin name (`PE`, `13`).
-pub type PinName = crate::text::Text<MAX_PIN_NAME>;
+pub type PinName = crate::naming::text::Text<MAX_PIN_NAME>;
 /// A connector's pin count.
 pub type PinCount = std::num::NonZeroU8;
 
@@ -444,7 +444,7 @@ impl ConnectorFamily {
         let t: String = text.trim().chars().take(16).filter(|c| *c != '-').collect::<String>().to_ascii_lowercase();
         match t.as_str() {
             "subd" => Some(ConnectorFamily::Dsub),
-            other => <ConnectorFamily as crate::words::Word>::parse(other),
+            other => <ConnectorFamily as crate::naming::words::Word>::parse(other),
         }
     }
 }
@@ -481,11 +481,11 @@ impl HalfPart {
     }
 }
 
-pub use crate::plc::{PlcModule, PlcRack};
+pub use crate::objects::plc::{PlcModule, PlcRack};
 
 /// A device's rating note (design 072 §2.2, "Ratings"): text that does not read as its group's
 /// rating ("see datasheet", a vendor code), never a second copy of the rating.
-pub type RatingNote = crate::text::Text<64>;
+pub type RatingNote = crate::naming::text::Text<64>;
 
 /// The `setprop` key of a device's rating (its typed rating fields, or its note).
 pub const RATING_KEY: &str = "rating";
@@ -493,10 +493,10 @@ pub const RATING_KEY: &str = "rating";
 pub const RATING_OF_PREFIX: &str = "rating.";
 
 /// A device's description (design 072 §2.1).
-pub type Description = crate::text::Text<256>;
+pub type Description = crate::naming::text::Text<256>;
 
 /// A part's number, maker, article number or type text (design 072 §2.1).
-pub type PartText = crate::text::Text<64>;
+pub type PartText = crate::naming::text::Text<64>;
 
 /// The `setprop` key of a device's description.
 pub const DESCRIPTION_KEY: &str = "description";

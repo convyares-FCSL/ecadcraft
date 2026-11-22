@@ -7,12 +7,12 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::doc::{Cable, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::document::doc::{Cable, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
-use crate::index::Delta;
-use crate::route::Route;
-use crate::style::{Standard, StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
+use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
+use crate::document::index::Delta;
+use crate::objects::route::Route;
+use crate::objects::styles::{Standard, StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 /// An object that carries properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -31,8 +31,8 @@ pub enum ObjectRef {
 
 impl ObjectRef {
     /// The kind of holder it is; `None` for the standard's registry values.
-    pub fn holder(self) -> Option<crate::keys::Holder> {
-        use crate::keys::Holder;
+    pub fn holder(self) -> Option<crate::naming::keys::Holder> {
+        use crate::naming::keys::Holder;
         match self {
             ObjectRef::Device(_) => Some(Holder::Device),
             ObjectRef::Wire(_) => Some(Holder::Wire),
@@ -170,33 +170,33 @@ pub enum Op {
     },
     /// A drawing aid made (design 072 §6.2).
     CreateAid {
-        id: crate::id::AidId,
-        aid: crate::aid::Aid,
+        id: crate::naming::id::AidId,
+        aid: crate::objects::aid::Aid,
     },
     DeleteAid {
-        id: crate::id::AidId,
-        aid: crate::aid::Aid,
+        id: crate::naming::id::AidId,
+        aid: crate::objects::aid::Aid,
     },
     /// A drawing aid's values changed, the whole aid recorded.
     ModifyAid {
-        id: crate::id::AidId,
-        before: crate::aid::Aid,
-        after: crate::aid::Aid,
+        id: crate::naming::id::AidId,
+        before: crate::objects::aid::Aid,
+        after: crate::objects::aid::Aid,
     },
     /// A loose part added to the BOM (design 072 §6.4).
     CreateLoosePart {
-        id: crate::id::LoosePartId,
-        part: crate::loose_part::LoosePart,
+        id: crate::naming::id::LoosePartId,
+        part: crate::objects::loose_part::LoosePart,
     },
     DeleteLoosePart {
-        id: crate::id::LoosePartId,
-        part: crate::loose_part::LoosePart,
+        id: crate::naming::id::LoosePartId,
+        part: crate::objects::loose_part::LoosePart,
     },
     /// A loose part's values changed, the whole part recorded.
     ModifyLoosePart {
-        id: crate::id::LoosePartId,
-        before: crate::loose_part::LoosePart,
-        after: crate::loose_part::LoosePart,
+        id: crate::naming::id::LoosePartId,
+        before: crate::objects::loose_part::LoosePart,
+        after: crate::objects::loose_part::LoosePart,
     },
     CreateCable {
         id: CableId,
@@ -214,12 +214,12 @@ pub enum Op {
     },
     /// Link two devices (design 072 §2.6, F-ops `AddDeviceLink`/`RemoveDeviceLink`).
     AddDeviceLink {
-        id: crate::id::LinkId,
-        link: crate::user::DeviceLink,
+        id: crate::naming::id::LinkId,
+        link: crate::objects::user::DeviceLink,
     },
     RemoveDeviceLink {
-        id: crate::id::LinkId,
-        link: crate::user::DeviceLink,
+        id: crate::naming::id::LinkId,
+        link: crate::objects::user::DeviceLink,
     },
     SetProperty {
         object: ObjectRef,
@@ -274,8 +274,8 @@ pub enum Op {
     /// Change the project's own data (design 072 §5.3): its location and function lists and
     /// defaults, as one whole value.
     ModifyProject {
-        before: crate::project::Project,
-        after: crate::project::Project,
+        before: crate::document::project::Project,
+        after: crate::document::project::Project,
     },
     /// Write one whole style record (brief 050a, FP3): `None` is no record. A `Standard` layer
     /// write is refused while the project has no standard.
@@ -692,8 +692,8 @@ impl Op {
             }
             Op::SetProperty { object, key, before, after } => {
                 let reserved = match object.holder() {
-                    Some(h) => crate::keys::is_reserved_on(h, key),
-                    None => crate::keys::is_reserved(key),
+                    Some(h) => crate::naming::keys::is_reserved_on(h, key),
+                    None => crate::naming::keys::is_reserved(key),
                 };
                 if reserved {
                     return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
@@ -719,7 +719,7 @@ impl Op {
                     None => props.remove(key),
                 };
                 // A style choice is indexed (brief 050a): the style's explicit users.
-                if crate::style::is_choice_key(key) {
+                if crate::objects::styles::is_choice_key(key) {
                     let obj = *object;
                     if !matches!(obj, ObjectRef::Project | ObjectRef::Standard) {
                         if let Some(old) = &old {
@@ -817,7 +817,7 @@ impl Op {
                 if checked && current != before.as_ref() {
                     return Err(pre(format!("style {catalogue}/{id} ({}) differs from the recorded value", layer.word())));
                 }
-                crate::style::put(cats, *catalogue, id, after.as_ref());
+                crate::objects::styles::put(cats, *catalogue, id, after.as_ref());
             }
             Op::SetStandard { before, after } => {
                 let current = doc.standard.as_ref().map(|s| &s.header);

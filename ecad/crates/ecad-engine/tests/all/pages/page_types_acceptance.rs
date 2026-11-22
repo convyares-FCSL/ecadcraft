@@ -11,7 +11,7 @@
 //! The checks drive the JSON commands the design names (`styles`, `setstyle`, `setdefault`,
 //! `newpage`, `folderprops`, `renumberpages`, `deletepage`, `projectprops`, `checks`) and read the
 //! document, the book and the drawn page, leaning on as little of the new Rust API as possible:
-//! only `ecad_model::sheet::sheet_of` (FP3) and the existing book and frame accessors. Result field
+//! only `ecad_model::document::sheet::sheet_of` (FP3) and the existing book and frame accessors. Result field
 //! names the design does not give are read tolerantly.
 //!
 //! Test names start with the acceptance check (`ac1`…`ac15`) or the focus item (`num` numbering,
@@ -19,13 +19,13 @@
 //! too; the design gives 054b to the reviewer, the overseer asked the tester to cover it.
 
 use cadcraft_engine::doc::EntityKind;
-use ecad_model::book::Book;
+use ecad_model::document::book::Book;
 use ecad_model::{DeviceId, FolderId, PageId};
 use serde_json::{Value, json};
 
 use crate::common::tmp_dir;
 use crate::common::{H, id};
-use crate::tester_050a_style::{checks_of, field_text, inject, one_tx, refused, s, save_and_reopen, style_row, styles, undo};
+use crate::styles::acceptance::{checks_of, field_text, inject, one_tx, refused, s, save_and_reopen, style_row, styles, undo};
 
 // ------------------------------------------------------------------------------- helpers
 
@@ -48,7 +48,7 @@ fn order(h: &mut H) -> Vec<PageId> {
 /// through the shared read the frame and Settings use.
 fn type_of(h: &mut H, page: PageId) -> String {
     let d = h.doc();
-    ecad_engine::styles::page::type_of(&d, page).text()
+    ecad_electrical::styles::page::type_of(&d, page).text()
 }
 
 fn new_page(h: &mut H, params: Value) -> PageId {
@@ -105,7 +105,7 @@ fn frame_texts(h: &mut H, page: PageId) -> Vec<String> {
 
 fn sheet_text(h: &mut H, page: PageId) -> String {
     let d = h.doc();
-    ecad_model::sheet::sheet_of(&d, page).text()
+    ecad_model::document::sheet::sheet_of(&d, page).text()
 }
 
 fn coil(h: &mut H, x: f64) -> DeviceId {
@@ -187,7 +187,7 @@ fn ac2_old_pages_resolve_their_type_and_keep_numbers_folders_and_sheets() {
     assert_eq!(numbers(&mut h), before_numbers);
     let after_sheets: Vec<String> = order(&mut h).into_iter().map(|p| sheet_text(&mut h, p)).collect();
     assert_eq!(after_sheets, before_sheets);
-    assert_eq!(ecad_model::book::folder_of(&h.doc(), p2), Some(f));
+    assert_eq!(ecad_model::document::book::folder_of(&h.doc(), p2), Some(f));
     // §2.4: front pages lose their zone labels; schematic pages keep them.
     let a3_cols: Vec<String> = (1..=8).map(|n| n.to_string()).collect();
     let cover_frame = frame_texts(&mut h, revs);
@@ -231,7 +231,7 @@ fn ac3_plus_inserts_after_the_current_page_with_the_next_free_number() {
     let f = folder(&mut h, "Motors");
     move_into(&mut h, p[3], f);
     let in_f = new_page(&mut h, json!({"type": "schematic", "after": p[3].hex()}));
-    assert_eq!(ecad_model::book::folder_of(&h.doc(), in_f), Some(f), "in the folder of `after`");
+    assert_eq!(ecad_model::document::book::folder_of(&h.doc(), in_f), Some(f), "in the folder of `after`");
     h.check();
 }
 
@@ -488,7 +488,7 @@ fn ac6_a_types_sheet_reaches_its_pages_and_undo_restores() {
         assert!(sheet_text(&mut h, page).starts_with(want), "page {page}: {want}, got {}", sheet_text(&mut h, page));
     }
     let d = h.doc();
-    assert_eq!(ecad_model::sheet::Grid::of(&d, p[0]).spec.columns, 12, "the grid follows (A2: 12 columns)");
+    assert_eq!(ecad_model::document::sheet::Grid::of(&d, p[0]).spec.columns, 12, "the grid follows (A2: 12 columns)");
     assert!(frame_texts(&mut h, p[1]).iter().any(|t| t == "12"), "the frame draws A2's zones on a page not active at the change");
     undo(&mut h);
     for page in [p[0], p[1], net] {
@@ -529,7 +529,7 @@ fn fp3_a_malformed_type_sheet_reads_as_absent() {
     // so the pages keep their sheet.
     for bad in ["A0 999x999", "A9", &"x".repeat(10_000), "-1x-1", "nan"] {
         let hostile = json!({"name": "", "body": {"page": {"sheet": bad, "holds": "x"}}});
-        assert!(serde_json::from_value::<ecad_model::style::StyleRecord>(hostile).is_err(), "{bad:.20}");
+        assert!(serde_json::from_value::<ecad_model::objects::styles::StyleRecord>(hostile).is_err(), "{bad:.20}");
     }
     assert!(sheet_text(&mut h, p[0]).starts_with("A3"));
 }
@@ -546,7 +546,7 @@ fn fp3_type_sheets_round_trip_through_save_and_open() {
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "A2"}})).unwrap();
     let f = folder(&mut h, "Field");
     h.run("folderprops", json!({"folder": f.hex(), "start": "300"})).unwrap();
-    crate::tester_050a_style::records_round_trip(&mut h);
+    crate::styles::acceptance::records_round_trip(&mut h);
     let before: Vec<(String, String)> = p.iter().map(|x| (sheet_text(&mut h, *x), type_of(&mut h, *x))).collect();
     let doc = h.doc();
     let dir = tmp_dir("054 fp3");
@@ -850,7 +850,7 @@ fn ac15_hostile_notes_read_cut_with_a_checks_row() {
         .collect();
     let before = h.doc().project.clone();
     let after = ecad_model::Project {
-        info: ecad_model::ProjectInfo { notes: Some(ecad_model::project::Notes::new(&notes).unwrap()), ..before.info.clone() },
+        info: ecad_model::ProjectInfo { notes: Some(ecad_model::document::project::Notes::new(&notes).unwrap()), ..before.info.clone() },
         ..before.clone()
     };
     inject(&mut h, vec![Op::ModifyProject { before, after }]);

@@ -1,7 +1,7 @@
 //! The protection side of the rating checks (design 072 lane B; brief 057): the protective device a
 //! rated subject is checked against, named by `protected_by` or found by the trace, with its In.
 
-use super::*;
+use crate::circuits::*;
 /// The device that protects a subject.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Device {
@@ -66,9 +66,9 @@ pub(super) fn device_of(doc: &Document, s: RatedSubject, found: &Found, issues: 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::circuits::*;
     use ecad_model::IdAllocator;
-    use ecad_model::wire::{ProtectedBy, Wire};
+    use ecad_model::objects::wire::{ProtectedBy, Wire};
 
     /// A `protected_by` read from a file that names no device: a device-missing row, no device.
     #[test]

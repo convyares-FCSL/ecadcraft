@@ -11,18 +11,18 @@
 //! - `setprop {key: "user.<name>"}` on a device reads the value as the field's kind; an empty
 //!   value clears it.
 //!
-//! The commands are generic ([`crate::cmd::run`]). This module excludes any check that
+//! The commands are generic ([`crate::commands::run`]). This module excludes any check that
 //! reads a link (lane F's interlock checks).
 
-use ecad_model::id::{LinkId, UserFieldId};
-use ecad_model::user::{Choice, DeviceLink, FieldName, FieldUnit, LinkKind, UserFieldDef, UserFieldKind, UserValue};
+use ecad_model::naming::id::{LinkId, UserFieldId};
+use ecad_model::objects::user::{Choice, DeviceLink, FieldName, FieldUnit, LinkKind, UserFieldDef, UserFieldKind, UserValue};
 use ecad_model::{DeviceId, Document, IdAllocator, ObjectRef, Op, Word};
 
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::cmd::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 
 /// The key prefix of a user field's value in `setprop` (`user.Panel row`).
@@ -95,7 +95,7 @@ pub fn field_named<'a>(doc: &'a Document, name: &str) -> Option<&'a UserFieldDef
 ///
 /// # Errors
 /// A name that is empty, too long or already used; a choice field with no choices, or one
-/// twice; too many fields ([`ecad_model::user::fields_problem`]).
+/// twice; too many fields ([`ecad_model::objects::user::fields_problem`]).
 pub fn plan_add_field(doc: &Document, ids: &mut IdAllocator, name: &str, kind: UserFieldKind) -> Result<(UserFieldId, Vec<Op>), CmdError> {
     let name = FieldName::new(name.trim()).map_err(|e| CmdError::refused(format!("Field name: {e}")))?;
     if field_named(doc, name.as_str()).is_some() {
@@ -104,7 +104,7 @@ pub fn plan_add_field(doc: &Document, ids: &mut IdAllocator, name: &str, kind: U
     let id: UserFieldId = ids.fresh();
     let mut after = doc.project.clone();
     after.user_fields.push(UserFieldDef { id, name, kind });
-    if let Some(p) = ecad_model::user::fields_problem(&after.user_fields) {
+    if let Some(p) = ecad_model::objects::user::fields_problem(&after.user_fields) {
         return Err(CmdError::refused(format!("Not added: {p}.")));
     }
     Ok((id, vec![Op::ModifyProject { before: doc.project.clone(), after }]))
@@ -162,7 +162,7 @@ pub fn shown_value(doc: &Document, d: DeviceId, name: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// What joins the two devices.
 #[derive(Deserialize, Clone, Copy, JsonSchema)]

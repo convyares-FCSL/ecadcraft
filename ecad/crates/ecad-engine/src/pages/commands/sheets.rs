@@ -8,27 +8,27 @@
 //! are typed (FP3); the sheet and page-number step are project settings (FP2).
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::cmd::sheet`] decide, and the shim commits the ops and answers in JSON.
+//! [`ecad_electrical::pages::commands::sheets`] decide, and the shim commits the ops and answers in JSON.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::sheet::{self as rules, PageChange, ProjectChange, PropsPlan, RevisionFields};
-use ecad_model::book::Book;
+use ecad_electrical::pages::commands::sheets::{self as rules, PageChange, ProjectChange, PropsPlan, RevisionFields};
+use ecad_model::document::book::Book;
 use ecad_model::{Document, FolderId, Op, Page, PageId, ReferenceStyle};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{err, on_any_page, on_project};
+use crate::commands::input::{Command, Typed};
+use crate::commands::{err, on_any_page, on_project};
 use crate::project::Project;
-pub use crate::revisions::folder_path;
-use crate::revisions::{self, FIELDS};
-use ecad_electrical::cmd::input::nullable;
-pub use ecad_electrical::cmd::sheet::{IssuePlan, MAX_FOLDER_NAME, MAX_KEY_CHARS, MAX_STEP, PROJECT_KEYS};
+pub use ecad_electrical::releases::revisions::folder_path;
+use ecad_electrical::releases::revisions::{self, FIELDS};
+use ecad_electrical::commands::input::nullable;
+pub use ecad_electrical::pages::commands::sheets::{IssuePlan, MAX_FOLDER_NAME, MAX_KEY_CHARS, MAX_STEP, PROJECT_KEYS};
 
 /// A revision opened read-only (design 019 §7.3): the project as it was when the revision was
 /// issued, built once on request. Session only; dropped by `closerevision`.
@@ -75,7 +75,7 @@ pub const TYPED: &[Typed] = &[
 
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
-    use crate::cmd::input::typed;
+    use crate::commands::input::typed;
     vec![
         CommandSpec::new("pageprops", "Page Properties", typed::<PagepropsParams>)
             .params(
@@ -125,7 +125,7 @@ present, `provisional` says whether to finalise them first or issue them as they
 
 // ---------------------------------------------------------------- page numbers
 
-pub use crate::page_types::MAX_NUMBER_CHARS;
+pub use ecad_electrical::pages::page_types::MAX_NUMBER_CHARS;
 
 // ---------------------------------------------------------------- folders
 
@@ -262,7 +262,7 @@ fn commit_props(p: &mut Project, pg: &mut crate::access::Pages<'_>, id: &str, la
     if plan.proposed.moved == 0 {
         p.conflicts = plan.proposed.conflicts.clone();
     }
-    for l in crate::proposals::conflict_words(p.ledger.document(), &plan.proposed.conflicts) {
+    for l in ecad_electrical::symbols::proposals::conflict_words(p.ledger.document(), &plan.proposed.conflicts) {
         pg.echo(l);
     }
     Ok(())
@@ -674,7 +674,7 @@ impl Command for IssuerevisionParams {
             // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first (their
             // own transaction), or issued as they are, as asked; without an answer the ways forward
             // are named.
-            let note = crate::release::numbering_seam::before_issue(p, pg, self.provisional.as_deref())?;
+            let note = crate::releases::release::numbering_seam::before_issue(p, pg, self.provisional.as_deref())?;
             let IssuePlan { ops, rev, date, head, .. } = plan_issue_of(p, &f)?;
             p.apply_edit(pg, "issuerevision", &format!("Issue Rev {rev}"), ops)?;
             let tx = p.ledger.head();

@@ -4,10 +4,10 @@
 //! desktop app does it when CADCraft's theme or language changes, until U2's `style` switch keeps
 //! CADCraft from touching the style at all).
 
-use ecad_tokens::{line, radius, shadow, space, ui_type};
+use {crate::tokens::line, crate::tokens::radius, crate::tokens::shadow, crate::tokens::space, crate::tokens::ui_type};
 use egui::{CornerRadius, FontFamily, FontId, Shadow, Stroke, TextStyle, Theme, Visuals, style::WidgetVisuals};
 
-use crate::{SHELL, color, fonts};
+use {crate::SHELL, crate::color, crate::fonts};
 
 /// A radius token as egui's corner radius (rounded to whole px, at most 255).
 pub fn corner(px: f32) -> CornerRadius {
@@ -31,7 +31,7 @@ pub fn shadow() -> Shadow {
     }
 }
 
-fn widget(fill: ecad_tokens::Color, stroke: Stroke, text: ecad_tokens::Color) -> WidgetVisuals {
+fn widget(fill: crate::tokens::Color, stroke: Stroke, text: crate::tokens::Color) -> WidgetVisuals {
     WidgetVisuals {
         bg_fill: color(fill),
         weak_bg_fill: color(fill),
@@ -95,7 +95,7 @@ pub fn text_styles(ctx: &egui::Context) -> [(TextStyle, FontId); 5] {
 
 /// Set ECAD's visuals, spacing and text styles on both egui themes. Spacing keeps the host's
 /// layout (no layout changes in U1): item spacing and button padding take the nearest spacing
-/// steps; control heights are the primitives' own ([`ecad_tokens::size::CONTROL`]).
+/// steps; control heights are the primitives' own ([`crate::tokens::size::CONTROL`]).
 ///
 /// # Semantics
 /// Text styles name ECAD's families only once they are installed in `ctx` (before that, the same

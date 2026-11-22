@@ -22,8 +22,8 @@ use std::collections::BTreeSet;
 use ecad_model::{DefinitionId, Document, ItemKind, ObjectRef, Op, StyleRef};
 
 use crate::CmdError;
-use crate::frames::FrameInput;
-use crate::text_style::TextKind;
+use crate::pages::frames::FrameInput;
+use crate::styles::text_style::TextKind;
 
 /// The project property holding the cover's notes (FP4), and its bounds (design 054 §6.4): at most
 /// [`MAX_NOTES`] of [`MAX_NOTE_CHARS`] characters.
@@ -47,7 +47,7 @@ const LEGEND_COLUMNS: usize = 5;
 
 /// The cover's notes as stored, cut to the bounds: (notes, whether anything was cut).
 pub fn notes(doc: &Document) -> (Vec<String>, bool) {
-    let Some(text) = crate::frames::project_text(doc, NOTES_KEY) else { return (Vec::new(), false) };
+    let Some(text) = crate::pages::frames::project_text(doc, NOTES_KEY) else { return (Vec::new(), false) };
     let mut cut = false;
     let mut out = Vec::new();
     for line in text.lines() {
@@ -223,14 +223,14 @@ impl Block {
 
     /// Whether it is on in `doc`.
     pub fn on(self, doc: &Document) -> bool {
-        ecad_model::words::flag(crate::defaults::resolve(doc, self.entry(), crate::defaults::Scope::project()).word()) != Some(false)
+        ecad_model::naming::words::flag(crate::defaults::resolve(doc, self.entry(), crate::defaults::Scope::project()).word()) != Some(false)
     }
 }
 
 /// The colour words of colours `c` (design 054 §6.2): `BK` black, `GN/YE` green / yellow, from
-/// [`ecad_model::colour::ConductorColour::forms`].
-pub fn colour_words(c: &ecad_model::wire::Colours) -> String {
-    c.list().iter().map(|x| x.shown(ecad_model::colour::ColourWords::Name).to_lowercase()).collect::<Vec<_>>().join(" / ")
+/// [`ecad_model::geometry::colour::ConductorColour::forms`].
+pub fn colour_words(c: &ecad_model::objects::wire::Colours) -> String {
+    c.list().iter().map(|x| x.shown(ecad_model::geometry::colour::ColourWords::Name).to_lowercase()).collect::<Vec<_>>().join(" / ")
 }
 
 /// One line of the wire-colour legend: the categories' names, the cross-section and the colour
@@ -239,7 +239,7 @@ pub fn colour_words(c: &ecad_model::wire::Colours) -> String {
 pub struct WireLine {
     pub names: Vec<String>,
     pub cross_section: String,
-    pub colour: Option<ecad_model::wire::Colours>,
+    pub colour: Option<ecad_model::objects::wire::Colours>,
     /// The person's own words for the line (the table editor), shown instead of the generated.
     pub label: Option<String>,
 }
@@ -313,7 +313,7 @@ fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
                 .and_then(|r| crate::styles::wire::filled(&r))
                 .unwrap_or_default()
         };
-        let (colour, cross_section) = (ecad_model::wire::Colours::parse(&f("colours")), f("size"));
+        let (colour, cross_section) = (ecad_model::objects::wire::Colours::parse(&f("colours")), f("size"));
         match out.iter_mut().find(|l| l.colour == colour && l.cross_section == cross_section) {
             Some(l) => l.names.push(row.name),
             None => out.push(WireLine { names: vec![row.name], cross_section, colour, label: None }),
@@ -388,7 +388,7 @@ fn generated_cells(doc: &Document) -> Vec<Cell> {
 /// §6.6, design 052 FP8): each stored entry key as its code and description (`=F1 Pumps`), `?` for
 /// a key with no entry, naturally sorted, at most 200 of each.
 pub fn structure_codes(doc: &Document) -> (Vec<String>, Vec<String>) {
-    use crate::designations::{Aspect, Uses, code_of, description_of};
+    use crate::locations::designations::{Aspect, Uses, code_of, description_of};
     let uses = Uses::of(doc);
     let list = |a: Aspect| {
         let shown: BTreeSet<String> = uses
@@ -411,7 +411,7 @@ pub fn structure_codes(doc: &Document) -> (Vec<String>, Vec<String>) {
 /// categories in use ([`Uses`] keeps those): [`CoverNote`] over their effects.
 pub fn touches(doc: &Document, ops: &[Op]) -> bool {
     let mut n = CoverNote::default();
-    for e in &ecad_model::effect::Effects::of(ops) {
+    for e in &ecad_model::document::effect::Effects::of(ops) {
         n.note(doc, e);
     }
     n.changed(doc)
@@ -437,8 +437,8 @@ pub struct CoverNote {
 
 impl CoverNote {
     /// Note `effect`, read in `doc` after the transaction.
-    pub fn note(&mut self, doc: &Document, effect: &ecad_model::effect::Effect<'_>) {
-        use ecad_model::effect::Effect;
+    pub fn note(&mut self, doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) {
+        use ecad_model::document::effect::Effect;
         let codes_on = || Block::StructureCodes.on(doc);
         let symbol = |i: &Option<&ecad_model::Item>| match i.map(|i| &i.kind) {
             Some(ItemKind::Symbol(s)) => Some(s.definition),
@@ -463,9 +463,9 @@ impl CoverNote {
                 let key = key.raw;
                 matches!(key, WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
                     || key.starts_with("front.cover.")
-                    || key == crate::revisions::COLUMNS_KEY
-                    || key == crate::revisions::PENDING_KEY
-                    || (codes_on() && crate::designations::Aspect::of_property(key).is_some())
+                    || key == crate::releases::revisions::COLUMNS_KEY
+                    || key == crate::releases::revisions::PENDING_KEY
+                    || (codes_on() && crate::locations::designations::Aspect::of_property(key).is_some())
             }
             Effect::Version { .. } => true,
             // A text style's size changes the cover's texts; a wire category's name, colour or
@@ -477,7 +477,7 @@ impl CoverNote {
             Effect::Cable { before: None, after: Some(_), .. } => doc.cables.len() == 1,
             Effect::Cable { before: Some(_), after: None, .. } => doc.cables.is_empty(),
             Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
-                codes_on() && crate::designations::Aspect::of_property(key.raw).is_some()
+                codes_on() && crate::locations::designations::Aspect::of_property(key.raw).is_some()
             }
             Effect::Device { before: Some(b), after: Some(a), .. } => codes_on() && (b.location != a.location || b.function != a.function),
             Effect::Aid { before: Some(a), after: None, .. } | Effect::Aid { before: None, after: Some(a), .. } => {
@@ -487,7 +487,7 @@ impl CoverNote {
             Effect::Project { before, after } => {
                 before.revisions != after.revisions
                     || before.info != after.info
-                    || (codes_on() && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a)))
+                    || (codes_on() && crate::locations::designations::Aspect::ALL.into_iter().any(|a| crate::locations::designations::shown_changed(before, after, a)))
             }
             Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. } => {
                 let ch = b.change(a);
@@ -544,8 +544,8 @@ pub struct UsesNote {
 
 impl UsesNote {
     /// Note `effect`, read in `doc` after the transaction.
-    pub fn note(&mut self, doc: &Document, effect: &ecad_model::effect::Effect<'_>) {
-        use ecad_model::effect::Effect;
+    pub fn note(&mut self, doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) {
+        use ecad_model::document::effect::Effect;
         match effect {
             Effect::Style { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Wire => self.wide = true,
             Effect::Settings { before, after } if before.wiring.potentials != after.wiring.potentials => self.wide = true,
@@ -637,7 +637,7 @@ impl Uses {
     /// [`Uses::apply`].
     pub fn update(&mut self, doc: &Document, ops: &[Op]) -> bool {
         let mut n = UsesNote::default();
-        for e in &ecad_model::effect::Effects::of(ops) {
+        for e in &ecad_model::document::effect::Effects::of(ops) {
             n.note(doc, e);
         }
         self.apply(doc, n)
@@ -711,7 +711,7 @@ pub struct Layout {
     pub wires: Vec<WireLine>,
     pub row1: f64,
     /// Row 3 (revisions, structure codes) and its contents.
-    pub revs: Vec<crate::revisions::Revision>,
+    pub revs: Vec<crate::releases::revisions::Revision>,
     pub codes: (Vec<String>, Vec<String>),
     pub row3: f64,
     /// The symbol legend: its rows shown, their cells, columns, height, a cell's width and height
@@ -727,7 +727,7 @@ pub struct Layout {
 
 /// The cover's [`Layout`] inside the frame `input`, its heading `cover_mm` high.
 pub fn layout(doc: &Document, input: &FrameInput, cover_mm: f64) -> Layout {
-    let (l, b, r, t) = crate::generated::area(input);
+    let (l, b, r, t) = crate::pages::generated::area(input);
     let s = ((r - l) / A3_W).clamp(0.5, 4.0);
     let on = |b: Block| b.on(doc);
     let heading_y = t + 5.0 - 22.0 * s;
@@ -749,7 +749,7 @@ pub fn layout(doc: &Document, input: &FrameInput, cover_mm: f64) -> Layout {
     let notes_h = if on(Block::Notes) { head_h + line_h * notes_list.len().max(3) as f64 + pad } else { 0.0 };
     let wires_h = if on(Block::WireColours) { head_h + line_h * wires.len().max(3) as f64 + pad } else { 0.0 };
     let row1 = notes_h.max(wires_h);
-    let revs: Vec<crate::revisions::Revision> = crate::revisions::issued(doc).into_iter().take(8).collect();
+    let revs: Vec<crate::releases::revisions::Revision> = crate::releases::revisions::issued(doc).into_iter().take(8).collect();
     let codes = if on(Block::StructureCodes) { structure_codes(doc) } else { (Vec::new(), Vec::new()) };
     let rev_h = if on(Block::Revisions) { head_h + 6.0 * s + line_h * revs.len().max(1) as f64 + pad } else { 0.0 };
     let codes_h = if on(Block::StructureCodes) { head_h + line_h * codes.0.len().max(codes.1.len()).clamp(2, 8) as f64 + pad } else { 0.0 };
@@ -825,14 +825,14 @@ impl crate::checks::CheckSource for CoverRows {
 /// and again only after a change [`touches`] names (the cover is laid out once for it).
 pub fn check_rows(doc: &Document) -> Vec<crate::checks::Check> {
     use crate::checks::{Check, Kind, Object};
-    let cover_page = doc.page_order.iter().copied().find(|p| crate::generated::kind_of(doc, *p) == Some(ecad_model::GenKind::Cover));
+    let cover_page = doc.page_order.iter().copied().find(|p| crate::pages::generated::kind_of(doc, *p) == Some(ecad_model::GenKind::Cover));
     let Some(page) = cover_page else { return Vec::new() };
     let mut out = Vec::new();
     if notes(doc).1 {
         out.push(Check { kind: Kind::CoverNotesCut, page: Some(page), at: None, object: Object::None, which: String::new(), fix: None });
     }
-    let input = FrameInput::with(doc, page, &ecad_model::book::Book::of(doc), crate::frames::FrameText::sizes(doc));
-    let cover_mm = crate::frames::height_mm(crate::text_style::text_style(doc, TextKind::Cover).height, input.unit);
+    let input = FrameInput::with(doc, page, &ecad_model::document::book::Book::of(doc), crate::pages::frames::FrameText::sizes(doc));
+    let cover_mm = crate::pages::frames::height_mm(crate::styles::text_style::text_style(doc, TextKind::Cover).height, input.unit);
     let fit = layout(doc, &input, cover_mm).fit;
     if fit.shown < fit.all {
         let which = format!("The cover's symbol legend shows {} of {} symbols.", fit.shown, fit.all);

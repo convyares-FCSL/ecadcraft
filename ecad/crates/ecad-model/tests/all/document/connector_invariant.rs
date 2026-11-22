@@ -34,5 +34,5 @@ fn a_bridge_names_only_keys_a_placement_can_write() {
     assert!(embed(&[&["1", "2"]]).is_err(), "a plain key the definition lacks");
     assert!(embed(&[&[".100"]]).is_err(), "a level beyond the range");
     let key = |k: &str| k.parse::<ecad_model::PointKey>().unwrap();
-    assert!(ecad_model::invariant::is_placement_key(&key(".p")) && !ecad_model::invariant::is_placement_key(&key(".in")));
+    assert!(ecad_model::document::invariant::is_placement_key(&key(".p")) && !ecad_model::document::invariant::is_placement_key(&key(".in")));
 }

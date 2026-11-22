@@ -16,9 +16,9 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::doc::Document;
-use crate::id::{FolderId, PageId};
-use crate::text::Text;
+use crate::document::doc::Document;
+use crate::naming::id::{FolderId, PageId};
+use crate::naming::text::Text;
 
 /// The old page property naming the page's folder; now [`crate::Page::folder`] (a reserved key).
 pub const FOLDER_KEY: &str = "folder";
@@ -139,7 +139,7 @@ pub struct PositionsNoted {
 
 impl PositionsNoted {
     /// Before phase: note one effect, read on `before` (the state before the commit).
-    pub fn note_before(&mut self, before: &Document, e: &crate::effect::Effect<'_>) {
+    pub fn note_before(&mut self, before: &Document, e: &crate::document::effect::Effect<'_>) {
         if self.before.is_none() && moves_pages_by_one(e) {
             self.before = Some(Book::of(before).positions);
         }
@@ -155,13 +155,13 @@ impl PositionsNoted {
 
 /// Whether `effects` can change book order at all: a page added, removed or moved, a page's folder
 /// changed, a folder effect.
-pub fn moves_pages_by(effects: &crate::effect::Effects<'_>) -> bool {
+pub fn moves_pages_by(effects: &crate::document::effect::Effects<'_>) -> bool {
     effects.iter().any(moves_pages_by_one)
 }
 
 /// Whether one effect can move a page in the book (one effect of [`moves_pages_by`]).
-pub fn moves_pages_by_one(e: &crate::effect::Effect<'_>) -> bool {
-    use crate::effect::Effect;
+pub fn moves_pages_by_one(e: &crate::document::effect::Effect<'_>) -> bool {
+    use crate::document::effect::Effect;
     match e {
         Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. } => b.folder != a.folder,
         Effect::Page { .. } | Effect::Folder { .. } => true,
@@ -248,7 +248,7 @@ impl PageNo {
     ///
     /// # Example
     /// ```
-    /// use ecad_model::book::PageNo;
+    /// use crate::document::book::PageNo;
     /// assert_eq!(PageNo::parse(" 105a ").map(|n| n.to_string()), Some("105a".into()));
     /// assert!(PageNo::parse("1.5").is_none());
     /// ```

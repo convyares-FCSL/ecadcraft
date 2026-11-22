@@ -9,11 +9,11 @@
 //! # Update map (design 054 §10.2)
 //! None while open: it reads the types, the book and the next number once, on opening.
 
-use ecad_engine::styles::page::{self as ptype, Holds};
+use ecad_electrical::styles::page::{self as ptype, Holds};
 use ecad_model::GenKind;
-use ecad_model::book::Book;
+use ecad_model::document::book::Book;
 use ecad_model::{FolderId, PageId, StyleRef};
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Key, Modifiers, Pos2, Rect, Sense, pos2, vec2};
 use serde_json::json;
 
@@ -87,15 +87,15 @@ fn kind_rows(holds: Holds, doc: &ecad_model::Document, book: &Book) -> Vec<KindR
                 .filter(|p| ecad_engine::generated::kind_of(doc, **p) == Some(*k))
                 .filter(|p| {
                     *k != GenKind::Terminals
-                        || (ecad_engine::strip_page::style_of(doc, **p) == ecad_engine::strip_page::Style::Graphic) == style.is_some()
+                        || (ecad_engine::terminal_strips::draw::style_of(doc, **p) == ecad_engine::terminal_strips::draw::Style::Graphic) == style.is_some()
                 })
                 .map(|p| book.number(doc, *p))
                 .collect()
         };
         out.push(KindRow { label: k.title(), kind: *k, style: None, in_book: in_book(None) });
         if *k == GenKind::Terminals {
-            let g = ecad_engine::defaults::strip_pages::GRAPHIC;
-            out.push(KindRow { label: ecad_engine::strip_page::TITLE, kind: *k, style: Some(g), in_book: in_book(Some(g)) });
+            let g = ecad_electrical::defaults::strip_pages::GRAPHIC;
+            out.push(KindRow { label: ecad_engine::terminal_strips::draw::TITLE, kind: *k, style: Some(g), in_book: in_book(Some(g)) });
         }
     }
     out
@@ -110,8 +110,8 @@ impl App {
             let book = Book::of(doc);
             let after = after.filter(|a| doc.pages.contains_key(a));
             let folder = folder.filter(|f| doc.folders.contains_key(f));
-            let (f, _, place) = ecad_electrical::cmd::sheet::new_page_at(doc, &book, folder, after).ok()?;
-            let number = ecad_electrical::cmd::sheet::next_number(doc, &book, f, place, p.kept_reports());
+            let (f, _, place) = ecad_electrical::pages::commands::sheets::new_page_at(doc, &book, folder, after).ok()?;
+            let number = ecad_electrical::pages::commands::sheets::next_number(doc, &book, f, place, p.kept_reports());
             let rows: Vec<TypeRow> = ptype::ordered(doc)
                 .into_iter()
                 .map(|r| {
@@ -123,7 +123,7 @@ impl App {
             // The open page's type from the page well, the group's from a group row (its last
             // page's), Schematic otherwise.
             let like =
-                after.or_else(|| folder.and_then(|f| book.order.iter().rev().find(|p| ecad_model::book::folder_of(doc, **p) == Some(f)).copied()));
+                after.or_else(|| folder.and_then(|f| book.order.iter().rev().find(|p| ecad_model::document::book::folder_of(doc, **p) == Some(f)).copied()));
             let want = like.map_or(StyleRef::Builtin(ptype::SCHEMATIC.into()), |pg| ptype::type_of(doc, pg));
             let hi = rows
                 .iter()
@@ -250,7 +250,7 @@ impl App {
             }
             return;
         }
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         let h = ROW_H * n as f32 + 2.0 * space::XS;
         let top = if pk.above { anchor.y - h - space::S } else { anchor.y + space::S };
         let screen = ctx.content_rect();
@@ -261,8 +261,8 @@ impl App {
         let area = egui::Area::new(egui::Id::unique(PICKER)).order(egui::Order::Foreground).fixed_pos(list.min).show(ctx, |ui| {
             ui.set_min_size(list.size());
             let p = ui.painter().clone();
-            p.rect_filled(list, 6.0, ecad_ui::color(s.raised));
-            p.rect_stroke(list, 6.0, egui::Stroke::new(1.0, ecad_ui::color(s.line)), egui::StrokeKind::Inside);
+            p.rect_filled(list, 6.0, ecad_widgets::color(s.raised));
+            p.rect_stroke(list, 6.0, egui::Stroke::new(1.0, ecad_widgets::color(s.line)), egui::StrokeKind::Inside);
             ui.interact(list, egui::Id::unique((PICKER, "ground")), Sense::hover())
                 .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Menu, true, PICKER));
             for (i, row) in pk.rows.iter().enumerate() {
@@ -277,7 +277,7 @@ impl App {
                 });
                 let resp = if row.enabled { resp } else { resp.on_hover_text(PANEL_LATER) };
                 if (i == pk.hi || resp.hovered()) && row.enabled {
-                    p.rect_filled(r, 4.0, ecad_ui::color(if i == pk.hi { s.accent_soft } else { s.hover }));
+                    p.rect_filled(r, 4.0, ecad_widgets::color(if i == pk.hi { s.accent_soft } else { s.hover }));
                 }
                 if resp.hovered() && row.enabled && !row.kinds.is_empty() {
                     open_sub = Some((i, pk.sub.filter(|_| pk.hi == i)));
@@ -297,7 +297,7 @@ impl App {
                     egui::Align2::LEFT_CENTER,
                     &row.name,
                     bar::font(ui, ui_type::BODY),
-                    ecad_ui::color(ink),
+                    ecad_widgets::color(ink),
                 );
                 let right = if row.kinds.is_empty() { pk.number.clone() } else { "\u{203a}".to_string() };
                 p.text(
@@ -305,7 +305,7 @@ impl App {
                     egui::Align2::RIGHT_CENTER,
                     right,
                     bar::font(ui, ui_type::SMALL),
-                    ecad_ui::color(s.text_3),
+                    ecad_widgets::color(s.text_3),
                 );
             }
         });
@@ -320,8 +320,8 @@ impl App {
             egui::Area::new(egui::Id::unique((PICKER, "kinds"))).order(egui::Order::Foreground).fixed_pos(sl.min).show(ctx, |ui| {
                 ui.set_min_size(sl.size());
                 let p = ui.painter().clone();
-                p.rect_filled(sl, 6.0, ecad_ui::color(s.raised));
-                p.rect_stroke(sl, 6.0, egui::Stroke::new(1.0, ecad_ui::color(s.line)), egui::StrokeKind::Inside);
+                p.rect_filled(sl, 6.0, ecad_widgets::color(s.raised));
+                p.rect_stroke(sl, 6.0, egui::Stroke::new(1.0, ecad_widgets::color(s.line)), egui::StrokeKind::Inside);
                 for (j, kr) in row.kinds.iter().enumerate() {
                     let r = Rect::from_min_size(
                         pos2(sl.left() + space::XS, sl.top() + space::XS + ROW_H * j as f32),
@@ -330,7 +330,7 @@ impl App {
                     let resp = ui.interact(r, egui::Id::unique(("ecad.newpage.kind", kr.word())), Sense::click());
                     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::MenuItem, true, j == si, format!("ecad.newpage.kind.{}", kr.word())));
                     if j == si || resp.hovered() {
-                        p.rect_filled(r, 4.0, ecad_ui::color(if j == si { s.accent_soft } else { s.hover }));
+                        p.rect_filled(r, 4.0, ecad_widgets::color(if j == si { s.accent_soft } else { s.hover }));
                     }
                     if resp.clicked() {
                         chosen = Some((pk.hi, Some(j)));
@@ -340,7 +340,7 @@ impl App {
                         egui::Align2::LEFT_CENTER,
                         kr.label,
                         bar::font(ui, ui_type::BODY),
-                        ecad_ui::color(s.text),
+                        ecad_widgets::color(s.text),
                     );
                     let right = if kr.in_book.is_empty() { pk.number.clone() } else { format!("in the Book · {}", kr.in_book.join(", ")) };
                     p.text(
@@ -348,7 +348,7 @@ impl App {
                         egui::Align2::RIGHT_CENTER,
                         right,
                         bar::font(ui, ui_type::SMALL),
-                        ecad_ui::color(s.text_3),
+                        ecad_widgets::color(s.text_3),
                     );
                 }
             });

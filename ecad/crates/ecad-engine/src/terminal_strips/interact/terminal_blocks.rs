@@ -9,14 +9,14 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{DeviceId, Pt, ConnectionPointId};
 use serde_json::{Value, json};
 
-use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use super::{
+use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
+use crate::interact::{
     ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind,
     connection_point_for, v2,
 };
-use crate::cmd::terminal::{self, MAX_FENCE};
-use crate::strips;
-use crate::terminal_types as tt;
+use crate::terminal_strips::commands::{self, MAX_FENCE};
+use ecad_electrical::terminal_strips;
+use ecad_electrical::terminal_strips::terminal_blocks as tt;
 
 // ---------------------------------------------------------------- Place Terminals (§3.2)
 
@@ -27,7 +27,7 @@ pub(crate) fn terminals(s: &Session) -> R<Box<dyn Interactive>> {
     let (last, last_type) = read(s, |p, _| {
         let doc = p.ledger.document();
         let strip =
-            p.last_placed.as_ref().map(|(_, c)| *c).filter(|c| strips::strip_of(doc, *c).is_some()).map(|c| (c, crate::devices::tag_words(doc, c)));
+            p.last_placed.as_ref().map(|(_, c)| *c).filter(|c| terminal_strips::strip_of(doc, *c).is_some()).map(|c| (c, crate::devices::tag_words(doc, c)));
         let ty = p.last_placed.as_ref().and_then(|(k, _)| tt::of_starter(ecad_model::Word::parse(k)?)).map(|(t, _)| t);
         Ok((strip, ty))
     })
@@ -79,7 +79,7 @@ impl PlaceTerminalBlocks {
         } else {
             let found = read(s, |p, _| {
                 let doc = p.ledger.document();
-                Ok(crate::devices::holder_of(doc, t, None).filter(|c| strips::strip_of(doc, *c).is_some()))
+                Ok(crate::devices::holder_of(doc, t, None).filter(|c| terminal_strips::strip_of(doc, *c).is_some()))
             })
             .ok()
             .flatten();
@@ -123,7 +123,7 @@ impl PlaceTerminalBlocks {
     }
 
     fn choose_level(&mut self, s: &Session, text: &str) -> R<Step> {
-        let level = read(s, |p, _| terminal::level_word(p.ledger.document(), self.strip, self.ty, text).map_err(String::from)).map_err(other)?;
+        let level = read(s, |p, _| commands::level_word(p.ledger.document(), self.strip, self.ty, text).map_err(String::from)).map_err(other)?;
         self.level = level;
         self.stage = if level.is_some() { Stage::Position } else { Stage::Line };
         Ok(Step::Continue)
@@ -140,7 +140,7 @@ impl PlaceTerminalBlocks {
                 return Ok(None);
             }
             let doc = p.ledger.document();
-            let found = crate::slash::crossings(doc, page, from, to, p.tolerance);
+            let found = ecad_electrical::cables::slash::crossings(doc, page, from, to, p.tolerance);
             let n = found.members.len();
             if n > MAX_FENCE {
                 return Ok(Some((Vec::new(), format!("-> refused: {n} wires, at most {MAX_FENCE}"), true)));
@@ -289,7 +289,7 @@ impl Interactive for PlaceTerminalBlocks {
     }
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         match self.first {
-            Some(a) if super::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
+            Some(a) if crate::interact::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
             _ => Vec::new(),
         }
     }
@@ -335,7 +335,7 @@ impl DrawBridge {
                 let Some((t, at, _)) = connection_point_for(s, p) else {
                     return Err(other("No terminal there. Click a terminal of a strip (its ring)."));
                 };
-                let words = read(s, |p, _| Ok(terminal::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
+                let words = read(s, |p, _| Ok(commands::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
                 match self.first.take() {
                     None => {
                         self.first = Some((t, at, words));
@@ -387,11 +387,11 @@ impl Interactive for DrawBridge {
     /// The bridge as it will be drawn, to the terminal under the cursor (else to the cursor).
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         let Some((_, a, _)) = &self.first else { return Vec::new() };
-        if !(super::model_space(s) && in_range(cursor)) {
+        if !(crate::interact::model_space(s) && in_range(cursor)) {
             return Vec::new();
         }
         let b = connection_point_for(s, cursor).map_or(pt(cursor), |(_, at, _)| at);
-        let pts = terminal::staple(*a, b);
+        let pts = commands::staple(*a, b);
         pts.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect()
     }
 }

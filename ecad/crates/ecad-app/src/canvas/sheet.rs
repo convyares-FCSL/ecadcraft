@@ -35,12 +35,12 @@ pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_drawing_style::Sheet, fram
 
 /// The shell's colour around the sheet, and the shadow beneath it, outside the sheet only.
 fn surround(p: &egui::Painter, rect: Rect, sheet: Rect) {
-    let colour = ecad_ui::color(ecad_ui::SHELL.bg.at_percent(SURROUND_PERCENT));
+    let colour = ecad_widgets::color(ecad_widgets::SHELL.bg.at_percent(SURROUND_PERCENT));
     let shadow = egui::epaint::Shadow {
-        offset: [ecad_ui::tokens::shadow::OFFSET_X as i8, ecad_ui::tokens::shadow::OFFSET_Y as i8],
-        blur: ecad_ui::tokens::shadow::BLUR as u8,
+        offset: [ecad_widgets::tokens::shadow::OFFSET_X as i8, ecad_widgets::tokens::shadow::OFFSET_Y as i8],
+        blur: ecad_widgets::tokens::shadow::BLUR as u8,
         spread: 0,
-        color: ecad_ui::color(ecad_ui::tokens::shadow::COLOR),
+        color: ecad_widgets::color(ecad_widgets::tokens::shadow::COLOR),
     };
     // Four bands around the sheet: above, below, left and right of it.
     let bands = [
@@ -77,7 +77,7 @@ fn dots(p: &egui::Painter, xf: &Xf, tokens: &ecad_drawing_style::Sheet, sheet: R
         return;
     }
     let r = ((DOT_MM * xf.scale / 2.0) as f32).max(0.5);
-    let colour = ecad_ui::color(tokens.grid);
+    let colour = ecad_widgets::color(tokens.grid);
     let mut shapes = Vec::with_capacity((ni * nj) as usize);
     for i in 0..ni as i64 {
         for j in 0..nj as i64 {

@@ -18,10 +18,15 @@ pub mod display;
 pub mod later;
 pub mod pages;
 pub mod project;
+pub mod sheets;
+pub(crate) mod sheets_window;
 pub mod standards;
+pub mod standards_list;
+pub mod style_catalogues;
 pub mod text;
+pub mod text_styles;
 
-use ecad_ui::tokens::{Icon, space, ui_type};
+use ecad_widgets::tokens::{Icon, space, ui_type};
 use eframe::egui::{self, Key, Modifiers, Rect, pos2, vec2};
 
 use crate::App;
@@ -134,7 +139,7 @@ impl Section {
 }
 
 /// Settings' state, kept while it is closed (the section, the Standards screen's views) and the
-/// inspector's rows ([`crate::shell::right`]).
+/// inspector's rows ([`crate::inspector`]).
 #[derive(Debug, Default)]
 pub struct Settings {
     pub section: Section,
@@ -142,8 +147,8 @@ pub struct Settings {
     /// Brief 054: Pages and sheets' page type table.
     pub pages: pages::PagesView,
     /// Brief 054b: the right panel's Page tab on a generated page.
-    pub page_tab: crate::shell::right::page::PageTab,
-    pub inspector: crate::shell::right::Inspector,
+    pub page_tab: crate::inspector::page::PageTab,
+    pub inspector: crate::inspector::Inspector,
     /// The workspace Settings was opened over: choosing another in the top bar closes it.
     pub over: Option<Workspace>,
 }
@@ -216,18 +221,18 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
         Some(s) => Rect::from_min_max(pos2(window.left(), s.top_bar.bottom()), pos2(window.right(), s.status.top())),
         None => window,
     };
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let mut close = false;
     let back = t.settings_back_words();
     egui::Area::new(egui::Id::unique("ecad.settings")).fade_in(false).order(egui::Order::Foreground).fixed_pos(rect.min).show(&ctx, |ui| {
         ui.set_min_size(rect.size());
         ui.set_max_size(rect.size());
-        ui.painter().rect_filled(rect, 0.0, ecad_ui::color(s.bg));
+        ui.painter().rect_filled(rect, 0.0, ecad_widgets::color(s.bg));
         // Swallow clicks and hovers on the ground: nothing under the overlay answers.
         let _ = ui.interact(rect, egui::Id::unique("ecad.settings.ground"), egui::Sense::click_and_drag());
         let list = Rect::from_min_size(rect.min, vec2(LIST_W, rect.height()));
-        ui.painter().rect_filled(list, 0.0, ecad_ui::color(s.panel));
-        ui.painter().vline(list.right() - 0.5, list.y_range(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+        ui.painter().rect_filled(list, 0.0, ecad_widgets::color(s.panel));
+        ui.painter().vline(list.right() - 0.5, list.y_range(), egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
         let (chosen, back_clicked) = list_ui(t, ui, list, &back);
         close |= back_clicked;
         if let Some(sec) = chosen {
@@ -243,12 +248,12 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
         let y = head.center().y;
         let g = ui.painter().layout_no_wrap(
             sec.label().to_string(),
-            ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::OBJECT.size),
-            ecad_ui::color(s.text),
+            ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::OBJECT.size),
+            ecad_widgets::color(s.text),
         );
         let w = g.size().x;
         let h = g.size().y;
-        ui.painter().galley(pos2(x, y - h / 2.0), g, ecad_ui::color(s.text));
+        ui.painter().galley(pos2(x, y - h / 2.0), g, ecad_widgets::color(s.text));
         ui.interact(Rect::from_min_size(pos2(x, y - h / 2.0), vec2(w, h)), egui::Id::unique("ecad.settings.title"), egui::Sense::hover())
             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, TITLE));
         let about = Rect::from_min_max(pos2(x + w + space::L, head.top()), pos2(head.right() - space::XL, head.bottom()));
@@ -257,9 +262,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
             egui::Align2::LEFT_CENTER,
             sec.about(),
             bar::font(ui, ui_type::BODY),
-            ecad_ui::color(s.text_2),
+            ecad_widgets::color(s.text_2),
         );
-        ui.painter().hline(head.x_range(), head.bottom() - 0.5, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+        ui.painter().hline(head.x_range(), head.bottom() - 0.5, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
         // Standards lays out its own columns edge to edge; the others sit in a padded body.
         let body = if sec == Section::Standards {
             Rect::from_min_max(pos2(head.left(), head.bottom()), rect.max)
@@ -293,27 +298,27 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
 /// The list: Back to Draw, then the sections in their two groups. Returns the section chosen and
 /// whether Back was clicked.
 fn list_ui(t: &App, ui: &mut egui::Ui, list: Rect, back: &str) -> (Option<Section>, bool) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let row_h = 28.0;
-    let line = egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line));
+    let line = egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line));
     // Back to Draw (Esc).
     let back_r = Rect::from_min_size(list.min + vec2(0.0, space::S), vec2(list.width(), 32.0));
     let br = ui.interact(back_r, egui::Id::unique("ecad.settings.back"), egui::Sense::click());
     br.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, CLOSE));
     if br.hovered() {
-        ui.painter().rect_filled(back_r.shrink2(vec2(space::XS, 0.0)), ecad_ui::style::corner(4.0), ecad_ui::color(s.hover));
+        ui.painter().rect_filled(back_r.shrink2(vec2(space::XS, 0.0)), ecad_widgets::style::corner(4.0), ecad_widgets::color(s.hover));
     }
     let y = back_r.center().y;
-    ecad_ui::icons::paint(
+    ecad_widgets::icons::paint(
         ui.painter(),
         Rect::from_center_size(pos2(list.left() + space::L + 6.0, y), vec2(14.0, 14.0)),
         Icon::ChevronLeft,
-        ecad_ui::color(s.text),
+        ecad_widgets::color(s.text),
     );
-    bar::text_at(ui, list.left() + space::L + 20.0, y, back, ui_type::BODY, ecad_ui::color(s.text));
+    bar::text_at(ui, list.left() + space::L + 20.0, y, back, ui_type::BODY, ecad_widgets::color(s.text));
     let cap = Rect::from_min_size(pos2(list.right() - space::L - 28.0, y - 9.0), vec2(28.0, 18.0));
-    ui.painter().rect_stroke(cap, ecad_ui::style::corner(3.0), egui::Stroke::new(1.0, ecad_ui::color(s.line_strong)), egui::StrokeKind::Inside);
-    ui.painter().text(cap.center(), egui::Align2::CENTER_CENTER, "Esc", bar::font(ui, ui_type::CAPTION), ecad_ui::color(s.text_2));
+    ui.painter().rect_stroke(cap, ecad_widgets::style::corner(3.0), egui::Stroke::new(1.0, ecad_widgets::color(s.line_strong)), egui::StrokeKind::Inside);
+    ui.painter().text(cap.center(), egui::Align2::CENTER_CENTER, "Esc", bar::font(ui, ui_type::CAPTION), ecad_widgets::color(s.text_2));
     let mut yy = back_r.bottom() + space::S;
     ui.painter().hline(list.x_range(), yy - 0.5, line);
     yy += space::M;
@@ -325,7 +330,7 @@ fn list_ui(t: &App, ui: &mut egui::Ui, list: Rect, back: &str) -> (Option<Sectio
                 yy += space::L;
             }
             let group = if i == 0 { "Settings · this project" } else { "Settings · this computer" };
-            bar::text_at(ui, list.left() + space::L, yy + 8.0, group, ui_type::CAPTION, ecad_ui::color(s.text_3));
+            bar::text_at(ui, list.left() + space::L, yy + 8.0, group, ui_type::CAPTION, ecad_widgets::color(s.text_3));
             yy += 24.0;
         }
         let r = Rect::from_min_size(pos2(list.left(), yy), vec2(list.width() - 1.0, row_h));
@@ -333,14 +338,14 @@ fn list_ui(t: &App, ui: &mut egui::Ui, list: Rect, back: &str) -> (Option<Sectio
         let resp = ui.interact(r, egui::Id::unique(("ecad.settings.item", sec.name())), egui::Sense::click());
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, sec.name()));
         if on {
-            ui.painter().rect_filled(r, 0.0, ecad_ui::color(s.accent_soft));
+            ui.painter().rect_filled(r, 0.0, ecad_widgets::color(s.accent_soft));
         } else if resp.hovered() {
-            ui.painter().rect_filled(r, 0.0, ecad_ui::color(s.hover));
+            ui.painter().rect_filled(r, 0.0, ecad_widgets::color(s.hover));
         }
-        bar::text_at(ui, list.left() + space::L, r.center().y, sec.label(), ui_type::BODY, ecad_ui::color(if on { s.text } else { s.text_2 }));
+        bar::text_at(ui, list.left() + space::L, r.center().y, sec.label(), ui_type::BODY, ecad_widgets::color(if on { s.text } else { s.text_2 }));
         // Brief 054: Pages and sheets counts its page types.
         let count = match *sec {
-            Section::Standards => Some(ecad_engine::defaults::all().count()),
+            Section::Standards => Some(ecad_electrical::defaults::all().count()),
             Section::Pages => t.settings.pages.snapshot.as_ref().map(|s| s.rows.len()),
             _ => None,
         };
@@ -350,7 +355,7 @@ fn list_ui(t: &App, ui: &mut egui::Ui, list: Rect, back: &str) -> (Option<Sectio
                 egui::Align2::RIGHT_CENTER,
                 n.to_string(),
                 bar::font(ui, ui_type::SMALL),
-                ecad_ui::color(s.text_3),
+                ecad_widgets::color(s.text_3),
             );
         }
         if resp.clicked() {
@@ -373,23 +378,23 @@ pub(crate) fn in_rect<R>(ui: &mut egui::Ui, rect: Rect, id: &str, add: impl FnOn
 /// A rev 3 card (board 5.01): a panel-coloured box with its title over a hairline and the contents
 /// under it. `right` draws at the title row's right end.
 pub(crate) fn card<R>(ui: &mut egui::Ui, title: &str, right: impl FnOnce(&mut egui::Ui), add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     egui::Frame::new()
-        .fill(ecad_ui::color(s.panel))
-        .stroke(egui::Stroke::new(1.0, ecad_ui::color(s.line)))
+        .fill(ecad_widgets::color(s.panel))
+        .stroke(egui::Stroke::new(1.0, ecad_widgets::color(s.line)))
         .corner_radius(8.0)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             let top = ui.cursor().min.y;
             ui.allocate_ui_with_layout(vec2(ui.available_width(), 40.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.add_space(space::L);
-                ui.label(egui::RichText::new(title).strong().color(ecad_ui::color(s.text)));
+                ui.label(egui::RichText::new(title).strong().color(ecad_widgets::color(s.text)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(space::L);
                     right(ui);
                 });
             });
-            ui.painter().hline(ui.max_rect().x_range(), top + 40.0, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+            ui.painter().hline(ui.max_rect().x_range(), top + 40.0, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
             ui.add_space(space::M);
             egui::Frame::new()
                 .inner_margin(egui::Margin { left: space::L as i8, right: space::L as i8, top: 0, bottom: space::L as i8 })
@@ -404,10 +409,10 @@ pub(crate) fn card<R>(ui: &mut egui::Ui, title: &str, right: impl FnOnce(&mut eg
 
 /// One labelled row in a card: the label at the left in grey, then the contents.
 pub(crate) fn row<R>(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     ui.horizontal(|ui| {
         let (r, _) = ui.allocate_exact_size(vec2(118.0, 28.0), egui::Sense::hover());
-        ui.painter().text(pos2(r.left(), r.center().y), egui::Align2::LEFT_CENTER, label, bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_2));
+        ui.painter().text(pos2(r.left(), r.center().y), egui::Align2::LEFT_CENTER, label, bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.text_2));
         add(ui)
     })
     .inner
@@ -420,15 +425,15 @@ pub(crate) fn later_row(ui: &mut egui::Ui, label: &str, words: &str) {
 
 /// A dashed box with grey words: something that comes later.
 pub(crate) fn later_box(ui: &mut egui::Ui, words: &str, h: f32) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), h), egui::Sense::hover());
-    dashed_rect(ui.painter(), r.shrink(0.5), ecad_ui::color(s.line_strong));
+    dashed_rect(ui.painter(), r.shrink(0.5), ecad_widgets::color(s.line_strong));
     ui.painter().text(
         pos2(r.left() + space::M, r.center().y),
         egui::Align2::LEFT_CENTER,
         words,
         bar::font(ui, ui_type::BODY),
-        ecad_ui::color(s.text_3),
+        ecad_widgets::color(s.text_3),
     );
     resp.on_hover_text("Not available yet");
 }

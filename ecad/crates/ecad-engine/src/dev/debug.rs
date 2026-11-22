@@ -26,13 +26,13 @@
 //!
 //! Nothing here changes a project: the only project access is through `try_lock` reads.
 
-use ecad_model::keys::PropsExt;
+use ecad_model::naming::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 
 use cadcraft_engine::doc::{Drawing, Handle};
-use ecad_inspect::Event;
+use crate::history::event_log::Event;
 use ecad_model::{
     CableId, DefinitionId, DeviceId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, RouteId, Subject,
     ConnectionPointId, Transaction, TxId, WireId,
@@ -816,7 +816,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
                 lines.push(format!("page {title}: projection failed: {e}"));
             }
         }
-        let v = crate::verify::verify_page_pending(
+        let v = crate::dev::verify::verify_page_pending(
             &inputs.doc,
             p.id,
             &p.drawing,
@@ -1247,7 +1247,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
 }
 
 fn tag(p: &ecad_model::Properties) -> Option<String> {
-    p.text(ecad_model::keys::TAG).map(str::to_string)
+    p.text(ecad_model::naming::keys::TAG).map(str::to_string)
 }
 
 fn subject_label(doc: &Document, s: Subject) -> String {
@@ -1281,7 +1281,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
                 k.cores
                     .iter()
                     .find(|m| m.wire() == Some(c))
-                    .and_then(|m| m.label_str().filter(|x| !x.trim().is_empty()).map(|x| crate::words::shorten(x, crate::words::MAX_CORE_CHARS)))
+                    .and_then(|m| m.label_str().filter(|x| !x.trim().is_empty()).map(|x| ecad_electrical::cables::words::shorten(x, ecad_electrical::cables::words::MAX_CORE_CHARS)))
             });
             match core {
                 Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Wire(c))),
@@ -1299,7 +1299,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         ObjectId::Representation(i) => doc.representations.get(&i).map_or_else(String::new, |r| {
             // A cable's reference end shows the text it draws (design 009 §8).
             if r.role == ecad_model::Role::Reference && matches!(r.subject, Subject::Cable(_)) {
-                format!("{} of {} \"{}\"", r.role, subject_label(doc, r.subject), ecad_electrical::cable_look::reference_text(doc, i))
+                format!("{} of {} \"{}\"", r.role, subject_label(doc, r.subject), ecad_electrical::cables::layout::reference_text(doc, i))
             } else {
                 format!("{} of {}", r.role, subject_label(doc, r.subject))
             }

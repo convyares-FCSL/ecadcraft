@@ -1,6 +1,6 @@
 //! Lane 072 C's rows of `setprop` (design 072 §3, brief 072 "Lanes"): a PLC station's and a
-//! module's keys. Each key that became a [`ecad_model::plc::PlcRack`] or
-//! [`ecad_model::plc::PlcModule`] field builds one `ModifyDevice`; the registry's object-level
+//! module's keys. Each key that became a [`ecad_model::objects::plc::PlcRack`] or
+//! [`ecad_model::objects::plc::PlcModule`] field builds one `ModifyDevice`; the registry's object-level
 //! `plc.*` entries stay values of their own (`crate::plc::setprop_rule`).
 //!
 //! | Key | On | Field |
@@ -16,10 +16,10 @@
 //! | `plc.cpu.family` | station with a CPU | the CPU's family |
 //! | `plc.address.style` | station | its own address style (none: the project's) |
 
-use ecad_model::plc::{NetAddress, PlcModule, PlcRack, Protocol, RackHead, Signal};
+use ecad_model::objects::plc::{NetAddress, PlcModule, PlcRack, Protocol, RackHead, Signal};
 use ecad_model::{DeviceId, Document, ObjectRef, Op, Word};
 
-use super::super::prop::{Build, PropRule};
+use crate::properties::commands::{Build, PropRule};
 use crate::error::CmdError;
 use crate::plc::{address, channels, edit, rack};
 
@@ -48,7 +48,7 @@ const MODULE_KEYS: [&str; 9] =
 /// The station keys of this lane.
 const STATION_KEYS: [&str; 5] = [NETWORK, NETWORK_ADDRESS, CPU_FAMILY, ADDRESS_STYLE, PROTOCOL];
 
-/// This lane's rows, asked before [`super::super::prop::PROP_RULES`].
+/// This lane's rows, asked before [`crate::properties::commands::PROP_RULES`].
 pub static RULES: &[PropRule] = &[
     PropRule {
         what: "PLC module fields (072 C)",
@@ -72,7 +72,7 @@ fn is_field_key(k: &str) -> bool {
     MODULE_KEYS.contains(&k)
         || STATION_KEYS.contains(&k)
         || channels::parse_ch_key(k).is_some()
-        || (k.starts_with("plc.") && ecad_model::keys::is_reserved_on(ecad_model::keys::Holder::Device, k))
+        || (k.starts_with("plc.") && ecad_model::naming::keys::is_reserved_on(ecad_model::naming::keys::Holder::Device, k))
 }
 
 /// The refusal of a module's or station's key on another device.
@@ -114,12 +114,12 @@ fn one(mut ops: Vec<Op>) -> Option<Op> {
 fn yes_no(key: &str, v: Option<&str>) -> Result<bool, CmdError> {
     match v {
         None => Ok(false),
-        Some(t) => ecad_model::words::flag(t).ok_or_else(|| CmdError::refused(format!("{key} is yes or no."))),
+        Some(t) => ecad_model::naming::words::flag(t).ok_or_else(|| CmdError::refused(format!("{key} is yes or no."))),
     }
 }
 
-fn text<const N: usize>(key: &str, v: Option<&str>) -> Result<Option<ecad_model::text::Text<N>>, CmdError> {
-    v.map(ecad_model::text::Text::<N>::new).transpose().map_err(|e| CmdError::refused(format!("{key}: {e}.")))
+fn text<const N: usize>(key: &str, v: Option<&str>) -> Result<Option<ecad_model::naming::text::Text<N>>, CmdError> {
+    v.map(ecad_model::naming::text::Text::<N>::new).transpose().map_err(|e| CmdError::refused(format!("{key}: {e}.")))
 }
 
 fn word<W: Word>(key: &str, v: Option<&str>) -> Result<Option<W>, CmdError> {
@@ -130,7 +130,7 @@ fn word<W: Word>(key: &str, v: Option<&str>) -> Result<Option<W>, CmdError> {
 }
 
 /// A module's single channel group, or the refusal for a module with none or several.
-fn single_group<'a>(m: &'a mut PlcModule, who: &str) -> Result<&'a mut ecad_model::plc::ChannelGroup, CmdError> {
+fn single_group<'a>(m: &'a mut PlcModule, who: &str) -> Result<&'a mut ecad_model::objects::plc::ChannelGroup, CmdError> {
     let mut groups = m.function.groups_mut();
     match groups.len() {
         1 => groups.pop().ok_or(CmdError::refused("no channel group")),
@@ -144,7 +144,7 @@ fn single_group<'a>(m: &'a mut PlcModule, who: &str) -> Result<&'a mut ecad_mode
 /// # Errors
 /// A value that does not read, or a key the module's function has no field for.
 fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
-    let c = module(doc, o).ok_or(CmdError::refused(super::super::prop::NO_SUCH_OBJECT))?;
+    let c = module(doc, o).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
     let who = crate::devices::tag_words(doc, c);
     let v = value.map(str::trim).filter(|v| !v.is_empty());
     let mut ops = Vec::new();
@@ -156,7 +156,7 @@ fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> 
         channels::set_field(doc, &mut ops, c, i, what, checked.as_deref())?;
         return Ok(one(ops));
     }
-    let mut module = edit::module_of(doc, c).cloned().ok_or(CmdError::refused(super::super::prop::NO_SUCH_OBJECT))?;
+    let mut module = edit::module_of(doc, c).cloned().ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
     match key {
         rack::RACK_KEY => {
             module.rack = match v.filter(|t| !t.eq_ignore_ascii_case("none")) {
@@ -180,7 +180,7 @@ fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> 
                 None => 0,
                 Some(t) => rack::parse_channels(t).ok_or_else(|| CmdError::refused(format!("A card has 0 to {} channels.", rack::MAX_CHANNELS)))?,
             };
-            single_group(&mut module, &who)?.count = u16::try_from(n).unwrap_or(ecad_model::plc::MAX_CHANNELS);
+            single_group(&mut module, &who)?.count = u16::try_from(n).unwrap_or(ecad_model::objects::plc::MAX_CHANNELS);
         }
         SIGNAL => {
             let s: Signal = word(SIGNAL, v)?.ok_or_else(|| CmdError::refused(format!("{SIGNAL} needs a signal ({}).", Signal::WORDS.join(", "))))?;
@@ -191,7 +191,7 @@ fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> 
             let n = match v {
                 None => None,
                 Some(t) => Some(
-                    ecad_model::words::uint(t, max)
+                    ecad_model::naming::words::uint(t, max)
                         .filter(|n| t.len() <= 5 && (key == address::START_KEY || *n >= 1))
                         .ok_or_else(|| CmdError::refused(format!("{key} is a whole number of bytes from 0 to {max}.")))?,
                 ),
@@ -206,7 +206,7 @@ fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> 
         EX_I => module.attributes.intrinsically_safe = yes_no(key, v)?,
         CALIBRATION => module.attributes.calibration_certificate = yes_no(key, v)?,
         PROTOCOL => match &mut module.function {
-            ecad_model::plc::ModuleFunction::Communication(ecad_model::plc::Communication::Link(x)) => {
+            ecad_model::objects::plc::ModuleFunction::Communication(ecad_model::objects::plc::Communication::Link(x)) => {
                 x.protocol = word::<Protocol>(key, v)?.ok_or_else(|| CmdError::refused(format!("{key} needs a protocol.")))?;
             }
             _ => return Err(CmdError::refused(format!("{who} is not a communication link; only those have a protocol."))),
@@ -222,10 +222,10 @@ fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> 
 /// # Errors
 /// A value that does not read, or a key its head has no field for.
 fn plan_station(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
-    let c = station(doc, o).ok_or(CmdError::refused(super::super::prop::NO_SUCH_OBJECT))?;
+    let c = station(doc, o).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
     let who = crate::devices::tag_words(doc, c);
     let v = value.map(str::trim).filter(|v| !v.is_empty());
-    let mut s: PlcRack = edit::station_of(doc, c).cloned().ok_or(CmdError::refused(super::super::prop::NO_SUCH_OBJECT))?;
+    let mut s: PlcRack = edit::station_of(doc, c).cloned().ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
     match key {
         NETWORK => s.network = text::<32>(key, v)?,
         NETWORK_ADDRESS => {
@@ -234,7 +234,7 @@ fn plan_station(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) ->
                 Some(t) => Some(NetAddress::parse(t).ok_or_else(|| {
                     CmdError::refused(format!(
                         "{t} is not a network address: an IP address (192.168.0.10) or a node number (0 to {}).",
-                        ecad_model::plc::MAX_NODE
+                        ecad_model::objects::plc::MAX_NODE
                     ))
                 })?),
             };
@@ -255,7 +255,7 @@ fn plan_station(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) ->
                 Some(t) => Some(
                     address::Style::parse(t)
                         .ok_or_else(|| {
-                            CmdError::refused(format!("{t} is not a value of {key} ({}).", ecad_model::plc::AddressStyle::WORDS.join(", ")))
+                            CmdError::refused(format!("{t} is not a value of {key} ({}).", ecad_model::objects::plc::AddressStyle::WORDS.join(", ")))
                         })?
                         .stored(),
                 ),

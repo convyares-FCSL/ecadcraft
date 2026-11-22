@@ -21,7 +21,7 @@ use ecad_model::{DeviceId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
-use crate::plc_contracts::{checks_of, placed};
+use crate::plc::contracts::{checks_of, placed};
 
 /// The tester's synthetic rating table (made-up numbers; not from any standard).
 const T1: &str = "kind,a,b,c,d,e
@@ -210,7 +210,7 @@ fn box_temp(h: &mut H, cab: ecad_model::AidId, v: &str) {
     let Some(t) = v.trim().parse::<f64>().ok().filter(|t| t.is_finite()) else { return };
     let before = h.doc().aids[&cab].clone();
     let mut after = before.as_box().cloned().unwrap();
-    after.panel_temperature = Some(ecad_model::units::Celsius(t));
+    after.panel_temperature = Some(ecad_model::geometry::units::Celsius(t));
     h.cfg(|p| {
         let op = ecad_model::Op::ModifyAid { id: cab, before, after: ecad_model::Aid::Box(after) };
         p.ledger.commit(ecad_model::Author::User, "a file made elsewhere", vec![op]).unwrap();
@@ -497,7 +497,7 @@ fn m01_manual_basis_and_its_hostile_values() {
     h.run("rating", json!({"wire": wire.hex(), "manual": null})).unwrap();
     let d = h.doc();
     assert!(d.wires.get(&wire).is_some_and(|c| c.rating.manual.is_none()));
-    assert!(d.wires.get(&wire).is_some_and(|c| c.rating.basis == Some(ecad_model::wire::Basis::Manual)));
+    assert!(d.wires.get(&wire).is_some_and(|c| c.rating.basis == Some(ecad_model::objects::wire::Basis::Manual)));
 }
 
 /// Check 8: Manual Iz 3.5, -Q01 4 A, load 3 → `rating-under` only (3 ≤ 4: no load-over).
@@ -660,7 +660,7 @@ fn d02_protected_by_a_fuse_of_a_bank_and_by_hand() {
     let R { mut h, wire, .. } = fixture(5717);
     let f01 = placed(&mut h, "fusebank4", 300.0, 300.0);
     h.run("setprop", json!({"component": f01.hex(), "key": "tag", "value": "-F01"})).ok();
-    let tag = crate::plc_contracts::tag(&mut h, f01);
+    let tag = crate::plc::contracts::tag(&mut h, f01);
     h.run("setprop", json!({"component": f01.hex(), "key": "rating.3", "value": "2 A"})).unwrap();
     let head = h.head();
     h.run("rating", json!({"wire": wire.hex(), "protected_by": format!("{tag}:3")})).unwrap();
@@ -678,7 +678,7 @@ fn d02_protected_by_a_fuse_of_a_bank_and_by_hand() {
     // (lane D stores `protected_by` typed, through the same rule).
     let k01 = placed(&mut h, "coil", 340.0, 300.0);
     h.run("setprop", json!({"component": k01.hex(), "key": "rating", "value": "AC-3 3 A"})).unwrap();
-    let k = crate::plc_contracts::tag(&mut h, k01);
+    let k = crate::plc::contracts::tag(&mut h, k01);
     let e = refused(&mut h, "rating", json!({"wire": wire.hex(), "protected_by": k}));
     assert!(e.contains("no rated current"), "{e}");
     let e = refused(&mut h, "setprop", json!({"conductor": wire.hex(), "key": "protected_by", "value": k}));
@@ -721,7 +721,7 @@ fn tr01_trace_line_side_rcd_and_two_devices() {
     let r = wire_r(&mut h, w3);
     assert_eq!(device_in(&r), Some(10.0), "the largest In: {r}");
     let rows = rows_text(&mut h, "rating-two-devices");
-    let (t3, t4) = (crate::plc_contracts::tag(&mut h, q03), crate::plc_contracts::tag(&mut h, q04));
+    let (t3, t4) = (crate::plc::contracts::tag(&mut h, q03), crate::plc::contracts::tag(&mut h, q04));
     assert!(rows.iter().any(|x| x.contains(&t3) && x.contains(&t4) && x.contains(&format!("10 A ({t4}) used"))), "{rows:?}");
 }
 
@@ -759,7 +759,7 @@ fn tr02_a_long_chain_stops_after_64_nets() {
     let rows = rows_text(&mut h, "rating-no-device");
     assert!(rows.iter().any(|x| x.contains("trace stopped after 64 nets; set Protected by")), "{rows:?} {r}");
     // Named by hand, -Q01 wins over the stopped trace.
-    let qt = crate::plc_contracts::tag(&mut h, q);
+    let qt = crate::plc::contracts::tag(&mut h, q);
     h.run("rating", json!({"wire": w.hex(), "protected_by": qt})).unwrap();
     assert_eq!(device_in(&wire_r(&mut h, w)), Some(4.0));
 }
@@ -955,7 +955,7 @@ fn u01_a_device_rating_change_rechecks_only_its_subjects() {
     let (kept, built) = h.cfg(|p| {
         let d = p.ledger.document().clone();
         let k = p.checks().rating.results.clone();
-        (k, ecad_engine::rating::Kept::build(&d).results)
+        (k, ecad_electrical::circuits::Kept::build(&d).results)
     });
     assert!(kept == built, "the kept results equal a rebuild");
 }
@@ -1075,7 +1075,7 @@ fn f01_a_location_temperature_can_be_set() {
     assert_eq!(h.head(), head + 1);
     h.run("setprop", json!({"aids": [cab.hex()], "key": "panel_temperature", "value": "45"})).unwrap();
     assert_eq!(h.head(), head + 2);
-    assert_eq!(h.doc().aids[&cab].as_box().and_then(|b| b.panel_temperature), Some(ecad_model::units::Celsius(45.0)));
+    assert_eq!(h.doc().aids[&cab].as_box().and_then(|b| b.panel_temperature), Some(ecad_model::geometry::units::Celsius(45.0)));
 }
 
 /// The trace crosses connector pin pairs (§4.2): three pairs between -Q01 and the lamp.
@@ -1121,9 +1121,9 @@ fn cored(h: &mut H, x0: f64, tag: &str, type_text: &str) -> ecad_model::CableId 
     k
 }
 
-fn open_of(h: &mut H, k: ecad_model::CableId) -> Vec<ecad_engine::styles::cable::OpenCore> {
+fn open_of(h: &mut H, k: ecad_model::CableId) -> Vec<ecad_electrical::styles::cable::OpenCore> {
     let d = h.doc();
-    ecad_engine::styles::cable::open_cores(&d, k)
+    ecad_electrical::styles::cable::open_cores(&d, k)
 }
 
 /// Item 1: an unwired, unticked core is a `core-open` Error; `unused.<core>` clears it in one

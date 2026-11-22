@@ -1,6 +1,6 @@
 //! ECAD ID ⇄ CADCraft handle for one page (session only).
 
-use super::*;
+use crate::project::*;
 
 /// What a projected handle stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

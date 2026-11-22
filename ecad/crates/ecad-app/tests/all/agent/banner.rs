@@ -8,17 +8,17 @@ use ecad_app::App;
 use ecad_app::agent::banner as b;
 use ecad_app::agent::last_write;
 use ecad_app::agent::{AgentBanner, BannerState, LastChange};
-use ecad_app::history_panel as hp;
+use ecad_app::history::panel as hp;
 use ecad_app::shell::{Workspace, top_bar};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::bridge_contracts::{H, conductors, live_app, person_wire, server, wire};
+use crate::agent::bridge::{H, conductors, live_app, person_wire, server, wire};
 
 /// An app with no bridge, 1920 × 1080, its banner set by hand.
 fn plain() -> H {
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let t = App::new(None).unwrap();
     let mut h = Harness::builder().with_size(eframe::egui::vec2(1920.0, 1080.0)).build_ui_state(
         |ui, t: &mut App| {
@@ -71,7 +71,7 @@ fn the_styled_banner_keeps_the_contract_through_every_state() {
     });
     strip.run();
     assert!(strip.query_by_label(b::PAUSE).is_some() && strip.query_by_label(b::UNDO).is_some() && strip.query_by_label(b::STATE).is_some());
-    assert_eq!(b::state_tone(BannerState::Held), ecad_ui::prim::Tone::Warning);
+    assert_eq!(b::state_tone(BannerState::Held), ecad_widgets::prim::Tone::Warning);
     // Paused: Resume in the same place.
     banner.held = None;
     banner.state = BannerState::Paused;
@@ -100,7 +100,7 @@ fn the_banner_takes_its_slot_and_its_controls_work() {
     a.exec(&mut h, "wire", wire(0.0));
     a.exec(&mut h, "wire", wire(5.0));
     h.run_steps(2);
-    assert_eq!(main_height(&h), before - ecad_ui::tokens::size::AGENT_BANNER, "the main view is 32 px shorter");
+    assert_eq!(main_height(&h), before - ecad_widgets::tokens::size::AGENT_BANNER, "the main view is 32 px shorter");
     assert!(!h.state().developer.open, "the hello no longer opens the Developer section");
     // The pill names the agent and hides the banner; a second click shows it again.
     let pill = format!("{}: Agent tester", top_bar::AGENT_PILL);
@@ -110,12 +110,12 @@ fn the_banner_takes_its_slot_and_its_controls_work() {
     h.run_steps(60);
     h.get_by_label(&pill).click();
     h.run_steps(2);
-    assert_eq!(main_height(&h), before - ecad_ui::tokens::size::AGENT_BANNER, "shown again");
+    assert_eq!(main_height(&h), before - ecad_widgets::tokens::size::AGENT_BANNER, "shown again");
     // The go-to opens History at the last write; the page keeps its view.
     let view = h.state().cad.canvas.xf.map(|x| (x.center, x.scale));
     h.get_by_label(b::LAST).click();
     h.run_steps(3);
-    assert_eq!(h.state().panel.tab, ecad_app::project_panel::Tab::History);
+    assert_eq!(h.state().panel.tab, ecad_app::pages::project_panel::Tab::History);
     assert_eq!(h.state().cad.canvas.xf.map(|x| (x.center, x.scale)), view, "the stored page view does not overwrite it");
     // Pause refuses the next agent write with 035's message.
     h.get_by_label(b::PAUSE).click();
@@ -217,15 +217,15 @@ fn the_last_write_is_outlined_on_the_page_and_costs_nothing_idle() {
 /// outlined, History's session group open, and the finished banner.
 #[test]
 fn screenshots_of_the_banner_history_and_outline() {
-    let Some(out) = crate::project_panel::shots() else { return };
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
+    let Some(out) = crate::pages::project_panel::shots() else { return };
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
-    let port = crate::bridge_contracts::free_port();
+    let port = crate::agent::bridge::free_port();
     t.agent.control_flag(port);
     let mut h =
-        Harness::builder().with_size(eframe::egui::vec2(1920.0, 1080.0)).renderer(crate::mouse_tester::Collect(deltas.clone())).build_ui_state(
+        Harness::builder().with_size(eframe::egui::vec2(1920.0, 1080.0)).renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone())).build_ui_state(
             |ui, t: &mut App| {
                 t.logic(&ui.ctx().clone());
                 t.ui(ui);
@@ -240,7 +240,7 @@ fn screenshots_of_the_banner_history_and_outline() {
     }
     h.state_mut().zoom_to_drawing();
     h.run_steps(5);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("043-banner.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("043-banner.png"));
     let head = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
@@ -250,13 +250,13 @@ fn screenshots_of_the_banner_history_and_outline() {
     h.run_steps(4);
     h.get_by_label_contains(hp::SESSION_GROUP).click();
     h.run_steps(4);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("043-history.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("043-history.png"));
     h.get_by_label(b::PAUSE).click();
     h.run_steps(3);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("043-paused.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("043-paused.png"));
     a.bye(&mut h);
     h.run_steps(3);
-    let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("043-finished.png"));
+    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("043-finished.png"));
 }
 
 /// Review of PR #77: two bridge sessions under one name, back to back, are two groups; Undo

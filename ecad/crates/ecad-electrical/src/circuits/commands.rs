@@ -3,21 +3,21 @@
 //! `ratingtable` writes. The engine crate's shims read the files, commit the ops and answer in
 //! JSON.
 
-use crate::rating::circuit::Rating;
-use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
-use ecad_model::units::{Amps, Celsius, Percent, Volts};
-use ecad_model::wire::{InstallMethod, SupplySystem};
+use crate::circuits::circuit::Rating;
+use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef, is_name};
+use ecad_model::geometry::units::{Amps, Celsius, Percent, Volts};
+use ecad_model::objects::wire::{InstallMethod, SupplySystem};
 use ecad_model::{CableId, Document, IdAllocator, Op, Wire, WireId, Word};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, TextOrNumber, nullable};
-use crate::cmd::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
+use crate::commands::input::{Bounded, TextOrNumber, nullable};
+use crate::commands::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
 use crate::error::CmdError;
-use crate::rating::{self, RatedSubject, dataset, parse};
+use crate::circuits::{self, RatedSubject, dataset, parse};
 use crate::styles::{self, cable, ratingtable};
-use ecad_model::wire::Basis;
+use ecad_model::objects::wire::Basis;
 
 /// Most subjects one `rating {many}` call sets.
 pub const MAX_MANY: usize = 500;
@@ -38,7 +38,7 @@ pub fn wires(doc: &Document, text: &str) -> Result<Vec<WireId>, CmdError> {
     }
     let conn = doc.connectivity();
     let mut out: Vec<WireId> = conn.nets_numbered(t).filter_map(|(n, _)| conn.net(n)).flat_map(|n| n.wires.iter().copied()).collect();
-    out.retain(|c| rating::circuit::is_panel_wire(doc, *c));
+    out.retain(|c| circuits::circuit::is_panel_wire(doc, *c));
     out.sort();
     out.dedup();
     if out.is_empty() {
@@ -80,17 +80,17 @@ pub fn subjects_of(doc: &Document, wire: Option<&str>, cable: Option<&str>) -> R
 
 /// The keys `rating` takes: (JSON key, property key, for wires, for cables).
 pub const KEYS: &[(&str, &str, bool, bool)] = &[
-    ("basis", rating::BASIS, true, true),
-    ("manual", rating::MANUAL, true, true),
-    ("bundling", rating::BUNDLING, true, false),
-    ("load", rating::LOAD, true, true),
-    ("protected_by", rating::PROTECTED_BY, true, true),
-    ("method", rating::METHOD, false, true),
-    ("ambient", rating::AMBIENT, false, true),
-    ("grouped", rating::GROUPED, false, true),
-    ("voltage", rating::VOLTAGE, false, true),
-    ("system", rating::SYSTEM, false, true),
-    ("vd_limit", rating::VD_LIMIT, false, true),
+    ("basis", circuits::BASIS, true, true),
+    ("manual", circuits::MANUAL, true, true),
+    ("bundling", circuits::BUNDLING, true, false),
+    ("load", circuits::LOAD, true, true),
+    ("protected_by", circuits::PROTECTED_BY, true, true),
+    ("method", circuits::METHOD, false, true),
+    ("ambient", circuits::AMBIENT, false, true),
+    ("grouped", circuits::GROUPED, false, true),
+    ("voltage", circuits::VOLTAGE, false, true),
+    ("system", circuits::SYSTEM, false, true),
+    ("vd_limit", circuits::VD_LIMIT, false, true),
     ("cable_type", cable::CABLE_TYPE, false, true),
 ];
 
@@ -115,10 +115,10 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
         "bundling" => parse::bundling(v)
             .map(|_| v.to_string())
             .ok_or_else(|| no("bundling is a factor 0.30 to 1.00, or a circuit count 1 to 20 (\"3 bunched\").")),
-        "protected_by" => match rating::trace::protected_by(doc, v).map(|p| (p.device, p.position.map(|n| n.to_string()))) {
+        "protected_by" => match circuits::trace::protected_by(doc, v).map(|p| (p.device, p.position.map(|n| n.to_string()))) {
             Some((c, fuse)) => {
-                let tag = rating::trace::device_words(doc, c, fuse.as_deref());
-                if rating::trace::amps_of(doc, c, fuse.as_deref()).is_none() {
+                let tag = circuits::trace::device_words(doc, c, fuse.as_deref());
+                if circuits::trace::amps_of(doc, c, fuse.as_deref()).is_none() {
                     return Err(CmdError::refused(format!("{tag} has no rated current; set its rating first (for example C16).")));
                 }
                 Ok(tag)
@@ -204,7 +204,7 @@ pub fn set_wire(doc: &Document, w: &mut Wire, key: &str, value: Option<&str>) {
         "manual" => w.rating.manual = value.and_then(parse::current).map(Amps),
         "bundling" => w.rating.bundling = value.and_then(parse::bundling),
         "load" => w.load = value.and_then(parse::current).map(Amps),
-        "protected_by" => w.protected_by = value.and_then(|v| rating::trace::protected_by(doc, v)),
+        "protected_by" => w.protected_by = value.and_then(|v| circuits::trace::protected_by(doc, v)),
         _ => {}
     }
 }
@@ -223,7 +223,7 @@ pub fn set_cable(doc: &Document, c: &mut ecad_model::Cable, key: &str, value: Op
         "system" => r.system = value.and_then(SupplySystem::parse),
         "vd_limit" => r.vd_limit = value.and_then(parse::percent).map(Percent),
         "load" => c.load = value.and_then(parse::current).map(Amps),
-        "protected_by" => c.protected_by = value.and_then(|v| rating::trace::protected_by(doc, v)),
+        "protected_by" => c.protected_by = value.and_then(|v| circuits::trace::protected_by(doc, v)),
         "cable_type" => c.cable_type = value.and_then(ecad_model::StyleRef::parse),
         _ => {}
     }
@@ -270,8 +270,8 @@ pub struct PanelTemperature {
 ///
 /// # Errors
 /// Outside −40 to 90 °C.
-pub fn panel_temperature(text: &str) -> Result<ecad_model::units::Celsius, CmdError> {
-    parse::ambient(text.trim()).map(ecad_model::units::Celsius).ok_or(CmdError::refused("temperature is \u{2212}40 to 90 \u{b0}C."))
+pub fn panel_temperature(text: &str) -> Result<ecad_model::geometry::units::Celsius, CmdError> {
+    parse::ambient(text.trim()).map(ecad_model::geometry::units::Celsius).ok_or(CmdError::refused("temperature is \u{2212}40 to 90 \u{b0}C."))
 }
 
 /// Check a panel temperature (°C) and give the text stored.
@@ -294,7 +294,7 @@ pub fn check_temperature(text: &str) -> Result<String, CmdError> {
 /// No location box of that location.
 pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Result<PanelTemperature, CmdError> {
     // Brief 052: `location` is a code (or an entry key); boxes store the entry's key.
-    let entry = crate::designations::find(doc, crate::designations::Aspect::Location, typed);
+    let entry = crate::locations::designations::find(doc, crate::locations::designations::Aspect::Location, typed);
     let loc = entry.as_ref().map_or_else(|| typed.to_string(), |e| e.code.clone());
     let boxes: Vec<ecad_model::AidId> = match &entry {
         None => Vec::new(),
@@ -302,7 +302,7 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
             .aids
             .iter()
             .filter(|(_, x)| {
-                x.as_box().and_then(|b| crate::designations::box_key(b, crate::designations::Aspect::Location)).is_some_and(|l| l == e.key)
+                x.as_box().and_then(|b| crate::locations::designations::box_key(b, crate::locations::designations::Aspect::Location)).is_some_and(|l| l == e.key)
             })
             .map(|(a, _)| *a)
             .collect(),
@@ -313,7 +313,7 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
     let temp = after.map(panel_temperature).transpose()?;
     let mut ops = Vec::new();
     for a in &boxes {
-        if let Some(op) = crate::cmd::continuation::box_op(doc, *a, |b| b.panel_temperature = temp) {
+        if let Some(op) = crate::continuations::commands::box_op(doc, *a, |b| b.panel_temperature = temp) {
             ops.push(op);
         }
     }
@@ -398,15 +398,15 @@ pub fn check_table(w: &TableWrite) -> Result<dataset::Dataset, CmdError> {
 pub fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Result<TablePlan, CmdError> {
     let data = check_table(w)?;
     if w.layer == StyleLayer::Standard && doc.standard.is_none() {
-        return Err(CmdError::refused(crate::cmd::style::STANDARD_FIRST));
+        return Err(CmdError::refused(crate::styles::commands::styles::STANDARD_FIRST));
     }
     let cat = &ratingtable::CATALOGUE;
     let existing = styles::rows(doc, cat).into_iter().find(|r| r.name.eq_ignore_ascii_case(&w.name)).map(|r| r.id);
     let id = existing.clone().unwrap_or_else(|| StyleRef::Own(ids.fresh::<u128>()));
     let before = styles::record(doc, w.layer, cat.catalogue, &id).cloned();
-    let mut rec = before.clone().unwrap_or_else(|| StyleRecord::new(w.name.clone(), ecad_model::style::StyleBody::empty(cat.catalogue)));
+    let mut rec = before.clone().unwrap_or_else(|| StyleRecord::new(w.name.clone(), ecad_model::objects::styles::StyleBody::empty(cat.catalogue)));
     if rec.name.is_none() && existing.is_none() {
-        rec.name = ecad_model::style::StyleName::new(&w.name).ok();
+        rec.name = ecad_model::objects::styles::StyleName::new(&w.name).ok();
     }
     let mut set = vec![(ratingtable::ROWS.to_string(), Some(w.csv.clone()))];
     if let Some(src) = &w.source {
@@ -432,11 +432,11 @@ pub fn rating_json(doc: &Document, r: &Rating) -> Value {
     };
     let factors: Vec<Value> = r.factors.iter().map(|f| json!({"name": f.name, "factor": f.factor, "input": f.input, "from": f.from})).collect();
     let device = r.device.as_ref().map(|d| json!({"tag": d.tag, "in": d.amps, "how": d.how.word()}));
-    let load = r.load.map(|l| json!({"amps": l.amps, "from": if l.from == rating::load::LoadFrom::Typed { "typed" } else { "power" }}));
+    let load = r.load.map(|l| json!({"amps": l.amps, "from": if l.from == circuits::load::LoadFrom::Typed { "typed" } else { "power" }}));
     let vd = r.voltdrop.as_ref().map(|v| {
-        json!({"volts": v.volts, "percent": v.percent, "shown": format!("{} %", rating::circuit::fmt_percent(v.percent)), "amps": v.amps, "why": v.why, "limit": v.limit})
+        json!({"volts": v.volts, "percent": v.percent, "shown": format!("{} %", circuits::circuit::fmt_percent(v.percent)), "amps": v.amps, "why": v.why, "limit": v.limit})
     });
-    let kinds: Vec<&str> = rating::rows(doc, r).iter().map(|c| c.kind.name()).collect();
+    let kinds: Vec<&str> = circuits::rows(doc, r).iter().map(|c| c.kind.name()).collect();
     json!({
         "subject": subject,
         "basis": r.basis.word(),
@@ -445,7 +445,7 @@ pub fn rating_json(doc: &Document, r: &Rating) -> Value {
         "table": r.table.as_ref().map(|(n, src)| json!({"name": n, "source": src})),
         "factors": factors,
         "iz": r.iz,
-        "iz_shown": r.iz.map(|x| format!("{} A", rating::circuit::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))),
+        "iz_shown": r.iz.map(|x| format!("{} A", circuits::circuit::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))),
         "summary": r.summary(),
         "device": device,
         "load": load,
@@ -456,7 +456,7 @@ pub fn rating_json(doc: &Document, r: &Rating) -> Value {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// A rating key as typed: absent (unchanged), null (cleared) or a value.
 type KeyValue = Option<Option<TextOrNumber>>;
@@ -711,7 +711,7 @@ temperature, on its location boxes; null clears; one transaction)";
         let changed = !planned.ops.is_empty();
         let subjects = planned.subjects;
         Ok(Outcome::edit_then(planned.label, planned.ops, move |doc| {
-            let results: Vec<Value> = subjects.iter().take(PAGE).map(|s| rating_json(doc, &rating::circuit::rating_of(doc, *s))).collect();
+            let results: Vec<Value> = subjects.iter().take(PAGE).map(|s| rating_json(doc, &circuits::circuit::rating_of(doc, *s))).collect();
             json!({"changed": changed, "ratings": results})
         }))
     }
@@ -797,18 +797,18 @@ impl Generic for RatingsParams {
         let subjects: Vec<RatedSubject> = if self.wire.is_some() || self.cable.is_some() {
             subjects_of(doc, self.wire.as_deref(), self.cable.as_deref())?
         } else {
-            let ctx = rating::circuit::Context::new(doc);
-            rating::circuit::subjects(doc, &ctx)
+            let ctx = circuits::circuit::Context::new(doc);
+            circuits::circuit::subjects(doc, &ctx)
         };
         let total = subjects.len();
-        let mut ctx = rating::circuit::Context::new(doc);
+        let mut ctx = circuits::circuit::Context::new(doc);
         let out: Vec<Value> = subjects
             .iter()
             .skip(from)
             .take(PAGE)
             .map(|s| {
-                let found = rating::trace::trace_subject(doc, *s);
-                rating_json(doc, &rating::circuit::evaluate(doc, &mut ctx, *s, &found))
+                let found = circuits::trace::trace_subject(doc, *s);
+                rating_json(doc, &circuits::circuit::evaluate(doc, &mut ctx, *s, &found))
             })
             .collect();
         let next = (from.saturating_add(PAGE) < total).then_some(from.saturating_add(PAGE));

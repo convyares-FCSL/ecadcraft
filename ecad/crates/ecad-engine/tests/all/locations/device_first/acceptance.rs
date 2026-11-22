@@ -12,7 +12,7 @@ use crate::common::close_all;
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::EntityKind;
 use ecad_engine::checks::{self, Kind};
-use ecad_engine::designations::{self, Aspect};
+use ecad_electrical::locations::designations::{self, Aspect};
 use ecad_engine::outputs::{Group, kept::ReportModels};
 use ecad_engine::{Persistence, ProjectHandle, generated, locations};
 use ecad_model::{AidId, Author, DeviceId, Document, Op, PageId};
@@ -159,7 +159,7 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     assert!(locations::resolve(&d, k).missing());
     assert!(locations::resolve_function(&d, k).missing());
     // The retired half key is not read (FP4, Q9), and the property is still in the file.
-    let rows = ecad_engine::connectors::half_rows(&d, x, &mut locations::BoxCache::default());
+    let rows = ecad_electrical::connectors::half_rows(&d, x, &mut locations::BoxCache::default());
     assert!(rows.iter().all(|r| r.location.value.is_none()), "half.s.location is not read");
     assert!(d.devices[&x].properties.keys().all(|k| !k.starts_with("half.")), "a half's keys are never in the bag");
     // Checks: the device's two values and the box.
@@ -177,7 +177,7 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     // The tag and the head are kept: the contact is a contact, the coil the head.
     let tags = ecad_engine::devices::tag_words(&d, k);
     assert_eq!(tags, "-K01");
-    let heads = ecad_engine::reps::heads(&d, k);
+    let heads = ecad_electrical::symbols::reps::heads(&d, k);
     assert_eq!(heads.len(), 1);
     assert_eq!(d.representations[&heads[0]].role, ecad_model::Role::Part(ecad_model::PartRole::Head));
     // Setting a location through the list is the way out, and it is one transaction.

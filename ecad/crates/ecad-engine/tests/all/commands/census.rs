@@ -35,15 +35,15 @@ fn fixture() -> H {
 fn every_command_leaves_the_project_consistent() {
     ecad_engine::install();
     let ids: Vec<&'static str> = cadcraft_engine::command_specs().iter().map(|c| c.id).collect();
-    let ours: Vec<&str> = ecad_engine::cmd::specs().iter().map(|c| c.id).collect();
+    let ours: Vec<&str> = ecad_engine::commands::specs().iter().map(|c| c.id).collect();
     let mut rows: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
     let mut broken = Vec::new();
     for id in ids.iter().copied().filter(|id| !SKIP.contains(id) && !ours.contains(id)) {
         let mut h = fixture();
         let head = h.head();
-        let refused_before = h.p(|p| p.events.count(ecad_inspect::EventKind::Refused));
+        let refused_before = h.p(|p| p.events.count(ecad_engine::history::event_log::EventKind::Refused));
         let r = h.s.execute(id, &Value::Null);
-        let refused = h.p(|p| p.events.count(ecad_inspect::EventKind::Refused)) > refused_before;
+        let refused = h.p(|p| p.events.count(ecad_engine::history::event_log::EventKind::Refused)) > refused_before;
         let class = match (&r, h.head() > head, refused) {
             (_, true, _) => "recorded",
             (_, _, true) => "refused by the owner",
@@ -73,7 +73,7 @@ fn every_command_leaves_the_project_consistent() {
     println!("{md}");
     assert!(
         ours.iter()
-            .all(|o| cadcraft_engine::find_command(o).is_some_and(|c| ecad_engine::cmd::specs().iter().any(|s| s.id == c.id && s.label == c.label))),
+            .all(|o| cadcraft_engine::find_command(o).is_some_and(|c| ecad_engine::commands::specs().iter().any(|s| s.id == c.id && s.label == c.label))),
         "an ECAD command id is shadowed by a built-in"
     );
     assert!(broken.is_empty(), "checks failed after: {broken:?}");

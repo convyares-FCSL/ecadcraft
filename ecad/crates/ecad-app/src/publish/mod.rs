@@ -13,18 +13,18 @@
 //!   watermark, bookmarks and numbering. The selected page as it will print. Export PDF runs
 //!   `printbook` through the command path (one call, no transaction).
 //!
-//! Thumbnails are the page drawn from the model ([`ecad_engine::preview`]), at most
+//! Thumbnails are the page drawn from the model ([`ecad_engine::pages::preview`]), at most
 //! [`THUMBS_PER_FRAME`] a frame, kept until a change touches their page.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_engine::preview::{PreviewView, preview_drawing, rasterise};
+use ecad_engine::pages::preview::{PreviewView, preview_drawing, rasterise};
 use ecad_model::{FolderId, PageId};
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Rect, Sense, Stroke, pos2, vec2};
 
 use crate::App;
-use crate::outputs_ui::ScopeKind;
+use crate::reports::panel::ScopeKind;
 use crate::shell::bar;
 
 /// Element names.
@@ -129,8 +129,8 @@ struct Group {
     pages: Vec<(PageId, String, String)>,
 }
 
-fn c32(c: ecad_ui::tokens::Color) -> egui::Color32 {
-    ecad_ui::color(c)
+fn c32(c: ecad_widgets::tokens::Color) -> egui::Color32 {
+    ecad_widgets::color(c)
 }
 
 impl App {
@@ -203,11 +203,11 @@ impl App {
             return;
         }
         let scope = match &self.publish.book.pages {
-            Some(list) => ecad_engine::printbook::Scope::Pages(list.clone()),
-            None => ecad_engine::printbook::Scope::All,
+            Some(list) => ecad_engine::export::printbook::Scope::Pages(list.clone()),
+            None => ecad_engine::export::printbook::Scope::All,
         };
         if let Ok(((sheets, unknown, flagged), notes)) =
-            p.configure(&mut self.cad.session, |p| (ecad_engine::printbook::count(p, &scope), ecad_engine::printbook::notes(p, &scope)))
+            p.configure(&mut self.cad.session, |p| (ecad_engine::export::printbook::count(p, &scope), ecad_engine::export::printbook::notes(p, &scope)))
             && let Some(d) = &mut self.print_book
         {
             d.sheets = sheets;
@@ -270,7 +270,7 @@ impl App {
             let view = PreviewView::extents(&d, w, h);
             match rasterise(&d, view, w, h, bg, 0.0) {
                 Ok(img) => {
-                    let image = ecad_ui::rgba_image([img.width as usize, img.height as usize], &img.rgba);
+                    let image = ecad_widgets::rgba_image([img.width as usize, img.height as usize], &img.rgba);
                     let texture = ctx.load_texture(format!("publish.thumb.{}", page.hex()), image, egui::TextureOptions::LINEAR);
                     self.publish.thumbs.insert(*page, Thumb { texture });
                     self.publish.drawn += 1;
@@ -284,8 +284,8 @@ impl App {
 
     /// Publish's main view: the output sets at the left, the pages in the centre.
     pub(crate) fn publish_main(&mut self, ui: &mut egui::Ui, main: Rect) {
-        let s = ecad_ui::SHELL;
-        let line = Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, c32(s.line));
+        let s = ecad_widgets::SHELL;
+        let line = Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, c32(s.line));
         ui.painter().rect_filled(main, 0.0, c32(s.bg));
         let open = self.project_open();
         if open {
@@ -301,7 +301,7 @@ impl App {
         let head = Rect::from_min_size(sets.min, vec2(sets.width(), 44.0));
         bar::text_at(ui, head.left() + space::L, head.center().y, "Output sets", ui_type::BODY_EMPHASIS, c32(s.text));
         let plus = Rect::from_center_size(pos2(head.right() - space::L - 8.0, head.center().y), vec2(24.0, 24.0));
-        bar::icon_button(ui, plus, ecad_ui::tokens::Icon::Plus, "New output set", 14.0, false).on_hover_text("Output sets come later");
+        bar::icon_button(ui, plus, ecad_widgets::tokens::Icon::Plus, "New output set", 14.0, false).on_hover_text("Output sets come later");
         ui.painter().hline(head.x_range(), head.bottom() - 0.5, line);
         let mut y = head.bottom() + space::S;
         for (i, (name, about)) in OUTPUT_SETS.iter().enumerate() {
@@ -311,7 +311,7 @@ impl App {
             let label = if on { SET_FULL.to_string() } else { format!("publish.set.{}", name.to_lowercase().replace(' ', "_")) };
             resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, on, on, &label));
             if on {
-                ui.painter().rect_filled(r, ecad_ui::style::corner(6.0), c32(s.accent_soft));
+                ui.painter().rect_filled(r, ecad_widgets::style::corner(6.0), c32(s.accent_soft));
                 ui.painter().vline(r.left() + 1.5, r.y_range(), Stroke::new(3.0, c32(s.accent)));
             } else {
                 resp.on_hover_text("Output sets come later: each remembers its pages, order and settings.");
@@ -325,7 +325,7 @@ impl App {
         let foot = Rect::from_min_max(pos2(sets.left(), sets.bottom() - 96.0), sets.max);
         ui.painter().hline(foot.x_range(), foot.top() + 0.5, line);
         let pending = if open {
-            self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_engine::revisions::pending_rev(p.ledger.document())).ok())
+            self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_electrical::releases::revisions::pending_rev(p.ledger.document())).ok())
         } else {
             None
         };
@@ -334,7 +334,7 @@ impl App {
             ui.label(egui::RichText::new("Release").font(bar::font(ui, ui_type::CAPTION)).color(c32(s.text_3)));
             ui.label(egui::RichText::new("Released revisions are in Draw ▸ History.").small().color(c32(s.text_2)));
             let words = pending.as_ref().map_or_else(|| "Release…".to_string(), |r| format!("Release Rev {r}…"));
-            let b = ui.add_enabled(open, ecad_ui::prim::Button::new(&words).small());
+            let b = ui.add_enabled(open, ecad_widgets::prim::Button::new(&words).small());
             b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, open, RELEASE));
             release = b.clicked();
         });
@@ -353,12 +353,12 @@ impl App {
                 ui.label(egui::RichText::new("Full booklet").strong().color(c32(s.text)));
                 ui.label(egui::RichText::new(format!("· {included} pages in book order · untick to leave out")).color(c32(s.text_2)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let b = ui.add_enabled(open && included < total, ecad_ui::prim::Button::new("Select all").small());
+                    let b = ui.add_enabled(open && included < total, ecad_widgets::prim::Button::new("Select all").small());
                     b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, open, SELECT_ALL));
                     select_all = b.clicked();
                     ui.add_space(space::S);
-                    ui.add(ecad_ui::prim::Button::new("Changed since the last release").small().disabled("Comes with output sets"));
-                    ui.add(ecad_ui::prim::Button::new("Book order").small().disabled("Pages print in book order"));
+                    ui.add(ecad_widgets::prim::Button::new("Changed since the last release").small().disabled("Comes with output sets"));
+                    ui.add(ecad_widgets::prim::Button::new("Book order").small().disabled("Pages print in book order"));
                 });
             });
         });
@@ -368,7 +368,7 @@ impl App {
         let body = Rect::from_min_max(pos2(centre.left(), chead.bottom()), centre.max);
         if !open {
             crate::shell::in_rect(ui, body.shrink(space::XL), "publish.empty", |ui| {
-                ecad_ui::prim::read_value(ui, "No project is open.");
+                ecad_widgets::prim::read_value(ui, "No project is open.");
             });
             return;
         }
@@ -424,8 +424,8 @@ impl App {
                             let pic = Rect::from_min_size(r.min + vec2(4.0, 4.0), vec2(THUMB_W, THUMB_H));
                             let p = ui.painter();
                             if preview == Some(*id) {
-                                p.rect_filled(r, ecad_ui::style::corner(6.0), c32(s.accent_soft));
-                                p.rect_stroke(r, ecad_ui::style::corner(6.0), Stroke::new(1.5, c32(s.accent)), egui::StrokeKind::Inside);
+                                p.rect_filled(r, ecad_widgets::style::corner(6.0), c32(s.accent_soft));
+                                p.rect_stroke(r, ecad_widgets::style::corner(6.0), Stroke::new(1.5, c32(s.accent)), egui::StrokeKind::Inside);
                             }
                             match thumbs.get(id) {
                                 Some(t) => {
@@ -444,10 +444,10 @@ impl App {
                             let tr = ui.interact(tick.expand(3.0), egui::Id::unique(("publish.tick", *id)), Sense::click());
                             tr.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, on, format!("{name}.include")));
                             let p = ui.painter();
-                            p.rect_filled(tick, ecad_ui::style::corner(3.0), c32(if on { s.accent } else { s.raised }));
+                            p.rect_filled(tick, ecad_widgets::style::corner(3.0), c32(if on { s.accent } else { s.raised }));
                             p.rect_stroke(
                                 tick,
-                                ecad_ui::style::corner(3.0),
+                                ecad_widgets::style::corner(3.0),
                                 Stroke::new(1.0, c32(if on { s.accent } else { s.line_strong })),
                                 egui::StrokeKind::Inside,
                             );
@@ -498,8 +498,8 @@ impl App {
     /// Publish's right column: PDF, Printer or DXF, the paper, what goes on every page, the
     /// selected page as it will print, and Export PDF.
     pub(crate) fn publish_right(&mut self, ui: &mut egui::Ui, rect: Rect) {
-        let s = ecad_ui::SHELL;
-        let line = Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, c32(s.line));
+        let s = ecad_widgets::SHELL;
+        let line = Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, c32(s.line));
         ui.painter().rect_filled(rect, 0.0, c32(s.panel));
         ui.painter().vline(rect.left() + 0.5, rect.y_range(), line);
         let head = Rect::from_min_size(rect.min, vec2(rect.width(), 44.0));
@@ -508,14 +508,14 @@ impl App {
             ui.horizontal_centered(|ui| {
                 ui.label(egui::RichText::new("Settings").strong().color(c32(s.text)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add(ecad_ui::prim::Button::new("DXF").small().disabled("DXF export comes later"));
-                    ui.add(ecad_ui::prim::Button::new("Printer").small().disabled("Printing to a printer comes later"));
-                    let _ = ui.add(ecad_ui::prim::Button::new("PDF").kind(ecad_ui::prim::Kind::Primary).small());
+                    ui.add(ecad_widgets::prim::Button::new("DXF").small().disabled("DXF export comes later"));
+                    ui.add(ecad_widgets::prim::Button::new("Printer").small().disabled("Printing to a printer comes later"));
+                    let _ = ui.add(ecad_widgets::prim::Button::new("PDF").kind(ecad_widgets::prim::Kind::Primary).small());
                 });
             });
         });
         let pending =
-            self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_engine::revisions::pending_rev(p.ledger.document())).ok());
+            self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_electrical::releases::revisions::pending_rev(p.ledger.document())).ok());
         let preview = self.publish.preview;
         let preview_words = preview.and_then(|p| self.panel.rows().iter().find(|r| r.id == p)).map(|r| format!("page {:0>2}", r.number));
         let foot_h = 84.0;
@@ -523,7 +523,7 @@ impl App {
         let foot = Rect::from_min_max(pos2(rect.left(), rect.bottom() - foot_h), rect.max);
         let thumb = preview.and_then(|p| self.publish.thumbs.get(&p)).map(|t| t.texture.id());
         let Some(d) = &mut self.print_book else {
-            crate::shell::in_rect(ui, body.shrink(space::L), "publish.right.empty", |ui| ecad_ui::prim::read_value(ui, "No project is open."));
+            crate::shell::in_rect(ui, body.shrink(space::L), "publish.right.empty", |ui| ecad_widgets::prim::read_value(ui, "No project is open."));
             return;
         };
         let kv = |ui: &mut egui::Ui, k: &str, add: &mut dyn FnMut(&mut egui::Ui)| {
@@ -545,7 +545,7 @@ impl App {
                     kv(ui, "Colour", &mut |ui| {
                         // Print Book's two: as on screen, or black on white (grey comes later).
                         let mut i = usize::from(d.mono);
-                        let r = ecad_ui::prim::segmented(ui, &mut i, &["Colour", "Black"]);
+                        let r = ecad_widgets::prim::segmented(ui, &mut i, &["Colour", "Black"]);
                         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::RadioGroup, true, COLOUR));
                         d.mono = i == 1;
                     });
@@ -622,10 +622,10 @@ impl App {
             ui.add_space(space::S);
             ui.horizontal(|ui| {
                 let can = d.sheets > 0 && !d.path.trim().is_empty();
-                let pr = ui.add(ecad_ui::prim::Button::new("Print…").disabled("Printing to a printer comes later"));
+                let pr = ui.add(ecad_widgets::prim::Button::new("Print…").disabled("Printing to a printer comes later"));
                 pr.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, false, PRINT));
                 let w = ui.available_width();
-                let b = ui.add_enabled(can, ecad_ui::prim::Button::new("Export PDF…").kind(ecad_ui::prim::Kind::Primary));
+                let b = ui.add_enabled(can, ecad_widgets::prim::Button::new("Export PDF…").kind(ecad_widgets::prim::Kind::Primary));
                 let _ = w;
                 b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, can, EXPORT));
                 export = b.clicked();

@@ -7,13 +7,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::{outputs_ui, project_panel};
+use {ecad_app::reports::panel, ecad_app::pages::project_panel};
 use ecad_engine::checks::Kind;
 use ecad_model::PageId;
 use egui_kittest::Harness;
 
-use crate::checks_ui::demo_file;
-use crate::mouse_tester::{Deltas, doc, harness_with, ok, shot};
+use crate::checks::ui::demo_file;
+use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, ok, shot};
 
 type H = Harness<'static, ecad_app::App>;
 
@@ -55,12 +55,12 @@ fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
 fn main_symbol(h: &mut H, tag: &str) -> ecad_model::RepresentationId {
     let d = doc(h);
     let c = d.components_tagged(tag)[0];
-    ecad_engine::reps::goto(&d, c, None).unwrap()
+    ecad_electrical::symbols::reps::goto(&d, c, None).unwrap()
 }
 
 #[test]
 fn the_demo_locations_reports_generated_pages_and_print_book() {
-    ecad_engine::printbook::install_io();
+    ecad_engine::export::printbook::install_io();
     let dir = std::env::temp_dir().join(format!("ecad-024-ui-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = demo_file(&dir);
@@ -87,7 +87,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     let d = doc(&mut h);
     let mut proposed: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
     for c in d.devices.keys().copied().filter(|c| ecad_engine::locations::is_device(&d, *c)) {
-        let Some(r) = ecad_engine::reps::goto(&d, c, None) else { continue };
+        let Some(r) = ecad_electrical::symbols::reps::goto(&d, c, None) else { continue };
         let ctx = ecad_engine::locations::rep_context(&d, &d.representations[&r], &mut ecad_engine::locations::BoxCache::default());
         if let Some(v) = ctx.value {
             proposed.entry(v).or_default().push(c.hex());
@@ -105,7 +105,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     let d = doc(&mut h);
     let m1 = d.components_tagged("-M01")[0];
     // Brief 052: the new box proposes +JB2 for -M01; its stored location does not change.
-    let m1_rep = ecad_engine::reps::goto(&d, m1, None).unwrap();
+    let m1_rep = ecad_electrical::symbols::reps::goto(&d, m1, None).unwrap();
     let m1_ctx = ecad_engine::locations::rep_context(&d, &d.representations[&m1_rep], &mut ecad_engine::locations::BoxCache::default());
     assert_eq!(m1_ctx.value.as_deref(), Some("+JB2"));
     assert_ne!(ecad_engine::locations::resolve(&d, m1).value.as_deref(), Some("+JB2"), "a box gives nothing");
@@ -141,7 +141,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     assert!(rows.iter().any(|r| r.check.kind == Kind::LocationUnused), "{rows:?}");
     save(&h, &deltas, "024-check-own-location.png");
     let before = doc(&mut h);
-    h.state_mut().panel_action(project_panel::Action::UseContext(x2, ecad_engine::designations::Aspect::Location));
+    h.state_mut().panel_action(project_panel::Action::UseContext(x2, ecad_electrical::locations::designations::Aspect::Location));
     h.run_steps(3);
     assert_ne!(doc(&mut h), before, "one step");
     let d = doc(&mut h);
@@ -163,7 +163,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().export_report(&csv.to_string_lossy());
     let text = std::fs::read_to_string(&csv).unwrap();
     assert!(text.contains("'-S01") && text.contains("'+CP1"), "{text}");
-    h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Wires;
+    h.state_mut().reports.as_mut().unwrap().tab = panel::Tab::Wires;
     h.run_steps(4);
     let wires = h.state().reports.as_ref().unwrap().table().clone();
     // -W01 continues on page 3 (F4, F5): each core is one wire from -K01 to -X02, listed with its
@@ -171,7 +171,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     let cored = wires.rows.iter().filter(|row| row[9].text.starts_with("-W01 core")).count();
     assert_eq!(cored, 3, "the three cores with their cable");
     save(&h, &deltas, "024-reports-wires.png");
-    h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Cables;
+    h.state_mut().reports.as_mut().unwrap().tab = panel::Tab::Cables;
     h.run_steps(4);
     let cables = h.state().reports.as_ref().unwrap().table().clone();
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();

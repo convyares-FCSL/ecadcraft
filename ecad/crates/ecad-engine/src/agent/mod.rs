@@ -46,10 +46,10 @@ pub fn not_offered(name: &str) -> String {
 }
 
 /// An author name as recorded: hidden characters (control, bidirectional, zero-width: the one
-/// rule in `ecad_model::words`) dropped, so a name cannot pose as another; spaces trimmed,
+/// rule in `ecad_model::naming::words`) dropped, so a name cannot pose as another; spaces trimmed,
 /// at most [`MAX_AGENT_NAME`] characters; empty becomes [`UNNAMED_AGENT`].
 pub fn agent_name(given: &str) -> String {
-    let s: String = ecad_model::text::strip_hidden(given).chars().take(MAX_AGENT_NAME).collect();
+    let s: String = ecad_model::naming::text::strip_hidden(given).chars().take(MAX_AGENT_NAME).collect();
     let s = s.trim();
     if s.is_empty() { UNNAMED_AGENT.to_string() } else { s.to_string() }
 }

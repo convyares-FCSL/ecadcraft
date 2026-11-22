@@ -22,15 +22,15 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::effect::{AreaSet, Effect};
-use ecad_model::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
+use ecad_model::document::effect::{AreaSet, Effect};
+use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, PageId};
 
-use super::Inputs;
-use crate::generated;
-use crate::outputs::kept::{Noted, ReportModels};
+use crate::views::Inputs;
+use crate::pages::generated;
+use crate::reports::kept::{Noted, ReportModels};
 use crate::plc::sheets::RackPlaces;
-use crate::text_style::fonts::TextMetrics;
+use crate::styles::text_style::fonts::TextMetrics;
 use ecad_model::GenKind;
 
 /// The kept report models.
@@ -123,7 +123,7 @@ impl<'i> DerivedView<Inputs<'i>> for ReportsView {
         // Brief 051 (review of #89, 3): the rack sheet prints each card's place.
         let places_moved = places.touched(doc, &self.model.plc);
         let mut problems = Vec::new();
-        if ecad_model::ledger::verify_mode()
+        if ecad_model::document::ledger::verify_mode()
             && let Some(line) = self.model.verify_strips_with(doc)
         {
             problems.push(line);

@@ -7,7 +7,7 @@ use crate::common;
 
 use common::{H, id};
 use ecad_engine::checks::{self, Kind as CheckKind};
-use ecad_engine::symbols::{self, Family, STARTER_LIBRARY, STARTERS};
+use ecad_electrical::symbols::{self, Family, STARTER_LIBRARY, STARTERS};
 use ecad_model::{DeviceId, Op, ConnectionPointId, Word};
 use serde_json::{Value, json};
 

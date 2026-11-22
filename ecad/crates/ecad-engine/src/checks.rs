@@ -1,11 +1,11 @@
 //! The engine side of the Checks list (design 065 §3): the from-scratch pass measuring text in
 //! CADCraft's fonts (cut 10, option F2), and the drawn handles a check's go-to selects. The kept
-//! list is `ecad_electrical::derived::ChecksView`, in the project's views.
+//! list is `ecad_electrical::views::ChecksView`, in the project's views.
 
 use ecad_model::{Document, PageId, Subject};
 
 use crate::checks::{Check, Object};
-use crate::draw::text_style::EngineMetrics;
+use crate::styles::draw::EngineMetrics;
 
 /// Every check of the project, worked out from scratch (the `checks` command reads on request).
 pub fn all(doc: &Document, tol: f64) -> Vec<Check> {

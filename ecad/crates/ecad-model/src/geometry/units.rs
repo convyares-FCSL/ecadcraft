@@ -15,7 +15,7 @@ use std::ops::{Add, AddAssign, Mul, Neg, Sub, SubAssign};
 
 use serde::{Deserialize, Serialize};
 
-use crate::doc::LengthUnit;
+use crate::document::doc::LengthUnit;
 
 /// Declares one transparent unit newtype with its `Display` suffix.
 macro_rules! unit {
@@ -117,7 +117,7 @@ unit!(
 impl Mm {
     /// This length in drawing units of a project whose length unit is `unit`.
     pub fn to_units(self, unit: LengthUnit) -> f64 {
-        self.0 * crate::sheet::unit_scale(unit)
+        self.0 * crate::document::sheet::unit_scale(unit)
     }
 }
 

@@ -2,13 +2,13 @@
 //! tools; the frames with their thumbnails; **+ Title block** and **Import DXF**; the field
 //! palette, whose rows are dragged onto the block.
 
-use ecad_engine::styles::Layer;
-use ecad_model::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, Newest, Rect as BRect, TextDraw, TitleBlockLayout};
-use ecad_ui::tokens::{space, ui_type};
+use ecad_electrical::styles::Layer;
+use ecad_model::objects::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, Newest, Rect as BRect, TextDraw, TitleBlockLayout};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Color32, Rect, Sense, Stroke, pos2, vec2};
 use serde_json::json;
 
-use super::{Act, DxfAsk, Editor, Tool};
+use crate::title_blocks::{Act, DxfAsk, Editor, Tool};
 use crate::library::browser::{self, Browser, Listing};
 use crate::shell::bar;
 
@@ -25,8 +25,8 @@ pub const ROW_H: f32 = 56.0;
 pub const FIELD_SIZE: (f64, f64) = (40.0, 8.0);
 pub const TABLE_SIZE: (f64, f64) = (120.0, 25.0);
 
-fn c32(c: ecad_ui::tokens::Color) -> Color32 {
-    ecad_ui::color(c)
+fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+    ecad_widgets::color(c)
 }
 
 /// What a palette row drops.
@@ -126,8 +126,8 @@ impl PaletteRow {
 
 /// The toolbar: the Library tabs, then the tools, Sample, Snap and Frame….
 pub fn head(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, ed: &mut Editor) -> Vec<Act> {
-    let s = ecad_ui::SHELL;
-    let line = Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, c32(s.line));
+    let s = ecad_widgets::SHELL;
+    let line = Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, c32(s.line));
     let head = Rect::from_min_size(main.min, vec2(main.width(), browser::TABS_H));
     ui.painter().rect_filled(main, 0.0, c32(s.bg));
     ui.painter().rect_filled(head, 0.0, c32(s.panel));
@@ -153,15 +153,15 @@ pub fn head(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, ed: 
             ui.add_space(space::M);
             bar::vline(ui, ui.cursor().left(), head.top() + 10.0, head.bottom() - 10.0);
             ui.add_space(space::M);
-            switch(ui, "Sample", super::SAMPLE, &mut ed.sample);
-            switch(ui, "Snap", super::SNAP, &mut ed.snap);
+            switch(ui, "Sample", crate::title_blocks::SAMPLE, &mut ed.sample);
+            switch(ui, "Snap", crate::title_blocks::SNAP, &mut ed.snap);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let f = ui.add(ecad_ui::prim::Button::new("Frame…").small());
-                f.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, super::FRAME));
+                let f = ui.add(ecad_widgets::prim::Button::new("Frame…").small());
+                f.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, crate::title_blocks::FRAME));
                 if f.clicked() {
                     ed.frame = match ed.frame {
                         Some(_) => None,
-                        None => ed.draft.as_ref().map(|d| super::frame_popover::FrameEdit::of(&d.now.fields)),
+                        None => ed.draft.as_ref().map(|d| crate::title_blocks::frame_popover::FrameEdit::of(&d.now.fields)),
                     };
                     ed.canvas.frame_button = Some(f.rect);
                 }
@@ -173,7 +173,7 @@ pub fn head(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, ed: 
 
 /// A labelled switch (Sample, Snap).
 fn switch(ui: &mut egui::Ui, label: &str, name: &str, on: &mut bool) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let w = 30.0 + 6.0 + bar::text_width(ui, label, ui_type::BODY) + space::M;
     let (r, resp) = ui.allocate_exact_size(vec2(w, 28.0), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, *on, name));
@@ -189,8 +189,8 @@ fn switch(ui: &mut egui::Ui, label: &str, name: &str, on: &mut bool) {
 
 /// The left column: the frames, + Title block and Import DXF, and the palette.
 pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, writable: bool) -> Vec<Act> {
-    let s = ecad_ui::SHELL;
-    let line = Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, c32(s.line));
+    let s = ecad_widgets::SHELL;
+    let line = Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, c32(s.line));
     let mut acts = Vec::new();
     let col = Rect::from_min_max(pos2(main.left(), main.top() + browser::TABS_H), pos2(main.left() + LIST_W, main.bottom()));
     ui.painter().rect_filled(col, 0.0, c32(s.panel));
@@ -222,15 +222,15 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
                 resp.context_menu(|ui| row_menu(ui, &r, writable, &mut acts));
             }
         });
-        list.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::List, true, super::LIST));
+        list.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::List, true, crate::title_blocks::LIST));
         ui.add_space(space::S);
         ui.horizontal(|ui| {
-            let n = ui.add(gate(ecad_ui::prim::Button::new("+  Title block").small(), writable));
+            let n = ui.add(gate(ecad_widgets::prim::Button::new("+  Title block").small(), writable));
             n.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, NEW));
             if n.clicked() {
                 ed.new_menu = !ed.new_menu;
             }
-            let i = ui.add(gate(ecad_ui::prim::Button::new("Import DXF").small().kind(ecad_ui::prim::Kind::Quiet), writable));
+            let i = ui.add(gate(ecad_widgets::prim::Button::new("Import DXF").small().kind(ecad_widgets::prim::Kind::Quiet), writable));
             i.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, IMPORT));
             if i.clicked() {
                 ed.dxf = Some(DxfAsk { sheet: "A3".into(), ..DxfAsk::default() });
@@ -267,7 +267,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
             let mut cancel = false;
             egui::Frame::new().fill(c32(s.raised)).inner_margin(space::S).corner_radius(4.0).show(ui, |ui| {
                 ui.label(egui::RichText::new("Import a title block from a DXF, at 1:1").small().color(c32(s.text_2)));
-                ecad_ui::control::TextEntry::new(&mut ask.path, IMPORT_PATH).placeholder("C:\\drawings\\block.dxf").show(ui);
+                ecad_widgets::control::TextEntry::new(&mut ask.path, IMPORT_PATH).placeholder("C:\\drawings\\block.dxf").show(ui);
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("Sheet").small());
                     for size in ["A3", "A2", "A1", "A0"] {
@@ -280,7 +280,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
                     ui.label(egui::RichText::new(e).small().color(c32(s.error)));
                 }
                 ui.horizontal(|ui| {
-                    let b = ui.add(ecad_ui::prim::Button::new("Import").small().kind(ecad_ui::prim::Kind::Primary));
+                    let b = ui.add(ecad_widgets::prim::Button::new("Import").small().kind(ecad_widgets::prim::Kind::Primary));
                     b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, IMPORT_GO));
                     go = b.clicked();
                     cancel = ui.small_button("Cancel").clicked();
@@ -323,7 +323,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
             let mut ok = false;
             let mut cancel = false;
             ui.horizontal(|ui| {
-                let f = ecad_ui::control::TextEntry::new(key, "library.tb.palette.project_field.key").placeholder("job_no").width(140.0).show(ui);
+                let f = ecad_widgets::control::TextEntry::new(key, "library.tb.palette.project_field.key").placeholder("job_no").width(140.0).show(ui);
                 ok = ui.small_button("Add").clicked() || (f.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
                 cancel = ui.small_button("Cancel").clicked();
             });
@@ -333,8 +333,8 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
             }
             if ok && valid {
                 let k = key.trim().to_string();
-                if let (Some(d), Some(pk)) = (ed.draft.as_mut(), ecad_model::title_block::ProjectKey::new(&k)) {
-                    let at = super::canvas::free_place(&d.now.layout, FIELD_SIZE);
+                if let (Some(d), Some(pk)) = (ed.draft.as_mut(), ecad_model::objects::title_block::ProjectKey::new(&k)) {
+                    let at = crate::title_blocks::canvas::free_place(&d.now.layout, FIELD_SIZE);
                     d.add(BlockItem::Field {
                         at: BRect::new(at.0, at.1 - FIELD_SIZE.1, FIELD_SIZE.0, FIELD_SIZE.1),
                         bind: Binding::Project(pk),
@@ -358,7 +358,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
     acts
 }
 
-fn row_menu(ui: &mut egui::Ui, r: &super::Row, writable: bool, acts: &mut Vec<Act>) {
+fn row_menu(ui: &mut egui::Ui, r: &crate::title_blocks::Row, writable: bool, acts: &mut Vec<Act>) {
     let own = r.layer != Layer::Builtin;
     ui.menu_button("Duplicate for…", |ui| {
         for size in ["A3", "A2", "A1", "A0"] {
@@ -384,9 +384,9 @@ fn row_menu(ui: &mut egui::Ui, r: &super::Row, writable: bool, acts: &mut Vec<Ac
 
 /// A thumbnail of `l`: the block's lines and boxes, fitted.
 pub fn paint_thumb(ui: &egui::Ui, rect: Rect, l: &TitleBlockLayout) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let p = ui.painter();
-    p.rect(rect, 2.0, ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet), Stroke::new(1.0, c32(s.line)), egui::StrokeKind::Inside);
+    p.rect(rect, 2.0, ecad_widgets::color(ecad_drawing_style::sheet::PAPER.sheet), Stroke::new(1.0, c32(s.line)), egui::StrokeKind::Inside);
     let (w, h) = l.size;
     if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
         return;
@@ -397,7 +397,7 @@ pub fn paint_thumb(ui: &egui::Ui, rect: Rect, l: &TitleBlockLayout) {
     let bw = (w * k) as f32;
     let bh = (h * k) as f32;
     let o = pos2(inner.right() - bw, inner.bottom());
-    let ink = ecad_ui::color(ecad_drawing_style::sheet::PAPER.ink);
+    let ink = ecad_widgets::color(ecad_drawing_style::sheet::PAPER.ink);
     p.rect_stroke(Rect::from_min_max(inner.min, inner.max), 0.0, Stroke::new(0.8, ink), egui::StrokeKind::Inside);
     p.rect_stroke(Rect::from_min_max(pos2(o.x, o.y - bh), pos2(o.x + bw, o.y)), 0.0, Stroke::new(0.8, ink), egui::StrokeKind::Inside);
     for item in l.items.iter().take(200) {
@@ -409,6 +409,6 @@ pub fn paint_thumb(ui: &egui::Ui, rect: Rect, l: &TitleBlockLayout) {
 }
 
 /// `b`, disabled with the writes-off reason unless `on`.
-pub fn gate(b: ecad_ui::prim::Button<'_>, on: bool) -> ecad_ui::prim::Button<'_> {
-    if on { b } else { b.disabled(super::WRITES_OFF) }
+pub fn gate(b: ecad_widgets::prim::Button<'_>, on: bool) -> ecad_widgets::prim::Button<'_> {
+    if on { b } else { b.disabled(crate::title_blocks::WRITES_OFF) }
 }

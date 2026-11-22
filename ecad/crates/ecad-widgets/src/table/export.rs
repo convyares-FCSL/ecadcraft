@@ -1,6 +1,6 @@
 //! CSV export (design §6.2): the shown rows and columns, as the table shows them.
 
-use super::source::{Column, TableSource};
+use crate::table::source::{Column, TableSource};
 
 /// One CSV field, quoted when it holds a comma, a quote or a line break.
 fn field(text: &str) -> String {

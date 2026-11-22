@@ -14,10 +14,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::id::{FunctionId, LocationId};
-use crate::style::StyleRef;
-use crate::text::Text;
-use crate::units::Celsius;
+use crate::naming::id::{FunctionId, LocationId};
+use crate::objects::styles::StyleRef;
+use crate::naming::text::Text;
+use crate::geometry::units::Celsius;
 
 /// Most characters of a continuation name.
 pub const MAX_NAME: usize = 16;
@@ -33,7 +33,7 @@ pub type Caption = Text<MAX_CAPTION>;
 ///
 /// # Example
 /// ```
-/// use ecad_model::aid::{Aid, ContinuationName};
+/// use crate::objects::aid::{Aid, ContinuationName};
 /// let a = Aid::Continuation { name: Some(ContinuationName::new("24V").unwrap()), caption: None };
 /// assert_eq!(serde_json::to_string(&a).unwrap(), r#"{"continuation":{"name":"24V"}}"#);
 /// assert_eq!(serde_json::from_str::<Aid>(r#"{"box":{}}"#).unwrap(), Aid::Box(Default::default()));

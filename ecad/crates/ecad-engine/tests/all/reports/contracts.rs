@@ -22,7 +22,7 @@ fn loc(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
 /// What device `c`'s go-to symbol's context proposes (design 052 §5.3): a box, the page, the
 /// project, or none.
 fn ctx(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
-    let r = ecad_engine::reps::goto(doc, c, None).unwrap();
+    let r = ecad_electrical::symbols::reps::goto(doc, c, None).unwrap();
     let l = locations::rep_context(doc, &doc.representations[&r], &mut locations::BoxCache::default());
     (l.value, l.source.word())
 }
@@ -112,7 +112,7 @@ fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
     assert_eq!(loc(&doc, m), (s("+JB1"), "device"), "the unset devices inside take the box's");
     assert_eq!(loc(&doc, x), (s("+JB1"), "device"));
     assert_eq!(ctx(&doc, m), (s("+JB1"), "box"));
-    let rm = ecad_engine::reps::goto(&doc, m, None).unwrap();
+    let rm = ecad_electrical::symbols::reps::goto(&doc, m, None).unwrap();
     let l = locations::rep_context(&doc, &doc.representations[&rm], &mut locations::BoxCache::default());
     assert_eq!(l.source, Source::Box { aid: boxc, page });
     assert!(l.shown(&doc).contains("from box on 1"), "{}", l.shown(&doc));
@@ -145,7 +145,7 @@ fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
     let own: Vec<_> = checks.iter().filter(|c| c.kind == Kind::LocationUnused && c.which.contains("+CP9")).collect();
     assert_eq!(own.len(), 1, "{checks:?}");
     assert!(own[0].which.contains("is +CP9, but none of its symbols is in +CP9"), "{}", own[0].which);
-    assert_eq!(own[0].fix, Some(Fix::UseContext(x, ecad_engine::designations::Aspect::Location)));
+    assert_eq!(own[0].fix, Some(Fix::UseContext(x, ecad_electrical::locations::designations::Aspect::Location)));
     same_as_built(&mut h);
     h.run("setprop", json!({"component": x.hex(), "key": "location", "value": null})).unwrap();
     assert_eq!(loc(&h.doc(), x), (None, "none"));
@@ -285,7 +285,7 @@ fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
 /// edits, overflow onto more sheets and count in Total; Print Book prints them.
 #[test]
 fn generated_pages_follow_the_project_and_print() {
-    ecad_engine::printbook::install_io();
+    ecad_engine::export::printbook::install_io();
     let mut h = H::new(0x24_06);
     h.run("projectprops", json!({"title": "Pump panel", "location": "+CP1"})).unwrap();
     let mut coils = vec![place(&mut h, "coil", (100.0, 150.0))];

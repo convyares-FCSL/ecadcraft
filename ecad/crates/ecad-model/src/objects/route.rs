@@ -14,8 +14,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::geom::Pt;
-use crate::id::{PageId, RouteId, ConnectionPointId};
+use crate::geometry::geom::Pt;
+use crate::naming::id::{PageId, RouteId, ConnectionPointId};
 
 /// Most points of one route.
 pub const MAX_POINTS: usize = 4096;

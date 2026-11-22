@@ -12,13 +12,13 @@
 //! document lookups.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::doc::{Cable, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
-use crate::keys::{Area, area_of};
-use crate::op::{ObjectRef, Op};
-use crate::project::Project;
-use crate::route::Route;
-use crate::style::{StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
+use crate::document::doc::{Cable, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
+use crate::naming::keys::{Area, area_of};
+use crate::document::op::{ObjectRef, Op};
+use crate::document::project::Project;
+use crate::objects::route::Route;
+use crate::objects::styles::{StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 /// A property key with its area, classified once ([`area_of`], design 064 §3.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,21 +137,21 @@ pub enum Effect<'a> {
     },
     /// A drawing aid made, removed or changed (design 072 §6.2).
     Aid {
-        id: crate::id::AidId,
-        before: Option<&'a crate::aid::Aid>,
-        after: Option<&'a crate::aid::Aid>,
+        id: crate::naming::id::AidId,
+        before: Option<&'a crate::objects::aid::Aid>,
+        after: Option<&'a crate::objects::aid::Aid>,
     },
     /// A loose part made, removed or changed (design 072 §6.4).
     LoosePart {
-        id: crate::id::LoosePartId,
-        before: Option<&'a crate::loose_part::LoosePart>,
-        after: Option<&'a crate::loose_part::LoosePart>,
+        id: crate::naming::id::LoosePartId,
+        before: Option<&'a crate::objects::loose_part::LoosePart>,
+        after: Option<&'a crate::objects::loose_part::LoosePart>,
     },
     /// A device link made or removed (design 072 §2.6).
     DeviceLink {
-        id: crate::id::LinkId,
-        before: Option<&'a crate::user::DeviceLink>,
-        after: Option<&'a crate::user::DeviceLink>,
+        id: crate::naming::id::LinkId,
+        before: Option<&'a crate::objects::user::DeviceLink>,
+        after: Option<&'a crate::objects::user::DeviceLink>,
     },
 }
 
@@ -300,7 +300,7 @@ impl Effect<'_> {
 ///
 /// # Example
 /// ```
-/// use ecad_model::effect::{EffectKind, Effects};
+/// use crate::document::effect::{EffectKind, Effects};
 /// use ecad_model::{Op, ProjectSettings};
 /// let s = ProjectSettings::default();
 /// let ops = [Op::SetProjectSettings { before: s.clone(), after: s }];

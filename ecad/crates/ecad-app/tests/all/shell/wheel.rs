@@ -4,7 +4,7 @@
 
 use cadcraft_engine::geom::Vec2;
 use ecad_app::App;
-use ecad_app::actions::ObjectKind;
+use ecad_app::commands::actions::ObjectKind;
 use ecad_app::shell::{Workspace, intent, tool_strip};
 use ecad_model::{DeviceId, PageId, WireId};
 use eframe::egui::{Event, Key, Modifiers, PointerButton, Pos2, vec2};
@@ -12,7 +12,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
-use crate::project_panel::{doc, head, new_app};
+use crate::pages::project_panel::{doc, head, new_app};
 
 type H = Harness<'static, App>;
 
@@ -20,7 +20,7 @@ type H = Harness<'static, App>;
 /// the slot is the one inside the wheel's ring).
 fn wheel_slot<'a>(h: &'a H, label: &'a str) -> egui_kittest::Node<'a> {
     let c = h.state().shell.tools.wheel.as_ref().map(|w| w.widget.center).expect("a wheel is open");
-    let r = ecad_ui::tokens::wheel::OUTER_RADIUS;
+    let r = ecad_widgets::tokens::wheel::OUTER_RADIUS;
     h.get_all_by_label(label).find(|n| (n.rect().center() - c).length() <= r).expect("the slot")
 }
 
@@ -28,10 +28,10 @@ fn shell() -> H {
     shell_with(None)
 }
 
-fn shell_with(deltas: Option<crate::mouse_tester::Deltas>) -> H {
+fn shell_with(deltas: Option<crate::canvas::mouse_acceptance::Deltas>) -> H {
     let mut b = Harness::builder().with_size(vec2(1920.0, 1080.0)).with_step_dt(1.0 / 60.0);
     if let Some(d) = deltas {
-        b = b.renderer(crate::mouse_tester::Collect(d));
+        b = b.renderer(crate::canvas::mouse_acceptance::Collect(d));
     }
     let mut h = b.build_ui_state(
         |ui, t: &mut App| {
@@ -84,7 +84,7 @@ fn fixture() -> F {
     fixture_with(None)
 }
 
-fn fixture_with(deltas: Option<crate::mouse_tester::Deltas>) -> F {
+fn fixture_with(deltas: Option<crate::canvas::mouse_acceptance::Deltas>) -> F {
     let mut h = shell_with(deltas);
     let t = h.state_mut();
     t.cad.session.viewport_px = (1280.0, 800.0);
@@ -94,7 +94,7 @@ fn fixture_with(deltas: Option<crate::mouse_tester::Deltas>) -> F {
     let page1 = d.page_order[0];
     let pos = |label: &str| {
         let (t, _) = d.connection_points_of(k1).find(|(_, x)| x.label.as_deref() == Some(label)).unwrap();
-        let p = ecad_model::derive::connection_point_positions(&d, page1).into_iter().find(|(x, _, _)| *x == t).unwrap().2;
+        let p = ecad_model::connectivity::derive::connection_point_positions(&d, page1).into_iter().find(|(x, _, _)| *x == t).unwrap().2;
         Vec2::new(p.x, p.y)
     };
     let (a1, a2) = (pos("A1"), pos("A2"));
@@ -138,7 +138,7 @@ fn right_click_on_the_coil_opens_its_wheel_and_both_gestures_delete_it_in_one_tr
     keys(&mut h, Modifiers::COMMAND, Key::Z);
     assert!(exists(&mut h, k1), "Ctrl+Z undid it");
     pointer(&mut h, at, PointerButton::Secondary, true);
-    let slot = ecad_ui::wheel::slot_center(h.state().shell.tools.wheel.as_ref().unwrap().widget.center, 4);
+    let slot = ecad_widgets::wheel::slot_center(h.state().shell.tools.wheel.as_ref().unwrap().widget.center, 4);
     pointer(&mut h, slot, PointerButton::Secondary, false);
     assert!(!exists(&mut h, k1), "press-move-release ran the same slot");
     // Ctrl+Y: redo after an undo.
@@ -385,11 +385,11 @@ fn a_page_row_opens_its_wheel() {
 /// about the pictures).
 #[test]
 fn screenshots_for_the_owner() {
-    let Some(out) = crate::project_panel::shots() else { return };
-    let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
+    let Some(out) = crate::pages::project_panel::shots() else { return };
+    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
     let F { mut h, coil_at, a1, wire, .. } = fixture_with(Some(deltas.clone()));
     let shot = |h: &H, name: &str| {
-        let _ = crate::mouse_tester::shot(h, &deltas, &out.join(name));
+        let _ = crate::canvas::mouse_acceptance::shot(h, &deltas, &out.join(name));
     };
     // The device wheel, hovering the greyed Go to contacts.
     let at = to_screen(&h, coil_at);
@@ -403,7 +403,7 @@ fn screenshots_for_the_owner() {
     let (a, b) = {
         let d = doc(&mut h);
         let page = d.page_order[0];
-        let (_, prim) = ecad_model::derive::route_on_page(&d, wire, page).unwrap();
+        let (_, prim) = ecad_model::connectivity::derive::route_on_page(&d, wire, page).unwrap();
         prim.path_ends().unwrap()
     };
     let mid = to_screen(&h, Vec2::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0));

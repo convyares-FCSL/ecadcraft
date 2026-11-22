@@ -20,12 +20,12 @@
 //! This module excludes the protection reader (its parent) and the supply calculations.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ecad_model::device::power_supply::{MAX_AMPS, MAX_POWER_WATTS, MAX_VOLT_AMPS, MAX_VOLTS};
-use ecad_model::device::{PowerSupply, Psu, Transformer};
-use ecad_model::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, Watts};
+use ecad_model::objects::devices::power_supply::{MAX_AMPS, MAX_POWER_WATTS, MAX_VOLT_AMPS, MAX_VOLTS};
+use ecad_model::objects::devices::{PowerSupply, Psu, Transformer};
+use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, Watts};
 
-use super::load::pieces;
-use super::{MAX_CHARS, Read};
+use crate::devices::ratings::load::pieces;
+use crate::devices::ratings::{MAX_CHARS, Read};
 
 /// Which side of the supply a value is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,7 +87,7 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
     }
     let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
     let (num, unit) = lower.split_at(split);
-    unit_tokens(crate::rating::parse::decimal(num)?, unit)
+    unit_tokens(crate::devices::ratings::parse::decimal(num)?, unit)
 }
 
 /// The pieces of `text` (a `/` its own piece), or `None` when a piece is no rating word.
@@ -207,8 +207,8 @@ fn milli(x: f64) -> f64 {
 ///
 /// # Example
 /// ```
-/// use ecad_electrical::rating::reader::{Read, read_power_supply};
-/// use ecad_model::device::{PowerSupply, Psu, Transformer};
+/// use crate::devices::ratings::{Read, read_power_supply};
+/// use ecad_model::objects::devices::{PowerSupply, Psu, Transformer};
 /// let psu = PowerSupply::Psu(Psu::default());
 /// let Read::Rating(r) = read_power_supply(&psu, "230VAC/24VDC 5A") else { panic!() };
 /// assert_eq!(r.to_string(), "230 V AC / 24 V DC, 5 A");
@@ -322,7 +322,7 @@ fn build(supply: &PowerSupply, f: &Found) -> Result<PowerSupply, Err> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::devices::ratings::*;
 
     fn shown_on(supply: &PowerSupply, text: &str) -> String {
         match read_power_supply(supply, text) {

@@ -17,15 +17,15 @@ use cadcraft_engine::Session;
 use cadcraft_engine::doc::{Drawing, Entity, EntityKind};
 use cadcraft_engine::geom::{Mat3, Vec2};
 use ecad_electrical::CmdError;
-use ecad_model::sheet::{FRAME_CATALOGUE, SheetSpec};
-use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-use ecad_model::title_block::{
+use ecad_model::document::sheet::{FRAME_CATALOGUE, SheetSpec};
+use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
+use ecad_model::objects::title_block::{
     Align, BlockItem, LineWeight, MAX_BODY_PRIMS, MAX_ITEMS, MAX_LOGO_PRIMS, MAX_TEXT_MM, MIN_TEXT_MM, Rect, TextDraw, TitleBlockLayout, logo_words,
 };
 use ecad_model::{Op, Primitive, Pt};
 use serde_json::{Value, json};
 
-use crate::cmd::{err, on_project};
+use crate::commands::{err, on_project};
 
 /// Largest DXF read, in bytes (a guard on hostile input).
 pub const MAX_DXF_BYTES: usize = 16 * 1024 * 1024;
@@ -140,7 +140,7 @@ pub fn logo(bytes: &[u8]) -> Result<Vec<Primitive>, String> {
     if r.prims.is_empty() {
         return Err(EMPTY.into());
     }
-    if ecad_model::geom::extents(&r.prims).is_none() {
+    if ecad_model::geometry::geom::extents(&r.prims).is_none() {
         return Err(EMPTY.into());
     }
     Ok(r.prims)
@@ -156,14 +156,14 @@ fn mm(v: f64) -> String {
 ///
 /// # Errors
 /// Unreadable, empty, too large for the block area, or past the bounds, in words.
-pub fn block(bytes: &[u8], spec: &SheetSpec, margins: &ecad_model::sheet::Margins) -> Result<(TitleBlockLayout, usize), String> {
+pub fn block(bytes: &[u8], spec: &SheetSpec, margins: &ecad_model::document::sheet::Margins) -> Result<(TitleBlockLayout, usize), String> {
     let r = read(bytes)?;
     if r.over {
-        return Err(format!("The DXF has more than {} shapes; simplify it first.", ecad_model::title_block::group(MAX_READ)));
+        return Err(format!("The DXF has more than {} shapes; simplify it first.", ecad_model::objects::title_block::group(MAX_READ)));
     }
-    let (lo, hi) = ecad_model::geom::extents(&r.prims).ok_or(EMPTY)?;
+    let (lo, hi) = ecad_model::geometry::geom::extents(&r.prims).ok_or(EMPTY)?;
     let (w, h) = (hi.x - lo.x, hi.y - lo.y);
-    let (aw, ah) = ecad_electrical::title_block::block_area(spec, margins);
+    let (aw, ah) = ecad_electrical::title_blocks::block_area(spec, margins);
     if w > aw + 1e-6 || h > ah + 1e-6 {
         let name = crate::title_block::sheet_name(spec);
         return Err(format!(
@@ -205,7 +205,7 @@ pub fn block(bytes: &[u8], spec: &SheetSpec, margins: &ecad_model::sheet::Margin
                 let rect = Rect::new(x, (y - size * 0.4).max(0.0), tw.max(1.0), size * 1.8);
                 items.push(BlockItem::Text {
                     at: rect,
-                    text: value.chars().take(ecad_model::title_block::MAX_BODY_TEXT).collect(),
+                    text: value.chars().take(ecad_model::objects::title_block::MAX_BODY_TEXT).collect(),
                     look: TextDraw { size, align, ..TextDraw::default() },
                 });
             }
@@ -217,11 +217,11 @@ pub fn block(bytes: &[u8], spec: &SheetSpec, margins: &ecad_model::sheet::Margin
         if curves.len() > MAX_BODY_PRIMS {
             return Err(format!(
                 "The drawing has {} curved shapes; {} at most. Simplify it first.",
-                ecad_model::title_block::group(curves.len()),
-                ecad_model::title_block::group(MAX_BODY_PRIMS)
+                ecad_model::objects::title_block::group(curves.len()),
+                ecad_model::objects::title_block::group(MAX_BODY_PRIMS)
             ));
         }
-        if let Some((clo, chi)) = ecad_model::geom::extents(&curves) {
+        if let Some((clo, chi)) = ecad_model::geometry::geom::extents(&curves) {
             let (x, y) = at(clo);
             let rect = Rect::new(x, y, (chi.x - clo.x).max(0.5), (chi.y - clo.y).max(0.5));
             // Chunks within the logo bound, each over the same box.
@@ -264,15 +264,15 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
         return on_project(s, |p, pg, _| {
             (|| {
                 let doc = p.ledger.document();
-                let id = crate::cmd::title_block::target(doc, params)?;
+                let id = crate::title_blocks::commands::target(doc, params)?;
                 if id.is_builtin() {
-                    return Err(ecad_electrical::cmd::title_block::BUILTIN_READ_ONLY.into());
+                    return Err(ecad_electrical::title_blocks::commands::BUILTIN_READ_ONLY.into());
                 }
                 let layer = [StyleLayer::Project, StyleLayer::Standard]
                     .into_iter()
-                    .find(|l| crate::styles::record(doc, *l, FRAME_CATALOGUE, &id).is_some())
-                    .ok_or(ecad_electrical::cmd::title_block::NOT_A_FRAME)?;
-                let before = crate::styles::record(doc, layer, FRAME_CATALOGUE, &id).cloned();
+                    .find(|l| ecad_electrical::styles::record(doc, *l, FRAME_CATALOGUE, &id).is_some())
+                    .ok_or(ecad_electrical::title_blocks::commands::NOT_A_FRAME)?;
+                let before = ecad_electrical::styles::record(doc, layer, FRAME_CATALOGUE, &id).cloned();
                 let mut after = before.clone().unwrap_or_else(|| StyleRecord::empty(FRAME_CATALOGUE));
                 let mut layout = after.title_block().cloned().ok_or("This frame has no title block yet; add a Logo item first.")?;
                 let count = prims.len();
@@ -281,10 +281,10 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                     _ => return Err(format!("Item {n} is not a logo.")),
                 }
                 layout.check()?;
-                if let ecad_model::style::StyleBody::Frame(f) = &mut after.body {
+                if let ecad_model::objects::styles::StyleBody::Frame(f) = &mut after.body {
                     f.title_block = Some(layout);
                 }
-                let name = crate::styles::name(doc, FRAME_CATALOGUE, &id);
+                let name = ecad_electrical::styles::name(doc, FRAME_CATALOGUE, &id);
                 let ops = vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before, after: Some(after) }];
                 p.apply_edit(pg, "titleblockimport", &format!("Logo of {name}"), ops)?;
                 Ok(json!({"changed": true, "id": id.text(), "item": n, "shapes": count}))
@@ -299,31 +299,31 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                 Some(t) => SheetSpec::parse(t)?,
                 None => doc.settings.sheet(),
             };
-            let margins = ecad_model::sheet::Margins::default();
+            let margins = ecad_model::document::sheet::Margins::default();
             let (layout, skipped) = block(&bytes, &spec, &margins)?;
             let items = layout.items.len();
             let base = format!("{} imported block", crate::title_block::sheet_name(&spec));
             let name = match params.get("name").and_then(Value::as_str).map(str::trim) {
-                Some(n) if ecad_model::style::is_name(n) => n.to_string(),
-                Some(_) => return Err(ecad_electrical::cmd::style::STYLE_NEEDS_NAME.into()),
+                Some(n) if ecad_model::objects::styles::is_name(n) => n.to_string(),
+                Some(_) => return Err(ecad_electrical::styles::commands::styles::STYLE_NEEDS_NAME.into()),
                 None => {
                     let taken: Vec<String> =
-                        crate::styles::rows(doc, &crate::styles::frame::CATALOGUE).into_iter().map(|r| r.name.to_lowercase()).collect();
+                        ecad_electrical::styles::rows(doc, &ecad_electrical::styles::frame::CATALOGUE).into_iter().map(|r| r.name.to_lowercase()).collect();
                     (1..10_000)
                         .map(|i| if i == 1 { base.clone() } else { format!("{base} {i}") })
                         .find(|n| !taken.contains(&n.to_lowercase()))
                         .unwrap_or(base)
                 }
             };
-            let body = ecad_model::style::StyleBody::Frame(ecad_model::style::FrameStyle {
-                sheet: Some(ecad_model::style::frame::FrameSheet::Sheet(spec)),
-                block: Some(ecad_model::style::frame::BlockAt::BottomRight),
+            let body = ecad_model::objects::styles::StyleBody::Frame(ecad_model::objects::styles::FrameStyle {
+                sheet: Some(ecad_model::objects::styles::frame::FrameSheet::Sheet(spec)),
+                block: Some(ecad_model::objects::styles::frame::BlockAt::BottomRight),
                 title_block: Some(layout),
                 ..Default::default()
             });
             let rec = StyleRecord::new(name.clone(), body);
             let id = StyleRef::Own(p.ids.fresh::<u128>());
-            crate::styles::check_record(doc, &crate::styles::frame::CATALOGUE, &id, StyleLayer::Project, &rec)?;
+            ecad_electrical::styles::check_record(doc, &ecad_electrical::styles::frame::CATALOGUE, &id, StyleLayer::Project, &rec)?;
             let ops = vec![Op::SetStyle { layer: StyleLayer::Project, catalogue: FRAME_CATALOGUE, id: id.clone(), before: None, after: Some(rec) }];
             p.apply_edit(pg, "titleblockimport", &format!("Import title block {name}"), ops)?;
             Ok(json!({"changed": true, "id": id.text(), "name": name, "items": items, "skipped": skipped}))

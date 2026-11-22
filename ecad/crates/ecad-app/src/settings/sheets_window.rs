@@ -78,7 +78,7 @@ impl App {
     pub fn sync_props(&mut self) {
         let Some(p) = self.project.clone().filter(|p| p.is_attached(&self.cad.session)) else {
             if let Ok(mut sh) = self.props.lock() {
-                sh.view = ecad_electrical::props::PropsView::default();
+                sh.view = ecad_electrical::properties::PropsView::default();
             }
             self.props_seen = None;
             return;
@@ -110,7 +110,7 @@ impl App {
             }
             return;
         }
-        let view = p.read(&mut self.cad.session, |p, _| ecad_engine::props::view(p, page, &selection));
+        let view = p.read(&mut self.cad.session, |p, _| ecad_engine::properties::props::view(p, page, &selection));
         if let Ok(view) = view {
             let writable = !self.header().read_only;
             if let Ok(mut sh) = self.props.lock() {
@@ -138,7 +138,7 @@ impl App {
             self.cad.session.cancel();
         }
         for (target, key, value) in edits {
-            let line = ecad_electrical::props::edit_line(&target, &key, value.as_deref());
+            let line = ecad_electrical::properties::edit_line(&target, &key, value.as_deref());
             let r = self.run_line(&line);
             // A clash box's choice (`tag#swap`, brief 026) answers the Tag field's refusal.
             let key = key.split('#').next().unwrap_or_default().to_string();

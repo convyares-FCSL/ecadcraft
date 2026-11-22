@@ -5,7 +5,7 @@
 
 use ecad_model::{Document, Op};
 
-use super::RatedSubject;
+use crate::circuits::RatedSubject;
 
 /// Where a load came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

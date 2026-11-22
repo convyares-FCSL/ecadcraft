@@ -15,10 +15,10 @@ use cadcraft_engine::doc::{EntityKind, Handle, Lineweight};
 use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
-use ecad_electrical::cable_look::{self, MarkerEnd, Role, Shape};
+use ecad_electrical::cables::layout::{self, MarkerEnd, Role, Shape};
 use ecad_engine::interact::{hover_lines, overlay_marks};
-use ecad_engine::look;
-use ecad_engine::views::{self, FanOnPage};
+use ecad_engine::cables::draw;
+use ecad_engine::cables::views::{self, FanOnPage};
 use ecad_model::{
     CableId, Color, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction, WireId,
 };
@@ -466,7 +466,7 @@ fn g_fan_is_the_worked_example() {
         })
         .next()
         .unwrap();
-    assert!((one.x + (look::font_width("1") * hh()) - 19.0).abs() < 1e-9 && (one.y - 0.3 * hh()).abs() < 1e-9, "{one:?}");
+    assert!((one.x + (draw::font_width("1") * hh()) - 19.0).abs() < 1e-9 && (one.y - 0.3 * hh()).abs() < 1e-9, "{one:?}");
     let _ = text(Role::WireNumber, "W1");
     // Drawn on the reserved layer, trunk and spines thick, bends, tails and frame thin.
     let ents = f.h.pv(|p, pg| pg.entities_of(p, f.page));
@@ -502,7 +502,7 @@ fn h_one_sided_fan_stops_at_the_reference_end() {
     }
     // The flag points right, away from the cable.
     let flag = path(of_role(&fan, Role::Flag)[0]);
-    assert!(flag.iter().any(|p| p.x > 125.0 + (look::font_width(cable_look::REFERENCE_PLACEHOLDER) * hh()) + 0.5 * hh() + 1e-9));
+    assert!(flag.iter().any(|p| p.x > 125.0 + (draw::font_width(layout::REFERENCE_PLACEHOLDER) * hh()) + 0.5 * hh() + 1e-9));
     // No loose-end squares at x = 120.
     let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
     let squares: Vec<Vec2> = f.h.p(|p| overlay_marks(p, uid)).into_iter().filter(|m| m.shape == MarkShape::Square).map(|m| m.at).collect();
@@ -555,14 +555,14 @@ fn j_switching_stays_presentation_only() {
     let mut f = fixture(false);
     f.h.run("cablecore", json!({"cable": f.c1.hex(), "cores": ["1", "2", "3", "4"]})).unwrap();
     reference_end(&mut f.h, f.page, f.c1, Pt::new(125.0, 21.25), 1);
-    let (doc, head, nets) = (f.h.doc(), f.h.head(), ecad_model::derive::nets(&f.h.doc()));
+    let (doc, head, nets) = (f.h.doc(), f.h.head(), ecad_model::connectivity::derive::nets(&f.h.doc()));
     let unsaved = f.h.p(|p| p.unsaved_transactions());
     for _ in 0..10 {
         f.h.run("cableview", json!({"cable": f.c1.hex()})).unwrap();
         f.h.check();
     }
     assert_eq!((f.h.doc(), f.h.head()), (doc, head));
-    assert_eq!(ecad_model::derive::nets(&f.h.doc()), nets);
+    assert_eq!(ecad_model::connectivity::derive::nets(&f.h.doc()), nets);
     assert_eq!(f.h.p(|p| p.unsaved_transactions()), unsaved);
 }
 
@@ -591,7 +591,7 @@ fn k_hover_and_trail_show_cores() {
     let lines = f.h.p(|p| hover_lines(p, uid, tail)).unwrap();
     assert_eq!(lines.get(1).map(String::as_str), Some("Core: 3 (W3)"), "{lines:?}");
     let doc = f.h.doc();
-    assert_eq!(ecad_engine::debug::object_label(&doc, ecad_engine::debug::ObjectId::Wire(f.wires[2])), "W3 · core 3");
+    assert_eq!(ecad_engine::dev::debug::object_label(&doc, ecad_engine::dev::debug::ObjectId::Wire(f.wires[2])), "W3 · core 3");
     let snap = f.h.run("ecadinspect", json!({})).unwrap();
     assert!(snap.to_string().contains("\"label\":\"3\""), "ecadinspect shows the core");
 }
@@ -664,17 +664,17 @@ fn m_hostile_geometry_never_panics() {
             connection_points: Default::default(),
         },
     );
-    let d = cable_look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
+    let d = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width);
     assert!(d.is_fan());
     let (route, _) = crate::common::wire_line(&doc, wires[3], page).unwrap();
     doc.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(-1e12, 15.0), b: Pt::new(f64::INFINITY, 15.0) });
-    let d = cable_look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
+    let d = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width);
     assert!(!d.is_fan(), "drawn traditional when a value is not finite");
     // Two wires ending at the same point (pitch 0).
     let mut doc = h.doc();
     let (r1, _) = crate::common::wire_line(&doc, wires[1], page).unwrap();
     doc.items.get_mut(&r1).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(120.0, 0.0) });
-    let _ = cable_look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
+    let _ = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width);
 }
 
 // --------------------------------------------------------------------------- review S2
@@ -738,7 +738,7 @@ fn s2_selections_with_core_labels_edit_the_rest() {
 }
 
 fn slash_items(doc: &ecad_model::Document, page: PageId, k: CableId) -> Vec<ItemId> {
-    ecad_engine::slash::slashes_of(doc, page, k).into_iter().map(|(i, _, _)| i).collect()
+    ecad_electrical::cables::slash::slashes_of(doc, page, k).into_iter().map(|(i, _, _)| i).collect()
 }
 
 // --------------------------------------------------------------------------- the fan's join
@@ -859,5 +859,5 @@ fn cablefan_interactive_equals_json_and_reference_ends_have_no_spine() {
 /// The cable look's text height in a project with the built-in styles (brief 066d: the
 /// `CableText` text style's).
 fn hh() -> f64 {
-    ecad_engine::look::label_height(&ecad_model::Document::default())
+    ecad_engine::cables::draw::label_height(&ecad_model::Document::default())
 }

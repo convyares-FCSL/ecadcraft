@@ -1,21 +1,21 @@
 //! Project ▸ Cables (UI rev 3, board 2.05): every cable with type, cores, length, ends, cores used
 //! and checks, as the one table over the cable report (`ReportModels::cable_table`); under it the
 //! selected cable's core table (`ReportModels::core_table`). Brief 057 (board 2.06): the cable drawn end
-//! to end ([`super::cable_view`]) with each core in its cable type's colour; the glands' sizes come
+//! to end ([`crate::cables::view`]) with each core in its cable type's colour; the glands' sizes come
 //! with the cable manager (2.7) and show a dash. Brief 059 (the cable manager): a cable not drawn
 //! yet shows its planned ends and a `not drawn` badge; **+ Cable** builds one; the Details pane
-//! edits it ([`super::cable_editor`]).
+//! edits it ([`crate::cables::editor`]).
 //!
-//! **Update map:** see [`super::report`]: the cable copy is taken again only when the report
+//! **Update map:** see [`crate::reports::report`]: the cable copy is taken again only when the report
 //! models' revision changed, and only while the tab is shown; the core table also when another
 //! cable is selected.
 
 use ecad_engine::outputs::kept::ReportModels;
 use ecad_model::CableId;
-use ecad_ui::prim::Tone;
-use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
+use ecad_widgets::prim::Tone;
+use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
 
-use super::report::{From, ReportColumns, ReportRows};
+use crate::reports::report::{From, ReportColumns, ReportRows};
 
 pub const CABLE: ColumnId = ColumnId(0);
 pub const TYPE: ColumnId = ColumnId(1);
@@ -55,7 +55,7 @@ pub struct CablesSource {
     pub rows: ReportRows,
     /// Brief 057: each row's cable, and the rating results.
     pub ids: Vec<CableId>,
-    pub rating: super::wires::RatingCopy,
+    pub rating: crate::wires::list::RatingCopy,
     /// Brief 057 (owner rule): each row's open cores, read with the copy.
     pub open: Vec<Vec<String>>,
     /// Brief 059: each row's drawn state and planned ends, from the cable rows.
@@ -86,8 +86,8 @@ impl Default for CablesSource {
 
 impl CablesSource {
     /// Brief 057: row `k`'s rating result.
-    pub fn rating(&self, k: usize) -> Option<&ecad_engine::rating::circuit::Rating> {
-        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_engine::rating::RatedSubject::Cable(*c)))
+    pub fn rating(&self, k: usize) -> Option<&ecad_electrical::circuits::circuit::Rating> {
+        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_electrical::circuits::RatedSubject::Cable(*c)))
     }
 
     /// Brief 059: whether row `k`'s cable is drawn (unknown rows count as drawn).
@@ -123,20 +123,20 @@ impl ReportColumns for CablesSource {
                 let side = usize::from(col == TO);
                 match self.info.get(k).and_then(|i| i.planned.get(side).cloned().flatten()) {
                     Some(p) => Cell::read(format!("{p} (planned)")),
-                    None => Cell::read(super::report::DASH),
+                    None => Cell::read(crate::reports::report::DASH),
                 }
             }
             CHECKS if !self.drawn(k) => Cell::Badge("not drawn".into(), Tone::Neutral),
             GLANDS => match self.info.get(k).map(|i| &i.glands) {
-                Some([None, None]) | None => Cell::read(super::report::DASH),
+                Some([None, None]) | None => Cell::read(crate::reports::report::DASH),
                 Some([a, b]) => {
-                    let d = super::report::DASH;
+                    let d = crate::reports::report::DASH;
                     Cell::Text(format!("{}, {}", a.as_deref().unwrap_or(d), b.as_deref().unwrap_or(d)))
                 }
             },
             LENGTH => match r.get(k, "Length").filter(|c| !c.text.is_empty()) {
                 Some(c) => Cell::Text(c.text.clone()),
-                None => Cell::read(super::report::DASH),
+                None => Cell::read(crate::reports::report::DASH),
             },
             USED => Cell::Text(format!("{} of {}", r.text(k, "Used"), r.text(k, "Cores"))),
             CHECKS => {
@@ -176,7 +176,7 @@ impl TableSource for CablesSource {
         key < self.rows.rows.len()
     }
     fn cell(&self, key: usize, col: ColumnId) -> Cell {
-        super::report::cell(self, key, col)
+        crate::reports::report::cell(self, key, col)
     }
 }
 
@@ -212,7 +212,7 @@ pub struct CoresSource {
 impl CoresSource {
     /// Row `k`'s core colour (its label when that is a colour code, else the cable type's).
     pub fn colour(&self, k: usize) -> Option<String> {
-        super::cable_view::core_colour(&self.rows.text(k, "Core"), k, &self.colours)
+        crate::cables::view::core_colour(&self.rows.text(k, "Core"), k, &self.colours)
     }
 
     /// Whether row `k`'s core is ticked Not used.
@@ -268,10 +268,10 @@ impl ReportColumns for CoresSource {
         }
     }
     fn derived(&self, k: usize, col: ColumnId) -> Cell {
-        let dash = || Cell::read(super::report::DASH);
+        let dash = || Cell::read(crate::reports::report::DASH);
         match (col, self.rows.text(k, "State").as_str()) {
             // Board 2.06: the colour's bar, then its code.
-            (COLOUR, _) => self.colour(k).map_or_else(dash, |c| Cell::Colour(super::cable_view::bars(&c), c)),
+            (COLOUR, _) => self.colour(k).map_or_else(dash, |c| Cell::Colour(crate::cables::view::bars(&c), c)),
             (SIZE, _) if self.size.is_empty() => dash(),
             (SIZE, _) => Cell::Text(format!("{} mm\u{b2}", self.size)),
             // An unwired offered core has no cabinet end (owner rule: it is open, not "spare").
@@ -304,7 +304,7 @@ impl TableSource for CoresSource {
         key < self.rows.rows.len()
     }
     fn cell(&self, key: usize, col: ColumnId) -> Cell {
-        super::report::cell(self, key, col)
+        crate::reports::report::cell(self, key, col)
     }
 }
 
@@ -331,7 +331,7 @@ pub struct CablesView {
     colours_of: Option<(CableId, u64, Option<(CableId, (u64, u64))>)>,
     /// Brief 059: the selected cable's editor, a cable to select once the list has it (after
     /// + Cable), and the cables not drawn (+ Cable's menu: cable, its line).
-    pub edit: super::cable_editor::Editor,
+    pub edit: crate::cables::editor::Editor,
     pub pending_select: Option<CableId>,
     pub undrawn: Vec<(CableId, String)>,
     /// Brief 059 (owner, board 2.06): the Details pane's tab, Cable (0) or Checks (1), and the
@@ -419,13 +419,13 @@ impl CablesView {
 
     /// Brief 057: bring the rating copy up to date and patch the Checks cells of the re-checked
     /// cables only.
-    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_engine::rating::Kept) {
+    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::Kept) {
         match self.source.rating.sync(serial, kept) {
             None => self.table.update(&self.source, Changed::All),
             Some(v) if v.is_empty() => {}
             Some(v) => {
                 let rows: Vec<usize> =
-                    self.ids.iter().enumerate().filter(|(_, c)| v.contains(&ecad_engine::rating::RatedSubject::Cable(**c))).map(|(k, _)| k).collect();
+                    self.ids.iter().enumerate().filter(|(_, c)| v.contains(&ecad_electrical::circuits::RatedSubject::Cable(**c))).map(|(k, _)| k).collect();
                 if !rows.is_empty() {
                     self.table.update(&self.source, Changed::Keys(rows));
                 }
@@ -437,7 +437,7 @@ impl CablesView {
     /// cable's open cores; read again only when the selection or the project changed (as the
     /// cable copy itself is).
     pub fn sync_colours(&mut self, doc: &ecad_model::Document, count: u64) {
-        use ecad_engine::styles::cable;
+        use ecad_electrical::styles::cable;
         let selected = self.selected().and_then(|k| self.ids.get(k).copied());
         let want = selected.map(|c| (c, count, self.cores_of));
         if want == self.colours_of {
@@ -465,8 +465,8 @@ impl CablesView {
         }
         // Brief 059: the editor's copy of the selected cable.
         match selected {
-            Some(k) => self.edit.set_copy(super::cable_editor::copy(doc, k)),
-            None => self.edit.set_copy(super::cable_editor::Copy::default()),
+            Some(k) => self.edit.set_copy(crate::cables::editor::copy(doc, k)),
+            None => self.edit.set_copy(crate::cables::editor::Copy::default()),
         }
         let c = &mut self.cores;
         c.drawn = selected.is_none_or(|k| ecad_electrical::cables::is_drawn(doc, k));
@@ -504,7 +504,7 @@ impl CablesView {
             .into_iter()
             .map(|c| {
                 let place = match (c.page, c.at) {
-                    (Some(pg), Some(at)) => ecad_model::wiring::place(doc, pg, at).map(|x| x.text(style)).unwrap_or_default(),
+                    (Some(pg), Some(at)) => ecad_model::connectivity::wiring::place(doc, pg, at).map(|x| x.text(style)).unwrap_or_default(),
                     _ => String::new(),
                 };
                 (c, place)
@@ -513,7 +513,7 @@ impl CablesView {
     }
 
     /// The selected cable as drawn (board 2.06).
-    pub fn drawing(&self, k: usize) -> super::cable_view::Drawing {
+    pub fn drawing(&self, k: usize) -> crate::cables::view::Drawing {
         let rows = &self.source.rows;
         let words =
             [rows.text(k, "Type"), rows.text(k, "Length")].into_iter().filter(|w| !w.is_empty() && w != "?").collect::<Vec<_>>().join(" \u{b7} ");
@@ -521,7 +521,7 @@ impl CablesView {
         let cores = c
             .keys
             .iter()
-            .map(|i| super::cable_view::Core {
+            .map(|i| crate::cables::view::Core {
                 label: c.text(*i, "Core"),
                 colour: self.cores.colour(*i),
                 wire: c.text(*i, "Wire number"),
@@ -539,7 +539,7 @@ impl CablesView {
             (info.planned[0].clone().unwrap_or_default(), info.planned[1].clone().unwrap_or_default())
         };
         let glands = [info.glands[0].clone().unwrap_or_default(), info.glands[1].clone().unwrap_or_default()];
-        super::cable_view::Drawing { tag: rows.text(k, "Tag"), words, from, to, cores, not_drawn: !info.drawn, glands }
+        crate::cables::view::Drawing { tag: rows.text(k, "Tag"), words, from, to, cores, not_drawn: !info.drawn, glands }
     }
 
     /// Forget the copies.
@@ -572,7 +572,7 @@ impl CablesView {
             match e {
                 TableEvent::Open(_) => self.details = true,
                 TableEvent::GoTo { key, .. } => go = self.gos.get(key).copied().flatten(),
-                TableEvent::Export(csv) => super::copy_csv(ui, csv),
+                TableEvent::Export(csv) => crate::workspace::copy_csv(ui, csv),
                 _ => {}
             }
         }
@@ -585,7 +585,7 @@ impl CablesView {
         let mut tick = None;
         for e in self.core_table.show(ui, &self.cores) {
             match e {
-                TableEvent::Export(csv) => super::copy_csv(ui, csv),
+                TableEvent::Export(csv) => crate::workspace::copy_csv(ui, csv),
                 TableEvent::Button { key, col: UNUSED, .. } => tick = Some((self.cores.rows.text(key, "Core"), !self.cores.is_unused(key))),
                 _ => {}
             }
@@ -597,9 +597,9 @@ impl CablesView {
 /// The Cables tab (board 2.06): the cable table, the selected cable's line and its drawing, then
 /// its cores. Returns where to go.
 pub fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_model::PageId, ecad_model::Pt)> {
-    use ecad_ui::tokens::{size, space, ui_type};
+    use ecad_widgets::tokens::{size, space, ui_type};
     use eframe::egui::{self, vec2};
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let r = t.reports.as_mut()?;
     let v = &mut r.cables;
     let full = ui.available_rect_before_wrap();
@@ -622,7 +622,7 @@ pub fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_m
         })
         .inner;
     // The split handle (the shared splitter): drag to resize the list against the details.
-    let resp = ecad_ui::splitter::horizontal(ui, SPLIT);
+    let resp = ecad_widgets::splitter::horizontal(ui, SPLIT);
     if resp.dragged() {
         let f = ((table_h + resp.drag_delta().y) / full.height().max(1.0)).clamp(0.15, 0.8);
         ui.data_mut(|d| d.insert_persisted(split_id, f));
@@ -634,32 +634,32 @@ pub fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_m
     ui.add_space(space::M);
     ui.horizontal(|ui| {
         ui.add_space(space::L);
-        ui.label(egui::RichText::new(&tag).font(ecad_ui::fonts::font(ui.ctx(), ui_type::TITLE)).color(ecad_ui::color(s.accent_text)));
-        ui.label(egui::RichText::new(&words).size(ui_type::BODY.size).color(ecad_ui::color(s.text_2)));
+        ui.label(egui::RichText::new(&tag).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::TITLE)).color(ecad_widgets::color(s.accent_text)));
+        ui.label(egui::RichText::new(&words).size(ui_type::BODY.size).color(ecad_widgets::color(s.text_2)));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(space::L);
             if let Some(target) = v.gos.get(k).copied().flatten()
-                && ui.add(ecad_ui::prim::Button::new("Go to its page").small()).clicked()
+                && ui.add(ecad_widgets::prim::Button::new("Go to its page").small()).clicked()
             {
                 go = Some(target);
             }
-            if ui.add(ecad_ui::prim::Button::new("Swap ends").small()).clicked() {
+            if ui.add(ecad_widgets::prim::Button::new("Swap ends").small()).clicked() {
                 v.swapped = !v.swapped;
             }
-            ecad_ui::prim::segmented(ui, &mut v.view, &VIEWS);
+            ecad_widgets::prim::segmented(ui, &mut v.view, &VIEWS);
         });
     });
     ui.add_space(space::S);
     // Brief 057 (board 2.06): the cable drawn end to end, unless Cores only.
     if v.view == 0 {
         let d = v.drawing(k);
-        super::cable_view::show(ui, &d, v.swapped);
+        crate::cables::view::show(ui, &d, v.swapped);
     }
     ui.add_space(space::M);
     let cable = v.ids.get(k).copied();
     // Owner rule (board 2.06): a core is open unless ticked Not used; the tick is one `setprop`.
     if let (Some((label, on)), Some(cable)) = (v.show_cores(ui), cable) {
-        let key = ecad_engine::styles::cable::unused_key(&label);
+        let key = ecad_electrical::styles::cable::unused_key(&label);
         let value = if on { serde_json::json!("yes") } else { serde_json::Value::Null };
         let _ = t.run_value("setprop", serde_json::json!({"cable": cable.hex(), "key": key, "value": value}));
     }
@@ -668,7 +668,7 @@ pub fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_m
 
 /// Brief 059: a cable not drawn as + Cable's menu lists it: `-W03  H07RN-F 4G1.5 · +CAB1 → +FIELD`.
 pub fn undrawn_line(r: &ecad_engine::outputs::CableRow) -> String {
-    let dash = super::report::DASH;
+    let dash = crate::reports::report::DASH;
     let ends = format!("{} \u{2192} {}", r.planned[0].as_deref().unwrap_or(dash), r.planned[1].as_deref().unwrap_or(dash));
     let tag = r.tag.clone().unwrap_or_default();
     match &r.kind {
@@ -679,13 +679,13 @@ pub fn undrawn_line(r: &ecad_engine::outputs::CableRow) -> String {
 
 /// A cable's core size: its cable type's cross-section, else its type notation's (`4G1.5` → 1.5).
 fn cable_size(doc: &ecad_model::Document, k: CableId) -> Option<String> {
-    use ecad_engine::styles::{self, cable};
+    use ecad_electrical::styles::{self, cable};
     let from_type = cable::of(doc, k)
         .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, "size", None))
-        .and_then(|r| ecad_engine::rating::parse::cross_section(&r.text()));
+        .and_then(|r| ecad_electrical::devices::ratings::parse::cross_section(&r.text()));
     from_type
-        .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| ecad_engine::strips::notation_size(t)))
-        .map(ecad_engine::rating::dataset::fmt_num)
+        .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| ecad_electrical::terminal_strips::notation_size(t)))
+        .map(ecad_electrical::devices::ratings::dataset::fmt_num)
 }
 
 /// The wire beyond point `at` (`-M01:U1`): the number of a wire there that is not one of cable
@@ -702,7 +702,7 @@ fn beyond(doc: &ecad_model::Document, k: CableId, at: &str) -> String {
                 if members.contains(&w) {
                     continue;
                 }
-                let n = ecad_model::wiring::wire_number(doc, w).unwrap_or_default();
+                let n = ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_default();
                 // The wire on the far side, also when it shares the core's number (one point,
                 // one net).
                 if !n.is_empty() {

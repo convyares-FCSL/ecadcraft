@@ -9,7 +9,7 @@
 //! - An item changed in place: the device its representation shows (a symbol moved).
 //! - A project symbol's version embedded or removed: the devices showing its lineage ("update
 //!   available").
-//! - A frame effect (`title_block::frame_reach_of`): the devices on the pages it reaches, or every
+//! - A frame effect (`title_blocks::frame_reach_of`): the devices on the pages it reaches, or every
 //!   page's places (`pages`) when it reaches any page.
 //! - A page changed in place: its number or sheet, the devices on it; its folder, see below.
 //! - A page or a folder added, removed or moved, or a page refiled: the book order may change.
@@ -26,13 +26,13 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::effect::{AreaSet, Effect};
-use ecad_model::view::{DerivedView, NoteCx, Outcome, Phase, ViewScope};
+use ecad_model::document::effect::{AreaSet, Effect};
+use ecad_model::document::view::{DerivedView, NoteCx, Outcome, Phase, ViewScope};
 use ecad_model::{DeviceId, Document, ObjectRef, PageId, Subject};
 
-use super::Inputs;
-use crate::device_list::DeviceTouch;
-use crate::title_block::{Reach, frame_reach_of};
+use crate::views::Inputs;
+use crate::devices::device_list::DeviceTouch;
+use crate::title_blocks::{Reach, frame_reach_of};
 
 /// The Devices feed.
 #[derive(Debug, Default)]
@@ -162,7 +162,7 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
             | Effect::Project { .. } => {}
         }
         if moves && scope.book_before.is_none() {
-            scope.book_before = Some(ecad_model::book::Book::of(doc).positions);
+            scope.book_before = Some(ecad_model::document::book::Book::of(doc).positions);
         }
     }
 
@@ -171,7 +171,7 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
         // Pages whose book position changed: only their symbols' places and order may differ; a
         // rename in place or an append moves none.
         if let Some(before) = book_before {
-            let after = ecad_model::book::Book::of(doc).positions;
+            let after = ecad_model::document::book::Book::of(doc).positions;
             for (p, i) in &before {
                 if after.get(p) != Some(i) {
                     on_page(doc, *p, &mut touch.devices);

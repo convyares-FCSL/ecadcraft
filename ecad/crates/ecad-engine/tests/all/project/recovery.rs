@@ -13,9 +13,9 @@ use std::sync::Arc;
 
 use cadcraft_engine::doc::{Drawing, EntityKind, Space};
 use common::{H, small_project};
-use ecad_engine::verify::verify_page;
+use ecad_engine::dev::verify::verify_page;
 use ecad_engine::{HandleMap, project_page};
-use ecad_inspect::EventKind;
+use ecad_engine::history::event_log::EventKind;
 use ecad_model::{Document, PageId};
 use serde_json::{Value, json};
 
@@ -48,7 +48,7 @@ fn a_rebuilt_page_is_verified_by_content_not_handles() {
     let (mut h, c1, _c2, _w) = small_project(31);
     let page = h.first_page();
     let handles = h.rep_handles(page, c1);
-    h.s.set_selection(h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle).collect());
+    h.s.set_selection(h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect());
     h.cfg(|p| p.faults.fail_projections = 1);
     h.run("move", json!({"handles": handles, "delta": [0, 5]})).unwrap();
     assert_eq!(h.p(|p| p.events.count(EventKind::ProjectionRebuilt)), 1);
@@ -121,7 +121,7 @@ fn verification_catches_each_kind_of_disagreement() {
     let (rid, r) = doc.representations_of(ecad_model::Subject::Device(c1)).next().unwrap();
     let marker = map.marker(rid, *r.connection_points.keys().next().unwrap()).unwrap();
     let line = map.item(r.items[0]).unwrap();
-    let cases: Vec<(&str, ecad_engine::verify::Verification)> = vec![
+    let cases: Vec<(&str, ecad_engine::dev::verify::Verification)> = vec![
         (
             "geometry",
             tamper(&|x| {

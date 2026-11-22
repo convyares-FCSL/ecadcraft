@@ -13,11 +13,11 @@
 //!   under a head (`table`): one row per pole, NO or NC, power or auxiliary, its labels and its
 //!   place, with the poles the part offers that nobody drew (**spare**) and those drawn beyond the
 //!   offer (**over**).
-//! - What a part offers is its typed contacts ([`crate::traits::Contacts`], design 072 §2.2; typed
+//! - What a part offers is its typed contacts ([`crate::devices::traits::Contacts`], design 072 §2.2; typed
 //!   through `setprop`'s [`CONTACTS_KEY`] in the grammar of [`parse_set`]); where its table goes is
 //!   a switching device's `contact_table` (typed through [`MIRROR_KEY`], [`parse_mirror`]), else
 //!   the project's `contact_mirror` (FP3), else `auto`.
-//! - Cable references keep their own derivation ([`crate::references`]); this module only scopes
+//! - Cable references keep their own derivation ([`crate::references::cables`]); this module only scopes
 //!   them per commit ([`Watch`]), so every cable text is exactly as before.
 //!
 //! # Update map (design 025 §6)
@@ -41,16 +41,16 @@
 //! | `SetProjectSettings` changing `reference_style`, `sheet`, `length_unit` or `contact_mirror` | none derived: every page with a device member is redrawn or marked stale (the one wide case) |
 //! | every other op | none |
 //!
-//! Cable references: `CreateCable`, `DeleteCable` and `ModifyCable` now scope to their cable ([`crate::references::cables_touched`]); everything else is as before.
+//! Cable references: `CreateCable`, `DeleteCable` and `ModifyCable` now scope to their cable ([`crate::references::cables::cables_touched`]); everything else is as before.
 //!
 //! This module records nothing and has no UI: commands commit through their JSON forms.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
-use crate::traits::DeviceKind;
-use ecad_model::device::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable};
-use ecad_model::effect::{Effect, Effects};
+use crate::devices::traits::DeviceKind;
+use ecad_model::objects::devices::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable};
+use ecad_model::document::effect::{Effect, Effects};
 use ecad_model::{
     CableId, ContactMirror, Device as StoredDevice, DeviceId, DeviceType, Document, Form, LengthUnit, ObjectRef, Op, PageId, Pt, Representation,
     RepresentationId, Subject,
@@ -58,14 +58,14 @@ use ecad_model::{
 use serde_json::{Value, json};
 
 use crate::symbols::{Kind, Starter, StarterKey as K};
-use crate::text_style::fonts::TextMetrics;
+use crate::styles::text_style::fonts::TextMetrics;
 
 /// The text style of a contact's or a connector member's reference (brief 066d).
-const REF: crate::text_style::TextKind = crate::text_style::TextKind::Reference;
+const REF: crate::styles::text_style::TextKind = crate::styles::text_style::TextKind::Reference;
 
 /// The height of reference text in drawing units: the `Reference` text style's.
 fn ref_height(doc: &Document) -> f64 {
-    crate::text_style::text_style(doc, REF).height
+    crate::styles::text_style::text_style(doc, REF).height
 }
 
 /// The `setprop` key of the contacts a part offers (FP1): `3P+1NO+1NC`. A typed field, never in a
@@ -73,14 +73,14 @@ fn ref_height(doc: &Document) -> f64 {
 pub const CONTACTS_KEY: &str = "contacts";
 /// The `setprop` key of where a switching device's contact table goes (FP2). A typed field.
 pub const MIRROR_KEY: &str = "mirror";
-pub use ecad_model::device::PoleKind;
-pub use ecad_model::device::contacts::{MAX_LABEL_CHARS, MAX_OFFSET_MM, MAX_POLES};
+pub use ecad_model::objects::devices::PoleKind;
+pub use ecad_model::objects::devices::contacts::{MAX_LABEL_CHARS, MAX_OFFSET_MM, MAX_POLES};
 /// `ecad.xref`: ACI 7 (ByLayer on `ECAD-TAGS`). Its text is reference text: the `Reference` text
 /// style (brief 066d), never a size of its own.
 /// `ecad.xref-spare`: ACI 8.
 pub const SPARE_ACI: u8 = 8;
 /// `ecad.orphan`: ACI 1, for rows drawn beyond the offer.
-pub const OVER_ACI: u8 = crate::references::ORPHAN_ACI;
+pub const OVER_ACI: u8 = crate::references::cables::ORPHAN_ACI;
 /// `ecad.mirror-row`: the table's row pitch, millimetres.
 pub const ROW_PITCH_MM: f64 = 4.0;
 /// The gap before the first auxiliary row after power rows, millimetres.
@@ -201,7 +201,7 @@ pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, CmdError> {
     parse_set(text).map(|s| poles_offered(&s))
 }
 
-/// The contacts component `c` offers: its typed set ([`crate::traits::Contacts`]); `None` when its
+/// The contacts component `c` offers: its typed set ([`crate::devices::traits::Contacts`]); `None` when its
 /// group has no contacts.
 pub fn contacts_of(doc: &Document, c: DeviceId) -> Option<&ContactSet> {
     doc.devices.get(&c)?.device_type.as_contacts().map(|x| x.contacts())
@@ -410,10 +410,10 @@ pub fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
 }
 
 /// The class of a component representation by its symbol alone (a second head is made `Other`
-/// by [`device`]): a head by its type ([`crate::reps::rep_type`]), a child when its symbol carries
+/// by [`device`]): a head by its type ([`crate::symbols::reps::rep_type`]), a child when its symbol carries
 /// poles.
 fn raw_class(doc: &Document, r: &Representation) -> Class {
-    if crate::reps::rep_type(doc, r) == ecad_model::PartRole::Head {
+    if crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Head {
         return Class::Head;
     }
     match crate::devices::rep_starter(doc, r) {
@@ -440,7 +440,7 @@ pub struct DrawnPole {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Device {
     pub component: DeviceId,
-    /// Its head ([`crate::reps::head`]: the first head symbol in book order, then top-left; never
+    /// Its head ([`crate::symbols::reps::head`]: the first head symbol in book order, then top-left; never
     /// by ID or placement order, design 052 §3.4).
     pub head: Option<RepresentationId>,
     /// Its children, in ID order.
@@ -489,12 +489,12 @@ pub fn connection_point_points(doc: &Document, c: DeviceId, r: &Representation) 
 pub fn device(doc: &Document, c: DeviceId) -> Device {
     // Brief 054 (design 054 §3.4): the first head on a page with checks and references on.
     let head =
-        crate::reps::heads(doc, c).into_iter().find(|h| doc.representations.get(h).is_some_and(|r| ecad_model::sheet::page_checks(doc, r.page)));
+        crate::symbols::reps::heads(doc, c).into_iter().find(|h| doc.representations.get(h).is_some_and(|r| ecad_model::document::sheet::page_checks(doc, r.page)));
     let mut children = Vec::new();
     let mut poles = Vec::new();
     for (rid, r) in doc.representations_of(Subject::Device(c)) {
         // Brief 054 (design 054 §3.4): a symbol on a Plain page has no references.
-        if !ecad_model::sheet::page_checks(doc, r.page) {
+        if !ecad_model::document::sheet::page_checks(doc, r.page) {
             continue;
         }
         if raw_class(doc, r) != Class::Child {
@@ -527,13 +527,13 @@ pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)>
         return crate::connectors::ref_classes(doc, c).into_iter().find(|(x, _)| *x == rid).map(|(_, k)| (Group::Device(c), k));
     }
     // Brief 054 (design 054 §3.4): a symbol on a Plain page is in no device's group.
-    if matches!(r.subject, Subject::Device(_)) && !ecad_model::sheet::page_checks(doc, r.page) {
+    if matches!(r.subject, Subject::Device(_)) && !ecad_model::document::sheet::page_checks(doc, r.page) {
         return None;
     }
     match r.subject {
-        Subject::Cable(k) if crate::references::is_reference(r) => Some((Group::Cable(k), Class::End)),
+        Subject::Cable(k) if crate::references::cables::is_reference(r) => Some((Group::Cable(k), Class::End)),
         Subject::Device(c) => match raw_class(doc, r) {
-            Class::Head => Some((Group::Device(c), if crate::reps::head(doc, c) == Some(rid) { Class::Head } else { Class::Other })),
+            Class::Head => Some((Group::Device(c), if crate::symbols::reps::head(doc, c) == Some(rid) { Class::Head } else { Class::Other })),
             Class::Child => Some((Group::Device(c), Class::Child)),
             _ => None,
         },
@@ -546,8 +546,8 @@ pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)>
 /// Page places worked out once per page (grid, shown number, whether it is in the book).
 pub struct Places<'a> {
     doc: &'a Document,
-    book: Option<ecad_model::book::Book>,
-    pages: BTreeMap<PageId, (ecad_model::sheet::Grid, String, bool)>,
+    book: Option<ecad_model::document::book::Book>,
+    pages: BTreeMap<PageId, (ecad_model::document::sheet::Grid, String, bool)>,
 }
 
 impl<'a> Places<'a> {
@@ -555,30 +555,30 @@ impl<'a> Places<'a> {
         Places { doc, book: None, pages: BTreeMap::new() }
     }
 
-    fn page(&mut self, page: PageId) -> &(ecad_model::sheet::Grid, String, bool) {
+    fn page(&mut self, page: PageId) -> &(ecad_model::document::sheet::Grid, String, bool) {
         let doc = self.doc;
         let book = &mut self.book;
         self.pages.entry(page).or_insert_with(|| {
             // A stored number needs no book order (the usual case): the book is built only for a
             // page shown by its position.
-            let number = match ecad_model::book::stored_number(doc, page) {
+            let number = match ecad_model::document::book::stored_number(doc, page) {
                 Some(n) => n.to_string(),
-                None => book.get_or_insert_with(|| ecad_model::book::Book::of(doc)).number(doc, page),
+                None => book.get_or_insert_with(|| ecad_model::document::book::Book::of(doc)).number(doc, page),
             };
-            (ecad_model::sheet::Grid::of(doc, page), number, doc.page_order.contains(&page))
+            (ecad_model::document::sheet::Grid::of(doc, page), number, doc.page_order.contains(&page))
         })
     }
 
     /// `100-B-3` (or `/100.B`) for `at` on `page`; `?` (`/?`) when it cannot be located.
     pub fn text(&mut self, page: PageId, at: Option<Pt>) -> String {
         let style = self.doc.settings.reference_style();
-        let unlocated = ecad_model::derive::unlocated(style).to_string();
+        let unlocated = ecad_model::connectivity::derive::unlocated(style).to_string();
         let Some(at) = at else { return unlocated };
         let (grid, number, located) = self.page(page);
         if !*located {
             return unlocated;
         }
-        ecad_model::derive::place_on(grid, number, at).map_or(unlocated, |p| p.text(style))
+        ecad_model::connectivity::derive::place_on(grid, number, at).map_or(unlocated, |p| p.text(style))
     }
 
     /// The page's shown number.
@@ -593,12 +593,12 @@ impl<'a> Places<'a> {
         let at = at?;
         let style = self.doc.settings.reference_style();
         let doc = self.doc;
-        let position = self.book.get_or_insert_with(|| ecad_model::book::Book::of(doc)).position(page)?;
+        let position = self.book.get_or_insert_with(|| ecad_model::document::book::Book::of(doc)).position(page)?;
         let (grid, number, located) = self.page(page);
         if !*located {
             return None;
         }
-        let p = ecad_model::derive::place_on(grid, number, at)?;
+        let p = ecad_model::connectivity::derive::place_on(grid, number, at)?;
         Some(((position, p.column, p.row), p.text(style)))
     }
 }
@@ -653,7 +653,7 @@ impl Row {
 /// Natural order of labels: `2` before `13`, `A2` before `A10`.
 pub fn natural_key(s: &str) -> Vec<(u8, u128, String)> {
     // One ordering for labels (review of PR #57, 5): the model's.
-    ecad_model::links::natural_key(s)
+    ecad_model::connectivity::jumper_bars::natural_key(s)
 }
 
 /// The rows of device `dev` (design 025 §4.2): offered poles matched to drawn poles by labels,
@@ -795,7 +795,7 @@ pub enum Shape {
     /// `kind` is the text style it is drawn in (brief 066d): its height is that style's, and the
     /// engine applies the style's font, weight and colour.
     Text {
-        kind: crate::text_style::TextKind,
+        kind: crate::styles::text_style::TextKind,
         at: Pt,
         value: String,
         height: f64,
@@ -910,7 +910,7 @@ impl TableShown {
 pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn TextMetrics) -> (Pt, Pt) {
     let k = unit(doc);
     // The widest place text in the font and size it is drawn with (drawing units).
-    let widest = rows.iter().map(|r| crate::text_style::fonts::text_width(doc, crate::text_style::TextKind::Table, &r.place, m)).fold(0.0, f64::max);
+    let widest = rows.iter().map(|r| crate::styles::text_style::fonts::text_width(doc, crate::styles::text_style::TextKind::Table, &r.place, m)).fold(0.0, f64::max);
     let gap = rows.windows(2).any(|w| w.first().is_some_and(|a| a.power) && w.get(1).is_some_and(|b| !b.power));
     let height = 3.0 + ROW_PITCH_MM * rows.len() as f64 + if gap { GROUP_GAP_MM } else { 0.0 };
     (Pt::new(top.x - 10.0 * k, top.y - height * k), Pt::new(top.x + 12.0 * k + widest, top.y))
@@ -920,10 +920,10 @@ pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn TextMetrics) -> 
 /// block, the registry's `print.contact_table_clearance` clear of its top line. (lo, hi),
 /// drawing units.
 pub fn free_area(doc: &Document, page: PageId) -> (Pt, Pt) {
-    let g = ecad_model::sheet::Grid::of(doc, page);
+    let g = ecad_model::document::sheet::Grid::of(doc, page);
     let k = unit(doc);
     let gap = crate::defaults::resolve(doc, &crate::defaults::print::CONTACT_TABLE_CLEARANCE, crate::defaults::Scope::project()).length(doc);
-    let lo = Pt::new(g.frame_left(), g.frame_bottom() + ecad_model::sheet::keep_out(doc, page) * k + gap);
+    let lo = Pt::new(g.frame_left(), g.frame_bottom() + ecad_model::document::sheet::keep_out(doc, page) * k + gap);
     let hi = Pt::new(g.frame_left() + g.area_width(), g.frame_top());
     (lo, hi)
 }
@@ -935,8 +935,8 @@ fn inside(b: (Pt, Pt), free: (Pt, Pt)) -> bool {
 
 /// Whether the box `b` enters the title block of `page` (the user-placed check of design 033 §4.1).
 pub fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> bool {
-    let g = ecad_model::sheet::Grid::of(doc, page);
-    let line = g.frame_bottom() + ecad_model::sheet::keep_out(doc, page) * unit(doc);
+    let g = ecad_model::document::sheet::Grid::of(doc, page);
+    let line = g.frame_bottom() + ecad_model::document::sheet::keep_out(doc, page) * unit(doc);
     let (left, right) = (g.frame_left(), g.frame_left() + g.area_width());
     b.0.y < line && b.1.y > g.frame_bottom() && b.1.x > left && b.0.x < right
 }
@@ -1061,7 +1061,7 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
     };
     push(Shape::Line(at(-10.0, 0.0), at(10.0, 0.0)), None, None, true);
     // Design 033 §1.2: contact-table rows are table text.
-    let h = crate::text_style::text_style(doc, crate::text_style::TextKind::Table).height;
+    let h = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Table).height;
     let mut y = -3.0;
     let mut last_power = rows.first().map(|r| r.power);
     for (i, r) in rows.iter().enumerate() {
@@ -1075,7 +1075,7 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
             State::Over => Some(OVER_ACI),
         };
         let text = |x: f64, value: &str, halign: HAlign| Shape::Text {
-            kind: crate::text_style::TextKind::Table,
+            kind: crate::styles::text_style::TextKind::Table,
             at: at(x, y),
             value: value.to_string(),
             height: h,
@@ -1325,7 +1325,7 @@ impl RefIndex {
         let mut groups: BTreeMap<Group, Vec<(RepresentationId, Class)>> = BTreeMap::new();
         for (rid, r) in &doc.representations {
             let (g, c) = match r.subject {
-                Subject::Cable(k) if crate::references::is_reference(r) => (Group::Cable(k), Class::End),
+                Subject::Cable(k) if crate::references::cables::is_reference(r) => (Group::Cable(k), Class::End),
                 Subject::Device(c) => match raw_class(doc, r) {
                     Class::Other => continue,
                     class => (Group::Device(c), class),
@@ -1421,14 +1421,14 @@ impl RefIndex {
         let list: Vec<(RepresentationId, Class)> = match g {
             Group::Cable(k) => doc
                 .representations_of(Subject::Cable(k))
-                .filter(|(_, r)| crate::references::is_reference(r))
+                .filter(|(_, r)| crate::references::cables::is_reference(r))
                 .map(|(id, _)| (id, Class::End))
                 .collect(),
             Group::Device(c) => {
                 let mut head_seen = false;
                 doc.representations_of(Subject::Device(c))
                     // Brief 054 (design 054 §3.4): no references to or from a Plain page.
-                    .filter(|(_, r)| ecad_model::sheet::page_checks(doc, r.page))
+                    .filter(|(_, r)| ecad_model::document::sheet::page_checks(doc, r.page))
                     .filter_map(|(id, r)| match raw_class(doc, r) {
                         Class::Head if !head_seen => {
                             head_seen = true;
@@ -1755,7 +1755,7 @@ impl Scope {
             }
             // Brief 050a: a change of the text style the table text uses (its height, weight).
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Text, id, .. }
-                if **id == crate::text_style::style_of(doc, crate::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
+                if **id == crate::styles::text_style::style_of(doc, crate::styles::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
             {
                 self.wide = true;
             }
@@ -1784,16 +1784,16 @@ impl Scope {
         }
         // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids and the free
         // area above the block, so its pages' devices, tables and arrows follow it.
-        match crate::title_block::frame_reach_of(doc, effect) {
-            crate::title_block::Reach::Pages(ps) => {
+        match crate::title_blocks::frame_reach_of(doc, effect) {
+            crate::title_blocks::Reach::Pages(ps) => {
                 self.device_pages.extend(ps.iter().copied());
                 self.name_pages.extend(ps);
             }
-            crate::title_block::Reach::Wide => {
+            crate::title_blocks::Reach::Wide => {
                 self.wide = true;
                 self.arrows_wide = true;
             }
-            crate::title_block::Reach::NotFrame | crate::title_block::Reach::Unchanged => {}
+            crate::title_blocks::Reach::NotFrame | crate::title_blocks::Reach::Unchanged => {}
         }
         // Brief 049: what continuation arrows the effect could change.
         match effect {
@@ -1848,14 +1848,14 @@ impl Scope {
 /// What a commit could change in the references (design 025 §6, the references view's scope):
 /// noted effect by effect on the document before the commit ([`Watch::note`]), derived on it
 /// ([`Watch::take`]), noted again on the document after it, and finished ([`Watch::finish`]):
-/// the cable references ([`crate::references::Snapshot`], scoped per cable) and the touched
+/// the cable references ([`crate::references::cables::Snapshot`], scoped per cable) and the touched
 /// devices' texts and tables.
 #[derive(Debug, Clone, Default)]
 pub struct Watch {
     /// The cables whose references are compared, or every cable (`all_cables`).
     cable_scope: BTreeSet<CableId>,
     all_cables: bool,
-    cables: Option<crate::references::Snapshot>,
+    cables: Option<crate::references::cables::Snapshot>,
     scope: Scope,
     before: BTreeMap<DeviceId, BTreeMap<PageId, Vec<Part>>>,
     /// The pages with a device member before (only in the wide case).
@@ -1870,7 +1870,7 @@ pub struct Watch {
     rebuild: bool,
     /// The book positions before the commit, compared with the book after it once
     /// (`moved_done`): the pages whose position changed, their devices, arrows and cables.
-    positions: ecad_model::book::PositionsNoted,
+    positions: ecad_model::document::book::PositionsNoted,
     moved_done: bool,
     /// What verify mode found wrong (bugs), for the caller to record.
     problems: Vec<String>,
@@ -1898,7 +1898,7 @@ impl Watch {
     /// state before the commit (the ops given to it) or after it (the transaction as recorded).
     pub fn note(&mut self, doc: &Document, before: bool, effect: &Effect<'_>) {
         if before {
-            if !self.all_cables && !crate::references::cables_touched_by(doc, effect, &mut self.cable_scope) {
+            if !self.all_cables && !crate::references::cables::cables_touched_by(doc, effect, &mut self.cable_scope) {
                 self.all_cables = true;
             }
             self.positions.note_before(doc, effect);
@@ -1908,14 +1908,14 @@ impl Watch {
                 let pages = self.positions.changed(doc);
                 if !self.all_cables {
                     for p in &pages {
-                        self.cable_scope.extend(crate::references::cables_on(doc, *p));
+                        self.cable_scope.extend(crate::references::cables::cables_on(doc, *p));
                     }
                 }
                 self.scope.device_pages.extend(pages.iter().copied());
                 self.scope.name_pages.extend(pages);
             }
             self.scope.note(doc, effect);
-            self.rebuild |= crate::page_types::checks_changed(doc, effect);
+            self.rebuild |= crate::pages::page_types::checks_changed(doc, effect);
         }
         RefIndex::groups_named_by(doc, effect, &mut self.groups);
     }
@@ -1932,12 +1932,12 @@ impl Watch {
     pub fn take(&mut self, doc: &Document, idx: &RefIndex, reuse: &Shown, m: &dyn TextMetrics) {
         self.scope.resolve(doc, idx);
         let scope = (!self.all_cables).then_some(&self.cable_scope);
-        self.cables = Some(crate::references::Snapshot::take(doc, scope));
+        self.cables = Some(crate::references::cables::Snapshot::take(doc, scope));
         let mut places = Places::new(doc);
         if self.scope.wide {
             self.wide_pages = idx.device_pages(doc);
         } else {
-            let verify = ecad_model::ledger::verify_mode();
+            let verify = ecad_model::document::ledger::verify_mode();
             for c in &self.scope.devices {
                 let derived = match reuse.get(c) {
                     // Verify mode checks a reuse against a fresh derivation; a stale one (a bug) is
@@ -1976,7 +1976,7 @@ impl Watch {
             self.scope.wide = true;
         }
         let scope = (!self.all_cables).then_some(&self.cable_scope);
-        let after_cables = crate::references::Snapshot::take(doc, scope);
+        let after_cables = crate::references::cables::Snapshot::take(doc, scope);
         let orphaned = cables.orphaned_line(doc, &after_cables);
         let mut pages = cables.pages_changed(&after_cables);
         self.scope.resolve(doc, idx);
@@ -2045,7 +2045,7 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
     for g in groups {
         let mut cable_texts: BTreeMap<RepresentationId, String> = BTreeMap::new();
         if let Group::Cable(k) = g {
-            for r in ecad_model::derive::cable_references_of(doc, &BTreeSet::from([*k])) {
+            for r in ecad_model::connectivity::derive::cable_references_of(doc, &BTreeSet::from([*k])) {
                 cable_texts.insert(r.reference, r.text);
             }
         }
@@ -2150,8 +2150,8 @@ pub fn device_references_json(
     let total = sources.iter().fold(all.len(), |n, (_, k)| n.saturating_add(*k));
     let row = |r: &Reference| {
         json!({
-            "source": r.source.hex(), "source_page": crate::references::page_number(doc, r.source_page),
-            "target": r.target.hex(), "target_page": crate::references::page_number(doc, r.target_page),
+            "source": r.source.hex(), "source_page": crate::references::cables::page_number(doc, r.source_page),
+            "target": r.target.hex(), "target_page": crate::references::cables::page_number(doc, r.target_page),
             "kind": r.kind, "labels": r.labels, "text": r.text,
         })
     };
@@ -2215,7 +2215,7 @@ pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextMetrics) 
         "component": c.hex(),
         "tag": crate::devices::tag_of(doc, c),
         "offer": stored,
-        "head": head.map(|(h, r)| json!({"representation": h.hex(), "page": crate::references::page_number(doc, r.page), "place": places.text(r.page, anchor(doc, r))})),
+        "head": head.map(|(h, r)| json!({"representation": h.hex(), "page": crate::references::cables::page_number(doc, r.page), "place": places.text(r.page, anchor(doc, r))})),
         "placement": placement.word(),
         "placement_from": if own { "device" } else { "project" },
         "rows": rows.iter().map(|r| json!({
@@ -2245,7 +2245,7 @@ fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn Tex
 pub fn goto_target(doc: &Document, idx: &RefIndex, source: RepresentationId, target: Option<RepresentationId>) -> Option<RepresentationId> {
     match idx.member(source) {
         Some((Group::Cable(_), _)) => {
-            let refs = ecad_model::derive::cable_references_of(
+            let refs = ecad_model::connectivity::derive::cable_references_of(
                 doc,
                 &BTreeSet::from([match doc.representations.get(&source)?.subject {
                     Subject::Cable(k) => k,
@@ -2272,7 +2272,7 @@ pub fn contact_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<
         Some(r) => {
             let mut places = Places::new(doc);
             let noun = doc.devices.get(&c).map_or("Head", |d| head_noun(&d.device_type));
-            vec![format!("{noun}: {}  ({})", places.text(r.page, anchor(doc, r)), crate::references::page_words(doc, r.page))]
+            vec![format!("{noun}: {}  ({})", places.text(r.page, anchor(doc, r)), crate::references::cables::page_words(doc, r.page))]
         }
         None => vec!["Coil: not drawn".into()],
     }
@@ -2281,7 +2281,7 @@ pub fn contact_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<
 /// What a contact's hover calls its device's head: by the device's stored type (design 072 §2.2).
 fn head_noun(t: &ecad_model::DeviceType) -> &'static str {
     use ecad_model::DeviceType as T;
-    use ecad_model::device::{OperatorKind, ProtectionKind};
+    use ecad_model::objects::devices::{OperatorKind, ProtectionKind};
     match t {
         T::Switching(s) => match s.operator_kind() {
             OperatorKind::Coil => "Coil",
@@ -2347,7 +2347,7 @@ pub fn row_lines(doc: &Document, c: DeviceId, i: usize, m: &dyn TextMetrics) -> 
         (State::Spare, _) | (_, None) => format!("{tag} {} {}, {what}, offered, not drawn", r.label_pair(), r.kind.upper()),
         (s, Some(p)) => {
             let over = if s == State::Over { " (beyond the part's offer)" } else { "" };
-            format!("{tag} {} {}, {what}, {} {}{over}", r.label_pair(), r.kind.upper(), crate::references::page_words(doc, p), r.place)
+            format!("{tag} {} {}, {what}, {} {}{over}", r.label_pair(), r.kind.upper(), crate::references::cables::page_words(doc, p), r.place)
         }
     }])
 }
@@ -2419,14 +2419,14 @@ pub fn title_check(doc: &Document, c: DeviceId, m: &dyn TextMetrics) -> Option<(
     let which = format!(
         "The contact table of {} overlaps the title block on {}.",
         crate::devices::tag_words(doc, c),
-        crate::references::page_number_words(doc, t.page)
+        crate::references::cables::page_number_words(doc, t.page)
     );
     Some((which, t.page, t.top))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn the_table_text_keys_are_the_wide_case() {

@@ -142,7 +142,7 @@ impl ProjectBuilder {
     pub fn build(self) -> Built {
         crate::install();
         // Never the developer's own cable-views.json (brief 005 review M4).
-        crate::views::isolate_for_tests();
+        crate::cables::views::isolate_for_tests();
         let mut s = Session::empty();
         let project = Project::create(&mut s, "Demo", self.seed).expect("create the project");
         let doc = read_doc(&project, &mut s);
@@ -187,7 +187,7 @@ impl Built {
                 let (rid, r) =
                     doc.representations_of(Subject::Device(c)).next().unwrap_or_else(|| panic!("device {tag} has no drawn representation"));
                 let page = r.page;
-                ecad_model::derive::connection_point_positions(&doc, page)
+                ecad_model::connectivity::derive::connection_point_positions(&doc, page)
                     .into_iter()
                     .find(|(_, r, _)| *r == rid)
                     .map(|(_, _, p)| p)

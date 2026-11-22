@@ -10,10 +10,10 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::wire::ConductorRating;
-use crate::text::Text;
-use crate::units::Mm;
-use crate::wire::{Colours, WireSize};
+use crate::objects::styles::wire::ConductorRating;
+use crate::naming::text::Text;
+use crate::geometry::units::Mm;
+use crate::objects::wire::{Colours, WireSize};
 
 crate::word_enum! {
     /// A cable's screen.
@@ -141,18 +141,18 @@ impl CableType {
             }
         };
         put("size", self.size.map(|v| v.to_string()));
-        put("material", r.material.map(|v| word(&|| crate::words::Word::word(v))));
+        put("material", r.material.map(|v| word(&|| crate::naming::words::Word::word(v))));
         put("max_temperature", r.max_temperature.map(|v| v.0.to_string()));
-        put("conductor_class", r.conductor_class.map(|v| word(&|| crate::words::Word::word(v))));
+        put("conductor_class", r.conductor_class.map(|v| word(&|| crate::naming::words::Word::word(v))));
         put("rated_current", r.rated_current.map(|v| v.0.to_string()));
         put("rated_at", r.rated_at.map(|v| v.0.to_string()));
         put("core_colours", self.core_colours.as_ref().map(ToString::to_string));
-        put("core_scheme", self.core_scheme.map(|v| word(&|| crate::words::Word::word(v))));
+        put("core_scheme", self.core_scheme.map(|v| word(&|| crate::naming::words::Word::word(v))));
         put("part_number", self.part_number.as_ref().map(ToString::to_string));
         put("maker", self.maker.as_ref().map(ToString::to_string));
         put("description", self.description.as_ref().map(ToString::to_string));
         put("cores", self.cores.as_ref().map(ToString::to_string));
-        put("shield", self.shield.map(|v| word(&|| crate::words::Word::word(v))));
+        put("shield", self.shield.map(|v| word(&|| crate::naming::words::Word::word(v))));
         put("gland", self.gland.as_ref().map(ToString::to_string));
         put("outer_diameter", self.outer_diameter.map(|v| v.0.to_string()));
         out

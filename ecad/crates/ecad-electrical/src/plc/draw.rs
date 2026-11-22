@@ -10,22 +10,22 @@
 //! - Band depths: header and mark bands are geometry ([`crate::symbols::HEADER_BAND`],
 //!   [`crate::symbols::MARK_BAND`]); the name band is at least [`crate::symbols::NAME_BAND`] and
 //!   grows with the name block's text styles, rounded up to 2.5 mm.
-//! - The parts are 025's cross-reference parts ([`crate::xref::Part`]) of the run's first
+//! - The parts are 025's cross-reference parts ([`crate::references::devices::Part`]) of the run's first
 //!   representation, indexed from [`INDEX_BASE`]: derived, left out of an edit with other objects,
 //!   an edit of one alone refused.
 //!
-//! Excludes: the cells' own graphics ([`crate::symbols`]) and texts ([`super::channel_texts`]).
+//! Excludes: the cells' own graphics ([`crate::symbols`]) and texts ([`crate::plc::channel_texts`]).
 
-use ecad_model::units::Degrees;
+use ecad_model::geometry::units::Degrees;
 use std::collections::BTreeMap;
 
 use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId, Subject};
 
-use super::rack::{self, CardType};
+use crate::plc::rack::{self, CardType};
 use crate::symbols::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
-use crate::text_style::fonts::{self, TextMetrics};
-use crate::text_style::{TextKind, text_style};
-use crate::xref::{HAlign, Part, Shape, VAlign};
+use crate::styles::text_style::fonts::{self, TextMetrics};
+use crate::styles::text_style::{TextKind, text_style};
+use crate::references::devices::{HAlign, Part, Shape, VAlign};
 
 /// Frame parts are indexed from here among their representation's parts (a cell or body has no
 /// cross-reference parts of its own; the base keeps them apart regardless).
@@ -98,7 +98,7 @@ fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Rep
     };
     let k = if pl.scale.is_finite() && pl.scale > 0.0 { pl.scale } else { 1.0 };
     let (x0, x1, local_top, channel) = if let Some((w, _)) = crate::symbols::cell_shape(s.key) {
-        let i = crate::devices::shown_connection_points(doc, c, r).iter().find_map(|(t, _)| super::channels::point_of(doc, *t)).map(|x| x.0);
+        let i = crate::devices::shown_connection_points(doc, c, r).iter().find_map(|(t, _)| crate::plc::channels::point_of(doc, *t)).map(|x| x.0);
         (-w / 2.0, w / 2.0, CELL_TOP, Some(i?))
     } else {
         let ty = CardType::of_symbol(s)?;
@@ -200,13 +200,13 @@ fn make_run(card: DeviceId, dir: f64, pieces: &[Piece]) -> Run {
 fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
     let mut out = Vec::new();
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    if <crate::text_style::Shown as ecad_model::Word>::parse(crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
+    if <crate::styles::text_style::Shown as ecad_model::Word>::parse(crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
         .unwrap_or_default()
-        != crate::text_style::Shown::Off
+        != crate::styles::text_style::Shown::Off
     {
         out.push((crate::devices::tag_words(doc, c), TextKind::Tag));
     }
-    if let Some((caption, true)) = super::caption(doc, c) {
+    if let Some((caption, true)) = crate::plc::caption(doc, c) {
         out.push((caption, TextKind::PartNumber));
     }
     let prop = |k: &str| doc.devices.get(&c).and_then(|x| x.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
@@ -220,7 +220,7 @@ fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
 
 /// The type text: the card's own description, else `DI 16`.
 pub fn type_text(doc: &Document, c: DeviceId) -> String {
-    let Some(ty) = super::card_type_of(doc, c) else { return String::new() };
+    let Some(ty) = crate::plc::card_type_of(doc, c) else { return String::new() };
     let builtin = ty.body().map(crate::symbols::starter).map(|s| s.name);
     let desc = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
@@ -249,7 +249,7 @@ pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics)
 
 fn frame_parts(doc: &Document, run: &Run, m: &dyn TextMetrics, out: &mut Vec<Part>) {
     let c = run.card;
-    let Some(ty) = super::card_type_of(doc, c) else { return };
+    let Some(ty) = crate::plc::card_type_of(doc, c) else { return };
     let n = if ty.has_channels() { rack::channel_count(doc, c) } else { 0 };
     let has_body = doc
         .representations_of(Subject::Device(c))
@@ -406,7 +406,7 @@ fn frame_rect(doc: &Document, run: &Run) -> (f64, f64, f64, f64) {
 /// points whose route goes on into the card's frame and is attached at both ends (kept by the
 /// fence because it reaches something; connectivity is never changed silently).
 pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crate::checks::Check>) {
-    let pages = super::overview::pages_of(doc, c);
+    let pages = crate::plc::overview::pages_of(doc, c);
     for page in pages {
         let runs = runs_of_card(doc, c, page);
         if runs.is_empty() {
@@ -415,7 +415,7 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
         let rects: Vec<(f64, f64, f64, f64)> = runs.iter().map(|r| frame_rect(doc, r)).collect();
         let mut seen = std::collections::BTreeSet::new();
         for (t, _) in doc.connection_points_of(c) {
-            let Some((i, _)) = super::channels::point_of(doc, t) else { continue };
+            let Some((i, _)) = crate::plc::channels::point_of(doc, t) else { continue };
             for (w, _) in doc.ends_at(t) {
                 if !seen.insert(w) {
                     continue;
@@ -440,7 +440,7 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                     .iter()
                     .find(|x| **x != t)
                     .map(|x| {
-                        let name = crate::terminal_types::connection_point_name(doc, *x);
+                        let name = crate::terminal_strips::terminal_blocks::connection_point_name(doc, *x);
                         match doc.terminals.get(x).and_then(|t| t.device()).and_then(|c| crate::devices::tag_of(doc, c)) {
                             Some(_) if !name.contains(':') => {
                                 format!(
@@ -452,7 +452,7 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                         }
                     })
                     .unwrap_or_default();
-                let first = super::channels::first_number(doc, c);
+                let first = crate::plc::channels::first_number(doc, c);
                 out.push(crate::checks::Check {
                     kind: crate::checks::Kind::WireThroughCard,
                     page: Some(page),
@@ -460,7 +460,7 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                     object: crate::checks::Object::Wire(w),
                     which: format!(
                         "Wire {} runs through {tag} channel {} to {other}",
-                        crate::slash::wire_name(doc, w).trim_start_matches("wire "),
+                        crate::cables::slash::wire_name(doc, w).trim_start_matches("wire "),
                         i + first
                     ),
                     fix: None,
@@ -479,7 +479,7 @@ pub fn wide_checks(
     let pin = text_style(doc, TextKind::PointLabel).height;
     let addr_h = text_style(doc, TextKind::Address).height;
     let deep = 1.0 + pin + 1.0 + pin > HEADER_BAND || 1.0 + addr_h + 2.0 + 3.0 > MARK_BAND;
-    for page in super::overview::pages_of(doc, c) {
+    for page in crate::plc::overview::pages_of(doc, c) {
         for run in runs_of_card(doc, c, page) {
             let (Some(first), Some(last)) = (run.first, run.last) else { continue };
             let cell_w = if run.right_cell || run.left_cell {

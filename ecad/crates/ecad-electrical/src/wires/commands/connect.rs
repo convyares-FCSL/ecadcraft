@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::cmd::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 use crate::wires::{RouteEdits, end_index};
 
@@ -27,7 +27,7 @@ pub fn connect(doc: &Document, r: RouteId, end: End, t: ConnectionPointId) -> Re
     if !doc.terminals.contains_key(&t) {
         return Err(CmdError::refused("no such connection point"));
     }
-    let at = ecad_model::derive::connection_point_position(doc, page, t).ok_or(CmdError::refused("the connection point is not shown on this page"))?;
+    let at = ecad_model::connectivity::derive::connection_point_position(doc, page, t).ok_or(CmdError::refused("the connection point is not shown on this page"))?;
     let mut edits = RouteEdits::new(doc);
     let route = edits.get(r).ok_or(CmdError::refused(NO_ROUTE))?;
     let slot = match end {
@@ -60,7 +60,7 @@ pub fn disconnect(doc: &Document, r: RouteId, end: End) -> Result<Vec<Op>, CmdEr
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::cmd::run)
+// The commands (generic: crate::commands::run)
 
 /// A route's end.
 #[derive(Deserialize, Clone, Copy, JsonSchema)]

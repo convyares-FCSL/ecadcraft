@@ -10,11 +10,11 @@
 //!
 //! It keeps nothing: its scope is the change log's record.
 
-use ecad_model::effect::{AreaSet, Effect};
-use ecad_model::view::{DerivedView, NoteCx, Outcome, ViewScope};
+use ecad_model::document::effect::{AreaSet, Effect};
+use ecad_model::document::view::{DerivedView, NoteCx, Outcome, ViewScope};
 use ecad_model::{Document, Page};
 
-use super::Inputs;
+use crate::views::Inputs;
 
 /// The Pages tree feed.
 #[derive(Debug, Default)]

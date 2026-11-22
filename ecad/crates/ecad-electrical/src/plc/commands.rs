@@ -7,10 +7,10 @@
 //! Excludes: the kept model (`plcracks`, `iolist`, `plcexport` and `plcimport` read it in the
 //! engine crate) and the tag file formats ([`crate::plc::exchange`]).
 
-use ecad_model::units::{Degrees, Radians};
+use ecad_model::geometry::units::{Degrees, Radians};
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::book::Book;
+use ecad_model::document::book::Book;
 use ecad_model::{
     ChannelRole, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject, Terminal, ConnectionPointId, Word,
 };
@@ -167,7 +167,7 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
     // The function follows the type; the module's station, slot, attributes, pinned block and its
     // channels' data stay (a safe state the new type cannot hold goes).
     let mut function = new_module.function.clone();
-    let mut probe = ecad_model::plc::PlcModule::new(function.clone());
+    let mut probe = ecad_model::objects::plc::PlcModule::new(function.clone());
     if let Some(m) = crate::plc::edit::module_of(doc, c) {
         for (i, ch) in m.channels() {
             let mut ch = ch.clone();
@@ -322,7 +322,7 @@ pub fn plan_address(doc: &Document, input: &AddressInput) -> Result<AddressPlan,
         let n = match &value {
             None => None,
             Some(x) => Some(
-                ecad_model::words::uint(x, max)
+                ecad_model::naming::words::uint(x, max)
                     .filter(|n| x.len() <= 5 && (key == "start" || *n >= 1))
                     .ok_or_else(|| CmdError::refused(format!("`{key}` is a whole number of bytes from {} to {max}.", u32::from(key == "size"))))?,
             ),
@@ -413,7 +413,7 @@ pub fn plan_channels(
         })?,
         (None, None) => CardType::Di,
     };
-    let found = crate::slash::crossings(doc, page, input.from, input.to, tol);
+    let found = crate::cables::slash::crossings(doc, page, input.from, input.to, tol);
     if found.members.len() > MAX_FENCE {
         return Err(CmdError::refused(format!("That line crosses {} wires; at most {MAX_FENCE} at once. Draw a shorter line.", found.members.len())));
     }
@@ -427,12 +427,12 @@ pub fn plan_channels(
     };
     let landings = landings(doc, starter, &found.members, point_role);
     // Brief 051 (design 051 §2.2, Q1): cells are one width apart at least, or they overlap.
-    let anchors: Vec<crate::slash::Crossing> = landings.iter().filter_map(|l| l.points.first().map(|x| x.1)).collect();
+    let anchors: Vec<crate::cables::slash::Crossing> = landings.iter().filter_map(|l| l.points.first().map(|x| x.1)).collect();
     if let Some(e) = spacing_refusal(doc, starter, t, &anchors) {
         return Err(CmdError::refused(e));
     }
     let mut ops = Vec::new();
-    let def = crate::cmd::terminal::definition_for(doc, ids, starter, &mut ops)?;
+    let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
     let (card, tag, new) = match card {
         Some((c, _)) => (c, crate::devices::tag_words(doc, c), false),
         None => {
@@ -474,7 +474,7 @@ pub fn plan_channels(
             let on = crate::wires::on_route_of(doc, m.route, at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
             let tid = cell.terminals.iter().find(|x| x.0 == *role).map(|x| x.1).ok_or(CmdError::refused(NO_POINT))?;
             let land = land_cell(doc, ids, on, tid)
-                .map_err(|e| CmdError::refused(format!("{e} (wire {})", crate::slash::position_name(doc, m.position))))?;
+                .map_err(|e| CmdError::refused(format!("{e} (wire {})", crate::cables::slash::position_name(doc, m.position))))?;
             ops.extend(land);
         }
         placed.push(next);
@@ -523,7 +523,7 @@ pub fn plan_rest(
         }
     };
     let mut ops = Vec::new();
-    let def = crate::cmd::terminal::definition_for(doc, ids, starter, &mut ops)?;
+    let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
     let roles = roles_of(starter);
     let mut used = crate::devices::labels_of(doc, c);
     for (k, i) in missing.iter().enumerate() {
@@ -734,7 +734,7 @@ pub fn page_card(doc: &Document, card: &str) -> Result<PageCard, CmdError> {
     let body = !body_drawn(doc, card);
     if missing.is_empty() && !body {
         let pages = crate::plc::overview::pages_of(doc, card);
-        let at = pages.first().map(|p| format!(" ({})", crate::references::page_number_words(doc, *p))).unwrap_or_default();
+        let at = pages.first().map(|p| format!(" ({})", crate::references::cables::page_number_words(doc, *p))).unwrap_or_default();
         return Err(CmdError::refused(if ty.has_channels() {
             format!("All {n} channels of {tag} are drawn{at}.")
         } else {
@@ -769,7 +769,7 @@ pub fn after_page(doc: &Document, book: &Book, card: DeviceId, after: Option<&st
         return Ok(Some(*p));
     }
     // Else the last schematic (not generated) page.
-    Ok(book.order.iter().rev().find(|p| crate::generated::kind_of(doc, **p).is_none()).copied())
+    Ok(book.order.iter().rev().find(|p| crate::pages::generated::kind_of(doc, **p).is_none()).copied())
 }
 
 /// The cells and body of card page `id` (not yet in the document; `ops` add it), appended to
@@ -786,13 +786,13 @@ pub fn plan_page_contents(
     let doc = ledger.document();
     let (card, ty) = (pc.card, pc.ty);
     // The drawing area, in model units.
-    let spec = ecad_model::sheet::sheet_of(doc, id);
-    let k = ecad_model::sheet::unit_scale(doc.settings.length_unit);
+    let spec = ecad_model::document::sheet::sheet_of(doc, id);
+    let k = ecad_model::document::sheet::unit_scale(doc.settings.length_unit);
     // Brief 055 (FP4): the frame's margins and its block's height.
-    let m = ecad_model::sheet::margins_of(doc, id);
+    let m = ecad_model::document::sheet::margins_of(doc, id);
     let (l, b, r, t) = (
         m.left + 5.0,
-        m.bottom + ecad_model::sheet::keep_out(doc, id) + 5.0,
+        m.bottom + ecad_model::document::sheet::keep_out(doc, id) + 5.0,
         f64::from(spec.width) - m.right - 5.0,
         f64::from(spec.height) - m.top - 5.0,
     );
@@ -803,7 +803,7 @@ pub fn plan_page_contents(
     let mut cell_point: Option<Pt> = None;
     if !pc.missing.is_empty() {
         let starter = ty.cell().map(crate::symbols::starter).ok_or(CmdError::refused("No channel symbol for that type."))?;
-        let def = crate::cmd::terminal::definition_for(doc, ids, starter, ops)?;
+        let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, ops)?;
         let w = starter.size().0;
         let per_row = (((r - l - LEFT_MM) / w).floor() as usize).max(1);
         let roles = roles_of(starter);

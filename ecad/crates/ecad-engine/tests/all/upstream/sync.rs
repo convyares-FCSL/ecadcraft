@@ -129,7 +129,7 @@ fn block_editor_on_the_current_drawing_is_recorded_or_refused() {
     let mut log = Vec::new();
     log.push(trace(&mut h, "bedit", json!({"name": "<Current Drawing>"})));
     if h.s.state().is_ok_and(|st| st.block_edit.is_some()) {
-        let all: Vec<_> = h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle.hex()).collect();
+        let all: Vec<_> = h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle.hex()).collect();
         log.push(trace(&mut h, "erase", json!({"handles": all})));
         log.push(trace(&mut h, "bclose", json!({"save": true})));
     }
@@ -489,7 +489,7 @@ fn every_command_started_interactively_and_answered_with_enter_leaves_the_projec
     // engine undo step left on an ECAD page.
     const SKIP: &[&str] = &["close", "closeall", "new", "qnew", "open", "quit", "exit", "newsheetset", "recover", "recoverall", "delay"];
     ecad_engine::install();
-    let ours: Vec<&str> = ecad_engine::cmd::specs().iter().map(|c| c.id).collect();
+    let ours: Vec<&str> = ecad_engine::commands::specs().iter().map(|c| c.id).collect();
     let mut broken = Vec::new();
     for spec in cadcraft_engine::command_specs().iter().filter(|c| !SKIP.contains(&c.id) && !ours.contains(&c.id)) {
         let mut h = fixture();

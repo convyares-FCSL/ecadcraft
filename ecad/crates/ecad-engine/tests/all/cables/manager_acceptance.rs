@@ -18,7 +18,7 @@
 
 use ecad_electrical::cables::{self, CableField, Side, Source};
 use ecad_engine::checks::{self, Severity};
-use ecad_engine::designations::Aspect;
+use ecad_electrical::locations::designations::Aspect;
 use ecad_model::{CableId, DeviceId, Document, Op, WireId};
 use serde_json::{Value, json};
 
@@ -108,7 +108,7 @@ fn two_devices(h: &mut H, loc_a: &str, loc_b: &str) -> (DeviceId, DeviceId, f64,
     h.run("setlocation", json!({"component": b.hex(), "value": loc_b})).unwrap();
     let doc = h.doc();
     let page = h.first_page();
-    let tp = ecad_model::derive::connection_point_positions(&doc, page);
+    let tp = ecad_model::connectivity::derive::connection_point_positions(&doc, page);
     let pos = |c: DeviceId| {
         let (rid, _) = doc.representations_of(ecad_model::Subject::Device(c)).next().unwrap();
         tp.iter().find(|(_, r, _)| *r == rid).unwrap().2
@@ -171,7 +171,7 @@ fn r1_type_cores_length_maker_and_part_come_from_the_type_and_are_overridden_per
     assert_eq!(cables::part_value(&doc, k, CableField::Maker), Some(("Synthmaker".into(), Source::Type)));
     assert_eq!(cables::part_value(&doc, k, CableField::PartNumber), Some(("SYN-0004".into(), Source::Type)));
     assert_eq!(cables::part_value(&doc, k, CableField::Description).map(|v| v.1), Some(Source::Type));
-    assert_eq!(cables::shield(&doc, k), Some((ecad_model::style::cable::Shield::Overall, Source::Type)));
+    assert_eq!(cables::shield(&doc, k), Some((ecad_model::objects::styles::cable::Shield::Overall, Source::Type)));
     assert_eq!(cables::read(&doc, k, CableField::Length).as_deref(), Some("12.5"));
     // Overridden per cable, in one transaction.
     h.run(
@@ -232,8 +232,8 @@ fn r2_removing_a_drawn_cable_is_refused_with_its_pages_and_an_undrawn_one_is_rem
         assert!(e.contains("-W01 is drawn on") && e.contains("Delete it on its page."), "{e}");
         bounded(&e, "Drawn");
     }
-    match ecad_electrical::cmd::cable::drawn(&h.doc(), w) {
-        Some(ecad_electrical::cmd::cable::Drawn { tag, pages }) => {
+    match ecad_electrical::cables::commands::cables::drawn(&h.doc(), w) {
+        Some(ecad_electrical::cables::commands::cables::Drawn { tag, pages }) => {
             assert_eq!(tag, "-W01");
             assert_eq!(pages.len(), 1, "{pages:?}");
             assert_eq!(pages[0].0, page, "the Go to's page");
@@ -286,8 +286,8 @@ fn r2_a_cable_drawn_on_two_pages_names_both() {
     }
     let e = refused(&mut h, "cableremove", json!({"cable": w.hex()}));
     assert!(e.contains(" and "), "both pages: {e}");
-    match ecad_electrical::cmd::cable::drawn(&h.doc(), w) {
-        Some(ecad_electrical::cmd::cable::Drawn { pages, .. }) => assert_eq!(pages.len(), 2, "{pages:?}"),
+    match ecad_electrical::cables::commands::cables::drawn(&h.doc(), w) {
+        Some(ecad_electrical::cables::commands::cables::Drawn { pages, .. }) => assert_eq!(pages.len(), 2, "{pages:?}"),
         other => panic!("{other:?}"),
     }
 }
@@ -388,12 +388,12 @@ fn r5_not_drawn_is_info_and_a_warning_in_the_release_check() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(rows[0]["severity"], json!("info"));
     assert!(checks_of(&mut h, "core-open").is_empty(), "a type giving 4G raises no core-open while not drawn");
-    let release = h.cfg(ecad_engine::release::check_rows);
+    let release = h.cfg(ecad_engine::releases::release::check_rows);
     let row: Vec<&checks::Check> = release.iter().filter(|c| c.kind == checks::Kind::CableNotDrawn).collect();
     assert_eq!(row.len(), 1);
     assert_eq!(row[0].severity(), Severity::Info);
     assert_eq!(row[0].release_severity(), Severity::Warning);
-    let (_, warnings, _) = ecad_electrical::release::counts(&release);
+    let (_, warnings, _) = ecad_electrical::releases::release::counts(&release);
     assert!(warnings >= 1);
     // The pre-release check (read only) shows it as a warning.
     let pre = h.run("prerelease", json!({})).unwrap();
@@ -755,7 +755,7 @@ fn r8_a_refusal_in_the_middle_of_several_fields_writes_none_of_them() {
     let e = refused(&mut h, "cablenew", json!({"from": {"location": "+NEWPLACE"}, "length": "x"}));
     assert!(e.contains("Length"), "{e}");
     let doc = h.doc();
-    assert!(ecad_engine::designations::code_of(&doc, Aspect::Location, "+NEWPLACE").is_none(), "no stray list entry");
+    assert!(ecad_electrical::locations::designations::code_of(&doc, Aspect::Location, "+NEWPLACE").is_none(), "no stray list entry");
 }
 
 fn scope_words(h: &mut H, before: &Document, ops: &[Op]) -> (String, String) {
@@ -763,7 +763,7 @@ fn scope_words(h: &mut H, before: &Document, ops: &[Op]) -> (String, String) {
     h.cfg(|p| {
         let checks_scope = |d: &Document| {
             let mut s = checks::Scope::default();
-            for e in &ecad_model::effect::Effects::of(ops) {
+            for e in &ecad_model::document::effect::Effects::of(ops) {
                 s.note(d, e);
             }
             s
@@ -868,8 +868,8 @@ fn f1_removing_a_cable_drawn_on_two_pages_names_both_with_a_go_to_each() {
     let e = refused(&mut h, "cableremove", json!({"cable": w.hex()}));
     assert!(e.contains("is drawn on") && e.contains(" and ") && e.contains("Delete it on its page."), "{e}");
     bounded(&e, "Drawn, two pages");
-    match ecad_electrical::cmd::cable::drawn(&h.doc(), w) {
-        Some(ecad_electrical::cmd::cable::Drawn { pages, .. }) => {
+    match ecad_electrical::cables::commands::cables::drawn(&h.doc(), w) {
+        Some(ecad_electrical::cables::commands::cables::Drawn { pages, .. }) => {
             let ids: Vec<ecad_model::PageId> = pages.iter().map(|p| p.0).collect();
             assert_eq!(ids, vec![p1, p2], "one Go to per page, in book order: {pages:?}");
             assert!(pages.iter().all(|p| !p.1.is_empty()));
@@ -901,7 +901,7 @@ fn f2_the_picker_lists_not_drawn_first_matches_marked_then_drawn_not_slashed_her
     let b = new_cable(&mut h, json!({"tag": "-W11", "to": {"location": "+CAB1"}}));
     let c = new_cable(&mut h, json!({"tag": "-W12", "from": {"location": "+CAB1"}, "type": "Synth 4G1"}));
     page_at(&mut h, p1, "+CAB1");
-    let items = ecad_electrical::cmd::cable::picker(&h.doc(), p1);
+    let items = ecad_electrical::cables::commands::cables::picker(&h.doc(), p1);
     let order: Vec<CableId> = items.iter().map(|i| i.cable).collect();
     assert!(!order.contains(&here), "a cable slashed on this page is absent: {items:?}");
     assert_eq!(order, vec![b, c, a, elsewhere], "matches, then other not drawn, then drawn: {items:?}");
@@ -913,7 +913,7 @@ fn f2_the_picker_lists_not_drawn_first_matches_marked_then_drawn_not_slashed_her
         h.wire_pp(&[(x, 0.0), (x, 50.0)]).unwrap();
     }
     slash_across(&mut h, (195.0, 25.0), (215.0, 25.0), Some(a)).unwrap();
-    let items = ecad_electrical::cmd::cable::picker(&h.doc(), p1);
+    let items = ecad_electrical::cables::commands::cables::picker(&h.doc(), p1);
     assert!(!items.iter().any(|i| i.cable == a), "slashed here now: absent");
 }
 

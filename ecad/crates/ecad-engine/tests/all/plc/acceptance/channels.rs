@@ -4,7 +4,7 @@
 use ecad_model::DeviceId;
 use serde_json::json;
 
-use super::*;
+use crate::plc::acceptance::*;
 use crate::common::id;
 
 // ------------------------------------------------------------------------------- F (AC 1)

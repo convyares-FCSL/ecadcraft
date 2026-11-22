@@ -4,7 +4,7 @@
 //! to commit and what to report; the engine crate's shims read the parameters, commit and answer
 //! in JSON.
 
-use ecad_model::units::{Degrees, Radians};
+use ecad_model::geometry::units::{Degrees, Radians};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -15,7 +15,7 @@ use crate::defaults::{self, Scope};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
 use crate::symbols::{Side, Starter};
-use ecad_model::device::ConnectorFamily;
+use ecad_model::objects::devices::ConnectorFamily;
 
 /// The refusal of a `connector` call with nowhere to place.
 pub const NEEDS_AT: &str = "connector needs at for a row, or line or wire for pins.";
@@ -32,7 +32,7 @@ pub fn device(doc: &Document, device: Option<&str>) -> Result<Option<DeviceId>, 
     {
         return Ok(Some(DeviceId::from(n)));
     }
-    let tag = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc))?;
+    let tag = ecad_model::naming::tag::normalise(t, crate::defaults::print::tag_style(doc))?;
     crate::devices::holder_of(doc, &tag, None).map(Some).ok_or_else(|| CmdError::refused(format!("No device {tag}.")))
 }
 
@@ -388,7 +388,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
     for side in sides {
         let key = family.half_key(side, n).ok_or_else(|| CmdError::refused(family.size_refusal()))?;
         let starter = crate::devices::starter(&key)?;
-        let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
+        let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
         let origin = if side == Side::Socket && halves == Side::Both { Pt::new(at.x - sin * up, at.y + cos * up) } else { at };
         let placement = if swap {
             Placement { origin, rotation: Radians(rot.0 + std::f64::consts::PI), mirror: true, scale: 1.0 }
@@ -445,7 +445,7 @@ fn place_pins(
             .ok_or(CmdError::refused("Click on a wire, or draw a line across the wires."))?;
         vec![crate::wires::on_route_of(doc, r, from).ok_or(CmdError::refused("That wire is not drawn here."))?]
     } else {
-        let found = crate::slash::crossings(doc, page, from, to, tol);
+        let found = crate::cables::slash::crossings(doc, page, from, to, tol);
         if found.members.len() > cn::MAX_PINS {
             return Err(CmdError::refused(format!(
                 "That line crosses {} wires; a connector has at most {} pins. Draw a shorter line.",
@@ -465,7 +465,7 @@ fn place_pins(
     };
     let starter: &Starter = crate::devices::starter(key)?;
     let mut ops = Vec::new();
-    let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
+    let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
     // A new connector: its names first, then numbers past them (Numbers only).
     let (component, tag, new, mut fresh) = match device {
         Some(c) => (c, crate::devices::tag_words(doc, c), false, Vec::new()),
@@ -531,7 +531,7 @@ fn place_pins(
         let placement = Placement { origin: on.at, rotation, mirror: false, scale: 1.0 };
         let (_, _, shown) = cn::symbol_ops(ids, page, style.clone(), def, starter, component, std::slice::from_ref(&name), placement, &mut ops)?;
         let land = cn::land_pin(doc, ids, on, &shown, placement).map_err(|e| match crate::wires::wire_of_route(doc, on.route) {
-            Some(w) => CmdError::refused(format!("{e} (wire {})", crate::slash::wire_name(doc, w))),
+            Some(w) => CmdError::refused(format!("{e} (wire {})", crate::cables::slash::wire_name(doc, w))),
             None => e,
         })?;
         splits.push((land.route, land.new));
@@ -663,7 +663,7 @@ pub fn result_json(doc: &Document, m: &Made, message: &str) -> Value {
     })
 }
 
-/// Whether a point may not be used: not finite, or beyond [`crate::words::MAX_COORD`].
+/// Whether a point may not be used: not finite, or beyond [`crate::cables::words::MAX_COORD`].
 pub fn out_of_range(p: Pt) -> bool {
-    !(p.is_finite() && p.x.abs() <= crate::words::MAX_COORD && p.y.abs() <= crate::words::MAX_COORD)
+    !(p.is_finite() && p.x.abs() <= crate::cables::words::MAX_COORD && p.y.abs() <= crate::cables::words::MAX_COORD)
 }

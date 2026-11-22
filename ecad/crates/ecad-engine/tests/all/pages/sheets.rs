@@ -5,9 +5,9 @@
 use crate::common::{H, id};
 
 use cadcraft_engine::doc::EntityKind;
-use ecad_engine::frame;
-use ecad_model::book::Book;
-use ecad_model::derive::cable_references;
+use ecad_engine::pages::frame;
+use ecad_model::document::book::Book;
+use ecad_model::connectivity::derive::cable_references;
 use ecad_model::{CableId, FolderId, Op, PageId, WireId};
 use serde_json::{Value, json};
 
@@ -277,11 +277,11 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
         .map(|x| {
             let coil: ecad_model::DeviceId = id(&s.h.run("place", json!({"symbol": "coil", "at": [x, 200]})).unwrap(), "component");
             let doc = s.h.doc();
-            ecad_model::derive::connection_point_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].device().unwrap() == coil).unwrap().2
+            ecad_model::connectivity::derive::connection_point_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].device().unwrap() == coil).unwrap().2
         })
         .collect();
     let e = s.h.run("issuerevision", json!({"description": "First issue"})).unwrap_err();
-    assert_eq!(e, ecad_engine::revisions::FILL_FIRST);
+    assert_eq!(e, ecad_electrical::releases::revisions::FILL_FIRST);
     let head = s.h.head();
     s.h.run("revision", json!({"description": "First issue"})).unwrap();
     s.h.run("revision", json!({"drawn": "CVA"})).unwrap();
@@ -377,12 +377,12 @@ fn a_read_only_project_refuses_writes() {
 }
 
 /// The Properties rows of `selection` on `page`, and the objects they depend on.
-fn props_of(h: &mut H, page: PageId, selection: &[cadcraft_engine::doc::Handle]) -> ecad_electrical::props::PropsView {
+fn props_of(h: &mut H, page: PageId, selection: &[cadcraft_engine::doc::Handle]) -> ecad_electrical::properties::PropsView {
     let sel = selection.to_vec();
-    h.p(|p| ecad_engine::props::view(p, Some(page), &sel))
+    h.p(|p| ecad_engine::properties::props::view(p, Some(page), &sel))
 }
 
-fn row(v: &ecad_electrical::props::PropsView, key: &str) -> String {
+fn row(v: &ecad_electrical::properties::PropsView, key: &str) -> String {
     v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == key).map(|r| r.value.clone()).unwrap_or_default()
 }
 
@@ -395,7 +395,7 @@ fn wire_and_reference_properties_follow_the_objects_they_name() {
     let coil: ecad_model::DeviceId = id(&s.h.run("place", json!({"symbol": "coil", "at": [200, 150]})).unwrap(), "component");
     let doc = s.h.doc();
     let (_, _, at) =
-        ecad_model::derive::connection_point_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].device().unwrap() == coil).unwrap();
+        ecad_model::connectivity::derive::connection_point_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].device().unwrap() == coil).unwrap();
     let w: WireId = id(&s.h.wire_pp(&[(at.x, at.y), (at.x + 40.0, at.y)]).unwrap(), "conductor");
     let route = s.h.route_handle(s.supply, w);
     let v = props_of(&mut s.h, s.supply, &[route]);
@@ -455,7 +455,7 @@ fn an_invalid_sheet_falls_back_to_a3_everywhere() {
     after.sheet = Some(ecad_model::SheetSpec { columns: 0, width: 0, ..ecad_model::SheetSpec::default() });
     s.h.project.apply_ops(&mut s.h.s, "hostile", vec![Op::SetProjectSettings { before, after }]).unwrap();
     let doc = s.h.doc();
-    assert_eq!(ecad_model::sheet::sheet_of(&doc, s.supply), ecad_model::SheetSpec::default());
+    assert_eq!(ecad_model::document::sheet::sheet_of(&doc, s.supply), ecad_model::SheetSpec::default());
     assert_eq!(text_on(&mut s.h, s.field), "1/F3", "references use the same A3 the frame draws");
     let input = frame::FrameInput::of(&doc, s.supply, &Book::of(&doc));
     assert_eq!(input.sheet, ecad_model::SheetSpec::default());

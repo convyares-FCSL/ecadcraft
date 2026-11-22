@@ -80,7 +80,7 @@ pub fn other_end(p: &Project, reference: RepresentationId) -> Result<(PageId, Pt
         },
         _ => return Err(NOT_A_REFERENCE.into()),
     };
-    let refs = ecad_model::derive::cable_references_of(doc, &BTreeSet::from([cable]));
+    let refs = ecad_model::connectivity::derive::cable_references_of(doc, &BTreeSet::from([cable]));
     let here = refs.iter().find(|r| r.reference == reference).ok_or(NOT_A_REFERENCE)?;
     let other = here.partners.first().copied().ok_or(ORPHAN)?;
     let there = refs.iter().find(|r| r.reference == other).ok_or(ORPHAN)?;

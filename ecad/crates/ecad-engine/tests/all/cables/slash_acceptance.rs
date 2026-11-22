@@ -933,7 +933,7 @@ fn bulk_wires(n: usize) -> (H, Vec<WireId>) {
 #[test]
 #[ignore = "slow: builds a cable at the member cap, about 2 min in a debug build"]
 fn ac8_max_cable_members_is_the_cap() {
-    let max = ecad_engine::slash::MAX_CABLE_MEMBERS;
+    let max = ecad_electrical::cables::slash::MAX_CABLE_MEMBERS;
     assert_eq!(max, 10_000);
     let (mut h, _) = bulk_wires(max);
     // Exactly 10 000 (y = 0 ..= 9 999): accepted.
@@ -975,7 +975,7 @@ fn ac8_max_cable_members_is_the_cap() {
 /// cable, and then the members in member order before the representations.
 #[test]
 fn scope5_debugger_trail_slash_cable_conductors() {
-    use ecad_engine::debug::{ObjectId, used_by};
+    use ecad_engine::dev::debug::{ObjectId, used_by};
     let mut f = fixture(SEED);
     let r = slash(&mut f.h, (32.0, 18.0), (28.0, -3.0)).unwrap();
     let k: CableId = id(&r, "cable");
@@ -1152,7 +1152,7 @@ fn r2_cableadd_refuses_a_wire_listed_twice() {
 #[test]
 #[ignore = "slow: builds a cable at the member cap, about 2 min in a debug build"]
 fn r2_cableadd_cap_holds_for_the_whole_cable() {
-    let max = ecad_engine::slash::MAX_CABLE_MEMBERS;
+    let max = ecad_electrical::cables::slash::MAX_CABLE_MEMBERS;
     let (mut h, ws) = bulk_wires(max);
     let hx = |r: std::ops::Range<usize>| ws[r].iter().map(|w| w.hex()).collect::<Vec<_>>();
     let refused = |h: &mut H, params: Value, why: &str| {

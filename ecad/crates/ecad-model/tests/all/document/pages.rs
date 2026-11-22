@@ -2,8 +2,8 @@
 //! and checked), `PageKind` and `GenKind` words (A2), the page's old keys reserved (A3), and the
 //! strict page record (A4).
 
-use ecad_model::book::{Book, PageNo};
-use ecad_model::keys;
+use ecad_model::document::book::{Book, PageNo};
+use ecad_model::naming::keys;
 use ecad_model::{Author, GenKind, IdAllocator, Ledger, ModelError, ObjectRef, Op, Page, PageId, PageKind, StyleRef, Word};
 
 fn one_page() -> (Ledger, PageId, IdAllocator) {
@@ -242,9 +242,9 @@ fn revision_rows_are_ordered_and_kept_by_restore() {
 
     let past = ecad_model::Document::default();
     let live = ledger.document().clone();
-    let keep = ecad_model::diff::ops_between(&live, &past, &|k| !k.starts_with(ecad_model::project::REVISIONS_KEY));
+    let keep = ecad_model::document::diff::ops_between(&live, &past, &|k| !k.starts_with(ecad_model::document::project::REVISIONS_KEY));
     assert!(keep.iter().all(|o| !matches!(o, Op::ModifyProject { .. })), "rows kept: {keep:?}");
-    let all = ecad_model::diff::ops_between(&live, &past, &|_| true);
+    let all = ecad_model::document::diff::ops_between(&live, &past, &|_| true);
     assert!(all.iter().any(|o| matches!(o, Op::ModifyProject { after, .. } if after.revisions.is_empty())), "{all:?}");
 }
 

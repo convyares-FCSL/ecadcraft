@@ -16,7 +16,7 @@
 //!
 //! # Update map (design 024 §9)
 //! The project keeps the active page's parts with its frame. They are worked out again after an
-//! op of the frame's map ([`crate::frames::touches`]), after any op [`touches`] names for the
+//! op of the frame's map ([`crate::pages::frames::touches`]), after any op [`touches`] names for the
 //! active generated page's kind, and when the report models' BOM changes while a BOM page is shown
 //! or the book's sheet count moves (`derived::ReportsView`). A terminal plan or cable schedule
 //! page (brief 028) is redrawn the same way when the strip or cable rows changed while it is shown. Contents reads the book order
@@ -24,12 +24,12 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::book::{self, Book};
-use ecad_model::sheet::unit_scale;
+use ecad_model::document::book::{self, Book};
+use ecad_model::document::sheet::unit_scale;
 use ecad_model::{Document, ObjectRef, Op, PageId, Pt};
 
-use crate::outputs::Group;
-use crate::outputs::kept::ReportModels;
+use crate::reports::Group;
+use crate::reports::kept::ReportModels;
 
 /// The reserved layer of generated content (`ecad.generated`), locked.
 pub const LAYER: &str = "ECAD-GENERATED";
@@ -89,7 +89,7 @@ pub fn strip_of(doc: &Document, page: PageId) -> Option<ecad_model::DeviceId> {
 }
 
 /// The strips a `terminals` page shows, in tag order.
-fn strips_shown<'o>(doc: &Document, page: PageId, o: &'o ReportModels) -> Vec<&'o crate::strips::StripData> {
+fn strips_shown<'o>(doc: &Document, page: PageId, o: &'o ReportModels) -> Vec<&'o crate::terminal_strips::StripData> {
     match strip_of(doc, page) {
         Some(c) => o.strips.get(c).into_iter().collect(),
         None => o.sorted_strips(),
@@ -146,7 +146,7 @@ pub fn paginate_with(heads: &[Option<String>], break_on_heading: bool) -> Vec<(u
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn continuation_sheets_are_numbered_in_sequence() {
@@ -184,11 +184,11 @@ pub fn sheets_of(doc: &Document, page: PageId, outputs: Option<&ReportModels>) -
     let rows = match kind_of(doc, page) {
         None | Some(GenKind::Cover) => return 1,
         Some(GenKind::Contents) => doc.page_order.len(),
-        Some(GenKind::Revisions) => crate::revisions::issued(doc).len(),
+        Some(GenKind::Revisions) => crate::releases::revisions::issued(doc).len(),
         Some(GenKind::BomLocation) => return outputs.map_or(1, bom_sheets),
         // Brief 046: a graphic page counts its strips' kept graphic sheets.
-        Some(GenKind::Terminals) if crate::strips::pages::style_of(doc, page) == crate::strips::pages::Style::Graphic => {
-            return outputs.map_or(1, |o| crate::strips::pages::sheets(doc, page, o));
+        Some(GenKind::Terminals) if crate::terminal_strips::pages::style_of(doc, page) == crate::terminal_strips::pages::Style::Graphic => {
+            return outputs.map_or(1, |o| crate::terminal_strips::pages::sheets(doc, page, o));
         }
         Some(GenKind::Terminals) => return outputs.map_or(1, |o| terminal_sheets(doc, page, o)),
         Some(GenKind::Cables) => outputs.map_or(0, ReportModels::cable_count),
@@ -247,7 +247,7 @@ pub fn continuation_of(doc: &Document, book: &Book, number: &str, outputs: Optio
 /// The refusal of typing `number` when it is sheet `i` of `page` (design 033 §5.3).
 pub fn continuation_taken(doc: &Document, number: &str, page: PageId, i: usize) -> String {
     let title = doc.pages.get(&page).map(|p| p.title.as_str()).unwrap_or_default();
-    let owner = ecad_model::book::page_number(doc, page);
+    let owner = ecad_model::document::book::page_number(doc, page);
     format!("Number {number} is sheet {} of page {owner} ({title}).", i.saturating_add(1))
 }
 
@@ -296,15 +296,15 @@ pub fn book_sheets_of(doc: &Document, outputs: Option<&ReportModels>) -> usize {
 /// Whether `ops` can change what a generated page of `kind` shows: [`touched_by`] on each of
 /// their effects.
 pub fn touches(ops: &[Op], kind: GenKind) -> bool {
-    ecad_model::effect::Effects::of(ops).iter().any(|e| touched_by(e, kind))
+    ecad_model::document::effect::Effects::of(ops).iter().any(|e| touched_by(e, kind))
 }
 
 /// Whether `effect` can change what a generated page of `kind` shows (beyond the frame's own map
 /// and the report models, which the project watches itself). The cover's own map is
-/// `crate::front::touches` (brief 054b), which needs the document; the report kinds follow their
+/// `crate::pages::front::touches` (brief 054b), which needs the document; the report kinds follow their
 /// models.
-pub fn touched_by(effect: &ecad_model::effect::Effect<'_>, kind: GenKind) -> bool {
-    use ecad_model::effect::Effect;
+pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, kind: GenKind) -> bool {
+    use ecad_model::document::effect::Effect;
     match (kind, effect) {
         (GenKind::Contents, Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. }) => {
             b.title != a.title || b.number != a.number || b.folder != a.folder
@@ -328,9 +328,9 @@ pub fn terminals_rewritten(doc: &Document, page: PageId, o: &ReportModels) -> bo
     if sp.style_changed && !own_style {
         return true;
     }
-    let (changed, layout) = match crate::strips::pages::style_of(doc, page) {
-        crate::strips::pages::Style::Table => (&o.strips.last_changed, false),
-        crate::strips::pages::Style::Graphic => (&sp.last_changed, sp.layout_changed),
+    let (changed, layout) = match crate::terminal_strips::pages::style_of(doc, page) {
+        crate::terminal_strips::pages::Style::Table => (&o.strips.last_changed, false),
+        crate::terminal_strips::pages::Style::Graphic => (&sp.last_changed, sp.layout_changed),
     };
     layout
         || match strip_of(doc, page) {
@@ -358,7 +358,7 @@ pub fn refusal_words(doc: &Document, page: PageId, kind: GenKind) -> String {
 }
 
 /// The drawing area of a sheet in paper millimetres: left, bottom, right, top.
-pub fn area(input: &crate::frames::FrameInput) -> (f64, f64, f64, f64) {
+pub fn area(input: &crate::pages::frames::FrameInput) -> (f64, f64, f64, f64) {
     let (w, h) = (f64::from(input.sheet.width), f64::from(input.sheet.height));
     // Brief 055 (FP4): the frame's margins and its block's height.
     let m = input.look.margins;
@@ -399,11 +399,11 @@ fn table(doc: &Document, kind: GenKind, outputs: Option<&ReportModels>) -> (Vec<
 fn revision_list(doc: &Document) -> (Vec<(String, f64)>, Vec<TRow>) {
     const VERSION_MM: f64 = 60.0;
     let row = |cells: Vec<String>| TRow { cells, ..TRow::default() };
-    let columns = crate::revisions::columns(doc);
-    let (widths, _) = crate::revisions::widths(&columns, A3_AREA - VERSION_MM);
+    let columns = crate::releases::revisions::columns(doc);
+    let (widths, _) = crate::releases::revisions::widths(&columns, A3_AREA - VERSION_MM);
     let mut cols: Vec<(String, f64)> = columns.iter().zip(&widths).map(|(c, w)| (c.header.clone(), *w)).collect();
     cols.push(("Version".into(), VERSION_MM));
-    let issued = crate::revisions::issued(doc);
+    let issued = crate::releases::revisions::issued(doc);
     let rows = if issued.is_empty() {
         let mut cells = vec![String::new(); columns.len()];
         if let Some(i) = columns.iter().position(|c| c.field == "description")
@@ -437,13 +437,13 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&ReportModels>) -
                 .map(|p| {
                     let folder = book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
                     let title = doc.pages.get(p).map(|x| x.title.to_string()).unwrap_or_default();
-                    row(vec![number_range(doc, &b, *p, outputs), title, crate::revisions::folder_path(doc, folder)])
+                    row(vec![number_range(doc, &b, *p, outputs), title, crate::releases::revisions::folder_path(doc, folder)])
                 })
                 .collect();
             (vec![("Page", 25.0), ("Title", 220.0), ("Folder", 145.0)], rows)
         }
         GenKind::Revisions => {
-            let issued = crate::revisions::issued(doc);
+            let issued = crate::releases::revisions::issued(doc);
             let rows = if issued.is_empty() {
                 vec![row(vec![String::new(), String::new(), "No revisions issued yet.".into()])]
             } else {
@@ -591,19 +591,19 @@ fn terminal_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TRow> {
         let mut last_cable: Option<ecad_model::CableId> = None;
         for item in s.plan(true) {
             let (ri, r) = match item {
-                crate::strips::PlanItem::Term(i, r) => (i, r),
+                crate::terminal_strips::PlanItem::Term(i, r) => (i, r),
                 // Brief 030 (design 030 §7.3): a gap row is a full row, the word in Inside target,
                 // a mark across Terminal, the part in Place.
-                crate::strips::PlanItem::Gap { gap, acc } => {
+                crate::terminal_strips::PlanItem::Gap { gap, acc } => {
                     let mut cells = vec![String::new(); TERMINAL_BLOCK_COLUMNS.len()];
-                    let words = if acc == crate::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
+                    let words = if acc == crate::terminal_strips::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
                     let mark = match acc {
-                        crate::accessories::Acc::EndStop => "||",
-                        crate::accessories::Acc::EndPlate => "|",
-                        crate::accessories::Acc::Partition => "==",
+                        crate::terminal_strips::accessories::Acc::EndStop => "||",
+                        crate::terminal_strips::accessories::Acc::EndPlate => "|",
+                        crate::terminal_strips::accessories::Acc::Partition => "==",
                         _ => "[ ]",
                     };
-                    let part = s.acc.gap_part(acc, crate::outputs::gap_pe(s, gap)).cloned().unwrap_or_else(|| "?".into());
+                    let part = s.acc.gap_part(acc, crate::reports::gap_pe(s, gap)).cloned().unwrap_or_else(|| "?".into());
                     for (i, v) in [(0, words), (2, mark.to_string()), (8, part)] {
                         if let Some(c) = cells.get_mut(i) {
                             *c = v;
@@ -709,7 +709,7 @@ impl Laid {
 
 /// The sheet windows of `page` in model coordinates: (bottom-left, top-right) per sheet.
 pub fn sheet_windows_of(doc: &Document, page: PageId, outputs: Option<&ReportModels>) -> Vec<(Pt, Pt)> {
-    let spec = ecad_model::sheet::sheet_of(doc, page);
+    let spec = ecad_model::document::sheet::sheet_of(doc, page);
     let k = unit_scale(doc.settings.length_unit);
     let (w, h) = (f64::from(spec.width), f64::from(spec.height));
     (0..sheets_of(doc, page, outputs))

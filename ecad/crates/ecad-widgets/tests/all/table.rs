@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use ecad_ui::table::{
+use ecad_widgets::table::{
     Cell, Changed, Column, ColumnId, Dir, Row, Selection, TINT_SECONDS, Table, TableEvent, TableSource, TintMap, ViewModel, Width, export,
     natural_cmp,
 };

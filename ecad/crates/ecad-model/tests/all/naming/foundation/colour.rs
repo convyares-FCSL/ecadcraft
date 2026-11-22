@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::colour::{COLOURS, ColourWords, ConductorColour, Rgb, load};
+use ecad_model::geometry::colour::{COLOURS, ColourWords, ConductorColour, Rgb, load};
 
 #[test]
 fn every_colour_has_one_table_and_every_table_one_colour() {

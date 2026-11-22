@@ -14,7 +14,7 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_engine::interact::{hover_lines, overlay_marks};
-use ecad_engine::views::{self, FAN_REFUSED, FanOnPage, Settings, View};
+use ecad_engine::cables::views::{self, FAN_REFUSED, FanOnPage, Settings, View};
 use ecad_engine::{Mapped, Persistence, ProjectHandle};
 use ecad_model::{CableId, ItemId, PageId, Pt, Transaction, WireId};
 use serde_json::{Value, json};
@@ -145,9 +145,9 @@ fn fan_paths(h: &mut H, page: PageId) -> Vec<Vec<Pt>> {
 fn tails(fan: &views::Fan) -> Vec<Vec<Pt>> {
     fan.parts
         .iter()
-        .filter(|p| p.role == ecad_electrical::cable_look::Role::Tail)
+        .filter(|p| p.role == ecad_electrical::cables::layout::Role::Tail)
         .filter_map(|p| match &p.shape {
-            ecad_electrical::cable_look::Shape::Path { points, .. } => Some(points.clone()),
+            ecad_electrical::cables::layout::Shape::Path { points, .. } => Some(points.clone()),
             _ => None,
         })
         .collect()
@@ -164,7 +164,7 @@ fn fan_handles(h: &mut H, page: PageId) -> Vec<Handle> {
 fn ten_switches_change_nothing_in_the_project() {
     let mut g = fixture();
     let (doc, log, head) = (g.h.doc(), history(&mut g.h), g.h.head());
-    let nets = ecad_model::derive::nets(&doc);
+    let nets = ecad_model::connectivity::derive::nets(&doc);
     let unsaved = g.h.p(|p| p.unsaved_transactions());
     let tabs: Vec<bool> = (0..g.h.s.docs.len()).map(|i| g.h.s.doc_unsaved(i)).collect();
     for n in 0..10 {
@@ -191,7 +191,7 @@ fn ten_switches_change_nothing_in_the_project() {
     }
     assert_eq!(g.h.doc(), doc);
     assert_eq!(history(&mut g.h), log);
-    assert_eq!(ecad_model::derive::nets(&g.h.doc()), nets);
+    assert_eq!(ecad_model::connectivity::derive::nets(&g.h.doc()), nets);
     assert_eq!(g.h.p(|p| p.unsaved_transactions()), unsaved, "the change count is unchanged");
     let now: Vec<bool> = (0..g.h.s.docs.len()).map(|i| g.h.s.doc_unsaved(i)).collect();
     assert_eq!(now, tabs);
@@ -224,9 +224,9 @@ fn the_fan_of_g_is_the_worked_example() {
     let tails: Vec<Vec<Pt>> = fan
         .parts
         .iter()
-        .filter(|p| p.role == ecad_electrical::cable_look::Role::Tail)
+        .filter(|p| p.role == ecad_electrical::cables::layout::Role::Tail)
         .filter_map(|p| match &p.shape {
-            ecad_electrical::cable_look::Shape::Path { points, .. } => Some(points.clone()),
+            ecad_electrical::cables::layout::Shape::Path { points, .. } => Some(points.clone()),
             _ => None,
         })
         .collect();
@@ -347,7 +347,7 @@ fn moving_equipment_beside_a_fan_moves_the_hidden_routes() {
         .keys()
         .copied()
         .find(|c| {
-            ecad_model::derive::connection_point_positions(&doc, g.page).iter().any(|(t, _, at)| doc.terminals[t].device().unwrap() == *c && at.x > 30.0)
+            ecad_model::connectivity::derive::connection_point_positions(&doc, g.page).iter().any(|(t, _, at)| doc.terminals[t].device().unwrap() == *c && at.x > 30.0)
         })
         .unwrap();
     let handles = g.h.rep_handles(g.page, right);

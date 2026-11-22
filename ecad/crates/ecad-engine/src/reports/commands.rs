@@ -2,22 +2,22 @@
 //! `wirelist`, `cablelist`, `printbook` and `reports`, which read the project and record nothing.
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::cmd::output`] decide, and the shim commits the ops and answers in JSON.
+//! [`ecad_electrical::reports::commands::reports`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::output::{self as rules, Paging};
+use ecad_electrical::reports::commands::reports::{self as rules, Paging};
 use ecad_model::{FolderId, ItemId, PageId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{err, on_any_page, on_project};
+use crate::commands::input::{Command, Typed};
+use crate::commands::{err, on_any_page, on_project};
 use crate::outputs::{self, Group, Table};
-use crate::printbook::{self, Options, Scope};
+use crate::export::printbook::{self, Options, Scope};
 use crate::project::Project;
-use ecad_electrical::cmd::input::{Bounded, Point};
+use ecad_electrical::commands::input::{Bounded, Point};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -33,38 +33,38 @@ pub const TYPED: &[Typed] = &[
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("locationbox", "Location Box", crate::cmd::input::typed::<LocationboxParams>)
+        CommandSpec::new("locationbox", "Location Box", crate::commands::input::typed::<LocationboxParams>)
             .params(
                 "{location: \"+CP1\", function?: \"=F1\", corners?: [[x,y],[x,y]] | points?: [[x,y], …] | item?: id (a closed polyline), page?: id, proposal?: \"propose\" | \"move\" | \"keep\"} (exactly one of corners, points, item; default the active page; brief 052: it proposes its values for the devices inside)",
             )
             .interactive(crate::interact::locationbox)
             .noundo(),
-        CommandSpec::new("functionbox", "Function Box", crate::cmd::input::typed::<FunctionboxParams>)
+        CommandSpec::new("functionbox", "Function Box", crate::commands::input::typed::<FunctionboxParams>)
             .params(
                 "{function: \"=F1\", location?: \"+CP1\", corners?: [[x,y],[x,y]] | points?: [[x,y], …] | item?: id, page?: id, proposal?: \"propose\" | \"move\" | \"keep\"} (brief 052: drawn dash-dot; it proposes its values for the devices inside)",
             )
             .interactive(crate::interact::functionbox)
             .noundo(),
-        CommandSpec::new("bom", "Bill of Materials", crate::cmd::input::typed::<BomParams>)
+        CommandSpec::new("bom", "Bill of Materials", crate::commands::input::typed::<BomParams>)
             .params(
                 "{group?: \"location\"|\"part\", columns?: [\"article\"], lines?: \"flat\"|\"nested\", path?: csv file, excel_safe?: bool (true), \
 limit?: n (500, max 5000), after?: n} (columns and lines override the project's report settings for this call; nothing written)",
             )
             .noundo(),
-        CommandSpec::new("wirelist", "Wire Report", crate::cmd::input::typed::<WirelistParams>)
+        CommandSpec::new("wirelist", "Wire Report", crate::commands::input::typed::<WirelistParams>)
             .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}")
             .noundo(),
-        CommandSpec::new("cablelist", "Cable Report", crate::cmd::input::typed::<CablelistParams>)
+        CommandSpec::new("cablelist", "Cable Report", crate::commands::input::typed::<CablelistParams>)
             .params("{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n, include_not_drawn?: bool (true; brief 059)}")
             .noundo(),
-        CommandSpec::new("printbook", "Print Book", crate::cmd::input::typed::<PrintbookParams>)
+        CommandSpec::new("printbook", "Print Book", crate::commands::input::typed::<PrintbookParams>)
             .params("{scope?: \"all\" | {folder: id} | {pages: \"100, 105-110\"}, path?: pdf file, colour?: \"mono\"|\"colour\", lineweights?: bool}")
             .noundo(),
-        CommandSpec::new("reports", "Reports", crate::cmd::input::typed::<ReportsParams>).params("{} (opens the Reports window)").noundo(),
+        CommandSpec::new("reports", "Reports", crate::commands::input::typed::<ReportsParams>).params("{} (opens the Reports window)").noundo(),
     ]
 }
 
-pub use ecad_electrical::cmd::output::{box_words, rectangle};
+pub use ecad_electrical::reports::commands::reports::{box_words, rectangle};
 
 /// The outline and the proposal of a box command.
 #[derive(Deserialize, JsonSchema)]
@@ -146,7 +146,7 @@ impl BoxInput {
     /// A box (design 024 §7, design 052 §5.6, §5.8): its values, outline, and the proposal it
     /// makes for the device symbols inside.
     fn run(self, s: &mut Session, page: Option<PageId>, proposal: Option<String>, command: &str) -> cadcraft_engine::Result<Value> {
-        let mode = ecad_electrical::cmd::sheet::proposal_mode(proposal.as_deref()).map_err(|e| err(e.to_string()))?;
+        let mode = ecad_electrical::pages::commands::sheets::proposal_mode(proposal.as_deref()).map_err(|e| err(e.to_string()))?;
         let corners = self.corners.and_then(|c| match c.0.as_slice() {
             [a, b] => Some((a.0, b.0)),
             _ => None,
@@ -164,7 +164,7 @@ impl BoxInput {
             }
             let doc = p.ledger.document();
             pg.echo(plan.message.clone());
-            for l in crate::proposals::conflict_words(doc, &proposed.conflicts) {
+            for l in ecad_electrical::symbols::proposals::conflict_words(doc, &proposed.conflicts) {
                 pg.echo(l);
             }
             Ok(rules::box_json(doc, &plan))
@@ -416,7 +416,7 @@ impl Command for PrintbookParams {
         // default).
         let colour = self.colour;
         let v = on_any_page(s, |p, _| {
-            let mono = crate::defaults::print::mono_word(p.ledger.document(), colour.as_deref())?;
+            let mono = ecad_electrical::defaults::print::mono_word(p.ledger.document(), colour.as_deref())?;
             print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true)
         })?;
         if let Some(m) = v.get("message").and_then(Value::as_str) {

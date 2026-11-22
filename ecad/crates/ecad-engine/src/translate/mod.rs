@@ -12,12 +12,13 @@
 //! policy goes only through the conductors the ops could have moved ([`Scope`]). Apart from the
 //! per-page drawing comparison, a translation costs in proportion to what the edit touched.
 
+pub mod oops;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
-use ecad_model::derive::{connection_point_position, connection_point_positions};
+use ecad_model::connectivity::derive::{connection_point_position, connection_point_positions};
 use ecad_model::{
     Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive, Pt, Representation, RepresentationId,
     Route, RouteEnd, RouteId, Subject, Terminal, ConnectionPointId,
@@ -346,7 +347,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         .collect();
     let touched = removed.len() + changed_handles.len() + added_handles.len();
     if !framed.is_empty() && framed.len() + skipped.len() >= touched {
-        return Err(crate::frame::DERIVED.into());
+        return Err(crate::pages::frame::DERIVED.into());
     }
     let skipped: BTreeSet<Handle> = skipped.into_iter().chain(framed).collect();
     if !skipped.is_empty() && skipped.len() == touched {
@@ -357,7 +358,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         let xrefs_only = skipped.iter().all(|h| xref(cx.map, *h) || copied_source(h, &xref));
         let link = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Link(..)));
         if skipped.iter().all(|h| link(cx.map, *h) || copied_source(h, &link)) {
-            return Err(crate::link_lines::LINK_DERIVED.into());
+            return Err(ecad_electrical::terminal_strips::jumper_bars::LINK_DERIVED.into());
         }
         // Lane 072 D: a T's dot alone.
         let tee = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Tee(_)));
@@ -379,7 +380,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 crate::xref::refusal(cx.ledger.document(), skipped.iter().find_map(|h| cx.map.get(*h).or_else(|| source(h))))
             }
         } else {
-            crate::views::DRAWN_REFUSED
+            crate::cables::views::DRAWN_REFUSED
         }
         .into());
     }
@@ -406,7 +407,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             Some(m @ Mapped::DeviceReference(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
-            Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
+            Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(rid)) => erased_refs.push(rid),
             // Brief 030: erasing a link line deletes its link (and its own part keys).
             Some(Mapped::Link(c, n)) => {
@@ -429,11 +430,11 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // it was erased with it, and the emptied representation is removed below.
     for (c, n) in erased_links {
         let props = cx.ledger.document().devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
-        let key = ecad_model::links::key(n);
+        let key = ecad_model::connectivity::jumper_bars::key(n);
         if let Some(v) = props.get(&key) {
             t.notes.push(format!("Deleted link {} {v}.", crate::devices::tag_words(cx.ledger.document(), c)));
         }
-        for k in std::iter::once(key.clone()).chain(crate::accessories::FIELDS.iter().map(|f| format!("{key}.{f}"))) {
+        for k in std::iter::once(key.clone()).chain(ecad_electrical::terminal_strips::accessories::FIELDS.iter().map(|f| format!("{key}.{f}"))) {
             if let Some(before) = props.get(&k).cloned() {
                 t.ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key: k, before: Some(before), after: None });
             }
@@ -489,11 +490,11 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
             Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             Some(m @ Mapped::DeviceReference(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
-            Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
+            Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => {}
             Some(Mapped::Link(..)) if skipped.contains(h) => {}
-            Some(Mapped::Link(..)) => return Err(crate::link_lines::LINK_DERIVED.into()),
+            Some(Mapped::Link(..)) => return Err(ecad_electrical::terminal_strips::jumper_bars::LINK_DERIVED.into()),
             Some(Mapped::Tag(_)) if skipped.contains(h) => {}
             Some(Mapped::Tag(_)) => return Err(crate::devices::TAG_DERIVED.into()),
             Some(Mapped::Marker(rid, term)) => {
@@ -573,7 +574,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
 
     // Left-out parts beside objects that recorded nothing: nothing else was edited after all.
     if !skipped.is_empty() && t.ops.is_empty() {
-        return Err(crate::views::DRAWN_REFUSED.into());
+        return Err(crate::cables::views::DRAWN_REFUSED.into());
     }
 
     movement(cx, &mut t, &fresh_route_ends)?;
@@ -669,9 +670,9 @@ fn copy_batch(
             }
         };
         match map.get(h) {
-            Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
+            Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
-            Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
+            Some(Mapped::Frame(_)) => return Err(crate::pages::frame::DERIVED.into()),
             Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             _ => {}
         }

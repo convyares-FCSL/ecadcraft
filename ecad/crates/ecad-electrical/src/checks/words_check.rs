@@ -4,7 +4,7 @@
 //! words inside values that stay text: a stored value of a defaults choice that is not one of its
 //! words, a defaults switch ([`Kind::Flag`]) or a yes/no key ([`keys::ValueSpec::Flag`]) holding anything but `yes` or `no`, a
 //! `tag_prefixes` key that is not a built-in symbol, and a property that became a struct field
-//! ([`ecad_model::keys::RESERVED`]). Typed input may say `true`, `1` or `on`; a file holds only the
+//! ([`ecad_model::naming::keys::RESERVED`]). Typed input may say `true`, `1` or `on`; a file holds only the
 //! words the program writes. Anything found opens the project read-only, naming the
 //! word, the setting and where it is; the file is never changed.
 //!
@@ -12,9 +12,9 @@
 //! changes nothing and excludes values that are not words: an out-of-range length or a malformed
 //! style ID still reads as absent (design 066).
 
-use ecad_model::strict::{UnknownWord, WordPlace};
+use ecad_model::document::strict::{UnknownWord, WordPlace};
 use ecad_model::{Document, Properties, RepresentationId};
-use ecad_model::{keys, words};
+use {ecad_model::naming::keys, ecad_model::naming::words};
 
 use crate::defaults::{self, Entry, Kind, Level, ProjectSource};
 
@@ -24,9 +24,9 @@ use crate::defaults::{self, Entry, Kind, Level, ProjectSource};
 /// ```
 /// use ecad_model::Document;
 /// let mut doc = Document::default();
-/// assert!(ecad_electrical::words_check::check(&doc).is_empty());
+/// assert!(crate::checks::words_check::check(&doc).is_empty());
 /// doc.display.insert("text.tag.show".into(), "maybe".into());
-/// let found = ecad_electrical::words_check::check(&doc);
+/// let found = crate::checks::words_check::check(&doc);
 /// assert_eq!(found.len(), 1);
 /// assert!(found[0].to_string().contains("`maybe`"));
 /// ```
@@ -54,8 +54,8 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
     // strictly with the file); a project symbol's prefix names a project symbol the project holds.
     for key in doc.settings.tag_prefixes.keys() {
         let known = match key {
-            ecad_model::prefix::PrefixOf::Starter(w) => crate::symbols::by_key(w).is_some(),
-            ecad_model::prefix::PrefixOf::Project(k) => crate::symbols::has_project_key(doc, k),
+            ecad_model::naming::prefix::PrefixOf::Starter(w) => crate::symbols::by_key(w).is_some(),
+            ecad_model::naming::prefix::PrefixOf::Project(k) => crate::symbols::has_project_key(doc, k),
         };
         if !known {
             out.push(UnknownWord::Value { place: WordPlace::Settings, setting: "tag_prefixes".into(), word: key.to_string(), allowed: Vec::new() });
@@ -145,7 +145,7 @@ fn entry_of(key: &str, level: Level) -> Option<(&'static Entry, Level)> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
     use ecad_model::{Device, DeviceId, PageId};
 
     fn doc() -> Document {
@@ -232,10 +232,10 @@ mod tests {
     #[test]
     fn tag_prefixes_name_built_in_symbols() {
         let mut d = doc();
-        let q = ecad_model::prefix::TagPrefix::typed("Q").unwrap();
-        d.settings.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Starter("nosuch".into()), q.clone());
+        let q = ecad_model::naming::prefix::TagPrefix::typed("Q").unwrap();
+        d.settings.tag_prefixes.insert(ecad_model::naming::prefix::PrefixOf::Starter("nosuch".into()), q.clone());
         // A project symbol's prefix names a project symbol the project holds: none here.
-        d.settings.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Project("valve-x".into()), q);
+        d.settings.tag_prefixes.insert(ecad_model::naming::prefix::PrefixOf::Project("valve-x".into()), q);
         let found = check(&d);
         assert_eq!(found.len(), 2);
         assert!(found.iter().any(|f| f.to_string().contains("tag_prefixes") && f.to_string().contains("starter:nosuch")));
@@ -248,7 +248,7 @@ mod tests {
             assert!(keys::spec(e.key).is_none(), "{} is both a registry entry and in keys::KEYS", e.key);
             // A page's type is a page-level-only entry whose value is the page's field (design 072
             // §5.1): `setdefault` writes it with `ModifyPage`, so a bag holding it is an error.
-            let field = e.key == ecad_model::sheet::PAGE_TYPE_KEY;
+            let field = e.key == ecad_model::document::sheet::PAGE_TYPE_KEY;
             assert!(field || !keys::is_reserved(e.key), "{} is both a registry entry and reserved", e.key);
             let area = keys::area_of(e.key);
             assert!(area.is_registry(), "{} classifies to {area:?}, not a registry area", e.key);

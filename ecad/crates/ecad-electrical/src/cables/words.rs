@@ -3,8 +3,8 @@
 //! two-colour wires on a page get their dashes. Pure rules over the document; the cable fan
 //! drawing that uses them stays in `look`.
 
-use ecad_model::colour::ConductorColour;
-use ecad_model::wire::Colours;
+use ecad_model::geometry::colour::ConductorColour;
+use ecad_model::objects::wire::Colours;
 use ecad_model::{Document, PageId, Pt, WireId};
 
 /// Longest core label accepted (Unicode scalar values, after trimming).
@@ -58,7 +58,7 @@ pub const MAX_CODE_CHARS: usize = 16;
 ///
 /// # Example
 /// ```
-/// use ecad_electrical::words::colour_code;
+/// use crate::cables::words::colour_code;
 /// assert_eq!(colour_code("GNYE"), colour_code("grn/yel"));
 /// assert!(colour_code("GNYE").is_some_and(|(_, dashes)| dashes.is_some()));
 /// assert_eq!(colour_code("PURPLISH"), None);
@@ -213,7 +213,7 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
 /// width [`stroke_label_width`] measures): the `CableText` text style's, in drawing units (brief
 /// 066d: the cable look never has a text size of its own).
 pub fn label_height(doc: &ecad_model::Document) -> f64 {
-    crate::text_style::text_style(doc, crate::text_style::TextKind::CableText).height
+    crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::CableText).height
 }
 
 /// `ecad.wire-weight`: bends, tails, label box frame, reference flag (wire section).
@@ -296,7 +296,7 @@ pub const MAX_HOVER_LINES: usize = 12;
 
 /// The width of `text` in the stroke font at height `h` ([`label_height`]), as the cable look
 /// measures it (`look::font_width` with CADCraft's fonts); 0 when not finite.
-pub fn stroke_label_width(text: &str, h: f64, m: &dyn crate::text_style::fonts::TextMetrics) -> f64 {
+pub fn stroke_label_width(text: &str, h: f64, m: &dyn crate::styles::text_style::fonts::TextMetrics) -> f64 {
     let w = m.width(m.stroke_font(), text, h);
     if w.is_finite() && w >= 0.0 { w } else { 0.0 }
 }
@@ -313,7 +313,7 @@ pub fn flag_box(at: Pt, w: f64, side: FlagSide, h: f64) -> (Pt, Pt) {
 /// Most handles (or objects) one call may name.
 pub const MAX_HANDLES: usize = 100_000;
 
-/// One Properties row (brief 019, `crate::props`): a label and a value box.
+/// One Properties row (brief 019, `crate::properties`): a label and a value box.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
     /// The property key it edits (`number`, `title`, `description`…).

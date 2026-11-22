@@ -35,11 +35,11 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::effect::{AreaSet, Effect, Effects};
-use ecad_model::view::{DerivedView, NoteCx, Outcome, Phase, ViewScope};
+use ecad_model::document::effect::{AreaSet, Effect, Effects};
+use ecad_model::document::view::{DerivedView, NoteCx, Outcome, Phase, ViewScope};
 use ecad_model::{Document, ObjectRef, Op, Subject, ConnectionPointId};
 
-use super::Inputs;
+use crate::views::Inputs;
 
 /// The Properties feed.
 #[derive(Debug)]

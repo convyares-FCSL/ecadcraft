@@ -4,7 +4,7 @@
 use ecad_model::{DeviceId, Document, PageId};
 use serde_json::Value;
 
-use crate::draw::text_style::EngineMetrics;
+use crate::styles::draw::EngineMetrics;
 use crate::xref::{Device, HAlign, Part, Places, Table, VAlign};
 
 /// CADCraft's horizontal alignment of a reference text.

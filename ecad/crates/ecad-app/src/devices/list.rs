@@ -15,8 +15,8 @@ use std::collections::{BTreeSet, HashMap};
 
 use ecad_engine::device_list::DeviceEntry;
 use ecad_model::DeviceId;
-use ecad_ui::prim::Tone;
-use ecad_ui::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
+use ecad_widgets::prim::Tone;
+use ecad_widgets::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
 
 pub const TAG: ColumnId = ColumnId(0);
 pub const DESCRIPTION: ColumnId = ColumnId(1);
@@ -61,7 +61,7 @@ pub fn columns() -> Vec<Column> {
         Column::read(FUNCTION.0, "Function", Width::Initial(96.0)).groupable(),
         Column::read(LOCATION.0, "Location", Width::Initial(170.0)).groupable(),
         Column::read(PART.0, "Main part, order code", Width::Initial(200.0)).groupable(),
-        Column::read(PARTS.0, "Parts", Width::Initial(56.0)).align(ecad_ui::table::Align::Right),
+        Column::read(PARTS.0, "Parts", Width::Initial(56.0)).align(ecad_widgets::table::Align::Right),
         Column::read(SYMBOL.0, "Symbol", Width::Initial(200.0)).groupable(),
         Column::read(PAGES.0, "On page", Width::Remainder),
     ]
@@ -78,7 +78,7 @@ pub struct DeviceRow {
     pub entry: DeviceEntry,
     /// `+CP1`, `+CP1 (from box on 105)`, `?`.
     pub location: String,
-    /// UI rev 3: its part set's lines (`ecad_engine::bom::part_set`).
+    /// UI rev 3: its part set's lines (`ecad_electrical::reports::bom::part_set`).
     pub parts: usize,
 }
 
@@ -104,7 +104,7 @@ fn location(doc: &ecad_model::Document, c: DeviceId, cache: &mut ecad_engine::lo
 
 fn row(doc: &ecad_model::Document, e: &DeviceEntry, cache: &mut ecad_engine::locations::BoxCache) -> DeviceRow {
     // A part set lists the main part first; a device with only a main part has that one line.
-    let set = ecad_engine::bom::part_set(doc, e.id).len();
+    let set = ecad_electrical::reports::bom::part_set(doc, e.id).len();
     let main = e.properties.get(3).is_some_and(|p| p.as_deref().is_some_and(|p| !p.trim().is_empty()));
     DeviceRow { entry: e.clone(), location: location(doc, e.id, cache), parts: if set > 0 { set } else { usize::from(main) } }
 }
@@ -166,7 +166,7 @@ impl TableSource for DevicesSource {
         let prop = |i: usize| e.properties.get(i).cloned().flatten().unwrap_or_default();
         match col {
             TAG => match e.tag.as_deref() {
-                Some(t) if ecad_model::tag::is_provisional(t) => Cell::Provisional(t.to_string()),
+                Some(t) if ecad_model::naming::tag::is_provisional(t) => Cell::Provisional(t.to_string()),
                 Some(t) => Cell::Input(t.to_string()),
                 None => Cell::Input(String::new()),
             },
@@ -195,7 +195,7 @@ impl TableSource for DevicesSource {
             }
             PARTS => Cell::Number(r.parts as f64, ""),
             STATE => {
-                if e.tag.as_deref().is_some_and(ecad_model::tag::is_provisional) {
+                if e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional) {
                     Cell::Badge(PROVISIONAL.into(), Tone::Provisional)
                 } else if e.symbols.is_empty() {
                     Cell::Badge(NOT_PLACED.into(), Tone::Warning)
@@ -210,7 +210,7 @@ impl TableSource for DevicesSource {
     }
 
     fn row_label(&self, key: DeviceId) -> String {
-        self.rows.get(&key).map(|r| crate::devices_panel::device_label(&r.entry)).unwrap_or_default()
+        self.rows.get(&key).map(|r| crate::devices::panel::device_label(&r.entry)).unwrap_or_default()
     }
 
     fn chips(&self) -> &[&'static str] {
@@ -220,7 +220,7 @@ impl TableSource for DevicesSource {
     fn chip(&self, key: DeviceId, chip: usize) -> bool {
         let Some(e) = self.rows.get(&key).map(|r| &r.entry) else { return false };
         match chip {
-            0 => e.tag.as_deref().is_some_and(ecad_model::tag::is_provisional),
+            0 => e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional),
             1 => e.symbols.is_empty(),
             _ => true,
         }

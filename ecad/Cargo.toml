@@ -16,7 +16,6 @@ repository = "https://github.com/convyares-FCSL/ecadcraft"
 [workspace.dependencies]
 ecad-model = { path = "crates/ecad-model" }
 ecad-store = { path = "crates/ecad-store" }
-ecad-inspect = { path = "crates/ecad-inspect" }
 ecad-file = { path = "crates/ecad-file" }
 ecad-drawing-style = { path = "crates/ecad-drawing-style" }
 ecad-electrical = { path = "crates/ecad-electrical" }

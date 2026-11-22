@@ -1,15 +1,15 @@
-//! A property row of the Properties copy ([`crate::sheets_ui::PropsShared`]) drawn the rev 3 way:
+//! A property row of the Properties copy ([`crate::settings::sheets::PropsShared`]) drawn the rev 3 way:
 //! the grey label, then an input box when it is set here (a value read from elsewhere shows as
 //! its grey placeholder, with where it comes from at the right), or grey text when it cannot be
 //! set. Edits go to the copy's `edits`, run by the app after the frame, exactly as before.
 
-use ecad_electrical::props::Target;
-use ecad_electrical::words::Row;
-use ecad_ui::tokens::ui_type;
+use ecad_electrical::properties::Target;
+use ecad_electrical::cables::words::Row;
+use ecad_widgets::tokens::ui_type;
 use eframe::egui::{self, RichText};
 
-use super::widgets as w;
-use crate::sheets_ui::PropsShared;
+use crate::inspector::widgets as w;
+use crate::settings::sheets::PropsShared;
 
 /// Draw `row` of a section of `kind` editing `target`. `hint` is the grey word at the box's
 /// right (`auto`, `from page`); empty for none.
@@ -67,7 +67,7 @@ pub fn prop(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
     if let Some((code, from)) = &row.proposal {
         ui.horizontal_wrapped(|ui| {
             ui.add_space(w::LABEL_W);
-            let r = ecad_ui::control::link(ui, &format!("Use {code}")).on_hover_text(from.as_str());
+            let r = ecad_widgets::control::link(ui, &format!("Use {code}")).on_hover_text(from.as_str());
             r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, format!("ecad.inspector.{}.use", row.key)));
             if r.clicked() {
                 commit = Some(code.clone());
@@ -81,7 +81,7 @@ pub fn prop(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
     if let Some(e) = error {
         ui.horizontal_wrapped(|ui| {
             ui.add_space(w::LABEL_W);
-            ui.label(w::rich(ui, &e, ui_type::SMALL, ecad_ui::color(ecad_ui::SHELL.error)));
+            ui.label(w::rich(ui, &e, ui_type::SMALL, ecad_widgets::color(ecad_widgets::SHELL.error)));
         });
         tag_clash(ui, sh, target, row, &e);
     }
@@ -102,15 +102,15 @@ fn tag_clash(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, r
         ui.add_space(w::LABEL_W);
         if same_kind {
             if w::button(ui, "Swap", true, None).accessible_name("ecad.tagclash.swap").clicked() {
-                sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("swap"), Some(typed.clone())));
+                sh.edits.push((tg.clone(), ecad_electrical::properties::conflict_key("swap"), Some(typed.clone())));
             }
             if w::button(ui, &format!("Make it the same {noun}"), false, None).accessible_name("ecad.tagclash.merge").clicked() {
-                sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("merge"), Some(typed.clone())));
+                sh.edits.push((tg.clone(), ecad_electrical::properties::conflict_key("merge"), Some(typed.clone())));
             }
         }
         let label = next.as_deref().map_or_else(|| "Use the next free".to_string(), |n| format!("Use {n}"));
         if w::button(ui, &label, false, None).accessible_name("ecad.tagclash.next").clicked() {
-            sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("next"), Some(typed.clone())));
+            sh.edits.push((tg.clone(), ecad_electrical::properties::conflict_key("next"), Some(typed.clone())));
         }
     });
 }

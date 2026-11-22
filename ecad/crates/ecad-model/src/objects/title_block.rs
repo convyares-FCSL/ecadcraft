@@ -9,7 +9,7 @@
 //!   `revision:ecr`, `print:sheet`). It is written as that text. Strict (design 072 §5.4): an
 //!   unknown source word, a binding without its `source:`, a revision binding naming no revision
 //!   field, or an unknown item kind is a read error.
-//! - The frame style holding a title block is typed (design 072 §8, `crate::style::FrameStyle`):
+//! - The frame style holding a title block is typed (design 072 §8, `crate::objects::styles::FrameStyle`):
 //!   an unknown body field is a read error too.
 //! - Bounds (house rule 12): [`TitleBlockLayout::check`] refuses a breach in words (commands);
 //!   [`TitleBlockLayout::usable`] is what drawing uses: items past [`MAX_ITEMS`] or breaking a
@@ -22,7 +22,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::doc::Primitive;
+use crate::document::doc::Primitive;
 
 /// Most items in one block. Guard: a hostile file cannot make a block unbounded, and it bounds
 /// the cost of drawing a frame and of the editor's frame.
@@ -183,16 +183,16 @@ crate::word_enum! {
 /// field or a custom one.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RevisionColumn {
-    Field(crate::project::RevField),
-    Custom(crate::project::CustomField),
+    Field(crate::document::project::RevField),
+    Custom(crate::document::project::CustomField),
 }
 
 impl RevisionColumn {
     /// The column `word` names (`rev`, `ecr`), if it names a revision field.
     pub fn parse(word: &str) -> Option<RevisionColumn> {
-        match <crate::project::RevField as crate::Word>::parse(word) {
+        match <crate::document::project::RevField as crate::Word>::parse(word) {
             Some(f) => Some(RevisionColumn::Field(f)),
-            None => crate::project::CustomField::new(word).map(RevisionColumn::Custom),
+            None => crate::document::project::CustomField::new(word).map(RevisionColumn::Custom),
         }
     }
 
@@ -253,7 +253,7 @@ impl ProjectKey {
     }
 
     /// The key of a field of the project's info (its words are keys by construction).
-    pub fn of_info(f: crate::project::InfoField) -> ProjectKey {
+    pub fn of_info(f: crate::document::project::InfoField) -> ProjectKey {
         ProjectKey(crate::Word::word(f).into())
     }
 
@@ -603,7 +603,7 @@ impl TitleBlockLayout {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn bindings_read_and_write() {

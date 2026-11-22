@@ -8,10 +8,10 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{DeviceId, Pt, ConnectionPointId};
 use serde_json::{Value, json};
 
-use super::forms::{R, Safe, commit, other, paper_guard, safely};
-use super::{OUT_OF_RANGE, can_start, in_range, line_kind, pt, read, connection_point_for, v2};
-use crate::cmd::terminal;
-use crate::strips;
+use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
+use crate::interact::{OUT_OF_RANGE, can_start, in_range, line_kind, pt, read, connection_point_for, v2};
+use crate::terminal_strips::commands;
+use ecad_electrical::terminal_strips;
 
 /// A picked terminal: its strip, its label and where it is drawn.
 fn picked(s: &Session, p: Vec2) -> R<(ConnectionPointId, DeviceId, String, Pt)> {
@@ -23,7 +23,7 @@ fn picked(s: &Session, p: Vec2) -> R<(ConnectionPointId, DeviceId, String, Pt)> 
     };
     let found = read(s, |p, _| {
         let doc = p.ledger.document();
-        Ok(strips::strip_of_connection_point(doc, t).map(|c| (c, crate::terminal_types::position_label(doc, t))))
+        Ok(terminal_strips::strip_of_connection_point(doc, t).map(|c| (c, ecad_electrical::terminal_strips::terminal_blocks::position_label(doc, t))))
     })
     .ok()
     .flatten();
@@ -64,7 +64,7 @@ impl StripAccessory {
             "r" | "remove" => {
                 let doc_items = read(s, |p, _| {
                     let doc = p.ledger.document();
-                    let key = if gap { format!("{}{at}", crate::accessories::AFTER_PREFIX) } else { format!("acc.{at}") };
+                    let key = if gap { format!("{}{at}", ecad_electrical::terminal_strips::accessories::AFTER_PREFIX) } else { format!("acc.{at}") };
                     Ok(doc.devices.get(&c).and_then(|x| x.properties.get(&key)).cloned())
                 })
                 .ok()
@@ -95,7 +95,7 @@ impl StripAccessory {
         match i {
             Input::Point(p) => {
                 let (t, c, label, at) = picked(s, p)?;
-                let words = read(s, |p, _| Ok(terminal::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
+                let words = read(s, |p, _| Ok(commands::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
                 self.at = Some((c, label, words, Some(at)));
                 Ok(Step::Continue)
             }
@@ -109,7 +109,7 @@ impl StripAccessory {
                 Ok(Step::Continue)
             }
             Input::Enter => Ok(Step::Done),
-            Input::Text(t) => Err(super::forms::not_a_point(&t)),
+            Input::Text(t) => Err(crate::properties::forms::not_a_point(&t)),
             _ => Ok(Step::Continue),
         }
     }
@@ -169,7 +169,7 @@ impl Jumper {
             Some(n) => {
                 // The new positions: ranges between consecutive picks, as a make would take them.
                 let mut add: Vec<String> = Vec::new();
-                let order = read(s, |p, _| Ok(crate::accessories::positions(p.ledger.document(), c))).unwrap_or_default();
+                let order = read(s, |p, _| Ok(ecad_electrical::terminal_strips::accessories::positions(p.ledger.document(), c))).unwrap_or_default();
                 let mut prev: Option<&String> = None;
                 for (_, l, _) in &self.picks {
                     match (prev, self.skip) {
@@ -206,9 +206,9 @@ impl Jumper {
                         let found = read(s, |p, _| {
                             let doc = p.ledger.document();
                             let tag = crate::devices::tag_words(doc, c);
-                            let order = crate::accessories::positions(doc, c);
+                            let order = ecad_electrical::terminal_strips::accessories::positions(doc, c);
                             let n = doc.devices.get(&c).and_then(|x| {
-                                ecad_model::links::of(&x.properties).into_iter().find(|(_, p)| p.select(&order).contains(&&label)).map(|(n, _)| n)
+                                ecad_model::connectivity::jumper_bars::of(&x.properties).into_iter().find(|(_, p)| p.select(&order).contains(&&label)).map(|(n, _)| n)
                             });
                             Ok((tag, n))
                         })
@@ -217,7 +217,7 @@ impl Jumper {
                         self.extend = found.1;
                     }
                     Some((sc, tag)) if *sc != c => {
-                        let w = read(s, |p, _| Ok(terminal::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
+                        let w = read(s, |p, _| Ok(commands::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
                         return Err(other(format!(
                             "{w} is on another strip; a link stays on one strip. Pick a terminal of {tag}, or Enter to finish."
                         )));
@@ -244,16 +244,16 @@ impl Jumper {
                 Ok(Step::Continue)
             }
             Input::Text(t) if self.strip.is_some() => {
-                let p = ecad_model::links::parse(&t).map_err(other)?;
+                let p = ecad_model::connectivity::jumper_bars::parse(&t).map_err(other)?;
                 for item in p.0 {
                     match item {
-                        ecad_model::links::Item::One(l) => self.typed.push(l),
-                        ecad_model::links::Item::Range(a, b) => self.typed.push(format!("{a}-{b}")),
+                        ecad_model::connectivity::jumper_bars::Item::One(l) => self.typed.push(l),
+                        ecad_model::connectivity::jumper_bars::Item::Range(a, b) => self.typed.push(format!("{a}-{b}")),
                     }
                 }
                 Ok(Step::Continue)
             }
-            Input::Text(t) => Err(super::forms::not_a_point(&t)),
+            Input::Text(t) => Err(crate::properties::forms::not_a_point(&t)),
             Input::Enter => self.finish(s),
             _ => Ok(Step::Continue),
         }
@@ -283,7 +283,7 @@ impl Interactive for Jumper {
     /// cursor).
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         let Some((_, _, last)) = self.picks.last() else { return Vec::new() };
-        if !(super::model_space(s) && in_range(cursor)) {
+        if !(crate::interact::model_space(s) && in_range(cursor)) {
             return Vec::new();
         }
         let mut out: Vec<EntityKind> = self.picks.windows(2).filter_map(|w| Some(line_kind(w.first()?.2, w.get(1)?.2))).collect();

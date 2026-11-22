@@ -4,12 +4,12 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::book::Book;
-use ecad_model::sheet::{SheetSpec, unit_scale};
+use ecad_model::document::book::Book;
+use ecad_model::document::sheet::{SheetSpec, unit_scale};
 use ecad_model::{Document, LengthUnit, ObjectRef, Op, PageId};
 
-use crate::text_style::fonts::{Look, TextMetrics};
-use crate::text_style::{TextKind, Weight};
+use crate::styles::text_style::fonts::{Look, TextMetrics};
+use crate::styles::text_style::{TextKind, Weight};
 
 /// The reserved layer of the frame (`ecad.frame`), locked so CADCraft's own commands leave it.
 pub const LAYER: &str = "ECAD-FRAME";
@@ -82,7 +82,7 @@ pub struct FrameInput {
     /// order (brief 033).
     pub revisions: Vec<Vec<String>>,
     /// The project's revision columns (design 033 §7).
-    pub rev_columns: Vec<crate::revisions::Column>,
+    pub rev_columns: Vec<crate::releases::revisions::Column>,
     /// Whether the drawing changed since the newest issue (design 033 §6): set by the project,
     /// which keeps the flag; `of` leaves it off.
     pub pending: bool,
@@ -91,7 +91,7 @@ pub struct FrameInput {
     /// Brief 050a: the page's frame style (line weights, colour, grid labels).
     pub look: crate::styles::frame::FrameDraw,
     /// Brief 055: the block the frame draws (its own, or the house block for this sheet).
-    pub block: crate::title_block::Block,
+    pub block: crate::title_blocks::Block,
     /// Brief 055: the project properties the block's fields read, by key (empty when unset): the
     /// block's bound key set (design 055 §10.1).
     pub project: BTreeMap<String, String>,
@@ -206,29 +206,29 @@ impl FrameInput {
     /// ([`FrameText::with`], or [`FrameText::sizes`] for a rule that only reads the layout).
     pub fn with(doc: &Document, page: PageId, book: &Book, text: FrameText) -> FrameInput {
         let prop = |k: &str| project_text(doc, k).unwrap_or_default();
-        let issued = crate::revisions::issued(doc);
-        let rev_columns = crate::revisions::columns(doc);
+        let issued = crate::releases::revisions::issued(doc);
+        let rev_columns = crate::releases::revisions::columns(doc);
         let next_page = book.next(page);
         // Checked there, so the frame and the references always use the same sheet (brief 055:
         // the frame's own sheet first).
-        let sheet = ecad_model::sheet::sheet_of(doc, page);
+        let sheet = ecad_model::document::sheet::sheet_of(doc, page);
         let look = crate::styles::frame::frame_draw(doc, page);
         // The block may be borrowed from another frame (overseer ruling: page, page type, frame).
-        let id = ecad_model::sheet::title_block_style(doc, page);
-        let block = crate::title_block::block_of(doc, &id, &sheet, &look.margins, &text);
-        let (project, newest) = crate::title_block::bind::read(doc, &block.layout);
+        let id = ecad_model::document::sheet::title_block_style(doc, page);
+        let block = crate::title_blocks::block_of(doc, &id, &sheet, &look.margins, &text);
+        let (project, newest) = crate::title_blocks::bind::read(doc, &block.layout);
         // The rows the block's tables can show.
         let rows = block
             .layout
             .items
             .iter()
             .filter_map(|i| match i {
-                ecad_model::title_block::BlockItem::RevTable { rows, .. } => Some(usize::from(*rows)),
+                ecad_model::objects::title_block::BlockItem::RevTable { rows, .. } => Some(usize::from(*rows)),
                 _ => None,
             })
             .max()
             .unwrap_or(0)
-            .min(usize::from(ecad_model::title_block::MAX_TABLE_ROWS));
+            .min(usize::from(ecad_model::objects::title_block::MAX_TABLE_ROWS));
         FrameInput {
             sheet,
             unit: doc.settings.length_unit,
@@ -238,18 +238,18 @@ impl FrameInput {
             status: prop(STATUS),
             page_title: doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default(),
             // Brief 052: stored as entry keys of the project's list; the title block shows codes.
-            function: crate::designations::shown_text(
+            function: crate::locations::designations::shown_text(
                 doc,
-                crate::designations::Aspect::Function,
-                crate::designations::inherited_key(doc, page, crate::designations::Aspect::Function).as_deref(),
+                crate::locations::designations::Aspect::Function,
+                crate::locations::designations::inherited_key(doc, page, crate::locations::designations::Aspect::Function).as_deref(),
             ),
-            location: crate::designations::shown_text(
+            location: crate::locations::designations::shown_text(
                 doc,
-                crate::designations::Aspect::Location,
-                crate::designations::inherited_key(doc, page, crate::designations::Aspect::Location).as_deref(),
+                crate::locations::designations::Aspect::Location,
+                crate::locations::designations::inherited_key(doc, page, crate::locations::designations::Aspect::Location).as_deref(),
             ),
             page: book.number(doc, page),
-            rev: crate::revisions::rev_box(doc, false),
+            rev: crate::releases::revisions::rev_box(doc, false),
             next_page,
             next: next_page.map_or_else(|| "-".to_string(), |n| book.number(doc, n)),
             total: book.order.len().to_string(),
@@ -270,15 +270,15 @@ impl FrameInput {
     /// project's `revisions.pending` says.
     pub fn with_pending(mut self, doc: &Document, pending: bool) -> FrameInput {
         self.pending = pending;
-        self.rev = crate::revisions::rev_box(doc, pending);
+        self.rev = crate::releases::revisions::rev_box(doc, pending);
         self
     }
 
     /// Brief 055 (FP4): the keep-out strip at the bottom of the frame, mm: the block's height
     /// (the built-in's 40 mm), never more than the frame's height. As
-    /// `ecad_model::sheet::keep_out`.
+    /// `ecad_model::document::sheet::keep_out`.
     pub fn keep_out(&self) -> f64 {
-        let h = self.block.layout.height().unwrap_or(ecad_model::sheet::TITLE_BLOCK_MM);
+        let h = self.block.layout.height().unwrap_or(ecad_model::document::sheet::TITLE_BLOCK_MM);
         let m = self.look.margins;
         h.min((f64::from(self.sheet.height) - m.bottom - m.top).max(0.0))
     }
@@ -287,20 +287,20 @@ impl FrameInput {
 /// Whether `ops` can change the frame of `page`, whose frame last showed `shown`:
 /// [`touched_by`] on each of their effects.
 pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
-    ecad_model::effect::Effects::of(ops).iter().any(|e| touched_by(e, page, shown))
+    ecad_model::document::effect::Effects::of(ops).iter().any(|e| touched_by(e, page, shown))
 }
 
 /// Whether `effect` can change the frame of `page`, whose frame last showed `shown` (design 019
 /// §9, the frame and title block rows; design 064 §4.1, `FrameView`). Every effect not listed
 /// changes nothing there.
-pub fn touched_by(effect: &ecad_model::effect::Effect<'_>, page: PageId, shown: &FrameInput) -> bool {
-    use ecad_model::effect::Effect;
+pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, page: PageId, shown: &FrameInput) -> bool {
+    use ecad_model::document::effect::Effect;
     match effect {
         Effect::DeviceLink { .. } => false,
         Effect::Settings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         // Only what the title block shows: its fields, the defaults pages inherit, and issuing.
         // Brief 033 (design 033 §9.1): a text size or the font (lane T's `text.` keys).
-        Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::text_style::is_reserved_key(key.raw) => true,
+        Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::styles::text_style::is_reserved_key(key.raw) => true,
         // Brief 050a: the frame style choice, and any frame or text style record (the frame's
         // look and its texts' styles).
         Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw == crate::defaults::styles::FRAME.key => true,
@@ -316,15 +316,15 @@ pub fn touched_by(effect: &ecad_model::effect::Effect<'_>, page: PageId, shown: 
         // Design 072 §5.3: an issue (the Rev box and the table), the project's info, the project's
         // default, or a code the block shows renamed (brief 052, design 052 §8.2a, tester 052
         // finding 1).
-        Effect::Project { before, after } if crate::revisions::issue_changed(before, after) || before.info != after.info => true,
-        Effect::Project { before, after } => crate::designations::Aspect::ALL.into_iter().any(|a| {
+        Effect::Project { before, after } if crate::releases::revisions::issue_changed(before, after) || before.info != after.info => true,
+        Effect::Project { before, after } => crate::locations::designations::Aspect::ALL.into_iter().any(|a| {
             let field = match a {
-                crate::designations::Aspect::Function => &shown.function,
-                crate::designations::Aspect::Location => &shown.location,
+                crate::locations::designations::Aspect::Function => &shown.function,
+                crate::locations::designations::Aspect::Location => &shown.location,
             };
-            crate::designations::default_key(before, a) != crate::designations::default_key(after, a)
-                || crate::designations::changed_codes(before, after, a).iter().any(|k| {
-                    let old = crate::designations::code_in_project(before, a, k);
+            crate::locations::designations::default_key(before, a) != crate::locations::designations::default_key(after, a)
+                || crate::locations::designations::changed_codes(before, after, a).iter().any(|k| {
+                    let old = crate::locations::designations::code_in_project(before, a, k);
                     old.as_deref().is_some_and(|b| b == field || shown.project.values().any(|v| v == b))
                 })
         }),
@@ -332,7 +332,7 @@ pub fn touched_by(effect: &ecad_model::effect::Effect<'_>, page: PageId, shown: 
         // set), and the revision settings (brief 033, design 033 §9.1); any other key redraws
         // nothing.
         Effect::Prop { object: ObjectRef::Project, key, .. } => {
-            shown.project.contains_key(key.raw) || key.raw == crate::revisions::COLUMNS_KEY || key.raw == crate::revisions::PENDING_KEY
+            shown.project.contains_key(key.raw) || key.raw == crate::releases::revisions::COLUMNS_KEY || key.raw == crate::releases::revisions::PENDING_KEY
         }
         Effect::Prop { object: ObjectRef::Page(p), .. } => *p == page,
         // Design 072 §5.1: a page changed in place; a folder move changes the book order (Next,
@@ -388,7 +388,7 @@ pub fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn long_text_is_narrowed_then_cut() {

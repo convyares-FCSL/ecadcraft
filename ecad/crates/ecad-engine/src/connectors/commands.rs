@@ -6,27 +6,27 @@
 //! this JSON form.
 //!
 //! `connector` and `pinlabel` are thin shims (brief 070): their params structs read the JSON, the
-//! rules in [`ecad_electrical::cmd::connector`] decide, and the shim commits the ops and answers in
+//! rules in [`ecad_electrical::connectors::commands`] decide, and the shim commits the ops and answers in
 //! JSON. `place`'s connector form is [`place_half`], part of `place`'s shim.
 //!
 //! [`Project::apply_edit`]: crate::project::Project::apply_edit
 
-use ecad_model::units::{Degrees, Radians};
+use ecad_model::geometry::units::{Degrees, Radians};
 use std::collections::BTreeSet;
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::connector::{self as rules, ConnectorInput, Made, NamesInput, Pinlabel, PinlabelInput};
+use ecad_electrical::connectors::commands::{self as rules, ConnectorInput, Made, NamesInput, Pinlabel, PinlabelInput};
 use ecad_model::{PageId, Placement, Pt, ConnectionPointId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed};
-use crate::cmd::{err, on_project, plain_style};
-use crate::connectors::{self as cn, Names};
-use crate::symbols::Starter;
-use ecad_electrical::cmd::input::{Bounded, Point};
+use crate::commands::input::{Command, Typed};
+use crate::commands::{err, on_project, plain_style};
+use ecad_electrical::connectors::{self as cn, Names};
+use ecad_electrical::symbols::Starter;
+use ecad_electrical::commands::input::{Bounded, Point};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<ConnectorParams>("connector"), Typed::of::<PinlabelParams>("pinlabel")];
@@ -34,7 +34,7 @@ pub const TYPED: &[Typed] = &[Typed::of::<ConnectorParams>("connector"), Typed::
 /// The commands this module adds (registered in `lanes.rs`).
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("connector", "Connector", crate::cmd::input::typed::<ConnectorParams>)
+        CommandSpec::new("connector", "Connector", crate::commands::input::typed::<ConnectorParams>)
             .params(
                 "{device?: id | tag (absent: a new connector), halves?: socket|plug|both, family?: plain|dsub|m12|rj45|usba|usbb, \
 pins?: 1..64, names?: numbers|letters|[\"L\",\"N\",\"PE\"], layout?: row|pins, at?: [x,y], rotation?: 0|90|180|270, swap?: bool (row), \
@@ -43,7 +43,7 @@ connector.maker.* answers; one transaction)",
             )
             .interactive(crate::interact::connector)
             .noundo(),
-        CommandSpec::new("pinlabel", "Rename Pin", crate::cmd::input::typed::<PinlabelParams>)
+        CommandSpec::new("pinlabel", "Rename Pin", crate::commands::input::typed::<PinlabelParams>)
             .params(
                 "{device?: id | tag, pin?: name, terminal?: id, to: new name | \"next\"} (renames a connector pin on both halves in one \
 transaction; with terminal and to \"next\", moves that one drawn pin to its half's next free pin)",
@@ -169,7 +169,7 @@ impl Command for ConnectorParams {
 /// 044 §3.3): a new connector, or joining the connector named by `device` (or `tag`); a pin takes
 /// the next pin (§4.4) or `pin`, and on a wire it lands there. One transaction.
 pub(crate) fn place_half(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
+    s: &mut Session, params: &crate::devices::commands::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let tag = params.tag.clone();
     let device = params.device.clone();
@@ -178,10 +178,10 @@ pub(crate) fn place_half(
     let modes = params.modes()?;
     let v = on_project(s, |p, pg, page| {
         let doc = p.ledger.document();
-        let (device, new_tag) = ecad_electrical::cmd::place::connector_target(doc, side, device.as_deref(), tag.as_deref())?;
+        let (device, new_tag) = ecad_electrical::devices::commands::place::connector_target(doc, side, device.as_deref(), tag.as_deref())?;
         let style = plain_style(p);
         let mut ops = Vec::new();
-        let def = crate::cmd::terminal::definition_for(doc, &mut p.ids, starter, &mut ops)?;
+        let def = crate::terminal_strips::commands::definition_for(doc, &mut p.ids, starter, &mut ops)?;
         let taken = BTreeSet::new();
         let pin_starter = cn::is_pin_starter(starter);
         let names: Vec<String> = match (device, pin_starter) {
@@ -211,7 +211,7 @@ pub(crate) fn place_half(
                 (c, t, true)
             }
         };
-        let landing = if pin_starter { crate::cmd::terminal::landing_point(doc, page, at) } else { None };
+        let landing = if pin_starter { crate::terminal_strips::commands::landing_point(doc, page, at) } else { None };
         let origin = landing.map_or(at, |on| on.at);
         let rotation = match landing {
             Some(on) if degrees.0 == 0.0 => rules::along_wire(doc, &on),
@@ -228,7 +228,7 @@ pub(crate) fn place_half(
         }
         let label = if new { format!("Place connector {tag_text}") } else { format!("Add symbol to {tag_text}") };
         // Brief 052d (design 052 §5.3): the place proposes; a half's conflict may answer Half.
-        let proposed = crate::draw::proposals::plan_place(p, &ops, modes, c, page, origin, starter.side()).map_err(CmdError::refused)?;
+        let proposed = crate::symbols::draw::plan_place(p, &ops, modes, c, page, origin, starter.side()).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, ops)?;
         p.last_placed = Some((starter.key.to_string(), c));
@@ -255,7 +255,7 @@ pub(crate) fn place_half(
         v["joined"] = json!(!new);
         v["representation"] = json!(rep.hex());
         v["definition"] = json!(def.hex());
-        crate::draw::proposals::finish_place(p, pg, c, !new, &proposed, &mut v);
+        crate::symbols::draw::finish_place(p, pg, c, !new, &proposed, &mut v);
         Ok(v)
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {

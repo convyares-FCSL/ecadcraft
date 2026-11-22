@@ -27,8 +27,6 @@ pub mod undo_session;
 
 // Upstream's loopback control server, unchanged (design 035 §17, 2): the same bounds, token and
 // replies as CADCraft's own. `#[path]` is relative to this file's folder (`src/agent`).
-#[path = "../../../../../apps/cadcraft/src/control_server.rs"]
-mod control_server;
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::mpsc::{Receiver, SyncSender, TryRecvError};
@@ -38,7 +36,7 @@ use cadcraft_ui_egui::{ControlRequest, PendingReply};
 use ecad_engine::agent::access::{self, Mode, Preference, Status};
 use ecad_engine::agent::gate::{self, Call, OwnedSteps};
 use ecad_engine::agent::{agent_name, bridge, policy, tools};
-use ecad_engine::views::Settings;
+use ecad_engine::cables::views::Settings;
 use eframe::egui;
 use serde_json::{Value, json};
 
@@ -1153,7 +1151,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn base64_matches_the_standard_alphabet() {

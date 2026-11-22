@@ -5,11 +5,11 @@
 use eframe::egui;
 
 use crate::App;
-use crate::sheets_ui::{Part, Popout};
+use crate::settings::sheets::{Part, Popout};
 
 /// Draw the section.
 pub fn show(t: &mut App, ui: &mut egui::Ui) {
-    ecad_ui::prim::read_value(ui, "Each kind of text: its height, weight and font, and whether it is shown. Also listed in Standards.");
-    ui.add_space(ecad_ui::tokens::space::S);
-    super::project::body(t, ui, Popout::Settings, Part::Text);
+    ecad_widgets::prim::read_value(ui, "Each kind of text: its height, weight and font, and whether it is shown. Also listed in Standards.");
+    ui.add_space(ecad_widgets::tokens::space::S);
+    crate::settings::project::body(t, ui, Popout::Settings, Part::Text);
 }

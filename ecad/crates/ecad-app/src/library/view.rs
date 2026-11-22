@@ -1,16 +1,16 @@
 //! The Library workspace in the shell's slots: the main view (browser or builder), the right
 //! panel (the selected symbol's details, or the builder's Details) and the drawer's review.
 
-use ecad_engine::defaults::symbols::{Field, project_value};
-use ecad_engine::symbols;
+use ecad_electrical::defaults::symbols::{Field, project_value};
+use ecad_electrical::symbols;
 use ecad_model::DefinitionId;
 use eframe::egui::{self, Rect};
 
-use super::browser::{self, Listing, Tile};
-use super::builder::{self, Act as BuilderAct};
-use super::details::{self, Info};
-use super::draft::Source;
-use super::review;
+use crate::library::browser::{self, Listing, Tile};
+use crate::library::builder::{self, Act as BuilderAct};
+use crate::library::details::{self, Info};
+use crate::library::draft::Source;
+use crate::library::review;
 use crate::App;
 use crate::shell::Workspace;
 
@@ -73,7 +73,7 @@ impl App {
                 }
                 browser::Act::Place(Tile::Builtin(k)) => {
                     self.set_workspace(Workspace::Draw);
-                    self.start_pick(crate::search::Pick::Symbol(k))
+                    self.start_pick(crate::library::search::Pick::Symbol(k))
                 }
                 browser::Act::Edit(Tile::Project(l)) => {
                     let newest = self
@@ -106,10 +106,10 @@ impl App {
     /// The Library's right panel in `rect` (UI rev 3 boards 3.01–3.04: no inspector rail; the
     /// selected symbol, or the builder's Details).
     pub(crate) fn library_panel(&mut self, ui: &mut egui::Ui, rect: Rect) {
-        let s = ecad_ui::SHELL;
-        ui.painter().rect_filled(rect, 0.0, ecad_ui::color(s.panel));
-        ui.painter().vline(rect.left() + 0.5, rect.y_range(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
-        let body = rect.shrink2(egui::vec2(ecad_ui::tokens::space::L, ecad_ui::tokens::space::L));
+        let s = ecad_widgets::SHELL;
+        ui.painter().rect_filled(rect, 0.0, ecad_widgets::color(s.panel));
+        ui.painter().vline(rect.left() + 0.5, rect.y_range(), egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
+        let body = rect.shrink2(egui::vec2(ecad_widgets::tokens::space::L, ecad_widgets::tokens::space::L));
         crate::shell::in_rect(ui, body, details::DETAILS, |ui| {
             egui::ScrollArea::vertical().id_salt("library.details.scroll").auto_shrink([false, false]).show(ui, |ui| self.library_right(ui));
         });
@@ -166,7 +166,7 @@ impl App {
             let mut accepted = draft.clone();
             let missing_after_offers = match accepted.accept_all() {
                 Ok(()) => accepted.missing(doc, lineage),
-                Err(e) => vec![super::draft::Missing { item: "other", text: e }],
+                Err(e) => vec![crate::library::draft::Missing { item: "other", text: e }],
             };
             let key = draft.key.trim().to_string();
             let mut overrides = Vec::new();

@@ -8,15 +8,15 @@
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::units::{Degrees, Radians};
+use ecad_model::geometry::units::{Degrees, Radians};
 use ecad_model::{DeviceId, Placement, Subject};
 use serde_json::{Value, json};
 
-use super::forms::{R, Safe, commit, other, paper_guard, safely};
-use super::{OUT_OF_RANGE, CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
+use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
+use crate::interact::{OUT_OF_RANGE, CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
 use crate::devices::{self, TextOf};
 use crate::project::Mapped;
-use crate::symbols::{self, Starter};
+use ecad_electrical::symbols::{self, Starter};
 
 /// A prompt that takes a typed text or a click.
 const TEXT_OR_POINT: Accept = Accept { point: true, number: false, text: true, select: false, enter: true };
@@ -233,7 +233,7 @@ impl Place {
         let t = text.trim();
         // A typed point that could not be used (not finite, out of range) is no symbol name.
         if t.contains(',') || t.contains('<') {
-            return Err(super::forms::not_a_point(t));
+            return Err(crate::properties::forms::not_a_point(t));
         }
         let device = read(s, |p, _| Ok(devices::holder_of(p.ledger.document(), t, None))).ok().flatten();
         if t.starts_with('-')
@@ -353,7 +353,7 @@ impl Place {
             Ok(p.last_placed
                 .as_ref()
                 .map(|(_, c)| *c)
-                .filter(|c| devices::tag_of(doc, *c).and_then(ecad_model::tag::parse).is_some_and(|(px, _)| px == prefix)))
+                .filter(|c| devices::tag_of(doc, *c).and_then(ecad_model::naming::tag::parse).is_some_and(|(px, _)| px == prefix)))
         })
         .ok()
         .flatten()
@@ -441,7 +441,7 @@ impl Place {
                 }
                 Input::Point(p) => self.place_at(s, p),
                 Input::Enter => Ok(Step::Done),
-                Input::Text(t) => Err(super::forms::not_a_point(&t)),
+                Input::Text(t) => Err(crate::properties::forms::not_a_point(&t)),
                 _ => Ok(Step::Continue),
             },
             Stage::Device => match i {
@@ -461,7 +461,7 @@ impl Place {
                     let sym = self.symbol();
                     let (holder, normal) = read(s, |p, _| {
                         let doc = p.ledger.document();
-                        let normal = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
+                        let normal = ecad_model::naming::tag::normalise(&t, ecad_electrical::defaults::print::tag_style(doc))?;
                         let holder = devices::holder_of(doc, &normal, None);
                         if let Some(c) = holder {
                             devices::join_labels(doc, c, sym, &Default::default())?;
@@ -488,7 +488,7 @@ impl Place {
                 Input::Text(t) => {
                     let (holder, normal) = read(s, |p, _| {
                         let doc = p.ledger.document();
-                        let normal = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
+                        let normal = ecad_model::naming::tag::normalise(&t, ecad_electrical::defaults::print::tag_style(doc))?;
                         Ok((devices::holder_of(doc, &normal, None), normal))
                     })
                     .map_err(other)?;
@@ -647,12 +647,12 @@ impl Interactive for Place {
     }
     /// The symbol at the cursor, as it would be placed.
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
-        if !matches!(self.stage, Stage::Point | Stage::Symbol) || !super::model_space(s) || !in_range(cursor) {
+        if !matches!(self.stage, Stage::Point | Stage::Symbol) || !crate::interact::model_space(s) || !in_range(cursor) {
             return Vec::new();
         }
         let pl = self.placement(cursor);
         let Some(def) = self.definition() else { return Vec::new() };
-        def.graphics.iter().filter_map(|g| ecad_model::geom::placed(g, &pl)).map(|g| crate::convert::kind_for_primitive(&g)).collect()
+        def.graphics.iter().filter_map(|g| ecad_model::geometry::geom::placed(g, &pl)).map(|g| crate::convert::kind_for_primitive(&g)).collect()
     }
     /// Its terminal rings, tag and terminal labels at their would-be positions.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
@@ -834,7 +834,7 @@ impl Props {
                     if key == "tag" {
                         let holder = read(s, |p, _| {
                             let doc = p.ledger.document();
-                            let normal = ecad_model::tag::normalise(&t, crate::defaults::print::tag_style(doc))?;
+                            let normal = ecad_model::naming::tag::normalise(&t, ecad_electrical::defaults::print::tag_style(doc))?;
                             Ok(devices::holder_of(doc, &normal, Some(c)).map(|h| (h, normal)))
                         })
                         .map_err(other)?;

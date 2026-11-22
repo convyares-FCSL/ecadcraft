@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use ecad_model::{CableId, ItemId, Op, PageId, Pt, Representation, RepresentationId, Subject};
 
-use crate::draw::text_style::EngineMetrics;
+use crate::styles::draw::EngineMetrics;
 
 /// The cable reference end at `p` on `page` within `radius`, measuring flags with CADCraft's fonts
 /// ([`crate::references::reference_at_measured`]).
@@ -22,14 +22,14 @@ pub fn reference_at(doc: &ecad_model::Document, page: PageId, p: Pt, radius: f64
 /// nothing is written then.
 pub(crate) fn run_slash_continue(
     p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, page: PageId, cable: CableId, from: Pt, to: Pt,
-    found: &crate::slash::Crossings,
+    found: &ecad_electrical::cables::slash::Crossings,
 ) -> Result<serde_json::Value, String> {
     let doc = p.ledger.document();
     let crossed: Vec<ecad_model::CorePosition> = found.members.iter().map(|m| m.position).collect();
     let plan = crate::references::plan_slash_continue(doc, page, cable, &crossed)?;
     let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
     let mut ops = Vec::new();
-    let style = crate::cmd::plain_style(p);
+    let style = crate::commands::plain_style(p);
     ops.push(Op::AddItem {
         id: item,
         item: ecad_model::Item { page, style, kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a: from, b: to }) },

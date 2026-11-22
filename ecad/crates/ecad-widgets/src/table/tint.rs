@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use super::source::ColumnId;
+use crate::table::source::ColumnId;
 
 /// How long a changed cell stays tinted.
 pub const TINT_SECONDS: f64 = 1.2;

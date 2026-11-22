@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use cadcraft_engine::Session;
 use common::{H, small_project};
-use ecad_engine::debug::{
+use ecad_engine::dev::debug::{
     self, DebugSnapshot, ObjectId, RecordState, StateCounts, TxCursor, op_view, read_branches, read_row, read_storage, resolve, state_at, touches,
     verify_projection, verify_replay, verify_store,
 };

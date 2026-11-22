@@ -3,17 +3,17 @@
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::plc as rules;
-use ecad_model::units::{Degrees, Radians};
+use ecad_electrical::plc::commands as rules;
+use ecad_model::geometry::units::{Degrees, Radians};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::cmd::input::Command;
-use crate::cmd::{err, on_project, plain_style};
+use crate::commands::input::Command;
+use crate::commands::{err, on_project, plain_style};
 use crate::plc::channels::*;
 use crate::plc::rack::channel_count;
-use crate::symbols::Starter;
-use ecad_electrical::cmd::input::{Point, TextOrNumber, nullable};
+use ecad_electrical::symbols::Starter;
+use ecad_electrical::commands::input::{Point, TextOrNumber, nullable};
 use ecad_model::{Placement, Pt, ConnectionPointId};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// §4.4): joins card `device` (or the card tagged `tag`, or a new card) as its next free channel or
 /// the channel numbered `channel`; on a wire its first point lands there. One transaction.
 pub(crate) fn place_channel(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
+    s: &mut Session, params: &crate::devices::commands::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let t = cell_type(starter).ok_or_else(|| err("That symbol is not a PLC channel."))?;
     let device = params.device_id()?;
@@ -31,14 +31,14 @@ pub(crate) fn place_channel(
         None => None,
         Some(v) => Some(rules::channel_number(&v.text()).map_err(|e| err(e.to_string()))?),
     };
-    ecad_electrical::cmd::place::one_of(device.is_some(), tag.is_some(), "card").map_err(|e| err(e.to_string()))?;
+    ecad_electrical::devices::commands::place::one_of(device.is_some(), tag.is_some(), "card").map_err(|e| err(e.to_string()))?;
     let modes = params.modes()?;
     let v = on_project(s, |p, pg, page| {
         let style = plain_style(p);
         let doc = p.ledger.document();
-        let (card, new_tag) = ecad_electrical::cmd::place::card_target(doc, device, tag.as_deref())?;
+        let (card, new_tag) = ecad_electrical::devices::commands::place::card_target(doc, device, tag.as_deref())?;
         let mut ops = Vec::new();
-        let def = crate::cmd::terminal::definition_for(doc, &mut p.ids, starter, &mut ops)?;
+        let def = crate::terminal_strips::commands::definition_for(doc, &mut p.ids, starter, &mut ops)?;
         let (card, card_tag, new) = match card {
             Some(c) => (c, crate::devices::tag_words(doc, c), false),
             None => {
@@ -80,19 +80,19 @@ pub(crate) fn place_channel(
             }
         }
         // On a wire: its first point lands there (design 045 §4.4), the symbol shifted onto it.
-        let landing = first_point(starter, &pl).and_then(|q| crate::cmd::terminal::landing_point(doc, page, q).map(|on| (q, on)));
+        let landing = first_point(starter, &pl).and_then(|q| crate::terminal_strips::commands::landing_point(doc, page, q).map(|on| (q, on)));
         if let Some((q, on)) = &landing {
             pl.origin = Pt::new(pl.origin.x + on.at.x - q.x, pl.origin.y + on.at.y - q.y);
         }
         let cell = plan_cell(&mut p.ids, page, style, def, starter, card, &j, pl, &mut ops)?;
         let mut wire = None;
         if let (Some((_, on)), Some((_, t0, _, _))) = (landing, cell.terminals.first()) {
-            let land = crate::connectors::plan_land(doc, &mut p.ids, on, *t0)?;
+            let land = ecad_electrical::connectors::plan_land(doc, &mut p.ids, on, *t0)?;
             wire = Some(land.route);
             ops.extend(land.ops);
         }
         // Brief 052d (design 052 §5.3): the place proposes for the card.
-        let proposed = crate::draw::proposals::plan_place(p, &ops, modes, card, page, pl.origin, None).map_err(CmdError::refused)?;
+        let proposed = crate::symbols::draw::plan_place(p, &ops, modes, card, page, pl.origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place channel", ops)?;
         p.last_placed = Some((starter.key.to_string(), card));
@@ -101,7 +101,7 @@ pub(crate) fn place_channel(
         let pins: Vec<String> = cell.terminals.iter().map(|(_, _, pin, _)| pin.clone()).collect();
         let on = wire
             .and_then(|r| crate::wires::wire_of_route(doc, r))
-            .map(|w| format!(" on wire {}", crate::slash::wire_name(doc, w)))
+            .map(|w| format!(" on wire {}", ecad_electrical::cables::slash::wire_name(doc, w)))
             .unwrap_or_default();
         let message = format!("Placed {card_tag} channel {} ({}){on}.", j.index + first, pins_words(&pins));
         let mut v = json!({
@@ -116,7 +116,7 @@ pub(crate) fn place_channel(
             "terminals": cell.terminals.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, *r), "terminal": t.hex()})).collect::<Vec<_>>(),
             "message": message,
         });
-        crate::draw::proposals::finish_place(p, pg, card, !new, &proposed, &mut v);
+        crate::symbols::draw::finish_place(p, pg, card, !new, &proposed, &mut v);
         Ok(v)
     })?;
     if let Some(m) = v.get("message").and_then(Value::as_str) {

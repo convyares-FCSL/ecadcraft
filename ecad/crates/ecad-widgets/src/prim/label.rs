@@ -1,11 +1,11 @@
 //! Pill, chip, badge and key cap: small labels.
 
-use ecad_tokens::{Icon, line, radius, size, space, ui_type};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Rect, Response, Role, Sense, Stroke, StrokeKind, Ui, Widget, WidgetInfo, vec2};
 
-use super::{Look, Tone, accessible, galley};
+use crate::prim::{Look, Tone, accessible, galley};
 use crate::style::corner;
-use crate::{color, icons};
+use {crate::color, crate::icons};
 
 /// The height of a pill, badge or key cap: the caption line and a 2 px step above and below.
 fn small_height() -> f32 {

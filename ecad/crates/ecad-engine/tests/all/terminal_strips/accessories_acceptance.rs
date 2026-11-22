@@ -632,7 +632,7 @@ fn m_link_line_on_every_page_with_stub() {
     let v = a.h.run("place", json!({"symbol": "terminal", "at": [100, 150], "device": a.x1.hex()})).unwrap();
     let doc = a.h.doc();
     // The terminal drawn on page 2 (PE terminals have numeric labels too, so pick by page).
-    let far: ConnectionPointId = ecad_model::derive::connection_point_positions(&doc, p2)
+    let far: ConnectionPointId = ecad_model::connectivity::derive::connection_point_positions(&doc, p2)
         .into_iter()
         .map(|(x, _, _)| x)
         .find(|x| doc.terminals.get(x).is_some_and(|t| t.device() == Some(a.x1)))
@@ -644,7 +644,7 @@ fn m_link_line_on_every_page_with_stub() {
     // The fixture's PE terminal (label 5, drawn on page 1 at 360,250) lies between 4 and the far
     // terminal, so page 1 draws 3, 4, 5 and the stub runs past 5 (design M: "through 3–5 with a
     // stub past 5").
-    let last = ecad_model::derive::connection_point_positions(&a.h.doc(), a.page)
+    let last = ecad_model::connectivity::derive::connection_point_positions(&a.h.doc(), a.page)
         .into_iter()
         .find(|(x, _, _)| !a.t.contains(x) && doc.terminals.get(x).is_some_and(|t| t.device() == Some(a.x1)))
         .map(|(_, _, p)| p)

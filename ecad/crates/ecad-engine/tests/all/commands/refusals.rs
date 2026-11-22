@@ -5,7 +5,7 @@ use crate::common;
 
 use cadcraft_engine::doc::Space;
 use common::{H, id, pts};
-use ecad_inspect::EventKind;
+use ecad_engine::history::event_log::EventKind;
 use ecad_model::{DeviceId, WireId};
 use serde_json::{Value, json};
 

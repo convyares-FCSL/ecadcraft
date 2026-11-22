@@ -9,12 +9,12 @@ use ecad_app::agent::undo_session as us;
 use ecad_app::agent::{self, BannerAction, BannerState};
 use ecad_app::{App, developer};
 use ecad_engine::agent::access::{self, Mode, Preference};
-use ecad_engine::views::Settings;
+use ecad_engine::cables::views::Settings;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
-use crate::bridge_contracts::{H, conductors, live_app, person_wire, server, wire};
+use crate::agent::bridge::{H, conductors, live_app, person_wire, server, wire};
 
 fn dir(what: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("ecad-035-{what}-{}", ecad_engine::session_seed()))
@@ -47,7 +47,7 @@ fn the_developer_row_shows_off_listening_and_this_run_and_saves_the_choice() {
     assert_eq!(h.state().agent.status_text(), "Off");
     // Read and change, as the combo does: saved, and the listener starts.
     h.state_mut().agent_set_mode(Mode::Write);
-    h.state_mut().agent.port_text = super::bridge_contracts::free_port().to_string();
+    h.state_mut().agent.port_text = crate::agent::bridge::free_port().to_string();
     h.state_mut().agent_apply_port();
     h.run_steps(3);
     let port = h.state().agent.pref.port;
@@ -73,7 +73,7 @@ fn the_developer_row_shows_off_listening_and_this_run_and_saves_the_choice() {
 fn control_flag_shows_this_run_only_and_locks_the_mode() {
     let d = dir("flag");
     let mut h = app_with(&d);
-    let port = super::bridge_contracts::free_port();
+    let port = crate::agent::bridge::free_port();
     h.state_mut().agent.control_flag(port);
     h.run_steps(3);
     assert_eq!(h.state().agent.status_text(), format!("● Listening on 127.0.0.1:{port} (this run only, --control)"));
@@ -140,7 +140,7 @@ fn undo_session_takes_back_the_agents_steps_as_the_persons_undos() {
     assert_eq!(conductors(&mut h), base);
     assert_eq!(h.state().agent_banner().unwrap().steps, 0);
     assert!(h.state().cad.session.log.iter().any(|l| l.starts_with("Undid 2 agent steps")), "{:?}", h.state().cad.session.log);
-    let log = crate::bridge_contracts::authors(&mut h);
+    let log = crate::agent::bridge::authors(&mut h);
     let n = log.len();
     assert_eq!(log[n - 2..], [ecad_model::Author::User, ecad_model::Author::User], "the person's undos");
 }

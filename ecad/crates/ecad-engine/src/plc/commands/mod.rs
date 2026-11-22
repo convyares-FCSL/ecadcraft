@@ -2,7 +2,7 @@
 //! list, tags and their exchange, and a card's page. The model they edit is [`crate::plc`].
 //!
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
-//! [`ecad_electrical::cmd::plc`] decide, and the shim commits the ops and answers in JSON.
+//! [`ecad_electrical::plc::commands`] decide, and the shim commits the ops and answers in JSON.
 
 pub mod address;
 pub mod channels;
@@ -14,7 +14,7 @@ pub mod signals;
 
 use cadcraft_engine::CommandSpec;
 
-use crate::cmd::input::{Typed, typed};
+use crate::commands::input::{Typed, typed};
 
 /// The PLC commands with a typed input.
 pub const TYPED: &[Typed] = &[

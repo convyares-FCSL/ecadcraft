@@ -1,7 +1,7 @@
 //! Brief 018 at the model level: one device drawn by several symbols of different definitions
 //! (I14 as relaxed, owner decision 2026-11-08) and the tag index.
 
-use ecad_model::derive::connection_point_positions;
+use ecad_model::connectivity::derive::connection_point_positions;
 use ecad_model::{
     Author, Color, Definition, DefinitionId, Device, DeviceId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, Op, Page, PageId, Placement,
     Primitive, Pt, Representation, Style, Subject, SymbolInstance, Terminal, ConnectionPointDef, ConnectionPointId,
@@ -37,7 +37,7 @@ fn symbol(fx: &Fx, definition: DefinitionId, at: Pt) -> Item {
         style: Style { layer: fx.layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 },
         kind: ItemKind::Symbol(SymbolInstance {
             definition,
-            placement: Placement { origin: at, rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 },
+            placement: Placement { origin: at, rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 },
         }),
     }
 }

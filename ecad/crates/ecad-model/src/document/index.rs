@@ -1,13 +1,13 @@
 //! Reverse indexes over the document: who refers to an object.
 //!
 //! The document stores references one way (a conductor names its terminals, a cable names its
-//! conductors). Live editing and the scoped invariant check ([`crate::invariant`]) need the other
+//! conductors). Live editing and the scoped invariant check ([`crate::document::invariant`]) need the other
 //! direction without scanning every object. [`Index`] holds it.
 //!
 //! # Semantics
 //! - The index is derived data: it is never serialised, and [`Index::build`] recomputes it from
 //!   the stored objects. Two documents with the same objects have equal indexes.
-//! - [`crate::op::Op::apply`] keeps it up to date, so it holds for every state an op sequence
+//! - [`crate::document::op::Op::apply`] keeps it up to date, so it holds for every state an op sequence
 //!   reaches, including states inside a transaction that break invariants (a reference to a
 //!   missing object is still indexed under that object's ID).
 //! - Entries count references, so a cable that lists a conductor twice (refused at the end of a
@@ -20,9 +20,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::doc::{Cable, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
-use crate::op::ObjectRef;
+use crate::document::doc::{Cable, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
+use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
+use crate::document::op::ObjectRef;
 
 /// Whether a reference is being added or removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +72,7 @@ pub(crate) struct Index {
     /// A cable reference's named point → the cable whose core lists it (design 072 §4.4, F4).
     pub(crate) cable_points: Multi<ConnectionPointId, CableId>,
     /// Device → its terminals.
-    pub(crate) component_connection_points: Multi<crate::doc::ConnectionPointOwner, ConnectionPointId>,
+    pub(crate) component_connection_points: Multi<crate::document::doc::ConnectionPointOwner, ConnectionPointId>,
     /// PLC station → the modules naming it (design 072 §3).
     pub(crate) station_modules: Multi<DeviceId, DeviceId>,
     /// Subject → representations depicting it.
@@ -91,20 +91,20 @@ pub(crate) struct Index {
     pub(crate) definition_items: Multi<DefinitionId, ItemId>,
     /// Definition → components using it.
     pub(crate) definition_components: Multi<DefinitionId, DeviceId>,
-    /// Tag key ([`crate::tag::key`]) → components whose `tag` property has it (brief 018).
+    /// Tag key ([`crate::naming::tag::key`]) → components whose `tag` property has it (brief 018).
     pub(crate) tags: Multi<String, DeviceId>,
     /// Tag key → cables whose `tag` property has it (brief 026: devices and cables share one tag
     /// namespace).
     pub(crate) cable_tags: Multi<String, CableId>,
     /// Continuation name key ([`crate::connectivity::name_key`]) → continuation components with
     /// that name (brief 022).
-    pub(crate) continuations: Multi<String, crate::id::AidId>,
+    pub(crate) continuations: Multi<String, crate::naming::id::AidId>,
     /// Folder → pages whose `folder` property names it (brief 019).
     pub(crate) folder_pages: Multi<FolderId, PageId>,
     /// Folder → folders whose parent it is (brief 019).
     pub(crate) folder_children: Multi<FolderId, FolderId>,
     /// (stored style ID, choice key) → objects whose own property chooses it (brief 050a, design
-    /// 050 §2.5: the explicit users of a style), for the keys [`crate::style::is_choice_key`]
+    /// 050 §2.5: the explicit users of a style), for the keys [`crate::objects::styles::is_choice_key`]
     /// names.
     pub(crate) style_users: Multi<(String, String), ObjectRef>,
     /// Page → routes drawn on it (design 072 F31).
@@ -196,13 +196,13 @@ impl Index {
         }
     }
 
-    pub(crate) fn route(&mut self, id: RouteId, r: &crate::route::Route, delta: Delta) {
+    pub(crate) fn route(&mut self, id: RouteId, r: &crate::objects::route::Route, delta: Delta) {
         bump(&mut self.page_routes, r.page, id, delta);
         for e in r.ends {
             match e {
-                crate::route::RouteEnd::Point(t) => bump(&mut self.connection_point_routes, t, id, delta),
-                crate::route::RouteEnd::On { route, .. } => bump(&mut self.route_tees, route, id, delta),
-                crate::route::RouteEnd::Free => {}
+                crate::objects::route::RouteEnd::Point(t) => bump(&mut self.connection_point_routes, t, id, delta),
+                crate::objects::route::RouteEnd::On { route, .. } => bump(&mut self.route_tees, route, id, delta),
+                crate::objects::route::RouteEnd::Free => {}
             }
         }
     }
@@ -212,21 +212,21 @@ impl Index {
             bump(&mut self.folder_pages, f, id, delta);
         }
         if let Some(t) = &p.page_type {
-            self.style_choice(ObjectRef::Page(id), crate::sheet::PAGE_TYPE_KEY, &t.to_string(), delta);
+            self.style_choice(ObjectRef::Page(id), crate::document::sheet::PAGE_TYPE_KEY, &t.to_string(), delta);
         }
         self.style_choices(ObjectRef::Page(id), &p.display, delta);
     }
 
     /// Every style choice among `props` (brief 050a).
-    fn style_choices(&mut self, object: ObjectRef, props: &crate::doc::Properties, delta: Delta) {
-        for (k, v) in props.iter().filter(|(k, _)| crate::style::is_choice_key(k)) {
+    fn style_choices(&mut self, object: ObjectRef, props: &crate::document::doc::Properties, delta: Delta) {
+        for (k, v) in props.iter().filter(|(k, _)| crate::objects::styles::is_choice_key(k)) {
             self.style_choice(object, k, v, delta);
         }
     }
 
     /// `object`'s style choice `key` = `value` is added or removed (brief 050a).
     pub(crate) fn style_choice(&mut self, object: ObjectRef, key: &str, value: &str, delta: Delta) {
-        if crate::style::is_choice_key(key) {
+        if crate::objects::styles::is_choice_key(key) {
             bump(&mut self.style_users, (value.trim().to_string(), key.to_string()), object, delta);
         }
     }
@@ -261,7 +261,7 @@ impl Index {
     }
 
     /// A drawing aid is added or removed: a continuation's name key (design 072 §6.2).
-    pub(crate) fn aid(&mut self, id: crate::id::AidId, aid: &crate::aid::Aid, delta: Delta) {
+    pub(crate) fn aid(&mut self, id: crate::naming::id::AidId, aid: &crate::objects::aid::Aid, delta: Delta) {
         if let Some(k) = crate::connectivity::continuation_key(aid) {
             bump(&mut self.continuations, k, id, delta);
         }
@@ -269,7 +269,7 @@ impl Index {
 
     /// A component's tag `tag` (its stored value) is added or removed.
     pub(crate) fn tag(&mut self, id: DeviceId, tag: &str, delta: Delta) {
-        bump(&mut self.tags, crate::tag::key(tag), id, delta);
+        bump(&mut self.tags, crate::naming::tag::key(tag), id, delta);
     }
 
     pub(crate) fn terminal(&mut self, id: ConnectionPointId, t: &Terminal, delta: Delta) {
@@ -293,7 +293,7 @@ impl Index {
         }
         bump(&mut self.net_wires, c.net, id, delta);
         if let Some(t) = &c.wire_type {
-            self.style_choice(ObjectRef::Wire(id), crate::wiring::WIRE_CATEGORY, &t.text(), delta);
+            self.style_choice(ObjectRef::Wire(id), crate::connectivity::wiring::WIRE_CATEGORY, &t.text(), delta);
         }
         self.style_choices(ObjectRef::Wire(id), &c.display, delta);
     }
@@ -302,19 +302,19 @@ impl Index {
         for m in &c.cores {
             self.cable_member(id, m, delta);
         }
-        if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
+        if let Some(t) = c.properties.get(crate::naming::tag::TAG_KEY) {
             self.cable_tag(id, t, delta);
         }
         // Design 072 §4.5: a cable's type is a style user, though no registry level chooses one.
         if let Some(t) = &c.cable_type {
-            bump(&mut self.style_users, (t.text(), crate::doc::CABLE_TYPE_KEY.to_string()), ObjectRef::Cable(id), delta);
+            bump(&mut self.style_users, (t.text(), crate::document::doc::CABLE_TYPE_KEY.to_string()), ObjectRef::Cable(id), delta);
         }
         self.style_choices(ObjectRef::Cable(id), &c.properties, delta);
     }
 
     /// A cable's tag `tag` (its stored value) is added or removed (brief 026).
     pub(crate) fn cable_tag(&mut self, id: CableId, tag: &str, delta: Delta) {
-        bump(&mut self.cable_tags, crate::tag::key(tag), id, delta);
+        bump(&mut self.cable_tags, crate::naming::tag::key(tag), id, delta);
     }
 
     pub(crate) fn cable_member(&mut self, id: CableId, m: &Core, delta: Delta) {

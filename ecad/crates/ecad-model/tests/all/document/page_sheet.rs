@@ -1,12 +1,12 @@
 //! Brief 054 (FP3, design 054 §3.1): a page's sheet reads its page type's stored sheet, between
 //! its own sheet and the project's; old files with no type record resolve exactly as before.
 
-use ecad_model::sheet::{SheetSpec, derived_page_type, page_type_of, sheet_of};
+use ecad_model::document::sheet::{SheetSpec, derived_page_type, page_type_of, sheet_of};
 use ecad_model::{Author, IdAllocator, Ledger, Op, Page, PageId, StyleLayer, StyleRecord, StyleRef};
 
 fn record(sheet: &str) -> StyleRecord {
-    let body: ecad_model::style::PageType = serde_json::from_value(serde_json::json!({ "sheet": sheet })).unwrap();
-    StyleRecord::new("", ecad_model::style::StyleBody::Page(body))
+    let body: ecad_model::objects::styles::PageType = serde_json::from_value(serde_json::json!({ "sheet": sheet })).unwrap();
+    StyleRecord::new("", ecad_model::objects::styles::StyleBody::Page(body))
 }
 
 fn set_style(id: &str, after: Option<StyleRecord>, before: Option<StyleRecord>) -> Op {
@@ -36,7 +36,7 @@ fn a_page_takes_its_types_sheet_between_its_own_and_the_projects() {
     assert_eq!(sheet_of(doc, pages[3]), a3, "a network page is not a schematic one");
     // `project` falls through; anything unreadable does not read (design 072 §8).
     for bad in ["A0 999x999", "x"] {
-        assert!(serde_json::from_value::<ecad_model::style::PageType>(serde_json::json!({ "sheet": bad })).is_err(), "{bad}");
+        assert!(serde_json::from_value::<ecad_model::objects::styles::PageType>(serde_json::json!({ "sheet": bad })).is_err(), "{bad}");
     }
     let before = ledger.document().styles.get(&ecad_model::StyleCatalogue::Page).and_then(|c| c.get(&StyleRef::Builtin("schematic".into()))).cloned();
     ledger.commit(Author::User, "project", vec![set_style("schematic", Some(record("project")), before)]).unwrap();

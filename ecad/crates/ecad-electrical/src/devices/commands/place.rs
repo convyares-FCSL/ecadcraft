@@ -6,7 +6,7 @@
 //! the strip, card and connector planners), committing and answering in JSON (the engine crate's
 //! `place` shim).
 
-use ecad_model::tag::{self, Style};
+use ecad_model::naming::tag::{self, Style};
 use ecad_model::{DeviceId, Document, Noun};
 
 use crate::devices::{self, Target};
@@ -90,12 +90,12 @@ pub fn strip_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>)
     };
     match (device, tag) {
         (Some(c), _) if !doc.devices.contains_key(&c) => Err(CmdError::NotFound(Noun::Device)),
-        (Some(c), _) if crate::strips::strip_of(doc, c).is_none() => Err(not_strip(c)),
+        (Some(c), _) if crate::terminal_strips::strip_of(doc, c).is_none() => Err(not_strip(c)),
         (Some(c), _) => Ok((Some(c), None)),
         (None, Some(t)) => {
             let t = tag::normalise(t, devices::padding(doc))?;
             match devices::holder_of(doc, &t, None) {
-                Some(c) if crate::strips::strip_of(doc, c).is_some() => Ok((Some(c), None)),
+                Some(c) if crate::terminal_strips::strip_of(doc, c).is_some() => Ok((Some(c), None)),
                 Some(c) => Err(not_strip(c)),
                 None if !doc.cables_tagged(&t).is_empty() => Err(CmdError::refused(format!("Tag {t} is a cable's; choose another tag for a strip."))),
                 None => Ok((None, Some(t))),
@@ -133,7 +133,7 @@ pub fn card_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) 
 /// A device that cannot be found; both `device` and `tag`; the other half's tag; a cable's tag; a
 /// device that is not a connector.
 pub fn connector_target(doc: &Document, side: Side, device: Option<&str>, tag: Option<&str>) -> Result<(Option<DeviceId>, Option<String>), CmdError> {
-    let mut found = super::connector::device(doc, device)?;
+    let mut found = crate::connectors::commands::device(doc, device)?;
     one_of(device.is_some(), tag.is_some(), "connector")?;
     let mut new_tag = None;
     if let Some(t) = tag

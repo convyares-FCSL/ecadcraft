@@ -19,14 +19,14 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use ecad_model::style::wire::{ConductorRating, Insulation, LineColour, WireType};
-pub use ecad_model::style::wire::{LineType, RouteLabels};
-use ecad_model::units::{Amps, Celsius, Metres, Mm};
-use ecad_model::wire::{Colours, WireSize};
+use ecad_model::objects::styles::wire::{ConductorRating, Insulation, LineColour, WireType};
+pub use ecad_model::objects::styles::wire::{LineType, RouteLabels};
+use ecad_model::geometry::units::{Amps, Celsius, Metres, Mm};
+use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{Document, StyleRef, WireId, Word};
 use serde::Deserialize;
 
-use super::{Builtin, Catalogue, Field};
+use crate::styles::{Builtin, Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Resolved, Scope, Slot, Source, Value};
 
@@ -68,11 +68,11 @@ pub static FIELDS: [Field; 17] = [
     Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "allowance", label: "Allowance (m per wire)", kind: Kind::Number { min: 0.0, max: 100.0 }, slot: Slot::new(), over: None },
     // Brief 057 (design 057 §4.4, FP3): the datasheet rating, shared by the type's wires.
-    crate::rating::fields::RATED_CURRENT,
-    crate::rating::fields::RATED_AT,
-    crate::rating::fields::MAX_TEMPERATURE,
-    crate::rating::fields::MATERIAL,
-    crate::rating::fields::CONDUCTOR_CLASS,
+    crate::circuits::fields::RATED_CURRENT,
+    crate::circuits::fields::RATED_AT,
+    crate::circuits::fields::MAX_TEMPERATURE,
+    crate::circuits::fields::MATERIAL,
+    crate::circuits::fields::CONDUCTOR_CLASS,
 ];
 
 const fn wire_type(id: &'static str, name: &'static str) -> Builtin {
@@ -188,8 +188,8 @@ fn word<W: Word>(key: &str, t: &str) -> Result<W, CmdError> {
     W::parse(t).ok_or_else(|| refused(format!("{key} takes {}, not {t:?}", W::WORDS.join(", "))))
 }
 
-fn text<const N: usize>(t: &str) -> Result<ecad_model::text::Text<N>, CmdError> {
-    ecad_model::text::Text::new(t).map_err(|e| refused(e.to_string()))
+fn text<const N: usize>(t: &str) -> Result<ecad_model::naming::text::Text<N>, CmdError> {
+    ecad_model::naming::text::Text::new(t).map_err(|e| refused(e.to_string()))
 }
 
 fn no_field(key: &str) -> CmdError {
@@ -240,7 +240,7 @@ pub fn set(w: &mut WireType, key: &str, value: Option<&str>) -> Result<(), CmdEr
         "description" => w.description = Some(text(t)?),
         "allowance" => w.allowance = Some(Metres(number(key, t)?)),
         "rated_current" => {
-            let a = crate::rating::parse::current(t).ok_or_else(|| refused(format!("{t:?} is not a current")))?;
+            let a = crate::devices::ratings::parse::current(t).ok_or_else(|| refused(format!("{t:?} is not a current")))?;
             w.rating.rated_current = Some(Amps(a));
         }
         "rated_at" => w.rating.rated_at = Some(Celsius(number(key, t)?)),
@@ -326,8 +326,8 @@ impl WireLooks {
     /// Read the categories of `doc`.
     pub fn new(doc: &Document) -> Self {
         let mut all: BTreeMap<String, Vec<StyleRef>> = BTreeMap::new();
-        for row in super::rows(doc, &CATALOGUE) {
-            let p = super::field(doc, &CATALOGUE, &row.id, &FIELDS[0], None);
+        for row in crate::styles::rows(doc, &CATALOGUE) {
+            let p = crate::styles::field(doc, &CATALOGUE, &row.id, &FIELDS[0], None);
             if let Some(name) = filled(&p) {
                 all.entry(name.trim().to_lowercase()).or_default().push(row.id);
             }
@@ -360,12 +360,12 @@ impl WireLooks {
     pub fn category(&self, doc: &Document, c: WireId) -> (Option<StyleRef>, CategoryFrom) {
         let e = &crate::defaults::styles::WIRE_CATEGORY;
         let own = doc.wires.get(&c).and_then(|x| x.wire_type.clone());
-        if let Some(id) = own.filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
+        if let Some(id) = own.filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
             return (Some(id), CategoryFrom::Own);
         }
         let conn = doc.connectivity();
         if let Some(net) = conn.net_of_conductor(c).and_then(|id| conn.net(id)) {
-            let pot = ecad_model::wiring::net_potential(doc, net);
+            let pot = ecad_model::connectivity::wiring::net_potential(doc, net);
             if let Some(p) = pot.name
                 && let Some(id) = self.for_potential(&p)
             {
@@ -378,7 +378,7 @@ impl WireLooks {
             Source::Standard => CategoryFrom::Standard,
             _ => CategoryFrom::None,
         };
-        match StyleRef::parse(&r.text()).filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
+        match StyleRef::parse(&r.text()).filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
             Some(id) => (Some(id), from),
             None => (None, CategoryFrom::None),
         }
@@ -389,7 +389,7 @@ impl WireLooks {
         let (category, from) = self.category(doc, c);
         let wire = doc.wires.get(&c);
         let core = !doc.cables_of(c).is_empty();
-        let f = |key: &str| category.as_ref().and_then(|id| super::field_of(doc, ecad_model::StyleCatalogue::Wire, id, key, None));
+        let f = |key: &str| category.as_ref().and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, key, None));
         let from_cat = |key: &str| f(key).and_then(|r| text_of(&r).map(|t| (t, r.from)));
         let own_colours = wire.and_then(|w| w.colours.clone()).map(|c| (c, Source::Object));
         let own_size = wire.and_then(|w| w.size).map(|s| (s.to_string(), Source::Object));
@@ -419,7 +419,7 @@ pub fn wire_draw(doc: &Document, c: WireId) -> WireDraw {
 
 /// The category name of conductor `c` for reports (empty for none).
 pub fn category_name(doc: &Document, look: &WireDraw) -> String {
-    look.category.as_ref().map(|id| super::name(doc, ecad_model::StyleCatalogue::Wire, id)).unwrap_or_default()
+    look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id)).unwrap_or_default()
 }
 
 /// The CADCraft linetype of a `line_type` word.
@@ -433,7 +433,7 @@ pub fn linetype(word: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::styles::*;
 
     /// Design 072 F37: the built-in data reads as typed records, every built-in type has its values
     /// and every type in the data is listed, and the 230 V L/N types are there.

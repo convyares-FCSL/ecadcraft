@@ -1,5 +1,5 @@
 //! The radial wheel (spec §5, brief 041; UI rev 3, board 1.14): about 190 px across, eight
-//! icon-only slots on a ring (`ecad_tokens::wheel`), centred on the cursor, with a chip above
+//! icon-only slots on a ring (`crate::tokens::wheel`), centred on the cursor, with a chip above
 //! naming the object. The slot under the cursor names itself in a tooltip beside it. It knows
 //! nothing of commands: the caller gives each slot's label, icon, whether it is greyed (and why),
 //! and an optional short list; the widget reports what was chosen.
@@ -18,7 +18,7 @@
 
 use std::f32::consts::TAU;
 
-use ecad_tokens::{Icon, radius, space, ui_type, wheel};
+use {crate::tokens::Icon, crate::tokens::radius, crate::tokens::space, crate::tokens::ui_type, crate::tokens::wheel};
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
 use egui::{Color32, Context, Id, Order, Pos2, Rect, Sense, Shape, Stroke, WidgetInfo, pos2, vec2};
 
@@ -334,7 +334,7 @@ fn ring(center: Pos2, a0: f32, a1: f32, fill: Color32) -> Shape {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     /// Board 1.14: a slot's tooltip clears the ring, so it never covers another slot's icon (the
     /// top slot's used to sit on the top-right one).

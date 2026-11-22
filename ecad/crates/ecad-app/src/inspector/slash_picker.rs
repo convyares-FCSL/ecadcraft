@@ -7,8 +7,8 @@
 //! **Update map.** The list is read once when the tool starts (or the page or project changes),
 //! never per frame: O(cables).
 
-use ecad_electrical::cmd::cable::PickItem;
-use ecad_ui::control::{self, Select};
+use ecad_electrical::cables::commands::cables::PickItem;
+use ecad_widgets::control::{self, Select};
 use eframe::egui;
 
 use crate::App;
@@ -59,7 +59,7 @@ impl App {
         let Some(page) = self.panel.active else { return };
         let read = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            (p.ledger.head(), ecad_electrical::cmd::cable::picker(doc, page))
+            (p.ledger.head(), ecad_electrical::cables::commands::cables::picker(doc, page))
         });
         let Ok((head, items)) = read else { return };
         let key = Some((head, page));
@@ -93,7 +93,7 @@ impl App {
 pub fn show(ui: &mut egui::Ui, p: &Picker) -> Option<usize> {
     let opts: Vec<&str> = p.labels.iter().map(String::as_str).collect();
     let mut at = p.picked;
-    ecad_ui::panel::section_header(ui, true, "Cable slash", "one transaction");
+    ecad_widgets::panel::section_header(ui, true, "Cable slash", "one transaction");
     control::row(ui, "Cable", |ui| Select::new(&mut at, &opts, NAME).show(ui));
     let words = match at {
         0 => "A new cable takes the next free tag.".to_string(),

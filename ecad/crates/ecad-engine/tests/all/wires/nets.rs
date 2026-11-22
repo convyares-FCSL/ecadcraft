@@ -195,11 +195,11 @@ fn a_yellow_ring_marks_ends_that_look_connected() {
     let uid = h.p(|p| p.pages[&page].uid).unwrap();
     let yellow = |h: &mut H| {
         // Brief 040: painted as the warning triangle (was a yellow ring mark).
-        h.p(|p| ecad_engine::look::painted_marks(p, uid))
+        h.p(|p| ecad_engine::cables::draw::painted_marks(p, uid))
             .into_iter()
             .filter_map(|m| match m {
-                ecad_engine::look::Painted::Warning(at) => Some((at.x, at.y)),
-                ecad_engine::look::Painted::Error(_) => None,
+                ecad_engine::cables::draw::Painted::Warning(at) => Some((at.x, at.y)),
+                ecad_engine::cables::draw::Painted::Error(_) => None,
             })
             .collect::<Vec<_>>()
     };
@@ -425,13 +425,13 @@ fn the_label_rule_labels_a_net_once_or_every_wire() {
 /// what `wire` uses (the label rule's project value is what the label pass uses: the bus test).
 #[test]
 fn the_join_default_comes_from_the_registry() {
-    let keys: Vec<&str> = ecad_engine::defaults::all().map(|e| e.key).collect();
+    let keys: Vec<&str> = ecad_electrical::defaults::all().map(|e| e.key).collect();
     for k in ["wire.join", "wiring.label_rule", "wiring.label_min_length"] {
         assert!(keys.contains(&k), "{k} not in {keys:?}");
     }
     // The label rule's built-in is `net` (data since brief 066).
-    let rule = &ecad_engine::defaults::wires::WIRING_LABEL_RULE;
-    assert_eq!(rule.builtin(), ecad_engine::defaults::Value::Choice(ecad_model::wiring::LABEL_RULE_NET));
+    let rule = &ecad_electrical::defaults::wires::WIRING_LABEL_RULE;
+    assert_eq!(rule.builtin(), ecad_electrical::defaults::Value::Choice(ecad_model::connectivity::wiring::LABEL_RULE_NET));
     let mut h = H::new(0x32_41);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
     h.cfg(|p| {

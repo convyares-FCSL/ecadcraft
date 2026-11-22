@@ -19,8 +19,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::words::{FlagShape, FlagSide, MAX_CORE_CHARS, flag_shape, label_height, shorten};
-use ecad_model::derive::MAX_REFERENCES_PER_CABLE;
+use crate::cables::words::{FlagShape, FlagSide, MAX_CORE_CHARS, flag_shape, label_height, shorten};
+use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
 use ecad_model::{CableId, CorePosition, Document, ItemId, ItemKind, PageId, Primitive, Pt, RepresentationId, RouteEnd, RouteId, Subject, WireId};
 
 // ---------------------------------------------------------------- vectors
@@ -228,7 +228,7 @@ pub const MAX_SHOWN_CHARS: usize = 24;
 /// The text a reference end shows when brief 010 cannot derive one (a hostile file): an orphan.
 pub const REFERENCE_PLACEHOLDER: &str = "/?";
 /// `ecad.orphan`: a reference end with no other end shows its text in red.
-pub const ORPHAN_ACI: u8 = crate::references::ORPHAN_ACI;
+pub const ORPHAN_ACI: u8 = crate::references::cables::ORPHAN_ACI;
 
 /// The text a reference end shows (design 009 §7.4): brief 010's live reference (`/2.3`), or
 /// `/?` for an orphan. The one function both the marker and the hover take it from.
@@ -244,7 +244,7 @@ pub fn reference_marker(doc: &Document, reference: RepresentationId) -> (String,
 
 /// [`reference_marker`] with the side its flag sits on (brief 010's direction away from the wires).
 fn reference_marker_side(doc: &Document, reference: RepresentationId) -> (String, bool, FlagSide) {
-    match crate::references::marker_text_dir(doc, reference) {
+    match crate::references::cables::marker_text_dir(doc, reference) {
         Some((text, orphan, dir)) => (text, orphan, FlagSide::away(dir)),
         None => (REFERENCE_PLACEHOLDER.to_string(), true, FlagSide::Right),
     }
@@ -706,7 +706,7 @@ fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -
             _ => None,
         })
         .collect();
-    let crossings = crate::slash::member_crossings_with(c, &slashes, |w| idx.route_prims(w), tol);
+    let crossings = crate::cables::slash::member_crossings_with(c, &slashes, |w| idx.route_prims(w), tol);
     for (w, p, dir) in crossings {
         let Some(text) = core_of.get(&key(w)) else { continue };
         let len = dir.x.hypot(dir.y);
@@ -842,7 +842,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
     for m in markers.iter().take(MAX_REFERENCES_PER_CABLE) {
         for mem in &members {
             // A loose line is on one page only.
-            if mem.position.wire().is_none_or(|w| crate::references::route_pages(doc, w).len() < 2) {
+            if mem.position.wire().is_none_or(|w| crate::references::cables::route_pages(doc, w).len() < 2) {
                 continue;
             }
             let (Some(a), Some(b)) = (mem.path.first().copied(), mem.path.last().copied()) else { continue };
@@ -1071,7 +1071,7 @@ impl<'a> PageIndex<'a> {
                         }
                     }
                     // A loose line (no wire yet) carries its cores itself (owner ruling 2026-11-18).
-                    let at = key(ecad_model::wire_order::core_position(doc, x));
+                    let at = key(ecad_model::connectivity::wire_order::core_position(doc, x));
                     if at.route().is_some() {
                         idx.prims.entry(at).or_default().extend(r.items.iter().filter_map(prim));
                         if let Some(p) = r.items.first().and_then(prim).filter(|p| p.path_ends().is_some()) {
@@ -1116,7 +1116,7 @@ pub fn offers_fan(doc: &Document, cable: CableId) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn clipping_removes_the_middle_of_a_segment() {

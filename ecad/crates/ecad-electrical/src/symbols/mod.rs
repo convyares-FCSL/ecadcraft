@@ -20,7 +20,10 @@
 
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ecad_model::units::Radians;
+pub mod commands;
+pub mod proposals;
+pub mod reps;
+use ecad_model::geometry::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
@@ -566,7 +569,7 @@ impl Starter {
         let bridges = match self.kind {
             Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY, PLUG_KEY]],
             Kind::Contact { .. } | Kind::Terminal | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => {
-                crate::terminal_types::bridges(self.key)
+                crate::terminal_strips::terminal_blocks::bridges(self.key)
             }
         };
         let mut d = Definition {
@@ -590,7 +593,7 @@ impl Starter {
     pub fn part_role(&self) -> PartRole {
         match self.kind {
             Kind::ConnectorHalf { .. } if crate::connectors::is_pin_starter(self) => PartRole::Pin,
-            Kind::Fixed { exclusive: false } if !crate::xref::poles_of(self).is_empty() => PartRole::Contact,
+            Kind::Fixed { exclusive: false } if !crate::references::devices::poles_of(self).is_empty() => PartRole::Contact,
             k @ (Kind::ConnectorHalf { .. }
             | Kind::Fixed { .. }
             | Kind::Contact { .. }
@@ -606,7 +609,7 @@ impl Starter {
         let t = crate::plc::types::starter_type(self.key);
         // A protective device's kind is its symbol's (design 072 §2.2).
         if let DeviceType::Protection(_) = t {
-            use ecad_model::device::ProtectionKind as P;
+            use ecad_model::objects::devices::ProtectionKind as P;
             let kind = if self.key.fuse_bank_ways().is_some() {
                 P::FuseBank
             } else if matches!(self.key, K::Mcb1 | K::Mcb2) {
@@ -624,7 +627,7 @@ impl Starter {
         }
         // What operates a switching device is its symbol's (design 072 §2.2).
         if let DeviceType::Switching(_) = t {
-            use ecad_model::device::OperatorKind as O;
+            use ecad_model::objects::devices::OperatorKind as O;
             let kind = if matches!(self.key, K::Ssrin | K::Ssrout) {
                 O::SolidState
             } else if matches!(self.key, K::Pbno | K::Pbnc | K::Sel | K::Swco) {
@@ -636,7 +639,7 @@ impl Starter {
         }
         // What a sensor senses and outputs is its symbol's (design 072 §2.2).
         if let DeviceType::Sensor(_) = t {
-            use ecad_model::device::{Output as O, Sensing as S, Sensor};
+            use ecad_model::objects::devices::{Output as O, Sensing as S, Sensor};
             let known = [
                 (&[K::Prox3][..], S::Proximity, O::Pnp),
                 (&[K::Floatno, K::Floatnc][..], S::Float, O::Contact),
@@ -651,18 +654,18 @@ impl Starter {
         }
         // A motor's phases are its symbol's (design 072 §2.2).
         if let DeviceType::Motor(_) = t {
-            use ecad_model::device::{Motor, Phases};
+            use ecad_model::objects::devices::{Motor, Phases};
             return DeviceType::Motor(Motor::empty(if self.key == K::Motor1 { Phases::Single } else { Phases::Three }));
         }
         // An indicator's signal is a starter default, stored when it is created (design 072 §2.2): a
         // lamp is steady. Its colour starts empty.
         if let DeviceType::Indicator(_) = t {
-            use ecad_model::device::{Indicator, SignalType};
+            use ecad_model::objects::devices::{Indicator, SignalType};
             return DeviceType::Indicator(Indicator::empty(SignalType::Steady));
         }
         // Whether it is a power supply or a transformer is its symbol's (design 072 §2.2).
         if let DeviceType::PowerSupply(_) = t {
-            use ecad_model::device::{PowerSupply, Psu, Transformer};
+            use ecad_model::objects::devices::{PowerSupply, Psu, Transformer};
             return DeviceType::PowerSupply(if self.key == K::Trafo {
                 PowerSupply::Transformer(Transformer::default())
             } else {
@@ -672,7 +675,7 @@ impl Starter {
         // A connector's family is its symbol's (a pin's: plain); a half or pin has mating halves, a
         // bulkhead is one piece.
         if let DeviceType::Connector(_) = t {
-            let mut x = ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default());
+            let mut x = ecad_model::objects::devices::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default());
             x.mating = matches!(self.kind, Kind::ConnectorHalf { .. });
             return DeviceType::Connector(Box::new(x));
         }
@@ -1439,7 +1442,7 @@ pub fn has_project_key(doc: &Document, key: &str) -> bool {
 /// Reads only the project's symbol versions and `ops`' `EmbedDefinition`/`RemoveDefinition`, so
 /// it goes last in the plan. A rename onto a key that already has a prefix keeps that one.
 pub fn prefix_follow(doc: &Document, ops: &[Op]) -> Option<Op> {
-    use ecad_model::prefix::PrefixOf;
+    use ecad_model::naming::prefix::PrefixOf;
     let removed: BTreeSet<DefinitionId> = ops.iter().filter_map(|o| if let Op::RemoveDefinition { id, .. } = o { Some(*id) } else { None }).collect();
     let embedded: Vec<Version<'_>> =
         ops.iter().filter_map(|o| if let Op::EmbedDefinition { id, definition } = o { Version::of(*id, definition) } else { None }).collect();
@@ -1491,7 +1494,7 @@ pub fn bridge_key_ok(d: &Definition, k: &PointKey) -> bool {
     }
     match of_definition(d) {
         Some(s) if matches!(s.kind, Kind::ConnectorHalf { .. }) => *k == SOCKET_KEY || *k == PLUG_KEY,
-        Some(s) => crate::terminal_types::of_starter(s.key).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.contains(k))),
+        Some(s) => crate::terminal_strips::terminal_blocks::of_starter(s.key).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.contains(k))),
         None => false,
     }
 }
@@ -1586,13 +1589,13 @@ pub fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<String>
         .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
         .find(|s| s.kind == Kind::Fixed { exclusive: true })
         .filter(|s| is_fuse_bank(s))
-        .map(|s| s.labels().into_iter().filter(|l| ecad_model::words::is_digits(l)).collect())
+        .map(|s| s.labels().into_iter().filter(|l| ecad_model::naming::words::is_digits(l)).collect())
         .unwrap_or_default()
 }
 
 // ---------------------------------------------------------------- ratings (design 034 §7.3)
 
-pub use ecad_model::device::{RATING_KEY, RATING_OF_PREFIX};
+pub use ecad_model::objects::devices::{RATING_KEY, RATING_OF_PREFIX};
 
 /// Most characters of `<n>` in `rating.<n>` that are read; longer is refused without parsing it
 /// (a hostile key cannot make a lookup or a message long).
@@ -1828,7 +1831,7 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::Termfuse => vec![tag, description, rating],
     };
     if is_fuse_bank(s) {
-        for (t, key) in d.terminals.iter().filter_map(|t| Some((t, t.key.as_def().filter(|k| ecad_model::words::is_digits(k))?))) {
+        for (t, key) in d.terminals.iter().filter_map(|t| Some((t, t.key.as_def().filter(|k| ecad_model::naming::words::is_digits(k))?))) {
             out.push(Anchor {
                 role: TextRole::RatingOf(key.to_string()),
                 at: p(t.at.x + 3.0, -8.0),
@@ -2526,7 +2529,7 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_types::graphics(key).unwrap_or_else(|| sized_graphics(key)),
+        | K::Termfuse => crate::terminal_strips::terminal_blocks::graphics(key).unwrap_or_else(|| sized_graphics(key)),
     }
 }
 
@@ -2671,7 +2674,7 @@ fn terminals(key: StarterKey) -> Vec<ConnectionPointDef> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_types::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
+        | K::Termfuse => crate::terminal_strips::terminal_blocks::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
     }
 }
 
@@ -2736,7 +2739,7 @@ pub fn side_word(side: Side) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
 
     #[test]
     fn starters_are_keyed_in_order() {
@@ -2912,7 +2915,7 @@ mod tests {
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];
         // Brief 036's starters are new; the hashes pinned here are the earlier basic ones.
-        let basic: Vec<_> = STARTERS.iter().filter(|s| s.family == Family::Basic && !crate::terminal_types::is_level_starter(s.key)).collect();
+        let basic: Vec<_> = STARTERS.iter().filter(|s| s.family == Family::Basic && !crate::terminal_strips::terminal_blocks::is_level_starter(s.key)).collect();
         assert_eq!(basic.len(), want.len());
         for (key, hash) in want {
             let o = by_key(key).unwrap().definition().unwrap().origin.clone().unwrap();

@@ -3,12 +3,12 @@
 
 use ecad_app::App;
 use ecad_app::settings::Section;
-use ecad_engine::designations::{self, Aspect};
+use ecad_electrical::locations::designations::{self, Aspect};
 use eframe::egui::vec2;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::project_panel::{doc, rev3_app};
+use crate::pages::project_panel::{doc, rev3_app};
 
 type H = Harness<'static, App>;
 

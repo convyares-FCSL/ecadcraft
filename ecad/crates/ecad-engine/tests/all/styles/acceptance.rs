@@ -16,9 +16,9 @@
 use cadcraft_engine::doc::color::{Color, Rgb};
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_drawing_style::sheet::PAPER;
-use ecad_engine::defaults::{self, Kind, Level, Scope, Source};
+use ecad_electrical::defaults::{self, Kind, Level, Scope, Source};
 use ecad_engine::text_style::{self, TextKind};
-use ecad_engine::{Persistence, printbook};
+use {ecad_engine::Persistence, ecad_engine::export::printbook};
 use ecad_model::Word;
 use ecad_model::{Author, DeviceId, ObjectRef, Op, PageId, Transaction};
 use serde_json::{Value, json};
@@ -151,8 +151,8 @@ pub(crate) fn rgb(c: ecad_drawing_style::Color) -> Rgb {
 
 /// The paper colour an IEC code draws in (040's table).
 pub(crate) fn code_colour(code: &str) -> Color {
-    Color::True(rgb(ecad_model::wire::Colours::parse(code)
-        .and_then(|c| ecad_engine::look::wire_colours(&c, &PAPER))
+    Color::True(rgb(ecad_model::objects::wire::Colours::parse(code)
+        .and_then(|c| ecad_engine::cables::draw::wire_colours(&c, &PAPER))
         .unwrap_or_else(|| panic!("{code} is a colour"))
         .solid))
 }
@@ -362,7 +362,7 @@ fn a01_built_in_styles_draw_todays_page() {
     reproject(&mut h);
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
     let frame_ents = h.pv(|p, pg| pg.frame_entities_of(p, page));
-    let frame: Vec<_> = frame_ents.iter().filter(|e| e.common.layer == ecad_engine::frame::LAYER).collect();
+    let frame: Vec<_> = frame_ents.iter().filter(|e| e.common.layer == ecad_engine::pages::frame::LAYER).collect();
     assert!(!frame.is_empty(), "the frame is drawn");
     let weights: std::collections::BTreeSet<_> = frame.iter().map(|e| format!("{:?}", e.common.lineweight)).collect();
     for w in [Lineweight::Mm100(50), Lineweight::Mm100(25)] {
@@ -925,7 +925,7 @@ fn a07_box_style_changes_every_box_and_a_page_frame_style_one_page() {
         h.activate(p);
         h.pv(|pr, pg| pg.frame_entities_of(pr, p))
             .into_iter()
-            .filter(|e| e.common.layer == ecad_engine::frame::LAYER)
+            .filter(|e| e.common.layer == ecad_engine::pages::frame::LAYER)
             .map(|e| e.common.lineweight)
             .collect::<Vec<_>>()
     };
@@ -1036,7 +1036,7 @@ fn a08_diff_and_history_name_the_style_and_fields() {
     h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Tag large", "copy_of": "tag", "fields": {"height": 5}})).unwrap();
     h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}})).unwrap();
     let to = h.doc();
-    let ops = ecad_model::diff::ops_between(&from, &to, &|_| true);
+    let ops = ecad_model::document::diff::ops_between(&from, &to, &|_| true);
     assert!(ops.iter().filter(|o| o.name() == "SetStyle").count() == 2, "{ops:?}");
     let steps = h.run("steps", json!({"limit": 10})).unwrap().to_string();
     let info = h.run("pointinfo", json!({"seq": 3})).map(|v| v.to_string()).unwrap_or_default();

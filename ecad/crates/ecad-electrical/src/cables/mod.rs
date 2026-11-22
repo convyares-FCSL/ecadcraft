@@ -1,16 +1,20 @@
 //! The cable planning model (design 059 §2; design 065 §3, cut 2): the fields a cable stores, their
 //! bounds, and the reads over them (planned ends, glands, shield, part values, drawn pages and
 //! ends, off-plan ends and value checks). Pure rules over the document; the commands that write
-//! them are `ecad_engine::cmd::cable`.
+//! them are `ecad_engine::commands::cable`.
 
-use ecad_model::keys::PropsExt;
+pub mod commands;
+pub mod layout;
+pub mod slash;
+pub mod words;
+use ecad_model::naming::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, Document, ItemKind, PageId, Primitive, StyleRef, Subject};
 
 use crate::checks::{Check, Fix, Kind, Object};
-use crate::designations::{self, Aspect};
-use crate::slash::MAX_CABLE_MEMBERS;
+use crate::locations::designations::{self, Aspect};
+use crate::cables::slash::MAX_CABLE_MEMBERS;
 use crate::styles::{self, cable};
 
 /// The pages a cable core is drawn on: its wire's pages, or its line's page while it has no wire.
@@ -91,10 +95,10 @@ impl CableField {
     /// The stored property key.
     pub fn key(self) -> &'static str {
         match self {
-            CableField::Tag => ecad_model::tag::TAG_KEY,
+            CableField::Tag => ecad_model::naming::tag::TAG_KEY,
             CableField::CableType => cable::CABLE_TYPE,
             CableField::Type => "type",
-            CableField::Cores => crate::strips::CORES_KEY,
+            CableField::Cores => crate::terminal_strips::CORES_KEY,
             CableField::Length => "length",
             CableField::Gland(Side::From) => "gland.from",
             CableField::Gland(Side::To) => "gland.to",
@@ -133,7 +137,7 @@ impl CableField {
     }
 }
 
-use ecad_model::style::cable::Shield;
+use ecad_model::objects::styles::cable::Shield;
 
 /// Where a shown value comes from (design 059 §2.2): the hint `set here`, `from type`,
 /// `from notation`.
@@ -162,7 +166,7 @@ pub const MAX_WORDS: usize = 400;
 
 /// `t` cut to [`MAX_ECHO`] characters, with `…` when cut, and no hidden characters.
 pub fn clip(t: &str) -> String {
-    ecad_model::text::clip(t, MAX_ECHO)
+    ecad_model::naming::text::clip(t, MAX_ECHO)
 }
 
 /// Shortest and longest cable length stored, in metres.
@@ -181,7 +185,7 @@ pub fn length_of(text: &str) -> Option<f64> {
 }
 
 fn text_ok(t: &str, max: usize) -> bool {
-    ecad_model::text::check(t, max).is_ok()
+    ecad_model::naming::text::check(t, max).is_ok()
 }
 
 /// A stored value of cable `k` that ECAD reads: its property for `field`, when within bounds.
@@ -189,7 +193,7 @@ fn text_ok(t: &str, max: usize) -> bool {
 pub fn read(doc: &Document, k: CableId, field: CableField) -> Option<String> {
     let c = doc.cables.get(&k)?;
     if field == CableField::Shield {
-        return c.shield.map(|s| ecad_model::words::Word::word(s).to_string());
+        return c.shield.map(|s| ecad_model::naming::words::Word::word(s).to_string());
     }
     if field == CableField::CableType {
         return c.cable_type.as_ref().filter(|id| styles::exists(doc, ecad_model::StyleCatalogue::Cable, id)).map(StyleRef::text);
@@ -203,9 +207,9 @@ fn valid(doc: &Document, field: CableField, v: &str) -> bool {
     match field {
         CableField::Length => length_of(v).is_some(),
         CableField::Gland(_) => cable::is_gland(v),
-        CableField::Shield => <Shield as ecad_model::words::Word>::parse(v).is_some(),
+        CableField::Shield => <Shield as ecad_model::naming::words::Word>::parse(v).is_some(),
         CableField::Maker | CableField::PartNumber | CableField::Description | CableField::Type => text_ok(v, MAX_TEXT),
-        CableField::Cores => crate::strips::parse_cores(v).is_ok(),
+        CableField::Cores => crate::terminal_strips::parse_cores(v).is_ok(),
         CableField::EndLocation(_) => designations::code_of(doc, Aspect::Location, v.trim()).is_some(),
         CableField::EndFunction(_) => designations::code_of(doc, Aspect::Function, v.trim()).is_some(),
         CableField::CableType => StyleRef::parse(v).is_some_and(|id| styles::exists(doc, ecad_model::StyleCatalogue::Cable, &id)),
@@ -301,7 +305,7 @@ pub fn shield(doc: &Document, k: CableId) -> Option<(Shield, Source)> {
         return Some((s, Source::Here));
     }
     let id = type_of(doc, k)?;
-    cable::type_text(doc, &id, cable::TYPE_SHIELD).and_then(|w| <Shield as ecad_model::words::Word>::parse(&w)).map(|s| (s, Source::Type))
+    cable::type_text(doc, &id, cable::TYPE_SHIELD).and_then(|w| <Shield as ecad_model::naming::words::Word>::parse(&w)).map(|s| (s, Source::Type))
 }
 
 /// Cable `k`'s maker, part number or description: its own, else its cable type's (Q8).
@@ -319,13 +323,13 @@ pub fn part_value(doc: &Document, k: CableId, field: CableField) -> Option<(Stri
 pub fn cores_shown(doc: &Document, k: CableId) -> Option<(String, Source)> {
     let (_, src, text) = cable::offer(doc, k)?;
     let props = &doc.cables.get(&k)?.properties;
-    let own = props.get(CableField::Cores.key()).is_some_and(|v| crate::strips::parse_cores(v).is_ok());
+    let own = props.get(CableField::Cores.key()).is_some_and(|v| crate::terminal_strips::parse_cores(v).is_ok());
     Some((
         text,
         match src {
-            crate::strips::OfferSource::Cores if own => Source::Here,
-            crate::strips::OfferSource::Cores => Source::Type,
-            crate::strips::OfferSource::Type => Source::Notation,
+            crate::terminal_strips::OfferSource::Cores if own => Source::Here,
+            crate::terminal_strips::OfferSource::Cores => Source::Type,
+            crate::terminal_strips::OfferSource::Type => Source::Notation,
         },
     ))
 }
@@ -343,7 +347,7 @@ pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
             _ => None,
         });
         let words =
-            at.and_then(|a| ecad_model::wiring::place(doc, r.page, a)).map_or_else(|| crate::references::page_number(doc, r.page), |p| p.text(style));
+            at.and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a)).map_or_else(|| crate::references::cables::page_number(doc, r.page), |p| p.text(style));
         out.entry(r.page).or_insert(words);
     }
     if out.is_empty()
@@ -351,7 +355,7 @@ pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
     {
         for m in c.cores.iter().take(MAX_CABLE_MEMBERS) {
             for p in member_pages(doc, m) {
-                out.entry(p).or_insert_with(|| crate::references::page_number(doc, p));
+                out.entry(p).or_insert_with(|| crate::references::cables::page_number(doc, p));
             }
         }
     }
@@ -462,7 +466,7 @@ pub fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
     if !drawn {
         return out;
     }
-    let anchor = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k));
+    let anchor = ecad_model::naming::numbering::rep_anchor(doc, Subject::Cable(k));
     let (page, at) = anchor.map_or((None, None), |(p, a)| (Some(p), Some(a)));
     for o in off_plan(doc, k) {
         let (side, drawn_at) = (o.side, o.drawn.words());
@@ -496,7 +500,7 @@ pub fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
 /// notation, else its cores and cross-section (`4G1.5`).
 pub fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
     let name = styles::name(doc, ecad_model::StyleCatalogue::Cable, id);
-    if crate::strips::offer_from_type(&name).is_some() {
+    if crate::terminal_strips::offer_from_type(&name).is_some() {
         return Some(name);
     }
     let cores = cable::type_text(doc, id, cable::TYPE_CORES)?;
@@ -506,7 +510,7 @@ pub fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
 
 /// A cable after the word "Cable" in messages: its tag, else `8a3f19c0…`.
 pub fn cable_title(doc: &Document, cable: CableId) -> String {
-    match doc.cables.get(&cable).and_then(|c| c.properties.text(ecad_model::keys::TAG)) {
+    match doc.cables.get(&cable).and_then(|c| c.properties.text(ecad_model::naming::keys::TAG)) {
         Some(t) => t.to_string(),
         None => format!("{}…", cable.hex().get(..8).unwrap_or_default()),
     }
@@ -515,5 +519,5 @@ pub fn cable_title(doc: &Document, cable: CableId) -> String {
 /// A member's core label, shortened for a hover; `None` when it has none.
 pub fn member_core(m: &ecad_model::Core) -> Option<String> {
     let core = m.label_str()?;
-    (!core.trim().is_empty()).then(|| crate::words::shorten(core, crate::words::MAX_CORE_CHARS))
+    (!core.trim().is_empty()).then(|| crate::cables::words::shorten(core, crate::cables::words::MAX_CORE_CHARS))
 }

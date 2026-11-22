@@ -22,9 +22,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use super::contacts::{ContactSet, ContactTable};
+use crate::objects::devices::contacts::{ContactSet, ContactTable};
 
-use crate::units::{Amps, RatedVoltage, Watts};
+use crate::geometry::units::{Amps, RatedVoltage, Watts};
 
 /// The largest control voltage of a coil or SSR input, in volts.
 pub const MAX_CONTROL_VOLTS: f64 = 1000.0;
@@ -39,8 +39,8 @@ pub const MAX_AC3_WATTS: f64 = 4_000_000.0;
 ///
 /// # Example
 /// ```
-/// use ecad_model::device::{Control, Operator, Switching};
-/// use ecad_model::units::{Amps, Current, RatedVoltage, Volts};
+/// use crate::objects::devices::{Control, Operator, Switching};
+/// use crate::geometry::units::{Amps, Current, RatedVoltage, Volts};
 /// let k = Switching {
 ///     operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: None }),
 ///     ac3_current: Some(Amps(9.0)),
