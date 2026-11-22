@@ -305,7 +305,7 @@ pub fn plan_half(doc: &Document, waiting: &[Conflict], pick: &Pick) -> Result<(V
         return Err(CmdError::refused("No connector half is waiting: Half answers a half or pin just placed."));
     }
     let label = match chosen.as_slice() {
-        [c] => format!("Set {} half location {}", crate::devices::tag_words(doc, c.component), c.to),
+        [c] => format!("Set {} half location {}", crate::devices::tags::tag_words(doc, c.component), c.to),
         _ => format!("Set half locations ({} halves)", chosen.len()),
     };
     Ok((ops, label))

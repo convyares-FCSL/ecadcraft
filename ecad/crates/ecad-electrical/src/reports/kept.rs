@@ -809,7 +809,8 @@ impl ReportModels {
             {
                 let label = crate::terminal_strips::terminal_blocks::connection_point_name(doc, t);
                 let device = self.devices.get(&c);
-                let tag = device.map(|d| d.tag.clone()).or_else(|| crate::devices::tag_of(doc, c).map(str::to_string)).unwrap_or_else(|| "?".into());
+                let tag =
+                    device.map(|d| d.tag.clone()).or_else(|| crate::devices::tags::tag_of(doc, c).map(str::to_string)).unwrap_or_else(|| "?".into());
                 // Brief 044: a connector pin's end is named by its half (`-X10.S:3`).
                 let name = crate::connectors::pin_name(doc, t).unwrap_or_else(|| format!("{tag}:{label}"));
                 let location = match device {
@@ -840,10 +841,13 @@ impl ReportModels {
         // Where its ends are drawn (book order), and the middle of the first segment of the first
         // route landing on its first point.
         let [a_at, b_at] = crate::reports::end_points(doc, w, cx);
-        let mid = crate::wires::routes_of_wire(doc, w).into_iter().filter_map(|r| doc.routes.get(&r)).min_by_key(|r| cx.pos(r.page)).and_then(|r| {
-            let (Some(a), Some(b)) = (r.points.first(), r.points.get(1).or(r.points.first())) else { return None };
-            Some((r.page, Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
-        });
+        let mid =
+            crate::wires::routes::routes_of_wire(doc, w).into_iter().filter_map(|r| doc.routes.get(&r)).min_by_key(|r| cx.pos(r.page)).and_then(
+                |r| {
+                    let (Some(a), Some(b)) = (r.points.first(), r.points.get(1).or(r.points.first())) else { return None };
+                    Some((r.page, Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
+                },
+            );
         let mut ends = [self.end_cell(doc, Some(cond.end(End::A)), a_at, cx), self.end_cell(doc, Some(cond.end(End::B)), b_at, cx)];
         if ends[1].order < ends[0].order {
             ends.swap(0, 1);
@@ -883,7 +887,7 @@ impl ReportModels {
             .join(", ");
         // Brief 028 (design 028 §9.2): a wire between two terminals of one strip is a bridge.
         let cable = match crate::terminal_strips::bridge_of(doc, w) {
-            Some(strip) if cable.is_empty() => format!("Bridge {}", crate::devices::tag_of(doc, strip).unwrap_or("?")),
+            Some(strip) if cable.is_empty() => format!("Bridge {}", crate::devices::tags::tag_of(doc, strip).unwrap_or("?")),
             _ => cable,
         };
         let page = mid.and_then(|(p, a)| cx.place(doc, p, a));
@@ -951,7 +955,7 @@ impl ReportModels {
                 let Some(c) = doc.connection_points.get(t).and_then(|x| x.device()) else { continue };
                 let (loc, tag) = match self.devices.get(&c) {
                     Some(d) => (d.location.value.clone(), d.tag.clone()),
-                    None => (locations::resolve(doc, c).value, crate::devices::tag_of(doc, c).unwrap_or("?").to_string()),
+                    None => (locations::resolve(doc, c).value, crate::devices::tags::tag_of(doc, c).unwrap_or("?").to_string()),
                 };
                 match loc {
                     Some(l) => {

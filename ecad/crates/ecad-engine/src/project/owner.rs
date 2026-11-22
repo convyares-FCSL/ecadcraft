@@ -366,7 +366,7 @@ impl Project {
         if !planned.ops.is_empty() {
             let follow = ecad_electrical::symbols::proposals::follow_up_label(&planned);
             let set: Vec<String> =
-                planned.set.iter().map(|(c, _, v)| format!("{} is now in {v}", ecad_electrical::devices::tag_words(doc, *c))).collect();
+                planned.set.iter().map(|(c, _, v)| format!("{} is now in {v}", ecad_electrical::devices::tags::tag_words(doc, *c))).collect();
             match self.apply_edit(pg, "move", &follow, planned.ops) {
                 Ok(_) => pg.echo(format!("{label}; {}.", set.join("; "))),
                 Err(e) => pg.echo(format!("Not set ({e}).")),

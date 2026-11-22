@@ -117,7 +117,7 @@ pub type Fan = ecad_electrical::cables::layout::CableDrawing;
 pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> FanOnPage {
     let routed = doc.cables.get(&cable).is_some_and(|c| {
         c.cores.iter().any(|m| match m.position {
-            ecad_model::CorePosition::Wire(w) => ecad_electrical::wires::route_of_wire_on(doc, w, page).is_some(),
+            ecad_model::CorePosition::Wire(w) => ecad_electrical::wires::routes::route_of_wire_on(doc, w, page).is_some(),
             ecad_model::CorePosition::Route { route, .. } => doc.routes.get(&route).is_some_and(|r| r.page == page),
             ecad_model::CorePosition::Unplaced => false,
         })

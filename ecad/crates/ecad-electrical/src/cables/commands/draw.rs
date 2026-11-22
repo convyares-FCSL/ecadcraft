@@ -13,7 +13,7 @@ use ecad_model::{
 };
 
 use crate::cables::slash::{self, Crossings, MAX_CABLE_MEMBERS};
-use crate::devices::TagHigh;
+use crate::devices::tags::TagHigh;
 use crate::error::CmdError;
 
 /// No conductor with the ID given.
@@ -96,7 +96,7 @@ pub fn slash_new(
     let (cable, item, rep): (CableId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let mut c = ecad_model::Cable::default();
     // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
-    let t = crate::devices::new_cable_tag(ledger, high, tag)?;
+    let t = crate::devices::tags::new_cable_tag(ledger, high, tag)?;
     let _ = c.set_value(ecad_model::naming::tag::TAG_KEY, Some(&t));
     c.cores = found.members.iter().map(|m| Core { position: m.position, ..Core::unplaced(None) }).collect();
     let mut ops = vec![Op::CreateCable { id: cable, cable: c }];
@@ -226,7 +226,7 @@ pub fn add_to_cable(
             let c: CableId = ids.fresh();
             let mut cable = ecad_model::Cable::default();
             // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
-            let t = crate::devices::new_cable_tag(ledger, high, tag)?;
+            let t = crate::devices::tags::new_cable_tag(ledger, high, tag)?;
             let _ = cable.set_value(ecad_model::naming::tag::TAG_KEY, Some(&t));
             (c, None, cable)
         }

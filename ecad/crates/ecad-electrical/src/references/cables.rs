@@ -219,9 +219,9 @@ fn text_box_holds(m: &Marker, p: Pt, pad: f64, h: f64, metrics: &dyn TextMetrics
     p.x >= lo.x - pad && p.x <= hi.x + pad && p.y >= lo.y - pad && p.y <= hi.y + pad
 }
 
-/// The pages (in page order) where `conductor` has a route ([`crate::wires::wire_pages`]).
+/// The pages (in page order) where `conductor` has a route ([`crate::wires::routes::wire_pages`]).
 pub fn route_pages(doc: &Document, conductor: WireId) -> Vec<PageId> {
-    let on = crate::wires::wire_pages(doc, conductor);
+    let on = crate::wires::routes::wire_pages(doc, conductor);
     doc.page_order.iter().copied().filter(|p| on.contains(p)).collect()
 }
 
@@ -410,7 +410,7 @@ pub fn plan_continue(
         }
     };
     let drawn_on = |i: usize, pg: PageId| match c.cores.get(i).map(|m| m.position) {
-        Some(ecad_model::CorePosition::Wire(w)) => crate::wires::wire_pages(doc, w).contains(&pg),
+        Some(ecad_model::CorePosition::Wire(w)) => crate::wires::routes::wire_pages(doc, w).contains(&pg),
         Some(ecad_model::CorePosition::Route { route, .. }) => doc.routes.get(&route).is_some_and(|r| r.page == pg),
         _ => false,
     };

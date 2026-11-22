@@ -186,9 +186,11 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
     let draws = crate::styles::wire::WireDraws::new(doc);
     // Each route on the page (the page index), in the colour of the wire it stands for.
     for route in doc.routes_on(page) {
-        let (Some(points), Some((rep, _, _)), Some(c)) =
-            (doc.routes.get(&route).map(|x| x.points.clone()), crate::wires::route_item(doc, route), crate::wires::wire_of_route(doc, route))
-        else {
+        let (Some(points), Some((rep, _, _)), Some(c)) = (
+            doc.routes.get(&route).map(|x| x.points.clone()),
+            crate::wires::routes::route_item(doc, route),
+            crate::wires::routes::wire_of_route(doc, route),
+        ) else {
             continue;
         };
         // Only two-colour codes have dashes.

@@ -828,7 +828,7 @@ fn bom_page_overflow_counts_sheets_and_loses_no_row() {
     let doc = h.doc();
     let t = texts(&doc, bom);
     for c in devices(&doc) {
-        let tag = ecad_electrical::devices::tag_of(&doc, c).unwrap().to_string();
+        let tag = ecad_electrical::devices::tags::tag_of(&doc, c).unwrap().to_string();
         assert!(t.iter().any(|x| x.split(", ").any(|y| y == tag)), "{tag} is on no sheet: {t:?}");
     }
     // The Total in the title block of an ordinary page counts the sheets.

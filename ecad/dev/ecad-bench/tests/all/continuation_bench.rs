@@ -71,7 +71,7 @@ fn arrow(doc: &mut Document, ids: &mut IdAllocator, page: PageId, at: Pt, name: 
     let style = Style { layer: ecad_model::LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let starter = ecad_electrical::wires::continuation_starter();
     let pl = Placement { origin: at, rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 };
-    let t = ecad_electrical::wires::plan_tagless(doc, ids, page, style, starter, pl, aid).unwrap();
+    let t = ecad_electrical::wires::placing::plan_tagless(doc, ids, page, style, starter, pl, aid).unwrap();
     for op in &t.ops {
         op.apply(doc).unwrap();
     }

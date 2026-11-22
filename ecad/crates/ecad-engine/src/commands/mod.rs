@@ -31,9 +31,10 @@ use ecad_electrical::numbering::commands as numbering;
 use ecad_electrical::properties::commands as prop;
 pub use ecad_electrical::terminal_strips::core_label;
 use ecad_electrical::{
-    cables::commands::cables as cable, devices::commands::device_links as device_link, locations::commands::designations as designation,
-    locations::commands::locations as location, reports::commands::bom, styles::commands::defaults as default, styles::commands::styles as style,
-    terminal_strips::commands::accessories as accessory, terminal_strips::commands::levels as level, wires::commands::connect,
+    cables::commands::cables as cable, devices::commands::device_links as device_link, devices::commands::devices as device,
+    locations::commands::designations as designation, locations::commands::locations as location, reports::commands::bom,
+    styles::commands::defaults as default, styles::commands::styles as style, terminal_strips::commands::accessories as accessory,
+    terminal_strips::commands::levels as level, wires::commands::connect, wires::commands::nets as net,
 };
 
 /// The commands this crate adds. Lanes in flight register theirs in [`LANES`], not here;
@@ -111,6 +112,24 @@ fn generic_specs() -> Vec<CommandSpec> {
         crate::generic::spec::<ecad_electrical::references::commands::cables::CableReferenceParams>().interactive(interact::cablereference),
         crate::generic::spec::<ecad_electrical::references::commands::cables::CablecontinueParams>().interactive(interact::cablecontinue),
         crate::generic::spec::<ecad_electrical::references::commands::cables::CablereferencesParams>(),
+        crate::generic::spec::<device::EcaddeleteParams>(),
+        crate::generic::spec::<device::SymbolsParams>(),
+        crate::generic::spec::<device::DevicesParams>(),
+        crate::generic::spec::<device::TagsettingsParams>(),
+        crate::generic::spec::<device::DevicepropsParams>().interactive(interact::deviceprops),
+        crate::generic::spec::<device::DevicedeleteParams>().interactive(interact::devicedelete),
+        crate::generic::spec::<net::NetsParams>(),
+        crate::generic::spec::<net::NetParams>(),
+        crate::generic::spec::<net::WirenumberParams>().interactive(interact::wirenumber),
+        crate::generic::spec::<net::PotentialParams>(),
+        crate::generic::spec::<net::CategoryParams>(),
+        crate::generic::spec::<net::WiresettingsParams>(),
+        crate::generic::spec::<net::RenumberwiresParams>().interactive(interact::renumberwires),
+        crate::generic::spec::<net::ChecksParams>(),
+        crate::generic::spec::<ecad_electrical::symbols::builder::NewParams>(),
+        crate::generic::spec::<ecad_electrical::symbols::builder::EditParams>(),
+        crate::generic::spec::<ecad_electrical::symbols::builder::ImpactParams>(),
+        crate::generic::spec::<ecad_electrical::symbols::builder::UpdateParams>(),
     ]
 }
 
@@ -163,14 +182,28 @@ const GENERIC_TYPED: &[input::Typed] = &[
     crate::generic::typed::<ecad_electrical::references::commands::cables::CableReferenceParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::cables::CablecontinueParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::cables::CablereferencesParams>(),
+    crate::generic::typed::<device::EcaddeleteParams>(),
+    crate::generic::typed::<device::SymbolsParams>(),
+    crate::generic::typed::<device::DevicesParams>(),
+    crate::generic::typed::<device::TagsettingsParams>(),
+    crate::generic::typed::<device::DevicepropsParams>(),
+    crate::generic::typed::<device::DevicedeleteParams>(),
+    crate::generic::typed::<net::NetsParams>(),
+    crate::generic::typed::<net::NetParams>(),
+    crate::generic::typed::<net::WirenumberParams>(),
+    crate::generic::typed::<net::PotentialParams>(),
+    crate::generic::typed::<net::CategoryParams>(),
+    crate::generic::typed::<net::WiresettingsParams>(),
+    crate::generic::typed::<net::RenumberwiresParams>(),
+    crate::generic::typed::<net::ChecksParams>(),
+    crate::generic::typed::<ecad_electrical::symbols::builder::NewParams>(),
+    crate::generic::typed::<ecad_electrical::symbols::builder::EditParams>(),
+    crate::generic::typed::<ecad_electrical::symbols::builder::ImpactParams>(),
+    crate::generic::typed::<ecad_electrical::symbols::builder::UpdateParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
     vec![
-        // Brief 050b (design 050 §6.9).
-        CommandSpec::new("category", "Wire Category", crate::commands::input::typed::<crate::wires::commands::CategoryParams>)
-            .params("{conductor: id | net: id (a conductor of the net) | conductors: [id], value: category id or name | null} (one transaction)")
-            .noundo(),
         CommandSpec::new("convertcomponent", "Convert to Device", crate::commands::input::typed::<crate::devices::commands::ConvertcomponentParams>)
             .params("{handles?: [hex]} (default: selection)")
             .interactive(interact::convert)
@@ -212,9 +245,6 @@ end's spine; null: the middle)",
             .params("{reference: id} (opens the other end's page; records nothing)")
             .interactive(interact::cablegoto)
             .noundo(),
-        CommandSpec::new("ecaddelete", "Delete Electrical Object", crate::commands::input::typed::<crate::devices::commands::EcaddeleteParams>)
-            .params("{conductor: id} | {component: id} | {cable: id}")
-            .noundo(),
         CommandSpec::new("cableadd", "Add to Cable", crate::commands::input::typed::<crate::cables::commands::CableaddParams>)
             .params("{cable?: id, conductors: [id], tag?}")
             .noundo(),
@@ -223,52 +253,6 @@ end's spine; null: the middle)",
                 "{at: [x,y], rotation?: degrees, mirror?: bool, symbol?: key, definition?: id, device?: id, tag?} (`symbol`: a starter symbol, see `symbols`; `device` adds it to that device; `tag` names a new one, or adds it to the device that has that tag)",
             )
             .interactive(interact::place)
-            .noundo(),
-        CommandSpec::new("symbols", "Find Symbol", crate::commands::input::typed::<crate::devices::commands::SymbolsParams>)
-            .params("{query?} (starter symbols and devices matching it; read only)")
-            .noundo(),
-        CommandSpec::new("devices", "List Devices", crate::commands::input::typed::<crate::devices::commands::DevicesParams>)
-            .params("{tag?} (devices whose tag starts with it; read only)")
-            .noundo(),
-        CommandSpec::new("tagsettings", "Tag Settings", crate::commands::input::typed::<crate::devices::commands::TagsettingsParams>)
-            .params(
-                "{padding?: 1..6, prefixes?: {symbol: prefix|null}} (automatic tags: digits, and this project's prefix per starter symbol; no parameters lists them)",
-            )
-            .noundo(),
-        CommandSpec::new("deviceprops", "Device Properties", crate::commands::input::typed::<crate::devices::commands::DevicepropsParams>)
-            .params("{component: id} (a device's properties; read only; interactive: change them)")
-            .interactive(interact::deviceprops)
-            .noundo(),
-        CommandSpec::new("devicedelete", "Delete Device", crate::commands::input::typed::<crate::devices::commands::DevicedeleteParams>)
-            .params("{component: id} (deletes the device with every symbol, as `ecaddelete`)")
-            .interactive(interact::devicedelete)
-            .noundo(),
-        CommandSpec::new("nets", "List Nets", crate::commands::input::typed::<crate::wires::commands::NetsParams>)
-            .params("{page?: id, number?, conductor?: id, connection_point?: id, all?: bool, limit?: n (200, max 2000), after?: cursor} (read only)")
-            .noundo(),
-        CommandSpec::new("net", "Show Net", crate::commands::input::typed::<crate::wires::commands::NetParams>)
-            .params("{conductor: id} | {connection_point: id} | {number} (read only)")
-            .noundo(),
-        CommandSpec::new("wirenumber", "Fix Wire Number", crate::commands::input::typed::<crate::wires::commands::WirenumberParams>)
-            .params(
-                "{conductor: id | number, value: string|null, conflict?: \"swap\"|\"another\"|\"merge\"} | {conductor: id, fixed: bool} (fixes the net's number; null or fixed false releases it; a number another net uses needs `conflict`)",
-            )
-            .interactive(interact::wirenumber)
-            .noundo(),
-        CommandSpec::new("potential", "Set Potential", crate::commands::input::typed::<crate::wires::commands::PotentialParams>)
-            .params("{conductor: id, value: string|null} (the potential of the whole net)")
-            .noundo(),
-        CommandSpec::new("wiresettings", "Wire Settings", crate::commands::input::typed::<crate::wires::commands::WiresettingsParams>)
-            .params(
-                "{scheme?: \"potential\"|\"page\"|\"page-column\", digits?: 1..6, unclassified_prefix?, potentials?: [{name, prefix, numbered}] (colours and cross-sections: wire categories), colour_style?: \"code2\"|\"code3\"|\"name\", label_height?: mm} (no parameters reads; colours are IEC 60757 codes by default, free text allowed)",
-            )
-            .noundo(),
-        CommandSpec::new("renumberwires", "Renumber Wires", crate::commands::input::typed::<crate::wires::commands::RenumberwiresParams>)
-            .params("{scope?: \"unnumbered\"|\"all\"} (fixed numbers never change)")
-            .interactive(interact::renumberwires)
-            .noundo(),
-        CommandSpec::new("checks", "Checks", crate::commands::input::typed::<crate::wires::commands::ChecksParams>)
-            .params("{kinds?: [kind], limit?: n (200, max 2000), after?: n} (read only)")
             .noundo(),
         CommandSpec::new("newpage", "New Page", crate::commands::input::typed::<crate::pages::commands::pages::NewpageParams>)
             .params(

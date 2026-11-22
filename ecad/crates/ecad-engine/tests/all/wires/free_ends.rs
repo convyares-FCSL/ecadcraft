@@ -154,7 +154,7 @@ fn cablecontinue_across_two_pages_gives_one_wire_and_one_net() {
     assert_eq!(doc.wires.len(), 1, "one wire across the pages");
     let (&w, wire) = doc.wires.iter().next().unwrap();
     assert!(wire.ends.contains(&c.a) && wire.ends.contains(&b), "from the first page's point to the second's");
-    let pages = ecad_electrical::wires::wire_pages(&doc, w);
+    let pages = ecad_electrical::wires::routes::wire_pages(&doc, w);
     assert!(pages.contains(&c.pages[0]) && pages.contains(&c.pages[1]), "drawn on both pages: {pages:?}");
     assert_eq!(core_position(&mut c.h, c.cable), CorePosition::Wire(w));
     let nets = c.h.run("nets", json!({})).unwrap();

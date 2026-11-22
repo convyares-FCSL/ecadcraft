@@ -36,7 +36,8 @@ use crate::defaults::{self, Scope};
 use crate::locations::{BoxCache, Located};
 use crate::symbols::{self, Kind, PLUG_KEY, Side, Starter, StarterKey};
 use crate::terminal_strips::{self, connection_point_words};
-use crate::wires::{ON_WIRE, OnRoute};
+use crate::wires::ON_WIRE;
+use crate::wires::placing::OnRoute;
 
 /// Most pins a connector has (design 044 §2.3): a guard, not a preference.
 pub const MAX_PINS: usize = 64;
@@ -188,11 +189,12 @@ pub fn side_of(doc: &Document, t: ConnectionPointId) -> Option<Side> {
 
 /// The starter a representation draws when it is a brief-044 half or pin.
 pub fn rep_half(doc: &Document, r: &Representation) -> Option<&'static Starter> {
-    let (d, _) = crate::devices::rep_definition(doc, r)?;
-    if !symbols::is_mating(d) {
+    let (d, _) = crate::devices::tags::rep_definition(doc, r)?;
+    // A half or a pin is what the representation's stored part says (design 072 F3').
+    if !matches!(crate::symbols::reps::rep_type(doc, r), ecad_model::PartRole::Half | ecad_model::PartRole::Pin) {
         return None;
     }
-    symbols::of_definition(d)
+    symbols::catalogue::of_definition(d)
 }
 
 /// The side a representation draws (`Both` for a pin pair).
@@ -219,7 +221,7 @@ pub fn side_names(doc: &Document, c: Option<DeviceId>) -> (String, String, Strin
 
 /// The tag of half `side` of connector `c` (`-X10.S`); the connector's tag for `Both`.
 pub fn half_tag(doc: &Document, c: DeviceId, side: Side) -> String {
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let (sep, s, p) = side_names(doc, Some(c));
     match side {
         Side::Socket => format!("{tag}{sep}{s}"),
@@ -280,7 +282,7 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
         if !connector_of(doc, c).is_some_and(|x| x.mating) {
             return None;
         }
-        let t = crate::devices::tag_of(doc, c)?;
+        let t = crate::devices::tags::tag_of(doc, c)?;
         if t.eq_ignore_ascii_case(&head) {
             return Some((c, None));
         }
@@ -304,7 +306,7 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
         Some(s) => with(s).map(|t| (c, Some(s), Some(t))).ok_or_else(|| CmdError::refused(format!("{} has no pin {pin}.", half_tag(doc, c, s)))),
         None => match (with(Side::Socket), with(Side::Plug)) {
             (Some(_), Some(_)) => {
-                let tag = crate::devices::tag_words(doc, c);
+                let tag = crate::devices::tags::tag_words(doc, c);
                 Err(CmdError::refused(format!(
                     "{tag} has pin {pin} on both halves. Type {}:{pin} or {}:{pin}.",
                     half_tag(doc, c, Side::Socket),
@@ -313,7 +315,7 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
             }
             (Some(t), None) => Ok((c, Some(Side::Socket), Some(t))),
             (None, Some(t)) => Ok((c, Some(Side::Plug), Some(t))),
-            (None, None) => Err(CmdError::refused(format!("{} has no pin {pin}.", crate::devices::tag_words(doc, c)))),
+            (None, None) => Err(CmdError::refused(format!("{} has no pin {pin}.", crate::devices::tags::tag_words(doc, c)))),
         },
     })
 }
@@ -556,11 +558,11 @@ pub fn next_pin(doc: &Document, c: DeviceId, side: Side, taken: &BTreeSet<(Side,
     if numbers {
         let next = all.iter().filter_map(|x| x.parse::<u64>().ok()).max().unwrap_or(0) + 1;
         if next > MAX_PINS as u64 {
-            return Err(CmdError::refused(format!("{} has {MAX_PINS} pins, the most a connector has.", crate::devices::tag_words(doc, c))));
+            return Err(CmdError::refused(format!("{} has {MAX_PINS} pins, the most a connector has.", crate::devices::tags::tag_words(doc, c))));
         }
         return Ok(next.to_string());
     }
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let where_ = match side {
         Side::Both => "both halves".to_string(),
         s => format!("the {} half", s.word()),
@@ -678,7 +680,7 @@ pub fn symbol_ops(
 /// # Errors
 /// No tag number left.
 pub fn create_ops(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut crate::devices::TagHigh, starter: &Starter, def: DefinitionId, tag: Option<String>,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut crate::devices::tags::TagHigh, starter: &Starter, def: DefinitionId, tag: Option<String>,
     pins: Option<usize>, names: Option<&[String]>, ops: &mut Vec<Op>,
 ) -> Result<(DeviceId, String), CmdError> {
     let doc = ledger.document();
@@ -712,7 +714,7 @@ pub fn create_ops(
 
 /// The refusal for joining a device that is not a connector (design 044 §6.1).
 pub fn not_a_connector(doc: &Document, c: DeviceId) -> String {
-    format!("{} is not a connector. Pick a connector, or Enter for a new one.", crate::devices::tag_words(doc, c))
+    format!("{} is not a connector. Pick a connector, or Enter for a new one.", crate::devices::tags::tag_words(doc, c))
 }
 
 /// Check that a whole half of `side` may join connector `c` (design 044 §6.1).
@@ -728,7 +730,7 @@ pub fn check_whole_half(doc: &Document, c: DeviceId, side: Side, taken: &BTreeSe
     let at = half_goto(doc, c, side).map(|r| format!(" ({})", where_words(doc, r))).unwrap_or_default();
     Err(CmdError::refused(format!(
         "{} already has a {} half{at}. Place a {} half, or Enter for a new connector.",
-        crate::devices::tag_words(doc, c),
+        crate::devices::tags::tag_words(doc, c),
         side.word(),
         side.other().word()
     )))
@@ -769,7 +771,7 @@ pub fn check_named_pin(doc: &Document, c: DeviceId, side: Side, name: &str, take
 /// # Errors
 /// [`crate::connectors::plan_land`]'s refusals.
 pub fn land_pin(
-    doc: &Document, ids: &mut IdAllocator, on: crate::wires::OnRoute, shown: &[Shown], placement: Placement,
+    doc: &Document, ids: &mut IdAllocator, on: crate::wires::placing::OnRoute, shown: &[Shown], placement: Placement,
 ) -> Result<crate::connectors::Land, CmdError> {
     let first = shown.first().ok_or(CmdError::refused("The symbol has no connection point."))?;
     let before = doc.routes.get(&on.route).and_then(|r| r.points.get(on.segment).copied());
@@ -1005,7 +1007,7 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
         return Vec::new();
     }
     let d = drawn(doc, c);
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let mut out = Vec::new();
     // A pin drawn twice on one side.
     for side in [Side::Socket, Side::Plug] {
@@ -1307,7 +1309,7 @@ mod tests {
             for n in f.sizes() {
                 for side in [Side::Socket, Side::Plug] {
                     let key = f.half_key(side, *n).unwrap_or_default();
-                    let s = symbols::by_key(&key).unwrap_or_else(|| panic!("{key}"));
+                    let s = symbols::catalogue::by_key(&key).unwrap_or_else(|| panic!("{key}"));
                     assert_eq!((family_of(s), size_of(s), s.side()), (Some(f), Some(*n), Some(side)), "{key}");
                 }
             }
@@ -1371,7 +1373,7 @@ pub fn plan_land_ends(doc: &Document, ids: &mut IdAllocator, on: OnRoute, first:
             }
         }
     }
-    let split = crate::wires::plan_split(doc, ids, &on, first, second)?;
+    let split = crate::wires::placing::plan_split(doc, ids, &on, first, second)?;
     Ok(Land { ops: split.ops, route: split.route, new: split.new })
 }
 
@@ -1385,8 +1387,8 @@ pub fn strip_connection_point_at(doc: &Document, page: PageId, at: Pt) -> Option
     doc.representations_on(page).find_map(|(_, r)| {
         let Subject::Device(c) = r.subject else { return None };
         terminal_strips::strip_of(doc, c)?;
-        let placement = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl);
-        crate::devices::shown_connection_points(doc, c, r).into_iter().find_map(|(t, p)| {
+        let placement = crate::devices::tags::rep_definition(doc, r).map(|(_, pl)| pl);
+        crate::devices::merge::shown_connection_points(doc, c, r).into_iter().find_map(|(t, p)| {
             let p = match (r.form, placement) {
                 (Form::Symbol, Some(pl)) => pl.apply(p),
                 _ => p,

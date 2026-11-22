@@ -220,9 +220,9 @@ pub const TYPE_TEXT: PropKey = PropKey(crate::objects::devices::TYPE_KEY);
 /// A device's or cable's tag.
 pub const TAG: PropKey = PropKey(crate::naming::tag::TAG_KEY);
 /// Whether a device's or cable's tag is fixed (yes/no).
-pub const TAG_FIXED: PropKey = PropKey(crate::naming::tag::FIXED_KEY);
+pub(crate) const TAG_FIXED: PropKey = PropKey(crate::naming::tag::FIXED_KEY);
 /// Whether the project gives provisional tags (yes/no).
-pub const NUMBERING_PROVISIONAL: PropKey = PropKey(crate::naming::tag::PROVISIONAL_SETTING);
+pub(crate) const NUMBERING_PROVISIONAL: PropKey = PropKey(crate::naming::tag::PROVISIONAL_SETTING);
 /// A wire's number.
 pub const WIRE_NUMBER: PropKey = PropKey(crate::connectivity::WIRE_NUMBER);
 /// Whether a wire's number is fixed (yes/no).

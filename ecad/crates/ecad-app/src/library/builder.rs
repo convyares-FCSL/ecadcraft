@@ -262,7 +262,7 @@ impl Builder {
                 _ => format!(
                     "Adds point {}. Click on the {} mm grid.",
                     self.draft.next_point_key(),
-                    draft::fmt_mm(ecad_electrical::symbols::POINT_GRID_MM)
+                    draft::fmt_mm(ecad_electrical::symbols::graphics::POINT_GRID_MM)
                 ),
             },
             Tool::Slot => format!("Text slot: click where the {} goes.", draft::slot_label(&self.slot_text)),

@@ -7,13 +7,13 @@ use cadcraft_engine::geom::Vec3;
 use ecad_model::{Document, Form, ItemId, PageId, Pt, Subject};
 
 use crate::styles::draw::{DrawApply as _, EngineMetrics};
-use {ecad_electrical::wires::DASH_LAYER, ecad_electrical::wires::LABEL_LAYER, ecad_electrical::wires::WireLabel};
+use {ecad_electrical::wires::DASH_LAYER, ecad_electrical::wires::LABEL_LAYER, ecad_electrical::wires::labels::WireLabel};
 
 /// [`labels_on_page`] without the routes whose items are `hidden` (a cable drawn as a fan: its
 /// members' routes and their labels are not shown, brief 005 and owner 2026-11-09), measured with
-/// CADCraft's fonts ([`ecad_electrical::wires::labels_measured`]).
+/// CADCraft's fonts ([`ecad_electrical::wires::labels::labels_measured`]).
 pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>) -> Vec<WireLabel> {
-    ecad_electrical::wires::labels_measured(doc, page, hidden, &EngineMetrics)
+    ecad_electrical::wires::labels::labels_measured(doc, page, hidden, &EngineMetrics)
 }
 
 /// Brief 040: draw the page's wires and cores in their colour codes (spec §4): the route entity
@@ -69,7 +69,7 @@ pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], it
             continue;
         }
         // A line looks as the wire it stands for (design 072 §4.3).
-        let Some(c) = ecad_electrical::wires::wire_of_route(doc, x) else { continue };
+        let Some(c) = ecad_electrical::wires::routes::wire_of_route(doc, x) else { continue };
         let draw = draws.draw(doc, c);
         let weight = (draw.line_weight * 100.0).round().clamp(0.0, 211.0) as u16;
         if draw.line_type == "continuous" && weight == crate::cables::draw::WIRE_WEIGHT {

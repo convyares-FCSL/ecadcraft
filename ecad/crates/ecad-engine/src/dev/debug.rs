@@ -1134,7 +1134,7 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
     r.ids.extend(r.subject.map(ObjectId::from));
     // A route's line: the wire it carries follows it (design 072 §4: routes draw, wires connect).
     if let Some(Subject::Route(x)) = r.subject {
-        r.ids.extend(ecad_electrical::wires::wire_of_route(doc, x).map(ObjectId::Wire));
+        r.ids.extend(ecad_electrical::wires::routes::wire_of_route(doc, x).map(ObjectId::Wire));
     }
     r.ids.extend(r.connection_point.map(ObjectId::ConnectionPoint));
     for t in &r.connection_points {
@@ -1210,7 +1210,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .filter(|(_, k)| k.cores.iter().any(|m| m.wire() == Some(c)))
             .map(|(i, _)| ObjectId::Cable(*i))
             .chain(reps_of(Subject::Wire(c)))
-            .chain(ecad_electrical::wires::routes_of_wire(doc, c).into_iter().map(ObjectId::Route))
+            .chain(ecad_electrical::wires::routes::routes_of_wire(doc, c).into_iter().map(ObjectId::Route))
             .collect(),
         ObjectId::Cable(c) => {
             doc.cables.get(&c).into_iter().flat_map(|k| k.cores.iter().filter_map(member_object)).chain(reps_of(Subject::Cable(c))).collect()
@@ -1222,7 +1222,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .filter(|(_, x)| x.ends.iter().any(|e| e.route() == Some(r)))
             .map(|(i, _)| ObjectId::Route(*i))
             .chain(reps_of(Subject::Route(r)))
-            .chain(ecad_electrical::wires::wire_of_route(doc, r).map(ObjectId::Wire))
+            .chain(ecad_electrical::wires::routes::wire_of_route(doc, r).map(ObjectId::Wire))
             .collect(),
         ObjectId::Page(p) => doc
             .representations

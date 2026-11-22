@@ -121,7 +121,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRepor
         let bom_page: Option<PageId> = bom_page["page"].as_str().and_then(|t| u128::from_str_radix(t, 16).ok()).map(PageId::from);
         let (page1, devices) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            (doc.page_order.first().copied(), ecad_electrical::devices::devices(doc, None))
+            (doc.page_order.first().copied(), ecad_electrical::devices::json::devices(doc, None))
         })?;
         let page1: PageId = page1.ok_or("the project has no pages")?;
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;

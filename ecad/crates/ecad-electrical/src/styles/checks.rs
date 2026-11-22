@@ -180,7 +180,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         let (object, page, whose) = match o {
             ObjectRef::Device(c) => {
                 let page = crate::symbols::reps::goto_place_in(&mut places, c).map(|(p, _)| p);
-                (Object::Device(c), page, crate::devices::tag_words(doc, c))
+                (Object::Device(c), page, crate::devices::tags::tag_words(doc, c))
             }
             ObjectRef::Wire(c) => {
                 let page = ecad_model::naming::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Wire(c)).map(|(p, _)| p);

@@ -779,8 +779,8 @@ fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles 
     for (_, r) in doc.representations_on(page) {
         match r.subject {
             ecad_model::Subject::Device(_) if r.form == ecad_model::Form::Symbol => {
-                if let Some((def, pl)) = crate::devices::rep_definition(doc, r)
-                    && let Some(b) = crate::devices::placed_box(def, &pl)
+                if let Some((def, pl)) = crate::devices::tags::rep_definition(doc, r)
+                    && let Some(b) = crate::devices::texts::placed_box(def, &pl)
                 {
                     obs.add(b);
                 }
@@ -911,15 +911,15 @@ pub fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTreeSet<Re
         if r.form != ecad_model::Form::Symbol {
             continue;
         }
-        let Some((def, pl)) = crate::devices::rep_definition(doc, r) else { continue };
-        let Some((lo, hi)) = crate::devices::placed_box(def, &pl) else { continue };
-        let class = match crate::devices::run_rule(doc, r) {
+        let Some((def, pl)) = crate::devices::tags::rep_definition(doc, r) else { continue };
+        let Some((lo, hi)) = crate::devices::texts::placed_box(def, &pl) else { continue };
+        let class = match crate::devices::texts::run_rule(doc, r) {
             // Brief 044: a connector's pins run per half, so each half tag shows once per run.
             RunRule::Strip => crate::connectors::run_class(doc, r).unwrap_or(1),
             RunRule::Plc => 2,
             RunRule::None => {
                 // Other symbols: their starter (a definition ID otherwise), so only like with like.
-                let key = crate::devices::rep_starter(doc, r)
+                let key = crate::devices::tags::rep_starter(doc, r)
                     .map_or(0, |s| ecad_model::Word::word(s.key).bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b))));
                 3 + key
             }

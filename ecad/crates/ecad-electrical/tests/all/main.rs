@@ -1,6 +1,7 @@
-//! Every integration test of this crate in one test executable (brief 017). Rule tests live here, by
-//! feature: a `&Document` or text in, a result out; the engine keeps the session and drawing tests.
-//! A feature adds its module here, one line, in alphabetical order.
+//! The rule tests of this crate in one test executable: a `&Document` in, a result out. Session and
+//! drawing tests stay in `ecad-engine`.
 
 mod cables;
 mod references;
+mod symbols;
+mod wires;

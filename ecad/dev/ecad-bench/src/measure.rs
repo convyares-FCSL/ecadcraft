@@ -473,7 +473,7 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
                 .routes_at(a)
                 .find(|r| doc.routes.get(r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(b))))
                 .ok_or("the victim's route is missing")?;
-            let ops = ecad_electrical::wires::remove_route_ops(doc, route);
+            let ops = ecad_electrical::wires::routes::remove_route_ops(doc, route);
             let t = Instant::now();
             let scope = checks.before(o.ledger.document(), &ops);
             o.ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::connectivity::wiring::assign).map_err(|e| e.to_string())?;
@@ -840,7 +840,7 @@ fn device_reference_edits(path: &Path, copy: &Path, runs: usize) -> Result<Devic
 /// representations and the page order.
 fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::RepresentationId>, Vec<ecad_model::PageId>), String> {
     use ecad_model::{Color, Op, Placement, Pt, Style};
-    use {ecad_electrical::devices::TagHigh, ecad_electrical::devices::Target, ecad_electrical::devices::plan_place};
+    use {ecad_electrical::devices::placing::Target, ecad_electrical::devices::placing::plan_place, ecad_electrical::devices::tags::TagHigh};
     let order = ledger.document().page_order.clone();
     let n = order.len();
     if n == 0 {
@@ -853,7 +853,7 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x025);
     let mut high = TagHigh::default();
-    let starter = |k: &str| ecad_electrical::symbols::by_key(k).ok_or_else(|| format!("no starter {k}"));
+    let starter = |k: &str| ecad_electrical::symbols::catalogue::by_key(k).ok_or_else(|| format!("no starter {k}"));
     let place =
         |pt: (f64, f64)| Placement { origin: Pt::new(pt.0, pt.1), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 };
     let mut coils = Vec::with_capacity(wanted);
@@ -864,7 +864,7 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
         };
         let (a, b) = (at(ka), if i < 20 { at(1) } else { at(ka + 1) });
         let x = 30.0 + 35.0 * (i % 10) as f64;
-        let mut step = |ledger: &mut ecad_model::Ledger, page, key: &str, pt, target| -> Result<ecad_electrical::devices::Placed, String> {
+        let mut step = |ledger: &mut ecad_model::Ledger, page, key: &str, pt, target| -> Result<ecad_electrical::devices::placing::Placed, String> {
             let plan = plan_place(ledger, &mut ids, &mut high, page, style.clone(), starter(key)?, place(pt), target)?;
             ledger.commit(Author::User, "Bench coils", plan.ops.clone()).map_err(|e| e.to_string())?;
             Ok(plan)

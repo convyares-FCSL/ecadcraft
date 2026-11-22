@@ -104,7 +104,7 @@ pub struct Project {
     /// Number of the last change (0: none yet).
     change_count: u64,
     /// The highest number each tag prefix has had (brief 018), read from the log as it grows.
-    pub(crate) tag_high: ecad_electrical::devices::TagHigh,
+    pub(crate) tag_high: ecad_electrical::devices::tags::TagHigh,
     /// Brief 052 (design 052 §5.9): the use index of the project's list of functions and
     /// locations, read from the log as it grows; rebuilt on a branch switch.
     pub(crate) designation_uses: ecad_electrical::locations::designations::Uses,
@@ -629,8 +629,8 @@ pub fn project_page_kept(
     // T dots (design 072 §4.4): where a route ends on another route, derived on every draw of the
     // page, never stored; in the T route's own colour, layer and weight. A route hidden by a fan
     // view draws none.
-    for (r, end, at) in ecad_electrical::wires::tees_on_page(doc, page) {
-        let Some((_, item, _)) = ecad_electrical::wires::route_item(doc, r) else { continue };
+    for (r, end, at) in ecad_electrical::wires::routes::tees_on_page(doc, page) {
+        let Some((_, item, _)) = ecad_electrical::wires::routes::route_item(doc, r) else { continue };
         if hidden.contains(&item) {
             continue;
         }
@@ -648,15 +648,15 @@ pub fn project_page_kept(
     }
     // Location box labels (brief 024): derived on every draw, never stored.
     for (rep, value, at) in ecad_electrical::locations::labels_on_page(doc, page) {
-        let h = prev.tag_text(rep, ecad_electrical::devices::TextOf::Tag).unwrap_or_else(|| d.new_handle());
+        let h = prev.tag_text(rep, ecad_electrical::devices::texts::TextOf::Tag).unwrap_or_else(|| d.new_handle());
         if let Some(f) = crate::locations::draw::label_family(doc, rep) {
             crate::styles::draw::install_family(&mut d, doc, &f);
         }
         ents.push(crate::locations::draw::styled_label_entity(doc, &draw, rep, &value, at, h));
-        map.insert_tag_text(rep, ecad_electrical::devices::TextOf::Tag, h);
+        map.insert_tag_text(rep, ecad_electrical::devices::texts::TextOf::Tag, h);
     }
     // Looks-connected marks (brief 032 §2.6): derived with the page, after its quiet ends.
-    map.draws = ecad_electrical::wires::looks_connected_on_page(doc, page, &map.quiet);
+    map.draws = ecad_electrical::wires::joining::looks_connected_on_page(doc, page, &map.quiet);
     // Wire labels (brief 022): derived on every draw of the page, never stored.
     // A cable in fan view hides its members' routes, and their labels with them (owner,
     // 2026-11-09): display only, nothing is written.
@@ -864,7 +864,7 @@ impl Project {
 
     /// Record one change and the pages it could change.
     ///
-    /// The tag numbering ([`ecad_electrical::devices::TagHigh`]) reads the transactions this change added,
+    /// The tag numbering ([`ecad_electrical::devices::tags::TagHigh`]) reads the transactions this change added,
     /// so reads (prompts, previews, pick lists) never read the log. The Pages tree's version moves
     /// only with a change of its update map (`tree`, brief 019, or pages added or removed).
     /// Work out the pending flag again (design 033 §6.3): O(1) on an ordinary edit, the walk

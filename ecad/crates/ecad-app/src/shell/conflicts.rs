@@ -51,7 +51,7 @@ impl App {
                         .map(|c| {
                             (
                                 c.component,
-                                ecad_electrical::devices::tag_words(doc, c.component),
+                                ecad_electrical::devices::tags::tag_words(doc, c.component),
                                 c.aspect.word(),
                                 c.from.clone(),
                                 c.to.clone(),

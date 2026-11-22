@@ -132,7 +132,7 @@ impl Review {
         for r in &mut self.rows {
             let rep = u128::from_str_radix(&r.rep, 16).ok().map(ecad_model::RepresentationId::from);
             if let Some(ecad_model::Subject::Device(c)) = rep.and_then(|x| doc.representations.get(&x)).map(|x| x.subject) {
-                r.description = ecad_electrical::devices::description(doc, c);
+                r.description = ecad_electrical::devices::tags::description(doc, c);
             }
         }
     }

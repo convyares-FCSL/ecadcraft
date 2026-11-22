@@ -109,7 +109,7 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
                 _ => None,
             })
         });
-        def.and_then(ecad_electrical::symbols::of_definition)
+        def.and_then(ecad_electrical::symbols::catalogue::of_definition)
             .and_then(ecad_electrical::plc::rack::CardType::of_symbol)
             .is_some_and(ecad_electrical::plc::rack::CardType::is_rack)
     };

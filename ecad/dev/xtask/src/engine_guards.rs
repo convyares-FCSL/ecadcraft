@@ -191,7 +191,7 @@ fn cadcraft_imports(code: &str) -> BTreeSet<String> {
 }
 
 /// `text` up to its trailing `#[cfg(test)]` module, without `//` comments.
-fn product_code(text: &str) -> String {
+pub(crate) fn product_code(text: &str) -> String {
     let cut = text.lines().position(|l| l.trim_start().starts_with("#[cfg(test)]")).unwrap_or(usize::MAX);
     let head: Vec<&str> = text.lines().take(cut).collect();
     super::strip_line_comments(&head.join("\n"))

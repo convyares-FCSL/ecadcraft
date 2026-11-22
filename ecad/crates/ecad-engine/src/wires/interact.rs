@@ -15,8 +15,8 @@ fn wire_under(s: &Session, p: Vec2) -> R<(WireId, Pt, String)> {
     let tol = pick_radius(s).unwrap_or(ecad_electrical::wires::ON_WIRE).max(ecad_electrical::wires::ON_WIRE);
     read(s, |proj, page| {
         let doc = proj.ledger.document();
-        let on = ecad_electrical::wires::route_at(doc, page, pt(p), tol, None).ok_or("Nothing there. Click a wire.")?;
-        let w = ecad_electrical::wires::wire_of_route(doc, on.route).ok_or("That line joins no connection points yet. Click a wire.")?;
+        let on = ecad_electrical::wires::placing::route_at(doc, page, pt(p), tol, None).ok_or("Nothing there. Click a wire.")?;
+        let w = ecad_electrical::wires::routes::wire_of_route(doc, on.route).ok_or("That line joins no connection points yet. Click a wire.")?;
         let number = ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
         Ok((w, on.at, number))
     })
@@ -27,7 +27,7 @@ fn wire_under(s: &Session, p: Vec2) -> R<(WireId, Pt, String)> {
 fn highlight(s: &Session, w: WireId) -> Vec<Entity> {
     let route = read(s, |p, page| {
         let doc = p.ledger.document();
-        Ok(ecad_electrical::wires::route_of_wire_on(doc, w, page).and_then(|r| doc.routes.get(&r)).map(|r| r.points.clone()))
+        Ok(ecad_electrical::wires::routes::route_of_wire_on(doc, w, page).and_then(|r| doc.routes.get(&r)).map(|r| r.points.clone()))
     });
     match route {
         Ok(Some(points)) => {

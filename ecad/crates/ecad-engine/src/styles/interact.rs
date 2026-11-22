@@ -10,7 +10,7 @@ use serde_json::json;
 use crate::interact::{OUT_OF_RANGE, can_start, in_range, pick, read};
 use crate::project::Mapped;
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use ecad_electrical::devices::TextOf;
+use ecad_electrical::devices::texts::TextOf;
 use ecad_electrical::styles::text_style::TextKind;
 
 const PICK_A_TEXT: &str = "Pick a tag, a label or a symbol.";
@@ -84,7 +84,7 @@ impl ShowText {
     fn change(&self, s: &mut Session, picked: Picked) -> R<Step> {
         let (rep, component, page, kind, show) = match picked {
             Picked::Text { rep, of, component, symbol, shown, page } => {
-                (rep, component, page, ecad_electrical::devices::derived_text_kind(of, symbol), ecad_model::naming::words::flag_word(!shown))
+                (rep, component, page, ecad_electrical::devices::hover::derived_text_kind(of, symbol), ecad_model::naming::words::flag_word(!shown))
             }
             Picked::Symbol { tag_hidden: false, .. } => return Err(other(NOTHING_HIDDEN)),
             Picked::Symbol { rep, component, page, .. } => (rep, Some(component), page, TextKind::Tag, ecad_model::naming::words::flag_word(true)),
@@ -134,7 +134,7 @@ fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show:
     if let Some(first) = what.get(..1) {
         what = format!("{}{}", first.to_ascii_uppercase(), what.get(1..).unwrap_or_default());
     }
-    let tag = component.map(|c| ecad_electrical::devices::tag_words(doc, c));
+    let tag = component.map(|c| ecad_electrical::devices::tags::tag_words(doc, c));
     let subject = match (&tag, kind) {
         (Some(t), TextKind::Tag) => format!("{what} {t}"),
         _ => what,
@@ -227,7 +227,7 @@ impl MoveText {
                     let what = match of {
                         TextOf::ConnectionPoint(_) => "Label".to_string(),
                         _ => match r.subject {
-                            Subject::Device(c) => format!("Tag {}", ecad_electrical::devices::tag_words(doc, c)),
+                            Subject::Device(c) => format!("Tag {}", ecad_electrical::devices::tags::tag_words(doc, c)),
                             _ => "Tag".to_string(),
                         },
                     };

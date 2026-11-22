@@ -54,7 +54,7 @@ pub(super) fn raw_class(doc: &Document, r: &Representation) -> Class {
     if crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Head {
         return Class::Head;
     }
-    match crate::devices::rep_starter(doc, r) {
+    match crate::devices::tags::rep_starter(doc, r) {
         Some(s) if !poles_of(s).is_empty() => Class::Child,
         _ => Class::Other,
     }
@@ -91,7 +91,7 @@ pub struct Device {
 /// middle of its connection points.
 pub fn anchor(doc: &Document, r: &Representation) -> Option<Pt> {
     if r.form == Form::Symbol {
-        let (_, pl) = crate::devices::rep_definition(doc, r)?;
+        let (_, pl) = crate::devices::tags::rep_definition(doc, r)?;
         return (pl.is_valid() && pl.origin.is_finite()).then_some(pl.origin);
     }
     let pts: Vec<Pt> = r.connection_points.values().copied().filter(|p| p.is_finite()).collect();
@@ -115,8 +115,8 @@ pub(super) fn bounds(pts: &[Pt]) -> Option<(Pt, Pt)> {
 /// The page positions of a representation's connection points, in its definition's connection point
 /// order.
 pub fn connection_point_points(doc: &Document, c: DeviceId, r: &Representation) -> Vec<(ecad_model::ConnectionPointId, Pt)> {
-    let shown = crate::devices::shown_connection_points(doc, c, r);
-    match (r.form, crate::devices::rep_definition(doc, r)) {
+    let shown = crate::devices::merge::shown_connection_points(doc, c, r);
+    match (r.form, crate::devices::tags::rep_definition(doc, r)) {
         (Form::Symbol, Some((_, pl))) if pl.is_valid() => shown.into_iter().map(|(t, p)| (t, pl.apply(p))).filter(|(_, p)| p.is_finite()).collect(),
         (Form::Symbol, _) => Vec::new(),
         (Form::Drawn, _) => shown,
@@ -140,12 +140,12 @@ pub fn device(doc: &Document, c: DeviceId) -> Device {
             continue;
         }
         children.push(rid);
-        let Some(s) = crate::devices::rep_starter(doc, r) else { continue };
+        let Some(s) = crate::devices::tags::rep_starter(doc, r) else { continue };
         let kinds = poles_of(s);
-        let pts = crate::devices::shown_connection_points(doc, c, r);
+        let pts = crate::devices::merge::shown_connection_points(doc, c, r);
         let at = anchor(doc, r);
         for (i, (kind, power)) in kinds.iter().enumerate() {
-            let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::label_of(doc, *t));
+            let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::merge::label_of(doc, *t));
             poles.push(DrawnPole { rep: rid, labels: [label(0), label(1)], kind: *kind, power: *power, page: r.page, at });
         }
     }

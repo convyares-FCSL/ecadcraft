@@ -40,7 +40,7 @@ pub(crate) fn place_channel(
         let mut ops = Vec::new();
         let def = crate::terminal_strips::commands::definition_for(doc, &mut p.ids, starter, &mut ops)?;
         let (card, card_tag, new) = match card {
-            Some(c) => (c, ecad_electrical::devices::tag_words(doc, c), false),
+            Some(c) => (c, ecad_electrical::devices::tags::tag_words(doc, c), false),
             None => {
                 let (c, t2) = new_card_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, t, new_tag, &mut ops)?;
                 (c, t2, true)
@@ -100,7 +100,7 @@ pub(crate) fn place_channel(
         let first = first_number(doc, card);
         let pins: Vec<String> = cell.connection_points.iter().map(|(_, _, pin, _)| pin.clone()).collect();
         let on = wire
-            .and_then(|r| ecad_electrical::wires::wire_of_route(doc, r))
+            .and_then(|r| ecad_electrical::wires::routes::wire_of_route(doc, r))
             .map(|w| format!(" on wire {}", ecad_electrical::cables::slash::wire_name(doc, w)))
             .unwrap_or_default();
         let message = format!("Placed {card_tag} channel {} ({}){on}.", j.index + first, pins_words(&pins));

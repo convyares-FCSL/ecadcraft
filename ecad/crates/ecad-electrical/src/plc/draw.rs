@@ -7,8 +7,8 @@
 //! - Runs are found per page from the page's representations of PLC cells and card bodies, at
 //!   rotation 0° (points on the top edge, the frame below) or 180° (points on the bottom edge, the
 //!   frame above, design 051 §2.7). Other rotations get no frame.
-//! - Band depths: header and mark bands are geometry ([`crate::symbols::HEADER_BAND`],
-//!   [`crate::symbols::MARK_BAND`]); the name band is at least [`crate::symbols::NAME_BAND`] and
+//! - Band depths: header and mark bands are geometry ([`crate::symbols::cells::HEADER_BAND`],
+//!   [`crate::symbols::cells::MARK_BAND`]); the name band is at least [`crate::symbols::cells::NAME_BAND`] and
 //!   grows with the name block's text styles, rounded up to 2.5 mm.
 //! - The parts are 025's cross-reference parts ([`crate::references::devices::table::Part`]) of the run's first
 //!   representation, indexed from [`INDEX_BASE`]: derived, left out of an edit with other objects,
@@ -25,7 +25,7 @@ use crate::plc::rack::{self, CardType};
 use crate::references::devices::table::{HAlign, Part, Shape, VAlign};
 use crate::styles::text_style::fonts::{self, TextMetrics};
 use crate::styles::text_style::{TextKind, text_style};
-use crate::symbols::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
+use crate::symbols::cells::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
 
 /// Frame parts are indexed from here among their representation's parts (a cell or body has no
 /// cross-reference parts of its own; the base keeps them apart regardless).
@@ -83,8 +83,8 @@ pub fn frame_shown(doc: &Document, c: DeviceId) -> bool {
 
 /// The piece of representation `r` of card `c`, when it is a PLC cell or card body at 0° or 180°.
 fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Representation) -> Option<(Piece, f64)> {
-    let s = crate::devices::rep_starter(doc, r)?;
-    let (_, pl) = crate::devices::rep_definition(doc, r)?;
+    let s = crate::devices::tags::rep_starter(doc, r)?;
+    let (_, pl) = crate::devices::tags::rep_definition(doc, r)?;
     if !pl.origin.is_finite() || !pl.rotation.is_finite() {
         return None;
     }
@@ -97,8 +97,9 @@ fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Rep
         return None;
     };
     let k = if pl.scale.is_finite() && pl.scale > 0.0 { pl.scale } else { 1.0 };
-    let (x0, x1, local_top, channel) = if let Some((w, _)) = crate::symbols::cell_shape(s.key) {
-        let i = crate::devices::shown_connection_points(doc, c, r).iter().find_map(|(t, _)| crate::plc::channels::point_of(doc, *t)).map(|x| x.0);
+    let (x0, x1, local_top, channel) = if let Some((w, _)) = crate::symbols::cells::cell_shape(s.key) {
+        let i =
+            crate::devices::merge::shown_connection_points(doc, c, r).iter().find_map(|(t, _)| crate::plc::channels::point_of(doc, *t)).map(|x| x.0);
         (-w / 2.0, w / 2.0, CELL_TOP, Some(i?))
     } else {
         let ty = CardType::of_symbol(s)?;
@@ -204,7 +205,7 @@ fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
         .unwrap_or_default()
         != crate::styles::text_style::Shown::Off
     {
-        out.push((crate::devices::tag_words(doc, c), TextKind::Tag));
+        out.push((crate::devices::tags::tag_words(doc, c), TextKind::Tag));
     }
     if let Some((caption, true)) = crate::plc::caption(doc, c) {
         out.push((caption, TextKind::PartNumber));
@@ -221,7 +222,7 @@ fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
 /// The type text: the card's own description, else `DI 16`.
 pub fn type_text(doc: &Document, c: DeviceId) -> String {
     let Some(ty) = crate::plc::card_type_of(doc, c) else { return String::new() };
-    let builtin = ty.body().map(crate::symbols::starter).map(|s| s.name);
+    let builtin = ty.body().map(crate::symbols::catalogue::starter).map(|s| s.name);
     let desc = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
@@ -253,7 +254,7 @@ fn frame_parts(doc: &Document, run: &Run, m: &dyn TextMetrics, out: &mut Vec<Par
     let n = if ty.has_channels() { rack::channel_count(doc, c) } else { 0 };
     let has_body = doc
         .representations_of(Subject::Device(c))
-        .any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_symbol(s).is_some()));
+        .any(|(_, r)| crate::devices::tags::rep_starter(doc, r).is_some_and(|s| CardType::of_symbol(s).is_some()));
     let lines = name_block(doc, c);
     let ttext = type_text(doc, c);
     let band = name_band(doc, &lines);
@@ -342,8 +343,8 @@ pub const FRAME_DERIVED: &str = "The card's frame is derived; move the card's ce
 /// Whether representation `rid` is a PLC cell or card body (so a derived part mapped to it is a
 /// card frame's: a cell or body has no cross-reference parts of its own).
 pub fn is_frame_rep(doc: &Document, rid: RepresentationId) -> bool {
-    let Some(s) = doc.representations.get(&rid).and_then(|r| crate::devices::rep_starter(doc, r)) else { return false };
-    crate::symbols::cell_shape(s.key).is_some() || CardType::of_symbol(s).is_some_and(|t| !t.is_rack())
+    let Some(s) = doc.representations.get(&rid).and_then(|r| crate::devices::tags::rep_starter(doc, r)) else { return false };
+    crate::symbols::cells::cell_shape(s.key).is_some() || CardType::of_symbol(s).is_some_and(|t| !t.is_rack())
 }
 
 /// Whether representation `r` (id `rid`) of `c` is in a framed run that is drawn: its own tag
@@ -421,7 +422,9 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                     continue;
                 }
                 let Some(cond) = doc.wires.get(&w) else { continue };
-                let Some(route) = crate::wires::route_of_wire_on(doc, w, page).and_then(|r| doc.routes.get(&r)).map(|r| &r.points) else { continue };
+                let Some(route) = crate::wires::routes::route_of_wire_on(doc, w, page).and_then(|r| doc.routes.get(&r)).map(|r| &r.points) else {
+                    continue;
+                };
                 // A segment that passes well inside a frame (past the top edge it lands on):
                 // nine points along each segment, so a straight drop through the box counts.
                 let within = |q: Pt| rects.iter().any(|(x0, x1, y0, y1)| q.x > *x0 + 0.5 && q.x < *x1 - 0.5 && q.y > *y0 + 0.5 && q.y < *y1 - 0.5);
@@ -441,14 +444,14 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                     .find(|x| **x != t)
                     .map(|x| {
                         let name = crate::terminal_strips::terminal_blocks::connection_point_name(doc, *x);
-                        match doc.connection_points.get(x).and_then(|t| t.device()).and_then(|c| crate::devices::tag_of(doc, c)) {
+                        match doc.connection_points.get(x).and_then(|t| t.device()).and_then(|c| crate::devices::tags::tag_of(doc, c)) {
                             Some(_) if !name.contains(':') => {
                                 format!(
                                     "{}:{name}",
                                     doc.connection_points
                                         .get(x)
                                         .and_then(|t| t.device())
-                                        .map(|c| crate::devices::tag_words(doc, c))
+                                        .map(|c| crate::devices::tags::tag_words(doc, c))
                                         .unwrap_or_default()
                                 )
                             }

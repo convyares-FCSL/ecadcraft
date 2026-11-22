@@ -1037,7 +1037,7 @@ pub fn cables_on_page(
 
 /// What one page shows, indexed once per projection (brief 009 review S4): each wire's line on the
 /// page (the route running straight between its two points, else the first route carrying it, as
-/// [`crate::wires::route_of_wire_on`] picks it), the lines carrying it and their representations,
+/// [`crate::wires::routes::route_of_wire_on`] picks it), the lines carrying it and their representations,
 /// and each cable's representations. Every cable is then drawn without scanning the whole
 /// document again.
 pub(crate) struct PageIndex<'a> {
@@ -1060,7 +1060,7 @@ impl<'a> PageIndex<'a> {
                     };
                     let route = doc.routes.get(&x);
                     idx.lines.entry(x).or_default().push(r);
-                    for w in crate::wires::wires_of_route(doc, x) {
+                    for w in crate::wires::routes::wires_of_route(doc, x) {
                         let at = CorePosition::Wire(w);
                         idx.prims.entry(at).or_default().extend(r.items.iter().filter_map(prim));
                         let Some(p) = r.items.first().and_then(prim).filter(|p| p.path_ends().is_some()) else { continue };

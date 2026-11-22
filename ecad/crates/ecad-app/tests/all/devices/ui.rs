@@ -49,7 +49,7 @@ fn every_starter_symbol_on_one_page() {
     // The 19 device symbols (brief 028 added the PE terminal); the continuation (brief 022) is
     // not a device.
     // (brief 022) are not devices; brief 034's families have their own tests.
-    let devices = ecad_electrical::symbols::STARTERS
+    let devices = ecad_electrical::symbols::catalogue::STARTERS
         .iter()
         // Brief 036's level starters join strips as positions (tested in `levels_contracts`).
         .filter(|s| {

@@ -12,7 +12,8 @@ use serde_json::json;
 
 use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
-use crate::wires::{RouteEdits, end_index};
+use crate::wires::joining::end_index;
+use crate::wires::routes::RouteEdits;
 
 /// No route with the ID given.
 const NO_ROUTE: &str = "no such wire";
@@ -65,7 +66,7 @@ pub fn disconnect(doc: &Document, r: RouteId, end: End) -> Result<Vec<Op>, CmdEr
 
 /// A route's end.
 #[derive(Deserialize, Clone, Copy, JsonSchema)]
-pub enum EndParam {
+pub(crate) enum EndParam {
     /// The start.
     #[serde(rename = "A", alias = "a")]
     A,

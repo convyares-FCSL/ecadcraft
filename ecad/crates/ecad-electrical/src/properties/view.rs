@@ -182,8 +182,8 @@ fn before(doc: &Document, effect: &Effect<'_>, objects: &mut Option<BTreeSet<Obj
         // devices showing its lineage read "update available".
         Effect::Definition { before, after, .. } => {
             for d in before.iter().chain(after.iter()) {
-                if let Some(o) = d.origin.as_ref().filter(|o| o.library == crate::symbols::PROJECT_SYMBOLS) {
-                    for v in crate::symbols::versions_of(doc, o.definition) {
+                if let Some(o) = d.origin.as_ref().filter(|o| o.library == crate::symbols::project::PROJECT_SYMBOLS) {
+                    for v in crate::symbols::project::versions_of(doc, o.definition) {
                         for item in doc.items_using(v.id) {
                             if let Some((_, r)) = doc.representation_of_item(item) {
                                 out.extend(subject_ref(r.subject));

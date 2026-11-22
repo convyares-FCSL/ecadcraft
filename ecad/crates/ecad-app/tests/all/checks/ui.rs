@@ -95,7 +95,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     let nets: std::collections::BTreeSet<_> = d
         .representations_on(p2)
         .filter_map(|(_, r)| match r.subject {
-            ecad_model::Subject::Route(x) => ecad_electrical::wires::wire_of_route(&d, x).and_then(|c| d.connectivity().net_of_conductor(c)),
+            ecad_model::Subject::Route(x) => ecad_electrical::wires::routes::wire_of_route(&d, x).and_then(|c| d.connectivity().net_of_conductor(c)),
             _ => None,
         })
         .collect();

@@ -409,13 +409,6 @@ pub fn provisional_on(doc: &Document) -> bool {
     doc.display.flag(crate::naming::keys::NUMBERING_PROVISIONAL) == Some(true)
 }
 
-/// Whether a device or cable with these properties is fixed (FP1). A provisional tag never
-/// counts as fixed (overseer ruling, tester 026 bug 2): Finalise numbers it whatever the flag says.
-pub fn is_fixed(props: &crate::document::doc::Properties) -> bool {
-    use crate::naming::keys::PropsExt;
-    props.flag(crate::naming::keys::TAG_FIXED) == Some(true) && !props.text(crate::naming::keys::TAG).is_some_and(tag::is_provisional)
-}
-
 /// The next provisional tag of `prefix` (`-K?3`): the highest provisional number of that prefix
 /// in use + 1, through a range of the tag indexes (devices and cables).
 pub fn next_provisional(doc: &Document, prefix: &str) -> String {

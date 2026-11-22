@@ -445,7 +445,7 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     h.wire_pp(&[(0.0, 40.0), (60.0, 40.0)]).unwrap();
     assert_eq!(on_page(&mut h, plain), 0, "no Checks row on a Plain page");
     let d = h.doc();
-    let on_plain: Vec<_> = d.wires.iter().filter(|(c, _)| ecad_electrical::wires::wire_pages(&d, **c).iter().all(|p| *p == plain)).collect();
+    let on_plain: Vec<_> = d.wires.iter().filter(|(c, _)| ecad_electrical::wires::routes::wire_pages(&d, **c).iter().all(|p| *p == plain)).collect();
     assert!(!on_plain.is_empty());
     assert!(on_plain.iter().all(|(_, c)| !c.number.is_some()), "no wire number on a Plain page");
     let _ = before_numbered;

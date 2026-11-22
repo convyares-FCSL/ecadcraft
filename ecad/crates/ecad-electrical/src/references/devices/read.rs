@@ -211,7 +211,7 @@ pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextMetrics) 
     let head = dev.head.and_then(|h| doc.representations.get(&h).map(|r| (h, r)));
     Ok(json!({
         "component": c.hex(),
-        "tag": crate::devices::tag_of(doc, c),
+        "tag": crate::devices::tags::tag_of(doc, c),
         "offer": stored,
         "head": head.map(|(h, r)| json!({"representation": h.hex(), "page": crate::references::cables::page_number(doc, r.page), "place": places.text(r.page, anchor(doc, r))})),
         "placement": placement.word(),
@@ -341,7 +341,7 @@ pub fn row_lines(doc: &Document, c: DeviceId, i: usize, m: &dyn TextMetrics) -> 
     let mut places = Places::new(doc);
     let t = table_measured(doc, &mut places, &dev, m)?;
     let r = t.rows.get(i)?;
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let what = if r.power { "power" } else { "auxiliary" };
     Some(vec![match (r.state, r.page) {
         (State::Spare, _) | (_, None) => format!("{tag} {} {}, {what}, offered, not drawn", r.label_pair(), r.kind.upper()),
@@ -363,7 +363,7 @@ pub(crate) fn count_checks(doc: &Document, c: DeviceId) -> Vec<(String, Option<P
     }
     let mut places = Places::new(doc);
     let rows = rows(&mut places, &dev, Some(&offer));
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     counts(&dev, &offer)
         .into_iter()
         .filter(|(_, (drawn, offered))| drawn > offered)
@@ -418,7 +418,7 @@ pub(crate) fn title_check(doc: &Document, c: DeviceId, m: &dyn TextMetrics) -> O
     }
     let which = format!(
         "The contact table of {} overlaps the title block on {}.",
-        crate::devices::tag_words(doc, c),
+        crate::devices::tags::tag_words(doc, c),
         crate::references::cables::page_number_words(doc, t.page)
     );
     Some((which, t.page, t.top))

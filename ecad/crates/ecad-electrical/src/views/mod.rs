@@ -27,7 +27,7 @@ use ecad_model::{Document, Op};
 
 pub use crate::checks::view::{ChecksScope, ChecksView};
 pub use crate::connectors::view::{ConnectorsScope, ConnectorsView};
-pub use crate::devices::view::{DevicesFeed, DevicesScope};
+pub(crate) use crate::devices::view::{DevicesFeed, DevicesScope};
 pub use crate::pages::frame_view::{FrameScope, FrameView};
 pub use crate::pages::generated_view::{GeneratedScope, GeneratedView};
 pub use crate::pages::tree_view::{TreeFeed, TreeScope};

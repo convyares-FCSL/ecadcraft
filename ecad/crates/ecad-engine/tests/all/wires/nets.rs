@@ -378,7 +378,7 @@ fn bus() -> (H, PageId) {
     (h, page)
 }
 
-fn labels(h: &mut H, page: PageId) -> Vec<ecad_electrical::wires::WireLabel> {
+fn labels(h: &mut H, page: PageId) -> Vec<ecad_electrical::wires::labels::WireLabel> {
     h.p(|p| ecad_engine::wires::draw::labels_on_page(p.ledger.document(), page))
 }
 
@@ -404,14 +404,14 @@ fn the_label_rule_labels_a_net_once_or_every_wire() {
             let v = &d.routes[r].points;
             v.len() == 2 && v[0].x == 20.0 && v[0].y == 0.0
         })
-        .and_then(|r| ecad_electrical::wires::wire_of_route(&d, r));
+        .and_then(|r| ecad_electrical::wires::routes::wire_of_route(&d, r));
     let drop = drop.expect("the first drop");
     h.run("setprop", json!({"conductor": drop.hex(), "key": "size", "value": "2.5"})).unwrap();
     let l = labels(&mut h, page);
     assert_eq!(l.len(), 2, "{l:?}");
     for (i, a) in l.iter().enumerate() {
         for b in l.iter().skip(i + 1) {
-            let (x, y) = (ecad_electrical::wires::label_box(a), ecad_electrical::wires::label_box(b));
+            let (x, y) = (ecad_electrical::wires::labels::label_box(a), ecad_electrical::wires::labels::label_box(b));
             assert!(x.1.x < y.0.x || y.1.x < x.0.x || x.1.y < y.0.y || y.1.y < x.0.y, "labels touch: {a:?} {b:?}");
         }
     }

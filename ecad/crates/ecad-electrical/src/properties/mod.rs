@@ -213,9 +213,9 @@ pub fn device_section(
     }
     let title = if one {
         let c = devices.iter().next().copied();
-        let tag = c.and_then(|c| crate::devices::tag_of(doc, c)).unwrap_or("(no tag)").to_string();
+        let tag = c.and_then(|c| crate::devices::tags::tag_of(doc, c)).unwrap_or("(no tag)").to_string();
         if let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) {
-            let name = crate::devices::rep_starter(doc, r).map_or_else(|| "drawn".to_string(), |s| s.name.to_string());
+            let name = crate::devices::tags::rep_definition(doc, r).map_or_else(|| "drawn".to_string(), |(d, _)| d.name.to_string());
             // The terminals this symbol shows: its connection points, else the device's own.
             let shown: Vec<ecad_model::ConnectionPointId> = if r.connection_points.is_empty() {
                 c.map(|c| doc.connection_points_of(c).map(|(t, _)| t).collect()).unwrap_or_default()
@@ -500,7 +500,7 @@ fn placed_words(props: Option<&ecad_model::Properties>) -> String {
 fn end_words(doc: &Document, w: WireId, end: End) -> String {
     match doc.wires.get(&w).map(|c| c.end(end)) {
         // `-K01:A1` (design 019 §8.2); a junction or continuation by what it is (brief 022).
-        Some(t) => crate::wires::point_words(doc, t),
+        Some(t) => crate::wires::words::point_words(doc, t),
         None => "not connected".into(),
     }
 }
@@ -560,13 +560,13 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     }
     let mut pages: Vec<String> = Vec::new();
     let mut seen = BTreeSet::new();
-    let drawn: BTreeSet<PageId> = net.wires.iter().flat_map(|c| crate::wires::wire_pages(doc, *c)).collect();
+    let drawn: BTreeSet<PageId> = net.wires.iter().flat_map(|c| crate::wires::routes::wire_pages(doc, *c)).collect();
     for page in &doc.page_order {
         if drawn.contains(page) && seen.insert(*page) {
             pages.push(ecad_model::document::book::page_number(doc, *page));
         }
     }
-    let points = crate::wires::net_points(doc, net);
+    let points = crate::wires::words::net_points(doc, net);
     let n = net.wires.len();
     let summary = format!(
         "{} \u{b7} {} connection point{} \u{b7} page{} {}",
@@ -586,7 +586,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     }
     let mut block = vec![
         Row::ro("net", "Net", summary),
-        Row::ro("points", "Points", if points.is_empty() { "none".into() } else { crate::wires::first_words(&points, 8) }),
+        Row::ro("points", "Points", if points.is_empty() { "none".into() } else { crate::wires::words::first_words(&points, 8) }),
     ];
     if !names.is_empty() {
         let words: Vec<String> = names.iter().map(|(k, v)| format!("{k} \u{d7}{v}")).collect();
@@ -858,7 +858,7 @@ pub fn jumper_bar_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usiz
         Row::ro("jumper_bar.bars", "Bars", bars.map_or_else(String::new, |b| b.to_string())),
     ];
     Section {
-        title: format!("ECAD \u{b7} LINK {} {}", crate::devices::tag_words(doc, c), get(&key)),
+        title: format!("ECAD \u{b7} LINK {} {}", crate::devices::tags::tag_words(doc, c), get(&key)),
         kind: "jumper_bar",
         target: Some(Target::Devices(vec![c])),
         rows,

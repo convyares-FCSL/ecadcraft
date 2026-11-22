@@ -7,7 +7,7 @@
 //! # Semantics
 //! Only routes on the given page are tested (design 072 §4.3; through the page's route index):
 //! every segment of each route's drawing. A route stands for the wire it carries
-//! ([`crate::wires::wire_of_route`]); a route carrying no wire is not tested.
+//! ([`crate::wires::routes::wire_of_route`]); a route carrying no wire is not tested.
 //! All tests use the project's tolerance.
 //! - C1 to C3: the slash crosses the inside of a route segment, passes through a bend, or ends on
 //!   the inside of a route: the conductor **counts**.
@@ -155,7 +155,7 @@ fn usable(tol: f64) -> f64 {
 fn routes(doc: &Document, page: PageId) -> BTreeMap<ItemId, (RouteId, CorePosition)> {
     let mut out = BTreeMap::new();
     for r in doc.routes_on(page) {
-        if let Some((_, item, _)) = crate::wires::route_item(doc, r) {
+        if let Some((_, item, _)) = crate::wires::routes::route_item(doc, r) {
             out.insert(item, (r, ecad_model::connectivity::wire_order::core_position(doc, r)));
         }
     }

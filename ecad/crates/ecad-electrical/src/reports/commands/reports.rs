@@ -174,7 +174,7 @@ pub fn box_json(doc: &Document, plan: &BoxPlan) -> Value {
     let conflicts: Vec<Value> = proposed
         .conflicts
         .iter()
-        .map(|c| json!({"component": c.component.hex(), "tag": crate::devices::tag_words(doc, c.component), "aspect": c.aspect.word(), "from": c.from, "proposed": c.to}))
+        .map(|c| json!({"component": c.component.hex(), "tag": crate::devices::tags::tag_words(doc, c.component), "aspect": c.aspect.word(), "from": c.from, "proposed": c.to}))
         .collect();
     v["conflicts"] = json!(conflicts);
     v

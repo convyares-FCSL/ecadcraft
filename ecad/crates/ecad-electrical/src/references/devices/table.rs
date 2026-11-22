@@ -186,7 +186,7 @@ pub fn over_line(doc: &Document, c: DeviceId, labels: &[String], make: bool) -> 
             "Added {} contact {} to {}; its part offers {offered} {} ({text}), now {drawn} drawn (see Checks).",
             kind.upper(),
             labels.join("/"),
-            crate::devices::tag_words(doc, c),
+            crate::devices::tags::tag_words(doc, c),
             kind_words(false, kind),
         )
     })
@@ -268,8 +268,8 @@ pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: 
     let r = doc.representations.get(&rep)?;
     let k = unit(doc);
     let pts = connection_point_points(doc, dev.component, r);
-    let vertical = match crate::devices::rep_definition(doc, r) {
-        Some((_, pl)) if r.form == Form::Symbol => crate::devices::vertical(&pl),
+    let vertical = match crate::devices::tags::rep_definition(doc, r) {
+        Some((_, pl)) if r.form == Form::Symbol => crate::devices::texts::vertical(&pl),
         _ => {
             let xs: Vec<f64> = pts.iter().map(|(_, p)| p.x).collect();
             xs.windows(2).all(|w| (w[0] - w[1]).abs() < 1e-6)
@@ -280,8 +280,8 @@ pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: 
         let y = pts.iter().map(|(_, p)| p.y).fold(f64::INFINITY, f64::min);
         (Pt::new(x + 1.0 * k, y - 1.0 * k), HAlign::Left)
     } else {
-        let (lo, hi) = match (r.form, crate::devices::rep_definition(doc, r)) {
-            (Form::Symbol, Some((def, pl))) => crate::devices::placed_box(def, &pl)?,
+        let (lo, hi) = match (r.form, crate::devices::tags::rep_definition(doc, r)) {
+            (Form::Symbol, Some((def, pl))) => crate::devices::texts::placed_box(def, &pl)?,
             _ => bounds(&pts.iter().map(|(_, p)| *p).collect::<Vec<_>>())?,
         };
         (Pt::new((lo.x + hi.x) / 2.0, lo.y - 1.5 * k), HAlign::Center)
@@ -442,8 +442,8 @@ pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement:
         Placement::At(d) => Pt::new(origin.x + d.x * k, origin.y + d.y * k),
         Placement::Below => below(),
         Placement::Right => {
-            let hi = match crate::devices::rep_definition(doc, r) {
-                Some((def, pl)) if r.form == Form::Symbol => crate::devices::placed_box(def, &pl).map(|(_, hi)| hi),
+            let hi = match crate::devices::tags::rep_definition(doc, r) {
+                Some((def, pl)) if r.form == Form::Symbol => crate::devices::texts::placed_box(def, &pl).map(|(_, hi)| hi),
                 _ => bounds(&pts.iter().map(|(_, p)| *p).collect::<Vec<_>>()).map(|(_, hi)| hi),
             };
             let hi = hi?;
@@ -556,8 +556,8 @@ pub(crate) fn connector_parts(doc: &Document, places: &mut Places<'_>, c: Device
         if more > 0 {
             value.push_str(&format!(" +{more}"));
         }
-        let Some((lo, hi)) = (match (r.form, crate::devices::rep_definition(doc, r)) {
-            (Form::Symbol, Some((def, pl))) => crate::devices::placed_box(def, &pl),
+        let Some((lo, hi)) = (match (r.form, crate::devices::tags::rep_definition(doc, r)) {
+            (Form::Symbol, Some((def, pl))) => crate::devices::texts::placed_box(def, &pl),
             _ => None,
         }) else {
             continue;

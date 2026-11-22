@@ -166,7 +166,7 @@ fn a_drawn_symbol_saves_as_version_1_and_the_browser_selects_it() {
     h.run_steps(4);
     assert_eq!(head(&mut h), before + 1, "Save is one transaction");
     let d = doc(&mut h);
-    let v = symbols::project_by_key(&d, "float1").expect("saved");
+    let v = symbols::project::project_by_key(&d, "float1").expect("saved");
     assert_eq!(v.seq, 1);
     assert!(h.state().library.builder.is_none(), "back to the browser");
     assert_eq!(h.state().library.browser.selected, Some(browser::Tile::Project(v.lineage)));
@@ -226,8 +226,8 @@ fn edit_symbol_reviews_every_copy_with_update_selected_when_one_clashes() {
     h.run_steps(4);
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert!(ecad_electrical::symbols::update_available(&d, reps[0]).is_some(), "the clashing copy keeps v1");
-    assert!(ecad_electrical::symbols::update_available(&d, reps[1]).is_none(), "updated");
+    assert!(ecad_electrical::symbols::graphics::update_available(&d, reps[0]).is_some(), "the clashing copy keeps v1");
+    assert!(ecad_electrical::symbols::graphics::update_available(&d, reps[1]).is_none(), "updated");
     assert!(h.state().library.builder.is_none());
 }
 
@@ -280,7 +280,7 @@ fn make_symbol_from_lines_offers_points_and_replaces_the_drawing_on_save() {
     h.get_by_label(details::SAVE).click();
     h.run_steps(4);
     let d = doc(&mut h);
-    let v = symbols::project_by_key(&d, "box1").expect("made");
+    let v = symbols::project::project_by_key(&d, "box1").expect("made");
     assert_eq!(d.items_using(v.id).len(), 1, "a device of it where the lines were");
     assert!(h.state().library.builder.is_none());
 }
@@ -322,7 +322,7 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
     assert_eq!(rep.form, ecad_model::Form::Symbol);
     let w = ecad_model::WireId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
     assert!(d.connection_points_of(c).any(|(term, _)| d.ends_at(term).iter().any(|(x, _)| *x == w)), "the wire stays attached");
-    let v = symbols::project_by_key(&d, "mine").unwrap();
+    let v = symbols::project::project_by_key(&d, "mine").unwrap();
     let slot = v.def.texts.first().expect("the tag slot");
     assert!(slot.at.x.abs() < 50.0 && slot.at.y.abs() < 50.0, "the slot is in the symbol's frame: {:?}", slot.at);
 }
@@ -341,9 +341,9 @@ fn editing_a_built_in_from_the_browser_saves_a_copy_that_remembers_it() {
     h.get_by_label(details::SAVE).click();
     h.run_steps(4);
     let d = doc(&mut h);
-    let v = symbols::project_by_key(&d, "coil2").expect("saved");
+    let v = symbols::project::project_by_key(&d, "coil2").expect("saved");
     let from = v.def.derived_from.clone().expect("derived_from (FP4)");
-    assert_eq!(from.definition, symbols::by_key("coil").unwrap().id);
+    assert_eq!(from.definition, symbols::catalogue::by_key("coil").unwrap().id);
 }
 
 /// Tester 048b/c: Ctrl+Z and Ctrl+Y in the builder step the draft only, never the project.
@@ -403,7 +403,7 @@ fn update_from_properties_and_compare_show_the_copy_in_the_drawer() {
     let (reps, _) = three_copies(&mut h);
     // A v2 that moves nothing wired: copy 3 keeps v1.
     let d = doc(&mut h);
-    let v1 = symbols::project_by_key(&d, "float1").unwrap().id;
+    let v1 = symbols::project::project_by_key(&d, "float1").unwrap().id;
     run(
         &mut h,
         "symboledit",
@@ -423,7 +423,7 @@ fn update_from_properties_and_compare_show_the_copy_in_the_drawer() {
     assert!(h.query_by_label(review::HEADER).is_some(), "Compare in the drawer");
     h.get_by_label(review::UPDATE).click();
     h.run_steps(3);
-    assert!(ecad_electrical::symbols::update_available(&doc(&mut h), reps[2]).is_none(), "updated from Compare");
+    assert!(ecad_electrical::symbols::graphics::update_available(&doc(&mut h), reps[2]).is_none(), "updated from Compare");
     assert!(h.state().library.compare.is_none());
 }
 
@@ -463,7 +463,7 @@ fn screenshots_for_the_owner() {
     }
     run(&mut h, "wire", json!({"points": [[100.0, 85.0], [100.0, 60.0]]}));
     let d = doc(&mut h);
-    let v = symbols::project_by_key(&d, "float1").unwrap();
+    let v = symbols::project::project_by_key(&d, "float1").unwrap();
     let rep = d.items_using(v.id).first().and_then(|i| d.representation_of_item(*i)).map(|(r, _)| r).unwrap();
     h.state_mut().edit_placed(rep).unwrap();
     h.run_steps(3);

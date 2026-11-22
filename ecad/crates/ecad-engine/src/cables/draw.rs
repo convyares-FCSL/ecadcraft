@@ -172,14 +172,14 @@ pub fn coloured_routes(
             continue;
         }
         // A line is coloured as the wire it stands for (design 072 §4.3).
-        let Some(c) = ecad_electrical::wires::wire_of_route(doc, x) else { continue };
+        let Some(c) = ecad_electrical::wires::routes::wire_of_route(doc, x) else { continue };
         let Some(item) = r.items.first() else { continue };
         let handle = map.and_then(|m| m.item(*item));
         if map.is_some() && handle.is_none() {
             continue;
         }
         let Some(ItemKind::Primitive(prim)) = doc.items.get(item).map(|i| &i.kind) else { continue };
-        let Some(points) = ecad_electrical::wires::path_vertices(prim) else { continue };
+        let Some(points) = ecad_electrical::wires::labels::path_vertices(prim) else { continue };
         if points.len() < 2 || !points.iter().all(|q| q.x.is_finite() && q.y.is_finite()) {
             continue;
         }
@@ -223,9 +223,9 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
     let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Vec::new() };
     map.tag_text_handles()
         .filter(|h| {
-            let Some((rep, ecad_electrical::devices::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
+            let Some((rep, ecad_electrical::devices::texts::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
             let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
-            ecad_electrical::devices::tag_of(doc, c).is_some_and(ecad_model::naming::tag::is_provisional)
+            ecad_electrical::devices::tags::tag_of(doc, c).is_some_and(ecad_model::naming::tag::is_provisional)
         })
         .collect()
 }

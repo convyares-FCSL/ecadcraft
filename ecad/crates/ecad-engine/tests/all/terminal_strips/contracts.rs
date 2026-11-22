@@ -144,7 +144,7 @@ fn place_terminal_blocks_bridges_cores_and_the_plan() {
     // The cable's members are the field halves (§3.1).
     for (i, x) in v["connection_points"].as_array().unwrap().iter().enumerate() {
         // `new` is the route from the terminal on (design 072 §4.3); the wire it carries.
-        let new = ecad_electrical::wires::wire_of_route(&doc, id(x, "new"));
+        let new = ecad_electrical::wires::routes::wire_of_route(&doc, id(x, "new"));
         assert!(new.is_some() && doc.cables[&t.cable].cores.iter().any(|m| m.wire() == new), "member {i}");
     }
     same_as_built(&mut t.h);

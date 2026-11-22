@@ -53,8 +53,8 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
     // strictly with the file); a project symbol's prefix names a project symbol the project holds.
     for key in doc.settings.tag_prefixes.keys() {
         let known = match key {
-            ecad_model::naming::prefix::PrefixOf::Starter(w) => crate::symbols::by_key(w).is_some(),
-            ecad_model::naming::prefix::PrefixOf::Project(k) => crate::symbols::has_project_key(doc, k),
+            ecad_model::naming::prefix::PrefixOf::Starter(w) => crate::symbols::catalogue::by_key(w).is_some(),
+            ecad_model::naming::prefix::PrefixOf::Project(k) => crate::symbols::project::has_project_key(doc, k),
         };
         if !known {
             out.push(UnknownWord::Value { place: WordPlace::Settings, setting: "tag_prefixes".into(), word: key.to_string(), allowed: Vec::new() });

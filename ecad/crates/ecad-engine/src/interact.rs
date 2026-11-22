@@ -315,7 +315,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
                         out.push(Mark { at: v2(*q), shape: MarkShape::Dot, size: WIRE_END_ATTACHED_PX, stroke: 0.0, color });
                     }
                 }
-                // A T: its dot is drawn with the page (design 072 §4.4, `wires::tees_on_page`).
+                // A T: its dot is drawn with the page (design 072 §4.4, `wires::routes::tees_on_page`).
                 RouteEnd::On { .. } => {}
                 RouteEnd::Free if quiet.iter().any(|q| q.near(at, p.tolerance)) => {}
                 RouteEnd::Free => {
@@ -397,9 +397,9 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             }
         }
         // A conductor label (brief 022): its wire's lens.
-        Mapped::Label(w) => wire_lines(doc, Some(w), ecad_electrical::wires::route_of_wire_on(doc, w, page), page),
+        Mapped::Label(w) => wire_lines(doc, Some(w), ecad_electrical::wires::routes::route_of_wire_on(doc, w, page), page),
         // A T's dot (lane 072 D): the lens of the line that ends there.
-        Mapped::Tee(r) => wire_lines(doc, ecad_electrical::wires::wire_of_route(doc, r), Some(r), page),
+        Mapped::Tee(r) => wire_lines(doc, ecad_electrical::wires::routes::wire_of_route(doc, r), Some(r), page),
         // A link line (brief 030, design 030 §5.3).
         Mapped::JumperBar(c, n) => {
             vec![ecad_electrical::terminal_strips::jumper_bars::hover(doc, p.kept_reports().and_then(|o| o.strips.get(c)), c, n)]
@@ -408,13 +408,13 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             (rid, r) if ecad_electrical::references::cables::is_reference(r) => ecad_electrical::references::cables::hover_lines(doc, rid)?,
             (rid, r) => match r.subject {
                 // A device (a tagged component, brief 018): design 018 §6.4's lens.
-                Subject::Device(c) if ecad_electrical::devices::tag_of(doc, c).is_some() => {
+                Subject::Device(c) if ecad_electrical::devices::tags::tag_of(doc, c).is_some() => {
                     with_device_references(doc, c, rid, crate::devices::draw::hover_lines(doc, c, rid))
                 }
                 // Brief 049 (design 049 §5.4): a continuation arrow's other ends.
                 Subject::Device(c) => component_lines(doc, c),
                 Subject::Wire(w) => wire_lines(doc, Some(w), None, page),
-                Subject::Route(x) => wire_lines(doc, ecad_electrical::wires::wire_of_route(doc, x), Some(x), page),
+                Subject::Route(x) => wire_lines(doc, ecad_electrical::wires::routes::wire_of_route(doc, x), Some(x), page),
                 // Brief 049 (design 049 §5.4): a continuation arrow's other ends (design 072 §6.2).
                 Subject::Aid(a) if ecad_electrical::continuations::arrow(doc, rid).is_some() => {
                     ecad_electrical::continuations::hover_lines(doc, a, rid)
@@ -643,7 +643,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
             lines.push(match doc.connection_points.get(&t) {
                 // A continuation (brief 022) is named by what it is.
                 Some(x) if x.owner.aid().is_some() => {
-                    let words = ecad_electrical::wires::point_words(doc, t);
+                    let words = ecad_electrical::wires::words::point_words(doc, t);
                     match words.strip_prefix('\u{2192}') {
                         Some(name) => format!("End {end:?}: continuation {name}"),
                         None => format!("End {end:?}: {words}"),
@@ -669,15 +669,15 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
             match landed {
                 // A T (design 072 §4.4) is joined, not open: it names the line it lands on.
                 RouteEnd::On { route: on, .. } => {
-                    let joined = match ecad_electrical::wires::wire_of_route(doc, on) {
+                    let joined = match ecad_electrical::wires::routes::wire_of_route(doc, on) {
                         Some(w) => format!("wire {}", ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| "(no number)".into())),
                         None => "a line with no wire yet".into(),
                     };
                     lines.push(format!("End {end:?} joins {joined} (a T)."));
                 }
                 RouteEnd::Free => {
-                    if let Some(on) = ecad_electrical::wires::route_at(doc, page, at, ecad_electrical::wires::ON_WIRE, Some(r)) {
-                        let number = ecad_electrical::wires::wire_of_route(doc, on.route)
+                    if let Some(on) = ecad_electrical::wires::placing::route_at(doc, page, at, ecad_electrical::wires::ON_WIRE, Some(r)) {
+                        let number = ecad_electrical::wires::routes::wire_of_route(doc, on.route)
                             .and_then(|w| ecad_model::connectivity::wiring::wire_number(doc, w))
                             .unwrap_or_else(|| "?".into());
                         lines.push(format!("Open end: looks connected to {number}; Join Wires joins them."));
@@ -699,7 +699,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
     }
     // Brief 022: the wire's number, potential, label and net (the Properties panel's facts until
     // 019's panel is merged).
-    lines.extend(ecad_electrical::wires::hover_lines(doc, w));
+    lines.extend(ecad_electrical::wires::words::hover_lines(doc, w));
     lines
 }
 

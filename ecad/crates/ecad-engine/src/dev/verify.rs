@@ -283,9 +283,9 @@ pub fn verify_page_pending(
         problems.push(format!("drawn items differ from the document's items ({missing} kinds of item differ)"));
     }
     // T dots (lane 072 D): one dot of rings per route end on another route, where it lands.
-    let tees: Vec<(ecad_model::RouteId, Pt)> = ecad_electrical::wires::tees_on_page(doc, page)
+    let tees: Vec<(ecad_model::RouteId, Pt)> = ecad_electrical::wires::routes::tees_on_page(doc, page)
         .into_iter()
-        .filter(|(r, _, _)| ecad_electrical::wires::route_item(doc, *r).is_some_and(|(_, i, _)| !hidden.contains(&i)))
+        .filter(|(r, _, _)| ecad_electrical::wires::routes::route_item(doc, *r).is_some_and(|(_, i, _)| !hidden.contains(&i)))
         .map(|(r, _, at)| (r, at))
         .collect();
     let rings = ecad_electrical::wires::TEE_DOT_RADII.len();
