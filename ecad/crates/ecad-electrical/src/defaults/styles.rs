@@ -7,7 +7,7 @@
 //! - `location.style`: S P O (object: the location box).
 //! - `print.frame.style`: S P G (a frame belongs to the sheet).
 
-use super::{Entry, Kind, Level, ProjectSource, Slot};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 
 const GROUP: &str = "Styles";
 const BRIEF: &str = "050";

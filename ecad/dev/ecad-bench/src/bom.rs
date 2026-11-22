@@ -1,4 +1,4 @@
-//! Brief 047 timings (design 047 §10), run inside [`crate::outputs::measure`] with the report
+//! Brief 047 timings (design 047 §10), run inside [`crate::reports::measure`] with the report
 //! models kept and a BOM-by-location page in the book, so every edit goes through the BOM's
 //! update map.
 //!
@@ -14,11 +14,11 @@
 use std::time::Instant;
 
 use cadcraft_engine::Session;
+use ecad_electrical::reports::kept::ReportModels;
 use ecad_engine::ProjectHandle;
-use ecad_engine::outputs::kept::Outputs;
-use ecad_engine::outputs::{BomView, Group};
 use ecad_model::{DeviceId, PageId};
 use serde_json::json;
+use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group};
 
 use crate::measure::median;
 
@@ -87,18 +87,18 @@ pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[DeviceId], b
     }
     out.bomart_ms = median(&mut v);
     run(s, "openpage", json!({"page": bom_page.hex()}))?;
-    out.sheets = project.read(s, |p, _| p.kept_outputs().map_or(0, Outputs::bom_sheets))?;
+    out.sheets = project.read(s, |p, _| p.kept_reports().map_or(0, ReportModels::bom_sheets))?;
     let mut v = Vec::new();
     for i in 0..runs {
-        let value = ecad_model::words::flag_word(i % 2 == 0);
+        let value = ecad_model::naming::words::flag_word(i % 2 == 0);
         v.push(timed(s, "setdefault", json!({"key": "bom.column.article", "level": "project", "value": value}))?);
     }
     out.bomcols_ms = median(&mut v);
     // Verify mode: the kept model against a rebuild, every layout.
     let same = project.configure(s, |p| {
-        let kept = p.outputs().clone();
+        let kept = p.reports().clone();
         let detached = p.derived().detached(p.ledger.document());
-        let built = detached.outputs();
+        let built = detached.reports();
         [false, true].iter().all(|a| {
             [false, true].iter().all(|n| {
                 let v = BomView { article: *a, nested: *n };

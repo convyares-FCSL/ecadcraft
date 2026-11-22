@@ -1,6 +1,6 @@
 //! The PLC sheets of the book (brief 051, design 051 §4): the I/O list as one ruled table per card,
 //! cards packed on sheets (§4.1), and the rack overview `plcrack` with the tiles of
-//! [`super::overview`] in ink (§4.2).
+//! [`crate::plc::overview`] in ink (§4.2).
 //!
 //! # Semantics
 //! - [`pack`]: groups follow each other on a sheet with a gap; a group goes to the next sheet only
@@ -8,13 +8,13 @@
 //!   repeated with `(continued)`. The sheet count comes from kept counts only (no rows made).
 //! - Drawing the sheets is ecad-engine's (`draw::plc::sheets`).
 //!
-//! Excludes: the CSV (unchanged, [`super::iolist::csv_table`]); Checks (not printed).
+//! Excludes: the CSV (unchanged, [`crate::plc::iolist::csv_table`]); Checks (not printed).
 
 use ecad_model::{Document, PageId};
 
-use super::overview::{self, Square, Tile, TileKind};
-use super::{CardData, iolist, kept::Plc};
-use crate::generated::rows_per_sheet;
+use crate::pages::generated::rows_per_sheet;
+use crate::plc::overview::{self, Square, Tile, TileKind};
+use crate::plc::{CardData, iolist, kept::Plc};
 
 /// A sheet's drawing area in paper millimetres, and the A3 column scale.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -102,7 +102,7 @@ pub fn io_pack(plc: &Plc) -> Vec<Vec<Seg>> {
 /// `-A01 slot 2 · -A03 · DQ 16 · <part number> · 9 used, 1 reserved, 6 spare` (design 051 §4.1).
 pub fn group_heading(doc: &Document, card: &CardData, rows: &[iolist::Row]) -> String {
     let (u, r, s) = iolist::summary(rows);
-    let caption = match super::caption(doc, card.id) {
+    let caption = match crate::plc::caption(doc, card.id) {
         Some((c, _)) => c,
         None => "No rack".into(),
     };
@@ -137,14 +137,14 @@ pub fn tiles_per_row(width: f64) -> usize {
 }
 
 /// The drawing area of `page`'s sheet in paper millimetres (left, bottom, right, top), as
-/// [`crate::generated`] lays it out.
+/// [`crate::pages::generated`] lays it out.
 fn page_area(doc: &Document, page: PageId) -> (f64, f64, f64, f64) {
-    let spec = ecad_model::sheet::sheet_of(doc, page);
+    let spec = ecad_model::document::sheet::sheet_of(doc, page);
     // Brief 055 (FP4): the frame's margins and its block's height.
-    let m = ecad_model::sheet::margins_of(doc, page);
+    let m = ecad_model::document::sheet::margins_of(doc, page);
     (
         m.left + 5.0,
-        m.bottom + ecad_model::sheet::keep_out(doc, page) + 5.0,
+        m.bottom + ecad_model::document::sheet::keep_out(doc, page) + 5.0,
         f64::from(spec.width) - m.right - 5.0,
         f64::from(spec.height) - m.top - 5.0,
     )
@@ -177,7 +177,7 @@ pub fn rack_sheets(doc: &Document, page: PageId, plc: &Plc) -> usize {
 }
 
 /// `-A01 · CPU · <part number> · 32 slots, 6 used`.
-pub fn rack_heading(doc: &Document, plc: &Plc, rack: &super::RackData) -> String {
+pub fn rack_heading(doc: &Document, plc: &Plc, rack: &crate::plc::RackData) -> String {
     let mut parts = vec![rack.tag.clone(), rack.ty.code().to_string()];
     if let Some(p) = doc.devices.get(&rack.id).and_then(|x| x.part_number.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty()) {
         parts.push(p.to_string());
@@ -193,7 +193,7 @@ pub const NO_RACKS: &str = "No PLC racks.";
 /// (review of #89, 3): a PLC card's or rack's symbol moved, or a page holding one renumbered,
 /// resized, or any page moved in the book. Only the effects' own items and the pages they name are
 /// read.
-pub fn rack_places_touched(doc: &Document, plc: &Plc, effects: &ecad_model::effect::Effects<'_>) -> bool {
+pub fn rack_places_touched(doc: &Document, plc: &Plc, effects: &ecad_model::document::effect::Effects<'_>) -> bool {
     let mut places = RackPlaces::default();
     for effect in effects {
         places.note(effect);
@@ -216,9 +216,9 @@ pub struct RackPlaces {
 
 impl RackPlaces {
     /// Note what one effect names.
-    pub fn note(&mut self, effect: &ecad_model::effect::Effect<'_>) {
-        use ecad_model::effect::Effect;
-        self.book_moved |= ecad_model::book::moves_pages_by_one(effect);
+    pub fn note(&mut self, effect: &ecad_model::document::effect::Effect<'_>) {
+        use ecad_model::document::effect::Effect;
+        self.book_moved |= ecad_model::document::book::moves_pages_by_one(effect);
         match effect {
             Effect::Item { id, before: Some(_), after: Some(_) } => self.items.push(*id),
             // A page changed in place (`ModifyPage` states no index).
@@ -233,7 +233,7 @@ impl RackPlaces {
             | Effect::Layer { .. }
             | Effect::Device { .. }
             | Effect::DeviceDefinition { .. }
-            | Effect::Terminal { .. }
+            | Effect::ConnectionPoint { .. }
             | Effect::Rep { .. }
             | Effect::Wire { .. }
             | Effect::Route { .. }
@@ -269,8 +269,8 @@ impl RackPlaces {
 // The release's PLC racks list (design 051 §4.2: in the release like the I/O list): one row per
 /// tile, racks by tag and then the cards in no rack. `None` when the project has no PLC racks or
 /// cards; the release then names [`NO_RACKS`].
-pub fn rack_csv(doc: &Document, plc: &Plc) -> Option<crate::outputs::Table> {
-    use crate::outputs::{Cell, Table};
+pub fn rack_csv(doc: &Document, plc: &Plc) -> Option<crate::reports::Table> {
+    use crate::reports::{Cell, Table};
     if plc.racks.is_empty() && plc.cards.is_empty() {
         return None;
     }

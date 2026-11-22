@@ -7,15 +7,15 @@
 //! - Centred on the window: search (Ctrl K).
 //! - Right: the agent icon, share (coming), the light/dark switch, help and the account avatar.
 //!
-//! The Checks counter and the revision moved to the bottom bar ([`super::status_bar`]); their
+//! The Checks counter and the revision moved to the bottom bar ([`crate::shell::status_bar`]); their
 //! accessible labels ([`CHECKS_PILL`], [`REVISION_PILL`]) moved with them.
 
-use ecad_ui::tokens::{Icon, size, space, ui_type};
+use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use super::{Workspace, bar};
 use crate::App;
-use crate::project_panel::Action;
+use crate::pages::project_panel::Action;
+use crate::shell::{Workspace, bar};
 
 /// Accessible labels.
 pub const PROJECT_MENU: &str = "Project menu";
@@ -52,9 +52,9 @@ const SEG_PAD: f32 = 12.0;
 
 /// Draw the top bar in `rect`.
 pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
-    let s = ecad_ui::SHELL;
-    super::fill(ui, rect, s.panel);
-    ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    let s = ecad_widgets::SHELL;
+    crate::shell::fill(ui, rect, s.panel);
+    ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     let header = t.header();
     let mut actions = Vec::new();
     let mut ws = t.shell.state.workspace;
@@ -71,12 +71,12 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     bar::pill(ui, project);
     let menu = bar::hit(ui, project.shrink(1.0), PROJECT_MENU, t.shell.settings_open, false, true);
     if t.shell.settings_open {
-        let st = egui::Stroke::new(1.5, ecad_ui::color(s.accent));
-        ui.painter().rect_stroke(project, ecad_ui::style::corner(ecad_ui::tokens::radius::CHIP), st, egui::StrokeKind::Inside);
+        let st = egui::Stroke::new(1.5, ecad_widgets::color(s.accent));
+        ui.painter().rect_stroke(project, ecad_widgets::style::corner(ecad_widgets::tokens::radius::CHIP), st, egui::StrokeKind::Inside);
     }
-    bar::text_at(ui, project.left() + space::L, y, &name, ui_type::BODY_EMPHASIS, ecad_ui::color(s.text));
+    bar::text_at(ui, project.left() + space::L, y, &name, ui_type::BODY_EMPHASIS, ecad_widgets::color(s.text));
     let chevron = Rect::from_center_size(pos2(project.right() - space::M - size::ICON / 2.0 + 2.0, y), vec2(12.0, 12.0));
-    ecad_ui::icons::paint(ui.painter(), chevron, Icon::ChevronDown, ecad_ui::color(s.text_2));
+    ecad_widgets::icons::paint(ui.painter(), chevron, Icon::ChevronDown, ecad_widgets::color(s.text_2));
     egui::Popup::menu(&menu).show(|ui| {
         let open = header.name.is_some();
         let mut item = |ui: &mut egui::Ui, label: &str, enabled: bool, a: Action| {
@@ -91,11 +91,11 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
         item(ui, SAVE_AS, open, Action::SaveAs);
         item(ui, CLOSE, open, Action::CloseProject);
         ui.separator();
-        item(ui, crate::project_panel::PROJECT_INFO, open, Action::ProjectInfo);
-        item(ui, crate::project_panel::PROJECT_SETTINGS, open, Action::ProjectSettings);
-        item(ui, crate::project_panel::REVISIONS, open, Action::Revisions);
+        item(ui, crate::pages::project_panel::PROJECT_INFO, open, Action::ProjectInfo);
+        item(ui, crate::pages::project_panel::PROJECT_SETTINGS, open, Action::ProjectSettings);
+        item(ui, crate::pages::project_panel::REVISIONS, open, Action::Revisions);
         ui.separator();
-        if ui.button(super::SETTINGS).clicked() {
+        if ui.button(crate::shell::SETTINGS).clicked() {
             open_settings = true;
             ui.close();
         }
@@ -126,8 +126,11 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     // Search, centred on the window.
     let search = Rect::from_center_size(pos2(rect.center().x, y), vec2(SEARCH_W, size::SEARCH_FIELD));
     let search_was = t.search.query.clone();
-    super::in_rect(ui, search, "ecad.shell.topbar.search", |ui| {
-        ecad_ui::prim::Field::new(&mut t.search.query, ecad_ui::prim::FieldKind::Search, SEARCH).placeholder(SEARCH_HINT).width(SEARCH_W).show(ui);
+    crate::shell::in_rect(ui, search, "ecad.shell.topbar.search", |ui| {
+        ecad_widgets::prim::Field::new(&mut t.search.query, ecad_widgets::prim::FieldKind::Search, SEARCH)
+            .placeholder(SEARCH_HINT)
+            .width(SEARCH_W)
+            .show(ui);
     });
     keycap(ui, search, "Ctrl K");
 
@@ -138,9 +141,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let a = ui.interact(avatar, egui::Id::unique("ecad.shell.account"), egui::Sense::hover());
     a.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, ACCOUNT));
     a.on_hover_text("Accounts come later");
-    ui.painter().circle_filled(avatar.center(), 12.0, ecad_ui::color(s.accent_soft));
-    ui.painter().circle_stroke(avatar.center(), 12.0, egui::Stroke::new(1.0, ecad_ui::color(s.accent)));
-    ui.painter().text(avatar.center(), egui::Align2::CENTER_CENTER, initials(), bar::font(ui, ui_type::CAPTION), ecad_ui::color(s.text));
+    ui.painter().circle_filled(avatar.center(), 12.0, ecad_widgets::color(s.accent_soft));
+    ui.painter().circle_stroke(avatar.center(), 12.0, egui::Stroke::new(1.0, ecad_widgets::color(s.accent)));
+    ui.painter().text(avatar.center(), egui::Align2::CENTER_CENTER, initials(), bar::font(ui, ui_type::CAPTION), ecad_widgets::color(s.text));
     let help = Rect::from_center_size(pos2(x - 14.0, y), vec2(28.0, 28.0));
     x = help.left() - space::S;
     bar::icon_button(ui, help, Icon::Help, HELP, size::ICON, true).on_hover_text("Help comes later");
@@ -149,21 +152,21 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     // One light/dark switch (boards 1.17 and 1.18): the chosen side is lit.
     let theme = Rect::from_min_max(pos2(x - 56.0, y - 12.0), pos2(x, y + 12.0));
     x = theme.left() - space::S;
-    ui.painter().rect_filled(theme, ecad_ui::style::corner(12.0), ecad_ui::color(s.bg));
+    ui.painter().rect_filled(theme, ecad_widgets::style::corner(12.0), ecad_widgets::color(s.bg));
     let dark = Rect::from_min_size(theme.min + vec2(2.0, 2.0), vec2(26.0, 20.0));
     let light = Rect::from_min_size(pos2(dark.right(), dark.top()), vec2(26.0, 20.0));
-    let is_dark = t.shell.state.theme == super::state::Theme::Dark;
+    let is_dark = t.shell.state.theme == crate::shell::state::Theme::Dark;
     let on = if is_dark { dark } else { light };
-    ui.painter().rect_filled(on, ecad_ui::style::corner(10.0), ecad_ui::color(if is_dark { s.active } else { s.raised }));
+    ui.painter().rect_filled(on, ecad_widgets::style::corner(10.0), ecad_widgets::color(if is_dark { s.active } else { s.raised }));
     let mut pick = None;
     for (r, label, theme, icon) in
-        [(dark, THEME_DARK, super::state::Theme::Dark, Icon::Moon), (light, THEME_LIGHT, super::state::Theme::Light, Icon::Sun)]
+        [(dark, THEME_DARK, crate::shell::state::Theme::Dark, Icon::Moon), (light, THEME_LIGHT, crate::shell::state::Theme::Light, Icon::Sun)]
     {
         let chosen = t.shell.state.theme == theme;
         let resp = ui.interact(r, egui::Id::unique(label), egui::Sense::click());
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, chosen, label));
         let ink = if chosen || resp.hovered() { s.text } else { s.text_3 };
-        ecad_ui::icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(13.0, 13.0)), icon, ecad_ui::color(ink));
+        ecad_widgets::icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(13.0, 13.0)), icon, ecad_widgets::color(ink));
         if resp.on_hover_text(label).clicked() {
             pick = Some(theme);
         }
@@ -179,7 +182,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let (tone, state, hover) = agent_state(ui, t);
     let r = bar::icon_button(ui, agent_rect, Icon::Agent, &format!("{AGENT_PILL}: {state}"), size::ICON, true).on_hover_text(hover);
     if let Some(c) = tone {
-        ecad_ui::icons::paint(ui.painter(), Rect::from_center_size(agent_rect.center(), vec2(size::ICON, size::ICON)), Icon::Agent, c);
+        ecad_widgets::icons::paint(ui.painter(), Rect::from_center_size(agent_rect.center(), vec2(size::ICON, size::ICON)), Icon::Agent, c);
     }
     let agent = r.clicked();
 
@@ -208,17 +211,17 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
 
 /// The key cap drawn inside the right end of the search box.
 fn keycap(ui: &egui::Ui, search: Rect, text: &str) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let w = bar::text_width(ui, text, ui_type::CAPTION) + 2.0 * space::S;
     let r = Rect::from_min_size(pos2(search.right() - space::S - w, search.center().y - 9.0), vec2(w, 18.0));
     ui.painter().rect(
         r,
-        ecad_ui::style::corner(ecad_ui::tokens::radius::KEYCAP),
+        ecad_widgets::style::corner(ecad_widgets::tokens::radius::KEYCAP),
         egui::Color32::TRANSPARENT,
-        egui::Stroke::new(1.0, ecad_ui::color(s.line_strong)),
+        egui::Stroke::new(1.0, ecad_widgets::color(s.line_strong)),
         egui::StrokeKind::Inside,
     );
-    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, text, bar::font(ui, ui_type::CAPTION), ecad_ui::color(s.text_2));
+    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, text, bar::font(ui, ui_type::CAPTION), ecad_widgets::color(s.text_2));
 }
 
 /// The agent icon's colour while an agent is shown (its state's tone), its state in words (its
@@ -230,7 +233,7 @@ fn agent_state(ui: &egui::Ui, t: &App) -> (Option<egui::Color32>, String, String
         let hidden = crate::agent::banner::hidden(ui.ctx(), &b.session);
         let hover = if hidden { "Show the agent banner" } else { "Hide the agent banner" };
         let tone = crate::agent::banner::state_tone(state);
-        (Some(ecad_ui::color(tone.text())), format!("Agent {}", b.agent), hover.to_string())
+        (Some(ecad_widgets::color(tone.text())), format!("Agent {}", b.agent), hover.to_string())
     } else if off {
         (None, "Agent off".into(), t.agent.status_text())
     } else {

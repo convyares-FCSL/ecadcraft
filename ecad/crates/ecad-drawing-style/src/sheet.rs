@@ -32,8 +32,8 @@ pub enum Meaning {
     MissingData,
     /// Provisional tag or wire number, pending revision.
     Provisional,
-    /// Terminal link (jumper).
-    TerminalLink,
+    /// ConnectionPoint link (jumper).
+    JumperBar,
     /// Selection.
     Selection,
     /// Placement preview.
@@ -57,7 +57,7 @@ impl Meaning {
         Meaning::Warning,
         Meaning::MissingData,
         Meaning::Provisional,
-        Meaning::TerminalLink,
+        Meaning::JumperBar,
         Meaning::Selection,
         Meaning::PlacementPreview,
         Meaning::AgentWrite,
@@ -78,7 +78,7 @@ impl Meaning {
             Meaning::Warning => "warning",
             Meaning::MissingData => "missing_data",
             Meaning::Provisional => "provisional",
-            Meaning::TerminalLink => "terminal_link",
+            Meaning::JumperBar => "jumper_bar",
             Meaning::Selection => "selection",
             Meaning::PlacementPreview => "placement_preview",
             Meaning::AgentWrite => "agent_write",
@@ -96,7 +96,7 @@ impl Meaning {
 /// assert!(!prints(Meaning::Selection));
 /// ```
 pub const fn prints(meaning: Meaning) -> bool {
-    matches!(meaning, Meaning::Ink | Meaning::Ink2 | Meaning::Cable | Meaning::Provisional | Meaning::TerminalLink | Meaning::MissingData)
+    matches!(meaning, Meaning::Ink | Meaning::Ink2 | Meaning::Cable | Meaning::Provisional | Meaning::JumperBar | Meaning::MissingData)
 }
 
 /// One sheet's colours.
@@ -114,7 +114,7 @@ pub struct Sheet {
     /// Warnings, the missing-data marker included.
     pub warning: Color,
     pub provisional: Color,
-    pub terminal_link: Color,
+    pub jumper_bar: Color,
     /// The selection colour; its 12 % fill is [`Sheet::selection_fill`].
     pub selection: Color,
     /// The placement preview's colour (the selection colour); its 8 % fill is [`Sheet::preview_fill`].
@@ -135,7 +135,7 @@ pub const PAPER: Sheet = Sheet {
     error: Color::hex(0xD7281E),
     warning: Color::hex(0xA86400),
     provisional: Color::hex(0xCF1F7A),
-    terminal_link: Color::hex(0x0A8F94),
+    jumper_bar: Color::hex(0x0A8F94),
     selection: Color::hex(0x1F6FEB),
     placement_preview: Color::hex(0x1F6FEB),
     agent_write: Color::hex(0x5F8F00),
@@ -154,7 +154,7 @@ pub const DARK: Sheet = Sheet {
     error: Color::hex(0xFF6B5E),
     warning: Color::hex(0xF2B84B),
     provisional: Color::hex(0xFF7AB8),
-    terminal_link: Color::hex(0x45CFD3),
+    jumper_bar: Color::hex(0x45CFD3),
     selection: Color::hex(0x5B9BFF),
     placement_preview: Color::hex(0x5B9BFF),
     agent_write: Color::hex(0xB9E34A),
@@ -187,7 +187,7 @@ impl Sheet {
             Meaning::Error => self.error,
             Meaning::Warning | Meaning::MissingData => self.warning,
             Meaning::Provisional => self.provisional,
-            Meaning::TerminalLink => self.terminal_link,
+            Meaning::JumperBar => self.jumper_bar,
             Meaning::Selection => self.selection,
             Meaning::PlacementPreview => self.placement_preview,
             Meaning::AgentWrite => self.agent_write,

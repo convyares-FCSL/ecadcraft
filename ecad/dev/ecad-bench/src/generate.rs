@@ -28,14 +28,14 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    Author, Cable, CableId, Color, ConductorId, Core, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId,
-    ItemKind, Layer, LayerId, Ledger, LengthUnit, NetId, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
-    RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId, TxKind, Wire,
-    WireId,
+    Author, Cable, CableId, Color, ConductorId, ConnectionPoint, ConnectionPointDef, ConnectionPointId, Core, Definition, DefinitionId, Device,
+    DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, Ledger, LengthUnit, NetId, Op, Page, PageId, Placement, Primitive,
+    ProjectId, ProjectSettings, Pt, Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Transaction, TxId,
+    TxKind, Wire, WireId,
 };
 
 /// The role brief 010 gives a cable reference end: its own constant, so the generated references
-/// are the ones `ecad_model::derive::cable_references` derives.
+/// are the ones `ecad_model::connectivity::derive::cable_references` derives.
 /// Seed of every ID the generator allocates.
 pub const SEED: u64 = 0x0ECA_D012;
 /// What the file header names as its writer.
@@ -96,10 +96,10 @@ impl Variant {
 }
 
 /// A net as the generator intends it: terminals and conductors, each sorted (as
-/// `ecad_model::derive::nets` reports them).
+/// `ecad_model::connectivity::derive::nets` reports them).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntendedNet {
-    pub terminals: Vec<TerminalId>,
+    pub connection_points: Vec<ConnectionPointId>,
     pub wires: Vec<WireId>,
 }
 
@@ -122,7 +122,7 @@ pub struct Generated {
     pub ledger: Ledger,
     /// Pages in order.
     pub pages: Vec<PageId>,
-    /// Nets in the order `ecad_model::derive::nets` reports them.
+    /// Nets in the order `ecad_model::connectivity::derive::nets` reports them.
     pub nets: Vec<IntendedNet>,
     pub continuations: Vec<Continuation>,
 }
@@ -153,9 +153,19 @@ fn coil() -> Definition {
         name: "Coil (bench)".into(),
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
-        terminals: vec![
-            TerminalDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
-            TerminalDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
+        connection_points: vec![
+            ConnectionPointDef {
+                key: ecad_model::PointKey::def("A1"),
+                label: Some("A1".into()),
+                at: Pt::new(0.0, 10.0),
+                accepts: Default::default(),
+            },
+            ConnectionPointDef {
+                key: ecad_model::PointKey::def("A2"),
+                label: Some("A2".into()),
+                at: Pt::new(0.0, -10.0),
+                accepts: Default::default(),
+            },
         ],
         ..Default::default()
     }
@@ -218,15 +228,16 @@ fn moved(id: ItemId, before: Item, dx: f64) -> Op {
 
 /// Wire `w` of net `net`, `order`th in it, between `ends`, named `name` (its wire number, not
 /// fixed, so renumbering reaches it), as [`wire_ops`] makes it.
-fn named_wire(net: NetId, conductor: ConductorId, order: u16, ends: [TerminalId; 2], name: &str) -> Wire {
-    let number = ecad_model::text::Text::new(name).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false });
+fn named_wire(net: NetId, conductor: ConductorId, order: u16, ends: [ConnectionPointId; 2], name: &str) -> Wire {
+    let number = ecad_model::naming::text::Text::new(name).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: false });
     let [a, b] = ends;
     Wire { number, net_order: order, ..Wire::new(net, conductor, a, b) }
 }
 
 /// The op renaming wire `w` (value `wire`, named `name`) to `<name>X` (the rename step of a wire).
 fn renamed_wire(w: WireId, wire: &Wire, name: &str) -> Op {
-    let number = ecad_model::text::Text::new(&format!("{name}X")).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false });
+    let number =
+        ecad_model::naming::text::Text::new(&format!("{name}X")).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: false });
     Op::ModifyWire { id: w, before: wire.clone(), after: Wire { number, ..wire.clone() } }
 }
 
@@ -262,7 +273,7 @@ pub fn route_ops(ids: &mut IdAllocator, page: PageId, style: &Style, vertices: V
 /// ledger's rewrite pass, so it records the wire itself, as the rewrite would have; parallel
 /// wires of one pair are kept as the bench's tiers count them. Returns the new wire and its value.
 pub fn wire_ops(
-    ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [TerminalId; 2], net: NetId, order: u16, tag: &str,
+    ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [ConnectionPointId; 2], net: NetId, order: u16, tag: &str,
 ) -> (WireId, Wire, Vec<Op>) {
     let (_, mut ops) = route_ops(ids, page, style, vertices, ends.map(RouteEnd::Point));
     let (w, conductor): (WireId, ConductorId) = (ids.fresh(), ids.fresh());
@@ -281,7 +292,7 @@ pub fn wire_ops(
 pub fn added_wire(doc: &Document, ids: &mut IdAllocator) -> Result<Vec<Op>, String> {
     let page = *doc.page_order.first().ok_or("the project has no page")?;
     let layer = doc.layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("the project has no layer 0")?;
-    let shown = ecad_model::derive::terminal_positions(doc, page);
+    let shown = ecad_model::connectivity::derive::connection_point_positions(doc, page);
     let (t1, _, p1) = *shown.first().ok_or("no terminal on the first page")?;
     let (t2, _, p2) = *shown.iter().find(|(t, _, _)| *t != t1).ok_or("fewer than two terminals on the first page")?;
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
@@ -365,7 +376,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         pages.push(page);
 
         // Components (`place`): terminals A1 and A2 of each, in placement order.
-        let mut terminals: Vec<(TerminalId, TerminalId, Pt)> = Vec::with_capacity(n);
+        let mut connection_points: Vec<(ConnectionPointId, ConnectionPointId, Pt)> = Vec::with_capacity(n);
         let mut comp_ids: Vec<DeviceId> = Vec::with_capacity(n);
         for i in 0..n {
             comp_no += 1;
@@ -377,11 +388,11 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let component = Device { definition: Some(definition), ..Device::default() }.with_tag(Some(&format!("-K{comp_no}")));
             ops.push(Op::CreateDevice { id: c, device: component });
             let mut keyed = Vec::new();
-            for td in &def.terminals {
-                let t: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal {
+            for td in &def.connection_points {
+                let t: ConnectionPointId = ids.fresh();
+                ops.push(Op::AddConnectionPoint {
                     id: t,
-                    terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    connection_point: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
                 keyed.push(t);
             }
@@ -404,7 +415,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let (Some(a1), Some(a2)) = (keyed.first().copied(), keyed.get(1).copied()) else {
                 return Err("generator: the coil has two terminals".into());
             };
-            terminals.push((a1, a2, origin));
+            connection_points.push((a1, a2, origin));
             comp_ids.push(c);
         }
 
@@ -416,7 +427,9 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             wire_no += 1;
             let pair = j % n;
             let lane = (j / n) as f64;
-            let (Some((_, from_t, from_at)), Some((to_t, _, to_at))) = (terminals.get(pair).copied(), terminals.get((pair + 1) % n).copied()) else {
+            let (Some((_, from_t, from_at)), Some((to_t, _, to_at))) =
+                (connection_points.get(pair).copied(), connection_points.get((pair + 1) % n).copied())
+            else {
                 return Err("generator: a wire's component is missing".into());
             };
             let a = Pt::new(from_at.x, from_at.y - 10.0);
@@ -442,14 +455,14 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             if wires.is_empty() {
                 continue;
             }
-            let (Some((_, from_t, _)), Some((to_t, _, _))) = (terminals.get(pair), terminals.get((pair + 1) % n)) else {
+            let (Some((_, from_t, _)), Some((to_t, _, _))) = (connection_points.get(pair), connection_points.get((pair + 1) % n)) else {
                 return Err("generator: a net's component is missing".into());
             };
             let mut ts = vec![*from_t, *to_t];
             ts.sort();
             let mut cs = wires.clone();
             cs.sort();
-            nets.push(IntendedNet { terminals: ts, wires: cs });
+            nets.push(IntendedNet { connection_points: ts, wires: cs });
         }
 
         // Cables (`cableslash`): cable `c` takes every wire of pair `c`, cores `1, 2, …`.
@@ -457,7 +470,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
         for c in 0..k {
             cable_no += 1;
             let members = pair_wires.get(c).cloned().unwrap_or_default();
-            let x = terminals.get(c).map_or(0.0, |t| t.2.x) + PITCH / 4.0;
+            let x = connection_points.get(c).map_or(0.0, |t| t.2.x) + PITCH / 4.0;
             let lowest = pair_lows.get(c).copied().unwrap_or(ROW_Y);
             let (from, to) = (Pt::new(x - 2.0, ROW_Y - 17.0), Pt::new(x + 2.0, lowest - 3.0));
             let (cable, item, rep): (CableId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());

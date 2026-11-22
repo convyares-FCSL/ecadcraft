@@ -5,7 +5,7 @@
 //! off while the previews and the settings read answer.
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::sheet::Grid;
+use ecad_model::document::sheet::Grid;
 use ecad_model::{Author, DeviceId, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 

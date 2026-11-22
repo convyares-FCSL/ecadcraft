@@ -87,19 +87,19 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
             return Err("the project has no pages".into());
         }
         let style = ecad_model::Style { layer: p.default_layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-        let cpu = ecad_engine::symbols::by_key("plccpu").ok_or("no plccpu")?;
+        let cpu = ecad_electrical::symbols::by_key("plccpu").ok_or("no plccpu")?;
         // Tags from the project's history (the project's own counter is private to it).
-        let mut high = ecad_engine::devices::TagHigh::default();
+        let mut high = ecad_electrical::devices::TagHigh::default();
         for r in 0..RACKS {
             let page = pages[(r * 3) % pages.len()];
             let mut ops = Vec::new();
             let at = |i: usize| Placement {
                 origin: Pt::new(600.0 + 40.0 * i as f64, 600.0 + 60.0 * r as f64),
-                rotation: ecad_model::units::Radians(0.0),
+                rotation: ecad_model::geometry::units::Radians(0.0),
                 mirror: false,
                 scale: 1.0,
             };
-            let plan = ecad_engine::devices::plan_place(
+            let plan = ecad_electrical::devices::plan_place(
                 &p.ledger,
                 &mut p.ids,
                 &mut high,
@@ -107,15 +107,15 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 style.clone(),
                 cpu,
                 at(0),
-                ecad_engine::devices::Target::New(None),
+                ecad_electrical::devices::Target::New(None),
             )?;
             let rack: DeviceId = plan.component;
             ops.extend(plan.ops);
             p.ledger.commit(Author::User, "bench rack", std::mem::take(&mut ops)).map_err(|e| e.to_string())?;
             for i in 0..CARDS {
                 let page = pages[(r * 3 + i / 4) % pages.len()];
-                let body = ecad_engine::symbols::by_key(BODIES[i % BODIES.len()]).ok_or("no card body")?;
-                let plan = ecad_engine::devices::plan_place(
+                let body = ecad_electrical::symbols::by_key(BODIES[i % BODIES.len()]).ok_or("no card body")?;
+                let plan = ecad_electrical::devices::plan_place(
                     &p.ledger,
                     &mut p.ids,
                     &mut high,
@@ -123,12 +123,12 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                     style.clone(),
                     body,
                     at(i + 1),
-                    ecad_engine::devices::Target::New(None),
+                    ecad_electrical::devices::Target::New(None),
                 )?;
                 let card = plan.component;
                 ops.extend(plan.ops);
                 let slot = u32::try_from(i + 1).map_err(|e| e.to_string())?;
-                ecad_engine::plc::rack::put_new_card(p.ledger.document(), &mut ops, card, rack, slot);
+                ecad_electrical::plc::rack::put_new_card(p.ledger.document(), &mut ops, card, rack, slot);
                 p.ledger.commit(Author::User, "bench card", std::mem::take(&mut ops)).map_err(|e| e.to_string())?;
             }
         }
@@ -150,21 +150,21 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
         ecad_engine::install();
         {
             let mut s = Session::empty();
-            let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+            let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
             populate(&project, &mut s)?;
             drop(project);
         }
         crate::measure::release_lock_file(&copy);
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED + 1, ecad_engine::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED + 1, ecad_engine::cables::views::Settings::none())?;
         let mut out = MeasuredPlc::default();
         let mut build = Vec::new();
         for _ in 0..runs {
             build.push(project.configure(&mut s, |p| {
-                p.outputs();
+                p.reports();
                 let doc = p.ledger.document();
                 let t = Instant::now();
-                let built = ecad_engine::plc::Plc::build(doc);
+                let built = ecad_engine::plc::draw::Plc::build(doc);
                 let took = ms(t);
                 std::hint::black_box(&built);
                 took
@@ -172,7 +172,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
         }
         out.plcbuild_ms = median(&mut build);
         let (racks, cards, first) = project.read(&mut s, |p, _| {
-            let o = p.kept_outputs();
+            let o = p.kept_reports();
             let racks = o.map_or(0, |o| o.plc.racks.len());
             let cards = o.map_or(0, |o| o.plc.cards.len());
             let first =
@@ -187,7 +187,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             let t = Instant::now();
             run(&mut s, "plcslot", json!({"card": card.hex(), "slot": 20}))?;
             moves.push(ms(t));
-            out.work = out.work.max(project.read(&mut s, |p, _| p.kept_outputs().map_or(0, |o| o.plc.last_changed.len()))?);
+            out.work = out.work.max(project.read(&mut s, |p, _| p.kept_reports().map_or(0, |o| o.plc.last_changed.len()))?);
             run(&mut s, "undo", json!({}))?;
         }
         out.slotmove_ms = median(&mut moves);
@@ -205,7 +205,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             run(&mut s, "undo", json!({}))?;
         }
         out.chfence_ms = median(&mut fences);
-        let rack = project.read(&mut s, |p, _| p.kept_outputs().and_then(|o| o.plc.racks_by_tag().first().map(|r| r.id)))?.ok_or("no rack")?;
+        let rack = project.read(&mut s, |p, _| p.kept_reports().and_then(|o| o.plc.racks_by_tag().first().map(|r| r.id)))?.ok_or("no rack")?;
         let mut styles = Vec::new();
         for _ in 0..runs {
             let t = Instant::now();
@@ -217,13 +217,13 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
         let mut lists = Vec::new();
         for _ in 0..runs {
             lists.push(project.configure(&mut s, |p| {
-                p.outputs();
+                p.reports();
                 let doc = p.ledger.document();
-                let Some(o) = p.kept_outputs() else { return (0.0, 0) };
+                let Some(o) = p.kept_reports() else { return (0.0, 0) };
                 let t = Instant::now();
-                let n: usize = ecad_engine::plc::iolist::cards_in_order(&o.plc)
+                let n: usize = ecad_electrical::plc::iolist::cards_in_order(&o.plc)
                     .into_iter()
-                    .map(|c| ecad_engine::plc::iolist::rows_of(doc, &o.plc, c).len())
+                    .map(|c| ecad_electrical::plc::iolist::rows_of(doc, &o.plc, c).len())
                     .sum();
                 (ms(t), n)
             })?);
@@ -236,12 +236,12 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             let t = Instant::now();
             run(&mut s, "plcchannel", json!({"card": card.hex(), "channel": 0, "text": format!("Bench {k}")}))?;
             project.configure(&mut s, |p| {
-                p.outputs();
+                p.reports();
                 let doc = p.ledger.document();
-                if let Some(o) = p.kept_outputs() {
+                if let Some(o) = p.kept_reports() {
                     for c in &o.plc.rows_changed {
                         if let Some(cd) = o.plc.cards.get(c) {
-                            std::hint::black_box(ecad_engine::plc::iolist::rows_of(doc, &o.plc, cd));
+                            std::hint::black_box(ecad_electrical::plc::iolist::rows_of(doc, &o.plc, cd));
                         }
                     }
                 }
@@ -289,13 +289,13 @@ fn measure_056(project: &ProjectHandle, s: &mut Session, runs: usize, out: &mut 
     let mut drives = Vec::new();
     for _ in 0..runs {
         drives.push(project.configure(s, |p| {
-            p.outputs();
+            p.reports();
             let doc = p.ledger.document();
-            let Some(o) = p.kept_outputs() else { return 0.0 };
+            let Some(o) = p.kept_reports() else { return 0.0 };
             let t = Instant::now();
-            for c in ecad_engine::plc::iolist::cards_in_order(&o.plc) {
-                for r in ecad_engine::plc::iolist::rows_of(doc, &o.plc, c) {
-                    std::hint::black_box(ecad_engine::plc::signals::drives_words(&r.targets));
+            for c in ecad_electrical::plc::iolist::cards_in_order(&o.plc) {
+                for r in ecad_electrical::plc::iolist::rows_of(doc, &o.plc, c) {
+                    std::hint::black_box(ecad_electrical::plc::signals::drives_words(&r.targets));
                 }
             }
             ms(t)
@@ -315,7 +315,7 @@ fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad
     let frames = |project: &ProjectHandle, s: &mut Session| -> Result<f64, String> {
         project.read(s, |p, _| {
             let t = Instant::now();
-            std::hint::black_box(ecad_engine::plc::look::parts_on_page(p.ledger.document(), page));
+            std::hint::black_box(ecad_engine::plc::draw::card::parts_on_page(p.ledger.document(), page));
             ms(t)
         })
     };
@@ -328,7 +328,7 @@ fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad
     for k in 0..runs {
         let t = Instant::now();
         run(s, "plcchannel", json!({"card": card.hex(), "channel": 1, "text": format!("Frame {k}")}))?;
-        project.read(s, |p, _| std::hint::black_box(ecad_engine::plc::look::parts_on_page(p.ledger.document(), page)))?;
+        project.read(s, |p, _| std::hint::black_box(ecad_engine::plc::draw::card::parts_on_page(p.ledger.document(), page)))?;
         upd.push(ms(t));
         run(s, "undo", json!({}))?;
     }
@@ -336,12 +336,12 @@ fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad
     let mut strip = Vec::new();
     for _ in 0..runs {
         strip.push(project.configure(s, |p| {
-            p.outputs();
+            p.reports();
             let doc = p.ledger.document();
-            let Some(o) = p.kept_outputs() else { return 0.0 };
+            let Some(o) = p.kept_reports() else { return 0.0 };
             let Some(r) = o.plc.racks.get(&rack) else { return 0.0 };
             let t = Instant::now();
-            std::hint::black_box(ecad_engine::plc::overview::rack_tiles(doc, &o.plc, r));
+            std::hint::black_box(ecad_electrical::plc::overview::rack_tiles(doc, &o.plc, r));
             ms(t)
         })?);
     }
@@ -351,10 +351,10 @@ fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad
     let mut rack_sheet = Vec::new();
     for _ in 0..runs {
         rack_sheet.push(project.configure(s, |p| {
-            p.outputs();
+            p.reports();
             let doc = p.ledger.document();
             let t = Instant::now();
-            std::hint::black_box(ecad_engine::generated::parts_of(doc, sheet, p.kept_outputs()));
+            std::hint::black_box(ecad_engine::pages::generated::parts_of(doc, sheet, p.kept_reports()));
             ms(t)
         })?);
     }

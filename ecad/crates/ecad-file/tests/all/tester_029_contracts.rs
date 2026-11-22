@@ -596,10 +596,10 @@ mod fp1 {
     use super::*;
     use crate::tag_rule_contracts::rule_1;
     use ecad_file::chunks::{META_KEY, ModelMeta};
-    use ecad_model::tag::{HighWater, TAG_RULE};
+    use ecad_model::naming::tag::{HighWater, TAG_RULE};
 
     fn cable(tag: &str) -> Cable {
-        let mut properties = ecad_model::doc::Properties::new();
+        let mut properties = ecad_model::document::doc::Properties::new();
         properties.insert("tag".into(), tag.into());
         Cable { properties, cores: Vec::new(), ..Default::default() }
     }

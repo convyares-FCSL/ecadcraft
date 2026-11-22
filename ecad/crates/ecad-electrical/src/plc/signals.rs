@@ -23,11 +23,11 @@ use std::collections::BTreeSet;
 use ecad_model::{DeviceId, Document, Op};
 use serde_json::{Value, json};
 
-use super::channels::first_number;
-use super::iolist::Target;
-use super::rack::{self, CardType, RackRef};
 use crate::defaults::plc::SafeState;
 use crate::defaults::{self, Scope};
+use crate::plc::channels::first_number;
+use crate::plc::iolist::Target;
+use crate::plc::rack::{self, CardType, RackRef};
 
 /// The field names of a channel's tag and safe state (`plc.ch.<i>.tag`, `plc.ch.<i>.safe`).
 pub const TAG: &str = "tag";
@@ -169,10 +169,10 @@ pub fn tag_holder(doc: &Document, c: DeviceId, i: u32, tag: &str) -> Option<(Dev
 /// `Tag "Valve_Inlet" is already -A03 channel 2 (%Q2.2).`
 pub fn duplicate_words(doc: &Document, tag: &str, holder: (DeviceId, u32)) -> String {
     let (c, j) = holder;
-    let (auto, _) = super::address::of_channel(doc, c, j, None, &mut std::collections::BTreeMap::new());
-    let (addr, _) = super::address::shown(doc, c, j, auto);
+    let (auto, _) = crate::plc::address::of_channel(doc, c, j, None, &mut std::collections::BTreeMap::new());
+    let (addr, _) = crate::plc::address::shown(doc, c, j, auto);
     let at = addr.map(|a| format!(" ({a})")).unwrap_or_default();
-    format!("Tag \"{tag}\" is already {}{at}.", super::channels::channel_words(doc, c, j))
+    format!("Tag \"{tag}\" is already {}{at}.", crate::plc::channels::channel_words(doc, c, j))
 }
 
 /// A tag made from a description (design 056 §4.3): spaces and dashes become `_`, other characters
@@ -216,7 +216,7 @@ pub fn unique_tag(base: &str, taken: &BTreeSet<String>) -> String {
 /// Whether device `c` passes a conductor through (a terminal or a connector half): it is not what a
 /// channel drives.
 pub fn is_pass_through(doc: &Document, c: DeviceId) -> bool {
-    let kind_of = |s: &crate::symbols::Starter| matches!(s.kind, crate::symbols::Kind::Terminal | crate::symbols::Kind::ConnectorHalf { .. });
+    let kind_of = |s: &crate::symbols::Starter| matches!(s.kind, crate::symbols::Kind::TerminalBlock | crate::symbols::Kind::ConnectorHalf { .. });
     if let Some(s) = doc.devices.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).and_then(crate::symbols::of_definition) {
         return kind_of(s);
     }
@@ -293,7 +293,7 @@ pub fn make_tags_ops(doc: &Document, cards: &[DeviceId]) -> (Vec<Op>, Vec<(Devic
     for c in cards {
         let plc = plc_of(doc, *c);
         let taken = taken_by_plc.entry(plc).or_insert_with(|| tags_of_plc(doc, plc).into_iter().map(|(_, _, t)| name_key(&t)).collect());
-        let chans = super::channel_data(doc, *c);
+        let chans = crate::plc::channel_data(doc, *c);
         let mut n = 0;
         for (i, ch) in &chans {
             if made >= MAX_MADE {
@@ -305,7 +305,7 @@ pub fn make_tags_ops(doc: &Document, cards: &[DeviceId]) -> (Vec<Op>, Vec<(Devic
             let Some(base) = ch.text.as_deref().and_then(make_tag) else { continue };
             let t = unique_tag(&base, taken);
             taken.insert(name_key(&t));
-            if super::channels::set_field(doc, &mut ops, *c, *i, TAG, Some(&t)).is_err() {
+            if crate::plc::channels::set_field(doc, &mut ops, *c, *i, TAG, Some(&t)).is_err() {
                 continue;
             }
             n += 1;

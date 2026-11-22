@@ -12,7 +12,7 @@ use cadcraft_engine::doc::Handle;
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use ecad_engine::{Mapped, ProjectHandle};
-use ecad_model::derive::terminal_positions;
+use ecad_model::connectivity::derive::connection_point_positions;
 use ecad_model::{DeviceId, Document, PageId, Subject};
 
 fn page_items(doc: &Document, page: PageId) -> BTreeMap<String, String> {
@@ -54,7 +54,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
         return;
     };
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     // Work on a copy, so the kept project is left as it is.
     let dir = std::env::temp_dir().join(format!("ecad-014-probe-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -62,7 +62,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
     std::fs::copy(&path, &copy).unwrap();
     let mut s = Session::empty();
     s.viewport_px = (1280.0, 800.0);
-    let (project, _) = ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_engine::views::Settings::none()).unwrap();
+    let (project, _) = ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_engine::cables::views::Settings::none()).unwrap();
 
     // Components on page 1 with at least one wire attached, with their symbol handle and the
     // position of their first terminal.
@@ -71,7 +71,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
             let doc = p.ledger.document();
             let page = *doc.page_order.first().unwrap();
             let map = &p.pages[&page].map;
-            let pos = terminal_positions(doc, page);
+            let pos = connection_point_positions(doc, page);
             let mut picks: Vec<(Handle, DeviceId, [f64; 2], usize)> = Vec::new();
             for e in pg.entities_of(p, page) {
                 let Some(Mapped::Item(item)) = map.get(e.handle) else { continue };
@@ -80,7 +80,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
                 if r.items.first() != Some(&item) {
                     continue;
                 }
-                let terms: Vec<_> = pos.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.device() == Some(c))).collect();
+                let terms: Vec<_> = pos.iter().filter(|(t, _, _)| doc.connection_points.get(t).is_some_and(|x| x.device() == Some(c))).collect();
                 let wired: usize = terms.iter().map(|(t, _, _)| doc.ends_at(*t).len()).sum();
                 if wired == 0 {
                     continue;
@@ -144,9 +144,9 @@ fn move_components_with_wires_on_the_kept_small_project() {
                     writeln!(text, "conductor {id} ends {:?} -> {e}", eb.get(id)).unwrap();
                 }
             }
-            let moved_terms: Vec<_> = terminal_positions(&after, page)
+            let moved_terms: Vec<_> = connection_point_positions(&after, page)
                 .into_iter()
-                .filter(|x| !terminal_positions(&before, page).contains(x))
+                .filter(|x| !connection_point_positions(&before, page).contains(x))
                 .map(|(t, _, p)| format!("{t:?}@({:.3},{:.3})", p.x, p.y))
                 .collect();
             writeln!(text, "terminals at new positions: {moved_terms:?}").unwrap();
@@ -163,9 +163,9 @@ fn move_components_with_wires_on_the_kept_small_project() {
     let terms: Vec<[f64; 2]> = project
         .read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            terminal_positions(doc, page)
+            connection_point_positions(doc, page)
                 .into_iter()
-                .filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.device() == Some(first)))
+                .filter(|(t, _, _)| doc.connection_points.get(t).is_some_and(|x| x.device() == Some(first)))
                 .map(|(_, _, p)| [p.x, p.y])
                 .collect()
         })
@@ -218,7 +218,8 @@ fn move_components_with_wires_on_the_kept_small_project() {
                 let Some((_, r)) = doc.representation_of_item(item) else { continue };
                 let Subject::Route(c) = r.subject else { continue };
                 let Some(route) = doc.routes.get(&c) else { continue };
-                let attached = route.ends.iter().filter_map(|e| e.point()).any(|t| doc.terminals.get(&t).is_some_and(|x| x.device() == Some(first)));
+                let attached =
+                    route.ends.iter().filter_map(|e| e.point()).any(|t| doc.connection_points.get(&t).is_some_and(|x| x.device() == Some(first)));
                 if !attached {
                     continue;
                 }
@@ -233,7 +234,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
         })
         .unwrap();
     assert!(routes.len() >= 3, "too few routes at {first:?}");
-    let other_terminal = picks.last().unwrap().2;
+    let other_connection_point = picks.last().unwrap().2;
     let mut grips: Vec<(String, Handle, usize, [f64; 2])> = Vec::new();
     // Polyline grips are interleaved: vertex i is grip 2i, the midpoint of segment i is grip 2i+1.
     for (h, v) in routes.iter().take(4) {
@@ -244,9 +245,9 @@ fn move_components_with_wires_on_the_kept_small_project() {
     }
     let (h, v) = &routes[0];
     let last = v.len() - 1;
-    grips.push((format!("M3 end {last} of {} onto a terminal", h.hex()), *h, 2 * last, other_terminal));
+    grips.push((format!("M3 end {last} of {} onto a terminal", h.hex()), *h, 2 * last, other_connection_point));
     grips.push((format!("M3 end {last} of {} into free space", h.hex()), *h, 2 * last, [v[last].x + 3.0, v[last].y - 9.0]));
-    grips.push((format!("M3 end 0 of {} onto a terminal", h.hex()), *h, 0, other_terminal));
+    grips.push((format!("M3 end 0 of {} onto a terminal", h.hex()), *h, 0, other_connection_point));
     grips.push((format!("M3 end 0 of {} into free space", h.hex()), *h, 0, [v[0].x - 7.5, v[0].y + 2.5]));
     for (name, h, index, to) in grips {
         let before = doc_of(&project, &mut s);

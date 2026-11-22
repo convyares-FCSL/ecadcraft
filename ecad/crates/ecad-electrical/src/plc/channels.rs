@@ -2,7 +2,7 @@
 //! and the rest) and `plcchannel`.
 //!
 //! # Semantics
-//! - A channel point is a `Terminal` of the card: its **label is the pin** (what is printed and
+//! - A channel point is a `ConnectionPoint` of the card: its **label is the pin** (what is printed and
 //!   typed after the tag, `-A02:4`), its **key is `.<i>.<role>`** (the 0-based channel index and
 //!   the role, FP2). The channel number shown is `i + plc.channel.first`, so changing the first
 //!   number never rewrites a terminal.
@@ -16,17 +16,17 @@
 
 use crate::CmdError;
 use ecad_model::Word;
-use ecad_model::units::Radians;
+use ecad_model::geometry::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    ChannelRole, DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, PointKey, Pt, Representation,
-    RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
+    ChannelRole, ConnectionPoint, ConnectionPointId, DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId,
+    Placement, PointKey, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance,
 };
 
-use super::card_type_of;
-use super::rack::{CardType, MAX_CHANNELS, channel_count};
 use crate::defaults::{self, Scope};
+use crate::plc::card_type_of;
+use crate::plc::rack::{CardType, MAX_CHANNELS, channel_count};
 use crate::symbols::{Kind, Starter};
 
 /// The property prefix of a channel's own data (`plc.ch.<i>.text`, `plc.ch.<i>.address`; FP3).
@@ -49,15 +49,15 @@ pub fn key(i: u32, role: ChannelRole) -> Option<PointKey> {
 }
 
 /// The channel and role of terminal `t` of a card; `None` for a point that is not a channel's.
-pub fn point_of(doc: &Document, t: TerminalId) -> Option<(u32, ChannelRole)> {
-    let (i, role) = doc.terminals.get(&t)?.key.as_ref()?.channel()?;
+pub fn point_of(doc: &Document, t: ConnectionPointId) -> Option<(u32, ChannelRole)> {
+    let (i, role) = doc.connection_points.get(&t)?.key.as_ref()?.channel()?;
     Some((u32::from(i), role))
 }
 
 /// The channel points of card `c`: index → (role, terminal, pin), roles in their cell order.
-pub fn points(doc: &Document, c: DeviceId) -> BTreeMap<u32, Vec<(ChannelRole, TerminalId, String)>> {
-    let mut out: BTreeMap<u32, Vec<(ChannelRole, TerminalId, String)>> = BTreeMap::new();
-    for (t, term) in doc.terminals_of(c) {
+pub fn points(doc: &Document, c: DeviceId) -> BTreeMap<u32, Vec<(ChannelRole, ConnectionPointId, String)>> {
+    let mut out: BTreeMap<u32, Vec<(ChannelRole, ConnectionPointId, String)>> = BTreeMap::new();
+    for (t, term) in doc.connection_points_of(c) {
         if let Some((i, role)) = point_of(doc, t) {
             out.entry(i).or_default().push((role, t, term.label.clone().unwrap_or_default()));
         }
@@ -80,7 +80,7 @@ pub fn cell_type(s: &Starter) -> Option<CardType> {
 pub fn roles_of(s: &Starter) -> Vec<ChannelRole> {
     let Some(t) = cell_type(s) else { return Vec::new() };
     let Ok(def) = s.definition() else { return Vec::new() };
-    def.terminals.iter().filter_map(|td| td.key.role()).filter(|r| t.roles().contains(r)).collect()
+    def.connection_points.iter().filter_map(|td| td.key.role()).filter(|r| t.roles().contains(r)).collect()
 }
 
 /// `chdi`, `di` for a DI card: the symbols that draw its channels.
@@ -101,12 +101,12 @@ pub fn first_number(doc: &Document, c: DeviceId) -> u32 {
 }
 
 /// Where channel `i` of card `c` is drawn, in words (`105-C-2`, or `page 3`).
-fn drawn_words(doc: &Document, t: TerminalId) -> String {
+fn drawn_words(doc: &Document, t: ConnectionPointId) -> String {
     let Some((_, r)) = doc.representations_showing(t).next() else { return "no page".into() };
     let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin);
-    match at.and_then(|a| ecad_model::wiring::place(doc, r.page, a)) {
+    match at.and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a)) {
         Some(p) => p.text(doc.settings.reference_style()),
-        None => crate::references::page_number_words(doc, r.page),
+        None => crate::references::cables::page_number_words(doc, r.page),
     }
 }
 
@@ -214,7 +214,7 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
 #[derive(Debug, Clone)]
 pub struct Cell {
     pub index: u32,
-    pub terminals: Vec<(ChannelRole, TerminalId, String, Pt)>,
+    pub connection_points: Vec<(ChannelRole, ConnectionPointId, String, Pt)>,
     pub representation: RepresentationId,
     pub item: ItemId,
 }
@@ -228,19 +228,19 @@ pub fn plan_cell(
     ops: &mut Vec<Op>,
 ) -> Result<Cell, CmdError> {
     let def = s.definition()?;
-    let mut terminals = Vec::new();
+    let mut connection_points = Vec::new();
     let mut cps = BTreeMap::new();
     for (role, pin) in &j.pins {
         let at = def
-            .terminals
+            .connection_points
             .iter()
             .find(|td| td.key.role() == Some(*role))
             .map(|td| td.at)
             .ok_or(CmdError::refused("The channel symbol has no point for that role."))?;
-        let t: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal {
+        let t: ConnectionPointId = ids.fresh();
+        ops.push(Op::AddConnectionPoint {
             id: t,
-            terminal: Terminal {
+            connection_point: ConnectionPoint {
                 owner: card.into(),
                 label: Some(pin.clone()),
                 key: Some(key(j.index, *role).ok_or(CmdError::refused("That channel has no such point."))?),
@@ -248,7 +248,7 @@ pub fn plan_cell(
             },
         });
         cps.insert(t, at);
-        terminals.push((*role, t, pin.clone(), at));
+        connection_points.push((*role, t, pin.clone(), at));
     }
     let (item, representation): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def_id, placement }) } });
@@ -263,7 +263,7 @@ pub fn plan_cell(
             connection_points: cps,
         },
     });
-    Ok(Cell { index: j.index, terminals, representation, item })
+    Ok(Cell { index: j.index, connection_points, representation, item })
 }
 
 /// A new card device for channel symbols of type `t` (design 045 §4.4 rule 2): prefix `A`, the
@@ -285,7 +285,7 @@ pub fn new_card_ops(
             tag: Some(crate::devices::stored_tag(&tag)?),
             description: crate::devices::description_of(name),
             definition: Some(def),
-            device_type: super::types::new_type(doc, &s.device_type()),
+            device_type: crate::plc::types::new_type(doc, &s.device_type()),
             ..ecad_model::Device::default()
         },
     });
@@ -316,7 +316,7 @@ pub const SNAP_TO_LINE: f64 = 2.0 * crate::symbols::CELL_TOP;
 /// The world point of a cell's first point at `pl`.
 pub fn first_point(s: &Starter, pl: &Placement) -> Option<Pt> {
     let def = s.definition().ok()?;
-    def.terminals.first().map(|td| pl.apply(td.at))
+    def.connection_points.first().map(|td| pl.apply(td.at))
 }
 
 /// One cell the fence lands: its rotation (radians) and which of its points lands on which crossed
@@ -324,11 +324,11 @@ pub fn first_point(s: &Starter, pl: &Placement) -> Option<Pt> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Landing {
     pub rotation: Radians,
-    pub points: Vec<(ChannelRole, crate::slash::Crossing)>,
+    pub points: Vec<(ChannelRole, crate::cables::slash::Crossing)>,
 }
 
 /// The local place of point `role` in a channel symbol's definition terminals.
-pub fn role_at(terms: &[ecad_model::TerminalDef], role: ChannelRole) -> Option<Pt> {
+pub fn role_at(terms: &[ecad_model::ConnectionPointDef], role: ChannelRole) -> Option<Pt> {
     terms.iter().find(|td| td.key.role() == Some(role)).map(|td| td.at)
 }
 
@@ -358,7 +358,7 @@ pub fn landing_role(s: &Starter) -> Option<ChannelRole> {
 /// Whether the wire crossed at `m` runs mostly down from the crossing (pack re-run, bug 8): its
 /// route reaches further below than above. A cell on such a wire is turned 180°, its frame and
 /// texts above its points and clear of the wire, as Make Card Page draws outputs.
-fn runs_down(doc: &Document, m: &crate::slash::Crossing) -> bool {
+fn runs_down(doc: &Document, m: &crate::cables::slash::Crossing) -> bool {
     let Some(v) = doc.routes.get(&m.route).map(|r| &r.points) else { return false };
     let up = v.iter().map(|p| p.y - m.at.y).fold(0.0, f64::max);
     let down = v.iter().map(|p| m.at.y - p.y).fold(0.0, f64::max);
@@ -373,16 +373,16 @@ const POINT_MATCH: f64 = 0.5;
 /// its point count spaced as its points are (pack re-run, bug 6); otherwise, or when `role` names
 /// one point, one cell per wire with that point (else [`landing_role`]) on it. Each cell is turned
 /// 180° when its first wire runs down (`runs_down`).
-pub fn landings(doc: &Document, s: &Starter, members: &[crate::slash::Crossing], role: Option<ChannelRole>) -> Vec<Landing> {
+pub fn landings(doc: &Document, s: &Starter, members: &[crate::cables::slash::Crossing], role: Option<ChannelRole>) -> Vec<Landing> {
     let roles = roles_of(s);
-    let terms = s.definition().map(|d| d.terminals.clone()).unwrap_or_default();
-    let rotation = |m: &crate::slash::Crossing| if runs_down(doc, m) { Radians(std::f64::consts::PI) } else { Radians(0.0) };
+    let terms = s.definition().map(|d| d.connection_points.clone()).unwrap_or_default();
+    let rotation = |m: &crate::cables::slash::Crossing| if runs_down(doc, m) { Radians(std::f64::consts::PI) } else { Radians(0.0) };
     let n = roles.len();
     if role.is_none() && n > 1 && members.len().is_multiple_of(n) {
         let groups: Option<Vec<Landing>> = members
             .chunks(n)
             .map(|chunk| {
-                let mut chunk: Vec<crate::slash::Crossing> = chunk.to_vec();
+                let mut chunk: Vec<crate::cables::slash::Crossing> = chunk.to_vec();
                 chunk.sort_by(|a, b| a.at.x.total_cmp(&b.at.x));
                 let first = *chunk.first()?;
                 let rot = rotation(&first);
@@ -416,7 +416,7 @@ pub fn landings(doc: &Document, s: &Starter, members: &[crate::slash::Crossing],
 ///
 /// # Errors
 /// As [`crate::connectors::plan_land`].
-pub fn land_cell(doc: &Document, ids: &mut IdAllocator, on: crate::wires::OnRoute, t: TerminalId) -> Result<Vec<Op>, CmdError> {
+pub fn land_cell(doc: &Document, ids: &mut IdAllocator, on: crate::wires::OnRoute, t: ConnectionPointId) -> Result<Vec<Op>, CmdError> {
     let route = doc.routes.get(&on.route).ok_or(CmdError::NotFound(ecad_model::Noun::Wire))?;
     let (a_free, b_free) = (route.ends[0] == ecad_model::RouteEnd::Free, route.ends[1] == ecad_model::RouteEnd::Free);
     if a_free == b_free || doc.tees_of(on.route).next().is_some() {
@@ -452,12 +452,12 @@ pub fn ch_key(i: u32, what: &str) -> String {
 pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
     let rest = k.strip_prefix(CH_PREFIX)?;
     let (i, what) = rest.split_once('.')?;
-    if i.len() > 4 || !ecad_model::words::is_digits(i) {
+    if i.len() > 4 || !ecad_model::naming::words::is_digits(i) {
         return None;
     }
     let i: u32 = i.parse().ok().filter(|n| *n <= MAX_INDEX)?;
     // Brief 056 (FP1): a channel's PLC tag and safe state.
-    let what = ["text", "address", super::signals::TAG, super::signals::SAFE].into_iter().find(|w| *w == what)?;
+    let what = ["text", "address", crate::plc::signals::TAG, crate::plc::signals::SAFE].into_iter().find(|w| *w == what)?;
     Some((i, what))
 }
 
@@ -467,8 +467,8 @@ pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
 /// Too long, or a control character.
 pub fn ch_value(what: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     match what {
-        super::signals::TAG => return super::signals::tag_value(value),
-        super::signals::SAFE => return super::signals::safe_value(None, value),
+        crate::plc::signals::TAG => return crate::plc::signals::tag_value(value),
+        crate::plc::signals::SAFE => return crate::plc::signals::safe_value(None, value),
         _ => {}
     }
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
@@ -482,12 +482,12 @@ pub fn ch_value(what: &str, value: Option<&str>) -> Result<Option<String>, CmdEr
 
 /// Field `what` (`text`, `address`, `tag` or `safe`) of channel `i` of module `c`, as text.
 pub fn field(doc: &Document, c: DeviceId, i: u32, what: &str) -> Option<String> {
-    let ch = super::edit::module_of(doc, c)?.channel(i)?;
+    let ch = crate::plc::edit::module_of(doc, c)?.channel(i)?;
     match what {
         "text" => ch.text.as_ref().map(ToString::to_string),
         "address" => ch.address.as_ref().map(ToString::to_string),
-        super::signals::TAG => ch.tag.as_ref().map(ToString::to_string),
-        super::signals::SAFE => ch.safe.as_ref().map(ToString::to_string),
+        crate::plc::signals::TAG => ch.tag.as_ref().map(ToString::to_string),
+        crate::plc::signals::SAFE => ch.safe.as_ref().map(ToString::to_string),
         _ => None,
     }
 }
@@ -499,22 +499,22 @@ pub fn field(doc: &Document, c: DeviceId, i: u32, what: &str) -> Option<String> 
 /// # Errors
 /// `c` is not a module with channels; a value with a hidden character.
 pub fn set_field(doc: &Document, ops: &mut Vec<Op>, c: DeviceId, i: u32, what: &str, value: Option<&str>) -> Result<(), CmdError> {
-    use ecad_model::plc::SafeState;
-    let refused = |e: ecad_model::text::TextError| CmdError::refused(format!("{e}."));
-    let mut field: Box<dyn FnMut(&mut ecad_model::plc::Channel)> = match what {
+    use ecad_model::objects::plc::SafeState;
+    let refused = |e: ecad_model::naming::text::TextError| CmdError::refused(format!("{e}."));
+    let mut field: Box<dyn FnMut(&mut ecad_model::objects::plc::Channel)> = match what {
         "text" => {
-            let v = value.map(ecad_model::plc::ChannelText::new).transpose().map_err(refused)?;
+            let v = value.map(ecad_model::objects::plc::ChannelText::new).transpose().map_err(refused)?;
             Box::new(move |ch| ch.text = v.clone())
         }
         "address" => {
-            let v = value.map(ecad_model::plc::ChannelAddress::new).transpose().map_err(refused)?;
+            let v = value.map(ecad_model::objects::plc::ChannelAddress::new).transpose().map_err(refused)?;
             Box::new(move |ch| ch.address = v.clone())
         }
-        super::signals::TAG => {
-            let v = value.map(ecad_model::plc::PlcTag::new).transpose().map_err(refused)?;
+        crate::plc::signals::TAG => {
+            let v = value.map(ecad_model::objects::plc::PlcTag::new).transpose().map_err(refused)?;
             Box::new(move |ch| ch.tag = v.clone())
         }
-        super::signals::SAFE => {
+        crate::plc::signals::SAFE => {
             let v = match value {
                 None => None,
                 Some(t) => Some(SafeState::parse(t).ok_or_else(|| CmdError::refused(format!("{t} is not a safe state.")))?),
@@ -524,7 +524,7 @@ pub fn set_field(doc: &Document, ops: &mut Vec<Op>, c: DeviceId, i: u32, what: &
         _ => return Err(CmdError::input("a channel has text, address, tag and safe")),
     };
     let mut fits = true;
-    let module = super::edit::module(doc, ops, c, |m| fits = m.edit_channel(i, &mut *field));
+    let module = crate::plc::edit::module(doc, ops, c, |m| fits = m.edit_channel(i, &mut *field));
     if module && fits { Ok(()) } else { Err(CmdError::refused(format!("{} has no channels.", crate::devices::tag_words(doc, c)))) }
 }
 
@@ -541,7 +541,7 @@ pub fn channel_words(doc: &Document, c: DeviceId, i: u32) -> String {
 /// The fence's refusal when two crossed wires are closer than a cell is wide (brief 051, design
 /// 051 §2.2): `Wires 24V-12 and 24V-13 are 10 mm apart; a DI cell is 20 mm wide. Space the wires
 /// 20 mm apart, or place compact di symbols.` Wires exactly one width apart give abutting cells.
-pub fn spacing_refusal(doc: &Document, s: &Starter, t: CardType, members: &[crate::slash::Crossing]) -> Option<String> {
+pub fn spacing_refusal(doc: &Document, s: &Starter, t: CardType, members: &[crate::cables::slash::Crossing]) -> Option<String> {
     let (w, _) = crate::symbols::cell_shape(s.key)?;
     let mut at: Vec<(f64, f64, ecad_model::CorePosition)> = members.iter().map(|m| (m.at.x, m.at.y, m.position)).collect();
     at.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
@@ -576,7 +576,7 @@ fn fmt_mm(v: f64) -> String {
 
 /// A wire in a sentence that already says "Wires": its number, without a leading `wire `.
 fn wire_words(doc: &Document, c: ecad_model::CorePosition) -> String {
-    let n = crate::slash::position_name(doc, c);
+    let n = crate::cables::slash::position_name(doc, c);
     n.strip_prefix("wire ").map(str::to_string).unwrap_or(n)
 }
 

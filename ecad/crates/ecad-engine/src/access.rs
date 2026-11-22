@@ -135,21 +135,21 @@ impl ProjectHandle {
     /// A JSON inspection snapshot (live when `at` is `None`).
     ///
     /// # Errors
-    /// [`BUSY`] or see [`ecad_inspect::snapshot`].
+    /// [`BUSY`] or see [`crate::dev::snapshot::snapshot`].
     pub fn snapshot(&self, s: &mut Session, at: Option<u64>) -> Result<Value, String> {
         self.lock(s)?.snapshot(&PagesRef(s), at)
     }
 
     /// A debugger snapshot, unless `known` is still current (`Ok(None)`): everything the panel
     /// shows, copied under one short lock; `have` is the end of the caller's copy of the history
-    /// (see [`crate::debug`]).
+    /// (see [`crate::dev::debug`]).
     ///
     /// # Errors
     /// [`BUSY`] or [`NOT_ATTACHED`], as for [`ProjectHandle::read`]. A busy project is never
     /// waited for: the caller keeps its previous snapshot.
     pub fn debug_snapshot(
-        &self, s: &mut Session, known: Option<&crate::debug::SnapshotKey>, have: crate::debug::TxCursor,
-    ) -> Result<Option<crate::debug::DebugSnapshot>, String> {
+        &self, s: &mut Session, known: Option<&crate::dev::debug::SnapshotKey>, have: crate::dev::debug::TxCursor,
+    ) -> Result<Option<crate::dev::debug::DebugSnapshot>, String> {
         let p = self.lock(s)?;
         let pg = PagesRef(s);
         let key = p.debug_key(&pg);
@@ -160,11 +160,11 @@ impl ProjectHandle {
     }
 
     /// Copies of the document and of every open page's drawing and handle map, for
-    /// [`crate::debug::verify_projection`] (which then runs with the project unlocked).
+    /// [`crate::dev::debug::verify_projection`] (which then runs with the project unlocked).
     ///
     /// # Errors
     /// [`BUSY`] or [`NOT_ATTACHED`].
-    pub fn debug_projection_inputs(&self, s: &mut Session) -> Result<crate::debug::ProjectionInputs, String> {
+    pub fn debug_projection_inputs(&self, s: &mut Session) -> Result<crate::dev::debug::ProjectionInputs, String> {
         let p = self.lock(s)?;
         Ok(p.projection_inputs(&PagesRef(s)))
     }
@@ -191,7 +191,7 @@ impl ProjectHandle {
     ///
     /// # Errors
     /// As [`ProjectHandle::open_file`].
-    pub fn open_file_in(s: &mut Session, path: &str, seed: u64, settings: crate::views::Settings) -> Result<(Self, String), String> {
+    pub fn open_file_in(s: &mut Session, path: &str, seed: u64, settings: crate::cables::views::Settings) -> Result<(Self, String), String> {
         Project::open_file_in(s, path, seed, settings)
     }
 
@@ -201,7 +201,7 @@ impl ProjectHandle {
     /// # Errors
     /// As [`ProjectHandle::open_file`].
     pub fn open_file_read_only(s: &mut Session, path: &str, seed: u64) -> Result<(Self, String), String> {
-        Project::open_file_with(s, path, seed, crate::views::Settings::from_env(), true)
+        Project::open_file_with(s, path, seed, crate::cables::views::Settings::from_env(), true)
     }
 }
 
@@ -284,14 +284,14 @@ impl PagesRef<'_> {
     /// [`PagesRef::frame_entities_of`]).
     pub fn entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
         self.drawing_of(p, page)
-            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer != crate::frame::LAYER).cloned().collect()))
+            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer != crate::pages::frame::LAYER).cloned().collect()))
             .unwrap_or_default()
     }
 
     /// The sheet frame's entities of `page`'s drawing (brief 019).
     pub fn frame_entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
         self.drawing_of(p, page)
-            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer == crate::frame::LAYER).cloned().collect()))
+            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer == crate::pages::frame::LAYER).cloned().collect()))
             .unwrap_or_default()
     }
 

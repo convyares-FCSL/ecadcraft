@@ -271,7 +271,7 @@ pub struct VersionRecord {
     /// A merge index row's facts (kind `merge` only, FQ2).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub merge: Option<MergeRow>,
-    /// The rule ([`ecad_model::tag::TAG_RULE`]) this snapshot's `model:meta` tag marks were
+    /// The rule ([`ecad_model::naming::tag::TAG_RULE`]) this snapshot's `model:meta` tag marks were
     /// computed with (brief 029, FP1). Absent in snapshots written before it: rule 1. Marks of an
     /// older rule are recomputed from the history on open. Here, not in `model:meta` (which
     /// refuses unknown fields), so builds before it still open files that carry it.
@@ -288,7 +288,7 @@ impl VersionRecord {
     /// Whether its cached tag marks can be used as they are: computed with this build's rule (or
     /// a newer one, which counts at least as much).
     pub fn tag_marks_current(&self) -> bool {
-        self.tag_rule() >= ecad_model::tag::TAG_RULE
+        self.tag_rule() >= ecad_model::naming::tag::TAG_RULE
     }
 }
 

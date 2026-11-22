@@ -21,7 +21,7 @@ pub struct Fixture {
     pub c1: DeviceId,
     pub c2: DeviceId,
     pub c3: DeviceId,
-    pub t: Vec<TerminalId>,
+    pub t: Vec<ConnectionPointId>,
     pub time: u64,
 }
 
@@ -38,9 +38,9 @@ pub fn coil(graphics_scale: f64) -> Definition {
             Primitive::Polyline { vertices: vec![Pt::new(-5.0, -10.0), Pt::new(5.0, -10.0), Pt::new(5.0, 10.0), Pt::new(-5.0, 10.0)], closed: true },
             Primitive::Circle { center: Pt::new(0.0, 0.0), radius: graphics_scale },
         ],
-        terminals: vec![
-            TerminalDef { key: "A1".parse().unwrap(), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
-            TerminalDef { key: "A2".parse().unwrap(), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
+        connection_points: vec![
+            ConnectionPointDef { key: "A1".parse().unwrap(), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            ConnectionPointDef { key: "A2".parse().unwrap(), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }
@@ -60,18 +60,28 @@ impl Fixture {
     }
 
     /// Place an instance of `def` as component with two terminals; returns (component, terminals).
-    pub fn place(&mut self, def: DefinitionId, at: Pt, rotation: f64) -> (DeviceId, [TerminalId; 2]) {
-        let (c, t1, t2, item, rep): (DeviceId, TerminalId, TerminalId, ItemId, RepresentationId) =
+    pub fn place(&mut self, def: DefinitionId, at: Pt, rotation: f64) -> (DeviceId, [ConnectionPointId; 2]) {
+        let (c, t1, t2, item, rep): (DeviceId, ConnectionPointId, ConnectionPointId, ItemId, RepresentationId) =
             (self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh());
         let ops = vec![
             Op::CreateDevice { id: c, device: Device { definition: Some(def), ..Device::default() } },
-            Op::AddTerminal {
+            Op::AddConnectionPoint {
                 id: t1,
-                terminal: Terminal { owner: c.into(), label: Some("A1".into()), key: Some("A1".parse().unwrap()), accepts: Default::default() },
+                connection_point: ConnectionPoint {
+                    owner: c.into(),
+                    label: Some("A1".into()),
+                    key: Some("A1".parse().unwrap()),
+                    accepts: Default::default(),
+                },
             },
-            Op::AddTerminal {
+            Op::AddConnectionPoint {
                 id: t2,
-                terminal: Terminal { owner: c.into(), label: Some("A2".into()), key: Some("A2".parse().unwrap()), accepts: Default::default() },
+                connection_point: ConnectionPoint {
+                    owner: c.into(),
+                    label: Some("A2".into()),
+                    key: Some("A2".parse().unwrap()),
+                    accepts: Default::default(),
+                },
             },
             Op::AddItem {
                 id: item,
@@ -80,7 +90,7 @@ impl Fixture {
                     style: style(self.layer),
                     kind: ItemKind::Symbol(SymbolInstance {
                         definition: def,
-                        placement: Placement { origin: at, rotation: ecad_model::units::Radians(rotation), mirror: false, scale: 1.0 },
+                        placement: Placement { origin: at, rotation: ecad_model::geometry::units::Radians(rotation), mirror: false, scale: 1.0 },
                     }),
                 },
             },
@@ -152,7 +162,7 @@ pub fn fixture() -> Fixture {
                 kind: ItemKind::Primitive(Primitive::Text {
                     at: Pt::new(-2.5, 1e21),
                     height: 2.5,
-                    rotation: ecad_model::units::Radians(std::f64::consts::FRAC_PI_2),
+                    rotation: ecad_model::geometry::units::Radians(std::f64::consts::FRAC_PI_2),
                     value: "K1 \"quoted\" \\ tab\t ünï 😀".into(),
                     halign: Default::default(),
                     valign: Default::default(),

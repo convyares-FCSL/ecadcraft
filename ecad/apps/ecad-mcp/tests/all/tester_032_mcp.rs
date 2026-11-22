@@ -13,15 +13,17 @@ fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_default().to_string()
 }
 
-fn place_terminal(c: &mut Client, at: (f64, f64), tag: &str) -> (f64, f64) {
-    let r = c.exec("place", json!({"symbol": "terminal", "at": [at.0, at.1], "tag": tag}));
-    let t = hex(&r["terminals"][0], "terminal");
+fn place_connection_point(c: &mut Client, at: (f64, f64), tag: &str) -> (f64, f64) {
+    let r = c.exec("place", json!({"symbol": "terminal_block", "at": [at.0, at.1], "tag": tag}));
+    let t = hex(&r["connection_points"][0], "connection_point");
     let d = c.doc();
-    let tid = ecad_model::TerminalId::from(u128::from_str_radix(&t, 16).unwrap());
+    let tid = ecad_model::ConnectionPointId::from(u128::from_str_radix(&t, 16).unwrap());
     let pos = d
         .page_order
         .iter()
-        .find_map(|pg| ecad_model::derive::terminal_positions(&d, *pg).into_iter().find(|(x, _, _)| *x == tid).map(|(_, _, p)| p))
+        .find_map(|pg| {
+            ecad_model::connectivity::derive::connection_point_positions(&d, *pg).into_iter().find(|(x, _, _)| *x == tid).map(|(_, _, p)| p)
+        })
         .unwrap();
     (pos.x, pos.y)
 }
@@ -30,7 +32,7 @@ fn place_terminal(c: &mut Client, at: (f64, f64), tag: &str) -> (f64, f64) {
 fn w04(c: &mut Client) -> (String, String) {
     for i in 0..3 {
         let x = 100.0 + 20.0 * f64::from(i);
-        let tp = place_terminal(c, (x, 100.0), &format!("X{}", i + 1));
+        let tp = place_connection_point(c, (x, 100.0), &format!("X{}", i + 1));
         // The continuation first, so the line lands on its point (design 072 §4.4, F5).
         c.exec("place", json!({"symbol": "continuation", "at": [tp.0, 40.0], "name": format!("A{}", i + 1)}));
         c.exec("wire", json!({"points": [[tp.0, tp.1], [tp.0, 40.0]]}));
@@ -40,7 +42,7 @@ fn w04(c: &mut Client) -> (String, String) {
     c.exec("openpage", json!({"page": p2}));
     for i in 0..3 {
         let x = 100.0 + 20.0 * f64::from(i);
-        let tp = place_terminal(c, (x, 100.0), &format!("X5{}", i + 1));
+        let tp = place_connection_point(c, (x, 100.0), &format!("X5{}", i + 1));
         c.exec("place", json!({"symbol": "continuation", "at": [tp.0, 40.0], "name": format!("A{}", i + 1), "rotation": 180}));
         c.exec("wire", json!({"points": [[tp.0, 40.0], [tp.0, tp.1]]}));
     }
@@ -69,8 +71,8 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
 
         // Case 3 through execute: `removed` names the folded line, which no longer exists; with
         // both ends on terminals the line now carries a wire.
-        let l = place_terminal(&mut c, (0.0, 200.0), "X7");
-        let r = place_terminal(&mut c, (150.0, 200.0), "X8");
+        let l = place_connection_point(&mut c, (0.0, 200.0), "X7");
+        let r = place_connection_point(&mut c, (150.0, 200.0), "X8");
         let left = hex(&c.exec("wire", json!({"points": [[l.0, l.1], [50, 200]]})), "route");
         let right = hex(&c.exec("wire", json!({"points": [[100, 200], [r.0, r.1]]})), "route");
         let n = c.log().len();

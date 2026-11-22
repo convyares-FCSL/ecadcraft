@@ -3,11 +3,11 @@
 //! **Versions and backups** (Revisions opens the existing dialog) and **Shortcuts** (the keys, read
 //! only).
 
-use ecad_ui::tokens::space;
+use ecad_widgets::tokens::space;
 use eframe::egui;
 
-use super::{card, later_box, row};
 use crate::App;
+use crate::settings::{card, later_box, row};
 
 /// Accessible names.
 pub const REVISIONS: &str = "settings.versions.revisions";
@@ -39,12 +39,12 @@ pub const KEYS: &[(&str, &str)] = &[
 
 /// Settings ▸ Libraries: the sources the Library reads, with their counts.
 pub fn libraries(t: &mut App, ui: &mut egui::Ui) {
-    let builtin = ecad_engine::symbols::STARTERS.len();
+    let builtin = ecad_electrical::symbols::STARTERS.len();
     let project = t
         .project
         .clone()
         .filter(|p| p.is_attached(&t.cad.session))
-        .and_then(|p| p.read(&mut t.cad.session, |p, _| ecad_engine::symbols::project_symbols(p.ledger.document()).len()).ok());
+        .and_then(|p| p.read(&mut t.cad.session, |p, _| ecad_electrical::symbols::project_symbols(p.ledger.document()).len()).ok());
     ui.set_max_width(760.0);
     card(
         ui,
@@ -74,10 +74,11 @@ pub fn versions(t: &mut App, ui: &mut egui::Ui) {
         |_| {},
         |ui| {
             ui.label(
-                egui::RichText::new("Released revisions and the pending one. Release lives in History.").color(ecad_ui::color(ecad_ui::SHELL.text_2)),
+                egui::RichText::new("Released revisions and the pending one. Release lives in History.")
+                    .color(ecad_widgets::color(ecad_widgets::SHELL.text_2)),
             );
             ui.add_space(space::S);
-            let b = ui.add_enabled(open, ecad_ui::prim::Button::new("Revisions…").small());
+            let b = ui.add_enabled(open, ecad_widgets::prim::Button::new("Revisions…").small());
             b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, open, REVISIONS));
             revisions = b.clicked();
         },
@@ -103,12 +104,12 @@ pub fn shortcuts(ui: &mut egui::Ui) {
         ui,
         "Keys",
         |ui| {
-            ui.label(egui::RichText::new("Changing a key comes later").small().color(ecad_ui::color(ecad_ui::SHELL.text_3)));
+            ui.label(egui::RichText::new("Changing a key comes later").small().color(ecad_widgets::color(ecad_widgets::SHELL.text_3)));
         },
         |ui| {
             for (k, what) in KEYS {
                 row(ui, what, |ui| {
-                    ecad_ui::prim::keycap(ui, k);
+                    ecad_widgets::prim::keycap(ui, k);
                 });
             }
         },

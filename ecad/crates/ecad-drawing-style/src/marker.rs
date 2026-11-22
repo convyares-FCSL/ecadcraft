@@ -59,7 +59,7 @@ pub const fn marker(meaning: Meaning) -> Marker {
         Meaning::Error => (Shape::Disc, None),
         Meaning::Warning | Meaning::MissingData => (Shape::Triangle, None),
         Meaning::Provisional => (Shape::DottedUnderline, None),
-        Meaning::TerminalLink => (Shape::DashedBar, None),
+        Meaning::JumperBar => (Shape::DashedBar, None),
         Meaning::Selection | Meaning::PlacementPreview => (Shape::Outline, None),
         Meaning::AgentWrite => (Shape::DashedOutline, None),
     };

@@ -1,8 +1,8 @@
 //! The commit paths' shared half: applying edits, the change log, and refreshing and redrawing pages.
 
-use super::*;
+use crate::project::*;
 
-use ecad_electrical::derived::Changes;
+use ecad_electrical::views::Changes;
 
 /// How many recent changes [`Project::changes_since`] can answer for.
 const CHANGE_LOG: usize = 64;
@@ -13,18 +13,18 @@ const CHANGE_LOG: usize = 64;
 pub struct Change {
     pub n: u64,
     pub pages: Option<BTreeSet<PageId>>,
-    /// What it could change in the Devices list (the Devices feed, `ecad_electrical::derived::DevicesFeed`).
-    pub devices: crate::device_list::DeviceTouch,
-    /// The objects whose Properties rows it could change (the Properties feed, `ecad_electrical::derived::PropsFeed`); `None`: any.
+    /// What it could change in the Devices list (the Devices feed, `ecad_electrical::views::DevicesFeed`).
+    pub devices: ecad_electrical::devices::device_list::DeviceTouch,
+    /// The objects whose Properties rows it could change (the Properties feed, `ecad_electrical::views::PropsFeed`); `None`: any.
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
-    /// Whether it could change the Pages tree (the tree feed, `ecad_electrical::derived::TreeFeed`).
+    /// Whether it could change the Pages tree (the tree feed, `ecad_electrical::views::TreeFeed`).
     pub tree: bool,
 }
 
 impl Project {
     /// A number that changes exactly when [`Project::page_rows`] could differ (update map of the
     /// Project panel's rows, brief 016): a page added or removed (rename and move are a remove and
-    /// an add, [`crate::device_list::DeviceTouch::pages`]), or a page becoming available or
+    /// an add, [`ecad_electrical::devices::device_list::DeviceTouch::pages`]), or a page becoming available or
     /// unavailable. Every other change (drawing edits, devices, undo or redo of those, view
     /// switches) leaves it alone, so the panel keeps its rows.
     pub fn page_list_version(&self) -> u64 {
@@ -32,26 +32,26 @@ impl Project {
     }
 
     /// The general reference index (brief 025, design 025 §3.3), kept by the views' pipeline
-    /// (`ecad_electrical::derived::RefsView`).
-    pub fn xref(&self) -> &crate::xref::RefIndex {
-        self.derived.refs()
+    /// (`ecad_electrical::views::ReferencesView`).
+    pub fn reference(&self) -> &ecad_electrical::references::devices::RefIndex {
+        self.derived.references()
     }
 
     /// The kept connector index (brief 044, design 044 §11.1), kept by the views' pipeline
-    /// (`ecad_electrical::derived::ConnectorsView`).
-    pub fn connectors(&self) -> &crate::connectors::Index {
+    /// (`ecad_electrical::views::ConnectorsView`).
+    pub fn connectors(&self) -> &ecad_electrical::connectors::Index {
         self.derived.connectors()
     }
 
     /// The derived views (design 064 §5): another document state's are read through
-    /// [`ecad_electrical::derived::Views::detached`].
-    pub fn derived(&self) -> &ecad_electrical::derived::Views {
+    /// [`ecad_electrical::views::Views::detached`].
+    pub fn derived(&self) -> &ecad_electrical::views::Views {
         &self.derived
     }
 
     /// The derived views, to put a kept view out of step on purpose (tests of verify mode only).
     #[cfg(feature = "test-support")]
-    pub fn views_mut(&mut self) -> &mut ecad_electrical::derived::Views {
+    pub fn views_mut(&mut self) -> &mut ecad_electrical::views::Views {
         &mut self.derived
     }
 
@@ -85,8 +85,8 @@ impl Project {
 
     /// What the changes after change `n` could change in the Devices list, together; `None` when
     /// the changes are too old to tell (rebuild the list).
-    pub fn device_changes_since(&self, n: u64) -> Option<crate::device_list::DeviceTouch> {
-        let mut out = crate::device_list::DeviceTouch::default();
+    pub fn device_changes_since(&self, n: u64) -> Option<ecad_electrical::devices::device_list::DeviceTouch> {
+        let mut out = ecad_electrical::devices::device_list::DeviceTouch::default();
         if n >= self.change_count {
             return Some(out);
         }
@@ -118,8 +118,8 @@ impl Project {
     }
 
     pub(super) fn record_change(
-        &mut self, pages: Option<BTreeSet<PageId>>, devices: crate::device_list::DeviceTouch, props: Option<BTreeSet<ecad_model::ObjectRef>>,
-        tree: bool,
+        &mut self, pages: Option<BTreeSet<PageId>>, devices: ecad_electrical::devices::device_list::DeviceTouch,
+        props: Option<BTreeSet<ecad_model::ObjectRef>>, tree: bool,
     ) {
         self.goto_ring = None;
         self.refresh_pending();
@@ -153,8 +153,8 @@ impl Project {
     pub(crate) fn refresh_page(
         &mut self, pg: &mut Pages<'_>, page: PageId, command: Option<&str>, committed: Option<(&Arc<Drawing>, &BTreeSet<Handle>)>, recovery: bool,
     ) {
-        // One sheet for the projection, any rebuild and the check (see `look::pin_sheet`).
-        let _sheet = crate::look::pin_sheet();
+        // One sheet for the projection, any rebuild and the check (see `draw::pin_sheet`).
+        let _sheet = crate::cables::draw::pin_sheet();
         let Some(view) = self.pages.get(&page) else { return };
         let Some(uid) = view.uid else { return };
         let Some(current) = pg.doc(uid).map(|st| st.doc.clone()) else { return };
@@ -187,8 +187,8 @@ impl Project {
         let result = match result {
             Ok((d, map)) if recovery || !normal => {
                 // Worked out from scratch, so the check does not trust the kept models.
-                let outputs = self.derived.report_models(self.ledger.document());
-                let v = crate::verify::verify_page_pending(
+                let reports = self.derived.report_models(self.ledger.document());
+                let v = crate::dev::verify::verify_page_pending(
                     self.ledger.document(),
                     page,
                     &d,
@@ -197,7 +197,7 @@ impl Project {
                     self.tolerance,
                     self.show_hidden_text,
                     self.pending,
-                    outputs.as_ref(),
+                    reports.as_ref(),
                 );
                 if v.ok() {
                     self.events.record(EventKind::RecoveryVerified, command, head, Some(page), v.summary());
@@ -227,7 +227,7 @@ impl Project {
                     // Wire labels follow their routes and nets (brief 022).
                     amended.extend(prev.label_handles().chain(map.label_handles()));
                     // Contact texts and mirror tables follow their device (brief 025).
-                    amended.extend(prev.xref_handles().chain(map.xref_handles()));
+                    amended.extend(prev.device_reference_handles().chain(map.device_reference_handles()));
                     let mismatched = fidelity_mismatches(committed, &d, &amended);
                     if !mismatched.is_empty() {
                         self.events.record(
@@ -340,7 +340,7 @@ impl Project {
         // Brief 052d (design 052 §5.5): any other edit is a Leave of the conflicts waiting.
         self.conflicts.clear();
         // Nothing is drawn on a generated page (brief 024, design 024 §5.3).
-        if let Some(m) = crate::generated::refusal(self.ledger.document(), &ops) {
+        if let Some(m) = ecad_electrical::pages::generated::refusal(self.ledger.document(), &ops) {
             return Err(m);
         }
         // Brief 056 (design 056 §8): the first rack brings the book's rack overview page with it,
@@ -348,7 +348,7 @@ impl Project {
         // they bring back).
         let mut ops = ops;
         let rack_page = if kind.is_none() && numbering {
-            let (id, more) = crate::cmd::plc::page::rack_page_ops(self, &ops).map_err(String::from)?;
+            let (id, more) = crate::plc::commands::page::rack_page_ops(self, &ops).map_err(String::from)?;
             ops.extend(more);
             id
         } else {
@@ -359,7 +359,7 @@ impl Project {
             crate::fault_panic();
         }
         // The numbering pass (brief 022) extends the same transaction.
-        let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::wiring::assign(d, o) } else { Vec::new() };
+        let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::connectivity::wiring::assign(d, o) } else { Vec::new() };
         let pending = self.derived.begin(self.ledger.document(), &ops);
         let committed = match kind {
             Some(k) => self.ledger.commit_merge(self.author.clone(), label, k, ops, now_ms()),
@@ -379,7 +379,7 @@ impl Project {
     }
 
     /// The After phase and the views' updates on the transaction just committed (design 064 §5).
-    pub(super) fn finish_derived(&mut self, pending: ecad_electrical::derived::Pending) -> Changes {
+    pub(super) fn finish_derived(&mut self, pending: ecad_electrical::views::Pending) -> Changes {
         let ops = self.ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         self.derived.finish(self.ledger.document(), ops, pending)
     }
@@ -421,7 +421,7 @@ impl Project {
                 if was_active == Some(page) {
                     self.redraw_window(pg, Some(command));
                 }
-                let words = crate::references::page_words(self.ledger.document(), page);
+                let words = ecad_electrical::references::cables::page_words(self.ledger.document(), page);
                 pg.echo(format!("{} brought to the front.", words.replacen("page", "Page", 1)));
             }
             (Path::History { .. }, _) => self.redraw_touched(pg, Some(command), pages.as_ref()),

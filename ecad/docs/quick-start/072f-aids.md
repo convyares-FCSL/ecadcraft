@@ -14,7 +14,7 @@ What changed for someone using the app:
   `continuation` device form (pre-v1: no conversion).
 - Agents and the command line rename or caption an arrow with
   `setprop {"aids": [<aid>], "key": "name" | "caption", "value": …}`; `place {"symbol":
-  "continuation"}` answers `aid` (no `component`); `xrefs {"aid": …}` lists its other ends.
+  "continuation"}` answers `aid` (no `component`); `references {"aid": …}` lists its other ends.
 - **A location box (and a function box) is a drawing aid too.** It is drawn, moved, erased and
   undone as before, and the devices inside are proposed its values as before. Selecting its
   outline or label shows the **Location box** section (Function, Location, Panel temperature

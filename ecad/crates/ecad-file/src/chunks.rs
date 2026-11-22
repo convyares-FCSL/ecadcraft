@@ -18,9 +18,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    Cable, CableId, Definition, DefinitionId, Device, DeviceId, Document, Folder, FolderId, Item, ItemId, Layer, LayerId, ObjectRef, Op, Page,
-    PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues, Terminal, TerminalId, Touched,
-    Wire, WireId,
+    Cable, CableId, ConnectionPoint, ConnectionPointId, Definition, DefinitionId, Device, DeviceId, Document, Folder, FolderId, Item, ItemId, Layer,
+    LayerId, ObjectRef, Op, Page, PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues,
+    Touched, Wire, WireId,
 };
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -43,13 +43,13 @@ pub const META_KEY: &str = "model:meta";
 pub struct ModelMeta {
     /// The highest number each tag prefix has had up to the snapshot's point, deleted and
     /// undone tags included (brief 018).
-    pub tag_high: ecad_model::tag::HighWater,
+    pub tag_high: ecad_model::naming::tag::HighWater,
 }
 /// Most buckets a kind may have (a bound on hostile files).
 pub const MAX_BUCKETS: u32 = 1 << 20;
 
 /// The model kinds split into chunks, by their key name.
-pub const KINDS: [&str; 8] = ["layer", "device", "terminal", "wire", "cable", "definition", "aid", "loose_part"];
+pub const KINDS: [&str; 8] = ["layer", "device", "connection_point", "wire", "cable", "definition", "aid", "loose_part"];
 
 /// The key of page `id`'s chunk.
 pub fn page_key(id: PageId) -> String {
@@ -92,7 +92,7 @@ trait RawId: Copy + Ord + std::fmt::Display {
 macro_rules! raw_id {
     ($($t:ty),*) => {$(impl RawId for $t { fn raw(self) -> u128 { self.0 } })*};
 }
-raw_id!(LayerId, DeviceId, TerminalId, WireId, CableId, DefinitionId, ecad_model::AidId, ecad_model::LoosePartId);
+raw_id!(LayerId, DeviceId, ConnectionPointId, WireId, CableId, DefinitionId, ecad_model::AidId, ecad_model::LoosePartId);
 
 /// A version row's `chunks`: key → hex hash.
 pub type ChunkHashes = BTreeMap<String, String>;
@@ -155,7 +155,7 @@ impl Dirty {
         let mut add = |kind: &'static str, ids: Vec<u128>| self.objects.entry(kind).or_default().extend(ids);
         add("layer", t.layers.iter().map(|i| i.0).collect());
         add("device", t.devices.iter().map(|i| i.0).collect());
-        add("terminal", t.terminals.iter().map(|i| i.0).collect());
+        add("connection_point", t.connection_points.iter().map(|i| i.0).collect());
         add("wire", t.wires.iter().map(|i| i.0).collect());
         add("cable", t.cables.iter().map(|i| i.0).collect());
         add("definition", t.definitions.iter().map(|i| i.0).collect());
@@ -276,7 +276,7 @@ fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChun
     match kind {
         "layer" => encode(&pick(&doc.layers, b, count)),
         "device" => encode(&pick(&doc.devices, b, count)),
-        "terminal" => encode(&pick(&doc.terminals, b, count)),
+        "connection_point" => encode(&pick(&doc.connection_points, b, count)),
         "wire" => encode(&pick(&doc.wires, b, count)),
         "cable" => encode(&pick(&doc.cables, b, count)),
         "definition" => encode(&pick(&doc.definitions, b, count)),
@@ -290,7 +290,7 @@ fn kind_len(doc: &Document, kind: &str) -> usize {
     match kind {
         "layer" => doc.layers.len(),
         "device" => doc.devices.len(),
-        "terminal" => doc.terminals.len(),
+        "connection_point" => doc.connection_points.len(),
         "wire" => doc.wires.len(),
         "cable" => doc.cables.len(),
         "definition" => doc.definitions.len(),
@@ -440,12 +440,12 @@ enum Parsed {
     Page(PageId, Box<PageChunk>),
     Layer(BTreeMap<LayerId, Layer>),
     Device(BTreeMap<DeviceId, Device>),
-    Terminal(BTreeMap<TerminalId, Terminal>),
+    ConnectionPoint(BTreeMap<ConnectionPointId, ConnectionPoint>),
     Wire(BTreeMap<WireId, Wire>),
     Cable(BTreeMap<CableId, Cable>),
     Definition(BTreeMap<DefinitionId, Definition>),
     Aid(BTreeMap<ecad_model::AidId, ecad_model::Aid>),
-    LoosePart(BTreeMap<ecad_model::LoosePartId, ecad_model::loose_part::LoosePart>),
+    LoosePart(BTreeMap<ecad_model::LoosePartId, ecad_model::objects::loose_part::LoosePart>),
 }
 
 /// A model chunk's objects, checked to belong in bucket `b` of `count`.
@@ -504,7 +504,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
             }
             Parsed::Device(m)
         }
-        "terminal" => Parsed::Terminal(typed(body, key, b, count)?),
+        "connection_point" => Parsed::ConnectionPoint(typed(body, key, b, count)?),
         "wire" => Parsed::Wire(typed(body, key, b, count)?),
         "cable" => Parsed::Cable(typed(body, key, b, count)?),
         "definition" => Parsed::Definition(typed(body, key, b, count)?),
@@ -577,7 +577,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
             }
             Parsed::Layer(m) => merge(&mut doc.layers, m, "layer")?,
             Parsed::Device(m) => merge(&mut doc.devices, m, "device")?,
-            Parsed::Terminal(m) => merge(&mut doc.terminals, m, "terminal")?,
+            Parsed::ConnectionPoint(m) => merge(&mut doc.connection_points, m, "connection_point")?,
             Parsed::Wire(m) => merge(&mut doc.wires, m, "wire")?,
             Parsed::Cable(m) => merge(&mut doc.cables, m, "cable")?,
             Parsed::Definition(m) => merge(&mut doc.definitions, m, "definition")?,

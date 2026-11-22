@@ -19,7 +19,7 @@
 //!   the projection, remembered per user outside the `.ecad` file.
 //! - [`references`] holds cable references across pages (brief 010): a cable drawn on several
 //!   pages ends at reference ends whose text (`/<page>.<column>` of the other end) is derived on
-//!   every draw, never stored ([`references::markers_on_page`] is the one source of that text).
+//!   every draw, never stored ([`cables::markers_on_page`] is the one source of that text).
 //!
 //! - [`file`] binds a project to its `.ecad` file on disk (through `ecad-file`), holding the
 //!   writer lock while it is open.
@@ -31,140 +31,45 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod access;
-// Design 065 §3, cut 12: the agent gate, shared by ecad-mcp and the window's live bridge.
 pub mod agent;
 pub mod background;
+pub mod cables;
 pub mod cad;
-pub mod cmd;
+pub mod checks;
+pub mod commands;
+pub mod connectors;
+pub mod continuations;
 pub mod convert;
-pub mod debug;
+pub mod dev;
+pub mod devices;
 pub mod draw;
+pub mod export;
 pub mod file;
-pub mod frame;
+pub(crate) mod generic;
 pub mod history;
 pub mod interact;
-mod lanes;
-pub mod look;
-pub mod merging;
-pub mod oops;
-pub mod preview;
-pub mod printbook;
+pub mod locations;
+pub mod pages;
+pub mod plc;
+pub mod pointer;
 pub mod project;
-pub mod props;
-pub mod release;
-pub mod strip_page;
-/// A builder for the small projects tests start from (brief 062); enabled only by tests.
-#[cfg(feature = "test-support")]
-pub mod test_support;
+pub mod properties;
+pub mod references;
+pub mod releases;
+pub mod reports;
+pub mod styles;
+pub mod symbols;
+pub mod terminal_strips;
+pub mod title_blocks;
 mod translate;
-pub mod verify;
-pub mod views;
-
-// The electrical rules live in `ecad-electrical` (design 065 §5 step 6). Each module stays reachable under
-// its old name; a module with an engine half in `draw` is a facade over both halves.
-pub use ecad_electrical::accessories;
-pub use ecad_electrical::bom;
-pub use ecad_electrical::cables;
-pub use ecad_electrical::connectors;
-pub use ecad_electrical::defaults;
-pub use ecad_electrical::derived;
-pub use ecad_electrical::designations;
-pub use ecad_electrical::frames;
-pub use ecad_electrical::kinds;
-pub use ecad_electrical::link_lines;
-pub use ecad_electrical::page_types;
-pub use ecad_electrical::proposals;
-pub use ecad_electrical::rating;
-pub use ecad_electrical::reps;
-pub use ecad_electrical::revisions;
-pub use ecad_electrical::slash;
-pub use ecad_electrical::strips;
-pub use ecad_electrical::styles;
-pub use ecad_electrical::symbols;
-pub use ecad_electrical::terminal_types;
-pub use ecad_electrical::words;
-/// `ecad_electrical::checks` and its engine half, [`draw::checks`].
-pub mod checks {
-    pub use crate::draw::checks::{all, all_with, handles_of};
-    pub use ecad_electrical::checks::*;
-}
-/// `ecad_electrical::continuations` and its engine half, [`draw::continuations`].
-pub mod continuations {
-    pub use crate::draw::continuations::*;
-    pub use ecad_electrical::continuations::*;
-}
-/// `ecad_electrical::device_list` and its engine half, [`draw::device_list`].
-pub mod device_list {
-    pub use crate::draw::device_list::{DeviceList, symbol_target};
-    pub use ecad_electrical::device_list::*;
-}
-/// `ecad_electrical::devices` and its engine half, [`draw::devices`].
-pub mod devices {
-    pub use crate::draw::devices::*;
-    pub use ecad_electrical::devices::*;
-}
-/// `ecad_electrical::front` and its engine half, [`draw::front`].
-pub mod front {
-    pub use crate::draw::front::cover;
-    pub use ecad_electrical::front::*;
-}
-/// `ecad_electrical::generated` and its engine half, [`draw::generated`].
-pub mod generated {
-    pub use crate::draw::generated::{Draw, input_of, missing_mark, page_parts, parts_of, parts_of_pending};
-    pub use ecad_electrical::generated::*;
-}
-/// `ecad_electrical::locations` and its engine half, [`draw::locations`].
-pub mod locations {
-    pub use crate::draw::locations::*;
-    pub use ecad_electrical::locations::*;
-}
-/// `ecad_electrical::outputs`.
-pub mod outputs {
-    pub use ecad_electrical::outputs::*;
-}
-/// `ecad_electrical::plc` and its engine half, [`draw::plc`].
-pub mod plc {
-    pub use crate::draw::plc::Plc;
-    pub use ecad_electrical::plc::*;
-    /// `ecad_electrical::plc::look` and its engine half, [`crate::draw::plc::look`].
-    pub mod look {
-        pub use crate::draw::plc::look::parts_on_page;
-        pub use ecad_electrical::plc::look::*;
-    }
-}
-/// `ecad_electrical::references` and its engine half, [`draw::references`].
-pub mod references {
-    pub use crate::draw::references::reference_at;
-    pub use ecad_electrical::references::*;
-}
-/// `ecad_electrical::text_style` and its engine half, [`draw::text_style`].
-pub mod text_style {
-    pub use crate::draw::text_style::*;
-    pub use ecad_electrical::text_style::*;
-}
-/// `ecad_electrical::title_block` and its engine half, [`draw::title_block`].
-pub mod title_block {
-    pub use crate::draw::title_block::{dxf, layout};
-    pub use ecad_electrical::title_block::*;
-}
-/// `ecad_electrical::wires` and its engine half, [`draw::wires`].
-pub mod wires {
-    pub use crate::draw::wires::*;
-    pub use ecad_electrical::wires::*;
-}
-/// `ecad_electrical::xref` and its engine half, [`draw::xref`].
-pub mod xref {
-    pub use crate::draw::xref::*;
-    pub use ecad_electrical::xref::*;
-}
-
+pub mod wires;
 // The commands' paths before step 11 of lane 067, used outside the crate.
 
 // Brief 035: a per-user settings file and a window's port. Its
 // path before cut 12.
-pub use access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
-pub use file::{FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path};
-pub use project::{
+pub use crate::access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
+pub use crate::file::{FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, expand_home, home, normalize, normalize_with, same_path};
+pub use crate::project::{
     Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View, project_page, project_page_framed,
     project_page_with, session_seed, tree_rows, writer,
 };
@@ -176,8 +81,8 @@ pub const UPSTREAM_COMMIT: &str = "227e3c385b20129cf525775e3d9cbe78b722b3bb";
 /// list is first used. Returns `false` if it was too late or already done.
 pub fn install() -> bool {
     // Brief 040: the sheet font for every page drawn or printed, in the window or headless.
-    text_style::register_sheet_font();
-    cadcraft_engine::cmd::set_extension_commands(cmd::specs)
+    styles::draw::register_sheet_font();
+    cadcraft_engine::cmd::set_extension_commands(commands::specs)
 }
 
 /// Fault injection for the experiment (`Faults::panic_in_commit`): a deliberate panic inside an

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::common::{PROJECT, SEED, WRITER};
 use ecad_file::Store;
-use ecad_model::text::Text;
+use ecad_model::naming::text::Text;
 use ecad_model::{
     Author, Device, DeviceId, DeviceLink, IdAllocator, Ledger, LinkId, LinkKind, Op, Project, UserFieldDef, UserFieldId, UserFieldKind, UserValue,
 };

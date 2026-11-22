@@ -19,10 +19,10 @@
 use std::time::Instant;
 
 use ecad_drawing_style::sheet;
+use ecad_electrical::checks::Object;
 use ecad_engine::cad::Bounds2;
-use ecad_engine::checks::Object;
 use ecad_model::{ObjectRef, PageId, TxId};
-use ecad_ui::tokens::{Color, line, space, ui_type};
+use ecad_widgets::tokens::{Color, line, space, ui_type};
 use eframe::egui;
 
 use crate::App;
@@ -158,7 +158,7 @@ impl App {
                 if let Some(first) = pts.first() {
                     ring.push(*first);
                 }
-                painter.extend(egui::Shape::dashed_line(&ring, egui::Stroke::new(width, ecad_ui::color(c)), dash, gap));
+                painter.extend(egui::Shape::dashed_line(&ring, egui::Stroke::new(width, ecad_widgets::color(c)), dash, gap));
                 let tl = pts.iter().fold(egui::pos2(f32::MAX, f32::MAX), |a, p| egui::pos2(a.x.min(p.x), a.y.min(p.y)));
                 if top.is_none_or(|t| tl.y < t.y) {
                     top = Some(tl);
@@ -178,7 +178,7 @@ impl App {
             let mut out = Vec::new();
             let mut one = |seq: u64, kind: Kind, chip: Option<&str>| {
                 let Some(t) = p.ledger.transaction(seq) else { return };
-                let Some(touched) = ecad_engine::derived::PropsFeed::touched_by(p.ledger.document(), &t.ops) else { return };
+                let Some(touched) = ecad_electrical::views::PropsFeed::touched_by(p.ledger.document(), &t.ops) else { return };
                 let Some(drawing) = pages.drawing_of(p, page) else { return };
                 let mut boxes = Vec::new();
                 // The routes it drew or changed too (design 072: a loose line is a route with no
@@ -230,12 +230,12 @@ impl App {
 
 /// The outline's name chip above its top-left corner: the name on a ground of its colour.
 fn chip(ui: &egui::Ui, painter: &egui::Painter, at: egui::Pos2, name: &str, c: Color, label: &str) {
-    let font = ecad_ui::fonts::font(ui.ctx(), ui_type::CAPTION);
-    let g = painter.layout_no_wrap(name.to_string(), font, ecad_ui::color(ecad_ui::tokens::WHITE));
+    let font = ecad_widgets::fonts::font(ui.ctx(), ui_type::CAPTION);
+    let g = painter.layout_no_wrap(name.to_string(), font, ecad_widgets::color(ecad_widgets::tokens::WHITE));
     let size = g.size() + egui::vec2(2.0 * space::S, 2.0 * space::XXS);
     let r = egui::Rect::from_min_size(egui::pos2(at.x, at.y - size.y - space::XXS), size);
-    painter.rect_filled(r, ecad_ui::style::corner(ecad_ui::tokens::radius::BADGE), ecad_ui::color(c));
-    painter.galley(r.min + egui::vec2(space::S, space::XXS), g, ecad_ui::color(ecad_ui::tokens::WHITE));
+    painter.rect_filled(r, ecad_widgets::style::corner(ecad_widgets::tokens::radius::BADGE), ecad_widgets::color(c));
+    painter.galley(r.min + egui::vec2(space::S, space::XXS), g, ecad_widgets::color(ecad_widgets::tokens::WHITE));
     // Its accessible name, so tests and the control channel find it.
     let resp = ui.interact(r, egui::Id::unique((label, name)), egui::Sense::hover());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{label}: {name}")));

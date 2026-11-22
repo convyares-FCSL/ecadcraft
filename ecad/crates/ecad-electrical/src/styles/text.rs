@@ -8,13 +8,13 @@
 //! The wire label's height stays where 031 put it, `settings.wiring.label_height`, read as the
 //! project field of the `wire_label` style (`project_field`).
 
-use ecad_model::style::text::{Font, StyleColour, TextStyle};
-use ecad_model::units::Mm;
+use ecad_model::geometry::units::Mm;
+use ecad_model::objects::styles::text::{Font, StyleColour, TextStyle};
 use ecad_model::{Document, StyleRef, Word};
 
-use super::{Builtin, Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Slot, Value};
+use crate::styles::{Builtin, Catalogue, Field};
 
 /// A font field's value meaning "the project font" (`text.font`).
 pub const PROJECT_FONT: &str = "project";
@@ -25,11 +25,11 @@ static FIELDS: [Field; 4] = [
     Field {
         key: "weight",
         label: "Weight",
-        kind: Kind::Choice(<crate::text_style::Weight as ecad_model::Word>::WORDS),
+        kind: Kind::Choice(<crate::styles::text_style::Weight as ecad_model::Word>::WORDS),
         slot: Slot::new(),
         over: None,
     },
-    Field { key: "colour", label: "Colour", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
+    Field { key: "colour", label: "Colour", kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour }, slot: Slot::new(), over: None },
 ];
 
 const fn style(id: &'static str, name: &'static str) -> Builtin {

@@ -3,18 +3,18 @@
 //! with "!", a provisional tag gets a dotted underline, a device's other placements on the page a
 //! dashed outline in the selection colour. Markers keep their screen size at every zoom; outlines
 //! follow the sheet's line weights, with a 1 px floor. (Wire colours are ink, drawn by the page's
-//! projection: `ecad_engine::wires::colour_routes`.)
+//! projection: `ecad_engine::wires::draw::colour_routes`.)
 //!
 //! None of it is an entity: it is painted over CADCraft's drawing and never reaches a plot.
 
 use cadcraft_ui_egui::canvas::Xf;
+use ecad_engine::cables::draw::Painted;
 use ecad_engine::cad::Handle;
 use ecad_engine::cad::Vec2;
-use ecad_engine::look::Painted;
 use eframe::egui::{self, Pos2, Rect, Stroke, pos2, vec2};
 
-use super::PageData;
 use crate::App;
+use crate::canvas::PageData;
 
 /// The error disc's and warning triangle's size on screen, px.
 pub const MARKER_PX: f32 = 12.0;
@@ -33,15 +33,15 @@ fn screen(xf: &Xf, p: ecad_model::Pt) -> Pos2 {
 
 /// A canvas line weight (mm) on screen, with the 1 px floor.
 fn weight(xf: &Xf, mm: f32) -> f32 {
-    ((f64::from(mm) * xf.scale) as f32).max(ecad_ui::tokens::line::SCREEN_FLOOR_PX)
+    ((f64::from(mm) * xf.scale) as f32).max(ecad_widgets::tokens::line::SCREEN_FLOOR_PX)
 }
 
 /// Paint the page's markers.
 pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_drawing_style::Sheet, t: &App, page: &PageData) {
     for m in &page.painted {
         match *m {
-            Painted::Error(at) => error_disc(p, screen(xf, at), ecad_ui::color(sheet.error)),
-            Painted::Warning(at) => warning_triangle(p, screen(xf, at), ecad_ui::color(sheet.warning)),
+            Painted::Error(at) => error_disc(p, screen(xf, at), ecad_widgets::color(sheet.error)),
+            Painted::Warning(at) => warning_triangle(p, screen(xf, at), ecad_widgets::color(sheet.warning)),
         }
     }
     let Ok(d) = t.cad.session.doc() else { return };
@@ -51,12 +51,12 @@ pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_drawing_style::Sheet, t: &
         let r = Rect::from_two_pos(xf.to_screen(b.min), xf.to_screen(b.max));
         (r.is_finite() && r.width() >= 0.0).then_some(r)
     };
-    let provisional = ecad_ui::color(sheet.provisional);
+    let provisional = ecad_widgets::color(sheet.provisional);
     for r in page.provisional.iter().filter_map(&bounds) {
         dotted(p, pos2(r.min.x, r.max.y + 1.5), pos2(r.max.x, r.max.y + 1.5), Stroke::new(1.0, provisional));
     }
     // Other placements of the selected device on this page: one dashed outline each.
-    let stroke = Stroke::new(weight(xf, ecad_drawing_style::line::SELECTION_MM).min(2.0), ecad_ui::color(sheet.selection));
+    let stroke = Stroke::new(weight(xf, ecad_drawing_style::line::SELECTION_MM).min(2.0), ecad_widgets::color(sheet.selection));
     for group in &page.related.here {
         let Some(r) = group.iter().filter_map(&bounds).reduce(|a, b| a.union(b)) else { continue };
         dashed_rect(p, r.expand(OUTLINE_PAD_PX), stroke);
@@ -72,7 +72,7 @@ fn exclamation(p: &egui::Painter, at: Pos2, h: f32, colour: egui::Color32) {
 /// An error: a filled disc with "!".
 pub fn error_disc(p: &egui::Painter, at: Pos2, colour: egui::Color32) {
     p.circle_filled(at, MARKER_PX / 2.0, colour);
-    exclamation(p, at, MARKER_PX * 0.6, ecad_ui::color(ecad_ui::tokens::WHITE));
+    exclamation(p, at, MARKER_PX * 0.6, ecad_widgets::color(ecad_widgets::tokens::WHITE));
 }
 
 /// A warning: a filled triangle with "!".
@@ -80,7 +80,7 @@ pub fn warning_triangle(p: &egui::Painter, at: Pos2, colour: egui::Color32) {
     let s = MARKER_PX;
     let pts = vec![at + vec2(0.0, -s * 0.6), at + vec2(s * 0.6, s * 0.45), at + vec2(-s * 0.6, s * 0.45)];
     p.add(egui::Shape::convex_polygon(pts, colour, Stroke::NONE));
-    exclamation(p, at + vec2(0.0, s * 0.08), s * 0.5, ecad_ui::color(ecad_ui::tokens::WHITE));
+    exclamation(p, at + vec2(0.0, s * 0.08), s * 0.5, ecad_widgets::color(ecad_widgets::tokens::WHITE));
 }
 
 /// A dotted line from `a` to `b` ("dotted means not final yet").

@@ -5,9 +5,9 @@ use std::path::PathBuf;
 
 use crate::common::{PROJECT, SEED, WRITER};
 use ecad_file::{Project, Store};
-use ecad_model::style::{FrameStyle, StyleBody};
-use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-use ecad_model::title_block::{Binding, BlockItem, IfEmpty, Ink, Newest, Rect, Source, TextLook, TitleBlockLayout};
+use ecad_model::objects::styles::{FrameStyle, StyleBody};
+use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
+use ecad_model::objects::title_block::{Binding, BlockItem, IfEmpty, Ink, Newest, Rect, Source, TextDraw, TitleBlockLayout};
 use ecad_model::{Author, Ledger, Op, Primitive, Pt};
 
 struct TempDir(PathBuf);
@@ -30,18 +30,18 @@ impl Drop for TempDir {
 }
 
 fn layout() -> TitleBlockLayout {
-    let mut red = TextLook { size: 2.5, bold: true, ..TextLook::default() };
+    let mut red = TextDraw { size: 2.5, bold: true, ..TextDraw::default() };
     red.colour = Ink::Red;
     TitleBlockLayout {
         size: (180.0, 40.0),
         items: vec![
             BlockItem::Line { a: (0.0, 20.0), b: (180.0, 20.0), weight: Default::default() },
-            BlockItem::Text { at: Rect::new(1.0, 1.0, 40.0, 5.0), text: "IF IN DOUBT, ASK".into(), look: TextLook::default() },
+            BlockItem::Text { at: Rect::new(1.0, 1.0, 40.0, 5.0), text: "IF IN DOUBT, ASK".into(), draw: TextDraw::default() },
             BlockItem::Field {
                 at: Rect::new(60.0, 21.0, 60.0, 12.5),
-                bind: Binding::Project(ecad_model::title_block::ProjectKey::new("status").unwrap()),
+                bind: Binding::Project(ecad_model::objects::title_block::ProjectKey::new("status").unwrap()),
                 label: Some("Status".into()),
-                look: red,
+                draw: red,
                 if_empty: IfEmpty::Text("n/a".into()),
             },
             BlockItem::RevTable { at: Rect::new(0.0, 0.0, 60.0, 20.0), rows: 4, header: true, newest: Newest::Bottom },
@@ -59,7 +59,8 @@ fn layout() -> TitleBlockLayout {
 
 fn ledger() -> Ledger {
     let mut l = Ledger::new(SEED);
-    let style = FrameStyle { sheet: ecad_model::style::frame::FrameSheet::parse("A3"), title_block: Some(layout()), ..FrameStyle::default() };
+    let style =
+        FrameStyle { sheet: ecad_model::objects::styles::frame::FrameSheet::parse("A3"), title_block: Some(layout()), ..FrameStyle::default() };
     let rec = StyleRecord::new("A3 Northfield", StyleBody::Frame(style));
     l.commit(
         Author::Agent("tester".into()),

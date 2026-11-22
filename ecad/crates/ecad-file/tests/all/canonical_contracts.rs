@@ -121,13 +121,14 @@ fn record_and_definition_hashes_are_pinned() {
     }
     let head = ("head", chain::hex(&prev));
     let want = [
-        ("coil", "a8b35e81d6a9d456e9f70d188e8b6fb8b729a950d94ca54fbcbd793e9f908952"),
-        ("d1", "a8b35e81d6a9d456e9f70d188e8b6fb8b729a950d94ca54fbcbd793e9f908952"),
-        ("d2", "0fcefba53f430d7f0e8467eb0eddb6166605310dee1a02896b16543e6ca99682"),
+        ("coil", "bb4d1a684aaf0e60e45df389ce4feab0a053c14e64bc5d223c386444b3603027"),
+        ("d1", "bb4d1a684aaf0e60e45df389ce4feab0a053c14e64bc5d223c386444b3603027"),
+        ("d2", "07a2ac5ece005a559bd3731a052dfe1adec94820e426a43fc0f411dbb27711b4"),
         // Design 072 F14, F20 (lanes B, C, D, E, G) and lane D F2c: device, wire, page and project records, wires drawn as routes,
         // cable cores with their position; F3′ (lane B): the representation roles; lane F F1b: a
         // connection point's owner.
-        ("head", "e4d11a7ad697c060df33901cfc20da24bbdb7e1b1152eef5ca0d7c5ecd06c5e4"),
+        // 0.2.3 structure move: ConnectionPoint ops, `connection_points` fields, `jumper_bar` keys.
+        ("head", "9b2049a4692545979b455053c5ac2a9dc6677cf730ad9a1701ab29fa749aa36a"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");

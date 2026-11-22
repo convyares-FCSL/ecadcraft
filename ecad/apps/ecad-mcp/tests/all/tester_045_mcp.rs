@@ -106,7 +106,7 @@ fn writes_b(c: &mut Client, ids: &Ids) {
     let n = c.log().len();
     let v = c.exec("plcchannels", json!({"card": di, "from": [90, 400], "to": [170, 400]}));
     let ops = assert_one_by_agent(c, n, "plcchannels fence").ops;
-    assert!(ops.iter().filter(|o| matches!(o, Op::AddTerminal { .. })).count() >= 4, "{v}");
+    assert!(ops.iter().filter(|o| matches!(o, Op::AddConnectionPoint { .. })).count() >= 4, "{v}");
     let n = c.log().len();
     c.exec("plcchannels", json!({"card": di, "rest": true, "at": [300, 400]}));
     assert_one_by_agent(c, n, "plcchannels rest");

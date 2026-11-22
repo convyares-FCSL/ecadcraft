@@ -28,7 +28,7 @@ use serde_json::Value;
 const ENGINE_SRC: &str = "crates/ecad-engine/src";
 
 /// The Core crates whose `pub` types count as Core (design 065, `docs/design/crates.md` §1).
-const CORE_CRATES: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", "ecad-file", "ecad-inspect", "ecad-electrical"];
+const CORE_CRATES: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", "ecad-file", "ecad-electrical"];
 
 /// Standard and serde types that count as Core. Single capital letters (generic parameters) count
 /// too.
@@ -71,13 +71,14 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ("crates/ecad-engine/src/agent/gate.rs", 3, "the agent gate: undo step, issue order and the transaction summary it answers with"),
     ("crates/ecad-engine/src/agent/tools.rs", 1, "the MCP tools' list paging"),
     // The dev tools stay (brief 074 "What stays").
-    ("crates/ecad-engine/src/debug.rs", 5, "the live debugger: replay to a sequence number and its read-only labels and counts"),
-    ("crates/ecad-engine/src/verify.rs", 3, "the projection check's point comparisons (a dev check)"),
+    ("crates/ecad-engine/src/dev/snapshot.rs", 2, "the snapshot's readable labels and index (carved from ecad-inspect in 0.2.3; a dev view)"),
+    ("crates/ecad-engine/src/dev/debug.rs", 5, "the live debugger: replay to a sequence number and its read-only labels and counts"),
+    ("crates/ecad-engine/src/dev/verify.rs", 3, "the projection check's point comparisons (a dev check)"),
     // Judgement calls that stay with the engine code they serve.
-    ("crates/ecad-engine/src/draw/title_block/layout.rs", 1, "a title block ink's ACI colour (CADCraft's colour index)"),
-    ("crates/ecad-engine/src/translate.rs", 1, "movement: the drawn shape of a moved primitive (a tester area)"),
-    ("crates/ecad-engine/src/interact/mod.rs", 1, "the hover's tag text, one line over Properties"),
-    ("crates/ecad-engine/src/cmd/title_block.rs", 1, "titleblockimport's frame read from JSON by hand until lane 066d types it"),
+    ("crates/ecad-engine/src/title_blocks/layout.rs", 1, "a title block ink's ACI colour (CADCraft's colour index)"),
+    ("crates/ecad-engine/src/translate/mod.rs", 1, "movement: the drawn shape of a moved primitive (a tester area)"),
+    ("crates/ecad-engine/src/interact.rs", 1, "the hover's tag text, one line over Properties"),
+    ("crates/ecad-engine/src/title_blocks/commands.rs", 1, "titleblockimport's frame read from JSON by hand until lane 066d types it"),
 ];
 
 /// Functions the guard's textual test counts that are adapters, not domain rules: each is a thin
@@ -86,14 +87,14 @@ const ALLOWED: &[(&str, usize, &str)] = &[
 /// stays true.
 #[rustfmt::skip]
 const ADAPTERS: &[(&str, &str, &str)] = &[
-    ("crates/ecad-engine/src/look.rs", "marker_box", "measures text with CADCraft's drafting font"),
-    ("crates/ecad-engine/src/draw/text_style.rs", "text_width", "measures text with CADCraft's fonts (EngineMetrics)"),
-    ("crates/ecad-engine/src/draw/xref.rs", "table", "lays the contact table out with CADCraft's fonts (EngineMetrics)"),
-    ("crates/ecad-engine/src/history.rs", "group_text", "reads the local time zone"),
+    ("crates/ecad-engine/src/cables/draw.rs", "marker_box", "measures text with CADCraft's drafting font"),
+    ("crates/ecad-engine/src/styles/draw.rs", "text_width", "measures text with CADCraft's fonts (EngineMetrics)"),
+    ("crates/ecad-engine/src/references/draw/devices.rs", "table", "lays the contact table out with CADCraft's fonts (EngineMetrics)"),
+    ("crates/ecad-engine/src/history/mod.rs", "group_text", "reads the local time zone"),
     ("crates/ecad-engine/src/project/mod.rs", "views_for", "builds the engine's own views"),
-    ("crates/ecad-engine/src/cmd/output.rs", "report_result", "writes the report's CSV file"),
-    ("crates/ecad-engine/src/draw/title_block/dxf.rs", "block", "reads the DXF with CADCraft's reader"),
-    ("crates/ecad-engine/src/translate.rs", "preview", "applies ops to the live ledger and rolls them back"),
+    ("crates/ecad-engine/src/reports/commands.rs", "report_result", "writes the report's CSV file"),
+    ("crates/ecad-engine/src/title_blocks/dxf.rs", "block", "reads the DXF with CADCraft's reader"),
+    ("crates/ecad-engine/src/translate/mod.rs", "preview", "applies ops to the live ledger and rolls them back"),
 ];
 
 /// The parameters of a list, split at its top-level commas.

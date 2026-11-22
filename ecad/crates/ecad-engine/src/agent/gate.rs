@@ -157,7 +157,7 @@ pub fn undo_step_for(t: &Transaction) -> &'static str {
         TxKind::Merge { .. } => "undomerge",
         TxKind::Redo { .. } if t.label.starts_with("Merge \"") || t.label.starts_with("Update from ") => "undomerge",
         // Undoing an issue asks first too; `undoissue` confirms it (tester 026, 1).
-        TxKind::Edit | TxKind::Redo { .. } if crate::revisions::issue_in(&t.ops).is_some() => "undoissue",
+        TxKind::Edit | TxKind::Redo { .. } if ecad_electrical::releases::revisions::issue_in(&t.ops).is_some() => "undoissue",
         TxKind::Edit | TxKind::Redo { .. } => "u",
     }
 }
@@ -189,7 +189,7 @@ fn finalised_then_issued(txs: &[Transaction]) -> bool {
             matches!(f.kind, TxKind::Edit)
                 && f.label == "Finalise numbering"
                 && matches!(i.kind, TxKind::Edit)
-                && crate::revisions::issue_in(&i.ops).is_some()
+                && ecad_electrical::releases::revisions::issue_in(&i.ops).is_some()
         }
         _ => false,
     }

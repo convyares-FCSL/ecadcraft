@@ -1,11 +1,11 @@
 //! Lane T's defaults (031, text styles, show and hide, placement): design 031 §3.2 and §3.5.
 //!
-//! Read them through [`crate::text_style`] (`text_style`, `text_shown`), not by key.
+//! Read them through [`crate::styles::text_style`] (`text_style`, `text_shown`), not by key.
 //!
 //! Brief 050a (FP4): a kind's cap height, weight and font are no longer registry entries; they are
 //! fields of its text style (`crate::styles::text`).
 
-use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
 const GROUP: &str = "Text";
 const BRIEF: &str = "031";
@@ -19,7 +19,7 @@ const SPGO: &[Level] = &[Level::Standard, Level::Project, Level::Page, Level::Ob
 /// (brief 040, owner answer 9; CADCraft draws a text height as its cap height).
 const HEIGHT: Kind = Kind::Length { min: 0.5, max: 10.0 };
 const SHOW: Kind = Kind::Flag;
-const SHOW_RUN: Kind = Kind::Choice(<crate::text_style::Shown as ecad_model::Word>::WORDS);
+const SHOW_RUN: Kind = Kind::Choice(<crate::styles::text_style::Shown as ecad_model::Word>::WORDS);
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind, levels: &'static [Level]) -> Entry {
     Entry { key, label, group: GROUP, brief: BRIEF, kind, slot: Slot::new(), levels, project: ProjectSource::Property }

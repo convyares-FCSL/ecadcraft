@@ -1,11 +1,11 @@
 //! Lane W's defaults (032, wires and nets). Owned by lane W: append `pub static` entries and list them in
 //! [`ENTRIES`]. Lane T created this file empty (design 031 §3.5) and does not edit it again.
 //!
-//! Read them through `crate::cmd::wire::join_by_default`, `wires::label_rule`, `wires::label_rule_word` and
+//! Read them through `crate::wires::commands::wires::join_by_default`, `wires::label_rule`, `wires::label_rule_word` and
 //! `wires::label_min_length`, not by key. Their built-ins are data (`defaults/wires.toml`, brief
 //! 066); a project's chosen value is its `settings.wiring` field, absent when it chose none.
 
-use super::{Entry, Kind, Level, ProjectSource, Slot, Value};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
 
 /// Standard and project.
 const SP: &[Level] = &[Level::Standard, Level::Project];
@@ -24,7 +24,7 @@ pub static WIRE_JOIN: Entry = Entry {
 };
 
 /// The label rule words, as registered.
-const LABEL_RULES: &[&str] = &[ecad_model::wiring::LABEL_RULE_NET, ecad_model::wiring::LABEL_RULE_EACH];
+const LABEL_RULES: &[&str] = &[ecad_model::connectivity::wiring::LABEL_RULE_NET, ecad_model::connectivity::wiring::LABEL_RULE_EACH];
 
 /// The label rule the project chose in `settings.wiring`, as a registered word; `None` when it
 /// chose none (brief 066, F2), so it resolves as the built-in.
@@ -58,7 +58,10 @@ pub static WIRING_LABEL_MIN_LENGTH: Entry = Entry {
     label: "Shortest labelled wire",
     group: "Wire labels",
     brief: "032",
-    kind: Kind::Length { min: *ecad_model::wiring::LABEL_MIN_LENGTHS.start(), max: *ecad_model::wiring::LABEL_MIN_LENGTHS.end() },
+    kind: Kind::Length {
+        min: *ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.start(),
+        max: *ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.end(),
+    },
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Settings(label_min_length_setting),

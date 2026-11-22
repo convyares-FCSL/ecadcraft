@@ -10,10 +10,10 @@
 //! ledger's head moves (any commit or undo while Settings is open); nothing is read per frame
 //! beyond the head.
 
-use ecad_engine::styles::page::{self as ptype, Holds};
-use ecad_model::sheet::{GridLabels, PRESETS, SheetSpec};
+use ecad_electrical::styles::page::{self as ptype, Holds};
+use ecad_model::document::sheet::{GridLabels, PRESETS, SheetSpec};
 use ecad_model::{PageId, StyleRef};
-use ecad_ui::tokens::{size, space, ui_type};
+use ecad_widgets::tokens::{size, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 
 use crate::App;
@@ -122,10 +122,10 @@ pub fn read(t: &mut App) -> Option<Snapshot> {
         let rows = ptype::ordered(doc)
             .into_iter()
             .map(|r| {
-                let look = ptype::look_of(doc, &r.id);
+                let look = ptype::draw_of(doc, &r.id);
                 TypeRow {
                     subtitle: ptype::subtitle(&r.id),
-                    own: r.layer != ecad_engine::styles::Layer::Builtin,
+                    own: r.layer != ecad_electrical::styles::Layer::Builtin,
                     overridden: r.overridden,
                     shown: look.sheet.unwrap_or(project_sheet),
                     sheet: look.sheet,
@@ -141,7 +141,7 @@ pub fn read(t: &mut App) -> Option<Snapshot> {
                 }
             })
             .collect();
-        let frames = ecad_engine::styles::rows(doc, &ecad_engine::styles::frame::CATALOGUE).into_iter().map(|r| (r.id, r.name)).collect();
+        let frames = ecad_electrical::styles::rows(doc, &ecad_electrical::styles::frame::CATALOGUE).into_iter().map(|r| (r.id, r.name)).collect();
         Snapshot { head: p.ledger.head(), rows, project_sheet, frames }
     })
     .ok()
@@ -156,7 +156,8 @@ fn head(t: &mut App) -> Option<u64> {
 /// for network, a tree for single-line, plate and door for panel, a ruled table for report. An own
 /// type takes the glyph of what it holds.
 pub fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
-    let (paper, ink) = (ecad_ui::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER), ecad_ui::color(ecad_drawing_style::sheet::THUMBNAIL_INK));
+    let (paper, ink) =
+        (ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER), ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_INK));
     p.rect_filled(r, 2.0, paper);
     let st = egui::Stroke::new(1.0, ink);
     let i = r.shrink2(vec2(r.width() * 0.12, r.height() * 0.16));
@@ -221,7 +222,7 @@ pub fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
             for x in [0.05, 0.2, 0.35] {
                 p.vline(lx(x), i.y_range(), st);
             }
-            let accent = ecad_ui::color(ecad_ui::SHELL.accent);
+            let accent = ecad_widgets::color(ecad_widgets::SHELL.accent);
             let sa = egui::Stroke::new(1.0, accent);
             p.hline(lx(0.55)..=lx(0.95), ly(0.1), sa);
             p.vline(lx(0.65), ly(0.1)..=ly(1.0), sa);
@@ -230,19 +231,19 @@ pub fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
     }
 }
 
-/// On or off as the shared toggle (`ecad_ui::control::Toggle`); `on` is the document's value, so
+/// On or off as the shared toggle (`ecad_widgets::control::Toggle`); `on` is the document's value, so
 /// the caller acts on `clicked` and the next frame shows the commit.
 pub fn switch(ui: &mut egui::Ui, on: bool, enabled: bool, name: &str) -> egui::Response {
     let mut shown = on;
-    ecad_ui::control::Toggle::new(&mut shown, name).read_only(!enabled).show(ui)
+    ecad_widgets::control::Toggle::new(&mut shown, name).read_only(!enabled).show(ui)
 }
 
-/// A choice from a list as the shared value box with its chevron (`ecad_ui::control::ValueBox`),
+/// A choice from a list as the shared value box with its chevron (`ecad_widgets::control::ValueBox`),
 /// laid in `r`; a click opens its menu.
 fn chip(ui: &mut egui::Ui, r: Rect, text: &str, id: egui::Id, name: &str, enabled: bool) -> egui::Response {
     let r = Rect::from_center_size(r.center(), vec2(r.width(), size::CONTROL));
     ui.scope_builder(egui::UiBuilder::new().id_salt(id).max_rect(r), |ui| {
-        ui.add_enabled_ui(enabled, |ui| ecad_ui::control::ValueBox::new(text, name).chevron(true).width(r.width()).show(ui)).inner
+        ui.add_enabled_ui(enabled, |ui| ecad_widgets::control::ValueBox::new(text, name).chevron(true).width(r.width()).show(ui)).inner
     })
     .inner
 }
@@ -263,7 +264,7 @@ enum Do {
 /// own sheet and numbering in one folded section.
 pub fn show(t: &mut App, ui: &mut egui::Ui) {
     if !t.project_open() {
-        ecad_ui::prim::read_value(ui, super::project::NO_PROJECT);
+        ecad_widgets::prim::read_value(ui, crate::settings::project::NO_PROJECT);
         return;
     }
     let now = head(t);
@@ -286,31 +287,31 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     let mut todo = Vec::new();
     // The table at the top; the project's own rows under it take what is left (their Save stays
     // at their foot, as in rev 3).
-    super::in_rect(ui, left, "settings.pages.left", |ui| {
+    crate::settings::in_rect(ui, left, "settings.pages.left", |ui| {
         if t.settings.pages.project_open {
             // The project's rows open: the table folds to its head, so their Save stays in view.
-            let st = ecad_ui::SHELL;
+            let st = ecad_widgets::SHELL;
             let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::click());
             resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, false, "ecad.settings.pages.types"));
-            ecad_ui::icons::paint(
+            ecad_widgets::icons::paint(
                 ui.painter(),
                 Rect::from_center_size(pos2(r.left() + 6.0, r.center().y), vec2(10.0, 10.0)),
-                ecad_ui::tokens::Icon::ChevronRight,
-                ecad_ui::color(st.text_2),
+                ecad_widgets::tokens::Icon::ChevronRight,
+                ecad_widgets::color(st.text_2),
             );
             ui.painter().text(
                 pos2(r.left() + 20.0, r.center().y),
                 egui::Align2::LEFT_CENTER,
                 "Page types",
                 bar::font(ui, ui_type::BODY_EMPHASIS),
-                ecad_ui::color(st.text),
+                ecad_widgets::color(st.text),
             );
             ui.painter().text(
                 pos2(r.left() + 240.0, r.center().y),
                 egui::Align2::LEFT_CENTER,
                 format!("{} types", snap.rows.len()),
                 bar::font(ui, ui_type::SMALL),
-                ecad_ui::color(st.text_3),
+                ecad_widgets::color(st.text_3),
             );
             if resp.clicked() {
                 t.settings.pages.project_open = false;
@@ -320,17 +321,17 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
         }
         ui.add_space(space::L);
         let rest = Rect::from_min_max(pos2(left.left(), ui.cursor().top()), left.max);
-        super::in_rect(ui, rest, "settings.pages.project", |ui| project_section(t, ui));
+        crate::settings::in_rect(ui, rest, "settings.pages.project", |ui| project_section(t, ui));
     });
-    let s = ecad_ui::SHELL;
-    ui.painter().rect_filled(right.expand2(vec2(0.0, space::XL)), 0.0, ecad_ui::color(s.panel));
+    let s = ecad_widgets::SHELL;
+    ui.painter().rect_filled(right.expand2(vec2(0.0, space::XL)), 0.0, ecad_widgets::color(s.panel));
     ui.painter().vline(
         right.left() - 0.5,
         right.expand2(vec2(0.0, space::XL)).y_range(),
-        egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)),
+        egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)),
     );
     if let Some(row) = t.settings.pages.selected.clone().and_then(|sel| snap.rows.iter().find(|r| r.id == sel).cloned()) {
-        super::in_rect(ui, right.shrink2(vec2(space::L, 0.0)), "settings.pages.right", |ui| {
+        crate::settings::in_rect(ui, right.shrink2(vec2(space::L, 0.0)), "settings.pages.right", |ui| {
             egui::ScrollArea::vertical().id_salt("settings.pages.right.scroll").auto_shrink([false, false]).show(ui, |ui| {
                 panel(t, ui, &snap, &row, writable, &mut todo);
             });
@@ -408,24 +409,24 @@ fn col(r: Rect, i: usize) -> f32 {
 }
 
 fn table(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo: &mut Vec<Do>) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let w = ui.available_width();
     let (head, resp) = ui.allocate_exact_size(vec2(w, 32.0), Sense::hover());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Grid, true, TABLE));
     let p = ui.painter().clone();
     for (i, (label, _)) in COLS.iter().enumerate() {
-        p.text(pos2(col(head, i), head.center().y), egui::Align2::LEFT_CENTER, *label, bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_2));
+        p.text(pos2(col(head, i), head.center().y), egui::Align2::LEFT_CENTER, *label, bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.text_2));
     }
-    p.hline(head.x_range(), head.bottom() - 0.5, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    p.hline(head.x_range(), head.bottom() - 0.5, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     let selected = t.settings.pages.selected.clone();
     for row in &snap.rows {
         let (r, resp) = ui.allocate_exact_size(vec2(w, ROW_H), Sense::click());
         let on = selected.as_ref() == Some(&row.id);
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Row, true, on, format!("ecad.settings.pages.row.{}", row.id.text())));
         if on {
-            p.rect_filled(r, 0.0, ecad_ui::color(s.accent_soft));
+            p.rect_filled(r, 0.0, ecad_widgets::color(s.accent_soft));
         } else if resp.hovered() {
-            p.rect_filled(r, 0.0, ecad_ui::color(s.hover));
+            p.rect_filled(r, 0.0, ecad_widgets::color(s.hover));
         }
         if resp.clicked() {
             todo.push(Do::Select(row.id.clone()));
@@ -447,17 +448,17 @@ fn table(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo: 
         let y = r.center().y;
         let th = Rect::from_min_size(pos2(r.left() + space::XL, y - THUMB.y / 2.0), THUMB);
         thumbnail(&p, th, &row.id, row.holds);
-        p.rect_stroke(th, 2.0, egui::Stroke::new(1.0, ecad_ui::color(s.line)), egui::StrokeKind::Outside);
+        p.rect_stroke(th, 2.0, egui::Stroke::new(1.0, ecad_widgets::color(s.line)), egui::StrokeKind::Outside);
         // Type: the name (with 050's override dot) over the subtitle.
         let nx = col(r, 0);
         let has_sub = !row.subtitle.is_empty();
         let ny = if has_sub { y - 8.0 } else { y };
-        let g = p.text(pos2(nx, ny), egui::Align2::LEFT_CENTER, &row.name, bar::font(ui, ui_type::BODY_EMPHASIS), ecad_ui::color(s.text));
+        let g = p.text(pos2(nx, ny), egui::Align2::LEFT_CENTER, &row.name, bar::font(ui, ui_type::BODY_EMPHASIS), ecad_widgets::color(s.text));
         if row.overridden {
-            p.circle_filled(pos2(g.right() + 6.0, ny), 3.0, ecad_ui::color(s.accent));
+            p.circle_filled(pos2(g.right() + 6.0, ny), 3.0, ecad_widgets::color(s.accent));
         }
         if has_sub {
-            p.text(pos2(nx, y + 9.0), egui::Align2::LEFT_CENTER, row.subtitle, bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_3));
+            p.text(pos2(nx, y + 9.0), egui::Align2::LEFT_CENTER, row.subtitle, bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.text_3));
         }
         // Sheet: a drop-down chip.
         let sheet_r = Rect::from_min_size(pos2(col(r, 1), y - 14.0), vec2(((col(r, 2) - col(r, 1)) - space::L).min(132.0), 28.0));
@@ -473,7 +474,7 @@ fn table(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo: 
         egui::Popup::menu(&sheet_resp).show(|ui| sheet_menu(ui, row, snap, todo));
         // Frame: the zone grid, or Plain.
         let frame = if row.zones { zone_words(&row.shown) } else { "Plain".into() };
-        let fr = p.text(pos2(col(r, 2), y), egui::Align2::LEFT_CENTER, frame, bar::font(ui, ui_type::BODY), ecad_ui::color(s.text_2));
+        let fr = p.text(pos2(col(r, 2), y), egui::Align2::LEFT_CENTER, frame, bar::font(ui, ui_type::BODY), ecad_widgets::color(s.text_2));
         ui.interact(fr, egui::Id::unique(("ecad.settings.pages.frame", &id)), Sense::hover())
             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("ecad.settings.pages.frame.{id}")));
         // Title block.
@@ -493,19 +494,19 @@ fn table(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo: 
             |ui| switch(ui, row.zones, writable, &format!("ecad.settings.pages.zones.{id}")),
         );
         if z.inner.clicked() {
-            todo.push(Do::Set(row.id.clone(), vec![("zones", Some(ecad_model::words::flag_word(!row.zones).into()))]));
+            todo.push(Do::Set(row.id.clone(), vec![("zones", Some(ecad_model::naming::words::flag_word(!row.zones).into()))]));
         }
         // Pages.
         let count =
-            p.text(pos2(col(r, 5), y), egui::Align2::LEFT_CENTER, row.pages.to_string(), bar::font(ui, ui_type::BODY), ecad_ui::color(s.text_2));
+            p.text(pos2(col(r, 5), y), egui::Align2::LEFT_CENTER, row.pages.to_string(), bar::font(ui, ui_type::BODY), ecad_widgets::color(s.text_2));
         ui.interact(count, egui::Id::unique(("ecad.settings.pages.count", &id)), Sense::hover())
             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("ecad.settings.pages.count.{id}")));
-        p.hline(r.x_range(), r.bottom() - 0.5, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+        p.hline(r.x_range(), r.bottom() - 0.5, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     }
     ui.add_space(space::L);
     ui.horizontal(|ui| {
         ui.add_space(THUMB.x + 2.0 * space::XL);
-        let b = ui.add_enabled(writable, ecad_ui::prim::Button::new("+ Page type").small());
+        let b = ui.add_enabled(writable, ecad_widgets::prim::Button::new("+ Page type").small());
         b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, ADD));
         if b.clicked()
             && let Some(sel) = selected.clone()
@@ -513,10 +514,10 @@ fn table(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo: 
             todo.push(Do::Add(sel));
         }
         ui.add_space(space::M);
-        ui.label(egui::RichText::new(LIBRARY_NOTE).color(ecad_ui::color(s.text_3)));
+        ui.label(egui::RichText::new(LIBRARY_NOTE).color(ecad_widgets::color(s.text_3)));
     });
     if let Some(e) = &t.settings.pages.error {
-        ui.label(egui::RichText::new(e).small().color(ecad_ui::color(s.error)));
+        ui.label(egui::RichText::new(e).small().color(ecad_widgets::color(s.error)));
     }
 }
 
@@ -553,12 +554,12 @@ fn title_block_menu(ui: &mut egui::Ui, row: &TypeRow, snap: &Snapshot, todo: &mu
 
 /// A folding section's head: a chevron, the title, and the folded summary.
 fn section(ui: &mut egui::Ui, id: &str, title: &str, summary: &str, add: impl FnOnce(&mut egui::Ui)) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let key = egui::Id::unique(("ecad.settings.pages.section", id));
     let mut open = ui.ctx().data_mut(|d| *d.get_temp_mut_or(key, true));
     let name = format!("ecad.settings.pages.panel.{id}");
     let was = open;
-    ecad_ui::prim::SectionHeader::new(&mut open, title).summary(if was { "" } else { summary }).name(&name).show(ui);
+    ecad_widgets::prim::SectionHeader::new(&mut open, title).summary(if was { "" } else { summary }).name(&name).show(ui);
     if open != was {
         ui.ctx().data_mut(|d| d.insert_temp(key, open));
     }
@@ -567,21 +568,21 @@ fn section(ui: &mut egui::Ui, id: &str, title: &str, summary: &str, add: impl Fn
     }
     ui.add_space(space::S);
     let y = ui.cursor().top();
-    ui.painter().hline(ui.max_rect().x_range(), y, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    ui.painter().hline(ui.max_rect().x_range(), y, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     ui.add_space(space::S);
 }
 
-/// One labelled row of the right panel (`ecad_ui::control::row`).
+/// One labelled row of the right panel (`ecad_widgets::control::row`).
 fn prow<R>(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    ecad_ui::control::row(ui, label, add)
+    ecad_widgets::control::row(ui, label, add)
 }
 
 fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writable: bool, todo: &mut Vec<Do>) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     ui.add_space(space::S);
-    ui.label(egui::RichText::new(&row.name).strong().size(ui_type::OBJECT.size).color(ecad_ui::color(s.text)));
+    ui.label(egui::RichText::new(&row.name).strong().size(ui_type::OBJECT.size).color(ecad_widgets::color(s.text)));
     let n = row.pages;
-    ui.label(egui::RichText::new(format!("Page type · {n} page{}", if n == 1 { "" } else { "s" })).small().color(ecad_ui::color(s.text_2)));
+    ui.label(egui::RichText::new(format!("Page type · {n} page{}", if n == 1 { "" } else { "s" })).small().color(ecad_widgets::color(s.text_2)));
     ui.add_space(space::L);
     // The sheet's preview: the frame, the title block in place, zones when on.
     let w = ui.available_width();
@@ -608,7 +609,7 @@ fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writabl
             if let Some((_, text)) = v {
                 let r = ui
                     .add_enabled_ui(writable, |ui| {
-                        ecad_ui::control::TextEntry::new(text, "ecad.settings.pages.other").placeholder("Other: 594x420 12x8").show(ui)
+                        ecad_widgets::control::TextEntry::new(text, "ecad.settings.pages.other").placeholder("Other: 594x420 12x8").show(ui)
                     })
                     .inner;
                 if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !text.trim().is_empty() {
@@ -639,21 +640,21 @@ fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writabl
         });
         prow(ui, "Zones", |ui| {
             if switch(ui, row.zones, writable, "ecad.settings.pages.panel.zones").clicked() {
-                todo.push(Do::Set(row.id.clone(), vec![("zones", Some(ecad_model::words::flag_word(!row.zones).into()))]));
+                todo.push(Do::Set(row.id.clone(), vec![("zones", Some(ecad_model::naming::words::flag_word(!row.zones).into()))]));
             }
         });
     });
-    ui.label(egui::RichText::new(NUMBERS_NOTE).small().color(ecad_ui::color(s.text_3)));
+    ui.label(egui::RichText::new(NUMBERS_NOTE).small().color(ecad_widgets::color(s.text_3)));
     ui.add_space(space::S);
     // Design 054 §3.4: Checks and references.
     let summary = if row.checks { "on" } else { "off" };
     section(ui, "checks", "Checks and references", summary, |ui| {
         prow(ui, "Checks", |ui| {
             if switch(ui, row.checks, writable, CHECKS).clicked() {
-                todo.push(Do::Set(row.id.clone(), vec![("checks", Some(ecad_model::words::flag_word(!row.checks).into()))]));
+                todo.push(Do::Set(row.id.clone(), vec![("checks", Some(ecad_model::naming::words::flag_word(!row.checks).into()))]));
             }
         });
-        ui.label(egui::RichText::new(CHECKS_NOTE).small().color(ecad_ui::color(s.text_3)));
+        ui.label(egui::RichText::new(CHECKS_NOTE).small().color(ecad_widgets::color(s.text_3)));
     });
     if row.own || row.overridden {
         section(ui, "name", "Name", &row.name, |ui| {
@@ -664,14 +665,15 @@ fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writabl
                         *v = Some((row.id.clone(), row.name.clone()));
                     }
                     if let Some((_, text)) = v {
-                        let r = ui.add_enabled_ui(writable, |ui| ecad_ui::control::TextEntry::new(text, "ecad.settings.pages.name").show(ui)).inner;
+                        let r =
+                            ui.add_enabled_ui(writable, |ui| ecad_widgets::control::TextEntry::new(text, "ecad.settings.pages.name").show(ui)).inner;
                         if r.lost_focus() && text.trim() != row.name && !text.trim().is_empty() {
                             todo.push(Do::Rename(row.id.clone(), text.trim().to_string()));
                         }
                     }
                 });
             }
-            if row.overridden && ui.add_enabled(writable, ecad_ui::prim::Button::new("Reset").small()).clicked() {
+            if row.overridden && ui.add_enabled(writable, ecad_widgets::prim::Button::new("Reset").small()).clicked() {
                 todo.push(Do::Reset(row.id.clone()));
             }
         });
@@ -682,7 +684,7 @@ fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writabl
 /// the bottom right; a panel layout shows its plate and door.
 fn preview(p: &egui::Painter, r: Rect, row: &TypeRow) {
     let sheet = crate::canvas::Sheet::Paper.tokens();
-    let (paper, ink, dim) = (ecad_ui::color(sheet.sheet), ecad_ui::color(sheet.ink), ecad_ui::color(sheet.ink_2));
+    let (paper, ink, dim) = (ecad_widgets::color(sheet.sheet), ecad_widgets::color(sheet.ink), ecad_widgets::color(sheet.ink_2));
     p.rect_filled(r, 2.0, paper);
     let k = r.width() / row.shown.width.max(1) as f32;
     let frame = Rect::from_min_max(pos2(r.left() + 10.0 * k, r.top() + 7.0 * k), pos2(r.right() - 10.0 * k, r.bottom() - 10.0 * k));
@@ -712,7 +714,7 @@ fn preview(p: &egui::Painter, r: Rect, row: &TypeRow) {
         let dashed = |a: Rect, label: &str| {
             let pts = [a.left_top(), a.right_top(), a.right_bottom(), a.left_bottom(), a.left_top()];
             p.extend(egui::Shape::dashed_line(&pts, egui::Stroke::new(1.0, dim), 4.0, 3.0));
-            p.text(a.center(), egui::Align2::CENTER_CENTER, label, ecad_ui::fonts::font(p.ctx(), ui_type::SMALL), dim);
+            p.text(a.center(), egui::Align2::CENTER_CENTER, label, ecad_widgets::fonts::font(p.ctx(), ui_type::SMALL), dim);
         };
         let top = frame.top() + 20.0 * k;
         let bottom = tb.top() - 14.0 * k;
@@ -730,10 +732,10 @@ fn project_section(t: &mut App, ui: &mut egui::Ui) {
         let sheet = t.settings.pages.snapshot.as_ref().map(|x| sheet_words(&x.project_sheet)).unwrap_or_default();
         format!("{sheet} \u{b7} numbering, references, tags and revisions")
     };
-    ecad_ui::prim::SectionHeader::new(&mut open, "Project sheet and numbering").summary(&summary).name(PROJECT).show(ui);
+    ecad_widgets::prim::SectionHeader::new(&mut open, "Project sheet and numbering").summary(&summary).name(PROJECT).show(ui);
     t.settings.pages.project_open = open;
     if open {
         ui.set_max_width(900.0);
-        super::project::body(t, ui, crate::sheets_ui::Popout::Settings, crate::sheets_ui::Part::Settings);
+        crate::settings::project::body(t, ui, crate::settings::sheets::Popout::Settings, crate::settings::sheets::Part::Settings);
     }
 }

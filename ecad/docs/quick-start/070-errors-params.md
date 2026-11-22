@@ -18,11 +18,11 @@ reads stay the same. What changes is underneath, plus one thing an agent or a sc
   difference: `tag_fixed` on several devices now follows the tag rules ("yes" or null, a tag to
   fix, not provisional); before, it was stored as free text.
 - `place` (every form), `symbols`, `devices`, `deviceprops`, `devicedelete`, `ecaddelete`,
-  `tagsettings`, `convertcomponent` and `addterminal` are typed too. A switch given as something
+  `tagsettings`, `convertcomponent` and `addconnectionpoint` are typed too. A switch given as something
   other than true or false (`mirror: 1`, `builtins: "x"`) is now refused instead of ignored.
 - **Every command is typed now**, with a schema: also `connect`, `disconnect`, the drawn cable
   commands (`cableslash`, `cableadd`, `cablecore`, `cablefan`, `cableview`, `cableref`,
-  `cablecontinue`, `cablegoto`, `cablerefs`), the page commands (`newpage`, `openpage`,
+  `cablecontinue`, `cablegoto`, `cablereferences`), the page commands (`newpage`, `openpage`,
   `renamepage`, `movepage`, `ecadinspect`), history and branches (`history`, `steps`,
   `pointinfo`, `version`, `showpoint`, `closepoint`, `restore`, `branches`, `branch`,
   `renamebranch`, `switchbranch`, `archivebranch`, `reopenbranch`), `merge`, `undomerge`,

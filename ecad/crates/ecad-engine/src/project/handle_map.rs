@@ -1,13 +1,13 @@
 //! ECAD ID ⇄ CADCraft handle for one page (session only).
 
-use super::*;
+use crate::project::*;
 
 /// What a projected handle stands for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mapped {
     Item(ecad_model::ItemId),
     /// A terminal marker of a drawn representation.
-    Marker(RepresentationId, TerminalId),
+    Marker(RepresentationId, ConnectionPointId),
     /// A line of a cable's fan view (brief 005): computed, not an item. Edits of it are refused.
     Fan(CableId),
     /// The derived text of a cable reference (brief 010), by its reference representation:
@@ -27,11 +27,11 @@ pub enum Mapped {
     /// representation) or a part of the contact table under a head (by the head's): computed,
     /// not an item. Left out of an edit that also touches other objects; an edit of it alone is
     /// refused.
-    Xref(RepresentationId),
+    DeviceReference(RepresentationId),
     /// A segment of a strip's link line (brief 030, design 030 §5.3), by strip and link number:
     /// computed, not an item. Selecting it selects the link; erasing it deletes the link; other
     /// edits of it alone are refused, and it is left out of an edit with other objects.
-    Link(DeviceId, u32),
+    JumperBar(DeviceId, u32),
     /// A ring of a T's dot (design 072 §4.4), by the route that ends on another route: computed,
     /// not an item. Left out of an edit that also touches other objects; an edit of it alone is
     /// refused.
@@ -43,7 +43,7 @@ pub enum Mapped {
 pub struct HandleMap {
     by_handle: HashMap<Handle, Mapped>,
     items: BTreeMap<ecad_model::ItemId, Handle>,
-    markers: BTreeMap<(RepresentationId, TerminalId), Handle>,
+    markers: BTreeMap<(RepresentationId, ConnectionPointId), Handle>,
     /// Computed cable drawing (fans, core labels, reference flags; briefs 005, 009): (cable,
     /// index of the part) → handle.
     fans: BTreeMap<(CableId, u32), Handle>,
@@ -55,21 +55,21 @@ pub struct HandleMap {
     /// square is shown there.
     pub(super) quiet: Vec<Pt>,
     /// Brief 032 §2.6: open ends lying on another wire (the yellow looks-connected ring).
-    pub(super) looks: Vec<Pt>,
+    pub(super) draws: Vec<Pt>,
     /// Reference texts (brief 010): reference representation → handle.
-    refs: BTreeMap<RepresentationId, Handle>,
+    reference_texts: BTreeMap<RepresentationId, Handle>,
     /// Tag texts and terminal labels (brief 018): (symbol representation, which text) → handle.
-    tags: BTreeMap<(RepresentationId, crate::devices::TextOf), Handle>,
+    tags: BTreeMap<(RepresentationId, ecad_electrical::devices::TextOf), Handle>,
     /// Wire labels (brief 022): route representation → (conductor, handle).
     labels: BTreeMap<RepresentationId, (WireId, Handle)>,
     /// The sheet frame's parts (brief 019): index → handle.
     frame: BTreeMap<u32, Handle>,
     /// Device cross-references (brief 025): (contact or head representation, part index) → handle.
-    xrefs: BTreeMap<(RepresentationId, u32), Handle>,
+    references: BTreeMap<(RepresentationId, u32), Handle>,
     /// The part each cross-reference handle is.
-    xref_parts: HashMap<Handle, (RepresentationId, u32)>,
+    device_reference_parts: HashMap<Handle, (RepresentationId, u32)>,
     /// Brief 030: link line segments: (strip, link, index) → handle.
-    links: BTreeMap<(DeviceId, u32, u32), Handle>,
+    jumper_bars: BTreeMap<(DeviceId, u32, u32), Handle>,
     /// Brief 040: a two-colour wire's dashes, (route representation, index) → handle, mapped to
     /// the conductor as its label is (derived: left out of an edit with other objects, refused
     /// alone), and each dash's route handle.
@@ -88,14 +88,14 @@ impl HandleMap {
     pub fn item(&self, id: ecad_model::ItemId) -> Option<Handle> {
         self.items.get(&id).copied()
     }
-    pub fn marker(&self, rep: RepresentationId, t: TerminalId) -> Option<Handle> {
+    pub fn marker(&self, rep: RepresentationId, t: ConnectionPointId) -> Option<Handle> {
         self.markers.get(&(rep, t)).copied()
     }
     pub fn insert_item(&mut self, id: ecad_model::ItemId, h: Handle) {
         self.items.insert(id, h);
         self.by_handle.insert(h, Mapped::Item(id));
     }
-    pub fn insert_marker(&mut self, rep: RepresentationId, t: TerminalId, h: Handle) {
+    pub fn insert_marker(&mut self, rep: RepresentationId, t: ConnectionPointId, h: Handle) {
         self.markers.insert((rep, t), h);
         self.by_handle.insert(h, Mapped::Marker(rep, t));
     }
@@ -123,7 +123,7 @@ impl HandleMap {
     }
     /// Open ends that look connected (design 032 §2.6), computed with the page's projection.
     pub fn looks_connected(&self) -> &[Pt] {
-        &self.looks
+        &self.draws
     }
     /// Whether `cable` is drawn as a fan on this page.
     pub fn is_fan(&self, cable: CableId) -> bool {
@@ -143,22 +143,22 @@ impl HandleMap {
     }
     /// The handle of a reference's derived text.
     pub fn ref_text(&self, reference: RepresentationId) -> Option<Handle> {
-        self.refs.get(&reference).copied()
+        self.reference_texts.get(&reference).copied()
     }
     pub fn insert_ref_text(&mut self, reference: RepresentationId, h: Handle) {
-        self.refs.insert(reference, h);
+        self.reference_texts.insert(reference, h);
         self.by_handle.insert(h, Mapped::RefText(reference));
     }
     /// The handle of a derived tag text or terminal label.
-    pub fn tag_text(&self, rep: RepresentationId, of: crate::devices::TextOf) -> Option<Handle> {
+    pub fn tag_text(&self, rep: RepresentationId, of: ecad_electrical::devices::TextOf) -> Option<Handle> {
         self.tags.get(&(rep, of)).copied()
     }
-    pub fn insert_tag_text(&mut self, rep: RepresentationId, of: crate::devices::TextOf, h: Handle) {
+    pub fn insert_tag_text(&mut self, rep: RepresentationId, of: ecad_electrical::devices::TextOf, h: Handle) {
         self.tags.insert((rep, of), h);
         self.by_handle.insert(h, Mapped::Tag(rep));
     }
     /// The derived text a handle draws (brief 031: Show/Hide Text and Move Text pick by it).
-    pub fn tag_text_of(&self, h: Handle) -> Option<(RepresentationId, crate::devices::TextOf)> {
+    pub fn tag_text_of(&self, h: Handle) -> Option<(RepresentationId, ecad_electrical::devices::TextOf)> {
         self.tags.iter().find(|(_, x)| **x == h).map(|(k, _)| *k)
     }
     /// Every handle of a tag text or terminal label.
@@ -186,16 +186,16 @@ impl HandleMap {
         self.by_handle.insert(h, Mapped::Frame(index));
     }
     /// The handle of cross-reference part `index` of `rep` (brief 025).
-    pub fn xref(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
-        self.xrefs.get(&(rep, index)).copied()
+    pub fn reference(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
+        self.references.get(&(rep, index)).copied()
     }
     /// Brief 030: the handle of segment `index` of link `n` of `strip`.
-    pub fn link(&self, strip: DeviceId, n: u32, index: u32) -> Option<Handle> {
-        self.links.get(&(strip, n, index)).copied()
+    pub fn jumper_bar(&self, strip: DeviceId, n: u32, index: u32) -> Option<Handle> {
+        self.jumper_bars.get(&(strip, n, index)).copied()
     }
-    pub fn insert_link(&mut self, strip: DeviceId, n: u32, index: u32, h: Handle) {
-        self.links.insert((strip, n, index), h);
-        self.by_handle.insert(h, Mapped::Link(strip, n));
+    pub fn insert_jumper_bar(&mut self, strip: DeviceId, n: u32, index: u32, h: Handle) {
+        self.jumper_bars.insert((strip, n, index), h);
+        self.by_handle.insert(h, Mapped::JumperBar(strip, n));
     }
     /// Lane 072 D: the handle of ring `ring` of the T dot at end `end` of route `r`.
     pub fn tee(&self, r: ecad_model::RouteId, end: u8, ring: u8) -> Option<Handle> {
@@ -234,18 +234,18 @@ impl HandleMap {
     pub fn is_coloured(&self, h: Handle) -> bool {
         self.coloured.contains(&h)
     }
-    pub fn insert_xref(&mut self, rep: RepresentationId, index: u32, h: Handle) {
-        self.xrefs.insert((rep, index), h);
-        self.xref_parts.insert(h, (rep, index));
-        self.by_handle.insert(h, Mapped::Xref(rep));
+    pub fn insert_device_reference(&mut self, rep: RepresentationId, index: u32, h: Handle) {
+        self.references.insert((rep, index), h);
+        self.device_reference_parts.insert(h, (rep, index));
+        self.by_handle.insert(h, Mapped::DeviceReference(rep));
     }
     /// Which cross-reference part a handle is: its representation and index.
-    pub fn xref_part(&self, h: Handle) -> Option<(RepresentationId, u32)> {
-        self.xref_parts.get(&h).copied()
+    pub fn device_reference_part(&self, h: Handle) -> Option<(RepresentationId, u32)> {
+        self.device_reference_parts.get(&h).copied()
     }
     /// Every handle of a cross-reference part.
-    pub fn xref_handles(&self) -> impl Iterator<Item = Handle> + '_ {
-        self.xrefs.values().copied()
+    pub fn device_reference_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.references.values().copied()
     }
     /// Every handle of the sheet frame.
     pub fn frame_handles(&self) -> impl Iterator<Item = Handle> + '_ {
@@ -253,7 +253,7 @@ impl HandleMap {
     }
     /// Every handle of a reference text.
     pub fn ref_text_handles(&self) -> impl Iterator<Item = Handle> + '_ {
-        self.refs.values().copied()
+        self.reference_texts.values().copied()
     }
     pub fn len(&self) -> usize {
         self.by_handle.len()
@@ -271,23 +271,26 @@ impl HandleMap {
             == self.items.len()
                 + self.markers.len()
                 + self.fans.len()
-                + self.refs.len()
+                + self.reference_texts.len()
                 + self.tags.len()
                 + self.labels.len()
                 + self.frame.len()
-                + self.xrefs.len()
-                + self.links.len()
+                + self.references.len()
+                + self.jumper_bars.len()
                 + self.dashes.len()
                 + self.tees.len()
             && self.dash_routes.len() == self.dashes.len()
             && self.dashes.values().all(|h| matches!(self.by_handle.get(h), Some(Mapped::Label(_))))
-            && self.links.iter().all(|((c, n, _), h)| self.by_handle.get(h) == Some(&Mapped::Link(*c, *n)))
-            && self.xref_parts.len() == self.xrefs.len()
-            && self.xrefs.iter().all(|(k, h)| self.by_handle.get(h) == Some(&Mapped::Xref(k.0)) && self.xref_parts.get(h) == Some(k))
+            && self.jumper_bars.iter().all(|((c, n, _), h)| self.by_handle.get(h) == Some(&Mapped::JumperBar(*c, *n)))
+            && self.device_reference_parts.len() == self.references.len()
+            && self
+                .references
+                .iter()
+                .all(|(k, h)| self.by_handle.get(h) == Some(&Mapped::DeviceReference(k.0)) && self.device_reference_parts.get(h) == Some(k))
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))
-            && self.refs.iter().all(|(r, h)| self.by_handle.get(h) == Some(&Mapped::RefText(*r)))
+            && self.reference_texts.iter().all(|(r, h)| self.by_handle.get(h) == Some(&Mapped::RefText(*r)))
             && self.tags.iter().all(|((r, _), h)| self.by_handle.get(h) == Some(&Mapped::Tag(*r)))
             && self.labels.values().all(|(c, h)| self.by_handle.get(h) == Some(&Mapped::Label(*c)))
             && self.frame.iter().all(|(i, h)| self.by_handle.get(h) == Some(&Mapped::Frame(*i)))

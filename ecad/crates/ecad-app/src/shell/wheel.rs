@@ -1,5 +1,5 @@
 //! The wheel in the window (brief 041 step 3): a right-click on the page while no tool runs
-//! classifies what is under the cursor (`ecad_engine::interact::kind`) and opens that kind's
+//! classifies what is under the cursor (`ecad_engine::pointer::kind`) and opens that kind's
 //! wheel there; a right-click on a page row in the Pages tab opens the page row's wheel. Choosing
 //! a slot runs its action ([`crate::App::run_action`]), the same path the tool strip, the keys and
 //! Ctrl+K use.
@@ -10,16 +10,16 @@
 //! Update map: the wheel reads the object's kind and each slot's `enabled` once, when it opens;
 //! nothing while it is closed.
 
-use crate::actions::{self, Action, App, Choices, Context, Enabled, IdOf, ObjectKind, Params};
+use crate::commands::actions::{self, Action, App, Choices, Context, Enabled, IdOf, ObjectKind, Params};
 use ecad_engine::cad::Input;
 use ecad_engine::cad::Vec2;
-use ecad_engine::interact::kind::{self, Target};
+use ecad_engine::pointer::kind::{self, Target};
 use ecad_model::{PageId, Subject};
-use ecad_ui::wheel::{Event, SlotSpec, Wheel};
+use ecad_widgets::wheel::{Event, SlotSpec, Wheel};
 use eframe::egui;
 use serde_json::{Value, json};
 
-use super::{LeftTab, ListsView, Workspace};
+use crate::shell::{LeftTab, ListsView, Workspace};
 
 /// The open wheel: its widget state, the object and its eight slots.
 #[derive(Debug, Clone)]
@@ -96,19 +96,19 @@ impl crate::App {
         let Some(pick) = self.search.ran.take() else { return };
         self.set_workspace(Workspace::Draw);
         match pick {
-            crate::search::Pick::Page(pg) => {
+            crate::library::search::Pick::Page(pg) => {
                 self.shell.restore_view = true;
                 let _ = self.show_page(pg);
             }
-            crate::search::Pick::Action(id) => {
+            crate::library::search::Pick::Action(id) => {
                 let Some(a) = actions::find(id) else { return };
                 let target = self.target_from_selection();
                 if let Err(why) = self.run_action(a, target.as_ref(), None) {
                     self.refuse(a.label, why, target.as_ref());
                 }
             }
-            crate::search::Pick::Project(key) => self.place_project_symbol(&key),
-            crate::search::Pick::Symbol(_) | crate::search::Pick::Device(_) => {}
+            crate::library::search::Pick::Project(key) => self.place_project_symbol(&key),
+            crate::library::search::Pick::Symbol(_) | crate::library::search::Pick::Device(_) => {}
         }
     }
 
@@ -141,11 +141,11 @@ impl crate::App {
         // window's left edge).
         let at = match self.shell.slots {
             Some(sl) => {
-                let m = ecad_ui::tokens::wheel::OUTER_RADIUS + ecad_ui::tokens::space::XXL;
+                let m = ecad_widgets::tokens::wheel::OUTER_RADIUS + ecad_widgets::tokens::space::XXL;
                 let (x0, x1) = (sl.top_bar.left() + m, (sl.top_bar.right() - m).max(sl.top_bar.left() + m));
                 let (y0, y1) = (
-                    sl.top_bar.bottom() + m + ecad_ui::tokens::space::XXL,
-                    (sl.status.top() - m - 2.0 * ecad_ui::tokens::space::XXL).max(sl.top_bar.bottom() + m),
+                    sl.top_bar.bottom() + m + ecad_widgets::tokens::space::XXL,
+                    (sl.status.top() - m - 2.0 * ecad_widgets::tokens::space::XXL).max(sl.top_bar.bottom() + m),
                 );
                 egui::pos2(at.x.clamp(x0, x1), at.y.clamp(y0.min(y1), y1))
             }
@@ -172,7 +172,7 @@ impl crate::App {
                     .and_then(Value::as_array)
                     .map(|a| a.iter().filter_map(|p| p.get("name").and_then(Value::as_str).map(str::to_string)).collect())
                     .unwrap_or_default();
-                names.truncate(ecad_ui::wheel::MAX_LIST - 1);
+                names.truncate(ecad_widgets::wheel::MAX_LIST - 1);
                 let mut vals: Vec<Value> = names.iter().map(|n| Value::String(n.clone())).collect();
                 names.push("None".into());
                 vals.push(Value::Null);
@@ -183,7 +183,7 @@ impl crate::App {
 
     fn show_wheel(&mut self, ctx: &egui::Context) {
         let Some(open) = self.shell.tools.wheel.as_mut() else { return };
-        let ev = ecad_ui::wheel::show(ctx, &mut open.widget, &open.target.name, &open.specs);
+        let ev = ecad_widgets::wheel::show(ctx, &mut open.widget, &open.target.name, &open.specs);
         let (slots, target, values) = (open.slots, open.target.clone(), open.values.clone());
         let run = |t: &mut crate::App, a: Option<&'static Action>, choice: Option<Value>| {
             t.shell.tools.wheel = None;
@@ -338,17 +338,17 @@ impl crate::App {
                 })?;
                 self.goto_symbols(&there.ok_or_else(|| format!("{} has no symbol on another page.", t.name))?)?;
             }
-            App::DeviceRow | App::TerminalRow | App::CableRow | App::PlcRacks => {
+            App::DeviceRow | App::TerminalStripRow | App::CableRow | App::PlcRacks => {
                 self.set_workspace(Workspace::Lists);
                 self.shell.lists = match app {
                     App::DeviceRow => ListsView::Devices,
-                    App::TerminalRow => ListsView::Terminals,
+                    App::TerminalStripRow => ListsView::TerminalBlocks,
                     App::PlcRacks => ListsView::Plc,
                     _ => ListsView::Reports,
                 };
             }
             // UI rev 3: Wire ▸ Continuation places the continuation arrow, as Find symbol does.
-            App::Continuation => self.start_pick(crate::search::Pick::Symbol(ecad_engine::symbols::StarterKey::Continuation))?,
+            App::Continuation => self.start_pick(crate::library::search::Pick::Symbol(ecad_electrical::symbols::StarterKey::Continuation))?,
             App::Coming => return Err(actions::COMING.into()),
             App::ShowNet => {
                 let t = target.ok_or("no wire")?;
@@ -363,7 +363,10 @@ impl crate::App {
                     .unwrap_or_default();
                 if let (Some(pg), Some(p)) = (page, self.project.clone()) {
                     let handles = p.read(&mut self.cad.session, |p, _| {
-                        wires.iter().flat_map(|w| ecad_engine::checks::handles_of(p, pg, ecad_engine::checks::Object::Wire(*w))).collect::<Vec<_>>()
+                        wires
+                            .iter()
+                            .flat_map(|w| ecad_engine::checks::handles_of(p, pg, ecad_electrical::checks::Object::Wire(*w)))
+                            .collect::<Vec<_>>()
                     })?;
                     self.cad.session.set_selection(handles);
                 }
@@ -375,20 +378,20 @@ impl crate::App {
                 let k = t.cable.ok_or("no cable")?;
                 let p = self.project.clone().ok_or("no ECAD project is open")?;
                 let here = t.page;
-                let refs = p.read(&mut self.cad.session, |p, _| {
+                let references = p.read(&mut self.cad.session, |p, _| {
                     p.ledger
                         .document()
                         .representations_of(Subject::Cable(k))
-                        .filter(|(_, r)| ecad_engine::references::is_reference(r))
+                        .filter(|(_, r)| ecad_electrical::references::cables::is_reference(r))
                         .map(|(id, r)| (id, r.page))
                         .collect::<Vec<_>>()
                 })?;
-                match refs.iter().find(|(_, pg)| Some(*pg) == here) {
+                match references.iter().find(|(_, pg)| Some(*pg) == here) {
                     Some((r, _)) => {
                         self.cad.run("cablegoto", json!({"reference": r.hex()}))?;
                     }
                     None => {
-                        let (_, pg) = refs.first().ok_or_else(|| format!("{} has no reference to another page.", t.name))?;
+                        let (_, pg) = references.first().ok_or_else(|| format!("{} has no reference to another page.", t.name))?;
                         self.show_page(*pg)?;
                     }
                 }
@@ -438,15 +441,15 @@ impl crate::App {
                     .and_then(|t| t.page)
                     .and_then(|pg| self.panel.rows().iter().find(|r| r.id == pg).and_then(|r| r.folder));
                 self.panel_action(match folder {
-                    Some(f) => crate::project_panel::Action::NewPageIn(Some(f)),
-                    None => crate::project_panel::Action::New,
+                    Some(f) => crate::pages::project_panel::Action::NewPageIn(Some(f)),
+                    None => crate::pages::project_panel::Action::New,
                 });
             }
-            App::RenamePage => self.panel_action(crate::project_panel::Action::RenameInBox(page.ok_or("no page")?)),
-            App::PreviewPage => self.panel_action(crate::project_panel::Action::Preview(page.ok_or("no page")?)),
+            App::RenamePage => self.panel_action(crate::pages::project_panel::Action::RenameInBox(page.ok_or("no page")?)),
+            App::PreviewPage => self.panel_action(crate::pages::project_panel::Action::Preview(page.ok_or("no page")?)),
             App::NewFolder => {
                 let folder = page.and_then(|pg| self.panel.rows().iter().find(|r| r.id == pg).and_then(|r| r.folder));
-                self.panel_action(crate::project_panel::Action::NewFolder(folder));
+                self.panel_action(crate::pages::project_panel::Action::NewFolder(folder));
             }
             App::FindSymbol => {
                 self.search.open = true;
@@ -455,7 +458,7 @@ impl crate::App {
             App::Renumber => self.open_renumber(false, false, None),
             App::RenumberWires => self.open_renumber(false, true, None),
             App::Finalise => self.open_renumber(true, false, None),
-            App::WireSettings => self.panel_action(crate::project_panel::Action::ProjectSettings),
+            App::WireSettings => self.panel_action(crate::pages::project_panel::Action::ProjectSettings),
             // Brief 048 (design 048 §9.6).
             App::NewSymbol => self.new_symbol(),
             App::EditSymbol => {
@@ -500,25 +503,25 @@ fn id_params(of: IdOf, t: &Target) -> Option<Value> {
 
 /// The Text panel's line for a template action (no form exists yet): the object's IDs filled in,
 /// the rest as `<placeholders>`.
-fn template(a: &Action, target: Option<&Target>, picked: &crate::tools::Picked) -> String {
+fn template(a: &Action, target: Option<&Target>, picked: &crate::commands::tools::Picked) -> String {
     let tool = match a.command {
         "setprop" => "ecad.setprop",
         "cableadd" => "ecad.cableadd",
         "ecaddelete" => "ecad.delete",
         _ => "",
     };
-    if let Some((line, _)) = crate::tools::template(tool, picked) {
+    if let Some((line, _)) = crate::commands::tools::template(tool, picked) {
         return line;
     }
     // Brief 044: a connector pin's new name.
     if a.command == "pinlabel" {
-        return match target.and_then(|t| t.terminal) {
-            Some(term) => format!(r#"pinlabel {{"terminal":"{}","to":"<new pin name>"}}"#, term.hex()),
+        return match target.and_then(|t| t.connection_point) {
+            Some(term) => format!(r#"pinlabel {{"connection_point":"{}","to":"<new pin name>"}}"#, term.hex()),
             None => r#"pinlabel {"device":"<connector tag>","pin":"<pin name>","to":"<new pin name>"}"#.to_string(),
         };
     }
-    match target.and_then(|t| t.terminal) {
-        Some(term) => format!(r#"{} {{"terminal":"{}","position":"<new label>"}}"#, a.command, term.hex()),
-        None => format!(r#"{} {{"terminal":"<terminal id>","position":"<new label>"}}"#, a.command),
+    match target.and_then(|t| t.connection_point) {
+        Some(term) => format!(r#"{} {{"connection_point":"{}","position":"<new label>"}}"#, a.command, term.hex()),
+        None => format!(r#"{} {{"connection_point":"<terminal id>","position":"<new label>"}}"#, a.command),
     }
 }

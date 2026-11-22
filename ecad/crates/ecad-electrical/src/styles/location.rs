@@ -5,14 +5,14 @@
 //! listed, and drawn as `none` (CADCraft draws no fill behind other entities on a layer yet; the
 //! quick start says so).
 
-use ecad_model::style::LocationStyle;
-use ecad_model::style::text::StyleColour;
-use ecad_model::units::Mm;
+use ecad_model::geometry::units::Mm;
+use ecad_model::objects::styles::LocationStyle;
+use ecad_model::objects::styles::text::StyleColour;
 use ecad_model::{AidId, Document, StyleRef, Word};
 
-use super::{Builtin, Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Scope, Slot, Value};
+use crate::styles::{Builtin, Catalogue, Field};
 
 /// The line types a box may take, as the field stores them.
 pub const LINE_TYPES: &[&str] = &["dashed", "continuous", "dashdot"];
@@ -20,9 +20,21 @@ pub const LINE_TYPES: &[&str] = &["dashed", "continuous", "dashdot"];
 static FIELDS: [Field; 5] = [
     Field { key: "line_type", label: "Line type", kind: Kind::Choice(LINE_TYPES), slot: Slot::new(), over: None },
     Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
-    Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
+    Field {
+        key: "line_colour",
+        label: "Line colour",
+        kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
+        slot: Slot::new(),
+        over: None,
+    },
     Field { key: "label_style", label: "Label style", kind: Kind::Style(ecad_model::StyleCatalogue::Text), slot: Slot::new(), over: None },
-    Field { key: "fill", label: "Fill (reserved)", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
+    Field {
+        key: "fill",
+        label: "Fill (reserved)",
+        kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
+        slot: Slot::new(),
+        over: None,
+    },
 ];
 
 static BUILTINS: [Builtin; 1] = [Builtin { id: "box", name: "Location box", slot: Slot::new() }];
@@ -44,7 +56,7 @@ pub static CATALOGUE: Catalogue = Catalogue {
 
 /// A location box's resolved look.
 #[derive(Debug, Clone, PartialEq)]
-pub struct BoxLook {
+pub struct BoxDraw {
     /// The CADCraft linetype name.
     pub linetype: &'static str,
     /// Hundredths of a millimetre.
@@ -66,37 +78,39 @@ pub fn linetype(word: &str) -> &'static str {
 
 /// The look of location box `a`: its own style when it names one that exists (brief 050a), else
 /// the project's location style, the standard's, the built-in `box`.
-pub fn box_look(doc: &Document, a: AidId) -> BoxLook {
-    look_of(doc, &box_style(doc, a))
+pub fn box_draw(doc: &Document, a: AidId) -> BoxDraw {
+    draw_of(doc, &box_style(doc, a))
 }
 
 /// The location style box `a` is drawn in: its own when it names one that exists, else the
 /// project's (the standard's, the built-in `box`).
 pub fn box_style(doc: &Document, a: AidId) -> StyleRef {
-    own_style(doc, a).cloned().unwrap_or_else(|| super::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project()))
+    own_style(doc, a).cloned().unwrap_or_else(|| crate::styles::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project()))
 }
 
 /// Box `a`'s own location style, when it names one that exists (a dangling one falls through).
 pub fn own_style(doc: &Document, a: AidId) -> Option<&StyleRef> {
-    crate::locations::box_values(doc, a).and_then(|b| b.style.as_ref()).filter(|s| super::exists(doc, ecad_model::StyleCatalogue::Location, s))
+    crate::locations::box_values(doc, a)
+        .and_then(|b| b.style.as_ref())
+        .filter(|s| crate::styles::exists(doc, ecad_model::StyleCatalogue::Location, s))
 }
 
 /// The look of location style `id`.
-pub fn look_of(doc: &Document, id: &StyleRef) -> BoxLook {
-    let f = |k: &str| super::field_of(doc, ecad_model::StyleCatalogue::Location, id, k, None);
+pub fn draw_of(doc: &Document, id: &StyleRef) -> BoxDraw {
+    let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Location, id, k, None);
     let lt = f("line_type").map(|r| r.word()).unwrap_or("dashed");
     let mm = f("line_weight").map_or(0.25, |r| r.number());
     let lineweight = (mm * 100.0).round().clamp(0.0, 211.0) as i16;
     let colour = f("line_colour").map_or_else(|| "none".to_string(), |r| r.text());
     let label_style = f("label_style").and_then(|r| StyleRef::parse(&r.text())).unwrap_or_else(|| StyleRef::Builtin("location".into()));
-    BoxLook { linetype: linetype(lt), lineweight, colour, label_style }
+    BoxDraw { linetype: linetype(lt), lineweight, colour, label_style }
 }
 
 /// Whether the project's location style labels with text style `id` (a change of that text style
 /// then reaches every box).
 pub fn labels_with(doc: &Document, id: &StyleRef) -> bool {
-    let project = super::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project());
-    look_of(doc, &project).label_style == *id
+    let project = crate::styles::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project());
+    draw_of(doc, &project).label_style == *id
 }
 
 /// The value of field `key` that `l` sets, if it sets one.

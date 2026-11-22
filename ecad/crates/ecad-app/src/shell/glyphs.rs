@@ -1,7 +1,7 @@
 //! Small glyphs the left panels draw (UI rev 3, boards 1.02–1.04 and 1.08): the header's pin and
 //! its list and thumbnail switch, a row's checkbox and drag grip, a page's thumbnail and a
 //! change's lane dot. Drawn in code with the painter, in the shell's colours; they are panel
-//! furniture rather than icons of the app, so they stay out of [`ecad_ui::tokens::Icon`].
+//! furniture rather than icons of the app, so they stay out of [`ecad_widgets::tokens::Icon`].
 
 use eframe::egui::{Color32, Painter, Pos2, Rect, Stroke, StrokeKind, pos2, vec2};
 

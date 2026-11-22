@@ -1,6 +1,6 @@
 //! Creating and opening a project.
 
-use super::*;
+use crate::project::*;
 
 impl Project {
     /// Create a project with one page, open that page in `s`, and attach the project as its owner.
@@ -52,7 +52,7 @@ impl Project {
             pages: BTreeMap::new(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
-            oops: crate::oops::Records::default(),
+            oops: crate::translate::oops::Records::default(),
             faults: Faults::default(),
             persistence,
             baseline,
@@ -62,7 +62,7 @@ impl Project {
             unsaved_marker: Arc::new(Drawing::new_metric()),
             views: BTreeSet::new(),
             show_hidden_text: false,
-            settings: crate::views::Settings::none(),
+            settings: crate::cables::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
             keep_open: false,
@@ -70,8 +70,8 @@ impl Project {
             page_views: HashMap::new(),
             changes: std::collections::VecDeque::new(),
             change_count: 0,
-            tag_high: crate::devices::TagHigh::default(),
-            designation_uses: crate::designations::Uses::default(),
+            tag_high: ecad_electrical::devices::TagHigh::default(),
+            designation_uses: ecad_electrical::locations::designations::Uses::default(),
             conflicts: Vec::new(),
             page_list_version: 0,
             last_placed: None,
@@ -105,7 +105,7 @@ impl Project {
         // Automated tests (the test store) never touch the user's settings unless they choose a
         // folder; a new project has no remembered views to read.
         if persistence != Persistence::TestStore {
-            p.settings = crate::views::Settings::from_env();
+            p.settings = crate::cables::views::Settings::from_env();
         }
         p.pages.insert(page, PageView::default());
         p.open_page(&mut Pages(s), page)?;
@@ -144,7 +144,7 @@ impl Project {
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
-            oops: crate::oops::Records::default(),
+            oops: crate::translate::oops::Records::default(),
             faults: Faults::default(),
             persistence: Persistence::TestStore,
             baseline,
@@ -154,7 +154,7 @@ impl Project {
             unsaved_marker: Arc::new(Drawing::new_metric()),
             views: BTreeSet::new(),
             show_hidden_text: false,
-            settings: crate::views::Settings::none(),
+            settings: crate::cables::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
             keep_open: false,
@@ -162,8 +162,8 @@ impl Project {
             page_views: HashMap::new(),
             changes: std::collections::VecDeque::new(),
             change_count: 0,
-            tag_high: crate::devices::TagHigh::starting_at(tag_high),
-            designation_uses: crate::designations::Uses::default(),
+            tag_high: ecad_electrical::devices::TagHigh::starting_at(tag_high),
+            designation_uses: ecad_electrical::locations::designations::Uses::default(),
             conflicts: Vec::new(),
             page_list_version: 0,
             last_placed: None,
@@ -209,17 +209,17 @@ impl Project {
     /// # Errors
     /// The file cannot be read, or is not a project file this build supports.
     pub fn open_file(s: &mut Session, path: &str, seed: u64) -> Result<(ProjectHandle, String), String> {
-        Self::open_file_in(s, path, seed, crate::views::Settings::from_env())
+        Self::open_file_in(s, path, seed, crate::cables::views::Settings::from_env())
     }
 
     /// [`Project::open_file`], remembering cable views in `settings` instead of this user's
     /// settings folder (tests, and trials that must not touch it). The views remembered for the
-    /// project are read here; an unusable settings file adds [`crate::views::UNREADABLE`] to what
+    /// project are read here; an unusable settings file adds [`crate::cables::views::UNREADABLE`] to what
     /// opening reports and never fails the open.
     ///
     /// # Errors
     /// As [`Project::open_file`].
-    pub fn open_file_in(s: &mut Session, path: &str, seed: u64, settings: crate::views::Settings) -> Result<(ProjectHandle, String), String> {
+    pub fn open_file_in(s: &mut Session, path: &str, seed: u64, settings: crate::cables::views::Settings) -> Result<(ProjectHandle, String), String> {
         Self::open_file_with(s, path, seed, settings, false)
     }
 
@@ -229,7 +229,7 @@ impl Project {
     /// # Errors
     /// As [`Project::open_file`].
     pub fn open_file_with(
-        s: &mut Session, path: &str, seed: u64, settings: crate::views::Settings, reading: bool,
+        s: &mut Session, path: &str, seed: u64, settings: crate::cables::views::Settings, reading: bool,
     ) -> Result<(ProjectHandle, String), String> {
         let path = crate::file::normalize(path).map_err(|e| e.to_string())?;
         let mut o =
@@ -237,7 +237,7 @@ impl Project {
                 .map_err(|e| e.to_string())?;
         let ledger = o.ledger;
         // Words in values that stay text (design 072 §9.5): read once on open, never per commit.
-        o.binding.refuse_unknown_words(ecad_electrical::words_check::check(ledger.document()));
+        o.binding.refuse_unknown_words(ecad_electrical::checks::words_check::check(ledger.document()));
         let default_layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order.clone();
         // A fresh ID stream for this session, never reissuing the file's IDs.
@@ -258,7 +258,7 @@ impl Project {
         // Cable views remembered by this user (brief 005); IDs not at the head are ignored.
         let loaded = settings.load(o.project);
         if loaded.unreadable {
-            summary.push(crate::views::UNREADABLE.into());
+            summary.push(crate::cables::views::UNREADABLE.into());
         }
         let views: BTreeSet<CableId> = loaded.fan.into_iter().filter(|k| ledger.document().cables.contains_key(k)).collect();
         let summary = summary.join("\n");
@@ -275,7 +275,7 @@ impl Project {
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
             clips: BTreeMap::new(),
-            oops: crate::oops::Records::default(),
+            oops: crate::translate::oops::Records::default(),
             faults: Faults::default(),
             persistence: Persistence::File,
             baseline,
@@ -285,7 +285,7 @@ impl Project {
             unsaved_marker: Arc::new(Drawing::new_metric()),
             views: BTreeSet::new(),
             show_hidden_text: false,
-            settings: crate::views::Settings::none(),
+            settings: crate::cables::views::Settings::none(),
             said_not_remembered: false,
             author: Author::User,
             keep_open: false,
@@ -293,8 +293,8 @@ impl Project {
             page_views: HashMap::new(),
             changes: std::collections::VecDeque::new(),
             change_count: 0,
-            tag_high: crate::devices::TagHigh::starting_at(std::mem::take(&mut o.tag_high)),
-            designation_uses: crate::designations::Uses::default(),
+            tag_high: ecad_electrical::devices::TagHigh::starting_at(std::mem::take(&mut o.tag_high)),
+            designation_uses: ecad_electrical::locations::designations::Uses::default(),
             conflicts: Vec::new(),
             page_list_version: 0,
             last_placed: None,

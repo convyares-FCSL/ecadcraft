@@ -23,9 +23,9 @@ fn connector_row_and_pins_by_the_agent() {
     let x = component(&v);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateDevice { .. })).count(), 1);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::EmbedDefinition { .. })).count(), 2);
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddTerminal { .. })).count(), 8);
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddConnectionPoint { .. })).count(), 8);
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::LinkRepresentation { rep, .. } if !rep.connection_points.is_empty())).count(), 2);
-    assert_eq!(v["terminals"].as_array().map(Vec::len), Some(8));
+    assert_eq!(v["connection_points"].as_array().map(Vec::len), Some(8));
 
     // Pins across wires: one transaction with the splits.
     for x in [100.0, 120.0] {
@@ -44,7 +44,7 @@ fn connector_row_and_pins_by_the_agent() {
     let v = c.exec("place", json!({"symbol": "pinpair", "device": x.hex(), "at": [300, 300]}));
     assert_one_by_agent(&mut c, n, "write");
     assert_eq!(component(&v), x);
-    assert_eq!(v["terminals"][0]["pin"], "5", "pins 1-4 are drawn on both halves, so a pin pair takes a new pin");
+    assert_eq!(v["connection_points"][0]["pin"], "5", "pins 1-4 are drawn on both halves, so a pin pair takes a new pin");
 }
 
 #[test]

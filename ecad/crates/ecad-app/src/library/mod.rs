@@ -12,11 +12,11 @@ pub mod builder;
 pub mod details;
 pub mod draft;
 pub mod review;
-pub mod title_blocks;
+pub mod search;
 pub mod view;
 
-use ecad_electrical::cmd::symbol::Content;
-use ecad_engine::symbols;
+use ecad_electrical::symbols;
+use ecad_electrical::symbols::commands::Content;
 use ecad_model::{DefinitionId, Form, ItemKind, Subject};
 use serde_json::{Value, json};
 
@@ -43,7 +43,7 @@ pub struct Library {
     /// The browser's listing last frame (the right panel draws the selected tile's details).
     pub listing: browser::Listing,
     /// Brief 055: Library ▸ Title blocks, the title block and frame editor.
-    pub tb: title_blocks::Editor,
+    pub tb: crate::title_blocks::Editor,
 }
 
 impl Library {
@@ -180,7 +180,7 @@ impl App {
     ///
     /// # Errors
     /// Nothing to make a symbol of, or part of the selection has a meaning.
-    pub fn make_symbol(&mut self, target: Option<&ecad_engine::interact::kind::Target>) -> Result<(), String> {
+    pub fn make_symbol(&mut self, target: Option<&ecad_engine::pointer::kind::Target>) -> Result<(), String> {
         let p = self.project.clone().ok_or("No project is open.")?;
         if let Some(t) = target.filter(|t| t.drawn)
             && let Some(c) = t.component
@@ -194,14 +194,14 @@ impl App {
                         prims.push(pr.clone());
                     }
                 }
-                let o = ecad_electrical::cmd::symbol::grid_origin(&prims);
-                let points: Vec<ecad_model::TerminalDef> = rep
+                let o = ecad_electrical::symbols::commands::grid_origin(&prims);
+                let points: Vec<ecad_model::ConnectionPointDef> = rep
                     .connection_points
                     .iter()
                     .enumerate()
                     .filter_map(|(n, (term, at))| {
-                        let tm = doc.terminals.get(term)?;
-                        Some(ecad_model::TerminalDef {
+                        let tm = doc.connection_points.get(term)?;
+                        Some(ecad_model::ConnectionPointDef {
                             key: tm
                                 .key
                                 .clone()
@@ -213,8 +213,8 @@ impl App {
                         })
                     })
                     .collect();
-                let graphics = prims.iter().map(|g| ecad_electrical::cmd::symbol::shifted(g, o)).collect();
-                let tag = ecad_engine::devices::tag_words(doc, c);
+                let graphics = prims.iter().map(|g| ecad_electrical::symbols::commands::shifted(g, o)).collect();
+                let tag = ecad_electrical::devices::tag_words(doc, c);
                 Some((graphics, points, tag, [o.x, o.y]))
             })?;
             let (graphics, points, tag, at) = found.ok_or("That device has no drawing to make a symbol of.")?;
@@ -227,7 +227,7 @@ impl App {
             return Ok(());
         }
         let handles = match target.filter(|t| !t.handles.is_empty()) {
-            Some(t) if t.kind == crate::actions::ObjectKind::Mixed => self.cad.session.selection(),
+            Some(t) if t.kind == crate::commands::actions::ObjectKind::Mixed => self.cad.session.selection(),
             Some(t) => t.handles.clone(),
             None => self.cad.session.selection(),
         };
@@ -248,12 +248,12 @@ impl App {
                         }
                     }
                     // The same words as `makesymbol`'s refusal, naming the object (design 048 §9.5).
-                    Some(ecad_engine::project::Mapped::Item(i)) => return Err(ecad_electrical::cmd::symbol::not_plain(doc, i)),
+                    Some(ecad_engine::project::Mapped::Item(i)) => return Err(ecad_electrical::symbols::commands::not_plain(doc, i)),
                     Some(_) => return Err("Make symbol takes lines, arcs and text; part of the selection already has a meaning.".into()),
                     None => return Err("The selection holds an object this page does not know.".into()),
                 }
             }
-            Ok((prims, ecad_engine::references::page_number(doc, page)))
+            Ok((prims, ecad_electrical::references::cables::page_number(doc, page)))
         })??;
         let (prims, number) = found;
         if prims.is_empty() {

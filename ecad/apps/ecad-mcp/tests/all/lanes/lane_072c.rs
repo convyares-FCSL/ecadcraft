@@ -2,7 +2,7 @@
 //! one `ModifyDevice` with the typed field, as the agent, and is refused with writes off.
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::plc::ModuleFunction;
+use ecad_model::objects::plc::ModuleFunction;
 use ecad_model::{Author, DeviceType, Op};
 use serde_json::json;
 

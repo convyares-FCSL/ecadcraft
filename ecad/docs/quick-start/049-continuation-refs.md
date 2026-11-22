@@ -15,7 +15,7 @@ name) are brief 022's.
 | Inspector | A selected arrow shows **Caption** (editable) and **Other ends**, each with **Go to** |
 | Hover | `Continuation 24V: 2 other ends`, then each one's place and page |
 | Go to Reference | From an arrow or its text: the first other end; again: the next, wrapping |
-| `xrefs` | Rows of kind `continuation`, one per arrow and other end |
+| `references` | Rows of kind `continuation`, one per arrow and other end |
 | Settings ▸ Standards | **Continuations**: other ends shown before `+n` (3), gaps, the most space between arrows under one caption (20 mm), the bracket tick. Text styles: **continuation caption** (2.5 mm, regular) |
 
 ## Try it

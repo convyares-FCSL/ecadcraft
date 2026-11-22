@@ -4,7 +4,7 @@
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::{Project, Store};
-use ecad_model::style::cable::Shield;
+use ecad_model::objects::styles::cable::Shield;
 use ecad_model::*;
 
 #[test]

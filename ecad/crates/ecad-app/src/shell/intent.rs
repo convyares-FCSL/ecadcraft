@@ -16,12 +16,12 @@
 //! ([`Intent::reads`] counts reads).
 
 use ecad_engine::cad::Input;
-use ecad_ui::prim::{self, Tone};
-use ecad_ui::tokens::space;
+use ecad_widgets::prim::{self, Tone};
+use ecad_widgets::tokens::space;
 use eframe::egui::{self, Rect};
 
-use super::wheel::Refusal;
 use crate::App;
+use crate::shell::wheel::Refusal;
 
 /// The strip's height.
 pub const HEIGHT: f32 = 28.0;
@@ -58,7 +58,7 @@ impl App {
     pub(crate) fn intent_frame(&mut self, ui: &mut egui::Ui) {
         self.track_tool_messages();
         let rect = match (self.shell.page_rect, self.shell.state.workspace) {
-            (Some(r), super::Workspace::Draw) if !self.shell.state.cad_chrome => Rect::from_min_size(r.min, egui::vec2(r.width(), HEIGHT)),
+            (Some(r), crate::shell::Workspace::Draw) if !self.shell.state.cad_chrome => Rect::from_min_size(r.min, egui::vec2(r.width(), HEIGHT)),
             _ => {
                 self.shell.tools.intent_text.clear();
                 return;
@@ -77,12 +77,12 @@ impl App {
         let mut text = String::new();
         // UI rev 3 (boards 1.11 to 1.13): a floating line centred at the top of the canvas, as
         // wide as what it says, so it never covers the title block.
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         let frame = egui::Frame::new()
-            .fill(ecad_ui::color(s.panel))
-            .stroke(egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line_strong)))
-            .corner_radius(ecad_ui::style::corner(ecad_ui::tokens::radius::POPOVER))
-            .shadow(ecad_ui::style::shadow())
+            .fill(ecad_widgets::color(s.panel))
+            .stroke(egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line_strong)))
+            .corner_radius(ecad_widgets::style::corner(ecad_widgets::tokens::radius::POPOVER))
+            .shadow(ecad_widgets::style::shadow())
             .inner_margin(egui::Margin::symmetric(space::L as i8, space::S as i8));
         // Beside the picker, its chip or the connector maker when one shows (boards 1.11, 1.12).
         let left = self.shell.tools.panel_right.map_or(rect.left() + space::XXL, |r| r + space::XL);
@@ -114,11 +114,11 @@ impl App {
                         }
                         // The tool's icon and name, a divider, then what the click will do.
                         let (ir, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-                        ecad_ui::icons::paint(ui.painter(), ir, icon, ecad_ui::color(s.accent_text));
+                        ecad_widgets::icons::paint(ui.painter(), ir, icon, ecad_widgets::color(s.accent_text));
                         ui.label(
                             egui::RichText::new(&title)
-                                .font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::BODY_EMPHASIS))
-                                .color(ecad_ui::color(s.text)),
+                                .font(ecad_widgets::fonts::font(ui.ctx(), ecad_widgets::tokens::ui_type::BODY_EMPHASIS))
+                                .color(ecad_widgets::color(s.text)),
                         );
                         ui.separator();
                         for p in parts.iter().skip(1) {
@@ -127,8 +127,8 @@ impl App {
                         if let Some(sn) = &sentence {
                             ui.label(
                                 egui::RichText::new(sn)
-                                    .font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::BODY))
-                                    .color(ecad_ui::color(s.accent_text)),
+                                    .font(ecad_widgets::fonts::font(ui.ctx(), ecad_widgets::tokens::ui_type::BODY))
+                                    .color(ecad_widgets::color(s.accent_text)),
                             );
                         }
                         for k in &keywords {
@@ -161,14 +161,14 @@ impl App {
 
     /// The running tool's icon and name for the intent line: the symbol being placed, or the
     /// tool's label in the action table, or the command's own name.
-    fn intent_title(&self) -> (ecad_ui::tokens::Icon, String) {
+    fn intent_title(&self) -> (ecad_widgets::tokens::Icon, String) {
         let tool = self.cad.session.running.as_ref().map(|r| r.id.to_lowercase()).unwrap_or_default();
         if tool == "place"
-            && let Some(sym) = self.shell.tools.placing.symbol.map(ecad_engine::symbols::starter)
+            && let Some(sym) = self.shell.tools.placing.symbol.map(ecad_electrical::symbols::starter)
         {
-            return (ecad_ui::tokens::Icon::Pin, sym.name.to_string());
+            return (ecad_widgets::tokens::Icon::Pin, sym.name.to_string());
         }
-        let a = crate::actions::ACTIONS.iter().find(|a| a.group.is_some() && a.command.eq_ignore_ascii_case(&tool));
+        let a = crate::commands::actions::ACTIONS.iter().find(|a| a.group.is_some() && a.command.eq_ignore_ascii_case(&tool));
         match a {
             Some(a) => (a.icon, a.label.to_string()),
             None => {
@@ -176,7 +176,7 @@ impl App {
                 if let Some(c) = t.get_mut(..1) {
                     c.make_ascii_uppercase();
                 }
-                (ecad_ui::tokens::Icon::Select, t)
+                (ecad_widgets::tokens::Icon::Select, t)
             }
         }
     }
@@ -214,7 +214,7 @@ impl App {
             return s.clone();
         }
         let cursor = self.cad.canvas.xf.map_or(self.cad.session.cursor, |xf| xf.to_world(pos));
-        let s = ecad_engine::interact::intent::at_cursor(&self.cad.session, tool, cursor);
+        let s = ecad_engine::pointer::intent::at_cursor(&self.cad.session, tool, cursor);
         self.shell.tools.intent.reads += 1;
         self.shell.tools.intent.cache = Some((key, s.clone()));
         s

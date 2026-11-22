@@ -9,16 +9,16 @@
 //! - Everything is read from the kept [`Plc`] model and the document; nothing is stored.
 //!
 //! Excludes: drawing. Lists ▸ PLC draws the tiles in `ecad-app`; the sheet in
-//! [`crate::generated`] (via `sheet_parts`).
+//! [`crate::pages::generated`] (via `sheet_parts`).
 
 use ecad_model::{DeviceId, Document, PageId, Subject};
 use serde_json::{Value, json};
 
-use super::rack::{CardType, RackRef};
-use super::{CardData, PlcFix, RackData, kept::Plc};
 use crate::checks::{Fix, Object};
+use crate::plc::rack::{CardType, RackRef};
+use crate::plc::{CardData, PlcFix, RackData, kept::Plc};
 
-/// Most tiles one rack shows (the free tile included): a rack is at most [`super::rack::MAX_SLOT`]
+/// Most tiles one rack shows (the free tile included): a rack is at most [`crate::plc::rack::MAX_SLOT`]
 /// slots, but a rack tile per slot of a hostile `plc.slots 999` with one card in slot 999 is still
 /// bounded here.
 pub const MAX_TILES: usize = 1_001;
@@ -124,7 +124,7 @@ impl Tile {
     /// The tile's data as `plcracks` adds it to a slot (design 051 §7).
     pub fn json(&self, doc: &Document) -> Value {
         json!({
-            "pages": self.pages.iter().map(|p| crate::references::page_number(doc, *p)).collect::<Vec<_>>(),
+            "pages": self.pages.iter().map(|p| crate::references::cables::page_number(doc, *p)).collect::<Vec<_>>(),
             "checks": self.checks,
             "range": self.range,
         })
@@ -144,7 +144,7 @@ pub fn pages_of(doc: &Document, c: DeviceId) -> Vec<PageId> {
 pub fn first_place(doc: &Document, c: DeviceId) -> Option<String> {
     let first = pages_of(doc, c).into_iter().next()?;
     let r = doc.representations_of(Subject::Device(c)).map(|(_, r)| r).find(|r| r.page == first)?;
-    super::iolist::rep_place(doc, r).0
+    crate::plc::iolist::rep_place(doc, r).0
 }
 
 /// Where `c` is first drawn on `page` (a symbol's origin), for a go-to.
@@ -197,7 +197,7 @@ pub fn spans(doc: &Document, plc: &Plc, card: &CardData) -> (Option<String>, Opt
     };
     match card.ty {
         CardType::Iol => (span(false), span(true)),
-        t if super::address::shows_output(t) => (None, span(true)),
+        t if crate::plc::address::shows_output(t) => (None, span(true)),
         _ => (span(false), None),
     }
 }
@@ -228,10 +228,10 @@ pub fn kind_words(doc: &Document, card: &CardData) -> String {
         CardType::Iol => format!("{n} IO-Link"),
         CardType::Ps | CardType::Pm => "power".to_string(),
         CardType::Cm => "comms".to_string(),
-        CardType::Module => super::edit::module_of(doc, card.id).map_or("module", |m| m.function.word()).replace('_', " "),
+        CardType::Module => crate::plc::edit::module_of(doc, card.id).map_or("module", |m| m.function.word()).replace('_', " "),
     };
-    let Some(m) = super::edit::module_of(doc, card.id) else { return base };
-    if let ecad_model::plc::ModuleFunction::Communication(ecad_model::plc::Communication::Link(c)) = &m.function {
+    let Some(m) = crate::plc::edit::module_of(doc, card.id) else { return base };
+    if let ecad_model::objects::plc::ModuleFunction::Communication(ecad_model::objects::plc::Communication::Link(c)) = &m.function {
         let ports = match c.ports.len() {
             0 => String::new(),
             1 => ", 1 port".into(),

@@ -1,18 +1,18 @@
 //! The panel slot (UI rev 3): beside the tool strip in Draw, one panel at a time, opened by the
 //! strip's Book, Devices and History buttons and closed by its own close button or the same strip
 //! button. Book, Devices and History host today's Project panel tabs unchanged
-//! ([`crate::project_panel`]); each keeps its own width (Book and Devices 248 px, History 280 px)
+//! ([`crate::pages::project_panel`]); each keeps its own width (Book and Devices 248 px, History 280 px)
 //! and drags between 200 and 420 px at its inner edge. Each header has a pin: the pinned panel
 //! docks and the drawing moves over for it; an unpinned one floats over the drawing with a shadow
 //! and closes when drawing starts (a press on the canvas). One panel is pinned at a time.
 
-use ecad_ui::tokens::{Icon, size, space};
+use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui::{self, Color32, Rect, pos2, vec2};
 
-use super::state::BookView;
-use super::{LeftTab, Slots};
 use crate::App;
-use crate::project_panel::Tab;
+use crate::pages::project_panel::Tab;
+use crate::shell::state::BookView;
+use crate::shell::{LeftTab, Slots};
 
 /// The colours the moved panels draw with, from the shell's tokens (they used CADCraft's theme
 /// before brief 038). Named as the CADCraft tokens they replace, so their code reads the same.
@@ -36,8 +36,8 @@ pub struct Colours {
 
 /// The moved panels' colours.
 pub fn colours() -> Colours {
-    let s = ecad_ui::SHELL;
-    let c = ecad_ui::color;
+    let s = ecad_widgets::SHELL;
+    let c = ecad_widgets::color;
     Colours {
         text: c(s.text),
         text_dim: c(s.text_2),
@@ -150,37 +150,47 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
 
 /// The panel at `rect`: its header (title, Book's view switch, pin, close) and its body.
 fn panel(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
-    let s = ecad_ui::SHELL;
-    super::fill(ui, rect, s.panel);
-    ui.painter().vline(rect.right() - 0.5, rect.y_range(), egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    let s = ecad_widgets::SHELL;
+    crate::shell::fill(ui, rect, s.panel);
+    ui.painter().vline(rect.right() - 0.5, rect.y_range(), egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
     let tab = t.shell.state.left.tab;
-    super::bar::text_at(ui, header.left() + space::L, header.center().y, tab.label(), ecad_ui::tokens::ui_type::TITLE, ecad_ui::color(s.text));
+    crate::shell::bar::text_at(
+        ui,
+        header.left() + space::L,
+        header.center().y,
+        tab.label(),
+        ecad_widgets::tokens::ui_type::TITLE,
+        ecad_widgets::color(s.text),
+    );
     let y = header.center().y;
     let mut x = header.right() - space::S - HEAD_BTN;
     let at = |x: f32| Rect::from_center_size(pos2(x + HEAD_BTN / 2.0, y), vec2(HEAD_BTN, HEAD_BTN));
-    if super::bar::icon_button(ui, at(x), Icon::Close, CLOSE, 14.0, true).clicked() {
+    if crate::shell::bar::icon_button(ui, at(x), Icon::Close, CLOSE, 14.0, true).clicked() {
         t.shell.state.left.collapsed = true;
     }
     x -= HEAD_BTN + space::XS;
     let pinned = t.shell.state.left.pinned == Some(tab);
-    if glyph_button(ui, at(x), PIN, pinned, true, super::glyphs::pin).clicked() {
+    if glyph_button(ui, at(x), PIN, pinned, true, crate::shell::glyphs::pin).clicked() {
         t.toggle_pin();
     }
     if tab == LeftTab::Pages {
         // Brief 054 (design 054 §4.4): Renumber pages, each folder from its start number.
         x -= HEAD_BTN + space::XS;
         let can = t.project_open() && !t.header().read_only;
-        if super::bar::icon_button(ui, at(x), Icon::Number, RENUMBER, 14.0, can).on_hover_text(crate::project_panel::RENUMBER_PAGES).clicked() {
-            t.panel_action(crate::project_panel::Action::RenumberPages(None));
+        if crate::shell::bar::icon_button(ui, at(x), Icon::Number, RENUMBER, 14.0, can)
+            .on_hover_text(crate::pages::project_panel::RENUMBER_PAGES)
+            .clicked()
+        {
+            t.panel_action(crate::pages::project_panel::Action::RenumberPages(None));
         }
         let view = t.shell.state.left.book_view;
         x -= HEAD_BTN + space::XS;
-        if glyph_button(ui, at(x), BOOK_THUMBS, view == BookView::Thumbnails, false, super::glyphs::thumbs).clicked() {
+        if glyph_button(ui, at(x), BOOK_THUMBS, view == BookView::Thumbnails, false, crate::shell::glyphs::thumbs).clicked() {
             t.shell.state.left.book_view = BookView::Thumbnails;
         }
         x -= HEAD_BTN;
-        if glyph_button(ui, at(x), BOOK_LIST, view == BookView::List, false, super::glyphs::list).clicked() {
+        if glyph_button(ui, at(x), BOOK_LIST, view == BookView::List, false, crate::shell::glyphs::list).clicked() {
             t.shell.state.left.book_view = BookView::List;
         }
     }
@@ -188,22 +198,22 @@ fn panel(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let body = Rect::from_min_max(pos2(rect.left() + space::S, header.bottom()), pos2(rect.right() - space::S, rect.bottom()));
     let head = t.header();
     if t.panel.tab == Tab::Devices && t.lists_shows_devices() {
-        super::in_rect(ui, body, "ecad.shell.left.body", |ui| ecad_ui::prim::read_value(ui, super::DEVICES_IN_LISTS));
+        crate::shell::in_rect(ui, body, "ecad.shell.left.body", |ui| ecad_widgets::prim::read_value(ui, crate::shell::DEVICES_IN_LISTS));
         resize_edge(t, ui, rect);
         return;
     }
-    let actions = super::in_rect(ui, body, "ecad.shell.left.body", |ui| t.panel.show(ui, &head));
+    let actions = crate::shell::in_rect(ui, body, "ecad.shell.left.body", |ui| t.panel.show(ui, &head));
     for a in actions {
         t.panel_action(a);
     }
     resize_edge(t, ui, rect);
 }
 
-/// A header button at `rect` drawing a [`super::glyphs`] glyph; `on` shows it set (in the accent
+/// A header button at `rect` drawing a [`crate::shell::glyphs`] glyph; `on` shows it set (in the accent
 /// when `accent`, as the pin, else the active ground, as Book's view switch).
 fn glyph_button(ui: &mut egui::Ui, rect: Rect, label: &str, on: bool, accent: bool, glyph: fn(&egui::Painter, Rect, Color32)) -> egui::Response {
-    let r = super::bar::hit(ui, rect, label, on, accent, true);
-    let c = if r.hovered() && !on { ecad_ui::color(ecad_ui::SHELL.text) } else { super::bar::ink(on, accent, true) };
+    let r = crate::shell::bar::hit(ui, rect, label, on, accent, true);
+    let c = if r.hovered() && !on { ecad_widgets::color(ecad_widgets::SHELL.text) } else { crate::shell::bar::ink(on, accent, true) };
     glyph(ui.painter(), Rect::from_center_size(rect.center(), vec2(14.0, 14.0)), c);
     r
 }
@@ -218,10 +228,10 @@ fn resize_edge(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let tab = t.shell.state.left.tab;
     let Some(w) = t.shell.state.left.width_per_tab.get_mut(tab.index()) else { return };
     if r.double_clicked() {
-        *w = super::layout::default_width(tab);
+        *w = crate::shell::layout::default_width(tab);
     } else if r.dragged()
         && let Some(p) = r.interact_pointer_pos()
     {
-        *w = (p.x - rect.left()).clamp(super::layout::LEFT_MIN, super::layout::LEFT_MAX);
+        *w = (p.x - rect.left()).clamp(crate::shell::layout::LEFT_MIN, crate::shell::layout::LEFT_MAX);
     }
 }

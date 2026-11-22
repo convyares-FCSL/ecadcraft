@@ -175,8 +175,8 @@ fn t4_cable_manager_actions_are_one_transaction_each_with_exact_undo_and_redo() 
     exact(&mut c, "cableedit", json!({"cable": k, "set": {"to": {"gland": "M25"}, "length": 4}}), "Edit cable");
     let doc = c.doc();
     let kid = ecad_model::CableId::parse(&k).unwrap();
-    assert_eq!(ecad_engine::cables::gland(&doc, kid, ecad_engine::cables::Side::From).map(|g| g.0).as_deref(), Some("M20"));
-    assert_eq!(ecad_engine::cables::gland(&doc, kid, ecad_engine::cables::Side::To).map(|g| g.0).as_deref(), Some("M25"));
+    assert_eq!(ecad_electrical::cables::gland(&doc, kid, ecad_electrical::cables::Side::From).map(|g| g.0).as_deref(), Some("M20"));
+    assert_eq!(ecad_electrical::cables::gland(&doc, kid, ecad_electrical::cables::Side::To).map(|g| g.0).as_deref(), Some("M25"));
     let spare = exact(&mut c, "cablenew", json!({}), "Create cable")["cable"].as_str().unwrap().to_string();
     exact(&mut c, "cableremove", json!({"cable": spare}), "Remove cable");
     exact(&mut c, "cableslash", json!({"from": [-5, 25], "to": [15, 25], "cable": k}), "Cable slash");

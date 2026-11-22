@@ -15,9 +15,9 @@ by the owner.
    Expected: one strip `-X01` whose labels read `1.L`, `1.N`, `1.PE` … `3.PE`; each line is one
    step of undo. The echo says `Placed -X01:1.L…3.L on 3 wires (positions 1–3, level L).`
 2. **Labels.** Hover a terminal: `-X01:2.N  L/N/PE level N`. Typed:
-   `termlabel {"terminal":"<its id>","text":"2N"}` makes that level read `2N`;
-   `termlabel {"terminal":"<its id>","position":"2.1"}` renames the whole position (its levels,
-   accessories and links follow). `projectprops {"props":{"terminal.level.separator":""}}` makes
+   `termlabel {"connection_point":"<its id>","text":"2N"}` makes that level read `2N`;
+   `termlabel {"connection_point":"<its id>","position":"2.1"}` renames the whole position (its levels,
+   accessories and links follow). `projectprops {"props":{"terminal_block.level.separator":""}}` makes
    every multi-level label `1L`.
 3. **Sensor levels and links.** Place Terminals `SEN` with levels `S`, `+` and `-` on three rows
    of wires. Click **Jumper**, then the `+` level of position 1 and of position 4. Expected:

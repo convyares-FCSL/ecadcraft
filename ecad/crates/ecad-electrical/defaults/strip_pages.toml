@@ -5,7 +5,7 @@
 # field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
 
 [values]
-"terminal.plan.style" = "table"
+"terminal_block.plan.style" = "table"
 "strippage.pitch" = 9.0
 "strippage.body" = 22.0
 "strippage.lead" = 25.0

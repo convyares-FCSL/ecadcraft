@@ -56,9 +56,9 @@ layer where §4 says so). Engine and UI kit are **siblings**: neither uses the o
 
 | Layer | One-line meaning (fixed vocabulary) | Crates |
 |---|---|---|
-| **Core** | What an ECAD project *is* and what it *means*, including how its drawing is defined, without a screen or a drawing engine. | `ecad-model`, `ecad-store`, `ecad-file`, `ecad-electrical` (new), `ecad-inspect`, `ecad-drawing-style` (new, from ecad-tokens) |
+| **Core** | What an ECAD project *is* and what it *means*, including how its drawing is defined, without a screen or a drawing engine. | `ecad-model`, `ecad-store`, `ecad-file`, `ecad-electrical` (new), `ecad-drawing-style` (new, from ecad-tokens) |
 | **Engine** | The link to CADCraft: draws pages from the model, turns edits into transactions, runs commands. | `ecad-engine` |
-| **UI kit** | ECAD's widgets and screen look: how a value, button, table or panel looks. Knows nothing about projects. | `ecad-ui`, `ecad-tokens` (screen tokens only) |
+| **UI kit** | ECAD's widgets and screen look: how a value, button, table or panel looks. Knows nothing about projects. | `ecad-widgets` (ecad-ui and ecad-tokens merged in 0.2.3; the screen tokens are its `tokens` module) |
 | **App** | The ECAD application: shell, workspaces, panels, dialogs, lists, tabs, on a CADCraft window. | `ecad-app` (new, from ecad-trial) |
 | **Programs** | Things a person or agent starts: one `main` each, thin. | `ecad-desktop` (ecad-trial's binary), `ecad-cli`, `ecad-mcp` |
 | **Dev** | Developer and test tools under `ecad/dev/`. Never shipped. | `ecad-bench`, `ecad-inspector`, `xtask` (`dev/xtask`) |
@@ -68,8 +68,12 @@ layer has to build for wasm. The `cargo xtask wasm` check of the ECAD crates exi
 of CADCraft's "never break wasm" rule. It goes in the split lane (§5, step 10). CADCraft's own
 wasm build, and any `ECAD-SEAM` in CADCraft files, are not affected.
 
-Inside Core, the order is: `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`,
-`ecad-inspect`, then `ecad-electrical` (owner, 2026-11-15, split lane step 4). A Core crate depends
+Inside Core, the order is: `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`, then
+`ecad-electrical` (owner, 2026-11-15, split lane step 4; ecad-inspect folded away in 0.2.3).
+**0.2.3 (owner, 2026-11-21, layout.md):** ecad-inspect is deleted: the event log is ecad-engine's
+`history/event_log`, the snapshot ecad-engine's `dev/snapshot` (the engine's `ecad_inspect` tool
+calls it, so it cannot live under `dev/`), and the cable references' JSON rows electrical
+`references/cables`. ecad-ui and ecad-tokens are one crate, **ecad-widgets**. A Core crate depends
 only on Core crates before it in this order; `cargo xtask layers` refuses the rest, so a cycle
 such as `ecad-file` → `ecad-electrical` cannot be written.
 
@@ -78,11 +82,10 @@ such as `ecad-file` → `ecad-electrical` cannot be written.
 - `ecad-file`: the `.ecad` container, read and write.
 - `ecad-electrical`: the electrical rules: devices, wires, cables, strips, checks, ratings,
   reports, cross-references, styles and defaults. It reads a `Document` and returns data or ops.
-- `ecad-inspect`: read-only snapshots and the runtime event log.
 - `ecad-drawing-style`: how a page is drawn and printed: sheet colours, line weights, dashes,
   sheet text sizes, the sheet font, canvas markers.
-- `ecad-tokens` (UI kit): how the screen looks: shell colours, spacing, radii, shadows, icons,
-  UI type sizes.
+- `ecad-widgets` (UI kit): generic controls and the screen tokens (`tokens`: shell colours,
+  spacing, radii, shadows, icons, UI type sizes); no ECAD knowledge.
 
 `ecad-electrical` depends on `ecad-model`, `ecad-drawing-style` and `ecad-file`, and makes no OS
 calls itself. The file edge exists because a starter symbol's definition carries its content hash
@@ -468,9 +471,9 @@ in `dev/xtask/src/main.rs` changes as follows:
 
 | Layer | Crates | May depend on (normal deps) | Must not |
 |---|---|---|---|
-| Core | model, drawing-style, store, file, inspect, electrical | Core crates before it in the §1 order (model → drawing-style → store → file → inspect → electrical); crates.io crates allowed below | any `cadcraft-*`, any UI crate (`UI_CRATES`), `ecad-ui`, `ecad-tokens`, Engine, App, Programs, Dev |
-| Engine | ecad-engine | Core; `cadcraft-engine`, `cadcraft-io` | UI crates, `ecad-ui`, `ecad-tokens`, `cadcraft-ui-egui`, App, Programs, Dev |
-| UI kit | ecad-ui, ecad-tokens | `ecad-tokens`: `ecad-drawing-style` only. `ecad-ui`: `egui`, `epaint`, `egui_extras`, `ecad-tokens`, `ecad-drawing-style` (`UIKIT_ALLOWED` gains `ecad-drawing-style`) | everything else |
+| Core | model, drawing-style, store, file, electrical | Core crates before it in the §1 order (model → drawing-style → store → file → electrical); crates.io crates allowed below | any `cadcraft-*`, any UI crate (`UI_CRATES`), `ecad-widgets`, Engine, App, Programs, Dev |
+| Engine | ecad-engine | Core; `cadcraft-engine`, `cadcraft-io` | UI crates, `ecad-widgets`, `cadcraft-ui-egui`, App, Programs, Dev |
+| UI kit | ecad-widgets | `egui`, `epaint`, `egui_extras`, `ecad-drawing-style` (`UIKIT_ALLOWED`) | everything else |
 | App | ecad-app | Core, Engine, UI kit; `cadcraft-ui-egui`, `eframe`, `egui` | `cadcraft-engine` directly, Programs, Dev (except through its `dev` feature) |
 | Programs | desktop, cli, mcp | Core, Engine, App, other Programs (owner ruling); `cadcraft-ui-egui` (desktop), `cadcraft-mcp` (mcp) | `cadcraft-engine` directly, Dev (except through `dev`) |
 | Dev | under `dev/`: bench, inspector, `dev/xtask` (Exempt) | anything | — |

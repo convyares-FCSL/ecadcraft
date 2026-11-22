@@ -7,13 +7,13 @@
 //! Pure data and rules: no egui, no project lock. The rules themselves are the commands'
 //! ([`symbol_rules::problems`]), so the builder and the JSON form refuse in the same words.
 
-use ecad_model::units::Degrees;
-use ecad_model::units::Radians;
+use ecad_model::geometry::units::Degrees;
+use ecad_model::geometry::units::Radians;
 use std::collections::BTreeMap;
 
-use ecad_electrical::cmd::symbol::{self as symbol_rules, Content};
 use ecad_electrical::symbols::POINT_GRID_MM;
-use ecad_model::{Document, PointKey, Primitive, Pt, TerminalDef, TextHAlign, TextSlot, TextVAlign};
+use ecad_electrical::symbols::commands::{self as symbol_rules, Content};
+use ecad_model::{ConnectionPointDef, Document, PointKey, Primitive, Pt, TextHAlign, TextSlot, TextVAlign};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -78,7 +78,7 @@ pub enum Offer {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Shape {
     pub graphics: Vec<Primitive>,
-    pub points: Vec<TerminalDef>,
+    pub points: Vec<ConnectionPointDef>,
     pub slots: Vec<TextSlot>,
     pub offers: Vec<Offer>,
 }
@@ -360,7 +360,7 @@ impl Draft {
         }
         let key = self.next_point_key();
         self.step();
-        self.shape.points.push(TerminalDef { key, label: None, at, accepts: Default::default() });
+        self.shape.points.push(ConnectionPointDef { key, label: None, at, accepts: Default::default() });
         Ok(self.shape.points.len() - 1)
     }
 

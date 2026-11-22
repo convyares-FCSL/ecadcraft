@@ -38,7 +38,7 @@ use cadcraft_ui_egui::{ControlRequest, PendingReply};
 use ecad_engine::agent::access::{self, Mode, Preference, Status};
 use ecad_engine::agent::gate::{self, Call, OwnedSteps};
 use ecad_engine::agent::{agent_name, bridge, policy, tools};
-use ecad_engine::views::Settings;
+use ecad_engine::cables::views::Settings;
 use eframe::egui;
 use serde_json::{Value, json};
 

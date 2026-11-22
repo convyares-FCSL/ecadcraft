@@ -20,7 +20,7 @@ use ecad_file::Store;
 use ecad_file::schema::VersionKind;
 use ecad_file::store::TABLES as TABLES_ORDER;
 use ecad_file::verify::VerifyReport;
-use ecad_model::{DeviceId, Document, Subject, TerminalId, WireId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, Subject, WireId};
 use serde_json::{Map, Value, json};
 
 use crate::source::{Opened, Problem, Source, VerifyState, size_text};
@@ -402,11 +402,11 @@ fn summary(s: &dyn Source) -> Value {
 fn invariants(d: &Document) -> Value {
     let check = d.check();
     let index = d.check_index();
-    let mismatches = ecad_model::derive::mismatches(d, 1e-6);
+    let mismatches = ecad_model::connectivity::derive::mismatches(d, 1e-6);
     let shown: Vec<Value> = mismatches
         .iter()
         .take(200)
-        .map(|m| json!({"route": format!("({})", m.route.short()), "end": format!("{:?}", m.end), "point": point_name(d, m.terminal), "page": page_number(d, m.page)}))
+        .map(|m| json!({"route": format!("({})", m.route.short()), "end": format!("{:?}", m.end), "point": point_name(d, m.connection_point), "page": page_number(d, m.page)}))
         .collect();
     json!({
         "ok": check.is_ok() && index.is_ok() && mismatches.is_empty(),
@@ -420,7 +420,7 @@ fn invariants(d: &Document) -> Value {
 // ------------------------------------------------------------------ model views
 
 fn page_number(d: &Document, p: ecad_model::PageId) -> String {
-    ecad_model::book::page_number(d, p)
+    ecad_model::document::book::page_number(d, p)
 }
 
 fn tag_of(d: &ecad_model::Device) -> Option<&str> {
@@ -428,10 +428,10 @@ fn tag_of(d: &ecad_model::Device) -> Option<&str> {
 }
 
 /// The name of what owns a connection point: a device's tag, or a drawing aid's name.
-fn owner_name(d: &Document, owner: ecad_model::TerminalOwner) -> String {
+fn owner_name(d: &Document, owner: ecad_model::ConnectionPointOwner) -> String {
     match owner {
-        ecad_model::TerminalOwner::Device(c) => device_name(d, c),
-        ecad_model::TerminalOwner::Aid(a) => match d.aids.get(&a).and_then(|x| x.continuation_name()) {
+        ecad_model::ConnectionPointOwner::Device(c) => device_name(d, c),
+        ecad_model::ConnectionPointOwner::Aid(a) => match d.aids.get(&a).and_then(|x| x.continuation_name()) {
             Some(name) => format!("\u{2192}{name}"),
             None => a.short(),
         },
@@ -442,8 +442,8 @@ fn device_name(d: &Document, c: DeviceId) -> String {
     d.devices.get(&c).and_then(tag_of).map(str::to_string).unwrap_or_else(|| format!("({})", c.short()))
 }
 
-fn point_name(d: &Document, t: TerminalId) -> String {
-    match d.terminals.get(&t) {
+fn point_name(d: &Document, t: ConnectionPointId) -> String {
+    match d.connection_points.get(&t) {
         Some(term) => {
             let own = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
             format!("{}:{own}", owner_name(d, term.owner))
@@ -499,7 +499,7 @@ fn project(d: &Document) -> Value {
             "pages": d.pages.len(),
             "folders": d.folders.len(),
             "devices": d.devices.len(),
-            "connection_points": d.terminals.len(),
+            "connection_points": d.connection_points.len(),
             "wires": d.wires.len(),
             "cables": d.cables.len(),
             "nets": d.connectivity().len(),
@@ -541,7 +541,7 @@ fn pages(d: &Document) -> Vec<Value> {
         .iter()
         .filter_map(|id| d.pages.get(id).map(|p| (id, p)))
         .map(|(id, p)| {
-            let folder = ecad_model::book::folder_of(d, *id).and_then(|f| d.folders.get(&f)).map(|f| f.name.clone());
+            let folder = ecad_model::document::book::folder_of(d, *id).and_then(|f| d.folders.get(&f)).map(|f| f.name.clone());
             json!({
                 "id": id.to_string(),
                 "number": page_number(d, *id),
@@ -570,7 +570,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
             *tags.entry(t).or_default() += 1;
         }
     }
-    let mut attached: BTreeMap<TerminalId, Vec<WireId>> = BTreeMap::new();
+    let mut attached: BTreeMap<ConnectionPointId, Vec<WireId>> = BTreeMap::new();
     for (id, w) in &d.wires {
         for t in &w.ends {
             attached.entry(*t).or_default().push(*id);
@@ -591,7 +591,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
         .map(|(id, c)| {
             let tag = tag_of(c);
             let points: Vec<Value> = d
-                .terminals_of(*id)
+                .connection_points_of(*id)
                 .map(|(t, term)| {
                     let name = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
                     let wires: Vec<String> = attached.get(&t).into_iter().flatten().map(|w| wire_name(d, *w)).collect();
@@ -632,13 +632,13 @@ fn nets(d: &Document) -> Vec<Value> {
         .connectivity()
         .nets()
         .map(|(_, n)| {
-            let number = ecad_model::wiring::net_number(d, n);
-            let pot = ecad_model::wiring::net_potential(d, n);
-            let (page, column) = ecad_model::wiring::net_place(d, n);
-            let points: Vec<String> = n.terminals.iter().map(|t| point_name(d, *t)).collect();
+            let number = ecad_model::connectivity::wiring::net_number(d, n);
+            let pot = ecad_model::connectivity::wiring::net_potential(d, n);
+            let (page, column) = ecad_model::connectivity::wiring::net_place(d, n);
+            let points: Vec<String> = n.connection_points.iter().map(|t| point_name(d, *t)).collect();
             let row = json!({
                 "number": number,
-                "fixed": ecad_model::wiring::net_fixed(n),
+                "fixed": ecad_model::connectivity::wiring::net_fixed(n),
                 "potential": pot.name,
                 "place": format!("{page}/{column}"),
                 "points": points,
@@ -654,7 +654,7 @@ fn nets(d: &Document) -> Vec<Value> {
 fn wires(d: &Document) -> Vec<Value> {
     let mut in_cable: BTreeMap<WireId, (String, Option<String>)> = BTreeMap::new();
     for (id, k) in &d.cables {
-        let tag = k.properties.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_else(|| format!("({})", id.short()));
+        let tag = k.properties.get(ecad_model::naming::tag::TAG_KEY).cloned().unwrap_or_else(|| format!("({})", id.short()));
         for w in k.cores.iter().filter_map(|m| m.wire()) {
             in_cable.insert(w, (tag.clone(), k.cores.iter().find(|m| m.wire() == Some(w)).and_then(|m| m.label_str().map(str::to_string))));
         }
@@ -687,7 +687,7 @@ fn wires(d: &Document) -> Vec<Value> {
 
 /// The device a wire or cable names as its protection, in words: `-F01:3`, or the id of a device
 /// that is not there.
-fn protected_name(d: &Document, p: ecad_model::wire::ProtectedBy) -> String {
+fn protected_name(d: &Document, p: ecad_model::objects::wire::ProtectedBy) -> String {
     let device = if d.devices.contains_key(&p.device) { device_name(d, p.device) } else { format!("{} (not in the project)", p.device.short()) };
     p.position.map_or_else(|| device.clone(), |n| format!("{device}:{n}"))
 }
@@ -730,7 +730,7 @@ fn cables(d: &Document) -> Vec<Value> {
             for m in &k.cores {
                 if let Some(w) = m.wire().and_then(|w| d.wires.get(&w)) {
                     for (side, t) in ends.iter_mut().zip(w.ends.iter()) {
-                        if let Some(term) = d.terminals.get(t) {
+                        if let Some(term) = d.connection_points.get(t) {
                             side.insert(owner_name(d, term.owner));
                         }
                     }
@@ -738,9 +738,9 @@ fn cables(d: &Document) -> Vec<Value> {
             }
             json!({
                 "id": id.to_string(),
-                "tag": k.properties.get(ecad_model::tag::TAG_KEY),
+                "tag": k.properties.get(ecad_model::naming::tag::TAG_KEY),
                 "cable_type": k.cable_type.as_ref().map(ecad_model::StyleRef::text),
-                "shield": k.shield.map(ecad_model::words::Word::word),
+                "shield": k.shield.map(ecad_model::naming::words::Word::word),
                 "protected_by": k.protected_by.map(|p| protected_name(d, p)),
                 "members": members,
                 "ends": ends,

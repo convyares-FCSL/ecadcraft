@@ -140,7 +140,7 @@ fn merging_an_already_merged_branch_is_never_a_second_copy_of_its_changes() {
     assert_eq!(prop(&mut c, &coil, "description").as_deref(), Some("Main pump"));
     // Brief 052: the stored key, and the list entry the branch added, both merged: it shows +A1.
     let stored = prop(&mut c, &coil, "location").unwrap_or_default();
-    assert_eq!(ecad_engine::designations::display(&c.doc(), "location", &stored), "+A1");
+    assert_eq!(ecad_electrical::locations::designations::display(&c.doc(), "location", &stored), "+A1");
     c.ok("save", json!({}));
     assert_eq!(status(&mut c, "Option B"), "merged");
     // A closed (merged) branch merged again: refused with a way through, or nothing to merge.
@@ -275,15 +275,16 @@ fn a_line_end_attached_differently_on_both_sides_offers_main_or_branch() {
     let path = dir.file("end.ecad");
     let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
     let placed = c.exec("place", json!({"symbol": "coil", "at": [0, 0]}));
-    let t: Vec<String> = placed["terminals"].as_array().unwrap().iter().map(|t| t["terminal"].as_str().unwrap().to_string()).collect();
+    let t: Vec<String> =
+        placed["connection_points"].as_array().unwrap().iter().map(|t| t["connection_point"].as_str().unwrap().to_string()).collect();
     assert!(t.len() >= 2, "{placed}");
     // Design 072: a line with a free end (a route, no wire yet); `connect` lands its end B.
     let w = c.exec("wire", json!({"points": [[100, 40], [160, 40]]}))["route"].as_str().unwrap().to_string();
     c.ok("save", json!({}));
     c.exec("branch", json!({"name": "Option W"}));
-    c.exec("connect", json!({"route": w, "terminal": t[1], "end": "B"}));
+    c.exec("connect", json!({"route": w, "connection_point": t[1], "end": "B"}));
     c.exec("switchbranch", json!({"branch": "main", "save": true}));
-    c.exec("connect", json!({"route": w, "terminal": t[0], "end": "B"}));
+    c.exec("connect", json!({"route": w, "connection_point": t[0], "end": "B"}));
     let pv = c.exec("merge", json!({"from": "Option W", "preview": true}));
     let k = pv["conflicts"]
         .as_array()
@@ -298,7 +299,7 @@ fn a_line_end_attached_differently_on_both_sides_offers_main_or_branch() {
     let choices: Vec<&str> = k["choices"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
     assert_eq!(choices, ["main", "branch"], "{k}");
     let rid = ecad_model::RouteId::parse(&w).unwrap();
-    let point = |s: &str| ecad_model::RouteEnd::Point(ecad_model::TerminalId::parse(s).unwrap());
+    let point = |s: &str| ecad_model::RouteEnd::Point(ecad_model::ConnectionPointId::parse(s).unwrap());
     let (on_main, on_branch) = (point(&t[0]), point(&t[1]));
     let ends_id = format!("{w}/ends");
     let tried = every_choice_merges(&mut c, "Option W", &mut |c, id, ch| {
@@ -330,11 +331,11 @@ fn a_branch_wire_attached_to_a_point_main_removed_offers_bring_back_or_leave_loo
     let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
     let placed = c.exec("place", json!({"symbol": "coil", "at": [0, 0]}));
     let coil = placed["component"].as_str().unwrap().to_string();
-    let t0 = placed["terminals"][0]["terminal"].as_str().unwrap().to_string();
+    let t0 = placed["connection_points"][0]["connection_point"].as_str().unwrap().to_string();
     let w = c.exec("wire", json!({"points": [[100, 40], [160, 40]]}))["route"].as_str().unwrap().to_string();
     c.ok("save", json!({}));
     c.exec("branch", json!({"name": "Option X"}));
-    c.exec("connect", json!({"route": w, "terminal": t0, "end": "B"}));
+    c.exec("connect", json!({"route": w, "connection_point": t0, "end": "B"}));
     c.exec("switchbranch", json!({"branch": "main", "save": true}));
     c.exec("devicedelete", json!({"component": coil}));
     let pv = c.exec("merge", json!({"from": "Option X", "preview": true}));

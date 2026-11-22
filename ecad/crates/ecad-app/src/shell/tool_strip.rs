@@ -12,22 +12,22 @@
 //! place with its hover saying why, and for some groups a note and a link at the foot (Terminal:
 //! the Terminal manager). A group with a key (V D T W C) starts its last-used tool, and pressed
 //! again steps to the next. The toggles flip CADCraft's snap, grid and ortho modes; hovering one
-//! opens its popout ([`super::toggles`]).
+//! opens its popout ([`crate::shell::toggles`]).
 //!
 //! Brief 041: the groups and their items come from the action table
-//! ([`crate::actions`]): an item is an action with a group (a tool, a window action, or a
+//! ([`crate::commands::actions`]): an item is an action with a group (a tool, a window action, or a
 //! placeholder for a tool the board names that has no command yet).
 //!
 //! [`ToolStrip`] also keeps lane U4b's other state between frames: the open wheel and the intent
 //! line's cache and refusal; and UI rev 3's picker and connector maker.
 
-use crate::actions::{self, Action, ToolGroup};
-use ecad_ui::tokens::ui_type::TypeStyle;
-use ecad_ui::tokens::{Icon, line, size, space};
+use crate::commands::actions::{self, Action, ToolGroup};
+use ecad_widgets::tokens::ui_type::TypeStyle;
+use ecad_widgets::tokens::{Icon, line, size, space};
 use eframe::egui::{self, Key, Rect, pos2, vec2};
 
-use super::{LeftTab, bar};
 use crate::App;
+use crate::shell::{LeftTab, bar};
 
 /// A tool group as the strip shows it.
 #[derive(Debug, Clone, Copy)]
@@ -63,7 +63,7 @@ pub const GROUPS: [Group; 9] = [
     group(ToolGroup::Draw, Some(('D', Key::D)), "Draw (D)"),
     group(ToolGroup::Text, Some(('T', Key::T)), "Text (T)"),
     group(ToolGroup::Device, None, "Device group"),
-    group(ToolGroup::Terminal, None, "Terminal group"),
+    group(ToolGroup::TerminalBlock, None, "Terminal group"),
     group(ToolGroup::Plc, None, "PLC group"),
     group(ToolGroup::Wire, Some(('W', Key::W)), "Wire (W)"),
     group(ToolGroup::Cable, Some(('C', Key::C)), "Cable (C)"),
@@ -101,18 +101,18 @@ pub struct ToolStrip {
     pub popout: Option<usize>,
     stepping: Option<usize>,
     /// The wheel, while it is open.
-    pub wheel: Option<super::wheel::Open>,
+    pub wheel: Option<crate::shell::wheel::Open>,
     /// A command was running at the end of the last frame (a right-click then finishes its step
     /// and opens no wheel).
     pub was_running: bool,
     /// The intent line's state, and its text last frame (tests read it).
-    pub intent: super::intent::Intent,
+    pub intent: crate::shell::intent::Intent,
     pub intent_text: String,
     /// UI rev 3: the symbol picker while placing, and the folded chip's text last frame (tests).
-    pub placing: super::placing::State,
+    pub placing: crate::shell::placing::State,
     pub chip_text: String,
     /// UI rev 3: the connector maker's answers while Device ▸ Connector runs.
-    pub maker: super::connector::State,
+    pub maker: crate::shell::connector::State,
     /// The right edge of the picker, its chip or the maker this frame: the intent line starts
     /// clear of it.
     pub panel_right: Option<f32>,
@@ -199,44 +199,44 @@ enum Look {
 
 /// One strip button at `r`: the icon over its label, a hover fill, and its accessible label.
 fn button(ui: &mut egui::Ui, r: Rect, icon: Icon, text: &str, label: &str, look: Look, enabled: bool) -> egui::Response {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let resp = bar::hit(ui, r, label, matches!(look, Look::Current | Look::On), look == Look::Current, enabled);
     if look == Look::Toggle {
-        ui.painter().rect_filled(r, ecad_ui::style::corner(ecad_ui::tokens::radius::TOOL), ecad_ui::color(s.accent_soft));
+        ui.painter().rect_filled(r, ecad_widgets::style::corner(ecad_widgets::tokens::radius::TOOL), ecad_widgets::color(s.accent_soft));
     }
     let (icon_ink, text_ink) = match look {
-        Look::Current => (ecad_ui::color(ecad_ui::tokens::WHITE), ecad_ui::color(ecad_ui::tokens::WHITE)),
-        Look::On => (ecad_ui::color(s.accent_text), ecad_ui::color(s.text)),
-        Look::Toggle => (ecad_ui::color(s.accent_text), ecad_ui::color(s.accent_text)),
-        Look::Plain if !enabled => (ecad_ui::color(s.text_3), ecad_ui::color(s.text_3)),
-        Look::Plain if resp.hovered() => (ecad_ui::color(s.text), ecad_ui::color(s.text)),
-        Look::Plain => (ecad_ui::color(s.text_2), ecad_ui::color(s.text_2)),
+        Look::Current => (ecad_widgets::color(ecad_widgets::tokens::WHITE), ecad_widgets::color(ecad_widgets::tokens::WHITE)),
+        Look::On => (ecad_widgets::color(s.accent_text), ecad_widgets::color(s.text)),
+        Look::Toggle => (ecad_widgets::color(s.accent_text), ecad_widgets::color(s.accent_text)),
+        Look::Plain if !enabled => (ecad_widgets::color(s.text_3), ecad_widgets::color(s.text_3)),
+        Look::Plain if resp.hovered() => (ecad_widgets::color(s.text), ecad_widgets::color(s.text)),
+        Look::Plain => (ecad_widgets::color(s.text_2), ecad_widgets::color(s.text_2)),
     };
     let icon_rect = Rect::from_center_size(pos2(r.center().x, r.top() + 6.0 + size::TOOL_ICON / 2.0), vec2(size::TOOL_ICON, size::TOOL_ICON));
-    ecad_ui::icons::paint(ui.painter(), icon_rect, icon, icon_ink);
+    ecad_widgets::icons::paint(ui.painter(), icon_rect, icon, icon_ink);
     ui.painter().text(pos2(r.center().x, r.bottom() - 9.0), egui::Align2::CENTER_CENTER, text, bar::font(ui, LABEL), text_ink);
     resp
 }
 
 /// A flyout's corner mark: a small triangle in the button's bottom-right corner.
 fn corner_mark(ui: &egui::Ui, r: Rect, look: Look) {
-    let s = ecad_ui::SHELL;
-    let c = if look == Look::Current { ecad_ui::color(ecad_ui::tokens::WHITE) } else { ecad_ui::color(s.text_3) };
+    let s = ecad_widgets::SHELL;
+    let c = if look == Look::Current { ecad_widgets::color(ecad_widgets::tokens::WHITE) } else { ecad_widgets::color(s.text_3) };
     let (x, y) = (r.right() - 3.0, r.bottom() - 3.0);
     ui.painter().add(egui::Shape::convex_polygon(vec![pos2(x, y - 4.0), pos2(x, y), pos2(x - 4.0, y)], c, egui::Stroke::NONE));
 }
 
 /// A panel button's › (or ‹ while open) at its right edge, centred on the icon.
 fn panel_mark(ui: &egui::Ui, r: Rect, open: bool) {
-    let c = ecad_ui::color(ecad_ui::SHELL.text_3);
+    let c = ecad_widgets::color(ecad_widgets::SHELL.text_3);
     let at = pos2(r.right() - 4.0, r.top() + 6.0 + size::TOOL_ICON / 2.0);
     let icon = if open { Icon::ChevronLeft } else { Icon::ChevronRight };
-    ecad_ui::icons::paint(ui.painter(), Rect::from_center_size(at, vec2(8.0, 8.0)), icon, c);
+    ecad_widgets::icons::paint(ui.painter(), Rect::from_center_size(at, vec2(8.0, 8.0)), icon, c);
 }
 
 /// A divider across the strip at `y` (two hairlines for a double one).
 fn divider(ui: &egui::Ui, rect: Rect, y: f32, double: bool) {
-    let stroke = egui::Stroke::new(line::HAIRLINE_PX, ecad_ui::color(ecad_ui::SHELL.line_strong));
+    let stroke = egui::Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(ecad_widgets::SHELL.line_strong));
     let xs = (rect.left() + space::M)..=(rect.right() - space::M);
     ui.painter().hline(xs.clone(), y.round() + 0.5, stroke);
     if double {
@@ -246,9 +246,9 @@ fn divider(ui: &egui::Ui, rect: Rect, y: f32, double: bool) {
 
 /// Draw the strip in `rect`.
 pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
-    let s = ecad_ui::SHELL;
-    super::fill(ui, rect, s.panel);
-    ui.painter().vline(rect.right() - 0.5, rect.y_range(), egui::Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    let s = ecad_widgets::SHELL;
+    crate::shell::fill(ui, rect, s.panel);
+    ui.painter().vline(rect.right() - 0.5, rect.y_range(), egui::Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     let x = rect.center().x - size::TOOL_BUTTON_W / 2.0;
     let at = |y: f32| Rect::from_min_size(pos2(x, y), vec2(size::TOOL_BUTTON_W, size::TOOL_BUTTON));
     let mut y = rect.top() + space::S;
@@ -341,7 +341,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     for (ti, (label, icon, command)) in TOGGLES.into_iter().enumerate() {
         let r = at(y);
         y += size::TOOL_BUTTON + GAP;
-        let on = super::toggles::is_on(&settings, command);
+        let on = crate::shell::toggles::is_on(&settings, command);
         let look = if on { Look::Toggle } else { Look::Plain };
         let resp = button(ui, r, icon, label, label, look, true);
         corner_mark(ui, r, look);
@@ -352,7 +352,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
             t.shell.tools.popout = Some(ti);
         }
         if t.shell.tools.popout == Some(ti) {
-            let (cmds, over) = super::toggles::popout(ui, command, &settings, r);
+            let (cmds, over) = crate::shell::toggles::popout(ui, command, &settings, r);
             popout_cmds = cmds;
             over_popout |= over;
         }
@@ -365,7 +365,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
         t.toggle_panel(tab);
     }
     if let Some(c) = toggle {
-        for (cmd, params) in super::toggles::click(&settings, c) {
+        for (cmd, params) in crate::shell::toggles::click(&settings, c) {
             let _ = t.cad.run(cmd, params);
         }
     }
@@ -407,14 +407,14 @@ pub(crate) fn popover<R>(ui: &mut egui::Ui, id: &str, button: Rect, size: egui::
     let rect = Rect::from_min_size(pos2(button.right() + space::XS, top.round()), size);
     let area =
         egui::Area::new(egui::Id::unique(("ecad.shell.popover", id))).order(egui::Order::Foreground).fixed_pos(rect.min).show(ui.ctx(), |ui| {
-            let s = ecad_ui::SHELL;
-            let corner = ecad_ui::style::corner(ecad_ui::tokens::radius::POPOVER);
-            ui.painter().add(ecad_ui::style::shadow().as_shape(rect, corner));
+            let s = ecad_widgets::SHELL;
+            let corner = ecad_widgets::style::corner(ecad_widgets::tokens::radius::POPOVER);
+            ui.painter().add(ecad_widgets::style::shadow().as_shape(rect, corner));
             ui.painter().rect(
                 rect,
                 corner,
-                ecad_ui::color(s.panel),
-                egui::Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line_strong)),
+                ecad_widgets::color(s.panel),
+                egui::Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line_strong)),
                 egui::StrokeKind::Inside,
             );
             let (_, resp) = ui.allocate_exact_size(size, egui::Sense::hover());
@@ -427,25 +427,25 @@ pub(crate) fn popover<R>(ui: &mut egui::Ui, id: &str, button: Rect, size: egui::
 /// One flyout row at `r`: icon, label and key cap, lit when it is the group's last-used tool,
 /// greyed when it cannot run (its hover says why).
 fn flyout_row(ui: &mut egui::Ui, r: Rect, a: &Action, current: bool, greyed: Option<&str>) -> egui::Response {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let resp =
         ui.interact(r, egui::Id::unique(("ecad.shell.flyout.row", a.id)), if greyed.is_some() { egui::Sense::hover() } else { egui::Sense::click() });
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, greyed.is_none(), current, a.label));
     let row = r.shrink2(vec2(space::XS, 1.0));
     if current {
-        ui.painter().rect_filled(row, ecad_ui::style::corner(ecad_ui::tokens::radius::BUTTON), ecad_ui::color(s.accent_soft));
+        ui.painter().rect_filled(row, ecad_widgets::style::corner(ecad_widgets::tokens::radius::BUTTON), ecad_widgets::color(s.accent_soft));
     } else if resp.hovered() && greyed.is_none() {
-        ui.painter().rect_filled(row, ecad_ui::style::corner(ecad_ui::tokens::radius::BUTTON), ecad_ui::color(s.hover));
+        ui.painter().rect_filled(row, ecad_widgets::style::corner(ecad_widgets::tokens::radius::BUTTON), ecad_widgets::color(s.hover));
     }
     let ink = if greyed.is_some() { s.text_3 } else { s.text };
     let icon = Rect::from_center_size(pos2(r.left() + space::L + 8.0, r.center().y), vec2(16.0, 16.0));
-    ecad_ui::icons::paint(ui.painter(), icon, a.icon, ecad_ui::color(if greyed.is_some() { s.text_3 } else { s.text_2 }));
+    ecad_widgets::icons::paint(ui.painter(), icon, a.icon, ecad_widgets::color(if greyed.is_some() { s.text_3 } else { s.text_2 }));
     ui.painter().text(
         pos2(icon.right() + space::L, r.center().y),
         egui::Align2::LEFT_CENTER,
         a.label,
-        bar::font(ui, ecad_ui::tokens::ui_type::BODY),
-        ecad_ui::color(ink),
+        bar::font(ui, ecad_widgets::tokens::ui_type::BODY),
+        ecad_widgets::color(ink),
     );
     if let Some(k) = a.key {
         keycap_at(ui, pos2(r.right() - space::M, r.center().y), k.words());
@@ -458,9 +458,9 @@ fn flyout_row(ui: &mut egui::Ui, r: Rect, a: &Action, current: bool, greyed: Opt
 
 /// A key cap whose right edge is at `right`, centred on its y.
 fn keycap_at(ui: &mut egui::Ui, right: egui::Pos2, keys: &str) {
-    let w = bar::text_width(ui, keys, ecad_ui::tokens::ui_type::CAPTION) + 2.0 * space::S;
+    let w = bar::text_width(ui, keys, ecad_widgets::tokens::ui_type::CAPTION) + 2.0 * space::S;
     let r = Rect::from_min_size(pos2(right.x - w, right.y - 9.0), vec2(w, 18.0));
-    ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| ecad_ui::prim::keycap(ui, keys));
+    ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| ecad_widgets::prim::keycap(ui, keys));
 }
 
 /// The flyout of `g` beside its button (UI rev 3, boards 1.09 and 1.10): a header with the
@@ -469,10 +469,10 @@ fn keycap_at(ui: &mut egui::Ui, right: egui::Pos2, keys: &str) {
 /// pointer is over the flyout or its button.
 fn flyout(ui: &mut egui::Ui, g: &Group, tools: &[&'static Action], last: usize, writable: bool, button: Rect) -> (Option<Chosen>, bool) {
     let label = flyout_label(g);
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let note = g.group.note();
     let link = g.group.link();
-    let body = ecad_ui::tokens::ui_type::BODY;
+    let body = ecad_widgets::tokens::ui_type::BODY;
     let widest = tools.iter().map(|a| bar::text_width(ui, a.label, body)).fold(0.0, f32::max);
     let width = (widest + 2.0 * space::L + 16.0 + 64.0).max(if link.is_some() { 280.0 } else { FLYOUT_MIN_W }).round();
     let note_h = if note.is_some() { 64.0 } else { 0.0 };
@@ -486,8 +486,8 @@ fn flyout(ui: &mut egui::Ui, g: &Group, tools: &[&'static Action], last: usize, 
             pos2(head.left() + space::L, head.center().y),
             egui::Align2::LEFT_CENTER,
             g.group.name(),
-            bar::font(ui, ecad_ui::tokens::ui_type::SMALL),
-            ecad_ui::color(s.text_2),
+            bar::font(ui, ecad_widgets::tokens::ui_type::SMALL),
+            ecad_widgets::color(s.text_2),
         );
         if let Some(k) = g.letter() {
             keycap_at(ui, pos2(head.right() - space::M - space::XS, head.center().y), &k.to_string());
@@ -507,19 +507,23 @@ fn flyout(ui: &mut egui::Ui, g: &Group, tools: &[&'static Action], last: usize, 
         // The foot: a note, and a link beside it.
         if let Some(n) = note {
             let top = y + space::S;
-            ui.painter().hline(rect.x_range(), top.round() + 0.5, egui::Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)));
+            ui.painter().hline(rect.x_range(), top.round() + 0.5, egui::Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)));
             let link_w = link.map_or(0.0, |a| bar::text_width(ui, a.label, body) + 2.0 * space::L + space::M);
             let text_rect =
                 Rect::from_min_max(pos2(rect.left() + space::L, top + space::M), pos2(rect.right() - space::L - link_w, rect.bottom() - space::M));
-            let galley =
-                ui.painter().layout(n.to_string(), bar::font(ui, ecad_ui::tokens::ui_type::SMALL), ecad_ui::color(s.text_2), text_rect.width());
-            ui.painter().galley(pos2(text_rect.left(), text_rect.center().y - galley.size().y / 2.0), galley, ecad_ui::color(s.text_2));
+            let galley = ui.painter().layout(
+                n.to_string(),
+                bar::font(ui, ecad_widgets::tokens::ui_type::SMALL),
+                ecad_widgets::color(s.text_2),
+                text_rect.width(),
+            );
+            ui.painter().galley(pos2(text_rect.left(), text_rect.center().y - galley.size().y / 2.0), galley, ecad_widgets::color(s.text_2));
             if let Some(a) = link {
                 let r = Rect::from_min_size(
                     pos2(rect.right() - space::L - link_w + space::M, text_rect.center().y - 13.0),
                     vec2(link_w - space::M, 26.0),
                 );
-                let ok = ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| ui.add(ecad_ui::prim::Button::new(a.label).small())).inner;
+                let ok = ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| ui.add(ecad_widgets::prim::Button::new(a.label).small())).inner;
                 if ok.clicked() {
                     chosen = Some(Chosen::Link);
                 }

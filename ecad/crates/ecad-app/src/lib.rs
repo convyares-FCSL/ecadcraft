@@ -51,52 +51,45 @@
 //! unverified.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
-pub mod actions;
 pub mod agent;
+pub mod cables;
 pub mod canvas;
-pub mod checks_panel;
-pub mod debugger;
+pub mod checks;
+pub mod commands;
 pub mod developer;
-pub mod devices_panel;
-pub mod history_panel;
-pub mod library;
-pub mod lists;
-pub mod merge_dialog;
-pub mod outputs_ui;
-pub mod preview;
-pub mod project_panel;
-pub mod publish;
-pub mod release_ui;
-pub mod renumber_dialog;
-pub mod search;
-pub mod settings;
-pub mod sheets_ui;
-pub mod shell;
-pub mod text_ui;
-pub mod tools;
-
-mod file_ops;
+pub mod devices;
 mod folder;
-mod run;
-mod windows;
+pub mod history;
+pub mod inspector;
+pub mod library;
+pub mod pages;
+pub mod plc;
+pub mod publish;
+pub mod reports;
+pub mod settings;
+pub mod shell;
+pub mod terminal_strips;
+pub mod title_blocks;
+pub mod wires;
+pub mod workspace;
 
-pub use folder::{BANNER, DEFAULT_FOLDER};
+pub use crate::folder::{BANNER, DEFAULT_FOLDER};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::developer::debugger::Debugger;
+use crate::pages::preview::Preview;
+use crate::pages::project_panel::{Header, ProjectPanel};
 use cadcraft_ui_egui::closing::{Choice, Closing};
 use cadcraft_ui_egui::{CadApp, Services};
-use debugger::Debugger;
 use ecad_engine::cad::Handle;
 use ecad_engine::cad::Session;
+use ecad_engine::history::event_log::EventKind;
 use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
-use ecad_inspect::EventKind;
 use ecad_model::PageId;
 use eframe::egui::{self, RichText};
-use preview::Preview;
-use project_panel::{Header, ProjectPanel};
 use serde_json::json;
 
 /// The start-up marks [`App::start`] sets as it goes; ecad-desktop's start-up timing implements
@@ -136,7 +129,7 @@ New, Open, Save and Save As.",
 Disconnect work by clicking (follow the prompts at the command line; Enter finishes, Esc cancels).",
     "JSON forms go in the ECAD command field (PROJECT panel > Developer, at the top; the command line below takes \
 a space as Enter), for example:  wire {\"points\":[[0,0],[40,0]]}",
-    "ECAD commands: convertcomponent, addterminal, wire, connect, disconnect, ecaddelete, setprop, cableadd, place, \
+    "ECAD commands: convertcomponent, addconnectionpoint, wire, connect, disconnect, ecaddelete, setprop, cableadd, place, \
 newpage, openpage, ecadinspect. CADCraft drawing commands work as usual.",
 ];
 
@@ -241,7 +234,7 @@ pub fn window_title(info: Option<&BranchInfo>) -> String {
 }
 
 /// What ECAD's style depends on: CADCraft re-applies its own fonts and style when one changes.
-type EcadStyleKey = (&'static str, cadcraft_ui_egui::theme::ThemePref, Option<egui::Theme>, ecad_ui::Theme);
+type EcadStyleKey = (&'static str, cadcraft_ui_egui::theme::ThemePref, Option<egui::Theme>, ecad_widgets::Theme);
 
 /// The harness state around CADCraft's [`CadApp`].
 pub struct App {
@@ -309,32 +302,32 @@ pub struct App {
     /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
     lwdisplay_set: Option<bool>,
     /// The symbol search window (brief 018), opened from the ECAD tab's Find Symbol.
-    pub search: search::SymbolSearch,
+    pub search: crate::library::search::SymbolSearch,
     /// Brief 048: the Library workspace (the browser, or the symbol builder).
     pub library: library::Library,
     /// Brief 024: the Reports window and the Print Book dialog, while open.
-    pub reports: Option<outputs_ui::Reports>,
-    pub print_book: Option<outputs_ui::PrintBook>,
+    pub reports: Option<crate::reports::panel::Reports>,
+    pub print_book: Option<crate::reports::panel::PrintBook>,
     /// Brief 027: the Release dialog.
-    pub release: Option<release_ui::ReleaseDialog>,
+    pub release: Option<crate::history::release_dialog::ReleaseDialog>,
     /// UI rev 3: the Publish workspace (board 4.01).
     pub publish: publish::Publish,
 
     /// Brief 019: the ECAD section of CADCraft's Properties palette, shared with its closure.
-    pub props: sheets_ui::Shared,
+    pub props: crate::settings::sheets::Shared,
     /// What the section's copy was built for: project serial, change count, page, selection.
     props_seen: Option<(u64, u64, Option<PageId>, Vec<Handle>)>,
     /// How many times the section's copy was built (tests: only when it can differ).
     pub props_rebuilds: u64,
     /// The Project Properties and Revisions dialogs, when open.
-    pub project_props: Option<sheets_ui::ProjectProps>,
+    pub project_props: Option<crate::settings::sheets::ProjectProps>,
     /// Brief 042: Settings, a place you visit (its section, the Standards screen, the inspector's rows).
     pub settings: settings::Settings,
-    pub revisions: Option<sheets_ui::Revisions>,
+    pub revisions: Option<crate::settings::sheets::Revisions>,
     /// The merge dialog (brief 020b), when open.
-    pub merge: Option<merge_dialog::MergeDialog>,
+    pub merge: Option<crate::history::merge_dialog::MergeDialog>,
     /// The Renumber dialog (brief 026), also Finalise numbering, when open.
-    pub renumber: Option<renumber_dialog::RenumberDialog>,
+    pub renumber: Option<crate::devices::renumber_dialog::RenumberDialog>,
     /// Brief 026 (design §5.5): the issue line waiting on the provisional question, and its text.
     pub issue_prompt: Option<(String, String)>,
     /// The issue line to run once Finalise numbering is applied (Finalise numbering now).
@@ -358,7 +351,7 @@ pub struct App {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Hovered {
     /// A terminal within the capture aperture (drawn or symbol, free or connected).
-    Terminal(ecad_model::TerminalId),
+    ConnectionPoint(ecad_model::ConnectionPointId),
     /// A cable reference end (its point or its text) within the pick box (brief 010).
     Reference(ecad_model::RepresentationId),
     /// The object CADCraft's rollover highlights.
@@ -441,11 +434,11 @@ impl App {
         // the allowlisted reads; the port's requests never reach it directly.
         let (cad_tx, cad_rx) = std::sync::mpsc::sync_channel(64);
         let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested))).with_control(cad_rx);
-        let mut agent = agent::Agent::from_settings(ecad_engine::views::Settings::from_env());
+        let mut agent = agent::Agent::from_settings(ecad_engine::cables::views::Settings::from_env());
         agent.set_cad_channel(cad_tx);
-        cad.extra_tool_tabs = vec![tools::tab()];
-        let props: sheets_ui::Shared = Arc::default();
-        cad.owner_properties = Some(sheets_ui::section(Arc::clone(&props)));
+        cad.extra_tool_tabs = vec![crate::commands::tools::tab()];
+        let props: crate::settings::sheets::Shared = Arc::default();
+        cad.owner_properties = Some(crate::settings::sheets::section(Arc::clone(&props)));
         let shell = shell::Shell::new(Arc::clone(&props));
         App {
             cad,
@@ -480,7 +473,7 @@ impl App {
             hover_delay: HOVER_DELAY,
             home: ecad_engine::home(),
             lwdisplay_set: None,
-            search: search::SymbolSearch::default(),
+            search: crate::library::search::SymbolSearch::default(),
             library: library::Library::default(),
             reports: None,
             print_book: None,
@@ -575,7 +568,7 @@ impl App {
     pub fn zoom_to_drawing(&mut self) -> bool {
         let Ok(d) = self.cad.session.doc() else { return false };
         let mut b = ecad_engine::cad::Bounds2::default();
-        for e in d.model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER) {
+        for e in d.model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER) {
             b = b.union(&ecad_engine::cad::entity_bounds(d, e, 0));
         }
         if b.is_empty() {
@@ -594,10 +587,10 @@ impl App {
         if sel == self.frame_checked {
             return;
         }
-        let only_frame = ecad_engine::frame::drop_from_selection(&mut self.cad.session);
+        let only_frame = ecad_engine::pages::frame::drop_from_selection(&mut self.cad.session);
         self.frame_checked = self.cad.session.selection();
         if only_frame {
-            self.cad.session.echo(ecad_engine::frame::DERIVED);
+            self.cad.session.echo(ecad_engine::pages::frame::DERIVED);
         }
     }
 
@@ -639,7 +632,7 @@ impl App {
         self.handle_tools();
         self.sheet_windows(ui.ctx());
         self.host_windows();
-        self.output_windows(ui.ctx());
+        self.report_windows(ui.ctx());
         self.merge_windows(ui.ctx());
         self.renumber_window(ui.ctx());
         self.issue_prompt_window(ui.ctx());
@@ -663,18 +656,18 @@ impl App {
     /// is applied again in the next pass, once ECAD's font families exist.
     fn ecad_style(&mut self, ctx: &egui::Context) {
         // UI rev 3 (boards 1.17, 1.18): the person's light or dark interface, read by every
-        // `ecad_ui::SHELL` colour drawn on this thread from here on.
+        // `ecad_widgets::SHELL` colour drawn on this thread from here on.
         let theme = self.shell.state.theme.ui();
-        ecad_ui::set_theme(theme);
+        ecad_widgets::set_theme(theme);
         let key = (self.cad.language(), self.cad.ui.theme, ctx.system_theme(), theme);
         if self.ecad_style != Some(key) {
-            ecad_ui::fonts::install(ctx, cadcraft_ui_egui::theme::font_definitions(key.0));
-            ecad_ui::style::apply(ctx);
+            ecad_widgets::fonts::install(ctx, cadcraft_ui_egui::theme::font_definitions(key.0));
+            ecad_widgets::style::apply(ctx);
             self.ecad_style = Some(key);
             self.ecad_style_again = true;
             ctx.request_repaint();
         } else if std::mem::take(&mut self.ecad_style_again) {
-            ecad_ui::style::apply(ctx);
+            ecad_widgets::style::apply(ctx);
         }
     }
 
@@ -696,9 +689,9 @@ impl App {
     pub fn open_history_at(&mut self, seq: u64) {
         let Some(p) = self.project.clone() else { return };
         let Ok(branch) = p.read(&mut self.cad.session, |p, _| ecad_engine::history::current(p)) else { return };
-        self.panel.tab = project_panel::Tab::History;
+        self.panel.tab = crate::pages::project_panel::Tab::History;
         self.panel.history.steps_open = true;
-        self.panel.history.selected = Some(history_panel::Sel { branch, seq, kind: ecad_file::history::NodeKind::Fork, name: None });
+        self.panel.history.selected = Some(crate::history::panel::Sel { branch, seq, kind: ecad_file::history::NodeKind::Fork, name: None });
     }
 
     /// Bring the Project panel's copy up to date: one change-count comparison per frame, the rows
@@ -713,7 +706,7 @@ impl App {
             return;
         };
         let serial = self.project_serial;
-        let devices_shown = self.panel.tab == project_panel::Tab::Devices || self.lists_shows_devices();
+        let devices_shown = self.panel.tab == crate::pages::project_panel::Tab::Devices || self.lists_shows_devices();
         let selection = if devices_shown { self.cad.session.selection() } else { Vec::new() };
         let panel = &mut self.panel;
         let panel_revision = &mut self.panel_revision;
@@ -724,10 +717,10 @@ impl App {
                 Some(rv) => {
                     if *panel_revision != Some(rv.id) {
                         panel.set_tree(ecad_engine::tree_rows(&rv.doc, |_| false));
-                        panel.revision = Some(rv.bar.clone().unwrap_or_else(|| sheets_ui::revision_bar(&rv.rev, &rv.date)));
+                        panel.revision = Some(rv.bar.clone().unwrap_or_else(|| crate::settings::sheets::revision_bar(&rv.rev, &rv.date)));
                         *panel_revision = Some(rv.id);
                     }
-                    if panel.tab == project_panel::Tab::History {
+                    if panel.tab == crate::pages::project_panel::Tab::History {
                         panel.history.sync(serial, p);
                     }
                     return;
@@ -745,8 +738,9 @@ impl App {
             // Brief 054: folder start numbers and the generated pages, when anything changed.
             if panel.starts_at != Some(p.change_count()) {
                 let doc = p.ledger.document();
-                panel.starts = ecad_engine::page_types::starts(doc);
-                panel.generated = doc.page_order.iter().copied().filter(|pg| ecad_engine::generated::kind_of(doc, *pg).is_some()).collect();
+                panel.starts = ecad_electrical::pages::page_types::starts(doc);
+                panel.generated =
+                    doc.page_order.iter().copied().filter(|pg| ecad_electrical::pages::generated::kind_of(doc, *pg).is_some()).collect();
                 panel.starts_at = Some(p.change_count());
             }
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
@@ -757,7 +751,7 @@ impl App {
                 panel.devices.follow(p, &selection);
             }
             // The History tab's copy, only while it is shown (brief 020a; its own update map).
-            if panel.tab == project_panel::Tab::History {
+            if panel.tab == crate::pages::project_panel::Tab::History {
                 panel.history.sync(serial, p);
             }
         });

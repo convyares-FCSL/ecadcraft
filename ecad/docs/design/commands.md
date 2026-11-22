@@ -25,7 +25,7 @@ generic halves of device, output, page, sheet, symbol, terminal, text, wire and 
 | continuation.rs | G | contcaption | Plan and commit; remembers the last caption (project state, not session). |
 | default.rs | G | setdefault | Plan and commit. |
 | designation.rs | G | designations, designationadd/edit/merge/remove | Plan on the document and the designation-use index. |
-| device.rs | G/S | G: symbols, devices, deviceprops, ecaddelete, devicedelete, tagsettings. S: place, convertcomponent, addterminal | Placing and converting work on CADCraft entities, the selection and snapping. |
+| device.rs | G/S | G: symbols, devices, deviceprops, ecaddelete, devicedelete, tagsettings. S: place, convertcomponent, addconnectionpoint | Placing and converting work on CADCraft entities, the selection and snapping. |
 | device_link.rs | G | linkdevices, unlinkdevices, userfield | Plan and commit. |
 | level.rs | G | termlabel, toposition | Plan and commit. |
 | location.rs | G | conflicts, setlocation, setfunction | Plan and commit; keeps the waiting conflicts (project state). |
@@ -35,16 +35,16 @@ generic halves of device, output, page, sheet, symbol, terminal, text, wire and 
 | page_type.rs | G/S | G: folderprops, renumberpages. S: deletepage | Deleting closes the page's view. |
 | prop.rs | G | setprop | Many routes, all plan and commit on the document and the tag high-water mark. |
 | rating.rs | G | rating, ratingtable, ratings | Plan and commit; `ratingtable` declares a CSV read or write. |
-| reference.rs | G/S | G: cableref, cablecontinue, cablerefs. S: cablegoto | `cablegoto` opens a page, zooms and selects. |
+| reference.rs | G/S | G: cableref, cablecontinue, cablereferences. S: cablegoto | `cablegoto` opens a page, zooms and selects. |
 | release.rs | S | prerelease, release | The release folder renders every page to PDF (export). |
 | sheet.rs | G/S | G: pageprops, projectprops, newfolder, renamefolder, movefolder, deletefolder, revision, issuerevision. S: openrevision, closerevision, undoissue | Revision views redraw pages; `undoissue` drives the engine's undo history. |
 | style.rs | G | standard, setstyle, deletestyle, promote, styles | Plan and commit; `standard` declares reading another `.ecad`. |
 | symbol.rs | G/S | G: symbolnew, symboledit, symbolimpact, symbolupdate. S: makesymbol | `makesymbol` reads the selection's CADCraft entities. |
-| terminal.rs | G/S | G: terminals, stripplan, cablecores. S: bridge | `bridge` places through the drawing's place planner. |
+| terminal.rs | G/S | G: terminalblocks, stripplan, cablecores. S: bridge | `bridge` places through the drawing's place planner. |
 | text.rs | G/S | G: textstyle, pagetexts, defaults, movetext. S: showtext, hiddentext | Showing hidden text is a drawing setting that redraws open pages. |
 | title_block.rs | G/S | G: titleblocks, titleblock. S: titleblockimport | `titleblockimport` reads the DXF with CADCraft's reader. |
 | wire.rs | G/S | G: nets, net, wirenumber, potential, category, wiresettings, renumberwires, checks. S: wire, joinwires | Drawing wires snaps to the page's geometry with the drawing tolerance. |
-| xref.rs | G/S | G: xrefs, contacts, mirrormove. S: refgoto | `refgoto` opens a page, zooms and selects. |
+| xref.rs | G/S | G: references, contacts, mirrormove. S: refgoto | `refgoto` opens a page, zooms and selects. |
 | plc/ | G/S | G: plcslot, plcracks, plcchannel, iolist, plcaddress, plcmaketags, plcexport, plcimport, plccardtype. S: plcchannels, plcpage | Channel cells are placed through the drawing's planner; `plcpage` creates a page view. |
 
 ## 2. The runner

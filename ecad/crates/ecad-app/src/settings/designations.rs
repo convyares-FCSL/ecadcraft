@@ -7,14 +7,14 @@
 //!
 //! # Update map
 //! The card reads the list and its counts (`Project::designation_rows`) when first shown, and again
-//! only after a transaction that `ecad_electrical::cmd::designation::rows_changed_since` names: an op on the list,
+//! only after a transaction that `ecad_electrical::locations::commands::designations::rows_changed_since` names: an op on the list,
 //! on a function or location value, or a component or page made or deleted. Every other commit
 //! leaves it as it is.
 
-use ecad_engine::designations::Aspect;
-use ecad_ui::control;
-use ecad_ui::prim::{self, Tone};
-use ecad_ui::tokens::{space, ui_type};
+use ecad_electrical::locations::designations::Aspect;
+use ecad_widgets::control;
+use ecad_widgets::prim::{self, Tone};
+use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui;
 use serde_json::{Value, json};
 
@@ -47,7 +47,7 @@ pub fn rows(t: &mut App, ctx: &egui::Context) -> Value {
         .configure(&mut t.cad.session, |p| {
             let n = p.ledger.log().len();
             match seen {
-                Some(s) if !ecad_electrical::cmd::designation::rows_changed_since(&p.ledger, s) => (n, None),
+                Some(s) if !ecad_electrical::locations::commands::designations::rows_changed_since(&p.ledger, s) => (n, None),
                 _ => (n, Some(p.designation_rows())),
             }
         })
@@ -85,9 +85,9 @@ pub fn body(ui: &mut egui::Ui, rows: &Value, ro: bool) -> Ask {
         ui.label(
             egui::RichText::new("\u{25cf} the project default: proposed where no box or page says otherwise")
                 .small()
-                .color(ecad_ui::color(ecad_ui::SHELL.text_3)),
+                .color(ecad_widgets::color(ecad_widgets::SHELL.text_3)),
         );
-        ui.label(egui::RichText::new(FOOT).small().color(ecad_ui::color(ecad_ui::SHELL.text_3)));
+        ui.label(egui::RichText::new(FOOT).small().color(ecad_widgets::color(ecad_widgets::SHELL.text_3)));
     })
     .response
     .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Group, true, CARD));
@@ -96,8 +96,8 @@ pub fn body(ui: &mut egui::Ui, rows: &Value, ro: bool) -> Ask {
 
 fn small(ui: &egui::Ui, text: &str, faint: bool) -> egui::RichText {
     let _ = ui;
-    let s = ecad_ui::SHELL;
-    egui::RichText::new(text).size(ui_type::SMALL.size).color(ecad_ui::color(if faint { s.text_3 } else { s.text_2 }))
+    let s = ecad_widgets::SHELL;
+    egui::RichText::new(text).size(ui_type::SMALL.size).color(ecad_widgets::color(if faint { s.text_3 } else { s.text_2 }))
 }
 
 /// One aspect's list.
@@ -111,16 +111,16 @@ fn aspect(ui: &mut egui::Ui, a: Aspect, entries: &[Value], ro: bool) -> Ask {
         Aspect::Location => "Locations, +",
     };
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(title).strong().color(ecad_ui::color(ecad_ui::SHELL.text)));
+        ui.label(egui::RichText::new(title).strong().color(ecad_widgets::color(ecad_widgets::SHELL.text)));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let r = ui.add_enabled(!ro, ecad_ui::prim::Button::new("+ Add").small());
+            let r = ui.add_enabled(!ro, ecad_widgets::prim::Button::new("+ Add").small());
             r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, !ro, format!("ecad.designation.{letter}.add")));
             if r.clicked() {
                 ui.data_mut(|d| d.insert_temp(adding_id, String::new()));
             }
             if unused > 0 {
                 let label = format!("Remove unused ({unused})");
-                let r = ui.add_enabled(!ro, ecad_ui::prim::Button::new(&label).small());
+                let r = ui.add_enabled(!ro, ecad_widgets::prim::Button::new(&label).small());
                 r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, !ro, format!("ecad.designation.{letter}.remove_unused")));
                 if r.clicked() {
                     ask = line("designationremove", json!({"aspect": a.word(), "unused": true}));
@@ -152,7 +152,7 @@ fn aspect(ui: &mut egui::Ui, a: Aspect, entries: &[Value], ro: bool) -> Ask {
         // The new row: Enter adds, Esc drops it.
         if let Some(mut buf) = ui.data(|d| d.get_temp::<String>(adding_id)) {
             let name = format!("ecad.designation.{letter}.new");
-            let r = control::TextEntry::new(&mut buf, &name).placeholder(ecad_engine::designations::example(a)).width(90.0).show(ui);
+            let r = control::TextEntry::new(&mut buf, &name).placeholder(ecad_electrical::locations::designations::example(a)).width(90.0).show(ui);
             r.request_focus();
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 ui.data_mut(|d| d.remove::<String>(adding_id));
@@ -245,7 +245,7 @@ fn entry_row(ui: &mut egui::Ui, a: Aspect, e: &Value, codes: &[String], entries:
         ui.label("");
         return ask;
     }
-    ui.menu_button(egui::RichText::new("\u{22ef}").color(ecad_ui::color(ecad_ui::SHELL.text_2)), |ui| {
+    ui.menu_button(egui::RichText::new("\u{22ef}").color(ecad_widgets::color(ecad_widgets::SHELL.text_2)), |ui| {
         if e["default"] != json!(true) && ui.button("Make default").clicked() {
             ask = line("projectprops", json!({a.word(): code}));
             ui.close();

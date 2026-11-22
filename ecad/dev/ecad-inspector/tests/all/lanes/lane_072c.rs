@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
-use ecad_model::plc::{ChannelGroup, ModuleFunction, PlcModule, PlcRack, Protocol, RackHead, Signal};
+use ecad_model::objects::plc::{ChannelGroup, ModuleFunction, PlcModule, PlcRack, Protocol, RackHead, Signal};
 use ecad_model::{Author, Device, DeviceId, DeviceType, IdAllocator, Op};
 
 use crate::common::*;

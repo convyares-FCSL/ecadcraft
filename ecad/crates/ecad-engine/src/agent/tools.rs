@@ -1,7 +1,7 @@
 //! The ECAD tools: `ecad_project`, `ecad_history` and `ecad_inspect` (read), and `save` (write).
 
-use ecad_model::{Author, derive};
 use serde_json::{Map, Value, json};
+use {ecad_model::Author, ecad_model::connectivity::derive};
 
 use crate::ProjectHandle;
 use crate::cad::Session;
@@ -54,7 +54,7 @@ pub fn instructions(writes: bool, agent: &str, live: bool) -> String {
          devices, terminals, conductors, cables, nets), ecad_history (transactions and their authors) and \
          ecad_inspect, and look at the active page with render, query_entities and inspect_drawing. Change it only with \
          `execute` and an ECAD command (list_commands shows them with their parameters: wire, place, \
-         convertcomponent, addterminal, connect, disconnect, cableslash, cableview, newpage, openpage, setprop, \
+         convertcomponent, addconnectionpoint, connect, disconnect, cableslash, cableview, newpage, openpage, setprop, \
          ecaddelete, ...). Each change is one transaction recorded as `agent {agent}`, and `execute u` undoes it in one \
          step. {mode}"
     )
@@ -67,7 +67,7 @@ pub fn execute_description(writes: bool) -> String {
         "Run one command with JSON parameters (never prompts). ECAD commands (list_commands shows ids and parameter \
          docs) change the project exactly as for a person: the same checks and refusals, and each change is one \
          transaction authored by this agent and one step of `u` (undo) / `redo`. Read-only commands: ecadinspect, \
-         entities, texts, shapes, usage, loops, drawing.inspect, getvar, openpage, document.switch, cablerefs, \
+         entities, texts, shapes, usage, loops, drawing.inspect, getvar, openpage, document.switch, cablereferences, \
          cablegoto. File and document commands (open, new, close, saveas, export, ...) are refused; save with the `save` tool. At most \
          {MAX_TRANSACTIONS_PER_CALL} transaction per call. {mode} Examples: wire {{points:[[0,0],[60,0]]}}, \
          cableslash {{from:[28,-3], to:[32,18]}}, cableview {{cable:\"<id>\", view:\"fan\"}}, u {{}}."
@@ -82,7 +82,7 @@ pub fn definitions(writes: bool, live: bool) -> Vec<Value> {
         "Save the project to its .ecad file. Refused now: writes are off (start the server with --write)."
     };
     let mut v = vec![
-        json!({"name": "ecad_project", "description": "The ECAD project: name, file, whether writes are on, head and unsaved changes, pages, components with their connection points (`terminals`), conductors with their ends and cable, cables with their members in order, and nets (derived from the stored attachments). Each list has `count` and at most `limit` entries (default 500).",
+        json!({"name": "ecad_project", "description": "The ECAD project: name, file, whether writes are on, head and unsaved changes, pages, components with their connection points (`connection_points`), conductors with their ends and cable, cables with their members in order, and nets (derived from the stored attachments). Each list has `count` and at most `limit` entries (default 500).",
             "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 0}}}}),
         json!({"name": "ecad_history", "description": "The project's transactions in order: seq, id, label, kind (edit, undo of #n, redo of #n), author (`user` or `agent <name>`), time and op count. Page with offset and limit (default: the last 100).",
             "inputSchema": {"type": "object", "properties": {"offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 0}}}}),
@@ -210,8 +210,8 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
             })
         });
         let devices = doc.devices.iter().map(|(id, c)| {
-            let terminals: Vec<Value> = doc.terminals_of(*id).map(|(t, term)| json!({"id": t.hex(), "label": term.label})).collect();
-            json!({"id": id.hex(), "properties": c.properties, "terminals": terminals})
+            let connection_points: Vec<Value> = doc.connection_points_of(*id).map(|(t, term)| json!({"id": t.hex(), "label": term.label})).collect();
+            json!({"id": id.hex(), "properties": c.properties, "connection_points": connection_points})
         });
         let cable_of = |c| doc.cables.iter().find(|(_, k)| k.cores.iter().any(|m| m.wire() == Some(c))).map(|(id, _)| id.hex());
         let conductors = doc.wires.iter().map(|(id, c)| {
@@ -235,7 +235,7 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
         let net_count = nets.len();
         let nets = nets.into_iter().map(|n| {
             json!({
-                "terminals": n.terminals.iter().map(|t| t.hex()).collect::<Vec<_>>(),
+                "connection_points": n.connection_points.iter().map(|t| t.hex()).collect::<Vec<_>>(),
                 "conductors": n.wires.iter().map(|c| c.hex()).collect::<Vec<_>>(),
             })
         });

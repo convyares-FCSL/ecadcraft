@@ -1,6 +1,6 @@
 //! Brief 049 through MCP (brief 011 rule, design 049 §10.1): `contcaption` and `place` with a
 //! caption each record one transaction by `Author::Agent(<client>)` and are refused with writes
-//! off; `xrefs` and `refgoto` read an arrow's other ends and record nothing; hostile captions are
+//! off; `references` and `refgoto` read an arrow's other ends and record nothing; hostile captions are
 //! errors in words.
 
 use ecad_mcp::policy;
@@ -34,7 +34,7 @@ fn contcaption_and_place_with_a_caption_by_the_agent() {
 
     // Reading: each arrow lists the other; Go to opens it. Nothing is recorded.
     let n = c.log().len();
-    let v = c.exec("xrefs", json!({"aid": hex(&a, "aid")}));
+    let v = c.exec("references", json!({"aid": hex(&a, "aid")}));
     let rows = v["references"].as_array().unwrap();
     assert_eq!(rows.len(), 1, "{v}");
     assert_eq!((rows[0]["kind"].clone(), rows[0]["target"].clone()), (json!("continuation"), json!(hex(&b, "representation"))));
@@ -50,7 +50,7 @@ fn contcaption_and_place_with_a_caption_by_the_agent() {
     let k = c.exec("place", json!({"symbol": "coil", "at": [200, 50]}));
     let n = c.log().len();
     let m = c.refused("execute", json!({"command": "contcaption", "params": {"continuations": [hex(&k, "component")], "caption": "X"}}));
-    assert_eq!(m, ecad_engine::continuations::NO_SUCH_ARROW, "a device is not an arrow");
+    assert_eq!(m, ecad_electrical::continuations::NO_SUCH_ARROW, "a device is not an arrow");
     assert_eq!(c.log().len(), n);
 }
 
@@ -66,7 +66,7 @@ fn caption_writes_are_refused_with_writes_off() {
         let m = r.refused("execute", json!({"command": command, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{command}");
     }
-    let v = r.exec("xrefs", json!({}));
+    let v = r.exec("references", json!({}));
     assert!(v["references"].is_array(), "{v}");
     assert_eq!(r.log(), log, "nothing recorded with writes off");
 }

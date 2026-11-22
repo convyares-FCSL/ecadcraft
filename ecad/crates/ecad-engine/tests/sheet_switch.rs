@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use common::small_project;
 use ecad_engine::Persistence;
-use ecad_inspect::EventKind;
+use ecad_engine::history::event_log::EventKind;
 use serde_json::{Value, json};
 
 fn raw(h: &mut common::H, cmd: &str, params: Value) -> Value {
@@ -58,7 +58,7 @@ fn branching_and_switching_back_with_styles_survives_sheet_switches() {
             let mut dark = false;
             while !stop.load(Ordering::Relaxed) {
                 dark = !dark;
-                ecad_engine::look::set_dark_sheet(dark);
+                ecad_engine::cables::draw::set_dark_sheet(dark);
                 std::thread::yield_now();
             }
         })
@@ -82,7 +82,7 @@ fn branching_and_switching_back_with_styles_survives_sheet_switches() {
     }
     stop.store(true, Ordering::Relaxed);
     let _ = flipper.join();
-    ecad_engine::look::set_dark_sheet(false);
+    ecad_engine::cables::draw::set_dark_sheet(false);
     let _ = std::fs::remove_dir_all(&dir);
     assert!(bad.is_empty(), "pages became unavailable: {bad:#?}");
 }

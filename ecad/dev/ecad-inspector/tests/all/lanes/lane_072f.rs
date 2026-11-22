@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
-use ecad_model::aid::{Caption, ContinuationName};
-use ecad_model::units::Celsius;
+use ecad_model::geometry::units::Celsius;
+use ecad_model::objects::aid::{Caption, ContinuationName};
 use ecad_model::{Aid, AidId, Author, IdAllocator, LocationBox, Op};
 
 use crate::common::*;
@@ -51,22 +51,22 @@ fn aids_and_their_ops_are_shown_raw_and_readable() {
 /// Lane F F1b: a connection point says what owns it, a device or a drawing aid, in both views.
 #[test]
 fn a_points_owner_is_shown_raw_and_readable() {
-    use ecad_model::{Device, DeviceId, Terminal, TerminalId};
+    use ecad_model::{ConnectionPoint, ConnectionPointId, Device, DeviceId};
     let dir = TempDir::new("072f-owner");
     let mut l = history();
     let mut ids = IdAllocator::seeded(0x72f1);
     let (a, d): (AidId, DeviceId) = (ids.fresh(), ids.fresh());
-    let (ta, td): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
+    let (ta, td): (ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh());
     let arrow = Aid::Continuation { name: Some(ContinuationName::new("24V").unwrap()), caption: None };
-    let point = |owner: ecad_model::TerminalOwner| Terminal { owner, label: None, key: None, accepts: Default::default() };
+    let point = |owner: ecad_model::ConnectionPointOwner| ConnectionPoint { owner, label: None, key: None, accepts: Default::default() };
     l.commit(
         Author::User,
         "points",
         vec![
             Op::CreateAid { id: a, aid: arrow },
-            Op::AddTerminal { id: ta, terminal: point(a.into()) },
+            Op::AddConnectionPoint { id: ta, connection_point: point(a.into()) },
             Op::CreateDevice { id: d, device: Device::default() },
-            Op::AddTerminal { id: td, terminal: point(d.into()) },
+            Op::AddConnectionPoint { id: td, connection_point: point(d.into()) },
         ],
     )
     .unwrap();
@@ -80,7 +80,7 @@ fn a_points_owner_is_shown_raw_and_readable() {
     let key = rows.last().and_then(|r| r["key"].as_str()).map(str::to_string).expect("the last transaction");
     let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
     let text = readable["ok"]["decoded"].to_string();
-    for want in ["AddTerminal", "owner", "aid", "device", &a.hex(), &d.hex()] {
+    for want in ["AddConnectionPoint", "owner", "aid", "device", &a.hex(), &d.hex()] {
         assert!(text.contains(want), "{want} in the readable record: {text}");
     }
     let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
@@ -93,11 +93,13 @@ fn a_points_owner_is_shown_raw_and_readable() {
 /// `ModifyAid`; both read in the Raw and Readable views.
 #[test]
 fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
-    use ecad_model::{Form, Item, ItemId, ItemKind, Primitive, Pt, Representation, RepresentationId, Style, Subject, Terminal, TerminalId};
+    use ecad_model::{
+        ConnectionPoint, ConnectionPointId, Form, Item, ItemId, ItemKind, Primitive, Pt, Representation, RepresentationId, Style, Subject,
+    };
     let dir = TempDir::new("072f-rename");
     let mut l = history();
     let mut ids = IdAllocator::seeded(0x72f2);
-    let (a, t, i, r): (AidId, TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (a, t, i, r): (AidId, ConnectionPointId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let page = *l.document().page_order.first().unwrap();
     let layer = *l.document().layers.keys().next().unwrap();
     let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
@@ -107,7 +109,10 @@ fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
         "arrow",
         vec![
             Op::CreateAid { id: a, aid: named("24V") },
-            Op::AddTerminal { id: t, terminal: Terminal { owner: a.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint {
+                id: t,
+                connection_point: ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default() },
+            },
             Op::AddItem { id: i, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 10.0) }) } },
             Op::LinkRepresentation {
                 id: r,
@@ -231,8 +236,8 @@ fn a_location_box_aid_and_its_edit_are_shown_raw_and_readable() {
 /// snapshot (with the part in its own `model:loose_part:` chunk) reads back.
 #[test]
 fn a_loose_part_and_its_edit_are_shown_raw_and_readable() {
-    use ecad_model::loose_part::LooseDescription as Description;
-    use ecad_model::loose_part::{ItemUnit, LoosePart, Qty};
+    use ecad_model::objects::loose_part::LooseDescription as Description;
+    use ecad_model::objects::loose_part::{ItemUnit, LoosePart, Qty};
     use ecad_model::{LocationId, LoosePartId};
     let dir = TempDir::new("072f-loose");
     let mut l = history();

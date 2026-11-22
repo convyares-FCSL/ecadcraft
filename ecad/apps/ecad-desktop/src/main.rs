@@ -83,7 +83,7 @@ impl eframe::App for Desktop {
         }
         // Brief 055 (design 055 §4.2): the title block editor's drafts.
         if let Some(d) = self.0.library.tb.to_save() {
-            storage.set_string(ecad_app::library::title_blocks::draft::DRAFTS_KEY, d);
+            storage.set_string(ecad_app::title_blocks::draft::DRAFTS_KEY, d);
         }
     }
     fn auto_save_interval(&self) -> std::time::Duration {
@@ -104,7 +104,9 @@ impl eframe::App for Desktop {
 
 fn main() -> eframe::Result {
     // Verify mode (brief 013): the model reads no environment, so the program passes the switch in.
-    ecad_model::ledger::set_verify_invariants(ecad_model::ledger::verify_switch_on(std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref()));
+    ecad_model::document::ledger::set_verify_invariants(ecad_model::document::ledger::verify_switch_on(
+        std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref(),
+    ));
     let mut timing = StartupTiming::from_env();
     let (snapshots, project, control, cad_ui) = match parse_args(std::env::args_os().skip(1)) {
         Ok(Invocation::Run { snapshots, project, control, cad_ui }) => (snapshots, project, control, cad_ui),
@@ -126,7 +128,7 @@ fn main() -> eframe::Result {
     // Brief 040: the sheet font for the page (US3), before any text is drawn.
     ecad_app::canvas::register_sheet_faces();
     // Brief 024: Print Book plots through CADCraft's PDF plotter.
-    ecad_engine::printbook::install_io();
+    ecad_engine::export::printbook::install_io();
     if let Some(t) = &mut timing {
         t.mark(Step::Install);
     }
@@ -174,7 +176,7 @@ fn main() -> eframe::Result {
             let stored = |k: &str| cc.storage.and_then(|s| s.get_string(k));
             app.shell.load(stored(ecad_app::shell::state::SHELL_KEY).as_deref(), stored(ecad_app::shell::state::VIEWS_KEY).as_deref());
             app.library.load(stored(ecad_app::library::draft::DRAFTS_KEY).as_deref());
-            app.library.tb.load(stored(ecad_app::library::title_blocks::draft::DRAFTS_KEY).as_deref());
+            app.library.tb.load(stored(ecad_app::title_blocks::draft::DRAFTS_KEY).as_deref());
             // Brief 035: agent access on for this run (not remembered).
             if let Some(port) = control {
                 app.agent.control_flag(port);

@@ -6,7 +6,7 @@
 //! - Files only: nothing is kept of an imported table, and nothing is compared with a PLC
 //!   project afterwards (owner, 2026-11-14: no sync with an outside PLC).
 //! - Import matches a table's rows to channels by normalised address
-//!   ([`super::tagtable::normalise`]); each matched channel takes the row's name as its tag and,
+//!   ([`crate::plc::tagtable::normalise`]); each matched channel takes the row's name as its tag and,
 //!   when the row has a comment, the comment as its description. Rows at an address no channel has
 //!   are counted, never placed. Import never adds cards, channels or addresses.
 //! - Tags stay unique per PLC (without case): an import that would give two channels of one PLC
@@ -14,15 +14,15 @@
 //! - One import is one transaction, `Import an I/O list`; `dry_run` says what it would do and
 //!   writes nothing. Export changes nothing.
 //! - Exported fields that a spreadsheet would run as a formula are written with a leading `'`
-//!   ([`super::tagtable::neutral`]), which the reader takes off again.
+//!   ([`crate::plc::tagtable::neutral`]), which the reader takes off again.
 
 use crate::CmdError;
 use std::collections::BTreeMap;
 
 use ecad_model::{DeviceId, Document, Op};
 
-use super::tagtable::{self, Caps, Read, TagFormat, TagRow};
-use super::{CardData, iolist, kept::Plc, signals};
+use crate::plc::tagtable::{self, Caps, Read, TagFormat, TagRow};
+use crate::plc::{CardData, iolist, kept::Plc, signals};
 
 /// The transaction label of an import.
 pub const IMPORT_LABEL: &str = "Import an I/O list";
@@ -32,9 +32,9 @@ pub const MAX_NAME: usize = 255;
 /// The normalised addresses of card `card`'s channels `idx`, with the rack's style and the card's
 /// word size read once per card (not once per channel).
 fn card_addresses(doc: &Document, plc: &Plc, card: &CardData, idx: &[u32]) -> Vec<Option<String>> {
-    use super::address;
+    use crate::plc::address;
     let auto: Option<(address::Style, &address::Block, u32, u32)> = match (card.rack, plc.blocks.get(&card.id), card.slot) {
-        (super::rack::RackRef::Rack(r), Some(b), Some(slot)) => {
+        (crate::plc::rack::RackRef::Rack(r), Some(b), Some(slot)) => {
             Some((address::Style::of(doc, r), b, slot, address::word_size(doc, card.id, card.ty)))
         }
         _ => None,
@@ -54,8 +54,8 @@ fn card_addresses(doc: &Document, plc: &Plc, card: &CardData, idx: &[u32]) -> Ve
 }
 
 /// The data type of a card type's channels on export (Q4): `Bool`, `Int`, `Word`.
-pub fn data_type(t: super::rack::CardType) -> &'static str {
-    use super::rack::CardType;
+pub fn data_type(t: crate::plc::rack::CardType) -> &'static str {
+    use crate::plc::rack::CardType;
     match t {
         CardType::Di | CardType::Dq => "Bool",
         CardType::Iol => "Word",
@@ -95,7 +95,7 @@ impl Export {
 pub fn export_rows(doc: &Document, plc: &Plc, rack: Option<DeviceId>, f: &dyn TagFormat) -> Export {
     let mut out = Export::default();
     for card in iolist::cards_in_order(plc) {
-        if rack.is_some_and(|r| card.rack != super::rack::RackRef::Rack(r)) {
+        if rack.is_some_and(|r| card.rack != crate::plc::rack::RackRef::Rack(r)) {
             continue;
         }
         for row in iolist::rows_of(doc, plc, card) {
@@ -227,14 +227,14 @@ pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: 
         if tags && ch.and_then(|x| x.tag.as_deref()) != Some(r.name.as_str()) {
             let name = signals::tag_value(Some(&r.name))?.unwrap_or_default();
             new_tags.insert((c, i), name.clone());
-            super::channels::set_field(doc, &mut fill.ops, c, i, signals::TAG, Some(&name))?;
+            crate::plc::channels::set_field(doc, &mut fill.ops, c, i, signals::TAG, Some(&name))?;
             fill.tags += 1;
             changed = true;
         }
         let comment = r.comment.trim();
         if texts && !comment.is_empty() && ch.and_then(|x| x.text.as_deref()) != Some(comment) {
-            let text = super::channels::ch_value("text", Some(comment))?;
-            super::channels::set_field(doc, &mut fill.ops, c, i, "text", text.as_deref())?;
+            let text = crate::plc::channels::ch_value("text", Some(comment))?;
+            crate::plc::channels::set_field(doc, &mut fill.ops, c, i, "text", text.as_deref())?;
             fill.descriptions += 1;
             changed = true;
         }
@@ -251,7 +251,7 @@ pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: 
         let mut seen: BTreeMap<(Option<DeviceId>, String), (DeviceId, u32)> = BTreeMap::new();
         for card in iolist::cards_in_order(plc) {
             let rack = match card.rack {
-                super::rack::RackRef::Rack(r) => Some(r),
+                crate::plc::rack::RackRef::Rack(r) => Some(r),
                 _ => None,
             };
             for i in iolist::indexes(card) {
@@ -262,10 +262,10 @@ pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: 
                 let Some(tag) = tag else { continue };
                 if let Some(first) = seen.insert((rack, signals::name_key(&tag)), (card.id, i)) {
                     let words = |(c, j): (DeviceId, u32)| {
-                        let (auto, _) = super::address::of_channel(doc, c, j, Some(plc), &mut BTreeMap::new());
-                        let (a, _) = super::address::shown(doc, c, j, auto);
+                        let (auto, _) = crate::plc::address::of_channel(doc, c, j, Some(plc), &mut BTreeMap::new());
+                        let (a, _) = crate::plc::address::shown(doc, c, j, auto);
                         let a = a.map(|a| format!(" ({a})")).unwrap_or_default();
-                        format!("{}{a}", super::channels::channel_words(doc, c, j))
+                        format!("{}{a}", crate::plc::channels::channel_words(doc, c, j))
                     };
                     return Err(CmdError::refused(format!(
                         "The import would give two channels the tag \"{tag}\": {} and {}. Nothing was imported.",

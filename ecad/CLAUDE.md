@@ -12,9 +12,10 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   listed in `docs/deferred-work.md`; do not start it without the owner's approval.
 - **Words (owner decision, 2026-11-08):** `docs/glossary.md` defines the words used in everything a
   person sees. A device's landing point for a conductor is a **connection point** (`-K01:A1`);
-  "terminal" is only the DIN-rail terminal device (`-X01:1`), "terminal strip" a group of them.
-  Code, op and command names (`Terminal`, `AddTerminal`, `addterminal`) stay until the next major
-  format version.
+  one unit on the DIN rail is a **terminal block** (`-X01:1`), a tagged run of them a **terminal
+  strip**. Code, ops, file keys and command names use the same words (`ConnectionPoint`,
+  `AddConnectionPoint`, `addconnectionpoint`, `TerminalBlock`, `JumperBar`); "terminal" alone never
+  appears in code.
 - **`docs/quick-start.md` is the single maintained guide** for running and manually testing the
   app. Update it in the same PR as any change that affects its instructions, examples, expected
   results, limitations or the revision and environment it records. Keep automated checks,
@@ -39,11 +40,9 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     Before it, at the end of each major phase (e.g. before v0.2 goes to `main`), the overseer
     opens one **phase-end tidy-up** PR into `dev`: finished briefs' files in `docs/quick-start/`
     are folded into the guide or deleted (with the owner) and the index in `docs/quick-start.md`
-    is brought up to date; each crate's `tests/all/lanes/` modules move into `tests/all/main.rs`'s
-    list (`lanes/mod.rs` keeps only its comment); `ecad-engine/src/lanes.rs`'s registrations
-    move into `commands::specs`; lanes' `ecad.*` token sections move from their design specs into
-    `docs/design/tokens.md`. Behaviour stays the same; test names lose their `lanes::lane_<NNN>::`
-    prefix.
+    is brought up to date; the `LANES` registrations in `ecad-engine/src/commands/mod.rs` move
+    into `commands::specs`; lanes' `ecad.*` token sections move from their design specs into
+    `docs/design/tokens.md`. Behaviour stays the same.
   - Never merge your own PR: green CI is not approval.
   - **Per-lane files (owner, 2026-11-13).** Lanes (briefs built at the same time on their feature
     branches) used to conflict at every merge on the same few lists. During a phase a lane adds
@@ -51,21 +50,18 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     - **Quick start:** its own `docs/quick-start/<NNN>-<name>.md` (the brief's file name): what
       the brief changed and how to try it by clicking. Not `docs/quick-start.md`, whose index is
       updated only at the tidy-up; a change to a general section there (setup, running) is fine.
-    - **Tests:** `tests/all/lanes/lane_<NNN>.rs` (submodules in `tests/all/lanes/lane_<NNN>/`) in
-      each crate it tests, plus one line `mod lane_<NNN>;` at the end of `tests/all/lanes/mod.rs`.
-      Not the list in `tests/all/main.rs`. Still one test executable per crate.
-    - **Commands:** a new module of commands registers in `ecad-engine/src/lanes.rs`, one line
-      `("<NNN>", crate::<module>::specs),`, not in `commands::specs`. Its `mod` line in `lib.rs`
-      stays where rustfmt sorts it.
+    - **Tests:** tests live in `tests/all/<feature>/` of each crate they test (the feature
+      folder of the code they cover), one module per file. Still one test executable per crate.
+    - **Commands:** a new module of commands registers in the `LANES` const in
+      `ecad-engine/src/commands/mod.rs`, one line `("<NNN>", crate::<module>::specs),`, not in
+      `commands::specs`. Its `mod` line in `lib.rs` stays where rustfmt sorts it.
     - **Tokens:** new `ecad.*` canvas tokens go in a section of the lane's design spec
       (`docs/design/<NNN>.md`), not at the end of `docs/design/tokens.md`. The checked shell
       tables at the top of `tokens.md` (and their constants) are still edited in place: the
       doc-sync test reads that file.
-    - `lanes/mod.rs` and `lanes.rs` merge with `merge=union` (`ecad/.gitattributes`): two lanes'
-      added lines are both kept. After such a merge run `cargo fmt`; `lanes_are_in_brief_order`
-      (ecad-engine's unit tests) says if two registrations need swapping. Git applies this in
-      local merges (the merge train); GitHub's own conflict check may not, so merge `dev` into
-      the feature branch locally.
+    - After a merge that touches `LANES`, run `cargo fmt`; `lanes_are_in_brief_order`
+      (ecad-engine's unit tests) says if two registrations need swapping. Merge `dev` into the
+      feature branch locally.
 - **Checks are scoped to the change (owner decisions, 2026-11-02 and 2026-11-08).** This is Rust:
   what builds and passes clippy mostly works, so time goes on targeted tests, not repeated full runs.
   - **Worker (owner, 2026-11-12).** Before each commit: `cargo fmt --all -- --check` and the
@@ -80,8 +76,8 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   - **Test layout (brief 017).** Each crate has one integration test executable,
     `tests/all/main.rs`, whose modules are the former `tests/<name>.rs` files (shared helpers in
     `tests/all/common`), so tests are named `<name>::<test>` and `cargo test -p <crate> <name>`
-    runs one file. A new test file is a new module there (in a lane, under `tests/all/lanes/`; see
-    "Per-lane files"), never a new `tests/*.rs`, which would
+    runs one file. A new test file is a new module there (under `tests/all/<feature>/`), never a
+    new `tests/*.rs`, which would
     link egui and wgpu once more. ECAD's own crates build at `opt-level = 0` for dev and test, dependencies at 2.
   - **Slow set.** A test that takes more than about 2 s is marked `#[ignore = "slow: <why>"]`.
     Everyday runs (`cargo test`, `cargo xtask test-changed`) skip it. **Workers and testers never
@@ -142,9 +138,9 @@ cargo xtask patches               # only when files outside ecad/ changed
   root workspace (in its own `target`), and the tester runs the affected
   CADCraft crates' tests.
 - **Layers (design 065, `docs/design/crates.md` §1 and §4).** **Core** (what a project is and
-  means): `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`, `ecad-inspect`,
-  `ecad-electrical`. **Engine** (the link to CADCraft): `ecad-engine`. **UI kit**: `ecad-ui`,
-  `ecad-tokens`. **App**: `ecad-app`. **Programs** (one `main` each): `ecad-desktop`, `ecad-cli`,
+  means): `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`,
+  `ecad-electrical`. **Engine** (the link to CADCraft): `ecad-engine`. **UI kit**: `ecad-widgets`
+  (with its `tokens` module). **App**: `ecad-app`. **Programs** (one `main` each): `ecad-desktop`, `ecad-cli`,
   `ecad-mcp`. **Dev** (never shipped): `ecad-bench`, `ecad-inspector` and `xtask` under `dev/`.
   A crate uses only layers above it; `cargo xtask layers` enforces the table.
 - No Core crate depends on a `cadcraft-*` crate. Only `ecad-engine` touches the engine; App and
@@ -179,7 +175,7 @@ cargo xtask patches               # only when files outside ecad/ changed
 - Style: `rustfmt` at 120 columns; crate `//!` docs say what the crate excludes; public items
   document `# Semantics`, `# Errors`, `# Example` where useful; contract tests are table-driven in
   `tests/all/<area>_contracts.rs`.
-- **Components (owner, 2026-11-15).** Panels and dialogs use only `ecad_ui` components for values
+- **Components (owner, 2026-11-15).** Panels and dialogs use only `ecad_widgets` components for values
   (`docs/design/components.md`): `control::TextEntry` (text, or a number with its unit),
   `control::Select`, `prim::Segmented`, `control::Toggle`, `control::ValueBox` (a value with its
   hint), `control::read_text` / `prim::read_value` (read from the drawing), `control::link`,
@@ -187,7 +183,7 @@ cargo xtask patches               # only when files outside ecad/ changed
   inputs for values. Anything the person can change looks editable at a glance; a read value never
   looks like an input. `cargo xtask layers` fails on a new raw `egui::TextEdit` or `ComboBox` in an
   ECAD UI crate; the files that still have them are allowlisted with counts that only fall. A
-  missing component is added to `ecad_ui` and its gallery (`showcase::components`), not drawn in the
+  missing component is added to `ecad_widgets` and its gallery (`showcase::components`), not drawn in the
   panel.
 - Versions: product `0.3.0-dev` (`dev` carries the next release with `-dev`; the QA gate drops
   the suffix and the tag follows), release tags `ecad-v…`, CADCraft commit in `UPSTREAM.md`, format

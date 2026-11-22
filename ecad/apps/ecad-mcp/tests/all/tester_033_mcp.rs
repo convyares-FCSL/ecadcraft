@@ -21,8 +21,8 @@ fn sets(ops: &[Op], key: &str) -> bool {
         let n: u32 = n.parse().unwrap_or(0);
         return ops.iter().any(|o| {
             matches!(o, Op::ModifyProject { before, after }
-                if ecad_engine::revisions::field_of(after, n, field).is_some()
-                    && ecad_engine::revisions::field_of(before, n, field) != ecad_engine::revisions::field_of(after, n, field))
+                if ecad_electrical::releases::revisions::field_of(after, n, field).is_some()
+                    && ecad_electrical::releases::revisions::field_of(before, n, field) != ecad_electrical::releases::revisions::field_of(after, n, field))
         });
     }
     ops.iter().any(|o| matches!(o, Op::SetProperty { key: k, .. } if k == key))

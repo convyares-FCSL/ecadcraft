@@ -8,7 +8,7 @@ use cadcraft_engine::doc::{
     Arc as CArc, Circle, Common, Entity, EntityKind, HAlign, Handle, Insert, Line, Lineweight, LwPolyline, Point as CPoint, Text, VAlign,
 };
 use cadcraft_engine::geom::{PolyVertex, Vec2, Vec3};
-use ecad_model::units::Radians;
+use ecad_model::geometry::units::Radians;
 use ecad_model::{
     Color, DefinitionId, Document, Item, ItemKind, LayerId, PageId, Placement, Primitive, Pt, Style, SymbolInstance, TextHAlign, TextVAlign,
 };
@@ -91,7 +91,7 @@ pub fn kind_for_primitive(p: &Primitive) -> EntityKind {
                 rotation: rotation.0,
                 width_factor: 1.0,
                 oblique: 0.0,
-                style: crate::text_style::PLACEHOLDER_STYLE.into(),
+                style: ecad_electrical::styles::text_style::PLACEHOLDER_STYLE.into(),
                 halign: h,
                 valign: v,
             })
@@ -165,7 +165,7 @@ pub fn entity_for(doc: &Document, item: &Item, handle: Handle) -> Option<Entity>
     // Brief 066d: a free text on a page is drawn in the `Free` text style's font and weight (its
     // height and colour are the user's own).
     if let EntityKind::Text(t) = &mut kind {
-        t.style = crate::text_style::text_style(doc, crate::text_style::TextKind::Free).style_name.to_string();
+        t.style = ecad_electrical::styles::text_style::text_style(doc, ecad_electrical::styles::text_style::TextKind::Free).style_name.to_string();
     }
     Some(Entity { handle, common: common_for(&item.style, &layer.name), kind })
 }
@@ -268,8 +268,8 @@ pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, Strin
     if e.common.layer == MARKER_LAYER {
         return Err(format!("the {MARKER_LAYER} layer is reserved for connection point markers"));
     }
-    if e.common.layer == crate::views::LAYER {
-        return Err(crate::views::LAYER_RESERVED.into());
+    if e.common.layer == crate::cables::views::LAYER {
+        return Err(crate::cables::views::LAYER_RESERVED.into());
     }
     let layer: LayerId = doc
         .layers

@@ -1,9 +1,9 @@
 //! Lane 057's defaults (design 057 §6.3, FP5): the `rating` area. Standard and project levels;
 //! a cable's own `rating.ambient`, `rating.method`, `rating.voltage`, `rating.system` and
-//! `rating.vd_limit` (and a conductor's `rating.bundling`) are read by [`crate::rating`] from the
+//! `rating.vd_limit` (and a conductor's `rating.bundling`) are read by [`crate::circuits`] from the
 //! object itself, since the registry has no cable level.
 
-use super::{Entry, Kind, Level, ProjectSource, Slot};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 
 ecad_model::word_enum! {
     /// The supply system a rating is checked for.
@@ -29,7 +29,7 @@ const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
 pub const BASES: &[&str] = &["datasheet", "table", "manual"];
 
 fn bundling_or_none(s: &str) -> bool {
-    s.trim().eq_ignore_ascii_case("none") || crate::rating::parse::bundling(s).is_some()
+    s.trim().eq_ignore_ascii_case("none") || crate::devices::ratings::parse::bundling(s).is_some()
 }
 
 pub static WIRE_BASIS: Entry = entry("rating.wire_basis", "Panel wire basis", Kind::Choice(BASES));
@@ -40,7 +40,7 @@ pub static AMBIENT: Entry = entry("rating.ambient", "Field ambient (\u{b0}C)", K
 pub static TABLE: Entry = entry("rating.table", "Rating table", Kind::Style(ecad_model::StyleCatalogue::RatingTable));
 /// Not set: × 1.00 is used, with a warning (Q7).
 pub static BUNDLING: Entry = entry("rating.bundling", "Bundling", Kind::Parsed { max_chars: 32, parse: bundling_or_none });
-pub static METHOD: Entry = entry("rating.method", "Installation method", Kind::Choice(&crate::rating::dataset::METHODS));
+pub static METHOD: Entry = entry("rating.method", "Installation method", Kind::Choice(&crate::devices::ratings::dataset::METHODS));
 pub static VOLTAGE: Entry = entry("rating.voltage", "Supply voltage (V)", Kind::Number { min: 1.0, max: 1000.0 });
 pub static SYSTEM: Entry = entry("rating.system", "Supply system", Kind::Choice(<SupplySystem as ecad_model::Word>::WORDS));
 pub static VD_LIMIT: Entry = entry("rating.vd_limit", "Volt-drop limit (%)", Kind::Number { min: 0.5, max: 20.0 });

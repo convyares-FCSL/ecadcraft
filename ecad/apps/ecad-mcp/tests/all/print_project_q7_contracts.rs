@@ -21,19 +21,19 @@ fn last_by_agent(c: &mut Client) -> ecad_model::Transaction {
 fn frame_texts(c: &mut Client) -> (Vec<String>, String) {
     c.s.with_session(|s, h| {
         h.read(s, |p, _| {
-            let pending = ecad_engine::revisions::is_pending(&p.ledger);
+            let pending = ecad_electrical::releases::revisions::is_pending(&p.ledger);
             assert_eq!(p.pending, pending, "the kept flag is the walk's");
             let doc = p.ledger.document();
             let page: PageId = doc.page_order[0];
             let texts =
-                ecad_engine::generated::parts_of_pending(doc, page, ecad_engine::project::engine_views().report_models(doc).as_ref(), pending)
+                ecad_engine::pages::generated::parts_of_pending(doc, page, ecad_engine::project::engine_views().report_models(doc).as_ref(), pending)
                     .into_iter()
                     .filter_map(|part| match part.kind {
                         cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
                         _ => None,
                     })
                     .collect();
-            (texts, ecad_engine::revisions::rev_box(doc, pending))
+            (texts, ecad_electrical::releases::revisions::rev_box(doc, pending))
         })
         .unwrap()
     })
@@ -80,7 +80,9 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
     let p = c.exec("printbook", json!({}));
     assert!(p["notes"].as_array().unwrap().iter().any(|n| n == "The drawing has changed since Rev A; the title block shows A*."), "{p}");
     // The dialog shows the same note before printing.
-    let notes = c.s.with_session(|s, h| h.configure(s, |p| ecad_engine::printbook::notes(p, &ecad_engine::printbook::Scope::All)).unwrap()).unwrap();
+    let notes =
+        c.s.with_session(|s, h| h.configure(s, |p| ecad_engine::export::printbook::notes(p, &ecad_engine::export::printbook::Scope::All)).unwrap())
+            .unwrap();
     assert_eq!(notes, ["The drawing has changed since Rev A; the title block shows A*."]);
     // The cover says so too.
     let cover = c.exec("newpage", json!({"generated": "cover"}));
@@ -88,7 +90,7 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
     let texts =
         c.s.with_session(|s, h| {
             h.read(s, |p, _| {
-                ecad_engine::generated::parts_of_pending(
+                ecad_engine::pages::generated::parts_of_pending(
                     p.ledger.document(),
                     page,
                     ecad_engine::project::engine_views().report_models(p.ledger.document()).as_ref(),
@@ -126,7 +128,7 @@ fn ac10_revision_columns_and_custom_fields() {
     assert!(
         last.ops
             .iter()
-            .any(|o| matches!(o, Op::ModifyProject { after, .. } if ecad_engine::revisions::field_of(after, 1, "ecr").as_deref() == Some("ECR-1"))),
+            .any(|o| matches!(o, Op::ModifyProject { after, .. } if ecad_electrical::releases::revisions::field_of(after, 1, "ecr").as_deref() == Some("ECR-1"))),
         "{:?}",
         last.ops
     );
@@ -151,19 +153,19 @@ fn ac10_revision_columns_and_custom_fields() {
     assert_eq!(c.log().len(), head);
     // Wide columns are narrowed, never refused.
     let v = c.exec("projectprops", json!({"revision_columns": "rev@100, description, date@100"}));
-    assert_eq!(v["narrowed"], json!(ecad_engine::revisions::NARROWED), "{v}");
+    assert_eq!(v["narrowed"], json!(ecad_electrical::releases::revisions::NARROWED), "{v}");
     // Cleared: the built-in columns again (brief 055, FP5: they hold ECR, so its value shows);
     // the custom value is kept in the file.
     c.exec("projectprops", json!({"revision_columns": null}));
     let (texts, _) = frame_texts(&mut c);
     assert!(texts.contains(&"Checked".to_string()) && texts.contains(&"ECR-1".to_string()), "{texts:?}");
-    assert_eq!(ecad_engine::revisions::field_of(&c.doc().project, 1, "ecr").as_deref(), Some("ECR-1"));
+    assert_eq!(ecad_electrical::releases::revisions::field_of(&c.doc().project, 1, "ecr").as_deref(), Some("ECR-1"));
     // The revision list page shows the columns, then Version.
     c.exec("projectprops", json!({"revision_columns": "rev, ecr:ECR, description"}));
     let list = c.exec("newpage", json!({"generated": "revisions"}));
     let page = PageId::parse(list["page"].as_str().unwrap()).unwrap();
     let doc = c.doc();
-    let texts: Vec<String> = ecad_engine::generated::parts_of(&doc, page, ecad_engine::project::engine_views().report_models(&doc).as_ref())
+    let texts: Vec<String> = ecad_engine::pages::generated::parts_of(&doc, page, ecad_engine::project::engine_views().report_models(&doc).as_ref())
         .into_iter()
         .filter_map(|part| match part.kind {
             cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),

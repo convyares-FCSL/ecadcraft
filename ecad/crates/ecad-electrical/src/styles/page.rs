@@ -10,7 +10,7 @@
 //!
 //! # Semantics
 //! - A page's type ([`type_of`]) is its own `page.type` when that names a type that exists, else
-//!   from its generated kind, else `schematic` (design 054 §2.3). `ecad_model::sheet` holds the
+//!   from its generated kind, else `schematic` (design 054 §2.3). `ecad_model::document::sheet` holds the
 //!   rule, so the sheet the model resolves and the type shown here always agree (FP3).
 //! - Every built-in takes the project's sheet and frame, so an old project looks the same; only
 //!   the front and report types (and Panel layout) draw no zones.
@@ -18,14 +18,14 @@
 //!
 //! This module draws nothing and records nothing.
 
-use ecad_model::sheet::{self as msheet, PROJECT_SHEET, SheetSpec};
-use ecad_model::style::PageType;
-use ecad_model::style::page::{TypeBlock, TypeFrame, TypeSheet};
+use ecad_model::document::sheet::{self as msheet, PROJECT_SHEET, SheetSpec};
+use ecad_model::objects::styles::PageType;
+use ecad_model::objects::styles::page::{TypeBlock, TypeFrame, TypeSheet};
 use ecad_model::{Document, PageId, StyleRef, Word};
 
-use super::{Builtin, Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Slot, Value};
+use crate::styles::{Builtin, Catalogue, Field};
 use ecad_model::GenKind;
 
 fn is_sheet(s: &str) -> bool {
@@ -92,7 +92,7 @@ pub const PANEL: &str = "panel";
 /// The built-in Report type.
 pub const REPORT: &str = "report";
 
-pub use ecad_model::style::page::Holds;
+pub use ecad_model::objects::styles::page::Holds;
 
 /// What a type must hold to take pages of `kind`: a cover, revision history or contents is a
 /// Front sheet page, every other kind a Report page.
@@ -105,7 +105,7 @@ pub fn holds_of_kind(kind: GenKind) -> Holds {
 
 /// What a page type brings to its pages (design 054 §3).
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeLook {
+pub struct TypeDraw {
     /// `None`: the project's sheet.
     pub sheet: Option<SheetSpec>,
     /// `None`: the `print.frame.style` choice, as before types.
@@ -120,26 +120,26 @@ pub struct TypeLook {
 }
 
 fn field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<crate::defaults::Resolved<'a>> {
-    super::field_of(doc, ecad_model::StyleCatalogue::Page, id, key, None)
+    crate::styles::field_of(doc, ecad_model::StyleCatalogue::Page, id, key, None)
 }
 
 /// What type `id` brings (design 054 §2.1, §3). Never fails: a malformed field falls through.
-pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
+pub fn draw_of(doc: &Document, id: &StyleRef) -> TypeDraw {
     let sheet = msheet::type_sheet(doc, id);
     let frame = field(doc, id, "frame")
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(PROJECT_SHEET))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| super::exists(doc, ecad_model::StyleCatalogue::Frame, f));
+        .filter(|f| crate::styles::exists(doc, ecad_model::StyleCatalogue::Frame, f));
     let title_block = field(doc, id, "title_block")
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(OWN_BLOCK))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| super::exists(doc, ecad_model::StyleCatalogue::Frame, f));
-    let zones = field(doc, id, "zones").is_none_or(|r| ecad_model::words::flag(r.word()) != Some(false));
+        .filter(|f| crate::styles::exists(doc, ecad_model::StyleCatalogue::Frame, f));
+    let zones = field(doc, id, "zones").is_none_or(|r| ecad_model::naming::words::flag(r.word()) != Some(false));
     let holds = field(doc, id, "holds").and_then(|r| <Holds as Word>::parse(r.word())).unwrap_or(Holds::None);
     let checks = msheet::type_checks(doc, id);
-    TypeLook { sheet, frame, title_block, zones, holds, checks }
+    TypeDraw { sheet, frame, title_block, zones, holds, checks }
 }
 
 /// The type of `page` (design 054 §2.3).
@@ -156,7 +156,7 @@ pub fn derived(kind: Option<GenKind>) -> StyleRef {
     StyleRef::Builtin(msheet::derived_page_type(kind).to_string())
 }
 
-/// The frame style `page` is drawn with: `ecad_model::sheet::frame_style`, the one resolver (the
+/// The frame style `page` is drawn with: `ecad_model::document::sheet::frame_style`, the one resolver (the
 /// page's own, its page type's, the project's, the standard's, the built-in; brief 055).
 pub fn frame_style(doc: &Document, page: PageId) -> StyleRef {
     msheet::frame_style(doc, page)
@@ -182,7 +182,7 @@ pub fn subtitle(id: &StyleRef) -> &'static str {
 pub fn kinds(holds: Holds) -> &'static [GenKind] {
     match holds {
         Holds::Front => &[GenKind::Cover, GenKind::Revisions, GenKind::Contents],
-        Holds::Report => &[GenKind::BomLocation, GenKind::Terminals, GenKind::Cables, GenKind::PlcRack, GenKind::IoList],
+        Holds::Report => &[GenKind::BomLocation, GenKind::TerminalBlocks, GenKind::Cables, GenKind::PlcRack, GenKind::IoList],
         Holds::None => &[],
     }
 }
@@ -195,8 +195,8 @@ pub fn generated_only(id: &StyleRef) -> bool {
 
 /// The types in the picker's and the table's order: the catalogue's (built-ins in their order,
 /// then own types by name).
-pub fn ordered(doc: &Document) -> Vec<super::Row> {
-    super::rows(doc, &CATALOGUE)
+pub fn ordered(doc: &Document) -> Vec<crate::styles::Row> {
+    crate::styles::rows(doc, &CATALOGUE)
 }
 
 /// How many pages have each type, in one pass over the pages (asked on demand: the Settings
@@ -225,8 +225,8 @@ pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, b
 
 /// [`touched_by`] for a style effect: the pages a record of catalogue `page` set from `before` to
 /// `after` reaches, and whether their sheet changes. `None` for any other catalogue.
-pub fn touched_by_effect(doc: &Document, effect: &ecad_model::effect::Effect<'_>) -> Option<(Vec<PageId>, bool)> {
-    let ecad_model::effect::Effect::Style { catalogue, id, before, after, .. } = effect else { return None };
+pub fn touched_by_effect(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) -> Option<(Vec<PageId>, bool)> {
+    let ecad_model::document::effect::Effect::Style { catalogue, id, before, after, .. } = effect else { return None };
     reach(doc, *catalogue, id, *before, *after)
 }
 
@@ -261,14 +261,14 @@ pub fn kind_refusal(kind: GenKind) -> String {
 
 /// The refusal for a generated-only type with no `generated` (design 054 §4.2).
 pub fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
-    let pos = look_of(doc, id).holds;
+    let pos = draw_of(doc, id).holds;
     let list: Vec<String> = kinds(pos).iter().map(|k| format!("\"{}\"", ecad_model::Word::word(*k))).collect();
     let words = match list.as_slice() {
         [] => String::new(),
         [one] => one.clone(),
         [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
     };
-    format!("A {} page is generated: give generated: {words}.", super::name(doc, ecad_model::StyleCatalogue::Page, id))
+    format!("A {} page is generated: give generated: {words}.", crate::styles::name(doc, ecad_model::StyleCatalogue::Page, id))
 }
 
 /// The value of field `key` that `t` sets, if it sets one.
@@ -300,7 +300,7 @@ pub fn get<'a>(t: &'a PageType, key: &str) -> Option<Value<'a>> {
 /// An unknown field, or text the field does not take, in words.
 pub fn set(t: &mut PageType, key: &str, value: Option<&str>) -> Result<(), CmdError> {
     let bad = |what: &str| CmdError::refused(format!("{key} takes {what}, not {:?}.", value.unwrap_or_default()));
-    let flag = |v: &str| ecad_model::words::flag(v).ok_or_else(|| bad("yes or no"));
+    let flag = |v: &str| ecad_model::naming::words::flag(v).ok_or_else(|| bad("yes or no"));
     match (key, value) {
         ("sheet", None) => t.sheet = None,
         ("frame", None) => t.frame = None,

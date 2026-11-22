@@ -1,6 +1,6 @@
 //! Where a project is saved: the persistence modes, the in-memory store, and the save and branch plumbing.
 
-use super::*;
+use crate::project::*;
 
 /// Injected failures for the experiment (never set in normal use).
 #[derive(Debug, Clone, Default)]
@@ -11,7 +11,7 @@ pub struct Faults {
     pub fail_view_switches: u32,
     /// The next release fails at this step (brief 027's failure-injection tests): the step's own
     /// failure path runs, as when the disk or the save fails there.
-    pub fail_release_at: Option<crate::release::Step>,
+    pub fail_release_at: Option<crate::releases::release::Step>,
     /// The next commit callback panics (`fault-injection` feature only).
     #[cfg(feature = "fault-injection")]
     pub panic_in_commit: bool,
@@ -153,18 +153,18 @@ impl Project {
     /// Show another branch's state (design 020 §3.3): `ledger` replaces the project's, every view
     /// rebuilds once as on open, the active page stays if it exists on the new branch (else the
     /// first page in book order), and a read-only point view closes. Not a step.
-    pub(crate) fn adopt_branch(&mut self, pg: &mut Pages<'_>, ledger: Ledger, tag_high: ecad_model::tag::HighWater) -> Result<(), String> {
+    pub(crate) fn adopt_branch(&mut self, pg: &mut Pages<'_>, ledger: Ledger, tag_high: ecad_model::naming::tag::HighWater) -> Result<(), String> {
         let seed = session_seed();
         let window = self.window();
         let doc = ledger.document();
-        let target = self.active.filter(|p| doc.pages.contains_key(p)).or_else(|| ecad_model::book::Book::of(doc).order.first().copied());
+        let target = self.active.filter(|p| doc.pages.contains_key(p)).or_else(|| ecad_model::document::book::Book::of(doc).order.first().copied());
         self.ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
         self.baseline = ledger.head();
         let pages: Vec<PageId> = doc.page_order.clone();
         let cables: BTreeSet<CableId> = doc.cables.keys().copied().collect();
         self.ledger = ledger;
         self.derived.rebuild(self.ledger.document());
-        self.tag_high = crate::devices::TagHigh::starting_at(tag_high);
+        self.tag_high = ecad_electrical::devices::TagHigh::starting_at(tag_high);
         self.catch_up_tags();
         self.designation_uses.reset();
         self.conflicts.clear();

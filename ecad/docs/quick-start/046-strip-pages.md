@@ -6,7 +6,7 @@ What brief 046 changed, and how to try it by clicking. Listed in the index of
 ## What changed
 
 - **A terminal plan page has a style**: `table` (028's plan, unchanged) or `graphic`, a picture of
-  each strip as it is wired on the rail. It is the default `terminal.plan.style`, set per page or
+  each strip as it is wired on the rail. It is the default `terminal_block.plan.style`, set per page or
   for the project; the built-in is `table`, so existing books do not change.
 - **Pages ▸ New page ▸ Terminal strips** (after **Terminal plan**) makes a graphic page and opens
   it, titled `Terminal strips`. It shows every strip, each from a new sheet; `newpage
@@ -26,7 +26,7 @@ What brief 046 changed, and how to try it by clicking. Listed in the index of
 - **Text sizes** follow the text styles (Table, Reference, Wire label, Cable text, Description);
   changing them changes both styles. Everything prints in ink; a missing value is the usual `?`
   box.
-- **Switching**: `setdefault {"key": "terminal.plan.style", "level": "page", "page": "<id>",
+- **Switching**: `setdefault {"key": "terminal_block.plan.style", "level": "page", "page": "<id>",
   "value": "table"}` (or Settings ▸ Standards, group **Terminal strip pages**) switches one page;
   at project level it switches every page with no style of its own. One transaction, undoable.
 - The layout lengths are defaults too (Standards, **Terminal strip pages**): column width, body

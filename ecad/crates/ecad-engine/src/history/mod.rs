@@ -1,0 +1,1507 @@
+//! The project's history as the user sees it (brief 020a, design 020): the History tab's graph,
+//! versions, points shown read-only, Restore, and branches (create, rename, switch, archive,
+//! reopen), with their commands.
+//!
+//! - The graph is built from the `branches` and `versions` rows and **one** transaction row per
+//!   node (its time, author and label), plus, for the branch shown, the ledger's unsaved steps.
+//!   It never reads the logs (design 020 §8.1).
+//! - A point is shown on a copy, from its nearest snapshot (the branch's own or its ancestry's)
+//!   and at most the snapshot interval of steps; nothing is recorded.
+//! - Restore is one ordinary transaction labelled `Restore "…"` (FQ6) whose ops are the
+//!   difference between the live state and the point's ([`ecad_model::document::diff`]), so they scale with
+//!   what differs; versions and revision fields are never restored (they are history, not
+//!   design).
+//! - Branch actions are written to the file at once (owner answer 4, FQ8), after saving the
+//!   branch shown (owner answer 3, "Save and switch").
+//!
+//! - Merges (brief 020b, [`crate::history::merging`]) are rows of their own, read from the merge index
+//!   (FQ2), drawn as joins from the source's line.
+//! - The graph reads one page of rows ([`PAGE`]) and the next on request (`limit`); each row
+//!   reads its step's time and author only when it comes into the page.
+//! - The graph's model (rows, lanes, session groups, time text, JSON rows) is
+//!   [`ecad_file::history`]; this module reads the project and the local zone for it.
+
+pub mod event_log;
+pub mod merging;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+
+use cadcraft_engine::{CommandSpec, Session};
+use ecad_electrical::CmdError;
+use ecad_file::schema::{BranchId, BranchRecord, BranchStatus, VersionKind};
+use ecad_model::{Document, Op, Transaction};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Value, json};
+
+use crate::access::Pages;
+use crate::commands::input::{Command, Typed, typed};
+use crate::commands::{on_any_page, on_project};
+use crate::pages::commands::sheets::{RevisionView, next_view_id};
+use crate::project::Project;
+use ecad_electrical::releases::revisions;
+
+use ecad_file::history::{
+    BranchRow, Graph, MAX_VERSION_NAME, Named, Node, NodeKind, PAGE, Point, RestorePlan, STEPS_PAGE, SessionGroup, Show, author_text, branch_json,
+    full_time_in, kind_word, merge_by_time_paged, node_json, short_time_in, status_word,
+};
+
+// ---------------------------------------------------------------- reading the project
+
+/// `main`'s ID for this project.
+pub fn main_of(p: &Project) -> BranchId {
+    BranchId::main_of(p.id.0)
+}
+
+/// The branch shown.
+pub fn current(p: &Project) -> BranchId {
+    p.file.project().map_or_else(|| main_of(p), ecad_file::Project::branch)
+}
+
+/// The branch shown's name.
+pub fn current_name(p: &Project) -> String {
+    p.file.project().map_or_else(|| "main".to_string(), |v| v.branch_record().name.clone())
+}
+
+/// Every branch row of the file (`main` first); a project without a version 2 file has only
+/// `main`, in memory.
+///
+/// # Errors
+/// The file could not be read.
+pub fn branch_rows(p: &Project) -> Result<Vec<(BranchId, BranchRecord)>, String> {
+    match p.file.project() {
+        Some(v) => v.branches().map_err(|e| e.to_string()),
+        None => {
+            let head = ecad_file::schema::Point { seq: p.ledger.head(), chain: String::new() };
+            Ok(vec![(main_of(p), BranchRecord::main(head))])
+        }
+    }
+}
+
+/// How many branches the project has (open or not); 1 without a file.
+pub fn branch_count(p: &Project) -> usize {
+    p.file.project().and_then(|v| v.branches().ok()).map_or(1, |b| b.len())
+}
+
+/// The lineage of `branch`: itself, then its parents up to `main`, each with the parent's step it
+/// forks after.
+fn lineage_of(p: &Project, branch: BranchId) -> Result<Vec<(BranchId, Option<u64>)>, String> {
+    let Some(v) = p.file.project() else {
+        return Ok(vec![(main_of(p), None)]);
+    };
+    let line = if branch == v.branch() {
+        v.lineage().clone()
+    } else {
+        let r = v.store().reader().map_err(|e| e.to_string())?;
+        ecad_file::project::lineage(&r, p.id, branch).map_err(|e| e.to_string())?
+    };
+    Ok(line.iter().map(|l| (l.branch, l.fork.map(|f| f.1))).collect())
+}
+
+/// The version rows (user and revision) of `branch` in the file.
+fn rows(p: &Project, branch: BranchId, kinds: &[VersionKind]) -> Result<Vec<ecad_file::schema::VersionRecord>, String> {
+    let Some(v) = p.file.project() else { return Ok(Vec::new()) };
+    let r = v.store().reader().map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for k in kinds {
+        out.extend(r.versions(branch, *k).map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+/// The named points of `branch`'s line: its own, then the inherited ones.
+///
+/// # Errors
+/// The file could not be read.
+pub fn named_points(p: &Project, branch: BranchId) -> Result<Vec<Named>, String> {
+    let line = lineage_of(p, branch)?;
+    let mut inherited: Vec<Named> = Vec::new();
+    for i in 1..line.len() {
+        let (anc, _) = line[i];
+        let bound = line.get(i - 1).and_then(|l| l.1).unwrap_or(0);
+        for v in rows(p, anc, &[VersionKind::User, VersionKind::Revision])? {
+            if v.point.seq <= bound {
+                inherited.push(Named {
+                    name: v.name.clone(),
+                    revision: v.kind == VersionKind::Revision,
+                    branch: anc,
+                    seq: v.point.seq,
+                    description: v.description.clone(),
+                });
+            }
+        }
+    }
+    let mut own: Vec<Named> = Vec::new();
+    if branch == current(p) {
+        // The branch shown: from the ledger, so unsaved versions count and undone ones do not.
+        let doc = p.ledger.document();
+        let issued: BTreeSet<String> = revisions::issued(doc).into_iter().filter_map(|r| r.issued).collect();
+        let stored: BTreeMap<String, Option<String>> =
+            rows(p, branch, &[VersionKind::User, VersionKind::Revision])?.into_iter().map(|v| (v.name, v.description)).collect();
+        let names: BTreeSet<&String> = inherited.iter().map(|n| &n.name).collect();
+        for (name, at) in &doc.versions {
+            if names.contains(name) {
+                continue;
+            }
+            let description = stored.get(name).cloned().flatten().or_else(|| unsaved_description(p, name));
+            own.push(Named { name: name.clone(), revision: issued.contains(name), branch, seq: *at, description });
+        }
+    } else {
+        for v in rows(p, branch, &[VersionKind::User, VersionKind::Revision])? {
+            own.push(Named { name: v.name, revision: v.kind == VersionKind::Revision, branch, seq: v.point.seq, description: v.description });
+        }
+    }
+    own.sort_by_key(|n| std::cmp::Reverse(n.seq));
+    own.extend(inherited);
+    Ok(own)
+}
+
+/// The description of an unsaved version, from the step that named it.
+fn unsaved_description(p: &Project, name: &str) -> Option<String> {
+    p.ledger.log().iter().rev().flat_map(|t| t.ops.iter()).find_map(|op| match op {
+        Op::NameVersion { name: n, description, .. } if n == name => description.clone(),
+        _ => None,
+    })
+}
+
+/// Transaction `seq` of `branch`: from the ledger for the branch shown (unsaved steps too), else
+/// read from the file for display.
+fn tx_at(p: &Project, branch: BranchId, seq: u64) -> Option<Transaction> {
+    if seq == 0 {
+        return None;
+    }
+    if branch == current(p)
+        && let Some(t) = p.ledger.transaction(seq)
+    {
+        return Some(t.clone());
+    }
+    p.file.project()?.tx_display(branch, seq, seq).ok()?.into_iter().next()
+}
+
+/// Steps `from..=to` of `branch`, oldest first.
+pub(crate) fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<Vec<Transaction>, String> {
+    if from > to {
+        return Ok(Vec::new());
+    }
+    if branch == current(p) {
+        let base = p.ledger.base();
+        let mut out = Vec::new();
+        if from <= base {
+            let hi = to.min(base);
+            match (p.file.project(), p.ledger.history()) {
+                (Some(v), _) => out.extend(v.tx_display(branch, from, hi).map_err(|e| e.to_string())?),
+                (None, Some(h)) => out.extend(h.transactions(from, hi).map_err(|e| e.to_string())?),
+                (None, None) => {}
+            }
+        }
+        for s in from.max(base + 1)..=to {
+            if let Some(t) = p.ledger.transaction(s) {
+                out.push(t.clone());
+            }
+        }
+        return Ok(out);
+    }
+    p.file.project().ok_or("this branch is not in a file")?.tx_display(branch, from, to).map_err(|e| e.to_string())
+}
+
+/// The local zone's offset from UTC at `ms`, in seconds (overseer, 2026-11-10: the graph and the
+/// details show local time; the file keeps UTC). `None` when the time is out of range.
+pub fn local_offset(ms: u64) -> Option<i64> {
+    use chrono::{Offset, TimeZone};
+    let utc = chrono::DateTime::from_timestamp(i64::try_from(ms / 1000).ok()?, 0)?.naive_utc();
+    Some(i64::from(chrono::Local.offset_from_utc_datetime(&utc).fix().local_minus_utc()))
+}
+
+/// `MM-DD HH:MM` this year, `YYYY-MM-DD` otherwise, in local time (design 020 §2.2); ` UTC`
+/// follows when the local zone cannot be read.
+pub fn short_time(ms: Option<u64>, now_ms: Option<u64>) -> String {
+    short_time_in(ms, now_ms, ms.and_then(local_offset))
+}
+
+/// `YYYY-MM-DD HH:MM` in local time; ` UTC` follows when the local zone cannot be read.
+pub fn full_time(ms: Option<u64>) -> String {
+    full_time_in(ms, ms.and_then(local_offset))
+}
+
+/// `g`'s text, `claude · 14 changes · 20:31–20:44`, in local time (` UTC` when the zone cannot be
+/// read).
+pub fn group_text(g: &SessionGroup) -> String {
+    g.text_in(g.from_ms.and_then(local_offset))
+}
+
+/// The graph of the project (design 020 §2.2): one row per node, newest first.
+///
+/// # Errors
+/// The file could not be read.
+pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
+    let cur = current(p);
+    let main = main_of(p);
+    let all = branch_rows(p)?;
+    let unsaved = p.unsaved_transactions();
+    let mut g = Graph { current: Some(cur), ..Graph::default() };
+    let shown: Vec<(BranchId, BranchRecord)> =
+        all.into_iter().filter(|(id, b)| *id == cur || b.status != BranchStatus::Archived || show.archived).collect();
+    let mut per: BTreeMap<BranchId, Vec<(Node, Option<u64>)>> = BTreeMap::new();
+    let names: BTreeMap<BranchId, String> = shown.iter().map(|(id, b)| (*id, b.name.clone())).collect();
+    for (id, b) in &shown {
+        let is_cur = *id == cur;
+        let head = if is_cur { p.ledger.head() } else { b.head.seq };
+        let fork = b.parent.as_deref().and_then(BranchId::parse).zip(b.fork_point.as_ref().map(|f| f.seq));
+        g.branches.push(BranchRow {
+            id: *id,
+            name: b.name.clone(),
+            status: b.status.clone(),
+            fork,
+            head,
+            unsaved: if is_cur { unsaved } else { 0 },
+            current: is_cur,
+            created_ms: b.created_ms,
+        });
+        let mut nodes = Vec::new();
+        let head_tx = tx_at(p, *id, head);
+        let now_label = if b.status == BranchStatus::Archived {
+            format!("Archived \"{}\"", b.name)
+        } else if is_cur && unsaved > 0 {
+            format!("Now · {} · {unsaved} unsaved", b.name)
+        } else {
+            format!("Now · {}", b.name)
+        };
+        nodes.push(Node {
+            branch: *id,
+            seq: head,
+            kind: NodeKind::Now,
+            name: None,
+            label: now_label,
+            time_ms: head_tx.as_ref().and_then(|t| t.time_ms).or(b.created_ms),
+            author: head_tx.as_ref().map(|t| author_text(&t.author)).or_else(|| b.created_by.clone()).unwrap_or_default(),
+            description: None,
+            forks: Vec::new(),
+            from: None,
+        });
+        // Rows other than Now read their step's time and author only when they come into the
+        // page (design 020 §8.1: one transaction row per node shown).
+        let mut lazy: Vec<(Node, Option<u64>)> = Vec::new();
+        let own = named_points(p, *id)?.into_iter().filter(|n| n.branch == *id);
+        for n in own {
+            lazy.push((
+                Node {
+                    branch: *id,
+                    seq: n.seq,
+                    kind: if n.revision { NodeKind::Revision } else { NodeKind::Version },
+                    label: n.name.clone(),
+                    name: Some(n.name),
+                    time_ms: None,
+                    author: String::new(),
+                    description: n.description,
+                    forks: Vec::new(),
+                    from: None,
+                },
+                Some(n.seq + 1),
+            ));
+        }
+        if show.autos {
+            for v in rows(p, *id, &[VersionKind::Auto])? {
+                lazy.push((
+                    Node {
+                        branch: *id,
+                        seq: v.point.seq,
+                        kind: NodeKind::Auto,
+                        name: None,
+                        label: "Auto".into(),
+                        time_ms: None,
+                        author: String::new(),
+                        description: None,
+                        forks: Vec::new(),
+                        from: None,
+                    },
+                    Some(v.point.seq),
+                ));
+            }
+        }
+        // Merges into this branch (the merge index, FQ2), its unsaved ones included.
+        if let Some(v) = p.file.project() {
+            let merges = if is_cur { v.merge_index(&p.ledger) } else { v.merge_rows(*id) }.map_err(|e| e.to_string())?;
+            for m in merges {
+                let src = names.get(&m.source).cloned().unwrap_or_else(|| "a branch".into());
+                let update = b.parent.as_deref() == Some(m.source.hex().as_str());
+                lazy.push((
+                    Node {
+                        branch: *id,
+                        seq: m.seq,
+                        kind: NodeKind::Merge,
+                        name: None,
+                        label: if update { format!("Updated from {src}") } else { format!("Merged \"{src}\"") },
+                        time_ms: None,
+                        author: String::new(),
+                        description: None,
+                        forks: Vec::new(),
+                        from: Some((m.source, m.source_head.0)),
+                    },
+                    Some(m.seq),
+                ));
+            }
+        }
+        if *id == main {
+            let label = "Project created".to_string();
+            let created = p.file.project().and_then(ecad_file::Project::created_ms);
+            nodes.push(Node {
+                branch: main,
+                seq: 0,
+                kind: NodeKind::Root,
+                name: None,
+                label,
+                time_ms: created,
+                author: String::new(),
+                description: None,
+                forks: Vec::new(),
+                from: None,
+            });
+        }
+        let mut nodes: Vec<(Node, Option<u64>)> = nodes.into_iter().map(|n| (n, None)).chain(lazy).collect();
+        // Within a branch: newest step first; at one step, Now above a version above an auto.
+        nodes.sort_by(|(a, _), (b, _)| b.seq.cmp(&a.seq).then(a.kind.cmp(&b.kind)));
+        nodes.dedup_by(|(a, _), (b, _)| a.kind == NodeKind::Now && b.kind == NodeKind::Now);
+        per.insert(*id, nodes);
+    }
+    // Fork rows: a branch starts at a node of its parent, or at a row of its own.
+    for row in g.branches.clone() {
+        let Some((parent, seq)) = row.fork else { continue };
+        let Some(list) = per.get_mut(&parent) else { continue };
+        match list.iter_mut().find(|(n, _)| n.seq == seq && n.kind != NodeKind::Now && n.kind != NodeKind::Merge) {
+            Some((n, _)) => n.forks.push(row.id),
+            None => {
+                let at = list.iter().position(|(n, _)| n.seq < seq || (n.seq == seq && n.kind > NodeKind::Fork)).unwrap_or(list.len());
+                list.insert(
+                    at,
+                    (
+                        Node {
+                            branch: parent,
+                            seq,
+                            kind: NodeKind::Fork,
+                            name: None,
+                            label: format!("Branch \"{}\" started", row.name),
+                            time_ms: row.created_ms,
+                            author: String::new(),
+                            description: None,
+                            forks: vec![row.id],
+                            from: None,
+                        },
+                        None,
+                    ),
+                );
+            }
+        }
+    }
+    let limit = if show.limit == 0 { PAGE } else { show.limit };
+    let now = crate::project::now_ms();
+    let mut fill = |n: &mut Node, seq: u64| {
+        if let Some(t) = tx_at(p, n.branch, seq) {
+            n.time_ms = t.time_ms;
+            n.author = author_text(&t.author);
+        }
+        if n.kind == NodeKind::Auto {
+            n.label = format!("Auto · {}", short_time(n.time_ms, now));
+        }
+    };
+    let (nodes, more) = merge_by_time_paged(per, &g.branches, limit, &mut fill);
+    g.nodes = nodes;
+    g.more = more;
+    Ok(g)
+}
+
+// ---------------------------------------------------------------- points
+
+/// Find a branch by ID (32 hex digits) or name (open ones first, any case).
+///
+/// # Errors
+/// No such branch.
+pub fn find_branch(p: &Project, text: &str) -> Result<(BranchId, BranchRecord), String> {
+    let all = branch_rows(p)?;
+    let t = text.trim();
+    if let Some(id) = BranchId::parse(t)
+        && let Some(found) = all.iter().find(|(i, _)| *i == id)
+    {
+        return Ok(found.clone());
+    }
+    let lower = t.to_lowercase();
+    let mut by_name: Vec<&(BranchId, BranchRecord)> = all.iter().filter(|(_, b)| b.name.to_lowercase() == lower).collect();
+    by_name.sort_by_key(|(_, b)| b.status != BranchStatus::Open);
+    by_name.first().map(|f| (*f).clone()).ok_or_else(|| format!("There is no branch \"{t}\"."))
+}
+
+/// A point of the history as a command names it: a version, an issued revision or a step, on
+/// `branch` (default the branch shown); `branch` or `now` alone is that branch's head.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, JsonSchema)]
+pub struct PointQuery {
+    /// The branch: its ID or name (default: the branch shown).
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// A version's name.
+    #[serde(default)]
+    pub version: Option<String>,
+    /// An issued revision, such as "B".
+    #[serde(default)]
+    pub revision: Option<String>,
+    /// A step.
+    #[serde(default)]
+    pub seq: Option<u64>,
+    /// The head of the branch.
+    #[serde(default)]
+    pub now: Option<bool>,
+}
+
+/// The point `params` names on its branch's line, read as a [`PointQuery`] (other keys are left
+/// alone: the agent gate reads `restore`'s whole parameters).
+///
+/// # Errors
+/// Parameters that do not read; a missing or unknown point, in words.
+pub fn point(p: &Project, params: &Value) -> Result<Point, String> {
+    let q = PointQuery::deserialize(params).map_err(|e| e.to_string())?;
+    Ok(point_at(p, &q)?)
+}
+
+/// The point `q` names on its branch's line.
+///
+/// # Errors
+/// A missing or unknown point, in words.
+pub fn point_at(p: &Project, q: &PointQuery) -> Result<Point, CmdError> {
+    let branch = match &q.branch {
+        Some(b) => find_branch(p, b).map_err(CmdError::refused)?.0,
+        None => current(p),
+    };
+    let head = if branch == current(p) { p.ledger.head() } else { find_branch(p, &branch.hex()).map_err(CmdError::refused)?.1.head.seq };
+    if let Some(name) = &q.version {
+        let n = named_points(p, branch)
+            .map_err(CmdError::refused)?
+            .into_iter()
+            .find(|n| !n.revision && n.name.eq_ignore_ascii_case(name.trim()))
+            .ok_or_else(|| CmdError::refused(format!("There is no version \"{}\" on this branch's line.", name.trim())))?;
+        return Ok(Point { branch: n.branch, seq: n.seq, title: format!("Version \"{}\"", n.name), kind: NodeKind::Version });
+    }
+    if let Some(rev) = &q.revision {
+        let want = revisions::version_name(rev.trim().trim_start_matches("Rev ").trim());
+        let n = named_points(p, branch)
+            .map_err(CmdError::refused)?
+            .into_iter()
+            .find(|n| n.revision && n.name.eq_ignore_ascii_case(&want))
+            .ok_or_else(|| CmdError::refused(format!("{want} has not been issued on this branch's line.")))?;
+        return Ok(Point { branch: n.branch, seq: n.seq, title: n.name, kind: NodeKind::Revision });
+    }
+    if let Some(seq) = q.seq {
+        if seq > head {
+            return Err(CmdError::refused(format!("This branch has no step {seq} (its last is {head}).")));
+        }
+        let kind = if seq == head { NodeKind::Now } else { NodeKind::Fork };
+        return Ok(Point { branch, seq, title: format!("Step {seq}"), kind });
+    }
+    if q.now == Some(true) || q.branch.is_some() {
+        return Ok(Point { branch, seq: head, title: "Now".into(), kind: NodeKind::Now });
+    }
+    Err(CmdError::refused("Name a point: {\"version\": name}, {\"revision\": \"B\"} or {\"seq\": n}."))
+}
+
+/// The document at `pt` (on a copy, design 020 §2.4): the ledger for the branch shown, else read
+/// from the file.
+///
+/// # Errors
+/// The file could not be read or replayed.
+pub fn state_at(p: &Project, pt: &Point) -> Result<Document, String> {
+    match reads_saved(p, pt) {
+        true => p.file.project().ok_or("this branch is not in a file")?.point_state(pt.branch, pt.seq).map_err(|e| e.to_string()),
+        false => p.ledger.state_at(pt.seq).map_err(|e| e.to_string()),
+    }
+}
+
+/// The step that issued revision `name`, whose `NameVersion` names step `at` of `branch`: the
+/// issue transaction itself (`at + 1`, the step after the point it names, design 027 §0), when
+/// that step does issue it.
+pub fn issue_seq(p: &Project, branch: BranchId, at: u64, name: &str) -> Option<u64> {
+    let seq = at.checked_add(1)?;
+    let t = tx_at(p, branch, seq)?;
+    let (rev, _) = revisions::issue_in(&t.ops)?;
+    (revisions::version_name(&rev) == name).then_some(seq)
+}
+
+/// The project as revision `rev` was issued (design 027 §5.2, §8; brief 019 follow-up): the state
+/// **after** its issue transaction, so its own title block and revision list read it. Found on the
+/// branch shown's line (020's `named_points`); returns the named point and that state. A hostile
+/// history whose step after the point does not issue it gets the point's state with the issued
+/// rows copied in (issued rows never change, so this is exact for what they say).
+///
+/// # Errors
+/// Not issued on this line, or the history could not be read.
+pub fn issued_state(p: &Project, rev: &str) -> Result<(Named, u64, Document), String> {
+    let name = revisions::version_name(rev.trim().trim_start_matches("Rev ").trim());
+    let n = named_points(p, current(p))?
+        .into_iter()
+        .find(|n| n.revision && n.name.eq_ignore_ascii_case(&name))
+        .ok_or_else(|| format!("{name} has not been issued on this branch's line."))?;
+    if let Some(seq) = issue_seq(p, n.branch, n.seq, &n.name) {
+        let pt = Point { branch: n.branch, seq, title: n.name.clone(), kind: NodeKind::Revision };
+        let doc = state_at(p, &pt)?;
+        return Ok((n, seq, doc));
+    }
+    let pt = Point { branch: n.branch, seq: n.seq, title: n.name.clone(), kind: NodeKind::Revision };
+    let mut then = state_at(p, &pt)?;
+    let live = p.ledger.document();
+    let upto = revisions::list(live).into_iter().find(|r| r.issued.as_deref() == Some(n.name.as_str())).map_or(0, |r| r.n);
+    // Design 072 §5.3: the issued rows up to it, as they are now.
+    let upto = usize::try_from(upto).unwrap_or(usize::MAX);
+    then.project.revisions = live.project.revisions.iter().take(upto).filter(|r| r.issued.is_some()).cloned().collect();
+    Ok((n.clone(), n.seq, then))
+}
+
+/// Whether `pt`'s state is read from the file (its nearest snapshot and at most the snapshot
+/// interval of steps, reviewer finding 2) rather than from the ledger: every saved point, of any
+/// branch. Only an unsaved point of the branch shown comes from the ledger, undoing at most the
+/// unsaved steps, so the cost never grows with the session's length.
+pub fn reads_saved(p: &Project, pt: &Point) -> bool {
+    p.file.project().is_some_and(|v| pt.branch != v.branch() || pt.seq <= v.head().0)
+}
+
+/// Whether `pt` lies on the branch shown's line: its own steps, or its ancestry's at or before
+/// each fork (owner answer 11: Restore only there).
+fn on_current_line(p: &Project, pt: &Point) -> Result<bool, String> {
+    let line = lineage_of(p, current(p))?;
+    for (i, (b, _)) in line.iter().enumerate() {
+        if *b == pt.branch {
+            let bound = if i == 0 { u64::MAX } else { line.get(i - 1).and_then(|l| l.1).unwrap_or(0) };
+            return Ok(pt.seq <= bound);
+        }
+    }
+    Ok(false)
+}
+
+// ---------------------------------------------------------------- restore
+
+/// Whether Restore compares this project property: revision fields are history and stay as they
+/// are now (design 020 §2.5.3, §6.4 rule 1).
+fn restores_key(key: &str) -> bool {
+    !key.starts_with("rev.")
+}
+
+/// The state Restore returns to: a saved point from the file (its nearest snapshot and at most
+/// the snapshot interval of steps), an unsaved one from the ledger.
+fn restore_target(p: &Project, pt: &Point) -> Result<Document, String> {
+    state_at(p, pt)
+}
+
+/// Work out a restore of `pt` (design 020 §2.5.3): the ops are the difference between the live
+/// state and the point's (overseer, 2026-11-10: they scale with what differs, not with how far
+/// back the point is), without version names or revision fields.
+///
+/// # Errors
+/// Not on the branch shown's line, or the history could not be read.
+pub fn plan_restore(p: &Project, pt: &Point) -> Result<RestorePlan, String> {
+    if !on_current_line(p, pt)? {
+        return Err(format!("{} is on another branch: branch from here, or merge that branch.", pt.title));
+    }
+    let live = p.ledger.document();
+    let then = restore_target(p, pt)?;
+    let ops = ecad_model::document::diff::ops_between(live, &then, &restores_key);
+    let objects = ecad_model::document::diff::objects(&ops);
+    let mut pages = BTreeSet::new();
+    for (kind, id) in objects.keys() {
+        let page = match *kind {
+            "item" => live.items.get(&ecad_model::ItemId(*id)).or_else(|| then.items.get(&ecad_model::ItemId(*id))).map(|i| i.page),
+            "page" => Some(ecad_model::PageId(*id)),
+            "representation" => live
+                .representations
+                .get(&ecad_model::RepresentationId(*id))
+                .or_else(|| then.representations.get(&ecad_model::RepresentationId(*id)))
+                .map(|r| r.page),
+            _ => None,
+        };
+        if let Some(pg) = page {
+            let doc = if live.pages.contains_key(&pg) { live } else { &then };
+            pages.insert(ecad_electrical::references::cables::page_number(doc, pg));
+        }
+    }
+    let after_revisions = named_points(p, current(p))?
+        .into_iter()
+        .filter(|n| {
+            n.revision
+                && (n.branch != pt.branch || n.seq >= pt.seq)
+                && on_current_line(p, &Point { branch: n.branch, seq: n.seq, title: String::new(), kind: NodeKind::Revision }).unwrap_or(false)
+        })
+        .filter(|n| n.branch == current(p) || n.branch == pt.branch)
+        .map(|n| n.name)
+        .collect();
+    Ok(RestorePlan { objects: objects.len(), ops, pages: pages.into_iter().collect(), after_revisions })
+}
+
+// ---------------------------------------------------------------- versions
+
+/// Check a new version's name (design 020 §2.5.1).
+///
+/// # Errors
+/// In words.
+pub fn check_version_name(p: &Project, name: &str) -> Result<String, String> {
+    let n = name.trim();
+    let len = n.chars().count();
+    if len == 0 || len > MAX_VERSION_NAME {
+        return Err(format!("A version name is 1 to {MAX_VERSION_NAME} characters."));
+    }
+    if n.chars().any(char::is_control) {
+        return Err("A version name cannot hold control characters.".into());
+    }
+    if let Some(rest) = n.strip_prefix("Rev ").or_else(|| n.strip_prefix("rev ")).or_else(|| n.strip_prefix("REV "))
+        && (1..=8).contains(&rest.chars().count())
+        && rest.chars().all(|c| c.is_ascii_alphanumeric())
+    {
+        return Err(format!("\"{n}\" names revisions; issue one from Revisions."));
+    }
+    let lower = n.to_lowercase();
+    if p.ledger.document().versions.keys().any(|k| k.to_lowercase() == lower) {
+        return Err(format!("There is already a version \"{n}\" on {}.", current_name(p)));
+    }
+    Ok(n.to_string())
+}
+
+/// The New version dialog's default name: `Version <n>`, n = this branch's version count + 1.
+pub fn default_version_name(p: &Project) -> String {
+    let own = named_points(p, current(p)).map(|v| v.iter().filter(|n| !n.revision && n.branch == current(p)).count()).unwrap_or(0);
+    let mut n = own + 1;
+    loop {
+        let name = format!("Version {n}");
+        if check_version_name(p, &name).is_ok() {
+            return name;
+        }
+        n += 1;
+    }
+}
+
+/// The New branch dialog's default name: `Branch <n>`.
+pub fn default_branch_name(p: &Project) -> String {
+    let taken: BTreeSet<String> =
+        branch_rows(p).unwrap_or_default().into_iter().filter(|(_, b)| b.status == BranchStatus::Open).map(|(_, b)| b.name.to_lowercase()).collect();
+    (1..).map(|n| format!("Branch {n}")).find(|n| !taken.contains(&n.to_lowercase())).unwrap_or_else(|| "Branch".into())
+}
+
+// ---------------------------------------------------------------- the details box
+
+/// What the details box shows about a point (design 020 §2.4).
+///
+/// # Errors
+/// The history could not be read.
+pub fn point_info(p: &Project, pt: &Point) -> Result<Value, String> {
+    let rows = branch_rows(p)?;
+    let bname = rows.iter().find(|(id, _)| *id == pt.branch).map(|(_, b)| b.name.clone()).unwrap_or_else(|| "main".into());
+    let first = match pt.kind {
+        NodeKind::Revision => format!("{}, issued on {bname}", pt.title),
+        NodeKind::Version => format!("Version on {bname}"),
+        NodeKind::Auto => format!("Automatic snapshot on {bname}"),
+        NodeKind::Now => format!("Now on {bname}"),
+        NodeKind::Merge => format!("Merge into {bname}"),
+        NodeKind::Root => "Project created".into(),
+        NodeKind::Fork => format!("Step {} on {bname}", pt.seq),
+    };
+    let naming = match pt.kind {
+        NodeKind::Version | NodeKind::Revision => tx_at(p, pt.branch, pt.seq + 1),
+        _ => tx_at(p, pt.branch, pt.seq),
+    };
+    let when = naming.as_ref().map(|t| format!("{} · {}", full_time(t.time_ms), author_text(&t.author))).unwrap_or_default();
+    // The previous node on this line, for the change summary.
+    let named = named_points(p, current_or(p, pt.branch))?;
+    let prev = named.iter().filter(|n| n.branch == pt.branch && n.seq < pt.seq).max_by_key(|n| n.seq).cloned();
+    let (since, steps) = match &prev {
+        Some(n) => (n.name.clone(), pt.seq - n.seq),
+        None if pt.branch == main_of(p) => ("the start".to_string(), pt.seq),
+        None => ("the branch's start".to_string(), pt.seq),
+    };
+    let mut summary = vec![format!("{steps} step{}", if steps == 1 { "" } else { "s" })];
+    if let (Some(n), true) = (&prev, matches!(pt.kind, NodeKind::Version | NodeKind::Revision)) {
+        summary.extend(chunk_summary(p, pt, n));
+    }
+    let restore = on_current_line(p, pt).unwrap_or(false);
+    let description = named
+        .iter()
+        .find(|n| n.branch == pt.branch && n.seq == pt.seq && Some(&n.name) == pt.title_name().as_ref())
+        .and_then(|n| n.description.clone());
+    Ok(json!({
+        "title": pt.title, "kind": pt.kind.word(), "branch": bname, "branch_id": pt.branch.hex(), "seq": pt.seq,
+        "line1": first, "line2": when, "summary": format!("Since {since}: {}", summary.join(" · ")),
+        "description": description, "restore": restore,
+        "label": naming.as_ref().map(|t| t.label.clone()),
+    }))
+}
+
+fn current_or(p: &Project, b: BranchId) -> BranchId {
+    if lineage_of(p, current(p)).map(|l| l.iter().any(|x| x.0 == b)).unwrap_or(false) { current(p) } else { b }
+}
+
+/// Pages changed, added and removed between two saved snapshots, from their chunk hashes
+/// (design 020 §2.4): no document is built.
+fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
+    let Some(v) = p.file.project() else { return Vec::new() };
+    let Ok(r) = v.store().reader() else { return Vec::new() };
+    let find = |b: BranchId, name: &str| [VersionKind::User, VersionKind::Revision].iter().find_map(|k| r.version(b, *k, name).ok().flatten());
+    let (Some(name), Some(a)) = (pt.title_name(), find(prev.branch, &prev.name)) else { return Vec::new() };
+    let Some(b) = find(pt.branch, &name) else { return Vec::new() };
+    let pages = |v: &ecad_file::schema::VersionRecord| -> BTreeMap<String, String> {
+        v.chunks.iter().filter(|(k, _)| k.starts_with("page:")).map(|(k, h)| (k.clone(), h.clone())).collect()
+    };
+    let (pa, pb) = (pages(&a), pages(&b));
+    let changed = pb.iter().filter(|(k, h)| pa.get(*k).is_some_and(|x| x != *h)).count();
+    let added = pb.keys().filter(|k| !pa.contains_key(*k)).count();
+    let removed = pa.keys().filter(|k| !pb.contains_key(*k)).count();
+    let differs = |k: &String| a.chunks.get(k) != b.chunks.get(k);
+    let model: BTreeSet<&String> = a
+        .chunks
+        .keys()
+        .chain(b.chunks.keys())
+        .filter(|k| k.starts_with("model:") && *k != "model:meta" && *k != "model:project")
+        .filter(|k| differs(k))
+        .collect();
+    let mut out = Vec::new();
+    let plural = |n: usize, w: &str| format!("{n} page{} {w}", if n == 1 { "" } else { "s" });
+    if changed > 0 {
+        out.push(plural(changed, "changed"));
+    }
+    if added > 0 {
+        out.push(plural(added, "added"));
+    }
+    if removed > 0 {
+        out.push(plural(removed, "removed"));
+    }
+    // Devices by tag, from the differing component chunks only (design 020 §8.3: at most three
+    // named changes).
+    let comp: Vec<&String> = model.iter().copied().filter(|k| k.starts_with("model:device:")).collect();
+    let named = if comp.is_empty() || comp.len() > 8 { None } else { ecad_file::history::device_changes(&r, &a, &b, &comp) };
+    match named {
+        Some(lines) => out.extend(lines),
+        None if !comp.is_empty() => out.push("devices changed".into()),
+        None => {}
+    }
+    if model.iter().any(|k| !k.starts_with("model:device:")) {
+        out.push("wiring changed".into());
+    }
+    out
+}
+
+// ---------------------------------------------------------------- the commands
+
+/// The commands of this module with a typed input.
+pub const TYPED: &[Typed] = &[
+    Typed::of::<HistoryParams>("history"),
+    Typed::of::<StepsParams>("steps"),
+    Typed::of::<PointinfoParams>("pointinfo"),
+    Typed::of::<VersionParams>("version"),
+    Typed::of::<ShowpointParams>("showpoint"),
+    Typed::of::<ClosepointParams>("closepoint"),
+    Typed::of::<RestoreParams>("restore"),
+    Typed::of::<BranchesParams>("branches"),
+    Typed::of::<BranchParams>("branch"),
+    Typed::of::<RenamebranchParams>("renamebranch"),
+    Typed::of::<SwitchbranchParams>("switchbranch"),
+    Typed::of::<ArchivebranchParams>("archivebranch"),
+    Typed::of::<ReopenbranchParams>("reopenbranch"),
+];
+
+/// The commands this module adds (design 020 §10). Merge is brief 020b.
+pub fn specs() -> Vec<CommandSpec> {
+    vec![
+        CommandSpec::new("history", "History", typed::<HistoryParams>)
+            .params("{autos?: bool, archived?: bool, limit?: 200} (the History graph, newest first, `limit` rows; read only)")
+            .noundo(),
+        CommandSpec::new("steps", "History Steps", typed::<StepsParams>)
+            .params("{branch?, before?: seq, limit?: 50} (steps newest first, read only)")
+            .noundo(),
+        CommandSpec::new("pointinfo", "Point Info", typed::<PointinfoParams>)
+            .params("{branch?, version?|revision?|seq?} (the details of a point, read only)")
+            .noundo(),
+        CommandSpec::new("version", "New Version", typed::<VersionParams>)
+            .params("{name, description?} (keeps the project as it is now under this name: one step)")
+            .noundo(),
+        CommandSpec::new("showpoint", "Show Point", typed::<ShowpointParams>)
+            .params("{branch?, version?|revision?|seq?} (that state read only; records nothing)")
+            .noundo(),
+        CommandSpec::new("closepoint", "Back to Current", typed::<ClosepointParams>).params("{}").noundo(),
+        CommandSpec::new("restore", "Restore", typed::<RestoreParams>)
+            .params("{version?|revision?|seq?, branch?, preview?: bool} (makes the project as it was there: one step, undoable; preview only asks)")
+            .noundo(),
+        CommandSpec::new("branches", "Branches", typed::<BranchesParams>).params("{} (the branch list, read only)").noundo(),
+        CommandSpec::new("branch", "New Branch", typed::<BranchParams>)
+            .params("{name, from?: {branch?, version?|revision?|seq?}, switch?: true} (saves first; written at once)")
+            .noundo(),
+        CommandSpec::new("renamebranch", "Rename Branch", typed::<RenamebranchParams>).params("{branch, name}").noundo(),
+        CommandSpec::new("switchbranch", "Switch Branch", typed::<SwitchbranchParams>)
+            .params("{branch, save?: bool} (refused with unsaved changes unless save is true)")
+            .noundo(),
+        CommandSpec::new("archivebranch", "Archive Branch", typed::<ArchivebranchParams>).params("{branch}").noundo(),
+        CommandSpec::new("reopenbranch", "Reopen Branch", typed::<ReopenbranchParams>)
+            .params("{branch, name?} (name: reopen under that name, in one step, when another open branch has its name)")
+            .noundo(),
+    ]
+}
+
+/// `history {autos?, archived?, limit?}` (read only): the History graph, newest first, `limit`
+/// rows.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HistoryParams {
+    /// Also the automatic steps.
+    #[serde(default)]
+    autos: Option<bool>,
+    /// Also merged and archived branches.
+    #[serde(default)]
+    archived: Option<bool>,
+    /// Rows to read (default one page).
+    #[serde(default)]
+    limit: Option<u64>,
+}
+
+impl Command for HistoryParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let show = Show {
+            autos: self.autos.unwrap_or(false),
+            archived: self.archived.unwrap_or(false),
+            limit: self.limit.map_or(0, |l| usize::try_from(l).unwrap_or(usize::MAX).max(1)),
+        };
+        on_any_page(s, |p, _| {
+            let g = graph(p, show).map_err(CmdError::refused)?;
+            Ok(json!({
+                "current": g.current.map(|c| c.hex()),
+                "branches": g.branches.iter().map(branch_json).collect::<Vec<_>>(),
+                "nodes": g.nodes.iter().map(node_json).collect::<Vec<_>>(),
+                "more": g.more,
+            }))
+        })
+    }
+}
+
+/// Steps of `branch` newest first, `limit` of them, before `before` (exclusive; default after
+/// the head).
+///
+/// # Errors
+/// The history could not be read.
+pub fn steps(p: &Project, branch: BranchId, before: Option<u64>, limit: u64) -> Result<Vec<Transaction>, String> {
+    let head = if branch == current(p) { p.ledger.head() } else { find_branch(p, &branch.hex())?.1.head.seq };
+    let to = before.map_or(head, |b| b.saturating_sub(1).min(head));
+    if to == 0 {
+        return Ok(Vec::new());
+    }
+    let from = to.saturating_sub(limit.max(1) - 1).max(1);
+    let mut v = txs(p, branch, from, to)?;
+    v.reverse();
+    Ok(v)
+}
+
+/// `steps {branch?, before?, limit?}` (read only): the steps of a branch newest first.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StepsParams {
+    /// The branch: its ID or name (default: the branch shown).
+    #[serde(default)]
+    branch: Option<String>,
+    /// Only steps before this one.
+    #[serde(default)]
+    before: Option<u64>,
+    /// At most this many (default 50, at most 1000).
+    #[serde(default)]
+    limit: Option<u64>,
+}
+
+impl Command for StepsParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let limit = self.limit.unwrap_or(STEPS_PAGE).clamp(1, 1_000);
+        on_any_page(s, |p, _| {
+            let b = match &self.branch {
+                Some(t) => find_branch(p, t).map_err(CmdError::refused)?.0,
+                None => current(p),
+            };
+            let v = steps(p, b, self.before, limit).map_err(CmdError::refused)?;
+            Ok(json!({"steps": v.iter().map(|t| json!({
+                "seq": t.seq, "label": t.label, "author": author_text(&t.author), "time": t.time_ms, "kind": kind_word(t.kind),
+            })).collect::<Vec<_>>()}))
+        })
+    }
+}
+
+/// `pointinfo {branch?, version? | revision? | seq?, now?}` (read only): the details of a point.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PointinfoParams {
+    /// The branch: its ID or name (default: the branch shown); alone, its head.
+    #[serde(default)]
+    branch: Option<String>,
+    /// A version's name.
+    #[serde(default)]
+    version: Option<String>,
+    /// An issued revision, such as "B".
+    #[serde(default)]
+    revision: Option<String>,
+    /// A step.
+    #[serde(default)]
+    seq: Option<u64>,
+    /// The head of the branch.
+    #[serde(default)]
+    now: Option<bool>,
+}
+
+impl PointinfoParams {
+    fn query(self) -> PointQuery {
+        PointQuery { branch: self.branch, version: self.version, revision: self.revision, seq: self.seq, now: self.now }
+    }
+}
+
+impl Command for PointinfoParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let q = self.query();
+        on_any_page(s, |p, _| {
+            let pt = point_at(p, &q)?;
+            point_info(p, &pt).map_err(CmdError::refused)
+        })
+    }
+}
+
+/// `version {name, description?}`: keep the project as it is now under this name; one step.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct VersionParams {
+    /// The version's name.
+    name: String,
+    /// What it is (at most 1 000 characters).
+    #[serde(default)]
+    description: Option<String>,
+}
+
+impl Command for VersionParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let description = self.description.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(str::to_string);
+        on_project(s, |p, pg, _| {
+            let head = p.ledger.head();
+            if head == 0 {
+                return Err(CmdError::refused("Nothing to keep yet: draw or change something first."));
+            }
+            let name = check_version_name(p, &self.name).map_err(CmdError::refused)?;
+            if description.as_ref().is_some_and(|d| d.chars().count() > 1_000 || d.chars().any(|c| c.is_control() && c != '\n')) {
+                return Err(CmdError::refused("A description is at most 1 000 characters."));
+            }
+            let ops = vec![Op::NameVersion { name: name.clone(), at: head, description: description.clone() }];
+            p.apply_edit(pg, "version", &format!("Create version \"{name}\""), ops)?;
+            let line = format!("Version \"{name}\" created. Save to keep it.");
+            pg.echo(line.clone());
+            Ok(json!({"name": name, "at": head, "transaction": p.ledger.head(), "message": line}))
+        })
+    }
+}
+
+/// The point bar's text (design 020 §2.4).
+pub fn bar_text(p: &Project, pt: &Point) -> String {
+    let bname = find_branch(p, &pt.branch.hex()).map(|b| b.1.name).unwrap_or_else(|_| "main".into());
+    match pt.kind {
+        NodeKind::Now => format!("Now · {bname} · read-only"),
+        _ => format!("{} · {bname} · read-only", pt.title),
+    }
+}
+
+/// `showpoint {branch?, version? | revision? | seq?, now?}`: that state, read only; records
+/// nothing.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ShowpointParams {
+    /// The branch: its ID or name (default: the branch shown); alone, its head.
+    #[serde(default)]
+    branch: Option<String>,
+    /// A version's name.
+    #[serde(default)]
+    version: Option<String>,
+    /// An issued revision, such as "B".
+    #[serde(default)]
+    revision: Option<String>,
+    /// A step.
+    #[serde(default)]
+    seq: Option<u64>,
+    /// The head of the branch.
+    #[serde(default)]
+    now: Option<bool>,
+}
+
+impl Command for ShowpointParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let q = PointQuery { branch: self.branch, version: self.version, revision: self.revision, seq: self.seq, now: self.now };
+        on_any_page(s, |p, _| show_point(p, &q))
+    }
+}
+
+/// `showpoint`'s work: the point's state as a read-only view.
+fn show_point(p: &mut Project, q: &PointQuery) -> Result<Value, CmdError> {
+    let pt = point_at(p, q)?;
+    // An issued revision is shown as issued (brief 027 §16): the step after the point it
+    // names, so its title block reads it.
+    let shown = match pt.kind {
+        NodeKind::Revision => issue_seq(p, pt.branch, pt.seq, &pt.title).map_or_else(|| pt.clone(), |seq| Point { seq, ..pt.clone() }),
+        _ => pt.clone(),
+    };
+    let then = state_at(p, &shown).map_err(CmdError::refused)?;
+    let book = ecad_model::document::book::Book::of(&then);
+    let pages: Vec<Value> = book
+        .order
+        .iter()
+        .map(|pg| json!({"page": pg.hex(), "number": book.number(&then, *pg), "title": then.pages.get(pg).map(|x| x.title.clone())}))
+        .collect();
+    let bar = bar_text(p, &pt);
+    p.revision_view = Some(RevisionView {
+        rev: pt.title.clone(),
+        date: String::new(),
+        at: pt.seq,
+        doc: Arc::new(then),
+        bar: Some(bar.clone()),
+        id: next_view_id(),
+    });
+    Ok(json!({"title": pt.title, "branch": pt.branch.hex(), "seq": pt.seq, "bar": bar, "pages": pages}))
+}
+
+/// `closepoint {}`: back to the current state.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("properties" = {}))]
+pub(crate) struct ClosepointParams {}
+
+impl Command for ClosepointParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, _| {
+            let was = p.revision_view.take().map(|v| v.rev);
+            Ok(json!({"closed": was}))
+        })
+    }
+}
+
+/// The confirmation text of a restore (design 020 §2.5.3).
+pub fn restore_question(p: &Project, pt: &Point, plan: &RestorePlan) -> String {
+    let on = match plan.pages.len() {
+        0 => String::new(),
+        1 => format!(", on page {}", plan.pages[0]),
+        _ => format!(", on pages {}", plan.pages.join(", ")),
+    };
+    let mut q = format!(
+        "Make the project on {} as it was at {}?\n{} object{} change{on}. Nothing is deleted from the history: this is one new step, and Undo takes it back.",
+        current_name(p),
+        pt.title,
+        plan.objects,
+        if plan.objects == 1 { "" } else { "s" }
+    );
+    if let Some(last) = plan.after_revisions.first() {
+        q.push_str(&format!("\nIt lands after {last}, so it first appears in the next revision."));
+    }
+    q
+}
+
+/// `restore {version? | revision? | seq?, branch?, now?, preview?}`: make the project as it was
+/// there; one step, undoable. `preview` only asks.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RestoreParams {
+    /// The branch: its ID or name (default: the branch shown); alone, its head.
+    #[serde(default)]
+    branch: Option<String>,
+    /// A version's name.
+    #[serde(default)]
+    version: Option<String>,
+    /// An issued revision, such as "B".
+    #[serde(default)]
+    revision: Option<String>,
+    /// A step.
+    #[serde(default)]
+    seq: Option<u64>,
+    /// The head of the branch.
+    #[serde(default)]
+    now: Option<bool>,
+    /// Only the question the Restore dialog asks; nothing is recorded.
+    #[serde(default)]
+    preview: Option<bool>,
+}
+
+impl Command for RestoreParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let preview = self.preview == Some(true);
+        let q = PointQuery { branch: self.branch, version: self.version, revision: self.revision, seq: self.seq, now: self.now };
+        on_project(s, |p, pg, _| restore(p, pg, &q, preview))
+    }
+}
+
+/// `restore`'s work.
+fn restore(p: &mut Project, pg: &mut Pages<'_>, q: &PointQuery, preview: bool) -> Result<Value, CmdError> {
+    let pt = point_at(p, q)?;
+    let plan = plan_restore(p, &pt).map_err(CmdError::refused)?;
+    let quoted = match pt.kind {
+        NodeKind::Version => pt.title.trim_start_matches("Version ").to_string(),
+        _ => format!("\"{}\"", pt.title),
+    };
+    if plan.objects == 0 || plan.ops.is_empty() {
+        return Err(CmdError::refused(format!("The project is already as it was at {quoted}.")));
+    }
+    if preview {
+        // The Restore dialog's question; nothing is recorded.
+        return Ok(json!({"question": restore_question(p, &pt, &plan), "objects": plan.objects, "pages": plan.pages}));
+    }
+    p.apply_edit_with(pg, "restore", &format!("Restore {quoted}"), plan.ops.clone(), false)?;
+    let line = format!("Restored {quoted} ({} changes). Undo takes it back.", plan.objects);
+    pg.echo(line.clone());
+    Ok(json!({"restored": pt.title, "objects": plan.objects, "pages": plan.pages, "transaction": p.ledger.head(), "message": line}))
+}
+
+/// `branches {}` (read only): the branch list.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("properties" = {}))]
+pub(crate) struct BranchesParams {}
+
+impl Command for BranchesParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, _| {
+            let cur = current(p);
+            let rows = branch_rows(p).map_err(CmdError::refused)?;
+            Ok(json!({"current": cur.hex(), "branches": rows.iter().map(|(id, b)| json!({
+                "id": id.hex(), "name": b.name, "status": status_word(&b.status), "current": *id == cur,
+                "parent": b.parent, "fork": b.fork_point.as_ref().map(|f| f.seq), "head": if *id == cur { p.ledger.head() } else { b.head.seq },
+            })).collect::<Vec<_>>()}))
+        })
+    }
+}
+
+/// Branch actions with no version 2 file yet (design 020 §2.6).
+const SAVE_FIRST: &str = "Branches live in the project file. Save it first.";
+/// The file went away under a branch action.
+const NO_FILE: &str = "no file";
+
+/// Why branch actions cannot run: no version 2 file yet (design 020 §2.6), or read-only.
+pub(crate) fn branch_file(p: &Project) -> Result<(), String> {
+    match p.file.project() {
+        None => Err("Branches live in the project file. Save it first.".into()),
+        Some(v) => match v.read_only() {
+            Some(r) => Err(format!("The project is read-only ({r}); branches cannot be changed.")),
+            None => Ok(()),
+        },
+    }
+}
+
+/// Where a new branch starts: the point `from` names, or the head of the branch shown.
+fn fork_of(p: &Project, from: Option<&PointQuery>) -> Result<Point, CmdError> {
+    match from {
+        None => Ok(Point { branch: current(p), seq: p.ledger.head(), title: "Now".into(), kind: NodeKind::Now }),
+        Some(q) => {
+            let mut pt = point_at(p, q)?;
+            if q.version.is_none() && q.revision.is_none() && q.seq.is_none() {
+                let head =
+                    if pt.branch == current(p) { p.ledger.head() } else { find_branch(p, &pt.branch.hex()).map_err(CmdError::refused)?.1.head.seq };
+                pt.seq = head;
+            }
+            Ok(pt)
+        }
+    }
+}
+
+/// How a new branch's start reads (`Rev A`, `main, step 640`).
+fn from_text(p: &Project, pt: &Point) -> String {
+    let bname = find_branch(p, &pt.branch.hex()).map(|b| b.1.name).unwrap_or_else(|_| "main".into());
+    match pt.kind {
+        NodeKind::Version => pt.title.trim_start_matches("Version ").to_string(),
+        NodeKind::Revision => pt.title.clone(),
+        _ => format!("{bname}, step {}", pt.seq),
+    }
+}
+
+/// Where a new branch starts: a point of the history.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FromParams {
+    /// The branch: its ID or name (default: the branch shown); alone, its head.
+    #[serde(default)]
+    branch: Option<String>,
+    /// A version's name.
+    #[serde(default)]
+    version: Option<String>,
+    /// An issued revision, such as "B".
+    #[serde(default)]
+    revision: Option<String>,
+    /// A step.
+    #[serde(default)]
+    seq: Option<u64>,
+    /// The head of the branch.
+    #[serde(default)]
+    now: Option<bool>,
+}
+
+/// `branch {name, from?, switch?}`: a new branch (saving first; written at once), shown unless
+/// `switch` is false.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BranchParams {
+    /// The new branch's name.
+    name: String,
+    /// Where it starts (default: the head of the branch shown).
+    #[serde(default)]
+    from: Option<FromParams>,
+    /// Show it (default true).
+    #[serde(default)]
+    switch: Option<bool>,
+}
+
+impl Command for BranchParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let switch = self.switch.unwrap_or(true);
+        let from = self.from.map(|f| PointQuery { branch: f.branch, version: f.version, revision: f.revision, seq: f.seq, now: f.now });
+        let name = self.name;
+        on_any_page(s, |p, pg| {
+            branch_file(p).map_err(CmdError::refused)?;
+            let from = fork_of(p, from.as_ref())?;
+            ecad_file::project::check_branch_name(&name).map_err(|e| CmdError::refused(e.to_string()))?;
+            // Saved first (owner answer 3): the fork point and the branch row are in the file.
+            p.save_pending(pg).map_err(CmdError::refused)?;
+            let by = Some(author_text(&p.author));
+            let v = p.file.project_mut().ok_or(CmdError::refused(SAVE_FIRST))?;
+            let (id, rec) =
+                v.create_branch(&name, from.branch, from.seq, crate::project::now_ms(), by).map_err(|e| CmdError::refused(e.to_string()))?;
+            p.note_branch_change();
+            let mut line = format!("Branch \"{}\" created from {}.", rec.name, from_text(p, &from));
+            if switch {
+                switch_to(p, pg, id).map_err(CmdError::refused)?;
+                line.push_str(&format!(" Now on branch \"{}\".", rec.name));
+            }
+            pg.echo(line.clone());
+            Ok(
+                json!({"branch": id.hex(), "name": rec.name, "from": {"branch": from.branch.hex(), "seq": from.seq}, "switched": switch, "message": line}),
+            )
+        })
+    }
+}
+
+/// Show branch `id` (saved already), and say so.
+pub(crate) fn switch_to(p: &mut Project, pg: &mut Pages<'_>, id: BranchId) -> Result<(), String> {
+    let seed = crate::project::session_seed();
+    let ledger = p.ledger.clone();
+    let v = p.file.project_mut().ok_or("Branches live in the project file. Save it first.")?;
+    let (l, report) = v.switch_to(&ledger, id, seed).map_err(|e| e.to_string())?;
+    let high = v.base_tag_high().clone();
+    p.adopt_branch(pg, l, high)?;
+    if let Some(d) = report.damage {
+        pg.echo(format!("This branch is damaged ({}); it is shown read-only.", d.detail));
+    }
+    Ok(())
+}
+
+/// `renamebranch {branch, name}`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RenamebranchParams {
+    /// The branch: its ID or name.
+    branch: String,
+    /// Its new name.
+    name: String,
+}
+
+impl Command for RenamebranchParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, pg| {
+            branch_file(p).map_err(CmdError::refused)?;
+            let (id, old) = find_branch(p, &self.branch).map_err(CmdError::refused)?;
+            let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
+            let rec = v.rename_branch(id, &self.name).map_err(|e| CmdError::refused(e.to_string()))?;
+            p.note_branch_change();
+            let line = format!("Branch \"{}\" renamed \"{}\".", old.name, rec.name);
+            pg.echo(line.clone());
+            Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}))
+        })
+    }
+}
+
+/// The refusal of a switch with unsaved changes on a file that cannot be written (design 020
+/// §3.3: Save As or Cancel, never a silent loss).
+pub fn read_only_refusal(p: &Project) -> String {
+    let n = p.unsaved_transactions();
+    format!(
+        "{} has {n} unsaved change{} and the file is read-only. Use Save As to keep them; the branch was not switched.",
+        current_name(p),
+        if n == 1 { "" } else { "s" }
+    )
+}
+
+/// The unsaved-steps refusal of `switchbranch` without `save` (design 020 §10).
+pub fn unsaved_refusal(p: &Project) -> String {
+    let n = p.unsaved_transactions();
+    format!("{} has {n} unsaved change{}; add \"save\": true to save them and switch.", current_name(p), if n == 1 { "" } else { "s" })
+}
+
+/// `switchbranch {branch, save?}`: show another branch; refused with unsaved changes unless
+/// `save` is true.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SwitchbranchParams {
+    /// The branch: its ID or name.
+    branch: String,
+    /// Save unsaved changes first.
+    #[serde(default)]
+    save: Option<bool>,
+}
+
+impl Command for SwitchbranchParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let save = self.save.unwrap_or(false);
+        on_any_page(s, |p, pg| switch_branch(p, pg, &self.branch, save))
+    }
+}
+
+/// `switchbranch`'s work.
+fn switch_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, save: bool) -> Result<Value, CmdError> {
+    if p.file.project().is_none() {
+        return Err(CmdError::refused(SAVE_FIRST));
+    }
+    let (id, rec) = find_branch(p, which).map_err(CmdError::refused)?;
+    if id == current(p) {
+        return Ok(json!({"branch": id.hex(), "name": rec.name, "switched": false, "message": format!("Already on branch \"{}\".", rec.name)}));
+    }
+    let read_only = p.file.project().and_then(|v| v.read_only()).is_some();
+    if p.unsaved() && read_only {
+        // Never a silent loss (design 020 §3.3): the edits can only be kept by Save As.
+        return Err(CmdError::refused(read_only_refusal(p)));
+    }
+    if p.unsaved() {
+        if !save {
+            return Err(CmdError::refused(unsaved_refusal(p)));
+        }
+        p.save_pending(pg).map_err(CmdError::refused)?;
+    }
+    switch_to(p, pg, id).map_err(CmdError::refused)?;
+    let from = match rec.fork_point.as_ref() {
+        Some(f) => {
+            let parent = rec.parent.as_deref().and_then(BranchId::parse).unwrap_or_else(|| main_of(p));
+            let named = named_points(p, parent).unwrap_or_default();
+            match named.iter().find(|n| n.branch == parent && n.seq == f.seq) {
+                Some(n) => format!(" (from {})", n.name),
+                None => String::new(),
+            }
+        }
+        None => String::new(),
+    };
+    let line = format!("Now on branch \"{}\"{from}. Undo works on this branch's own steps.", rec.name);
+    pg.echo(line.clone());
+    Ok(json!({"branch": id.hex(), "name": rec.name, "switched": true, "message": line}))
+}
+
+/// `archivebranch {branch}`: archive a branch (the branch shown first gives way to its parent).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ArchivebranchParams {
+    /// The branch: its ID or name.
+    branch: String,
+}
+
+impl Command for ArchivebranchParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, pg| archive_branch(p, pg, &self.branch))
+    }
+}
+
+/// `archivebranch`'s work.
+fn archive_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str) -> Result<Value, CmdError> {
+    branch_file(p).map_err(CmdError::refused)?;
+    let (id, rec) = find_branch(p, which).map_err(CmdError::refused)?;
+    if id == main_of(p) {
+        return Err(CmdError::refused("main is the release line and cannot be archived."));
+    }
+    let mut line = String::new();
+    if id == current(p) {
+        // Archiving the branch shown first switches to its parent, saving first; a parent that
+        // is not open itself gives main instead, saying so (never a refusal after the save).
+        let parent = rec.parent.as_deref().and_then(BranchId::parse).unwrap_or_else(|| main_of(p));
+        let rows = branch_rows(p).map_err(CmdError::refused)?;
+        let parent_row = rows.iter().find(|(i, _)| *i == parent).map(|(_, b)| b.clone());
+        let (to, why) = match parent_row {
+            Some(b) if b.status == BranchStatus::Open => (parent, String::new()),
+            Some(b) => (main_of(p), format!("Its parent \"{}\" is {}, so the project shows main. ", b.name, status_word(&b.status))),
+            None => (main_of(p), String::new()),
+        };
+        p.save_pending(pg).map_err(CmdError::refused)?;
+        switch_to(p, pg, to).map_err(CmdError::refused)?;
+        line.push_str(&format!("{why}Now on branch \"{}\". ", current_name(p)));
+    }
+    let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
+    v.set_branch_open(id, false).map_err(|e| CmdError::refused(e.to_string()))?;
+    p.note_branch_change();
+    line.push_str(&format!("Branch \"{}\" archived; reopen it from \"Show merged and archived\".", rec.name));
+    pg.echo(line.clone());
+    Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}))
+}
+
+/// A name no open branch has: `base`, else `base (2)`, `base (3)`… (a reopen whose name was
+/// taken, brief 020a).
+pub fn free_branch_name(p: &Project, base: &str, except: Option<BranchId>) -> String {
+    let taken: BTreeSet<String> = branch_rows(p)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(id, b)| b.status == BranchStatus::Open && Some(*id) != except)
+        .map(|(_, b)| b.name.to_lowercase())
+        .collect();
+    if !taken.contains(&base.to_lowercase()) {
+        return base.to_string();
+    }
+    (2..).map(|n| format!("{base} ({n})")).find(|n| !taken.contains(&n.to_lowercase())).unwrap_or_else(|| base.to_string())
+}
+
+/// `reopenbranch {branch, name?}`: open an archived or merged branch again; `name` reopens it under
+/// that name, in one step, when another open branch has its name.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ReopenbranchParams {
+    /// The branch: its ID or name.
+    branch: String,
+    /// A new name for it.
+    #[serde(default)]
+    name: Option<String>,
+}
+
+impl Command for ReopenbranchParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        on_any_page(s, |p, pg| reopen_branch(p, pg, &self.branch, self.name.as_deref()))
+    }
+}
+
+/// `reopenbranch`'s work.
+fn reopen_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, name: Option<&str>) -> Result<Value, CmdError> {
+    branch_file(p).map_err(CmdError::refused)?;
+    let (id, rec) = find_branch(p, which).map_err(CmdError::refused)?;
+    if rec.status == BranchStatus::Open {
+        let line = format!("Branch \"{}\" is already open.", rec.name);
+        return Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}));
+    }
+    let free = free_branch_name(p, &rec.name, Some(id));
+    let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
+    let reopened = match name {
+        Some(n) => v.reopen_as(id, n),
+        None => v.set_branch_open(id, true),
+    };
+    let rec2 = match reopened {
+        Ok(r) => r,
+        Err(ecad_file::BranchError::NameTaken(other)) => {
+            return Err(CmdError::refused(format!(
+                "Another open branch is called \"{other}\"; reopen this one under a new name, for example {{\"branch\": \"{}\", \"name\": \"{free}\"}}.",
+                id.hex()
+            )));
+        }
+        Err(e) => return Err(CmdError::refused(e.to_string())),
+    };
+    p.note_branch_change();
+    let line = if rec2.name == rec.name {
+        format!("Branch \"{}\" is open again.", rec.name)
+    } else {
+        format!("Branch \"{}\" is open again as \"{}\".", rec.name, rec2.name)
+    };
+    pg.echo(line.clone());
+    Ok(json!({"branch": id.hex(), "name": rec2.name, "message": line}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn times_read_in_the_local_zone() {
+        // 2026-11-10 09:12 UTC. This build reads the local zone: no label.
+        let ms = 1_794_301_920_000;
+        assert!(local_offset(ms).is_some());
+        assert!(!full_time(Some(ms)).ends_with("UTC"));
+        assert_eq!(full_time(Some(ms)), full_time_in(Some(ms), local_offset(ms)));
+    }
+}

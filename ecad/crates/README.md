@@ -25,15 +25,15 @@ Programs   ecad-desktop   ecad-cli   ecad-mcp      (may also use each other)
   App        ecad-app
    |     \        \
    v      v        v
-Engine  ecad-engine      UI kit: ecad-ui, ecad-tokens     <- Engine and UI kit are siblings:
+Engine  ecad-engine      UI kit: ecad-widgets             <- Engine and UI kit are siblings:
    |            |                       |                      neither uses the other
    v            v                       v
-Core   model -> drawing-style -> store -> file -> inspect -> electrical
+Core   model -> drawing-style -> store -> file -> electrical
 Dev    ecad-bench, ecad-inspector, xtask   (may use anything; nothing uses them)
 ```
 
 Inside Core the order is fixed: `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`,
-`ecad-inspect`, `ecad-electrical`. A Core crate uses only Core crates before it in that list, so a
+`ecad-electrical`. A Core crate uses only Core crates before it in that list, so a
 cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and nothing else of ours.
 
 ## Every crate
@@ -44,11 +44,9 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 | [`ecad-drawing-style`](ecad-drawing-style/README.md) | Core | How a page is drawn and printed: sheet colours, line weights, sheet font. |
 | [`ecad-store`](ecad-store/README.md) | Core | Bytes under the file: media, the writer lock, atomic replace. The only Core crate that touches the OS. |
 | [`ecad-file`](ecad-file/README.md) | Core | The `.ecad` file: records, integrity chain, read, save, recover. |
-| [`ecad-inspect`](ecad-inspect/README.md) | Core | Read-only snapshots and the runtime event log. |
-| [`ecad-electrical`](ecad-electrical/README.md) | Core | The electrical rules: devices, wires, cables, strips, checks, reports. |
-| [`ecad-engine`](ecad-engine/README.md) | Engine | Draws pages from the model and runs commands on CADCraft; commands are in `cmd/`. |
-| [`ecad-ui`](ecad-ui/README.md) | UI kit | Widgets: controls, primitives, panels, tables, dialogs. |
-| [`ecad-tokens`](ecad-tokens/README.md) | UI kit | The screen's look as constants: shell colours, spacing, type, icons. |
+| [`ecad-electrical`](ecad-electrical/README.md) | Core | The electrical rules, one folder per feature: devices, wires, cables, terminal strips, checks, reports. |
+| [`ecad-engine`](ecad-engine/README.md) | Engine | The session: draws pages from the model, interaction, the generic command runner and the session commands, in feature folders. |
+| [`ecad-widgets`](ecad-widgets/README.md) | UI kit | Widgets (controls, primitives, panels, tables, dialogs) and the screen tokens (`tokens`). |
 | [`ecad-app`](ecad-app/README.md) | App | The application: shell, panels, dialogs, lists, the action table. |
 | [`ecad-desktop`](../apps/ecad-desktop/README.md) | Programs | The desktop program: command line, window, start-up timing. |
 | [`ecad-cli`](../apps/ecad-cli/README.md) | Programs | The `ecad` command line (no commands in this version). |
@@ -65,7 +63,7 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 - **Engine and UI kit stay apart**; App and Programs reach CADCraft's engine only through `ecad-engine`, never `cadcraft-engine` directly.
 - **`anyhow` only in Programs, `xtask` and `ecad-bench`'s binary**; libraries use their own error type.
 - **No `tokio`** in any ECAD crate.
-- **UI code uses `ecad-ui` components**: no new raw `egui::TextEdit` or `ComboBox`.
+- **UI code uses `ecad-widgets` components**: no new raw `egui::TextEdit` or `ComboBox`.
 - **Every crate has a README** with the six headings and the right `Layer:` line.
 
 To change a rule, edit the table in `dev/xtask/src/main.rs` and the matching section of

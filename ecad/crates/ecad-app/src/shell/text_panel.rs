@@ -6,7 +6,7 @@
 //! One shell command is answered here: `ui.cadchrome` (with `on` or `off`, or alone to flip)
 //! turns the developer switch.
 
-use ecad_ui::tokens::{Icon, size, space};
+use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui::{self, Rect, pos2, vec2};
 
 use crate::App;
@@ -19,12 +19,12 @@ pub const CLOSE: &str = "Close the Text panel";
 /// Draw the Text panel in `rect`.
 pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
-    let close = super::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.text.head", |ui| {
+    let close = crate::shell::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.text.head", |ui| {
         ui.horizontal_centered(|ui| {
-            let r = ecad_ui::prim::Chip::new(COMMANDS_TAB).selected(true).show(ui).response;
+            let r = ecad_widgets::prim::Chip::new(COMMANDS_TAB).selected(true).show(ui).response;
             r.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, true, COMMANDS_TAB));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add(ecad_ui::prim::IconButton::new(Icon::Close, CLOSE)).clicked()
+                ui.add(ecad_widgets::prim::IconButton::new(Icon::Close, CLOSE)).clicked()
             })
             .inner
         })
@@ -41,7 +41,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let snapshots = t.snapshots.is_some();
     // The Developer section is the Commands tab: folding it closes the panel (Agent access is
     // in Settings since brief 042).
-    let actions = super::in_rect(ui, body, "ecad.shell.text.body", |ui| {
+    let actions = crate::shell::in_rect(ui, body, "ecad.shell.text.body", |ui| {
         developer::show(
             ui,
             developer::Parts {
@@ -71,14 +71,14 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
 
 /// Whether `line` is the `ui.cadchrome` command.
 pub fn is_cad_chrome(line: &str) -> bool {
-    line.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case(super::CAD_CHROME_COMMAND))
+    line.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case(crate::shell::CAD_CHROME_COMMAND))
 }
 
 impl App {
     /// `ui.cadchrome [on|off]`: the developer switch; the reply says what it is now.
     pub fn cad_chrome_command(&mut self, line: &str) {
         let arg = line.split_whitespace().nth(1).map(str::to_ascii_lowercase);
-        let on = match arg.as_deref().map(|a| (a, ecad_model::words::flag(a))) {
+        let on = match arg.as_deref().map(|a| (a, ecad_model::naming::words::flag(a))) {
             Some((_, Some(on))) => on,
             None => !self.shell.state.cad_chrome,
             Some((other, None)) => {

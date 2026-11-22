@@ -1,5 +1,5 @@
 //! Settings ▸ Standards (brief 042 step 3, screen e; roadmap 1.13(b)): one table of every default
-//! with its value and an origin badge ([`crate::lists::standards`]), filtered by group or by
+//! with its value and an origin badge ([`crate::settings::standards_list`]), filtered by group or by
 //! "Overridden", and on the right the chosen default's chain, built-in → standard → project →
 //! page → object, with the level in use marked. A level is listed only when it holds a value or
 //! the entry allows it (push-back 8). The project's value is changed or reset here through
@@ -10,19 +10,19 @@
 //! Brief 050a (design 050 §7): the standard line is the **standard header** (make, rename, copy
 //! from another project, back to IEC, each saying its consequence first, inline, with no dialog),
 //! and the catalogue strip reads one list, [`CATALOGUES`]: Defaults, then one table per style
-//! catalogue ([`crate::lists::style_catalogues`]) with the shared style detail on the right. A
+//! catalogue ([`crate::settings::style_catalogues`]) with the shared style detail on the right. A
 //! later catalogue (050b's wire categories) adds one line there.
 
-use ecad_electrical::cmd::default::{self as default_cmds, Target};
-use ecad_engine::defaults::{self, Entry, Level, Scope, Source};
-use ecad_ui::table::{Changed, Table, TableEvent};
+use ecad_electrical::defaults::{self, Entry, Level, Scope, Source};
+use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
+use ecad_widgets::table::{Changed, Table, TableEvent};
 use eframe::egui::{self, RichText};
 
 use crate::App;
-use crate::lists::standards::{DefaultsSource, source_tone, source_word, value_text};
-use crate::lists::style_catalogues::{self as sc, CatalogueSource, DetailState};
+use crate::settings::standards_list::{DefaultsSource, source_tone, source_word, value_text};
+use crate::settings::style_catalogues::{self as sc, CatalogueSource, DetailState};
 use crate::shell::bar;
-use ecad_ui::tokens::{space, ui_type};
+use ecad_widgets::tokens::{space, ui_type};
 
 /// Accessible names.
 pub const STANDARD_LINE: &str = "ecad.standards.standard";
@@ -120,7 +120,7 @@ impl Default for StandardsView {
         table.empty = "No project is open.";
         let cats = CATALOGUES
             .iter()
-            .map(|(w, _, id)| (ecad_engine::styles::catalogue(*w), *id))
+            .map(|(w, _, id)| (ecad_electrical::styles::catalogue(*w), *id))
             .map(|(c, id)| {
                 let mut tb = Table::new(id, c.plural);
                 tb.empty = "No project is open.";
@@ -167,7 +167,7 @@ impl StandardsView {
     }
 }
 
-/// Bring the rows up to date (the update map, [`crate::lists::standards`]).
+/// Bring the rows up to date (the update map, [`crate::settings::standards_list`]).
 fn sync(t: &mut App) {
     let Some(p) = t.project.clone().filter(|p| p.is_attached(&t.cad.session)) else {
         let v = &mut t.settings.standards;
@@ -281,7 +281,7 @@ pub fn consequence(entry: &Entry, n: usize, current: &str, new: &str) -> String 
 /// The words of a level in the chain.
 fn level_words(s: Source) -> String {
     match s {
-        Source::Standard => format!("Standard: {}", super::STANDARD),
+        Source::Standard => format!("Standard: {}", crate::settings::STANDARD),
         other => source_word(other).to_string(),
     }
 }
@@ -296,24 +296,24 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     let full = ui.max_rect();
     let pad = space::XL + space::S;
     let top = egui::Rect::from_min_max(egui::pos2(full.left() + pad, full.top() + space::L), egui::pos2(full.right() - pad, full.bottom()));
-    let used = super::in_rect(ui, top, "ecad.standards.top", |ui| {
+    let used = crate::settings::in_rect(ui, top, "ecad.standards.top", |ui| {
         standard_cards(ui);
         ui.add_space(space::S);
         header_ui(t, ui, writable);
         ui.add_space(space::M);
         ui.min_rect().bottom()
     });
-    let s = ecad_ui::SHELL;
-    let line = egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line));
+    let s = ecad_widgets::SHELL;
+    let line = egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line));
     let below = egui::Rect::from_min_max(egui::pos2(full.left(), used), full.max);
     ui.painter().hline(below.x_range(), below.top() + 0.5, line);
     let list = egui::Rect::from_min_max(below.min, egui::pos2(below.left() + CATALOGUE_LIST_W, below.bottom()));
     ui.painter().vline(list.right() - 0.5, list.y_range(), line);
     let mut tabs: Vec<(String, &str)> = vec![("All defaults".into(), CATALOGUE_DEFAULTS)];
     for (w, name, _) in CATALOGUES {
-        tabs.push((ecad_engine::styles::catalogue(*w).plural.to_string(), name));
+        tabs.push((ecad_electrical::styles::catalogue(*w).plural.to_string(), name));
     }
-    let defaults_n = ecad_engine::defaults::all().count();
+    let defaults_n = ecad_electrical::defaults::all().count();
     let mut choose = None;
     let mut y = list.top() + space::S;
     for (i, (label, name)) in tabs.into_iter().enumerate() {
@@ -331,18 +331,18 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
             clicked |= ar.clicked();
         }
         if on {
-            ui.painter().rect_filled(r, 0.0, ecad_ui::color(s.accent_soft));
+            ui.painter().rect_filled(r, 0.0, ecad_widgets::color(s.accent_soft));
         } else if resp.hovered() {
-            ui.painter().rect_filled(r, 0.0, ecad_ui::color(s.hover));
+            ui.painter().rect_filled(r, 0.0, ecad_widgets::color(s.hover));
         }
-        bar::text_at(ui, r.left() + space::L, r.center().y, &label, ui_type::BODY, ecad_ui::color(if on { s.text } else { s.text_2 }));
+        bar::text_at(ui, r.left() + space::L, r.center().y, &label, ui_type::BODY, ecad_widgets::color(if on { s.text } else { s.text_2 }));
         if i == 0 {
             ui.painter().text(
                 egui::pos2(r.right() - space::L, r.center().y),
                 egui::Align2::RIGHT_CENTER,
                 defaults_n.to_string(),
                 bar::font(ui, ui_type::SMALL),
-                ecad_ui::color(s.text_3),
+                ecad_widgets::color(s.text_3),
             );
         }
         if clicked && !on {
@@ -360,7 +360,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     let left = egui::Rect::from_min_max(rest.min, egui::pos2(right.left(), rest.bottom())).shrink2(egui::vec2(space::S, 0.0));
     let right = right.shrink2(egui::vec2(space::L, space::L));
     let catalogue = t.settings.standards.catalogue;
-    let events = super::in_rect(ui, left, "ecad.standards.table", |ui| {
+    let events = crate::settings::in_rect(ui, left, "ecad.standards.table", |ui| {
         let v = &mut t.settings.standards;
         match catalogue.checked_sub(1).and_then(|i| v.cats.get_mut(i)) {
             None => v.table.show(ui, &v.defaults),
@@ -378,21 +378,21 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
                     v.style_detail = DetailState::default();
                 }
             }
-            (_, TableEvent::Export(csv)) => crate::lists::copy_csv(ui, csv),
+            (_, TableEvent::Export(csv)) => crate::workspace::copy_csv(ui, csv),
             _ => {}
         }
     }
     if catalogue > 0 {
-        super::in_rect(ui, right, "ecad.standards.detail", |ui| style_detail_ui(t, ui, writable));
+        crate::settings::in_rect(ui, right, "ecad.standards.detail", |ui| style_detail_ui(t, ui, writable));
         return;
     }
-    super::in_rect(ui, right, "ecad.standards.detail", |ui| detail_ui(t, ui, writable));
+    crate::settings::in_rect(ui, right, "ecad.standards.detail", |ui| detail_ui(t, ui, writable));
 }
 
 /// The standards as three cards (board 5.02): IEC, in use; US and another standard, which come
 /// with named standards (roadmap 1.13(a)).
 fn standard_cards(ui: &mut egui::Ui) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let gap = space::L;
     let w = ((ui.available_width() - 2.0 * gap) / 3.0).max(120.0);
     let cards = [
@@ -411,37 +411,37 @@ fn standard_cards(ui: &mut egui::Ui) {
                 resp.on_hover_text("Named standards come later");
             }
             let p = ui.painter();
-            let corner = ecad_ui::style::corner(8.0);
-            p.rect_filled(r, corner, ecad_ui::color(if on { s.accent_soft } else { s.panel }));
-            let edge = egui::Stroke::new(if on { 1.5 } else { 1.0 }, ecad_ui::color(if on { s.accent } else { s.line }));
+            let corner = ecad_widgets::style::corner(8.0);
+            p.rect_filled(r, corner, ecad_widgets::color(if on { s.accent_soft } else { s.panel }));
+            let edge = egui::Stroke::new(if on { 1.5 } else { 1.0 }, ecad_widgets::color(if on { s.accent } else { s.line }));
             p.rect_stroke(r, corner, edge, egui::StrokeKind::Inside);
             let dot = egui::pos2(r.left() + 20.0, r.top() + 22.0);
-            p.circle_stroke(dot, 7.0, egui::Stroke::new(1.5, ecad_ui::color(if on { s.accent } else { s.text_3 })));
+            p.circle_stroke(dot, 7.0, egui::Stroke::new(1.5, ecad_widgets::color(if on { s.accent } else { s.text_3 })));
             if on {
-                p.circle_filled(dot, 3.5, ecad_ui::color(s.accent));
+                p.circle_filled(dot, 3.5, ecad_widgets::color(s.accent));
             }
-            let ink = ecad_ui::color(if on { s.text } else { s.text_2 });
+            let ink = ecad_widgets::color(if on { s.text } else { s.text_2 });
             p.text(
                 egui::pos2(dot.x + 14.0, dot.y),
                 egui::Align2::LEFT_CENTER,
                 *title,
-                ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::TITLE.size),
+                ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::TITLE.size),
                 ink,
             );
             if on {
                 let tag = egui::Rect::from_min_size(egui::pos2(r.right() - 64.0, r.top() + 12.0), egui::vec2(52.0, 20.0));
-                p.rect_stroke(tag, ecad_ui::style::corner(4.0), egui::Stroke::new(1.0, ecad_ui::color(s.accent)), egui::StrokeKind::Inside);
-                p.text(tag.center(), egui::Align2::CENTER_CENTER, "in use", bar::font(ui, ui_type::SMALL), ecad_ui::color(s.accent_text));
+                p.rect_stroke(tag, ecad_widgets::style::corner(4.0), egui::Stroke::new(1.0, ecad_widgets::color(s.accent)), egui::StrokeKind::Inside);
+                p.text(tag.center(), egui::Align2::CENTER_CENTER, "in use", bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.accent_text));
             }
-            let g = p.layout(body.to_string(), bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_2), r.width() - 32.0);
-            p.with_clip_rect(r.shrink(2.0)).galley(egui::pos2(r.left() + 16.0, r.top() + 40.0), g, ecad_ui::color(s.text_2));
+            let g = p.layout(body.to_string(), bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.text_2), r.width() - 32.0);
+            p.with_clip_rect(r.shrink(2.0)).galley(egui::pos2(r.left() + 16.0, r.top() + 40.0), g, ecad_widgets::color(s.text_2));
         }
     });
 }
 
 fn detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     let Some(row) = t.settings.standards.focus else {
-        ecad_ui::prim::read_value(ui, "Choose a default to see where its value comes from.");
+        ecad_widgets::prim::read_value(ui, "Choose a default to see where its value comes from.");
         return;
     };
     let Some(entry) = t.settings.standards.defaults.entry(row) else { return };
@@ -455,7 +455,7 @@ fn detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     ui.label(RichText::new(entry.label).strong());
     ui.label(RichText::new(entry.key).monospace().small());
     ui.label(RichText::new(format!("{} · brief {}", entry.group, entry.brief)).small());
-    ui.add_space(ecad_ui::tokens::space::M);
+    ui.add_space(ecad_widgets::tokens::space::M);
     // The chain, broadest first, the level in use marked.
     egui::Grid::new("ecad.standards.chain").num_columns(3).spacing([12.0, 6.0]).show(ui, |ui| {
         for (s, val) in &d.chain {
@@ -473,16 +473,16 @@ fn detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
             };
             ui.label(if val.is_some() { RichText::new(shown) } else { RichText::new(shown).weak() });
             if used {
-                ecad_ui::prim::badge(ui, IN_USE, source_tone(*s));
+                ecad_widgets::prim::badge(ui, IN_USE, source_tone(*s));
             } else {
                 ui.label("");
             }
             ui.end_row();
         }
     });
-    ui.add_space(ecad_ui::tokens::space::M);
+    ui.add_space(ecad_widgets::tokens::space::M);
     if !entry.allows(Level::Project) {
-        ecad_ui::prim::read_value(ui, "This default is not set for the project.");
+        ecad_widgets::prim::read_value(ui, "This default is not set for the project.");
         return;
     }
     ui.label(RichText::new("Project value").small().strong());
@@ -502,7 +502,7 @@ fn detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
         ui.label(RichText::new("The project is read-only.").small().weak());
     }
     let typed = v.edit.trim().to_string();
-    let parsed = ecad_electrical::cmd::default::json_stored_text(entry, &serde_json::Value::String(typed.clone()));
+    let parsed = ecad_electrical::styles::commands::defaults::json_stored_text(entry, &serde_json::Value::String(typed.clone()));
     let changes = match &parsed {
         Ok(s) => entry.parse(s).map(|x| value_text(entry, &defaults::Resolved { value: x, from: Source::Project })).filter(|n| *n != d.current),
         Err(_) => None,
@@ -545,7 +545,7 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     let read = t.project.clone().and_then(|p| {
         p.read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let (v, n) = ecad_electrical::cmd::style::standard_counts(doc);
+            let (v, n) = ecad_electrical::styles::commands::styles::standard_counts(doc);
             (doc.standard.as_ref().map(|s| s.header.name.to_string()), v, n)
         })
         .ok()
@@ -557,10 +557,10 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     ui.horizontal(|ui| {
         ui.label(RichText::new("STANDARD").small().strong()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, HEADER));
         let words = match &name {
-            None => super::STANDARD.to_string(),
+            None => crate::settings::STANDARD.to_string(),
             Some(n) => format!("{n} · based on IEC · {values} values · {styles} styles"),
         };
-        ecad_ui::prim::read_value(ui, &words).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, STANDARD_LINE));
+        ecad_widgets::prim::read_value(ui, &words).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, STANDARD_LINE));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let h = &mut t.settings.standards.header;
             match name {
@@ -629,7 +629,7 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
                 }
             });
             if let Some((other, v, n)) = &read {
-                let current = name.clone().unwrap_or_else(|| super::STANDARD.to_string());
+                let current = name.clone().unwrap_or_else(|| crate::settings::STANDARD.to_string());
                 let words = format!("Replace {current} with {other} ({v} values, {n} styles)? Your project values stay.");
                 ui.label(RichText::new(words).small()).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, HEADER_CONSEQUENCE));
             }
@@ -696,12 +696,12 @@ fn style_detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     {
         let focus =
             t.settings.standards.style_focus.and_then(|row| t.settings.standards.cats.get(i).and_then(|c| c.0.row(row)).map(|r| r.id.clone()));
-        if crate::lists::rating::catalogue_ui(t, ui, writable, word, focus) {
+        if crate::wires::rating::catalogue_ui(t, ui, writable, word, focus) {
             return;
         }
     }
     let (Some(cat), Some(row)) = (t.settings.standards.cats.get(i).map(|c| c.0.catalogue), t.settings.standards.style_focus) else {
-        ecad_ui::prim::read_value(ui, "Choose a style to see its fields and who uses it.");
+        ecad_widgets::prim::read_value(ui, "Choose a style to see its fields and who uses it.");
         return;
     };
     let Some(id) = t.settings.standards.cats.get(i).and_then(|c| c.0.row(row)).map(|r| r.id.clone()) else { return };
@@ -710,7 +710,7 @@ fn style_detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
         let doc = p.ledger.document();
         let d = sc::detail(doc, cat, &id);
         let others: Vec<(String, String)> =
-            ecad_engine::styles::rows(doc, cat).into_iter().filter(|r| r.id != id).map(|r| (r.id.text(), r.name)).collect();
+            ecad_electrical::styles::rows(doc, cat).into_iter().filter(|r| r.id != id).map(|r| (r.id.text(), r.name)).collect();
         (d, others)
     });
     let Ok((d, others)) = read else { return };

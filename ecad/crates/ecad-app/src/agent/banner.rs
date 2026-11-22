@@ -19,8 +19,8 @@
 
 use std::time::Instant;
 
-use ecad_ui::prim::{self, Kind, Tone};
-use ecad_ui::tokens::{Color, line, space, ui_type};
+use ecad_widgets::prim::{self, Kind, Tone};
+use ecad_widgets::tokens::{Color, line, space, ui_type};
 use eframe::egui;
 
 /// The banner's element name.
@@ -203,7 +203,7 @@ fn named(r: &egui::Response, role: egui::Role, name: &str) {
 /// while a write waits or writes are paused, `text_2` when reading only or finished, `error` when
 /// access stopped.
 pub fn state_color(state: BannerState) -> Color {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     match state {
         BannerState::Connected | BannerState::Writing => s.agent,
         BannerState::Held | BannerState::Paused => s.warning,
@@ -256,7 +256,7 @@ pub fn toggle_hidden(ctx: &egui::Context, session: &str) {
 
 /// A text in a UI type style and colour.
 fn text(ui: &mut egui::Ui, s: &str, style: ui_type::TypeStyle, c: Color) -> egui::Response {
-    ui.label(egui::RichText::new(s).font(ecad_ui::fonts::font(ui.ctx(), style)).color(ecad_ui::color(c)))
+    ui.label(egui::RichText::new(s).font(ecad_widgets::fonts::font(ui.ctx(), style)).color(ecad_widgets::color(c)))
 }
 
 /// Draw the banner styled (spec §2: 32 px under the top bar), filling `ui`'s rect: a bar in the
@@ -267,15 +267,15 @@ fn text(ui: &mut egui::Ui, s: &str, style: ui_type::TypeStyle, c: Color) -> egui
 pub fn show(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool, since_ms: Option<u64>) -> Option<BannerAction> {
     let now = Instant::now();
     let state = banner.shown_state(now);
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let rect = ui.max_rect();
     let ink = state_color(state);
     // A soft ground in the state's colour, its bar on the left, a hairline under the strip.
     let bar = egui::Rect::from_min_size(rect.min, egui::vec2(space::XS, rect.height()));
-    ui.painter().rect_filled(rect, 0.0, ecad_ui::color(s.panel));
-    ui.painter().rect_filled(rect, 0.0, ecad_ui::color(ink.at_percent(GROUND_PERCENT)));
-    ui.painter().rect_filled(bar, 0.0, ecad_ui::color(ink));
-    ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, egui::Stroke::new(line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    ui.painter().rect_filled(rect, 0.0, ecad_widgets::color(s.panel));
+    ui.painter().rect_filled(rect, 0.0, ecad_widgets::color(ink.at_percent(GROUND_PERCENT)));
+    ui.painter().rect_filled(bar, 0.0, ecad_widgets::color(ink));
+    ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, egui::Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     let mut out = None;
     let inner = rect.shrink2(egui::vec2(space::L, 0.0));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::right_to_left(egui::Align::Center)));

@@ -4,9 +4,9 @@
 use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
-use ecad_model::style::wire::Insulation;
-use ecad_model::style::{StyleBody, WireType};
-use ecad_model::wire::{Colours, WireSize};
+use ecad_model::objects::styles::wire::Insulation;
+use ecad_model::objects::styles::{StyleBody, WireType};
+use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{Author, Op, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 use crate::common::*;

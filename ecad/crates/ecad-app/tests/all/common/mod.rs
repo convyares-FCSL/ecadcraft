@@ -10,11 +10,11 @@
 use std::path::PathBuf;
 
 use ecad_app::App;
-use ecad_engine::views::Settings;
+use ecad_engine::cables::views::Settings;
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
 
-use crate::mouse_tester::{Collect, Deltas};
+use crate::canvas::mouse_acceptance::{Collect, Deltas};
 
 /// Where a harness's app keeps remembered cable views.
 pub(crate) enum Views {
@@ -85,7 +85,7 @@ impl Opts {
 /// A kittest harness around an app, run for five frames.
 pub(crate) fn harness(opts: Opts) -> Harness<'static, App> {
     ecad_engine::install();
-    ecad_engine::views::isolate_for_tests();
+    ecad_engine::cables::views::isolate_for_tests();
     let mut t = match opts.app {
         Some(t) => t,
         None => {
@@ -95,7 +95,7 @@ pub(crate) fn harness(opts: Opts) -> Harness<'static, App> {
         }
     };
     if opts.panels {
-        crate::project_panel::open_panels(&mut t);
+        crate::pages::project_panel::open_panels(&mut t);
     }
     match opts.views {
         Views::Untouched => {}
@@ -161,8 +161,8 @@ pub(crate) fn click(h: &mut Harness<'static, App>, at: Pos2) {
 /// Connection points at `at` on the active page (design 072: a wire runs between two connection
 /// points): one drawn device holding one point per place, committed straight to the ledger.
 /// Returns the points, in the order given.
-pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::TerminalId> {
-    use ecad_model::{Author, Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject, Terminal, TerminalId};
+pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::ConnectionPointId> {
+    use ecad_model::{Author, ConnectionPoint, ConnectionPointId, Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject};
     let p = t.project().unwrap().clone();
     p.configure(&mut t.cad.session, |p| {
         let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
@@ -171,10 +171,10 @@ pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::Termi
         let mut cps = std::collections::BTreeMap::new();
         let mut out = Vec::new();
         for (i, (x, y)) in at.iter().enumerate() {
-            let t: TerminalId = p.ids.fresh();
-            ops.push(Op::AddTerminal {
+            let t: ConnectionPointId = p.ids.fresh();
+            ops.push(Op::AddConnectionPoint {
                 id: t,
-                terminal: Terminal { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
             });
             cps.insert(t, Pt::new(*x, *y));
             out.push(t);
@@ -205,7 +205,7 @@ pub(crate) fn wire_pp(t: &mut App, points: &[(f64, f64)]) -> serde_json::Value {
         .read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let page = p.active_page().unwrap_or(doc.page_order[0]);
-            ecad_model::derive::terminal_positions(doc, page).into_iter().map(|(_, _, at)| at).collect()
+            ecad_model::connectivity::derive::connection_point_positions(doc, page).into_iter().map(|(_, _, at)| at).collect()
         })
         .unwrap();
     let ends: Vec<(f64, f64)> = [points.first(), points.last()]

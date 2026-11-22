@@ -6,7 +6,7 @@
 //!   taking and releasing the writer lock as the app does).
 //! - **edit** and **save** run on one copy of the file, opened once and not timed: each run
 //!   commits one add-wire transaction (timed as edit), then saves it (timed as save).
-//! - **xref** (cable references) times brief 010's `ecad_model::derive::cable_references` on the
+//! - **xref** (cable references) times brief 010's `ecad_model::connectivity::derive::cable_references` on the
 //!   document the open runs replayed to, as **derive** times the nets; see [`cable_references_ms`].
 //! - **draw edit** (brief 014) runs on another copy, opened once (not timed) in a headless
 //!   CADCraft session with page 1 open, as the desktop app opens it. Each run makes one edit the way a
@@ -40,10 +40,10 @@ pub struct Measured {
     pub transactions: u64,
     /// Open the version 2 file to its document (`DiskProject::open`, no CADCraft).
     pub open_ms: f64,
-    /// Nets on the opened document (`ecad_model::derive::nets`).
+    /// Nets on the opened document (`ecad_model::connectivity::derive::nets`).
     pub derive_ms: f64,
-    /// Cable references on the opened document (`ecad_model::derive::cable_references`, brief 010).
-    pub xref_ms: Option<f64>,
+    /// Cable references on the opened document (`ecad_model::connectivity::derive::cable_references`, brief 010).
+    pub reference_ms: Option<f64>,
     /// Open the file in a headless CADCraft session and project page 1 (`ecad-engine`).
     pub first_page_ms: f64,
     /// Commit one add-wire transaction to the loaded project (`Ledger::commit`).
@@ -62,7 +62,7 @@ pub struct Measured {
     /// [`SWITCH_PAGES`] pages spread over the project and back to page 1 after each.
     pub switch_ms: f64,
     /// Draw the read-only preview of a page: project it, build and rasterise it at 480 x 320
-    /// (`ecad_engine::preview`), median over the same pages.
+    /// (`ecad_engine::pages::preview`), median over the same pages.
     pub preview_ms: f64,
     /// Rebuild the Project panel's rows after one `renamepage` (`Project::page_rows`, brief 016
     /// AC4), median over the same pages.
@@ -109,7 +109,7 @@ pub struct Measured {
     pub gridchange_ms: f64,
     /// Open an issued revision read-only (`openrevision`): the project rebuilt as at Rev A.
     pub revopen_ms: f64,
-    /// Brief 025 (design 025 §7), on a copy with [`XREF_COILS`] coils added: the reference index
+    /// Brief 025 (design 025 §7), on a copy with [`REFERENCE_COILS`] coils added: the reference index
     /// built from scratch, as on open.
     pub xbuild_ms: f64,
     /// Move such a coil (its contacts on other pages): commit, reference update and redraw.
@@ -164,13 +164,13 @@ fn open(path: &Path) -> Result<ecad_file::disk::OpenedDisk, String> {
 }
 
 /// The time to derive the cable references of `doc` (brief 010's
-/// `ecad_model::derive::cable_references`), in milliseconds. Always `Some` in this revision; the
+/// `ecad_model::connectivity::derive::cable_references`), in milliseconds. Always `Some` in this revision; the
 /// `Option` keeps the report's `—` for a revision without the derivation.
 pub fn cable_references_ms(doc: &Document) -> Option<f64> {
     let start = Instant::now();
-    let refs = ecad_model::derive::cable_references(doc);
+    let references = ecad_model::connectivity::derive::cable_references(doc);
     let took = ms(start);
-    std::hint::black_box(refs);
+    std::hint::black_box(references);
     Some(took)
 }
 
@@ -201,14 +201,14 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
     drop(ledger);
 
     let mut derive_ms = Vec::with_capacity(runs);
-    let mut xref_ms = Vec::with_capacity(runs);
+    let mut reference_ms = Vec::with_capacity(runs);
     for _ in 0..runs {
         let t = Instant::now();
-        let nets = ecad_model::derive::nets(&doc);
+        let nets = ecad_model::connectivity::derive::nets(&doc);
         derive_ms.push(ms(t));
         std::hint::black_box(nets);
         if let Some(x) = cable_references_ms(&doc) {
-            xref_ms.push(x);
+            reference_ms.push(x);
         }
     }
 
@@ -235,14 +235,14 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
     let mut rail_ms = rail_cut(runs, if cfg!(debug_assertions) { 200 } else { RAIL_WIRES })?;
     let mut sheet = sheet_edits(app, &scratch.join("sheets.ecad"), runs)?;
     let numbering = numbering_edits(app, &scratch.join("numbering.ecad"), runs)?;
-    let mut xr = xref_edits(path, &scratch.join("xref.ecad"), runs)?;
+    let mut xr = device_reference_edits(path, &scratch.join("references.ecad"), runs)?;
 
     let m = Measured {
         bytes,
         transactions,
         open_ms: median(&mut open_ms),
         derive_ms: median(&mut derive_ms),
-        xref_ms: (!xref_ms.is_empty()).then(|| median(&mut xref_ms)),
+        reference_ms: (!reference_ms.is_empty()).then(|| median(&mut reference_ms)),
         first_page_ms: median(&mut first_page_ms),
         edit_ms: median(&mut edit_ms),
         save_ms: median(&mut save_ms),
@@ -281,7 +281,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
 fn first_page(path: &str) -> Result<f64, String> {
     let mut s = cadcraft_engine::Session::empty();
     let t = Instant::now();
-    let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path, OPEN_SEED, ecad_engine::views::Settings::none())?;
+    let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
     let elapsed = ms(t);
     let (pages, read_only) = project.read(&mut s, |p, _| (p.open_pages(), p.file_status().read_only))?;
     if pages != 1 {
@@ -327,8 +327,8 @@ fn edit_and_save(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec
 /// updated by its own view for each commit, noted on the state before and after it (the other
 /// views are not kept here, so only the Checks update is timed).
 struct KeptChecks {
-    views: ecad_engine::derived::Views,
-    engine: ecad_engine::derived::EngineInputs,
+    views: ecad_electrical::views::Views,
+    engine: ecad_electrical::views::EngineInputs,
 }
 
 impl KeptChecks {
@@ -341,25 +341,25 @@ impl KeptChecks {
     }
 
     /// The Before phase: what `ops` name on `before`, the state before them.
-    fn before(&self, before: &Document, ops: &[ecad_model::Op]) -> ecad_engine::derived::ChecksScope {
-        let mut scope = ecad_engine::derived::ChecksScope::default();
+    fn before(&self, before: &Document, ops: &[ecad_model::Op]) -> ecad_electrical::views::ChecksScope {
+        let mut scope = ecad_electrical::views::ChecksScope::default();
         if let Some(view) = self.views.checks_view() {
-            let effects = ecad_model::effect::Effects::of(ops);
-            let cx = ecad_model::view::NoteCx { doc: before, phase: ecad_model::view::Phase::Before, effects: &effects };
-            ecad_engine::derived::note_view::<_, ecad_engine::derived::Inputs<'_>>(view, &cx, &mut scope);
+            let effects = ecad_model::document::effect::Effects::of(ops);
+            let cx = ecad_model::document::view::NoteCx { doc: before, phase: ecad_model::document::view::Phase::Before, effects: &effects };
+            ecad_electrical::views::note_view::<_, ecad_electrical::views::Inputs<'_>>(view, &cx, &mut scope);
             view.close_before(&mut scope);
         }
         scope
     }
 
     /// The After phase on the committed transaction's ops on `after`, then the update.
-    fn after(&mut self, after: &Document, tx_ops: &[ecad_model::Op], mut scope: ecad_engine::derived::ChecksScope) {
-        use ecad_model::view::DerivedView;
-        let inputs = ecad_engine::derived::Inputs { engine: &self.engine, frame_page: None };
+    fn after(&mut self, after: &Document, tx_ops: &[ecad_model::Op], mut scope: ecad_electrical::views::ChecksScope) {
+        use ecad_model::document::view::DerivedView;
+        let inputs = ecad_electrical::views::Inputs { engine: &self.engine, frame_page: None };
         if let Some(view) = self.views.checks_view_mut() {
-            let effects = ecad_model::effect::Effects::of(tx_ops);
-            let cx = ecad_model::view::NoteCx { doc: after, phase: ecad_model::view::Phase::After, effects: &effects };
-            ecad_engine::derived::note_view::<_, ecad_engine::derived::Inputs<'_>>(&*view, &cx, &mut scope);
+            let effects = ecad_model::document::effect::Effects::of(tx_ops);
+            let cx = ecad_model::document::view::NoteCx { doc: after, phase: ecad_model::document::view::Phase::After, effects: &effects };
+            ecad_electrical::views::note_view::<_, ecad_electrical::views::Inputs<'_>>(&*view, &cx, &mut scope);
             view.update(after, scope, &inputs);
         }
     }
@@ -372,28 +372,34 @@ pub const RAIL_WIRES: usize = 25_000;
 /// own points, built and numbered once (not timed); per run one leaf conductor is deleted (timed:
 /// the commit with the numbering pass and the Checks update) and the deletion undone (not timed).
 fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
-    use ecad_model::{ConductorId, Device, DeviceId, Ledger, NetId, Op, Page, PageId, Terminal, TerminalId, Wire, WireId};
+    use ecad_model::{ConductorId, ConnectionPoint, ConnectionPointId, Device, DeviceId, Ledger, NetId, Op, Page, PageId, Wire, WireId};
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x0FA1);
     let mut ledger = Ledger::new(7);
     let page: PageId = ids.fresh();
     let comp: DeviceId = ids.fresh();
-    let hub: TerminalId = ids.fresh();
+    let hub: ConnectionPointId = ids.fresh();
     let mut ops = vec![
         Op::AddPage { id: page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: hub, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint {
+            id: hub,
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+        },
     ];
     let mut leaves = Vec::with_capacity(wires);
     let net: NetId = ids.fresh();
     for i in 0..wires {
-        let (t, c, k): (TerminalId, WireId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } });
+        let (t, c, k): (ConnectionPointId, WireId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
+        ops.push(Op::AddConnectionPoint {
+            id: t,
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+        });
         let order = u16::try_from(i + 1).unwrap_or(u16::MAX);
-        let wire = Wire { potential: ecad_model::text::Text::new("0V").ok(), net_order: order, ..Wire::new(net, k, hub, t) };
+        let wire = Wire { potential: ecad_model::naming::text::Text::new("0V").ok(), net_order: order, ..Wire::new(net, k, hub, t) };
         ops.push(Op::CreateWire { id: c, wire });
         leaves.push(c);
     }
-    ledger.commit_extended(Author::User, "Rail", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
+    ledger.commit_extended(Author::User, "Rail", ops, None, ecad_model::connectivity::wiring::assign).map_err(|e| e.to_string())?;
     let tol = 1e-6;
     let mut checks = KeptChecks::new(ledger.document(), tol);
     let mut out = Vec::with_capacity(runs);
@@ -403,7 +409,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
         let ops = vec![Op::DeleteWire { id: victim, wire }];
         let t = Instant::now();
         let scope = checks.before(ledger.document(), &ops);
-        ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
+        ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::connectivity::wiring::assign).map_err(|e| e.to_string())?;
         let last = ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
         checks.after(ledger.document(), &last, scope);
         out.push(ms(t));
@@ -449,10 +455,10 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
             let ops = crate::generate::added_wire(o.ledger.document(), &mut ids)?;
             let t = Instant::now();
             let scope = checks.before(o.ledger.document(), &ops);
-            o.ledger.commit_extended(Author::User, "Wire", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
+            o.ledger.commit_extended(Author::User, "Wire", ops, None, ecad_model::connectivity::wiring::assign).map_err(|e| e.to_string())?;
             let last = o.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
             checks.after(o.ledger.document(), &last, scope);
-            std::hint::black_box(ecad_engine::wires::labels_on_page(o.ledger.document(), page));
+            std::hint::black_box(ecad_engine::wires::draw::labels_on_page(o.ledger.document(), page));
             let undo = o.ledger.undo_ops().unwrap_or_default();
             let scope = checks.before(o.ledger.document(), &undo);
             o.ledger.undo(Author::User).map_err(|e| e.to_string())?;
@@ -467,10 +473,10 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
                 .routes_at(a)
                 .find(|r| doc.routes.get(r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(b))))
                 .ok_or("the victim's route is missing")?;
-            let ops = ecad_engine::wires::remove_route_ops(doc, route);
+            let ops = ecad_electrical::wires::remove_route_ops(doc, route);
             let t = Instant::now();
             let scope = checks.before(o.ledger.document(), &ops);
-            o.ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
+            o.ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::connectivity::wiring::assign).map_err(|e| e.to_string())?;
             let last = o.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
             checks.after(o.ledger.document(), &last, scope);
             cut.push(ms(t));
@@ -513,7 +519,7 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
                 .find_map(|r| {
                     let Subject::Device(c) = r.subject else { return None };
                     let item = *r.items.first()?;
-                    let wired = doc.terminals_of(c).any(|(t, _)| doc.routes_at(t).next().is_some());
+                    let wired = doc.connection_points_of(c).any(|(t, _)| doc.routes_at(t).next().is_some());
                     (r.page == page && r.form == Form::Symbol && wired && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
                         .then_some((c, item))
                 })
@@ -522,7 +528,7 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
             let symbol = map.item(item).ok_or("the wired component's symbol is not drawn on page 1")?;
             let mut with_wires = vec![symbol];
             // The routes landing on its connection points, by their drawing.
-            for (t, _) in doc.terminals_of(component) {
+            for (t, _) in doc.connection_points_of(component) {
                 for r in doc.routes_at(t) {
                     for (_, rep) in doc.representations_of(Subject::Route(r)).filter(|(_, rep)| rep.page == page) {
                         if let Some(h) = rep.items.first().and_then(|i| map.item(*i))
@@ -533,8 +539,8 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
                     }
                 }
             }
-            let shown = ecad_model::derive::terminal_positions(doc, page);
-            let mut others = shown.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.device() != Some(component)));
+            let shown = ecad_model::connectivity::derive::connection_point_positions(doc, page);
+            let mut others = shown.iter().filter(|(t, _, _)| doc.connection_points.get(t).is_some_and(|x| x.device() != Some(component)));
             let (_, _, from) = *others.next().ok_or("page 1 has no connection point of another component")?;
             let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6)).ok_or("page 1 has no second connection point of another component")?;
             Ok(DrawTarget { head: p.ledger.head(), symbol, with_wires, from, to })
@@ -557,7 +563,8 @@ fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String
     let result = (|| {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let one_tx = |before: u64, after: u64, what: &str| {
             if after == before + 1 { Ok(()) } else { Err(format!("the {what} was not recorded as one transaction (head {before} → {after})")) }
         };
@@ -614,7 +621,8 @@ fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, Stri
     let result = (|| {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
         let timed = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
             let before = head(s)?;
@@ -660,7 +668,8 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
     let result = (|| {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
         let run = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| -> Result<(f64, serde_json::Value), String> {
             let before = head(s)?;
@@ -732,18 +741,18 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
 }
 
 /// Coils the cross-reference timings add to their copy of the project (design 025 §7).
-pub const XREF_COILS: usize = 1_000;
+pub const REFERENCE_COILS: usize = 1_000;
 
 /// Brief 025's timings, one sample per run each.
 #[derive(Debug, Default)]
-struct XrefTimes {
+struct DeviceReferenceTimes {
     build: Vec<f64>,
     moves: Vec<f64>,
     renum: Vec<f64>,
     mirror: Vec<f64>,
 }
 
-/// Brief 025 (design 025 §7) on a copy: [`XREF_COILS`] coils are
+/// Brief 025 (design 025 §7) on a copy: [`REFERENCE_COILS`] coils are
 /// added and saved (not timed; then opened once in a headless session), each with a `power3` on its own page and a NO and an NC
 /// on the next page, half of them with an offer (`3P+1NO+1NC`); the first 20 coils' contacts are
 /// all on page 2 (40 targets) and coils 20 to 29 on page 3 (10 tables). Then per run:
@@ -753,7 +762,7 @@ struct XrefTimes {
 /// - **xrenum**: page 2 renumbered (its 40 contacts' rows on other pages), then back (not timed);
 /// - **xmirror**: page 3 brought to the front (projected with its 10 tables), then page 1 again
 ///   (not timed).
-fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String> {
+fn device_reference_edits(path: &Path, copy: &Path, runs: usize) -> Result<DeviceReferenceTimes, String> {
     use serde_json::json;
 
     remove(copy);
@@ -769,13 +778,14 @@ fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String
         release_lock_file(copy);
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
-        let mut out = XrefTimes::default();
+        let mut out = DeviceReferenceTimes::default();
         for _ in 0..runs {
             let t = project.read(&mut s, |p, _| {
                 let t = Instant::now();
-                let idx = ecad_engine::derived::RefsView::build(p.ledger.document());
+                let idx = ecad_electrical::views::ReferencesView::build(p.ledger.document());
                 let took = ms(t);
                 std::hint::black_box(idx);
                 took
@@ -803,7 +813,7 @@ fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String
             }
         }
         let p2 = order[1 % order.len()];
-        let number = project.read(&mut s, |p, _| ecad_model::book::page_number(p.ledger.document(), p2))?;
+        let number = project.read(&mut s, |p, _| ecad_model::document::book::page_number(p.ledger.document(), p2))?;
         for _ in 0..runs {
             let t = Instant::now();
             s.execute("pageprops", &json!({"page": p2.hex(), "number": "9002"})).map_err(|e| e.to_string())?;
@@ -826,11 +836,11 @@ fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String
     result
 }
 
-/// The coils of [`xref_edits`], committed to `ledger` one placement at a time: their head
+/// The coils of [`device_reference_edits`], committed to `ledger` one placement at a time: their head
 /// representations and the page order.
 fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::RepresentationId>, Vec<ecad_model::PageId>), String> {
-    use ecad_engine::devices::{TagHigh, Target, plan_place};
     use ecad_model::{Color, Op, Placement, Pt, Style};
+    use {ecad_electrical::devices::TagHigh, ecad_electrical::devices::Target, ecad_electrical::devices::plan_place};
     let order = ledger.document().page_order.clone();
     let n = order.len();
     if n == 0 {
@@ -838,13 +848,14 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
     }
     let layer = ledger.document().layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
     // A debug build (the tests) adds fewer coils: the release benchmark adds them all.
-    let wanted = if cfg!(debug_assertions) { 40 } else { XREF_COILS };
+    let wanted = if cfg!(debug_assertions) { 40 } else { REFERENCE_COILS };
     let at = |k: usize| order[k % n];
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x025);
     let mut high = TagHigh::default();
-    let starter = |k: &str| ecad_engine::symbols::by_key(k).ok_or_else(|| format!("no starter {k}"));
-    let place = |pt: (f64, f64)| Placement { origin: Pt::new(pt.0, pt.1), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
+    let starter = |k: &str| ecad_electrical::symbols::by_key(k).ok_or_else(|| format!("no starter {k}"));
+    let place =
+        |pt: (f64, f64)| Placement { origin: Pt::new(pt.0, pt.1), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 };
     let mut coils = Vec::with_capacity(wanted);
     for i in 0..wanted {
         let ka = match i {
@@ -853,7 +864,7 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
         };
         let (a, b) = (at(ka), if i < 20 { at(1) } else { at(ka + 1) });
         let x = 30.0 + 35.0 * (i % 10) as f64;
-        let mut step = |ledger: &mut ecad_model::Ledger, page, key: &str, pt, target| -> Result<ecad_engine::devices::Placed, String> {
+        let mut step = |ledger: &mut ecad_model::Ledger, page, key: &str, pt, target| -> Result<ecad_electrical::devices::Placed, String> {
             let plan = plan_place(ledger, &mut ids, &mut high, page, style.clone(), starter(key)?, place(pt), target)?;
             ledger.commit(Author::User, "Bench coils", plan.ops.clone()).map_err(|e| e.to_string())?;
             Ok(plan)
@@ -866,7 +877,8 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
         step(ledger, b, "nc", (x + 10.0, 60.0), Target::Join(c))?;
         if i % 2 == 0 {
             let before = ledger.document().devices.get(&c).cloned().ok_or("the bench coil is missing")?;
-            let after = ecad_engine::xref::with_contacts(&before, "the bench coil", Some("3P+1NO+1NC")).map_err(|e| e.to_string())?;
+            let after =
+                ecad_electrical::references::devices::with_contacts(&before, "the bench coil", Some("3P+1NO+1NC")).map_err(|e| e.to_string())?;
             let op = Op::ModifyDevice { id: c, before, after };
             ledger.commit(Author::User, "Bench coils", vec![op]).map_err(|e| e.to_string())?;
         }
@@ -894,7 +906,8 @@ fn sheet_edits(path: &Path, copy: &Path, runs: usize) -> Result<SheetTimes, Stri
     let result = (|| {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let run = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
             let t = Instant::now();
             s.execute(cmd, &params).map_err(|e| format!("{cmd}: {e}"))?;
@@ -911,8 +924,8 @@ fn sheet_edits(path: &Path, copy: &Path, runs: usize) -> Result<SheetTimes, Stri
                 let page = doc.page_order.first().copied();
                 let t = Instant::now();
                 let n = page.map(|pg| {
-                    let input = ecad_engine::frame::FrameInput::of(doc, pg, &ecad_model::book::Book::of(doc));
-                    ecad_engine::frame::parts(&input).len()
+                    let input = ecad_engine::pages::frame::FrameInput::of(doc, pg, &ecad_model::document::book::Book::of(doc));
+                    ecad_engine::pages::frame::parts(&input).len()
                 });
                 std::hint::black_box(n);
                 ms(t)
@@ -960,7 +973,8 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
     let result = (|| {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let order = project.read(&mut s, |p, _| p.ledger.document().page_order.clone())?;
         let first = *order.first().ok_or("the project has no pages")?;
         let pages = spread(&order);
@@ -975,7 +989,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
         let (mut switch, mut preview, mut panel) = (Vec::with_capacity(2 * n), Vec::with_capacity(n), Vec::with_capacity(n));
         let (mut devices, mut goto, mut devupd) = (Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n));
         // The Devices tab's list, built once as when the tab is shown.
-        let mut list = ecad_engine::device_list::DeviceList::default();
+        let mut list = ecad_engine::reports::device_list::DeviceList::default();
         project.read(&mut s, |p, _| list.sync(1, p))?;
         let (w, h) = (480, 320);
         for page in pages {
@@ -987,9 +1001,9 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
             }
             // The preview of page 1 from this page: projected under the lock, drawn after it.
             let t = Instant::now();
-            let drawing = project.read(&mut s, |p, _| ecad_engine::preview::preview_drawing(p, first))??;
-            let view = ecad_engine::preview::PreviewView::extents(&drawing, w, h);
-            let image = ecad_engine::preview::rasterise(&drawing, view, w, h, [33, 40, 48], 0.0)?;
+            let drawing = project.read(&mut s, |p, _| ecad_engine::pages::preview::preview_drawing(p, first))??;
+            let view = ecad_engine::pages::preview::PreviewView::extents(&drawing, w, h);
+            let image = ecad_engine::pages::preview::rasterise(&drawing, view, w, h, [33, 40, 48], 0.0)?;
             preview.push(ms(t));
             if image.rgba.len() != (w * h * 4) as usize {
                 return Err("the preview image has the wrong size".into());
@@ -1004,7 +1018,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
             }
             // The Devices tab's list, rebuilt.
             let t = Instant::now();
-            let listed = project.read(&mut s, |p, _| ecad_engine::device_list::device_entries(p.ledger.document(), "").len())?;
+            let listed = project.read(&mut s, |p, _| ecad_electrical::devices::device_list::device_entries(p.ledger.document(), "").len())?;
             devices.push(ms(t));
             if listed == 0 {
                 return Err("the Devices list is empty".into());
@@ -1037,7 +1051,7 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
             if let Some(rep) = rep {
                 let t = Instant::now();
                 s.execute("openpage", &json!({"page": page.hex()})).map_err(|e| format!("openpage {page}: {e}"))?;
-                let handles = project.read(&mut s, |p, _| ecad_engine::device_list::symbol_target(p, rep).map(|x| x.2))?.unwrap_or_default();
+                let handles = project.read(&mut s, |p, _| ecad_engine::reports::device_list::symbol_target(p, rep).map(|x| x.2))?.unwrap_or_default();
                 s.set_selection(handles.clone());
                 goto.push(ms(t));
                 if handles.is_empty() {

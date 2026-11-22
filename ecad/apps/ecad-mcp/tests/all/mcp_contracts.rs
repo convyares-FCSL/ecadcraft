@@ -37,7 +37,7 @@ impl Client {
 
     /// Cable views are remembered nowhere in these tests.
     fn no_settings(&mut self) {
-        self.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_engine::views::Settings::none())).unwrap().unwrap();
+        self.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_engine::cables::views::Settings::none())).unwrap().unwrap();
     }
 
     fn request(&mut self, method: &str, params: Value) -> Value {
@@ -86,8 +86,8 @@ impl Client {
     /// Connection points at `at` on the active page (design 072: a wire runs between two
     /// connection points): one drawn device holding one point per place, committed straight to
     /// the ledger by the person. Returns the points, in the order given.
-    pub(crate) fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<ecad_model::TerminalId> {
-        use ecad_model::{Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject, Terminal, TerminalId};
+    pub(crate) fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<ecad_model::ConnectionPointId> {
+        use ecad_model::{ConnectionPoint, ConnectionPointId, Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject};
         let at = at.to_vec();
         self.s
             .with_session(|s, p| {
@@ -98,10 +98,15 @@ impl Client {
                     let mut cps = std::collections::BTreeMap::new();
                     let mut out = Vec::new();
                     for (i, (x, y)) in at.iter().enumerate() {
-                        let t: TerminalId = p.ids.fresh();
-                        ops.push(Op::AddTerminal {
+                        let t: ConnectionPointId = p.ids.fresh();
+                        ops.push(Op::AddConnectionPoint {
                             id: t,
-                            terminal: Terminal { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                            connection_point: ConnectionPoint {
+                                owner: device.into(),
+                                label: Some((i + 1).to_string()),
+                                key: None,
+                                accepts: Default::default(),
+                            },
                         });
                         cps.insert(t, Pt::new(*x, *y));
                         out.push(t);
@@ -132,7 +137,8 @@ impl Client {
         let pts: Vec<(f64, f64)> = params["points"].as_array().unwrap().iter().map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap())).collect();
         let doc = self.doc();
         let page = self.s.with_session(|s, p| p.read(s, |p, _| p.active_page()).unwrap()).unwrap().unwrap_or(doc.page_order[0]);
-        let shown: Vec<ecad_model::Pt> = ecad_model::derive::terminal_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
+        let shown: Vec<ecad_model::Pt> =
+            ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
         let ends: Vec<(f64, f64)> = [pts.first(), pts.last()]
             .into_iter()
             .flatten()
@@ -161,7 +167,7 @@ impl Direct {
         ecad_engine::install();
         let mut s = Session::empty();
         let p = Project::create_with(&mut s, "mcp", SEED, Persistence::File).unwrap();
-        p.configure(&mut s, |p| p.settings = ecad_engine::views::Settings::none()).unwrap();
+        p.configure(&mut s, |p| p.settings = ecad_engine::cables::views::Settings::none()).unwrap();
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {
@@ -211,7 +217,7 @@ fn a_client_lists_the_ecad_commands_with_their_docs_and_the_ecad_tools() {
 
     let catalog = c.ok("list_commands", json!({}));
     let catalog = catalog.as_array().unwrap();
-    for spec in ecad_engine::cmd::specs() {
+    for spec in ecad_engine::commands::specs() {
         let info = catalog.iter().find(|i| i["id"] == spec.id).unwrap_or_else(|| panic!("{} not listed", spec.id));
         assert_eq!(info["params"].as_str(), Some(spec.params), "{}", spec.id);
         assert!(info["params"].as_str().is_some_and(|p| !p.is_empty()), "{} has no parameter docs", spec.id);
@@ -359,8 +365,8 @@ fn with_writes_off_every_write_is_refused_and_the_head_is_unchanged() {
         ("cableadd", json!({"conductors": []})),
         ("place", json!({"at": [100, 0]})),
         ("convertcomponent", json!({"handles": []})),
-        ("addterminal", json!({"handle": "1", "at": [0, 0]})),
-        ("connect", json!({"conductor": "1", "end": "A", "terminal": "2"})),
+        ("addconnectionpoint", json!({"handle": "1", "at": [0, 0]})),
+        ("connect", json!({"conductor": "1", "end": "A", "connection_point": "2"})),
         ("disconnect", json!({"conductor": "1", "end": "A"})),
         ("setprop", json!({"component": "1", "key": "tag", "value": "K1"})),
         ("ecaddelete", json!({"cable": "1"})),
@@ -596,7 +602,7 @@ fn an_oversized_or_non_utf8_line_is_answered_and_skipped() {
 fn spawn(args: &[&str], settings: &TempDir) -> std::process::Child {
     Command::new(env!("CARGO_BIN_EXE_ecad-mcp"))
         .args(args)
-        .env(ecad_engine::views::SETTINGS_ENV, &settings.0)
+        .env(ecad_engine::cables::views::SETTINGS_ENV, &settings.0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1014,7 +1020,7 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
 
     // Design 072: a wire runs between two connection points; terminals give the lines their ends.
     for at in [[0, 0], [60, 0], [45, 30], [100, 40], [200, 40]] {
-        c.exec("place", json!({"symbol": "terminal", "at": at}));
+        c.exec("place", json!({"symbol": "terminal_block", "at": at}));
     }
 
     // `wire` with a potential: the route, the wire and its number in the same transaction.

@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
 use ecad_model::{
-    Author, Cable, Color, Core, Definition, Device, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op,
-    Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer, StyleRecord, StyleRef, Subject,
-    SymbolInstance, Terminal, TerminalDef, Wire,
+    Author, Cable, Color, ConnectionPoint, ConnectionPointDef, Core, Definition, Device, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId,
+    Ledger, LengthUnit, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer,
+    StyleRecord, StyleRef, Subject, SymbolInstance, Wire,
 };
 use serde_json::{Value, json};
 
@@ -82,17 +82,18 @@ fn every_op_ledger() -> Ledger {
     let def_v = Definition {
         name: "K".into(),
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
-        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
+        connection_points: vec![ConnectionPointDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
         ..Default::default()
     };
     let comp: ecad_model::DeviceId = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
-    let term: ecad_model::TerminalId = ids.fresh();
-    let term_v = Terminal { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
+    let term: ecad_model::ConnectionPointId = ids.fresh();
+    let term_v = ConnectionPoint { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
-    let (term2, term3, term4): (ecad_model::TerminalId, ecad_model::TerminalId, ecad_model::TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let point = |label: &str| Terminal { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
+    let (term2, term3, term4): (ecad_model::ConnectionPointId, ecad_model::ConnectionPointId, ecad_model::ConnectionPointId) =
+        (ids.fresh(), ids.fresh(), ids.fresh());
+    let point = |label: &str| ConnectionPoint { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     let sym: ecad_model::ItemId = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item: ecad_model::ItemId = ids.fresh();
@@ -141,10 +142,10 @@ fn every_op_ledger() -> Ledger {
                 Op::AddLayer { id: layer, layer: layer_v.clone() },
                 Op::EmbedDefinition { id: def, definition: def_v.clone() },
                 Op::CreateDevice { id: comp, device: comp_v.clone() },
-                Op::AddTerminal { id: term, terminal: term_v.clone() },
-                Op::AddTerminal { id: term2, terminal: point("2") },
-                Op::AddTerminal { id: term3, terminal: point("3") },
-                Op::AddTerminal { id: term4, terminal: point("4") },
+                Op::AddConnectionPoint { id: term, connection_point: term_v.clone() },
+                Op::AddConnectionPoint { id: term2, connection_point: point("2") },
+                Op::AddConnectionPoint { id: term3, connection_point: point("3") },
+                Op::AddConnectionPoint { id: term4, connection_point: point("4") },
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
                 Op::LinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
@@ -164,9 +165,9 @@ fn every_op_ledger() -> Ledger {
     let aid: ecad_model::AidId = ids.fresh();
     let loose: ecad_model::LoosePartId = ids.fresh();
     let rail = |n: u64| {
-        ecad_model::loose_part::LoosePart::new(
-            ecad_model::loose_part::LooseDescription::new("DIN rail").unwrap(),
-            ecad_model::loose_part::Qty(n * 1000),
+        ecad_model::objects::loose_part::LoosePart::new(
+            ecad_model::objects::loose_part::LooseDescription::new("DIN rail").unwrap(),
+            ecad_model::objects::loose_part::Qty(n * 1000),
         )
     };
     let link_v = ecad_model::DeviceLink { kind: ecad_model::LinkKind::MechanicalInterlock, a: pair[0], b: pair[1] };
@@ -183,8 +184,8 @@ fn every_op_ledger() -> Ledger {
     rep_after.role = ecad_model::Role::Drawn;
     let header = StandardHeader {
         id: ids.fresh(),
-        name: ecad_model::style::StyleName::new("S").unwrap(),
-        based_on: ecad_model::style::BasedOn::Iec,
+        name: ecad_model::objects::styles::StyleName::new("S").unwrap(),
+        based_on: ecad_model::objects::styles::BasedOn::Iec,
         origin: None,
     };
     let ops = vec![
@@ -208,14 +209,21 @@ fn every_op_ledger() -> Ledger {
             before: comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..comp_v.clone() },
         },
-        Op::AddTerminal { id: ids.fresh(), terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
-        Op::RemoveTerminal { id: term, terminal: term_v.clone() },
+        Op::AddConnectionPoint {
+            id: ids.fresh(),
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+        },
+        Op::RemoveConnectionPoint { id: term, connection_point: term_v.clone() },
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },
         Op::ModifyRepresentation { id: rep_wire, before: rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
         Op::CreateWire { id: ids.fresh(), wire: Wire::new(ids.fresh(), ids.fresh(), term, term3) },
         Op::DeleteWire { id: wire, wire: wire_v.clone() },
-        Op::ModifyWire { id: wire2, before: wire2_v.clone(), after: Wire { size: ecad_model::wire::WireSize::parse("2.5"), ..wire2_v.clone() } },
+        Op::ModifyWire {
+            id: wire2,
+            before: wire2_v.clone(),
+            after: Wire { size: ecad_model::objects::wire::WireSize::parse("2.5"), ..wire2_v.clone() },
+        },
         Op::AddRoute { id: ids.fresh(), route: ecad_model::Route { ends: [ecad_model::RouteEnd::Free; 2], ..route_v.clone() } },
         Op::ModifyRoute {
             id: route,
@@ -248,7 +256,7 @@ fn every_op_ledger() -> Ledger {
             catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: None,
-            after: Some(StyleRecord::new("Thin", ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Wire))),
+            after: Some(StyleRecord::new("Thin", ecad_model::objects::styles::StyleBody::empty(ecad_model::StyleCatalogue::Wire))),
         },
         Op::SetStandard { before: None, after: Some(header) },
         // Lane 072 E (A15): the project's lists changed.
@@ -267,7 +275,10 @@ fn every_op_ledger() -> Ledger {
         Op::ModifyAid {
             id: aid,
             before: ecad_model::Aid::Box(ecad_model::LocationBox::default()),
-            after: ecad_model::Aid::Box(ecad_model::LocationBox { panel_temperature: Some(ecad_model::units::Celsius(40.0)), ..Default::default() }),
+            after: ecad_model::Aid::Box(ecad_model::LocationBox {
+                panel_temperature: Some(ecad_model::geometry::units::Celsius(40.0)),
+                ..Default::default()
+            }),
         },
         Op::DeleteAid { id: aid, aid: ecad_model::Aid::Box(ecad_model::LocationBox::default()) },
         // Lane 072 F2a (A15): a loose part made, changed and removed.
@@ -326,6 +337,9 @@ fn every_op_kind_renders_raw_and_readable() {
     }
     let readable_ops: BTreeSet<&str> = readable_ops.iter().map(String::as_str).collect();
     assert_eq!(readable_ops, all, "every op kind renders in Readable");
+    // 0.2.3 structure move: the op names follow the code (no "Terminal" op is left).
+    assert!(readable_ops.contains("AddConnectionPoint") && readable_ops.contains("RemoveConnectionPoint"), "{readable_ops:?}");
+    assert!(!readable_ops.iter().any(|o| o.contains("Terminal")), "{readable_ops:?}");
 
     // The History log: every transaction's record, as the row expand shows it.
     let log = ask(s, json!({"op": "log", "branch": "main", "from": 0, "count": 1000, "detail": true}));

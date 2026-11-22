@@ -14,7 +14,7 @@
 //!
 //! Families, sizes and side keys are catalogue code ([`crate::connectors`], [`crate::symbols`]).
 
-use super::{Entry, Kind, Level, ProjectSource, Slot};
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 
 ecad_model::word_enum! {
     /// Which half of a connector a symbol draws by default.

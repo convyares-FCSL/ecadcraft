@@ -13,17 +13,17 @@
 //! In Project, Library and Publish the well and the view groups are hidden; the status stays.
 //!
 //! **Update map.** The well's groups are rebuilt only when the Pages copy is
-//! ([`crate::project_panel::ProjectPanel::rebuilds`]); the revision and sheet text only when the
+//! ([`crate::pages::project_panel::ProjectPanel::rebuilds`]); the revision and sheet text only when the
 //! project's change count, the project or the page shown changes. Nothing else is read per frame.
 
 use std::collections::BTreeSet;
 
 use ecad_model::{FolderId, PageId};
-use ecad_ui::tokens::{Icon, size, space, ui_type};
+use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use super::{Workspace, bar};
 use crate::App;
+use crate::shell::{Workspace, bar};
 
 /// Accessible labels.
 pub const SAVE_STATE: &str = "Save state";
@@ -127,10 +127,10 @@ impl App {
         }
         let facts = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let last = ecad_engine::revisions::issued(doc).last().map(|r| r.rev().to_string()).unwrap_or_default();
-            let pending = ecad_engine::revisions::pending_rev(doc);
-            let dirty = ecad_engine::revisions::is_pending(&p.ledger);
-            let sheet = page.map(|pg| ecad_model::sheet::sheet_of(doc, pg)).unwrap_or_else(|| doc.settings.sheet());
+            let last = ecad_electrical::releases::revisions::issued(doc).last().map(|r| r.rev().to_string()).unwrap_or_default();
+            let pending = ecad_electrical::releases::revisions::pending_rev(doc);
+            let dirty = ecad_electrical::releases::revisions::is_pending(&p.ledger);
+            let sheet = page.map(|pg| ecad_model::document::sheet::sheet_of(doc, pg)).unwrap_or_else(|| doc.settings.sheet());
             let sheet = sheet.preset_name().map_or_else(|| format!("{}×{}", sheet.width, sheet.height), str::to_string);
             ((last, pending, dirty), sheet)
         });
@@ -183,9 +183,9 @@ impl App {
 
 /// Draw the bottom bar in `rect`.
 pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
-    let s = ecad_ui::SHELL;
-    super::fill(ui, rect, s.panel);
-    ui.painter().hline(rect.x_range(), rect.top() + 0.5, egui::Stroke::new(ecad_ui::tokens::line::HAIRLINE_PX, ecad_ui::color(s.line)));
+    let s = ecad_widgets::SHELL;
+    crate::shell::fill(ui, rect, s.panel);
+    ui.painter().hline(rect.x_range(), rect.top() + 0.5, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     t.sync_well();
     let y = rect.center().y;
     let pill_at = |x: f32, w: f32| Rect::from_min_size(pos2(x, y - PILL_H / 2.0), vec2(w, PILL_H));
@@ -211,10 +211,10 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{SAVE_STATE}: {save}")));
     let mut x = saved.left() + space::M;
     if let Some(c) = dot {
-        bar::dot(ui, pos2(x + 3.0, y), 3.5, ecad_ui::color(c));
+        bar::dot(ui, pos2(x + 3.0, y), 3.5, ecad_widgets::color(c));
         x += 12.0;
     }
-    bar::text_at(ui, x, y, &saved_text, ui_type::SMALL, ecad_ui::color(s.text_2));
+    bar::text_at(ui, x, y, &saved_text, ui_type::SMALL, ecad_widgets::color(s.text_2));
     let mut x = saved.right() + space::M;
 
     let mut open_history = false;
@@ -224,13 +224,13 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
         let w = size::ICON + space::S + bar::text_width(ui, &first, ui_type::SMALL) + bar::text_width(ui, &star, ui_type::SMALL) + 2.0 * space::M;
         let pill = pill_at(x, w);
         bar::pill(ui, pill);
-        let label = format!("{}: {first}{star}", super::top_bar::REVISION_PILL);
+        let label = format!("{}: {first}{star}", crate::shell::top_bar::REVISION_PILL);
         let r = bar::hit(ui, pill.shrink(1.0), &label, false, false, true).on_hover_text("History: revisions and changes");
         open_history = r.clicked();
         let icon = Rect::from_center_size(pos2(pill.left() + space::M + 6.0, y), vec2(12.0, 12.0));
-        ecad_ui::icons::paint(ui.painter(), icon, Icon::History, ecad_ui::color(s.text_2));
-        let e = bar::text_at(ui, icon.right() + space::S, y, &first, ui_type::SMALL, ecad_ui::color(s.text_2));
-        bar::text_at(ui, e, y, &star, ui_type::SMALL, ecad_ui::color(s.provisional));
+        ecad_widgets::icons::paint(ui.painter(), icon, Icon::History, ecad_widgets::color(s.text_2));
+        let e = bar::text_at(ui, icon.right() + space::S, y, &first, ui_type::SMALL, ecad_widgets::color(s.text_2));
+        bar::text_at(ui, e, y, &star, ui_type::SMALL, ecad_widgets::color(s.provisional));
         x = pill.right() + space::M;
     }
 
@@ -244,23 +244,23 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     }
     let pill = pill_at(x, w);
     bar::pill(ui, pill);
-    let r = bar::hit(ui, pill.shrink(1.0), &format!("{}: Checks {n}", super::top_bar::CHECKS_PILL), false, false, true)
+    let r = bar::hit(ui, pill.shrink(1.0), &format!("{}: Checks {n}", crate::shell::top_bar::CHECKS_PILL), false, false, true)
         .on_hover_text("Open the Checks tab");
     let open_checks = r.clicked();
     let mut cx = pill.left() + space::M;
     for (c, tone) in counts.iter().filter(|(c, _)| *c > 0) {
-        bar::dot(ui, pos2(cx + 3.0, y), 3.5, ecad_ui::color(*tone));
-        cx = bar::text_at(ui, cx + 10.0, y, &c.to_string(), ui_type::SMALL, ecad_ui::color(s.text_2)) + space::S;
+        bar::dot(ui, pos2(cx + 3.0, y), 3.5, ecad_widgets::color(*tone));
+        cx = bar::text_at(ui, cx + 10.0, y, &c.to_string(), ui_type::SMALL, ecad_widgets::color(s.text_2)) + space::S;
     }
-    bar::text_at(ui, cx, y, &label, ui_type::SMALL, ecad_ui::color(s.text_2));
+    bar::text_at(ui, cx, y, &label, ui_type::SMALL, ecad_widgets::color(s.text_2));
     let status_right = pill.right();
 
     if open_history {
         t.set_workspace(Workspace::Draw);
-        t.set_left_tab(super::LeftTab::History);
+        t.set_left_tab(crate::shell::LeftTab::History);
     }
     if open_checks {
-        t.open_inspector(super::state::RightTab::Checks);
+        t.open_inspector(crate::shell::state::RightTab::Checks);
     }
     if !draw {
         return;
@@ -277,15 +277,15 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let fit_r = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(fit_w, BTN));
     let fit = bar::hit(ui, fit_r, FIT, false, false, true).clicked();
     let icon = Rect::from_center_size(pos2(fit_r.left() + space::S + 6.0, y), vec2(12.0, 12.0));
-    ecad_ui::icons::paint(ui.painter(), icon, Icon::Fit, ecad_ui::color(s.text_2));
-    bar::text_at(ui, icon.right() + space::XS + 2.0, y, "Fit", ui_type::SMALL, ecad_ui::color(s.text_2));
+    ecad_widgets::icons::paint(ui.painter(), icon, Icon::Fit, ecad_widgets::color(s.text_2));
+    bar::text_at(ui, icon.right() + space::XS + 2.0, y, "Fit", ui_type::SMALL, ecad_widgets::color(s.text_2));
     x = fit_r.right();
     let out = bar::icon_button(ui, Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(BTN, BTN)), Icon::Minus, ZOOM_OUT, 12.0, true).clicked();
     x += BTN;
     let zr = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(zoom_w, BTN));
     let zl = ui.interact(zr, egui::Id::unique(ZOOM), egui::Sense::hover());
     zl.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{ZOOM}: {zoom_text}")));
-    ui.painter().text(zr.center(), egui::Align2::CENTER_CENTER, &zoom_text, bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_2));
+    ui.painter().text(zr.center(), egui::Align2::CENTER_CENTER, &zoom_text, bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.text_2));
     x += zoom_w;
     let zin = bar::icon_button(ui, Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(BTN, BTN)), Icon::Plus, ZOOM_IN, 12.0, true).clicked();
 
@@ -304,36 +304,36 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let mut x = vp.left() + space::XS;
     let std_r = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(std_w, BTN));
     let standards = bar::hit(ui, std_r, &standard, false, false, true).on_hover_text("Settings ▸ Standards").clicked();
-    ui.painter().text(std_r.center(), egui::Align2::CENTER_CENTER, &std_text, bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_2));
+    ui.painter().text(std_r.center(), egui::Align2::CENTER_CENTER, &std_text, bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.text_2));
     x = std_r.right();
     let size_r = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(size_w, BTN));
     let sr = ui.interact(size_r, egui::Id::unique(SHEET_SIZE), egui::Sense::hover());
     sr.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{SHEET_SIZE}: {size_text}")));
     sr.on_hover_text("The page's sheet (Page properties)");
-    ui.painter().text(size_r.center(), egui::Align2::CENTER_CENTER, &size_text, bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_2));
+    ui.painter().text(size_r.center(), egui::Align2::CENTER_CENTER, &size_text, bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.text_2));
     x = size_r.right();
     let col_r = Rect::from_min_size(pos2(x, y - BTN / 2.0), vec2(col_w, BTN));
     let col = bar::hit(ui, col_r, SHEET_COLOUR, false, false, true);
     let sw = Rect::from_center_size(pos2(col_r.left() + space::S + 6.0, y), vec2(12.0, 9.0));
     sheet_swatch(ui.painter(), sw, sheet);
-    let e = bar::text_at(ui, sw.right() + space::XS, y, sheet_word, ui_type::SMALL, ecad_ui::color(s.text_2));
-    ecad_ui::icons::paint(
+    let e = bar::text_at(ui, sw.right() + space::XS, y, sheet_word, ui_type::SMALL, ecad_widgets::color(s.text_2));
+    ecad_widgets::icons::paint(
         ui.painter(),
         Rect::from_center_size(pos2(e + space::XS + 5.0, y), vec2(10.0, 10.0)),
         Icon::ChevronUp,
-        ecad_ui::color(s.text_3),
+        ecad_widgets::color(s.text_3),
     );
     let mut pick = None;
     egui::Popup::menu(&col).show(|ui| {
         ui.set_width(SHEET_MENU_W);
-        ui.label(egui::RichText::new(SHEET_MENU_TITLE).small().color(ecad_ui::color(s.text_3)));
+        ui.label(egui::RichText::new(SHEET_MENU_TITLE).small().color(ecad_widgets::color(s.text_3)));
         for choice in crate::canvas::Sheet::ALL {
             if sheet_choice(ui, choice, choice == sheet).clicked() {
                 pick = Some(choice);
             }
         }
         ui.separator();
-        ui.add(egui::Label::new(egui::RichText::new(SHEET_MENU_NOTE).small().color(ecad_ui::color(s.text_3))).wrap());
+        ui.add(egui::Label::new(egui::RichText::new(SHEET_MENU_NOTE).small().color(ecad_widgets::color(s.text_3))).wrap());
     });
 
     // ---- The page well, centred, between the status and the view.
@@ -376,12 +376,12 @@ const CENTRE_TEXT: f32 = 250.0;
 /// order, the groups before the shown one (folded) and the shown group's own pages, packed towards
 /// the divider; right of it the groups after (folded, or opened with ›) and +.
 fn page_well(t: &mut App, ui: &mut egui::Ui, well: Rect) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     ui.painter().rect(
         well,
-        ecad_ui::style::corner(ecad_ui::tokens::radius::BUTTON),
-        ecad_ui::color(s.bg).gamma_multiply(0.8),
-        egui::Stroke::new(1.0, ecad_ui::color(s.line)),
+        ecad_widgets::style::corner(ecad_widgets::tokens::radius::BUTTON),
+        ecad_widgets::color(s.bg).gamma_multiply(0.8),
+        egui::Stroke::new(1.0, ecad_widgets::color(s.line)),
         egui::StrokeKind::Inside,
     );
     let w = ui.interact(well, egui::Id::unique(PAGE_WELL), egui::Sense::hover());
@@ -430,13 +430,13 @@ fn page_well(t: &mut App, ui: &mut egui::Ui, well: Rect) {
             let title = clip(ui, title, (text.width() - fixed).max(0.0));
             let line = fixed + bar::text_width(ui, &title, ui_type::BODY);
             let x0 = text.center().x - line / 2.0;
-            let e = bar::text_at(ui, x0, y, &number, ui_type::BODY_EMPHASIS, ecad_ui::color(s.text));
-            let e = bar::text_at(ui, e + space::XS, y, &of, ui_type::SMALL, ecad_ui::color(s.text_3));
-            bar::text_at(ui, e + space::M, y, &title, ui_type::BODY, ecad_ui::color(s.text_2));
+            let e = bar::text_at(ui, x0, y, &number, ui_type::BODY_EMPHASIS, ecad_widgets::color(s.text));
+            let e = bar::text_at(ui, e + space::XS, y, &of, ui_type::SMALL, ecad_widgets::color(s.text_3));
+            bar::text_at(ui, e + space::M, y, &title, ui_type::BODY, ecad_widgets::color(s.text_2));
         }
         None => {
             let words = if t.project_open() { "No page shown" } else { "No project" };
-            ui.painter().text(text.center(), egui::Align2::CENTER_CENTER, words, bar::font(ui, ui_type::SMALL), ecad_ui::color(s.text_3));
+            ui.painter().text(text.center(), egui::Align2::CENTER_CENTER, words, bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.text_3));
         }
     }
 
@@ -549,11 +549,11 @@ fn draw_item(
     t: &App, ui: &mut egui::Ui, i: &Item, x: f32, y: f32, go: &mut Option<PageId>, wheel: &mut Option<(PageId, egui::Pos2)>,
     open_group: &mut Option<usize>,
 ) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     match i {
         Item::Folder(name) => {
             let r = Rect::from_center_size(pos2(x + 10.0, y), vec2(14.0, 14.0));
-            ecad_ui::icons::paint(ui.painter(), r, Icon::Folder, ecad_ui::color(s.text_3));
+            ecad_widgets::icons::paint(ui.painter(), r, Icon::Folder, ecad_widgets::color(s.text_3));
             ui.interact(r, egui::Id::unique(("ecad.well.folder", name)), egui::Sense::hover()).on_hover_text(name);
         }
         Item::Page(p, n) => {
@@ -572,16 +572,21 @@ fn draw_item(
         }
         Item::Folded(gi, name, count) => {
             let r = Rect::from_min_size(pos2(x + space::XS, y - BTN / 2.0), vec2(item_w(i) - space::M, BTN));
-            ui.painter().rect_stroke(r, ecad_ui::tokens::radius::FIELD, egui::Stroke::new(1.0, ecad_ui::color(s.line)), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(
+                r,
+                ecad_widgets::tokens::radius::FIELD,
+                egui::Stroke::new(1.0, ecad_widgets::color(s.line)),
+                egui::StrokeKind::Inside,
+            );
             let resp = bar::hit(ui, r, &format!("Group {name}"), false, false, true).on_hover_text(name);
             let icon = Rect::from_center_size(pos2(r.left() + 12.0, y), vec2(12.0, 12.0));
-            ecad_ui::icons::paint(ui.painter(), icon, Icon::Folder, ecad_ui::color(s.text_3));
-            let e = bar::text_at(ui, icon.right() + space::XS, y, &count.to_string(), ui_type::SMALL, ecad_ui::color(s.text_2));
-            ecad_ui::icons::paint(
+            ecad_widgets::icons::paint(ui.painter(), icon, Icon::Folder, ecad_widgets::color(s.text_3));
+            let e = bar::text_at(ui, icon.right() + space::XS, y, &count.to_string(), ui_type::SMALL, ecad_widgets::color(s.text_2));
+            ecad_widgets::icons::paint(
                 ui.painter(),
                 Rect::from_center_size(pos2(e + 6.0, y), vec2(8.0, 8.0)),
                 Icon::ChevronRight,
-                ecad_ui::color(s.text_3),
+                ecad_widgets::color(s.text_3),
             );
             if resp.clicked() {
                 *open_group = Some(*gi);
@@ -594,7 +599,7 @@ fn draw_item(
 /// number and title, its group and "click to go". The sketch is the panels' drawn thumbnail, not
 /// a render of the page.
 fn hover_preview(t: &App, ui: &egui::Ui, button: Rect, page: PageId, number: &str) {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let title = t.panel.rows().iter().find(|r| r.id == page).map(|r| r.title.clone()).unwrap_or_default();
     let group = t.shell.well.groups.iter().find(|g| g.pages.iter().any(|(p, _)| *p == page)).map(|g| g.name.clone()).unwrap_or_default();
     let size = vec2(PREVIEW_W, PREVIEW_H);
@@ -603,21 +608,21 @@ fn hover_preview(t: &App, ui: &egui::Ui, button: Rect, page: PageId, number: &st
         let card = Rect::from_min_size(at, size);
         let shadow = egui::epaint::Shadow { offset: [0, 4], blur: 16, spread: 0, color: egui::Color32::from_black_alpha(120) };
         ui.painter().add(shadow.as_shape(card, 6.0));
-        ui.painter().rect(card, 6.0, ecad_ui::color(s.bg), egui::Stroke::new(1.0, ecad_ui::color(s.line_strong)), egui::StrokeKind::Inside);
+        ui.painter().rect(card, 6.0, ecad_widgets::color(s.bg), egui::Stroke::new(1.0, ecad_widgets::color(s.line_strong)), egui::StrokeKind::Inside);
         let sheet = Rect::from_min_size(card.min + vec2(space::S, space::S), vec2(size.x - 2.0 * space::S, 140.0));
-        super::glyphs::preview(
+        crate::shell::glyphs::preview(
             ui.painter(),
             sheet,
-            ecad_ui::color(ecad_drawing_style::sheet::PREVIEW_PAPER),
-            ecad_ui::color(ecad_drawing_style::sheet::THUMBNAIL_INK),
+            ecad_widgets::color(ecad_drawing_style::sheet::PREVIEW_PAPER),
+            ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_INK),
         );
         let y = sheet.bottom() + 16.0;
         let x = card.left() + space::M;
-        let e = bar::text_at(ui, x, y, &padded(number), ui_type::BODY_EMPHASIS, ecad_ui::color(s.text));
+        let e = bar::text_at(ui, x, y, &padded(number), ui_type::BODY_EMPHASIS, ecad_widgets::color(s.text));
         let room = card.right() - e - space::L;
-        bar::text_at(ui, e + space::S, y, &clip(ui, &title, room), ui_type::BODY, ecad_ui::color(s.text));
+        bar::text_at(ui, e + space::S, y, &clip(ui, &title, room), ui_type::BODY, ecad_widgets::color(s.text));
         let line = if group.is_empty() { "Click to go".to_string() } else { format!("{group} group · click to go") };
-        bar::text_at(ui, x, y + 20.0, &line, ui_type::SMALL, ecad_ui::color(s.text_2));
+        bar::text_at(ui, x, y + 20.0, &line, ui_type::SMALL, ecad_widgets::color(s.text_2));
         ui.allocate_rect(card, egui::Sense::hover());
     });
 }
@@ -629,7 +634,7 @@ const PREVIEW_H: f32 = 198.0;
 /// A page number as the well shows it: a plain number padded to two digits (`2` → `02`), any
 /// other number as it is.
 fn padded(number: &str) -> String {
-    if number.len() < 2 && ecad_model::words::is_digits(number) { format!("{number:0>2}") } else { number.to_string() }
+    if number.len() < 2 && ecad_model::naming::words::is_digits(number) { format!("{number:0>2}") } else { number.to_string() }
 }
 
 /// `text` cut to `room` px with an ellipsis.
@@ -683,9 +688,9 @@ impl App {
         let p = self.project.clone()?;
         let page = self.panel.active?;
         p.read(&mut self.cad.session, |p, _| {
-            let grid = ecad_model::sheet::Grid::of(p.ledger.document(), page);
+            let grid = ecad_model::document::sheet::Grid::of(p.ledger.document(), page);
             let (c, r) = (grid.column_of(w.x)?, grid.row_of(w.y)?);
-            Some(ecad_model::derive::zone_text(&grid.column_label(c), &grid.row_label(r)))
+            Some(ecad_model::connectivity::derive::zone_text(&grid.column_label(c), &grid.row_label(r)))
         })
         .ok()
         .flatten()
@@ -721,9 +726,9 @@ fn sheet_hint(sheet: crate::canvas::Sheet) -> &'static str {
 
 /// The small sheet swatch: paper, dark, or for Follow paper and dark split on the diagonal.
 fn sheet_swatch(painter: &egui::Painter, r: Rect, sheet: crate::canvas::Sheet) {
-    let s = ecad_ui::SHELL;
-    let paper = ecad_ui::color(ecad_drawing_style::sheet::PAPER.sheet);
-    let dark = ecad_ui::color(ecad_drawing_style::sheet::DARK.sheet);
+    let s = ecad_widgets::SHELL;
+    let paper = ecad_widgets::color(ecad_drawing_style::sheet::PAPER.sheet);
+    let dark = ecad_widgets::color(ecad_drawing_style::sheet::DARK.sheet);
     match sheet {
         crate::canvas::Sheet::Paper => {
             painter.rect_filled(r, 1.5, paper);
@@ -737,28 +742,28 @@ fn sheet_swatch(painter: &egui::Painter, r: Rect, sheet: crate::canvas::Sheet) {
             painter.add(egui::Shape::convex_polygon(tri, dark, egui::Stroke::NONE));
         }
     }
-    painter.rect_stroke(r, 1.5, egui::Stroke::new(1.0, ecad_ui::color(s.line_strong)), egui::StrokeKind::Inside);
+    painter.rect_stroke(r, 1.5, egui::Stroke::new(1.0, ecad_widgets::color(s.line_strong)), egui::StrokeKind::Inside);
 }
 
 /// One row of the sheet colour menu: swatch, name, what it does, and a tick when chosen. Its
 /// accessible label is the name alone ([`PAPER`], [`FOLLOW`], [`DARK`]).
 fn sheet_choice(ui: &mut egui::Ui, sheet: crate::canvas::Sheet, chosen: bool) -> egui::Response {
-    let s = ecad_ui::SHELL;
+    let s = ecad_widgets::SHELL;
     let (r, resp) = ui.allocate_exact_size(vec2(SHEET_MENU_W, 26.0), egui::Sense::click());
     let name = sheet_label(sheet);
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, chosen, name));
     if chosen || resp.hovered() {
         let fill = if chosen { s.accent_soft } else { s.hover };
-        ui.painter().rect_filled(r, ecad_ui::style::corner(ecad_ui::tokens::radius::BUTTON), ecad_ui::color(fill));
+        ui.painter().rect_filled(r, ecad_widgets::style::corner(ecad_widgets::tokens::radius::BUTTON), ecad_widgets::color(fill));
     }
     let y = r.center().y;
     sheet_swatch(ui.painter(), Rect::from_center_size(pos2(r.left() + space::S + 7.0, y), vec2(14.0, 11.0)), sheet);
-    let e = bar::text_at(ui, r.left() + space::S + 14.0 + space::S, y, name, ui_type::BODY, ecad_ui::color(s.text));
-    bar::text_at(ui, e, y, &format!(" · {}", sheet_hint(sheet)), ui_type::BODY, ecad_ui::color(s.text_3));
+    let e = bar::text_at(ui, r.left() + space::S + 14.0 + space::S, y, name, ui_type::BODY, ecad_widgets::color(s.text));
+    bar::text_at(ui, e, y, &format!(" · {}", sheet_hint(sheet)), ui_type::BODY, ecad_widgets::color(s.text_3));
     if chosen {
         let c = pos2(r.right() - space::S - 6.0, y);
         let tick = vec![c + vec2(-5.0, 0.0), c + vec2(-1.5, 3.5), c + vec2(5.0, -4.0)];
-        ui.painter().add(egui::Shape::line(tick, egui::Stroke::new(1.5, ecad_ui::color(s.accent_text))));
+        ui.painter().add(egui::Shape::line(tick, egui::Stroke::new(1.5, ecad_widgets::color(s.accent_text))));
     }
     resp
 }

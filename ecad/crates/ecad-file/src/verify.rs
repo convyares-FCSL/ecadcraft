@@ -23,7 +23,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::tag::HighWater;
+use ecad_model::naming::tag::HighWater;
 use ecad_model::{Check, Document, Ledger, ProjectId, Transaction, TxId, TxKind};
 
 use super::chunks::{self, ChunkSet};
@@ -404,7 +404,7 @@ fn replay_branch(
     let txs = std::mem::take(&mut b.txs);
     let name = &b.rec.name;
     let replayed = Ledger::replay_checked_visit(start_doc, txs, 0, Check::Commit, |tx, doc| {
-        ecad_model::tag::note_ops(&mut high, &tx.ops);
+        ecad_model::naming::tag::note_ops(&mut high, &tx.ops);
         stacks.step(tx);
         if want.contains(&tx.seq) {
             kept.insert((b.id, tx.seq), (doc.clone(), high.clone()));
@@ -496,7 +496,7 @@ fn check_point(
                         v.name,
                         v.tag_rule(),
                         v.tag_rule(),
-                        ecad_model::tag::TAG_RULE
+                        ecad_model::naming::tag::TAG_RULE
                     ));
                 } else if let Some(m) = meta
                     && m.tag_high != *high
@@ -521,11 +521,11 @@ fn check_point(
 
 /// The first difference between the replayed state and a snapshot, in words.
 fn first_difference(replayed: &Document, snapshot: &Document) -> String {
-    let ops = ecad_model::diff::ops_between(replayed, snapshot, &|_| true);
+    let ops = ecad_model::document::diff::ops_between(replayed, snapshot, &|_| true);
     let Some(op) = ops.first() else {
         return if replayed.versions != snapshot.versions { "the named versions".into() } else { "the derived index".into() };
     };
-    let what = ecad_model::diff::objects(std::slice::from_ref(op)).keys().next().map(|(k, id)| format!("{k} {id}")).unwrap_or_default();
+    let what = ecad_model::document::diff::objects(std::slice::from_ref(op)).keys().next().map(|(k, id)| format!("{k} {id}")).unwrap_or_default();
     match op {
         ecad_model::Op::SetProperty { key, .. } => format!("{what}, property `{key}`"),
         op => format!("{what} ({})", op.name()),

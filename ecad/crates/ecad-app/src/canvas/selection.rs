@@ -1,6 +1,6 @@
 //! Selection and relations (brief 040, step 5; spec principle 3, "one device, many places, shown
 //! as one"): selecting a placement of a device marks its other placements on the page (a dashed
-//! outline, [`super::markers`]) and lists the rest ([`Related::elsewhere`], which 042's inspector
+//! outline, [`crate::canvas::markers`]) and lists the rest ([`Related::elsewhere`], which 042's inspector
 //! shows with a go-to). The selection itself stays CADCraft's; nothing here selects.
 
 use ecad_engine::Project;
@@ -34,7 +34,7 @@ pub fn related(p: &Project, page: PageId, selection: &[Handle]) -> Related {
     for h in selection.iter().take(MAX_LOOKED_AT) {
         let rep = match map.get(*h) {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(id, _)| id),
-            Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::Xref(r)) => Some(r),
+            Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::DeviceReference(r)) => Some(r),
             _ => None,
         };
         let Some((rid, r)) = rep.and_then(|id| doc.representations.get(&id).map(|r| (id, r))) else { continue };
@@ -52,7 +52,7 @@ pub fn related(p: &Project, page: PageId, selection: &[Handle]) -> Related {
                 continue;
             }
             if r.page == page {
-                let handles = ecad_engine::device_list::symbol_target(p, rid).map(|t| t.2).unwrap_or_default();
+                let handles = ecad_engine::reports::device_list::symbol_target(p, rid).map(|t| t.2).unwrap_or_default();
                 if !handles.is_empty() {
                     out.here.push(handles);
                 }

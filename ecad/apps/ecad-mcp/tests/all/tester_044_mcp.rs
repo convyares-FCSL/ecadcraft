@@ -21,8 +21,8 @@ fn conn(v: &Value) -> String {
 fn sides(ops: &[Op]) -> Vec<(String, String)> {
     ops.iter()
         .filter_map(|o| match o {
-            Op::AddTerminal { terminal, .. } => {
-                Some((terminal.key.as_ref().map(ToString::to_string).unwrap_or_default(), terminal.label.clone().unwrap_or_default()))
+            Op::AddConnectionPoint { connection_point, .. } => {
+                Some((connection_point.key.as_ref().map(ToString::to_string).unwrap_or_default(), connection_point.label.clone().unwrap_or_default()))
             }
             _ => None,
         })
@@ -32,7 +32,7 @@ fn sides(ops: &[Op]) -> Vec<(String, String)> {
 /// The connector's terminal ID by side key and pin label.
 fn pin(c: &mut Client, x: &str, side: &str, label: &str) -> String {
     let d = c.doc();
-    d.terminals
+    d.connection_points
         .iter()
         .find(|(_, t)| {
             t.owner.subject_hex() == x && t.key.as_ref().map(ToString::to_string).as_deref() == Some(side) && t.label.as_deref() == Some(label)
@@ -46,7 +46,7 @@ fn reads(c: &mut Client, x: &str) -> Value {
         "bom": c.exec("bom", json!({"limit": 5000})),
         "bom_part": c.exec("bom", json!({"group": "part"})),
         "wirelist": c.exec("wirelist", json!({"limit": 5000})),
-        "xrefs": c.exec("xrefs", json!({"component": x})),
+        "references": c.exec("references", json!({"component": x})),
         "devices": c.exec("devices", json!({"tag": "-X"})),
         "checks": c.exec("checks", json!({"kinds": ["connector-pin-twice", "connector-family", "connector-size", "connector-lone-pin", "connector-over"]})),
         "defaults": c.exec("defaults", json!({})),
@@ -78,7 +78,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         got.sort();
         let mut want: Vec<(String, String)> = [".p", ".s"].iter().flat_map(|k| (1..=4).map(move |i| (k.to_string(), i.to_string()))).collect();
         want.sort();
-        assert_eq!(got, want, "AddTerminal per pin per side");
+        assert_eq!(got, want, "AddConnectionPoint per pin per side");
         assert!(
             ops.iter()
                 .filter_map(|o| if let Op::LinkRepresentation { rep, .. } = o { Some(rep) } else { None })
@@ -107,7 +107,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         let s3 = pin(&mut c, &x1, ".s", "3");
         let writes: Vec<(&str, Value)> = vec![
             ("pinlabel", json!({"device": x1, "pin": "3", "to": "PE"})),
-            ("pinlabel", json!({"terminal": s3, "to": "GND"})),
+            ("pinlabel", json!({"connection_point": s3, "to": "GND"})),
             ("setprop", json!({"component": x1, "key": "half.s.part_number", "value": "SKT-4"})),
             ("setprop", json!({"component": x1, "key": "half.p.location", "value": "+CP1"})),
             ("setprop", json!({"component": x2, "key": "pins", "value": "5"})),
@@ -121,7 +121,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
             assert_one_by_agent(&mut c, n, &format!("{cmd} {params} → {v}"));
         }
         let d = c.doc();
-        let t = d.terminals.iter().find(|(id, _)| id.hex() == s3).map(|(_, t)| t.clone()).expect("S:3 kept its ID");
+        let t = d.connection_points.iter().find(|(id, _)| id.hex() == s3).map(|(_, t)| t.clone()).expect("S:3 kept its ID");
         assert_eq!(t.label.as_deref(), Some("GND"), "pinlabel keeps the terminal's ID");
 
         // (4) §6.1's refusals and hostile input: nothing recorded.
@@ -171,7 +171,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         ("connector", json!({"device": x2, "halves": "socket", "layout": "pins", "line": [[90, 200], [130, 200]]})),
         ("place", json!({"symbol": "pinpair", "device": x2, "at": [300, 150]})),
         ("pinlabel", json!({"device": x1, "pin": "1", "to": "Z"})),
-        ("pinlabel", json!({"terminal": p1, "to": "Z"})),
+        ("pinlabel", json!({"connection_point": p1, "to": "Z"})),
         ("setprop", json!({"component": x1, "key": "half.p.maker", "value": "Acme"})),
         ("setdefault", json!({"key": "connector.half.separator", "level": "project", "value": "-"})),
     ] {
@@ -179,7 +179,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         assert_eq!(m, policy::WRITES_OFF, "{cmd} {params}");
     }
     let after = reads(&mut c, &x1);
-    for k in ["bom", "bom_part", "wirelist", "xrefs", "devices", "checks", "defaults"] {
+    for k in ["bom", "bom_part", "wirelist", "references", "devices", "checks", "defaults"] {
         assert_eq!(after[k], before[k], "{k} after reopen with writes off");
     }
     assert_eq!(c.log(), log, "nothing recorded with writes off");

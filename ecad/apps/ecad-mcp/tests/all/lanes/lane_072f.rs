@@ -1,6 +1,6 @@
 //! Lane 072 F, F1b (design 072 §6.2; brief 011): a continuation is a drawing aid. Placed through
 //! MCP's `execute` it records `CreateAid` with its point owned by the aid; `setprop {aids}` and
-//! `contcaption` record one `ModifyAid` each; `xrefs {aid}` lists its other end; all by the
+//! `contcaption` record one `ModifyAid` each; `references {aid}` lists its other end; all by the
 //! agent, and every one refused with writes off.
 
 use ecad_mcp::{EcadMcp, Options};
@@ -23,7 +23,7 @@ fn continuations_through_mcp_are_aids() {
     let (author, ops) = last_aid(&mut c);
     assert_eq!(author, Author::Agent(AGENT.into()));
     assert!(ops.iter().any(|o| matches!(o, Op::CreateAid { aid: Aid::Continuation { .. }, .. })), "{ops:?}");
-    assert!(ops.iter().any(|o| matches!(o, Op::AddTerminal { terminal, .. } if terminal.owner.aid().is_some())), "{ops:?}");
+    assert!(ops.iter().any(|o| matches!(o, Op::AddConnectionPoint { connection_point, .. } if connection_point.owner.aid().is_some())), "{ops:?}");
     assert!(!ops.iter().any(|o| matches!(o, Op::CreateDevice { .. })), "no device: {ops:?}");
     let b = c.exec("place", json!({"symbol": "continuation", "at": [80, 20], "name": "24V"}))["aid"].as_str().unwrap().to_string();
 
@@ -41,7 +41,7 @@ fn continuations_through_mcp_are_aids() {
     assert_eq!(author, Author::Agent(AGENT.into()));
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::ModifyAid { after, .. } if after.continuation_caption().is_some())).count(), 2, "{ops:?}");
 
-    let x = c.exec("xrefs", json!({"aid": a}));
+    let x = c.exec("references", json!({"aid": a}));
     assert!(x.to_string().contains("continuation"), "{x}");
 
     let before = c.log();
@@ -75,7 +75,7 @@ fn location_boxes_through_mcp_are_aids() {
     assert_eq!(author, Author::Agent(AGENT.into()));
     assert_eq!(c.log().len(), unchanged + 1);
     match ops.as_slice() {
-        [Op::ModifyAid { after: Aid::Box(x), .. }] => assert_eq!(x.panel_temperature, Some(ecad_model::units::Celsius(40.0))),
+        [Op::ModifyAid { after: Aid::Box(x), .. }] => assert_eq!(x.panel_temperature, Some(ecad_model::geometry::units::Celsius(40.0))),
         other => panic!("one ModifyAid: {other:?}"),
     }
     let n = c.log().len();
@@ -155,7 +155,7 @@ fn bom_items_through_mcp_are_loose_parts() {
     assert_eq!(id, item);
     assert_eq!(
         (part.description.as_str(), part.qty.to_string(), part.unit),
-        ("DIN rail 35x7.5", "1.5".to_string(), ecad_model::loose_part::ItemUnit::Metres)
+        ("DIN rail 35x7.5", "1.5".to_string(), ecad_model::objects::loose_part::ItemUnit::Metres)
     );
     assert!(part.location.is_some(), "the typed location is an entry of the list");
     assert!(!ops.iter().any(|o| matches!(o, Op::CreateDevice { .. })), "no device: {ops:?}");

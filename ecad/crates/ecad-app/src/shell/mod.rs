@@ -32,15 +32,18 @@ pub mod bar;
 pub mod compare;
 pub mod conflicts;
 pub mod connector;
+pub(crate) mod dialogs;
 pub mod drawer;
+pub(crate) mod files;
 pub mod glyphs;
+pub(crate) mod hover;
 pub mod intent;
 pub mod keys;
 pub mod layout;
 pub mod left;
+pub(crate) mod name_box;
 pub mod new_page;
 pub mod placing;
-pub mod right;
 pub mod state;
 pub mod status_bar;
 pub mod table_editor;
@@ -83,14 +86,14 @@ pub struct Visit {
 }
 
 /// The Project workspace's views (UI rev 3, boards 2.01–2.06; was Lists): the tabs in the tool
-/// strip's order ([`crate::lists::workspace::TABS`]). The Check list is no tab (its checks are the
+/// strip's order ([`crate::workspace::frame::TABS`]). The Check list is no tab (its checks are the
 /// right panel's Checks) but is still shown when asked for. While Project shows a view the left
 /// panel or the drawer also hosts, that one defers to it (one table is drawn once a frame).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ListsView {
     #[default]
     Devices,
-    Terminals,
+    TerminalBlocks,
     /// Brief 051: Project ▸ PLC (045c's Lists ▸ I/O).
     Plc,
     /// UI rev 3 (board 2.04).
@@ -103,13 +106,13 @@ pub enum ListsView {
 
 impl ListsView {
     /// The tabs (the Check list is none).
-    pub const ALL: [ListsView; 6] = crate::lists::workspace::TABS;
+    pub const ALL: [ListsView; 6] = crate::workspace::frame::TABS;
 
     /// Its name in the Project workspace's tab strip.
     pub fn label(self) -> &'static str {
         match self {
             ListsView::Devices => LISTS_DEVICES,
-            ListsView::Terminals => LISTS_TERMINALS,
+            ListsView::TerminalBlocks => LISTS_TERMINAL_STRIPS,
             ListsView::Plc => LISTS_PLC,
             ListsView::Wires => LISTS_WIRES,
             ListsView::Cables => LISTS_CABLES,
@@ -120,7 +123,7 @@ impl ListsView {
 }
 
 pub const LISTS_DEVICES: &str = "Devices";
-pub const LISTS_TERMINALS: &str = "Terminals";
+pub const LISTS_TERMINAL_STRIPS: &str = "Terminals";
 /// Brief 051 (design 051 §3.1): the rack overview and the I/O list (045c's "I/O").
 pub const LISTS_PLC: &str = "PLC";
 pub const LISTS_WIRES: &str = "Wires";
@@ -167,14 +170,14 @@ pub struct Shell {
     last_visit: Option<Visit>,
     pub tools: tool_strip::ToolStrip,
     /// Brief 059: the Cable slash tool's cable picker.
-    pub slash_picker: right::slash_picker::Picker,
+    pub slash_picker: crate::inspector::slash_picker::Picker,
     pub settings_open: bool,
     pub publish: PublishTab,
     /// The view Lists shows.
     pub lists: ListsView,
     /// UI rev 3: the Project workspace's selected row last frame (a new one opens the right
     /// panel on it).
-    pub project_selected: Option<crate::lists::detail::Selected>,
+    pub project_selected: Option<crate::workspace::detail::Selected>,
     /// The rect the page is shown in this frame (Draw's main view, Lists' companion), or `None`
     /// when it is laid out hidden under a hosted view: ECAD's hover, the zone and the go-to
     /// ring's click react only inside it.
@@ -207,7 +210,7 @@ impl std::fmt::Debug for Shell {
 impl Shell {
     /// A shell with the default state. (The right panel reads the app's `props` copy itself, UI
     /// rev 3; the argument is kept for its callers.)
-    pub fn new(_props: crate::sheets_ui::Shared) -> Self {
+    pub fn new(_props: crate::settings::sheets::Shared) -> Self {
         Shell {
             state: ShellState::default(),
             views: Views::default(),
@@ -220,7 +223,7 @@ impl Shell {
             forward: Vec::new(),
             last_visit: None,
             tools: tool_strip::ToolStrip::default(),
-            slash_picker: right::slash_picker::Picker::default(),
+            slash_picker: crate::inspector::slash_picker::Picker::default(),
             settings_open: false,
             publish: PublishTab::default(),
             lists: ListsView::default(),
@@ -262,8 +265,8 @@ impl Shell {
 }
 
 /// The ECAD style of a slot's background.
-fn fill(ui: &egui::Ui, rect: Rect, c: ecad_ui::tokens::Color) {
-    ui.painter().rect_filled(rect, 0.0, ecad_ui::color(c));
+pub(crate) fn fill(ui: &egui::Ui, rect: Rect, c: ecad_widgets::tokens::Color) {
+    ui.painter().rect_filled(rect, 0.0, ecad_widgets::color(c));
 }
 
 /// A child `Ui` filling `rect`.
@@ -279,7 +282,7 @@ pub(crate) fn in_rect<R>(ui: &mut egui::Ui, rect: Rect, id: &str, add: impl FnOn
 /// filling `host`, without a title bar, not movable. `None` leaves the window as it was.
 pub fn hosted(window: egui::Window<'_>, host: Option<Rect>) -> egui::Window<'_> {
     match host {
-        Some(r) => window.title_bar(false).movable(false).resizable(false).collapsible(false).fixed_rect(r.shrink(ecad_ui::tokens::space::XS)),
+        Some(r) => window.title_bar(false).movable(false).resizable(false).collapsible(false).fixed_rect(r.shrink(ecad_widgets::tokens::space::XS)),
         None => window,
     }
 }
@@ -358,7 +361,7 @@ impl App {
         // Brief 041: the intent line replaces the command line, at rest and while prompting.
         self.cad.ui.show_command_line = chrome;
 
-        let s = ecad_ui::SHELL;
+        let s = ecad_widgets::SHELL;
         top_bar::show(self, ui, slots.top_bar);
         if let Some(r) = slots.agent_banner {
             fill(ui, r, s.panel);
@@ -378,7 +381,7 @@ impl App {
         match self.shell.state.workspace {
             Workspace::Library if !self.shell.state.text_panel => self.library_panel(ui, slots.right),
             Workspace::Publish if !self.shell.state.text_panel => self.publish_right(ui, slots.right),
-            _ => right::show(self, ui, &slots),
+            _ => crate::inspector::show(self, ui, &slots),
         }
         drawer::show(self, ui, &slots);
         compare::show(self, ui, &slots);
@@ -430,7 +433,7 @@ impl App {
         if let Some(c) = slots.companion
             && self.shell.state.workspace == Workspace::Draw
         {
-            fill(ui, c, ecad_ui::SHELL.bg);
+            fill(ui, c, ecad_widgets::SHELL.bg);
         }
         if self.shell.state.workspace == Workspace::Lists {
             self.project_view(ui, slots.main);
@@ -469,7 +472,7 @@ impl App {
     pub fn fit_sheet_in(&mut self, rect: Rect) -> bool {
         let Ok(d) = self.cad.session.doc() else { return false };
         let mut b = ecad_engine::cad::Bounds2::default();
-        for e in d.model.iter().filter(|e| e.common.layer == ecad_engine::frame::LAYER) {
+        for e in d.model.iter().filter(|e| e.common.layer == ecad_engine::pages::frame::LAYER) {
             b = b.union(&ecad_engine::cad::entity_bounds(d, e, 0));
         }
         if b.is_empty() {
@@ -496,7 +499,7 @@ impl App {
     /// The companion split's handle: drag to resize, double-click for the default.
     fn split_handle(&mut self, ui: &mut egui::Ui, h: Rect, slots: &Slots) {
         let r = ui.interact(h, egui::Id::unique("ecad.shell.split"), egui::Sense::click_and_drag());
-        fill(ui, h, if r.hovered() || r.dragged() { ecad_ui::SHELL.line_strong } else { ecad_ui::SHELL.line });
+        fill(ui, h, if r.hovered() || r.dragged() { ecad_widgets::SHELL.line_strong } else { ecad_widgets::SHELL.line });
         if r.hovered() || r.dragged() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
         }
@@ -528,7 +531,7 @@ impl App {
         // UI rev 3 (board 2.06): Project ▸ Reports hosts the window as its preview.
         let preview = w == Workspace::Lists && self.shell.lists == ListsView::Reports;
         let reports = match w {
-            Workspace::Lists if preview && crate::lists::reports::preview_shown(self) => Some(crate::lists::workspace::reports_preview(slots.main)),
+            Workspace::Lists if preview && crate::reports::list::preview_shown(self) => Some(crate::workspace::frame::reports_preview(slots.main)),
             Workspace::Draw => slots.companion,
             _ => None,
         };

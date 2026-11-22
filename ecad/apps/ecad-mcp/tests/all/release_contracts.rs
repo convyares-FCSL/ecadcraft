@@ -69,7 +69,7 @@ fn release_records_the_issue_as_the_agent_and_prerelease_reads() {
     assert_eq!(t.author, Author::Agent(AGENT.into()));
     assert!(
         t.ops.iter().any(|o| matches!(o, Op::ModifyProject { after, .. }
-        if ecad_engine::revisions::field_of(after, 2, "released").as_deref() == Some("release/Rev B"))),
+        if ecad_electrical::releases::revisions::field_of(after, 2, "released").as_deref() == Some("release/Rev B"))),
         "{:?}",
         t.ops
     );
@@ -78,7 +78,7 @@ fn release_records_the_issue_as_the_agent_and_prerelease_reads() {
     assert_eq!(r["folder"], json!(out.to_string_lossy()));
     for f in manifest(&out)["files"].as_array().unwrap() {
         let bytes = std::fs::read(out.join(f["name"].as_str().unwrap())).unwrap();
-        assert_eq!(f["sha256"], ecad_engine::release::sha256_hex(&bytes), "{f}");
+        assert_eq!(f["sha256"], ecad_engine::releases::release::sha256_hex(&bytes), "{f}");
     }
     // An existing folder without `existing`: refused before any transaction.
     c.exec("revision", json!({"description": "Again", "drawn": "CVA", "rev": "C"}));

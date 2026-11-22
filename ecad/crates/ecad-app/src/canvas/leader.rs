@@ -27,7 +27,7 @@ pub fn paint(p: &egui::Painter, sheet: &ecad_drawing_style::Sheet, leader: &mut 
     }
     let fade = (1.0 - age / SECONDS).clamp(0.0, 1.0);
     let colour = sheet.selection.at_percent((fade * 100.0).round().clamp(0.0, 100.0) as u8);
-    let stroke = Stroke::new(1.5, ecad_ui::color(colour));
+    let stroke = Stroke::new(1.5, ecad_widgets::color(colour));
     p.line_segment([l.from, l.to], stroke);
     p.circle_stroke(l.to, 6.0, stroke);
     true

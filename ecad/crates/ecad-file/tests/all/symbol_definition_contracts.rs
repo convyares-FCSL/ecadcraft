@@ -14,20 +14,20 @@ fn symbol() -> Definition {
             at: Pt::new(-6.0, 0.0),
             h: TextHAlign::Right,
             v: TextVAlign::Middle,
-            rotation: ecad_model::units::Radians(0.0),
+            rotation: ecad_model::geometry::units::Radians(0.0),
         },
         TextSlot {
             text: ecad_model::SlotText::Rating,
             at: Pt::new(6.0, -2.5),
             h: TextHAlign::Left,
             v: TextVAlign::Top,
-            rotation: ecad_model::units::Radians(-0.0),
+            rotation: ecad_model::geometry::units::Radians(-0.0),
         },
     ];
     d.defaults = ecad_model::SymbolDefaults {
-        key: Some(ecad_model::text::Text::new("float1").unwrap()),
-        prefix: Some(ecad_model::text::Text::new("B").unwrap()),
-        description: Some(ecad_model::text::Text::new("Float switch").unwrap()),
+        key: Some(ecad_model::naming::text::Text::new("float1").unwrap()),
+        prefix: Some(ecad_model::naming::text::Text::new("B").unwrap()),
+        description: Some(ecad_model::naming::text::Text::new("Float switch").unwrap()),
         join: Some(ecad_model::Join::Device),
         ..Default::default()
     };
@@ -92,7 +92,7 @@ fn a_project_symbol_and_set_component_definition_round_trip() {
     // A slot turned by -0.0 is one turned by 0.0: same record, same hash (it was written once
     // and failed the content-hash check on read).
     let mut zero = symbol();
-    zero.texts[1].rotation = ecad_model::units::Radians(0.0);
+    zero.texts[1].rotation = ecad_model::geometry::units::Radians(0.0);
     assert_eq!(ecad_file::definition_hash(&zero).unwrap(), ecad_file::definition_hash(&symbol()).unwrap());
     assert_eq!(opened.ledger.document().devices[&c].definition, Some(id));
 }

@@ -108,7 +108,7 @@ Three kinds of evidence exist, and they are kept apart:
 | **Automated checks, brief 004 (cable slash)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5A: **Cable Slash** clicked by its label, the first point clicked, the crossing count shown before the second point, one transaction, three magenta dots, `u` in one step, and a refused second slash that keeps its first point (`ecad/crates/ecad-app/tests/all/cable_slash.rs`). The JSON and click forms record the same transaction; the crossing rules C1 to C6; every refusal leaves the history unchanged; undo, redo, save and reopen; erasing the slash keeps the cable and `ecaddelete {"cable":…}` keeps the wires; `cableadd` refuses a wire already in a cable; hover and the debugger trail; 10 000 wires accepted and 10 001 refused (`ecad/crates/ecad-engine/tests/all/cable_slash_contracts.rs`). Not checked: how it looks (reference screenshots are taken by the tester) |
 | **Automated checks, brief 005 (cable views)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 5B: **Cable View** clicked by its label, the slash clicked (fan: a trunk and six fan lines), the trunk clicked (back to traditional), no transaction and no change in the change count (`ecad/crates/ecad-app/tests/all/cable_view.rs`). Ten switches by JSON and by clicks leave the document, history, head, IDs and nets unchanged; the fan of design 005's fixture is its worked example on layer `ECAD-CABLES`; `u` and `redo` skip the switch; moving, erasing, copying, Connect, Convert to Component and Add Terminal on a fan line are refused with the spec's message, while JSON forms still act on the wires; moving equipment beside a fan moves the hidden routes; views remembered per cable across save, close and reopen; an unreadable, oversized or unwritable settings file never fails anything; fans of 1, 2 and 20 wires, bent and right-to-left routes, loose ends and hostile coordinates; hover; selection-based switching; the JSON form's errors (`ecad/crates/ecad-engine/tests/all/cable_view_contracts.rs`). Not checked: how it looks, and whether the switch feels instant (reference screenshots and the feel are for the tester and you) |
 | **Automated checks, brief 010 (cable references)** | written with the branch (the worker ran only the new tests once); run by the tester and by CI on Linux and Windows | Section 5D: **Cable Reference**, **Continue Cable** and **Go to Reference** clicked by their labels, their first prompts, the click-only path (reference, continue with Enter and two clicks, jump back), and the **Rename Page** and **Move Page** templates filling in the current page (`ecad/crates/ecad-app/tests/all/cable_references.rs`). One cable on two pages keeps its ID, members and nets; continuing is one transaction with the design's ops and geometry; the texts `/2.1` and `/1.2` and where they sit; no end mark where a wire leaves toward a reference; moving or renaming a page is one transaction and the texts follow with none of their own; erasing one drawing makes the other end a red orphan with a diagnostic and a message, and `u` restores it; save, reopen and replay; the hover lens; `cablegoto` there and back; the interactive and JSON forms record the same transactions; refusals R1 to R6; hostile input; the debugger trail; fan view keeps the reference (`ecad/crates/ecad-engine/tests/all/cable_reference_contracts.rs`, whose JSON-form table is written to move to the MCP harness of brief 011). Not checked: how it looks (reference screenshots are taken by the tester) |
-| **Automated checks, brief 011 (agent access through MCP)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 7A without a client (`ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`): the tools and every ECAD command with its parameter docs are listed; the cable examples of sections 5A and 5B through `execute` record exactly the JSON forms' transactions, each by `agent <client name>`, and `u` undoes each in one step; with writes off, or on a project opened read-only, every change and `save` is refused and the history is unchanged; the Block Editor, REFEDIT and LISP are refused with your refusal; save only with `--write`, and reopening shows the agent as author; malformed, oversized and non-UTF-8 requests, long batches and unknown tools get JSON-RPC errors; the built `ecad-mcp` over real stdin and stdout. Briefs 009 and 010's commands through MCP (`ecad/apps/ecad-mcp/tests/all/cable_command_contracts.rs`): `cablecore`, `cablefan`, `cableref`, `cablecontinue`, `renamepage` and `movepage` record exactly their JSON forms' transactions by the agent, `u` undoes each in one step, and refusals change nothing; `cablerefs` and `cablegoto` run with writes off, record nothing, and `cablegoto` only switches the open page. Not checked: Claude Code itself connected to it |
+| **Automated checks, brief 011 (agent access through MCP)** | written with the branch; run by the tester and by CI on Linux and Windows | Section 7A without a client (`ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`): the tools and every ECAD command with its parameter docs are listed; the cable examples of sections 5A and 5B through `execute` record exactly the JSON forms' transactions, each by `agent <client name>`, and `u` undoes each in one step; with writes off, or on a project opened read-only, every change and `save` is refused and the history is unchanged; the Block Editor, REFEDIT and LISP are refused with your refusal; save only with `--write`, and reopening shows the agent as author; malformed, oversized and non-UTF-8 requests, long batches and unknown tools get JSON-RPC errors; the built `ecad-mcp` over real stdin and stdout. Briefs 009 and 010's commands through MCP (`ecad/apps/ecad-mcp/tests/all/cable_command_contracts.rs`): `cablecore`, `cablefan`, `cableref`, `cablecontinue`, `renamepage` and `movepage` record exactly their JSON forms' transactions by the agent, `u` undoes each in one step, and refusals change nothing; `cablereferences` and `cablegoto` run with writes off, record nothing, and `cablegoto` only switches the open page. Not checked: Claude Code itself connected to it |
 | **Automated checks, brief 003 (the trial on native Windows)** | local checks from `ecad/CLAUDE.md` on native Windows 11 (Rust 1.99.1), 2026-11-01, branch `ecad/windows-trial`; CI runs them on Linux and Windows | Typed paths (`ecad/crates/ecad-app/tests/all/paths_contracts.rs`): `~`, `~/` and `~\` from the home folder, also with `HOME` unset (a child process); `~` with no home folder known is refused and no folder named `~` is ever made; drive letters, backslashes, spaces, non-ASCII and UNC paths; saving and reopening in folders with spaces and non-ASCII names; a reserved name (`CON.ecad`, `nul`, `LPT1`), `.`, `..`, a drive-relative path (`C:`, `C:demo`) or a trailing dot refused with a message; one pair of surrounding double quotes (Explorer's "Copy as path") removed; a path normalised once; `--snapshots ~/…` under the home folder, never a `~` folder (also `windows_app_contracts.rs`, the tester's); a case-variant spelling of the project's own file saved without a replace question (one file on Windows); the platform's default folder in the dialog, created by the first save into it on Linux (a test must not create `C:\dev\ecad-projects`). Arguments (`args_contracts.rs`): a project path, `--snapshots`, both, `--help`, `--version`, usage errors, and a name that is not valid Unicode. Not checked: the console window of a release build, and anything on a display |
 | **Agent smoke run on a virtual display, stage 2a** | the development agent, on Xvfb with software rendering, not a person | The window starts; a typed wire; Ctrl+S opens the Save As dialog and saves; the tab and banner show the file; the file reopens from the command line; a second window on the same file is read-only and says why; a project left by a killed process reports its reclaimed lock; Ctrl+Q with unsaved changes shows Save/Discard/Cancel, and Save writes the file, quits and releases the lock |
 | **Agent smoke run on a virtual display, stage 2b** | the development agent, as above, 2026-10-13 | Section 8's example: the panel opens from **Debugger** on the right; clicking the coil and then the wire listed their handles, IDs and trails; the transactions showed `[pending]` in orange, then `[saved]` in green after Save As; **Read bytes** showed the wire's record at its offset with "valid record holding exactly this transaction"; the move and its undo appeared as pending `#4` and `#5`; after Save, Verify replay, Verify projection and Verify file all passed. Not looked at: the panel on a real WSLg display |
@@ -377,7 +377,7 @@ cargo run --release -p ecad-desktop -- --snapshots C:\dev\ecad-snapshots   # all
     placeholder is refused, never run. IDs come from the current selection where it names them:
     select a wire before **Set Property** or **Delete Electrical Object**, and its ID is filled
     in. The selection is left as it is.
-- **Typing a command name** (`wire`, `addterminal` …) in either place starts the same
+- **Typing a command name** (`wire`, `addconnectionpoint` …) in either place starts the same
   click-based form as its button. `name {json}` in the ECAD command field runs the JSON form with
   no prompts, as scripts do.
 
@@ -431,7 +431,7 @@ of the drawing area; type there (or in the ECAD command field) only where a step
    `End B: connection point A1 of …`. Nothing changes in the Project panel's change count.
 
 Typing instead of clicking still works, in the ECAD command field:
-`convertcomponent` (with the lines selected), `addterminal {"handle":"<handle of the right-hand
+`convertcomponent` (with the lines selected), `addconnectionpoint {"handle":"<handle of the right-hand
 edge>","at":[40,10]}`, `place {"at":[100,0],"rotation":90}`,
 `wire {"points":[[40,10],[70,10],[70,0],[90,0]]}`. The headless test
 `the_quick_start_runs_headless` follows that typed version.
@@ -617,7 +617,7 @@ replies (`setprop {"cable":"<id>","key":"tag","value":"C1"}` gives it a name ins
 
 Typed: `cableref {"cable":"<id>","at":[65,5]}`, `cablecontinue {"cable":"<id>","at":[20,5],
 "toward":[40,5]}` (optionally `"members":[…]` to continue only some wires),
-`cablegoto {"reference":"<id>"}` and `cablerefs {}` (lists every reference with its text, partner
+`cablegoto {"reference":"<id>"}` and `cablereferences {}` (lists every reference with its text, partner
 and whether it is an orphan; read only).
 
 ## 5E. Project panel (by clicking)
@@ -1052,7 +1052,7 @@ Typed instead, in the ECAD command field: `setprop {"component":"<id>","key":"co
 `setprop {"component":"<id>","key":"mirror","value":"below"}` (`auto`, `below`, `right`, `off`,
 `at dx,dy` in millimetres from the coil; `null` follows the project),
 `mirrormove {"component":"<id>","at":[x,y]}` (or `"placement":"off"`), `contacts {"component":"<id>"}`
-(the table as JSON), `xrefs {"component":"<id>"}` (every reference, one per pole; also `cable`,
+(the table as JSON), `references {"component":"<id>"}` (every reference, one per pole; also `cable`,
 `page`), `refgoto {"source":"<representation id>"}` (a contact goes to its coil; from a coil add
 `"target"`), `projectprops {"contact_mirror":"off"}`.
 
@@ -1176,7 +1176,7 @@ a new one); the steps make their own page so its numbers do not matter.
     others shifted, in drawing order; **Apply**: one step, the wires stay on their terminals;
     `u` puts the labels back.
 
-Typed instead, in the ECAD command field: `place {"symbol":"terminal","at":[x,y]}` (on a wire: it
+Typed instead, in the ECAD command field: `place {"symbol":"terminal_block","at":[x,y]}` (on a wire: it
 is split), `terminals {"from":[x,y],"to":[x,y]}` (add `"strip":"<id>"`, `"pe":true`),
 `bridge {"from":"<terminal id>","to":"<terminal id>"}`,
 `setprop {"component":"<strip id>","key":"terminals","value":"12+2PE"}`,
@@ -1214,9 +1214,9 @@ position order and on the BOM. Brief 030, design `ecad/docs/design/030.md`. Cont
 Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
 `accessory {"strip":"<id>","at":["1","2","3"],"on":true,"items":["marker"]}`,
 `accessory {"strip":"<id>","at":"2","remove":["partition"]}`,
-`jumper {"terminals":["<terminal id>","<terminal id>"]}` (`"skip":true` for only those),
+`jumper {"connection_points":["<terminal id>","<terminal id>"]}` (`"skip":true` for only those),
 `jumper {"strip":"<id>","positions":"7, 9, 11","skip":true}`,
-`jumper {"link":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
+`jumper {"jumper_bar":{"strip":"<id>","n":1},"add":"5"}` (also `remove`, `split_at`, `delete`),
 `setprop {"component":"<id>","key":"jumper.bar","value":"4"}`, `stripplan {"accessories":false}`.
 
 ## 6. Check connected movement, undo/redo and pages
@@ -1397,7 +1397,7 @@ What the agent can and cannot do:
   cables and their members, nets), `ecad_history` (transactions with their authors),
   `ecad_inspect`, and CADCraft's `inspect_drawing`, `query_entities`, `find_text`, `render` and
   `list_commands` (every ECAD command with its parameters). Through `execute`, the commands that
-  record nothing also run without `--write`: `openpage`, `cablerefs` (the cable references and
+  record nothing also run without `--write`: `openpage`, `cablereferences` (the cable references and
   their texts) and `cablegoto` (opens the page of a reference's other end and selects it).
 - **Write** (only with `--write`, and only when the project did not open read-only): one command
   per `execute` call, with JSON parameters, through the same checks and refusals as yours; each
@@ -1469,7 +1469,7 @@ Developer). Type commands in the ECAD command field at the top of the Developer 
    `Block Reference <handle> → item itm-… → rep-… main of untagged component → component cmp-…`.
    Click that line. The trail lists the item, the representation, the component and its two
    connection points (`…:A1`, `…:A2`), and `#2 [pending] Place symbol`. Click `#2`: it was recorded by
-   command `place`; its ops include `CreateComponent`, two `AddTerminal`, `AddItem` and
+   command `place`; its ops include `CreateComponent`, two `AddConnectionPoint`, `AddItem` and
    `LinkRepresentation`. Expand one: `before: (none)` and the new value after. The record says
    **Pending: only in memory, not in the file.**
 3. **Wire.** `wire {"points":[[90,0],[110,0]]}` (from the coil's A1 to its A2: a wire runs
@@ -1761,7 +1761,7 @@ Your table of three clean runs goes here once you have run it.
   through **Jumper**, its Properties **Positions** or `jumper`, not from a context menu. The
   generated plan page writes the marks as text (`||`, `|`, `==`, `[]`, `o` per link lane).
   Merging two branches that each added a link with the same number on one strip shows one conflict
-  on that `link.<n>` key: keep one side, then add the other link again with **Jumper** (design
+  on that `jumper_bar.<n>` key: keep one side, then add the other link again with **Jumper** (design
   030 §9.4 "Keep both" is later work).
 - **Terminal strips (brief 028):** no multi-level, disconnect or fuse terminals; no bridge parts
   (end plates, markers) on the BOM; no reference texts under terminals; cable lengths are typed,

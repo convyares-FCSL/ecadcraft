@@ -12,13 +12,13 @@
 //! - [`CardType::of_type`] reads the stored type; nothing is worked out from a symbol.
 
 use ecad_model::DeviceType;
-use ecad_model::plc::{
+use ecad_model::objects::plc::{
     ChannelGroup, CommLink, CommRole, Communication, IoLinkMaster, ModuleFunction, PlcModule, PlcRack, Protocol, RackHead, Signal, SystemKind,
     SystemModule,
 };
 
-use super::rack::CardType;
 use crate::defaults::{self, Scope};
+use crate::plc::rack::CardType;
 use crate::symbols::StarterKey as K;
 
 /// The built-in count of a new module's channels, before the project's registry value.
@@ -94,7 +94,7 @@ pub fn new_type(doc: &ecad_model::Document, declared: &DeviceType) -> DeviceType
     let Some(entry) = card.channels_entry() else { return t };
     let n = defaults::resolve(doc, entry, Scope::project()).number();
     // The registry holds 0–256.
-    let n = if n.is_finite() && n >= 0.0 { (n as u16).min(ecad_model::plc::MAX_CHANNELS) } else { standard_count(card) };
+    let n = if n.is_finite() && n >= 0.0 { (n as u16).min(ecad_model::objects::plc::MAX_CHANNELS) } else { standard_count(card) };
     if let DeviceType::PlcModule(m) = &mut t
         && let [g] = m.function.groups_mut().as_mut_slice()
     {

@@ -29,5 +29,5 @@ pub fn read_standard(path: &str) -> Result<ecad_model::Standard, ecad_electrical
     let path = normalize(path)?;
     let opened = Binding::open_read_only(&path, 0x050a, "ecad standard copy")?;
     let doc = opened.ledger.document();
-    doc.standard.clone().ok_or(ecad_electrical::CmdError::refused(ecad_electrical::cmd::style::NOTHING_TO_COPY))
+    doc.standard.clone().ok_or(ecad_electrical::CmdError::refused(ecad_electrical::styles::commands::styles::NOTHING_TO_COPY))
 }

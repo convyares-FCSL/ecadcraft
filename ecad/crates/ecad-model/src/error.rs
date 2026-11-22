@@ -37,7 +37,7 @@ pub enum ModelError {
 /// # Example
 /// ```
 /// use ecad_model::Noun;
-/// assert_eq!(format!("No such {}.", Noun::Terminal), "No such connection point.");
+/// assert_eq!(format!("No such {}.", Noun::ConnectionPoint), "No such connection point.");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Noun {
@@ -53,10 +53,10 @@ pub enum Noun {
     Representation,
     Strip,
     Symbol,
-    /// A device's landing point for a conductor (`Terminal` in code).
-    Terminal,
+    /// A device's landing point for a conductor (`ConnectionPoint` in code).
+    ConnectionPoint,
     /// The DIN-rail terminal device.
-    TerminalDevice,
+    TerminalBlock,
     TerminalStrip,
     Wire,
 }
@@ -77,8 +77,8 @@ impl Noun {
             Noun::Representation => "representation",
             Noun::Strip => "strip",
             Noun::Symbol => "symbol",
-            Noun::Terminal => "connection point",
-            Noun::TerminalDevice => "terminal",
+            Noun::ConnectionPoint => "connection point",
+            Noun::TerminalBlock => "terminal block",
             Noun::TerminalStrip => "terminal strip",
             Noun::Wire => "wire",
         }
@@ -94,15 +94,15 @@ impl std::fmt::Display for Noun {
 /// Which of the model's public readers refused (see [`ParseError::Invalid`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Parsed {
-    /// [`crate::links::parse`].
-    Link,
-    /// [`crate::numbering::plan`].
+    /// [`crate::connectivity::jumper_bars::parse`].
+    JumperBar,
+    /// [`crate::naming::numbering::plan`].
     Numbering,
     /// [`crate::SheetSpec::parse`] and [`crate::SheetSpec::check`].
     Sheet,
-    /// [`crate::tag::normalise`].
+    /// [`crate::naming::tag::normalise`].
     Tag,
-    /// [`crate::wiring::valid_number`].
+    /// [`crate::connectivity::wiring::valid_number`].
     WireNumber,
     /// [`crate::merge::join_cables`].
     CableJoin,

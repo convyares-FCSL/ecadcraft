@@ -91,17 +91,17 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
         ],
     )
     .unwrap();
-    let device = |ids: &mut IdAllocator, tag: &str, points: &[&str]| -> (Vec<Op>, Vec<TerminalId>) {
+    let device = |ids: &mut IdAllocator, tag: &str, points: &[&str]| -> (Vec<Op>, Vec<ConnectionPointId>) {
         let c: DeviceId = ids.fresh();
-        let mut props = ecad_model::doc::Properties::new();
+        let mut props = ecad_model::document::doc::Properties::new();
         props.insert("note".into(), title.into());
         let mut ops = vec![Op::CreateDevice { id: c, device: Device { properties: props, ..Device::default() }.with_tag(Some(tag)) }];
         let mut ts = Vec::new();
         for p in points {
-            let t: TerminalId = ids.fresh();
-            ops.push(Op::AddTerminal {
+            let t: ConnectionPointId = ids.fresh();
+            ops.push(Op::AddConnectionPoint {
                 id: t,
-                terminal: Terminal { owner: c.into(), label: Some((*p).into()), key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: c.into(), label: Some((*p).into()), key: None, accepts: Default::default() },
             });
             ts.push(t);
         }
@@ -113,12 +113,12 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     l.commit(Author::User, "Devices", [k1, k1b, x1].concat()).unwrap();
     // Whole wires, no routes (design 072 §4.2): one net, its order 1 then 2.
     let net: NetId = ids.fresh();
-    let wire = |ids: &mut IdAllocator, number: &str, order: u16, a: TerminalId, b: TerminalId| -> (WireId, Op) {
+    let wire = |ids: &mut IdAllocator, number: &str, order: u16, a: ConnectionPointId, b: ConnectionPointId| -> (WireId, Op) {
         let w: WireId = ids.fresh();
         let wire = Wire {
             net_order: order,
-            number: ecad_model::text::Text::new(number).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false }),
-            size: ecad_model::wire::WireSize::parse("1.5"),
+            number: ecad_model::naming::text::Text::new(number).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: false }),
+            size: ecad_model::objects::wire::WireSize::parse("1.5"),
             ..Wire::new(net, ids.fresh(), a, b)
         };
         (w, Op::CreateWire { id: w, wire })
@@ -127,7 +127,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     let (_, op2) = wire(&mut ids, "101", 2, x1t[0], x1t[1]);
     l.commit(Author::User, "Wires", vec![op1, op2]).unwrap();
     let cable: CableId = ids.fresh();
-    let mut cprops = ecad_model::doc::Properties::new();
+    let mut cprops = ecad_model::document::doc::Properties::new();
     cprops.insert("tag".into(), "-W1".into());
     let cable_op = Op::CreateCable {
         id: cable,

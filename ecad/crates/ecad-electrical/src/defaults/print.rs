@@ -1,11 +1,11 @@
 //! Lane P's defaults (033, print and project). Owned by lane P: append `pub static` entries and list them in
 //! [`ENTRIES`]. Lane T created this file empty (design 031 §3.5) and does not edit it again.
 //!
-//! The tag style's defaults are `pub const` in `ecad_model::tag` (overseer ruling 2), which
+//! The tag style's defaults are `pub const` in `ecad_model::naming::tag` (overseer ruling 2), which
 //! `ecad-model`'s numbering and merge read without the registry; these entries name them.
 
-use super::{Entry, Kind, Level, ProjectSource, Slot};
 use crate::CmdError;
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 
 ecad_model::word_enum! {
     /// How continuation sheets are numbered.
@@ -68,11 +68,11 @@ pub static CONTACT_TABLE_CLEARANCE: Entry =
 
 /// Tags are written with a leading `-` (design 033 §8.1, FP1).
 pub static TAG_DASH: Entry = Entry {
-    key: ecad_model::tag::DASH_KEY,
+    key: ecad_model::naming::tag::DASH_KEY,
     label: "Leading - on tags",
     group: "Tags",
     brief: BRIEF,
-    kind: Kind::Choice(ecad_model::tag::DASH_WORDS),
+    kind: Kind::Choice(ecad_model::naming::tag::DASH_WORDS),
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
@@ -80,11 +80,11 @@ pub static TAG_DASH: Entry = Entry {
 
 /// Tags are written in upper case, or as typed (design 033 §8.1, FP1).
 pub static TAG_CASE: Entry = Entry {
-    key: ecad_model::tag::CASE_KEY,
+    key: ecad_model::naming::tag::CASE_KEY,
     label: "Tag case",
     group: "Tags",
     brief: BRIEF,
-    kind: Kind::Choice(ecad_model::tag::CASE_WORDS),
+    kind: Kind::Choice(ecad_model::naming::tag::CASE_WORDS),
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
@@ -93,11 +93,11 @@ pub static TAG_CASE: Entry = Entry {
 /// The revision table's columns (design 033 §7.1, FP2): `field[:Header][@width], …`, widths in
 /// millimetres on A3; Description takes the rest.
 pub static REVISION_COLUMNS: Entry = Entry {
-    key: crate::revisions::COLUMNS_KEY,
+    key: crate::releases::revisions::COLUMNS_KEY,
     label: "Revision columns",
     group: "Revisions",
     brief: BRIEF,
-    kind: Kind::Parsed { max_chars: crate::revisions::MAX_COLUMNS_CHARS, parse: crate::revisions::columns_ok },
+    kind: Kind::Parsed { max_chars: crate::releases::revisions::MAX_COLUMNS_CHARS, parse: crate::releases::revisions::columns_ok },
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
@@ -109,7 +109,7 @@ pub static REVISION_CUSTOM_WIDTH: Entry = Entry {
     label: "Custom revision column width",
     group: "Revisions",
     brief: BRIEF,
-    kind: Kind::Length { min: crate::revisions::MIN_WIDTH_MM, max: crate::revisions::MAX_WIDTH_MM },
+    kind: Kind::Length { min: crate::releases::revisions::MIN_WIDTH_MM, max: crate::releases::revisions::MAX_WIDTH_MM },
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
@@ -117,26 +117,26 @@ pub static REVISION_CUSTOM_WIDTH: Entry = Entry {
 
 /// How the title block marks changes since the newest issue (design 033 §6.2, FP3).
 pub static REVISION_PENDING: Entry = Entry {
-    key: crate::revisions::PENDING_KEY,
+    key: crate::releases::revisions::PENDING_KEY,
     label: "Pending changes marker",
     group: "Revisions",
     brief: BRIEF,
-    kind: Kind::Choice(<crate::revisions::PendingStyle as ecad_model::Word>::WORDS),
+    kind: Kind::Choice(<crate::releases::revisions::PendingStyle as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
 };
 
 /// The project's tag style (design 033 §8): its padding, and the dash and case resolved through
-/// this registry ([`TAG_DASH`], [`TAG_CASE`]). The same as `ecad_model::tag::Style::of`, which
+/// this registry ([`TAG_DASH`], [`TAG_CASE`]). The same as `ecad_model::naming::tag::Style::of`, which
 /// `ecad-model` reads without the registry (a test keeps them equal).
-pub fn tag_style(doc: &ecad_model::Document) -> ecad_model::tag::Style {
-    use ecad_model::tag::{Case, MAX_PADDING, Style};
-    use ecad_model::words::Word;
-    let word = |e: &Entry| super::resolve(doc, e, super::Scope::project()).word();
+pub fn tag_style(doc: &ecad_model::Document) -> ecad_model::naming::tag::Style {
+    use ecad_model::naming::tag::{Case, MAX_PADDING, Style};
+    use ecad_model::naming::words::Word;
+    let word = |e: &Entry| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).word();
     Style {
         padding: doc.settings.tag_padding().min(MAX_PADDING),
-        dash: ecad_model::words::flag(word(&TAG_DASH)).unwrap_or(true),
+        dash: ecad_model::naming::words::flag(word(&TAG_DASH)).unwrap_or(true),
         case: Case::parse(word(&TAG_CASE)).unwrap_or_default(),
     }
 }
@@ -157,7 +157,7 @@ pub static COLOUR: Entry = Entry {
 
 /// Whether `doc` prints mono ([`COLOUR`] is `mono`, the default).
 pub fn mono(doc: &ecad_model::Document) -> bool {
-    super::resolve(doc, &COLOUR, super::Scope::project()).choice::<PrintColour>() != Some(PrintColour::Colour)
+    crate::defaults::resolve(doc, &COLOUR, crate::defaults::Scope::project()).choice::<PrintColour>() != Some(PrintColour::Colour)
 }
 
 /// A print command's `colour` parameter (`mono`, `colour`, or `screen` as `colour`), or the
